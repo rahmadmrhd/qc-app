@@ -3,9 +3,14 @@ import { generateKeyPairSync } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { normalizeFingerprint, publicKeyFingerprint } from '../countrylock/src/ui-manifest';
+import {
+  normalizeFingerprint,
+  normalizePublicKeyInput,
+  publicKeyFingerprint,
+  publicKeyOneLine,
+} from '../countrylock/src/ui-manifest';
 import { writeUiManifest } from './build-ui-manifest';
-import { checkUiKey, DESKTOP_PUBLIC_KEY_SOURCE, readPublicKeyFromSource } from './check-ui-key';
+import { checkUiKey } from './check-ui-key';
 import { signDistManifest } from './sign-ui-manifest';
 
 let root: string;
@@ -34,8 +39,8 @@ afterEach(() => {
   rmSync(root, { recursive: true, force: true });
 });
 
-describe('sidik kunci publik', () => {
-  test('stabil untuk kunci yang sama, berbeda antar kunci, dan 64 heksa huruf kecil', () => {
+describe('sidik dan normalisasi kunci publik', () => {
+  test('sidik stabil untuk kunci yang sama, berbeda antar kunci, dan 64 heksa huruf kecil', () => {
     const a = keyPair();
     const b = keyPair();
     expect(publicKeyFingerprint(a.publicPem)).toBe(publicKeyFingerprint(a.publicPem));
@@ -43,7 +48,7 @@ describe('sidik kunci publik', () => {
     expect(publicKeyFingerprint(a.publicPem)).toMatch(/^[0-9a-f]{64}$/);
   });
 
-  test('kunci non-Ed25519 ditolak', () => {
+  test('kunci non-Ed25519 ditolak sidiknya', () => {
     expect(() => publicKeyFingerprint(keyPair('rsa').publicPem)).toThrow('Ed25519');
   });
 
@@ -55,18 +60,38 @@ describe('sidik kunci publik', () => {
     expect(normalizeFingerprint(fp.slice(1))).toBeNull();
     expect(normalizeFingerprint('bukan heksa')).toBeNull();
   });
+
+  test('normalizePublicKeyInput: PEM, `\\n` harfiah, PEM satu baris, dan base64 satu baris menghasilkan PEM yang sama', () => {
+    const { publicPem } = keyPair();
+    const oneLine = publicKeyOneLine(publicPem);
+    expect(oneLine).not.toContain('\n');
+    expect(oneLine).not.toContain('-----');
+    const forms = [
+      publicPem,
+      publicPem.trim().replace(/\n/g, '\\n'),
+      publicPem.trim().replace(/\n/g, ' '),
+      oneLine,
+      `  ${oneLine}\n`,
+    ];
+    for (const form of forms) expect(normalizePublicKeyInput(form)).toBe(publicPem);
+  });
+
+  test('normalizePublicKeyInput menolak teks yang bukan base64', () => {
+    expect(normalizePublicKeyInput('bukan kunci!!')).toBeNull();
+    expect(normalizePublicKeyInput('')).toBeNull();
+    expect(normalizePublicKeyInput('-----BEGIN PUBLIC KEY-----')).toBeNull();
+  });
 });
 
 describe('checkUiKey', () => {
-  test('pasangan kunci yang cocok lolos dan sidik keduanya sama', () => {
+  test('pasangan kunci yang cocok lolos dan sidik keduanya sama (juga dengan kunci publik satu baris)', () => {
     const pair = keyPair();
-    const result = checkUiKey({
-      privateKeyFile: privateFile(pair.privatePem),
-      publicKeyPem: pair.publicPem,
-    });
-    expect(result.publicFingerprint).toBe(publicKeyFingerprint(pair.publicPem));
-    expect(result.privateFingerprint).toBe(result.publicFingerprint);
-    expect(result.warnings).toEqual([]);
+    for (const publicKeyPem of [pair.publicPem, publicKeyOneLine(pair.publicPem)]) {
+      const result = checkUiKey({ privateKeyFile: privateFile(pair.privatePem), publicKeyPem });
+      expect(result.publicFingerprint).toBe(publicKeyFingerprint(pair.publicPem));
+      expect(result.privateFingerprint).toBe(result.publicFingerprint);
+      expect(result.warnings).toEqual([]);
+    }
   });
 
   test('kunci privat dan publik dari pasangan berbeda DITOLAK (tertukar atau salah putar)', () => {
@@ -76,21 +101,15 @@ describe('checkUiKey', () => {
     );
   });
 
-  test('sidik yang diharapkan: cocok lolos, tak cocok ditolak, bentuk salah ditolak', () => {
+  test('sidik yang diharapkan (opsional, bantuan manual): cocok lolos, tak cocok ditolak, bentuk salah ditolak', () => {
     const pair = keyPair();
     const file = privateFile(pair.privatePem);
     const fp = publicKeyFingerprint(pair.publicPem);
     expect(
       checkUiKey({ privateKeyFile: file, expectedFingerprint: fp.toUpperCase() }),
-    ).toMatchObject({
-      privateFingerprint: fp,
-      publicFingerprint: null,
-    });
+    ).toMatchObject({ privateFingerprint: fp, publicFingerprint: null });
     const other = publicKeyFingerprint(keyPair().publicPem);
     expect(() => checkUiKey({ privateKeyFile: file, expectedFingerprint: other })).toThrow(
-      'tidak sama dengan sidik yang diharapkan',
-    );
-    expect(() => checkUiKey({ publicKeyPem: pair.publicPem, expectedFingerprint: other })).toThrow(
       'tidak sama dengan sidik yang diharapkan',
     );
     expect(() => checkUiKey({ privateKeyFile: file, expectedFingerprint: 'abc' })).toThrow(
@@ -110,7 +129,7 @@ describe('checkUiKey', () => {
 
   test('kunci publik bukan Ed25519 atau rusak ditolak', () => {
     expect(() => checkUiKey({ publicKeyPem: keyPair('rsa').publicPem })).toThrow('tidak sah');
-    expect(() => checkUiKey({ publicKeyPem: 'bukan pem' })).toThrow('tidak sah');
+    expect(() => checkUiKey({ publicKeyPem: 'bukan kunci!!' })).toThrow('tidak sah');
   });
 
   test('kunci privat rusak, bukan Ed25519, atau tak ada ditolak; tanpa kunci apa pun ditolak', () => {
@@ -152,30 +171,7 @@ describe('checkUiKey', () => {
   });
 });
 
-describe('readPublicKeyFromSource', () => {
-  test('membaca null dan template literal PEM; bentuk tak dikenal melempar', () => {
-    const pair = keyPair();
-    const nullFile = path.join(root, 'null.ts');
-    writeFileSync(nullFile, '// c\nexport const UI_PUBLIC_KEY_PEM: string | null = null;\n');
-    expect(readPublicKeyFromSource(nullFile)).toBeNull();
-    const pemFile = path.join(root, 'pem.ts');
-    writeFileSync(
-      pemFile,
-      `export const UI_PUBLIC_KEY_PEM: string | null = \`${pair.publicPem}\`;\n`,
-    );
-    expect(readPublicKeyFromSource(pemFile)).toBe(pair.publicPem);
-    const badFile = path.join(root, 'bad.ts');
-    writeFileSync(badFile, 'export const LAIN = 1;\n');
-    expect(() => readPublicKeyFromSource(badFile)).toThrow('tidak ditemukan');
-  });
-
-  test('sumber desktop yang sebenarnya masih terbaca (format tak berubah diam-diam)', () => {
-    const value = readPublicKeyFromSource(DESKTOP_PUBLIC_KEY_SOURCE);
-    expect(value === null || value.includes('BEGIN PUBLIC KEY')).toBe(true);
-  });
-});
-
-describe('signDistManifest dengan sidik yang diharapkan', () => {
+describe('signDistManifest dengan kunci publik desktop', () => {
   function prepareDist(): string {
     const dist = path.join(root, 'dist');
     mkdirSync(dist);
@@ -183,58 +179,78 @@ describe('signDistManifest dengan sidik yang diharapkan', () => {
     writeUiManifest(dist, { minBridge: 2, now: 1_700_000_000_000 });
     return dist;
   }
+  const sigOf = (dist: string) => path.join(dist, 'ui-manifest.sig');
 
-  test('sidik cocok: tanda tangan ditulis', () => {
-    const pair = keyPair();
-    const dist = prepareDist();
-    signDistManifest(dist, privateFile(pair.privatePem), publicKeyFingerprint(pair.publicPem));
-    expect(existsSync(path.join(dist, 'ui-manifest.sig'))).toBe(true);
-  });
-
-  test('sidik tak cocok: GAGAL dan .sig tidak ditulis', () => {
-    const dist = prepareDist();
-    const file = privateFile(keyPair().privatePem);
-    expect(() => signDistManifest(dist, file, publicKeyFingerprint(keyPair().publicPem))).toThrow(
-      'TIDAK berpasangan',
-    );
-    expect(existsSync(path.join(dist, 'ui-manifest.sig'))).toBe(false);
-  });
-
-  test('sidik berbentuk salah ditolak; tanpa sidik tetap menandatangani (perilaku lama)', () => {
+  test('kunci publik cocok (PEM atau satu baris): tanda tangan ditulis', () => {
     const pair = keyPair();
     const file = privateFile(pair.privatePem);
+    for (const publicKey of [pair.publicPem, publicKeyOneLine(pair.publicPem)]) {
+      const dist = prepareDist();
+      signDistManifest(dist, file, { publicKey, requirePublicKey: true });
+      expect(existsSync(sigOf(dist))).toBe(true);
+      rmSync(dist, { recursive: true });
+    }
+  });
+
+  test('kunci publik dari pasangan lain: GAGAL dan .sig tidak ditulis', () => {
     const dist = prepareDist();
-    expect(() => signDistManifest(dist, file, 'abc')).toThrow('bukan SHA-256');
+    const file = privateFile(keyPair().privatePem);
+    expect(() => signDistManifest(dist, file, { publicKey: keyPair().publicPem })).toThrow(
+      'TIDAK berpasangan',
+    );
+    expect(existsSync(sigOf(dist))).toBe(false);
+  });
+
+  test('kunci publik berbentuk salah ditolak tanpa menulis .sig', () => {
+    const dist = prepareDist();
+    const file = privateFile(keyPair().privatePem);
+    expect(() => signDistManifest(dist, file, { publicKey: 'bukan kunci!!' })).toThrow(
+      'dapat dibaca',
+    );
+    expect(existsSync(sigOf(dist))).toBe(false);
+  });
+
+  test('requirePublicKey tanpa kunci publik: GAGAL; tanpa opsi apa pun tetap menandatangani (perilaku lama)', () => {
+    const file = privateFile(keyPair().privatePem);
+    const dist = prepareDist();
+    for (const publicKey of [undefined, '', '   ']) {
+      expect(() => signDistManifest(dist, file, { publicKey, requirePublicKey: true })).toThrow(
+        'UI_PUBLIC_KEY_PEM wajib',
+      );
+      expect(existsSync(sigOf(dist))).toBe(false);
+    }
     signDistManifest(dist, file);
-    expect(existsSync(path.join(dist, 'ui-manifest.sig'))).toBe(true);
+    expect(existsSync(sigOf(dist))).toBe(true);
   });
 });
 
-describe('CLI check-ui-key', () => {
-  const script = path.join(import.meta.dir, 'check-ui-key.ts');
+describe('CLI', () => {
+  const checkScript = path.join(import.meta.dir, 'check-ui-key.ts');
+  const signScript = path.join(import.meta.dir, 'sign-ui-manifest.ts');
 
-  function run(args: string[], env: Record<string, string> = {}) {
+  function run(script: string, args: string[], env: Record<string, string> = {}) {
     const result = Bun.spawnSync([process.execPath, 'run', script, ...args], {
-      env: { ...process.env, UI_PUBLIC_KEY_PEM: '', UI_PUBLIC_KEY_FINGERPRINT: '', ...env },
+      env: { ...process.env, UI_PUBLIC_KEY_PEM: '', ...env },
       stdout: 'pipe',
       stderr: 'pipe',
     });
-    return {
-      code: result.exitCode,
-      out: result.stdout.toString(),
-      err: result.stderr.toString(),
-    };
+    return { code: result.exitCode, out: result.stdout.toString(), err: result.stderr.toString() };
   }
 
-  test('pasangan cocok: kode 0 dan sidik dicetak; tertukar: kode 1', () => {
+  test('check-ui-key: pasangan cocok kode 0 dan sidik dicetak; tertukar kode 1', () => {
     const pair = keyPair();
     const publicFile = path.join(root, 'kunci.pub.pem');
     writeFileSync(publicFile, pair.publicPem);
-    const ok = run(['--private', privateFile(pair.privatePem), '--public', publicFile]);
+    const ok = run(checkScript, [
+      '--private',
+      privateFile(pair.privatePem),
+      '--public',
+      publicFile,
+    ]);
     expect(ok.code).toBe(0);
     expect(ok.out).toContain(publicKeyFingerprint(pair.publicPem));
 
-    const swapped = run([
+    const swapped = run(checkScript, [
       '--private',
       privateFile(keyPair().privatePem, 'lain.ui-signing-key.pem'),
       '--public',
@@ -244,26 +260,52 @@ describe('CLI check-ui-key', () => {
     expect(swapped.err).toContain('TIDAK berpasangan');
   });
 
-  test('kunci publik dari env UI_PUBLIC_KEY_PEM dan sidik dari env UI_PUBLIC_KEY_FINGERPRINT', () => {
+  test('check-ui-key: kunci publik dari env UI_PUBLIC_KEY_PEM (satu baris, seperti Variable CI)', () => {
     const pair = keyPair();
-    const ok = run(['--private', privateFile(pair.privatePem)], {
-      UI_PUBLIC_KEY_PEM: pair.publicPem,
-      UI_PUBLIC_KEY_FINGERPRINT: publicKeyFingerprint(pair.publicPem),
+    const file = privateFile(pair.privatePem);
+    const ok = run(checkScript, ['--private', file], {
+      UI_PUBLIC_KEY_PEM: publicKeyOneLine(pair.publicPem),
     });
     expect(ok.code).toBe(0);
-    const wrong = run(['--private', privateFile(pair.privatePem)], {
-      UI_PUBLIC_KEY_PEM: pair.publicPem,
-      UI_PUBLIC_KEY_FINGERPRINT: publicKeyFingerprint(keyPair().publicPem),
+    const wrong = run(checkScript, ['--private', file], {
+      UI_PUBLIC_KEY_PEM: publicKeyOneLine(keyPair().publicPem),
     });
     expect(wrong.code).toBe(1);
   });
 
-  test('--require-public gagal (kode 1) tanpa kunci publik yang berpasangan', () => {
-    const file = privateFile(keyPair().privatePem);
-    // Tanpa --public dan tanpa env, CLI membaca sumber desktop. Saat ini null: galat "kosong". Bila kelak terisi,
-    // kunci itu pasti tak berpasangan dengan kunci acak uji ini: galat "TIDAK berpasangan". Keduanya kode 1.
-    const result = run(['--private', file, '--require-public']);
+  test('check-ui-key --require-public: env kosong menggagalkan (kode 1)', () => {
+    const result = run(checkScript, [
+      '--private',
+      privateFile(keyPair().privatePem),
+      '--require-public',
+    ]);
     expect(result.code).toBe(1);
-    expect(result.err).toMatch(/kosong|TIDAK berpasangan/);
+    expect(result.err).toContain('kosong');
+  });
+
+  test('sign-ui-manifest --require-public-key (seperti Dockerfile): tanpa env gagal, cocok lolos, tertukar gagal', () => {
+    const pair = keyPair();
+    const file = privateFile(pair.privatePem);
+    const dist = path.join(root, 'dist');
+    mkdirSync(dist);
+    writeFileSync(path.join(dist, 'index.html'), '<html></html>');
+    writeUiManifest(dist, { minBridge: 2, now: 1_700_000_000_000 });
+    const args = ['--key', file, '--dist', dist, '--require-public-key'];
+
+    const missing = run(signScript, args);
+    expect(missing.code).toBe(1);
+    expect(missing.err).toContain('UI_PUBLIC_KEY_PEM wajib');
+    expect(existsSync(path.join(dist, 'ui-manifest.sig'))).toBe(false);
+
+    const swapped = run(signScript, args, {
+      UI_PUBLIC_KEY_PEM: publicKeyOneLine(keyPair().publicPem),
+    });
+    expect(swapped.code).toBe(1);
+    expect(existsSync(path.join(dist, 'ui-manifest.sig'))).toBe(false);
+
+    const ok = run(signScript, args, { UI_PUBLIC_KEY_PEM: publicKeyOneLine(pair.publicPem) });
+    expect(ok.code).toBe(0);
+    expect(ok.out).toContain(publicKeyFingerprint(pair.publicPem));
+    expect(existsSync(path.join(dist, 'ui-manifest.sig'))).toBe(true);
   });
 });

@@ -117,6 +117,27 @@ export function publicKeyFingerprint(publicKeyPem: string): string {
     .digest('hex');
 }
 
+/**
+ * Menormalkan kunci publik dari berbagai bentuk tempel menjadi PEM SPKI baku, atau `null` bila tak dikenali:
+ * PEM berbaris banyak, PEM dengan `\n` harfiah (hasil menyalin ke variabel CI), PEM yang dijadikan satu baris, atau
+ * hanya isi base64 satu baris (bentuk yang aman untuk `--build-arg` dan Variable GitHub, yang berformat satu baris
+ * per entri). Tidak memeriksa jenis kunci; `publicKeyFingerprint` yang menolak non-Ed25519.
+ */
+export function normalizePublicKeyInput(text: string): string | null {
+  const body = text
+    .replace(/-----(?:BEGIN|END) PUBLIC KEY-----/g, '')
+    .replace(/\\n/g, '')
+    .replace(/\s/g, '');
+  if (!/^[A-Za-z0-9+/]+={0,2}$/.test(body)) return null;
+  const lines = body.match(/.{1,64}/g) ?? [];
+  return `-----BEGIN PUBLIC KEY-----\n${lines.join('\n')}\n-----END PUBLIC KEY-----\n`;
+}
+
+/** Isi base64 satu baris dari PEM kunci publik (bentuk ringkas untuk Variable GitHub / `--build-arg`). */
+export function publicKeyOneLine(publicKeyPem: string): string {
+  return publicKeyPem.replace(/-----(?:BEGIN|END) PUBLIC KEY-----/g, '').replace(/\s/g, '');
+}
+
 /** Sidik dari teks bebas (huruf besar/kecil, pemisah `:` atau spasi diterima); bentuk lain = `null`. */
 export function normalizeFingerprint(text: string): string | null {
   const compact = text.trim().replace(/[:\s]/g, '').toLowerCase();

@@ -1,28 +1,20 @@
 import { readFileSync, statSync } from 'node:fs';
-import path from 'node:path';
 import {
   normalizeFingerprint,
+  normalizePublicKeyInput,
   publicKeyFingerprint,
   publicKeyPemOf,
   signUiManifest,
   verifyUiManifest,
 } from '../countrylock/src/ui-manifest';
 
-/** Tempat kunci publik tertanam di aplikasi desktop (null = pembaruan UI nonaktif). */
-export const DESKTOP_PUBLIC_KEY_SOURCE = path.join(
-  import.meta.dir,
-  '..',
-  'desktop',
-  'src',
-  'main',
-  'ui',
-  'public-key.ts',
-);
-
 export interface CheckUiKeyOptions {
   /** Jalur berkas kunci privat PEM PKCS8 (hanya dibaca, isinya tak pernah dicetak). */
   privateKeyFile?: string;
-  /** Kunci publik PEM SPKI; kosong/`null` = belum ditanam. */
+  /**
+   * Kunci publik desktop (`UI_PUBLIC_KEY_PEM`): PEM, PEM dengan `\n` harfiah, atau base64 satu baris; kosong/`null` =
+   * belum ditanam (pembaruan UI desktop nonaktif).
+   */
   publicKeyPem?: string | null;
   /** Sidik yang diharapkan (SHA-256 SPKI, heksa; `:` dan huruf besar diterima). */
   expectedFingerprint?: string;
@@ -35,17 +27,6 @@ export interface CheckUiKeyResult {
   privateFingerprint: string | null;
   /** Pesan non-fatal untuk dicetak (mis. kunci publik belum ditanam). */
   warnings: string[];
-}
-
-/**
- * Membaca nilai `UI_PUBLIC_KEY_PEM` dari sumber desktop (`null` bila belum ditanam). Melempar bila bentuknya tak
- * dikenali, supaya perubahan format tidak membuat pemeriksaan lolos diam-diam.
- */
-export function readPublicKeyFromSource(file: string = DESKTOP_PUBLIC_KEY_SOURCE): string | null {
-  const text = readFileSync(file, 'utf8');
-  const match = /export const UI_PUBLIC_KEY_PEM\s*:[^=]*=\s*(null|`([^`]*)`)\s*;/.exec(text);
-  if (!match) throw new Error(`UI_PUBLIC_KEY_PEM tidak ditemukan di ${path.basename(file)}`);
-  return match[1] === 'null' ? null : (match[2] ?? null);
 }
 
 function readPrivateKey(file: string): string {
@@ -64,10 +45,13 @@ function readPrivateKey(file: string): string {
  */
 export function checkUiKey(options: CheckUiKeyOptions): CheckUiKeyResult {
   const warnings: string[] = [];
-  const publicPem = options.publicKeyPem?.trim() ? options.publicKeyPem : null;
-
-  if (!publicPem && options.requirePublicKey) {
+  const rawPublic = options.publicKeyPem?.trim() ? options.publicKeyPem : null;
+  if (rawPublic === null && options.requirePublicKey) {
     throw new Error('Kunci publik desktop kosong (UI_PUBLIC_KEY_PEM): pembaruan UI akan nonaktif');
+  }
+  const publicPem = rawPublic === null ? null : normalizePublicKeyInput(rawPublic);
+  if (rawPublic !== null && publicPem === null) {
+    throw new Error('Kunci publik desktop tidak sah (butuh PEM SPKI Ed25519)');
   }
 
   let publicFingerprint: string | null = null;
@@ -140,14 +124,15 @@ function flag(name: string): string | undefined {
 
 if (import.meta.main) {
   try {
+    // Kunci publik: `--public <berkas>` atau env UI_PUBLIC_KEY_PEM (nilai yang sama dengan Variable CI).
     const publicFile = flag('--public');
     const publicKeyPem = publicFile
       ? readFileSync(publicFile, 'utf8')
-      : (process.env.UI_PUBLIC_KEY_PEM ?? readPublicKeyFromSource());
+      : process.env.UI_PUBLIC_KEY_PEM;
     const result = checkUiKey({
       privateKeyFile: flag('--private') ?? process.env.UI_SIGNING_KEY_FILE,
       publicKeyPem,
-      expectedFingerprint: flag('--expect') ?? process.env.UI_PUBLIC_KEY_FINGERPRINT,
+      expectedFingerprint: flag('--expect'),
       requirePublicKey: process.argv.includes('--require-public'),
     });
     for (const warning of result.warnings) console.warn(`check-ui-key peringatan: ${warning}`);

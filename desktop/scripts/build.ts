@@ -6,11 +6,31 @@ import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveUiPublicKey } from './ui-public-key';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const external = ['electron', 'ssh2', 'node:sqlite'];
 
 const spikeOnly = process.argv.includes('--spike');
+// Kunci publik tanda tangan UI disuntikkan dari env `UI_PUBLIC_KEY_PEM` (bukan ditulis di source). `--require-ui-key`
+// (skrip `dist`, build rilis) menggagalkan build bila kosong: tanpa kunci pembaruan UI mati diam-diam.
+function resolveKeyOrExit(): ReturnType<typeof resolveUiPublicKey> {
+  try {
+    return resolveUiPublicKey(process.env, process.argv.includes('--require-ui-key'));
+  } catch (error) {
+    // Pesan sudah generik (tanpa isi kunci); tanpa stack trace agar log CI mudah dibaca.
+    console.error(`build desktop gagal: ${error instanceof Error ? error.message : error}`);
+    process.exit(1);
+  }
+}
+const uiKey = resolveKeyOrExit();
+if (!spikeOnly) {
+  console.log(
+    uiKey.fingerprint
+      ? `kunci publik tanda tangan UI ditanam (sidik SHA-256: ${uiKey.fingerprint})`
+      : 'UI_PUBLIC_KEY_PEM kosong: kunci publik tidak ditanam, pembaruan UI desktop nonaktif (UI dasar saja)',
+  );
+}
 if (!spikeOnly) await rm(`${root}dist`, { recursive: true, force: true });
 
 async function bundle(entry: string, outdir: string, format: 'esm' | 'cjs', naming?: string) {
@@ -22,6 +42,8 @@ async function bundle(entry: string, outdir: string, format: 'esm' | 'cjs', nami
     external,
     sourcemap: 'linked',
     minify: false,
+    // `typeof __UI_PUBLIC_KEY_PEM__` di src/main/ui/public-key.ts menjadi literal; tanpa kunci = tak didefinisikan.
+    define: { __UI_PUBLIC_KEY_PEM__: JSON.stringify(uiKey.pem) },
     ...(naming ? { naming } : {}),
   });
   if (!result.success) {

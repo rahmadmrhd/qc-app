@@ -1,7 +1,7 @@
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
-  normalizeFingerprint,
+  normalizePublicKeyInput,
   publicKeyFingerprint,
   publicKeyPemOf,
   signUiManifest,
@@ -9,19 +9,28 @@ import {
   UI_MANIFEST_SIGNATURE_FILE,
   verifyUiManifest,
 } from '../countrylock/src/ui-manifest';
+import { checkUiKey } from './check-ui-key';
 import { WEB_DIST_DIR } from './paths';
+
+export interface SignOptions {
+  /**
+   * Kunci publik desktop (`UI_PUBLIC_KEY_PEM`: PEM, atau base64 satu baris). Bila diberikan, tanda tangan HARUS lolos
+   * dengan kunci ini; tidak lolos = GAGAL sebelum `.sig` ditulis (desktop akan menolak setiap pembaruan UI).
+   */
+  publicKey?: string;
+  /** Kunci publik wajib ada (build image rilis): kosong = galat, bukan peringatan. */
+  requirePublicKey?: boolean;
+}
 
 /**
  * Menandatangani `ui-manifest.json` di `distDir` dengan kunci privat Ed25519 (PEM PKCS8) dari BERKAS `keyFile`
  * dan menulis `ui-manifest.sig` (base64url). Kunci tak pernah masuk pesan galat atau log. Mengembalikan tanda tangan.
- * `expectedFingerprint` (SHA-256 SPKI kunci publik yang tertanam di desktop): bila diberikan dan tak sama dengan
- * sidik kunci publik hasil kunci privat, penandatanganan GAGAL sebelum `.sig` ditulis (desktop akan menolak semua
- * pembaruan UI). Padanan manual/CI: `scripts/check-ui-key.ts`.
+ * Dengan `options.publicKey` kecocokan privat↔publik diperiksa langsung (padanan manual: `scripts/check-ui-key.ts`).
  */
 export function signDistManifest(
   distDir: string,
   keyFile: string,
-  expectedFingerprint?: string,
+  options: SignOptions = {},
 ): string {
   const manifestPath = path.join(distDir, UI_MANIFEST_FILE);
   let json: string;
@@ -45,14 +54,21 @@ export function signDistManifest(
     // Pesan sengaja generik: isi kunci tak boleh ikut ke galat.
     throw new Error('Kunci penandatangan tidak sah (butuh PEM PKCS8 Ed25519)');
   }
-  if (expectedFingerprint?.trim()) {
-    const expected = normalizeFingerprint(expectedFingerprint);
-    if (!expected) throw new Error('UI_PUBLIC_KEY_FINGERPRINT bukan SHA-256 heksa 64 karakter');
-    if (publicKeyFingerprint(publicKeyPemOf(privateKeyPem)) !== expected) {
+  if (options.publicKey?.trim()) {
+    const publicPem = normalizePublicKeyInput(options.publicKey);
+    if (!publicPem)
+      throw new Error('UI_PUBLIC_KEY_PEM bukan kunci publik yang dapat dibaca (PEM atau base64)');
+    // Pasangan privat↔publik (uji tanda tangan sungguhan + sidik), lalu tanda tangan manifest ini sendiri.
+    checkUiKey({ privateKeyFile: keyFile, publicKeyPem: publicPem });
+    if (!verifyUiManifest(json, signature, publicPem)) {
       throw new Error(
-        'Kunci penandatangan TIDAK berpasangan dengan kunci publik desktop (sidik tidak sama dengan UI_PUBLIC_KEY_FINGERPRINT)',
+        'Tanda tangan manifest tidak lolos dengan kunci publik desktop (UI_PUBLIC_KEY_PEM)',
       );
     }
+  } else if (options.requirePublicKey) {
+    throw new Error(
+      'UI_PUBLIC_KEY_PEM wajib diberikan saat menandatangani (build-arg Dockerfile): tanpa itu kecocokan dengan kunci publik desktop tak dapat diperiksa',
+    );
   }
   writeFileSync(path.join(distDir, UI_MANIFEST_SIGNATURE_FILE), signature, 'utf8');
   return signature;
@@ -71,19 +87,19 @@ if (import.meta.main) {
   }
   try {
     if (!statSync(keyFile).isFile()) throw new Error('bukan berkas');
-    const flagFingerprint = process.argv.indexOf('--expect-fingerprint');
-    const expectedFingerprint =
-      (flagFingerprint >= 0 ? process.argv[flagFingerprint + 1] : undefined) ??
-      process.env.UI_PUBLIC_KEY_FINGERPRINT;
-    signDistManifest(distDir, keyFile, expectedFingerprint);
+    const publicKey = process.env.UI_PUBLIC_KEY_PEM;
+    signDistManifest(distDir, keyFile, {
+      publicKey,
+      requirePublicKey: process.argv.includes('--require-public-key'),
+    });
     console.log('sign-ui-manifest OK (ui-manifest.sig ditulis)');
-    // Sidik kunci publik (bukan rahasia) dicetak agar dapat dibandingkan dengan kunci yang tertanam di desktop.
+    // Sidik kunci publik (bukan rahasia) dicetak agar mudah dibaca di log CI.
     console.log(
       `  sidik kunci publik penandatangan: ${publicKeyFingerprint(publicKeyPemOf(readFileSync(keyFile, 'utf8')))}`,
     );
-    if (!expectedFingerprint?.trim()) {
+    if (!publicKey?.trim()) {
       console.warn(
-        'sign-ui-manifest peringatan: UI_PUBLIC_KEY_FINGERPRINT tidak diberikan; kecocokan dengan kunci publik desktop TIDAK diperiksa',
+        'sign-ui-manifest peringatan: UI_PUBLIC_KEY_PEM tidak diberikan; kecocokan dengan kunci publik desktop TIDAK diperiksa',
       );
     }
   } catch (error) {

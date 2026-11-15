@@ -9,7 +9,7 @@
   "scripts": {
     "build": "bun run scripts/build.ts",
     "pack": "bun run build && electron-builder --dir --config electron-builder.yml",
-    "dist": "bun run build && electron-builder --config electron-builder.yml",
+    "dist": "bun run scripts/build.ts --require-ui-key && electron-builder --config electron-builder.yml",
     "verify-pack": "bun run scripts/verify-pack.ts",
     "spike": "bun run scripts/build.ts --spike && node dist/spike/hardware-spike.js",
     "test": "vitest run",

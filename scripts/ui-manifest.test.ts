@@ -318,10 +318,14 @@ describe('integrasi build', () => {
     expect(dockerfile).toContain('/run/secrets/ui_signing_key');
     expect(dockerfile).toContain('COPY countrylock countrylock');
     expect(dockerfile).not.toMatch(/^(ENV|ARG)\s+\w*(SIGNING|PRIVATE)\w*/im);
-    // sidik kunci publik desktop (bukan rahasia) lewat ARG, dideklarasikan sebelum langkah tanda tangan
-    expect(dockerfile).toMatch(/^ARG UI_PUBLIC_KEY_FINGERPRINT=""\s*$/m);
-    expect(dockerfile.indexOf('ARG UI_PUBLIC_KEY_FINGERPRINT')).toBeLessThan(
+    // kunci publik desktop (bukan rahasia) lewat ARG satu baris, dideklarasikan sebelum langkah tanda tangan, dan
+    // penandatanganan WAJIB memeriksa pasangannya (tanpa itu pasangan yang tertukar lolos diam-diam)
+    expect(dockerfile).toMatch(/^ARG UI_PUBLIC_KEY_PEM=""\s*$/m);
+    expect(dockerfile.indexOf('ARG UI_PUBLIC_KEY_PEM')).toBeLessThan(
       dockerfile.indexOf('sign-ui-manifest.ts'),
+    );
+    expect(dockerfile).toMatch(
+      /sign-ui-manifest\.ts --key \/run\/secrets\/ui_signing_key --require-public-key/,
     );
     // langkah tanda tangan sesudah build web (manifest harus ada dulu)
     expect(dockerfile.indexOf('sign-ui-manifest.ts')).toBeGreaterThan(

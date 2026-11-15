@@ -1,5 +1,6 @@
 import { generateKeyPairSync } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
+import { publicKeyFingerprint, publicKeyOneLine } from '../countrylock/src/ui-manifest';
 
 /** Berkas kunci privat wajib berakhiran ini agar tertangkap `.gitignore` (`*.ui-signing-key.pem`). */
 const PRIVATE_KEY_SUFFIX = '.ui-signing-key.pem';
@@ -39,10 +40,17 @@ if (import.meta.main) {
   try {
     const { publicKeyPath, publicKeyPem } = generateSigningKey(out);
     console.log(`Kunci privat ditulis ke ${out} (TIDAK dicetak; jangan dikomit atau dibagikan).`);
-    console.log(`Kunci publik ditulis ke ${publicKeyPath}; tanam di aplikasi desktop (H7):\n`);
+    console.log(`Kunci publik ditulis ke ${publicKeyPath}:\n`);
     console.log(publicKeyPem);
     console.log(
-      'Simpan kunci privat sebagai secret CI `ui_signing_key` (docs/ci-cd.md); catatan: di Windows izin 0600 tidak berlaku, simpan di folder pribadi.',
+      'Nilai UI_PUBLIC_KEY_PEM (satu baris; isi Variable GitHub dan env build desktop dengan ini, bukan secret):\n',
+    );
+    console.log(publicKeyOneLine(publicKeyPem));
+    console.log(
+      `\nSidik SHA-256 kunci publik (untuk dibandingkan di log build): ${publicKeyFingerprint(publicKeyPem)}\n`,
+    );
+    console.log(
+      'Simpan kunci privat sebagai secret GitHub UI_SIGNING_KEY (docs/desktop-ui-signing.md); catatan: di Windows izin 0600 tidak berlaku, simpan di folder pribadi.',
     );
   } catch (error) {
     console.error(`gen-ui-signing-key gagal: ${error instanceof Error ? error.message : error}`);

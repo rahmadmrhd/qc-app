@@ -35,13 +35,15 @@ RUN bun run build
 # Tanda tangan manifest UI (Ed25519) hanya bila secret BuildKit `ui_signing_key` (isi berkas PEM PKCS8) diberikan:
 # `docker build --secret id=ui_signing_key,src=<berkas>`. Tanpa secret, langkah dilewati dan /api/desktop/ui-manifest
 # menjawab 404 (desktop memakai UI dasarnya). Kunci hanya ada di mount sementara, tidak masuk lapisan image.
-# UI_PUBLIC_KEY_FINGERPRINT (bukan rahasia; `--build-arg`) = sidik SHA-256 kunci publik yang tertanam di desktop:
-# bila diberikan, penandatanganan gagal kalau kunci privat tidak berpasangan dengannya (scripts/check-ui-key.ts).
-# Nilai ARG ikut kunci cache BuildKit, jadi mengganti sidik (rotasi kunci) otomatis membatalkan cache langkah ini.
-ARG UI_PUBLIC_KEY_FINGERPRINT=""
+# UI_PUBLIC_KEY_PEM (bukan rahasia; `--build-arg`, SATU baris: PEM atau isi base64-nya) = kunci publik yang disuntikkan
+# ke aplikasi desktop saat build desktop. Saat menandatangani WAJIB diberikan: penandatanganan gagal bila kunci privat
+# tidak berpasangan dengannya (scripts/check-ui-key.ts), karena pasangan yang salah membuat semua desktop menolak
+# pembaruan UI tanpa ada build yang gagal. Nilai ARG ikut kunci cache BuildKit, jadi rotasi kunci otomatis membatalkan
+# cache langkah ini (lihat catatan cache di docs/ci-cd.md).
+ARG UI_PUBLIC_KEY_PEM=""
 RUN --mount=type=secret,id=ui_signing_key,required=false \
     if [ -f /run/secrets/ui_signing_key ]; then \
-      bun run scripts/sign-ui-manifest.ts --key /run/secrets/ui_signing_key; \
+      bun run scripts/sign-ui-manifest.ts --key /run/secrets/ui_signing_key --require-public-key; \
     else \
       echo "ui_signing_key tidak diberikan: manifest UI tidak ditandatangani (pembaruan UI desktop nonaktif)"; \
     fi
