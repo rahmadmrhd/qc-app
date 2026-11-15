@@ -16,6 +16,13 @@ bun run scripts/gen-ui-signing-key.ts C:\jalur\pribadi\qc.ui-signing-key.pem
 - Kunci privat ditulis ke berkas itu dan **tidak dicetak**. Kunci publik ditulis ke `qc.ui-signing-key.pub.pem` dan dicetak (bukan rahasia).
 - Di Windows izin `0600` tidak berlaku: simpan di folder pribadi, jangan di dalam repositori atau folder yang disinkronkan publik.
 - Buat **cadangan** kunci privat di tempat aman (pengelola kata sandi atau brankas terenkripsi). Kunci privat hilang = harus merilis aplikasi desktop baru dengan kunci publik baru.
+- Catat **sidik** kunci publik (SHA-256, bukan rahasia); nilainya dipakai pemeriksaan di bagian 5:
+
+  ```
+  bun run check:ui-key --private C:\jalur\pribadi\qc.ui-signing-key.pem --public C:\jalur\pribadi\qc.ui-signing-key.pub.pem
+  ```
+
+  Keluarannya mencetak `sidik kunci publik desktop` dan `sidik dari kunci privat` (harus sama). Simpan nilainya sebagai **Variable** GitHub (bukan Secret) bernama `UI_PUBLIC_KEY_FINGERPRINT`.
 
 ## 2. Simpan kunci privat sebagai secret GitHub (environment terbatas)
 
@@ -30,7 +37,11 @@ Status saat ini: `Dockerfile` sudah menandatangani manifest bila secret BuildKit
    secrets: |
      ui_signing_key=${{ secrets.UI_SIGNING_KEY }}
    ```
-   Nilai berada di `with`, bukan `run`, jadi aturan "tanpa `${{ }}` di `run`" tidak terlanggar.
+   Nilai berada di `with`, bukan `run`, jadi aturan "tanpa `${{ }}` di `run`" tidak terlanggar. Teruskan juga sidik kunci publik (Variable, bukan rahasia) agar penandatanganan gagal bila kunci privat tidak berpasangan dengan kunci yang tertanam di desktop (bagian 5):
+   ```
+   build-args: |
+     UI_PUBLIC_KEY_FINGERPRINT=${{ vars.UI_PUBLIC_KEY_FINGERPRINT }}
+   ```
 2. Sesuaikan `scripts/ci-workflows.test.ts` dan `docs/ci-cd.md` dengan perubahan itu (tes menegakkan pola workflow, termasuk `permissions` dan `environment` job).
 3. **LARANGAN: jangan menambahkan `UI_SIGNING_KEY` ke `test.yml` atau workflow lain yang berjalan pada `pull_request`.** Job itu menjalankan kode PR yang belum ditinjau (Dockerfile dan `scripts/` dari HEAD PR); kunci yang tersedia di sana dapat dibocorkan atau dipakai menandatangani bundel UI pilihan penyerang, dan itu meruntuhkan seluruh tujuan tanda tangan (spek §3.4). Kunci hanya untuk job `image` di `deploy-server.yml` yang membangun kode hasil merge. Image dari `test.yml` memang tidak ditandatangani.
 4. Uji lokal tanpa CI: `docker build --secret id=ui_signing_key,src=C:\jalur\pribadi\qc.ui-signing-key.pem -t qc-app .` lalu pastikan `GET /api/desktop/ui-manifest` pada kontainer menjawab 200 dengan `{ manifest, signature }`.
@@ -49,8 +60,17 @@ export const UI_PUBLIC_KEY_PEM: string | null = `-----BEGIN PUBLIC KEY-----
 
 Lalu `bun run --cwd desktop test`, `bun run build:desktop`, dan jalankan butir E4-E6 di `docs/e2e-checklist-desktop.md`. Hanya kunci publik yang boleh masuk repositori; jangan mengisi dengan kunci uji. Aplikasi yang sudah terpasang baru mengenal kunci ini setelah pengguna memasang versi aplikasi yang memuatnya.
 
-## 5. Memutar atau mencabut kunci
+## 5. Pemeriksaan kecocokan kunci (privat di CI ↔ publik di desktop)
 
-- **Memutar** (kunci lama curiga bocor, atau berkala): bangkitkan pasangan baru (langkah 1), perbarui secret `UI_SIGNING_KEY`, tanam kunci publik baru (langkah 4), dan **rilis aplikasi desktop baru**. Aplikasi lama yang masih terpasang menolak tanda tangan kunci baru (status `rejected`) dan tetap memakai UI yang sudah ada tanpa rusak sampai aplikasi diperbarui (setelah itu kembali ke UI dasar, lihat di bawah); pembaruan UI baru tersedia bagi mereka setelah memasang versi aplikasi yang memuat kunci publik baru. Rencanakan peralihan: umumkan, rilis aplikasi, baru ganti secret.
+Kunci privat (menandatangani, di build image server) dan kunci publik (memverifikasi, tertanam di desktop) dipakai di dua pipeline berbeda, jadi pasangan yang tertukar atau salah putar tidak membuat build gagal sendiri: semua desktop hanya menolak setiap pembaruan UI (`rejected`) dan diam di UI lama. Dua penjaga mencegahnya:
+
+- **Saat build image** (`scripts/sign-ui-manifest.ts`, dipanggil `Dockerfile`): bila `UI_PUBLIC_KEY_FINGERPRINT` (build-arg `ARG`, bukan rahasia) diberikan, sidik kunci publik hasil kunci privat dibandingkan dengannya SEBELUM `ui-manifest.sig` ditulis; tidak sama = build gagal. Sidik dicetak di log build. Tanpa sidik, build tetap jalan dengan peringatan "kecocokan TIDAK diperiksa". Nilai `ARG` ikut kunci cache BuildKit, jadi mengganti sidik (rotasi) otomatis membatalkan cache langkah tanda tangan (lihat catatan cache di `docs/ci-cd.md`).
+- **Skrip khusus** (`scripts/check-ui-key.ts`, `bun run check:ui-key`): memeriksa kunci publik (dari `--public <berkas>`, env `UI_PUBLIC_KEY_PEM`, atau `UI_PUBLIC_KEY_PEM` di `desktop/src/main/ui/public-key.ts`), kunci privat (`--private <berkas>` atau env `UI_SIGNING_KEY_FILE`), dan sidik (`--expect <sidik>` atau env `UI_PUBLIC_KEY_FINGERPRINT`). Ia memastikan kunci publik Ed25519 sah, kunci privat dapat benar-benar menandatangani, tanda tangannya lolos dengan kunci publik desktop, dan sidiknya sama. `--require-public` menggagalkan pemeriksaan bila kunci publik desktop masih `null` (pakai ini sebelum merilis aplikasi desktop; tanpa kunci pembaruan UI mati diam-diam). Isi kunci tidak pernah dicetak; hanya sidik (publik) yang muncul. Jalankan di mesin pemilik sebelum merilis desktop (kunci privat memang tak boleh ada di build desktop).
+
+Pemeriksaan ini tidak menggantikan uji E4-E6 di `docs/e2e-checklist-desktop.md` (uji ujung ke ujung di perangkat).
+
+## 6. Memutar atau mencabut kunci
+
+- **Memutar** (kunci lama curiga bocor, atau berkala): bangkitkan pasangan baru (langkah 1), perbarui secret `UI_SIGNING_KEY` dan Variable `UI_PUBLIC_KEY_FINGERPRINT`, tanam kunci publik baru (langkah 4), jalankan pemeriksaan di bagian 5, dan **rilis aplikasi desktop baru**. Aplikasi lama yang masih terpasang menolak tanda tangan kunci baru (status `rejected`) dan tetap memakai UI yang sudah ada tanpa rusak sampai aplikasi diperbarui (setelah itu kembali ke UI dasar, lihat di bawah); pembaruan UI baru tersedia bagi mereka setelah memasang versi aplikasi yang memuat kunci publik baru. Rencanakan peralihan: umumkan, rilis aplikasi, baru ganti secret.
 - **Mencabut** (kunci bocor): ganti secret `UI_SIGNING_KEY` dengan kunci baru (atau hapus secret sehingga manifest tidak ditandatangani dan `ui-manifest` menjawab 404), dan rilis aplikasi dengan kunci publik baru. Penyerang yang memegang kunci lama tetap tidak dapat menyajikan bundel dari server resmi, karena bundel hanya diunduh dari `serverUrl` pengguna; risikonya ada bila ia dapat mengendalikan server tersebut. Bundel yang sudah terpasang di pengguna tidak dibatalkan sampai mereka memasang rilis aplikasi baru: `state.json` mencatat sidik kunci publik dan versi jembatan aplikasi yang menulisnya, dan saat aplikasi diluncurkan dengan kunci atau versi jembatan yang berbeda, bundel aktif, sebelumnya, dan yang menunggu dibuang sehingga aplikasi kembali ke UI dasar yang terkemas (berlaku juga pada rotasi kunci dan pembaruan versi jembatan). Pembaruan UI kemudian diunduh ulang dari server dan diverifikasi dengan kunci yang baru.
 - Saran tambahan: catat tanggal pembangkitan kunci, lokasi cadangan, dan siapa yang berhak mengakses secret.

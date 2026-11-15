@@ -1,6 +1,6 @@
 // Manifest UI bertanda tangan (spek desktop §3.4): daftar berkas build web dengan hash, versi UI, dan versi jembatan
 // minimum. Dipakai skrip build/tanda tangan (Bun) dan desktop (Node); hanya `node:crypto`, tanpa impor dari web.
-import { createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
+import { createHash, createPrivateKey, createPublicKey, sign, verify } from 'node:crypto';
 
 /**
  * Versi jembatan minimum yang dibutuhkan UI yang dibangun dari repo ini. Dinaikkan HANYA bila UI memakai fungsi
@@ -102,6 +102,25 @@ export function publicKeyPemOf(privateKeyPem: string): string {
   return createPublicKey(createPrivateKey(privateKeyPem))
     .export({ type: 'spki', format: 'pem' })
     .toString();
+}
+
+/**
+ * Sidik kunci publik: SHA-256 (heksa huruf kecil, 64 karakter) atas bentuk DER SPKI. Dipakai membandingkan kunci
+ * publik di aplikasi desktop dengan pasangan kunci privat di CI tanpa memindahkan kunci privat. Melempar bila
+ * `publicKeyPem` bukan kunci publik Ed25519.
+ */
+export function publicKeyFingerprint(publicKeyPem: string): string {
+  const key = createPublicKey(publicKeyPem);
+  if (key.asymmetricKeyType !== 'ed25519') throw new Error('Kunci publik harus Ed25519');
+  return createHash('sha256')
+    .update(key.export({ type: 'spki', format: 'der' }))
+    .digest('hex');
+}
+
+/** Sidik dari teks bebas (huruf besar/kecil, pemisah `:` atau spasi diterima); bentuk lain = `null`. */
+export function normalizeFingerprint(text: string): string | null {
+  const compact = text.trim().replace(/[:\s]/g, '').toLowerCase();
+  return /^[0-9a-f]{64}$/.test(compact) ? compact : null;
 }
 
 /**
