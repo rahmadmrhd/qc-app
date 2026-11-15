@@ -1,6 +1,8 @@
 import type { HandoverDto } from '@shared/contract';
 import type { QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { startOutboxSwBridge } from '@/app/outbox-sw-bridge';
+import { registerBackgroundSync } from '@/app/pwa/background-sync';
 import { beginBusy } from '@/app/pwa/busy';
 import { reportUnauthenticated } from '@/app/query-client';
 import { markStale } from '@/lib/query-cache';
@@ -14,6 +16,7 @@ import {
   readOutboxAll,
   refreshOutboxFromStore,
   resumeOutboxWrites,
+  setOutboxEnqueuedHandler,
 } from '@/modules/handover/lib/outbox';
 import {
   type FlushResult,
@@ -165,6 +168,14 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
       announce(result);
       // `api()` dipanggil di luar react-query, jadi penangan 401 global harus dipanggil sendiri (entri tetap).
       if (result.stoppedBy === 'unauthenticated') reportUnauthenticated();
+      // Server tak terjangkau/galat dengan entri tersisa: pastikan Background Sync terdaftar (menutup antrean lama yang
+      // pendaftarannya belum ada atau sudah terpakai habis); tag yang sama digabung peramban.
+      if (
+        (result.stoppedBy === 'unavailable' || result.stoppedBy === 'server-error') &&
+        readOutboxAll(owner).length > 0
+      ) {
+        registerBackgroundSync();
+      }
     } finally {
       endBusy();
     }
@@ -228,6 +239,11 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
     onSuccess();
   });
 
+  // Entri yang baru diantrekan = daftarkan Background Sync (SW mengirimnya walau aplikasi sudah ditutup).
+  setOutboxEnqueuedHandler(() => registerBackgroundSync());
+  // Pesan `qc-outbox-synced` dari service worker: segarkan cache + antrean, lalu picu penguras halaman.
+  const stopSwBridge = startOutboxSwBridge({ queryClient, owner, onSynced: trigger });
+
   requestFlush = trigger;
   trigger();
   // Salinan memori bisa kosong padahal toko berisi (hidrasi boot gagal atau lewat batas waktu): segarkan dari toko, lalu coba lagi.
@@ -240,6 +256,8 @@ export function startOutboxSync(queryClient: QueryClient): () => void {
     document.removeEventListener('visibilitychange', onVisibility);
     unsubscribeQueries();
     unsubscribeMutations();
+    stopSwBridge();
+    setOutboxEnqueuedHandler(null);
     if (requestFlush === trigger) requestFlush = null;
   };
 }

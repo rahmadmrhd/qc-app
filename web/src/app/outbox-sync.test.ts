@@ -18,7 +18,20 @@ import { resetFlushForTests } from '@/modules/handover/lib/outbox-flush';
 import { handoverKeys } from '@/modules/handover/queries';
 import { resetOutboxEnv } from '@/test/outbox-env';
 
-const mocks = vi.hoisted(() => ({ api: vi.fn(), error: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  api: vi.fn(),
+  error: vi.fn(),
+  register: vi.fn(),
+  bridge: vi.fn(),
+  bridgeStop: vi.fn(),
+}));
+vi.mock('@/app/pwa/background-sync', () => ({
+  BACKGROUND_SYNC_TAG: 'qc-outbox',
+  registerBackgroundSync: (...args: unknown[]) => mocks.register(...args),
+}));
+vi.mock('@/app/outbox-sw-bridge', () => ({
+  startOutboxSwBridge: (...args: unknown[]) => mocks.bridge(...args),
+}));
 vi.mock('@/lib/api', () => ({ api: (...args: unknown[]) => mocks.api(...args) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), info: vi.fn(), error: mocks.error } }));
 
@@ -27,6 +40,7 @@ import { OUTBOX_FLUSH_MIN_GAP_MS, requestOutboxFlush, startOutboxSync } from './
 import { setUnauthenticatedHandler } from './query-client';
 
 const OWNER = 'a@x.com';
+const CLIENT_X = '55555555-5555-4555-8555-555555555555';
 let client: QueryClient;
 let stop: (() => void) | undefined;
 
@@ -64,6 +78,10 @@ beforeEach(() => {
   resetBusyForTests();
   mocks.api.mockReset();
   mocks.error.mockReset();
+  mocks.register.mockReset();
+  mocks.bridge.mockReset();
+  mocks.bridgeStop.mockReset();
+  mocks.bridge.mockReturnValue(mocks.bridgeStop);
   mocks.api.mockImplementation(async (_id: string, input: { id: string }) =>
     makeHandover({ id: input.id }),
   );
@@ -670,4 +688,71 @@ test('D: entri rejected di salinan memori (tanpa yang lain) tetap memicu pengura
   expect(mocks.error.mock.calls.some((c) => String(c[0]).includes('Ditolak server'))).toBe(true);
   expect(mocks.api).not.toHaveBeenCalled();
   expect(await readOutboxRecords()).toEqual([]);
+});
+
+describe('Background Sync (Tahap D)', () => {
+  test('startOutboxSync memasang handler pasca-antre yang mendaftarkan sync, dan melepasnya saat berhenti', async () => {
+    stop = startOutboxSync(client);
+    await settle();
+    mocks.register.mockClear();
+    expect(await enqueueOutbox(OWNER, commentEntry())).toBe('ok');
+    expect(mocks.register).toHaveBeenCalledTimes(1);
+    stop();
+    stop = undefined;
+    mocks.register.mockClear();
+    expect(await enqueueOutbox(OWNER, { ...commentEntry(), clientId: CLIENT_X })).toBe('ok');
+    expect(mocks.register).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['UNAVAILABLE', new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-')],
+    ['INTERNAL', new ApiError('INTERNAL', 'Galat', '-')],
+  ])('penguras berhenti %s dengan entri tersisa: mendaftarkan sync (D8)', async (_name, error) => {
+    mocks.api.mockRejectedValue(error);
+    await queue(0);
+    stop = startOutboxSync(client);
+    await settle();
+    expect(readOutbox(OWNER)).toHaveLength(1);
+    expect(mocks.register).toHaveBeenCalled();
+  });
+
+  test('penguras selesai tanpa hambatan: tidak mendaftarkan sync', async () => {
+    await queue(0);
+    stop = startOutboxSync(client);
+    await settle();
+    expect(readOutbox(OWNER)).toEqual([]);
+    expect(mocks.register).not.toHaveBeenCalled();
+  });
+
+  test('sesi tak sah (401) tidak mendaftarkan ulang sync', async () => {
+    mocks.api.mockRejectedValue(new ApiError('UNAUTHENTICATED', 'Sesi berakhir', '-'));
+    setUnauthenticatedHandler(() => undefined);
+    await queue(0);
+    stop = startOutboxSync(client);
+    await settle();
+    expect(mocks.register).not.toHaveBeenCalled();
+  });
+
+  test('jembatan pesan service worker dipasang dengan pemilik, onSynced = pemicu penguras, dan dilepas saat berhenti', async () => {
+    stop = startOutboxSync(client);
+    await settle();
+    expect(mocks.bridge).toHaveBeenCalledTimes(1);
+    const deps = mocks.bridge.mock.calls[0]?.[0] as {
+      queryClient: QueryClient;
+      owner: string;
+      onSynced: () => void;
+    };
+    expect(deps.queryClient).toBe(client);
+    expect(deps.owner).toBe(OWNER);
+    // Entri diantrekan lalu SW memberi tahu: onSynced menguras.
+    await queue(0);
+    mocks.api.mockClear();
+    deps.onSynced();
+    await settle();
+    expect(mocks.api).toHaveBeenCalledTimes(1);
+    expect(mocks.bridgeStop).not.toHaveBeenCalled();
+    stop();
+    stop = undefined;
+    expect(mocks.bridgeStop).toHaveBeenCalledTimes(1);
+  });
 });
