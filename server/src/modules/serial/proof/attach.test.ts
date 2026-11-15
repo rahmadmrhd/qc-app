@@ -401,6 +401,7 @@ describe('DTO foto bukti', () => {
           filename: 'bukti-p1.jpg',
           error: 'Berkas rusak',
           canManage: email === W,
+          canRetry: email === W,
         },
         {
           id: 'p2',
@@ -412,6 +413,7 @@ describe('DTO foto bukti', () => {
           filename: 'bukti-p2.webp',
           error: null,
           canManage: email === W,
+          canRetry: false,
         },
       ]);
       const noPhoto = await call(email, 'serials.get', { id: 'sn-no' });

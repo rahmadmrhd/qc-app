@@ -33,7 +33,7 @@ import {
   setProofState,
   toProofDto,
 } from './repo';
-import { PROOF_MAX_PIXELS } from './stamp';
+import { proofSizeError } from './stamp';
 import { newStagedName, type ProofStore } from './store';
 
 /**
@@ -92,10 +92,8 @@ export async function uploadProof(
     const message = 'Dimensi gambar tidak terbaca';
     throw appError('VALIDATION', message, { bytes: message });
   }
-  if (dims.width * dims.height > PROOF_MAX_PIXELS) {
-    const message = 'Dimensi gambar terlalu besar';
-    throw appError('VALIDATION', message, { bytes: message });
-  }
+  const sizeError = proofSizeError(dims.width, dims.height);
+  if (sizeError !== null) throw appError('VALIDATION', sizeError, { bytes: sizeError });
   const limit = SERIAL_PROOF_LIMITS.draftPerUserMax;
   const quotaMessage = `Terlalu banyak foto yang belum disimpan (maks. ${limit}). Simpan entri yang sedang diisi atau buang fotonya terlebih dulu.`;
   if ((await countDraftsOf(env.DB, actor.email)) >= limit) {
@@ -236,6 +234,12 @@ export async function retryProof(
     throw appError('CONFLICT', 'Hanya foto yang gagal diproses yang dapat dicoba lagi');
   }
   if (!(await canManageFailed(env, proof, user))) throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
+  if (proofSizeError(proof.width, proof.height) !== null) {
+    throw appError(
+      'CONFLICT',
+      'Ukuran foto melebihi batas, jadi tidak bisa diproses ulang. Buang foto ini lalu unggah yang lebih kecil.',
+    );
+  }
   const staged = proof.stagedName === '' ? null : await storeOf(env).stat(proof.stagedName);
   if (!staged) {
     throw appError(

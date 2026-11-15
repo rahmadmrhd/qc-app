@@ -12,6 +12,7 @@ const photo = (state: SerialProofPhotoDto['state']): SerialProofPhotoDto => ({
   filename: 'bukti-x.webp',
   error: null,
   canManage: true,
+  canRetry: true,
 });
 const event = (...states: SerialProofPhotoDto['state'][]) =>
   ({ proofPhotos: states.map(photo) }) as SerialEventDto;

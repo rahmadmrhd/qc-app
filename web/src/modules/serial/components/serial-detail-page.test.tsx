@@ -862,6 +862,7 @@ const PHOTO = {
   filename: 'bukti-aaaaaaaa.webp',
   error: null,
   canManage: true,
+  canRetry: true,
 };
 
 test('kepala dan kartu riwayat menampilkan badge Bukti foto QC hanya bila serial punya foto', async () => {

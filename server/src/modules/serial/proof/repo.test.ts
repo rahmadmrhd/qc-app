@@ -240,6 +240,7 @@ describe('listProofsByEvents', () => {
         filename: 'bukti-aaaaaaaa.jpg',
         error: null,
         canManage: true,
+        canRetry: false,
       },
       {
         id: 'bbbbbbbb-2',
@@ -251,6 +252,7 @@ describe('listProofsByEvents', () => {
         filename: 'bukti-bbbbbbbb.jpg',
         error: 'Berkas rusak',
         canManage: false,
+        canRetry: false,
       },
     ]);
     const serialized = JSON.stringify([...map.values()]);

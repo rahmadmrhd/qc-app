@@ -28,6 +28,12 @@ export interface ProofSnapshot {
  * bawah `mem_limit` `qc-app` (256 MB).
  */
 export const PROOF_MAX_PIXELS = 4_200_000;
+/** Sisi terpanjang yang diterima (piksel); gambar sangat lebar/tinggi membuat kanvas cap (footer menurut LEBAR) membengkak. */
+export const PROOF_MAX_SIDE = 4000;
+/** Batas luas kanvas hasil (gambar + footer), dalam piksel: 1,25 x `PROOF_MAX_PIXELS`. Ini yang menahan puncak memori cap. */
+export const PROOF_MAX_CANVAS_PIXELS = 5_250_000;
+/** Pesan galat ukuran (deterministik: bukan gangguan sementara). */
+export const PROOF_TOO_LARGE_MESSAGE = 'Dimensi gambar terlalu besar';
 /** Kualitas WebP tetap. */
 export const PROOF_WEBP_QUALITY = 85;
 
@@ -93,6 +99,20 @@ const LINE_COUNT = 4;
 export function stampFooterHeight(width: number): number {
   const s = stampScale(width);
   return 2 * 3 * s + LINE_COUNT * GLYPH_HEIGHT * s + (LINE_COUNT - 1) * 2 * s;
+}
+
+/**
+ * Galat ukuran gambar (atau `null` bila boleh diproses), dihitung dari lebar/tinggi header SEBELUM alokasi apa pun:
+ * sisi terpanjang <= `PROOF_MAX_SIDE`, luas <= `PROOF_MAX_PIXELS`, dan luas kanvas hasil (lebar x (tinggi + footer))
+ * <= `PROOF_MAX_CANVAS_PIXELS`. Dipakai unggah, `stampPhoto`, dan keputusan boleh-tidaknya "Coba lagi".
+ */
+export function proofSizeError(width: number, height: number): string | null {
+  if (width > PROOF_MAX_SIDE || height > PROOF_MAX_SIDE) return PROOF_TOO_LARGE_MESSAGE;
+  if (width * height > PROOF_MAX_PIXELS) return PROOF_TOO_LARGE_MESSAGE;
+  if (width * (height + stampFooterHeight(width)) > PROOF_MAX_CANVAS_PIXELS) {
+    return PROOF_TOO_LARGE_MESSAGE;
+  }
+  return null;
 }
 
 /** Memotong baris agar muat `maxChars` karakter; yang terpotong diakhiri elipsis. */
@@ -185,9 +205,8 @@ export async function stampPhoto(input: {
   if (meta.format !== 'jpeg' && meta.format !== 'png' && meta.format !== 'webp')
     return unreadable();
   if (meta.width < 1 || meta.height < 1) return unreadable();
-  if (meta.width * meta.height > PROOF_MAX_PIXELS) {
-    throw appError('VALIDATION', 'Dimensi gambar terlalu besar');
-  }
+  const sizeError = proofSizeError(meta.width, meta.height);
+  if (sizeError !== null) throw appError('VALIDATION', sizeError);
   let png: Uint8Array;
   try {
     png = await new Bun.Image(input.bytes, { maxPixels: PROOF_MAX_PIXELS }).png().bytes();
@@ -204,7 +223,7 @@ export async function stampPhoto(input: {
   const stamped = await encodePngRgba({ width: source.width, height, rgba });
   let webp: Uint8Array;
   try {
-    webp = await new Bun.Image(stamped, { maxPixels: PROOF_MAX_PIXELS * 2 })
+    webp = await new Bun.Image(stamped, { maxPixels: PROOF_MAX_CANVAS_PIXELS })
       .webp({ quality: PROOF_WEBP_QUALITY })
       .bytes();
   } catch {

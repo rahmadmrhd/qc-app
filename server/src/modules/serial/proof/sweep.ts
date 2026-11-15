@@ -51,13 +51,25 @@ export const ORPHAN_MIN_AGE_MS = 24 * 3_600_000;
 /** Sisa `.partial` (penulisan atomik terputus) dibuang bila lebih tua dari ini, apa pun isi basis data. */
 export const PARTIAL_MIN_AGE_MS = 3_600_000;
 
-/** Nama berkas sementara yang masih dirujuk: `staged_name` baris mana pun dan `state.stamped` job aktif. */
-async function referencedNames(env: Env): Promise<Set<string>> {
+const NAME_CHUNK = 200;
+
+/**
+ * Nama (dari `candidates`) yang masih dirujuk: `staged_name` baris foto yang MASIH membutuhkan berkas aslinya
+ * (`draft`, `queued`, `processing`, `failed`; baris `done` sudah dibuang berkasnya oleh job) dan `state.stamped` job
+ * aktif. Dibaca per potongan nama (bukan seluruh tabel) dan memakai indeks `(state, updated_at)`.
+ */
+async function referencedAmong(env: Env, candidates: readonly string[]): Promise<Set<string>> {
   const names = new Set<string>();
-  const photos = await env.DB.prepare(
-    "SELECT staged_name FROM serial_proof_photos WHERE staged_name <> ''",
-  ).all<{ staged_name: string }>();
-  for (const row of photos.results) names.add(row.staged_name);
+  for (let i = 0; i < candidates.length; i += NAME_CHUNK) {
+    const chunk = candidates.slice(i, i + NAME_CHUNK);
+    const marks = chunk.map(() => '?').join(', ');
+    const photos = await env.DB.prepare(
+      `SELECT staged_name FROM serial_proof_photos WHERE state IN ('draft', 'queued', 'processing', 'failed') AND staged_name IN (${marks})`,
+    )
+      .bind(...chunk)
+      .all<{ staged_name: string }>();
+    for (const row of photos.results) names.add(row.staged_name);
+  }
   const jobs = await env.DB.prepare(
     "SELECT state FROM jobs WHERE kind = 'serial_proof' AND status IN ('queued', 'running') AND state <> ''",
   ).all<{ state: string }>();
@@ -77,7 +89,7 @@ async function referencedNames(env: Env): Promise<Set<string>> {
  * berumur > 24 jam (waktu ubah) yang tak dicocokkan `staged_name` baris mana pun dan tak dirujuk `state.stamped` job aktif
  * (sisa proses mati: antara tulis berkas dan sisip baris, cap yang statenya tak sempat tersimpan, gagal hapus), dan sisa
  * `.partial` > 1 jam. Nama lain di folder tak disentuh. Foto `failed` tetap merujuk berkas aslinya (retensinya keputusan
- * terpisah). Mengembalikan jumlah berkas yang dibuang.
+ * terpisah); berkas milik baris `done` yang tertinggal ikut disapu. Mengembalikan jumlah berkas yang dibuang.
  */
 export async function sweepOrphanProofFiles(env: Env): Promise<number> {
   const store = env.PROOF_STORE;
@@ -91,14 +103,21 @@ export async function sweepOrphanProofFiles(env: Env): Promise<number> {
   );
   if (candidates.length === 0) return 0;
   // Dibaca SESUDAH daftar berkas: baris yang baru disisip untuk berkas yang baru ditulis tetap terlihat.
-  const referenced = await referencedNames(env);
+  const referenced = await referencedAmong(
+    env,
+    candidates.filter((file) => !isPartialName(file.name)).map((file) => file.name),
+  );
   let removed = 0;
   for (const file of candidates) {
     if (!isPartialName(file.name) && referenced.has(file.name)) continue;
-    await store.removeOrphan(file.name).catch((error) => {
-      console.error(`penyapu berkas yatim: ${file.name} gagal dibuang: ${String(error)}`);
-    });
-    removed++;
+    const ok = await store.removeOrphan(file.name).then(
+      () => true,
+      (error) => {
+        console.error(`penyapu berkas yatim: ${file.name} gagal dibuang: ${String(error)}`);
+        return false;
+      },
+    );
+    if (ok) removed++;
   }
   return removed;
 }

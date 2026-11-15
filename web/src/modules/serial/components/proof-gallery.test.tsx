@@ -22,6 +22,7 @@ const photo = (id: string, over: Partial<SerialProofPhotoDto> = {}): SerialProof
   filename: `bukti-${id.slice(0, 8)}.webp`,
   error: null,
   canManage: true,
+  canRetry: true,
   ...over,
 });
 

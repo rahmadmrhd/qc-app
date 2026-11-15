@@ -124,6 +124,7 @@ const proof = (id: string, over: Partial<SerialProofPhotoDto> = {}): SerialProof
   filename: `bukti-${id}.webp`,
   error: null,
   canManage: true,
+  canRetry: true,
   ...over,
 });
 

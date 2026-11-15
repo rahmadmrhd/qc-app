@@ -1422,6 +1422,11 @@ export interface SerialProofPhotoDto {
   error: string | null;
   /** Pemanggil boleh Coba lagi/Buang foto ini (pelaku yang menyimpannya, atau `serial: manage` pada BU serialnya). */
   canManage: boolean;
+  /**
+   * Boleh Coba lagi: `canManage` DAN `failed` DAN bukan gagal karena ukuran gambar (kegagalan ukuran deterministik:
+   * hanya Buang). Rute `serialProofs.retry` menolak (`CONFLICT`) bila `false`.
+   */
+  canRetry: boolean;
 }
 /** Unggah foto bukti (multipart; gambar sudah dikecilkan di browser). */
 export interface UploadSerialProofInput {

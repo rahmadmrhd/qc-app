@@ -187,6 +187,7 @@ describe('serialProofs.upload', () => {
     const dto = await upload();
     expect(Object.keys(dto).sort()).toEqual([
       'canManage',
+      'canRetry',
       'error',
       'filename',
       'height',

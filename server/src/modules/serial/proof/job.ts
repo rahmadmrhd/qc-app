@@ -11,7 +11,7 @@ import { insertJobStmt } from '@server/modules/jobs/repo';
 import { JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
 import type { JobHandler, StepContext } from '../../jobs/consumer';
 import { findProof, type ProofRow, setProofState } from './repo';
-import { type ProofSnapshot, stampPhoto } from './stamp';
+import { type ProofSnapshot, proofSizeError, stampPhoto } from './stamp';
 import { newStagedName, type ProofStore } from './store';
 
 /** Pernyataan `INSERT` job `serial_proof` (satu per foto; `input` = `{ photoId }`; dibuat sistem). */
@@ -133,6 +133,10 @@ async function stampStep(ctx: StepContext): Promise<{ progress: number }> {
       now: nowIso(env),
     }),
   ]);
+  // Ukuran tercatat dari header saat unggah: foto di atas batas (mis. diunggah sebelum batas diturunkan) gagal di sini,
+  // sebelum berkas dibaca dan tanpa menghabiskan percobaan.
+  const sizeError = proofSizeError(proof.width, proof.height);
+  if (sizeError !== null) throw appError('VALIDATION', sizeError);
   // Hitung percobaan SEBELUM memuat apa pun (permanen di basis data: bertahan walau proses mati di tengah cap).
   await env.DB.prepare('UPDATE serial_proof_photos SET attempts = attempts + 1 WHERE id = ?')
     .bind(proof.id)
@@ -141,7 +145,7 @@ async function stampStep(ctx: StepContext): Promise<{ progress: number }> {
   if ((attempted?.attempts ?? 0) > PROOF_MAX_STAMP_ATTEMPTS) {
     throw appError(
       'VALIDATION',
-      'Foto gagal diproses berulang kali (kemungkinan terlalu besar). Buang lalu unggah ulang dengan ukuran lebih kecil.',
+      'Foto berulang kali gagal diproses. Coba lagi nanti, atau buang lalu unggah ulang.',
     );
   }
   const original = proof.stagedName === '' ? null : await store.read(proof.stagedName);

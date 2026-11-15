@@ -2,6 +2,7 @@ import { CAS_FAIL_SQL } from '@server/core/cas';
 import type { DbStatement, Preparer } from '@server/core/db';
 import type { SerialProofPhotoDto } from '@shared/contract';
 import { SERIAL_PROOF_STATES, type SerialProofState } from '@shared/serials';
+import { proofSizeError } from './stamp';
 
 /**
  * Foto bukti QC (`serial_proof_photos`; rancangan 2026-11-16 §6.1). Berkas ini satu-satunya yang menulis tabel itu.
@@ -101,6 +102,8 @@ export function toProofDto(row: ProofRow, canManage: boolean): SerialProofPhotoD
     filename: proofFilename(row.id, row.mime),
     error: row.lastError === '' ? null : row.lastError,
     canManage,
+    // Gagal karena ukuran = deterministik: mengulang tak berguna (dan berbahaya bagi memori), hanya Buang.
+    canRetry: canManage && row.state === 'failed' && proofSizeError(row.width, row.height) === null,
   };
 }
 
