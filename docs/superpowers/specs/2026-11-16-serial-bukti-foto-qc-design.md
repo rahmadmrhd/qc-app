@@ -1,6 +1,6 @@
 # Bukti foto QC pada Serial Number (bagian 2 dari 4)
 
-Tanggal: 2026-11-16. Status: **DISETUJUI pemilik produk 2026-11-16** (termasuk keputusan perancang di bagian 10). Spek induk: `docs/superpowers/specs/2026-11-12-serial-number-design.md`. Bagian 1 (alur laporan rusak): `docs/superpowers/specs/2026-11-14-serial-laporan-rusak-design.md`. Bagian 3 dan 4 (serial sama di lokasi lain = cek ulang; tag dan notifikasi) di luar dokumen ini.
+Tanggal: 2026-11-16. Status: **DISETUJUI pemilik produk 2026-11-16** (termasuk keputusan perancang di bagian 10); **kode dibangun 2026-11-16** (Task A1-B4; verifikasi manual pemilik belum, lihat §11). Spek induk: `docs/superpowers/specs/2026-11-12-serial-number-design.md`. Bagian 1 (alur laporan rusak): `docs/superpowers/specs/2026-11-14-serial-laporan-rusak-design.md`. Bagian 3 dan 4 (serial sama di lokasi lain = cek ulang; tag dan notifikasi) di luar dokumen ini.
 
 ## 1. Tujuan dan latar belakang
 Permintaan pemilik produk (2026-11-14): "tambahkan inputan untuk melampirkan hasil pengujian (bisa lebih dari 1 gambar), dengan timestamp, lokasi, serial number, tipe dan mungkin beberapa informasi perangkat pada setiap gambar yang diunggah."
@@ -97,3 +97,21 @@ Tata letak dan ukuran huruf footer, pilihan font bitmap (domain publik) dan skal
 
 ## 10. Keputusan perancang (belum disetujui pemilik; mohon diperiksa)
 Batas 5 foto per entri dan 150 foto draft per pengguna; ambang sapuan draft 7 hari; pemilik berkas `serialproof`; footer ditambahkan di bawah foto (tidak menimpa isi foto); hasil disimpan WebP; foto bukti tidak tampil di halaman publik dan `.qcsn` tidak membawa foto; gambar dikecilkan di browser sebelum unggah; "Coba lagi" dan pembuangan foto gagal oleh pelaku atau `serial: manage`; lokasi cap = lokasi sesudah kejadian; satu job `serial_proof` per foto dengan penyapu penaut ulang.
+
+## 11. Deviasi implementasi dan catatan terbuka (dicatat 2026-11-16)
+Bagian ini mencatat selisih antara kode dan rancangan di atas. Butir A adalah deviasi perancang yang BELUM disetujui pemilik produk: tidak dianggap keputusan, dan perubahan perilakunya perlu konfirmasi pemilik dulu. Butir B adalah catatan terbuka.
+
+### 11.1 Deviasi (menunggu konfirmasi pemilik produk)
+A1. **Penyapu penaut-ulang foto `queued` (§6.3) tidak dibuat.** Job `serial_proof` dipasang ATOMIK dalam `batch()` Simpan (`serialProofJobStmt` di `server/src/modules/serial/proof/attach.ts`, digabung dengan klaim CAS foto dan penulisan kejadian), sehingga tidak ada foto `queued` tanpa job kecuali batch batal, dan batch yang batal tak meninggalkan apa pun. Penyapu draft (§6.4) tetap ada. Bila pemilik ingin jaring tambahan, penyapu itu dapat ditambahkan lagi.
+A2. **`PROOF_STAGING_DIR` tidak ada di `deploy/.env.example`** (§6.5 mensyaratkan ketiga berkas). Variabel hanya di `server/src/config.ts` dan `deploy/compose.yml` (titik pasang volume `qc-proofs`), seperti `BACKUP_LOCAL_DIR`; tes `server/src/deploy-files.test.ts` mencatatnya di daftar pengecualian. `PROOF_STAGING_MAX_BYTES` ada di `.env.example`.
+A3. **Indeks tambahan pada migrasi `0019_bukti_foto_qc.sql`**: `serial_proof_photos_owner (created_by, state)` (hitung kuota draft) dan `serial_proof_photos_serial (serial_id)` (penanda dan riwayat). Expand-only; tidak mengubah keputusan.
+A4. **Rute `serialProofs.retry`** (`POST /serial-proofs/{id}/retry`) ditambahkan di luar daftar §6.2. Diperlukan oleh "Coba lagi" di §5.4.
+A5. **Penyimpangan kecil tanpa dampak perilaku** (cukup dicatat): berkas hasil bercap diberi nama UUID acak, bukan `<staged>.stamped`, karena `ProofStore` hanya menerima nama UUID (jalur berkas tak bisa disusun dari luar); huruf Latin dengan kait atau coret (ø, ß, đ) tidak terlipat dan tampil "?"; "Coba lagi" pada foto `draft` milik sendiri dijawab `CONFLICT`, bukan `NOT_FOUND`.
+
+### 11.2 Catatan terbuka
+B1. **Tombol "Coba lagi" dan "Buang" di web menebak pelaku dari nama.** `proof-gallery.tsx` menampilkan tombol bila `serial: manage` pada BU serial, atau `serial: edit` dan nama pelaku kartu sama dengan nama pengguna. Dua pengguna dengan nama sama bisa melihat tombol yang tak berhak; server tetap menolak. Usul: `canManage` dan `byMe` di `SerialProofPhotoDto` dari server. Mengubahnya menambah field DTO; konfirmasi pemilik dulu.
+B2. **Pengembalian ke image sebelum fitur ini.** Migrasi `0019` hanya menambah tabel (aman bagi image lama), tetapi image lama tidak punya handler untuk job `serial_proof`. Setelah foto pertama tersimpan, jangan kembali ke image lama; perbaiki ke depan.
+B3. **Tata letak cap pada foto kecil.** Skala huruf `round(lebar/400)` membuat baris 4 (nama pelaku) terpotong pada foto 640 px (sekitar 52 karakter). Tata letak diserahkan ke pembangun (§9); bila pemilik ingin skala lebih kecil, ubah di `stamp.ts`.
+B4. **Berkas hasil yatim.** Bila proses mati di antara pembuatan berkas bercap dan pencatatan state job, berkas itu tertinggal di disk dan tidak disapu. Dampak kecil (ukuran satu foto); catatan untuk pemantauan volume.
+B5. **Pemakaian memori.** Satu job menggambar satu foto pada satu waktu; untuk foto 16 MP (4000 x 4000) puncaknya sekitar 64 MB RGBA ditambah salinan hasil. Batas dimensi unggahan menahannya.
+B6. **Sisa uji pemilik (tidak dapat dilakukan agen):** kamera ponsel nyata, unggah nyata ke Drive, tampilan cap di perangkat, volume `qc-proofs` dan kuota disk di VPS, serta jatuhnya sapuan draft 7 hari.
