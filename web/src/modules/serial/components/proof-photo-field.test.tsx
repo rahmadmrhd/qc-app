@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
@@ -223,4 +223,59 @@ test('disabled mengunci tombol Foto dan tombol buang', () => {
   );
   expect(openButton()).toBeDisabled();
   expect(within(view.container).getByRole('button', { name: 'Buang foto 1' })).toBeDisabled();
+});
+
+test('sebagian gagal lalu dialog dibatalkan: foto yang sudah naik tetapi tak diteruskan dibuang di server', async () => {
+  const user = userEvent.setup();
+  apiMock.mockImplementation(async (id: string) => {
+    if (id === 'serialProofs.upload') {
+      counter += 1;
+      if (counter === 2) throw new Error('Drive penuh');
+      return {
+        id: `p${counter}`,
+        state: 'draft',
+        mime: 'image/webp',
+        size: 100,
+        width: 10,
+        height: 10,
+        filename: `bukti-p${counter}.webp`,
+        error: null,
+        canManage: true,
+      };
+    }
+    return { id: 'x' };
+  });
+  const onChange = vi.fn();
+  renderField({ onChange });
+  await user.click(openButton());
+  await user.click(await screen.findByRole('tab', { name: 'Kamera' }));
+  await user.click(screen.getByRole('button', { name: 'Ambil foto' }));
+  await user.click(screen.getByRole('button', { name: 'Ambil foto' }));
+  await user.click(screen.getByRole('button', { name: /^Tambahkan \(2\)/ }));
+  expect(await screen.findByText('Drive penuh')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Batal' }));
+  await waitFor(() => expect(apiMock).toHaveBeenCalledWith('serialProofs.remove', { id: 'p1' }));
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+test('dialog foto bukti tidak menawarkan ubah nama berkas', async () => {
+  const user = userEvent.setup();
+  renderField();
+  await user.click(openButton());
+  await user.click(await screen.findByRole('tab', { name: 'Kamera' }));
+  await user.click(screen.getByRole('button', { name: 'Ambil foto' }));
+  await user.click(screen.getByRole('tab', { name: /Unggah \(1\)/ }));
+  expect(screen.getByRole('list', { name: 'Antrean unggah' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Ubah nama/ })).not.toBeInTheDocument();
+});
+
+test('gambar draf yang tak bisa dimuat (mis. sudah disapu) diganti keterangan; tombol Buang tetap ada', async () => {
+  const user = userEvent.setup();
+  renderField({ initial: [ref('a'), ref('b')] });
+  fireEvent.error(screen.getByRole('img', { name: 'Foto bukti 1' }));
+  expect(screen.getByText(/Foto kedaluwarsa/)).toBeInTheDocument();
+  expect(screen.queryByRole('img', { name: 'Foto bukti 1' })).not.toBeInTheDocument();
+  expect(screen.getByRole('img', { name: 'Foto bukti 2' })).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'Buang foto 1' }));
+  expect(screen.queryByText(/Foto kedaluwarsa/)).not.toBeInTheDocument();
 });

@@ -35,6 +35,19 @@ export function toProofRef(item: LibraryItem): ProofPhotoRef {
   };
 }
 
+/**
+ * Menggabungkan hasil unggah ke nilai field dan memotong di batas `max`; foto yang terpotong (sudah naik ke server tetapi
+ * tak muat) dikembalikan di `extras` agar dibuang, bukan menunggu sapuan draft.
+ */
+export function mergeProofSelection(
+  value: readonly ProofPhotoRef[],
+  items: readonly LibraryItem[],
+  max: number,
+): { next: ProofPhotoRef[]; extras: string[] } {
+  const merged = [...value, ...items.map(toProofRef)];
+  return { next: merged.slice(0, max), extras: merged.slice(max).map((photo) => photo.id) };
+}
+
 const unused = () => Promise.reject(new Error('Foto bukti tidak memakai pustaka'));
 
 /**

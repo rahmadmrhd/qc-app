@@ -3,7 +3,7 @@ import { Camera, X } from 'lucide-react';
 import { useState } from 'react';
 import { FileDialog } from '@/components/file-dialog';
 import { Button } from '@/components/ui/button';
-import { type ProofPhotoRef, proofSource, toProofRef } from '../lib/proof-source';
+import { mergeProofSelection, type ProofPhotoRef, proofSource } from '../lib/proof-source';
 import { discardProofPhotos } from '../queries';
 import { ProofCameraTab } from './proof-camera-tab';
 
@@ -25,6 +25,8 @@ export function ProofPhotoField({ value, onChange, max, disabled, label }: Proof
   const [open, setOpen] = useState(false);
   // Dialog (antrean unggah dan kamera) baru dipasang saat pertama dibuka: tabel 200 baris tak membawa 200 dialog.
   const [mounted, setMounted] = useState(false);
+  // Gambar yang gagal dimuat (draf pulih dengan foto yang sudah disapu server): keterangan menggantikan gambar.
+  const [broken, setBroken] = useState<ReadonlySet<string>>(new Set());
   const suffix = label ? `, ${label}` : '';
   const room = Math.max(0, max - value.length);
 
@@ -59,12 +61,19 @@ export function ProofPhotoField({ value, onChange, max, disabled, label }: Proof
         <ul className="flex flex-wrap gap-2">
           {value.map((photo, index) => (
             <li key={photo.id} className="relative">
-              <img
-                src={photo.thumbUrl}
-                alt={`Foto bukti ${index + 1}${suffix}`}
-                className="size-14 rounded-md border object-cover"
-                loading="lazy"
-              />
+              {broken.has(photo.id) ? (
+                <p className="flex size-14 items-center justify-center rounded-md border border-dashed p-1 text-center text-[10px] leading-tight text-muted-foreground">
+                  Foto kedaluwarsa, unggah lagi
+                </p>
+              ) : (
+                <img
+                  src={photo.thumbUrl}
+                  alt={`Foto bukti ${index + 1}${suffix}`}
+                  className="size-14 rounded-md border object-cover"
+                  loading="lazy"
+                  onError={() => setBroken((current) => new Set(current).add(photo.id))}
+                />
+              )}
               <Button
                 type="button"
                 variant="secondary"
@@ -92,8 +101,14 @@ export function ProofPhotoField({ value, onChange, max, disabled, label }: Proof
           showLibrary={false}
           title="Foto bukti QC"
           confirmLabel="Tambahkan"
+          hideNames
           cameraTab={(api) => <ProofCameraTab {...api} />}
-          onSelect={(items) => onChange([...value, ...items.map(toProofRef)].slice(0, max))}
+          onDiscardUploaded={(items) => void discardProofPhotos(items.map((item) => item.id))}
+          onSelect={(items) => {
+            const { next, extras } = mergeProofSelection(value, items, max);
+            if (extras.length > 0) void discardProofPhotos(extras);
+            onChange(next);
+          }}
         />
       ) : null}
     </div>

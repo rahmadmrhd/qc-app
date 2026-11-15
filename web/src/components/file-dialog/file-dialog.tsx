@@ -59,6 +59,13 @@ export interface FileDialogProps {
    * prop ini dialog persis seperti semula. Isi tab hanya dipasang selama tab itu aktif.
    */
   cameraTab?: (api: FileDialogCameraApi) => ReactNode;
+  /** Sembunyikan pengubah nama berkas di antrean unggah (bawaan false). */
+  hideNames?: boolean;
+  /**
+   * Dipanggil dengan hasil unggahan yang sudah naik ke sumber tetapi TIDAK diteruskan lewat `onSelect` saat dialog
+   * ditutup (mis. sebagian gagal lalu dibatalkan), agar pemanggil membuangnya. Bawaan: tidak ada.
+   */
+  onDiscardUploaded?(items: LibraryItem[]): void;
   onSelect(items: LibraryItem[]): void;
 }
 
@@ -83,6 +90,8 @@ export function FileDialog({
   confirmLabel = 'Lampirkan',
   title = 'Pilih gambar',
   cameraTab,
+  hideNames,
+  onDiscardUploaded,
   onSelect,
 }: FileDialogProps) {
   const mimes = resolveAccept(accept, source.mimeTypes);
@@ -105,6 +114,25 @@ export function FileDialog({
     maxFiles: mode === 'single' ? 1 : maxFiles,
   });
   const { add, addRejected, reset } = queue;
+  // Id hasil unggahan yang sudah diteruskan ke `onSelect`; sisanya (sudah naik, tak diteruskan) dibuang saat ditutup.
+  const forwardedRef = useRef<Set<string>>(new Set());
+  const onDiscardRef = useRef(onDiscardUploaded);
+  onDiscardRef.current = onDiscardUploaded;
+  const snapshotRef = useRef(queue.snapshot);
+  snapshotRef.current = queue.snapshot;
+  const discardStray = useRef(() => {
+    const stray = snapshotRef
+      .current()
+      .flatMap((entry) =>
+        entry.status === 'done' && entry.result && !forwardedRef.current.has(entry.result.id)
+          ? [entry.result]
+          : [],
+      );
+    forwardedRef.current = new Set();
+    if (stray.length > 0) onDiscardRef.current?.(stray);
+  }).current;
+  // Komponen dilepas saat masih terbuka: hasil yang belum diteruskan tetap dibuang.
+  useEffect(() => discardStray, [discardStray]);
 
   // Berkas awal (seret-lepas) masuk antrean sekali per pembukaan; Strict Mode memanggil efek dua kali.
   useEffect(() => {
@@ -123,11 +151,12 @@ export function FileDialog({
   useEffect(() => {
     if (open) return;
     consumedInitial.current = undefined;
+    discardStray();
     setSelection(new Map());
     setPreview(null);
     setTab('upload');
     reset();
-  }, [open, reset]);
+  }, [open, reset, discardStray]);
 
   function handleFiles(files: File[], rejected: { name: string; reason: string }[]) {
     if (busyRef.current) return;
@@ -178,6 +207,7 @@ export function FileDialog({
         setTab('upload');
         return;
       }
+      for (const item of uploaded) forwardedRef.current.add(item.id);
       onSelect([...selectionRef.current.values(), ...uploaded]);
       onOpenChange(false);
     } catch (error) {
@@ -202,6 +232,7 @@ export function FileDialog({
       maxFiles={mode === 'single' ? 1 : maxFiles}
       nameMax={source.nameMax}
       disabled={busy}
+      hideNames={hideNames}
       onFiles={handleFiles}
     />
   );
@@ -254,7 +285,11 @@ export function FileDialog({
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription className="sr-only">
-              Unggah berkas baru atau pilih dari pustaka.
+              {showLibrary
+                ? 'Unggah berkas baru atau pilih dari pustaka.'
+                : cameraTab
+                  ? 'Unggah berkas baru atau ambil foto dengan kamera.'
+                  : 'Unggah berkas baru.'}
             </DialogDescription>
           </DialogHeader>
           {showLibrary || cameraTab ? (

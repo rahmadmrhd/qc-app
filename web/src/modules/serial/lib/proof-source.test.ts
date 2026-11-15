@@ -100,3 +100,28 @@ test('list, rename, dan remove tidak dipakai (tanpa pustaka)', async () => {
   await expect(proofSource.rename('p1', 'x')).rejects.toThrow();
   await expect(proofSource.remove('p1')).rejects.toThrow();
 });
+
+test('mergeProofSelection: kelebihan di atas batas dikembalikan agar dibuang', async () => {
+  const { mergeProofSelection } = await import('./proof-source');
+  const ref = (id: string) => ({ id, mime: 'image/webp', size: 1, thumbUrl: `/t/${id}` });
+  const item = (id: string) => ({
+    ...ref(id),
+    name: id,
+    width: 1,
+    height: 1,
+    uploadedBy: '',
+    createdAt: '',
+    usageCount: 0,
+    canRename: false,
+    canRemove: false,
+    previewUrl: '',
+  });
+  const result = mergeProofSelection(
+    [ref('a'), ref('b'), ref('c')],
+    [item('d'), item('e'), item('f')],
+    5,
+  );
+  expect(result.next.map((photo) => photo.id)).toEqual(['a', 'b', 'c', 'd', 'e']);
+  expect(result.extras).toEqual(['f']);
+  expect(mergeProofSelection([], [item('x')], 5)).toMatchObject({ extras: [] });
+});
