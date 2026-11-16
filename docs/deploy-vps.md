@@ -88,6 +88,8 @@ chmod 600 .env
 
 Nilai yang diisi pemilik (OAUTH_*, SMTP_*, GOOGLE_ROOT_FOLDER_ID, GOOGLE_SPREADSHEET_ID; kunci service account bukan variabel melainkan berkas `secrets/google-sa.json`, lihat `docs/setup-google.md`) ditulis `ISI_OLEH_PEMILIK` sampai diisi. Pastikan `QC_ENV` sama dengan nama folder, `QC_NAME=qc-staging` (staging), `QC_SUBNET`, `TRUSTED_PROXY` (loopback + `QC_SUBNET`), `APP_PORT`, `DB_PORT`, dan `APP_ORIGIN` (`https://qc-dev.rhd.my.id` atau `https://qc.rhd.my.id`). Kata sandi hanya heksa (aman-URL). Jangan `cat .env`.
 
+Katalog Tipe offline desktop (opsional): isi `DESKTOP_CATALOG_TOKEN` di `.env` dengan string acak minimal 32 karakter (mis. `openssl rand -hex 32`). Kosong atau lebih pendek = rute `/api/desktop/catalog` menjawab 404 dan desktop tak menyinkronkan katalog; server tetap berjalan. Nilai yang sama dipakai saat membangun installer desktop (env `CATALOG_TOKEN`); token ikut terdistribusi di installer (menghalangi pengambilan sembarangan, bukan kontrol akses). `deploy/compose.yml` dan `.env` tidak dibawa CI, jadi isi manual SEBELUM push yang men-deploy.
+
 Pembatalan: hapus `.env` (rahasia dapat dibangkitkan ulang; belum ada data).
 
 ## 6. Kunci service account Google
