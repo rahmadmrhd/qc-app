@@ -3,9 +3,9 @@ import { Camera, X } from 'lucide-react';
 import { useState } from 'react';
 import { FileDialog } from '@/components/file-dialog';
 import { Button } from '@/components/ui/button';
+import { isMobileDevice } from '../lib/device';
 import { mergeProofSelection, type ProofPhotoRef, proofSource } from '../lib/proof-source';
 import { discardProofPhotos } from '../queries';
-import { ProofCameraTab } from './proof-camera-tab';
 
 export interface ProofPhotoFieldProps {
   value: ProofPhotoRef[];
@@ -102,7 +102,9 @@ export function ProofPhotoField({ value, onChange, max, disabled, label }: Proof
           title="Foto bukti QC"
           confirmLabel="Tambahkan"
           hideNames
-          cameraTab={(api) => <ProofCameraTab {...api} />}
+          // Perangkat sentuh: tombol membuka aplikasi kamera bawaan; desktop hanya Telusuri.
+          capture={isMobileDevice() ? 'environment' : undefined}
+          captureCountOffset={value.length}
           onDiscardUploaded={(items) => void discardProofPhotos(items.map((item) => item.id))}
           onSelect={(items) => {
             const { next, extras } = mergeProofSelection(value, items, max);

@@ -1,8 +1,8 @@
 import type { SerialProofPhotoDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -12,15 +12,6 @@ const toastSuccess = vi.hoisted(() => vi.fn());
 vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: toastError } }));
 const prepareImageMock = vi.hoisted(() => vi.fn());
 vi.mock('@/modules/files/image', () => ({ prepareImage: prepareImageMock }));
-const camera = vi.hoisted(() => ({ capture: vi.fn() }));
-vi.mock('../lib/use-photo-camera', () => ({
-  usePhotoCamera: () => ({
-    videoRef: { current: null },
-    state: { status: 'scanning' },
-    capture: camera.capture,
-    retry: vi.fn(),
-  }),
-}));
 
 import { ProofGallery } from './proof-gallery';
 
@@ -56,7 +47,8 @@ beforeEach(() => {
   toastError.mockReset();
   toastSuccess.mockReset();
   prepareImageMock.mockReset();
-  camera.capture.mockReset();
+  // Perangkat sentuh: tombol kamera native tersedia di dialog Unggah ulang.
+  window.matchMedia = vi.fn(() => ({ matches: true })) as unknown as typeof window.matchMedia;
   apiMock.mockResolvedValue({ id: 'x' });
   prepareImageMock.mockResolvedValue({
     mime: 'image/webp',
@@ -64,10 +56,18 @@ beforeEach(() => {
     width: 10,
     height: 10,
   });
-  camera.capture.mockResolvedValue(
-    new File([new Uint8Array(4)], 'foto.jpg', { type: 'image/jpeg' }),
-  );
 });
+
+const realMatchMedia = window.matchMedia;
+afterEach(() => {
+  window.matchMedia = realMatchMedia;
+});
+
+/** Meniru hasil aplikasi kamera bawaan: berkas masuk lewat input `capture` pada dialog yang terbuka. */
+function shoot(dialog: HTMLElement) {
+  const file = new File([new Uint8Array(4)], 'foto.jpg', { type: 'image/jpeg' });
+  fireEvent.change(within(dialog).getByTestId('capture-input'), { target: { files: [file] } });
+}
 
 test('foto selesai: gambar kecil dari serialProofs.get; tanpa label status', () => {
   renderGallery([photo('aaaaaaaa-1'), photo('bbbbbbbb-2')]);
@@ -191,14 +191,13 @@ test('foto yang bukan gagal tidak punya tombol Unggah ulang', () => {
   expect(screen.queryByRole('button', { name: 'Unggah ulang' })).not.toBeInTheDocument();
 });
 
-/** Buka dialog Unggah ulang dan ambil satu foto lewat kamera, lalu tekan "Ganti foto". */
+/** Buka dialog Unggah ulang dan masukkan satu foto hasil kamera native, lalu tekan "Ganti foto". */
 async function replaceViaCamera() {
   await userEvent.click(screen.getByRole('button', { name: 'Unggah ulang' }));
   const dialog = await screen.findByRole('dialog', { name: 'Unggah ulang foto bukti QC' });
   expect(within(dialog).queryByRole('tab', { name: /Pustaka/ })).not.toBeInTheDocument();
-  await userEvent.click(within(dialog).getByRole('tab', { name: 'Kamera' }));
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Ambil foto' }));
-  await userEvent.click(within(dialog).getByRole('button', { name: /^Ganti foto/ }));
+  shoot(dialog);
+  await userEvent.click(await within(dialog).findByRole('button', { name: /^Ganti foto \(1\)/ }));
 }
 
 function mockUploadAndReplace(replace: () => unknown) {
@@ -290,9 +289,8 @@ test('selama replace berjalan, Coba lagi/Unggah ulang/Buang foto itu dikunci; te
   ]);
   await userEvent.click(screen.getAllByRole('button', { name: 'Unggah ulang' })[0] as HTMLElement);
   const dialog = await screen.findByRole('dialog', { name: 'Unggah ulang foto bukti QC' });
-  await userEvent.click(within(dialog).getByRole('tab', { name: 'Kamera' }));
-  await userEvent.click(within(dialog).getByRole('button', { name: 'Ambil foto' }));
-  await userEvent.click(within(dialog).getByRole('button', { name: /^Ganti foto/ }));
+  shoot(dialog);
+  await userEvent.click(await within(dialog).findByRole('button', { name: /^Ganti foto \(1\)/ }));
   await waitFor(() =>
     expect(apiMock).toHaveBeenCalledWith('serialProofs.replace', expect.anything()),
   );
