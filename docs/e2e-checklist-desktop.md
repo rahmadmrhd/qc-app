@@ -32,8 +32,8 @@ Kata sandi perangkat tidak boleh muncul di layar progres, log, atau berkas mana 
 | # | Langkah | Hasil yang diharapkan | Hasil |
 |---|---|---|---|
 | B1 | Dengan server menyala, buka halaman selain Country Lock | Diarahkan ke layar login desktop (bukan layar login web biasa) | |
-| B2 | Klik tombol login | Peramban sistem terbuka di halaman login Google server; aplikasi menampilkan "Lanjutkan login di browser…" | |
-| B3 | Selesaikan login Google di peramban | Peramban membuka aplikasi (`qc://auth?...`); aplikasi pindah ke depan dan masuk ke beranda tanpa muat ulang manual | |
+| B2 | Klik tombol login | Jendela kecil bergaya popup (mode aplikasi Chrome/Edge bila peramban bawaan salah satunya; selain itu peramban biasa) terbuka di halaman login Google server; aplikasi menampilkan "Lanjutkan login di browser…" | |
+| B3 | Selesaikan login Google di jendela popup | Peramban kembali ke `http://127.0.0.1:<port>/callback?...` dan menampilkan "Login berhasil" (jendela mencoba menutup sendiri; tanpa dialog "Buka aplikasi ini?"); aplikasi masuk ke beranda tanpa muat ulang manual. Tanpa registrasi `qc://` (mis. `electron .`) tetap berhasil | |
 | B4 | Periksa URL peramban dan layar aplikasi | Tidak ada token/kode yang tampil di aplikasi; `auth.json` di folder `userData` tidak memuat token polos | |
 | B5 | Tutup dan buka aplikasi | Tetap masuk (token terenkripsi bertahan) | |
 | B6 | Klik tautan `qc://auth?code=x&state=yyyyyyyy` (atau salin ulang tautan B3 yang sudah dipakai) saat tidak ada login berjalan | Diabaikan: tidak ada perubahan status login, tidak ada galat yang tampil | |

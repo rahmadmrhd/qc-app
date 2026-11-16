@@ -28,6 +28,7 @@ import {
   isDesktopState,
   isDesktopVerifier,
   issueDesktopCode,
+  parseDesktopPort,
   readDesktopStart,
   signDesktopStart,
 } from './desktop';
@@ -64,7 +65,13 @@ authApp.get('/desktop/start', async (c) => {
   if (!isDesktopChallenge(challenge) || !isDesktopState(state)) {
     return c.json(errorEnvelope('VALIDATION', 'Parameter login desktop tidak valid'), 400);
   }
-  setCookie(c, DESKTOP_COOKIE, await signDesktopStart(c.env, { challenge, state }), {
+  // `port` opsional (loopback); bila ada harus tepat satu nilai sah, selain itu 400 (bukan diabaikan diam-diam).
+  const portValues = c.req.queries('port');
+  const port = portValues === undefined ? undefined : parseDesktopPort(portValues);
+  if (port === null) {
+    return c.json(errorEnvelope('VALIDATION', 'Parameter login desktop tidak valid'), 400);
+  }
+  setCookie(c, DESKTOP_COOKIE, await signDesktopStart(c.env, { challenge, state, port }), {
     httpOnly: true,
     secure: cookieSecure(c.env),
     sameSite: 'Lax',
@@ -99,11 +106,15 @@ authApp.get('/callback', async (c) => {
   if (!(await loadUserContext(c.env, result.email))) {
     return c.redirect('/?authError=NOT_WHITELISTED', 302);
   }
-  // Login yang dimulai aplikasi desktop: kirim kode sekali pakai ke `qc://auth`, JANGAN pasang cookie sesi web.
+  // Login yang dimulai aplikasi desktop: kirim kode sekali pakai ke loopback `127.0.0.1:<port>` (bila start memberi
+  // port) atau `qc://auth`, JANGAN pasang cookie sesi web.
   const desktop = await readDesktopStart(c.env, desktopCookie);
   if (desktop) {
     const desktopCode = await issueDesktopCode(c.env, result.email, desktop.challenge);
-    return c.redirect(`qc://auth?code=${desktopCode}&state=${desktop.state}`, 302);
+    // Port loopback hanya dari cookie bertanda tangan (sudah divalidasi); host SELALU literal 127.0.0.1.
+    const target =
+      desktop.port === undefined ? 'qc://auth' : `http://127.0.0.1:${desktop.port}/callback`;
+    return c.redirect(`${target}?code=${desktopCode}&state=${desktop.state}`, 302);
   }
   setCookie(c, SESSION_COOKIE, await signSessionToken(c.env, result.email, nowOf(c.env)), {
     httpOnly: true,

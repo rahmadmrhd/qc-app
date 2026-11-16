@@ -5,7 +5,8 @@
 //                 agar tidak menyentuh data/instans pengguna.
 //   (biasa)     : instans tunggal; qc://country-lock mengarahkan jendela yang sudah ada.
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { execFile, spawn } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -27,7 +28,9 @@ import {
 } from 'electron';
 import { createApiProxy } from './api-proxy';
 import { APP_ORIGIN, APP_SCHEME, createAppHandler, isAppUrl } from './app-protocol';
-import { createLoginFlow, type LoginFlow } from './auth/login-flow';
+import { createLoginFlow, LOGIN_MAX_AGE_MS, type LoginFlow } from './auth/login-flow';
+import { openLoginWindow } from './auth/login-window';
+import { startLoopback } from './auth/loopback';
 import { createTokenStore } from './auth/token-store';
 import { readDeviceInfo, readRouterInfo } from './device/info';
 import { pingOnce } from './device/ping';
@@ -131,6 +134,38 @@ function authUrlsFromArgv(argv: readonly string[]): string[] {
   return argv.filter((arg) => arg.startsWith('qc://') && parseQcUrl(arg)?.auth !== undefined);
 }
 
+/** ProgId peramban bawaan Windows untuk https (registri `UserChoice`); `null` bila tak terbaca. */
+function readDefaultProgId(): Promise<string | null> {
+  return new Promise((resolveProgId) => {
+    execFile(
+      'reg.exe',
+      [
+        'query',
+        String.raw`HKCU\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice`,
+        '/v',
+        'ProgId',
+      ],
+      { windowsHide: true, timeout: 5000 },
+      (error, stdout) => {
+        const match = error ? null : /ProgId\s+REG_SZ\s+(\S+)/i.exec(stdout);
+        resolveProgId(match?.[1] ?? null);
+      },
+    );
+  });
+}
+
+/** Meluncurkan proses terlepas tanpa shell (URL sebagai satu argumen); menolak bila gagal diluncurkan. */
+function launchDetached(exe: string, args: string[]): Promise<void> {
+  return new Promise((resolveLaunch, rejectLaunch) => {
+    const child = spawn(exe, args, { detached: true, stdio: 'ignore', shell: false });
+    child.once('error', rejectLaunch);
+    child.once('spawn', () => {
+      child.unref();
+      resolveLaunch();
+    });
+  });
+}
+
 /** Peramban sistem hanya dibuka untuk https atau http localhost/127.0.0.1 (pengembangan). */
 function isOpenableLoginUrl(url: string): boolean {
   try {
@@ -220,10 +255,19 @@ function runApp(): void {
     const flow = createLoginFlow({
       settings: () => settings.get(),
       tokens,
+      // Popup mode aplikasi Chrome/Edge bila peramban bawaan salah satunya; selain itu peramban biasa.
       openExternal: async (url) => {
         if (!isOpenableLoginUrl(url)) throw new Error('Alamat login tidak diizinkan');
-        await shell.openExternal(url);
+        await openLoginWindow(url, {
+          platform: process.platform,
+          env: process.env,
+          readDefaultProgId,
+          exists: existsSync,
+          launch: launchDetached,
+          openExternal: (target) => shell.openExternal(target),
+        });
       },
+      startLoopback: (onCallback) => startLoopback({ onCallback, timeoutMs: LOGIN_MAX_AGE_MS }),
       fetchImpl: net.fetch as typeof fetch,
       onChange: emitAuth,
     });
@@ -313,7 +357,10 @@ function runApp(): void {
     mainWindow.on('closed', () => {
       mainWindow = null;
     });
-    app.on('will-quit', () => pending.close());
+    app.on('will-quit', () => {
+      flow.dispose();
+      pending.close();
+    });
 
     // Pemulihan UI: muat berhasil mereset hitungan; dua kegagalan berturut-turut kembali ke bundel
     // sebelumnya lalu ke UI dasar (dan memuat ulang).

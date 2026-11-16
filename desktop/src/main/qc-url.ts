@@ -1,7 +1,8 @@
 // Tautan dalam aplikasi lewat protokol OS `qc://`. Hanya dua bentuk yang sah; apa pun selain itu
 // ditolak agar tautan dari luar tak dapat mengarahkan ke rute lain atau menyuntikkan nilai:
 //   qc://country-lock               -> { route: '/country-lock' }
-//   qc://auth?code=<kode>&state=<s> -> { route: null, auth: { code, state } } (login desktop)
+//   qc://auth?code=<kode>&state=<s> -> { route: null, auth: { code, state } } (login desktop, cadangan;
+//   sejak 2026-11-16 jalur utamanya callback loopback `auth/loopback.ts`)
 
 export interface QcUrl {
   route: string | null;
@@ -11,6 +12,23 @@ export interface QcUrl {
 /** Kode login = base64url(JSON) + "." + HMAC (server membatasi 1024 karakter). */
 const AUTH_CODE = /^[A-Za-z0-9_.-]{1,1024}$/;
 const AUTH_STATE = /^[A-Za-z0-9_-]{8,128}$/;
+
+/**
+ * `code` dan `state` dari query login: tepat dua kunci (`code`, `state`), masing-masing satu nilai berformat sah.
+ * Dipakai bersama oleh `qc://auth` dan callback loopback `http://127.0.0.1:<port>/callback`.
+ */
+export function parseAuthParams(params: URLSearchParams): { code: string; state: string } | null {
+  const keys = [...params.keys()];
+  if (keys.length !== 2 || !keys.includes('code') || !keys.includes('state')) return null;
+  const code = params.getAll('code');
+  const state = params.getAll('state');
+  if (code.length !== 1 || state.length !== 1) return null;
+  const [c] = code;
+  const [s] = state;
+  if (c === undefined || s === undefined) return null;
+  if (!AUTH_CODE.test(c) || !AUTH_STATE.test(s)) return null;
+  return { code: c, state: s };
+}
 
 function parseAuth(parsed: URL): QcUrl | null {
   if (parsed.pathname !== '' && parsed.pathname !== '/') return null;
@@ -22,16 +40,8 @@ function parseAuth(parsed: URL): QcUrl | null {
   ) {
     return null;
   }
-  const keys = [...parsed.searchParams.keys()];
-  if (keys.length !== 2 || !keys.includes('code') || !keys.includes('state')) return null;
-  const code = parsed.searchParams.getAll('code');
-  const state = parsed.searchParams.getAll('state');
-  if (code.length !== 1 || state.length !== 1) return null;
-  const [c] = code;
-  const [s] = state;
-  if (c === undefined || s === undefined) return null;
-  if (!AUTH_CODE.test(c) || !AUTH_STATE.test(s)) return null;
-  return { route: null, auth: { code: c, state: s } };
+  const auth = parseAuthParams(parsed.searchParams);
+  return auth ? { route: null, auth } : null;
 }
 
 export function parseQcUrl(url: string): QcUrl | null {

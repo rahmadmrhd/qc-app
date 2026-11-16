@@ -7,7 +7,8 @@ import { loadUserContext } from '@server/modules/access/context';
 /**
  * Login aplikasi desktop (PKCE S256 + kode sekali pakai). Alur: desktop membuka peramban sistem di
  * `/auth/desktop/start` (cookie `qc_desktop` mengikat `challenge`+`state`), login Google berjalan seperti web,
- * lalu callback mengarahkan ke `qc://auth?code&state` (BUKAN cookie sesi web). Desktop menukar kode dan `verifier`
+ * lalu callback mengarahkan ke `http://127.0.0.1:<port>/callback?code&state` (loopback; `port` dari aplikasi, diikat
+ * di cookie bertanda tangan) atau, tanpa `port`, ke `qc://auth?code&state` (BUKAN cookie sesi web). Desktop menukar kode dan `verifier`
  * di `POST /auth/desktop/token` dengan token Bearer.
  */
 
@@ -33,9 +34,28 @@ export const isDesktopState = (value: unknown): value is string =>
 export const isDesktopVerifier = (value: unknown): value is string =>
   typeof value === 'string' && VERIFIER_PATTERN.test(value);
 
+/** Port loopback aplikasi desktop: bilangan bulat desimal 1024-65535 (tanpa nol di depan, tanda, atau spasi). */
+const PORT_PATTERN = /^[1-9][0-9]{3,4}$/;
+export const isDesktopPort = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 1024 && value <= 65535;
+/** Port dari query string: tepat satu nilai berformat sah, selain itu `null`. */
+export function parseDesktopPort(values: readonly string[] | undefined): number | null {
+  if (values?.length !== 1) return null;
+  const [raw] = values;
+  if (raw === undefined || !PORT_PATTERN.test(raw)) return null;
+  const port = Number(raw);
+  return isDesktopPort(port) ? port : null;
+}
+
 export interface DesktopStart {
   challenge: string;
   state: string;
+  /**
+   * Port loopback `127.0.0.1` yang dibuka aplikasi desktop untuk menerima kode (RFC 8252 §7.3). Tanpa port =
+   * kode dikirim ke `qc://auth` (aplikasi terkemas dengan skema terdaftar). Nilainya hanya dari cookie bertanda
+   * tangan ini, tak pernah dari parameter callback.
+   */
+  port?: number;
 }
 
 /** Perbandingan waktu-konstan untuk string; panjang berbeda langsung tidak sama (panjangnya bukan rahasia). */
@@ -59,6 +79,7 @@ export async function signDesktopStart(env: Env, start: DesktopStart): Promise<s
     typ: 'dstart',
     challenge: start.challenge,
     state: start.state,
+    ...(start.port === undefined ? {} : { port: start.port }),
     exp: nowOf(env) + DESKTOP_START_TTL_MS,
   });
 }
@@ -73,7 +94,13 @@ export async function readDesktopStart(
   if (payload?.typ !== 'dstart') return null;
   if (typeof payload.exp !== 'number' || payload.exp <= nowOf(env)) return null;
   if (!isDesktopChallenge(payload.challenge) || !isDesktopState(payload.state)) return null;
-  return { challenge: payload.challenge, state: payload.state };
+  // Port ada tetapi tak sah (cookie dari sumber lain/rusak) = seluruh cookie ditolak, bukan jatuh ke `qc://`.
+  if (payload.port !== undefined && !isDesktopPort(payload.port)) return null;
+  return {
+    challenge: payload.challenge,
+    state: payload.state,
+    ...(payload.port === undefined ? {} : { port: payload.port }),
+  };
 }
 
 /** Kode login sekali pakai, terikat ke `challenge` PKCE dan email yang sudah login. */
