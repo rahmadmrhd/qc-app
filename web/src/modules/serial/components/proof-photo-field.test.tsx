@@ -2,9 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { ProofPhotoRef } from '../lib/proof-source';
-import { CAMERA_ERROR_TEXT, type CameraState } from '../lib/use-camera-scanner';
 
 const apiMock = vi.hoisted(() => vi.fn());
 const prepareImageMock = vi.hoisted(() => vi.fn());
@@ -13,20 +12,6 @@ vi.mock('@/lib/api', async (importOriginal) => ({
   api: apiMock,
 }));
 vi.mock('@/modules/files/image', () => ({ prepareImage: prepareImageMock }));
-
-const camera = vi.hoisted(() => ({
-  state: { status: 'scanning' } as CameraState,
-  capture: vi.fn(),
-  retry: vi.fn(),
-}));
-vi.mock('../lib/use-photo-camera', () => ({
-  usePhotoCamera: () => ({
-    videoRef: { current: null },
-    state: camera.state,
-    capture: camera.capture,
-    retry: camera.retry,
-  }),
-}));
 
 import { ProofPhotoField } from './proof-photo-field';
 
@@ -72,9 +57,7 @@ function renderField(props: Parameters<typeof Harness>[0] = {}) {
 beforeEach(() => {
   apiMock.mockReset();
   prepareImageMock.mockReset();
-  camera.capture.mockReset();
-  camera.retry.mockReset();
-  camera.state = { status: 'scanning' };
+  setPointer(true);
   counter = 0;
   prepareImageMock.mockResolvedValue({
     mime: 'image/webp',
@@ -98,63 +81,81 @@ beforeEach(() => {
     }
     return { id: 'x' };
   });
-  camera.capture.mockImplementation(
-    async () => new File([new Uint8Array(4)], `foto-${Math.random()}.jpg`, { type: 'image/jpeg' }),
-  );
 });
+
+const realMatchMedia = window.matchMedia;
+afterEach(() => {
+  window.matchMedia = realMatchMedia;
+});
+
+/** `coarse` = perangkat sentuh (ponsel): tombol kamera native tersedia; false = desktop (mouse). */
+function setPointer(coarse: boolean) {
+  window.matchMedia = vi.fn(() => ({ matches: coarse })) as unknown as typeof window.matchMedia;
+}
+
+let shots = 0;
+/** Meniru hasil aplikasi kamera bawaan: berkas masuk lewat input `capture`. */
+function shoot() {
+  shots += 1;
+  const file = new File([new Uint8Array(4)], `foto-${shots}.jpg`, { type: 'image/jpeg' });
+  fireEvent.change(screen.getByTestId('capture-input'), { target: { files: [file] } });
+}
 
 const openButton = () => screen.getByRole('button', { name: /^Foto \(/ });
 
-test('tombol Foto menampilkan jumlah; dialog hanya punya tab Unggah dan Kamera (tanpa Pustaka)', async () => {
+test('tombol Foto menampilkan jumlah; dialog tanpa tab Pustaka maupun tab Kamera', async () => {
   const user = userEvent.setup();
   renderField({ initial: [ref('a')] });
   expect(openButton()).toHaveTextContent('Foto (1)');
   await user.click(openButton());
   const dialog = await screen.findByRole('dialog');
-  expect(within(dialog).getByRole('tab', { name: /Unggah/ })).toBeInTheDocument();
-  expect(within(dialog).getByRole('tab', { name: 'Kamera' })).toBeInTheDocument();
-  expect(within(dialog).queryByRole('tab', { name: /Pustaka/ })).not.toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: 'Telusuri' })).toBeEnabled();
+  expect(within(dialog).queryByRole('tab')).not.toBeInTheDocument();
 });
 
-test('kamera ditolak: pesan jelas tampil dan Telusuri di tab Unggah tetap ada', async () => {
+test('perangkat sentuh: tombol kamera native tampil dengan accept=image/* dan capture=environment', async () => {
   const user = userEvent.setup();
-  camera.state = { status: 'error', kind: 'denied' };
   renderField();
   await user.click(openButton());
-  await user.click(await screen.findByRole('tab', { name: 'Kamera' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent(CAMERA_ERROR_TEXT.denied);
-  expect(screen.getByRole('button', { name: 'Ambil foto' })).toBeDisabled();
-  await user.click(screen.getByRole('button', { name: 'Coba lagi' }));
-  expect(camera.retry).toHaveBeenCalled();
-  await user.click(screen.getByRole('tab', { name: /Unggah/ }));
-  expect(screen.getByRole('button', { name: 'Telusuri' })).toBeEnabled();
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByRole('button', { name: 'Ambil foto dengan kamera' })).toBeEnabled();
+  const input = screen.getByTestId('capture-input');
+  expect(input).toHaveAttribute('accept', 'image/*');
+  expect(input).toHaveAttribute('capture', 'environment');
 });
 
-test('kamera tak didukung: pesan tampil, tanpa tombol Coba lagi', async () => {
+test('desktop (pointer halus): tidak ada tombol kamera, hanya Telusuri', async () => {
   const user = userEvent.setup();
-  camera.state = { status: 'error', kind: 'unsupported' };
+  setPointer(false);
   renderField();
   await user.click(openButton());
-  await user.click(await screen.findByRole('tab', { name: 'Kamera' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent(CAMERA_ERROR_TEXT.unsupported);
-  expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByRole('button', { name: 'Telusuri' })).toBeEnabled();
+  expect(
+    within(dialog).queryByRole('button', { name: 'Ambil foto dengan kamera' }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByTestId('capture-input')).not.toBeInTheDocument();
+  expect(within(dialog).queryByRole('tab', { name: 'Kamera' })).not.toBeInTheDocument();
 });
 
-test('Ambil foto beberapa kali menambah antrean; Tambahkan mengunggah semuanya dan mengisi nilai', async () => {
+test('hasil kamera native beberapa kali menambah antrean; Tambahkan mengunggah semuanya dan mengisi nilai', async () => {
   const user = userEvent.setup();
   const onChange = vi.fn();
   renderField({ onChange });
   await user.click(openButton());
-  await user.click(await screen.findByRole('tab', { name: 'Kamera' }));
-  await user.click(screen.getByRole('button', { name: 'Ambil foto' }));
-  await user.click(screen.getByRole('button', { name: 'Ambil foto' }));
-  expect(camera.capture).toHaveBeenCalledTimes(2);
-  expect(screen.getByRole('tab', { name: /Unggah \(2\)/ })).toBeInTheDocument();
+  await screen.findByRole('dialog');
+  shoot();
+  shoot();
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: /^Tambahkan \(2\)/ })).toBeEnabled(),
+  );
   await user.click(screen.getByRole('button', { name: /^Tambahkan \(2\)/ }));
   await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
   const next = onChange.mock.calls[0]?.[0] as ProofPhotoRef[];
   expect(next.map((photo) => photo.id)).toEqual(['p1', 'p2']);
   expect(next[0]).toMatchObject({ mime: 'image/webp', thumbUrl: '/api/v1/serial-proofs/p1' });
+  // Berkas kamera melewati pengecilan/cap yang sama dengan berkas biasa sebelum diunggah.
+  expect(prepareImageMock).toHaveBeenCalledTimes(2);
   expect(apiMock).toHaveBeenCalledWith(
     'serialProofs.upload',
     expect.objectContaining({ mime: 'image/webp', width: 10, height: 10 }),
@@ -166,15 +167,63 @@ test('Ambil foto beberapa kali menambah antrean; Tambahkan mengunggah semuanya d
   );
 });
 
-test('batas: sisa slot membatasi antrean dan mengunci Ambil foto; penuh = tombol Foto nonaktif', async () => {
+test('input kamera tanpa multiple; input Telusuri memakai multiple (pilih banyak foto sekaligus)', async () => {
+  const user = userEvent.setup();
+  renderField();
+  await user.click(openButton());
+  const dialog = await screen.findByRole('dialog');
+  expect(screen.getByTestId('capture-input')).not.toHaveAttribute('multiple');
+  const browse = dialog.querySelector('input[type="file"]:not([capture])');
+  expect(browse).toHaveAttribute('multiple');
+});
+
+test('jepretan berturut-turut: tombol menjadi "Ambil foto lagi (n dari 5)", nonaktif di batas, semuanya diteruskan sekali', async () => {
+  const user = userEvent.setup();
+  const onChange = vi.fn();
+  renderField({ initial: [ref('a'), ref('b')], max: 5, onChange });
+  await user.click(openButton());
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByRole('button', { name: 'Ambil foto dengan kamera' })).toBeEnabled();
+  shoot();
+  const again = await within(dialog).findByRole('button', { name: 'Ambil foto lagi (3 dari 5)' });
+  expect(again).toBeEnabled();
+  shoot();
+  shoot();
+  const full = await within(dialog).findByRole('button', { name: 'Ambil foto lagi (5 dari 5)' });
+  expect(full).toBeDisabled();
+  await user.click(screen.getByRole('button', { name: /^Tambahkan \(3\)/ }));
+  await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
+  const merged = onChange.mock.calls[0]?.[0] as ProofPhotoRef[];
+  expect(merged.map((photo) => photo.id)).toEqual(['a', 'b', 'p1', 'p2', 'p3']);
+});
+
+test('Telusuri banyak foto melebihi sisa kuota: yang muat masuk, sisanya ditolak dengan pesan batas', async () => {
+  const user = userEvent.setup();
+  renderField({ initial: [ref('a'), ref('b'), ref('c')], max: 5 });
+  await user.click(openButton());
+  const dialog = await screen.findByRole('dialog');
+  const browse = dialog.querySelector('input[type="file"]:not([capture])') as HTMLInputElement;
+  const files = ['1', '2', '3'].map(
+    (n) => new File([new Uint8Array(4)], `galeri-${n}.jpg`, { type: 'image/jpeg' }),
+  );
+  fireEvent.change(browse, { target: { files } });
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: /^Tambahkan \(2\)/ })).toBeEnabled(),
+  );
+  expect(await screen.findByText(/Maksimal 2 berkas per unggahan/)).toBeInTheDocument();
+});
+
+test('batas: sisa slot membatasi antrean; penuh = tombol Foto nonaktif', async () => {
   const user = userEvent.setup();
   renderField({ initial: [ref('a'), ref('b'), ref('c'), ref('d')], max: 5 });
   await user.click(openButton());
-  await user.click(await screen.findByRole('tab', { name: 'Kamera' }));
-  await user.click(screen.getByRole('button', { name: 'Ambil foto' }));
-  // Satu slot tersisa: sesudah satu jepretan, tombol terkunci.
-  expect(screen.getByRole('button', { name: 'Ambil foto' })).toBeDisabled();
-  expect(camera.capture).toHaveBeenCalledTimes(1);
+  await screen.findByRole('dialog');
+  // Satu slot tersisa: hasil kamera kedua tidak ikut masuk antrean (batas maxFiles).
+  shoot();
+  shoot();
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: /^Tambahkan \(1\)/ })).toBeEnabled(),
+  );
   await user.click(screen.getByRole('button', { name: /^Tambahkan \(1\)/ }));
   await waitFor(() => expect(openButton()).toHaveTextContent('Foto (5)'));
   expect(openButton()).toBeDisabled();
@@ -207,9 +256,9 @@ test('galat unggah tampil per foto di antrean dan dialog tetap terbuka', async (
   });
   renderField({ onChange });
   await user.click(openButton());
-  await user.click(await screen.findByRole('tab', { name: 'Kamera' }));
-  await user.click(screen.getByRole('button', { name: 'Ambil foto' }));
-  await user.click(screen.getByRole('button', { name: /^Tambahkan \(1\)/ }));
+  await screen.findByRole('dialog');
+  shoot();
+  await user.click(await screen.findByRole('button', { name: /^Tambahkan \(1\)/ }));
   expect(await screen.findByText('Kuota foto sementara penuh')).toBeInTheDocument();
   expect(onChange).not.toHaveBeenCalled();
   expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -248,10 +297,10 @@ test('sebagian gagal lalu dialog dibatalkan: foto yang sudah naik tetapi tak dit
   const onChange = vi.fn();
   renderField({ onChange });
   await user.click(openButton());
-  await user.click(await screen.findByRole('tab', { name: 'Kamera' }));
-  await user.click(screen.getByRole('button', { name: 'Ambil foto' }));
-  await user.click(screen.getByRole('button', { name: 'Ambil foto' }));
-  await user.click(screen.getByRole('button', { name: /^Tambahkan \(2\)/ }));
+  await screen.findByRole('dialog');
+  shoot();
+  shoot();
+  await user.click(await screen.findByRole('button', { name: /^Tambahkan \(2\)/ }));
   expect(await screen.findByText('Drive penuh')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Batal' }));
   await waitFor(() => expect(apiMock).toHaveBeenCalledWith('serialProofs.remove', { id: 'p1' }));
@@ -262,10 +311,9 @@ test('dialog foto bukti tidak menawarkan ubah nama berkas', async () => {
   const user = userEvent.setup();
   renderField();
   await user.click(openButton());
-  await user.click(await screen.findByRole('tab', { name: 'Kamera' }));
-  await user.click(screen.getByRole('button', { name: 'Ambil foto' }));
-  await user.click(screen.getByRole('tab', { name: /Unggah \(1\)/ }));
-  expect(screen.getByRole('list', { name: 'Antrean unggah' })).toBeInTheDocument();
+  await screen.findByRole('dialog');
+  shoot();
+  expect(await screen.findByRole('list', { name: 'Antrean unggah' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /^Ubah nama/ })).not.toBeInTheDocument();
 });
 

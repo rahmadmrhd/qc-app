@@ -4,9 +4,9 @@ import { toast } from 'sonner';
 import { FileDialog } from '@/components/file-dialog';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
+import { isMobileDevice } from '../lib/device';
 import { proofSource } from '../lib/proof-source';
 import { discardProofPhotos, useReplaceProof } from '../queries';
-import { ProofCameraTab } from './proof-camera-tab';
 
 /** Galat yang pasti berarti "pengganti tidak terpasang": unggahan drafnya tak berguna dan dibuang di server. */
 const DISCARD_CODES: ReadonlySet<string> = new Set(['VALIDATION', 'CONFLICT', 'NOT_FOUND']);
@@ -51,7 +51,8 @@ export function ProofReplaceDialog({ photo, open, onOpenChange }: ProofReplaceDi
       title="Unggah ulang foto bukti QC"
       confirmLabel="Ganti foto"
       hideNames
-      cameraTab={(api) => <ProofCameraTab {...api} />}
+      // Perangkat sentuh: tombol membuka aplikasi kamera bawaan; desktop hanya Telusuri.
+      capture={isMobileDevice() ? 'environment' : undefined}
       onDiscardUploaded={(items) => void discardProofPhotos(items.map((item) => item.id))}
       onSelect={(items) => {
         const [first, ...extras] = items;

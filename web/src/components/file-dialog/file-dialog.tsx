@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Spinner } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
@@ -22,19 +22,6 @@ import { type RejectedFile, useUploadQueue } from './use-upload-queue';
 
 const DEFAULT_MAX_FILES = 20;
 
-/** Yang diterima isi tab Kamera (slot `cameraTab`). */
-export interface FileDialogCameraApi {
-  /** Tab Kamera sedang tampil: kamera hanya boleh menyala selama `true`. */
-  active: boolean;
-  /** Dialog sedang mengunggah: pengambilan baru ditahan. */
-  disabled: boolean;
-  /** Jumlah berkas di antrean unggah dan batas maksimumnya (`maxFiles`): isi tab menonaktifkan pengambilan bila penuh. */
-  queued: number;
-  max: number;
-  /** Menambah berkas hasil jepretan ke antrean unggah TANPA pindah tab (boleh berturut-turut). */
-  addFile(file: File): void;
-}
-
 export interface FileDialogProps {
   open: boolean;
   onOpenChange(open: boolean): void;
@@ -55,10 +42,13 @@ export interface FileDialogProps {
   /** Bawaan 'Pilih gambar'. */
   title?: string;
   /**
-   * Opsional: menambah tab "Kamera" yang isinya digambar pemakai (mis. pratinjau langsung + tombol ambil foto). Tanpa
-   * prop ini dialog persis seperti semula. Isi tab hanya dipasang selama tab itu aktif.
+   * Opsional: menambah tombol "Ambil foto dengan kamera" di tab Unggah yang membuka aplikasi kamera bawaan perangkat
+   * (`<input type="file" capture>`); hasilnya masuk antrean seperti berkas biasa. Pemanggil mengisinya hanya di perangkat
+   * mobile. Tanpa prop ini dialog persis seperti semula.
    */
-  cameraTab?: (api: FileDialogCameraApi) => ReactNode;
+  capture?: 'environment' | 'user' | undefined;
+  /** Berkas yang sudah ada di luar antrean; ikut dihitung pada "n dari m" tombol kamera. */
+  captureCountOffset?: number | undefined;
   /** Sembunyikan pengubah nama berkas di antrean unggah (bawaan false). */
   hideNames?: boolean;
   /**
@@ -73,7 +63,7 @@ function sameFiles(a: File[], b: File[]): boolean {
   return a.length === b.length && a.every((file, index) => file === b[index]);
 }
 
-type TabValue = 'upload' | 'library' | 'camera';
+type TabValue = 'upload' | 'library';
 
 /** Dialog pilih berkas: tab Unggah (antrean) dan tab Pustaka (kisi), satu himpunan pilihan untuk keduanya. */
 export function FileDialog({
@@ -89,7 +79,8 @@ export function FileDialog({
   showLibrary = true,
   confirmLabel = 'Lampirkan',
   title = 'Pilih gambar',
-  cameraTab,
+  capture,
+  captureCountOffset,
   hideNames,
   onDiscardUploaded,
   onSelect,
@@ -170,15 +161,6 @@ export function FileDialog({
     if (files.length > 0 || rejected.length > 0) setTab('upload');
   }
 
-  function addCaptured(file: File) {
-    if (busyRef.current) return;
-    if (mode === 'single') {
-      setSelection(new Map());
-      reset();
-    }
-    add([file]);
-  }
-
   function toggle(item: LibraryItem) {
     // Pilihan dibekukan selama mengunggah agar yang dilampirkan sama dengan yang terlihat saat Lampirkan ditekan.
     if (busyRef.current) return;
@@ -233,6 +215,9 @@ export function FileDialog({
       nameMax={source.nameMax}
       disabled={busy}
       hideNames={hideNames}
+      capture={capture}
+      countOffset={captureCountOffset}
+      single={mode === 'single'}
       onFiles={handleFiles}
     />
   );
@@ -262,17 +247,6 @@ export function FileDialog({
     />
   );
 
-  const effectiveMax = mode === 'single' ? 1 : maxFiles;
-  const cameraContent = cameraTab
-    ? cameraTab({
-        active: tab === 'camera',
-        disabled: busy,
-        queued: queue.entries.length,
-        max: effectiveMax,
-        addFile: addCaptured,
-      })
-    : null;
-
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -287,12 +261,12 @@ export function FileDialog({
             <DialogDescription className="sr-only">
               {showLibrary
                 ? 'Unggah berkas baru atau pilih dari pustaka.'
-                : cameraTab
+                : capture
                   ? 'Unggah berkas baru atau ambil foto dengan kamera.'
                   : 'Unggah berkas baru.'}
             </DialogDescription>
           </DialogHeader>
-          {showLibrary || cameraTab ? (
+          {showLibrary ? (
             <Tabs
               value={tab}
               onValueChange={(value) => setTab(value as TabValue)}
@@ -307,7 +281,6 @@ export function FileDialog({
                     Pustaka{selection.size > 0 ? ` (${selection.size})` : ''}
                   </TabsTrigger>
                 ) : null}
-                {cameraTab ? <TabsTrigger value="camera">Kamera</TabsTrigger> : null}
               </TabsList>
               <TabsContent value="upload" className="min-h-0 flex-1 overflow-y-auto">
                 {uploadTab}
@@ -315,11 +288,6 @@ export function FileDialog({
               {showLibrary ? (
                 <TabsContent value="library" className="min-h-0 flex-1 overflow-y-auto">
                   {libraryTab}
-                </TabsContent>
-              ) : null}
-              {cameraTab ? (
-                <TabsContent value="camera" className="min-h-0 flex-1 overflow-y-auto">
-                  {cameraContent}
                 </TabsContent>
               ) : null}
             </Tabs>

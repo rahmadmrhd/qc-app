@@ -1047,7 +1047,8 @@ describe('foto bukti bermasalah: banner dan badge', () => {
     const region = await banner();
     await userEvent.click(within(region).getByRole('button', { name: 'Unggah ulang' }));
     const dialog = await screen.findByRole('dialog', { name: 'Unggah ulang foto bukti QC' });
-    expect(within(dialog).getByRole('tab', { name: 'Kamera' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Telusuri' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('tab')).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('tab', { name: /Pustaka/ })).not.toBeInTheDocument();
   });
 });
