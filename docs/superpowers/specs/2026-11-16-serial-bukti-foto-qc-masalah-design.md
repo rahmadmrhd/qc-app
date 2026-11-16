@@ -64,7 +64,7 @@ pelaku; preferensi notifikasi per kategori (tetap satu saklar push yang ada); me
   <nama>` (jam = waktu Replace di server, nama = pengunggah ulang). Foto biasa tidak berubah.
 - Berlaku untuk semua penyebab gagal (termasuk ukuran), dalam jendela retensi 14 hari. Kuota 5 foto/entri tetap
   (pengganti menggantikan satu foto, bukan menambah).
-- Web: tombol "Unggah ulang" di kartu foto gagal membuka dialog foto bukti (kamera + telusuri, tanpa pustaka, satu
+- Web: tombol "Unggah ulang" di kartu foto gagal membuka dialog foto bukti (di ponsel: tombol aplikasi kamera bawaan; desktop: telusuri; tanpa pustaka, satu
   foto) lalu memanggil `replace`; kegagalan unggah pengganti ditangani seperti hasil `invalid` yang ada.
 
 ### 4.3 Dampak dokumen
@@ -109,7 +109,7 @@ Dibangun di cabang `feat/serial-lampiran-bukti`: `a9c9cedc` (unggah ulang, `proo
 - **Cap**: baris kelima `Diunggah ulang <tgl jam> WIB · <nama>` hanya bila snapshot memuat `reupload`. Cap pengganti dinilai dengan lima baris (`proofSizeError(..., lineCount)`).
 - **DTO**: `SerialSummaryDto.proofProblemCount` (jumlah foto `failed` per entri; halaman publik tak membawanya), `GetSerialOutput.problemPhotos` (diisi `serials.get`: SEMUA foto `failed` entri, terlepas dari kejadian yang terpotong `EVENTS_MAX`; banner membacanya dari sini, bukan dari riwayat; tak ada di halaman publik), `SerialProofPhotoDto.failedAt` (= `updated_at` saat `failed`) dan `expiresAt` (`failedAt` + 14 hari), `canManage`, dan `canRetry` (false untuk gagal karena ukuran).
 - **Retensi**: `sweepExpiredFailedProofs` (penjadwal jam-an) membuang foto `failed` > 14 hari per foto, dengan audit sistem `serial.proof_retention`.
-- **Web**: `ProofProblemBanner` (`web/src/modules/serial/components/proof-problem-banner.tsx`) di detail, dengan tanggal WIB dari `expiresAt` terdekat dan satu baris "Unggah ulang" per foto `failed` yang `canManage`; `ProofProblemBadge` di baris daftar, kepala kartu kejadian riwayat, dan header detail; tombol Buang, Coba lagi, dan Unggah ulang pada foto yang sedang diganti dikunci selama replace berjalan (`usePendingReplaceIds`, `locked` di `proof-gallery.tsx`); `ProofReplaceDialog` (`FileDialog` satu foto, tanpa Pustaka, dengan kamera). Galat replace tampil sebagai toast. Detail Serial dan riwayatnya polling `PROOF_POLL_MS` (5 dtk, `web/src/modules/serial/lib/proof-state.ts`) hanya selama ada foto `queued`/`processing`.
+- **Web**: `ProofProblemBanner` (`web/src/modules/serial/components/proof-problem-banner.tsx`) di detail, dengan tanggal WIB dari `expiresAt` terdekat dan satu baris "Unggah ulang" per foto `failed` yang `canManage`; `ProofProblemBadge` di baris daftar, kepala kartu kejadian riwayat, dan header detail; tombol Buang, Coba lagi, dan Unggah ulang pada foto yang sedang diganti dikunci selama replace berjalan (`usePendingReplaceIds`, `locked` di `proof-gallery.tsx`); `ProofReplaceDialog` (`FileDialog` satu foto, tanpa Pustaka; tombol kamera bawaan hanya di mobile, lihat induk butir 62). Galat replace tampil sebagai toast. Detail Serial dan riwayatnya polling `PROOF_POLL_MS` (5 dtk, `web/src/modules/serial/lib/proof-state.ts`) hanya selama ada foto `queued`/`processing`.
 - **Lonceng** (`notification-bell.tsx`): jenis Serial membuka `/serial/<id>`; jenis Serah Terima tetap ke `/handover`.
 - Penjaga keluar draft berfoto bukti (2026-11-16, keputusan pemilik): lihat rancangan induk §5.1 dan butir 61 spek induk Serial Number. Bukan bagian addendum ini, tetapi memengaruhi draft Tambah Serial Number yang memuat foto bukti.
 - Tidak ada variabel `.env`, volume, atau langkah VPS baru dari addendum ini.
@@ -122,4 +122,4 @@ Dibangun di cabang `feat/serial-lampiran-bukti`: `a9c9cedc` (unggah ulang, `proo
 4. **Ukuran pengganti lebih ketat.** Unggah memeriksa cap dengan footer 4 baris, tetapi replace memakai 5 baris. Foto yang lolos unggah dapat ditolak replace dengan `VALIDATION` pada `newPhotoId` (dialog menampilkan toast).
 5. **Galat replace tetap sebagai toast: DITUTUP 2026-11-16 (keputusan pemilik produk).** `FileDialog` menutup sendiri sesudah `onSelect` sinkron; perluasan `FileDialog` (`onSelect` async, dialog tetap terbuka saat gagal) tidak dikerjakan. Butir 61 spek induk.
 6. **Polling 5 dtk** hanya selama ada foto antre (tambahan satu GET per 5 dtk). Bisa dicabut bila dianggap berlebihan.
-7. **Belum diuji di perangkat nyata** (verifikasi pemilik): kamera sungguhan di dialog unggah ulang, tampilan banner dan badge (terang/gelap, ponsel), klik notifikasi push dari perangkat, dan perilaku service worker.
+7. **Belum diuji di perangkat nyata** (verifikasi pemilik): tombol kamera bawaan di ponsel pada dialog unggah ulang, tampilan banner dan badge (terang/gelap, ponsel), klik notifikasi push dari perangkat, dan perilaku service worker.
