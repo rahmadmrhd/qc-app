@@ -19,6 +19,11 @@ export interface ProofSnapshot {
   actorTeam: 'qc' | 'service';
   /** Waktu Simpan menurut server (ISO UTC). */
   savedAt: string;
+  /**
+   * Hanya pada foto hasil unggah ulang (`serialProofs.replace`): waktu unggah ulang menurut server (ISO UTC) dan nama
+   * pengunggah ulang; menambah SATU baris terakhir pada cap (cap tetap jujur: SN/merk/tipe/BU-lokasi/pelaku-simpan asli).
+   */
+  reupload?: { at: string; byName: string };
 }
 
 /**
@@ -77,14 +82,31 @@ function wibStamp(iso: string): string {
   return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
 }
 
-/** Empat baris cap persis rancangan §5.3. Isian dilipat lewat `foldForStamp`; pemotongan menurut lebar dilakukan saat menggambar. */
+/** `snapshot.reupload` yang sah (waktu dan nama berupa teks), selain itu `null` (data lama/rusak tak menambah baris). */
+function reuploadOf(
+  snapshot: Pick<ProofSnapshot, 'reupload'>,
+): { at: string; byName: string } | null {
+  const value = snapshot.reupload as { at?: unknown; byName?: unknown } | undefined | null;
+  return value && typeof value.at === 'string' && typeof value.byName === 'string'
+    ? { at: value.at, byName: value.byName }
+    : null;
+}
+
+/**
+ * Empat baris cap persis rancangan §5.3, ditambah satu baris terakhir `Diunggah ulang <tgl jam> WIB · <nama>` hanya
+ * untuk foto hasil unggah ulang. Isian dilipat lewat `foldForStamp`; pemotongan menurut lebar dilakukan saat menggambar.
+ */
 export function stampLines(snapshot: ProofSnapshot): string[] {
   const f = foldForStamp;
+  const reupload = reuploadOf(snapshot);
   return [
     `SN: ${f(snapshot.serial)}`,
     `${f(snapshot.brand)} ${f(snapshot.model)}`.trim(),
     `${f(snapshot.buCode)} ${MIDDLE_DOT} ${f(snapshot.locationName)}`,
     `Disimpan ${wibStamp(snapshot.savedAt)} WIB ${MIDDLE_DOT} ${f(snapshot.actorName)} (${TEAM_LABEL[snapshot.actorTeam]})`,
+    ...(reupload
+      ? [`Diunggah ulang ${wibStamp(reupload.at)} WIB ${MIDDLE_DOT} ${f(reupload.byName)}`]
+      : []),
   ];
 }
 
@@ -93,12 +115,29 @@ export function stampScale(width: number): number {
   return Math.max(1, Math.round(width / 400));
 }
 
-const LINE_COUNT = 4;
+/** Banyak baris cap foto biasa; foto hasil unggah ulang memakai `STAMP_LINE_COUNT_REUPLOAD` (satu baris lebih banyak). */
+export const STAMP_LINE_COUNT = 4;
+export const STAMP_LINE_COUNT_REUPLOAD = STAMP_LINE_COUNT + 1;
 
-/** Tinggi footer (piksel) untuk gambar selebar `width`: bantalan atas/bawah + empat baris + jarak antarbaris. */
-export function stampFooterHeight(width: number): number {
+/** Tinggi footer (piksel) untuk gambar selebar `width`: bantalan atas/bawah + `lineCount` baris + jarak antarbaris. */
+export function stampFooterHeight(width: number, lineCount: number = STAMP_LINE_COUNT): number {
   const s = stampScale(width);
-  return 2 * 3 * s + LINE_COUNT * GLYPH_HEIGHT * s + (LINE_COUNT - 1) * 2 * s;
+  return 2 * 3 * s + lineCount * GLYPH_HEIGHT * s + (lineCount - 1) * 2 * s;
+}
+
+/**
+ * Banyak baris cap menurut `snapshot_json` baris foto (kolom mentah; 4 bila tak terbaca). Dipakai keputusan ukuran
+ * (`proofSizeError`) agar foto hasil unggah ulang, yang footernya satu baris lebih tinggi, dinilai dengan kanvas sebenarnya.
+ */
+export function stampLineCountOf(snapshotJson: string): number {
+  try {
+    const value = JSON.parse(snapshotJson) as Pick<ProofSnapshot, 'reupload'> | null;
+    return value && typeof value === 'object' && reuploadOf(value) !== null
+      ? STAMP_LINE_COUNT_REUPLOAD
+      : STAMP_LINE_COUNT;
+  } catch {
+    return STAMP_LINE_COUNT;
+  }
 }
 
 /**
@@ -106,18 +145,26 @@ export function stampFooterHeight(width: number): number {
  * sisi terpanjang <= `PROOF_MAX_SIDE`, luas <= `PROOF_MAX_PIXELS`, dan luas kanvas hasil (lebar x (tinggi + footer))
  * <= `PROOF_MAX_CANVAS_PIXELS`. Dipakai unggah, `stampPhoto`, dan keputusan boleh-tidaknya "Coba lagi".
  */
-export function proofSizeError(width: number, height: number): string | null {
+export function proofSizeError(
+  width: number,
+  height: number,
+  lineCount: number = STAMP_LINE_COUNT,
+): string | null {
   if (width > PROOF_MAX_SIDE || height > PROOF_MAX_SIDE) return PROOF_TOO_LARGE_MESSAGE;
   if (width * height > PROOF_MAX_PIXELS) return PROOF_TOO_LARGE_MESSAGE;
-  if (width * (height + stampFooterHeight(width)) > PROOF_MAX_CANVAS_PIXELS) {
+  if (width * (height + stampFooterHeight(width, lineCount)) > PROOF_MAX_CANVAS_PIXELS) {
     return PROOF_TOO_LARGE_MESSAGE;
   }
   return null;
 }
 
 /** Melempar `VALIDATION` bila ukuran melebihi batas (header sebelum dekode, dan hasil dekode sebelum alokasi kanvas). */
-export function assertProofSize(width: number, height: number): void {
-  const message = proofSizeError(width, height);
+export function assertProofSize(
+  width: number,
+  height: number,
+  lineCount: number = STAMP_LINE_COUNT,
+): void {
+  const message = proofSizeError(width, height, lineCount);
   if (message !== null) throw appError('VALIDATION', message);
 }
 
@@ -211,7 +258,8 @@ export async function stampPhoto(input: {
   if (meta.format !== 'jpeg' && meta.format !== 'png' && meta.format !== 'webp')
     return unreadable();
   if (meta.width < 1 || meta.height < 1) return unreadable();
-  assertProofSize(meta.width, meta.height);
+  const lines = stampLines(input.snapshot);
+  assertProofSize(meta.width, meta.height, lines.length);
   let png: Uint8Array;
   try {
     png = await new Bun.Image(input.bytes, { maxPixels: PROOF_MAX_PIXELS }).png().bytes();
@@ -220,13 +268,13 @@ export async function stampPhoto(input: {
   }
   const source = await decodePngRgba(png, PROOF_MAX_PIXELS);
   // Dimensi hasil dekode dapat berbeda dari header (mis. orientasi EXIF menukar lebar/tinggi): periksa ulang sebelum kanvas.
-  assertProofSize(source.width, source.height);
+  assertProofSize(source.width, source.height, lines.length);
   flattenOnWhite(source.rgba);
-  const footer = stampFooterHeight(source.width);
+  const footer = stampFooterHeight(source.width, lines.length);
   const height = source.height + footer;
   const rgba = new Uint8Array(source.width * height * 4);
   rgba.set(source.rgba, 0);
-  drawFooter(rgba, source.width, source.height, footer, stampLines(input.snapshot));
+  drawFooter(rgba, source.width, source.height, footer, lines);
   const stamped = await encodePngRgba({ width: source.width, height, rgba });
   let webp: Uint8Array;
   try {

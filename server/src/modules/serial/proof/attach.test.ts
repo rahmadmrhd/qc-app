@@ -402,6 +402,8 @@ describe('DTO foto bukti', () => {
           error: 'Berkas rusak',
           canManage: email === W,
           canRetry: email === W,
+          failedAt: SAVED_AT,
+          expiresAt: '2026-11-26T03:00:00.000Z',
         },
         {
           id: 'p2',
@@ -414,6 +416,8 @@ describe('DTO foto bukti', () => {
           error: null,
           canManage: email === W,
           canRetry: false,
+          failedAt: null,
+          expiresAt: null,
         },
       ]);
       const noPhoto = await call(email, 'serials.get', { id: 'sn-no' });

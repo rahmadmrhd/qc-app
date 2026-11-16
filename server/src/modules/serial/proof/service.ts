@@ -10,6 +10,7 @@ import { readFile } from '@server/modules/files/service';
 import type {
   GetSerialProofInput,
   RemoveSerialProofInput,
+  ReplaceSerialProofInput,
   RetrySerialProofInput,
   SerialProofContentDto,
   SerialProofPhotoDto,
@@ -21,6 +22,7 @@ import { readableBuIds } from '../access';
 import { canManageProof } from './access';
 import { serialProofJobStmt } from './job';
 import {
+  claimReplacementStmt,
   countDraftsOf,
   deleteDraftStmt,
   deleteFailedStmt,
@@ -34,7 +36,12 @@ import {
   sumDraftBytesOf,
   toProofDto,
 } from './repo';
-import { proofSizeError } from './stamp';
+import {
+  type ProofSnapshot,
+  proofSizeError,
+  STAMP_LINE_COUNT_REUPLOAD,
+  stampLineCountOf,
+} from './stamp';
 import { newStagedName, type ProofStore } from './store';
 
 /**
@@ -244,7 +251,7 @@ export async function retryProof(
     throw appError('CONFLICT', 'Hanya foto yang gagal diproses yang dapat dicoba lagi');
   }
   if (!(await canManageFailed(env, proof, user))) throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
-  if (proofSizeError(proof.width, proof.height) !== null) {
+  if (proofSizeError(proof.width, proof.height, stampLineCountOf(proof.snapshotJson)) !== null) {
     throw appError(
       'CONFLICT',
       'Ukuran foto melebihi batas, jadi tidak bisa diproses ulang. Buang foto ini lalu unggah yang lebih kecil.',
@@ -276,6 +283,109 @@ export async function retryProof(
     throw error;
   }
   const row = await findProof(env.DB, proof.id);
+  if (!row) throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
+  return toProofDto(row, true);
+}
+
+const REPLACE_UNKNOWN_MESSAGE = 'Foto tidak dikenal atau sudah dipakai';
+const REPLACE_STALE_MESSAGE =
+  'Foto ini sudah dicoba lagi, dibuang, atau berubah status. Muat ulang lalu coba lagi.';
+
+function appErrorOn(field: string, message: string): never {
+  throw appError('VALIDATION', message, { [field]: message });
+}
+
+/** Snapshot cap foto lama sebagai objek; `null` bila tak terbaca (foto tak dapat diganti tanpa data cap aslinya). */
+function parseOldSnapshot(text: string): ProofSnapshot | null {
+  try {
+    const value = JSON.parse(text) as Partial<ProofSnapshot> | null;
+    if (
+      value &&
+      typeof value === 'object' &&
+      typeof value.serial === 'string' &&
+      typeof value.actorName === 'string' &&
+      typeof value.savedAt === 'string'
+    ) {
+      return value as ProofSnapshot;
+    }
+  } catch {
+    // jatuh ke null di bawah
+  }
+  return null;
+}
+
+/**
+ * Unggah ulang (ganti foto bermasalah; spek 2026-11-16-serial-bukti-foto-qc-masalah-design.md §4.2): `photoId` = foto
+ * `failed` (penyebab apa pun, termasuk ukuran), `newPhotoId` = unggahan `draft` pengganti milik pemanggil. SATU `batch()`
+ * berpenjaga: hapus baris foto lama (bersyarat `failed`), klaim draft baru menjadi `queued` dengan serial, kejadian, dan
+ * snapshot cap foto lama ditambah penanda `reupload` (waktu + nama pengunggah ulang, untuk baris cap tambahan), pasang
+ * job, dan catat audit `serial.proof_reupload`. Gagal salah satu = tak ada yang berubah. Berkas sementara foto lama dibuang
+ * HANYA bila barisnya benar-benar terhapus (sesudah komit). Hak sama dengan Buang/Coba lagi (`canManage`).
+ */
+export async function replaceProof(
+  env: Env,
+  input: ReplaceSerialProofInput,
+  user: UserContext,
+): Promise<SerialProofPhotoDto> {
+  const old = await visibleProof(env, input.photoId, user);
+  if (old.state !== 'failed') {
+    throw appError('CONFLICT', 'Hanya foto yang gagal diproses yang dapat diunggah ulang');
+  }
+  if (!(await canManageFailed(env, old, user))) throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
+  const invalid = (message = REPLACE_UNKNOWN_MESSAGE): never => appErrorOn('newPhotoId', message);
+  const draft = input.newPhotoId === old.id ? null : await findProof(env.DB, input.newPhotoId);
+  // Jawaban generik yang sama untuk draft yang tak ada, milik orang lain, atau bukan `draft` (tak membuka apa pun).
+  if (!draft || draft.state !== 'draft' || draft.createdBy !== user.email) return invalid();
+  // Footer foto unggah ulang satu baris lebih tinggi: ukuran pengganti dinilai dengan kanvas sebenarnya.
+  const sizeError = proofSizeError(draft.width, draft.height, STAMP_LINE_COUNT_REUPLOAD);
+  if (sizeError !== null) return invalid(sizeError);
+  const snapshot = parseOldSnapshot(old.snapshotJson);
+  if (!snapshot) {
+    throw appError(
+      'CONFLICT',
+      'Data cap foto lama tidak terbaca, jadi tidak bisa diunggah ulang. Buang foto ini.',
+    );
+  }
+  const now = nowIso(env);
+  const snapshotJson = JSON.stringify({
+    ...snapshot,
+    reupload: { at: now, byName: user.name },
+  } satisfies ProofSnapshot);
+  try {
+    await env.DB.batch([
+      deleteFailedStmt(env.DB, old.id),
+      previousChangedRowGuard(env.DB),
+      claimReplacementStmt(env.DB, {
+        id: draft.id,
+        email: user.email,
+        serialId: old.serialId,
+        eventId: old.eventId,
+        snapshotJson,
+        now,
+      }),
+      previousChangedRowGuard(env.DB),
+      serialProofJobStmt(env, draft.id),
+      writeAudit(env.DB, {
+        ts: now,
+        actor: user.email,
+        action: 'serial.proof_reupload',
+        target: `serial:${old.serialId}`,
+        before: { id: old.id, eventId: old.eventId, state: old.state, error: old.lastError },
+        after: { id: draft.id },
+      }),
+    ]);
+  } catch (error) {
+    if (!isGuardFailure(error)) throw error;
+    // Batch dibatalkan seluruhnya: bedakan foto lama yang keburu berubah dari draft pengganti yang tak lagi bisa dipakai.
+    const again = await findProof(env.DB, old.id);
+    if (again?.state !== 'failed') throw appError('CONFLICT', REPLACE_STALE_MESSAGE);
+    return invalid();
+  }
+  if (old.stagedName !== '')
+    await storeOf(env)
+      .remove(old.stagedName)
+      .catch(() => undefined);
+  const row = await findProof(env.DB, draft.id);
   if (!row) throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
   return toProofDto(row, true);
 }

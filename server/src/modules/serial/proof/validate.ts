@@ -3,6 +3,7 @@ import { validateUploadFile } from '@server/modules/files/validate';
 import type {
   GetSerialProofInput,
   RemoveSerialProofInput,
+  ReplaceSerialProofInput,
   RetrySerialProofInput,
   UploadSerialProofInput,
 } from '@shared/contract';
@@ -25,4 +26,12 @@ export function validateRemoveSerialProof(raw: unknown): RemoveSerialProofInput 
 
 export function validateRetrySerialProof(raw: unknown): RetrySerialProofInput {
   return validateGetSerialProof(raw);
+}
+
+export function validateReplaceSerialProof(raw: unknown): ReplaceSerialProofInput {
+  const reader = readObject(raw);
+  const photoId = reader.str('photoId', { required: true, max: 100 });
+  const newPhotoId = reader.str('newPhotoId', { required: true, max: 100 });
+  reader.done();
+  return { photoId, newPhotoId };
 }

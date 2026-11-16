@@ -241,6 +241,8 @@ describe('listProofsByEvents', () => {
         error: null,
         canManage: true,
         canRetry: false,
+        failedAt: null,
+        expiresAt: null,
       },
       {
         id: 'bbbbbbbb-2',
@@ -253,6 +255,9 @@ describe('listProofsByEvents', () => {
         error: 'Berkas rusak',
         canManage: false,
         canRetry: false,
+        // gagal pada NOW; batas buang otomatis = NOW + 14 hari
+        failedAt: NOW,
+        expiresAt: new Date(Date.parse(NOW) + 14 * 86_400_000).toISOString(),
       },
     ]);
     const serialized = JSON.stringify([...map.values()]);

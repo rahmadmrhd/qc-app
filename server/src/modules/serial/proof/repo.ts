@@ -1,8 +1,8 @@
 import { CAS_FAIL_SQL } from '@server/core/cas';
 import type { DbStatement, Preparer } from '@server/core/db';
 import type { SerialProofPhotoDto } from '@shared/contract';
-import { SERIAL_PROOF_STATES, type SerialProofState } from '@shared/serials';
-import { proofSizeError } from './stamp';
+import { SERIAL_PROOF_LIMITS, SERIAL_PROOF_STATES, type SerialProofState } from '@shared/serials';
+import { proofSizeError, stampLineCountOf } from './stamp';
 
 /**
  * Foto bukti QC (`serial_proof_photos`; rancangan 2026-11-16 §6.1). Berkas ini satu-satunya yang menulis tabel itu.
@@ -90,8 +90,19 @@ export function proofFilename(id: string, mime: string): string {
   return `bukti-${id.trim().slice(0, 8)}.${EXTENSION_OF_MIME[mime] ?? 'webp'}`;
 }
 
+const DAY_MS = 86_400_000;
+
+/** Batas buang otomatis foto yang gagal pada `failedAt` (ISO UTC); `null` bila `failedAt` tak sah. */
+function failedExpiry(failedAt: string): string | null {
+  const ms = Date.parse(failedAt);
+  return Number.isFinite(ms)
+    ? new Date(ms + SERIAL_PROOF_LIMITS.failedRetentionDays * DAY_MS).toISOString()
+    : null;
+}
+
 /** Baris -> DTO (tanpa `staged_name` dan `snapshot_json`); `canManage` = pemanggil boleh Coba lagi/Buang foto ini. */
 export function toProofDto(row: ProofRow, canManage: boolean): SerialProofPhotoDto {
+  const failed = row.state === 'failed';
   return {
     id: row.id,
     state: row.state,
@@ -103,7 +114,13 @@ export function toProofDto(row: ProofRow, canManage: boolean): SerialProofPhotoD
     error: row.lastError === '' ? null : row.lastError,
     canManage,
     // Gagal karena ukuran = deterministik: mengulang tak berguna (dan berbahaya bagi memori), hanya Buang.
-    canRetry: canManage && row.state === 'failed' && proofSizeError(row.width, row.height) === null,
+    canRetry:
+      canManage &&
+      failed &&
+      proofSizeError(row.width, row.height, stampLineCountOf(row.snapshotJson)) === null,
+    // `updated_at` foto `failed` = saat gagal (retensi 14 hari dihitung dari sini juga).
+    failedAt: failed ? row.updatedAt : null,
+    expiresAt: failed ? failedExpiry(row.updatedAt) : null,
   };
 }
 
@@ -342,6 +359,28 @@ export function deleteDraftStmt(db: Preparer, id: string, email: string): DbStat
 /** Menghapus foto `failed` (bersyarat: foto yang keburu dicoba ulang/`queued` tak terhapus). */
 export function deleteFailedStmt(db: Preparer, id: string): DbStatement {
   return db.prepare("DELETE FROM serial_proof_photos WHERE id = ? AND state = 'failed'").bind(id);
+}
+
+/**
+ * Klaim foto `draft` pengganti ke kejadian foto lama (`replace`): `draft` -> `queued` dengan `serial_id`/`event_id`/snapshot
+ * cap milik foto lama. BERSYARAT `state = 'draft'` dan pemilik; pemanggil memasang `previousChangedRowGuard` sesudahnya.
+ */
+export function claimReplacementStmt(
+  db: Preparer,
+  args: {
+    id: string;
+    email: string;
+    serialId: string;
+    eventId: string;
+    snapshotJson: string;
+    now: string;
+  },
+): DbStatement {
+  return db
+    .prepare(
+      "UPDATE serial_proof_photos SET state = 'queued', serial_id = ?, event_id = ?, snapshot_json = ?, updated_at = ? WHERE id = ? AND state = 'draft' AND created_by = ?",
+    )
+    .bind(args.serialId, args.eventId, args.snapshotJson, args.now, args.id, args.email);
 }
 
 /** Penjaga: pernyataan SEBELUMNYA tak mengubah baris -> seluruh `batch()` dibatalkan (`CAS_FAIL_SQL`). */

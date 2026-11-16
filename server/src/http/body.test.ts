@@ -328,6 +328,7 @@ const WORST: Inputs = {
   },
   'qrcodes.cloneFromDrive': { source: text(2000), replaceDocumentId: UUID },
   'serialProofs.retry': { id: UUID },
+  'serialProofs.replace': { photoId: UUID, newPhotoId: UUID },
   'notifications.markRead': { id: UUID },
   'notifications.markAllRead': {},
   'push.subscribe': { endpoint: text(2000), p256dh: text(200), auth: text(100) },

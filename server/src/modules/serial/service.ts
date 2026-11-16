@@ -507,6 +507,7 @@ export function toSummary(row: SerialRow): SerialSummaryDto {
     transitOn: orNull(row.transit_on),
     openCaseNumber: orNull(row.open_case_number ?? ''),
     hasProofPhotos: Number(row.has_proof) === 1,
+    proofProblemCount: Number(row.proof_problem),
     createdAt: row.created_at,
   };
 }

@@ -37,6 +37,7 @@ const dto = (over: Partial<SerialDto> = {}): SerialDto => ({
   transitOn: null,
   openCaseNumber: null,
   hasProofPhotos: false,
+  proofProblemCount: 0,
   createdAt: '2026-11-10T03:00:00.000Z',
   note: '',
   recordedLocationId: 'l1',

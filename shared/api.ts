@@ -459,6 +459,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   },
   'serialProofs.remove': { verb: 'DELETE', path: '/serial-proofs/{id}' },
   'serialProofs.retry': { verb: 'POST', path: '/serial-proofs/{id}/retry', status: 200 },
+  'serialProofs.replace': { verb: 'POST', path: '/serial-proofs/{photoId}/replace', status: 200 },
   'postelSettings.get': { verb: 'GET', path: '/postel-settings', etag: 'updatedAt' },
   'postelSettings.save': {
     verb: 'PUT',

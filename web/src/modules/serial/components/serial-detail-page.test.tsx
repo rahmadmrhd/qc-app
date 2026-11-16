@@ -54,6 +54,7 @@ const SERIAL: SerialDto = {
   recordedLocationId: 'l2',
   stickers: [{ stickerId: 'st1', name: 'Stiker A', alias: '', qty: 2, stickerStatus: 'active' }],
   hasProofPhotos: false,
+  proofProblemCount: 0,
   openCaseId: null,
   transitFromLocationId: null,
   transitFromLocationName: null,
@@ -863,6 +864,8 @@ const PHOTO = {
   error: null,
   canManage: true,
   canRetry: true,
+  failedAt: null,
+  expiresAt: null,
 };
 
 test('kepala dan kartu riwayat menampilkan badge Bukti foto QC hanya bila serial punya foto', async () => {

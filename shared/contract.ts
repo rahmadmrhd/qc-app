@@ -1253,6 +1253,7 @@ export interface ApiContract {
   'serialProofs.get': { input: GetSerialProofInput; output: SerialProofContentDto };
   'serialProofs.remove': { input: RemoveSerialProofInput; output: { id: string } };
   'serialProofs.retry': { input: RetrySerialProofInput; output: SerialProofPhotoDto };
+  'serialProofs.replace': { input: ReplaceSerialProofInput; output: SerialProofPhotoDto };
   'postelFiles.upload': { input: UploadPostelFileInput; output: PostelAttachmentDto };
   'postelFiles.get': { input: GetPostelFileInput; output: PostelFileContentDto };
   'notifications.list': { input: ListNotificationsInput; output: NotificationListDto };
@@ -1430,6 +1431,10 @@ export interface SerialProofPhotoDto {
    * hanya Buang). Rute `serialProofs.retry` menolak (`CONFLICT`) bila `false`.
    */
   canRetry: boolean;
+  /** Waktu foto menjadi `failed` (ISO UTC; = `updated_at` saat gagal); `null` bila belum `failed`. */
+  failedAt: string | null;
+  /** Batas buang otomatis foto `failed` (`failedAt` + `SERIAL_PROOF_LIMITS.failedRetentionDays` hari, ISO UTC); `null` bila belum `failed`. */
+  expiresAt: string | null;
 }
 /** Unggah foto bukti (multipart; gambar sudah dikecilkan di browser). */
 export interface UploadSerialProofInput {
@@ -1453,6 +1458,11 @@ export interface RemoveSerialProofInput {
 export interface RetrySerialProofInput {
   id: string;
 }
+/** Unggah ulang (ganti foto bermasalah): `photoId` = foto `failed`, `newPhotoId` = unggahan `draft` pengganti. */
+export interface ReplaceSerialProofInput {
+  photoId: string;
+  newPhotoId: string;
+}
 export interface SerialSummaryDto {
   id: string;
   buId: string;
@@ -1475,6 +1485,8 @@ export interface SerialSummaryDto {
   openCaseNumber: string | null;
   /** Entri serial ini (Tambah/Cek ulang) punya bukti foto QC. */
   hasProofPhotos: boolean;
+  /** Jumlah foto bukti QC entri serial ini yang `failed` (0 = tak ada; bahan badge "Foto bermasalah"). */
+  proofProblemCount: number;
   createdAt: string;
 }
 /** Laporan rusak (`serial_cases`): satu episode kegagalan. */

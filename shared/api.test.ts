@@ -332,6 +332,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'serialProofs.get': { id: 'p1' },
   'serialProofs.remove': { id: 'p1' },
   'serialProofs.retry': { id: 'p1' },
+  'serialProofs.replace': { photoId: 'p1', newPhotoId: 'p2' },
   'postelFiles.upload': { mime: 'application/pdf', bytes: new Uint8Array([37, 80, 68, 70]) },
   'postelFiles.get': { id: 'f1' },
   'notifications.list': { limit: 30, before: '2026-11-12T00:00:00.000Z|n1' },

@@ -122,6 +122,7 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'serialProofs.get': true,
   'serialProofs.remove': true,
   'serialProofs.retry': true,
+  'serialProofs.replace': true,
   'postelFiles.upload': true,
   'postelFiles.get': true,
   'notifications.list': true,

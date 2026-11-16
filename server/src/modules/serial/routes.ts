@@ -4,10 +4,11 @@ import { actOnSerial } from './act';
 import { getSerialSettings, saveSerialSettings } from './alert';
 import { listSerialCases } from './case-list';
 import { serialHistory } from './history';
-import { getProof, removeProof, retryProof, uploadProof } from './proof/service';
+import { getProof, removeProof, replaceProof, retryProof, uploadProof } from './proof/service';
 import {
   validateGetSerialProof,
   validateRemoveSerialProof,
+  validateReplaceSerialProof,
   validateRetrySerialProof,
   validateUploadSerialProof,
 } from './proof/validate';
@@ -66,7 +67,8 @@ type SerialMethod =
   | 'serialProofs.upload'
   | 'serialProofs.get'
   | 'serialProofs.remove'
-  | 'serialProofs.retry';
+  | 'serialProofs.retry'
+  | 'serialProofs.replace';
 
 /** Pembaca serial: level `view` pada `serial` ATAU `serialservice` (BU dibatasi handler). */
 const READ_PERMISSION = {
@@ -147,6 +149,13 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       permission: { module: 'serial', level: 'edit' },
       validate: validateRetrySerialProof,
       handler: (input, ctx) => retryProof(ctx.env, input, ctx.user),
+    },
+    // Unggah ulang (ganti foto bermasalah dengan unggahan draft baru): butuh `serial: edit`; hak atas foto lama = aturan
+    // Buang/Coba lagi (`canManageProof`), diperiksa handler.
+    'serialProofs.replace': {
+      permission: { module: 'serial', level: 'edit' },
+      validate: validateReplaceSerialProof,
+      handler: (input, ctx) => replaceProof(ctx.env, input, ctx.user),
     },
     'serials.list': {
       permission: READ_PERMISSION,

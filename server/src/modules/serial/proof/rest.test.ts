@@ -189,6 +189,8 @@ describe('serialProofs.upload', () => {
       'canManage',
       'canRetry',
       'error',
+      'expiresAt',
+      'failedAt',
       'filename',
       'height',
       'id',

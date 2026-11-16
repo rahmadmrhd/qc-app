@@ -173,6 +173,7 @@ export function toSerialSummary(serial: SerialDto): SerialSummaryDto {
     transitOn: serial.transitOn,
     openCaseNumber: serial.openCaseNumber,
     hasProofPhotos: serial.hasProofPhotos,
+    proofProblemCount: serial.proofProblemCount,
     createdAt: serial.createdAt,
   };
 }

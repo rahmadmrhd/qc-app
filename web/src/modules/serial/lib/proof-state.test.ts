@@ -13,6 +13,8 @@ const photo = (state: SerialProofPhotoDto['state']): SerialProofPhotoDto => ({
   error: null,
   canManage: true,
   canRetry: true,
+  failedAt: null,
+  expiresAt: null,
 });
 const event = (...states: SerialProofPhotoDto['state'][]) =>
   ({ proofPhotos: states.map(photo) }) as SerialEventDto;

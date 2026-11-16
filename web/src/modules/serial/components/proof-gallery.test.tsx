@@ -23,6 +23,8 @@ const photo = (id: string, over: Partial<SerialProofPhotoDto> = {}): SerialProof
   error: null,
   canManage: true,
   canRetry: true,
+  failedAt: null,
+  expiresAt: null,
   ...over,
 });
 
