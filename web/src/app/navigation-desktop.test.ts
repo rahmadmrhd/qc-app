@@ -25,11 +25,6 @@ const me: MeDto = {
   locations: [],
 };
 
-const labels = (desktop?: boolean) =>
-  visibleNavGroups(NAV_GROUPS, me, undefined, desktop).flatMap((group) =>
-    group.items.map((item) => item.label),
-  );
-
 const noPermissions = (isSuperAdmin: boolean, countrylock: 'none' | 'view'): MeDto => ({
   ...me,
   isSuperAdmin,
