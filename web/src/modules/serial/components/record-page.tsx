@@ -24,6 +24,7 @@ import {
 } from '../lib/draft';
 import { clearDraft, loadDraft, resumeDraftWrites, saveDraft } from '../lib/draft-store';
 import { isReferenceError, type VerifyDeps, verifyImported } from '../lib/import-verify';
+import { hasProofPhotos } from '../lib/leave-guard';
 import { todayWib, toLocationOptions } from '../lib/locations';
 import type { QcsnImport } from '../lib/qcsn';
 import { useSerialLocations } from '../lib/use-serial-locations';
@@ -65,6 +66,18 @@ export interface RecordPageProps {
    * draft kosong): pemanggil membawa pengguna kembali ke daftar. Bila ada yang gagal, halaman tetap terbuka.
    */
   onAllSaved?: (created: number) => void;
+  /** Dipanggil saat ada/tidaknya baris draft berfoto bukti berubah (menentukan jenis penjaga keluar halaman). */
+  onProofChange?: (hasProof: boolean) => void;
+  /**
+   * Diisi pegangan untuk menjalankan Simpan dari luar (dialog penjaga keluar). `save()` sama dengan tombol Simpan tetapi
+   * TIDAK memanggil `onAllSaved` (pemanggil sendiri yang melanjutkan navigasi); hasilnya `true` bila semua baris
+   * tersimpan.
+   */
+  handleRef?: { current: RecordPageHandle | null };
+}
+
+export interface RecordPageHandle {
+  save(): Promise<boolean>;
 }
 
 const NOTICE_CLASS: Record<NoticeTone, string> = {
@@ -114,7 +127,12 @@ function describeAdd(report: ReturnType<typeof addSerials>['report']): {
 }
 
 /** Halaman Catat Serial: bawaan rombongan, masukan pindai/tempel, tabel sementara, simpan per 200 baris. */
-export function RecordPage({ onDirtyChange, onAllSaved }: RecordPageProps) {
+export function RecordPage({
+  onDirtyChange,
+  onAllSaved,
+  onProofChange,
+  handleRef,
+}: RecordPageProps) {
   const me = useMe();
   const queryClient = useQueryClient();
   const saveBatch = useSaveSerialBatch();
@@ -181,6 +199,10 @@ export function RecordPage({ onDirtyChange, onAllSaved }: RecordPageProps) {
   useEffect(() => {
     onDirtyChange?.(rows.length > 0);
   }, [onDirtyChange, rows.length]);
+  const withProof = hasProofPhotos(rows);
+  useEffect(() => {
+    onProofChange?.(withProof);
+  }, [onProofChange, withProof]);
 
   const selectedCount = rows.filter((row) => row.selected).length;
   const detailRow = detailId === null ? undefined : rows.find((row) => row.clientId === detailId);
@@ -373,8 +395,9 @@ export function RecordPage({ onDirtyChange, onAllSaved }: RecordPageProps) {
     }
   }
 
-  async function handleSave() {
-    if (saving || importing || rowsRef.current.length === 0) return;
+  /** `external` = dipicu penjaga keluar halaman: pemanggil yang melanjutkan navigasi, jadi `onAllSaved` tak dipanggil. */
+  async function handleSave(external = false): Promise<boolean> {
+    if (saving || importing || rowsRef.current.length === 0) return false;
     const current = rowsRef.current;
     const blocked = current.filter(
       (row) =>
@@ -389,7 +412,7 @@ export function RecordPage({ onDirtyChange, onAllSaved }: RecordPageProps) {
         tone: 'error',
         text: `${blocked.length} baris belum lengkap (item, lokasi, atau tanggal uji); lihat kolom Hasil.`,
       });
-      return;
+      return false;
     }
     setSaving(true);
     setNotice(null);
@@ -433,7 +456,7 @@ export function RecordPage({ onDirtyChange, onAllSaved }: RecordPageProps) {
             tone: 'error',
             text: `Stiker yang berlaku gagal dimuat: ${describeError(outcome.reason)}`,
           });
-          return;
+          return false;
         }
       }
       let skipped = 0;
@@ -494,14 +517,16 @@ export function RecordPage({ onDirtyChange, onAllSaved }: RecordPageProps) {
     if (!mountedRef.current) {
       // Halaman sudah ditinggalkan: draf yang ditulis saat unlock masih memuat baris yang kini tersimpan; sinkronkan.
       saveDraft(ownerKey, rowsRef.current);
-      return;
+      return allSaved;
     }
-    if (allSaved && onAllSaved) {
+    if (allSaved && (external || onAllSaved)) {
       clearDraft(ownerKey);
       toast.success('Serial Number berhasil disimpan');
-      onAllSaved(savedCount);
+      if (!external) onAllSaved?.(savedCount);
     }
+    return allSaved;
   }
+  if (handleRef) handleRef.current = { save: () => handleSave(true) };
 
   const hasFailed = rows.some((row) => row.result === 'error');
   const blockedCount = rows.filter((row) => rowStatus(row).tone !== 'ok').length;

@@ -1,6 +1,6 @@
 import type { MeDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { addSerials, type StagingRow } from '../lib/draft';
@@ -16,7 +16,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
 
-import { RecordPage } from './record-page';
+import { RecordPage, type RecordPageHandle } from './record-page';
 
 type SavedRow = { clientId: string; serial: string; proofPhotoIds?: string[] };
 let saveCalls: SavedRow[][] = [];
@@ -189,4 +189,64 @@ test('galat penyimpanan lain: foto tetap melekat pada baris', async () => {
   await userEvent.click(await screen.findByRole('button', { name: /^Simpan 1 serial/ }));
   expect(await screen.findByText('Item tidak ditemukan')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Foto (1), AAA111' })).toBeInTheDocument();
+});
+
+function renderGuarded(extra: {
+  onAllSaved?: () => void;
+  onProofChange?: (hasProof: boolean) => void;
+}) {
+  const handleRef: { current: RecordPageHandle | null } = { current: null };
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <RecordPage handleRef={handleRef} {...extra} />
+    </QueryClientProvider>,
+  );
+  return handleRef;
+}
+
+test('onProofChange melaporkan ada/tidaknya baris berfoto bukti', async () => {
+  seedDraft([
+    { serial: 'AAA111', photos: ['p1'] },
+    { serial: 'BBB222', photos: [] },
+  ]);
+  const onProofChange = vi.fn();
+  renderGuarded({ onProofChange });
+  await waitFor(() => expect(onProofChange).toHaveBeenLastCalledWith(true));
+  await userEvent.click(await screen.findByRole('button', { name: 'Hapus AAA111' }));
+  await waitFor(() => expect(onProofChange).toHaveBeenLastCalledWith(false));
+});
+
+test('handleRef.save: menyimpan semua baris, true, mengosongkan draft, tanpa memanggil onAllSaved', async () => {
+  seedDraft([{ serial: 'AAA111', photos: ['p1'] }]);
+  const onAllSaved = vi.fn();
+  const handleRef = renderGuarded({ onAllSaved });
+  await screen.findByRole('button', { name: /^Simpan 1 serial/ });
+  let saved = false;
+  await act(async () => {
+    saved = (await handleRef.current?.save()) ?? false;
+  });
+  expect(saved).toBe(true);
+  expect(saveCalls[0]?.map((row) => row.proofPhotoIds)).toEqual([['p1']]);
+  expect(onAllSaved).not.toHaveBeenCalled();
+  expect(localStorage.getItem('qc.serial.draft:a@gmail.com')).toBeNull();
+});
+
+test('handleRef.save: ada baris gagal = false dan draft tetap', async () => {
+  seedDraft([
+    { serial: 'AAA111', photos: ['p1'] },
+    { serial: 'BBB222', photos: [] },
+  ]);
+  respond = (row) =>
+    row.serial === 'BBB222'
+      ? { result: 'invalid', message: 'Ditolak' }
+      : { result: 'created', message: '' };
+  const handleRef = renderGuarded({});
+  await screen.findByRole('button', { name: /^Simpan 2 serial/ });
+  let saved = true;
+  await act(async () => {
+    saved = (await handleRef.current?.save()) ?? true;
+  });
+  expect(saved).toBe(false);
+  expect(screen.getByText('Ditolak')).toBeInTheDocument();
 });
