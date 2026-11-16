@@ -8,6 +8,8 @@ import {
   type AuthStatus,
   BRIDGE_ARGS,
   BRIDGE_CHANNELS,
+  type CatalogSnapshot,
+  type CatalogStatus,
   type DeviceInfoResult,
   type InjectProgressDto,
   type InjectRequest,
@@ -62,6 +64,15 @@ export interface IpcDeps {
   pending: PendingStore;
   /** Login desktop (token hanya di proses utama; renderer hanya menerima `AuthStatus`). */
   auth: { status(): AuthStatus; start(): Promise<void>; logout(): void };
+  /**
+   * Katalog Tipe offline (potret tersimpan + sinkron). Hanya data katalog dan status yang sampai ke renderer: tanpa token,
+   * alamat server, atau jalur berkas.
+   */
+  catalog: {
+    snapshot(): CatalogSnapshot | null;
+    status(): CatalogStatus;
+    refresh(): Promise<CatalogStatus>;
+  };
   /** Menerapkan bundel UI siap dan memuat ulang jendela (proses utama yang memutuskan boleh/tidaknya). */
   ui: { reload(): Promise<void> };
   /** Kirim progres ke renderer (`webContents.send(INJECT_PROGRESS_EVENT, ...)`). */
@@ -219,6 +230,21 @@ export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
   handle(BRIDGE_CHANNELS.uiReload, async (_event, ...args) => {
     parseArgs(BRIDGE_ARGS.uiReload, args);
     await deps.ui.reload();
+  });
+
+  handle(BRIDGE_CHANNELS.catalogGet, async (_event, ...args): Promise<CatalogSnapshot | null> => {
+    parseArgs(BRIDGE_ARGS.catalogGet, args);
+    return deps.catalog.snapshot();
+  });
+
+  handle(BRIDGE_CHANNELS.catalogStatus, async (_event, ...args): Promise<CatalogStatus> => {
+    parseArgs(BRIDGE_ARGS.catalogStatus, args);
+    return deps.catalog.status();
+  });
+
+  handle(BRIDGE_CHANNELS.catalogRefresh, async (_event, ...args): Promise<CatalogStatus> => {
+    parseArgs(BRIDGE_ARGS.catalogRefresh, args);
+    return deps.catalog.refresh();
   });
 
   handle(BRIDGE_CHANNELS.pendingList, async (_event, ...args): Promise<PendingEntry[]> => {

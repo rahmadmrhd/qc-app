@@ -63,6 +63,16 @@ function setup(overrides: Partial<IpcDeps> = {}, packageDir: string | null = 'D:
       start: vi.fn(async () => undefined),
       logout: vi.fn(),
     },
+    catalog: {
+      snapshot: vi.fn(() => null),
+      status: vi.fn(() => ({ state: 'idle' as const, itemCount: 0, syncedAt: null, error: null })),
+      refresh: vi.fn(async () => ({
+        state: 'ok' as const,
+        itemCount: 2,
+        syncedAt: '2026-11-16T10:00:00.000Z',
+        error: null,
+      })),
+    },
     ui: { reload: vi.fn(async () => undefined) },
     emitProgress: (e) => progress.push(e),
     ...overrides,
@@ -292,6 +302,40 @@ describe('registerIpc', () => {
       await expect(call(BRIDGE_CHANNELS.authLogin)).rejects.toThrow(/tidak dipercaya/);
       expect(deps.auth.start).not.toHaveBeenCalled();
       store.close();
+    });
+  });
+
+  describe('catalog', () => {
+    test('get/status/refresh meneruskan ke proses utama; argumen apa pun ditolak; pengirim tak dipercaya ditolak', async () => {
+      const { deps, call, store } = setup();
+      expect(await call(BRIDGE_CHANNELS.catalogGet)).toBeNull();
+      expect(await call(BRIDGE_CHANNELS.catalogStatus)).toEqual({
+        state: 'idle',
+        itemCount: 0,
+        syncedAt: null,
+        error: null,
+      });
+      expect(await call(BRIDGE_CHANNELS.catalogRefresh)).toMatchObject({
+        state: 'ok',
+        itemCount: 2,
+      });
+      expect(deps.catalog.refresh).toHaveBeenCalledOnce();
+      // Tak ada kanal yang menerima argumen (mis. jalur berkas atau token dari renderer).
+      for (const channel of [
+        BRIDGE_CHANNELS.catalogGet,
+        BRIDGE_CHANNELS.catalogStatus,
+        BRIDGE_CHANNELS.catalogRefresh,
+      ]) {
+        await expect(call(channel, 'C:\rahasia')).rejects.toThrow(/Argumen tidak valid/);
+      }
+      expect(deps.catalog.refresh).toHaveBeenCalledOnce();
+      store.close();
+      const untrusted = setup({ isTrustedSender: () => false });
+      await expect(untrusted.call(BRIDGE_CHANNELS.catalogRefresh)).rejects.toThrow(
+        /tidak dipercaya/,
+      );
+      expect(untrusted.deps.catalog.refresh).not.toHaveBeenCalled();
+      untrusted.store.close();
     });
   });
 

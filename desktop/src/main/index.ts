@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import {
   AUTH_CHANGE_EVENT,
   BRIDGE_VERSION,
+  CATALOG_CHANGE_EVENT,
   INJECT_PROGRESS_EVENT,
   UI_UPDATE_READY_EVENT,
 } from '@countrylock/bridge-channels';
@@ -33,6 +34,9 @@ import { createLoginFlow, LOGIN_MAX_AGE_MS, type LoginFlow } from './auth/login-
 import { closeLoginWindow, openLoginWindow } from './auth/login-window';
 import { LOGIN_SUCCESS_TITLE, startLoopback } from './auth/loopback';
 import { createTokenStore } from './auth/token-store';
+import { createCatalogStore } from './catalog/catalog-store';
+import { createCatalogSync } from './catalog/catalog-sync';
+import { CATALOG_TOKEN } from './catalog/catalog-token';
 import { readDeviceInfo, readRouterInfo } from './device/info';
 import { pingOnce } from './device/ping';
 import { registerIpc } from './ipc';
@@ -370,9 +374,24 @@ function runApp(): void {
       isBusy: () => ipcHandle?.isInjecting() ?? false,
       fetchImpl: net.fetch as typeof fetch,
     });
+    // Katalog Tipe offline: cache lokal + sinkron berkala (token bersama hanya di proses utama, tak pernah ke renderer).
+    const catalogStore = createCatalogStore(join(userData, 'catalog'));
+    const catalog = createCatalogSync({
+      store: catalogStore,
+      settings: () => settings.get(),
+      token: CATALOG_TOKEN,
+      fetchImpl: net.fetch as typeof fetch,
+      onStatus: (status) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(CATALOG_CHANGE_EVENT, status);
+        }
+      },
+    });
     protocol.handle(
       APP_SCHEME,
-      createAppHandler(() => bundles.activeRoot(), proxy),
+      createAppHandler(() => bundles.activeRoot(), proxy, {
+        read: (id) => catalogStore.readFile(id),
+      }),
     );
     let pending: ReturnType<typeof openPendingStore>;
     try {
@@ -449,6 +468,14 @@ function runApp(): void {
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(INJECT_PROGRESS_EVENT, event);
         }
+      },
+      catalog: {
+        snapshot: () => {
+          const stored = catalogStore.read();
+          return stored ? { catalog: stored.catalog, syncedAt: stored.syncedAt } : null;
+        },
+        status: () => catalog.status(),
+        refresh: () => catalog.refresh(),
       },
       ui: {
         reload: async () => {
@@ -598,6 +625,17 @@ function runApp(): void {
     void runCheck(0);
     mainWindow.on('focus', () => void runCheck(10 * 60 * 1000));
     setInterval(() => void runCheck(0), 60 * 60 * 1000).unref();
+    // Sinkron katalog Tipe offline: saat dibuka, saat jendela fokus (jarak >= 10 menit), dan tiap jam. `refresh` tak
+    // pernah melempar dan tanpa token (build tanpa katalog) tak menyentuh jaringan.
+    let lastCatalog = 0;
+    const runCatalog = (minGapMs: number): void => {
+      if (Date.now() - lastCatalog < minGapMs) return;
+      lastCatalog = Date.now();
+      void catalog.refresh();
+    };
+    runCatalog(0);
+    mainWindow.on('focus', () => runCatalog(10 * 60 * 1000));
+    setInterval(() => runCatalog(0), 60 * 60 * 1000).unref();
     for (const url of earlyAuthUrls.splice(0)) void flow.handleCallback(url);
     for (const handoff of earlyHandoffs.splice(0)) void handoffFlow.handle(handoff);
   });

@@ -3,6 +3,7 @@
 // string dibatasi panjangnya, host harus sah, dan karakter kontrol ditolak.
 
 import { z } from 'zod';
+import type { DesktopCatalogDto } from '../../shared/desktop-catalog';
 import type { BRIDGE_CHANNELS } from './bridge-channels';
 import type { CountryLockConfig } from './config';
 import type { DeviceInfo } from './device-info';
@@ -15,6 +16,9 @@ export {
   AUTH_CHANGE_EVENT,
   BRIDGE_CHANNELS,
   BRIDGE_VERSION,
+  CATALOG_BRIDGE_VERSION,
+  CATALOG_CHANGE_EVENT,
+  CATALOG_FILES_PATH,
   INJECT_PROGRESS_EVENT,
   MIN_BRIDGE_VERSION,
   NOTIFICATIONS_BRIDGE_VERSION,
@@ -82,6 +86,23 @@ export interface UiUpdateInfo {
   uiVersion: string;
 }
 
+/** Status sinkronisasi katalog Tipe offline (tanpa token atau detail server). */
+export interface CatalogStatus {
+  /** `disabled` = build tanpa token katalog (Country Lock tetap jalan, Tipe dipilih manual). */
+  state: 'disabled' | 'idle' | 'syncing' | 'ok' | 'error';
+  itemCount: number;
+  /** Kapan katalog tersimpan terakhir disinkronkan (ISO), atau `null` bila belum pernah. */
+  syncedAt: string | null;
+  /** Galat sinkron terakhir: server tak terjangkau, atau ditolak (token salah / rute dinonaktifkan). */
+  error: 'UNAVAILABLE' | 'REJECTED' | null;
+}
+
+/** Katalog tersimpan; gambar dimuat lewat `CATALOG_FILES_PATH + id` (origin `app://qc`). */
+export interface CatalogSnapshot {
+  catalog: DesktopCatalogDto;
+  syncedAt: string;
+}
+
 export interface QcBridge {
   version: number;
   package: {
@@ -110,6 +131,15 @@ export interface QcBridge {
     onUpdateReady(cb: (info: UiUpdateInfo) => void): () => void;
     /** Menerapkan bundel siap (bila tak ada inject berjalan) lalu memuat ulang jendela. */
     reload(): Promise<void>;
+  };
+  /** Jembatan v5 (`CATALOG_BRIDGE_VERSION`): katalog Tipe offline; pemakai memeriksa versinya. */
+  catalog: {
+    /** Katalog tersimpan (cache lokal), atau `null` bila belum pernah tersinkron. Tanpa jaringan. */
+    get(): Promise<CatalogSnapshot | null>;
+    /** Menyinkronkan dari server sekarang; mengembalikan status akhir. */
+    refresh(): Promise<CatalogStatus>;
+    status(): Promise<CatalogStatus>;
+    onChange(cb: (status: CatalogStatus) => void): () => void;
   };
   /** Jembatan v4 (`NOTIFICATIONS_BRIDGE_VERSION`); tak ada di aplikasi desktop lama, jadi pemakai memeriksa versinya. */
   notifications: {
@@ -212,6 +242,9 @@ export const BRIDGE_ARGS = {
   authLogin: z.tuple([]),
   authLogout: z.tuple([]),
   uiReload: z.tuple([]),
+  catalogGet: z.tuple([]),
+  catalogRefresh: z.tuple([]),
+  catalogStatus: z.tuple([]),
 } as const satisfies Record<keyof typeof BRIDGE_CHANNELS, z.ZodType>;
 
 // --- Teks progres aman untuk renderer ------------------------------------------------------

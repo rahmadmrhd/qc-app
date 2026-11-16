@@ -6,6 +6,7 @@ import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveCatalogToken } from './catalog-token';
 import { resolveUiPublicKey } from './ui-public-key';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -24,11 +25,21 @@ function resolveKeyOrExit(): ReturnType<typeof resolveUiPublicKey> {
   }
 }
 const uiKey = resolveKeyOrExit();
+// Token katalog Tipe offline dari env `CATALOG_TOKEN` (bukan di source); kosong/tak sah = katalog dinonaktifkan.
+const catalogToken = resolveCatalogToken(process.env);
 if (!spikeOnly) {
   console.log(
     uiKey.fingerprint
       ? `kunci publik tanda tangan UI ditanam (sidik SHA-256: ${uiKey.fingerprint})`
       : 'UI_PUBLIC_KEY_PEM kosong: kunci publik tidak ditanam, pembaruan UI desktop nonaktif (UI dasar saja)',
+  );
+}
+if (!spikeOnly) {
+  console.log(
+    catalogToken.token
+      ? 'token katalog Tipe offline ditanam'
+      : (catalogToken.problem ??
+          'CATALOG_TOKEN kosong: katalog Tipe offline dinonaktifkan (Tipe dipilih manual)'),
   );
 }
 if (!spikeOnly) await rm(`${root}dist`, { recursive: true, force: true });
@@ -43,7 +54,10 @@ async function bundle(entry: string, outdir: string, format: 'esm' | 'cjs', nami
     sourcemap: 'linked',
     minify: false,
     // `typeof __UI_PUBLIC_KEY_PEM__` di src/main/ui/public-key.ts menjadi literal; tanpa kunci = tak didefinisikan.
-    define: { __UI_PUBLIC_KEY_PEM__: JSON.stringify(uiKey.pem) },
+    define: {
+      __UI_PUBLIC_KEY_PEM__: JSON.stringify(uiKey.pem),
+      __CATALOG_TOKEN__: JSON.stringify(catalogToken.token),
+    },
     ...(naming ? { naming } : {}),
   });
   if (!result.success) {
