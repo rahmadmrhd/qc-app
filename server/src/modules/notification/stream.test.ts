@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { app } from '@server/app';
-import { signDesktopToken } from '@server/core/session';
+import { DESKTOP_TOKEN_TTL_MS, signDesktopToken } from '@server/core/session';
 import { ENV, seedHandoverEnv } from '@server-test/handover-env';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
@@ -231,6 +231,16 @@ describe('aliran notifikasi desktop (SSE)', () => {
     const oldest = frames(opened[0] as Response);
     expect((await oldest.next())?.event).toBe('ready');
     expect(await oldest.next(500)).toBeNull(); // aliran ditutup server
+  });
+
+  test('token kedaluwarsa: aliran ditutup pada putaran berikutnya', async () => {
+    const response = await open(VIEWER);
+    const sse = frames(response);
+    expect((await sse.next())?.event).toBe('ready');
+    env.clock.set(BASE + DESKTOP_TOKEN_TTL_MS + 1000);
+    await pumpNotificationStreams(env);
+    expect(activeStreamCount()).toBe(0);
+    expect(await sse.next(500)).toBeNull();
   });
 
   test('closeAllNotificationStreams menutup semua koneksi', async () => {

@@ -46,6 +46,21 @@ beforeEach(() => {
   installMock.state = 'unavailable';
 });
 
+test('butir Notifikasi push tampil di peramban, tetapi tidak di aplikasi desktop', async () => {
+  const { unmount } = render(<UserMenu />);
+  await openMenu();
+  expect(screen.getByRole('menuitem', { name: /Notifikasi push/ })).toBeInTheDocument();
+  unmount();
+  (window as unknown as { qcBridge?: unknown }).qcBridge = { version: 1 };
+  try {
+    render(<UserMenu />);
+    await openMenu();
+    expect(screen.queryByRole('menuitem', { name: /Notifikasi push/ })).not.toBeInTheDocument();
+  } finally {
+    delete (window as unknown as { qcBridge?: unknown }).qcBridge;
+  }
+});
+
 test('butir Pasang aplikasi tidak tampil bila tidak tersedia', async () => {
   render(<UserMenu />);
   await openMenu();

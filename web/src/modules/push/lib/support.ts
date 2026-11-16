@@ -1,13 +1,18 @@
 import { isIosBrowser } from '@/app/pwa/install';
+import { isDesktop } from '@/lib/platform';
 
 export type DevicePermission = 'granted' | 'denied' | 'default' | 'unsupported';
 export type PushPlatform = 'ios' | 'android' | 'desktop';
 
 /**
  * Peramban ini dapat menerima push: butuh service worker, `PushManager`, dan Notification API. Tidak ada saat dev
- * (service worker dimatikan), di Safari iOS yang belum dipasang ke layar utama, dan di peramban lawas.
+ * (service worker dimatikan), di Safari iOS yang belum dipasang ke layar utama, dan di peramban lawas. Aplikasi
+ * desktop (Electron) TIDAK memakai Web Push (tanpa service worker, izin ditolak, tanpa FCM): notifikasinya datang
+ * lewat aliran SSE yang dikelola proses utama desktop (selalu aktif, tanpa saklar; keputusan pemilik 2026-11-16),
+ * sehingga semua UI push web (pra-izin, banner, saklar, panduan perangkat) tersembunyi di sana.
  */
 export function pushSupported(win: Window = window): boolean {
+  if (isDesktop()) return false;
   return 'serviceWorker' in win.navigator && 'PushManager' in win && 'Notification' in win;
 }
 

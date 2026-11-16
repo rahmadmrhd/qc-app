@@ -28,7 +28,12 @@ notificationStreamApp.get('/', async (c) => {
   const user = await loadUserContext(c.env, session.email);
   if (!user) return fail('UNAUTHENTICATED', 'Akun tidak aktif atau tidak terdaftar');
 
-  const opened = openNotificationStream(c.env, user.email, c.req.header('last-event-id'));
+  const opened = openNotificationStream(
+    c.env,
+    user.email,
+    c.req.header('last-event-id'),
+    session.exp,
+  );
   if (!opened.ok) return fail('UNAVAILABLE', 'Server sedang penuh, coba lagi sebentar');
   return opened.response;
 });

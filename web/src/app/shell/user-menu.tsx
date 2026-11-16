@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { isDesktop } from '@/lib/platform';
 import { LogoutConfirmDialog } from '@/modules/auth/logout-confirm-dialog';
 import { useLogout } from '@/modules/auth/use-logout';
 import { useMe } from '@/modules/auth/use-me';
@@ -68,10 +69,13 @@ export function UserMenu() {
             <GraduationCap />
             Panduan
           </DropdownMenuItem>
-          <DropdownMenuItem data-tour="user-menu-push" onSelect={() => setPushOpen(true)}>
-            <BellRing />
-            Notifikasi push
-          </DropdownMenuItem>
+          {/* Desktop menerima notifikasi lewat aliran server (selalu aktif), tanpa saklar push web. */}
+          {!isDesktop() && (
+            <DropdownMenuItem data-tour="user-menu-push" onSelect={() => setPushOpen(true)}>
+              <BellRing />
+              Notifikasi push
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             onSelect={() => {
               // Keluar membuang antrean centang di perangkat (semua pemilik): peringatkan dulu bila ada isinya.

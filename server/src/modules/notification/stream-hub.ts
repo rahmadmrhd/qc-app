@@ -51,6 +51,8 @@ interface Connection {
   floor: string;
   sent: Set<string>;
   validatedAt: number;
+  /** Kedaluwarsa token Bearer (epoch ms): aliran ditutup saat lewat, seperti permintaan REST biasa akan 401. */
+  expiresAt: number;
   write(text: string): void;
   close(): void;
 }
@@ -122,6 +124,7 @@ export function openNotificationStream(
   env: Env,
   email: string,
   lastEventId: string | null | undefined,
+  expiresAt: number,
 ): OpenStreamResult {
   if (connections.size >= STREAM_MAX_TOTAL) return { ok: false, reason: 'full' };
   // Batas per pengguna: yang tertua ditutup (klien yang baru tersambung ulang menggantikan yang menggantung).
@@ -149,6 +152,7 @@ export function openNotificationStream(
     floor: since,
     sent,
     validatedAt: now,
+    expiresAt,
     write(text) {
       if (closed || controller === undefined) return;
       try {
@@ -214,6 +218,10 @@ async function pumpConnection(
   };
   try {
     const now = nowOf(env);
+    if (now >= conn.expiresAt) {
+      conn.close();
+      return;
+    }
     if (now - conn.validatedAt >= STREAM_REVALIDATE_MS) {
       conn.validatedAt = now;
       if ((await loadContext()) === null) {
