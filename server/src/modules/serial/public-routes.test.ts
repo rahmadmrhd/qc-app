@@ -123,7 +123,7 @@ beforeEach(async () => {
 
 describe('GET /api/public/serial-reports/:token', () => {
   test('halaman publik tidak membawa data foto bukti (proofProblemCount dan sejenisnya) walau ada foto gagal', async () => {
-    const { serialId, caseId } = await brokenReport('PUB-PROOF', 9);
+    const { serialId, caseId } = await brokenReport('PUB-FOTO', 9);
     await env.DB.prepare(
       "INSERT INTO serial_proof_photos (id, serial_id, event_id, state, created_by, created_at, updated_at, last_error) VALUES ('ph-x', ?, 'ev-x', 'failed', ?, '2026-11-12T03:00:00.000Z', '2026-11-12T03:00:00.000Z', 'Berkas rusak')",
     )
