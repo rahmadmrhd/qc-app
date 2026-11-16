@@ -33,6 +33,7 @@ import { readDeviceInfo, readRouterInfo } from './device/info';
 import { pingOnce } from './device/ping';
 import { registerIpc } from './ipc';
 import { loadLocalPackage } from './package/local-folder';
+import { devProtocolRegistration } from './protocol-registration';
 import { parseQcUrl } from './qc-url';
 import { createSettingsStore } from './settings';
 import { collectSmokeReport } from './smoke';
@@ -196,8 +197,19 @@ function runApp(): void {
 
   app.whenReady().then(() => {
     lockDownSession();
-    // `qc://` didaftarkan hanya pada aplikasi terkemas (tanpa menulis registri saat pengembangan).
-    if (app.isPackaged) app.setAsDefaultProtocolClient('qc');
+    // `qc://` didaftarkan pada aplikasi terkemas; saat pengembangan registri TIDAK ditulis kecuali diminta lewat
+    // `QC_DEV_REGISTER_PROTOCOL=1` (tanpa pendaftaran, login Google desktop menggantung di peramban).
+    if (app.isPackaged) {
+      app.setAsDefaultProtocolClient('qc');
+    } else {
+      const dev = devProtocolRegistration(
+        process.env,
+        process.execPath,
+        process.argv[1],
+        app.getPath('userData'),
+      );
+      if (dev) app.setAsDefaultProtocolClient('qc', dev.execPath, dev.args);
+    }
 
     const userData = app.getPath('userData');
     const settings = createSettingsStore(join(userData, 'settings.json'));
