@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/dialog';
 import { describeError } from '@/lib/api/describe-error';
 import { proofThumbUrl } from '../lib/proof-source';
-import { useRemoveProof, useRetryProof } from '../queries';
+import { usePendingReplaceIds, useRemoveProof, useRetryProof } from '../queries';
 import { ProofReplaceDialog } from './proof-replace-dialog';
 
 export interface ProofGalleryProps {
@@ -45,6 +45,7 @@ export function ProofGallery({ photos }: ProofGalleryProps) {
   const [replaceOpen, setReplaceOpen] = useState(false);
   const retry = useRetryProof();
   const remove = useRemoveProof();
+  const replacingIds = usePendingReplaceIds();
   const busy = retry.isPending || remove.isPending;
 
   async function runRetry(photo: SerialProofPhotoDto) {
@@ -69,6 +70,8 @@ export function ProofGallery({ photos }: ProofGalleryProps) {
         {photos.map((photo, index) => {
           const pending = photo.state === 'queued' || photo.state === 'processing';
           const failed = photo.state === 'failed';
+          // Penggantian foto ini sedang berjalan: Coba lagi/Unggah ulang/Buang dikunci agar tak berebut dengan `replace`.
+          const locked = busy || replacingIds.has(photo.id);
           return (
             <li key={photo.id} className="w-28 space-y-1">
               <button
@@ -103,7 +106,7 @@ export function ProofGallery({ photos }: ProofGalleryProps) {
                           type="button"
                           variant="outline"
                           size="xs"
-                          disabled={busy}
+                          disabled={locked}
                           onClick={() => void runRetry(photo)}
                         >
                           {retry.isPending && retry.variables === photo.id ? (
@@ -118,7 +121,7 @@ export function ProofGallery({ photos }: ProofGalleryProps) {
                           type="button"
                           variant="outline"
                           size="xs"
-                          disabled={busy}
+                          disabled={locked}
                           onClick={() => {
                             setReplacing(photo);
                             setReplaceOpen(true);
@@ -132,7 +135,7 @@ export function ProofGallery({ photos }: ProofGalleryProps) {
                           type="button"
                           variant="ghost"
                           size="xs"
-                          disabled={busy}
+                          disabled={locked}
                           onClick={() => setDiscarding(photo)}
                         >
                           Buang

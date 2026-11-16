@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { formatDay } from '../lib/labels';
 import { proofThumbUrl } from '../lib/proof-source';
 import { earliestProofExpiry, failedProofPhotos } from '../lib/proof-state';
+import { usePendingReplaceIds } from '../queries';
 import { ProofReplaceDialog } from './proof-replace-dialog';
 
 export interface ProofProblemBannerProps {
@@ -25,6 +26,7 @@ export function ProofProblemBanner({ count, events }: ProofProblemBannerProps) {
   const total = Math.max(count, failed.length);
   const [replacingId, setReplacingId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const replacingIds = usePendingReplaceIds();
   if (total <= 0) return null;
   const expiry = earliestProofExpiry(failed);
   const manageable = failed.filter((photo) => photo.canManage);
@@ -58,6 +60,7 @@ export function ProofProblemBanner({ count, events }: ProofProblemBannerProps) {
                 type="button"
                 variant="outline"
                 size="xs"
+                disabled={replacingIds.has(photo.id)}
                 onClick={() => {
                   setReplacingId(photo.id);
                   setOpen(true);

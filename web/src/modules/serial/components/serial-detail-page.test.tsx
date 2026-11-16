@@ -212,7 +212,7 @@ const calls = (id: string) => apiMock.mock.calls.filter((call) => call[0] === id
 
 beforeEach(() => {
   apiMock.mockReset();
-  state = { serial: SERIAL, events: EVENTS, eventsTruncated: false };
+  state = { serial: SERIAL, events: EVENTS, eventsTruncated: false, problemPhotos: [] };
   me = meWith('edit');
   historyLimit = 50;
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
@@ -266,6 +266,7 @@ beforeEach(() => {
           ...state.events,
         ],
         eventsTruncated: false,
+        problemPhotos: [],
       };
       return Promise.resolve(nextSerial);
     }
@@ -421,7 +422,7 @@ test('dialog ubah data setelah 412: formulir dibasiskan ulang ke data server dan
     if (id === 'serials.update') {
       updates++;
       if (updates === 1) {
-        state = { serial: fresh, events: state.events, eventsTruncated: false };
+        state = { serial: fresh, events: state.events, eventsTruncated: false, problemPhotos: [] };
         return Promise.reject(new ApiError('CONFLICT', 'basi', '-', undefined, { status: 412 }));
       }
       return Promise.resolve(fresh);
@@ -467,7 +468,7 @@ test('dialog ubah data setelah 412: bidang yang juga diubah orang lain ditandai;
   const original = apiMock.getMockImplementation();
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
     if (id === 'serials.update') {
-      state = { serial: fresh, events: state.events, eventsTruncated: false };
+      state = { serial: fresh, events: state.events, eventsTruncated: false, problemPhotos: [] };
       return Promise.reject(new ApiError('CONFLICT', 'basi', '-', undefined, { status: 412 }));
     }
     return original?.(id, input);
@@ -507,7 +508,7 @@ test('dialog ubah data setelah 412: lokasi dan item yang juga diubah orang lain 
   const original = apiMock.getMockImplementation();
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
     if (id === 'serials.update') {
-      state = { serial: fresh, events: state.events, eventsTruncated: false };
+      state = { serial: fresh, events: state.events, eventsTruncated: false, problemPhotos: [] };
       return Promise.reject(new ApiError('CONFLICT', 'basi', '-', undefined, { status: 412 }));
     }
     return original?.(id, input);
@@ -529,7 +530,7 @@ test('dialog ubah data setelah 412: lokasi dan item yang juga diubah orang lain 
 
 test('linimasa memuat berkursor: tombol "Muat yang lebih lama" mengirim cursor dan tidak ada catatan terpotong', async () => {
   historyLimit = 2;
-  state = { ...state, eventsTruncated: true };
+  state = { ...state, eventsTruncated: true, problemPhotos: [] };
   renderPage();
   await screen.findByRole('list', { name: 'Linimasa' });
   expect(screen.queryByText(/Hanya 500 entri terbaru/)).toBeNull();
@@ -744,6 +745,7 @@ test('linimasa terpotong tanpa kejadian recorded: "Lokasi awal" tetap tampil dar
     ...state,
     events: state.events.filter((event) => event.type !== 'recorded'),
     eventsTruncated: true,
+    problemPhotos: [],
   };
   renderPage();
   const summary = await screen.findByRole('region', { name: 'Ringkasan' });
@@ -759,6 +761,7 @@ test('linimasa terpotong: pembaca tanpa serial: edit memakai me.locations untuk 
     ...state,
     events: state.events.filter((event) => event.type !== 'recorded'),
     eventsTruncated: true,
+    problemPhotos: [],
   };
   renderPage();
   const summary = await screen.findByRole('region', { name: 'Ringkasan' });
@@ -772,6 +775,7 @@ test('lokasi awal tak dikenal dan kejadian recorded tidak termuat: tampil "—" 
     serial: { ...SERIAL, recordedLocationId: 'lHantu' },
     events: state.events.filter((event) => event.type !== 'recorded'),
     eventsTruncated: true,
+    problemPhotos: [],
   };
   renderPage();
   const summary = await screen.findByRole('region', { name: 'Ringkasan' });
@@ -887,6 +891,7 @@ test('kepala dan kartu riwayat menampilkan badge Bukti foto QC hanya bila serial
       entry.seq === 3 ? { ...entry, proofPhotos: [PHOTO] } : entry,
     ),
     eventsTruncated: false,
+    problemPhotos: [],
   };
   renderPage();
   expect(await screen.findByRole('heading', { name: 'ABC123' })).toBeInTheDocument();
@@ -909,6 +914,7 @@ test('Coba lagi pada foto gagal mengikuti canManage dari server, bukan kecocokan
         : entry,
     ),
     eventsTruncated: false,
+    problemPhotos: [],
   });
   state = withFailed(false);
   const first = renderPage();
@@ -941,6 +947,7 @@ describe('foto bukti bermasalah: banner dan badge', () => {
         entry.seq === 3 ? { ...entry, proofPhotos: photos } : entry,
       ),
       eventsTruncated: false,
+      problemPhotos: [],
     };
   };
   const banner = () => screen.findByRole('region', { name: 'Foto bukti QC bermasalah' });

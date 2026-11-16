@@ -280,3 +280,31 @@ test('dialog Unggah ulang ditutup tanpa memilih: replace tidak dipanggil', async
   await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
   expect(apiMock).not.toHaveBeenCalledWith('serialProofs.replace', expect.anything());
 });
+
+test('selama replace berjalan, Coba lagi/Unggah ulang/Buang foto itu dikunci; terbuka lagi sesudahnya', async () => {
+  let finish: (value: unknown) => void = () => undefined;
+  mockUploadAndReplace(() => new Promise((resolve) => (finish = resolve)));
+  renderGallery([
+    photo('dddddddd-4', { state: 'failed', error: 'x' }),
+    photo('eeeeeeee-5', { state: 'failed', error: 'y' }),
+  ]);
+  await userEvent.click(screen.getAllByRole('button', { name: 'Unggah ulang' })[0] as HTMLElement);
+  const dialog = await screen.findByRole('dialog', { name: 'Unggah ulang foto bukti QC' });
+  await userEvent.click(within(dialog).getByRole('tab', { name: 'Kamera' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Ambil foto' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: /^Ganti foto/ }));
+  await waitFor(() =>
+    expect(apiMock).toHaveBeenCalledWith('serialProofs.replace', expect.anything()),
+  );
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  const [firstItem, secondItem] = screen.getAllByRole('listitem');
+  for (const name of ['Coba lagi', 'Unggah ulang', 'Buang']) {
+    expect(within(firstItem as HTMLElement).getByRole('button', { name })).toBeDisabled();
+    // Foto lain tidak ikut terkunci.
+    expect(within(secondItem as HTMLElement).getByRole('button', { name })).toBeEnabled();
+  }
+  finish(photo('newnewnew-1', { state: 'queued' }));
+  await waitFor(() =>
+    expect(within(firstItem as HTMLElement).getByRole('button', { name: 'Buang' })).toBeEnabled(),
+  );
+});

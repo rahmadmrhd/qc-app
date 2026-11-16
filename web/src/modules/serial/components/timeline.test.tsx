@@ -184,3 +184,26 @@ test('Coba lagi pada kartu hanya mengikuti canManage tiap foto dari server', () 
   );
   expect(screen.getByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();
 });
+
+test('badge Foto bermasalah di kepala kartu menghitung foto gagal pada kejadian itu saja', () => {
+  renderWithClient(
+    <Timeline
+      events={[
+        event(1, { type: 'recorded', proofPhotos: [proof('ok')] }),
+        event(2, {
+          type: 'recheck',
+          data: { result: 'pass' },
+          proofPhotos: [
+            proof('f1', { state: 'failed', error: 'x' }),
+            proof('f2', { state: 'failed', error: 'y' }),
+            proof('ok2'),
+          ],
+        }),
+      ]}
+    />,
+  );
+  // Riwayat saat ini = seq 2 (kartu lama terlipat); badge masalah berdampingan dengan badge Bukti foto QC.
+  expect(screen.getAllByText('Foto bermasalah')).toHaveLength(1);
+  expect(screen.getByText('(2)')).toBeInTheDocument();
+  expect(screen.getAllByText('Bukti foto QC')).toHaveLength(1);
+});

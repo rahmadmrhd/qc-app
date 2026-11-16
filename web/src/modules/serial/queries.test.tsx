@@ -87,6 +87,7 @@ test('ubah serial menempel hasil ke detail dan baris daftar', async () => {
     serial: before,
     events: [],
     eventsTruncated: false,
+    problemPhotos: [],
   });
   client.setQueryData<InfiniteData<SerialListOutput, string | undefined>>(serialKeys.page({}), {
     pages: [{ items: [before], nextCursor: null }],
@@ -117,6 +118,7 @@ test('aksi (catatan/cek ulang) memasang serial terbaru ke detail', async () => {
     serial: dto(),
     events: [],
     eventsTruncated: false,
+    problemPhotos: [],
   });
   apiMock.mockResolvedValue(
     dto({ locationName: 'Surabaya', updatedAt: '2026-11-12T03:00:00.000Z' }),

@@ -24,6 +24,7 @@ import {
   keepPreviousData,
   queryOptions,
   useMutation,
+  useMutationState,
   useQueryClient,
 } from '@tanstack/react-query';
 import { api } from '@/lib/api';
@@ -326,6 +327,18 @@ export function useRemoveProof() {
   });
 }
 
+const REPLACE_PROOF_KEY = ['serial', 'proof', 'replace'] as const;
+
+/** Id foto gagal yang sedang diganti (mutasi `replace` berjalan, dari komponen mana pun): tombol foto itu dikunci. */
+export function usePendingReplaceIds(): ReadonlySet<string> {
+  const ids = useMutationState({
+    filters: { mutationKey: REPLACE_PROOF_KEY, status: 'pending' },
+    select: (mutation) =>
+      (mutation.state.variables as ReplaceSerialProofInput | undefined)?.photoId,
+  });
+  return new Set(ids.filter((id): id is string => typeof id === 'string'));
+}
+
 /**
  * "Unggah ulang" foto bukti yang gagal: foto pengganti (unggahan `draft` baru) menggantikan foto lama dan masuk antrean
  * cap. Dimuat ulang juga saat gagal `CONFLICT` (foto lama keburu berubah: Buang/Coba lagi/sapuan retensi).
@@ -333,6 +346,7 @@ export function useRemoveProof() {
 export function useReplaceProof() {
   const queryClient = useQueryClient();
   return useMutation({
+    mutationKey: REPLACE_PROOF_KEY,
     mutationFn: (input: ReplaceSerialProofInput) => api('serialProofs.replace', input),
     onSuccess: () => refreshProofViews(queryClient),
     onError: (error) => {

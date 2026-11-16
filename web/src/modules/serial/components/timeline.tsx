@@ -13,7 +13,7 @@ import {
   legEventLabel,
   TEAM_LABEL,
 } from '../lib/labels';
-import { ProofBadge } from './proof-badge';
+import { ProofBadge, ProofProblemBadge } from './proof-badge';
 import { ProofGallery } from './proof-gallery';
 
 /** Ringkasan stiker pada kejadian `recorded`: nama dan jumlah dari `data.stickers` (tanpa angka stok). */
@@ -127,6 +127,7 @@ function EventCard({
   markdownComponents: Components | undefined;
 }) {
   const hasProof = event.proofPhotos.length > 0;
+  const proofProblems = event.proofPhotos.filter((photo) => photo.state === 'failed').length;
   const stickers = recordedStickers(event);
   const location = recordedLocation(event);
   const details = eventDetails(event);
@@ -149,6 +150,7 @@ function EventCard({
             <span>{event.actorName}</span>
             <Badge variant="outline">{TEAM_LABEL[event.actorTeam]}</Badge>
             {hasProof ? <ProofBadge /> : null}
+            <ProofProblemBadge count={proofProblems} />
           </p>
         </div>
         <div className="flex items-start gap-2">
