@@ -21,6 +21,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { useCountryLock } from '../use-country-lock';
+import { CatalogPanel } from './catalog-panel';
 import { CredentialDialog } from './credential-dialog';
 import { InjectProgressDialog } from './inject-progress-dialog';
 import { PendingList } from './pending-list';
@@ -205,6 +206,8 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
           <PendingList entries={pending} />
         </>
       )}
+
+      <CatalogPanel bridge={bridge} />
 
       <AlertDialog open={confirmAuto} onOpenChange={setConfirmAuto}>
         <AlertDialogContent>
