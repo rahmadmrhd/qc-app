@@ -3,6 +3,7 @@ import {
   CONFIRM_FRAMES_1D,
   CONFIRM_FRAMES_2D,
   CONFIRM_REPEAT_COOLDOWN_MS,
+  CONFIRM_WINDOW_MAX_MS,
   CONFIRM_WINDOW_MS,
   createScanConfirmer,
 } from './scan-confirm';
@@ -103,19 +104,73 @@ test('bacaan berbeda di tengah mereset; hitungan dimulai dari 1 untuk teks baru'
   expect(confirmer.observe(b)).toBe('BBB');
 });
 
-test('jendela waktu: bingkai yang sama tetapi tersebar lebih lama dari jendela tidak dihitung', () => {
+test('jendela waktu: selang lebih lama dari batas atas memutus seri; seri dimulai ulang dari bingkai itu', () => {
   const { confirmer, advance } = setup();
   const code = { text: 'SN1', format: 'code_128' };
+  // Irama normal (~120 ms) dulu.
+  for (let i = 0; i < 5; i++) {
+    confirmer.observe(null);
+    advance(120);
+  }
   expect(confirmer.observe(code)).toBeNull();
-  advance(CONFIRM_WINDOW_MS - 100);
-  expect(confirmer.observe(code)).toBeNull();
-  // Bingkai ke-3 jatuh di luar jendela sejak bingkai pertama: seri dimulai ulang dari bingkai ini.
-  advance(200);
+  advance(CONFIRM_WINDOW_MAX_MS + 100);
   expect(confirmer.observe(code)).toBeNull();
   advance(120);
   expect(confirmer.observe(code)).toBeNull();
   advance(120);
   expect(confirmer.observe(code)).toBe('SN1');
+});
+
+test('bingkai lambat (deteksi berat): 1D tetap terkonfirmasi karena jendela menyesuaikan selang bingkai', () => {
+  const { confirmer, advance } = setup();
+  const code = { text: 'SN1', format: 'code_128' };
+  // Selang ~800 ms: 3 bingkai membentang 1600 ms, melewati jendela dasar 1200 ms.
+  expect(confirmer.observe(code)).toBeNull();
+  advance(800);
+  expect(confirmer.observe(code)).toBeNull();
+  advance(800);
+  expect(confirmer.observe(code)).toBe('SN1');
+});
+
+test('bingkai lambat: bacaan parsial yang berganti-ganti tetap ditolak', () => {
+  const { confirmer, advance } = setup();
+  for (const text of ['AAA', 'AA', 'AAAB', 'AAA', 'AA', 'AAAB', 'AAA']) {
+    expect(confirmer.observe({ text, format: 'code_128' })).toBeNull();
+    advance(800);
+  }
+});
+
+test('bingkai lambat: bingkai kosong di tengah tetap mereset', () => {
+  const { confirmer, advance } = setup();
+  const code = { text: 'SN1', format: 'code_128' };
+  confirmer.observe(code);
+  advance(800);
+  confirmer.observe(code);
+  advance(800);
+  confirmer.observe(null);
+  advance(800);
+  expect(confirmer.observe(code)).toBeNull();
+  advance(800);
+  expect(confirmer.observe(code)).toBeNull();
+  advance(800);
+  expect(confirmer.observe(code)).toBe('SN1');
+});
+
+test('batas atas jendela: selang 2,5 dtk (3 bingkai = 5 dtk) tidak pernah terkonfirmasi', () => {
+  const { confirmer, advance } = setup();
+  const code = { text: 'SN1', format: 'code_128' };
+  for (let i = 0; i < 6; i++) {
+    expect(confirmer.observe(code)).toBeNull();
+    advance(2500);
+  }
+});
+
+test('jendela adaptif tidak melonggarkan irama cepat: 2D pada bingkai ke-2 tetap berlaku', () => {
+  const { confirmer, advance } = setup();
+  const code = { text: 'QR', format: 'qr_code' };
+  expect(confirmer.observe(code)).toBeNull();
+  advance(120);
+  expect(confirmer.observe(code)).toBe('QR');
 });
 
 test('setelah diterima, ditahan terus tidak diteruskan lagi; kembali sesudah jeda hilang dan cooldown', () => {
