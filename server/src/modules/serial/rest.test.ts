@@ -51,7 +51,11 @@ beforeEach(async () => {
     ],
   });
   await seedUser(env, { id: 'u-nobu', email: NOBU, assignments: [], buAssignments: [] });
-  await seedRole(env, { id: 'r-svc', name: 'Servis view', permissions: { serialservice: 'view' } });
+  await seedRole(env, {
+    id: 'r-svc',
+    name: 'Servis view',
+    permissions: { serialservice: 'view', countrylock: 'none' },
+  });
   await seedUser(env, {
     id: 'u-svc',
     email: SERVICE,

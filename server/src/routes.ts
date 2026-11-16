@@ -3,6 +3,7 @@ import { accessRoutes } from '@server/modules/access/routes';
 import { authApiRoutes } from '@server/modules/auth/api';
 import { brandRoutes } from '@server/modules/brand/routes';
 import { customerRoutes } from '@server/modules/customer/routes';
+import { desktopApiRoutes } from '@server/modules/desktop/api';
 import { filesRoutes } from '@server/modules/files/routes';
 import { guideRoutes } from '@server/modules/guide/routes';
 import { handoverRoutes } from '@server/modules/handover/routes';
@@ -118,6 +119,11 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'serialServiceSettings.get': true,
   'serialServiceSettings.save': true,
   'serialCases.list': true,
+  'serialProofs.upload': true,
+  'serialProofs.get': true,
+  'serialProofs.remove': true,
+  'serialProofs.retry': true,
+  'serialProofs.replace': true,
   'postelFiles.upload': true,
   'postelFiles.get': true,
   'notifications.list': true,
@@ -131,6 +137,7 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'push.setDeviceMuted': true,
   'push.reportPermission': true,
   'push.status': true,
+  'desktop.handoff': true,
   'guides.list': true,
   'guides.mark': true,
   'guides.reset': true,
@@ -154,6 +161,7 @@ function realRoutes(): RouteTable {
     ...qrcodeRoutes(),
     ...postelRoutes(),
     ...notificationRoutes(),
+    ...desktopApiRoutes(),
     ...guideRoutes(),
     ...pushRoutes(),
     ...serialRoutes(),

@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import type { HandoverStatus } from './handover';
 import {
   CHECK_WINDOW_MS,
+  HANDOVER_NOTIFICATION_KINDS,
   type HandoverSnap,
   handoverEventsOf,
   NOTIFICATION_KINDS,
@@ -12,6 +13,8 @@ import {
   notificationPreviewText,
   notificationTitle,
   pushPayloadOf,
+  SERIAL_NOTIFICATION_KINDS,
+  serialUrlOf,
 } from './notifications';
 
 function snap(status: HandoverStatus, overrides: Partial<HandoverSnap> = {}): HandoverSnap {
@@ -104,7 +107,10 @@ describe('notificationTitle', () => {
 
 describe('konstanta', () => {
   test('sisi penerima menurut spek 3 dan semua jenis terdaftar', () => {
-    expect(Object.keys(NOTIFICATION_SIDE).sort()).toEqual([...NOTIFICATION_KINDS].sort());
+    expect(Object.keys(NOTIFICATION_SIDE).sort()).toEqual([...HANDOVER_NOTIFICATION_KINDS].sort());
+    expect([...NOTIFICATION_KINDS].sort()).toEqual(
+      [...HANDOVER_NOTIFICATION_KINDS, ...SERIAL_NOTIFICATION_KINDS].sort(),
+    );
     expect(NOTIFICATION_SIDE).toEqual({
       created: 'qc',
       createdBatch: 'qc',
@@ -138,6 +144,8 @@ describe('pushPayloadOf', () => {
       preview: 'RAHASIA-ISI',
       createdAt: '2026-11-12T00:00:00.000Z',
       readAt: '',
+      serialId: '',
+      photoId: '',
       ...overrides,
     };
   }
@@ -248,6 +256,8 @@ describe('pushPayloadOf (lanjutan)', () => {
       preview: '',
       createdAt: '2026-11-12T00:00:00.000Z',
       readAt: '',
+      serialId: '',
+      photoId: '',
       ...overrides,
     };
   }
@@ -276,5 +286,45 @@ describe('pushPayloadOf (lanjutan)', () => {
     expect(payload.title).toBe('Budi membuat 30 task baru di Lokasi A');
     expect(payload.body).toBe('Lokasi A');
     expect(payload.url).toBe('/handover?loc=loc%20a%2F1');
+  });
+});
+
+describe('jenis Serial Number (serialProofFailed)', () => {
+  const photo: NotificationDto = {
+    id: 'n1',
+    kind: 'serialProofFailed',
+    handoverId: '',
+    locationId: 'loc-a',
+    number: 'SN-0042',
+    customerName: '',
+    actor: '',
+    count: 0,
+    preview: '',
+    createdAt: '2026-11-16T00:00:00.000Z',
+    readAt: '',
+    serialId: 'sn-1',
+    photoId: 'ph-1',
+  };
+
+  test('judul tetap, tanpa nama pelaku maupun alasan', () => {
+    expect(notificationTitle(photo)).toBe('Foto bukti QC bermasalah');
+  });
+
+  test('push: isi hanya nomor SN, url ke detail Serial, tag per foto', () => {
+    const payload = pushPayloadOf({ ...photo, preview: 'RAHASIA', customerName: 'PT X' });
+    expect(payload).toEqual({
+      title: 'Foto bukti QC bermasalah',
+      body: 'SN-0042',
+      url: '/serial/sn-1',
+      tag: 'serialProofFailed:ph-1',
+    });
+    // dua foto pada entri yang sama = tag berbeda (bukan per entri)
+    expect(pushPayloadOf({ ...photo, photoId: 'ph-2' }).tag).toBe('serialProofFailed:ph-2');
+  });
+
+  test('serialUrlOf dan sisi: jenis Serial tak punya sisi Serah Terima', () => {
+    expect(serialUrlOf({ serialId: 'a/b' })).toBe('/serial/a%2Fb');
+    expect(serialUrlOf({ serialId: '' })).toBe('/serial');
+    expect(Object.keys(NOTIFICATION_SIDE)).not.toContain('serialProofFailed');
   });
 });

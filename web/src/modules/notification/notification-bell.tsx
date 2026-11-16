@@ -1,5 +1,5 @@
 import type { NotificationDto } from '@shared/notifications';
-import { notificationTitle } from '@shared/notifications';
+import { isSerialNotificationKind, notificationTitle } from '@shared/notifications';
 import { useQuery } from '@tanstack/react-query';
 import { Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -22,8 +22,8 @@ function formatTime(iso: string): string {
 }
 
 /**
- * Lonceng notifikasi Serah Terima di header: jumlah belum dibaca, daftar terbaru, tandai dibaca, dan buka task
- * terkait. Selalu bekerja (tanpa izin peramban). Cuplikan `preview` ditampilkan sebagai teks biasa.
+ * Lonceng notifikasi di header (Serah Terima dan Serial Number): jumlah belum dibaca, daftar terbaru, tandai dibaca, dan
+ * buka task atau Serial Number terkait. Selalu bekerja (tanpa izin peramban). Cuplikan `preview` ditampilkan sebagai teks biasa.
  */
 export function NotificationBell() {
   const tourMenu = useTourMenu('notification-bell');
@@ -116,7 +116,14 @@ export function NotificationBell() {
                         <span className={cn('block', isUnread && 'font-medium')}>
                           {notificationTitle(item)}
                         </span>
-                        {item.customerName !== '' && item.kind !== 'createdBatch' ? (
+                        {isSerialNotificationKind(item.kind) ? (
+                          // Jenis Serial: baris isi = nomor Serial Number saja.
+                          item.number !== '' ? (
+                            <span className="block truncate font-mono text-muted-foreground">
+                              {item.number}
+                            </span>
+                          ) : null
+                        ) : item.customerName !== '' && item.kind !== 'createdBatch' ? (
                           <span className="block truncate text-muted-foreground">
                             {item.customerName}
                           </span>

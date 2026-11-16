@@ -28,6 +28,7 @@ import {
 } from 'electron';
 import { createApiProxy } from './api-proxy';
 import { APP_ORIGIN, APP_SCHEME, createAppHandler, isAppUrl } from './app-protocol';
+import { createHandoffFlow, type HandoffFlow, type HandoffInput } from './auth/handoff-flow';
 import { createLoginFlow, LOGIN_MAX_AGE_MS, type LoginFlow } from './auth/login-flow';
 import { closeLoginWindow, openLoginWindow } from './auth/login-window';
 import { LOGIN_SUCCESS_TITLE, startLoopback } from './auth/loopback';
@@ -143,6 +144,16 @@ function authUrlsFromArgv(argv: readonly string[]): string[] {
   return argv.filter((arg) => arg.startsWith('qc://') && parseQcUrl(arg)?.auth !== undefined);
 }
 
+/** Serah-terima dari peramban: `qc://country-lock?handoff=...` pada argumen proses (cold start atau second-instance). */
+function handoffsFromArgv(argv: readonly string[]): HandoffInput[] {
+  const found: HandoffInput[] = [];
+  for (const arg of argv) {
+    const handoff = arg.startsWith('qc://') ? parseQcUrl(arg)?.handoff : undefined;
+    if (handoff) found.push(handoff);
+  }
+  return found;
+}
+
 /** ProgId peramban bawaan Windows untuk https (registri `UserChoice`); `null` bila tak terbaca. */
 function readDefaultProgId(): Promise<string | null> {
   return new Promise((resolveProgId) => {
@@ -224,6 +235,13 @@ function runApp(): void {
     if (loginFlow) void loginFlow.handleCallback(url);
     else earlyAuthUrls.push(url);
   };
+  // Serah-terima dari peramban yang tiba sebelum aplikasi siap ditahan, seperti `earlyAuthUrls`.
+  let handoffFlow: HandoffFlow | null = null;
+  const earlyHandoffs: HandoffInput[] = handoffsFromArgv(process.argv);
+  const dispatchHandoff = (input: HandoffInput): void => {
+    if (handoffFlow) void handoffFlow.handle(input);
+    else earlyHandoffs.push(input);
+  };
   const focusWindow = (): void => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       // Jendela bisa tersembunyi di tray (ditutup saat masuk): `show()` memunculkannya lagi.
@@ -239,8 +257,11 @@ function runApp(): void {
   });
 
   app.on('second-instance', (_event, argv) => {
-    const route = routeFromArgv(argv);
+    const handoffs = handoffsFromArgv(argv);
+    // Tautan serah-terima memuat halamannya sendiri setelah selesai (`openCountryLock`); jangan memuat dua kali.
+    const route = handoffs.length > 0 ? null : routeFromArgv(argv);
     for (const url of authUrlsFromArgv(argv)) dispatchAuthUrl(url);
+    for (const handoff of handoffs) dispatchHandoff(handoff);
     focusWindow();
     if (route && mainWindow && !mainWindow.isDestroyed()) {
       // Ditunda bila inject berjalan: memuat halaman baru membuang hasil inject dari renderer.
@@ -253,7 +274,9 @@ function runApp(): void {
   // macOS mengirim tautan protokol lewat open-url (di Windows lewat argumen proses).
   app.on('open-url', (event, url) => {
     event.preventDefault();
-    if (parseQcUrl(url)?.auth) dispatchAuthUrl(url);
+    const parsed = parseQcUrl(url);
+    if (parsed?.auth) dispatchAuthUrl(url);
+    if (parsed?.handoff) dispatchHandoff(parsed.handoff);
     focusWindow();
   });
 
@@ -369,6 +392,40 @@ function runApp(): void {
       settleMs: RELOAD_SETTLE_MS,
     });
     const gate = reloadGate;
+    // Serah-terima akun dari peramban (Country Lock di web): dialog konfirmasi bila akunnya berbeda dari yang sedang
+    // masuk, ditolak selama inject berjalan. Halaman dimuat ulang lewat `gate` setelah selesai (juga membersihkan
+    // cache akun sebelumnya di renderer: pemilik berbeda = boot baru).
+    handoffFlow = createHandoffFlow({
+      settings: () => settings.get(),
+      tokens,
+      fetchImpl: net.fetch as typeof fetch,
+      confirmSwitch: async (current, next) => {
+        focusWindow();
+        const options = {
+          type: 'question' as const,
+          title: 'Ganti akun?',
+          message: `Peramban masuk sebagai ${next}, sedangkan aplikasi desktop sedang masuk sebagai ${current}.`,
+          detail:
+            'Lanjut berarti aplikasi desktop berpindah ke akun peramban. Tetap berarti Country Lock dibuka dengan akun saat ini.',
+          buttons: [`Lanjut sebagai ${next}`, `Tetap dengan ${current}`],
+          defaultId: 1,
+          cancelId: 1,
+          noLink: true,
+        };
+        const result =
+          mainWindow && !mainWindow.isDestroyed()
+            ? await dialog.showMessageBox(mainWindow, options)
+            : await dialog.showMessageBox(options);
+        return result.response === 0 ? 'switch' : 'keep';
+      },
+      showError: (message) => {
+        focusWindow();
+        void dialog.showMessageBox({ type: 'warning', title: 'QC App', message, buttons: ['OK'] });
+      },
+      isBusy: () => ipcHandle?.isInjecting() ?? false,
+      onChange: (status) => emitAuth(status),
+      openCountryLock: () => gate.load(`${APP_ORIGIN}/country-lock`),
+    });
 
     ipcHandle = registerIpc({
       ipcMain,
@@ -542,6 +599,7 @@ function runApp(): void {
     mainWindow.on('focus', () => void runCheck(10 * 60 * 1000));
     setInterval(() => void runCheck(0), 60 * 60 * 1000).unref();
     for (const url of earlyAuthUrls.splice(0)) void flow.handleCallback(url);
+    for (const handoff of earlyHandoffs.splice(0)) void handoffFlow.handle(handoff);
   });
 
   app.on('window-all-closed', () => app.quit());

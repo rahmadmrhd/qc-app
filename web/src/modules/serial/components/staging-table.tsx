@@ -1,9 +1,16 @@
-import { isIsoDate, normalizeSerial, SERIAL_LIMITS, serialProblem } from '@shared/serials';
+import {
+  isIsoDate,
+  normalizeSerial,
+  SERIAL_LIMITS,
+  SERIAL_PROOF_LIMITS,
+  serialProblem,
+} from '@shared/serials';
 import { memo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { StagingRow } from '../lib/draft';
+import { ProofPhotoField } from './proof-photo-field';
 
 export interface StagingTableProps {
   rows: readonly StagingRow[];
@@ -207,6 +214,15 @@ const RowView = memo(function RowView({
           {stickerSummary(row)}
         </span>
       </td>
+      <td className="min-w-32 px-2 py-1.5">
+        <ProofPhotoField
+          value={row.proofPhotos}
+          max={SERIAL_PROOF_LIMITS.perEntryMax}
+          disabled={disabled}
+          label={row.serial}
+          onChange={(proofPhotos) => onEdit(row.clientId, { proofPhotos })}
+        />
+      </td>
       <td className={cn('min-w-40 px-2 py-1.5 text-xs', TONE_CLASS[status.tone])}>{status.text}</td>
       <td className="whitespace-nowrap px-2 py-1 text-right">
         <Button
@@ -285,6 +301,9 @@ export function StagingTable({
             </th>
             <th scope="col" className="px-2 py-2 font-medium">
               Stiker
+            </th>
+            <th scope="col" className="px-2 py-2 font-medium">
+              Foto
             </th>
             <th scope="col" className="px-2 py-2 font-medium">
               Hasil

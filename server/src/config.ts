@@ -30,6 +30,10 @@ export interface Config {
   allowedFolderIds: string[];
   /** Folder lokal (volume yang dapat ditulis) untuk dump cadangan; bawaan: `/var/backups/qc` di produksi, folder sementara OS di dev. */
   backupLocalDir: string;
+  /** Folder sementara foto bukti QC Serial Number (volume yang dapat ditulis); bawaan `/var/lib/qc/proofs` di produksi, `./data/proofs` di dev. */
+  proofStagingDir: string;
+  /** Batas total ukuran berkas sementara foto bukti (byte, `PROOF_STAGING_MAX_BYTES`, bawaan 2 GiB); unggahan baru ditolak bila penuh. */
+  proofStagingMaxBytes: number;
   /** Sakelar cadangan terjadwal (`BACKUP_ENABLED`): kosong/`true` = hidup di produksi dengan Google terkonfigurasi, `false` = mati (mis. staging). CLI pemulihan tidak bergantung padanya. */
   backupEnabled: boolean;
   /** SMTP untuk email peringatan; `null` = belum dikonfigurasi/tidak dapat dipakai (peringatan dilewati dan dicatat). */
@@ -71,6 +75,8 @@ export interface VapidSettings {
 }
 export const DEFAULT_QUOTA_ALERT_PERCENT = 80;
 export const PRODUCTION_BACKUP_DIR = '/var/backups/qc';
+export const PRODUCTION_PROOF_DIR = '/var/lib/qc/proofs';
+export const DEFAULT_PROOF_STAGING_MAX_BYTES = 2 * 1024 ** 3;
 const SESSION_SECRET_MIN_LENGTH = 16;
 
 /** Galat konfigurasi: memuat NAMA variabel yang bermasalah saja, tidak pernah nilainya. */
@@ -201,6 +207,15 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     quotaRaw === '' ? DEFAULT_QUOTA_ALERT_PERCENT : integerIn(quotaRaw, 1, 99);
   if (quotaAlertPercent === null) problems.push('QUOTA_ALERT_PERCENT harus bilangan bulat 1-99');
 
+  const proofMaxRaw = get('PROOF_STAGING_MAX_BYTES');
+  const proofStagingMaxBytes =
+    proofMaxRaw === ''
+      ? DEFAULT_PROOF_STAGING_MAX_BYTES
+      : integerIn(proofMaxRaw, 1_048_576, 2 ** 40);
+  if (proofStagingMaxBytes === null) {
+    problems.push('PROOF_STAGING_MAX_BYTES harus bilangan bulat 1048576 (1 MiB) sampai 2^40');
+  }
+
   const backupEnabledRaw = get('BACKUP_ENABLED').toLowerCase();
   if (!['', 'true', 'false'].includes(backupEnabledRaw)) {
     problems.push('BACKUP_ENABLED harus true atau false (kosong = true)');
@@ -255,7 +270,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     port === null ||
     dbPoolSize === null ||
     trustedProxy === null ||
-    quotaAlertPercent === null
+    quotaAlertPercent === null ||
+    proofStagingMaxBytes === null
   ) {
     throw new ConfigError(problems);
   }
@@ -277,6 +293,9 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     backupLocalDir:
       get('BACKUP_LOCAL_DIR') ||
       (production ? PRODUCTION_BACKUP_DIR : join(tmpdir(), 'qc-backups')),
+    proofStagingDir:
+      get('PROOF_STAGING_DIR') || (production ? PRODUCTION_PROOF_DIR : resolve('./data/proofs')),
+    proofStagingMaxBytes,
     backupEnabled: backupEnabledRaw !== 'false',
     smtp,
     alertTo,

@@ -50,7 +50,7 @@ Kata sandi perangkat tidak boleh muncul di layar progres, log, atau berkas mana 
 | C2 | Buat/ubah satu data (mis. merk uji) dan unggah satu gambar item ukuran ~5 MB | Tersimpan; gambar tampil kembali | |
 | C3 | Unduh satu berkas (mis. PDF QR atau lampiran Postel) | Berkas terunduh utuh | |
 | C4 | Dari DevTools (bila dapat dibuka) jalankan `fetch('/api/openapi.json')` dan `fetch('/auth/login')` | Ditolak 403 `application/problem+json`; hanya `/api/v1/*`, `/api/ping`, `/auth/logout` yang diteruskan | |
-| C5 | Menu Country Lock tampil di sidebar | Menu hanya ada di aplikasi desktop (tidak ada di peramban biasa) | |
+| C5 | Menu Country Lock tampil di sidebar | Menu tampil hanya bila peran memberi izin Country Lock (modul `countrylock`), baik di desktop maupun di peramban | |
 | C6 | Logout | Kembali ke layar login; `auth.json` terhapus; Country Lock tetap dapat dibuka tanpa login | |
 | C7 | Login ulang | Berhasil seperti B2-B3 | |
 
@@ -114,6 +114,22 @@ Prasyarat: masuk di aplikasi desktop; satu akun lain (peramban biasa atau perang
 | G13 | Tutup jendela ke tray, akun lain menulis komentar, lalu buka jendela dari tray | Lonceng sudah memuat notifikasi baru (tanpa menunggu polling) | |
 | G15 | Dengan jendela QC App TERLIHAT dan FOKUS (jangan pindah jendela), akun lain menulis komentar | TIDAK ada popup Windows (dilewati karena Anda sedang melihat aplikasi), tetapi angka/daftar lonceng di header berubah dalam hitungan detik; pindah ke aplikasi lain lalu komentar berikutnya memunculkan popup lagi | |
 | G14 | Pasang UI baru (bundel) di aplikasi desktop berjembatan lama v3 | UI tetap berjalan dan lonceng berubah lewat polling sekitar 10 detik (tanpa galat di konsol); pembaruan UI tidak terhenti | |
+
+## H. Serah-terima Country Lock dari peramban
+
+Prasyarat: aplikasi desktop terpasang dengan `qc://` terdaftar (atau `QC_DEV_REGISTER_PROTOCOL=1`); dua akun, keduanya berizin Country Lock; staging (production belum punya rute login desktop).
+
+| # | Langkah | Hasil yang diharapkan | Hasil |
+|---|---|---|---|
+| H1 | Di peramban, login sebagai akun A tanpa izin Country Lock | Butir Country Lock tidak ada di sidebar; membuka `/country-lock` lalu menekan tombol menampilkan pesan belum punya izin | |
+| H2 | Beri izin Country Lock, muat ulang, tekan butir Country Lock di sidebar (desktop belum login) | Peramban menawarkan membuka QC App; aplikasi desktop terbuka di Country Lock, langsung masuk sebagai akun A tanpa dialog | |
+| H3 | Ulangi H2 saat desktop sudah login sebagai akun A | Aplikasi desktop hanya membuka Country Lock; tidak ada dialog | |
+| H4 | Di peramban login sebagai akun B, tekan butir Country Lock (desktop masih akun A) | Dialog "Peramban masuk sebagai B, sedangkan aplikasi desktop sedang masuk sebagai A" dengan tombol "Lanjut sebagai B" dan "Tetap dengan A" (bawaan Tetap) | |
+| H5 | Pilih "Tetap dengan A" | Country Lock terbuka, akun desktop tetap A | |
+| H6 | Ulangi H4, pilih "Lanjut sebagai B" | Halaman dimuat ulang; akun desktop kini B; data akun A tidak terlihat | |
+| H7 | Salin tautan `qc://country-lock?handoff=...` dari H2, buka lagi setelah lewat 60 detik atau untuk kedua kalinya | Dialog "Tautan dari peramban sudah kedaluwarsa"; akun tidak berubah | |
+| H8 | Jalankan inject Country Lock (perangkat nyata), lalu tekan butir Country Lock di peramban | Dialog "Country Lock sedang berjalan"; inject tidak terganggu | |
+| H9 | Tekan butir Country Lock di peramban saat aplikasi desktop belum terpasang | Tidak ada yang terbuka; halaman `/country-lock` tetap tampil dengan tombol "Buka di aplikasi desktop" | |
 
 ## Pengisian hasil
 

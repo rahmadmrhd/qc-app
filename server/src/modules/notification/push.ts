@@ -2,7 +2,7 @@ import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { loadUserContext, type UserContext } from '@server/modules/access/context';
 import { type NotificationDto, type NotificationKind, pushPayloadOf } from '@shared/notifications';
-import { hasReadAccess } from './recipients';
+import { canReadNotification } from './recipients';
 
 /**
  * Pengirim push (spek §5.2). Antarmuka disuntik lewat `Env.PUSH` (seperti `MAILER`): pengirim nyata di
@@ -123,6 +123,8 @@ interface PendingRow {
   count: number | string;
   preview: string;
   created_at: string;
+  serial_id: string;
+  proof_id: string;
 }
 
 interface SubRow {
@@ -157,7 +159,7 @@ export async function deliverPendingPushes(
   options: DeliverOptions = {},
 ): Promise<number> {
   const pending = await env.DB.prepare(
-    "SELECT id, recipient, kind, handover_id, location_id, number, customer_name, actor_name, `count`, preview, created_at FROM notifications WHERE push_state = 'pending' ORDER BY created_at, id LIMIT ?",
+    "SELECT id, recipient, kind, handover_id, location_id, number, customer_name, actor_name, `count`, preview, created_at, serial_id, proof_id FROM notifications WHERE push_state = 'pending' ORDER BY created_at, id LIMIT ?",
   )
     .bind(DELIVER_BATCH)
     .all<PendingRow>();
@@ -184,7 +186,7 @@ export async function deliverPendingPushes(
       return;
     }
     const user = await contextOf(row.recipient);
-    if (user === null || !hasReadAccess(user, row.location_id)) {
+    if (user === null || !(await canReadNotification(env, user, row))) {
       await setPushState(env, row.id, 'skipped');
       return;
     }
@@ -220,6 +222,8 @@ export async function deliverPendingPushes(
       preview: row.preview,
       createdAt: row.created_at,
       readAt: '',
+      serialId: row.serial_id,
+      photoId: row.proof_id,
     };
     const payload = JSON.stringify(pushPayloadOf(dto));
     const results = await Promise.all(

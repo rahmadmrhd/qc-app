@@ -428,6 +428,38 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     path: '/serial-cases',
     query: { status: 'string', buId: 'string', query: 'string', cursor: 'string', limit: 'number' },
   },
+  // Bukti foto QC Serial Number. `serialProofs.get` TANPA `etag` dan memakai `cache: 'revalidate'` (`private, no-cache`): isi pada
+  // id yang sama berubah dari foto asli (draft/antre) menjadi hasil bercap (selesai), jadi ETag `id` atau `immutable`
+  // akan menyajikan foto basi; tanpa validator, tiap tampilan mengunduh ulang berkasnya.
+  'serialProofs.upload': {
+    verb: 'POST',
+    path: '/serial-proofs',
+    status: 201,
+    location: '/serial-proofs/{id}',
+    query: { width: 'number', height: 'number' },
+    binary: 'request',
+    rawBody: {
+      field: 'bytes',
+      mimeField: 'mime',
+      maxBytes: 10_485_760, // = MAX_IMAGE_BYTES (shared/files.ts)
+      tooLarge: 'Ukuran foto maksimal 10 MB',
+    },
+  },
+  'serialProofs.get': {
+    verb: 'GET',
+    path: '/serial-proofs/{id}',
+    binary: 'response',
+    download: {
+      bytesField: 'bytes',
+      mimeField: 'mime',
+      filenameField: 'filename',
+      echo: ['id'],
+      cache: 'revalidate',
+    },
+  },
+  'serialProofs.remove': { verb: 'DELETE', path: '/serial-proofs/{id}' },
+  'serialProofs.retry': { verb: 'POST', path: '/serial-proofs/{id}/retry', status: 200 },
+  'serialProofs.replace': { verb: 'POST', path: '/serial-proofs/{photoId}/replace', status: 200 },
   'postelSettings.get': { verb: 'GET', path: '/postel-settings', etag: 'updatedAt' },
   'postelSettings.save': {
     verb: 'PUT',
@@ -483,6 +515,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'push.setDeviceMuted': { verb: 'PUT', path: '/push/device' },
   'push.reportPermission': { verb: 'PUT', path: '/push/permission' },
   'push.status': { verb: 'GET', path: '/push/status' },
+  'desktop.handoff': { verb: 'POST', path: '/desktop/handoff' },
   'guides.list': { verb: 'GET', path: '/guides' },
   'guides.mark': { verb: 'PUT', path: '/guides/{id}' },
   'guides.reset': { verb: 'POST', path: '/guides/{id}/reset' },

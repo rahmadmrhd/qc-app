@@ -1,11 +1,11 @@
-import { batchGuarded } from '@server/core/cas';
+import { isGuardFailure } from '@server/core/cas';
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
 import { statementsFor } from '@server/core/events';
 import type { UserContext } from '@server/modules/access/context';
-import { mapDuplicateError } from '@server/modules/access/repo';
+import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
 import { planAttachFiles } from '@server/modules/files/service';
 import type { SerialActInput, SerialChangeDto, SerialDto } from '@shared/contract';
 import { extractFileRefs } from '@shared/items';
@@ -21,6 +21,7 @@ import {
   type SerialStatus,
 } from '@shared/serials';
 import { assertSerialVisible, modulesOn } from './access';
+import { planProofAttach } from './proof/attach';
 import './alert-listener';
 import { applicableStickersOf } from './applicable';
 import {
@@ -551,6 +552,26 @@ async function applyAct(
     user.email,
   );
 
+  // Foto bukti QC cek ulang: klaim ber-CAS + job cap di batch yang sama dengan kejadian utama. Lokasi cap = lokasi serial
+  // SESUDAH kejadian (cek ulang dari `transit` memakai lokasi tujuan lewat Terima otomatis di atas).
+  const planProofs = () =>
+    planProofAttach(env, 'proofPhotoIds' in input ? input.proofPhotoIds : undefined, {
+      user,
+      serialId,
+      eventId,
+      snapshot: {
+        serial: row.serial,
+        brand: row.brand_name ?? '',
+        model: (row.model ?? '').trim(),
+        buCode: row.bu_code.trim(),
+        locationName: currentLocationName,
+        actorName: user.name,
+        actorTeam: flow.team === 'service' ? 'service' : 'qc',
+      },
+      now,
+    });
+  const proofStatements = await planProofs();
+
   // Pendengar antrean (surel rusak) dipasang ke batch yang sama: aksi yang batal tak meninggalkan job.
   const listeners: DbStatement[] =
     input.action === 'declare_broken'
@@ -592,11 +613,20 @@ async function applyAct(
     ...tail,
     ...attach,
     ...listeners,
+    ...proofStatements,
   ];
   if (withCase) {
     // Galat mentah (penjaga/duplikat nomor) dinilai `runWithCaseNumber`, bukan dipetakan menjadi CONFLICT di sini.
     await env.DB.batch(statements);
   } else {
-    await batchGuarded(env.DB, statements, SERIAL_CONFLICTS, STALE_MESSAGE);
+    try {
+      await batchWrite(env.DB, statements, SERIAL_CONFLICTS);
+    } catch (error) {
+      if (!isGuardFailure(error)) throw error;
+      // Penjaga gagal: serial berubah (stale) ATAU foto diklaim Simpan lain/disapu di sela validasi dan komit.
+      // Validasi ulang foto menghasilkan pesan yang tepat (spek 6.2); bila fotonya baik, penyebabnya serial usang.
+      if (proofStatements.length > 0) await planProofs();
+      throw staleError(STALE_MESSAGE);
+    }
   }
 }

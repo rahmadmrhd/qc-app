@@ -1,5 +1,5 @@
 import type { NotificationDto } from '@shared/notifications';
-import { notificationTitle } from '@shared/notifications';
+import { isSerialNotificationKind, notificationTitle } from '@shared/notifications';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
@@ -19,6 +19,13 @@ export function takeFresh(items: NotificationDto[], seen: Set<string>): Notifica
   const fresh = items.filter((item) => !seen.has(item.id) && item.readAt === '');
   for (const item of items) seen.add(item.id);
   return fresh;
+}
+
+/** Keterangan toast, sama dengan baris isi di daftar lonceng: Serial Number = nomornya saja. */
+function toastDetail(item: NotificationDto): string | undefined {
+  if (isSerialNotificationKind(item.kind)) return item.number === '' ? undefined : item.number;
+  if (item.preview !== '') return item.preview;
+  return item.customerName !== '' && item.kind !== 'createdBatch' ? item.customerName : undefined;
 }
 
 /**
@@ -51,12 +58,7 @@ export function useNotificationToasts(): void {
     }
     // Daftar terbaru di atas; toast ditampilkan dari yang tertua supaya yang terbaru berada di atas tumpukan.
     for (const item of [...fresh].reverse()) {
-      const detail =
-        item.preview !== ''
-          ? item.preview
-          : item.customerName !== '' && item.kind !== 'createdBatch'
-            ? item.customerName
-            : undefined;
+      const detail = toastDetail(item);
       toast(notificationTitle(item), {
         id: `notif-${item.id}`,
         description: detail,

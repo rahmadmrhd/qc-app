@@ -17,6 +17,11 @@ import {
   SESSION_COOKIE,
 } from '@server/http/security';
 import { loadUserContext } from '@server/modules/access/context';
+import {
+  consumeHandoffTicket,
+  HANDOFF_INVALID_MESSAGE,
+  HANDOFF_TICKET_MAX_LENGTH,
+} from '@server/modules/desktop/handoff';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { Hono } from 'hono/tiny';
 import {
@@ -155,6 +160,40 @@ authApp.post('/desktop/token', async (c) => {
   }
   const now = nowOf(c.env);
   const result = await consumeDesktopCode(c.env, code, verifier, now);
+  if (!result) return invalid(401);
+  return c.json({
+    token: await signDesktopToken(c.env, result.email, now),
+    expiresAt: now + DESKTOP_TOKEN_TTL_MS,
+    email: result.email,
+  });
+});
+
+/**
+ * Penukaran tiket serah-terima peramban -> desktop (`modules/desktop/handoff.ts`; keputusan pemilik 2026-11-16):
+ * badan `{ ticket }`, jawaban sama dengan `/desktop/token`. Tanpa sesi dan tanpa PKCE (tiket dibawa tautan `qc://`);
+ * aturan sama dengan `/desktop/token`: `csrfGuard`, batas badan, `no-store`, satu pesan seragam untuk semua penolakan.
+ */
+authApp.post('/desktop/handoff', async (c) => {
+  c.header('Cache-Control', 'no-store');
+  const invalid = (status: 400 | 401) =>
+    c.json(errorEnvelope('UNAUTHENTICATED', HANDOFF_INVALID_MESSAGE), status);
+  let body: unknown;
+  try {
+    const text = await readTextLimited(c.req.raw, 4096);
+    if (text === undefined) return invalid(400);
+    body = JSON.parse(text);
+  } catch {
+    return invalid(400);
+  }
+  const ticket =
+    typeof body === 'object' && body !== null
+      ? (body as Record<string, unknown>).ticket
+      : undefined;
+  if (typeof ticket !== 'string' || ticket === '' || ticket.length > HANDOFF_TICKET_MAX_LENGTH) {
+    return invalid(400);
+  }
+  const now = nowOf(c.env);
+  const result = await consumeHandoffTicket(c.env, ticket, now);
   if (!result) return invalid(401);
   return c.json({
     token: await signDesktopToken(c.env, result.email, now),

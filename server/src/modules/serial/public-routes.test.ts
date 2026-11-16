@@ -122,6 +122,29 @@ beforeEach(async () => {
 });
 
 describe('GET /api/public/serial-reports/:token', () => {
+  test('halaman publik tidak membawa data foto bukti (proofProblemCount dan sejenisnya) walau ada foto gagal', async () => {
+    const { serialId, caseId } = await brokenReport('PUB-FOTO', 9);
+    await env.DB.prepare(
+      "INSERT INTO serial_proof_photos (id, serial_id, event_id, state, created_by, created_at, updated_at, last_error) VALUES ('ph-x', ?, 'ev-x', 'failed', ?, '2026-11-12T03:00:00.000Z', '2026-11-12T03:00:00.000Z', 'Berkas rusak')",
+    )
+      .bind(serialId, W)
+      .run();
+    const response = await report(await tokenFor(caseId));
+    expect(response.status).toBe(200);
+    const text = await response.text();
+    expect(text).not.toMatch(/proof|problem|bukti|Berkas rusak|ph-x/i);
+    expect(Object.keys((JSON.parse(text) as Json).unit).sort()).toEqual([
+      'buCode',
+      'buName',
+      'itemLabel',
+      'locationName',
+      'sample',
+      'serial',
+      'status',
+      'testDate',
+    ]);
+  });
+
   test('token sah tanpa sesi: 200 dengan unit, laporan, dan linimasa dalam lingkup nomor LP itu', async () => {
     const { serialId, caseId } = await brokenReport('PUB-1', 1);
     // Catatan sesudah Rusak (caseId kosong) dan kejadian laporan lain TIDAK ikut.

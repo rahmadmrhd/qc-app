@@ -192,8 +192,9 @@ export async function readFile(
   if (isPostel && viewer.canReadPostelFiles !== true) {
     throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
   }
-  // Gambar pesan serial: SEBELUM cabang `itemBuIds` (yang membiarkan pemilik lain lolos); hanya lewat BU serial.
-  const isSerial = record.ownerType === 'serial';
+  // Gambar pesan serial dan foto bukti QC (`serialproof`): SEBELUM cabang `itemBuIds` (yang membiarkan pemilik lain
+  // lolos); hanya lewat BU serial pemiliknya (`owner_id` = id serial).
+  const isSerial = record.ownerType === 'serial' || record.ownerType === 'serialproof';
   if (isSerial && !(await serialFileVisible(env, record.ownerId, viewer.serialBuIds ?? []))) {
     throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
   }
@@ -266,7 +267,9 @@ export async function planAttachFiles(
       (file.ownerType === 'postel' && ownerType !== 'postel') ||
       // Gambar serial hanya boleh dipakai ulang pada serial pemiliknya; jalur lain atau serial lain dijawab generik
       // (tanpa membuka bahwa berkas itu ada dan milik serial/BU lain).
-      (file.ownerType === 'serial' && (ownerType !== 'serial' || file.ownerId !== ownerId))
+      (file.ownerType === 'serial' && (ownerType !== 'serial' || file.ownerId !== ownerId)) ||
+      // Foto bukti QC dibuat langsung berpemilik oleh job `serial_proof`; tak pernah dipasang lewat jalur mana pun.
+      file.ownerType === 'serialproof'
     ) {
       // Berkas item, Postel, atau serial yang dikirim ke jalur lain (logo QR, stiker): jawab seperti berkas tak dikenal,
       // tanpa membuka keberadaannya (pemilik Postel hanya terlihat bagi pembaca modul Postel).

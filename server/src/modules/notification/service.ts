@@ -2,6 +2,7 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import type { UserContext } from '@server/modules/access/context';
+import { readableBuIds } from '@server/modules/serial/access';
 import type { ListNotificationsInput, NotificationListDto } from '@shared/contract';
 import { hasReadAccess } from './recipients';
 import { countUnread, listNotifications, markAllRead, markRead } from './repo';
@@ -10,7 +11,7 @@ import { NOTIFICATION_PAGE_DEFAULT } from './validate';
 /**
  * Lonceng notifikasi. Kotak notifikasi milik pengguna sendiri (kunci email ternormalisasi). Hak akses diperiksa
  * SAAT DIBACA (spek §5.1): lokasi yang boleh dibaca dihitung dari konteks akses saat ini (`ctx.user.locations`
- * hanya memuat lokasi aktif; `hasReadAccess` = `handover: view` atau `qc: edit`), sehingga pengguna yang kehilangan
+ * hanya memuat lokasi aktif; `hasReadAccess` = `handover: view` atau `qc: edit`; jenis Serial Number: BU serial entrinya masih terbaca), sehingga pengguna yang kehilangan
  * akses lokasi tidak melihat sisa notifikasinya dan hitungan belum dibaca ikut turun.
  */
 function readableLocationIds(user: Pick<UserContext, 'locations'>): string[] {
@@ -23,13 +24,16 @@ export async function listForUser(
   input: ListNotificationsInput,
 ): Promise<NotificationListDto> {
   const locationIds = readableLocationIds(user);
+  // Jenis Serial Number mengikuti BU serial yang masih terbaca (bukan izin/lokasi Serah Terima).
+  const serialBuIds = readableBuIds(user);
   const [page, unread] = await Promise.all([
     listNotifications(env, user.email, {
       locationIds,
+      serialBuIds,
       limit: input.limit ?? NOTIFICATION_PAGE_DEFAULT,
       before: input.before,
     }),
-    countUnread(env, user.email, locationIds),
+    countUnread(env, user.email, locationIds, serialBuIds),
   ]);
   return { items: page.items, unread, nextCursor: page.nextCursor };
 }
