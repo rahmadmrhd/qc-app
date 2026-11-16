@@ -547,6 +547,43 @@ describe('serialProofs.replace: keserempakan dan atomik', () => {
     }
   });
 
+  test('dua unggah ulang serentak atas foto lama BERBEDA dengan draft pengganti yang SAMA: tepat satu menang', async () => {
+    for (let round = 0; round < 3; round++) {
+      const oldA = `same-a-${round}`;
+      const oldB = `same-b-${round}`;
+      const stagedA = await seedFailed(oldA);
+      const stagedB = await seedFailed(oldB);
+      const newId = await upload(W, await realPng());
+      const jobsBefore = (await proofJobs()).length;
+      const [one, two] = await Promise.all([
+        call(W, 'serialProofs.replace', { photoId: oldA, newPhotoId: newId }),
+        call(W, 'serialProofs.replace', { photoId: oldB, newPhotoId: newId }),
+      ]);
+      expect([round, one.ok !== two.ok]).toEqual([round, true]);
+      const loser = one.ok ? two : one;
+      expect(['CONFLICT', 'VALIDATION']).toContain(loser.error?.code);
+      const [winnerOld, loserOld, winnerStaged, loserStaged] = one.ok
+        ? [oldA, oldB, stagedA, stagedB]
+        : [oldB, oldA, stagedB, stagedA];
+      // draft terklaim sekali, job terpasang sekali, pemenang menggantikan foto lamanya
+      const claimed = await findProof(env.DB, newId);
+      expect(claimed?.state).toBe('queued');
+      expect(claimed?.eventId).toBe(`ev-${winnerOld}`);
+      expect((await proofJobs()).length - jobsBefore).toBe(1);
+      expect(await findProof(env.DB, winnerOld)).toBeNull();
+      expect(await stagedExists(winnerStaged)).toBe(false);
+      // yang kalah tak berefek: foto lamanya tetap failed dan berkasnya utuh
+      expect((await findProof(env.DB, loserOld))?.state).toBe('failed');
+      expect(await stagedExists(loserStaged)).toBe(true);
+      expect(
+        await rows(
+          "SELECT id FROM audit_log WHERE action = 'serial.proof_reupload' AND `after` LIKE ?",
+          `%${newId}%`,
+        ),
+      ).toHaveLength(1);
+    }
+  });
+
   test('dua unggah ulang serentak atas foto yang sama: hanya satu menang, draft yang kalah tetap draft', async () => {
     const oldStaged = await seedFailed('old1');
     const first = await upload(W, await realPng());

@@ -132,7 +132,7 @@ describe('GET /api/public/serial-reports/:token', () => {
     const response = await report(await tokenFor(caseId));
     expect(response.status).toBe(200);
     const text = await response.text();
-    expect(text).not.toMatch(/proof|bukti|Berkas rusak|ph-x/i);
+    expect(text).not.toMatch(/proof|problem|bukti|Berkas rusak|ph-x/i);
     expect(Object.keys((JSON.parse(text) as Json).unit).sort()).toEqual([
       'buCode',
       'buName',

@@ -321,6 +321,7 @@ describe('skema baseline', () => {
       { name: '0018_client_id_serah_terima.sql' },
       { name: '0019_bukti_foto_qc.sql' },
       { name: '0020_notifikasi_serial.sql' },
+      { name: '0021_indeks_notifikasi_serial.sql' },
     ]);
   });
 
@@ -467,8 +468,10 @@ describe('skema baseline', () => {
         'manual_book_versions.manual_book_versions_design_version',
         'notification_pending.notification_pending_release',
         'notifications.notifications_created',
+        'notifications.notifications_proof',
         'notifications.notifications_push',
         'notifications.notifications_recipient',
+        'notifications.notifications_serial',
         'postel_numbers.postel_numbers_expiry',
         'postel_numbers.postel_numbers_key',
         'postel_numbers.postel_numbers_seq',

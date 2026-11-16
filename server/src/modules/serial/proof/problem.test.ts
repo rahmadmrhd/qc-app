@@ -126,6 +126,92 @@ describe('proofProblemCount', () => {
   });
 });
 
+describe('serials.get: problemPhotos', () => {
+  /** 502 kejadian `recorded` (seq 2..503, di atas kejadian seed seq 1); foto `failed` ditautkan ke kejadian seq 2 (di luar 500 terbaru). */
+  async function seedManyEvents(): Promise<void> {
+    const values: string[] = [];
+    const binds: unknown[] = [];
+    for (let seq = 2; seq <= 503; seq++) {
+      values.push(
+        "(?, 'sn-a', '', ?, 'recorded', '2026-11-12', ?, 'x', 'Budi', 'qc', '', '[]', '{}')",
+      );
+      binds.push(
+        `ev-${seq}`,
+        seq,
+        `2026-11-12T00:${String(Math.floor(seq / 60)).padStart(2, '0')}:${String(seq % 60).padStart(2, '0')}.000Z`,
+      );
+    }
+    await env.DB.prepare(
+      `INSERT INTO serial_events (id, serial_id, case_id, seq, type, occurred_on, created_at, actor_id, actor_name, actor_team, message, changes_json, data_json) VALUES ${values.join(', ')}`,
+    )
+      .bind(...binds)
+      .run();
+  }
+
+  test('foto failed pada kejadian di luar batas dimuat tetap muncul, lengkap dengan canManage/canRetry/failedAt/expiresAt', async () => {
+    await seedManyEvents();
+    await queuedGarbage('p-old');
+    await env.DB.prepare(
+      "UPDATE serial_proof_photos SET event_id = 'ev-2' WHERE id = 'p-old'",
+    ).run();
+    await setProofState(env.DB, 'p-old', {
+      state: 'failed',
+      now: T0,
+      lastError: 'Berkas rusak',
+    }).run();
+    const out = await call(W, 'serials.get', { id: 'sn-a' });
+    expect(out.data.eventsTruncated).toBe(true);
+    // kejadian ev-2 tidak dimuat, jadi foto tak ada di timeline mana pun (tak digandakan)
+    expect(out.data.events.some((e: Json) => e.id === 'ev-2')).toBe(false);
+    expect(out.data.events.flatMap((e: Json) => e.proofPhotos)).toHaveLength(0);
+    expect(out.data.problemPhotos).toEqual([
+      {
+        id: 'p-old',
+        state: 'failed',
+        mime: 'image/png',
+        size: 12,
+        width: 64,
+        height: 48,
+        filename: 'bukti-p-old.png',
+        error: 'Berkas rusak',
+        canManage: true,
+        canRetry: true,
+        failedAt: T0,
+        expiresAt: '2026-12-04T03:00:00.000Z',
+      },
+    ]);
+    // pembaca tanpa hak kelola: foto terlihat, tombol tidak
+    const viewer = await call(VIEWER, 'serials.get', { id: 'sn-a' });
+    expect(viewer.data.problemPhotos[0]).toMatchObject({ canManage: false, canRetry: false });
+  });
+
+  test('hanya foto failed (bukan queued/done) dan hanya milik serial itu; kosong tanpa foto bermasalah', async () => {
+    await queuedGarbage('p-fail');
+    await queuedGarbage('p-done');
+    await queuedGarbage('p-queued');
+    await queuedGarbage('p-other', W, 'sn-none');
+    await setProofState(env.DB, 'p-fail', { state: 'failed', now: T0, lastError: 'x' }).run();
+    await setProofState(env.DB, 'p-done', { state: 'done', now: T0 }).run();
+    await setProofState(env.DB, 'p-other', { state: 'failed', now: T0, lastError: 'x' }).run();
+    const out = await call(W, 'serials.get', { id: 'sn-a' });
+    expect(out.data.problemPhotos.map((p: Json) => p.id)).toEqual(['p-fail']);
+    const none = await call(W, 'serials.get', { id: 'sn-none' });
+    expect(none.data.problemPhotos.map((p: Json) => p.id)).toEqual(['p-other']);
+    await env.DB.prepare('DELETE FROM serial_proof_photos').run();
+    expect((await call(W, 'serials.get', { id: 'sn-a' })).data.problemPhotos).toEqual([]);
+  });
+
+  test('hak baca BU dihormati: serial BU lain tetap NOT_FOUND (tanpa bocor foto)', async () => {
+    await seedSerial(env, { id: 'sn-b', serial: 'BBB1', buId: 'bu-b', itemId: 'i-b' });
+    await queuedGarbage('p-b', SERIAL_USERS.both, 'sn-b');
+    await setProofState(env.DB, 'p-b', { state: 'failed', now: T0, lastError: 'x' }).run();
+    expect((await call(W, 'serials.get', { id: 'sn-b' })).error?.code).toBe('NOT_FOUND');
+    expect(
+      (await call(SERIAL_USERS.both, 'serials.get', { id: 'sn-b' })).data.problemPhotos,
+    ).toHaveLength(1);
+  });
+});
+
 describe('SerialProofPhotoDto: failedAt dan expiresAt', () => {
   test('hanya terisi untuk foto failed: failedAt = saat gagal, expiresAt = + 14 hari', async () => {
     await queuedGarbage('p1');

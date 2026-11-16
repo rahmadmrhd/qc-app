@@ -1555,6 +1555,12 @@ export interface GetSerialOutput {
   events: SerialEventDto[];
   /** Ada kejadian lebih lama yang tidak dimuat (hanya 500 terbaru yang dikembalikan). */
   eventsTruncated: boolean;
+  /**
+   * Semua foto bukti QC `failed` entri ini (urut unggah; maks. 5 per entri dan dibuang otomatis sesudah 14 hari), terlepas
+   * dari terpotongnya `events`: bahan banner "Foto bukti bermasalah" (tombol Unggah ulang dan batas buang). Foto yang sama
+   * tetap muncul di `proofPhotos` kejadiannya bila kejadian itu dimuat. Tidak ada di halaman publik.
+   */
+  problemPhotos: SerialProofPhotoDto[];
 }
 export interface SerialListInput {
   /** Awalan serial (dinormalisasi). */

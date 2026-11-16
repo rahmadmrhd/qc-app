@@ -289,6 +289,27 @@ export async function listProofsByEvents(
   return byEvent;
 }
 
+/**
+ * Foto `failed` satu serial (urut unggah), sebagai DTO: bahan banner di detail yang tak boleh bergantung pada kejadian
+ * yang dimuat (`EVENTS_MAX`). Pemanggil sudah memastikan serialnya terbaca.
+ */
+export async function listFailedProofsBySerial(
+  db: Preparer,
+  serialId: string,
+  canManage: (row: ProofRow) => boolean,
+): Promise<SerialProofPhotoDto[]> {
+  const rows = await db
+    .prepare(
+      `SELECT ${COLUMNS} FROM serial_proof_photos WHERE serial_id = ? AND state = 'failed' ORDER BY created_at ASC, id ASC`,
+    )
+    .bind(serialId)
+    .all<ProofDbRow>();
+  return rows.results.map((raw) => {
+    const row = toRow(raw);
+    return toProofDto(row, canManage(row));
+  });
+}
+
 /** Total ukuran (byte) foto `draft` milik pengguna, dari kolom `size` (tanpa menyentuh disk): kuota byte unggah. */
 export async function sumDraftBytesOf(db: Preparer, email: string): Promise<number> {
   const row = await db

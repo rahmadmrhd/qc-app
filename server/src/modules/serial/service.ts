@@ -56,7 +56,7 @@ import { applicableStickersOf } from './applicable';
 import { loadCases, type SerialCaseRow } from './case-repo';
 import { canManageProof } from './proof/access';
 import { loadStampItemInfo, planProofAttach } from './proof/attach';
-import { listProofsByEvents } from './proof/repo';
+import { listFailedProofsBySerial, listProofsByEvents } from './proof/repo';
 import {
   activeItemInBu,
   activeLocationName,
@@ -618,10 +618,16 @@ export async function getSerial(
 ): Promise<GetSerialOutput> {
   const serial = await loadSerialDto(env, user, input.id);
   const { events, truncated } = await loadSerialEvents(env.DB, serial.id);
+  const problemPhotos = serial.proofProblemCount
+    ? await listFailedProofsBySerial(env.DB, serial.id, (proof) =>
+        canManageProof(user, proof.createdBy, serial.buId),
+      )
+    : [];
   return {
     serial,
     events: await toEventsWithProofs(env, events, { user, buId: serial.buId }),
     eventsTruncated: truncated,
+    problemPhotos,
   };
 }
 
