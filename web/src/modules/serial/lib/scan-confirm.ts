@@ -21,8 +21,12 @@ export const CONFIRM_WINDOW_SLACK = 1.5;
 export const CONFIRM_WINDOW_MAX_MS = 4000;
 /** Bobot selang terbaru pada rata-rata bergerak selang antar bingkai. */
 const INTERVAL_EMA_WEIGHT = 0.3;
-/** Teks yang sama yang baru diteruskan tidak diteruskan lagi selama jeda ini (dedup dialog tetap berlaku di atasnya). */
-export const CONFIRM_REPEAT_COOLDOWN_MS = 1500;
+/**
+ * Teks yang sama yang baru diteruskan tidak diteruskan lagi selama jeda ini, dihitung sejak TERAKHIR terlihat (bergeser
+ * selama label masih di depan kamera). Gate dialog (`camera-payload`) hanya dipanggil sekali per seri terkonfirmasi,
+ * jadi jeda inilah yang menjaga label yang ditahan: harus >= `CAMERA_DUPLICATE_WINDOW_MS` (3 dtk, dijaga tes).
+ */
+export const CONFIRM_REPEAT_COOLDOWN_MS = 3000;
 
 const FORMATS_2D: ReadonlySet<string> = new Set([
   'qr_code',
@@ -52,8 +56,12 @@ export interface ScanConfirmerOptions {
   now?: () => number;
 }
 
+function is2D(format: string | undefined): boolean {
+  return format !== undefined && FORMATS_2D.has(format);
+}
+
 function framesNeeded(format: string | undefined): number {
-  return format !== undefined && FORMATS_2D.has(format) ? CONFIRM_FRAMES_2D : CONFIRM_FRAMES_1D;
+  return is2D(format) ? CONFIRM_FRAMES_2D : CONFIRM_FRAMES_1D;
 }
 
 export function createScanConfirmer({ now = Date.now }: ScanConfirmerOptions = {}): ScanConfirmer {
@@ -62,6 +70,9 @@ export function createScanConfirmer({ now = Date.now }: ScanConfirmerOptions = {
   let startedAt = 0;
   let needed = 0;
   let emitted = false;
+  // Seri 1D mentoleransi SATU bingkai kosong (tak dihitung, tak mereset); dua kosong berturut-turut mereset. 2D ketat.
+  let streak2D = false;
+  let emptyRun = 0;
   let lastCallAt: number | null = null;
   let avgInterval = 0;
   const lastEmitted = new Map<string, number>();
@@ -78,6 +89,8 @@ export function createScanConfirmer({ now = Date.now }: ScanConfirmerOptions = {
     count = 0;
     needed = 0;
     emitted = false;
+    streak2D = false;
+    emptyRun = 0;
   }
 
   return {
@@ -95,9 +108,14 @@ export function createScanConfirmer({ now = Date.now }: ScanConfirmerOptions = {
       }
       lastCallAt = time;
       if (sample === null || sample.text === '') {
+        if (text !== null && !streak2D && emptyRun === 0) {
+          emptyRun = 1;
+          return null;
+        }
         reset();
         return null;
       }
+      emptyRun = 0;
       for (const [key, at] of lastEmitted) {
         if (time - at >= CONFIRM_REPEAT_COOLDOWN_MS) lastEmitted.delete(key);
       }
@@ -114,9 +132,11 @@ export function createScanConfirmer({ now = Date.now }: ScanConfirmerOptions = {
         startedAt = time;
         needed = need;
         emitted = false;
+        streak2D = is2D(sample.format);
       } else {
         count += 1;
         needed = Math.max(needed, need);
+        streak2D = streak2D && is2D(sample.format);
       }
       if (emitted || count < needed) return null;
       emitted = true;

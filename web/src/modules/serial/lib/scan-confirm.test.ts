@@ -1,4 +1,5 @@
 import { expect, test } from 'vitest';
+import { CAMERA_DUPLICATE_WINDOW_MS } from './camera-payload';
 import {
   CONFIRM_FRAMES_1D,
   CONFIRM_FRAMES_2D,
@@ -73,7 +74,7 @@ test('bacaan parsial yang berganti-ganti ditolak', () => {
   }
 });
 
-test('bingkai tanpa bacaan mereset hitungan', () => {
+test('dua bingkai kosong berturut-turut mereset hitungan', () => {
   const { confirmer, advance } = setup();
   const code = { text: 'SN1', format: 'code_128' };
   confirmer.observe(code);
@@ -82,9 +83,78 @@ test('bingkai tanpa bacaan mereset hitungan', () => {
   advance(120);
   expect(confirmer.observe(null)).toBeNull();
   advance(120);
+  expect(confirmer.observe(null)).toBeNull();
+  advance(120);
   expect(confirmer.observe(code)).toBeNull();
   advance(120);
   expect(confirmer.observe(code)).toBeNull();
+  advance(120);
+  expect(confirmer.observe(code)).toBe('SN1');
+});
+
+test('1D: satu bingkai kosong ditoleransi (tak dihitung, tak mereset); yang dihitung tetap 3 bacaan identik', () => {
+  const { confirmer, advance } = setup();
+  const code = { text: 'SN1', format: 'code_128' };
+  confirmer.observe(code);
+  advance(120);
+  expect(confirmer.observe(null)).toBeNull();
+  advance(120);
+  // Bingkai kosong tidak dihitung: baru 2 bacaan.
+  expect(confirmer.observe(code)).toBeNull();
+  advance(120);
+  expect(confirmer.observe(code)).toBe('SN1');
+});
+
+test('1D: toleransi hanya SATU kosong; kosong kedua (setelah bacaan lagi, boleh ditoleransi lagi) dan teks berbeda mereset', () => {
+  const { confirmer, advance } = setup();
+  const code = { text: 'SN1', format: 'code_128' };
+  const other = { text: 'SN2', format: 'code_128' };
+  confirmer.observe(code);
+  advance(120);
+  confirmer.observe(null);
+  advance(120);
+  confirmer.observe(code);
+  advance(120);
+  // Bacaan identik menyela: kosong berikutnya boleh ditoleransi lagi.
+  confirmer.observe(null);
+  advance(120);
+  expect(confirmer.observe(code)).toBe('SN1');
+  advance(CONFIRM_REPEAT_COOLDOWN_MS + 1);
+  confirmer.observe(null);
+  confirmer.observe(null);
+
+  // Teks berbeda setelah kosong yang ditoleransi memulai seri baru.
+  confirmer.observe(code);
+  advance(120);
+  confirmer.observe(null);
+  advance(120);
+  expect(confirmer.observe(other)).toBeNull();
+  advance(120);
+  expect(confirmer.observe(other)).toBeNull();
+  advance(120);
+  expect(confirmer.observe(other)).toBe('SN2');
+});
+
+test('2D tetap ketat: satu bingkai kosong langsung mereset', () => {
+  const { confirmer, advance } = setup();
+  const code = { text: 'QR', format: 'qr_code' };
+  confirmer.observe(code);
+  advance(120);
+  confirmer.observe(null);
+  advance(120);
+  expect(confirmer.observe(code)).toBeNull();
+  advance(120);
+  expect(confirmer.observe(code)).toBe('QR');
+});
+
+test('kosong tanpa seri berjalan tidak berefek', () => {
+  const { confirmer, advance } = setup();
+  const code = { text: 'SN1', format: 'code_128' };
+  confirmer.observe(null);
+  advance(120);
+  confirmer.observe(code);
+  advance(120);
+  confirmer.observe(code);
   advance(120);
   expect(confirmer.observe(code)).toBe('SN1');
 });
@@ -140,12 +210,14 @@ test('bingkai lambat: bacaan parsial yang berganti-ganti tetap ditolak', () => {
   }
 });
 
-test('bingkai lambat: bingkai kosong di tengah tetap mereset', () => {
+test('bingkai lambat: dua bingkai kosong di tengah tetap mereset', () => {
   const { confirmer, advance } = setup();
   const code = { text: 'SN1', format: 'code_128' };
   confirmer.observe(code);
   advance(800);
   confirmer.observe(code);
+  advance(800);
+  confirmer.observe(null);
   advance(800);
   confirmer.observe(null);
   advance(800);
@@ -225,4 +297,32 @@ test('teks kosong dianggap tak ada bacaan', () => {
   confirmer.observe({ text: '', format: 'code_128' });
   advance(120);
   expect(confirmer.observe(code)).toBeNull();
+});
+
+test('cooldown >= jendela dedup dialog dan bergeser selama label masih terlihat (label tahan tidak terkirim ulang)', () => {
+  expect(CONFIRM_REPEAT_COOLDOWN_MS).toBeGreaterThanOrEqual(CAMERA_DUPLICATE_WINDOW_MS);
+  const { confirmer, advance } = setup();
+  const code = { text: 'SN1', format: 'qr_code' };
+  confirmer.observe(code);
+  advance(120);
+  expect(confirmer.observe(code)).toBe('SN1');
+  // Ditahan lama (10 dtk) lalu hilang 2,5 dtk (fokus berburu), kembali: tidak dikirim ulang.
+  for (let i = 0; i < 80; i++) {
+    advance(125);
+    confirmer.observe(code);
+  }
+  confirmer.observe(null);
+  advance(120);
+  confirmer.observe(null);
+  advance(2500);
+  confirmer.observe(code);
+  advance(120);
+  expect(confirmer.observe(code)).toBeNull();
+  // Benar-benar hilang lebih lama dari cooldown: terkirim lagi.
+  confirmer.observe(null);
+  confirmer.observe(null);
+  advance(CONFIRM_REPEAT_COOLDOWN_MS);
+  confirmer.observe(code);
+  advance(120);
+  expect(confirmer.observe(code)).toBe('SN1');
 });
