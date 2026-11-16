@@ -8,6 +8,7 @@ import {
   formatZoom,
   initialZoom,
   readCameraCaps,
+  restoreContinuousFocus,
 } from './camera-controls';
 
 function track(caps: Record<string, unknown>, settings: Record<string, unknown> = {}) {
@@ -147,4 +148,17 @@ test('describeCameras: label Android dijadikan nama mudah dipahami; label lain d
     { id: 'a', label: 'Integrated Camera (0bda:5634)' },
     { id: 'b', label: 'Kamera 2' },
   ]);
+});
+
+test('restoreContinuousFocus: continuous + titik tengah, set cadangan tanpa titik; galat ditelan', async () => {
+  const t = track({ focusMode: ['continuous'] });
+  await restoreContinuousFocus(t);
+  expect(t.applyConstraints).toHaveBeenCalledWith({
+    advanced: [
+      { focusMode: 'continuous', pointsOfInterest: [{ x: 0.5, y: 0.5 }] },
+      { focusMode: 'continuous' },
+    ],
+  });
+  t.applyConstraints.mockRejectedValue(new Error('x'));
+  await expect(restoreContinuousFocus(t)).resolves.toBeUndefined();
 });

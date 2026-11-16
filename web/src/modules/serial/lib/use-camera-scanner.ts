@@ -9,6 +9,7 @@ import {
   describeCameras,
   initialZoom,
   readCameraCaps,
+  restoreContinuousFocus,
   type ZoomRange,
 } from './camera-controls';
 import { createScanCapturer } from './scan-capture';
@@ -18,8 +19,8 @@ import { type Point, pickNearestCenterCode, type Size, tapToVideoPoint } from '.
 /** Jeda antar pembacaan bingkai (~8 fps); cukup untuk label dan hemat baterai. */
 export const SCAN_INTERVAL_MS = 120;
 
-/** Setelah ketuk-untuk-fokus (sekali), fokus kembali ke mode kontinu sesudah jeda ini. */
-export const TAP_FOCUS_RESTORE_MS = 1500;
+/** Setelah ketuk-untuk-fokus (sekali), fokus kembali ke mode kontinu sesudah jeda ini (cukup lama agar single-shot lambat tak terpotong). */
+export const TAP_FOCUS_RESTORE_MS = 2500;
 
 /** Resolusi yang diminta (ideal, bukan exact: kamera yang tak bisa tetap terbuka). Label kecil butuh piksel lebih banyak. */
 const IDEAL_WIDTH = 1920;
@@ -375,7 +376,7 @@ export function useCameraScanner({
     // Setelah fokus sekali, kembali ke kontinu agar fokus tetap mengikuti label yang bergerak.
     tapTimerRef.current = setTimeout(() => {
       tapTimerRef.current = null;
-      if (trackRef.current === track && caps.continuousFocus) void applyContinuousFocus(track);
+      if (trackRef.current === track && caps.continuousFocus) void restoreContinuousFocus(track);
     }, TAP_FOCUS_RESTORE_MS);
     return true;
   }, []);

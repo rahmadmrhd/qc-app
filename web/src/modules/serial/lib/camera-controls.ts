@@ -94,6 +94,19 @@ export async function applyContinuousFocus(track: MediaStreamTrack): Promise<voi
   await apply(track, { focusMode: 'continuous' });
 }
 
+/**
+ * Kembali ke fokus kontinu setelah ketuk-fokus. Set pertama juga memusatkan lagi `pointsOfInterest` (titik ketukan
+ * dapat melekat pada sebagian perangkat); set kedua cadangan bagi perangkat tanpa `pointsOfInterest` (anggota satu set
+ * "semua atau tidak sama sekali").
+ */
+export async function restoreContinuousFocus(track: MediaStreamTrack): Promise<void> {
+  await apply(
+    track,
+    { focusMode: 'continuous', pointsOfInterest: [{ x: 0.5, y: 0.5 }] },
+    { focusMode: 'continuous' },
+  );
+}
+
 export function applyZoom(track: MediaStreamTrack, zoom: number): Promise<boolean> {
   return apply(track, { zoom });
 }

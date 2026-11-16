@@ -141,7 +141,6 @@ function CameraScanBody({
         <DialogTitle>Scan dengan kamera</DialogTitle>
         <DialogDescription>
           Arahkan QR atau barcode ke dalam bingkai. Kamera tetap menyala untuk scan berikutnya.
-          {tip ? ` ${tip}` : ''}
         </DialogDescription>
       </DialogHeader>
 
@@ -208,6 +207,8 @@ function CameraScanBody({
         ) : null}
       </div>
 
+      {tip ? <p className="-mt-2 text-xs text-muted-foreground">{tip}</p> : null}
+
       <div className="flex flex-wrap items-center gap-2">
         {deviceOptions.length > 1 ? (
           <Select
@@ -226,6 +227,7 @@ function CameraScanBody({
               type="button"
               variant="outline"
               size="icon-sm"
+              className="size-11"
               aria-label="Perkecil zoom"
               disabled={camera.zoom <= camera.zoomRange.min}
               onClick={() =>
@@ -239,6 +241,7 @@ function CameraScanBody({
             <input
               type="range"
               aria-label="Zoom"
+              aria-valuetext={formatZoom(camera.zoom)}
               className="h-6 min-w-0 flex-1 accent-primary"
               min={camera.zoomRange.min}
               max={camera.zoomRange.max}
@@ -250,6 +253,7 @@ function CameraScanBody({
               type="button"
               variant="outline"
               size="icon-sm"
+              className="size-11"
               aria-label="Perbesar zoom"
               disabled={camera.zoom >= camera.zoomRange.max}
               onClick={() =>

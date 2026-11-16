@@ -785,32 +785,78 @@ function focusModeOf(call: unknown[]): string | undefined {
   return (call[0] as { advanced: { focusMode?: string }[] }).advanced[0]?.focusMode;
 }
 
-test('ketuk-untuk-fokus: fokus sekali ke titik ketukan (memperhitungkan cover), cincin tampil, lalu kembali ke kontinu', async () => {
+test('ketuk-untuk-fokus: fokus sekali ke titik ketukan (memperhitungkan cover), cincin tampil, lalu kembali ke kontinu dengan titik tengah', async () => {
   stubVideoGeometry({ w: 1280, h: 720 }, { w: 300, h: 300 });
   stubVideoRect(300, 300);
   const stream = fakeStream({ caps: { focusMode: ['continuous', 'single-shot'] } });
   setup({ stream });
   await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
   const continuous = () =>
-    stream.track.applyConstraints.mock.calls.filter((call) => focusModeOf(call) === 'continuous')
-      .length;
-  expect(continuous()).toBe(1);
+    stream.track.applyConstraints.mock.calls.filter((call) => focusModeOf(call) === 'continuous');
+  expect(continuous()).toHaveLength(1);
 
-  fireEvent.click(screen.getByTestId('camera-viewport'), { clientX: 0, clientY: 150 });
-  const shot = stream.track.applyConstraints.mock.calls.find(
-    (call) => focusModeOf(call) === 'single-shot',
-  );
-  expect(shot).toBeDefined();
-  const point = (
-    shot?.[0] as { advanced: { pointsOfInterest: { x: number; y: number }[] }[] } | undefined
-  )?.advanced[0]?.pointsOfInterest[0];
-  // Tepi kiri kotak = 116,67 dari 533,33 lebar video tampil; tengah vertikal = 0,5.
-  expect(point?.x).toBeCloseTo(116.6667 / 533.3333, 4);
-  expect(point?.y).toBeCloseTo(0.5, 5);
-  expect(screen.getByTestId('focus-ring')).toHaveStyle({ left: '0px', top: '150px' });
+  // Timer palsa dinyalakan hanya setelah kamera siap: timer pemindaian yang sudah berjalan tak terganggu.
+  vi.useFakeTimers();
+  try {
+    fireEvent.click(screen.getByTestId('camera-viewport'), { clientX: 0, clientY: 150 });
+    const shot = stream.track.applyConstraints.mock.calls.find(
+      (call) => focusModeOf(call) === 'single-shot',
+    );
+    expect(shot).toBeDefined();
+    const point = (
+      shot?.[0] as { advanced: { pointsOfInterest: { x: number; y: number }[] }[] } | undefined
+    )?.advanced[0]?.pointsOfInterest[0];
+    // Tepi kiri kotak = 116,67 dari 533,33 lebar video tampil; tengah vertikal = 0,5.
+    expect(point?.x).toBeCloseTo(116.6667 / 533.3333, 4);
+    expect(point?.y).toBeCloseTo(0.5, 5);
+    expect(screen.getByTestId('focus-ring')).toHaveStyle({ left: '0px', top: '150px' });
 
-  await waitFor(() => expect(continuous()).toBe(2), { timeout: TAP_FOCUS_RESTORE_MS + 1500 });
-  await waitFor(() => expect(screen.queryByTestId('focus-ring')).not.toBeInTheDocument());
+    // Single-shot yang lambat tidak dipotong: belum kembali ke kontinu sebelum jedanya habis.
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TAP_FOCUS_RESTORE_MS - 1);
+    });
+    expect(continuous()).toHaveLength(1);
+    expect(screen.queryByTestId('focus-ring')).not.toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(continuous()).toHaveLength(2);
+    const restore = continuous()[1]?.[0] as {
+      advanced: { focusMode: string; pointsOfInterest?: { x: number; y: number }[] }[];
+    };
+    expect(restore.advanced[0]?.pointsOfInterest).toEqual([{ x: 0.5, y: 0.5 }]);
+    expect(restore.advanced[1]).toEqual({ focusMode: 'continuous' });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('ketukan kedua sebelum jeda habis menjadwalkan ulang kembali ke kontinu (tidak ganda)', async () => {
+  stubVideoGeometry({ w: 1280, h: 720 }, { w: 300, h: 300 });
+  stubVideoRect(300, 300);
+  const stream = fakeStream({ caps: { focusMode: ['continuous', 'single-shot'] } });
+  setup({ stream });
+  await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
+  const continuous = () =>
+    stream.track.applyConstraints.mock.calls.filter((call) => focusModeOf(call) === 'continuous');
+  vi.useFakeTimers();
+  try {
+    fireEvent.click(screen.getByTestId('camera-viewport'), { clientX: 100, clientY: 100 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TAP_FOCUS_RESTORE_MS - 500);
+    });
+    fireEvent.click(screen.getByTestId('camera-viewport'), { clientX: 120, clientY: 120 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(TAP_FOCUS_RESTORE_MS - 1);
+    });
+    expect(continuous()).toHaveLength(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(continuous()).toHaveLength(2);
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 test('ketuk-untuk-fokus tanpa dukungan single-shot: ketukan tidak melakukan apa-apa', async () => {
@@ -858,4 +904,21 @@ test('petunjuk buram menyesuaikan dukungan: ketuk layar bila bisa, atur zoom bil
   setup({ stream: fakeStream({ caps: { zoom: { min: 1, max: 4, step: 0.1 } } }) });
   expect(await screen.findByText(/lalu atur zoom/)).toBeInTheDocument();
   expect(screen.queryByText(/ketuk layar untuk fokus/)).not.toBeInTheDocument();
+});
+
+test('kontrol zoom: target sentuh 44 px dan slider punya aria-valuetext yang terbaca', async () => {
+  setup({ stream: fakeStream({ caps: { zoom: { min: 1, max: 5, step: 0.1 } } }) });
+  const slider = await screen.findByRole('slider', { name: 'Zoom' });
+  expect(slider).toHaveAttribute('aria-valuetext', '1x');
+  for (const name of ['Perkecil zoom', 'Perbesar zoom']) {
+    expect(screen.getByRole('button', { name }).className).toContain('size-11');
+  }
+  await userEvent.click(screen.getByRole('button', { name: 'Perbesar zoom' }));
+  expect(screen.getByRole('slider', { name: 'Zoom' })).toHaveAttribute('aria-valuetext', '1,5x');
+});
+
+test('petunjuk buram ada di badan dialog (bukan di header yang menempel)', async () => {
+  setup({ stream: fakeStream({ caps: { focusMode: ['single-shot'] } }) });
+  const tip = await screen.findByText(/ketuk layar untuk fokus/);
+  expect(tip.closest('[data-slot="dialog-header"]')).toBeNull();
 });
