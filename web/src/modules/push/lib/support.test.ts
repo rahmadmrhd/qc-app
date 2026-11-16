@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test } from 'vitest';
 import { devicePermission, platformOf, pushAvailable, pushSupported } from './support';
 
 function win(parts: { sw?: boolean; push?: boolean; notification?: string | null }): Window {
@@ -21,6 +21,21 @@ describe('pushSupported / devicePermission', () => {
     expect(devicePermission(win({ notification: 'denied' }))).toBe('denied');
     expect(devicePermission(win({ notification: 'default' }))).toBe('default');
     expect(devicePermission(win({ sw: false }))).toBe('unsupported');
+  });
+});
+
+describe('aplikasi desktop (Electron)', () => {
+  afterEach(() => {
+    delete (window as unknown as { qcBridge?: unknown }).qcBridge;
+  });
+
+  test('push web tak didukung walau API-nya ada: desktop memakai aliran server, bukan Web Push', () => {
+    expect(pushSupported(win({}))).toBe(true);
+    (window as unknown as { qcBridge?: unknown }).qcBridge = { version: 1 };
+    expect(pushSupported(win({}))).toBe(false);
+    expect(
+      pushAvailable({ enabled: true }, devicePermission(win({ notification: 'granted' }))),
+    ).toBe(false);
   });
 });
 

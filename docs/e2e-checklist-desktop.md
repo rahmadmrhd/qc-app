@@ -93,6 +93,23 @@ Jalankan hanya setelah gerbang spike lulus. Selalu bandingkan dengan aplikasi WP
 | F3 | Klik lagi dengan aplikasi sudah terbuka | Tidak ada jendela kedua; jendela yang ada fokus | |
 | F4 | Buka `qc://lain`, `qc://country-lock/x`, atau `qc://country-lock?a=1` | Diabaikan (tidak membuka rute apa pun) | |
 
+## G. Notifikasi desktop (SSE) dan tray
+
+Prasyarat: masuk di aplikasi desktop; satu akun lain (peramban biasa atau perangkat lain) yang dapat membuat task/komentar di lokasi yang sama.
+
+| # | Langkah | Hasil yang diharapkan | Hasil |
+|---|---|---|---|
+| G1 | Buka menu profil | Tidak ada butir "Notifikasi push" (hanya di peramban); tidak ada dialog/banner izin push | |
+| G2 | Akun lain menulis komentar pada task di lokasi Anda | Dalam hitungan detik muncul notifikasi Windows berjudul "<nama> mengomentari task <nomor>" dengan cuplikan isi | |
+| G3 | Klik notifikasi | Jendela QC App tampil dan fokus, lalu membuka halaman Serah Terima task itu | |
+| G4 | Tutup jendela (X) | Jendela hilang, ikon QC App tetap di tray, balon "QC App tetap berjalan" muncul sekali; proses tidak berhenti | |
+| G5 | Dengan jendela tersembunyi, akun lain menulis komentar lagi | Notifikasi Windows tetap muncul; klik membuka jendela lagi | |
+| G6 | Klik ikon tray, lalu pilih "Keluar" dari menu tray | Klik membuka jendela; "Keluar" menutup aplikasi sepenuhnya (ikon tray hilang) | |
+| G7 | Matikan jaringan 30 dtk, buat komentar dari akun lain, nyalakan jaringan | Aplikasi tersambung ulang sendiri; komentar yang masih di bawah 10 menit muncul sebagai notifikasi (sekali, tanpa ganda) | |
+| G8 | Keluar dari akun (menu profil), lalu tutup jendela | Aplikasi benar-benar tertutup (bukan ke tray); tidak ada notifikasi lagi untuk akun itu | |
+| G9 | Cabut izin lokasi akun dari admin, lalu akun lain menulis komentar di lokasi itu | Tidak ada notifikasi untuk akun yang dicabut | |
+| G10 | Buka aplikasi di dua perangkat dengan akun yang sama | Keduanya menerima notifikasi (batas 3 koneksi per akun) | |
+
 ## Pengisian hasil
 
 - Penguji dan tanggal: 

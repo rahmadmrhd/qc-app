@@ -13,6 +13,7 @@ import {
 import { isServerPath, serveStatic } from '@server/http/static';
 import { authApp } from '@server/modules/auth/routes';
 import { desktopApp } from '@server/modules/desktop/routes';
+import { notificationStreamApp } from '@server/modules/notification/stream-routes';
 import { publicSerialApp } from '@server/modules/serial/public-routes';
 import { getRoutes } from '@server/routes';
 import { Hono } from 'hono/tiny';
@@ -33,6 +34,9 @@ export function createApp(routes: RouteTable): Hono<AppBindings> {
   // REST (`/api/v1`): satu tabel `shared/api.ts` untuk klien, server, dan OpenAPI; semua id terdaftar.
   const rest = new Hono<AppBindings>();
   registerRest(rest, routes);
+  // Aliran SSE notifikasi desktop: satu-satunya rute `/api/v1` di luar `API_ROUTES` (respons berumur panjang, bukan
+  // JSON tunggal); dipasang SEBELUM `rest` agar tak tertelan kernel.
+  app.route('/api/v1/notifications/stream', notificationStreamApp);
   app.route('/api/v1', rest);
   app.get('/api/openapi.json', (c) => openApiResponse(c.env, c.req.raw, routes));
   // Halaman publik laporan rusak (tautan bertanda tangan, tanpa sesi): di luar `API_ROUTES` dan OpenAPI; dipasang SEBELUM

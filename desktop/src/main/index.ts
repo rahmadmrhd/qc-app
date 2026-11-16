@@ -35,6 +35,13 @@ import { createTokenStore } from './auth/token-store';
 import { readDeviceInfo, readRouterInfo } from './device/info';
 import { pingOnce } from './device/ping';
 import { registerIpc } from './ipc';
+import {
+  createTrayController,
+  notificationsSupported,
+  showOsNotification,
+} from './notify/background';
+import { createNotificationStream } from './notify/notification-stream';
+import { createNotifier } from './notify/notifier';
 import { loadLocalPackage } from './package/local-folder';
 import { devProtocolRegistration } from './protocol-registration';
 import { parseQcUrl } from './qc-url';
@@ -197,6 +204,9 @@ const RENDER_PROBE_INTERVAL_MS = 500;
 const ROOT_FILLED_SCRIPT = "(document.getElementById('app')?.childElementCount ?? 0) > 0";
 
 function runApp(): void {
+  // Identitas aplikasi untuk notifikasi Windows (harus sama dengan `appId` electron-builder agar toast tampil
+  // dengan nama/ikon QC App dan kliknya sampai ke proses ini).
+  app.setAppUserModelId('id.my.rhd.qc-app');
   if (!app.requestSingleInstanceLock()) {
     app.quit();
     return;
@@ -215,10 +225,17 @@ function runApp(): void {
   };
   const focusWindow = (): void => {
     if (mainWindow && !mainWindow.isDestroyed()) {
+      // Jendela bisa tersembunyi di tray (ditutup saat masuk): `show()` memunculkannya lagi.
+      if (!mainWindow.isVisible()) mainWindow.show();
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
     }
   };
+  // Keluar sungguhan (menu tray, `app.quit()`, mematikan Windows): menutup jendela tak lagi disembunyikan ke tray.
+  let quitting = false;
+  app.on('before-quit', () => {
+    quitting = true;
+  });
 
   app.on('second-instance', (_event, argv) => {
     const route = routeFromArgv(argv);
@@ -271,6 +288,7 @@ function runApp(): void {
       if (mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(AUTH_CHANGE_EVENT, status);
       }
+      syncBackground();
     };
     // Login lewat peramban sistem (PKCE); hanya satu login berjalan.
     const flow = createLoginFlow({
@@ -394,10 +412,68 @@ function runApp(): void {
     mainWindow.on('closed', () => {
       mainWindow = null;
     });
+
+    // Notifikasi latar (Web Push tidak tersedia di Electron; keputusan pemilik 2026-11-16): selama masuk, aliran
+    // SSE dari server menjadi notifikasi OS dan menutup jendela hanya menyembunyikannya ke tray.
+    const tray = createTrayController({
+      openWindow: focusWindow,
+      quit: () => app.quit(),
+    });
+    const notifier = createNotifier({
+      supported: notificationsSupported,
+      show: showOsNotification,
+      focusWindow,
+      openPath: (path) => gate.load(`${APP_ORIGIN}${path}`),
+    });
+    const stream = createNotificationStream({
+      serverUrl: () => settings.get().serverUrl,
+      token: () => tokens.get()?.token ?? null,
+      fetchImpl: net.fetch as typeof fetch,
+      onNotice: (notice) => notifier.handle(notice),
+      onSignedOut: () => emitAuth(flow.status()),
+      onUnauthorized: (used) => {
+        // Hanya bila MASIH token yang dipakai (401 terlambat dari token lama tak boleh mengeluarkan login baru).
+        if (tokens.get()?.token === used) {
+          tokens.clear();
+          emitAuth(flow.status());
+        }
+      },
+    });
+    function syncBackground(): void {
+      if (quitting) return;
+      if (tokens.get()) {
+        stream.start();
+        tray.show();
+      } else {
+        stream.stop();
+        tray.destroy();
+        // Jendela yang tersembunyi di tray tak boleh tertinggal tanpa ikon: tampilkan agar layar login terlihat.
+        if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) focusWindow();
+      }
+    }
+    let trayHinted = false;
+    mainWindow.on('close', (event) => {
+      if (quitting || !tokens.get()) return;
+      event.preventDefault();
+      mainWindow?.hide();
+      if (!trayHinted) {
+        trayHinted = true;
+        tray.hint(
+          'QC App tetap berjalan',
+          'Notifikasi tetap diterima. Klik ikon ini untuk membuka kembali.',
+        );
+      }
+    });
+    mainWindow.on('session-end', () => {
+      quitting = true;
+    });
     app.on('will-quit', () => {
+      stream.stop();
+      tray.destroy();
       flow.dispose();
       pending.close();
     });
+    syncBackground();
 
     // Pemulihan UI: muat berhasil mereset hitungan; dua kegagalan berturut-turut kembali ke bundel
     // sebelumnya lalu ke UI dasar (dan memuat ulang).
