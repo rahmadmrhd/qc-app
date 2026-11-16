@@ -11,6 +11,10 @@ export interface NewSerial {
   sample: boolean;
   note: string;
   locationId: string;
+  /** Status awal: `good`, atau `reported` bila langsung dilaporkan rusak (Lapor Rusak serial baru). */
+  status: 'good' | 'reported';
+  /** Laporan terbuka bila `reported`; `''` bila tidak ada. */
+  openCaseId: string;
   now: string;
   actorEmail: string;
 }
@@ -18,6 +22,8 @@ export interface NewSerial {
 export interface NewEvent {
   id: string;
   serialId: string;
+  /** Kasus pemilik kejadian; `''` = di luar kasus. */
+  caseId: string;
   seq: number;
   type: string;
   occurredOn: string;
@@ -40,6 +46,15 @@ export async function findSerialByClientId(
     .bind(clientId)
     .first<{ id: string; bu_id: string; serial: string }>();
   return row ? { id: row.id.trim(), buId: row.bu_id.trim(), serial: row.serial } : null;
+}
+
+/** Nama lokasi dengan status apa pun (nonaktif tetap dikenali di riwayat), atau `null` bila tidak ada. */
+export async function locationNameOf(db: Preparer, locationId: string): Promise<string | null> {
+  const row = await db
+    .prepare('SELECT name FROM locations WHERE id = ?')
+    .bind(locationId)
+    .first<{ name: string }>();
+  return row ? row.name : null;
 }
 
 /** Item aktif yang tergabung pada BU itu (nama item tidak dibaca: pesan galat generik). */
@@ -65,7 +80,7 @@ export async function activeLocationName(db: Preparer, locationId: string): Prom
 export function insertSerialStmt(db: Preparer, serial: NewSerial): DbStatement {
   return db
     .prepare(
-      "INSERT INTO serials (id, client_id, bu_id, serial, item_id, test_date, sample, note, location_id, recorded_location_id, status, custody, created_at, created_by, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'good', 'qc', ?, ?, ?, ?)",
+      "INSERT INTO serials (id, client_id, bu_id, serial, item_id, test_date, sample, note, location_id, recorded_location_id, status, custody, open_case_id, created_at, created_by, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'qc', ?, ?, ?, ?, ?)",
     )
     .bind(
       serial.id,
@@ -78,6 +93,8 @@ export function insertSerialStmt(db: Preparer, serial: NewSerial): DbStatement {
       serial.note,
       serial.locationId,
       serial.locationId,
+      serial.status,
+      serial.openCaseId,
       serial.now,
       serial.actorEmail,
       serial.now,
@@ -104,7 +121,7 @@ export function insertEventStmt(db: Preparer, event: NewEvent): DbStatement {
     .bind(
       event.id,
       event.serialId,
-      '',
+      event.caseId,
       event.seq,
       event.type,
       event.occurredOn,
@@ -136,6 +153,16 @@ export interface SerialRow {
   status: string;
   custody: string;
   open_case_id: string;
+  transit_from_location_id: string;
+  transit_to_location_id: string;
+  transit_on: string;
+  transit_from_name: string | null;
+  transit_to_name: string | null;
+  open_case_number: string | null;
+  /** 1 bila serial punya foto bukti QC (sudah tersimpan, apa pun statusnya). */
+  has_proof: number | string;
+  /** Jumlah foto bukti QC `failed` pada serial ini. */
+  proof_problem: number | string;
   created_at: string;
   created_by: string;
   updated_at: string;
@@ -143,10 +170,10 @@ export interface SerialRow {
 }
 
 const SERIAL_COLUMNS =
-  's.id, s.client_id, s.bu_id, bu.code AS bu_code, s.serial, s.item_id, b.name AS brand_name, i.model, s.test_date, s.sample, s.note, s.location_id, l.name AS location_name, s.recorded_location_id, s.status, s.custody, s.open_case_id, s.created_at, s.created_by, s.updated_at, s.updated_by';
+  "s.id, s.client_id, s.bu_id, bu.code AS bu_code, s.serial, s.item_id, b.name AS brand_name, i.model, s.test_date, s.sample, s.note, s.location_id, l.name AS location_name, s.recorded_location_id, s.status, s.custody, s.open_case_id, s.transit_from_location_id, s.transit_to_location_id, s.transit_on, lf.name AS transit_from_name, lt.name AS transit_to_name, c.number AS open_case_number, EXISTS(SELECT 1 FROM serial_proof_photos pp WHERE pp.serial_id = s.id) AS has_proof, (SELECT COUNT(*) FROM serial_proof_photos pf WHERE pf.serial_id = s.id AND pf.state = 'failed') AS proof_problem, s.created_at, s.created_by, s.updated_at, s.updated_by";
 
 const SERIAL_FROM =
-  'FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id LEFT JOIN locations l ON l.id = s.location_id';
+  'FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id LEFT JOIN locations l ON l.id = s.location_id LEFT JOIN locations lf ON lf.id = s.transit_from_location_id LEFT JOIN locations lt ON lt.id = s.transit_to_location_id LEFT JOIN serial_cases c ON c.id = s.open_case_id';
 
 export async function loadSerialRow(db: Preparer, id: string): Promise<SerialRow | null> {
   return db
@@ -178,6 +205,7 @@ export async function loadSerialStickers(
 
 export interface SerialEventRow {
   id: string;
+  case_id: string;
   seq: number | string;
   type: string;
   occurred_on: string;
@@ -201,7 +229,7 @@ export async function loadSerialEvents(
 ): Promise<{ events: SerialEventRow[]; truncated: boolean }> {
   const rows = await db
     .prepare(
-      'SELECT id, seq, type, occurred_on, created_at, actor_name, actor_team, message, changes_json, data_json FROM serial_events WHERE serial_id = ? ORDER BY seq DESC LIMIT ?',
+      'SELECT id, case_id, seq, type, occurred_on, created_at, actor_name, actor_team, message, changes_json, data_json FROM serial_events WHERE serial_id = ? ORDER BY seq DESC LIMIT ?',
     )
     .bind(serialId, EVENTS_MAX + 1)
     .all<SerialEventRow>();
@@ -222,6 +250,7 @@ export interface SerialListFilter {
   itemId?: string;
   locationId?: string;
   status?: string;
+  custody?: string;
   from?: string;
   to?: string;
   createdBy?: string;
@@ -250,6 +279,10 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
   if (filter.status !== undefined) {
     where.push('s.status = ?');
     binds.push(filter.status);
+  }
+  if (filter.custody !== undefined) {
+    where.push('s.custody = ?');
+    binds.push(filter.custody);
   }
   if (filter.from !== undefined) {
     where.push('s.test_date >= ?');
@@ -299,7 +332,11 @@ export type SerialColumn =
   | 'note'
   | 'location_id'
   | 'custody'
-  | 'status';
+  | 'status'
+  | 'open_case_id'
+  | 'transit_from_location_id'
+  | 'transit_to_location_id'
+  | 'transit_on';
 
 /**
  * Memperbarui catatan serial dengan penjaga CAS `updated_at` (stempel lain = `CAS_FAIL_SQL`, seluruh batch batal).
@@ -335,11 +372,12 @@ export function updateSerialStmt(
 export function insertNextEventStmt(db: Preparer, event: Omit<NewEvent, 'seq'>): DbStatement {
   return db
     .prepare(
-      "INSERT INTO serial_events (id, serial_id, case_id, seq, type, occurred_on, created_at, actor_id, actor_name, actor_team, message, changes_json, data_json) SELECT ?, ?, '', COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM serial_events WHERE serial_id = ?",
+      'INSERT INTO serial_events (id, serial_id, case_id, seq, type, occurred_on, created_at, actor_id, actor_name, actor_team, message, changes_json, data_json) SELECT ?, ?, ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM serial_events WHERE serial_id = ?',
     )
     .bind(
       event.id,
       event.serialId,
+      event.caseId,
       event.type,
       event.occurredOn,
       event.now,

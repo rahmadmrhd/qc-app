@@ -106,10 +106,14 @@ export function validateSaveUser(raw: unknown): SaveUserInput {
   const status = reader.oneOf('status', USER_STATUS_VALUES);
   const assignments = readAssignmentList(reader.raw('assignments'), reader);
   const buAssignments = readBuAssignmentList(reader.raw('buAssignments'), reader);
+  const sharedRaw = reader.raw('sharedAccount');
+  if (sharedRaw !== undefined && typeof sharedRaw !== 'boolean') {
+    reader.fail('sharedAccount', 'Harus berupa true atau false');
+  }
   reader.done();
-  return id
-    ? { id, email, name, status, assignments, buAssignments }
-    : { email, name, status, assignments, buAssignments };
+  const base = { email, name, status, assignments, buAssignments };
+  const withShared = typeof sharedRaw === 'boolean' ? { ...base, sharedAccount: sharedRaw } : base;
+  return id ? { id, ...withShared } : withShared;
 }
 
 export function validateSetUserStatus(raw: unknown): SetUserStatusInput {

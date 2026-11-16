@@ -4,18 +4,27 @@ import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
-import { buIdsWithLevelOf } from '@/modules/auth/permissions';
+import { buIdsWithLevelOf, serialActorModules } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { CUSTODY_LABEL, formatDay, STATUS_LABEL } from '../lib/labels';
+import { todayWib } from '../lib/locations';
+import { hasPendingProof, PROOF_POLL_MS } from '../lib/proof-state';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import { serialDetailQueryOptions } from '../queries';
-import { ActComposer } from './act-composer';
+import { ActButtons, type ActKind } from './act-buttons';
+import { ActDialog } from './act-dialog';
+import { CustodyPanel } from './custody-panel';
 import { EditSerialDialog } from './edit-serial-dialog';
-import { Timeline } from './timeline';
+import { ProofBadge, ProofProblemBadge } from './proof-badge';
+import { ProofProblemBanner } from './proof-problem-banner';
+import { SerialStepper } from './serial-stepper';
+import { TimelineTabs } from './timeline-tabs';
 
 export interface SerialDetailPageProps {
   serialId: string;
   onBack: () => void;
+  /** Laporan yang langsung dibuka di tab linimasa (dari daftar Laporan). */
+  caseId?: string;
 }
 
 /** Kejadian yang berarti "lolos": pencatatan awal dan cek ulang yang lolos. */
@@ -79,10 +88,17 @@ function Summary({ serial, events }: { serial: SerialDto; events: readonly Seria
 }
 
 /** Detail serial bergaya tiket: kepala, ringkasan, linimasa (terbaru di atas), kotak pembaruan baru, dan ubah data. */
-export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
+export function SerialDetailPage({ serialId, onBack, caseId }: SerialDetailPageProps) {
   const me = useMe();
-  const detail = useQuery(serialDetailQueryOptions(serialId));
+  const detail = useQuery({
+    ...serialDetailQueryOptions(serialId),
+    // Selama ada foto bukti yang menunggu cap, detail disegarkan berkala agar banner/badge "Foto bermasalah" muncul
+    // begitu fotonya gagal (riwayat sudah punya polling sendiri, tetapi banner membaca kejadian detail ini).
+    refetchInterval: (query) =>
+      query.state.data && hasPendingProof(query.state.data.events) ? PROOF_POLL_MS : false,
+  });
   const [editing, setEditing] = useState(false);
+  const [acting, setActing] = useState<ActKind | null>(null);
 
   if (detail.isPending) {
     return <p className="text-sm text-muted-foreground">Memuat…</p>;
@@ -99,7 +115,7 @@ export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
       </div>
     );
   }
-  const { serial, events, eventsTruncated } = detail.data;
+  const { serial, events, problemPhotos } = detail.data;
   const canWrite = buIdsWithLevelOf(me, 'serial', 'edit').includes(serial.buId);
 
   return (
@@ -116,7 +132,16 @@ export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
             <Badge variant={serial.status === 'good' ? 'secondary' : 'destructive'}>
               {STATUS_LABEL[serial.status]}
             </Badge>
-            <Badge variant="outline">{CUSTODY_LABEL[serial.custody]}</Badge>
+            <Badge variant="outline">
+              {serial.custody === 'transit'
+                ? `${CUSTODY_LABEL.transit}${serial.transitToLocationName ? ` · ke ${serial.transitToLocationName}` : ''}`
+                : `${CUSTODY_LABEL[serial.custody]} · ${serial.locationName}`}
+            </Badge>
+            {serial.openCase ? (
+              <Badge variant="outline">{`${serial.openCase.number} (terbuka)`}</Badge>
+            ) : null}
+            {serial.hasProofPhotos ? <ProofBadge /> : null}
+            <ProofProblemBadge count={serial.proofProblemCount} />
           </div>
         </div>
         {canWrite ? (
@@ -125,12 +150,22 @@ export function SerialDetailPage({ serialId, onBack }: SerialDetailPageProps) {
           </Button>
         ) : null}
       </div>
+      <ProofProblemBanner count={serial.proofProblemCount} photos={problemPhotos} />
+      <SerialStepper status={serial.status} hasCases={serial.cases.length > 0} />
+      <CustodyPanel serial={serial} today={todayWib()} />
       <Summary serial={serial} events={events} />
       <section aria-label="Riwayat" className="space-y-3">
-        <h2 className="text-sm font-semibold">Riwayat</h2>
-        <Timeline events={events} truncated={eventsTruncated} />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold">Riwayat</h2>
+          <ActButtons
+            state={{ status: serial.status, custody: serial.custody }}
+            actor={serialActorModules(me, serial.buId)}
+            onPick={setActing}
+          />
+        </div>
+        <TimelineTabs serial={serial} {...(caseId ? { initialCaseId: caseId } : {})} />
       </section>
-      {canWrite ? <ActComposer serial={serial} /> : null}
+      {acting ? <ActDialog serial={serial} kind={acting} onClose={() => setActing(null)} /> : null}
       {editing ? <EditSerialDialog serial={serial} onClose={() => setEditing(false)} /> : null}
     </div>
   );

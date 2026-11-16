@@ -123,8 +123,10 @@ test('ambang berkas pra-cache wajar (di atas potongan umum, di bawah anggaran to
   expect(PRECACHE_MAX_FILE_BYTES).toBeLessThan(5_000_000);
 });
 
-test('skrip push diimpor service worker, ada di web/public, dan tidak dipra-cache', () => {
-  expect(pwaOptions.workbox?.importScripts).toEqual(['push-sw.js']);
+test('skrip push dan sync diimpor service worker, ada di web/public, dan tidak dipra-cache', () => {
+  expect(pwaOptions.workbox?.importScripts).toEqual(['push-sw.js', 'sync-sw.js']);
   expect(pwaOptions.workbox?.globIgnores).toContain('push-sw.js');
+  expect(pwaOptions.workbox?.globIgnores).toContain('sync-sw.js');
   expect(existsSync(resolve(process.cwd(), 'public', 'push-sw.js'))).toBe(true);
+  expect(existsSync(resolve(process.cwd(), 'public', 'sync-sw.js'))).toBe(true);
 });

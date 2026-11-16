@@ -141,6 +141,35 @@ describe('aksi pada task', () => {
     expect(done.status).toBe(200);
   });
 
+  test('POST komentar dengan clientId dua kali: 201 dua-duanya, badan sama, satu komentar, ETag task tak berubah; clientId tak valid -> 422', async () => {
+    const { task: created } = await createOne();
+    const id = created.id as string;
+    const etagBefore = `"${created.updatedAt as string}"`;
+    const clientId = crypto.randomUUID();
+    const send = (extra: Record<string, unknown> = { clientId }) =>
+      rest.post(`/handovers/${id}/comments`, {
+        email: 'viewer@gmail.com',
+        body: { locationId: ENV.locA, quote: '', before: '', after: '', body: 'sekali', ...extra },
+      });
+    const first = await send();
+    const second = await send();
+    expect(first.status).toBe(201);
+    expect(second.status).toBe(201);
+    const a = await jsonOf(first);
+    expect(await jsonOf(second)).toEqual(a);
+    expect(a.comments).toHaveLength(1);
+    expect(a.updatedAt).toBe(created.updatedAt);
+    const got = await rest.get(`/handovers/${id}?${LOC}`, { email: 'wh@gmail.com' });
+    expect(got.headers.get('etag')).toBe(etagBefore);
+    const bad = await send({ clientId: 'bukan-uuid' });
+    expect(bad.status).toBe(422);
+    const other = await rest.post(`/handovers/${id}/comments`, {
+      email: 'wh@gmail.com',
+      body: { locationId: ENV.locA, quote: '', before: '', after: '', body: 'sekali', clientId },
+    });
+    expect(other.status).toBe(409);
+  });
+
   test('lokasi di luar akses -> 403 (baca, tulis, dan aksi)', async () => {
     const { task: created } = await createOne();
     const id = created.id as string;

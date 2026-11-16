@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "lib": ["ES2023"],
+    "paths": { "@countrylock/*": ["../countrylock/src/*"] }
+  },
+  "include": ["src", "test-support", "spike", "vitest.config.ts"]
+}

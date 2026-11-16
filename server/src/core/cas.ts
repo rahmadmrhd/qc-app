@@ -60,13 +60,15 @@ export async function batchGuarded(
 
 /**
  * Indeks UNIK yang diperebutkan penulis serentak dan aman diulang setelah memuat ulang keadaan: nama merk/customer
- * (kunci ternormalisasi), nomor serah terima, dan kunci penghitung (PRIMARY KEY `counters`; MariaDB tidak
+ * (kunci ternormalisasi), nomor serah terima, kunci idempoten klien (`clientId` task/komentar Serah Terima), dan kunci penghitung (PRIMARY KEY `counters`; MariaDB tidak
  * menyebut tabel pada galat duplikat, jadi 'PRIMARY' dihitung; percobaan ulang dibatasi sehingga galat PK lain
  * berakhir CONFLICT).
  */
 const RETRYABLE_UNIQUE_KEYS = new Set([
   'customers_key',
   'handovers_number',
+  'handovers_client_id',
+  'handover_comments_client_id',
   'brands_key',
   'PRIMARY',
 ]);

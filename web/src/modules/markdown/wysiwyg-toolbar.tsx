@@ -131,7 +131,7 @@ export function WysiwygToolbar({ editor, mode, disabled, onPickImage }: WysiwygT
           </Button>
         ),
       )}
-      {mode === 'item' ? (
+      {mode === 'item' || mode === 'message' ? (
         <Button
           type="button"
           size="sm"

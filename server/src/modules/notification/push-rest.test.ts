@@ -232,6 +232,51 @@ describe('push.subscribe / unsubscribe', () => {
   });
 });
 
+describe('push.deviceState / setDeviceMuted', () => {
+  const state = async (email: string, endpoint = EP) =>
+    (await jsonOf(await rest.post('/push/device/state', { email, body: { endpoint } }))) as {
+      registered: boolean;
+      muted: boolean;
+    };
+  const setMuted = (email: string, muted: boolean, endpoint = EP) =>
+    rest.put('/push/device', { email, body: { endpoint, muted } });
+
+  test('perangkat belum terdaftar: registered false; dimatikan -> 404', async () => {
+    expect(await state(WH)).toEqual({ registered: false, muted: false });
+    expect((await setMuted(WH, true)).status).toBe(404);
+  });
+
+  test('mematikan dan menyalakan per perangkat; tak memengaruhi perangkat lain atau akun lain di endpoint sama', async () => {
+    const other = 'https://fcm.googleapis.com/fcm/send/lain';
+    await subscribe(WH);
+    await subscribe(WH, other);
+    await subscribe(QC);
+    expect(await state(WH)).toEqual({ registered: true, muted: false });
+    expect(await jsonOf(await setMuted(WH, true))).toEqual({ registered: true, muted: true });
+    expect(await state(WH)).toEqual({ registered: true, muted: true });
+    expect(await state(WH, other)).toEqual({ registered: true, muted: false });
+    expect(await state(QC)).toEqual({ registered: true, muted: false });
+    expect(await jsonOf(await setMuted(WH, false))).toEqual({ registered: true, muted: false });
+  });
+
+  test('subscribe ulang (sinkron senyap tiap sesi) tidak menyalakan kembali perangkat yang dimatikan', async () => {
+    await subscribe(WH);
+    await setMuted(WH, true);
+    expect((await subscribe(WH)).status).toBe(200);
+    expect(await state(WH)).toEqual({ registered: true, muted: true });
+  });
+
+  test('masukan tidak valid -> 422; tanpa sesi -> 401', async () => {
+    await subscribe(WH);
+    expect(
+      (await rest.put('/push/device', { email: WH, body: { endpoint: EP, muted: 'ya' } })).status,
+    ).toBe(422);
+    expect((await rest.put('/push/device', { email: WH, body: { muted: true } })).status).toBe(422);
+    expect((await rest.post('/push/device/state', { email: WH, body: {} })).status).toBe(422);
+    expect((await setMuted(null as unknown as string, true)).status).toBe(401);
+  });
+});
+
 describe('preferensi dan izin', () => {
   test('setPreference dan reportPermission tersimpan per pengguna', async () => {
     const pref = await rest.put('/push/preference', { email: WH, body: { enabled: false } });
@@ -324,6 +369,26 @@ describe('push.status', () => {
       state: string;
     }>;
     expect(body.find((u) => u.email === WH)?.state).toBe('active');
+  });
+
+  test('perangkat dimatikan: semua dimatikan = disabled; sisa yang gagal = failing; ada yang menyala sehat = active', async () => {
+    await addSub(WH, 'a', 0);
+    await addSub(WH, 'b', 5);
+    const stateOf = async () =>
+      (
+        (await (await rest.get('/push/status', { email: ADMIN })).json()) as Array<{
+          email: string;
+          state: string;
+        }>
+      ).find((u) => u.email === WH)?.state;
+    expect(await stateOf()).toBe('active');
+    // Yang sehat dimatikan: tinggal yang gagal menyala -> failing (bukan active).
+    await env.DB.prepare('UPDATE push_subscriptions SET muted = 1 WHERE endpoint_hash = ?')
+      .bind(endpointHash('https://fcm.googleapis.com/a'))
+      .run();
+    expect(await stateOf()).toBe('failing');
+    await env.DB.prepare('UPDATE push_subscriptions SET muted = 1').run();
+    expect(await stateOf()).toBe('disabled');
   });
 
   test('hanya pengguna access: view; tanpa izin -> 403; tanpa sesi -> 401', async () => {

@@ -1,3 +1,4 @@
+import type { SerialSummaryDto } from '@shared/contract';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,7 +16,10 @@ import { useMe } from '@/modules/auth/use-me';
 import { NoLocationNotice } from '@/modules/location/components/no-location-notice';
 import { CUSTODY_LABEL, formatDay, STATUS_LABEL } from '../lib/labels';
 import { filterOfSearch, type SerialSearch } from '../lib/list-filter';
+import { todayWib } from '../lib/locations';
+import { daysBetweenDates } from '../lib/transit';
 import { serialListQueryOptions } from '../queries';
+import { ProofBadge, ProofProblemBadge } from './proof-badge';
 import { SerialFilters } from './serial-filters';
 
 export interface SerialListPageProps {
@@ -26,16 +30,38 @@ export interface SerialListPageProps {
   onNew?: (() => void) | undefined;
 }
 
+/** Posisi serial: "Dalam pengiriman · 3 hari" (+ tujuan) saat dikirim, dan nomor kasus yang sedang terbuka. */
+function PositionCell({ serial, today }: { serial: SerialSummaryDto; today: string }) {
+  const days = serial.transitOn ? daysBetweenDates(serial.transitOn, today) : null;
+  return (
+    <div className="space-y-0.5">
+      <div>
+        {CUSTODY_LABEL[serial.custody]}
+        {serial.custody === 'transit' && days !== null
+          ? ` · ${days === 0 ? 'hari ini' : `${days} hari`}`
+          : ''}
+      </div>
+      {serial.custody === 'transit' && serial.transitToLocationName ? (
+        <div className="text-xs text-muted-foreground">ke {serial.transitToLocationName}</div>
+      ) : null}
+      {serial.openCaseNumber ? (
+        <div className="font-mono text-xs text-muted-foreground">{serial.openCaseNumber}</div>
+      ) : null}
+    </div>
+  );
+}
+
 /** Daftar serial berkursor dengan filter di URL; baris dibuka ke halaman detail. */
 export function SerialListPage({ search, onSearchChange, onOpen, onNew }: SerialListPageProps) {
   const me = useMe();
-  const list = useInfiniteQuery(serialListQueryOptions(filterOfSearch(search)));
+  const list = useInfiniteQuery(serialListQueryOptions(filterOfSearch(search, me.email)));
   const items = list.data?.pages.flatMap((page) => page.items) ?? [];
+  const today = todayWib();
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Daftar Serial Number</h1>
-        {onNew ? <Button onClick={onNew}>Catat Serial Number</Button> : null}
+        {onNew ? <Button onClick={onNew}>Tambah Serial Number</Button> : null}
       </div>
       <NoLocationNotice relevant={!canUseSerialLocationOptions(me)} />
       <SerialFilters search={search} onChange={onSearchChange} />
@@ -70,6 +96,12 @@ export function SerialListPage({ search, onSearchChange, onOpen, onNew }: Serial
                   >
                     {serial.serial}
                   </Button>
+                  {serial.hasProofPhotos || serial.proofProblemCount > 0 ? (
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      {serial.hasProofPhotos ? <ProofBadge /> : null}
+                      <ProofProblemBadge count={serial.proofProblemCount} />
+                    </div>
+                  ) : null}
                 </TableCell>
                 <TableCell>{serial.itemLabel}</TableCell>
                 <TableCell>{serial.buCode}</TableCell>
@@ -80,7 +112,9 @@ export function SerialListPage({ search, onSearchChange, onOpen, onNew }: Serial
                     {STATUS_LABEL[serial.status]}
                   </Badge>
                 </TableCell>
-                <TableCell>{CUSTODY_LABEL[serial.custody]}</TableCell>
+                <TableCell>
+                  <PositionCell serial={serial} today={today} />
+                </TableCell>
                 <TableCell>{serial.sample ? 'Ya' : '—'}</TableCell>
               </TableRow>
             ))}

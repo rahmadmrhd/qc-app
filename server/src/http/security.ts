@@ -25,6 +25,8 @@ export interface AppBindings {
 
 export { SESSION_COOKIE };
 export const OAUTH_COOKIE = 'qc_oauth';
+/** Cookie awal login desktop (`/auth/desktop/start`): mengikat `challenge` PKCE dan `state` aplikasi. */
+export const DESKTOP_COOKIE = 'qc_desktop';
 export const CSRF_HEADER = 'x-requested-with';
 export const CSRF_VALUE = 'qc';
 

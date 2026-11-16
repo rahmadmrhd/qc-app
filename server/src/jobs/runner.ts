@@ -8,8 +8,14 @@ import { enqueueJob, JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
 import { flushDueCheckSummaries } from '@server/modules/notification/flush';
 import { deliverPendingPushes } from '@server/modules/notification/push';
 import { purgeOldNotifications } from '@server/modules/notification/repo';
+import { pumpNotificationStreams } from '@server/modules/notification/stream-hub';
 import { setNotificationWakeHandler } from '@server/modules/notification/wake';
 import { checkPostelExpiryDigest } from '@server/modules/postel/digest';
+import {
+  sweepExpiredFailedProofs,
+  sweepOrphanProofFiles,
+  sweepProofDrafts,
+} from '@server/modules/serial/proof/sweep';
 import { checkLowStockDigest } from '@server/modules/sticker/digest';
 
 /** Selang polling runner (milidetik). */
@@ -143,6 +149,9 @@ async function schedulerTick(env: Env): Promise<void> {
     checkLowStockDigest,
     checkPostelExpiryDigest,
     purgeOldNotifications,
+    sweepProofDrafts,
+    sweepExpiredFailedProofs,
+    sweepOrphanProofFiles,
   ]) {
     try {
       await step(env);
@@ -233,7 +242,8 @@ export function startNotificationLoop(
  */
 export async function notificationTick(env: Env): Promise<void> {
   const failures: unknown[] = [];
-  for (const step of [flushDueCheckSummaries, deliverPendingPushes]) {
+  // Aliran SSE desktop paling akhir: ia membaca tabel `notifications` yang baru ditulis/dilepas dua langkah pertama.
+  for (const step of [flushDueCheckSummaries, deliverPendingPushes, pumpNotificationStreams]) {
     try {
       await step(env);
     } catch (error) {

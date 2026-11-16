@@ -48,6 +48,17 @@ describe('GET /api/v1/me', () => {
     });
   });
 
+  test('sharedAccount: true untuk akun bertanda bersama, false untuk akun lain dan super admin', async () => {
+    await seedUser(env, { id: 'u-sh', email: 'bersama@gmail.com', sharedAccount: true });
+    expect(await jsonOf(await rest.get('/me', { email: 'bersama@gmail.com' }))).toMatchObject({
+      sharedAccount: true,
+    });
+    expect(await jsonOf(await rest.get('/me', { email: 'budi@gmail.com' }))).toMatchObject({
+      sharedAccount: false,
+    });
+    expect(await jsonOf(await rest.get('/me'))).toMatchObject({ sharedAccount: false });
+  });
+
   test('businessUnits: hanya BU berhak (termasuk nonaktif), terurut menurut kode, dengan izin per BU', async () => {
     await seedBusinessUnit(env, { id: 'bu-z', code: 'ZZ', name: 'Zed' });
     await seedBusinessUnit(env, { id: 'bu-a', code: 'AA', name: 'Alfa', status: 'inactive' });
@@ -85,6 +96,57 @@ describe('GET /api/v1/me', () => {
     expect(body.permissions.item).toBe('edit');
   });
 
+  test('canManageSerialSettings: Semua BU atau manage di setiap BU true; sebagian BU, edit, atau tanpa izin false; super admin true', async () => {
+    await seedBusinessUnit(env, { id: 'bu-a', code: 'AA', name: 'Alfa' });
+    await seedBusinessUnit(env, { id: 'bu-b', code: 'BB', name: 'Beta' });
+    await seedRole(env, { id: 'r-sm', name: 'Kelola Serial', permissions: { serial: 'manage' } });
+    await seedRole(env, { id: 'r-se', name: 'Edit Serial', permissions: { serial: 'edit' } });
+    const users: [string, { buId: string | null; roleIds: string[] }[]][] = [
+      ['semua@gmail.com', [{ buId: null, roleIds: ['r-sm'] }]],
+      [
+        'tiap@gmail.com',
+        [
+          { buId: 'bu-a', roleIds: ['r-sm'] },
+          { buId: 'bu-b', roleIds: ['r-sm'] },
+        ],
+      ],
+      ['sebagian@gmail.com', [{ buId: 'bu-a', roleIds: ['r-sm'] }]],
+      [
+        'campur@gmail.com',
+        [
+          { buId: 'bu-a', roleIds: ['r-sm'] },
+          { buId: 'bu-b', roleIds: ['r-se'] },
+        ],
+      ],
+      ['edit@gmail.com', [{ buId: null, roleIds: ['r-se'] }]],
+    ];
+    for (const [index, [email, buAssignments]] of users.entries()) {
+      await seedUser(env, { id: `usr-${index}`, email, buAssignments });
+    }
+    const flag = async (email?: string) =>
+      (
+        (await jsonOf(await rest.get('/me', email ? { email } : undefined))) as {
+          canManageSerialSettings: boolean;
+        }
+      ).canManageSerialSettings;
+    expect(await flag('semua@gmail.com')).toBe(true);
+    expect(await flag('tiap@gmail.com')).toBe(true);
+    expect(await flag('sebagian@gmail.com')).toBe(false);
+    expect(await flag('campur@gmail.com')).toBe(false);
+    expect(await flag('edit@gmail.com')).toBe(false);
+    expect(await flag('budi@gmail.com')).toBe(false);
+    expect(await flag()).toBe(true);
+    // Hanya BU AKTIF yang dihitung: bu-b nonaktif tak lagi menghalangi pengelola bu-a.
+    await env.DB.prepare("UPDATE business_units SET status = 'inactive' WHERE id = 'bu-b'").run();
+    expect(await flag('sebagian@gmail.com')).toBe(true);
+    expect(await flag('campur@gmail.com')).toBe(true);
+    expect(await flag('edit@gmail.com')).toBe(false);
+    // Semua BU nonaktif: gagal tertutup (kecuali super admin).
+    await env.DB.prepare("UPDATE business_units SET status = 'inactive'").run();
+    expect(await flag('semua@gmail.com')).toBe(false);
+    expect(await flag()).toBe(true);
+  });
+
   test('user tanpa penugasan BU mendapat businessUnits kosong; super admin semua BU manage', async () => {
     await seedBusinessUnit(env, { id: 'bu-a', code: 'AA', name: 'Alfa' });
     const kosong = await jsonOf(await rest.get('/me', { email: 'budi@gmail.com' }));
@@ -96,7 +158,11 @@ describe('GET /api/v1/me', () => {
         code: 'AA',
         name: 'Alfa',
         status: 'active',
-        permissions: { item: 'manage', serial: 'manage', serialservice: 'edit' },
+        permissions: {
+          item: 'manage',
+          serial: 'manage',
+          serialservice: 'edit',
+        },
       },
     ]);
   });

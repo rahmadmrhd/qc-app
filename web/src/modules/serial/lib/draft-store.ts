@@ -1,7 +1,12 @@
-import { SERIAL_LIMITS } from '@shared/serials';
+import { SERIAL_LIMITS, SERIAL_PROOF_LIMITS } from '@shared/serials';
 import type { StagingRow, StagingSticker } from './draft';
+import type { ProofPhotoRef } from './proof-source';
 
 const PREFIX = 'qc.serial.draft:';
+
+/** Pesan baris draf 5b yang berstatus selain Lolos (pengguna diarahkan ke Lapor Rusak). */
+export const NOT_GOOD_MESSAGE =
+  'Draf lama berstatus bukan Lolos: Serial Number bermasalah dicatat lewat Lapor Rusak. Hapus baris ini lalu laporkan di sana.';
 
 const key = (ownerKey: string) => `${PREFIX}${ownerKey}`;
 
@@ -47,6 +52,24 @@ function readStickers(value: unknown): StagingSticker[] | null | undefined {
   return list;
 }
 
+/** Foto bukti tersimpan: entri rusak dibuang satu per satu, maksimum `perEntryMax`; tanpa field (draf lama) = tanpa foto. */
+function readProofPhotos(value: unknown): ProofPhotoRef[] {
+  if (!Array.isArray(value)) return [];
+  const photos: ProofPhotoRef[] = [];
+  for (const entry of value) {
+    if (photos.length >= SERIAL_PROOF_LIMITS.perEntryMax) break;
+    if (!isRecord(entry)) continue;
+    const id = text(entry, 'id');
+    const mime = text(entry, 'mime');
+    const thumbUrl = text(entry, 'thumbUrl');
+    const size = Object.hasOwn(entry, 'size') ? entry.size : undefined;
+    if (id === null || id === '' || mime === null || thumbUrl === null) continue;
+    if (typeof size !== 'number' || !Number.isFinite(size)) continue;
+    photos.push({ id, mime, size, thumbUrl });
+  }
+  return photos;
+}
+
 const TEXT_FIELDS = [
   'clientId',
   'serial',
@@ -86,11 +109,25 @@ function readRow(raw: unknown): StagingRow | null {
   if (typeof sample !== 'boolean') return null;
   const source = text(raw, 'source');
   if (source !== 'manual' && source !== 'countrylock') return null;
+  // Draf 5b yang masih memuat baris berstatus selain Lolos: JANGAN dibuang diam-diam, pulihkan sebagai baris bermasalah
+  // (sejalan dengan `.qcsn`/`saveBatch`: Serial Number bermasalah kini dicatat lewat Lapor Rusak). Draf lama tanpa
+  // kunci `status` tetap dipulihkan sebagai Lolos.
+  const notGood = Object.hasOwn(raw, 'status') && raw.status !== 'good';
   const stickers = readStickers(Object.hasOwn(raw, 'stickers') ? raw.stickers : null);
   if (stickers === undefined) return null;
-  const row: StagingRow = { ...values, sample, source, stickers, selected: false };
+  const row: StagingRow = {
+    ...values,
+    sample,
+    source,
+    stickers,
+    proofPhotos: readProofPhotos(Object.hasOwn(raw, 'proofPhotos') ? raw.proofPhotos : undefined),
+    selected: false,
+  };
   const result = text(raw, 'result');
-  if (result === 'duplicate' || result === 'invalid' || result === 'error') {
+  if (notGood) {
+    row.result = 'invalid';
+    row.message = NOT_GOOD_MESSAGE;
+  } else if (result === 'duplicate' || result === 'invalid' || result === 'error') {
     row.result = result;
     const message = text(raw, 'message');
     if (message !== null) row.message = message;

@@ -9,14 +9,16 @@ import {
   ClipboardList,
   Contact,
   FileBadge,
+  FileText,
   History,
   House,
   Images,
   ListChecks,
+  Lock,
   MapPin,
   Package,
   QrCode,
-  ScanBarcode,
+  Settings,
   Settings2,
   Shapes,
   ShieldCheck,
@@ -24,7 +26,7 @@ import {
   Tags,
   Users,
 } from 'lucide-react';
-import { canAnywhere } from '@/modules/auth/permissions';
+import { canAnywhere, canManageSerialSettings } from '@/modules/auth/permissions';
 
 export interface NavPermission {
   module: ModuleKey;
@@ -39,8 +41,19 @@ export interface NavItem {
   icon: LucideIcon;
   /** Rute di bawah `to` yang punya menu sendiri: item ini tidak ikut aktif di sana. */
   excludes?: LinkProps['to'][];
+  /** Rute lain yang membuat item ini aktif (halaman yang dibuka dari item ini tetapi bukan di bawah `to`). */
+  alsoActiveOn?: LinkProps['to'][];
   /** Satu izin, atau **daftar** (salah satu cukup). */
   permission?: NavPermission | readonly NavPermission[];
+  /** Hanya tampil di aplikasi desktop (jembatan `window.qcBridge` ada). */
+  desktopOnly?: boolean;
+  /**
+   * Di peramban, menekan item ini juga membuka aplikasi desktop dengan akun yang sama (serah-terima tiket; halaman `to`
+   * tetap terbuka sebagai cadangan bila aplikasi belum terpasang). Di aplikasi desktop item ini rute biasa.
+   */
+  opensDesktopApp?: boolean;
+  /** Syarat tambahan di atas `permission` (keduanya harus terpenuhi), untuk aturan yang tak muat di satu izin. */
+  visible?: (me: MeDto) => boolean;
 }
 
 export interface NavGroup {
@@ -49,7 +62,19 @@ export interface NavGroup {
 }
 
 export const NAV_GROUPS: NavGroup[] = [
-  { label: 'Umum', items: [{ label: 'Beranda', to: '/', icon: House }] },
+  {
+    label: 'Umum',
+    items: [
+      { label: 'Beranda', to: '/', icon: House },
+      {
+        label: 'Country Lock',
+        to: '/country-lock',
+        icon: Lock,
+        permission: { module: 'countrylock', level: 'view' },
+        opensDesktopApp: true,
+      },
+    ],
+  },
   {
     label: 'Data',
     items: [
@@ -117,17 +142,29 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Daftar Serial Number',
         to: '/serial',
         icon: ListChecks,
-        excludes: ['/serial/new'],
+        excludes: ['/serial/settings', '/serial/report', '/serial/reports'],
         permission: [
           { module: 'serial', level: 'view' },
           { module: 'serialservice', level: 'view' },
         ],
       },
       {
-        label: 'Catat Serial Number',
-        to: '/serial/new',
-        icon: ScanBarcode,
-        permission: { module: 'serial', level: 'edit' },
+        label: 'Laporan',
+        to: '/serial/reports',
+        icon: FileText,
+        // Halaman Lapor Rusak dibuka dari tombol di daftar Laporan (bukan menu sendiri), jadi menu ini yang menyala.
+        alsoActiveOn: ['/serial/report'],
+        permission: [
+          { module: 'serial', level: 'view' },
+          { module: 'serialservice', level: 'view' },
+        ],
+      },
+      {
+        label: 'Pengaturan',
+        to: '/serial/settings',
+        icon: Settings,
+        permission: { module: 'serial', level: 'manage' },
+        visible: canManageSerialSettings,
       },
     ],
   },
@@ -218,6 +255,7 @@ export function isNavItemActive(
   item: NavItem,
   matches: (to: string, fuzzy: boolean) => boolean,
 ): boolean {
+  if ((item.alsoActiveOn ?? []).some((to) => matches(to as string, true))) return true;
   if (!matches(item.to as string, item.to !== '/')) return false;
   return !(item.excludes ?? []).some((to) => matches(to as string, true));
 }
@@ -226,11 +264,14 @@ export function visibleNavGroups(
   groups: readonly NavGroup[],
   me: MeDto,
   activeLocationIds?: readonly string[],
+  desktop = false,
 ): NavGroup[] {
   return groups
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => {
+        if (item.desktopOnly && !desktop) return false;
+        if (item.visible && !item.visible(me)) return false;
         if (!item.permission) return true;
         const alternatives: readonly NavPermission[] = Array.isArray(item.permission)
           ? item.permission

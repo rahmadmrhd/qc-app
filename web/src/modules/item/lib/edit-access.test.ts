@@ -8,6 +8,8 @@ function me(levels: Record<string, 'view' | 'edit'>): MeDto {
     email: 'a@x.com',
     name: 'A',
     isSuperAdmin: false,
+    sharedAccount: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'edit',
@@ -19,6 +21,7 @@ function me(levels: Record<string, 'view' | 'edit'>): MeDto {
       stickerstock: 'none',
       serial: 'none',
       serialservice: 'none',
+      countrylock: 'none',
     },
     locations: [],
     businessUnits: Object.entries(levels).map(([id, level]) => ({
@@ -26,7 +29,7 @@ function me(levels: Record<string, 'view' | 'edit'>): MeDto {
       code: id.toUpperCase(),
       name: id,
       status: 'active' as const,
-      permissions: { item: level, serial: 'none', serialservice: 'none' },
+      permissions: { item: level, serial: 'none', serialservice: 'none', countrylock: 'none' },
     })),
   };
 }

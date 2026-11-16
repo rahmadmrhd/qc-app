@@ -4,8 +4,8 @@ import { stripControlChars } from './text';
 
 // Aturan murni notifikasi Serah Terima (spek 2026-11-12-notifikasi-serah-terima-design.md). Tanpa API runtime/DOM.
 
-/** Jenis kejadian notifikasi (spek §3). `createdBatch` = ringkasan satu permintaan `saveBatch` (§4.3). */
-export const NOTIFICATION_KINDS = [
+/** Jenis kejadian notifikasi Serah Terima (spek §3). `createdBatch` = ringkasan satu permintaan `saveBatch` (§4.3). */
+export const HANDOVER_NOTIFICATION_KINDS = [
   'created',
   'createdBatch',
   'updated',
@@ -15,12 +15,32 @@ export const NOTIFICATION_KINDS = [
   'checked',
   'commented',
 ] as const;
-export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
+export type HandoverNotificationKind = (typeof HANDOVER_NOTIFICATION_KINDS)[number];
+
+/**
+ * Jenis notifikasi Serial Number (spek 2026-11-16-serial-bukti-foto-qc-masalah-design.md §4.1): `serialProofFailed` =
+ * satu foto bukti QC gagal diproses (satu notifikasi per foto per kejadian gagal). Aturan akses jenis ini mengikuti BU
+ * serial entri (bukan lokasi/izin Serah Terima).
+ */
+export const SERIAL_NOTIFICATION_KINDS = ['serialProofFailed'] as const;
+export type SerialNotificationKind = (typeof SERIAL_NOTIFICATION_KINDS)[number];
+
+export const NOTIFICATION_KINDS = [
+  ...HANDOVER_NOTIFICATION_KINDS,
+  ...SERIAL_NOTIFICATION_KINDS,
+] as const;
+export type NotificationKind = HandoverNotificationKind | SerialNotificationKind;
+
+/** Jenis notifikasi Serial Number? (akses dan tujuan klik berbeda dari jenis Serah Terima.) */
+export function isSerialNotificationKind(kind: string): kind is SerialNotificationKind {
+  return (SERIAL_NOTIFICATION_KINDS as readonly string[]).includes(kind);
+}
 
 /** Sisi penerima: `qc` = `qc: edit`, `wh` = `handover: view` ke atas, `all` = salah satunya (di lokasi task). */
 export type NotificationSide = 'qc' | 'wh' | 'all';
 
-export const NOTIFICATION_SIDE: Record<NotificationKind, NotificationSide> = {
+/** Sisi penerima jenis Serah Terima (jenis Serial berpenerima tunggal, tanpa sisi). */
+export const NOTIFICATION_SIDE: Record<HandoverNotificationKind, NotificationSide> = {
   created: 'qc',
   createdBatch: 'qc',
   updated: 'qc',
@@ -31,8 +51,19 @@ export const NOTIFICATION_SIDE: Record<NotificationKind, NotificationSide> = {
   commented: 'all',
 };
 
-/** Jendela penggabungan centang: tetap 5 menit sejak centang pertama dalam rangkaian (spek §4.2). */
-export const CHECK_WINDOW_MS = 300_000;
+/**
+ * Jendela penggabungan centang: tetap 1 menit sejak centang pertama dalam rangkaian (spek §4.2; 5 menit sebelum
+ * keputusan pemilik 2026-11-16, "terlalu lama").
+ */
+export const CHECK_WINDOW_MS = 60_000;
+
+/** Jalur stream SSE notifikasi (GET): cookie sesi untuk lonceng web, Bearer desktop untuk aplikasi desktop. */
+export const NOTIFICATIONS_STREAM_PATH = '/api/v1/notifications/stream';
+/**
+ * Nama event SSE untuk satu notifikasi baru (muatannya sama dengan push). Lonceng web tidak memakai muatannya:
+ * tiap bingkai hanya membuatnya memuat ulang `notifications.list` (izin dan isi tetap dari jalur baca).
+ */
+export const NOTIFICATIONS_STREAM_EVENT = 'notification';
 /** Umur penyimpanan notifikasi sebelum dibersihkan (hari; pilihan perancang, spek §5.1 dan §10). */
 export const NOTIFICATION_RETENTION_DAYS = 90;
 /** Panjang maksimum cuplikan teks (catatan atau komentar) pada notifikasi lonceng. */
@@ -41,10 +72,10 @@ export const NOTIFICATION_PREVIEW_MAX = 140;
 export interface NotificationDto {
   id: string;
   kind: NotificationKind;
-  /** Kosong untuk `createdBatch`. */
+  /** Kosong untuk `createdBatch` dan jenis Serial. */
   handoverId: string;
   locationId: string;
-  /** Nomor task `ST-...`; kosong untuk `createdBatch`. */
+  /** Nomor task `ST-...`; kosong untuk `createdBatch`. Untuk `serialProofFailed` = nomor Serial Number (SN). */
   number: string;
   /** Nama customer task; untuk `createdBatch` berisi NAMA LOKASI (spek §4.3: "N task baru di <lokasi>"). */
   customerName: string;
@@ -57,6 +88,10 @@ export interface NotificationDto {
   createdAt: string;
   /** Kosong = belum dibaca. */
   readAt: string;
+  /** Id Serial Number (tujuan buka) untuk jenis Serial; kosong untuk jenis Serah Terima. */
+  serialId: string;
+  /** Id foto bukti yang gagal (tag push per foto) untuk `serialProofFailed`; selain itu kosong. */
+  photoId: string;
 }
 
 /** Judul notifikasi (Indonesia), dipakai lonceng dan push. */
@@ -81,6 +116,8 @@ export function notificationTitle(
       return `${n.actor} memperbarui ${n.count} butir di ${n.number}`;
     case 'commented':
       return `${n.actor} mengomentari task ${n.number}`;
+    case 'serialProofFailed':
+      return 'Foto bukti QC bermasalah';
   }
 }
 
@@ -105,13 +142,13 @@ export function handoverEventsOf(
   action: HandoverAction,
   before: HandoverSnap | null,
   after: HandoverSnap,
-): NotificationKind[] {
+): HandoverNotificationKind[] {
   if (action === 'create') return ['created'];
   if (before === null) return [];
   const becameDone = before.status !== 'done' && after.status === 'done';
   switch (action) {
     case 'save': {
-      const events: NotificationKind[] = [];
+      const events: HandoverNotificationKind[] = [];
       if (before.customerId !== after.customerId || before.note !== after.note) {
         events.push('updated');
       }
@@ -132,12 +169,17 @@ export function handoverEventsOf(
 }
 
 /**
- * Tujuan buka notifikasi: detail task (`/handover/<id>`) atau daftar untuk `createdBatch`; `loc` membawa lokasi
- * notifikasi agar halaman memuat task/papan lokasi itu walau tidak terpilih di pemilih lokasi header (spek §5.1).
+ * Tujuan buka notifikasi Serah Terima: detail task (`/handover/<id>`) atau daftar untuk `createdBatch`; `loc` membawa
+ * lokasi notifikasi agar halaman memuat task/papan lokasi itu walau tidak terpilih di pemilih lokasi header (spek §5.1).
  */
 export function handoverUrlOf(n: Pick<NotificationDto, 'handoverId' | 'locationId'>): string {
   const base = n.handoverId === '' ? '/handover' : `/handover/${encodeURIComponent(n.handoverId)}`;
   return n.locationId === '' ? base : `${base}?loc=${encodeURIComponent(n.locationId)}`;
+}
+
+/** Tujuan buka notifikasi Serial Number: detail Serial Number (`/serial/<id>`; tanpa `loc`, akses mengikuti BU). */
+export function serialUrlOf(n: Pick<NotificationDto, 'serialId'>): string {
+  return n.serialId === '' ? '/serial' : `/serial/${encodeURIComponent(n.serialId)}`;
 }
 
 const LIST_MARKER = /^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX]\]\s+)?/;
@@ -169,6 +211,15 @@ export function pushPayloadOf(n: NotificationDto): {
   url: string;
   tag: string;
 } {
+  if (isSerialNotificationKind(n.kind)) {
+    // Hanya nomor Serial Number (tanpa alasan teknis, merk, atau tipe); tag per foto (bukan per entri).
+    return {
+      title: notificationTitle(n),
+      body: n.number === '' ? 'Serial Number' : n.number,
+      url: serialUrlOf(n),
+      tag: `${n.kind}:${n.photoId}`,
+    };
+  }
   const head = [n.number, n.customerName].filter((part) => part !== '').join(' - ');
   // `preview` sudah rata dan terbersih (dibentuk `notificationPreviewText` saat notifikasi dibuat): dipakai apa adanya
   // agar isi push sama dengan lonceng.

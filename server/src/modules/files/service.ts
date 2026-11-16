@@ -1,5 +1,6 @@
 import { getBridge, viaBridge } from '@server/core/bridge-client';
 import { base64ToBytes, bytesToBase64 } from '@server/core/bytes';
+import { CAS_FAIL_SQL } from '@server/core/cas';
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
@@ -131,6 +132,25 @@ export interface FileViewer {
   canReadStickerFiles: boolean;
   /** Hanya rute lampiran Postel (`sticker: view`): boleh membaca berkas berpemilik `postel`; `files.get` tidak. */
   canReadPostelFiles?: boolean;
+  /**
+   * BU yang boleh dibaca modul serial (`readableBuIds`: `serial`/`serialservice: view`). Berkas berpemilik `serial`
+   * (gambar pada pesan kejadian) hanya terbaca bila BU serial pemiliknya ada di sini; izin `item`, `sticker`, atau
+   * `qrcode` tidak pernah membukanya. Kosong/tak diisi = tak terbaca.
+   */
+  serialBuIds?: readonly string[];
+}
+
+/** Serial pemilik berkas terlihat bagi viewer (BU serial ada di himpunan)? SATU kueri; himpunan kosong tanpa kueri. */
+async function serialFileVisible(
+  env: Env,
+  serialId: string,
+  serialBuIds: readonly string[],
+): Promise<boolean> {
+  if (serialBuIds.length === 0) return false;
+  const row = await env.DB.prepare('SELECT bu_id FROM serials WHERE id = ?')
+    .bind(serialId)
+    .first<{ bu_id: string }>();
+  return row !== null && serialBuIds.includes(row.bu_id.trim());
 }
 
 /** Item pemilik berkas terlihat bagi viewer? SATU kueri (`LIMIT 1`); himpunan kosong tanpa kueri. */
@@ -172,13 +192,19 @@ export async function readFile(
   if (isPostel && viewer.canReadPostelFiles !== true) {
     throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
   }
+  // Gambar pesan serial dan foto bukti QC (`serialproof`): SEBELUM cabang `itemBuIds` (yang membiarkan pemilik lain
+  // lolos); hanya lewat BU serial pemiliknya (`owner_id` = id serial).
+  const isSerial = record.ownerType === 'serial' || record.ownerType === 'serialproof';
+  if (isSerial && !(await serialFileVisible(env, record.ownerId, viewer.serialBuIds ?? []))) {
+    throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
+  }
   if (viewer.itemBuIds === null) {
     const isLogo = record.ownerType === 'qrlogo';
     const isOwnPending = record.ownerType === '' && record.createdBy === viewer.email;
     const isSticker = record.ownerType === 'sticker' && viewer.canReadStickerFiles;
     // Gambar pustaka stiker (3b-1): pemegang `sticker: view` atau `item: view`, tanpa batas BU.
     const isGuide = record.ownerType === 'stickerguide' && viewer.canReadStickerFiles;
-    if (!isLogo && !isOwnPending && !isSticker && !isGuide && !isPostel)
+    if (!isLogo && !isOwnPending && !isSticker && !isGuide && !isPostel && !isSerial)
       throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
   } else if (
     record.ownerType === 'item' &&
@@ -238,20 +264,40 @@ export async function planAttachFiles(
       toClaim.push(file);
     } else if (
       (file.ownerType === 'item' && ownerType !== 'item') ||
-      (file.ownerType === 'postel' && ownerType !== 'postel')
+      (file.ownerType === 'postel' && ownerType !== 'postel') ||
+      // Gambar serial hanya boleh dipakai ulang pada serial pemiliknya; jalur lain atau serial lain dijawab generik
+      // (tanpa membuka bahwa berkas itu ada dan milik serial/BU lain).
+      (file.ownerType === 'serial' && (ownerType !== 'serial' || file.ownerId !== ownerId)) ||
+      // Foto bukti QC dibuat langsung berpemilik oleh job `serial_proof`; tak pernah dipasang lewat jalur mana pun.
+      file.ownerType === 'serialproof'
     ) {
-      // Berkas item atau Postel yang dikirim ke jalur lain (logo QR, stiker): jawab seperti berkas tak dikenal, tanpa
-      // membuka keberadaannya (pemilik Postel hanya terlihat bagi pembaca modul Postel).
+      // Berkas item, Postel, atau serial yang dikirim ke jalur lain (logo QR, stiker): jawab seperti berkas tak dikenal,
+      // tanpa membuka keberadaannya (pemilik Postel hanya terlihat bagi pembaca modul Postel).
       throw appError('VALIDATION', 'Ada berkas yang tidak dikenal');
     } else if (file.ownerType !== ownerType || file.ownerId !== ownerId) {
       throw appError('CONFLICT', 'Berkas sudah dipakai di tempat lain');
     }
   }
-  return toClaim.map((file) =>
+  const claims = toClaim.map((file) =>
     env.DB.prepare(
       "UPDATE files SET owner_type = ?, owner_id = ? WHERE id = ? AND status = 'active' AND owner_type = ''",
     ).bind(ownerType, ownerId, file.id),
   );
+  // Gambar serial: dua aksi serentak oleh pengunggah yang sama tidak boleh memasang unggahan yang sama ke dua serial
+  // (BU berbeda). `UPDATE ... AND owner_type = ''` hanya membuat pemasang kedua tak mengubah baris; penjaga hitungan ini
+  // membatalkan seluruh batch bila ada berkas yang tidak berakhir milik serial ini (pola penjaga lampiran Postel).
+  if (ownerType === 'serial' && toClaim.length > 0) {
+    claims.push(
+      env.DB.prepare(
+        `SELECT CASE WHEN (SELECT COUNT(*) FROM files WHERE id IN (${toClaim
+          .map(() => '?')
+          .join(
+            ',',
+          )}) AND status = 'active' AND owner_type = 'serial' AND owner_id = ?) <> ? THEN ${CAS_FAIL_SQL} ELSE 0 END AS guard_ok`,
+      ).bind(...toClaim.map((file) => file.id), ownerId, toClaim.length),
+    );
+  }
+  return claims;
 }
 
 export async function attachFiles(

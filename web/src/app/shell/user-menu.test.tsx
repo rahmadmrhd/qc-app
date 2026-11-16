@@ -25,6 +25,16 @@ vi.mock('@/modules/push/components/push-settings-dialog', () => ({
   ),
 }));
 
+vi.mock('@/modules/guide/components/guide-menu-dialog', () => ({
+  GuideMenuDialog: ({ onClose }: { onClose: () => void }) => (
+    <div role="dialog" aria-label="Panduan">
+      <button type="button" onClick={onClose}>
+        tutup-panduan
+      </button>
+    </div>
+  ),
+}));
+
 import { UserMenu } from './user-menu';
 
 async function openMenu() {
@@ -34,6 +44,21 @@ async function openMenu() {
 beforeEach(() => {
   vi.clearAllMocks();
   installMock.state = 'unavailable';
+});
+
+test('butir Notifikasi push tampil di peramban, tetapi tidak di aplikasi desktop', async () => {
+  const { unmount } = render(<UserMenu />);
+  await openMenu();
+  expect(screen.getByRole('menuitem', { name: /Notifikasi push/ })).toBeInTheDocument();
+  unmount();
+  (window as unknown as { qcBridge?: unknown }).qcBridge = { version: 1 };
+  try {
+    render(<UserMenu />);
+    await openMenu();
+    expect(screen.queryByRole('menuitem', { name: /Notifikasi push/ })).not.toBeInTheDocument();
+  } finally {
+    delete (window as unknown as { qcBridge?: unknown }).qcBridge;
+  }
 });
 
 test('butir Pasang aplikasi tidak tampil bila tidak tersedia', async () => {
@@ -81,4 +106,13 @@ test('butir Notifikasi push membuka dan menutup pengaturan push', async () => {
   expect(await screen.findByRole('dialog', { name: 'Notifikasi push' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'tutup-push' }));
   expect(screen.queryByRole('dialog', { name: 'Notifikasi push' })).not.toBeInTheDocument();
+});
+
+test('butir Panduan membuka dan menutup dialog panduan', async () => {
+  render(<UserMenu />);
+  await openMenu();
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Panduan' }));
+  expect(await screen.findByRole('dialog', { name: 'Panduan' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'tutup-panduan' }));
+  expect(screen.queryByRole('dialog', { name: 'Panduan' })).not.toBeInTheDocument();
 });

@@ -181,3 +181,35 @@ describe('qcsnCanonical', () => {
     expect(qcsnCanonical([changed])).not.toBe(qcsnCanonical(a.rows));
   });
 });
+
+describe('baris berstatus selain good (laporan rusak)', () => {
+  const id = (n: number) => `bbbbbbbb-0000-0000-0000-${String(n).padStart(12, '0')}`;
+
+  test('failed, broken, dan status lain ditolak sebagai bermasalah; kunci damage diabaikan', () => {
+    const result = parseQcsn(
+      file([
+        row({ clientId: id(1), status: 'failed', damage: 'Layar retak' }),
+        row({ clientId: id(2), status: 'reported' }),
+        row({ clientId: id(3), status: 'broken' }),
+        row({ clientId: id(4), status: 'good', damage: 'abaikan' }),
+      ]),
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0]?.clientId).toBe(id(4));
+    expect((result.rows[0] as unknown as Record<string, unknown>).damage).toBeUndefined();
+    expect(result.problems.map((p) => p.row)).toEqual([1, 2, 3]);
+  });
+
+  test('bentuk kanonis tidak lagi memuat damage', () => {
+    const parsed = parseQcsn(file([row({ clientId: id(11) })]));
+    if (!parsed.ok) throw new Error('berkas seharusnya sah');
+    const canonical = JSON.parse(qcsnCanonical(parsed.rows as QcsnRow[])) as Record<
+      string,
+      unknown
+    >[];
+    expect('damage' in (canonical[0] ?? {})).toBe(false);
+    expect(canonical[0]?.status).toBe('good');
+  });
+});

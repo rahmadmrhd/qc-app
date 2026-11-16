@@ -1,5 +1,6 @@
 import { readObject } from '@server/core/validate';
 import type {
+  PushDeviceMutedInput,
   PushPermissionInput,
   PushPermissionState,
   PushPreferenceInput,
@@ -56,6 +57,15 @@ export function validatePushUnsubscribe(raw: unknown): PushUnsubscribeInput {
   const endpoint = reader.str('endpoint', { required: true, max: PUSH_LIMITS.endpoint });
   reader.done();
   return { endpoint };
+}
+
+export function validatePushDeviceMuted(raw: unknown): PushDeviceMutedInput {
+  const reader = readObject(raw);
+  const endpoint = reader.str('endpoint', { required: true, max: PUSH_LIMITS.endpoint });
+  const muted = reader.raw('muted');
+  if (typeof muted !== 'boolean') reader.fail('muted', 'Harus benar atau salah');
+  reader.done();
+  return { endpoint, muted: muted as boolean };
 }
 
 export function validatePushPreference(raw: unknown): PushPreferenceInput {

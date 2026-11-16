@@ -49,6 +49,7 @@ test('ekspor lalu impor mengembalikan baris yang sama (termasuk stiker bila suda
     locationId: 'l1',
     sample: true,
     note: 'catatan',
+    status: 'good',
     stickers: [{ stickerId: 's1', stickerLabel: 'Stiker', qty: 2 }],
   });
   expect(result.rows[1]?.stickers).toBeUndefined();
@@ -135,4 +136,30 @@ test('baris bermasalah yang bukan objek tidak memicu peringatan checksum palsu',
   expect(result.rows.map((row) => row.serial)).toEqual(['A1']);
   expect(result.problems).toHaveLength(1);
   expect(result.warning).toBeNull();
+});
+
+test('ekspor selalu menulis status good tanpa damage; baris failed di berkas ditolak sebagai bermasalah', async () => {
+  const text = await exportQcsn(rows(['SN-9']), APP, NOW);
+  const file = JSON.parse(text);
+  expect(file.rows[0]).toMatchObject({ status: 'good' });
+  expect(file.rows[0]).not.toHaveProperty('damage');
+  file.rows[0] = { ...file.rows[0], status: 'failed', damage: 'Port 3 mati' };
+  const result = await importQcsn(JSON.stringify(file));
+  expect(result.rows).toEqual([]);
+  expect(result.fatal ?? result.problems[0]?.message).toMatch(/good|bermasalah|status/i);
+});
+
+test('foto bukti tidak ikut ekspor .qcsn dan impor menghasilkan baris tanpa foto', async () => {
+  const data = rows(['A1']).map((row) => ({
+    ...row,
+    proofPhotos: [
+      { id: 'p-rahasia', mime: 'image/webp', size: 1, thumbUrl: '/api/v1/serial-proofs/p-rahasia' },
+    ],
+  }));
+  const text = await exportQcsn(data, APP, NOW);
+  expect(text).not.toContain('p-rahasia');
+  expect(text).not.toContain('proof');
+  const result = await importQcsn(text);
+  expect(result.fatal).toBeNull();
+  expect(result.rows[0]).not.toHaveProperty('proofPhotos');
 });

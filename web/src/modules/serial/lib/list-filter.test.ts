@@ -159,3 +159,21 @@ describe('commitSearchLine', () => {
     expect(result?.text).toBe(`${full}\n`);
   });
 });
+
+test('filter BU, posisi, dan "Dicatat oleh saya" masuk masukan serials.list; schema membuang nilai tak sah', () => {
+  expect(filterOfSearch({ bu: 'b1', custody: 'transit' })).toEqual({
+    buId: 'b1',
+    custody: 'transit',
+  });
+  // Sakelar mine hanya bermakna bersama email akun.
+  expect(filterOfSearch({ mine: true }, 'a@x.com')).toEqual({ createdBy: 'a@x.com' });
+  expect(filterOfSearch({ mine: true })).toEqual({});
+  expect(filterOfSearch({}, 'a@x.com')).toEqual({});
+  expect(serialSearchSchema.parse({ custody: 'ngawur', mine: false, bu: 'b1' })).toEqual({
+    bu: 'b1',
+  });
+  expect(serialSearchSchema.parse({ custody: 'service', mine: true })).toEqual({
+    custody: 'service',
+    mine: true,
+  });
+});

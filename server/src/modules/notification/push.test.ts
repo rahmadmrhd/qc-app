@@ -367,6 +367,29 @@ describe('deliverPendingPushes', () => {
     expect(bodies.some((body) => body.includes('ST-Q'))).toBe(true);
   });
 
+  test('perangkat yang dimatikan (muted) dilewati; perangkat lain akun yang sama tetap menerima', async () => {
+    const quiet = await subscribe(VIEWER, 'senyap');
+    await subscribe(VIEWER, 'aktif');
+    await env.DB.prepare('UPDATE push_subscriptions SET muted = 1 WHERE endpoint_hash = ?')
+      .bind(endpointHash(quiet))
+      .run();
+    await insert(note());
+    expect(await deliverPendingPushes(env)).toBe(1);
+    expect(push.sent.map((s) => s.sub.endpoint)).toEqual([EP('aktif')]);
+    // Baris yang dimatikan tak disentuh (bukan gagal, bukan dihapus).
+    const rows = await subRows(VIEWER);
+    expect(rows.find((r) => r.endpoint === quiet)).toMatchObject({ fail_count: 0, last_ok_at: '' });
+  });
+
+  test('semua perangkat dimatikan -> skipped, nol pengiriman', async () => {
+    await subscribe(VIEWER, 'a');
+    await env.DB.prepare('UPDATE push_subscriptions SET muted = 1').run();
+    await insert(note());
+    expect(await deliverPendingPushes(env)).toBe(0);
+    expect(push.sent).toHaveLength(0);
+    expect(await states()).toEqual(['skipped']);
+  });
+
   test('gone menghapus langganan semua pengguna yang berbagi endpoint', async () => {
     const shared = await subscribe(VIEWER, 'sama');
     await subscribe(QC, 'sama');

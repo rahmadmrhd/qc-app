@@ -361,8 +361,15 @@ export function createFakeGoogle(options: {
     if (path === '/files' && method === 'GET') {
       const q = url.searchParams.get('q') ?? '';
       const parent = /'([^']+)' in parents/.exec(q)?.[1];
+      const wantedName = / and name = '((?:[^'\\]|\\.)*)'/.exec(q)?.[1]?.replaceAll(/\\(.)/g, '$1');
       const matching = [...files.values()]
-        .filter((f) => !f.hidden && (!parent || f.parents.includes(parent)) && !f.trashed)
+        .filter(
+          (f) =>
+            !f.hidden &&
+            (!parent || f.parents.includes(parent)) &&
+            !f.trashed &&
+            (wantedName === undefined || f.name === wantedName),
+        )
         .sort((a, b) => a.name.localeCompare(b.name));
       const pageSize = Number(url.searchParams.get('pageSize') ?? '100');
       const offset = Number(url.searchParams.get('pageToken') ?? '0');

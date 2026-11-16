@@ -27,6 +27,24 @@ test('validateSaveUser menormalisasi email, merapikan nama, dan membuang role du
   });
 });
 
+test('validateSaveUser: sharedAccount boolean opsional, bukan-boolean ditolak, dan kunci tak muncul bila tak dikirim', () => {
+  const base = {
+    email: 'b@gmail.com',
+    name: 'B',
+    status: 'active',
+    assignments: [],
+    buAssignments: [],
+  };
+  expect(validateSaveUser({ ...base, sharedAccount: true }).sharedAccount).toBe(true);
+  expect(validateSaveUser({ ...base, sharedAccount: false }).sharedAccount).toBe(false);
+  expect('sharedAccount' in validateSaveUser(base)).toBe(false);
+  for (const bad of ['true', 1, null, {}]) {
+    expect(captureAppError(() => validateSaveUser({ ...base, sharedAccount: bad })).fields).toEqual(
+      { sharedAccount: 'Harus berupa true atau false' },
+    );
+  }
+});
+
 test('validateSaveUser mengumpulkan semua error field', () => {
   const error = captureAppError(() =>
     validateSaveUser({ email: '', name: '', status: 'x', assignments: 'a', buAssignments: 'b' }),

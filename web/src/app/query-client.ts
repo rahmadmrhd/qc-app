@@ -24,16 +24,40 @@ export function setUnauthenticatedHandler(handler: () => void): void {
   unauthenticatedHandler = handler;
 }
 
+/**
+ * Melaporkan 401 dari panggilan `api()` di luar react-query (mis. pengurasan antrean centang) agar penangan global
+ * (bersihkan sesi + ke /login) tetap berjalan.
+ */
+export function reportUnauthenticated(): void {
+  unauthenticatedHandler();
+}
+
 const globalDeps: GlobalErrorDeps = {
   onUnauthenticated: () => unauthenticatedHandler(),
   notify: (message) => toast.error(message),
 };
 
+/**
+ * Selang muat ulang otomatis bawaan semua query aktif (yang sedang dipakai komponen). Query yang butuh selang lain
+ * (lonceng notifikasi, polling job) menimpanya lewat `refetchInterval` sendiri.
+ */
+export const DEFAULT_REFETCH_INTERVAL_MS = 30_000;
+
+export const defaultQueryOptions = {
+  retry: shouldRetry,
+  staleTime: 60_000,
+  // Saat tab kembali terlihat, query yang sudah basi (> staleTime) langsung dimuat ulang tanpa menunggu tick berikutnya.
+  refetchOnWindowFocus: true,
+  refetchInterval: DEFAULT_REFETCH_INTERVAL_MS,
+  // Eksplisit: berhenti saat tab tersembunyi/di latar agar tidak membebani server tanpa ada yang melihat.
+  refetchIntervalInBackground: false,
+} as const;
+
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({ onError: (error) => handleGlobalError(error, globalDeps) }),
   mutationCache: new MutationCache({ onError: (error) => handleGlobalError(error, globalDeps) }),
   defaultOptions: {
-    queries: { retry: shouldRetry, staleTime: 60_000, refetchOnWindowFocus: false },
+    queries: defaultQueryOptions,
     mutations: { retry: false },
   },
 });

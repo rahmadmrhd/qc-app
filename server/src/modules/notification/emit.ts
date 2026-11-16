@@ -85,7 +85,7 @@ function recipientsCache(env: Env, locationId: string, excludeEmail: string) {
  */
 /**
  * Apakah perubahan ini menghasilkan notifikasi yang harus segera dikirim. Centang biasa (`checked`) hanya masuk tabel
- * tunggu penggabungan 5 menit, jadi tidak perlu membangunkan putaran pengirim (centang adalah penulisan paling sering);
+ * tunggu penggabungan 1 menit, jadi tidak perlu membangunkan putaran pengirim (centang adalah penulisan paling sering);
  * centang yang menyelesaikan task menghasilkan `done` dan tetap membangunkan. Aturan kejadian sama dengan
  * `planNotifications` (`handoverEventsOf`).
  */

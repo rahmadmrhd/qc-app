@@ -574,6 +574,7 @@ describe('audit atomik dan snapshot', () => {
         status: 'active',
         assignments: { '*': ['r-qc'] },
         buAssignments: {},
+        sharedAccount: false,
       },
     });
   });
@@ -599,6 +600,7 @@ describe('audit atomik dan snapshot', () => {
         status: 'active',
         assignments: { '*': ['r-qc', 'r-access'] },
         buAssignments: { '*': ['r-qc', 'r-access'] },
+        sharedAccount: false,
       },
       after: {
         email: 'budi@gmail.com',
@@ -606,6 +608,7 @@ describe('audit atomik dan snapshot', () => {
         status: 'active',
         assignments: { '*': ['r-qc'] },
         buAssignments: {},
+        sharedAccount: false,
       },
     });
     await setUserStatus(env, { id: 'u-budi', status: 'inactive' }, admin);

@@ -41,28 +41,51 @@ const row = (over: Partial<SerialSummaryDto>): SerialSummaryDto => ({
   locationName: 'Jakarta',
   status: 'good',
   custody: 'qc',
+  transitToLocationId: null,
+  transitToLocationName: null,
+  transitOn: null,
+  openCaseNumber: null,
+  hasProofPhotos: false,
+  proofProblemCount: 0,
   createdAt: '2026-11-10T03:00:00.000Z',
   ...over,
 });
 
-const PAGE_1 = [row({}), row({ id: 's2', serial: 'XYZ789', sample: true, status: 'failed' })];
+const PAGE_1 = [row({}), row({ id: 's2', serial: 'XYZ789', sample: true, status: 'reported' })];
 
-function Harness({ onOpen = () => undefined }: { onOpen?: (id: string) => void }) {
-  const [search, setSearch] = useState<SerialSearch>(serialSearchSchema.parse({}));
+function Harness({
+  onOpen = () => undefined,
+  onNew,
+  initial = {},
+}: {
+  onOpen?: (id: string) => void;
+  onNew?: () => void;
+  initial?: Record<string, unknown>;
+}) {
+  const [search, setSearch] = useState<SerialSearch>(serialSearchSchema.parse(initial));
   return (
     <SerialListPage
       search={search}
       onSearchChange={(patch) => setSearch((prev) => ({ ...prev, ...patch }))}
       onOpen={onOpen}
+      onNew={onNew}
     />
   );
 }
 
-function renderPage(onOpen?: (id: string) => void) {
+function renderPage(
+  onOpen?: (id: string) => void,
+  initial?: Record<string, unknown>,
+  onNew?: () => void,
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <Harness {...(onOpen ? { onOpen } : {})} />
+      <Harness
+        {...(onOpen ? { onOpen } : {})}
+        {...(initial ? { initial } : {})}
+        {...(onNew ? { onNew } : {})}
+      />
     </QueryClientProvider>,
   );
 }
@@ -76,6 +99,8 @@ beforeEach(() => {
     email: 'a@gmail.com',
     name: 'A',
     isSuperAdmin: false,
+    sharedAccount: false,
+    canManageSerialSettings: false,
     permissions: {
       access: 'none',
       item: 'none',
@@ -87,6 +112,7 @@ beforeEach(() => {
       stickerstock: 'none',
       serial: 'view',
       serialservice: 'none',
+      countrylock: 'none',
     },
     businessUnits: [],
     locations: [
@@ -133,7 +159,7 @@ test('merender baris dengan kolom Tanggal uji, status, posisi, dan sample; pagin
   expect(within(rows[1] as HTMLElement).getByText('10 Nov 2026')).toBeInTheDocument();
   expect(within(rows[1] as HTMLElement).getByText('Lolos')).toBeInTheDocument();
   expect(within(rows[1] as HTMLElement).getByText('Di QC')).toBeInTheDocument();
-  expect(within(rows[2] as HTMLElement).getByText('Tidak lolos')).toBeInTheDocument();
+  expect(within(rows[2] as HTMLElement).getByText('Dilaporkan')).toBeInTheDocument();
   expect(within(rows[2] as HTMLElement).getByText('Ya')).toBeInTheDocument();
   expect(screen.getByRole('columnheader', { name: 'Tanggal uji' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Muat lebih banyak' }));
@@ -308,8 +334,8 @@ test('Shift+Tab tidak diintersep dan Tab pada field kosong memindahkan fokus', a
 test('filter status, lokasi, item, dan rentang tanggal menjadi parameter pencarian', async () => {
   renderPage();
   await screen.findByText('ABC123');
-  await pickSelect(screen, 'Filter status', 'Tidak lolos');
-  await waitFor(() => expect(lastListInput()).toMatchObject({ status: 'failed' }));
+  await pickSelect(screen, 'Filter status', 'Dilaporkan');
+  await waitFor(() => expect(lastListInput()).toMatchObject({ status: 'reported' }));
   await pickLink(screen, 'Filter lokasi', 'Jakarta (JKT)');
   await waitFor(() => expect(lastListInput()).toMatchObject({ locationId: 'l1' }));
   await pickLink(screen, 'Filter item', 'Cisco C9200');
@@ -320,7 +346,7 @@ test('filter status, lokasi, item, dan rentang tanggal menjadi parameter pencari
   });
   await waitFor(() =>
     expect(lastListInput()).toMatchObject({
-      status: 'failed',
+      status: 'reported',
       locationId: 'l1',
       itemId: 'i1',
       from: '2026-11-01',
@@ -365,7 +391,10 @@ test('pembaca tanpa serial: edit tidak memanggil serials.locationOptions; filter
 });
 
 test('pembaca serialservice: view juga tidak memanggil serials.locationOptions', async () => {
-  me = { ...me, permissions: { ...me.permissions, serial: 'none', serialservice: 'view' } };
+  me = {
+    ...me,
+    permissions: { ...me.permissions, serial: 'none', serialservice: 'view', countrylock: 'none' },
+  };
   renderPage();
   await screen.findByText('ABC123');
   await linkOptionNames(screen, 'Filter lokasi');
@@ -420,10 +449,169 @@ test('pembaca tanpa penugasan lokasi: peringatan tampil di daftar serial; editor
 });
 
 test('filter item berfungsi bagi pembaca (serial: view): item dimuat dari serials.itemOptions tanpa gerbang edit', async () => {
-  me = { ...me, permissions: { ...me.permissions, serial: 'none', serialservice: 'view' } };
+  me = {
+    ...me,
+    permissions: { ...me.permissions, serial: 'none', serialservice: 'view', countrylock: 'none' },
+  };
   renderPage();
   await screen.findByText('ABC123');
   const names = await linkOptionNames(screen, 'Filter item');
   expect(names).toEqual(['Cisco C9200']);
   expect(apiMock.mock.calls.some((call) => call[0] === 'serials.itemOptions')).toBe(true);
+});
+
+function withBus(
+  levels: [string, 'none' | 'view' | 'edit', 'none' | 'view' | 'edit'][],
+): MeDto['businessUnits'] {
+  return levels.map(([id, serial, serialservice]) => ({
+    id,
+    code: id.toUpperCase(),
+    name: `Unit ${id}`,
+    status: 'active' as const,
+    permissions: { item: 'none' as const, serial, serialservice },
+  }));
+}
+
+test('kolom posisi: "Dalam pengiriman · 3 hari" dengan tujuan, dan nomor kasus terbuka', async () => {
+  vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-11-13T03:00:00.000Z') });
+  try {
+    apiMock.mockImplementation((id: string) =>
+      id === 'serials.list'
+        ? Promise.resolve({
+            items: [
+              row({
+                id: 's7',
+                serial: 'KIRIM1',
+                status: 'at_service',
+                custody: 'transit',
+                transitOn: '2026-11-10',
+                transitToLocationId: 'l2',
+                transitToLocationName: 'Surabaya',
+                openCaseNumber: 'LP-20261110-001',
+              }),
+              row({
+                id: 's8',
+                serial: 'DIAM1',
+                status: 'reported',
+                openCaseNumber: 'LP-20261112-004',
+              }),
+            ],
+            nextCursor: null,
+          })
+        : Promise.resolve({ locations: [], items: [], nextCursor: null }),
+    );
+    renderPage();
+    expect(await screen.findByText('KIRIM1')).toBeInTheDocument();
+    const rows = screen.getAllByRole('row');
+    const sending = within(rows[1] as HTMLElement);
+    expect(sending.getByText('Dalam pengiriman · 3 hari')).toBeInTheDocument();
+    expect(sending.getByText('ke Surabaya')).toBeInTheDocument();
+    expect(sending.getByText('LP-20261110-001')).toBeInTheDocument();
+    const still = within(rows[2] as HTMLElement);
+    expect(still.getByText('Di QC')).toBeInTheDocument();
+    expect(still.getByText('LP-20261112-004')).toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('filter posisi masuk masukan serials.list lewat Select', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  await pickSelect(screen, 'Filter posisi', 'Dalam pengiriman');
+  await waitFor(() => expect(lastListInput()).toMatchObject({ custody: 'transit' }));
+  await pickSelect(screen, 'Filter posisi', 'Semua posisi');
+  await waitFor(() => expect(lastListInput()).not.toHaveProperty('custody'));
+});
+
+test('filter BU hanya menawarkan BU yang terbaca (serial atau serialservice) dan mengirim buId', async () => {
+  me = {
+    ...me,
+    businessUnits: withBus([
+      ['b1', 'view', 'none'],
+      ['b2', 'none', 'view'],
+      ['b3', 'none', 'none'],
+    ]),
+  };
+  renderPage();
+  await screen.findByText('ABC123');
+  const names = await linkOptionNames(screen, 'Filter BU');
+  expect(names).toEqual(['B1 · Unit b1', 'B2 · Unit b2']);
+  await userEvent.click(await screen.findByRole('option', { name: 'B2 · Unit b2' }));
+  await waitFor(() => expect(lastListInput()).toMatchObject({ buId: 'b2' }));
+});
+
+test('sakelar "Dicatat oleh saya" mengisi createdBy dengan email akun', async () => {
+  renderPage();
+  await screen.findByText('ABC123');
+  expect(lastListInput()).not.toHaveProperty('createdBy');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Dicatat oleh saya' }));
+  await waitFor(() => expect(lastListInput()).toMatchObject({ createdBy: 'a@gmail.com' }));
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Dicatat oleh saya' }));
+  await waitFor(() => expect(lastListInput()).not.toHaveProperty('createdBy'));
+});
+
+test('filter BU dari URL yang tidak dikenal tidak menampilkan id mentah', async () => {
+  renderPage(undefined, { bu: 'b-rahasia-123' });
+  await screen.findByText('ABC123');
+  expect(screen.queryByDisplayValue('b-rahasia-123')).toBeNull();
+  expect(screen.queryByText('b-rahasia-123')).toBeNull();
+  expect(screen.getByDisplayValue('BU tidak dikenal')).toBeInTheDocument();
+});
+
+test('tombol "Tambah Serial Number" hanya tampil bila ada jalan masuk mencatat, dan memanggilnya', async () => {
+  const { unmount } = renderPage();
+  await screen.findByText('ABC123');
+  expect(screen.queryByRole('button', { name: 'Tambah Serial Number' })).toBeNull();
+  unmount();
+  const onNew = vi.fn();
+  renderPage(undefined, undefined, onNew);
+  await userEvent.click(await screen.findByRole('button', { name: 'Tambah Serial Number' }));
+  expect(onNew).toHaveBeenCalledTimes(1);
+});
+
+test('badge Bukti foto QC tampil hanya pada baris yang punya foto', async () => {
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') {
+      return Promise.resolve({
+        items: [
+          row({ id: 's1', serial: 'ADA1', hasProofPhotos: true }),
+          row({ id: 's2', serial: 'TANPA2' }),
+        ],
+        nextCursor: null,
+      });
+    }
+    return Promise.resolve({ locations: [] });
+  });
+  renderPage();
+  const withPhoto = (await screen.findByRole('button', { name: 'ADA1' })).closest(
+    'tr',
+  ) as HTMLElement;
+  const without = screen.getByRole('button', { name: 'TANPA2' }).closest('tr') as HTMLElement;
+  expect(within(withPhoto).getByText('Bukti foto QC')).toBeInTheDocument();
+  expect(within(without).queryByText('Bukti foto QC')).not.toBeInTheDocument();
+});
+
+test('badge Foto bermasalah tampil hanya pada baris dengan proofProblemCount > 0, berdampingan dengan Bukti foto QC', async () => {
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') {
+      return Promise.resolve({
+        items: [
+          row({ id: 's1', serial: 'MASALAH1', hasProofPhotos: true, proofProblemCount: 2 }),
+          row({ id: 's2', serial: 'AMAN2', hasProofPhotos: true }),
+        ],
+        nextCursor: null,
+      });
+    }
+    return Promise.resolve({ locations: [] });
+  });
+  renderPage();
+  const bad = (await screen.findByRole('button', { name: 'MASALAH1' })).closest(
+    'tr',
+  ) as HTMLElement;
+  const fine = screen.getByRole('button', { name: 'AMAN2' }).closest('tr') as HTMLElement;
+  expect(within(bad).getByText('Foto bermasalah')).toBeInTheDocument();
+  expect(within(bad).getByText('Bukti foto QC')).toBeInTheDocument();
+  expect(within(fine).queryByText('Foto bermasalah')).not.toBeInTheDocument();
+  expect(within(fine).getByText('Bukti foto QC')).toBeInTheDocument();
 });

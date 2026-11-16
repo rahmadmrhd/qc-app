@@ -1,5 +1,6 @@
 import type { Db } from '@server/core/db';
 import type { PushSender } from '@server/modules/notification/push';
+import type { ProofStore } from '@server/modules/serial/proof/store';
 import type { BridgeClient } from './bridge-client';
 import type { FileCache } from './file-cache';
 import type { GoogleSettings } from './google/settings';
@@ -37,6 +38,10 @@ export interface Env extends GoogleSettings {
   BACKUP_DUMP?: DumpRunner;
   /** Folder lokal (volume yang dapat ditulis) tempat dump disimpan sementara; 3 salinan terakhir dipertahankan. */
   BACKUP_LOCAL_DIR?: string;
+  /** Penyimpanan sementara foto bukti QC (disk server); `createServer` membuatnya dari `PROOF_STAGING_DIR`, tes memakai folder sementara. */
+  PROOF_STORE?: ProofStore;
+  /** Batas total ukuran berkas sementara foto bukti (byte); kosong = bawaan 2 GiB. */
+  PROOF_STAGING_MAX_BYTES?: number;
   /** Pengirim Web Push (kunci VAPID terkonfigurasi); kosong = push dinonaktifkan (notifikasi push ditandai `skipped`). */
   PUSH?: PushSender;
   /** Kunci publik VAPID (base64url) untuk klien; bersama `PUSH`. */

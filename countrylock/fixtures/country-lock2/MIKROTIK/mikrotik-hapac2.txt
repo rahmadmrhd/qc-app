@@ -1,0 +1,10 @@
+/ip arp remove [find]
+
+/tool fetch mode=ftp upload=yes address={ipTarget} user="{usernameTarget}" password="{passwordTarget}" src-path=/temp/customblock-ac.npk dst-path=/customblock.npk keep-result=yes
+
+/tool fetch mode=ftp upload=yes address={ipTarget} user="{usernameTarget}" password="{passwordTarget}" src-path=/temp/routeros-arm-6.48.npk dst-path=/routeros-arm-6.48.npk keep-result=yes
+
+/system ssh-exec address={ipTarget} user={usernameTarget} password="{passwordTarget}" command="/system reboot"
+
+/ip arp remove [find]
+/quit

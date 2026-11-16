@@ -95,11 +95,11 @@ async function pendingCount(): Promise<number> {
 
 const items = (n: number) => Array.from({ length: n }, (_, i) => `- [ ] butir ${i + 1}`).join('\n');
 
-describe('jendela 5 menit', () => {
-  test('10 centang dalam 3 menit -> satu ringkasan count 10 per penerima WH, tepat setelah 5 menit', async () => {
+describe('jendela 1 menit', () => {
+  test('10 centang dalam 45 detik -> satu ringkasan count 10 per penerima WH, tepat setelah 1 menit', async () => {
     await seed(`${items(10)}\n- [ ] sisa`);
     for (let i = 0; i < 10; i++) {
-      env.clock.set(T0 + i * 20_000);
+      env.clock.set(T0 + i * 5_000);
       await check(QC, i, `butir ${i + 1}`);
     }
     // Centang tidak langsung menjadi notifikasi.
@@ -121,10 +121,10 @@ describe('jendela 5 menit', () => {
     expect(await rows()).toHaveLength(WH_SIDE.length);
   });
 
-  test('centang ke-2 pada menit 3 tidak memundurkan release_at (tetap sejak yang pertama)', async () => {
+  test('centang ke-2 pada detik 30 tidak memundurkan release_at (tetap sejak yang pertama)', async () => {
     await seed(items(3));
     await check(QC, 0, 'butir 1');
-    env.clock.set(T0 + 3 * 60_000);
+    env.clock.set(T0 + 30_000);
     await check(QC, 1, 'butir 2');
     const pending = await env.DB.prepare(
       'SELECT first_at, release_at FROM notification_pending',

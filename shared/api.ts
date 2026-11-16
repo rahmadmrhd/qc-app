@@ -354,6 +354,9 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     query: { itemId: 'string', buId: 'string' },
   },
   'serials.locationOptions': { verb: 'GET', path: '/serials/location-options' },
+  'serials.serviceLocations': { verb: 'GET', path: '/serials/service-locations' },
+  'serials.lookup': { verb: 'GET', path: '/serials/lookup', query: { serial: 'string' } },
+  'serials.reportNew': { verb: 'POST', path: '/serials/report', status: 200 },
   'serials.saveBatch': { verb: 'POST', path: '/serials/batch', status: 200 },
   'serials.list': {
     verb: 'GET',
@@ -365,12 +368,18 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       itemId: 'string',
       locationId: 'string',
       status: 'string',
+      custody: 'string',
       from: 'string',
       to: 'string',
       createdBy: 'string',
       cursor: 'string',
       limit: 'number',
     },
+  },
+  'serials.history': {
+    verb: 'GET',
+    path: '/serials/{id}/history',
+    query: { group: 'string', caseId: 'string', cursor: 'string', limit: 'number' },
   },
   'serials.get': { verb: 'GET', path: '/serials/{id}' },
   'serials.update': {
@@ -396,6 +405,61 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     etag: 'updatedAt',
   },
   'postels.remove': { verb: 'DELETE', path: '/postels/{id}' },
+  'serialSettings.get': { verb: 'GET', path: '/serial-settings', etag: 'updatedAt' },
+  'serialSettings.save': {
+    verb: 'PUT',
+    path: '/serial-settings',
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
+  'serialServiceSettings.get': {
+    verb: 'GET',
+    path: '/serial-service-settings',
+    etag: 'updatedAt',
+  },
+  'serialServiceSettings.save': {
+    verb: 'PUT',
+    path: '/serial-service-settings',
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
+  'serialCases.list': {
+    verb: 'GET',
+    path: '/serial-cases',
+    query: { status: 'string', buId: 'string', query: 'string', cursor: 'string', limit: 'number' },
+  },
+  // Bukti foto QC Serial Number. `serialProofs.get` TANPA `etag` dan memakai `cache: 'revalidate'` (`private, no-cache`): isi pada
+  // id yang sama berubah dari foto asli (draft/antre) menjadi hasil bercap (selesai), jadi ETag `id` atau `immutable`
+  // akan menyajikan foto basi; tanpa validator, tiap tampilan mengunduh ulang berkasnya.
+  'serialProofs.upload': {
+    verb: 'POST',
+    path: '/serial-proofs',
+    status: 201,
+    location: '/serial-proofs/{id}',
+    query: { width: 'number', height: 'number' },
+    binary: 'request',
+    rawBody: {
+      field: 'bytes',
+      mimeField: 'mime',
+      maxBytes: 10_485_760, // = MAX_IMAGE_BYTES (shared/files.ts)
+      tooLarge: 'Ukuran foto maksimal 10 MB',
+    },
+  },
+  'serialProofs.get': {
+    verb: 'GET',
+    path: '/serial-proofs/{id}',
+    binary: 'response',
+    download: {
+      bytesField: 'bytes',
+      mimeField: 'mime',
+      filenameField: 'filename',
+      echo: ['id'],
+      cache: 'revalidate',
+    },
+  },
+  'serialProofs.remove': { verb: 'DELETE', path: '/serial-proofs/{id}' },
+  'serialProofs.retry': { verb: 'POST', path: '/serial-proofs/{id}/retry', status: 200 },
+  'serialProofs.replace': { verb: 'POST', path: '/serial-proofs/{photoId}/replace', status: 200 },
   'postelSettings.get': { verb: 'GET', path: '/postel-settings', etag: 'updatedAt' },
   'postelSettings.save': {
     verb: 'PUT',
@@ -446,8 +510,15 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'push.subscribe': { verb: 'POST', path: '/push/subscriptions' },
   'push.unsubscribe': { verb: 'POST', path: '/push/unsubscribe' },
   'push.setPreference': { verb: 'PUT', path: '/push/preference' },
+  // Endpoint langganan di badan (bukan URL): tak masuk log akses. `deviceState` POST hanya membaca.
+  'push.deviceState': { verb: 'POST', path: '/push/device/state' },
+  'push.setDeviceMuted': { verb: 'PUT', path: '/push/device' },
   'push.reportPermission': { verb: 'PUT', path: '/push/permission' },
   'push.status': { verb: 'GET', path: '/push/status' },
+  'desktop.handoff': { verb: 'POST', path: '/desktop/handoff' },
+  'guides.list': { verb: 'GET', path: '/guides' },
+  'guides.mark': { verb: 'PUT', path: '/guides/{id}' },
+  'guides.reset': { verb: 'POST', path: '/guides/{id}/reset' },
   'jobs.get': { verb: 'GET', path: '/jobs/{id}' },
   'exports.sheets': {
     verb: 'POST',

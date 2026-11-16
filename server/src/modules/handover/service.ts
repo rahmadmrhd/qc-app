@@ -3,6 +3,7 @@ import { writeAudit, writeAuditRows } from '@server/core/audit';
 import { CAS_FAIL_SQL, isGuardFailure, runCas } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
 import type { DbStatement } from '@server/core/db';
+import { DbError } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
@@ -55,6 +56,9 @@ import type {
   StoredComment,
 } from './repo';
 import {
+  findCommentByClientId,
+  findHandoversByClientIds,
+  findHandoversByIds,
   findHandoverWithComments,
   HANDOVER_COLUMNS,
   HANDOVER_FROM,
@@ -429,6 +433,44 @@ const CREATE_TASKS_ATTEMPTS = 10;
 interface NewTaskInput {
   customerName: string;
   note: string;
+  /** Kunci idempoten klien (antrean offline); lihat `replayCreatedTasks`. */
+  clientId?: string;
+}
+
+/**
+ * Kirim ulang task baru ber-`clientId` (antrean offline): bila SEMUA task permintaan sudah tersimpan oleh pelaku dan
+ * lokasi yang sama, kembalikan DTO-nya (urut masukan, termasuk `checks`, komentar, dan nama customer terkini)
+ * tanpa menulis apa pun (tanpa nomor, customer, audit, atau notifikasi baru). `null` = tidak satu pun ada (buat
+ * seperti biasa). Sebagian ada, atau milik pelaku/lokasi lain = `CONFLICT` generik (tanpa nomor task, email, atau id).
+ */
+async function replayCreatedTasks(
+  env: Env,
+  locationId: string,
+  tasks: ReadonlyArray<{ clientId?: string }>,
+  actor: ActorRef,
+): Promise<HandoverDto[] | null> {
+  const clientIds = tasks.flatMap((task) => (task.clientId ? [task.clientId] : []));
+  if (clientIds.length === 0) return null;
+  const found = await findHandoversByClientIds(env.DB, clientIds);
+  if (found.size === 0) return null;
+  const owned = [...found.values()].every(
+    (row) => row.createdBy === actor.email && row.locationId === locationId,
+  );
+  // `found.size < tasks.length` mencakup sebagian ada dan task tanpa `clientId` yang bercampur.
+  if (found.size !== tasks.length || !owned) {
+    throw appError('CONFLICT', 'Task tidak dapat dikirim ulang');
+  }
+  const ids = tasks.map((task) => (found.get(task.clientId as string) as { id: string }).id);
+  const [loadedRows, comments] = await Promise.all([
+    findHandoversByIds(env, ids),
+    listComments(env, ids),
+  ]);
+  const byId = new Map(loadedRows.map((loaded) => [loaded.record.id, loaded] as const));
+  return ids.map((id) => {
+    const loaded = byId.get(id);
+    if (!loaded) throw appError('CONFLICT', 'Task tidak dapat dikirim ulang');
+    return toHandoverDto(loaded.record, loaded.customerName, comments.get(id) ?? []);
+  });
 }
 
 /**
@@ -445,6 +487,10 @@ async function createTasks(
   const locationNames = await locationNameMap(env);
   return runCas(
     async () => {
+      // Di DALAM percobaan (bukan sekali di luar): balapan dua kiriman identik dibatalkan penjaga penghitung/indeks
+      // `client_id`, runCas mengulang, dan pencarian ini menemukan baris pemenang. Sebelum nomor dan customer.
+      const replayed = await replayCreatedTasks(env, locationId, tasks, actor);
+      if (replayed) return replayed;
       const now = nowIso(env);
       const dateKey = dateKeyOf(nowOf(env));
       const reservation = await reserveNumbers(env, dateKey, tasks.length);
@@ -484,6 +530,7 @@ async function createTasks(
           updatedAt: now,
           updatedBy: actor.email,
           version: 1,
+          ...(task.clientId ? { clientId: task.clientId } : {}),
         };
         // Audit disusun dan diperiksa mutlak SEBELUM menulis apa pun.
         const audit = fitAuditSnapshots(
@@ -639,6 +686,10 @@ export async function saveHandoverBatch(
     const message = `Jumlah task harus 1–${HANDOVER_BATCH_MAX}`;
     throw appError('VALIDATION', message, { tasks: message });
   }
+  // Kirim ulang diperiksa SEBELUM validasi customer: customer yang kini dinonaktifkan tak boleh menggagalkan
+  // pengiriman ulang task yang sudah tersimpan (`createTasks` memeriksanya lagi di dalam percobaan untuk balapan).
+  const replayed = await replayCreatedTasks(env, input.locationId, input.tasks, actor);
+  if (replayed) return replayed;
   const customers = await listCustomers(env);
   const prepared = input.tasks.map((task, index) => {
     const fail = (field: string, message: string): never => {
@@ -662,7 +713,7 @@ export async function saveHandoverBatch(
         fail('customerName', 'Customer dinonaktifkan; aktifkan dulu di halaman Customer');
       }
     }
-    return { customerName, note };
+    return { customerName, note, ...(task.clientId ? { clientId: task.clientId } : {}) };
   });
   return createTasks(env, input.locationId, prepared, actor);
 }
@@ -738,7 +789,7 @@ async function writeTaskChange(
     }),
     ...notifications,
   ]);
-  // Centang biasa hanya menunggu penggabungan 5 menit: tak perlu membangunkan putaran pengirim.
+  // Centang biasa hanya menunggu penggabungan 1 menit: tak perlu membangunkan putaran pengirim maupun stream lonceng.
   if (needsImmediateDelivery(change)) wakeNotifications();
   return saved;
 }
@@ -829,6 +880,27 @@ export async function setDone(
 const COMMENT_SIZE_SQL =
   'CHAR_LENGTH(id) + CHAR_LENGTH(quote) + CHAR_LENGTH(`before`) + CHAR_LENGTH(`after`) + CHAR_LENGTH(body) + CHAR_LENGTH(author) + CHAR_LENGTH(created_at) + 80';
 
+/**
+ * Kirim ulang komentar ber-`clientId` (antrean offline): bila komentar itu sudah tersimpan, kembalikan task apa adanya
+ * tanpa menulis apa pun (tanpa komentar, audit, atau notifikasi baru). `null` = belum ada (lanjutkan menulis).
+ * Milik pelaku/task lain = `CONFLICT` generik (tanpa nomor task, email, atau id). Task dimuat ulang agar daftar
+ * komentarnya pasti memuat komentar pemenang (juga setelah balapan).
+ */
+async function replayComment(
+  env: Env,
+  input: AddCommentInput,
+  actor: ActorRef,
+): Promise<HandoverDto | null> {
+  if (!input.clientId) return null;
+  const existing = await findCommentByClientId(env.DB, input.clientId);
+  if (!existing) return null;
+  if (existing.handoverId !== input.id || existing.author !== actor.email) {
+    throw appError('CONFLICT', 'Komentar tidak dapat dikirim ulang');
+  }
+  const { loaded } = await loadForWrite(env, input);
+  return dtoOf(env, loaded);
+}
+
 export async function addComment(
   env: Env,
   input: AddCommentInput,
@@ -841,6 +913,9 @@ export async function addComment(
     `SELECT COUNT(*) AS n, COALESCE(SUM(${COMMENT_SIZE_SQL}), 0) AS s FROM handover_comments WHERE handover_id = ?`,
   );
   const handover = loaded.record;
+  // Kirim ulang diperiksa SEBELUM status/batas/kutipan: task yang kini dibatalkan atau penuh tetap menjawab DTO.
+  const replay = await replayComment(env, input, actor);
+  if (replay) return replay;
   assertNotCancelled(handover);
   if ((stats?.n ?? 0) >= HANDOVER_LIMITS.comments) {
     const message = `Task ini sudah mencapai batas ${HANDOVER_LIMITS.comments} komentar`;
@@ -902,7 +977,7 @@ export async function addComment(
       env.DB.prepare('SELECT id FROM handovers WHERE id = ? FOR UPDATE').bind(handover.id),
       // Penjaga digabung ke kolom `id` (nilai gagal = `CAS_FAIL_SQL`, galat di luar jangkauan): tanpa pernyataan penjaga terpisah.
       env.DB.prepare(
-        `INSERT INTO handover_comments (id, handover_id, author, created_at, quote, \`before\`, \`after\`, body) VALUES (CASE WHEN ((SELECT COUNT(*) FROM handover_comments WHERE handover_id = ?) < ? AND (SELECT COALESCE(SUM(${COMMENT_SIZE_SQL}), 0) FROM handover_comments WHERE handover_id = ?) + ? + 2 <= ? AND EXISTS (SELECT 1 FROM handovers WHERE id = ? AND status <> 'cancelled')) THEN ? ELSE ${CAS_FAIL_SQL} END, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO handover_comments (id, handover_id, author, created_at, quote, \`before\`, \`after\`, body, client_id) VALUES (CASE WHEN ((SELECT COUNT(*) FROM handover_comments WHERE handover_id = ?) < ? AND (SELECT COALESCE(SUM(${COMMENT_SIZE_SQL}), 0) FROM handover_comments WHERE handover_id = ?) + ? + 2 <= ? AND EXISTS (SELECT 1 FROM handovers WHERE id = ? AND status <> 'cancelled')) THEN ? ELSE ${CAS_FAIL_SQL} END, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(
         handover.id,
         HANDOVER_LIMITS.comments,
@@ -918,6 +993,7 @@ export async function addComment(
         anchor.before,
         anchor.after,
         input.body,
+        input.clientId ?? null,
       ),
       writeAudit(env.DB, {
         ts: now,
@@ -931,6 +1007,16 @@ export async function addComment(
     ]);
     wakeNotifications();
   } catch (error) {
+    // Balapan kirim ulang: InnoDB dapat melaporkan indeks lain (bukan `handover_comments_client_id`) untuk baris yang
+    // sama, dan penjaga batas dapat gagal karena komentar pemenang, jadi pada duplikat APA PUN atau kegagalan
+    // penjaga baca ulang `clientId` dulu. Pemenang sudah commit saat galat ini terbit (kunci baris task).
+    if (
+      input.clientId &&
+      ((error instanceof DbError && error.kind === 'duplicate') || isGuardFailure(error))
+    ) {
+      const raced = await replayComment(env, input, actor);
+      if (raced) return raced;
+    }
     if (isGuardFailure(error)) {
       throw appError(
         'VALIDATION',

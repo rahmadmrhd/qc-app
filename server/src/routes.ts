@@ -3,7 +3,9 @@ import { accessRoutes } from '@server/modules/access/routes';
 import { authApiRoutes } from '@server/modules/auth/api';
 import { brandRoutes } from '@server/modules/brand/routes';
 import { customerRoutes } from '@server/modules/customer/routes';
+import { desktopApiRoutes } from '@server/modules/desktop/api';
 import { filesRoutes } from '@server/modules/files/routes';
+import { guideRoutes } from '@server/modules/guide/routes';
 import { handoverRoutes } from '@server/modules/handover/routes';
 import { itemRoutes } from '@server/modules/item/routes';
 import { jobsRoutes } from '@server/modules/jobs/routes';
@@ -102,12 +104,26 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'serials.itemOptions': true,
   'serials.stickerOptions': true,
   'serials.locationOptions': true,
+  'serials.serviceLocations': true,
+  'serials.lookup': true,
+  'serials.reportNew': true,
   'serials.saveBatch': true,
   'serials.get': true,
   'serials.list': true,
   'serials.update': true,
   'serials.updateBatch': true,
   'serials.act': true,
+  'serials.history': true,
+  'serialSettings.get': true,
+  'serialSettings.save': true,
+  'serialServiceSettings.get': true,
+  'serialServiceSettings.save': true,
+  'serialCases.list': true,
+  'serialProofs.upload': true,
+  'serialProofs.get': true,
+  'serialProofs.remove': true,
+  'serialProofs.retry': true,
+  'serialProofs.replace': true,
   'postelFiles.upload': true,
   'postelFiles.get': true,
   'notifications.list': true,
@@ -117,8 +133,14 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'push.subscribe': true,
   'push.unsubscribe': true,
   'push.setPreference': true,
+  'push.deviceState': true,
+  'push.setDeviceMuted': true,
   'push.reportPermission': true,
   'push.status': true,
+  'desktop.handoff': true,
+  'guides.list': true,
+  'guides.mark': true,
+  'guides.reset': true,
   'jobs.get': true,
   'exports.sheets': true,
 };
@@ -139,6 +161,8 @@ function realRoutes(): RouteTable {
     ...qrcodeRoutes(),
     ...postelRoutes(),
     ...notificationRoutes(),
+    ...desktopApiRoutes(),
+    ...guideRoutes(),
     ...pushRoutes(),
     ...serialRoutes(),
     ...jobsRoutes(),

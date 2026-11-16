@@ -10,6 +10,7 @@ import { HANDOVER_STATUS_LABELS, HANDOVER_STATUS_STYLES } from '../lib/status';
 import type { BoardColumnState } from '../queries';
 import type { HandoverCardProps } from './handover-card';
 import { HandoverCard } from './handover-card';
+import { PendingCreateCard, type PendingCreateView } from './pending-create-card';
 
 export type CardBindings = Omit<HandoverCardProps, 'handover'>;
 
@@ -22,7 +23,11 @@ export interface HandoverBoardProps {
   columns?: Record<HandoverStatus, BoardColumnState>;
   /** Izin dan penangan untuk satu kartu (izin dihitung per lokasi task). */
   bindings: (handover: HandoverDto) => CardBindings;
+  /** Task baru yang masih di antrean perangkat: kartu sementara di kolom Baru (desktop) atau awal daftar (ponsel). */
+  pendingCreates?: readonly PendingCreateView[];
 }
+
+const NO_PENDING: readonly PendingCreateView[] = [];
 
 const DESKTOP_QUERY = '(min-width: 768px)';
 
@@ -130,6 +135,7 @@ export function HandoverBoard({
   onFilterChange,
   columns: columnState,
   bindings,
+  pendingCreates = NO_PENDING,
 }: HandoverBoardProps) {
   const desktop = useIsDesktop();
 
@@ -152,7 +158,10 @@ export function HandoverBoard({
               {columnState?.[status].total ?? columns[status].length})
             </h2>
             <ColumnCards>
-              {columns[status].length === 0 ? (
+              {status === 'new'
+                ? pendingCreates.map((task) => <PendingCreateCard key={task.key} task={task} />)
+                : null}
+              {columns[status].length === 0 && !(status === 'new' && pendingCreates.length > 0) ? (
                 <p className="px-1 text-xs text-muted-foreground">Tidak ada task.</p>
               ) : (
                 columns[status].map((handover) => (
@@ -184,7 +193,11 @@ export function HandoverBoard({
           </Button>
         ))}
       </fieldset>
-      {visible.length === 0 ? (
+      {filter === 'all' || filter === 'new'
+        ? pendingCreates.map((task) => <PendingCreateCard key={task.key} task={task} />)
+        : null}
+      {visible.length === 0 &&
+      !(pendingCreates.length > 0 && (filter === 'all' || filter === 'new')) ? (
         <p className="text-sm text-muted-foreground">Tidak ada task.</p>
       ) : (
         visible.map((handover) => (

@@ -1,11 +1,19 @@
 import type {
   GetSerialOutput,
   ListSerialItemOptionsInput,
+  ReplaceSerialProofInput,
   SaveSerialBatchInput,
+  SaveSerialServiceSettingsInput,
+  SaveSerialSettingsInput,
   SerialActInput,
+  SerialCaseListInput,
+  SerialCaseListOutput,
   SerialDto,
+  SerialHistoryInput,
+  SerialHistoryOutput,
   SerialListInput,
   SerialListOutput,
+  SerialReportNewInput,
   SerialSummaryDto,
   UpdateSerialBatchInput,
   UpdateSerialInput,
@@ -16,9 +24,11 @@ import {
   keepPreviousData,
   queryOptions,
   useMutation,
+  useMutationState,
   useQueryClient,
 } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { ApiError } from '@/lib/api/api-error';
 import { markStale } from '@/lib/query-cache';
 import { accessKeys } from '@/modules/access/queries';
 import { stickerKeys } from '@/modules/sticker/keys';
@@ -34,6 +44,73 @@ export function serialListQueryOptions(filter: SerialListFilter = {}) {
       api('serials.list', { ...filter, ...(pageParam ? { cursor: pageParam } : {}) }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last: SerialListOutput) => last.nextCursor ?? undefined,
+    placeholderData: keepPreviousData,
+  });
+}
+
+/** Riwayat satu serial (tab linimasa): kursor = `seq` terakhir; `counts` ikut di tiap halaman. */
+export type SerialHistoryFilter = Omit<SerialHistoryInput, 'cursor'>;
+
+export function serialHistoryInfiniteQueryOptions(input: SerialHistoryFilter) {
+  return infiniteQueryOptions({
+    queryKey: serialKeys.historyPage(input.id, input.group ?? 'all', input.caseId ?? ''),
+    queryFn: ({ pageParam }) =>
+      api('serials.history', { ...input, ...(pageParam ? { cursor: pageParam } : {}) }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last: SerialHistoryOutput) => last.nextCursor ?? undefined,
+  });
+}
+
+/** Pengaturan penerima surel Serial Number rusak (global; hanya pengelola di semua BU). */
+export function serialSettingsQueryOptions() {
+  return queryOptions({
+    queryKey: serialKeys.settings,
+    queryFn: () => api('serialSettings.get', null),
+    retry: false,
+  });
+}
+
+/** Pengaturan lokasi tim servis (global; hanya pengelola). */
+export function serialServiceSettingsQueryOptions() {
+  return queryOptions({
+    queryKey: serialKeys.serviceSettings,
+    queryFn: () => api('serialServiceSettings.get', null),
+    retry: false,
+  });
+}
+
+/** Lokasi servis efektif (kosong di pengaturan = semua lokasi aktif); hanya bagi `serial: edit`. */
+export function serialServiceLocationsQueryOptions(enabled = true) {
+  return queryOptions({
+    queryKey: serialKeys.serviceLocations,
+    queryFn: () => api('serials.serviceLocations', null),
+    enabled,
+    staleTime: 60_000,
+  });
+}
+
+/** Pencarian Serial Number untuk Lapor Rusak (BU yang boleh ditulis); selalu segar (status serial berubah-ubah). */
+export function serialLookupQueryOptions(serial: string) {
+  return queryOptions({
+    queryKey: serialKeys.lookup(serial),
+    queryFn: () => api('serials.lookup', { serial }),
+    enabled: serial.trim() !== '',
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+}
+
+/** Daftar laporan berkursor; filter dikerjakan server. TIDAK masuk whitelist `query-persist`. */
+export type SerialCaseFilter = Omit<SerialCaseListInput, 'cursor'>;
+
+export function serialCaseListQueryOptions(filter: SerialCaseFilter = {}) {
+  return infiniteQueryOptions({
+    queryKey: serialKeys.casePage(filter),
+    queryFn: ({ pageParam }) =>
+      api('serialCases.list', { ...filter, ...(pageParam ? { cursor: pageParam } : {}) }),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last: SerialCaseListOutput) => last.nextCursor ?? undefined,
     placeholderData: keepPreviousData,
   });
 }
@@ -94,6 +171,12 @@ export function toSerialSummary(serial: SerialDto): SerialSummaryDto {
     locationName: serial.locationName,
     status: serial.status,
     custody: serial.custody,
+    transitToLocationId: serial.transitToLocationId,
+    transitToLocationName: serial.transitToLocationName,
+    transitOn: serial.transitOn,
+    openCaseNumber: serial.openCaseNumber,
+    hasProofPhotos: serial.hasProofPhotos,
+    proofProblemCount: serial.proofProblemCount,
     createdAt: serial.createdAt,
   };
 }
@@ -123,6 +206,8 @@ function applySaved(queryClient: QueryClient, saved: SerialDto): void {
   );
   patchLists(queryClient, saved);
   void queryClient.invalidateQueries({ queryKey: serialKeys.one(saved.id) });
+  // Aksi/ubah data menambah entri riwayat: tab yang sedang terbuka dimuat ulang, tab lain ditandai basi.
+  void queryClient.invalidateQueries({ queryKey: serialKeys.history(saved.id) });
 }
 
 export function useSaveSerialBatch() {
@@ -153,7 +238,9 @@ export function useUpdateSerialBatch() {
     mutationFn: (input: UpdateSerialBatchInput) => api('serials.updateBatch', input),
     onSuccess: (_output, input) => {
       markStale(queryClient, serialKeys.list, accessKeys.audit);
-      for (const row of input.rows) markStale(queryClient, serialKeys.one(row.id));
+      for (const row of input.rows) {
+        markStale(queryClient, serialKeys.one(row.id), serialKeys.history(row.id));
+      }
     },
   });
 }
@@ -164,7 +251,106 @@ export function useActSerial() {
     mutationFn: (input: SerialActInput) => api('serials.act', input),
     onSuccess: (saved) => {
       applySaved(queryClient, saved);
-      markStale(queryClient, stickerKeys.all, accessKeys.audit);
+      // Laporan berubah status/penutupannya: daftar Laporan ditandai basi.
+      markStale(queryClient, stickerKeys.all, accessKeys.audit, serialKeys.cases);
+    },
+  });
+}
+
+/** Lapor Rusak untuk Serial Number yang belum tercatat: serial baru berstatus Dilaporkan + laporan terbuka. */
+export function useReportNewSerial() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SerialReportNewInput) => api('serials.reportNew', input),
+    onSuccess: (saved) => {
+      queryClient.setQueryData<GetSerialOutput>(serialKeys.one(saved.id), (current) =>
+        current ? { ...current, serial: saved } : current,
+      );
+      markStale(queryClient, serialKeys.list, serialKeys.cases, accessKeys.audit);
+    },
+  });
+}
+
+export function useSaveSerialSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SaveSerialSettingsInput) => api('serialSettings.save', input),
+    onSuccess: (saved) => {
+      markStale(queryClient, accessKeys.audit);
+      // Sesudah markStale: pengaturan yang baru disimpan tetap segar (versi baru = isian mulai dari data terbaru).
+      queryClient.setQueryData(serialKeys.settings, saved);
+    },
+  });
+}
+
+export function useSaveSerialServiceSettings() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: SaveSerialServiceSettingsInput) => api('serialServiceSettings.save', input),
+    onSuccess: (saved) => {
+      markStale(queryClient, accessKeys.audit, serialKeys.serviceLocations);
+      queryClient.setQueryData(serialKeys.serviceSettings, saved);
+    },
+  });
+}
+
+/**
+ * Membuang foto bukti `draft` di server (upaya terbaik: yang gagal dibiarkan, penjadwal menyapu draft > 7 hari).
+ * Tidak pernah melempar.
+ */
+export async function discardProofPhotos(ids: readonly string[]): Promise<void> {
+  await Promise.allSettled(ids.map((id) => api('serialProofs.remove', { id })));
+}
+
+/** Foto bukti berubah (coba lagi, dibuang): riwayat, daftar (badge), dan detail serial dimuat ulang. */
+function refreshProofViews(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: ['serial', 'history'] });
+  void queryClient.invalidateQueries({ queryKey: serialKeys.list });
+  void queryClient.invalidateQueries({ queryKey: ['serial', 'one'] });
+}
+
+/** "Coba lagi" untuk foto bukti yang gagal diproses (pelaku atau `serial: manage`). */
+export function useRetryProof() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api('serialProofs.retry', { id }),
+    onSuccess: () => refreshProofViews(queryClient),
+  });
+}
+
+/** Membuang foto bukti yang gagal (satu-satunya penghapusan sesudah Simpan; dicatat di audit server). */
+export function useRemoveProof() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api('serialProofs.remove', { id }),
+    onSuccess: () => refreshProofViews(queryClient),
+  });
+}
+
+const REPLACE_PROOF_KEY = ['serial', 'proof', 'replace'] as const;
+
+/** Id foto gagal yang sedang diganti (mutasi `replace` berjalan, dari komponen mana pun): tombol foto itu dikunci. */
+export function usePendingReplaceIds(): ReadonlySet<string> {
+  const ids = useMutationState({
+    filters: { mutationKey: REPLACE_PROOF_KEY, status: 'pending' },
+    select: (mutation) =>
+      (mutation.state.variables as ReplaceSerialProofInput | undefined)?.photoId,
+  });
+  return new Set(ids.filter((id): id is string => typeof id === 'string'));
+}
+
+/**
+ * "Unggah ulang" foto bukti yang gagal: foto pengganti (unggahan `draft` baru) menggantikan foto lama dan masuk antrean
+ * cap. Dimuat ulang juga saat gagal `CONFLICT` (foto lama keburu berubah: Buang/Coba lagi/sapuan retensi).
+ */
+export function useReplaceProof() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: REPLACE_PROOF_KEY,
+    mutationFn: (input: ReplaceSerialProofInput) => api('serialProofs.replace', input),
+    onSuccess: () => refreshProofViews(queryClient),
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === 'CONFLICT') refreshProofViews(queryClient);
     },
   });
 }

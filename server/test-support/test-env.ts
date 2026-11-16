@@ -1,5 +1,9 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { Env } from '@server/core/env';
 import { createMemoryFileCache } from '@server/core/file-cache';
+import { createProofStore } from '@server/modules/serial/proof/store';
 import { createFakeBridge, type FakeBridge } from './fake-bridge';
 import { acquireTestDb, resetTestDb } from './test-db';
 
@@ -12,6 +16,23 @@ export interface TestClock {
 export interface TestEnv extends Env {
   clock: TestClock;
   BRIDGE: FakeBridge;
+}
+
+let proofRoot: string | null = null;
+let proofSeq = 0;
+
+/**
+ * Folder sementara foto bukti untuk SATU env uji: satu akar per proses `bun test` (dihapus saat proses selesai) dan
+ * satu subfolder baru per `createTestEnv`, jadi berkas antar tes dan antar berkas tes tak saling terlihat.
+ */
+function newProofDir(): string {
+  if (proofRoot === null) {
+    const root = mkdtempSync(join(tmpdir(), 'qc-test-proofs-'));
+    proofRoot = root;
+    process.on('exit', () => rmSync(root, { recursive: true, force: true }));
+  }
+  proofSeq += 1;
+  return join(proofRoot, String(proofSeq));
 }
 
 /** Env uji: skema MariaDB sementara per proses (dikloning dari templat, dikosongkan tiap panggilan), jembatan palsu, rahasia uji, jam terkendali. */
@@ -48,6 +69,8 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
     // Cache isi berkas milik env ini: id Drive jembatan palsu berulang antar-tes, jadi cache bawaan proses
     // (dipakai bila FILE_CACHE kosong) akan mengembalikan isi tes sebelumnya.
     FILE_CACHE: createMemoryFileCache(),
+    // Penyimpanan sementara foto bukti QC: folder sementara milik env ini (dibuat saat tulis pertama).
+    PROOF_STORE: createProofStore(newProofDir()),
     ...overrides,
     BRIDGE: (overrides.BRIDGE as FakeBridge | undefined) ?? createFakeBridge(),
     clock,

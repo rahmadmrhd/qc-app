@@ -2,9 +2,12 @@ import { createHash } from 'node:crypto';
 import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
+import { appError } from '@server/core/errors';
 import type { UserContext } from '@server/modules/access/context';
 import type {
   PushConfigDto,
+  PushDeviceMutedInput,
+  PushDeviceStateDto,
   PushPermissionInput,
   PushPreferenceInput,
   PushSubscribeInput,
@@ -108,6 +111,39 @@ export async function unsubscribePush(
   return { ok: true };
 }
 
+/** Status push perangkat (endpoint) ini untuk akun pemanggil; baris milik akun lain di endpoint yang sama tak terlihat. */
+export async function pushDeviceState(
+  env: Env,
+  user: Pick<UserContext, 'email'>,
+  input: PushUnsubscribeInput,
+): Promise<PushDeviceStateDto> {
+  const row = await env.DB.prepare(
+    'SELECT muted FROM push_subscriptions WHERE endpoint_hash = ? AND recipient = ?',
+  )
+    .bind(endpointHash(input.endpoint), normalizeEmail(user.email))
+    .first<{ muted: number | string }>();
+  return { registered: row !== null, muted: row !== null && Number(row.muted) !== 0 };
+}
+
+/**
+ * Mematikan/menyalakan push di SATU perangkat milik pemanggil (langganan tetap ada; pengirim melewati yang
+ * `muted`). Perangkat yang belum terdaftar untuk akun ini = `NOT_FOUND` (klien menautkannya dulu lewat `subscribe`).
+ */
+export async function setPushDeviceMuted(
+  env: Env,
+  user: Pick<UserContext, 'email'>,
+  input: PushDeviceMutedInput,
+): Promise<PushDeviceStateDto> {
+  const current = await pushDeviceState(env, user, { endpoint: input.endpoint });
+  if (!current.registered) throw appError('NOT_FOUND', 'Perangkat ini belum terdaftar untuk push');
+  await env.DB.prepare(
+    'UPDATE push_subscriptions SET muted = ? WHERE endpoint_hash = ? AND recipient = ?',
+  )
+    .bind(input.muted ? 1 : 0, endpointHash(input.endpoint), normalizeEmail(user.email))
+    .run();
+  return { registered: true, muted: input.muted };
+}
+
 export async function setPushPreference(
   env: Env,
   user: Pick<UserContext, 'email'>,
@@ -138,8 +174,9 @@ export async function reportPushPermission(
 /**
  * Status push semua pengguna aktif (hanya email, nama, status: tanpa pengenal perangkat atau rincian galat).
  * Urutan keputusan: izin ditolak (`denied`) > dimatikan pengguna (`disabled`) > tak ada langganan (`none`) >
- * pengiriman gagal berturut-turut pada SEMUA langganan (`failing`, ambang `PUSH_FAILING_THRESHOLD`) > `active`.
- * `failing` dan `active` berasal dari hasil pengiriman nyata (`fail_count`), bukan sekadar "pernah mengizinkan".
+ * semua langganan dimatikan per perangkat (`disabled`) > pengiriman gagal berturut-turut pada SEMUA langganan yang
+ * masih menyala (`failing`, ambang `PUSH_FAILING_THRESHOLD`) > `active`. `failing` dan `active` berasal dari hasil
+ * pengiriman nyata (`fail_count`), bukan sekadar "pernah mengizinkan".
  */
 export async function pushStatus(env: Env): Promise<PushUserStatusDto[]> {
   const [users, prefs, subs] = await Promise.all([
@@ -155,10 +192,15 @@ export async function pushStatus(env: Env): Promise<PushUserStatusDto[]> {
       permission: string;
     }>(),
     env.DB.prepare(
-      'SELECT recipient, COUNT(*) AS n, SUM(CASE WHEN fail_count >= ? THEN 1 ELSE 0 END) AS failing FROM push_subscriptions GROUP BY recipient',
+      'SELECT recipient, COUNT(*) AS n, SUM(CASE WHEN muted = 0 THEN 1 ELSE 0 END) AS live, SUM(CASE WHEN muted = 0 AND fail_count >= ? THEN 1 ELSE 0 END) AS failing FROM push_subscriptions GROUP BY recipient',
     )
       .bind(PUSH_FAILING_THRESHOLD)
-      .all<{ recipient: string; n: number | string; failing: number | string | null }>(),
+      .all<{
+        recipient: string;
+        n: number | string;
+        live: number | string | null;
+        failing: number | string | null;
+      }>(),
   ]);
   const prefsOf = new Map(prefs.results.map((row) => [row.recipient, row] as const));
   const subsOf = new Map(subs.results.map((row) => [row.recipient, row] as const));
@@ -170,7 +212,8 @@ export async function pushStatus(env: Env): Promise<PushUserStatusDto[]> {
     if (pref?.permission === 'denied') state = 'denied';
     else if (pref !== undefined && Number(pref.push_enabled) === 0) state = 'disabled';
     else if (sub === undefined || Number(sub.n) === 0) state = 'none';
-    else if (Number(sub.failing ?? 0) >= Number(sub.n)) state = 'failing';
+    else if (Number(sub.live ?? 0) === 0) state = 'disabled';
+    else if (Number(sub.failing ?? 0) >= Number(sub.live)) state = 'failing';
     else state = 'active';
     return { email, name: user.name, state };
   });

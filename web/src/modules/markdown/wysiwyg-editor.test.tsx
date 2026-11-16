@@ -142,20 +142,33 @@ test('mode note tidak menampilkan tombol gambar; mode item menampilkannya', () =
   expect(screen.getByRole('button', { name: 'Gambar' })).toBeInTheDocument();
 });
 
-test('mode message tidak menampilkan tombol gambar dan tidak memicu unggah saat tempel gambar', async () => {
+test('mode message menampilkan tombol gambar; tempel gambar memicu unggah dan menyisipkan rujukan', async () => {
+  uploadMock.mockResolvedValue('f9');
   render(<Harness mode="message" />);
   await waitFor(() => expect(editor).toBeDefined());
-  expect(screen.queryByRole('button', { name: 'Gambar' })).not.toBeInTheDocument();
-  expect(screen.queryByLabelText('Pilih gambar')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Gambar' })).toBeInTheDocument();
+  expect(screen.getByLabelText('Pilih gambar')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Checklist' })).toBeInTheDocument();
+  // Toolbar mode message tetap ringkas: tanpa Tautan (khusus item).
+  expect(screen.queryByRole('button', { name: 'Tautan' })).not.toBeInTheDocument();
+  const file = png('tempel.png');
   const paste = new Event('paste', { cancelable: true });
-  Object.assign(paste, { clipboardData: { files: [png('tempel.png')], types: ['Files'] } });
+  Object.assign(paste, { clipboardData: { files: [file], types: ['Files'] } });
   const handled = editor.options.editorProps.handlePaste?.(
     editor.view,
     paste as ClipboardEvent,
     null as never,
   );
-  expect(handled).toBe(false);
+  expect(handled).toBe(true);
+  await waitFor(() => expect(lastValue).toContain('![tempel](qcfile:f9)'));
+  expect(uploadMock).toHaveBeenCalledWith(file);
+});
+
+test('maxImages: gambar melebihi batas tidak diunggah dan menampilkan pesan', async () => {
+  render(<Harness mode="message" maxImages={1} initial="![a](qcfile:f1)" />);
+  await waitFor(() => expect(editor).toBeDefined());
+  await userEvent.upload(screen.getByLabelText('Pilih gambar'), png('kedua.png'));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Maksimal 1 gambar');
   expect(uploadMock).not.toHaveBeenCalled();
 });
 

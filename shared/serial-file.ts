@@ -30,7 +30,7 @@ export interface QcsnRow {
   locationLabel: string;
   sample: boolean;
   note: string;
-  /** Tahap 5a hanya menerima `good`. */
+  /** Hanya `good`: Serial Number bermasalah dicatat lewat Lapor rusak, bukan lewat berkas (laporan rusak 2026-11-14). */
   status: 'good';
   source: 'manual' | 'countrylock';
   capturedAt: string;
@@ -153,7 +153,9 @@ function readRow(raw: unknown): QcsnRow | Fail {
   const note = readText(raw, 'note', SERIAL_LIMITS.noteMax, { required: false });
   if (isFail(note)) return note;
   const status = own(raw, 'status');
-  if (status !== 'good') return { error: 'status belum didukung (hanya good)' };
+  if (status !== 'good') {
+    return { error: 'status harus good (yang bermasalah dicatat lewat Lapor rusak)' };
+  }
   const source = own(raw, 'source');
   if (source !== 'manual' && source !== 'countrylock') {
     return { error: 'source harus manual atau countrylock' };
@@ -173,7 +175,7 @@ function readRow(raw: unknown): QcsnRow | Fail {
     locationLabel,
     sample,
     note,
-    status: 'good',
+    status,
     source,
     capturedAt,
   };

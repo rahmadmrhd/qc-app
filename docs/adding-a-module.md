@@ -93,7 +93,20 @@ Yang harus dikerjakan modul sendiri:
 
 **Peringatan:** role yang sudah berisi izin modul itu, bila dipasang pada penugasan BU, langsung berlaku di BU-BU tersebut setelah modul masuk `BU_MODULES`. Tinjau role dan penugasan BU yang ada sebelum menambah modul.
 
+**Pelajaran dari Serial Number 5b (dua modul ber-BU untuk dua tim, alur berstatus):**
+- Bila izin bergantung pada keadaan data, simpan aturannya di SATU tabel murni di `shared/` (`serial-flow.ts`: aksi, status asal, posisi, modul pelaku, efek) dan biarkan server (`resolveAction`), web (`availableActions`), dan tes membacanya; jangan menyebar `if` izin di komponen atau handler. Rute memakai `anyOf` kasar (`serial` ATAU `serialservice`), penegakan per baris tabel ada di service.
+- Bedakan galat: keadaan yang tak cocok = `CONFLICT`, ada barisnya tetapi bukan milik modul pelaku = `FORBIDDEN`, data di luar hak baca = `NOT_FOUND`.
+- Pengaturan GLOBAL yang hidup di modul ber-BU (mis. penerima email `SERIAL_ALERT`) tidak boleh diubah pemegang `manage` satu BU saja: periksa `canActOnAllBus` atas SEMUA BU (atau super admin) dan cerminkan di web hanya sebagai penyembunyi tampilan (`canManageSerialSettings`); server tetap otoritatif.
+- Jenis berkas baru (pemilik `serial`) mengikuti BU entitasnya: periksa visibilitas SEBELUM cabang lain di `readFile`, dan tambahkan modul barunya ke `anyOf` rute `files.upload`/`files.get`.
+
 **Peringatan (5a):** modul ber-BU baru WAJIB masuk `BU_MODULES`. Loop override global di `resolveAccess` (`shared/assignments.ts`) menghitung `global[module]` dari `globalBuLevel` lewat `for (const module of BU_MODULES)`, jadi tidak ada daftar terpisah di `assignments.ts` yang perlu diubah.
+
+## Rute publik bertoken (tanpa sesi)
+Contoh: halaman laporan rusak Serial Number (`/laporan/<token>`, 2026-11-14). Kernel REST (`http/rest.ts`) mewajibkan sesi sebelum membaca apa pun, jadi rute tanpa sesi TIDAK masuk `API_ROUTES`: pakai sub-aplikasi Hono sendiri di `/api/public` (`server/src/modules/<modul>/public-routes.ts`, dipasang di `app.ts` sebelum fallback statis; otomatis di luar OpenAPI). Resepnya:
+- Token bertanda tangan HMAC dengan kunci TURUNAN `SESSION_SECRET` (label tujuan khusus, supaya tak dapat dipakai membuat sesi; tanpa variabel `.env` baru), berkedaluwarsa, dibandingkan tetap-waktu; semua kegagalan (salah, kedaluwarsa, data tak ada, berkas bukan milik) = satu 404 problem+json yang sama.
+- Batas laju kegagalan per IP lewat `rate_limits` + `limiterAddress`; `Cache-Control: no-store` dan `Referrer-Policy: no-referrer`; DTO publik daftar putih (tanpa surel, stok, atau data mentah); jangan mencatat token di log. Token tetap muncul di log akses nginx, jadi tautan harus hanya-baca.
+- PELAJARAN: token yang memuat titik (`v1.<id>.<exp>.<sig>`) dianggap "berkas" oleh `server/src/http/static.ts` (segmen terakhir bertitik = 404) dan oleh denylist service worker `web/src/app/pwa/server-paths.ts`, sehingga tautan 404 di produksi dan di PWA terpasang. Awalan rute kliennya harus dikecualikan di KEDUA tempat (kini `/laporan/`; tes `static.test.ts` dan `scripts/pwa-server-paths.test.ts` menjaga keduanya sejalan), atau pilih format token tanpa titik.
+- Halaman webnya route di luar layout `_app` (tanpa guard login); bila pengguna login dan berizin, DTO membawa penanda (mis. `viewerCanOpen`) agar klien mengalihkan ke halaman biasa. Token tidak pernah menambah izin.
 
 ## Sumber daya sinkron
 Tidak ada lagi. Sinkron QC Desktop (`/api/v1/sync/*`) dihapus pada 2026-11-08; QC Desktop baru (Electron) dirancang di `docs/superpowers/plans/2026-11-06-qc-desktop-country-lock-fase-0-1.md`. Modul baru cukup mengikuti resep REST di atas.

@@ -1,13 +1,18 @@
 import { isIosBrowser } from '@/app/pwa/install';
+import { isDesktop } from '@/lib/platform';
 
 export type DevicePermission = 'granted' | 'denied' | 'default' | 'unsupported';
 export type PushPlatform = 'ios' | 'android' | 'desktop';
 
 /**
  * Peramban ini dapat menerima push: butuh service worker, `PushManager`, dan Notification API. Tidak ada saat dev
- * (service worker dimatikan), di Safari iOS yang belum dipasang ke layar utama, dan di peramban lawas.
+ * (service worker dimatikan), di Safari iOS yang belum dipasang ke layar utama, dan di peramban lawas. Aplikasi
+ * desktop (Electron) TIDAK memakai Web Push (tanpa service worker, izin ditolak, tanpa FCM): notifikasinya datang
+ * lewat aliran SSE yang dikelola proses utama desktop (selalu aktif, tanpa saklar; keputusan pemilik 2026-11-16),
+ * sehingga semua UI push web (pra-izin, banner, saklar, panduan perangkat) tersembunyi di sana.
  */
 export function pushSupported(win: Window = window): boolean {
+  if (isDesktop()) return false;
   return 'serviceWorker' in win.navigator && 'PushManager' in win && 'Notification' in win;
 }
 
@@ -15,6 +20,18 @@ export function pushSupported(win: Window = window): boolean {
 export function devicePermission(win: Window = window): DevicePermission {
   if (!pushSupported(win)) return 'unsupported';
   return (win as Window & typeof globalThis).Notification.permission;
+}
+
+/**
+ * Push dapat dipakai di perangkat ini: konfigurasi server sudah termuat dan `enabled` (VAPID terisi) DAN peramban
+ * mendukungnya. Satu definisi untuk `PushOnboarding` (`active`) dan panduan perangkat (I3, keputusan pemilik
+ * 2026-11-14); konfigurasi yang belum termuat berarti tidak tersedia.
+ */
+export function pushAvailable(
+  config: { enabled: boolean } | undefined,
+  permission: DevicePermission,
+): boolean {
+  return config?.enabled === true && permission !== 'unsupported';
 }
 
 /** Langkah menyalakan kembali izin notifikasi yang sudah ditolak (peramban tidak mengizinkan meminta ulang). */

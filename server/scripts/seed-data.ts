@@ -82,6 +82,7 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
         stock: 'view',
         sticker: 'manage',
         stickerstock: 'manage',
+        countrylock: 'view',
       },
     },
     {

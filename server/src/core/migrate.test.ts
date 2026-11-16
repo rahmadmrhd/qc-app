@@ -15,6 +15,7 @@ const EXPECTED_TABLES = [
   'counters',
   'customers',
   'files',
+  'guide_progress',
   'handover_comments',
   'handovers',
   'item_alias_keys',
@@ -40,7 +41,9 @@ const EXPECTED_TABLES = [
   'rate_limits',
   'roles',
   'schema_migrations',
+  'serial_cases',
   'serial_events',
+  'serial_proof_photos',
   'serial_stickers',
   'serials',
   'settings',
@@ -286,7 +289,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('42 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('45 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -312,6 +315,14 @@ describe('skema baseline', () => {
       { name: '0012_serial_number.sql' },
       { name: '0013_notifikasi.sql' },
       { name: '0014_push_notifikasi.sql' },
+      { name: '0015_serial_cases.sql' },
+      { name: '0016_panduan_interaktif.sql' },
+      { name: '0017_laporan_rusak.sql' },
+      { name: '0018_client_id_serah_terima.sql' },
+      { name: '0019_bukti_foto_qc.sql' },
+      { name: '0020_notifikasi_serial.sql' },
+      { name: '0021_indeks_notifikasi_serial.sql' },
+      { name: '0022_push_perangkat_senyap.sql' },
     ]);
   });
 
@@ -356,6 +367,33 @@ describe('skema baseline', () => {
     expect(column?.t).toBe('longtext');
     expect(column?.n).toBe('NO');
     expect(column?.d).toBe("''");
+  });
+
+  test('users.shared_account ada, bertipe tinyint, tidak null, bawaan 0', async () => {
+    const column = await db
+      .prepare(
+        "SELECT data_type AS t, is_nullable AS n, column_default AS d FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'users' AND column_name = 'shared_account'",
+      )
+      .first<{ t: string; n: string; d: string | null }>();
+    expect(column?.t).toBe('tinyint');
+    expect(column?.n).toBe('NO');
+    expect(column?.d).toBe('0');
+  });
+
+  test('guide_progress: kunci utama (recipient, guide_id), tanpa kunci asing', async () => {
+    expect(await tableNames(db)).toContain('guide_progress');
+    const pk = await db
+      .prepare(
+        "SELECT GROUP_CONCAT(column_name ORDER BY seq_in_index) AS c FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'guide_progress' AND index_name = 'PRIMARY'",
+      )
+      .first<{ c: string }>();
+    expect(pk?.c).toBe('recipient,guide_id');
+    const fks = await db
+      .prepare(
+        "SELECT COUNT(*) AS n FROM information_schema.table_constraints WHERE table_schema = DATABASE() AND table_name = 'guide_progress' AND constraint_type = 'FOREIGN KEY'",
+      )
+      .first<{ n: number }>();
+    expect(Number(fks?.n)).toBe(0);
   });
 
   test('id MySQL dihapus: tanpa kolom external_id di brands/items', async () => {
@@ -409,9 +447,11 @@ describe('skema baseline', () => {
         'customers.customers_key',
         'files.files_owner',
         'files.files_pending_delete',
+        'handover_comments.handover_comments_client_id',
         'handover_comments.handover_comments_handover',
         'handover_comments.handover_comments_seq',
         'handovers.handovers_board',
+        'handovers.handovers_client_id',
         'handovers.handovers_customer',
         'handovers.handovers_number',
         'item_business_units.item_business_units_bu',
@@ -429,8 +469,10 @@ describe('skema baseline', () => {
         'manual_book_versions.manual_book_versions_design_version',
         'notification_pending.notification_pending_release',
         'notifications.notifications_created',
+        'notifications.notifications_proof',
         'notifications.notifications_push',
         'notifications.notifications_recipient',
+        'notifications.notifications_serial',
         'postel_numbers.postel_numbers_expiry',
         'postel_numbers.postel_numbers_key',
         'postel_numbers.postel_numbers_seq',
@@ -439,11 +481,21 @@ describe('skema baseline', () => {
         'qr_designs.qr_designs_document',
         'qr_presets.qr_presets_bu_unique',
         'roles.roles_name_unique',
+        'serial_cases.serial_cases_bu_created',
+        'serial_cases.serial_cases_bu_opened',
+        'serial_cases.serial_cases_number',
+        'serial_cases.serial_cases_serial',
+        'serial_events.serial_events_case',
         'serial_events.serial_events_seq',
+        'serial_proof_photos.serial_proof_photos_event',
+        'serial_proof_photos.serial_proof_photos_owner',
+        'serial_proof_photos.serial_proof_photos_serial',
+        'serial_proof_photos.serial_proof_photos_state',
         'serial_stickers.serial_stickers_sticker',
         'serials.serials_bu_created',
         'serials.serials_bu_serial',
         'serials.serials_client_id',
+        'serials.serials_custody',
         'serials.serials_item',
         'serials.serials_location',
         'serials.serials_status',
@@ -482,6 +534,7 @@ describe('skema baseline', () => {
     expect(pks.notification_pending_items).toBe('handover_id,actor_email,item_key');
     expect(pks.push_subscriptions).toBe('endpoint_hash,recipient');
     expect(pks.notification_prefs).toBe('recipient');
+    expect(pks.guide_progress).toBe('recipient,guide_id');
   });
 
   const UNIQUE_KEY_CASES: { table: string; insert: string; label: string }[] = [

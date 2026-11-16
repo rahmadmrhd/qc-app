@@ -4,6 +4,8 @@ import { isAppError } from '@server/core/errors';
 import type { JobKind } from '@shared/contract';
 import { backupHandler } from '../backup/service';
 import { qrExportHandler } from '../qrcode/export';
+import { serialAlertHandler } from '../serial/alert-job';
+import { serialProofHandler } from '../serial/proof/job';
 import { cleanupHandler } from './cleanup';
 import type { JobRecord } from './repo';
 import { claimStep, completeStep, failJob, findJob, releaseLease, saveState } from './repo';
@@ -51,6 +53,10 @@ function handlerOf(kind: JobKind): JobHandler {
       return cleanupHandler;
     case 'db_backup':
       return backupHandler;
+    case 'serial_alert':
+      return serialAlertHandler;
+    case 'serial_proof':
+      return serialProofHandler;
   }
 }
 

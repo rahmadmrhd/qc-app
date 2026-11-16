@@ -10,10 +10,12 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
+import { Route as CountryLockRouteImport } from './routes/country-lock'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppCustomerRouteImport } from './routes/_app/customer'
 import { Route as AppForbiddenRouteImport } from './routes/_app/forbidden'
+import { Route as LaporanTokenRouteImport } from './routes/laporan.$token'
 import { Route as AppAccessAuditRouteImport } from './routes/_app/access/audit'
 import { Route as AppAccessLocationsRouteImport } from './routes/_app/access/locations'
 import { Route as AppAccessPushRouteImport } from './routes/_app/access/push'
@@ -29,6 +31,9 @@ import { Route as AppQrcodeIndexRouteImport } from './routes/_app/qrcode/index'
 import { Route as AppQrcodeNewRouteImport } from './routes/_app/qrcode/new'
 import { Route as AppSerialIndexRouteImport } from './routes/_app/serial/index'
 import { Route as AppSerialNewRouteImport } from './routes/_app/serial/new'
+import { Route as AppSerialReportRouteImport } from './routes/_app/serial/report'
+import { Route as AppSerialReportsRouteImport } from './routes/_app/serial/reports'
+import { Route as AppSerialSettingsRouteImport } from './routes/_app/serial/settings'
 import { Route as AppStickerIndexRouteImport } from './routes/_app/sticker/index'
 import { Route as AppStickerLibraryRouteImport } from './routes/_app/sticker/library'
 import { Route as AppStickerSettingsRouteImport } from './routes/_app/sticker/settings'
@@ -54,6 +59,11 @@ const AppRoute = AppRouteImport.update({
   id: '/_app',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CountryLockRoute = CountryLockRouteImport.update({
+  id: '/country-lock',
+  path: '/country-lock',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -73,6 +83,11 @@ const AppForbiddenRoute = AppForbiddenRouteImport.update({
   id: '/forbidden',
   path: '/forbidden',
   getParentRoute: () => AppRoute,
+} as any)
+const LaporanTokenRoute = LaporanTokenRouteImport.update({
+  id: '/laporan/$token',
+  path: '/laporan/$token',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const AppAccessAuditRoute = AppAccessAuditRouteImport.update({
   id: '/access/audit',
@@ -147,6 +162,21 @@ const AppSerialIndexRoute = AppSerialIndexRouteImport.update({
 const AppSerialNewRoute = AppSerialNewRouteImport.update({
   id: '/serial/new',
   path: '/serial/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSerialReportRoute = AppSerialReportRouteImport.update({
+  id: '/serial/report',
+  path: '/serial/report',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSerialReportsRoute = AppSerialReportsRouteImport.update({
+  id: '/serial/reports',
+  path: '/serial/reports',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSerialSettingsRoute = AppSerialSettingsRouteImport.update({
+  id: '/serial/settings',
+  path: '/serial/settings',
   getParentRoute: () => AppRoute,
 } as any)
 const AppStickerIndexRoute = AppStickerIndexRouteImport.update({
@@ -257,9 +287,11 @@ const AppQrcodeDefaultPresetIdEditRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
+  '/country-lock': typeof CountryLockRoute
   '/login': typeof LoginRoute
   '/customer': typeof AppCustomerRoute
   '/forbidden': typeof AppForbiddenRoute
+  '/laporan/$token': typeof LaporanTokenRoute
   '/access/audit': typeof AppAccessAuditRoute
   '/access/locations': typeof AppAccessLocationsRoute
   '/access/push': typeof AppAccessPushRoute
@@ -270,6 +302,9 @@ export interface FileRoutesByFullPath {
   '/postel/new': typeof AppPostelNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
   '/serial/new': typeof AppSerialNewRoute
+  '/serial/report': typeof AppSerialReportRoute
+  '/serial/reports': typeof AppSerialReportsRoute
+  '/serial/settings': typeof AppSerialSettingsRoute
   '/sticker/library': typeof AppStickerLibraryRoute
   '/sticker/settings': typeof AppStickerSettingsRoute
   '/sticker/stock': typeof AppStickerStockRoute
@@ -297,9 +332,11 @@ export interface FileRoutesByFullPath {
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
 }
 export interface FileRoutesByTo {
+  '/country-lock': typeof CountryLockRoute
   '/login': typeof LoginRoute
   '/customer': typeof AppCustomerRoute
   '/forbidden': typeof AppForbiddenRoute
+  '/laporan/$token': typeof LaporanTokenRoute
   '/': typeof AppIndexRoute
   '/access/audit': typeof AppAccessAuditRoute
   '/access/locations': typeof AppAccessLocationsRoute
@@ -311,6 +348,9 @@ export interface FileRoutesByTo {
   '/postel/new': typeof AppPostelNewRoute
   '/qrcode/new': typeof AppQrcodeNewRoute
   '/serial/new': typeof AppSerialNewRoute
+  '/serial/report': typeof AppSerialReportRoute
+  '/serial/reports': typeof AppSerialReportsRoute
+  '/serial/settings': typeof AppSerialSettingsRoute
   '/sticker/library': typeof AppStickerLibraryRoute
   '/sticker/settings': typeof AppStickerSettingsRoute
   '/sticker/stock': typeof AppStickerStockRoute
@@ -340,9 +380,11 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
+  '/country-lock': typeof CountryLockRoute
   '/login': typeof LoginRoute
   '/_app/customer': typeof AppCustomerRoute
   '/_app/forbidden': typeof AppForbiddenRoute
+  '/laporan/$token': typeof LaporanTokenRoute
   '/_app/': typeof AppIndexRoute
   '/_app/access/audit': typeof AppAccessAuditRoute
   '/_app/access/locations': typeof AppAccessLocationsRoute
@@ -354,6 +396,9 @@ export interface FileRoutesById {
   '/_app/postel/new': typeof AppPostelNewRoute
   '/_app/qrcode/new': typeof AppQrcodeNewRoute
   '/_app/serial/new': typeof AppSerialNewRoute
+  '/_app/serial/report': typeof AppSerialReportRoute
+  '/_app/serial/reports': typeof AppSerialReportsRoute
+  '/_app/serial/settings': typeof AppSerialSettingsRoute
   '/_app/sticker/library': typeof AppStickerLibraryRoute
   '/_app/sticker/settings': typeof AppStickerSettingsRoute
   '/_app/sticker/stock': typeof AppStickerStockRoute
@@ -384,9 +429,11 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/country-lock'
     | '/login'
     | '/customer'
     | '/forbidden'
+    | '/laporan/$token'
     | '/access/audit'
     | '/access/locations'
     | '/access/push'
@@ -397,6 +444,9 @@ export interface FileRouteTypes {
     | '/postel/new'
     | '/qrcode/new'
     | '/serial/new'
+    | '/serial/report'
+    | '/serial/reports'
+    | '/serial/settings'
     | '/sticker/library'
     | '/sticker/settings'
     | '/sticker/stock'
@@ -424,9 +474,11 @@ export interface FileRouteTypes {
     | '/qrcode/default/$presetId/edit'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/country-lock'
     | '/login'
     | '/customer'
     | '/forbidden'
+    | '/laporan/$token'
     | '/'
     | '/access/audit'
     | '/access/locations'
@@ -438,6 +490,9 @@ export interface FileRouteTypes {
     | '/postel/new'
     | '/qrcode/new'
     | '/serial/new'
+    | '/serial/report'
+    | '/serial/reports'
+    | '/serial/settings'
     | '/sticker/library'
     | '/sticker/settings'
     | '/sticker/stock'
@@ -466,9 +521,11 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/_app'
+    | '/country-lock'
     | '/login'
     | '/_app/customer'
     | '/_app/forbidden'
+    | '/laporan/$token'
     | '/_app/'
     | '/_app/access/audit'
     | '/_app/access/locations'
@@ -480,6 +537,9 @@ export interface FileRouteTypes {
     | '/_app/postel/new'
     | '/_app/qrcode/new'
     | '/_app/serial/new'
+    | '/_app/serial/report'
+    | '/_app/serial/reports'
+    | '/_app/serial/settings'
     | '/_app/sticker/library'
     | '/_app/sticker/settings'
     | '/_app/sticker/stock'
@@ -509,7 +569,9 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
+  CountryLockRoute: typeof CountryLockRoute
   LoginRoute: typeof LoginRoute
+  LaporanTokenRoute: typeof LaporanTokenRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -519,6 +581,13 @@ declare module '@tanstack/react-router' {
       path: ''
       fullPath: '/'
       preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/country-lock': {
+      id: '/country-lock'
+      path: '/country-lock'
+      fullPath: '/country-lock'
+      preLoaderRoute: typeof CountryLockRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/login': {
@@ -548,6 +617,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/forbidden'
       preLoaderRoute: typeof AppForbiddenRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/laporan/$token': {
+      id: '/laporan/$token'
+      path: '/laporan/$token'
+      fullPath: '/laporan/$token'
+      preLoaderRoute: typeof LaporanTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/_app/access/audit': {
       id: '/_app/access/audit'
@@ -652,6 +728,27 @@ declare module '@tanstack/react-router' {
       path: '/serial/new'
       fullPath: '/serial/new'
       preLoaderRoute: typeof AppSerialNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/serial/report': {
+      id: '/_app/serial/report'
+      path: '/serial/report'
+      fullPath: '/serial/report'
+      preLoaderRoute: typeof AppSerialReportRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/serial/reports': {
+      id: '/_app/serial/reports'
+      path: '/serial/reports'
+      fullPath: '/serial/reports'
+      preLoaderRoute: typeof AppSerialReportsRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/serial/settings': {
+      id: '/_app/serial/settings'
+      path: '/serial/settings'
+      fullPath: '/serial/settings'
+      preLoaderRoute: typeof AppSerialSettingsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/sticker/': {
@@ -811,6 +908,9 @@ interface AppRouteChildren {
   AppPostelNewRoute: typeof AppPostelNewRoute
   AppQrcodeNewRoute: typeof AppQrcodeNewRoute
   AppSerialNewRoute: typeof AppSerialNewRoute
+  AppSerialReportRoute: typeof AppSerialReportRoute
+  AppSerialReportsRoute: typeof AppSerialReportsRoute
+  AppSerialSettingsRoute: typeof AppSerialSettingsRoute
   AppStickerLibraryRoute: typeof AppStickerLibraryRoute
   AppStickerSettingsRoute: typeof AppStickerSettingsRoute
   AppStickerStockRoute: typeof AppStickerStockRoute
@@ -852,6 +952,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppPostelNewRoute: AppPostelNewRoute,
   AppQrcodeNewRoute: AppQrcodeNewRoute,
   AppSerialNewRoute: AppSerialNewRoute,
+  AppSerialReportRoute: AppSerialReportRoute,
+  AppSerialReportsRoute: AppSerialReportsRoute,
+  AppSerialSettingsRoute: AppSerialSettingsRoute,
   AppStickerLibraryRoute: AppStickerLibraryRoute,
   AppStickerSettingsRoute: AppStickerSettingsRoute,
   AppStickerStockRoute: AppStickerStockRoute,
@@ -884,7 +987,9 @@ const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
+  CountryLockRoute: CountryLockRoute,
   LoginRoute: LoginRoute,
+  LaporanTokenRoute: LaporanTokenRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

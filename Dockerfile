@@ -16,15 +16,37 @@ COPY package.json bun.lock ./
 COPY shared/package.json shared/
 COPY web/package.json web/
 COPY server/package.json server/
+# Workspace lain di package.json akar juga wajib tercantum agar bun.lock konsisten; `desktop` (Electron) tidak
+# dipasang di image (lihat `--filter` di bawah), hanya manifestnya yang dibutuhkan.
+COPY countrylock/package.json countrylock/
+COPY desktop/package.json desktop/
 
 # ---- Tahap 1: build web (Vite) ke /app/server/dist, lalu pemeriksaan verify-dist ----
 FROM manifests AS web-build
-RUN bun install --frozen-lockfile
+# `!@qc/desktop`: Electron dan dependensi aplikasi desktop tidak ikut terpasang di image server.
+RUN bun install --frozen-lockfile --filter '!@qc/desktop'
 COPY tsconfig.base.json ./
 COPY shared shared
+COPY countrylock countrylock
 COPY web web
 COPY scripts scripts
+# `bun run build` juga membuat server/dist/ui-manifest.json (daftar berkas + hash untuk pembaruan UI desktop).
 RUN bun run build
+# Tanda tangan manifest UI (Ed25519) hanya bila secret BuildKit `ui_signing_key` (isi berkas PEM PKCS8) diberikan:
+# `docker build --secret id=ui_signing_key,src=<berkas>`. Tanpa secret, langkah dilewati dan /api/desktop/ui-manifest
+# menjawab 404 (desktop memakai UI dasarnya). Kunci hanya ada di mount sementara, tidak masuk lapisan image.
+# UI_PUBLIC_KEY_PEM (bukan rahasia; `--build-arg`, SATU baris: PEM atau isi base64-nya) = kunci publik yang disuntikkan
+# ke aplikasi desktop saat build desktop. Saat menandatangani WAJIB diberikan: penandatanganan gagal bila kunci privat
+# tidak berpasangan dengannya (scripts/check-ui-key.ts), karena pasangan yang salah membuat semua desktop menolak
+# pembaruan UI tanpa ada build yang gagal. Nilai ARG ikut kunci cache BuildKit, jadi rotasi kunci otomatis membatalkan
+# cache langkah ini (lihat catatan cache di docs/ci-cd.md).
+ARG UI_PUBLIC_KEY_PEM=""
+RUN --mount=type=secret,id=ui_signing_key,required=false \
+    if [ -f /run/secrets/ui_signing_key ]; then \
+      bun run scripts/sign-ui-manifest.ts --key /run/secrets/ui_signing_key --require-public-key; \
+    else \
+      echo "ui_signing_key tidak diberikan: manifest UI tidak ditandatangani (pembaruan UI desktop nonaktif)"; \
+    fi
 
 # ---- Tahap 2: dependensi produksi server saja (hono, mysql2) ----
 FROM manifests AS prod-deps
@@ -60,6 +82,10 @@ RUN find shared server/src -name '*.test.ts' -delete
 # Folder dump lokal: named volume dipasang di sini; direktori dibuat dan dimiliki `bun` SEBELUM USER agar volume baru
 # mewarisi kepemilikannya (tanpa ini volume dimiliki root dan cadangan tak dapat menulis).
 RUN apk add --no-cache mariadb-client     && mkdir -p /var/backups/qc     && chown bun:bun /var/backups/qc
+
+# Folder berkas sementara foto bukti QC Serial Number (volume `qc-proofs` dipasang di sini): dibuat dan dimiliki `bun`
+# SEBELUM USER dengan alasan yang sama seperti folder dump di atas.
+RUN mkdir -p /var/lib/qc/proofs && chown bun:bun /var/lib/qc/proofs
 
 # Pengguna non-root bawaan image oven/bun (uid 1000).
 USER bun

@@ -4,6 +4,7 @@
     "types": ["bun"],
     "paths": {
       "@shared/*": ["./shared/*"],
+      "@countrylock/*": ["./countrylock/src/*"],
       "@server/*": ["./server/src/*"],
       "@server-test/*": ["./server/test-support/*"]
     }

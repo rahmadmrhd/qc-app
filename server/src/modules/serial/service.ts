@@ -1,4 +1,4 @@
-import { batchGuarded } from '@server/core/cas';
+import { batchGuarded, isGuardFailure } from '@server/core/cas';
 import { DbError, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
@@ -15,7 +15,7 @@ import type {
   ListSerialItemOptionsInput,
   SaveSerialBatchInput,
   SaveSerialBatchOutput,
-  SerialActInput,
+  SerialCaseDto,
   SerialChangeDto,
   SerialDto,
   SerialEditable,
@@ -25,6 +25,7 @@ import type {
   SerialListInput,
   SerialListOutput,
   SerialLocationOptionsDto,
+  SerialProofPhotoDto,
   SerialRowInput,
   SerialRowResult,
   SerialStickerOptionsDto,
@@ -52,6 +53,10 @@ import {
 } from '@shared/serials';
 import { assertSerialVisible, canWriteBu, readableBuIds, writableBuIds } from './access';
 import { applicableStickersOf } from './applicable';
+import { loadCases, type SerialCaseRow } from './case-repo';
+import { canManageProof } from './proof/access';
+import { loadStampItemInfo, planProofAttach } from './proof/attach';
+import { listFailedProofsBySerial, listProofsByEvents } from './proof/repo';
 import {
   activeItemInBu,
   activeLocationName,
@@ -71,7 +76,6 @@ import {
   type SerialRow,
   type SerialStickerRow,
   updateSerialStmt,
-  upsertSerialStickerStmt,
 } from './repo';
 import {
   parseEditable,
@@ -195,10 +199,12 @@ export async function locationOptions(env: Env): Promise<SerialLocationOptionsDt
 }
 
 const DUPLICATE_MESSAGE = 'Serial sudah terdaftar';
-const ITEM_MESSAGE = 'Item tidak ditemukan atau tidak bisa dipakai';
-const LOCATION_MESSAGE = 'Lokasi tidak ditemukan';
+export const ITEM_MESSAGE = 'Item tidak ditemukan atau tidak bisa dipakai';
+export const LOCATION_MESSAGE = 'Lokasi tidak ditemukan';
+const LOCATION_LOCKED_MESSAGE =
+  'Lokasi tidak bisa diubah selama Serial Number masih dalam pengiriman atau di servis';
 const STICKER_MESSAGE = 'Stiker tidak berlaku bagi item ini';
-const SERIAL_CONFLICTS = {
+export const SERIAL_CONFLICTS = {
   serials_bu_serial: { message: DUPLICATE_MESSAGE, field: 'serial' },
   serials_client_id: { message: DUPLICATE_MESSAGE, field: 'clientId' },
 };
@@ -304,8 +310,39 @@ export async function createSerialOnce(
   const eventId = crypto.randomUUID();
   const picks = stickerPicks.map((pick) => ({ stickerId: pick.stickerId, qty: pick.qty }));
   const actorEmail = user.email;
+  // Foto bukti QC (opsional): divalidasi SEBELUM menulis apa pun; foto bermasalah = baris `invalid` tanpa entri tersimpan.
+  // Klaim dan job cap ikut batch yang sama dengan kejadian, jadi tak ada celah komit tanpa job.
+  const planProofs = async (): Promise<DbStatement[]> =>
+    planProofAttach(env, row.proofPhotoIds, {
+      user,
+      serialId,
+      eventId,
+      snapshot: {
+        serial: row.serial,
+        ...(await loadStampItemInfo(env.DB, row.itemId, row.buId)),
+        locationName,
+        actorName: user.name,
+        actorTeam: 'qc',
+      },
+      now,
+    });
+  let proofStatements: DbStatement[];
   try {
-    const statements = [
+    proofStatements = await planProofs();
+  } catch (error) {
+    if (isAppError(error) && error.code === 'VALIDATION') {
+      return { clientId: row.clientId, result: 'invalid', message: error.message };
+    }
+    throw error;
+  }
+  // Menyusun SELURUH batch satu baris (baris `saveBatch` selalu `good`; yang bermasalah lewat Lapor Rusak).
+  const buildStatements = async (): Promise<DbStatement[]> => {
+    const actor = {
+      actorId: user.userId ?? '',
+      actorName: user.name,
+      actorTeam: 'qc' as const,
+    };
+    return [
       insertSerialStmt(env.DB, {
         id: serialId,
         clientId: row.clientId,
@@ -316,6 +353,8 @@ export async function createSerialOnce(
         sample: row.sample,
         note: row.note,
         locationId: row.locationId,
+        status: 'good',
+        openCaseId: '',
         now,
         actorEmail,
       }),
@@ -325,13 +364,12 @@ export async function createSerialOnce(
       insertEventStmt(env.DB, {
         id: eventId,
         serialId,
+        caseId: '',
         seq: 1,
         type: 'recorded',
         occurredOn: today,
         now,
-        actorId: user.userId ?? '',
-        actorName: user.name,
-        actorTeam: 'qc',
+        ...actor,
         message: '',
         changes: [],
         data: {
@@ -342,6 +380,7 @@ export async function createSerialOnce(
           })),
           locationId: row.locationId,
           locationName,
+          ...(row.source === undefined ? {} : { source: row.source }),
         },
       }),
       ...(await statementsFor(env, 'serial.recorded', {
@@ -352,8 +391,11 @@ export async function createSerialOnce(
         actor: actorEmail,
         now,
       })),
+      ...proofStatements,
     ];
-    await env.DB.batch(statements);
+  };
+  try {
+    await env.DB.batch(await buildStatements());
     return {
       clientId: row.clientId,
       result: 'created',
@@ -362,6 +404,23 @@ export async function createSerialOnce(
       serial: row.serial,
     };
   } catch (error) {
+    if (isGuardFailure(error) && proofStatements.length > 0) {
+      // Penjaga klaim foto gagal: foto diambil Simpan lain (serentak) atau disapu di sela validasi dan komit. Seluruh batch
+      // batal (tak ada entri tersimpan); validasi ulang menghasilkan pesan yang tepat.
+      try {
+        await planProofs();
+      } catch (recheck) {
+        if (isAppError(recheck) && recheck.code === 'VALIDATION') {
+          return { clientId: row.clientId, result: 'invalid', message: recheck.message };
+        }
+      }
+      return {
+        clientId: row.clientId,
+        result: 'error',
+        message: 'Serial Number gagal disimpan. Coba lagi',
+        serial: row.serial,
+      };
+    }
     if (error instanceof DbError && error.kind === 'duplicate') {
       // Balapan retry: InnoDB dapat melaporkan indeks `serials_bu_serial` (bukan `serials_client_id`) untuk baris
       // yang sama, jadi pada galat duplikat APA PUN baca ulang `clientId` dulu. Pemenang sudah commit saat galat
@@ -385,7 +444,7 @@ export async function createSerialOnce(
     return {
       clientId: row.clientId,
       result: 'error',
-      message: 'Serial gagal disimpan. Coba lagi',
+      message: 'Serial Number gagal disimpan. Coba lagi',
       serial: row.serial,
     };
   }
@@ -410,7 +469,24 @@ const SERIAL_STATUS_SET: readonly string[] = SERIAL_STATUSES;
 const SERIAL_CUSTODY_SET: readonly string[] = SERIAL_CUSTODIES;
 const EVENT_TYPE_SET: readonly string[] = SERIAL_EVENT_TYPES;
 
-function toSummary(row: SerialRow): SerialSummaryDto {
+/** Kolom teks `NOT NULL DEFAULT ''` -> `null` bila kosong. */
+function orNull(value: string): string | null {
+  const text = value.trim();
+  return text === '' ? null : text;
+}
+
+function toCase(row: SerialCaseRow): SerialCaseDto {
+  const outcome = row.outcome.trim();
+  return {
+    id: row.id.trim(),
+    number: row.number,
+    openedOn: row.opened_on,
+    closedOn: orNull(row.closed_on),
+    outcome: outcome === 'good' || outcome === 'broken' ? outcome : null,
+  };
+}
+
+export function toSummary(row: SerialRow): SerialSummaryDto {
   const status = row.status.trim();
   const custody = row.custody.trim();
   return {
@@ -426,16 +502,24 @@ function toSummary(row: SerialRow): SerialSummaryDto {
     locationName: row.location_name ?? '',
     status: (SERIAL_STATUS_SET.includes(status) ? status : 'good') as SerialStatus,
     custody: (SERIAL_CUSTODY_SET.includes(custody) ? custody : 'qc') as SerialCustody,
+    transitToLocationId: orNull(row.transit_to_location_id),
+    transitToLocationName: orNull(row.transit_to_name ?? ''),
+    transitOn: orNull(row.transit_on),
+    openCaseNumber: orNull(row.open_case_number ?? ''),
+    hasProofPhotos: Number(row.has_proof) === 1,
+    proofProblemCount: Number(row.proof_problem),
     createdAt: row.created_at,
   };
 }
 
-function toStickerStatus(status: string | null): SerialStickerStatus {
+export function toStickerStatus(status: string | null): SerialStickerStatus {
   const value = (status ?? '').trim();
   return value === 'active' || value === 'deprecated' ? value : 'inactive';
 }
 
-function toDto(row: SerialRow, stickers: SerialStickerRow[]): SerialDto {
+function toDto(row: SerialRow, stickers: SerialStickerRow[], caseRows: SerialCaseRow[]): SerialDto {
+  const cases = caseRows.map(toCase);
+  const openCaseId = orNull(row.open_case_id);
   return {
     ...toSummary(row),
     note: row.note,
@@ -447,7 +531,11 @@ function toDto(row: SerialRow, stickers: SerialStickerRow[]): SerialDto {
       qty: Number(sticker.qty),
       stickerStatus: toStickerStatus(sticker.status),
     })),
-    openCaseId: row.open_case_id.trim() === '' ? null : row.open_case_id.trim(),
+    openCaseId,
+    transitFromLocationId: orNull(row.transit_from_location_id),
+    transitFromLocationName: orNull(row.transit_from_name ?? ''),
+    openCase: openCaseId === null ? null : (cases.find((c) => c.id === openCaseId) ?? null),
+    cases,
     createdBy: row.created_by,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
@@ -463,13 +551,17 @@ function parseJson<T>(text: string, fallback: T): T {
   }
 }
 
-function toEvent(row: SerialEventRow): SerialEventDto {
+export function toEvent(
+  row: SerialEventRow,
+  proofPhotos: SerialProofPhotoDto[] = [],
+): SerialEventDto {
   const type = row.type.trim();
   const team = row.actor_team.trim();
   const changes = parseJson<SerialChangeDto[]>(row.changes_json, []);
   const data = parseJson<Record<string, unknown>>(row.data_json, {});
   return {
     id: row.id.trim(),
+    caseId: orNull(row.case_id),
     seq: Number(row.seq),
     type: (EVENT_TYPE_SET.includes(type) ? type : 'note') as SerialEventType,
     occurredOn: row.occurred_on,
@@ -479,15 +571,43 @@ function toEvent(row: SerialEventRow): SerialEventDto {
     message: row.message,
     changes: Array.isArray(changes) ? changes : [],
     data: typeof data === 'object' && data !== null && !Array.isArray(data) ? data : {},
+    proofPhotos,
   };
+}
+
+/** Jenis kejadian yang boleh membawa foto bukti (Tambah dan Cek ulang). */
+const PROOF_EVENT_TYPES: readonly string[] = [
+  'recorded',
+  'recheck',
+  'recheck_pass',
+  'recheck_fail',
+];
+
+/** `toEvent` untuk banyak baris dengan foto bukti kejadian (SATU kueri bagi seluruh halaman). */
+export async function toEventsWithProofs(
+  env: Env,
+  rows: readonly SerialEventRow[],
+  viewer: { user: UserContext; buId: string },
+): Promise<SerialEventDto[]> {
+  const ids = rows
+    .filter((row) => PROOF_EVENT_TYPES.includes(row.type.trim()))
+    .map((row) => row.id.trim());
+  const photos = await listProofsByEvents(env.DB, ids, (proof) =>
+    canManageProof(viewer.user, proof.createdBy, viewer.buId),
+  );
+  return rows.map((row) => toEvent(row, photos.get(row.id.trim()) ?? []));
 }
 
 /** Serial lengkap dengan stiker (nama) untuk DTO; BU di luar hak baca = `NOT_FOUND`. */
 export async function loadSerialDto(env: Env, user: UserContext, id: string): Promise<SerialDto> {
   const row = await loadSerialRow(env.DB, id);
-  if (!row) throw appError('NOT_FOUND', 'Serial tidak ditemukan');
+  if (!row) throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
   assertSerialVisible(user, row.bu_id.trim());
-  return toDto(row, await loadSerialStickers(env.DB, row.id.trim()));
+  const [stickers, cases] = await Promise.all([
+    loadSerialStickers(env.DB, row.id.trim()),
+    loadCases(env.DB, row.id.trim()),
+  ]);
+  return toDto(row, stickers, cases);
 }
 
 /** Detail serial beserta linimasa: maks. 500 kejadian TERBARU, terbaru di atas (`seq` menurun); `eventsTruncated` bila ada yang lebih lama. */
@@ -498,7 +618,17 @@ export async function getSerial(
 ): Promise<GetSerialOutput> {
   const serial = await loadSerialDto(env, user, input.id);
   const { events, truncated } = await loadSerialEvents(env.DB, serial.id);
-  return { serial, events: events.map(toEvent), eventsTruncated: truncated };
+  const problemPhotos = serial.proofProblemCount
+    ? await listFailedProofsBySerial(env.DB, serial.id, (proof) =>
+        canManageProof(user, proof.createdBy, serial.buId),
+      )
+    : [];
+  return {
+    serial,
+    events: await toEventsWithProofs(env, events, { user, buId: serial.buId }),
+    eventsTruncated: truncated,
+    problemPhotos,
+  };
 }
 
 function encodeSerialCursor(row: { created_at: string; id: string }): string {
@@ -528,6 +658,7 @@ export async function listSerials(
   if (input.itemId !== undefined) filter.itemId = input.itemId;
   if (input.locationId !== undefined) filter.locationId = input.locationId;
   if (input.status !== undefined) filter.status = input.status;
+  if (input.custody !== undefined) filter.custody = input.custody;
   if (input.from !== undefined) filter.from = input.from;
   if (input.to !== undefined) filter.to = input.to;
   if (input.createdBy !== undefined) filter.createdBy = input.createdBy;
@@ -544,19 +675,20 @@ export async function listSerials(
   };
 }
 
-const STALE_MESSAGE = 'Serial sudah diubah orang lain. Muat ulang halaman, lalu coba lagi';
+export const STALE_MESSAGE =
+  'Serial Number sudah diubah orang lain. Muat ulang halaman, lalu coba lagi';
 
 /** Stempel baru yang selalu lebih besar dari yang lama (jam yang sama = +1 ms) agar CAS `updated_at` tak tertipu. */
-function nextStamp(now: string, previous: string): string {
+export function nextStamp(now: string, previous: string): string {
   return now > previous ? now : new Date(Date.parse(previous) + 1).toISOString();
 }
 
-function validationError(field: string, message: string) {
+export function validationError(field: string, message: string) {
   return appError('VALIDATION', message, { [field]: message });
 }
 
 /** Memuat serial yang boleh ditulis user; di luar hak tulis atau tak ada = `NOT_FOUND`, versi tak cocok = basi. */
-async function loadWritableRow(
+export async function loadWritableRow(
   env: Env,
   user: UserContext,
   id: string,
@@ -564,7 +696,7 @@ async function loadWritableRow(
 ): Promise<SerialRow> {
   const row = await loadSerialRow(env.DB, id);
   if (!row || !canWriteBu(user, row.bu_id.trim())) {
-    throw appError('NOT_FOUND', 'Serial tidak ditemukan');
+    throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
   }
   if (row.updated_at !== expectedUpdatedAt) throw staleError(STALE_MESSAGE);
   return row;
@@ -633,6 +765,8 @@ async function updateOnce(
     });
   }
   if (fields.locationId !== undefined && fields.locationId !== row.location_id.trim()) {
+    // Keputusan pemilik 2026-11-13: lokasi hanya berubah lewat alur kirim/terima selama custody bukan QC.
+    if (row.custody !== 'qc') throw validationError('locationId', LOCATION_LOCKED_MESSAGE);
     const name = await activeLocationName(env.DB, fields.locationId);
     if (name === null) throw validationError('locationId', LOCATION_MESSAGE);
     set.location_id = fields.locationId;
@@ -654,6 +788,7 @@ async function updateOnce(
       insertNextEventStmt(env.DB, {
         id: crypto.randomUUID(),
         serialId: row.id.trim(),
+        caseId: '',
         type: 'data_changed',
         occurredOn: today,
         now,
@@ -719,151 +854,17 @@ export async function updateSerialBatch(
     } catch (error) {
       if (!isAppError(error)) {
         console.error('serials.updateBatch: baris gagal', error instanceof Error ? error.name : '');
-        results.push({ id, result: 'error', message: 'Serial gagal diubah. Coba lagi' });
+        results.push({ id, result: 'error', message: 'Serial Number gagal diubah. Coba lagi' });
       } else if (error.stale) {
         results.push({ id, result: 'stale', message: error.message });
       } else if (error.code === 'CONFLICT') {
         results.push({ id, result: 'duplicate', message: error.message });
       } else if (error.code === 'NOT_FOUND') {
-        results.push({ id, result: 'invalid', message: 'Serial tidak ditemukan' });
+        results.push({ id, result: 'invalid', message: 'Serial Number tidak ditemukan' });
       } else {
         results.push({ id, result: 'invalid', message: error.message });
       }
     }
   }
   return { results };
-}
-
-const stickerChip = (name: string, qty: number | null): string | null =>
-  qty === null ? null : `${name} ×${qty}`;
-
-/**
- * `serials.act` (5a): `note` menulis kejadian catatan; `recheck` (hanya `good` di `qc`) menulis kejadian cek ulang,
- * memindahkan lokasi bila berbeda (`recorded_location_id` tetap), dan menaikkan jumlah stiker: selisih positif
- * memotong stok di lokasi cek ulang lewat pendengar `serial.stickers_added` dalam batch yang sama.
- */
-export async function actOnSerial(
-  env: Env,
-  input: SerialActInput,
-  user: UserContext,
-): Promise<SerialDto> {
-  const today = wibDateIso(nowOf(env));
-  if (input.occurredOn > today) {
-    throw validationError('occurredOn', 'Tanggal tidak boleh di masa depan');
-  }
-  const row = await loadWritableRow(env, user, input.id, input.expectedUpdatedAt);
-  const serialId = row.id.trim();
-  const eventId = crypto.randomUUID();
-  const now = nextStamp(nowIso(env), row.updated_at);
-  const set: Partial<Record<SerialColumn, string | number>> = {};
-  const changes: SerialChangeDto[] = [];
-  const statements: DbStatement[] = [];
-  let data: Record<string, unknown> = {};
-  let eventType: SerialEventType = 'note';
-  const tail: DbStatement[] = [];
-
-  if (input.action === 'recheck') {
-    eventType = 'recheck';
-    if (row.status.trim() !== 'good' || row.custody.trim() !== 'qc') {
-      throw appError('CONFLICT', 'Serial tidak bisa dicek ulang dalam kondisi ini');
-    }
-    const locationId = input.locationId ?? row.location_id.trim();
-    let locationName = row.location_name ?? '';
-    if (locationId !== row.location_id.trim()) {
-      const name = await activeLocationName(env.DB, locationId);
-      if (name === null) throw validationError('locationId', LOCATION_MESSAGE);
-      set.location_id = locationId;
-      changes.push({ field: 'location', from: locationName, to: name });
-      locationName = name;
-    }
-    // Lokasi yang tidak diganti boleh sudah nonaktif: hanya lokasi BARU yang wajib aktif (diperiksa di atas).
-    data = { result: 'pass', locationId, locationName };
-
-    const current = new Map(
-      (await loadSerialStickers(env.DB, serialId)).map((sticker) => [
-        sticker.sticker_id.trim(),
-        {
-          qty: Number(sticker.qty),
-          name: sticker.name ?? '',
-          status: toStickerStatus(sticker.status),
-        },
-      ]),
-    );
-    const requested = input.stickers ?? [];
-    const unknown = requested.filter((pick) => !current.has(pick.stickerId));
-    const applicable =
-      unknown.length > 0
-        ? new Map(
-            (await applicableStickersOf(env, row.item_id.trim(), row.bu_id.trim())).map(
-              (sticker) => [sticker.id, sticker],
-            ),
-          )
-        : new Map();
-    const picks: { stickerId: string; qty: number }[] = [];
-    const raised: { stickerId: string; name: string; qtyFrom: number; qtyTo: number }[] = [];
-    for (const pick of requested) {
-      const existing = current.get(pick.stickerId);
-      if (existing && pick.qty < existing.qty) {
-        throw validationError('stickers', 'Jumlah stiker tidak boleh dikurangi');
-      }
-      if (existing && pick.qty > existing.qty && existing.status === 'inactive') {
-        throw validationError('stickers', 'Jumlah stiker nonaktif tidak bisa ditambah');
-      }
-      if (!existing && !applicable.has(pick.stickerId)) {
-        throw validationError('stickers', 'Stiker tidak berlaku bagi item ini');
-      }
-      const from = existing?.qty ?? 0;
-      if (pick.qty === from) continue;
-      const name = existing?.name ?? applicable.get(pick.stickerId)?.name ?? '';
-      picks.push({ stickerId: pick.stickerId, qty: pick.qty - from });
-      raised.push({ stickerId: pick.stickerId, name, qtyFrom: from, qtyTo: pick.qty });
-      changes.push({
-        field: 'stickers',
-        from: stickerChip(name, existing ? from : null),
-        to: stickerChip(name, pick.qty),
-      });
-      tail.push(upsertSerialStickerStmt(env.DB, serialId, pick.stickerId, pick.qty));
-    }
-    if (raised.length > 0) {
-      data = { ...data, stickers: raised };
-      tail.push(
-        ...(await statementsFor(env, 'serial.stickers_added', {
-          serialId,
-          eventId,
-          locationId,
-          picks,
-          actor: user.email,
-          now,
-        })),
-      );
-    }
-  } else if (input.message.trim() === '') {
-    throw validationError('message', 'Catatan wajib diisi');
-  }
-
-  statements.push(
-    updateSerialStmt(env.DB, {
-      id: serialId,
-      expectedUpdatedAt: row.updated_at,
-      now,
-      actorEmail: user.email,
-      set,
-    }),
-    insertNextEventStmt(env.DB, {
-      id: eventId,
-      serialId,
-      type: eventType,
-      occurredOn: input.occurredOn,
-      now,
-      actorId: user.userId ?? '',
-      actorName: user.name,
-      actorTeam: 'qc',
-      message: input.message,
-      changes,
-      data,
-    }),
-    ...tail,
-  );
-  await batchGuarded(env.DB, statements, SERIAL_CONFLICTS, STALE_MESSAGE);
-  return loadSerialDto(env, user, serialId);
 }

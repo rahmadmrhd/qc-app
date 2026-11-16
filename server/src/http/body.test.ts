@@ -6,7 +6,7 @@ import { HANDOVER_LIMITS } from '@shared/handover';
 import { ITEM_LIMITS } from '@shared/items';
 import { POSTEL_LIMITS } from '@shared/postel';
 import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, QR_LIMITS } from '@shared/qrcode';
-import { SERIAL_LIMITS } from '@shared/serials';
+import { SERIAL_LIMITS, SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { GUIDE_LIMITS, INSTRUCTION_LIMITS, STICKER_LIMITS } from '@shared/stickers';
 import { MAX_JSON_BODY_BYTES, MAX_REQUEST_BODY_BYTES } from './body';
 
@@ -172,6 +172,7 @@ const WORST: Inputs = {
     tasks: longList(HANDOVER_LIMITS.batch, () => ({
       customerName: text(HANDOVER_LIMITS.customerName),
       note: text(HANDOVER_LIMITS.note),
+      clientId: UUID,
     })),
   },
   'handovers.cancel': { id: UUID, locationId: UUID },
@@ -185,6 +186,7 @@ const WORST: Inputs = {
     before: text(HANDOVER_LIMITS.comment),
     after: text(HANDOVER_LIMITS.comment),
     body: text(HANDOVER_LIMITS.comment),
+    clientId: UUID,
   },
   'qrcodes.save': {
     id: UUID,
@@ -203,7 +205,8 @@ const WORST: Inputs = {
     style: DEFAULT_QR_STYLE,
     overflow: true,
   } as never,
-  // Catatan terpanjang berkarakter 3-byte (karakter kontrol ditolak validator, jadi bukan escape 6-byte).
+  // Catatan dan kerusakan terpanjang berkarakter 4-byte (validator menghitung titik kode; karakter kontrol ditolak,
+  // jadi bukan escape 6-byte).
   'serials.saveBatch': {
     rows: longList(SERIAL_LIMITS.batchRows, () => ({
       clientId: UUID,
@@ -213,9 +216,12 @@ const WORST: Inputs = {
       testDate: '2026-11-12',
       locationId: UUID,
       sample: true,
-      note: '漢'.repeat(SERIAL_LIMITS.noteMax),
-      status: 'good' as const,
+      note: '😀'.repeat(SERIAL_LIMITS.noteMax),
+      // Terburuk: catatan maksimum (4-byte) dan `source`.
+      source: 'countrylock' as const,
       stickers: longList(20, () => ({ stickerId: UUID, qty: SERIAL_LIMITS.stickerQtyMax })),
+      // Foto bukti QC: lima id per baris (`SERIAL_PROOF_LIMITS.perEntryMax`).
+      proofPhotoIds: longList(SERIAL_PROOF_LIMITS.perEntryMax, () => UUID),
     })),
   },
   'serials.update': {
@@ -245,11 +251,25 @@ const WORST: Inputs = {
   'serials.act': {
     id: UUID,
     expectedUpdatedAt: STAMP,
-    action: 'recheck',
+    // Terburuk: cek ulang tidak lolos (field terbanyak) dengan pesan 4-byte per karakter dan 20 stiker tercentang.
+    action: 'recheck_fail',
     occurredOn: '2026-11-12',
-    message: '\u6f22'.repeat(SERIAL_LIMITS.messageMax),
+    message: '\u{1F600}'.repeat(SERIAL_LIMITS.messageMax),
+    stickerIds: longList(SERIAL_LIMITS.picksMax, () => UUID),
+    proofPhotoIds: longList(SERIAL_PROOF_LIMITS.perEntryMax, () => UUID),
+  },
+  'serials.reportNew': {
+    serial: 'S'.repeat(SERIAL_LIMITS.serialMax),
+    itemId: UUID,
+    buId: UUID,
     locationId: UUID,
-    stickers: longList(20, () => ({ stickerId: UUID, qty: SERIAL_LIMITS.stickerQtyMax })),
+    message: '\u{1F600}'.repeat(SERIAL_LIMITS.messageMax),
+    occurredOn: '2026-11-14',
+  },
+  // Konfigurasi lokasi servis: lokasi aktif sebanyak-banyaknya (jauh di atas data nyata).
+  'serialServiceSettings.save': {
+    expectedUpdatedAt: STAMP,
+    locationIds: longList(500, () => UUID),
   },
   'postels.save': {
     id: UUID,
@@ -263,6 +283,17 @@ const WORST: Inputs = {
       link: text(POSTEL_LIMITS.linkMax),
     })),
     attachmentIds: longList(POSTEL_LIMITS.attachmentsMax, () => UUID),
+  },
+  // 20 penerima sepanjang 254 karakter (batas alamat).
+  'serialSettings.save': {
+    expectedUpdatedAt: STAMP,
+    alert: {
+      enabled: true,
+      recipients: longList(
+        SERIAL_LIMITS.alertRecipientsMax,
+        (index) => `${'x'.repeat(240 - String(index).length)}${index}@abcdefgh.com`,
+      ),
+    },
   },
   'postelSettings.save': {
     expectedUpdatedAt: STAMP,
@@ -296,12 +327,19 @@ const WORST: Inputs = {
     logoFileIds: longList(QR_LIMITS.logoLibrary, () => UUID),
   },
   'qrcodes.cloneFromDrive': { source: text(2000), replaceDocumentId: UUID },
+  'serialProofs.retry': { id: UUID },
+  'serialProofs.replace': { photoId: UUID, newPhotoId: UUID },
   'notifications.markRead': { id: UUID },
   'notifications.markAllRead': {},
+  'desktop.handoff': {},
   'push.subscribe': { endpoint: text(2000), p256dh: text(200), auth: text(100) },
   'push.unsubscribe': { endpoint: text(2000) },
   'push.setPreference': { enabled: true },
+  'push.deviceState': { endpoint: text(2000) },
+  'push.setDeviceMuted': { endpoint: text(2000), muted: true },
   'push.reportPermission': { state: 'granted' },
+  'guides.mark': { id: text(100), version: 1 },
+  'guides.reset': { id: text(100) },
   'exports.sheets': { tables: longList(50, () => text(100)) },
 };
 
@@ -329,9 +367,16 @@ describe('batas badan', () => {
       sizes.push([id, bytes]);
       expect(bytes, id).toBeLessThan(MAX_JSON_BODY_BYTES);
     }
-    // Terbesar nyata = saveBatch 30 x 5.000 karakter terburuk (~0,9 MB); pastikan ada ruang minimal 2x.
-    const max = Math.max(...sizes.map(([, bytes]) => bytes));
+    // Invarian ruang minimal 2x berlaku untuk semua rute KECUALI `serials.saveBatch`.
+    const SAVE_BATCH = 'serials.saveBatch';
+    const max = Math.max(...sizes.filter(([id]) => id !== SAVE_BATCH).map(([, bytes]) => bytes));
     expect(max * 2).toBeLessThan(MAX_JSON_BODY_BYTES);
+    // Pengecualian (keputusan pemilik 2026-11-13): 200 baris x catatan dan kerusakan sepenuhnya emoji 4-byte
+    // (~1,29 MB, 61% batas) bukan skenario nyata, jadi margin 2x tidak dipaksakan. Batas atas konkret ~1,3 MB tetap
+    // menangkap regresi ukuran (mis. baris atau batas karakter bertambah) sebelum menyentuh 2 MB.
+    const saveBatchBytes = sizes.find(([id]) => id === SAVE_BATCH)?.[1] ?? 0;
+    expect(saveBatchBytes).toBeGreaterThan(0);
+    expect(saveBatchBytes).toBeLessThanOrEqual(1_300_000);
   });
 
   test('batas JSON 2 MB; batas global Bun.serve diturunkan dari tabel rute biner', () => {

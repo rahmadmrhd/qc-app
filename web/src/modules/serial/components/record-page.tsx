@@ -1,6 +1,7 @@
 import { isIsoDate, normalizeSerial, SERIAL_LIMITS } from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -15,6 +16,7 @@ import {
   type BulkPatch,
   type Defaults,
   fromQcsnRows,
+  proofIdsOf,
   removeRows,
   type StagingRow,
   toBatches,
@@ -22,10 +24,12 @@ import {
 } from '../lib/draft';
 import { clearDraft, loadDraft, resumeDraftWrites, saveDraft } from '../lib/draft-store';
 import { isReferenceError, type VerifyDeps, verifyImported } from '../lib/import-verify';
+import { hasProofPhotos } from '../lib/leave-guard';
 import { todayWib, toLocationOptions } from '../lib/locations';
 import type { QcsnImport } from '../lib/qcsn';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
+  discardProofPhotos,
   serialItemsByIdQueryOptions,
   serialLocationOptionsQueryOptions,
   serialStickerOptionsQueryOptions,
@@ -57,6 +61,23 @@ interface SaveSummary {
 export interface RecordPageProps {
   /** Dipanggil saat tabel sementara berubah antara kosong dan berisi (untuk konfirmasi keluar halaman). */
   onDirtyChange?: (dirty: boolean) => void;
+  /**
+   * Dipanggil setelah Simpan bila SEMUA baris tersimpan (tanpa sisa error, duplikat, atau baris yang tak dikirim, dan
+   * draft kosong): pemanggil membawa pengguna kembali ke daftar. Bila ada yang gagal, halaman tetap terbuka.
+   */
+  onAllSaved?: (created: number) => void;
+  /** Dipanggil saat ada/tidaknya baris draft berfoto bukti berubah (menentukan jenis penjaga keluar halaman). */
+  onProofChange?: (hasProof: boolean) => void;
+  /**
+   * Diisi pegangan untuk menjalankan Simpan dari luar (dialog penjaga keluar). `save()` sama dengan tombol Simpan tetapi
+   * TIDAK memanggil `onAllSaved` (pemanggil sendiri yang melanjutkan navigasi); hasilnya `true` bila semua baris
+   * tersimpan.
+   */
+  handleRef?: { current: RecordPageHandle | null };
+}
+
+export interface RecordPageHandle {
+  save(): Promise<boolean>;
 }
 
 const NOTICE_CLASS: Record<NoticeTone, string> = {
@@ -106,11 +127,24 @@ function describeAdd(report: ReturnType<typeof addSerials>['report']): {
 }
 
 /** Halaman Catat Serial: bawaan rombongan, masukan pindai/tempel, tabel sementara, simpan per 200 baris. */
-export function RecordPage({ onDirtyChange }: RecordPageProps) {
+export function RecordPage({
+  onDirtyChange,
+  onAllSaved,
+  onProofChange,
+  handleRef,
+}: RecordPageProps) {
   const me = useMe();
   const queryClient = useQueryClient();
   const saveBatch = useSaveSerialBatch();
   const ownerKey = me.email;
+  // Pengguna dapat meninggalkan halaman saat simpan berjalan: hasil simpan tidak boleh membajak navigasi.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const [rows, setRows] = useState<StagingRow[]>(() => loadDraft(ownerKey));
   const rowsRef = useRef(rows);
@@ -165,6 +199,10 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
   useEffect(() => {
     onDirtyChange?.(rows.length > 0);
   }, [onDirtyChange, rows.length]);
+  const withProof = hasProofPhotos(rows);
+  useEffect(() => {
+    onProofChange?.(withProof);
+  }, [onProofChange, withProof]);
 
   const selectedCount = rows.filter((row) => row.selected).length;
   const detailRow = detailId === null ? undefined : rows.find((row) => row.clientId === detailId);
@@ -234,10 +272,16 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
     },
     [edit],
   );
-  const removeOne = useCallback(
-    (clientId: string) => setAllRows(removeRows(rowsRef.current, new Set([clientId]))),
+  // Membuang baris = foto draft barisnya ikut dibuang di server (upaya terbaik; sisanya disapu penjadwal).
+  const dropRows = useCallback(
+    (ids: ReadonlySet<string>) => {
+      const dropped = rowsRef.current.filter((row) => ids.has(row.clientId));
+      void discardProofPhotos(proofIdsOf(dropped));
+      setAllRows(removeRows(rowsRef.current, ids));
+    },
     [setAllRows],
   );
+  const removeOne = useCallback((clientId: string) => dropRows(new Set([clientId])), [dropRows]);
   const openDetail = useCallback((clientId: string) => setDetailId(clientId), []);
 
   function selectedIds(): Set<string> {
@@ -351,8 +395,9 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
     }
   }
 
-  async function handleSave() {
-    if (saving || importing || rowsRef.current.length === 0) return;
+  /** `external` = dipicu penjaga keluar halaman: pemanggil yang melanjutkan navigasi, jadi `onAllSaved` tak dipanggil. */
+  async function handleSave(external = false): Promise<boolean> {
+    if (saving || importing || rowsRef.current.length === 0) return false;
     const current = rowsRef.current;
     const blocked = current.filter(
       (row) =>
@@ -367,11 +412,13 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
         tone: 'error',
         text: `${blocked.length} baris belum lengkap (item, lokasi, atau tanggal uji); lihat kolom Hasil.`,
       });
-      return;
+      return false;
     }
     setSaving(true);
     setNotice(null);
     setSummary(null);
+    let allSaved = false;
+    let savedCount = 0;
     try {
       // Hanya baris yang ada saat Simpan ditekan yang dikirim; pindaian yang masuk sesudahnya menunggu simpan berikutnya.
       const sendIds = new Set(current.map((row) => row.clientId));
@@ -409,7 +456,7 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
             tone: 'error',
             text: `Stiker yang berlaku gagal dimuat: ${describeError(outcome.reason)}`,
           });
-          return;
+          return false;
         }
       }
       let skipped = 0;
@@ -456,10 +503,30 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
         }
       }
       setSummary(tally);
+      // Baris `created` (termasuk simpan ulang `clientId` yang sama) sudah keluar dari draft; semuanya sukses bila tak ada
+      // yang gagal, ganda, atau tak terkirim, dan tidak ada baris baru yang masuk selama menyimpan.
+      savedCount = tally.created;
+      allSaved =
+        tally.failed === 0 &&
+        tally.duplicate === 0 &&
+        tally.skipped === 0 &&
+        rowsRef.current.length === 0;
     } finally {
       setSaving(false);
     }
+    if (!mountedRef.current) {
+      // Halaman sudah ditinggalkan: draf yang ditulis saat unlock masih memuat baris yang kini tersimpan; sinkronkan.
+      saveDraft(ownerKey, rowsRef.current);
+      return allSaved;
+    }
+    if (allSaved && (external || onAllSaved)) {
+      clearDraft(ownerKey);
+      toast.success('Serial Number berhasil disimpan');
+      if (!external) onAllSaved?.(savedCount);
+    }
+    return allSaved;
   }
+  if (handleRef) handleRef.current = { save: () => handleSave(true) };
 
   const hasFailed = rows.some((row) => row.result === 'error');
   const blockedCount = rows.filter((row) => rowStatus(row).tone !== 'ok').length;
@@ -559,7 +626,7 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
         <BulkEditBar
           count={selectedCount}
           onApply={applyBulkEdit}
-          onRemove={() => setAllRows(removeRows(rowsRef.current, selectedIds()))}
+          onRemove={() => dropRows(selectedIds())}
           onClearSelection={() => selectAll(false)}
         />
       ) : null}
@@ -638,6 +705,7 @@ export function RecordPage({ onDirtyChange }: RecordPageProps) {
             size="sm"
             disabled={saving}
             onClick={() => {
+              void discardProofPhotos(proofIdsOf(rowsRef.current));
               setAllRows([]);
               clearDraft(ownerKey);
               setNotice(null);

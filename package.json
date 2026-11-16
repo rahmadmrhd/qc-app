@@ -5,18 +5,22 @@
   "workspaces": [
     "shared",
     "web",
-    "server"
+    "server",
+    "countrylock",
+    "desktop"
   ],
   "scripts": {
     "dev": "bun run scripts/dev.ts",
     "dev:server": "bun run --cwd server dev",
     "dev:web": "bun run --cwd web dev",
     "build:web": "bun run --cwd web build",
-    "build": "bun run build:web && bun run scripts/verify-dist.ts",
-    "typecheck": "tsc -p tsconfig.json && bun run --cwd shared typecheck && bun run --cwd web typecheck && bun run --cwd server typecheck",
+    "build:desktop": "bun run build:web && bun run --cwd desktop dist",
+    "check:ui-key": "bun run scripts/check-ui-key.ts",
+    "build": "bun run build:web && bun run scripts/verify-dist.ts && bun run scripts/build-ui-manifest.ts",
+    "typecheck": "tsc -p tsconfig.json && bun run --cwd shared typecheck && bun run --cwd web typecheck && bun run --cwd server typecheck && bun run --cwd countrylock typecheck && bun run --cwd desktop typecheck",
     "lint": "biome check .",
     "format": "biome check --write .",
-    "test": "bun run scripts/test-scripts.ts && bun run --cwd shared test && bun run --cwd server test && bun run --cwd web test",
+    "test": "bun run scripts/test-scripts.ts && bun run --cwd shared test && bun run --cwd server test && bun run --cwd web test && bun run --cwd countrylock test && bun run --cwd desktop test",
     "check": "bun run typecheck && bun run lint && bun run test",
     "db:seed": "bun run --cwd server db:seed",
     "db:tunnel": "bun run scripts/db-tunnel.ts"

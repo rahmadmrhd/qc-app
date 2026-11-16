@@ -183,17 +183,27 @@ Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (mat
 | N4 | WH membatalkan task (akun `handover: manage`) | QC menerima notifikasi "dibatalkan" | §3 Task dibatalkan |
 | N5 | WH membuka kembali task Dibatalkan | QC menerima notifikasi "dibuka kembali" | §3 Task dibuka kembali |
 | N6 | QC menekan Mark done pada task | WH menerima satu notifikasi "selesai"; QC tidak | §3 Task selesai |
-| N7 | QC mencentang satu butir | Tidak ada notifikasi langsung; WH menerima ringkasan setelah paling lambat 5 menit | §3 Butir dicentang |
+| N7 | QC mencentang satu butir | Tidak ada notifikasi langsung; WH menerima ringkasan setelah paling lambat 1 menit (ditambah sampai 10 detik detak putaran latar) | §3 Butir dicentang |
 | N8 | WH menulis komentar pada task | QC menerima notifikasi komentar; WH (penulis) tidak | §3 Komentar |
 | N9 | QC menulis komentar pada task | WH menerima notifikasi komentar; QC (penulis) tidak | §3 Komentar |
 | N10 | Akun yang punya `qc: edit` dan `handover: view` sekaligus di JKT; WH membuat task | Akun itu menerima TEPAT satu notifikasi | §3 aturan umum |
 | N11 | Kirim ulang centang dengan nilai yang sama (mis. panggilan API langsung) | Tidak ada kejadian baru; jumlah notifikasi tidak bertambah | §3 (keadaan benar-benar berubah) |
-| N12 | QC mencentang lima butir dalam sekitar dua menit pada satu task, lalu tunggu | WH menerima TEPAT satu ringkasan, paling lambat 5 menit sejak centang pertama | §4.2 |
+| N12 | QC mencentang lima butir dalam sekitar 40 detik pada satu task, lalu tunggu | WH menerima TEPAT satu ringkasan, paling lambat 1 menit sejak centang pertama | §4.2 |
 | N13 | QC mencentang butir terakhir pada task | WH menerima satu notifikasi "selesai", tidak ada ringkasan centang tambahan untuk rangkaian itu | §4.2 |
 | N14 | Tandai satu notifikasi dibaca, lalu "tandai semua dibaca" | Penanda belum dibaca dan jumlah pada ikon lonceng hilang | §5.1 |
 | N15 | Admin mencabut akses lokasi JKT dari akun WH, lalu WH membuka lonceng | Notifikasi JKT tidak tampil lagi; tidak ada galat | §5.1 |
 | N16 | WH membuka notifikasi dari lokasi yang tidak sedang aktif di header | Task terbuka (tidak `NOT_FOUND`). Celah diketahui: halaman detail memakai lokasi aktif, sehingga muncul "Task tidak ditemukan di lokasi aktif" (belum diperbaiki) | §5.1 |
 | N17 | Dengan VAPID kosong (push nonaktif), lonceng tetap dipakai | Lonceng tampil dan terisi; tidak ada galat di konsol | §5.1 |
+| N17a | **Butuh peramban sungguhan.** Akun WH membuka aplikasi (tab terfokus, jangan ganti tab); QC menekan Mark done pada task | Angka dan daftar lonceng WH berubah dalam beberapa detik TANPA muat ulang dan tanpa menunggu 60 detik. DevTools Network: satu permintaan `notifications/stream` bertipe `eventsource`, tetap terbuka | §5.1, "Lonceng seketika" |
+| N17b | Sama seperti N17a tetapi izin push akun WH ditolak | Lonceng tetap berubah seketika (stream tidak bergantung izin peramban) | §5.1 |
+| N17c | Putuskan jaringan tab WH beberapa detik (DevTools Offline), QC menulis komentar, lalu sambungkan lagi | Setelah tersambung lagi, komentar muncul di lonceng WH tanpa muat ulang manual (muat ulang saat reconnect) | §5.1 |
+| N17d | Di staging/produksi (di belakang nginx dan Cloudflare), biarkan tab terbuka sekitar 5 menit tanpa aktivitas, lalu QC menulis komentar | Lonceng tetap berubah seketika (komentar detak 5 dtk menjaga koneksi hidup; tidak ada putus berkala); bila stream gagal, polling 10 detik tetap memperbarui | §5.1 |
+| N17e | **Butuh peramban sungguhan.** Akun WH membuka aplikasi dengan tab terlihat; QC menulis komentar pada task di lokasi itu | Muncul toast "<QC> mengomentari task ST-..." dengan cuplikan komentar dan tombol "Buka" (sekitar 8 detik); angka lonceng bertambah. Klik "Buka" membuka task dan angka berkurang. Membuka aplikasi baru (login ulang) TIDAK menoast notifikasi lama | §5.1, "Toast notifikasi baru" |
+| N17f | Buka dua tab akun WH (satu terlihat, satu di latar); QC menulis komentar | Hanya tab yang terlihat menampilkan toast; tab latar tidak. Saat tab latar dibuka, toast untuk komentar itu TIDAK muncul belakangan (angka lonceng sudah benar) | §5.1 |
+| N17g | QC menulis 4 komentar beruntun dalam beberapa detik pada tab WH terlihat | Bila tiba bersamaan dalam satu pemuatan lonceng (> 3): satu toast "N notifikasi baru"; bila terpisah beberapa detik: toast satu per satu | §5.1 |
+| N17h | Akun WH tertaut di dua perangkat (mis. Chrome PC dan ponsel). Di Chrome PC buka menu profil, Notifikasi push, matikan "Terima notifikasi push di perangkat ini"; QC menulis komentar | Chrome PC TIDAK menerima push (teks "Dimatikan di perangkat ini. Perangkat lain tetap menerima."); ponsel tetap menerima. Saklar akun "di semua perangkat" tetap menyala | §5.2, "Push dimatikan per perangkat" |
+| N17i | Setelah N17h, muat ulang/login ulang di Chrome PC (sinkron senyap berjalan), lalu QC menulis komentar lagi | Saklar perangkat tetap mati dan push tetap tidak muncul di Chrome PC; hapus data situs lalu masuk lagi: perangkat tertaut kembali dengan pengaturan tersimpan di server | §5.2 |
+| N17j | Matikan semua perangkat akun WH (atau saklar akun), buka halaman admin Status Push | Status akun WH = "Dimatikan pengguna" (bukan Aktif/Gagal) | §10 |
 | N18a | **Belum teruji di perangkat nyata; butuh `VAPID_*` terisi di staging.** Android (Chrome, aplikasi terpasang): login pertama | Dialog "Aktifkan notifikasi?" tampil; klik Aktifkan memunculkan dialog izin peramban SEKALI; setelah Izinkan, notifikasi muncul saat WH membuat task di lokasi QC itu (aplikasi tertutup juga) | §5.2 |
 | N18b | Klik notifikasi push | Aplikasi terbuka/terfokus di task terkait dengan `?loc=` benar; tidak ada tab kosong | §5.2 |
 | N18c | Login pertama di aplikasi terpasang, jawab "Nanti" | Tidak ditanya lagi pada muat ulang; menu profil "Notifikasi push" menawarkan "Aktifkan di perangkat ini" | §5.2 |
@@ -229,3 +239,128 @@ Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (mat
 | 180 | Tekan "Muat ulang" di spanduk, lalu segera tekan "Nanti" | Tombol "Nanti" tidak aktif selama fase pengambilalihan (sampai sekitar 25 detik); sesudahnya "Nanti" hanya menyembunyikan spanduk selama pemuatan halaman itu, dan tidak membatalkan penunggu service worker | PWA FR-P12 |
 | 181 | Pada formulir terisi, lakukan penulisan singkat (mis. centang yang selesai dalam kurang dari 1 detik) | Spanduk tidak berkedip; spanduk hanya muncul bila formulir belum tersimpan (seketika) atau keadaan sibuk lebih dari sekitar 1 detik | PWA FR-P13 |
 | 182 | Muat potongan rute yang gagal (mis. versi baru sudah menghapus potongan lama, atau saat pindah ke rute lazy yang gagal) lalu pindah halaman | Spanduk "Ada versi baru" tampil tanpa muat ulang seketika; pada perpindahan halaman berikutnya halaman dimuat ulang otomatis hanya bila aman (tidak ada formulir terisi dan tidak ada penulisan berjalan) | PWA FR-P11, FR-P12 |
+| 182a | Pemulihan cangkang basi (2026-11-14): pada perangkat yang masih membuka versi LAMA (cangkang lama dari service worker lama), deploy versi baru ke staging, lalu buka halaman QR (potongan >1 MB yang tidak dipra-cache) tanpa menutup aplikasi; saat spanduk/galat "Ada versi baru" tampil, tekan "Muat ulang" SEKALI | Tombol berubah "Memuat…" paling lama sekitar 8 detik; halaman termuat ulang dengan versi baru dan halaman QR terbuka normal tanpa hard refresh dan tanpa galat berulang; bila ada SW baru yang menunggu, ia diaktifkan lebih dulu (tanpa membuang cache); DevTools → Application: service worker baru terdaftar ulang dan cache `workbox-precache*` berisi versi baru | PWA FR-P11, FR-P12 |
+| 182b | Seperti 182a tetapi dengan formulir terisi tanpa disimpan (draf task) saat halaman rusak | Tidak ada muat ulang atau pembuangan service worker/cache otomatis; spanduk tampil menyebut formulir belum tersimpan; pemulihan baru jalan setelah pengguna menekan "Muat ulang" | PWA FR-P13 |
+
+## Panduan interaktif (2026-11-13)
+
+Spek: `docs/superpowers/specs/2026-11-13-panduan-interaktif-design.md` (bagian 4.2-4.7). Uji di staging dengan akun individu, akun bersama (sudah ditandai di Pengaturan Akses), akun WH (`handover: view`/`edit`), dan akun QC (`qc: edit`). Pengguna yang sudah menyelesaikan panduan `dasar` tidak ditawari panduan `baru`-nya.
+
+| # | Langkah | Hasil yang diharapkan | Spek |
+|---|---|---|---|
+| G1 | Login pertama dengan akun individu yang belum pernah menjawab sapaan | Dialog "Mau tur singkat?" tampil sekali; "Nanti" tidak ditanya lagi pada muat ulang dan menu profil "Panduan" tetap ada | 4.4 Sapaan login |
+| G2 | Mulai tur "Dasar layout" dari sapaan atau menu profil > Panduan | Sidebar, pemilih lokasi, lonceng, tema, dan menu profil disorot berurutan; tidak ada field yang terisi atau berubah | 4.5 |
+| G3 | Jalankan tur Serah Terima dengan akun WH, lalu dengan akun QC | Langkah sesuai sisi akun (langkah tanpa izin dilewati, bukan tampil sebagai teks); tur berhenti sebelum tombol simpan/kirim; di tab Network tidak ada permintaan tulis handover | 4.5, 4.1 |
+| G4 | Buka ikon info "Tempel dari WhatsApp" setelah tur selesai | Ikon tetap ada di tempatnya; demo bergerak berjalan, tombol jeda dan titik adegan bisa diketuk; titik penanda hilang setelah pernah dibuka | 4.6 |
+| G5 | Ikon info di perangkat tanpa gerakan (kurangi gerakan di OS) dan saat offline | Keterangan tampil sebagai daftar langkah bernomor; tidak ada galat di konsol | 4.6 |
+| G6 | Selesaikan tur dengan akun individu di peramban A, lalu login akun sama di peramban B | Panduan yang sudah selesai tidak ditawarkan lagi di peramban B; penanda dimuat dari server | 4.3 |
+| G7 | Selesaikan tur dengan akun bersama di peramban A, lalu login akun sama di peramban B | Panduan ditawarkan lagi di peramban B (disengaja); di peramban A tetap tidak ditawarkan | 4.3 |
+| G8 | Ulangi tur dari menu profil "Ulangi" pada panduan yang sudah selesai | Tur berjalan dari awal tanpa mengubah penanda selain yang ditulis saat tur selesai | 4.4 |
+| G9 | Ubah satu akun dari individu ke bersama lalu kembali ke individu di Pengaturan Akses | Setelah diubah ke bersama, panduan ditawarkan lagi di tiap perangkat; setelah kembali ke individu, ditawarkan sekali lagi bila belum pernah selesai di database | 4.3 Mengubah jenis akun |
+| G10 | Buka `/handover` pertama kali (panduan belum selesai) | Banner "Pertama kali di ...? Ada panduan N langkah." tampil dengan Mulai, Nanti, dan Sudah paham; N hanya menghitung langkah yang lolos izin akun | 4.4 Banner |
+| G11 | Tekan "Nanti" lalu buka tab baru aplikasi | Banner tidak tampil di sesi tab itu; di sesi tab baru banner muncul lagi selama panduan belum selesai | 4.4 Banner |
+| G12 | Tekan "Sudah paham" pada banner panduan `dasar` | Banner hilang dan tidak muncul lagi; panduan `baru` yang tercakup ikut tertutup; panduan tetap ada di menu profil "Panduan" | 4.4, 4.2 |
+| G13 | Lihat sidebar saat ada panduan belum selesai, lalu selesaikannya | Titik penanda pada item sidebar yang bersangkutan tampil, lalu hilang setelah panduan selesai | 4.4 Titik penanda |
+| G14 | Akun tanpa izin `handover` (mis. hanya `item: view`) | Panduan Serah Terima tidak ditawarkan di kartu, banner, atau menu; tidak ada titik penanda di menu Serah Terima | 4.2 |
+| G15 | Akun individu saat `guides.list` gagal (matikan jaringan lalu buka aplikasi) | Tidak ada penawaran panduan sama sekali (tidak menampilkan "semua belum selesai"); aplikasi tetap berfungsi | 4.3 Pemuatan |
+| G16 | Buka peramban yang belum memasang PWA di Android Chrome dan iOS Safari | Panduan "Pasang PWA" ditawarkan; setelah dipasang dan dibuka dari ikon, panduan itu tidak ditawarkan lagi, dan tidak tampil di menu "Panduan" | 4.3 Diturunkan, 4.4 Menu |
+| G17 | Login di aplikasi terpasang dengan izin notifikasi `default` (bersamaan dengan dialog pra-izin push) | Panduan push tidak muncul bersamaan dengan dialog pra-izin; penawarannya menunggu dialog itu selesai | 4.3 Diturunkan |
+| G22 | Buka Safari iOS di tab biasa (bukan aplikasi terpasang), atau server staging tanpa `VAPID_*`, lalu buka menu "Panduan" | Panduan "Aktifkan push" tidak ditawarkan dan tidak tampil di menu (keputusan 2026-11-14, butir A dan B); "Pasang PWA" hanya tampil bila pemasangan memang tersedia | 4.3 Diturunkan, 4.4 Menu |
+| G23 | Matikan kotak "Terima notifikasi push" di menu profil, lalu buka menu "Panduan" | Panduan "Aktifkan push" tidak tampil (`userEnabled` = `false`, butir A) | 4.3 Diturunkan |
+| G18 | Di ponsel (layar sempit), mulai tur yang menyorot menu sidebar | Sidebar terbuka lebih dulu bila perlu; kartu tur tidak menutupi item sidebar yang sedang disorot; langkah berikutnya tetap berjalan | 4.5, dan tes fokus kartu tur vs sidebar ponsel |
+| G19 | Di perangkat nyata (Android Chrome dan iOS Safari, aplikasi terpasang dan tab biasa): jalankan tur dengan sentuhan | Kartu tur dapat digeser/dibaca, tombol Lanjut dan Lewati dapat diketuk, tidak ada elemen yang tertutup keyboard; tur tidak macet saat pindah rute | 4.5 |
+| G20 | Tooltip dengan klip (bila sudah direkam) dibuka di jaringan lambat | Klip diunduh hanya saat tooltip dibuka (`preload="none"`); tanpa klip, tampil daftar langkah bernomor; tidak ada klip yang dipra-cache oleh service worker | 4.6, 9 |
+| G24 | Buka ikon info "Tempel dari WhatsApp" (tooltip, lalu juga dari langkah tur Serah Terima), terang dan gelap, layar sempit 375 px | Demo berurutan: chat WhatsApp tiruan (bilah atas hijau, latar chat, bubble putih berekor dengan nama pengirim dan jam, tanpa bracket mentah) -> tekan lama satu bubble (bilah pilihan "1", bubble tersorot biru muda) -> ketuk pesan lain (angka bertambah) -> ikon salin dan toast "Disalin" -> kotak tempel -> Pecah -> kartu task; terbaca di terang dan gelap; tanpa scroll horizontal; tanpa logo WhatsApp | 4.6, butir E 2026-11-14 |
+| G25 | Sebagai akun WH/QC dengan papan Serah Terima KOSONG (tanpa task), jalankan tur Serah Terima dan buka ikon info demo checklist dan komentar | Langkah checklist dan komentar tetap terjelaskan lewat demo kartu task berlencana "Contoh" (kartu asli: centang, nama dan waktu pencentang, status Baru -> Dikerjakan -> Selesai; teks terpilih, tombol Balas, komposer, komentar dengan kutipan); tidak ada task, komentar, atau penyimpanan yang dibuat (tab Network kosong untuk rute tulis); kartu contoh tidak pernah disorot tur | 4.6, butir F 2026-11-14 |
+| G26 | Jalankan tur "Dasar layout" (desktop dan ponsel) dan panduan perangkat "Pasang aplikasi" / "Aktifkan push" | Tiap menu (lokasi, lonceng, tema, profil) terbuka SENDIRI saat langkahnya aktif dan isinya disorot (daftar lokasi, daftar kabar, pilihan tema, nama + email dan butir profil; butir "Pasang aplikasi" dan "Notifikasi push" disorot satu per satu); kartu tur tetap dapat diklik (Lanjut/Tutup) dan menu tidak menutup sendiri; kartu tidak menutupi menu yang disorot; Esc dan Tutup menutup tur DAN menu; di ponsel tak ada sidebar/menu yang tertinggal terbuka; menu yang sudah dibuka sendiri sebelum tur tetap terbuka sesudahnya; tidak ada butir menu yang terjalankan oleh tur (tema tak berubah, dialog push tak terbuka) | 4.5, butir G 2026-11-14 |
+| G27 | Sebagai akun WH/QC dengan papan Serah Terima KOSONG, jalankan tur Serah Terima sampai selesai | Langkah checklist, komentar, dan centang QC tampil sebagai kartu di tengah layar tanpa sorotan dengan teks "Papan masih kosong, ..." dan demo langsung terputar (bukan dilewati diam-diam); "Langkah x dari N" tidak melompat; penanda panduan ditulis saat Selesai; dengan papan berisi, langkah yang sama menyorot kartu asli | 4.5, butir H 2026-11-14 |
+| G21 | Pengguna tanpa izin apa pun pada modul panduan yang dimaksud membuka rute tujuan tur langsung | Tur tidak memunculkan target yang tak berhak; langkah dilewati atau jatuh ke penjelasan teks; tidak macet | 4.5 |
+| G28 | Sebagai akun `qrcode: edit`, buka `/qrcode`, mulai panduan "Membuat QR Code Manual Book", lanjut sampai langkah "Mulai dari item" (jangan pilih apa pun) | Halaman tidak digelapkan, tombol Lanjut nonaktif dengan petunjuk "Kerjakan dulu bagian yang disorot", kartu parkir di pojok kanan bawah (di ponsel menempel di dasar) dan tidak menutup kolom pencarian maupun daftar saran yang dibuka | 4.5 langkah `wait`, butir K 2026-11-15 |
+| G29 | Lanjutan G28: pilih satu item sendiri (satu BU = konfigurasi default otomatis; beda BU atau BU tanpa default = pilih sendiri), lalu tekan Lanjut sampai langkah terakhir dan Selesai | Lanjut aktif begitu bagian form berikutnya muncul (dan nonaktif lagi bila item dikeluarkan); 13 langkah menyorot form NYATA (nama, sumber link, isi label, logo, bingkai, ukuran, pratinjau, tombol simpan); isian form tidak berubah, tidak ada yang tersimpan atau terekspor; penanda `qrcode-dasar` ditulis saat Selesai | 4.5, butir K |
+| G31 | Sebagai akun WH dengan izin tulis, jalankan tur Serah Terima sampai langkah terakhir di `/handover/new` (dengan kartu kosong, lalu ulangi setelah menempel dan menekan Pecah) | Setelah panel tempel ada 7 langkah (lokasi, kartu task, customer, catatan, Gandakan/Hapus, Tambah task, Simpan semua) yang menyorot kartu pertama (kosong atau hasil Pecah); kartu tidak menutup sorotan; tur berhenti di tombol Simpan semua dan tidak ada task tersimpan; "Langkah x dari 14" | butir L 2026-11-16 |
+| G30 | Sebagai akun `qrcode: view` saja, mulai panduan yang sama | Hanya 2 langkah (kepala halaman dan daftar) karena langkah pembuatan butuh `qrcode: edit`; tanpa tombol "Buat konfigurasi" tur tidak macet | 4.5 izin per langkah |
+
+## PWA Fase 2
+
+> **BELUM TERUJI di perangkat nyata (Android, iOS, desktop); wajib dijalankan di staging sebelum rilis.**
+
+| # | Langkah | Hasil yang diharapkan | PRD |
+|---|---|---|---|
+| 183 | Matikan jaringan (mode pesawat), lalu buka aplikasi terpasang dari ikon | Layar "Tidak ada koneksi" dengan tombol "Coba lagi", bukan halaman login; setelah jaringan kembali, "Coba lagi" memuat aplikasi dalam keadaan login | PWA FR-P7, FR-P15 |
+| 184 | Saat sudah login dan beranda terbuka, matikan jaringan, lalu pindah ke halaman yang memuat data tersimpan (mis. Merk) | Spanduk "Server sedang tidak tersedia — menampilkan data terakhir (hh:mm)" tampil dengan jam data; halaman lain tanpa data tersimpan menampilkan galat biasa dengan "Coba lagi" | PWA FR-P16 |
+| 185 | Nyalakan jaringan lagi dan tunggu atau buka halaman lain | Spanduk hilang sendiri setelah permintaan berikutnya berhasil | PWA FR-P16 |
+| 186 | Buka detail task, matikan jaringan, lalu centang satu butir (dan klik butir yang sama lagi) | Centang tampak tersimpan dengan penanda "Belum terkirim"; satu toast info (tidak menumpuk); tidak ada toast galat | PWA FR-P17 |
+| 187 | Nyalakan jaringan lagi (tanpa memuat ulang halaman) | Centang tertunda terkirim sendiri, penanda hilang; centang tampil dengan nama dan waktu dari server; riwayat audit mencatat satu centang per butir | PWA FR-P17 |
+| 188 | Centang saat offline, tutup aplikasi, buka lagi saat online | Centang tertunda terkirim saat aplikasi dibuka; tidak ada yang hilang atau terkirim ganda | PWA FR-P17 |
+| 189 | Centang saat offline, lalu minta orang lain menyelesaikan atau membatalkan task itu sebelum Anda online | Saat online muncul "N perubahan centang tidak dapat dikirim" beserta alasannya; entri dibuang dan tidak diulang | PWA FR-P18 |
+| 190 | Ubah jam perangkat maju lebih dari 24 jam setelah mengantre centang offline, lalu online | Entri dibuang dengan pemberitahuan kedaluwarsa; tidak terkirim | PWA FR-P19 |
+| 191 | Centang saat offline, lalu Keluar; login sebagai pengguna lain di perangkat yang sama dan online | Antrean pemilik pertama tidak pernah terkirim; DevTools → Application → Local Storage tidak menyisakan kunci `qc.outbox:*` | PWA FR-P14, FR-P19 |
+| 192 | Saat offline, coba aksi lain (simpan item, ganti nama merk; komentar dan task baru kini diantrekan, lihat #208) | Galat biasa; tidak diantrekan; dapat diulang manual setelah online | PWA FR-P17 |
+
+## PWA Fase 3, Tahap A
+
+> **BELUM TERUJI di perangkat nyata; wajib dijalankan di staging sebelum rilis.**
+
+| # | Langkah | Hasil yang diharapkan | PRD |
+|---|---|---|---|
+| 193 | Saat offline, centang beberapa butir di dua task | Chip di header menampilkan "N belum terkirim"; butir yang diantrekan bertanda "Belum terkirim" | PWA FR-P20 |
+| 194 | Nyalakan jaringan lagi | Chip menjadi "Mengirim X dari N…" lalu hilang setelah semua terkirim; penanda butir hilang | PWA FR-P20 |
+| 195 | Online dengan jaringan lambat (throttling); centang satu butir | Penanda "Mengirim…" tampil lalu hilang saat server menjawab | PWA FR-P20 |
+| 196 | Dengan antrean tersisa, pilih Keluar | Dialog "Keluar sekarang?" menyebut jumlah; Batal tidak membuang apa pun; Tetap keluar membuang antrean; angka di dialog mengikuti antrean selagi dialog terbuka, dan bila semua sudah terkirim teksnya menjadi "Semua perubahan sudah terkirim. Aman untuk keluar." | PWA FR-P20 |
+| 197 | Offline dengan antrean tersisa, tutup lalu buka aplikasi | Layar "Tidak ada koneksi" menyebut "N perubahan menunggu dikirim. Hubungkan ke jaringan, lalu coba lagi agar terkirim."; entri yang sudah lewat 24 jam tidak dihitung | PWA FR-P20 |
+| 198 | Buka di ponsel sempit (375 px) saat ada antrean | Chip hanya ikon dan angka; header tidak meluap; ketuk chip membuka daftar singkat (jenis, nomor task atau "Task lain", jam) | PWA FR-P20 |
+
+## PWA Fase 3, Tahap B
+
+> **BELUM TERUJI di perangkat nyata; wajib dijalankan di staging sebelum rilis.**
+
+| # | Langkah | Hasil yang diharapkan | PRD |
+|---|---|---|---|
+| 199 | Buka papan saat online, lalu matikan jaringan dan buka papan lagi | Spanduk "data terakhir hh:mm" tampil; papan tetap terbaca; "muat lagi" pada kolom yang dipotong tetap bekerja saat online | PWA FR-P21 |
+| 200 | Saat offline, buka kartu yang belum pernah dibuka pada sesi ini | Detail terbuka dari data papan | PWA FR-P21 |
+| 201 | Tutup aplikasi, lalu buka lagi dengan jaringan hidup | Papan tampil instan dari data tersimpan, lalu diganti data server | PWA FR-P21 |
+| 202 | Boot dingin tanpa sinyal (aplikasi ditutup sebelumnya, jaringan mati) | Tetap layar "Tidak ada koneksi"; papan tersimpan tidak ditampilkan | PWA FR-P21 |
+| 203 | Ganti akun Google di perangkat yang sama | Data papan akun lama tidak terlihat | PWA FR-P21 |
+| 204 | Keluar, lalu buka DevTools → Application → IndexedDB `qc-device` | Basis data kosong (tanpa rekaman) | PWA FR-P21 |
+| 205 | Sesi kedaluwarsa (401), lalu login ulang pemilik yang sama | Papan lama masih tersedia sebagai data awal sebelum data server datang | PWA FR-P21 |
+| 206 | Buka detail task dari lokasi A, ganti lokasi aktif ke B, lalu buka tautan detail task milik lokasi A | Tampil "Task tidak ditemukan di lokasi aktif."; data task tidak tampil. Skenario ini berlaku daring; saat luring dan task tidak ada di data papan, tampil "Gagal memuat task" (bukan data lain) | PWA FR-P21 |
+| 207 | Pada peramban yang IndexedDB-nya macet atau diblokir (mis. mode privat tertentu), tekan Keluar | Aplikasi keluar ke halaman login dalam beberapa detik; tidak menggantung. Bila IndexedDB benar-benar macet (tak pernah menjawab), pembersihan dilepas setelah 1,5 dtk: isi toko tidak terhapus saat itu, dan tidak ada data pengguna lama yang tampil bagi pengguna berikutnya (rekaman dibuang pada boot pemilik lain atau Keluar berikutnya yang berhasil) | PWA FR-P21 |
+
+## PWA Fase 3, Tahap C
+
+> **BELUM TERUJI di perangkat nyata; wajib dijalankan di staging sebelum rilis.**
+
+| # | Langkah | Hasil yang diharapkan | PRD |
+|---|---|---|---|
+| 208 | Saat online, buka task, matikan jaringan, tulis komentar, lalu tekan kirim | Komposer langsung kosong; komentar tampil di akhir daftar dengan "Belum terkirim" | PWA FR-P22 |
+| 209 | Dengan jaringan mati, buat task baru (batch dua baris) lalu simpan | Kartu sementara di kolom Baru dengan nomor "—" dan "Belum terkirim"; kartu tidak dapat dibuka | PWA FR-P22 |
+| 210 | Nyalakan jaringan | Penanda hilang; komentar dan task tampil sebagai data server; tidak ada duplikat | PWA FR-P22 |
+| 211 | Kiriman pertama sampai di server, tetapi respons terputus (mis. jaringan putus tepat setelah kirim, lalu pulih) | Entri tetap "Belum terkirim" lalu terkirim ulang tanpa komentar atau task ganda (periksa daftar komentar dan nomor ST) | PWA FR-P22; Review Focus 1 |
+| 212 | Dengan komentar masih antre, tutup aplikasi lalu buka lagi saat online | Komentar tetap antre dan terkirim setelah boot; tidak hilang | PWA FR-P22 |
+| 213 | Offline dengan komentar dan task baru antre, pilih Keluar | Dialog "Keluar sekarang?" menghitung komentar dan task baru; Batal tidak membuang apa pun; Tetap keluar membuang seluruh antrean | PWA FR-P20, FR-P22 |
+| 214 | Dua tab akun sama, offline; di tab A tulis komentar, lalu nyalakan jaringan | Penanda dan hitungan sama di kedua tab; komentar terkirim sekali, bukan dua | PWA FR-P22 |
+| 215 | Dua tab; di tab A pilih Keluar saat ada antrean | Tab B ikut keluar (siaran `qc-session`): salinan antrean dibuang dan tab B tidak menulis ulang setelahnya | PWA FR-P14, FR-P22 |
+| 216 | Ganti akun Google di perangkat yang sama saat antrean komentar akun pertama masih ada | Antrean akun pertama tidak terlihat dan tidak terkirim dengan akun kedua | PWA FR-P19, FR-P22 |
+| 217 | Kirim komentar offline ke task yang sementara dibatalkan pelaku lain, lalu online | Entri dibuang dengan toast yang bertahan (alasan dari server, mis. "Task sudah dibatalkan"); tombol "Salin teks" menyalin isi komentar; toast tidak hilang sendiri | PWA FR-P18, FR-P22 |
+| 218 | Offline, buka formulir task baru saat daftar customer belum pernah dimuat | Formulir tetap tampil dengan customer diketik bebas; galat "Gagal memuat daftar customer" hanya tampil bila bukan `UNAVAILABLE` | PWA FR-P22 |
+| 219 | Buka komentar dan task baru tertunda di ponsel sempit (375 px) | Tidak ada gulir horizontal; kartu dan toast terbaca; tombol "Salin teks" dapat ditekan | PWA FR-P22, NFR-P5 |
+| 220 | Task baru ditolak atau kedaluwarsa (mis. customer dinonaktifkan sebelum kirim ulang), lalu tekan "Salin teks" dan tempel ke catatan | Teks memuat tiap task sebagai "Customer: <nama>", baris kosong, lalu catatan; task tanpa nama customer hanya catatan; antar task dipisah baris kosong | PWA FR-P22 |
+| 221 | Dua tab, akun sama, tab A tanpa antrean; di tab A pilih Keluar, lalu login ulang akun yang sama; kembali ke tab B (tertahan) dan fokuskan | Tab B memuat ulang sekali; antrean akun itu terkirim; masukan formulir yang belum disimpan di tab B hilang | PWA FR-P14, FR-P22 |
+| 222 | Tab tertahan (siaran keluar dari tab lain), server dimatikan, lalu fokuskan tab | Tab tetap tertahan dan tidak memuat ulang; saat server menyala lagi, fokus berikutnya memuat ulang sekali | PWA FR-P14 |
+| 223 | Tab tertahan di latar belakang (tersembunyi) selama beberapa menit; pantau DevTools → Network | Tidak ada permintaan ke `/api/v1/me` selama tab tersembunyi | PWA FR-P14 |
+| 224 | Tab tertahan; di tab lain keluar lalu login dengan akun LAIN; fokuskan tab tertahan | Tab memuat ulang sekali sebagai login biasa; antrean akun lama tidak terlihat dan dibuang | PWA FR-P14, FR-P19 |
+
+## PWA Fase 3, Tahap D
+
+> **BELUM TERUJI di perangkat nyata; wajib dijalankan di staging sebelum rilis.** Skenario Background Sync (#225-#230, #232) dijalankan di Chrome/Edge Android dan desktop. Pengiriman dari latar belakang dapat ditunda peramban; penundaan beberapa menit bukan galat, cukup dicatat waktunya.
+
+| # | Langkah | Hasil yang diharapkan | PRD |
+|---|---|---|---|
+| 225 | Online, buka Serah Terima, matikan sinyal; centang, tulis komentar, dan buat task baru; tutup aplikasi sepenuhnya; nyalakan sinyal dan jangan membuka aplikasi | Entri terkirim dari latar belakang; saat aplikasi dibuka, data server tampil tanpa "Belum terkirim" dan tanpa duplikat | PWA FR-P23 |
+| 226 | Seperti #225, tetapi kunci layar ponsel setelah entri antre, nyalakan sinyal, lalu tunggu beberapa menit tanpa membuka aplikasi | Entri terkirim saat ponsel terkunci (atau tertunda peramban, tercatat); tidak ada duplikat setelah aplikasi dibuka | PWA FR-P23 |
+| 227 | Saat sinyal ada dan antrean berisi banyak entri, buka aplikasi lalu tutup atau putus jaringan di tengah pengiriman; buka lagi dengan sinyal | Sisa entri terkirim; tidak ada entri yang hilang atau terkirim dua kali (periksa daftar komentar dan nomor ST) | PWA FR-P23, FR-P17 |
+| 228 | Akun A antre (offline), tutup aplikasi, login akun B di perangkat yang sama, lalu nyalakan sinyal | Entri akun A tidak terkirim atas nama akun B (periksa server: tak ada centang, komentar, atau task baru dari entri itu); antrean akun A dibuang | PWA FR-P23, FR-P19 |
+| 229 | Offline dengan antrean, pilih Keluar lalu Tetap keluar; nyalakan sinyal dan tunggu | Tidak ada entri yang terkirim setelah keluar (periksa server) | PWA FR-P23, FR-P14 |
+| 230 | Antre komentar dan centang pada task yang nanti dibatalkan pelaku lain; tutup aplikasi; nyalakan sinyal; tunggu; buka aplikasi | Toast beralasan muncul tepat sekali (muat ulang dua kali tidak mengulang toast); komentar memakai toast bertahan dengan "Salin teks"; centang memakai toast "N perubahan centang tidak dapat dikirim: <alasan>" | PWA FR-P23, FR-P18, FR-P22 |
+| 231 | Firefox (desktop) atau Safari (iOS), tanpa `SyncManager`: offline, antre, tutup aplikasi, nyalakan sinyal, lalu buka aplikasi | Entri terkirim saat aplikasi dibuka; tidak ada galat terkait sync di konsol | PWA FR-P23, FR-P17 |
+| 232 | Dua tab akun sama terbuka, antrean berisi komentar dan task baru, nyalakan sinyal, dan biarkan Background Sync dan penguras halaman berjalan bersamaan | Setiap entri terkirim sekali; tidak ada komentar atau task ganda; kedua tab menampilkan data yang sama tanpa penanda tertinggal | PWA FR-P23, FR-P22 |

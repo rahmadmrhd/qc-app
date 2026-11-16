@@ -126,6 +126,7 @@ export function HandoverBatchForm({
   return (
     <form
       noValidate
+      data-tour="handover-batch-form"
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
@@ -138,8 +139,9 @@ export function HandoverBatchForm({
         submitting={submitting}
         submitLabel={`Simpan semua (${cards.length})`}
         busyText="Menyimpan semua task…"
+        data-tour="handover-save"
       />
-      <section className="space-y-1.5 rounded-lg border p-4">
+      <section data-tour="handover-location" className="space-y-1.5 rounded-lg border p-4">
         <LocationField
           id={`${baseId}-location`}
           module="handover"
@@ -158,12 +160,13 @@ export function HandoverBatchForm({
           return (
             <fieldset
               key={card.key}
+              data-tour="handover-task-card"
               aria-label={`Task ${index + 1}`}
               className={`space-y-3 rounded-lg border p-4 ${error ? 'border-destructive' : ''}`}
             >
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-base font-semibold">{`Task ${index + 1}`}</h2>
-                <div className="flex gap-1">
+                <div data-tour="handover-card-actions" className="flex gap-1">
                   <Button
                     type="button"
                     size="sm"
@@ -192,14 +195,16 @@ export function HandoverBatchForm({
                   </Button>
                 </div>
               </div>
-              <CustomerCombobox
-                id={`${baseId}-customer-${card.key}`}
-                value={card.customerName}
-                onChange={(customerName) => patch(card.key, { customerName })}
-                customers={options.customers}
-                inactiveNames={options.inactiveCustomerNames}
-              />
-              <div className="space-y-1.5">
+              <div data-tour="handover-customer">
+                <CustomerCombobox
+                  id={`${baseId}-customer-${card.key}`}
+                  value={card.customerName}
+                  onChange={(customerName) => patch(card.key, { customerName })}
+                  customers={options.customers}
+                  inactiveNames={options.inactiveCustomerNames}
+                />
+              </div>
+              <div data-tour="handover-note" className="space-y-1.5">
                 <span id={`${baseId}-note-${card.key}`} className="text-sm font-medium">
                   {`Catatan task ${index + 1}`}
                 </span>
@@ -223,6 +228,7 @@ export function HandoverBatchForm({
       <Button
         type="button"
         variant="outline"
+        data-tour="handover-add-task"
         disabled={full}
         onClick={() => setCards((current) => [...current, newCard()])}
       >

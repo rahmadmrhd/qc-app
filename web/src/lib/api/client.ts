@@ -28,7 +28,17 @@ export interface ApiClientOptions {
   fetchImpl?: typeof fetch;
 }
 
-export type ApiCall = <M extends ApiId>(id: M, input: ApiInput<M>) => Promise<ApiOutput<M>>;
+/** Opsi per panggilan (hanya untuk jalur yang membutuhkan; panggilan biasa tak memakainya). */
+export interface ApiCallOptions {
+  /** Pembatal permintaan (mis. batas waktu pengurasan antrean). Abort dipetakan ke `UNAVAILABLE` seperti galat jaringan. */
+  signal?: AbortSignal;
+}
+
+export type ApiCall = <M extends ApiId>(
+  id: M,
+  input: ApiInput<M>,
+  options?: ApiCallOptions,
+) => Promise<ApiOutput<M>>;
 
 interface ProblemShape {
   code: ErrorCode;
@@ -60,7 +70,12 @@ function errorFromResponse(status: number, text: string): ApiError {
     const code: ErrorCode = status === 412 ? 'CONFLICT' : body.code;
     return new ApiError(
       code,
-      body.detail ?? body.title ?? 'Terjadi kesalahan pada server',
+      // Hanya teks yang dipakai: `detail`/`title` non-string (proksi atau galat salah bentuk) jatuh ke berikutnya.
+      typeof body.detail === 'string'
+        ? body.detail
+        : typeof body.title === 'string'
+          ? body.title
+          : 'Terjadi kesalahan pada server',
       typeof body.requestId === 'string' ? body.requestId : '-',
       body.fields,
       { status },
@@ -123,11 +138,15 @@ function bodyOf(parts: RequestParts): string | Blob | FormData | undefined {
 export function createApiClient(options: ApiClientOptions = {}): ApiCall {
   const baseUrl = (options.baseUrl ?? '').replace(/\/$/, '');
   // Permintaan tulis menandai registri "sibuk" selama berjalan: muat ulang otomatis (PWA) tidak boleh memotongnya.
-  async function call<M extends ApiId>(id: M, input: ApiInput<M>): Promise<ApiOutput<M>> {
+  async function call<M extends ApiId>(
+    id: M,
+    input: ApiInput<M>,
+    callOptions?: ApiCallOptions,
+  ): Promise<ApiOutput<M>> {
     const parts = toRequestParts(id, input);
     const end = parts.verb === 'GET' ? undefined : beginBusy();
     try {
-      return await perform(id, input, parts);
+      return await perform(id, input, parts, callOptions);
     } finally {
       end?.();
     }
@@ -136,6 +155,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiCall {
     id: M,
     input: ApiInput<M>,
     parts: RequestParts,
+    callOptions?: ApiCallOptions,
   ): Promise<ApiOutput<M>> {
     const isDownload = API_ROUTES[id].download !== undefined;
     const doFetch = options.fetchImpl ?? fetch;
@@ -151,20 +171,14 @@ export function createApiClient(options: ApiClientOptions = {}): ApiCall {
         ...(isDownload ? {} : { cache: 'no-store' as const }),
         headers: headersOf(parts.verb, parts, isDownload),
         body: bodyOf(parts),
+        ...(callOptions?.signal ? { signal: callOptions.signal } : {}),
       });
       // Unduhan sukses = byte mentah; selain itu teks (JSON atau problem+json).
       if (isDownload && response.ok) bytes = new Uint8Array(await response.arrayBuffer());
       else text = await response.text();
     } catch (error) {
-      throw new ApiError(
-        'INTERNAL',
-        'Tidak dapat menghubungi server. Periksa koneksi Anda.',
-        '-',
-        undefined,
-        {
-          cause: error,
-        },
-      );
+      // Offline, DNS gagal, atau badan terputus: server tidak terjangkau (FR-P15); UI menampilkan data terakhir/antrean.
+      throw new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-', undefined, { cause: error });
     }
     if (!response.ok) throw errorFromResponse(response.status, text);
     if (bytes !== undefined) return downloadOutput(id, input, response.headers, bytes);

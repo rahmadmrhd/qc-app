@@ -8,8 +8,10 @@ import { MAX_REQUEST_BODY_BYTES } from '@server/http/body';
 import { clientIp } from '@server/http/proxy';
 import { startJobRunner, startNotificationLoop, startScheduler } from '@server/jobs/runner';
 import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backup/dump';
+import { closeAllNotificationStreams } from '@server/modules/notification/stream-hub';
 import { createWebPushSender } from '@server/modules/notification/web-push';
 import { backfillPostelStickers } from '@server/modules/postel/stickers';
+import { createProofStore } from '@server/modules/serial/proof/store';
 
 export interface ServerOptions {
   /** Hanya tes: pakai `Db` yang sudah ada (tidak ditutup oleh `stop`) alih-alih membuat pool dari `databaseUrl`. */
@@ -65,6 +67,8 @@ export function envFromConfig(config: Config, db: Db): Env {
       config.googleSaKeyFile !== '' &&
       config.googleRootFolderId !== '',
     BACKUP_LOCAL_DIR: config.backupLocalDir,
+    PROOF_STORE: createProofStore(config.proofStagingDir),
+    PROOF_STAGING_MAX_BYTES: config.proofStagingMaxBytes,
     BACKUP_DUMP: (outputPath) =>
       createMariadbDumpRunner(parseDatabaseUrl(config.databaseUrl))(outputPath),
     ...(config.smtp === null ? {} : { MAILER: createSmtpMailer(config.smtp) }),
@@ -121,6 +125,8 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
       }),
     async stop() {
       await ready.catch(() => {}); // runner dimulai (atau tidak) sebelum dihentikan
+      // Aliran SSE desktop ditutup dulu: koneksi berumur panjang tak boleh menahan shutdown (klien menyambung ulang).
+      closeAllNotificationStreams();
       await Promise.all(stops.map((stop) => stop()));
       if (ownsDb) await db.close();
     },

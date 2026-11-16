@@ -1,6 +1,13 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { addSerials, type Defaults, type StagingRow } from './draft';
-import { clearAllDrafts, clearDraft, loadDraft, resumeDraftWrites, saveDraft } from './draft-store';
+import {
+  clearAllDrafts,
+  clearDraft,
+  loadDraft,
+  NOT_GOOD_MESSAGE,
+  resumeDraftWrites,
+  saveDraft,
+} from './draft-store';
 
 const defaults: Defaults = {
   itemId: 'i1',
@@ -123,4 +130,68 @@ test('setelah clearAllDrafts penulisan draf ditahan sampai resumeDraftWrites', (
   resumeDraftWrites();
   expect(saveDraft('a@x.com', data)).toBe(true);
   expect(loadDraft('a@x.com')).toEqual(data);
+});
+
+test('draf lama tanpa status dipulihkan; baris berstatus selain Lolos (draf 5b) menjadi baris bermasalah, tidak dibuang', () => {
+  const [first, second] = rows(2) as [StagingRow, StagingRow];
+  const problem = (row: StagingRow): StagingRow => ({
+    ...row,
+    result: 'invalid',
+    message: NOT_GOOD_MESSAGE,
+  });
+  localStorage.setItem(
+    'qc.serial.draft:a@x.com',
+    JSON.stringify([first, { ...second, status: 'failed', damage: 'Port mati' }]),
+  );
+  expect(loadDraft('a@x.com')).toEqual([first, problem(second)]);
+  localStorage.setItem(
+    'qc.serial.draft:a@x.com',
+    JSON.stringify([
+      { ...first, status: 'good' },
+      { ...second, status: 'broken', result: 'duplicate', message: 'x' },
+    ]),
+  );
+  expect(loadDraft('a@x.com')).toEqual([first, problem(second)]);
+  expect(NOT_GOOD_MESSAGE).toContain('Lapor Rusak');
+});
+
+test('foto bukti: bolak-balik simpan-muat, draf lama tanpa field = tanpa foto, entri rusak dibuang', () => {
+  const [row] = rows(1);
+  if (!row) throw new Error('seed');
+  const photo = { id: 'p1', mime: 'image/webp', size: 100, thumbUrl: '/api/v1/serial-proofs/p1' };
+  saveDraft('a@x.com', [{ ...row, proofPhotos: [photo] }]);
+  expect(loadDraft('a@x.com')[0]?.proofPhotos).toEqual([photo]);
+
+  // Draf lama (sebelum fitur ini): kunci proofPhotos tidak ada.
+  const { proofPhotos: _drop, ...legacy } = row;
+  localStorage.setItem('qc.serial.draft:a@x.com', JSON.stringify([legacy]));
+  expect(loadDraft('a@x.com')[0]?.proofPhotos).toEqual([]);
+
+  // Entri rusak dibuang satu per satu; maksimal 5 foto yang dipulihkan.
+  const many = Array.from({ length: 8 }, (_, index) => ({ ...photo, id: `p${index}` }));
+  localStorage.setItem(
+    'qc.serial.draft:a@x.com',
+    JSON.stringify([
+      {
+        ...row,
+        proofPhotos: [
+          { id: 5 },
+          null,
+          'x',
+          { ...photo, size: 'besar' },
+          { ...photo, thumbUrl: 7 },
+          ...many,
+        ],
+      },
+    ]),
+  );
+  expect(loadDraft('a@x.com')[0]?.proofPhotos.map((entry) => entry.id)).toEqual([
+    'p0',
+    'p1',
+    'p2',
+    'p3',
+    'p4',
+  ]);
+  localStorage.setItem('qc.serial.draft:a@x.com', JSON.stringify([{ ...row, proofPhotos: 'x' }]));
+  expect(loadDraft('a@x.com')[0]?.proofPhotos).toEqual([]);
 });

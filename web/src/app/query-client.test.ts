@@ -1,6 +1,23 @@
 import { expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
-import { handleGlobalError, shouldRetry } from './query-client';
+import {
+  DEFAULT_REFETCH_INTERVAL_MS,
+  defaultQueryOptions,
+  handleGlobalError,
+  queryClient,
+  reportUnauthenticated,
+  setUnauthenticatedHandler,
+  shouldRetry,
+} from './query-client';
+
+test('query aktif dimuat ulang tiap beberapa detik, hanya saat tab terlihat', () => {
+  expect(defaultQueryOptions.refetchInterval).toBe(DEFAULT_REFETCH_INTERVAL_MS);
+  expect(defaultQueryOptions.refetchIntervalInBackground).toBe(false);
+  expect(defaultQueryOptions.refetchOnWindowFocus).toBe(true);
+  const queries = queryClient.getDefaultOptions().queries;
+  expect(queries?.refetchInterval).toBe(DEFAULT_REFETCH_INTERVAL_MS);
+  expect(queries?.refetchIntervalInBackground).toBe(false);
+});
 
 test('hanya error INTERNAL yang di-retry, maksimal sekali', () => {
   expect(shouldRetry(0, new ApiError('INTERNAL', 'x', '-'))).toBe(true);
@@ -19,4 +36,12 @@ test('UNAUTHENTICATED memicu logout global, FORBIDDEN menampilkan notifikasi', (
   handleGlobalError(new Error('lain'), deps);
   expect(deps.onUnauthenticated).toHaveBeenCalledOnce();
   expect(deps.notify).toHaveBeenCalledOnce();
+});
+
+test('reportUnauthenticated memanggil penangan 401 yang terpasang', () => {
+  const handler = vi.fn();
+  setUnauthenticatedHandler(handler);
+  reportUnauthenticated();
+  expect(handler).toHaveBeenCalledOnce();
+  setUnauthenticatedHandler(() => undefined);
 });

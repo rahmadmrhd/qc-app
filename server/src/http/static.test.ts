@@ -95,6 +95,15 @@ describe('jalur dinamis dan rute klien', () => {
     expect(serveStatic(dir, 'GET', '/sync')).toBeNull();
   });
 
+  test('/laporan/<token> (token bertitik) dijawab index.html; berkas tak ada lain tetap 404', async () => {
+    const response = serve('/laporan/v1.c1.1799999999.sig_abc-123');
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('<title>QC</title>');
+    expect(serve('/assets/x.js').status).toBe(404);
+    expect(serve('/foo/bar.png').status).toBe(404);
+    expect(serve('/laporanx/a.b').status).toBe(404);
+  });
+
   test('rute klien (/handover) dijawab index.html dengan no-cache', async () => {
     const response = serve('/handover');
     expect(response.status).toBe(200);

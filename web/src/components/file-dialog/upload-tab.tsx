@@ -1,4 +1,4 @@
-import { CircleAlert, CircleCheck, RotateCcw, Trash2, Upload, X } from 'lucide-react';
+import { Camera, CircleAlert, CircleCheck, RotateCcw, Trash2, Upload, X } from 'lucide-react';
 import { useRef } from 'react';
 import { Spinner } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,17 @@ export interface UploadTabProps {
   /** Panjang maksimum nama entri (karakter). */
   nameMax?: number;
   disabled?: boolean;
+  /** Nama berkas tidak dapat diubah (mis. sumber yang membuat nama sendiri): hanya nama berkas asli yang tampil. */
+  hideNames?: boolean;
+  /**
+   * Tombol "Ambil foto dengan kamera" yang membuka aplikasi kamera bawaan perangkat (`capture`); hasilnya diproses sama
+   * dengan berkas yang ditelusuri. Tanpa nilai ini tombolnya tidak dirender (mis. perangkat desktop).
+   */
+  capture?: 'environment' | 'user' | undefined;
+  /** Berkas yang sudah ada di luar antrean (mis. foto yang sudah menempel pada baris): ikut dihitung di "n dari m". */
+  countOffset?: number | undefined;
+  /** Mode satu berkas: foto baru menggantikan yang ada (tombol kamera tidak berhitung). */
+  single?: boolean | undefined;
   /** Pengganti penambahan langsung ke antrean (mis. aturan mode satu berkas di dialog); bawaan: tambah ke antrean. */
   onFiles?(files: File[], rejected: { name: string; reason: string }[]): void;
 }
@@ -29,10 +40,20 @@ export function UploadTab({
   maxFiles,
   nameMax,
   disabled,
+  hideNames,
+  capture,
+  countOffset = 0,
+  single = false,
   onFiles,
 }: UploadTabProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const captureRef = useRef<HTMLInputElement>(null);
   const { entries, rejected } = queue;
+  // Kamera native = satu jepretan per ketukan (`multiple` tidak konsisten antar peramban): sesudah foto pertama tombolnya
+  // menjadi "Ambil foto lagi" dengan hitungan sampai batas. Mode satu berkas (maxFiles 1) mengganti fotonya.
+  const shot = countOffset + entries.length;
+  const shotMax = maxFiles === undefined ? undefined : countOffset + maxFiles;
+  const captureFull = !single && shotMax !== undefined && shot >= shotMax;
   const handleFiles =
     onFiles ??
     ((files: File[], refused: { name: string; reason: string }[]) => {
@@ -57,6 +78,37 @@ export function UploadTab({
         >
           Telusuri
         </Button>
+        {capture ? (
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={disabled || captureFull}
+              onClick={() => captureRef.current?.click()}
+            >
+              <Camera aria-hidden />
+              {single || entries.length === 0
+                ? 'Ambil foto dengan kamera'
+                : `Ambil foto lagi (${shot} dari ${shotMax ?? shot})`}
+            </Button>
+            <input
+              ref={captureRef}
+              type="file"
+              hidden
+              accept="image/*"
+              capture={capture}
+              data-testid="capture-input"
+              onChange={(event) => {
+                const files = Array.from(event.target.files ?? []);
+                event.target.value = '';
+                if (files.length > 0) {
+                  const split = partitionByType(files, accept);
+                  handleFiles(split.files, split.rejected);
+                }
+              }}
+            />
+          </>
+        ) : null}
         <input
           ref={inputRef}
           type="file"
@@ -118,14 +170,22 @@ export function UploadTab({
                 className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm"
               >
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <InlineName
-                    value={entry.name}
-                    maxLength={nameMax}
-                    readOnly={busy || entry.status === 'done' || disabled}
-                    onSave={(name) => queue.rename(entry.key, name)}
-                  />
+                  {hideNames ? (
+                    <span className="truncate" title={entry.file.name}>
+                      {entry.file.name}
+                    </span>
+                  ) : (
+                    <InlineName
+                      value={entry.name}
+                      maxLength={nameMax}
+                      readOnly={busy || entry.status === 'done' || disabled}
+                      onSave={(name) => queue.rename(entry.key, name)}
+                    />
+                  )}
                   <span className="truncate text-xs text-muted-foreground">
-                    {entry.file.name} · {formatBytes(entry.file.size)}
+                    {hideNames
+                      ? formatBytes(entry.file.size)
+                      : `${entry.file.name} · ${formatBytes(entry.file.size)}`}
                   </span>
                   {entry.status === 'failed' && entry.error ? (
                     <span className="text-xs text-destructive">{entry.error}</span>

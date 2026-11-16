@@ -3,6 +3,8 @@ import type { Env } from './env';
 
 export const SESSION_COOKIE = 'qc_session';
 export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Token Bearer aplikasi desktop berlaku 30 hari; pencabutan = nonaktifkan akun atau ganti `SESSION_SECRET`. */
+export const DESKTOP_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface SessionPayload {
   email: string;
@@ -72,6 +74,7 @@ export async function signSessionToken(env: Env, email: string, now: number): Pr
   return signValue(env, payload);
 }
 
+/** Bentuk dasar payload sesi; bidang `typ` (jenis token khusus) diperiksa pemanggil. */
 function isSessionPayload(value: unknown): value is SessionPayload {
   if (!value || typeof value !== 'object') return false;
   const record = value as Record<string, unknown>;
@@ -106,9 +109,34 @@ export async function verifySessionToken(
   if (known) return known.exp <= now ? null : known;
   const payload = await verifyValue(env, token);
   if (!isSessionPayload(payload) || payload.exp <= now) return null;
+  // Token berjenis (`typ`: desktop, kode login, ...) bukan token sesi web; cookie tidak boleh menerimanya.
+  if ('typ' in payload) return null;
   if (typeof token === 'string') {
     if (verifiedTokens.size >= VERIFIED_MAX) verifiedTokens.clear();
     verifiedTokens.set(token, payload);
   }
+  return payload;
+}
+
+/** Token Bearer desktop: payload sesi bertanda `typ: 'desktop'`; hanya diterima lewat header `Authorization`. */
+export async function signDesktopToken(env: Env, email: string, now: number): Promise<string> {
+  const payload: SessionPayload & { typ: 'desktop' } = {
+    email,
+    iat: now,
+    exp: now + DESKTOP_TOKEN_TTL_MS,
+    typ: 'desktop',
+  };
+  return signValue(env, payload);
+}
+
+/** Hanya token `typ: 'desktop'` yang sah dan belum kedaluwarsa; token sesi web (tanpa `typ`) dan jenis lain ditolak. */
+export async function verifyDesktopToken(
+  env: Env,
+  token: unknown,
+  now: number,
+): Promise<SessionPayload | null> {
+  const payload = await verifyValue(env, token);
+  if (!isSessionPayload(payload) || payload.exp <= now) return null;
+  if ((payload as { typ?: unknown }).typ !== 'desktop') return null;
   return payload;
 }

@@ -68,6 +68,8 @@ ssh rhd_vps_ipv4 'chmod 700 /root/apps/qc-app/deploy.sh; chmod 600 /root/apps/qc
 **`mariadb/qc.cnf` HARUS dapat dibaca pengguna `mysql` di dalam kontainer (izin 644, tanpa rahasia).** Bila berizin 600 milik root, mariadbd (berjalan sebagai `mysql`) mengabaikannya TANPA galat: `collation-server`, `sql_mode`, dan `max_connections=40` tidak berlaku (teramati 2026-11-07 di staging dan production: `max_connections` 151 dan kolasi bawaan `utf8mb4_uca1400_ai_ci`; diperbaiki dengan `chmod 644` dan `docker compose restart qc-db`). Verifikasi: `docker exec <qc-db> sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -N -e "select @@global.collation_server, @@global.max_connections"'` harus `utf8mb4_nopad_bin` dan `40`. Skema yang dibuat entrypoint SEBELUM berkas terbaca memiliki kolasi bawaan: setel `ALTER DATABASE <skema> CHARACTER SET utf8mb4 COLLATE utf8mb4_nopad_bin`.
 ```
 
+**Catatan 2026-11-16 (bukti foto QC Serial Number):** `compose.yml` yang disalin di atas sudah memuat volume `qc-proofs` dan `PROOF_STAGING_MAX_BYTES`. Di `/root/apps/qc-app/<env>/.env`, baris `PROOF_STAGING_MAX_BYTES=` boleh ditambahkan (kosong = 2 GiB; tidak wajib, compose memakai bawaan). Volume dibuat oleh `docker compose up -d`. Verifikasi setelah deploy: `docker volume ls | grep qc-proofs`, dan `docker exec <qc-app> sh -c 'ls -ld /var/lib/qc/proofs'` (pemilik `bun`, bukan root). Pembatalan: volume `qc-proofs` dihapus manual bila dibuang (`docker volume rm`, hanya berkas sementara yang hilang).
+
 Ulangi untuk `production` bila perlu. Pembatalan: hapus berkas yang disalin.
 
 ## 5. .env per lingkungan (izin 600, rahasia dibangkitkan di VPS)
@@ -167,7 +169,7 @@ ln -s /etc/nginx/sites-available/qc-dev.rhd.my.id /etc/nginx/sites-enabled/qc-de
 nginx -t && nginx -s reload     # reload HANYA bila nginx -t lulus
 ```
 
-Bila `nginx -t` gagal: `rm /etc/nginx/sites-enabled/qc-dev.rhd.my.id` dan JANGAN reload. Blok production (`qc.rhd.my.id`) ditulis tetapi TIDAK diaktifkan sebelum cutover. Perbarui daftar `set_real_ip_from` dari https://www.cloudflare.com/ips-v4 dan `/ips-v6`. Pembatalan: hapus symlink, `nginx -t && nginx -s reload`, hapus berkas di `sites-available`.
+Bila `nginx -t` gagal: `rm /etc/nginx/sites-enabled/qc-dev.rhd.my.id` dan JANGAN reload. Blok production (`qc.rhd.my.id`) ditulis tetapi TIDAK diaktifkan sebelum cutover. Perbarui daftar `set_real_ip_from` dari https://www.cloudflare.com/ips-v4 dan `/ips-v6`. **Log akses tanpa token tautan laporan** (keputusan pemilik 2026-11-14): `map $request_uri`, `map $http_referer`, dan `log_format qc_masked` di bagian atas `qc.conf.example` berada di konteks `http` dan dipasang SEKALI (nama ganda membuat `nginx -t` gagal; boleh dipindah ke `/etc/nginx/conf.d/qc-log.conf`); blok TLS memakai `access_log /var/log/nginx/qc-access.log qc_masked;`. `error_log` nginx dapat memuat baris permintaan pada galat upstream dan tidak dapat disamarkan: batasi akses berkas log (root saja). Log Cloudflare di luar kendali server. Pembatalan: hapus symlink, `nginx -t && nginx -s reload`, hapus berkas di `sites-available`.
 
 ## 11. DNS Cloudflare dan OAuth (tindakan PEMILIK)
 
@@ -195,7 +197,7 @@ Prinsip: **ubah di sumber yang menyimpan nilai itu DULU, baru `.env`, lalu `dock
 - **Kata sandi DB aplikasi (`QC_DB_PASSWORD`)**: (1) di database dulu, lewat root: `docker exec -it <QC_NAME>-db mariadb -uroot -p` (prompt kata sandi) lalu `ALTER USER 'qc_dev'@'%' IDENTIFIED BY '<baru>';` (nama pengguna = `QC_DB_USER`); (2) ubah `QC_DB_PASSWORD` di `.env`; (3) `docker compose up -d` (membuat ulang `qc-app` dengan `DATABASE_URL` baru). Tidak ada variabel `MARIADB_PASSWORD` di stack ini. JANGAN `.env` dulu.
 - **Kata sandi root DB (`MARIADB_ROOT_PASSWORD`)**: `ALTER USER 'root'@'localhost' IDENTIFIED BY '<baru>';` (dan `'root'@'%'` bila ada) lebih dulu, baru ubah `.env`. Perubahan `.env` saja tidak mengubah root di volume yang sudah ada. `qc-app` tidak memakai root.
 - **Pengguna `qc_restore`** (`docs/setup-google.md` S8): kata sandinya tidak ada di `.env`; `ALTER USER 'qc_restore'@'%' IDENTIFIED BY '<baru>';` di database, lalu pakai nilai baru pada `RESTORE_DATABASE_URL` saat pemulihan. `QC_TEST_DB_PASSWORD` (pengguna tes) diperlakukan sama: database dulu, lalu `.env`.
-- **`SESSION_SECRET`**: cukup ubah di `.env` lalu `docker compose up -d`; EFEK: semua sesi login keluar (pengguna masuk ulang).
+- **`SESSION_SECRET`**: cukup ubah di `.env` lalu `docker compose up -d`; EFEK: semua sesi login keluar (pengguna masuk ulang) DAN semua tautan bertanda tangan laporan rusak Serial Number (`/laporan/<token>`) berhenti berlaku (kunci tautan diturunkan dari rahasia ini; spek Serial Number butir 49 dan 52).
 - **`SYNC_API_TOKEN`**: variabel dihapus (2026-11-08, modul sinkron QC Desktop dihapus). Baris itu di `.env` VPS boleh dibuang kapan saja; yang masih ada tidak berbahaya (diabaikan).
 - Setelah mengubah `.env` apa pun: `docker compose up -d` (bukan `restart`), lalu pastikan sehat (`docker inspect --format '{{.State.Health.Status}}' <QC_NAME>-app`).
 
