@@ -49,17 +49,18 @@ function cookieValue(setCookie: string): string {
   return (setCookie.split(';')[0] as string).split('=').slice(1).join('=');
 }
 
-const startUrl = (challenge: string, state: string) =>
-  `https://qc.test/auth/desktop/start?challenge=${encodeURIComponent(challenge)}&state=${encodeURIComponent(state)}`;
+const startUrl = (challenge: string, state: string, portQuery = '') =>
+  `https://qc.test/auth/desktop/start?challenge=${encodeURIComponent(challenge)}&state=${encodeURIComponent(state)}${portQuery}`;
 
 /** Satu putaran peramban: start -> login -> callback; mengembalikan respons callback. */
 async function desktopBrowserFlow(
   challenge: string,
   state: string,
   claims: Record<string, unknown> = {},
+  portQuery = '',
 ): Promise<Response> {
   mockGoogle({ id_token: idToken(claims) });
-  const start = await app.request(startUrl(challenge, state), {}, env);
+  const start = await app.request(startUrl(challenge, state, portQuery), {}, env);
   const desktopCookie = `qc_desktop=${cookieValue(cookieOf(start, 'qc_desktop') as string)}`;
   const login = await app.request(
     new URL(start.headers.get('location') as string, 'https://qc.test').href,
@@ -158,6 +159,125 @@ describe('GET /auth/desktop/start', () => {
     expect(cookie).toMatch(/Path=\/auth/);
     expect(cookie).toMatch(/Max-Age=600/);
     expect(cookieOf(response, 'qc_session')).toBeUndefined();
+  });
+});
+
+describe('login desktop lewat loopback (port)', () => {
+  test('port sah: start memasang cookie dan callback mengarahkan ke http://127.0.0.1:<port>/callback tanpa qc://', async () => {
+    const verifier = newVerifier();
+    const response = await desktopBrowserFlow(
+      await s256(verifier),
+      'state-uji-1234',
+      {},
+      '&port=49321',
+    );
+    expect(response.status).toBe(302);
+    const location = new URL(response.headers.get('location') as string);
+    expect(location.origin).toBe('http://127.0.0.1:49321');
+    expect(location.pathname).toBe('/callback');
+    expect(location.searchParams.get('state')).toBe('state-uji-1234');
+    const code = location.searchParams.get('code') as string;
+    expect(cookieOf(response, 'qc_session')).toBeUndefined();
+    // kode dari jalur loopback ditukar seperti biasa (PKCE sama)
+    const token = await exchange({ code, verifier });
+    expect(token.status).toBe(200);
+  });
+
+  test('batas port sah: 1024 dan 65535 diterima', async () => {
+    for (const port of [1024, 65535]) {
+      const response = await app.request(
+        startUrl(await s256(newVerifier()), 'state-uji-1234', `&port=${port}`),
+        {},
+        env,
+      );
+      expect(response.status, String(port)).toBe(302);
+    }
+  });
+
+  test('port tak sah ditolak 400 dan tanpa cookie: 0, 80, 1023, 65536, tanda, nol di depan, huruf, desimal, angka lebar, kosong', async () => {
+    const challenge = await s256(newVerifier());
+    for (const bad of [
+      '0',
+      '80',
+      '1023',
+      '65536',
+      '99999',
+      '123456',
+      '-1',
+      '+8080',
+      '08080',
+      '8080abc',
+      '8080.5',
+      '1e4',
+      '0x1F90',
+      ' 8080',
+      '８０８０',
+      '１２３４５',
+      '',
+    ]) {
+      const response = await app.request(
+        startUrl(challenge, 'state-uji-1234', `&port=${encodeURIComponent(bad)}`),
+        {},
+        env,
+      );
+      expect(response.status, JSON.stringify(bad)).toBe(400);
+      expect(response.headers.get('location')).toBeNull();
+      expect(cookieOf(response, 'qc_desktop')).toBeUndefined();
+    }
+  });
+
+  test('port ganda (?port=1&port=2) ditolak', async () => {
+    const response = await app.request(
+      startUrl(await s256(newVerifier()), 'state-uji-1234', '&port=49321&port=49322'),
+      {},
+      env,
+    );
+    expect(response.status).toBe(400);
+    expect(cookieOf(response, 'qc_desktop')).toBeUndefined();
+  });
+
+  test('port di callback diabaikan: tujuan hanya dari cookie bertanda tangan (tanpa port di start = qc://)', async () => {
+    const verifier = newVerifier();
+    mockGoogle({ id_token: idToken({}) });
+    const start = await app.request(startUrl(await s256(verifier), 'state-uji-1234'), {}, env);
+    const desktopCookie = `qc_desktop=${cookieValue(cookieOf(start, 'qc_desktop') as string)}`;
+    const login = await app.request(
+      'https://qc.test/auth/login?desktop=1',
+      { headers: { cookie: desktopCookie } },
+      env,
+    );
+    const oauthCookie = `qc_oauth=${cookieValue(cookieOf(login, 'qc_oauth') as string)}`;
+    const googleState = new URL(login.headers.get('location') as string).searchParams.get('state');
+    const response = await app.request(
+      `https://qc.test/auth/callback?code=gcode&state=${googleState}&port=6666&host=evil.example`,
+      { headers: { cookie: `${desktopCookie}; ${oauthCookie}` } },
+      env,
+    );
+    expect((response.headers.get('location') as string).startsWith('qc://auth?')).toBe(true);
+  });
+
+  test('cookie qc_desktop dengan port tak sah (bertanda tangan sah tetapi nilai rusak) ditolak: login web biasa, bukan loopback', async () => {
+    const { signDesktopStart } = await import('./desktop');
+    const cookie = await signDesktopStart(env, {
+      challenge: await s256(newVerifier()),
+      state: 'state-uji-1234',
+      port: 22,
+    });
+    mockGoogle({ id_token: idToken({}) });
+    const login = await app.request(
+      'https://qc.test/auth/login?desktop=1',
+      { headers: { cookie: `qc_desktop=${cookie}` } },
+      env,
+    );
+    const oauthCookie = `qc_oauth=${cookieValue(cookieOf(login, 'qc_oauth') as string)}`;
+    const googleState = new URL(login.headers.get('location') as string).searchParams.get('state');
+    const response = await app.request(
+      `https://qc.test/auth/callback?code=gcode&state=${googleState}`,
+      { headers: { cookie: `qc_desktop=${cookie}; ${oauthCookie}` } },
+      env,
+    );
+    expect(response.headers.get('location')).toBe('/');
+    expect(cookieOf(response, 'qc_session')).toBeDefined();
   });
 });
 
