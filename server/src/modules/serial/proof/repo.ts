@@ -272,6 +272,46 @@ export async function listProofsByEvents(
   return byEvent;
 }
 
+/** Total ukuran (byte) foto `draft` milik pengguna, dari kolom `size` (tanpa menyentuh disk): kuota byte unggah. */
+export async function sumDraftBytesOf(db: Preparer, email: string): Promise<number> {
+  const row = await db
+    .prepare(
+      "SELECT COALESCE(SUM(size), 0) AS total FROM serial_proof_photos WHERE created_by = ? AND state = 'draft'",
+    )
+    .bind(email)
+    .first<{ total: number | string }>();
+  return Number(row?.total ?? 0);
+}
+
+/** Foto `failed` yang gagal (`updated_at`) pada atau sebelum `cutoffIso` (bahan retensi). */
+export async function listExpiredFailed(
+  db: Preparer,
+  cutoffIso: string,
+  limit = 200,
+): Promise<
+  { id: string; stagedName: string; serialId: string; eventId: string; lastError: string }[]
+> {
+  const rows = await db
+    .prepare(
+      "SELECT id, staged_name, serial_id, event_id, last_error FROM serial_proof_photos WHERE state = 'failed' AND updated_at <= ? ORDER BY updated_at ASC LIMIT ?",
+    )
+    .bind(cutoffIso, limit)
+    .all<{
+      id: string;
+      staged_name: string;
+      serial_id: string;
+      event_id: string;
+      last_error: string;
+    }>();
+  return rows.results.map((row) => ({
+    id: row.id.trim(),
+    stagedName: row.staged_name,
+    serialId: row.serial_id.trim(),
+    eventId: row.event_id.trim(),
+    lastError: row.last_error,
+  }));
+}
+
 /** Foto `draft` yang terakhir berubah sebelum `beforeIso` (bahan sapuan; yang `queued`/`processing` tak pernah ikut). */
 export async function listStaleDrafts(
   db: Preparer,
@@ -307,4 +347,13 @@ export function deleteFailedStmt(db: Preparer, id: string): DbStatement {
 /** Penjaga: pernyataan SEBELUMNYA tak mengubah baris -> seluruh `batch()` dibatalkan (`CAS_FAIL_SQL`). */
 export function previousChangedRowGuard(db: Preparer): DbStatement {
   return db.prepare(`SELECT CASE WHEN ROW_COUNT() = 0 THEN ${CAS_FAIL_SQL} ELSE 1 END AS guard_ok`);
+}
+
+/** Menghapus foto `failed` yang gagalnya pada atau sebelum `cutoffIso` (bersyarat: yang keburu dicoba ulang tak terhapus). */
+export function deleteExpiredFailedStmt(db: Preparer, id: string, cutoffIso: string): DbStatement {
+  return db
+    .prepare(
+      "DELETE FROM serial_proof_photos WHERE id = ? AND state = 'failed' AND updated_at <= ?",
+    )
+    .bind(id, cutoffIso);
 }

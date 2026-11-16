@@ -1,7 +1,15 @@
+import { writeAudit } from '@server/core/audit';
+import { isGuardFailure } from '@server/core/cas';
 import type { Env } from '@server/core/env';
-import { nowOf } from '@server/core/env';
+import { nowIso, nowOf } from '@server/core/env';
+import { JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
 import { SERIAL_PROOF_LIMITS } from '@shared/serials';
-import { listStaleDrafts } from './repo';
+import {
+  deleteExpiredFailedStmt,
+  listExpiredFailed,
+  listStaleDrafts,
+  previousChangedRowGuard,
+} from './repo';
 import { isPartialName, isStagedName } from './store';
 
 /**
@@ -120,4 +128,58 @@ export async function sweepOrphanProofFiles(env: Env): Promise<number> {
     if (ok) removed++;
   }
   return removed;
+}
+
+/**
+ * Retensi foto `failed` (keputusan pemilik 2026-11-16): foto yang gagal (`updated_at` = saat gagal) lebih dari
+ * `failedRetentionDays` hari dibuang otomatis oleh penjadwal jam-an. Satu `batch()` per foto: DELETE bersyarat
+ * (`state = 'failed'` dan umur; foto yang keburu dicoba ulang tak terhapus) + penjaga jumlah baris + entri audit sistem
+ * (`serial.proof_retention`, alasan "retensi 14 hari"); berkas sementara dibuang HANYA bila barisnya benar-benar terhapus.
+ * Mengembalikan jumlah foto yang dibuang.
+ */
+export async function sweepExpiredFailedProofs(env: Env): Promise<number> {
+  const store = env.PROOF_STORE;
+  const days = SERIAL_PROOF_LIMITS.failedRetentionDays;
+  const cutoff = new Date(nowOf(env) - days * DAY_MS).toISOString();
+  let swept = 0;
+  for (let page = 0; page < 10; page++) {
+    const expired = await listExpiredFailed(env.DB, cutoff, SWEEP_BATCH);
+    if (expired.length === 0) break;
+    let removedInPage = 0;
+    for (const photo of expired) {
+      try {
+        await env.DB.batch([
+          deleteExpiredFailedStmt(env.DB, photo.id, cutoff),
+          previousChangedRowGuard(env.DB),
+          writeAudit(env.DB, {
+            ts: nowIso(env),
+            actor: JOB_SYSTEM_ACTOR,
+            action: 'serial.proof_retention',
+            target: `serial:${photo.serialId}`,
+            before: {
+              id: photo.id,
+              eventId: photo.eventId,
+              state: 'failed',
+              error: photo.lastError,
+            },
+            after: { reason: `retensi ${days} hari` },
+          }),
+        ]);
+      } catch (error) {
+        if (isGuardFailure(error)) continue; // keburu dicoba ulang/dibuang: biarkan
+        throw error;
+      }
+      removedInPage++;
+      swept++;
+      if (store && photo.stagedName !== '') {
+        await store.remove(photo.stagedName).catch((error) => {
+          console.error(
+            `retensi foto bukti: berkas ${photo.stagedName} gagal dibuang: ${String(error)}`,
+          );
+        });
+      }
+    }
+    if (removedInPage === 0 || expired.length < SWEEP_BATCH) break;
+  }
+  return swept;
 }

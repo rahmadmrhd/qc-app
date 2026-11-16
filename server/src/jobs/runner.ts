@@ -10,7 +10,11 @@ import { deliverPendingPushes } from '@server/modules/notification/push';
 import { purgeOldNotifications } from '@server/modules/notification/repo';
 import { setNotificationWakeHandler } from '@server/modules/notification/wake';
 import { checkPostelExpiryDigest } from '@server/modules/postel/digest';
-import { sweepOrphanProofFiles, sweepProofDrafts } from '@server/modules/serial/proof/sweep';
+import {
+  sweepExpiredFailedProofs,
+  sweepOrphanProofFiles,
+  sweepProofDrafts,
+} from '@server/modules/serial/proof/sweep';
 import { checkLowStockDigest } from '@server/modules/sticker/digest';
 
 /** Selang polling runner (milidetik). */
@@ -145,6 +149,7 @@ async function schedulerTick(env: Env): Promise<void> {
     checkPostelExpiryDigest,
     purgeOldNotifications,
     sweepProofDrafts,
+    sweepExpiredFailedProofs,
     sweepOrphanProofFiles,
   ]) {
     try {

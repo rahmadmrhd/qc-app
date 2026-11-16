@@ -87,6 +87,10 @@ export const SERIAL_PROOF_LIMITS = {
   perEntryMax: 5,
   draftPerUserMax: 150,
   draftSweepDays: 7,
+  /** Total ukuran berkas draft per pengguna (byte): 300 MB = 150 x 2 MB. Batas per berkas (10 MB) tidak berubah. */
+  draftBytesPerUser: 300 * 1024 * 1024,
+  /** Foto `failed` dibuang otomatis (baris, berkas sementara, dengan entri audit sistem) sesudah sekian hari sejak gagal. */
+  failedRetentionDays: 14,
 } as const;
 
 /** Status foto bukti: `draft` (diunggah, belum disimpan) -> `queued` -> `processing` -> `done` | `failed`. */

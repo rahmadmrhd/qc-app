@@ -31,6 +31,7 @@ import {
   previousChangedRowGuard,
   proofFilename,
   setProofState,
+  sumDraftBytesOf,
   toProofDto,
 } from './repo';
 import { proofSizeError } from './stamp';
@@ -99,6 +100,11 @@ export async function uploadProof(
   if ((await countDraftsOf(env.DB, actor.email)) >= limit) {
     throw appError('CONFLICT', quotaMessage);
   }
+  const bytesLimit = SERIAL_PROOF_LIMITS.draftBytesPerUser;
+  const bytesMessage = `Kuota foto sementara kamu penuh (maks ${Math.round(bytesLimit / (1024 * 1024))} MB). Simpan atau buang foto yang belum terpakai.`;
+  if ((await sumDraftBytesOf(env.DB, actor.email)) + input.bytes.length > bytesLimit) {
+    throw appError('CONFLICT', bytesMessage);
+  }
   const maxTotal = env.PROOF_STAGING_MAX_BYTES ?? DEFAULT_PROOF_STAGING_MAX_BYTES;
   if ((await store.totalBytes()) + input.bytes.length > maxTotal) {
     throw appError(
@@ -124,6 +130,10 @@ export async function uploadProof(
     if ((await countDraftsOf(env.DB, actor.email)) > limit) {
       await deleteProofStmt(env.DB, id).run();
       throw appError('CONFLICT', quotaMessage);
+    }
+    if ((await sumDraftBytesOf(env.DB, actor.email)) > bytesLimit) {
+      await deleteProofStmt(env.DB, id).run();
+      throw appError('CONFLICT', bytesMessage);
     }
   } catch (error) {
     await store.remove(stagedName).catch(() => undefined);
