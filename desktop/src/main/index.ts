@@ -195,6 +195,9 @@ const RENDER_PROBE_INTERVAL_MS = 500;
 const ROOT_FILLED_SCRIPT = "(document.getElementById('app')?.childElementCount ?? 0) > 0";
 
 function runApp(): void {
+  // Identitas aplikasi untuk notifikasi Windows (harus sama dengan `appId` electron-builder agar toast tampil
+  // dengan nama/ikon QC App dan kliknya sampai ke proses ini).
+  app.setAppUserModelId('id.my.rhd.qc-app');
   if (!app.requestSingleInstanceLock()) {
     app.quit();
     return;
@@ -402,6 +405,7 @@ function runApp(): void {
       token: () => tokens.get()?.token ?? null,
       fetchImpl: net.fetch as typeof fetch,
       onNotice: (notice) => notifier.handle(notice),
+      onSignedOut: () => emitAuth(flow.status()),
       onUnauthorized: (used) => {
         // Hanya bila MASIH token yang dipakai (401 terlambat dari token lama tak boleh mengeluarkan login baru).
         if (tokens.get()?.token === used) {
@@ -418,6 +422,8 @@ function runApp(): void {
       } else {
         stream.stop();
         tray.destroy();
+        // Jendela yang tersembunyi di tray tak boleh tertinggal tanpa ikon: tampilkan agar layar login terlihat.
+        if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) focusWindow();
       }
     }
     let trayHinted = false;

@@ -62,6 +62,7 @@ function setup(options: { token?: string | null; responses: Array<() => Response
   const calls: Call[] = [];
   const notices: StreamNotice[] = [];
   const unauthorized: string[] = [];
+  const signedOut: string[] = [];
   let token: string | null = options.token === undefined ? 'tok' : options.token;
   let index = 0;
   const stream = createNotificationStream({
@@ -82,11 +83,19 @@ function setup(options: { token?: string | null; responses: Array<() => Response
     }) as typeof fetch,
     onNotice: (n) => notices.push(n),
     onUnauthorized: (t) => unauthorized.push(t),
+    onSignedOut: () => signedOut.push('x'),
     retryMinMs: 10,
     retryMaxMs: 40,
     idleTimeoutMs: 200,
   });
-  return { stream, calls, notices, unauthorized, setToken: (t: string | null) => (token = t) };
+  return {
+    stream,
+    calls,
+    notices,
+    unauthorized,
+    signedOut,
+    setToken: (t: string | null) => (token = t),
+  };
 }
 
 describe('createNotificationStream', () => {
@@ -203,12 +212,14 @@ describe('createNotificationStream', () => {
 
   test('token dihapus saat menunggu sambung ulang: berhenti', async () => {
     const first = controlledResponse();
-    const { stream, calls, setToken } = setup({ responses: [() => first.response] });
+    const { stream, calls, setToken, signedOut } = setup({ responses: [() => first.response] });
     stream.start();
     await until(() => calls.length === 1);
     setToken(null);
     first.end();
     await until(() => !stream.isRunning());
     expect(calls).toHaveLength(1);
+    // Pemanggil diberi tahu (menyegarkan status login/tray) walau token hilang tanpa 401.
+    expect(signedOut).toHaveLength(1);
   });
 });

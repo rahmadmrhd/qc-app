@@ -15,6 +15,8 @@ export interface NotificationStreamDeps {
   onNotice(notice: StreamNotice): void;
   /** Server menolak token (401): pemanggil membersihkan token yang sama bila masih berlaku. */
   onUnauthorized(token: string): void;
+  /** Token hilang (kedaluwarsa lokal) saat aliran sedang berjalan: pemanggil menyegarkan status login dan tray. */
+  onSignedOut?(): void;
   retryMinMs?: number;
   retryMaxMs?: number;
   idleTimeoutMs?: number;
@@ -109,7 +111,11 @@ export function createNotificationStream(deps: NotificationStreamDeps): Notifica
     let delay = retryMin;
     while (gen === generation) {
       const token = deps.token();
-      if (!token) break;
+      if (!token) {
+        running = false;
+        deps.onSignedOut?.();
+        break;
+      }
       const startedAt = Date.now();
       const result = await connectOnce(gen, token);
       if (gen !== generation) break;
