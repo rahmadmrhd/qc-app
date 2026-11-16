@@ -200,7 +200,8 @@ export async function deliverPendingPushes(
       return;
     }
     const subs = await env.DB.prepare(
-      'SELECT endpoint_hash, endpoint, p256dh, auth FROM push_subscriptions WHERE recipient = ?',
+      // `muted = 0`: perangkat yang dimatikan pengguna dilewati (barisnya tetap ada).
+      'SELECT endpoint_hash, endpoint, p256dh, auth FROM push_subscriptions WHERE recipient = ? AND muted = 0',
     )
       .bind(row.recipient)
       .all<SubRow>();

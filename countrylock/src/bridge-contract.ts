@@ -17,6 +17,8 @@ export {
   BRIDGE_VERSION,
   INJECT_PROGRESS_EVENT,
   MIN_BRIDGE_VERSION,
+  NOTIFICATIONS_BRIDGE_VERSION,
+  NOTIFICATIONS_CHANGE_EVENT,
   UI_UPDATE_READY_EVENT,
 } from './bridge-channels';
 
@@ -108,6 +110,11 @@ export interface QcBridge {
     onUpdateReady(cb: (info: UiUpdateInfo) => void): () => void;
     /** Menerapkan bundel siap (bila tak ada inject berjalan) lalu memuat ulang jendela. */
     reload(): Promise<void>;
+  };
+  /** Jembatan v4 (`NOTIFICATIONS_BRIDGE_VERSION`); tak ada di aplikasi desktop lama, jadi pemakai memeriksa versinya. */
+  notifications: {
+    /** Ada notifikasi baru (tanpa muatan): muat ulang lonceng. Mengembalikan fungsi berhenti mendengarkan. */
+    onChange(cb: () => void): () => void;
   };
   pending: {
     list(): Promise<PendingEntry[]>;

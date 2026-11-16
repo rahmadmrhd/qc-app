@@ -11,16 +11,18 @@ const NOTICE: StreamNotice = {
   createdAt: '2026-11-16T03:00:00.000Z',
 };
 
-function setup(supported = true) {
+function setup(supported = true, initiallyFocused = false) {
+  const state = { focused: initiallyFocused };
   const shown: ShownNotice[] = [];
   const calls: string[] = [];
   const deps: NotifierDeps = {
     supported: () => supported,
+    isWindowFocused: () => state.focused,
     show: (notice) => shown.push(notice),
     focusWindow: () => calls.push('focus'),
     openPath: (path) => calls.push(`open:${path}`),
   };
-  return { notifier: createNotifier(deps), shown, calls };
+  return { notifier: createNotifier(deps), shown, calls, state };
 }
 
 describe('createNotifier', () => {
@@ -45,6 +47,25 @@ describe('createNotifier', () => {
     const { notifier, shown } = setup(false);
     notifier.handle(NOTICE);
     expect(shown).toEqual([]);
+  });
+
+  test('jendela terlihat dan fokus: popup OS dilewati (lonceng sudah berubah seketika)', () => {
+    const { notifier, shown } = setup(true, true);
+    notifier.handle(NOTICE);
+    expect(shown).toEqual([]);
+  });
+
+  test('fokus berpindah: notifikasi baru kembali tampil, tetapi id yang sudah dilewati tidak muncul belakangan', () => {
+    const { notifier, shown, state } = setup(true, true);
+    notifier.handle(NOTICE); // dilewati karena fokus
+    state.focused = false;
+    notifier.handle(NOTICE); // kiriman ulang (sambung ulang): tidak boleh muncul sebagai popup basi
+    expect(shown).toEqual([]);
+    notifier.handle({ ...NOTICE, id: 'n2' });
+    expect(shown).toHaveLength(1);
+    state.focused = true;
+    notifier.handle({ ...NOTICE, id: 'n3' });
+    expect(shown).toHaveLength(1);
   });
 
   test('tautan tak aman jatuh ke beranda', () => {

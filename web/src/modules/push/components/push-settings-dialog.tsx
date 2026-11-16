@@ -15,12 +15,20 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
+import { api } from '@/lib/api';
 import { useMe } from '@/modules/auth/use-me';
 import { markAsked, markSynced, SYNCED_EVENT, wasSynced } from '../lib/storage';
 import { getPushRegistration } from '../lib/subscribe';
 import { type DevicePermission, devicePermission, platformOf, reenableSteps } from '../lib/support';
 import { syncThisDevice } from '../lib/sync';
-import { pushConfigQueryOptions, reportPushPermission, usePushPreference } from '../queries';
+import {
+  type DeviceStatus,
+  pushConfigQueryOptions,
+  pushKeys,
+  reportPushPermission,
+  useDeviceMuted,
+  usePushPreference,
+} from '../queries';
 
 export type DeviceKind =
   | 'server-off'
@@ -75,13 +83,20 @@ export function PushSettingsDialog({ onClose }: { onClose: () => void }) {
   const ios = isIosBrowser(navigator);
 
   const device = useQuery({
-    queryKey: ['push', 'device'],
+    queryKey: pushKeys.device,
     enabled: permission === 'granted',
-    queryFn: async () => {
+    queryFn: async (): Promise<DeviceStatus> => {
       const registration = await getPushRegistration();
-      return (await registration?.pushManager.getSubscription()) != null;
+      const subscription = await registration?.pushManager.getSubscription();
+      if (subscription == null) return { subscribed: false, endpoint: '', muted: false };
+      const endpoint = subscription.endpoint ?? '';
+      if (endpoint === '') return { subscribed: true, endpoint, muted: false };
+      // Status dimatikan disimpan di server per perangkat; gagal membaca = anggap menyala (tidak menyesatkan).
+      const state = await api('push.deviceState', { endpoint }).catch(() => null);
+      return { subscribed: true, endpoint, muted: state?.muted ?? false };
     },
   });
+  const deviceMuted = useDeviceMuted();
 
   const activate = useMutation({
     mutationFn: async (current: PushConfigDto) => {
@@ -122,7 +137,7 @@ export function PushSettingsDialog({ onClose }: { onClose: () => void }) {
 
   // Tertaut = ada langganan peramban DAN sudah disinkronkan ke akun ini pada sesi ini; langganan milik akun lain di
   // perangkat yang sama tidak cukup (akun ini belum tentu punya barisnya di server).
-  const linked = device.data === undefined ? undefined : device.data && wasSynced(email);
+  const linked = device.data === undefined ? undefined : device.data.subscribed && wasSynced(email);
   const data = config.data;
   const kind =
     data === undefined
@@ -134,6 +149,9 @@ export function PushSettingsDialog({ onClose }: { onClose: () => void }) {
     !data.userEnabled &&
     (kind === 'default' || kind === 'checking' || kind === 'linked' || kind === 'unlinked');
   const canActivate = kind === 'default' || kind === 'unlinked';
+  // Saklar per perangkat hanya berarti bila perangkat ini sudah tertaut dan push akun menyala.
+  const muted = device.data?.muted === true;
+  const showDeviceSwitch = kind === 'linked' && !pushOff && device.data?.endpoint !== '';
 
   return (
     <Dialog
@@ -167,17 +185,43 @@ export function PushSettingsDialog({ onClose }: { onClose: () => void }) {
                 disabled={!data.enabled || preference.isPending}
                 onCheckedChange={(value) => preference.mutate(value === true)}
               />
-              <Label htmlFor="push-preference">Terima notifikasi push</Label>
+              <Label htmlFor="push-preference">Terima notifikasi push di semua perangkat</Label>
             </div>
-            <div className="rounded-md border p-3 text-sm" data-testid="push-device-status">
+            <div
+              className="space-y-2 rounded-md border p-3 text-sm"
+              data-testid="push-device-status"
+            >
               <p className="font-medium">Perangkat ini</p>
               <p className="text-muted-foreground">
                 {kind === 'denied'
                   ? `Izin ditolak di peramban. ${reenableSteps(platformOf())}`
                   : pushOff
                     ? 'Push sedang dimatikan untuk akunmu; nyalakan kotak di atas untuk menerimanya.'
-                    : DEVICE_TEXT[kind]}
+                    : kind === 'linked' && muted
+                      ? 'Dimatikan di perangkat ini. Perangkat lain tetap menerima.'
+                      : DEVICE_TEXT[kind]}
               </p>
+              {showDeviceSwitch ? (
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="push-device"
+                    checked={!muted}
+                    disabled={deviceMuted.isPending || device.data === undefined}
+                    onCheckedChange={(value) =>
+                      deviceMuted.mutate(
+                        { endpoint: device.data?.endpoint ?? '', muted: value !== true },
+                        {
+                          onError: () =>
+                            toast.error(
+                              'Gagal mengubah pengaturan perangkat ini. Coba lagi nanti.',
+                            ),
+                        },
+                      )
+                    }
+                  />
+                  <Label htmlFor="push-device">Terima notifikasi push di perangkat ini</Label>
+                </div>
+              ) : null}
             </div>
           </div>
         )}

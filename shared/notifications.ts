@@ -51,8 +51,19 @@ export const NOTIFICATION_SIDE: Record<HandoverNotificationKind, NotificationSid
   commented: 'all',
 };
 
-/** Jendela penggabungan centang: tetap 5 menit sejak centang pertama dalam rangkaian (spek §4.2). */
-export const CHECK_WINDOW_MS = 300_000;
+/**
+ * Jendela penggabungan centang: tetap 1 menit sejak centang pertama dalam rangkaian (spek §4.2; 5 menit sebelum
+ * keputusan pemilik 2026-11-16, "terlalu lama").
+ */
+export const CHECK_WINDOW_MS = 60_000;
+
+/** Jalur stream SSE notifikasi (GET): cookie sesi untuk lonceng web, Bearer desktop untuk aplikasi desktop. */
+export const NOTIFICATIONS_STREAM_PATH = '/api/v1/notifications/stream';
+/**
+ * Nama event SSE untuk satu notifikasi baru (muatannya sama dengan push). Lonceng web tidak memakai muatannya:
+ * tiap bingkai hanya membuatnya memuat ulang `notifications.list` (izin dan isi tetap dari jalur baca).
+ */
+export const NOTIFICATIONS_STREAM_EVENT = 'notification';
 /** Umur penyimpanan notifikasi sebelum dibersihkan (hari; pilihan perancang, spek §5.1 dan §10). */
 export const NOTIFICATION_RETENTION_DAYS = 90;
 /** Panjang maksimum cuplikan teks (catatan atau komentar) pada notifikasi lonceng. */

@@ -100,7 +100,7 @@ Prasyarat: masuk di aplikasi desktop; satu akun lain (peramban biasa atau perang
 | # | Langkah | Hasil yang diharapkan | Hasil |
 |---|---|---|---|
 | G1 | Buka menu profil | Tidak ada butir "Notifikasi push" (hanya di peramban); tidak ada dialog/banner izin push | |
-| G2 | Akun lain menulis komentar pada task di lokasi Anda | Dalam hitungan detik muncul notifikasi Windows berjudul "<nama> mengomentari task <nomor>" dengan cuplikan isi | |
+| G2 | Dengan jendela QC App TIDAK fokus (terminimalkan atau pindah ke aplikasi lain), akun lain menulis komentar pada task di lokasi Anda | Dalam hitungan detik muncul notifikasi Windows berjudul "<nama> mengomentari task <nomor>" dengan cuplikan isi | |
 | G3 | Klik notifikasi | Jendela QC App tampil dan fokus, lalu membuka halaman Serah Terima task itu | |
 | G4 | Tutup jendela (X) | Jendela hilang, ikon QC App tetap di tray, balon "QC App tetap berjalan" muncul sekali; proses tidak berhenti | |
 | G5 | Dengan jendela tersembunyi, akun lain menulis komentar lagi | Notifikasi Windows tetap muncul; klik membuka jendela lagi | |
@@ -109,6 +109,11 @@ Prasyarat: masuk di aplikasi desktop; satu akun lain (peramban biasa atau perang
 | G8 | Keluar dari akun (menu profil), lalu tutup jendela | Aplikasi benar-benar tertutup (bukan ke tray); tidak ada notifikasi lagi untuk akun itu | |
 | G9 | Cabut izin lokasi akun dari admin, lalu akun lain menulis komentar di lokasi itu | Tidak ada notifikasi untuk akun yang dicabut | |
 | G10 | Buka aplikasi di dua perangkat dengan akun yang sama | Keduanya menerima notifikasi (batas 3 koneksi per akun) | |
+| G11 | Buka akun yang sama di peramban biasa dengan 4 tab sekaligus, lalu akun lain menulis komentar | Notifikasi Windows di aplikasi desktop tetap muncul (aliran web punya bucket terpisah dan tidak menggusur desktop); keempat tab peramban lonceng-nya berubah dalam hitungan detik | |
+| G12 | Di aplikasi desktop dengan jendela TIDAK fokus, akun lain menulis komentar lalu amati lonceng di header | Notifikasi Windows DAN angka/daftar lonceng di header berubah bersamaan dalam hitungan detik, tanpa muat ulang (sinyal jembatan v4 dari proses utama; lonceng desktop sengaja tidak membuka aliran SSE sendiri) | |
+| G13 | Tutup jendela ke tray, akun lain menulis komentar, lalu buka jendela dari tray | Lonceng sudah memuat notifikasi baru (tanpa menunggu polling) | |
+| G15 | Dengan jendela QC App TERLIHAT dan FOKUS (jangan pindah jendela), akun lain menulis komentar | TIDAK ada popup Windows (dilewati karena Anda sedang melihat aplikasi), tetapi angka/daftar lonceng di header berubah dalam hitungan detik; pindah ke aplikasi lain lalu komentar berikutnya memunculkan popup lagi | |
+| G14 | Pasang UI baru (bundel) di aplikasi desktop berjembatan lama v3 | UI tetap berjalan dan lonceng berubah lewat polling sekitar 10 detik (tanpa galat di konsol); pembaruan UI tidak terhenti | |
 
 ## H. Serah-terima Country Lock dari peramban
 

@@ -335,6 +335,8 @@ const WORST: Inputs = {
   'push.subscribe': { endpoint: text(2000), p256dh: text(200), auth: text(100) },
   'push.unsubscribe': { endpoint: text(2000) },
   'push.setPreference': { enabled: true },
+  'push.deviceState': { endpoint: text(2000) },
+  'push.setDeviceMuted': { endpoint: text(2000), muted: true },
   'push.reportPermission': { state: 'granted' },
   'guides.mark': { id: text(100), version: 1 },
   'guides.reset': { id: text(100) },

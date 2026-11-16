@@ -322,6 +322,7 @@ describe('skema baseline', () => {
       { name: '0019_bukti_foto_qc.sql' },
       { name: '0020_notifikasi_serial.sql' },
       { name: '0021_indeks_notifikasi_serial.sql' },
+      { name: '0022_push_perangkat_senyap.sql' },
     ]);
   });
 

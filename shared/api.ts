@@ -510,6 +510,9 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'push.subscribe': { verb: 'POST', path: '/push/subscriptions' },
   'push.unsubscribe': { verb: 'POST', path: '/push/unsubscribe' },
   'push.setPreference': { verb: 'PUT', path: '/push/preference' },
+  // Endpoint langganan di badan (bukan URL): tak masuk log akses. `deviceState` POST hanya membaca.
+  'push.deviceState': { verb: 'POST', path: '/push/device/state' },
+  'push.setDeviceMuted': { verb: 'PUT', path: '/push/device' },
   'push.reportPermission': { verb: 'PUT', path: '/push/permission' },
   'push.status': { verb: 'GET', path: '/push/status' },
   'desktop.handoff': { verb: 'POST', path: '/desktop/handoff' },

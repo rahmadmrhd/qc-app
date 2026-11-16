@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   api: vi.fn(),
   sync: vi.fn(),
   linked: false,
+  muted: false,
 }));
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => ({ email: 'a@qc.local', name: 'U' }) }));
 vi.mock('@/lib/api', async () => ({
@@ -20,7 +21,10 @@ vi.mock('../lib/sync', () => ({ syncThisDevice: (...args: unknown[]) => state.sy
 vi.mock('../lib/subscribe', () => ({
   getPushRegistration: () =>
     Promise.resolve({
-      pushManager: { getSubscription: () => Promise.resolve(state.linked ? {} : null) },
+      pushManager: {
+        getSubscription: () =>
+          Promise.resolve(state.linked ? { endpoint: 'https://fcm.googleapis.com/x' } : null),
+      },
     }),
 }));
 
@@ -59,13 +63,18 @@ beforeEach(() => {
   sessionStorage.clear();
   state.config = { enabled: true, publicKey: 'KUNCI', userEnabled: true };
   state.linked = false;
+  state.muted = false;
   state.api.mockReset();
-  state.api.mockImplementation(async (id: string, input: { enabled?: boolean }) => {
-    if (id === 'push.config') return state.config;
-    if (id === 'push.setPreference') return { enabled: input.enabled };
-    if (id === 'push.reportPermission') return { ok: true };
-    throw new Error(`tak terduga: ${id}`);
-  });
+  state.api.mockImplementation(
+    async (id: string, input: { enabled?: boolean; muted?: boolean }) => {
+      if (id === 'push.config') return state.config;
+      if (id === 'push.setPreference') return { enabled: input.enabled };
+      if (id === 'push.reportPermission') return { ok: true };
+      if (id === 'push.deviceState') return { registered: true, muted: state.muted };
+      if (id === 'push.setDeviceMuted') return { registered: true, muted: input.muted };
+      throw new Error(`tak terduga: ${id}`);
+    },
+  );
   state.sync.mockReset();
   state.sync.mockResolvedValue('subscribed');
   vi.mocked(toast.success).mockClear();
@@ -100,12 +109,92 @@ describe('deviceKind', () => {
 });
 
 describe('PushSettingsDialog', () => {
+  test('saklar per perangkat: tampil saat tertaut, mematikan memanggil push.setDeviceMuted dengan endpoint perangkat ini', async () => {
+    device({ permission: 'granted' });
+    state.linked = true;
+    markSynced('a@qc.local');
+    mount();
+    const box = await screen.findByRole('checkbox', {
+      name: 'Terima notifikasi push di perangkat ini',
+    });
+    expect(box).toBeChecked();
+    await userEvent.click(box);
+    await waitFor(() =>
+      expect(state.api).toHaveBeenCalledWith('push.setDeviceMuted', {
+        endpoint: 'https://fcm.googleapis.com/x',
+        muted: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole('checkbox', { name: 'Terima notifikasi push di perangkat ini' }),
+      ).not.toBeChecked(),
+    );
+    expect(screen.getByTestId('push-device-status')).toHaveTextContent(
+      'Dimatikan di perangkat ini. Perangkat lain tetap menerima.',
+    );
+    // Saklar akun tidak ikut berubah.
+    expect(
+      screen.getByRole('checkbox', { name: 'Terima notifikasi push di semua perangkat' }),
+    ).toBeChecked();
+  });
+
+  test('perangkat yang sudah dimatikan di server: saklar perangkat tidak tercentang saat dibuka', async () => {
+    state.muted = true;
+    device({ permission: 'granted' });
+    state.linked = true;
+    markSynced('a@qc.local');
+    mount();
+    const box = await screen.findByRole('checkbox', {
+      name: 'Terima notifikasi push di perangkat ini',
+    });
+    expect(box).not.toBeChecked();
+    await userEvent.click(box);
+    await waitFor(() =>
+      expect(state.api).toHaveBeenCalledWith('push.setDeviceMuted', {
+        endpoint: 'https://fcm.googleapis.com/x',
+        muted: false,
+      }),
+    );
+  });
+
+  test('saklar perangkat tidak tampil bila belum tertaut atau push akun dimatikan', async () => {
+    device({ permission: 'granted' });
+    mount();
+    expect(await screen.findByText(/belum tertaut/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('checkbox', { name: 'Terima notifikasi push di perangkat ini' }),
+    ).not.toBeInTheDocument();
+  });
+
+  test('gagal mengubah saklar perangkat: toast galat dan tampilan tidak berubah', async () => {
+    device({ permission: 'granted' });
+    state.linked = true;
+    markSynced('a@qc.local');
+    mount();
+    const box = await screen.findByRole('checkbox', {
+      name: 'Terima notifikasi push di perangkat ini',
+    });
+    const base = state.api.getMockImplementation();
+    state.api.mockImplementation(async (id: string, input: unknown) => {
+      if (id === 'push.setDeviceMuted') throw new Error('gagal');
+      return base?.(id, input);
+    });
+    await userEvent.click(box);
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(
+      screen.getByRole('checkbox', { name: 'Terima notifikasi push di perangkat ini' }),
+    ).toBeChecked();
+  });
+
   test('saklar mengikuti preferensi; mengubahnya memanggil push.setPreference', async () => {
     device({ permission: 'granted' });
     state.linked = true;
     markSynced('a@qc.local');
     mount();
-    const box = await screen.findByRole('checkbox', { name: 'Terima notifikasi push' });
+    const box = await screen.findByRole('checkbox', {
+      name: 'Terima notifikasi push di semua perangkat',
+    });
     expect(box).toBeChecked();
     expect(await screen.findByText('Aktif di perangkat ini.')).toBeInTheDocument();
     await userEvent.click(box);
@@ -113,7 +202,9 @@ describe('PushSettingsDialog', () => {
       expect(state.api).toHaveBeenCalledWith('push.setPreference', { enabled: false }),
     );
     await waitFor(() =>
-      expect(screen.getByRole('checkbox', { name: 'Terima notifikasi push' })).not.toBeChecked(),
+      expect(
+        screen.getByRole('checkbox', { name: 'Terima notifikasi push di semua perangkat' }),
+      ).not.toBeChecked(),
     );
     expect(screen.getByTestId('push-device-status')).toHaveTextContent('dimatikan untuk akunmu');
   });
@@ -210,7 +301,9 @@ describe('PushSettingsDialog', () => {
     device({ permission: 'default' });
     mount();
     expect(await screen.findByTestId('push-device-status')).toHaveTextContent('belum disiapkan');
-    expect(screen.getByRole('checkbox', { name: 'Terima notifikasi push' })).toBeDisabled();
+    expect(
+      screen.getByRole('checkbox', { name: 'Terima notifikasi push di semua perangkat' }),
+    ).toBeDisabled();
   });
 
   test('Tutup memanggil onClose', async () => {

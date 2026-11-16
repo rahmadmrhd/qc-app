@@ -343,6 +343,8 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'push.subscribe': { endpoint: 'https://push.example.test/abc', p256dh: 'BP', auth: 'au' },
   'push.unsubscribe': { endpoint: 'https://push.example.test/abc' },
   'push.setPreference': { enabled: false },
+  'push.deviceState': { endpoint: 'https://push.example.test/abc' },
+  'push.setDeviceMuted': { endpoint: 'https://push.example.test/abc', muted: true },
   'push.reportPermission': { state: 'denied' },
   'push.status': null,
   'guides.list': null,

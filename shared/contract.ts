@@ -1263,6 +1263,8 @@ export interface ApiContract {
   'push.subscribe': { input: PushSubscribeInput; output: { ok: true } };
   'push.unsubscribe': { input: PushUnsubscribeInput; output: { ok: true } };
   'push.setPreference': { input: PushPreferenceInput; output: { enabled: boolean } };
+  'push.deviceState': { input: PushUnsubscribeInput; output: PushDeviceStateDto };
+  'push.setDeviceMuted': { input: PushDeviceMutedInput; output: PushDeviceStateDto };
   'push.reportPermission': { input: PushPermissionInput; output: { ok: true } };
   'push.status': { input: null; output: PushUserStatusDto[] };
   'desktop.handoff': { input: Record<string, never>; output: DesktopHandoffDto };
@@ -1882,6 +1884,17 @@ export interface PushUnsubscribeInput {
 }
 export interface PushPreferenceInput {
   enabled: boolean;
+}
+/** Push dimatikan per perangkat: `endpoint` = langganan peramban perangkat itu (kunci bersama `(endpoint, akun)`). */
+export interface PushDeviceMutedInput {
+  endpoint: string;
+  muted: boolean;
+}
+export interface PushDeviceStateDto {
+  /** Perangkat itu punya langganan untuk akun pemanggil. */
+  registered: boolean;
+  /** Push dimatikan di perangkat itu (selalu false bila belum terdaftar). */
+  muted: boolean;
 }
 export type PushPermissionState = 'granted' | 'denied' | 'default';
 export interface PushPermissionInput {

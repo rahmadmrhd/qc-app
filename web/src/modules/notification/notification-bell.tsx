@@ -1,14 +1,16 @@
 import type { NotificationDto } from '@shared/notifications';
 import { isSerialNotificationKind, notificationTitle } from '@shared/notifications';
 import { useQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
 import { Bell } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import { useTourMenu } from '@/modules/guide/lib/tour-menu';
-import { notificationsQueryOptions, useMarkAllRead, useMarkRead } from './queries';
+import { notificationsQueryOptions, useMarkAllRead } from './queries';
+import { useNotificationStream } from './stream';
+import { useNotificationToasts } from './toast';
+import { useOpenNotification } from './use-open-notification';
 
 /** Jumlah pada ikon dibatasi agar tidak melebar. */
 const BADGE_MAX = 99;
@@ -26,32 +28,17 @@ function formatTime(iso: string): string {
 export function NotificationBell() {
   const tourMenu = useTourMenu('notification-bell');
   const setOpen = tourMenu.setOpen;
-  const navigate = useNavigate();
   const query = useQuery(notificationsQueryOptions());
-  const markRead = useMarkRead();
+  useNotificationStream();
+  useNotificationToasts();
+  const open = useOpenNotification();
   const markAll = useMarkAllRead();
   const unread = query.data?.unread ?? 0;
   const items = query.data?.items ?? [];
 
   const openItem = (item: NotificationDto) => {
-    if (item.readAt === '') markRead.mutate(item.id);
     setOpen(false);
-    // Jenis Serial Number membuka detail Serial Number (akses mengikuti BU, tanpa `loc` lokasi Serah Terima).
-    if (isSerialNotificationKind(item.kind)) {
-      if (item.serialId === '') void navigate({ to: '/serial' });
-      else void navigate({ to: '/serial/$serialId', params: { serialId: item.serialId } });
-      return;
-    }
-    // `loc` membawa lokasi notifikasi: halaman memuat task/papan lokasi itu walau tidak terpilih di header.
-    if (item.handoverId === '') {
-      void navigate({ to: '/handover', search: { loc: item.locationId } });
-    } else {
-      void navigate({
-        to: '/handover/$handoverId',
-        params: { handoverId: item.handoverId },
-        search: { loc: item.locationId },
-      });
-    }
+    open(item);
   };
 
   return (

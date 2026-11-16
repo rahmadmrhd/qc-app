@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, setDefaultTimeout, test } from 'bun:test';
 import { app } from '@server/app';
-import { signDesktopToken } from '@server/core/session';
+import { signDesktopToken, signSessionToken } from '@server/core/session';
 import { seedHandoverEnv } from '@server-test/handover-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { activeStreamCount, closeAllNotificationStreams } from './stream-hub';
@@ -68,6 +68,32 @@ test('soket nyata: aliran bertahan melewati batas idle 10 dtk berkat detak jantu
 
   abort.abort();
   await pump;
+  for (let i = 0; i < 30 && activeStreamCount() > 0; i++) await wait(100);
+  expect(activeStreamCount()).toBe(0);
+});
+
+// Jalur cookie (lonceng web) lewat soket TCP sungguhan: kode autentikasinya berbeda dari Bearer desktop, tetapi hub dan
+// pembersihan koneksi sama. `EventSource` peramban mengirim cookie sesi tanpa header Authorization.
+test('soket nyata: cookie sesi web membuka aliran, dan putus klien dikenali', async () => {
+  server = Bun.serve({
+    hostname: '127.0.0.1',
+    port: 0,
+    fetch: (request) => app.fetch(request, { ...env, peerAddress: '127.0.0.1' }),
+  });
+  const token = await signSessionToken(env, 'viewer@gmail.com', env.clock.now());
+  const abort = new AbortController();
+  const response = await fetch(`http://127.0.0.1:${server.port}/api/v1/notifications/stream`, {
+    headers: { cookie: `qc_session=${token}` },
+    signal: abort.signal,
+  });
+  expect(response.status).toBe(200);
+  expect(response.headers.get('content-type')).toContain('text/event-stream');
+  const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+  const first = await reader.read();
+  expect(new TextDecoder().decode(first.value)).toContain('event: ready');
+  expect(activeStreamCount()).toBe(1);
+
+  abort.abort();
   for (let i = 0; i < 30 && activeStreamCount() > 0; i++) await wait(100);
   expect(activeStreamCount()).toBe(0);
 });

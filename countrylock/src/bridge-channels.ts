@@ -2,7 +2,7 @@
 // `bridge-contract.ts` (yang memuat zod) agar bundel preload tetap kecil.
 
 /** Versi kontrak jembatan; renderer menolak jembatan di bawah `MIN_BRIDGE_VERSION`. */
-export const BRIDGE_VERSION = 3;
+export const BRIDGE_VERSION = 4;
 export const MIN_BRIDGE_VERSION = 2;
 
 /** Kanal `ipcMain.handle` (permintaan-jawaban): `qc:<grup>:<aksi>`. */
@@ -29,3 +29,10 @@ export const INJECT_PROGRESS_EVENT = 'qc:inject:progress';
 export const AUTH_CHANGE_EVENT = 'qc:auth:change';
 /** Bundel UI baru sudah diunduh dan diverifikasi (proses utama -> renderer); isinya `UiUpdateInfo`. */
 export const UI_UPDATE_READY_EVENT = 'qc:ui:updateReady';
+/**
+ * Ada notifikasi baru dari aliran SSE proses utama (proses utama -> renderer). TANPA muatan: renderer hanya memuat
+ * ulang lonceng lewat API (izin dan isi tetap dari jalur baca). Diperkenalkan di jembatan v4.
+ */
+export const NOTIFICATIONS_CHANGE_EVENT = 'qc:notifications:changed';
+/** Jembatan paling rendah yang punya `notifications.onChange`; UI lama/baru tetap berjalan tanpanya (hanya polling). */
+export const NOTIFICATIONS_BRIDGE_VERSION = 4;

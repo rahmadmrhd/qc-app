@@ -10,6 +10,8 @@ import {
   InjectIdSchema,
   InjectRequestSchema,
   MIN_BRIDGE_VERSION,
+  NOTIFICATIONS_BRIDGE_VERSION,
+  NOTIFICATIONS_CHANGE_EVENT,
   PendingEntrySchema,
   SerialArgSchema,
   stripTerminalControl,
@@ -127,7 +129,8 @@ describe('PendingEntrySchema dan SerialArgSchema', () => {
 
 describe('konstanta jembatan', () => {
   test('versi, dan semua nama kanal berpola qc:<grup>:<aksi> serta unik', () => {
-    expect(BRIDGE_VERSION).toBe(3);
+    expect(BRIDGE_VERSION).toBe(4);
+    expect(NOTIFICATIONS_BRIDGE_VERSION).toBe(4);
     expect(MIN_BRIDGE_VERSION).toBe(2);
     const values = Object.values(BRIDGE_CHANNELS);
     expect(new Set(values).size).toBe(values.length);
@@ -136,6 +139,7 @@ describe('konstanta jembatan', () => {
       INJECT_PROGRESS_EVENT,
       AUTH_CHANGE_EVENT,
       UI_UPDATE_READY_EVENT,
+      NOTIFICATIONS_CHANGE_EVENT,
     ]) {
       expect(channel).toMatch(/^qc:[a-z]+:[A-Za-z]+$/);
     }

@@ -9,7 +9,15 @@ import { api } from '@/lib/api';
 export const pushKeys = {
   config: ['push', 'config'] as const,
   status: ['push', 'status'] as const,
+  device: ['push', 'device'] as const,
 };
+
+/** Status push perangkat ini: ada langganan peramban, endpoint-nya, dan apakah dimatikan di server. */
+export interface DeviceStatus {
+  subscribed: boolean;
+  endpoint: string;
+  muted: boolean;
+}
 
 /** Konfigurasi push (kunci VAPID) dan preferensi pengguna ini. */
 export function pushConfigQueryOptions() {
@@ -36,6 +44,22 @@ export function usePushPreference() {
     onSuccess: ({ enabled }) => {
       queryClient.setQueryData<PushConfigDto>(pushKeys.config, (current) =>
         current ? { ...current, userEnabled: enabled } : current,
+      );
+    },
+  });
+}
+
+/**
+ * Mematikan/menyalakan push di perangkat ini saja (langganan tetap ada di server; akun dan perangkat lain tak
+ * terpengaruh). Hasil server langsung dipasang ke cache status perangkat (`['push', 'device']`).
+ */
+export function useDeviceMuted() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { endpoint: string; muted: boolean }) => api('push.setDeviceMuted', input),
+    onSuccess: ({ muted }) => {
+      queryClient.setQueryData<DeviceStatus>(pushKeys.device, (current) =>
+        current ? { ...current, muted } : current,
       );
     },
   });
