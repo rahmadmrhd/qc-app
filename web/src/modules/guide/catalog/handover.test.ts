@@ -85,8 +85,32 @@ describe('panduan Serah Terima', () => {
     expect(viewer?.stepCount).toBe(3);
     expect(viewer?.stepCount).toBeLessThan(qc?.stepCount ?? 0);
     expect(qc?.stepCount).toBe(4);
-    expect(editor?.stepCount).toBe(6);
+    expect(editor?.stepCount).toBe(13);
     expect(all?.stepCount).toBe(HANDOVER_DASAR.steps.length);
+  });
+
+  test('sisi WH: setelah panel tempel, tur menjelaskan pengisian task sampai tepat sebelum tombol simpan', () => {
+    const targets = HANDOVER_DASAR.steps.map((step) => step.target);
+    const afterPaste = targets.slice(targets.indexOf('handover-paste-panel') + 1);
+    expect(afterPaste).toEqual([
+      'handover-task-card',
+      'handover-customer',
+      'handover-note',
+      'handover-card-actions',
+      'handover-add-task',
+      'handover-save',
+    ]);
+    // Lokasi dijelaskan sebelum panel tempel; semua langkah formulir hanya untuk penulis WH.
+    expect(targets.indexOf('handover-location')).toBeLessThan(
+      targets.indexOf('handover-paste-panel'),
+    );
+    for (const target of ['handover-location', ...afterPaste]) {
+      const step = HANDOVER_DASAR.steps.find((candidate) => candidate.target === target);
+      expect(step?.izin).toEqual({ module: 'handover', level: 'edit', scope: 'location' });
+      expect(step?.advance).toBe('next');
+    }
+    // Tur berhenti di tombol simpan: tak ada langkah sesudahnya.
+    expect(targets.at(-1)).toBe('handover-save');
   });
 
   test('langkah checklist dan komentar: demo kartu contoh + teks pengganti saat papan kosong', () => {
