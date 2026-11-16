@@ -183,3 +183,17 @@ test('getSupportedFormats yang gagal atau memuat format tak dikenal tidak menjad
   expect(engine2.kind).toBe('native');
   expect(extra.constructed[0]).toEqual({ formats: [...SCAN_FORMATS] });
 });
+
+test('cadangan WASM juga membawa format pada detectCodes', async () => {
+  const detect = vi.fn(async () => [{ rawValue: 'W1', format: 'code_128' }]);
+  class Detector {
+    detect = detect;
+  }
+  const engine = await createBarcodeEngine({
+    native: undefined,
+    loadFallback: async () => Detector as unknown as BarcodeDetectorConstructor,
+    formats: SCAN_FORMATS,
+  });
+  expect(engine.kind).toBe('wasm');
+  expect(await engine.detectCodes(source)).toEqual([{ text: 'W1', format: 'code_128', box: null }]);
+});

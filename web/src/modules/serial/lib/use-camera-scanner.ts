@@ -205,14 +205,15 @@ export function useCameraScanner({
     const stop = () => {
       if (timer !== null) clearTimeout(timer);
       timer = null;
-      if (tapTimerRef.current !== null) clearTimeout(tapTimerRef.current);
-      tapTimerRef.current = null;
       const own = stream;
       for (const track of own?.getTracks() ?? []) track.stop();
       stream = null;
       if (ownTrack !== null && trackRef.current === ownTrack) {
         trackRef.current = null;
         capsRef.current = NO_CAPS;
+        // Timer kembali-ke-kontinu milik trek yang berlaku: run lama yang selesai terlambat tak boleh membatalkannya.
+        if (tapTimerRef.current !== null) clearTimeout(tapTimerRef.current);
+        tapTimerRef.current = null;
       }
       ownTrack = null;
       const video = videoRef.current;

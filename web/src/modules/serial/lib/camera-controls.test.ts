@@ -110,7 +110,10 @@ test('applyTapFocus: single-shot ke titik 0-1, galat ditelan', async () => {
   const t = track({ focusMode: ['single-shot'] });
   expect(await applyTapFocus(t, { x: 0.25, y: 0.75 })).toBe(true);
   expect(t.applyConstraints).toHaveBeenCalledWith({
-    advanced: [{ focusMode: 'single-shot', pointsOfInterest: [{ x: 0.25, y: 0.75 }] }],
+    advanced: [
+      { focusMode: 'single-shot', pointsOfInterest: [{ x: 0.25, y: 0.75 }] },
+      { focusMode: 'single-shot' },
+    ],
   });
   t.applyConstraints.mockRejectedValue(new Error('x'));
   expect(await applyTapFocus(t, { x: 0, y: 0 })).toBe(false);

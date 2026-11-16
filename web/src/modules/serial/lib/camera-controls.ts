@@ -80,10 +80,10 @@ export function formatZoom(value: number): string {
 
 async function apply(
   track: MediaStreamTrack,
-  constraint: Record<string, unknown>,
+  ...constraints: Record<string, unknown>[]
 ): Promise<boolean> {
   try {
-    await track.applyConstraints({ advanced: [constraint as MediaTrackConstraintSet] });
+    await track.applyConstraints({ advanced: constraints as MediaTrackConstraintSet[] });
     return true;
   } catch {
     return false;
@@ -98,9 +98,17 @@ export function applyZoom(track: MediaStreamTrack, zoom: number): Promise<boolea
   return apply(track, { zoom });
 }
 
-/** Fokus sekali ke titik `point` (0-1 pada bingkai kamera). */
+/**
+ * Fokus sekali ke titik `point` (0-1 pada bingkai kamera). Dua set `advanced` berurutan: anggota satu set
+ * "semua atau tidak sama sekali", jadi bila perangkat mendukung `single-shot` tetapi tidak `pointsOfInterest`, set
+ * pertama dilewati dan set kedua tetap memicu fokus ulang (di titik bawaan kamera).
+ */
 export function applyTapFocus(track: MediaStreamTrack, point: Point): Promise<boolean> {
-  return apply(track, { focusMode: 'single-shot', pointsOfInterest: [{ x: point.x, y: point.y }] });
+  return apply(
+    track,
+    { focusMode: 'single-shot', pointsOfInterest: [{ x: point.x, y: point.y }] },
+    { focusMode: 'single-shot' },
+  );
 }
 
 /**
