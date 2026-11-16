@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest';
 import {
   browserKindFromProgId,
   candidateExecutables,
+  closeLoginWindow,
+  closeWindowScript,
   type LoginWindowDeps,
   openLoginWindow,
   popupArgs,
@@ -124,5 +126,61 @@ describe('openLoginWindow', () => {
     await openLoginWindow(URL_LOGIN, deps);
     expect(launched).toEqual([]);
     expect(opened).toEqual([URL_LOGIN]);
+  });
+});
+
+describe('closeWindowScript / closeLoginWindow', () => {
+  test('skrip statis: WM_CLOSE (0x10) ke jendela Chrome_WidgetWin berjudul persis; judul diverifikasi ketat', () => {
+    const script = closeWindowScript('QC App - Login berhasil');
+    expect(script).toContain("Close('QC App - Login berhasil')");
+    expect(script).toContain('PostMessage(h, 0x10');
+    expect(script).toContain('StartsWith("Chrome_WidgetWin")');
+    for (const bad of [
+      String.raw`x'; Remove-Item -Recurse C:\ #`,
+      'a"b',
+      'a\b',
+      '',
+      'a'.repeat(81),
+      'tab\there',
+    ]) {
+      expect(() => closeWindowScript(bad), bad).toThrow();
+    }
+  });
+
+  test('Windows: menjalankan powershell.exe dari SystemRoot dengan -NoProfile dan skrip; selain Windows tidak berbuat apa-apa', async () => {
+    const runs: { file: string; args: string[] }[] = [];
+    const run = async (file: string, args: string[]) => {
+      runs.push({ file, args });
+    };
+    await closeLoginWindow('QC App - Login berhasil', {
+      platform: 'win32',
+      env: { SystemRoot: String.raw`C:\Windows` },
+      run,
+    });
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.file).toBe(
+      String.raw`C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe`,
+    );
+    expect(runs[0]?.args.slice(0, 4)).toEqual([
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+    ]);
+    expect(runs[0]?.args.at(-1)).toContain('QC App - Login berhasil');
+    await closeLoginWindow('QC App - Login berhasil', { platform: 'darwin', env: {}, run });
+    expect(runs).toHaveLength(1);
+  });
+
+  test('kegagalan menjalankan ditelan (pengguna tinggal menutup sendiri)', async () => {
+    await expect(
+      closeLoginWindow('QC App - Login berhasil', {
+        platform: 'win32',
+        env: {},
+        run: async () => {
+          throw new Error('powershell tak ada');
+        },
+      }),
+    ).resolves.toBeUndefined();
   });
 });

@@ -1,6 +1,6 @@
 import { request } from 'node:http';
 import { afterEach, describe, expect, test } from 'vitest';
-import { type Loopback, startLoopback } from './loopback';
+import { LOGIN_SUCCESS_TITLE, type Loopback, startLoopback } from './loopback';
 
 const CODE = 'eyJ0eXAiOiJkY29kZSJ9.abc-DEF_123';
 const STATE = 'state-uji-1234';
@@ -123,5 +123,35 @@ describe('startLoopback', () => {
     const reply = await get(lb.port, `/callback?code=${CODE}&state=${STATE}`);
     expect(reply.status).toBe(500);
     expect(reply.body).not.toContain('rahasia');
+  });
+});
+
+describe('onShown dan judul halaman', () => {
+  test('onShown(true) dipanggil SETELAH respons terkirim, dengan judul yang dikenali penutup jendela', async () => {
+    const shown: boolean[] = [];
+    const lb = await startLoopback({
+      timeoutMs: 60_000,
+      onCallback: async () => true,
+      onShown: (ok) => shown.push(ok),
+    });
+    active = lb;
+    const reply = await get(lb.port, `/callback?code=${CODE}&state=${STATE}`);
+    expect(reply.body).toContain(`<title>${LOGIN_SUCCESS_TITLE}</title>`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(shown).toEqual([true]);
+  });
+
+  test('gagal: onShown(false); permintaan 404 tidak memicu onShown', async () => {
+    const shown: boolean[] = [];
+    const lb = await startLoopback({
+      timeoutMs: 60_000,
+      onCallback: async () => false,
+      onShown: (ok) => shown.push(ok),
+    });
+    active = lb;
+    await get(lb.port, '/tidak-ada');
+    await get(lb.port, `/callback?code=${CODE}&state=${STATE}`);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(shown).toEqual([false]);
   });
 });
