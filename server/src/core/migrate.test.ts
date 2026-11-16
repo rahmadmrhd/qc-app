@@ -318,6 +318,7 @@ describe('skema baseline', () => {
       { name: '0016_panduan_interaktif.sql' },
       { name: '0017_laporan_rusak.sql' },
       { name: '0018_client_id_serah_terima.sql' },
+      { name: '0019_push_perangkat_senyap.sql' },
     ]);
   });
 
