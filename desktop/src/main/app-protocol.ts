@@ -5,6 +5,8 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { extname, relative, resolve, sep } from 'node:path';
+import { CATALOG_FILES_PATH } from '@countrylock/bridge-channels';
+import { CATALOG_FILE_ID } from '@shared/desktop-catalog';
 import { isProxyRoute } from './api-proxy';
 
 export const APP_SCHEME = 'app';
@@ -126,6 +128,24 @@ function baseHeaders(contentType: string, csp: string): Record<string, string> {
   };
 }
 
+/**
+ * `undefined` = bukan jalur katalog; `null` = jalur katalog dengan id tak sah (selalu 404); selain itu id berkas.
+ * Id harus lolos `CATALOG_FILE_ID` (tanpa titik/pemisah jalur), jadi tak ada jalur yang keluar dari folder cache.
+ */
+function catalogFileIdOf(requestUrl: string): string | null | undefined {
+  let pathname: string;
+  try {
+    const parsed = new URL(requestUrl);
+    if (parsed.protocol !== `${APP_SCHEME}:` || parsed.hostname !== APP_HOST) return undefined;
+    pathname = parsed.pathname;
+  } catch {
+    return undefined;
+  }
+  if (!pathname.startsWith(CATALOG_FILES_PATH)) return undefined;
+  const id = pathname.slice(CATALOG_FILES_PATH.length);
+  return CATALOG_FILE_ID.test(id) ? id : null;
+}
+
 /** Awalan `/api` dan `/auth` bukan berkas UI: diserahkan ke proxy API (proses utama). */
 function isApiPath(requestUrl: string): boolean {
   try {
@@ -143,8 +163,24 @@ export function createAppHandler(
   /** Akar berkas UI; fungsi dievaluasi tiap permintaan (bundel aktif dapat berganti). */
   rootOf: string | (() => string),
   proxy?: (request: Request) => Promise<Response>,
+  /** Gambar katalog Tipe offline di `/catalog-files/<id>` (cache lokal); tanpa ini jalur itu 404. */
+  catalogFiles?: { read(id: string): { data: Buffer; mime: string } | null },
 ): (request: Request) => Promise<Response> {
   return async (request) => {
+    const catalogId = catalogFileIdOf(request.url);
+    if (catalogId !== undefined) {
+      const file = catalogId === null ? null : (catalogFiles?.read(catalogId) ?? null);
+      if (!file) {
+        return new Response('Tidak ditemukan', {
+          status: 404,
+          headers: baseHeaders('text/plain', APP_CSP),
+        });
+      }
+      return new Response(new Uint8Array(file.data), {
+        status: 200,
+        headers: baseHeaders(file.mime, APP_CSP),
+      });
+    }
     if (isApiPath(request.url)) {
       return proxy
         ? proxy(request)

@@ -4,6 +4,9 @@ import {
   BRIDGE_ARGS,
   BRIDGE_CHANNELS,
   BRIDGE_VERSION,
+  CATALOG_BRIDGE_VERSION,
+  CATALOG_CHANGE_EVENT,
+  CATALOG_FILES_PATH,
   DeviceRequestSchema,
   HostSchema,
   INJECT_PROGRESS_EVENT,
@@ -129,8 +132,10 @@ describe('PendingEntrySchema dan SerialArgSchema', () => {
 
 describe('konstanta jembatan', () => {
   test('versi, dan semua nama kanal berpola qc:<grup>:<aksi> serta unik', () => {
-    expect(BRIDGE_VERSION).toBe(4);
+    expect(BRIDGE_VERSION).toBe(5);
     expect(NOTIFICATIONS_BRIDGE_VERSION).toBe(4);
+    expect(CATALOG_BRIDGE_VERSION).toBe(5);
+    expect(CATALOG_FILES_PATH).toBe('/catalog-files/');
     expect(MIN_BRIDGE_VERSION).toBe(2);
     const values = Object.values(BRIDGE_CHANNELS);
     expect(new Set(values).size).toBe(values.length);
@@ -140,6 +145,7 @@ describe('konstanta jembatan', () => {
       AUTH_CHANGE_EVENT,
       UI_UPDATE_READY_EVENT,
       NOTIFICATIONS_CHANGE_EVENT,
+      CATALOG_CHANGE_EVENT,
     ]) {
       expect(channel).toMatch(/^qc:[a-z]+:[A-Za-z]+$/);
     }

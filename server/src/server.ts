@@ -76,6 +76,9 @@ export function envFromConfig(config: Config, db: Db): Env {
     ...(config.vapid === null
       ? {}
       : { PUSH: createWebPushSender(config.vapid), VAPID_PUBLIC_KEY: config.vapid.publicKey }),
+    ...(config.desktopCatalogToken === ''
+      ? {}
+      : { DESKTOP_CATALOG_TOKEN: config.desktopCatalogToken }),
     QUOTA_ALERT_PERCENT: config.quotaAlertPercent,
     ...(config.appOrigin === undefined ? {} : { APP_ORIGIN: config.appOrigin }),
     ...(config.devLoginEmail === undefined ? {} : { DEV_LOGIN_EMAIL: config.devLoginEmail }),

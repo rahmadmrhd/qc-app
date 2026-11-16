@@ -444,3 +444,21 @@ describe('loadConfig: VAPID (push)', () => {
     expect(loadConfig({ ...VALID, ...pair, VAPID_SUBJECT: 'bukan-subject' }).vapid).toBeNull();
   });
 });
+
+describe('loadConfig: DESKTOP_CATALOG_TOKEN (katalog Tipe offline desktop)', () => {
+  test('bawaan kosong (rute dinonaktifkan); start tidak gagal', () => {
+    expect(loadConfig(VALID).desktopCatalogToken).toBe('');
+  });
+
+  test('token minimal 32 karakter dipakai apa adanya (spasi pinggir dibuang)', () => {
+    const token = 'a1'.repeat(16);
+    expect(loadConfig({ ...VALID, DESKTOP_CATALOG_TOKEN: ` ${token} ` }).desktopCatalogToken).toBe(
+      token,
+    );
+  });
+
+  test('token terlalu pendek = dinonaktifkan, tidak menggagalkan start dan tidak bocor', () => {
+    const config = loadConfig({ ...VALID, DESKTOP_CATALOG_TOKEN: 'pendek-sekali' });
+    expect(config.desktopCatalogToken).toBe('');
+  });
+});

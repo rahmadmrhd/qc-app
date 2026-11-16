@@ -191,3 +191,42 @@ describe('akar UI dinamis', () => {
     }
   });
 });
+
+describe('gambar katalog Tipe offline (/catalog-files/<id>)', () => {
+  const png = Buffer.from([137, 80, 78, 71]);
+  const read = (id: string) => (id === 'g1' ? { data: png, mime: 'image/png' } : null);
+
+  test('menyajikan gambar dari cache dengan tipe dan header keamanan', async () => {
+    const res = await createAppHandler(ROOT, undefined, { read })(
+      new Request('app://qc/catalog-files/g1'),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(Buffer.from(await res.arrayBuffer())).toEqual(png);
+  });
+
+  test('id tak dikenal, tak sah (traversal, titik, kosong), atau tanpa sumber katalog = 404 tanpa menyentuh UI', async () => {
+    const handler = createAppHandler(ROOT, undefined, { read });
+    for (const path of [
+      '/catalog-files/tidak-ada',
+      '/catalog-files/..%2F..%2Fx',
+      '/catalog-files/a.png',
+      '/catalog-files/',
+      '/catalog-files/g1/extra',
+    ]) {
+      expect((await handler(new Request(`app://qc${path}`))).status, path).toBe(404);
+    }
+    expect((await createAppHandler(ROOT)(new Request('app://qc/catalog-files/g1'))).status).toBe(
+      404,
+    );
+  });
+
+  test('origin lain tidak dilayani sebagai gambar katalog', async () => {
+    const res = await createAppHandler(ROOT, undefined, { read })(
+      new Request('app://lain/catalog-files/g1'),
+    );
+    expect(res.status).toBe(403);
+  });
+});

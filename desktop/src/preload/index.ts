@@ -6,6 +6,7 @@ import {
   AUTH_CHANGE_EVENT,
   BRIDGE_CHANNELS,
   BRIDGE_VERSION,
+  CATALOG_CHANGE_EVENT,
   INJECT_PROGRESS_EVENT,
   NOTIFICATIONS_CHANGE_EVENT,
   UI_UPDATE_READY_EVENT,
@@ -62,6 +63,19 @@ const bridge: QcBridge = {
       };
     },
     reload: () => invoke(BRIDGE_CHANNELS.uiReload),
+  },
+  catalog: {
+    get: () => invoke(BRIDGE_CHANNELS.catalogGet),
+    refresh: () => invoke(BRIDGE_CHANNELS.catalogRefresh),
+    status: () => invoke(BRIDGE_CHANNELS.catalogStatus),
+    onChange: (cb) => {
+      // Hanya `CatalogStatus` (tanpa token) yang diteruskan; objek `event` Electron tidak bocor ke renderer.
+      const listener = (_event: unknown, payload: Parameters<typeof cb>[0]): void => cb(payload);
+      ipcRenderer.on(CATALOG_CHANGE_EVENT, listener);
+      return () => {
+        ipcRenderer.removeListener(CATALOG_CHANGE_EVENT, listener);
+      };
+    },
   },
   notifications: {
     onChange: (cb) => {

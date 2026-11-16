@@ -5,6 +5,7 @@
 import { BRIDGE_VERSION } from '@countrylock/bridge-channels';
 import type {
   AuthStatus,
+  CatalogStatus,
   InjectProgressDto,
   InjectRequest,
   InjectResult,
@@ -21,6 +22,7 @@ export type FakeOverrides = {
   pending?: Partial<QcBridge['pending']>;
   auth?: Partial<QcBridge['auth']>;
   ui?: Partial<QcBridge['ui']>;
+  catalog?: Partial<QcBridge['catalog']>;
   notifications?: Partial<QcBridge['notifications']>;
 };
 
@@ -34,6 +36,13 @@ export interface FakeBridge extends QcBridge {
 }
 
 export const FAKE_BRAND_PASSWORD = 'sandi-bawaan-merk';
+
+const DISABLED_CATALOG: CatalogStatus = {
+  state: 'disabled',
+  itemCount: 0,
+  syncedAt: null,
+  error: null,
+};
 
 export function createFakePackage(overrides: Partial<PackageDto> = {}): PackageDto {
   const mode = { ip: '192.168.1.20', ipServer: '192.168.1.1', connectVia: 'Server' as const };
@@ -147,6 +156,14 @@ export function createFakeBridge(overrides: FakeOverrides = {}): FakeBridge {
       onUpdateReady: () => () => undefined,
       reload: async () => undefined,
       ...overrides.ui,
+    },
+    // Bawaan: katalog dinonaktifkan (build tanpa token); tes katalog menimpa.
+    catalog: {
+      get: async () => null,
+      refresh: async (): Promise<CatalogStatus> => DISABLED_CATALOG,
+      status: async (): Promise<CatalogStatus> => DISABLED_CATALOG,
+      onChange: () => () => undefined,
+      ...overrides.catalog,
     },
     notifications: {
       onChange: () => () => undefined,

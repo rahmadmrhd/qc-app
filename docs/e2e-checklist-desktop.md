@@ -131,6 +131,20 @@ Prasyarat: aplikasi desktop terpasang dengan `qc://` terdaftar (atau `QC_DEV_REG
 | H8 | Jalankan inject Country Lock (perangkat nyata), lalu tekan butir Country Lock di peramban | Dialog "Country Lock sedang berjalan"; inject tidak terganggu | |
 | H9 | Tekan butir Country Lock di peramban saat aplikasi desktop belum terpasang | Tidak ada yang terbuka; halaman `/country-lock` tetap tampil dengan tombol "Buka di aplikasi desktop" | |
 
+## I. Katalog Tipe offline
+
+Prasyarat: server (staging) sudah memuat rute katalog dengan `DESKTOP_CATALOG_TOKEN` terisi di `.env` VPS; build desktop dibuat dengan env `CATALOG_TOKEN` bernilai SAMA (`CATALOG_TOKEN=... bun run build:desktop`). Minimal satu item `isCountryLock` aktif dengan instruksi stiker.
+
+| # | Langkah | Hasil yang diharapkan | Hasil |
+|---|---|---|---|
+| I1 | Buka aplikasi desktop (tanpa login) dengan server terjangkau, buka Country Lock | Kartu "Katalog Tipe (offline)" tampil dengan "N item · terakhir disinkronkan <waktu>" | |
+| I2 | Cari merk/tipe/nama lain, pilih satu Tipe | Daftar stiker yang berlaku dan foto instruksi dengan penanda tampil; gambar muncul | |
+| I3 | Matikan jaringan (atau hentikan server), tutup lalu buka aplikasi, buka Country Lock | Katalog dan semua gambar tetap tampil dari cache; tombol Sinkronkan menampilkan "Tidak dapat terhubung ke server" tanpa menghapus katalog | |
+| I4 | Ubah instruksi/stiker sebuah item di web, tunggu deploy/memo server (30 dtk), tekan Sinkronkan | Perubahan muncul; gambar baru terunduh | |
+| I5 | Build desktop tanpa `CATALOG_TOKEN` | Kartu katalog tidak tampil; Country Lock tetap berjalan seperti biasa | |
+| I6 | Build dengan `CATALOG_TOKEN` salah | Setelah Sinkronkan: "Server menolak sinkron katalog"; tidak ada galat lain | |
+| I7 | Hapus berkas di `<userData>/catalog/files/`, tekan Sinkronkan | Berkas yang hilang diunduh ulang | |
+
 ## Pengisian hasil
 
 - Penguji dan tanggal: 
