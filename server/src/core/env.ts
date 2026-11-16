@@ -46,6 +46,8 @@ export interface Env extends GoogleSettings {
   PUSH?: PushSender;
   /** Kunci publik VAPID (base64url) untuk klien; bersama `PUSH`. */
   VAPID_PUBLIC_KEY?: string;
+  /** Token bersama katalog Tipe offline desktop; kosong/tak diisi = rute katalog dinonaktifkan (404 seragam). */
+  DESKTOP_CATALOG_TOKEN?: string;
   /** Pengirim email peringatan (T32); kosong = SMTP/`ALERT_TO` belum dikonfigurasi, peringatan dilewati dan dicatat. */
   MAILER?: Mailer;
   /** Penerima peringatan (`ALERT_TO`). */

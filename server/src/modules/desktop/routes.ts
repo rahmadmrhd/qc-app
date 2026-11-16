@@ -1,11 +1,17 @@
-import { createHash } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
-import { appError } from '@server/core/errors';
+import { nowOf } from '@server/core/env';
+import { appError, isAppError } from '@server/core/errors';
 import { problemResponse, toProblem } from '@server/http/problem';
+import { limiterAddress } from '@server/http/proxy';
 import { type AppBindings, newRequestId } from '@server/http/security';
+import { findActiveFile } from '@server/modules/files/repo';
+import { readFile as readAppFile } from '@server/modules/files/service';
 import { etagMatches, formatEtag } from '@shared/api';
+import { CATALOG_FILE_ID } from '@shared/desktop-catalog';
 import { Hono } from 'hono/tiny';
+import { getServedCatalog } from './catalog';
 
 /** Rute publik untuk aplikasi desktop (dipasang di `app.route('/api/desktop', desktopApp)`). */
 export const desktopApp = new Hono<AppBindings>();
@@ -167,3 +173,125 @@ ${signature}`)
   memo.set(staticDir, { key, served });
   return served;
 }
+
+/**
+ * Katalog Tipe offline untuk desktop (spek desktop §6.6, keputusan pemilik 2026-11-16): rute baca bertoken bersama,
+ * tanpa sesi (Country Lock jalan tanpa login). Aturan rute publik bertoken: token dibandingkan waktu-konstan, SEMUA
+ * penolakan = 404 problem+json yang sama (termasuk rute dinonaktifkan karena token belum diisi), kegagalan dibatasi per
+ * IP lewat `rate_limits`, DTO daftar putih, `no-store`, dan token tidak pernah dicatat. Token yang sah tidak pernah
+ * diblokir pembatas (hanya jalur kegagalan), seperti rute publik laporan serial.
+ */
+const CATALOG_FAIL_LIMIT = 20;
+const CATALOG_FAIL_WINDOW_MS = 10 * 60 * 1000;
+/** Hanya gambar katalog bersama (stiker dan pustaka gambar stiker) yang dapat diunduh lewat rute berkas. */
+const CATALOG_FILE_OWNERS = new Set(['sticker', 'stickerguide']);
+
+const catalogLimiterKey = (ip: string): string => `desktop-catalog:${limiterAddress(ip)}`;
+
+const noStore = (response: Response): Response => {
+  response.headers.set('Cache-Control', 'no-store');
+  response.headers.set('Referrer-Policy', 'no-referrer');
+  return response;
+};
+
+const catalogNotFound = (): Response =>
+  noStore(
+    problemResponse(toProblem(appError('NOT_FOUND', 'Katalog tidak tersedia'), newRequestId())),
+  );
+
+const catalogTooMany = (): Response =>
+  noStore(
+    problemResponse(
+      toProblem(
+        appError('FORBIDDEN', 'Terlalu banyak percobaan, coba lagi nanti'),
+        newRequestId(),
+        {
+          status: 429,
+        },
+      ),
+    ),
+  );
+
+const digest = (value: string): Buffer => createHash('sha256').update(value).digest();
+
+function tokenMatches(expected: string, header: string | undefined): boolean {
+  const match = /^Bearer (\S{1,512})$/.exec(header ?? '');
+  const presented = match?.[1] ?? '';
+  // Dibandingkan lewat sha256 agar panjang tetap sama; hasilnya tak bergantung pada awalan yang cocok.
+  return timingSafeEqual(digest(expected), digest(presented)) && presented !== '';
+}
+
+type CatalogContext = {
+  env: AppBindings['Bindings'];
+  req: { header(name: string): string | undefined };
+};
+
+/** `null` = diizinkan; selain itu respons penolakan (404 seragam, atau 429 untuk IP yang sudah melewati batas). */
+async function rejectCatalog(c: CatalogContext): Promise<Response | null> {
+  const expected = c.env.DESKTOP_CATALOG_TOKEN ?? '';
+  if (expected === '') return catalogNotFound();
+  if (tokenMatches(expected, c.req.header('authorization'))) return null;
+  const key = catalogLimiterKey(c.env.clientIp ?? 'unknown');
+  const now = nowOf(c.env);
+  const cutoff = now - CATALOG_FAIL_WINDOW_MS;
+  const row = await c.env.DB.prepare('SELECT count, window_start FROM rate_limits WHERE `key` = ?')
+    .bind(key)
+    .first<{ count: number | string; window_start: number | string }>();
+  if (row && Number(row.window_start) >= cutoff && Number(row.count) >= CATALOG_FAIL_LIMIT) {
+    return catalogTooMany();
+  }
+  try {
+    await c.env.DB.prepare(
+      'INSERT INTO rate_limits (`key`, count, window_start) VALUES (?, 1, ?) ON DUPLICATE KEY UPDATE count = IF(window_start < ?, 1, count + 1), window_start = IF(window_start < ?, ?, window_start)',
+    )
+      .bind(key, now, cutoff, cutoff, now)
+      .run();
+  } catch {
+    // pembatas best-effort
+  }
+  return catalogNotFound();
+}
+
+desktopApp.get('/catalog', async (c) => {
+  const rejected = await rejectCatalog(c);
+  if (rejected) return rejected;
+  const served = await getServedCatalog(c.env);
+  const headers = { 'cache-control': 'no-store', etag: formatEtag(served.etag) };
+  if (etagMatches(c.req.header('if-none-match'), served.etag)) {
+    return new Response(null, { status: 304, headers });
+  }
+  return new Response(served.json, {
+    status: 200,
+    headers: { ...headers, 'content-type': 'application/json; charset=utf-8' },
+  });
+});
+
+desktopApp.get('/catalog/files/:id', async (c) => {
+  const rejected = await rejectCatalog(c);
+  if (rejected) return rejected;
+  const id = c.req.param('id');
+  if (!CATALOG_FILE_ID.test(id)) return catalogNotFound();
+  const served = await getServedCatalog(c.env);
+  if (!served.fileIds.has(id)) return catalogNotFound();
+  const record = await findActiveFile(c.env, id);
+  if (!record || !CATALOG_FILE_OWNERS.has(record.ownerType)) return catalogNotFound();
+  try {
+    const file = await readAppFile(
+      c.env,
+      { id },
+      { email: '', itemBuIds: null, canReadStickerFiles: true },
+      record,
+    );
+    return new Response(file.bytes, {
+      status: 200,
+      headers: {
+        'content-type': file.mime,
+        'cache-control': 'no-store',
+        'x-content-type-options': 'nosniff',
+      },
+    });
+  } catch (error) {
+    if (isAppError(error) && error.code === 'NOT_FOUND') return catalogNotFound();
+    throw error;
+  }
+});

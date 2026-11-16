@@ -42,6 +42,11 @@ export interface Config {
   alertTo: string[];
   /** Kunci VAPID Web Push; `null` = tidak diisi/tidak valid (push dinonaktifkan, aplikasi tetap berjalan). */
   vapid: VapidSettings | null;
+  /**
+   * Token bersama pembaca katalog Tipe offline desktop (`DESKTOP_CATALOG_TOKEN`, minimal 32 karakter). Kosong atau
+   * terlalu pendek = rute katalog dinonaktifkan (404 seragam); tidak pernah menggagalkan start (seperti VAPID).
+   */
+  desktopCatalogToken: string;
   /** Ambang peringatan pemakaian kuota Drive, persen (`QUOTA_ALERT_PERCENT`, bawaan 80). */
   quotaAlertPercent: number;
   adminEmail: string;
@@ -78,6 +83,7 @@ export const PRODUCTION_BACKUP_DIR = '/var/backups/qc';
 export const PRODUCTION_PROOF_DIR = '/var/lib/qc/proofs';
 export const DEFAULT_PROOF_STAGING_MAX_BYTES = 2 * 1024 ** 3;
 const SESSION_SECRET_MIN_LENGTH = 16;
+export const CATALOG_TOKEN_MIN_LENGTH = 32;
 
 /** Galat konfigurasi: memuat NAMA variabel yang bermasalah saja, tidak pernah nilainya. */
 export class ConfigError extends Error {
@@ -300,6 +306,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     smtp,
     alertTo,
     vapid,
+    desktopCatalogToken:
+      get('DESKTOP_CATALOG_TOKEN').length >= CATALOG_TOKEN_MIN_LENGTH
+        ? get('DESKTOP_CATALOG_TOKEN')
+        : '',
     quotaAlertPercent,
     adminEmail: get('ADMIN_EMAIL'),
     appOrigin: appOrigin === '' ? undefined : appOrigin,
