@@ -370,7 +370,8 @@ Semuanya 2026-11-13, disetujui pemilik produk:
     (`tip-handover-komentar`, tanpa `izin` tambahan karena komentar terbuka bagi pembaca WH maupun QC). Alasan:
     pengguna baru di papan kosong tak pernah belajar soal checklist, komentar, dan centang, dan nomor "Langkah x dari
     N" melompat. Diubah: 4.5 (kalimat "langkah dilewati atau jatuh ke penjelasan teks" dipertegas); jumlah langkah
-    panduan Serah Terima menjadi 3 (WH lihat), 4 (QC), 6 (WH tulis), 7 (keduanya).
+    panduan Serah Terima menjadi 3 (WH lihat), 4 (QC), 6 (WH tulis), 7 (keduanya); diperluas lagi oleh butir L
+    menjadi 3, 4, 13, 14.
   - **I. Versi panduan `dasar-layout` dan `handover-dasar` tetap 1 (2026-11-14, keputusan pemilik produk).**
     Putaran butir F-H menambah langkah (layout 5 → 10, Serah Terima +1) tanpa menaikkan `GUIDE_VERSIONS`, sehingga
     pengguna yang sudah menyelesaikan kedua panduan itu tidak ditawari ulang ("Diperbarui"). Pemilik produk
@@ -395,6 +396,17 @@ Semuanya 2026-11-13, disetujui pemilik produk:
     teks langkah memakai gaya santai ("kamu") seperti panduan lain; halaman Konfigurasi default per BU tidak
     dibahas; Item/Stiker/Postel/Serial Number/Pengaturan Akses tetap menyusul. Jalur "diminta memilih konfigurasi
     default" (item yang BU-nya belum punya default) sudah diuji di peramban: Lanjut terkunci sampai default dipilih.
+  - **L. Panduan Serah Terima menjelaskan pengisian task sesudah "Tempel dari WhatsApp" (2026-11-16, permintaan
+    pemilik produk).** Panduan berhenti di panel tempel, padahal sesudah Pecah pengguna masih harus memeriksa kartu,
+    mengisi customer dan catatan, lalu menyimpan. Ditambah tujuh langkah sisi WH (`izin: handover: edit`) pada
+    formulir batch: lokasi (sebelum panel tempel), kartu task, customer (saran toleran salah ketik, nama baru dibuat
+    saat task disimpan, boleh kosong), catatan (wajib, checklist, maks. 5.000 karakter, tempelan WhatsApp langsung di
+    editor ikut menjadi checklist, centang dilakukan QC setelah tersimpan), aksi kartu (Gandakan menyalin catatan
+    tanpa customer, Hapus menyisakan minimal satu kartu), Tambah task (maks. 30 per batch), dan Simpan semua
+    (atomik; tur berhenti SEBELUM tombol simpan). Tanpa gerbang `wait`: kartu pertama (kosong atau hasil Pecah)
+    selalu ada, jadi langkahnya menjelaskan kartu apa pun yang tampil. Versi `handover-dasar` tetap 1, mengikuti
+    pertimbangan butir I (perluasan melengkapi panduan yang belum ada penggunanya di produksi); pemilik produk dapat
+    menaikkannya bila ingin pengguna yang sudah menyelesaikan ditawari ulang. Diubah: jumlah langkah pada butir H.
   - **Catatan status.** Butir A dan B sudah ada di kode (`pushAvailable` di `push/lib/support.ts`,
     `deviceGuideRelevance` dan `deriveDeviceGuides` di `catalog/device.ts`, `useDeviceGuides`; kartu, banner, dan menu
     memakai satu fungsi relevansi). Pertanyaan terbuka: tidak ada.
