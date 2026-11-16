@@ -9,7 +9,9 @@ import { listNotificationsSince } from './repo';
 /**
  * Aliran notifikasi SSE untuk aplikasi desktop (Web Push tidak tersedia di Electron; keputusan pemilik 2026-11-16):
  * proses utama desktop membuka `GET /api/v1/notifications/stream` dengan token Bearer dan menampilkan notifikasi
- * Windows dari kejadian yang diterimanya. Satu proses server (tanpa antrean antar-proses), jadi koneksi disimpan di
+ * Windows dari kejadian yang diterimanya. Lonceng web memakai aliran DAN hub yang sama dengan cookie sesi (keputusan
+ * pemilik 2026-11-16, setelah SSE desktop): tiap bingkai `notification` membuat lonceng memuat ulang daftarnya; jenis
+ * koneksi (`StreamKind`) hanya membedakan batas koneksi per pengguna. Satu proses server (tanpa antrean antar-proses), jadi koneksi disimpan di
  * memori. Sumber kebenaran tetap tabel `notifications`: aliran hanya MENDORONG baris baru yang sama dengan lonceng
  * dan push (hak lokasi diperiksa saat kirim, `hasReadAccess`, seperti lonceng dan push).
  *
@@ -19,8 +21,14 @@ import { listNotificationsSince } from './repo';
 
 /** Detak jantung: komentar SSE agar koneksi tak dianggap menganggur (Bun, nginx, Cloudflare). */
 export const STREAM_HEARTBEAT_MS = 5_000;
-/** Koneksi serentak per pengguna (instalasi/perangkat berbeda); yang berlebih menutup yang TERTUA. */
+/** Koneksi desktop serentak per pengguna (instalasi/perangkat berbeda); yang berlebih menutup yang TERTUA. */
 export const STREAM_MAX_PER_USER = 3;
+/**
+ * Koneksi web (satu per tab terbuka) serentak per pengguna; yang berlebih menutup yang tertua. Bucket TERPISAH dari
+ * desktop dan lebih longgar: dengan batas 3, pengguna yang membuka 4 tab akan membuat tab-tab itu saling menutup
+ * (`EventSource` menyambung ulang dan menutup yang lain) tanpa henti, dan tab web tak boleh menggusur aplikasi desktop.
+ */
+export const STREAM_MAX_WEB_PER_USER = 8;
 /** Batas keras seluruh koneksi; di atasnya 503 (melindungi memori dan kueri pump). */
 export const STREAM_MAX_TOTAL = 500;
 /** Akun/izin diperiksa ulang berkala; akun nonaktif = aliran ditutup. */
@@ -42,9 +50,13 @@ export interface StreamEvent {
   createdAt: string;
 }
 
+/** Jenis klien: `desktop` = Bearer desktop (Electron), `web` = cookie sesi peramban (lonceng yang terbuka). */
+export type StreamKind = 'desktop' | 'web';
+
 interface Connection {
   serial: number;
   email: string;
+  kind: StreamKind;
   /** Batas bawah waktu pembuatan notifikasi yang masih perlu dicek (ISO; maju bersama baris yang terkirim). */
   since: string;
   /** Titik awal koneksi (saat dibuka, atau `Last-Event-ID`): jendela tumpang tindih tak pernah mundur melewatinya. */
@@ -125,11 +137,14 @@ export function openNotificationStream(
   email: string,
   lastEventId: string | null | undefined,
   expiresAt: number,
+  kind: StreamKind = 'desktop',
 ): OpenStreamResult {
   if (connections.size >= STREAM_MAX_TOTAL) return { ok: false, reason: 'full' };
-  // Batas per pengguna: yang tertua ditutup (klien yang baru tersambung ulang menggantikan yang menggantung).
-  const mine = [...connections].filter((conn) => conn.email === email);
-  while (mine.length >= STREAM_MAX_PER_USER) mine.shift()?.close();
+  // Batas per pengguna DAN jenis klien: yang tertua ditutup (klien yang baru tersambung ulang menggantikan yang
+  // menggantung). Jenis dipisah agar tab web dan aplikasi desktop tidak saling menggusur.
+  const limit = kind === 'web' ? STREAM_MAX_WEB_PER_USER : STREAM_MAX_PER_USER;
+  const mine = [...connections].filter((conn) => conn.email === email && conn.kind === kind);
+  while (mine.length >= limit) mine.shift()?.close();
 
   const now = nowOf(env);
   const resume = parseLastEventId(lastEventId);
@@ -148,6 +163,7 @@ export function openNotificationStream(
   const conn: Connection = {
     serial: ++serial,
     email,
+    kind,
     since,
     floor: since,
     sent,

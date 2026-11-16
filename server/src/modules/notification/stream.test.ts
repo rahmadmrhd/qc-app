@@ -1,10 +1,17 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { app } from '@server/app';
-import { DESKTOP_TOKEN_TTL_MS, signDesktopToken } from '@server/core/session';
-import { ENV, seedHandoverEnv } from '@server-test/handover-env';
+import {
+  DESKTOP_TOKEN_TTL_MS,
+  SESSION_TTL_MS,
+  signDesktopToken,
+  signSessionToken,
+} from '@server/core/session';
+import { notificationTick } from '@server/jobs/runner';
+import { callRest, ENV, seedHandover, seedHandoverEnv } from '@server-test/handover-env';
+import { seedCustomer } from '@server-test/item-fixtures';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import type { NotificationDto } from '@shared/notifications';
+import { CHECK_WINDOW_MS, type NotificationDto } from '@shared/notifications';
 import { insertNotificationStmts, type NewNotification } from './repo';
 import {
   activeStreamCount,
@@ -12,6 +19,7 @@ import {
   parseLastEventId,
   pumpNotificationStreams,
   STREAM_MAX_PER_USER,
+  STREAM_MAX_WEB_PER_USER,
   type StreamEvent,
   streamEventText,
 } from './stream-hub';
@@ -78,6 +86,9 @@ function frames(response: Response) {
   const reader = (response.body as ReadableStream<Uint8Array>).getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  // `read()` yang kehabisan waktu tetap menggantung dan akan menelan potongan berikutnya; simpan agar dipakai ulang
+  // oleh pemanggilan `next` berikutnya (tes yang memeriksa "tak ada bingkai" lalu menunggu bingkai lain).
+  let pending: ReturnType<typeof reader.read> | undefined;
   return {
     async next(timeoutMs = 3000): Promise<SseFrame | null> {
       for (;;) {
@@ -102,11 +113,13 @@ function frames(response: Response) {
           if (any) return frame;
           continue;
         }
+        pending ??= reader.read();
         const chunk = await Promise.race([
-          reader.read(),
+          pending,
           new Promise<null>((resolve) => setTimeout(() => resolve(null), timeoutMs)),
         ]);
         if (chunk === null) return null;
+        pending = undefined;
         if (chunk.done) return null;
         buffer += decoder.decode(chunk.value, { stream: true });
       }
@@ -121,7 +134,7 @@ async function notificationsOf(email: string): Promise<NotificationDto[]> {
 }
 
 describe('aliran notifikasi desktop (SSE)', () => {
-  test('tanpa sesi, token rusak, atau cookie web saja -> 401 (hanya Bearer desktop)', async () => {
+  test('tanpa sesi atau token rusak -> 401', async () => {
     const none = await app.request(URL_STREAM, {}, env);
     expect(none.status).toBe(401);
     const garbage = await app.request(
@@ -130,8 +143,37 @@ describe('aliran notifikasi desktop (SSE)', () => {
       env,
     );
     expect(garbage.status).toBe(401);
-    const cookie = await rest.get('/notifications/stream', { email: VIEWER });
-    expect(cookie.status).toBe(401);
+    const badCookie = await app.request(URL_STREAM, { headers: { cookie: 'qc_session=x.y' } }, env);
+    expect(badCookie.status).toBe(401);
+    expect(activeStreamCount()).toBe(0);
+  });
+
+  test('jenis token tak boleh tertukar: token desktop sebagai cookie dan token sesi web sebagai Bearer -> 401', async () => {
+    const desktop = await signDesktopToken(env, VIEWER, env.clock.now());
+    const asCookie = await app.request(
+      URL_STREAM,
+      { headers: { cookie: `qc_session=${desktop}` } },
+      env,
+    );
+    expect(asCookie.status).toBe(401);
+    const web = await signSessionToken(env, VIEWER, env.clock.now());
+    const asBearer = await app.request(
+      URL_STREAM,
+      { headers: { authorization: `Bearer ${web}` } },
+      env,
+    );
+    expect(asBearer.status).toBe(401);
+    expect(activeStreamCount()).toBe(0);
+  });
+
+  test('header Authorization yang salah tidak jatuh ke cookie sah (seperti kernel REST)', async () => {
+    const web = await signSessionToken(env, VIEWER, env.clock.now());
+    const response = await app.request(
+      URL_STREAM,
+      { headers: { authorization: 'Basic abc', cookie: `qc_session=${web}` } },
+      env,
+    );
+    expect(response.status).toBe(401);
     expect(activeStreamCount()).toBe(0);
   });
 
@@ -249,6 +291,159 @@ describe('aliran notifikasi desktop (SSE)', () => {
     expect(activeStreamCount()).toBe(2);
     closeAllNotificationStreams();
     expect(activeStreamCount()).toBe(0);
+  });
+});
+
+describe('aliran notifikasi untuk lonceng web (cookie sesi, hub yang sama)', () => {
+  /** Membuka aliran seperti `EventSource` peramban: cookie sesi, tanpa header Authorization. */
+  async function openWeb(email: string, headers: Record<string, string> = {}): Promise<Response> {
+    return rest.get('/notifications/stream', { email, headers });
+  }
+
+  test('cookie sesi sah diterima: header SSE dan bingkai ready', async () => {
+    const response = await openWeb(VIEWER);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/event-stream');
+    expect(response.headers.get('cache-control')).toContain('no-store');
+    expect(response.headers.get('x-accel-buffering')).toBe('no');
+    const sse = frames(response);
+    expect((await sse.next())?.event).toBe('ready');
+    expect(activeStreamCount()).toBe(1);
+    await sse.cancel();
+  });
+
+  test('akun yang tidak terdaftar atau dinonaktifkan -> 401', async () => {
+    expect((await openWeb('orang-asing@gmail.com')).status).toBe(401);
+    expect(activeStreamCount()).toBe(0);
+  });
+
+  test('baris baru milik pengguna didorong sebagai bingkai notification setelah pump; milik orang lain dan lokasi tak berhak tidak', async () => {
+    const response = await openWeb(VIEWER);
+    const sse = frames(response);
+    expect((await sse.next())?.event).toBe('ready');
+    await insert(
+      row(1, { recipient: QC, number: 'ST-QC' }),
+      row(2, { locationId: ENV.locB, number: 'ST-LOKASI-B' }),
+      row(3, { number: 'ST-VIEWER' }),
+    );
+    await pumpNotificationStreams(env);
+    const frame = await sse.next();
+    expect(frame?.event).toBe('notification');
+    const data = JSON.parse(frame?.data ?? '{}') as StreamEvent;
+    expect(`${data.title} ${data.body}`).toContain('ST-VIEWER');
+    expect(await sse.next(300)).toBeNull();
+    await sse.cancel();
+  });
+
+  test('sambung ulang otomatis peramban (Last-Event-ID) mengirim tunggakan yang terlewat saat putus', async () => {
+    await insert(row(1, { number: 'ST-A' }), row(2, { number: 'ST-B' }));
+    const items = (await notificationsOf(VIEWER)).sort((a, b) =>
+      a.createdAt.localeCompare(b.createdAt),
+    );
+    const first = items[0];
+    if (!first) throw new Error('seed kosong');
+    env.clock.set(BASE + 60_000);
+    const response = await openWeb(VIEWER, { 'last-event-id': `${first.createdAt}|${first.id}` });
+    const sse = frames(response);
+    expect((await sse.next())?.event).toBe('ready');
+    const frame = await sse.next();
+    expect((JSON.parse(frame?.data ?? '{}') as StreamEvent).id).toBe(items[1]?.id ?? '');
+    expect(await sse.next(300)).toBeNull();
+    await sse.cancel();
+  });
+
+  test('bucket terpisah: tab web melebihi STREAM_MAX_PER_USER tidak saling menutup dan tidak menggusur desktop', async () => {
+    const desktop = await open(VIEWER);
+    const desktopFrames = frames(desktop);
+    expect((await desktopFrames.next())?.event).toBe('ready');
+    const tabs: Response[] = [];
+    for (let i = 0; i < STREAM_MAX_PER_USER + 2; i++) tabs.push(await openWeb(VIEWER));
+    // Lebih banyak dari batas desktop, tetapi di bawah batas web: semuanya hidup.
+    expect(activeStreamCount()).toBe(STREAM_MAX_PER_USER + 3);
+    const firstTab = frames(tabs[0] as Response);
+    expect((await firstTab.next())?.event).toBe('ready');
+    // (Hidup, bukan ditutup, dibuktikan oleh bingkai yang diterimanya di bawah; membaca dengan batas waktu di tengah
+    // akan menelan bingkai itu karena `read()` yang kehabisan waktu tetap menggantung.)
+    await insert(row(1, { number: 'ST-SEMUA' }));
+    await pumpNotificationStreams(env);
+    expect((await firstTab.next())?.event).toBe('notification');
+    expect((await desktopFrames.next())?.event).toBe('notification');
+  });
+
+  test('batas web per pengguna: tab tertua ditutup, desktop tak tersentuh, pengguna lain tak terpengaruh', async () => {
+    const desktop = await open(VIEWER);
+    const other = await openWeb(QC);
+    const tabs: Response[] = [];
+    for (let i = 0; i < STREAM_MAX_WEB_PER_USER + 1; i++) tabs.push(await openWeb(VIEWER));
+    // 1 desktop + 8 web (tertua dari 9 ditutup) + 1 web milik QC.
+    expect(activeStreamCount()).toBe(1 + STREAM_MAX_WEB_PER_USER + 1);
+    const oldest = frames(tabs[0] as Response);
+    expect((await oldest.next())?.event).toBe('ready');
+    expect(await oldest.next(500)).toBeNull();
+    const desktopFrames = frames(desktop);
+    expect((await desktopFrames.next())?.event).toBe('ready');
+    expect(other.status).toBe(200);
+  });
+
+  describe('jalur tulis nyata -> putaran notifikasi -> bingkai (permintaan: lonceng langsung berubah)', () => {
+    const WH = 'wh@gmail.com';
+    const ref = { id: 't1', locationId: ENV.locA };
+
+    async function seedTask(note: string): Promise<void> {
+      await seedCustomer(env, { id: 'cust-pt-maju', name: 'PT Maju', key: 'pt maju' });
+      await seedHandover(env, {
+        id: 't1',
+        number: 'ST-20261015-001',
+        locationId: ENV.locA,
+        customerId: 'cust-pt-maju',
+        customerName: 'PT Maju',
+        note,
+        status: 'open',
+      });
+    }
+
+    test('Mark done oleh QC lalu putaran notifikasi: WH menerima bingkai notification berisi nomor task', async () => {
+      await seedTask('- [ ] A = 1\n- [ ] B = 2');
+      const sse = frames(await openWeb(WH));
+      expect((await sse.next())?.event).toBe('ready');
+      const out = (await callRest(env, QC, 'handovers.setDone', ref)) as { ok: boolean };
+      expect(out.ok).toBe(true);
+      await notificationTick(env);
+      const frame = await sse.next();
+      expect(frame?.event).toBe('notification');
+      const data = JSON.parse(frame?.data ?? '{}') as StreamEvent;
+      expect(`${data.title} ${data.body}`).toContain('ST-20261015-001');
+      await sse.cancel();
+    });
+
+    test('centang biasa: tidak ada bingkai sampai jendela 1 menit habis; setelahnya satu ringkasan', async () => {
+      await seedTask('- [ ] A = 1\n- [ ] B = 2');
+      const sse = frames(await openWeb(WH));
+      expect((await sse.next())?.event).toBe('ready');
+      const out = (await callRest(env, QC, 'handovers.setCheck', {
+        ...ref,
+        index: 0,
+        text: 'A = 1',
+        checked: true,
+      })) as { ok: boolean };
+      expect(out.ok).toBe(true);
+      await notificationTick(env);
+      expect(await sse.next(300)).toBeNull(); // belum ada notifikasi: masih menunggu penggabungan
+      env.clock.advance(CHECK_WINDOW_MS);
+      await notificationTick(env);
+      expect((await sse.next())?.event).toBe('notification');
+      await sse.cancel();
+    });
+  });
+
+  test('sesi web kedaluwarsa: aliran web ditutup pada putaran berikutnya', async () => {
+    const response = await openWeb(VIEWER);
+    const sse = frames(response);
+    expect((await sse.next())?.event).toBe('ready');
+    env.clock.set(BASE + SESSION_TTL_MS + 1000);
+    await pumpNotificationStreams(env);
+    expect(activeStreamCount()).toBe(0);
+    expect(await sse.next(500)).toBeNull();
   });
 });
 

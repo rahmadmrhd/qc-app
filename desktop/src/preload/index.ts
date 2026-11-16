@@ -7,6 +7,7 @@ import {
   BRIDGE_CHANNELS,
   BRIDGE_VERSION,
   INJECT_PROGRESS_EVENT,
+  NOTIFICATIONS_CHANGE_EVENT,
   UI_UPDATE_READY_EVENT,
 } from '@countrylock/bridge-channels';
 import type { QcBridge } from '@countrylock/bridge-contract';
@@ -61,6 +62,16 @@ const bridge: QcBridge = {
       };
     },
     reload: () => invoke(BRIDGE_CHANNELS.uiReload),
+  },
+  notifications: {
+    onChange: (cb) => {
+      // Sinyal tanpa muatan: argumen `event` Electron tidak diteruskan ke renderer.
+      const listener = (): void => cb();
+      ipcRenderer.on(NOTIFICATIONS_CHANGE_EVENT, listener);
+      return () => {
+        ipcRenderer.removeListener(NOTIFICATIONS_CHANGE_EVENT, listener);
+      };
+    },
   },
   pending: {
     list: () => invoke(BRIDGE_CHANNELS.pendingList),

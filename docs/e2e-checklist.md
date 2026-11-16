@@ -183,17 +183,27 @@ Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (mat
 | N4 | WH membatalkan task (akun `handover: manage`) | QC menerima notifikasi "dibatalkan" | §3 Task dibatalkan |
 | N5 | WH membuka kembali task Dibatalkan | QC menerima notifikasi "dibuka kembali" | §3 Task dibuka kembali |
 | N6 | QC menekan Mark done pada task | WH menerima satu notifikasi "selesai"; QC tidak | §3 Task selesai |
-| N7 | QC mencentang satu butir | Tidak ada notifikasi langsung; WH menerima ringkasan setelah paling lambat 5 menit | §3 Butir dicentang |
+| N7 | QC mencentang satu butir | Tidak ada notifikasi langsung; WH menerima ringkasan setelah paling lambat 1 menit (ditambah sampai 10 detik detak putaran latar) | §3 Butir dicentang |
 | N8 | WH menulis komentar pada task | QC menerima notifikasi komentar; WH (penulis) tidak | §3 Komentar |
 | N9 | QC menulis komentar pada task | WH menerima notifikasi komentar; QC (penulis) tidak | §3 Komentar |
 | N10 | Akun yang punya `qc: edit` dan `handover: view` sekaligus di JKT; WH membuat task | Akun itu menerima TEPAT satu notifikasi | §3 aturan umum |
 | N11 | Kirim ulang centang dengan nilai yang sama (mis. panggilan API langsung) | Tidak ada kejadian baru; jumlah notifikasi tidak bertambah | §3 (keadaan benar-benar berubah) |
-| N12 | QC mencentang lima butir dalam sekitar dua menit pada satu task, lalu tunggu | WH menerima TEPAT satu ringkasan, paling lambat 5 menit sejak centang pertama | §4.2 |
+| N12 | QC mencentang lima butir dalam sekitar 40 detik pada satu task, lalu tunggu | WH menerima TEPAT satu ringkasan, paling lambat 1 menit sejak centang pertama | §4.2 |
 | N13 | QC mencentang butir terakhir pada task | WH menerima satu notifikasi "selesai", tidak ada ringkasan centang tambahan untuk rangkaian itu | §4.2 |
 | N14 | Tandai satu notifikasi dibaca, lalu "tandai semua dibaca" | Penanda belum dibaca dan jumlah pada ikon lonceng hilang | §5.1 |
 | N15 | Admin mencabut akses lokasi JKT dari akun WH, lalu WH membuka lonceng | Notifikasi JKT tidak tampil lagi; tidak ada galat | §5.1 |
 | N16 | WH membuka notifikasi dari lokasi yang tidak sedang aktif di header | Task terbuka (tidak `NOT_FOUND`). Celah diketahui: halaman detail memakai lokasi aktif, sehingga muncul "Task tidak ditemukan di lokasi aktif" (belum diperbaiki) | §5.1 |
 | N17 | Dengan VAPID kosong (push nonaktif), lonceng tetap dipakai | Lonceng tampil dan terisi; tidak ada galat di konsol | §5.1 |
+| N17a | **Butuh peramban sungguhan.** Akun WH membuka aplikasi (tab terfokus, jangan ganti tab); QC menekan Mark done pada task | Angka dan daftar lonceng WH berubah dalam beberapa detik TANPA muat ulang dan tanpa menunggu 60 detik. DevTools Network: satu permintaan `notifications/stream` bertipe `eventsource`, tetap terbuka | §5.1, "Lonceng seketika" |
+| N17b | Sama seperti N17a tetapi izin push akun WH ditolak | Lonceng tetap berubah seketika (stream tidak bergantung izin peramban) | §5.1 |
+| N17c | Putuskan jaringan tab WH beberapa detik (DevTools Offline), QC menulis komentar, lalu sambungkan lagi | Setelah tersambung lagi, komentar muncul di lonceng WH tanpa muat ulang manual (muat ulang saat reconnect) | §5.1 |
+| N17d | Di staging/produksi (di belakang nginx dan Cloudflare), biarkan tab terbuka sekitar 5 menit tanpa aktivitas, lalu QC menulis komentar | Lonceng tetap berubah seketika (komentar detak 5 dtk menjaga koneksi hidup; tidak ada putus berkala); bila stream gagal, polling 10 detik tetap memperbarui | §5.1 |
+| N17e | **Butuh peramban sungguhan.** Akun WH membuka aplikasi dengan tab terlihat; QC menulis komentar pada task di lokasi itu | Muncul toast "<QC> mengomentari task ST-..." dengan cuplikan komentar dan tombol "Buka" (sekitar 8 detik); angka lonceng bertambah. Klik "Buka" membuka task dan angka berkurang. Membuka aplikasi baru (login ulang) TIDAK menoast notifikasi lama | §5.1, "Toast notifikasi baru" |
+| N17f | Buka dua tab akun WH (satu terlihat, satu di latar); QC menulis komentar | Hanya tab yang terlihat menampilkan toast; tab latar tidak. Saat tab latar dibuka, toast untuk komentar itu TIDAK muncul belakangan (angka lonceng sudah benar) | §5.1 |
+| N17g | QC menulis 4 komentar beruntun dalam beberapa detik pada tab WH terlihat | Bila tiba bersamaan dalam satu pemuatan lonceng (> 3): satu toast "N notifikasi baru"; bila terpisah beberapa detik: toast satu per satu | §5.1 |
+| N17h | Akun WH tertaut di dua perangkat (mis. Chrome PC dan ponsel). Di Chrome PC buka menu profil, Notifikasi push, matikan "Terima notifikasi push di perangkat ini"; QC menulis komentar | Chrome PC TIDAK menerima push (teks "Dimatikan di perangkat ini. Perangkat lain tetap menerima."); ponsel tetap menerima. Saklar akun "di semua perangkat" tetap menyala | §5.2, "Push dimatikan per perangkat" |
+| N17i | Setelah N17h, muat ulang/login ulang di Chrome PC (sinkron senyap berjalan), lalu QC menulis komentar lagi | Saklar perangkat tetap mati dan push tetap tidak muncul di Chrome PC; hapus data situs lalu masuk lagi: perangkat tertaut kembali dengan pengaturan tersimpan di server | §5.2 |
+| N17j | Matikan semua perangkat akun WH (atau saklar akun), buka halaman admin Status Push | Status akun WH = "Dimatikan pengguna" (bukan Aktif/Gagal) | §10 |
 | N18a | **Belum teruji di perangkat nyata; butuh `VAPID_*` terisi di staging.** Android (Chrome, aplikasi terpasang): login pertama | Dialog "Aktifkan notifikasi?" tampil; klik Aktifkan memunculkan dialog izin peramban SEKALI; setelah Izinkan, notifikasi muncul saat WH membuat task di lokasi QC itu (aplikasi tertutup juga) | §5.2 |
 | N18b | Klik notifikasi push | Aplikasi terbuka/terfokus di task terkait dengan `?loc=` benar; tidak ada tab kosong | §5.2 |
 | N18c | Login pertama di aplikasi terpasang, jawab "Nanti" | Tidak ditanya lagi pada muat ulang; menu profil "Notifikasi push" menawarkan "Aktifkan di perangkat ini" | §5.2 |

@@ -127,6 +127,8 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'push.subscribe': true,
   'push.unsubscribe': true,
   'push.setPreference': true,
+  'push.deviceState': true,
+  'push.setDeviceMuted': true,
   'push.reportPermission': true,
   'push.status': true,
   'guides.list': true,

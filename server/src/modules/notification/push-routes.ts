@@ -2,13 +2,16 @@ import type { RouteTable } from '@server/core/router';
 import { expectNull } from '@server/core/validate';
 import {
   pushConfig,
+  pushDeviceState,
   pushStatus,
   reportPushPermission,
+  setPushDeviceMuted,
   setPushPreference,
   subscribePush,
   unsubscribePush,
 } from './push-service';
 import {
+  validatePushDeviceMuted,
   validatePushPermission,
   validatePushPreference,
   validatePushSubscribe,
@@ -20,6 +23,8 @@ type PushMethod =
   | 'push.subscribe'
   | 'push.unsubscribe'
   | 'push.setPreference'
+  | 'push.deviceState'
+  | 'push.setDeviceMuted'
   | 'push.reportPermission'
   | 'push.status';
 
@@ -44,6 +49,14 @@ export function pushRoutes(): Pick<RouteTable, PushMethod> {
     'push.setPreference': {
       validate: validatePushPreference,
       handler: (input, ctx) => setPushPreference(ctx.env, ctx.user, input),
+    },
+    'push.deviceState': {
+      validate: validatePushUnsubscribe,
+      handler: (input, ctx) => pushDeviceState(ctx.env, ctx.user, input),
+    },
+    'push.setDeviceMuted': {
+      validate: validatePushDeviceMuted,
+      handler: (input, ctx) => setPushDeviceMuted(ctx.env, ctx.user, input),
     },
     'push.reportPermission': {
       validate: validatePushPermission,

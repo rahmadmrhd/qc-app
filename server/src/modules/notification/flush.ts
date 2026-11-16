@@ -10,7 +10,7 @@ import { insertNotificationStmts } from './repo';
 
 /**
  * Penggabungan centang (spek §4.2). Tiap centang/lepas centang oleh seorang pelaku pada satu task tidak langsung
- * menjadi notifikasi: ia masuk tabel tunggu `notification_pending` (kunci `(task, pelaku)`, jendela TETAP 5 menit
+ * menjadi notifikasi: ia masuk tabel tunggu `notification_pending` (kunci `(task, pelaku)`, jendela TETAP 1 menit
  * sejak centang pertama) beserta butirnya (`notification_pending_items`, `parity` 1 = keadaan akhir butir berbeda
  * dari awal jendela). `flushDueCheckSummaries` melepasnya menjadi satu ringkasan "N butir"; "Task selesai"
  * membuang baris tunggu task itu (`dropPendingStatements`) sehingga tak ada notifikasi berantai (A2).

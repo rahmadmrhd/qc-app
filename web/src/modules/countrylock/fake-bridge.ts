@@ -21,6 +21,7 @@ export type FakeOverrides = {
   pending?: Partial<QcBridge['pending']>;
   auth?: Partial<QcBridge['auth']>;
   ui?: Partial<QcBridge['ui']>;
+  notifications?: Partial<QcBridge['notifications']>;
 };
 
 export interface FakeBridge extends QcBridge {
@@ -146,6 +147,10 @@ export function createFakeBridge(overrides: FakeOverrides = {}): FakeBridge {
       onUpdateReady: () => () => undefined,
       reload: async () => undefined,
       ...overrides.ui,
+    },
+    notifications: {
+      onChange: () => () => undefined,
+      ...overrides.notifications,
     },
     pending: {
       list: async () => [...pendingList],

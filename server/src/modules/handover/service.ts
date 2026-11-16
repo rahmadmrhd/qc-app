@@ -789,7 +789,7 @@ async function writeTaskChange(
     }),
     ...notifications,
   ]);
-  // Centang biasa hanya menunggu penggabungan 5 menit: tak perlu membangunkan putaran pengirim.
+  // Centang biasa hanya menunggu penggabungan 1 menit: tak perlu membangunkan putaran pengirim maupun stream lonceng.
   if (needsImmediateDelivery(change)) wakeNotifications();
   return saved;
 }

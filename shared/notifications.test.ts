@@ -118,7 +118,7 @@ describe('konstanta', () => {
   });
 
   test('jendela, umur, dan batas cuplikan', () => {
-    expect(CHECK_WINDOW_MS).toBe(300_000);
+    expect(CHECK_WINDOW_MS).toBe(60_000);
     expect(NOTIFICATION_RETENTION_DAYS).toBe(90);
     expect(NOTIFICATION_PREVIEW_MAX).toBe(140);
   });

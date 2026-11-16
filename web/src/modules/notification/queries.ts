@@ -2,9 +2,15 @@ import type { NotificationListDto } from '@shared/contract';
 import type { QueryClient } from '@tanstack/react-query';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { isNotificationStreamConnected } from './stream-state';
 
-/** Selang pemuatan ulang lonceng (milidetik); selain itu dimuat ulang saat jendela kembali fokus. */
-export const NOTIFICATIONS_REFETCH_MS = 60_000;
+/**
+ * Selang pemuatan ulang lonceng saat stream SSE TIDAK tersambung (milidetik): 10 dtk, cadangan bila stream putus,
+ * ditolak, atau peramban tak mendukungnya (keputusan pemilik 2026-11-16; 60 dtk sebelum stream).
+ */
+export const NOTIFICATIONS_REFETCH_MS = 10_000;
+/** Selang jaring pengaman saat stream tersambung: perubahan datang lewat stream, polling hanya menutup sinyal yang hilang. */
+export const NOTIFICATIONS_SAFETY_REFETCH_MS = 60_000;
 
 /**
  * Kunci query lonceng. TIDAK masuk whitelist `app/query-persist.ts`: isi notifikasi dapat memuat cuplikan komentar
@@ -20,7 +26,9 @@ export function notificationsQueryOptions() {
   return queryOptions({
     queryKey: notificationKeys.list,
     queryFn: () => api('notifications.list', {}),
-    refetchInterval: NOTIFICATIONS_REFETCH_MS,
+    // Fungsi (bukan angka): dievaluasi ulang setelah tiap pemuatan, jadi selang mengikuti status stream.
+    refetchInterval: () =>
+      isNotificationStreamConnected() ? NOTIFICATIONS_SAFETY_REFETCH_MS : NOTIFICATIONS_REFETCH_MS,
     refetchOnWindowFocus: 'always',
   });
 }

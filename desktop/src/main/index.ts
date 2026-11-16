@@ -40,6 +40,7 @@ import {
   notificationsSupported,
   showOsNotification,
 } from './notify/background';
+import { forwardNotificationsChanged } from './notify/forward';
 import { createNotificationStream } from './notify/notification-stream';
 import { createNotifier } from './notify/notifier';
 import { loadLocalPackage } from './package/local-folder';
@@ -421,6 +422,13 @@ function runApp(): void {
     });
     const notifier = createNotifier({
       supported: notificationsSupported,
+      // Jendela terlihat, tidak terminimalkan, dan fokus: lonceng sudah berubah seketika, popup OS dilewati.
+      isWindowFocused: () =>
+        mainWindow !== null &&
+        !mainWindow.isDestroyed() &&
+        mainWindow.isVisible() &&
+        !mainWindow.isMinimized() &&
+        mainWindow.isFocused(),
       show: showOsNotification,
       focusWindow,
       openPath: (path) => gate.load(`${APP_ORIGIN}${path}`),
@@ -429,7 +437,11 @@ function runApp(): void {
       serverUrl: () => settings.get().serverUrl,
       token: () => tokens.get()?.token ?? null,
       fetchImpl: net.fetch as typeof fetch,
-      onNotice: (notice) => notifier.handle(notice),
+      onNotice: (notice) => {
+        notifier.handle(notice);
+        // Lonceng di header ikut berubah seketika (sinyal tanpa muatan; renderer memuat ulang lewat API).
+        forwardNotificationsChanged(mainWindow);
+      },
       onSignedOut: () => emitAuth(flow.status()),
       onUnauthorized: (used) => {
         // Hanya bila MASIH token yang dipakai (401 terlambat dari token lama tak boleh mengeluarkan login baru).
