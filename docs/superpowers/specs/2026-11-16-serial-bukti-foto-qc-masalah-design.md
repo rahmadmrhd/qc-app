@@ -1,7 +1,7 @@
 # Foto bukti QC bermasalah: pemberitahuan dan unggah ulang (tambahan rancangan)
 
 Tanggal: 2026-11-16. Status: **disetujui pemilik produk 2026-11-16** (termasuk lima keputusan perancang di §5); **dibangun 2026-11-16** (fakta di §7, risiko dan pertanyaan terbuka di §8). Melengkapi
-`2026-11-16-serial-bukti-foto-qc-design.md` (selanjutnya "rancangan induk"); tidak mengganti bagian lain. Keputusan pemilik tercatat di spek induk butir 60.
+`2026-11-16-serial-bukti-foto-qc-design.md` (selanjutnya "rancangan induk"); tidak mengganti bagian lain. Keputusan pemilik tercatat di spek induk butir 60 dan 61 (penerima foto pengganti, B7, toast, dan penjaga keluar draft, 2026-11-16).
 
 ## 1. Latar dan tujuan
 
@@ -42,7 +42,7 @@ pelaku; preferensi notifikasi per kategori (tetap satu saklar push yang ada); me
   ulang sebelum dibuang otomatis pada <tanggal gagal + 14 hari>." Tombol "Unggah ulang" hanya bagi yang
   `canManage` pada foto itu (aturan `canManageProof` yang ada). Foto yang gagal karena ukuran hanya dapat diunggah
   ulang atau dibuang (bukan Coba lagi), seperti rancangan induk.
-- Notifikasi (lonceng + push) untuk **satu penerima: pelaku yang menyimpan** (email pemilik baris foto), satu per
+- Notifikasi (lonceng + push) untuk **satu penerima: pemilik baris foto saat itu** (pengunggah foto itu; untuk foto pengganti, pengunggah ulang; keputusan pemilik 2026-11-16), satu per
   foto yang gagal. Jenis baru `serialProofFailed` (VARCHAR, tanpa migrasi). Judul: "Foto bukti QC bermasalah";
   isi: nomor Serial Number saja, **tanpa alasan teknis dan tanpa nama merk/tipe** (alasan hanya tampil di
   aplikasi). Klik membuka detail Serial Number. Dedup per foto (satu notifikasi per kegagalan; kegagalan baru sesudah
@@ -75,7 +75,7 @@ Spek induk Serial Number: butir keputusan baru.
 
 ## 5. Yang saya putuskan sendiri (mohon dikoreksi bila keliru)
 
-1. Penerima hanya pelaku penyimpan (bukan semua pemegang `serial: manage`).
+1. Penerima hanya pemilik baris foto saat itu, yaitu pengunggah foto itu (bukan semua pemegang `serial: manage`). **Disetujui pemilik produk 2026-11-16**; untuk foto pengganti, penerimanya pengunggah ulang.
 2. Isi push dan lonceng hanya nomor Serial Number, tanpa alasan teknis dan tanpa merk/tipe.
 3. Banner terlihat oleh semua pembaca entri; tombol hanya bagi `canManage`.
 4. Satu notifikasi per foto gagal (bukan ringkasan per entri); maks. 5 per entri.
@@ -111,14 +111,15 @@ Dibangun di cabang `feat/serial-lampiran-bukti`: `a9c9cedc` (unggah ulang, `proo
 - **Retensi**: `sweepExpiredFailedProofs` (penjadwal jam-an) membuang foto `failed` > 14 hari per foto, dengan audit sistem `serial.proof_retention`.
 - **Web**: `ProofProblemBanner` (`web/src/modules/serial/components/proof-problem-banner.tsx`) di detail, dengan tanggal WIB dari `expiresAt` terdekat dan satu baris "Unggah ulang" per foto `failed` yang `canManage`; `ProofProblemBadge` di baris daftar, kepala kartu kejadian riwayat, dan header detail; tombol Buang, Coba lagi, dan Unggah ulang pada foto yang sedang diganti dikunci selama replace berjalan (`usePendingReplaceIds`, `locked` di `proof-gallery.tsx`); `ProofReplaceDialog` (`FileDialog` satu foto, tanpa Pustaka, dengan kamera). Galat replace tampil sebagai toast. Detail Serial dan riwayatnya polling `PROOF_POLL_MS` (5 dtk, `web/src/modules/serial/lib/proof-state.ts`) hanya selama ada foto `queued`/`processing`.
 - **Lonceng** (`notification-bell.tsx`): jenis Serial membuka `/serial/<id>`; jenis Serah Terima tetap ke `/handover`.
+- Penjaga keluar draft berfoto bukti (2026-11-16, keputusan pemilik): lihat rancangan induk §5.1 dan butir 61 spek induk Serial Number. Bukan bagian addendum ini, tetapi memengaruhi draft Tambah Serial Number yang memuat foto bukti.
 - Tidak ada variabel `.env`, volume, atau langkah VPS baru dari addendum ini.
 
 ## 8. Risiko dan pertanyaan terbuka (dicatat 2026-11-16)
 
-1. **Pemilik foto pengganti (BELUM diputuskan pemilik produk).** Foto pengganti dimiliki pengunggah ulang (`created_by`). Bila manajer mengunggah ulang foto milik pelaku lain lalu gagal lagi, notifikasi dan tombol unggah ulang berpindah ke manajer; pelaku awal tidak diberi tahu. Spek menyebut penerima "pelaku yang menyimpan" dan "pemilik baris foto", dan implementasi mengikuti pemilik baris. Rekomendasi: tetap; atau pemilik produk memutuskan penerima tetap pelaku awal.
-2. **Coba lagi mereset `attempts`** (rancangan induk §11 B7): batas 3 percobaan cap tidak kumulatif. Menunggu keputusan pemilik produk.
+1. **Pemilik foto pengganti: DIPUTUSKAN pemilik produk 2026-11-16.** Penerima notifikasi dan tombol unggah ulang untuk foto pengganti adalah pengunggah ulang (`created_by`, pemilik baris foto saat itu). Bila manajer mengunggah ulang foto milik pelaku lain lalu gagal lagi, notifikasi dan tombol berpindah ke manajer; pelaku awal tidak diberi tahu. Implementasi sudah sesuai. Butir ini tertutup (induk butir 61).
+2. **Coba lagi mereset `attempts`: DITUTUP 2026-11-16** (rancangan induk §11 B7, keputusan pemilik produk): dibiarkan, batas 3 percobaan tidak kumulatif. Butir 61 spek induk.
 3. **Rollback ke image sebelum 0020 (tidak dicegah).** Skema aman: kolom baru ber-DEFAULT dan indeks 0021 tidak mengubah apa pun bagi image lama. Namun putaran push image lama dapat memproses baris `serialProofFailed` yang tertunda (judul kosong karena `notificationTitle` tanpa cabang default, tautan `/handover`), bila penerimanya punya akses Serah Terima di lokasi itu. Lonceng image lama diduga juga tidak dapat menampilkan judul (belum diuji). Dicatat di `docs/ci-cd.md`.
 4. **Ukuran pengganti lebih ketat.** Unggah memeriksa cap dengan footer 4 baris, tetapi replace memakai 5 baris. Foto yang lolos unggah dapat ditolak replace dengan `VALIDATION` pada `newPhotoId` (dialog menampilkan toast).
-5. **Galat replace sebagai toast, bukan di dalam dialog.** `FileDialog` menutup sendiri sesudah `onSelect` sinkron. Bila pemilik ingin pesan di dalam dialog, perlu perluasan kecil `FileDialog` (`onSelect` async, dialog tetap terbuka saat gagal).
+5. **Galat replace tetap sebagai toast: DITUTUP 2026-11-16 (keputusan pemilik produk).** `FileDialog` menutup sendiri sesudah `onSelect` sinkron; perluasan `FileDialog` (`onSelect` async, dialog tetap terbuka saat gagal) tidak dikerjakan. Butir 61 spek induk.
 6. **Polling 5 dtk** hanya selama ada foto antre (tambahan satu GET per 5 dtk). Bisa dicabut bila dianggap berlebihan.
 7. **Belum diuji di perangkat nyata** (verifikasi pemilik): kamera sungguhan di dialog unggah ulang, tampilan banner dan badge (terang/gelap, ponsel), klik notifikasi push dari perangkat, dan perilaku service worker.
