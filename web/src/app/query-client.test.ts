@@ -1,11 +1,23 @@
 import { expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import {
+  DEFAULT_REFETCH_INTERVAL_MS,
+  defaultQueryOptions,
   handleGlobalError,
+  queryClient,
   reportUnauthenticated,
   setUnauthenticatedHandler,
   shouldRetry,
 } from './query-client';
+
+test('query aktif dimuat ulang tiap beberapa detik, hanya saat tab terlihat', () => {
+  expect(defaultQueryOptions.refetchInterval).toBe(DEFAULT_REFETCH_INTERVAL_MS);
+  expect(defaultQueryOptions.refetchIntervalInBackground).toBe(false);
+  expect(defaultQueryOptions.refetchOnWindowFocus).toBe(true);
+  const queries = queryClient.getDefaultOptions().queries;
+  expect(queries?.refetchInterval).toBe(DEFAULT_REFETCH_INTERVAL_MS);
+  expect(queries?.refetchIntervalInBackground).toBe(false);
+});
 
 test('hanya error INTERNAL yang di-retry, maksimal sekali', () => {
   expect(shouldRetry(0, new ApiError('INTERNAL', 'x', '-'))).toBe(true);
