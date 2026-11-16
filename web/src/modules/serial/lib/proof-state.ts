@@ -16,11 +16,6 @@ export function pagesHavePendingProof(
   return pages.some((page) => hasPendingProof(page.events));
 }
 
-/** Foto bukti yang `failed` pada kejadian yang dimuat (urutan kejadian dipertahankan). */
-export function failedProofPhotos(events: readonly SerialEventDto[]): SerialProofPhotoDto[] {
-  return events.flatMap((event) => event.proofPhotos.filter((photo) => photo.state === 'failed'));
-}
-
 /**
  * Batas buang otomatis TERDEKAT di antara foto `failed` (ISO UTC), atau `null` bila tak ada yang membawa `expiresAt`.
  * ISO UTC dari server seragam, jadi urutan teks = urutan waktu.

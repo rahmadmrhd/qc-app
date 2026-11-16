@@ -115,7 +115,7 @@ export function SerialDetailPage({ serialId, onBack, caseId }: SerialDetailPageP
       </div>
     );
   }
-  const { serial, events } = detail.data;
+  const { serial, events, problemPhotos } = detail.data;
   const canWrite = buIdsWithLevelOf(me, 'serial', 'edit').includes(serial.buId);
 
   return (
@@ -150,7 +150,7 @@ export function SerialDetailPage({ serialId, onBack, caseId }: SerialDetailPageP
           </Button>
         ) : null}
       </div>
-      <ProofProblemBanner count={serial.proofProblemCount} events={events} />
+      <ProofProblemBanner count={serial.proofProblemCount} photos={problemPhotos} />
       <SerialStepper status={serial.status} hasCases={serial.cases.length > 0} />
       <CustodyPanel serial={serial} today={todayWib()} />
       <Summary serial={serial} events={events} />

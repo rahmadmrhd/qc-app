@@ -1,19 +1,19 @@
-import type { SerialEventDto } from '@shared/contract';
+import type { SerialProofPhotoDto } from '@shared/contract';
 import { wibDateIso } from '@shared/postel';
 import { CircleAlert } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { formatDay } from '../lib/labels';
 import { proofThumbUrl } from '../lib/proof-source';
-import { earliestProofExpiry, failedProofPhotos } from '../lib/proof-state';
+import { earliestProofExpiry } from '../lib/proof-state';
 import { usePendingReplaceIds } from '../queries';
 import { ProofReplaceDialog } from './proof-replace-dialog';
 
 export interface ProofProblemBannerProps {
   /** `SerialSummaryDto.proofProblemCount`: jumlah foto gagal entri ini (sumber angka resmi). */
   count: number;
-  /** Kejadian yang dimuat di detail: sumber foto gagal (batas buang dan tombol), tanpa permintaan tambahan. */
-  events: readonly SerialEventDto[];
+  /** `GetSerialOutput.problemPhotos`: semua foto gagal entri ini (terlepas dari kejadian yang terpotong). */
+  photos: readonly SerialProofPhotoDto[];
 }
 
 /**
@@ -21,8 +21,8 @@ export interface ProofProblemBannerProps {
  * meminta unggah ulang sebelum foto dibuang otomatis (batas terdekat). Tombol "Unggah ulang" hanya untuk foto yang
  * `canManage` bagi pengguna ini; satu baris per foto agar jelas foto mana yang diganti.
  */
-export function ProofProblemBanner({ count, events }: ProofProblemBannerProps) {
-  const failed = failedProofPhotos(events);
+export function ProofProblemBanner({ count, photos }: ProofProblemBannerProps) {
+  const failed = photos;
   const total = Math.max(count, failed.length);
   const [replacingId, setReplacingId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);

@@ -947,7 +947,7 @@ describe('foto bukti bermasalah: banner dan badge', () => {
         entry.seq === 3 ? { ...entry, proofPhotos: photos } : entry,
       ),
       eventsTruncated: false,
-      problemPhotos: [],
+      problemPhotos: photos.filter((photo) => photo.state === 'failed'),
     };
   };
   const banner = () => screen.findByRole('region', { name: 'Foto bukti QC bermasalah' });
@@ -991,6 +991,46 @@ describe('foto bukti bermasalah: banner dan badge', () => {
     renderPage();
     const manage = await banner();
     expect(within(manage).getAllByRole('button', { name: 'Unggah ulang' })).toHaveLength(1);
+  });
+
+  test('foto gagal yang tidak ada di kejadian termuat (riwayat terpotong): banner tetap memuat tanggal dan tombol', async () => {
+    state = {
+      serial: { ...SERIAL, hasProofPhotos: true, proofProblemCount: 1 },
+      events: state.events,
+      eventsTruncated: true,
+      problemPhotos: [failedPhoto('f-lama', { expiresAt: '2026-12-02T03:00:00.000Z' })],
+    };
+    renderPage();
+    const region = await banner();
+    expect(region).toHaveTextContent('Foto bukti QC bermasalah (1 foto).');
+    expect(region).toHaveTextContent(`pada ${formatDay('2026-12-02')}`);
+    expect(within(region).getByRole('button', { name: 'Unggah ulang' })).toBeInTheDocument();
+    // Foto itu tidak ada di kartu riwayat mana pun: tidak digandakan di galeri.
+    expect(screen.queryByRole('list', { name: 'Foto bukti QC' })).not.toBeInTheDocument();
+  });
+
+  test('problemPhotos dengan canManage false: banner tanpa tombol', async () => {
+    state = {
+      serial: { ...SERIAL, hasProofPhotos: true, proofProblemCount: 1 },
+      events: state.events,
+      eventsTruncated: true,
+      problemPhotos: [failedPhoto('f-lama', { canManage: false, canRetry: false })],
+    };
+    renderPage();
+    const region = await banner();
+    expect(region).toHaveTextContent('(1 foto)');
+    expect(within(region).queryByRole('button', { name: 'Unggah ulang' })).not.toBeInTheDocument();
+  });
+
+  test('foto gagal ada di galeri kejadian dan di problemPhotos: galeri tidak menggandakan', async () => {
+    withPhotos([failedPhoto('f-1')]);
+    renderPage();
+    const region = await banner();
+    expect(within(region).getAllByRole('img')).toHaveLength(1);
+    // Satu di banner, satu di kartu riwayat (seq 3).
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: 'Unggah ulang' })).toHaveLength(2),
+    );
   });
 
   test('foto gagal karena ukuran: Unggah ulang tampil di banner tanpa Coba lagi', async () => {
