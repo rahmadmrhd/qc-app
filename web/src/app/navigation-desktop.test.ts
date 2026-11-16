@@ -30,22 +30,33 @@ const labels = (desktop?: boolean) =>
     group.items.map((item) => item.label),
   );
 
-test('menu Country Lock muncul hanya di desktop', () => {
-  expect(labels()).not.toContain('Country Lock');
-  expect(labels(false)).not.toContain('Country Lock');
-  expect(labels(true)).toContain('Country Lock');
+const noPermissions = (isSuperAdmin: boolean, countrylock: 'none' | 'view'): MeDto => ({
+  ...me,
+  isSuperAdmin,
+  permissions: {
+    ...(Object.fromEntries(
+      Object.keys(me.permissions).map((key) => [key, 'none']),
+    ) as MeDto['permissions']),
+    countrylock,
+  },
 });
 
-test('menu Country Lock tidak membutuhkan izin modul (tampil bagi user tanpa izin apa pun)', () => {
-  const none: MeDto = {
-    ...me,
-    isSuperAdmin: false,
-    permissions: Object.fromEntries(
-      Object.keys(me.permissions).map((key) => [key, 'none']),
-    ) as MeDto['permissions'],
-  };
-  const names = visibleNavGroups(NAV_GROUPS, none, undefined, true).flatMap((g) =>
+const namesFor = (user: MeDto, desktop: boolean) =>
+  visibleNavGroups(NAV_GROUPS, user, undefined, desktop).flatMap((g) =>
     g.items.map((i) => i.label),
   );
-  expect(names).toContain('Country Lock');
+
+test('menu Country Lock tampil di peramban dan desktop hanya bagi yang berizin countrylock', () => {
+  const allowed = noPermissions(false, 'view');
+  expect(namesFor(allowed, false)).toContain('Country Lock');
+  expect(namesFor(allowed, true)).toContain('Country Lock');
+  const denied = noPermissions(false, 'none');
+  expect(namesFor(denied, false)).not.toContain('Country Lock');
+  expect(namesFor(denied, true)).not.toContain('Country Lock');
+});
+
+test('di peramban butir Country Lock membuka aplikasi desktop; di desktop rute biasa', () => {
+  const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.label === 'Country Lock');
+  expect(item?.opensDesktopApp).toBe(true);
+  expect(item?.to).toBe('/country-lock');
 });

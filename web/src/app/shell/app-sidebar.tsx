@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/sidebar';
 import { isDesktop } from '@/lib/platform';
 import { useMe } from '@/modules/auth/use-me';
+import { openInDesktop } from '@/modules/countrylock/lib/handoff';
 import { hasPendingGuide } from '@/modules/guide/lib/guide-for-route';
 import { useOfferedGuides } from '@/modules/guide/lib/use-offered-guides';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
@@ -46,7 +47,18 @@ export function AppSidebar() {
                         Boolean(matchRoute({ to: to as NavItem['to'], fuzzy })),
                       )}
                     >
-                      <Link to={item.to}>
+                      <Link
+                        to={item.to}
+                        onClick={
+                          item.opensDesktopApp && !isDesktop()
+                            ? () => {
+                                // Gagal (server mati, izin dicabut) tak mengganggu: halaman tujuan menampilkan
+                                // tombol dan alasannya.
+                                void openInDesktop().catch(() => undefined);
+                              }
+                            : undefined
+                        }
+                      >
                         <item.icon />
                         <span>{item.label}</span>
                         {hasPendingGuide(offers, item.to as string) && (
