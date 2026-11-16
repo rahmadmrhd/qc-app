@@ -38,6 +38,7 @@ const meWith = (access: 'none' | 'view'): MeDto => ({
     stickerstock: 'none',
     serial: 'manage',
     serialservice: 'none',
+    countrylock: 'none',
   },
   businessUnits: [],
   locations: [],

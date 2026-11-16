@@ -65,3 +65,39 @@ describe('parseQcUrl: qc://auth', () => {
     }
   });
 });
+
+describe('parseQcUrl: qc://country-lock?handoff', () => {
+  const ticket = `${'a'.repeat(40)}.${'B'.repeat(43)}`;
+
+  test('handoff dengan atau tanpa petunjuk email sah', () => {
+    expect(parseQcUrl(`qc://country-lock?handoff=${ticket}`)).toEqual({
+      route: '/country-lock',
+      handoff: { ticket, hint: null },
+    });
+    expect(parseQcUrl(`qc://country-lock/?as=rina%40qc.local&handoff=${ticket}`)).toEqual({
+      route: '/country-lock',
+      handoff: { ticket, hint: 'rina@qc.local' },
+    });
+  });
+
+  test('kunci lain/ganda, tanpa handoff, tiket atau email di luar pola, hash ditolak', () => {
+    for (const bad of [
+      'qc://country-lock?as=a%40b.co',
+      `qc://country-lock?handoff=${ticket}&x=1`,
+      `qc://country-lock?handoff=${ticket}&handoff=${ticket}`,
+      `qc://country-lock?handoff=${ticket}&as=a%40b.co&as=c%40d.co`,
+      'qc://country-lock?handoff=pendek',
+      `qc://country-lock?handoff=${'a'.repeat(40)}`,
+      `qc://country-lock?handoff=${ticket}x%20y`,
+      `qc://country-lock?handoff=${'a'.repeat(1000)}.${'B'.repeat(43)}`,
+      `qc://country-lock?handoff=${ticket}&as=bukan-email`,
+      `qc://country-lock?handoff=${ticket}&as=a%20b%40c.co`,
+      `qc://country-lock?handoff=${ticket}&as=%3Cscript%3E%40x.co`,
+      `qc://country-lock?handoff=${ticket}&as=${'a'.repeat(70)}%40b.co`,
+      `qc://country-lock?handoff=${ticket}#h`,
+      `qc://country-lock/sub?handoff=${ticket}`,
+    ]) {
+      expect(parseQcUrl(bad), bad).toBeNull();
+    }
+  });
+});

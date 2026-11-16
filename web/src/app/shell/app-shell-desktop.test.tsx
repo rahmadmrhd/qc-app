@@ -8,7 +8,12 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { act, render, screen } from '@testing-library/react';
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+
+const handoffMock = vi.hoisted(() => ({ openInDesktop: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@/modules/countrylock/lib/handoff', () => handoffMock);
+
 import { meQueryKey } from '@/modules/auth/queries';
 import { createFakeBridge } from '@/modules/countrylock/fake-bridge';
 import { ThemeProvider } from '@/modules/theme/theme-provider';
@@ -47,6 +52,7 @@ const me: MeDto = {
     stickerstock: 'manage',
     serial: 'manage',
     serialservice: 'manage',
+    countrylock: 'view',
   },
   businessUnits: [],
   canManageSerialSettings: true,
@@ -90,9 +96,31 @@ test('AppShell di desktop memasang spanduk pembaruan UI dan menu Country Lock', 
   expect(screen.getAllByText('Country Lock').length).toBeGreaterThan(0);
 });
 
-test('AppShell di peramban: tanpa spanduk dan tanpa menu Country Lock', async () => {
+test('AppShell di peramban: tanpa spanduk; menu Country Lock tampil bagi yang berizin countrylock', async () => {
   renderShell();
   expect(await screen.findByText('isi')).toBeInTheDocument();
   expect(screen.queryByText(/versi ui baru tersedia/i)).not.toBeInTheDocument();
-  expect(screen.queryByText('Country Lock')).not.toBeInTheDocument();
+  // Sejak 2026-11-16 butir ini mengikuti izin `countrylock`, bukan lagi hanya desktop (di peramban membuka desktop).
+  expect(screen.getAllByText('Country Lock').length).toBeGreaterThan(0);
+});
+
+test('di peramban, menekan butir Country Lock di sidebar membawa akun ke aplikasi desktop', async () => {
+  renderShell();
+  expect(await screen.findByText('isi')).toBeInTheDocument();
+  handoffMock.openInDesktop.mockClear();
+  const link = screen.getAllByRole('link', { name: /country lock/i })[0];
+  if (!link) throw new Error('butir Country Lock tidak ada');
+  await userEvent.click(link);
+  expect(handoffMock.openInDesktop).toHaveBeenCalledTimes(1);
+});
+
+test('di aplikasi desktop, butir Country Lock rute biasa (tanpa serah-terima)', async () => {
+  (window as unknown as { qcBridge?: unknown }).qcBridge = createFakeBridge();
+  renderShell();
+  expect(await screen.findByText('isi')).toBeInTheDocument();
+  handoffMock.openInDesktop.mockClear();
+  const link = screen.getAllByRole('link', { name: /country lock/i })[0];
+  if (!link) throw new Error('butir Country Lock tidak ada');
+  await userEvent.click(link);
+  expect(handoffMock.openInDesktop).not.toHaveBeenCalled();
 });

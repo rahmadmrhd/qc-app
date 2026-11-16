@@ -3,6 +3,7 @@ import { accessRoutes } from '@server/modules/access/routes';
 import { authApiRoutes } from '@server/modules/auth/api';
 import { brandRoutes } from '@server/modules/brand/routes';
 import { customerRoutes } from '@server/modules/customer/routes';
+import { desktopApiRoutes } from '@server/modules/desktop/api';
 import { filesRoutes } from '@server/modules/files/routes';
 import { guideRoutes } from '@server/modules/guide/routes';
 import { handoverRoutes } from '@server/modules/handover/routes';
@@ -134,6 +135,7 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'push.setPreference': true,
   'push.reportPermission': true,
   'push.status': true,
+  'desktop.handoff': true,
   'guides.list': true,
   'guides.mark': true,
   'guides.reset': true,
@@ -157,6 +159,7 @@ function realRoutes(): RouteTable {
     ...qrcodeRoutes(),
     ...postelRoutes(),
     ...notificationRoutes(),
+    ...desktopApiRoutes(),
     ...guideRoutes(),
     ...pushRoutes(),
     ...serialRoutes(),

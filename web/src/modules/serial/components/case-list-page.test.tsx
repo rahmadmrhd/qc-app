@@ -108,6 +108,7 @@ beforeEach(() => {
       stickerstock: 'none',
       serial: 'none',
       serialservice: 'view',
+      countrylock: 'none',
     },
     businessUnits: [
       {

@@ -47,6 +47,7 @@ function meWith(): MeDto {
       stickerstock: 'none',
       serial: 'edit',
       serialservice: 'none',
+      countrylock: 'none',
     },
     businessUnits: [],
     locations: [],

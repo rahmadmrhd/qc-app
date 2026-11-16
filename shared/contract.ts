@@ -1265,6 +1265,7 @@ export interface ApiContract {
   'push.setPreference': { input: PushPreferenceInput; output: { enabled: boolean } };
   'push.reportPermission': { input: PushPermissionInput; output: { ok: true } };
   'push.status': { input: null; output: PushUserStatusDto[] };
+  'desktop.handoff': { input: Record<string, never>; output: DesktopHandoffDto };
   'guides.list': { input: null; output: GuideProgressDto[] };
   'guides.mark': { input: MarkGuideInput; output: GuideProgressDto[] };
   'guides.reset': { input: ResetGuideInput; output: GuideProgressDto[] };
@@ -1898,3 +1899,13 @@ export interface ExportSheetsInput {
   tables?: string[];
 }
 export type ExportSheetsJobDto = ExportQrJobDto;
+
+/**
+ * Tiket serah-terima peramban -> aplikasi desktop (`desktop.handoff`): bertanda tangan, sekali pakai, berlaku 60 detik,
+ * terikat ke akun pemanggil. `email` hanya untuk ditampilkan (petunjuk di tautan `qc://`); penukarannya di server
+ * (`POST /auth/desktop/handoff`) menentukan akun yang sah.
+ */
+export interface DesktopHandoffDto {
+  ticket: string;
+  email: string;
+}

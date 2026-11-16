@@ -47,6 +47,11 @@ export interface NavItem {
   permission?: NavPermission | readonly NavPermission[];
   /** Hanya tampil di aplikasi desktop (jembatan `window.qcBridge` ada). */
   desktopOnly?: boolean;
+  /**
+   * Di peramban, menekan item ini juga membuka aplikasi desktop dengan akun yang sama (serah-terima tiket; halaman `to`
+   * tetap terbuka sebagai cadangan bila aplikasi belum terpasang). Di aplikasi desktop item ini rute biasa.
+   */
+  opensDesktopApp?: boolean;
   /** Syarat tambahan di atas `permission` (keduanya harus terpenuhi), untuk aturan yang tak muat di satu izin. */
   visible?: (me: MeDto) => boolean;
 }
@@ -61,7 +66,13 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Umum',
     items: [
       { label: 'Beranda', to: '/', icon: House },
-      { label: 'Country Lock', to: '/country-lock', icon: Lock, desktopOnly: true },
+      {
+        label: 'Country Lock',
+        to: '/country-lock',
+        icon: Lock,
+        permission: { module: 'countrylock', level: 'view' },
+        opensDesktopApp: true,
+      },
     ],
   },
   {

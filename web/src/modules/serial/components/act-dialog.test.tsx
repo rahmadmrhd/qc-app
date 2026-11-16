@@ -63,6 +63,7 @@ function meWith(serial: Level, serialservice: Level = 'none'): MeDto {
       stickerstock: 'none',
       serial,
       serialservice,
+      countrylock: 'none',
     },
     businessUnits: [
       {
