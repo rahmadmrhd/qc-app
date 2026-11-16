@@ -32,6 +32,8 @@ function note(overrides: Partial<NotificationDto> = {}): NotificationDto {
     preview: '',
     createdAt: '2026-11-12T03:00:00.000Z',
     readAt: '',
+    serialId: '',
+    photoId: '',
     ...overrides,
   };
 }

@@ -320,6 +320,7 @@ describe('skema baseline', () => {
       { name: '0017_laporan_rusak.sql' },
       { name: '0018_client_id_serah_terima.sql' },
       { name: '0019_bukti_foto_qc.sql' },
+      { name: '0020_notifikasi_serial.sql' },
     ]);
   });
 

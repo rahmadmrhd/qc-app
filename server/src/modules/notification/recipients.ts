@@ -1,7 +1,8 @@
 import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
 import { loadActiveUserContexts, type UserContext } from '@server/modules/access/context';
-import type { NotificationSide } from '@shared/notifications';
+import { readableBuIds } from '@server/modules/serial/access';
+import { isSerialNotificationKind, type NotificationSide } from '@shared/notifications';
 import { hasLevel } from '@shared/permissions';
 
 /**
@@ -32,6 +33,34 @@ function isWhSide(user: Pick<UserContext, 'locations'>, locationId: string): boo
  */
 export function hasReadAccess(user: Pick<UserContext, 'locations'>, locationId: string): boolean {
   return isWhSide(user, locationId) || isQcSide(user, locationId);
+}
+
+/**
+ * Berhak membaca notifikasi Serial Number: BU serial entrinya (`serials.bu_id`) termasuk BU yang masih boleh dibaca
+ * pengguna (`serial`/`serialservice: view`); entri yang sudah tak ada = tidak berhak. Tak bergantung pada lokasi atau
+ * izin Serah Terima.
+ */
+export async function hasSerialReadAccess(
+  env: Env,
+  user: UserContext,
+  serialId: string,
+): Promise<boolean> {
+  if (serialId === '') return false;
+  const row = await env.DB.prepare('SELECT bu_id FROM serials WHERE id = ?')
+    .bind(serialId)
+    .first<{ bu_id: string }>();
+  return row !== null && readableBuIds(user).includes(row.bu_id.trim());
+}
+
+/** Berhak membaca satu notifikasi (aturan sadar jenis): Serial = BU serial entri, selain itu lokasi Serah Terima. */
+export async function canReadNotification(
+  env: Env,
+  user: UserContext,
+  row: { kind: string; location_id: string; serial_id: string },
+): Promise<boolean> {
+  return isSerialNotificationKind(row.kind)
+    ? hasSerialReadAccess(env, user, row.serial_id)
+    : hasReadAccess(user, row.location_id);
 }
 
 function onSide(

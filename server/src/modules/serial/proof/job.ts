@@ -9,9 +9,11 @@ import { insertFileStmt } from '@server/modules/files/repo';
 import { ensureDriveFolder } from '@server/modules/files/service';
 import { insertJobStmt } from '@server/modules/jobs/repo';
 import { JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
+import { proofFailedNotificationStmt } from '@server/modules/notification/serial-proof';
+import { wakeNotifications } from '@server/modules/notification/wake';
 import type { JobHandler, StepContext } from '../../jobs/consumer';
 import { findProof, type ProofRow, setProofState } from './repo';
-import { type ProofSnapshot, proofSizeError, stampPhoto } from './stamp';
+import { type ProofSnapshot, proofSizeError, stampLineCountOf, stampPhoto } from './stamp';
 import { newStagedName, type ProofStore } from './store';
 
 /** Pernyataan `INSERT` job `serial_proof` (satu per foto; `input` = `{ photoId }`; dibuat sistem). */
@@ -135,7 +137,7 @@ async function stampStep(ctx: StepContext): Promise<{ progress: number }> {
   ]);
   // Ukuran tercatat dari header saat unggah: foto di atas batas (mis. diunggah sebelum batas diturunkan) gagal di sini,
   // sebelum berkas dibaca dan tanpa menghabiskan percobaan.
-  const sizeError = proofSizeError(proof.width, proof.height);
+  const sizeError = proofSizeError(proof.width, proof.height, stampLineCountOf(proof.snapshotJson));
   if (sizeError !== null) throw appError('VALIDATION', sizeError);
   // Hitung percobaan SEBELUM memuat apa pun (permanen di basis data: bertahan walau proses mati di tengah cap).
   await env.DB.prepare('UPDATE serial_proof_photos SET attempts = attempts + 1 WHERE id = ?')
@@ -283,7 +285,8 @@ export const serialProofHandler: JobHandler = {
     }
     if (proofId === null) return;
     const now = nowIso(env);
-    // Berkas asli (`staged_name`) dipertahankan untuk `serialProofs.retry`.
+    // Berkas asli (`staged_name`) dipertahankan untuk `serialProofs.retry`. Notifikasi "foto bermasalah" untuk pelaku
+    // dipasang di batch yang sama dan hanya bila baris foto benar-benar berpindah ke `failed` (tanpa ganda bila diulang).
     await env.DB.batch([
       setProofState(env.DB, proofId, {
         state: 'failed',
@@ -297,6 +300,8 @@ export const serialProofHandler: JobHandler = {
         lastError: message,
         now,
       }),
+      proofFailedNotificationStmt(env.DB, proofId, now),
     ]);
+    wakeNotifications();
   },
 };

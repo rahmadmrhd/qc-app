@@ -6,6 +6,7 @@ import {
   NOTIFICATION_RETENTION_DAYS,
   type NotificationDto,
   type NotificationKind,
+  SERIAL_NOTIFICATION_KINDS,
 } from '@shared/notifications';
 
 /**
@@ -31,6 +32,10 @@ export interface NewNotification {
   count: number;
   preview: string;
   createdAt: string;
+  /** Id Serial Number (jenis Serial); kosong bila tak diisi. */
+  serialId?: string;
+  /** Id foto bukti (`serialProofFailed`); kosong bila tak diisi. */
+  photoId?: string;
 }
 
 type Row = Record<string, string | number | null>;
@@ -59,11 +64,11 @@ export function insertNotificationStmts(
   const statements: DbStatement[] = [];
   for (let from = 0; from < rows.length; from += INSERT_CHUNK) {
     const chunk = rows.slice(from, from + INSERT_CHUNK);
-    const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
+    const placeholders = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ');
     statements.push(
       db
         .prepare(
-          `INSERT INTO notifications (id, recipient, kind, handover_id, location_id, number, customer_name, actor_email, actor_name, \`count\`, preview, created_at) VALUES ${placeholders}`,
+          `INSERT INTO notifications (id, recipient, kind, handover_id, location_id, number, customer_name, actor_email, actor_name, \`count\`, preview, created_at, serial_id, proof_id) VALUES ${placeholders}`,
         )
         .bind(
           ...chunk.flatMap((row) => [
@@ -79,6 +84,8 @@ export function insertNotificationStmts(
             row.count,
             clip(row.preview, NOTIFICATION_PREVIEW_MAX),
             row.createdAt,
+            row.serialId ?? '',
+            row.photoId ?? '',
           ]),
         ),
     );
@@ -87,7 +94,7 @@ export function insertNotificationStmts(
 }
 
 const COLUMNS =
-  'id, kind, handover_id, location_id, number, customer_name, actor_name, `count`, preview, created_at, read_at';
+  'id, kind, handover_id, location_id, number, customer_name, actor_name, `count`, preview, created_at, read_at, serial_id, proof_id';
 
 function toDto(row: Row): NotificationDto {
   return {
@@ -102,24 +109,59 @@ function toDto(row: Row): NotificationDto {
     preview: text(row.preview),
     createdAt: text(row.created_at),
     readAt: text(row.read_at),
+    serialId: text(row.serial_id),
+    photoId: text(row.proof_id),
   };
 }
 
+/** Cakupan baca notifikasi pemanggil: lokasi (jenis Serah Terima) dan BU serial (jenis Serial; hak dihitung saat dibaca). */
+export interface NotificationScope {
+  locationIds: readonly string[];
+  /** Kosong bila pemanggil tak punya hak baca serial (jenis Serial tersembunyi). */
+  serialBuIds?: readonly string[];
+}
+
 /**
- * Notifikasi pemanggil, terbaru dulu (`created_at`, `id` menurun), hanya di `locationIds` (kosong = hasil kosong
+ * Klausa WHERE cakupan baca (tanpa `recipient`): jenis Serah Terima disaring lokasi yang berhak dibaca, jenis Serial
+ * disaring BU serial entrinya (`serial_id` -> `serials.bu_id`). Aturan keduanya tak pernah saling melonggarkan. `null`
+ * bila tak ada cakupan sama sekali (hasil kosong tanpa kueri).
+ */
+function scopeClause(scope: NotificationScope): { sql: string; params: string[] } | null {
+  const locationIds = [...new Set(scope.locationIds)];
+  const buIds = [...new Set(scope.serialBuIds ?? [])];
+  const kinds = SERIAL_NOTIFICATION_KINDS.map(() => '?').join(', ');
+  const parts: string[] = [];
+  const params: string[] = [];
+  if (locationIds.length > 0) {
+    parts.push(
+      `(kind NOT IN (${kinds}) AND location_id IN (${locationIds.map(() => '?').join(', ')}))`,
+    );
+    params.push(...SERIAL_NOTIFICATION_KINDS, ...locationIds);
+  }
+  if (buIds.length > 0) {
+    parts.push(
+      `(kind IN (${kinds}) AND serial_id IN (SELECT id FROM serials WHERE bu_id IN (${buIds.map(() => '?').join(', ')})))`,
+    );
+    params.push(...SERIAL_NOTIFICATION_KINDS, ...buIds);
+  }
+  return parts.length === 0 ? null : { sql: `(${parts.join(' OR ')})`, params };
+}
+
+/**
+ * Notifikasi pemanggil, terbaru dulu (`created_at`, `id` menurun), hanya dalam `scope` (kosong = hasil kosong
  * tanpa kueri). Kursor = `createdAt|id` baris terakhir halaman sebelumnya; kursor rusak = halaman kosong.
  */
 export async function listNotifications(
   env: Env,
   recipient: string,
-  opts: { locationIds: readonly string[]; limit: number; before?: string },
+  opts: NotificationScope & { limit: number; before?: string },
 ): Promise<{ items: NotificationDto[]; nextCursor: string | null }> {
   const empty = { items: [], nextCursor: null };
-  const locationIds = [...new Set(opts.locationIds)];
-  if (locationIds.length === 0) return empty;
+  const scope = scopeClause(opts);
+  if (scope === null) return empty;
   const limit = Math.max(1, Math.floor(opts.limit));
-  const where = ['recipient = ?', `location_id IN (${locationIds.map(() => '?').join(', ')})`];
-  const params: Array<string | number> = [recipient, ...locationIds];
+  const where = ['recipient = ?', scope.sql];
+  const params: Array<string | number> = [recipient, ...scope.params];
   if (opts.before !== undefined && opts.before !== '') {
     const cut = opts.before.indexOf('|');
     if (cut <= 0) return empty;
@@ -139,18 +181,19 @@ export async function listNotifications(
   return { items: page, nextCursor: hasMore ? `${last.createdAt}|${last.id}` : null };
 }
 
-/** Jumlah belum dibaca milik pemanggil di `locationIds` (kosong = 0 tanpa kueri). */
+/** Jumlah belum dibaca milik pemanggil di lokasi/BU serial yang berhak dibaca (kosong = 0 tanpa kueri). */
 export async function countUnread(
   env: Env,
   recipient: string,
   locationIds: readonly string[],
+  serialBuIds: readonly string[] = [],
 ): Promise<number> {
-  const ids = [...new Set(locationIds)];
-  if (ids.length === 0) return 0;
+  const clause = scopeClause({ locationIds, serialBuIds });
+  if (clause === null) return 0;
   const row = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM notifications WHERE recipient = ? AND read_at = '' AND location_id IN (${ids.map(() => '?').join(', ')})`,
+    `SELECT COUNT(*) AS n FROM notifications WHERE recipient = ? AND read_at = '' AND ${clause.sql}`,
   )
-    .bind(recipient, ...ids)
+    .bind(recipient, ...clause.params)
     .first<{ n: number | string }>();
   return Number(row?.n ?? 0);
 }
