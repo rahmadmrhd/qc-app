@@ -8,6 +8,7 @@ import { MAX_REQUEST_BODY_BYTES } from '@server/http/body';
 import { clientIp } from '@server/http/proxy';
 import { startJobRunner, startNotificationLoop, startScheduler } from '@server/jobs/runner';
 import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backup/dump';
+import { closeAllNotificationStreams } from '@server/modules/notification/stream-hub';
 import { createWebPushSender } from '@server/modules/notification/web-push';
 import { backfillPostelStickers } from '@server/modules/postel/stickers';
 
@@ -121,6 +122,8 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
       }),
     async stop() {
       await ready.catch(() => {}); // runner dimulai (atau tidak) sebelum dihentikan
+      // Aliran SSE desktop ditutup dulu: koneksi berumur panjang tak boleh menahan shutdown (klien menyambung ulang).
+      closeAllNotificationStreams();
       await Promise.all(stops.map((stop) => stop()));
       if (ownsDb) await db.close();
     },

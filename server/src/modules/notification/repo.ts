@@ -194,3 +194,21 @@ export async function purgeOldNotifications(env: Env): Promise<number> {
     .run();
   return result.meta.changes;
 }
+
+/**
+ * Notifikasi milik `recipient` dengan `created_at >= fromIso`, urut LAMA -> BARU (untuk aliran SSE desktop). Tidak
+ * disaring lokasi: pemanggil menyaring dengan `hasReadAccess` (hak diperiksa saat dikirim, bukan saat ditulis).
+ * Memakai indeks `notifications_recipient (recipient, created_at, id)`.
+ */
+export async function listNotificationsSince(
+  env: Env,
+  recipient: string,
+  opts: { fromIso: string; limit: number },
+): Promise<NotificationDto[]> {
+  const result = await env.DB.prepare(
+    `SELECT ${COLUMNS} FROM notifications WHERE recipient = ? AND created_at >= ? ORDER BY created_at ASC, id ASC LIMIT ?`,
+  )
+    .bind(recipient, opts.fromIso, Math.max(1, Math.floor(opts.limit)))
+    .all<Row>();
+  return result.results.map(toDto);
+}
