@@ -92,10 +92,10 @@ export interface BridgeClient {
   /** `null` bila tak ada, tak terbaca, atau di tempat sampah. Bukan anak `folderId` = galat akses. */
   fileInfo(fileId: string, folderId: string): Promise<BridgeFileInfo | null>;
   folderExists(folderId: string): Promise<boolean>;
-  /** Daftar berkas (bukan sampah) dalam folder yang diizinkan, berhalaman (urut nama). */
+  /** Daftar berkas (bukan sampah) dalam folder yang diizinkan, berhalaman (urut nama); `name` = hanya yang bernama persis itu. */
   listFolder(
     folderId: string,
-    options?: { pageSize?: number; pageToken?: string },
+    options?: { pageSize?: number; pageToken?: string; name?: string },
   ): Promise<DriveFolderPage>;
   /** Aman bila berkas tidak ada. */
   trashFile(fileId: string): Promise<void>;

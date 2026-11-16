@@ -277,3 +277,101 @@ test('pilihan pustaka dibekukan selama mengunggah', async () => {
   await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
   expect(idsOf(onSelect)).toEqual(['lib1', 'up-a']);
 });
+
+test('cameraTab: tab Kamera muncul, foto yang diambil masuk antrean tanpa pindah tab, batas maxFiles dilaporkan', async () => {
+  const user = userEvent.setup();
+  const source = makeSource();
+  const cameraTab = vi.fn(
+    ({
+      active,
+      queued,
+      max,
+      addFile,
+    }: Parameters<NonNullable<FileDialogProps['cameraTab']>>[0]) => (
+      <div>
+        <p>
+          kamera {active ? 'aktif' : 'mati'} {queued}/{max}
+        </p>
+        <button type="button" onClick={() => addFile(png('jepret.png'))}>
+          jepret
+        </button>
+      </div>
+    ),
+  );
+  const { onSelect } = setup(source, { showLibrary: false, maxFiles: 2, cameraTab });
+  expect(screen.queryByRole('tab', { name: /Pustaka/ })).not.toBeInTheDocument();
+  const cameraTrigger = screen.getByRole('tab', { name: 'Kamera' });
+  // Tab Kamera tidak dipasang selama tab Unggah aktif (kamera tidak boleh menyala di belakang layar).
+  expect(screen.queryByText(/kamera aktif/)).not.toBeInTheDocument();
+  await user.click(cameraTrigger);
+  expect(await screen.findByText('kamera aktif 0/2')).toBeInTheDocument();
+  await user.click(screen.getByRole('button', { name: 'jepret' }));
+  await user.click(screen.getByRole('button', { name: 'jepret' }));
+  expect(screen.getByText('kamera aktif 2/2')).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Kamera' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByRole('tab', { name: /Unggah \(2\)/ })).toBeInTheDocument();
+  expect(attachButton()).toHaveTextContent('Lampirkan (2)');
+  await user.click(attachButton());
+  await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+  expect(idsOf(onSelect)).toEqual(['up-jepret', 'up-jepret']);
+});
+
+test('tanpa cameraTab perilaku lama tidak berubah: tidak ada tab Kamera', () => {
+  setup(makeSource(), { showLibrary: false });
+  expect(screen.queryByRole('tab')).not.toBeInTheDocument();
+});
+
+test('unggahan yang sudah naik tetapi tidak diteruskan (dialog ditutup setelah sebagian gagal) dilaporkan ke onDiscardUploaded', async () => {
+  const user = userEvent.setup();
+  const source = makeSource();
+  vi.mocked(source.upload).mockImplementation(async (_file, name) => {
+    if (name === 'b') throw new Error('gagal');
+    return mk(`up-${name}`);
+  });
+  const onDiscardUploaded = vi.fn();
+  const { onSelect, rerenderWith } = setup(source, {
+    initialFiles: [png('a.png'), png('b.png')],
+    onDiscardUploaded,
+  });
+  await user.click(attachButton());
+  await screen.findByText(/1 berkas gagal diunggah/);
+  expect(onSelect).not.toHaveBeenCalled();
+  expect(onDiscardUploaded).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button', { name: 'Batal' }));
+  rerenderWith({ open: false, initialFiles: undefined, onDiscardUploaded });
+  await waitFor(() => expect(onDiscardUploaded).toHaveBeenCalledTimes(1));
+  const discarded = (onDiscardUploaded.mock.calls[0]?.[0] ?? []) as LibraryItem[];
+  expect(discarded.map((item) => item.id)).toEqual(['up-a']);
+});
+
+test('unggahan yang diteruskan lewat onSelect tidak dilaporkan sebagai terbuang', async () => {
+  const user = userEvent.setup();
+  const onDiscardUploaded = vi.fn();
+  const { onSelect, rerenderWith } = setup(makeSource(), {
+    initialFiles: [png('a.png')],
+    onDiscardUploaded,
+  });
+  await user.click(attachButton());
+  await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
+  rerenderWith({ open: false, initialFiles: undefined, onDiscardUploaded });
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(onDiscardUploaded).not.toHaveBeenCalled();
+});
+
+test('deskripsi dialog tidak menyebut pustaka bila showLibrary=false', () => {
+  const first = setup(makeSource(), { showLibrary: false });
+  expect(screen.getByText(/Unggah berkas/)).not.toHaveTextContent(/pustaka/i);
+  expect(document.body.textContent).not.toMatch(/pilih dari pustaka/i);
+  first.unmount();
+  setup(makeSource());
+  expect(screen.getByText('Unggah berkas baru atau pilih dari pustaka.')).toBeInTheDocument();
+});
+
+test('hideNames: antrean tidak menawarkan ubah nama berkas', () => {
+  const first = setup(makeSource(), { initialFiles: [png('a.png')], hideNames: true });
+  expect(screen.queryByRole('button', { name: 'Ubah nama a' })).not.toBeInTheDocument();
+  expect(screen.getByText(/a\.png/)).toBeInTheDocument();
+  first.unmount();
+  setup(makeSource(), { initialFiles: [png('a.png')] });
+  expect(screen.getByRole('button', { name: 'Ubah nama a' })).toBeInTheDocument();
+});

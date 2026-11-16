@@ -305,6 +305,35 @@ describe('loadConfig: cadangan dan peringatan (T30/T32)', () => {
     );
   });
 
+  test('foto bukti QC: folder sementara bawaan dev ./data/proofs, produksi /var/lib/qc/proofs, dapat ditimpa; batas 2 GiB', () => {
+    const dev = loadConfig(VALID);
+    expect(dev.proofStagingDir.replaceAll('\\', '/')).toMatch(/\/data\/proofs$/);
+    expect(dev.proofStagingMaxBytes).toBe(2 * 1024 ** 3);
+    const prod = {
+      ...VALID,
+      NODE_ENV: 'production',
+      APP_ORIGIN: 'https://qc.example.com',
+      GOOGLE_SA_KEY_FILE: '/run/secrets/google-sa.json',
+      GOOGLE_ROOT_FOLDER_ID: 'abcdefghij1234567890',
+    };
+    expect(loadConfig(prod).proofStagingDir).toBe('/var/lib/qc/proofs');
+    const custom = loadConfig({
+      ...prod,
+      PROOF_STAGING_DIR: '/data/bukti',
+      PROOF_STAGING_MAX_BYTES: '5368709120',
+    });
+    expect(custom.proofStagingDir).toBe('/data/bukti');
+    expect(custom.proofStagingMaxBytes).toBe(5_368_709_120);
+  });
+
+  test('PROOF_STAGING_MAX_BYTES yang bukan bilangan bulat 1 MiB..2^40 menggagalkan konfigurasi tanpa membocorkan nilai', () => {
+    for (const bad of ['abc', '-5', '1.5', '1000', '99999999999999999']) {
+      const error = errorOf({ ...VALID, PROOF_STAGING_MAX_BYTES: bad });
+      expect(error.problems.join(' ')).toContain('PROOF_STAGING_MAX_BYTES');
+      expect(error.message).not.toContain(bad);
+    }
+  });
+
   test('SMTP lengkap dirakit; penerima dipisah koma dan dipangkas', () => {
     const config = loadConfig({ ...VALID, ...SMTP });
     expect(config.smtp).toEqual({

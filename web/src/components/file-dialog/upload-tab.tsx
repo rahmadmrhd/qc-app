@@ -15,6 +15,8 @@ export interface UploadTabProps {
   /** Panjang maksimum nama entri (karakter). */
   nameMax?: number;
   disabled?: boolean;
+  /** Nama berkas tidak dapat diubah (mis. sumber yang membuat nama sendiri): hanya nama berkas asli yang tampil. */
+  hideNames?: boolean;
   /** Pengganti penambahan langsung ke antrean (mis. aturan mode satu berkas di dialog); bawaan: tambah ke antrean. */
   onFiles?(files: File[], rejected: { name: string; reason: string }[]): void;
 }
@@ -29,6 +31,7 @@ export function UploadTab({
   maxFiles,
   nameMax,
   disabled,
+  hideNames,
   onFiles,
 }: UploadTabProps) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -118,14 +121,22 @@ export function UploadTab({
                 className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm"
               >
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <InlineName
-                    value={entry.name}
-                    maxLength={nameMax}
-                    readOnly={busy || entry.status === 'done' || disabled}
-                    onSave={(name) => queue.rename(entry.key, name)}
-                  />
+                  {hideNames ? (
+                    <span className="truncate" title={entry.file.name}>
+                      {entry.file.name}
+                    </span>
+                  ) : (
+                    <InlineName
+                      value={entry.name}
+                      maxLength={nameMax}
+                      readOnly={busy || entry.status === 'done' || disabled}
+                      onSave={(name) => queue.rename(entry.key, name)}
+                    />
+                  )}
                   <span className="truncate text-xs text-muted-foreground">
-                    {entry.file.name} · {formatBytes(entry.file.size)}
+                    {hideNames
+                      ? formatBytes(entry.file.size)
+                      : `${entry.file.name} · ${formatBytes(entry.file.size)}`}
                   </span>
                   {entry.status === 'failed' && entry.error ? (
                     <span className="text-xs text-destructive">{entry.error}</span>

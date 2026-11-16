@@ -43,6 +43,7 @@ const NOT_IN_ENV_EXAMPLE = new Set([
   'NODE_ENV',
   'DATABASE_URL',
   'BACKUP_LOCAL_DIR', // tetap /var/backups/qc (volume qc-backups); bukan pilihan operator
+  'PROOF_STAGING_DIR', // tetap /var/lib/qc/proofs (volume qc-proofs); bukan pilihan operator
 ]);
 
 describe('deploy: variabel konfigurasi', () => {
@@ -150,6 +151,7 @@ describe('deploy: compose.yml qc-app', () => {
   test('kunci Google dipasang baca-saja, tidak otomatis membuat direktori, ke /run/secrets/google-sa.json', () => {
     expect(app.volumes).toEqual([
       'qc-backups:/var/backups/qc',
+      'qc-proofs:/var/lib/qc/proofs',
       {
         type: 'bind',
         source: '${QC_SECRETS_DIR:-./secrets}/google-sa.json',
@@ -172,6 +174,17 @@ describe('deploy: compose.yml qc-app', () => {
     expect(beforeUser).toContain('apk add --no-cache mariadb-client');
     expect(beforeUser).toContain('mkdir -p /var/backups/qc');
     expect(beforeUser).toContain('chown bun:bun /var/backups/qc');
+  });
+
+  test('foto bukti QC: volume qc-proofs terdaftar, folder sementara di image dimiliki bun, PROOF_STAGING_DIR tetap ke volume itu', () => {
+    expect(Object.keys((compose as unknown as { volumes: object }).volumes)).toContain('qc-proofs');
+    const environment = app.environment as Record<string, string>;
+    expect(environment.PROOF_STAGING_DIR).toBe('/var/lib/qc/proofs');
+    expect('PROOF_STAGING_MAX_BYTES' in environment).toBe(true);
+    expect(envExample).toContain('PROOF_STAGING_MAX_BYTES=');
+    const beforeUser = dockerfile.slice(0, dockerfile.indexOf('USER bun'));
+    expect(beforeUser).toContain('mkdir -p /var/lib/qc/proofs');
+    expect(beforeUser).toContain('chown bun:bun /var/lib/qc/proofs');
   });
 
   test('CLI pemulihan (T31) ikut di image agar dapat dijalankan lewat docker exec', () => {

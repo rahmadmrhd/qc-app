@@ -43,6 +43,7 @@ const EXPECTED_TABLES = [
   'schema_migrations',
   'serial_cases',
   'serial_events',
+  'serial_proof_photos',
   'serial_stickers',
   'serials',
   'settings',
@@ -288,7 +289,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('43 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('45 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -318,6 +319,9 @@ describe('skema baseline', () => {
       { name: '0016_panduan_interaktif.sql' },
       { name: '0017_laporan_rusak.sql' },
       { name: '0018_client_id_serah_terima.sql' },
+      { name: '0019_bukti_foto_qc.sql' },
+      { name: '0020_notifikasi_serial.sql' },
+      { name: '0021_indeks_notifikasi_serial.sql' },
     ]);
   });
 
@@ -464,8 +468,10 @@ describe('skema baseline', () => {
         'manual_book_versions.manual_book_versions_design_version',
         'notification_pending.notification_pending_release',
         'notifications.notifications_created',
+        'notifications.notifications_proof',
         'notifications.notifications_push',
         'notifications.notifications_recipient',
+        'notifications.notifications_serial',
         'postel_numbers.postel_numbers_expiry',
         'postel_numbers.postel_numbers_key',
         'postel_numbers.postel_numbers_seq',
@@ -480,6 +486,10 @@ describe('skema baseline', () => {
         'serial_cases.serial_cases_serial',
         'serial_events.serial_events_case',
         'serial_events.serial_events_seq',
+        'serial_proof_photos.serial_proof_photos_event',
+        'serial_proof_photos.serial_proof_photos_owner',
+        'serial_proof_photos.serial_proof_photos_serial',
+        'serial_proof_photos.serial_proof_photos_state',
         'serial_stickers.serial_stickers_sticker',
         'serials.serials_bu_created',
         'serials.serials_bu_serial',

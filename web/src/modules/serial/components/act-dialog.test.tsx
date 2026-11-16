@@ -8,6 +8,14 @@ import { linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
+vi.mock('@/modules/files/image', () => ({
+  prepareImage: vi.fn(async () => ({
+    mime: 'image/webp',
+    bytes: new Uint8Array(3),
+    width: 10,
+    height: 10,
+  })),
+}));
 
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
@@ -90,6 +98,8 @@ const SERIAL: SerialDto = {
   note: '',
   recordedLocationId: 'l1',
   stickers: [{ stickerId: 'st1', name: 'Stiker A', alias: '', qty: 2, stickerStatus: 'active' }],
+  hasProofPhotos: false,
+  proofProblemCount: 0,
   openCaseId: null,
   transitFromLocationId: null,
   transitFromLocationName: null,
@@ -154,7 +164,10 @@ function renderDialog(serial: SerialDto, kind: ActKind) {
 const calls = (id: string) => apiMock.mock.calls.filter((call) => call[0] === id);
 const lastAct = () => calls('serials.act').at(-1)?.[1] as Record<string, unknown>;
 
+let uploaded = 0;
+
 beforeEach(() => {
+  uploaded = 0;
   apiMock.mockReset();
   onClose.mockReset();
   me = meWith('edit');
@@ -166,6 +179,20 @@ beforeEach(() => {
   ];
   apiMock.mockImplementation((id: string) => {
     if (id === 'serials.act') return Promise.resolve({ ...SERIAL, updatedAt: 'baru' });
+    if (id === 'serialProofs.upload') {
+      uploaded += 1;
+      return Promise.resolve({
+        id: `p${uploaded}`,
+        state: 'draft',
+        mime: 'image/webp',
+        size: 10,
+        width: 10,
+        height: 10,
+        filename: `bukti-p${uploaded}.webp`,
+        error: null,
+      });
+    }
+    if (id === 'serialProofs.remove') return Promise.resolve({ id: 'x' });
     if (id === 'serials.stickerOptions') {
       return Promise.resolve({
         stickers: [
@@ -587,4 +614,116 @@ test('versi usang (412): pesan, detail dan riwayat dimuat ulang, catatan tidak h
 test('batas gambar catatan: dialog meneruskan maks. 10 gambar ke editor', () => {
   renderDialog(SERIAL, 'note');
   expect(screen.getByRole('textbox', { name: 'Catatan' })).toHaveAttribute('data-max-images', '10');
+});
+
+/** Membuka dialog foto, memilih `count` berkas lewat Telusuri, lalu menekan Tambahkan. */
+async function attachPhotos(count: number) {
+  await userEvent.click(screen.getByRole('button', { name: /^Foto \(/ }));
+  const files = Array.from(
+    { length: count },
+    (_, index) => new File([new Uint8Array(4)], `f${index}.png`, { type: 'image/png' }),
+  );
+  const input = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, { target: { files } });
+  await userEvent.click(screen.getByRole('button', { name: `Tambahkan (${count})` }));
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: `Foto (${count})` })).toBeInTheDocument(),
+  );
+}
+
+test('field Bukti foto hanya ada pada Cek ulang', () => {
+  const cases: [SerialDto, ActKind][] = [
+    [SERIAL, 'report'],
+    [REPORTED, 'send'],
+    [AT_SERVICE_TRANSIT, 'receive'],
+    [AT_SERVICE_TRANSIT, 'diagnosis'],
+    [SERIAL, 'note'],
+  ];
+  for (const [serial, kind] of cases) {
+    const view = renderDialog(serial, kind);
+    expect(screen.queryByText('Bukti foto (opsional)')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Foto \(/ })).not.toBeInTheDocument();
+    view.unmount();
+  }
+  renderDialog(SERIAL, 'recheck');
+  expect(screen.getByText('Bukti foto (opsional)')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Foto (0)' })).toBeInTheDocument();
+});
+
+test('Cek ulang dengan foto: proofPhotoIds ikut terkirim pada recheck', async () => {
+  renderDialog(SERIAL, 'recheck');
+  await attachPhotos(2);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan cek ulang' }));
+  await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
+  expect(lastAct()).toMatchObject({ action: 'recheck', proofPhotoIds: ['p1', 'p2'] });
+  // Tersimpan: foto sudah tertaut ke entri, jadi tidak dibuang.
+  expect(calls('serialProofs.remove')).toHaveLength(0);
+  expect(onClose).toHaveBeenCalled();
+});
+
+test('Cek ulang pada Dilaporkan (recheck_pass dan recheck_fail) juga mengirim proofPhotoIds', async () => {
+  const first = renderDialog(REPORTED, 'recheck');
+  await attachPhotos(1);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan cek ulang' }));
+  await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
+  expect(lastAct()).toMatchObject({ action: 'recheck_pass', proofPhotoIds: ['p1'] });
+  first.unmount();
+  renderDialog(REPORTED, 'recheck');
+  await pickSelect(screen, 'Hasil cek ulang', 'Tidak lolos');
+  await attachPhotos(1);
+  await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'Masih mati');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan cek ulang' }));
+  await waitFor(() => expect(calls('serials.act')).toHaveLength(2));
+  expect(lastAct()).toMatchObject({ action: 'recheck_fail', proofPhotoIds: ['p2'] });
+});
+
+test('Cek ulang tanpa foto tidak mengirim proofPhotoIds', async () => {
+  renderDialog(SERIAL, 'recheck');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan cek ulang' }));
+  await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
+  expect(lastAct()).not.toHaveProperty('proofPhotoIds');
+});
+
+test('foto kedaluwarsa: galat tampil di bawah field Bukti foto, foto dibuang dari dialog, dialog tetap terbuka', async () => {
+  const message = 'Foto sudah kedaluwarsa, unggah ulang';
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.act') {
+      return Promise.reject(new ApiError('VALIDATION', message, '-', { proofPhotoIds: message }));
+    }
+    if (id === 'serialProofs.upload') {
+      return Promise.resolve({
+        id: 'p1',
+        state: 'draft',
+        mime: 'image/webp',
+        size: 10,
+        width: 10,
+        height: 10,
+        filename: 'bukti-p1.webp',
+        error: null,
+      });
+    }
+    return id === 'serials.stickerOptions'
+      ? Promise.resolve({ stickers: [] })
+      : Promise.resolve({ locations: activeLocations });
+  });
+  renderDialog(SERIAL, 'recheck');
+  await attachPhotos(1);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan cek ulang' }));
+  expect(await screen.findByText(message)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Foto (0)' })).toBeInTheDocument();
+  expect(calls('serialProofs.remove')).toHaveLength(0);
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+test('Batal dengan foto yang belum tersimpan membuang foto itu di server', async () => {
+  renderDialog(SERIAL, 'recheck');
+  await attachPhotos(2);
+  await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
+  await waitFor(() => expect(calls('serialProofs.remove')).toHaveLength(2));
+  expect(
+    calls('serialProofs.remove')
+      .map((call) => (call[1] as { id: string }).id)
+      .sort(),
+  ).toEqual(['p1', 'p2']);
+  expect(onClose).toHaveBeenCalled();
 });

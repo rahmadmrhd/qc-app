@@ -9,6 +9,7 @@ import type { QrExportStatus, QrLayout, QrLinkSource, QrNamePlacement, QrStyle }
 import type {
   SerialCustody,
   SerialEventType,
+  SerialProofState,
   SerialStatus,
   ServiceDiagnosisStage,
 } from './serials';
@@ -1248,6 +1249,11 @@ export interface ApiContract {
     output: SerialServiceSettingsDto;
   };
   'serialCases.list': { input: SerialCaseListInput; output: SerialCaseListOutput };
+  'serialProofs.upload': { input: UploadSerialProofInput; output: SerialProofPhotoDto };
+  'serialProofs.get': { input: GetSerialProofInput; output: SerialProofContentDto };
+  'serialProofs.remove': { input: RemoveSerialProofInput; output: { id: string } };
+  'serialProofs.retry': { input: RetrySerialProofInput; output: SerialProofPhotoDto };
+  'serialProofs.replace': { input: ReplaceSerialProofInput; output: SerialProofPhotoDto };
   'postelFiles.upload': { input: UploadPostelFileInput; output: PostelAttachmentDto };
   'postelFiles.get': { input: GetPostelFileInput; output: PostelFileContentDto };
   'notifications.list': { input: ListNotificationsInput; output: NotificationListDto };
@@ -1400,6 +1406,62 @@ export interface SerialEventDto {
   message: string;
   changes: SerialChangeDto[];
   data: Record<string, unknown>;
+  /** Bukti foto QC kejadian ini (hanya `recorded`/`recheck*`; kosong pada jenis lain). */
+  proofPhotos: SerialProofPhotoDto[];
+}
+/** Satu foto bukti QC (tanpa nama berkas sementara dan data cap). */
+export interface SerialProofPhotoDto {
+  id: string;
+  state: SerialProofState;
+  mime: string;
+  size: number;
+  width: number;
+  height: number;
+  /** Nama unduhan yang disarankan. */
+  filename: string;
+  /** Alasan singkat bila `failed`; selain itu `null`. */
+  error: string | null;
+  /**
+   * Pemanggil boleh Coba lagi/Buang foto ini: memegang `serial: edit` SAAT INI (izin rute) DAN (pelaku yang menyimpannya,
+   * atau `serial: manage` pada BU serialnya).
+   */
+  canManage: boolean;
+  /**
+   * Boleh Coba lagi: `canManage` (termasuk `serial: edit` saat ini) DAN `failed` DAN bukan gagal karena ukuran gambar (kegagalan ukuran deterministik:
+   * hanya Buang). Rute `serialProofs.retry` menolak (`CONFLICT`) bila `false`.
+   */
+  canRetry: boolean;
+  /** Waktu foto menjadi `failed` (ISO UTC; = `updated_at` saat gagal); `null` bila belum `failed`. */
+  failedAt: string | null;
+  /** Batas buang otomatis foto `failed` (`failedAt` + `SERIAL_PROOF_LIMITS.failedRetentionDays` hari, ISO UTC); `null` bila belum `failed`. */
+  expiresAt: string | null;
+}
+/** Unggah foto bukti (multipart; gambar sudah dikecilkan di browser). */
+export interface UploadSerialProofInput {
+  mime: string;
+  bytes: Uint8Array;
+  width: number;
+  height: number;
+}
+export interface GetSerialProofInput {
+  id: string;
+}
+export interface SerialProofContentDto {
+  id: string;
+  mime: string;
+  bytes: Uint8Array;
+  filename: string;
+}
+export interface RemoveSerialProofInput {
+  id: string;
+}
+export interface RetrySerialProofInput {
+  id: string;
+}
+/** Unggah ulang (ganti foto bermasalah): `photoId` = foto `failed`, `newPhotoId` = unggahan `draft` pengganti. */
+export interface ReplaceSerialProofInput {
+  photoId: string;
+  newPhotoId: string;
 }
 export interface SerialSummaryDto {
   id: string;
@@ -1421,6 +1483,10 @@ export interface SerialSummaryDto {
   transitOn: string | null;
   /** Nomor kasus yang sedang terbuka (`LP-…`), bila ada. */
   openCaseNumber: string | null;
+  /** Entri serial ini (Tambah/Cek ulang) punya bukti foto QC. */
+  hasProofPhotos: boolean;
+  /** Jumlah foto bukti QC entri serial ini yang `failed` (0 = tak ada; bahan badge "Foto bermasalah"). */
+  proofProblemCount: number;
   createdAt: string;
 }
 /** Laporan rusak (`serial_cases`): satu episode kegagalan. */
@@ -1464,6 +1530,8 @@ export interface SerialRowInput {
    * (sama dengan bawaan web dan `.qcsn`); `[]` eksplisit = tanpa stiker. Maks. 20 pilihan eksplisit.
    */
   stickers?: SerialStickerPick[];
+  /** Id foto bukti `draft` milik pengunggah (maks. `SERIAL_PROOF_LIMITS.perEntryMax`). */
+  proofPhotoIds?: string[];
 }
 export type SerialRowResult = {
   clientId: string;
@@ -1487,6 +1555,12 @@ export interface GetSerialOutput {
   events: SerialEventDto[];
   /** Ada kejadian lebih lama yang tidak dimuat (hanya 500 terbaru yang dikembalikan). */
   eventsTruncated: boolean;
+  /**
+   * Semua foto bukti QC `failed` entri ini (urut unggah; maks. 5 per entri dan dibuang otomatis sesudah 14 hari), terlepas
+   * dari terpotongnya `events`: bahan banner "Foto bukti bermasalah" (tombol Unggah ulang dan batas buang). Foto yang sama
+   * tetap muncul di `proofPhotos` kejadiannya bila kejadian itu dimuat. Tidak ada di halaman publik.
+   */
+  problemPhotos: SerialProofPhotoDto[];
 }
 export interface SerialListInput {
   /** Awalan serial (dinormalisasi). */
@@ -1575,10 +1649,13 @@ export type SerialActInput =
       result?: 'pass' | 'fail';
       /** Stiker yang DICENTANG: tiap id menambah 1 pada jumlah tempel dan memotong stok 1 di lokasi cek ulang. */
       stickerIds?: string[];
+      /** Id foto bukti `draft` milik pengunggah (maks. `SERIAL_PROOF_LIMITS.perEntryMax`). */
+      proofPhotoIds?: string[];
     })
   | (SerialActBase & {
       action: 'recheck_pass' | 'recheck_fail';
       stickerIds?: string[];
+      proofPhotoIds?: string[];
     });
 export type SerialActAction = SerialActInput['action'];
 /** Riwayat per serial (tab linimasa): kursor = `seq` terakhir. */
@@ -1740,7 +1817,13 @@ export interface ApplicableStickerDto {
   defaultQty: number;
 }
 
-export type JobKind = 'qr_export' | 'sheets_export' | 'cleanup_qr' | 'db_backup' | 'serial_alert';
+export type JobKind =
+  | 'qr_export'
+  | 'sheets_export'
+  | 'cleanup_qr'
+  | 'db_backup'
+  | 'serial_alert'
+  | 'serial_proof';
 export type JobStatus = 'queued' | 'running' | 'done' | 'failed';
 
 export interface GetJobInput {

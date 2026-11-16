@@ -614,7 +614,11 @@ export function createDriveApi(
     async listFolder(folderId, options = {}): Promise<DriveFolderPage> {
       await assertAllowedFolder(folderId);
       const params = new URLSearchParams({
-        q: `'${folderId}' in parents and trashed = false`,
+        q: `'${folderId}' in parents and trashed = false${
+          options.name === undefined
+            ? ''
+            : ` and name = '${options.name.replaceAll('\\', '\\\\').replaceAll("'", "\\'")}'`
+        }`,
         fields:
           'nextPageToken,files(id,name,mimeType,size,md5Checksum,createdTime,modifiedTime,appProperties)',
         pageSize: String(Math.min(Math.max(options.pageSize ?? 100, 1), 1000)),

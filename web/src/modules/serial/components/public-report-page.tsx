@@ -45,6 +45,8 @@ function toTimelineEvent(event: SerialPublicEventDto, caseNumber: string): Seria
     changes: event.changes,
     // Semua kejadian publik berada dalam lingkup satu laporan: nomornya mengisi rincian "Laporan LP-... dibuka/ditutup".
     data: { caseNumber },
+    // Foto bukti QC tidak pernah tampil di halaman publik (rancangan 2026-11-16 §5.2).
+    proofPhotos: [],
   };
 }
 

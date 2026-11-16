@@ -1,6 +1,7 @@
 import type {
   GetSerialOutput,
   ListSerialItemOptionsInput,
+  ReplaceSerialProofInput,
   SaveSerialBatchInput,
   SaveSerialServiceSettingsInput,
   SaveSerialSettingsInput,
@@ -23,9 +24,11 @@ import {
   keepPreviousData,
   queryOptions,
   useMutation,
+  useMutationState,
   useQueryClient,
 } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { ApiError } from '@/lib/api/api-error';
 import { markStale } from '@/lib/query-cache';
 import { accessKeys } from '@/modules/access/queries';
 import { stickerKeys } from '@/modules/sticker/keys';
@@ -172,6 +175,8 @@ export function toSerialSummary(serial: SerialDto): SerialSummaryDto {
     transitToLocationName: serial.transitToLocationName,
     transitOn: serial.transitOn,
     openCaseNumber: serial.openCaseNumber,
+    hasProofPhotos: serial.hasProofPhotos,
+    proofProblemCount: serial.proofProblemCount,
     createdAt: serial.createdAt,
   };
 }
@@ -285,6 +290,67 @@ export function useSaveSerialServiceSettings() {
     onSuccess: (saved) => {
       markStale(queryClient, accessKeys.audit, serialKeys.serviceLocations);
       queryClient.setQueryData(serialKeys.serviceSettings, saved);
+    },
+  });
+}
+
+/**
+ * Membuang foto bukti `draft` di server (upaya terbaik: yang gagal dibiarkan, penjadwal menyapu draft > 7 hari).
+ * Tidak pernah melempar.
+ */
+export async function discardProofPhotos(ids: readonly string[]): Promise<void> {
+  await Promise.allSettled(ids.map((id) => api('serialProofs.remove', { id })));
+}
+
+/** Foto bukti berubah (coba lagi, dibuang): riwayat, daftar (badge), dan detail serial dimuat ulang. */
+function refreshProofViews(queryClient: QueryClient): void {
+  void queryClient.invalidateQueries({ queryKey: ['serial', 'history'] });
+  void queryClient.invalidateQueries({ queryKey: serialKeys.list });
+  void queryClient.invalidateQueries({ queryKey: ['serial', 'one'] });
+}
+
+/** "Coba lagi" untuk foto bukti yang gagal diproses (pelaku atau `serial: manage`). */
+export function useRetryProof() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api('serialProofs.retry', { id }),
+    onSuccess: () => refreshProofViews(queryClient),
+  });
+}
+
+/** Membuang foto bukti yang gagal (satu-satunya penghapusan sesudah Simpan; dicatat di audit server). */
+export function useRemoveProof() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api('serialProofs.remove', { id }),
+    onSuccess: () => refreshProofViews(queryClient),
+  });
+}
+
+const REPLACE_PROOF_KEY = ['serial', 'proof', 'replace'] as const;
+
+/** Id foto gagal yang sedang diganti (mutasi `replace` berjalan, dari komponen mana pun): tombol foto itu dikunci. */
+export function usePendingReplaceIds(): ReadonlySet<string> {
+  const ids = useMutationState({
+    filters: { mutationKey: REPLACE_PROOF_KEY, status: 'pending' },
+    select: (mutation) =>
+      (mutation.state.variables as ReplaceSerialProofInput | undefined)?.photoId,
+  });
+  return new Set(ids.filter((id): id is string => typeof id === 'string'));
+}
+
+/**
+ * "Unggah ulang" foto bukti yang gagal: foto pengganti (unggahan `draft` baru) menggantikan foto lama dan masuk antrean
+ * cap. Dimuat ulang juga saat gagal `CONFLICT` (foto lama keburu berubah: Buang/Coba lagi/sapuan retensi).
+ */
+export function useReplaceProof() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: REPLACE_PROOF_KEY,
+    mutationFn: (input: ReplaceSerialProofInput) => api('serialProofs.replace', input),
+    onSuccess: () => refreshProofViews(queryClient),
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === 'CONFLICT') refreshProofViews(queryClient);
     },
   });
 }

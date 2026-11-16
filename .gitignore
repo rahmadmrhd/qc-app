@@ -5,6 +5,9 @@ node_modules/
 web/dist/
 server/dist/
 
+# berkas sementara foto bukti QC (dev)
+server/data/
+
 # env & secrets
 .env
 .env.*

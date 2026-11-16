@@ -1,6 +1,7 @@
 import type { SerialRowInput, SerialRowResult } from '@shared/contract';
 import type { QcsnRow } from '@shared/serial-file';
 import { normalizeSerial, SERIAL_LIMITS, splitSerialInput } from '@shared/serials';
+import type { ProofPhotoRef } from './proof-source';
 
 export interface StagingSticker {
   stickerId: string;
@@ -25,6 +26,8 @@ export interface StagingRow {
   source: 'manual' | 'countrylock';
   /** `null` = bawaan semua stiker yang berlaku; diisi klien saat opsi stiker dimuat. */
   stickers: StagingSticker[] | null;
+  /** Foto bukti QC yang sudah diunggah (`draft` di server); hanya id yang dikirim saat Simpan. Tidak ikut `.qcsn`. */
+  proofPhotos: ProofPhotoRef[];
   result?: 'duplicate' | 'invalid' | 'error';
   message?: string;
   selected: boolean;
@@ -112,6 +115,7 @@ export function addSerials(
       capturedAt: nowIso(),
       source: 'manual',
       stickers: defaults.stickers ? defaults.stickers.map((sticker) => ({ ...sticker })) : null,
+      proofPhotos: [],
       selected: false,
     });
     added++;
@@ -150,6 +154,22 @@ export function removeRows(rows: readonly StagingRow[], ids: ReadonlySet<string>
   return rows.filter((row) => !ids.has(row.clientId));
 }
 
+/**
+ * Penolakan foto oleh server saat Simpan (foto sudah disapu, milik orang lain, atau sudah dipakai entri lain): foto
+ * baris tak berguna lagi dan dibuang dari baris; pesan server dipertahankan agar pengguna tahu harus mengunggah ulang.
+ */
+export function isProofRejection(message: string): boolean {
+  return (
+    message.startsWith('Foto sudah kedaluwarsa') ||
+    message.startsWith('Ada foto yang tidak dikenal')
+  );
+}
+
+/** Id semua foto bukti pada baris-baris ini (untuk dibuang di server saat baris atau draft dibuang). */
+export function proofIdsOf(rows: readonly StagingRow[]): string[] {
+  return rows.flatMap((row) => row.proofPhotos.map((photo) => photo.id));
+}
+
 /** `created` dibuang dari tabel; hasil lain ditandai pada barisnya; urutan dipertahankan. */
 export function applyResults(
   rows: readonly StagingRow[],
@@ -164,7 +184,12 @@ export function applyResults(
       continue;
     }
     if (entry.result === 'created') continue;
-    next.push({ ...row, result: entry.result, message: entry.message });
+    next.push({
+      ...row,
+      result: entry.result,
+      message: entry.message,
+      ...(entry.result === 'invalid' && isProofRejection(entry.message) ? { proofPhotos: [] } : {}),
+    });
   }
   return next;
 }
@@ -186,6 +211,9 @@ export function toRowInput(row: StagingRow): SerialRowInput {
     // `countrylock` ikut dicatat (bawaan `manual` tak perlu dikirim).
     ...(row.source === 'countrylock' ? { source: 'countrylock' as const } : {}),
     stickers: row.stickers.map((sticker) => ({ stickerId: sticker.stickerId, qty: sticker.qty })),
+    ...(row.proofPhotos.length > 0
+      ? { proofPhotoIds: row.proofPhotos.map((photo) => photo.id) }
+      : {}),
   };
 }
 
@@ -240,6 +268,7 @@ export function fromQcsnRows(
             qty: sticker.qty,
           }))
         : null,
+      proofPhotos: [],
       selected: false,
     });
     added++;

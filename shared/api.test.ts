@@ -323,6 +323,16 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
       },
     ],
   },
+  'serialProofs.upload': {
+    mime: 'image/jpeg',
+    bytes: new Uint8Array([255, 216, 255]),
+    width: 640,
+    height: 480,
+  },
+  'serialProofs.get': { id: 'p1' },
+  'serialProofs.remove': { id: 'p1' },
+  'serialProofs.retry': { id: 'p1' },
+  'serialProofs.replace': { photoId: 'p1', newPhotoId: 'p2' },
   'postelFiles.upload': { mime: 'application/pdf', bytes: new Uint8Array([37, 80, 68, 70]) },
   'postelFiles.get': { id: 'f1' },
   'notifications.list': { limit: 30, before: '2026-11-12T00:00:00.000Z|n1' },
@@ -689,6 +699,7 @@ describe('rute biner', () => {
 
   test('batas ukuran tiap rute memakai konstanta yang ada (tidak dinaikkan)', () => {
     expect(API_ROUTES['files.upload'].rawBody?.maxBytes).toBe(MAX_IMAGE_BYTES);
+    expect(API_ROUTES['serialProofs.upload'].rawBody?.maxBytes).toBe(MAX_IMAGE_BYTES);
     expect(API_ROUTES['postelFiles.upload'].rawBody?.maxBytes).toBe(
       POSTEL_LIMITS.attachmentMaxBytes,
     );

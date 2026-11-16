@@ -29,6 +29,7 @@ import {
   SERIAL_ACTIONS,
   SERIAL_CUSTODIES,
   SERIAL_LIMITS,
+  SERIAL_PROOF_LIMITS,
   SERIAL_STATUSES,
   SERVICE_DIAGNOSIS_STAGES,
   type SerialAction,
@@ -113,6 +114,17 @@ export function validateSaveSerialBatch(raw: unknown): SaveSerialBatchInput {
   return { rows: rows as SerialRowInput[] };
 }
 
+/** Daftar id foto bukti: maks. `perEntryMax`, tiap id teks pendek, tanpa ganda; `null` bila bentuknya tidak sah. */
+function readProofPhotoIds(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length > SERIAL_PROOF_LIMITS.perEntryMax) return null;
+  const ids: string[] = [];
+  for (const entry of value) {
+    if (!isText(entry, 100) || ids.includes(entry)) return null;
+    ids.push(entry);
+  }
+  return ids;
+}
+
 export type ParsedSerialRow =
   | { ok: true; row: SerialRowInput }
   | { ok: false; clientId: string; message: string };
@@ -184,6 +196,12 @@ export function parseSerialRow(raw: unknown, today: string): ParsedSerialRow {
     seen.add(pick.stickerId);
     stickers.push({ stickerId: pick.stickerId, qty });
   }
+  let proofPhotoIds: string[] | undefined;
+  if (source.proofPhotoIds !== undefined && source.proofPhotoIds !== null) {
+    const ids = readProofPhotoIds(source.proofPhotoIds);
+    if (ids === null) return fail('Daftar foto tidak valid');
+    if (ids.length > 0) proofPhotoIds = ids;
+  }
   return {
     ok: true,
     row: {
@@ -197,6 +215,7 @@ export function parseSerialRow(raw: unknown, today: string): ParsedSerialRow {
       note,
       ...(source.source === undefined ? {} : { source: source.source }),
       ...(source.stickers === undefined ? {} : { stickers }),
+      ...(proofPhotoIds === undefined ? {} : { proofPhotoIds }),
     },
   };
 }
@@ -403,9 +422,9 @@ const ACT_EXTRA_KEYS: Record<SerialAction, readonly string[]> = {
   send: ['toLocationId', 'shipmentNote'],
   receive: ['toLocationId'],
   service_diagnosis: ['stage'],
-  recheck: ['result', 'stickerIds'],
-  recheck_pass: ['stickerIds'],
-  recheck_fail: ['stickerIds'],
+  recheck: ['result', 'stickerIds', 'proofPhotoIds'],
+  recheck_pass: ['stickerIds', 'proofPhotoIds'],
+  recheck_fail: ['stickerIds', 'proofPhotoIds'],
 };
 const ACT_ALL_EXTRA_KEYS = [
   'toLocationId',
@@ -413,10 +432,12 @@ const ACT_ALL_EXTRA_KEYS = [
   'stage',
   'result',
   'stickerIds',
+  'proofPhotoIds',
 ] as const;
 
 const ACT_EXTRA_MESSAGES: Record<string, string> = {
   stickerIds: 'Stiker hanya untuk cek ulang',
+  proofPhotoIds: 'Foto bukti hanya untuk cek ulang',
   stage: 'Tahap hanya untuk diagnosis',
   toLocationId: 'Lokasi hanya untuk kirim atau terima',
   shipmentNote: 'Catatan pengiriman hanya untuk kirim',
@@ -539,6 +560,12 @@ export function validateSerialAct(raw: unknown): SerialActInput {
       }
       if (stickerIds.length > 0) out.stickerIds = stickerIds;
     }
+  }
+  const proofRaw = source.proofPhotoIds;
+  if (allowed.includes('proofPhotoIds') && proofRaw !== undefined && proofRaw !== null) {
+    const proofPhotoIds = readProofPhotoIds(proofRaw);
+    if (proofPhotoIds === null) reader.fail('proofPhotoIds', 'Daftar foto tidak valid');
+    else if (proofPhotoIds.length > 0) out.proofPhotoIds = proofPhotoIds;
   }
   reader.done();
   return out as unknown as SerialActInput;

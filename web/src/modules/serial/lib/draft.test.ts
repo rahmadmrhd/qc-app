@@ -6,6 +6,7 @@ import {
   applyResults,
   type Defaults,
   fromQcsnRows,
+  proofIdsOf,
   removeRows,
   type StagingRow,
   toBatches,
@@ -218,4 +219,82 @@ test('toRowInput tidak mengirim status atau damage; source hanya untuk countrylo
   expect(input).not.toHaveProperty('damage');
   expect(input).not.toHaveProperty('source');
   expect(toRowInput({ ...(row as StagingRow), source: 'countrylock' }).source).toBe('countrylock');
+});
+
+const photo = (id: string) => ({
+  id,
+  mime: 'image/webp',
+  size: 100,
+  thumbUrl: `/api/v1/serial-proofs/${id}`,
+});
+
+test('baris baru (tempel, impor .qcsn) mulai tanpa foto bukti', () => {
+  const [row] = seed(['A1']);
+  expect(row?.proofPhotos).toEqual([]);
+  const imported = fromQcsnRows(
+    [],
+    [
+      {
+        clientId: 'imp-00000001',
+        serial: 'B2',
+        testDate: '2026-11-12',
+        itemId: 'i1',
+        itemLabel: 'C',
+        buId: 'b1',
+        buLabel: 'BU1',
+        locationId: 'l1',
+        locationLabel: 'J',
+        sample: false,
+        note: '',
+        status: 'good',
+        source: 'manual',
+        capturedAt: 'x',
+      },
+    ],
+  );
+  expect(imported.rows[0]?.proofPhotos).toEqual([]);
+});
+
+test('toRowInput: proofPhotoIds hanya dikirim bila ada foto, urut sesuai baris', () => {
+  const [row] = seed(['A1']);
+  if (!row) throw new Error('seed');
+  const base = { ...row, stickers: [] };
+  expect(toRowInput(base)).not.toHaveProperty('proofPhotoIds');
+  expect(toRowInput({ ...base, proofPhotos: [photo('p2'), photo('p1')] })).toMatchObject({
+    proofPhotoIds: ['p2', 'p1'],
+  });
+});
+
+test('proofIdsOf mengumpulkan id foto semua baris', () => {
+  const rows = seed(['A1', 'A2', 'A3']).map((row, index) =>
+    index === 2 ? row : { ...row, proofPhotos: [photo(`p${index}a`), photo(`p${index}b`)] },
+  );
+  expect(proofIdsOf(rows)).toEqual(['p0a', 'p0b', 'p1a', 'p1b']);
+  expect(proofIdsOf([])).toEqual([]);
+});
+
+test('applyResults: foto kedaluwarsa atau tak dikenal membuang foto baris (baris tetap, pesan server dipertahankan)', () => {
+  const rows = seed(['A1', 'A2', 'A3']).map((row) => ({
+    ...row,
+    proofPhotos: [photo(`p-${row.serial}`)],
+  }));
+  const id = (n: number) => rows[n]?.clientId ?? '';
+  const next = applyResults(rows, [
+    { clientId: id(0), result: 'invalid', message: 'Foto sudah kedaluwarsa, unggah ulang' },
+    {
+      clientId: id(1),
+      result: 'invalid',
+      message: 'Ada foto yang tidak dikenal atau sudah dipakai',
+    },
+    { clientId: id(2), result: 'invalid', message: 'Item tidak ditemukan' },
+  ]);
+  expect(next).toHaveLength(3);
+  expect(next[0]).toMatchObject({
+    result: 'invalid',
+    message: 'Foto sudah kedaluwarsa, unggah ulang',
+    proofPhotos: [],
+  });
+  expect(next[1]).toMatchObject({ result: 'invalid', proofPhotos: [] });
+  // Galat lain: foto tetap melekat agar tak hilang tanpa sebab.
+  expect(next[2]?.proofPhotos).toHaveLength(1);
 });

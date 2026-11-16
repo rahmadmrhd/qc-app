@@ -23,3 +23,8 @@ export const serialKeys = {
   stickerOptions: (itemId: string, buId: string) =>
     ['serial', 'stickerOptions', itemId, buId] as const,
 };
+
+/** Foto bukti QC: awalan kunci sumber `FileDialog` (tanpa daftar; foto bukti tak punya pustaka). */
+export const proofKeys = {
+  upload: ['serial-proofs'] as const,
+};

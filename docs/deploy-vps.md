@@ -68,6 +68,8 @@ ssh rhd_vps_ipv4 'chmod 700 /root/apps/qc-app/deploy.sh; chmod 600 /root/apps/qc
 **`mariadb/qc.cnf` HARUS dapat dibaca pengguna `mysql` di dalam kontainer (izin 644, tanpa rahasia).** Bila berizin 600 milik root, mariadbd (berjalan sebagai `mysql`) mengabaikannya TANPA galat: `collation-server`, `sql_mode`, dan `max_connections=40` tidak berlaku (teramati 2026-11-07 di staging dan production: `max_connections` 151 dan kolasi bawaan `utf8mb4_uca1400_ai_ci`; diperbaiki dengan `chmod 644` dan `docker compose restart qc-db`). Verifikasi: `docker exec <qc-db> sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -N -e "select @@global.collation_server, @@global.max_connections"'` harus `utf8mb4_nopad_bin` dan `40`. Skema yang dibuat entrypoint SEBELUM berkas terbaca memiliki kolasi bawaan: setel `ALTER DATABASE <skema> CHARACTER SET utf8mb4 COLLATE utf8mb4_nopad_bin`.
 ```
 
+**Catatan 2026-11-16 (bukti foto QC Serial Number):** `compose.yml` yang disalin di atas sudah memuat volume `qc-proofs` dan `PROOF_STAGING_MAX_BYTES`. Di `/root/apps/qc-app/<env>/.env`, baris `PROOF_STAGING_MAX_BYTES=` boleh ditambahkan (kosong = 2 GiB; tidak wajib, compose memakai bawaan). Volume dibuat oleh `docker compose up -d`. Verifikasi setelah deploy: `docker volume ls | grep qc-proofs`, dan `docker exec <qc-app> sh -c 'ls -ld /var/lib/qc/proofs'` (pemilik `bun`, bukan root). Pembatalan: volume `qc-proofs` dihapus manual bila dibuang (`docker volume rm`, hanya berkas sementara yang hilang).
+
 Ulangi untuk `production` bila perlu. Pembatalan: hapus berkas yang disalin.
 
 ## 5. .env per lingkungan (izin 600, rahasia dibangkitkan di VPS)

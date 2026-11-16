@@ -1,10 +1,17 @@
-import type { GetSerialOutput, MeDto, SerialDto, SerialEventDto } from '@shared/contract';
+import type {
+  GetSerialOutput,
+  MeDto,
+  SerialDto,
+  SerialEventDto,
+  SerialProofPhotoDto,
+} from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import { linkOptionNames, pickLink } from '@/test/link-field';
+import { formatDay } from '../lib/labels';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
@@ -53,6 +60,8 @@ const SERIAL: SerialDto = {
   note: 'catatan awal',
   recordedLocationId: 'l2',
   stickers: [{ stickerId: 'st1', name: 'Stiker A', alias: '', qty: 2, stickerStatus: 'active' }],
+  hasProofPhotos: false,
+  proofProblemCount: 0,
   openCaseId: null,
   transitFromLocationId: null,
   transitFromLocationName: null,
@@ -74,6 +83,7 @@ const event = (
   message: '',
   changes: [],
   data: {},
+  proofPhotos: [],
   ...over,
 });
 
@@ -202,7 +212,7 @@ const calls = (id: string) => apiMock.mock.calls.filter((call) => call[0] === id
 
 beforeEach(() => {
   apiMock.mockReset();
-  state = { serial: SERIAL, events: EVENTS, eventsTruncated: false };
+  state = { serial: SERIAL, events: EVENTS, eventsTruncated: false, problemPhotos: [] };
   me = meWith('edit');
   historyLimit = 50;
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
@@ -256,6 +266,7 @@ beforeEach(() => {
           ...state.events,
         ],
         eventsTruncated: false,
+        problemPhotos: [],
       };
       return Promise.resolve(nextSerial);
     }
@@ -411,7 +422,7 @@ test('dialog ubah data setelah 412: formulir dibasiskan ulang ke data server dan
     if (id === 'serials.update') {
       updates++;
       if (updates === 1) {
-        state = { serial: fresh, events: state.events, eventsTruncated: false };
+        state = { serial: fresh, events: state.events, eventsTruncated: false, problemPhotos: [] };
         return Promise.reject(new ApiError('CONFLICT', 'basi', '-', undefined, { status: 412 }));
       }
       return Promise.resolve(fresh);
@@ -457,7 +468,7 @@ test('dialog ubah data setelah 412: bidang yang juga diubah orang lain ditandai;
   const original = apiMock.getMockImplementation();
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
     if (id === 'serials.update') {
-      state = { serial: fresh, events: state.events, eventsTruncated: false };
+      state = { serial: fresh, events: state.events, eventsTruncated: false, problemPhotos: [] };
       return Promise.reject(new ApiError('CONFLICT', 'basi', '-', undefined, { status: 412 }));
     }
     return original?.(id, input);
@@ -497,7 +508,7 @@ test('dialog ubah data setelah 412: lokasi dan item yang juga diubah orang lain 
   const original = apiMock.getMockImplementation();
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
     if (id === 'serials.update') {
-      state = { serial: fresh, events: state.events, eventsTruncated: false };
+      state = { serial: fresh, events: state.events, eventsTruncated: false, problemPhotos: [] };
       return Promise.reject(new ApiError('CONFLICT', 'basi', '-', undefined, { status: 412 }));
     }
     return original?.(id, input);
@@ -519,7 +530,7 @@ test('dialog ubah data setelah 412: lokasi dan item yang juga diubah orang lain 
 
 test('linimasa memuat berkursor: tombol "Muat yang lebih lama" mengirim cursor dan tidak ada catatan terpotong', async () => {
   historyLimit = 2;
-  state = { ...state, eventsTruncated: true };
+  state = { ...state, eventsTruncated: true, problemPhotos: [] };
   renderPage();
   await screen.findByRole('list', { name: 'Linimasa' });
   expect(screen.queryByText(/Hanya 500 entri terbaru/)).toBeNull();
@@ -734,6 +745,7 @@ test('linimasa terpotong tanpa kejadian recorded: "Lokasi awal" tetap tampil dar
     ...state,
     events: state.events.filter((event) => event.type !== 'recorded'),
     eventsTruncated: true,
+    problemPhotos: [],
   };
   renderPage();
   const summary = await screen.findByRole('region', { name: 'Ringkasan' });
@@ -749,6 +761,7 @@ test('linimasa terpotong: pembaca tanpa serial: edit memakai me.locations untuk 
     ...state,
     events: state.events.filter((event) => event.type !== 'recorded'),
     eventsTruncated: true,
+    problemPhotos: [],
   };
   renderPage();
   const summary = await screen.findByRole('region', { name: 'Ringkasan' });
@@ -762,6 +775,7 @@ test('lokasi awal tak dikenal dan kejadian recorded tidak termuat: tampil "—" 
     serial: { ...SERIAL, recordedLocationId: 'lHantu' },
     events: state.events.filter((event) => event.type !== 'recorded'),
     eventsTruncated: true,
+    problemPhotos: [],
   };
   renderPage();
   const summary = await screen.findByRole('region', { name: 'Ringkasan' });
@@ -848,4 +862,192 @@ test('caseId dari URL membuka tab laporan itu; id yang bukan laporan serial ini 
     'aria-selected',
     'true',
   );
+});
+
+const PHOTO = {
+  id: 'aaaaaaaa-1',
+  state: 'done' as const,
+  mime: 'image/webp',
+  size: 1,
+  width: 1,
+  height: 1,
+  filename: 'bukti-aaaaaaaa.webp',
+  error: null,
+  canManage: true,
+  canRetry: true,
+  failedAt: null,
+  expiresAt: null,
+};
+
+test('kepala dan kartu riwayat menampilkan badge Bukti foto QC hanya bila serial punya foto', async () => {
+  const first = renderPage();
+  expect(await screen.findByRole('heading', { name: 'ABC123' })).toBeInTheDocument();
+  expect(screen.queryByText('Bukti foto QC')).not.toBeInTheDocument();
+  first.unmount();
+
+  state = {
+    serial: { ...SERIAL, hasProofPhotos: true },
+    events: state.events.map((entry) =>
+      entry.seq === 3 ? { ...entry, proofPhotos: [PHOTO] } : entry,
+    ),
+    eventsTruncated: false,
+    problemPhotos: [],
+  };
+  renderPage();
+  expect(await screen.findByRole('heading', { name: 'ABC123' })).toBeInTheDocument();
+  // Satu di kepala, satu di kartu riwayat saat ini (seq 3) yang berfoto.
+  await waitFor(() => expect(screen.getAllByText('Bukti foto QC')).toHaveLength(2));
+  expect(screen.getByRole('img', { name: 'Foto bukti 1' })).toHaveAttribute(
+    'src',
+    '/api/v1/serial-proofs/aaaaaaaa-1',
+  );
+});
+
+test('Coba lagi pada foto gagal mengikuti canManage dari server, bukan kecocokan nama pelaku', async () => {
+  const failed = { ...PHOTO, state: 'failed' as const, error: 'rusak' };
+  const withFailed = (canManage: boolean) => ({
+    serial: { ...SERIAL, hasProofPhotos: true },
+    events: state.events.map((entry) =>
+      // actorName = nama pengguna uji (me.name = 'A') pada kedua kasus.
+      entry.seq === 3
+        ? { ...entry, actorName: 'A', proofPhotos: [{ ...failed, canManage, canRetry: canManage }] }
+        : entry,
+    ),
+    eventsTruncated: false,
+    problemPhotos: [],
+  });
+  state = withFailed(false);
+  const first = renderPage();
+  await screen.findByText('rusak');
+  expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
+  first.unmount();
+
+  state = withFailed(true);
+  renderPage();
+  expect(await screen.findByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();
+});
+
+describe('foto bukti bermasalah: banner dan badge', () => {
+  const failedPhoto = (
+    id: string,
+    over: Partial<SerialProofPhotoDto> = {},
+  ): SerialProofPhotoDto => ({
+    ...PHOTO,
+    id,
+    state: 'failed' as const,
+    error: 'Berkas gambar rusak',
+    failedAt: '2026-11-16T03:00:00.000Z',
+    expiresAt: '2026-11-30T03:00:00.000Z',
+    ...over,
+  });
+  const withPhotos = (photos: SerialProofPhotoDto[], count = photos.length) => {
+    state = {
+      serial: { ...SERIAL, hasProofPhotos: true, proofProblemCount: count },
+      events: state.events.map((entry) =>
+        entry.seq === 3 ? { ...entry, proofPhotos: photos } : entry,
+      ),
+      eventsTruncated: false,
+      problemPhotos: photos.filter((photo) => photo.state === 'failed'),
+    };
+  };
+  const banner = () => screen.findByRole('region', { name: 'Foto bukti QC bermasalah' });
+
+  test('tanpa foto gagal: tidak ada banner maupun badge Foto bermasalah', async () => {
+    withPhotos([{ ...PHOTO, id: 'ok-1' }], 0);
+    renderPage();
+    expect(await screen.findByRole('heading', { name: 'ABC123' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('region', { name: 'Foto bukti QC bermasalah' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Foto bermasalah')).not.toBeInTheDocument();
+  });
+
+  test('ada foto gagal: banner memuat jumlah dan tanggal batas terdekat (WIB), badge di kepala', async () => {
+    withPhotos([
+      failedPhoto('f-1', { expiresAt: '2026-12-05T03:00:00.000Z' }),
+      failedPhoto('f-2', { expiresAt: '2026-11-30T20:00:00.000Z' }),
+    ]);
+    renderPage();
+    const region = await banner();
+    expect(region).toHaveTextContent('Foto bukti QC bermasalah (2 foto).');
+    // 2026-11-30T20:00Z = 1 Des 2026 03.00 WIB: batas terdekat menurut kalender WIB.
+    expect(region).toHaveTextContent(`pada ${formatDay('2026-12-01')}`);
+    expect(screen.getByRole('heading', { name: 'ABC123' }).parentElement).toHaveTextContent(
+      'Foto bermasalah',
+    );
+  });
+
+  test('tombol Unggah ulang di banner hanya untuk foto yang canManage; pembaca biasa hanya melihat teksnya', async () => {
+    withPhotos([failedPhoto('f-1', { canManage: false, canRetry: false })]);
+    const first = renderPage();
+    const readOnly = await banner();
+    expect(readOnly).toHaveTextContent('Foto bukti QC bermasalah (1 foto).');
+    expect(
+      within(readOnly).queryByRole('button', { name: 'Unggah ulang' }),
+    ).not.toBeInTheDocument();
+    first.unmount();
+
+    withPhotos([failedPhoto('f-1'), failedPhoto('f-2', { canManage: false, canRetry: false })]);
+    renderPage();
+    const manage = await banner();
+    expect(within(manage).getAllByRole('button', { name: 'Unggah ulang' })).toHaveLength(1);
+  });
+
+  test('foto gagal yang tidak ada di kejadian termuat (riwayat terpotong): banner tetap memuat tanggal dan tombol', async () => {
+    state = {
+      serial: { ...SERIAL, hasProofPhotos: true, proofProblemCount: 1 },
+      events: state.events,
+      eventsTruncated: true,
+      problemPhotos: [failedPhoto('f-lama', { expiresAt: '2026-12-02T03:00:00.000Z' })],
+    };
+    renderPage();
+    const region = await banner();
+    expect(region).toHaveTextContent('Foto bukti QC bermasalah (1 foto).');
+    expect(region).toHaveTextContent(`pada ${formatDay('2026-12-02')}`);
+    expect(within(region).getByRole('button', { name: 'Unggah ulang' })).toBeInTheDocument();
+    // Foto itu tidak ada di kartu riwayat mana pun: tidak digandakan di galeri.
+    expect(screen.queryByRole('list', { name: 'Foto bukti QC' })).not.toBeInTheDocument();
+  });
+
+  test('problemPhotos dengan canManage false: banner tanpa tombol', async () => {
+    state = {
+      serial: { ...SERIAL, hasProofPhotos: true, proofProblemCount: 1 },
+      events: state.events,
+      eventsTruncated: true,
+      problemPhotos: [failedPhoto('f-lama', { canManage: false, canRetry: false })],
+    };
+    renderPage();
+    const region = await banner();
+    expect(region).toHaveTextContent('(1 foto)');
+    expect(within(region).queryByRole('button', { name: 'Unggah ulang' })).not.toBeInTheDocument();
+  });
+
+  test('foto gagal ada di galeri kejadian dan di problemPhotos: galeri tidak menggandakan', async () => {
+    withPhotos([failedPhoto('f-1')]);
+    renderPage();
+    const region = await banner();
+    expect(within(region).getAllByRole('img')).toHaveLength(1);
+    // Satu di banner, satu di kartu riwayat (seq 3).
+    await waitFor(() =>
+      expect(screen.getAllByRole('button', { name: 'Unggah ulang' })).toHaveLength(2),
+    );
+  });
+
+  test('foto gagal karena ukuran: Unggah ulang tampil di banner tanpa Coba lagi', async () => {
+    withPhotos([failedPhoto('f-1', { error: 'Ukuran gambar terlalu besar', canRetry: false })]);
+    renderPage();
+    const region = await banner();
+    expect(within(region).getByRole('button', { name: 'Unggah ulang' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
+  });
+
+  test('Unggah ulang di banner membuka dialog foto bukti (tanpa Pustaka)', async () => {
+    withPhotos([failedPhoto('f-1')]);
+    renderPage();
+    const region = await banner();
+    await userEvent.click(within(region).getByRole('button', { name: 'Unggah ulang' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Unggah ulang foto bukti QC' });
+    expect(within(dialog).getByRole('tab', { name: 'Kamera' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('tab', { name: /Pustaka/ })).not.toBeInTheDocument();
+  });
 });

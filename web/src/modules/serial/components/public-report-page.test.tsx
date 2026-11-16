@@ -211,3 +211,32 @@ test('laporan yang masih terbuka: lencana Masih terbuka tanpa tanggal selesai', 
   expect(screen.getByText('Di servis')).toBeInTheDocument();
   expect(screen.queryByText(/selesai/)).toBeNull();
 });
+
+test('foto bukti QC tidak pernah tampil di halaman publik, walau data kejadian membawanya', async () => {
+  fetchMock.mockImplementation(async () =>
+    jsonResponse({
+      ...REPORT,
+      events: REPORT.events.map((entry) => ({
+        ...entry,
+        proofPhotos: [
+          {
+            id: 'aaaaaaaa-1',
+            state: 'done',
+            mime: 'image/webp',
+            size: 1,
+            width: 1,
+            height: 1,
+            filename: 'bukti-aaaaaaaa.webp',
+            error: null,
+          },
+        ],
+      })),
+    }),
+  );
+  const { container } = renderPage();
+  await screen.findByRole('heading', { name: 'LP-20261113-001' });
+  await expandAll();
+  expect(screen.queryByText('Bukti foto QC')).not.toBeInTheDocument();
+  expect(screen.queryByRole('list', { name: 'Foto bukti QC' })).not.toBeInTheDocument();
+  expect(container.querySelector('img[src*="serial-proofs"]')).toBeNull();
+});

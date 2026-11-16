@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { describeError } from '@/lib/api/describe-error';
 import { HISTORY_GROUP_LABEL } from '../lib/labels';
+import { PROOF_POLL_MS, pagesHavePendingProof } from '../lib/proof-state';
 import { serialHistoryInfiniteQueryOptions } from '../queries';
 import { Timeline } from './timeline';
 
@@ -37,9 +38,12 @@ export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
   );
   const caseId = tab.startsWith(CASE_PREFIX) ? tab.slice(CASE_PREFIX.length) : undefined;
   const group = caseId ? 'all' : (tab as 'all' | 'checks' | 'changes');
-  const history = useInfiniteQuery(
-    serialHistoryInfiniteQueryOptions({ id: serial.id, group, ...(caseId ? { caseId } : {}) }),
-  );
+  const history = useInfiniteQuery({
+    ...serialHistoryInfiniteQueryOptions({ id: serial.id, group, ...(caseId ? { caseId } : {}) }),
+    // Selama ada foto bukti yang menunggu cap, riwayat disegarkan berkala agar statusnya (selesai/gagal) terlihat.
+    refetchInterval: (query) =>
+      pagesHavePendingProof(query.state.data?.pages ?? []) ? PROOF_POLL_MS : false,
+  });
   // Jumlah tab tetap terlihat saat berpindah tab (halaman pertama tab baru belum tiba).
   const counts = useRef<Counts | null>(null);
   const latest = history.data?.pages[0]?.counts;

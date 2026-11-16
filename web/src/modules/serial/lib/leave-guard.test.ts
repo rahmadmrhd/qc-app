@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { clearAllDrafts, resumeDraftWrites } from './draft-store';
-import { shouldBlockLeave, shouldWarnBeforeUnload } from './leave-guard';
+import { hasProofPhotos, leaveMode, shouldBlockLeave, shouldWarnBeforeUnload } from './leave-guard';
 
 afterEach(() => {
   resumeDraftWrites();
@@ -29,4 +29,21 @@ test('setelah Keluar (draf dibuang dan penulisan ditahan) navigasi tidak ditahan
   // Halaman Catat dibuka lagi: perlindungan kembali.
   resumeDraftWrites();
   expect(shouldBlockLeave(true, () => false)).toBe(true);
+});
+
+test('hasProofPhotos: true bila minimal satu baris punya foto bukti', () => {
+  expect(hasProofPhotos([])).toBe(false);
+  expect(hasProofPhotos([{ proofPhotos: [] }, { proofPhotos: [] }])).toBe(false);
+  expect(hasProofPhotos([{ proofPhotos: [] }, { proofPhotos: [{ id: 'p' }] }])).toBe(true);
+});
+
+test('leaveMode: kosong none, draft biasa confirm, draft berfoto dialog, keluar dari aplikasi none', () => {
+  expect(leaveMode(false, true)).toBe('none');
+  expect(leaveMode(true, false)).toBe('confirm');
+  expect(leaveMode(true, true)).toBe('dialog');
+  clearAllDrafts();
+  expect(leaveMode(true, true)).toBe('none');
+  expect(leaveMode(true, false)).toBe('none');
+  resumeDraftWrites();
+  expect(leaveMode(true, true)).toBe('dialog');
 });

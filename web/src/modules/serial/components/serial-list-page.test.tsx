@@ -45,6 +45,8 @@ const row = (over: Partial<SerialSummaryDto>): SerialSummaryDto => ({
   transitToLocationName: null,
   transitOn: null,
   openCaseNumber: null,
+  hasProofPhotos: false,
+  proofProblemCount: 0,
   createdAt: '2026-11-10T03:00:00.000Z',
   ...over,
 });
@@ -559,4 +561,50 @@ test('tombol "Tambah Serial Number" hanya tampil bila ada jalan masuk mencatat, 
   renderPage(undefined, undefined, onNew);
   await userEvent.click(await screen.findByRole('button', { name: 'Tambah Serial Number' }));
   expect(onNew).toHaveBeenCalledTimes(1);
+});
+
+test('badge Bukti foto QC tampil hanya pada baris yang punya foto', async () => {
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') {
+      return Promise.resolve({
+        items: [
+          row({ id: 's1', serial: 'ADA1', hasProofPhotos: true }),
+          row({ id: 's2', serial: 'TANPA2' }),
+        ],
+        nextCursor: null,
+      });
+    }
+    return Promise.resolve({ locations: [] });
+  });
+  renderPage();
+  const withPhoto = (await screen.findByRole('button', { name: 'ADA1' })).closest(
+    'tr',
+  ) as HTMLElement;
+  const without = screen.getByRole('button', { name: 'TANPA2' }).closest('tr') as HTMLElement;
+  expect(within(withPhoto).getByText('Bukti foto QC')).toBeInTheDocument();
+  expect(within(without).queryByText('Bukti foto QC')).not.toBeInTheDocument();
+});
+
+test('badge Foto bermasalah tampil hanya pada baris dengan proofProblemCount > 0, berdampingan dengan Bukti foto QC', async () => {
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') {
+      return Promise.resolve({
+        items: [
+          row({ id: 's1', serial: 'MASALAH1', hasProofPhotos: true, proofProblemCount: 2 }),
+          row({ id: 's2', serial: 'AMAN2', hasProofPhotos: true }),
+        ],
+        nextCursor: null,
+      });
+    }
+    return Promise.resolve({ locations: [] });
+  });
+  renderPage();
+  const bad = (await screen.findByRole('button', { name: 'MASALAH1' })).closest(
+    'tr',
+  ) as HTMLElement;
+  const fine = screen.getByRole('button', { name: 'AMAN2' }).closest('tr') as HTMLElement;
+  expect(within(bad).getByText('Foto bermasalah')).toBeInTheDocument();
+  expect(within(bad).getByText('Bukti foto QC')).toBeInTheDocument();
+  expect(within(fine).queryByText('Foto bermasalah')).not.toBeInTheDocument();
+  expect(within(fine).getByText('Bukti foto QC')).toBeInTheDocument();
 });

@@ -148,3 +148,18 @@ test('ekspor selalu menulis status good tanpa damage; baris failed di berkas dit
   expect(result.rows).toEqual([]);
   expect(result.fatal ?? result.problems[0]?.message).toMatch(/good|bermasalah|status/i);
 });
+
+test('foto bukti tidak ikut ekspor .qcsn dan impor menghasilkan baris tanpa foto', async () => {
+  const data = rows(['A1']).map((row) => ({
+    ...row,
+    proofPhotos: [
+      { id: 'p-rahasia', mime: 'image/webp', size: 1, thumbUrl: '/api/v1/serial-proofs/p-rahasia' },
+    ],
+  }));
+  const text = await exportQcsn(data, APP, NOW);
+  expect(text).not.toContain('p-rahasia');
+  expect(text).not.toContain('proof');
+  const result = await importQcsn(text);
+  expect(result.fatal).toBeNull();
+  expect(result.rows[0]).not.toHaveProperty('proofPhotos');
+});
