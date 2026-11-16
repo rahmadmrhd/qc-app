@@ -1,4 +1,5 @@
 import { Outlet } from '@tanstack/react-router';
+import type { ReactNode } from 'react';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useMe } from '@/modules/auth/use-me';
@@ -18,7 +19,11 @@ import { ServerStatusBanner } from './server-status-banner';
 import { UiUpdateBanner } from './ui-update-banner';
 import { UserMenu } from './user-menu';
 
-export function AppShell() {
+/**
+ * Cangkang aplikasi (sidebar + header). Dipakai rute `_app` (isi lewat `<Outlet />`) dan rute di luar `_app` yang
+ * tetap boleh tampil tanpa login tetapi memakai cangkang bila sudah login (`/country-lock`): isinya lewat `children`.
+ */
+export function AppShell({ children }: { children?: ReactNode } = {}) {
   usePrefetchOnIdle(useMe());
   return (
     <TooltipProvider>
@@ -43,9 +48,7 @@ export function AppShell() {
               <PushOnboarding />
               <GuideGreeting />
               <GuideBanner />
-              <main className="flex-1 p-4 md:p-6">
-                <Outlet />
-              </main>
+              <main className="flex-1 p-4 md:p-6">{children ?? <Outlet />}</main>
             </SidebarInset>
           </TourProvider>
         </SidebarProvider>
