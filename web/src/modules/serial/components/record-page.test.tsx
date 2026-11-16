@@ -100,6 +100,7 @@ beforeEach(() => {
       stickerstock: 'none',
       serial: 'edit',
       serialservice: 'none',
+      countrylock: 'none',
     },
     businessUnits: [],
     // Tanpa penugasan lokasi: pilihan lokasi serial datang dari serials.locationOptions.

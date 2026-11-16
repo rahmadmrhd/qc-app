@@ -17,6 +17,7 @@ const me: MeDto = {
     stickerstock: 'manage',
     serial: 'manage',
     serialservice: 'manage',
+    countrylock: 'none',
   },
   businessUnits: [],
   canManageSerialSettings: true,

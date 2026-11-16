@@ -338,6 +338,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'notifications.list': { limit: 30, before: '2026-11-12T00:00:00.000Z|n1' },
   'notifications.markRead': { id: 'n1' },
   'notifications.markAllRead': {},
+  'desktop.handoff': {},
   'push.config': null,
   'push.subscribe': { endpoint: 'https://push.example.test/abc', p256dh: 'BP', auth: 'au' },
   'push.unsubscribe': { endpoint: 'https://push.example.test/abc' },

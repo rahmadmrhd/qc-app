@@ -112,6 +112,7 @@ beforeEach(() => {
       stickerstock: 'none',
       serial: 'view',
       serialservice: 'none',
+      countrylock: 'none',
     },
     businessUnits: [],
     locations: [
@@ -390,7 +391,10 @@ test('pembaca tanpa serial: edit tidak memanggil serials.locationOptions; filter
 });
 
 test('pembaca serialservice: view juga tidak memanggil serials.locationOptions', async () => {
-  me = { ...me, permissions: { ...me.permissions, serial: 'none', serialservice: 'view' } };
+  me = {
+    ...me,
+    permissions: { ...me.permissions, serial: 'none', serialservice: 'view', countrylock: 'none' },
+  };
   renderPage();
   await screen.findByText('ABC123');
   await linkOptionNames(screen, 'Filter lokasi');
@@ -445,7 +449,10 @@ test('pembaca tanpa penugasan lokasi: peringatan tampil di daftar serial; editor
 });
 
 test('filter item berfungsi bagi pembaca (serial: view): item dimuat dari serials.itemOptions tanpa gerbang edit', async () => {
-  me = { ...me, permissions: { ...me.permissions, serial: 'none', serialservice: 'view' } };
+  me = {
+    ...me,
+    permissions: { ...me.permissions, serial: 'none', serialservice: 'view', countrylock: 'none' },
+  };
   renderPage();
   await screen.findByText('ABC123');
   const names = await linkOptionNames(screen, 'Filter item');

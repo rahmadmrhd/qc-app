@@ -33,6 +33,7 @@ const me: MeDto = {
     stickerstock: 'none',
     serial: 'none',
     serialservice: 'none',
+    countrylock: 'none',
   },
   businessUnits: [],
   locations: [

@@ -512,6 +512,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'push.setPreference': { verb: 'PUT', path: '/push/preference' },
   'push.reportPermission': { verb: 'PUT', path: '/push/permission' },
   'push.status': { verb: 'GET', path: '/push/status' },
+  'desktop.handoff': { verb: 'POST', path: '/desktop/handoff' },
   'guides.list': { verb: 'GET', path: '/guides' },
   'guides.mark': { verb: 'PUT', path: '/guides/{id}' },
   'guides.reset': { verb: 'POST', path: '/guides/{id}/reset' },

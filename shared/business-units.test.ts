@@ -139,9 +139,9 @@ describe('globalBuLevel', () => {
 
 describe('buIdsWithLevel dan canActOnAllBus', () => {
   const byBu = {
-    A: { item: 'manage', serial: 'none', serialservice: 'none' },
-    B: { item: 'view', serial: 'none', serialservice: 'none' },
-    C: { item: 'edit', serial: 'none', serialservice: 'none' },
+    A: { item: 'manage', serial: 'none', serialservice: 'none', countrylock: 'none' },
+    B: { item: 'view', serial: 'none', serialservice: 'none', countrylock: 'none' },
+    C: { item: 'edit', serial: 'none', serialservice: 'none', countrylock: 'none' },
   } as const;
 
   test('buIdsWithLevel menyaring BU menurut level minimum', () => {

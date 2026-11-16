@@ -172,6 +172,7 @@ function meWith(serial: 'view' | 'edit'): MeDto {
       stickerstock: 'none',
       serial,
       serialservice: 'none',
+      countrylock: 'none',
     },
     businessUnits: [
       {

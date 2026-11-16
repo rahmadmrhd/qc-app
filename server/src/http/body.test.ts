@@ -331,6 +331,7 @@ const WORST: Inputs = {
   'serialProofs.replace': { photoId: UUID, newPhotoId: UUID },
   'notifications.markRead': { id: UUID },
   'notifications.markAllRead': {},
+  'desktop.handoff': {},
   'push.subscribe': { endpoint: text(2000), p256dh: text(200), auth: text(100) },
   'push.unsubscribe': { endpoint: text(2000) },
   'push.setPreference': { enabled: true },

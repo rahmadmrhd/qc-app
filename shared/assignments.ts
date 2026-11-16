@@ -9,7 +9,7 @@ export type LocatedModule = (typeof LOCATION_MODULES)[number];
 export type LocationPermissionMap = Record<LocatedModule, Level>;
 
 /** Modul global yang levelnya dihitung dari SEMUA penugasan lokasi berlaku, bukan hanya "Semua lokasi". */
-export const SHARED_MODULES = ['qrcode', 'sticker'] as const;
+export const SHARED_MODULES = ['qrcode', 'sticker', 'countrylock'] as const;
 
 /** Kunci peta/snapshot untuk penugasan "Semua lokasi". */
 export const ALL_LOCATIONS_KEY = '*';
@@ -91,7 +91,7 @@ function rolePermissionSources(
  * Izin efektif seorang user: global dan per lokasi aktif.
  * - Per lokasi: gabungan "Semua lokasi" + penugasan lokasi itu (level tertinggi per modul).
  * - Global: hanya dari "Semua lokasi" (satu-satunya sumber `access`); kecuali `SHARED_MODULES`
- *   (`qrcode`, `sticker`) yang diambil dari semua penugasan berlaku ("Semua lokasi" atau lokasi aktif), dan `item` yang
+ *   (`qrcode`, `sticker`, `countrylock`) yang diambil dari semua penugasan berlaku ("Semua lokasi" atau lokasi aktif), dan `item` yang
  *   hanya dari penugasan BU (level tertinggi di antara semuanya).
  * - Per BU (`byBu`): gabungan "Semua BU" + penugasan BU itu untuk modul ber-BU.
  */

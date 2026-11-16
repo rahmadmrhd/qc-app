@@ -61,7 +61,12 @@ export const NAV_GROUPS: NavGroup[] = [
     label: 'Umum',
     items: [
       { label: 'Beranda', to: '/', icon: House },
-      { label: 'Country Lock', to: '/country-lock', icon: Lock, desktopOnly: true },
+      {
+        label: 'Country Lock',
+        to: '/country-lock',
+        icon: Lock,
+        permission: { module: 'countrylock', level: 'view' },
+      },
     ],
   },
   {
