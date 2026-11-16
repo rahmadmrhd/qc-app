@@ -150,6 +150,57 @@ test('butir ringkasan batch (tanpa task) menavigasi ke daftar Serah Terima', asy
   expect(navigateMock).toHaveBeenCalledWith({ to: '/handover', search: { loc: 'l-a' } });
 });
 
+test('butir Serial Number: judul, nomor SN sebagai isi, klik membuka detail Serial Number', async () => {
+  state = {
+    items: [
+      note({
+        id: 'n5',
+        kind: 'serialProofFailed',
+        handoverId: '',
+        locationId: 'l-a',
+        number: 'ABC123',
+        customerName: '',
+        actor: '',
+        serialId: 's1',
+        photoId: 'p1',
+      }),
+    ],
+    unread: 1,
+    nextCursor: null,
+  };
+  mount();
+  await userEvent.click(await screen.findByRole('button', { name: /Notifikasi, 1 belum dibaca/ }));
+  expect(await screen.findByText('Foto bukti QC bermasalah')).toBeInTheDocument();
+  expect(screen.getByText('ABC123')).toBeInTheDocument();
+  await userEvent.click(screen.getByText('Foto bukti QC bermasalah'));
+  await waitFor(() => expect(apiMock).toHaveBeenCalledWith('notifications.markRead', { id: 'n5' }));
+  expect(navigateMock).toHaveBeenCalledTimes(1);
+  expect(navigateMock).toHaveBeenCalledWith({
+    to: '/serial/$serialId',
+    params: { serialId: 's1' },
+  });
+});
+
+test('butir Serial Number tidak merender nama customer Serah Terima walau terisi', async () => {
+  state = {
+    items: [
+      note({
+        id: 'n6',
+        kind: 'serialProofFailed',
+        number: 'XYZ789',
+        customerName: 'PT Bocor',
+        serialId: 's2',
+      }),
+    ],
+    unread: 1,
+    nextCursor: null,
+  };
+  mount();
+  await userEvent.click(await screen.findByRole('button', { name: /Notifikasi, 1 belum dibaca/ }));
+  expect(await screen.findByText('XYZ789')).toBeInTheDocument();
+  expect(screen.queryByText('PT Bocor')).not.toBeInTheDocument();
+});
+
 test('butir yang sudah dibaca tidak memanggil markRead lagi', async () => {
   state = { items: [note({ readAt: '2026-11-12T04:00:00.000Z' })], unread: 0, nextCursor: null };
   mount();
