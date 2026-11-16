@@ -1,10 +1,38 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { type BarcodeEngine, createBarcodeEngine, ScannerLoadError } from './barcode-engine';
+import {
+  applyContinuousFocus,
+  applyTapFocus,
+  applyZoom,
+  type CameraCaps,
+  clampZoom,
+  describeCameras,
+  initialZoom,
+  readCameraCaps,
+  restoreContinuousFocus,
+  type ZoomRange,
+} from './camera-controls';
 import { createScanCapturer } from './scan-capture';
-import { pickNearestCenter } from './scan-region';
+import { createScanConfirmer } from './scan-confirm';
+import { type Point, pickNearestCenterCode, type Size, tapToVideoPoint } from './scan-region';
 
 /** Jeda antar pembacaan bingkai (~8 fps); cukup untuk label dan hemat baterai. */
 export const SCAN_INTERVAL_MS = 120;
+
+/** Setelah ketuk-untuk-fokus (sekali), fokus kembali ke mode kontinu sesudah jeda ini (cukup lama agar single-shot lambat tak terpotong). */
+export const TAP_FOCUS_RESTORE_MS = 2500;
+
+/** Resolusi yang diminta (ideal, bukan exact: kamera yang tak bisa tetap terbuka). Label kecil butuh piksel lebih banyak. */
+const IDEAL_WIDTH = 1920;
+const IDEAL_HEIGHT = 1080;
+
+const NO_CAPS: CameraCaps = {
+  torch: false,
+  zoom: null,
+  focusModes: [],
+  continuousFocus: false,
+  tapFocus: false,
+};
 
 export type CameraErrorKind =
   | 'insecure'
@@ -72,18 +100,17 @@ export function classifyCameraError(error: unknown): CameraErrorKind {
   }
 }
 
-interface TorchCapabilities {
-  torch?: boolean;
-}
-
 export interface UseCameraScannerOptions {
   /** Kamera hanya menyala selama `true`; `false`/unmount mematikan aliran. */
   open: boolean;
   /** Id perangkat pilihan; kosong = kamera belakang bila ada. */
   deviceId: string;
+  /** Dipanggil hanya untuk bacaan yang sudah terkonfirmasi pada beberapa bingkai berturut-turut. */
   onPayload: (payload: string) => void;
   /** Disuntik tes. */
   createEngine?: () => Promise<BarcodeEngine>;
+  /** Disuntik tes: jam untuk jendela konfirmasi bingkai. */
+  now?: () => number;
 }
 
 export interface UseCameraScanner {
@@ -95,6 +122,17 @@ export interface UseCameraScanner {
   torchSupported: boolean;
   torchOn: boolean;
   setTorch: (on: boolean) => Promise<void>;
+  /** Zoom saat ini (1 = tanpa zoom) dan rentangnya; `null` bila kamera tak mendukung zoom. */
+  zoom: number;
+  zoomRange: ZoomRange | null;
+  setZoom: (value: number) => Promise<void>;
+  /** Ketuk-untuk-fokus tersedia (trek mendukung fokus `single-shot`). */
+  tapFocusSupported: boolean;
+  /**
+   * Fokus sekali ke titik ketukan: `tap` = posisi di kotak tampilan video (piksel, relatif sudut kiri-atas kotak),
+   * `box` = ukuran kotak itu. `true` bila perintah dikirim (untuk umpan balik visual); `false` = tidak ada efek.
+   */
+  focusAt: (tap: Point, box: Size) => boolean;
   /** Coba lagi setelah galat. */
   retry: () => void;
 }
@@ -104,19 +142,28 @@ export function useCameraScanner({
   deviceId,
   onPayload,
   createEngine = createBarcodeEngine,
+  now,
 }: UseCameraScannerOptions): UseCameraScanner {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const trackRef = useRef<MediaStreamTrack | null>(null);
+  const capsRef = useRef<CameraCaps>(NO_CAPS);
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const zoomRef = useRef(1);
   const onPayloadRef = useRef(onPayload);
   onPayloadRef.current = onPayload;
   const createEngineRef = useRef(createEngine);
   createEngineRef.current = createEngine;
+  const nowRef = useRef(now);
+  nowRef.current = now;
 
   const [state, setState] = useState<CameraState>({ status: 'loading' });
   const [devices, setDevices] = useState<CameraDevice[]>([]);
   const [activeDeviceId, setActiveDeviceId] = useState('');
   const [torchSupported, setTorchSupported] = useState(false);
   const [torchOn, setTorchOn] = useState(false);
+  const [zoomRange, setZoomRange] = useState<ZoomRange | null>(null);
+  const [zoom, setZoomValue] = useState(1);
+  const [tapFocusSupported, setTapFocusSupported] = useState(false);
   const [attempt, setAttempt] = useState(0);
   // Tab tersembunyi: kamera dilepas sepenuhnya (trek dihentikan, loop berhenti) dan dinyalakan lagi saat terlihat. HANYA
   // bila kamera sedang jalan (memuat atau memindai): dalam keadaan galat tab tak menyentuh apa pun, pesan galat tetap
@@ -147,10 +194,14 @@ export function useCameraScanner({
     // Trek milik run ini: `stop()` hanya membersihkan keadaan bersama (trackRef, srcObject) bila masih miliknya.
     let ownTrack: MediaStreamTrack | null = null;
 
-    // Tiap (re)start: "Menyiapkan kamera…" dan senter kembali MATI (trek baru selalu mulai tanpa senter).
+    // Tiap (re)start: "Menyiapkan kamera…" dan senter/zoom kembali ke awal (trek baru selalu mulai tanpa senter, 1x).
     setState({ status: 'loading' });
     setTorchSupported(false);
     setTorchOn(false);
+    setZoomRange(null);
+    zoomRef.current = 1;
+    setZoomValue(1);
+    setTapFocusSupported(false);
 
     const stop = () => {
       if (timer !== null) clearTimeout(timer);
@@ -158,7 +209,13 @@ export function useCameraScanner({
       const own = stream;
       for (const track of own?.getTracks() ?? []) track.stop();
       stream = null;
-      if (ownTrack !== null && trackRef.current === ownTrack) trackRef.current = null;
+      if (ownTrack !== null && trackRef.current === ownTrack) {
+        trackRef.current = null;
+        capsRef.current = NO_CAPS;
+        // Timer kembali-ke-kontinu milik trek yang berlaku: run lama yang selesai terlambat tak boleh membatalkannya.
+        if (tapTimerRef.current !== null) clearTimeout(tapTimerRef.current);
+        tapTimerRef.current = null;
+      }
       ownTrack = null;
       const video = videoRef.current;
       if (video && own !== null && video.srcObject === own) video.srcObject = null;
@@ -178,11 +235,12 @@ export function useCameraScanner({
       enginePromise.catch(() => undefined);
 
       try {
+        const size = { width: { ideal: IDEAL_WIDTH }, height: { ideal: IDEAL_HEIGHT } };
         stream = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: deviceId
-            ? { deviceId: { exact: deviceId } }
-            : { facingMode: { ideal: 'environment' }, width: { ideal: 1920 } },
+            ? { deviceId: { exact: deviceId }, ...size }
+            : { facingMode: { ideal: 'environment' }, ...size },
         });
       } catch (error) {
         return fail(classifyCameraError(error));
@@ -199,9 +257,18 @@ export function useCameraScanner({
       const track = stream.getVideoTracks()[0];
       trackRef.current = track ?? null;
       ownTrack = track ?? null;
-      const capabilities = (track?.getCapabilities?.() ?? {}) as TorchCapabilities;
-      setTorchSupported(capabilities.torch === true);
+      const caps = track ? readCameraCaps(track) : NO_CAPS;
+      capsRef.current = caps;
+      setTorchSupported(caps.torch);
+      setZoomRange(caps.zoom);
+      zoomRef.current = caps.zoom
+        ? initialZoom(caps.zoom, (track?.getSettings?.() as { zoom?: number } | undefined)?.zoom)
+        : 1;
+      setZoomValue(zoomRef.current);
+      setTapFocusSupported(caps.tapFocus);
       setActiveDeviceId(track?.getSettings?.().deviceId ?? '');
+      // Fokus kontinu (bila didukung): tanpa ini banyak ponsel mengunci fokus di jarak awal dan label dekat buram.
+      if (track && caps.continuousFocus) void applyContinuousFocus(track);
 
       const video = videoRef.current;
       if (!video) return fail('unknown');
@@ -217,12 +284,14 @@ export function useCameraScanner({
         const all = (await navigator.mediaDevices.enumerateDevices?.()) ?? [];
         if (!cancelled) {
           setDevices(
-            all
-              .filter((device) => device.kind === 'videoinput')
-              .map((device, index) => ({
-                id: device.deviceId,
-                label: device.label || `Kamera ${index + 1}`,
-              })),
+            describeCameras(
+              all
+                .filter((device) => device.kind === 'videoinput')
+                .map((device, index) => ({
+                  id: device.deviceId,
+                  label: device.label || `Kamera ${index + 1}`,
+                })),
+            ),
           );
         }
       } catch {
@@ -232,6 +301,9 @@ export function useCameraScanner({
       setState({ status: 'scanning' });
 
       const capture = createScanCapturer();
+      // Satu bacaan tak cukup: teks yang sama harus terbaca pada beberapa bingkai berturut-turut (bacaan parsial
+      // dari bingkai buram berganti-ganti dan tak pernah lolos).
+      const confirmer = createScanConfirmer({ now: nowRef.current });
       const tick = async () => {
         timer = null;
         if (cancelled || !engine) return;
@@ -241,11 +313,15 @@ export function useCameraScanner({
             // Hanya piksel di dalam bingkai yang dibaca, dan dari beberapa kode di bingkai hanya yang paling
             // dekat tengah yang diteruskan (label nyata sering memuat kode lain yang tak diperlukan).
             const { source, center } = capture(video);
-            const payload = pickNearestCenter(await engine.detectCodes(source), center);
+            const code = pickNearestCenterCode(await engine.detectCodes(source), center);
             if (cancelled) return;
+            const payload = confirmer.observe(
+              code ? { text: code.text, ...(code.format ? { format: code.format } : {}) } : null,
+            );
             if (payload !== null) onPayloadRef.current(payload);
           } catch {
-            // Bingkai gagal dibaca: coba bingkai berikutnya.
+            // Bingkai gagal dibaca: seri konfirmasi putus, coba bingkai berikutnya.
+            confirmer.observe(null);
           }
         }
         if (!cancelled) timer = setTimeout(tick, SCAN_INTERVAL_MS);
@@ -272,7 +348,54 @@ export function useCameraScanner({
     }
   }, []);
 
+  const setZoom = useCallback(async (value: number) => {
+    const track = trackRef.current;
+    const range = capsRef.current.zoom;
+    if (!track || !range) return;
+    const next = clampZoom(value, range);
+    const previous = zoomRef.current;
+    zoomRef.current = next;
+    setZoomValue(next);
+    const applied = await applyZoom(track, next);
+    // Gagal: kembalikan hanya bila trek ini masih yang berlaku (kamera mungkin sempat dimulai ulang).
+    if (!applied && trackRef.current === track && zoomRef.current === next) {
+      zoomRef.current = previous;
+      setZoomValue(previous);
+    }
+  }, []);
+
+  const focusAt = useCallback((tap: Point, box: Size) => {
+    const track = trackRef.current;
+    const video = videoRef.current;
+    const caps = capsRef.current;
+    if (!track || !video || !caps.tapFocus) return false;
+    const point = tapToVideoPoint(tap, { width: video.videoWidth, height: video.videoHeight }, box);
+    if (!point) return false;
+    void applyTapFocus(track, point);
+    if (tapTimerRef.current !== null) clearTimeout(tapTimerRef.current);
+    // Setelah fokus sekali, kembali ke kontinu agar fokus tetap mengikuti label yang bergerak.
+    tapTimerRef.current = setTimeout(() => {
+      tapTimerRef.current = null;
+      if (trackRef.current === track && caps.continuousFocus) void restoreContinuousFocus(track);
+    }, TAP_FOCUS_RESTORE_MS);
+    return true;
+  }, []);
+
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
-  return { videoRef, state, devices, activeDeviceId, torchSupported, torchOn, setTorch, retry };
+  return {
+    videoRef,
+    state,
+    devices,
+    activeDeviceId,
+    torchSupported,
+    torchOn,
+    setTorch,
+    zoom,
+    zoomRange,
+    setZoom,
+    tapFocusSupported,
+    focusAt,
+    retry,
+  };
 }

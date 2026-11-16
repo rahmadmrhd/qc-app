@@ -8,10 +8,25 @@
 import type { LocatedCode } from './scan-region';
 
 /**
- * Format yang dibaca. Daftar ini TEBAKAN dari spek Serial Number §11 (label Serial/QCSN diperkirakan QR, Code 128,
- * Code 39, EAN-13, atau DataMatrix): belum dipastikan dengan label nyata. Ubah di satu tempat ini bila perlu.
+ * Format yang dibaca. Pemilik produk menyatakan (2026-11-16) label dari vendor bercampur 1D dan 2D dan formatnya bisa
+ * bertambah, jadi daftarnya cukup luas: QR, DataMatrix, Aztec, PDF417 (2D) dan Code 128/39/93, EAN-13/8, UPC-A/E,
+ * Codabar (1D). `itf` sengaja TIDAK ada: rawan salah baca parsial pada label buram. Makin banyak format makin berat
+ * per bingkai di cadangan WASM, jadi tambahkan hanya yang benar-benar muncul di label. Ubah di satu tempat ini.
  */
-export const SCAN_FORMATS = ['qr_code', 'code_128', 'code_39', 'ean_13', 'data_matrix'] as const;
+export const SCAN_FORMATS = [
+  'qr_code',
+  'data_matrix',
+  'aztec',
+  'pdf417',
+  'code_128',
+  'code_39',
+  'code_93',
+  'ean_13',
+  'ean_8',
+  'upc_a',
+  'upc_e',
+  'codabar',
+] as const;
 
 export type ScanFormat = (typeof SCAN_FORMATS)[number];
 
@@ -20,6 +35,8 @@ export type ScanSource = ImageBitmapSource;
 
 export interface DetectedCode {
   rawValue: string;
+  /** Format yang terbaca (mis. `qr_code`); ada pada pembaca bawaan maupun ponyfill. */
+  format?: string;
   /** Kotak pembatas pada sumber (ada pada pembaca bawaan maupun ponyfill). */
   boundingBox?: { x: number; y: number; width: number; height: number };
 }
@@ -78,6 +95,7 @@ function wrap(
         .filter((code) => code.rawValue !== '')
         .map((code) => ({
           text: code.rawValue,
+          ...(code.format ? { format: code.format } : {}),
           box: code.boundingBox
             ? {
                 x: code.boundingBox.x,

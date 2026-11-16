@@ -105,3 +105,95 @@ test('detectCodes membawa kotak pembatas dan tidak menyaring duplikat; detect te
   ]);
   expect(await engine.detect(source)).toEqual(['A']);
 });
+
+test('detectCodes membawa format bila pembaca melaporkannya', async () => {
+  const detect = vi.fn(async () => [{ rawValue: 'A', format: 'qr_code' }, { rawValue: 'B' }]);
+  class Detector {
+    detect = detect;
+  }
+  const engine = await createBarcodeEngine({
+    native: Detector as unknown as BarcodeDetectorConstructor,
+    loadFallback: vi.fn(),
+    formats: SCAN_FORMATS,
+  });
+  expect(await engine.detectCodes(source)).toEqual([
+    { text: 'A', format: 'qr_code', box: null },
+    { text: 'B', box: null },
+  ]);
+});
+
+test('daftar format: label campur (1D + 2D), tanpa itf', () => {
+  for (const format of [
+    'qr_code',
+    'data_matrix',
+    'aztec',
+    'pdf417',
+    'code_128',
+    'code_39',
+    'code_93',
+    'ean_13',
+    'ean_8',
+    'upc_a',
+    'upc_e',
+    'codabar',
+  ]) {
+    expect(SCAN_FORMATS).toContain(format);
+  }
+  expect(SCAN_FORMATS).not.toContain('itf');
+  expect(new Set(SCAN_FORMATS).size).toBe(SCAN_FORMATS.length);
+});
+
+test('bawaan yang tak mendukung format tambahan (mis. codabar) jatuh ke WASM', async () => {
+  const old = SCAN_FORMATS.filter((f) => f !== 'codabar' && f !== 'aztec' && f !== 'pdf417');
+  const native = fakeDetector(['N'], old);
+  const wasm = fakeDetector(['W']);
+  const engine = await createBarcodeEngine({
+    native: native.Detector,
+    loadFallback: async () => wasm.Detector,
+    formats: SCAN_FORMATS,
+  });
+  expect(engine.kind).toBe('wasm');
+  expect(wasm.constructed[0]).toEqual({ formats: [...SCAN_FORMATS] });
+});
+
+test('getSupportedFormats yang gagal atau memuat format tak dikenal tidak menjadi galat', async () => {
+  class Throwing {
+    detect = vi.fn(async () => []);
+    static getSupportedFormats = async () => {
+      throw new Error('tak didukung');
+    };
+  }
+  // Gagal dibaca = anggap mendukung semua: memakai bawaan tanpa memuat WASM.
+  const loadFallback = vi.fn();
+  const engine = await createBarcodeEngine({
+    native: Throwing as unknown as BarcodeDetectorConstructor,
+    loadFallback,
+    formats: SCAN_FORMATS,
+  });
+  expect(engine.kind).toBe('native');
+  expect(loadFallback).not.toHaveBeenCalled();
+
+  // Daftar didukung berisi format asing + semua format kita: bawaan tetap dipakai.
+  const extra = fakeDetector(['N'], [...SCAN_FORMATS, 'itf', 'unknown']);
+  const engine2 = await createBarcodeEngine({
+    native: extra.Detector,
+    loadFallback,
+    formats: SCAN_FORMATS,
+  });
+  expect(engine2.kind).toBe('native');
+  expect(extra.constructed[0]).toEqual({ formats: [...SCAN_FORMATS] });
+});
+
+test('cadangan WASM juga membawa format pada detectCodes', async () => {
+  const detect = vi.fn(async () => [{ rawValue: 'W1', format: 'code_128' }]);
+  class Detector {
+    detect = detect;
+  }
+  const engine = await createBarcodeEngine({
+    native: undefined,
+    loadFallback: async () => Detector as unknown as BarcodeDetectorConstructor,
+    formats: SCAN_FORMATS,
+  });
+  expect(engine.kind).toBe('wasm');
+  expect(await engine.detectCodes(source)).toEqual([{ text: 'W1', format: 'code_128', box: null }]);
+});
