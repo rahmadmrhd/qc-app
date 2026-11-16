@@ -8,13 +8,15 @@ import { buIdsWithLevelOf, serialActorModules } from '@/modules/auth/permissions
 import { useMe } from '@/modules/auth/use-me';
 import { CUSTODY_LABEL, formatDay, STATUS_LABEL } from '../lib/labels';
 import { todayWib } from '../lib/locations';
+import { hasPendingProof, PROOF_POLL_MS } from '../lib/proof-state';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import { serialDetailQueryOptions } from '../queries';
 import { ActButtons, type ActKind } from './act-buttons';
 import { ActDialog } from './act-dialog';
 import { CustodyPanel } from './custody-panel';
 import { EditSerialDialog } from './edit-serial-dialog';
-import { ProofBadge } from './proof-badge';
+import { ProofBadge, ProofProblemBadge } from './proof-badge';
+import { ProofProblemBanner } from './proof-problem-banner';
 import { SerialStepper } from './serial-stepper';
 import { TimelineTabs } from './timeline-tabs';
 
@@ -88,7 +90,13 @@ function Summary({ serial, events }: { serial: SerialDto; events: readonly Seria
 /** Detail serial bergaya tiket: kepala, ringkasan, linimasa (terbaru di atas), kotak pembaruan baru, dan ubah data. */
 export function SerialDetailPage({ serialId, onBack, caseId }: SerialDetailPageProps) {
   const me = useMe();
-  const detail = useQuery(serialDetailQueryOptions(serialId));
+  const detail = useQuery({
+    ...serialDetailQueryOptions(serialId),
+    // Selama ada foto bukti yang menunggu cap, detail disegarkan berkala agar banner/badge "Foto bermasalah" muncul
+    // begitu fotonya gagal (riwayat sudah punya polling sendiri, tetapi banner membaca kejadian detail ini).
+    refetchInterval: (query) =>
+      query.state.data && hasPendingProof(query.state.data.events) ? PROOF_POLL_MS : false,
+  });
   const [editing, setEditing] = useState(false);
   const [acting, setActing] = useState<ActKind | null>(null);
 
@@ -133,6 +141,7 @@ export function SerialDetailPage({ serialId, onBack, caseId }: SerialDetailPageP
               <Badge variant="outline">{`${serial.openCase.number} (terbuka)`}</Badge>
             ) : null}
             {serial.hasProofPhotos ? <ProofBadge /> : null}
+            <ProofProblemBadge count={serial.proofProblemCount} />
           </div>
         </div>
         {canWrite ? (
@@ -141,6 +150,7 @@ export function SerialDetailPage({ serialId, onBack, caseId }: SerialDetailPageP
           </Button>
         ) : null}
       </div>
+      <ProofProblemBanner count={serial.proofProblemCount} events={events} />
       <SerialStepper status={serial.status} hasCases={serial.cases.length > 0} />
       <CustodyPanel serial={serial} today={todayWib()} />
       <Summary serial={serial} events={events} />

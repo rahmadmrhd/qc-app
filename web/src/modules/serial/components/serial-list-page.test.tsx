@@ -584,3 +584,27 @@ test('badge Bukti foto QC tampil hanya pada baris yang punya foto', async () => 
   expect(within(withPhoto).getByText('Bukti foto QC')).toBeInTheDocument();
   expect(within(without).queryByText('Bukti foto QC')).not.toBeInTheDocument();
 });
+
+test('badge Foto bermasalah tampil hanya pada baris dengan proofProblemCount > 0, berdampingan dengan Bukti foto QC', async () => {
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') {
+      return Promise.resolve({
+        items: [
+          row({ id: 's1', serial: 'MASALAH1', hasProofPhotos: true, proofProblemCount: 2 }),
+          row({ id: 's2', serial: 'AMAN2', hasProofPhotos: true }),
+        ],
+        nextCursor: null,
+      });
+    }
+    return Promise.resolve({ locations: [] });
+  });
+  renderPage();
+  const bad = (await screen.findByRole('button', { name: 'MASALAH1' })).closest(
+    'tr',
+  ) as HTMLElement;
+  const fine = screen.getByRole('button', { name: 'AMAN2' }).closest('tr') as HTMLElement;
+  expect(within(bad).getByText('Foto bermasalah')).toBeInTheDocument();
+  expect(within(bad).getByText('Bukti foto QC')).toBeInTheDocument();
+  expect(within(fine).queryByText('Foto bermasalah')).not.toBeInTheDocument();
+  expect(within(fine).getByText('Bukti foto QC')).toBeInTheDocument();
+});

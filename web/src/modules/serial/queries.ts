@@ -1,6 +1,7 @@
 import type {
   GetSerialOutput,
   ListSerialItemOptionsInput,
+  ReplaceSerialProofInput,
   SaveSerialBatchInput,
   SaveSerialServiceSettingsInput,
   SaveSerialSettingsInput,
@@ -26,6 +27,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { ApiError } from '@/lib/api/api-error';
 import { markStale } from '@/lib/query-cache';
 import { accessKeys } from '@/modules/access/queries';
 import { stickerKeys } from '@/modules/sticker/keys';
@@ -321,5 +323,20 @@ export function useRemoveProof() {
   return useMutation({
     mutationFn: (id: string) => api('serialProofs.remove', { id }),
     onSuccess: () => refreshProofViews(queryClient),
+  });
+}
+
+/**
+ * "Unggah ulang" foto bukti yang gagal: foto pengganti (unggahan `draft` baru) menggantikan foto lama dan masuk antrean
+ * cap. Dimuat ulang juga saat gagal `CONFLICT` (foto lama keburu berubah: Buang/Coba lagi/sapuan retensi).
+ */
+export function useReplaceProof() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ReplaceSerialProofInput) => api('serialProofs.replace', input),
+    onSuccess: () => refreshProofViews(queryClient),
+    onError: (error) => {
+      if (error instanceof ApiError && error.code === 'CONFLICT') refreshProofViews(queryClient);
+    },
   });
 }

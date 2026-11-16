@@ -25,6 +25,7 @@ import {
 import { describeError } from '@/lib/api/describe-error';
 import { proofThumbUrl } from '../lib/proof-source';
 import { useRemoveProof, useRetryProof } from '../queries';
+import { ProofReplaceDialog } from './proof-replace-dialog';
 
 export interface ProofGalleryProps {
   photos: readonly SerialProofPhotoDto[];
@@ -38,6 +39,10 @@ export interface ProofGalleryProps {
 export function ProofGallery({ photos }: ProofGalleryProps) {
   const [open, setOpen] = useState<{ photo: SerialProofPhotoDto; index: number } | null>(null);
   const [discarding, setDiscarding] = useState<SerialProofPhotoDto | null>(null);
+  // Foto gagal yang sedang diganti; dialognya tetap terpasang selama `replacing` terisi agar penggantian yang berjalan
+  // tidak ikut terlepas saat dialog menutup.
+  const [replacing, setReplacing] = useState<SerialProofPhotoDto | null>(null);
+  const [replaceOpen, setReplaceOpen] = useState(false);
   const retry = useRetryProof();
   const remove = useRemoveProof();
   const busy = retry.isPending || remove.isPending;
@@ -111,6 +116,20 @@ export function ProofGallery({ photos }: ProofGalleryProps) {
                       {photo.canManage ? (
                         <Button
                           type="button"
+                          variant="outline"
+                          size="xs"
+                          disabled={busy}
+                          onClick={() => {
+                            setReplacing(photo);
+                            setReplaceOpen(true);
+                          }}
+                        >
+                          Unggah ulang
+                        </Button>
+                      ) : null}
+                      {photo.canManage ? (
+                        <Button
+                          type="button"
                           variant="ghost"
                           size="xs"
                           disabled={busy}
@@ -127,6 +146,10 @@ export function ProofGallery({ photos }: ProofGalleryProps) {
           );
         })}
       </ul>
+
+      {replacing ? (
+        <ProofReplaceDialog photo={replacing} open={replaceOpen} onOpenChange={setReplaceOpen} />
+      ) : null}
 
       <Dialog open={open !== null} onOpenChange={(next) => !next && setOpen(null)}>
         <DialogContent className="max-h-[90dvh] max-w-[calc(100%-1rem)] sm:max-w-3xl">

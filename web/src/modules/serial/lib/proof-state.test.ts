@@ -1,6 +1,11 @@
 import type { SerialEventDto, SerialProofPhotoDto } from '@shared/contract';
 import { expect, test } from 'vitest';
-import { hasPendingProof, pagesHavePendingProof } from './proof-state';
+import {
+  earliestProofExpiry,
+  failedProofPhotos,
+  hasPendingProof,
+  pagesHavePendingProof,
+} from './proof-state';
 
 const photo = (state: SerialProofPhotoDto['state']): SerialProofPhotoDto => ({
   id: `p-${state}`,
@@ -32,4 +37,24 @@ test('pagesHavePendingProof memeriksa semua halaman', () => {
   );
   expect(pagesHavePendingProof([{ events: [event('done')] }])).toBe(false);
   expect(pagesHavePendingProof([])).toBe(false);
+});
+
+test('failedProofPhotos mengumpulkan hanya foto gagal dari semua kejadian', () => {
+  const failedA = { ...photo('failed'), id: 'fa' };
+  const failedB = { ...photo('failed'), id: 'fb' };
+  const events = [
+    { proofPhotos: [photo('done'), failedA] },
+    { proofPhotos: [] },
+    { proofPhotos: [failedB, photo('queued')] },
+  ] as SerialEventDto[];
+  expect(failedProofPhotos(events).map((p) => p.id)).toEqual(['fa', 'fb']);
+  expect(failedProofPhotos([])).toEqual([]);
+});
+
+test('earliestProofExpiry memilih batas terdekat dan null bila tak ada', () => {
+  const a = { ...photo('failed'), expiresAt: '2026-12-05T03:00:00.000Z' };
+  const b = { ...photo('failed'), expiresAt: '2026-12-01T03:00:00.000Z' };
+  expect(earliestProofExpiry([a, b])).toBe('2026-12-01T03:00:00.000Z');
+  expect(earliestProofExpiry([photo('failed')])).toBeNull();
+  expect(earliestProofExpiry([])).toBeNull();
 });

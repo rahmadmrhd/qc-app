@@ -1,10 +1,17 @@
-import type { GetSerialOutput, MeDto, SerialDto, SerialEventDto } from '@shared/contract';
+import type {
+  GetSerialOutput,
+  MeDto,
+  SerialDto,
+  SerialEventDto,
+  SerialProofPhotoDto,
+} from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import { linkOptionNames, pickLink } from '@/test/link-field';
+import { formatDay } from '../lib/labels';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
@@ -912,4 +919,88 @@ test('Coba lagi pada foto gagal mengikuti canManage dari server, bukan kecocokan
   state = withFailed(true);
   renderPage();
   expect(await screen.findByRole('button', { name: 'Coba lagi' })).toBeInTheDocument();
+});
+
+describe('foto bukti bermasalah: banner dan badge', () => {
+  const failedPhoto = (
+    id: string,
+    over: Partial<SerialProofPhotoDto> = {},
+  ): SerialProofPhotoDto => ({
+    ...PHOTO,
+    id,
+    state: 'failed' as const,
+    error: 'Berkas gambar rusak',
+    failedAt: '2026-11-16T03:00:00.000Z',
+    expiresAt: '2026-11-30T03:00:00.000Z',
+    ...over,
+  });
+  const withPhotos = (photos: SerialProofPhotoDto[], count = photos.length) => {
+    state = {
+      serial: { ...SERIAL, hasProofPhotos: true, proofProblemCount: count },
+      events: state.events.map((entry) =>
+        entry.seq === 3 ? { ...entry, proofPhotos: photos } : entry,
+      ),
+      eventsTruncated: false,
+    };
+  };
+  const banner = () => screen.findByRole('region', { name: 'Foto bukti QC bermasalah' });
+
+  test('tanpa foto gagal: tidak ada banner maupun badge Foto bermasalah', async () => {
+    withPhotos([{ ...PHOTO, id: 'ok-1' }], 0);
+    renderPage();
+    expect(await screen.findByRole('heading', { name: 'ABC123' })).toBeInTheDocument();
+    expect(
+      screen.queryByRole('region', { name: 'Foto bukti QC bermasalah' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Foto bermasalah')).not.toBeInTheDocument();
+  });
+
+  test('ada foto gagal: banner memuat jumlah dan tanggal batas terdekat (WIB), badge di kepala', async () => {
+    withPhotos([
+      failedPhoto('f-1', { expiresAt: '2026-12-05T03:00:00.000Z' }),
+      failedPhoto('f-2', { expiresAt: '2026-11-30T20:00:00.000Z' }),
+    ]);
+    renderPage();
+    const region = await banner();
+    expect(region).toHaveTextContent('Foto bukti QC bermasalah (2 foto).');
+    // 2026-11-30T20:00Z = 1 Des 2026 03.00 WIB: batas terdekat menurut kalender WIB.
+    expect(region).toHaveTextContent(`pada ${formatDay('2026-12-01')}`);
+    expect(screen.getByRole('heading', { name: 'ABC123' }).parentElement).toHaveTextContent(
+      'Foto bermasalah',
+    );
+  });
+
+  test('tombol Unggah ulang di banner hanya untuk foto yang canManage; pembaca biasa hanya melihat teksnya', async () => {
+    withPhotos([failedPhoto('f-1', { canManage: false, canRetry: false })]);
+    const first = renderPage();
+    const readOnly = await banner();
+    expect(readOnly).toHaveTextContent('Foto bukti QC bermasalah (1 foto).');
+    expect(
+      within(readOnly).queryByRole('button', { name: 'Unggah ulang' }),
+    ).not.toBeInTheDocument();
+    first.unmount();
+
+    withPhotos([failedPhoto('f-1'), failedPhoto('f-2', { canManage: false, canRetry: false })]);
+    renderPage();
+    const manage = await banner();
+    expect(within(manage).getAllByRole('button', { name: 'Unggah ulang' })).toHaveLength(1);
+  });
+
+  test('foto gagal karena ukuran: Unggah ulang tampil di banner tanpa Coba lagi', async () => {
+    withPhotos([failedPhoto('f-1', { error: 'Ukuran gambar terlalu besar', canRetry: false })]);
+    renderPage();
+    const region = await banner();
+    expect(within(region).getByRole('button', { name: 'Unggah ulang' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
+  });
+
+  test('Unggah ulang di banner membuka dialog foto bukti (tanpa Pustaka)', async () => {
+    withPhotos([failedPhoto('f-1')]);
+    renderPage();
+    const region = await banner();
+    await userEvent.click(within(region).getByRole('button', { name: 'Unggah ulang' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Unggah ulang foto bukti QC' });
+    expect(within(dialog).getByRole('tab', { name: 'Kamera' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('tab', { name: /Pustaka/ })).not.toBeInTheDocument();
+  });
 });

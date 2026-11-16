@@ -8,7 +8,19 @@ import { ApiError } from '@/lib/api/api-error';
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
 const toastError = vi.hoisted(() => vi.fn());
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: toastError } }));
+const toastSuccess = vi.hoisted(() => vi.fn());
+vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: toastError } }));
+const prepareImageMock = vi.hoisted(() => vi.fn());
+vi.mock('@/modules/files/image', () => ({ prepareImage: prepareImageMock }));
+const camera = vi.hoisted(() => ({ capture: vi.fn() }));
+vi.mock('../lib/use-photo-camera', () => ({
+  usePhotoCamera: () => ({
+    videoRef: { current: null },
+    state: { status: 'scanning' },
+    capture: camera.capture,
+    retry: vi.fn(),
+  }),
+}));
 
 import { ProofGallery } from './proof-gallery';
 
@@ -42,7 +54,19 @@ function renderGallery(photos: SerialProofPhotoDto[]) {
 beforeEach(() => {
   apiMock.mockReset();
   toastError.mockReset();
+  toastSuccess.mockReset();
+  prepareImageMock.mockReset();
+  camera.capture.mockReset();
   apiMock.mockResolvedValue({ id: 'x' });
+  prepareImageMock.mockResolvedValue({
+    mime: 'image/webp',
+    bytes: new Uint8Array(3),
+    width: 10,
+    height: 10,
+  });
+  camera.capture.mockResolvedValue(
+    new File([new Uint8Array(4)], 'foto.jpg', { type: 'image/jpeg' }),
+  );
 });
 
 test('foto selesai: gambar kecil dari serialProofs.get; tanpa label status', () => {
@@ -150,4 +174,109 @@ test('galat Coba lagi tampil sebagai toast dengan pesan server', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
   await waitFor(() => expect(toastError).toHaveBeenCalled());
   expect(String(toastError.mock.calls[0]?.[0])).toContain('Berkas sementara foto sudah tidak ada');
+});
+
+test('foto gagal: Unggah ulang tampil hanya bila canManage (juga saat gagal karena ukuran, tanpa Coba lagi)', () => {
+  const failed = photo('dddddddd-4', { state: 'failed', error: 'Ukuran gambar terlalu besar' });
+  const view = renderGallery([{ ...failed, canManage: false, canRetry: false }]);
+  expect(screen.queryByRole('button', { name: 'Unggah ulang' })).not.toBeInTheDocument();
+  view.unmount();
+  renderGallery([{ ...failed, canManage: true, canRetry: false }]);
+  expect(screen.getByRole('button', { name: 'Unggah ulang' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
+});
+
+test('foto yang bukan gagal tidak punya tombol Unggah ulang', () => {
+  renderGallery([photo('aaaaaaaa-1'), photo('bbbbbbbb-2', { state: 'queued' })]);
+  expect(screen.queryByRole('button', { name: 'Unggah ulang' })).not.toBeInTheDocument();
+});
+
+/** Buka dialog Unggah ulang dan ambil satu foto lewat kamera, lalu tekan "Ganti foto". */
+async function replaceViaCamera() {
+  await userEvent.click(screen.getByRole('button', { name: 'Unggah ulang' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Unggah ulang foto bukti QC' });
+  expect(within(dialog).queryByRole('tab', { name: /Pustaka/ })).not.toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('tab', { name: 'Kamera' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Ambil foto' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: /^Ganti foto/ }));
+}
+
+function mockUploadAndReplace(replace: () => unknown) {
+  apiMock.mockImplementation(async (id: string) => {
+    if (id === 'serialProofs.upload') {
+      return {
+        id: 'newnewnew-1',
+        state: 'draft',
+        mime: 'image/webp',
+        size: 100,
+        width: 10,
+        height: 10,
+        filename: 'bukti-newnewne.webp',
+        error: null,
+      };
+    }
+    if (id === 'serialProofs.replace') return replace();
+    return { id: 'x' };
+  });
+}
+
+test('Unggah ulang: unggah draf lalu replace berurutan, lalu memuat ulang riwayat, daftar, dan detail', async () => {
+  mockUploadAndReplace(() => photo('newnewnew-1', { state: 'queued' }));
+  renderGallery([photo('dddddddd-4', { state: 'failed', error: 'x' })]);
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  await replaceViaCamera();
+  await waitFor(() =>
+    expect(apiMock).toHaveBeenCalledWith('serialProofs.replace', {
+      photoId: 'dddddddd-4',
+      newPhotoId: 'newnewnew-1',
+    }),
+  );
+  const ids = apiMock.mock.calls.map((call) => call[0]);
+  expect(ids.indexOf('serialProofs.upload')).toBeLessThan(ids.indexOf('serialProofs.replace'));
+  await waitFor(() => expect(invalidate).toHaveBeenCalled());
+  const keys = invalidate.mock.calls.map((call) => JSON.stringify(call[0]?.queryKey));
+  expect(keys).toContain(JSON.stringify(['serial', 'history']));
+  expect(keys).toContain(JSON.stringify(['serial', 'list']));
+  expect(keys).toContain(JSON.stringify(['serial', 'one']));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(toastError).not.toHaveBeenCalled();
+  expect(apiMock).not.toHaveBeenCalledWith('serialProofs.remove', expect.anything());
+});
+
+test('galat VALIDATION pada newPhotoId: pesan tampil dan draf pengganti dibuang', async () => {
+  mockUploadAndReplace(() => {
+    throw new ApiError('VALIDATION', 'Dimensi gambar terlalu besar', '-', {
+      newPhotoId: 'Dimensi gambar terlalu besar',
+    });
+  });
+  renderGallery([photo('dddddddd-4', { state: 'failed', error: 'x' })]);
+  await replaceViaCamera();
+  await waitFor(() => expect(toastError).toHaveBeenCalled());
+  expect(String(toastError.mock.calls[0]?.[0])).toContain('Dimensi gambar terlalu besar');
+  await waitFor(() =>
+    expect(apiMock).toHaveBeenCalledWith('serialProofs.remove', { id: 'newnewnew-1' }),
+  );
+});
+
+test('CONFLICT: pesan tampil, draf dibuang, dan tampilan dimuat ulang', async () => {
+  mockUploadAndReplace(() => {
+    throw new ApiError('CONFLICT', 'Foto sudah berubah, muat ulang halaman', '-');
+  });
+  renderGallery([photo('dddddddd-4', { state: 'failed', error: 'x' })]);
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  await replaceViaCamera();
+  await waitFor(() => expect(toastError).toHaveBeenCalled());
+  expect(String(toastError.mock.calls[0]?.[0])).toContain('Foto sudah berubah');
+  await waitFor(() =>
+    expect(apiMock).toHaveBeenCalledWith('serialProofs.remove', { id: 'newnewnew-1' }),
+  );
+  await waitFor(() => expect(invalidate).toHaveBeenCalled());
+});
+
+test('dialog Unggah ulang ditutup tanpa memilih: replace tidak dipanggil', async () => {
+  renderGallery([photo('dddddddd-4', { state: 'failed', error: 'x' })]);
+  await userEvent.click(screen.getByRole('button', { name: 'Unggah ulang' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Unggah ulang foto bukti QC' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
+  expect(apiMock).not.toHaveBeenCalledWith('serialProofs.replace', expect.anything());
 });
