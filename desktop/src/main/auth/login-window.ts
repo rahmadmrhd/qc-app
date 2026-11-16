@@ -52,6 +52,53 @@ export interface LoginWindowDeps {
   openExternal(url: string): Promise<void>;
 }
 
+export interface CloseWindowDeps {
+  platform: NodeJS.Platform;
+  env: Readonly<Record<string, string | undefined>>;
+  /** Menjalankan program dan menunggu selesai; menolak bila gagal. */
+  run(file: string, args: string[]): Promise<void>;
+}
+
+/**
+ * Skrip PowerShell statis: kirim `WM_CLOSE` ke jendela Chrome/Edge yang terlihat dengan judul PERSIS `title`.
+ * Judul hanya konstanta ASCII dari kode (tanpa kutip atau garis miring), bukan masukan pengguna.
+ */
+export function closeWindowScript(title: string): string {
+  if (!/^[A-Za-z0-9 -]{1,80}$/.test(title)) throw new Error('Judul jendela tidak valid');
+  const member =
+    'public delegate bool P(IntPtr h, IntPtr l);' +
+    '[DllImport("user32.dll")] public static extern bool EnumWindows(P p, IntPtr l);' +
+    '[DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);' +
+    '[DllImport("user32.dll")] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);' +
+    '[DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);' +
+    '[DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);' +
+    'public static int Close(string t) { int n = 0; EnumWindows((h, l) => {' +
+    ' if (!IsWindowVisible(h)) return true;' +
+    ' var s = new StringBuilder(256); var c = new StringBuilder(128);' +
+    ' GetWindowText(h, s, 256); GetClassName(h, c, 128);' +
+    ' if (c.ToString().StartsWith("Chrome_WidgetWin") && s.ToString() == t) { PostMessage(h, 0x10, IntPtr.Zero, IntPtr.Zero); n++; }' +
+    ' return true; }, IntPtr.Zero); return n; }';
+  return `Add-Type -Name QcWin -Namespace Qc -UsingNamespace System.Text -MemberDefinition '${member}'; [Qc.QcWin]::Close('${title}') | Out-Null`;
+}
+
+/** Menutup popup login (Windows saja); semua kegagalan ditelan: pengguna tinggal menutupnya sendiri. */
+export async function closeLoginWindow(title: string, deps: CloseWindowDeps): Promise<void> {
+  if (deps.platform !== 'win32') return;
+  try {
+    const root = deps.env.SystemRoot ?? 'C:\\Windows';
+    await deps.run(`${root}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`, [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-Command',
+      closeWindowScript(title),
+    ]);
+  } catch {
+    // Best-effort.
+  }
+}
+
 /** Membuka `url` sebagai popup bila memungkinkan, selain itu `openExternal` biasa. */
 export async function openLoginWindow(url: string, deps: LoginWindowDeps): Promise<void> {
   if (deps.platform === 'win32') {

@@ -29,8 +29,8 @@ import {
 import { createApiProxy } from './api-proxy';
 import { APP_ORIGIN, APP_SCHEME, createAppHandler, isAppUrl } from './app-protocol';
 import { createLoginFlow, LOGIN_MAX_AGE_MS, type LoginFlow } from './auth/login-flow';
-import { openLoginWindow } from './auth/login-window';
-import { startLoopback } from './auth/loopback';
+import { closeLoginWindow, openLoginWindow } from './auth/login-window';
+import { LOGIN_SUCCESS_TITLE, startLoopback } from './auth/loopback';
 import { createTokenStore } from './auth/token-store';
 import { readDeviceInfo, readRouterInfo } from './device/info';
 import { pingOnce } from './device/ping';
@@ -151,6 +151,15 @@ function readDefaultProgId(): Promise<string | null> {
         const match = error ? null : /ProgId\s+REG_SZ\s+(\S+)/i.exec(stdout);
         resolveProgId(match?.[1] ?? null);
       },
+    );
+  });
+}
+
+/** Menjalankan program (tanpa shell) dan menunggu selesai; menolak bila gagal atau lewat batas waktu. */
+function runProgram(file: string, args: string[]): Promise<void> {
+  return new Promise((resolveRun, rejectRun) => {
+    execFile(file, args, { windowsHide: true, timeout: 15_000 }, (error) =>
+      error ? rejectRun(error) : resolveRun(),
     );
   });
 }
@@ -279,7 +288,23 @@ function runApp(): void {
           openExternal: (target) => shell.openExternal(target),
         });
       },
-      startLoopback: (onCallback) => startLoopback({ onCallback, timeoutMs: LOGIN_MAX_AGE_MS }),
+      startLoopback: (onCallback) =>
+        startLoopback({
+          onCallback,
+          timeoutMs: LOGIN_MAX_AGE_MS,
+          // Jeda singkat agar pengguna sempat melihat "Login berhasil", lalu tutup popup (window.close() dari
+          // halaman diabaikan peramban pada jendela berriwayat >1 halaman).
+          onShown: (ok) => {
+            if (!ok) return;
+            setTimeout(() => {
+              void closeLoginWindow(LOGIN_SUCCESS_TITLE, {
+                platform: process.platform,
+                env: process.env,
+                run: runProgram,
+              });
+            }, 900);
+          },
+        }),
       fetchImpl: net.fetch as typeof fetch,
       onChange: emitAuth,
     });

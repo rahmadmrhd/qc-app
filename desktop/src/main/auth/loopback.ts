@@ -21,16 +21,26 @@ export interface LoopbackOptions {
   onCallback(code: string, state: string): Promise<boolean>;
   /** Server menutup diri setelah ini bila belum ditutup (selaras dengan masa login). */
   timeoutMs: number;
+  /** Dipanggil setelah halaman hasil terkirim penuh (bukan untuk permintaan yang ditolak 404). */
+  onShown?(ok: boolean): void;
 }
 
 const HOST = '127.0.0.1';
 const PATH = '/callback';
 
+/**
+ * Judul halaman berhasil. Chrome/Edge mengabaikan `window.close()` dari skrip pada jendela yang riwayatnya lebih dari
+ * satu halaman (popup login), jadi aplikasi menutup jendela itu sendiri (Windows: `WM_CLOSE` ke jendela berjudul
+ * persis ini, `auth/login-window.ts`). ASCII murni agar lolos argumen baris perintah.
+ */
+export const LOGIN_SUCCESS_TITLE = 'QC App - Login berhasil';
+const LOGIN_FAILED_TITLE = 'QC App - Login gagal';
+
 function page(title: string, message: string, nonce: string): string {
   return `<!doctype html><html lang="id"><head><meta charset="utf-8"><title>${title}</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>body{font:16px system-ui,sans-serif;background:#161616;color:#eee;display:grid;place-items:center;height:100vh;margin:0}main{max-width:26rem;padding:1.5rem;text-align:center}h1{font-size:1.15rem}p{color:#aaa}</style></head>
-<body><main><h1>${title}</h1><p>${message}</p></main>
+<body><main><h1>${title.replace(/^QC App - /, '')}</h1><p>${message}</p></main>
 <script nonce="${nonce}">setTimeout(function(){window.close()},400)</script></body></html>`;
 }
 
@@ -72,10 +82,11 @@ export async function startLoopback(options: LoopbackOptions): Promise<Loopback>
     options
       .onCallback(auth.code, auth.state)
       .then((ok) => {
-        const title = ok ? 'Login berhasil' : 'Login gagal';
+        const title = ok ? LOGIN_SUCCESS_TITLE : LOGIN_FAILED_TITLE;
         const message = ok
           ? 'Anda bisa menutup jendela ini dan kembali ke QC App.'
           : 'Tutup jendela ini lalu coba masuk lagi dari QC App.';
+        response.once('finish', () => options.onShown?.(ok));
         send(response, 200, page(title, message, nonce), nonce);
       })
       .catch(() => send(response, 500, 'Terjadi kesalahan'));
