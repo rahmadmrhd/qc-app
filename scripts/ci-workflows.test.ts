@@ -3,9 +3,18 @@
 // bergeser diam-diam (aksi dipatok SHA, tanpa StrictHostKeyChecking=no, production hanya dari main, tanpa injeksi
 // ekspresi di skrip, izin minimal). TIDAK menjalankan workflow: hasil nyata baru diketahui di GitHub (docs/ci-cd.md).
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
 import { ROOT_DIR } from './paths';
 
 interface Step {
@@ -18,12 +27,20 @@ interface Step {
   if?: string;
 }
 interface Job {
+  name?: string;
   if?: string;
   needs?: string | string[];
   environment?: string;
   permissions?: Record<string, string>;
   steps?: Step[];
   env?: Record<string, string>;
+  /** Job pemanggil workflow yang dapat dipanggil (`workflow_call`). */
+  uses?: string;
+  with?: Record<string, unknown>;
+  outputs?: Record<string, string>;
+  strategy?: { 'fail-fast'?: boolean; matrix?: Record<string, unknown> };
+  'runs-on'?: string;
+  defaults?: { run?: { shell?: string } };
 }
 interface Workflow {
   on?: Record<string, unknown>;
@@ -45,6 +62,7 @@ const codeOf = (text: string) =>
     .filter((line) => !line.trim().startsWith('#'))
     .join('\n');
 const MARIADB_ACTION = read('.github/actions/mariadb/action.yml');
+const SETUP_ACTION = read('.github/actions/setup/action.yml');
 const deployText = rawOf('deploy-server.yml');
 const deploy = parse(deployText);
 
@@ -61,7 +79,7 @@ describe('workflow: aturan umum (semua berkas)', () => {
   });
 
   test('semua aksi pihak ketiga dipatok ke SHA commit 40 heksa (atau aksi lokal ./)', () => {
-    const texts = [...workflowFiles.map(rawOf), MARIADB_ACTION].map(codeOf);
+    const texts = [...workflowFiles.map(rawOf), MARIADB_ACTION, SETUP_ACTION].map(codeOf);
     for (const text of texts) {
       for (const match of text.matchAll(/^\s*-?\s*uses:\s*(\S+)/gm)) {
         const ref = match[1] as string;
@@ -578,8 +596,239 @@ describe('test.yml dan aksi MariaDB', () => {
 
   test('versi bun di workflow sama dengan Dockerfile', () => {
     const dockerVersion = /^ARG BUN_VERSION=(\S+)$/m.exec(read('Dockerfile'))?.[1];
-    for (const text of [rawOf('test.yml'), deployText]) {
+    // Semua berkas yang memasang bun (aksi setup bersama, ci.yml, dan workflow yang masih memasangnya sendiri).
+    const withBun = [SETUP_ACTION, rawOf('ci.yml'), rawOf('test.yml'), deployText].filter((text) =>
+      text.includes('oven-sh/setup-bun'),
+    );
+    expect(withBun.length).toBeGreaterThanOrEqual(2);
+    for (const text of withBun) {
       expect(text).toContain(`bun-version: ${dockerVersion}`);
     }
+  });
+});
+
+describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
+  const ciText = rawOf('ci.yml');
+  const ci = parse(ciText);
+  const jobs = ci.jobs;
+  const stepsOfJob = (name: string) => jobs[name]?.steps ?? [];
+
+  test('pemicu hanya workflow_call dengan input ref dan pr; izin tingkat atas contents read; output image', () => {
+    const on = ci.on as {
+      workflow_call: {
+        inputs: Record<string, unknown>;
+        outputs: Record<string, { value: string }>;
+      };
+    };
+    expect(Object.keys(ci.on ?? {})).toEqual(['workflow_call']);
+    expect(Object.keys(on.workflow_call.inputs).sort()).toEqual(['pr', 'ref']);
+    expect(on.workflow_call.outputs.image?.value).toBe('${{ jobs.changes.outputs.image }}');
+    expect(ci.permissions).toEqual({ contents: 'read' });
+  });
+
+  test('hanya job changes yang membaca PR (pull-requests: read); tak ada izin write', () => {
+    for (const [name, job] of Object.entries(jobs)) {
+      const levels = Object.entries(job.permissions ?? {});
+      expect(
+        levels.filter(([, level]) => level === 'write'),
+        name,
+      ).toEqual([]);
+      if (name === 'changes') {
+        expect(job.permissions).toEqual({ contents: 'read', 'pull-requests': 'read' });
+      } else {
+        expect(Object.keys(job.permissions ?? {}), name).not.toContain('pull-requests');
+      }
+    }
+  });
+
+  test('semua job selain changes bergantung pada changes', () => {
+    for (const [name, job] of Object.entries(jobs)) {
+      if (name === 'changes') continue;
+      expect([job.needs ?? []].flat(), name).toContain('changes');
+    }
+  });
+
+  test('checkout memakai ref dari input dan tanpa menyimpan kredensial', () => {
+    const checkouts = Object.values(jobs)
+      .flatMap((job) => job.steps ?? [])
+      .filter((step) => step.uses?.startsWith('actions/checkout'));
+    expect(checkouts.length).toBeGreaterThan(0);
+    for (const step of checkouts) {
+      expect(step.with?.ref).toBe('${{ inputs.ref }}');
+      expect(step.with?.['persist-credentials']).toBe(false);
+    }
+  });
+
+  test('tanpa rahasia: tak ada secrets.* dan tak ada kunci tanda tangan UI', () => {
+    expect(codeOf(ciText)).not.toMatch(/secrets\./);
+    expect(ciText).not.toMatch(/UI_SIGNING_KEY|ui_signing_key|UI_PUBLIC_KEY_PEM/);
+    expect(codeOf(ciText)).not.toMatch(/pull_request\.head|head_ref|refs\/pull\//);
+  });
+
+  test('skrip run tanpa interpolasi ${{ }}', () => {
+    for (const step of Object.values(jobs).flatMap((job) => job.steps ?? [])) {
+      if (step.run) expect(step.run, step.name).not.toContain('${{');
+    }
+  });
+
+  test('matrix server: 8 shard, fail-fast mati, MariaDB lokal, QC_TEST_SHARD dari matrix', () => {
+    const server = jobs.server as Job;
+    expect(server.strategy?.['fail-fast']).toBe(false);
+    expect(server.strategy?.matrix?.shard).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(server.env?.QC_TEST_SHARD).toBe('${{ matrix.shard }}/8');
+    expect(server.env?.QC_TEST_DB_URL).toBe('mysql://root:ci-only@127.0.0.1:3306/');
+    expect(server.if).toContain("needs.changes.outputs.server_tests == 'true'");
+    const uses = stepsOfJob('server').map((step) => step.uses);
+    expect(uses).toContain('./.github/actions/mariadb');
+    expect(uses).toContain('./.github/actions/setup');
+    expect(stepsOfJob('server').some((step) => step.run === 'bun run --cwd server test')).toBe(
+      true,
+    );
+    // Electron tak diunduh untuk job server/web (seperti Dockerfile)
+    const setup = stepsOfJob('server').find((step) => step.uses === './.github/actions/setup');
+    expect(setup?.with?.filter).toBe('!@qc/desktop');
+  });
+
+  test('job dipilih menurut keluaran changes: lint/scripts (code), web, desktop', () => {
+    expect(jobs.lint?.if).toContain("needs.changes.outputs.code == 'true'");
+    expect(jobs.scripts?.if).toContain("needs.changes.outputs.code == 'true'");
+    expect(jobs.web?.if).toContain("needs.changes.outputs.web_tests == 'true'");
+    expect(jobs.desktop?.if).toContain("needs.changes.outputs.desktop_tests == 'true'");
+    expect(jobs.desktop?.if).toContain("needs.changes.outputs.desktop_pack == 'true'");
+  });
+
+  test('keluaran job changes memetakan ketujuh kunci ci-changes', () => {
+    const outputs = jobs.changes?.outputs ?? {};
+    for (const key of [
+      'code',
+      'server_tests',
+      'web_tests',
+      'shared_tests',
+      'desktop_tests',
+      'desktop_pack',
+      'image',
+    ]) {
+      expect(outputs[key], key).toBe(`\${{ steps.detect.outputs.${key} }}`);
+    }
+  });
+
+  test('job desktop: Windows, kemas x64 dan arm64, verifikasi keduanya, CRLF dimatikan sebelum checkout', () => {
+    const desktop = jobs.desktop as Job;
+    expect(desktop['runs-on']).toBe('windows-latest');
+    expect(desktop.defaults?.run?.shell).toBe('bash');
+    const runs = stepsOfJob('desktop')
+      .map((step) => step.run ?? '')
+      .join('\n');
+    expect(runs).toContain('bun run --cwd desktop pack:all');
+    expect(runs).toContain('verify-pack --arch x64');
+    expect(runs).toContain('verify-pack --arch arm64');
+    expect(runs).toContain('bun run build:web');
+    const steps = stepsOfJob('desktop');
+    const crlf = steps.findIndex((step) => (step.run ?? '').includes('core.autocrlf false'));
+    const checkout = steps.findIndex((step) => step.uses?.startsWith('actions/checkout'));
+    expect(crlf).toBeGreaterThanOrEqual(0);
+    expect(crlf).toBeLessThan(checkout);
+  });
+
+  test('aksi setup: setup-bun, cache bun per bun.lock, filter lewat env (bukan ${{ }} di run)', () => {
+    const action = Bun.YAML.parse(SETUP_ACTION) as {
+      inputs: { filter: { default: string } };
+      runs: { using: string; steps: Step[] };
+    };
+    expect(action.runs.using).toBe('composite');
+    expect(action.inputs.filter.default).toBe('');
+    expect(SETUP_ACTION).toContain('~/.bun/install/cache');
+    expect(SETUP_ACTION).toContain("hashFiles('bun.lock')");
+    const install = action.runs.steps.find((step) => step.run?.includes('bun install'));
+    expect(install?.run).toContain('--frozen-lockfile');
+    expect(install?.run).not.toContain('${{');
+    expect(install?.env?.FILTER).toBe('${{ inputs.filter }}');
+    expect(codeOf(SETUP_ACTION)).not.toMatch(/secrets\./);
+  });
+
+  describe('skrip langkah Deteksi (dengan `gh` palsu)', () => {
+    const script = stepsOfJob('changes').find((step) => step.id === 'detect')?.run ?? '';
+    const dir = mkdtempSync(join(tmpdir(), 'qc-ci-detect-'));
+    const unix = (path: string) => path.replaceAll('\\', '/');
+
+    async function detect(
+      pr: string,
+      gh: string,
+    ): Promise<{ code: number; output: Record<string, string>; stdout: string; stderr: string }> {
+      const bin = join(dir, `bin-${crypto.randomUUID()}`);
+      mkdirSync(bin);
+      writeFileSync(join(bin, 'gh'), `#!/usr/bin/env bash\n${gh}\n`);
+      chmodSync(join(bin, 'gh'), 0o755);
+      const out = join(dir, `${crypto.randomUUID()}.out`);
+      writeFileSync(out, '');
+      const proc = Bun.spawn(['bash', '-c', script], {
+        cwd: ROOT_DIR,
+        env: {
+          ...process.env,
+          PATH: `${bin}${delimiter}${dirname(process.execPath)}${delimiter}${process.env.PATH ?? ''}`,
+          GH_TOKEN: 'token-palsu',
+          REPO: 'pemilik/repo',
+          PR: pr,
+          GITHUB_OUTPUT: unix(out),
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const code = await proc.exited;
+      const output = Object.fromEntries(
+        readFileSync(out, 'utf8')
+          .split('\n')
+          .filter(Boolean)
+          .map((line) => line.split('=') as [string, string]),
+      );
+      return {
+        code,
+        output,
+        stdout: await new Response(proc.stdout).text(),
+        stderr: await new Response(proc.stderr).text(),
+      };
+    }
+
+    test('skrip ditemukan dan memakai previous_filename (rename) serta ci-changes.ts', () => {
+      expect(script).toContain('previous_filename');
+      expect(script).toContain('scripts/ci-changes.ts');
+    });
+
+    test('daftar berkas PR dari gh diklasifikasi: desktop + server -> image dan desktop_pack true', async () => {
+      const result = await detect('12', 'printf "desktop/a.ts\\nserver/a.ts\\n"');
+      expect(result.code).toBe(0);
+      expect(result.output.image).toBe('true');
+      expect(result.output.desktop_pack).toBe('true');
+      expect(result.output.web_tests).toBe('false');
+    });
+
+    test('PR hanya docs: semua false', async () => {
+      const result = await detect('12', 'printf "docs/a.md\\n"');
+      expect(result.code).toBe(0);
+      expect(Object.values(result.output).every((value) => value === 'false')).toBe(true);
+    });
+
+    test('gh gagal: semua true (fail-safe) dengan peringatan', async () => {
+      const result = await detect('12', 'exit 1');
+      expect(result.code).toBe(0);
+      expect(Object.values(result.output).every((value) => value === 'true')).toBe(true);
+      expect(result.stdout).toContain('::warning::');
+    });
+
+    test('tanpa nomor PR (dispatch) atau nomor tak sah: gh tak dipanggil dan semua true', async () => {
+      for (const pr of ['', 'abc', '12; id']) {
+        const result = await detect(pr, 'echo "gh dipanggil" >&2; exit 99');
+        expect(result.code, pr).toBe(0);
+        expect(result.stderr, pr).not.toContain('gh dipanggil');
+        expect(
+          Object.values(result.output).every((value) => value === 'true'),
+          pr,
+        ).toBe(true);
+      }
+    });
+
+    test('bersihkan', () => {
+      rmSync(dir, { recursive: true, force: true });
+    });
   });
 });

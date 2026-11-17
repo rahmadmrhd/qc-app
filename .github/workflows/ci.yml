@@ -1,0 +1,188 @@
+name: CI
+
+# Pemeriksaan kode yang dapat dipanggil (`workflow_call`) oleh test.yml (PR) dan deploy-server.yml (PR di-merge).
+# Rancangan: docs/superpowers/specs/2026-11-17-ci-selektif-shard-design.md; panduan: docs/ci-cd.md.
+#
+# - Job `changes` menghitung bagian monorepo yang berubah dari daftar berkas PR (scripts/ci-changes.ts); job lain memakai
+#   keluarannya lewat `if:`. Tanpa nomor PR (dispatch), atau bila daftar tak dapat diambil, SEMUA dijalankan (fail-safe).
+# - Tes server dibagi 8 job matrix (QC_TEST_SHARD=<i>/8): tiap job = runner + MariaDB sendiri. Proses paralel di satu
+#   runner tak membantu (terikat CPU, dan melebihi max_connections 40); banyak runner membantu.
+# - Gerbang `test` (status check wajib branch protection) SENGAJA ada di pemanggil (test.yml), bukan di sini: nama check
+#   job dari workflow yang dipanggil menjadi `<job pemanggil> / <job>`, sehingga gerbang di sini akan mengganti namanya.
+# - Tanpa rahasia: workflow ini tak membaca secrets dan tak boleh menyebut kunci tanda tangan UI (ditegakkan tes).
+#   `ref` = commit yang diperiksa (deploy: commit hasil merge dari job `meta`; kosong = checkout bawaan PR).
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit yang di-checkout; kosong = checkout bawaan pemicu.
+        type: string
+        default: ''
+      pr:
+        description: Nomor PR untuk daftar berkas yang berubah; kosong = jalankan semuanya.
+        type: string
+        default: ''
+    outputs:
+      image:
+        description: '"true" bila isi image server berubah (bangun dan deploy), selain itu "false".'
+        value: ${{ jobs.changes.outputs.image }}
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # `pull-requests: read` hanya untuk membaca daftar berkas PR (data, bukan kode PR); tak ada izin tulis.
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.detect.outputs.code }}
+      server_tests: ${{ steps.detect.outputs.server_tests }}
+      web_tests: ${{ steps.detect.outputs.web_tests }}
+      shared_tests: ${{ steps.detect.outputs.shared_tests }}
+      desktop_tests: ${{ steps.detect.outputs.desktop_tests }}
+      desktop_pack: ${{ steps.detect.outputs.desktop_pack }}
+      image: ${{ steps.detect.outputs.image }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+
+      # Berkas yang di-rename ikut lewat nama lama (`previous_filename`) dan baru. Gagal mengambil daftar = semua true.
+      - name: Deteksi
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+        run: |
+          set -uo pipefail
+          files=""
+          if [[ "$PR" =~ ^[0-9]+$ ]]; then
+            if ! files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)'); then
+              echo "::warning::Gagal mengambil daftar berkas PR; semua pekerjaan dijalankan."
+              files=""
+            fi
+          fi
+          printf '%s\n' "$files" | bun run scripts/ci-changes.ts
+
+  lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Biome
+        run: bun run lint
+
+  scripts:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Tes scripts
+        run: bun run scripts/test-scripts.ts
+      - name: Tes shared
+        run: bun run --cwd shared test
+      - name: Tes countrylock
+        run: bun run --cwd countrylock test
+
+  server:
+    name: server ${{ matrix.shard }}/8
+    needs: changes
+    if: needs.changes.outputs.server_tests == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    env:
+      # Tes server memakai MariaDB sungguhan (skema sementara qc_test_* dikloning dari qc_test_template); lihat
+      # .github/actions/mariadb. Pengguna root hanya untuk basis data sekali pakai di runner ini.
+      QC_TEST_DB_URL: mysql://root:ci-only@127.0.0.1:3306/
+      QC_TEST_SHARD: ${{ matrix.shard }}/8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/mariadb
+      - uses: ./.github/actions/setup
+        with:
+          filter: '!@qc/desktop'
+      - name: Tes server (shard)
+        run: bun run --cwd server test
+
+  web:
+    needs: changes
+    if: needs.changes.outputs.web_tests == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          filter: '!@qc/desktop'
+      - name: Tes web
+        run: bun run --cwd web test
+
+  # Pemeriksaan build desktop (tanpa artefak, bukan rilis): Windows x64 dijalankan penuh (`--smoke`); arm64 dikemas silang
+  # dan hanya diperiksa statis karena runner Windows arm64 tak tersedia untuk repo privat (lihat docs/ci-cd.md).
+  desktop:
+    needs: changes
+    if: needs.changes.outputs.desktop_tests == 'true' || needs.changes.outputs.desktop_pack == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Runner Windows memakai core.autocrlf=true: matikan sebelum checkout agar bun.lock dan berkas tes tetap LF.
+      - name: Matikan konversi CRLF
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Tes desktop
+        if: needs.changes.outputs.desktop_tests == 'true'
+        run: bun run --cwd desktop test
+      # Installer membawa UI dasar dari build web (server/dist).
+      - name: Build web
+        if: needs.changes.outputs.desktop_pack == 'true'
+        run: bun run build:web
+      - name: Kemas x64 dan arm64
+        if: needs.changes.outputs.desktop_pack == 'true'
+        run: bun run --cwd desktop pack:all
+      - name: Verifikasi x64 (asap penuh)
+        if: needs.changes.outputs.desktop_pack == 'true'
+        run: bun run --cwd desktop verify-pack --arch x64
+      - name: Verifikasi arm64 (statis)
+        if: needs.changes.outputs.desktop_pack == 'true'
+        run: bun run --cwd desktop verify-pack --arch arm64
