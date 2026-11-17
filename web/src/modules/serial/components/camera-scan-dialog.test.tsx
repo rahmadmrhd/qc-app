@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   type BarcodeEngine,
   createBarcodeEngine,
@@ -740,21 +740,33 @@ test('fokus kontinu yang ditolak peramban tidak menjadi galat', async () => {
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 
+/** Geser slider zoom ke `value` lewat pointer (area tekan setinggi 232 px, bantalan 16 px; atas = besar). */
+function slideZoomTo(slider: HTMLElement, value: number, range = { min: 1, max: 5 }) {
+  const top = 100;
+  const height = 232;
+  slider.getBoundingClientRect = () =>
+    ({ top, height, left: 0, width: 44, right: 44, bottom: top + height }) as DOMRect;
+  const fraction = (value - range.min) / (range.max - range.min);
+  const y = top + height - 16 - fraction * (height - 32);
+  fireEvent.pointerDown(slider, { pointerId: 1, clientY: y, button: 0 });
+  fireEvent.pointerUp(slider, { pointerId: 1, clientY: y });
+}
+
 test('zoom: kontrol tampil hanya bila didukung, mulai 1x tanpa menerapkan apa pun, dan menerapkan constraint zoom', async () => {
   const stream = fakeStream({ caps: { zoom: { min: 1, max: 5, step: 0.1 } } });
   setup({ stream });
   const slider = await screen.findByRole('slider', { name: 'Zoom' });
-  expect(slider).toHaveValue('1');
+  expect(slider).toHaveAttribute('aria-valuenow', '1');
   expect(slider).toHaveAttribute('aria-orientation', 'vertical');
   expect(screen.getByTestId('zoom-value')).toHaveTextContent('1x');
   expect(stream.track.applyConstraints).not.toHaveBeenCalled();
 
-  fireEvent.change(slider, { target: { value: '1.5' } });
+  slideZoomTo(slider, 1.5);
   expect(stream.track.applyConstraints).toHaveBeenLastCalledWith({ advanced: [{ zoom: 1.5 }] });
   expect(screen.getByTestId('zoom-value')).toHaveTextContent('1,5x');
   expect(slider).toHaveAttribute('aria-valuetext', '1,5x');
 
-  fireEvent.change(slider, { target: { value: '3' } });
+  slideZoomTo(slider, 3);
   expect(stream.track.applyConstraints).toHaveBeenLastCalledWith({ advanced: [{ zoom: 3 }] });
   expect(screen.getByTestId('zoom-value')).toHaveTextContent('3x');
 });
@@ -763,7 +775,7 @@ test('zoom: mengetuk label zoom mengembalikan ke 1x', async () => {
   const stream = fakeStream({ caps: { zoom: { min: 1, max: 5, step: 0.1 } } });
   setup({ stream });
   const slider = await screen.findByRole('slider', { name: 'Zoom' });
-  fireEvent.change(slider, { target: { value: '2.5' } });
+  slideZoomTo(slider, 2.5);
   expect(screen.getByTestId('zoom-value')).toHaveTextContent('2,5x');
   await userEvent.click(screen.getByTestId('zoom-value'));
   expect(stream.track.applyConstraints).toHaveBeenLastCalledWith({ advanced: [{ zoom: 1 }] });
@@ -780,16 +792,14 @@ test('zoom: tanpa dukungan kontrol zoom tersembunyi; zoom yang gagal diterapkan 
   const stream = fakeStream({ caps: { zoom: { min: 1, max: 4, step: 0.5 } } });
   stream.track.applyConstraints.mockRejectedValue(new Error('x'));
   setup({ stream });
-  fireEvent.change(await screen.findByRole('slider', { name: 'Zoom' }), { target: { value: '2' } });
+  slideZoomTo(await screen.findByRole('slider', { name: 'Zoom' }), 2, { min: 1, max: 4 });
   await waitFor(() => expect(screen.getByTestId('zoom-value')).toHaveTextContent('1x'));
 });
 
 test('zoom kembali ke 1x saat kamera dimulai ulang (ganti kamera)', async () => {
   const caps = { zoom: { min: 1, max: 5, step: 0.1 } };
   const ctx = setup({ stream: fakeStream({ caps }), devices: VIDEO_DEVICES, freshStreams: true });
-  fireEvent.change(await screen.findByRole('slider', { name: 'Zoom' }), {
-    target: { value: '1.5' },
-  });
+  slideZoomTo(await screen.findByRole('slider', { name: 'Zoom' }), 1.5);
   expect(screen.getByTestId('zoom-value')).toHaveTextContent('1,5x');
   await userEvent.click(screen.getByRole('button', { name: 'Ganti kamera' }));
   await waitFor(() => expect(ctx.getUserMedia).toHaveBeenCalledTimes(2));
@@ -944,7 +954,7 @@ test('kontrol mengambang: slider zoom terbaca (aria-valuetext) dan semua tombol 
   });
   const slider = await screen.findByRole('slider', { name: 'Zoom' });
   expect(slider).toHaveAttribute('aria-valuetext', '1x');
-  for (const name of [/senter/, 'Ganti kamera', /^Zoom 1x/]) {
+  for (const name of [/senter/, 'Ganti kamera', /^Zoom 1x/, 'Perbesar', 'Perkecil']) {
     expect((await screen.findByRole('button', { name })).className).toContain('size-11');
   }
 });
@@ -991,6 +1001,101 @@ test('ketukan pada kontrol mengambang tidak memicu ketuk-untuk-fokus', async () 
   // Ketukan di area video biasa tetap memfokus.
   fireEvent.click(screen.getByTestId('camera-viewport'), { clientX: 100, clientY: 100 });
   expect(shots()).toHaveLength(1);
+});
+
+describe('cubit dua jari untuk zoom', () => {
+  const touch = (pointerId: number, clientX: number, clientY = 100) => ({
+    pointerId,
+    clientX,
+    clientY,
+    pointerType: 'touch',
+  });
+  const shotsOf = (stream: ReturnType<typeof fakeStream>) =>
+    stream.track.applyConstraints.mock.calls.filter((call) => focusModeOf(call) === 'single-shot');
+
+  async function ready(caps: Record<string, unknown>) {
+    stubVideoGeometry({ w: 1280, h: 720 }, { w: 300, h: 300 });
+    stubVideoRect(300, 300);
+    const stream = fakeStream({ caps });
+    setup({ stream });
+    await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
+    return { stream, viewport: screen.getByTestId('camera-viewport') };
+  }
+
+  test('area kamera tanpa gestur gulir bawaan (touch-action: none)', async () => {
+    const { viewport } = await ready({ zoom: { min: 1, max: 3, step: 0.1 } });
+    expect(viewport.className).toContain('touch-none');
+  });
+
+  test('jarak dua jari melebar/menyempit mengubah zoom proporsional dan dijepit ke rentang', async () => {
+    const { stream, viewport } = await ready({ zoom: { min: 1, max: 3, step: 0.1 } });
+    fireEvent.pointerDown(viewport, touch(1, 100));
+    fireEvent.pointerDown(viewport, touch(2, 200)); // jarak awal 100
+    fireEvent.pointerMove(viewport, touch(2, 300)); // jarak 200 -> 2x
+    await waitFor(() => expect(screen.getByTestId('zoom-value')).toHaveTextContent('2x'));
+    expect(stream.track.applyConstraints).toHaveBeenLastCalledWith({ advanced: [{ zoom: 2 }] });
+    fireEvent.pointerMove(viewport, touch(2, 1100)); // jauh melebihi: dijepit 3x
+    await waitFor(() => expect(screen.getByTestId('zoom-value')).toHaveTextContent('3x'));
+    fireEvent.pointerMove(viewport, touch(2, 101)); // hampir menyatu: dijepit 1x
+    await waitFor(() => expect(screen.getByTestId('zoom-value')).toHaveTextContent('1x'));
+  });
+
+  test('cubitan tidak memicu ketuk-untuk-fokus, juga klik susulan setelah jari diangkat; ketukan baru tetap memfokus', async () => {
+    const { stream, viewport } = await ready({
+      focusMode: ['continuous', 'single-shot'],
+      zoom: { min: 1, max: 3, step: 0.1 },
+    });
+    fireEvent.pointerDown(viewport, touch(1, 100));
+    fireEvent.pointerDown(viewport, touch(2, 200));
+    fireEvent.pointerMove(viewport, touch(2, 260));
+    fireEvent.pointerUp(viewport, touch(2, 260));
+    // Klik yang menyusul saat jari pertama diangkat.
+    fireEvent.pointerUp(viewport, touch(1, 100));
+    fireEvent.click(viewport, { clientX: 100, clientY: 100 });
+    expect(shotsOf(stream)).toHaveLength(0);
+    expect(screen.queryByTestId('focus-ring')).not.toBeInTheDocument();
+    // Ketukan satu jari berikutnya kembali memfokus.
+    fireEvent.pointerDown(viewport, touch(3, 100));
+    fireEvent.pointerUp(viewport, touch(3, 100));
+    fireEvent.click(viewport, { clientX: 100, clientY: 100 });
+    expect(shotsOf(stream)).toHaveLength(1);
+  });
+
+  test('satu jari yang bergerak tidak mengubah zoom', async () => {
+    const { viewport } = await ready({ zoom: { min: 1, max: 3, step: 0.1 } });
+    fireEvent.pointerDown(viewport, touch(1, 100));
+    fireEvent.pointerMove(viewport, touch(1, 400));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId('zoom-value')).toHaveTextContent('1x');
+  });
+
+  test('pointer yang mulai di atas kontrol mengambang (slider/tombol) tidak ikut cubitan', async () => {
+    const { viewport } = await ready({ zoom: { min: 1, max: 3, step: 0.1 } });
+    const slider = await screen.findByRole('slider', { name: 'Zoom' });
+    fireEvent.pointerDown(viewport, touch(1, 100));
+    fireEvent.pointerDown(slider, touch(2, 200));
+    fireEvent.pointerMove(viewport, touch(2, 400));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.getByTestId('zoom-value')).toHaveTextContent('1x');
+  });
+
+  test('tanpa dukungan zoom: dua jari tidak mengubah apa pun dan tidak dianggap ketukan', async () => {
+    const { stream, viewport } = await ready({ focusMode: ['continuous', 'single-shot'] });
+    fireEvent.pointerDown(viewport, touch(1, 100));
+    fireEvent.pointerDown(viewport, touch(2, 200));
+    fireEvent.pointerMove(viewport, touch(2, 300));
+    fireEvent.pointerUp(viewport, touch(2, 300));
+    fireEvent.pointerUp(viewport, touch(1, 100));
+    fireEvent.click(viewport, { clientX: 100, clientY: 100 });
+    expect(screen.queryByTestId('zoom-value')).not.toBeInTheDocument();
+    expect(shotsOf(stream)).toHaveLength(0);
+  });
+});
+
+test('petunjuk disembunyikan di layar pendek (landscape ponsel) agar tak bertabrakan dengan kontrol zoom', async () => {
+  setup({ stream: fakeStream({ caps: { focusMode: ['single-shot'] } }) });
+  const tip = await screen.findByText(/ketuk layar untuk fokus/);
+  expect(tip.className).toContain('[@media(max-height:30rem)]:hidden');
 });
 
 test('petunjuk berada di area kamera (bukan di header yang menempel)', async () => {

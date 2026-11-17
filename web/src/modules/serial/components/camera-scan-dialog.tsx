@@ -39,6 +39,7 @@ import {
   type ScanRow,
 } from '../lib/scan-table';
 import { CAMERA_ERROR_TEXT, useCameraScanner } from '../lib/use-camera-scanner';
+import { usePinchZoom } from '../lib/use-pinch-zoom';
 import { nextDevice, ScanCameraControls } from './scan-camera-controls';
 import { ScanResultsTable } from './scan-results-table';
 
@@ -257,7 +258,16 @@ function CameraScanBody({
 
   // Ketuk di area video = fokus sekali ke titik itu (hanya bila kamera mendukung; selain itu tidak melakukan apa-apa).
   // Kontrol mengambang menahan ketukannya sendiri (tidak sampai ke sini).
+  // Cubit dua jari = zoom (hanya bila kamera mendukung zoom); gestur itu bukan ketukan.
+  const pinch = usePinchZoom({
+    zoom: camera.zoom,
+    range: state.status === 'scanning' ? camera.zoomRange : null,
+    setZoom: (value) => void camera.setZoom(value),
+  });
+
   function onViewportClick(event: MouseEvent<HTMLDivElement>) {
+    // Klik susulan setelah cubitan (jari diangkat) tidak boleh memicu fokus.
+    if (pinch.wasPinching()) return;
     const video = camera.videoRef.current;
     if (state.status !== 'scanning' || !camera.tapFocusSupported || !video) return;
     if ((event.target as HTMLElement).closest('button')) return;
@@ -339,8 +349,13 @@ function CameraScanBody({
           <div
             data-testid="camera-viewport"
             onClick={onViewportClick}
+            onPointerDown={pinch.onPointerDown}
+            onPointerMove={pinch.onPointerMove}
+            onPointerUp={pinch.onPointerUp}
+            onPointerCancel={pinch.onPointerCancel}
             className={cn(
-              'relative w-full overflow-hidden border-2 border-transparent bg-black',
+              // `touch-none`: gestur dua jari di area kamera dipakai untuk zoom, bukan menggulir/mencubit halaman.
+              'relative w-full touch-none overflow-hidden border-2 border-transparent bg-black',
               single ? 'h-auto' : 'h-[clamp(11rem,55dvh,40rem)] md:h-auto landscape:h-auto',
               feedback !== null && FEEDBACK_FLASH[feedback],
             )}
@@ -378,7 +393,7 @@ function CameraScanBody({
             {/* Petunjuk dan hasil terakhir di bagian atas, di luar bingkai (tidak menutupinya). */}
             {state.status !== 'error' ? (
               <div className="pointer-events-none absolute inset-x-3 top-2 flex flex-col items-center gap-1">
-                <p className="rounded-md bg-black/50 px-2 py-1 text-center text-xs text-white">
+                <p className="rounded-md bg-black/50 px-2 py-1 text-center text-xs text-white [@media(max-height:30rem)]:hidden">
                   {tip}
                 </p>
                 <p
