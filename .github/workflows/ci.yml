@@ -26,6 +26,10 @@ on:
         description: Uji bangun image (tanpa dorong) bila isi image berubah; dipakai test.yml, paralel dengan tes.
         type: boolean
         default: false
+      desktop-check:
+        description: Jalankan pemeriksaan build desktop (hanya PR/test.yml; deploy tak boleh tertahan olehnya).
+        type: boolean
+        default: false
     outputs:
       image:
         description: '"true" bila isi image server berubah (bangun dan deploy), selain itu "false".'
@@ -196,11 +200,12 @@ jobs:
             type=registry,ref=${{ steps.name.outputs.image }}:buildcache-staging
             type=registry,ref=${{ steps.name.outputs.image }}:buildcache-production
 
-  # Pemeriksaan build desktop (tanpa artefak, bukan rilis): Windows x64 dijalankan penuh (`--smoke`); arm64 dikemas silang
-  # dan hanya diperiksa statis karena runner Windows arm64 tak tersedia untuk repo privat (lihat docs/ci-cd.md).
+  # Pemeriksaan build desktop (tanpa artefak, bukan rilis; keputusan pemilik 2026-11-17: hanya uji build, installer nanti di
+  # workflow rilis) dan HANYA di PR (`desktop-check`): Windows x64 dijalankan penuh (`--smoke`); arm64 dikemas silang dan
+  # hanya diperiksa statis karena runner Windows arm64 tak tersedia untuk repo privat (lihat docs/ci-cd.md).
   desktop:
     needs: changes
-    if: needs.changes.outputs.desktop_tests == 'true' || needs.changes.outputs.desktop_pack == 'true'
+    if: inputs.desktop-check && (needs.changes.outputs.desktop_tests == 'true' || needs.changes.outputs.desktop_pack == 'true')
     runs-on: windows-latest
     timeout-minutes: 30
     defaults:

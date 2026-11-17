@@ -29,6 +29,7 @@ jobs:
     with:
       pr: ${{ github.event.pull_request.number }}
       build-image: true
+      desktop-check: true
 
   test:
     needs: ci

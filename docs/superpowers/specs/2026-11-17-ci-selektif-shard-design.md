@@ -88,7 +88,10 @@ Masukan: daftar jalur berkas (satu per baris). Keluaran (`key=true|false` ke `GI
 | `shared_tests` | `shared/**` atau infra |
 | `desktop_tests` | `desktop/**`, `countrylock/**`, atau infra |
 | `desktop_pack` | `desktop/**`, `countrylock/**`, `web/**`, `shared/**`, atau infra (installer membawa UI dasar dari build web) |
-| `image` | `server/**`, `shared/**`, `web/**`, `countrylock/**`, `scripts/**`, `Dockerfile`, `.dockerignore`, `package.json`, `bun.lock`, `tsconfig.base.json` |
+| `image` | `server/**`, `shared/**`, `web/**`, `countrylock/**`, `scripts/**`, `Dockerfile`, `.dockerignore`, `package.json`, `bun.lock`, `tsconfig.base.json`, dan `desktop/package.json` saja (Dockerfile menyalinnya; keputusan pemilik 2026-11-17) |
+
+Pengecualian dokumentasi (keputusan pemilik 2026-11-17): `docs/ci-cd.md` dibaca tes `scripts/ci-workflows.test.ts`, jadi
+mengubahnya menyalakan `code` (lint + tes `scripts`, tanpa tes server/image); dokumen lain tetap tak menyalakan apa pun.
 
 "Infra" = **setiap jalur yang tidak cocok dengan aturan tabel di atas dan bukan dokumentasi** (`docs/**`, `**/*.md`,
 `.superpowers/**`, `.claude/**`), mis. `.github/**`, `package.json`, `bun.lock`, `biome.json`, `tsconfig*.json`, `scripts/**`,
@@ -146,7 +149,15 @@ Keluaran `image` dan `desktop_pack` dari `ci-changes.ts` dipakai ulang untuk men
 Rilis desktop dipicu `desktop/**`, `countrylock/**`, atau perubahan endpoint desktop di server; **bukan** perubahan `web/`
 atau `shared/` (UI web sampai ke desktop lewat manifest).
 
+### 5.4a Pemeriksaan desktop hanya di PR
+`ci.yml` memuat job `desktop` di belakang input `desktop-check` (bawaan false; hanya `test.yml` yang menyalakannya).
+`deploy-server.yml` tak menjalankannya: pemeriksaan desktop bukan gerbang deploy server, dan kegagalan unduhan Electron/kemas
+tak boleh menahan deploy (keputusan pemilik 2026-11-17). Pemeriksaan = build + `electron-builder --dir` tanpa installer
+dan tanpa artefak; pembuatan installer menunggu workflow rilis.
+
 ## 6. Keputusan pemilik (2026-11-17)
+- Aturan deteksi: `docs/ci-cd.md` menyalakan `code`; `desktop/package.json` memicu `image` (5.2).
+- Job desktop hanya di PR, tidak di deploy (5.4a); pemeriksaan = `--dir` x64+arm64 tanpa installer.
 - Build desktop di CI hanya pemeriksaan build; **Windows x64 + Windows arm64**, tanpa Linux.
 - Rilis image dan desktop dipisah (tag berawalan berbeda, versi sendiri).
 - Matrix job untuk shard (8). Bukan 8 proses di satu mesin.

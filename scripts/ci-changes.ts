@@ -45,7 +45,16 @@ export const MAX_FILES = 2900;
 
 const DOC_PREFIXES = ['docs/', '.superpowers/', '.claude/'];
 
-/** Aturan per awalan folder; hasil akhir = OR atas semua jalur. Urutan tak berpengaruh. */
+/**
+ * Dokumen yang DIBACA tes `scripts/` (mis. ci-workflows.test.ts memeriksa bahwa tiap secret/variabel tercatat di
+ * docs/ci-cd.md): menyalakan `code` (lint + tes scripts) walau berupa .md, agar PR yang hanya menyunting dokumen itu tak
+ * lolos tanpa tes dan merusak PR kode berikutnya. Keputusan pemilik 2026-11-17.
+ */
+const DOC_EXCEPTIONS: Record<string, (keyof Changes)[]> = {
+  'docs/ci-cd.md': ['code'],
+};
+
+/** Aturan per awalan folder/berkas; hasil akhir = OR atas semua jalur. Aturan PERTAMA yang cocok dipakai per jalur. */
 const RULES: { prefix: string; sets: (keyof Changes)[] }[] = [
   { prefix: 'server/', sets: ['code', 'server_tests', 'image'] },
   {
@@ -57,7 +66,9 @@ const RULES: { prefix: string; sets: (keyof Changes)[] }[] = [
     prefix: 'countrylock/',
     sets: ['code', 'web_tests', 'desktop_tests', 'desktop_pack', 'image'],
   },
-  // Image hanya menyalin desktop/package.json (lapisan manifest); isi desktop lain tak masuk image.
+  // Image hanya menyalin desktop/package.json (lapisan manifest, Dockerfile): berkas itu memicu image (keputusan pemilik
+  // 2026-11-17); isi desktop lain tak masuk image. Harus SEBELUM aturan `desktop/` (aturan pertama yang cocok dipakai).
+  { prefix: 'desktop/package.json', sets: ['code', 'desktop_tests', 'desktop_pack', 'image'] },
   { prefix: 'desktop/', sets: ['code', 'desktop_tests', 'desktop_pack'] },
   // deploy/ tak masuk image (.dockerignore), tetapi tes deploy-files/deploy-script ada di server.
   { prefix: 'deploy/', sets: ['code', 'server_tests'] },
@@ -90,6 +101,11 @@ export function classify(files: string[] | null): Changes {
     image: false,
   };
   for (const path of paths) {
+    const exception = DOC_EXCEPTIONS[path];
+    if (exception) {
+      for (const key of exception) result[key] = true;
+      continue;
+    }
     if (isDoc(path)) continue;
     const rule = RULES.find((candidate) => path.startsWith(candidate.prefix));
     if (!rule) return { ...ALL_CHANGES }; // infra atau jalur tak dikenal: konservatif

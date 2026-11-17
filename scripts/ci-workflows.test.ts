@@ -618,6 +618,7 @@ describe('test.yml dan aksi MariaDB', () => {
     expect(ciJob.with).toEqual({
       pr: '${{ github.event.pull_request.number }}',
       'build-image': true,
+      'desktop-check': true,
     });
     // packages: read wajib walau hanya dipakai job image-check (GitHub memvalidasi izin job di workflow dipanggil)
     expect(ciJob.permissions).toEqual({
@@ -731,7 +732,12 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
       };
     };
     expect(Object.keys(ci.on ?? {})).toEqual(['workflow_call']);
-    expect(Object.keys(on.workflow_call.inputs).sort()).toEqual(['build-image', 'pr', 'ref']);
+    expect(Object.keys(on.workflow_call.inputs).sort()).toEqual([
+      'build-image',
+      'desktop-check',
+      'pr',
+      'ref',
+    ]);
     expect(on.workflow_call.outputs.image?.value).toBe('${{ jobs.changes.outputs.image }}');
     expect(ci.permissions).toEqual({ contents: 'read' });
   });
@@ -805,6 +811,9 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
     expect(jobs.web?.if).toContain("needs.changes.outputs.web_tests == 'true'");
     expect(jobs.desktop?.if).toContain("needs.changes.outputs.desktop_tests == 'true'");
     expect(jobs.desktop?.if).toContain("needs.changes.outputs.desktop_pack == 'true'");
+    // Pemeriksaan desktop hanya di PR (test.yml): deploy tak boleh tertahan gagalnya unduhan Electron/kemas desktop
+    // (keputusan pemilik 2026-11-17: hanya uji build; pengemasan installer menunggu workflow rilis).
+    expect(jobs.desktop?.if).toContain('inputs.desktop-check');
   });
 
   test('keluaran job changes memetakan ketujuh kunci ci-changes', () => {

@@ -60,6 +60,19 @@ describe('classify: satu bagian monorepo', () => {
     expect(classify(['deploy/compose.yml'])).toEqual(only('code', 'server_tests'));
   });
 
+  test('docs/ci-cd.md dibaca tes scripts: hanya menyalakan code (lint + tes scripts), bukan server/image', () => {
+    expect(classify(['docs/ci-cd.md'])).toEqual(only('code'));
+    // dokumen lain tetap tak menyalakan apa pun
+    expect(classify(['docs/prd/a.md', 'docs/deploy-vps.md'])).toEqual(NONE);
+  });
+
+  test('desktop/package.json ikut masuk image (Dockerfile menyalinnya); berkas desktop lain tidak', () => {
+    expect(classify(['desktop/package.json'])).toEqual(
+      only('code', 'desktop_tests', 'desktop_pack', 'image'),
+    );
+    expect(classify(['desktop/src/main/index.ts']).image).toBe(false);
+  });
+
   test('campuran web + desktop = gabungan (OR)', () => {
     expect(classify(['web/src/a.ts', 'desktop/src/b.ts'])).toEqual(
       only('code', 'web_tests', 'desktop_tests', 'desktop_pack', 'image'),
