@@ -97,7 +97,10 @@ test('tanpa AudioContext dan tanpa vibrate tidak melempar; dengan keduanya dipak
     currentTime = 0;
     destination = {};
     createOscillator = () => ({ frequency: { value: 0 }, connect: vi.fn(), start, stop });
-    createGain = () => ({ gain: { value: 0 }, connect: vi.fn() });
+    createGain = () => ({
+      gain: { value: 0, setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn() },
+      connect: vi.fn(),
+    });
     close = vi.fn(() => Promise.resolve());
   }
   vi.stubGlobal('AudioContext', FakeAudio);

@@ -1,6 +1,6 @@
 import { isIsoDate, normalizeSerial, SERIAL_LIMITS } from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
@@ -226,6 +226,29 @@ export function RecordPage({
             return qty === undefined ? [] : [{ stickerId: sticker.id, name: sticker.name, qty }];
           }),
   });
+
+  // Serial yang sudah ada di draft (bentuk ternormalisasi): pemindai kamera tidak menambahkannya ke tabel hasilnya.
+  const knownSerials = useMemo(
+    () => new Set(rows.map((row) => normalizeSerial(row.serial))),
+    [rows],
+  );
+  const isKnownSerial = useCallback((serial: string) => knownSerials.has(serial), [knownSerials]);
+
+  // Sisa baris draft yang masih boleh ditambah (dibaca tiap bacaan kamera): tabel hasil scan menolak yang melebihinya.
+  const draftCapacity = useCallback(() => SERIAL_LIMITS.tableRows - rowsRef.current.length, []);
+
+  // Setelah Simpan dialog kamera: `addText` sudah dipanggil per baris (notice-nya saling menimpa); ringkas SEMUA baris.
+  function summarizeCameraSave(results: { serial: string; feedback: ScanFeedback }[]) {
+    const { notice: message } = describeAdd({
+      added: results.filter((result) => result.feedback === 'added').length,
+      duplicates: results.filter((result) => result.feedback === 'duplicate').length,
+      // Tabel kamera sudah memvalidasi serial dan menjaga sisa kapasitas draft: yang masih 'rejected' saat Simpan hanya
+      // bisa terbentur batas draft (bukan serial tak sah).
+      rejected: [],
+      truncated: results.some((result) => result.feedback === 'rejected'),
+    });
+    setNotice(message);
+  }
 
   function addText(text: string): ScanFeedback {
     const { rows: next, report } = addSerials(
@@ -601,6 +624,9 @@ export function RecordPage({
         id="serial-scan"
         label="Scan atau tempel serial (satu per baris)"
         onSubmit={addText}
+        isKnown={isKnownSerial}
+        onCameraSaved={summarizeCameraSave}
+        cameraCapacity={draftCapacity}
         autoFocus
       />
 

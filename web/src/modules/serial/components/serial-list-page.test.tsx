@@ -19,7 +19,10 @@ vi.mock('./camera-scan-button', () => ({
     <button
       type="button"
       aria-label="Scan dengan kamera"
-      onClick={() => onScan('bbb222\nAAA111\nccc333')}
+      // Seperti "Simpan" di dialog kamera: onScan satu kali per serial, berurutan (sinkron, sebelum render ulang).
+      onClick={() => {
+        for (const serial of ['bbb222', 'AAA111', 'ccc333']) onScan(serial);
+      }}
     >
       kamera
     </button>

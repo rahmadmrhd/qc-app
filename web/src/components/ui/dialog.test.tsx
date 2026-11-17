@@ -93,3 +93,46 @@ test('Dialog: teks tanpa spasi (nama berkas panjang) dibungkus dan tidak membuat
   expect(shell.querySelector('[data-slot="dialog-title"]')?.className).toContain('wrap-anywhere');
   expect(shell.querySelector('[data-slot="dialog-description"]')?.className).toContain('wrap-anywhere');
 });
+
+test('AlertDialog size="full": layar penuh tanpa sudut/jarak, badan tanpa padding, header dan footer tetap di penggulir', () => {
+  render(
+    <AlertDialog open>
+      <AlertDialogContent size="full">
+        <AlertDialogHeader>
+          <AlertDialogTitle>Judul</AlertDialogTitle>
+          <AlertDialogDescription>Deskripsi</AlertDialogDescription>
+        </AlertDialogHeader>
+        <p>Isi</p>
+        <AlertDialogFooter>
+          <button type="button">Ya</button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>,
+  );
+  const shell = screen.getByRole('alertdialog');
+  expect(shell).toHaveAttribute('data-size', 'full');
+  for (const token of ['h-dvh', 'w-screen', 'max-w-none', 'rounded-none', 'inset-0']) {
+    expect(shell.className).toContain(token);
+  }
+  // Area aman (notch, bilah gestur) dihormati di cangkang.
+  expect(shell.className).toContain('env(safe-area-inset-top)');
+  expect(shell.className).toContain('env(safe-area-inset-bottom)');
+  const scroller = shell.querySelector('[data-slot="alert-dialog-scroll"]');
+  expect(scroller?.className).toContain('p-0');
+  expect(scroller?.className).not.toContain('p-4');
+  expect(scroller?.contains(screen.getByText('Isi'))).toBe(true);
+});
+
+test('AlertDialog bawaan tidak berubah: tanpa kelas layar penuh', () => {
+  render(
+    <AlertDialog open>
+      <AlertDialogContent>
+        <AlertDialogTitle>Judul</AlertDialogTitle>
+        <AlertDialogDescription>Deskripsi</AlertDialogDescription>
+      </AlertDialogContent>
+    </AlertDialog>,
+  );
+  const shell = screen.getByRole('alertdialog');
+  expect(shell).toHaveAttribute('data-size', 'default');
+  expect(shell.className).not.toMatch(/(^| )h-dvh/);
+});

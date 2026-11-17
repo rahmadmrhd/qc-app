@@ -22,6 +22,33 @@ describe('scanCropRect', () => {
     expect(rect).toEqual({ x: 72, y: 460, width: 576, height: 360 });
   });
 
+  test.each([
+    ['kotak potret 360x420 (kamera + tabel di layar ponsel), video landscape', 1280, 720, 360, 420],
+    ['kotak potret 360x420, video potret', 720, 1280, 360, 420],
+    ['kotak lebar 900x330 (desktop), video landscape', 1280, 720, 900, 330],
+    ['kotak lebar 900x330, video potret', 720, 1280, 900, 330],
+  ])(
+    'kotak tidak persegi: %s, potongan sebangun dengan bingkai dan berpusat di tengah video',
+    (_name, vw, vh, bw, bh) => {
+      const rect = scanCropRect({ width: vw, height: vh }, { width: bw, height: bh }, frame);
+      expect(rect).not.toBeNull();
+      const r = rect as NonNullable<typeof rect>;
+      // Bingkai di layar 0,8bw x 0,5bh; pada piksel video dibagi skala `cover` yang sama di kedua sumbu.
+      const scale = Math.max(bw / vw, bh / vh);
+      // Pembulatan keluar (mulai ke bawah, ujung ke atas) menambah paling banyak 2 piksel video.
+      expect(Math.abs(r.width * scale - bw * 0.8)).toBeLessThanOrEqual(2 * scale);
+      expect(Math.abs(r.height * scale - bh * 0.5)).toBeLessThanOrEqual(2 * scale);
+      // Video `cover` dipusatkan: pusat bingkai (pusat kotak) = pusat video.
+      expect(r.x + r.width / 2).toBeCloseTo(vw / 2, 0);
+      expect(r.y + r.height / 2).toBeCloseTo(vh / 2, 0);
+      // Tidak pernah keluar dari video.
+      expect(r.x).toBeGreaterThanOrEqual(0);
+      expect(r.y).toBeGreaterThanOrEqual(0);
+      expect(r.x + r.width).toBeLessThanOrEqual(vw);
+      expect(r.y + r.height).toBeLessThanOrEqual(vh);
+    },
+  );
+
   test('video persegi: bingkai = fraksi langsung', () => {
     expect(scanCropRect({ width: 1000, height: 1000 }, { width: 250, height: 250 }, frame)).toEqual(
       { x: 100, y: 250, width: 800, height: 500 },

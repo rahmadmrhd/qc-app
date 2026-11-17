@@ -20,12 +20,26 @@ export const FEEDBACK_TEXT_COLOR: Record<ScanFeedback, string> = {
   rejected: 'text-destructive',
 };
 
-/** Nada berbeda per hasil; satu-satunya isyarat bunyi yang dipakai pemindai tanpa melihat layar. */
+/**
+ * Nada berbeda per hasil; satu-satunya isyarat bunyi yang dipakai pemindai tanpa melihat layar.
+ *
+ * Gelombang `square` (seperti bip pemindai kasir): energinya paling besar untuk amplitudo yang sama (RMS = puncak,
+ * sinus hanya 0,71 puncak) dan harmoniknya yang tinggi terdengar jelas di speaker ponsel yang lemah di nada rendah.
+ * Puncak gain 0,9 (bukan 1) menyisakan ruang agar tak terpotong; attack/decay pendek menghindari bunyi "klik".
+ *
+ * Volume TIDAK diatur sendiri: Web Audio keluar lewat saluran MEDIA perangkat, jadi mengikuti tombol volume media.
+ * Batasan platform: di iOS, Web Audio dibisukan oleh sakelar senyap (ringer) dan hanya bisa mulai setelah gerak
+ * pengguna (lihat `unlock`).
+ */
 const FEEDBACK_TONE: Record<ScanFeedback, { frequency: number; seconds: number }> = {
-  added: { frequency: 880, seconds: 0.08 },
-  duplicate: { frequency: 440, seconds: 0.16 },
-  rejected: { frequency: 220, seconds: 0.28 },
+  added: { frequency: 1568, seconds: 0.15 },
+  duplicate: { frequency: 880, seconds: 0.22 },
+  rejected: { frequency: 330, seconds: 0.4 },
 };
+
+const TONE_PEAK_GAIN = 0.9;
+const TONE_ATTACK_SECONDS = 0.008;
+const TONE_DECAY_SECONDS = 0.03;
 
 const FEEDBACK_VIBRATION: Record<ScanFeedback, number | number[]> = {
   added: 30,
@@ -46,42 +60,90 @@ function audioContextConstructor(): AudioContextConstructor | undefined {
 }
 
 /**
+ * Satu konteks audio untuk seluruh halaman (dibuat malas, dipakai bersama kolom pindai dan dialog kamera). Dibuat dan
+ * dilanjutkan dari gerak pengguna yang membuka dialog (`unlockScanAudio`, dipanggil tombol kamera dan ketukan di
+ * dialog): iOS Safari hanya mau memulai Web Audio dari klik/sentuhan, bukan dari pembacaan kamera yang tiba kemudian.
+ * Tidak ditutup saat dialog ditutup (masih dipakai halaman); konteks baru hanya bila konstruktor Web Audio berganti
+ * (tes).
+ */
+let shared: { Context: AudioContextConstructor; context: AudioContext } | null = null;
+
+function sharedAudioContext(): AudioContext | null {
+  const Context = audioContextConstructor();
+  if (!Context) return null;
+  if (shared === null || shared.Context !== Context) {
+    closeQuietly(shared?.context);
+    shared = { Context, context: new Context() };
+  }
+  const { context } = shared;
+  // `interrupted` (iOS Safari: setelah panggilan atau aplikasi ke latar) juga perlu dilanjutkan, bukan hanya `suspended`.
+  if (context.state === 'suspended' || (context.state as string) === 'interrupted') {
+    void Promise.resolve(context.resume()).catch(() => undefined);
+  }
+  return context;
+}
+
+function closeQuietly(context: AudioContext | undefined) {
+  try {
+    void Promise.resolve(context?.close()).catch(() => undefined);
+  } catch {
+    // Tidak penting.
+  }
+}
+
+/** Menyiapkan bunyi dari dalam gerak pengguna (klik/sentuhan); tanpa membunyikan nada. Aman dipanggil berulang. */
+export function unlockScanAudio() {
+  try {
+    sharedAudioContext();
+  } catch {
+    // Tidak penting.
+  }
+}
+
+/** Menutup konteks bersama (tes). */
+export function resetScanAudio() {
+  closeQuietly(shared?.context);
+  shared = null;
+}
+
+/**
  * Umpan balik satu pembacaan (kilat, teks, nada, getar), dipakai bersama kolom pindai dan dialog kamera.
  * `announce(hasil)` menyalakan semuanya; kilat padam sendiri setelah `FLASH_MS`.
  */
 export function useScanFeedback() {
   const [feedback, setFeedback] = useState<ScanFeedback | null>(null);
-  const audioRef = useRef<AudioContext | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
     () => () => {
       if (timerRef.current !== null) clearTimeout(timerRef.current);
-      try {
-        void audioRef.current?.close();
-      } catch {
-        // Tidak penting.
-      }
     },
     [],
   );
 
+  const audioContext = sharedAudioContext;
+  const unlock = unlockScanAudio;
+
   const announce = useCallback((result: ScanFeedback) => {
     setFeedback(result);
     try {
-      const Context = audioContextConstructor();
-      if (Context) {
-        audioRef.current ??= new Context();
-        const context = audioRef.current;
+      const context = audioContext();
+      if (context) {
         const tone = FEEDBACK_TONE[result];
+        const start = context.currentTime;
+        const end = start + tone.seconds;
         const oscillator = context.createOscillator();
         const gain = context.createGain();
+        oscillator.type = 'square';
         oscillator.frequency.value = tone.frequency;
-        gain.gain.value = 0.08;
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(TONE_PEAK_GAIN, start + TONE_ATTACK_SECONDS);
+        gain.gain.setValueAtTime(TONE_PEAK_GAIN, end - TONE_DECAY_SECONDS);
+        gain.gain.linearRampToValueAtTime(0, end);
         oscillator.connect(gain);
         gain.connect(context.destination);
-        oscillator.start();
-        oscillator.stop(context.currentTime + tone.seconds);
+        oscillator.start(start);
+        oscillator.stop(end);
       }
     } catch {
       // Bunyi tidak tersedia (jsdom, kebijakan autoplay): umpan balik visual tetap ada.
@@ -95,5 +157,5 @@ export function useScanFeedback() {
     timerRef.current = setTimeout(() => setFeedback(null), FLASH_MS);
   }, []);
 
-  return { feedback, announce };
+  return { feedback, announce, unlock };
 }
