@@ -1,6 +1,6 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { useScanFeedback } from './scan-feedback';
+import { resetScanAudio, unlockScanAudio, useScanFeedback } from './scan-feedback';
 
 interface FakeParam {
   value: number;
@@ -70,6 +70,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  resetScanAudio();
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -151,4 +152,39 @@ test('tanpa Web Audio: umpan balik visual dan getar tetap jalan tanpa galat', ()
   const { result } = renderHook(() => useScanFeedback());
   act(() => result.current.announce('added'));
   expect(result.current.feedback).toBe('added');
+});
+
+test('satu konteks audio bersama: unlockScanAudio dari gerak pengguna memakainya kembali untuk semua pemakai (tidak membuat konteks baru tiap klik)', () => {
+  const audio = fakeAudio('suspended');
+  const created = vi.fn();
+  const Base = (globalThis as unknown as { AudioContext: new () => object }).AudioContext;
+  class Counting extends Base {
+    constructor() {
+      super();
+      created();
+    }
+  }
+  vi.stubGlobal('AudioContext', Counting);
+  unlockScanAudio();
+  unlockScanAudio();
+  expect(created).toHaveBeenCalledTimes(1);
+  expect(audio.resume).toHaveBeenCalledTimes(2);
+  // Hook yang dipasang sesudahnya (dialog) memakai konteks yang sama: tidak ada konteks baru.
+  const { result, unmount } = renderHook(() => useScanFeedback());
+  act(() => result.current.announce('added'));
+  expect(created).toHaveBeenCalledTimes(1);
+  expect(audio.oscillators).toHaveLength(1);
+  // Unmount dialog tidak menutup konteks bersama (masih dipakai halaman).
+  unmount();
+  expect(audio.close).not.toHaveBeenCalled();
+  resetScanAudio();
+  expect(audio.close).toHaveBeenCalledTimes(1);
+});
+
+test('resetScanAudio menelan penolakan close() (konteks sudah tertutup)', async () => {
+  const audio = fakeAudio();
+  audio.close.mockRejectedValue(new Error('closed'));
+  unlockScanAudio();
+  expect(() => resetScanAudio()).not.toThrow();
+  await Promise.resolve();
 });

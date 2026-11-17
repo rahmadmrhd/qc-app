@@ -1,7 +1,7 @@
 import { Camera } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import type { ScanFeedback } from '../lib/scan-feedback';
+import { type ScanFeedback, unlockScanAudio } from '../lib/scan-feedback';
 import type { IsKnown } from '../lib/scan-table';
 import { cameraSupported } from '../lib/use-camera-scanner';
 import type { CameraScanDialogProps } from './camera-scan-dialog';
@@ -23,6 +23,8 @@ export interface CameraScanButtonProps {
   maxRows?: number;
   /** Hasil semua baris sesudah Simpan (bila diisi, menggantikan toast ringkasan dialog). */
   onSaved?: CameraScanDialogProps['onSaved'];
+  /** Sisa kapasitas draft pemakai (jumlah baris yang masih boleh ditambah). */
+  draftCapacity?: CameraScanDialogProps['draftCapacity'];
   disabled?: boolean;
   className?: string;
 }
@@ -36,6 +38,7 @@ export function CameraScanButton({
   isKnown,
   maxRows,
   onSaved,
+  draftCapacity,
   disabled = false,
   className,
 }: CameraScanButtonProps) {
@@ -51,7 +54,11 @@ export function CameraScanButton({
         disabled={disabled}
         aria-label="Scan dengan kamera"
         title="Scan dengan kamera"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          // Gerak pengguna yang membuka dialog: saatnya menyiapkan Web Audio (iOS menolaknya dari pembacaan kamera).
+          unlockScanAudio();
+          setOpen(true);
+        }}
       >
         <Camera aria-hidden />
       </Button>
@@ -64,6 +71,7 @@ export function CameraScanButton({
             isKnown={isKnown}
             maxRows={maxRows}
             onSaved={onSaved}
+            draftCapacity={draftCapacity}
           />
         </Suspense>
       ) : null}

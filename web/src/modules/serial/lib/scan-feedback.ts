@@ -60,84 +60,99 @@ function audioContextConstructor(): AudioContextConstructor | undefined {
 }
 
 /**
+ * Satu konteks audio untuk seluruh halaman (dibuat malas, dipakai bersama kolom pindai dan dialog kamera). Dibuat dan
+ * dilanjutkan dari gerak pengguna yang membuka dialog (`unlockScanAudio`, dipanggil tombol kamera dan ketukan di
+ * dialog): iOS Safari hanya mau memulai Web Audio dari klik/sentuhan, bukan dari pembacaan kamera yang tiba kemudian.
+ * Tidak ditutup saat dialog ditutup (masih dipakai halaman); konteks baru hanya bila konstruktor Web Audio berganti
+ * (tes).
+ */
+let shared: { Context: AudioContextConstructor; context: AudioContext } | null = null;
+
+function sharedAudioContext(): AudioContext | null {
+  const Context = audioContextConstructor();
+  if (!Context) return null;
+  if (shared === null || shared.Context !== Context) {
+    closeQuietly(shared?.context);
+    shared = { Context, context: new Context() };
+  }
+  const { context } = shared;
+  if (context.state === 'suspended') void Promise.resolve(context.resume()).catch(() => undefined);
+  return context;
+}
+
+function closeQuietly(context: AudioContext | undefined) {
+  try {
+    void Promise.resolve(context?.close()).catch(() => undefined);
+  } catch {
+    // Tidak penting.
+  }
+}
+
+/** Menyiapkan bunyi dari dalam gerak pengguna (klik/sentuhan); tanpa membunyikan nada. Aman dipanggil berulang. */
+export function unlockScanAudio() {
+  try {
+    sharedAudioContext();
+  } catch {
+    // Tidak penting.
+  }
+}
+
+/** Menutup konteks bersama (tes). */
+export function resetScanAudio() {
+  closeQuietly(shared?.context);
+  shared = null;
+}
+
+/**
  * Umpan balik satu pembacaan (kilat, teks, nada, getar), dipakai bersama kolom pindai dan dialog kamera.
  * `announce(hasil)` menyalakan semuanya; kilat padam sendiri setelah `FLASH_MS`.
  */
 export function useScanFeedback() {
   const [feedback, setFeedback] = useState<ScanFeedback | null>(null);
-  const audioRef = useRef<AudioContext | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(
     () => () => {
       if (timerRef.current !== null) clearTimeout(timerRef.current);
-      try {
-        void audioRef.current?.close();
-      } catch {
-        // Tidak penting.
-      }
     },
     [],
   );
 
-  // Konteks dibuat malas; yang `suspended` (kebijakan autoplay) dilanjutkan tiap dipakai.
-  const audioContext = useCallback((): AudioContext | null => {
-    const Context = audioContextConstructor();
-    if (!Context) return null;
-    audioRef.current ??= new Context();
-    const context = audioRef.current;
-    if (context.state === 'suspended')
-      void Promise.resolve(context.resume()).catch(() => undefined);
-    return context;
-  }, []);
+  const audioContext = sharedAudioContext;
+  const unlock = unlockScanAudio;
 
-  /**
-   * Menyiapkan bunyi dari dalam gerak pengguna (ketukan/klik): iOS Safari hanya mau memulai Web Audio dari sana.
-   * Tanpa membunyikan nada.
-   */
-  const unlock = useCallback(() => {
+  const announce = useCallback((result: ScanFeedback) => {
+    setFeedback(result);
     try {
-      audioContext();
+      const context = audioContext();
+      if (context) {
+        const tone = FEEDBACK_TONE[result];
+        const start = context.currentTime;
+        const end = start + tone.seconds;
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = 'square';
+        oscillator.frequency.value = tone.frequency;
+        gain.gain.setValueAtTime(0, start);
+        gain.gain.linearRampToValueAtTime(TONE_PEAK_GAIN, start + TONE_ATTACK_SECONDS);
+        gain.gain.setValueAtTime(TONE_PEAK_GAIN, end - TONE_DECAY_SECONDS);
+        gain.gain.linearRampToValueAtTime(0, end);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(start);
+        oscillator.stop(end);
+      }
     } catch {
-      // Tidak penting.
+      // Bunyi tidak tersedia (jsdom, kebijakan autoplay): umpan balik visual tetap ada.
     }
-  }, [audioContext]);
-
-  const announce = useCallback(
-    (result: ScanFeedback) => {
-      setFeedback(result);
-      try {
-        const context = audioContext();
-        if (context) {
-          const tone = FEEDBACK_TONE[result];
-          const start = context.currentTime;
-          const end = start + tone.seconds;
-          const oscillator = context.createOscillator();
-          const gain = context.createGain();
-          oscillator.type = 'square';
-          oscillator.frequency.value = tone.frequency;
-          gain.gain.setValueAtTime(0, start);
-          gain.gain.linearRampToValueAtTime(TONE_PEAK_GAIN, start + TONE_ATTACK_SECONDS);
-          gain.gain.setValueAtTime(TONE_PEAK_GAIN, end - TONE_DECAY_SECONDS);
-          gain.gain.linearRampToValueAtTime(0, end);
-          oscillator.connect(gain);
-          gain.connect(context.destination);
-          oscillator.start(start);
-          oscillator.stop(end);
-        }
-      } catch {
-        // Bunyi tidak tersedia (jsdom, kebijakan autoplay): umpan balik visual tetap ada.
-      }
-      try {
-        navigator.vibrate?.(FEEDBACK_VIBRATION[result]);
-      } catch {
-        // Tidak didukung.
-      }
-      if (timerRef.current !== null) clearTimeout(timerRef.current);
-      timerRef.current = setTimeout(() => setFeedback(null), FLASH_MS);
-    },
-    [audioContext],
-  );
+    try {
+      navigator.vibrate?.(FEEDBACK_VIBRATION[result]);
+    } catch {
+      // Tidak didukung.
+    }
+    if (timerRef.current !== null) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => setFeedback(null), FLASH_MS);
+  }, []);
 
   return { feedback, announce, unlock };
 }
