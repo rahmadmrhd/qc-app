@@ -155,8 +155,9 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
 
 ### 4.4 Titik masuk
 
-- **Kartu "Panduan untuk Anda" di beranda**: daftar panduan yang ditawarkan (4.2), masing-masing dengan jumlah langkah
-  dan tombol Mulai. Hilang bila tidak ada yang ditawarkan.
+- **Info "Ada N panduan yang belum kamu ikuti" di beranda** (keputusan pemilik 2026-11-17, butir O; semula kartu per
+  panduan): satu baris ringkas dengan tombol "Lihat panduan" yang membuka dialog Panduan (di bawah). Hanya memberi tahu
+  jumlah panduan yang ditawarkan (4.2), tanpa daftar judul. Hilang bila tidak ada yang ditawarkan.
 - **Banner di bagian atas halaman** yang punya panduan belum selesai (keputusan pemilik 2026-11-13, menggantikan
   rancangan toast hitung mundur: toast mudah terlewat dan hilang sebelum terbaca; banner menetap sampai
   ditanggapi). Isi: "Pertama kali di <halaman>? Ada panduan N langkah." dengan tiga tombol, memakai pola banner
@@ -170,16 +171,19 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
   Aturan pemicu: banner hanya untuk panduan yang awalan `halaman`-nya cocok dengan rute yang dibuka; bila lebih dari
   satu cocok, hanya yang pertama menurut urutan katalog yang tampil (satu banner pada satu waktu). Panduan dapat
   mengecualikan rute di bawah awalannya lewat `halamanKecuali` (mis. `serial-daftar` pada `/serial/new`). Panduan layout
-  dasar tidak punya `halaman` (tanpa banner; hanya kartu beranda, menu profil, dan sapaan).
+  dasar tidak punya `halaman` (tanpa banner; hanya info beranda, menu profil, dan sapaan).
   N dihitung per pengguna: hanya langkah yang lolos `izin` per langkah (4.5).
 - **Titik penanda di item sidebar** yang punya panduan belum selesai bagi pengguna itu (penanda ringan tanpa
   mengganggu); hilang saat panduannya selesai.
-- **Menu profil: item "Panduan"**: semua panduan yang berhak, dengan "Ulangi" bagi yang sudah selesai. Keputusan
+- **Menu profil: item "Panduan"** (dan tombol "Lihat panduan" di beranda) membuka dialog Panduan: semua panduan yang
+  berhak, DIKELOMPOKKAN per fitur (`GuideEntry.grup`: Umum, Perangkat, Serah Terima, QR Code Manual Book, Serial
+  Number; butir O), tiap kelompok memuat hitungan "x/y selesai", ditata dalam kolom (2 kolom mulai lebar kecil, 3 di layar
+  lebar, 1 di ponsel), dengan "Ulangi" bagi yang sudah selesai. Keputusan
   pemilik 2026-11-14 (butir B): panduan `diturunkan` (PWA/push) hanya tampil bila berlaku bagi perangkat itu. PWA
   tidak tampil bila "Pasang aplikasi" tak tersedia atau aplikasi sudah terpasang; push tidak tampil bila syarat
   butir A tak terpenuhi. Alasan: "Ulangi" tak boleh membuka langkah yang menyuruh memilih menu yang tak ada.
 - **Sapaan login pertama**: SATU dialog "Mau tur singkat?" (menawarkan panduan dasar). "Nanti" = tidak ditanya lagi.
-- Tidak ada pop-up beruntun saat rilis pertama untuk pengguna lama: hanya sapaan satu kali, kartu, banner
+- Tidak ada pop-up beruntun saat rilis pertama untuk pengguna lama: hanya sapaan satu kali, info beranda, banner
   kontekstual satu per halaman, dan titik penanda sidebar.
 
 ### 4.5 Mesin tur
@@ -189,7 +193,9 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
   mana pun dan tidak pernah memanggil rute tulis.
 - Langkah `langsung` (keputusan 2026-11-17, butir M): untuk langkah yang bergantung hasil pilihan pengguna. Halaman
   dianggap sudah settle, jadi target yang tak ada ditangani seketika (tanpa menunggu 3 dtk): dilewati bila langkah
-  tanpa `teksJikaKosong`, atau langsung kartu pengganti bila ada. Target yang ada tetap disorot seperti biasa.
+  tanpa `teksJikaKosong`, atau langsung kartu pengganti bila ada. Target yang ada tetap disorot seperti biasa. Bila tur
+  dimulai dari formulir yang tercatat berdraf (tanpa navigasi keluar), langkah `langsung` ber-`teksJikaKosong` di
+  halaman itu tetap dihitung sebagai langkah awal, bukan dilompati ke langkah pertama yang targetnya ada.
 - Langkah `wait` (keputusan 2026-11-15, butir K): untuk halaman yang baru menampilkan bagiannya setelah pengguna
   mengerjakan sesuatu (mis. form QR baru memunculkan nama, sumber link, dan seterusnya hanya setelah item dipilih).
   Targetnya tidak ditutup penahan dan halaman tidak digelapkan (hanya bingkai penyorot) supaya pengguna dapat
@@ -317,7 +323,7 @@ Semuanya 2026-11-13, disetujui pemilik produk:
   sebagian individu. Keputusan ini menggantikan dua keputusan sebelumnya pada hari yang sama (status di database
   untuk semua akun; lalu per perangkat untuk semua akun). Panduan PWA dan push tetap dihitung dari keadaan
   perangkat (bagian 4.3).
-- Bentuk tampilan: daftar kartu di beranda dan banner di bagian atas halaman (Mulai / Nanti / Sudah paham),
+- Bentuk tampilan: info ringkas di beranda (membuka dialog Panduan) dan banner di bagian atas halaman (Mulai / Nanti / Sudah paham),
   ditambah titik penanda di sidebar. Toast hitung mundur dibatalkan (2026-11-13).
 - Tabel keputusan perubahan (4.7) cocok dengan cara merilis; checklist rilis dimasukkan ke CLAUDE.md.
 - Tooltip ikon info dengan gambar bergerak + keterangan per frame; gabungan demo kode dan klip.
@@ -395,7 +401,7 @@ Semuanya 2026-11-13, disetujui pemilik produk:
     pratinjau, dan penjelasan Simpan dan ekspor (tur berhenti SEBELUM tombol simpan); halaman Konfigurasi default per
     BU (izin kelola) tidak dibahas. Akibat pada spek: 4.5 mendapat jenis langkah `wait` (di atas) sehingga kalimat
     "langkah yang menunggu klik pengguna" tidak lagi satu-satunya bentuk menunggu; spek 7 butir 4 kini mencakup QR
-    Code (`qrcode-dasar`, 13 langkah, izin `qrcode: view`, langkah pembuatan `qrcode: edit`). Pilihan perancang
+    Code (semula satu panduan `qrcode-dasar` 13 langkah; dipecah menjadi dua panduan (daftar dan formulir) pada 2026-11-17, butir N; izin `qrcode: view`, langkah pembuatan `qrcode: edit`). Pilihan perancang
     yang kemudian disetujui pemilik produk (2026-11-15): satu panduan `dasar` per modul memakai id `<modul>-dasar`;
     teks langkah memakai gaya santai ("kamu") seperti panduan lain; halaman Konfigurasi default per BU tidak
     dibahas; Item/Stiker/Postel/Serial Number/Pengaturan Akses tetap menyusul. Jalur "diminta memilih konfigurasi
@@ -415,14 +421,14 @@ Semuanya 2026-11-13, disetujui pemilik produk:
     Pemilik meminta tutorial pencatatan Serial Number hingga pembuatan laporan. Cakupan laporan: "plus tinjauan alur
     status". Setelah uji pertama, pemilik menilai satu tur panjang terlalu panjang, tidak lengkap, dan tidak menyesuaikan
     hasil pencarian, lalu meminta panduan dipecah per tugas (membuat dan membuka detail dibedakan; masing-masing pendek).
-    Hasil: ENAM panduan `dasar`, semuanya maks. 6 langkah, versi 1:
+    Hasil awal: ENAM panduan `dasar`, semuanya maks. 6 langkah, versi 1 (sesudah itu `serial-catat` dan `serial-massal`
+    digabung, butir N):
     - `serial-daftar` (`/serial`, `serial: view`, 3 langkah): tabel, pencarian/filter, tombol Tambah (`edit`).
     - `serial-detail` (`/serial`, `view`, 5 langkah): klik serial di daftar (langkah `click`), baris tahap, tombol
       update, alur status (QC melapor, servis, cek ulang), linimasa bertab. Semuanya ber-`teksJikaKosong`.
-    - `serial-catat` (`/serial/new`, `edit`, 5 langkah): bawaan, kolom scan (`wait` sampai ada baris draft), isi
-      draft (foto bukti, hasil, draf tersimpan di perangkat, impor/ekspor `.qcsn`), Detail/Hapus baris, Simpan.
-    - `serial-massal` (`/serial/new`, `edit`, 3 langkah): `wait` baris draft, `wait` centang baris sampai bilah
-      Ubah massal muncul, lalu penjelasan bilah.
+    - `serial-catat` (`/serial/new`, `edit`, 7 langkah sesudah digabung dengan `serial-massal`): bawaan, kolom scan (`wait`
+      sampai ada baris draft), isi draft (foto bukti, hasil, draf tersimpan di perangkat, impor/ekspor `.qcsn`), Detail/Hapus
+      baris, centang baris (`wait` sampai bilah Ubah massal muncul), bilah Ubah massal, Simpan.
     - `serial-laporan-daftar` (`/serial/reports`, `view`, 3 langkah): tabel Laporan (klik nomor LP membuka detail),
       filter, tombol Lapor Rusak (`edit`).
     - `serial-laporan` (`/serial/report`, `edit`, 6 langkah): `wait` pencarian sampai hasil tampil, ringkasan tiga
@@ -438,6 +444,50 @@ Semuanya 2026-11-13, disetujui pemilik produk:
     daftar/detail ikut tampil di `/serial/<id>` (halaman detail). Diubah: 4.4, 4.5, bagian 7 butir 5. Diuji di
     peramban pada akun super admin dev (papan kosong dan satu laporan aktif); belum di perangkat nyata, dan hasil
     "sudah tercatat dan Lolos" belum teruji.
+  - **N. Panduan terlalu panjang dipecah: tata letak, Serah Terima, dan QR Code Manual Book (2026-11-17, permintaan
+    pemilik produk).** Pemilik menilai tiga panduan terlalu banyak langkah (tata letak 10, Serah Terima 14, QR Code
+    Manual Book 13) dan meminta diperbaiki, setelah hal yang sama pada Serial Number (butir M). Aturannya: satu
+    panduan = satu tugas (satu alur di satu halaman TIDAK dipecah, koreksi pemilik pada formulir QR; pemilik lalu
+    meminta Serah Terima dan Serial Number digabung juga), langkah dipersingkat dengan menggabung langkah yang
+    berdekatan, semuanya `dasar` versi 1 (pertimbangan butir I). Hasil:
+    - `dasar-layout` (10 menjadi 5 langkah): langkah "sorot tombol" dan "sorot isi menu" digabung karena tur sudah
+      membuka menunya sendiri (`buka`); langkah akun dan isi menu profil digabung (`user-menu-content` memuat bagian
+      nama dan email). Id dan versi tetap, jadi penanda selesai yang ada tetap berlaku (tak ditawarkan ulang).
+    - Serah Terima (14 menjadi 5 + 7): `handover-dasar` (papan, checklist, komentar, centang QC, tombol Tambah task;
+      `/handover`, mengecualikan `/handover/new` lewat `halamanKecuali`) dan `handover-buat` (formulir: lokasi, tempel
+      WhatsApp, kartu, customer, catatan, Gandakan/Hapus/Tambah task, Simpan semua; `/handover/new`, `handover: edit`).
+      Pembaca WH dan QC saja tidak ditawari panduan formulir; `izin` per langkah di panduan formulir dihapus karena
+      seluruh panduannya berizin tulis. Semula formulir dipecah menjadi `handover-buat` dan `handover-simpan`; digabung
+      kembali atas permintaan pemilik (2026-11-17), langkah batch-form digabung ke lokasi dan Tambah task ke Gandakan/Hapus.
+    - QR Code Manual Book (13 menjadi 3 + 7): `qrcode-dasar` (daftar, `/qrcode`, mengecualikan `/qrcode/new`) dan
+      `qrcode-buat` (formulir: item, konfigurasi default, nama, sumber link, label, pratinjau, simpan; dua langkah `wait`).
+      Semula formulir dipecah lagi menjadi dua panduan (item/sumber link dan label/simpan); pemilik menilai itu keliru
+      karena satu halaman dan satu topik, lalu dikembalikan menjadi satu panduan dan dipersingkat dengan menggabung
+      langkah logo, bingkai, dan ukuran ke dalam langkah label. Tur tetap berhenti SEBELUM tombol simpan.
+    Konsekuensi yang diterima: pengguna yang sudah menyelesaikan `handover-dasar` atau `qrcode-dasar` (versi lama
+    panjang) ditawari panduan formulir baru, karena penandanya per id; judul panduan lama berubah ("Mengenal daftar QR
+    Code Manual Book"). Pilihan perancang (menunggu persetujuan): id panduan baru `handover-buat` dan
+    `qrcode-buat`. Temuan saat uji peramban (sebelum penggabungan kembali): formulir QR baru tercatat "ada perubahan belum
+    disimpan", sehingga tur memakai `firstStepOnPage` dan melompat ke langkah pertama yang targetnya ada; kini langkah
+    `langsung` ber-`teksJikaKosong` ikut dihitung sebagai langkah di halaman ini (4.5). Diubah: butir K
+    (kriteria 13 langkah), bagian 4.5 (`firstStepOnPage`), bagian 7 butir 1, 3, dan 4. Diuji di peramban pada akun super
+    admin dev (tur tata letak tidak diulang; Serah Terima 5/6/3 langkah sebelum digabung, QR 3 langkah dan formulir 7 langkah; tur Serah Terima 7 langkah dan Serial `serial-catat` 7 langkah setelah penggabungan hanya diuji lewat tes otomatis);
+    belum di perangkat nyata dan belum dengan akun WH-saja atau QC-saja (hanya tes otomatis).
+  - **O. Info ringkas di beranda dan dialog Panduan dikelompokkan per fitur (2026-11-17, permintaan pemilik produk).**
+    Pemilik meminta beranda tidak lagi menampilkan daftar kartu panduan yang belum dimulai, cukup memberi tahu bahwa
+    ada panduan yang belum dimulai, dan klik membuka dialog daftar panduan; dialog didesain ulang: panduan yang
+    berhubungan atau satu fitur dikelompokkan supaya pengguna tahu panduan itu untuk fitur yang mana, dan ditata dalam
+    beberapa kolom di layar lebar agar tidak panjang. Hasil: komponen `guide-notice.tsx` (satu baris "Ada N panduan yang
+    belum kamu ikuti" + tombol "Lihat panduan", memakai `GuideMenuDialog` yang sama dengan menu profil, tetap ditunda
+    selama onboarding push tampil) menggantikan `guide-cards.tsx` (dihapus); field `GuideEntry.grup` (nama fitur,
+    wajib pada panduan `dasar`/`baru`, dijaga tes katalog; kelompok harus bersebelahan di katalog) dan fungsi murni
+    `groupGuides` (`lib/group.ts`; urut kemunculan pertama, tanpa `grup` = "Lainnya"); dialog `sm:max-w-5xl` dengan
+    kolom CSS (`sm:columns-2 lg:columns-3`, kelompok tak terpotong antar kolom) agar kelompok pendek tak menyisakan
+    ruang kosong seperti grid; header dialog memuat sisa panduan yang belum selesai, tiap kelompok "x/y selesai"
+    (panduan perangkat/`diturunkan` tak dihitung). Pilihan perancang (menunggu persetujuan): jumlah yang ditampilkan di
+    beranda = semua panduan yang ditawarkan termasuk yang "Diperbarui"; kolom CSS dipilih daripada grid. Diubah: 4.4
+    dan butir H/B yang menyebut kartu beranda. Diuji di peramban pada akun super admin dev (beranda dengan satu
+    panduan belum selesai; dialog desktop 3 kolom dan ponsel 1 kolom); belum di perangkat nyata.
   - **Catatan status.** Butir A dan B sudah ada di kode (`pushAvailable` di `push/lib/support.ts`,
     `deviceGuideRelevance` dan `deriveDeviceGuides` di `catalog/device.ts`, `useDeviceGuides`; kartu, banner, dan menu
     memakai satu fungsi relevansi). Pertanyaan terbuka: tidak ada.
@@ -447,15 +497,17 @@ Semuanya 2026-11-13, disetujui pemilik produk:
 0. **Fondasi penyimpanan**: kolom "akun bersama" di Pengaturan Akses > Pengguna, tabel/rute panduan akun individu,
    dan `GuideStore` di klien (4.3). Dikerjakan lebih dulu karena semua panduan bergantung padanya.
 1. **Layout dasar** (`dasar`, semua pengguna): sidebar (menu menurut izin), pemilih lokasi aktif, lonceng
-   notifikasi, tema, menu profil.
+   notifikasi, tema, menu profil. Lima langkah (butir N).
 2. **Pasang PWA** dan **aktifkan push** (`dasar`, status `diturunkan` dari keadaan perangkat; memakai mekanisme izin dan
    penanda yang sudah ada di `web/src/modules/push/` dan `web/src/app/pwa/`; klip direkam pemilik).
 3. **Serah Terima** (`dasar`, izin `handover`): papan/kartu, buat task (formulir batch), tempel dari WhatsApp
    (tooltip demo: contoh pertama), checklist dan centang, komentar, pengerjaan QC. Daftar langkah rinci ditentukan
-   di rencana implementasi bersama pemilik produk.
+   di rencana implementasi bersama pemilik produk. Dipecah 2026-11-17 menjadi dua panduan (`handover-dasar` papan dan
+   `handover-buat` formulir; butir N).
 4. **QR Code Manual Book** (`dasar`, izin `qrcode: view`; dikerjakan 2026-11-15, bagian 6 butir K): membuat konfigurasi
-   dari daftar sampai tepat sebelum tombol simpan, memakai langkah `wait` (4.5).
-5. **Serial Number** (enam `dasar` pendek: `serial-daftar`, `serial-detail`, `serial-catat`, `serial-massal`,
+   dari daftar sampai tepat sebelum tombol simpan, memakai langkah `wait` (4.5). Dipecah 2026-11-17 menjadi dua panduan (`qrcode-dasar` daftar dan `qrcode-buat`
+   formulir; butir N).
+5. **Serial Number** (lima `dasar`: `serial-daftar`, `serial-detail`, `serial-catat`,
    `serial-laporan-daftar`, `serial-laporan`; izin `serial: view`, langkah tulis `serial: edit`; dikerjakan
    2026-11-17, bagian 6 butir M).
 6. Modul lain (Item, Stiker, Postel, tim servis `serialservice`, Pengaturan Akses) menyusul di tahap berikutnya.
@@ -485,7 +537,7 @@ Semuanya 2026-11-13, disetujui pemilik produk:
 ## 9. Diserahkan ke pembangun
 
 - Rancangan konkret tiap panduan tahap awal (langkah, teks, target `data-tour`) bersama pemilik produk.
-- Tata letak kartu beranda, banner, titik penanda sidebar, dan item menu profil dalam gaya komponen yang ada.
+- Tata letak info beranda, banner, titik penanda sidebar, dan item menu profil dalam gaya komponen yang ada.
 - Pemilihan pustaka tur dan penulisan tesnya.
 - Aturan penamaan berkas klip dan tempat penyimpanannya (statis, tidak dipra-cache).
 - Teks UI santai sesuai gaya proyek.

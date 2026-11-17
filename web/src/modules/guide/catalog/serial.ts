@@ -4,8 +4,8 @@ const SERIAL_VIEW: GuidePermission = { module: 'serial', level: 'view' };
 const SERIAL_EDIT: GuidePermission = { module: 'serial', level: 'edit' };
 
 /**
- * Panduan Serial Number (spek bagian 6 butir M, keputusan pemilik 2026-11-17): enam panduan `dasar` PENDEK, satu per
- * halaman atau tugas, supaya tak ada tur yang panjang. Izin = modul `serial` (tim servis `serialservice` belum
+ * Panduan Serial Number (spek bagian 6 butir M, keputusan pemilik 2026-11-17): lima panduan `dasar` ringkas, satu per
+ * halaman atau tugas (formulir catat memuat ubah massal; satu halaman tidak dipecah), supaya tak ada tur yang panjang. Izin = modul `serial` (tim servis `serialservice` belum
  * dicakup). Tur tidak mengisi, memindai, atau menyimpan apa pun; langkah `wait` hanya menunggu pengguna mengetik atau
  * mencentang sendiri. Daftar target `data-tour` ada di komentar tiap panduan.
  *
@@ -27,6 +27,7 @@ export const SERIAL_DAFTAR: GuideEntry = {
   status: 'disimpan',
   version: 1,
   title: 'Mengenal daftar Serial Number',
+  grup: 'Serial Number',
   izin: SERIAL_VIEW,
   halaman: '/serial',
   halamanKecuali: SERIAL_LIST_EXCEPT,
@@ -39,7 +40,7 @@ export const SERIAL_DAFTAR: GuideEntry = {
     },
     {
       target: 'serial-filters',
-      text: 'Ketik satu serial untuk mencocokkan awalannya, atau tempel beberapa (satu per baris) untuk mencocokkan persis; tombol kamera membaca barcode. Filter lain: BU, item, lokasi, status, posisi, tanggal uji, dan "Dicatat oleh saya".',
+      text: 'Ketik satu serial untuk mencocokkan awalannya, atau tempel beberapa (satu per baris) untuk mencocokkan persis; tombol kamera membaca barcode. Filter lain: BU, item, lokasi, status, posisi, dan "Dicatat oleh saya".',
       advance: 'next',
     },
     {
@@ -62,6 +63,7 @@ export const SERIAL_DETAIL: GuideEntry = {
   status: 'disimpan',
   version: 1,
   title: 'Membaca detail Serial Number',
+  grup: 'Serial Number',
   izin: SERIAL_VIEW,
   halaman: '/serial',
   halamanKecuali: SERIAL_LIST_EXCEPT,
@@ -106,8 +108,10 @@ export const SERIAL_DETAIL: GuideEntry = {
 };
 
 /**
- * Catat Serial Number: bawaan, scan, draft, dan Simpan. Target: `serial-defaults`, `serial-scan`, `serial-draft`,
- * `serial-row-actions`, `serial-save` (`record-page.tsx`, `staging-table.tsx`). Berhenti SEBELUM Simpan.
+ * Catat Serial Number: bawaan, scan, draft, ubah massal, dan Simpan. Target: `serial-defaults`, `serial-scan`,
+ * `serial-draft`, `serial-row-actions`, `serial-row-select`, `serial-bulk`, `serial-save` (`record-page.tsx`,
+ * `staging-table.tsx`, `bulk-edit-bar.tsx`). Dua langkah `wait`: menunggu baris draft pertama, lalu menunggu pengguna
+ * mencentang baris sampai bilah ubah massal muncul. Berhenti SEBELUM Simpan.
  */
 export const SERIAL_CATAT: GuideEntry = {
   id: 'serial-catat',
@@ -115,6 +119,7 @@ export const SERIAL_CATAT: GuideEntry = {
   status: 'disimpan',
   version: 1,
   title: 'Mencatat Serial Number',
+  grup: 'Serial Number',
   izin: SERIAL_EDIT,
   halaman: '/serial/new',
   steps: [
@@ -141,42 +146,19 @@ export const SERIAL_CATAT: GuideEntry = {
       advance: 'next',
     },
     {
-      target: 'serial-save',
-      text: 'Simpan menyimpan semua baris sebagai Serial Number berstatus Lolos. Serial yang sudah tercatat ditandai duplikat dan baris yang gagal tetap di draft; kalau semuanya berhasil kamu kembali ke daftar. Panduan berhenti di sini: belum ada yang tersimpan, dan baris contohmu bisa dibuang dengan Kosongkan draft.',
-      advance: 'next',
-    },
-  ],
-};
-
-/**
- * Ubah massal di draft. Target: `serial-scan`, `serial-row-select`, `serial-bulk` (`record-page.tsx`,
- * `staging-table.tsx`, `bulk-edit-bar.tsx`). Dua langkah `wait`: menunggu baris draft, lalu menunggu bilah muncul.
- */
-export const SERIAL_MASSAL: GuideEntry = {
-  id: 'serial-massal',
-  kind: 'dasar',
-  status: 'disimpan',
-  version: 1,
-  title: 'Mengubah banyak baris sekaligus',
-  izin: SERIAL_EDIT,
-  halaman: '/serial/new',
-  steps: [
-    {
-      target: 'serial-scan',
-      route: '/serial/new',
-      text: 'Butuh beberapa baris di draft dulu. Ketik atau tempel dua-tiga serial apa saja (mis. TEST-001, TEST-002), Enter tiap serial. Lanjut aktif setelah ada baris.',
-      advance: 'wait',
-      waitFor: 'serial-row',
-    },
-    {
       target: 'serial-row-select',
-      text: 'Centang baris ini (atau kotak di judul kolom untuk semua baris). Begitu ada yang terpilih, bilah Ubah massal muncul dan Lanjut aktif.',
+      text: 'Mau ubah banyak baris sekaligus? Centang baris ini (atau kotak di judul kolom untuk semua baris). Begitu ada yang terpilih, bilah Ubah massal muncul dan Lanjut aktif.',
       advance: 'wait',
       waitFor: 'serial-bulk',
     },
     {
       target: 'serial-bulk',
       text: 'Isi hanya kolom yang mau diubah untuk semua baris terpilih (kosong = tidak diubah), lalu Terapkan. Hapus yang dipilih membuang semuanya; Batalkan pilihan menghapus centang. Panduan tidak menerapkan apa pun.',
+      advance: 'next',
+    },
+    {
+      target: 'serial-save',
+      text: 'Simpan menyimpan semua baris sebagai Serial Number berstatus Lolos. Serial yang sudah tercatat ditandai duplikat dan baris yang gagal tetap di draft; kalau semuanya berhasil kamu kembali ke daftar. Panduan berhenti di sini: belum ada yang tersimpan, dan baris contohmu bisa dibuang dengan Kosongkan draft.',
       advance: 'next',
     },
   ],
@@ -189,6 +171,7 @@ export const SERIAL_LAPORAN_DAFTAR: GuideEntry = {
   status: 'disimpan',
   version: 1,
   title: 'Mengenal daftar Laporan',
+  grup: 'Serial Number',
   izin: SERIAL_VIEW,
   halaman: '/serial/reports',
   steps: [
@@ -225,6 +208,7 @@ export const SERIAL_LAPORAN: GuideEntry = {
   status: 'disimpan',
   version: 1,
   title: 'Membuat laporan unit rusak',
+  grup: 'Serial Number',
   izin: SERIAL_EDIT,
   halaman: '/serial/report',
   steps: [
@@ -271,7 +255,6 @@ export const SERIAL_GUIDES: readonly GuideEntry[] = [
   SERIAL_DAFTAR,
   SERIAL_DETAIL,
   SERIAL_CATAT,
-  SERIAL_MASSAL,
   SERIAL_LAPORAN_DAFTAR,
   SERIAL_LAPORAN,
 ];

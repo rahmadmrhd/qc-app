@@ -343,3 +343,27 @@ describe('pemeriksa menangkap pelanggaran (contoh salah)', () => {
     );
   });
 });
+
+describe('pengelompokan dialog Panduan', () => {
+  test('setiap panduan dasar/baru punya grup (nama fitur) untuk dialog Panduan', () => {
+    const missing = GUIDE_CATALOG.filter(
+      (entry) =>
+        (entry.kind === 'dasar' || entry.kind === 'baru') &&
+        (entry.grup === undefined || entry.grup.trim() === ''),
+    ).map((entry) => entry.id);
+    expect(missing).toEqual([]);
+  });
+
+  test('panduan satu fitur bersebelahan di katalog (kelompok tak terputus)', () => {
+    const seen = new Set<string>();
+    let previous: string | undefined;
+    for (const entry of GUIDE_CATALOG) {
+      if (entry.grup === undefined) continue;
+      if (entry.grup !== previous) {
+        expect(seen.has(entry.grup), `grup ${entry.grup} terputus di ${entry.id}`).toBe(false);
+        seen.add(entry.grup);
+        previous = entry.grup;
+      }
+    }
+  });
+});

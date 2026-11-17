@@ -15,6 +15,7 @@ export const PERANGKAT_PWA: GuideEntry = {
   status: 'diturunkan',
   version: 1,
   title: 'Pasang aplikasi di perangkat',
+  grup: 'Perangkat',
   steps: [
     {
       target: 'user-menu-install',
@@ -31,6 +32,7 @@ export const PERANGKAT_PUSH: GuideEntry = {
   status: 'diturunkan',
   version: 1,
   title: 'Aktifkan notifikasi push',
+  grup: 'Perangkat',
   steps: [
     {
       target: 'user-menu-push',

@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { canAnywhere } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
-import { GuideCards } from '@/modules/guide/components/guide-cards';
+import { GuideNotice } from '@/modules/guide/components/guide-notice';
 
 export const Route = createFileRoute('/_app/')({ component: HomePage });
 
@@ -35,7 +35,7 @@ function HomePage() {
         <h1 className="text-2xl font-semibold">Selamat datang, {me.name}</h1>
         <p className="text-muted-foreground">Pilih modul yang ingin dibuka.</p>
       </div>
-      <GuideCards />
+      <GuideNotice />
       {modules.length === 0 ? (
         <Alert>
           <AlertDescription>

@@ -111,13 +111,15 @@ function isEditable(target: EventTarget | null): boolean {
 
 /**
  * Indeks mulai bila ada formulir berdraf: langkah pertama yang berlaku di halaman ini (tanpa `route` lain dan
- * targetnya ada), supaya memulai tur tidak menavigasi keluar dan membuang draf. Tak ada = langkah pertama.
+ * targetnya ada, atau `langsung` dengan `teksJikaKosong` yang langsung menjadi kartu pengganti di halaman ini),
+ * supaya memulai tur tidak menavigasi keluar dan membuang draf. Tak ada = langkah pertama.
  */
 function firstStepOnPage(steps: readonly GuideStep[], pathname: string): number {
   const found = steps.findIndex(
     (step) =>
       (step.route === undefined || step.route === pathname) &&
-      document.querySelector(selectorOf(step.target)) !== null,
+      (document.querySelector(selectorOf(step.target)) !== null ||
+        (step.langsung === true && step.teksJikaKosong !== undefined)),
   );
   return found < 0 ? 0 : found;
 }

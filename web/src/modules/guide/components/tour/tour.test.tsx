@@ -556,6 +556,29 @@ describe('ketahanan mesin (putaran perbaikan review)', () => {
     expect(state.navigate).not.toHaveBeenCalled();
   });
 
+  test('M13: formulir berdraf: langkah langsung ber-teks pengganti tetap jadi langkah awal (tidak melompat ke target yang ada)', async () => {
+    state.pathname = '/form';
+    render(
+      <Page
+        extra={<DirtyForm />}
+        entry={entryOf([
+          step({
+            target: 'hantu',
+            text: 'Bagian ini belum ada',
+            route: '/form',
+            langsung: true,
+            teksJikaKosong: 'Pilih item dulu, lalu mulai lagi.',
+          }),
+          step({ target: 'a', text: 'Ada di sini' }),
+        ])}
+      />,
+    );
+    await startTour();
+    expect(await screen.findByText('Pilih item dulu, lalu mulai lagi.')).toBeInTheDocument();
+    expect(screen.queryByText('Ada di sini')).toBeNull();
+    expect(state.navigate).not.toHaveBeenCalled();
+  });
+
   test('M13: formulir berdraf: langkah yang menuntut pindah halaman dilewati (draf tak dibuang)', async () => {
     state.pathname = '/form';
     render(

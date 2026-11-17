@@ -11,7 +11,6 @@ import {
   SERIAL_GUIDES,
   SERIAL_LAPORAN,
   SERIAL_LAPORAN_DAFTAR,
-  SERIAL_MASSAL,
 } from './serial';
 
 /** `permissions` = izin global tergabung (untuk modul ber-BU: level tertinggi di antara penugasan BU akun). */
@@ -48,12 +47,11 @@ const serialIds = (user: MeDto) =>
     .filter((id) => id.startsWith('serial-'));
 
 describe('panduan Serial Number', () => {
-  test('enam panduan: id terdaftar di GUIDE_IDS dengan versi yang sama, ada di katalog', () => {
+  test('lima panduan: id terdaftar di GUIDE_IDS dengan versi yang sama, ada di katalog', () => {
     expect(SERIAL_GUIDES.map((entry) => entry.id)).toEqual([
       'serial-daftar',
       'serial-detail',
       'serial-catat',
-      'serial-massal',
       'serial-laporan-daftar',
       'serial-laporan',
     ]);
@@ -65,12 +63,12 @@ describe('panduan Serial Number', () => {
     }
   });
 
-  test('tiap panduan pendek (maksimal 6 langkah) dan izinnya sesuai tugasnya', () => {
-    for (const entry of SERIAL_GUIDES) expect(entry.steps.length).toBeLessThanOrEqual(6);
+  test('tiap panduan ringkas (maksimal 7 langkah) dan izinnya sesuai tugasnya', () => {
+    for (const entry of SERIAL_GUIDES) expect(entry.steps.length).toBeLessThanOrEqual(7);
     for (const entry of [SERIAL_DAFTAR, SERIAL_DETAIL, SERIAL_LAPORAN_DAFTAR]) {
       expect(entry.izin).toEqual({ module: 'serial', level: 'view' });
     }
-    for (const entry of [SERIAL_CATAT, SERIAL_MASSAL, SERIAL_LAPORAN]) {
+    for (const entry of [SERIAL_CATAT, SERIAL_LAPORAN]) {
       expect(entry.izin).toEqual({ module: 'serial', level: 'edit' });
     }
   });
@@ -102,10 +100,10 @@ describe('panduan Serial Number', () => {
     expect(idAt(all, '/serial/report')).toBe('serial-laporan');
     expect(idAt(all, '/serial/reports')).toBe('serial-laporan-daftar');
     expect(idAt(all, '/serial/settings')).toBeUndefined();
-    // Panduan daftar selesai: detail jadi banner berikutnya di /serial, dan catat -> massal di /serial/new.
+    // Panduan daftar selesai: detail jadi banner berikutnya di /serial.
     const without = (...ids: string[]) => all.filter((o) => !ids.includes(o.entry.id));
     expect(idAt(without('serial-daftar'), '/serial')).toBe('serial-detail');
-    expect(idAt(without('serial-catat'), '/serial/new')).toBe('serial-massal');
+    expect(idAt(without('serial-catat'), '/serial/new')).toBeUndefined();
     // Sesudah semuanya selesai, halaman Laporan/Pengaturan tidak jatuh ke banner halaman lain.
     const rest = without('serial-daftar', 'serial-detail');
     expect(idAt(rest, '/serial/reports')).toBe('serial-laporan-daftar');
@@ -113,26 +111,19 @@ describe('panduan Serial Number', () => {
     expect(idAt(without('serial-laporan'), '/serial/report')).toBeUndefined();
   });
 
-  test('catat: dua langkah wait di draft, berhenti sebelum Simpan', () => {
+  test('catat: satu panduan dari bawaan sampai Simpan, dengan dua langkah wait (baris draft, centang baris)', () => {
     const steps = SERIAL_CATAT.steps;
-    expect(
-      steps.filter((step) => step.advance === 'wait').map((s) => [s.target, s.waitFor]),
-    ).toEqual([['serial-scan', 'serial-row']]);
-    expect(steps.at(-1)?.target).toBe('serial-save');
-    expect(steps[0]?.route).toBe('/serial/new');
-    // Baris draft dijelaskan sesudah langkah yang menunggunya muncul.
-    const targets = steps.map((step) => step.target);
-    expect(targets.indexOf('serial-draft')).toBeGreaterThan(targets.indexOf('serial-scan'));
-    expect(targets.indexOf('serial-row-actions')).toBeGreaterThan(targets.indexOf('serial-scan'));
-  });
-
-  test('massal: menunggu baris draft, lalu menunggu bilah ubah massal muncul', () => {
-    const steps = SERIAL_MASSAL.steps;
     expect(steps.map((step) => [step.target, step.advance, step.waitFor])).toEqual([
+      ['serial-defaults', 'next', undefined],
       ['serial-scan', 'wait', 'serial-row'],
+      ['serial-draft', 'next', undefined],
+      ['serial-row-actions', 'next', undefined],
       ['serial-row-select', 'wait', 'serial-bulk'],
       ['serial-bulk', 'next', undefined],
+      ['serial-save', 'next', undefined],
     ]);
+    expect(steps[0]?.route).toBe('/serial/new');
+    expect(GUIDE_IDS as readonly string[]).not.toContain('serial-massal');
   });
 
   test('laporan: pencarian menunggu hasil; langkah khusus hasil dilewati seketika (tanpa kartu pengganti)', () => {

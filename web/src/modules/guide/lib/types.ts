@@ -68,6 +68,12 @@ export interface GuideEntry {
   status: 'disimpan' | 'diturunkan';
   version: number;
   title: string;
+  /**
+   * Nama fitur untuk pengelompokan di dialog Panduan (mis. "Serah Terima"): panduan satu fitur ditampilkan satu
+   * kelompok, urut menurut kemunculan pertama di katalog. Wajib pada panduan `dasar`/`baru` (dijaga tes katalog);
+   * kosong = kelompok "Lainnya".
+   */
+  grup?: string;
   /** Kosong = semua pengguna. */
   izin?: GuideAccess;
   /** Awalan rute tempat banner panduan ini boleh muncul; kosong = tanpa banner. */
