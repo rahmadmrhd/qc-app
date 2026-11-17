@@ -20,12 +20,26 @@ export const FEEDBACK_TEXT_COLOR: Record<ScanFeedback, string> = {
   rejected: 'text-destructive',
 };
 
-/** Nada berbeda per hasil; satu-satunya isyarat bunyi yang dipakai pemindai tanpa melihat layar. */
+/**
+ * Nada berbeda per hasil; satu-satunya isyarat bunyi yang dipakai pemindai tanpa melihat layar.
+ *
+ * Gelombang `square` (seperti bip pemindai kasir): energinya paling besar untuk amplitudo yang sama (RMS = puncak,
+ * sinus hanya 0,71 puncak) dan harmoniknya yang tinggi terdengar jelas di speaker ponsel yang lemah di nada rendah.
+ * Puncak gain 0,9 (bukan 1) menyisakan ruang agar tak terpotong; attack/decay pendek menghindari bunyi "klik".
+ *
+ * Volume TIDAK diatur sendiri: Web Audio keluar lewat saluran MEDIA perangkat, jadi mengikuti tombol volume media.
+ * Batasan platform: di iOS, Web Audio dibisukan oleh sakelar senyap (ringer) dan hanya bisa mulai setelah gerak
+ * pengguna (lihat `unlock`).
+ */
 const FEEDBACK_TONE: Record<ScanFeedback, { frequency: number; seconds: number }> = {
-  added: { frequency: 880, seconds: 0.08 },
-  duplicate: { frequency: 440, seconds: 0.16 },
-  rejected: { frequency: 220, seconds: 0.28 },
+  added: { frequency: 1568, seconds: 0.15 },
+  duplicate: { frequency: 880, seconds: 0.22 },
+  rejected: { frequency: 330, seconds: 0.4 },
 };
+
+const TONE_PEAK_GAIN = 0.9;
+const TONE_ATTACK_SECONDS = 0.008;
+const TONE_DECAY_SECONDS = 0.03;
 
 const FEEDBACK_VIBRATION: Record<ScanFeedback, number | number[]> = {
   added: 30,
@@ -66,34 +80,64 @@ export function useScanFeedback() {
     [],
   );
 
-  const announce = useCallback((result: ScanFeedback) => {
-    setFeedback(result);
-    try {
-      const Context = audioContextConstructor();
-      if (Context) {
-        audioRef.current ??= new Context();
-        const context = audioRef.current;
-        const tone = FEEDBACK_TONE[result];
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        oscillator.frequency.value = tone.frequency;
-        gain.gain.value = 0.08;
-        oscillator.connect(gain);
-        gain.connect(context.destination);
-        oscillator.start();
-        oscillator.stop(context.currentTime + tone.seconds);
-      }
-    } catch {
-      // Bunyi tidak tersedia (jsdom, kebijakan autoplay): umpan balik visual tetap ada.
-    }
-    try {
-      navigator.vibrate?.(FEEDBACK_VIBRATION[result]);
-    } catch {
-      // Tidak didukung.
-    }
-    if (timerRef.current !== null) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => setFeedback(null), FLASH_MS);
+  // Konteks dibuat malas; yang `suspended` (kebijakan autoplay) dilanjutkan tiap dipakai.
+  const audioContext = useCallback((): AudioContext | null => {
+    const Context = audioContextConstructor();
+    if (!Context) return null;
+    audioRef.current ??= new Context();
+    const context = audioRef.current;
+    if (context.state === 'suspended')
+      void Promise.resolve(context.resume()).catch(() => undefined);
+    return context;
   }, []);
 
-  return { feedback, announce };
+  /**
+   * Menyiapkan bunyi dari dalam gerak pengguna (ketukan/klik): iOS Safari hanya mau memulai Web Audio dari sana.
+   * Tanpa membunyikan nada.
+   */
+  const unlock = useCallback(() => {
+    try {
+      audioContext();
+    } catch {
+      // Tidak penting.
+    }
+  }, [audioContext]);
+
+  const announce = useCallback(
+    (result: ScanFeedback) => {
+      setFeedback(result);
+      try {
+        const context = audioContext();
+        if (context) {
+          const tone = FEEDBACK_TONE[result];
+          const start = context.currentTime;
+          const end = start + tone.seconds;
+          const oscillator = context.createOscillator();
+          const gain = context.createGain();
+          oscillator.type = 'square';
+          oscillator.frequency.value = tone.frequency;
+          gain.gain.setValueAtTime(0, start);
+          gain.gain.linearRampToValueAtTime(TONE_PEAK_GAIN, start + TONE_ATTACK_SECONDS);
+          gain.gain.setValueAtTime(TONE_PEAK_GAIN, end - TONE_DECAY_SECONDS);
+          gain.gain.linearRampToValueAtTime(0, end);
+          oscillator.connect(gain);
+          gain.connect(context.destination);
+          oscillator.start(start);
+          oscillator.stop(end);
+        }
+      } catch {
+        // Bunyi tidak tersedia (jsdom, kebijakan autoplay): umpan balik visual tetap ada.
+      }
+      try {
+        navigator.vibrate?.(FEEDBACK_VIBRATION[result]);
+      } catch {
+        // Tidak didukung.
+      }
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => setFeedback(null), FLASH_MS);
+    },
+    [audioContext],
+  );
+
+  return { feedback, announce, unlock };
 }
