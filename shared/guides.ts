@@ -6,10 +6,17 @@ export const GUIDE_IDS = [
   'sapaan-awal',
   'dasar-layout',
   'handover-dasar',
+  'handover-buat',
   'tip-handover-tempel-wa',
   'tip-handover-checklist',
   'tip-handover-komentar',
   'qrcode-dasar',
+  'qrcode-buat',
+  'serial-daftar',
+  'serial-detail',
+  'serial-catat',
+  'serial-laporan-daftar',
+  'serial-laporan',
 ] as const;
 export type GuideId = (typeof GUIDE_IDS)[number];
 
@@ -21,10 +28,17 @@ export const GUIDE_VERSIONS: Record<GuideId, number> = {
   'sapaan-awal': 1,
   'dasar-layout': 1,
   'handover-dasar': 1,
+  'handover-buat': 1,
   'tip-handover-tempel-wa': 1,
   'tip-handover-checklist': 1,
   'tip-handover-komentar': 1,
   'qrcode-dasar': 1,
+  'qrcode-buat': 1,
+  'serial-daftar': 1,
+  'serial-detail': 1,
+  'serial-catat': 1,
+  'serial-laporan-daftar': 1,
+  'serial-laporan': 1,
 };
 
 /**

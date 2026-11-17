@@ -61,16 +61,22 @@ export function SerialListPage({ search, onSearchChange, onOpen, onNew }: Serial
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Daftar Serial Number</h1>
-        {onNew ? <Button onClick={onNew}>Tambah Serial Number</Button> : null}
+        {onNew ? (
+          <Button onClick={onNew} data-tour="serial-new">
+            Tambah Serial Number
+          </Button>
+        ) : null}
       </div>
       <NoLocationNotice relevant={!canUseSerialLocationOptions(me)} />
-      <SerialFilters search={search} onChange={onSearchChange} />
+      <div data-tour="serial-filters">
+        <SerialFilters search={search} onChange={onSearchChange} />
+      </div>
       {list.isError ? (
         <p role="alert" className="text-sm text-destructive">
           Gagal memuat serial: {describeError(list.error)}
         </p>
       ) : null}
-      <div className="overflow-x-auto rounded-md border">
+      <div className="overflow-x-auto rounded-md border" data-tour="serial-table">
         <Table>
           <TableHeader>
             <TableRow>
@@ -92,6 +98,7 @@ export function SerialListPage({ search, onSearchChange, onOpen, onNew }: Serial
                     type="button"
                     variant="link"
                     className="h-auto p-0 font-mono"
+                    data-tour="serial-open"
                     onClick={() => onOpen(serial.id)}
                   >
                     {serial.serial}

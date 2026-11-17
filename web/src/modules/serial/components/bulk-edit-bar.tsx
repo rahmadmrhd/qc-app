@@ -66,7 +66,11 @@ export function BulkEditBar({ count, onApply, onRemove, onClearSelection }: Bulk
   }
 
   return (
-    <section aria-label="Ubah massal" className="space-y-3 rounded-lg border bg-muted/30 p-3">
+    <section
+      aria-label="Ubah massal"
+      className="space-y-3 rounded-lg border bg-muted/30 p-3"
+      data-tour="serial-bulk"
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">Ubah massal ({count} baris terpilih)</h2>
         <div className="flex gap-2">

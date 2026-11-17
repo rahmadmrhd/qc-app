@@ -70,6 +70,7 @@ export function ActButtons({ state, actor, onPick }: ActButtonsProps) {
   return (
     <fieldset
       aria-label="Update baru"
+      data-tour="serial-actions"
       className="m-0 flex min-w-0 flex-wrap items-center gap-2 border-0 p-0"
     >
       {specs.map((spec) => (

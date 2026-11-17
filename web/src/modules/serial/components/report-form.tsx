@@ -70,20 +70,26 @@ export function ExistingReportForm({ match, onDone }: ExistingReportFormProps) {
   }
 
   return (
-    <section aria-label="Laporkan Serial Number" className="space-y-4 rounded-lg border p-4">
+    <section
+      aria-label="Laporkan Serial Number"
+      className="space-y-4 rounded-lg border p-4"
+      data-tour="report-result"
+    >
       <UnitSummary match={match} />
-      <MessageField
-        id="report-message"
-        required
-        value={message}
-        onChange={setMessage}
-        error={
-          tooManyImages
-            ? `Maksimal ${SERIAL_LIMITS.messageImagesMax} gambar per catatan`
-            : messageError
-        }
-        disabled={act.isPending}
-      />
+      <div data-tour="report-message">
+        <MessageField
+          id="report-message"
+          required
+          value={message}
+          onChange={setMessage}
+          error={
+            tooManyImages
+              ? `Maksimal ${SERIAL_LIMITS.messageImagesMax} gambar per catatan`
+              : messageError
+          }
+          disabled={act.isPending}
+        />
+      </div>
       {error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -92,6 +98,7 @@ export function ExistingReportForm({ match, onDone }: ExistingReportFormProps) {
       <Button
         type="button"
         variant="destructive"
+        data-tour="report-submit"
         disabled={act.isPending || message.trim() === '' || tooManyImages}
         onClick={() => void submit()}
       >
@@ -192,12 +199,16 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
   }
 
   return (
-    <section aria-label="Serial Number belum tercatat" className="space-y-4 rounded-lg border p-4">
+    <section
+      aria-label="Serial Number belum tercatat"
+      className="space-y-4 rounded-lg border p-4"
+      data-tour="report-result"
+    >
       <p className="text-sm">
         Serial Number <span className="font-mono font-medium">{serial}</span> belum tercatat. Isi
         item dan lokasinya, lalu laporkan. Serial Number akan dicatat langsung sebagai Dilaporkan.
       </p>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2" data-tour="report-new-fields">
         <ItemBuField
           idPrefix="report"
           label="Item"
@@ -219,18 +230,20 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
           />
         </div>
       </div>
-      <MessageField
-        id="report-message"
-        required
-        value={message}
-        onChange={setMessage}
-        error={
-          tooManyImages
-            ? `Maksimal ${SERIAL_LIMITS.messageImagesMax} gambar per catatan`
-            : fields.message
-        }
-        disabled={report.isPending}
-      />
+      <div data-tour="report-message">
+        <MessageField
+          id="report-message"
+          required
+          value={message}
+          onChange={setMessage}
+          error={
+            tooManyImages
+              ? `Maksimal ${SERIAL_LIMITS.messageImagesMax} gambar per catatan`
+              : fields.message
+          }
+          disabled={report.isPending}
+        />
+      </div>
       {error ? (
         <p role="alert" className="text-sm text-destructive">
           {error}
@@ -239,6 +252,7 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
       <Button
         type="button"
         variant="destructive"
+        data-tour="report-submit"
         disabled={report.isPending || !ready}
         onClick={() => void submit()}
       >

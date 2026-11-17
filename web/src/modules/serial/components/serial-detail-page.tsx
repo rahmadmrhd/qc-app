@@ -151,7 +151,9 @@ export function SerialDetailPage({ serialId, onBack, caseId }: SerialDetailPageP
         ) : null}
       </div>
       <ProofProblemBanner count={serial.proofProblemCount} photos={problemPhotos} />
-      <SerialStepper status={serial.status} hasCases={serial.cases.length > 0} />
+      <div data-tour="serial-stepper">
+        <SerialStepper status={serial.status} hasCases={serial.cases.length > 0} />
+      </div>
       <CustodyPanel serial={serial} today={todayWib()} />
       <Summary serial={serial} events={events} />
       <section aria-label="Riwayat" className="space-y-3">

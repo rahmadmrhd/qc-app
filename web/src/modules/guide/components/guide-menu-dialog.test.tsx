@@ -51,6 +51,7 @@ function entry(overrides: Partial<GuideEntry>): GuideEntry {
     status: 'disimpan',
     version: 1,
     title: 'Mengenal tampilan',
+    grup: 'Umum',
     steps: [{ target: 'x', text: 't', advance: 'next' }],
     ...overrides,
   };
@@ -69,9 +70,15 @@ beforeEach(() => {
     entry({
       id: 'handover-dasar',
       title: 'Serah Terima',
+      grup: 'Serah Terima',
       izin: { module: 'handover', level: 'view' },
     }),
-    entry({ id: 'perangkat-pwa', status: 'diturunkan', title: 'Pasang aplikasi' }),
+    entry({
+      id: 'perangkat-pwa',
+      status: 'diturunkan',
+      title: 'Pasang aplikasi',
+      grup: 'Perangkat',
+    }),
     entry({ id: 'tip-x', kind: 'tip', title: 'Tip' }),
   ];
 });
@@ -146,5 +153,46 @@ describe('GuideMenuDialog', () => {
     catalogState.entries = [];
     render(<GuideMenuDialog onClose={() => undefined} />);
     expect(screen.getByText(/Belum ada panduan/)).toBeInTheDocument();
+  });
+  test('panduan dikelompokkan per fitur: judul kelompok, hitungan selesai, dan grid berkolom di layar lebar', () => {
+    catalogState.entries = [
+      entry({ id: 'dasar-layout', title: 'Tata letak' }),
+      entry({ id: 'qr-1', title: 'Daftar QR', grup: 'QR Code' }),
+      entry({ id: 'qr-2', title: 'Buat QR', grup: 'QR Code' }),
+      entry({
+        id: 'perangkat-pwa',
+        status: 'diturunkan',
+        title: 'Pasang aplikasi',
+        grup: 'Perangkat',
+      }),
+    ];
+    state.done = new Map([
+      ['dasar-layout', 1],
+      ['qr-1', 1],
+    ]);
+    render(<GuideMenuDialog onClose={() => undefined} />);
+    const qr = screen.getByRole('region', { name: 'QR Code' });
+    expect(within(qr).getByText('Daftar QR')).toBeInTheDocument();
+    expect(within(qr).getByText('Buat QR')).toBeInTheDocument();
+    expect(within(qr).getByText('1/2 selesai')).toBeInTheDocument();
+    // Panduan perangkat tak punya hitungan selesai (dihitung dari keadaan perangkat).
+    const device = screen.getByRole('region', { name: 'Perangkat' });
+    expect(within(device).queryByText(/selesai/)).toBeNull();
+    // Urutan kelompok mengikuti katalog; kolom grid bertambah di layar lebar.
+    const headings = screen.getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
+    expect(headings).toEqual(['Umum', 'QR Code', 'Perangkat']);
+    expect(qr.parentElement?.className).toMatch(/sm:columns-2/);
+    expect(qr.parentElement?.className).toMatch(/lg:columns-3/);
+  });
+
+  test('keterangan header: semua selesai (panduan perangkat tak dihitung)', () => {
+    state.done = new Map([['dasar-layout', 1]]);
+    render(<GuideMenuDialog onClose={() => undefined} />);
+    expect(screen.getByText(/Semua panduan sudah kamu selesaikan/)).toBeInTheDocument();
+  });
+
+  test('keterangan header: sisa panduan yang belum selesai', () => {
+    render(<GuideMenuDialog onClose={() => undefined} />);
+    expect(screen.getByText(/1 dari 1 panduan belum kamu selesaikan/)).toBeInTheDocument();
   });
 });

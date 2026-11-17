@@ -66,9 +66,13 @@ export function CaseListPage({ search, onSearchChange, onOpen, onReport }: CaseL
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Laporan</h1>
-        {onReport ? <Button onClick={onReport}>Lapor Rusak</Button> : null}
+        {onReport ? (
+          <Button onClick={onReport} data-tour="case-report">
+            Lapor Rusak
+          </Button>
+        ) : null}
       </div>
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3" data-tour="case-filters">
         <div className="space-y-1.5">
           <Label htmlFor="case-search" className="text-xs text-muted-foreground">
             Cari nomor LP atau Serial Number
@@ -113,7 +117,7 @@ export function CaseListPage({ search, onSearchChange, onOpen, onReport }: CaseL
           Gagal memuat laporan: {describeError(list.error)}
         </p>
       ) : null}
-      <div className="overflow-x-auto rounded-md border">
+      <div className="overflow-x-auto rounded-md border" data-tour="case-table">
         <Table>
           <TableHeader>
             <TableRow>
@@ -136,6 +140,7 @@ export function CaseListPage({ search, onSearchChange, onOpen, onReport }: CaseL
                     type="button"
                     variant="link"
                     className="h-auto p-0 font-mono"
+                    data-tour="case-open"
                     onClick={() => onOpen(entry.serialId, entry.id)}
                   >
                     {entry.number}
