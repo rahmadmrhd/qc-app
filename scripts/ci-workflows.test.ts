@@ -1131,7 +1131,8 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
         return [
           'case "$*" in',
           `  *git/ref/deployed/staging*) echo ${BASE} ;;`,
-          `  *compare/${BASE}...${HEAD}*) case "$*" in *--paginate*) echo "paginate tak boleh" >&2; exit 8 ;; esac; printf '${status}\\n${n}\\n${files}' ;;`,
+          // ekspresi --jq skrip HARUS persis menghasilkan urutan status, jumlah, berkas (yang diurai skrip)
+          `  *compare/${BASE}...${HEAD}*) case "$*" in *--paginate*) echo "paginate tak boleh" >&2; exit 8 ;; esac; case "$*" in *".status, ((.files // []) | length), ((.files // [])[] | .filename, (.previous_filename // empty))"*) ;; *) echo "ekspresi jq tak sesuai" >&2; exit 7 ;; esac; printf '${status}\\n${n}\\n${files}' ;;`,
           '  *) echo "gh tak terduga: $*" >&2; exit 9 ;;',
           'esac',
         ].join('\n');
@@ -1184,6 +1185,16 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
         const ok = await detect('', ghOk(many(299)), since);
         expect(ok.stderr).not.toContain('paginate tak boleh');
         expect(Object.values(ok.output).every((value) => value === 'false')).toBe(true);
+      });
+
+      test('rename: jumlah berkas lebih kecil dari jumlah baris (nama lama ikut); 299 berkas + nama lama tidak dianggap terpotong', async () => {
+        const many = `${Array.from({ length: 299 }, (_, i) => `docs/f${i}.md`).join('\\n')}\\ndocs/lama.md\\n`;
+        const result = await detect('', ghOk(many, 'ahead', 299), since);
+        expect(result.stdout).not.toContain('::warning::');
+        expect(Object.values(result.output).every((value) => value === 'false')).toBe(true);
+        // nama lama di folder server ikut memicu server walau nama barunya di docs
+        const moved = await detect('', ghOk('docs/baru.md\\nserver/lama.ts\\n', 'ahead', 1), since);
+        expect(moved.output.server_tests).toBe('true');
       });
 
       test('ref deploy belum ada (404) atau compare gagal: semua true dengan peringatan (aman: deploy)', async () => {
