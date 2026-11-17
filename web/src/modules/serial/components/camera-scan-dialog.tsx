@@ -287,9 +287,10 @@ function CameraScanBody({
               </p>
               <p
                 aria-live="polite"
+                // Tetap dirender (kosong tanpa latar) agar pembaca layar mengumumkan perubahannya.
                 className={cn(
-                  'max-w-full truncate rounded-md bg-black/70 px-2 py-1 text-sm font-medium',
-                  feedback ? FEEDBACK_TEXT_ON_DARK[feedback] : 'hidden',
+                  'max-w-full truncate rounded-md px-2 py-1 text-sm font-medium',
+                  feedback ? `bg-black/70 ${FEEDBACK_TEXT_ON_DARK[feedback]}` : 'p-0',
                 )}
               >
                 {feedback ? `${FEEDBACK_TEXT[feedback]}: ${last}` : ''}
