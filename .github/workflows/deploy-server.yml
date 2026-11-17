@@ -2,7 +2,8 @@ name: Deploy Server
 
 # Deploy server Bun + MariaDB di VPS. Alur: meta -> ci (pemeriksaan terpilih menurut bagian yang berubah, ci.yml) -> build image dan
 # dorong ke GHCR (tag = SHA commit; dilewati bila isi image tak berubah, mis. PR hanya `desktop/**`) -> SSH ke VPS (`deploy.sh`: pull, up -d, tunggu sehat, uji /api/ping lokal dan lewat nginx dari dalam
-# VPS, kembali ke tag sebelumnya bila gagal) -> uji asap publik dari runner (informatif saja). Lihat docs/ci-cd.md untuk yang harus disiapkan pemilik.
+# VPS, kembali ke tag sebelumnya bila gagal) -> uji asap publik dari runner (informatif saja) -> `mark-deployed` mencatat commit itu
+# sebagai `refs/deployed/<env>` (dasar pemilihan pemeriksaan run berikutnya). Lihat docs/ci-cd.md untuk yang harus disiapkan pemilik.
 #
 # Pemicu (keputusan pemilik 2026-11-06, spek §11/§13.2: hanya PR yang di-merge yang men-deploy dev/production):
 # - PR di-merge ke `dev`   (pull_request_target, closed + merged) -> environment `staging`    (qc-dev.rhd.my.id)
@@ -104,9 +105,12 @@ jobs:
 
   # Gerbang: pemeriksaan terpilih menurut bagian yang berubah (typecheck, Biome, tes server terbagi 8 job terhadap MariaDB
   # sungguhan di runner, tes web/desktop) dari workflow yang dapat dipanggil ci.yml. `ref` = commit yang ditentukan job
-  # `meta` (SHA pemicu, atau commit hasil merge untuk PR); bukan head PR. `pr` = nomor PR untuk daftar berkas yang berubah
-  # (kosong pada dispatch = semua dijalankan). Keluaran `image` = isi image berubah; false (mis. PR hanya `desktop/**` atau
-  # dokumentasi) membuat `image` dan `deploy` dilewati dan run tetap hijau.
+  # `meta` (SHA pemicu, atau commit hasil merge untuk PR); bukan head PR. `since-deploy` = environment target pada PR yang
+  # di-merge: perubahan dihitung SEJAK DEPLOY TERAKHIR environment itu (penunjuk `refs/deployed/<env>`, ditulis job
+  # `mark-deployed` di bawah), bukan dari berkas PR pemicu saja, jadi PR yang dibuang antrean concurrency atau berlabel
+  # `skip-deploy` tak membuat kodenya tertinggal (keputusan pemilik 2026-11-17). Kosong pada dispatch = semua dijalankan.
+  # Keluaran `image` = isi image berubah; false (mis. sejak deploy terakhir hanya `desktop/**` atau dokumentasi yang
+  # berubah) membuat `image` dan `deploy` dilewati dan run tetap hijau.
   # `packages: read` wajib walau tak dipakai di sini: GitHub memvalidasi izin job di workflow dipanggil (uji bangun PR).
   ci:
     needs: meta
@@ -117,7 +121,7 @@ jobs:
     uses: ./.github/workflows/ci.yml
     with:
       ref: ${{ needs.meta.outputs.sha }}
-      pr: ${{ github.event.pull_request.number }}
+      since-deploy: ${{ github.event_name == 'pull_request_target' && needs.meta.outputs.target || '' }}
 
   # Build web + image dan dorong ke GHCR dengan tag SHA commit. `docker build` menjalankan `bun run build` (Vite +
   # verify-dist), jadi build web tidak diulang di job ci. Dilewati bila isi image tak berubah (`ci.outputs.image`).
@@ -155,6 +159,39 @@ jobs:
       - name: Nama image
         id: name
         run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/qc-app" >> "$GITHUB_OUTPUT"
+
+      # Kebijakan cache lapisan (keputusan pemilik 2026-11-17). Cache registry dapat ditimpa siapa pun yang boleh mendorong
+      # branch di repositori ini (peracunan lapisan: lapisan dengan isi lain di bawah kunci cache yang sama), jadi PRODUCTION
+      # membangun tanpa cache sama sekali (`no-cache`, bukan hanya tahap web-build: lapisan RUN lain seperti `bun install`
+      # dan `apk add` juga ikut ke image runtime). Staging memakai cache; hasil pembangunan production tetap ditulis
+      # (`cache-to`) agar staging terbantu. Nilai target hanya lewat env, dan target tak dikenal menggagalkan langkah
+      # (tidak diam-diam jatuh ke cache).
+      - name: Tentukan kebijakan cache
+        id: cache
+        env:
+          TARGET: ${{ needs.meta.outputs.target }}
+          IMAGE: ${{ steps.name.outputs.image }}
+        run: |
+          set -euo pipefail
+          case "$TARGET" in
+            production)
+              echo "no_cache=true" >> "$GITHUB_OUTPUT"
+              echo "cache_from=" >> "$GITHUB_OUTPUT"
+              ;;
+            staging)
+              echo "no_cache=false" >> "$GITHUB_OUTPUT"
+              {
+                echo "cache_from<<QC_CACHE_EOF"
+                echo "type=registry,ref=${IMAGE}:buildcache-staging"
+                echo "type=registry,ref=${IMAGE}:buildcache-production"
+                echo "QC_CACHE_EOF"
+              } >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "::error::Target cache tidak dikenal."
+              exit 1
+              ;;
+          esac
 
       # Tanda tangan manifest UI desktop (docs/desktop-ui-signing.md). Kunci privat sampai ke build sebagai BERKAS
       # (`secret-files`, bukan `secrets:` karena nilainya berbaris banyak) dan dihapus di langkah terakhir job.
@@ -203,11 +240,11 @@ jobs:
           build-args: |
             UI_PUBLIC_KEY_PEM=${{ steps.ui-key.outputs.public_key }}
           # Cache lapisan lewat registry GHCR (bukan cache GHA, yang ditolak untuk token `pull_request_target`): job ini berizin
-          # `packages: write`, jadi SEMUA event menulisnya. Tag per environment; kedua tag dibaca agar lapisan web-build
-          # (yang sama untuk keduanya) dipakai ulang, sehingga perubahan server saja tak membangun ulang aset web.
-          cache-from: |
-            type=registry,ref=${{ steps.name.outputs.image }}:buildcache-staging
-            type=registry,ref=${{ steps.name.outputs.image }}:buildcache-production
+          # `packages: write`, jadi SEMUA event menulisnya. Tag per environment. Yang DIBACA ditentukan langkah `cache`:
+          # staging membaca kedua tag (lapisan web-build yang sama dipakai ulang, jadi perubahan server saja tak membangun
+          # ulang aset web); production tanpa cache.
+          no-cache: ${{ steps.cache.outputs.no_cache }}
+          cache-from: ${{ steps.cache.outputs.cache_from }}
           cache-to: type=registry,ref=${{ steps.name.outputs.image }}:buildcache-${{ needs.meta.outputs.target }},mode=max,image-manifest=true,oci-mediatypes=true
 
       # Jangan tinggalkan kunci di runner.
@@ -319,3 +356,35 @@ jobs:
       - name: Hapus kredensial SSH
         if: always()
         run: rm -rf "$HOME/.ssh/deploy_key" "$HOME/.ssh/config" "$HOME/.ssh/known_hosts"
+
+  # Mencatat commit yang BARU SAJA berhasil di-deploy ke environment ini sebagai ref git `refs/deployed/<environment>`
+  # (bukan tag atau release: tak muncul di daftar rilis dan tak bertabrakan dengan tag semver `server-v*` nantinya). Run
+  # berikutnya membandingkan commitnya dengan ref ini untuk memilih pemeriksaan (ci.yml, `since-deploy`), sehingga deploy yang
+  # dilewati/dibuang antrean tak membuat perubahannya terlupa. Ref belum ada = semua pemeriksaan dijalankan.
+  # Job ini SATU-SATUNYA yang berizin `contents: write`; tanpa checkout, aksi pihak ketiga, dan rahasia lain. Gagal menulis
+  # ref hanya berakibat run berikutnya memeriksa lebih banyak (peringatan, bukan kegagalan: deploy sudah sukses).
+  mark-deployed:
+    needs: [meta, deploy]
+    if: needs.deploy.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      TARGET: ${{ needs.meta.outputs.target }}
+      SHA: ${{ needs.meta.outputs.sha }}
+    steps:
+      - name: Catat deploy terakhir
+        run: |
+          set -uo pipefail
+          [[ $TARGET =~ ^(staging|production)$ ]] || { echo "::error::Target tidak valid."; exit 1; }
+          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Commit bukan SHA 40 heksa."; exit 1; }
+          if gh api -X PATCH "repos/$REPO/git/refs/deployed/$TARGET" -f "sha=$SHA" -F force=true > /dev/null; then
+            echo "Penunjuk refs/deployed/$TARGET diperbarui."
+          elif gh api -X POST "repos/$REPO/git/refs" -f "ref=refs/deployed/$TARGET" -f "sha=$SHA" > /dev/null; then
+            echo "Penunjuk refs/deployed/$TARGET dibuat."
+          else
+            echo "::warning::Gagal mencatat refs/deployed/$TARGET; run berikutnya memeriksa lebih banyak."
+          fi

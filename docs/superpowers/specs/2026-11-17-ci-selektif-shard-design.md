@@ -101,11 +101,20 @@ melewatkan). Jalur berkas yang di-rename memakai nama lama DAN baru. Daftar berk
 Typecheck, Biome, dan tes `scripts/` selalu jalan bila `code` benar (murah dan lintas-workspace).
 `desktop/**` saja → `image=false`: tidak ada deploy server.
 
-Sumber daftar berkas: `GET /repos/{repo}/pulls/{n}/files` lewat `gh api --paginate` dengan `GITHUB_TOKEN`
-(`pull-requests: read` di job `changes` saja). Tidak men-checkout head PR; keamanan `pull_request_target` tak berubah.
+Sumber daftar berkas lewat `gh api --paginate` dengan `GITHUB_TOKEN` (`pull-requests: read` di job `changes` saja), tanpa
+men-checkout head PR; keamanan `pull_request_target` tak berubah:
+- `test.yml` (PR): `GET /repos/{repo}/pulls/{n}/files`.
+- `deploy-server.yml` pada PR yang di-merge (keputusan pemilik 2026-11-17): `GET /repos/{repo}/compare/{base}...{sha}`, dengan
+  `base` = commit di ref `refs/deployed/<environment>` (input `since-deploy` = nama environment). Alasan: pemilihan dari
+  berkas PR pemicu saja membuat perubahan terlewat bila run sebelumnya dilewati (`skip-deploy`), dibuang antrean
+  `concurrency`, atau gagal, karena image berikutnya tak memuatnya. Ref belum ada/tak terbaca atau perbandingan gagal = semua
+  true. Ref ditulis job `mark-deployed` (5.5) hanya setelah deploy sukses.
+- `workflow_dispatch`: tanpa keduanya = semua true.
 
 ### 5.3 `ci.yml` (`workflow_call`)
-Input: `ref` (commit yang diperiksa; kosong = checkout bawaan), `pr` (nomor PR; kosong = semua true). Output: `image`.
+Input: `ref` (commit yang diperiksa; kosong = checkout bawaan), `pr` (nomor PR; kosong = semua true), `since-deploy`
+(nama environment untuk membandingkan dengan `refs/deployed/<env>`; menggantikan `pr` bila terisi; 5.2), `build-image`,
+`desktop-check`. Output: `image`.
 Job: `changes` → `typecheck-lint` → `shared-scripts` (tes `shared/` + `scripts/`) → `server` (matrix `shard: 1..8`,
 `fail-fast: false`, MariaDB lokal lewat aksi `./.github/actions/mariadb`) → `web` (tes web) → `desktop` (lihat 5.4).
 **Gerbang `test` ada di `test.yml` (pemanggil), bukan di `ci.yml`**: nama check job dari workflow yang dipanggil menjadi
@@ -135,13 +144,22 @@ Runner `windows-latest`. Langkah: instal dependensi → `bun run --cwd desktop t
   setelah seluruh `ci.yml` selesai, jadi job pemanggil yang menunggunya akan berjalan serial setelah tes (PR lebih lambat
   dari sebelumnya). Konsekuensi: pemanggil wajib memberi `packages: read` walau `build-image` false (GitHub memvalidasi izin
   job di workflow yang dipanggil).
-- `deploy-server.yml`: `meta` tetap; job `check` diganti `ci` (memanggil `ci.yml` dengan `ref = sha` dari `meta`, `pr` = nomor
-  PR atau kosong untuk dispatch). Job `image` dan `deploy` berjalan hanya bila `image` benar (otomatis dilewati untuk PR
-  desktop/docs saja). `paths-ignore` dipertahankan sebagai penyaring awal. `cache-to`: registry
-  `ghcr.io/<owner>/qc-app:buildcache-<environment>` (`mode=max`) untuk **semua event**; `cache-from` memuat kedua tag cache.
-  Pengaturan lama (cache GHA hanya ditulis dispatch) dihapus; tes penjaga diperbarui.
+- `deploy-server.yml`: `meta` tetap; job `check` diganti `ci` (memanggil `ci.yml` dengan `ref = sha` dari `meta`,
+  `since-deploy` = environment target pada PR yang di-merge, kosong untuk dispatch). Job `image` dan `deploy` berjalan hanya
+  bila `image` benar (otomatis dilewati bila sejak deploy terakhir hanya desktop/docs yang berubah). `paths-ignore`
+  dipertahankan sebagai penyaring awal. `cache-to`: registry `ghcr.io/<owner>/qc-app:buildcache-<environment>` (`mode=max`)
+  untuk **semua event**. Pengaturan lama (cache GHA hanya ditulis dispatch) dihapus; tes penjaga diperbarui.
+  **Kebijakan baca cache** (langkah `cache`, keputusan pemilik 2026-11-17): staging `cache-from` kedua tag; **production
+  `no-cache: true` dan tanpa `cache-from`**. Alasan: penulis branch dapat meracuni tag `buildcache-*`, dan production tak
+  boleh memakai lapisan yang tak dihasilkannya. `no-cache` penuh (bukan hanya `web-build`) karena lapisan `RUN` lain juga
+  berakhir di image runtime; biaya: build production lebih lambat. Risiko peracunan pada staging diterima (dicatat).
+- Job `mark-deployed` (`needs: [meta, deploy]`, `if: needs.deploy.result == 'success'`): menulis `refs/deployed/<env>` =
+  commit yang dibangun (`gh api` PATCH, POST bila belum ada; `TARGET`/`SHA` divalidasi sebelum dipakai). Ref git dipilih,
+  bukan tag/release, agar tak muncul di daftar rilis dan tak bentrok dengan tag semver rilis terpisah (5.6). Gagal menulis =
+  peringatan, bukan kegagalan.
 - Izin: `contents: read` tingkat atas tidak berubah; pemanggil `ci` menambah `pull-requests: read` pada job itu saja;
-  `packages: write` tetap hanya di job `image`.
+  `packages: write` tetap hanya di job `image`; `contents: write` hanya di job `mark-deployed` (tanpa checkout, aksi
+  pihak ketiga, atau rahasia).
 
 ### 5.6 Rilis terpisah (hanya dicatat, tidak dibangun sekarang)
 Tag `server-v<semver>` → image + rilis GitHub; `desktop-v<semver>` → installer (versi dari `desktop/package.json`).
@@ -161,6 +179,11 @@ dan tanpa artefak; pembuatan installer menunggu workflow rilis.
 - Build desktop di CI hanya pemeriksaan build; **Windows x64 + Windows arm64**, tanpa Linux.
 - Rilis image dan desktop dipisah (tag berawalan berbeda, versi sendiri).
 - Matrix job untuk shard (8). Bukan 8 proses di satu mesin.
+- Deploy tertinggal: pemeriksaan pada PR yang di-merge dipilih dari perubahan sejak deploy terakhir environment itu, dilacak
+  lewat ref git `refs/deployed/<env>` yang ditulis job `mark-deployed` (5.2, 5.5). Bukan tag atau release.
+- Cache registry: production tanpa cache (`no-cache`); staging membaca kedua tag (5.5). Diterapkan sebagai `no-cache` penuh
+  (lebih luas daripada pilihan literal "tanpa cache web-build") karena lapisan `RUN` lain juga masuk image runtime; pemilik
+  dapat menyempitkannya bila build production terasa terlalu lambat.
 
 ## 7. Risiko dan pertanyaan terbuka
 - **Pemilihan salah (false negative):** diredam oleh aturan konservatif "infra → semua", dan tes unit `ci-changes.ts` untuk
@@ -169,6 +192,10 @@ dan tanpa artefak; pembuatan installer menunggu workflow rilis.
 - **Asap arm64 tidak ada** (5.4); build arm64 hasil kemas silang dapat berbeda dari build arm asli. Diterima untuk tahap ini.
 - **Cache registry** menambah paket `qc-app` di GHCR (tag `buildcache-*`); `QC_KEEP_IMAGES`/pembersihan image lama di VPS
   tidak menyentuhnya. Perlu memastikan paket GHCR mengizinkan repo menulisnya (default untuk paket yang dibuat repo ini).
+  **Peracunan cache**: penulis branch dapat menimpa tag `buildcache-*`; production kebal (tanpa cache), staging tidak.
+- **`refs/deployed/<env>`** diizinkan ditulis `GITHUB_TOKEN` dengan `contents: write` (hanya job `mark-deployed`); belum
+  terverifikasi sampai run pertama (termasuk batas jumlah berkas perbandingan `compare`). Bila perlu dipulihkan manual:
+  `git push -f origin <sha>:refs/deployed/<env>`.
 - **Biaya menit:** matrix 8 job menambah total menit (overhead per job); waktu tunggu turun. Angka belum diukur;
   diukur dari run pertama setelah merge dan dicatat di `docs/ci-cd.md`.
 - **Gerbang `test`:** status check wajib di GitHub menunjuk nama job; perlu dipastikan pemilik tidak mewajibkan nama job

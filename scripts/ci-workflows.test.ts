@@ -135,12 +135,174 @@ describe('deploy-server.yml: keamanan', () => {
     expect(String(build?.with?.['cache-to'])).toBe(
       'type=registry,ref=${{ steps.name.outputs.image }}:buildcache-${{ needs.meta.outputs.target }},mode=max,image-manifest=true,oci-mediatypes=true',
     );
-    const cacheFrom = String(build?.with?.['cache-from']);
-    expect(cacheFrom).toContain('ref=${{ steps.name.outputs.image }}:buildcache-staging');
-    expect(cacheFrom).toContain('ref=${{ steps.name.outputs.image }}:buildcache-production');
+    // Kebijakan baca cache ditentukan langkah `cache` (production tanpa cache; lihat tes di bawah).
+    expect(build?.with?.['cache-from']).toBe('${{ steps.cache.outputs.cache_from }}');
+    expect(build?.with?.['no-cache']).toBe('${{ steps.cache.outputs.no_cache }}');
     expect(codeOf(deployText)).not.toContain('type=gha');
     // cache-to tak bergantung pada jenis event (tak boleh tertukar menjadi "hanya dispatch" lagi)
     expect(String(build?.with?.['cache-to'])).not.toContain('github.event_name');
+  });
+
+  describe('kebijakan cache: production TANPA cache (keputusan pemilik 2026-11-17)', () => {
+    // Cache registry dapat ditimpa penulis branch di repo ini (peracunan lapisan): production tak boleh memakainya,
+    // dan tak cukup hanya tahap web-build karena lapisan RUN lain (bun install, apk add) juga dieksekusi di runtime.
+    const step = (deploy.jobs.image?.steps ?? []).find((s) => s.id === 'cache');
+    const script = step?.run ?? '';
+    const dir = mkdtempSync(join(tmpdir(), 'qc-ci-cache-'));
+
+    async function policy(target: string): Promise<{ code: number; output: string }> {
+      const out = join(dir, `${crypto.randomUUID()}.out`);
+      writeFileSync(out, '');
+      const proc = Bun.spawn(['bash', '-c', script], {
+        env: {
+          ...process.env,
+          TARGET: target,
+          IMAGE: 'ghcr.io/pemilik/qc-app',
+          GITHUB_OUTPUT: out.replaceAll('\\', '/'),
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const code = await proc.exited;
+      return { code, output: readFileSync(out, 'utf8') };
+    }
+
+    test('langkah cache ada, memakai env (bukan ${{ }} di run), dan berjalan sebelum build', () => {
+      expect(step).toBeDefined();
+      expect(script).not.toContain('${{');
+      expect(step?.env?.TARGET).toBe('${{ needs.meta.outputs.target }}');
+      expect(step?.env?.IMAGE).toBe('${{ steps.name.outputs.image }}');
+      const steps = deploy.jobs.image?.steps ?? [];
+      const build = steps.findIndex((s) => s.uses?.startsWith('docker/build-push-action'));
+      expect(steps.indexOf(step as Step)).toBeLessThan(build);
+    });
+
+    test('production: no_cache=true dan cache_from kosong', async () => {
+      const result = await policy('production');
+      expect(result.code).toBe(0);
+      expect(result.output).toContain('no_cache=true');
+      expect(result.output).toMatch(/cache_from=\n/);
+      expect(result.output).not.toContain('type=registry');
+    });
+
+    test('staging: no_cache=false dan membaca kedua tag cache', async () => {
+      const result = await policy('staging');
+      expect(result.code).toBe(0);
+      expect(result.output).toContain('no_cache=false');
+      expect(result.output).toContain(
+        'type=registry,ref=ghcr.io/pemilik/qc-app:buildcache-staging',
+      );
+      expect(result.output).toContain(
+        'type=registry,ref=ghcr.io/pemilik/qc-app:buildcache-production',
+      );
+    });
+
+    test('target tak dikenal ditolak (tidak diam-diam memakai cache)', async () => {
+      for (const bad of ['', 'prod', 'staging;id', 'Production']) {
+        expect((await policy(bad)).code, bad).toBe(1);
+      }
+    });
+
+    test('bersihkan', () => {
+      rmSync(dir, { recursive: true, force: true });
+    });
+  });
+
+  describe('job mark-deployed: penunjuk refs/deployed/<environment> (keputusan pemilik 2026-11-17)', () => {
+    const job = deploy.jobs['mark-deployed'] as Job;
+    const script = (job?.steps ?? []).find((s) => s.run)?.run ?? '';
+    const dir = mkdtempSync(join(tmpdir(), 'qc-ci-mark-'));
+    const SHA = 'c'.repeat(40);
+
+    test('hanya sesudah deploy sukses; satu-satunya job dengan contents: write; tanpa checkout, aksi, dan rahasia', () => {
+      expect(job).toBeDefined();
+      expect([job.needs ?? []].flat().sort()).toEqual(['deploy', 'meta']);
+      expect(job.if).toBe("needs.deploy.result == 'success'");
+      expect(job.permissions).toEqual({ contents: 'write' });
+      expect((job.steps ?? []).some((s) => s.uses)).toBe(false);
+      expect(JSON.stringify(job)).not.toMatch(/secrets\.|UI_SIGNING_KEY|DEPLOY_/);
+      expect(script).not.toContain('${{');
+      expect(job.env).toEqual({
+        GH_TOKEN: '${{ github.token }}',
+        REPO: '${{ github.repository }}',
+        TARGET: '${{ needs.meta.outputs.target }}',
+        SHA: '${{ needs.meta.outputs.sha }}',
+      });
+    });
+
+    async function mark(env: Record<string, string>, gh: string) {
+      const bin = join(dir, `bin-${crypto.randomUUID()}`);
+      mkdirSync(bin);
+      const log = join(dir, `${crypto.randomUUID()}.log`);
+      writeFileSync(log, '');
+      writeFileSync(join(bin, 'gh'), `#!/usr/bin/env bash\necho "$*" >> "$LOG"\n${gh}\n`);
+      chmodSync(join(bin, 'gh'), 0o755);
+      const proc = Bun.spawn(['bash', '-c', script], {
+        env: {
+          ...process.env,
+          PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
+          LOG: log.replaceAll('\\', '/'),
+          GH_TOKEN: 'token-palsu',
+          REPO: 'pemilik/repo',
+          TARGET: 'staging',
+          SHA,
+          ...env,
+        },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      const code = await proc.exited;
+      return {
+        code,
+        calls: readFileSync(log, 'utf8').split('\n').filter(Boolean),
+        stdout: await new Response(proc.stdout).text(),
+      };
+    }
+
+    test('ref sudah ada: memperbarui (PATCH, force) ke SHA yang di-deploy tanpa membuat baru', async () => {
+      const result = await mark({}, 'exit 0');
+      expect(result.code).toBe(0);
+      expect(result.calls).toHaveLength(1);
+      expect(result.calls[0]).toContain('-X PATCH');
+      expect(result.calls[0]).toContain('repos/pemilik/repo/git/refs/deployed/staging');
+      expect(result.calls[0]).toContain(`sha=${SHA}`);
+      expect(result.calls[0]).toContain('force=true');
+    });
+
+    test('ref belum ada: PATCH gagal lalu dibuat (POST refs/deployed/production)', async () => {
+      const result = await mark({ TARGET: 'production' }, 'case "$*" in *PATCH*) exit 1 ;; esac');
+      expect(result.code).toBe(0);
+      expect(result.calls).toHaveLength(2);
+      expect(result.calls[1]).toContain('-X POST');
+      expect(result.calls[1]).toContain('repos/pemilik/repo/git/refs');
+      expect(result.calls[1]).toContain('ref=refs/deployed/production');
+      expect(result.calls[1]).toContain(`sha=${SHA}`);
+    });
+
+    test('keduanya gagal: peringatan, bukan kegagalan job (deploy sudah sukses; akibatnya hanya membangun lebih banyak)', async () => {
+      const result = await mark({}, 'exit 1');
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain('::warning::');
+    });
+
+    test('TARGET atau SHA tak sah ditolak sebelum memanggil gh', async () => {
+      for (const env of [
+        { TARGET: 'staging;id' },
+        { TARGET: '' },
+        { TARGET: 'dev' },
+        { SHA: 'abc' },
+        { SHA: 'C'.repeat(40) },
+        { SHA: `${'c'.repeat(39)}\n` },
+      ]) {
+        const result = await mark(env, 'exit 0');
+        expect(result.code, JSON.stringify(env)).toBe(1);
+        expect(result.calls, JSON.stringify(env)).toEqual([]);
+      }
+    });
+
+    test('bersihkan', () => {
+      rmSync(dir, { recursive: true, force: true });
+    });
   });
 
   test('ci selektif: job ci memanggil ci.yml dengan commit dari meta dan nomor PR; image dan deploy bersyarat', () => {
@@ -148,9 +310,13 @@ describe('deploy-server.yml: keamanan', () => {
     const ci = deploy.jobs.ci as Job;
     expect(ci.uses).toBe('./.github/workflows/ci.yml');
     expect(ci.needs).toBe('meta');
+    // Keputusan pemilik 2026-11-17: pada PR di-merge, perubahan dihitung SEJAK DEPLOY TERAKHIR environment itu
+    // (refs/deployed/<env>), bukan dari berkas PR pemicu: PR yang dibuang antrean concurrency atau berlabel
+    // skip-deploy tak membuat kodenya tertinggal. Dispatch = kosong = semua dijalankan.
     expect(ci.with).toEqual({
       ref: '${{ needs.meta.outputs.sha }}',
-      pr: '${{ github.event.pull_request.number }}',
+      'since-deploy':
+        "${{ github.event_name == 'pull_request_target' && needs.meta.outputs.target || '' }}",
     });
     expect(codeOf(deployText)).not.toContain('secrets: inherit');
     // packages: read wajib walau ci memakainya hanya untuk uji bangun PR (validasi izin workflow dipanggil)
@@ -211,6 +377,7 @@ describe('deploy-server.yml: keamanan', () => {
     for (const [name, job] of Object.entries(deploy.jobs)) {
       const write = Object.entries(job.permissions ?? {}).filter(([, level]) => level === 'write');
       if (name === 'image') expect(write).toEqual([['packages', 'write']]);
+      else if (name === 'mark-deployed') expect(write).toEqual([['contents', 'write']]);
       else expect(write, name).toEqual([]);
     }
     expect(deploy.jobs.deploy?.permissions).toEqual({});
@@ -737,6 +904,7 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
       'desktop-check',
       'pr',
       'ref',
+      'since-deploy',
     ]);
     expect(on.workflow_call.outputs.image?.value).toBe('${{ jobs.changes.outputs.image }}');
     expect(ci.permissions).toEqual({ contents: 'read' });
@@ -873,6 +1041,7 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
     async function detect(
       pr: string,
       gh: string,
+      extra: Record<string, string> = {},
     ): Promise<{ code: number; output: Record<string, string>; stdout: string; stderr: string }> {
       const bin = join(dir, `bin-${crypto.randomUUID()}`);
       mkdirSync(bin);
@@ -888,7 +1057,10 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
           GH_TOKEN: 'token-palsu',
           REPO: 'pemilik/repo',
           PR: pr,
+          SINCE: '',
+          HEAD_SHA: '',
           GITHUB_OUTPUT: unix(out),
+          ...extra,
         },
         stdout: 'pipe',
         stderr: 'pipe',
@@ -944,6 +1116,79 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
           pr,
         ).toBe(true);
       }
+    });
+
+    describe('since-deploy: perubahan sejak deploy terakhir environment (refs/deployed/<env>)', () => {
+      const BASE = 'a'.repeat(40);
+      const HEAD = 'b'.repeat(40);
+      /** `gh` palsu: ref deploy -> BASE; compare BASE...HEAD -> daftar berkas; selain itu galat (menandai pemakaian salah). */
+      const ghOk = (files: string) =>
+        [
+          'case "$*" in',
+          `  *git/ref/deployed/staging*) echo ${BASE} ;;`,
+          `  *compare/${BASE}...${HEAD}*) printf '${files}' ;;`,
+          '  *) echo "gh tak terduga: $*" >&2; exit 9 ;;',
+          'esac',
+        ].join('\n');
+      const since = { SINCE: 'staging', HEAD_SHA: HEAD };
+
+      test('desktop saja sejak deploy terakhir: image false (deploy dilewati), desktop_pack true', async () => {
+        const result = await detect('', ghOk('desktop/a.ts\\n'), since);
+        expect(result.code).toBe(0);
+        expect(result.stderr).not.toContain('gh tak terduga');
+        expect(result.output.image).toBe('false');
+        expect(result.output.desktop_pack).toBe('true');
+      });
+
+      test('kode server dari PR yang tertinggal tetap terdeteksi walau PR terakhir hanya desktop', async () => {
+        const result = await detect('', ghOk('server/src/a.ts\\ndesktop/b.ts\\n'), since);
+        expect(result.output.image).toBe('true');
+        expect(result.output.server_tests).toBe('true');
+      });
+
+      test('since menang atas nomor PR (deploy tak memakai berkas PR pemicu)', async () => {
+        const result = await detect('12', ghOk('desktop/a.ts\\n'), since);
+        expect(result.stderr).not.toContain('gh tak terduga');
+        expect(result.output.image).toBe('false');
+      });
+
+      test('ref deploy belum ada (404) atau compare gagal: semua true dengan peringatan (aman: deploy)', async () => {
+        const noRef = await detect('', 'case "$*" in *git/ref/*) exit 1 ;; esac', since);
+        expect(noRef.code).toBe(0);
+        expect(noRef.stdout).toContain('::warning::');
+        expect(Object.values(noRef.output).every((value) => value === 'true')).toBe(true);
+        const noCompare = await detect(
+          '',
+          `case "$*" in *git/ref/*) echo ${BASE} ;; *) exit 1 ;; esac`,
+          since,
+        );
+        expect(noCompare.stdout).toContain('::warning::');
+        expect(Object.values(noCompare.output).every((value) => value === 'true')).toBe(true);
+      });
+
+      test('SHA dasar atau kepala tak sah, atau since di luar staging/production: gh tak dipanggil, semua true', async () => {
+        for (const extra of [
+          { SINCE: 'staging', HEAD_SHA: 'bukan-sha' },
+          { SINCE: 'staging', HEAD_SHA: '' },
+          { SINCE: 'staging;id', HEAD_SHA: HEAD },
+          { SINCE: 'dev', HEAD_SHA: HEAD },
+        ]) {
+          const result = await detect('', 'echo "gh dipanggil" >&2; exit 99', extra);
+          expect(result.stderr, JSON.stringify(extra)).not.toContain('gh dipanggil');
+          expect(
+            Object.values(result.output).every((value) => value === 'true'),
+            JSON.stringify(extra),
+          ).toBe(true);
+        }
+        const badBase = await detect('', 'echo "bukan-sha"', since);
+        expect(Object.values(badBase.output).every((value) => value === 'true')).toBe(true);
+      });
+
+      test('skrip memakai compare API dan ref deploy, tanpa ${{', () => {
+        expect(script).toContain('compare/');
+        expect(script).toContain('git/ref/deployed/');
+        expect(script).not.toContain('${{');
+      });
     });
 
     test('bersihkan', () => {

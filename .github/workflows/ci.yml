@@ -22,6 +22,13 @@ on:
         description: Nomor PR untuk daftar berkas yang berubah; kosong = jalankan semuanya.
         type: string
         default: ''
+      since-deploy:
+        description: >-
+          staging atau production: hitung perubahan SEJAK DEPLOY TERAKHIR environment itu (refs/deployed/<env>, ditulis job
+          mark-deployed di deploy-server.yml), bukan dari berkas PR; menang atas `pr`. Dipakai deploy agar kode dari PR yang
+          dibuang antrean concurrency atau berlabel skip-deploy tak tertinggal. Kosong = pakai `pr`.
+        type: string
+        default: ''
       build-image:
         description: Uji bangun image (tanpa dorong) bila isi image berubah; dipakai test.yml, paralel dengan tes.
         type: boolean
@@ -64,20 +71,38 @@ jobs:
         with:
           bun-version: 1.4.2
 
-      # Berkas yang di-rename ikut lewat nama lama (`previous_filename`) dan baru. Gagal mengambil daftar = semua true.
+      # Sumber daftar berkas: (1) `since-deploy` = perbandingan commit yang dibangun dengan commit deploy terakhir environment
+      # itu (ref `refs/deployed/<env>`), atau (2) berkas PR (`pr`). Berkas yang di-rename ikut lewat nama lama
+      # (`previous_filename`) dan baru. Parameter tak sah, ref belum ada, atau API gagal = semua true (aman: menjalankan/men-deploy
+      # lebih banyak, tak pernah melewatkan). `since` dan SHA divalidasi ketat sebelum dipakai di jalur API.
       - name: Deteksi
         id: detect
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ inputs.pr }}
+          SINCE: ${{ inputs.since-deploy }}
+          HEAD_SHA: ${{ inputs.ref }}
         run: |
           set -uo pipefail
           files=""
-          if [[ "$PR" =~ ^[0-9]+$ ]]; then
+          fallback() {
+            echo "::warning::$1; semua pekerjaan dijalankan."
+            files=""
+          }
+          if [ -n "$SINCE" ]; then
+            if [[ "$SINCE" =~ ^(staging|production)$ ]] && [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              if ! base=$(gh api "repos/$REPO/git/ref/deployed/$SINCE" --jq '.object.sha') || ! [[ "$base" =~ ^[0-9a-f]{40}$ ]]; then
+                fallback "Penunjuk deploy terakhir ($SINCE) belum ada atau tak terbaca"
+              elif ! files=$(gh api --paginate "repos/$REPO/compare/$base...$HEAD_SHA" --jq '.files[] | .filename, (.previous_filename // empty)'); then
+                fallback "Gagal membandingkan dengan deploy terakhir"
+              fi
+            else
+              fallback "Parameter since-deploy atau commit tak sah"
+            fi
+          elif [[ "$PR" =~ ^[0-9]+$ ]]; then
             if ! files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)'); then
-              echo "::warning::Gagal mengambil daftar berkas PR; semua pekerjaan dijalankan."
-              files=""
+              fallback "Gagal mengambil daftar berkas PR"
             fi
           fi
           printf '%s\n' "$files" | bun run scripts/ci-changes.ts
