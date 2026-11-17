@@ -53,7 +53,7 @@ export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
 
   return (
     <Tabs value={tab} onValueChange={setTab}>
-      <TabsList className="h-auto w-full flex-wrap justify-start gap-1">
+      <TabsList className="h-auto w-full flex-wrap justify-start gap-1" data-tour="serial-timeline">
         <TabsTrigger value="all" className="flex-none">
           {`${HISTORY_GROUP_LABEL.all}${count(counts.current?.all)}`}
         </TabsTrigger>

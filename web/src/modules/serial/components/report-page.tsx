@@ -145,6 +145,7 @@ function Blocked({
         type="button"
         variant="outline"
         size="sm"
+        data-tour="report-blocked-open"
         onClick={() => (match.openCaseId ? onOpen(match.id, match.openCaseId) : onOpen(match.id))}
       >
         {match.openCaseNumber ? `Buka ${match.openCaseNumber}` : 'Buka Serial Number ini'}

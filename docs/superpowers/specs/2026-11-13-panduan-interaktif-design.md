@@ -168,7 +168,8 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
     status baru); banner tidak muncul lagi, panduan tetap ada di menu profil lewat "Ulangi". Pada panduan `dasar`,
     tombol ini juga menutup panduan `baru` yang tercakup (4.2).
   Aturan pemicu: banner hanya untuk panduan yang awalan `halaman`-nya cocok dengan rute yang dibuka; bila lebih dari
-  satu cocok, hanya yang pertama menurut urutan katalog yang tampil (satu banner pada satu waktu). Panduan layout
+  satu cocok, hanya yang pertama menurut urutan katalog yang tampil (satu banner pada satu waktu). Panduan dapat
+  mengecualikan rute di bawah awalannya lewat `halamanKecuali` (mis. `serial-daftar` pada `/serial/new`). Panduan layout
   dasar tidak punya `halaman` (tanpa banner; hanya kartu beranda, menu profil, dan sapaan).
   N dihitung per pengguna: hanya langkah yang lolos `izin` per langkah (4.5).
 - **Titik penanda di item sidebar** yang punya panduan belum selesai bagi pengguna itu (penanda ringan tanpa
@@ -186,6 +187,9 @@ Keputusan pemilik 2026-11-13: sebagian akun dipakai bersama oleh beberapa orang,
 - Menyorot elemen lewat `data-tour`, bukan kelas CSS. Langkah berikut dapat berpindah rute lalu menunggu target muncul.
 - Langkah yang menunggu klik pengguna lanjut otomatis begitu elemen diklik. Tur berhenti SEBELUM tombol simpan/kirim
   mana pun dan tidak pernah memanggil rute tulis.
+- Langkah `langsung` (keputusan 2026-11-17, butir M): untuk langkah yang bergantung hasil pilihan pengguna. Halaman
+  dianggap sudah settle, jadi target yang tak ada ditangani seketika (tanpa menunggu 3 dtk): dilewati bila langkah
+  tanpa `teksJikaKosong`, atau langsung kartu pengganti bila ada. Target yang ada tetap disorot seperti biasa.
 - Langkah `wait` (keputusan 2026-11-15, butir K): untuk halaman yang baru menampilkan bagiannya setelah pengguna
   mengerjakan sesuatu (mis. form QR baru memunculkan nama, sumber link, dan seterusnya hanya setelah item dipilih).
   Targetnya tidak ditutup penahan dan halaman tidak digelapkan (hanya bingkai penyorot) supaya pengguna dapat
@@ -408,28 +412,32 @@ Semuanya 2026-11-13, disetujui pemilik produk:
     pertimbangan butir I (perluasan melengkapi panduan yang belum ada penggunanya di produksi); pemilik produk dapat
     menaikkannya bila ingin pengguna yang sudah menyelesaikan ditawari ulang. Diubah: jumlah langkah pada butir H.
   - **M. Panduan Serial Number: pencatatan sampai pelaporan unit rusak (2026-11-17, permintaan pemilik produk).**
-    Pemilik meminta tutorial pencatatan Serial Number hingga pembuatan laporan. Atas dua pertanyaan perancang,
-    pemilik memilih (1) DUA panduan `dasar` terpisah, bukan satu tur panjang, dan (2) cakupan laporan "plus tinjauan
-    alur status". `serial-dasar` (halaman `/serial`, 9 langkah): daftar, pencarian dan filter, tombol Tambah Serial
-    Number, bagian Default, stiker yang ditempel (pemotongan stok, boleh minus), kolom scan (pemindai fisik, ketik,
-    tempel, kamera), draft, impor/ekspor `.qcsn`, dan Simpan; berhenti SEBELUM tombol Simpan. `serial-laporan`
-    (halaman `/serial/reports`, 12 langkah): tabel dan filter Laporan, klik nomor LP untuk membuka detail serial
-    (langkah `click`), tiga langkah detail (baris tahap, tombol update menurut status/posisi/hak, linimasa bertab), kembali ke
-    tombol Lapor Rusak, pencarian serial di `/serial/report` (langkah `wait` dengan `waitFor: 'report-result'`; mencari
-    tidak menulis apa pun), tiga kemungkinan hasil (belum tercatat, tercatat dan Lolos, tidak bisa dilaporkan), item
-    dan lokasi (khusus serial belum tercatat), catatan wajib, dan tombol "Lapor rusak"; berhenti SEBELUM tombol itu.
-    Alur servis (kirim, terima, diagnosis, cek ulang) tidak diperagakan, hanya disebut lewat tombol update. Izin
-    panduan = `serial: view`; langkah mencatat dan melapor berizin `serial: edit` (pembaca saja melihat 2 langkah
-    dan 6 langkah). Tim servis yang hanya punya `serialservice` belum dicakup: `serialservice` tetap di
-    `MODULES_WITHOUT_GUIDE_YET`, sedangkan `serial` dihapus dari daftar itu. Langkah yang bergantung data (klik nomor
-    LP, baris tahap, tombol update, linimasa, item/lokasi, catatan, tombol Lapor rusak) ber-`teksJikaKosong`, jadi
-    tetap terjelaskan saat papan Laporan kosong atau serial yang dicari tidak bisa dilaporkan. Pilihan perancang
-    (menunggu persetujuan): versi keduanya tetap 1 (pertimbangan butir I); `serial-laporan` diletakkan SEBELUM
-    `serial-dasar` di katalog karena `guideForRoute` memilih panduan pertama yang awalan `halaman`-nya cocok, dan
-    `/serial` juga cocok untuk `/serial/reports` (tanpa urutan ini banner dasar menutup banner Laporan); titik sidebar
-    muncul di Daftar Serial Number dan Laporan. Diubah: bagian 7 butir 5. Diuji di peramban pada akun super admin
-    dev dengan papan Laporan kosong (jalur kartu contoh dan jalur `wait`); belum dengan laporan nyata dan belum di
-    perangkat nyata.
+    Pemilik meminta tutorial pencatatan Serial Number hingga pembuatan laporan. Cakupan laporan: "plus tinjauan alur
+    status". Setelah uji pertama, pemilik menilai satu tur panjang terlalu panjang, tidak lengkap, dan tidak menyesuaikan
+    hasil pencarian, lalu meminta panduan dipecah per tugas (membuat dan membuka detail dibedakan; masing-masing pendek).
+    Hasil: ENAM panduan `dasar`, semuanya maks. 6 langkah, versi 1:
+    - `serial-daftar` (`/serial`, `serial: view`, 3 langkah): tabel, pencarian/filter, tombol Tambah (`edit`).
+    - `serial-detail` (`/serial`, `view`, 5 langkah): klik serial di daftar (langkah `click`), baris tahap, tombol
+      update, alur status (QC melapor, servis, cek ulang), linimasa bertab. Semuanya ber-`teksJikaKosong`.
+    - `serial-catat` (`/serial/new`, `edit`, 5 langkah): bawaan, kolom scan (`wait` sampai ada baris draft), isi
+      draft (foto bukti, hasil, draf tersimpan di perangkat, impor/ekspor `.qcsn`), Detail/Hapus baris, Simpan.
+    - `serial-massal` (`/serial/new`, `edit`, 3 langkah): `wait` baris draft, `wait` centang baris sampai bilah
+      Ubah massal muncul, lalu penjelasan bilah.
+    - `serial-laporan-daftar` (`/serial/reports`, `view`, 3 langkah): tabel Laporan (klik nomor LP membuka detail),
+      filter, tombol Lapor Rusak (`edit`).
+    - `serial-laporan` (`/serial/report`, `edit`, 6 langkah): `wait` pencarian sampai hasil tampil, ringkasan tiga
+      kemungkinan hasil, lalu langkah yang menyesuaikan hasil (Buka laporan bila tak bisa dilaporkan; item/lokasi bila
+      belum tercatat; catatan dan tombol "Lapor rusak" bila bisa dilaporkan). Langkah-langkah itu ber-`langsung` TANPA
+      `teksJikaKosong`: dilewati seketika bila bagiannya tak ada, sehingga pengguna tidak melihat kartu yang tak sesuai
+      layar (itulah keluhan pemilik); "Langkah x dari N" dapat melompat (pertimbangan butir F). Tur berhenti SEBELUM
+      "Lapor rusak".
+    Dialog Detail baris dan dialog kamera hanya dijelaskan lewat teks (dialog modal memblokir kartu tur). Alur servis
+    tidak diperagakan. Tim servis (`serialservice`) belum dicakup: tetap di `MODULES_WITHOUT_GUIDE_YET`, sedangkan
+    `serial` dihapus dari daftar itu. Dua mekanisme mesin tur baru (4.4 dan 4.5): `halamanKecuali` pada panduan dan
+    `langsung` pada langkah. Pilihan perancang (menunggu persetujuan): versi tetap 1 (pertimbangan butir I); banner
+    daftar/detail ikut tampil di `/serial/<id>` (halaman detail). Diubah: 4.4, 4.5, bagian 7 butir 5. Diuji di
+    peramban pada akun super admin dev (papan kosong dan satu laporan aktif); belum di perangkat nyata, dan hasil
+    "sudah tercatat dan Lolos" belum teruji.
   - **Catatan status.** Butir A dan B sudah ada di kode (`pushAvailable` di `push/lib/support.ts`,
     `deviceGuideRelevance` dan `deriveDeviceGuides` di `catalog/device.ts`, `useDeviceGuides`; kartu, banner, dan menu
     memakai satu fungsi relevansi). Pertanyaan terbuka: tidak ada.
@@ -447,8 +455,9 @@ Semuanya 2026-11-13, disetujui pemilik produk:
    di rencana implementasi bersama pemilik produk.
 4. **QR Code Manual Book** (`dasar`, izin `qrcode: view`; dikerjakan 2026-11-15, bagian 6 butir K): membuat konfigurasi
    dari daftar sampai tepat sebelum tombol simpan, memakai langkah `wait` (4.5).
-5. **Serial Number** (dua `dasar`: `serial-dasar` mencatat, `serial-laporan` melaporkan unit rusak; izin `serial: view`,
-   langkah tulis `serial: edit`; dikerjakan 2026-11-17, bagian 6 butir M).
+5. **Serial Number** (enam `dasar` pendek: `serial-daftar`, `serial-detail`, `serial-catat`, `serial-massal`,
+   `serial-laporan-daftar`, `serial-laporan`; izin `serial: view`, langkah tulis `serial: edit`; dikerjakan
+   2026-11-17, bagian 6 butir M).
 6. Modul lain (Item, Stiker, Postel, tim servis `serialservice`, Pengaturan Akses) menyusul di tahap berikutnya.
 
 ## 8. Pilihan perancang (bukan persetujuan pemilik; dapat dikoreksi)
@@ -468,7 +477,7 @@ Semuanya 2026-11-13, disetujui pemilik produk:
   - Tidak ada status `skipped`; penanda ada = selesai; "Nanti" tidak menulis penanda selesai (4.3, 4.4).
   - Tur hanya menyorot, tidak mengisi field apa pun (4.5).
   - `izin` opsional per langkah; langkah tanpa izin dilewati, satu panduan Serah Terima melayani sisi WH dan QC (4.5).
-  - Field `halaman` per panduan; satu banner pada satu waktu menurut urutan katalog; layout dasar tanpa banner (4.4).
+  - Field `halaman` per panduan (dengan `halamanKecuali` opsional); satu banner pada satu waktu menurut urutan katalog; layout dasar tanpa banner (4.4).
   - Klip belum siap tidak menghalangi rilis; fallback daftar langkah; klip di `web/public/klip/`, maks. 1 MB (4.6).
   - Panduan PWA/push: status diturunkan dari keadaan perangkat, satu fungsi penawaran dengan dua sumber;
     `PushOnboarding` tidak diganti (4.3).

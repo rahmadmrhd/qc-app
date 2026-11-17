@@ -165,9 +165,7 @@ export function SerialDetailPage({ serialId, onBack, caseId }: SerialDetailPageP
             onPick={setActing}
           />
         </div>
-        <div data-tour="serial-timeline">
-          <TimelineTabs serial={serial} {...(caseId ? { initialCaseId: caseId } : {})} />
-        </div>
+        <TimelineTabs serial={serial} {...(caseId ? { initialCaseId: caseId } : {})} />
       </section>
       {acting ? <ActDialog serial={serial} kind={acting} onClose={() => setActing(null)} /> : null}
       {editing ? <EditSerialDialog serial={serial} onClose={() => setEditing(false)} /> : null}

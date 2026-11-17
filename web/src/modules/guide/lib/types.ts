@@ -51,6 +51,13 @@ export interface GuideStep {
    * `izin`-nya gugur tetap dibuang di awal.
    */
   teksJikaKosong?: string;
+  /**
+   * Halaman sudah selesai dirender (mis. sesudah langkah `wait` yang menunggu hasil), jadi target yang tak ada
+   * ditangani SEKETIKA, tanpa menunggu `TARGET_WAIT_MS` dengan layar tanpa kartu: tanpa `teksJikaKosong` langkahnya
+   * dilewati (langkah bersyarat: hanya tampil bila bagian itu memang ada, mis. hasil pencarian tertentu), dengan
+   * `teksJikaKosong` jatuh ke kartu pengganti.
+   */
+  langsung?: boolean;
 }
 
 export interface GuideEntry {
@@ -65,6 +72,11 @@ export interface GuideEntry {
   izin?: GuideAccess;
   /** Awalan rute tempat banner panduan ini boleh muncul; kosong = tanpa banner. */
   halaman?: string;
+  /**
+   * Awalan rute di bawah `halaman` yang TIDAK memunculkan banner panduan ini (seperti `excludes` item sidebar): mis.
+   * `/serial` tidak menampilkan banner pencatatan di `/serial/reports` yang punya panduan sendiri.
+   */
+  halamanKecuali?: readonly string[];
   steps: readonly GuideStep[];
   /**
    * Hanya untuk `kind: 'baru'`: id panduan `dasar` induknya. Panduan `baru` baru ditawarkan setelah `dasar` itu

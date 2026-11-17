@@ -416,7 +416,11 @@ export default function TourOverlay({
         openedSidebar.current = true;
       }
       // Target yang sudah terbukti kosong tak ditunggu lagi (langkah data-bergantung berturut-turut tak membeku 3 dtk).
-      const knownEmpty = step.teksJikaKosong !== undefined && emptyTargets.current.has(step.target);
+      // `langsung`: halaman sudah settle (mis. sesudah langkah `wait`), jadi target yang tak ada tak perlu ditunggu:
+      // dilewati seketika (tanpa `teksJikaKosong`) atau jatuh ke kartu pengganti (dengan `teksJikaKosong`).
+      const knownEmpty =
+        step.langsung === true ||
+        (step.teksJikaKosong !== undefined && emptyTargets.current.has(step.target));
       const wait = knownEmpty
         ? { promise: Promise.resolve(document.querySelector(selectorOf(step.target))), cancel() {} }
         : waitForTarget(step.target, targetWaitMs);

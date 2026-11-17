@@ -141,6 +141,7 @@ const RowView = memo(function RowView({
   const status = rowStatus(row);
   return (
     <tr
+      data-tour="serial-row"
       data-result={row.result ?? (status.tone === 'ok' ? 'ok' : 'incomplete')}
       className={cn(
         'border-b align-top',
@@ -153,6 +154,7 @@ const RowView = memo(function RowView({
         <input
           type="checkbox"
           className="size-4 accent-primary"
+          data-tour="serial-row-select"
           aria-label={`Pilih baris ${row.serial}`}
           checked={row.selected}
           disabled={disabled}
@@ -224,7 +226,7 @@ const RowView = memo(function RowView({
         />
       </td>
       <td className={cn('min-w-40 px-2 py-1.5 text-xs', TONE_CLASS[status.tone])}>{status.text}</td>
-      <td className="whitespace-nowrap px-2 py-1 text-right">
+      <td className="whitespace-nowrap px-2 py-1 text-right" data-tour="serial-row-actions">
         <Button
           type="button"
           variant="ghost"

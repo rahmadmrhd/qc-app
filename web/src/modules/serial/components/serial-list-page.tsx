@@ -98,6 +98,7 @@ export function SerialListPage({ search, onSearchChange, onOpen, onNew }: Serial
                     type="button"
                     variant="link"
                     className="h-auto p-0 font-mono"
+                    data-tour="serial-open"
                     onClick={() => onOpen(serial.id)}
                   >
                     {serial.serial}

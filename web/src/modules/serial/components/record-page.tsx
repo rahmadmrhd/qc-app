@@ -612,7 +612,7 @@ export function RecordPage({
             />
             <Label htmlFor="default-sample">Sample</Label>
           </div>
-          <div className="sm:col-span-2 lg:col-span-3" data-tour="serial-stickers">
+          <div className="sm:col-span-2 lg:col-span-3">
             <StickerChecklist
               idPrefix="default"
               state={applicable.state}
@@ -665,25 +665,23 @@ export function RecordPage({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">Draft ({rows.length} baris)</h2>
-        <div data-tour="serial-qcsn">
-          <ImportExportBar
-            rows={rows}
-            disabled={saving || importing}
-            onImported={(result, name) => void handleImported(result, name)}
-            onImportFailed={(message) =>
-              setNotice({ tone: 'error', text: `Impor gagal: ${message}` })
-            }
-            onExported={({ exported, skipped }) =>
-              setNotice({
-                tone: skipped > 0 ? 'warn' : 'info',
-                text:
-                  skipped > 0
-                    ? `${exported} baris diekspor; ${skipped} baris belum lengkap tidak diekspor`
-                    : `${exported} baris diekspor`,
-              })
-            }
-          />
-        </div>
+        <ImportExportBar
+          rows={rows}
+          disabled={saving || importing}
+          onImported={(result, name) => void handleImported(result, name)}
+          onImportFailed={(message) =>
+            setNotice({ tone: 'error', text: `Impor gagal: ${message}` })
+          }
+          onExported={({ exported, skipped }) =>
+            setNotice({
+              tone: skipped > 0 ? 'warn' : 'info',
+              text:
+                skipped > 0
+                  ? `${exported} baris diekspor; ${skipped} baris belum lengkap tidak diekspor`
+                  : `${exported} baris diekspor`,
+            })
+          }
+        />
       </div>
 
       <div data-tour="serial-draft">

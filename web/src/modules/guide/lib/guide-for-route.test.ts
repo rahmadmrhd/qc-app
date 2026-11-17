@@ -37,6 +37,25 @@ describe('guideForRoute', () => {
     expect(guideForRoute([khusus, umum], '/item/brands')).toBe(khusus);
   });
 
+  test('halamanKecuali melewati rute di bawah awalan itu, dan rute lain tetap cocok', () => {
+    const catat: GuideOffer = {
+      ...offer('serial-dasar', '/serial'),
+      entry: {
+        ...offer('serial-dasar', '/serial').entry,
+        halaman: '/serial',
+        halamanKecuali: ['/serial/reports', '/serial/report'],
+      },
+    };
+    const laporan = offer('serial-detail', '/serial/reports');
+    expect(guideForRoute([catat, laporan], '/serial')).toBe(catat);
+    expect(guideForRoute([catat, laporan], '/serial/new')).toBe(catat);
+    expect(guideForRoute([catat, laporan], '/serial/reports')).toBe(laporan);
+    expect(guideForRoute([catat], '/serial/reports')).toBeNull();
+    expect(guideForRoute([catat], '/serial/report')).toBeNull();
+    // Awalan kecuali hanya cocok sampai batas segmen (`/serial/reportsx` bukan `/serial/reports`).
+    expect(guideForRoute([catat], '/serial/reportsx')).toBe(catat);
+  });
+
   test('panduan tanpa halaman (mis. dasar-layout) tidak pernah cocok', () => {
     const layout = offer('dasar-layout');
     expect(guideForRoute([layout], '/')).toBeNull();

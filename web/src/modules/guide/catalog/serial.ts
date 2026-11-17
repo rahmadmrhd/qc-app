@@ -4,74 +4,47 @@ const SERIAL_VIEW: GuidePermission = { module: 'serial', level: 'view' };
 const SERIAL_EDIT: GuidePermission = { module: 'serial', level: 'edit' };
 
 /**
- * Panduan dasar pencatatan Serial Number (spek 7 butir 4; keputusan pemilik 2026-11-17, bagian 6 butir M): daftar
- * serial lalu halaman Catat Serial Number sampai tepat sebelum tombol Simpan. Izin panduan = `serial: view` (modul
- * ber-BU; tim servis yang hanya punya `serialservice` belum dicakup panduan ini), langkah mencatat baru berlaku bagi
- * `serial: edit`, jadi pembaca saja hanya melihat dua langkah daftar. Target `data-tour`: `serial-table`,
- * `serial-filters`, `serial-new` di `modules/serial/components/serial-list-page.tsx`; `serial-defaults`,
- * `serial-stickers`, `serial-scan`, `serial-draft`, `serial-qcsn`, `serial-save` di `record-page.tsx`. Semua
- * langkahnya berjenis `next`: tur tidak mengisi field, tidak memindai, dan tidak menyimpan apa pun.
+ * Panduan Serial Number (spek bagian 6 butir M, keputusan pemilik 2026-11-17): enam panduan `dasar` PENDEK, satu per
+ * halaman atau tugas, supaya tak ada tur yang panjang. Izin = modul `serial` (tim servis `serialservice` belum
+ * dicakup). Tur tidak mengisi, memindai, atau menyimpan apa pun; langkah `wait` hanya menunggu pengguna mengetik atau
+ * mencentang sendiri. Daftar target `data-tour` ada di komentar tiap panduan.
+ *
+ * Banner per halaman (`halaman`, satu banner pada satu waktu, urutan katalog): `/serial` dan `/serial/new` ditangani
+ * panduan masing-masing, sedangkan `/serial/report(s)` dan `/serial/settings` dikecualikan dari panduan `/serial`
+ * (`SERIAL_LIST_EXCEPT`) agar banner daftar tidak muncul di halaman lain.
  */
-export const SERIAL_DASAR: GuideEntry = {
-  id: 'serial-dasar',
+const SERIAL_LIST_EXCEPT = [
+  '/serial/new',
+  '/serial/report',
+  '/serial/reports',
+  '/serial/settings',
+] as const;
+
+/** Daftar Serial Number. Target: `serial-table`, `serial-filters`, `serial-new` (`serial-list-page.tsx`). */
+export const SERIAL_DAFTAR: GuideEntry = {
+  id: 'serial-daftar',
   kind: 'dasar',
   status: 'disimpan',
   version: 1,
-  title: 'Mencatat Serial Number',
+  title: 'Mengenal daftar Serial Number',
   izin: SERIAL_VIEW,
   halaman: '/serial',
+  halamanKecuali: SERIAL_LIST_EXCEPT,
   steps: [
     {
       target: 'serial-table',
       route: '/serial',
-      text: 'Ini daftar Serial Number di Business Unit (BU) yang boleh kamu lihat. Tiap baris memuat item, BU, lokasi, tanggal uji, status (Lolos, Dilaporkan, Rusak, dan seterusnya), serta posisinya. Klik serialnya untuk membuka detail.',
+      text: 'Ini daftar Serial Number di Business Unit (BU) yang boleh kamu lihat: item, BU, lokasi, tanggal uji, status (Lolos, Dilaporkan, Rusak, dan seterusnya), serta posisinya. Klik serialnya untuk membuka detail.',
       advance: 'next',
     },
     {
       target: 'serial-filters',
-      text: 'Ketik satu serial untuk mencocokkan awalannya, atau tempel beberapa serial (satu per baris) untuk mencocokkan persis. Tombol kamera di kolom pencarian membaca barcode lewat kamera. Di bawahnya ada filter BU, item, lokasi, status, posisi, rentang tanggal uji, dan "Dicatat oleh saya".',
+      text: 'Ketik satu serial untuk mencocokkan awalannya, atau tempel beberapa (satu per baris) untuk mencocokkan persis; tombol kamera membaca barcode. Filter lain: BU, item, lokasi, status, posisi, tanggal uji, dan "Dicatat oleh saya".',
       advance: 'next',
     },
     {
       target: 'serial-new',
-      text: 'Mau mencatat serial baru? Tombol ini membuka halaman Catat Serial Number. Kita lanjut ke sana.',
-      advance: 'next',
-      izin: SERIAL_EDIT,
-    },
-    {
-      target: 'serial-defaults',
-      route: '/serial/new',
-      text: 'Isi bawaan sekali saja di sini: item (BU mengikuti item), lokasi, tanggal uji, catatan, dan apakah unitnya sample. Isian ini dipakai untuk serial yang ditambahkan sesudahnya; baris yang sudah ada di draft tidak berubah. Panduan tidak mengisi apa pun, jadi isi sendiri saat mencatat sungguhan.',
-      advance: 'next',
-      izin: SERIAL_EDIT,
-    },
-    {
-      target: 'serial-stickers',
-      text: 'Stiker yang berlaku bagi item itu muncul di sini, semuanya tercentang dengan jumlah awalnya (belum muncul sebelum item dipilih). Setiap serial yang disimpan memotong stok stiker yang tercentang sebanyak jumlahnya; stok boleh sampai minus dan akan tampil "Kurang N" di halaman stok.',
-      advance: 'next',
-      izin: SERIAL_EDIT,
-    },
-    {
-      target: 'serial-scan',
-      text: 'Scan dengan pemindai barcode (kolom ini sudah terfokus), atau ketik lalu Enter, atau tempel banyak serial sekaligus, satu per baris. Tiap serial langsung masuk ke draft di bawah dan serial kembar dilewati. Huruf kecil dijadikan huruf besar dan MAC address dirapikan otomatis. Tombol kamera di kanan atas kolom membuka pemindai kamera ponsel.',
-      advance: 'next',
-      izin: SERIAL_EDIT,
-    },
-    {
-      target: 'serial-draft',
-      text: 'Serial yang sudah di-scan berkumpul di draft. Tiap baris bisa diubah langsung (tanggal uji, sample, catatan), dicentang untuk diubah massal, atau dibuka lewat Detail untuk memilih ulang item, lokasi, dan stiker. Kolom Foto untuk melampirkan foto bukti QC (opsional, maksimal 5 per serial). Draft tersimpan otomatis di perangkat ini, jadi aman kalau halaman tertutup.',
-      advance: 'next',
-      izin: SERIAL_EDIT,
-    },
-    {
-      target: 'serial-qcsn',
-      text: 'Perlu memindahkan draft ke perangkat lain? Ekspor jadi berkas .qcsn lalu impor di perangkat itu. Baris yang belum lengkap tidak ikut terekspor.',
-      advance: 'next',
-      izin: SERIAL_EDIT,
-    },
-    {
-      target: 'serial-save',
-      text: 'Simpan menyimpan semua baris sekaligus sebagai Serial Number berstatus Lolos. Serial yang sudah tercatat ditandai duplikat dan tidak dibuat ulang, sedangkan baris yang gagal tetap di draft supaya bisa diperbaiki. Kalau semuanya berhasil, kamu kembali ke daftar. Panduan berhenti di sini: belum ada yang tersimpan.',
+      text: 'Mau mencatat serial baru? Tombol ini membuka halaman Catat Serial Number, yang punya panduannya sendiri.',
       advance: 'next',
       izin: SERIAL_EDIT,
     },
@@ -79,115 +52,226 @@ export const SERIAL_DASAR: GuideEntry = {
 };
 
 /**
- * Panduan dasar pelaporan unit rusak (keputusan pemilik 2026-11-17, bagian 6 butir M): daftar Laporan, intip detail
- * serial (baris tahap, tombol update, linimasa), lalu halaman Lapor Rusak sampai tepat sebelum tombol "Lapor rusak".
- * Izin = `serial: view`; langkah membuat laporan baru berlaku bagi `serial: edit`. Target `data-tour`: `case-table`,
- * `case-filters`, `case-open`, `case-report` di `case-list-page.tsx`; `serial-stepper`, `serial-actions`,
- * `serial-timeline` di `serial-detail-page.tsx` (dan `act-buttons.tsx`); `report-serial`, `report-result`,
- * `report-new-fields`, `report-message`, `report-submit` di `report-page.tsx` dan `report-form.tsx`.
- *
- * Langkah `case-open` berjenis `click` (pengguna sendiri membuka detail dari baris pertama); detail serial dan
- * tombol update bergantung data (laporan ada atau tidak, hak, status), jadi langkahnya ber-`teksJikaKosong` dan tampil
- * sebagai kartu contoh di tengah layar bila target tak ada. Hasil pencarian di halaman Lapor Rusak baru muncul
- * setelah pengguna mengetik serial: langkah pencarian berjenis `wait` (`waitFor: 'report-result'`); mencari tidak
- * menyimpan apa pun. Tur berhenti SEBELUM tombol "Lapor rusak": tidak ada laporan yang dibuat.
+ * Detail satu Serial Number, dibuka dari baris pertama daftar (langkah `click`). Target: `serial-open`
+ * (`serial-list-page.tsx`); `serial-stepper`, `serial-actions`, `serial-timeline` (`serial-detail-page.tsx`,
+ * `act-buttons.tsx`, `timeline-tabs.tsx`). Semua langkah detail bergantung data, jadi ber-`teksJikaKosong`.
  */
-export const SERIAL_LAPORAN: GuideEntry = {
-  id: 'serial-laporan',
+export const SERIAL_DETAIL: GuideEntry = {
+  id: 'serial-detail',
   kind: 'dasar',
   status: 'disimpan',
   version: 1,
-  title: 'Melaporkan unit rusak',
+  title: 'Membaca detail Serial Number',
+  izin: SERIAL_VIEW,
+  halaman: '/serial',
+  halamanKecuali: SERIAL_LIST_EXCEPT,
+  steps: [
+    {
+      target: 'serial-open',
+      route: '/serial',
+      text: 'Klik salah satu serial untuk membuka detailnya. Kita intip isinya.',
+      teksJikaKosong:
+        'Belum ada serial di daftar. Begitu ada, klik serialnya untuk membuka halaman detail.',
+      advance: 'click',
+    },
+    {
+      target: 'serial-stepper',
+      text: 'Baris tahap menunjukkan posisi unit dalam penanganan, dari Lolos sampai Lolos atau Rusak. Tahap yang menyala adalah status unit sekarang.',
+      teksJikaKosong:
+        'Di detail serial ada baris tahap: Lolos, Dilaporkan, Di servis, Diagnosis, Sedang diperbaiki, Menunggu cek ulang, lalu Lolos atau Rusak. Tahap yang menyala adalah status unit sekarang.',
+      advance: 'next',
+    },
+    {
+      target: 'serial-actions',
+      text: 'Tombol update di sebelah judul Riwayat berubah mengikuti status dan posisi unit, dan hanya menampilkan yang boleh kamu kerjakan: Lapor rusak, Kirim ke servis, Terima, Diagnosis, Cek ulang, atau Catatan.',
+      teksJikaKosong:
+        'Di detail serial, tombol update ada di sebelah judul Riwayat. Isinya berubah mengikuti status dan posisi unit, dan hanya yang boleh kamu kerjakan; tanpa aksi yang cocok, tombolnya tidak tampil.',
+      advance: 'next',
+    },
+    {
+      target: 'serial-actions',
+      text: 'Alurnya: QC melaporkan lalu Kirim ke servis. Tim servis Terima, Diagnosis, Sedang diperbaiki, lalu Selesai (kembali ke QC) atau Nyatakan rusak. QC Terima lalu Cek ulang: lolos menutup laporan, tidak lolos membuatnya tetap terbuka.',
+      teksJikaKosong:
+        'Alurnya: QC melaporkan lalu Kirim ke servis. Tim servis Terima, Diagnosis, Sedang diperbaiki, lalu Selesai (kembali ke QC) atau Nyatakan rusak. QC Terima lalu Cek ulang: lolos menutup laporan, tidak lolos membuatnya tetap terbuka.',
+      advance: 'next',
+    },
+    {
+      target: 'serial-timeline',
+      text: 'Riwayat dibagi per tab: Semua, satu tab per laporan (LP-…), Pengecekan, dan Perubahan data. Tiap kejadian jadi satu kartu di bawahnya dan yang terbaru ditandai.',
+      teksJikaKosong:
+        'Riwayat di detail serial dibagi per tab: Semua, satu tab per laporan (LP-…), Pengecekan, dan Perubahan data. Tiap kejadian jadi satu kartu dan yang terbaru ditandai.',
+      advance: 'next',
+    },
+  ],
+};
+
+/**
+ * Catat Serial Number: bawaan, scan, draft, dan Simpan. Target: `serial-defaults`, `serial-scan`, `serial-draft`,
+ * `serial-row-actions`, `serial-save` (`record-page.tsx`, `staging-table.tsx`). Berhenti SEBELUM Simpan.
+ */
+export const SERIAL_CATAT: GuideEntry = {
+  id: 'serial-catat',
+  kind: 'dasar',
+  status: 'disimpan',
+  version: 1,
+  title: 'Mencatat Serial Number',
+  izin: SERIAL_EDIT,
+  halaman: '/serial/new',
+  steps: [
+    {
+      target: 'serial-defaults',
+      route: '/serial/new',
+      text: 'Isi bawaan sekali saja: item (BU mengikuti item), lokasi, tanggal uji, catatan, sample, dan stiker yang ditempel (semua yang berlaku tercentang; tiap serial yang disimpan memotong stok stikernya). Dipakai untuk serial yang ditambahkan sesudahnya. Panduan tidak mengisi apa pun, jadi isi sendiri.',
+      advance: 'next',
+    },
+    {
+      target: 'serial-scan',
+      text: 'Scan dengan pemindai barcode, ketik lalu Enter, tempel banyak serial (satu per baris), atau pakai tombol kamera di kanan atas. Coba ketik serial apa saja (mis. TEST-001) lalu Enter; Lanjut aktif setelah satu baris muncul di draft. Belum ada yang tersimpan sampai kamu menekan Simpan.',
+      advance: 'wait',
+      waitFor: 'serial-row',
+    },
+    {
+      target: 'serial-draft',
+      text: 'Tiap serial jadi satu baris draft. Tanggal uji, sample, catatan, dan foto bukti QC (opsional, maksimal 5) bisa diubah langsung. Kolom Hasil memberi tahu yang masih kurang dan hasil sesudah Simpan (duplikat atau gagal). Draft tersimpan otomatis di perangkat ini; Impor/Ekspor .qcsn untuk pindah perangkat.',
+      advance: 'next',
+    },
+    {
+      target: 'serial-row-actions',
+      text: 'Detail membuka pilihan item, lokasi, dan stiker khusus baris ini. Hapus membuang baris itu dari draft.',
+      advance: 'next',
+    },
+    {
+      target: 'serial-save',
+      text: 'Simpan menyimpan semua baris sebagai Serial Number berstatus Lolos. Serial yang sudah tercatat ditandai duplikat dan baris yang gagal tetap di draft; kalau semuanya berhasil kamu kembali ke daftar. Panduan berhenti di sini: belum ada yang tersimpan, dan baris contohmu bisa dibuang dengan Kosongkan draft.',
+      advance: 'next',
+    },
+  ],
+};
+
+/**
+ * Ubah massal di draft. Target: `serial-scan`, `serial-row-select`, `serial-bulk` (`record-page.tsx`,
+ * `staging-table.tsx`, `bulk-edit-bar.tsx`). Dua langkah `wait`: menunggu baris draft, lalu menunggu bilah muncul.
+ */
+export const SERIAL_MASSAL: GuideEntry = {
+  id: 'serial-massal',
+  kind: 'dasar',
+  status: 'disimpan',
+  version: 1,
+  title: 'Mengubah banyak baris sekaligus',
+  izin: SERIAL_EDIT,
+  halaman: '/serial/new',
+  steps: [
+    {
+      target: 'serial-scan',
+      route: '/serial/new',
+      text: 'Butuh beberapa baris di draft dulu. Ketik atau tempel dua-tiga serial apa saja (mis. TEST-001, TEST-002), Enter tiap serial. Lanjut aktif setelah ada baris.',
+      advance: 'wait',
+      waitFor: 'serial-row',
+    },
+    {
+      target: 'serial-row-select',
+      text: 'Centang baris ini (atau kotak di judul kolom untuk semua baris). Begitu ada yang terpilih, bilah Ubah massal muncul dan Lanjut aktif.',
+      advance: 'wait',
+      waitFor: 'serial-bulk',
+    },
+    {
+      target: 'serial-bulk',
+      text: 'Isi hanya kolom yang mau diubah untuk semua baris terpilih (kosong = tidak diubah), lalu Terapkan. Hapus yang dipilih membuang semuanya; Batalkan pilihan menghapus centang. Panduan tidak menerapkan apa pun.',
+      advance: 'next',
+    },
+  ],
+};
+
+/** Daftar Laporan. Target: `case-table`, `case-filters`, `case-report` (`case-list-page.tsx`). */
+export const SERIAL_LAPORAN_DAFTAR: GuideEntry = {
+  id: 'serial-laporan-daftar',
+  kind: 'dasar',
+  status: 'disimpan',
+  version: 1,
+  title: 'Mengenal daftar Laporan',
   izin: SERIAL_VIEW,
   halaman: '/serial/reports',
   steps: [
     {
       target: 'case-table',
       route: '/serial/reports',
-      text: 'Halaman Laporan memuat laporan unit bermasalah: nomor LP-tanggal-urutan, serial, item, BU, status, lokasi saat ini, lama, pelapor, dan ringkasan. Satu Serial Number paling banyak punya satu laporan aktif. Laporan yang selesai (hasil Lolos atau Rusak) tetap tersimpan di sini.',
+      text: 'Halaman Laporan memuat laporan unit bermasalah: nomor LP, serial, item, status, lokasi, lama, pelapor. Satu serial paling banyak punya satu laporan aktif. Klik nomor LP untuk membuka detail serialnya.',
       advance: 'next',
     },
     {
       target: 'case-filters',
-      text: 'Cari berdasarkan awalan nomor LP atau serial. Bawaannya hanya laporan aktif; ganti ke "Laporan selesai" atau "Semua laporan", dan batasi per BU bila perlu.',
-      advance: 'next',
-    },
-    {
-      target: 'case-open',
-      text: 'Klik nomor LP untuk membuka detail serialnya, langsung di tab laporan itu. Kita intip isinya.',
-      teksJikaKosong:
-        'Belum ada laporan, jadi belum ada baris yang bisa dibuka. Begitu ada, kamu tinggal mengklik nomor LP-nya untuk membuka detail serial itu.',
-      advance: 'click',
-    },
-    {
-      target: 'serial-stepper',
-      text: 'Baris tahap menunjukkan posisi unit dalam penanganan: Lolos, Dilaporkan, Di servis, Diagnosis, Sedang diperbaiki, Menunggu cek ulang, lalu Lolos atau Rusak. Tahap yang menyala adalah status unit sekarang.',
-      teksJikaKosong:
-        'Belum ada serial yang dibuka. Di halaman detail serial ada baris tahap seperti ini: Lolos, Dilaporkan, Di servis, Diagnosis, Sedang diperbaiki, Menunggu cek ulang, lalu Lolos atau Rusak. Tahap yang menyala adalah status unit sekarang.',
-      advance: 'next',
-    },
-    {
-      target: 'serial-actions',
-      text: 'Tombol update di sebelah judul Riwayat berubah mengikuti status dan posisi unit, dan hanya menampilkan yang boleh kamu kerjakan: Lapor rusak, Kirim ke servis, Terima, Diagnosis, Cek ulang, atau Catatan. Tim QC dan tim servis mengerjakan bagiannya masing-masing.',
-      teksJikaKosong:
-        'Tombol update ada di sebelah judul Riwayat pada detail serial. Isinya berubah mengikuti status dan posisi unit, dan hanya menampilkan yang boleh kamu kerjakan: Lapor rusak, Kirim ke servis, Terima, Diagnosis, Cek ulang, atau Catatan. Kalau tidak ada aksi yang cocok bagi kamu, tombolnya tidak tampil.',
-      advance: 'next',
-    },
-    {
-      target: 'serial-timeline',
-      text: 'Riwayat dibagi per tab: Semua, satu tab per laporan (LP-…), Pengecekan, dan Perubahan data. Tiap kejadian menjadi satu kartu dan yang terbaru ditandai.',
-      teksJikaKosong:
-        'Riwayat di detail serial dibagi per tab: Semua, satu tab per laporan (LP-…), Pengecekan, dan Perubahan data. Tiap kejadian menjadi satu kartu dan yang terbaru ditandai.',
+      text: 'Cari dengan awalan nomor LP atau serial. Bawaannya hanya laporan aktif; ganti ke "Laporan selesai" atau "Semua laporan", dan batasi per BU bila perlu.',
       advance: 'next',
     },
     {
       target: 'case-report',
-      route: '/serial/reports',
-      text: 'Ada unit yang bermasalah? Tombol ini membuka halaman Lapor Rusak untuk membuat laporan baru. Kita lanjut ke sana.',
-      advance: 'next',
-      izin: SERIAL_EDIT,
-    },
-    {
-      target: 'report-serial',
-      route: '/serial/report',
-      text: 'Ketik atau scan Serial Number yang bermasalah, lalu Enter. Satu laporan untuk satu Serial Number. Mencari belum menyimpan apa pun, jadi ketik serial apa saja (mis. TEST-123) supaya hasilnya muncul; tombol Lanjut aktif setelah hasilnya tampil.',
-      advance: 'wait',
-      waitFor: 'report-result',
-      izin: SERIAL_EDIT,
-    },
-    {
-      target: 'report-result',
-      text: 'Hasilnya ada tiga kemungkinan. Belum tercatat: kamu mengisi item dan lokasi, lalu Serial Number dicatat langsung sebagai Dilaporkan. Sudah tercatat dan Lolos: cukup tulis catatan. Tidak bisa dilaporkan (sudah ada laporan aktif, sudah Rusak, atau sedang dalam penanganan): kamu diberi tombol untuk membuka serialnya.',
-      advance: 'next',
-      izin: SERIAL_EDIT,
-    },
-    {
-      target: 'report-new-fields',
-      text: 'Khusus serial yang belum tercatat: pilih item (BU mengikuti item) dan lokasi unitnya.',
-      teksJikaKosong:
-        'Bagian ini hanya muncul bila Serial Number belum tercatat: kamu memilih item (BU mengikuti item) dan lokasi unitnya, lalu Serial Number dicatat langsung sebagai Dilaporkan.',
-      advance: 'next',
-      izin: SERIAL_EDIT,
-    },
-    {
-      target: 'report-message',
-      text: 'Catatan wajib diisi: apa yang rusak dan gejalanya. Kamu bisa menyisipkan gambar (maksimal 10) sebagai bukti. Catatan ini menjadi isi laporan di riwayat dan dibaca tim servis.',
-      teksJikaKosong:
-        'Kalau Serial Number bisa dilaporkan, kamu menulis catatan wajib di sini: apa yang rusak dan gejalanya, boleh disertai gambar (maksimal 10) sebagai bukti.',
-      advance: 'next',
-      izin: SERIAL_EDIT,
-    },
-    {
-      target: 'report-submit',
-      text: 'Lapor rusak membuka laporan LP-… berstatus Dilaporkan, lalu membawamu ke detail serial; dari situ unit dikirim ke servis. Tombol ini aktif setelah catatan terisi. Panduan berhenti di sini: belum ada laporan yang dibuat.',
-      teksJikaKosong:
-        'Kalau Serial Number bisa dilaporkan, tombol Lapor rusak di sini membuka laporan LP-… berstatus Dilaporkan lalu membawamu ke detail serial. Tombol aktif setelah catatan terisi. Panduan berhenti di sini: belum ada laporan yang dibuat.',
+      text: 'Ada unit yang bermasalah? Tombol ini membuka halaman Lapor Rusak, yang punya panduannya sendiri.',
       advance: 'next',
       izin: SERIAL_EDIT,
     },
   ],
 };
 
-// `SERIAL_LAPORAN` sengaja lebih dulu: banner memilih panduan pertama yang `halaman`-nya cocok dengan rute, dan
-// `/serial` juga cocok untuk `/serial/reports` (awalan). Urutan ini menjaga banner Laporan tidak tertutup banner dasar.
-export const SERIAL_GUIDES: readonly GuideEntry[] = [SERIAL_LAPORAN, SERIAL_DASAR];
+/**
+ * Lapor Rusak. Langkahnya MENYESUAIKAN hasil pencarian (yang tampil tergantung serial yang diketik): sesudah langkah
+ * `wait`, tiap langkah ber-`langsung` tanpa `teksJikaKosong` dilewati seketika bila bagiannya tak ada. Target:
+ * `report-serial`, `report-result` (semua hasil), `report-blocked-open` (hanya serial yang tak bisa dilaporkan),
+ * `report-new-fields` (hanya serial belum tercatat), `report-message` dan `report-submit` (hanya yang bisa dilaporkan)
+ * di `report-page.tsx` dan `report-form.tsx`. Berhenti SEBELUM tombol "Lapor rusak".
+ */
+export const SERIAL_LAPORAN: GuideEntry = {
+  id: 'serial-laporan',
+  kind: 'dasar',
+  status: 'disimpan',
+  version: 1,
+  title: 'Membuat laporan unit rusak',
+  izin: SERIAL_EDIT,
+  halaman: '/serial/report',
+  steps: [
+    {
+      target: 'report-serial',
+      route: '/serial/report',
+      text: 'Ketik atau scan Serial Number yang bermasalah, lalu Enter. Satu laporan untuk satu Serial Number. Mencari belum menyimpan apa pun; untuk melihat formulir lengkap, ketik serial yang belum tercatat (mis. TEST-123). Lanjut aktif setelah hasilnya tampil.',
+      advance: 'wait',
+      waitFor: 'report-result',
+    },
+    {
+      target: 'report-result',
+      text: 'Hasil pencarian tampil di sini. Belum tercatat: kamu isi item dan lokasi, lalu dicatat langsung sebagai Dilaporkan. Sudah tercatat dan Lolos: cukup tulis catatan. Selain itu serial tidak bisa dilaporkan lagi dari sini.',
+      advance: 'next',
+    },
+    {
+      target: 'report-blocked-open',
+      text: 'Serial ini tidak bisa dilaporkan lagi: sudah ada laporan aktif, sudah dinyatakan Rusak, atau sedang ditangani. Tombol ini membuka laporan atau serialnya untuk dilanjutkan di sana. Karena itu panduan tidak membahas formulir.',
+      langsung: true,
+      advance: 'next',
+    },
+    {
+      target: 'report-new-fields',
+      text: 'Serial ini belum tercatat: pilih item (BU mengikuti item) dan lokasi unitnya.',
+      langsung: true,
+      advance: 'next',
+    },
+    {
+      target: 'report-message',
+      text: 'Catatan wajib diisi: apa yang rusak dan gejalanya. Boleh menyisipkan gambar (maksimal 10) sebagai bukti. Catatan ini menjadi isi laporan dan dibaca tim servis.',
+      langsung: true,
+      advance: 'next',
+    },
+    {
+      target: 'report-submit',
+      text: 'Lapor rusak membuka laporan LP-… berstatus Dilaporkan lalu membawamu ke detail serial. Aktif setelah catatan terisi. Panduan berhenti di sini: belum ada laporan yang dibuat.',
+      langsung: true,
+      advance: 'next',
+    },
+  ],
+};
+
+export const SERIAL_GUIDES: readonly GuideEntry[] = [
+  SERIAL_DAFTAR,
+  SERIAL_DETAIL,
+  SERIAL_CATAT,
+  SERIAL_MASSAL,
+  SERIAL_LAPORAN_DAFTAR,
+  SERIAL_LAPORAN,
+];
