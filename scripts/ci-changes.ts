@@ -59,7 +59,16 @@ const RULES: { prefix: string; sets: (keyof Changes)[] }[] = [
   { prefix: 'server/', sets: ['code', 'server_tests', 'image'] },
   {
     prefix: 'shared/',
-    sets: ['code', 'server_tests', 'web_tests', 'shared_tests', 'desktop_pack', 'image'],
+    // `desktop_tests`: di cabang dev, desktop mengimpor `@shared/desktop-catalog` (ditemukan pemindai impor di CI, PR 102).
+    sets: [
+      'code',
+      'server_tests',
+      'web_tests',
+      'shared_tests',
+      'desktop_tests',
+      'desktop_pack',
+      'image',
+    ],
   },
   { prefix: 'web/', sets: ['code', 'web_tests', 'desktop_pack', 'image'] },
   {

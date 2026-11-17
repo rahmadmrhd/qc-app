@@ -44,9 +44,17 @@ describe('classify: satu bagian monorepo', () => {
     expect(result.server_tests).toBe(false);
   });
 
-  test('shared: server, web, shared, desktop_pack, image; desktop_tests tidak', () => {
+  test('shared: server, web, shared, desktop (di dev desktop mengimpor @shared/desktop-catalog), desktop_pack, image', () => {
     expect(classify(['shared/contract.ts'])).toEqual(
-      only('code', 'server_tests', 'web_tests', 'shared_tests', 'desktop_pack', 'image'),
+      only(
+        'code',
+        'server_tests',
+        'web_tests',
+        'shared_tests',
+        'desktop_tests',
+        'desktop_pack',
+        'image',
+      ),
     );
   });
 

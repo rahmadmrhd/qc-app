@@ -23,7 +23,9 @@ Pemilik produk ingin workflow **lebih cepat dan hanya mengerjakan apa yang berub
    membantu. Yang membantu: banyak runner.
 2. `cache-to` build image hanya ditulis oleh `workflow_dispatch` (token `pull_request_target` ditolak menulis cache GHA).
    Akibatnya deploy dari merge PR hampir selalu membangun ulang web, walau hanya server yang berubah.
-3. `desktop/src` dan `desktop/scripts` **tidak mengimpor `shared/`**. Kontrak desktop ke server adalah endpoint tulisan
+3. Di `main`, `desktop/src` dan `desktop/scripts` tidak mengimpor `shared/`, **tetapi di `dev` desktop sudah mengimpor
+   `@shared/desktop-catalog`** (ditemukan tes pemindai impor di CI PR 102 pada 2026-11-17; aturan `shared/**` kini juga
+   menyalakan `desktop_tests`). Peta aturan harus mengikuti graf impor di `dev`, bukan asumsi ini. Kontrak desktop ke server adalah endpoint tulisan
    tangan (`/auth/desktop/*`, `/api/desktop/ui-manifest`, `/api/desktop/ui-file`, aliran notifikasi) dan kontrak jembatan
    di `countrylock/`. UI web datang dari image server (atau manifest bertanda tangan), jadi UI dan server selalu cocok;
    `minBridge` di manifest melindungi desktop lama dari UI yang butuh jembatan baru.
@@ -86,7 +88,7 @@ Masukan: daftar jalur berkas (satu per baris). Keluaran (`key=true|false` ke `GI
 | `server_tests` | `server/**`, `shared/**`, `deploy/**` (tes `deploy-files`/`deploy-script` ada di server), atau infra |
 | `web_tests` | `web/**`, `shared/**`, `countrylock/**`, atau infra |
 | `shared_tests` | `shared/**` atau infra |
-| `desktop_tests` | `desktop/**`, `countrylock/**`, atau infra |
+| `desktop_tests` | `desktop/**`, `countrylock/**`, `shared/**` (desktop di `dev` mengimpornya), atau infra |
 | `desktop_pack` | `desktop/**`, `countrylock/**`, `web/**`, `shared/**`, atau infra (installer membawa UI dasar dari build web) |
 | `image` | `server/**`, `shared/**`, `web/**`, `countrylock/**`, `scripts/**`, `Dockerfile`, `.dockerignore`, `package.json`, `bun.lock`, `tsconfig.base.json`, dan `desktop/package.json` saja (Dockerfile menyalinnya; keputusan pemilik 2026-11-17) |
 

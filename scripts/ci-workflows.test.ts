@@ -286,14 +286,15 @@ describe('deploy-server.yml: keamanan', () => {
     });
 
     test('TARGET atau SHA tak sah ditolak sebelum memanggil gh', async () => {
-      for (const env of [
+      const invalid: Record<string, string>[] = [
         { TARGET: 'staging;id' },
         { TARGET: '' },
         { TARGET: 'dev' },
         { SHA: 'abc' },
         { SHA: 'C'.repeat(40) },
         { SHA: `${'c'.repeat(39)}\n` },
-      ]) {
+      ];
+      for (const env of invalid) {
         const result = await mark(env, 'exit 0');
         expect(result.code, JSON.stringify(env)).toBe(1);
         expect(result.calls, JSON.stringify(env)).toEqual([]);
