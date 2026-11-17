@@ -21,6 +21,7 @@ export interface ItemRecord {
   model: string;
   key: string;
   isCountryLock: boolean;
+  firmware: string;
   aliases: string[];
   accessories: ItemAccessoryDto[];
   attachments: string[];
@@ -37,6 +38,7 @@ export interface ItemRow {
   model: string;
   key: string;
   is_country_lock: string;
+  firmware: string;
   aliases: string;
   accessories: string;
   attachments: string;
@@ -54,6 +56,7 @@ const ITEM_COLUMN_LIST = [
   'model',
   '`key`',
   'is_country_lock',
+  'firmware',
   'aliases',
   'accessories',
   'attachments',
@@ -110,6 +113,7 @@ export function toItem(row: ItemRow): ItemRecord {
     model: row.model.trim(),
     key: row.key.trim(),
     isCountryLock: row.is_country_lock.trim() === 'true',
+    firmware: row.firmware.trim(),
     aliases: parseStrings(row.aliases),
     accessories: parseAccessories(row.accessories),
     attachments: parseStrings(row.attachments),
@@ -486,6 +490,7 @@ export function insertItemStmts(db: Db, item: ItemRecord): DbStatement[] {
     item.model,
     item.key,
     item.isCountryLock ? 'true' : 'false',
+    item.firmware,
     JSON.stringify(item.aliases),
     aliasKeysOf(item.aliases),
     JSON.stringify(item.accessories),
@@ -499,7 +504,7 @@ export function insertItemStmts(db: Db, item: ItemRecord): DbStatement[] {
   statements.push(
     db
       .prepare(
-        `INSERT INTO items (id, brand_id, model, \`key\`, is_country_lock, aliases, alias_keys, accessories, attachments, detail_md, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO items (id, brand_id, model, \`key\`, is_country_lock, firmware, aliases, alias_keys, accessories, attachments, detail_md, status, created_at, updated_at, updated_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(...binds),
   );
@@ -524,13 +529,14 @@ export function updateItemStmts(
   statements.push(
     db
       .prepare(
-        `UPDATE items SET brand_id = ?, model = ?, \`key\` = ?, is_country_lock = ?, aliases = ?, alias_keys = ?, accessories = ?, attachments = ?, detail_md = ?, status = ?, ${CAS_UPDATED_AT_SET}, updated_by = ? WHERE id = ?`,
+        `UPDATE items SET brand_id = ?, model = ?, \`key\` = ?, is_country_lock = ?, firmware = ?, aliases = ?, alias_keys = ?, accessories = ?, attachments = ?, detail_md = ?, status = ?, ${CAS_UPDATED_AT_SET}, updated_by = ? WHERE id = ?`,
       )
       .bind(
         item.brandId,
         item.model,
         item.key,
         item.isCountryLock ? 'true' : 'false',
+        item.firmware,
         JSON.stringify(item.aliases),
         aliasKeysOf(item.aliases),
         JSON.stringify(item.accessories),

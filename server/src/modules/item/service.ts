@@ -35,6 +35,7 @@ import type {
   SaveItemInput,
   SetItemStatusInput,
 } from '@shared/contract';
+import { isValidFirmware } from '@shared/firmware';
 import { extractFileRefs, hashText, itemKey, normalizeKey } from '@shared/items';
 import { hasLevel } from '@shared/permissions';
 import { wibDateIso } from '@shared/postel';
@@ -127,6 +128,7 @@ export function toItemDto(
     accessories: item.accessories.map((accessory) => ({ ...accessory })),
     attachments: [...item.attachments],
     detail: item.detail,
+    firmware: item.firmware,
     createdAt: item.createdAt,
     updatedBy: item.updatedBy,
   };
@@ -142,6 +144,7 @@ export function itemSnapshot(item: ItemView, detailHash?: string): Record<string
     businessUnits: item.businessUnits.map((bu) => bu.code).sort(),
     model: item.model,
     isCountryLock: item.isCountryLock,
+    firmware: item.firmware,
     status: item.status,
     aliases: [...item.aliases],
     // Skalar teks (bukan objek) agar terbaca di UI Log Audit.
@@ -466,11 +469,40 @@ async function assertItemFilesUsable(
   return [...found];
 }
 
+/**
+ * Kode firmware yang akan disimpan (spek desktop §6.6): hanya untuk item Country lock dan hanya kode milik merk itu.
+ * Dikirim eksplisit tetapi tak berlaku = VALIDATION; tidak dikirim (klien lama) = pertahankan nilai tersimpan bila
+ * masih berlaku bagi merk, selain itu dikosongkan.
+ */
+function resolveItemFirmware(
+  input: SaveItemInput,
+  brandName: string,
+  existing: ItemRecord | undefined,
+): string {
+  if (!input.isCountryLock) {
+    if (input.firmware !== undefined && input.firmware !== '') {
+      const message = 'Firmware hanya untuk item Country lock';
+      throw appError('VALIDATION', message, { firmware: message });
+    }
+    return '';
+  }
+  if (input.firmware !== undefined) {
+    if (!isValidFirmware(brandName, input.firmware)) {
+      const message = 'Firmware tidak dikenal untuk merk ini';
+      throw appError('VALIDATION', message, { firmware: message });
+    }
+    return input.firmware;
+  }
+  const kept = existing?.firmware ?? '';
+  return isValidFirmware(brandName, kept) ? kept : '';
+}
+
 /** Bidang item yang dibandingkan `itemContentEquals`. Alias TIDAK termasuk. */
 type ComparableItem = {
   brandId: string;
   model: string;
   isCountryLock: boolean;
+  firmware: string;
   attachments: readonly string[];
   detail: string;
   accessories: readonly ItemAccessoryDto[];
@@ -486,6 +518,7 @@ export function itemContentEquals(a: ComparableItem, b: ComparableItem): boolean
     a.brandId !== b.brandId ||
     a.model !== b.model ||
     a.isCountryLock !== b.isCountryLock ||
+    a.firmware !== b.firmware ||
     a.status !== b.status ||
     a.detail !== b.detail ||
     a.attachments.length !== b.attachments.length ||
@@ -759,6 +792,7 @@ export async function planItemWrite(
     throw appError('VALIDATION', message, { brandId: message });
   }
   const key = itemKey(brand.name, input.model);
+  const firmware = resolveItemFirmware(input, brand.name, existing);
   const id = existing?.id ?? options.id ?? crypto.randomUUID();
   const owners = await loadNameOwners(env, input, key, id, existing);
   assertItemNamesFree(input, key, owners);
@@ -780,6 +814,7 @@ export async function planItemWrite(
     model: input.model,
     key,
     isCountryLock: input.isCountryLock,
+    firmware,
     aliases: [...input.aliases],
     accessories: input.accessories.map((accessory) => ({ ...accessory })),
     attachments: [...input.attachments],

@@ -644,6 +644,8 @@ export interface ItemDto extends ItemSummaryDto {
   attachments: string[];
   /** Detail Markdown. */
   detail: string;
+  /** Kode firmware Country Lock (`shared/firmware.ts`); '' = belum diisi atau bukan item Country lock. */
+  firmware: string;
   createdAt: string;
   updatedBy: string;
 }
@@ -656,6 +658,12 @@ export interface SaveItemInput {
   brandId: string;
   model: string;
   isCountryLock: boolean;
+  /**
+   * Kode firmware Country Lock; harus salah satu kode merk itu (`shared/firmware.ts`) atau '' dan hanya untuk item
+   * Country lock (selain itu ditolak). Tidak dikirim = tak diubah (klien lama), dan dikosongkan bila item bukan Country
+   * lock atau kodenya tak berlaku bagi merk baru.
+   */
+  firmware?: string;
   aliases: string[];
   /** Instruksi stiker; PUT utuh (daftar kosong = tanpa instruksi). */
   stickerPhotos: ItemStickerPhotoInput[];

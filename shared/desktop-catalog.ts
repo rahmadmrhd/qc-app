@@ -4,6 +4,7 @@
 // Murni (tanpa API runtime/DOM): dipakai server (penyusun), desktop (pemvalidasi cache), dan web (tampilan).
 
 import type { BusinessUnitRefDto, ItemStickerPhotoDto } from './contract';
+import { FIRMWARE_CODE_MAX } from './firmware';
 import type { StickerRule, StickerStatus, StickerSystemKind } from './stickers';
 
 export const DESKTOP_CATALOG_VERSION = 1;
@@ -40,6 +41,11 @@ export interface CatalogItemDto {
   brand: string;
   model: string;
   aliases: string[];
+  /**
+   * Kode firmware Country Lock (`shared/firmware.ts`; '' = belum diisi). Server yang belum mengenal field ini tidak
+   * mengirimnya: pembaca memperlakukan tak ada sebagai ''.
+   */
+  firmware?: string;
   businessUnits: BusinessUnitRefDto[];
   /** Stiker yang berlaku bagi item menurut aturan jenis (stiker aktif; urut nama), sudah diselesaikan server. */
   stickerIds: string[];
@@ -125,6 +131,8 @@ function validItem(entry: unknown): boolean {
     isString(entry.brand) &&
     isString(entry.model) &&
     isArrayOf(entry.aliases, 100, isString) &&
+    (entry.firmware === undefined ||
+      (isString(entry.firmware) && entry.firmware.length <= FIRMWARE_CODE_MAX)) &&
     Array.isArray(entry.businessUnits) &&
     isArrayOf(entry.stickerIds, CATALOG_LIMITS.stickers, isString) &&
     isArrayOf(entry.stickerPhotos, 100, validPhoto)
