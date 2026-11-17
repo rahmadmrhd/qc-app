@@ -107,8 +107,11 @@ men-checkout head PR; keamanan `pull_request_target` tak berubah:
 - `deploy-server.yml` pada PR yang di-merge (keputusan pemilik 2026-11-17): `GET /repos/{repo}/compare/{base}...{sha}`, dengan
   `base` = commit di ref `refs/deployed/<environment>` (input `since-deploy` = nama environment). Alasan: pemilihan dari
   berkas PR pemicu saja membuat perubahan terlewat bila run sebelumnya dilewati (`skip-deploy`), dibuang antrean
-  `concurrency`, atau gagal, karena image berikutnya tak memuatnya. Ref belum ada/tak terbaca atau perbandingan gagal = semua
-  true. Ref ditulis job `mark-deployed` (5.5) hanya setelah deploy sukses.
+  `concurrency`, atau gagal, karena image berikutnya tak memuatnya. Semua true bila: ref belum ada/tak terbaca, perbandingan
+  gagal, status perbandingan bukan `ahead` (tiga-titik dihitung dari merge-base, jadi dasar yang bukan leluhur menghasilkan
+  daftar terlalu kecil), atau 300 berkas atau lebih (batas API compare: berkas hanya di halaman pertama, maks. 300, terpotong
+  diam-diam; terverifikasi dari dokumentasi GitHub dan temuan review independen 2026-11-17). Satu panggilan tanpa
+  `--paginate`. Ref ditulis job `mark-deployed` (5.5) hanya setelah deploy sukses.
 - `workflow_dispatch`: tanpa keduanya = semua true.
 
 ### 5.3 `ci.yml` (`workflow_call`)
