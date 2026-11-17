@@ -6,11 +6,15 @@
 // Pemakaian: `bun run test` (semua berkas, terpecah) atau `bun run test <berkas|folder> [opsi bun test]`
 // (hanya berkas itu, satu proses). Opsi seperti `-t "<nama>"` atau `--bail` diteruskan ke setiap `bun test`.
 // Gagal cepat dengan petunjuk `bun run db:tunnel` bila MariaDB tidak terjangkau.
+//
+// Mode shard untuk CI: `QC_TEST_SHARD=<i>/<n>` menjalankan hanya kelompok ke-i dari n (pembagian di partition.ts) dalam satu
+// proses; dipakai matrix 8 job di .github/workflows/ci.yml (tiap job = runner dan MariaDB sendiri). Tak boleh bersama target.
 import { statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Glob } from 'bun';
 import { testDbUrl } from '../test-support/db-env';
 import { DB_PING_TIMEOUT_MS, pingDatabase } from '../test-support/db-ping';
+import { parseShard, partitionFiles, pickShardFiles } from './partition';
 
 const root = resolve(import.meta.dir, '..');
 /** Batas atas proses paralel: tiap proses memakai maks. 8 koneksi (pool tes 6 + admin 2); `max_connections` VPS = 40. */
@@ -66,17 +70,10 @@ function expandTargets(targets: string[], all: string[]): string[] {
   return [...picked].sort();
 }
 
-/** Pembagian seimbang: berkas terbesar dulu ke proses yang beban totalnya (ukuran berkas) paling kecil. */
+/** Pembagian seimbang menurut ukuran berkas (logika di `partition.ts`); kelompok kosong dibuang di mode lokal. */
 function partition(files: string[], count: number): string[][] {
-  const weights = new Map(files.map((file) => [file, statSync(resolve(root, file)).size]));
-  const shards = Array.from({ length: count }, () => ({ files: [] as string[], load: 0 }));
-  const bySize = [...files].sort((a, b) => (weights.get(b) ?? 0) - (weights.get(a) ?? 0));
-  for (const file of bySize) {
-    const lightest = shards.reduce((min, shard) => (shard.load < min.load ? shard : min));
-    lightest.files.push(file);
-    lightest.load += weights.get(file) ?? 0;
-  }
-  return shards.map((shard) => shard.files.sort()).filter((list) => list.length > 0);
+  const items = files.map((file) => ({ file, size: statSync(resolve(root, file)).size }));
+  return partitionFiles(items, count).filter((list) => list.length > 0);
 }
 
 async function assertDatabaseReachable(): Promise<void> {
@@ -155,12 +152,40 @@ function countOf(output: string, label: 'pass' | 'fail'): number {
 async function main(): Promise<number> {
   const { targets, options } = splitArgs(process.argv.slice(2));
   const all = discoverFiles();
-  const files = targets.length > 0 ? expandTargets(targets, all) : all;
+  let shard: ReturnType<typeof parseShard>;
+  try {
+    shard = parseShard(process.env.QC_TEST_SHARD);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    return 1;
+  }
+  if (shard && targets.length > 0) {
+    console.error('QC_TEST_SHARD tidak dapat dipakai bersama berkas/folder target.');
+    return 1;
+  }
+  // Mode shard (CI): kelompok ke-i dari n untuk SELURUH berkas tes; pembagian sama di semua runner (deterministik).
+  // Tiap job punya MariaDB lokal sendiri, jadi cukup satu proses per shard kecuali QC_TEST_SHARDS meminta lain.
+  let files = targets.length > 0 ? expandTargets(targets, all) : all;
+  if (shard) {
+    const weights = all.map((file) => ({ file, size: statSync(resolve(root, file)).size }));
+    try {
+      files = pickShardFiles(weights, shard);
+    } catch (error) {
+      // Tanpa berkas tes sama sekali (penemuan berkas rusak) = gagal, bukan "shard kosong" yang lulus.
+      console.error(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
+    if (files.length === 0) {
+      console.log(`Shard ${shard.index}/${shard.total} kosong: tidak ada berkas.`);
+      return 0;
+    }
+    console.log(`Shard ${shard.index}/${shard.total}: ${files.length} dari ${all.length} berkas`);
+  }
   if (files.length === 0) {
     console.error('Tidak ada berkas tes.');
     return 1;
   }
-  const requested = Number(process.env.QC_TEST_SHARDS ?? DEFAULT_SHARDS);
+  const requested = Number(process.env.QC_TEST_SHARDS ?? (shard ? 1 : DEFAULT_SHARDS));
   const wanted = Number.isInteger(requested) && requested >= 1 ? requested : DEFAULT_SHARDS;
   if (wanted > MAX_SHARDS) {
     console.warn(
