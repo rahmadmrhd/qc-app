@@ -237,7 +237,7 @@ export function runCli(argv: string[], deps: CliDeps): number {
   return 0;
 }
 
-function realDeps(): CliDeps {
+export function realDeps(): CliDeps {
   const abs = (path: string) => join(ROOT_DIR, path);
   return {
     listDir: (dir) => {
