@@ -135,7 +135,8 @@ test('baris terbaru disorot sebentar dan tabel menggulir ke sana', async () => {
   await scan(ctx, 'aaa1', ['AAA1']);
   const row = screen.getAllByRole('row')[1] as HTMLElement;
   expect(row).toHaveAttribute('data-highlight', 'true');
-  expect(scrollIntoView).toHaveBeenCalled();
+  // Efek gulir berjalan setelah render: tunggu, jangan anggap sudah terpanggil.
+  await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
   await waitFor(() => expect(row).not.toHaveAttribute('data-highlight'), { timeout: 3000 });
   Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
 });
