@@ -126,12 +126,45 @@ describe('deploy-server.yml: keamanan', () => {
     expect(codeOf(deployText)).not.toMatch(/^\s*pull_request:/m);
   });
 
-  test('cache build GHA ditulis hanya oleh workflow_dispatch (token pull_request_target ditolak menulis cache)', () => {
-    // baris LENGKAP: cabang yang tertukar (`&& '' || 'type=gha,...'`) akan membuat pull_request_target menulis cache
-    expect(deployText).toContain(
-      "cache-to: ${{ github.event_name == 'workflow_dispatch' && 'type=gha,scope=qc-app,mode=max' || '' }}",
+  test('cache lapisan image lewat registry GHCR: ditulis job image untuk SEMUA event, tag per environment, tanpa cache GHA', () => {
+    // Token pull_request_target ditolak menulis cache GHA, tetapi job image berizin packages: write sehingga boleh
+    // menulis cache registry pada event apa pun; dengan begitu lapisan web-build dipakai ulang saat hanya server berubah.
+    const build = (deploy.jobs.image?.steps ?? []).find((step) =>
+      step.uses?.startsWith('docker/build-push-action'),
     );
-    expect(deployText).toContain('cache-from: type=gha,scope=qc-app');
+    expect(String(build?.with?.['cache-to'])).toBe(
+      'type=registry,ref=${{ steps.name.outputs.image }}:buildcache-${{ needs.meta.outputs.target }},mode=max,image-manifest=true,oci-mediatypes=true',
+    );
+    const cacheFrom = String(build?.with?.['cache-from']);
+    expect(cacheFrom).toContain('ref=${{ steps.name.outputs.image }}:buildcache-staging');
+    expect(cacheFrom).toContain('ref=${{ steps.name.outputs.image }}:buildcache-production');
+    expect(codeOf(deployText)).not.toContain('type=gha');
+    // cache-to tak bergantung pada jenis event (tak boleh tertukar menjadi "hanya dispatch" lagi)
+    expect(String(build?.with?.['cache-to'])).not.toContain('github.event_name');
+  });
+
+  test('ci selektif: job ci memanggil ci.yml dengan commit dari meta dan nomor PR; image dan deploy bersyarat', () => {
+    expect(deploy.jobs.check).toBeUndefined();
+    const ci = deploy.jobs.ci as Job;
+    expect(ci.uses).toBe('./.github/workflows/ci.yml');
+    expect(ci.needs).toBe('meta');
+    expect(ci.with).toEqual({
+      ref: '${{ needs.meta.outputs.sha }}',
+      pr: '${{ github.event.pull_request.number }}',
+    });
+    expect(codeOf(deployText)).not.toContain('secrets: inherit');
+    // packages: read wajib walau ci memakainya hanya untuk uji bangun PR (validasi izin workflow dipanggil)
+    expect(ci.permissions).toEqual({
+      contents: 'read',
+      'pull-requests': 'read',
+      packages: 'read',
+    });
+    const image = deploy.jobs.image as Job;
+    expect([image.needs ?? []].flat().sort()).toEqual(['ci', 'meta']);
+    expect(image.if).toBe("needs.ci.outputs.image == 'true'");
+    const dep = deploy.jobs.deploy as Job;
+    expect([dep.needs ?? []].flat().sort()).toEqual(['ci', 'image', 'meta']);
+    expect(dep.if).toBe("needs.image.result == 'success'");
   });
 
   test('pull_request_target: job meta hanya jalan bila PR merged; semua job lain bergantung padanya', () => {

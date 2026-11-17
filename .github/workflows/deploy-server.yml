@@ -1,7 +1,7 @@
 name: Deploy Server
 
-# Deploy server Bun + MariaDB di VPS. Alur: check -> build image dan
-# dorong ke GHCR (tag = SHA commit) -> SSH ke VPS (`deploy.sh`: pull, up -d, tunggu sehat, uji /api/ping lokal dan lewat nginx dari dalam
+# Deploy server Bun + MariaDB di VPS. Alur: meta -> ci (pemeriksaan terpilih menurut bagian yang berubah, ci.yml) -> build image dan
+# dorong ke GHCR (tag = SHA commit; dilewati bila isi image tak berubah, mis. PR hanya `desktop/**`) -> SSH ke VPS (`deploy.sh`: pull, up -d, tunggu sehat, uji /api/ping lokal dan lewat nginx dari dalam
 # VPS, kembali ke tag sebelumnya bila gagal) -> uji asap publik dari runner (informatif saja). Lihat docs/ci-cd.md untuk yang harus disiapkan pemilik.
 #
 # Pemicu (keputusan pemilik 2026-11-06, spek §11/§13.2: hanya PR yang di-merge yang men-deploy dev/production):
@@ -102,39 +102,28 @@ jobs:
           echo "target=$target" >> "$GITHUB_OUTPUT"
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-  # Gerbang: typecheck, Biome, dan semua tes (termasuk server terhadap MariaDB sungguhan di runner).
-  check:
+  # Gerbang: pemeriksaan terpilih menurut bagian yang berubah (typecheck, Biome, tes server terbagi 8 job terhadap MariaDB
+  # sungguhan di runner, tes web/desktop) dari workflow yang dapat dipanggil ci.yml. `ref` = commit yang ditentukan job
+  # `meta` (SHA pemicu, atau commit hasil merge untuk PR); bukan head PR. `pr` = nomor PR untuk daftar berkas yang berubah
+  # (kosong pada dispatch = semua dijalankan). Keluaran `image` = isi image berubah; false (mis. PR hanya `desktop/**` atau
+  # dokumentasi) membuat `image` dan `deploy` dilewati dan run tetap hijau.
+  # `packages: read` wajib walau tak dipakai di sini: GitHub memvalidasi izin job di workflow dipanggil (uji bangun PR).
+  ci:
     needs: meta
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
     permissions:
       contents: read
-    env:
-      QC_TEST_DB_URL: mysql://root:ci-only@127.0.0.1:3306/
-    steps:
-      # Aksi pihak ketiga dipatok ke SHA commit (tag mayor di komentar; SHA diambil 2026-11-06).
-      # `ref` = commit yang ditentukan job `meta` (SHA pemicu, atau commit hasil merge untuk PR); bukan head PR.
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ needs.meta.outputs.sha }}
-          persist-credentials: false
-
-      - uses: ./.github/actions/mariadb
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: 1.4.2
-
-      - name: Pasang dependensi
-        run: bun install --frozen-lockfile
-
-      - name: Check
-        run: bun run check
+      pull-requests: read
+      packages: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.meta.outputs.sha }}
+      pr: ${{ github.event.pull_request.number }}
 
   # Build web + image dan dorong ke GHCR dengan tag SHA commit. `docker build` menjalankan `bun run build` (Vite +
-  # verify-dist), jadi build web tidak diulang di job check.
+  # verify-dist), jadi build web tidak diulang di job ci. Dilewati bila isi image tak berubah (`ci.outputs.image`).
   image:
-    needs: [meta, check]
+    needs: [meta, ci]
+    if: needs.ci.outputs.image == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Secret `UI_SIGNING_KEY` (kunci privat tanda tangan manifest UI desktop) dan Variable `UI_PUBLIC_KEY_PEM` ada di
@@ -213,9 +202,13 @@ jobs:
           secret-files: ${{ steps.ui-key.outputs.secret_files }}
           build-args: |
             UI_PUBLIC_KEY_PEM=${{ steps.ui-key.outputs.public_key }}
-          cache-from: type=gha,scope=qc-app
-          # Token `pull_request_target` tak boleh menulis cache GHA ("cache write denied"), jadi hanya dispatch yang menulis; semua event membaca.
-          cache-to: ${{ github.event_name == 'workflow_dispatch' && 'type=gha,scope=qc-app,mode=max' || '' }}
+          # Cache lapisan lewat registry GHCR (bukan cache GHA, yang ditolak untuk token `pull_request_target`): job ini berizin
+          # `packages: write`, jadi SEMUA event menulisnya. Tag per environment; kedua tag dibaca agar lapisan web-build
+          # (yang sama untuk keduanya) dipakai ulang, sehingga perubahan server saja tak membangun ulang aset web.
+          cache-from: |
+            type=registry,ref=${{ steps.name.outputs.image }}:buildcache-staging
+            type=registry,ref=${{ steps.name.outputs.image }}:buildcache-production
+          cache-to: type=registry,ref=${{ steps.name.outputs.image }}:buildcache-${{ needs.meta.outputs.target }},mode=max,image-manifest=true,oci-mediatypes=true
 
       # Jangan tinggalkan kunci di runner.
       - name: Hapus kunci tanda tangan UI
@@ -225,7 +218,8 @@ jobs:
         run: rm -f "$KEY_DIR/ui_signing_key.pem"
 
   deploy:
-    needs: [meta, image]
+    needs: [meta, ci, image]
+    if: needs.image.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     # Rahasia SSH ada di secret ENVIRONMENT (bukan repositori), sehingga hanya job yang berjalan dari branch yang
