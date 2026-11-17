@@ -242,6 +242,12 @@ describe('deploy: Dockerfile dan .dockerignore', () => {
     expect(dockerfile).toContain('ENTRYPOINT ["bun", "src/main.ts"]');
   });
 
+  test('CHANGELOG server ikut image: dikecualikan dari **/*.md di .dockerignore dan disalin Dockerfile', () => {
+    const lines = dockerignore.split('\n').map((line) => line.trim());
+    expect(lines.indexOf('!server/CHANGELOG.md')).toBeGreaterThan(lines.indexOf('**/*.md'));
+    expect(dockerfile).toContain('COPY server/CHANGELOG.md server/CHANGELOG.md');
+  });
+
   test('SHA build: ARG GIT_SHA (bawaan unknown) diteruskan ke ENV GIT_SHA di tahap runtime, bukan di tahap build web', () => {
     expect(dockerfile).toMatch(/^ARG GIT_SHA=unknown$/m);
     expect(dockerfile).toMatch(/^ENV GIT_SHA=\$GIT_SHA$/m);
