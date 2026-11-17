@@ -1,16 +1,22 @@
-import { Flashlight, FlashlightOff, SwitchCamera } from 'lucide-react';
-import type { CSSProperties } from 'react';
+import { Flashlight, FlashlightOff, Minus, Plus, SwitchCamera } from 'lucide-react';
+import { type ReactNode, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { formatZoom } from '../lib/camera-controls';
+import { clampZoom, formatZoom } from '../lib/camera-controls';
 import type { UseCameraScanner } from '../lib/use-camera-scanner';
+import { zoomStepOf } from '../lib/zoom-math';
+import { ZoomSlider } from './zoom-slider';
 
 /** Tombol bulat semi-transparan gelap + ikon putih: terbaca di atas video, target ketuk 44 px. */
 const FLOAT_BUTTON =
   'size-11 rounded-full bg-black/50 text-white hover:bg-black/70 hover:text-white';
 
 /** Panjang trek slider vertikal: menyusut di layar pendek (ponsel landscape) agar tak melebihi area kamera. */
-const ZOOM_TRACK_LENGTH = 'clamp(6rem, 28dvh, 11rem)';
+const ZOOM_TRACK_LENGTH = 'clamp(4rem, 24dvh, 11rem)';
+
+/** Tahan tombol + / - : jeda sebelum berulang, lalu selang antar pengulangan. */
+const HOLD_DELAY_MS = 400;
+const HOLD_INTERVAL_MS = 80;
 
 /**
  * Kontrol kamera yang MENGAMBANG di atas pratinjau: slider zoom vertikal di kanan (label zoom di bawahnya), senter dan
@@ -25,6 +31,17 @@ export function ScanCameraControls({
   onSwitchCamera: () => void;
 }) {
   const range = camera.zoomRange;
+  // Nilai zoom terkini untuk tombol yang berulang (penutup interval tak boleh memakai nilai basi).
+  const zoomRef = useRef(camera.zoom);
+  zoomRef.current = camera.zoom;
+  function stepZoom(direction: 1 | -1) {
+    if (!range) return;
+    const next = clampZoom(zoomRef.current + direction * zoomStepOf(range), range);
+    if (next === zoomRef.current) return;
+    // Optimistis: pengulangan berikutnya (sebelum render ulang) melanjutkan dari nilai ini, bukan nilai basi.
+    zoomRef.current = next;
+    void camera.setZoom(next);
+  }
   const canSwitch = camera.devices.length > 1;
   const nextCameraName = nextDevice(camera)?.label;
   return (
@@ -33,6 +50,7 @@ export function ScanCameraControls({
         // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: pembungkus hanya menahan ketukan agar tak jatuh ke area video; tombol di dalamnya tetap bisa lewat papan ketik.
         <div
           data-testid="camera-controls-left"
+          data-camera-control
           className="absolute bottom-3 left-3 flex items-center gap-2"
           onClick={(event) => event.stopPropagation()}
         >
@@ -72,33 +90,29 @@ export function ScanCameraControls({
         // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: lihat di atas.
         <div
           data-testid="camera-controls-zoom"
+          data-camera-control
           className="absolute right-3 bottom-3 flex flex-col items-center gap-1"
-          style={{ '--zoom-length': ZOOM_TRACK_LENGTH } as CSSProperties}
           onClick={(event) => event.stopPropagation()}
         >
-          <div className="flex flex-col items-center rounded-full bg-black/50 py-2 text-white">
-            <span aria-hidden className="text-base leading-none font-semibold">
-              +
-            </span>
-            {/* Trek vertikal = input range horizontal yang diputar -90 derajat (paling andal lintas peramban); */}
-            {/* ujung kecil di bawah, ujung besar di atas; sentuh dan papan ketik (panah) tetap bekerja. */}
-            <div className="relative h-(--zoom-length) w-11">
-              <input
-                type="range"
-                aria-label="Zoom"
-                aria-orientation="vertical"
-                aria-valuetext={formatZoom(camera.zoom)}
-                className="absolute top-1/2 left-1/2 h-11 w-(--zoom-length) -translate-x-1/2 -translate-y-1/2 -rotate-90 cursor-pointer accent-white"
-                min={range.min}
-                max={range.max}
-                step={range.step}
-                value={camera.zoom}
-                onChange={(event) => void camera.setZoom(Number(event.target.value))}
-              />
-            </div>
-            <span aria-hidden className="text-base leading-none font-semibold">
-              −
-            </span>
+          <div className="flex flex-col items-center rounded-full bg-black/50 py-1 text-white">
+            <ZoomStepButton
+              label="Perbesar"
+              icon={<Plus aria-hidden />}
+              disabled={camera.zoom >= range.max}
+              onStep={() => stepZoom(1)}
+            />
+            <ZoomSlider
+              value={camera.zoom}
+              range={range}
+              length={ZOOM_TRACK_LENGTH}
+              onChange={(value) => void camera.setZoom(value)}
+            />
+            <ZoomStepButton
+              label="Perkecil"
+              icon={<Minus aria-hidden />}
+              disabled={camera.zoom <= range.min}
+              onStep={() => stepZoom(-1)}
+            />
           </div>
           <Button
             type="button"
@@ -126,4 +140,65 @@ export function nextDevice(
   if (devices.length < 2) return undefined;
   const index = devices.findIndex((device) => device.id === currentId);
   return devices[(index + 1) % devices.length];
+}
+
+/**
+ * Tombol + / - zoom (44 px): satu tekan = satu langkah, tahan = berulang. Klik dari papan ketik (`detail` 0) juga
+ * menggeser satu langkah; klik sentuh/mouse sudah ditangani `pointerdown` (tidak dihitung dua kali).
+ */
+function ZoomStepButton({
+  label,
+  icon,
+  disabled,
+  onStep,
+}: {
+  label: string;
+  icon: ReactNode;
+  disabled: boolean;
+  onStep: () => void;
+}) {
+  const delay = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const repeat = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stepRef = useRef(onStep);
+  stepRef.current = onStep;
+
+  // Stabil (hanya menyentuh ref) agar aman dipakai di dependensi efek.
+  const stop = useCallback(() => {
+    if (delay.current !== null) clearTimeout(delay.current);
+    if (repeat.current !== null) clearInterval(repeat.current);
+    delay.current = null;
+    repeat.current = null;
+  }, []);
+  // Tombol berhenti saat melewati batas (disabled) atau dilepas dari pohon.
+  useEffect(() => {
+    if (disabled) stop();
+  }, [disabled, stop]);
+  useEffect(() => stop, [stop]);
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      className="size-11 touch-none rounded-full text-white hover:bg-white/10 hover:text-white"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onPointerDown={(event) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        stop();
+        stepRef.current();
+        delay.current = setTimeout(() => {
+          repeat.current = setInterval(() => stepRef.current(), HOLD_INTERVAL_MS);
+        }, HOLD_DELAY_MS);
+      }}
+      onPointerUp={stop}
+      onPointerLeave={stop}
+      onPointerCancel={stop}
+      onClick={(event) => {
+        if (event.detail === 0) onStep();
+      }}
+    >
+      {icon}
+    </Button>
+  );
 }

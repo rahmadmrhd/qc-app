@@ -41,9 +41,13 @@ const TONE_PEAK_GAIN = 0.9;
 const TONE_ATTACK_SECONDS = 0.008;
 const TONE_DECAY_SECONDS = 0.03;
 
-const FEEDBACK_VIBRATION: Record<ScanFeedback, number | number[]> = {
-  added: 30,
-  duplicate: [40, 40, 40],
+/**
+ * Getar yang jelas berbeda tanpa melihat layar: berhasil = ketukan RINGAN singkat; duplikat = dua denyut BERAT
+ * (150 ms, jeda 70 ms, 150 ms); ditolak = satu dengung panjang 200 ms (satu denyut, tak lebih lama dari pola duplikat).
+ */
+export const FEEDBACK_VIBRATION: Record<ScanFeedback, number | number[]> = {
+  added: 25,
+  duplicate: [150, 70, 150],
   rejected: 200,
 };
 

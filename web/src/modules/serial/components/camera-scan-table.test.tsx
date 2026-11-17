@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { Fragment, StrictMode } from 'react';
 import { toast } from 'sonner';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { BarcodeEngine } from '../lib/barcode-engine';
 import { resetScanAudio, type ScanFeedback } from '../lib/scan-feedback';
 import { CAMERA_ERROR_TEXT } from '../lib/use-camera-scanner';
@@ -149,17 +149,71 @@ test('hasil scan masuk tabel berurutan (No, serial, hapus) dan label Simpan memu
   expect(ctx.onScan).not.toHaveBeenCalled();
 });
 
-test('baris terbaru disorot sebentar dan tabel menggulir ke sana', async () => {
-  const scrollIntoView = vi.fn();
-  Element.prototype.scrollIntoView = scrollIntoView;
+test('baris terbaru disorot sebentar', async () => {
   const ctx = setup();
   await scan(ctx, 'aaa1', ['AAA1']);
   const row = screen.getAllByRole('row')[1] as HTMLElement;
   expect(row).toHaveAttribute('data-highlight', 'true');
-  // Efek gulir berjalan setelah render: tunggu, jangan anggap sudah terpanggil.
-  await waitFor(() => expect(scrollIntoView).toHaveBeenCalled());
   await waitFor(() => expect(row).not.toHaveAttribute('data-highlight'), { timeout: 3000 });
-  Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
+});
+
+describe('gulir otomatis ke baris paling bawah', () => {
+  // jsdom tak punya tata letak: beri tinggi isi tabel yang tumbuh 40 px per baris, tinggi tampak 100 px.
+  const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollHeight');
+  beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollHeight', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.dataset.testid === 'scan-results'
+          ? 40 * this.querySelectorAll('tbody tr').length + 100
+          : 0;
+      },
+    });
+  });
+  afterEach(() => {
+    if (original) Object.defineProperty(HTMLElement.prototype, 'scrollHeight', original);
+    else Reflect.deleteProperty(HTMLElement.prototype, 'scrollHeight');
+  });
+
+  test('baris baru masuk: penggulir tabel ke dasar, juga saat scan berturut-turut dan melebihi tinggi tabel', async () => {
+    const ctx = setup();
+    const scroller = screen.getByTestId('scan-results');
+    await scan(ctx, 'aaa1', ['AAA1']);
+    await waitFor(() => expect(scroller.scrollTop).toBe(140));
+    await scan(ctx, 'bbb2', ['AAA1', 'BBB2']);
+    await waitFor(() => expect(scroller.scrollTop).toBe(180));
+    // Beberapa baris sekaligus (satu bacaan memuat tiga serial).
+    await scan(ctx, 'ccc3\nddd4\neee5', ['AAA1', 'BBB2', 'CCC3', 'DDD4', 'EEE5']);
+    await waitFor(() => expect(scroller.scrollTop).toBe(300));
+  });
+
+  test('mengedit nilai baris tidak menggulir', async () => {
+    const ctx = setup();
+    await scan(ctx, 'aaa1\nbbb2', ['AAA1', 'BBB2']);
+    const scroller = screen.getByTestId('scan-results');
+    await waitFor(() => expect(scroller.scrollTop).toBe(180));
+    scroller.scrollTop = 10;
+    const first = screen.getByRole('textbox', { name: 'Serial nomor 1' });
+    await userEvent.type(first, 'x');
+    await userEvent.tab();
+    expect(scroller.scrollTop).toBe(10);
+  });
+
+  test('menghapus baris (juga baris terakhir) tidak menggulir', async () => {
+    const ctx = setup();
+    await scan(ctx, 'aaa1\nbbb2\nccc3', ['AAA1', 'BBB2', 'CCC3']);
+    const scroller = screen.getByTestId('scan-results');
+    await waitFor(() => expect(scroller.scrollTop).toBe(220));
+    scroller.scrollTop = 10;
+    await userEvent.click(
+      screen.getAllByRole('button', { name: 'Hapus serial' }).at(-1) as HTMLElement,
+    );
+    await userEvent.click(
+      screen.getAllByRole('button', { name: 'Hapus serial' })[0] as HTMLElement,
+    );
+    expect(serials()).toEqual(['BBB2']);
+    expect(scroller.scrollTop).toBe(10);
+  });
 });
 
 test('serial yang sudah ada di tabel tidak ditambahkan lagi (umpan balik "Sudah ada")', async () => {

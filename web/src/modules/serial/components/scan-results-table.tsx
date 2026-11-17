@@ -27,18 +27,28 @@ export function ScanResultsTable({
   onEdit,
   onRemove,
 }: ScanResultsTableProps) {
-  const lastRef = useRef<HTMLTableRowElement | null>(null);
-  const count = rows.length;
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
-  // Baris baru di akhir: gulir ke sana (hanya saat jumlah bertambah, bukan saat mengedit atau menghapus).
-  const previousCount = useRef(0);
+  // Gulir ke baris paling bawah HANYA saat ada baris BARU (id yang belum pernah tampil), bukan saat baris diedit
+  // atau dihapus (hapus baris terakhir membuat baris lama menjadi yang terakhir, itu bukan baris baru). Yang
+  // digulir adalah penggulir tabel itu sendiri (bukan `scrollIntoView`, yang ikut menggulir dialog/halaman di
+  // belakangnya), dan baris bisa masuk banyak sekaligus (tempelan/scan beruntun): hasilnya tetap di dasar.
+  const seen = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (count > previousCount.current) lastRef.current?.scrollIntoView?.({ block: 'nearest' });
-    previousCount.current = count;
-  }, [count]);
+    let added = false;
+    for (const row of rows) {
+      if (!seen.current.has(row.id)) {
+        seen.current.add(row.id);
+        added = true;
+      }
+    }
+    const scroller = scrollRef.current;
+    if (added && scroller) scroller.scrollTop = scroller.scrollHeight;
+  }, [rows]);
 
   return (
     <div
+      ref={scrollRef}
       data-testid="scan-results"
       className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto border-t"
     >
@@ -70,7 +80,6 @@ export function ScanResultsTable({
               return (
                 <tr
                   key={row.id}
-                  ref={index === rows.length - 1 ? lastRef : undefined}
                   data-highlight={highlightId === row.id ? 'true' : undefined}
                   className={cn(
                     'border-b align-top transition-colors duration-700',

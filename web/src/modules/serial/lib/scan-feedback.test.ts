@@ -195,3 +195,15 @@ test('state interrupted (iOS) juga dilanjutkan saat dipakai', () => {
   act(() => result.current.announce('added'));
   expect(audio.resume).toHaveBeenCalledTimes(1);
 });
+
+test('getar berbeda jelas per hasil: berhasil ringan, duplikat berat berpola, ditolak satu dengung 200 ms', () => {
+  fakeAudio();
+  const vibrate = vi.fn();
+  Object.defineProperty(navigator, 'vibrate', { value: vibrate, configurable: true });
+  const { result } = renderHook(() => useScanFeedback());
+  act(() => result.current.announce('added'));
+  act(() => result.current.announce('duplicate'));
+  act(() => result.current.announce('rejected'));
+  expect(vibrate.mock.calls.map((call) => call[0])).toEqual([25, [150, 70, 150], 200]);
+  Reflect.deleteProperty(navigator, 'vibrate');
+});
