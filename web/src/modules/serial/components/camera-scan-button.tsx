@@ -19,8 +19,8 @@ export interface CameraScanButtonProps {
   onScan: (text: string) => ScanFeedback;
   /** Serial yang sudah dimiliki pemakai (mis. sudah di draft): tidak ditambahkan ke tabel hasil scan. */
   isKnown?: IsKnown;
-  /** Batas baris tabel hasil scan (mis. 1 untuk pemakai satu-serial: scan baru mengganti yang ada). */
-  maxRows?: number;
+  /** Pemakai satu-serial (Lapor Rusak): kamera layar penuh tanpa tabel; serial sah pertama langsung dipakai. */
+  single?: boolean;
   /** Hasil semua baris sesudah Simpan (bila diisi, menggantikan toast ringkasan dialog). */
   onSaved?: CameraScanDialogProps['onSaved'];
   /** Sisa kapasitas draft pemakai (jumlah baris yang masih boleh ditambah). */
@@ -36,7 +36,7 @@ export interface CameraScanButtonProps {
 export function CameraScanButton({
   onScan,
   isKnown,
-  maxRows,
+  single,
   onSaved,
   draftCapacity,
   disabled = false,
@@ -69,7 +69,7 @@ export function CameraScanButton({
             onOpenChange={setOpen}
             onScan={onScan}
             isKnown={isKnown}
-            maxRows={maxRows}
+            single={single}
             onSaved={onSaved}
             draftCapacity={draftCapacity}
           />

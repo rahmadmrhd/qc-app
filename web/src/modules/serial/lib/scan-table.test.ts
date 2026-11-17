@@ -4,12 +4,14 @@ import {
   addScanned,
   editRow,
   hasProblem,
+  pickSingleSerial,
   rowProblems,
   rowsToScan,
   SCAN_TABLE_LIMIT,
   type ScanRow,
 } from './scan-table';
 
+const NL = String.fromCharCode(10);
 let counter = 0;
 const newId = () => `r${++counter}`;
 const never = () => false;
@@ -89,35 +91,17 @@ test('rowsToScan: teks ternormalisasi menurut urutan tabel', () => {
   expect(rowsToScan([row(' a1 '), row('aa:bb:cc:dd:ee:ff')])).toEqual(['A1', 'AABBCCDDEEFF']);
 });
 
-test('maxRows=1: scan baru MENGGANTIKAN baris yang ada (bukan ditolak); serial sama = duplicate', () => {
-  const rows = [row('AAA1', 'a')];
-  const replaced = addScanned(rows, 'bbb2', never, newId, { maxRows: 1 });
-  expect(replaced.feedback).toBe('added');
-  expect(replaced.rows.map((r) => r.text)).toEqual(['BBB2']);
-  expect(replaced.added).toEqual([replaced.rows[0]?.id]);
-  // Serial yang sama dengan baris yang ada tidak mengganti apa pun.
-  const same = addScanned(rows, 'aaa1', never, newId, { maxRows: 1 });
-  expect(same.feedback).toBe('duplicate');
-  expect(same.rows).toBe(rows);
-  // Serial yang sudah ada di draft tetap ditolak sebagai duplicate dan baris lama dipertahankan.
-  const known = addScanned(rows, 'draft1', (s) => s === 'DRAFT1', newId, { maxRows: 1 });
-  expect(known.feedback).toBe('duplicate');
-  expect(known.rows).toBe(rows);
+test('pickSingleSerial: satu serial sah dipakai (dinormalkan); baris tak sah di sebelahnya diabaikan', () => {
+  expect(pickSingleSerial('aaa1')).toEqual({ serial: 'AAA1' });
+  expect(pickSingleSerial(`aaa1${NL}${'x'.repeat(100)}`)).toEqual({ serial: 'AAA1' });
+  // Serial yang sama dalam satu payload bukan "lebih dari satu".
+  expect(pickSingleSerial(`aaa1${NL}AAA1`)).toEqual({ serial: 'AAA1' });
 });
 
-test('maxRows=1: payload banyak serial atau dengan baris tak sah ditolak UTUH, baris lama tidak diganti', () => {
-  const rows = [row('OLD1', 'o')];
-  const multi = addScanned(rows, `aaa1${String.fromCharCode(10)}bbb2`, never, newId, {
-    maxRows: 1,
-  });
-  expect(multi.feedback).toBe('rejected');
-  expect(multi.reason).toBe('single');
-  expect(multi.rows).toBe(rows);
-  const mixed = addScanned(rows, `aaa1${String.fromCharCode(10)}${'x'.repeat(100)}`, never, newId, {
-    maxRows: 1,
-  });
-  expect(mixed.feedback).toBe('rejected');
-  expect(mixed.rows).toBe(rows);
+test('pickSingleSerial: lebih dari satu serial sah ditolak utuh (many); tanpa serial sah (invalid)', () => {
+  expect(pickSingleSerial(`aaa1${NL}bbb2`)).toEqual({ serial: null, reason: 'many' });
+  expect(pickSingleSerial('   ')).toEqual({ serial: null, reason: 'invalid' });
+  expect(pickSingleSerial('x'.repeat(100))).toEqual({ serial: null, reason: 'invalid' });
 });
 
 test('baris tak sah dalam satu payload: serial sah tetap masuk tetapi umpan balik rejected', () => {

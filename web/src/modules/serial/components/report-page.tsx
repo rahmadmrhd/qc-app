@@ -68,10 +68,8 @@ export function ReportPage({ onOpenSerial }: ReportPageProps) {
         label="Serial Number"
         onSubmit={search}
         feedbackText={FEEDBACK_TEXT}
-        // Satu laporan untuk satu Serial Number: tabel hasil scan kamera memuat 1 baris (scan baru menggantikannya).
-        cameraMaxRows={1}
-        // Pencarian ulang serial yang sama berbunyi 'duplicate' padahal sah: jangan tampilkan toast "dilewati" yang menyesatkan.
-        onCameraSaved={() => undefined}
+        // Satu laporan untuk satu Serial Number: dialog kamera tanpa tabel (serial sah pertama langsung dipakai).
+        cameraSingle
         autoFocus
       />
       {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}

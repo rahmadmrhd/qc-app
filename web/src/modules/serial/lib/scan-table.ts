@@ -33,23 +33,18 @@ const PROBLEM_MESSAGE = {
 } as const;
 
 export interface AddScannedOptions {
-  /**
-   * Batas baris untuk pemakai satu-serial (< batas draft, mis. 1): scan baru MENGGANTIKAN baris yang ada, dan payload
-   * yang tak bisa dipakai utuh (lebih dari satu serial, atau ada baris tak sah) ditolak TANPA mengganti apa pun.
-   */
-  maxRows?: number;
   /** Sisa kapasitas draft pemakai (jumlah total baris yang masih boleh dimiliki tabel ini); kosong = batas draft. */
   capacity?: number;
 }
 
-export type AddScannedReason = 'limit' | 'single' | null;
+export type AddScannedReason = 'limit' | null;
 
 /**
  * Menambah hasil bacaan (satu serial, atau banyak serial satu per baris) di akhir tabel. Serial yang sudah ada di
  * tabel atau di draft (`isKnown`) tidak ditambahkan. Umpan balik: `added` bila semua yang baru masuk dan tak ada baris
  * tak sah, `duplicate` bila tak ada yang baru, `rejected` bila ada baris tak sah di payload (serial sah tetap masuk),
- * tak ada serial sah, atau batas baris tercapai (yang masih muat tetap masuk). `reason` menjelaskan penolakan karena
- * batas draft (`limit`) atau aturan satu-serial (`single`).
+ * tak ada serial sah, atau batas baris tercapai (yang masih muat tetap masuk). `reason` = `limit` bila ada yang
+ * ditolak karena batas draft.
  */
 export function addScanned(
   rows: readonly ScanRow[],
@@ -58,7 +53,7 @@ export function addScanned(
   newId: () => string,
   options: AddScannedOptions = {},
 ): { rows: readonly ScanRow[]; feedback: ScanFeedback; added: string[]; reason: AddScannedReason } {
-  const { maxRows = SCAN_TABLE_LIMIT, capacity = SCAN_TABLE_LIMIT } = options;
+  const { capacity = SCAN_TABLE_LIMIT } = options;
   const split = splitSerialInput(payload);
   const unchanged = (feedback: ScanFeedback, reason: AddScannedReason = null) => ({
     rows,
@@ -67,23 +62,17 @@ export function addScanned(
     reason,
   });
   if (split.serials.length === 0) return unchanged('rejected');
-  const replacing = maxRows < SCAN_TABLE_LIMIT;
-  if (replacing && (split.serials.length > 1 || split.rejected.length > 0)) {
-    return unchanged('rejected', 'single');
-  }
   const existing = new Set(rows.map((row) => normalizeSerial(row.text)));
   const fresh = split.serials.filter((serial) => !existing.has(serial) && !isKnown(serial));
   if (fresh.length === 0) return unchanged(split.rejected.length > 0 ? 'rejected' : 'duplicate');
-  // Mode ganti: yang terbaru menggantikan yang lama. Selain itu: tabel tak boleh melebihi sisa kapasitas draft.
-  const room = replacing
-    ? maxRows
-    : Math.max(0, Math.min(SCAN_TABLE_LIMIT, capacity) - rows.length);
+  // Tabel tak boleh melebihi sisa kapasitas draft.
+  const room = Math.max(0, Math.min(SCAN_TABLE_LIMIT, capacity) - rows.length);
   const accepted = fresh.slice(0, room);
   if (accepted.length === 0) return unchanged('rejected', 'limit');
   const created = accepted.map((serial) => ({ id: newId(), text: serial }));
   const truncated = accepted.length < fresh.length;
   return {
-    rows: replacing ? [...rows, ...created].slice(-maxRows) : [...rows, ...created],
+    rows: [...rows, ...created],
     feedback: truncated || split.rejected.length > 0 ? 'rejected' : 'added',
     added: created.map((row) => row.id),
     reason: truncated ? 'limit' : null,
@@ -122,4 +111,17 @@ export function editRow(rows: readonly ScanRow[], id: string, text: string): Sca
 /** Serial ternormalisasi menurut urutan tabel, yang dikirim ke pemakai saat Simpan. */
 export function rowsToScan(rows: readonly ScanRow[]): string[] {
   return rows.map((row) => normalizeSerial(row.text));
+}
+
+/**
+ * Pemakai satu-serial (mis. Lapor Rusak, tanpa tabel): memilih SATU serial dari satu bacaan. Satu serial sah dipakai
+ * (baris tak sah di sebelahnya diabaikan); lebih dari satu serial sah ditolak utuh (`many`); tanpa serial sah = `invalid`.
+ */
+export function pickSingleSerial(
+  payload: string,
+): { serial: string } | { serial: null; reason: 'many' | 'invalid' } {
+  const { serials } = splitSerialInput(payload);
+  if (serials.length > 1) return { serial: null, reason: 'many' };
+  const [serial] = serials;
+  return serial === undefined ? { serial: null, reason: 'invalid' } : { serial };
 }

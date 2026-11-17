@@ -33,6 +33,7 @@ import {
   addScanned,
   editRow,
   type IsKnown,
+  pickSingleSerial,
   rowProblems,
   rowsToScan,
   type ScanRow,
@@ -56,10 +57,11 @@ export interface CameraScanDialogProps {
    */
   isKnown?: IsKnown;
   /**
-   * Batas jumlah baris tabel untuk pemakai satu-serial (mis. `1`): scan baru MENGGANTIKAN baris yang ada. Kosong =
-   * batas draft (`SERIAL_LIMITS.tableRows`).
+   * Pemakai satu-serial (mis. Lapor Rusak): TANPA tabel dan tanpa Simpan, kamera layar penuh. Bacaan sah pertama
+   * langsung diteruskan ke `onScan` lalu dialog menutup (kecuali pemakai menjawab 'rejected'); payload dengan lebih
+   * dari satu serial sah ditolak utuh ('rejected' + catatan) dan kamera tetap hidup.
    */
-  maxRows?: number;
+  single?: boolean;
   /**
    * Dipanggil sesudah "Simpan" dengan hasil SEMUA baris (urutan tabel), supaya pemakai dapat meringkasnya. Bila
    * diisi, toast ringkasan dialog tidak ditampilkan (pemakai yang menyampaikannya) agar tidak ganda.
@@ -141,7 +143,7 @@ export function CameraScanDialog({ open, onOpenChange, ...rest }: CameraScanDial
 function CameraScanBody({
   onScan,
   isKnown = NEVER_KNOWN,
-  maxRows,
+  single = false,
   onSaved,
   draftCapacity,
   onClose,
@@ -150,7 +152,7 @@ function CameraScanBody({
   now,
 }: Pick<
   CameraScanDialogProps,
-  'onScan' | 'isKnown' | 'maxRows' | 'onSaved' | 'draftCapacity' | 'createEngine' | 'now'
+  'onScan' | 'isKnown' | 'single' | 'onSaved' | 'draftCapacity' | 'createEngine' | 'now'
 > & {
   onClose: () => void;
   actionsRef: RefObject<BodyActions | null>;
@@ -186,21 +188,35 @@ function CameraScanBody({
     setRows(next);
   }
 
+  function deliverSingle(text: string) {
+    const pick = pickSingleSerial(text);
+    if (pick.serial === null) {
+      setNote(pick.reason === 'many' ? 'satu serial saja per laporan, arahkan ke satu kode' : null);
+      announce('rejected');
+      return;
+    }
+    setNote(null);
+    const result = onScanRef.current(pick.serial);
+    announce(result);
+    // Dipakai (atau sama dengan yang sudah dicari): selesai. Hanya penolakan pemakai yang membiarkan kamera menyala.
+    if (result !== 'rejected') onClose();
+  }
+
   function deliver(text: string) {
     setLast(text.replace(/\r?\n/g, ', '));
+    if (single) {
+      deliverSingle(text);
+      return;
+    }
     const result = addScanned(
       rowsRef.current,
       text,
       (serial) => isKnownRef.current(serial),
       () => `scan-${++idCounter.current}`,
-      { maxRows, capacity: draftCapacityRef.current?.() },
+      { capacity: draftCapacityRef.current?.() },
     );
     setNote(
-      result.reason === 'limit'
-        ? `batas ${SERIAL_LIMITS.tableRows} baris draft tercapai`
-        : result.reason === 'single'
-          ? 'satu serial saja per laporan, arahkan ke satu kode'
-          : null,
+      result.reason === 'limit' ? `batas ${SERIAL_LIMITS.tableRows} baris draft tercapai` : null,
     );
     if (result.rows !== rowsRef.current) commitRows(result.rows);
     const newest = result.added[result.added.length - 1];
@@ -301,23 +317,31 @@ function CameraScanBody({
     <>
       <AlertDialogTitle className="sr-only">Scan serial</AlertDialogTitle>
       <AlertDialogDescription className="sr-only">
-        Arahkan kamera ke QR atau barcode. Hasil scan masuk ke tabel; tekan Simpan untuk
-        memasukkannya, atau Batal untuk membuangnya.
+        {single
+          ? 'Arahkan kamera ke QR atau barcode. Serial yang terbaca langsung dipakai.'
+          : 'Arahkan kamera ke QR atau barcode. Hasil scan masuk ke tabel; tekan Simpan untuk memasukkannya, atau Batal untuk membuangnya.'}
       </AlertDialogDescription>
 
-      {/* Area kamera: latar hitam selebar layar; isinya dipusatkan dengan lebar maksimum agar bingkai tetap proporsional di desktop. */}
-      {/* Layar pendek (ponsel landscape): kamera dan tabel berdampingan agar kontrol tak terpotong dan tabel tetap lega. */}
+      {/* Tata letak: ponsel portrait = 1 kolom (kamera atas, tabel bawah); lebar >= md ATAU landscape = 2 kolom (kamera kiri, tabel kanan), jadi kontrol tak terpotong di ponsel landscape. Mode satu-serial: hanya kamera, layar penuh. */}
       <div
         data-testid="scan-layout"
-        className="flex min-h-0 flex-1 flex-col [@media(max-height:30rem)]:flex-row"
+        className="flex min-h-0 flex-1 flex-col md:flex-row landscape:flex-row"
       >
-        <div className="shrink-0 bg-black [@media(max-height:30rem)]:flex [@media(max-height:30rem)]:w-1/2 [@media(max-height:30rem)]:shrink">
+        <div
+          className={cn(
+            'bg-black',
+            single
+              ? 'flex min-h-0 flex-1'
+              : 'shrink-0 md:flex md:w-1/2 md:shrink landscape:flex landscape:w-1/2 landscape:shrink',
+          )}
+        >
           {/* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: ketuk-untuk-fokus hanya pelengkap sentuhan; pemindaian dan semua kontrol lain tetap bisa lewat papan ketik. */}
           <div
             data-testid="camera-viewport"
             onClick={onViewportClick}
             className={cn(
-              'relative mx-auto h-[clamp(11rem,55dvh,40rem)] w-full max-w-2xl [@media(max-height:30rem)]:h-auto overflow-hidden border-2 border-transparent bg-black',
+              'relative w-full overflow-hidden border-2 border-transparent bg-black',
+              single ? 'h-auto' : 'h-[clamp(11rem,55dvh,40rem)] md:h-auto landscape:h-auto',
               feedback !== null && FEEDBACK_FLASH[feedback],
             )}
           >
@@ -402,32 +426,42 @@ function CameraScanBody({
           </div>
         </div>
 
-        <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col [@media(max-height:30rem)]:w-1/2 [@media(max-height:30rem)]:max-w-none">
-          <ScanResultsTable
-            rows={rows}
-            problems={problems}
-            highlightId={highlightId}
-            onEdit={(id, text) => commitRows(editRow(rowsRef.current, id, text))}
-            onRemove={(id) => commitRows(rowsRef.current.filter((row) => row.id !== id))}
-          />
-        </div>
+        {single ? null : (
+          <div className="flex min-h-0 w-full flex-1 flex-col md:w-1/2 landscape:w-1/2">
+            <ScanResultsTable
+              rows={rows}
+              problems={problems}
+              highlightId={highlightId}
+              onEdit={(id, text) => commitRows(editRow(rowsRef.current, id, text))}
+              onRemove={(id) => commitRows(rowsRef.current.filter((row) => row.id !== id))}
+            />
+          </div>
+        )}
       </div>
 
       <AlertDialogFooter className="bottom-0 mx-0 mb-0 shrink-0 flex-row rounded-none p-0">
-        <div className="mx-auto grid w-full max-w-2xl grid-cols-2 gap-2 p-4">
-          <Button
-            type="button"
-            variant="outline"
-            size="lg"
-            className="h-11"
-            onClick={requestCancel}
-          >
-            Batal
-          </Button>
-          <Button type="button" size="lg" className="h-11" disabled={!canSave} onClick={save}>
-            {rows.length > 0 ? `Simpan (${rows.length})` : 'Simpan'}
-          </Button>
-        </div>
+        {single ? (
+          <div className="grid w-full grid-cols-1 p-4">
+            <Button type="button" variant="outline" size="lg" className="h-11" onClick={onClose}>
+              Tutup
+            </Button>
+          </div>
+        ) : (
+          <div className="grid w-full grid-cols-2 gap-2 p-4">
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="h-11"
+              onClick={requestCancel}
+            >
+              Batal
+            </Button>
+            <Button type="button" size="lg" className="h-11" disabled={!canSave} onClick={save}>
+              {rows.length > 0 ? `Simpan (${rows.length})` : 'Simpan'}
+            </Button>
+          </div>
+        )}
       </AlertDialogFooter>
 
       {/* Konfirmasi bertumpuk (di luar badan form mana pun): hasil scan yang belum disimpan tidak dibuang diam-diam. */}

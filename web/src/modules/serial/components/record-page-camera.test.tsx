@@ -134,7 +134,7 @@ test('setelah Simpan dialog, notice halaman meringkas SEMUA baris (bukan hanya y
   expect(screen.getByRole('status')).toHaveTextContent('3 serial ditambahkan; 1 duplikat dilewati');
 });
 
-test('Lapor Rusak: pemindai kamera dibatasi satu baris (prop maxRows=1)', async () => {
+test('Lapor Rusak: pemindai kamera memakai mode satu-serial (tanpa tabel dan tanpa Simpan)', async () => {
   const { ReportPage } = await import('./report-page');
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -142,9 +142,8 @@ test('Lapor Rusak: pemindai kamera dibatasi satu baris (prop maxRows=1)', async 
       <ReportPage onOpenSerial={() => undefined} />
     </QueryClientProvider>,
   );
-  expect(captured.props?.maxRows).toBe(1);
-  // Menangani ringkasannya sendiri: toast "0 ditambahkan, 1 dilewati" untuk serial yang sama tidak boleh muncul.
-  expect(captured.props?.onSaved).toBeTypeOf('function');
+  expect(captured.props?.single).toBe(true);
+  expect(captured.props?.onSaved).toBeUndefined();
 });
 
 test('kapasitas draft diberikan ke pemindai kamera (sisa baris) dan Simpan yang terbentur batas diringkas jujur', async () => {

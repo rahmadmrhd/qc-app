@@ -45,7 +45,7 @@ afterEach(() => {
 interface SetupOptions {
   results?: ScanFeedback[] | ((text: string) => ScanFeedback);
   isKnown?: (serial: string) => boolean;
-  maxRows?: number;
+  single?: boolean;
   draftCapacity?: () => number;
   strict?: boolean;
   onSaved?: (results: { serial: string; feedback: ScanFeedback }[]) => void;
@@ -82,7 +82,7 @@ function setup(options: SetupOptions = {}) {
         onOpenChange={onOpenChange}
         onScan={onScan}
         isKnown={options.isKnown}
-        maxRows={options.maxRows}
+        single={options.single}
         draftCapacity={options.draftCapacity}
         onSaved={options.onSaved}
         createEngine={async () => engine}
@@ -108,6 +108,8 @@ function serials(): string[] {
     .queryAllByRole('textbox', { name: /^Serial nomor/ })
     .map((input) => (input as HTMLInputElement).value);
 }
+
+const NL = String.fromCharCode(10);
 
 /** Seperti `serials` tetapi juga membaca dialog yang sedang tertutup konfirmasi (aria-hidden). */
 function hiddenSerials(): string[] {
@@ -333,15 +335,6 @@ test('galat kamera: pesan dan Coba lagi di area kamera, kontrol mengambang hilan
   expect(onOpenChange).toHaveBeenCalledWith(false);
 });
 
-test('maxRows=1: scan berikutnya menggantikan baris yang ada, dan Simpan menerapkan satu serial', async () => {
-  const ctx = setup({ maxRows: 1 });
-  await scan(ctx, 'aaa1', ['AAA1']);
-  await scan(ctx, 'bbb2', ['BBB2']);
-  expect(screen.getByRole('button', { name: 'Simpan (1)' })).toBeEnabled();
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan (1)' }));
-  expect(ctx.onScan.mock.calls.map((call) => call[0])).toEqual(['BBB2']);
-});
-
 test('onSaved menerima hasil SEMUA baris (urutan tabel) dan menggantikan toast ringkasan', async () => {
   const onSaved = vi.fn();
   const ctx = setup({ results: ['added', 'duplicate', 'rejected'], onSaved });
@@ -414,15 +407,6 @@ test('selama konfirmasi Buang tampil, bacaan baru diabaikan; setelah Lanjut scan
   await waitFor(() => expect(serials()).toEqual(['AAA1', 'BBB2']));
 });
 
-test('Lapor Rusak (maxRows=1): payload banyak serial ditolak dengan catatan, baris lama tidak diganti', async () => {
-  const ctx = setup({ maxRows: 1 });
-  await scan(ctx, 'old1', ['OLD1']);
-  ctx.advance(10_000);
-  ctx.state.current = [`new1${String.fromCharCode(10)}new2`];
-  expect(await screen.findByText(/Ditolak: .*satu serial/i)).toBeInTheDocument();
-  expect(serials()).toEqual(['OLD1']);
-});
-
 test('klik dan sentuhan di dialog menyiapkan audio (bukan hanya pointerdown)', async () => {
   const resume = vi.fn(async () => undefined);
   class FakeAudio {
@@ -442,17 +426,6 @@ test('klik dan sentuhan di dialog menyiapkan audio (bukan hanya pointerdown)', a
   resetScanAudio();
 });
 
-test('tata letak layar pendek (ponsel landscape): kamera dan tabel berdampingan, bukan bertumpuk', async () => {
-  setup();
-  const viewport = screen.getByTestId('camera-viewport');
-  const short = '[@media(max-height:30rem)]';
-  const stack = screen.getByTestId('scan-layout');
-  expect(stack.className).toContain(`${short}:flex-row`);
-  expect(viewport.className).toContain(`${short}:h-auto`);
-  expect(viewport.parentElement?.className).toContain(`${short}:w-1/2`);
-  expect(screen.getByTestId('scan-results').parentElement?.className).toContain(`${short}:w-1/2`);
-});
-
 test('footer tanpa sudut membulat pada dialog layar penuh', async () => {
   setup();
   const footer = (await screen.findByRole('alertdialog')).querySelector(
@@ -467,4 +440,74 @@ test('StrictMode: Escape dengan hasil tetap menampilkan konfirmasi (tindakan dia
   await userEvent.keyboard('{Escape}');
   expect(await screen.findByRole('alertdialog', { name: /Buang 1 serial/ })).toBeInTheDocument();
   expect(ctx.onOpenChange).not.toHaveBeenCalled();
+});
+
+test('tata letak: 2 kolom (kamera kiri, tabel kanan) pada md ATAU landscape; 1 kolom pada portrait sempit', async () => {
+  setup();
+  const viewport = screen.getByTestId('camera-viewport');
+  const layout = screen.getByTestId('scan-layout');
+  const tableColumn = screen.getByTestId('scan-results').parentElement;
+  expect(layout.className).toContain('flex-col');
+  for (const variant of ['md', 'landscape']) {
+    expect(layout.className).toContain(`${variant}:flex-row`);
+    expect(viewport.className).toContain(`${variant}:h-auto`);
+    expect(viewport.parentElement?.className).toContain(`${variant}:w-1/2`);
+    expect(tableColumn?.className).toContain(`${variant}:w-1/2`);
+  }
+});
+
+test('Lapor Rusak (single): tanpa tabel dan tanpa Simpan, hanya kamera layar penuh dengan tombol Tutup', async () => {
+  const ctx = setup({ single: true });
+  expect(screen.queryByTestId('scan-results')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Simpan/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Batal' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Tutup' })).toBeInTheDocument();
+  expect(screen.getByTestId('camera-viewport')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Tutup' }));
+  expect(ctx.onOpenChange).toHaveBeenCalledWith(false);
+  expect(ctx.onScan).not.toHaveBeenCalled();
+});
+
+test('Lapor Rusak (single): bacaan sah pertama langsung diteruskan ke onScan lalu dialog menutup', async () => {
+  const ctx = setup({ single: true });
+  ctx.state.current = ['aaa1'];
+  await waitFor(() => expect(ctx.onScan).toHaveBeenCalledWith('AAA1'));
+  await waitFor(() => expect(ctx.onOpenChange).toHaveBeenCalledWith(false));
+  expect(ctx.onScan).toHaveBeenCalledTimes(1);
+});
+
+test('Lapor Rusak (single): serial yang sama dengan pencarian aktif (duplicate) tetap menutup dialog', async () => {
+  const ctx = setup({ single: true, results: ['duplicate'] });
+  ctx.state.current = ['aaa1'];
+  await waitFor(() => expect(ctx.onOpenChange).toHaveBeenCalledWith(false));
+});
+
+test('Lapor Rusak (single): payload lebih dari satu serial ditolak utuh dengan catatan, kamera tetap hidup', async () => {
+  const ctx = setup({ single: true });
+  ctx.state.current = [`aaa1${NL}bbb2`];
+  expect(await screen.findByText(/Ditolak: satu serial saja per laporan/)).toBeInTheDocument();
+  expect(ctx.onScan).not.toHaveBeenCalled();
+  expect(ctx.onOpenChange).not.toHaveBeenCalled();
+  expect(ctx.track.stop).not.toHaveBeenCalled();
+});
+
+test('Lapor Rusak (single): serial tak sah ditolak tanpa catatan "satu serial"; hasil rejected dari pemakai tidak menutup', async () => {
+  const bad = setup({ single: true });
+  bad.state.current = ['x'.repeat(100)];
+  expect(await screen.findByText(/^Ditolak:/)).toBeInTheDocument();
+  expect(screen.queryByText(/satu serial saja/)).not.toBeInTheDocument();
+  expect(bad.onScan).not.toHaveBeenCalled();
+  bad.unmount();
+
+  const refused = setup({ single: true, results: ['rejected'] });
+  refused.state.current = ['aaa1'];
+  await waitFor(() => expect(refused.onScan).toHaveBeenCalledWith('AAA1'));
+  expect(await screen.findByText(/^Ditolak:/)).toBeInTheDocument();
+  expect(refused.onOpenChange).not.toHaveBeenCalled();
+});
+
+test('Lapor Rusak (single): Escape menutup langsung tanpa konfirmasi', async () => {
+  const ctx = setup({ single: true });
+  await userEvent.keyboard('{Escape}');
+  expect(ctx.onOpenChange).toHaveBeenCalledWith(false);
 });

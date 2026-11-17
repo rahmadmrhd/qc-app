@@ -25,8 +25,8 @@ export interface SerialScanInputProps {
   feedbackText?: Partial<Record<ScanFeedback, string>>;
   /** Serial (ternormalisasi) yang sudah dimiliki halaman (mis. di draft): pemindai kamera tidak menambahkannya lagi. */
   isKnown?: IsKnown;
-  /** Batas baris tabel hasil scan kamera (mis. 1 untuk halaman satu-serial: scan baru mengganti yang ada). */
-  cameraMaxRows?: number;
+  /** Halaman satu-serial (Lapor Rusak): dialog kamera tanpa tabel, serial sah pertama langsung dipakai. */
+  cameraSingle?: boolean;
   /** Sisa kapasitas draft halaman (jumlah baris yang masih boleh ditambah), dibaca tiap bacaan kamera. */
   cameraCapacity?: () => number;
   /** Hasil semua baris sesudah Simpan di dialog kamera (menggantikan toast ringkasan dialog). */
@@ -41,7 +41,7 @@ export function SerialScanInput({
   autoFocus = false,
   feedbackText,
   isKnown,
-  cameraMaxRows,
+  cameraSingle,
   cameraCapacity,
   onCameraSaved,
 }: SerialScanInputProps) {
@@ -69,7 +69,7 @@ export function SerialScanInput({
         <CameraScanButton
           onScan={onSubmit}
           isKnown={isKnown}
-          maxRows={cameraMaxRows}
+          single={cameraSingle}
           onSaved={onCameraSaved}
           draftCapacity={cameraCapacity}
           disabled={disabled}
