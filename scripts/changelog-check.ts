@@ -6,8 +6,8 @@
 // cabang: nama cabang dapat diatur penulis PR dan tak boleh dipakai untuk melewati pemeriksaan. Karena itu semua fungsi
 // di sini tidak menerima nama cabang.
 //
-// CLI (dipanggil workflow): env PR_FILES (semua berkas PR, satu per baris), PR_ADDED (berkas PR yang tidak dihapus, satu
-// per baris), LABELS (larik JSON nama label). Keluar 1 dengan `::error::` bila fragmen kurang.
+// CLI (dipanggil workflow): env PR_FILES (semua berkas PR, satu per baris), PR_ADDED (berkas yang DITAMBAH PR, status
+// added, satu per baris), LABELS (larik JSON nama label). Keluar 1 dengan `::error::` bila fragmen kurang.
 import type { Component } from './changelog';
 
 export const LABEL_SKIP = 'tanpa-changelog';
@@ -60,15 +60,35 @@ function isMetadataOf(path: string, component: Component): boolean {
   );
 }
 
+/** Semua berkas adalah metadata rilis `component` (versi, bun.lock, CHANGELOG, fragmen). Daftar kosong = true. */
+export function isMetadataOnly(files: string[], component: Component): boolean {
+  return normalize(files).every((path) => isMetadataOf(path, component));
+}
+
 /**
- * PR rilis = SEMUA berkas adalah metadata rilis (versi, bun.lock, CHANGELOG, fragmen yang dikompilasi). Tanpa `component`
- * metadata kedua komponen diterima. Daftar kosong bukan PR rilis.
+ * PR yang hanya berisi metadata rilis (mis. sinkron `main` -> `dev`): SEMUA berkas adalah metadata (versi, bun.lock,
+ * CHANGELOG, fragmen) DAN `CHANGELOG.md` komponen ikut berubah (hanya `package.json` + `bun.lock` = kenaikan dependensi,
+ * bukan rilis). Tanpa `component` metadata kedua komponen diterima. Daftar kosong bukan PR rilis.
  */
 export function isReleaseChange(files: string[], component?: Component): boolean {
   const paths = normalize(files);
   if (paths.length === 0) return false;
   const components = component ? [component] : COMPONENTS;
-  return paths.every((path) => components.some((c) => isMetadataOf(path, c)));
+  return (
+    paths.every((path) => components.some((c) => isMetadataOf(path, c))) &&
+    components.some((c) => paths.includes(`${c}/CHANGELOG.md`))
+  );
+}
+
+/**
+ * Komponen yang DIRILIS oleh PR ini: `package.json` (versi naik) dan `CHANGELOG.md` (bagian versi baru) komponen itu
+ * sama-sama berubah. PR rilis `release/<komponen>-vX.Y.Z -> main` membawa seluruh kode `dev` sejak rilis lalu; fragmennya
+ * sudah dihapus `changelog compile` (tidak muncul di diff), jadi dikenali dari ISI ini, bukan dari nama cabang.
+ */
+function releasedComponents(paths: string[]): Component[] {
+  return COMPONENTS.filter(
+    (c) => paths.includes(`${c}/package.json`) && paths.includes(`${c}/CHANGELOG.md`),
+  );
 }
 
 export interface CheckInput {
@@ -84,8 +104,11 @@ export function checkChangelog(input: CheckInput): { ok: boolean; missing: Compo
     return { ok: true, missing: [] };
   }
   const added = normalize(input.addedFragments).filter(isFragmentPath);
+  const released = releasedComponents(normalize(input.files));
   const missing = requiredComponents(input.files).filter(
-    (component) => !added.some((path) => path.startsWith(`${component}/changelog.d/`)),
+    (component) =>
+      !released.includes(component) &&
+      !added.some((path) => path.startsWith(`${component}/changelog.d/`)),
   );
   return { ok: missing.length === 0, missing };
 }

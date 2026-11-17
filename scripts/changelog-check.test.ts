@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   checkChangelog,
   isFragmentPath,
+  isMetadataOnly,
   isReleaseChange,
   LABEL_SKIP,
   requiredComponents,
@@ -61,14 +62,31 @@ describe('isReleaseChange', () => {
   });
 
   test('metadata komponen lain tidak dihitung bila komponen disebut; tanpa komponen = metadata keduanya', () => {
-    expect(isReleaseChange(['desktop/package.json', 'bun.lock'], 'server')).toBe(false);
-    expect(isReleaseChange(['desktop/package.json', 'bun.lock'], 'desktop')).toBe(true);
-    expect(isReleaseChange(['desktop/package.json', 'server/package.json'])).toBe(true);
+    const desktop = ['desktop/package.json', 'bun.lock', 'desktop/CHANGELOG.md'];
+    expect(isReleaseChange(desktop, 'server')).toBe(false);
+    expect(isReleaseChange(desktop, 'desktop')).toBe(true);
+    expect(isReleaseChange([...desktop, 'server/package.json', 'server/CHANGELOG.md'])).toBe(true);
+  });
+
+  test('wajib memuat CHANGELOG.md komponen: kenaikan dependensi (package.json + bun.lock saja) bukan rilis', () => {
+    expect(isReleaseChange(['server/package.json', 'bun.lock'], 'server')).toBe(false);
+    expect(isReleaseChange(['server/package.json', 'bun.lock'])).toBe(false);
+    expect(isReleaseChange(['server/CHANGELOG.md'], 'server')).toBe(true);
   });
 
   test('daftar kosong bukan PR rilis', () => {
     expect(isReleaseChange([])).toBe(false);
     expect(isReleaseChange([], 'server')).toBe(false);
+  });
+});
+
+describe('isMetadataOnly', () => {
+  test('daftar kosong atau semua berkas metadata komponen = true; satu berkas lain = false', () => {
+    expect(isMetadataOnly([], 'server')).toBe(true);
+    expect(isMetadataOnly(['server/changelog.d/20261117-a.md'], 'server')).toBe(true);
+    expect(isMetadataOnly(['server/package.json', 'bun.lock'], 'server')).toBe(true);
+    expect(isMetadataOnly(['server/changelog.d/20261117-a.md', 'web/a.ts'], 'server')).toBe(false);
+    expect(isMetadataOnly(['desktop/CHANGELOG.md'], 'server')).toBe(false);
   });
 });
 
@@ -134,6 +152,45 @@ describe('checkChangelog', () => {
         labels: none,
       }).ok,
     ).toBe(true);
+  });
+
+  test('PR rilis NYATA (release/... -> main membawa seluruh kode dev + metadata; fragmennya sudah terhapus compile) lulus', () => {
+    const files = [
+      'server/src/app.ts',
+      'web/src/x.tsx',
+      'server/package.json',
+      'bun.lock',
+      'server/CHANGELOG.md',
+    ];
+    expect(checkChangelog({ files, addedFragments: none, labels: none })).toEqual({
+      ok: true,
+      missing: [],
+    });
+  });
+
+  test('rilis hanya membebaskan komponennya sendiri: rilis server tidak membebaskan perubahan desktop', () => {
+    const files = ['desktop/src/a.ts', 'server/package.json', 'bun.lock', 'server/CHANGELOG.md'];
+    expect(checkChangelog({ files, addedFragments: none, labels: none })).toEqual({
+      ok: false,
+      missing: ['desktop'],
+    });
+  });
+
+  test('CHANGELOG.md saja (tanpa package.json) atau package.json + bun.lock saja tidak membebaskan perubahan kode', () => {
+    expect(
+      checkChangelog({
+        files: ['web/a.ts', 'server/CHANGELOG.md'],
+        addedFragments: none,
+        labels: none,
+      }).ok,
+    ).toBe(false);
+    expect(
+      checkChangelog({
+        files: ['web/a.ts', 'server/package.json', 'bun.lock'],
+        addedFragments: none,
+        labels: none,
+      }).ok,
+    ).toBe(false);
   });
 
   test('tanda tangan fungsi tidak menerima nama cabang (cabang tak pernah dipakai melewatkan pemeriksaan)', () => {

@@ -15,7 +15,7 @@ import {
   realDeps,
   runCli,
 } from './changelog';
-import { isReleaseChange } from './changelog-check';
+import { isFragmentPath, isMetadataOnly, isReleaseChange } from './changelog-check';
 import { ROOT_DIR } from './paths';
 
 export interface Shell {
@@ -56,6 +56,32 @@ export function nextVersion(current: string, bump: string, latestTag: string | n
     throw new Error(`Versi ${bump} harus lebih besar dari ${base} (versi berkas dan tag terakhir)`);
   }
   return bump;
+}
+
+export interface ParsedArgs {
+  component: Component;
+  bump: string;
+  dryRun: boolean;
+}
+
+/** Argumen CLI: tepat <komponen> <kenaikan> dan opsional --dry-run; flag lain ditolak (salah ketik tak boleh diabaikan). */
+export function parseArgs(args: string[]): ParsedArgs {
+  const flags = args.filter((arg) => arg.startsWith('--'));
+  const unknown = flags.filter((flag) => flag !== '--dry-run');
+  if (unknown.length > 0)
+    throw new Error(`Opsi tidak dikenal: ${unknown.join(', ')} (hanya --dry-run)`);
+  const positional = args.filter((arg) => !arg.startsWith('--'));
+  const [component, bump] = positional;
+  if (
+    positional.length !== 2 ||
+    (component !== 'server' && component !== 'desktop') ||
+    bump === undefined
+  ) {
+    throw new Error(
+      'Pemakaian: bun run release:prepare <server|desktop> <patch|minor|major|X.Y.Z> [--dry-run]',
+    );
+  }
+  return { component, bump, dryRun: flags.length > 0 };
 }
 
 export interface PrepareInput {
@@ -102,17 +128,36 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
   }
   if (component === 'server') {
     const dev = (await sh(['git', 'rev-parse', 'origin/dev'])).trim();
-    const staging = await shell.run(['git', 'rev-parse', 'refs/remotes/deployed/staging']);
-    if (staging.code !== 0) {
+    const stagingRef = await shell.run(['git', 'rev-parse', 'refs/remotes/deployed/staging']);
+    if (stagingRef.code !== 0) {
       throw new Error(
         'Penunjuk deploy staging (refs/deployed/staging) belum ada: deploy staging dulu.',
       );
     }
-    if (!(await test(['git', 'merge-base', '--is-ancestor', dev, staging.out.trim()]))) {
+    const staging = stagingRef.out.trim();
+    if (!(await test(['git', 'merge-base', '--is-ancestor', staging, dev]))) {
       throw new Error(
-        'Staging belum memuat ujung dev: tunggu deploy staging terbaru selesai (rilis hanya boleh membawa kode yang sudah berjalan di staging).',
+        'Staging bukan leluhur origin/dev: dev tidak memuat apa yang berjalan di staging. Periksa riwayat cabang sebelum merilis.',
       );
     }
+    const delta = (await sh(['git', 'diff', '--name-only', staging, 'origin/dev']))
+      .split('\n')
+      .filter((line) => line.trim() !== '');
+    if (!isMetadataOnly(delta, component)) {
+      throw new Error(
+        'Staging belum memuat semua kode di ujung dev (selisihnya bukan hanya berkas metadata rilis): tunggu deploy staging terbaru selesai. Rilis hanya boleh membawa kode yang sudah berjalan di staging.',
+      );
+    }
+  }
+  const fragments = (
+    await sh(['git', 'ls-tree', '--name-only', 'origin/dev', '--', `${component}/changelog.d/`])
+  )
+    .split('\n')
+    .filter((path) => isFragmentPath(path.trim()));
+  if (fragments.length === 0) {
+    throw new Error(
+      `Tidak ada fragmen changelog di origin/dev (${component}/changelog.d/): tidak ada yang dirilis.`,
+    );
   }
   const tags = (await sh(['git', 'tag', '--list', `${component}-v*`]))
     .split('\n')
@@ -155,6 +200,7 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
     ],
     ['git', 'commit', '-m', `chore(rilis): ${component} v${version}`],
     ['git', 'push', '--set-upstream', 'origin', branch],
+    ['git', 'switch', original],
     [
       'gh',
       'pr',
@@ -209,6 +255,11 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
       );
     }
     await sh(['git', 'commit', '-m', `chore(rilis): ${component} v${version}`]);
+    if ((await sh(['git', 'status', '--porcelain'])).trim() !== '') {
+      throw new Error(
+        'Pohon kerja tidak bersih setelah commit rilis (ada perubahan di luar metadata): rilis dibatalkan.',
+      );
+    }
     await sh(['git', 'push', '--set-upstream', 'origin', branch], `git push gagal untuk ${branch}`);
   } catch (error) {
     if (created) {
@@ -219,8 +270,12 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
     throw error;
   }
 
-  // 3. PR (cabang sudah di origin; bila gagal, cabang dibiarkan agar PR dapat dibuat manual).
+  // 3. Kembali ke cabang asal, lalu PR (cabang sudah di origin; bila PR gagal, cabang dibiarkan agar PR dapat dibuat manual).
   const section = extractSection(files.readFile(`${component}/CHANGELOG.md`), version) ?? title;
+  const back = await shell.run(['git', 'switch', original]);
+  if (back.code !== 0) {
+    log(`Peringatan: gagal kembali ke cabang ${original}: ${back.out.trim()}`);
+  }
   const pr = await shell.run([
     'gh',
     'pr',
@@ -262,16 +317,8 @@ function realShell(): Shell {
 }
 
 if (import.meta.main) {
-  const args = process.argv.slice(2);
-  const dryRun = args.includes('--dry-run');
-  const [component, bump] = args.filter((arg) => !arg.startsWith('--'));
-  if ((component !== 'server' && component !== 'desktop') || !bump) {
-    console.error(
-      'Pemakaian: bun run release:prepare <server|desktop> <patch|minor|major|X.Y.Z> [--dry-run]',
-    );
-    process.exit(1);
-  }
   try {
+    const { component, bump, dryRun } = parseArgs(process.argv.slice(2));
     const result = await prepareRelease({
       component,
       bump,

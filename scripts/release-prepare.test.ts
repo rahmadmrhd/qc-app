@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { CliDeps } from './changelog';
-import { nextVersion, prepareRelease, type Shell, wibDate } from './release-prepare';
+import { nextVersion, parseArgs, prepareRelease, type Shell, wibDate } from './release-prepare';
 
 describe('nextVersion', () => {
   test('versi eksplisit pertama: 0.0.0 tanpa tag -> 1.0.0', () => {
@@ -46,10 +46,10 @@ interface Result {
 }
 
 const DEV = 'd'.repeat(40);
-const STAGING = 'd'.repeat(40);
+const STAGING = 's'.repeat(40);
 
 /** Shell palsu: merekam semua perintah; `overrides` menimpa jawaban per perintah (kunci = argumen digabung spasi). */
-function fakeShell(overrides: Record<string, Result> = {}): Shell & { calls: string[] } {
+function fakeShell(overrides: Record<string, Result | Result[]> = {}): Shell & { calls: string[] } {
   const calls: string[] = [];
   const defaults: Record<string, Result> = {
     'git status --porcelain': { code: 0, out: '' },
@@ -57,7 +57,15 @@ function fakeShell(overrides: Record<string, Result> = {}): Shell & { calls: str
     'git merge-base --is-ancestor origin/main origin/dev': { code: 0, out: '' },
     'git rev-parse origin/dev': { code: 0, out: `${DEV}\n` },
     'git rev-parse refs/remotes/deployed/staging': { code: 0, out: `${STAGING}\n` },
-    [`git merge-base --is-ancestor ${DEV} ${STAGING}`]: { code: 0, out: '' },
+    [`git merge-base --is-ancestor ${STAGING} ${DEV}`]: { code: 0, out: '' },
+    [`git diff --name-only ${STAGING} origin/dev`]: {
+      code: 0,
+      out: 'server/changelog.d/20261117-a.md\n',
+    },
+    'git ls-tree --name-only origin/dev -- server/changelog.d/': {
+      code: 0,
+      out: 'server/changelog.d/20261117-a.md\n',
+    },
     'git tag --list server-v*': { code: 0, out: '' },
     'git show origin/dev:server/package.json': {
       code: 0,
@@ -76,8 +84,15 @@ function fakeShell(overrides: Record<string, Result> = {}): Shell & { calls: str
     async run(cmd) {
       const key = cmd.join(' ');
       calls.push(key);
+      const override =
+        overrides[key] ?? (key.startsWith('gh pr create') ? overrides['gh pr create'] : undefined);
+      const picked = Array.isArray(override)
+        ? override.length > 1
+          ? override.shift()
+          : override[0]
+        : override;
       const found =
-        overrides[key] ??
+        picked ??
         defaults[key] ??
         (key.startsWith('gh pr create') ? defaults['gh pr create'] : undefined);
       return found ?? { code: 0, out: '' };
@@ -137,11 +152,37 @@ describe('prepareRelease: prasyarat (berhenti SEBELUM membuat cabang)', () => {
     expect(mutating(shell)).toEqual([]);
   });
 
-  test('staging belum memuat ujung dev', async () => {
+  test('staging bukan leluhur dev (dev tak memuat apa yang berjalan di staging)', async () => {
     const shell = fakeShell({
-      [`git merge-base --is-ancestor ${DEV} ${STAGING}`]: { code: 1, out: '' },
+      [`git merge-base --is-ancestor ${STAGING} ${DEV}`]: { code: 1, out: '' },
     });
     await expect(run(shell)).rejects.toThrow(/staging/);
+    expect(mutating(shell)).toEqual([]);
+  });
+
+  test('selisih staging..dev memuat kode (belum berjalan di staging) ditolak; hanya metadata atau kosong lolos', async () => {
+    const code = fakeShell({
+      [`git diff --name-only ${STAGING} origin/dev`]: {
+        code: 0,
+        out: 'server/src/app.ts\nserver/changelog.d/20261117-a.md\n',
+      },
+    });
+    await expect(run(code)).rejects.toThrow(/staging/);
+    expect(mutating(code)).toEqual([]);
+    const empty = fakeShell({
+      [`git diff --name-only ${STAGING} origin/dev`]: { code: 0, out: '' },
+    });
+    await expect(run(empty)).resolves.toBeDefined();
+  });
+
+  test('tanpa fragmen di origin/dev: berhenti sebelum membuat cabang', async () => {
+    const shell = fakeShell({
+      'git ls-tree --name-only origin/dev -- server/changelog.d/': {
+        code: 0,
+        out: 'server/changelog.d/.gitkeep\n',
+      },
+    });
+    await expect(run(shell)).rejects.toThrow(/fragmen/i);
     expect(mutating(shell)).toEqual([]);
   });
 
@@ -200,6 +241,7 @@ describe('prepareRelease: jalur sukses', () => {
       'git add server/package.json bun.lock server/CHANGELOG.md server/changelog.d',
       expect.stringMatching(/^git commit -m chore\(rilis\): server v1\.0\.0/),
       'git push --set-upstream origin release/server-v1.0.0',
+      'git switch feat/kerja',
       expect.stringMatching(/^gh pr create --base main --head release\/server-v1\.0\.0 --title /),
     ]);
     expect(files.files['server/package.json']).toContain('"version": "1.0.0"');
@@ -263,6 +305,60 @@ describe('prepareRelease: jalur sukses', () => {
     expect(shell.calls).toContain('git switch feat/kerja');
     expect(shell.calls).toContain('git branch -D release/server-v1.0.0');
     expect(mutating(shell).some((c) => c.startsWith('gh pr create'))).toBe(false);
+  });
+});
+
+describe('prepareRelease: kegagalan sesudah commit dan PR', () => {
+  const go = (shell: Shell) =>
+    prepareRelease({
+      component: 'server',
+      bump: '1.0.0',
+      shell,
+      files: fakeFiles(baseFiles()),
+      now: NOW,
+    });
+
+  test('pohon kerja kotor sesudah commit: dibatalkan, tanpa push, kembali ke cabang asal', async () => {
+    const shell = fakeShell({
+      'git status --porcelain': [
+        { code: 0, out: '' },
+        { code: 0, out: ' M server/src/x.ts\n' },
+      ],
+    });
+    await expect(go(shell)).rejects.toThrow(/kotor|bersih/i);
+    expect(mutating(shell).some((c) => c.startsWith('git push'))).toBe(false);
+    expect(shell.calls).toContain('git switch feat/kerja');
+    expect(shell.calls).toContain('git branch -D release/server-v1.0.0');
+  });
+
+  test('PR gagal dibuka: cabang dipertahankan, kembali ke cabang asal, galat memberi petunjuk manual', async () => {
+    const shell = fakeShell({ 'gh pr create': { code: 1, out: 'gh rusak' } });
+    await expect(go(shell)).rejects.toThrow(/manual/i);
+    expect(shell.calls).toContain('git switch feat/kerja');
+    expect(shell.calls).not.toContain('git branch -D release/server-v1.0.0');
+  });
+});
+
+describe('parseArgs', () => {
+  test('komponen, kenaikan, dan --dry-run', () => {
+    expect(parseArgs(['server', 'minor'])).toEqual({
+      component: 'server',
+      bump: 'minor',
+      dryRun: false,
+    });
+    expect(parseArgs(['desktop', '1.0.0', '--dry-run'])).toEqual({
+      component: 'desktop',
+      bump: '1.0.0',
+      dryRun: true,
+    });
+  });
+
+  test('flag lain, argumen kurang atau lebih, atau komponen tak dikenal ditolak', () => {
+    expect(() => parseArgs(['server', 'minor', '--dryrun'])).toThrow(/--dryrun/);
+    expect(() => parseArgs(['server', 'minor', '--force'])).toThrow();
+    expect(() => parseArgs(['server'])).toThrow();
+    expect(() => parseArgs(['server', 'minor', 'extra'])).toThrow();
+    expect(() => parseArgs(['web', 'minor'])).toThrow();
   });
 });
 

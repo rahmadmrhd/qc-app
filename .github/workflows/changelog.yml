@@ -34,19 +34,29 @@ jobs:
         with:
           bun-version: 1.4.2
 
-      # `PR_FILES` = semua berkas PR (nama lama rename ikut); `PR_ADDED` = berkas yang tidak dihapus (fragmen yang dihapus
-      # tidak dihitung sebagai fragmen baru). Lalu semua fragmen yang ada divalidasi bentuknya (nama, jenis, satu paragraf).
-      - name: Periksa fragmen changelog
+      # Token hanya ada di langkah ini (memanggil API, tanpa menjalankan kode dari checkout PR). `pr-files.txt` = semua
+      # berkas PR (nama lama rename ikut); `pr-added.txt` = berkas yang DITAMBAH (status added; fragmen yang diubah atau
+      # dihapus tidak dihitung sebagai fragmen baru).
+      - name: Ambil daftar berkas PR
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
-          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
         run: |
           set -euo pipefail
           [[ $PR =~ ^[0-9]+$ ]] || { echo "::error::Nomor PR tidak valid."; exit 1; }
-          PR_FILES=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)')
-          PR_ADDED=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | select(.status != "removed") | .filename')
+          gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/pr-files.txt"
+          gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | select(.status == "added") | .filename' > "$RUNNER_TEMP/pr-added.txt"
+
+      # Langkah ini menjalankan skrip dari checkout PR, jadi TANPA token. Semua fragmen yang ada divalidasi bentuknya
+      # (nama, jenis, satu paragraf).
+      - name: Periksa fragmen changelog
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+          PR_FILES=$(cat "$RUNNER_TEMP/pr-files.txt")
+          PR_ADDED=$(cat "$RUNNER_TEMP/pr-added.txt")
           export PR_FILES PR_ADDED
           bun run scripts/changelog-check.ts
           bun run changelog validate server

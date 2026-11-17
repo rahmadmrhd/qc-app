@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   ChangelogError,
   type CliDeps,
@@ -8,6 +11,7 @@ import {
   FRAGMENT_NAME_PATTERN,
   isSemver,
   parseFragment,
+  realDeps,
   runCli,
 } from './changelog';
 
@@ -42,6 +46,13 @@ describe('parseFragment', () => {
       expect(() => parseFragment(bad, 'jenis: diubah\nIsi.')).toThrow(bad);
     }
     expect(FRAGMENT_NAME_PATTERN.test('20261117-a-b-c.md')).toBe(true);
+  });
+
+  test('menolak tanggal yang bukan tanggal kalender nyata (bulan 13, hari 32, 30 Februari); tahun kabisat diterima', () => {
+    for (const bad of ['20261301-a.md', '20261132-a.md', '20260230-a.md', '20260000-a.md']) {
+      expect(() => parseFragment(bad, 'jenis: diubah\nIsi.')).toThrow(bad);
+    }
+    expect(() => parseFragment('20240229-a.md', 'jenis: diubah\nIsi.')).not.toThrow();
   });
 
   test('menolak baris pertama bukan "jenis: ...", jenis tak dikenal, atau salah ketik', () => {
@@ -217,6 +228,45 @@ function fakeDeps(
     print: (line) => out.push(line),
   };
 }
+
+describe('realDeps.listDir', () => {
+  const makeRoot = () => mkdtempSync(join(tmpdir(), 'qc-changelog-'));
+
+  test('folder tidak ada = daftar kosong; subfolder dilaporkan dengan akhiran "/"; berkas biasa apa adanya', () => {
+    const root = makeRoot();
+    try {
+      mkdirSync(join(root, 'server/changelog.d/sub'), { recursive: true });
+      writeFileSync(join(root, 'server/changelog.d/20261117-a.md'), 'x');
+      const deps = realDeps(root);
+      expect(deps.listDir('desktop/changelog.d')).toEqual([]);
+      expect(deps.listDir('server/changelog.d').sort()).toEqual(['20261117-a.md', 'sub/']);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('galat selain ENOENT tidak ditelan (jalur yang adalah berkas, bukan folder)', () => {
+    const root = makeRoot();
+    try {
+      mkdirSync(join(root, 'server'), { recursive: true });
+      writeFileSync(join(root, 'server/changelog.d'), 'bukan folder');
+      expect(() => realDeps(root).listDir('server/changelog.d')).toThrow();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('entri subfolder muncul sebagai masalah validasi (bukan diam-diam hilang)', () => {
+    const deps: CliDeps = {
+      listDir: () => ['sub/', '20261117-a.md'],
+      readFile: () => 'jenis: diubah\nIsi.',
+      writeFile: () => {},
+      removeFile: () => {},
+      print: () => {},
+    };
+    expect(runCli(['validate', 'server'], deps)).toBe(1);
+  });
+});
 
 describe('runCli', () => {
   const dir = 'server/changelog.d';

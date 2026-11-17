@@ -80,11 +80,6 @@ COPY --from=web-build /app/server/dist server/dist
 # Berkas tes tidak dibutuhkan runtime.
 RUN find shared server/src -name '*.test.ts' -delete
 
-# SHA commit yang dibangun (build-arg dari CI; dilaporkan /api/ping). Sengaja di lapisan paling akhir tahap runtime
-# agar SHA yang berubah tiap commit tidak membatalkan cache lapisan di atasnya. Bukan rahasia.
-ARG GIT_SHA=unknown
-ENV GIT_SHA=$GIT_SHA
-
 # Klien MariaDB untuk cadangan malam (mariadb-dump) dan skrip pemulihan (mariadb). Hanya paket klien, bukan server.
 # Folder dump lokal: named volume dipasang di sini; direktori dibuat dan dimiliki `bun` SEBELUM USER agar volume baru
 # mewarisi kepemilikannya (tanpa ini volume dimiliki root dan cadangan tak dapat menulis).
@@ -93,6 +88,11 @@ RUN apk add --no-cache mariadb-client     && mkdir -p /var/backups/qc     && cho
 # Folder berkas sementara foto bukti QC Serial Number (volume `qc-proofs` dipasang di sini): dibuat dan dimiliki `bun`
 # SEBELUM USER dengan alasan yang sama seperti folder dump di atas.
 RUN mkdir -p /var/lib/qc/proofs && chown bun:bun /var/lib/qc/proofs
+
+# SHA commit yang dibangun (build-arg dari CI; dilaporkan /api/ping). Sengaja SETELAH semua RUN tahap runtime (apk add,
+# mkdir) agar SHA yang berubah tiap commit tidak membatalkan cache lapisan itu. Bukan rahasia.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
 
 # Pengguna non-root bawaan image oven/bun (uid 1000).
 USER bun

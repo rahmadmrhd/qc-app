@@ -19,6 +19,17 @@ export type FragmentKind = (typeof FRAGMENT_KINDS)[number];
 
 /** Nama fragmen: tanggal 8 digit, slug huruf kecil/angka dipisah tanda hubung, ekstensi `.md`. */
 export const FRAGMENT_NAME_PATTERN = /^\d{8}-[a-z0-9]+(-[a-z0-9]+)*\.md$/;
+/** `yyyymmdd` adalah tanggal kalender nyata (bukan bulan 13 atau 30 Februari). */
+function isCalendarDate(yyyymmdd: string): boolean {
+  const year = Number(yyyymmdd.slice(0, 4));
+  const month = Number(yyyymmdd.slice(4, 6));
+  const day = Number(yyyymmdd.slice(6, 8));
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
+}
+
 /** Batas panjang teks satu fragmen (setelah baris digabung). */
 export const FRAGMENT_MAX_CHARS = 500;
 
@@ -70,8 +81,8 @@ export function parseFragment(name: string, text: string): Fragment {
   const fail = (reason: string): never => {
     throw new ChangelogError(`${name}: ${reason}`);
   };
-  if (!FRAGMENT_NAME_PATTERN.test(name)) {
-    fail('nama harus <yyyymmdd>-<slug-huruf-kecil>.md');
+  if (!FRAGMENT_NAME_PATTERN.test(name) || !isCalendarDate(name.slice(0, 8))) {
+    fail('nama harus <yyyymmdd>-<slug-huruf-kecil>.md dengan tanggal kalender yang nyata');
   }
   if (text.includes('\r')) fail('memakai akhir baris Windows (CR); simpan dengan LF');
   const lines = text.split('\n');
@@ -237,14 +248,21 @@ export function runCli(argv: string[], deps: CliDeps): number {
   return 0;
 }
 
-export function realDeps(): CliDeps {
-  const abs = (path: string) => join(ROOT_DIR, path);
+/**
+ * Operasi berkas nyata terhadap `root` (bawaan akar repositori). `listDir`: folder yang tidak ada = kosong; galat lain
+ * (izin, jalur berkas) dilempar; subfolder dilaporkan dengan akhiran `/` agar gagal divalidasi, bukan hilang diam-diam.
+ */
+export function realDeps(root: string = ROOT_DIR): CliDeps {
+  const abs = (path: string) => join(root, path);
   return {
     listDir: (dir) => {
       try {
-        return readdirSync(abs(dir));
-      } catch {
-        return [];
+        return readdirSync(abs(dir), { withFileTypes: true }).map((entry) =>
+          entry.isDirectory() ? `${entry.name}/` : entry.name,
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+        throw error;
       }
     },
     readFile: (path) => readFileSync(abs(path), 'utf8'),
