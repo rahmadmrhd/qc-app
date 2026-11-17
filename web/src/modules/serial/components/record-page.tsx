@@ -234,13 +234,18 @@ export function RecordPage({
   );
   const isKnownSerial = useCallback((serial: string) => knownSerials.has(serial), [knownSerials]);
 
+  // Sisa baris draft yang masih boleh ditambah (dibaca tiap bacaan kamera): tabel hasil scan menolak yang melebihinya.
+  const draftCapacity = useCallback(() => SERIAL_LIMITS.tableRows - rowsRef.current.length, []);
+
   // Setelah Simpan dialog kamera: `addText` sudah dipanggil per baris (notice-nya saling menimpa); ringkas SEMUA baris.
   function summarizeCameraSave(results: { serial: string; feedback: ScanFeedback }[]) {
     const { notice: message } = describeAdd({
       added: results.filter((result) => result.feedback === 'added').length,
       duplicates: results.filter((result) => result.feedback === 'duplicate').length,
-      rejected: results.filter((result) => result.feedback === 'rejected').map((r) => r.serial),
-      truncated: false,
+      // Tabel kamera sudah memvalidasi serial dan menjaga sisa kapasitas draft: yang masih 'rejected' saat Simpan hanya
+      // bisa terbentur batas draft (bukan serial tak sah).
+      rejected: [],
+      truncated: results.some((result) => result.feedback === 'rejected'),
     });
     setNotice(message);
   }
@@ -621,6 +626,7 @@ export function RecordPage({
         onSubmit={addText}
         isKnown={isKnownSerial}
         onCameraSaved={summarizeCameraSave}
+        cameraCapacity={draftCapacity}
         autoFocus
       />
 

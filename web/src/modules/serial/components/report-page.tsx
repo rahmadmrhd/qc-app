@@ -70,6 +70,8 @@ export function ReportPage({ onOpenSerial }: ReportPageProps) {
         feedbackText={FEEDBACK_TEXT}
         // Satu laporan untuk satu Serial Number: tabel hasil scan kamera memuat 1 baris (scan baru menggantikannya).
         cameraMaxRows={1}
+        // Pencarian ulang serial yang sama berbunyi 'duplicate' padahal sah: jangan tampilkan toast "dilewati" yang menyesatkan.
+        onCameraSaved={() => undefined}
         autoFocus
       />
       {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}

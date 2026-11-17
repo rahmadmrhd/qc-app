@@ -32,35 +32,61 @@ const PROBLEM_MESSAGE = {
   known: 'Sudah ada di draft.',
 } as const;
 
+export interface AddScannedOptions {
+  /**
+   * Batas baris untuk pemakai satu-serial (< batas draft, mis. 1): scan baru MENGGANTIKAN baris yang ada, dan payload
+   * yang tak bisa dipakai utuh (lebih dari satu serial, atau ada baris tak sah) ditolak TANPA mengganti apa pun.
+   */
+  maxRows?: number;
+  /** Sisa kapasitas draft pemakai (jumlah total baris yang masih boleh dimiliki tabel ini); kosong = batas draft. */
+  capacity?: number;
+}
+
+export type AddScannedReason = 'limit' | 'single' | null;
+
 /**
  * Menambah hasil bacaan (satu serial, atau banyak serial satu per baris) di akhir tabel. Serial yang sudah ada di
- * tabel atau di draft (`isKnown`) tidak ditambahkan. Umpan balik: `added` bila semua yang baru masuk, `duplicate`
- * bila tak ada yang baru, `rejected` bila tak ada serial sah atau tabel penuh (yang masih muat tetap masuk).
- * `maxRows` lebih kecil dari batas draft = mode ganti (lihat di bawah).
+ * tabel atau di draft (`isKnown`) tidak ditambahkan. Umpan balik: `added` bila semua yang baru masuk dan tak ada baris
+ * tak sah, `duplicate` bila tak ada yang baru, `rejected` bila ada baris tak sah di payload (serial sah tetap masuk),
+ * tak ada serial sah, atau batas baris tercapai (yang masih muat tetap masuk). `reason` menjelaskan penolakan karena
+ * batas draft (`limit`) atau aturan satu-serial (`single`).
  */
 export function addScanned(
   rows: readonly ScanRow[],
   payload: string,
   isKnown: IsKnown,
   newId: () => string,
-  maxRows: number = SCAN_TABLE_LIMIT,
-): { rows: readonly ScanRow[]; feedback: ScanFeedback; added: string[] } {
+  options: AddScannedOptions = {},
+): { rows: readonly ScanRow[]; feedback: ScanFeedback; added: string[]; reason: AddScannedReason } {
+  const { maxRows = SCAN_TABLE_LIMIT, capacity = SCAN_TABLE_LIMIT } = options;
   const split = splitSerialInput(payload);
-  if (split.serials.length === 0) return { rows, feedback: 'rejected', added: [] };
+  const unchanged = (feedback: ScanFeedback, reason: AddScannedReason = null) => ({
+    rows,
+    feedback,
+    added: [] as string[],
+    reason,
+  });
+  if (split.serials.length === 0) return unchanged('rejected');
+  const replacing = maxRows < SCAN_TABLE_LIMIT;
+  if (replacing && (split.serials.length > 1 || split.rejected.length > 0)) {
+    return unchanged('rejected', 'single');
+  }
   const existing = new Set(rows.map((row) => normalizeSerial(row.text)));
   const fresh = split.serials.filter((serial) => !existing.has(serial) && !isKnown(serial));
-  if (fresh.length === 0) return { rows, feedback: 'duplicate', added: [] };
-  // Batas lebih kecil dari batas draft (pemakai satu-serial, mis. `maxRows` 1): baris baru MENGGANTIKAN yang lama
-  // (yang terbaru dipertahankan), bukan ditolak. Batas draft penuh = ditolak.
-  const replacing = maxRows < SCAN_TABLE_LIMIT;
-  const room = replacing ? maxRows : Math.max(0, SCAN_TABLE_LIMIT - rows.length);
+  if (fresh.length === 0) return unchanged(split.rejected.length > 0 ? 'rejected' : 'duplicate');
+  // Mode ganti: yang terbaru menggantikan yang lama. Selain itu: tabel tak boleh melebihi sisa kapasitas draft.
+  const room = replacing
+    ? maxRows
+    : Math.max(0, Math.min(SCAN_TABLE_LIMIT, capacity) - rows.length);
   const accepted = fresh.slice(0, room);
-  if (accepted.length === 0) return { rows, feedback: 'rejected', added: [] };
+  if (accepted.length === 0) return unchanged('rejected', 'limit');
   const created = accepted.map((serial) => ({ id: newId(), text: serial }));
+  const truncated = accepted.length < fresh.length;
   return {
     rows: replacing ? [...rows, ...created].slice(-maxRows) : [...rows, ...created],
-    feedback: accepted.length === fresh.length ? 'added' : 'rejected',
+    feedback: truncated || split.rejected.length > 0 ? 'rejected' : 'added',
     added: created.map((row) => row.id),
+    reason: truncated ? 'limit' : null,
   };
 }
 

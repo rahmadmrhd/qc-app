@@ -27,6 +27,8 @@ export interface SerialScanInputProps {
   isKnown?: IsKnown;
   /** Batas baris tabel hasil scan kamera (mis. 1 untuk halaman satu-serial: scan baru mengganti yang ada). */
   cameraMaxRows?: number;
+  /** Sisa kapasitas draft halaman (jumlah baris yang masih boleh ditambah), dibaca tiap bacaan kamera. */
+  cameraCapacity?: () => number;
   /** Hasil semua baris sesudah Simpan di dialog kamera (menggantikan toast ringkasan dialog). */
   onCameraSaved?: CameraScanButtonProps['onSaved'];
 }
@@ -40,6 +42,7 @@ export function SerialScanInput({
   feedbackText,
   isKnown,
   cameraMaxRows,
+  cameraCapacity,
   onCameraSaved,
 }: SerialScanInputProps) {
   const [value, setValue] = useState('');
@@ -68,6 +71,7 @@ export function SerialScanInput({
           isKnown={isKnown}
           maxRows={cameraMaxRows}
           onSaved={onCameraSaved}
+          draftCapacity={cameraCapacity}
           disabled={disabled}
         />
       </div>

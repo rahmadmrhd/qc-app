@@ -143,4 +143,26 @@ test('Lapor Rusak: pemindai kamera dibatasi satu baris (prop maxRows=1)', async 
     </QueryClientProvider>,
   );
   expect(captured.props?.maxRows).toBe(1);
+  // Menangani ringkasannya sendiri: toast "0 ditambahkan, 1 dilewati" untuk serial yang sama tidak boleh muncul.
+  expect(captured.props?.onSaved).toBeTypeOf('function');
+});
+
+test('kapasitas draft diberikan ke pemindai kamera (sisa baris) dan Simpan yang terbentur batas diringkas jujur', async () => {
+  renderPage();
+  await pickLink(screen, 'Item', 'Cisco C9200');
+  await pickLink(screen, 'Lokasi', 'Jakarta (JKT)');
+  expect(captured.props?.draftCapacity?.()).toBe(1000);
+  await userEvent.click(screen.getByLabelText('Scan atau tempel serial (satu per baris)'));
+  await userEvent.paste('cap1\ncap2');
+  expect(captured.props?.draftCapacity?.()).toBe(998);
+  act(() => {
+    captured.props?.onSaved?.([
+      { serial: 'N1', feedback: 'added' },
+      { serial: 'N2', feedback: 'rejected' },
+    ]);
+  });
+  const status = screen.getByRole('status');
+  expect(status).toHaveTextContent('1 serial ditambahkan');
+  expect(status).toHaveTextContent('batas 1000 baris draft tercapai');
+  expect(status).not.toHaveTextContent('N2');
 });

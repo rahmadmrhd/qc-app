@@ -91,22 +91,67 @@ test('rowsToScan: teks ternormalisasi menurut urutan tabel', () => {
 
 test('maxRows=1: scan baru MENGGANTIKAN baris yang ada (bukan ditolak); serial sama = duplicate', () => {
   const rows = [row('AAA1', 'a')];
-  const replaced = addScanned(rows, 'bbb2', never, newId, 1);
+  const replaced = addScanned(rows, 'bbb2', never, newId, { maxRows: 1 });
   expect(replaced.feedback).toBe('added');
   expect(replaced.rows.map((r) => r.text)).toEqual(['BBB2']);
   expect(replaced.added).toEqual([replaced.rows[0]?.id]);
   // Serial yang sama dengan baris yang ada tidak mengganti apa pun.
-  const same = addScanned(rows, 'aaa1', never, newId, 1);
+  const same = addScanned(rows, 'aaa1', never, newId, { maxRows: 1 });
   expect(same.feedback).toBe('duplicate');
   expect(same.rows).toBe(rows);
   // Serial yang sudah ada di draft tetap ditolak sebagai duplicate dan baris lama dipertahankan.
-  const known = addScanned(rows, 'draft1', (s) => s === 'DRAFT1', newId, 1);
+  const known = addScanned(rows, 'draft1', (s) => s === 'DRAFT1', newId, { maxRows: 1 });
   expect(known.feedback).toBe('duplicate');
   expect(known.rows).toBe(rows);
 });
 
-test('maxRows=1: payload banyak serial memakai yang pertama dan bernada rejected (sisanya diabaikan)', () => {
-  const result = addScanned([], 'aaa1\nbbb2', never, newId, 1);
+test('maxRows=1: payload banyak serial atau dengan baris tak sah ditolak UTUH, baris lama tidak diganti', () => {
+  const rows = [row('OLD1', 'o')];
+  const multi = addScanned(rows, `aaa1${String.fromCharCode(10)}bbb2`, never, newId, {
+    maxRows: 1,
+  });
+  expect(multi.feedback).toBe('rejected');
+  expect(multi.reason).toBe('single');
+  expect(multi.rows).toBe(rows);
+  const mixed = addScanned(rows, `aaa1${String.fromCharCode(10)}${'x'.repeat(100)}`, never, newId, {
+    maxRows: 1,
+  });
+  expect(mixed.feedback).toBe('rejected');
+  expect(mixed.rows).toBe(rows);
+});
+
+test('baris tak sah dalam satu payload: serial sah tetap masuk tetapi umpan balik rejected', () => {
+  const result = addScanned([], `aaa1${String.fromCharCode(10)}${'x'.repeat(100)}`, never, newId);
   expect(result.rows.map((r) => r.text)).toEqual(['AAA1']);
   expect(result.feedback).toBe('rejected');
+  // Hanya duplikat + baris tak sah: tetap rejected (selaras describeAdd), bukan duplicate.
+  const dup = addScanned(
+    [row('AAA1')],
+    `aaa1${String.fromCharCode(10)}${'x'.repeat(100)}`,
+    never,
+    newId,
+  );
+  expect(dup.feedback).toBe('rejected');
+});
+
+test('sisa kapasitas draft: tabel tidak melebihinya; yang melebihi ditolak dengan alasan limit', () => {
+  const nearly = [row('A'), row('B')];
+  const result = addScanned(
+    nearly,
+    `c1${String.fromCharCode(10)}c2${String.fromCharCode(10)}c3`,
+    never,
+    newId,
+    { capacity: 4 },
+  );
+  expect(result.rows.map((r) => r.text)).toEqual(['A', 'B', 'C1', 'C2']);
+  expect(result.feedback).toBe('rejected');
+  expect(result.reason).toBe('limit');
+  const full = addScanned(result.rows, 'd1', never, newId, { capacity: 4 });
+  expect(full.rows).toBe(result.rows);
+  expect(full.feedback).toBe('rejected');
+  expect(full.reason).toBe('limit');
+  // Kapasitas cukup: tanpa alasan.
+  const ok = addScanned([], 'z1', never, newId, { capacity: 4 });
+  expect(ok.reason).toBeNull();
+  expect(ok.feedback).toBe('added');
 });

@@ -1,4 +1,13 @@
-import { type MouseEvent, type RefObject, useEffect, useMemo, useRef, useState } from 'react';
+import { SERIAL_LIMITS } from '@shared/serials';
+import {
+  type MouseEvent,
+  type RefObject,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { toast } from 'sonner';
 import {
   AlertDialog,
@@ -56,6 +65,12 @@ export interface CameraScanDialogProps {
    * diisi, toast ringkasan dialog tidak ditampilkan (pemakai yang menyampaikannya) agar tidak ganda.
    */
   onSaved?: (results: { serial: string; feedback: ScanFeedback }[]) => void;
+  /**
+   * Sisa kapasitas draft pemakai (jumlah total baris yang masih boleh dimiliki tabel ini, dibaca tiap bacaan): baris
+   * yang melebihinya ditolak DI TABEL (umpan balik "Ditolak: batas N baris draft tercapai"), jadi Simpan tidak
+   * menjatuhkan baris diam-diam. Kosong = batas draft penuh.
+   */
+  draftCapacity?: () => number;
   /** Disuntik tes: pengganti mesin pembaca. */
   createEngine?: () => Promise<BarcodeEngine>;
   /** Disuntik tes: jam untuk jendela bacaan ulang. */
@@ -113,6 +128,8 @@ export function CameraScanDialog({ open, onOpenChange, ...rest }: CameraScanDial
         }}
         // Ketukan pertama pengguna menyiapkan Web Audio (iOS hanya mau memulainya dari gerak pengguna).
         onPointerDown={() => actionsRef.current?.unlock()}
+        onClick={() => actionsRef.current?.unlock()}
+        onTouchEnd={() => actionsRef.current?.unlock()}
       >
         {/* Isi hanya dipasang selama dialog terbuka: unmount = efek kamera dibersihkan = aliran dimatikan. */}
         <CameraScanBody onClose={() => onOpenChange(false)} actionsRef={actionsRef} {...rest} />
@@ -126,13 +143,14 @@ function CameraScanBody({
   isKnown = NEVER_KNOWN,
   maxRows,
   onSaved,
+  draftCapacity,
   onClose,
   actionsRef,
   createEngine,
   now,
 }: Pick<
   CameraScanDialogProps,
-  'onScan' | 'isKnown' | 'maxRows' | 'onSaved' | 'createEngine' | 'now'
+  'onScan' | 'isKnown' | 'maxRows' | 'onSaved' | 'draftCapacity' | 'createEngine' | 'now'
 > & {
   onClose: () => void;
   actionsRef: RefObject<BodyActions | null>;
@@ -140,6 +158,8 @@ function CameraScanBody({
   const gate = useMemo(() => createPayloadGate(undefined, now), [now]);
   const { feedback, announce, unlock } = useScanFeedback();
   const [last, setLast] = useState('');
+  // Alasan penolakan yang ditampilkan menggantikan serial terakhir di teks hasil.
+  const [note, setNote] = useState<string | null>(null);
   const [deviceId, setDeviceId] = useState('');
   const [ring, setRing] = useState<{ x: number; y: number; key: number } | null>(null);
   const [rows, setRows] = useState<readonly ScanRow[]>([]);
@@ -155,6 +175,11 @@ function CameraScanBody({
   isKnownRef.current = isKnown;
   const onSavedRef = useRef(onSaved);
   onSavedRef.current = onSaved;
+  const draftCapacityRef = useRef(draftCapacity);
+  draftCapacityRef.current = draftCapacity;
+  // Konfirmasi Buang tampil: bacaan kamera baru diabaikan (jumlah di judulnya harus tetap benar).
+  const confirmRef = useRef(false);
+  confirmRef.current = confirmDiscard;
 
   function commitRows(next: readonly ScanRow[]) {
     rowsRef.current = next;
@@ -168,7 +193,14 @@ function CameraScanBody({
       text,
       (serial) => isKnownRef.current(serial),
       () => `scan-${++idCounter.current}`,
-      maxRows,
+      { maxRows, capacity: draftCapacityRef.current?.() },
+    );
+    setNote(
+      result.reason === 'limit'
+        ? `batas ${SERIAL_LIMITS.tableRows} baris draft tercapai`
+        : result.reason === 'single'
+          ? 'satu serial saja per laporan, arahkan ke satu kode'
+          : null,
     );
     if (result.rows !== rowsRef.current) commitRows(result.rows);
     const newest = result.added[result.added.length - 1];
@@ -182,6 +214,7 @@ function CameraScanBody({
     createEngine,
     now,
     onPayload: (payload) => {
+      if (confirmRef.current) return;
       const text = gate.accept(payload);
       if (text !== null) deliver(text);
     },
@@ -227,13 +260,13 @@ function CameraScanBody({
     else onClose();
   }
 
-  actionsRef.current = { cancel: requestCancel, unlock };
-  useEffect(
-    () => () => {
+  // Dipasang di efek (bukan saat render): aman bagi StrictMode dan render yang dibatalkan.
+  useLayoutEffect(() => {
+    actionsRef.current = { cancel: requestCancel, unlock };
+    return () => {
       actionsRef.current = null;
-    },
-    [actionsRef],
-  );
+    };
+  });
 
   function save() {
     if (!canSave) return;
@@ -273,108 +306,114 @@ function CameraScanBody({
       </AlertDialogDescription>
 
       {/* Area kamera: latar hitam selebar layar; isinya dipusatkan dengan lebar maksimum agar bingkai tetap proporsional di desktop. */}
-      <div className="shrink-0 bg-black">
-        {/* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: ketuk-untuk-fokus hanya pelengkap sentuhan; pemindaian dan semua kontrol lain tetap bisa lewat papan ketik. */}
-        <div
-          data-testid="camera-viewport"
-          onClick={onViewportClick}
-          className={cn(
-            'relative mx-auto h-[clamp(11rem,55dvh,40rem)] w-full max-w-2xl overflow-hidden border-2 border-transparent bg-black',
-            feedback !== null && FEEDBACK_FLASH[feedback],
-          )}
-        >
-          <video
-            ref={camera.videoRef}
-            aria-label="Pratinjau kamera"
-            className="absolute inset-0 size-full object-cover"
-            playsInline
-            muted
-          />
-          {/* Area scan: hanya kode di dalam bingkai yang dibaca (ukuran bingkai = SCAN_FRAME, sama dengan pemotongan). */}
+      {/* Layar pendek (ponsel landscape): kamera dan tabel berdampingan agar kontrol tak terpotong dan tabel tetap lega. */}
+      <div
+        data-testid="scan-layout"
+        className="flex min-h-0 flex-1 flex-col [@media(max-height:30rem)]:flex-row"
+      >
+        <div className="shrink-0 bg-black [@media(max-height:30rem)]:flex [@media(max-height:30rem)]:w-1/2 [@media(max-height:30rem)]:shrink">
+          {/* biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: ketuk-untuk-fokus hanya pelengkap sentuhan; pemindaian dan semua kontrol lain tetap bisa lewat papan ketik. */}
           <div
-            aria-hidden
-            className="pointer-events-none absolute inset-0 flex items-center justify-center"
+            data-testid="camera-viewport"
+            onClick={onViewportClick}
+            className={cn(
+              'relative mx-auto h-[clamp(11rem,55dvh,40rem)] w-full max-w-2xl [@media(max-height:30rem)]:h-auto overflow-hidden border-2 border-transparent bg-black',
+              feedback !== null && FEEDBACK_FLASH[feedback],
+            )}
           >
+            <video
+              ref={camera.videoRef}
+              aria-label="Pratinjau kamera"
+              className="absolute inset-0 size-full object-cover"
+              playsInline
+              muted
+            />
+            {/* Area scan: hanya kode di dalam bingkai yang dibaca (ukuran bingkai = SCAN_FRAME, sama dengan pemotongan). */}
             <div
-              data-testid="scan-frame"
-              className="rounded-lg border-2 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]"
-              style={{
-                width: `${SCAN_FRAME.width * 100}%`,
-                height: `${SCAN_FRAME.height * 100}%`,
-              }}
-            />
-          </div>
-          {ring !== null ? (
-            <span
-              key={ring.key}
               aria-hidden
-              data-testid="focus-ring"
-              className="pointer-events-none absolute size-14 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full border-2 border-white motion-reduce:animate-none"
-              style={{ left: ring.x, top: ring.y }}
-            />
-          ) : null}
-          {/* Petunjuk dan hasil terakhir di bagian atas, di luar bingkai (tidak menutupinya). */}
-          {state.status !== 'error' ? (
-            <div className="pointer-events-none absolute inset-x-3 top-2 flex flex-col items-center gap-1">
-              <p className="rounded-md bg-black/50 px-2 py-1 text-center text-xs text-white">
-                {tip}
-              </p>
+              className="pointer-events-none absolute inset-0 flex items-center justify-center"
+            >
+              <div
+                data-testid="scan-frame"
+                className="rounded-lg border-2 border-white/90 shadow-[0_0_0_9999px_rgba(0,0,0,0.5)]"
+                style={{
+                  width: `${SCAN_FRAME.width * 100}%`,
+                  height: `${SCAN_FRAME.height * 100}%`,
+                }}
+              />
+            </div>
+            {ring !== null ? (
+              <span
+                key={ring.key}
+                aria-hidden
+                data-testid="focus-ring"
+                className="pointer-events-none absolute size-14 -translate-x-1/2 -translate-y-1/2 animate-ping rounded-full border-2 border-white motion-reduce:animate-none"
+                style={{ left: ring.x, top: ring.y }}
+              />
+            ) : null}
+            {/* Petunjuk dan hasil terakhir di bagian atas, di luar bingkai (tidak menutupinya). */}
+            {state.status !== 'error' ? (
+              <div className="pointer-events-none absolute inset-x-3 top-2 flex flex-col items-center gap-1">
+                <p className="rounded-md bg-black/50 px-2 py-1 text-center text-xs text-white">
+                  {tip}
+                </p>
+                <p
+                  aria-live="polite"
+                  // Tetap dirender (kosong tanpa latar) agar pembaca layar mengumumkan perubahannya.
+                  className={cn(
+                    'max-w-full truncate rounded-md px-2 py-1 text-sm font-medium',
+                    feedback ? `bg-black/70 ${FEEDBACK_TEXT_ON_DARK[feedback]}` : 'p-0',
+                  )}
+                >
+                  {feedback ? `${FEEDBACK_TEXT[feedback]}: ${note ?? last}` : ''}
+                </p>
+              </div>
+            ) : null}
+            {state.status === 'loading' ? (
               <p
-                aria-live="polite"
-                // Tetap dirender (kosong tanpa latar) agar pembaca layar mengumumkan perubahannya.
-                className={cn(
-                  'max-w-full truncate rounded-md px-2 py-1 text-sm font-medium',
-                  feedback ? `bg-black/70 ${FEEDBACK_TEXT_ON_DARK[feedback]}` : 'p-0',
-                )}
+                role="status"
+                className="absolute inset-0 flex items-center justify-center bg-black/60 p-4 text-center text-sm text-white"
               >
-                {feedback ? `${FEEDBACK_TEXT[feedback]}: ${last}` : ''}
+                Menyiapkan kamera…
               </p>
-            </div>
-          ) : null}
-          {state.status === 'loading' ? (
-            <p
-              role="status"
-              className="absolute inset-0 flex items-center justify-center bg-black/60 p-4 text-center text-sm text-white"
-            >
-              Menyiapkan kamera…
-            </p>
-          ) : null}
-          {state.status === 'error' ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 p-4 text-center text-sm text-white">
-              <p role="alert">{CAMERA_ERROR_TEXT[state.kind]}</p>
-              {state.kind !== 'insecure' && state.kind !== 'unsupported' ? (
-                <Button type="button" variant="secondary" size="sm" onClick={camera.retry}>
-                  Coba lagi
-                </Button>
-              ) : null}
-            </div>
-          ) : null}
-          {cameraName !== null && state.status !== 'error' ? (
-            <p
-              data-testid="camera-name"
-              aria-live="polite"
-              className="pointer-events-none absolute bottom-[4.5rem] left-3 max-w-[60%] truncate rounded-md bg-black/60 px-2 py-1 text-xs text-white"
-            >
-              {cameraName}
-            </p>
-          ) : null}
-          {state.status !== 'error' ? (
-            <ScanCameraControls camera={camera} onSwitchCamera={switchCamera} />
-          ) : null}
+            ) : null}
+            {state.status === 'error' ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 p-4 text-center text-sm text-white">
+                <p role="alert">{CAMERA_ERROR_TEXT[state.kind]}</p>
+                {state.kind !== 'insecure' && state.kind !== 'unsupported' ? (
+                  <Button type="button" variant="secondary" size="sm" onClick={camera.retry}>
+                    Coba lagi
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+            {cameraName !== null && state.status !== 'error' ? (
+              <p
+                data-testid="camera-name"
+                aria-live="polite"
+                className="pointer-events-none absolute bottom-[4.5rem] left-3 max-w-[60%] truncate rounded-md bg-black/60 px-2 py-1 text-xs text-white"
+              >
+                {cameraName}
+              </p>
+            ) : null}
+            {state.status !== 'error' ? (
+              <ScanCameraControls camera={camera} onSwitchCamera={switchCamera} />
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col [@media(max-height:30rem)]:w-1/2 [@media(max-height:30rem)]:max-w-none">
+          <ScanResultsTable
+            rows={rows}
+            problems={problems}
+            highlightId={highlightId}
+            onEdit={(id, text) => commitRows(editRow(rowsRef.current, id, text))}
+            onRemove={(id) => commitRows(rowsRef.current.filter((row) => row.id !== id))}
+          />
         </div>
       </div>
 
-      <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col">
-        <ScanResultsTable
-          rows={rows}
-          problems={problems}
-          highlightId={highlightId}
-          onEdit={(id, text) => commitRows(editRow(rowsRef.current, id, text))}
-          onRemove={(id) => commitRows(rowsRef.current.filter((row) => row.id !== id))}
-        />
-      </div>
-
-      <AlertDialogFooter className="bottom-0 mx-0 mb-0 shrink-0 flex-row p-0">
+      <AlertDialogFooter className="bottom-0 mx-0 mb-0 shrink-0 flex-row rounded-none p-0">
         <div className="mx-auto grid w-full max-w-2xl grid-cols-2 gap-2 p-4">
           <Button
             type="button"

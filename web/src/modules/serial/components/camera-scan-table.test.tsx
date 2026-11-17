@@ -1,9 +1,10 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { Fragment, StrictMode } from 'react';
 import { toast } from 'sonner';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { BarcodeEngine } from '../lib/barcode-engine';
-import type { ScanFeedback } from '../lib/scan-feedback';
+import { resetScanAudio, type ScanFeedback } from '../lib/scan-feedback';
 import { CAMERA_ERROR_TEXT } from '../lib/use-camera-scanner';
 import { CameraScanDialog } from './camera-scan-dialog';
 
@@ -45,6 +46,8 @@ interface SetupOptions {
   results?: ScanFeedback[] | ((text: string) => ScanFeedback);
   isKnown?: (serial: string) => boolean;
   maxRows?: number;
+  draftCapacity?: () => number;
+  strict?: boolean;
   onSaved?: (results: { serial: string; feedback: ScanFeedback }[]) => void;
   devices?: unknown[];
 }
@@ -71,17 +74,21 @@ function setup(options: SetupOptions = {}) {
     return queue?.shift() ?? 'added';
   });
   const onOpenChange = vi.fn();
+  const Wrapper = options.strict ? StrictMode : Fragment;
   const view = render(
-    <CameraScanDialog
-      open
-      onOpenChange={onOpenChange}
-      onScan={onScan}
-      isKnown={options.isKnown}
-      maxRows={options.maxRows}
-      onSaved={options.onSaved}
-      createEngine={async () => engine}
-      now={() => time}
-    />,
+    <Wrapper>
+      <CameraScanDialog
+        open
+        onOpenChange={onOpenChange}
+        onScan={onScan}
+        isKnown={options.isKnown}
+        maxRows={options.maxRows}
+        draftCapacity={options.draftCapacity}
+        onSaved={options.onSaved}
+        createEngine={async () => engine}
+        now={() => time}
+      />
+    </Wrapper>,
   );
   return {
     ...view,
@@ -100,6 +107,13 @@ function serials(): string[] {
   return screen
     .queryAllByRole('textbox', { name: /^Serial nomor/ })
     .map((input) => (input as HTMLInputElement).value);
+}
+
+/** Seperti `serials` tetapi juga membaca dialog yang sedang tertutup konfirmasi (aria-hidden). */
+function hiddenSerials(): string[] {
+  return [...document.querySelectorAll<HTMLInputElement>('input[aria-label^="Serial nomor"]')].map(
+    (input) => input.value,
+  );
 }
 
 /** Memindai satu serial: engine melihatnya sampai muncul di tabel, lalu dikosongkan (tidak terbaca lagi). */
@@ -358,4 +372,99 @@ test('berganti kamera menampilkan nama kamera aktif sementara, lalu hilang sendi
   await waitFor(() => expect(screen.queryByTestId('camera-name')).not.toBeInTheDocument(), {
     timeout: 5000,
   });
+});
+
+test('sisa kapasitas draft: baris yang melebihinya ditolak di tabel dengan teks batas draft, Simpan tidak menjatuhkan baris', async () => {
+  const onSaved = vi.fn();
+  const ctx = setup({ draftCapacity: () => 2, onSaved });
+  ctx.state.current = [`aaa1${String.fromCharCode(10)}bbb2${String.fromCharCode(10)}ccc3`];
+  await waitFor(() => expect(serials()).toEqual(['AAA1', 'BBB2']));
+  expect(await screen.findByText(/Ditolak: batas 1000 baris draft tercapai/)).toBeInTheDocument();
+  ctx.state.current = [];
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan (2)' }));
+  expect(onSaved).toHaveBeenCalledWith([
+    { serial: 'AAA1', feedback: 'added' },
+    { serial: 'BBB2', feedback: 'added' },
+  ]);
+});
+
+test('baris tak sah dalam satu payload: umpan balik Ditolak, serial sah tetap masuk', async () => {
+  const ctx = setup();
+  ctx.state.current = [`aaa1${String.fromCharCode(10)}${'x'.repeat(100)}`];
+  await waitFor(() => expect(serials()).toEqual(['AAA1']));
+  expect(await screen.findByText(/^Ditolak:/)).toBeInTheDocument();
+});
+
+test('selama konfirmasi Buang tampil, bacaan baru diabaikan; setelah Lanjut scan pemindaian normal lagi', async () => {
+  const ctx = setup();
+  await scan(ctx, 'aaa1', ['AAA1']);
+  await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
+  const confirm = await screen.findByRole('alertdialog', { name: 'Buang 1 serial hasil scan?' });
+  // Kode baru terlihat kamera selagi konfirmasi terbuka: tidak masuk tabel, judul tetap.
+  ctx.state.current = ['bbb2'];
+  await new Promise((resolve) => setTimeout(resolve, 400));
+  expect(hiddenSerials()).toEqual(['AAA1']);
+  expect(confirm).toHaveAccessibleName('Buang 1 serial hasil scan?');
+  await userEvent.click(within(confirm).getByRole('button', { name: 'Lanjut scan' }));
+  // Bacaan yang jatuh selama konfirmasi dibuang (bukan ditunda): setelah kode dihadirkan lagi, ia terbaca.
+  ctx.state.current = [];
+  ctx.advance(10_000);
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  ctx.state.current = ['bbb2'];
+  await waitFor(() => expect(serials()).toEqual(['AAA1', 'BBB2']));
+});
+
+test('Lapor Rusak (maxRows=1): payload banyak serial ditolak dengan catatan, baris lama tidak diganti', async () => {
+  const ctx = setup({ maxRows: 1 });
+  await scan(ctx, 'old1', ['OLD1']);
+  ctx.advance(10_000);
+  ctx.state.current = [`new1${String.fromCharCode(10)}new2`];
+  expect(await screen.findByText(/Ditolak: .*satu serial/i)).toBeInTheDocument();
+  expect(serials()).toEqual(['OLD1']);
+});
+
+test('klik dan sentuhan di dialog menyiapkan audio (bukan hanya pointerdown)', async () => {
+  const resume = vi.fn(async () => undefined);
+  class FakeAudio {
+    state = 'suspended';
+    resume = resume;
+    close = vi.fn(async () => undefined);
+  }
+  vi.stubGlobal('AudioContext', FakeAudio);
+  setup();
+  const dialog = await screen.findByRole('alertdialog');
+  fireEvent.click(dialog);
+  const afterClick = resume.mock.calls.length;
+  expect(afterClick).toBeGreaterThan(0);
+  fireEvent.touchEnd(dialog);
+  expect(resume.mock.calls.length).toBeGreaterThan(afterClick);
+  vi.unstubAllGlobals();
+  resetScanAudio();
+});
+
+test('tata letak layar pendek (ponsel landscape): kamera dan tabel berdampingan, bukan bertumpuk', async () => {
+  setup();
+  const viewport = screen.getByTestId('camera-viewport');
+  const short = '[@media(max-height:30rem)]';
+  const stack = screen.getByTestId('scan-layout');
+  expect(stack.className).toContain(`${short}:flex-row`);
+  expect(viewport.className).toContain(`${short}:h-auto`);
+  expect(viewport.parentElement?.className).toContain(`${short}:w-1/2`);
+  expect(screen.getByTestId('scan-results').parentElement?.className).toContain(`${short}:w-1/2`);
+});
+
+test('footer tanpa sudut membulat pada dialog layar penuh', async () => {
+  setup();
+  const footer = (await screen.findByRole('alertdialog')).querySelector(
+    '[data-slot="alert-dialog-footer"]',
+  );
+  expect(footer?.className).toContain('rounded-none');
+});
+
+test('StrictMode: Escape dengan hasil tetap menampilkan konfirmasi (tindakan dialog dipasang lewat efek)', async () => {
+  const ctx = setup({ strict: true });
+  await scan(ctx, 'aaa1', ['AAA1']);
+  await userEvent.keyboard('{Escape}');
+  expect(await screen.findByRole('alertdialog', { name: /Buang 1 serial/ })).toBeInTheDocument();
+  expect(ctx.onOpenChange).not.toHaveBeenCalled();
 });
