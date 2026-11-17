@@ -1260,3 +1260,49 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
     });
   });
 });
+
+describe('changelog.yml: gerbang fragmen changelog di PR', () => {
+  const text = rawOf('changelog.yml');
+  const workflow = parse(text);
+  const job = workflow.jobs.fragmen;
+  const steps = job?.steps ?? [];
+
+  test('pemicu: hanya pull_request (bukan pull_request_target); label dipasang/dilepas memicu ulang gerbang ini saja', () => {
+    const on = workflow.on as { pull_request: { types: string[] } };
+    expect(Object.keys(workflow.on ?? {})).toEqual(['pull_request']);
+    expect([...on.pull_request.types].sort()).toEqual(
+      ['labeled', 'opened', 'reopened', 'synchronize', 'unlabeled'].sort(),
+    );
+    expect(codeOf(text)).not.toContain('pull_request_target');
+    expect(workflow.concurrency?.['cancel-in-progress']).toBe(true);
+    expect(workflow.concurrency?.group).toContain('github.event.pull_request.number');
+  });
+
+  test('izin minimal: baca isi dan berkas PR saja, tanpa rahasia', () => {
+    expect(workflow.permissions).toEqual({ contents: 'read' });
+    expect(job?.permissions).toEqual({ contents: 'read', 'pull-requests': 'read' });
+    expect(codeOf(text)).not.toMatch(/secrets\./);
+  });
+
+  test('checkout tanpa menyimpan kredensial; skrip run tanpa interpolasi ${{ }}; label lewat env', () => {
+    const checkout = steps.find((step) => step.uses?.startsWith('actions/checkout'));
+    expect(checkout?.with?.['persist-credentials']).toBe(false);
+    for (const step of steps) if (step.run) expect(step.run, step.name).not.toContain('${{');
+    const check = steps.find((step) => step.run?.includes('changelog-check'));
+    expect(check?.env?.LABELS).toBe('${{ toJSON(github.event.pull_request.labels.*.name) }}');
+    expect(check?.env?.PR).toBe('${{ github.event.pull_request.number }}');
+  });
+
+  test('berkas dihapus tidak dihitung sebagai fragmen; fragmen yang ada divalidasi untuk server dan desktop', () => {
+    const script = steps.map((step) => step.run ?? '').join('\n');
+    expect(script).toContain('select(.status != "removed")');
+    expect(script).toContain('bun run changelog validate server');
+    expect(script).toContain('bun run changelog validate desktop');
+  });
+
+  test('docs/ci-cd.md menjelaskan gerbang dan label pelewat', () => {
+    const doc = read('docs/ci-cd.md');
+    expect(doc).toContain('changelog.yml');
+    expect(doc).toContain('tanpa-changelog');
+  });
+});

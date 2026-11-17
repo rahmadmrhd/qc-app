@@ -1,0 +1,53 @@
+name: Changelog
+
+# Gerbang fragmen changelog di PR (rancangan docs/superpowers/specs/2026-11-17-rilis-semver-design.md bagian 5.2): PR yang
+# mengubah kode server/web/desktop harus membawa fragmen baru di `<komponen>/changelog.d/`, kecuali berlabel
+# `tanpa-changelog` atau berupa PR rilis (dikenali dari ISI diff, bukan nama cabang; scripts/changelog-check.ts).
+#
+# Dipisah dari test.yml agar memasang/melepas label tidak mengulang seluruh CI (tes server 8 job + web 4 job). Pemicu
+# `pull_request` (bukan `_target`): kode PR berjalan tanpa rahasia dan dengan token baca-saja.
+# Catatan: ini peringatan, bukan penghalang merge yang dipaksakan GitHub (branch protection tak tersedia di paket repo ini).
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: changelog-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  fragmen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+
+      # `PR_FILES` = semua berkas PR (nama lama rename ikut); `PR_ADDED` = berkas yang tidak dihapus (fragmen yang dihapus
+      # tidak dihitung sebagai fragmen baru). Lalu semua fragmen yang ada divalidasi bentuknya (nama, jenis, satu paragraf).
+      - name: Periksa fragmen changelog
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+          [[ $PR =~ ^[0-9]+$ ]] || { echo "::error::Nomor PR tidak valid."; exit 1; }
+          PR_FILES=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)')
+          PR_ADDED=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | select(.status != "removed") | .filename')
+          export PR_FILES PR_ADDED
+          bun run scripts/changelog-check.ts
+          bun run changelog validate server
+          bun run changelog validate desktop
