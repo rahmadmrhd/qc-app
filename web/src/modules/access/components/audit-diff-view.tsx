@@ -20,6 +20,7 @@ const FIELD_LABELS: Record<string, string> = {
   brand: 'Merk',
   model: 'Tipe',
   isCountryLock: 'Country lock',
+  firmware: 'Firmware',
   aliases: 'Nama lain',
   stickers: 'Stiker',
   stickerPhotos: 'Instruksi stiker',

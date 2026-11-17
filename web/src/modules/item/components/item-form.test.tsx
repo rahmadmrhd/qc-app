@@ -9,6 +9,7 @@ vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: 'data:image/png;base64,AAA', isLoading: false, isError: false }),
 }));
 
+import { linkOptionNames, pickSelect } from '@/test/link-field';
 import { toItemFormDefaults } from '../schemas';
 import { ItemForm } from './item-form';
 
@@ -132,6 +133,7 @@ test('mengirim brandId, businessUnitIds, dan nilai lengkap lainnya', async () =>
       businessUnitIds: ['bu-b'],
       model: 'ES 24 250W',
       isCountryLock: true,
+      firmware: '',
       aliasesText: 'ES24\nAirSwitch',
       stickerPhotos: [],
       accessories: [{ name: 'Kabel daya', qty: 1 }],
@@ -558,4 +560,44 @@ test('Tambah BU lewat dialog: BU baru langsung terpilih tanpa mengirim form item
   await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
   expect(screen.getByRole('button', { name: 'Hapus Baru (NEW)' })).toBeInTheDocument();
   expect(onSubmit).not.toHaveBeenCalled();
+});
+
+test('firmware: kolom hanya muncul saat Country lock dicentang; pilihan menurut merk; ikut terkirim', async () => {
+  const { onSubmit } = renderForm();
+  expect(screen.queryByRole('combobox', { name: 'Firmware' })).not.toBeInTheDocument();
+  await pickBrand('Ubiquiti');
+  await userEvent.type(screen.getByLabelText('Tipe'), 'AF-5XHD');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Country lock (wajib)' }));
+  const names = await linkOptionNames(screen, 'Firmware');
+  expect(names).toContain('AF-5XHD');
+  expect(names).toContain('WA Firmware');
+  expect(names).not.toContain('5GHz'); // milik Mikrotik
+  await pickSelect(screen, 'Firmware', 'AF-5XHD');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await waitFor(() =>
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ brandId: 'b1', isCountryLock: true, firmware: 'af5xhd' }),
+    ),
+  );
+});
+
+test('firmware dikosongkan saat Country lock dimatikan atau merk diganti ke merk yang kodenya tak berlaku', async () => {
+  const { onSubmit } = renderForm();
+  await pickBrand('Ubiquiti');
+  await userEvent.type(screen.getByLabelText('Tipe'), 'AF-5XHD');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Country lock (wajib)' }));
+  await pickSelect(screen, 'Firmware', 'AF-5XHD');
+  // Ganti ke Mikrotik: kode Ubiquiti tak berlaku, kolom kosong lagi.
+  await pickBrand('Mikrotik');
+  expect(screen.getByRole('combobox', { name: 'Firmware' })).toHaveValue('');
+  // Pilih kode Mikrotik, lalu matikan Country lock: kolom hilang dan tak terkirim.
+  await pickSelect(screen, 'Firmware', '5GHz');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Country lock (wajib)' }));
+  expect(screen.queryByRole('combobox', { name: 'Firmware' })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await waitFor(() =>
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ brandId: 'b3', isCountryLock: false, firmware: '' }),
+    ),
+  );
 });

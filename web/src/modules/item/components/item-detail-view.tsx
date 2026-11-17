@@ -1,4 +1,5 @@
 import type { ItemDto, ItemPostelDto } from '@shared/contract';
+import { firmwareOptionsFor } from '@shared/firmware';
 import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -62,6 +63,13 @@ export function ItemDetailView({
           </h1>
           <div className="flex flex-wrap items-center gap-2">
             {item.isCountryLock ? <Badge variant="outline">Country lock</Badge> : null}
+            {item.firmware !== '' ? (
+              <Badge variant="outline">
+                Firmware:{' '}
+                {firmwareOptionsFor(item.brand).find((o) => o.code === item.firmware)?.label ??
+                  item.firmware}
+              </Badge>
+            ) : null}
             {item.status === 'inactive' ? <Badge variant="secondary">Nonaktif</Badge> : null}
             {item.businessUnits.map((bu) => (
               <Badge key={bu.id} variant="outline" title={bu.name}>

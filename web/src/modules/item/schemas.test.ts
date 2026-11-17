@@ -7,6 +7,7 @@ const valid = {
   businessUnitIds: ['bu-a'],
   model: 'ES 24 250W',
   isCountryLock: false,
+  firmware: '',
   aliasesText: '',
   stickerPhotos: [],
   accessories: [],
@@ -188,6 +189,7 @@ test('toSaveItemInput merapikan teks dan mengubah nama lain menjadi daftar; id h
     businessUnitIds: ['bu-a'],
     model: 'ES 24',
     isCountryLock: false,
+    firmware: '',
     aliases: ['ES24', 'AirFiber'],
     stickerPhotos: [
       {
@@ -213,6 +215,7 @@ const baseItem = {
   brand: 'Ubiquiti',
   model: 'ES 24',
   isCountryLock: true,
+  firmware: '',
   status: 'active',
   aliases: ['ES24', 'AirFiber'],
   imageCount: 1,
@@ -260,6 +263,7 @@ test('toItemFormDefaults: kosong tanpa item; dari item menggabungkan nama lain p
     businessUnitIds: [],
     model: '',
     isCountryLock: false,
+    firmware: '',
     aliasesText: '',
     stickerPhotos: [],
     accessories: [],
@@ -269,6 +273,7 @@ test('toItemFormDefaults: kosong tanpa item; dari item menggabungkan nama lain p
   expect(toItemFormDefaults(baseItem)).toMatchObject({
     brandId: 'b1',
     isCountryLock: true,
+    firmware: '',
     aliasesText: 'ES24\nAirFiber',
     stickerPhotos: [
       {
@@ -314,6 +319,7 @@ test('toSaveItemInput menyertakan expectedUpdatedAt hanya untuk ubah', () => {
     businessUnitIds: ['bu-a'],
     model: 'ES',
     isCountryLock: false,
+    firmware: '',
     aliasesText: '',
     stickerPhotos: [],
     accessories: [],
