@@ -9,6 +9,7 @@ import {
   type ScanFeedback,
   useScanFeedback,
 } from '../lib/scan-feedback';
+import type { IsKnown } from '../lib/scan-table';
 import { CameraScanButton } from './camera-scan-button';
 
 export type { ScanFeedback };
@@ -22,6 +23,8 @@ export interface SerialScanInputProps {
   autoFocus?: boolean;
   /** Teks umpan balik pengganti (mis. "Dicari" bagi pencarian, bukan "Ditambahkan"). */
   feedbackText?: Partial<Record<ScanFeedback, string>>;
+  /** Serial (ternormalisasi) yang sudah dimiliki halaman (mis. di draft): pemindai kamera tidak menambahkannya lagi. */
+  isKnown?: IsKnown;
 }
 
 export function SerialScanInput({
@@ -31,6 +34,7 @@ export function SerialScanInput({
   disabled = false,
   autoFocus = false,
   feedbackText,
+  isKnown,
 }: SerialScanInputProps) {
   const [value, setValue] = useState('');
   const { feedback, announce } = useScanFeedback();
@@ -53,7 +57,7 @@ export function SerialScanInput({
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
         <Label htmlFor={id}>{label}</Label>
-        <CameraScanButton onScan={onSubmit} disabled={disabled} />
+        <CameraScanButton onScan={onSubmit} isKnown={isKnown} disabled={disabled} />
       </div>
       <Textarea
         id={id}

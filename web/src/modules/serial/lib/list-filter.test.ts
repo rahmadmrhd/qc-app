@@ -93,6 +93,20 @@ describe('mergeScanned', () => {
     const full = Array.from({ length: SERIAL_SEARCH_MAX }, (_, i) => `S${i}`).join('\n');
     expect(mergeScanned(full, 'EXTRA').feedback).toBe('rejected');
   });
+
+  // Dialog kamera menerapkan hasilnya saat "Simpan" satu serial per panggilan: hasil akhirnya harus sama dengan satu kali banyak baris.
+  test('dipanggil per serial berturut-turut menghasilkan teks yang sama dengan satu panggilan banyak baris', () => {
+    const rows = ['bbb222', 'AAA111', 'ccc333'];
+    let text = 'AAA111';
+    const feedbacks: string[] = [];
+    for (const serial of rows) {
+      const result = mergeScanned(text, serial);
+      text = result.text;
+      feedbacks.push(result.feedback);
+    }
+    expect(text).toBe(mergeScanned('AAA111', rows.join('\n')).text);
+    expect(feedbacks).toEqual(['added', 'duplicate', 'added']);
+  });
 });
 
 describe('mergeScanned (teks yang sudah ada dibiarkan mentah)', () => {

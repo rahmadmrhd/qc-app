@@ -1,6 +1,6 @@
 import { isIsoDate, normalizeSerial, SERIAL_LIMITS } from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
@@ -226,6 +226,13 @@ export function RecordPage({
             return qty === undefined ? [] : [{ stickerId: sticker.id, name: sticker.name, qty }];
           }),
   });
+
+  // Serial yang sudah ada di draft (bentuk ternormalisasi): pemindai kamera tidak menambahkannya ke tabel hasilnya.
+  const knownSerials = useMemo(
+    () => new Set(rows.map((row) => normalizeSerial(row.serial))),
+    [rows],
+  );
+  const isKnownSerial = useCallback((serial: string) => knownSerials.has(serial), [knownSerials]);
 
   function addText(text: string): ScanFeedback {
     const { rows: next, report } = addSerials(
@@ -601,6 +608,7 @@ export function RecordPage({
         id="serial-scan"
         label="Scan atau tempel serial (satu per baris)"
         onSubmit={addText}
+        isKnown={isKnownSerial}
         autoFocus
       />
 
