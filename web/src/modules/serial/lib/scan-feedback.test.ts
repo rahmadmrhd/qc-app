@@ -188,3 +188,10 @@ test('resetScanAudio menelan penolakan close() (konteks sudah tertutup)', async 
   expect(() => resetScanAudio()).not.toThrow();
   await Promise.resolve();
 });
+
+test('state interrupted (iOS) juga dilanjutkan saat dipakai', () => {
+  const audio = fakeAudio('interrupted' as AudioContextState);
+  const { result } = renderHook(() => useScanFeedback());
+  act(() => result.current.announce('added'));
+  expect(audio.resume).toHaveBeenCalledTimes(1);
+});

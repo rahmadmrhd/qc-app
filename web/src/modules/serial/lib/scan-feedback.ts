@@ -76,7 +76,10 @@ function sharedAudioContext(): AudioContext | null {
     shared = { Context, context: new Context() };
   }
   const { context } = shared;
-  if (context.state === 'suspended') void Promise.resolve(context.resume()).catch(() => undefined);
+  // `interrupted` (iOS Safari: setelah panggilan atau aplikasi ke latar) juga perlu dilanjutkan, bukan hanya `suspended`.
+  if (context.state === 'suspended' || (context.state as string) === 'interrupted') {
+    void Promise.resolve(context.resume()).catch(() => undefined);
+  }
   return context;
 }
 
