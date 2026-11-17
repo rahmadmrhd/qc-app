@@ -1,0 +1,163 @@
+# CI selektif dan tes terbagi 8 shard — desain
+
+Tanggal: 2026-11-17. Status: usulan, menunggu persetujuan pemilik produk.
+
+## 1. Maksud dan alasan
+
+Repo ini monorepo (FE `web/`, BE `server/`, `desktop/`, ditambah `shared/` dan `countrylock/`). Saat ini setiap PR dan setiap
+deploy menjalankan semuanya: typecheck, Biome, semua tes (termasuk tes server terhadap MariaDB), build web, build image.
+Pemilik produk ingin workflow **lebih cepat dan hanya mengerjakan apa yang berubah**:
+
+- tes server selesai lebih cepat dengan 8 shard;
+- hanya FE berubah: build web + image, tanpa tes server;
+- hanya BE berubah: tanpa membangun ulang aset FE;
+- hanya desktop berubah: build desktop saja, tanpa deploy server;
+- nanti rilis image dan rilis desktop dipisah dengan versi masing-masing (workflow rilis di luar lingkup ini, tetapi
+  desain ini tidak boleh menghalanginya).
+
+## 2. Temuan yang membentuk desain (dari kode saat ini)
+
+1. `server/scripts/test.ts` sudah membagi berkas ke proses paralel (bawaan 3, maks. 4 karena `max_connections` VPS 40).
+   Di runner GitHub (repo privat, 2 vCPU, MariaDB lokal) tes terikat CPU, jadi menambah proses di satu mesin tidak
+   membantu. Yang membantu: banyak runner.
+2. `cache-to` build image hanya ditulis oleh `workflow_dispatch` (token `pull_request_target` ditolak menulis cache GHA).
+   Akibatnya deploy dari merge PR hampir selalu membangun ulang web, walau hanya server yang berubah.
+3. `desktop/src` dan `desktop/scripts` **tidak mengimpor `shared/`**. Kontrak desktop ke server adalah endpoint tulisan
+   tangan (`/auth/desktop/*`, `/api/desktop/ui-manifest`, `/api/desktop/ui-file`, aliran notifikasi) dan kontrak jembatan
+   di `countrylock/`. UI web datang dari image server (atau manifest bertanda tangan), jadi UI dan server selalu cocok;
+   `minBridge` di manifest melindungi desktop lama dari UI yang butuh jembatan baru.
+4. Desktop hanya mendukung Windows x64 (`electron-builder.yml`; kode memakai `ping.exe`, registri `HKCU`, PowerShell).
+   `verify-pack` menjalankan `QC App.exe --smoke`.
+5. Image server hanya menyalin `desktop/package.json` (lapisan manifest); isi `desktop/` lain tidak masuk image.
+6. Tes penjaga `scripts/ci-workflows.test.ts` menegakkan keamanan workflow (SHA aksi, checkout hanya `merge_commit_sha`
+   dari `meta`, izin minimal, tanpa `${{ }}` di `run`). Perubahan harus tetap lolos dan tes itu ikut diperbarui.
+
+## 3. Tujuan, bukan-tujuan, anti-tujuan
+
+Tujuan: waktu tunggu PR dan deploy turun; pekerjaan sesuai bagian yang berubah; aturan keamanan workflow tak melemah.
+
+Bukan-tujuan: workflow rilis (tag `server-v…`/`desktop-v…`), build Linux/macOS, installer arm64 (NSIS), penambahan modul
+native, mengubah `bun run check` lokal.
+
+Anti-tujuan (dianggap gagal walau "hijau"): perubahan yang seharusnya diuji dilewati diam-diam (false negative pada
+deteksi); status check wajib di branch protection hilang atau berganti nama; rahasia `UI_SIGNING_KEY`/kunci SSH bocor ke
+job yang menjalankan kode PR.
+
+## 4. Pendekatan yang dipertimbangkan
+
+**Shard tes**
+- A. Banyak proses di satu runner. Ditolak: terikat CPU 2 vCPU, dan 8 proses x 8 koneksi melebihi `max_connections` 40.
+- B. **Matrix 8 job, tiap job satu runner + MariaDB sendiri (dipilih).** Hampir linear; biaya: `checkout` + cache `bun` +
+  start MariaDB terulang 8 kali (diperkirakan puluhan detik per job, belum diukur).
+
+**Deteksi perubahan**
+- A. `paths:` per workflow. Ditolak: tidak bisa membedakan "FE saja" dari "BE saja" dalam satu run, dan `paths`
+  tidak berlaku bersih untuk `pull_request_target`.
+- B. Aksi pihak ketiga (paths-filter). Ditolak: menambah dependensi pada pipeline yang memegang rahasia.
+- C. **Skrip kecil `scripts/ci-changes.ts` (dipilih)**: daftar berkas PR dari API → keluaran boolean. Murni, dapat diuji
+  dengan `bun test`, dan dipakai ulang oleh workflow rilis nanti.
+
+**Menghindari build ulang FE saat BE saja berubah**
+- A. Sakelar manual (lewati `bun run build`). Ditolak: image tetap butuh `server/dist`; harus mengambil dari image lama.
+- B. **Cache lapisan Docker yang dibagi lewat registry GHCR (dipilih).** Tahap `web-build` hanya jalan ulang bila isi
+  `web/`, `shared/`, `countrylock/`, `scripts/`, atau manifest berubah; kebenarannya diturunkan dari isi, bukan dari
+  tebakan jalur. Cache registry boleh ditulis job ber-izin `packages: write` pada event apa pun.
+
+**Struktur workflow**
+- A. Gandakan job di `test.yml` dan `deploy-server.yml`. Ditolak: dua matrix yang harus dijaga sama.
+- B. **Workflow yang dapat dipanggil `ci.yml` (`workflow_call`) dipakai keduanya (dipilih).**
+
+## 5. Desain
+
+### 5.1 Runner tes server — mode shard
+`server/scripts/test.ts` menerima `QC_TEST_SHARD=<i>/<n>` (1 ≤ i ≤ n). Mode ini memakai `partition()` yang sudah ada
+dengan `count = n`, lalu hanya menjalankan daftar ke-i dalam satu proses (`QC_TEST_SHARDS` bawaan 1 di mode ini). Tanpa
+variabel itu perilaku lokal tidak berubah (3 proses, tunnel, maks. 4). Tes baru untuk fungsi pembagi: tiap berkas tepat
+di satu shard, gabungan semua shard = seluruh berkas, input tak valid ditolak. Pembagian murni dipindah ke modul kecil yang
+dapat diuji (`server/scripts/partition.ts`).
+
+### 5.2 Deteksi perubahan — `scripts/ci-changes.ts`
+Masukan: daftar jalur berkas (satu per baris). Keluaran (`key=true|false` ke `GITHUB_OUTPUT`):
+
+| Keluaran | Benar bila ada perubahan di |
+|---|---|
+| `code` | apa pun selain `docs/**`, `**/*.md`, `.superpowers/**` |
+| `server_tests` | `server/**`, `shared/**`, `deploy/**` (tes `deploy-files`/`deploy-script` ada di server), atau infra |
+| `web_tests` | `web/**`, `shared/**`, `countrylock/**`, atau infra |
+| `shared_tests` | `shared/**` atau infra |
+| `desktop_tests` | `desktop/**`, `countrylock/**`, atau infra |
+| `desktop_pack` | `desktop/**`, `countrylock/**`, `web/**`, `shared/**`, atau infra (installer membawa UI dasar dari build web) |
+| `image` | `server/**`, `shared/**`, `web/**`, `countrylock/**`, `scripts/**`, `Dockerfile`, `.dockerignore`, `package.json`, `bun.lock`, `tsconfig.base.json` |
+
+"Infra" = **setiap jalur yang tidak cocok dengan aturan tabel di atas dan bukan dokumentasi** (`docs/**`, `**/*.md`,
+`.superpowers/**`, `.claude/**`), mis. `.github/**`, `package.json`, `bun.lock`, `biome.json`, `tsconfig*.json`, `scripts/**`,
+berkas akar baru, atau folder baru: **semua keluaran menjadi true** (konservatif; lebih baik menjalankan berlebih daripada
+melewatkan). Jalur berkas yang di-rename memakai nama lama DAN baru. Daftar berkas kosong, lebih dari
+2.900 berkas (mendekati batas API 3.000), atau galat API: semua true. `workflow_dispatch`: semua true.
+Typecheck, Biome, dan tes `scripts/` selalu jalan bila `code` benar (murah dan lintas-workspace).
+`desktop/**` saja → `image=false`: tidak ada deploy server.
+
+Sumber daftar berkas: `GET /repos/{repo}/pulls/{n}/files` lewat `gh api --paginate` dengan `GITHUB_TOKEN`
+(`pull-requests: read` di job `changes` saja). Tidak men-checkout head PR; keamanan `pull_request_target` tak berubah.
+
+### 5.3 `ci.yml` (`workflow_call`)
+Input: `ref` (commit yang diperiksa; kosong = checkout bawaan), `pr` (nomor PR; kosong = semua true). Output: `image`.
+Job: `changes` → `typecheck-lint` → `shared-scripts` (tes `shared/` + `scripts/`) → `server` (matrix `shard: 1..8`,
+`fail-fast: false`, MariaDB lokal lewat aksi `./.github/actions/mariadb`) → `web` (tes web) → `desktop` (lihat 5.4).
+**Gerbang `test` ada di `test.yml` (pemanggil), bukan di `ci.yml`**: nama check job dari workflow yang dipanggil menjadi
+`<job pemanggil> / <job dipanggil>`, sehingga gerbang di dalamnya akan mengganti nama check wajib `test`. Job `test` di
+`test.yml` (`needs: [ci, image]`, `if: always()`) sukses bila semua `needs` berstatus success atau skipped, gagal untuk
+failure/cancelled. Setiap job menginstal dependensi lewat aksi lokal `./.github/actions/setup` (setup-bun, cache
+`~/.bun/install/cache` dengan kunci hash `bun.lock`, `bun install --frozen-lockfile`; job server/web memakai
+`--filter '!@qc/desktop'` agar Electron tak diunduh, seperti Dockerfile).
+`bun run build` terpisah di job test dihapus: build web sudah dijalankan Dockerfile (`image`), jadi tidak diulang.
+
+### 5.4 Job desktop (hanya pemeriksaan build; tidak ada artefak)
+Runner `windows-latest`. Langkah: instal dependensi → `bun run --cwd desktop test` (vitest) → `bun run build:web`
+→ `bun run --cwd desktop pack` untuk x64 dan arm64 (`electron-builder --dir --win --x64 --arm64`) →
+`verify-pack`. Yang dijalankan:
+- **x64**: asap penuh (`QC App.exe --smoke`) + cek `ui-baseline`.
+- **arm64**: **hanya build dan pemeriksaan statis** (exe ada, `ui-baseline/index.html` ada), tanpa menjalankan. Runner Windows
+  arm64 (`windows-11-arm`) setahu saya hanya gratis untuk repo publik; repo ini privat, jadi arm64 dikemas silang dari
+  x64 dan tidak dapat diasapkan. Bila runner arm tersedia kelak, mengaktifkan asap arm64 cukup mengganti `runs-on` pada satu
+  baris matrix. `verify-pack.ts` mendapat argumen `--arch x64|arm64` (arm64 melewati `spawn`).
+`electron-builder.yml` tidak diubah (NSIS tetap x64); arm64 installer menunggu workflow rilis. Dijalankan hanya bila
+`desktop_pack` benar. `UI_PUBLIC_KEY_PEM` tidak dipakai (bukan build rilis).
+
+### 5.5 `test.yml` dan `deploy-server.yml`
+- `test.yml` (PR): satu job `ci` yang memanggil `ci.yml` (`ref` kosong, `pr` = nomor PR). Job `image` (uji bangun tanpa dorong)
+  hanya bila `image` benar, memakai `cache-from` registry dan tetap tanpa dorong.
+- `deploy-server.yml`: `meta` tetap; job `check` diganti `ci` (memanggil `ci.yml` dengan `ref = sha` dari `meta`, `pr` = nomor
+  PR atau kosong untuk dispatch). Job `image` dan `deploy` berjalan hanya bila `image` benar (otomatis dilewati untuk PR
+  desktop/docs saja). `paths-ignore` dipertahankan sebagai penyaring awal. `cache-to`: registry
+  `ghcr.io/<owner>/qc-app:buildcache-<environment>` (`mode=max`) untuk **semua event**; `cache-from` memuat kedua tag cache.
+  Pengaturan lama (cache GHA hanya ditulis dispatch) dihapus; tes penjaga diperbarui.
+- Izin: `contents: read` tingkat atas tidak berubah; pemanggil `ci` menambah `pull-requests: read` pada job itu saja;
+  `packages: write` tetap hanya di job `image`.
+
+### 5.6 Rilis terpisah (hanya dicatat, tidak dibangun sekarang)
+Tag `server-v<semver>` → image + rilis GitHub; `desktop-v<semver>` → installer (versi dari `desktop/package.json`).
+Keluaran `image` dan `desktop_pack` dari `ci-changes.ts` dipakai ulang untuk menentukan apa yang perlu dirilis.
+Rilis desktop dipicu `desktop/**`, `countrylock/**`, atau perubahan endpoint desktop di server; **bukan** perubahan `web/`
+atau `shared/` (UI web sampai ke desktop lewat manifest).
+
+## 6. Keputusan pemilik (2026-11-17)
+- Build desktop di CI hanya pemeriksaan build; **Windows x64 + Windows arm64**, tanpa Linux.
+- Rilis image dan desktop dipisah (tag berawalan berbeda, versi sendiri).
+- Matrix job untuk shard (8). Bukan 8 proses di satu mesin.
+
+## 7. Risiko dan pertanyaan terbuka
+- **Pemilihan salah (false negative):** diredam oleh aturan konservatif "infra → semua", dan tes unit `ci-changes.ts` untuk
+  tiap baris tabel 5.2. Risiko sisa: jalur impor lintas-workspace baru yang tidak ada di tabel (mis. `server` mengimpor
+  `desktop/`). Tes `ci-changes.test.ts` memeriksa peta terhadap `workspaces` di `package.json` akar.
+- **Asap arm64 tidak ada** (5.4); build arm64 hasil kemas silang dapat berbeda dari build arm asli. Diterima untuk tahap ini.
+- **Cache registry** menambah paket `qc-app` di GHCR (tag `buildcache-*`); `QC_KEEP_IMAGES`/pembersihan image lama di VPS
+  tidak menyentuhnya. Perlu memastikan paket GHCR mengizinkan repo menulisnya (default untuk paket yang dibuat repo ini).
+- **Biaya menit:** matrix 8 job menambah total menit (overhead per job); waktu tunggu turun. Angka belum diukur;
+  diukur dari run pertama setelah merge dan dicatat di `docs/ci-cd.md`.
+- **Gerbang `test`:** status check wajib di GitHub menunjuk nama job; perlu dipastikan pemilik tidak mewajibkan nama job
+  lama selain `test`.
+
+## 8. Diserahkan ke pelaksana
+Nama berkas/langkah tepat, versi cache `bun`, nama output, pesan galat `ci-changes.ts`, dan penambahan baris di
+`docs/ci-cd.md`/`CLAUDE.md` (bagian Perintah dan CI/CD) yang mencatat keputusan di atas.
