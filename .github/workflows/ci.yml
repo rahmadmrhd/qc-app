@@ -3,8 +3,10 @@ name: CI
 # Pemeriksaan kode yang dapat dipanggil (`workflow_call`) oleh test.yml (PR) dan deploy-server.yml (PR di-merge).
 # Rancangan: docs/superpowers/specs/2026-11-17-ci-selektif-shard-design.md; panduan: docs/ci-cd.md.
 #
-# - Job `changes` menghitung bagian monorepo yang berubah dari daftar berkas PR (scripts/ci-changes.ts); job lain memakai
-#   keluarannya lewat `if:`. Tanpa nomor PR (dispatch), atau bila daftar tak dapat diambil, SEMUA dijalankan (fail-safe).
+# - Job `changes` menghitung bagian monorepo yang berubah (scripts/ci-changes.ts); job lain memakai keluarannya lewat `if:`.
+#   Sumber daftar berkas: berkas PR (`pr`) atau perbandingan sejak deploy terakhir environment (`since-deploy`, ref
+#   `refs/deployed/<env>`). Tanpa keduanya (dispatch), atau bila daftar tak dapat diambil/tak dapat dipercaya (ref belum ada,
+#   dasar bukan leluhur, 300 berkas atau lebih terpotong), SEMUA dijalankan (fail-safe).
 # - Tes server dibagi 8 job matrix (QC_TEST_SHARD=<i>/8): tiap job = runner + MariaDB sendiri. Proses paralel di satu
 #   runner tak membantu (terikat CPU, dan melebihi max_connections 40); banyak runner membantu.
 # - Gerbang `test` (status check wajib branch protection) SENGAJA ada di pemanggil (test.yml), bukan di sini: nama check
@@ -94,8 +96,23 @@ jobs:
             if [[ "$SINCE" =~ ^(staging|production)$ ]] && [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
               if ! base=$(gh api "repos/$REPO/git/ref/deployed/$SINCE" --jq '.object.sha') || ! [[ "$base" =~ ^[0-9a-f]{40}$ ]]; then
                 fallback "Penunjuk deploy terakhir ($SINCE) belum ada atau tak terbaca"
-              elif ! files=$(gh api --paginate "repos/$REPO/compare/$base...$HEAD_SHA" --jq '.files[] | .filename, (.previous_filename // empty)'); then
+              # SATU panggilan tanpa --paginate: GitHub hanya memuat daftar berkas di halaman pertama, maksimum 300 untuk
+              # SELURUH perbandingan (lebih dari itu terpotong diam-diam). Keluaran --jq: baris 1 status, baris 2 jumlah berkas,
+              # sisanya nama berkas (+ nama lama untuk rename).
+              elif ! out=$(gh api "repos/$REPO/compare/$base...$HEAD_SHA" --jq '.status, ((.files // []) | length), ((.files // [])[] | .filename, (.previous_filename // empty))'); then
                 fallback "Gagal membandingkan dengan deploy terakhir"
+              else
+                status=$(printf '%s\n' "$out" | sed -n 1p)
+                count=$(printf '%s\n' "$out" | sed -n 2p)
+                # Tiga-titik menghitung dari merge-base: bila deploy terakhir BUKAN leluhur commit ini (mis. staging pernah
+                # di-dispatch dari main) selisih sebenarnya lebih besar dari daftar ini.
+                if [ "$status" != ahead ]; then
+                  fallback "Deploy terakhir bukan leluhur commit ini (status perbandingan: ${status:-kosong})"
+                elif ! [[ "$count" =~ ^[0-9]+$ ]] || [ "$count" -ge 300 ]; then
+                  fallback "Perbandingan memuat 300 berkas atau lebih (batas API; daftar terpotong)"
+                else
+                  files=$(printf '%s\n' "$out" | tail -n +3)
+                fi
               fi
             else
               fallback "Parameter since-deploy atau commit tak sah"

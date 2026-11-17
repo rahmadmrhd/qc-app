@@ -194,8 +194,10 @@ dan tanpa artefak; pembuatan installer menunggu workflow rilis.
   tidak menyentuhnya. Perlu memastikan paket GHCR mengizinkan repo menulisnya (default untuk paket yang dibuat repo ini).
   **Peracunan cache**: penulis branch dapat menimpa tag `buildcache-*`; production kebal (tanpa cache), staging tidak.
 - **`refs/deployed/<env>`** diizinkan ditulis `GITHUB_TOKEN` dengan `contents: write` (hanya job `mark-deployed`); belum
-  terverifikasi sampai run pertama (termasuk batas jumlah berkas perbandingan `compare`). Bila perlu dipulihkan manual:
-  `git push -f origin <sha>:refs/deployed/<env>`.
+  terverifikasi sampai run pertama. Bila perlu dipulihkan manual: `git push -f origin <sha>:refs/deployed/<env>`.
+  Namespace ini tak dilindungi branch protection: siapa pun berizin tulis dapat menimpanya dan menyempitkan pemeriksaan
+  pasca-merge, tetapi tak dapat men-deploy kode yang lolos gerbang PR (image selalu dari `merge_commit_sha`); risiko
+  sisa diterima.
 - **Biaya menit:** matrix 8 job menambah total menit (overhead per job); waktu tunggu turun. Angka belum diukur;
   diukur dari run pertama setelah merge dan dicatat di `docs/ci-cd.md`.
 - **Gerbang `test`:** status check wajib di GitHub menunjuk nama job; perlu dipastikan pemilik tidak mewajibkan nama job

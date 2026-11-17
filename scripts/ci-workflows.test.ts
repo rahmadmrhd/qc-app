@@ -1121,15 +1121,21 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
     describe('since-deploy: perubahan sejak deploy terakhir environment (refs/deployed/<env>)', () => {
       const BASE = 'a'.repeat(40);
       const HEAD = 'b'.repeat(40);
-      /** `gh` palsu: ref deploy -> BASE; compare BASE...HEAD -> daftar berkas; selain itu galat (menandai pemakaian salah). */
-      const ghOk = (files: string) =>
-        [
+      /**
+       * `gh` palsu: ref deploy -> BASE; compare BASE...HEAD -> keluaran `--jq` skrip (baris 1 = status, baris 2 = jumlah
+       * berkas, sisanya nama berkas); selain itu galat (menandai pemakaian salah). Hanya SATU panggilan compare tanpa
+       * `--paginate`: daftar berkas hanya ada di halaman pertama dan maksimum 300 untuk seluruh perbandingan.
+       */
+      const ghOk = (files: string, status = 'ahead', count?: number) => {
+        const n = count ?? files.split('\\n').filter(Boolean).length;
+        return [
           'case "$*" in',
           `  *git/ref/deployed/staging*) echo ${BASE} ;;`,
-          `  *compare/${BASE}...${HEAD}*) printf '${files}' ;;`,
+          `  *compare/${BASE}...${HEAD}*) case "$*" in *--paginate*) echo "paginate tak boleh" >&2; exit 8 ;; esac; printf '${status}\\n${n}\\n${files}' ;;`,
           '  *) echo "gh tak terduga: $*" >&2; exit 9 ;;',
           'esac',
         ].join('\n');
+      };
       const since = { SINCE: 'staging', HEAD_SHA: HEAD };
 
       test('desktop saja sejak deploy terakhir: image false (deploy dilewati), desktop_pack true', async () => {
@@ -1150,6 +1156,34 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
         const result = await detect('12', ghOk('desktop/a.ts\\n'), since);
         expect(result.stderr).not.toContain('gh tak terduga');
         expect(result.output.image).toBe('false');
+      });
+
+      test('dasar BUKAN leluhur commit ini (diverged/behind): semua true, tidak menghitung dari merge-base', async () => {
+        // mis. refs/deployed/staging menunjuk commit main (dispatch staging dari main), lalu PR dev hanya-desktop di-merge
+        for (const status of ['diverged', 'behind']) {
+          const result = await detect('', ghOk('desktop/a.ts\\n', status), since);
+          expect(result.stdout, status).toContain('::warning::');
+          expect(
+            Object.values(result.output).every((value) => value === 'true'),
+            status,
+          ).toBe(true);
+        }
+      });
+
+      test('perbandingan identik tanpa berkas: semua true (tak ada yang dapat disimpulkan)', async () => {
+        const result = await detect('', ghOk('', 'identical', 0), since);
+        expect(Object.values(result.output).every((value) => value === 'true')).toBe(true);
+      });
+
+      test('300 berkas atau lebih (batas API compare, daftar terpotong): semua true; 299 masih dipakai', async () => {
+        const many = (n: number) =>
+          `${Array.from({ length: n }, (_, i) => `docs/f${i}.md`).join('\\n')}\\n`;
+        const cut = await detect('', ghOk(many(300)), since);
+        expect(cut.stdout).toContain('::warning::');
+        expect(Object.values(cut.output).every((value) => value === 'true')).toBe(true);
+        const ok = await detect('', ghOk(many(299)), since);
+        expect(ok.stderr).not.toContain('paginate tak boleh');
+        expect(Object.values(ok.output).every((value) => value === 'false')).toBe(true);
       });
 
       test('ref deploy belum ada (404) atau compare gagal: semua true dengan peringatan (aman: deploy)', async () => {
