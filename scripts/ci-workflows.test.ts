@@ -974,6 +974,19 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
     expect(setup?.with?.filter).toBe('!@qc/desktop');
   });
 
+  test('matrix web: 4 shard vitest (--shard=<i>/4), fail-fast mati, nilai shard lewat env (bukan ${{ }} di run)', () => {
+    // Tes web ~7,6 menit dalam satu job (run PR 102): dibagi 4 job; vitest membagi berkas tes sendiri.
+    const web = jobs.web as Job;
+    expect(web.strategy?.['fail-fast']).toBe(false);
+    expect(web.strategy?.matrix?.shard).toEqual([1, 2, 3, 4]);
+    expect(web.name).toBe('web ${{ matrix.shard }}/4');
+    expect(web.env?.WEB_TEST_SHARD).toBe('${{ matrix.shard }}/4');
+    const run = stepsOfJob('web').find((step) => step.name === 'Tes web (shard)')?.run;
+    expect(run).toBe('bun run --cwd web test --shard="$WEB_TEST_SHARD"');
+    const setup = stepsOfJob('web').find((step) => step.uses === './.github/actions/setup');
+    expect(setup?.with?.filter).toBe('!@qc/desktop');
+  });
+
   test('job dipilih menurut keluaran changes: lint/scripts (code), web, desktop', () => {
     expect(jobs.lint?.if).toContain("needs.changes.outputs.code == 'true'");
     expect(jobs.scripts?.if).toContain("needs.changes.outputs.code == 'true'");

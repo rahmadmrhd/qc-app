@@ -185,11 +185,20 @@ jobs:
       - name: Tes server (shard)
         run: bun run --cwd server test
 
+  # Tes web dibagi 4 job matrix lewat `vitest --shard=<i>/4` (vitest membagi berkas tes sendiri; ~7,6 menit sebelumnya dalam
+  # satu job). Tiap job menginstal dependensi sendiri; tes web tak butuh basis data.
   web:
+    name: web ${{ matrix.shard }}/4
     needs: changes
     if: needs.changes.outputs.web_tests == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      WEB_TEST_SHARD: ${{ matrix.shard }}/4
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -198,8 +207,8 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           filter: '!@qc/desktop'
-      - name: Tes web
-        run: bun run --cwd web test
+      - name: Tes web (shard)
+        run: bun run --cwd web test --shard="$WEB_TEST_SHARD"
 
   # Dockerfile harus selalu dapat dibangun (tanpa dorong): menangkap Dockerfile/.dockerignore yang rusak sebelum deploy.
   # Ada di sini (bukan di test.yml) agar berjalan PARALEL dengan tes: output workflow yang dipanggil baru tersedia setelah

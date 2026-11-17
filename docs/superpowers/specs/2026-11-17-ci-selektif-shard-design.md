@@ -121,7 +121,7 @@ Input: `ref` (commit yang diperiksa; kosong = checkout bawaan), `pr` (nomor PR; 
 (nama environment untuk membandingkan dengan `refs/deployed/<env>`; menggantikan `pr` bila terisi; 5.2), `build-image`,
 `desktop-check`. Output: `image`.
 Job: `changes` → `typecheck-lint` → `shared-scripts` (tes `shared/` + `scripts/`) → `server` (matrix `shard: 1..8`,
-`fail-fast: false`, MariaDB lokal lewat aksi `./.github/actions/mariadb`) → `web` (tes web) → `desktop` (lihat 5.4).
+`fail-fast: false`, MariaDB lokal lewat aksi `./.github/actions/mariadb`) → `web` (matrix `shard: 1..4`, `vitest run --shard=<i>/4`; keputusan pemilik 2026-11-17 setelah run PR 102: satu job ~7,6 menit) → `desktop` (lihat 5.4).
 **Gerbang `test` ada di `test.yml` (pemanggil), bukan di `ci.yml`**: nama check job dari workflow yang dipanggil menjadi
 `<job pemanggil> / <job dipanggil>`, sehingga gerbang di dalamnya akan mengganti nama check wajib `test`. Job `test` di
 `test.yml` (`needs: [ci, image]`, `if: always()`) sukses bila semua `needs` berstatus success atau skipped, gagal untuk
