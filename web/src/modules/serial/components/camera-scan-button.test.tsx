@@ -42,6 +42,6 @@ test('tombol dinonaktifkan mengikuti disabled dan membuka dialog (dimuat malas) 
 
   render(<CameraScanButton onScan={() => 'added'} />);
   await userEvent.click(screen.getByRole('button', { name: 'Scan dengan kamera' }));
-  expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
   expect(await screen.findByRole('alert')).toHaveTextContent('Izin kamera ditolak');
 });

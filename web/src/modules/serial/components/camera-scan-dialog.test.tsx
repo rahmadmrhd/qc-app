@@ -14,6 +14,8 @@ import type { LocatedCode } from '../lib/scan-region';
 import { CAMERA_ERROR_TEXT, TAP_FOCUS_RESTORE_MS } from '../lib/use-camera-scanner';
 import { CameraScanDialog } from './camera-scan-dialog';
 
+vi.mock('sonner', () => ({ toast: { warning: vi.fn(), success: vi.fn(), error: vi.fn() } }));
+
 interface FakeTrack {
   stop: ReturnType<typeof vi.fn>;
   getCapabilities: () => Record<string, unknown>;
@@ -79,6 +81,8 @@ afterEach(() => {
   Reflect.deleteProperty(document, 'hidden');
 });
 
+type ScanFeedbackCase = 'added' | 'duplicate' | 'rejected';
+
 interface SetupOptions {
   stream?: ReturnType<typeof fakeStream>;
   devices?: unknown[];
@@ -87,6 +91,7 @@ interface SetupOptions {
   /** Tiap getUserMedia mengembalikan aliran baru (uji restart); semua tercatat di `streams`. */
   freshStreams?: boolean;
   torch?: boolean;
+  isKnown?: (serial: string) => boolean;
 }
 
 function setup(options: SetupOptions = {}) {
@@ -111,6 +116,7 @@ function setup(options: SetupOptions = {}) {
       open
       onOpenChange={onOpenChange}
       onScan={onScan}
+      isKnown={options.isKnown}
       createEngine={options.createEngine ?? (async () => engine)}
       now={() => time}
     />,
@@ -130,20 +136,28 @@ function setup(options: SetupOptions = {}) {
   };
 }
 
-test('mode berkelanjutan: payload banyak baris dipecah, bacaan sama dalam jendela tidak diteruskan dua kali', async () => {
+/** Teks semua kolom serial di tabel internal, menurut urutan baris. */
+function tableSerials(): string[] {
+  return screen
+    .queryAllByRole('textbox', { name: /^Serial nomor/ })
+    .map((input) => (input as HTMLInputElement).value);
+}
+
+test('mode berkelanjutan: payload banyak baris dipecah ke baris tabel, tidak langsung dikirim, bacaan sama tidak menambah baris', async () => {
   const ctx = setup();
   ctx.state.current = ['aaa111\nbbb222'];
-  await waitFor(() => expect(ctx.onScan).toHaveBeenCalledTimes(1));
-  expect(ctx.onScan).toHaveBeenCalledWith('AAA111\nBBB222');
-  // Kamera tetap menyala dan terus membaca bingkai yang sama: tidak ada pengiriman ulang.
+  await waitFor(() => expect(tableSerials()).toEqual(['AAA111', 'BBB222']));
+  // Belum ada yang dikirim ke pemakai: hanya masuk tabel internal.
+  expect(ctx.onScan).not.toHaveBeenCalled();
+  // Kamera tetap menyala dan terus membaca bingkai yang sama: tidak ada baris ganda.
   const calls = vi.mocked(ctx.engine.detectCodes).mock.calls.length;
   await waitFor(() =>
     expect(vi.mocked(ctx.engine.detectCodes).mock.calls.length).toBeGreaterThan(calls + 1),
   );
-  expect(ctx.onScan).toHaveBeenCalledTimes(1);
+  expect(tableSerials()).toEqual(['AAA111', 'BBB222']);
   expect(ctx.track.stop).not.toHaveBeenCalled();
 
-  // Hilang dari pandangan lebih lama dari jendela, lalu terlihat lagi: diteruskan lagi.
+  // Hilang dari pandangan lebih lama dari jendela, lalu terlihat lagi: sudah ada di tabel, jadi "Sudah ada", tanpa baris baru.
   ctx.state.current = [];
   ctx.advance(CAMERA_DUPLICATE_WINDOW_MS + 1);
   const afterGap = vi.mocked(ctx.engine.detectCodes).mock.calls.length;
@@ -151,19 +165,23 @@ test('mode berkelanjutan: payload banyak baris dipecah, bacaan sama dalam jendel
     expect(vi.mocked(ctx.engine.detectCodes).mock.calls.length).toBeGreaterThan(afterGap),
   );
   ctx.state.current = ['AAA111'];
-  await waitFor(() => expect(ctx.onScan).toHaveBeenCalledTimes(2));
-  expect(ctx.onScan).toHaveBeenLastCalledWith('AAA111');
+  expect(await screen.findByText('Sudah ada: AAA111')).toBeInTheDocument();
+  expect(tableSerials()).toEqual(['AAA111', 'BBB222']);
+  expect(ctx.onScan).not.toHaveBeenCalled();
 });
 
-test('umpan balik per bacaan: diterima, duplikat, ditolak', async () => {
-  for (const [result, text] of [
-    ['added', 'Ditambahkan'],
-    ['duplicate', 'Sudah ada'],
-    ['rejected', 'Ditolak'],
-  ] as const) {
-    const ctx = setup({ result });
-    ctx.state.current = ['SN1'];
-    expect(await screen.findByText(`${text}: SN1`)).toBeInTheDocument();
+test('umpan balik per bacaan: ditambahkan, sudah ada (di draft), ditolak', async () => {
+  const cases: [ScanFeedbackCase, string, string][] = [
+    ['added', 'SN1', 'Ditambahkan: SN1'],
+    ['duplicate', 'SN1', 'Sudah ada: SN1'],
+    ['rejected', 'SN\u00071', 'Ditolak: SN\u00071'],
+  ];
+  for (const [kind, text, expected] of cases) {
+    const ctx = setup({ isKnown: kind === 'duplicate' ? (serial) => serial === 'SN1' : undefined });
+    ctx.state.current = [text];
+    expect(await screen.findByText(expected)).toBeInTheDocument();
+    // Hanya yang ditambahkan menjadi baris.
+    await waitFor(() => expect(tableSerials()).toEqual(kind === 'added' ? ['SN1'] : []));
     ctx.unmount();
   }
 });
@@ -185,15 +203,18 @@ test('senter tampil hanya bila trek mendukung dan menerapkan constraint torch', 
   expect(screen.queryByRole('button', { name: /senter/ })).not.toBeInTheDocument();
 });
 
-test('pemilih kamera hanya bila ada lebih dari satu perangkat; memilih memulai ulang aliran', async () => {
+test('tombol ganti kamera hanya bila ada lebih dari satu perangkat; menekannya memulai ulang aliran dengan kamera berikutnya', async () => {
   const single = setup({ devices: VIDEO_DEVICES.slice(0, 1) });
   await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
-  expect(screen.queryByRole('combobox', { name: 'Kamera' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Ganti kamera/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
   single.unmount();
 
   const multi = setup({ devices: VIDEO_DEVICES });
-  await userEvent.click(await screen.findByRole('combobox', { name: 'Kamera' }));
-  await userEvent.click(await screen.findByRole('option', { name: 'Kamera depan' }));
+  const button = await screen.findByRole('button', { name: 'Ganti kamera' });
+  // Nama kamera berikutnya tersedia sebagai tooltip.
+  expect(button).toHaveAttribute('title', 'Ganti ke Kamera depan');
+  await userEvent.click(button);
   await waitFor(() => expect(multi.getUserMedia).toHaveBeenCalledTimes(2));
   expect(multi.getUserMedia.mock.calls[1]?.[0]).toMatchObject({
     video: { deviceId: { exact: 'cam-2' } },
@@ -248,10 +269,10 @@ test('keadaan memuat tampil sebelum kamera siap', async () => {
   await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
 });
 
-test('aliran dimatikan saat dialog ditutup (Tutup) dan saat unmount', async () => {
+test('aliran dimatikan saat dialog ditutup (Batal tanpa hasil) dan saat unmount', async () => {
   const closed = setup();
   await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
-  await userEvent.click(screen.getByRole('button', { name: 'Tutup' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
   expect(closed.onOpenChange).toHaveBeenCalledWith(false);
   closed.unmount();
   expect(closed.track.stop).toHaveBeenCalled();
@@ -272,20 +293,6 @@ test('dialog ditutup lewat prop open=false mematikan aliran', async () => {
   await waitFor(() => expect(ctx.track.stop).toHaveBeenCalled());
 });
 
-test('ketik manual + Enter memakai jalur onScan yang sama dan mengosongkan kolom', async () => {
-  const ctx = setup();
-  const input = screen.getByLabelText('Ketik serial manual');
-  await userEvent.type(input, 'manual-1{Enter}');
-  expect(ctx.onScan).toHaveBeenCalledWith('manual-1');
-  expect(input).toHaveValue('');
-  expect(await screen.findByText('Ditambahkan: manual-1')).toBeInTheDocument();
-  // Ketik manual tidak terkena jendela bacaan ulang: pengguna sengaja mengirimnya lagi.
-  await userEvent.type(input, 'manual-1{Enter}');
-  expect(ctx.onScan).toHaveBeenCalledTimes(2);
-  await userEvent.type(input, '{Enter}');
-  expect(ctx.onScan).toHaveBeenCalledTimes(2);
-});
-
 function setHidden(hidden: boolean) {
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => hidden });
   act(() => {
@@ -295,8 +302,7 @@ function setHidden(hidden: boolean) {
 
 test('tab tersembunyi melepas kamera dan tab terlihat menyalakannya lagi tanpa galat; pilihan kamera dipertahankan', async () => {
   const ctx = setup({ freshStreams: true, devices: VIDEO_DEVICES });
-  await userEvent.click(await screen.findByRole('combobox', { name: 'Kamera' }));
-  await userEvent.click(await screen.findByRole('option', { name: 'Kamera depan' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Ganti kamera' }));
   await waitFor(() => expect(ctx.getUserMedia).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
   const running = ctx.streams[1];
@@ -342,8 +348,7 @@ test('senter default MATI dan kembali mati setiap kamera dimulai ulang', async (
     'true',
   );
   // Ganti kamera = restart: senter mati lagi.
-  await userEvent.click(screen.getByRole('combobox', { name: 'Kamera' }));
-  await userEvent.click(await screen.findByRole('option', { name: 'Kamera depan' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Ganti kamera' }));
   await waitFor(() => expect(ctx.getUserMedia).toHaveBeenCalledTimes(2));
   expect(await screen.findByRole('button', { name: 'Nyalakan senter' })).toHaveAttribute(
     'aria-pressed',
@@ -405,11 +410,11 @@ test('konteks aman tetapi tanpa getUserMedia: pesan "tidak mendukung", tanpa Cob
   expect(screen.queryByRole('button', { name: 'Coba lagi' })).not.toBeInTheDocument();
 });
 
-test('fokus awal tidak jatuh ke kolom ketik manual (papan ketik ponsel); tetap di dalam dialog', async () => {
+test('fokus awal jatuh ke cangkang dialog (bukan tombol Batal/kolom serial: papan ketik ponsel tidak muncul); tetap di dalam dialog', async () => {
   setup();
-  const dialog = await screen.findByRole('dialog');
+  const dialog = await screen.findByRole('alertdialog');
   await waitFor(() => expect(dialog).toHaveFocus());
-  expect(screen.getByLabelText('Ketik serial manual')).not.toHaveFocus();
+  expect(screen.getByRole('button', { name: 'Batal' })).not.toHaveFocus();
   expect(dialog.contains(document.activeElement)).toBe(true);
 });
 
@@ -579,17 +584,31 @@ afterEach(() => {
   }
 });
 
-test('viewport persegi 1:1 dengan bingkai area scan 80% x 50% di tengah dan petunjuk', async () => {
+test('area kamera selebar dialog (bukan persegi) dengan bingkai area scan 80% x 50% di tengah dan petunjuk di dalamnya', async () => {
   setup();
   const viewport = screen.getByTestId('camera-viewport');
-  expect(viewport.className).toContain('aspect-square');
+  expect(viewport.className).not.toContain('aspect-square');
   expect(viewport.className).toContain('55dvh');
   expect(screen.getByLabelText('Pratinjau kamera').className).toContain('object-cover');
   const frame = screen.getByTestId('scan-frame');
   expect(frame).toHaveStyle({ width: '80%', height: '50%' });
   expect(viewport.contains(frame)).toBe(true);
-  expect(screen.getByText('Arahkan kode ke dalam bingkai')).toBeInTheDocument();
+  const tip = screen.getByText(/Arahkan kode ke dalam bingkai/);
+  expect(viewport.contains(tip)).toBe(true);
+  // Petunjuk tidak berada di dalam elemen bingkai (tidak menutupinya).
+  expect(frame.contains(tip)).toBe(false);
   await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
+});
+
+test('dialog = AlertDialog layar penuh dengan judul dan deskripsi untuk pembaca layar', async () => {
+  setup();
+  const dialog = await screen.findByRole('alertdialog');
+  expect(dialog).toHaveAttribute('data-size', 'full');
+  expect(dialog).toHaveAccessibleName('Scan serial');
+  expect(dialog).toHaveAccessibleDescription(/Hasil scan masuk ke tabel/);
+  // Tombol tutup (X) bawaan tidak ada: keluar lewat Batal.
+  expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Batal' })).toBeInTheDocument();
 });
 
 test('pembaca menerima potongan bingkai (kanvas), bukan seluruh video; kanvas dipakai ulang', async () => {
@@ -627,13 +646,12 @@ test('dua kode dalam satu bingkai: hanya yang paling dekat pusat bingkai diterus
     { text: 'JAUH', box: { x: 0, y: 0, width: 60, height: 60 } },
     { text: 'TENGAH', box: { x: 258, y: 150, width: 60, height: 60 } },
   ];
-  await waitFor(() => expect(ctx.onScan).toHaveBeenCalledTimes(1));
-  expect(ctx.onScan).toHaveBeenCalledWith('TENGAH');
+  await waitFor(() => expect(tableSerials()).toEqual(['TENGAH']));
   const calls = vi.mocked(ctx.engine.detectCodes).mock.calls.length;
   await waitFor(() =>
     expect(vi.mocked(ctx.engine.detectCodes).mock.calls.length).toBeGreaterThan(calls + 1),
   );
-  expect(ctx.onScan).toHaveBeenCalledTimes(1);
+  expect(tableSerials()).toEqual(['TENGAH']);
 });
 
 test('bacaan parsial yang berganti-ganti (bingkai buram) tidak pernah diteruskan; yang stabil diteruskan', async () => {
@@ -647,13 +665,12 @@ test('bacaan parsial yang berganti-ganti (bingkai buram) tidak pernah diteruskan
     () => expect(vi.mocked(ctx.engine.detectCodes).mock.calls.length).toBeGreaterThanOrEqual(8),
     { timeout: 3000 },
   );
-  expect(ctx.onScan).not.toHaveBeenCalled();
+  expect(tableSerials()).toEqual([]);
 
   vi.mocked(ctx.engine.detectCodes).mockImplementation(async () => [
     { text: '602232C88836', format: 'code_128', box: null },
   ]);
-  await waitFor(() => expect(ctx.onScan).toHaveBeenCalledTimes(1));
-  expect(ctx.onScan).toHaveBeenCalledWith('602232C88836');
+  await waitFor(() => expect(tableSerials()).toEqual(['602232C88836']));
 });
 
 test.each([
@@ -662,16 +679,20 @@ test.each([
   ['code_128', 3],
   [undefined, 3],
 ] as const)('format %s diterima pada bingkai ke-%i yang sama', async (format, frames) => {
-  const ctx = setup();
+  // Jumlah panggilan pembaca saat bacaan pertama diteruskan (dicatat lewat `isKnown`, yang dipanggil saat menambah baris).
   let callsAtScan = 0;
-  ctx.onScan.mockImplementation(() => {
-    callsAtScan = vi.mocked(ctx.engine.detectCodes).mock.calls.length;
-    return 'added';
+  let detectCodes: { mock: { calls: unknown[] } } | undefined;
+  const ctx = setup({
+    isKnown: () => {
+      if (callsAtScan === 0) callsAtScan = detectCodes?.mock.calls.length ?? 0;
+      return false;
+    },
   });
+  detectCodes = vi.mocked(ctx.engine.detectCodes);
   vi.mocked(ctx.engine.detectCodes).mockImplementation(async () => [
     { text: 'SN-1', ...(format ? { format } : {}), box: null },
   ]);
-  await waitFor(() => expect(ctx.onScan).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(tableSerials()).toEqual(['SN-1']));
   expect(callsAtScan).toBe(frames);
 });
 
@@ -686,8 +707,7 @@ test('getUserMedia meminta resolusi ideal 1920x1080 (ideal, bukan exact), baik t
       height: { ideal: 1080 },
     },
   });
-  await userEvent.click(await screen.findByRole('combobox', { name: 'Kamera' }));
-  await userEvent.click(await screen.findByRole('option', { name: 'Kamera depan' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Ganti kamera' }));
   await waitFor(() => expect(ctx.getUserMedia).toHaveBeenCalledTimes(2));
   expect(ctx.getUserMedia.mock.calls[1]?.[0]).toEqual({
     audio: false,
@@ -725,43 +745,53 @@ test('zoom: kontrol tampil hanya bila didukung, mulai 1x tanpa menerapkan apa pu
   setup({ stream });
   const slider = await screen.findByRole('slider', { name: 'Zoom' });
   expect(slider).toHaveValue('1');
+  expect(slider).toHaveAttribute('aria-orientation', 'vertical');
   expect(screen.getByTestId('zoom-value')).toHaveTextContent('1x');
   expect(stream.track.applyConstraints).not.toHaveBeenCalled();
-  expect(screen.getByRole('button', { name: 'Perkecil zoom' })).toBeDisabled();
 
-  await userEvent.click(screen.getByRole('button', { name: 'Perbesar zoom' }));
+  fireEvent.change(slider, { target: { value: '1.5' } });
   expect(stream.track.applyConstraints).toHaveBeenLastCalledWith({ advanced: [{ zoom: 1.5 }] });
   expect(screen.getByTestId('zoom-value')).toHaveTextContent('1,5x');
-  expect(screen.getByRole('button', { name: 'Perkecil zoom' })).toBeEnabled();
+  expect(slider).toHaveAttribute('aria-valuetext', '1,5x');
 
   fireEvent.change(slider, { target: { value: '3' } });
   expect(stream.track.applyConstraints).toHaveBeenLastCalledWith({ advanced: [{ zoom: 3 }] });
   expect(screen.getByTestId('zoom-value')).toHaveTextContent('3x');
+});
 
-  await userEvent.click(screen.getByRole('button', { name: 'Perkecil zoom' }));
-  expect(stream.track.applyConstraints).toHaveBeenLastCalledWith({ advanced: [{ zoom: 2.5 }] });
+test('zoom: mengetuk label zoom mengembalikan ke 1x', async () => {
+  const stream = fakeStream({ caps: { zoom: { min: 1, max: 5, step: 0.1 } } });
+  setup({ stream });
+  const slider = await screen.findByRole('slider', { name: 'Zoom' });
+  fireEvent.change(slider, { target: { value: '2.5' } });
+  expect(screen.getByTestId('zoom-value')).toHaveTextContent('2,5x');
+  await userEvent.click(screen.getByTestId('zoom-value'));
+  expect(stream.track.applyConstraints).toHaveBeenLastCalledWith({ advanced: [{ zoom: 1 }] });
+  expect(screen.getByTestId('zoom-value')).toHaveTextContent('1x');
 });
 
 test('zoom: tanpa dukungan kontrol zoom tersembunyi; zoom yang gagal diterapkan dikembalikan', async () => {
   const none = setup();
   await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
   expect(screen.queryByRole('slider', { name: 'Zoom' })).not.toBeInTheDocument();
+  expect(screen.queryByTestId('zoom-value')).not.toBeInTheDocument();
   none.unmount();
 
   const stream = fakeStream({ caps: { zoom: { min: 1, max: 4, step: 0.5 } } });
   stream.track.applyConstraints.mockRejectedValue(new Error('x'));
   setup({ stream });
-  await userEvent.click(await screen.findByRole('button', { name: 'Perbesar zoom' }));
+  fireEvent.change(await screen.findByRole('slider', { name: 'Zoom' }), { target: { value: '2' } });
   await waitFor(() => expect(screen.getByTestId('zoom-value')).toHaveTextContent('1x'));
 });
 
 test('zoom kembali ke 1x saat kamera dimulai ulang (ganti kamera)', async () => {
   const caps = { zoom: { min: 1, max: 5, step: 0.1 } };
   const ctx = setup({ stream: fakeStream({ caps }), devices: VIDEO_DEVICES, freshStreams: true });
-  await userEvent.click(await screen.findByRole('button', { name: 'Perbesar zoom' }));
+  fireEvent.change(await screen.findByRole('slider', { name: 'Zoom' }), {
+    target: { value: '1.5' },
+  });
   expect(screen.getByTestId('zoom-value')).toHaveTextContent('1,5x');
-  await userEvent.click(screen.getByRole('combobox', { name: 'Kamera' }));
-  await userEvent.click(await screen.findByRole('option', { name: 'Kamera depan' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Ganti kamera' }));
   await waitFor(() => expect(ctx.getUserMedia).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
   expect(screen.queryByTestId('zoom-value')).not.toBeInTheDocument();
@@ -885,16 +915,17 @@ test('ketukan di atas tombol di dalam viewport (mis. Coba lagi) tidak memicu fok
   expect(screen.queryByTestId('focus-ring')).not.toBeInTheDocument();
 });
 
-test('label kamera Android dijadikan nama yang mudah dipahami di pemilih kamera', async () => {
+test('label kamera Android dijadikan nama yang mudah dipahami di tooltip tombol ganti kamera', async () => {
   setup({
     devices: [
       { kind: 'videoinput', deviceId: 'cam-1', label: 'camera2 0, facing back' },
       { kind: 'videoinput', deviceId: 'cam-2', label: 'camera2 1, facing front' },
     ],
   });
-  await userEvent.click(await screen.findByRole('combobox', { name: 'Kamera' }));
-  expect(await screen.findByRole('option', { name: 'Kamera belakang' })).toBeInTheDocument();
-  expect(screen.getByRole('option', { name: 'Kamera depan' })).toBeInTheDocument();
+  expect(await screen.findByRole('button', { name: 'Ganti kamera' })).toHaveAttribute(
+    'title',
+    'Ganti ke Kamera depan',
+  );
 });
 
 test('petunjuk buram menyesuaikan dukungan: ketuk layar bila bisa, atur zoom bila hanya zoom', async () => {
@@ -902,23 +933,69 @@ test('petunjuk buram menyesuaikan dukungan: ketuk layar bila bisa, atur zoom bil
   expect(await screen.findByText(/ketuk layar untuk fokus/)).toBeInTheDocument();
   tap.unmount();
   setup({ stream: fakeStream({ caps: { zoom: { min: 1, max: 4, step: 0.1 } } }) });
-  expect(await screen.findByText(/lalu atur zoom/)).toBeInTheDocument();
+  expect(await screen.findByText(/lalu atur zoom kalau buram/)).toBeInTheDocument();
   expect(screen.queryByText(/ketuk layar untuk fokus/)).not.toBeInTheDocument();
 });
 
-test('kontrol zoom: target sentuh 44 px dan slider punya aria-valuetext yang terbaca', async () => {
-  setup({ stream: fakeStream({ caps: { zoom: { min: 1, max: 5, step: 0.1 } } }) });
+test('kontrol mengambang: slider zoom terbaca (aria-valuetext) dan semua tombol berukuran sentuh 44 px', async () => {
+  setup({
+    stream: fakeStream({ torch: true, caps: { zoom: { min: 1, max: 5, step: 0.1 } } }),
+    devices: VIDEO_DEVICES,
+  });
   const slider = await screen.findByRole('slider', { name: 'Zoom' });
   expect(slider).toHaveAttribute('aria-valuetext', '1x');
-  for (const name of ['Perkecil zoom', 'Perbesar zoom']) {
-    expect(screen.getByRole('button', { name }).className).toContain('size-11');
+  for (const name of [/senter/, 'Ganti kamera', /^Zoom 1x/]) {
+    expect((await screen.findByRole('button', { name })).className).toContain('size-11');
   }
-  await userEvent.click(screen.getByRole('button', { name: 'Perbesar zoom' }));
-  expect(screen.getByRole('slider', { name: 'Zoom' })).toHaveAttribute('aria-valuetext', '1,5x');
 });
 
-test('petunjuk buram ada di badan dialog (bukan di header yang menempel)', async () => {
+test('kontrol mengambang berada di atas area kamera: zoom kanan bawah, senter dan ganti kamera kiri bawah', async () => {
+  setup({
+    stream: fakeStream({ torch: true, caps: { zoom: { min: 1, max: 5, step: 0.1 } } }),
+    devices: VIDEO_DEVICES,
+  });
+  const viewport = screen.getByTestId('camera-viewport');
+  const zoom = await screen.findByTestId('camera-controls-zoom');
+  const left = await screen.findByTestId('camera-controls-left');
+  expect(viewport.contains(zoom) && viewport.contains(left)).toBe(true);
+  for (const token of ['absolute', 'right-3', 'bottom-3']) expect(zoom.className).toContain(token);
+  for (const token of ['absolute', 'left-3', 'bottom-3']) expect(left.className).toContain(token);
+  expect(left.contains(screen.getByRole('button', { name: 'Nyalakan senter' }))).toBe(true);
+  expect(left.contains(screen.getByRole('button', { name: 'Ganti kamera' }))).toBe(true);
+});
+
+test('ketukan pada kontrol mengambang tidak memicu ketuk-untuk-fokus', async () => {
+  stubVideoGeometry({ w: 1280, h: 720 }, { w: 300, h: 300 });
+  stubVideoRect(300, 300);
+  const stream = fakeStream({
+    torch: true,
+    caps: { focusMode: ['continuous', 'single-shot'], zoom: { min: 1, max: 5, step: 0.1 } },
+  });
+  setup({ stream, devices: VIDEO_DEVICES });
+  await waitFor(() => expect(screen.queryByText(/Menyiapkan kamera/)).not.toBeInTheDocument());
+  const shots = () =>
+    stream.track.applyConstraints.mock.calls.filter((call) => focusModeOf(call) === 'single-shot');
+  // Slider dan pembungkus kontrol (bukan hanya tombol) menahan ketukan.
+  fireEvent.click(await screen.findByRole('slider', { name: 'Zoom' }), {
+    clientX: 10,
+    clientY: 10,
+  });
+  fireEvent.click(screen.getByTestId('camera-controls-zoom'), { clientX: 10, clientY: 10 });
+  fireEvent.click(screen.getByTestId('camera-controls-left'), { clientX: 10, clientY: 10 });
+  fireEvent.click(screen.getByRole('button', { name: 'Nyalakan senter' }), {
+    clientX: 10,
+    clientY: 10,
+  });
+  expect(shots()).toHaveLength(0);
+  expect(screen.queryByTestId('focus-ring')).not.toBeInTheDocument();
+  // Ketukan di area video biasa tetap memfokus.
+  fireEvent.click(screen.getByTestId('camera-viewport'), { clientX: 100, clientY: 100 });
+  expect(shots()).toHaveLength(1);
+});
+
+test('petunjuk berada di area kamera (bukan di header yang menempel)', async () => {
   setup({ stream: fakeStream({ caps: { focusMode: ['single-shot'] } }) });
   const tip = await screen.findByText(/ketuk layar untuk fokus/);
-  expect(tip.closest('[data-slot="dialog-header"]')).toBeNull();
+  expect(tip.closest('[data-slot="alert-dialog-header"]')).toBeNull();
+  expect(screen.getByTestId('camera-viewport').contains(tip)).toBe(true);
 });
