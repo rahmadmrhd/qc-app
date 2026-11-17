@@ -578,14 +578,91 @@ describe('deploy-server.yml: kunci tanda tangan manifest UI desktop', () => {
 describe('test.yml dan aksi MariaDB', () => {
   const test_ = parse(rawOf('test.yml'));
 
-  test('test.yml memakai aksi MariaDB bersama, bun dipatok, QC_TEST_DB_URL ke root:ci-only, tanpa tunnel', () => {
-    const text = rawOf('test.yml');
+  test('test.yml: pemicu pull_request; job ci memanggil ci.yml dengan nomor PR dan izin baca PR', () => {
+    expect(test_.on).toEqual({ pull_request: { types: ['opened', 'reopened', 'synchronize'] } });
+    const ciJob = test_.jobs.ci as Job;
+    expect(ciJob.uses).toBe('./.github/workflows/ci.yml');
+    expect(ciJob.with).toEqual({
+      pr: '${{ github.event.pull_request.number }}',
+      'build-image': true,
+    });
+    // packages: read wajib walau hanya dipakai job image-check (GitHub memvalidasi izin job di workflow dipanggil)
+    expect(ciJob.permissions).toEqual({
+      contents: 'read',
+      'pull-requests': 'read',
+      packages: 'read',
+    });
+    // job image di test.yml dihapus: ia akan berjalan SERIAL setelah seluruh ci.yml (output workflow dipanggil)
+    expect(Object.keys(test_.jobs).sort()).toEqual(['ci', 'test']);
+  });
+
+  test('MariaDB uji dan bun dipatok kini hidup di ci.yml/aksi setup (QC_TEST_DB_URL ke root:ci-only, tanpa tunnel)', () => {
+    const text = rawOf('ci.yml');
     expect(text).toContain('uses: ./.github/actions/mariadb');
     expect(text).toContain('QC_TEST_DB_URL: mysql://root:ci-only@127.0.0.1:3306/');
-    expect(text).toMatch(/bun-version: 1\.\d+\.\d+/);
-    expect(text).not.toContain('bun-version: latest');
+    expect(SETUP_ACTION).toMatch(/bun-version: 1\.\d+\.\d+/);
+    expect(SETUP_ACTION).not.toContain('bun-version: latest');
     expect(text).not.toContain('db:tunnel');
-    expect(test_.on).toEqual({ pull_request: { types: ['opened', 'reopened', 'synchronize'] } });
+    // test.yml sendiri tak lagi menjalankan tes/ build: semuanya lewat ci.yml dan job image
+    expect(rawOf('test.yml')).not.toContain('bun run check');
+    expect(rawOf('test.yml')).not.toContain('bun run build');
+  });
+
+  test('ci.yml job image-check: bersyarat (input build-image dan keluaran image), tanpa dorong, tanpa menulis cache, hanya baca paket', () => {
+    const ci_ = parse(rawOf('ci.yml'));
+    const image = ci_.jobs['image-check'] as Job;
+    expect(image.needs).toBe('changes');
+    expect(image.if).toBe("inputs.build-image && needs.changes.outputs.image == 'true'");
+    expect(image.permissions).toEqual({ contents: 'read', packages: 'read' });
+    const build = (image.steps ?? []).find((step) =>
+      step.uses?.startsWith('docker/build-push-action'),
+    );
+    expect(build?.with?.push).toBe(false);
+    expect(build?.with).not.toHaveProperty('cache-to');
+    expect(String(build?.with?.['cache-from'])).toContain(':buildcache-staging');
+    expect(String(build?.with?.['cache-from'])).toContain(':buildcache-production');
+    const login = (image.steps ?? []).find((step) => step.uses?.startsWith('docker/login-action'));
+    expect(login?.with?.password).toBe('${{ github.token }}');
+    // test.yml tak memakai rahasia sama sekali
+    expect(rawOf('test.yml')).not.toMatch(/secrets\./);
+  });
+
+  describe('gerbang `test` (nama check wajib branch protection)', () => {
+    const gate = test_.jobs.test as Job;
+    const script = (gate?.steps ?? []).find((step) => step.run)?.run ?? '';
+
+    test('job `test` ada di test.yml, selalu jalan, menunggu ci, tanpa checkout', () => {
+      expect(gate).toBeDefined();
+      expect(gate.if).toBe('always()');
+      expect(gate.needs).toBe('ci');
+      expect((gate.steps ?? []).some((step) => step.uses?.startsWith('actions/checkout'))).toBe(
+        false,
+      );
+      expect(gate.env).toEqual({ CI_RESULT: '${{ needs.ci.result }}' });
+      expect(script).not.toContain('${{');
+    });
+
+    async function runGate(ciResult: string): Promise<number> {
+      const proc = Bun.spawn(['bash', '-c', script], {
+        env: { ...process.env, CI_RESULT: ciResult },
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      return await proc.exited;
+    }
+
+    test('success dan skipped lulus; failure, cancelled, kosong, dan nilai aneh gagal', async () => {
+      for (const [ciResult, expected] of [
+        ['success', 0],
+        ['skipped', 0],
+        ['failure', 1],
+        ['cancelled', 1],
+        ['', 1],
+        ['tak-dikenal', 1],
+      ] as const) {
+        expect(await runGate(ciResult), ciResult || '(kosong)').toBe(expected);
+      }
+    });
   });
 
   test('aksi MariaDB memakai konfigurasi VPS (qc.cnf) dan image 11.8 yang sama dengan compose', () => {
@@ -613,7 +690,7 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
   const jobs = ci.jobs;
   const stepsOfJob = (name: string) => jobs[name]?.steps ?? [];
 
-  test('pemicu hanya workflow_call dengan input ref dan pr; izin tingkat atas contents read; output image', () => {
+  test('pemicu hanya workflow_call dengan input ref, pr, build-image; izin tingkat atas contents read; output image', () => {
     const on = ci.on as {
       workflow_call: {
         inputs: Record<string, unknown>;
@@ -621,7 +698,7 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
       };
     };
     expect(Object.keys(ci.on ?? {})).toEqual(['workflow_call']);
-    expect(Object.keys(on.workflow_call.inputs).sort()).toEqual(['pr', 'ref']);
+    expect(Object.keys(on.workflow_call.inputs).sort()).toEqual(['build-image', 'pr', 'ref']);
     expect(on.workflow_call.outputs.image?.value).toBe('${{ jobs.changes.outputs.image }}');
     expect(ci.permissions).toEqual({ contents: 'read' });
   });
