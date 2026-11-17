@@ -112,3 +112,35 @@ test('isKnown pemindai kamera mengikuti isi draft (bentuk ternormalisasi, termas
   });
   expect(feedback).toBe('duplicate');
 });
+
+test('setelah Simpan dialog, notice halaman meringkas SEMUA baris (bukan hanya yang terakhir)', async () => {
+  renderPage();
+  await pickLink(screen, 'Item', 'Cisco C9200');
+  await pickLink(screen, 'Lokasi', 'Jakarta (JKT)');
+  const onSaved = captured.props?.onSaved;
+  expect(onSaved).toBeTypeOf('function');
+  await userEvent.click(screen.getByLabelText('Scan atau tempel serial (satu per baris)'));
+  await userEvent.paste('dup1\ndup2');
+  // Meniru Simpan: onScan per baris, lalu onSaved dengan hasil semuanya.
+  const serials = ['NEW1', 'NEW2', 'DUP1', 'NEW3'];
+  const results: { serial: string; feedback: 'added' | 'duplicate' | 'rejected' }[] = [];
+  act(() => {
+    for (const serial of serials) {
+      const feedback = captured.props?.onScan(serial);
+      if (feedback) results.push({ serial, feedback });
+    }
+    captured.props?.onSaved?.(results);
+  });
+  expect(screen.getByRole('status')).toHaveTextContent('3 serial ditambahkan; 1 duplikat dilewati');
+});
+
+test('Lapor Rusak: pemindai kamera dibatasi satu baris (prop maxRows=1)', async () => {
+  const { ReportPage } = await import('./report-page');
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <ReportPage onOpenSerial={() => undefined} />
+    </QueryClientProvider>,
+  );
+  expect(captured.props?.maxRows).toBe(1);
+});

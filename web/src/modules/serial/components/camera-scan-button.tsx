@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import type { ScanFeedback } from '../lib/scan-feedback';
 import type { IsKnown } from '../lib/scan-table';
 import { cameraSupported } from '../lib/use-camera-scanner';
+import type { CameraScanDialogProps } from './camera-scan-dialog';
 
 // Dialog kamera (dan mesin pembacanya) dimuat malas: tidak membesarkan potongan halaman sebelum dipakai.
 const CameraScanDialog = lazy(() =>
@@ -18,6 +19,10 @@ export interface CameraScanButtonProps {
   onScan: (text: string) => ScanFeedback;
   /** Serial yang sudah dimiliki pemakai (mis. sudah di draft): tidak ditambahkan ke tabel hasil scan. */
   isKnown?: IsKnown;
+  /** Batas baris tabel hasil scan (mis. 1 untuk pemakai satu-serial: scan baru mengganti yang ada). */
+  maxRows?: number;
+  /** Hasil semua baris sesudah Simpan (bila diisi, menggantikan toast ringkasan dialog). */
+  onSaved?: CameraScanDialogProps['onSaved'];
   disabled?: boolean;
   className?: string;
 }
@@ -29,6 +34,8 @@ export interface CameraScanButtonProps {
 export function CameraScanButton({
   onScan,
   isKnown,
+  maxRows,
+  onSaved,
   disabled = false,
   className,
 }: CameraScanButtonProps) {
@@ -50,7 +57,14 @@ export function CameraScanButton({
       </Button>
       {open ? (
         <Suspense fallback={null}>
-          <CameraScanDialog open={open} onOpenChange={setOpen} onScan={onScan} isKnown={isKnown} />
+          <CameraScanDialog
+            open={open}
+            onOpenChange={setOpen}
+            onScan={onScan}
+            isKnown={isKnown}
+            maxRows={maxRows}
+            onSaved={onSaved}
+          />
         </Suspense>
       ) : null}
     </>

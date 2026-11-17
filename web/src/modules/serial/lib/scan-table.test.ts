@@ -88,3 +88,25 @@ test('editRow mengganti teks satu baris tanpa menyentuh baris lain', () => {
 test('rowsToScan: teks ternormalisasi menurut urutan tabel', () => {
   expect(rowsToScan([row(' a1 '), row('aa:bb:cc:dd:ee:ff')])).toEqual(['A1', 'AABBCCDDEEFF']);
 });
+
+test('maxRows=1: scan baru MENGGANTIKAN baris yang ada (bukan ditolak); serial sama = duplicate', () => {
+  const rows = [row('AAA1', 'a')];
+  const replaced = addScanned(rows, 'bbb2', never, newId, 1);
+  expect(replaced.feedback).toBe('added');
+  expect(replaced.rows.map((r) => r.text)).toEqual(['BBB2']);
+  expect(replaced.added).toEqual([replaced.rows[0]?.id]);
+  // Serial yang sama dengan baris yang ada tidak mengganti apa pun.
+  const same = addScanned(rows, 'aaa1', never, newId, 1);
+  expect(same.feedback).toBe('duplicate');
+  expect(same.rows).toBe(rows);
+  // Serial yang sudah ada di draft tetap ditolak sebagai duplicate dan baris lama dipertahankan.
+  const known = addScanned(rows, 'draft1', (s) => s === 'DRAFT1', newId, 1);
+  expect(known.feedback).toBe('duplicate');
+  expect(known.rows).toBe(rows);
+});
+
+test('maxRows=1: payload banyak serial memakai yang pertama dan bernada rejected (sisanya diabaikan)', () => {
+  const result = addScanned([], 'aaa1\nbbb2', never, newId, 1);
+  expect(result.rows.map((r) => r.text)).toEqual(['AAA1']);
+  expect(result.feedback).toBe('rejected');
+});

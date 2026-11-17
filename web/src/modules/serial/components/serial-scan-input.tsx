@@ -10,7 +10,7 @@ import {
   useScanFeedback,
 } from '../lib/scan-feedback';
 import type { IsKnown } from '../lib/scan-table';
-import { CameraScanButton } from './camera-scan-button';
+import { CameraScanButton, type CameraScanButtonProps } from './camera-scan-button';
 
 export type { ScanFeedback };
 
@@ -25,6 +25,10 @@ export interface SerialScanInputProps {
   feedbackText?: Partial<Record<ScanFeedback, string>>;
   /** Serial (ternormalisasi) yang sudah dimiliki halaman (mis. di draft): pemindai kamera tidak menambahkannya lagi. */
   isKnown?: IsKnown;
+  /** Batas baris tabel hasil scan kamera (mis. 1 untuk halaman satu-serial: scan baru mengganti yang ada). */
+  cameraMaxRows?: number;
+  /** Hasil semua baris sesudah Simpan di dialog kamera (menggantikan toast ringkasan dialog). */
+  onCameraSaved?: CameraScanButtonProps['onSaved'];
 }
 
 export function SerialScanInput({
@@ -35,6 +39,8 @@ export function SerialScanInput({
   autoFocus = false,
   feedbackText,
   isKnown,
+  cameraMaxRows,
+  onCameraSaved,
 }: SerialScanInputProps) {
   const [value, setValue] = useState('');
   const { feedback, announce } = useScanFeedback();
@@ -57,7 +63,13 @@ export function SerialScanInput({
     <div className="space-y-1.5">
       <div className="flex items-center justify-between gap-2">
         <Label htmlFor={id}>{label}</Label>
-        <CameraScanButton onScan={onSubmit} isKnown={isKnown} disabled={disabled} />
+        <CameraScanButton
+          onScan={onSubmit}
+          isKnown={isKnown}
+          maxRows={cameraMaxRows}
+          onSaved={onCameraSaved}
+          disabled={disabled}
+        />
       </div>
       <Textarea
         id={id}

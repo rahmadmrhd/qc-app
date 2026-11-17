@@ -44,6 +44,9 @@ afterEach(() => {
 interface SetupOptions {
   results?: ScanFeedback[] | ((text: string) => ScanFeedback);
   isKnown?: (serial: string) => boolean;
+  maxRows?: number;
+  onSaved?: (results: { serial: string; feedback: ScanFeedback }[]) => void;
+  devices?: unknown[];
 }
 
 function setup(options: SetupOptions = {}) {
@@ -51,7 +54,7 @@ function setup(options: SetupOptions = {}) {
   Object.defineProperty(navigator, 'mediaDevices', {
     value: {
       getUserMedia: vi.fn(async () => media.stream),
-      enumerateDevices: vi.fn(async () => []),
+      enumerateDevices: vi.fn(async () => options.devices ?? []),
     },
     configurable: true,
   });
@@ -74,6 +77,8 @@ function setup(options: SetupOptions = {}) {
       onOpenChange={onOpenChange}
       onScan={onScan}
       isKnown={options.isKnown}
+      maxRows={options.maxRows}
+      onSaved={options.onSaved}
       createEngine={async () => engine}
       now={() => time}
     />,
@@ -312,4 +317,45 @@ test('galat kamera: pesan dan Coba lagi di area kamera, kontrol mengambang hilan
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled();
   await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
   expect(onOpenChange).toHaveBeenCalledWith(false);
+});
+
+test('maxRows=1: scan berikutnya menggantikan baris yang ada, dan Simpan menerapkan satu serial', async () => {
+  const ctx = setup({ maxRows: 1 });
+  await scan(ctx, 'aaa1', ['AAA1']);
+  await scan(ctx, 'bbb2', ['BBB2']);
+  expect(screen.getByRole('button', { name: 'Simpan (1)' })).toBeEnabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan (1)' }));
+  expect(ctx.onScan.mock.calls.map((call) => call[0])).toEqual(['BBB2']);
+});
+
+test('onSaved menerima hasil SEMUA baris (urutan tabel) dan menggantikan toast ringkasan', async () => {
+  const onSaved = vi.fn();
+  const ctx = setup({ results: ['added', 'duplicate', 'rejected'], onSaved });
+  await scan(ctx, 'aaa1\nbbb2\nccc3', ['AAA1', 'BBB2', 'CCC3']);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan (3)' }));
+  expect(onSaved).toHaveBeenCalledWith([
+    { serial: 'AAA1', feedback: 'added' },
+    { serial: 'BBB2', feedback: 'duplicate' },
+    { serial: 'CCC3', feedback: 'rejected' },
+  ]);
+  expect(toast.warning).not.toHaveBeenCalled();
+  expect(ctx.onOpenChange).toHaveBeenCalledWith(false);
+});
+
+const TWO_CAMERAS = [
+  { kind: 'videoinput', deviceId: 'cam-1', label: 'camera2 0, facing back' },
+  { kind: 'videoinput', deviceId: 'cam-2', label: 'camera2 1, facing front' },
+];
+
+test('berganti kamera menampilkan nama kamera aktif sementara, lalu hilang sendiri', async () => {
+  setup({ devices: TWO_CAMERAS });
+  const toggle = await screen.findByRole('button', { name: 'Ganti kamera' });
+  expect(screen.queryByTestId('camera-name')).not.toBeInTheDocument();
+  await userEvent.click(toggle);
+  const label = await screen.findByTestId('camera-name');
+  expect(label).toHaveTextContent('Kamera depan');
+  expect(label).toHaveAttribute('aria-live', 'polite');
+  await waitFor(() => expect(screen.queryByTestId('camera-name')).not.toBeInTheDocument(), {
+    timeout: 5000,
+  });
 });

@@ -46,6 +46,16 @@ export interface CameraScanDialogProps {
    * (umpan balik "Sudah ada") dan menandai baris hasil edit yang menjadi sama dengannya.
    */
   isKnown?: IsKnown;
+  /**
+   * Batas jumlah baris tabel untuk pemakai satu-serial (mis. `1`): scan baru MENGGANTIKAN baris yang ada. Kosong =
+   * batas draft (`SERIAL_LIMITS.tableRows`).
+   */
+  maxRows?: number;
+  /**
+   * Dipanggil sesudah "Simpan" dengan hasil SEMUA baris (urutan tabel), supaya pemakai dapat meringkasnya. Bila
+   * diisi, toast ringkasan dialog tidak ditampilkan (pemakai yang menyampaikannya) agar tidak ganda.
+   */
+  onSaved?: (results: { serial: string; feedback: ScanFeedback }[]) => void;
   /** Disuntik tes: pengganti mesin pembaca. */
   createEngine?: () => Promise<BarcodeEngine>;
   /** Disuntik tes: jam untuk jendela bacaan ulang. */
@@ -54,6 +64,9 @@ export interface CameraScanDialogProps {
 
 /** Lama cincin umpan balik ketuk-untuk-fokus tampil. */
 const FOCUS_RING_MS = 900;
+
+/** Lama nama kamera aktif tampil setelah berganti kamera. */
+const CAMERA_NAME_MS = 2500;
 
 /** Lama baris terbaru disorot. */
 const HIGHLIGHT_MS = 1500;
@@ -111,11 +124,16 @@ export function CameraScanDialog({ open, onOpenChange, ...rest }: CameraScanDial
 function CameraScanBody({
   onScan,
   isKnown = NEVER_KNOWN,
+  maxRows,
+  onSaved,
   onClose,
   actionsRef,
   createEngine,
   now,
-}: Pick<CameraScanDialogProps, 'onScan' | 'isKnown' | 'createEngine' | 'now'> & {
+}: Pick<
+  CameraScanDialogProps,
+  'onScan' | 'isKnown' | 'maxRows' | 'onSaved' | 'createEngine' | 'now'
+> & {
   onClose: () => void;
   actionsRef: RefObject<BodyActions | null>;
 }) {
@@ -127,6 +145,7 @@ function CameraScanBody({
   const [rows, setRows] = useState<readonly ScanRow[]>([]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [cameraName, setCameraName] = useState<string | null>(null);
   // Salinan sinkron: beberapa bacaan dapat tiba sebelum render ulang.
   const rowsRef = useRef<readonly ScanRow[]>([]);
   const idCounter = useRef(0);
@@ -134,6 +153,8 @@ function CameraScanBody({
   onScanRef.current = onScan;
   const isKnownRef = useRef(isKnown);
   isKnownRef.current = isKnown;
+  const onSavedRef = useRef(onSaved);
+  onSavedRef.current = onSaved;
 
   function commitRows(next: readonly ScanRow[]) {
     rowsRef.current = next;
@@ -147,6 +168,7 @@ function CameraScanBody({
       text,
       (serial) => isKnownRef.current(serial),
       () => `scan-${++idCounter.current}`,
+      maxRows,
     );
     if (result.rows !== rowsRef.current) commitRows(result.rows);
     const newest = result.added[result.added.length - 1];
@@ -171,6 +193,12 @@ function CameraScanBody({
     const timer = setTimeout(() => setRing(null), FOCUS_RING_MS);
     return () => clearTimeout(timer);
   }, [ring]);
+
+  useEffect(() => {
+    if (cameraName === null) return;
+    const timer = setTimeout(() => setCameraName(null), CAMERA_NAME_MS);
+    return () => clearTimeout(timer);
+  }, [cameraName]);
 
   useEffect(() => {
     if (highlightId === null) return;
@@ -209,19 +237,25 @@ function CameraScanBody({
 
   function save() {
     if (!canSave) return;
-    let added = 0;
-    let skipped = 0;
-    for (const serial of rowsToScan(rowsRef.current)) {
-      if (onScanRef.current(serial) === 'added') added++;
-      else skipped++;
+    const results = rowsToScan(rowsRef.current).map((serial) => ({
+      serial,
+      feedback: onScanRef.current(serial),
+    }));
+    if (onSavedRef.current) onSavedRef.current(results);
+    else {
+      const added = results.filter((result) => result.feedback === 'added').length;
+      const skipped = results.length - added;
+      if (skipped > 0) toast.warning(`${added} ditambahkan, ${skipped} dilewati`);
     }
-    if (skipped > 0) toast.warning(`${added} ditambahkan, ${skipped} dilewati`);
     onClose();
   }
 
   function switchCamera() {
     const next = nextDevice(camera, deviceId || camera.activeDeviceId);
-    if (next) setDeviceId(next.id);
+    if (next) {
+      setDeviceId(next.id);
+      setCameraName(next.label);
+    }
   }
 
   const tip = camera.tapFocusSupported
@@ -314,6 +348,15 @@ function CameraScanBody({
                 </Button>
               ) : null}
             </div>
+          ) : null}
+          {cameraName !== null && state.status !== 'error' ? (
+            <p
+              data-testid="camera-name"
+              aria-live="polite"
+              className="pointer-events-none absolute bottom-[4.5rem] left-3 max-w-[60%] truncate rounded-md bg-black/60 px-2 py-1 text-xs text-white"
+            >
+              {cameraName}
+            </p>
           ) : null}
           {state.status !== 'error' ? (
             <ScanCameraControls camera={camera} onSwitchCamera={switchCamera} />

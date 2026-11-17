@@ -234,6 +234,17 @@ export function RecordPage({
   );
   const isKnownSerial = useCallback((serial: string) => knownSerials.has(serial), [knownSerials]);
 
+  // Setelah Simpan dialog kamera: `addText` sudah dipanggil per baris (notice-nya saling menimpa); ringkas SEMUA baris.
+  function summarizeCameraSave(results: { serial: string; feedback: ScanFeedback }[]) {
+    const { notice: message } = describeAdd({
+      added: results.filter((result) => result.feedback === 'added').length,
+      duplicates: results.filter((result) => result.feedback === 'duplicate').length,
+      rejected: results.filter((result) => result.feedback === 'rejected').map((r) => r.serial),
+      truncated: false,
+    });
+    setNotice(message);
+  }
+
   function addText(text: string): ScanFeedback {
     const { rows: next, report } = addSerials(
       rowsRef.current,
@@ -609,6 +620,7 @@ export function RecordPage({
         label="Scan atau tempel serial (satu per baris)"
         onSubmit={addText}
         isKnown={isKnownSerial}
+        onCameraSaved={summarizeCameraSave}
         autoFocus
       />
 
