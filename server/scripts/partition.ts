@@ -42,3 +42,16 @@ export function parseShard(value: string | undefined): { index: number; total: n
   }
   return { index, total };
 }
+
+/**
+ * Berkas milik shard ke-`index` dari `total` (1-based). Tanpa berkas tes sama sekali = GALAT: bila tidak, penemuan berkas
+ * yang rusak (folder diganti nama, cwd salah) membuat kedelapan shard keluar 0 dan seluruh tes server "lulus" kosong.
+ * Shard kosong tetap sah selama ada berkas di shard lain.
+ */
+export function pickShardFiles(
+  items: FileWeight[],
+  shard: { index: number; total: number },
+): string[] {
+  if (items.length === 0) throw new Error('Tidak ada berkas tes.');
+  return partitionFiles(items, shard.total)[shard.index - 1] ?? [];
+}

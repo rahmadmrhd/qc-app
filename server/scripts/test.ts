@@ -14,7 +14,7 @@ import { resolve } from 'node:path';
 import { Glob } from 'bun';
 import { testDbUrl } from '../test-support/db-env';
 import { DB_PING_TIMEOUT_MS, pingDatabase } from '../test-support/db-ping';
-import { parseShard, partitionFiles } from './partition';
+import { parseShard, partitionFiles, pickShardFiles } from './partition';
 
 const root = resolve(import.meta.dir, '..');
 /** Batas atas proses paralel: tiap proses memakai maks. 8 koneksi (pool tes 6 + admin 2); `max_connections` VPS = 40. */
@@ -168,7 +168,13 @@ async function main(): Promise<number> {
   let files = targets.length > 0 ? expandTargets(targets, all) : all;
   if (shard) {
     const weights = all.map((file) => ({ file, size: statSync(resolve(root, file)).size }));
-    files = partitionFiles(weights, shard.total)[shard.index - 1] ?? [];
+    try {
+      files = pickShardFiles(weights, shard);
+    } catch (error) {
+      // Tanpa berkas tes sama sekali (penemuan berkas rusak) = gagal, bukan "shard kosong" yang lulus.
+      console.error(error instanceof Error ? error.message : String(error));
+      return 1;
+    }
     if (files.length === 0) {
       console.log(`Shard ${shard.index}/${shard.total} kosong: tidak ada berkas.`);
       return 0;

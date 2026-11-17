@@ -164,3 +164,76 @@ describe('formatOutputs dan CLI', () => {
     }
   });
 });
+
+describe('peta aturan sesuai impor lintas-workspace (dipindai dari kode sumber)', () => {
+  const pkg = JSON.parse(readFileSync(join(ROOT_DIR, 'package.json'), 'utf8')) as {
+    workspaces: string[];
+  };
+  const workspaces = pkg.workspaces;
+  const ALIASES: Record<string, string> = { '@shared/': 'shared', '@countrylock/': 'countrylock' };
+  const SKIP = /(^|\/)(node_modules|dist|dist-app|\.tanstack)\//;
+  const IMPORT = /(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g;
+
+  /** Himpunan "X->Y": kode di workspace X mengimpor kode di workspace Y (relatif atau lewat alias tsconfig). */
+  function importEdges(): Set<string> {
+    const edges = new Set<string>();
+    for (const ws of workspaces) {
+      const base = join(ROOT_DIR, ws);
+      for (const file of new Bun.Glob('**/*.{ts,tsx}').scanSync({ cwd: base })) {
+        const normalized = file.replaceAll('\\', '/');
+        if (SKIP.test(normalized)) continue;
+        const text = readFileSync(join(base, file), 'utf8');
+        for (const match of text.matchAll(IMPORT)) {
+          const spec = match[1] as string;
+          let target: string | undefined;
+          const alias = Object.keys(ALIASES).find((prefix) => spec.startsWith(prefix));
+          if (alias) target = ALIASES[alias];
+          else if (spec.startsWith('.')) {
+            const resolved = join(base, file, '..', spec).slice(ROOT_DIR.length + 1);
+            target = resolved.replaceAll('\\', '/').split('/')[0];
+          }
+          if (target && target !== ws && workspaces.includes(target)) edges.add(`${ws}->${target}`);
+        }
+      }
+    }
+    return edges;
+  }
+
+  // Flag tes milik tiap workspace; countrylock tak punya flag sendiri (tesnya ikut job `scripts`, dinyalakan `code`).
+  const OWN_TESTS: Partial<Record<string, keyof Changes>> = {
+    server: 'server_tests',
+    web: 'web_tests',
+    shared: 'shared_tests',
+    desktop: 'desktop_tests',
+  };
+
+  test('pemindai menemukan impor yang diketahui (agar tes ini tak lulus kosong)', () => {
+    const edges = importEdges();
+    for (const known of [
+      'web->shared',
+      'web->countrylock',
+      'server->shared',
+      'desktop->countrylock',
+    ]) {
+      expect(edges.has(known), known).toBe(true);
+    }
+  });
+
+  test('mengubah workspace Y menyalakan tes tiap workspace X yang mengimpornya', () => {
+    for (const edge of importEdges()) {
+      const [from, to] = edge.split('->') as [string, string];
+      const flag = OWN_TESTS[from];
+      if (flag)
+        expect(classify([`${to}/x.ts`])[flag], `${to} diubah, ${from} mengimpornya`).toBe(true);
+    }
+  });
+
+  test('mengubah Y menyalakan image bila X ikut masuk image (server, web) dan desktop_pack bila X masuk installer (web, desktop)', () => {
+    for (const edge of importEdges()) {
+      const [from, to] = edge.split('->') as [string, string];
+      const result = classify([`${to}/x.ts`]);
+      if (from === 'server' || from === 'web') expect(result.image, edge).toBe(true);
+      if (from === 'web' || from === 'desktop') expect(result.desktop_pack, edge).toBe(true);
+    }
+  });
+});

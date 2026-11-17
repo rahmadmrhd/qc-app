@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { type FileWeight, parseShard, partitionFiles } from './partition';
+import { type FileWeight, parseShard, partitionFiles, pickShardFiles } from './partition';
 
 /** 20 berkas dengan ukuran tetap yang beragam (deterministik, tanpa acak). */
 function sampleFiles(): FileWeight[] {
@@ -70,5 +70,24 @@ describe('parseShard', () => {
     for (const bad of ['0/8', '9/8', '3', 'a/8', '3/0', '1/65', '3/8x', ' 3/8', '3/ 8', '-1/8']) {
       expect(() => parseShard(bad), bad).toThrow();
     }
+  });
+});
+
+describe('pickShardFiles', () => {
+  test('mengambil kelompok ke-i dari n (indeks 1-based) dan konsisten dengan partitionFiles', () => {
+    const items = sampleFiles();
+    const groups = partitionFiles(items, 8);
+    for (let index = 1; index <= 8; index++) {
+      expect(pickShardFiles(items, { index, total: 8 })).toEqual(groups[index - 1] as string[]);
+    }
+  });
+
+  test('shard kosong sah bila ada berkas (mengembalikan daftar kosong)', () => {
+    const items = sampleFiles().slice(0, 3);
+    expect(pickShardFiles(items, { index: 8, total: 8 })).toEqual([]);
+  });
+
+  test('tanpa berkas tes sama sekali GAGAL (jangan lolos diam-diam di semua shard)', () => {
+    expect(() => pickShardFiles([], { index: 1, total: 8 })).toThrow('Tidak ada berkas tes');
   });
 });
