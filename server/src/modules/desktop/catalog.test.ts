@@ -76,12 +76,15 @@ describe('katalog desktop: akses', () => {
 });
 
 describe('katalog desktop: isi', () => {
-  test('hanya item isCountryLock aktif; semua BU tanpa saringan; instruksi terselesaikan di server', async () => {
+  test('hanya item isCountryLock aktif ber-BU; semua BU tanpa saringan; instruksi terselesaikan di server', async () => {
     await seedItem(env, { id: 'i1', brand: 'Acme', model: 'AP-1', aliases: ['ap satu'] });
     await seedItem(env, { id: 'i2', brand: 'Acme', model: 'AP-2', businessUnitIds: ['bu-b'] });
     await seedItem(env, { id: 'i3', brand: 'Acme', model: 'Bukan CL' });
     await seedItem(env, { id: 'i4', brand: 'Acme', model: 'Nonaktif', status: 'inactive' });
-    for (const id of ['i1', 'i2', 'i4']) await setLock(id);
+    // Item lama tanpa BU (tak terlihat di web) tidak ikut katalog walau isCountryLock aktif.
+    await seedItem(env, { id: 'i5', brand: 'Acme', model: 'Tanpa BU' });
+    await env.DB.prepare('DELETE FROM item_business_units WHERE item_id = ?').bind('i5').run();
+    for (const id of ['i1', 'i2', 'i4', 'i5']) await setLock(id);
 
     await seedGuideImage(env, { id: 'g1', name: 'Depan' });
     await seedStickerType(env, { id: 't-bu', name: 'Warranty', rule: 'bu' });

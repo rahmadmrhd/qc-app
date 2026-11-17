@@ -29,7 +29,8 @@ import {
 
 /**
  * Penyusun katalog Tipe offline desktop (spek desktop §6.6, keputusan pemilik 2026-11-16): SEMUA item aktif dengan
- * `isCountryLock` (tanpa saringan BU: tanpa login tidak ada penugasan BU) beserta instruksi penempelan stiker yang
+ * `isCountryLock` yang punya minimal satu BU (tanpa saringan menurut penugasan BU: tanpa login tidak ada penugasan; item
+ * tanpa BU dikecualikan karena tak terlihat di web, keputusan pemilik 2026-11-18) beserta instruksi penempelan stiker yang
  * diselesaikan di sini (`buildInstructionViews`, termasuk aturan `group` Manual Book/Postel), jenis dan stiker yang
  * dirujuk, dan daftar berkas gambar. Keluaran deterministik (urutan tetap, tanpa stempel waktu) agar ETag stabil.
  */
@@ -96,7 +97,7 @@ export async function buildDesktopCatalog(env: Env): Promise<DesktopCatalogDto> 
   const itemRows = (
     await db
       .prepare(
-        "SELECT i.id, b.name AS brand, i.model, i.aliases FROM items i JOIN brands b ON b.id = i.brand_id WHERE i.is_country_lock = 'true' AND i.status = 'active' ORDER BY b.name, i.model, i.id",
+        "SELECT i.id, b.name AS brand, i.model, i.aliases FROM items i JOIN brands b ON b.id = i.brand_id WHERE i.is_country_lock = 'true' AND i.status = 'active' AND EXISTS (SELECT 1 FROM item_business_units ibu WHERE ibu.item_id = i.id) ORDER BY b.name, i.model, i.id",
       )
       .all<ItemRow>()
   ).results;

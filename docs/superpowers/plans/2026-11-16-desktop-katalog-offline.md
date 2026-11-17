@@ -1,6 +1,6 @@
 # Rencana: Katalog Tipe offline desktop
 
-Spek: `docs/superpowers/specs/2026-11-06-qc-desktop-country-lock-design.md` §6.6 dan §9 (Fase 2, potongan pertama). Keputusan pemilik 2026-11-16: cakupan katalog offline saja (field `firmware`, paket konfigurasi, editor, dan sinkron router menyusul), akses baca lewat token bersama tanpa login, katalog memuat semua item aktif `isCountryLock` tanpa saringan BU.
+Spek: `docs/superpowers/specs/2026-11-06-qc-desktop-country-lock-design.md` §6.6 dan §9 (Fase 2, potongan pertama). Keputusan pemilik 2026-11-16: cakupan katalog offline saja (field `firmware`, paket konfigurasi, editor, dan sinkron router menyusul), akses baca lewat token bersama tanpa login, katalog memuat semua item aktif `isCountryLock` tanpa saringan menurut penugasan BU; sejak 2026-11-18 item tanpa BU sama sekali dikecualikan (tak terlihat di web).
 
 ## Langkah (semuanya dikerjakan di cabang `feat/desktop-katalog-offline`)
 
