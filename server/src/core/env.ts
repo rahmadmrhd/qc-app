@@ -54,6 +54,8 @@ export interface Env extends GoogleSettings {
   ALERT_TO?: string[];
   /** Ambang peringatan pemakaian kuota Drive, persen (bawaan 80). */
   QUOTA_ALERT_PERCENT?: number;
+  /** SHA commit build image (`config.buildSha`); kosong = `unknown` di `/api/ping`. */
+  BUILD_SHA?: string;
   /** Hanya untuk tes: jam terkendali (milidetik epoch). */
   NOW?: () => number;
   /** Hanya untuk tes: cache isi berkas (bawaan: cache memori LRU proses, maks. 32 MB; null = tanpa cache). */

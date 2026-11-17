@@ -65,7 +65,15 @@ export interface Config {
   trustedProxyText: string;
   /** Direktori berkas statis web (hasil `bun run build`). */
   staticDir: string;
+  /**
+   * SHA commit yang dibangun menjadi image ini (`GIT_SHA`, diisi build-arg Dockerfile; dilaporkan `/api/ping`). Bukan
+   * rahasia. Kosong atau bukan 7-40 heksa huruf kecil = `unknown` (pengembangan lokal, tes).
+   */
+  buildSha: string;
 }
+
+/** Bentuk SHA commit yang diterima untuk `GIT_SHA` (singkat 7 sampai penuh 40). */
+const BUILD_SHA_PATTERN = /^[0-9a-f]{7,40}$/;
 
 export const DEFAULT_PORT = 8788;
 export const DEFAULT_HOST = '127.0.0.1';
@@ -320,5 +328,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     trustedProxy,
     trustedProxyText,
     staticDir: staticDir === '' ? resolve(import.meta.dir, '../dist') : resolve(staticDir),
+    buildSha: BUILD_SHA_PATTERN.test(get('GIT_SHA')) ? get('GIT_SHA') : 'unknown',
   };
 }

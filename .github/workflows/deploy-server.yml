@@ -239,6 +239,7 @@ jobs:
           secret-files: ${{ steps.ui-key.outputs.secret_files }}
           build-args: |
             UI_PUBLIC_KEY_PEM=${{ steps.ui-key.outputs.public_key }}
+            GIT_SHA=${{ needs.meta.outputs.sha }}
           # Cache lapisan lewat registry GHCR (bukan cache GHA, yang ditolak untuk token `pull_request_target`): job ini berizin
           # `packages: write`, jadi SEMUA event menulisnya. Tag per environment. Yang DIBACA ditentukan langkah `cache`:
           # staging membaca kedua tag (lapisan web-build yang sama dipakai ulang, jadi perubahan server saja tak membangun

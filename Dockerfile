@@ -78,6 +78,11 @@ COPY --from=web-build /app/server/dist server/dist
 # Berkas tes tidak dibutuhkan runtime.
 RUN find shared server/src -name '*.test.ts' -delete
 
+# SHA commit yang dibangun (build-arg dari CI; dilaporkan /api/ping). Sengaja di lapisan paling akhir tahap runtime
+# agar SHA yang berubah tiap commit tidak membatalkan cache lapisan di atasnya. Bukan rahasia.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
+
 # Klien MariaDB untuk cadangan malam (mariadb-dump) dan skrip pemulihan (mariadb). Hanya paket klien, bukan server.
 # Folder dump lokal: named volume dipasang di sini; direktori dibuat dan dimiliki `bun` SEBELUM USER agar volume baru
 # mewarisi kepemilikannya (tanpa ini volume dimiliki root dan cadangan tak dapat menulis).

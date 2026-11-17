@@ -675,6 +675,11 @@ describe('deploy-server.yml: kunci tanda tangan manifest UI desktop', () => {
     expect(cleanup?.run).toContain('ui_signing_key.pem');
   });
 
+  test('SHA commit yang dibangun diteruskan ke image sebagai build-arg GIT_SHA (dibaca /api/ping)', () => {
+    const build = imageSteps.find((step) => step.uses?.startsWith('docker/build-push-action'));
+    expect(String(build?.with?.['build-args'])).toContain('GIT_SHA=${{ needs.meta.outputs.sha }}');
+  });
+
   describe('skrip langkah "Siapkan kunci tanda tangan UI"', () => {
     const script = prepare?.run ?? '';
     const dir = mkdtempSync(join(tmpdir(), 'qc-ci-uikey-'));
