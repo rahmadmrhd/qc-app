@@ -5,6 +5,7 @@ import { HANDOVER_TIPS } from './handover-tips';
 import { DASAR_LAYOUT } from './layout';
 import { QRCODE_GUIDES } from './qrcode';
 import { SAPAAN_AWAL } from './sapaan';
+import { SERIAL_GUIDES } from './serial';
 
 /**
  * Katalog panduan (spek 4.1). Isinya ditambah per modul (tur `dasar`, `baru`, tooltip `tip`, sapaan).
@@ -18,4 +19,5 @@ export const GUIDE_CATALOG: readonly GuideEntry[] = [
   ...HANDOVER_GUIDES,
   ...HANDOVER_TIPS,
   ...QRCODE_GUIDES,
+  ...SERIAL_GUIDES,
 ];

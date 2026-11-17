@@ -63,15 +63,17 @@ export function ReportPage({ onOpenSerial }: ReportPageProps) {
           dicatat langsung sebagai Dilaporkan.
         </p>
       </div>
-      <SerialScanInput
-        id="report-serial"
-        label="Serial Number"
-        onSubmit={search}
-        feedbackText={FEEDBACK_TEXT}
-        // Satu laporan untuk satu Serial Number: dialog kamera tanpa tabel (serial sah pertama langsung dipakai).
-        cameraSingle
-        autoFocus
-      />
+      <div data-tour="report-serial">
+        <SerialScanInput
+          id="report-serial"
+          label="Serial Number"
+          onSubmit={search}
+          feedbackText={FEEDBACK_TEXT}
+          // Satu laporan untuk satu Serial Number: dialog kamera tanpa tabel (serial sah pertama langsung dipakai).
+          cameraSingle
+          autoFocus
+        />
+      </div>
       {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
       {query === '' ? null : lookup.isPending ? (
         <p className="text-sm text-muted-foreground">Mencari {query}…</p>
@@ -133,6 +135,7 @@ function Blocked({
     <section
       aria-label="Tidak bisa dilaporkan"
       className="space-y-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4"
+      data-tour="report-result"
     >
       <UnitSummary match={match} />
       <p role="status" className="text-sm">

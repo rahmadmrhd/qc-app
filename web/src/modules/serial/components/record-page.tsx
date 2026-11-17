@@ -558,7 +558,11 @@ export function RecordPage({
     <div className="space-y-5">
       <h1 className="text-xl font-semibold">Catat Serial Number</h1>
 
-      <section aria-label="Default" className="space-y-3 rounded-lg border p-4">
+      <section
+        aria-label="Default"
+        className="space-y-3 rounded-lg border p-4"
+        data-tour="serial-defaults"
+      >
         <h2 className="text-sm font-semibold">Default</h2>
         <p className="text-xs text-muted-foreground">
           Dipakai untuk serial yang ditambahkan setelah ini; baris yang sudah ada tidak berubah.
@@ -608,7 +612,7 @@ export function RecordPage({
             />
             <Label htmlFor="default-sample">Sample</Label>
           </div>
-          <div className="sm:col-span-2 lg:col-span-3">
+          <div className="sm:col-span-2 lg:col-span-3" data-tour="serial-stickers">
             <StickerChecklist
               idPrefix="default"
               state={applicable.state}
@@ -620,15 +624,17 @@ export function RecordPage({
         </div>
       </section>
 
-      <SerialScanInput
-        id="serial-scan"
-        label="Scan atau tempel serial (satu per baris)"
-        onSubmit={addText}
-        isKnown={isKnownSerial}
-        onCameraSaved={summarizeCameraSave}
-        cameraCapacity={draftCapacity}
-        autoFocus
-      />
+      <div data-tour="serial-scan">
+        <SerialScanInput
+          id="serial-scan"
+          label="Scan atau tempel serial (satu per baris)"
+          onSubmit={addText}
+          isKnown={isKnownSerial}
+          onCameraSaved={summarizeCameraSave}
+          cameraCapacity={draftCapacity}
+          autoFocus
+        />
+      </div>
 
       {notice ? (
         <p
@@ -659,41 +665,45 @@ export function RecordPage({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">Draft ({rows.length} baris)</h2>
-        <ImportExportBar
-          rows={rows}
-          disabled={saving || importing}
-          onImported={(result, name) => void handleImported(result, name)}
-          onImportFailed={(message) =>
-            setNotice({ tone: 'error', text: `Impor gagal: ${message}` })
-          }
-          onExported={({ exported, skipped }) =>
-            setNotice({
-              tone: skipped > 0 ? 'warn' : 'info',
-              text:
-                skipped > 0
-                  ? `${exported} baris diekspor; ${skipped} baris belum lengkap tidak diekspor`
-                  : `${exported} baris diekspor`,
-            })
-          }
-        />
+        <div data-tour="serial-qcsn">
+          <ImportExportBar
+            rows={rows}
+            disabled={saving || importing}
+            onImported={(result, name) => void handleImported(result, name)}
+            onImportFailed={(message) =>
+              setNotice({ tone: 'error', text: `Impor gagal: ${message}` })
+            }
+            onExported={({ exported, skipped }) =>
+              setNotice({
+                tone: skipped > 0 ? 'warn' : 'info',
+                text:
+                  skipped > 0
+                    ? `${exported} baris diekspor; ${skipped} baris belum lengkap tidak diekspor`
+                    : `${exported} baris diekspor`,
+              })
+            }
+          />
+        </div>
       </div>
 
-      {rows.length === 0 ? (
-        <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-          Belum ada serial. Scan, ketik lalu Enter, tempel, atau impor berkas .qcsn.
-        </p>
-      ) : (
-        <StagingTable
-          rows={rows}
-          disabled={saving}
-          onSelect={select}
-          onSelectAll={selectAll}
-          onEdit={edit}
-          onCommitSerial={commitSerial}
-          onOpenDetail={openDetail}
-          onRemove={removeOne}
-        />
-      )}
+      <div data-tour="serial-draft">
+        {rows.length === 0 ? (
+          <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+            Belum ada serial. Scan, ketik lalu Enter, tempel, atau impor berkas .qcsn.
+          </p>
+        ) : (
+          <StagingTable
+            rows={rows}
+            disabled={saving}
+            onSelect={select}
+            onSelectAll={selectAll}
+            onEdit={edit}
+            onCommitSerial={commitSerial}
+            onOpenDetail={openDetail}
+            onRemove={removeOne}
+          />
+        )}
+      </div>
 
       {summary ? (
         <p role="status" className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
@@ -705,7 +715,7 @@ export function RecordPage({
         </p>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3" data-tour="serial-save">
         <Button
           type="button"
           disabled={saving || importing || rows.length === 0}

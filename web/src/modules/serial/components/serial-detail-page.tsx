@@ -151,7 +151,9 @@ export function SerialDetailPage({ serialId, onBack, caseId }: SerialDetailPageP
         ) : null}
       </div>
       <ProofProblemBanner count={serial.proofProblemCount} photos={problemPhotos} />
-      <SerialStepper status={serial.status} hasCases={serial.cases.length > 0} />
+      <div data-tour="serial-stepper">
+        <SerialStepper status={serial.status} hasCases={serial.cases.length > 0} />
+      </div>
       <CustodyPanel serial={serial} today={todayWib()} />
       <Summary serial={serial} events={events} />
       <section aria-label="Riwayat" className="space-y-3">
@@ -163,7 +165,9 @@ export function SerialDetailPage({ serialId, onBack, caseId }: SerialDetailPageP
             onPick={setActing}
           />
         </div>
-        <TimelineTabs serial={serial} {...(caseId ? { initialCaseId: caseId } : {})} />
+        <div data-tour="serial-timeline">
+          <TimelineTabs serial={serial} {...(caseId ? { initialCaseId: caseId } : {})} />
+        </div>
       </section>
       {acting ? <ActDialog serial={serial} kind={acting} onClose={() => setActing(null)} /> : null}
       {editing ? <EditSerialDialog serial={serial} onClose={() => setEditing(false)} /> : null}

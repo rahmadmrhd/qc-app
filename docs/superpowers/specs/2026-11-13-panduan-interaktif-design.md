@@ -407,6 +407,29 @@ Semuanya 2026-11-13, disetujui pemilik produk:
     selalu ada, jadi langkahnya menjelaskan kartu apa pun yang tampil. Versi `handover-dasar` tetap 1, mengikuti
     pertimbangan butir I (perluasan melengkapi panduan yang belum ada penggunanya di produksi); pemilik produk dapat
     menaikkannya bila ingin pengguna yang sudah menyelesaikan ditawari ulang. Diubah: jumlah langkah pada butir H.
+  - **M. Panduan Serial Number: pencatatan sampai pelaporan unit rusak (2026-11-17, permintaan pemilik produk).**
+    Pemilik meminta tutorial pencatatan Serial Number hingga pembuatan laporan. Atas dua pertanyaan perancang,
+    pemilik memilih (1) DUA panduan `dasar` terpisah, bukan satu tur panjang, dan (2) cakupan laporan "plus tinjauan
+    alur status". `serial-dasar` (halaman `/serial`, 9 langkah): daftar, pencarian dan filter, tombol Tambah Serial
+    Number, bagian Default, stiker yang ditempel (pemotongan stok, boleh minus), kolom scan (pemindai fisik, ketik,
+    tempel, kamera), draft, impor/ekspor `.qcsn`, dan Simpan; berhenti SEBELUM tombol Simpan. `serial-laporan`
+    (halaman `/serial/reports`, 12 langkah): tabel dan filter Laporan, klik nomor LP untuk membuka detail serial
+    (langkah `click`), tiga langkah detail (baris tahap, tombol update menurut status/posisi/hak, linimasa bertab), kembali ke
+    tombol Lapor Rusak, pencarian serial di `/serial/report` (langkah `wait` dengan `waitFor: 'report-result'`; mencari
+    tidak menulis apa pun), tiga kemungkinan hasil (belum tercatat, tercatat dan Lolos, tidak bisa dilaporkan), item
+    dan lokasi (khusus serial belum tercatat), catatan wajib, dan tombol "Lapor rusak"; berhenti SEBELUM tombol itu.
+    Alur servis (kirim, terima, diagnosis, cek ulang) tidak diperagakan, hanya disebut lewat tombol update. Izin
+    panduan = `serial: view`; langkah mencatat dan melapor berizin `serial: edit` (pembaca saja melihat 2 langkah
+    dan 6 langkah). Tim servis yang hanya punya `serialservice` belum dicakup: `serialservice` tetap di
+    `MODULES_WITHOUT_GUIDE_YET`, sedangkan `serial` dihapus dari daftar itu. Langkah yang bergantung data (klik nomor
+    LP, baris tahap, tombol update, linimasa, item/lokasi, catatan, tombol Lapor rusak) ber-`teksJikaKosong`, jadi
+    tetap terjelaskan saat papan Laporan kosong atau serial yang dicari tidak bisa dilaporkan. Pilihan perancang
+    (menunggu persetujuan): versi keduanya tetap 1 (pertimbangan butir I); `serial-laporan` diletakkan SEBELUM
+    `serial-dasar` di katalog karena `guideForRoute` memilih panduan pertama yang awalan `halaman`-nya cocok, dan
+    `/serial` juga cocok untuk `/serial/reports` (tanpa urutan ini banner dasar menutup banner Laporan); titik sidebar
+    muncul di Daftar Serial Number dan Laporan. Diubah: bagian 7 butir 5. Diuji di peramban pada akun super admin
+    dev dengan papan Laporan kosong (jalur kartu contoh dan jalur `wait`); belum dengan laporan nyata dan belum di
+    perangkat nyata.
   - **Catatan status.** Butir A dan B sudah ada di kode (`pushAvailable` di `push/lib/support.ts`,
     `deviceGuideRelevance` dan `deriveDeviceGuides` di `catalog/device.ts`, `useDeviceGuides`; kartu, banner, dan menu
     memakai satu fungsi relevansi). Pertanyaan terbuka: tidak ada.
@@ -424,7 +447,9 @@ Semuanya 2026-11-13, disetujui pemilik produk:
    di rencana implementasi bersama pemilik produk.
 4. **QR Code Manual Book** (`dasar`, izin `qrcode: view`; dikerjakan 2026-11-15, bagian 6 butir K): membuat konfigurasi
    dari daftar sampai tepat sebelum tombol simpan, memakai langkah `wait` (4.5).
-5. Modul lain (Item, Stiker, Postel, Serial Number, Pengaturan Akses) menyusul di tahap berikutnya.
+5. **Serial Number** (dua `dasar`: `serial-dasar` mencatat, `serial-laporan` melaporkan unit rusak; izin `serial: view`,
+   langkah tulis `serial: edit`; dikerjakan 2026-11-17, bagian 6 butir M).
+6. Modul lain (Item, Stiker, Postel, tim servis `serialservice`, Pengaturan Akses) menyusul di tahap berikutnya.
 
 ## 8. Pilihan perancang (bukan persetujuan pemilik; dapat dikoreksi)
 
