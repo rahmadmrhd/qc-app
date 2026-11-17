@@ -1,6 +1,7 @@
 # CI selektif dan tes terbagi 8 shard — desain
 
-Tanggal: 2026-11-17. Status: usulan, menunggu persetujuan pemilik produk.
+Tanggal: 2026-11-17. Status: disetujui pemilik produk 2026-11-17 dan diimplementasikan (rencana `docs/superpowers/plans/2026-11-17-ci-selektif-shard.md`).
+Penyimpangan dari usulan awal saat implementasi: uji bangun image PR dipindah ke `ci.yml` (lihat 5.5).
 
 ## 1. Maksud dan alasan
 
@@ -125,8 +126,12 @@ Runner `windows-latest`. Langkah: instal dependensi → `bun run --cwd desktop t
 `desktop_pack` benar. `UI_PUBLIC_KEY_PEM` tidak dipakai (bukan build rilis).
 
 ### 5.5 `test.yml` dan `deploy-server.yml`
-- `test.yml` (PR): satu job `ci` yang memanggil `ci.yml` (`ref` kosong, `pr` = nomor PR). Job `image` (uji bangun tanpa dorong)
-  hanya bila `image` benar, memakai `cache-from` registry dan tetap tanpa dorong.
+- `test.yml` (PR): satu job `ci` yang memanggil `ci.yml` (`ref` kosong, `pr` = nomor PR, `build-image: true`) dan gerbang `test`.
+  **Uji bangun image (tanpa dorong) ada di `ci.yml` sebagai job `image-check`** (input `build-image`, hanya bila `image` benar,
+  `cache-from` registry, tanpa `cache-to`), BUKAN job terpisah di `test.yml`: output workflow yang dipanggil baru tersedia
+  setelah seluruh `ci.yml` selesai, jadi job pemanggil yang menunggunya akan berjalan serial setelah tes (PR lebih lambat
+  dari sebelumnya). Konsekuensi: pemanggil wajib memberi `packages: read` walau `build-image` false (GitHub memvalidasi izin
+  job di workflow yang dipanggil).
 - `deploy-server.yml`: `meta` tetap; job `check` diganti `ci` (memanggil `ci.yml` dengan `ref = sha` dari `meta`, `pr` = nomor
   PR atau kosong untuk dispatch). Job `image` dan `deploy` berjalan hanya bila `image` benar (otomatis dilewati untuk PR
   desktop/docs saja). `paths-ignore` dipertahankan sebagai penyaring awal. `cache-to`: registry
