@@ -134,6 +134,7 @@ DELETE e FROM serial_events e JOIN serials s ON s.id = e.serial_id
 2. Aturan BU item sudah diputuskan (`brand`, 2026-11-18); uji lewat aplikasi di staging (daftar, detail, ubah item serial yang BU-nya berbeda dari BU merk akan ditolak: itu perilaku yang diterima).
 3. Cadangan database, lalu `--apply` ke produksi dengan `--confirm-database`.
 4. Setelah disetujui, pindahkan keputusan di §3 ke log keputusan spek terkait (butir Serial Number) dan PRD.
+5. **Masa hidup skrip (keputusan pemilik produk 2026-11-18)**: skrip dan tesnya disimpan di repo SEMENTARA, hanya sampai migrasi produksi selesai dan terverifikasi. Setelah itu dihapus lewat PR (`server/scripts/migrate-legacy-qc.ts`, `server/scripts/legacy-qc/`, bullet "Migrasi data QC lama" di `CLAUDE.md`, entri `.gitignore` folder laporan) TANPA membuat tag penyimpan (berbeda dari `gas-legacy`); kodenya hanya tersisa di riwayat git. Dokumen pemetaan ini dan butir 66 spek Serial Number tetap sebagai catatan keputusan. Alasan: skrip sekali pakai, repo publik, dan tes berbasis MariaDB di CI menjadi beban perawatan bila skema berubah.
 
 ## 6. Panduan menjalankan di staging dan produksi
 
