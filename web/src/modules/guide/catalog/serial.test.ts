@@ -124,6 +124,23 @@ describe('panduan Serial Number', () => {
     ]);
     expect(steps[0]?.route).toBe('/serial/new');
     expect(GUIDE_IDS as readonly string[]).not.toContain('serial-massal');
+    expect(SERIAL_CATAT.version).toBe(2);
+  });
+
+  test('catat: Default wajib dan item wajib foto disebut; langkah aksi baris punya kartu pengganti untuk ponsel', () => {
+    const [defaults, scan, draft, rowActions, select, bulk, save] = SERIAL_CATAT.steps;
+    expect(defaults?.text).toContain('Isi Default dulu');
+    expect(scan?.text).toContain('wajib foto');
+    expect(scan?.text).toContain('dua langkah');
+    expect(draft?.text).toContain('Butuh n foto lagi');
+    // `serial-row-actions` hanya ada pada tabel: di kartu (ponsel) langkahnya jatuh seketika ke kartu pengganti.
+    expect(rowActions?.langsung).toBe(true);
+    expect(rowActions?.teksJikaKosong).toContain('ketuk kartunya');
+    // Target yang ada di tabel dan kartu tidak boleh `langsung`/berkartu pengganti.
+    expect(select?.langsung).toBeUndefined();
+    expect(select?.waitFor).toBe('serial-bulk');
+    for (const text of ['Edit', 'Hapus', 'Batalkan pilihan']) expect(bulk?.text).toContain(text);
+    expect(save?.text).toContain('foto bukti kurang');
   });
 
   test('laporan: pencarian menunggu hasil; langkah khusus hasil dilewati seketika (tanpa kartu pengganti)', () => {
