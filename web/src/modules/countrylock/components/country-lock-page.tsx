@@ -2,7 +2,7 @@ import type { QcBridge } from '@countrylock/bridge-contract';
 import type { Brand } from '@countrylock/script-template';
 import { canInject } from '@countrylock/session-machine';
 import { FolderOpen, KeyRound, TriangleAlert } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Select } from '@/components/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -20,8 +20,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { tipeOptionsFor } from '../lib/type-firmware';
+import { useCatalog } from '../use-catalog';
 import { useCountryLock } from '../use-country-lock';
-import { CatalogPanel } from './catalog-panel';
+import { CatalogPanelView } from './catalog-panel';
 import { CredentialDialog } from './credential-dialog';
 import { InjectProgressDialog } from './inject-progress-dialog';
 import { PendingList } from './pending-list';
@@ -53,6 +55,7 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
     state,
     pkg,
     info,
+    tipe,
     log,
     pending,
     loading,
@@ -62,12 +65,8 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
     actions,
   } = useCountryLock(bridge);
   const [confirmAuto, setConfirmAuto] = useState(false);
-  /** Nama Tipe katalog yang mengunci Merk + Firmware (null = pilihan manual). */
-  const [lockedType, setLockedType] = useState<string | null>(null);
-
-  // Paket berganti: merk/firmware yang dikunci mungkin tak ada lagi, jadi kunci dilepas.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: hanya bereaksi pada pergantian paket
-  useEffect(() => setLockedType(null), [pkg]);
+  // Katalog dibaca sekali dan dipakai bersama dropdown Tipe di form dan panel katalog di bawahnya.
+  const catalog = useCatalog(bridge);
 
   if (loading) {
     return <p className="p-4 text-sm text-muted-foreground">Memuat paket skrip...</p>;
@@ -76,6 +75,12 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
   const brandEntries = pkg ? Object.values(pkg.config.brands) : [];
   const brandConfig = state.brand ? pkg?.config.brands[state.brand] : undefined;
   const missingDeviceIp = brandConfig !== undefined && brandConfig.single.ip === '';
+  const catalogItems = catalog.snapshot?.catalog.items ?? [];
+  const tipeItems = tipeOptionsFor(catalogItems, state.brand);
+  // Tipe hanya ada bila katalog aktif di build ini; tanpa itu Merk dan Firmware dipilih manual seperti biasa.
+  const showTipe = catalog.supported && catalog.status?.state !== 'disabled';
+  // Firmware dikunci hanya bila Tipe terpilih punya firmware yang ada di paket (aplikasi lama).
+  const firmwareLocked = tipe?.application.ok === true;
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-4">
@@ -135,23 +140,7 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
               <CardTitle>Perangkat</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {lockedType !== null ? (
-                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/40 p-3 text-sm">
-                  <span>
-                    Tipe <strong>{lockedType}</strong>: merk dan firmware terkunci
-                  </span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setLockedType(null)}
-                    disabled={state.injecting}
-                  >
-                    Lepas kunci
-                  </Button>
-                </div>
-              ) : null}
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className={showTipe ? 'grid gap-4 sm:grid-cols-3' : 'grid gap-4 sm:grid-cols-2'}>
                 <Select
                   id="country-lock-brand"
                   label="Merk"
@@ -162,8 +151,28 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
                     label: entry.label,
                   }))}
                   onValueChange={(value) => actions.select(value as Brand, null)}
-                  disabled={state.injecting || lockedType !== null}
+                  disabled={state.injecting}
                 />
+                {showTipe ? (
+                  <Select
+                    id="country-lock-tipe"
+                    label="Tipe"
+                    placeholder={
+                      !brandConfig
+                        ? 'Pilih merk dulu'
+                        : tipeItems.length === 0
+                          ? 'Belum ada Tipe di katalog'
+                          : 'Pilih tipe'
+                    }
+                    value={tipe?.id ?? ''}
+                    options={tipeItems.map((item) => ({ value: item.id, label: item.model }))}
+                    onValueChange={(value) =>
+                      actions.selectTipe(tipeItems.find((item) => item.id === value) ?? null)
+                    }
+                    clearable
+                    disabled={!brandConfig || state.injecting || tipeItems.length === 0}
+                  />
+                ) : null}
                 <Select
                   id="country-lock-firmware"
                   label="Firmware"
@@ -174,9 +183,14 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
                     label: firmware.label || firmware.code,
                   }))}
                   onValueChange={(value) => state.brand && actions.select(state.brand, value)}
-                  disabled={!brandConfig || state.injecting || lockedType !== null}
+                  disabled={!brandConfig || state.injecting || firmwareLocked}
                 />
               </div>
+              {tipe && !tipe.application.ok ? (
+                <p className="text-sm text-amber-600 dark:text-amber-400">
+                  {tipe.application.message}
+                </p>
+              ) : null}
 
               {missingDeviceIp ? (
                 <p className="text-sm text-destructive">
@@ -229,15 +243,7 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
         </>
       )}
 
-      <CatalogPanel
-        bridge={bridge}
-        pkg={pkg}
-        injecting={state.injecting}
-        onUse={(choice) => {
-          actions.select(choice.brand, choice.firmwareCode);
-          setLockedType(choice.typeLabel);
-        }}
-      />
+      <CatalogPanelView catalog={catalog} focusId={tipe?.id ?? null} />
 
       <AlertDialog open={confirmAuto} onOpenChange={setConfirmAuto}>
         <AlertDialogContent>
