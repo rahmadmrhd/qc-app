@@ -1,12 +1,9 @@
 // Hook halaman Country Lock mode tunggal (spek §6.1): memuat paket, memutar loop ping perangkat dan
 // router jump (interval dari `nextPingDelayMs`), membaca info perangkat saat ping naik, menjaga
-// `reduceSession`, menjalankan inject, dan mencatat pending HANYA setelah `inject.run` sukses.
+// `reduceSession`, menjalankan inject, dan mencatat hasilnya sebagai baris draft Catat Serial Number HANYA setelah
+// `inject.run` sukses.
 // Semua efek samping ada di sini; aturan murninya di `@countrylock/*`.
 
-import {
-  PENDING_TARGET_BRIDGE_VERSION,
-  PENDING_UPLOAD_BRIDGE_VERSION,
-} from '@countrylock/bridge-channels';
 import type {
   InjectProgressDto,
   InjectResult,
@@ -16,7 +13,6 @@ import type {
 import { bridgeInterfaces } from '@countrylock/config';
 import type { DeviceInfo } from '@countrylock/device-info';
 import { nextPingDelayMs, type PingKind } from '@countrylock/inject-plan';
-import { normalizeSerial, type PendingEntry } from '@countrylock/pending';
 import type { Brand } from '@countrylock/script-template';
 import {
   canInject,
@@ -24,19 +20,13 @@ import {
   reduceSession,
   type SessionEvent,
   type SessionState,
-  shouldAutoInject,
 } from '@countrylock/session-machine';
 import type { CatalogItemDto } from '@shared/desktop-catalog';
+import { normalizeSerial, SERIAL_LIMITS } from '@shared/serials';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  appendLog,
-  isCredentialFailure,
-  localDate,
-  safeErrorMessage,
-  safeLine,
-} from './lib/safe-text';
+import { appendLog, isCredentialFailure, safeErrorMessage, safeLine } from './lib/safe-text';
 import { resolveTypeApplication, type TypeApplication } from './lib/type-firmware';
-import { newClientId } from './lib/upload';
+import type { DraftRows } from './use-draft-rows';
 import type { PendingTarget } from './use-inject-target';
 
 /** Jeda sebelum dialog progres menutup sendiri setelah inject sukses/dibatalkan (legacy: 1 detik). */
@@ -82,10 +72,6 @@ export interface CountryLockActions {
   /** Memilih (atau mengosongkan, `null`) Tipe katalog; mengisi Firmware bila Tipe punya firmware yang ada di paket. */
   selectTipe(item: CatalogItemDto | null): void;
   inject(): void;
-  /** Memuat ulang antrean pending dari proses utama. */
-  refreshPending(): Promise<void>;
-  /** Menghapus satu serial dari antrean (tindakan pengguna) lalu memuat ulang daftar. */
-  removePending(serial: string): Promise<void>;
   cancel(): void;
   toggleAuto(on: boolean): void;
   submitCredentials(username: string, password: string): void;
@@ -103,11 +89,15 @@ export interface UseCountryLock {
   tipe: TipeSelection | null;
   /** Log baca-saja inject terakhir (sudah disamarkan dan tanpa karakter kontrol). */
   log: string[];
-  pending: PendingEntry[];
   loading: boolean;
   loadError: string | null;
   progress: InjectProgress | null;
   credentialPrompt: CredentialPrompt | null;
+  /**
+   * Alasan inject (dan Auto Inject) diblokir selain form belum lengkap: draft belum termuat, gagal dimuat (berkas rusak:
+   * draft tidak boleh ditimpa), atau penuh. `null` = tidak diblokir.
+   */
+  injectBlocker: string | null;
   actions: CountryLockActions;
 }
 
@@ -117,13 +107,25 @@ interface Credentials {
 }
 
 let injectCounter = 0;
+/** Alasan draft memblokir inject (`null` = tidak diblokir). */
+function blockerOf(draft: DraftRows): string | null {
+  if (draft.status === 'loading') return 'Memuat draft...';
+  if (draft.status === 'error') {
+    return `Draft tidak dapat dimuat: ${draft.error ?? 'galat tak dikenal'}. Inject dinonaktifkan agar draft tersimpan tidak tertimpa.`;
+  }
+  if (draft.isFull) {
+    return `Draft penuh (maks. ${SERIAL_LIMITS.tableRows} baris): simpan atau hapus beberapa baris dulu.`;
+  }
+  return null;
+}
+
 /** Id inject: hanya huruf, angka, `_` dan `-` (skema kontrak jembatan). */
 function newInjectId(): string {
   injectCounter += 1;
   return `inj-${Date.now().toString(36)}-${injectCounter}`;
 }
 
-export function useCountryLock(bridge: QcBridge): UseCountryLock {
+export function useCountryLock(bridge: QcBridge, draft: DraftRows): UseCountryLock {
   const [pkg, setPkg] = useState<PackageDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -131,7 +133,6 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
   const [info, setInfo] = useState<DeviceInfo | null>(null);
   const [tipe, setTipe] = useState<TipeSelection | null>(null);
   const [log, setLog] = useState<string[]>([]);
-  const [pending, setPending] = useState<PendingEntry[]>([]);
   const [progress, setProgress] = useState<InjectProgress | null>(null);
   const [credentialPrompt, setCredentialPrompt] = useState<CredentialPrompt | null>(null);
 
@@ -141,6 +142,11 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
   /** Salinan sinkron `tipe`: dibaca saat inject selesai untuk dicatat ke pending. */
   const tipeRef = useRef<TipeSelection | null>(null);
   const targetRef = useRef<PendingTarget>({});
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const injectBlocker = blockerOf(draft);
+  const injectBlockerRef = useRef<string | null>(injectBlocker);
+  injectBlockerRef.current = injectBlocker;
   const formCompleteRef = useRef(true);
   const [formComplete, setFormComplete] = useState(true);
   const credentialsRef = useRef<Credentials>({ username: '', password: '' });
@@ -150,7 +156,7 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
   const secretsRef = useRef<string[]>([]);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
-  /** Serial yang sudah berhasil di-inject pada sesi ini (jaring pengaman bila pencatatan pending gagal). */
+  /** Serial yang sudah berhasil di-inject pada sesi ini (jaring pengaman bila pencatatan ke draft gagal). */
   const injectedSerialsRef = useRef<Set<string>>(new Set());
   /** Auto inject hanya sekali per serial; dilepas saat serial kosong atau Auto Inject diganti. */
   const lastAutoSerialRef = useRef<string | null>(null);
@@ -175,16 +181,7 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
     setCredentialPrompt({ username, password, reason });
   }, []);
 
-  const refreshPending = useCallback(async () => {
-    try {
-      const list = await bridge.pending.list();
-      setPending(list);
-    } catch {
-      // Daftar lama dipertahankan; pencatatan berikutnya mencoba lagi.
-    }
-  }, [bridge]);
-
-  // --- Muat paket dan antrean pending -----------------------------------------------------
+  // --- Muat paket -------------------------------------------------------------------------
   useEffect(() => {
     mountedRef.current = true;
     let alive = true;
@@ -197,7 +194,6 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
       } catch {
         if (alive) setLoadError('Paket skrip tidak dapat dimuat');
       }
-      await refreshPending();
       if (alive) setLoading(false);
     })();
     return () => {
@@ -205,7 +201,7 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
       mountedRef.current = false;
       if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     };
-  }, [bridge, refreshPending]);
+  }, [bridge]);
 
   // --- Progres inject dari proses utama ---------------------------------------------------
   useEffect(
@@ -346,6 +342,8 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
     if (!canInject(start) || !brandName || !start.firmwareCode || !config) return;
     // Semua field form wajib terisi (juga bagi Auto Inject): jaring pengaman di luar tombol yang dinonaktifkan.
     if (!formCompleteRef.current) return;
+    // Draft belum siap, rusak, atau penuh: serial hasil inject tak boleh hilang, jadi inject tak dimulai.
+    if (injectBlockerRef.current !== null) return;
     const host = config.single.ip;
     if (host === '') return;
 
@@ -354,15 +352,10 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
     if (!stateRef.current.injecting) return;
 
     const serial = start.serial;
-    // Tipe dicatat sesuai pilihan saat inject dimulai (bukan saat selesai), agar tak berubah di tengah jalan.
-    const tipeName = tipeRef.current?.name ?? '';
-    // BU/lokasi mengikuti pilihan saat inject dimulai juga; jembatan lama tidak menerimanya.
-    const target = bridge.version >= PENDING_TARGET_BRIDGE_VERSION ? { ...targetRef.current } : {};
-    // Bahan unggah (jembatan v7): Tipe katalog = item Serial Number, dan kunci idempoten per baris.
-    const uploadBasis =
-      bridge.version >= PENDING_UPLOAD_BRIDGE_VERSION
-        ? { clientId: newClientId(), ...(tipeRef.current ? { itemId: tipeRef.current.id } : {}) }
-        : {};
+    // Tipe (= Item Serial Number), BU, dan lokasi dicatat sesuai pilihan saat inject dimulai (bukan saat selesai), agar
+    // tak berubah di tengah jalan.
+    const picked = tipeRef.current;
+    const target = { ...targetRef.current };
     const credentials = credentialsRef.current;
     const id = newInjectId();
     injectIdRef.current = id;
@@ -392,22 +385,28 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
 
     if (outcome === 'success') {
       // Dicatat HANYA setelah sukses; `injecting` tetap menyala sampai pencatatan selesai agar
-      // pembacaan serial berikutnya (perangkat yang sama) sudah melihat daftar pending terbaru.
+      // pembacaan serial berikutnya (perangkat yang sama) sudah melihat draft terbaru.
       injectedSerialsRef.current.add(normalizeSerial(serial));
       try {
-        await bridge.pending.add({
+        const added = await draftRef.current.addInjected({
           serial,
-          brand: brandName,
-          tipe: tipeName,
-          ...target,
-          ...uploadBasis,
-          date: localDate(),
-          timestamp: new Date().toISOString(),
+          itemId: picked?.id ?? '',
+          itemLabel: picked?.name ?? '',
+          buId: target.buId ?? '',
+          buLabel: target.buLabel ?? '',
+          locationId: target.locationId ?? '',
+          locationLabel: target.locationLabel ?? '',
         });
+        if (added === 'duplicate') {
+          setLog((previous) => appendLog(previous, 'Serial sudah ada di draft.'));
+        } else if (added === 'full') {
+          setLog((previous) =>
+            appendLog(previous, 'Peringatan: draft penuh, serial tidak dicatat.'),
+          );
+        }
       } catch {
-        setLog((previous) => appendLog(previous, 'Peringatan: serial gagal dicatat ke antrean.'));
+        setLog((previous) => appendLog(previous, 'Peringatan: serial gagal dicatat ke draft.'));
       }
-      await refreshPending();
     }
     apply({ type: 'inject-done', outcome });
     if (outcome === 'success') setInfo(null); // dibaca ulang pada ping berikutnya
@@ -431,7 +430,7 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
         setProgress((current) => (current?.id === id ? null : current));
       }, AUTO_CLOSE_MS);
     }
-  }, [bridge, apply, refreshPending, requestCredentials]);
+  }, [bridge, apply, requestCredentials]);
 
   // --- Auto inject ------------------------------------------------------------------------
   useEffect(() => {
@@ -439,14 +438,16 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
       lastAutoSerialRef.current = null;
       return;
     }
-    if (!shouldAutoInject(state, pending)) return;
+    // Serial yang sudah ada di draft tak di-inject ulang otomatis (cocokkan dengan bentuk web: MAC tanpa pemisah).
+    if (!state.autoInject || !canInject(state) || draft.isRegistered(state.serial)) return;
+    if (injectBlocker !== null) return;
     // Form belum lengkap: tidak ditandai sebagai sudah dicoba, jadi jalan sendiri begitu form dilengkapi.
     if (!formComplete) return;
     const key = normalizeSerial(state.serial);
     if (injectedSerialsRef.current.has(key) || lastAutoSerialRef.current === key) return;
     lastAutoSerialRef.current = key;
     void runInject();
-  }, [state, pending, formComplete, runInject]);
+  }, [state, draft, injectBlocker, formComplete, runInject]);
 
   // --- Aksi -------------------------------------------------------------------------------
   const clearTipe = useCallback(() => {
@@ -467,18 +468,6 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
       apply({ type: 'select', brand: nextBrand, firmwareCode });
     },
     [apply, clearTipe, defaultCredentials],
-  );
-
-  const removePending = useCallback(
-    async (serial: string) => {
-      try {
-        await bridge.pending.remove(serial);
-      } catch {
-        // Gagal dihapus: daftar dimuat ulang di bawah menunjukkan keadaan sebenarnya.
-      }
-      await refreshPending();
-    },
-    [bridge, refreshPending],
   );
 
   const setForm = useCallback((form: { target: PendingTarget; complete: boolean }) => {
@@ -567,11 +556,11 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
     info,
     tipe,
     log,
-    pending,
     loading,
     loadError,
     progress,
     credentialPrompt,
+    injectBlocker,
     actions: {
       select,
       selectTipe,
@@ -579,8 +568,6 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
       inject: () => {
         void runInject();
       },
-      refreshPending,
-      removePending,
       cancel,
       toggleAuto,
       submitCredentials,

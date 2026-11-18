@@ -3,6 +3,7 @@ import { AppShell } from '@/app/shell/app-shell';
 import { UiUpdateBanner } from '@/app/shell/ui-update-banner';
 import { ApiError } from '@/lib/api/api-error';
 import { getBridge } from '@/lib/platform';
+import { canWriteSerials } from '@/modules/auth/permissions';
 import { meQueryOptions } from '@/modules/auth/queries';
 import { clearSession, isAuthenticated } from '@/modules/auth/session';
 import { CountryLockPage } from '@/modules/countrylock/components/country-lock-page';
@@ -17,32 +18,37 @@ const ME_WAIT_MS = 5000;
 
 export const Route = createFileRoute('/country-lock')({
   beforeLoad: async ({ context }) => {
-    if (!isAuthenticated()) return { withShell: false };
+    if (!isAuthenticated()) return { withShell: false, canRecord: false };
     try {
       // Dibatasi waktu: tanpa salinan tersimpan dan server menggantung, halaman tak boleh menunggu tanpa batas.
-      await Promise.race([
+      const me = await Promise.race([
         context.queryClient.ensureQueryData(meQueryOptions()),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('Data pengguna tak kunjung termuat')), ME_WAIT_MS),
         ),
       ]);
-      return { withShell: true };
+      // Mencatat Serial Number di halaman ini butuh cangkang (data pengguna termuat) dan izin `serial: edit`.
+      return { withShell: true, canRecord: canWriteSerials(me) };
     } catch (error) {
       if (error instanceof ApiError && error.code === 'UNAUTHENTICATED') {
         clearSession();
         context.queryClient.clear();
       }
-      return { withShell: false };
+      return { withShell: false, canRecord: false };
     }
   },
   component: CountryLockRoute,
 });
 
 function CountryLockRoute() {
-  const { withShell } = Route.useRouteContext();
+  const { withShell, canRecord } = Route.useRouteContext();
   // Di aplikasi desktop (jembatan ada) tampil halaman Country Lock; di peramban hanya ajakan membuka desktop.
   const bridge = getBridge();
-  const content = bridge ? <CountryLockPage bridge={bridge} /> : <OpenInDesktop />;
+  const content = bridge ? (
+    <CountryLockPage bridge={bridge} canRecord={canRecord} />
+  ) : (
+    <OpenInDesktop />
+  );
 
   if (withShell) {
     return (

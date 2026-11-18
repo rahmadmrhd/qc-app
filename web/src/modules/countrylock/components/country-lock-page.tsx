@@ -1,7 +1,3 @@
-import {
-  PENDING_TARGET_BRIDGE_VERSION,
-  PENDING_UPLOAD_BRIDGE_VERSION,
-} from '@countrylock/bridge-channels';
 import type { QcBridge } from '@countrylock/bridge-contract';
 import type { Brand } from '@countrylock/script-template';
 import { canInject } from '@countrylock/session-machine';
@@ -26,15 +22,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { isAuthenticated } from '@/modules/auth/session';
+import { RecordPage } from '@/modules/serial/components/record-page';
 import { tipeOptionsFor } from '../lib/type-firmware';
 import { useCatalog } from '../use-catalog';
 import { useCountryLock } from '../use-country-lock';
+import { useDraftRows } from '../use-draft-rows';
 import { useInjectTarget } from '../use-inject-target';
-import { type SaveBatch, useUploadPending } from '../use-upload-pending';
 import { CatalogSyncButton } from './catalog-sync-button';
 import { CredentialDialog } from './credential-dialog';
+import { DraftSummary } from './draft-summary';
 import { InjectProgressDialog } from './inject-progress-dialog';
-import { PendingList } from './pending-list';
 
 /** Teks konfirmasi Auto Inject (aplikasi lama, persis). */
 export const AUTO_INJECT_WARNING =
@@ -60,43 +57,40 @@ function InfoItem({ label, value }: { label: string; value: string }) {
 /** Halaman Country Lock mode tunggal; hanya dirender bila jembatan desktop tersedia. */
 export function CountryLockPage({
   bridge,
+  canRecord = false,
   signedIn = isAuthenticated(),
-  saveBatch,
 }: {
   bridge: QcBridge;
-  /** Sudah masuk (unggah butuh login); bawaan membaca sesi aplikasi. Parameter agar tes tak bergantung sesi global. */
+  /**
+   * Boleh mencatat Serial Number di halaman ini: data pengguna termuat (di dalam AppShell) dan izin `serial: edit`.
+   * Tanpa itu draft hanya tampil sebagai ringkasan hanya-baca.
+   */
+  canRecord?: boolean;
+  /** Sudah masuk; hanya menentukan alasan ringkasan draft. Bawaan membaca sesi aplikasi; parameter agar tes tak bergantung sesi global. */
   signedIn?: boolean;
-  /** Pemanggil `serials.saveBatch`; bawaan lewat klien API. Parameter untuk tes. */
-  saveBatch?: SaveBatch;
 }) {
+  const draft = useDraftRows(bridge);
   const {
     state,
     pkg,
     info,
     tipe,
     log,
-    pending,
     loading,
     loadError,
     progress,
     credentialPrompt,
+    injectBlocker,
     actions,
-  } = useCountryLock(bridge);
+  } = useCountryLock(bridge, draft);
   const [confirmAuto, setConfirmAuto] = useState(false);
-  const uploader = useUploadPending(bridge, pending, actions.refreshPending, saveBatch);
-  const uploadUnavailable =
-    bridge.version < PENDING_UPLOAD_BRIDGE_VERSION
-      ? 'Aplikasi desktop ini belum mendukung unggah: perbarui aplikasinya. Hasil inject disimpan di komputer ini.'
-      : !signedIn
-        ? 'Masuk dulu untuk mengunggah ke Daftar Serial Number. Hasil inject disimpan di komputer ini.'
-        : null;
   // Katalog offline dibaca sekali dan dipakai dropdown Tipe, BU, dan Lokasi di form.
   const catalog = useCatalog(bridge);
   const target = useInjectTarget(catalog.snapshot?.catalog ?? null, tipe?.id ?? null);
   // Tipe hanya ada bila katalog aktif di build ini; tanpa itu Merk dan Firmware dipilih manual seperti biasa.
   const showTipe = catalog.supported && catalog.status?.state !== 'disabled';
-  // BU/Lokasi ikut katalog offline dan hanya dicatat oleh jembatan v6 ke atas (skema `pending.add` ketat).
-  const showTarget = showTipe && bridge.version >= PENDING_TARGET_BRIDGE_VERSION;
+  // BU/Lokasi ikut katalog offline (UI ini hanya berjalan di jembatan v8 ke atas, `UI_MIN_BRIDGE_VERSION`).
+  const showTarget = showTipe;
   // Semua field yang berlaku wajib terisi sebelum inject, termasuk Auto Inject (keputusan pemilik 2026-11-18).
   const missing = [
     state.brand === null ? 'Merk' : null,
@@ -108,7 +102,7 @@ export function CountryLockPage({
   const formComplete = missing.length === 0;
   const { setForm } = actions;
   const { pendingTarget } = target;
-  // BU/lokasi terpilih dicatat bersama serial saat inject sukses, dan kelengkapan form menjaga inject (lewat ref di hook).
+  // BU/lokasi terpilih dicatat di baris draft saat inject sukses, dan kelengkapan form menjaga inject (lewat ref di hook).
   useEffect(
     () => setForm({ target: pendingTarget, complete: formComplete }),
     [setForm, pendingTarget, formComplete],
@@ -128,7 +122,7 @@ export function CountryLockPage({
   const catalogReady = catalog.snapshot !== null;
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-4">
+    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">Country Lock</h1>
         <div className="flex items-center gap-2">
@@ -184,7 +178,7 @@ export function CountryLockPage({
             </Alert>
           ) : null}
 
-          <Card>
+          <Card className="w-full max-w-4xl">
             <CardHeader>
               <CardTitle>Perangkat</CardTitle>
             </CardHeader>
@@ -311,7 +305,7 @@ export function CountryLockPage({
                 <Button
                   type="button"
                   onClick={actions.inject}
-                  disabled={!canInject(state) || !formComplete}
+                  disabled={!canInject(state) || !formComplete || injectBlocker !== null}
                 >
                   Inject
                 </Button>
@@ -325,6 +319,11 @@ export function CountryLockPage({
                   Kredensial
                 </Button>
               </div>
+              {injectBlocker !== null && draft.status !== 'loading' ? (
+                <p role="status" className="text-sm text-amber-600 dark:text-amber-400">
+                  {injectBlocker}
+                </p>
+              ) : null}
               {!formComplete ? (
                 <p className="text-sm text-muted-foreground">
                   Wajib diisi sebelum inject: {missing.join(', ')}.
@@ -336,18 +335,23 @@ export function CountryLockPage({
             </CardContent>
           </Card>
 
-          <PendingList
-            entries={pending}
-            upload={{
-              unavailable: uploadUnavailable,
-              uploading: uploader.uploading,
-              readyCount: uploader.readyCount,
-              outcomes: uploader.outcomes,
-              summary: uploader.summary,
-              onUpload: uploader.upload,
-            }}
-            onRemove={(serial) => void actions.removePending(serial)}
-          />
+          {draft.status === 'loading' ? (
+            <p className="text-sm text-muted-foreground">Memuat draft...</p>
+          ) : draft.status === 'error' ? null : canRecord ? (
+            <RecordPage
+              hideTitle
+              draft={{ rows: draft.rows, replace: draft.replace, saveFailed: draft.saveFailed }}
+            />
+          ) : (
+            <DraftSummary
+              rows={draft.rows}
+              reason={
+                signedIn
+                  ? 'Akun ini tidak punya izin mencatat Serial Number'
+                  : 'Masuk dulu untuk mencatat ke Daftar Serial Number'
+              }
+            />
+          )}
         </>
       )}
 
