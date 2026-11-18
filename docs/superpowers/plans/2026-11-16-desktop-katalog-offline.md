@@ -8,7 +8,7 @@ Spek: `docs/superpowers/specs/2026-11-06-qc-desktop-country-lock-design.md` §6.
 2. **Server**: `DESKTOP_CATALOG_TOKEN` (config, env, compose, `.env.example`); `server/src/modules/desktop/catalog.ts` (penyusun potret deterministik + memo 30 dtk); rute `GET /api/desktop/catalog` dan `/catalog/files/<id>` di `desktopApp` (token waktu-konstan, 404 seragam, batas gagal per IP, `no-store`, berkas hanya yang dirujuk).
 3. **Desktop**: `catalog-store` (cache atomik di `userData/catalog`), `catalog-sync` (ETag, unduh berkas utuh dulu, katalog lama dipertahankan saat gagal), injeksi token saat build (`CATALOG_TOKEN`), pemicu buka/fokus/tiap jam.
 4. **Jembatan v5**: kanal `catalog.get|refresh|status|onChange`, gambar via `app://qc/catalog-files/<id>`; `MIN_BRIDGE_VERSION` tetap 2.
-5. **Web**: `use-catalog.ts` dan `CatalogPanel` di halaman Country Lock; `StickerInstructionsView` menerima `imageSource`.
+5. **Web**: `use-catalog.ts` dan `CatalogPanel` di halaman Country Lock (panel dihapus 2026-11-18, diganti tombol sinkron di navbar: lihat `2026-11-18-desktop-bu-lokasi-navbar.md`); `StickerInstructionsView` menerima `imageSource`.
 6. **Dokumen**: `CLAUDE.md`, `docs/e2e-checklist-desktop.md` bagian I, `docs/deploy-vps.md`.
 
 ## Prasyarat rilis
