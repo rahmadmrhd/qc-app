@@ -8,15 +8,16 @@
   "main": "dist/main/index.js",
   "scripts": {
     "build": "bun run scripts/build.ts",
-    "pack": "bun run build && electron-builder --dir --config electron-builder.yml",
+    "pack": "bun run build && electron-builder --dir --x64 --config electron-builder.yml",
     "pack:all": "bun run build && electron-builder --dir --win --x64 --arm64 --config electron-builder.yml",
-    "dist": "bun run scripts/build.ts --require-ui-key && electron-builder --config electron-builder.yml",
+    "dist": "bun run scripts/build.ts --require-ui-key --require-release-key && electron-builder --publish never --config electron-builder.yml",
     "verify-pack": "bun run scripts/verify-pack.ts",
     "spike": "bun run scripts/build.ts --spike && node dist/spike/hardware-spike.js",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json && tsc -p scripts/tsconfig.json"
   },
   "dependencies": {
+    "electron-updater": "6.8.11",
     "ssh2": "1.17.0"
   },
   "devDependencies": {

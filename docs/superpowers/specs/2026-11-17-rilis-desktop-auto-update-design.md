@@ -1,13 +1,12 @@
 # Rilis aplikasi desktop dan auto-update (bagian 4 dari seri rilis semver)
 
-Status: **menunggu persetujuan pemilik** (revisi 1, 2026-11-17). Seri: 1 fondasi rilis + changelog dan 2 deploy lewat tag
+Status: **disetujui pemilik 2026-11-18** (revisi 3, 2026-11-18: tata letak Drive datar, urutan publish, pemisahan kunci, dan keputusan perancang 1-5 di bagian 7; revisi 2, 2026-11-18: lihat kendala 3.1; revisi 1, 2026-11-17). Seri: 1 fondasi rilis + changelog dan 2 deploy lewat tag
 (`2026-11-17-rilis-semver-design.md`), 3 bundling backend (`2026-11-17-bundling-backend-design.md`), **4 dokumen ini**,
 5 halaman unduh + tampilan changelog di web (dokumen terpisah).
 
 ## 1. Maksud dan alasan
 Aplikasi desktop (Electron, Windows) hari ini hanya dapat dipasang dari hasil `bun run build:desktop` pemilik; belum ada rilis
-berversi, belum ada pembaruan biner (hanya UI-nya yang diperbarui lewat manifest bertanda tangan), dan repositori privat sehingga
-GitHub Releases tidak dapat dipakai langsung oleh aplikasi maupun pengguna. Tujuan: rilis desktop dengan semver (`desktop-vX.Y.Z`),
+berversi, belum ada pembaruan biner (hanya UI-nya yang diperbarui lewat manifest bertanda tangan), dan GitHub Releases tidak dapat dijadikan sumber unduhan aplikasi: repositori sempat privat, kini publik, dan dapat kembali privat kapan saja (keputusan pemilik 2026-11-18), serta pengguna tidak boleh mengetahui repositori sumbernya. Tujuan: rilis desktop dengan semver (`desktop-vX.Y.Z`),
 installer Windows x64 dan arm64 yang dapat diunduh dan **diperbarui otomatis**, changelog per versi, dan jalur pemulihan bila
 sebuah rilis bermasalah.
 
@@ -25,13 +24,23 @@ dan manifest yang ditetapkan di sini), kode-tanda-tangan Authenticode (pertanyaa
   dibuat di workflow rilis.
 - Pembaruan UI web ke desktop tetap lewat manifest UI bertanda tangan yang ada, terpisah dari pembaruan biner ini.
 
+### 3.1 Kendala rancangan (keputusan pemilik 2026-11-18)
+- **Pengguna tidak boleh tahu repositori sumber.** Aplikasi desktop dan halaman web hanya berbicara dengan server QC (`serverUrl`, bawaan
+  `https://qc.rhd.my.id`); tak ada URL `github.com`, nama pemilik, atau nama repositori di manifest, dialog pembaruan, galat, maupun
+  log. `release-<versi>.json` dan changelog-nya hanya memuat teks untuk pengguna (tanpa tautan PR atau commit).
+- **Tahan terhadap perubahan visibilitas repositori.** Repositori boleh dijadikan privat lagi kapan saja tanpa memutus pembaruan
+  dan unduhan: sumber unduhan TIDAK BOLEH bergantung pada GitHub (baik API publik maupun aset Release) dan server TIDAK BOLEH memegang
+  token baca repositori. GitHub Release privat/publik tetap dibuat, tetapi hanya sebagai arsip pemilik.
+- Konsekuensi: penyimpanan di luar GitHub (4.1 pilihan C) dan semua unduhan disalurkan server (stream, bukan pengalihan ke host lain).
+
 ## 4. Pendekatan yang dipertimbangkan
 
-### 4.1 Di mana installer disimpan dan siapa yang menyajikannya (repo privat)
+### 4.1 Di mana installer disimpan dan siapa yang menyajikannya (tahan repo publik maupun privat)
 | Pilihan | Keterangan | Putusan |
 |---|---|---|
 | A. Server memproksi aset GitHub Release memakai token baca | tanpa penyimpanan baru; tetapi token baca repo privat (PAT berkedaluwarsa, atau GitHub App) hidup di server, dan server yang disusupi membuka seluruh kode sumber | ditolak: hak akses berlebihan |
 | B. CI mengunggah installer ke server lewat endpoint HTTP, disimpan di volume VPS | tanpa token repo; tetapi butuh endpoint tulis berbadan ~100 MB (batas badan global server hari ini ~10 MB, jadi memperbesar permukaan serangan memori), volume dan retensi baru | ditolak: permukaan tulis baru |
+| A2. Server membaca GitHub Releases publik tanpa token (ditambahkan revisi 2, saat repositori publik) | sederhana, tanpa Drive; tetapi berhenti bekerja begitu repositori kembali privat (butuh token, yaitu pilihan A) dan menjadikan GitHub dependensi pengguna | ditolak: melanggar kendala 3.1 |
 | **C. CI mengunggah ke folder Google Drive khusus; server membaca lewat klien Drive yang sudah ada** | memakai kode teruji (`uploadFile` resumable, `downloadFile` stream, penjaga folder), kuota dan peringatan kuota sudah ada, server hanya butuh hak baca satu folder; CI memegang kunci service account penerbit terpisah (tulis hanya di folder itu) | **dipilih** |
 
 Dalam semua pilihan, aset yang sama juga dilampirkan ke GitHub Release privat sebagai arsip pemilik.
@@ -52,17 +61,19 @@ Dalam semua pilihan, aset yang sama juga dilampirkan ke GitHub Release privat se
 - Installer tidak ditandatangani Authenticode (pertanyaan terbuka 6); integritas dijamin tanda tangan rilis (5.3).
 
 ### 5.2 Tata letak Drive (folder `DESKTOP_RELEASES_FOLDER_ID`)
+Tata letak **datar** (keputusan pemilik 2026-11-18, menggantikan subfolder per versi di revisi 1-2: satu `listFolder` cukup, tanpa
+pembuatan folder per versi, dan penjaga folder klien Google tetap sederhana karena berkas harus anak langsung folder yang dikonfigurasi):
 ```
 <folder rilis>/
-  1.2.0/
-    QC-App-Setup-1.2.0-x64.exe
-    QC-App-Setup-1.2.0-arm64.exe
-    release.json        (manifest rilis, kanonik)
-    release.sig         (tanda tangan Ed25519 atas release.json, base64url)
+  QC-App-Setup-1.2.0-x64.exe
+  QC-App-Setup-1.2.0-arm64.exe
+  release-1.2.0.json     (manifest rilis, kanonik)
+  release-1.2.0.sig      (tanda tangan Ed25519 atas release-1.2.0.json, base64url)
 ```
-`release.json`: `{ schema: 1, version, publishedAt, files: [{ name, arch, size, sha512 }], changelog }` (`changelog` = bagian versi itu dari
-`desktop/CHANGELOG.md`, teks terstruktur per jenis dari bagian 1). Versi **tidak terlihat** sampai `release.sig` terunggah
-(urutan unggah: installer, `release.json`, terakhir `release.sig`); menarik rilis = menghapus `release.sig` versi itu.
+`release-<versi>.json`: `{ schema: 1, version, publishedAt, files: [{ name, arch, size, sha512 }], changelog }` (`changelog` = bagian versi itu dari
+`desktop/CHANGELOG.md`, teks terstruktur per jenis dari bagian 1; `sha512` = base64 baku 88 karakter, konvensi `electron-updater`).
+Versi **tidak terlihat** sampai `release-<versi>.sig` terunggah (urutan unggah: tanda tangan lama dihapus, installer, manifest, terakhir
+`.sig`); menarik rilis = menghapus `release-<versi>.sig`. Kontrak murni dan penguraiannya: `shared/desktop-release.ts`.
 
 ### 5.3 Tanda tangan rilis
 Pasangan kunci Ed25519 **terpisah** dari kunci manifest UI (membatasi dampak bocor), dibuat dengan perkakas yang sama (skrip bangkit
@@ -75,10 +86,13 @@ menolak berjalan tanpanya. Server tidak memegang kunci apa pun dan hanya menerus
 - Konfigurasi `DESKTOP_RELEASES_FOLDER_ID` (ditambah ke `config.ts`, `deploy/compose.yml`, `deploy/.env.example`, dan daftar folder
   terjaga klien Google; dijaga `deploy-files.test.ts`). Kosong = fitur nonaktif (404).
 - `GET /api/desktop/app-manifest?arch=x64|arm64` (publik, tanpa sesi, di sub-aplikasi `desktopApp` bersama `ui-manifest`): versi
-  tertinggi yang punya `release.sig` dan memuat berkas untuk `arch`; jawaban `{ manifest, signature }`; semua kegagalan = 404
+  tertinggi yang punya `release-<versi>.sig` dan memuat berkas untuk `arch`; jawaban `{ manifest, signature }` (byte persis manifest dan
+  tanda tangan dari Drive, tanpa memegang kunci); semua kegagalan = 404
   generik; cache pendek di memori (menit) agar Drive tak dipanggil per permintaan; `ETag`/304.
 - `GET /api/desktop/app-file/<versi>/<nama>` (publik, stream `application/octet-stream`, `no-transform`): hanya nama yang tercantum
-  di `release.json` yang valid dan `release.sig`-nya ada; selainnya 404. Publik karena integritas dijaga tanda tangan, sama dengan
+  di `release-<versi>.json` yang valid dan `release-<versi>.sig`-nya ada; selainnya 404; **pembatas laju 60 unduhan installer per IP per jam**
+  (tabel `rate_limits`, kunci `desktop-app-file:<ip>`; keputusan perancang 2, 2026-11-18, di luar rancangan awal; angka 60 menggantikan 20 yang
+  diusulkan karena beberapa perangkat di balik satu IP kantor memperbarui bersamaan; dapat dibuang tanpa mengubah kontrak). Publik karena integritas dijaga tanda tangan, sama dengan
   `ui-file` (Country Lock harus dapat diperbarui tanpa login); installer tidak memuat rahasia (isinya sama dengan UI publik).
 - Tes: rute dengan klien Drive palsu (daftar putih, 404 seragam, bentuk manifest, versi tanpa `.sig` tak terlihat).
 
@@ -100,39 +114,77 @@ menolak berjalan tanpanya. Server tidak memegang kunci apa pun dan hanya menerus
    = versi di nama cabang, merge commit 2 induk, bagian CHANGELOG versi itu ada); logika dipakai bersama (`scripts/release-identity.ts`).
 2. **test**: memanggil `ci.yml` pada commit merge dengan `desktop-check` benar (tes desktop, kemas x64+arm64, `verify-pack`); karena desktop
    tak punya staging, **pemeriksaan ini pengganti uji staging** pada rilis desktop.
-3. **build** (Windows, environment `desktop-release`): `bun run build:desktop` (x64+arm64) dengan `UI_PUBLIC_KEY_PEM` dan
-   `DESKTOP_RELEASE_PUBLIC_KEY_PEM`; hitung sha512 dan ukuran; tulis `release.json`; tanda tangani; `verify-pack` pada installer x64
-   hasil rilis (`QC App.exe --smoke`).
-4. **publish**: buat tag `desktop-vX.Y.Z` dan GitHub Release privat berisi installer + changelog (`scripts/changelog.ts extract desktop`);
-   unggah ke Drive berurutan (installer, `release.json`, `release.sig`) memakai `scripts/publish-desktop-release.ts` (klien Google yang sama dengan
-   server, kunci SA penerbit dari secret `DESKTOP_DRIVE_PUBLISHER_KEY`, folder dari variable); idempoten (timpa menurut nama) sehingga
-   dapat diulang lewat `workflow_dispatch` (`versi`) bila gagal di tengah.
-5. **sync-dev**: seperti rilis server (bagian 1, 5.4).
+3. **build** (Windows, environment `desktop-release`): `bun run build:desktop` (x64+arm64) dengan `UI_PUBLIC_KEY_PEM`,
+   `DESKTOP_RELEASE_PUBLIC_KEY_PEM`, dan `CATALOG_TOKEN` (secret `DESKTOP_CATALOG_TOKEN`; token katalog memang tertanam di installer; kosong =
+   katalog nonaktif pada build ini); `verify-pack` x64 (`QC App.exe --smoke` penuh) dan arm64 (statis); installer diunggah sebagai artefak antar
+   job. Job ini **tidak** memegang kunci tanda tangan maupun kunci Drive (lihat bagian 7, keputusan 6).
+4. **publish** (Ubuntu, `contents: write`, tanpa `bun install`): `scripts/publish-desktop-release.ts` menghitung sha512 dan ukuran, menulis
+   `release-<versi>.json`, menandatanganinya (kunci privat dari secret `DESKTOP_RELEASE_SIGNING_KEY`, diperiksa terhadap kunci publik tertanam), lalu
+   mengunggah ke Drive (klien Google yang sama dengan server, kunci SA penerbit dari secret `DESKTOP_DRIVE_PUBLISHER_KEY`, folder dari variable):
+   hapus `.sig` lama, installer, manifest, **terakhir** `.sig`; MD5 dan ukuran dari Drive diverifikasi, berkas cacat dibuang; idempoten
+   (berkas yang sudah utuh dipakai ulang) sehingga dapat diulang lewat `workflow_dispatch` (`versi`) bila gagal di tengah. **Baru setelah unggahan
+   sukses** dibuat tag `desktop-vX.Y.Z` dan GitHub Release berisi catatan rilis (`scripts/changelog.ts extract desktop`); installer **tidak**
+   dilampirkan ke Release (bagian 7, keputusan 7). Terakhir `pruneInstallers` (gagal = peringatan).
+5. **sync-dev**: workflow bersama `sync-dev.yml` (dipakai juga `release.yml`; input `sha`, `version`, `komponen`), kegagalan hanya peringatan.
+Penarikan: job `withdraw` terpisah (hanya `workflow_dispatch` dengan `tarik`; menghapus `.sig`).
 Izin per job minimal; `contents: write` hanya pada `publish` (`sync-dev` memakai deploy key, token hanya-baca); semua nilai lewat `env`, tanpa `${{ }}` di `run`;
-aksi pihak ketiga dipatok SHA; `ci-workflows.test.ts` diperluas (pemicu, izin, regex cabang, urutan unggah).
+aksi pihak ketiga dipatok SHA; `ci-workflows.test.ts` diperluas (pemicu, izin, regex cabang, urutan unggah, pemisahan rahasia per job). Tanpa saklar
+`RELEASE_FLOW` (bagian 7, keputusan 8).
 
 ### 5.7 Penarikan dan downgrade
-- Rilis bermasalah: `workflow_dispatch` `tarik` (hapus `release.sig` versi itu); pembaruan berikutnya memilih versi tertinggi yang tersisa.
+- Rilis bermasalah: `workflow_dispatch` `tarik` (hapus `release-<versi>.sig` versi itu); pembaruan berikutnya memilih versi tertinggi yang tersisa.
   Pengguna yang sudah memperbarui memasang installer versi lama dari halaman unduh (bagian 5); installer NSIS yang lebih lama
   di atas yang baru dapat membutuhkan pencopotan lebih dulu (dicatat saat implementasi).
 - Pembaruan otomatis hanya naik (versi > terpasang); downgrade adalah tindakan manual yang disengaja.
-- Retensi: biner dipertahankan untuk 10 versi terbaru per arsitektur (skrip `prune`, jalan setelah publish); `release.json` dan GitHub Release tetap.
+- Retensi: dipertahankan 10 versi terbaru (urutan numerik, satu himpunan versi untuk kedua arsitektur; `pruneInstallers` jalan setelah publish dan menghapus
+  installer, manifest, dan `.sig` versi yang lebih lama; berkas yang bukan nama rilis tak disentuh); GitHub Release (catatan) tetap. Revisi 3:
+  manifest versi lama ikut dihapus agar daftar Drive tak menumpuk dan tak menyisakan manifest yang installernya sudah tak ada.
 
 ### 5.8 Dokumentasi
 `docs/ci-cd.md` (alur rilis desktop), `docs/desktop-release-signing.md` (kunci, environment, SA penerbit, langkah pemilik),
 `docs/setup-google.md` (SA penerbit + folder), `CLAUDE.md` (ringkas), `docs/e2e-checklist-desktop.md` (uji pembaruan di perangkat nyata).
 
 ## 6. Risiko dan pertanyaan terbuka
-- **Menunggu persetujuan pemilik**: seluruh dokumen; terutama dua keputusan perancang: penyimpanan Drive (4.1 C) dan unduhan installer
-  yang **publik** (integritas dari tanda tangan, bukan dari kerahasiaan; installer tidak memuat rahasia).
+- **Disetujui pemilik 2026-11-18** (dokumen dan rencana): penyimpanan Drive (4.1 C) dan unduhan installer yang **publik** (integritas dari
+  tanda tangan, bukan dari kerahasiaan). Catatan revisi 3: installer memuat token katalog bersama (`CATALOG_TOKEN`), jadi "tidak memuat rahasia"
+  hanya berlaku untuk rahasia berdampak tinggi; token itu sudah berstatus terdistribusi di installer (CLAUDE.md, katalog Tipe offline) dan
+  tidak memberi akses selain katalog item Country lock.
 - **Authenticode (belum diputuskan)**: tanpa sertifikat penandatanganan kode, Windows SmartScreen memperingatkan "penerbit tak dikenal"
   saat pemasangan pertama (pembaruan senyap tidak terpengaruh). Opsi (berbayar): sertifikat OV/EV atau Azure Trusted Signing.
   Rancangan ini tidak bergantung padanya dan dapat menambahkannya nanti (`electron-updater` lalu memverifikasi `publisherName`).
 - **Serangan pembekuan**: penyerang yang memegang server dapat menahan pembaruan (tak dapat memalsukannya). Diterima.
-- **Spike awal rencana (wajib sebelum implementasi)**: memastikan provider kustom `electron-updater` dapat dipakai tanpa `app-update.yml`
-  yang dibuat electron-builder, dan bahwa flag pemasangan senyap/peluncuran ulang bekerja untuk NSIS per pengguna pada arm64 dan x64.
-  Bila gagal, jatuh ke pengunduh buatan sendiri (4.2) dengan rancangan keamanan yang sama.
+- **Spike awal rencana**: **selesai sebagian** (rencana Task 1, tes kontrak `updater-contract.test.ts`): provider kustom `electron-updater` 6.8.11
+  dapat diturunkan dari `Provider` dan dipakai lewat `setFeedURL({ provider: 'custom', updateProvider })`. Temuan: unduhan butuh `updaterCacheDirName`
+  dari `app-update.yml`, sedangkan build `publish: null` tak menghasilkannya; aplikasi menulis berkas itu sendiri dan memakai setter publik
+  `updateConfigPath` (bagian 7, keputusan 9). **Belum terbukti** (tetap di checklist J): pemasangan senyap dan peluncuran ulang NSIS per
+  pengguna pada perangkat x64 dan arm64 nyata. Bila gagal, jatuh ke pengunduh buatan sendiri (4.2) dengan rancangan keamanan yang sama.
+- **Repositori kembali privat atau publik**: tidak berdampak pada pembaruan atau unduhan (kendala 3.1). Yang berubah hanya GitHub Release arsip
+  (bagi pemilik). Uji penerimaan: aplikasi dan server berfungsi penuh dengan token GitHub apa pun dicabut.
 - **Kuota Drive**: installer ~100 MB x 2 arsitektur x 10 versi; peringatan kuota yang ada berlaku; retensi 5.7.
 - **Dua kunci tanda tangan baru** (rilis + SA penerbit) menambah pekerjaan operasi pemilik; didokumentasikan di 5.8.
 - Pada desktop non-terkemas (pengembangan) pembaruan nonaktif; uji pembaruan nyata hanya lewat checklist manual.
 - Keputusan perancang lain (dapat diubah): dialog OS, bukan layar dalam aplikasi; cek tiap 6 jam; retensi 10 versi; installer publik.
+
+## 7. Catatan keputusan (log, 2026-11-18)
+Keputusan 1-5 disetujui pemilik pada 2026-11-18 bersama rencana implementasi; keputusan 6-10 diambil pelaksana saat implementasi dan **menunggu
+konfirmasi pemilik** (alasan dan biaya bila salah dicatat di ledger pelaksanaan; ubah bagian ini bila pemilik memutuskan lain).
+1. **Tata letak Drive datar** (bukan subfolder per versi): satu folder, nama berkas membawa versi. Mengubah 5.2 revisi 1-2. Alasan: pembacaan dan
+   penjaga folder lebih sederhana, tanpa pembuatan folder per versi.
+2. **Pembatas laju unduhan installer per IP** (60 per jam; di luar rancangan awal, boleh dibuang): kunci `desktop-app-file:<ip>` di `rate_limits`,
+   respons 429 problem+json. Melindungi kuota unduhan Drive dari pemindaian.
+3. **`sha512` base64 baku** di manifest (konvensi `electron-updater`), bukan heksa.
+4. **"Tidak ada pembaruan"** dikembalikan diam-diam oleh provider sebagai `UpdateInfo` versi terpasang (bukan galat): pengguna tak melihat apa pun
+   dan log tak dipenuhi galat palsu.
+5. **Urutan publish dibalik**: unggah Drive (installer, manifest, `.sig` terakhir) lebih dulu, baru tag + GitHub Release; Release tak pernah ada
+   tanpa unggahan yang sukses. Mengubah urutan di 5.6 revisi 1-2.
+6. **Penandatanganan manifest di job `publish`, bukan `build`**: job build menjalankan kode dependensi dan electron-builder, jadi kunci
+   penandatangan tidak ditaruh di sana; `publish` tidak memasang dependensi (skrip hanya memakai `node:*`, WebCrypto, dan `fetch`). Mengubah 5.6 butir 3.
+7. **Installer tidak dilampirkan ke GitHub Release** (hanya catatan rilis): token katalog tertanam di installer dan repositori ini publik. Arsip installer
+   hanya di Drive. Mengubah 5.6 butir 4 revisi 1-2 ("berisi installer").
+8. **Tanpa saklar `RELEASE_FLOW`** pada `release-desktop.yml` (rilis desktop tak men-deploy production; `release:prepare` yang menjaga), penarikan lewat
+   job `withdraw` terpisah, `ci` memakai `desktop-check` tanpa daftar berkas (semua pemeriksaan, fail-safe), dan `sync-dev.yml` punya grup concurrency
+   sendiri.
+9. **`app-update.yml` ditulis aplikasi sendiri** (`<userData>/updater/`, lewat setter publik `updateConfigPath`): satu-satunya cara agar provider kustom
+   mendapat `updaterCacheDirName` tanpa berkas bawaan builder; dijaga `updater-contract.test.ts`.
+10. **Job `build` menerima secret `DESKTOP_CATALOG_TOKEN`** (hanya di langkah build): tanpanya katalog Tipe offline nonaktif pada installer hasil CI.
+    Perlu konfirmasi: apakah katalog diaktifkan di build CI, dan nama secret.

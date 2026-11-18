@@ -102,6 +102,14 @@ CLI mengunduh cadangan terbaru (atau `--file-id <idDrive>`), MENAMPILKAN nama da
 
 Pindah ke email kantor nanti = mengganti nilai-nilai ini di `.env` lalu `docker compose up -d`; tidak ada perubahan kode. `SMTP_*` juga dipakai email ringkasan harian stok stiker menipis (penerima, sakelar, dan jam kirim diatur di halaman Konfigurasi Stiker, tidak memakai `ALERT_TO`; `ALERT_TO` tetap hanya untuk peringatan cadangan dan kuota). Bila `SMTP_HOST`/`SMTP_FROM`/`ALERT_TO` kosong atau tidak valid (mis. masih `ISI_OLEH_PEMILIK`), peringatan dinonaktifkan dan satu baris log menyebutnya; aplikasi tetap berjalan. Keterbatasan yang diterima pemilik (2026-11-06): peringatan berjalan DI server, jadi tidak berbunyi bila VPS atau `qc-app` mati; dead-man's switch eksternal tidak dikerjakan (dapat ditambahkan kemudian).
 
+### S9. Folder rilis aplikasi desktop dan service account penerbit
+Installer aplikasi desktop disimpan di satu folder Drive dan disajikan server (`GET /api/desktop/app-manifest` dan `app-file/...`; `docs/desktop-release-signing.md`). Folder ini **bukan** anak folder induk aplikasi, jadi tercantum eksplisit lewat `DESKTOP_RELEASES_FOLDER_ID` (juga masuk daftar folder terjaga klien Google; berkas yang diminta harus anak langsungnya).
+1. Buat folder (mis. `QC App Rilis Desktop`) di Drive pemilik dan catat id-nya.
+2. Bagikan ke service account **server** (S1) sebagai **Viewer**: server hanya membaca dan mengalirkan berkas. Bagikan ke service account **penerbit** sebagai **Editor**: akun terpisah yang kuncinya hanya dipakai CI (`release-desktop.yml`) untuk menulis installer dan manifest; kunci penerbit bocor hanya memungkinkan menaruh berkas, bukan membuat manifest yang diterima aplikasi (tanpa kunci tanda tangan rilis).
+3. Isi `DESKTOP_RELEASES_FOLDER_ID=<id>` di `.env` VPS (staging dan production), lalu `docker compose up -d`. Kosong = rute pembaruan menjawab 404 (aplikasi tidak menawarkan pembaruan).
+4. Kunci JSON penerbit disimpan sebagai secret `DESKTOP_DRIVE_PUBLISHER_KEY` pada environment GitHub `desktop-release` (bukan berkas di VPS).
+5. Kuota: installer sekitar 100 MB per arsitektur dan retensi menyimpan 10 versi terbaru (`pruneInstallers`), jadi sekitar 2 GB. Berkas yang dibuat service account penerbit dimiliki akun itu dan memakai kuota 15 GB-nya sendiri (S6), terpisah dari service account server, sehingga rilis tak mengurangi kuota gambar/cadangan.
+
 ### Troubleshooting service account
 | Gejala | Penyebab & solusi |
 |---|---|

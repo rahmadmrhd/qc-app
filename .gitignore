@@ -38,3 +38,5 @@ desktop/spike-report-*.json
 # kunci penandatangan manifest UI desktop (rahasia; jangan dikomit)
 *.ui-signing-key.pem
 ui-signing-key.pem
+# kunci penandatangan rilis aplikasi desktop (rahasia; jangan dikomit)
+*.release-signing-key.pem

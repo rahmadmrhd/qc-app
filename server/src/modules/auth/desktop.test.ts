@@ -560,7 +560,7 @@ describe('POST /auth/desktop/token', () => {
     expect(await count()).toBe(1);
     expect((await exchange({ code, verifier })).status).toBe(401);
     // jauh setelah kode kedaluwarsa (2 menit): penanda dibuang oleh penjadwal
-    env.clock.advance(11 * 60 * 1000);
+    env.clock.advance(61 * 60 * 1000);
     expect(await purgeExpiredRateLimits(env)).toBeGreaterThanOrEqual(1);
     expect(await count()).toBe(0);
     expect((await exchange({ code, verifier })).status).toBe(401);

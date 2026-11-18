@@ -62,3 +62,36 @@ describe('checkIdentity', () => {
     }
   });
 });
+
+describe('checkIdentity: komponen desktop (rilis semver bagian 4)', () => {
+  const desktop: IdentityInput = {
+    ...ok,
+    component: 'desktop',
+    headRef: 'release/desktop-v1.2.3',
+  };
+
+  test('PR rilis desktop sah mengembalikan komponen desktop', () => {
+    expect(checkIdentity(desktop)).toEqual({ ok: true, component: 'desktop', version: '1.2.3' });
+  });
+
+  test('cabang komponen lain ditolak (server untuk desktop dan sebaliknya)', () => {
+    expect(checkIdentity({ ...desktop, headRef: 'release/server-v1.2.3' }).ok).toBe(false);
+    expect(checkIdentity({ ...ok, headRef: 'release/desktop-v1.2.3' }).ok).toBe(false);
+  });
+
+  test('tanpa komponen = server (perilaku lama tak berubah)', () => {
+    expect(checkIdentity({ ...ok, component: undefined })).toEqual({
+      ok: true,
+      component: 'server',
+      version: '1.2.3',
+    });
+  });
+
+  test('aturan lain tetap berlaku untuk desktop (fork, bukan main, squash, versi berbeda)', () => {
+    expect(checkIdentity({ ...desktop, headRepo: 'penyerang/qc-app' }).ok).toBe(false);
+    expect(checkIdentity({ ...desktop, baseRef: 'dev' }).ok).toBe(false);
+    expect(checkIdentity({ ...desktop, parents: 1 }).ok).toBe(false);
+    expect(checkIdentity({ ...desktop, versionAtMerge: '1.2.4' }).ok).toBe(false);
+    expect(checkIdentity({ ...desktop, headRef: 'release/desktop-v01.2.3' }).ok).toBe(false);
+  });
+});

@@ -26,6 +26,8 @@ export interface Config {
   qrFolderId: string;
   qrDocFolderId: string;
   backupFolderId: string;
+  /** Folder rilis aplikasi desktop (installer, manifest, tanda tangan); kosong = rute pembaruan desktop 404. */
+  desktopReleasesFolderId: string;
   /** Folder tambahan di luar induk yang diizinkan klien Google. */
   allowedFolderIds: string[];
   /** Folder lokal (volume yang dapat ditulis) untuk dump cadangan; bawaan: `/var/backups/qc` di produksi, folder sementara OS di dev. */
@@ -165,6 +167,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     'QR_FOLDER_ID',
     'QR_DOC_FOLDER_ID',
     'BACKUP_FOLDER_ID',
+    'DESKTOP_RELEASES_FOLDER_ID',
   ] as const;
   for (const name of googleIds) {
     if (get(name) !== '' && !isDriveId(get(name))) {
@@ -303,6 +306,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     qrFolderId: get('QR_FOLDER_ID'),
     qrDocFolderId: get('QR_DOC_FOLDER_ID'),
     backupFolderId: get('BACKUP_FOLDER_ID'),
+    desktopReleasesFolderId: get('DESKTOP_RELEASES_FOLDER_ID'),
     allowedFolderIds,
     backupLocalDir:
       get('BACKUP_LOCAL_DIR') ||

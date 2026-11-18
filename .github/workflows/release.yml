@@ -3,7 +3,7 @@ name: Release Server
 # Rilis server (server + web) dari PR rilis `release/server-vX.Y.Z` yang di-merge ke `main` (rancangan
 # docs/superpowers/specs/2026-11-17-rilis-semver-design.md bagian 5.4; rencana docs/superpowers/plans/2026-11-17-rilis-semver-2-pipeline-rilis.md).
 # Jalur: meta (identitas) -> guard (kode identik dengan staging) -> ci (selektif) -> image (production, tanpa cache, tag SHA
-# + server-vX.Y.Z) -> deploy (production) -> publish (tag + GitHub Release) -> sync-dev (main -> dev).
+# + server-vX.Y.Z) -> deploy (production) -> publish (tag + GitHub Release) -> sync-dev (main -> dev, workflow bersama sync-dev.yml).
 #
 # SAKLAR MODE RILIS (keputusan pemilik 2026-11-18): workflow ini hanya berjalan bila variabel repositori `RELEASE_FLOW` bernilai
 # `tag`. Selama masa pra-resmi (kosong atau `langsung`) `meta` dilewati dan semua job ikut dilewati; merge ke `main` tetap
@@ -336,59 +336,16 @@ jobs:
             gh release create "$tag" --target "$SHA" --title "Server v$VERSION" --notes-file "$NOTES_DIR/notes.md"
           fi
 
-  # Menyinkronkan `main` ke `dev` setelah rilis (versi dan changelog baru) lewat git+SSH tanpa PR; isinya hanya metadata, jadi
-  # tak perlu deploy staging. Ruleset `dev*` mewajibkan PR dan hanya DEPLOY KEY yang boleh jadi bypass actor di repo akun
-  # personal (GitHub App dan app Actions bawaan ditolak GitHub; keputusan pemilik 2026-11-18): deploy key repo ini (akses tulis,
-  # bypass HANYA pada ruleset `Branch dev`, ruleset `Branch main` tanpa bypass) disimpan sebagai secret `SYNC_DEPLOY_KEY` di
-  # environment `sync-dev` (hanya ref `main`), dibaca hanya oleh langkah merge, dan berkasnya dihapus di akhir job. Token
-  # `GITHUB_TOKEN` tak dipakai (izin bawaan cukup baca) dan host key GitHub dipatok (bukan `ssh-keyscan`; nilai dari
-  # https://api.github.com/meta). Konflik sungguhan tidak membuka PR: hanya peringatan agar main -> dev diselesaikan manual.
-  # Kegagalan di sini hanya peringatan (rilis sudah selesai; keputusan pemilik 2026-11-18).
+  # Menyinkronkan `main` ke `dev` setelah rilis (versi dan changelog baru): workflow bersama `sync-dev.yml` (deploy key dari
+  # environment `sync-dev`, git+SSH tanpa PR; kegagalan hanya peringatan; rincian dan keputusan pemilik 2026-11-18 ada di sana).
+  # Pemanggil tanpa `secrets: inherit`: secret environment dibaca langsung oleh job terpanggil.
   sync-dev:
     needs: [meta, publish]
     if: needs.meta.outputs.release == 'true' && needs.publish.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    environment: sync-dev
     permissions:
       contents: read
-    steps:
-      - name: Gabungkan main ke dev
-        env:
-          SYNC_DEPLOY_KEY: ${{ secrets.SYNC_DEPLOY_KEY }}
-          REPO: ${{ github.repository }}
-          SHA: ${{ needs.meta.outputs.sha }}
-          VERSION: ${{ needs.meta.outputs.version }}
-        run: |
-          set -uo pipefail
-          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Commit rilis bukan SHA 40 heksa."; exit 1; }
-          [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Versi rilis tidak valid."; exit 1; }
-          warn() { echo "::warning::$1 Sinkronkan manual sebelum rilis berikutnya (release:prepare menolak bila main bukan leluhur dev)."; exit 0; }
-          [ -n "$SYNC_DEPLOY_KEY" ] || warn "Secret SYNC_DEPLOY_KEY kosong."
-          umask 077
-          key="$RUNNER_TEMP/sync_key"
-          hosts="$RUNNER_TEMP/sync_known_hosts"
-          printf '%s\n' "$SYNC_DEPLOY_KEY" > "$key"
-          chmod 600 "$key"
-          printf '%s\n' 'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl' > "$hosts"
-          export GIT_SSH_COMMAND="ssh -i $key -o IdentitiesOnly=yes -o UserKnownHostsFile=$hosts -o StrictHostKeyChecking=yes"
-          work="$RUNNER_TEMP/sync_repo"
-          git clone --quiet --branch dev "git@github.com:$REPO.git" "$work" || warn "Gagal mengkloning branch dev lewat deploy key."
-          cd "$work" || exit 1
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git cat-file -e "$SHA^{commit}" 2> /dev/null || warn "Commit rilis $SHA tidak ditemukan di repo."
-          if git merge-base --is-ancestor "$SHA" HEAD; then
-            echo "dev sudah memuat commit rilis; tidak ada yang digabung."
-            exit 0
-          fi
-          if ! git merge --no-ff -m "chore(rilis): sinkron main ke dev (server v$VERSION)" "$SHA"; then
-            git merge --abort 2> /dev/null || true
-            warn "Penggabungan main -> dev konflik. Buat PR main -> dev dan selesaikan konfliknya."
-          fi
-          git push origin dev || warn "Push ke dev ditolak (periksa bypass deploy key pada ruleset Branch dev)."
-          echo "main sudah digabung ke dev."
-
-      - name: Hapus kunci
-        if: always()
-        run: rm -rf "$RUNNER_TEMP/sync_key" "$RUNNER_TEMP/sync_known_hosts" "$RUNNER_TEMP/sync_repo"
+    uses: ./.github/workflows/sync-dev.yml
+    with:
+      sha: ${{ needs.meta.outputs.sha }}
+      version: ${{ needs.meta.outputs.version }}
+      komponen: server

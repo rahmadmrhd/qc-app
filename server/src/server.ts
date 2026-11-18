@@ -48,6 +48,7 @@ export function envFromConfig(config: Config, db: Db): Env {
     QR_FOLDER_ID: config.qrFolderId,
     QR_DOC_FOLDER_ID: config.qrDocFolderId,
     BACKUP_FOLDER_ID: config.backupFolderId,
+    DESKTOP_RELEASES_FOLDER_ID: config.desktopReleasesFolderId,
     ALLOWED_FOLDER_IDS: config.allowedFolderIds,
   };
   return {

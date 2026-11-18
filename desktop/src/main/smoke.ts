@@ -7,12 +7,23 @@ export interface SmokeReport {
   electron: string;
   ssh2: boolean;
   sqlite: boolean;
+  /** electron-updater termuat (pembaruan otomatis aplikasi). */
+  updater: boolean;
 }
 
 async function canLoadSsh2(): Promise<boolean> {
   try {
     const mod = (await import('ssh2')) as { Client?: unknown; default?: { Client?: unknown } };
     return typeof (mod.Client ?? mod.default?.Client) === 'function';
+  } catch {
+    return false;
+  }
+}
+
+async function canLoadUpdater(): Promise<boolean> {
+  try {
+    const mod = (await import('electron-updater')) as { Provider?: unknown; NsisUpdater?: unknown };
+    return typeof mod.Provider === 'function' && typeof mod.NsisUpdater === 'function';
   } catch {
     return false;
   }
@@ -36,11 +47,16 @@ async function canUseSqlite(): Promise<boolean> {
 }
 
 export async function collectSmokeReport(): Promise<SmokeReport> {
-  const [ssh2, sqlite] = await Promise.all([canLoadSsh2(), canUseSqlite()]);
+  const [ssh2, sqlite, updater] = await Promise.all([
+    canLoadSsh2(),
+    canUseSqlite(),
+    canLoadUpdater(),
+  ]);
   return {
     node: process.versions.node,
     electron: process.versions.electron ?? '',
     ssh2,
     sqlite,
+    updater,
   };
 }

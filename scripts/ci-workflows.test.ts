@@ -76,6 +76,10 @@ const serverPipelineTexts = [deployText, imageText, deployerText];
 const serverPipeline = [deploy, imageWf, deployer];
 
 const RELEASE_HEAD_REF_EXPR = "startsWith(github.event.pull_request.head.ref, 'release/server-v')";
+const RELEASE_DESKTOP_HEAD_REF_EXPR =
+  "startsWith(github.event.pull_request.head.ref, 'release/desktop-v')";
+/** Workflow rilis yang membaca data PR lewat API untuk pagar identitas (bukan kode head PR). */
+const RELEASE_WORKFLOWS = ['release.yml', 'release-desktop.yml'];
 
 /** Semua nilai `uses:` dan isi `run:` dari satu workflow. */
 function stepsOf(workflow: Workflow): Step[] {
@@ -120,12 +124,13 @@ describe('workflow: aturan umum (semua berkas)', () => {
       // dari merge lain ke main (agar merge biasa tak membatalkan run rilis yang menunggu). Hanya dibaca sebagai teks ekspresi:
       // tak ada checkout, `run`, atau output yang memakainya (dijaga tes release.yml di bawah).
       if (name === 'release.yml') text = text.replace(RELEASE_HEAD_REF_EXPR, '');
+      if (name === 'release-desktop.yml') text = text.replace(RELEASE_DESKTOP_HEAD_REF_EXPR, '');
       if (text.includes('pull_request_target')) {
         expect(text, name).not.toMatch(/pull_request\.head/);
-        // release.yml membaca data PR (cabang, repositori asal) lewat API untuk pagar identitas; itu data, bukan kode yang
-        // dijalankan. Yang dijaga di sana: tak ada field `pull_request.head` dari event (di atas), tak ada checkout selain
-        // github.sha/sha hasil meta, dan tak ada `refs/pull/` (tes khusus release.yml di bawah).
-        if (name === 'release.yml') expect(text, name).not.toMatch(/refs\/pull\//);
+        // release.yml dan release-desktop.yml membaca data PR (cabang, repositori asal) lewat API untuk pagar identitas; itu
+        // data, bukan kode yang dijalankan. Yang dijaga di sana: tak ada field `pull_request.head` dari event (di atas), tak
+        // ada checkout selain github.sha/sha hasil meta, dan tak ada `refs/pull/` (tes khusus tiap workflow di bawah).
+        if (RELEASE_WORKFLOWS.includes(name)) expect(text, name).not.toMatch(/refs\/pull\//);
         else expect(text, name).not.toMatch(/head_ref|\.head\.(sha|ref|repo|label)|refs\/pull\//);
       }
     }
@@ -1559,10 +1564,8 @@ describe('release.yml: pipeline rilis server dari PR rilis', () => {
     expect(metaRuns).toContain('bun run scripts/release-identity.ts');
     const guardRuns = (jobs.guard?.steps ?? []).map((s) => s.run ?? '').join('\n');
     expect(guardRuns).toContain('bun run scripts/release-guard.ts');
-    // satu-satunya rahasia: deploy key sync-dev, hanya di langkah merge job sync-dev (environment sync-dev)
-    expect([...codeOf(text).matchAll(/secrets\.(\w+)/g)].map((m) => m[1])).toEqual([
-      'SYNC_DEPLOY_KEY',
-    ]);
+    // tanpa rahasia sama sekali: deploy key sync-dev kini hanya di sync-dev.yml (environment sync-dev, bukan `secrets: inherit`)
+    expect([...codeOf(text).matchAll(/secrets\.(\w+)/g)].map((m) => m[1])).toEqual([]);
     expect(codeOf(text)).not.toContain('secrets: inherit');
   });
 
@@ -1675,38 +1678,16 @@ describe('release.yml: pipeline rilis server dari PR rilis', () => {
     expect(steps.indexOf(notes as Step)).toBeLessThan(steps.indexOf(create as Step));
   });
 
-  test('sync-dev: deploy key (bypass ruleset dev*) dari environment sync-dev; tanpa GITHUB_TOKEN tulis, tanpa app/PAT; kunci dibaca hanya sebagai env langkah dan dihapus di akhir', () => {
+  test('sync-dev: hanya memanggil sync-dev.yml bersama (komponen server); deploy key dan git+SSH hidup di workflow itu, bukan di sini', () => {
     const job = jobs['sync-dev'];
-    expect(job?.environment).toBe('sync-dev');
-    const steps = job?.steps ?? [];
-    expect(steps.some((s) => s.uses?.startsWith('actions/create-github-app-token'))).toBe(false);
-    const sync = steps.find((s) => s.run?.includes('git push'));
-    expect(sync?.env?.SYNC_DEPLOY_KEY).toBe('${{ secrets.SYNC_DEPLOY_KEY }}');
-    expect(JSON.stringify(job)).not.toContain('github.token');
-    expect(JSON.stringify(job)).not.toContain('secrets.GITHUB_TOKEN');
-    expect(JSON.stringify(job)).not.toMatch(/secrets\.(?!SYNC_DEPLOY_KEY)/);
-    const cleanup = steps.at(-1);
-    expect(cleanup?.if).toBe('always()');
-    expect(cleanup?.run).toContain('sync_key');
-  });
-
-  test('sync-dev: merge main ke dev lewat git+SSH tanpa PR; host key GitHub dipatok (bukan ssh-keyscan); konflik = peringatan jelas, tanpa membuat PR', () => {
-    const sync = (jobs['sync-dev']?.steps ?? []).find((s) => s.run?.includes('git push'));
-    const run = sync?.run ?? '';
-    expect(run).toContain('git merge --no-ff');
-    expect(run).toContain('git push origin dev');
-    expect(run).toContain('git@github.com:');
-    // host key ed25519 GitHub (https://api.github.com/meta -> ssh_keys), diperiksa ketat
-    expect(run).toContain(
-      'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl',
-    );
-    expect(run).toContain('StrictHostKeyChecking=yes');
-    expect(run).not.toMatch(/ssh-keyscan|StrictHostKeyChecking[= ]+no/i);
-    expect(run).toContain('::warning::');
-    expect(run).not.toContain('gh pr create');
-    expect(run).not.toContain('gh api');
-    // push hanya ke dev (bypass ruleset hanya di dev*); tak pernah ke main
-    expect(run).not.toMatch(/git push[^\n]*main/);
+    expect(job?.uses).toBe('./.github/workflows/sync-dev.yml');
+    expect(job?.with).toEqual({
+      sha: '${{ needs.meta.outputs.sha }}',
+      version: '${{ needs.meta.outputs.version }}',
+      komponen: 'server',
+    });
+    expect(job?.steps).toBeUndefined();
+    expect(codeOf(text)).not.toMatch(/git push|SYNC_DEPLOY_KEY|ssh-ed25519/);
   });
 
   test('docs/ci-cd.md menjelaskan release.yml dan saklar RELEASE_FLOW', () => {
@@ -1861,5 +1842,374 @@ describe('deploy-tag.yml: deploy versi tertentu lewat tag (rilis semver bagian 3
   test('docs/ci-cd.md dan CLAUDE.md menjelaskan deploy-tag.yml', () => {
     expect(read('docs/ci-cd.md')).toContain('deploy-tag.yml');
     expect(read('CLAUDE.md')).toContain('deploy-tag.yml');
+  });
+});
+
+describe('sync-dev.yml: sinkron main ke dev (workflow bersama, dipanggil release.yml dan release-desktop.yml)', () => {
+  const text = rawOf('sync-dev.yml');
+  const wf = parse(text);
+  const job = wf.jobs['sync-dev'];
+
+  test('hanya workflow_call dengan input sha, version, komponen (string wajib); izin contents read; satu sinkron pada satu waktu tanpa membatalkan', () => {
+    const on = wf.on as {
+      workflow_call: { inputs: Record<string, { type: string; required: boolean }> };
+    };
+    expect(Object.keys(wf.on ?? {})).toEqual(['workflow_call']);
+    expect(Object.keys(on.workflow_call.inputs).sort()).toEqual(['komponen', 'sha', 'version']);
+    for (const input of Object.values(on.workflow_call.inputs)) {
+      expect(input.type).toBe('string');
+      expect(input.required).toBe(true);
+    }
+    expect(wf.permissions).toEqual({ contents: 'read' });
+    expect(wf.concurrency).toEqual({ group: 'sync-dev', 'cancel-in-progress': false });
+    expect(Object.keys(wf.jobs)).toEqual(['sync-dev']);
+  });
+
+  test('deploy key (bypass ruleset dev*) dari environment sync-dev; tanpa GITHUB_TOKEN tulis, tanpa app/PAT; kunci dibaca hanya sebagai env langkah dan dihapus di akhir', () => {
+    expect(job?.environment).toBe('sync-dev');
+    expect(job?.permissions).toEqual({ contents: 'read' });
+    const steps = job?.steps ?? [];
+    expect(steps.some((s) => s.uses?.startsWith('actions/create-github-app-token'))).toBe(false);
+    const sync = steps.find((s) => s.run?.includes('git push'));
+    expect(sync?.env?.SYNC_DEPLOY_KEY).toBe('${{ secrets.SYNC_DEPLOY_KEY }}');
+    expect(JSON.stringify(job)).not.toContain('github.token');
+    expect(JSON.stringify(job)).not.toContain('secrets.GITHUB_TOKEN');
+    expect(JSON.stringify(job)).not.toMatch(/secrets\.(?!SYNC_DEPLOY_KEY)/);
+    expect(codeOf(text)).not.toContain('secrets: inherit');
+    const cleanup = steps.at(-1);
+    expect(cleanup?.if).toBe('always()');
+    expect(cleanup?.run).toContain('sync_key');
+  });
+
+  test('masukan lewat env (bukan ${{ }} di run) dan divalidasi: sha 40 heksa, versi X.Y.Z, komponen server|desktop', () => {
+    const sync = (job?.steps ?? []).find((s) => s.run?.includes('git push'));
+    expect(sync?.env?.SHA).toBe('${{ inputs.sha }}');
+    expect(sync?.env?.VERSION).toBe('${{ inputs.version }}');
+    expect(sync?.env?.KOMPONEN).toBe('${{ inputs.komponen }}');
+    for (const step of job?.steps ?? []) expect(step.run ?? '', step.name).not.toContain('${{');
+    const run = sync?.run ?? '';
+    expect(run).toContain('[0-9a-f]{40}');
+    expect(run).toMatch(/KOMPONEN =~ \^\(server\|desktop\)\$/);
+    // pesan merge memuat komponen
+    expect(run).toContain('sinkron main ke dev ($KOMPONEN v$VERSION)');
+  });
+
+  test('merge main ke dev lewat git+SSH tanpa PR; host key GitHub dipatok (bukan ssh-keyscan); konflik = peringatan jelas, tanpa membuat PR', () => {
+    const sync = (job?.steps ?? []).find((s) => s.run?.includes('git push'));
+    const run = sync?.run ?? '';
+    expect(run).toContain('git merge --no-ff');
+    expect(run).toContain('git push origin dev');
+    expect(run).toContain('git@github.com:');
+    // host key ed25519 GitHub (https://api.github.com/meta -> ssh_keys), diperiksa ketat
+    expect(run).toContain(
+      'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl',
+    );
+    expect(run).toContain('StrictHostKeyChecking=yes');
+    expect(run).not.toMatch(/ssh-keyscan|StrictHostKeyChecking[= ]+no/i);
+    expect(run).toContain('::warning::');
+    expect(run).not.toContain('gh pr create');
+    expect(run).not.toContain('gh api');
+    // push hanya ke dev (bypass ruleset hanya di dev*); tak pernah ke main
+    expect(run).not.toMatch(/git push[^\n]*main/);
+  });
+
+  test('tak ada checkout kode repositori: job hanya mengkloning dev lewat SSH', () => {
+    expect((job?.steps ?? []).some((s) => s.uses?.startsWith('actions/checkout'))).toBe(false);
+  });
+});
+
+describe('release-desktop.yml: pipeline rilis aplikasi desktop dari PR rilis (rilis semver bagian 4)', () => {
+  const text = rawOf('release-desktop.yml');
+  const wf = parse(text);
+  const jobs = wf.jobs;
+  const stepsOfJob = (name: string) => jobs[name]?.steps ?? [];
+  const secretsOf = (name: string) =>
+    [...JSON.stringify(jobs[name] ?? {}).matchAll(/secrets\.([A-Z_]+)/g)].map((m) => m[1]).sort();
+  const writes = (name: string) =>
+    Object.entries(jobs[name]?.permissions ?? {})
+      .filter(([, level]) => level === 'write')
+      .map(([scope]) => scope)
+      .sort();
+
+  test('pemicu: pull_request_target closed ke main dan workflow_dispatch (versi, tarik: opsional); tanpa push dan pull_request biasa', () => {
+    const on = wf.on as {
+      pull_request_target: { types: string[]; branches: string[] };
+      workflow_dispatch: { inputs: Record<string, { type: string; required: boolean }> };
+    };
+    expect(Object.keys(on).sort()).toEqual(['pull_request_target', 'workflow_dispatch']);
+    expect(on.pull_request_target.types).toEqual(['closed']);
+    expect(on.pull_request_target.branches).toEqual(['main']);
+    expect(Object.keys(on.workflow_dispatch.inputs).sort()).toEqual(['tarik', 'versi']);
+    expect(on.workflow_dispatch.inputs.versi?.required).toBe(false);
+    expect(on.workflow_dispatch.inputs.tarik?.required).toBe(false);
+    expect(codeOf(text)).not.toMatch(/^\s*pull_request:/m);
+  });
+
+  test('urutan job: meta -> ci -> build -> publish -> sync-dev, plus withdraw (penarikan) yang berdiri sendiri', () => {
+    expect(Object.keys(jobs)).toEqual(['meta', 'ci', 'build', 'publish', 'sync-dev', 'withdraw']);
+    expect([jobs.ci?.needs ?? []].flat().sort()).toEqual(['meta']);
+    expect([jobs.build?.needs ?? []].flat().sort()).toEqual(['ci', 'meta']);
+    expect([jobs.publish?.needs ?? []].flat().sort()).toEqual(['build', 'meta']);
+    expect([jobs['sync-dev']?.needs ?? []].flat().sort()).toEqual(['meta', 'publish']);
+    expect(jobs.withdraw?.needs).toBeUndefined();
+    for (const name of ['ci', 'build', 'publish', 'sync-dev']) {
+      expect(jobs[name]?.if ?? '', name).toContain("needs.meta.outputs.release == 'true'");
+    }
+    expect(jobs['sync-dev']?.if).toContain("needs.publish.result == 'success'");
+  });
+
+  test('meta menolak dispatch ganda: versi dan tarik tak boleh sekaligus; withdraw hanya untuk dispatch tarik', () => {
+    expect(jobs.meta?.if).toContain("github.event_name == 'workflow_dispatch'");
+    expect(jobs.meta?.if).toContain("inputs.versi != ''");
+    expect(jobs.meta?.if).toContain("inputs.tarik == ''");
+    expect(jobs.meta?.if).toContain('github.event.pull_request.merged == true');
+    expect(jobs.withdraw?.if).toContain("github.event_name == 'workflow_dispatch'");
+    expect(jobs.withdraw?.if).toContain("inputs.tarik != ''");
+    expect(jobs.withdraw?.if).toContain("inputs.versi == ''");
+  });
+
+  test('concurrency: grup release-desktop tanpa membatalkan; merge lain ke main dan run kosong memakai grup sendiri (tak menggeser rilis yang menunggu)', () => {
+    expect(wf.concurrency?.['cancel-in-progress']).toBe(false);
+    const group = wf.concurrency?.group ?? '';
+    expect(group).toContain("'release-desktop'");
+    expect(group).toContain('github.event.pull_request.merged == true');
+    expect(group).toContain("format('lewati-desktop-{0}', github.run_id)");
+    // ekspresi cabang rilis hanya di kelompok concurrency (bukan di run/env/if/checkout)
+    expect(codeOf(text).split(RELEASE_DESKTOP_HEAD_REF_EXPR)).toHaveLength(2);
+    expect(JSON.stringify({ ...wf, concurrency: undefined })).not.toContain(
+      'github.event.pull_request.head',
+    );
+  });
+
+  test('izin: contents read tingkat atas; contents: write HANYA publish; sync-dev hanya baca; tanpa izin tulis lain', () => {
+    expect(wf.permissions).toEqual({ contents: 'read' });
+    for (const name of ['meta', 'ci', 'build', 'sync-dev', 'withdraw']) {
+      expect(writes(name), name).toEqual([]);
+    }
+    expect(writes('publish')).toEqual(['contents']);
+    expect(jobs.meta?.permissions).toEqual({ contents: 'read', 'pull-requests': 'read' });
+    expect(jobs['sync-dev']?.permissions).toEqual({ contents: 'read' });
+  });
+
+  test('environment desktop-release pada build, publish, dan withdraw; meta, ci, dan sync-dev tak memakainya', () => {
+    for (const name of ['build', 'publish', 'withdraw']) {
+      expect(jobs[name]?.environment, name).toBe('desktop-release');
+    }
+    expect(jobs.meta?.environment).toBeUndefined();
+    expect(jobs.ci?.environment).toBeUndefined();
+    // environment sync-dev dipegang workflow terpanggil, bukan pemanggil
+    expect(jobs['sync-dev']?.environment).toBeUndefined();
+  });
+
+  test('rahasia: build hanya token katalog; publish hanya kunci penerbit Drive dan kunci tanda tangan rilis; withdraw hanya kunci Drive; tak pernah UI_SIGNING_KEY atau secrets: inherit', () => {
+    expect(secretsOf('meta')).toEqual([]);
+    expect(secretsOf('ci')).toEqual([]);
+    expect(secretsOf('build')).toEqual(['DESKTOP_CATALOG_TOKEN']);
+    expect(secretsOf('publish')).toEqual([
+      'DESKTOP_DRIVE_PUBLISHER_KEY',
+      'DESKTOP_RELEASE_SIGNING_KEY',
+    ]);
+    expect(secretsOf('withdraw')).toEqual(['DESKTOP_DRIVE_PUBLISHER_KEY']);
+    expect(secretsOf('sync-dev')).toEqual([]);
+    expect(codeOf(text)).not.toContain('secrets: inherit');
+    expect(codeOf(text)).not.toContain('UI_SIGNING_KEY');
+    // kunci tanda tangan TIDAK ada di job build (yang menjalankan kode dependensi dan electron-builder)
+    expect(JSON.stringify(jobs.build)).not.toContain('SIGNING_KEY');
+  });
+
+  test('checkout: meta dan withdraw hanya github.sha (ujung main, menjalankan skrip), build/publish hanya sha hasil meta; tak pernah head PR; kredensial tak disimpan; ci dan sync-dev tanpa checkout', () => {
+    for (const name of ['meta', 'withdraw']) {
+      const checkout = stepsOfJob(name).find((s) => s.uses?.startsWith('actions/checkout'));
+      expect(checkout?.with?.ref, name).toBe('${{ github.sha }}');
+      expect(checkout?.with?.['persist-credentials'], name).toBe(false);
+    }
+    for (const name of ['build', 'publish']) {
+      const checkout = stepsOfJob(name).find((s) => s.uses?.startsWith('actions/checkout'));
+      expect(checkout?.with?.ref, name).toBe('${{ needs.meta.outputs.sha }}');
+      expect(checkout?.with?.['persist-credentials'], name).toBe(false);
+    }
+    for (const name of ['ci', 'sync-dev']) {
+      expect(
+        stepsOfJob(name).some((s) => s.uses?.startsWith('actions/checkout')),
+        name,
+      ).toBe(false);
+    }
+  });
+
+  test('skrip `run` tanpa interpolasi ${{ }}; keputusan identitas memakai skrip murni dengan COMPONENT=desktop', () => {
+    for (const step of stepsOf(wf)) {
+      if (step.run) expect(step.run, step.name).not.toContain('${{');
+    }
+    const identity = stepsOfJob('meta').find((s) => s.id === 'identity');
+    expect(identity?.run).toContain('bun run scripts/release-identity.ts');
+    expect(identity?.env?.COMPONENT).toBe('desktop');
+    expect(identity?.if).toContain("steps.resolve.outputs.release == 'true'");
+  });
+
+  test('meta: PR dibaca lewat API (bukan field head dari event); hanya cabang release/desktop-v… diproses; versi dibaca dari desktop/package.json dan divalidasi sebelum GITHUB_OUTPUT', () => {
+    const resolve = stepsOfJob('meta').find((s) => s.id === 'resolve');
+    const run = resolve?.run ?? '';
+    expect(run).toContain('gh api');
+    expect(run).toContain('release/desktop-v');
+    expect(run).not.toContain('release/server-v');
+    expect(run).toContain('contents/desktop/package.json');
+    expect(run).toContain('Bukan PR rilis desktop; dilewati.');
+    expect(run).toContain("'.merged'");
+    // validasi versi SEBELUM ditulis ke GITHUB_OUTPUT
+    expect(run.indexOf('version_at_merge =~')).toBeGreaterThan(0);
+    expect(run.indexOf('version_at_merge =~')).toBeLessThan(run.lastIndexOf('>> "$GITHUB_OUTPUT"'));
+    expect(run).toContain('refs/heads/main');
+  });
+
+  test('ci memanggil ci.yml untuk commit rilis dengan desktop-check (semua pemeriksaan: tanpa daftar berkas)', () => {
+    expect(jobs.ci?.uses).toBe('./.github/workflows/ci.yml');
+    expect(jobs.ci?.with).toEqual({
+      ref: '${{ needs.meta.outputs.sha }}',
+      'desktop-check': true,
+    });
+    expect(jobs.ci?.permissions).toEqual({
+      contents: 'read',
+      'pull-requests': 'read',
+      packages: 'read',
+    });
+  });
+
+  test('build: Windows, CRLF dimatikan sebelum checkout, kunci publik dari Variable, kedua arsitektur diverifikasi, installer diunggah sebagai artefak', () => {
+    const job = jobs.build;
+    expect(job?.['runs-on']).toBe('windows-latest');
+    expect(job?.defaults?.run?.shell).toBe('bash');
+    const steps = job?.steps ?? [];
+    const crlf = steps.findIndex((s) => s.run?.includes('core.autocrlf false'));
+    const checkout = steps.findIndex((s) => s.uses?.startsWith('actions/checkout'));
+    expect(crlf).toBeGreaterThanOrEqual(0);
+    expect(crlf).toBeLessThan(checkout);
+    expect(steps.some((s) => s.uses === './.github/actions/setup')).toBe(true);
+    const build = steps.find((s) => s.run === 'bun run build:desktop');
+    expect(build?.env?.UI_PUBLIC_KEY_PEM).toBe('${{ vars.UI_PUBLIC_KEY_PEM }}');
+    expect(build?.env?.DESKTOP_RELEASE_PUBLIC_KEY_PEM).toBe(
+      '${{ vars.DESKTOP_RELEASE_PUBLIC_KEY_PEM }}',
+    );
+    expect(build?.env?.CATALOG_TOKEN).toBe('${{ secrets.DESKTOP_CATALOG_TOKEN }}');
+    const runs = steps.map((s) => s.run ?? '').join('\n');
+    expect(runs).toContain('verify-pack --arch x64');
+    expect(runs).toContain('verify-pack --arch arm64');
+    const upload = steps.find((s) => s.uses?.startsWith('actions/upload-artifact'));
+    expect(upload?.with?.['if-no-files-found']).toBe('error');
+    expect(String(upload?.with?.path)).toContain(
+      'QC-App-Setup-${{ needs.meta.outputs.version }}-x64.exe',
+    );
+    expect(String(upload?.with?.path)).toContain(
+      'QC-App-Setup-${{ needs.meta.outputs.version }}-arm64.exe',
+    );
+    // token katalog hanya di langkah build, bukan di setup dependensi
+    expect(JSON.stringify(steps.filter((s) => s !== build))).not.toContain('DESKTOP_CATALOG_TOKEN');
+  });
+
+  test('publish: unggah Drive (manifest ditandatangani) SEBELUM tag dan Release; tag/Release idempoten, tanpa melampirkan installer; kunci ke berkas sementara dan dihapus if: always()', () => {
+    const steps = stepsOfJob('publish');
+    const notes = steps.find((s) => s.id === 'notes');
+    const drive = steps.find((s) => s.run?.includes('publish-desktop-release.ts'));
+    const release = steps.find((s) => s.id === 'release');
+    expect(notes?.run).toContain('changelog extract desktop');
+    expect(notes?.env?.GH_TOKEN).toBeUndefined();
+    expect(drive).toBeDefined();
+    expect(release).toBeDefined();
+    // urutan: catatan, Drive, lalu tag + Release (tak ada Release tanpa unggahan yang sukses)
+    expect(steps.indexOf(notes as Step)).toBeLessThan(steps.indexOf(drive as Step));
+    expect(steps.indexOf(drive as Step)).toBeLessThan(steps.indexOf(release as Step));
+    // Drive: rahasia hanya sebagai env langkah itu, berkas sementara izin ketat, folder dari Variable
+    expect(drive?.env?.GOOGLE_SA_KEY_JSON).toBe('${{ secrets.DESKTOP_DRIVE_PUBLISHER_KEY }}');
+    expect(drive?.env?.RELEASE_SIGNING_KEY).toBe('${{ secrets.DESKTOP_RELEASE_SIGNING_KEY }}');
+    expect(drive?.env?.DESKTOP_RELEASE_PUBLIC_KEY_PEM).toBe(
+      '${{ vars.DESKTOP_RELEASE_PUBLIC_KEY_PEM }}',
+    );
+    expect(drive?.env?.FOLDER_ID).toBe('${{ vars.DESKTOP_RELEASES_FOLDER_ID }}');
+    expect(drive?.run).toContain('umask 077');
+    expect(drive?.run).toContain('--folder-id "$FOLDER_ID"');
+    expect(drive?.run).toContain('--changelog-file');
+    // tag dan Release: token hanya di langkah API, tak menjalankan kode repo, idempoten, tanpa installer
+    expect(release?.env?.GH_TOKEN).toBe('${{ github.token }}');
+    expect(release?.run).not.toContain('bun run');
+    expect(release?.run).toContain('git/ref/tags/');
+    expect(release?.run).toContain('gh release create');
+    expect(release?.run).toContain('--target');
+    expect(release?.run).toContain('--verify-tag');
+    expect(release?.run).toContain('desktop-v');
+    expect(release?.run).not.toMatch(/\.exe|gh release upload/);
+    const cleanup = steps.at(-1);
+    expect(cleanup?.if).toBe('always()');
+    expect(cleanup?.run).toContain('sa-key.json');
+    expect(cleanup?.run).toContain('release-signing-key.pem');
+    // artefak installer diunduh sebelum Drive
+    const download = steps.find((s) => s.uses?.startsWith('actions/download-artifact'));
+    expect(steps.indexOf(download as Step)).toBeLessThan(steps.indexOf(drive as Step));
+  });
+
+  test('publish tidak memasang dependensi (tanpa bun install): kunci hanya berada di job yang tak menjalankan kode pihak ketiga', () => {
+    const runs = stepsOfJob('publish')
+      .map((s) => `${s.uses ?? ''}\n${s.run ?? ''}`)
+      .join('\n');
+    expect(runs).not.toContain('bun install');
+    expect(runs).not.toContain('./.github/actions/setup');
+  });
+
+  test('withdraw: hanya dari main, versi divalidasi, hanya menghapus tanda tangan (--withdraw), kunci dihapus if: always()', () => {
+    const steps = stepsOfJob('withdraw');
+    const pull = steps.find((s) => s.run?.includes('--withdraw'));
+    expect(pull?.env?.VERSION).toBe('${{ inputs.tarik }}');
+    expect(pull?.env?.GOOGLE_SA_KEY_JSON).toBe('${{ secrets.DESKTOP_DRIVE_PUBLISHER_KEY }}');
+    expect(pull?.run).toContain('refs/heads/main');
+    expect(pull?.run).toMatch(/VERSION =~ \^\[0-9\]\+/);
+    expect(pull?.run).toContain('umask 077');
+    expect(steps.at(-1)?.if).toBe('always()');
+    expect(steps.at(-1)?.run).toContain('sa-key.json');
+  });
+
+  test('sync-dev: memanggil sync-dev.yml dengan komponen desktop', () => {
+    expect(jobs['sync-dev']?.uses).toBe('./.github/workflows/sync-dev.yml');
+    expect(jobs['sync-dev']?.with).toEqual({
+      sha: '${{ needs.meta.outputs.sha }}',
+      version: '${{ needs.meta.outputs.version }}',
+      komponen: 'desktop',
+    });
+  });
+});
+
+describe('dokumentasi rilis desktop dan sync-dev bersama', () => {
+  test('docs/ci-cd.md menjelaskan release-desktop.yml, sync-dev.yml, penarikan, dan retensi', () => {
+    const doc = read('docs/ci-cd.md');
+    for (const term of [
+      'release-desktop.yml',
+      'sync-dev.yml',
+      'tarik',
+      'desktop-release',
+      'DESKTOP_RELEASES_FOLDER_ID',
+    ]) {
+      expect(doc, term).toContain(term);
+    }
+  });
+
+  test('docs/desktop-release-signing.md memuat semua secret dan Variable yang dipakai release-desktop.yml', () => {
+    const doc = read('docs/desktop-release-signing.md');
+    const used = new Set<string>();
+    for (const match of rawOf('release-desktop.yml').matchAll(/\b(?:secrets|vars)\.([A-Z_]+)/g)) {
+      used.add(match[1] as string);
+    }
+    expect([...used].sort()).toEqual([
+      'DESKTOP_CATALOG_TOKEN',
+      'DESKTOP_DRIVE_PUBLISHER_KEY',
+      'DESKTOP_RELEASES_FOLDER_ID',
+      'DESKTOP_RELEASE_PUBLIC_KEY_PEM',
+      'DESKTOP_RELEASE_SIGNING_KEY',
+      'UI_PUBLIC_KEY_PEM',
+    ]);
+    for (const name of used) expect(doc, name).toContain(name);
+  });
+
+  test('CLAUDE.md, docs/setup-google.md, dan checklist e2e desktop menyebut rilis desktop', () => {
+    expect(read('CLAUDE.md')).toContain('release-desktop.yml');
+    expect(read('CLAUDE.md')).toContain('app-manifest');
+    expect(read('docs/setup-google.md')).toContain('DESKTOP_RELEASES_FOLDER_ID');
+    expect(read('docs/e2e-checklist-desktop.md')).toContain('Pembaruan otomatis');
   });
 });
