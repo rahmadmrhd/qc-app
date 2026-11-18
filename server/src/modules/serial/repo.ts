@@ -1,5 +1,7 @@
 import { CAS_UPDATED_AT_SET } from '@server/core/cas';
 import type { DbStatement, Preparer } from '@server/core/db';
+import type { UserContext } from '@server/modules/access/context';
+import { canWriteBu, writableBuIds } from './access';
 
 export interface NewSerial {
   id: string;
@@ -57,13 +59,25 @@ export async function locationNameOf(db: Preparer, locationId: string): Promise<
   return row ? row.name : null;
 }
 
-/** Item aktif yang tergabung pada BU itu (nama item tidak dibaca: pesan galat generik). */
-export async function activeItemInBu(db: Preparer, itemId: string, buId: string): Promise<boolean> {
+/**
+ * Syarat item bagi serial di sebuah BU (spek 2026-11-18 butir N): BU serial TIDAK lagi dibatasi pada BU item. Item harus
+ * aktif dan terlihat bagi user (minimal satu BU item berada dalam cakupan tulis `serial: edit` user), BU harus aktif, dan
+ * user harus boleh menulis di BU itu. Nama item/BU tidak dibaca: pemanggil menjawab galat generik.
+ */
+export async function activeItemWritableForBu(
+  db: Preparer,
+  itemId: string,
+  buId: string,
+  user: UserContext,
+): Promise<boolean> {
+  if (!canWriteBu(user, buId)) return false;
+  const scope = writableBuIds(user);
+  if (scope.length === 0) return false;
   const row = await db
     .prepare(
-      "SELECT 1 AS ok FROM items i JOIN item_business_units l ON l.item_id = i.id WHERE i.id = ? AND l.bu_id = ? AND i.status = 'active'",
+      `SELECT 1 AS ok FROM items i WHERE i.id = ? AND i.status = 'active' AND EXISTS (SELECT 1 FROM item_business_units l WHERE l.item_id = i.id AND l.bu_id IN (${scope.map(() => '?').join(',')})) AND EXISTS (SELECT 1 FROM business_units b WHERE b.id = ? AND b.status = 'active')`,
     )
-    .bind(itemId, buId)
+    .bind(itemId, ...scope, buId)
     .first<{ ok: number }>();
   return row !== null;
 }

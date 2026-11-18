@@ -14,6 +14,7 @@ import {
 } from './proof/validate';
 import { lookupSerials, reportNewSerial } from './report';
 import {
+  buOptions,
   getSerial,
   listSerials,
   locationOptions,
@@ -47,6 +48,7 @@ import {
 
 type SerialMethod =
   | 'serials.itemOptions'
+  | 'serials.buOptions'
   | 'serials.stickerOptions'
   | 'serials.locationOptions'
   | 'serials.serviceLocations'
@@ -90,6 +92,12 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       permission: READ_PERMISSION,
       validate: validateListSerialItemOptions,
       handler: (input, ctx) => queryItemOptions(ctx.env, ctx.user, input),
+    },
+    // Pemilih BU pencatatan: terbuka bagi pembaca seperti `serials.itemOptions`; cakupan BU dihitung handler.
+    'serials.buOptions': {
+      permission: READ_PERMISSION,
+      validate: expectNull,
+      handler: (_input, ctx) => buOptions(ctx.env, ctx.user),
     },
     'serials.stickerOptions': {
       permission: { module: 'serial', level: 'edit' },

@@ -247,6 +247,42 @@ describe('serials.locationOptions', () => {
   });
 });
 
+describe('serials.buOptions', () => {
+  test('pencatat: hanya BU aktif yang boleh ditulis, urut kode lalu id', async () => {
+    const result = await call(WRITER, 'serials.buOptions', null);
+    expect(result.ok).toBe(true);
+    expect((result.data as Json).businessUnits).toEqual([{ id: 'bu-a', code: 'A', name: 'A' }]);
+    await seedBusinessUnit(env, { id: 'bu-c', code: '0C', name: 'Nol C' });
+    await seedUser(env, {
+      id: 'u-three',
+      email: 'tiga-bu@gmail.com',
+      buAssignments: [
+        { buId: 'bu-b', roleIds: ['r-edit'] },
+        { buId: 'bu-c', roleIds: ['r-edit'] },
+        { buId: 'bu-a', roleIds: ['r-edit'] },
+      ],
+    });
+    const both = await call('tiga-bu@gmail.com', 'serials.buOptions', null);
+    expect((both.data as Json).businessUnits.map((b: Json) => b.code)).toEqual(['0C', 'A', 'B']);
+  });
+
+  test('BU nonaktif tidak muncul; BU di luar hak tidak bocor', async () => {
+    await env.DB.prepare("UPDATE business_units SET status = 'inactive' WHERE id = 'bu-b'").run();
+    const both = await call(BOTH, 'serials.buOptions', null);
+    expect((both.data as Json).businessUnits.map((b: Json) => b.id)).toEqual(['bu-a']);
+    const writer = await call(WRITER, 'serials.buOptions', null);
+    expect(JSON.stringify(writer.data)).not.toContain('bu-b');
+  });
+
+  test('pembaca saja: BU yang boleh dibacanya; tanpa peran FORBIDDEN', async () => {
+    const viewer = await call(VIEWER, 'serials.buOptions', null);
+    expect((viewer.data as Json).businessUnits.map((b: Json) => b.id)).toEqual(['bu-a']);
+    const service = await call(SERVICE, 'serials.buOptions', null);
+    expect((service.data as Json).businessUnits.map((b: Json) => b.id)).toEqual(['bu-b']);
+    expect((await call(NOBU, 'serials.buOptions', null)).error?.code).toBe('FORBIDDEN');
+  });
+});
+
 describe('serials.stickerOptions', () => {
   beforeEach(async () => {
     await seedGuideImage(env, { id: 'g1' });
@@ -268,13 +304,32 @@ describe('serials.stickerOptions', () => {
     ]);
   });
 
-  test('BU di luar hak tulis atau item di luar BU: NOT_FOUND; serial view saja: FORBIDDEN', async () => {
+  test('BU di luar hak tulis atau item yang tak terlihat: NOT_FOUND; serial view saja: FORBIDDEN', async () => {
     const outsideBu = await call(WRITER, 'serials.stickerOptions', { itemId: 'i-b', buId: 'bu-b' });
     expect(outsideBu.error?.code).toBe('NOT_FOUND');
-    const notInBu = await call(WRITER, 'serials.stickerOptions', { itemId: 'i-b', buId: 'bu-a' });
-    expect(notInBu.error?.code).toBe('NOT_FOUND');
+    // i-b hanya di BU B: tak terlihat bagi pencatat BU A, walau BU A yang diminta.
+    const invisible = await call(WRITER, 'serials.stickerOptions', { itemId: 'i-b', buId: 'bu-a' });
+    expect(invisible.error?.code).toBe('NOT_FOUND');
+    const inactiveItem = await call(WRITER, 'serials.stickerOptions', {
+      itemId: 'i-off',
+      buId: 'bu-a',
+    });
+    expect(inactiveItem.error?.code).toBe('NOT_FOUND');
     const viewer = await call(VIEWER, 'serials.stickerOptions', { itemId: 'i-a1', buId: 'bu-a' });
     expect(viewer.error?.code).toBe('FORBIDDEN');
+  });
+
+  test('BU yang bukan BU item boleh dipakai (butir N): stiker dihitung dari item dan BU serial', async () => {
+    // i-a1 hanya tergabung di BU A, tetapi BOTH boleh menulis di BU B: tidak lagi NOT_FOUND.
+    const result = await call(BOTH, 'serials.stickerOptions', { itemId: 'i-a1', buId: 'bu-b' });
+    expect(result.ok).toBe(true);
+    expect((result.data as Json).stickers.map((s: Json) => s.id)).toEqual(['s1']);
+  });
+
+  test('BU nonaktif: NOT_FOUND', async () => {
+    await env.DB.prepare("UPDATE business_units SET status = 'inactive' WHERE id = 'bu-b'").run();
+    const result = await call(BOTH, 'serials.stickerOptions', { itemId: 'i-a1', buId: 'bu-b' });
+    expect(result.error?.code).toBe('NOT_FOUND');
   });
 
   test('validator: itemId dan buId wajib', async () => {
@@ -391,6 +446,42 @@ describe('serials.saveBatch', () => {
     expect(entry?.serial_id).not.toBe('');
   });
 
+  test('BU yang bukan BU item boleh dipakai bila user boleh menulis di BU itu (butir N)', async () => {
+    // i-a1 hanya tergabung di BU A; BOTH boleh menulis di BU B dan melihat item lewat BU A.
+    const out = await save(BOTH, [row({ serial: 'SN-LAIN', buId: 'bu-b' })]);
+    expect(resultsOf(out)[0]).toMatchObject({ result: 'created', serial: 'SN-LAIN' });
+    const stored = await env.DB.prepare(
+      "SELECT bu_id, item_id FROM serials WHERE serial = 'SN-LAIN'",
+    ).first<{ bu_id: string; item_id: string }>();
+    expect(stored).toEqual({ bu_id: 'bu-b', item_id: 'i-a1' });
+    expect(await stockOf('s1')).toBe(4);
+  });
+
+  test('ditolak generik: BU di luar hak tulis, BU nonaktif, item tak terlihat atau nonaktif', async () => {
+    await seedBusinessUnit(env, { id: 'bu-x', code: 'X', status: 'inactive' });
+    await seedUser(env, {
+      id: 'u-x',
+      email: 'pemegang-x@gmail.com',
+      buAssignments: [
+        { buId: 'bu-a', roleIds: ['r-edit'] },
+        { buId: 'bu-x', roleIds: ['r-edit'] },
+      ],
+    });
+    const rejected = [
+      await save(WRITER, [row({ serial: 'R-1', buId: 'bu-b' })]), // tak boleh menulis di BU B
+      await save('pemegang-x@gmail.com', [row({ serial: 'R-2', buId: 'bu-x' })]), // BU nonaktif
+      await save(WRITER, [row({ serial: 'R-3', itemId: 'i-b' })]), // item hanya di BU B: tak terlihat
+      await save(WRITER, [row({ serial: 'R-4', itemId: 'i-off' })]), // item nonaktif
+    ];
+    for (const out of rejected) {
+      expect(resultsOf(out)[0]).toMatchObject({
+        result: 'invalid',
+        message: 'Item tidak ditemukan atau tidak bisa dipakai',
+      });
+    }
+    expect(await count('serials')).toBe(0);
+  });
+
   test('stickers tidak dikirim = semua stiker yang berlaku (defaultQty 1); [] eksplisit = tanpa stiker', async () => {
     const all = await save(WRITER, [row({ serial: 'SN-ALL', stickers: undefined })]);
     expect(resultsOf(all)[0]).toMatchObject({ result: 'created' });
@@ -491,9 +582,9 @@ describe('serials.saveBatch', () => {
   });
 
   test('sebagian baris gagal tidak menggagalkan yang lain; invalid tidak membocorkan item', async () => {
-    const out = await save(BOTH, [
+    const out = await save(WRITER, [
       row({ serial: 'AB\u0000C' }),
-      row({ serial: 'SN-2', itemId: 'i-b' }), // item hanya di BU B, dikirim untuk BU A
+      row({ serial: 'SN-2', itemId: 'i-b' }), // item hanya di BU B, tak terlihat bagi pencatat BU A
       row({ serial: 'SN-3' }),
     ]);
     const results = resultsOf(out);
