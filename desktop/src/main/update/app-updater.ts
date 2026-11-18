@@ -1,7 +1,8 @@
 // Pengendali pembaruan otomatis aplikasi (spek desktop 5.5, rencana bagian 4). Murni terhadap Electron: semua dependensi
 // (updater, dialog, pewaktu, status inject) disuntik agar dapat diuji tanpa Electron.
 //
-// Aturan: cek tertunda saat mulai lalu tiap 6 jam; unduhan TIDAK otomatis (pengguna memilih dulu); pembaruan hanya naik
+// Aturan: cek tertunda saat mulai lalu tiap 6 jam; unduhan TIDAK otomatis (pengguna memilih dulu; "Nanti" dan unduhan gagal
+// ditawarkan lagi pada cek berikutnya, versi yang sudah terunduh tidak); pembaruan hanya naik
 // (provider yang menjamin); tidak pernah mengecek, meminta restart, atau memasang saat inject Country Lock berjalan (tawaran
 // restart ditunda dan dicoba lagi; pemasangan saat keluar tetap berlaku). Dialog bawaan OS, tanpa kanal jembatan baru.
 import { normalizeServerUrl } from '../settings';
@@ -79,8 +80,11 @@ export function createAppUpdater(deps: AppUpdaterDeps): AppUpdater {
   let running = false;
   let nextCheck: unknown = null;
   let retry: unknown = null;
-  /** Versi yang sudah ditolak ("Nanti") atau sudah diunduh pada sesi ini: tak ditanyakan lagi. */
-  const handled = new Set<string>();
+  /**
+   * Versi yang sudah terunduh pada sesi ini: tak ditanyakan atau diunduh lagi (terpasang saat keluar). "Nanti" dan unduhan
+   * yang gagal TIDAK dicatat di sini, jadi ditawarkan lagi pada cek berikutnya (spek 5.5; keputusan pemilik 2026-11-18).
+   */
+  const downloaded = new Set<string>();
 
   function scheduleCheck(ms: number): void {
     if (nextCheck !== null) clearTimer(nextCheck);
@@ -123,7 +127,7 @@ export function createAppUpdater(deps: AppUpdaterDeps): AppUpdater {
       const result = await updater.checkForUpdates();
       if (!result?.isUpdateAvailable) return;
       const version = result.updateInfo.version;
-      if (handled.has(version)) return;
+      if (downloaded.has(version)) return;
       const answer = await dialog.showMessageBox({
         type: 'info',
         title: 'Pembaruan QC App',
@@ -134,9 +138,9 @@ export function createAppUpdater(deps: AppUpdaterDeps): AppUpdater {
         cancelId: 1,
         noLink: true,
       });
-      handled.add(version);
       if (answer.response !== 0) return;
       await updater.downloadUpdate();
+      downloaded.add(version);
       updater.autoInstallOnAppQuit = true;
       await offerRestart(version);
     } catch (error) {

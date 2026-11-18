@@ -2105,7 +2105,7 @@ describe('release-desktop.yml: pipeline rilis aplikasi desktop dari PR rilis (ri
     expect(JSON.stringify(steps.filter((s) => s !== build))).not.toContain('DESKTOP_CATALOG_TOKEN');
   });
 
-  test('publish: unggah Drive (manifest ditandatangani) SEBELUM tag dan Release; tag/Release idempoten, tanpa melampirkan installer; kunci ke berkas sementara dan dihapus if: always()', () => {
+  test('publish: unggah Drive (manifest ditandatangani) SEBELUM tag dan Release; tag/Release idempoten, installer dilampirkan; kunci ke berkas sementara dan dihapus if: always()', () => {
     const steps = stepsOfJob('publish');
     const notes = steps.find((s) => s.id === 'notes');
     const drive = steps.find((s) => s.run?.includes('publish-desktop-release.ts'));
@@ -2127,15 +2127,25 @@ describe('release-desktop.yml: pipeline rilis aplikasi desktop dari PR rilis (ri
     expect(drive?.run).toContain('umask 077');
     expect(drive?.run).toContain('--folder-id "$FOLDER_ID"');
     expect(drive?.run).toContain('--changelog-file');
-    // tag dan Release: token hanya di langkah API, tak menjalankan kode repo, idempoten, tanpa installer
+    // tag dan Release: token hanya di langkah API, tak menjalankan kode repo, idempoten; installer dilampirkan
+    // (keputusan pemilik 2026-11-18: token katalog dinyatakan publik, jadi melampirkan installer tak menambah paparan)
     expect(release?.env?.GH_TOKEN).toBe('${{ github.token }}');
+    expect(release?.env?.INSTALLERS_DIR).toBe('${{ runner.temp }}/installers');
     expect(release?.run).not.toContain('bun run');
     expect(release?.run).toContain('git/ref/tags/');
     expect(release?.run).toContain('gh release create');
     expect(release?.run).toContain('--target');
     expect(release?.run).toContain('--verify-tag');
     expect(release?.run).toContain('desktop-v');
-    expect(release?.run).not.toMatch(/\.exe|gh release upload/);
+    // lampiran: hanya QC-App-Setup-*.exe dari artefak build, wajib ada, dan pembuatan ulang menimpa lampiran lama
+    expect(release?.run).toContain('QC-App-Setup-*.exe');
+    expect(release?.run).toContain('"${assets[@]}"');
+    expect(release?.run).toContain('gh release upload "$tag" "${assets[@]}" --clobber');
+    const createLines = (release?.run ?? '')
+      .split('\n')
+      .filter((l) => l.includes('gh release create'));
+    expect(createLines).toHaveLength(2);
+    for (const line of createLines) expect(line).toContain('"${assets[@]}"');
     const cleanup = steps.at(-1);
     expect(cleanup?.if).toBe('always()');
     expect(cleanup?.run).toContain('sa-key.json');
