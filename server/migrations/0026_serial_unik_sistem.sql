@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS serial_business_units (
   first_at VARCHAR(40) NOT NULL DEFAULT '',
   left_at VARCHAR(40) NOT NULL DEFAULT '',
   PRIMARY KEY (serial_id, bu_id),
-  KEY serial_bu_by_bu (bu_id, serial_id)
+  KEY serial_bu_by_bu (bu_id, left_at, serial_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin;
 
 -- Isi awal: satu baris "BU saat ini" per serial. Diulang tiap start server oleh `backfillSerialBusinessUnits` (image

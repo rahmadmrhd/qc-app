@@ -15,6 +15,7 @@ import type {
   ListSerialItemOptionsInput,
   SaveSerialBatchInput,
   SaveSerialBatchOutput,
+  SerialBuHistoryDto,
   SerialBuOptionsDto,
   SerialCaseDto,
   SerialChangeDto,
@@ -53,7 +54,7 @@ import {
   type SerialStatus,
   splitSerialInput,
 } from '@shared/serials';
-import { assertSerialVisible, canWriteBu, readableBuIds, writableBuIds } from './access';
+import { canReadSerial, canWriteBu, readableBuIds, writableBuIds } from './access';
 import { applicableStickersOf } from './applicable';
 import { loadCases, type SerialCaseRow } from './case-repo';
 import { canManageProof } from './proof/access';
@@ -69,9 +70,11 @@ import {
   insertSerialStmt,
   itemLabelOf,
   listSerialRows,
+  loadBuHistory,
   loadSerialEvents,
   loadSerialRow,
   loadSerialStickers,
+  type SerialBuHistoryRow,
   type SerialColumn,
   type SerialEventRow,
   type SerialListFilter,
@@ -578,12 +581,35 @@ export function toStickerStatus(status: string | null): SerialStickerStatus {
   return value === 'active' || value === 'deprecated' ? value : 'inactive';
 }
 
-function toDto(row: SerialRow, stickers: SerialStickerRow[], caseRows: SerialCaseRow[]): SerialDto {
+/**
+ * Riwayat BU untuk DTO. Serial tanpa baris untuk BU saat ini (ditulis image lama saat rollback; belum dilengkapi
+ * pengisi saat start) tetap menampilkan BU saat ini.
+ */
+function toBuHistory(row: SerialRow, history: SerialBuHistoryRow[]): SerialBuHistoryDto[] {
+  const entries = history.map((entry) => ({
+    buId: entry.bu_id.trim(),
+    buCode: entry.bu_code,
+    firstAt: entry.first_at,
+    leftAt: entry.left_at.trim(),
+  }));
+  const current = row.bu_id.trim();
+  if (!entries.some((entry) => entry.buId === current)) {
+    entries.push({ buId: current, buCode: row.bu_code, firstAt: row.created_at, leftAt: '' });
+  }
+  return entries;
+}
+
+function toDto(
+  row: SerialRow,
+  stickers: SerialStickerRow[],
+  caseRows: SerialCaseRow[],
+  buHistory: SerialBuHistoryRow[],
+): SerialDto {
   const cases = caseRows.map(toCase);
   const openCaseId = orNull(row.open_case_id);
   return {
     ...toSummary(row),
-    buHistory: [], // diisi Tugas 3 dari serial_business_units
+    buHistory: toBuHistory(row, buHistory),
     note: row.note,
     recordedLocationId: row.recorded_location_id.trim(),
     stickers: stickers.map((sticker) => ({
@@ -664,12 +690,16 @@ export async function toEventsWithProofs(
 export async function loadSerialDto(env: Env, user: UserContext, id: string): Promise<SerialDto> {
   const row = await loadSerialRow(env.DB, id);
   if (!row) throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
-  assertSerialVisible(user, row.bu_id.trim());
-  const [stickers, cases] = await Promise.all([
+  // Baca: BU saat ini ATAU BU di riwayat (spek serial unik se-sistem §5.3); BU lain = NOT_FOUND.
+  if (!(await canReadSerial(env.DB, user, row.id.trim(), row.bu_id.trim()))) {
+    throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
+  }
+  const [stickers, cases, buHistory] = await Promise.all([
     loadSerialStickers(env.DB, row.id.trim()),
     loadCases(env.DB, row.id.trim()),
+    loadBuHistory(env.DB, row.id.trim()),
   ]);
-  return toDto(row, stickers, cases);
+  return toDto(row, stickers, cases, buHistory);
 }
 
 /** Detail serial beserta linimasa: maks. 500 kejadian TERBARU, terbaru di atas (`seq` menurun); `eventsTruncated` bila ada yang lebih lama. */

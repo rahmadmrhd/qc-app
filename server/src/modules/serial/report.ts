@@ -55,7 +55,12 @@ export async function lookupSerials(
   const serial = normalizeSerial(input.serial);
   if (buIds.length === 0 || serialProblem(serial) !== null) return { matches: [], elsewhere: null };
   const serials = [serial];
-  const rows = await listSerialRows(env.DB, { buIds, serials, limit: LOOKUP_MAX });
+  const rows = await listSerialRows(env.DB, {
+    buIds,
+    serials,
+    limit: LOOKUP_MAX,
+    buScope: 'current',
+  });
   const matches = rows.slice(0, LOOKUP_MAX).map((row): SerialLookupMatchDto => {
     const summary = toSummary(row);
     return {

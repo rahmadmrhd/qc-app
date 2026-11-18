@@ -139,10 +139,12 @@ function scopeClause(scope: NotificationScope): { sql: string; params: string[] 
     params.push(...SERIAL_NOTIFICATION_KINDS, ...locationIds);
   }
   if (buIds.length > 0) {
+    const marks = buIds.map(() => '?').join(', ');
     parts.push(
-      `(kind IN (${kinds}) AND serial_id IN (SELECT id FROM serials WHERE bu_id IN (${buIds.map(() => '?').join(', ')})))`,
+      `(kind IN (${kinds}) AND (serial_id IN (SELECT id FROM serials WHERE bu_id IN (${marks})) OR serial_id IN (SELECT serial_id FROM serial_business_units WHERE bu_id IN (${marks}) AND left_at > '')))`,
     );
-    params.push(...SERIAL_NOTIFICATION_KINDS, ...buIds);
+    // BU saat ini ATAU riwayat BU (spek serial unik se-sistem §5.3); daftar BU diikat dua kali.
+    params.push(...SERIAL_NOTIFICATION_KINDS, ...buIds, ...buIds);
   }
   return parts.length === 0 ? null : { sql: `(${parts.join(' OR ')})`, params };
 }
