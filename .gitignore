@@ -38,3 +38,7 @@ desktop/spike-report-*.json
 # kunci penandatangan manifest UI desktop (rahasia; jangan dikomit)
 *.ui-signing-key.pem
 ui-signing-key.pem
+
+# Laporan dry-run migrasi data QC lama (berisi nomor serial; jangan dikomit)
+server/legacy-qc-report/
+server/laporan-*/

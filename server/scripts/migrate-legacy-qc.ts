@@ -5,7 +5,7 @@
 // BAWAAN = DRY-RUN: hanya membaca tujuan (SELECT) dan menulis laporan; tidak menulis ke database.
 //   --apply                      tulis ke database (wajib bersama --confirm-database)
 //   --confirm-database <nama>    harus sama dengan nama skema pada DATABASE_URL (pengaman salah sasaran)
-//   --item-bu brand|brand+serials  BU item: bawaan merk saja, atau + BU tempat serialnya tercatat (bawaan)
+//   --item-bu brand|brand+serials  BU item: BU default merk saja (bawaan, keputusan pemilik 2026-11-18), atau + BU tempat serialnya tercatat
 //   --report-dir <folder>        folder laporan (bawaan ./legacy-qc-report)
 //   --offline                    tanpa koneksi database: hanya rencana dan CSV (pencocokan tujuan dilewati)
 // Pemetaan dan keputusan: docs/superpowers/specs/2026-11-17-migrasi-data-qc-lama-pemetaan.md.
@@ -30,7 +30,7 @@ export function parseArgs(argv: string[]): Args {
     dump: '',
     apply: false,
     confirmDatabase: '',
-    itemBu: 'brand+serials',
+    itemBu: 'brand',
     reportDir: './legacy-qc-report',
     offline: false,
   };
