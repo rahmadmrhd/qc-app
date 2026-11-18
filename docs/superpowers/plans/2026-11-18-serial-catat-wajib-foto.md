@@ -22,7 +22,7 @@
 - Commit per kelompok logis, trailer `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`; tanpa push; jangan menyentuh server dev (3000/8788).
 
 ## Review Focus
-1. Draft lama di localStorage (baris tanpa `proofMin`) untuk item yang kemudian wajib foto: server menolak baris dengan pesan per baris; web menampilkannya tanpa mengosongkan foto baris dan tanpa menghilangkan baris (`isProofRejection` tidak boleh mengenali pesan baru).
+1. Draft lama di localStorage (baris tanpa `proofMin`) untuk item yang kemudian wajib foto: baris disegarkan dari `serials.itemOptions` saat dimuat sehingga berstatus "Butuh n foto lagi" sebelum Simpan; bila masih kurang, server menolak dengan pesan per baris, dan web menampilkannya tanpa mengosongkan foto baris dan tanpa menghilangkan baris (`isProofRejection` tidak boleh mengenali pesan baru).
 2. Langkah konfirmasi strict: serial diedit menjadi tak sah atau duplikat (terhadap draft) memblokir Simpan; foto tetap terpasang saat serial diedit; Scan ulang membuang foto dengan konfirmasi.
 3. Batal/Esc/tutup saat foto masih mengunggah: tidak ada foto draft yatim (`discardProofPhotos`), tidak ada pembaruan state setelah unmount, kamera dilepas.
 4. Kamera foto: izin ditolak atau tak ada `getUserMedia` = tombol Kamera tidak tampil dan Telusuri/kamera bawaan tetap berfungsi; batas 5 foto dan kuota draft ditolak dengan pesan jelas; bingkai gagal dienkode tidak membuat dialog macet.
