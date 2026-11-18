@@ -17,6 +17,7 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p scripts/tsconfig.json"
   },
   "dependencies": {
+    "electron-updater": "6.8.11",
     "ssh2": "1.17.0"
   },
   "devDependencies": {

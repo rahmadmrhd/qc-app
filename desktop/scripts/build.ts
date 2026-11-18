@@ -10,7 +10,7 @@ import { resolveCatalogToken } from './catalog-token';
 import { resolveUiPublicKey } from './ui-public-key';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const external = ['electron', 'ssh2', 'node:sqlite'];
+const external = ['electron', 'electron-updater', 'ssh2', 'node:sqlite'];
 
 const spikeOnly = process.argv.includes('--spike');
 // Kunci publik tanda tangan UI disuntikkan dari env `UI_PUBLIC_KEY_PEM` (bukan ditulis di source). `--require-ui-key`
