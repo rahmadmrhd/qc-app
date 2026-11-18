@@ -48,6 +48,10 @@ export interface SeedItem {
    * kemudian mengisinya (upsert).
    */
   postelId?: string;
+  /** Wajib foto bukti pada Catat Serial (bawaan false). */
+  proofRequired?: boolean;
+  /** Minimum foto bila `proofRequired` (bawaan 1). */
+  proofMin?: number;
 }
 
 export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<void> {
@@ -60,7 +64,7 @@ export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<vo
       .run();
   }
   await env.DB.prepare(
-    "INSERT INTO items (id, brand_id, model, `key`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by, manual_book_design_id, postel_id) VALUES (?, ?, ?, ?, 'false', ?, ?, '[]', '[]', '[]', '', ?, ?, ?, 'seed', ?, ?)",
+    "INSERT INTO items (id, brand_id, model, `key`, is_country_lock, aliases, alias_keys, stickers, accessories, attachments, detail_md, status, created_at, updated_at, updated_by, manual_book_design_id, postel_id, proof_required, proof_min) VALUES (?, ?, ?, ?, 'false', ?, ?, '[]', '[]', '[]', '', ?, ?, ?, 'seed', ?, ?, ?, ?)",
   )
     .bind(
       item.id,
@@ -74,6 +78,8 @@ export async function seedItem(env: Pick<Env, 'DB'>, item: SeedItem): Promise<vo
       SEED_TIME,
       item.manualBookDesignId ?? '',
       item.postelId === undefined || item.postelId === '' ? null : item.postelId,
+      item.proofRequired ? 1 : 0,
+      item.proofMin ?? 1,
     )
     .run();
   const businessUnitIds = item.businessUnitIds ?? [DEFAULT_TEST_BU_ID];

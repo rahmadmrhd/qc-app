@@ -42,6 +42,7 @@ import { normalizeKey } from '@shared/items';
 import { wibDateIso } from '@shared/postel';
 import {
   normalizeSerial,
+  proofMinimumOf,
   SERIAL_CUSTODIES,
   SERIAL_EVENT_TYPES,
   SERIAL_LIMITS,
@@ -89,6 +90,8 @@ interface OptionRow {
   brand_name: string | null;
   model: string;
   key: string;
+  proof_required: number | string;
+  proof_min: number | string;
 }
 
 const placeholders = (count: number): string => Array.from({ length: count }, () => '?').join(',');
@@ -134,7 +137,7 @@ export async function queryItemOptions(
   }
   const effectiveLimit = byIds ? (input.itemIds?.length ?? 0) : limit;
   const rows = await env.DB.prepare(
-    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\` FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
+    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.proof_required, i.proof_min FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
   )
     .bind(...binds, effectiveLimit + 1)
     .all<OptionRow>();
@@ -160,6 +163,8 @@ export async function queryItemOptions(
       label: `${row.brand_name ?? ''} ${row.model.trim()}`.trim(),
       buIds: buOptions.map((bu) => bu.id),
       buOptions,
+      proofRequired: Number(row.proof_required) === 1,
+      proofMin: Number(row.proof_min),
     };
   });
   return {
@@ -230,6 +235,7 @@ type Applicable = Awaited<ReturnType<typeof applicableStickersOf>>;
  */
 export class SerialLookupMemo {
   private readonly items = new Map<string, Promise<boolean>>();
+  private readonly proofMins = new Map<string, Promise<number>>();
   private readonly locations = new Map<string, Promise<string | null>>();
   private readonly stickers = new Map<string, Promise<Map<string, Applicable[number]>>>();
 
@@ -241,6 +247,26 @@ export class SerialLookupMemo {
     if (!found) {
       found = activeItemInBu(this.env.DB, itemId, buId);
       this.items.set(key, found);
+    }
+    return found;
+  }
+
+  /** Jumlah foto bukti minimum item (0 = tidak wajib); dibaca sekali per item per permintaan (`proofMinimumOf`). */
+  proofMinOf(itemId: string): Promise<number> {
+    let found = this.proofMins.get(itemId);
+    if (!found) {
+      found = this.env.DB.prepare('SELECT proof_required, proof_min FROM items WHERE id = ?')
+        .bind(itemId)
+        .first<{ proof_required: number | string; proof_min: number | string }>()
+        .then((item) =>
+          item
+            ? proofMinimumOf({
+                proofRequired: Number(item.proof_required) === 1,
+                proofMin: Number(item.proof_min),
+              })
+            : 0,
+        );
+      this.proofMins.set(itemId, found);
     }
     return found;
   }
@@ -292,6 +318,12 @@ export async function createSerialOnce(
       : failRow(row, 'Baris tidak valid');
   }
   if (!(await memo.activeItemInBu(row.itemId, row.buId))) return failRow(row, ITEM_MESSAGE);
+  // Item wajib foto bukti: jumlah foto kurang dari minimum = baris `invalid` (mencakup draft lama dan impor `.qcsn`).
+  // Pesan sengaja tidak diawali kalimat penolakan foto web (`isProofRejection`), supaya foto baris tak dikosongkan.
+  const proofMin = await memo.proofMinOf(row.itemId);
+  if (proofMin > (row.proofPhotoIds?.length ?? 0)) {
+    return failRow(row, `Item ini wajib foto bukti minimal ${proofMin}`);
+  }
   const locationName = await memo.activeLocationName(row.locationId);
   if (locationName === null) return failRow(row, LOCATION_MESSAGE);
   // Stiker hanya dimuat bila perlu: `[]` eksplisit tak butuh daftar yang berlaku; tidak dikirim = semua yang berlaku.

@@ -21,6 +21,8 @@ const FIELD_LABELS: Record<string, string> = {
   model: 'Tipe',
   isCountryLock: 'Country lock',
   firmware: 'Firmware',
+  proofRequired: 'Wajib foto',
+  proofMin: 'Minimum foto',
   aliases: 'Nama lain',
   stickers: 'Stiker',
   stickerPhotos: 'Instruksi stiker',
