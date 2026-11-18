@@ -2,7 +2,7 @@
 // `bridge-contract.ts` (yang memuat zod) agar bundel preload tetap kecil.
 
 /** Versi kontrak jembatan; renderer menolak jembatan di bawah `MIN_BRIDGE_VERSION`. */
-export const BRIDGE_VERSION = 5;
+export const BRIDGE_VERSION = 6;
 export const MIN_BRIDGE_VERSION = 2;
 
 /** Kanal `ipcMain.handle` (permintaan-jawaban): `qc:<grup>:<aksi>`. */
@@ -46,5 +46,11 @@ export const CATALOG_BRIDGE_VERSION = 5;
  * ketat; tak ada jalur berkas yang melewati jembatan).
  */
 export const CATALOG_FILES_PATH = '/catalog-files/';
+/**
+ * Jembatan paling rendah yang menerima BU dan lokasi pada `pending.add` (`buId`/`buLabel`/`locationId`/`locationLabel`):
+ * skema argumennya ketat, jadi UI yang lebih baru hanya mengirim field itu (dan hanya menampilkan pilihannya) bila
+ * jembatannya sudah v6.
+ */
+export const PENDING_TARGET_BRIDGE_VERSION = 6;
 /** Jembatan paling rendah yang punya `notifications.onChange`; UI lama/baru tetap berjalan tanpanya (hanya polling). */
 export const NOTIFICATIONS_BRIDGE_VERSION = 4;

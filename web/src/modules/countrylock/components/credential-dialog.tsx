@@ -75,7 +75,7 @@ function CredentialForm({
         <Label htmlFor="country-lock-password">Password</Label>
         <Input
           id="country-lock-password"
-          type="password"
+          type="text"
           autoComplete="off"
           maxLength={PASSWORD_MAX}
           value={password}
@@ -102,8 +102,9 @@ function CredentialForm({
 
 /**
  * Meminta kredensial perangkat ketika yang dicoba ditolak ("Permission denied"). Isian awal =
- * kredensial bawaan merk dari `config.QC`; kata sandi hanya tampil di kolom password dan tidak
- * pernah dicatat ke log atau pesan galat.
+ * kredensial bawaan merk dari `config.QC`. Password SENGAJA tampil apa adanya (keputusan pemilik 2026-11-18): ini
+ * kredensial bawaan pabrik perangkat baru yang akan di-inject, bukan rahasia pengguna, dan operator perlu melihatnya
+ * untuk memastikan isiannya benar. Tetap tidak pernah dicatat ke log atau pesan galat.
  */
 export function CredentialDialog({ prompt, onSubmit, onCancel }: CredentialDialogProps) {
   return (

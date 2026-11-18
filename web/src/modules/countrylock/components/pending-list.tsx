@@ -56,6 +56,8 @@ export function PendingList({ entries }: { entries: readonly PendingEntry[] }) {
               <TableHead>Serial</TableHead>
               <TableHead>Merk</TableHead>
               <TableHead>Tipe</TableHead>
+              <TableHead>BU</TableHead>
+              <TableHead>Lokasi</TableHead>
               <TableHead>Tanggal</TableHead>
               <TableHead>Keterangan</TableHead>
             </TableRow>
@@ -66,6 +68,8 @@ export function PendingList({ entries }: { entries: readonly PendingEntry[] }) {
                 <TableCell className="font-mono">{entry.serial}</TableCell>
                 <TableCell>{BRAND_LABELS[entry.brand]}</TableCell>
                 <TableCell>{entry.tipe || '-'}</TableCell>
+                <TableCell>{entry.buLabel || '-'}</TableCell>
+                <TableCell>{entry.locationLabel || '-'}</TableCell>
                 <TableCell>{entry.date}</TableCell>
                 <TableCell>{reinjectedLabel(entry.reinjectedAt)}</TableCell>
               </TableRow>

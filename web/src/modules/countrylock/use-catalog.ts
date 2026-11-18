@@ -1,4 +1,4 @@
-// Katalog Tipe offline di halaman Country Lock (spek desktop §6.6): potret tersimpan + status sinkron dari jembatan.
+// Katalog offline (Tipe, BU, lokasi) di desktop (spek desktop §6.6): potret tersimpan + status sinkron dari jembatan.
 // Jembatan lama (di bawah v5) tidak punya `catalog`: hook mengembalikan `supported: false` dan tak memanggil apa pun,
 // sehingga UI hibrid yang lebih baru tetap jalan di aplikasi desktop yang belum diperbarui.
 
@@ -20,6 +20,45 @@ export interface UseCatalog {
   status: CatalogStatus | null;
   refreshing: boolean;
   refresh(): void;
+}
+
+export interface UseCatalogStatus {
+  supported: boolean;
+  status: CatalogStatus | null;
+  refreshing: boolean;
+  refresh(): void;
+}
+
+/**
+ * Hanya status sinkron (tanpa membaca potret): untuk tombol sinkron di navbar yang tampil di semua halaman desktop,
+ * terpisah dari `useCatalog` milik halaman Country Lock.
+ */
+export function useCatalogStatus(bridge: QcBridge): UseCatalogStatus {
+  const supported = supportsCatalog(bridge);
+  const [status, setStatus] = useState<CatalogStatus | null>(null);
+
+  useEffect(() => {
+    if (!supported) return;
+    let cancelled = false;
+    void bridge.catalog
+      .status()
+      .then((next) => {
+        if (!cancelled) setStatus(next);
+      })
+      .catch(() => undefined);
+    const stop = bridge.catalog.onChange((next) => setStatus(next));
+    return () => {
+      cancelled = true;
+      stop();
+    };
+  }, [bridge, supported]);
+
+  const refresh = useCallback(() => {
+    if (!supported) return;
+    void bridge.catalog.refresh().catch(() => undefined);
+  }, [bridge, supported]);
+
+  return { supported, status, refreshing: status?.state === 'syncing', refresh };
 }
 
 export function useCatalog(bridge: QcBridge): UseCatalog {
