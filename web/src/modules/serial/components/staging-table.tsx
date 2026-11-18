@@ -107,7 +107,7 @@ function SerialCell({ clientId, serial, onCommitSerial, disabled }: SerialCellPr
       <Input
         aria-label={`Serial ${serial}`}
         aria-invalid={error ? true : undefined}
-        className="h-8 w-40 font-mono"
+        className="h-8 w-36 font-mono"
         value={text}
         disabled={disabled}
         maxLength={SERIAL_LIMITS.serialMax * 4}
@@ -213,7 +213,7 @@ const RowView = memo(function RowView({
           disabled={disabled}
         />
       </td>
-      <td className="max-w-56 px-2 py-1.5 text-sm">
+      <td className="max-w-44 px-2 py-1.5 text-sm">
         <span className="block truncate" title={row.itemLabel}>
           {row.itemLabel || '—'}
         </span>
@@ -233,7 +233,7 @@ const RowView = memo(function RowView({
           onChange={(event) => onEdit(row.clientId, { testDate: event.target.value })}
         />
       </td>
-      <td className="min-w-32 px-2 py-1.5">
+      <td className="min-w-24 px-2 py-1.5">
         <ProofPhotoField
           value={row.proofPhotos}
           max={SERIAL_PROOF_LIMITS.perEntryMax}
@@ -243,7 +243,7 @@ const RowView = memo(function RowView({
           onChange={(proofPhotos) => onEdit(row.clientId, { proofPhotos })}
         />
       </td>
-      <td className={cn('min-w-40 px-2 py-1.5 text-xs', TONE_CLASS[status.tone])}>{status.text}</td>
+      <td className={cn('min-w-28 px-2 py-1.5 text-xs', TONE_CLASS[status.tone])}>{status.text}</td>
       <td className="whitespace-nowrap px-2 py-1 text-right" data-tour="serial-row-actions">
         <Button
           type="button"
