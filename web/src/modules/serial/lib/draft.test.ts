@@ -327,7 +327,7 @@ test('addSerials menyalin proofMin dari Defaults; tanpa wajib foto kuncinya tida
 test('applyBulk: ganti item memperbarui proofMin baris terpilih saja', () => {
   const rows = addSerials(
     [],
-    'A1' + String.fromCharCode(10) + 'B2',
+    `A1${String.fromCharCode(10)}B2`,
     { ...defaults, proofMin: 2 },
     counter(),
     now,

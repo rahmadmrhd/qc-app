@@ -5,11 +5,23 @@ import { type ScanFeedback, unlockScanAudio } from '../lib/scan-feedback';
 import type { IsKnown } from '../lib/scan-table';
 import { cameraSupported } from '../lib/use-camera-scanner';
 import type { CameraScanDialogProps } from './camera-scan-dialog';
+import type { StrictInfo, StrictScanDialogProps } from './strict-scan-dialog';
 
 // Dialog kamera (dan mesin pembacanya) dimuat malas: tidak membesarkan potongan halaman sebelum dipakai.
 const CameraScanDialog = lazy(() =>
   import('./camera-scan-dialog').then((module) => ({ default: module.CameraScanDialog })),
 );
+
+const StrictScanDialog = lazy(() =>
+  import('./strict-scan-dialog').then((module) => ({ default: module.StrictScanDialog })),
+);
+
+/** Konteks item wajib foto: tombol membuka dialog dua langkah (scan satu serial lalu konfirmasi + foto). */
+export interface StrictScan {
+  info: StrictInfo;
+  isKnown: IsKnown;
+  onConfirm: StrictScanDialogProps['onConfirm'];
+}
 
 export interface CameraScanButtonProps {
   /**
@@ -25,6 +37,8 @@ export interface CameraScanButtonProps {
   onSaved?: CameraScanDialogProps['onSaved'];
   /** Sisa kapasitas draft pemakai (jumlah baris yang masih boleh ditambah). */
   draftCapacity?: CameraScanDialogProps['draftCapacity'];
+  /** Item wajib foto: dialog dua langkah menggantikan dialog scan batch (`onScan`/`onSaved` tak dipakai). */
+  strict?: StrictScan | undefined;
   disabled?: boolean;
   className?: string;
 }
@@ -39,6 +53,7 @@ export function CameraScanButton({
   single,
   onSaved,
   draftCapacity,
+  strict,
   disabled = false,
   className,
 }: CameraScanButtonProps) {
@@ -62,7 +77,18 @@ export function CameraScanButton({
       >
         <Camera aria-hidden />
       </Button>
-      {open ? (
+      {open && strict ? (
+        <Suspense fallback={null}>
+          <StrictScanDialog
+            open={open}
+            onOpenChange={setOpen}
+            info={strict.info}
+            isKnown={strict.isKnown}
+            onConfirm={strict.onConfirm}
+          />
+        </Suspense>
+      ) : null}
+      {open && !strict ? (
         <Suspense fallback={null}>
           <CameraScanDialog
             open={open}

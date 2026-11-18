@@ -27,6 +27,7 @@ import { clearDraft, loadDraft, resumeDraftWrites, saveDraft } from '../lib/draf
 import { isReferenceError, type VerifyDeps, verifyImported } from '../lib/import-verify';
 import { hasProofPhotos } from '../lib/leave-guard';
 import { todayWib, toLocationOptions } from '../lib/locations';
+import type { ProofPhotoRef } from '../lib/proof-source';
 import type { QcsnImport } from '../lib/qcsn';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
@@ -37,6 +38,7 @@ import {
   useSaveSerialBatch,
 } from '../queries';
 import { BulkEditBar } from './bulk-edit-bar';
+import type { StrictScan } from './camera-scan-button';
 import { ImportExportBar } from './import-export-bar';
 import { EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
 import { RowDetailDialog, type RowDetailResult } from './row-detail-dialog';
@@ -275,6 +277,70 @@ export function RecordPage({
     });
     setNotice(message);
   }
+
+  // Item wajib foto: scan satu serial per kali lewat dialog dua langkah; baris masuk draft setelah Simpan di dialog.
+  const addStrictRowRef = useRef<(result: { serial: string; photos: ProofPhotoRef[] }) => void>(
+    () => undefined,
+  );
+  const confirmStrict = useCallback(
+    (result: { serial: string; photos: ProofPhotoRef[] }) => addStrictRowRef.current(result),
+    [],
+  );
+  const strict = useMemo<StrictScan | undefined>(
+    () =>
+      item.proofMin > 0
+        ? {
+            info: {
+              itemLabel: item.itemLabel,
+              buLabel: item.buLabel,
+              locationLabel: location.label,
+              testDate,
+              proofMin: item.proofMin,
+              stamp: {
+                itemLabel: item.itemLabel,
+                buLabel: item.buLabel,
+                locationLabel: location.label,
+                actorName: me.name,
+                actorTeam: 'QC',
+              },
+            },
+            isKnown: isKnownSerial,
+            onConfirm: confirmStrict,
+          }
+        : undefined,
+    [
+      item.proofMin,
+      item.itemLabel,
+      item.buLabel,
+      location.label,
+      testDate,
+      me.name,
+      isKnownSerial,
+      confirmStrict,
+    ],
+  );
+
+  /** Menambah satu baris item wajib foto beserta fotonya; bila tak muat (batas draft/duplikat), foto dibuang. */
+  function addStrictRow(result: { serial: string; photos: ProofPhotoRef[] }) {
+    const { rows: next, report } = addSerials(
+      rowsRef.current,
+      result.serial,
+      defaults(),
+      newClientId,
+      nowIso,
+    );
+    const added = report.added === 1 ? next[next.length - 1] : undefined;
+    if (!added) {
+      void discardProofPhotos(result.photos.map((photo) => photo.id));
+      setNotice(describeAdd(report).notice);
+      return;
+    }
+    next[next.length - 1] = { ...added, proofPhotos: result.photos };
+    setAllRows(next);
+    setNotice(describeAdd(report).notice);
+    setSummary(null);
+  }
+  addStrictRowRef.current = addStrictRow;
 
   function addText(text: string): ScanFeedback {
     const { rows: next, report } = addSerials(
@@ -662,6 +728,7 @@ export function RecordPage({
           onCameraSaved={summarizeCameraSave}
           cameraCapacity={draftCapacity}
           disabled={gated}
+          strict={strict}
           autoFocus
         />
         {gated ? (

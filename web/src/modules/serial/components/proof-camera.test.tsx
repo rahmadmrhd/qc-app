@@ -234,7 +234,7 @@ test('izin ditolak: pesan dan Coba lagi, tanpa rana aktif; onUnavailable dilapor
   );
   expect(await screen.findByRole('alert')).toHaveTextContent(CAMERA_ERROR_TEXT.denied);
   expect(shutter()).toBeDisabled();
-  expect(onUnavailable).toHaveBeenCalledWith('denied');
+  await waitFor(() => expect(onUnavailable).toHaveBeenCalledWith('denied'));
   await userEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
   await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
 });
