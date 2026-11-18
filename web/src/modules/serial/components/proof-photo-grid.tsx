@@ -71,7 +71,7 @@ export function ProofPhotoGrid({ photos, onRemove, disabled, label }: ProofPhoto
         ))}
       </ul>
       <Dialog open={preview !== null} onOpenChange={(open) => !open && setPreview(null)}>
-        <DialogContent className="max-h-[90dvh] max-w-[calc(100%-1rem)] sm:max-w-3xl">
+        <DialogContent className="max-w-[calc(100%-1rem)] sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle className="pr-8">
               Foto bukti {preview ? preview.index + 1 : ''}

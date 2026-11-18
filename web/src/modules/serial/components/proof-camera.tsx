@@ -33,6 +33,8 @@ export interface ProofCameraDialogProps {
   shots: ProofPhotoRef[];
   /** Kamera dilaporkan tak dapat dipakai (izin ditolak dsb.): pemanggil boleh menyembunyikan tombol Kamera. */
   onUnavailable?(kind: CameraErrorKind): void;
+  /** Kamera menyala (termasuk sesudah "Coba lagi" yang berhasil): pemanggil boleh menampilkan tombol Kamera lagi. */
+  onAvailable?(): void;
 }
 
 /** Lama kilat putih tiap jepretan. */
@@ -88,6 +90,7 @@ function ProofCameraBody({
   onShot,
   shots,
   onUnavailable,
+  onAvailable,
 }: Omit<ProofCameraDialogProps, 'open' | 'onOpenChange'> & { onClose: () => void }) {
   const [deviceId, setDeviceId] = useState('');
   const camera = useCameraStream({ open: true, deviceId });
@@ -103,6 +106,8 @@ function ProofCameraBody({
   onShotRef.current = onShot;
   const onUnavailableRef = useRef(onUnavailable);
   onUnavailableRef.current = onUnavailable;
+  const onAvailableRef = useRef(onAvailable);
+  onAvailableRef.current = onAvailable;
 
   // Efek (bukan nilai awal): StrictMode memasang ulang efek, jadi penanda harus dinyalakan lagi di sini.
   useLayoutEffect(() => {
@@ -118,6 +123,11 @@ function ProofCameraBody({
       onUnavailableRef.current?.(errorKind);
     }
   }, [errorKind]);
+
+  const scanning = state.status === 'scanning';
+  useEffect(() => {
+    if (scanning) onAvailableRef.current?.();
+  }, [scanning]);
 
   useEffect(() => {
     if (!flash) return;

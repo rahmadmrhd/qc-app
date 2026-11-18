@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { isCameraBlocked, markCameraBlocked, resetCameraBlocked } from '../lib/camera-session';
 import { isMobileDevice } from '../lib/device';
 import { type ProofPhotoRef, proofSource, toProofRef } from '../lib/proof-source';
 import type { StampPreviewInput } from '../lib/stamp-preview';
@@ -45,7 +46,7 @@ export function ProofPhotoDialog({ open, onOpenChange, ...rest }: ProofPhotoDial
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       {/* Isi (dan keadaan unggah) hanya ada selama dialog terbuka: menutup = unmount = pembersihan. */}
-      <DialogContent className="max-h-[90dvh] sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <ProofPhotoBody onClose={() => onOpenChange(false)} {...rest} />
       </DialogContent>
     </Dialog>
@@ -75,7 +76,7 @@ function ProofPhotoBody({
   const [pending, setPending] = useState<PendingUpload[]>([]);
   const [notices, setNotices] = useState<Notice[]>([]);
   const [cameraOpen, setCameraOpen] = useState(false);
-  const [cameraBlocked, setCameraBlocked] = useState(false);
+  const [cameraBlocked, setCameraBlocked] = useState(isCameraBlocked);
   const shotsRef = useRef<ProofPhotoRef[]>([]);
   // Foto yang sudah ada atau sedang naik (sinkron): jepretan beruntun tak boleh melewati batas sebelum render ulang.
   const reservedRef = useRef(0);
@@ -358,7 +359,15 @@ function ProofPhotoBody({
           shots={shots}
           onShot={shoot}
           // Izin ditolak atau kamera tak ada: pesannya tampil di kamera, lalu tombol Kamera hilang (Telusuri tetap).
-          onUnavailable={() => setCameraBlocked(true)}
+          onUnavailable={() => {
+            markCameraBlocked();
+            setCameraBlocked(true);
+          }}
+          // "Coba lagi" berhasil menyalakan kamera: tombol Kamera boleh tampil lagi.
+          onAvailable={() => {
+            resetCameraBlocked();
+            setCameraBlocked(false);
+          }}
         />
       ) : null}
     </>

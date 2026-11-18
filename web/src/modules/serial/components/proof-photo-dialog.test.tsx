@@ -13,6 +13,7 @@ vi.mock('@/lib/api', async (importOriginal) => ({
 }));
 vi.mock('@/modules/files/image', () => ({ prepareImage: prepareImageMock }));
 
+import { isCameraBlocked } from '../lib/camera-session';
 import { ProofPhotoDialog } from './proof-photo-dialog';
 
 const STAMP: StampPreviewInput = {
@@ -162,6 +163,80 @@ test('izin kamera ditolak: pesan di kamera, setelah ditutup tombol Kamera hilang
   const dialog = await screen.findByRole('dialog');
   expect(within(dialog).queryByRole('button', { name: 'Kamera' })).not.toBeInTheDocument();
   expect(within(dialog).getByRole('button', { name: 'Telusuri' })).toBeEnabled();
+});
+
+function ReopenHost() {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        Buka foto
+      </button>
+      <ProofPhotoDialog
+        open={open}
+        onOpenChange={setOpen}
+        existingCount={0}
+        max={5}
+        onAdd={() => undefined}
+      />
+    </>
+  );
+}
+
+test('izin ditolak diingat selama halaman terbuka: pembukaan dialog berikutnya tanpa tombol Kamera', async () => {
+  setMediaDevices({
+    getUserMedia: vi.fn(async () => {
+      throw Object.assign(new Error('x'), { name: 'NotAllowedError' });
+    }),
+  });
+  render(<ReopenHost />);
+  await userEvent.click(screen.getByRole('button', { name: 'Buka foto' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Kamera' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(/Izin kamera ditolak/);
+  expect(isCameraBlocked()).toBe(true);
+  await userEvent.click(screen.getByRole('button', { name: 'Selesai' }));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  await userEvent.click(
+    within(await screen.findByRole('dialog')).getByRole('button', { name: 'Batal' }),
+  );
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await userEvent.click(screen.getByRole('button', { name: 'Buka foto' }));
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).queryByRole('button', { name: 'Kamera' })).not.toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: 'Telusuri' })).toBeEnabled();
+});
+
+test('Coba lagi yang berhasil menyalakan kamera menghapus penanda: tombol Kamera tampil lagi', async () => {
+  const track = {
+    stop: vi.fn(),
+    getCapabilities: () => ({}),
+    getSettings: () => ({}),
+    applyConstraints: vi.fn(),
+  };
+  const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+  let denied = true;
+  setMediaDevices({
+    getUserMedia: vi.fn(async () => {
+      if (denied) throw Object.assign(new Error('x'), { name: 'NotAllowedError' });
+      return stream;
+    }),
+    enumerateDevices: vi.fn(async () => []),
+  });
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+  render(<ReopenHost />);
+  await userEvent.click(screen.getByRole('button', { name: 'Buka foto' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Kamera' }));
+  await screen.findByRole('alert');
+  expect(isCameraBlocked()).toBe(true);
+  denied = false;
+  await userEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+  await screen.findByRole('button', { name: 'Ambil foto' });
+  expect(isCameraBlocked()).toBe(false);
+  await userEvent.click(screen.getByRole('button', { name: 'Selesai' }));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  expect(
+    within(await screen.findByRole('dialog')).getByRole('button', { name: 'Kamera' }),
+  ).toBeInTheDocument();
 });
 
 test('Telusuri mengunggah, menampilkan kisi foto baru, dan Tambahkan meneruskan semuanya', async () => {
