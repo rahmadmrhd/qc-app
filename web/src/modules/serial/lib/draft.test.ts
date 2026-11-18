@@ -349,3 +349,14 @@ test('isProofRejection tidak mengenali pesan wajib foto (foto baris tidak boleh 
   expect(isProofRejection('Item ini wajib foto bukti minimal 2')).toBe(false);
   expect(isProofRejection('Foto sudah kedaluwarsa, unggah ulang')).toBe(true);
 });
+
+test('applyBulk: mengganti BU saja juga mengosongkan pilihan stiker ke null (stiker mengikuti BU serial)', () => {
+  const rows = seed(['A1', 'A2']).map((row) => ({
+    ...row,
+    stickers: [{ stickerId: 's1', name: 'Stiker', qty: 2 }],
+  }));
+  const ids = new Set([rows[0]?.clientId ?? '']);
+  const next = applyBulk(rows, ids, { buId: 'b2', buLabel: 'BU2' });
+  expect(next[0]).toMatchObject({ buId: 'b2', buLabel: 'BU2', stickers: null });
+  expect(next[1]).toBe(rows[1]);
+});
