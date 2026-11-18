@@ -279,3 +279,21 @@ test('catatan yang disunting pengguna tetap dipangkas', async () => {
   expect(onApply.mock.calls[0]?.[0].note).toBe(onApply.mock.calls[0]?.[0].note.trim());
   expect(onApply.mock.calls[0]?.[0].note).toContain('tambah');
 });
+
+test('baris hasil inject Country Lock: field serial terkunci dan serial tetap saat Terapkan', async () => {
+  const { onApply } = renderDialog(makeRow('AAA111', { source: 'countrylock' }));
+  const { dialog, apply } = await ready();
+  const serial = within(dialog).getByLabelText('Serial baris');
+  expect(serial).toBeDisabled();
+  expect(
+    within(dialog).getByText('Serial dari perangkat, tidak dapat diubah.'),
+  ).toBeInTheDocument();
+  await userEvent.click(apply);
+  expect(onApply).toHaveBeenCalledWith(expect.objectContaining({ serial: 'AAA111' }));
+});
+
+test('baris manual: field serial tetap dapat diubah', async () => {
+  renderDialog(makeRow('AAA111'));
+  const { dialog } = await ready();
+  expect(within(dialog).getByLabelText('Serial baris')).toBeEnabled();
+});

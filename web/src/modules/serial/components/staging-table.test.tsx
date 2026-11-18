@@ -210,3 +210,14 @@ test('atribut Panduan Interaktif tetap ada pada baris tabel', () => {
   expect(container.querySelector('[data-tour="serial-row-select"]')).not.toBeNull();
   expect(container.querySelector('[data-tour="serial-row-actions"]')).not.toBeNull();
 });
+
+test('baris hasil inject Country Lock: serial hanya teks, baris manual tetap berupa kolom isian', () => {
+  const locked = { ...photoRow('AAA111', []), source: 'countrylock' as const };
+  const manual = photoRow('BBB222', []);
+  renderTable([locked, manual]);
+  expect(screen.queryByRole('textbox', { name: 'Serial AAA111' })).toBeNull();
+  expect(screen.getByTitle('Serial dari perangkat, tidak dapat diubah')).toHaveTextContent(
+    'AAA111',
+  );
+  expect(screen.getByRole('textbox', { name: 'Serial BBB222' })).toBeInTheDocument();
+});
