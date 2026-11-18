@@ -22,6 +22,7 @@ import {
   type SessionState,
   shouldAutoInject,
 } from '@countrylock/session-machine';
+import type { CatalogItemDto } from '@shared/desktop-catalog';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   appendLog,
@@ -30,6 +31,7 @@ import {
   safeErrorMessage,
   safeLine,
 } from './lib/safe-text';
+import { resolveTypeApplication, type TypeApplication } from './lib/type-firmware';
 
 /** Jeda sebelum dialog progres menutup sendiri setelah inject sukses/dibatalkan (legacy: 1 detik). */
 export const AUTO_CLOSE_MS = 1000;
@@ -51,8 +53,21 @@ export interface CredentialPrompt {
   reason: string;
 }
 
+/**
+ * Tipe katalog yang dipilih di form inject (spek desktop §6.6, alur aplikasi lama: Merk -> Tipe -> Firmware). `name`
+ * (model) dicatat bersama serial di antrean pending; `application` menentukan apakah Firmware terisi dan terkunci
+ * (`ok`) atau dipilih manual dengan alasan.
+ */
+export interface TipeSelection {
+  id: string;
+  name: string;
+  application: TypeApplication;
+}
+
 export interface CountryLockActions {
   select(brand: Brand, firmwareCode: string | null): void;
+  /** Memilih (atau mengosongkan, `null`) Tipe katalog; mengisi Firmware bila Tipe punya firmware yang ada di paket. */
+  selectTipe(item: CatalogItemDto | null): void;
   inject(): void;
   cancel(): void;
   toggleAuto(on: boolean): void;
@@ -67,6 +82,8 @@ export interface UseCountryLock {
   state: SessionState;
   pkg: PackageDto | null;
   info: DeviceInfo | null;
+  /** Tipe katalog terpilih (null = belum dipilih atau dipilih manual tanpa katalog). */
+  tipe: TipeSelection | null;
   /** Log baca-saja inject terakhir (sudah disamarkan dan tanpa karakter kontrol). */
   log: string[];
   pending: PendingEntry[];
@@ -95,6 +112,7 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [state, setState] = useState<SessionState>(INITIAL_SESSION);
   const [info, setInfo] = useState<DeviceInfo | null>(null);
+  const [tipe, setTipe] = useState<TipeSelection | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [pending, setPending] = useState<PendingEntry[]>([]);
   const [progress, setProgress] = useState<InjectProgress | null>(null);
@@ -103,6 +121,8 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
   // Salinan sinkron untuk penjaga re-entry dan loop async (state React baru terlihat setelah render).
   const stateRef = useRef<SessionState>(INITIAL_SESSION);
   const pkgRef = useRef<PackageDto | null>(null);
+  /** Salinan sinkron `tipe`: dibaca saat inject selesai untuk dicatat ke pending. */
+  const tipeRef = useRef<TipeSelection | null>(null);
   const credentialsRef = useRef<Credentials>({ username: '', password: '' });
   /** Kredensial ditolak: pembacaan info berhenti sampai kredensial baru atau perangkat berganti. */
   const deniedRef = useRef(false);
@@ -312,6 +332,8 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
     if (!stateRef.current.injecting) return;
 
     const serial = start.serial;
+    // Tipe dicatat sesuai pilihan saat inject dimulai (bukan saat selesai), agar tak berubah di tengah jalan.
+    const tipeName = tipeRef.current?.name ?? '';
     const credentials = credentialsRef.current;
     const id = newInjectId();
     injectIdRef.current = id;
@@ -347,7 +369,7 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
         await bridge.pending.add({
           serial,
           brand: brandName,
-          tipe: '',
+          tipe: tipeName,
           date: localDate(),
           timestamp: new Date().toISOString(),
         });
@@ -394,9 +416,16 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
   }, [state, pending, runInject]);
 
   // --- Aksi -------------------------------------------------------------------------------
+  const clearTipe = useCallback(() => {
+    tipeRef.current = null;
+    setTipe(null);
+  }, []);
+
   const select = useCallback(
     (nextBrand: Brand, firmwareCode: string | null) => {
       if (stateRef.current.brand !== nextBrand) {
+        // Daftar Tipe milik satu merk: Tipe lama tak berlaku lagi (aplikasi lama mengganti daftarnya).
+        clearTipe();
         credentialsRef.current = defaultCredentials(nextBrand);
         deniedRef.current = false;
         setCredentialPrompt(null);
@@ -404,7 +433,28 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
       }
       apply({ type: 'select', brand: nextBrand, firmwareCode });
     },
-    [apply, defaultCredentials],
+    [apply, clearTipe, defaultCredentials],
+  );
+
+  const selectTipe = useCallback(
+    (item: CatalogItemDto | null) => {
+      const currentBrand = stateRef.current.brand;
+      if (!item || !currentBrand) {
+        clearTipe();
+        return;
+      }
+      const application = resolveTypeApplication(item, pkgRef.current);
+      const next: TipeSelection = { id: item.id, name: item.model, application };
+      tipeRef.current = next;
+      setTipe(next);
+      // Firmware ikut Tipe bila berlaku; selain itu dikosongkan dan dipilih manual (perilaku aplikasi lama).
+      apply({
+        type: 'select',
+        brand: currentBrand,
+        firmwareCode: application.ok ? application.firmwareCode : null,
+      });
+    },
+    [apply, clearTipe],
   );
 
   const toggleAuto = useCallback(
@@ -442,10 +492,11 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
       deniedRef.current = false;
       setCredentialPrompt(null);
       setInfo(null);
+      clearTipe();
       apply({ type: 'reset' });
       setPkg(next);
     })();
-  }, [bridge, apply]);
+  }, [bridge, apply, clearTipe]);
 
   const closeProgress = useCallback(() => {
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
@@ -463,6 +514,7 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
     state,
     pkg,
     info,
+    tipe,
     log,
     pending,
     loading,
@@ -471,6 +523,7 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
     credentialPrompt,
     actions: {
       select,
+      selectTipe,
       inject: () => {
         void runInject();
       },
