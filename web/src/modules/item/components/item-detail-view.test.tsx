@@ -19,6 +19,7 @@ const item: ItemDto = {
   brand: 'Ubiquiti',
   model: 'AF 5XHD',
   isCountryLock: true,
+  firmware: '',
   status: 'active',
   aliases: ['AirFiber 5XHD', 'AF-5XHD'],
   imageCount: 2,

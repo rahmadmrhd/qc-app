@@ -85,6 +85,8 @@ describe('katalog desktop: isi', () => {
     await seedItem(env, { id: 'i5', brand: 'Acme', model: 'Tanpa BU' });
     await env.DB.prepare('DELETE FROM item_business_units WHERE item_id = ?').bind('i5').run();
     for (const id of ['i1', 'i2', 'i4', 'i5']) await setLock(id);
+    // Firmware dibawa apa adanya (validasi kode ada di jalur simpan item, bukan di penyusun katalog).
+    await env.DB.prepare("UPDATE items SET firmware = 'af5xhd' WHERE id = 'i1'").run();
 
     await seedGuideImage(env, { id: 'g1', name: 'Depan' });
     await seedStickerType(env, { id: 't-bu', name: 'Warranty', rule: 'bu' });
@@ -129,6 +131,8 @@ describe('katalog desktop: isi', () => {
     expect(catalog.items.map((item) => item.id)).toEqual(['i1', 'i2']);
     const i1 = catalog.items[0];
     expect(i1?.aliases).toEqual(['ap satu']);
+    expect(i1?.firmware).toBe('af5xhd');
+    expect(catalog.items[1]?.firmware).toBe('');
     expect(i1?.businessUnits.map((unit) => unit.code)).toEqual(['DEF']);
     // Aturan jenis -> stiker: bu = hanya BU item; none = semua aktif; nonaktif tak berlaku. Urut nama stiker.
     expect(i1?.stickerIds).toEqual(['s-def', 's-all']);

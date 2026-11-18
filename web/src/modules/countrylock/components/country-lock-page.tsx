@@ -2,7 +2,7 @@ import type { QcBridge } from '@countrylock/bridge-contract';
 import type { Brand } from '@countrylock/script-template';
 import { canInject } from '@countrylock/session-machine';
 import { FolderOpen, KeyRound, TriangleAlert } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Select } from '@/components/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -62,6 +62,12 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
     actions,
   } = useCountryLock(bridge);
   const [confirmAuto, setConfirmAuto] = useState(false);
+  /** Nama Tipe katalog yang mengunci Merk + Firmware (null = pilihan manual). */
+  const [lockedType, setLockedType] = useState<string | null>(null);
+
+  // Paket berganti: merk/firmware yang dikunci mungkin tak ada lagi, jadi kunci dilepas.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hanya bereaksi pada pergantian paket
+  useEffect(() => setLockedType(null), [pkg]);
 
   if (loading) {
     return <p className="p-4 text-sm text-muted-foreground">Memuat paket skrip...</p>;
@@ -129,6 +135,22 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
               <CardTitle>Perangkat</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {lockedType !== null ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/40 p-3 text-sm">
+                  <span>
+                    Tipe <strong>{lockedType}</strong>: merk dan firmware terkunci
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setLockedType(null)}
+                    disabled={state.injecting}
+                  >
+                    Lepas kunci
+                  </Button>
+                </div>
+              ) : null}
               <div className="grid gap-4 sm:grid-cols-2">
                 <Select
                   id="country-lock-brand"
@@ -140,7 +162,7 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
                     label: entry.label,
                   }))}
                   onValueChange={(value) => actions.select(value as Brand, null)}
-                  disabled={state.injecting}
+                  disabled={state.injecting || lockedType !== null}
                 />
                 <Select
                   id="country-lock-firmware"
@@ -152,7 +174,7 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
                     label: firmware.label || firmware.code,
                   }))}
                   onValueChange={(value) => state.brand && actions.select(state.brand, value)}
-                  disabled={!brandConfig || state.injecting}
+                  disabled={!brandConfig || state.injecting || lockedType !== null}
                 />
               </div>
 
@@ -207,7 +229,15 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
         </>
       )}
 
-      <CatalogPanel bridge={bridge} />
+      <CatalogPanel
+        bridge={bridge}
+        pkg={pkg}
+        injecting={state.injecting}
+        onUse={(choice) => {
+          actions.select(choice.brand, choice.firmwareCode);
+          setLockedType(choice.typeLabel);
+        }}
+      />
 
       <AlertDialog open={confirmAuto} onOpenChange={setConfirmAuto}>
         <AlertDialogContent>

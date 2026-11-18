@@ -10,6 +10,7 @@ export const ITEM_FIELD_KEYS = [
   'brandId',
   'businessUnitIds',
   'model',
+  'firmware',
   'aliases',
   'stickerPhotos',
   'accessories',
@@ -75,6 +76,7 @@ export const itemFormSchema = z
         'Tipe harus memuat huruf atau angka',
       ),
     isCountryLock: z.boolean(),
+    firmware: z.string(),
     aliasesText: z.string().superRefine((text, ctx) => {
       const lines = text
         .split('\n')
@@ -176,6 +178,7 @@ export function toItemFormDefaults(item?: ItemDto): ItemFormInput {
     businessUnitIds: item ? item.businessUnits.map((bu) => bu.id) : [],
     model: item?.model ?? '',
     isCountryLock: item?.isCountryLock ?? false,
+    firmware: item?.firmware ?? '',
     aliasesText: item ? item.aliases.join('\n') : '',
     stickerPhotos: item
       ? item.stickerPhotos.map((photo) => ({
@@ -201,6 +204,7 @@ export function toSaveItemInput(
     businessUnitIds: [...values.businessUnitIds],
     model: values.model.trim(),
     isCountryLock: values.isCountryLock,
+    firmware: values.isCountryLock ? values.firmware : '',
     aliases: parseAliasLines(values.aliasesText),
     stickerPhotos: values.stickerPhotos.map((photo) => ({
       guideId: photo.guideId,

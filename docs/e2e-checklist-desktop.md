@@ -144,6 +144,9 @@ Prasyarat: server (staging) sudah memuat rute katalog dengan `DESKTOP_CATALOG_TO
 | I5 | Build desktop tanpa `CATALOG_TOKEN` | Kartu katalog tidak tampil; Country Lock tetap berjalan seperti biasa | |
 | I6 | Build dengan `CATALOG_TOKEN` salah | Setelah Sinkronkan: "Server menolak sinkron katalog"; tidak ada galat lain | |
 | I7 | Hapus berkas di `<userData>/catalog/files/`, tekan Sinkronkan | Berkas yang hilang diunduh ulang | |
+| I8 | Di web, buka item Country lock (mis. Ubiquiti AF-5XHD), pilih Firmware (mis. AF-5XHD), simpan; di desktop tekan Sinkronkan, pilih Tipe itu, tekan "Pakai untuk inject" | Merk dan Firmware di form inject terisi (AF-5XHD) dan terkunci; "Lepas kunci" membuka keduanya | |
+| I9 | Pilih Tipe yang firmware-nya kosong atau kodenya tidak ada di paket skrip | Alasan tampil, tanpa tombol; Merk/Firmware tetap dipilih manual | |
+| I10 | Di web, matikan centang Country lock pada item berfirmware, simpan | Kolom Firmware hilang dan tersimpan kosong; item keluar dari katalog desktop pada sinkron berikutnya | |
 
 ## Pengisian hasil
 

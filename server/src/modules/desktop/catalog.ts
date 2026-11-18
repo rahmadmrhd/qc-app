@@ -44,6 +44,7 @@ interface ItemRow {
   brand: string;
   model: string;
   aliases: string;
+  firmware: string;
 }
 
 interface StickerRow {
@@ -97,7 +98,7 @@ export async function buildDesktopCatalog(env: Env): Promise<DesktopCatalogDto> 
   const itemRows = (
     await db
       .prepare(
-        "SELECT i.id, b.name AS brand, i.model, i.aliases FROM items i JOIN brands b ON b.id = i.brand_id WHERE i.is_country_lock = 'true' AND i.status = 'active' AND EXISTS (SELECT 1 FROM item_business_units ibu WHERE ibu.item_id = i.id) ORDER BY b.name, i.model, i.id",
+        "SELECT i.id, b.name AS brand, i.model, i.aliases, i.firmware FROM items i JOIN brands b ON b.id = i.brand_id WHERE i.is_country_lock = 'true' AND i.status = 'active' AND EXISTS (SELECT 1 FROM item_business_units ibu WHERE ibu.item_id = i.id) ORDER BY b.name, i.model, i.id",
       )
       .all<ItemRow>()
   ).results;
@@ -176,6 +177,7 @@ export async function buildDesktopCatalog(env: Env): Promise<DesktopCatalogDto> 
           brand: row.brand,
           model: row.model.trim(),
           aliases: parseStrings(row.aliases),
+          firmware: row.firmware.trim(),
           businessUnits,
           stickerIds: applicableTo(id, buIds),
           stickerPhotos: await buildInstructionViews(env, id, buIds, instructions.get(id) ?? []),
