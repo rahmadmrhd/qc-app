@@ -14,6 +14,9 @@ name: Deploy Server
 # - PR di-merge ke `main`  (pull_request_target, closed + merged) -> environment `production` (qc.rhd.my.id)
 # - workflow_dispatch (target staging|production)               -> `production` HANYA dari main; `staging` dari main/dev
 # Nama environment GitHub = kunci deploy di VPS (folder `<INSTALL_DIR>/<env>` (VPS pribadi: `/root/apps/qc-app/<env>`), `deploy.sh --only`, authorized_keys): staging | production (keputusan pemilik 2026-11-07).
+# SAKLAR MODE RILIS (keputusan pemilik 2026-11-18): bila variabel repositori `RELEASE_FLOW` bernilai `tag`, merge ke `main` TIDAK
+# men-deploy production (job `meta` dilewati): production hanya lewat PR rilis (`release.yml`) atau deploy tag. Kosong atau
+# `langsung` (bawaan, masa pra-resmi): perilaku di atas tak berubah. Staging (merge ke `dev`) dan `workflow_dispatch` tak terpengaruh.
 # Label `skip-deploy` pada PR (dipasang SEBELUM merge) melewati deploy PR itu (job `meta` dilewati, jadi semua job lain ikut dilewati);
 # kodenya tetap ikut ter-deploy oleh deploy berikutnya karena yang dibangun adalah commit hasil merge. `workflow_dispatch` tak terpengaruh.
 # Push langsung ke `main`/`dev` TIDAK men-deploy (cutover T34 2026-11-07: pemicu `push` dan branch kerja sementara dihapus).
@@ -46,14 +49,14 @@ permissions:
 # banyak satu run yang menunggu; run menunggu yang lebih lama dibatalkan, sehingga tag lama tak menimpa yang baru).
 # PR yang ditutup TANPA merge (run dilewati) diberi grup sendiri agar tidak menggantikan run deploy yang menunggu.
 concurrency:
-  group: deploy-server-${{ (github.event_name == 'pull_request_target' && (github.event.pull_request.merged != true || contains(github.event.pull_request.labels.*.name, 'skip-deploy'))) && format('lewati-{0}', github.run_id) || (github.event_name == 'workflow_dispatch' && inputs.target || (github.event.pull_request.base.ref == 'main' && 'production' || 'staging')) }}
+  group: deploy-server-${{ (github.event_name == 'pull_request_target' && (github.event.pull_request.merged != true || contains(github.event.pull_request.labels.*.name, 'skip-deploy') || (github.event.pull_request.base.ref == 'main' && vars.RELEASE_FLOW == 'tag'))) && format('lewati-{0}', github.run_id) || (github.event_name == 'workflow_dispatch' && inputs.target || (github.event.pull_request.base.ref == 'main' && 'production' || 'staging')) }}
   cancel-in-progress: false
 
 jobs:
   # Menentukan environment dan commit yang dibangun, serta menolak kombinasi yang tak diizinkan, SEBELUM kode atau
   # rahasia apa pun disentuh. PR yang ditutup tanpa merge dilewati (bukan gagal).
   meta:
-    if: github.event_name != 'pull_request_target' || (github.event.pull_request.merged == true && !contains(github.event.pull_request.labels.*.name, 'skip-deploy'))
+    if: github.event_name != 'pull_request_target' || (github.event.pull_request.merged == true && !contains(github.event.pull_request.labels.*.name, 'skip-deploy') && !(github.event_name == 'pull_request_target' && github.event.pull_request.base.ref == 'main' && vars.RELEASE_FLOW == 'tag'))
     runs-on: ubuntu-latest
     timeout-minutes: 2
     outputs:

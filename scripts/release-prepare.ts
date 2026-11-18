@@ -119,6 +119,14 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
   if (original === 'HEAD') throw new Error('Detached HEAD: pindah ke sebuah cabang lebih dulu.');
   await sh(['git', 'fetch', 'origin', '--tags', '--prune']);
   if (component === 'server') {
+    // Saklar mode rilis (keputusan pemilik 2026-11-18): PR rilis yang di-merge saat RELEASE_FLOW bukan `tag` akan men-deploy
+    // production lewat jalur lama tanpa tag dan Release, jadi rilis hanya disiapkan setelah saklar dinyalakan.
+    const flow = await shell.run(['gh', 'variable', 'get', 'RELEASE_FLOW']);
+    if (flow.code !== 0 || flow.out.trim() !== 'tag') {
+      throw new Error(
+        'Variabel repositori RELEASE_FLOW belum bernilai "tag" (mode pra-resmi: merge ke main masih men-deploy production tanpa versi). Nyalakan dulu di Settings > Variables bila memang sudah siap punya versi resmi.',
+      );
+    }
     await sh(['git', 'fetch', 'origin', '+refs/deployed/*:refs/remotes/deployed/*']);
   }
   if (!(await test(['git', 'merge-base', '--is-ancestor', 'origin/main', 'origin/dev']))) {

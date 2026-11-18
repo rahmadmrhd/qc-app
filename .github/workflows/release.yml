@@ -1,0 +1,314 @@
+name: Release Server
+
+# Rilis server (server + web) dari PR rilis `release/server-vX.Y.Z` yang di-merge ke `main` (rancangan
+# docs/superpowers/specs/2026-11-17-rilis-semver-design.md bagian 5.4; rencana docs/superpowers/plans/2026-11-17-rilis-semver-2-pipeline-rilis.md).
+# Jalur: meta (identitas) -> guard (kode identik dengan staging) -> ci (selektif) -> image (production, tanpa cache, tag SHA
+# + server-vX.Y.Z) -> deploy (production) -> publish (tag + GitHub Release) -> sync-dev (main -> dev).
+#
+# SAKLAR MODE RILIS (keputusan pemilik 2026-11-18): workflow ini hanya berjalan bila variabel repositori `RELEASE_FLOW` bernilai
+# `tag`. Selama masa pra-resmi (kosong atau `langsung`) `meta` dilewati dan semua job ikut dilewati; merge ke `main` tetap
+# men-deploy production lewat `deploy-server.yml`. Sebaliknya `deploy-server.yml` melewati production untuk merge ke `main`
+# bila `RELEASE_FLOW == 'tag'`, jadi keduanya tak pernah aktif bersamaan.
+#
+# Keamanan `pull_request_target` (berjalan dari workflow di `main`, menerima rahasia): hanya PR yang SUDAH di-merge; data PR
+# dibaca lewat API (bukan field head dari event); `meta` dan `guard` hanya me-checkout `github.sha` (ujung `main`, kode
+# tepercaya) untuk menjalankan skrip keputusan; `publish` hanya me-checkout commit merge hasil `meta`. Tak ada langkah yang
+# me-checkout atau menjalankan head PR, dan tak ada ekspresi di dalam `run`. Pagar identitas (`scripts/release-identity.ts`):
+# bukan fork, cabang `release/server-v<semver>` persis, merge commit (dua induk), versi di `server/package.json` pada commit
+# merge sama dengan versi cabang. PR lain ke `main` (bukan cabang `release/server-v…`) dilewati diam-diam.
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      versi:
+        description: 'Pemulihan: versi (X.Y.Z) dari PR rilis yang SUDAH di-merge ke main; guard dijalankan lagi dengan keadaan terbaru'
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+# Satu pipeline production pada satu waktu (grup yang sama dengan deploy-server.yml), tanpa membatalkan yang berjalan. Merge
+# biasa ke main (bukan cabang rilis yang di-merge) memakai grup sendiri agar tak menggantikan run rilis yang menunggu.
+# Ekspresi cabang di bawah HANYA dipakai di sini (nama grup); tak masuk ke `run`, `env`, `if`, atau checkout.
+concurrency:
+  group: deploy-server-${{ (github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/server-v'))) && 'production' || format('lewati-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+jobs:
+  meta:
+    if: vars.RELEASE_FLOW == 'tag' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      release: ${{ steps.resolve.outputs.release }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      version: ${{ steps.identity.outputs.version }}
+    steps:
+      # Kode tepercaya: ujung `main` (workflow ini sendiri berasal dari sana), BUKAN isi PR.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+
+      # Membaca PR lewat API. PR yang bukan cabang `release/server-v…` dilewati (`release=false`, bukan kegagalan); cabang itu
+      # lolos ke pagar identitas di langkah berikut, dan kegagalannya = galat (sinyal keamanan, bukan lewati diam-diam).
+      - name: Baca PR rilis
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          INPUT_VERSI: ${{ inputs.versi }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          case "$EVENT_NAME" in
+            pull_request_target)
+              [ "$REF" = refs/heads/main ] || fail "pull_request_target hanya sah dari branch default main."
+              [[ $PR_NUMBER =~ ^[0-9]+$ ]] || fail "Nomor PR tidak valid."
+              pr=$PR_NUMBER
+              ;;
+            workflow_dispatch)
+              [ "$REF" = refs/heads/main ] || fail "Rilis manual hanya dari branch main."
+              [[ $INPUT_VERSI =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Versi harus berbentuk X.Y.Z."
+              pr=$(gh pr list --head "release/server-v$INPUT_VERSI" --base main --state merged --json number --jq '.[0].number // empty')
+              [[ $pr =~ ^[0-9]+$ ]] || fail "Tidak ada PR rilis yang sudah di-merge untuk versi itu."
+              ;;
+            *) fail "Pemicu tidak didukung." ;;
+          esac
+          data=$(gh api "repos/$REPO/pulls/$pr")
+          [ "$(jq -r '.merged' <<< "$data")" = true ] || fail "PR belum di-merge."
+          head_ref=$(jq -r '.head.ref' <<< "$data")
+          if [[ $head_ref != release/server-v* ]]; then
+            echo "Bukan PR rilis server; dilewati."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [[ $head_ref =~ ^[A-Za-z0-9._/+-]{1,100}$ ]] || fail "Nama cabang rilis memuat karakter yang tidak diizinkan."
+          sha=$(jq -r '.merge_commit_sha // ""' <<< "$data")
+          [[ $sha =~ ^[0-9a-f]{40}$ ]] || fail "Commit merge bukan SHA 40 heksa."
+          parents=$(gh api "repos/$REPO/commits/$sha" --jq '.parents | length')
+          version_at_merge=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/server/package.json?ref=$sha" | jq -r '.version // ""')
+          {
+            echo "release=true"
+            echo "sha=$sha"
+            echo "head_ref=$head_ref"
+            echo "head_repo=$(jq -r '.head.repo.full_name // ""' <<< "$data")"
+            echo "base_ref=$(jq -r '.base.ref' <<< "$data")"
+            echo "parents=$parents"
+            echo "version_at_merge=$version_at_merge"
+          } >> "$GITHUB_OUTPUT"
+
+      # Pagar identitas (skrip murni, diuji tanpa GitHub). Gagal = job gagal = tak ada job lain yang jalan.
+      - name: Pagar identitas
+        id: identity
+        if: steps.resolve.outputs.release == 'true'
+        env:
+          BASE_REPO: ${{ github.repository }}
+          HEAD_REPO: ${{ steps.resolve.outputs.head_repo }}
+          HEAD_REF: ${{ steps.resolve.outputs.head_ref }}
+          BASE_REF: ${{ steps.resolve.outputs.base_ref }}
+          PARENTS: ${{ steps.resolve.outputs.parents }}
+          VERSION_AT_MERGE: ${{ steps.resolve.outputs.version_at_merge }}
+        run: bun run scripts/release-identity.ts
+
+  # Pengganti uji ulang: kode yang dirilis identik dengan yang sudah berjalan di staging (`refs/deployed/staging`), selisihnya
+  # hanya metadata rilis, dan CHANGELOG memuat bagian versinya (scripts/release-guard.ts). Langkah yang memegang token hanya
+  # memanggil API; langkah yang menjalankan skrip tak diberi token.
+  guard:
+    needs: meta
+    if: needs.meta.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Bandingkan dengan staging
+        id: compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ needs.meta.outputs.sha }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || fail "Commit rilis bukan SHA 40 heksa."
+          [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Versi rilis tidak valid."
+          staging=$(gh api "repos/$REPO/git/ref/deployed/staging" --jq '.object.sha' 2>/dev/null) || fail "Penunjuk refs/deployed/staging belum ada: deploy staging dulu, lalu jalankan ulang release.yml lewat workflow_dispatch."
+          [[ $staging =~ ^[0-9a-f]{40}$ ]] || fail "Penunjuk refs/deployed/staging tidak valid."
+          result=$(gh api "repos/$REPO/compare/$staging...$SHA")
+          changelog=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/server/CHANGELOG.md?ref=$SHA")
+          if grep -qF "## [$VERSION] - " <<< "$changelog"; then has=true; else has=false; fi
+          {
+            echo "status=$(jq -r '.status' <<< "$result")"
+            echo "has_version=$has"
+            echo "files<<QC_FILES_EOF"
+            jq -r '.files[]? | .filename, (.previous_filename // empty)' <<< "$result"
+            echo "QC_FILES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Guard rilis
+        env:
+          COMPARE_STATUS: ${{ steps.compare.outputs.status }}
+          FILES: ${{ steps.compare.outputs.files }}
+          CHANGELOG_HAS_VERSION: ${{ steps.compare.outputs.has_version }}
+        run: bun run scripts/release-guard.ts
+
+  # Pemeriksaan selektif sejak deploy production terakhir (`refs/deployed/production`), dari workflow yang dapat dipanggil.
+  # `packages: read` wajib walau tak dipakai: GitHub memvalidasi izin job di workflow dipanggil (uji bangun PR).
+  ci:
+    needs: [meta, guard]
+    if: needs.meta.outputs.release == 'true'
+    permissions:
+      contents: read
+      pull-requests: read
+      packages: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.meta.outputs.sha }}
+      since-deploy: production
+
+  # Image production: tanpa cache, kunci UI hanya di workflow terpanggil, tag SHA + `server-vX.Y.Z` (nomor versi dan changelog
+  # tertanam di image dari commit merge).
+  image:
+    needs: [meta, guard, ci]
+    if: needs.meta.outputs.release == 'true'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/server-image.yml
+    with:
+      target: production
+      sha: ${{ needs.meta.outputs.sha }}
+      extra-tags: server-v${{ needs.meta.outputs.version }}
+
+  # `contents: write` hanya batas bagi `mark-deployed` di dalam workflow terpanggil (satu-satunya yang menulis).
+  deploy:
+    needs: [meta, guard, ci, image]
+    if: needs.meta.outputs.release == 'true' && needs.image.result == 'success'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/server-deploy.yml
+    with:
+      target: production
+      sha: ${{ needs.meta.outputs.sha }}
+
+  # Tag `server-vX.Y.Z` + GitHub Release (arsip sumber otomatis). Idempoten: tag yang sudah ada pada SHA yang sama dilewati
+  # (menjalankan ulang tak membuat tag ganda), tag pada SHA lain menggagalkan. Catatan dibuat tanpa token; token hanya di
+  # langkah yang memanggil API.
+  publish:
+    needs: [meta, deploy]
+    if: needs.meta.outputs.release == 'true' && needs.deploy.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.meta.outputs.sha }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Susun catatan rilis
+        id: notes
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+          NOTES_DIR: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Versi rilis tidak valid."; exit 1; }
+          bun run changelog extract server "$VERSION" > "$NOTES_DIR/notes.md"
+
+      - name: Buat tag dan Release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ needs.meta.outputs.sha }}
+          VERSION: ${{ needs.meta.outputs.version }}
+          NOTES_DIR: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || fail "Commit rilis bukan SHA 40 heksa."
+          [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Versi rilis tidak valid."
+          tag="server-v$VERSION"
+          existing=$(gh api "repos/$REPO/git/ref/tags/$tag" --jq '.object.type + " " + .object.sha' 2>/dev/null || true)
+          if [ -n "$existing" ]; then
+            [ "${existing%% *}" = commit ] || fail "Tag $tag sudah ada tetapi bukan tag ringan: periksa manual."
+            [ "${existing##* }" = "$SHA" ] || fail "Tag $tag sudah ada pada commit lain: periksa manual (tag tidak ditimpa)."
+            if gh release view "$tag" > /dev/null 2>&1; then
+              echo "Tag dan Release $tag sudah ada pada commit yang sama; dilewati."
+            else
+              gh release create "$tag" --verify-tag --title "Server v$VERSION" --notes-file "$NOTES_DIR/notes.md"
+            fi
+          else
+            gh release create "$tag" --target "$SHA" --title "Server v$VERSION" --notes-file "$NOTES_DIR/notes.md"
+          fi
+
+  # Menyinkronkan `main` ke `dev` setelah rilis (versi dan changelog baru). Merge lewat API tanpa PR (branch protection tak
+  # tersedia; isinya hanya metadata, jadi tak perlu deploy staging). Konflik (409) membuka PR main -> dev; membuat PR butuh
+  # setelan repo "Allow GitHub Actions to create pull requests". Kegagalan di sini hanya peringatan (rilis sudah selesai).
+  sync-dev:
+    needs: [meta, publish]
+    if: needs.meta.outputs.release == 'true' && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      REPO: ${{ github.repository }}
+      SHA: ${{ needs.meta.outputs.sha }}
+      VERSION: ${{ needs.meta.outputs.version }}
+    steps:
+      - name: Gabungkan main ke dev
+        run: |
+          set -uo pipefail
+          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Commit rilis bukan SHA 40 heksa."; exit 1; }
+          [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Versi rilis tidak valid."; exit 1; }
+          out=$(gh api -X POST "repos/$REPO/merges" -f base=dev -f "head=$SHA" -f "commit_message=chore(rilis): sinkron main ke dev (server v$VERSION)" 2>&1)
+          code=$?
+          if [ $code -eq 0 ]; then
+            echo "main sudah digabung ke dev."
+            exit 0
+          fi
+          if grep -qE "409|[Cc]onflict" <<< "$out"; then
+            if gh pr create --base dev --head main --title "chore(rilis): sinkron main ke dev (server v$VERSION)" --body "Sinkron otomatis setelah rilis server v$VERSION: penggabungan langsung konflik, jadi dibuka sebagai PR. Selesaikan konflik lalu merge."; then
+              echo "Konflik: PR main -> dev dibuka."
+            else
+              echo "::warning::Penggabungan main -> dev konflik dan PR tidak dapat dibuat. Aktifkan setelan repo 'Allow GitHub Actions to create pull requests' atau buat PR main -> dev secara manual."
+            fi
+            exit 0
+          fi
+          echo "::warning::Sinkron main -> dev gagal; sinkronkan manual sebelum rilis berikutnya (release:prepare menolak bila main bukan leluhur dev)."
