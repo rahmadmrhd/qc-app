@@ -65,6 +65,17 @@ const MARIADB_ACTION = read('.github/actions/mariadb/action.yml');
 const SETUP_ACTION = read('.github/actions/setup/action.yml');
 const deployText = rawOf('deploy-server.yml');
 const deploy = parse(deployText);
+// Build image dan deploy ke VPS dipindah ke workflow yang dapat dipanggil (rencana rilis 2): deploy-server.yml (PR/dispatch),
+// release.yml, dan deploy-tag.yml memakai langkah keamanan yang SAMA tanpa salinan.
+const imageText = rawOf('server-image.yml');
+const imageWf = parse(imageText);
+const deployerText = rawOf('server-deploy.yml');
+const deployer = parse(deployerText);
+/** Ketiga berkas yang bersama-sama menggantikan deploy-server.yml lama. */
+const serverPipelineTexts = [deployText, imageText, deployerText];
+const serverPipeline = [deploy, imageWf, deployer];
+
+const RELEASE_HEAD_REF_EXPR = "startsWith(github.event.pull_request.head.ref, 'release/server-v')";
 
 /** Semua nilai `uses:` dan isi `run:` dari satu workflow. */
 function stepsOf(workflow: Workflow): Step[] {
@@ -104,10 +115,18 @@ describe('workflow: aturan umum (semua berkas)', () => {
 
   test('workflow dengan pull_request_target tidak pernah merujuk head PR yang belum di-merge', () => {
     for (const name of workflowFiles) {
-      const text = codeOf(rawOf(name));
+      let text = codeOf(rawOf(name));
+      // Satu-satunya pengecualian: ekspresi KELOMPOK concurrency release.yml, yang hanya membedakan cabang `release/server-v…`
+      // dari merge lain ke main (agar merge biasa tak membatalkan run rilis yang menunggu). Hanya dibaca sebagai teks ekspresi:
+      // tak ada checkout, `run`, atau output yang memakainya (dijaga tes release.yml di bawah).
+      if (name === 'release.yml') text = text.replace(RELEASE_HEAD_REF_EXPR, '');
       if (text.includes('pull_request_target')) {
         expect(text, name).not.toMatch(/pull_request\.head/);
-        expect(text, name).not.toMatch(/head_ref|\.head\.(sha|ref|repo|label)|refs\/pull\//);
+        // release.yml membaca data PR (cabang, repositori asal) lewat API untuk pagar identitas; itu data, bukan kode yang
+        // dijalankan. Yang dijaga di sana: tak ada field `pull_request.head` dari event (di atas), tak ada checkout selain
+        // github.sha/sha hasil meta, dan tak ada `refs/pull/` (tes khusus release.yml di bawah).
+        if (name === 'release.yml') expect(text, name).not.toMatch(/refs\/pull\//);
+        else expect(text, name).not.toMatch(/head_ref|\.head\.(sha|ref|repo|label)|refs\/pull\//);
       }
     }
   });
@@ -129,16 +148,16 @@ describe('deploy-server.yml: keamanan', () => {
   test('cache lapisan image lewat registry GHCR: ditulis job image untuk SEMUA event, tag per environment, tanpa cache GHA', () => {
     // Token pull_request_target ditolak menulis cache GHA, tetapi job image berizin packages: write sehingga boleh
     // menulis cache registry pada event apa pun; dengan begitu lapisan web-build dipakai ulang saat hanya server berubah.
-    const build = (deploy.jobs.image?.steps ?? []).find((step) =>
+    const build = (imageWf.jobs.image?.steps ?? []).find((step) =>
       step.uses?.startsWith('docker/build-push-action'),
     );
     expect(String(build?.with?.['cache-to'])).toBe(
-      'type=registry,ref=${{ steps.name.outputs.image }}:buildcache-${{ needs.meta.outputs.target }},mode=max,image-manifest=true,oci-mediatypes=true',
+      'type=registry,ref=${{ steps.name.outputs.image }}:buildcache-${{ inputs.target }},mode=max,image-manifest=true,oci-mediatypes=true',
     );
     // Kebijakan baca cache ditentukan langkah `cache` (production tanpa cache; lihat tes di bawah).
     expect(build?.with?.['cache-from']).toBe('${{ steps.cache.outputs.cache_from }}');
     expect(build?.with?.['no-cache']).toBe('${{ steps.cache.outputs.no_cache }}');
-    expect(codeOf(deployText)).not.toContain('type=gha');
+    for (const text of serverPipelineTexts) expect(codeOf(text)).not.toContain('type=gha');
     // cache-to tak bergantung pada jenis event (tak boleh tertukar menjadi "hanya dispatch" lagi)
     expect(String(build?.with?.['cache-to'])).not.toContain('github.event_name');
   });
@@ -146,7 +165,7 @@ describe('deploy-server.yml: keamanan', () => {
   describe('kebijakan cache: production TANPA cache (keputusan pemilik 2026-11-17)', () => {
     // Cache registry dapat ditimpa penulis branch di repo ini (peracunan lapisan): production tak boleh memakainya,
     // dan tak cukup hanya tahap web-build karena lapisan RUN lain (bun install, apk add) juga dieksekusi di runtime.
-    const step = (deploy.jobs.image?.steps ?? []).find((s) => s.id === 'cache');
+    const step = (imageWf.jobs.image?.steps ?? []).find((s) => s.id === 'cache');
     const script = step?.run ?? '';
     const dir = mkdtempSync(join(tmpdir(), 'qc-ci-cache-'));
 
@@ -170,9 +189,9 @@ describe('deploy-server.yml: keamanan', () => {
     test('langkah cache ada, memakai env (bukan ${{ }} di run), dan berjalan sebelum build', () => {
       expect(step).toBeDefined();
       expect(script).not.toContain('${{');
-      expect(step?.env?.TARGET).toBe('${{ needs.meta.outputs.target }}');
+      expect(step?.env?.TARGET).toBe('${{ inputs.target }}');
       expect(step?.env?.IMAGE).toBe('${{ steps.name.outputs.image }}');
-      const steps = deploy.jobs.image?.steps ?? [];
+      const steps = imageWf.jobs.image?.steps ?? [];
       const build = steps.findIndex((s) => s.uses?.startsWith('docker/build-push-action'));
       expect(steps.indexOf(step as Step)).toBeLessThan(build);
     });
@@ -209,14 +228,14 @@ describe('deploy-server.yml: keamanan', () => {
   });
 
   describe('job mark-deployed: penunjuk refs/deployed/<environment> (keputusan pemilik 2026-11-17)', () => {
-    const job = deploy.jobs['mark-deployed'] as Job;
+    const job = deployer.jobs['mark-deployed'] as Job;
     const script = (job?.steps ?? []).find((s) => s.run)?.run ?? '';
     const dir = mkdtempSync(join(tmpdir(), 'qc-ci-mark-'));
     const SHA = 'c'.repeat(40);
 
     test('hanya sesudah deploy sukses; satu-satunya job dengan contents: write; tanpa checkout, aksi, dan rahasia', () => {
       expect(job).toBeDefined();
-      expect([job.needs ?? []].flat().sort()).toEqual(['deploy', 'meta']);
+      expect([job.needs ?? []].flat()).toEqual(['deploy']);
       expect(job.if).toBe("needs.deploy.result == 'success'");
       expect(job.permissions).toEqual({ contents: 'write' });
       expect((job.steps ?? []).some((s) => s.uses)).toBe(false);
@@ -225,8 +244,8 @@ describe('deploy-server.yml: keamanan', () => {
       expect(job.env).toEqual({
         GH_TOKEN: '${{ github.token }}',
         REPO: '${{ github.repository }}',
-        TARGET: '${{ needs.meta.outputs.target }}',
-        SHA: '${{ needs.meta.outputs.sha }}',
+        TARGET: '${{ inputs.target }}',
+        SHA: '${{ inputs.sha }}',
       });
     });
 
@@ -319,19 +338,76 @@ describe('deploy-server.yml: keamanan', () => {
       'since-deploy':
         "${{ github.event_name == 'pull_request_target' && needs.meta.outputs.target || '' }}",
     });
-    expect(codeOf(deployText)).not.toContain('secrets: inherit');
+    // Rahasia environment (kunci UI, SSH) dibaca job terpanggil lewat `environment:`-nya sendiri; pemanggil tak meneruskan
+    // rahasia apa pun (`secrets: inherit` akan membuka rahasia repositori ke workflow terpanggil tanpa perlu).
+    for (const text of serverPipelineTexts) expect(codeOf(text)).not.toContain('secrets: inherit');
     // packages: read wajib walau ci memakainya hanya untuk uji bangun PR (validasi izin workflow dipanggil)
     expect(ci.permissions).toEqual({
       contents: 'read',
       'pull-requests': 'read',
       packages: 'read',
     });
+    // image dan deploy hanya memanggil workflow bersama (tanpa langkah sendiri).
     const image = deploy.jobs.image as Job;
     expect([image.needs ?? []].flat().sort()).toEqual(['ci', 'meta']);
     expect(image.if).toBe("needs.ci.outputs.image == 'true'");
+    expect(image.uses).toBe('./.github/workflows/server-image.yml');
+    expect(image.steps).toBeUndefined();
+    expect(image.with).toEqual({
+      target: '${{ needs.meta.outputs.target }}',
+      sha: '${{ needs.meta.outputs.sha }}',
+    });
     const dep = deploy.jobs.deploy as Job;
     expect([dep.needs ?? []].flat().sort()).toEqual(['ci', 'image', 'meta']);
     expect(dep.if).toBe("needs.image.result == 'success'");
+    expect(dep.uses).toBe('./.github/workflows/server-deploy.yml');
+    expect(dep.steps).toBeUndefined();
+    expect(dep.with).toEqual({
+      target: '${{ needs.meta.outputs.target }}',
+      sha: '${{ needs.meta.outputs.sha }}',
+    });
+    expect(deploy.jobs['mark-deployed']).toBeUndefined();
+  });
+
+  test('server-image.yml dan server-deploy.yml: hanya workflow_call, inputs bertipe, dan environment dari input target', () => {
+    for (const wf of [imageWf, deployer]) {
+      expect(Object.keys(wf.on ?? {})).toEqual(['workflow_call']);
+      const inputs = (wf.on as { workflow_call: { inputs: Record<string, { type: string }> } })
+        .workflow_call.inputs;
+      expect(inputs.target?.type).toBe('string');
+      expect(inputs.sha?.type).toBe('string');
+      expect(wf.permissions).toEqual({ contents: 'read' });
+    }
+    const imageInputs = (
+      imageWf.on as {
+        workflow_call: { inputs: Record<string, { type: string; default?: string }> };
+      }
+    ).workflow_call.inputs;
+    expect(imageInputs['extra-tags']?.default).toBe('');
+    const deployInputs = (
+      deployer.on as {
+        workflow_call: { inputs: Record<string, { type: string; default?: boolean }> };
+      }
+    ).workflow_call.inputs;
+    expect(deployInputs['allow-schema-downgrade']).toMatchObject({
+      type: 'boolean',
+      default: false,
+    });
+    expect(imageWf.jobs.image?.environment).toBe('${{ inputs.target }}');
+    expect(deployer.jobs.deploy?.environment).toBe('${{ inputs.target }}');
+    expect(imageWf.jobs.image?.outputs).toEqual({ tag: '${{ inputs.sha }}' });
+  });
+
+  test('extra-tags divalidasi regex server-vX.Y.Z di langkah sendiri sebelum build, lewat env (bukan ${{ }} di run)', () => {
+    const steps = imageWf.jobs.image?.steps ?? [];
+    const validate = steps.find((s) => s.id === 'tags');
+    expect(validate).toBeDefined();
+    expect(validate?.env?.EXTRA_TAGS).toBe('${{ inputs.extra-tags }}');
+    expect(validate?.run).not.toContain('${{');
+    expect(validate?.run).toContain('^server-v[0-9]+\\.[0-9]+\\.[0-9]+$');
+    const build = steps.find((s) => s.uses?.startsWith('docker/build-push-action'));
+    expect(steps.indexOf(validate as Step)).toBeLessThan(steps.indexOf(build as Step));
+    expect(String(build?.with?.tags)).toBe('${{ steps.tags.outputs.list }}');
   });
 
   test('pull_request_target: job meta hanya jalan bila PR merged; semua job lain bergantung padanya', () => {
@@ -355,43 +431,60 @@ describe('deploy-server.yml: keamanan', () => {
   });
 
   test('checkout (fork PR tak mendapat kode/rahasia): hanya commit dari job meta (merge_commit_sha), tidak pernah head PR', () => {
-    const checkouts = Object.values(deploy.jobs)
-      .flatMap((job) => job.steps ?? [])
-      .filter((step) => step.uses?.startsWith('actions/checkout'));
-    expect(checkouts.length).toBeGreaterThan(0);
+    // deploy-server.yml sendiri tak men-checkout apa pun; satu-satunya checkout ada di server-image.yml dan memakai input `sha`
+    // (yang diisi pemanggil dari output `meta`).
+    expect(stepsOf(deploy).some((step) => step.uses?.startsWith('actions/checkout'))).toBe(false);
+    expect(stepsOf(deployer).some((step) => step.uses?.startsWith('actions/checkout'))).toBe(false);
+    const checkouts = stepsOf(imageWf).filter((step) => step.uses?.startsWith('actions/checkout'));
+    expect(checkouts).toHaveLength(1);
     for (const step of checkouts) {
-      expect(step.with?.ref, 'checkout harus memakai ref dari meta').toBe(
-        '${{ needs.meta.outputs.sha }}',
-      );
+      expect(step.with?.ref, 'checkout harus memakai sha masukan').toBe('${{ inputs.sha }}');
     }
     const metaEnv = (deploy.jobs.meta?.steps ?? []).find((s) => s.id === 'select')?.env ?? {};
     expect(metaEnv.PR_MERGE_SHA).toBe('${{ github.event.pull_request.merge_commit_sha }}');
     // tag image = commit yang dibangun (bukan github.sha, yang pada pull_request_target = ujung branch tujuan)
-    expect(deploy.jobs.image?.steps?.some((s) => JSON.stringify(s).includes('github.sha'))).toBe(
+    expect(imageWf.jobs.image?.steps?.some((s) => JSON.stringify(s).includes('github.sha'))).toBe(
       false,
     );
-    expect(codeOf(deployText)).not.toMatch(/pull_request\.head|head_ref|\.head\.(sha|ref|repo)/);
+    for (const text of serverPipelineTexts) {
+      expect(codeOf(text)).not.toMatch(/pull_request\.head|head_ref|\.head\.(sha|ref|repo)/);
+    }
+    // sha masukan divalidasi 40 heksa di workflow terpanggil sebelum dipakai (pemanggil lain, mis. dispatch, tak dipercaya)
+    for (const wf of [imageWf, deployer]) {
+      const validated = stepsOf(wf).some((s) => /\^\[0-9a-f\]\{40\}\$/.test(s.run ?? ''));
+      expect(validated).toBe(true);
+    }
   });
 
   test('izin minimal: contents read tingkat atas; hanya job image menulis packages; job deploy tanpa izin', () => {
     expect(deploy.permissions).toEqual({ contents: 'read' });
+    // Pemanggil: izin job pemanggil adalah BATAS bagi job terpanggil, jadi `image` memberi packages: write dan `deploy`
+    // memberi contents: write (hanya untuk mark-deployed di dalamnya).
     for (const [name, job] of Object.entries(deploy.jobs)) {
       const write = Object.entries(job.permissions ?? {}).filter(([, level]) => level === 'write');
       if (name === 'image') expect(write).toEqual([['packages', 'write']]);
-      else if (name === 'mark-deployed') expect(write).toEqual([['contents', 'write']]);
+      else if (name === 'deploy') expect(write).toEqual([['contents', 'write']]);
       else expect(write, name).toEqual([]);
     }
-    expect(deploy.jobs.deploy?.permissions).toEqual({});
+    // Terpanggil: hanya `image` menulis packages; `deploy` tanpa izin sama sekali; `mark-deployed` satu-satunya contents: write.
+    for (const [name, job] of Object.entries(imageWf.jobs)) {
+      const write = Object.entries(job.permissions ?? {}).filter(([, level]) => level === 'write');
+      expect(write, name).toEqual([['packages', 'write']]);
+    }
+    expect(deployer.jobs.deploy?.permissions).toEqual({});
+    expect(deployer.jobs['mark-deployed']?.permissions).toEqual({ contents: 'write' });
   });
 
   test('skrip `run` tanpa interpolasi ${{ }} (tidak ada injeksi ekspresi); nilai lewat env', () => {
-    for (const step of stepsOf(deploy)) {
-      if (step.run) expect(step.run, step.name).not.toContain('${{');
+    for (const wf of serverPipeline) {
+      for (const step of stepsOf(wf)) {
+        if (step.run) expect(step.run, step.name).not.toContain('${{');
+      }
     }
   });
 
   test('uji asap publik dari runner informatif (continue-on-error + ::warning::); Ringkasan tetap if success()', () => {
-    const steps = stepsOf(deploy);
+    const steps = stepsOf(deployer);
     const smoke = steps.find((step) => step.name?.startsWith('Uji asap'));
     expect(smoke).toBeDefined();
     expect((smoke as Record<string, unknown>)['continue-on-error']).toBe(true);
@@ -402,28 +495,35 @@ describe('deploy-server.yml: keamanan', () => {
   });
 
   test('job deploy: environment dari job meta, tanpa checkout, rahasia hanya di sini, antrean serial tanpa membatalkan', () => {
-    const job = deploy.jobs.deploy as Job;
-    expect(job.environment).toBe('${{ needs.meta.outputs.target }}');
+    const job = deployer.jobs.deploy as Job;
+    expect(job.environment).toBe('${{ inputs.target }}');
     expect((job.steps ?? []).some((step) => step.uses?.startsWith('actions/checkout'))).toBe(false);
-    for (const [name, other] of Object.entries(deploy.jobs)) {
+    for (const [name, other] of Object.entries(deployer.jobs)) {
       if (name === 'deploy') continue;
       expect(JSON.stringify(other), name).not.toMatch(/secrets\.DEPLOY_/);
     }
+    for (const text of [deployText, imageText]) expect(text).not.toMatch(/secrets\.DEPLOY_/);
     expect(deploy.concurrency?.['cancel-in-progress']).toBe(false);
     expect(deploy.concurrency?.group).toContain('deploy-server-');
   });
 
   test('checkout tanpa menyimpan kredensial git di runner', () => {
-    for (const step of stepsOf(deploy)) {
-      if (step.uses?.startsWith('actions/checkout')) {
-        expect(step.with?.['persist-credentials'], step.name ?? 'checkout').toBe(false);
+    for (const wf of serverPipeline) {
+      for (const step of stepsOf(wf)) {
+        if (step.uses?.startsWith('actions/checkout')) {
+          expect(step.with?.['persist-credentials'], step.name ?? 'checkout').toBe(false);
+        }
       }
     }
   });
 
   test('perintah SSH sesuai kontrak deploy.sh: `deploy <staging|production> <sha 40 heksa>` diterima, kunci --only dicocokkan', async () => {
-    const deployStep = (deploy.jobs.deploy?.steps ?? []).find((s) => s.name === 'Deploy di VPS');
-    expect(deployStep?.run).toContain('ssh qc-deploy "deploy $TARGET $TAG"');
+    const deployStep = (deployer.jobs.deploy?.steps ?? []).find((s) => s.name === 'Deploy di VPS');
+    // Pagar downgrade skema (rencana 3) menambah kata ` allow-schema-downgrade` hanya bila diminta eksplisit.
+    expect(deployStep?.run).toContain('cmd="deploy $TARGET $TAG"');
+    expect(deployStep?.run).toContain('ssh qc-deploy "$cmd"');
+    expect(deployStep?.env?.ALLOW_DOWNGRADE).toBe('${{ inputs.allow-schema-downgrade }}');
+    expect(deployStep?.run).toContain('^(true|false)$');
     const sha = 'a'.repeat(40);
     for (const target of ['staging', 'production']) {
       const proc = Bun.spawn(
@@ -445,15 +545,17 @@ describe('deploy-server.yml: keamanan', () => {
   });
 
   test('nama image di workflow sama dengan bawaan compose (ghcr.io/rahmadmrhd/qc-app)', () => {
-    expect(deployText).toContain('ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/qc-app');
+    expect(imageText).toContain('ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/qc-app');
     expect(read('deploy/compose.yml')).toContain('ghcr.io/rahmadmrhd/qc-app');
   });
 
   test('secret/variabel yang dipakai workflow semuanya tercatat di docs/ci-cd.md', () => {
     const doc = read('docs/ci-cd.md');
     const used = new Set<string>();
-    for (const match of deployText.matchAll(/\b(?:secrets|vars)\.([A-Z_]+)/g)) {
-      if (match[1] !== 'GITHUB_TOKEN') used.add(match[1] as string);
+    for (const text of serverPipelineTexts) {
+      for (const match of text.matchAll(/\b(?:secrets|vars)\.([A-Z_]+)/g)) {
+        if (match[1] !== 'GITHUB_TOKEN') used.add(match[1] as string);
+      }
     }
     expect([...used].sort()).toEqual([
       'APP_URL',
@@ -462,6 +564,7 @@ describe('deploy-server.yml: keamanan', () => {
       'DEPLOY_PORT',
       'DEPLOY_SSH_KEY',
       'DEPLOY_USER',
+      'RELEASE_FLOW',
       'UI_PUBLIC_KEY_PEM',
       'UI_SIGNING_KEY',
     ]);
@@ -633,29 +736,33 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
 });
 
 describe('deploy-server.yml: kunci tanda tangan manifest UI desktop', () => {
-  const image = deploy.jobs.image as Job;
+  const image = imageWf.jobs.image as Job;
   const imageSteps = image.steps ?? [];
   const prepare = imageSteps.find((step) => step.id === 'ui-key');
 
   test('job image memakai environment target deploy (staging/production, tempat secret dan Variable pemilik) dan hanya ia yang membaca UI_SIGNING_KEY', () => {
     // Keputusan penempatan pemilik 2026-11-16: kunci ada di environment yang sama dengan target deploy, bukan
     // environment terpisah `ui-signing`; yang membatasi akses adalah aturan branch environment itu.
-    expect(image.environment).toBe('${{ needs.meta.outputs.target }}');
-    expect(deployText).not.toMatch(/environment:\s*ui-signing/);
-    for (const [name, job] of Object.entries(deploy.jobs)) {
-      if (name === 'image') continue;
-      expect(JSON.stringify(job), name).not.toMatch(
-        /UI_SIGNING_KEY|ui_signing_key|UI_PUBLIC_KEY_PEM/,
-      );
+    expect(image.environment).toBe('${{ inputs.target }}');
+    for (const text of serverPipelineTexts) {
+      expect(text).not.toMatch(/environment:\s*ui-signing/);
+    }
+    // Pemanggil dan workflow deploy tak boleh menyentuh kunci sama sekali.
+    for (const wf of [deploy, deployer]) {
+      for (const [name, job] of Object.entries(wf.jobs)) {
+        expect(JSON.stringify(job), name).not.toMatch(
+          /UI_SIGNING_KEY|ui_signing_key|UI_PUBLIC_KEY_PEM/,
+        );
+      }
     }
     // Satu-satunya pembaca secret: env langkah persiapan (nilai tak pernah di `run` atau input aksi).
-    expect(codeOf(deployText).match(/secrets\.UI_SIGNING_KEY/g)).toHaveLength(1);
+    expect(codeOf(imageText).match(/secrets\.UI_SIGNING_KEY/g)).toHaveLength(1);
     expect(prepare?.env?.UI_SIGNING_KEY).toBe('${{ secrets.UI_SIGNING_KEY }}');
   });
 
   test('LARANGAN: workflow lain (test.yml dan seterusnya, yang berjalan pada pull_request) tak menyebut kunci tanda tangan', () => {
     for (const name of workflowFiles) {
-      if (name === 'deploy-server.yml') continue;
+      if (name === 'server-image.yml') continue; // satu-satunya workflow yang membangun image dan memakai kunci
       expect(rawOf(name), name).not.toMatch(/UI_SIGNING_KEY|ui_signing_key|ui-signing/i);
     }
   });
@@ -677,7 +784,7 @@ describe('deploy-server.yml: kunci tanda tangan manifest UI desktop', () => {
 
   test('SHA commit yang dibangun diteruskan ke image sebagai build-arg GIT_SHA (dibaca /api/ping)', () => {
     const build = imageSteps.find((step) => step.uses?.startsWith('docker/build-push-action'));
-    expect(String(build?.with?.['build-args'])).toContain('GIT_SHA=${{ needs.meta.outputs.sha }}');
+    expect(String(build?.with?.['build-args'])).toContain('GIT_SHA=${{ inputs.sha }}');
   });
 
   describe('skrip langkah "Siapkan kunci tanda tangan UI"', () => {
@@ -881,9 +988,13 @@ describe('test.yml dan aksi MariaDB', () => {
   test('versi bun di workflow sama dengan Dockerfile', () => {
     const dockerVersion = /^ARG BUN_VERSION=(\S+)$/m.exec(read('Dockerfile'))?.[1];
     // Semua berkas yang memasang bun (aksi setup bersama, ci.yml, dan workflow yang masih memasangnya sendiri).
-    const withBun = [SETUP_ACTION, rawOf('ci.yml'), rawOf('test.yml'), deployText].filter((text) =>
-      text.includes('oven-sh/setup-bun'),
-    );
+    const withBun = [
+      SETUP_ACTION,
+      rawOf('ci.yml'),
+      rawOf('test.yml'),
+      rawOf('release.yml'),
+      ...serverPipelineTexts,
+    ].filter((text) => text.includes('oven-sh/setup-bun'));
     expect(withBun.length).toBeGreaterThanOrEqual(2);
     for (const text of withBun) {
       expect(text).toContain(`bun-version: ${dockerVersion}`);
@@ -1320,5 +1431,256 @@ describe('changelog.yml: gerbang fragmen changelog di PR', () => {
     const doc = read('docs/ci-cd.md');
     expect(doc).toContain('changelog.yml');
     expect(doc).toContain('tanpa-changelog');
+  });
+});
+
+describe('saklar mode rilis RELEASE_FLOW (keputusan pemilik 2026-11-18): deploy-server.yml dan release.yml tak pernah aktif bersamaan', () => {
+  test('deploy-server.yml: merge ke main hanya men-deploy production bila RELEASE_FLOW BUKAN tag; staging dan dispatch tak terpengaruh', () => {
+    const metaIf = deploy.jobs.meta?.if ?? '';
+    expect(metaIf).toContain(
+      "!(github.event_name == 'pull_request_target' && github.event.pull_request.base.ref == 'main' && vars.RELEASE_FLOW == 'tag')",
+    );
+    // run yang dilewati karena saklar tak boleh menggantikan run deploy yang menunggu di antrean production
+    expect(deploy.concurrency?.group).toContain("vars.RELEASE_FLOW == 'tag'");
+    // pemicu tetap memuat main (perilaku bawaan `langsung` tak berubah)
+    const on = deploy.on as { pull_request_target: { branches: string[] } };
+    expect([...on.pull_request_target.branches].sort()).toEqual(['dev', 'main']);
+  });
+
+  test('release.yml: meta hanya jalan bila RELEASE_FLOW == tag; semua job lain bergantung padanya dan pada keluaran release', () => {
+    const release = parse(rawOf('release.yml'));
+    expect(release.jobs.meta?.if).toContain("vars.RELEASE_FLOW == 'tag'");
+    for (const [name, job] of Object.entries(release.jobs)) {
+      if (name === 'meta') continue;
+      expect([job.needs ?? []].flat(), name).toContain('meta');
+      expect(job.if ?? '', name).toContain("needs.meta.outputs.release == 'true'");
+    }
+  });
+});
+
+describe('release.yml: pipeline rilis server dari PR rilis', () => {
+  const text = rawOf('release.yml');
+  const release = parse(text);
+  const jobs = release.jobs;
+
+  test('pemicu: pull_request_target closed ke main dan workflow_dispatch (input versi); tanpa push dan pull_request biasa', () => {
+    const on = release.on as {
+      pull_request_target: { types: string[]; branches: string[] };
+      workflow_dispatch: { inputs: Record<string, { type: string; required: boolean }> };
+    };
+    expect(Object.keys(on).sort()).toEqual(['pull_request_target', 'workflow_dispatch']);
+    expect(on.pull_request_target.types).toEqual(['closed']);
+    expect(on.pull_request_target.branches).toEqual(['main']);
+    expect(on.workflow_dispatch.inputs.versi?.required).toBe(true);
+    expect(codeOf(text)).not.toMatch(/^\s*pull_request:/m);
+  });
+
+  test('urutan job: meta -> guard -> ci -> image -> deploy -> publish -> sync-dev', () => {
+    expect(Object.keys(jobs)).toEqual([
+      'meta',
+      'guard',
+      'ci',
+      'image',
+      'deploy',
+      'publish',
+      'sync-dev',
+    ]);
+    expect([jobs.guard?.needs ?? []].flat().sort()).toEqual(['meta']);
+    expect([jobs.ci?.needs ?? []].flat().sort()).toEqual(['guard', 'meta']);
+    expect([jobs.image?.needs ?? []].flat().sort()).toEqual(['ci', 'guard', 'meta']);
+    expect([jobs.deploy?.needs ?? []].flat().sort()).toEqual(['ci', 'guard', 'image', 'meta']);
+    expect([jobs.publish?.needs ?? []].flat().sort()).toEqual(['deploy', 'guard', 'meta']);
+    expect([jobs['sync-dev']?.needs ?? []].flat().sort()).toEqual(['meta', 'publish']);
+    expect(jobs.deploy?.if).toContain("needs.image.result == 'success'");
+    expect(jobs.publish?.if).toContain("needs.deploy.result == 'success'");
+  });
+
+  test('concurrency: grup production bersama deploy-server.yml, tanpa membatalkan; merge biasa ke main punya grup sendiri', () => {
+    expect(release.concurrency?.['cancel-in-progress']).toBe(false);
+    // sama dengan grup production deploy-server.yml (`deploy-server-` + environment): satu pipeline production sekaligus
+    expect(release.concurrency?.group).toContain('deploy-server-${{');
+    expect(release.concurrency?.group).toContain("'production'");
+    expect(release.concurrency?.group).toContain('github.event.pull_request.merged == true');
+    // run yang semua job-nya dilewati (mode langsung) tak boleh menempati grup production dan membuang deploy yang menunggu
+    expect(release.concurrency?.group).toContain("vars.RELEASE_FLOW == 'tag'");
+    expect(release.concurrency?.group).toContain("format('lewati-{0}', github.run_id)");
+    // ekspresi cabang release hanya boleh muncul di kelompok concurrency (bukan di run/env/if/checkout)
+    expect(codeOf(text).split(RELEASE_HEAD_REF_EXPR)).toHaveLength(2);
+    expect(JSON.stringify({ ...release, concurrency: undefined })).not.toContain(
+      'github.event.pull_request.head',
+    );
+  });
+
+  test('izin: contents read tingkat atas; contents: write hanya publish dan sync-dev (plus batas deploy untuk mark-deployed); pull-requests: write hanya sync-dev; packages: write hanya image', () => {
+    expect(release.permissions).toEqual({ contents: 'read' });
+    const writes = (name: string) =>
+      Object.entries(jobs[name]?.permissions ?? {})
+        .filter(([, level]) => level === 'write')
+        .map(([scope]) => scope)
+        .sort();
+    expect(writes('meta')).toEqual([]);
+    expect(writes('guard')).toEqual([]);
+    expect(writes('ci')).toEqual([]);
+    expect(writes('image')).toEqual(['packages']);
+    expect(writes('deploy')).toEqual(['contents']);
+    expect(writes('publish')).toEqual(['contents']);
+    expect(writes('sync-dev')).toEqual(['contents', 'pull-requests']);
+    expect(jobs.meta?.permissions).toEqual({ contents: 'read', 'pull-requests': 'read' });
+  });
+
+  test('checkout: meta dan guard hanya commit tepercaya github.sha (ujung main, untuk menjalankan skrip), publish hanya sha hasil meta; tak pernah head PR; kredensial tak disimpan', () => {
+    for (const name of ['meta', 'guard']) {
+      const checkout = (jobs[name]?.steps ?? []).find((s) =>
+        s.uses?.startsWith('actions/checkout'),
+      );
+      expect(checkout?.with?.ref, name).toBe('${{ github.sha }}');
+      expect(checkout?.with?.['persist-credentials'], name).toBe(false);
+    }
+    const publishCheckout = (jobs.publish?.steps ?? []).find((s) =>
+      s.uses?.startsWith('actions/checkout'),
+    );
+    expect(publishCheckout?.with?.ref).toBe('${{ needs.meta.outputs.sha }}');
+    expect(publishCheckout?.with?.['persist-credentials']).toBe(false);
+    for (const name of ['ci', 'image', 'deploy', 'sync-dev']) {
+      const hasCheckout = (jobs[name]?.steps ?? []).some((s) =>
+        s.uses?.startsWith('actions/checkout'),
+      );
+      expect(hasCheckout, name).toBe(false);
+    }
+  });
+
+  test('skrip `run` tanpa interpolasi ${{ }}; keputusan identitas dan guard memakai skrip murni; rahasia tak disebut', () => {
+    for (const step of stepsOf(release)) {
+      if (step.run) expect(step.run, step.name).not.toContain('${{');
+    }
+    const metaRuns = (jobs.meta?.steps ?? []).map((s) => s.run ?? '').join('\n');
+    expect(metaRuns).toContain('bun run scripts/release-identity.ts');
+    const guardRuns = (jobs.guard?.steps ?? []).map((s) => s.run ?? '').join('\n');
+    expect(guardRuns).toContain('bun run scripts/release-guard.ts');
+    expect(codeOf(text)).not.toMatch(/secrets\./);
+    expect(codeOf(text)).not.toContain('secrets: inherit');
+  });
+
+  test('meta: PR dibaca lewat API (bukan field head dari event), non-rilis dilewati diam-diam, cabang release/server-v… yang gagal identitas = galat', () => {
+    const resolve = (jobs.meta?.steps ?? []).find((s) => s.id === 'resolve');
+    expect(resolve?.run).toContain('gh api');
+    expect(resolve?.run).toContain('release/server-v');
+    expect(resolve?.env?.GH_TOKEN).toBe('${{ github.token }}');
+    expect(resolve?.run).toContain('release=false');
+    expect(Object.keys(jobs.meta?.outputs ?? {}).sort()).toEqual(['release', 'sha', 'version']);
+  });
+
+  test('guard membaca refs/deployed/staging dan membandingkannya dengan commit rilis', () => {
+    const runs = (jobs.guard?.steps ?? []).map((s) => s.run ?? '').join('\n');
+    expect(runs).toContain('git/ref/deployed/staging');
+    expect(runs).toContain('compare/');
+  });
+
+  test('guard gagal tertutup: daftar berkas dikirim sebagai SATU baris JSON beserta jumlahnya (bukan teks per baris), 404 dibedakan dari galat API lain', () => {
+    const compare = (jobs.guard?.steps ?? []).find((s) => s.id === 'compare');
+    expect(compare?.run).toContain('jq -c');
+    expect(compare?.run).toContain('files_json=');
+    expect(compare?.run).toContain('file_count=');
+    expect(compare?.run).not.toContain('QC_FILES_EOF');
+    expect(compare?.run).not.toContain('2>/dev/null');
+    expect(compare?.run).toContain('404');
+    const run = (jobs.guard?.steps ?? []).find((s) => s.run?.includes('release-guard.ts'));
+    expect(run?.env?.FILES_JSON).toBe('${{ steps.compare.outputs.files_json }}');
+    expect(run?.env?.FILE_COUNT).toBe('${{ steps.compare.outputs.file_count }}');
+    expect(run?.env?.GH_TOKEN).toBeUndefined();
+  });
+
+  test('bentrok tag terdeteksi di guard SEBELUM image/deploy: tag ada pada commit lain menggagalkan; 404 dibedakan dari galat lain', () => {
+    const compare = (jobs.guard?.steps ?? []).find((s) => s.id === 'compare');
+    expect(compare?.run).toContain('git/ref/tags/server-v');
+    expect(compare?.run).toContain('Tag server-v');
+    // publish tak lagi menelan galat API sebagai "tag belum ada"
+    const create = (jobs.publish?.steps ?? []).find((s) => s.id === 'release');
+    expect(create?.run).not.toContain('2>/dev/null');
+    expect(create?.run).toContain('404');
+  });
+
+  test('menjalankan ulang (production sudah di commit itu): image dan deploy dilewati, guard tak membandingkan staging, tag dan Release tetap dituntaskan', () => {
+    expect(Object.keys(jobs.guard?.outputs ?? {})).toEqual(['deployed']);
+    for (const name of ['ci', 'image', 'deploy']) {
+      expect(jobs[name]?.if, name).toContain("needs.guard.outputs.deployed != 'true'");
+    }
+    const publishIf = jobs.publish?.if ?? '';
+    expect(publishIf).toContain('!cancelled()');
+    expect(publishIf).toContain('!failure()');
+    expect(publishIf).toContain("needs.guard.outputs.deployed == 'true'");
+    expect(publishIf).toContain("needs.deploy.result == 'success'");
+    const compare = (jobs.guard?.steps ?? []).find((s) => s.id === 'compare');
+    expect(compare?.run).toContain('git/ref/deployed/production');
+  });
+
+  test('meta memvalidasi versi di package.json (semver) sebelum menuliskannya ke GITHUB_OUTPUT (nilai dikendalikan isi commit)', () => {
+    const resolve = (jobs.meta?.steps ?? []).find((s) => s.id === 'resolve');
+    const run = resolve?.run ?? '';
+    expect(run).toContain('version_at_merge');
+    expect(
+      run.indexOf('=~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]] || fail "Versi di server/package.json'),
+    ).toBeGreaterThan(-1);
+    // sha ditulis sebagai baris terakhir (kunci terakhir menang pada GITHUB_OUTPUT)
+    const lines = run.split('\n');
+    const shaLine = lines.findIndex((l) => l.includes('echo "sha=$sha"'));
+    const versionLine = lines.findIndex((l) =>
+      l.includes('echo "version_at_merge=$version_at_merge"'),
+    );
+    expect(shaLine).toBeGreaterThan(versionLine);
+  });
+
+  test('ci memanggil ci.yml untuk commit rilis (selektif sejak deploy production terakhir); image dan deploy memanggil workflow bersama untuk production', () => {
+    expect(jobs.ci?.uses).toBe('./.github/workflows/ci.yml');
+    expect(jobs.ci?.with).toEqual({
+      ref: '${{ needs.meta.outputs.sha }}',
+      'since-deploy': 'production',
+    });
+    expect(jobs.ci?.permissions).toEqual({
+      contents: 'read',
+      'pull-requests': 'read',
+      packages: 'read',
+    });
+    expect(jobs.image?.uses).toBe('./.github/workflows/server-image.yml');
+    expect(jobs.image?.with).toEqual({
+      target: 'production',
+      sha: '${{ needs.meta.outputs.sha }}',
+      'extra-tags': 'server-v${{ needs.meta.outputs.version }}',
+    });
+    expect(jobs.deploy?.uses).toBe('./.github/workflows/server-deploy.yml');
+    expect(jobs.deploy?.with).toEqual({
+      target: 'production',
+      sha: '${{ needs.meta.outputs.sha }}',
+    });
+  });
+
+  test('publish: tag dan Release dibuat hanya bila belum ada pada SHA yang sama (idempoten), tag di SHA lain menggagalkan', () => {
+    const steps = jobs.publish?.steps ?? [];
+    const notes = steps.find((s) => s.id === 'notes');
+    const create = steps.find((s) => s.id === 'release');
+    // catatan dibuat tanpa token (menjalankan kode dari checkout); token hanya di langkah yang memanggil API
+    expect(notes?.run).toContain('changelog extract server');
+    expect(notes?.env?.GH_TOKEN).toBeUndefined();
+    expect(create?.env?.GH_TOKEN).toBe('${{ github.token }}');
+    expect(create?.run).not.toContain('bun run');
+    expect(create?.run).toContain('git/ref/tags/');
+    expect(create?.run).toContain('gh release create');
+    expect(create?.run).toContain('--target');
+    expect(create?.run).toContain('--verify-tag');
+    expect(steps.indexOf(notes as Step)).toBeLessThan(steps.indexOf(create as Step));
+  });
+
+  test('sync-dev: merge main ke dev lewat API; konflik membuka PR main -> dev; gagal membuat PR = peringatan jelas', () => {
+    const sync = (jobs['sync-dev']?.steps ?? []).find((s) => s.run?.includes('/merges'));
+    expect(sync?.run).toContain('base=dev');
+    expect(sync?.run).toContain('gh pr create --base dev --head main');
+    expect(sync?.run).toContain('::warning::');
+    expect(sync?.run).toContain('Allow GitHub Actions to create pull requests');
+  });
+
+  test('docs/ci-cd.md menjelaskan release.yml dan saklar RELEASE_FLOW', () => {
+    const doc = read('docs/ci-cd.md');
+    expect(doc).toContain('release.yml');
+    expect(doc).toContain('RELEASE_FLOW');
   });
 });

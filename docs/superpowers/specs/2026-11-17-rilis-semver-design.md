@@ -124,6 +124,8 @@ merge**; **PR dimerge dengan merge commit** (`merge_commit_sha` punya tepat dua 
 Jalur: `meta` -> `guard` -> `ci` (selektif, `ci.yml`) -> `image` -> `deploy` (production) -> `mark-deployed` -> `publish` -> `sync-dev`.
 - **guard (pengganti uji ulang)**: bandingkan **`refs/deployed/staging...<merge_commit_sha>`**: (a) status `ahead` dan SEMUA berkas
   yang berubah ada di daftar metadata (`server/package.json`, `bun.lock`, `server/CHANGELOG.md`, `server/changelog.d/**`);
+  status `identical` (rilis tanpa perubahan kode sejak staging) juga lulus, dan perbandingan yang terpotong pada 300 berkas
+  (batas API `compare`, tanpa penanda) ditolak, gagal tertutup (dicatat 2026-11-18, pass perbaikan bagian 2);
   (b) `server/CHANGELOG.md` punya bagian versi itu. Memakai commit merge (bukan head cabang) menangkap kode di `main` yang tak
   pernah melalui staging (hotfix, PR langsung). Karena `refs/deployed/staging` hanya ditulis setelah deploy staging sukses,
   kode yang dirilis identik dengan yang sudah lulus di staging.

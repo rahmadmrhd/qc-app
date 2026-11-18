@@ -53,6 +53,7 @@ function fakeShell(overrides: Record<string, Result | Result[]> = {}): Shell & {
   const calls: string[] = [];
   const defaults: Record<string, Result> = {
     'git status --porcelain': { code: 0, out: '' },
+    'gh variable get RELEASE_FLOW': { code: 0, out: 'tag\n' },
     'git rev-parse --abbrev-ref HEAD': { code: 0, out: 'feat/kerja\n' },
     'git merge-base --is-ancestor origin/main origin/dev': { code: 0, out: '' },
     'git rev-parse origin/dev': { code: 0, out: `${DEV}\n` },
@@ -142,6 +143,19 @@ describe('prepareRelease: prasyarat (berhenti SEBELUM membuat cabang)', () => {
     const shell = fakeShell({ 'git status --porcelain': { code: 0, out: ' M a.ts\n' } });
     await expect(run(shell)).rejects.toThrow(/kotor|bersih/i);
     expect(mutating(shell)).toEqual([]);
+  });
+
+  test('saklar RELEASE_FLOW bukan "tag" (mode langsung) atau tak terbaca: rilis server ditolak sebelum membuat cabang', async () => {
+    for (const answer of [
+      { code: 0, out: 'langsung\n' },
+      { code: 0, out: '\n' },
+      { code: 0, out: 'TAG\n' },
+      { code: 1, out: 'variabel tidak ada' },
+    ]) {
+      const shell = fakeShell({ 'gh variable get RELEASE_FLOW': answer });
+      await expect(run(shell)).rejects.toThrow(/RELEASE_FLOW/);
+      expect(mutating(shell)).toEqual([]);
+    }
   });
 
   test('origin/main bukan leluhur origin/dev', async () => {
