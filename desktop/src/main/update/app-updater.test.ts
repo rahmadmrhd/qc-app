@@ -138,12 +138,23 @@ describe('createAppUpdater', () => {
     expect(empty.showMessageBox).toHaveBeenCalledTimes(1);
   });
 
-  it('"Nanti": tak mengunduh dan tak bertanya lagi untuk versi yang sama pada sesi itu', async () => {
+  it('"Nanti": tak mengunduh, lalu ditawarkan lagi pada cek berikutnya (spek 5.5, keputusan pemilik 2026-11-18)', async () => {
     const h = harness([1, 1]);
-    await h.api.checkNow();
     await h.api.checkNow();
     expect(h.showMessageBox).toHaveBeenCalledTimes(1);
     expect(h.updater.downloadUpdate).not.toHaveBeenCalled();
+    await h.api.checkNow();
+    expect(h.showMessageBox).toHaveBeenCalledTimes(2);
+    expect(h.updater.downloadUpdate).not.toHaveBeenCalled();
+  });
+
+  it('versi yang sudah terunduh tidak ditanyakan atau diunduh lagi pada cek berikutnya', async () => {
+    const h = harness([0, 1]);
+    await h.api.checkNow();
+    expect(h.updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    await h.api.checkNow();
+    expect(h.showMessageBox).toHaveBeenCalledTimes(2); // pilihan awal + tawaran restart, tanpa tawaran baru
+    expect(h.updater.downloadUpdate).toHaveBeenCalledTimes(1);
   });
 
   it('versi yang lebih baru lagi ditawarkan walau versi sebelumnya ditunda', async () => {
@@ -204,6 +215,17 @@ describe('createAppUpdater', () => {
     h.updater.downloadUpdate.mockRejectedValue(new Error('terputus'));
     await expect(h.api.checkNow()).resolves.toBeUndefined();
     expect(h.updater.quitAndInstall).not.toHaveBeenCalled();
+  });
+
+  it('unduhan yang gagal dicoba lagi (ditawarkan lagi) pada cek berikutnya', async () => {
+    const h = harness([0, 0, 0]);
+    h.updater.downloadUpdate.mockRejectedValueOnce(new Error('terputus'));
+    await h.api.checkNow();
+    expect(h.updater.downloadUpdate).toHaveBeenCalledTimes(1);
+    expect(h.updater.quitAndInstall).not.toHaveBeenCalled();
+    await h.api.checkNow();
+    expect(h.updater.downloadUpdate).toHaveBeenCalledTimes(2);
+    expect(h.updater.quitAndInstall).toHaveBeenCalledWith(true, true);
   });
 
   it('checkNow bersamaan hanya satu yang berjalan', async () => {

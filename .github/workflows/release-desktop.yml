@@ -225,8 +225,9 @@ jobs:
           compression-level: 0
 
   # Menerbitkan: (1) unggah ke Drive (installer, manifest bertanda tangan, tanda tangan TERAKHIR = rilis terlihat), lalu
-  # (2) tag `desktop-vX.Y.Z` + GitHub Release berisi catatan rilis. Tag dan Release tak pernah dibuat bila unggahan gagal.
-  # Installer TIDAK dilampirkan ke Release: token katalog tertanam di dalamnya dan repositori ini publik. Idempoten: unggahan
+  # (2) tag `desktop-vX.Y.Z` + GitHub Release berisi catatan rilis dan installer yang sama (keputusan pemilik 2026-11-18: token
+  # katalog dinyatakan publik, jadi lampiran tak menambah paparan; pengguna tetap mengunduh lewat server QC, bukan GitHub).
+  # Tag dan Release tak pernah dibuat bila unggahan gagal. Idempoten: unggahan
   # ulang dengan isi sama dilewati (hanya manifest/tanda tangan; installer dibangun ulang tiap run dan NSIS tidak
   # reproducible, jadi pemulihan `versi` menimpa installer yang sudah live dan versi itu hilang dari server selama
   # unggah ulang), tag yang sudah ada pada SHA yang sama dilewati, tag pada SHA lain menggagalkan. Tanpa
@@ -301,11 +302,16 @@ jobs:
           SHA: ${{ needs.meta.outputs.sha }}
           VERSION: ${{ needs.meta.outputs.version }}
           NOTES_DIR: ${{ runner.temp }}
+          INSTALLERS_DIR: ${{ runner.temp }}/installers
         run: |
           set -euo pipefail
           fail() { echo "::error::$1"; exit 1; }
           [[ $SHA =~ ^[0-9a-f]{40}$ ]] || fail "Commit rilis bukan SHA 40 heksa."
           [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Versi rilis tidak valid."
+          # Lampiran Release = installer yang sama dengan yang diunggah ke Drive (artefak build); hanya berkas tersebut.
+          shopt -s nullglob
+          assets=("$INSTALLERS_DIR"/QC-App-Setup-*.exe)
+          [ "${#assets[@]}" -gt 0 ] || fail "Installer tidak ditemukan di artefak build."
           tag="desktop-v$VERSION"
           if out=$(gh api "repos/$REPO/git/ref/tags/$tag" --jq '.object.type + " " + .object.sha' 2>&1); then
             existing=$out
@@ -318,12 +324,14 @@ jobs:
             [ "${existing%% *}" = commit ] || fail "Tag $tag sudah ada tetapi bukan tag ringan: periksa manual."
             [ "${existing##* }" = "$SHA" ] || fail "Tag $tag sudah ada pada commit lain: periksa manual (tag tidak ditimpa)."
             if gh release view "$tag" > /dev/null 2>&1; then
-              echo "Tag dan Release $tag sudah ada pada commit yang sama; dilewati."
+              # Pemulihan `versi`: installer dibangun ulang (NSIS tidak reproducible), jadi lampiran lama ditimpa agar sama dengan Drive.
+              echo "Tag dan Release $tag sudah ada pada commit yang sama; lampiran installer diperbarui."
+              gh release upload "$tag" "${assets[@]}" --clobber
             else
-              gh release create "$tag" --verify-tag --title "Desktop v$VERSION" --notes-file "$NOTES_DIR/notes.md"
+              gh release create "$tag" --verify-tag --title "Desktop v$VERSION" --notes-file "$NOTES_DIR/notes.md" "${assets[@]}"
             fi
           else
-            gh release create "$tag" --target "$SHA" --title "Desktop v$VERSION" --notes-file "$NOTES_DIR/notes.md"
+            gh release create "$tag" --target "$SHA" --title "Desktop v$VERSION" --notes-file "$NOTES_DIR/notes.md" "${assets[@]}"
           fi
 
       - name: Hapus kunci

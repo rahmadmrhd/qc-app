@@ -123,8 +123,8 @@ menolak berjalan tanpanya. Server tidak memegang kunci apa pun dan hanya menerus
    mengunggah ke Drive (klien Google yang sama dengan server, kunci SA penerbit dari secret `DESKTOP_DRIVE_PUBLISHER_KEY`, folder dari variable):
    hapus `.sig` lama, installer, manifest, **terakhir** `.sig`; MD5 dan ukuran dari Drive diverifikasi, berkas cacat dibuang; idempoten
    (berkas yang sudah utuh dipakai ulang) sehingga dapat diulang lewat `workflow_dispatch` (`versi`) bila gagal di tengah. **Baru setelah unggahan
-   sukses** dibuat tag `desktop-vX.Y.Z` dan GitHub Release berisi catatan rilis (`scripts/changelog.ts extract desktop`); installer **tidak**
-   dilampirkan ke Release (bagian 7, keputusan 7). Terakhir `pruneInstallers` (gagal = peringatan).
+   sukses** dibuat tag `desktop-vX.Y.Z` dan GitHub Release berisi catatan rilis (`scripts/changelog.ts extract desktop`) dan installer yang sama
+   dengan di Drive (bagian 7, keputusan 7 revisi); pemulihan menimpa lampiran (`--clobber`). Terakhir `pruneInstallers` (gagal = peringatan).
 5. **sync-dev**: workflow bersama `sync-dev.yml` (dipakai juga `release.yml`; input `sha`, `version`, `komponen`), kegagalan hanya peringatan.
 Penarikan: job `withdraw` terpisah (hanya `workflow_dispatch` dengan `tarik`; menghapus `.sig`).
 Izin per job minimal; `contents: write` hanya pada `publish` (`sync-dev` memakai deploy key, token hanya-baca); semua nilai lewat `env`, tanpa `${{ }}` di `run`;
@@ -166,8 +166,10 @@ aksi pihak ketiga dipatok SHA; `ci-workflows.test.ts` diperluas (pemicu, izin, r
 - Keputusan perancang lain (dapat diubah): dialog OS, bukan layar dalam aplikasi; cek tiap 6 jam; retensi 10 versi; installer publik.
 
 ## 7. Catatan keputusan (log, 2026-11-18)
-Keputusan 1-5 disetujui pemilik pada 2026-11-18 bersama rencana implementasi; keputusan 6-10 diambil pelaksana saat implementasi dan **menunggu
-konfirmasi pemilik** (alasan dan biaya bila salah dicatat di ledger pelaksanaan; ubah bagian ini bila pemilik memutuskan lain).
+Keputusan 1-5 disetujui pemilik pada 2026-11-18 bersama rencana implementasi; keputusan 6-10 diambil pelaksana saat implementasi. Atas
+tinjauan akhir, pemilik pada 2026-11-18 memutuskan: keputusan 7 DIBALIK (installer dilampirkan), keputusan 10 dan M8 disetujui (token katalog
+diperlakukan publik), dan M4 disetujui (lihat 11-12). Keputusan **6, 8, dan 9 masih menunggu konfirmasi pemilik** (alasan dan biaya bila salah
+dicatat di ledger pelaksanaan; ubah bagian ini bila pemilik memutuskan lain).
 1. **Tata letak Drive datar** (bukan subfolder per versi): satu folder, nama berkas membawa versi. Mengubah 5.2 revisi 1-2. Alasan: pembacaan dan
    penjaga folder lebih sederhana, tanpa pembuatan folder per versi.
 2. **Pembatas laju unduhan installer per IP** (60 per jam; di luar rancangan awal, boleh dibuang): kunci `desktop-app-file:<ip>` di `rate_limits`,
@@ -179,12 +181,22 @@ konfirmasi pemilik** (alasan dan biaya bila salah dicatat di ledger pelaksanaan;
    tanpa unggahan yang sukses. Mengubah urutan di 5.6 revisi 1-2.
 6. **Penandatanganan manifest di job `publish`, bukan `build`**: job build menjalankan kode dependensi dan electron-builder, jadi kunci
    penandatangan tidak ditaruh di sana; `publish` tidak memasang dependensi (skrip hanya memakai `node:*`, WebCrypto, dan `fetch`). Mengubah 5.6 butir 3.
-7. **Installer tidak dilampirkan ke GitHub Release** (hanya catatan rilis): token katalog tertanam di installer dan repositori ini publik. Arsip installer
-   hanya di Drive. Mengubah 5.6 butir 4 revisi 1-2 ("berisi installer").
+7. **Installer DILAMPIRKAN ke GitHub Release** (bersama catatan rilis). Pelaksana semula memutuskan sebaliknya (token katalog tertanam di installer dan
+   repositori ini publik), tetapi pemilik memutuskan pada 2026-11-18 bahwa token katalog memang diperlakukan publik (butir 11), sehingga
+   melampirkan tak menambah paparan; Release menjadi arsip installer di luar Drive. Pengguna dan aplikasi tetap mengunduh lewat server QC, bukan GitHub.
+   Pemulihan `versi` menimpa lampiran (`gh release upload --clobber`) agar sama dengan Drive. Menggantikan keputusan pelaksana semula; sesuai 5.6 butir 4
+   revisi 1-2 ("berisi installer"). Bila repositori kembali privat, lampiran hanya terlihat pemilik/kolaborator.
 8. **Tanpa saklar `RELEASE_FLOW`** pada `release-desktop.yml` (rilis desktop tak men-deploy production; `release:prepare` yang menjaga), penarikan lewat
    job `withdraw` terpisah, `ci` memakai `desktop-check` tanpa daftar berkas (semua pemeriksaan, fail-safe), dan `sync-dev.yml` punya grup concurrency
    sendiri.
 9. **`app-update.yml` ditulis aplikasi sendiri** (`<userData>/updater/`, lewat setter publik `updateConfigPath`): satu-satunya cara agar provider kustom
    mendapat `updaterCacheDirName` tanpa berkas bawaan builder; dijaga `updater-contract.test.ts`.
 10. **Job `build` menerima secret `DESKTOP_CATALOG_TOKEN`** (hanya di langkah build): tanpanya katalog Tipe offline nonaktif pada installer hasil CI.
-    Perlu konfirmasi: apakah katalog diaktifkan di build CI, dan nama secret.
+    **Disetujui pemilik 2026-11-18** (katalog diaktifkan di build CI; nama secret tetap).
+11. **Token katalog diperlakukan publik** (pemilik, 2026-11-18; menutup temuan tinjauan M8): installer diunduh siapa saja lewat `app-file` tanpa sesi,
+    jadi token yang tertanam di dalamnya efektif terbuka bagi siapa pun yang mengunduh installer. Diterima: token hanya membuka katalog item Country
+    lock (tanpa akses lain) dan sudah berstatus terdistribusi (CLAUDE.md, katalog Tipe offline). Konsekuensi: melindungi installer tidak berguna
+    untuk menjaga token (lihat keputusan 7); rotasi token (ganti di `.env` VPS dan secret environment lalu rilis ulang) bila perlu.
+12. **"Nanti" tidak membungkam sepanjang sesi** (pemilik, 2026-11-18; menutup temuan tinjauan M4; sesuai 5.5): "Nanti" pada dialog tawaran
+    menunda hingga cek berikutnya (tiap 6 jam), dan unduhan yang gagal ditawarkan serta dicoba lagi pada cek berikutnya. Versi yang sudah terunduh tak
+    ditanyakan atau diunduh lagi (terpasang saat keluar). Kode semula membungkam versi itu sepanjang sesi; diperbaiki di `app-updater.ts`.
