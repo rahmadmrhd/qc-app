@@ -1,8 +1,8 @@
 import type { MeDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { ActiveLocationsProvider } from '@/modules/location/active-locations-context';
 import { pickLink } from '@/test/link-field';
 import { addSerials } from '../lib/draft';
 import { clearAllDrafts, resumeDraftWrites, saveDraft } from '../lib/draft-store';
@@ -62,35 +62,96 @@ function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <RecordPage />
+      <ActiveLocationsProvider>
+        <RecordPage />
+      </ActiveLocationsProvider>
     </QueryClientProvider>,
   );
 }
+
+const access = (location: { id: string; code: string; name: string }) =>
+  ({ ...location, permissions: {} }) as unknown as MeDto['locations'][number];
 
 const locationOptionsCalled = () =>
   apiMock.mock.calls.some((call) => call[0] === 'serials.locationOptions');
 const field = () => screen.getByRole('combobox', { name: 'Lokasi' });
 
-test('hanya satu lokasi tersedia: otomatis menjadi bawaan rombongan', async () => {
+test('hanya satu lokasi yang dapat dipilih: terisi otomatis dan TERKUNCI (tidak dapat diubah)', async () => {
   installApi([JAKARTA]);
   renderPage();
   await waitFor(() => expect(field()).toHaveValue('Jakarta (JKT)'));
+  expect(field()).toBeDisabled();
+  expect(screen.getByTestId('default-location-lock')).toHaveTextContent(
+    'Hanya satu lokasi yang bisa dipilih: Jakarta (JKT)',
+  );
+  // Tidak ada tombol kosongkan pada field yang terkunci.
+  expect(screen.queryByRole('button', { name: 'Kosongkan Lokasi' })).not.toBeInTheDocument();
 });
 
-test('dua lokasi atau lebih, atau nol: bawaan tetap kosong', async () => {
+test('dua lokasi dapat dipilih dan tidak ada lokasi aktif tunggal: field bebas dan kosong', async () => {
   installApi([JAKARTA, SURABAYA]);
-  const view = renderPage();
+  me = { ...me, locations: [access(JAKARTA), access(SURABAYA)] };
+  renderPage();
   await waitFor(() => expect(locationOptionsCalled()).toBe(true));
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(field()).toHaveValue('');
-  view.unmount();
+  expect(field()).toBeEnabled();
+  expect(screen.queryByTestId('default-location-lock')).not.toBeInTheDocument();
+  await pickLink(screen, 'Lokasi', 'Surabaya (SBY)');
+  expect(field()).toHaveValue('Surabaya (SBY)');
+});
 
-  apiMock.mockReset();
+test('nol lokasi: bawaan tetap kosong dan tidak terkunci', async () => {
   installApi([]);
   renderPage();
   await waitFor(() => expect(locationOptionsCalled()).toBe(true));
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(field()).toHaveValue('');
+  expect(field()).toBeEnabled();
+});
+
+test('lokasi aktif di header tepat satu: Lokasi terkunci ke lokasi itu walau ada lokasi lain', async () => {
+  localStorage.setItem('qc.locations', JSON.stringify(['l2']));
+  installApi([JAKARTA, SURABAYA]);
+  me = { ...me, locations: [access(JAKARTA), access(SURABAYA)] };
+  renderPage();
+  await waitFor(() => expect(field()).toHaveValue('Surabaya (SBY)'));
+  expect(field()).toBeDisabled();
+  expect(screen.getByTestId('default-location-lock')).toHaveTextContent(
+    'Terkunci ke lokasi aktif: Surabaya (SBY)',
+  );
+});
+
+test('dua lokasi aktif di header: tidak terkunci', async () => {
+  localStorage.setItem('qc.locations', JSON.stringify(['l1', 'l2']));
+  installApi([JAKARTA, SURABAYA]);
+  me = { ...me, locations: [access(JAKARTA), access(SURABAYA)] };
+  renderPage();
+  await waitFor(() => expect(locationOptionsCalled()).toBe(true));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(field()).toBeEnabled();
+  expect(field()).toHaveValue('');
+});
+
+test('lokasi aktif tunggal yang tidak termasuk pilihan lokasi: tidak dikunci ke lokasi itu', async () => {
+  localStorage.setItem('qc.locations', JSON.stringify(['l9']));
+  installApi([JAKARTA, SURABAYA]);
+  me = { ...me, locations: [access({ id: 'l9', code: 'MDN', name: 'Medan' })] };
+  renderPage();
+  await waitFor(() => expect(locationOptionsCalled()).toBe(true));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(field()).toBeEnabled();
+  expect(field()).toHaveValue('');
+});
+
+test('lokasi terkunci dihitung terisi: gerbang Default tidak menyebut Lokasi', async () => {
+  installApi([JAKARTA]);
+  renderPage();
+  await waitFor(() => expect(field()).toHaveValue('Jakarta (JKT)'));
+  expect(await screen.findByRole('status')).toHaveTextContent(
+    'Isi Default dulu: Item, Business Unit',
+  );
+  expect(screen.getByRole('status')).not.toHaveTextContent('Lokasi');
 });
 
 test('draf berlokasi tidak ditimpa: baris draf tetap memakai lokasinya sendiri', async () => {
@@ -120,26 +181,14 @@ test('draf berlokasi tidak ditimpa: baris draf tetap memakai lokasinya sendiri',
   expect(screen.getAllByDisplayValue('Jakarta (JKT)')).toHaveLength(1);
 });
 
-test('dikosongkan manual: tidak terisi lagi', async () => {
-  installApi([JAKARTA]);
-  renderPage();
-  await waitFor(() => expect(field()).toHaveValue('Jakarta (JKT)'));
-  await userEvent.click(screen.getByRole('button', { name: 'Kosongkan Lokasi' }));
-  await waitFor(() => expect(field()).toHaveValue(''));
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  expect(field()).toHaveValue('');
-  // Memilih ulang tetap bisa.
-  await pickLink(screen, 'Lokasi', 'Jakarta (JKT)');
-  expect(field()).toHaveValue('Jakarta (JKT)');
-});
-
-test('pembaca non-editor memakai me.locations: satu lokasi juga menjadi bawaan', async () => {
+test('pembaca non-editor memakai me.locations: satu lokasi juga terkunci', async () => {
   me = {
     ...me,
     permissions: { ...me.permissions, serial: 'view' },
-    locations: [{ id: 'l1', code: 'JKT', name: 'Jakarta' }] as MeDto['locations'],
+    locations: [access(JAKARTA)],
   };
   installApi([]);
   renderPage();
   await waitFor(() => expect(field()).toHaveValue('Jakarta (JKT)'));
+  expect(field()).toBeDisabled();
 });

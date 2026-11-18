@@ -13,6 +13,7 @@ import {
   legEventLabel,
   TEAM_LABEL,
 } from '../lib/labels';
+import { noteSummary } from '../lib/note-summary';
 import { ProofBadge, ProofProblemBadge } from './proof-badge';
 import { ProofGallery } from './proof-gallery';
 
@@ -117,6 +118,10 @@ function eventDetails(event: SerialEventDto): string[] {
 
 const show = (value: string | null) => (value === null || value === '' ? '—' : value);
 
+/** Catatan serial berbentuk Markdown: chip perubahan menampilkan ringkasan teks polosnya. */
+const shownChange = (field: string, value: string | null) =>
+  field === 'note' && value !== null ? noteSummary(value) : value;
+
 function EventCard({
   event,
   showLatestBadge,
@@ -183,7 +188,7 @@ function EventCard({
           {event.changes.map((change) => (
             <li key={`${change.field}|${change.from}|${change.to}`}>
               <Badge variant="secondary" className="h-auto whitespace-normal py-0.5">
-                {`${FIELD_LABEL[change.field] ?? change.field}: ${show(change.from)} → ${show(change.to)}`}
+                {`${FIELD_LABEL[change.field] ?? change.field}: ${show(shownChange(change.field, change.from))} → ${show(shownChange(change.field, change.to))}`}
               </Badge>
             </li>
           ))}

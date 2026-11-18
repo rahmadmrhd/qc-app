@@ -1,4 +1,3 @@
-import { SERIAL_LIMITS } from '@shared/serials';
 import { useState } from 'react';
 import { Select } from '@/components/select';
 import { Button } from '@/components/ui/button';
@@ -16,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import type { BulkPatch } from '../lib/draft';
 import { EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
 import { SerialLocationField } from './serial-location-field';
+import { SerialNoteField } from './serial-note-field';
 
 export interface BulkEditDialogProps {
   open: boolean;
@@ -54,9 +54,11 @@ function BulkEditBody({
   const [note, setNote] = useState('');
   const [clearNote, setClearNote] = useState(false);
 
+  // BU boleh diubah sendiri (tanpa item); item yang dipilih tetap menuntut BU (BU kosong = belum lengkap).
   const itemIncomplete = item.itemId !== '' && item.buId === '';
   const dirty =
     item.itemId !== '' ||
+    item.buId !== '' ||
     testDate !== '' ||
     location.id !== '' ||
     sample !== '' ||
@@ -68,9 +70,11 @@ function BulkEditBody({
     if (item.itemId !== '') {
       patch.itemId = item.itemId;
       patch.itemLabel = item.itemLabel;
+      patch.proofMin = item.proofMin;
+    }
+    if (item.buId !== '') {
       patch.buId = item.buId;
       patch.buLabel = item.buLabel;
-      patch.proofMin = item.proofMin;
     }
     if (testDate !== '') patch.testDate = testDate;
     if (location.id !== '') {
@@ -125,15 +129,14 @@ function BulkEditBody({
           onValueChange={setSample}
         />
         <div className="space-y-1.5">
-          <Label htmlFor="bulk-note">Catatan (ubah massal)</Label>
-          <Input
+          <SerialNoteField
             id="bulk-note"
+            label="Catatan (ubah massal)"
             value={note}
             disabled={clearNote}
-            maxLength={SERIAL_LIMITS.noteMax}
-            placeholder="Kosong = tidak diubah"
-            onChange={(event) => setNote(event.target.value)}
+            onChange={setNote}
           />
+          <p className="text-xs text-muted-foreground">Kosong = tidak diubah.</p>
           <div className="flex items-center gap-2">
             <Checkbox
               id="bulk-clear-note"

@@ -1,5 +1,5 @@
 import { IMAGE_MIME_TYPES, MAX_IMAGE_BYTES } from '@shared/files';
-import { Camera, CircleAlert, ImagePlus, Smartphone, X } from 'lucide-react';
+import { Camera, CircleAlert, ImagePlus, X } from 'lucide-react';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { checkFile, formatBytes, partitionByType } from '@/components/file-dialog/accept';
 import { errorText } from '@/components/file-dialog/error-text';
@@ -15,7 +15,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { isCameraBlocked, markCameraBlocked, resetCameraBlocked } from '../lib/camera-session';
-import { isMobileDevice } from '../lib/device';
 import { type ProofPhotoRef, proofSource, toProofRef } from '../lib/proof-source';
 import type { StampPreviewInput } from '../lib/stamp-preview';
 import { cameraSupported } from '../lib/use-camera-stream';
@@ -37,10 +36,10 @@ export interface ProofPhotoDialogProps {
 }
 
 /**
- * Dialog "Foto bukti": tombol Kamera (kamera layar penuh di dalam aplikasi), Telusuri (multi-pilih), dan di perangkat
- * sentuh tombol aplikasi kamera bawaan sebagai cadangan. Setiap foto langsung diunggah (jadi `draft` di server) dan
- * tampil di kisi; baru masuk ke entri saat "Tambahkan". Menutup dialog dengan cara apa pun selain "Tambahkan" (Batal,
- * Esc, tombol tutup, unmount induk) membuang foto yang diunggah pada pembukaan itu.
+ * Dialog "Foto bukti": tombol Kamera (kamera layar penuh di dalam aplikasi) dan Telusuri (multi-pilih); kamera bawaan
+ * sistem ponsel tidak ditawarkan (keputusan pemilik 2026-11-18). Setiap foto langsung diunggah (jadi `draft` di server)
+ * dan tampil di kisi; baru masuk ke entri saat "Tambahkan". Menutup dialog dengan cara apa pun selain "Tambahkan"
+ * (Batal, Esc, tombol tutup, unmount induk) membuang foto yang diunggah pada pembukaan itu.
  */
 export function ProofPhotoDialog({ open, onOpenChange, ...rest }: ProofPhotoDialogProps) {
   return (
@@ -84,9 +83,7 @@ function ProofPhotoBody({
   const committedRef = useRef(false);
   const counterRef = useRef(0);
   const browseRef = useRef<HTMLInputElement>(null);
-  const captureRef = useRef<HTMLInputElement>(null);
   const canCamera = cameraSupported() && !cameraBlocked;
-  const mobile = isMobileDevice();
 
   // Pembersihan: foto yang belum dikonfirmasi dibuang. Penanda hidup dinyalakan di efek agar StrictMode (pasang ulang)
   // tidak meninggalkannya mati; unggahan yang selesai sesudah ini membuang fotonya sendiri.
@@ -221,17 +218,6 @@ function ProofPhotoBody({
             <ImagePlus aria-hidden />
             Telusuri
           </Button>
-          {mobile ? (
-            <Button
-              type="button"
-              variant="outline"
-              disabled={full}
-              onClick={() => captureRef.current?.click()}
-            >
-              <Smartphone aria-hidden />
-              Kamera bawaan
-            </Button>
-          ) : null}
         </div>
         <input
           ref={browseRef}
@@ -249,24 +235,6 @@ function ProofPhotoBody({
             }
           }}
         />
-        {mobile ? (
-          <input
-            ref={captureRef}
-            type="file"
-            hidden
-            accept="image/*"
-            capture="environment"
-            data-testid="capture-input"
-            onChange={(event) => {
-              const files = Array.from(event.target.files ?? []);
-              event.target.value = '';
-              if (files.length > 0) {
-                const split = partitionByType(files, IMAGE_MIME_TYPES);
-                addFiles(split.files, split.rejected);
-              }
-            }}
-          />
-        ) : null}
         <p className="text-xs text-muted-foreground">
           {total + uploading} dari {max} foto (maks. {formatBytes(MAX_IMAGE_BYTES)} per foto).
           {full ? ' Batas tercapai.' : ''}

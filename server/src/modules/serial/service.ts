@@ -15,6 +15,7 @@ import type {
   ListSerialItemOptionsInput,
   SaveSerialBatchInput,
   SaveSerialBatchOutput,
+  SerialBuOptionsDto,
   SerialCaseDto,
   SerialChangeDto,
   SerialDto,
@@ -59,7 +60,7 @@ import { canManageProof } from './proof/access';
 import { loadStampItemInfo, planProofAttach } from './proof/attach';
 import { listFailedProofsBySerial, listProofsByEvents } from './proof/repo';
 import {
-  activeItemInBu,
+  activeItemWritableForBu,
   activeLocationName,
   findSerialByClientId,
   insertEventStmt,
@@ -173,20 +174,41 @@ export async function queryItemOptions(
   };
 }
 
-/** Stiker yang berlaku bagi item pada BU tertentu; BU di luar hak tulis user atau item di luar BU itu = `NOT_FOUND`. */
+/**
+ * Stiker yang berlaku bagi item pada BU tertentu; BU di luar hak tulis user, BU nonaktif, atau item yang tidak terlihat
+ * bagi user = `NOT_FOUND`. BU serial tidak lagi dibatasi pada BU item (spek 2026-11-18 butir N).
+ */
 export async function stickerOptions(
   env: Env,
   user: UserContext,
   input: SerialStickerOptionsInput,
 ): Promise<SerialStickerOptionsDto> {
-  if (!canWriteBu(user, input.buId)) throw appError('NOT_FOUND', 'Item tidak ditemukan');
-  const link = await env.DB.prepare(
-    'SELECT 1 AS ok FROM item_business_units WHERE item_id = ? AND bu_id = ?',
-  )
-    .bind(input.itemId, input.buId)
-    .first<{ ok: number }>();
-  if (!link) throw appError('NOT_FOUND', 'Item tidak ditemukan');
+  if (!(await activeItemWritableForBu(env.DB, input.itemId, input.buId, user))) {
+    throw appError('NOT_FOUND', 'Item tidak ditemukan');
+  }
   return { stickers: await applicableStickersOf(env, input.itemId, input.buId) };
+}
+
+/**
+ * BU AKTIF yang boleh dipilih saat mencatat serial: BU ber-level `serial: edit` (pembaca saja: BU yang boleh dibacanya,
+ * pola `queryItemOptions`), urut kode lalu id. BU di luar hak tidak pernah muncul.
+ */
+export async function buOptions(env: Env, user: UserContext): Promise<SerialBuOptionsDto> {
+  const writable = writableBuIds(user);
+  const scope = writable.length > 0 ? writable : readableBuIds(user);
+  if (scope.length === 0) return { businessUnits: [] };
+  const rows = await env.DB.prepare(
+    `SELECT id, code, name FROM business_units WHERE status = 'active' AND id IN (${placeholders(scope.length)}) ORDER BY code, id`,
+  )
+    .bind(...scope)
+    .all<{ id: string; code: string; name: string }>();
+  return {
+    businessUnits: rows.results.map((row) => ({
+      id: row.id.trim(),
+      code: row.code.trim(),
+      name: row.name,
+    })),
+  };
 }
 
 /** Semua lokasi AKTIF (id, kode, nama), urut kode; pilihan lokasi saat mencatat serial tidak dibatasi penugasan lokasi. */
@@ -241,11 +263,12 @@ export class SerialLookupMemo {
 
   constructor(private readonly env: Env) {}
 
-  activeItemInBu(itemId: string, buId: string): Promise<boolean> {
+  /** Syarat item bagi serial di BU itu (`activeItemWritableForBu`); user sama selama satu permintaan. */
+  activeItemWritableForBu(itemId: string, buId: string, user: UserContext): Promise<boolean> {
     const key = `${itemId}\u0000${buId}`;
     let found = this.items.get(key);
     if (!found) {
-      found = activeItemInBu(this.env.DB, itemId, buId);
+      found = activeItemWritableForBu(this.env.DB, itemId, buId, user);
       this.items.set(key, found);
     }
     return found;
@@ -317,7 +340,9 @@ export async function createSerialOnce(
       ? idempotent(row, existing.id)
       : failRow(row, 'Baris tidak valid');
   }
-  if (!(await memo.activeItemInBu(row.itemId, row.buId))) return failRow(row, ITEM_MESSAGE);
+  if (!(await memo.activeItemWritableForBu(row.itemId, row.buId, user))) {
+    return failRow(row, ITEM_MESSAGE);
+  }
   // Item wajib foto bukti: jumlah foto kurang dari minimum = baris `invalid` (mencakup draft lama dan impor `.qcsn`).
   // Pesan sengaja tidak diawali kalimat penolakan foto web (`isProofRejection`), supaya foto baris tak dikosongkan.
   const proofMin = await memo.proofMinOf(row.itemId);
@@ -765,7 +790,7 @@ async function updateOnce(
     changes.push({ field: 'serial', from: row.serial, to: fields.serial });
   }
   if (fields.itemId !== undefined && fields.itemId !== row.item_id.trim()) {
-    if (!(await activeItemInBu(env.DB, fields.itemId, buId))) {
+    if (!(await activeItemWritableForBu(env.DB, fields.itemId, buId, user))) {
       throw validationError('itemId', ITEM_MESSAGE);
     }
     set.item_id = fields.itemId;

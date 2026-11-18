@@ -56,6 +56,14 @@ export function optionsApi(id: string, input: Record<string, unknown>): Promise<
       ],
     });
   }
+  if (id === 'serials.buOptions') {
+    return Promise.resolve({
+      businessUnits: [
+        { id: 'b1', code: 'BU1', name: 'Business Unit 1' },
+        { id: 'b2', code: 'BU2', name: 'Business Unit 2' },
+      ],
+    });
+  }
   if (id === 'serials.itemOptions') {
     const ids = input.itemIds as string[] | undefined;
     return Promise.resolve({

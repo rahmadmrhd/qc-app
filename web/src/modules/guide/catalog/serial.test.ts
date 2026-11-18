@@ -124,7 +124,7 @@ describe('panduan Serial Number', () => {
     ]);
     expect(steps[0]?.route).toBe('/serial/new');
     expect(GUIDE_IDS as readonly string[]).not.toContain('serial-massal');
-    expect(SERIAL_CATAT.version).toBe(2);
+    expect(SERIAL_CATAT.version).toBe(3);
   });
 
   test('catat: Default wajib dan item wajib foto disebut; langkah aksi baris punya kartu pengganti untuk ponsel', () => {

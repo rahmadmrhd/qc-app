@@ -278,34 +278,7 @@ test('pilihan pustaka dibekukan selama mengunggah', async () => {
   expect(idsOf(onSelect)).toEqual(['lib1', 'up-a']);
 });
 
-test('capture: tombol kamera native tampil di tab Unggah; hasilnya masuk antrean seperti berkas biasa dan mengikuti batas', async () => {
-  const user = userEvent.setup();
-  const source = makeSource();
-  const { onSelect } = setup(source, { showLibrary: false, maxFiles: 2, capture: 'environment' });
-  // Tanpa pustaka tidak ada tab sama sekali (tidak ada tab Kamera).
-  expect(screen.queryByRole('tab')).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Ambil foto dengan kamera' })).toBeInTheDocument();
-  const input = screen.getByTestId('capture-input') as HTMLInputElement;
-  expect(input).toHaveAttribute('accept', 'image/*');
-  expect(input).toHaveAttribute('capture', 'environment');
-  await user.upload(input, png('jepret.png'));
-  await waitFor(() => expect(attachButton()).toHaveTextContent('Lampirkan (1)'));
-  await user.click(attachButton());
-  await waitFor(() => expect(onSelect).toHaveBeenCalledTimes(1));
-  expect(idsOf(onSelect)).toEqual(['up-jepret']);
-});
-
-test('capture: berkas bukan gambar dari input kamera ditolak seperti unggahan biasa', async () => {
-  setup(makeSource(), { showLibrary: false, capture: 'environment' });
-  const input = screen.getByTestId('capture-input') as HTMLInputElement;
-  fireEvent.change(input, {
-    target: { files: [new File(['x'], 'catatan.txt', { type: 'text/plain' })] },
-  });
-  expect(await screen.findByText(/catatan\.txt/)).toBeInTheDocument();
-  expect(attachButton()).toHaveTextContent('Lampirkan (0)');
-});
-
-test('tanpa capture perilaku lama tidak berubah: tidak ada tab maupun tombol kamera', () => {
+test('tanpa pustaka: tidak ada tab maupun tombol/input kamera bawaan', () => {
   setup(makeSource(), { showLibrary: false });
   expect(screen.queryByRole('tab')).not.toBeInTheDocument();
   expect(

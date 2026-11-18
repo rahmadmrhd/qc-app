@@ -148,6 +148,18 @@ export function serialLocationOptionsQueryOptions() {
   });
 }
 
+/**
+ * Semua BU aktif yang boleh dipilih saat mencatat serial (bukan hanya BU item; spek Catat wajib foto butir N): pilihan
+ * field BU di form Catat, Ubah baris, dan Ubah massal.
+ */
+export function serialBuOptionsQueryOptions() {
+  return queryOptions({
+    queryKey: serialKeys.buOptions,
+    queryFn: () => api('serials.buOptions', null),
+    staleTime: 5 * 60_000,
+  });
+}
+
 /** Stiker yang berlaku bagi (item, BU): bahan daftar centang stiker. */
 export function serialStickerOptionsQueryOptions(itemId: string, buId: string) {
   return queryOptions({

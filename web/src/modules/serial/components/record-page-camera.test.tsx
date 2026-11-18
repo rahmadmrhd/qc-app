@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { pickLink } from '@/test/link-field';
+import { expectLinkValue, pickLink } from '@/test/link-field';
 import type { CameraScanButtonProps } from './camera-scan-button';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -98,7 +98,7 @@ function renderPage() {
 test('isKnown pemindai kamera mengikuti isi draft (bentuk ternormalisasi, termasuk MAC); onScan menambah baris draft', async () => {
   renderPage();
   await pickLink(screen, 'Item', 'Cisco C9200');
-  await pickLink(screen, 'Lokasi', 'Jakarta (JKT)');
+  await expectLinkValue(screen, 'Lokasi', 'Jakarta (JKT)'); // satu lokasi: terkunci dan terisi otomatis
   expect(captured.props?.isKnown).toBeTypeOf('function');
   expect(captured.props?.isKnown?.('AAA1')).toBe(false);
 
@@ -125,7 +125,7 @@ test('isKnown pemindai kamera mengikuti isi draft (bentuk ternormalisasi, termas
 test('setelah Simpan dialog, notice halaman meringkas SEMUA baris (bukan hanya yang terakhir)', async () => {
   renderPage();
   await pickLink(screen, 'Item', 'Cisco C9200');
-  await pickLink(screen, 'Lokasi', 'Jakarta (JKT)');
+  await expectLinkValue(screen, 'Lokasi', 'Jakarta (JKT)'); // satu lokasi: terkunci dan terisi otomatis
   const onSaved = captured.props?.onSaved;
   expect(onSaved).toBeTypeOf('function');
   await userEvent.click(screen.getByLabelText('Scan atau tempel serial (satu per baris)'));
@@ -148,7 +148,7 @@ test('ringkasan Simpan dialog kamera yang murni sukses memakai toast yang sama (
   vi.mocked(toast.success).mockClear();
   renderPage();
   await pickLink(screen, 'Item', 'Cisco C9200');
-  await pickLink(screen, 'Lokasi', 'Jakarta (JKT)');
+  await expectLinkValue(screen, 'Lokasi', 'Jakarta (JKT)'); // satu lokasi: terkunci dan terisi otomatis
   act(() => {
     captured.props?.onScan('OK1');
     captured.props?.onScan('OK2');
@@ -178,7 +178,7 @@ test('Lapor Rusak: pemindai kamera memakai mode satu-serial (tanpa tabel dan tan
 test('kapasitas draft diberikan ke pemindai kamera (sisa baris) dan Simpan yang terbentur batas diringkas jujur', async () => {
   renderPage();
   await pickLink(screen, 'Item', 'Cisco C9200');
-  await pickLink(screen, 'Lokasi', 'Jakarta (JKT)');
+  await expectLinkValue(screen, 'Lokasi', 'Jakarta (JKT)'); // satu lokasi: terkunci dan terisi otomatis
   expect(captured.props?.draftCapacity?.()).toBe(1000);
   await userEvent.click(screen.getByLabelText('Scan atau tempel serial (satu per baris)'));
   await userEvent.paste('cap1\ncap2');

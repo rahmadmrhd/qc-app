@@ -76,7 +76,7 @@ const removed = () =>
     .sort();
 
 function browseInput(): HTMLInputElement {
-  return document.body.querySelector('input[type="file"]:not([capture])') as HTMLInputElement;
+  return document.body.querySelector('input[type="file"]') as HTMLInputElement;
 }
 
 let n = 0;
@@ -396,16 +396,15 @@ test('StrictMode (efek dipasang ulang): unggahan tetap diterima dan foto tidak d
   expect(removed()).toEqual([]);
 });
 
-test('perangkat sentuh: tombol Kamera bawaan memakai input capture tanpa multiple', async () => {
+test('perangkat sentuh pun tidak mendapat tombol Kamera bawaan atau input capture; Telusuri multi-pilih', async () => {
   const real = window.matchMedia;
   window.matchMedia = vi.fn(() => ({ matches: true })) as unknown as typeof window.matchMedia;
   try {
     render(<Host />);
     const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByRole('button', { name: 'Kamera bawaan' })).toBeEnabled();
-    const input = screen.getByTestId('capture-input');
-    expect(input).toHaveAttribute('capture', 'environment');
-    expect(input).not.toHaveAttribute('multiple');
+    expect(within(dialog).queryByRole('button', { name: 'Kamera bawaan' })).not.toBeInTheDocument();
+    expect(screen.queryByTestId('capture-input')).not.toBeInTheDocument();
+    expect(document.body.querySelector('input[capture]')).toBeNull();
     expect(browseInput()).toHaveAttribute('multiple');
   } finally {
     window.matchMedia = real;

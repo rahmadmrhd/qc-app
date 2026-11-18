@@ -11,6 +11,7 @@ import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { describeError } from '@/lib/api/describe-error';
 import { cn } from '@/lib/utils';
 import { useMe } from '@/modules/auth/use-me';
+import { useOptionalActiveLocations } from '@/modules/location/active-locations-context';
 import {
   addSerials,
   applyBulk,
@@ -28,13 +29,14 @@ import {
 import { clearDraft, loadDraft, resumeDraftWrites, saveDraft } from '../lib/draft-store';
 import { isReferenceError, type VerifyDeps, verifyImported } from '../lib/import-verify';
 import { hasProofPhotos } from '../lib/leave-guard';
-import { todayWib, toLocationOptions } from '../lib/locations';
+import { lockedLocationOf, todayWib, toLocationOptions } from '../lib/locations';
 import { applyProofMins, fetchProofMins, uniqueItemIds } from '../lib/proof-refresh';
 import type { ProofPhotoRef } from '../lib/proof-source';
 import type { QcsnImport } from '../lib/qcsn';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
   discardProofPhotos,
+  serialBuOptionsQueryOptions,
   serialItemsByIdQueryOptions,
   serialLocationOptionsQueryOptions,
   serialStickerOptionsQueryOptions,
@@ -48,6 +50,7 @@ import { EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
 import { RowEditDialog, type RowEditResult } from './row-edit-dialog';
 import { SELECTION_BAR_SPACE_CLASS, SelectionBar } from './selection-bar';
 import { SerialLocationField } from './serial-location-field';
+import { SerialNoteField } from './serial-note-field';
 import { type ScanFeedback, SerialScanInput } from './serial-scan-input';
 import { StagingCards } from './staging-cards';
 import { rowStatus, StagingTable } from './staging-table';
@@ -207,18 +210,16 @@ export function RecordPage({
   }, [findItemLookups, setAllRows]);
 
   const [item, setItem] = useState<ItemBuValue>(EMPTY_ITEM_BU);
-  const [location, setLocation] = useState({ id: '', label: '' });
-  // Hanya satu lokasi yang dapat dipilih: jadi bawaan, sekali saja (pengguna yang mengosongkannya tak diisi lagi).
-  const { locations: pickableLocations } = useSerialLocations();
-  const defaultLocationDecided = useRef(false);
-  useEffect(() => {
-    if (defaultLocationDecided.current || pickableLocations.length === 0) return;
-    defaultLocationDecided.current = true;
-    const [only] = toLocationOptions(pickableLocations);
-    if (only && pickableLocations.length === 1) {
-      setLocation((current) => (current.id === '' ? { id: only.id, label: only.label } : current));
-    }
-  }, [pickableLocations]);
+  const [pickedLocation, setLocation] = useState({ id: '', label: '' });
+  // Lokasi Default terkunci (terisi otomatis, tak dapat diubah di sini) bila lokasi aktif di header tepat satu atau hanya
+  // ada satu pilihan lokasi (spek Catat wajib foto, butir N.2); mengganti lokasi = mengganti pilihan di header.
+  const { locations: pickableLocations, isPending: locationsPending } = useSerialLocations();
+  const activeSelection = useOptionalActiveLocations()?.selectedIds;
+  const locked = useMemo(
+    () => lockedLocationOf(pickableLocations, activeSelection ?? []),
+    [pickableLocations, activeSelection],
+  );
+  const location = locked ? { id: locked.id, label: locked.label } : pickedLocation;
   const [testDate, setTestDate] = useState(() => todayWib());
   const [sample, setSample] = useState(false);
   const [note, setNote] = useState('');
@@ -276,13 +277,17 @@ export function RecordPage({
     testDate,
   });
   const gated = missing.length > 0;
-  // Fokus awal ke field Default pertama yang kosong (kolom scan terkunci selama Default belum lengkap).
-  // biome-ignore lint/correctness/useExhaustiveDependencies: hanya saat halaman dibuka.
+  // Fokus awal ke field Default pertama yang kosong (kolom scan terkunci selama Default belum lengkap), sekali, setelah
+  // daftar lokasi diketahui supaya lokasi yang terkunci (terisi otomatis) tak menjadi sasaran fokus.
+  const focusedRef = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hanya sekali sesudah lokasi diketahui.
   useEffect(() => {
+    if (focusedRef.current || locationsPending) return;
+    focusedRef.current = true;
     const first = missing[0];
     if (first === undefined) return;
     document.getElementById(DEFAULT_FIELD_ID[first] ?? 'default-item')?.focus();
-  }, []);
+  }, [locationsPending]);
 
   const defaults = (): Defaults => ({
     itemId: item.itemId,
@@ -522,6 +527,14 @@ export function RecordPage({
           return null;
         }
       };
+      const loadBus = async () => {
+        try {
+          const data = await queryClient.fetchQuery(serialBuOptionsQueryOptions());
+          return data.businessUnits.map((bu) => ({ id: bu.id, code: bu.code }));
+        } catch {
+          return null;
+        }
+      };
       const deps: VerifyDeps = {
         findItems: findItemLookups,
         stickersOf: async (itemId, buId) => {
@@ -529,6 +542,7 @@ export function RecordPage({
           return data.stickers.map((sticker) => ({ id: sticker.id, name: sticker.name }));
         },
         locations: await loadLocations(),
+        buOptions: await loadBus(),
       };
       // Pindaian dan suntingan boleh terjadi selama verifikasi menunggu: hasilnya digabung ke tabel TERBARU.
       const snapshot = rowsRef.current;
@@ -738,6 +752,32 @@ export function RecordPage({
           Dipakai untuk serial yang ditambahkan setelah ini; baris yang sudah ada tidak berubah.
         </p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-1.5">
+            <SerialLocationField
+              id="default-location"
+              label="Lokasi"
+              value={location.id}
+              valueLabel={location.label}
+              onChange={(id, label) => setLocation({ id, label })}
+              disabled={locked !== null}
+            />
+            {locked ? (
+              <p className="text-xs text-muted-foreground" data-testid="default-location-lock">
+                {locked.source === 'active'
+                  ? `Terkunci ke lokasi aktif: ${locked.label}. Ganti lewat pemilih lokasi di header.`
+                  : `Hanya satu lokasi yang bisa dipilih: ${locked.label}.`}
+              </p>
+            ) : null}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="default-date">Tanggal uji</Label>
+            <Input
+              id="default-date"
+              type="date"
+              value={testDate}
+              onChange={(event) => setTestDate(event.target.value)}
+            />
+          </div>
           <ItemBuField
             idPrefix="default"
             label="Item"
@@ -749,31 +789,6 @@ export function RecordPage({
               setItem(next);
             }}
           />
-          <SerialLocationField
-            id="default-location"
-            label="Lokasi"
-            value={location.id}
-            valueLabel={location.label}
-            onChange={(id, label) => setLocation({ id, label })}
-          />
-          <div className="space-y-1.5">
-            <Label htmlFor="default-date">Tanggal uji</Label>
-            <Input
-              id="default-date"
-              type="date"
-              value={testDate}
-              onChange={(event) => setTestDate(event.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="default-note">Catatan</Label>
-            <Input
-              id="default-note"
-              value={note}
-              maxLength={SERIAL_LIMITS.noteMax}
-              onChange={(event) => setNote(event.target.value)}
-            />
-          </div>
           <div className="flex items-end gap-2 pb-1.5">
             <Checkbox
               id="default-sample"
@@ -790,6 +805,9 @@ export function RecordPage({
               chosen={stickerChoice ?? defaultStickerChoice(applicable.options)}
               onChange={setStickerChoice}
             />
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <SerialNoteField id="default-note" label="Catatan" value={note} onChange={setNote} />
           </div>
         </div>
       </section>

@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { pickLink } from '@/test/link-field';
+import { expectLinkValue, pickLink } from '@/test/link-field';
 import { loadDraft } from '../lib/draft-store';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -126,7 +126,7 @@ function renderPage() {
 
 async function pickStrictDefaults() {
   await pickLink(screen, 'Item', 'Aruba Wajib Foto');
-  await pickLink(screen, 'Lokasi', 'Jakarta (JKT)');
+  await expectLinkValue(screen, 'Lokasi', 'Jakarta (JKT)'); // satu lokasi: terkunci dan terisi otomatis
   await waitFor(() => expect(scanField()).toBeEnabled());
 }
 
@@ -240,7 +240,7 @@ test('tombol kamera pada item wajib foto membuka dialog dua langkah (bukan dialo
 test('item biasa tidak berubah: tempel langsung menambah baris tanpa dialog', async () => {
   renderPage();
   await pickLink(screen, 'Item', 'Cisco C9200');
-  await pickLink(screen, 'Lokasi', 'Jakarta (JKT)');
+  await expectLinkValue(screen, 'Lokasi', 'Jakarta (JKT)'); // satu lokasi: terkunci dan terisi otomatis
   await waitFor(() => expect(scanField()).toBeEnabled());
   await typeSerial('n1');
   expect(await screen.findByRole('textbox', { name: 'Serial N1' })).toBeInTheDocument();

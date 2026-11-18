@@ -217,6 +217,17 @@ describe('serials.reportNew', () => {
     expect(await count('serials')).toBe(0);
   });
 
+  test('BU serial boleh bukan BU item (butir N); BU nonaktif ditolak generik', async () => {
+    // i-a1 hanya di BU A; BOTH boleh menulis di BU B.
+    const out = await report({ itemId: 'i-a1', buId: 'bu-b' }, BOTH);
+    expect(out.ok).toBe(true);
+    expect(out.data).toMatchObject({ buId: 'bu-b', buCode: 'B' });
+    await env.DB.prepare("UPDATE business_units SET status = 'inactive' WHERE id = 'bu-b'").run();
+    const inactive = await report({ serial: 'NEW-2', itemId: 'i-a1', buId: 'bu-b' }, BOTH);
+    expect(inactive.error?.code).toBe('VALIDATION');
+    expect(Object.keys(inactive.error?.fields ?? {})).toEqual(['itemId']);
+  });
+
   test('lokasi tak ada atau nonaktif; catatan kosong; tanggal masa depan; tanggal rusak: VALIDATION', async () => {
     await env.DB.prepare("UPDATE locations SET status = 'inactive' WHERE id = 'loc-jkt'").run();
     expect((await report({ locationId: 'loc-jkt' })).error?.fields).toHaveProperty('locationId');

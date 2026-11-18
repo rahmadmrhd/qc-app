@@ -128,7 +128,7 @@ test('Default kosong: kolom scan terkunci dan petunjuk menyebut field yang koson
   renderPage();
   expect(scanField()).toBeDisabled();
   expect(await screen.findByRole('status')).toHaveTextContent(
-    'Isi Default dulu: Item, Business Unit, Lokasi',
+    'Isi Default dulu: Lokasi, Item, Business Unit',
   );
 });
 
@@ -153,9 +153,9 @@ test('tanggal uji dikosongkan: scan terkunci lagi dan petunjuk menyebut Tanggal 
   expect(screen.getByRole('status')).toHaveTextContent('Isi Default dulu: Tanggal uji');
 });
 
-test('fokus awal ke field Default pertama yang kosong', async () => {
+test('fokus awal ke field Default pertama yang kosong (urutan form: Lokasi lebih dulu)', async () => {
   renderPage();
-  await waitFor(() => expect(document.activeElement?.id).toBe('default-item'));
+  await waitFor(() => expect(document.activeElement?.id).toBe('default-location'));
 });
 
 test('draft lama tanpa proofMin tetap dimuat dan baris dapat disimpan', async () => {

@@ -1247,6 +1247,7 @@ export interface ApiContract {
   'serials.itemOptions': { input: ListSerialItemOptionsInput; output: SerialItemOptionsPageDto };
   'serials.stickerOptions': { input: SerialStickerOptionsInput; output: SerialStickerOptionsDto };
   'serials.locationOptions': { input: null; output: SerialLocationOptionsDto };
+  'serials.buOptions': { input: null; output: SerialBuOptionsDto };
   'serials.serviceLocations': { input: null; output: SerialLocationOptionsDto };
   'serials.lookup': { input: SerialLookupInput; output: SerialLookupOutput };
   'serials.reportNew': { input: SerialReportNewInput; output: SerialDto };
@@ -1822,6 +1823,16 @@ export interface SerialLocationOptionDto {
 export interface SerialLocationOptionsDto {
   /** Semua lokasi AKTIF, urut kode. */
   locations: SerialLocationOptionDto[];
+}
+/** Business Unit aktif yang boleh dipilih saat mencatat serial (BU serial tidak lagi dibatasi pada BU item; spek 2026-11-18 butir N). */
+export interface SerialBuOptionDto {
+  id: string;
+  code: string;
+  name: string;
+}
+export interface SerialBuOptionsDto {
+  /** BU AKTIF tempat user berlevel `serial: edit` (pembaca saja: BU yang boleh dibacanya), urut kode. */
+  businessUnits: SerialBuOptionDto[];
 }
 export interface SerialStickerOptionsInput {
   itemId: string;

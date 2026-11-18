@@ -91,7 +91,10 @@ test('memuat semua kolom baris dalam satu form', async () => {
   expect(within(dialog).getByRole('combobox', { name: 'Lokasi baris' })).toBeInTheDocument();
   expect(within(dialog).getByLabelText('Tanggal uji baris')).toHaveValue('2026-11-12');
   expect(within(dialog).getByRole('checkbox', { name: 'Sample' })).toBeChecked();
-  expect(within(dialog).getByLabelText('Catatan baris')).toHaveValue('periksa');
+  // Catatan = editor Markdown (Tiptap), bukan kolom teks.
+  expect(within(dialog).getByRole('textbox', { name: 'Catatan baris' })).toHaveTextContent(
+    'periksa',
+  );
   expect(await within(dialog).findByRole('checkbox', { name: 'Stiker A' })).toBeInTheDocument();
   expect(within(dialog).getByText('Foto bukti (1)')).toBeInTheDocument();
   expect(within(dialog).getByRole('button', { name: 'Tambah foto' })).toBeInTheDocument();
@@ -254,4 +257,25 @@ test('StrictMode: foto yang ditambahkan lalu diterapkan tidak dibuang', async ()
     'new1',
   ]);
   expect(removedIds()).toEqual([]);
+});
+
+test('membuka lalu Terapkan tanpa menyentuh catatan mengembalikan catatan persis seperti semula (tanpa normalisasi diam-diam)', async () => {
+  // Catatan lama teks biasa: baris baru tunggal, garis bawah, tanda bintang, spasi di ujung.
+  const original = '  baris satu\nbaris dua_x_ *y*  \n';
+  const { onApply } = renderDialog(makeRow('AAA111', { note: original }));
+  const { dialog, apply } = await ready();
+  // Ubah kolom lain agar jelas yang diterapkan hanya itu.
+  await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Sample' }));
+  await userEvent.click(apply);
+  expect(onApply).toHaveBeenCalledOnce();
+  expect(onApply.mock.calls[0]?.[0].note).toBe(original);
+});
+
+test('catatan yang disunting pengguna tetap dipangkas', async () => {
+  const { onApply } = renderDialog(makeRow('AAA111', { note: 'lama' }));
+  const { dialog, apply } = await ready();
+  await userEvent.type(within(dialog).getByLabelText('Catatan baris'), ' tambah ');
+  await userEvent.click(apply);
+  expect(onApply.mock.calls[0]?.[0].note).toBe(onApply.mock.calls[0]?.[0].note.trim());
+  expect(onApply.mock.calls[0]?.[0].note).toContain('tambah');
 });

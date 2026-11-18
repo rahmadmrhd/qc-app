@@ -66,3 +66,36 @@ test('Batal menutup tanpa menerapkan', async () => {
   expect(onClose).toHaveBeenCalledOnce();
   expect(onApply).not.toHaveBeenCalled();
 });
+
+test('BU dapat diubah sendiri (tanpa item) ke BU mana pun dan hanya membawa BU', async () => {
+  const { onApply } = renderDialog();
+  const dialog = screen.getByRole('dialog', { name: 'Ubah 3 baris' });
+  // Field BU selalu tampil, juga sebelum item dipilih.
+  expect(
+    within(dialog).getByRole('combobox', { name: 'Business Unit (ubah massal)' }),
+  ).toBeEnabled();
+  await pickLink(screen, 'Business Unit (ubah massal)', 'BU2');
+  await userEvent.click(screen.getByRole('button', { name: 'Terapkan ke 3 baris' }));
+  expect(onApply).toHaveBeenCalledWith({ buId: 'b2', buLabel: 'BU2' });
+});
+
+test('item dipilih lalu BU dikosongkan: Terapkan tertahan dan petunjuk BU muncul', async () => {
+  renderDialog();
+  await pickLink(screen, 'Item (ubah massal)', 'Cisco C9200');
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Kosongkan Business Unit (ubah massal)' }),
+  );
+  expect(screen.getByText('Pilih Business Unit untuk item ini.')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Terapkan ke 3 baris' })).toBeDisabled();
+});
+
+test('catatan memakai editor Markdown, dan Kosongkan catatan menonaktifkannya', async () => {
+  renderDialog();
+  const note = screen.getByRole('textbox', { name: 'Catatan (ubah massal)' });
+  expect(note).toHaveAttribute('contenteditable', 'true');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Kosongkan catatan' }));
+  expect(screen.getByRole('textbox', { name: 'Catatan (ubah massal)' })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
+});
