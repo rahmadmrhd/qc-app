@@ -2141,12 +2141,11 @@ describe('release-desktop.yml: pipeline rilis aplikasi desktop dari PR rilis (ri
     expect(release?.run).toContain('QC-App-Setup-*.exe');
     expect(release?.run).toContain('"${assets[@]}"');
     expect(release?.run).toContain('gh release upload "$tag" "${assets[@]}" --clobber');
-    expect(release?.run.match(/gh release create/g)).toHaveLength(2);
-    for (const line of (release?.run ?? '')
+    const createLines = (release?.run ?? '')
       .split('\n')
-      .filter((l) => l.includes('gh release create'))) {
-      expect(line).toContain('"${assets[@]}"');
-    }
+      .filter((l) => l.includes('gh release create'));
+    expect(createLines).toHaveLength(2);
+    for (const line of createLines) expect(line).toContain('"${assets[@]}"');
     const cleanup = steps.at(-1);
     expect(cleanup?.if).toBe('always()');
     expect(cleanup?.run).toContain('sa-key.json');
