@@ -73,6 +73,7 @@ describe('QcUpdateProvider', () => {
     const headers = new Headers(calls[0]?.init?.headers);
     expect(headers.has('authorization')).toBe(false);
     expect(headers.has('cookie')).toBe(false);
+    expect(calls[0]?.init?.credentials).toBe('omit');
   });
 
   it('rilis sah: UpdateInfo berisi versi, catatan, url server, sha512, dan ukuran', async () => {

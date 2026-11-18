@@ -8,4 +8,6 @@ test('collectSmokeReport mengembalikan versi node/electron dan memuat ssh2 serta
   expect(typeof report.electron).toBe('string');
   expect(report.ssh2).toBe(true);
   expect(report.sqlite).toBe(true);
+  // electron-updater (pembaruan otomatis) wajib termuat dari hasil kemas, bukan sekadar terpasang di mesin pengembang.
+  expect(report.updater).toBe(true);
 });

@@ -62,7 +62,13 @@ const line = run.stdout
   .find((l) => l.startsWith('{'));
 if (!line) fail(`keluaran tidak memuat JSON:\n${run.stdout}`);
 
-let report: { node?: unknown; electron?: unknown; ssh2?: unknown; sqlite?: unknown };
+let report: {
+  node?: unknown;
+  electron?: unknown;
+  ssh2?: unknown;
+  sqlite?: unknown;
+  updater?: unknown;
+};
 try {
   report = JSON.parse(line);
 } catch {
@@ -76,6 +82,7 @@ if (typeof report.node !== 'string' || !report.node.startsWith('24.')) {
 if (typeof report.electron !== 'string' || report.electron === '') fail('versi Electron kosong');
 if (report.ssh2 !== true) fail('ssh2 tidak termuat dari hasil kemas');
 if (report.sqlite !== true) fail('node:sqlite tidak tersedia di Electron hasil kemas');
+if (report.updater !== true) fail('electron-updater tidak termuat dari hasil kemas');
 if (!existsSync(join(unpacked, 'resources', 'ui-baseline', 'index.html'))) {
   fail('UI dasar (resources/ui-baseline/index.html) tidak ikut terkemas');
 }

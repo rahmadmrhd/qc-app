@@ -53,6 +53,8 @@ export class QcUpdateProvider extends Provider<UpdateInfo> {
     try {
       const response = await fetchImpl(`${serverUrl}/api/desktop/app-manifest?arch=${arch}`, {
         headers: { accept: 'application/json' },
+        // Tanpa cookie sesi bawaan Electron: pembaruan berjalan tanpa login dan tak boleh membawa identitas apa pun.
+        credentials: 'omit',
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       if (!response.ok) return none(`server menjawab ${response.status}`);
