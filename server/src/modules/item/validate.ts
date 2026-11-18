@@ -12,8 +12,8 @@ import type {
 } from '@shared/contract';
 import { MARKDOWN_MAX_LENGTH } from '@shared/files';
 import { FIRMWARE_CODE_MAX } from '@shared/firmware';
-import { SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { ITEM_LIMITS, normalizeKey, normalizeNewlines } from '@shared/items';
+import { SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { INSTRUCTION_LIMITS, type StickerMarkTarget } from '@shared/stickers';
 
 const ITEM_STATUS_VALUES = ['active', 'inactive'] as const;

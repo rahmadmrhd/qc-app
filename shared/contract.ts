@@ -1793,6 +1793,10 @@ export interface SerialItemOptionDto {
   label: string;
   buIds: string[];
   buOptions: { id: string; code: string }[];
+  /** Item wajib foto bukti pada Catat Serial (spek 2026-11-18); `proofMin` selalu 1 bila tidak wajib. */
+  proofRequired: boolean;
+  /** Jumlah foto bukti minimum (1 sampai 5). */
+  proofMin: number;
 }
 export interface ListSerialItemOptionsInput {
   query?: string;

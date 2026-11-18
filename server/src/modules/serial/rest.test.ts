@@ -90,10 +90,25 @@ describe('serials.itemOptions', () => {
       label: 'Merk Alfa',
       buIds: ['bu-a'],
       buOptions: [{ id: 'bu-a', code: 'A' }],
+      proofRequired: false,
+      proofMin: 1,
     });
     // i-a2 juga ada di BU B, tetapi pencatat hanya boleh menulis di A.
     expect(data.items[1].buOptions).toEqual([{ id: 'bu-a', code: 'A' }]);
     expect(data.nextCursor).toBeNull();
+  });
+
+  test('membawa bendera wajib foto item (mode query dan mode itemIds)', async () => {
+    await env.DB.prepare(
+      "UPDATE items SET proof_required = 1, proof_min = 3 WHERE id = 'i-a2'",
+    ).run();
+    const listed = (await call(WRITER, 'serials.itemOptions', {})).data as Json;
+    const flags = (items: Json[]) =>
+      Object.fromEntries(items.map((i: Json) => [i.id, [i.proofRequired, i.proofMin]]));
+    expect(flags(listed.items)).toEqual({ 'i-a1': [false, 1], 'i-a2': [true, 3] });
+    const byIds = (await call(WRITER, 'serials.itemOptions', { itemIds: ['i-a2', 'i-a1'] }))
+      .data as Json;
+    expect(flags(byIds.items)).toEqual({ 'i-a1': [false, 1], 'i-a2': [true, 3] });
   });
 
   test('pengguna dengan dua BU melihat item kedua BU dan kedua buOptions', async () => {
@@ -134,6 +149,8 @@ describe('serials.itemOptions', () => {
       label: 'Merk Alfa',
       buIds: ['bu-a'],
       buOptions: [{ id: 'bu-a', code: 'A' }],
+      proofRequired: false,
+      proofMin: 1,
     });
     expect(exact.items[1].buOptions).toEqual([{ id: 'bu-a', code: 'A' }]);
     expect(exact.nextCursor).toBeNull();
