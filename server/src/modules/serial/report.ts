@@ -53,7 +53,7 @@ export async function lookupSerials(
   const buIds = writableBuIds(user);
   // Validator sudah menormalkan; dinormalkan lagi di sini agar pemanggil langsung (tes, layanan lain) tetap aman.
   const serial = normalizeSerial(input.serial);
-  if (buIds.length === 0 || serialProblem(serial) !== null) return { matches: [] };
+  if (buIds.length === 0 || serialProblem(serial) !== null) return { matches: [], elsewhere: null };
   const serials = [serial];
   const rows = await listSerialRows(env.DB, { buIds, serials, limit: LOOKUP_MAX });
   const matches = rows.slice(0, LOOKUP_MAX).map((row): SerialLookupMatchDto => {
@@ -73,7 +73,7 @@ export async function lookupSerials(
     };
   });
   matches.sort((a, b) => (a.buCode < b.buCode ? -1 : a.buCode > b.buCode ? 1 : 0));
-  return { matches };
+  return { matches, elsewhere: null }; // `elsewhere` diisi Tugas 6
 }
 
 /**

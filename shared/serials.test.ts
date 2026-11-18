@@ -6,6 +6,7 @@ import {
   normalizeSerial,
   proofMinimumOf,
   publicActorName,
+  recheckBuCandidates,
   reportLinkExpiresAt,
   SERIAL_ACTIONS,
   SERIAL_EVENT_TYPES,
@@ -227,5 +228,48 @@ describe('proofMinimumOf', () => {
     expect(proofMinimumOf({ proofRequired: false, proofMin: 3 })).toBe(0);
     expect(proofMinimumOf({ proofRequired: true, proofMin: 3 })).toBe(3);
     expect(proofMinimumOf({ proofRequired: true, proofMin: 1 })).toBe(1);
+  });
+});
+
+describe('recheckBuCandidates', () => {
+  test('A lalu B: dari B kandidatnya B dan BU yang belum pernah, bukan A', () => {
+    expect(
+      recheckBuCandidates({
+        currentBuId: 'B',
+        involvedBuIds: ['A', 'B'],
+        writableBuIds: ['A', 'B', 'C'],
+      }),
+    ).toEqual(['B', 'C']);
+  });
+  test('BU yang tak boleh ditulis pengguna dikeluarkan, termasuk BU saat ini', () => {
+    expect(
+      recheckBuCandidates({
+        currentBuId: 'B',
+        involvedBuIds: ['A', 'B'],
+        writableBuIds: ['C', 'D'],
+      }),
+    ).toEqual(['C', 'D']);
+  });
+  test('tanpa riwayat selain BU saat ini: semua BU tulis boleh', () => {
+    expect(
+      recheckBuCandidates({ currentBuId: 'A', involvedBuIds: ['A'], writableBuIds: ['A', 'B'] }),
+    ).toEqual(['A', 'B']);
+  });
+  test('kosong bila tak ada BU tulis yang memenuhi syarat', () => {
+    expect(
+      recheckBuCandidates({ currentBuId: 'B', involvedBuIds: ['A', 'B'], writableBuIds: ['A'] }),
+    ).toEqual([]);
+    expect(
+      recheckBuCandidates({ currentBuId: 'B', involvedBuIds: ['B'], writableBuIds: [] }),
+    ).toEqual([]);
+  });
+  test('urutan masukan dipertahankan dan duplikat dibuang', () => {
+    expect(
+      recheckBuCandidates({
+        currentBuId: 'B',
+        involvedBuIds: ['B'],
+        writableBuIds: ['C', 'B', 'C'],
+      }),
+    ).toEqual(['C', 'B']);
   });
 });

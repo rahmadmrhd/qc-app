@@ -13,6 +13,7 @@ import type {
   SerialHistoryInput,
   SerialListInput,
   SerialLookupInput,
+  SerialLookupManyInput,
   SerialReportNewInput,
   SerialRowInput,
   SerialStickerOptionsInput,
@@ -661,6 +662,30 @@ export function validateSerialLookup(raw: unknown): SerialLookupInput {
   if (text !== '' && serialProblem(serial) !== null) reader.fail('serial', 'Serial tidak valid');
   reader.done();
   return { serial };
+}
+
+/**
+ * Pencarian banyak serial untuk draft Catat: tiap entri dinormalisasi, yang tak sah dan yang ganda dibuang diam-diam
+ * (draft sudah menyaringnya); maks. `SERIAL_LIMITS.batchRows` serial.
+ */
+export function validateSerialLookupMany(raw: unknown): SerialLookupManyInput {
+  const reader = readObject(raw);
+  const list = reader.raw('serials');
+  if (!Array.isArray(list)) {
+    reader.fail('serials', 'Daftar serial wajib');
+  } else if (list.length > SERIAL_LIMITS.batchRows) {
+    reader.fail('serials', `Maksimal ${SERIAL_LIMITS.batchRows} serial per permintaan`);
+  }
+  reader.done();
+  const serials: string[] = [];
+  if (Array.isArray(list)) {
+    for (const entry of list) {
+      if (typeof entry !== 'string' || entry.length > 100) continue;
+      const serial = normalizeSerial(entry);
+      if (serialProblem(serial) === null && !serials.includes(serial)) serials.push(serial);
+    }
+  }
+  return { serials };
 }
 
 /** Lapor Rusak untuk Serial Number yang belum tercatat: semua field wajib; catatan wajib (Markdown, gambar maks. 10). */

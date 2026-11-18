@@ -357,6 +357,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'serials.buOptions': { verb: 'GET', path: '/serials/bu-options' },
   'serials.serviceLocations': { verb: 'GET', path: '/serials/service-locations' },
   'serials.lookup': { verb: 'GET', path: '/serials/lookup', query: { serial: 'string' } },
+  'serials.lookupMany': { verb: 'POST', path: '/serials/lookup-many', status: 200 },
   'serials.reportNew': { verb: 'POST', path: '/serials/report', status: 200 },
   'serials.saveBatch': { verb: 'POST', path: '/serials/batch', status: 200 },
   'serials.list': {

@@ -309,6 +309,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     cursor: 'c',
     limit: 50,
   },
+  'serials.lookupMany': { serials: ['SN-1', 'SN-2'] },
   'serials.saveBatch': {
     rows: [
       {

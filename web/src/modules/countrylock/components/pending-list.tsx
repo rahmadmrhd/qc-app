@@ -49,6 +49,7 @@ export interface PendingUpload {
 
 const OUTCOME_CLASS: Record<UploadOutcome['state'], string> = {
   created: 'text-muted-foreground',
+  rechecked: 'text-muted-foreground',
   duplicate: 'text-amber-600 dark:text-amber-400',
   invalid: 'text-destructive',
   error: 'text-destructive',
@@ -57,6 +58,7 @@ const OUTCOME_CLASS: Record<UploadOutcome['state'], string> = {
 function SummaryLine({ summary }: { summary: UploadSummary }) {
   const parts = [
     summary.created > 0 ? `${summary.created} terunggah` : null,
+    summary.rechecked > 0 ? `${summary.rechecked} dicek ulang` : null,
     summary.duplicate > 0 ? `${summary.duplicate} duplikat` : null,
     summary.failed > 0 ? `${summary.failed} gagal` : null,
   ].filter((part): part is string => part !== null);

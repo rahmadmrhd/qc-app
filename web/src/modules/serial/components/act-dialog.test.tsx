@@ -79,6 +79,7 @@ function meWith(serial: Level, serialservice: Level = 'none'): MeDto {
 }
 
 const SERIAL: SerialDto = {
+  buHistory: [],
   id: 's1',
   buId: 'b1',
   buCode: 'BU1',

@@ -94,13 +94,31 @@ describe('outcomesBySerial dan summarize', () => {
       [ready, second],
       [...results.slice(0, 2), { clientId: 'x', result: 'invalid' as const, message: '' }],
     );
-    expect(summarize(map, null)).toEqual({ created: 1, duplicate: 1, failed: 0, stopped: null });
+    expect(summarize(map, null)).toEqual({
+      created: 1,
+      rechecked: 0,
+      duplicate: 1,
+      failed: 0,
+      stopped: null,
+    });
+    const mixed = new Map([
+      ['A', { state: 'rechecked' as const, message: '' }],
+      ['B', { state: 'created' as const, message: '' }],
+    ]);
+    expect(summarize(mixed, null)).toEqual({
+      created: 1,
+      rechecked: 1,
+      duplicate: 0,
+      failed: 0,
+      stopped: null,
+    });
     const failing = new Map([
       ['A', { state: 'invalid' as const, message: '' }],
       ['B', { state: 'error' as const, message: '' }],
     ]);
     expect(summarize(failing, 'putus')).toEqual({
       created: 0,
+      rechecked: 0,
       duplicate: 0,
       failed: 2,
       stopped: 'putus',

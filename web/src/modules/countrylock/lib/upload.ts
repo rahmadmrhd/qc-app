@@ -58,6 +58,7 @@ export interface UploadOutcome {
 
 const DEFAULT_MESSAGES: Record<SerialRowResult['result'], string> = {
   created: 'Terunggah',
+  rechecked: 'Serial sudah ada: dicatat sebagai cek ulang',
   duplicate: 'Serial sudah ada di BU ini',
   invalid: 'Baris ditolak server',
   error: 'Gagal disimpan, coba lagi',
@@ -83,6 +84,8 @@ export function outcomesBySerial(
 
 export interface UploadSummary {
   created: number;
+  /** Serial sudah ada: entri menjadi cek ulang lolos pada catatan itu (juga keluar dari antrean). */
+  rechecked: number;
   duplicate: number;
   failed: number;
   /** Galat yang menghentikan unggah (jaringan, sesi, izin); baris yang belum terkirim tetap di antrean. */
@@ -94,12 +97,14 @@ export function summarize(
   stopped: string | null,
 ): UploadSummary {
   let created = 0;
+  let rechecked = 0;
   let duplicate = 0;
   let failed = 0;
   for (const outcome of outcomes.values()) {
     if (outcome.state === 'created') created += 1;
+    else if (outcome.state === 'rechecked') rechecked += 1;
     else if (outcome.state === 'duplicate') duplicate += 1;
     else failed += 1;
   }
-  return { created, duplicate, failed, stopped };
+  return { created, rechecked, duplicate, failed, stopped };
 }

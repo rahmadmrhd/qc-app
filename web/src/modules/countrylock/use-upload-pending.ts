@@ -69,7 +69,9 @@ export function useUploadPending(
         stopped = describeError(error);
       }
       // Hanya yang dipastikan tersimpan yang dihapus dari antrean.
-      const done = [...collected].filter(([, outcome]) => outcome.state === 'created');
+      const done = [...collected].filter(
+        ([, outcome]) => outcome.state === 'created' || outcome.state === 'rechecked',
+      );
       await Promise.all(
         done.map(([serial]) => bridge.pending.remove(serial).catch(() => undefined)),
       );

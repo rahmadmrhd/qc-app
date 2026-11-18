@@ -40,6 +40,7 @@ vi.mock('@/modules/markdown/wysiwyg-editor', () => ({
 import { SerialDetailPage } from './serial-detail-page';
 
 const SERIAL: SerialDto = {
+  buHistory: [],
   id: 's1',
   buId: 'b1',
   buCode: 'BU1',

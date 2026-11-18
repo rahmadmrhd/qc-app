@@ -579,6 +579,7 @@ function toDto(row: SerialRow, stickers: SerialStickerRow[], caseRows: SerialCas
   const openCaseId = orNull(row.open_case_id);
   return {
     ...toSummary(row),
+    buHistory: [], // diisi Tugas 3 dari serial_business_units
     note: row.note,
     recordedLocationId: row.recorded_location_id.trim(),
     stickers: stickers.map((sticker) => ({

@@ -107,6 +107,7 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'serials.locationOptions': true,
   'serials.serviceLocations': true,
   'serials.lookup': true,
+  'serials.lookupMany': true,
   'serials.reportNew': true,
   'serials.saveBatch': true,
   'serials.get': true,

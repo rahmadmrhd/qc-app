@@ -197,7 +197,7 @@ export function proofIdsOf(rows: readonly StagingRow[]): string[] {
   return rows.flatMap((row) => row.proofPhotos.map((photo) => photo.id));
 }
 
-/** `created` dibuang dari tabel; hasil lain ditandai pada barisnya; urutan dipertahankan. */
+/** `created` dan `rechecked` (sudah tersimpan) dibuang dari tabel; hasil lain ditandai pada barisnya; urutan dipertahankan. */
 export function applyResults(
   rows: readonly StagingRow[],
   results: readonly SerialRowResult[],
@@ -210,7 +210,7 @@ export function applyResults(
       next.push(row);
       continue;
     }
-    if (entry.result === 'created') continue;
+    if (entry.result === 'created' || entry.result === 'rechecked') continue;
     next.push({
       ...row,
       result: entry.result,
