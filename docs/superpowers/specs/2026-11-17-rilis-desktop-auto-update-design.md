@@ -168,8 +168,9 @@ aksi pihak ketiga dipatok SHA; `ci-workflows.test.ts` diperluas (pemicu, izin, r
 ## 7. Catatan keputusan (log, 2026-11-18)
 Keputusan 1-5 disetujui pemilik pada 2026-11-18 bersama rencana implementasi; keputusan 6-10 diambil pelaksana saat implementasi. Atas
 tinjauan akhir, pemilik pada 2026-11-18 memutuskan: keputusan 7 DIBALIK (installer dilampirkan), keputusan 10 dan M8 disetujui (token katalog
-diperlakukan publik), dan M4 disetujui (lihat 11-12). Keputusan **6, 8, dan 9 masih menunggu konfirmasi pemilik** (alasan dan biaya bila salah
-dicatat di ledger pelaksanaan; ubah bagian ini bila pemilik memutuskan lain).
+diperlakukan publik), dan M4 disetujui (lihat 11-12). Keputusan **6, 8, dan 9 disetujui pemilik pada 2026-11-19** setelah penjelasan (6: kunci
+penandatangan hanya di job `publish`; 8: tanpa saklar `RELEASE_FLOW` karena rilis desktop tak men-deploy production dan salah rilis dapat
+ditarik lewat `withdraw`; 9: `app-update.yml` dua baris buatan aplikasi sendiri). Dengan itu semua keputusan 1-12 final.
 1. **Tata letak Drive datar** (bukan subfolder per versi): satu folder, nama berkas membawa versi. Mengubah 5.2 revisi 1-2. Alasan: pembacaan dan
    penjaga folder lebih sederhana, tanpa pembuatan folder per versi.
 2. **Pembatas laju unduhan installer per IP** (60 per jam; di luar rancangan awal, boleh dibuang): kunci `desktop-app-file:<ip>` di `rate_limits`,
