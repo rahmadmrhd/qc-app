@@ -28,6 +28,11 @@ export interface VerifyDeps {
   stickersOf(itemId: string, buId: string): Promise<{ id: string; name: string }[]>;
   /** Lokasi yang dapat dipilih (id dan label); `null` = daftar gagal dimuat (baris ditandai belum terverifikasi). */
   locations: readonly { id: string; label: string }[] | null;
+  /**
+   * BU tulis pengguna (`serials.buOptions`): BU baris harus ada di daftar ini, BUKAN BU milik item (spek Catat wajib
+   * foto butir N). `null` = daftar gagal dimuat: BU item dipakai sebagai batas sementara; server tetap penjaga akhir.
+   */
+  buOptions: readonly { id: string; code: string }[] | null;
 }
 
 export const VERIFY_FAILED_MESSAGE =
@@ -73,7 +78,7 @@ type PairResult = { id: string; name: string }[] | null | 'error';
 /**
  * Berkas `.qcsn` adalah masukan tak tepercaya: label item, BU, lokasi, dan stiker TIDAK dipakai, melainkan diganti
  * nilai dari server (opsi item, stiker yang berlaku, dan daftar lokasi). BU yang kosong diturunkan dari item bila item
- * hanya punya satu BU yang boleh ditulis. Rujukan yang tak ditemukan ditandai `unresolved`; kegagalan memverifikasi
+ * hanya punya satu BU tulis. BU baris yang diisi harus ada di daftar BU tulis pengguna (tidak harus BU item). Rujukan yang tak ditemukan ditandai `unresolved`; kegagalan memverifikasi
  * (jaringan) ditandai sebagai galat baris tanpa membuang pilihan stiker.
  */
 export async function verifyImported(
@@ -109,8 +114,10 @@ export async function verifyImported(
     const lookup = row.itemId === '' ? null : (items.get(row.itemId) ?? null);
     if (lookup === 'error' || lookup === null)
       return { lookup, buId: row.buId, buLabel: row.buLabel };
-    const only = lookup.buOptions.length === 1 ? lookup.buOptions[0] : undefined;
-    const chosen = row.buId === '' ? only : lookup.buOptions.find((bu) => bu.id === row.buId);
+    const allowed = deps.buOptions ?? lookup.buOptions;
+    const fromItem = lookup.buOptions.filter((bu) => allowed.some((a) => a.id === bu.id));
+    const only = fromItem.length === 1 ? fromItem[0] : undefined;
+    const chosen = row.buId === '' ? only : allowed.find((bu) => bu.id === row.buId);
     return { lookup, buId: chosen?.id ?? '', buLabel: chosen?.code ?? '' };
   });
 

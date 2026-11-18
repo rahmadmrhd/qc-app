@@ -36,6 +36,7 @@ import type { QcsnImport } from '../lib/qcsn';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
   discardProofPhotos,
+  serialBuOptionsQueryOptions,
   serialItemsByIdQueryOptions,
   serialLocationOptionsQueryOptions,
   serialStickerOptionsQueryOptions,
@@ -526,6 +527,14 @@ export function RecordPage({
           return null;
         }
       };
+      const loadBus = async () => {
+        try {
+          const data = await queryClient.fetchQuery(serialBuOptionsQueryOptions());
+          return data.businessUnits.map((bu) => ({ id: bu.id, code: bu.code }));
+        } catch {
+          return null;
+        }
+      };
       const deps: VerifyDeps = {
         findItems: findItemLookups,
         stickersOf: async (itemId, buId) => {
@@ -533,6 +542,7 @@ export function RecordPage({
           return data.stickers.map((sticker) => ({ id: sticker.id, name: sticker.name }));
         },
         locations: await loadLocations(),
+        buOptions: await loadBus(),
       };
       // Pindaian dan suntingan boleh terjadi selama verifikasi menunggu: hasilnya digabung ke tabel TERBARU.
       const snapshot = rowsRef.current;
