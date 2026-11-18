@@ -86,6 +86,18 @@ describe('parseReleaseManifest', () => {
   test('bukan bentuk kanonik (JSON berspasi) ditolak', () => {
     expect(parseReleaseManifest(JSON.stringify(valid(), null, 2))).toBeNull();
   });
+  test('urutan kunci selain urutan kanonik ditolak (klien membangun ulang teks yang ditandatangani dalam urutan itu)', () => {
+    const base = valid();
+    const { changelog, ...rest } = base;
+    const topLevel = { changelog, ...rest };
+    expect(parseReleaseManifest(JSON.stringify(topLevel))).toBeNull();
+    const file = base.files[0] as DesktopReleaseManifest['files'][number];
+    const reordered = {
+      ...base,
+      files: [{ sha512: file.sha512, name: file.name, arch: file.arch, size: file.size }],
+    };
+    expect(parseReleaseManifest(JSON.stringify(reordered))).toBeNull();
+  });
   test('bukan JSON atau bukan objek ditolak', () => {
     expect(parseReleaseManifest('bukan json')).toBeNull();
     expect(parseReleaseManifest('[]')).toBeNull();

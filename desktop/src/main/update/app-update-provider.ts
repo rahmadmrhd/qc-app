@@ -26,7 +26,34 @@ export interface QcProviderOptions extends QcProviderConfig {
 }
 
 const REQUEST_TIMEOUT_MS = 20_000;
-const MAX_RESPONSE_CHARS = 512 * 1024;
+const MAX_RESPONSE_BYTES = 512 * 1024;
+
+/** Membaca badan paling banyak `maxBytes` (berhenti di tengah aliran bila lebih); lebih besar = `null`. */
+async function readCappedText(response: Response, maxBytes: number): Promise<string | null> {
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > maxBytes) return null;
+  if (!response.body) return '';
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
 
 export class QcUpdateProvider extends Provider<UpdateInfo> {
   constructor(
@@ -49,7 +76,7 @@ export class QcUpdateProvider extends Provider<UpdateInfo> {
         releaseDate: new Date().toISOString(),
       };
     };
-    let text: string;
+    let text: string | null;
     try {
       const response = await fetchImpl(`${serverUrl}/api/desktop/app-manifest?arch=${arch}`, {
         headers: { accept: 'application/json' },
@@ -58,11 +85,11 @@ export class QcUpdateProvider extends Provider<UpdateInfo> {
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
       if (!response.ok) return none(`server menjawab ${response.status}`);
-      text = await response.text();
+      text = await readCappedText(response, MAX_RESPONSE_BYTES);
     } catch {
       return none('server tidak terjangkau');
     }
-    if (text.length > MAX_RESPONSE_CHARS) return none('jawaban server terlalu besar');
+    if (text === null) return none('jawaban server terlalu besar');
     let body: unknown;
     try {
       body = JSON.parse(text);

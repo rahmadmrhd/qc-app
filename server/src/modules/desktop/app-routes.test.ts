@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { app } from '@server/app';
 import { bytesToBase64 } from '@server/core/bytes';
+import { purgeExpiredRateLimits } from '@server/jobs/runner';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
   type DesktopReleaseManifest,
@@ -171,5 +172,16 @@ describe('GET /api/desktop/app-file/<versi>/<nama>', () => {
     expect(blocked.status).toBe(429);
     expect(blocked.headers.get('content-type')).toContain('application/problem+json');
     expect((await app.request(url, {}, served({ clientIp: '198.51.100.7' }))).status).toBe(200);
+  });
+
+  test('batas 60 per jam bertahan melewati detak penjadwal: pembersihan 11 menit kemudian tidak mereset penghitung', async () => {
+    const url = FILE_URL('1.2.0', installerName('1.2.0', 'x64'));
+    for (let i = 0; i < 60; i++) await app.request(url, {}, served());
+    env.clock.advance(11 * 60 * 1000);
+    await purgeExpiredRateLimits(env);
+    expect((await app.request(url, {}, served())).status).toBe(429);
+    env.clock.advance(50 * 60 * 1000); // total 61 menit: jendela baru
+    await purgeExpiredRateLimits(env);
+    expect((await app.request(url, {}, served())).status).toBe(200);
   });
 });

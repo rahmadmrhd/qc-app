@@ -110,7 +110,7 @@ async function main(): Promise<number> {
   console.log(`Rilis desktop ${args.version} terbit di Drive (installer, manifest, tanda tangan).`);
   // Pembersihan hanya setelah rilis baru terlihat; kegagalannya tak membatalkan rilis yang sudah terbit.
   try {
-    await pruneInstallers(client, args.folderId, KEEP_VERSIONS);
+    await pruneInstallers(client, args.folderId, KEEP_VERSIONS, args.version);
   } catch (error) {
     console.log(
       `::warning::Pembersihan versi lama gagal: ${error instanceof Error ? error.message : error}`,

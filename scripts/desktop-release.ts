@@ -260,13 +260,17 @@ export async function withdrawRelease(
 }
 
 /**
- * Menyimpan `keep` versi terbaru (urutan numerik) dan menghapus installer, manifest, dan tanda tangan versi yang lebih
- * lama. Berkas yang bukan nama rilis dikenal tak disentuh. `keep` < 1 ditolak agar tak pernah menghapus semuanya.
+ * Menyimpan `keep` versi TERLIHAT terbaru (punya `.sig`, urutan numerik) dan menghapus installer, manifest, dan tanda
+ * tangan versi yang lebih lama dari yang ke-`keep`. Versi yang ditarik (tanpa `.sig`) tak dihitung sebagai yang
+ * dipertahankan (agar tak menggusur versi yang sedang terlihat) dan hanya dihapus bila di bawah batas itu. `protect`
+ * (versi yang baru diterbitkan, mis. pemulihan versi lama) tak pernah dihapus. Berkas yang bukan nama rilis dikenal tak
+ * disentuh. `keep` < 1 ditolak agar tak pernah menghapus semuanya.
  */
 export async function pruneInstallers(
   client: BridgeClient,
   folderId: string,
   keep: number = KEEP_VERSIONS,
+  protect?: string,
 ): Promise<void> {
   if (!Number.isInteger(keep) || keep < 1) throw new Error('Jumlah versi yang disimpan minimal 1.');
   const entries = await listAll(client, folderId);
@@ -278,8 +282,14 @@ export async function pruneInstallers(
     list.push(entry);
     byVersion.set(parsed.version, list);
   }
-  const versions = [...byVersion.keys()].sort((a, b) => compareVersions(b, a));
-  for (const version of versions.slice(keep)) {
-    for (const entry of byVersion.get(version) ?? []) await client.deleteFile(entry.id);
+  const visible = [...byVersion.entries()]
+    .filter(([, list]) => list.some((entry) => isReleaseFileName(entry.name)?.kind === 'signature'))
+    .map(([version]) => version)
+    .sort((a, b) => compareVersions(b, a));
+  const cutoff = visible[keep - 1];
+  if (visible.length <= keep || cutoff === undefined) return;
+  for (const [version, list] of byVersion) {
+    if (version === protect || compareVersions(version, cutoff) >= 0) continue;
+    for (const entry of list) await client.deleteFile(entry.id);
   }
 }

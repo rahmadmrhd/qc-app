@@ -118,8 +118,12 @@ export async function scheduleCleanupJob(env: Env): Promise<string | null> {
   return enqueueJob(env, 'cleanup_qr', {}, JOB_SYSTEM_ACTOR);
 }
 
-/** Jendela terbesar baris `rate_limits` (detik): 10 menit, sama dengan lama blokir pembatas percobaan salah. */
-const RATE_LIMIT_MAX_WINDOW_SECONDS = 10 * 60;
+/**
+ * Jendela terbesar baris `rate_limits` (detik): 1 jam, jendela pembatas unduhan installer desktop
+ * (`APP_FILE_WINDOW_MS` di `modules/desktop/routes.ts`; jendela lain, mis. blokir percobaan salah, 10 menit, lebih pendek).
+ * Pembersihan yang lebih awal mereset penghitung sebelum jendelanya habis dan melonggarkan batas.
+ */
+const RATE_LIMIT_MAX_WINDOW_SECONDS = 60 * 60;
 
 /**
  * Membuang baris `rate_limits` yang jendelanya sudah lewat (`window_start` lebih lama dari jendela terbesar):

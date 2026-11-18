@@ -118,6 +118,26 @@ describe('QcUpdateProvider', () => {
     expect((await provider.getLatestVersion()).files).toEqual([]);
   });
 
+  it('badan jawaban terlalu besar dihentikan di tengah aliran (tidak dibaca utuh), hasilnya versi terpasang', async () => {
+    let pulled = 0;
+    const chunk = new Uint8Array(100 * 1024).fill(32);
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        if (pulled > 50) controller.close();
+        else controller.enqueue(chunk);
+      },
+    });
+    const { provider, logs } = setup(
+      () => new Response(stream, { status: 200, headers: { 'content-type': 'application/json' } }),
+    );
+    const info = await provider.getLatestVersion();
+    expect(info.version).toBe('1.0.0');
+    expect(info.files).toEqual([]);
+    expect(logs.join(' ')).toContain('terlalu besar');
+    expect(pulled).toBeLessThan(15);
+  });
+
   it('manifest yang diubah setelah ditandatangani ditolak', async () => {
     const good = signed(manifest());
     const tampered = { ...good, manifest: { ...good.manifest, changelog: 'disusupi' } };

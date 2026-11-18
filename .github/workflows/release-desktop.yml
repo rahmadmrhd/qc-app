@@ -227,7 +227,9 @@ jobs:
   # Menerbitkan: (1) unggah ke Drive (installer, manifest bertanda tangan, tanda tangan TERAKHIR = rilis terlihat), lalu
   # (2) tag `desktop-vX.Y.Z` + GitHub Release berisi catatan rilis. Tag dan Release tak pernah dibuat bila unggahan gagal.
   # Installer TIDAK dilampirkan ke Release: token katalog tertanam di dalamnya dan repositori ini publik. Idempoten: unggahan
-  # ulang dengan isi sama dilewati, tag yang sudah ada pada SHA yang sama dilewati, tag pada SHA lain menggagalkan. Tanpa
+  # ulang dengan isi sama dilewati (hanya manifest/tanda tangan; installer dibangun ulang tiap run dan NSIS tidak
+  # reproducible, jadi pemulihan `versi` menimpa installer yang sudah live dan versi itu hilang dari server selama
+  # unggah ulang), tag yang sudah ada pada SHA yang sama dilewati, tag pada SHA lain menggagalkan. Tanpa
   # `bun install`: tak ada kode dependensi yang berjalan di job yang memegang kunci. Berkas kunci berizin ketat dan dihapus
   # di langkah akhir `if: always()`.
   publish:

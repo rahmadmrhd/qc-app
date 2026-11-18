@@ -48,8 +48,10 @@ const MAX_MANIFEST_BYTES = 256 * 1024;
 const MAX_SIGNATURE_BYTES = 1024;
 const SIGNATURE_PATTERN = /^[A-Za-z0-9_-]{86}$/;
 const PAGE_SIZE = 200;
-/** Retensi menyimpan `.json`/`.sig` selamanya; batas halaman mencegah putaran tak berujung pada folder salah isi. */
+/** Batas halaman mencegah putaran tak berujung pada folder salah isi (retensi menyimpan 10 versi, jauh di bawahnya). */
 const MAX_PAGES = 25;
+/** Galat listing Drive dimemo sesingkat ini agar Drive yang bermasalah tak digempur tiap permintaan publik. */
+const FAILURE_TTL_MS = 30 * 1000;
 
 interface VersionEntries {
   manifest?: DriveFolderEntry;
@@ -64,41 +66,54 @@ export function createReleaseReader(deps: ReleaseReaderDeps): ReleaseReader {
     byName: Map<string, DriveFolderEntry>;
   } | null = null;
   const resolved = new Map<string, ServedRelease | null>();
+  let failure: { at: number; error: unknown } | null = null;
 
   async function readIndex() {
     if (index && deps.now() - index.at < ttlMs) return index;
-    const versions = new Map<string, VersionEntries>();
-    const byName = new Map<string, DriveFolderEntry>();
-    let pageToken: string | undefined;
-    for (let page = 0; page < MAX_PAGES; page++) {
-      const listing = await deps.client.listFolder(deps.folderId, {
-        pageSize: PAGE_SIZE,
-        ...(pageToken ? { pageToken } : {}),
-      });
-      for (const entry of listing.files) {
-        byName.set(entry.name, entry);
-        const kind = isReleaseFileName(entry.name);
-        if (kind?.kind !== 'manifest' && kind?.kind !== 'signature') continue;
-        const slot = versions.get(kind.version) ?? {};
-        if (kind.kind === 'manifest') slot.manifest = entry;
-        else slot.signature = entry;
-        versions.set(kind.version, slot);
+    if (failure && deps.now() - failure.at < FAILURE_TTL_MS) throw failure.error;
+    try {
+      const versions = new Map<string, VersionEntries>();
+      const byName = new Map<string, DriveFolderEntry>();
+      let pageToken: string | undefined;
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const listing = await deps.client.listFolder(deps.folderId, {
+          pageSize: PAGE_SIZE,
+          ...(pageToken ? { pageToken } : {}),
+        });
+        for (const entry of listing.files) {
+          byName.set(entry.name, entry);
+          const kind = isReleaseFileName(entry.name);
+          if (kind?.kind !== 'manifest' && kind?.kind !== 'signature') continue;
+          const slot = versions.get(kind.version) ?? {};
+          if (kind.kind === 'manifest') slot.manifest = entry;
+          else slot.signature = entry;
+          versions.set(kind.version, slot);
+        }
+        pageToken = listing.nextPageToken;
+        if (!pageToken) break;
       }
-      pageToken = listing.nextPageToken;
-      if (!pageToken) break;
+      index = { at: deps.now(), versions, byName };
+      failure = null;
+      resolved.clear();
+      return index;
+    } catch (error) {
+      failure = { at: deps.now(), error };
+      throw error;
     }
-    index = { at: deps.now(), versions, byName };
-    resolved.clear();
-    return index;
   }
 
+  /** Galat Drive (jaringan, kuota) DILEMPAR agar tak dimemo sebagai "rilis rusak"; isi yang tak layak = `null`. */
   async function readText(entry: DriveFolderEntry, maxBytes: number): Promise<string | null> {
     if (entry.size > maxBytes) return null;
     const file = await deps.client.readFile(entry.id, deps.folderId);
     if (!file) return null;
     const bytes = base64ToBytes(file.base64);
     if (bytes.length > maxBytes) return null;
-    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    try {
+      return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      return null;
+    }
   }
 
   /** Versi terlihat dan utuh, atau `null` (tak lengkap/rusak: dicatat generik, tanpa nama berkas). */
@@ -116,14 +131,8 @@ export function createReleaseReader(deps: ReleaseReaderDeps): ReleaseReader {
     byName: Map<string, DriveFolderEntry>,
   ): Promise<ServedRelease | null> {
     if (!entries?.manifest || !entries.signature) return null;
-    let manifestJson: string | null;
-    let signature: string | null;
-    try {
-      manifestJson = await readText(entries.manifest, MAX_MANIFEST_BYTES);
-      signature = await readText(entries.signature, MAX_SIGNATURE_BYTES);
-    } catch {
-      return null;
-    }
+    const manifestJson = await readText(entries.manifest, MAX_MANIFEST_BYTES);
+    let signature = await readText(entries.signature, MAX_SIGNATURE_BYTES);
     if (manifestJson === null || signature === null) return null;
     signature = signature.trim();
     if (!SIGNATURE_PATTERN.test(signature)) return null;

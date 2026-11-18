@@ -95,7 +95,8 @@ const hasOnlyKeys = (value: Record<string, unknown>, keys: string[]): boolean =>
 
 /**
  * Mengurai dan memvalidasi `release-<versi>.json`. `null` bila bukan JSON kanonik (`JSON.stringify(JSON.parse(json))`
- * harus sama persis dengan masukan: tanda tangan dihitung atas byte kanonik ini), bentuknya salah, atau ada nilai tak sah.
+ * harus sama persis dengan masukan, DENGAN urutan kunci kanonik `schema, version, publishedAt, files, changelog` dan
+ * `name, arch, size, sha512` per berkas: tanda tangan dihitung atas byte kanonik ini), bentuknya salah, atau ada nilai tak sah.
  */
 export function parseReleaseManifest(json: string): DesktopReleaseManifest | null {
   let value: unknown;
@@ -144,5 +145,14 @@ export function parseReleaseManifest(json: string): DesktopReleaseManifest | nul
     if (typeof sha512 !== 'string' || !SHA512_BASE64.test(sha512)) return null;
     parsed.push({ name: name as string, arch: arch as ReleaseArch, size, sha512 });
   }
-  return { schema: RELEASE_SCHEMA, version, publishedAt, files: parsed, changelog };
+  const result: DesktopReleaseManifest = {
+    schema: RELEASE_SCHEMA,
+    version,
+    publishedAt,
+    files: parsed,
+    changelog,
+  };
+  // Server mengirim objek hasil urai ini dan klien membangun ulang teks yang ditandatangani lewat `JSON.stringify`:
+  // urutan kunci selain urutan di atas membuat teks klien berbeda dari yang ditandatangani (semua klien menolak diam-diam).
+  return JSON.stringify(result) === json ? result : null;
 }

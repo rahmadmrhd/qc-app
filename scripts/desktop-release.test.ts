@@ -358,6 +358,30 @@ describe('pruneInstallers', () => {
     expect(namesIn(bridge)).not.toContain(installerName('1.0.0', 'x64'));
   });
 
+  test('versi yang ditarik (tanpa .sig) tidak dihitung ke dalam yang dipertahankan: versi terlihat tak ikut terhapus', async () => {
+    const bridge = createFakeBridge();
+    await seed(bridge, ['1.0.0', '1.1.0', '1.2.0', '1.3.0']);
+    await withdrawRelease(bridge, FOLDER, '1.2.0');
+    await withdrawRelease(bridge, FOLDER, '1.3.0');
+    await pruneInstallers(bridge, FOLDER, 2);
+    const names = namesIn(bridge);
+    expect(names).toContain(signatureFileName('1.0.0'));
+    expect(names).toContain(signatureFileName('1.1.0'));
+    expect(names).toContain(installerName('1.0.0', 'x64'));
+    expect(names).toContain(manifestFileName('1.3.0')); // ditarik tetapi di atas batas: dapat diterbitkan ulang
+  });
+
+  test('versi yang baru diterbitkan (protect) tak pernah dihapus walau di bawah batas (pemulihan versi lama)', async () => {
+    const bridge = createFakeBridge();
+    await seed(bridge, ['1.0.0', '1.5.0', '1.6.0']);
+    await pruneInstallers(bridge, FOLDER, 2, '1.0.0');
+    const names = namesIn(bridge);
+    expect(names).toContain(installerName('1.0.0', 'x64'));
+    expect(names).toContain(signatureFileName('1.0.0'));
+    await pruneInstallers(bridge, FOLDER, 2);
+    expect(namesIn(bridge)).not.toContain(installerName('1.0.0', 'x64'));
+  });
+
   test('batas < 1 ditolak (tak pernah menghapus semuanya)', async () => {
     await expect(pruneInstallers(createFakeBridge(), FOLDER, 0)).rejects.toThrow();
   });

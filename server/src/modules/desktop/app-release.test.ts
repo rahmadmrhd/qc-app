@@ -115,6 +115,27 @@ describe('createReleaseReader.latest', () => {
     expect(await reader().latest('x64')).toBeNull();
   });
 
+  test('galat baca Drive sesaat tidak dimemo: percobaan berikutnya langsung melihat versi terbaru', async () => {
+    await seed('1.1.0');
+    await seed('1.2.0');
+    const r = reader();
+    bridge.failNext('readFile', new Error('drive sesaat'));
+    await expect(r.latest('x64')).rejects.toThrow();
+    expect((await r.latest('x64'))?.version).toBe('1.2.0');
+  });
+
+  test('galat listing Drive dimemo singkat (30 dtk): tidak menggempur Drive, lalu pulih', async () => {
+    await seed('1.2.0');
+    const r = reader();
+    bridge.failNext('listFolder', new Error('drive mati'));
+    await expect(r.latest('x64')).rejects.toThrow();
+    const listsBefore = bridge.calls.filter((c) => c.action === 'listFolder').length;
+    await expect(r.latest('x64')).rejects.toThrow();
+    expect(bridge.calls.filter((c) => c.action === 'listFolder').length).toBe(listsBefore);
+    now += 31_000;
+    expect((await r.latest('x64'))?.version).toBe('1.2.0');
+  });
+
   test('hasil dimemo sampai ttl; sesudahnya folder dibaca ulang', async () => {
     await seed('1.1.0');
     const r = reader(1000);
