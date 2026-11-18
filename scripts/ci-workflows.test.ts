@@ -1740,6 +1740,22 @@ describe('deploy-tag.yml: deploy versi tertentu lewat tag (rilis semver bagian 3
     expect(inputs.izinkan_downgrade_skema?.default).toBe(false);
   });
 
+  test('regex pembuat Release di langkah facts (dievaluasi bash sungguhan): menerima github-actions[bot], menolak spasi, baris baru, dan karakter aneh', () => {
+    const m = text.match(/\[\[ \$release_author =~ (\S+) \]\]/);
+    expect(m?.[1]).toBeDefined();
+    const accepts = (value: string): boolean =>
+      Bun.spawnSync(['bash', '-c', '[[ $VAL =~ $RE ]]'], {
+        env: { ...process.env, VAL: value, RE: m?.[1] ?? '' },
+      }).exitCode === 0;
+    expect(accepts('github-actions[bot]')).toBe(true);
+    expect(accepts('rahmadmrhd')).toBe(true);
+    expect(accepts('')).toBe(true);
+    expect(accepts('a b')).toBe(false);
+    expect(accepts('x\ny')).toBe(false);
+    expect(accepts('a;rm')).toBe(false);
+    expect(accepts('a'.repeat(101))).toBe(false);
+  });
+
   test('concurrency: grup environment yang SAMA dengan deploy-server.yml dan release.yml, tanpa membatalkan', () => {
     expect(wf.concurrency?.group).toBe('deploy-server-${{ inputs.environment }}');
     expect(wf.concurrency?.['cancel-in-progress']).toBe(false);

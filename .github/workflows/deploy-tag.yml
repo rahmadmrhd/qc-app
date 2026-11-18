@@ -158,7 +158,7 @@ jobs:
             release_exists=true
             release_author=${rel% *}
             release_draft=${rel##* }
-            [[ $release_author =~ ^[A-Za-z0-9._\[\]-]{0,100}$ ]] || fail "Pembuat Release memuat karakter yang tidak diizinkan."
+            [[ $release_author =~ ^[]A-Za-z0-9._[-]{0,100}$ ]] || fail "Pembuat Release memuat karakter yang tidak diizinkan."
             [[ $release_draft =~ ^(true|false)$ ]] || fail "Status draf Release tidak terbaca."
           elif [ $rc -ne 44 ]; then
             fail "Gagal memeriksa Release untuk tag (galat API)."
