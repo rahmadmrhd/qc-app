@@ -129,7 +129,9 @@ describe('createAppUpdater', () => {
   it('catatan panjang dipotong; catatan kosong tetap menampilkan dialog', async () => {
     const h = harness([1], available('1.1.0', 'x'.repeat(5000)));
     await h.api.checkNow();
-    const detail = (h.showMessageBox.mock.calls[0]?.[0] as { detail: string }).detail;
+    const options = h.showMessageBox.mock.calls[0]?.[0] as { detail: string } | undefined;
+    const detail = options?.detail ?? '';
+    expect(detail).not.toBe('');
     expect(detail.length).toBeLessThan(700);
     const empty = harness([1], available('1.1.0', null));
     await empty.api.checkNow();

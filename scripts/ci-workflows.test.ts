@@ -2174,3 +2174,42 @@ describe('release-desktop.yml: pipeline rilis aplikasi desktop dari PR rilis (ri
     });
   });
 });
+
+describe('dokumentasi rilis desktop dan sync-dev bersama', () => {
+  test('docs/ci-cd.md menjelaskan release-desktop.yml, sync-dev.yml, penarikan, dan retensi', () => {
+    const doc = read('docs/ci-cd.md');
+    for (const term of [
+      'release-desktop.yml',
+      'sync-dev.yml',
+      'tarik',
+      'desktop-release',
+      'DESKTOP_RELEASES_FOLDER_ID',
+    ]) {
+      expect(doc, term).toContain(term);
+    }
+  });
+
+  test('docs/desktop-release-signing.md memuat semua secret dan Variable yang dipakai release-desktop.yml', () => {
+    const doc = read('docs/desktop-release-signing.md');
+    const used = new Set<string>();
+    for (const match of rawOf('release-desktop.yml').matchAll(/\b(?:secrets|vars)\.([A-Z_]+)/g)) {
+      used.add(match[1] as string);
+    }
+    expect([...used].sort()).toEqual([
+      'DESKTOP_CATALOG_TOKEN',
+      'DESKTOP_DRIVE_PUBLISHER_KEY',
+      'DESKTOP_RELEASES_FOLDER_ID',
+      'DESKTOP_RELEASE_PUBLIC_KEY_PEM',
+      'DESKTOP_RELEASE_SIGNING_KEY',
+      'UI_PUBLIC_KEY_PEM',
+    ]);
+    for (const name of used) expect(doc, name).toContain(name);
+  });
+
+  test('CLAUDE.md, docs/setup-google.md, dan checklist e2e desktop menyebut rilis desktop', () => {
+    expect(read('CLAUDE.md')).toContain('release-desktop.yml');
+    expect(read('CLAUDE.md')).toContain('app-manifest');
+    expect(read('docs/setup-google.md')).toContain('DESKTOP_RELEASES_FOLDER_ID');
+    expect(read('docs/e2e-checklist-desktop.md')).toContain('Pembaruan otomatis');
+  });
+});
