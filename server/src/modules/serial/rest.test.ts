@@ -583,6 +583,17 @@ describe('serials.saveBatch', () => {
     expect(await count('serials')).toBe(0);
   });
 
+  test('catatan memuat rujukan gambar qcfile: baris invalid, tidak tersimpan; teks biasa lolos', async () => {
+    const bad = await save(WRITER, [row({ serial: 'IMG-1', note: 'x ![a](qcfile:abc-123) y' })]);
+    expect(resultsOf(bad)[0]).toMatchObject({
+      result: 'invalid',
+      message: 'Catatan tidak boleh memuat gambar.',
+    });
+    expect(await count('serials')).toBe(0);
+    const ok = await save(WRITER, [row({ serial: 'IMG-2', note: 'tanpa gambar, **tebal**' })]);
+    expect(resultsOf(ok)[0]).toMatchObject({ result: 'created' });
+  });
+
   test('stickers tidak dikirim = semua stiker yang berlaku (defaultQty 1); [] eksplisit = tanpa stiker', async () => {
     const all = await save(WRITER, [row({ serial: 'SN-ALL', stickers: undefined })]);
     expect(resultsOf(all)[0]).toMatchObject({ result: 'created' });

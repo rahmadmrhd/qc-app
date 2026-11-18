@@ -132,6 +132,11 @@ export type ParsedSerialRow =
 const isText = (value: unknown, max: number): value is string =>
   typeof value === 'string' && value.trim() !== '' && value.length <= max;
 
+const NOTE_IMAGE_MESSAGE = 'Catatan tidak boleh memuat gambar.';
+
+/** Catatan serial memakai editor tanpa gambar: rujukan berkas `qcfile:<id>` ditolak (pesan/laporan boleh bergambar). */
+const noteHasImages = (note: string): boolean => extractFileRefs(note).length > 0;
+
 /** Validasi bentuk satu baris (aturan 1): serial dinormalisasi; tanggal uji tidak boleh di masa depan menurut `today` WIB. */
 export function parseSerialRow(raw: unknown, today: string): ParsedSerialRow {
   const source =
@@ -160,6 +165,7 @@ export function parseSerialRow(raw: unknown, today: string): ParsedSerialRow {
   ) {
     return fail('Catatan tidak valid');
   }
+  if (noteHasImages(note)) return fail(NOTE_IMAGE_MESSAGE);
   // Hanya `good` (laporan rusak 2026-11-14): yang bermasalah dicatat lewat Lapor Rusak. Baris berstatus lain
   // = `invalid` (tanpa `status` boleh); kunci `damage` lama diabaikan.
   if (source.status !== undefined && source.status !== 'good') {
@@ -382,6 +388,7 @@ export function parseEditable(
       ) {
         return { ok: false, field: key, message: 'Catatan tidak valid' };
       }
+      if (noteHasImages(value)) return { ok: false, field: key, message: NOTE_IMAGE_MESSAGE };
       fields.note = value;
     }
   }

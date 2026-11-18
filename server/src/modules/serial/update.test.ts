@@ -105,6 +105,25 @@ describe('serials.update', () => {
     expect(row).toEqual({ location_id: 'loc-jkt', recorded_location_id: 'loc-sby' });
   });
 
+  test('catatan memuat rujukan gambar qcfile: VALIDATION pada field note, tanpa efek', async () => {
+    const before = await counts();
+    const result = await update(W, { note: 'lihat ![x](qcfile:abc-123) ini' });
+    expect(result.error?.code).toBe('VALIDATION');
+    expect(result.error?.fields).toEqual({ note: 'Catatan tidak boleh memuat gambar.' });
+    expect(await counts()).toEqual(before);
+    const batch = await call(W, 'serials.updateBatch', {
+      rows: [
+        {
+          id: 'sn1',
+          expectedUpdatedAt: '2026-11-12T00:00:00.000Z',
+          fields: { note: '![x](qcfile:abc-123)' },
+        },
+      ],
+    });
+    expect((batch.data as Json).results[0]).toMatchObject({ result: 'invalid' });
+    expect(await counts()).toEqual(before);
+  });
+
   test('item boleh bukan BU item selama terlihat bagi user dan BU serial aktif (butir N)', async () => {
     await seedSerial(env, { id: 'sn-b', serial: 'B-1', buId: 'bu-b', itemId: 'i-b' });
     // i-a1 hanya di BU A, serial ada di BU B; BOTH berhak menulis di keduanya.
