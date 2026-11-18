@@ -15,10 +15,10 @@ import type {
 import { extractFileRefs } from '@shared/items';
 import { wibDateIso } from '@shared/postel';
 import { normalizeSerial, SERIAL_STATUS_LABELS, serialProblem } from '@shared/serials';
-import { canWriteBu, writableBuIds } from './access';
+import { writableBuIds } from './access';
 import { insertCaseStmt, reserveCaseNumber, runWithCaseNumber } from './case-repo';
 import {
-  activeItemInBu,
+  activeItemWritableForBu,
   activeLocationName,
   insertEventStmt,
   insertSerialStmt,
@@ -86,7 +86,7 @@ export async function reportNewSerial(
   if (input.occurredOn > today) {
     throw validationError('occurredOn', 'Tanggal tidak boleh di masa depan');
   }
-  if (!canWriteBu(user, input.buId) || !(await activeItemInBu(env.DB, input.itemId, input.buId))) {
+  if (!(await activeItemWritableForBu(env.DB, input.itemId, input.buId, user))) {
     throw validationError('itemId', ITEM_MESSAGE);
   }
   const locationName = await activeLocationName(env.DB, input.locationId);
