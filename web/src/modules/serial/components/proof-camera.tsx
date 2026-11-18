@@ -1,10 +1,10 @@
 import { X } from 'lucide-react';
 import {
   type ComponentProps,
-  type FocusEvent,
   type MouseEvent,
   type PointerEvent,
   type ReactNode,
+  type Ref,
   useCallback,
   useEffect,
   useId,
@@ -133,7 +133,11 @@ function ProofCameraBody({
   const stripId = useId();
   // Penghitung tutup-otomatis strip memakai ref (bukan state): gulir/sentuh/papan ketik tak merender ulang badan kamera.
   const stripTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const stripHoldRef = useRef({ preview: false, focus: false, hover: false });
+  const stripHoldRef = useRef({ preview: false, hover: false });
+  const panelRef = useRef<HTMLDivElement>(null);
+  const stackRef = useRef<HTMLDivElement>(null);
+  // Indeks thumbnail yang tombol buangnya sedang fokus saat dibuang: fokus pindah ke tetangganya sesudahnya.
+  const pendingFocusRef = useRef<number | null>(null);
   const stripShownRef = useRef(false);
   const stripOpenRef = useRef(false);
   const shutterRef = useRef<HTMLButtonElement>(null);
@@ -191,11 +195,22 @@ function ProofCameraBody({
     if (stripTimerRef.current !== null) clearTimeout(stripTimerRef.current);
     stripTimerRef.current = null;
   }, []);
-  /** (Re)mulai hitung mundur tutup-otomatis; ditahan selama pratinjau besar, fokus, atau kursor mouse di strip. */
+  /**
+   * (Re)mulai hitung mundur tutup-otomatis. Ditahan selama pratinjau besar terbuka, kursor mouse di panel strip, atau
+   * fokus TERLIHAT (papan ketik/pembaca layar) ada di panel strip atau tombol tumpukan. Fokus dibaca langsung dari
+   * `document.activeElement` (bukan bendera) sehingga elemen yang lepas dari DOM tanpa blur tak menahan selamanya.
+   */
   const armStripTimer = useCallback(() => {
     clearStripTimer();
+    if (!aliveRef.current || !stripShownRef.current) return;
     const hold = stripHoldRef.current;
-    if (!stripShownRef.current || hold.preview || hold.focus || hold.hover) return;
+    const active = document.activeElement;
+    const focusHeld =
+      active !== null &&
+      (panelRef.current?.contains(active) === true ||
+        stackRef.current?.contains(active) === true) &&
+      focusIsVisible(active);
+    if (hold.preview || hold.hover || focusHeld) return;
     stripTimerRef.current = setTimeout(() => setStripOpen(false), STRIP_IDLE_MS);
   }, [clearStripTimer]);
 
@@ -214,36 +229,56 @@ function ProofCameraBody({
     if (stripShown) {
       armStripTimer();
     } else {
-      stripHoldRef.current = { preview: false, focus: false, hover: false };
+      stripHoldRef.current = { preview: false, hover: false };
       clearStripTimer();
     }
     return clearStripTimer;
   }, [stripShown, armStripTimer, clearStripTimer]);
 
-  const stripEvents: FloatEvents = {
+  // Setelah daftar foto berubah: fokus (bila tombol buang yang fokus tadi dibuang) pindah ke tombol buang tetangga
+  // (kalau foto habis, efek di atas memindahkannya ke rana), lalu hitung mundur dinilai ulang.
+  const photoCount = shots.length;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: efek memang dijalankan ulang saat jumlah foto berubah.
+  useEffect(() => {
+    const index = pendingFocusRef.current;
+    pendingFocusRef.current = null;
+    if (index !== null) {
+      const buttons = panelRef.current?.querySelectorAll<HTMLButtonElement>(
+        'button[aria-label^="Buang foto"]',
+      );
+      if (buttons && buttons.length > 0) buttons[Math.min(index, buttons.length - 1)]?.focus();
+    }
+    armStripTimer();
+  }, [photoCount, armStripTimer]);
+
+  function removeShot(photo: ProofPhotoRef) {
+    if (panelRef.current?.contains(document.activeElement)) {
+      pendingFocusRef.current = Math.max(
+        0,
+        shots.findIndex((item) => item.id === photo.id),
+      );
+    }
+    onRemoveShot?.(photo);
+  }
+
+  // Interaksi di strip/tumpukan menunda penutupan; fokus dinilai ulang oleh armStripTimer (blur: fokus tujuan belum
+  // aktif, jadi dinilai tak menahan dan fokus berikutnya di dalam menahannya lagi).
+  const holdEvents: FloatEvents = {
     onPointerDownCapture: armStripTimer,
     onScrollCapture: armStripTimer,
     onKeyDownCapture: armStripTimer,
-    onFocusCapture: (event: FocusEvent<HTMLDivElement>) => {
-      // Hanya fokus papan ketik/pembaca layar yang menahan; klik mouse/sentuh meninggalkan fokus pada tombol.
-      if (focusIsVisible(event.target)) stripHoldRef.current.focus = true;
-      armStripTimer();
-    },
-    onBlurCapture: (event: FocusEvent<HTMLDivElement>) => {
-      if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-      stripHoldRef.current.focus = false;
-      armStripTimer();
-    },
-    onPointerEnter: (event: PointerEvent<HTMLDivElement>) => {
-      if (event.pointerType !== 'mouse') return;
-      stripHoldRef.current.hover = true;
-      armStripTimer();
-    },
-    onPointerLeave: (event: PointerEvent<HTMLDivElement>) => {
-      if (event.pointerType !== 'mouse') return;
-      stripHoldRef.current.hover = false;
-      armStripTimer();
-    },
+    onFocusCapture: armStripTimer,
+    onBlurCapture: armStripTimer,
+  };
+  const onPanelPointerEnter = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse') return;
+    stripHoldRef.current.hover = true;
+    armStripTimer();
+  };
+  const onPanelPointerLeave = (event: PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType !== 'mouse') return;
+    stripHoldRef.current.hover = false;
+    armStripTimer();
   };
 
   const pinch = usePinchZoom({
@@ -435,8 +470,11 @@ function ProofCameraBody({
             {stripShown ? (
               // Overlay: menimpa video tepat di atas pil/rana tanpa menggeser elemen lain (cap, zoom, pil). Kolom zoom
               // di kanan disisakan agar strip tidak menimpanya.
-              <Float className="absolute inset-x-0 bottom-full mb-2 pr-[4.25rem]" {...stripEvents}>
+              <Float className="absolute inset-x-0 bottom-full mb-2 pr-[4.25rem]" {...holdEvents}>
                 <div
+                  ref={panelRef}
+                  onPointerEnter={onPanelPointerEnter}
+                  onPointerLeave={onPanelPointerLeave}
                   id={stripId}
                   data-testid="proof-photo-strip-panel"
                   className="w-fit max-w-full rounded-xl bg-black/45 px-2 backdrop-blur-sm"
@@ -445,7 +483,7 @@ function ProofCameraBody({
                     variant="strip"
                     photos={shots}
                     uploading={uploading}
-                    {...(onRemoveShot ? { onRemove: onRemoveShot } : {})}
+                    {...(onRemoveShot ? { onRemove: removeShot } : {})}
                     onPreviewChange={(open) => {
                       stripHoldRef.current.preview = open;
                       armStripTimer();
@@ -456,7 +494,7 @@ function ProofCameraBody({
               </Float>
             ) : null}
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-              <Float className="justify-self-start">
+              <Float ref={stackRef} className="justify-self-start" {...holdEvents}>
                 <ProofPhotoStack
                   photos={shots}
                   uploading={uploading}
@@ -510,8 +548,6 @@ type FloatEvents = Pick<
   | 'onKeyDownCapture'
   | 'onFocusCapture'
   | 'onBlurCapture'
-  | 'onPointerEnter'
-  | 'onPointerLeave'
 >;
 
 /** Fokus yang ditampilkan browser (papan ketik/pembaca layar). Browser tanpa `:focus-visible` dianggap terlihat. */
@@ -526,14 +562,17 @@ function focusIsVisible(target: EventTarget): boolean {
 function Float({
   className,
   children,
+  ref,
   ...events
 }: FloatEvents & {
   className?: string;
   children: ReactNode;
+  ref?: Ref<HTMLDivElement>;
 }) {
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions lint/a11y/useKeyWithClickEvents: pembungkus hanya menahan ketukan agar tak jatuh ke area video; kontrol di dalamnya tetap bisa lewat papan ketik.
     <div
+      ref={ref}
       data-camera-control
       className={cn('pointer-events-auto min-w-0', className)}
       {...events}

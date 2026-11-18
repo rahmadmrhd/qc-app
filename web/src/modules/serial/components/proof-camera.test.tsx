@@ -562,7 +562,7 @@ test('hover mouse di strip menahan tutup-otomatis sampai kursor keluar', async (
   vi.useFakeTimers({ shouldAdvanceTime: true });
   try {
     await openStrip();
-    const overlay = screen.getByTestId('proof-photo-strip-panel').closest('[data-camera-control]');
+    const overlay = screen.getByTestId('proof-photo-strip-panel');
     fireEvent.pointerEnter(overlay as Element, { pointerType: 'mouse' });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10_000);
@@ -622,6 +622,114 @@ test('fokus sisa klik (bukan fokus papan ketik) tidak menahan tutup-otomatis', a
       await vi.advanceTimersByTimeAsync(4500);
     });
     expect(screen.queryByTestId('proof-photo-strip')).not.toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+function rerenderWith(
+  view: { rerender: (ui: React.ReactElement) => void },
+  shots: ProofPhotoRef[],
+) {
+  view.rerender(
+    <ProofCameraDialog
+      open
+      onOpenChange={() => undefined}
+      remaining={3}
+      shots={shots}
+      onShot={async () => undefined}
+      onRemoveShot={() => undefined}
+    />,
+  );
+}
+
+test('buang thumbnail yang sedang fokus (bukan yang terakhir): fokus tak menahan selamanya, strip tetap menutup sendiri', async () => {
+  stubFocusVisible(false);
+  const shots = makeShots(3);
+  const view = setup({ shots, onRemoveShot: () => undefined });
+  await ready();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    await openStrip();
+    // Papan ketik (bukan klik mouse, yang menahan lewat hover): fokus ke tombol buang lalu Enter.
+    act(() => screen.getByRole('button', { name: 'Buang foto 2, hasil kamera' }).focus());
+    await userEvent.keyboard('{Enter}');
+    rerenderWith(view, [shots[0] as ProofPhotoRef, shots[2] as ProofPhotoRef]);
+    expect(screen.getAllByRole('button', { name: /Buang foto/ })).toHaveLength(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4500);
+    });
+    expect(screen.queryByTestId('proof-photo-strip')).not.toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('buang thumbnail yang fokus: fokus pindah ke tombol buang tetangga dan (fokus papan ketik) menahan strip', async () => {
+  stubFocusVisible(true);
+  const shots = makeShots(3);
+  const view = setup({ shots, onRemoveShot: () => undefined });
+  await ready();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    await openStrip();
+    // Papan ketik (bukan klik mouse, yang menahan lewat hover): fokus ke tombol buang lalu Enter.
+    act(() => screen.getByRole('button', { name: 'Buang foto 2, hasil kamera' }).focus());
+    await userEvent.keyboard('{Enter}');
+    rerenderWith(view, [shots[0] as ProofPhotoRef, shots[2] as ProofPhotoRef]);
+    // Tetangga (kini foto ke-2) mendapat fokus.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Buang foto 2, hasil kamera' })).toHaveFocus(),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(screen.getByTestId('proof-photo-strip')).toBeInTheDocument();
+    act(() => shutter().focus());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4500);
+    });
+    expect(screen.queryByTestId('proof-photo-strip')).not.toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('fokus terlihat pada tombol tumpukan juga menahan tutup-otomatis', async () => {
+  stubFocusVisible(true);
+  setup({ shots: makeShots(2) });
+  await ready();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    await openStrip();
+    act(() => stackButton().focus());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(screen.getByTestId('proof-photo-strip')).toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('unmount saat strip terbuka tidak meninggalkan timer strip', async () => {
+  // Pembanding: timer sisa milik pustaka dialog (mis. Radix FocusScope) saat unmount tanpa strip terbuka.
+  const baseline = setup({ shots: makeShots(2) });
+  await ready();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    baseline.unmount();
+    const leftover = vi.getTimerCount();
+    vi.clearAllTimers();
+
+    vi.useRealTimers();
+    const view = setup({ shots: makeShots(2) });
+    await ready();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    await openStrip();
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+    view.unmount();
+    expect(vi.getTimerCount()).toBe(leftover);
   } finally {
     vi.useRealTimers();
   }
