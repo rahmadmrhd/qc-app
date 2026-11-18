@@ -19,8 +19,22 @@ import { RecordPage } from './record-page';
 
 const NL = String.fromCharCode(10);
 const ITEMS = [
-  { id: 'i1', label: 'Cisco C9200', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
-  { id: 'i2', label: 'Aruba 2930', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
+  {
+    id: 'i1',
+    label: 'Cisco C9200',
+    buIds: ['b1'],
+    buOptions: [{ id: 'b1', code: 'BU1' }],
+    proofRequired: false,
+    proofMin: 1,
+  },
+  {
+    id: 'i2',
+    label: 'Aruba 2930',
+    buIds: ['b1'],
+    buOptions: [{ id: 'b1', code: 'BU1' }],
+    proofRequired: false,
+    proofMin: 1,
+  },
 ];
 const STICKERS: Record<string, { id: string; name: string }[]> = {
   i1: [

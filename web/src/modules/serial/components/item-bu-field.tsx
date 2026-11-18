@@ -1,5 +1,6 @@
 import type { SerialItemOptionDto } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
+import { proofMinimumOf } from '@shared/serials';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { LinkField, type LinkOption } from '@/components/link-field';
@@ -11,9 +12,17 @@ export interface ItemBuValue {
   itemLabel: string;
   buId: string;
   buLabel: string;
+  /** Minimum foto bukti item ini saat dicatat (0 = item tidak wajib foto). */
+  proofMin: number;
 }
 
-export const EMPTY_ITEM_BU: ItemBuValue = { itemId: '', itemLabel: '', buId: '', buLabel: '' };
+export const EMPTY_ITEM_BU: ItemBuValue = {
+  itemId: '',
+  itemLabel: '',
+  buId: '',
+  buLabel: '',
+  proofMin: 0,
+};
 
 export interface ItemBuFieldProps {
   /** Label field item (juga nama combobox); label field BU menjadi `${buLabel}`. */
@@ -74,6 +83,7 @@ export function ItemBuField({
       itemLabel: item.label,
       buId: bu?.id ?? '',
       buLabel: bu?.code ?? '',
+      proofMin: proofMinimumOf(item),
     });
   }
 

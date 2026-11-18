@@ -47,6 +47,7 @@ export function BulkEditBar({ count, onApply, onRemove, onClearSelection }: Bulk
       patch.itemLabel = item.itemLabel;
       patch.buId = item.buId;
       patch.buLabel = item.buLabel;
+      patch.proofMin = item.proofMin;
     }
     if (testDate !== '') patch.testDate = testDate;
     if (location.id !== '') {

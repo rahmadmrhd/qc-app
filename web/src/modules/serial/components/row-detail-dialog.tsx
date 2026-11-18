@@ -32,6 +32,7 @@ export function RowDetailDialog({ row, onClose, onApply }: RowDetailDialogProps)
     itemLabel: row.itemLabel,
     buId: row.buId,
     buLabel: row.buLabel,
+    proofMin: row.proofMin ?? 0,
   });
   const [location, setLocation] = useState({ id: row.locationId, label: row.locationLabel });
   // Jumlah per stiker yang tercentang; stiker yang tak ada di peta = tak dicentang.

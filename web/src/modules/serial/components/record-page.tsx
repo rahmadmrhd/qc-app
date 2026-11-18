@@ -1,4 +1,4 @@
-import { isIsoDate, normalizeSerial, SERIAL_LIMITS } from '@shared/serials';
+import { isIsoDate, normalizeSerial, proofMinimumOf, SERIAL_LIMITS } from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -16,6 +16,7 @@ import {
   type BulkPatch,
   type Defaults,
   fromQcsnRows,
+  missingDefaults,
   proofIdsOf,
   removeRows,
   type StagingRow,
@@ -100,6 +101,14 @@ function clearOutcome(row: StagingRow): StagingRow {
   const { result: _result, message: _message, ...rest } = row;
   return rest;
 }
+
+/** Elemen field Default yang menerima fokus awal menurut label field kosong (`missingDefaults`). */
+const DEFAULT_FIELD_ID: Record<string, string> = {
+  Item: 'default-item',
+  'Business Unit': 'default-bu',
+  Lokasi: 'default-location',
+  'Tanggal uji': 'default-date',
+};
 
 /** Pesan ringkas untuk satu penambahan (tempel, ketik, atau pindai). */
 function describeAdd(report: ReturnType<typeof addSerials>['report']): {
@@ -207,11 +216,28 @@ export function RecordPage({
   const selectedCount = rows.filter((row) => row.selected).length;
   const detailRow = detailId === null ? undefined : rows.find((row) => row.clientId === detailId);
 
+  // Gerbang Default: scan, kamera, dan tempel baru aktif setelah Item, BU, Lokasi, dan Tanggal uji terisi.
+  const missing = missingDefaults({
+    itemId: item.itemId,
+    buId: item.buId,
+    locationId: location.id,
+    testDate,
+  });
+  const gated = missing.length > 0;
+  // Fokus awal ke field Default pertama yang kosong (kolom scan terkunci selama Default belum lengkap).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hanya saat halaman dibuka.
+  useEffect(() => {
+    const first = missing[0];
+    if (first === undefined) return;
+    document.getElementById(DEFAULT_FIELD_ID[first] ?? 'default-item')?.focus();
+  }, []);
+
   const defaults = (): Defaults => ({
     itemId: item.itemId,
     itemLabel: item.itemLabel,
     buId: item.buId,
     buLabel: item.buLabel,
+    proofMin: item.proofMin,
     testDate,
     locationId: location.id,
     locationLabel: location.label,
@@ -330,6 +356,7 @@ export function RecordPage({
         itemLabel: result.item.itemLabel,
         buId: result.item.buId,
         buLabel: result.item.buLabel,
+        proofMin: result.item.proofMin,
         locationId: result.location.id,
         locationLabel: result.location.label,
         stickers: result.stickers,
@@ -356,6 +383,7 @@ export function RecordPage({
             id: item.id,
             label: item.label,
             buOptions: item.buOptions,
+            proofMin: proofMinimumOf(item),
           }));
         },
         stickersOf: async (itemId, buId) => {
@@ -428,12 +456,13 @@ export function RecordPage({
         row.itemId === '' ||
         row.buId === '' ||
         row.locationId === '' ||
-        !isIsoDate(row.testDate),
+        !isIsoDate(row.testDate) ||
+        (row.proofMin ?? 0) > row.proofPhotos.length,
     );
     if (blocked.length > 0) {
       setNotice({
         tone: 'error',
-        text: `${blocked.length} baris belum lengkap (item, lokasi, atau tanggal uji); lihat kolom Hasil.`,
+        text: `${blocked.length} baris belum lengkap (item, lokasi, tanggal uji, atau foto bukti); lihat kolom Hasil.`,
       });
       return false;
     }
@@ -632,8 +661,14 @@ export function RecordPage({
           isKnown={isKnownSerial}
           onCameraSaved={summarizeCameraSave}
           cameraCapacity={draftCapacity}
+          disabled={gated}
           autoFocus
         />
+        {gated ? (
+          <p role="status" className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+            Isi Default dulu: {missing.join(', ')}.
+          </p>
+        ) : null}
       </div>
 
       {notice ? (

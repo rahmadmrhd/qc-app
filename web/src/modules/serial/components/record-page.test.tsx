@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { pickLink } from '@/test/link-field';
 import { addSerials, type StagingRow } from '../lib/draft';
+import { saveDraft } from '../lib/draft-store';
 import { exportQcsn } from '../lib/qcsn';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -18,8 +19,22 @@ vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
 import { RecordPage } from './record-page';
 
 const ITEMS = [
-  { id: 'i1', label: 'Cisco C9200', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
-  { id: 'i2', label: 'Aruba 2930', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
+  {
+    id: 'i1',
+    label: 'Cisco C9200',
+    buIds: ['b1'],
+    buOptions: [{ id: 'b1', code: 'BU1' }],
+    proofRequired: false,
+    proofMin: 1,
+  },
+  {
+    id: 'i2',
+    label: 'Aruba 2930',
+    buIds: ['b1'],
+    buOptions: [{ id: 'b1', code: 'BU1' }],
+    proofRequired: false,
+    proofMin: 1,
+  },
 ];
 const STICKERS: Record<string, { id: string; name: string }[]> = {
   i1: [
@@ -303,8 +318,13 @@ test('galat jaringan menandai baris tersisa sebagai error dan menawarkan Coba la
 });
 
 test('simpan ditolak bila ada baris tanpa item atau lokasi', async () => {
+  // Gerbang Default mencegah baris baru tanpa item; baris tak lengkap datang dari draft lama atau impor.
+  const [row] = stagingRows(['A1']);
+  if (!row) throw new Error('seed');
+  saveDraft('a@gmail.com', [
+    { ...row, itemId: '', itemLabel: '', buId: '', buLabel: '', locationId: '', locationLabel: '' },
+  ]);
   renderPage();
-  await paste('A1');
   await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
   expect(screen.getByText(/1 baris belum lengkap/)).toBeInTheDocument();
   expect(saveCalls).toHaveLength(0);

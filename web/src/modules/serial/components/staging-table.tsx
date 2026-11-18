@@ -47,6 +47,8 @@ export function rowStatus(row: StagingRow): { tone: 'error' | 'warn' | 'ok'; tex
   if (row.buId === '') return { tone: 'warn', text: 'Business Unit belum dipilih' };
   if (row.locationId === '') return { tone: 'warn', text: 'Lokasi belum dipilih' };
   if (!isIsoDate(row.testDate)) return { tone: 'warn', text: 'Tanggal uji belum diisi' };
+  const needed = (row.proofMin ?? 0) - row.proofPhotos.length;
+  if (needed > 0) return { tone: 'error', text: `Butuh ${needed} foto lagi` };
   return { tone: 'ok', text: '' };
 }
 

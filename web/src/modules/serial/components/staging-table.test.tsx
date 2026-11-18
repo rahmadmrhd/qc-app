@@ -3,7 +3,7 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { addSerials, type StagingRow } from '../lib/draft';
-import { StagingTable } from './staging-table';
+import { rowStatus, StagingTable } from './staging-table';
 
 // Regresi (laporan uji PWA ponsel 2026-11-13): teks `sr-only` (position: absolute) di kolom
 // paling kanan tabel lebar TIDAK ikut terpotong wadah gulir bila wadahnya bukan blok
@@ -150,4 +150,18 @@ test('tanpa actorName kamera foto baris tidak menampilkan pratinjau cap', async 
   await screen.findByRole('button', { name: 'Ambil foto' });
   expect(screen.queryByTestId('stamp-preview')).not.toBeInTheDocument();
   Reflect.deleteProperty(navigator, 'mediaDevices');
+});
+
+test('rowStatus: item wajib foto dengan foto kurang = error "Butuh n foto lagi"; cukup atau tanpa proofMin = ok', () => {
+  const base = photoRow('AAA111', ['p1']);
+  expect(rowStatus({ ...base, proofMin: 3 })).toEqual({ tone: 'error', text: 'Butuh 2 foto lagi' });
+  expect(rowStatus({ ...base, proofMin: 1 })).toEqual({ tone: 'ok', text: '' });
+  expect(rowStatus(base)).toEqual({ tone: 'ok', text: '' });
+  // Pemeriksaan lain didahulukan.
+  expect(rowStatus({ ...base, proofMin: 3, locationId: '' }).text).toBe('Lokasi belum dipilih');
+});
+
+test('kolom Hasil menampilkan "Butuh n foto lagi" pada baris item wajib foto', () => {
+  renderTable([{ ...photoRow('AAA111', []), proofMin: 2 }]);
+  expect(screen.getByText('Butuh 2 foto lagi')).toBeInTheDocument();
 });
