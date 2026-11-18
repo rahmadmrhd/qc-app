@@ -1,4 +1,7 @@
-import { PENDING_TARGET_BRIDGE_VERSION } from '@countrylock/bridge-channels';
+import {
+  PENDING_TARGET_BRIDGE_VERSION,
+  PENDING_UPLOAD_BRIDGE_VERSION,
+} from '@countrylock/bridge-channels';
 import type { QcBridge } from '@countrylock/bridge-contract';
 import type { Brand } from '@countrylock/script-template';
 import { canInject } from '@countrylock/session-machine';
@@ -22,10 +25,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
+import { isAuthenticated } from '@/modules/auth/session';
 import { tipeOptionsFor } from '../lib/type-firmware';
 import { useCatalog } from '../use-catalog';
 import { useCountryLock } from '../use-country-lock';
 import { useInjectTarget } from '../use-inject-target';
+import { type SaveBatch, useUploadPending } from '../use-upload-pending';
 import { CatalogSyncButton } from './catalog-sync-button';
 import { CredentialDialog } from './credential-dialog';
 import { InjectProgressDialog } from './inject-progress-dialog';
@@ -53,7 +58,17 @@ function InfoItem({ label, value }: { label: string; value: string }) {
 }
 
 /** Halaman Country Lock mode tunggal; hanya dirender bila jembatan desktop tersedia. */
-export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
+export function CountryLockPage({
+  bridge,
+  signedIn = isAuthenticated(),
+  saveBatch,
+}: {
+  bridge: QcBridge;
+  /** Sudah masuk (unggah butuh login); bawaan membaca sesi aplikasi. Parameter agar tes tak bergantung sesi global. */
+  signedIn?: boolean;
+  /** Pemanggil `serials.saveBatch`; bawaan lewat klien API. Parameter untuk tes. */
+  saveBatch?: SaveBatch;
+}) {
   const {
     state,
     pkg,
@@ -68,6 +83,13 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
     actions,
   } = useCountryLock(bridge);
   const [confirmAuto, setConfirmAuto] = useState(false);
+  const uploader = useUploadPending(bridge, pending, actions.refreshPending, saveBatch);
+  const uploadUnavailable =
+    bridge.version < PENDING_UPLOAD_BRIDGE_VERSION
+      ? 'Aplikasi desktop ini belum mendukung unggah: perbarui aplikasinya. Hasil inject disimpan di komputer ini.'
+      : !signedIn
+        ? 'Masuk dulu untuk mengunggah ke Daftar Serial Number. Hasil inject disimpan di komputer ini.'
+        : null;
   // Katalog offline dibaca sekali dan dipakai dropdown Tipe, BU, dan Lokasi di form.
   const catalog = useCatalog(bridge);
   const target = useInjectTarget(catalog.snapshot?.catalog ?? null, tipe?.id ?? null);
@@ -314,7 +336,18 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
             </CardContent>
           </Card>
 
-          <PendingList entries={pending} />
+          <PendingList
+            entries={pending}
+            upload={{
+              unavailable: uploadUnavailable,
+              uploading: uploader.uploading,
+              readyCount: uploader.readyCount,
+              outcomes: uploader.outcomes,
+              summary: uploader.summary,
+              onUpload: uploader.upload,
+            }}
+            onRemove={(serial) => void actions.removePending(serial)}
+          />
         </>
       )}
 

@@ -16,6 +16,7 @@ import {
   NOTIFICATIONS_BRIDGE_VERSION,
   NOTIFICATIONS_CHANGE_EVENT,
   PENDING_TARGET_BRIDGE_VERSION,
+  PENDING_UPLOAD_BRIDGE_VERSION,
   PendingEntrySchema,
   SerialArgSchema,
   stripTerminalControl,
@@ -135,6 +136,14 @@ describe('PendingEntrySchema dan SerialArgSchema', () => {
       false,
     );
     expect(PendingEntrySchema.safeParse({ ...entry, locationLabel: 'A\nB' }).success).toBe(false);
+    // Bahan unggah (jembatan v7).
+    const upload = { itemId: 'item-1', clientId: '3f2b8c1e-5a4d-4e6f-9a1b-0c2d3e4f5a6b' };
+    expect(PendingEntrySchema.safeParse({ ...entry, ...upload }).success).toBe(true);
+    expect(PendingEntrySchema.safeParse({ ...entry, itemId: '' }).success).toBe(false);
+    expect(PendingEntrySchema.safeParse({ ...entry, clientId: 'pendek' }).success).toBe(false);
+    expect(PendingEntrySchema.safeParse({ ...entry, clientId: 'a b c d e f g h' }).success).toBe(
+      false,
+    );
     // Bidang di luar daftar tetap ditolak (skema ketat).
     expect(PendingEntrySchema.safeParse({ ...entry, extra: 'x' }).success).toBe(false);
   });
@@ -152,7 +161,8 @@ describe('PendingEntrySchema dan SerialArgSchema', () => {
 
 describe('konstanta jembatan', () => {
   test('versi, dan semua nama kanal berpola qc:<grup>:<aksi> serta unik', () => {
-    expect(BRIDGE_VERSION).toBe(6);
+    expect(BRIDGE_VERSION).toBe(7);
+    expect(PENDING_UPLOAD_BRIDGE_VERSION).toBe(7);
     expect(PENDING_TARGET_BRIDGE_VERSION).toBe(6);
     expect(NOTIFICATIONS_BRIDGE_VERSION).toBe(4);
     expect(CATALOG_BRIDGE_VERSION).toBe(5);

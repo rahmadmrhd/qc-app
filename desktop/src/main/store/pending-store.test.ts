@@ -57,6 +57,16 @@ describe('openPendingStore', () => {
     second.close();
   });
 
+  test('itemId dan clientId (bahan unggah) bertahan setelah ditutup dan dibuka lagi', () => {
+    const upload = { itemId: 'item-1', clientId: '3f2b8c1e-5a4d-4e6f-9a1b-0c2d3e4f5a6b' };
+    const first = openPendingStore(file);
+    first.add(entry('AB12', upload));
+    first.close();
+    const second = openPendingStore(file);
+    expect(second.list()).toEqual([entry('AB12', upload)]);
+    second.close();
+  });
+
   test('berkas pending lama (tanpa kolom BU/lokasi) dimigrasikan: baris lama tetap terbaca, entri baru memuat BU/lokasi', () => {
     const legacy = new DatabaseSync(file);
     legacy.exec(`CREATE TABLE pending (

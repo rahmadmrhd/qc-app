@@ -154,6 +154,10 @@ Prasyarat: server (staging) sudah memuat rute katalog dengan `DESKTOP_CATALOG_TO
 | I16 | Munculkan dialog Kredensial perangkat (tombol Kredensial) | Password tampil apa adanya, tidak tersamar | |
 | I17 | Biarkan salah satu dari Merk/Tipe/Firmware/BU/Lokasi kosong, sambungkan perangkat | Tombol Inject nonaktif; petunjuk "Wajib diisi sebelum inject: ..." menyebut yang kurang; dengan Auto Inject menyala perangkat TIDAK diinject sampai form lengkap, lalu jalan sendiri | |
 | I18 | Hapus folder `<userData>/catalog`, buka aplikasi tanpa jaringan | Inject nonaktif dengan petunjuk "Katalog belum tersinkron: tekan tombol sinkron di halaman Country Lock" | |
+| I19 | Inject beberapa perangkat dengan Tipe, BU, dan Lokasi terpilih, lalu (sudah login) tekan "Unggah ke server (N)" | Serial muncul di halaman Serial Number (BU dan lokasi sesuai, asal Country Lock, stiker bawaan terpotong dari stok); baris yang berhasil hilang dari antrean; ringkasan "Hasil unggah: N terunggah" tampil | |
+| I20 | Unggah ulang serial yang sudah ada di BU yang sama (inject ulang setelah unggah, atau serial dari tes lain) | Baris tetap di antrean dengan "Serial sudah ada di BU ini" dan ringkasan menyebut duplikat; tombol Hapus (dengan konfirmasi) membuangnya | |
+| I21 | Belum login, atau matikan jaringan lalu unggah | Belum login: tombol nonaktif dengan "Masuk dulu untuk mengunggah"; jaringan mati: "Unggah berhenti: ..." dan antrean utuh; setelah pulih tombol bisa dicoba lagi tanpa duplikat (kunci idempoten) | |
+| I22 | Unggah entri lama (dicatat sebelum perubahan ini) dan Tipe yang wajib foto bukti | Entri lama: "Dicatat tanpa Tipe katalog: hapus lalu inject ulang", tidak ikut terkirim; item wajib foto: ditolak dengan "Item ini wajib foto bukti minimal N" dan tetap di antrean | |
 | I10 | Di web, matikan centang Country lock pada item berfirmware, simpan | Kolom Firmware hilang dan tersimpan kosong; item keluar dari katalog desktop pada sinkron berikutnya | |
 
 ## Pengisian hasil
