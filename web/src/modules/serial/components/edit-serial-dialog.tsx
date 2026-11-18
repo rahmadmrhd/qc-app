@@ -78,12 +78,14 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
   const locationLocked = base.custody !== 'qc';
   const normalized = normalizeSerial(serialText);
   const serialInvalid = serialProblem(normalized) !== null;
+  // Catatan yang tak disentuh dikirim apa adanya (tanpa pangkas diam-diam): hanya suntingan pengguna yang dipangkas.
+  const noteOut = note === base.note ? base.note : note.trim();
   const changed =
     normalized !== base.serial ||
     item.id !== base.itemId ||
     testDate !== base.testDate ||
     sample !== base.sample ||
-    note.trim() !== base.note ||
+    noteOut !== base.note ||
     location.id !== base.locationId;
   const today = todayWib();
   const valid =
@@ -107,7 +109,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
         itemId: item.id,
         testDate,
         sample,
-        note: note.trim(),
+        note: noteOut,
         locationId: location.id,
       };
       const theirs = {
@@ -172,7 +174,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
         itemId: item.id,
         testDate,
         sample,
-        note: note.trim(),
+        note: noteOut,
         locationId: location.id,
       });
       onClose();

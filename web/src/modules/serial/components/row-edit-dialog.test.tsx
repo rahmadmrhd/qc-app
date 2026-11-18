@@ -258,3 +258,24 @@ test('StrictMode: foto yang ditambahkan lalu diterapkan tidak dibuang', async ()
   ]);
   expect(removedIds()).toEqual([]);
 });
+
+test('membuka lalu Terapkan tanpa menyentuh catatan mengembalikan catatan persis seperti semula (tanpa normalisasi diam-diam)', async () => {
+  // Catatan lama teks biasa: baris baru tunggal, garis bawah, tanda bintang, spasi di ujung.
+  const original = '  baris satu\nbaris dua_x_ *y*  \n';
+  const { onApply } = renderDialog(makeRow('AAA111', { note: original }));
+  const { dialog, apply } = await ready();
+  // Ubah kolom lain agar jelas yang diterapkan hanya itu.
+  await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Sample' }));
+  await userEvent.click(apply);
+  expect(onApply).toHaveBeenCalledOnce();
+  expect(onApply.mock.calls[0]?.[0].note).toBe(original);
+});
+
+test('catatan yang disunting pengguna tetap dipangkas', async () => {
+  const { onApply } = renderDialog(makeRow('AAA111', { note: 'lama' }));
+  const { dialog, apply } = await ready();
+  await userEvent.type(within(dialog).getByLabelText('Catatan baris'), ' tambah ');
+  await userEvent.click(apply);
+  expect(onApply.mock.calls[0]?.[0].note).toBe(onApply.mock.calls[0]?.[0].note.trim());
+  expect(onApply.mock.calls[0]?.[0].note).toContain('tambah');
+});

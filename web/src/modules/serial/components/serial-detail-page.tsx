@@ -78,7 +78,11 @@ function Summary({ serial, events }: { serial: SerialDto; events: readonly Seria
         <Fact label="Sample">{serial.sample ? 'Ya' : 'Tidak'}</Fact>
         <Fact label="Dicatat oleh">{serial.createdBy}</Fact>
         <Fact label="Catatan">
-          {serial.note === '' ? '—' : <MarkdownView source={serial.note} />}
+          {serial.note === '' ? (
+            '—'
+          ) : (
+            <MarkdownView source={serial.note} className="[&_p]:whitespace-pre-line" />
+          )}
         </Fact>
         <Fact label="Stiker ditempel">
           {serial.stickers.length === 0

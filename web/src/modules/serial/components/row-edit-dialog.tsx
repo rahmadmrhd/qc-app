@@ -188,7 +188,8 @@ export function RowEditDialog({
       location,
       testDate,
       sample,
-      note: note.trim(),
+      // Catatan yang tak disentuh dikembalikan persis seperti semula (tanpa pangkas atau normalisasi diam-diam).
+      note: note === row.note ? row.note : note.trim(),
       stickers,
       proofPhotos: photos,
     });

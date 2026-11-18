@@ -217,6 +217,36 @@ test('catatan serial berbentuk Markdown dirender sebagai Markdown pada ringkasan
   expect(strong).toHaveTextContent('Penting');
 });
 
+test('catatan lama teks biasa: baris baru tunggal tetap terpisah (pembungkus memberi pre-line pada paragraf, newline ada di DOM)', async () => {
+  state = { ...state, serial: { ...SERIAL, note: 'baris satu\nbaris dua' } };
+  renderPage();
+  const summary = await screen.findByRole('region', { name: 'Ringkasan' });
+  const paragraph = within(summary).getByText(/baris satu/);
+  expect(paragraph.tagName).toBe('P');
+  // Pembungkus Markdown memberi `white-space: pre-line` pada paragraf (jsdom tidak menghitung CSS: periksa kelasnya).
+  expect(paragraph.parentElement?.className).toContain('[&_p]:whitespace-pre-line');
+  // Satu paragraf; baris baru tunggal dipertahankan sebagai newline (dan ditampilkan oleh pre-line), tidak dilebur.
+  expect(paragraph.textContent).toBe('baris satu\nbaris dua');
+});
+
+test('catatan lama dengan garis bawah di tengah kata (SN_123_456) tidak menjadi miring', async () => {
+  state = { ...state, serial: { ...SERIAL, note: 'cek SN_123_456 dan file_name_ini' } };
+  renderPage();
+  const summary = await screen.findByRole('region', { name: 'Ringkasan' });
+  expect(within(summary).getByText('cek SN_123_456 dan file_name_ini')).toBeInTheDocument();
+  expect(summary.querySelector('em, strong')).toBeNull();
+});
+
+test('batas perilaku: garis bawah/bintang yang mengapit kata TETAP menjadi miring/tebal (Markdown), tidak dapat dicegah tanpa mengubah penerjemah', async () => {
+  state = { ...state, serial: { ...SERIAL, note: '_miring_ dan *juga*' } };
+  renderPage();
+  const summary = await screen.findByRole('region', { name: 'Ringkasan' });
+  expect([...summary.querySelectorAll('em')].map((node) => node.textContent)).toEqual([
+    'miring',
+    'juga',
+  ]);
+});
+
 const calls = (id: string) => apiMock.mock.calls.filter((call) => call[0] === id);
 
 beforeEach(() => {
