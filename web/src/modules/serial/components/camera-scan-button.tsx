@@ -65,8 +65,8 @@ export function CameraScanButton({
     <>
       <Button
         type="button"
-        variant="outline"
-        size="icon-sm"
+        variant="default"
+        size="icon"
         className={className}
         disabled={disabled}
         aria-label="Scan dengan kamera"
