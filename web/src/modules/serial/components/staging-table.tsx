@@ -52,14 +52,15 @@ export function rowStatus(row: StagingRow): { tone: 'error' | 'warn' | 'ok'; tex
   return { tone: 'ok', text: '' };
 }
 
-const TONE_CLASS = {
+export const TONE_CLASS = {
   error: 'text-destructive',
   warn: 'text-amber-600 dark:text-amber-400',
   ok: 'text-muted-foreground',
 } as const;
 
-function stickerSummary(row: StagingRow): string {
-  if (row.stickers === null) return 'Semua stiker yang berlaku';
+/** Ringkasan pilihan stiker eksplisit; `null` (bawaan semua yang berlaku) tidak punya ringkasan. */
+export function stickerSummary(row: StagingRow): string | null {
+  if (row.stickers === null) return null;
   if (row.stickers.length === 0) return 'Tanpa stiker';
   return row.stickers.map((sticker) => `${sticker.name} ×${sticker.qty}`).join(', ');
 }
@@ -108,7 +109,7 @@ function SerialCell({ clientId, serial, onCommitSerial, disabled }: SerialCellPr
       <Input
         aria-label={`Serial ${serial}`}
         aria-invalid={error ? true : undefined}
-        className="h-8 w-44 font-mono"
+        className="h-8 w-36 font-mono"
         value={text}
         disabled={disabled}
         maxLength={SERIAL_LIMITS.serialMax * 4}
@@ -124,6 +125,27 @@ function SerialCell({ clientId, serial, onCommitSerial, disabled }: SerialCellPr
         </p>
       ) : null}
     </div>
+  );
+}
+
+/** Lencana kecil untuk kolom yang tidak punya sel sendiri: Sample, pilihan stiker eksplisit, dan catatan. */
+export function RowBadges({ row }: { row: StagingRow }) {
+  const stickers = stickerSummary(row);
+  if (!row.sample && stickers === null && row.note === '') return null;
+  return (
+    <span className="mt-0.5 flex flex-wrap gap-1 text-xs text-muted-foreground">
+      {row.sample ? (
+        <span className="rounded-full border px-1.5 py-px text-foreground">Sample</span>
+      ) : null}
+      {stickers !== null ? (
+        <span className="rounded-full border px-1.5 py-px">{stickers}</span>
+      ) : null}
+      {row.note !== '' ? (
+        <span className="max-w-full truncate rounded-full border px-1.5 py-px" title={row.note}>
+          Catatan: {row.note}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -193,53 +215,27 @@ const RowView = memo(function RowView({
           disabled={disabled}
         />
       </td>
-      <td className="max-w-48 px-2 py-1.5 text-sm">
+      <td className="max-w-44 px-2 py-1.5 text-sm">
         <span className="block truncate" title={row.itemLabel}>
           {row.itemLabel || '—'}
         </span>
         {row.buLabel ? <span className="text-xs text-muted-foreground">{row.buLabel}</span> : null}
+        <RowBadges row={row} />
       </td>
-      <td className="px-2 py-1">
+      <td className="max-w-44 px-2 py-1">
+        <span className="block truncate text-sm" title={row.locationLabel}>
+          {row.locationLabel || '—'}
+        </span>
         <Input
           type="date"
           aria-label={`Tanggal uji ${row.serial}`}
-          className="h-8 w-36"
+          className="mt-1 h-8 w-36"
           value={row.testDate}
           disabled={disabled}
           onChange={(event) => onEdit(row.clientId, { testDate: event.target.value })}
         />
       </td>
-      <td className="max-w-40 px-2 py-1.5 text-sm">
-        <span className="block truncate" title={row.locationLabel}>
-          {row.locationLabel || '—'}
-        </span>
-      </td>
-      <td className="px-2 py-1.5">
-        <input
-          type="checkbox"
-          className="size-4 accent-primary"
-          aria-label={`Sample ${row.serial}`}
-          checked={row.sample}
-          disabled={disabled}
-          onChange={(event) => onEdit(row.clientId, { sample: event.target.checked })}
-        />
-      </td>
-      <td className="px-2 py-1">
-        <Input
-          aria-label={`Catatan ${row.serial}`}
-          className="h-8 w-44"
-          value={row.note}
-          disabled={disabled}
-          maxLength={SERIAL_LIMITS.noteMax}
-          onChange={(event) => onEdit(row.clientId, { note: event.target.value })}
-        />
-      </td>
-      <td className="max-w-48 px-2 py-1.5 text-xs text-muted-foreground">
-        <span className="block truncate" title={stickerSummary(row)}>
-          {stickerSummary(row)}
-        </span>
-      </td>
-      <td className="min-w-32 px-2 py-1.5">
+      <td className="min-w-24 px-2 py-1.5">
         <ProofPhotoField
           value={row.proofPhotos}
           max={SERIAL_PROOF_LIMITS.perEntryMax}
@@ -249,7 +245,7 @@ const RowView = memo(function RowView({
           onChange={(proofPhotos) => onEdit(row.clientId, { proofPhotos })}
         />
       </td>
-      <td className={cn('min-w-40 px-2 py-1.5 text-xs', TONE_CLASS[status.tone])}>{status.text}</td>
+      <td className={cn('min-w-28 px-2 py-1.5 text-xs', TONE_CLASS[status.tone])}>{status.text}</td>
       <td className="whitespace-nowrap px-2 py-1 text-right" data-tour="serial-row-actions">
         <Button
           type="button"
@@ -315,19 +311,7 @@ export function StagingTable({
               Item
             </th>
             <th scope="col" className="px-2 py-2 font-medium">
-              Tanggal uji
-            </th>
-            <th scope="col" className="px-2 py-2 font-medium">
-              Lokasi
-            </th>
-            <th scope="col" className="px-2 py-2 font-medium">
-              Sample
-            </th>
-            <th scope="col" className="px-2 py-2 font-medium">
-              Catatan
-            </th>
-            <th scope="col" className="px-2 py-2 font-medium">
-              Stiker
+              Lokasi dan tanggal uji
             </th>
             <th scope="col" className="px-2 py-2 font-medium">
               Foto

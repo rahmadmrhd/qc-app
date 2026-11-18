@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { describeError } from '@/lib/api/describe-error';
 import { useMe } from '@/modules/auth/use-me';
 import {
@@ -37,13 +38,16 @@ import {
   serialStickerOptionsQueryOptions,
   useSaveSerialBatch,
 } from '../queries';
-import { BulkEditBar } from './bulk-edit-bar';
+import { BulkEditDialog } from './bulk-edit-dialog';
 import type { StrictScan } from './camera-scan-button';
+import { ConfirmRemoveDialog } from './confirm-remove-dialog';
 import { ImportExportBar } from './import-export-bar';
 import { EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
-import { RowDetailDialog, type RowDetailResult } from './row-detail-dialog';
+import { RowEditDialog, type RowEditResult } from './row-edit-dialog';
+import { SelectionBar } from './selection-bar';
 import { SerialLocationField } from './serial-location-field';
 import { type ScanFeedback, SerialScanInput } from './serial-scan-input';
+import { StagingCards } from './staging-cards';
 import { rowStatus, StagingTable } from './staging-table';
 import { defaultStickerChoice, StickerChecklist, useApplicableStickers } from './sticker-checklist';
 
@@ -191,6 +195,9 @@ export function RecordPage({
   const [importing, setImporting] = useState(false);
   const [draftFailed, setDraftFailed] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const desktop = useIsDesktop();
 
   // Halaman dibuka: penulisan draf diizinkan lagi (dihentikan oleh `clearAllDrafts` saat keluar).
   useEffect(() => {
@@ -216,6 +223,10 @@ export function RecordPage({
   }, [onProofChange, withProof]);
 
   const selectedCount = rows.filter((row) => row.selected).length;
+  const selectedPhotoCount = rows.reduce(
+    (total, row) => total + (row.selected ? row.proofPhotos.length : 0),
+    0,
+  );
   const detailRow = detailId === null ? undefined : rows.find((row) => row.clientId === detailId);
 
   // Gerbang Default: scan, kamera, dan tempel baru aktif setelah Item, BU, Lokasi, dan Tanggal uji terisi.
@@ -410,14 +421,21 @@ export function RecordPage({
   function applyBulkEdit(patch: BulkPatch) {
     setAllRows(applyBulk(rowsRef.current, selectedIds(), patch).map(clearSelectedOutcome));
     setNotice({ tone: 'info', text: `${selectedCount} baris diubah` });
+    setBulkOpen(false);
   }
 
-  function applyDetail(result: RowDetailResult) {
+  function removeSelected() {
+    dropRows(selectedIds());
+    setRemoveOpen(false);
+  }
+
+  function applyDetail(result: RowEditResult) {
     if (detailId === null) return;
     patchRow(detailId, (row) => {
       const { unresolved: _unresolved, ...rest } = clearOutcome(row);
       return {
         ...rest,
+        serial: result.serial,
         itemId: result.item.itemId,
         itemLabel: result.item.itemLabel,
         buId: result.item.buId,
@@ -425,7 +443,11 @@ export function RecordPage({
         proofMin: result.item.proofMin,
         locationId: result.location.id,
         locationLabel: result.location.label,
+        testDate: result.testDate,
+        sample: result.sample,
+        note: result.note,
         stickers: result.stickers,
+        proofPhotos: result.proofPhotos,
       };
     });
     setDetailId(null);
@@ -756,12 +778,12 @@ export function RecordPage({
         </p>
       ) : null}
 
-      {selectedCount > 0 && !saving ? (
-        <BulkEditBar
+      {!saving ? (
+        <SelectionBar
           count={selectedCount}
-          onApply={applyBulkEdit}
-          onRemove={() => dropRows(selectedIds())}
-          onClearSelection={() => selectAll(false)}
+          onEdit={() => setBulkOpen(true)}
+          onRemove={() => setRemoveOpen(true)}
+          onClear={() => selectAll(false)}
         />
       ) : null}
 
@@ -791,7 +813,7 @@ export function RecordPage({
           <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
             Belum ada serial. Scan, ketik lalu Enter, tempel, atau impor berkas .qcsn.
           </p>
-        ) : (
+        ) : desktop ? (
           <StagingTable
             rows={rows}
             disabled={saving}
@@ -802,6 +824,14 @@ export function RecordPage({
             onOpenDetail={openDetail}
             onRemove={removeOne}
             actorName={me.name}
+          />
+        ) : (
+          <StagingCards
+            rows={rows}
+            disabled={saving}
+            onSelect={select}
+            onSelectAll={selectAll}
+            onOpenDetail={openDetail}
           />
         )}
       </div>
@@ -855,13 +885,30 @@ export function RecordPage({
       </div>
 
       {detailRow && !saving ? (
-        <RowDetailDialog
+        <RowEditDialog
           key={detailRow.clientId}
           row={detailRow}
+          actorName={me.name}
+          commitSerial={(serial) => commitSerial(detailRow.clientId, serial)}
           onClose={() => setDetailId(null)}
           onApply={applyDetail}
         />
       ) : null}
+      {bulkOpen && selectedCount > 0 && !saving ? (
+        <BulkEditDialog
+          open
+          count={selectedCount}
+          onApply={applyBulkEdit}
+          onClose={() => setBulkOpen(false)}
+        />
+      ) : null}
+      <ConfirmRemoveDialog
+        open={removeOpen && selectedCount > 0 && !saving}
+        count={selectedCount}
+        photoCount={selectedPhotoCount}
+        onConfirm={removeSelected}
+        onCancel={() => setRemoveOpen(false)}
+      />
     </div>
   );
 }
