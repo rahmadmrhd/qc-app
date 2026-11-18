@@ -198,7 +198,13 @@ Grup `concurrency` = grup environment itu di `deploy-server.yml`.
   Urutan: salin `deploy.sh` baru ke staging dan production, baru merge PR `deploy-tag.yml`; dicatat di `docs/ci-cd.md` dan
   `docs/deploy-vps.md` (bagian 14).
 - Konvensi migrasi: migrasi yang menghapus/mengganti nama kolom atau tabel WAJIB berbaris pertama `-- qc:contract`; tes di
-  `scripts/` memeriksa migrasi yang memuat `DROP`/`RENAME` tanpa penanda itu (migrasi lama dikecualikan lewat daftar).
+  `scripts/` memeriksa migrasi yang memuat `DROP`/`RENAME` tanpa penanda itu. Keputusan 2026-11-18 (implementasi bagian 3): migrasi
+  lama yang destruktif (0002, 0003, 0012) TIDAK dikecualikan lewat daftar, melainkan diberi baris pertama `-- qc:contract`
+  (hanya komentar; `schema_migrations` hanya menyimpan nama, jadi aman bagi basis data yang sudah menerapkannya), karena pagar
+  di VPS membaca penanda dari berkas migrasi di image dan tak dapat melihat daftar pengecualian di repositori.
+- Catatan implementasi `deploy-tag.yml` (2026-11-18): job `verify` me-checkout `github.sha` (ujung ref yang di-dispatch; `main`
+  untuk production) hanya untuk menjalankan skrip keputusan murni (`scripts/deploy-tag-check.ts`), bukan kode tag; langkah yang
+  memegang token hanya memanggil API dan langkah skrip tak diberi token.
 - Catatan: image yang dirilis untuk production ditandatangani kunci environment `production`; bila kunci `staging` berbeda,
   deploy tag ke staging menyajikan manifest UI yang tak cocok dengan desktop staging (pembaruan UI desktop staging nonaktif
   sampai deploy `dev` berikutnya). Diterima.

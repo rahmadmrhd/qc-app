@@ -228,3 +228,13 @@ Checklist (bukan implementasi; server kantor dibangun nanti). Tidak ada kode yan
 - [ ] **`.env`** di `<INSTALL_DIR>/<env>/`: `QC_SECRETS_DIR` biarkan bawaan (`./secrets`) atau isi jalur mutlak/relatif yang benar; berkas `google-sa.json` berpemilik uid 1000 seperti langkah 6.
 - [ ] **nginx/DNS/OAuth**: contoh `deploy/nginx/qc.conf.example` tidak memuat jalur instalasi; yang berubah hanya host/port dan sertifikat origin bila server baru. Daftarkan URI redirect OAuth untuk hostname baru.
 - [ ] **Uji**: `SSH_ORIGINAL_COMMAND='deploy staging <sha>' <INSTALL_DIR>/deploy.sh --dry-run` (melaporkan `root=<INSTALL_DIR>`), lalu satu deploy nyata dari Actions.
+
+### Menyalin `deploy.sh` baru (pagar downgrade skema, rilis semver bagian 3)
+
+`deploy.sh` TIDAK dibawa CI. Perubahannya (`schema_guard`, kode keluar 6, ekor perintah ` allow-schema-downgrade`, batas panjang perintah 96) hanya berlaku setelah pemilik menyalinnya ke VPS, dan HARUS dilakukan sebelum PR yang menambah `deploy-tag.yml` di-merge ke `main`. Langkah (pemilik, bukan agen), untuk `staging` lalu `production` (satu skrip dipakai kedua lingkungan, di `<INSTALL_DIR>/deploy.sh`):
+
+1. Cadangkan skrip lama: `cp -p <INSTALL_DIR>/deploy.sh <INSTALL_DIR>/deploy.sh.bak`.
+2. Salin berkas dari repositori (`deploy/deploy.sh` pada commit yang akan di-merge), pertahankan izin eksekusi dan pemilik pengguna deploy.
+3. Uji tanpa efek: `SSH_ORIGINAL_COMMAND='deploy staging <sha-40-heksa>' bash <INSTALL_DIR>/deploy.sh --dry-run` harus menyebut "pagar downgrade skema"; lalu `SSH_ORIGINAL_COMMAND='deploy staging <sha-40-heksa> allow-schema-downgrade' bash <INSTALL_DIR>/deploy.sh --dry-run` harus berkode keluar 0.
+4. Prasyarat pagar: image yang SEDANG berjalan harus ada di Docker lokal (tag di `.env`), karena baris pertama migrasi yang akan dilewati dibaca dari sana; pembersihan image (`QC_KEEP_IMAGES`, bawaan 3) tidak menghapusnya. `deploy.sh` baru juga memakai `docker run --rm --network none --entrypoint ls|head` pada image target dan berjalan; pengguna deploy sudah berhak menjalankan docker.
+5. Pembatalan: kembalikan `deploy.sh.bak`. `deploy.sh` lama menolak ekor ` allow-schema-downgrade` dengan kode 2 dan tidak punya pagar; deploy biasa tetap berjalan.
