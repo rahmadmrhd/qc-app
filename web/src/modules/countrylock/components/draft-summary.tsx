@@ -1,22 +1,35 @@
+import type { ReactNode } from 'react';
 import type { StagingRow } from '@/modules/serial/lib/draft';
 
 /**
- * Ringkasan draft hanya-baca untuk pengguna yang belum bisa mencatat (belum masuk atau tanpa izin `serial: edit`): hasil
- * inject tetap tersimpan di komputer ini dan tampil penuh di tabel Catat Serial Number setelah masuk.
+ * Ringkasan hanya-baca draft Serial Number yang belum diunggah (hasil inject dan serial manual). Tombol pencatatan
+ * (`action`) hanya diberikan bila pengguna boleh mencatat; selain itu `note` menjelaskan alasannya (belum masuk atau tanpa
+ * izin `serial: edit`).
  */
-export function DraftSummary({ rows, reason }: { rows: readonly StagingRow[]; reason: string }) {
+export function DraftSummary({
+  rows,
+  note,
+  action,
+}: {
+  rows: readonly StagingRow[];
+  note: string;
+  action?: ReactNode;
+}) {
   return (
     <section aria-label="Draft Serial Number" className="space-y-3 rounded-lg border bg-card p-4">
-      <h2 className="text-sm font-semibold">Draft Serial Number ({rows.length} baris)</h2>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold">Draft Serial Number ({rows.length} baris)</h2>
+        {action}
+      </div>
       <p role="status" className="text-sm text-muted-foreground">
-        {reason}. Hasil inject disimpan di komputer ini.
+        {note}
       </p>
       {rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">Belum ada serial di draft.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <caption className="sr-only">Draft serial hasil inject (hanya baca)</caption>
+            <caption className="sr-only">Draft serial yang belum diunggah (hanya baca)</caption>
             <thead>
               <tr className="border-b text-xs text-muted-foreground">
                 <th scope="col" className="px-2 py-1 font-medium">

@@ -1,7 +1,7 @@
 import type { QcBridge } from '@countrylock/bridge-contract';
 import type { Brand } from '@countrylock/script-template';
 import { canInject } from '@countrylock/session-machine';
-import { FolderOpen, KeyRound, TriangleAlert } from 'lucide-react';
+import { ClipboardList, FolderOpen, KeyRound, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { LinkField } from '@/components/link-field';
 import { Select } from '@/components/select';
@@ -22,7 +22,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { isAuthenticated } from '@/modules/auth/session';
-import { RecordPage } from '@/modules/serial/components/record-page';
 import { tipeOptionsFor } from '../lib/type-firmware';
 import { useCatalog } from '../use-catalog';
 import { useCountryLock } from '../use-country-lock';
@@ -32,6 +31,7 @@ import { CatalogSyncButton } from './catalog-sync-button';
 import { CredentialDialog } from './credential-dialog';
 import { DraftSummary } from './draft-summary';
 import { InjectProgressDialog } from './inject-progress-dialog';
+import { RecordDialog } from './record-dialog';
 
 /** Teks konfirmasi Auto Inject (aplikasi lama, persis). */
 export const AUTO_INJECT_WARNING =
@@ -84,6 +84,7 @@ export function CountryLockPage({
     actions,
   } = useCountryLock(bridge, draft);
   const [confirmAuto, setConfirmAuto] = useState(false);
+  const [recordOpen, setRecordOpen] = useState(false);
   // Katalog offline dibaca sekali dan dipakai dropdown Tipe, BU, dan Lokasi di form.
   const catalog = useCatalog(bridge);
   const target = useInjectTarget(catalog.snapshot?.catalog ?? null, tipe?.id ?? null);
@@ -337,18 +338,25 @@ export function CountryLockPage({
 
           {draft.status === 'loading' ? (
             <p className="text-sm text-muted-foreground">Memuat draft...</p>
-          ) : draft.status === 'error' ? null : canRecord ? (
-            <RecordPage
-              hideTitle
-              draft={{ rows: draft.rows, replace: draft.replace, saveFailed: draft.saveFailed }}
-            />
-          ) : (
+          ) : draft.status === 'error' ? null : (
             <DraftSummary
               rows={draft.rows}
-              reason={
-                signedIn
-                  ? 'Akun ini tidak punya izin mencatat Serial Number'
-                  : 'Masuk dulu untuk mencatat ke Daftar Serial Number'
+              note={
+                canRecord
+                  ? 'Belum diunggah ke Daftar Serial Number. Hasil inject disimpan di komputer ini.'
+                  : `${
+                      signedIn
+                        ? 'Akun ini tidak punya izin mencatat Serial Number'
+                        : 'Masuk dulu untuk mencatat ke Daftar Serial Number'
+                    }. Hasil inject disimpan di komputer ini.`
+              }
+              action={
+                canRecord ? (
+                  <Button type="button" onClick={() => setRecordOpen(true)}>
+                    <ClipboardList />
+                    Catat Serial Number
+                  </Button>
+                ) : null
               }
             />
           )}
@@ -367,6 +375,14 @@ export function CountryLockPage({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {canRecord && draft.status === 'ready' ? (
+        <RecordDialog
+          open={recordOpen}
+          onOpenChange={setRecordOpen}
+          draft={{ rows: draft.rows, replace: draft.replace, saveFailed: draft.saveFailed }}
+        />
+      ) : null}
 
       <CredentialDialog
         prompt={credentialPrompt}

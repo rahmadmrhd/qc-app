@@ -78,43 +78,65 @@ async function selectBrandAndFirmware() {
 
 const LOCK_HINT = 'Serial dari perangkat, tidak dapat diubah';
 
+async function openRecordDialog() {
+  await userEvent.click(await screen.findByRole('button', { name: 'Catat Serial Number' }));
+  return screen.findByRole('dialog', { name: 'Catat Serial Number' });
+}
+
 describe('canRecord (masuk dan berizin serial: edit)', () => {
-  test('memuat Catat Serial Number bersama tanpa judulnya; draft tersimpan tampil dengan serial terkunci', async () => {
+  test('halaman hanya memuat ringkasan draft; form Catat Serial Number baru terbuka di dialog dengan serial terkunci', async () => {
     const bridge = createFakeBridge();
     bridge.draftRows.push(savedRow('AB12'));
     renderPage(bridge, { canRecord: true });
-    expect(await screen.findByRole('region', { name: 'Default' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Scan atau tempel serial (satu per baris)')).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Catat Serial Number' })).toBeNull();
-    expect(await screen.findByRole('checkbox', { name: 'Pilih baris AB12' })).toBeInTheDocument();
-    expect(screen.getByTitle(LOCK_HINT)).toHaveTextContent('AB12');
-    expect(screen.queryByRole('textbox', { name: 'Serial AB12' })).toBeNull();
+    const summary = await screen.findByRole('region', { name: 'Draft Serial Number' });
+    expect(within(summary).getByText('AB12')).toBeInTheDocument();
+    expect(within(summary).getByText(/Belum diunggah ke Daftar Serial Number/)).toBeInTheDocument();
+    // Form pencatatan tidak ada di halaman sebelum dialog dibuka.
+    expect(screen.queryByRole('region', { name: 'Default' })).toBeNull();
+    expect(screen.queryByLabelText('Scan atau tempel serial (satu per baris)')).toBeNull();
+    const dialog = await openRecordDialog();
+    expect(within(dialog).getByRole('region', { name: 'Default' })).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText('Scan atau tempel serial (satu per baris)'),
+    ).toBeInTheDocument();
+    // Judul komponen bersama disembunyikan; hanya judul dialog yang tampil (tidak ganda).
+    expect(within(dialog).getAllByRole('heading', { name: 'Catat Serial Number' })).toHaveLength(1);
+    expect(
+      await within(dialog).findByRole('checkbox', { name: 'Pilih baris AB12' }),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByTitle(LOCK_HINT)).toHaveTextContent('AB12');
+    expect(within(dialog).queryByRole('textbox', { name: 'Serial AB12' })).toBeNull();
   });
 
-  test('inject sukses menambah baris terkunci ke tabel dan menyimpannya ke draft', async () => {
+  test('inject sukses menambah baris ke ringkasan, menyimpannya ke draft, dan terkunci di dialog', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const bridge = renderPage(createFakeBridge(), { canRecord: true });
     await selectBrandAndFirmware();
     const inject = screen.getByRole('button', { name: 'Inject' });
     await waitFor(() => expect(inject).toBeEnabled());
     await userEvent.click(inject);
-    expect(await screen.findByRole('checkbox', { name: 'Pilih baris ABC123' })).toBeInTheDocument();
-    expect(screen.getByTitle(LOCK_HINT)).toHaveTextContent('ABC123');
+    const summary = await screen.findByRole('region', { name: 'Draft Serial Number' });
+    expect(await within(summary).findByText('ABC123')).toBeInTheDocument();
     await waitFor(() =>
       expect(bridge.draftRows[0]).toMatchObject({ serial: 'ABC123', source: 'countrylock' }),
     );
+    const dialog = await openRecordDialog();
+    expect(within(dialog).getByTitle(LOCK_HINT)).toHaveTextContent('ABC123');
   });
 
-  test('serial manual tetap bisa ditambah lewat Default + scan, dan tersimpan ke draft', async () => {
+  test('serial manual tetap bisa ditambah di dialog lewat Default + scan, dan tersimpan ke draft', async () => {
     const bridge = renderPage(createFakeBridge(), { canRecord: true });
-    await screen.findByRole('region', { name: 'Default' });
+    const dialog = await openRecordDialog();
+    await within(dialog).findByRole('region', { name: 'Default' });
     await pickLink(screen, 'Item', 'Cisco C9200');
     await pickLink(screen, 'Lokasi', 'Jakarta (JKT)');
-    const scan = screen.getByLabelText('Scan atau tempel serial (satu per baris)');
+    const scan = within(dialog).getByLabelText('Scan atau tempel serial (satu per baris)');
     await waitFor(() => expect(scan).toBeEnabled());
     await userEvent.type(scan, 'manual1{Enter}');
     // Baris manual: kolom serialnya masih dapat diubah (bukan teks terkunci).
-    expect(await screen.findByRole('textbox', { name: 'Serial MANUAL1' })).toBeInTheDocument();
+    expect(
+      await within(dialog).findByRole('textbox', { name: 'Serial MANUAL1' }),
+    ).toBeInTheDocument();
     await waitFor(() =>
       expect(bridge.draftRows[0]).toMatchObject({ serial: 'MANUAL1', source: 'manual' }),
     );
@@ -135,6 +157,7 @@ describe('tanpa hak mencatat', () => {
   test('sudah masuk tetapi tanpa izin: alasan menyebut izin', async () => {
     renderPage(createFakeBridge(), { canRecord: false, signedIn: true });
     expect(await screen.findByText(/tidak punya izin mencatat Serial Number/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Catat Serial Number' })).toBeNull();
   });
 });
 

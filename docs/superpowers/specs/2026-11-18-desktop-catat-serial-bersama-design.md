@@ -8,7 +8,7 @@ Pemilik produk ingin hasil inject Country Lock dicatat ke Daftar Serial Number l
 
 ## Tujuan
 
-- Halaman Country Lock di desktop memuat `RecordPage` (Default, scan/tempel, tabel draft, Simpan) di bawah form inject.
+- Halaman Country Lock di desktop menampilkan ringkasan draft yang belum diunggah; `RecordPage` (Default, scan/tempel, tabel draft, Simpan) dibuka dalam dialog dari tombol "Catat Serial Number" (diubah 2026-11-19 atas permintaan pemilik; semula ditanam di bawah form inject). Dialog menutup sendiri saat semua baris tersimpan (`onAllSaved`); menutupnya tidak membuang draft, karena draft dimiliki `useDraftRows` di halaman.
 - Inject yang sukses menambah satu baris draft (`source: 'countrylock'`) dengan Item (Tipe), BU, dan Lokasi dari form inject, tanggal uji hari itu, `clientId` baru. Field Serial baris itu **terkunci**.
 - Pengguna dapat menambah serial manual (Default + scan/tempel/kamera) dan mengubah/menghapus baris seperti di web.
 - Draft bertahan di SQLite desktop, juga saat belum login atau offline; inject tetap jalan tanpa login dan tanpa server.
