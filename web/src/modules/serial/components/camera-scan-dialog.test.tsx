@@ -253,7 +253,8 @@ test('pemuat pemindai gagal: pesan jelas dan aliran kamera dimatikan', async () 
     },
   });
   expect(await screen.findByRole('alert')).toHaveTextContent(CAMERA_ERROR_TEXT.loader);
-  expect(ctx.track.stop).toHaveBeenCalled();
+  // Aliran dimatikan oleh efek setelah galat dirender: tunggu, jangan anggap sudah terjadi saat alert muncul.
+  await waitFor(() => expect(ctx.track.stop).toHaveBeenCalled());
 });
 
 test('keadaan memuat tampil sebelum kamera siap', async () => {
@@ -390,8 +391,8 @@ test('galat unduh WASM sungguhan sampai ke "Fitur scan gagal dimuat" dengan Coba
   const ctx = setup({ createEngine });
   expect(await screen.findByRole('alert')).toHaveTextContent(CAMERA_ERROR_TEXT.loader);
   expect(CAMERA_ERROR_TEXT.loader).toContain('Fitur scan gagal dimuat');
-  expect(purge).toHaveBeenCalledTimes(1);
-  expect(ctx.track.stop).toHaveBeenCalled();
+  await waitFor(() => expect(purge).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(ctx.track.stop).toHaveBeenCalled());
   await new Promise((resolve) => setTimeout(resolve, 400));
   expect(consoleError).not.toHaveBeenCalled();
 
@@ -465,8 +466,8 @@ test('batas waktu memuat pemindai: gagal dimuat dengan Coba lagi; hasil terlamba
     });
   const ctx = setup({ createEngine });
   expect(await screen.findByRole('alert')).toHaveTextContent(CAMERA_ERROR_TEXT.loader);
-  expect(purge).toHaveBeenCalledTimes(1);
-  expect(ctx.track.stop).toHaveBeenCalled();
+  await waitFor(() => expect(purge).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(ctx.track.stop).toHaveBeenCalled());
 
   // Pemuatan yang lambat akhirnya selesai: keadaan galat tetap, kamera tidak menyala sendiri.
   finishLate();
