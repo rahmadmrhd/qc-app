@@ -60,6 +60,7 @@ import { loadCases, type SerialCaseRow } from './case-repo';
 import { canManageProof } from './proof/access';
 import { loadStampItemInfo, planProofAttach } from './proof/attach';
 import { listFailedProofsBySerial, listProofsByEvents } from './proof/repo';
+import { recheckExistingSerial } from './recheck-entry';
 import {
   activeItemWritableForBu,
   activeLocationName,
@@ -347,6 +348,10 @@ export async function createSerialOnce(
       ? idempotent(row, existing.id)
       : failRow(row, 'Baris tidak valid');
   }
+  // Serial yang sudah ada (unik se-sistem) menjadi cek ulang lolos pada catatan itu (spek serial unik se-sistem §5.1);
+  // syarat item aktif/terlihat di bawah TIDAK berlaku di jalur itu.
+  const rechecked = await recheckExistingSerial(env, user, row, memo);
+  if (rechecked) return rechecked;
   if (!(await memo.activeItemWritableForBu(row.itemId, row.buId, user))) {
     return failRow(row, ITEM_MESSAGE);
   }
@@ -493,6 +498,9 @@ export async function createSerialOnce(
       if (again && again.buId === row.buId && again.serial === row.serial) {
         return idempotent(row, again.id);
       }
+      // Serial yang sama dicatat serentak dari tempat lain dan pemenangnya sudah komit: baris ini menjadi cek ulang.
+      const fallback = await recheckExistingSerial(env, user, row, memo);
+      if (fallback) return fallback;
       const mapped = mapDuplicateError(error, SERIAL_CONFLICTS) as { message?: string };
       return {
         clientId: row.clientId,

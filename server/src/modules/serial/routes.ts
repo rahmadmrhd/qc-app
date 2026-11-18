@@ -12,6 +12,7 @@ import {
   validateRetrySerialProof,
   validateUploadSerialProof,
 } from './proof/validate';
+import { lookupSerialsMany } from './recheck-entry';
 import { lookupSerials, reportNewSerial } from './report';
 import {
   buOptions,
@@ -126,11 +127,11 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       validate: validateSerialLookup,
       handler: (input, ctx) => lookupSerials(ctx.env, ctx.user, input),
     },
-    // Draft Catat: serial yang sudah ada (pengungkapan minimal). Handler sementara; diisi Tugas 4.
+    // Draft Catat: serial yang sudah ada (pengungkapan minimal lintas BU; spek serial unik se-sistem §5.4).
     'serials.lookupMany': {
       permission: { module: 'serial', level: 'edit' },
       validate: validateSerialLookupMany,
-      handler: async () => ({ found: [] }), // diisi Tugas 4
+      handler: (input, ctx) => lookupSerialsMany(ctx.env, ctx.user, input),
     },
     'serials.reportNew': {
       permission: { module: 'serial', level: 'edit' },

@@ -91,7 +91,7 @@ interface StickerRaise {
  * sama. Stiker `inactive` tidak dapat dicentang (`deprecated` boleh, spek §3 butir 24); stiker baru harus berlaku bagi item
  * pada BU serial.
  */
-async function stickerRaise(
+export async function stickerRaise(
   env: Env,
   row: SerialRow,
   eventId: string,
@@ -100,6 +100,8 @@ async function stickerRaise(
   user: UserContext,
   now: string,
   retried: boolean,
+  /** BU yang menentukan stiker yang berlaku (bawaan BU serial; cek ulang yang memindahkan BU memakai BU tujuan). */
+  buId: string = row.bu_id.trim(),
 ): Promise<StickerRaise> {
   const serialId = row.id.trim();
   const current = new Map(
@@ -116,7 +118,7 @@ async function stickerRaise(
   const applicable =
     unknown.length > 0
       ? new Map(
-          (await applicableStickersOf(env, row.item_id.trim(), row.bu_id.trim())).map((sticker) => [
+          (await applicableStickersOf(env, row.item_id.trim(), buId)).map((sticker) => [
             sticker.id,
             sticker,
           ]),

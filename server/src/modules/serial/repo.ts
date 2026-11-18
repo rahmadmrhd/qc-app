@@ -36,6 +36,8 @@ export interface NewEvent {
   message: string;
   changes: unknown[];
   data: Record<string, unknown>;
+  /** Kunci idempoten kejadian (`serial_events.client_id`, unik): kirim ulang baris Catat tidak menggandakan kejadian. */
+  clientId?: string;
 }
 
 /** Catatan serial yang sudah memakai `clientId` ini (kunci idempoten per baris). */
@@ -212,6 +214,17 @@ export async function loadBuHistory(db: Preparer, serialId: string): Promise<Ser
     .bind(serialId)
     .all<SerialBuHistoryRow>();
   return rows.results;
+}
+
+/** Catatan serial menurut nomor serial ternormalisasi (unik se-sistem), atau `null` bila belum ada. */
+export async function loadSerialRowBySerial(
+  db: Preparer,
+  serial: string,
+): Promise<SerialRow | null> {
+  return db
+    .prepare(`SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE s.serial = ?`)
+    .bind(serial)
+    .first<SerialRow>();
 }
 
 export interface SerialStickerRow {
@@ -464,7 +477,7 @@ export function updateSerialStmt(
 export function insertNextEventStmt(db: Preparer, event: Omit<NewEvent, 'seq'>): DbStatement {
   return db
     .prepare(
-      'INSERT INTO serial_events (id, serial_id, case_id, seq, type, occurred_on, created_at, actor_id, actor_name, actor_team, message, changes_json, data_json) SELECT ?, ?, ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM serial_events WHERE serial_id = ?',
+      'INSERT INTO serial_events (id, serial_id, case_id, seq, type, occurred_on, created_at, actor_id, actor_name, actor_team, message, changes_json, data_json, client_id) SELECT ?, ?, ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM serial_events WHERE serial_id = ?',
     )
     .bind(
       event.id,
@@ -479,6 +492,7 @@ export function insertNextEventStmt(db: Preparer, event: Omit<NewEvent, 'seq'>):
       event.message,
       JSON.stringify(event.changes),
       JSON.stringify(event.data),
+      event.clientId ?? null,
       event.serialId,
     );
 }
