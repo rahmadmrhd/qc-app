@@ -1780,11 +1780,23 @@ describe('deploy-tag.yml: deploy versi tertentu lewat tag (rilis semver bagian 3
     ]);
     for (const step of scripts) expect(step.env?.GH_TOKEN, step.name).toBeUndefined();
     const factsRuns = facts.map((s) => s.run ?? '').join('\n');
-    expect(factsRuns).toContain('compare/main...');
+    // nama `main` ambigu bila ada tag bernama main: bandingkan dengan SHA ujung branch main yang diambil dari heads/main
+    expect(factsRuns).toContain('git/ref/heads/main');
+    expect(factsRuns).toContain('compare/$main_sha...$SHA');
+    expect(factsRuns).not.toContain('compare/main...');
     expect(factsRuns).toContain('releases/tags/');
     expect(factsRuns).toContain('git/ref/deployed/');
     expect(factsRuns).toContain('docker buildx imagetools inspect');
     expect(factsRuns).toContain('server/migrations');
+  });
+
+  test('verify: token GHCR dicabut dari disk (docker logout) sebelum langkah skrip berjalan', () => {
+    const steps = jobs.verify?.steps ?? [];
+    const facts = steps.find((s) => s.id === 'facts');
+    expect(facts?.run).toContain('docker logout ghcr.io');
+    expect(facts?.run?.indexOf('docker logout ghcr.io')).toBeGreaterThan(
+      facts?.run?.indexOf('docker buildx imagetools inspect') ?? Number.POSITIVE_INFINITY,
+    );
   });
 
   test('verify: login GHCR memakai aksi yang dipatok SHA sebelum memeriksa image; 404 dibedakan dari galat API lain', () => {

@@ -145,7 +145,10 @@ jobs:
           [[ $SHA =~ ^[0-9a-f]{40}$ ]] || fail "SHA tag bukan 40 heksa."
 
           # --- provenance ---
-          main_relation=$(gh api "repos/$REPO/compare/main...$SHA" --jq '.status')
+          # Bandingkan dengan SHA ujung branch main (heads/main), bukan nama `main`: nama itu ambigu bila ada tag bernama main.
+          main_sha=$(gh api "repos/$REPO/git/ref/heads/main" --jq '.object.sha')
+          [[ $main_sha =~ ^[0-9a-f]{40}$ ]] || fail "SHA ujung main tidak terbaca."
+          main_relation=$(gh api "repos/$REPO/compare/$main_sha...$SHA" --jq '.status')
           [[ $main_relation =~ ^[a-z]{1,20}$ ]] || fail "Status perbandingan dengan main tidak terbaca."
           version_at_sha=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/server/package.json?ref=$SHA" | jq -r '.version // ""')
           [[ $version_at_sha =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || version_at_sha=''
@@ -162,6 +165,8 @@ jobs:
           fi
           image="ghcr.io/${OWNER,,}/qc-app"
           if docker buildx imagetools inspect "$image:$SHA" > /dev/null 2>&1; then image_exists=true; else image_exists=false; fi
+          # Cabut token GHCR dari disk (login-action menulisnya ke ~/.docker/config.json) sebelum langkah skrip repositori berjalan.
+          docker logout ghcr.io > /dev/null 2>&1 || true
 
           # --- pagar downgrade dini (terbaik dari CI; pagar berwenang ada di VPS) ---
           downgrade_check=false; applied='[]'; target='[]'; first_lines='{}'

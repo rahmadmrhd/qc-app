@@ -340,7 +340,7 @@ schema_guard() { # Pagar downgrade skema (keputusan pemilik 2026-11-17): dipangg
   db_load_creds || schema_guard_reject "$DB_CRED_ERROR"
   # A = migrasi yang sudah diterapkan di basis data; B = migrasi yang dibawa image target. Salah satunya tak terbaca = tolak (gagal tertutup).
   applied=$(db_sql 'SELECT name FROM schema_migrations ORDER BY name') || schema_guard_reject 'daftar migrasi di basis data (schema_migrations) tidak terbaca; pagar downgrade skema menolak'
-  image_list=$(docker run --rm --network none --entrypoint ls "$repo:$TAG" /app/server/migrations 2>>"$DEPLOY_LOG") || schema_guard_reject 'daftar migrasi di image target tidak terbaca; pagar downgrade skema menolak'
+  image_list=$(docker run --rm --pull never --network none --entrypoint ls "$repo:$TAG" /app/server/migrations 2>>"$DEPLOY_LOG") || schema_guard_reject 'daftar migrasi di image target tidak terbaca; pagar downgrade skema menolak'
   image_list=$nl${image_list//$'\r'/}$nl
   while IFS= read -r name; do
     name=${name%$'\r'}
@@ -361,7 +361,7 @@ schema_guard() { # Pagar downgrade skema (keputusan pemilik 2026-11-17): dipangg
   [ -n "$PREV_TAG" ] || schema_guard_reject 'tidak ada tag sebelumnya untuk membaca migrasi yang akan dilewati; pagar downgrade skema menolak'
   while IFS= read -r name; do
     [ -n "$name" ] || continue
-    first=$(docker run --rm --network none --entrypoint head "$repo:$PREV_TAG" -n1 "/app/server/migrations/$name" 2>>"$DEPLOY_LOG") || schema_guard_reject "migrasi $name tak terbaca dari image yang sedang berjalan; pagar downgrade skema menolak"
+    first=$(docker run --rm --pull never --network none --entrypoint head "$repo:$PREV_TAG" -n1 "/app/server/migrations/$name" 2>>"$DEPLOY_LOG") || schema_guard_reject "migrasi $name tak terbaca dari image yang sedang berjalan; pagar downgrade skema menolak"
     first=${first%$'\r'}
     if [[ $first =~ ^--\ qc:contract[[:space:]]*$ ]]; then
       schema_guard_reject "migrasi $name berpenanda qc:contract (destruktif) tidak boleh dilewati, kata izin tak berlaku"

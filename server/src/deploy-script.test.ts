@@ -766,6 +766,8 @@ describe('deploy.sh: pagar downgrade skema', () => {
       `deploy staging ${SHA_NEW} force`,
       `deploy staging ${SHA_NEW}  allow-schema-downgrade`,
       `deploy staging ${SHA_NEW} allow-schema-downgrade `,
+      // lebih panjang dari 96 karakter: ditolak (kode 2); regex sudah membatasi bentuk sah terpanjang 81, jadi batas 96
+      // hanyalah lapisan tambahan, bukan satu-satunya penolak
       `deploy staging ${SHA_NEW}${ALLOW}${'x'.repeat(16)}`,
     ];
     for (const request of bad) {
@@ -794,6 +796,18 @@ describe('deploy.sh: pagar downgrade skema', () => {
       .filter((l) => l.startsWith('docker exec'));
     expect(execLines.length).toBeGreaterThanOrEqual(2); // preflight + pembacaan schema_migrations
     for (const line of execLines) expect(line).toContain('-e MYSQL_PWD qc-staging-db mariadb');
+  });
+
+  test('docker run pagar tak pernah menarik image dari registri (--pull never) dan tanpa jaringan', async () => {
+    setApplied([M1, M2]);
+    setImage(SHA_NEW, [M1]);
+    setFirstLine(M2, '-- tambah kolom');
+    expect((await run(`deploy staging ${SHA_NEW}${ALLOW}`)).code).toBe(0);
+    expect(guardCalls().length).toBeGreaterThanOrEqual(2);
+    for (const line of guardCalls()) {
+      expect(line).toContain('--pull never');
+      expect(line).toContain('--network none');
+    }
   });
 
   test('--dry-run menyebut pagar downgrade skema', async () => {
