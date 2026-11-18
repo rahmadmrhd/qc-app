@@ -1,13 +1,12 @@
 # Rilis aplikasi desktop dan auto-update (bagian 4 dari seri rilis semver)
 
-Status: **menunggu persetujuan pemilik** (revisi 1, 2026-11-17). Seri: 1 fondasi rilis + changelog dan 2 deploy lewat tag
+Status: **menunggu persetujuan pemilik** (revisi 2, 2026-11-18: lihat kendala 3.1; revisi 1, 2026-11-17). Seri: 1 fondasi rilis + changelog dan 2 deploy lewat tag
 (`2026-11-17-rilis-semver-design.md`), 3 bundling backend (`2026-11-17-bundling-backend-design.md`), **4 dokumen ini**,
 5 halaman unduh + tampilan changelog di web (dokumen terpisah).
 
 ## 1. Maksud dan alasan
 Aplikasi desktop (Electron, Windows) hari ini hanya dapat dipasang dari hasil `bun run build:desktop` pemilik; belum ada rilis
-berversi, belum ada pembaruan biner (hanya UI-nya yang diperbarui lewat manifest bertanda tangan), dan repositori privat sehingga
-GitHub Releases tidak dapat dipakai langsung oleh aplikasi maupun pengguna. Tujuan: rilis desktop dengan semver (`desktop-vX.Y.Z`),
+berversi, belum ada pembaruan biner (hanya UI-nya yang diperbarui lewat manifest bertanda tangan), dan GitHub Releases tidak dapat dijadikan sumber unduhan aplikasi: repositori sempat privat, kini publik, dan dapat kembali privat kapan saja (keputusan pemilik 2026-11-18), serta pengguna tidak boleh mengetahui repositori sumbernya. Tujuan: rilis desktop dengan semver (`desktop-vX.Y.Z`),
 installer Windows x64 dan arm64 yang dapat diunduh dan **diperbarui otomatis**, changelog per versi, dan jalur pemulihan bila
 sebuah rilis bermasalah.
 
@@ -25,13 +24,23 @@ dan manifest yang ditetapkan di sini), kode-tanda-tangan Authenticode (pertanyaa
   dibuat di workflow rilis.
 - Pembaruan UI web ke desktop tetap lewat manifest UI bertanda tangan yang ada, terpisah dari pembaruan biner ini.
 
+### 3.1 Kendala rancangan (keputusan pemilik 2026-11-18)
+- **Pengguna tidak boleh tahu repositori sumber.** Aplikasi desktop dan halaman web hanya berbicara dengan server QC (`serverUrl`, bawaan
+  `https://qc.rhd.my.id`); tak ada URL `github.com`, nama pemilik, atau nama repositori di manifest, dialog pembaruan, galat, maupun
+  log. `release.json` dan changelog-nya hanya memuat teks untuk pengguna (tanpa tautan PR atau commit).
+- **Tahan terhadap perubahan visibilitas repositori.** Repositori boleh dijadikan privat lagi kapan saja tanpa memutus pembaruan
+  dan unduhan: sumber unduhan TIDAK BOLEH bergantung pada GitHub (baik API publik maupun aset Release) dan server TIDAK BOLEH memegang
+  token baca repositori. GitHub Release privat/publik tetap dibuat, tetapi hanya sebagai arsip pemilik.
+- Konsekuensi: penyimpanan di luar GitHub (4.1 pilihan C) dan semua unduhan disalurkan server (stream, bukan pengalihan ke host lain).
+
 ## 4. Pendekatan yang dipertimbangkan
 
-### 4.1 Di mana installer disimpan dan siapa yang menyajikannya (repo privat)
+### 4.1 Di mana installer disimpan dan siapa yang menyajikannya (tahan repo publik maupun privat)
 | Pilihan | Keterangan | Putusan |
 |---|---|---|
 | A. Server memproksi aset GitHub Release memakai token baca | tanpa penyimpanan baru; tetapi token baca repo privat (PAT berkedaluwarsa, atau GitHub App) hidup di server, dan server yang disusupi membuka seluruh kode sumber | ditolak: hak akses berlebihan |
 | B. CI mengunggah installer ke server lewat endpoint HTTP, disimpan di volume VPS | tanpa token repo; tetapi butuh endpoint tulis berbadan ~100 MB (batas badan global server hari ini ~10 MB, jadi memperbesar permukaan serangan memori), volume dan retensi baru | ditolak: permukaan tulis baru |
+| A2. Server membaca GitHub Releases publik tanpa token (ditambahkan revisi 2, saat repositori publik) | sederhana, tanpa Drive; tetapi berhenti bekerja begitu repositori kembali privat (butuh token, yaitu pilihan A) dan menjadikan GitHub dependensi pengguna | ditolak: melanggar kendala 3.1 |
 | **C. CI mengunggah ke folder Google Drive khusus; server membaca lewat klien Drive yang sudah ada** | memakai kode teruji (`uploadFile` resumable, `downloadFile` stream, penjaga folder), kuota dan peringatan kuota sudah ada, server hanya butuh hak baca satu folder; CI memegang kunci service account penerbit terpisah (tulis hanya di folder itu) | **dipilih** |
 
 Dalam semua pilihan, aset yang sama juga dilampirkan ke GitHub Release privat sebagai arsip pemilik.
@@ -132,6 +141,8 @@ aksi pihak ketiga dipatok SHA; `ci-workflows.test.ts` diperluas (pemicu, izin, r
 - **Spike awal rencana (wajib sebelum implementasi)**: memastikan provider kustom `electron-updater` dapat dipakai tanpa `app-update.yml`
   yang dibuat electron-builder, dan bahwa flag pemasangan senyap/peluncuran ulang bekerja untuk NSIS per pengguna pada arm64 dan x64.
   Bila gagal, jatuh ke pengunduh buatan sendiri (4.2) dengan rancangan keamanan yang sama.
+- **Repositori kembali privat atau publik**: tidak berdampak pada pembaruan atau unduhan (kendala 3.1). Yang berubah hanya GitHub Release arsip
+  (bagi pemilik). Uji penerimaan: aplikasi dan server berfungsi penuh dengan token GitHub apa pun dicabut.
 - **Kuota Drive**: installer ~100 MB x 2 arsitektur x 10 versi; peringatan kuota yang ada berlaku; retensi 5.7.
 - **Dua kunci tanda tangan baru** (rilis + SA penerbit) menambah pekerjaan operasi pemilik; didokumentasikan di 5.8.
 - Pada desktop non-terkemas (pengembangan) pembaruan nonaktif; uji pembaruan nyata hanya lewat checklist manual.
