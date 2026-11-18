@@ -33,8 +33,11 @@ function configVariables(): string[] {
   return [...names].sort();
 }
 
-/** Tidak dipasang di compose: login dev ditolak `loadConfig` di produksi; STATIC_DIR dan DB_POOL_SIZE memakai bawaan image/kode. */
-const NOT_IN_COMPOSE = new Set(['DEV_LOGIN_EMAIL', 'STATIC_DIR', 'DB_POOL_SIZE']);
+/**
+ * Tidak dipasang di compose: login dev ditolak `loadConfig` di produksi; STATIC_DIR dan DB_POOL_SIZE memakai bawaan
+ * image/kode; GIT_SHA diisi image sendiri lewat build-arg Dockerfile (bukan pilihan operator).
+ */
+const NOT_IN_COMPOSE = new Set(['DEV_LOGIN_EMAIL', 'STATIC_DIR', 'DB_POOL_SIZE', 'GIT_SHA']);
 /** Tetap di compose/image (bukan pilihan operator di .env); DATABASE_URL disusun compose dari QC_DB_USER/QC_DB_PASSWORD/QC_DB_NAME. */
 const NOT_IN_ENV_EXAMPLE = new Set([
   ...NOT_IN_COMPOSE,
@@ -237,6 +240,22 @@ describe('deploy: Dockerfile dan .dockerignore', () => {
     expect(dockerfile).toContain('COPY server/migrations server/migrations');
     expect(dockerfile).toContain('COPY --from=web-build /app/server/dist server/dist');
     expect(dockerfile).toContain('ENTRYPOINT ["bun", "src/main.ts"]');
+  });
+
+  test('CHANGELOG server ikut image: dikecualikan dari **/*.md di .dockerignore dan disalin Dockerfile', () => {
+    const lines = dockerignore.split('\n').map((line) => line.trim());
+    expect(lines.indexOf('!server/CHANGELOG.md')).toBeGreaterThan(lines.indexOf('**/*.md'));
+    expect(dockerfile).toContain('COPY server/CHANGELOG.md server/CHANGELOG.md');
+  });
+
+  test('SHA build: ARG GIT_SHA (bawaan unknown) diteruskan ke ENV GIT_SHA di tahap runtime, bukan di tahap build web', () => {
+    expect(dockerfile).toMatch(/^ARG GIT_SHA=unknown$/m);
+    expect(dockerfile).toMatch(/^ENV GIT_SHA=\$GIT_SHA$/m);
+    const runtime = dockerfile.slice(dockerfile.indexOf('FROM base AS runtime'));
+    expect(runtime).toMatch(/^ARG GIT_SHA=unknown$/m);
+    expect(dockerfile.slice(0, dockerfile.indexOf('FROM base AS runtime'))).not.toContain(
+      'GIT_SHA',
+    );
   });
 
   test('pengguna non-root, HEALTHCHECK ke /api/ping, dengar 0.0.0.0 di kontainer', () => {

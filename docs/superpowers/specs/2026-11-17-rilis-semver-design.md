@@ -39,6 +39,15 @@ dibawa image sehingga web dapat membacanya tanpa token GitHub.
 - PR rilis dibuka dari `release/server-vX.Y.Z` (dipotong dari ujung `dev`) ke `main`; merge-nya adalah promosi `dev` -> `main`
   sekaligus pemicu rilis. `dev` disinkronkan sesudahnya.
 - **Merge ke `main` tidak lagi men-deploy production** secara otomatis; production hanya lewat rilis atau deploy tag.
+  **Berlaku hanya setelah saklar `RELEASE_FLOW=tag` dinyalakan** (keputusan pemilik 2026-11-18, lihat butir berikut).
+- **Masa pra-resmi: saklar mode rilis** (keputusan pemilik 2026-11-18, mengubah butir di atas): produk masih dalam pembangunan
+  dan belum punya versi resmi, jadi pemilik tidak mau menaikkan versi untuk setiap update production. Dipasang variabel
+  repositori `RELEASE_FLOW` (Settings > Variables). **Kosong atau `langsung` (bawaan)**: perilaku sekarang tetap berjalan, merge
+  ke `main` men-deploy production, versi tetap `0.0.0` (`/api/ping` melaporkan `version` `0.0.0` dan `build` = SHA), tanpa tag
+  dan tanpa Release. **`tag`**: alur rilis semver aktif (PR rilis, `release.yml`, deploy tag) dan merge ke `main` tidak lagi
+  men-deploy. Pemilik menyalakan `tag` sendiri kapan produk dinilai layak punya versi resmi; fragmen changelog yang
+  menumpuk selama masa pra-resmi dirangkum rilis pertama (`1.0.0`). Saklar dibaca saat workflow berjalan, sehingga PR
+  "bootstrap" boleh di-merge kapan saja tanpa mengubah perilaku sampai variabel dinyalakan.
 - Deploy lewat tag **memblokir downgrade yang melewati migrasi basis data** kecuali dicentang eksplisit; migrasi bertanda
   contract selalu memblokir (pilihan A).
 - **Pagar downgrade juga dipasang di sisi VPS** (`deploy/deploy.sh`, keputusan pemilik 2026-11-17 setelah ditawarkan): pagar CI
@@ -133,9 +142,13 @@ Jalur: `meta` -> `guard` -> `ci` (selektif, `ci.yml`) -> `image` -> `deploy` (pr
   karena branch protection tak ada dan deploy staging tak perlu dipicu: isinya hanya metadata). Bila konflik (409), membuka
   PR `main` -> `dev` (butuh setelan repo "Allow GitHub Actions to create pull requests"). Guard `release:prepare` berikutnya
   mengizinkan `dev` yang selisihnya dari `refs/deployed/staging` hanya berkas metadata.
-- `deploy-server.yml`: jalur `pull_request_target` ke `main` -> production **dihapus**; jalur ke `dev` -> staging dan
-  `workflow_dispatch` tetap. Dispatch production dari `main` tetap ada sebagai jalan darurat. **Urutan bootstrap**: penghapusan
-  pemicu `main` dan penambahan `release.yml` masuk di PR yang SAMA agar tak ada deploy ganda atau celah tanpa deploy.
+- `deploy-server.yml`: jalur `pull_request_target` ke `main` -> production **dilewati bila `vars.RELEASE_FLOW == 'tag'`** (pemicu
+  tetap ada; job `meta` yang memutuskan dari variabel, bukan dihapus dari berkas); jalur ke `dev` -> staging dan
+  `workflow_dispatch` tetap. Dispatch production dari `main` tetap ada sebagai jalan darurat. `release.yml` hanya berjalan bila
+  `vars.RELEASE_FLOW == 'tag'` (job pertama `meta` berhenti dengan jelas bila tidak), jadi tak pernah ada deploy ganda:
+  `langsung` = hanya `deploy-server.yml`, `tag` = hanya `release.yml`. Dengan saklar ini **urutan bootstrap tak lagi kritis**
+  (keduanya boleh di-merge kapan saja; perilaku berpindah saat variabel diubah). `release:prepare` menolak jalan bila
+  `gh variable get RELEASE_FLOW` bukan `tag` (PR rilis yang di-merge saat mode `langsung` akan men-deploy tanpa tag).
 
 ### 5.5 Deploy lewat tag (`deploy-tag.yml`, `workflow_dispatch`)
 Input: `tag` (`server-vX.Y.Z`), `environment` (staging|production), `izinkan_downgrade_skema` (boolean, bawaan false).
@@ -214,7 +227,9 @@ Grup `concurrency` = grup environment itu di `deploy-server.yml`.
   keluar baru 6 harus dikenali pemanggil lain (dokumentasi `deploy.sh`, `docs/deploy-vps.md`); pagar hanya melihat nama berkas
   migrasi, bukan isi data, jadi downgrade berizin atas migrasi data tetap tanggung jawab pemilik.
 - `release.yml` baru aktif setelah ada di `main` (aturan GitHub: workflow `pull_request_target` dari branch default); rilis pertama
-  melewati satu PR "bootstrap" biasa yang juga menghapus pemicu production lama (5.4).
+  melewati satu PR "bootstrap" biasa yang menambah `release.yml` dan syarat saklar pada `deploy-server.yml` (5.4); rilis pertama
+  baru dilakukan setelah pemilik menyalakan `RELEASE_FLOW=tag`. ~~Pertanyaan terbuka: apakah merge ke main tanpa rilis diizinkan~~
+  **diputuskan 2026-11-18**: selama mode `langsung`, merge ke `main` men-deploy production seperti sekarang tanpa versi.
 - Pembangunan production tanpa cache membuat rilis beberapa menit lebih lama (diterima). Image production dapat berbeda dari
   image staging pada lapisan non-kode (mis. paket `apk` yang diambil ulang); kodenya identik.
 - Penanda `-- qc:contract` tak menangkap migrasi data (mis. 0017 yang memetakan status); daftar pengecualian dan disiplin penulis.

@@ -36,6 +36,15 @@ describe('loadConfig', () => {
     expect(config.staticDir.replaceAll('\\', '/')).toMatch(/\/server\/dist$/);
   });
 
+  test('GIT_SHA (SHA build image): 7-40 heksa huruf kecil diterima; kosong atau tak valid menjadi "unknown"', () => {
+    expect(loadConfig(VALID).buildSha).toBe('unknown');
+    expect(loadConfig({ ...VALID, GIT_SHA: 'a'.repeat(40) }).buildSha).toBe('a'.repeat(40));
+    expect(loadConfig({ ...VALID, GIT_SHA: 'abc1234' }).buildSha).toBe('abc1234');
+    for (const bad of ['zzz', 'ABC1234', 'abc 1234', 'abc123', 'a'.repeat(41), '', ' ']) {
+      expect(loadConfig({ ...VALID, GIT_SHA: bad }).buildSha).toBe('unknown');
+    }
+  });
+
   test('(I5) TRUSTED_PROXY: bawaan loopback; daftar CIDR diurai ketat', () => {
     const byDefault = loadConfig(VALID);
     expect(byDefault.trustedProxy).toEqual(parseTrustedProxy(DEFAULT_TRUSTED_PROXY) ?? []);

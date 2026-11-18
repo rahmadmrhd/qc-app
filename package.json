@@ -16,6 +16,8 @@
     "build:web": "bun run --cwd web build",
     "build:desktop": "bun run build:web && bun run --cwd desktop dist",
     "check:ui-key": "bun run scripts/check-ui-key.ts",
+    "changelog": "bun run scripts/changelog.ts",
+    "release:prepare": "bun run scripts/release-prepare.ts",
     "build": "bun run build:web && bun run scripts/verify-dist.ts && bun run scripts/build-ui-manifest.ts",
     "typecheck": "tsc -p tsconfig.json && bun run --cwd shared typecheck && bun run --cwd web typecheck && bun run --cwd server typecheck && bun run --cwd countrylock typecheck && bun run --cwd desktop typecheck",
     "lint": "biome check .",

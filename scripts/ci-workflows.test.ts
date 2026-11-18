@@ -675,6 +675,11 @@ describe('deploy-server.yml: kunci tanda tangan manifest UI desktop', () => {
     expect(cleanup?.run).toContain('ui_signing_key.pem');
   });
 
+  test('SHA commit yang dibangun diteruskan ke image sebagai build-arg GIT_SHA (dibaca /api/ping)', () => {
+    const build = imageSteps.find((step) => step.uses?.startsWith('docker/build-push-action'));
+    expect(String(build?.with?.['build-args'])).toContain('GIT_SHA=${{ needs.meta.outputs.sha }}');
+  });
+
   describe('skrip langkah "Siapkan kunci tanda tangan UI"', () => {
     const script = prepare?.run ?? '';
     const dir = mkdtempSync(join(tmpdir(), 'qc-ci-uikey-'));
@@ -1253,5 +1258,67 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
     test('bersihkan', () => {
       rmSync(dir, { recursive: true, force: true });
     });
+  });
+});
+
+describe('changelog.yml: gerbang fragmen changelog di PR', () => {
+  const text = rawOf('changelog.yml');
+  const workflow = parse(text);
+  const job = workflow.jobs.fragmen;
+  const steps = job?.steps ?? [];
+
+  test('pemicu: hanya pull_request (bukan pull_request_target); label dipasang/dilepas memicu ulang gerbang ini saja', () => {
+    const on = workflow.on as { pull_request: { types: string[] } };
+    expect(Object.keys(workflow.on ?? {})).toEqual(['pull_request']);
+    expect([...on.pull_request.types].sort()).toEqual(
+      ['labeled', 'opened', 'reopened', 'synchronize', 'unlabeled'].sort(),
+    );
+    expect(codeOf(text)).not.toContain('pull_request_target');
+    expect(workflow.concurrency?.['cancel-in-progress']).toBe(true);
+    expect(workflow.concurrency?.group).toContain('github.event.pull_request.number');
+  });
+
+  test('izin minimal: baca isi dan berkas PR saja, tanpa rahasia', () => {
+    expect(workflow.permissions).toEqual({ contents: 'read' });
+    expect(job?.permissions).toEqual({ contents: 'read', 'pull-requests': 'read' });
+    expect(codeOf(text)).not.toMatch(/secrets\./);
+  });
+
+  test('checkout tanpa menyimpan kredensial; skrip run tanpa interpolasi ${{ }}; label lewat env', () => {
+    const checkout = steps.find((step) => step.uses?.startsWith('actions/checkout'));
+    expect(checkout?.with?.['persist-credentials']).toBe(false);
+    for (const step of steps) if (step.run) expect(step.run, step.name).not.toContain('${{');
+    const check = steps.find((step) => step.run?.includes('changelog-check'));
+    expect(check?.env?.LABELS).toBe('${{ toJSON(github.event.pull_request.labels.*.name) }}');
+  });
+
+  test('token hanya di langkah yang memanggil API; langkah yang menjalankan kode dari checkout PR tanpa GH_TOKEN', () => {
+    const fetchStep = steps.find((step) => step.run?.includes('gh api'));
+    expect(fetchStep?.env?.GH_TOKEN).toBe('${{ github.token }}');
+    expect(fetchStep?.env?.PR).toBe('${{ github.event.pull_request.number }}');
+    expect(fetchStep?.run).not.toContain('bun run');
+    const runners = steps.filter((step) => step.run?.includes('bun run'));
+    expect(runners.length).toBeGreaterThan(0);
+    for (const step of runners) {
+      expect(step.env?.GH_TOKEN, step.name).toBeUndefined();
+      expect(step.run, step.name).not.toContain('gh api');
+    }
+    expect(steps.indexOf(fetchStep as (typeof steps)[number])).toBeLessThan(
+      steps.indexOf(runners[0] as (typeof steps)[number]),
+    );
+  });
+
+  test('hanya berkas berstatus added dihitung sebagai fragmen baru; fragmen yang ada divalidasi untuk server dan desktop', () => {
+    const script = steps.map((step) => step.run ?? '').join('\n');
+    expect(script).toContain('select(.status == "added")');
+    expect(script).not.toContain('!= "removed"');
+    expect(script).toContain('bun run changelog validate server');
+    expect(script).toContain('bun run changelog validate desktop');
+  });
+
+  test('docs/ci-cd.md menjelaskan gerbang dan label pelewat', () => {
+    const doc = read('docs/ci-cd.md');
+    expect(doc).toContain('changelog.yml');
+    expect(doc).toContain('tanpa-changelog');
   });
 });

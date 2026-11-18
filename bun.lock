@@ -33,6 +33,7 @@
     },
     "server": {
       "name": "@qc/server",
+      "version": "0.0.0",
       "dependencies": {
         "hono": "^4.13.13",
         "mysql2": "^3.24.6",
