@@ -1,5 +1,6 @@
 // Lapor Rusak (2026-11-14 §4.3): `serials.lookup` dan `serials.reportNew`.
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { DbError } from '@server/core/db';
 import { restCall } from '@server-test/rest-call';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { SERIAL_USERS, seedSerial, seedSerialWorld } from '@server-test/serial-fixtures';
@@ -84,8 +85,8 @@ describe('serials.lookup', () => {
 
   test('tidak ditemukan: daftar kosong; serial di BU yang tak boleh ditulis tidak muncul (generik)', async () => {
     await seedSerial(env, { id: 'sn-b', serial: 'BB-1', buId: 'bu-b', itemId: 'i-b' });
-    expect((await lookup(W, 'TIDAK-ADA')).data).toEqual({ matches: [] });
-    expect((await lookup(W, 'BB-1')).data).toEqual({ matches: [] });
+    expect((await lookup(W, 'TIDAK-ADA')).data).toEqual({ matches: [], elsewhere: null });
+    expect((await lookup(W, 'BB-1')).data).toEqual({ matches: [], elsewhere: null });
     expect((await lookup(BOTH, 'BB-1')).data.matches).toHaveLength(1);
   });
 
@@ -99,14 +100,13 @@ describe('serials.lookup', () => {
     expect((await lookup(SERIAL_USERS.mixed, 'BB-1')).data.matches).toEqual([]);
   });
 
-  test('serial yang sama di dua BU: dua baris, urut kode BU', async () => {
+  test('serial unik se-sistem: serial yang sama tak mungkin ada di dua BU, jadi hanya satu kecocokan', async () => {
     await seedSerial(env, { id: 'sn-a', serial: 'DUP-1' });
-    await seedSerial(env, { id: 'sn-b', serial: 'DUP-1', buId: 'bu-b', itemId: 'i-b' });
+    await expect(
+      seedSerial(env, { id: 'sn-b', serial: 'DUP-1', buId: 'bu-b', itemId: 'i-b' }),
+    ).rejects.toBeInstanceOf(DbError);
     const out = await lookup(BOTH, 'DUP-1');
-    expect(out.data.matches.map((m: Json) => [m.buCode, m.id])).toEqual([
-      ['A', 'sn-a'],
-      ['B', 'sn-b'],
-    ]);
+    expect(out.data.matches.map((m: Json) => [m.buCode, m.id])).toEqual([['A', 'sn-a']]);
   });
 
   test('alamat MAC dinormalisasi; serial kosong, terlalu panjang, atau berkarakter kontrol: VALIDATION', async () => {
@@ -198,7 +198,7 @@ describe('serials.reportNew', () => {
     expect(out.data.serial).toBe('4C5E0C1A2B3D');
   });
 
-  test('serial sudah ada di BU itu: CONFLICT generik tanpa menyebut BU lain; di BU lain boleh', async () => {
+  test('serial sudah ada (BU mana pun): CONFLICT generik tanpa menyebut BU', async () => {
     await seedSerial(env, { id: 'sn1', serial: 'AB12' });
     const dup = await report({ serial: 'ab12' });
     expect(dup.error?.code).toBe('CONFLICT');
@@ -208,7 +208,8 @@ describe('serials.reportNew', () => {
     expect(await count('serial_cases')).toBe(0);
     await seedSerial(env, { id: 'sn-b', serial: 'XX-1', buId: 'bu-b', itemId: 'i-b' });
     const other = await report({ serial: 'XX-1' });
-    expect(other.ok).toBe(true);
+    expect(other.error?.code).toBe('CONFLICT');
+    expect(other.error?.message).toBe(dup.error?.message);
   });
 
   test('item di luar BU, BU di luar hak tulis, item nonaktif: VALIDATION dengan pesan yang sama', async () => {

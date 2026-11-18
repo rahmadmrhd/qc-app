@@ -203,6 +203,7 @@ export async function reportNewSerial(
       // Serial yang sama dilaporkan serentak: pemenang sudah komit; yang kalah dijawab generik.
       throw mapDuplicateError(error, {
         serials_bu_serial: { message: DUPLICATE_MESSAGE, field: 'serial' },
+        serials_serial: { message: DUPLICATE_MESSAGE, field: 'serial' },
         serials_client_id: { message: DUPLICATE_MESSAGE, field: 'serial' },
       });
     }

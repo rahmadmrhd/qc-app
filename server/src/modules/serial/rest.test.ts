@@ -627,14 +627,15 @@ describe('serials.saveBatch', () => {
     expect(await stockOf('s2')).toBe(0);
   });
 
-  test('serial yang sama di BU lain tercatat terpisah', async () => {
+  // Sementara (Tugas 2): indeks unik se-sistem menolak serial yang sama di BU lain; Tugas 4 mengubahnya menjadi cek ulang.
+  test('serial yang sama di BU lain tidak lagi tercatat terpisah (unik se-sistem)', async () => {
     const out = await save(BOTH, [
       row(),
       row({ buId: 'bu-b', itemId: 'i-a2' }),
       row({ itemId: 'i-a2' }),
     ]);
-    expect(resultsOf(out).map((r) => r.result)).toEqual(['created', 'created', 'duplicate']);
-    expect(await count('serials')).toBe(2);
+    expect(resultsOf(out).map((r) => r.result)).toEqual(['created', 'duplicate', 'duplicate']);
+    expect(await count('serials')).toBe(1);
   });
 
   test('duplikat di BU yang sama, termasuk varian MAC', async () => {

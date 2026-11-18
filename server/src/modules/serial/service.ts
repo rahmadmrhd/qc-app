@@ -233,6 +233,10 @@ const LOCATION_LOCKED_MESSAGE =
 const STICKER_MESSAGE = 'Stiker tidak berlaku bagi item ini';
 export const SERIAL_CONFLICTS = {
   serials_bu_serial: { message: DUPLICATE_MESSAGE, field: 'serial' },
+  // Keunikan se-sistem (migrasi 0026); `serials_bu_serial` dipertahankan sampai rilis contract.
+  serials_serial: { message: DUPLICATE_MESSAGE, field: 'serial' },
+  // Kunci idempoten kejadian (cek ulang dari Catat).
+  serial_events_client_id: { message: DUPLICATE_MESSAGE, field: 'clientId' },
   serials_client_id: { message: DUPLICATE_MESSAGE, field: 'clientId' },
 };
 

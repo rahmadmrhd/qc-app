@@ -11,6 +11,10 @@ import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backu
 import { closeAllNotificationStreams } from '@server/modules/notification/stream-hub';
 import { createWebPushSender } from '@server/modules/notification/web-push';
 import { backfillPostelStickers } from '@server/modules/postel/stickers';
+import {
+  backfillSerialBusinessUnits,
+  ensureSerialUniqueIndex,
+} from '@server/modules/serial/bu-history';
 import { createProofStore } from '@server/modules/serial/proof/store';
 
 export interface ServerOptions {
@@ -108,6 +112,14 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
           await backfillPostelStickers(env);
         } catch (error) {
           console.error('Pengisian stiker Postel gagal:', error);
+        }
+        // Serial unik se-sistem: baris riwayat BU yang belum terisi (rollback ke image lama) dilengkapi, lalu indeks
+        // unik dibuat bila sudah tak ada serial ganda. Galat dicatat tanpa menggagalkan start (idempoten).
+        try {
+          await backfillSerialBusinessUnits(env);
+          await ensureSerialUniqueIndex(env);
+        } catch (error) {
+          console.error('Persiapan riwayat BU serial gagal:', error);
         }
       }
       startBackground();

@@ -207,6 +207,16 @@ export async function seedSerial(env: Env, serial: SeedSerial): Promise<void> {
       serial.createdBy ?? 'seed@gmail.com',
     )
     .run();
+  // Baris riwayat BU "saat ini" seperti yang ditulis aplikasi (`serial_business_units`); sisa baris serial dengan id yang
+  // sama dari seed sebelumnya (tes yang mengosongkan `serials` lalu menyemai ulang) dibuang dulu.
+  await env.DB.prepare('DELETE FROM serial_business_units WHERE serial_id = ?')
+    .bind(serial.id)
+    .run();
+  await env.DB.prepare(
+    "INSERT INTO serial_business_units (serial_id, bu_id, first_at, left_at) VALUES (?, ?, ?, '')",
+  )
+    .bind(serial.id, serial.buId ?? 'bu-a', createdAt)
+    .run();
   if (serial.openCase) {
     await env.DB.prepare(
       'INSERT INTO serial_cases (id, number, serial_id, bu_id, opened_on, origin_location_id, created_at, created_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
