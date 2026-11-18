@@ -196,6 +196,7 @@ describe('loadConfig', () => {
         qrFolderId: '',
         qrDocFolderId: '',
         backupFolderId: '',
+        desktopReleasesFolderId: '',
         allowedFolderIds: [],
       });
     });
@@ -219,6 +220,7 @@ describe('loadConfig', () => {
         QR_FOLDER_ID: 'QRFOLDERID00001',
         QR_DOC_FOLDER_ID: 'QRDOCFOLDER0001',
         BACKUP_FOLDER_ID: 'BACKUPFOLDER001',
+        DESKTOP_RELEASES_FOLDER_ID: 'RELEASESFOLDER01',
         ALLOWED_FOLDER_IDS: 'EXTRAFOLDER0001, EXTRAFOLDER0002 ,',
       });
       expect(config).toMatchObject({
@@ -229,6 +231,7 @@ describe('loadConfig', () => {
         qrFolderId: 'QRFOLDERID00001',
         qrDocFolderId: 'QRDOCFOLDER0001',
         backupFolderId: 'BACKUPFOLDER001',
+        desktopReleasesFolderId: 'RELEASESFOLDER01',
         allowedFolderIds: ['EXTRAFOLDER0001', 'EXTRAFOLDER0002'],
       });
     });
@@ -242,6 +245,7 @@ describe('loadConfig', () => {
         QR_FOLDER_ID: 'x',
         QR_DOC_FOLDER_ID: 'y',
         BACKUP_FOLDER_ID: 'z',
+        DESKTOP_RELEASES_FOLDER_ID: 'w',
         ALLOWED_FOLDER_IDS: 'OKFOLDERID0001,rusak rahasia-xyz',
       });
       for (const name of [
@@ -251,6 +255,7 @@ describe('loadConfig', () => {
         'QR_FOLDER_ID',
         'QR_DOC_FOLDER_ID',
         'BACKUP_FOLDER_ID',
+        'DESKTOP_RELEASES_FOLDER_ID',
         'ALLOWED_FOLDER_IDS',
       ]) {
         expect(error.message).toContain(name);

@@ -113,6 +113,7 @@ export function createDriveApi(
       settings.QR_FOLDER_ID,
       settings.QR_DOC_FOLDER_ID,
       settings.BACKUP_FOLDER_ID,
+      settings.DESKTOP_RELEASES_FOLDER_ID,
       ...settings.ALLOWED_FOLDER_IDS,
     ].filter(isDriveId),
   );
@@ -156,7 +157,7 @@ export function createDriveApi(
 
   /**
    * Folder yang boleh disentuh: yang tercantum di konfigurasi (`ATTACHMENTS_FOLDER_ID`, `QR_*`, `BACKUP_FOLDER_ID`,
-   * `ALLOWED_FOLDER_IDS`) atau subfolder langsung dari folder induk (diverifikasi lewat API, lalu di-cache).
+   * `DESKTOP_RELEASES_FOLDER_ID`, `ALLOWED_FOLDER_IDS`) atau subfolder langsung dari folder induk (diverifikasi lewat API, lalu di-cache).
    */
   async function isAllowedFolder(folderId: string): Promise<boolean> {
     if (!isDriveId(folderId)) return false;

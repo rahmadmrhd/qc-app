@@ -8,6 +8,8 @@ export const IMAGES_ID = 'IMAGESFOLDER001';
 export const QR_ID = 'QRFOLDERID00001';
 export const QR_DOC_ID = 'QRDOCFOLDER0001';
 export const BACKUP_ID = 'BACKUPFOLDER001';
+/** Folder rilis desktop: milik pemilik, BUKAN anak folder induk (hanya lolos karena tercantum di konfigurasi). */
+export const RELEASES_ID = 'RELEASESFOLDER01';
 export const OUTSIDE_ID = 'OUTSIDEFOLDER01';
 export const SPREADSHEET_ID = 'SPREADSHEET0001';
 export const KEY_PATH = '/run/secrets/google-sa.json';
@@ -43,6 +45,7 @@ export async function createGoogleRig(
   fake.addFolder(ROOT_ID);
   for (const id of [IMAGES_ID, QR_ID, QR_DOC_ID, BACKUP_ID]) fake.addFolder(id, [ROOT_ID]);
   fake.addFolder(OUTSIDE_ID);
+  fake.addFolder(RELEASES_ID);
   fake.sheets.set(SPREADSHEET_ID, new Map());
 
   const settings: GoogleSettings = {
@@ -53,6 +56,7 @@ export async function createGoogleRig(
     QR_FOLDER_ID: QR_ID,
     QR_DOC_FOLDER_ID: QR_DOC_ID,
     BACKUP_FOLDER_ID: BACKUP_ID,
+    DESKTOP_RELEASES_FOLDER_ID: RELEASES_ID,
     ALLOWED_FOLDER_IDS: [],
     ...overrides,
   };

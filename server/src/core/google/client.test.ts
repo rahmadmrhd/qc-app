@@ -10,6 +10,7 @@ import {
   IMAGES_ID,
   OUTSIDE_ID,
   QR_DOC_ID,
+  RELEASES_ID,
   ROOT_ID,
 } from '@server-test/google-rig';
 
@@ -210,6 +211,21 @@ describe('penjaga folder (parents)', () => {
       mime: 'text/plain',
       size: BYTES.length,
     });
+  });
+
+  test('folder rilis desktop (DESKTOP_RELEASES_FOLDER_ID) diizinkan walau bukan anak induk; tanpa konfigurasi ditolak', async () => {
+    rig = await createGoogleRig();
+    const id = rig.fake.addFile('RELEASEFILE00001', {
+      name: 'release-1.0.0.json',
+      parents: [RELEASES_ID],
+      bytes: BYTES,
+    }).id;
+    const listed = await rig.client.listFolder(RELEASES_ID);
+    expect(listed.files.map((f) => f.id)).toEqual([id]);
+    expect(rig.fake.requests.some((r) => r.url.pathname.endsWith(RELEASES_ID))).toBe(false); // tanpa verifikasi induk
+    rig.restoreConsole();
+    rig = await createGoogleRig({ DESKTOP_RELEASES_FOLDER_ID: '' });
+    expect((await failure(rig.client.listFolder(RELEASES_ID))).code).toBe('UNAVAILABLE');
   });
 
   test('folder lama yang dipindah ke bawah induk (id tak berubah) otomatis diizinkan', async () => {
