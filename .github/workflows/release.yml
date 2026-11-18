@@ -336,25 +336,39 @@ jobs:
             gh release create "$tag" --target "$SHA" --title "Server v$VERSION" --notes-file "$NOTES_DIR/notes.md"
           fi
 
-  # Menyinkronkan `main` ke `dev` setelah rilis (versi dan changelog baru). Merge lewat API tanpa PR (branch protection tak
-  # tersedia; isinya hanya metadata, jadi tak perlu deploy staging). Konflik (409) membuka PR main -> dev; membuat PR butuh
-  # setelan repo "Allow GitHub Actions to create pull requests". Kegagalan di sini hanya peringatan (rilis sudah selesai).
+  # Menyinkronkan `main` ke `dev` setelah rilis (versi dan changelog baru). Merge lewat API tanpa PR; isinya hanya metadata, jadi
+  # tak perlu deploy staging. Ruleset `dev*` mewajibkan PR dan app GitHub Actions bawaan tak boleh jadi bypass actor di repo
+  # akun personal, jadi job ini memakai token GitHub App milik pemilik (`qc-app-sync`, bypass HANYA pada ruleset dev; ruleset
+  # main tanpa bypass) yang dibuat per-run dari secret environment `sync-dev` (hanya ref `main`). Token app berumur pendek,
+  # dipersempit ke repo ini (Contents dan Pull requests: write) dan dicabut di akhir job. Konflik sungguhan (409) membuka PR
+  # main -> dev dengan token yang sama (memicu check `test`; tak butuh setelan "Allow GitHub Actions to create pull requests").
+  # Kegagalan di sini hanya peringatan atau galat langkah token (rilis sudah selesai; keputusan pemilik 2026-11-18).
   sync-dev:
     needs: [meta, publish]
     if: needs.meta.outputs.release == 'true' && needs.publish.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment: sync-dev
     permissions:
-      contents: write
-      pull-requests: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      GH_REPO: ${{ github.repository }}
-      REPO: ${{ github.repository }}
-      SHA: ${{ needs.meta.outputs.sha }}
-      VERSION: ${{ needs.meta.outputs.version }}
+      contents: read
     steps:
+      - name: Buat token GitHub App
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.SYNC_APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
       - name: Gabungkan main ke dev
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ needs.meta.outputs.sha }}
+          VERSION: ${{ needs.meta.outputs.version }}
         run: |
           set -uo pipefail
           [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Commit rilis bukan SHA 40 heksa."; exit 1; }
@@ -369,8 +383,8 @@ jobs:
             if gh pr create --base dev --head main --title "chore(rilis): sinkron main ke dev (server v$VERSION)" --body "Sinkron otomatis setelah rilis server v$VERSION: penggabungan langsung konflik, jadi dibuka sebagai PR. Selesaikan konflik lalu merge."; then
               echo "Konflik: PR main -> dev dibuka."
             else
-              echo "::warning::Penggabungan main -> dev konflik dan PR tidak dapat dibuat. Aktifkan setelan repo 'Allow GitHub Actions to create pull requests' atau buat PR main -> dev secara manual."
+              echo "::warning::Penggabungan main -> dev konflik dan PR tidak dapat dibuat (mungkin sudah ada PR main -> dev yang terbuka). Buat atau selesaikan PR main -> dev secara manual."
             fi
             exit 0
           fi
-          echo "::warning::Sinkron main -> dev gagal; sinkronkan manual sebelum rilis berikutnya (release:prepare menolak bila main bukan leluhur dev)."
+          echo "::warning::Sinkron main -> dev gagal (${out:0:200}); sinkronkan manual sebelum rilis berikutnya (release:prepare menolak bila main bukan leluhur dev)."

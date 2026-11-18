@@ -140,10 +140,16 @@ Jalur: `meta` -> `guard` -> `ci` (selektif, `ci.yml`) -> `image` -> `deploy` (pr
 - **publish** (hanya sesudah deploy sukses): membuat tag `server-vX.Y.Z` pada SHA itu dan GitHub Release (`changelog extract`
   sebagai isi; arsip sumber otomatis). Tag dibuat workflow dengan `GITHUB_TOKEN` (izin `contents: write` hanya di job ini);
   karena tag tak memicu workflow lain, semua pekerjaan rilis memang berada di run yang sama.
-- **sync-dev** (`contents: write` hanya di job ini): mencoba menggabung `main` ke `dev` langsung lewat API merge (tanpa PR,
-  karena branch protection tak ada dan deploy staging tak perlu dipicu: isinya hanya metadata). Bila konflik (409), membuka
-  PR `main` -> `dev` (butuh setelan repo "Allow GitHub Actions to create pull requests"). Guard `release:prepare` berikutnya
-  mengizinkan `dev` yang selisihnya dari `refs/deployed/staging` hanya berkas metadata.
+- **sync-dev**: mencoba menggabung `main` ke `dev` langsung lewat API merge (tanpa PR; deploy staging tak perlu dipicu: isinya
+  hanya metadata). Bila konflik (409), membuka PR `main` -> `dev`. Guard `release:prepare` berikutnya mengizinkan `dev` yang
+  selisihnya dari `refs/deployed/staging` hanya berkas metadata.
+  **Diubah 2026-11-18 (keputusan pemilik)**: asumsi awal "branch protection tak ada" gugur (repo ternyata publik dan ruleset
+  `dev*` mewajibkan PR + check `test`; app GitHub Actions bawaan tidak dapat menjadi bypass actor di repo akun personal).
+  Job `sync-dev` kini memakai token GitHub App `qc-app-sync` milik pemilik (dibuat per-run dengan `actions/create-github-app-token`
+  dari secret environment `sync-dev`, hanya ref `main`; izin token Contents dan Pull requests: write, dipersempit ke repo ini),
+  yang menjadi bypass actor pada ruleset `dev*` SAJA (ruleset `main` tanpa bypass app). `GITHUB_TOKEN` job ini cukup `contents: read`
+  dan setelan "Allow GitHub Actions to create pull requests" tidak diperlukan. PR konflik dibuat dengan token app sehingga memicu
+  check `test`.
 - `deploy-server.yml`: jalur `pull_request_target` ke `main` -> production **dilewati bila `vars.RELEASE_FLOW == 'tag'`** (pemicu
   tetap ada; job `meta` yang memutuskan dari variabel, bukan dihapus dari berkas); jalur ke `dev` -> staging dan
   `workflow_dispatch` tetap. Dispatch production dari `main` tetap ada sebagai jalan darurat. `release.yml` hanya berjalan bila
@@ -211,7 +217,7 @@ Grup `concurrency` = grup environment itu di `deploy-server.yml`.
 
 ### 5.6 Keamanan
 - Aturan `pull_request_target` yang ada berlaku: tanpa `${{ }}` di `run`, checkout hanya `merge_commit_sha`, `permissions` minimal
-  per job. `contents: write` (tag, Release, ref, merge) hanya di job `publish`, `mark-deployed`, `sync-dev`; `pull-requests: write` hanya di `sync-dev`.
+  per job. `contents: write` (tag, Release, ref) hanya di job `publish` dan `mark-deployed`; penulisan ke `dev` (merge, PR konflik) oleh `sync-dev` memakai token GitHub App, bukan `GITHUB_TOKEN` (lihat 5.4, diubah 2026-11-18).
 - Karena ruleset tag tak tersedia (5.0): siapa pun berizin tulis dapat mendorong tag `server-v*`; pagar provenance 5.5(1) mencegah
   tag palsu men-deploy sesuatu. Tag palsu tetap dapat mengotori daftar tag (diterima; tidak berefek ke deploy).
 - *Required reviewers* pada environment `production` dicatat sebagai opsi bila paket mendukung.
