@@ -127,6 +127,15 @@ describe('serials.lookup', () => {
 });
 
 describe('serials.reportNew', () => {
+  test('nomor LP mengikuti bulan WIB hari dibuat: 23:59:59 WIB tetap bulan lama, 00:00:00 WIB mulai bulan baru dari 0001', async () => {
+    env.clock.set(Date.parse('2026-11-30T16:59:59.000Z'));
+    const lastOfMonth = await report({ serial: 'NEW-1', occurredOn: '2026-11-30' });
+    expect(lastOfMonth.data.openCaseNumber).toBe('LP/A/2611-0001');
+    env.clock.set(Date.parse('2026-11-30T17:00:00.000Z'));
+    const firstOfMonth = await report({ serial: 'NEW-2', occurredOn: '2026-12-01' });
+    expect(firstOfMonth.data.openCaseNumber).toBe('LP/A/2612-0001');
+  });
+
   test('membuat serial berstatus reported, satu laporan LP, kejadian recorded lalu report_failure; tanpa stiker dan stok', async () => {
     const out = await report({ serial: 'new-1' });
     expect(out.ok).toBe(true);

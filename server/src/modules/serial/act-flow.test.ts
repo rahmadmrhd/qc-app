@@ -157,6 +157,25 @@ async function setServiceLocations(locationIds: string[]): Promise<void> {
 }
 
 describe('report_failure (baris 1)', () => {
+  test('nomor LP mengikuti bulan WIB hari dibuat: 23:59:59 WIB tetap bulan lama, 00:00:00 WIB mulai bulan baru dari 0001', async () => {
+    await seedOne();
+    await seedOne({ id: 'sn2', serial: 'CD34' });
+    env.clock.set(Date.parse('2026-11-30T16:59:59.000Z'));
+    const lastOfMonth = await act(
+      'report_failure',
+      { message: 'Layar mati' },
+      { id: 'sn1', occurredOn: '2026-11-30' },
+    );
+    expect(lastOfMonth.data.openCaseNumber).toBe('LP/A/2611-0001');
+    env.clock.set(Date.parse('2026-11-30T17:00:00.000Z'));
+    const firstOfMonth = await act(
+      'report_failure',
+      { message: 'Layar mati' },
+      { id: 'sn2', occurredOn: '2026-12-01' },
+    );
+    expect(firstOfMonth.data.openCaseNumber).toBe('LP/A/2612-0001');
+  });
+
   test('membuka laporan LP/<BU>/YYMM-0001, status reported, kejadian ber-caseId membawa catatan', async () => {
     await seedOne();
     const result = await act('report_failure', { message: 'Layar mati saat uji' });
