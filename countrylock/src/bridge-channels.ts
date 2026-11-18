@@ -2,7 +2,7 @@
 // `bridge-contract.ts` (yang memuat zod) agar bundel preload tetap kecil.
 
 /** Versi kontrak jembatan; renderer menolak jembatan di bawah `MIN_BRIDGE_VERSION`. */
-export const BRIDGE_VERSION = 7;
+export const BRIDGE_VERSION = 8;
 export const MIN_BRIDGE_VERSION = 2;
 
 /** Kanal `ipcMain.handle` (permintaan-jawaban): `qc:<grup>:<aksi>`. */
@@ -17,6 +17,8 @@ export const BRIDGE_CHANNELS = {
   pendingList: 'qc:pending:list',
   pendingAdd: 'qc:pending:add',
   pendingRemove: 'qc:pending:remove',
+  draftLoad: 'qc:draft:load',
+  draftSave: 'qc:draft:save',
   authStatus: 'qc:auth:status',
   authLogin: 'qc:auth:login',
   authLogout: 'qc:auth:logout',
@@ -59,3 +61,11 @@ export const PENDING_TARGET_BRIDGE_VERSION = 6;
 export const PENDING_UPLOAD_BRIDGE_VERSION = 7;
 /** Jembatan paling rendah yang punya `notifications.onChange`; UI lama/baru tetap berjalan tanpanya (hanya polling). */
 export const NOTIFICATIONS_BRIDGE_VERSION = 4;
+/**
+ * Jembatan paling rendah yang punya `draft` (draft Catat Serial Number di SQLite proses utama; Catat Serial Number
+ * bersama, 2026-11-18). UI yang dibangun dari repo ini memakainya, jadi `UI_MIN_BRIDGE_VERSION` mengikutinya.
+ */
+export const DRAFT_BRIDGE_VERSION = 8;
+/** Batas baris snapshot draft (sama dengan `SERIAL_LIMITS.tableRows`; dijaga tes web) dan ukuran JSON-nya. */
+export const DRAFT_MAX_ROWS = 1000;
+export const DRAFT_MAX_BYTES = 8 * 1024 * 1024;
