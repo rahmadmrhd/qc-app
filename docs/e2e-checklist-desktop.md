@@ -152,6 +152,8 @@ Prasyarat: server (staging) sudah memuat rute katalog dengan `DESKTOP_CATALOG_TO
 | I14 | Matikan jaringan, buka aplikasi, inject dengan BU dan Lokasi terpilih | Pilihan BU/Lokasi tetap tersedia dari cache dan tercatat di pending | |
 | I15 | Ubah nama sebuah lokasi di web (atau nonaktifkan), tekan tombol sinkron di navbar | Pilihan Lokasi mengikuti perubahan; lokasi nonaktif hilang dan pilihan lama yang sudah tak ada dibuang | |
 | I16 | Munculkan dialog Kredensial perangkat (tombol Kredensial) | Password tampil apa adanya, tidak tersamar | |
+| I17 | Biarkan salah satu dari Merk/Tipe/Firmware/BU/Lokasi kosong, sambungkan perangkat | Tombol Inject nonaktif; petunjuk "Wajib diisi sebelum inject: ..." menyebut yang kurang; dengan Auto Inject menyala perangkat TIDAK diinject sampai form lengkap, lalu jalan sendiri | |
+| I18 | Hapus folder `<userData>/catalog`, buka aplikasi tanpa jaringan | Inject nonaktif dengan petunjuk "Katalog belum tersinkron: tekan tombol sinkron di navbar" | |
 | I10 | Di web, matikan centang Country lock pada item berfirmware, simpan | Kolom Firmware hilang dan tersimpan kosong; item keluar dari katalog desktop pada sinkron berikutnya | |
 
 ## Pengisian hasil
