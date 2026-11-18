@@ -95,6 +95,12 @@ async function pickTipe(name: string) {
   await pickSelect(screen, 'Tipe', name);
 }
 
+/** Lokasi wajib sebelum inject; opsinya baru ada setelah potret katalog dimuat. */
+async function pickLocation(name = 'QC-A - QC A') {
+  await waitFor(async () => expect(await linkOptionNames(screen, 'Lokasi')).toContain(name));
+  await pickLink(screen, 'Lokasi', name);
+}
+
 describe('Tipe katalog -> form inject', () => {
   test('dropdown Tipe hanya berisi Tipe milik merk terpilih (urut nama)', async () => {
     setup();
@@ -157,6 +163,7 @@ describe('Tipe katalog -> form inject', () => {
     const bridge = setup();
     await pickBrand();
     await pickTipe('RB-750');
+    await pickLocation();
     const inject = screen.getByRole('button', { name: 'Inject' });
     await waitFor(() => expect(inject).toBeEnabled());
     await userEvent.click(inject);
@@ -172,16 +179,17 @@ describe('Tipe katalog -> form inject', () => {
     expect(within(table).getByText('RB-750')).toBeInTheDocument();
   });
 
-  test('tanpa Tipe terpilih, pending tetap tercatat dengan tipe kosong (pilihan manual)', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
+  test('semua field wajib: tanpa Tipe (katalog aktif) Inject nonaktif dan petunjuk menyebut yang kurang', async () => {
     const bridge = setup();
     await pickBrand();
     await pickSelect(screen, 'Firmware', 'AC 6.x');
-    const inject = screen.getByRole('button', { name: 'Inject' });
-    await waitFor(() => expect(inject).toBeEnabled());
-    await userEvent.click(inject);
-    await waitFor(() => expect(bridge.pendingList).toHaveLength(1));
-    expect(bridge.pendingList[0]).toMatchObject({ tipe: '' });
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Wajib diisi sebelum inject: Tipe, Business Unit, Lokasi\./),
+      ).toBeVisible(),
+    );
+    expect(screen.getByRole('button', { name: 'Inject' })).toBeDisabled();
+    expect(bridge.pendingList).toHaveLength(0);
   });
 
   test('build tanpa katalog (jembatan lama atau token kosong): dropdown Tipe tidak ada, form tetap manual', async () => {
@@ -264,18 +272,49 @@ describe('BU dan Lokasi -> form inject', () => {
     expect(within(table).getByText('WH-B - Gudang B')).toBeInTheDocument();
   });
 
-  test('tanpa BU/lokasi terpilih: pending tidak memuat field itu (Inject tetap boleh)', async () => {
+  test('BU dan Lokasi wajib: Inject nonaktif sampai keduanya terisi; petunjuk menyebut yang kurang', async () => {
+    setup();
+    await pickBrand('Ubiquiti');
+    await pickTipe('AF-5XHD');
+    // Firmware 'af5xhd' tak ada di paket palsu: dipilih manual. Tipe berBU dua tidak mengisi BU sendiri.
+    await pickSelect(screen, 'Firmware', 'XW');
+    await waitFor(() =>
+      expect(screen.getByText(/Wajib diisi sebelum inject: Business Unit, Lokasi\./)).toBeVisible(),
+    );
+    const inject = screen.getByRole('button', { name: 'Inject' });
+    expect(inject).toBeDisabled();
+    await pickLocation();
+    expect(screen.getByText(/Wajib diisi sebelum inject: Business Unit\./)).toBeVisible();
+    expect(inject).toBeDisabled();
+    await pickLink(screen, 'Business Unit', 'BBB - BU B');
+    await waitFor(() => expect(inject).toBeEnabled());
+    expect(screen.queryByText(/Wajib diisi sebelum inject/)).not.toBeInTheDocument();
+  });
+
+  test('katalog belum tersinkron: Inject nonaktif dan petunjuk menyuruh menekan tombol sinkron', async () => {
+    const bridge = createFakeBridge({
+      catalog: { get: async () => null, status: async () => OK },
+    });
+    render(<CountryLockPage bridge={bridge} />);
+    await pickBrand();
+    expect(await screen.findByText(/Katalog belum tersinkron: tekan tombol sinkron/)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Inject' })).toBeDisabled();
+  });
+
+  test('Auto Inject juga menunggu form lengkap, lalu jalan sendiri begitu dilengkapi', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const bridge = setup();
     await pickBrand();
-    await pickSelect(screen, 'Firmware', 'AC 6.x');
-    const inject = screen.getByRole('button', { name: 'Inject' });
-    await waitFor(() => expect(inject).toBeEnabled());
-    await userEvent.click(inject);
+    await pickTipe('RB-750');
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Auto Inject' }));
+    await userEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Lanjut' }),
+    );
+    // Lokasi masih kosong: perangkat terbaca tetapi tidak di-inject.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(bridge.pendingList).toHaveLength(0);
+    await pickLocation();
     await waitFor(() => expect(bridge.pendingList).toHaveLength(1));
-    const [entry] = bridge.pendingList;
-    expect(entry).not.toHaveProperty('buId');
-    expect(entry).not.toHaveProperty('locationId');
   });
 
   test('pilihan terakhir diingat saat halaman dibuka lagi; yang sudah tak ada di katalog dibuang', async () => {

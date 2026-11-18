@@ -69,10 +69,12 @@ export interface TipeSelection {
 export interface CountryLockActions {
   select(brand: Brand, firmwareCode: string | null): void;
   /**
-   * BU dan lokasi tujuan yang dicatat bersama serial saat inject sukses (diisi halaman dari pilihan form; hanya
-   * dikirim ke jembatan v6 ke atas karena skema `pending.add` jembatan lama menolak field itu).
+   * Diisi halaman dari pilihan form: `target` = BU dan lokasi tujuan yang dicatat bersama serial saat inject sukses
+   * (hanya dikirim ke jembatan v6 ke atas karena skema `pending.add` jembatan lama menolak field itu); `complete` =
+   * semua field form yang berlaku sudah terisi (keputusan pemilik 2026-11-18: semua wajib sebelum inject, termasuk
+   * Auto Inject).
    */
-  setTarget(target: PendingTarget): void;
+  setForm(form: { target: PendingTarget; complete: boolean }): void;
   /** Memilih (atau mengosongkan, `null`) Tipe katalog; mengisi Firmware bila Tipe punya firmware yang ada di paket. */
   selectTipe(item: CatalogItemDto | null): void;
   inject(): void;
@@ -131,6 +133,8 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
   /** Salinan sinkron `tipe`: dibaca saat inject selesai untuk dicatat ke pending. */
   const tipeRef = useRef<TipeSelection | null>(null);
   const targetRef = useRef<PendingTarget>({});
+  const formCompleteRef = useRef(true);
+  const [formComplete, setFormComplete] = useState(true);
   const credentialsRef = useRef<Credentials>({ username: '', password: '' });
   /** Kredensial ditolak: pembacaan info berhenti sampai kredensial baru atau perangkat berganti. */
   const deniedRef = useRef(false);
@@ -332,6 +336,8 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
     const brandName = start.brand;
     const config = brandName ? pkgRef.current?.config.brands[brandName] : undefined;
     if (!canInject(start) || !brandName || !start.firmwareCode || !config) return;
+    // Semua field form wajib terisi (juga bagi Auto Inject): jaring pengaman di luar tombol yang dinonaktifkan.
+    if (!formCompleteRef.current) return;
     const host = config.single.ip;
     if (host === '') return;
 
@@ -420,11 +426,13 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
       return;
     }
     if (!shouldAutoInject(state, pending)) return;
+    // Form belum lengkap: tidak ditandai sebagai sudah dicoba, jadi jalan sendiri begitu form dilengkapi.
+    if (!formComplete) return;
     const key = normalizeSerial(state.serial);
     if (injectedSerialsRef.current.has(key) || lastAutoSerialRef.current === key) return;
     lastAutoSerialRef.current = key;
     void runInject();
-  }, [state, pending, runInject]);
+  }, [state, pending, formComplete, runInject]);
 
   // --- Aksi -------------------------------------------------------------------------------
   const clearTipe = useCallback(() => {
@@ -447,8 +455,10 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
     [apply, clearTipe, defaultCredentials],
   );
 
-  const setTarget = useCallback((target: PendingTarget) => {
-    targetRef.current = target;
+  const setForm = useCallback((form: { target: PendingTarget; complete: boolean }) => {
+    targetRef.current = form.target;
+    formCompleteRef.current = form.complete;
+    setFormComplete(form.complete);
   }, []);
 
   const selectTipe = useCallback(
@@ -539,7 +549,7 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
     actions: {
       select,
       selectTipe,
-      setTarget,
+      setForm,
       inject: () => {
         void runInject();
       },
