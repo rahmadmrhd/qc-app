@@ -70,10 +70,26 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
   // Katalog offline dibaca sekali dan dipakai dropdown Tipe, BU, dan Lokasi di form.
   const catalog = useCatalog(bridge);
   const target = useInjectTarget(catalog.snapshot?.catalog ?? null, tipe?.id ?? null);
-  const { setTarget } = actions;
+  // Tipe hanya ada bila katalog aktif di build ini; tanpa itu Merk dan Firmware dipilih manual seperti biasa.
+  const showTipe = catalog.supported && catalog.status?.state !== 'disabled';
+  // BU/Lokasi ikut katalog offline dan hanya dicatat oleh jembatan v6 ke atas (skema `pending.add` ketat).
+  const showTarget = showTipe && bridge.version >= PENDING_TARGET_BRIDGE_VERSION;
+  // Semua field yang berlaku wajib terisi sebelum inject, termasuk Auto Inject (keputusan pemilik 2026-11-18).
+  const missing = [
+    state.brand === null ? 'Merk' : null,
+    showTipe && tipe === null ? 'Tipe' : null,
+    !state.firmwareCode ? 'Firmware' : null,
+    showTarget && target.buId === '' ? 'Business Unit' : null,
+    showTarget && target.locationId === '' ? 'Lokasi' : null,
+  ].filter((name): name is string => name !== null);
+  const formComplete = missing.length === 0;
+  const { setForm } = actions;
   const { pendingTarget } = target;
-  // BU/lokasi terpilih dicatat bersama serial saat inject sukses (dibaca hook inject lewat ref).
-  useEffect(() => setTarget(pendingTarget), [setTarget, pendingTarget]);
+  // BU/lokasi terpilih dicatat bersama serial saat inject sukses, dan kelengkapan form menjaga inject (lewat ref di hook).
+  useEffect(
+    () => setForm({ target: pendingTarget, complete: formComplete }),
+    [setForm, pendingTarget, formComplete],
+  );
 
   if (loading) {
     return <p className="p-4 text-sm text-muted-foreground">Memuat paket skrip...</p>;
@@ -84,12 +100,8 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
   const missingDeviceIp = brandConfig !== undefined && brandConfig.single.ip === '';
   const catalogItems = catalog.snapshot?.catalog.items ?? [];
   const tipeItems = tipeOptionsFor(catalogItems, state.brand);
-  // Tipe hanya ada bila katalog aktif di build ini; tanpa itu Merk dan Firmware dipilih manual seperti biasa.
-  const showTipe = catalog.supported && catalog.status?.state !== 'disabled';
   // Firmware dikunci hanya bila Tipe terpilih punya firmware yang ada di paket (aplikasi lama).
   const firmwareLocked = tipe?.application.ok === true;
-  // BU/Lokasi ikut katalog offline dan hanya dicatat oleh jembatan v6 ke atas (skema `pending.add` ketat).
-  const showTarget = showTipe && bridge.version >= PENDING_TARGET_BRIDGE_VERSION;
   const catalogReady = catalog.snapshot !== null;
 
   return (
@@ -164,7 +176,7 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
                   disabled={state.injecting}
                 />
                 {showTipe ? (
-                  <Select
+                  <LinkField
                     id="country-lock-tipe"
                     label="Tipe"
                     placeholder={
@@ -174,12 +186,12 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
                           ? 'Belum ada Tipe di katalog'
                           : 'Pilih tipe'
                     }
-                    value={tipe?.id ?? ''}
-                    options={tipeItems.map((item) => ({ value: item.id, label: item.model }))}
-                    onValueChange={(value) =>
-                      actions.selectTipe(tipeItems.find((item) => item.id === value) ?? null)
+                    value={tipe?.id ?? null}
+                    options={tipeItems.map((item) => ({ id: item.id, label: item.model }))}
+                    onChange={(id) =>
+                      actions.selectTipe(tipeItems.find((item) => item.id === id) ?? null)
                     }
-                    clearable
+                    localFilter
                     disabled={!brandConfig || state.injecting || tipeItems.length === 0}
                   />
                 ) : null}
@@ -269,7 +281,11 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
                   />
                   <Label htmlFor="country-lock-auto">Auto Inject</Label>
                 </div>
-                <Button type="button" onClick={actions.inject} disabled={!canInject(state)}>
+                <Button
+                  type="button"
+                  onClick={actions.inject}
+                  disabled={!canInject(state) || !formComplete}
+                >
                   Inject
                 </Button>
                 <Button
@@ -282,6 +298,14 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
                   Kredensial
                 </Button>
               </div>
+              {!formComplete ? (
+                <p className="text-sm text-muted-foreground">
+                  Wajib diisi sebelum inject: {missing.join(', ')}.
+                  {showTipe && !catalogReady
+                    ? ' Katalog belum tersinkron: tekan tombol sinkron di navbar.'
+                    : ''}
+                </p>
+              ) : null}
             </CardContent>
           </Card>
 

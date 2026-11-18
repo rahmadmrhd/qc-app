@@ -11,7 +11,7 @@ Tanggal: 2026-11-18. Spek: `docs/superpowers/specs/2026-11-06-qc-desktop-country
 
 ## Keputusan perancang yang menunggu koreksi pemilik
 
-- BU dan Lokasi **opsional** (Inject tak diblokir bila kosong). Alasan: Country Lock harus tetap jalan saat katalog belum pernah tersinkron. Mudah diubah menjadi wajib.
+- ~~BU dan Lokasi opsional~~ **Diputuskan pemilik 2026-11-18: semua field form wajib terisi sebelum inject** (Merk, Tipe, Firmware, BU, Lokasi; juga Auto Inject). Konsekuensi: katalog belum tersinkron = inject tak dapat jalan pada build ber-katalog.
 - BU yang ditawarkan **dibatasi ke BU milik Tipe terpilih** (serial Serial Number wajib ber-BU milik item); tanpa Tipe = semua BU aktif.
 - Pilihan terakhir **diingat** per komputer (`localStorage`).
 - Tombol sinkron tampil di **semua halaman** desktop (header `AppShell`), bukan hanya Country Lock.
@@ -32,5 +32,5 @@ Tanggal: 2026-11-18. Spek: `docs/superpowers/specs/2026-11-06-qc-desktop-country
 ## Perlu diketahui
 
 - Server yang belum men-deploy perubahan ini tidak mengirim `businessUnits`/`locations`: dropdown BU/Lokasi tampil kosong dan nonaktif ("Belum tersinkron") sampai server di-deploy dan katalog disinkron ulang.
-- Dropdown Tipe masih `Select` (bukan `LinkField` seperti aturan field relasi di `CLAUDE.md`); dari PR #111, belum diubah.
+- Dropdown Tipe diubah dari `Select` ke `LinkField` (aturan field relasi di `CLAUDE.md`) atas permintaan pemilik 2026-11-18.
 - `StickerInstructionsView` `imageSource` dan `catalogImageUrl` kini tanpa pemakai di aplikasi (dibiarkan: dipakai lagi bila instruksi ditampilkan di tempat lain).
