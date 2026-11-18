@@ -83,7 +83,7 @@ Halaman Lapor Rusak (`/serial/report`, `serial: edit`; dibuka dari tombol "Lapor
 - Ketik atau pindai Serial Number (normalisasi `normalizeSerial`, spek §5.1). Dicocokkan dengan serial di BU yang dapat ditulis pengguna; bila ada di lebih dari satu BU, pengguna memilih BU.
 - Ditemukan, `good`: tampil ringkasan unit dan kolom catatan (wajib); tombol Lapor membuka laporan dan meneruskan riwayat serial itu.
 - Ditemukan, punya laporan aktif: ditolak "sudah ada laporan aktif" dengan tautan ke laporan itu (nomor LP). Ditemukan, `broken`: ditolak "unit ini sudah dinyatakan rusak". Keduanya tidak membuat kejadian.
-- Tidak ditemukan: form meminta item (menentukan BU; bila item ada di dua BU atau lebih, pilih BU), lokasi, dan catatan; serial dibuat langsung berstatus `reported` dengan kejadian `recorded` lalu `report_failure`, tanggal uji = hari ini WIB, satu transaksi.
+- Tidak ditemukan: form meminta item dan BU (BU bawaan dari item, boleh dipilih bebas di antara BU yang boleh ditulis pengguna; diubah 2026-11-18, spek wajib foto butir N), lokasi, dan catatan; serial dibuat langsung berstatus `reported` dengan kejadian `recorded` lalu `report_failure`, tanggal uji = hari ini WIB, satu transaksi.
 - Pesan galat dan data masuk tetap generik soal BU lain (spek BU keputusan 13).
 
 Tambah Serial Number tidak punya kolom status dan "Catat langsung Tidak lolos" dihapus; `saveBatch` dan `.qcsn` hanya `good` (baris berstatus lain dianggap bermasalah). Menggantikan butir 40 (d).
