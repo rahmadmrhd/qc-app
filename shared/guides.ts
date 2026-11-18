@@ -36,7 +36,7 @@ export const GUIDE_VERSIONS: Record<GuideId, number> = {
   'qrcode-buat': 1,
   'serial-daftar': 1,
   'serial-detail': 1,
-  'serial-catat': 2,
+  'serial-catat': 3,
   'serial-laporan-daftar': 1,
   'serial-laporan': 1,
 };

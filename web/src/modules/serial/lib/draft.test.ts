@@ -305,15 +305,15 @@ test('missingDefaults: daftar label field Default yang kosong menurut urutan for
   const full = { itemId: 'i1', buId: 'b1', locationId: 'l1', testDate: '2026-11-12' };
   expect(missingDefaults(full)).toEqual([]);
   expect(missingDefaults({ itemId: '', buId: '', locationId: '', testDate: '' })).toEqual([
-    'Item',
-    'Business Unit',
     'Lokasi',
     'Tanggal uji',
+    'Item',
+    'Business Unit',
   ]);
   expect(missingDefaults({ ...full, locationId: '' })).toEqual(['Lokasi']);
   expect(missingDefaults({ ...full, buId: '', testDate: '' })).toEqual([
-    'Business Unit',
     'Tanggal uji',
+    'Business Unit',
   ]);
 });
 

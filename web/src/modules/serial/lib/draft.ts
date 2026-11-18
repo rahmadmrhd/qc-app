@@ -68,10 +68,10 @@ export function missingDefaults(d: {
   testDate: string;
 }): string[] {
   const missing: string[] = [];
-  if (d.itemId === '') missing.push('Item');
-  if (d.buId === '') missing.push('Business Unit');
   if (d.locationId === '') missing.push('Lokasi');
   if (d.testDate === '') missing.push('Tanggal uji');
+  if (d.itemId === '') missing.push('Item');
+  if (d.buId === '') missing.push('Business Unit');
   return missing;
 }
 

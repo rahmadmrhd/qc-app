@@ -119,7 +119,7 @@ export const SERIAL_CATAT: GuideEntry = {
   id: 'serial-catat',
   kind: 'dasar',
   status: 'disimpan',
-  version: 2,
+  version: 3,
   title: 'Mencatat Serial Number',
   grup: 'Serial Number',
   izin: SERIAL_EDIT,
@@ -128,7 +128,7 @@ export const SERIAL_CATAT: GuideEntry = {
     {
       target: 'serial-defaults',
       route: '/serial/new',
-      text: 'Isi Default dulu: item (BU mengikuti item), lokasi, dan tanggal uji wajib terisi sebelum kamu bisa scan; catatan, sample, dan stiker yang ditempel opsional (semua yang berlaku tercentang; tiap serial yang disimpan memotong stok stikernya). Kolom scan tetap abu-abu dengan petunjuk "Isi Default dulu" selama masih ada yang kosong. Dipakai untuk serial yang ditambahkan sesudahnya. Panduan tidak mengisi apa pun, jadi isi sendiri.',
+      text: 'Isi Default dulu, urutannya: lokasi, tanggal uji, item, dan BU wajib terisi sebelum kamu bisa scan; sample, stiker yang ditempel, dan catatan opsional (semua stiker yang berlaku tercentang; tiap serial yang disimpan memotong stok stikernya). Lokasi terkunci otomatis kalau lokasi aktif di header cuma satu. BU terisi sendiri bila item hanya punya satu BU, dan boleh kamu ganti ke BU mana pun. Catatan memakai editor Markdown. Kolom scan tetap abu-abu dengan petunjuk "Isi Default dulu" selama masih ada yang kosong. Dipakai untuk serial yang ditambahkan sesudahnya. Panduan tidak mengisi apa pun, jadi isi sendiri.',
       advance: 'next',
     },
     {

@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { pickLink } from '@/test/link-field';
+import { expectLinkValue, pickLink } from '@/test/link-field';
 import { addSerials } from '../lib/draft';
 import { exportQcsn } from '../lib/qcsn';
 
@@ -99,7 +99,7 @@ function renderPage() {
 
 async function pickDefaults() {
   await pickLink(screen, 'Item', 'Cisco C9200');
-  await pickLink(screen, 'Lokasi', 'Jakarta (JKT)');
+  await expectLinkValue(screen, 'Lokasi', 'Jakarta (JKT)'); // satu lokasi: terkunci dan terisi otomatis
 }
 
 async function paste(text: string) {
