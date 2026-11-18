@@ -338,6 +338,107 @@ describe('serials.stickerOptions', () => {
   });
 });
 
+describe('stiker mengikuti BU serial, bukan BU item (butir N)', () => {
+  const LOC = 'loc-seal';
+  let counter = 0;
+  const cid = () => `ffff${String(++counter).padStart(4, '0')}-0000-4000-8000-000000000000`;
+  const stock = async (stickerId: string): Promise<number | null> => {
+    const found = await env.DB.prepare(
+      'SELECT qty FROM sticker_stock WHERE sticker_id = ? AND location_id = ?',
+    )
+      .bind(stickerId, LOC)
+      .first<{ qty: number | string }>();
+    return found ? Number(found.qty) : null;
+  };
+  const row = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+    clientId: cid(),
+    serial: 'SEAL-1',
+    itemId: 'i-seal',
+    buId: 'bu-b',
+    testDate: '2026-11-12',
+    locationId: LOC,
+    sample: false,
+    note: '',
+    status: 'good',
+    ...overrides,
+  });
+  const save = async (rows: Record<string, unknown>[], email = BOTH): Promise<Json[]> =>
+    ((await call(email, 'serials.saveBatch', { rows })).data as Json).results;
+
+  beforeEach(async () => {
+    env.clock.set(Date.parse('2026-11-12T03:00:00.000Z'));
+    await seedLocation(env, { id: LOC, code: 'SEAL' });
+    await seedGuideImage(env, { id: 'g-seal' });
+    // Jenis "segel" (aturan bu): segel-A tertaut BU A, segel-B tertaut BU B. Stiker tertentu `sx` tanpa BU.
+    await seedStickerType(env, { id: 't-seg', name: 'Segel', rule: 'bu' });
+    await seedStickerType(env, { id: 't-free', name: 'Bebas', rule: 'none' });
+    await seedSticker(env, { id: 'seg-a', typeId: 't-seg', name: 'Segel A', buIds: ['bu-a'] });
+    await seedSticker(env, { id: 'seg-b', typeId: 't-seg', name: 'Segel B', buIds: ['bu-b'] });
+    await seedSticker(env, { id: 'sx', typeId: 't-free', name: 'Stiker Khusus' });
+    // Item hanya di BU A; foto instruksi: satu penanda JENIS segel dan satu penanda ke stiker tertentu.
+    await seedItem(env, {
+      id: 'i-seal',
+      brand: 'Merk',
+      model: 'AF-5XHD',
+      businessUnitIds: ['bu-a'],
+    });
+    await env.DB.prepare(
+      "INSERT INTO item_sticker_photos (item_id, guide_id, caption, bu_id, `position`) VALUES ('i-seal', 'g-seal', '', '', 0)",
+    ).run();
+    await env.DB.prepare(
+      "INSERT INTO item_sticker_marks (item_id, guide_id, `position`, x, y, sticker_id, type_id, note) VALUES ('i-seal', 'g-seal', 0, 1, 1, '', 't-seg', ''), ('i-seal', 'g-seal', 1, 2, 2, 'sx', '', '')",
+    ).run();
+    await env.DB.prepare(
+      "INSERT INTO sticker_stock (sticker_id, location_id, qty, updated_at) VALUES ('seg-a', ?, 10, ''), ('seg-b', ?, 10, ''), ('sx', ?, 10, '')",
+    )
+      .bind(LOC, LOC, LOC)
+      .run();
+  });
+
+  test('stickerOptions untuk BU B: segel-B (penanda jenis) dan stiker tertentu; segel-A tidak ada', async () => {
+    const forB = await call(BOTH, 'serials.stickerOptions', { itemId: 'i-seal', buId: 'bu-b' });
+    expect((forB.data as Json).stickers.map((x: Json) => x.id)).toEqual(['seg-b', 'sx']);
+    const forA = await call(BOTH, 'serials.stickerOptions', { itemId: 'i-seal', buId: 'bu-a' });
+    expect((forA.data as Json).stickers.map((x: Json) => x.id)).toEqual(['seg-a', 'sx']);
+  });
+
+  test('saveBatch BU B tanpa daftar stiker: serial_stickers dan stok segel-B terpotong, segel-A utuh', async () => {
+    const [result] = await save([row()]);
+    expect(result).toMatchObject({ result: 'created' });
+    const stored = await env.DB.prepare(
+      'SELECT sticker_id, qty FROM serial_stickers ORDER BY sticker_id',
+    ).all<{ sticker_id: string; qty: number | string }>();
+    expect(stored.results.map((r) => [r.sticker_id, Number(r.qty)])).toEqual([
+      ['seg-b', 1],
+      ['sx', 1],
+    ]);
+    expect(await stock('seg-b')).toBe(9);
+    expect(await stock('sx')).toBe(9);
+    expect(await stock('seg-a')).toBe(10);
+  });
+
+  test('saveBatch BU B memilih segel-A eksplisit: baris invalid "Stiker tidak berlaku", tidak ada efek', async () => {
+    const [result] = await save([row({ stickers: [{ stickerId: 'seg-a', qty: 1 }] })]);
+    expect(result).toMatchObject({
+      result: 'invalid',
+      message: 'Stiker tidak berlaku bagi item ini',
+    });
+    expect(await stock('seg-a')).toBe(10);
+    expect(await stock('seg-b')).toBe(10);
+    const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM serials').first<{
+      n: number | string;
+    }>();
+    expect(Number(count?.n)).toBe(0);
+  });
+
+  test('penanda ke stiker tertentu tidak disaring BU: sx berlaku di BU B walau tak tertaut BU mana pun', async () => {
+    const [result] = await save([row({ stickers: [{ stickerId: 'sx', qty: 2 }] })]);
+    expect(result).toMatchObject({ result: 'created' });
+    expect(await stock('sx')).toBe(8);
+    expect(await stock('seg-b')).toBe(10);
+  });
+});
+
 describe('serials.saveBatch', () => {
   const LOC = 'loc-1';
   let counter = 0;
