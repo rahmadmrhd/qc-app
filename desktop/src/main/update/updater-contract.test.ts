@@ -72,3 +72,12 @@ describe('pabrik provider kustom (kode sumber electron-updater 6.8.11)', () => {
     );
   });
 });
+
+describe('konfigurasi updater tanpa app-update.yml dari electron-builder', () => {
+  it('updateConfigPath dapat diatur (kita menulis app-update.yml berisi updaterCacheDirName sendiri)', () => {
+    // `getOrCreateDownloadHelper` membaca `updaterCacheDirName` dari berkas konfigurasi saat mengunduh; tanpa berkas itu
+    // (build kita memakai `publish: null`) unduhan gagal ENOENT. Setter publik ini mengarahkan updater ke berkas buatan kita.
+    const descriptor = Object.getOwnPropertyDescriptor(AppUpdater.prototype, 'updateConfigPath');
+    expect(descriptor?.set).toBeTypeOf('function');
+  });
+});
