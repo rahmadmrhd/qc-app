@@ -91,7 +91,10 @@ test('memuat semua kolom baris dalam satu form', async () => {
   expect(within(dialog).getByRole('combobox', { name: 'Lokasi baris' })).toBeInTheDocument();
   expect(within(dialog).getByLabelText('Tanggal uji baris')).toHaveValue('2026-11-12');
   expect(within(dialog).getByRole('checkbox', { name: 'Sample' })).toBeChecked();
-  expect(within(dialog).getByLabelText('Catatan baris')).toHaveValue('periksa');
+  // Catatan = editor Markdown (Tiptap), bukan kolom teks.
+  expect(within(dialog).getByRole('textbox', { name: 'Catatan baris' })).toHaveTextContent(
+    'periksa',
+  );
   expect(await within(dialog).findByRole('checkbox', { name: 'Stiker A' })).toBeInTheDocument();
   expect(within(dialog).getByText('Foto bukti (1)')).toBeInTheDocument();
   expect(within(dialog).getByRole('button', { name: 'Tambah foto' })).toBeInTheDocument();

@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { StagingRow } from '../lib/draft';
+import { noteSummary } from '../lib/note-summary';
 import type { StampPreviewInput } from '../lib/stamp-preview';
 import { ProofPhotoField } from './proof-photo-field';
 
@@ -131,7 +132,9 @@ function SerialCell({ clientId, serial, onCommitSerial, disabled }: SerialCellPr
 /** Lencana kecil untuk kolom yang tidak punya sel sendiri: Sample, pilihan stiker eksplisit, dan catatan. */
 export function RowBadges({ row }: { row: StagingRow }) {
   const stickers = stickerSummary(row);
-  if (!row.sample && stickers === null && row.note === '') return null;
+  // Catatan berbentuk Markdown: tabel dan kartu hanya menampilkan ringkasan teks polosnya.
+  const note = noteSummary(row.note);
+  if (!row.sample && stickers === null && note === '') return null;
   return (
     <span className="mt-0.5 flex flex-wrap gap-1 text-xs text-muted-foreground">
       {row.sample ? (
@@ -140,9 +143,9 @@ export function RowBadges({ row }: { row: StagingRow }) {
       {stickers !== null ? (
         <span className="rounded-full border px-1.5 py-px">{stickers}</span>
       ) : null}
-      {row.note !== '' ? (
-        <span className="max-w-full truncate rounded-full border px-1.5 py-px" title={row.note}>
-          Catatan: {row.note}
+      {note !== '' ? (
+        <span className="max-w-full truncate rounded-full border px-1.5 py-px" title={note}>
+          Catatan: {note}
         </span>
       ) : null}
     </span>

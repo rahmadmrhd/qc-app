@@ -115,3 +115,11 @@ test('kartu bermasalah menyiarkan statusnya lewat aria-describedby; kartu siap t
   const need = screen.getByRole('button', { name: 'Ubah baris NEED01' });
   expect(need).toHaveAccessibleDescription('Butuh 2 foto lagi');
 });
+
+test('catatan Markdown tampil sebagai ringkasan teks polos pada lencana kartu', () => {
+  renderCards([makeRow('AAA111', { note: '**Penting**: cek _kabel_\n\n- port 1\n- port 2' })]);
+  const card = screen.getByRole('listitem');
+  expect(
+    within(card).getByText('Catatan: Penting: cek kabel - port 1 - port 2'),
+  ).toBeInTheDocument();
+});

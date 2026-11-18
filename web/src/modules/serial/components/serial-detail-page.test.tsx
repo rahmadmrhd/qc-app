@@ -209,6 +209,14 @@ function renderPage() {
   );
 }
 
+test('catatan serial berbentuk Markdown dirender sebagai Markdown pada ringkasan', async () => {
+  state = { ...state, serial: { ...SERIAL, note: '**Penting** cek kabel' } };
+  renderPage();
+  const summary = await screen.findByRole('region', { name: 'Ringkasan' });
+  const strong = summary.querySelector('strong');
+  expect(strong).toHaveTextContent('Penting');
+});
+
 const calls = (id: string) => apiMock.mock.calls.filter((call) => call[0] === id);
 
 beforeEach(() => {
@@ -396,10 +404,10 @@ test('dialog ubah data mengirim data lengkap dan menampilkan "Serial sudah terda
     note: 'catatan awal',
     locationId: 'l1',
   });
-  // Hanya item pada BU serial yang ditawarkan.
+  // Item tidak lagi dibatasi pada BU serial (BU tidak terikat BU item): semua item yang terlihat ditawarkan.
   const names = await linkOptionNames(within(dialog), 'Item');
   expect(names).toContain('Aruba 2930');
-  expect(names).not.toContain('Lain BU');
+  expect(names).toContain('Lain BU');
 });
 
 test('dialog ubah data setelah 412: formulir dibasiskan ulang ke data server dan simpan ulang memakai versi baru', async () => {

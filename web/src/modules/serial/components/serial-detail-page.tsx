@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
 import { buIdsWithLevelOf, serialActorModules } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
+import { MarkdownView } from '@/modules/markdown/markdown-view';
 import { CUSTODY_LABEL, formatDay, STATUS_LABEL } from '../lib/labels';
 import { todayWib } from '../lib/locations';
 import { hasPendingProof, PROOF_POLL_MS } from '../lib/proof-state';
@@ -76,7 +77,9 @@ function Summary({ serial, events }: { serial: SerialDto; events: readonly Seria
         <Fact label="Lokasi terakhir">{serial.locationName}</Fact>
         <Fact label="Sample">{serial.sample ? 'Ya' : 'Tidak'}</Fact>
         <Fact label="Dicatat oleh">{serial.createdBy}</Fact>
-        <Fact label="Catatan">{serial.note === '' ? '—' : serial.note}</Fact>
+        <Fact label="Catatan">
+          {serial.note === '' ? '—' : <MarkdownView source={serial.note} />}
+        </Fact>
         <Fact label="Stiker ditempel">
           {serial.stickers.length === 0
             ? '—'

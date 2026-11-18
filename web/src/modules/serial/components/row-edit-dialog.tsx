@@ -27,6 +27,7 @@ import { ItemBuField, type ItemBuValue } from './item-bu-field';
 import { ProofPhotoDialog } from './proof-photo-dialog';
 import { ProofPhotoGrid } from './proof-photo-grid';
 import { SerialLocationField } from './serial-location-field';
+import { SerialNoteField } from './serial-note-field';
 import { defaultStickerChoice, StickerChecklist, useApplicableStickers } from './sticker-checklist';
 
 export interface RowEditResult {
@@ -255,15 +256,7 @@ export function RowEditDialog({
               />
               <Label htmlFor="edit-sample">Sample</Label>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-note">Catatan baris</Label>
-              <Input
-                id="edit-note"
-                value={note}
-                maxLength={SERIAL_LIMITS.noteMax}
-                onChange={(event) => setNote(event.target.value)}
-              />
-            </div>
+            <SerialNoteField id="edit-note" label="Catatan baris" value={note} onChange={setNote} />
             <StickerChecklist
               idPrefix="detail"
               state={state}
