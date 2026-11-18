@@ -173,6 +173,9 @@ describe('Tipe katalog -> form inject', () => {
       serial: 'ABC123',
       brand: 'mikrotik',
       tipe: 'RB-750',
+      // Bahan unggah (jembatan v7): id Tipe katalog dan kunci idempoten per baris.
+      itemId: 'i1',
+      clientId: expect.stringMatching(/^[A-Za-z0-9-]{8,100}$/),
     });
     // Kolom Tipe di daftar pending memuat nama itu (bukan "-").
     const table = await screen.findByRole('table');
@@ -371,5 +374,8 @@ describe('BU dan Lokasi -> form inject', () => {
     await userEvent.click(inject);
     await waitFor(() => expect(bridge.pendingList).toHaveLength(1));
     expect(bridge.pendingList[0]).not.toHaveProperty('buId');
+    // Jembatan v5 juga belum menerima bahan unggah.
+    expect(bridge.pendingList[0]).not.toHaveProperty('itemId');
+    expect(bridge.pendingList[0]).not.toHaveProperty('clientId');
   });
 });

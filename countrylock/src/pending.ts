@@ -12,6 +12,9 @@ export interface PendingEntry {
   buLabel?: string;
   locationId?: string;
   locationLabel?: string;
+  /** Id Tipe katalog (= item Serial Number) dan kunci idempoten unggah per baris (jembatan v7). */
+  itemId?: string;
+  clientId?: string;
   /** Tanggal lokal hari itu (tanpa jam). */
   date: string;
   /** Waktu pencatatan (ISO 8601). */

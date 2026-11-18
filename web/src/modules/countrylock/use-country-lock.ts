@@ -3,7 +3,10 @@
 // `reduceSession`, menjalankan inject, dan mencatat pending HANYA setelah `inject.run` sukses.
 // Semua efek samping ada di sini; aturan murninya di `@countrylock/*`.
 
-import { PENDING_TARGET_BRIDGE_VERSION } from '@countrylock/bridge-channels';
+import {
+  PENDING_TARGET_BRIDGE_VERSION,
+  PENDING_UPLOAD_BRIDGE_VERSION,
+} from '@countrylock/bridge-channels';
 import type {
   InjectProgressDto,
   InjectResult,
@@ -33,6 +36,7 @@ import {
   safeLine,
 } from './lib/safe-text';
 import { resolveTypeApplication, type TypeApplication } from './lib/type-firmware';
+import { newClientId } from './lib/upload';
 import type { PendingTarget } from './use-inject-target';
 
 /** Jeda sebelum dialog progres menutup sendiri setelah inject sukses/dibatalkan (legacy: 1 detik). */
@@ -78,6 +82,10 @@ export interface CountryLockActions {
   /** Memilih (atau mengosongkan, `null`) Tipe katalog; mengisi Firmware bila Tipe punya firmware yang ada di paket. */
   selectTipe(item: CatalogItemDto | null): void;
   inject(): void;
+  /** Memuat ulang antrean pending dari proses utama. */
+  refreshPending(): Promise<void>;
+  /** Menghapus satu serial dari antrean (tindakan pengguna) lalu memuat ulang daftar. */
+  removePending(serial: string): Promise<void>;
   cancel(): void;
   toggleAuto(on: boolean): void;
   submitCredentials(username: string, password: string): void;
@@ -350,6 +358,11 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
     const tipeName = tipeRef.current?.name ?? '';
     // BU/lokasi mengikuti pilihan saat inject dimulai juga; jembatan lama tidak menerimanya.
     const target = bridge.version >= PENDING_TARGET_BRIDGE_VERSION ? { ...targetRef.current } : {};
+    // Bahan unggah (jembatan v7): Tipe katalog = item Serial Number, dan kunci idempoten per baris.
+    const uploadBasis =
+      bridge.version >= PENDING_UPLOAD_BRIDGE_VERSION
+        ? { clientId: newClientId(), ...(tipeRef.current ? { itemId: tipeRef.current.id } : {}) }
+        : {};
     const credentials = credentialsRef.current;
     const id = newInjectId();
     injectIdRef.current = id;
@@ -387,6 +400,7 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
           brand: brandName,
           tipe: tipeName,
           ...target,
+          ...uploadBasis,
           date: localDate(),
           timestamp: new Date().toISOString(),
         });
@@ -453,6 +467,18 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
       apply({ type: 'select', brand: nextBrand, firmwareCode });
     },
     [apply, clearTipe, defaultCredentials],
+  );
+
+  const removePending = useCallback(
+    async (serial: string) => {
+      try {
+        await bridge.pending.remove(serial);
+      } catch {
+        // Gagal dihapus: daftar dimuat ulang di bawah menunjukkan keadaan sebenarnya.
+      }
+      await refreshPending();
+    },
+    [bridge, refreshPending],
   );
 
   const setForm = useCallback((form: { target: PendingTarget; complete: boolean }) => {
@@ -553,6 +579,8 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
       inject: () => {
         void runInject();
       },
+      refreshPending,
+      removePending,
       cancel,
       toggleAuto,
       submitCredentials,

@@ -24,6 +24,7 @@ export {
   NOTIFICATIONS_BRIDGE_VERSION,
   NOTIFICATIONS_CHANGE_EVENT,
   PENDING_TARGET_BRIDGE_VERSION,
+  PENDING_UPLOAD_BRIDGE_VERSION,
   UI_UPDATE_READY_EVENT,
 } from './bridge-channels';
 
@@ -219,6 +220,12 @@ export const PendingEntrySchema = z.strictObject({
   buLabel: plain(200, 0).optional(),
   locationId: plain(100).optional(),
   locationLabel: plain(200, 0).optional(),
+  // Bahan unggah (jembatan v7): id Tipe katalog (= item Serial Number) dan kunci idempoten per baris.
+  itemId: plain(100).optional(),
+  clientId: z
+    .string()
+    .regex(/^[A-Za-z0-9-]{8,100}$/, 'clientId tidak valid')
+    .optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Tanggal harus YYYY-MM-DD'),
   timestamp: IsoTimestamp,
   reinjectedAt: IsoTimestamp.optional(),
