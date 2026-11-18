@@ -1,5 +1,5 @@
 import type { SerialDto, SerialEditable } from '@shared/contract';
-import { isIsoDate, normalizeSerial, SERIAL_LIMITS, serialProblem } from '@shared/serials';
+import { isIsoDate, normalizeSerial, serialProblem } from '@shared/serials';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { FieldError } from '@/components/field-error';
@@ -27,6 +27,7 @@ import {
   useUpdateSerial,
 } from '../queries';
 import { SerialLocationField } from './serial-location-field';
+import { SerialNoteField } from './serial-note-field';
 
 export interface EditSerialDialogProps {
   serial: SerialDto;
@@ -67,10 +68,11 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
   const [error, setError] = useState<string | null>(null);
 
   const { data, isFetching } = useQuery(serialItemOptionsQueryOptions(itemTerm.trim()));
-  // Item pengganti harus memuat BU serial ini (BU tidak berubah).
-  const itemOptions: LinkOption[] = (data?.items ?? [])
-    .filter((option) => option.buIds.includes(serial.buId))
-    .map((option) => ({ id: option.id, label: option.label }));
+  // BU serial tidak lagi terikat BU item (spek Catat wajib foto butir N): semua item yang terlihat boleh dipilih.
+  const itemOptions: LinkOption[] = (data?.items ?? []).map((option) => ({
+    id: option.id,
+    label: option.label,
+  }));
 
   // Selama dalam pengiriman atau di servis, lokasi hanya berubah lewat Kirim/Terima (server menolak ubah lokasi).
   const locationLocked = base.custody !== 'qc';
@@ -279,14 +281,13 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
           </div>
           <ConflictNote text={conflicts.sample} />
           <div className="space-y-1.5">
-            <Label htmlFor="edit-note">Catatan</Label>
-            <Input
+            <SerialNoteField
               id="edit-note"
+              label="Catatan"
               value={note}
-              maxLength={SERIAL_LIMITS.noteMax}
-              onChange={(event) => setNote(event.target.value)}
+              onChange={setNote}
+              error={fieldErrors.note}
             />
-            <FieldError errors={[fieldErrors.note]} />
             <ConflictNote text={conflicts.note} />
           </div>
           {notice ? (

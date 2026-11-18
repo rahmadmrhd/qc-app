@@ -4,9 +4,9 @@ import { proofMinimumOf } from '@shared/serials';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { LinkField, type LinkOption } from '@/components/link-field';
-import { serialItemOptionsQueryOptions } from '../queries';
+import { serialBuOptionsQueryOptions, serialItemOptionsQueryOptions } from '../queries';
 
-/** Item (dan BU-nya) yang dipilih pada rombongan, baris, atau ubah massal. */
+/** Item dan BU yang dipilih pada rombongan, baris, atau ubah massal. */
 export interface ItemBuValue {
   itemId: string;
   itemLabel: string;
@@ -25,20 +25,42 @@ export const EMPTY_ITEM_BU: ItemBuValue = {
 };
 
 export interface ItemBuFieldProps {
-  /** Label field item (juga nama combobox); label field BU menjadi `${buLabel}`. */
+  /** Label field item (juga nama combobox); label field BU adalah `buFieldLabel`. */
   label: string;
   buFieldLabel: string;
   idPrefix: string;
   value: ItemBuValue;
   onChange: (value: ItemBuValue) => void;
+  /** Galat pada field item. */
   error?: string | undefined;
+  /** Galat pada field BU. */
+  buError?: string | undefined;
   disabled?: boolean;
 }
 
 /**
- * Item (`LinkField`, pencarian di server lewat `serials.itemOptions`, hanya item pada BU yang boleh ditulis) dan BU-nya:
- * BU otomatis bila item hanya di satu BU yang boleh ditulis, `LinkField` BU bila lebih dari satu. Tanpa Tambah/Buka:
- * item dikelola di Data Item.
+ * BU bawaan setelah item dipilih (spek Catat wajib foto, butir N): BU item yang termasuk daftar BU tulis. Tepat satu =
+ * terisi; lebih dari satu = BU sebelumnya dipertahankan bila salah satunya, selain itu kosong sampai dipilih; item
+ * tanpa BU yang dikenal tidak menyentuh pilihan BU sekarang. Murni, agar dapat diuji sendiri.
+ */
+export function defaultBuForItem(
+  itemBus: readonly { id: string; code: string }[],
+  allowed: readonly { id: string }[] | null,
+  current: { id: string; code: string },
+): { id: string; code: string } {
+  const known =
+    allowed === null ? itemBus : itemBus.filter((bu) => allowed.some((a) => a.id === bu.id));
+  if (known.length === 0) return current;
+  const [only] = known;
+  if (known.length === 1 && only) return only;
+  return known.find((bu) => bu.id === current.id) ?? { id: '', code: '' };
+}
+
+/**
+ * Item (`LinkField`, pencarian di server lewat `serials.itemOptions`) dan BU (`LinkField`, SELALU tampil dengan semua BU
+ * yang boleh ditulis pengguna lewat `serials.buOptions`; BU serial tidak lagi dibatasi pada BU item). BU terisi dari item
+ * sesuai `defaultBuForItem` dan boleh diganti ke BU mana pun. Tanpa Tambah/Buka: item dikelola di Data Item. Dirender
+ * sebagai dua blok bersaudara (fragmen) agar pemanggil dapat menempatkannya dalam grid atau tumpukan form.
  */
 export function ItemBuField({
   label,
@@ -47,12 +69,14 @@ export function ItemBuField({
   value,
   onChange,
   error,
+  buError,
   disabled,
 }: ItemBuFieldProps) {
   const [term, setTerm] = useState('');
   const [buTerm, setBuTerm] = useState('');
   const [picked, setPicked] = useState<SerialItemOptionDto | null>(null);
   const { data, isFetching } = useQuery(serialItemOptionsQueryOptions(term.trim()));
+  const { data: buData, isPending: buPending } = useQuery(serialBuOptionsQueryOptions());
   const known = new Map<string, SerialItemOptionDto>();
   for (const item of data?.items ?? []) known.set(item.id, item);
   if (picked) known.set(picked.id, picked);
@@ -60,71 +84,78 @@ export function ItemBuField({
     id: item.id,
     label: item.label,
   }));
-  const buOptions = value.itemId === '' ? [] : (known.get(value.itemId)?.buOptions ?? []);
+
+  // Daftar BU tulis belum ada (memuat atau gagal): pilihan sementara = BU item terpilih, supaya field tetap dapat dipakai.
+  const allBus: { id: string; code: string }[] | null = buData
+    ? buData.businessUnits.map((bu) => ({ id: bu.id, code: bu.code }))
+    : null;
+  const itemBus = value.itemId === '' ? [] : (known.get(value.itemId)?.buOptions ?? []);
+  const buChoices = allBus ?? itemBus;
   const buKey = normalizeKey(buTerm);
-  const buLinkOptions: LinkOption[] = buOptions
+  const buLinkOptions: LinkOption[] = buChoices
     .map((bu) => ({ id: bu.id, label: bu.code }))
     .filter((option) => buKey === '' || normalizeKey(option.label).includes(buKey));
 
   function pickItem(id: string | null) {
     if (id === null) {
       setPicked(null);
-      onChange(EMPTY_ITEM_BU);
+      // BU tidak terikat item: mengosongkan item tidak mengosongkan BU.
+      onChange({ ...EMPTY_ITEM_BU, buId: value.buId, buLabel: value.buLabel });
       return;
     }
     const item = known.get(id);
     if (!item) return;
     setPicked(item);
-    const keep = item.buOptions.find((bu) => bu.id === value.buId);
-    const only = item.buOptions.length === 1 ? item.buOptions[0] : undefined;
-    const bu = keep ?? only;
+    const bu = defaultBuForItem(item.buOptions, allBus, { id: value.buId, code: value.buLabel });
     onChange({
       itemId: item.id,
       itemLabel: item.label,
-      buId: bu?.id ?? '',
-      buLabel: bu?.code ?? '',
+      buId: bu.id,
+      buLabel: bu.code,
       proofMin: proofMinimumOf(item),
     });
   }
 
   return (
-    <div className="space-y-1.5">
-      <LinkField
-        id={`${idPrefix}-item`}
-        label={label}
-        placeholder="Cari merk atau tipe item…"
-        value={value.itemId === '' ? null : value.itemId}
-        labelOf={(id) => (id === value.itemId ? value.itemLabel : (known.get(id)?.label ?? id))}
-        options={options}
-        loading={isFetching && data === undefined}
-        hasMore={data?.nextCursor != null}
-        onSearchChange={setTerm}
-        searchDebounceMs={200}
-        onChange={pickItem}
-        error={error}
-        disabled={disabled ?? false}
-      />
-      {value.itemId !== '' && buOptions.length > 1 ? (
+    <>
+      <div className="space-y-1.5">
+        <LinkField
+          id={`${idPrefix}-item`}
+          label={label}
+          placeholder="Cari merk atau tipe item…"
+          value={value.itemId === '' ? null : value.itemId}
+          labelOf={(id) => (id === value.itemId ? value.itemLabel : (known.get(id)?.label ?? id))}
+          options={options}
+          loading={isFetching && data === undefined}
+          hasMore={data?.nextCursor != null}
+          onSearchChange={setTerm}
+          searchDebounceMs={200}
+          onChange={pickItem}
+          error={error}
+          disabled={disabled ?? false}
+        />
+      </div>
+      <div className="space-y-1.5">
         <LinkField
           id={`${idPrefix}-bu`}
           label={buFieldLabel}
           placeholder="Pilih Business Unit…"
           value={value.buId === '' ? null : value.buId}
           labelOf={(id) =>
-            id === value.buId ? value.buLabel : (buOptions.find((bu) => bu.id === id)?.code ?? id)
+            id === value.buId ? value.buLabel : (buChoices.find((bu) => bu.id === id)?.code ?? id)
           }
           options={buLinkOptions}
+          loading={allBus === null && buPending}
           onSearchChange={setBuTerm}
           searchDebounceMs={0}
           onChange={(id) => {
-            const bu = buOptions.find((option) => option.id === id);
+            const bu = buChoices.find((option) => option.id === id);
             onChange({ ...value, buId: bu?.id ?? '', buLabel: bu?.code ?? '' });
           }}
+          error={buError}
           disabled={disabled ?? false}
         />
-      ) : value.itemId !== '' && value.buLabel !== '' ? (
-        <p className="text-xs text-muted-foreground">Business Unit: {value.buLabel}</p>
-      ) : null}
-    </div>
+      </div>
+    </>
   );
 }
