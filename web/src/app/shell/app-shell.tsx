@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useMe } from '@/modules/auth/use-me';
-import { CatalogSyncButton } from '@/modules/countrylock/components/catalog-sync-button';
 import { GuideBanner } from '@/modules/guide/components/guide-banner';
 import { GuideGreeting } from '@/modules/guide/components/guide-greeting';
 import { TourProvider } from '@/modules/guide/components/tour/tour-provider';
@@ -38,7 +37,6 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
               <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
                 <SidebarTrigger data-tour="sidebar-trigger" />
                 <div className="ml-auto flex items-center gap-1">
-                  <CatalogSyncButton />
                   <LocationPicker />
                   <OutboxChip />
                   <NotificationBell />

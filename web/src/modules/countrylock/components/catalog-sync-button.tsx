@@ -57,13 +57,14 @@ function SyncControl({ bridge }: { bridge: QcBridge }) {
       className={warn ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}
     >
       <RefreshCw className={refreshing ? 'animate-spin' : undefined} />
-      <span className="hidden text-xs lg:inline">{text}</span>
+      <span className="hidden text-xs sm:inline">{text}</span>
     </Button>
   );
 }
 
 /**
- * Tombol sinkron data offline (Tipe, BU, Lokasi) beserta waktu sinkron terakhir, di navbar aplikasi desktop. Hanya
+ * Tombol sinkron data offline (Tipe, BU, Lokasi) beserta waktu sinkron terakhir, di baris judul halaman Country Lock (tidak di navbar; keputusan pemilik
+ * 2026-11-18). Hanya
  * tampil di desktop berjembatan v5+ yang katalognya aktif; di peramban tidak merender apa pun.
  */
 export function CatalogSyncButton({ bridge = getBridge() }: { bridge?: QcBridge | null }) {

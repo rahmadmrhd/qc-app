@@ -5,8 +5,8 @@ import { describe, expect, test, vi } from 'vitest';
 import { createFakeBridge } from '../fake-bridge';
 import { CatalogSyncButton, formatSyncedAt } from './catalog-sync-button';
 
-// Tombol sinkron data offline di navbar desktop (keputusan pemilik 2026-11-18): pindahan dari panel "Katalog Tipe",
-// kini dengan waktu sinkron terakhir, dan tampil di semua halaman (header AppShell dan header ringan /country-lock).
+// Tombol sinkron data offline di halaman Country Lock (keputusan pemilik 2026-11-18): pindahan dari panel "Katalog
+// Tipe", kini dengan waktu sinkron terakhir, hanya di halaman itu (tidak di navbar/semua halaman).
 
 const OK: CatalogStatus = {
   state: 'ok',
