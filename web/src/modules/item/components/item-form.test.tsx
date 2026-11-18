@@ -134,6 +134,8 @@ test('mengirim brandId, businessUnitIds, dan nilai lengkap lainnya', async () =>
       model: 'ES 24 250W',
       isCountryLock: true,
       firmware: '',
+      proofRequired: false,
+      proofMin: 1,
       aliasesText: 'ES24\nAirSwitch',
       stickerPhotos: [],
       accessories: [{ name: 'Kabel daya', qty: 1 }],
@@ -600,4 +602,66 @@ test('firmware dikosongkan saat Country lock dimatikan atau merk diganti ke merk
       expect.objectContaining({ brandId: 'b3', isCountryLock: false, firmware: '' }),
     ),
   );
+});
+
+test('wajib foto bukti: kolom Minimum foto hanya muncul saat dicentang (bawaan 1) dan ikut terkirim', async () => {
+  const { onSubmit } = renderForm();
+  expect(screen.queryByLabelText('Minimum foto')).not.toBeInTheDocument();
+  await pickBrand('Mikrotik');
+  await userEvent.type(screen.getByLabelText('Tipe'), 'ES 24');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Wajib foto bukti' }));
+  const field = screen.getByLabelText('Minimum foto');
+  expect(field).toHaveValue(1);
+  await userEvent.clear(field);
+  await userEvent.type(field, '2');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await waitFor(() =>
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ proofRequired: true, proofMin: 2 }),
+    ),
+  );
+});
+
+test('wajib foto bukti: nilai di luar 1-5 atau kosong menampilkan galat dan tidak mengirim', async () => {
+  const { onSubmit } = renderForm();
+  await pickBrand('Mikrotik');
+  await userEvent.type(screen.getByLabelText('Tipe'), 'ES 24');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Wajib foto bukti' }));
+  const field = screen.getByLabelText('Minimum foto');
+  for (const value of ['6', '0']) {
+    await userEvent.clear(field);
+    await userEvent.type(field, value);
+    await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+    expect(await screen.findByText('Minimum foto harus 1–5')).toBeInTheDocument();
+  }
+  await userEvent.clear(field);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(await screen.findByText('Minimum foto harus 1–5')).toBeInTheDocument();
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
+test('wajib foto bukti dimatikan: kolom hilang dan terkirim proofRequired false, proofMin 1', async () => {
+  const { onSubmit } = renderForm();
+  await pickBrand('Mikrotik');
+  await userEvent.type(screen.getByLabelText('Tipe'), 'ES 24');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Wajib foto bukti' }));
+  await userEvent.clear(screen.getByLabelText('Minimum foto'));
+  await userEvent.type(screen.getByLabelText('Minimum foto'), '4');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Wajib foto bukti' }));
+  expect(screen.queryByLabelText('Minimum foto')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await waitFor(() =>
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ proofRequired: false, proofMin: 1 }),
+    ),
+  );
+});
+
+test('galat server pada proofMin tampil di fieldnya', () => {
+  renderForm({
+    defaultValues: { ...toItemFormDefaults(), proofRequired: true, proofMin: 2 },
+    fieldErrors: { proofMin: 'Minimum foto harus 1 sampai 5' },
+  });
+  expect(screen.getByLabelText('Minimum foto')).toHaveValue(2);
+  expect(screen.getByText('Minimum foto harus 1 sampai 5')).toBeInTheDocument();
 });
