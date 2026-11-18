@@ -464,6 +464,26 @@ describe('registerIpc', () => {
     });
   });
 
+  describe('draft: galat penyimpanan', () => {
+    test('pesan berkas draft rusak diteruskan; galat lain menjadi pesan generik tanpa isi aslinya', async () => {
+      const { call, deps, store } = setup();
+      deps.draft = {
+        load: () => {
+          throw new Error('Draft tersimpan rusak: isinya tidak terbaca.');
+        },
+        save: () => {
+          throw new Error('SQLITE_FULL: rahasia di C:\\Users\\x\\draft.db');
+        },
+        close: () => undefined,
+      };
+      await expect(call(BRIDGE_CHANNELS.draftLoad)).rejects.toThrow('Draft tersimpan rusak');
+      const failure = call(BRIDGE_CHANNELS.draftSave, [{ serial: 'A' }]);
+      await expect(failure).rejects.toThrow('Draft tidak dapat disimpan');
+      await expect(failure).rejects.not.toThrow(/SQLITE_FULL|draft\.db/);
+      store.close();
+    });
+  });
+
   describe('inject.run', () => {
     test('mengambil host key router, merencanakan inject, menjalankan eksekutor dengan SENTINEL_BY_BRAND dan menyamarkan kata sandi', async () => {
       let captured: InjectOptions | undefined;

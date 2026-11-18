@@ -20,6 +20,7 @@ export type FakeOverrides = {
   device?: Partial<QcBridge['device']>;
   inject?: Partial<QcBridge['inject']>;
   pending?: Partial<QcBridge['pending']>;
+  draft?: Partial<QcBridge['draft']>;
   auth?: Partial<QcBridge['auth']>;
   ui?: Partial<QcBridge['ui']>;
   catalog?: Partial<QcBridge['catalog']>;
@@ -31,6 +32,8 @@ export interface FakeBridge extends QcBridge {
   emitProgress(progress: InjectProgressDto, id?: string): void;
   /** Daftar pending di memori (dipakai tes untuk memeriksa pencatatan). */
   readonly pendingList: PendingEntry[];
+  /** Snapshot draft di memori (dipakai tes untuk memeriksa penyimpanan draft). */
+  readonly draftRows: unknown[];
   /** Permintaan inject yang pernah diterima. */
   readonly injectRequests: InjectRequest[];
 }
@@ -95,6 +98,7 @@ export function createFakePackage(overrides: Partial<PackageDto> = {}): PackageD
 export function createFakeBridge(overrides: FakeOverrides = {}): FakeBridge {
   const listeners = new Set<(e: { id: string } & InjectProgressDto) => void>();
   const pendingList: PendingEntry[] = [];
+  const draftRows: unknown[] = [];
   const injectRequests: InjectRequest[] = [];
   let lastInjectId = '';
 
@@ -182,8 +186,16 @@ export function createFakeBridge(overrides: FakeOverrides = {}): FakeBridge {
       },
       ...overrides.pending,
     },
+    draft: {
+      load: async () => structuredClone(draftRows),
+      save: async (rows) => {
+        draftRows.splice(0, draftRows.length, ...structuredClone([...rows]));
+      },
+      ...overrides.draft,
+    },
     emitProgress: (progress, id) => emit({ id: id ?? lastInjectId, ...progress }),
     pendingList,
+    draftRows,
     injectRequests,
   };
 }

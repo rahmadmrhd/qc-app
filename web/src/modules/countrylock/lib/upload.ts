@@ -7,12 +7,7 @@ import type { SerialRowInput, SerialRowResult } from '@shared/contract';
 /** Baris per permintaan (server menerima maks. 200; potongan lebih kecil menjaga satu permintaan tetap singkat). */
 export const UPLOAD_CHUNK = 100;
 
-/** Id idempoten per baris (`serials.client_id`): UUID acak; cadangan manual bila `randomUUID` tak tersedia. */
-export function newClientId(): string {
-  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
-}
+export { newClientId } from './client-id';
 
 /**
  * Alasan entri belum dapat diunggah (`null` = siap). Entri lama (dicatat sebelum jembatan v7 atau tanpa katalog) tak
