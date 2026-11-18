@@ -1,6 +1,6 @@
 # Alur Catat Serial Number dengan wajib foto bukti dan kamera di dialog foto
 
-Tanggal: 2026-11-18. Status: **RANCANGAN, menunggu persetujuan pemilik produk** (keputusan perancang di §3 perlu dikonfirmasi). Spek induk: `docs/superpowers/specs/2026-11-12-serial-number-design.md`. Spek bukti foto (bagian 2): `docs/superpowers/specs/2026-11-16-serial-bukti-foto-qc-design.md`.
+Tanggal: 2026-11-18. Status: **DISETUJUI pemilik produk 2026-11-18** (termasuk keputusan perancang A sampai L di §3; J, K, dan L dikonfirmasi satu per satu dengan koreksi pada L, sisanya "setujui semua"). Spek induk: `docs/superpowers/specs/2026-11-12-serial-number-design.md`. Spek bukti foto (bagian 2): `docs/superpowers/specs/2026-11-16-serial-bukti-foto-qc-design.md`.
 
 ## 1. Tujuan dan latar belakang
 Permintaan pemilik produk (2026-11-18): "perbaiki flownya pada saat mencatat Serial Number": (a) item dapat ditandai **wajib foto bukti** dengan jumlah foto minimum; (b) pada form catat, **Default harus diisi dulu** sebelum mulai scan; (c) untuk item wajib foto, scan menjadi **satu barcode per kali** dalam dialog scanner **dua langkah** (scan, lalu konfirmasi yang memuat informasi item, serial yang dapat diedit, dan lampiran foto; Simpan baru aktif bila foto mencapai minimum), dan serial baru masuk tabel draft setelah Simpan; (g) di tabel draft, edit massal lewat tombol Edit dan Hapus pada bar aksi pilihan dengan form ubah massal dalam dialog, serta tampilan ponsel yang dirancang ulang tanpa scroll horizontal (§6.5); (d) dialog foto memberi **pratinjau gambar yang dapat diklik**; (e) dialog foto mendapat **kamera di dalam dialog**, layar penuh, dengan kontrol Switch kamera, Flash, dan Zoom seperti kamera scanner; (f) **cap** ditampilkan saat pengguna memotret.
@@ -39,7 +39,7 @@ Bukan tujuan: wajib foto pada Cek ulang, Lapor rusak, atau jalur lain; aturan wa
 
 ## 6. Perilaku
 ### 6.1 Data dan DTO
-- Migrasi `0023_item_wajib_foto.sql` (expand-only, idempoten): `ALTER TABLE items ADD COLUMN IF NOT EXISTS proof_required TINYINT(1) NOT NULL DEFAULT 0` dan `proof_min TINYINT UNSIGNED NOT NULL DEFAULT 1`.
+- Migrasi `0024_item_wajib_foto.sql` (expand-only, idempoten): `ALTER TABLE items ADD COLUMN IF NOT EXISTS proof_required TINYINT(1) NOT NULL DEFAULT 0` dan `proof_min TINYINT UNSIGNED NOT NULL DEFAULT 1`.
 - `ItemDto`/input item: `proofRequired: boolean`, `proofMin: number` (1 sampai 5; bila `proofRequired` salah, `proofMin` diabaikan dan disimpan 1). `items.save` tetap PUT utuh dengan CAS yang ada. Perubahan nilai tercatat di audit item seperti field lain.
 - `SerialItemOptionDto` mendapat `proofRequired` dan `proofMin` (web memutuskan alur tanpa permintaan tambahan). Hak baca mengikuti `serials.itemOptions`.
 - `serials.saveBatch`: untuk tiap baris, bila item `proof_required`, jumlah `proofPhotoIds` harus >= `proof_min`; kurang = `VALIDATION` per baris dengan pesan yang tidak memuat data item lain ("Item ini wajib foto bukti minimal N").
