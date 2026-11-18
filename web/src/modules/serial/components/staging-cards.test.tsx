@@ -107,3 +107,11 @@ test('kartu siap tanpa lencana status; kartu bermasalah memperlihatkan statusnya
   // Nama tombol kartu siap tidak membawa teks status tersembunyi.
   expect(screen.getByRole('button', { name: 'Ubah baris OKOK01' })).toBeInTheDocument();
 });
+
+test('kartu bermasalah menyiarkan statusnya lewat aria-describedby; kartu siap tanpa deskripsi', () => {
+  renderCards([makeRow('OKOK01'), makeRow('NEED01', { proofMin: 2 })]);
+  const ok = screen.getByRole('button', { name: 'Ubah baris OKOK01' });
+  expect(ok).not.toHaveAttribute('aria-describedby');
+  const need = screen.getByRole('button', { name: 'Ubah baris NEED01' });
+  expect(need).toHaveAccessibleDescription('Butuh 2 foto lagi');
+});

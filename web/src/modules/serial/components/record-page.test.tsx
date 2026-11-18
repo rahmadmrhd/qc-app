@@ -11,7 +11,7 @@ import { exportQcsn } from '../lib/qcsn';
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
 const toastSuccess = vi.hoisted(() => vi.fn());
-vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: vi.fn(), dismiss: vi.fn() } }));
 
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
@@ -186,7 +186,10 @@ test('scan berturut-turut memakai id toast yang sama; duplikat tetap inline dan 
   );
   expect(addCalls).toHaveLength(2);
   for (const call of addCalls) expect(call[1]).toMatchObject({ id: 'serial-add' });
+  const dismissed = vi.mocked((await import('sonner')).toast.dismiss);
+  dismissed.mockClear();
   await paste('AAA111');
+  expect(dismissed).toHaveBeenCalledWith('serial-add');
   expect(screen.getByText(/1 duplikat dilewati/)).toBeInTheDocument();
   await paste('CCC333');
   expect(screen.queryByText(/duplikat dilewati/)).toBeNull();

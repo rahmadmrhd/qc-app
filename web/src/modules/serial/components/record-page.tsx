@@ -322,6 +322,8 @@ export function RecordPage({
       toast.success(message.text, { id: ADD_TOAST_ID, duration: 2500 });
       setNotice(null);
     } else {
+      // Peringatan inline: toast sukses sebelumnya jangan menempel di sampingnya.
+      toast.dismiss(ADD_TOAST_ID);
       setNotice(message);
     }
   }

@@ -27,9 +27,6 @@ export function SelectionBar({ count, onEdit, onRemove, onClear }: SelectionBarP
       data-tour="serial-bulk"
       className="fixed inset-x-0 bottom-0 z-40 max-md:m-0 flex flex-wrap items-center gap-2 border-t bg-background px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_12px_rgba(0,0,0,0.08)] md:static md:z-auto md:rounded-lg md:border md:bg-muted/30 md:p-3 md:shadow-none"
     >
-      <p role="status" className="mr-auto text-sm font-medium md:order-last md:mr-0 md:ml-2">
-        {count} dipilih
-      </p>
       <Button type="button" size="sm" onClick={onEdit}>
         Edit
       </Button>
@@ -39,6 +36,10 @@ export function SelectionBar({ count, onEdit, onRemove, onClear }: SelectionBarP
       <Button type="button" variant="ghost" size="sm" onClick={onClear}>
         Batalkan pilihan
       </Button>
+      {/* Sesudah tombol di DOM (urutan baca = urutan visual di layar lebar); di ponsel tampil paling depan. */}
+      <p role="status" className="text-sm font-medium max-md:order-first max-md:mr-auto md:ml-2">
+        {count} dipilih
+      </p>
     </section>
   );
 }
