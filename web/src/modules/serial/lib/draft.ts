@@ -43,6 +43,18 @@ export interface StagingRow {
   unresolved?: ('item' | 'location' | 'stickers')[];
 }
 
+/**
+ * Draft yang dimiliki pemanggil (mode terkontrol `RecordPage`): tabel dan penyimpanannya diatur dari luar, mis. draft
+ * SQLite di aplikasi desktop. Tanpa ini `RecordPage` memakai state sendiri dan `localStorage` per pengguna.
+ */
+export interface DraftControl {
+  rows: StagingRow[];
+  /** Mengganti seluruh tabel (pemanggil menyimpannya). */
+  replace(next: StagingRow[]): void;
+  /** Penyimpanan terakhir gagal: peringatan "Draft tidak tersimpan otomatis" tampil. */
+  saveFailed?: boolean;
+}
+
 /** Nilai bawaan "rombongan" yang dipakai baris-baris baru. */
 export interface Defaults {
   itemId: string;

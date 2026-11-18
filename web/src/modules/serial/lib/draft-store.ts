@@ -147,23 +147,31 @@ function readRow(raw: unknown): StagingRow | null {
   return row;
 }
 
+/**
+ * Memulihkan baris draft dari data mentah (JSON hasil `localStorage` atau snapshot SQLite desktop): bukan array = kosong,
+ * entri rusak dibuang satu per satu, `clientId` ganda dibuang, dan dibatasi `SERIAL_LIMITS.tableRows`. Satu aturan untuk
+ * semua penyimpanan draft.
+ */
+export function parseDraftRows(parsed: unknown): StagingRow[] {
+  if (!Array.isArray(parsed)) return [];
+  const rows: StagingRow[] = [];
+  const seen = new Set<string>();
+  for (const entry of parsed) {
+    if (rows.length >= SERIAL_LIMITS.tableRows) break;
+    const row = readRow(entry);
+    if (row === null || seen.has(row.clientId)) continue;
+    seen.add(row.clientId);
+    rows.push(row);
+  }
+  return rows;
+}
+
 /** Draf tersimpan milik `ownerKey`; JSON rusak atau storage tak tersedia = tabel kosong. */
 export function loadDraft(ownerKey: string): StagingRow[] {
   try {
     const raw = localStorage.getItem(key(ownerKey));
     if (raw === null) return [];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    const rows: StagingRow[] = [];
-    const seen = new Set<string>();
-    for (const entry of parsed) {
-      if (rows.length >= SERIAL_LIMITS.tableRows) break;
-      const row = readRow(entry);
-      if (row === null || seen.has(row.clientId)) continue;
-      seen.add(row.clientId);
-      rows.push(row);
-    }
-    return rows;
+    return parseDraftRows(JSON.parse(raw));
   } catch {
     return [];
   }

@@ -15,11 +15,18 @@ import {
   type FakeOverrides,
 } from '../fake-bridge';
 import { useCountryLock } from '../use-country-lock';
+import { useDraftRows } from '../use-draft-rows';
 import { CountryLockPage } from './country-lock-page';
 
 afterEach(() => {
   vi.useRealTimers();
 });
+
+/** Hook inject dengan draft nyata (seperti dipasang halaman); `draft` ikut dikembalikan untuk diperiksa. */
+function useLockWithDraft(bridge: QcBridge) {
+  const draft = useDraftRows(bridge);
+  return { ...useCountryLock(bridge, draft), draft };
+}
 
 function setup(overrides: FakeOverrides = {}) {
   const bridge = createFakeBridge(overrides);
@@ -100,7 +107,7 @@ describe('CountryLockPage', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   });
 
-  test('inject sukses: dialog progres menutup otomatis 1 dtk setelah sukses dan mencatat pending', async () => {
+  test('inject sukses: dialog progres menutup otomatis 1 dtk setelah sukses dan mencatat baris draft', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { bridge } = setup();
     await selectBrandAndFirmware();
@@ -113,9 +120,9 @@ describe('CountryLockPage', () => {
     expect(within(dialog).getByText('Skrip berjalan')).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: 'Close' })).toBeInTheDocument();
 
-    // Pending tercatat hanya setelah inject sukses (serial huruf besar, merk terpilih).
-    expect(bridge.pendingList).toHaveLength(1);
-    expect(bridge.pendingList[0]).toMatchObject({ serial: 'ABC123', brand: 'mikrotik' });
+    // Draft tercatat hanya setelah inject sukses (serial huruf besar, baris hasil inject Country Lock).
+    await waitFor(() => expect(bridge.draftRows).toHaveLength(1));
+    expect(bridge.draftRows[0]).toMatchObject({ serial: 'ABC123', source: 'countrylock' });
     expect(bridge.injectRequests[0]).toMatchObject({
       brand: 'mikrotik',
       firmwareCode: 'AC',
@@ -130,9 +137,9 @@ describe('CountryLockPage', () => {
       await vi.advanceTimersByTimeAsync(400);
     });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    // Daftar pending di halaman memuat serial yang baru dicatat.
-    const pendingTable = screen.getByRole('table');
-    expect(within(pendingTable).getByText('ABC123')).toBeInTheDocument();
+    // Ringkasan draft di halaman memuat serial yang baru dicatat.
+    const draftTable = screen.getByRole('table');
+    expect(within(draftTable).getByText('ABC123')).toBeInTheDocument();
   });
 
   test('inject gagal: dialog tetap terbuka dengan pesan galat', async () => {
@@ -149,7 +156,7 @@ describe('CountryLockPage', () => {
     expect(await screen.findByText('Gagal.')).toBeInTheDocument();
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText(failure.message)).toBeInTheDocument();
-    expect(bridge.pendingList).toHaveLength(0);
+    expect(bridge.draftRows).toHaveLength(0);
 
     // Tetap terbuka (tidak menutup sendiri) sampai pengguna menekan Close.
     await new Promise((resolve) => setTimeout(resolve, 1300));
@@ -264,11 +271,10 @@ describe('CountryLockPage', () => {
     expect(dialog.querySelector('img')).toBeNull();
   });
 
-  test('tombol unggah nonaktif dengan penjelasan', async () => {
+  test('tanpa hak mencatat: ringkasan draft hanya-baca dengan alasan, tanpa tombol unggah lama', async () => {
     setup();
-    const upload = await screen.findByRole('button', { name: /unggah ke server/i });
-    expect(upload).toBeDisabled();
-    expect(screen.getByText(/daftar serial number/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Masuk dulu untuk mencatat/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /unggah ke server/i })).toBeNull();
   });
 });
 
@@ -289,7 +295,7 @@ describe('useCountryLock', () => {
         },
       },
     });
-    const { result, unmount } = renderHook(() => useCountryLock(bridge));
+    const { result, unmount } = renderHook(() => useLockWithDraft(bridge));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(0);
     });
@@ -314,7 +320,7 @@ describe('useCountryLock', () => {
     const gate = deferred<InjectResult>();
     const run = vi.fn((_req: InjectRequest) => gate.promise);
     const bridge = createFakeBridge({ inject: { run } });
-    const { result } = renderHook(() => useCountryLock(bridge));
+    const { result } = renderHook(() => useLockWithDraft(bridge));
     await waitFor(() => expect(result.current.pkg).not.toBeNull());
     act(() => result.current.actions.select('mikrotik', 'AC'));
     await waitFor(() => expect(result.current.state.serial).toBe('ABC123'));
@@ -338,14 +344,14 @@ describe('useCountryLock', () => {
       }),
     );
     const bridge = createFakeBridge({ inject: { run } });
-    const { result } = renderHook(() => useCountryLock(bridge));
+    const { result } = renderHook(() => useLockWithDraft(bridge));
     await waitFor(() => expect(result.current.pkg).not.toBeNull());
     act(() => result.current.actions.select('mikrotik', 'AC'));
     await waitFor(() => expect(result.current.state.serial).toBe('ABC123'));
     act(() => result.current.actions.toggleAuto(true));
 
     await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(result.current.pending).toHaveLength(1));
+    await waitFor(() => expect(result.current.draft.rows).toHaveLength(1));
     // Perangkat yang sama terbaca lagi setelah inject: sudah tercatat, tidak di-inject ulang.
     await waitFor(() => expect(result.current.state.serial).toBe('ABC123'));
     await new Promise((resolve) => setTimeout(resolve, 1000));

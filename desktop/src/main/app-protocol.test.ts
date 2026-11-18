@@ -63,7 +63,9 @@ describe('resolveAppFile', () => {
 describe('CSP', () => {
   test('APP_CSP memuat default-src self dan tidak mengizinkan unsafe-eval', () => {
     expect(APP_CSP).toContain("default-src 'self'");
-    expect(APP_CSP).not.toContain('unsafe-eval');
+    // Hanya 'wasm-unsafe-eval' (pemindai WASM); 'unsafe-eval' polos (eval/new Function) tidak boleh ada.
+    expect(APP_CSP).not.toMatch(/(?<!wasm-)unsafe-eval/);
+    expect(APP_CSP).toMatch(/script-src[^;]*'wasm-unsafe-eval'/);
     expect(APP_CSP).not.toMatch(/script-src[^;]*unsafe-inline/);
     expect(APP_CSP).toContain("object-src 'none'");
     expect(APP_CSP).toContain("frame-ancestors 'none'");
@@ -75,8 +77,8 @@ describe('CSP', () => {
     const hashes = inlineScriptHashes(html);
     expect(hashes).toHaveLength(1);
     const csp = buildAppCsp(hashes);
-    expect(csp).toContain(`script-src 'self' 'sha256-${hashes[0]}'`);
-    expect(csp).not.toContain('unsafe-eval');
+    expect(csp).toContain(`script-src 'self' 'wasm-unsafe-eval' 'sha256-${hashes[0]}'`);
+    expect(csp).not.toMatch(/(?<!wasm-)unsafe-eval/);
   });
 });
 

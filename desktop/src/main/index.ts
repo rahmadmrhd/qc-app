@@ -55,6 +55,7 @@ import { createSettingsStore } from './settings';
 import { collectSmokeReport } from './smoke';
 import { fetchHostKey } from './ssh/host-key';
 import { runInjectDetailed } from './ssh/inject-session';
+import { type DraftStore, openDraftStore } from './store/draft-store';
 import { openPendingStore } from './store/pending-store';
 import { UI_PUBLIC_KEY_PEM } from './ui/public-key';
 import { createReloadGate, type ReloadGate } from './ui/reload-gate';
@@ -403,6 +404,24 @@ function runApp(): void {
       return;
     }
 
+    // Draft Catat Serial Number: berkas rusak TIDAK menutup aplikasi (Country Lock tetap harus jalan); kanal draft
+    // melempar galatnya sehingga renderer memblokir inject dan tidak menimpa draft. Berkas tak dihapus.
+    let draft: DraftStore;
+    try {
+      draft = openDraftStore(join(userData, 'draft.db'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      draft = {
+        load: () => {
+          throw new Error(message);
+        },
+        save: () => {
+          throw new Error(message);
+        },
+        close: () => undefined,
+      };
+    }
+
     reloadGate = createReloadGate({
       isInjecting: () => ipcHandle?.isInjecting() ?? false,
       load: (url) => {
@@ -463,6 +482,7 @@ function runApp(): void {
       fetchHostKey,
       runInject: runInjectDetailed,
       pending,
+      draft,
       auth: { status: () => flow.status(), start: () => flow.start(), logout: () => flow.logout() },
       emitProgress: (event) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -568,6 +588,7 @@ function runApp(): void {
       tray.destroy();
       flow.dispose();
       pending.close();
+      draft.close();
     });
     syncBackground();
 

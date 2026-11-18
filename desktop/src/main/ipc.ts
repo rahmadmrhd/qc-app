@@ -39,6 +39,7 @@ import {
   maskSecrets,
 } from './ssh/inject-session';
 import { SENTINEL_BY_BRAND } from './ssh/strategy';
+import type { DraftStore } from './store/draft-store';
 import type { PendingStore } from './store/pending-store';
 
 /** Sebagian kecil `IpcMainInvokeEvent` yang dipakai; memudahkan tes tanpa memuat `electron`. */
@@ -62,6 +63,8 @@ export interface IpcDeps {
   fetchHostKey(opts: HostKeyOptions): Promise<HostKey>;
   runInject(opts: InjectOptions): Promise<InjectOutcome>;
   pending: PendingStore;
+  /** Draft Catat Serial Number (jembatan v8): snapshot tunggal; galatnya sampai ke renderer apa adanya. */
+  draft: DraftStore;
   /** Login desktop (token hanya di proses utama; renderer hanya menerima `AuthStatus`). */
   auth: { status(): AuthStatus; start(): Promise<void>; logout(): void };
   /**
@@ -128,6 +131,21 @@ function toPackageDto(pkg: LoadedPackage): PackageDto {
 function sanitizeProgress(text: string, secrets: readonly string[]): string {
   const clean = maskSecrets(stripTerminalControl(text), secrets);
   return clean.length > MAX_PROGRESS_CHARS ? `${clean.slice(0, MAX_PROGRESS_CHARS)}...` : clean;
+}
+
+/**
+ * Galat penyimpanan draft: hanya pesan buatan sendiri (berkas draft rusak) yang diteruskan ke renderer agar pengguna tahu
+ * kenapa inject diblokir; selebihnya pesan generik (tanpa isi galat SQLite).
+ */
+function draftSafe<T>(action: () => T, fallback: string): T {
+  try {
+    return action();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    throw new IpcError(
+      /^(Draft tersimpan rusak|Berkas draft rusak)/.test(message) ? message : fallback,
+    );
+  }
 }
 
 export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
@@ -260,6 +278,16 @@ export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
   handle(BRIDGE_CHANNELS.pendingRemove, async (_event, ...args) => {
     const [serial] = parseArgs(BRIDGE_ARGS.pendingRemove, args);
     deps.pending.remove(serial);
+  });
+
+  handle(BRIDGE_CHANNELS.draftLoad, async (_event, ...args): Promise<unknown[]> => {
+    parseArgs(BRIDGE_ARGS.draftLoad, args);
+    return draftSafe(() => deps.draft.load(), 'Draft tidak dapat dibaca');
+  });
+
+  handle(BRIDGE_CHANNELS.draftSave, async (_event, ...args) => {
+    const [rows] = parseArgs(BRIDGE_ARGS.draftSave, args);
+    draftSafe(() => deps.draft.save(rows), 'Draft tidak dapat disimpan');
   });
 
   // Pengelola bundel UI memakai ini agar bundel tak ditukar di tengah inject.

@@ -9,7 +9,7 @@ import { CountryLockPage } from './country-lock-page';
 
 // Tipe katalog -> form inject (spek desktop §6.6, keputusan pemilik 2026-11-18; alur aplikasi lama: Merk -> Tipe ->
 // Firmware): Tipe dipilih di dropdown form; Tipe dengan firmware yang ada di paket mengisi dan mengunci Firmware,
-// yang tidak, menampilkan alasannya dan Firmware dipilih manual. Nama Tipe dicatat bersama serial di antrean pending.
+// yang tidak, menampilkan alasannya dan Firmware dipilih manual. Tipe, BU, dan lokasi dicatat di baris draft Catat Serial Number.
 
 beforeEach(() => {
   localStorage.clear();
@@ -158,7 +158,7 @@ describe('Tipe katalog -> form inject', () => {
     expect(screen.getByRole('combobox', { name: 'Firmware' })).toHaveValue('');
   });
 
-  test('inject sukses mencatat nama Tipe bersama merk dan serial di antrean pending', async () => {
+  test('inject sukses menambah baris draft berisi Tipe (Item), serial, dan kunci idempoten', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const bridge = setup();
     await pickBrand();
@@ -168,16 +168,16 @@ describe('Tipe katalog -> form inject', () => {
     await waitFor(() => expect(inject).toBeEnabled());
     await userEvent.click(inject);
 
-    await waitFor(() => expect(bridge.pendingList).toHaveLength(1));
-    expect(bridge.pendingList[0]).toMatchObject({
+    await waitFor(() => expect(bridge.draftRows).toHaveLength(1));
+    expect(bridge.draftRows[0]).toMatchObject({
       serial: 'ABC123',
-      brand: 'mikrotik',
-      tipe: 'RB-750',
-      // Bahan unggah (jembatan v7): id Tipe katalog dan kunci idempoten per baris.
+      source: 'countrylock',
+      // Tipe katalog = Item Serial Number: id dan nama; kunci idempoten per baris.
       itemId: 'i1',
+      itemLabel: 'RB-750',
       clientId: expect.stringMatching(/^[A-Za-z0-9-]{8,100}$/),
     });
-    // Kolom Tipe di daftar pending memuat nama itu (bukan "-").
+    // Kolom Tipe di ringkasan draft memuat nama itu (bukan "-").
     const table = await screen.findByRole('table');
     expect(within(table).getByText('RB-750')).toBeInTheDocument();
   });
@@ -192,7 +192,7 @@ describe('Tipe katalog -> form inject', () => {
       ).toBeVisible(),
     );
     expect(screen.getByRole('button', { name: 'Inject' })).toBeDisabled();
-    expect(bridge.pendingList).toHaveLength(0);
+    expect(bridge.draftRows).toHaveLength(0);
   });
 
   test('build tanpa katalog (jembatan lama atau token kosong): dropdown Tipe tidak ada, form tetap manual', async () => {
@@ -262,9 +262,9 @@ describe('BU dan Lokasi -> form inject', () => {
     await waitFor(() => expect(inject).toBeEnabled());
     await userEvent.click(inject);
 
-    await waitFor(() => expect(bridge.pendingList).toHaveLength(1));
-    expect(bridge.pendingList[0]).toMatchObject({
-      tipe: 'RB-750',
+    await waitFor(() => expect(bridge.draftRows).toHaveLength(1));
+    expect(bridge.draftRows[0]).toMatchObject({
+      itemLabel: 'RB-750',
       buId: 'bu-def',
       buLabel: 'DEF - BU Bawaan',
       locationId: 'loc-b',
@@ -315,9 +315,9 @@ describe('BU dan Lokasi -> form inject', () => {
     );
     // Lokasi masih kosong: perangkat terbaca tetapi tidak di-inject.
     await new Promise((resolve) => setTimeout(resolve, 600));
-    expect(bridge.pendingList).toHaveLength(0);
+    expect(bridge.draftRows).toHaveLength(0);
     await pickLocation();
-    await waitFor(() => expect(bridge.pendingList).toHaveLength(1));
+    await waitFor(() => expect(bridge.draftRows).toHaveLength(1));
   });
 
   test('pilihan terakhir diingat saat halaman dibuka lagi; yang sudah tak ada di katalog dibuang', async () => {
@@ -360,22 +360,5 @@ describe('BU dan Lokasi -> form inject', () => {
     await pickBrand();
     await waitFor(() => expect(location()).toBeDisabled());
     expect(bu()).toBeDisabled();
-  });
-
-  test('jembatan v5 (belum menerima BU/lokasi di pending): bidang tidak tampil dan pending tak memuatnya', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const bridge = setup(CATALOG, 5);
-    await pickBrand();
-    await pickTipe('RB-750');
-    expect(screen.queryByRole('combobox', { name: 'Lokasi' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('combobox', { name: 'Business Unit' })).not.toBeInTheDocument();
-    const inject = screen.getByRole('button', { name: 'Inject' });
-    await waitFor(() => expect(inject).toBeEnabled());
-    await userEvent.click(inject);
-    await waitFor(() => expect(bridge.pendingList).toHaveLength(1));
-    expect(bridge.pendingList[0]).not.toHaveProperty('buId');
-    // Jembatan v5 juga belum menerima bahan unggah.
-    expect(bridge.pendingList[0]).not.toHaveProperty('itemId');
-    expect(bridge.pendingList[0]).not.toHaveProperty('clientId');
   });
 });

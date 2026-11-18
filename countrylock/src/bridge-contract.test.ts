@@ -8,6 +8,9 @@ import {
   CATALOG_CHANGE_EVENT,
   CATALOG_FILES_PATH,
   DeviceRequestSchema,
+  DRAFT_BRIDGE_VERSION,
+  DRAFT_MAX_BYTES,
+  DRAFT_MAX_ROWS,
   HostSchema,
   INJECT_PROGRESS_EVENT,
   InjectIdSchema,
@@ -161,7 +164,8 @@ describe('PendingEntrySchema dan SerialArgSchema', () => {
 
 describe('konstanta jembatan', () => {
   test('versi, dan semua nama kanal berpola qc:<grup>:<aksi> serta unik', () => {
-    expect(BRIDGE_VERSION).toBe(7);
+    expect(BRIDGE_VERSION).toBe(8);
+    expect(DRAFT_BRIDGE_VERSION).toBe(8);
     expect(PENDING_UPLOAD_BRIDGE_VERSION).toBe(7);
     expect(PENDING_TARGET_BRIDGE_VERSION).toBe(6);
     expect(NOTIFICATIONS_BRIDGE_VERSION).toBe(4);
@@ -233,8 +237,38 @@ describe('UI_MIN_BRIDGE_VERSION', () => {
     expect(UI_MIN_BRIDGE_VERSION).toBeLessThanOrEqual(BRIDGE_VERSION);
   });
 
+  test('minimal 8: UI web memakai bridge.draft (Catat Serial Number bersama, jembatan v8)', () => {
+    expect(UI_MIN_BRIDGE_VERSION).toBe(8);
+  });
+
   test('minimal 3: UI web memakai bridge.ui (onUpdateReady/reload, diperkenalkan di jembatan v3)', () => {
     // Bundel yang diunduh memakai `bridge.ui`; di aplikasi dengan jembatan v2 spanduk pembaruan akan error.
     expect(UI_MIN_BRIDGE_VERSION).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('kanal draft (jembatan v8)', () => {
+  test('draftLoad tanpa argumen; draftSave menerima daftar objek', () => {
+    expect(BRIDGE_ARGS.draftLoad.safeParse([]).success).toBe(true);
+    expect(BRIDGE_ARGS.draftLoad.safeParse([1]).success).toBe(false);
+    expect(BRIDGE_ARGS.draftSave.safeParse([[]]).success).toBe(true);
+    expect(BRIDGE_ARGS.draftSave.safeParse([[{ serial: 'A' }]]).success).toBe(true);
+    expect(BRIDGE_CHANNELS.draftLoad).toBe('qc:draft:load');
+    expect(BRIDGE_CHANNELS.draftSave).toBe('qc:draft:save');
+  });
+
+  test('draftSave menolak argumen kosong/berlebih, baris bukan objek, dan melebihi batas baris', () => {
+    expect(BRIDGE_ARGS.draftSave.safeParse([]).success).toBe(false);
+    expect(BRIDGE_ARGS.draftSave.safeParse([[], []]).success).toBe(false);
+    expect(BRIDGE_ARGS.draftSave.safeParse([['x']]).success).toBe(false);
+    expect(BRIDGE_ARGS.draftSave.safeParse([[null]]).success).toBe(false);
+    const rows = (count: number) => Array.from({ length: count }, (_, i) => ({ i }));
+    expect(BRIDGE_ARGS.draftSave.safeParse([rows(DRAFT_MAX_ROWS)]).success).toBe(true);
+    expect(BRIDGE_ARGS.draftSave.safeParse([rows(DRAFT_MAX_ROWS + 1)]).success).toBe(false);
+  });
+
+  test('draftSave menolak muatan JSON melebihi DRAFT_MAX_BYTES', () => {
+    const big = { note: 'x'.repeat(DRAFT_MAX_BYTES + 1) };
+    expect(BRIDGE_ARGS.draftSave.safeParse([[big]]).success).toBe(false);
   });
 });

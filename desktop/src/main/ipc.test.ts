@@ -13,6 +13,7 @@ import { type LoadedPackage, loadLocalPackage, PackageError } from './package/lo
 import { DEFAULT_SERVER_URL, type Settings } from './settings';
 import type { InjectOptions, InjectOutcome } from './ssh/inject-session';
 import { SENTINEL_BY_BRAND } from './ssh/strategy';
+import { openDraftStore } from './store/draft-store';
 import { openPendingStore } from './store/pending-store';
 
 const FIXTURE = resolve(__dirname, '../../../countrylock/fixtures/country-lock2');
@@ -39,6 +40,13 @@ afterEach(() => {
 function setup(overrides: Partial<IpcDeps> = {}, packageDir: string | null = 'D:\\Paket') {
   const handlers = new Map<string, Listener>();
   const store = openPendingStore(join(tmp, 'pending.db'));
+  const draftStore = openDraftStore(join(tmp, 'draft.db'));
+  // Tes menutup `store` di akhir; draft ikut ditutup agar berkasnya tak terkunci (Windows).
+  const closePending = store.close.bind(store);
+  store.close = () => {
+    closePending();
+    draftStore.close();
+  };
   const progress: Array<{ id: string } & InjectProgressDto> = [];
   const saved: Settings = { packageDir, serverUrl: DEFAULT_SERVER_URL };
   const deps: IpcDeps = {
@@ -58,6 +66,7 @@ function setup(overrides: Partial<IpcDeps> = {}, packageDir: string | null = 'D:
     fetchHostKey: vi.fn(async () => ({ type: 'ssh-rsa', base64: 'QUFBQUhPU1RLRVk=' })),
     runInject: vi.fn(async (): Promise<InjectOutcome> => ({ ok: true, reason: 'completed' })),
     pending: store,
+    draft: draftStore,
     auth: {
       status: vi.fn(() => ({ signedIn: false, email: null, serverUrl: DEFAULT_SERVER_URL })),
       start: vi.fn(async () => undefined),
@@ -130,6 +139,10 @@ describe('registerIpc', () => {
       [BRIDGE_CHANNELS.pendingAdd, [{ ...entry, date: 'kemarin' }]],
       [BRIDGE_CHANNELS.pendingRemove, ['']],
       [BRIDGE_CHANNELS.pendingList, ['jalur']],
+      [BRIDGE_CHANNELS.draftLoad, ['jalur']],
+      [BRIDGE_CHANNELS.draftSave, []],
+      [BRIDGE_CHANNELS.draftSave, [['bukan objek']]],
+      [BRIDGE_CHANNELS.draftSave, [[{ serial: 'A' }], 'lebih']],
       [BRIDGE_CHANNELS.packageLoad, ['D:\\Lain']],
       [BRIDGE_CHANNELS.packageChooseDir, ['D:\\Lain']],
     ];
@@ -432,6 +445,41 @@ describe('registerIpc', () => {
       expect(((await call(BRIDGE_CHANNELS.pendingList)) as unknown[]).length).toBe(1);
       await call(BRIDGE_CHANNELS.pendingRemove, 'AB12');
       expect(await call(BRIDGE_CHANNELS.pendingList)).toEqual([]);
+      store.close();
+    });
+  });
+
+  describe('draft', () => {
+    test('save lalu load lewat IPC; save kosong menghapus draft', async () => {
+      const { call, store } = setup();
+      expect(await call(BRIDGE_CHANNELS.draftLoad)).toEqual([]);
+      await call(BRIDGE_CHANNELS.draftSave, [{ serial: 'AB12' }, { serial: 'CD34' }]);
+      expect(await call(BRIDGE_CHANNELS.draftLoad)).toEqual([
+        { serial: 'AB12' },
+        { serial: 'CD34' },
+      ]);
+      await call(BRIDGE_CHANNELS.draftSave, []);
+      expect(await call(BRIDGE_CHANNELS.draftLoad)).toEqual([]);
+      store.close();
+    });
+  });
+
+  describe('draft: galat penyimpanan', () => {
+    test('pesan berkas draft rusak diteruskan; galat lain menjadi pesan generik tanpa isi aslinya', async () => {
+      const { call, deps, store } = setup();
+      deps.draft = {
+        load: () => {
+          throw new Error('Draft tersimpan rusak: isinya tidak terbaca.');
+        },
+        save: () => {
+          throw new Error('SQLITE_FULL: rahasia di C:\\Users\\x\\draft.db');
+        },
+        close: () => undefined,
+      };
+      await expect(call(BRIDGE_CHANNELS.draftLoad)).rejects.toThrow('Draft tersimpan rusak');
+      const failure = call(BRIDGE_CHANNELS.draftSave, [{ serial: 'A' }]);
+      await expect(failure).rejects.toThrow('Draft tidak dapat disimpan');
+      await expect(failure).rejects.not.toThrow(/SQLITE_FULL|draft\.db/);
       store.close();
     });
   });

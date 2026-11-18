@@ -4,7 +4,7 @@
 
 import { z } from 'zod';
 import type { DesktopCatalogDto } from '../../shared/desktop-catalog';
-import type { BRIDGE_CHANNELS } from './bridge-channels';
+import { type BRIDGE_CHANNELS, DRAFT_MAX_BYTES, DRAFT_MAX_ROWS } from './bridge-channels';
 import type { CountryLockConfig } from './config';
 import type { DeviceInfo } from './device-info';
 import { isValidHost } from './host';
@@ -19,6 +19,9 @@ export {
   CATALOG_BRIDGE_VERSION,
   CATALOG_CHANGE_EVENT,
   CATALOG_FILES_PATH,
+  DRAFT_BRIDGE_VERSION,
+  DRAFT_MAX_BYTES,
+  DRAFT_MAX_ROWS,
   INJECT_PROGRESS_EVENT,
   MIN_BRIDGE_VERSION,
   NOTIFICATIONS_BRIDGE_VERSION,
@@ -153,6 +156,15 @@ export interface QcBridge {
     add(entry: PendingEntry): Promise<AddResult>;
     remove(serial: string): Promise<void>;
   };
+  /**
+   * Jembatan v8 (`DRAFT_BRIDGE_VERSION`): snapshot draft Catat Serial Number di SQLite proses utama. Isinya objek bebas
+   * dari sisi proses utama (hanya disimpan; renderer menyaring bentuknya saat membaca), dibatasi baris dan ukurannya.
+   * `load` melempar galat bila berkas draft rusak: renderer tidak boleh menimpanya dengan snapshot kosong.
+   */
+  draft: {
+    load(): Promise<unknown[]>;
+    save(rows: readonly unknown[]): Promise<void>;
+  };
 }
 
 // --- Skema validasi -----------------------------------------------------------------------
@@ -231,6 +243,12 @@ export const PendingEntrySchema = z.strictObject({
   reinjectedAt: IsoTimestamp.optional(),
 });
 
+/** Snapshot draft: daftar objek, dibatasi jumlah baris dan ukuran JSON (renderer tidak tepercaya). */
+export const DraftRowsSchema = z
+  .array(z.record(z.string(), z.unknown()))
+  .max(DRAFT_MAX_ROWS)
+  .refine((rows) => JSON.stringify(rows).length <= DRAFT_MAX_BYTES, 'Draft terlalu besar');
+
 export const SerialArgSchema = plain(64).refine(
   (v) => v.trim().length > 0,
   'Serial tidak boleh kosong',
@@ -251,6 +269,8 @@ export const BRIDGE_ARGS = {
   pendingList: z.tuple([]),
   pendingAdd: z.tuple([PendingEntrySchema]),
   pendingRemove: z.tuple([SerialArgSchema]),
+  draftLoad: z.tuple([]),
+  draftSave: z.tuple([DraftRowsSchema]),
   authStatus: z.tuple([]),
   authLogin: z.tuple([]),
   authLogout: z.tuple([]),
