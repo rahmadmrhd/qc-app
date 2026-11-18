@@ -640,6 +640,14 @@ test('tab linimasa: jumlah dari counts, Pengecekan dan tab kasus mengirim group 
   expect(screen.getByRole('tab', { name: 'Semua (4)' })).toBeInTheDocument();
 });
 
+test('baris tab linimasa bisa digeser mendatar dan tidak dibungkus saat tab banyak', async () => {
+  renderPage();
+  const tablist = await screen.findByRole('tablist');
+  expect(tablist).toHaveClass('overflow-x-auto');
+  expect(tablist).not.toHaveClass('flex-wrap');
+  expect(screen.getByRole('tab', { name: /^Semua/ })).toHaveClass('flex-none');
+});
+
 test('kartu declare_broken, kirim, dan terima menampilkan rincian kasus dan pengiriman', async () => {
   state = {
     ...state,
