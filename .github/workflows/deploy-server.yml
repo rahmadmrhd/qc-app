@@ -5,6 +5,10 @@ name: Deploy Server
 # VPS, kembali ke tag sebelumnya bila gagal) -> uji asap publik dari runner (informatif saja) -> `mark-deployed` mencatat commit itu
 # sebagai `refs/deployed/<env>` (dasar pemilihan pemeriksaan run berikutnya). Lihat docs/ci-cd.md untuk yang harus disiapkan pemilik.
 #
+# Build image dan deploy ke VPS (termasuk `mark-deployed`) dipindah ke workflow yang dapat dipanggil `server-image.yml` dan
+# `server-deploy.yml` (rencana rilis semver 2) agar workflow rilis dan deploy tag memakai langkah keamanan yang SAMA; di sini
+# `image` dan `deploy` hanya memanggilnya. Perilaku tak berubah.
+#
 # Pemicu (keputusan pemilik 2026-11-06, spek §11/§13.2: hanya PR yang di-merge yang men-deploy dev/production):
 # - PR di-merge ke `dev`   (pull_request_target, closed + merged) -> environment `staging`    (qc-dev.rhd.my.id)
 # - PR di-merge ke `main`  (pull_request_target, closed + merged) -> environment `production` (qc.rhd.my.id)
@@ -123,269 +127,30 @@ jobs:
       ref: ${{ needs.meta.outputs.sha }}
       since-deploy: ${{ github.event_name == 'pull_request_target' && needs.meta.outputs.target || '' }}
 
-  # Build web + image dan dorong ke GHCR dengan tag SHA commit. `docker build` menjalankan `bun run build` (Vite +
-  # verify-dist), jadi build web tidak diulang di job ci. Dilewati bila isi image tak berubah (`ci.outputs.image`).
+  # Build web + image dan dorong ke GHCR dengan tag SHA commit: workflow bersama `server-image.yml` (langkah keamanannya,
+  # termasuk kunci tanda tangan UI dan kebijakan cache, hidup di sana dan dipakai juga oleh rilis). Dilewati bila isi image
+  # tak berubah (`ci.outputs.image`). Izin pemanggil adalah BATAS bagi job terpanggil: `packages: write` untuk mendorong image.
+  # Rahasia environment dibaca job terpanggil lewat `environment:`-nya; pemanggil tak meneruskan rahasia (tanpa `secrets: inherit`).
   image:
     needs: [meta, ci]
     if: needs.ci.outputs.image == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # Secret `UI_SIGNING_KEY` (kunci privat tanda tangan manifest UI desktop) dan Variable `UI_PUBLIC_KEY_PEM` ada di
-    # environment yang SAMA dengan target deploy (`staging`/`production`, penempatan pemilik 2026-11-16; aturan branch
-    # environment itulah yang membatasi siapa yang boleh membacanya; docs/desktop-ui-signing.md). HANYA job ini (dan
-    # `deploy`, yang tak menyentuhnya) memakai environment itu; kunci TIDAK BOLEH ada di test.yml atau workflow lain
-    # yang berjalan pada `pull_request` (kode PR yang belum ditinjau).
-    environment: ${{ needs.meta.outputs.target }}
     permissions:
       contents: read
       packages: write
-    outputs:
-      tag: ${{ needs.meta.outputs.sha }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ needs.meta.outputs.sha }}
-          persist-credentials: false
+    uses: ./.github/workflows/server-image.yml
+    with:
+      target: ${{ needs.meta.outputs.target }}
+      sha: ${{ needs.meta.outputs.sha }}
 
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # Nama repositori GHCR harus huruf kecil; sama dengan bawaan QC_IMAGE di deploy/compose.yml.
-      - name: Nama image
-        id: name
-        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/qc-app" >> "$GITHUB_OUTPUT"
-
-      # Kebijakan cache lapisan (keputusan pemilik 2026-11-17). Cache registry dapat ditimpa siapa pun yang boleh mendorong
-      # branch di repositori ini (peracunan lapisan: lapisan dengan isi lain di bawah kunci cache yang sama), jadi PRODUCTION
-      # membangun tanpa cache sama sekali (`no-cache`, bukan hanya tahap web-build: lapisan RUN lain seperti `bun install`
-      # dan `apk add` juga ikut ke image runtime). Staging memakai cache; hasil pembangunan production tetap ditulis
-      # (`cache-to`) agar staging terbantu. Nilai target hanya lewat env, dan target tak dikenal menggagalkan langkah
-      # (tidak diam-diam jatuh ke cache).
-      - name: Tentukan kebijakan cache
-        id: cache
-        env:
-          TARGET: ${{ needs.meta.outputs.target }}
-          IMAGE: ${{ steps.name.outputs.image }}
-        run: |
-          set -euo pipefail
-          case "$TARGET" in
-            production)
-              echo "no_cache=true" >> "$GITHUB_OUTPUT"
-              echo "cache_from=" >> "$GITHUB_OUTPUT"
-              ;;
-            staging)
-              echo "no_cache=false" >> "$GITHUB_OUTPUT"
-              {
-                echo "cache_from<<QC_CACHE_EOF"
-                echo "type=registry,ref=${IMAGE}:buildcache-staging"
-                echo "type=registry,ref=${IMAGE}:buildcache-production"
-                echo "QC_CACHE_EOF"
-              } >> "$GITHUB_OUTPUT"
-              ;;
-            *)
-              echo "::error::Target cache tidak dikenal."
-              exit 1
-              ;;
-          esac
-
-      # Tanda tangan manifest UI desktop (docs/desktop-ui-signing.md). Kunci privat sampai ke build sebagai BERKAS
-      # (`secret-files`, bukan `secrets:` karena nilainya berbaris banyak) dan dihapus di langkah terakhir job.
-      # Rollout aman: secret dan variabel sama-sama kosong = tanpa tanda tangan (peringatan, perilaku lama); hanya salah
-      # satu terisi = GAGAL, karena konfigurasi setengah jadi membuat semua desktop menolak setiap pembaruan UI.
-      # `UI_PUBLIC_KEY_PEM` (kunci publik desktop, bukan rahasia) boleh berbentuk PEM berbaris banyak (akhir baris
-      # Unix/Windows), PEM satu baris, atau isi base64 saja; langkah ini menormalkannya menjadi SATU baris isi base64
-      # karena `build-args` berformat satu entri per baris. Dockerfile lalu memeriksa kunci privat berpasangan
-      # dengannya sebelum menulis tanda tangan.
-      - name: Siapkan kunci tanda tangan UI
-        id: ui-key
-        env:
-          UI_SIGNING_KEY: ${{ secrets.UI_SIGNING_KEY }}
-          UI_PUBLIC_KEY_PEM: ${{ vars.UI_PUBLIC_KEY_PEM }}
-          KEY_DIR: ${{ runner.temp }}
-        run: |
-          set -euo pipefail
-          if [ -z "$UI_SIGNING_KEY" ] && [ -z "$UI_PUBLIC_KEY_PEM" ]; then
-            echo "::warning::Kunci tanda tangan UI belum dikonfigurasi (secret UI_SIGNING_KEY dan variabel UI_PUBLIC_KEY_PEM kosong): manifest UI tidak ditandatangani, pembaruan UI desktop nonaktif."
-            echo "secret_files=" >> "$GITHUB_OUTPUT"
-            echo "public_key=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ -z "$UI_SIGNING_KEY" ] || [ -z "$UI_PUBLIC_KEY_PEM" ]; then
-            echo "::error::Konfigurasi tanda tangan UI setengah jadi: secret UI_SIGNING_KEY dan variabel UI_PUBLIC_KEY_PEM harus diisi KEDUANYA (atau keduanya kosong)."
-            exit 1
-          fi
-          public_key=$(printf '%s' "$UI_PUBLIC_KEY_PEM" | sed -e 's/[\\]n//g' | tr -d '[:space:]' | sed -e 's/-----BEGINPUBLICKEY-----//' -e 's/-----ENDPUBLICKEY-----//')
-          if ! [[ $public_key =~ ^[A-Za-z0-9+/]+=?=?$ ]]; then
-            echo "::error::Variabel UI_PUBLIC_KEY_PEM bukan kunci publik yang dapat dibaca (PEM atau isi base64; lihat docs/desktop-ui-signing.md)."
-            exit 1
-          fi
-          umask 077
-          key_file="$KEY_DIR/ui_signing_key.pem"
-          printf '%s\n' "$UI_SIGNING_KEY" > "$key_file"
-          echo "secret_files=ui_signing_key=$key_file" >> "$GITHUB_OUTPUT"
-          echo "public_key=$public_key" >> "$GITHUB_OUTPUT"
-
-      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
-        with:
-          context: .
-          push: true
-          provenance: false
-          tags: ${{ steps.name.outputs.image }}:${{ needs.meta.outputs.sha }}
-          secret-files: ${{ steps.ui-key.outputs.secret_files }}
-          build-args: |
-            UI_PUBLIC_KEY_PEM=${{ steps.ui-key.outputs.public_key }}
-            GIT_SHA=${{ needs.meta.outputs.sha }}
-          # Cache lapisan lewat registry GHCR (bukan cache GHA, yang ditolak untuk token `pull_request_target`): job ini berizin
-          # `packages: write`, jadi SEMUA event menulisnya. Tag per environment. Yang DIBACA ditentukan langkah `cache`:
-          # staging membaca kedua tag (lapisan web-build yang sama dipakai ulang, jadi perubahan server saja tak membangun
-          # ulang aset web); production tanpa cache.
-          no-cache: ${{ steps.cache.outputs.no_cache }}
-          cache-from: ${{ steps.cache.outputs.cache_from }}
-          cache-to: type=registry,ref=${{ steps.name.outputs.image }}:buildcache-${{ needs.meta.outputs.target }},mode=max,image-manifest=true,oci-mediatypes=true
-
-      # Jangan tinggalkan kunci di runner.
-      - name: Hapus kunci tanda tangan UI
-        if: always()
-        env:
-          KEY_DIR: ${{ runner.temp }}
-        run: rm -f "$KEY_DIR/ui_signing_key.pem"
-
+  # Deploy ke VPS lewat SSH lalu catat `refs/deployed/<env>`: workflow bersama `server-deploy.yml`. `contents: write` di sini
+  # hanya batas bagi job `mark-deployed` di dalamnya (satu-satunya yang menulis); job `deploy` terpanggil tanpa izin dan tanpa
+  # checkout.
   deploy:
     needs: [meta, ci, image]
     if: needs.image.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    # Rahasia SSH ada di secret ENVIRONMENT (bukan repositori), sehingga hanya job yang berjalan dari branch yang
-    # diizinkan aturan environment yang dapat membacanya. Job ini tidak men-checkout kode apa pun.
-    environment: ${{ needs.meta.outputs.target }}
-    permissions: {}
-    env:
-      TARGET: ${{ needs.meta.outputs.target }}
-      TAG: ${{ needs.image.outputs.tag }}
-    steps:
-      - name: Siapkan SSH
-        env:
-          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
-          HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-        run: |
-          set -euo pipefail
-          for name in SSH_KEY HOST_KEY DEPLOY_HOST DEPLOY_PORT DEPLOY_USER; do
-            if [ -z "${!name}" ]; then
-              echo "::error::Secret environment untuk ${name} belum diisi (lihat docs/ci-cd.md)."
-              exit 1
-            fi
-          done
-          [[ $DEPLOY_PORT =~ ^[0-9]{1,5}$ ]] || { echo "::error::DEPLOY_PORT tidak valid."; exit 1; }
-          [[ $DEPLOY_USER =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || { echo "::error::DEPLOY_USER tidak valid."; exit 1; }
-          [[ $DEPLOY_HOST =~ ^[A-Za-z0-9.:-]{1,253}$ ]] || { echo "::error::DEPLOY_HOST tidak valid."; exit 1; }
-          umask 077
-          install -d -m 700 "$HOME/.ssh"
-          printf '%s\n' "$SSH_KEY" > "$HOME/.ssh/deploy_key"
-          # Kunci host dipatok dari secret (hasil ssh-keyscan yang sidik jarinya diperiksa pemilik): koneksi ke host
-          # lain ditolak. TIDAK memakai StrictHostKeyChecking=no.
-          printf '%s\n' "$HOST_KEY" > "$HOME/.ssh/known_hosts"
-          {
-            echo "Host qc-deploy"
-            echo "  HostName $DEPLOY_HOST"
-            echo "  Port $DEPLOY_PORT"
-            echo "  User $DEPLOY_USER"
-            echo "  IdentityFile $HOME/.ssh/deploy_key"
-            echo "  IdentitiesOnly yes"
-            echo "  BatchMode yes"
-            echo "  StrictHostKeyChecking yes"
-            echo "  UserKnownHostsFile $HOME/.ssh/known_hosts"
-            echo "  ConnectTimeout 20"
-            echo "  ServerAliveInterval 15"
-          } > "$HOME/.ssh/config"
-
-      # Kunci SSH di VPS dibatasi `command="<INSTALL_DIR>/deploy.sh --only <env>"` (jalur mutlak lokasi deploy.sh di server; VPS pribadi: /root/apps/qc-app): yang dijalankan hanya skrip
-      # itu dengan perintah di bawah sebagai SSH_ORIGINAL_COMMAND (divalidasi ketat di sisi VPS). Kode keluar:
-      # 0 sukses, 1 gagal dan dikembalikan ke tag sebelumnya, 4 gagal dan pengembalian gagal, 5 versi baru sehat dan aktif
-      # tetapi nginx tidak terjangkau (tidak dikembalikan), 2/3 ditolak/terkunci.
-      - name: Deploy di VPS
-        run: |
-          set -uo pipefail
-          [[ $TARGET =~ ^(staging|production)$ ]] || { echo "::error::Target tidak valid."; exit 1; }
-          [[ $TAG =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Tag image bukan SHA commit."; exit 1; }
-          ssh qc-deploy "deploy $TARGET $TAG"
-          code=$?
-          case $code in
-            0) ;;
-            1) echo "::error::Deploy gagal; VPS dikembalikan ke tag sebelumnya (lihat log di atas)." ;;
-            4) echo "::error::Deploy gagal DAN pengembalian gagal: periksa VPS secara manual." ;;
-            5) echo "::error::Versi baru sehat dan aktif, tetapi nginx di VPS tidak terjangkau (systemctl status nginx / konfigurasi). TIDAK dikembalikan: ini masalah infrastruktur, bukan versi." ;;
-            *) echo "::error::Deploy ditolak atau gagal (kode ${code})." ;;
-          esac
-          exit "$code"
-
-      # INFORMATIF: uji lewat nginx yang menentukan (dan memicu rollback) dilakukan `deploy.sh` dari dalam VPS. Runner GitHub
-      # tak dapat diandalkan di sini: Cloudflare memblokir IP datacenter (403) dan origin hanya menerima IP Cloudflare.
-      - name: Uji asap publik (informatif)
-        continue-on-error: true
-        env:
-          APP_URL: ${{ vars.APP_URL }}
-        run: |
-          set -uo pipefail
-          if ! [[ $APP_URL =~ ^https://[A-Za-z0-9.-]+$ ]]; then
-            echo "::warning::Uji asap publik dilewati: variabel environment APP_URL belum diisi atau bukan https://<host>."
-            exit 0
-          fi
-          if ! curl -fsS --retry 3 --retry-delay 5 --retry-all-errors --max-time 15 "$APP_URL/api/ping"; then
-            echo "::warning::Uji asap publik gagal (mis. Cloudflare memblokir IP runner). Tidak menggagalkan deploy: kesehatan sudah diuji deploy.sh dari dalam VPS."
-            exit 1
-          fi
-          echo
-
-      - name: Ringkasan
-        if: success()
-        run: |
-          {
-            echo "### Deploy server: ${TARGET}"
-            echo
-            echo "Image tag \`${TAG}\` aktif dan sehat (\`/api/ping\` OK)."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      # Jangan tinggalkan kunci di runner.
-      - name: Hapus kredensial SSH
-        if: always()
-        run: rm -rf "$HOME/.ssh/deploy_key" "$HOME/.ssh/config" "$HOME/.ssh/known_hosts"
-
-  # Mencatat commit yang BARU SAJA berhasil di-deploy ke environment ini sebagai ref git `refs/deployed/<environment>`
-  # (bukan tag atau release: tak muncul di daftar rilis dan tak bertabrakan dengan tag semver `server-v*` nantinya). Run
-  # berikutnya membandingkan commitnya dengan ref ini untuk memilih pemeriksaan (ci.yml, `since-deploy`), sehingga deploy yang
-  # dilewati/dibuang antrean tak membuat perubahannya terlupa. Ref belum ada = semua pemeriksaan dijalankan.
-  # Job ini SATU-SATUNYA yang berizin `contents: write`; tanpa checkout, aksi pihak ketiga, dan rahasia lain. Gagal menulis
-  # ref hanya berakibat run berikutnya memeriksa lebih banyak (peringatan, bukan kegagalan: deploy sudah sukses).
-  mark-deployed:
-    needs: [meta, deploy]
-    if: needs.deploy.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
     permissions:
       contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      REPO: ${{ github.repository }}
-      TARGET: ${{ needs.meta.outputs.target }}
-      SHA: ${{ needs.meta.outputs.sha }}
-    steps:
-      - name: Catat deploy terakhir
-        run: |
-          set -uo pipefail
-          [[ $TARGET =~ ^(staging|production)$ ]] || { echo "::error::Target tidak valid."; exit 1; }
-          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Commit bukan SHA 40 heksa."; exit 1; }
-          if gh api -X PATCH "repos/$REPO/git/refs/deployed/$TARGET" -f "sha=$SHA" -F force=true > /dev/null; then
-            echo "Penunjuk refs/deployed/$TARGET diperbarui."
-          elif gh api -X POST "repos/$REPO/git/refs" -f "ref=refs/deployed/$TARGET" -f "sha=$SHA" > /dev/null; then
-            echo "Penunjuk refs/deployed/$TARGET dibuat."
-          else
-            echo "::warning::Gagal mencatat refs/deployed/$TARGET; run berikutnya memeriksa lebih banyak."
-          fi
+    uses: ./.github/workflows/server-deploy.yml
+    with:
+      target: ${{ needs.meta.outputs.target }}
+      sha: ${{ needs.meta.outputs.sha }}
