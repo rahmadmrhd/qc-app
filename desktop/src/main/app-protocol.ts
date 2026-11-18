@@ -15,7 +15,13 @@ export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}`;
 
 /** Susun CSP; `scriptHashes` = hash sha256 skrip inline resmi (mis. skrip tema di index.html). */
 export function buildAppCsp(scriptHashes: readonly string[] = []): string {
-  const scriptSrc = ["'self'", ...scriptHashes.map((h) => `'sha256-${h}'`)].join(' ');
+  // 'wasm-unsafe-eval' hanya mengizinkan kompilasi WebAssembly (pemindai barcode cadangan memakai `zxing-wasm`; Chromium di
+  // Windows tak punya BarcodeDetector bawaan). Ini BUKAN `unsafe-eval`: `eval`/`new Function` tetap diblokir.
+  const scriptSrc = [
+    "'self'",
+    "'wasm-unsafe-eval'",
+    ...scriptHashes.map((h) => `'sha256-${h}'`),
+  ].join(' ');
   return [
     "default-src 'self'",
     `script-src ${scriptSrc}`,
@@ -31,7 +37,7 @@ export function buildAppCsp(scriptHashes: readonly string[] = []): string {
   ].join('; ');
 }
 
-/** CSP dasar tanpa skrip inline apa pun (tanpa `unsafe-eval`, tanpa `unsafe-inline` pada skrip). */
+/** CSP dasar tanpa skrip inline apa pun (tanpa `unsafe-eval`, tanpa `unsafe-inline` pada skrip; hanya `wasm-unsafe-eval`). */
 export const APP_CSP = buildAppCsp();
 
 /** Hash sha256 (base64) tiap `<script>` inline tanpa `src` pada HTML. */
