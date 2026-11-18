@@ -193,6 +193,8 @@ describe('CountryLockPage', () => {
     const dialog = await screen.findByRole('alertdialog', { name: /kredensial perangkat/i });
     expect(within(dialog).getByLabelText('Username')).toHaveValue('admin');
     expect(within(dialog).getByLabelText('Password')).toHaveValue(FAKE_BRAND_PASSWORD);
+    // Kredensial bawaan pabrik perangkat baru: tampil apa adanya, tidak disamarkan (keputusan pemilik 2026-11-18).
+    expect(within(dialog).getByLabelText('Password')).toHaveAttribute('type', 'text');
     // Percobaan pertama memakai kredensial bawaan merk.
     expect(calls[0]).toMatchObject({ username: 'admin', password: FAKE_BRAND_PASSWORD });
 

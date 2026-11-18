@@ -5,6 +5,7 @@ import { ApiError } from '@/lib/api/api-error';
 import { getBridge } from '@/lib/platform';
 import { meQueryOptions } from '@/modules/auth/queries';
 import { clearSession, isAuthenticated } from '@/modules/auth/session';
+import { CatalogSyncButton } from '@/modules/countrylock/components/catalog-sync-button';
 import { CountryLockPage } from '@/modules/countrylock/components/country-lock-page';
 import { OpenInDesktop } from '@/modules/countrylock/components/open-in-desktop';
 import { ThemeToggle } from '@/modules/theme/theme-toggle';
@@ -57,6 +58,7 @@ function CountryLockRoute() {
       <header className="flex items-center justify-between gap-2 border-b bg-background px-4 py-2">
         <span className="font-semibold">Country Lock</span>
         <div className="flex items-center gap-2">
+          <CatalogSyncButton bridge={bridge} />
           {/* Sudah login tetapi tanpa cangkang (data pengguna belum termuat): kembali ke aplikasi; belum login: masuk. */}
           {isAuthenticated() ? (
             <Link to="/" className="text-sm text-muted-foreground hover:text-foreground">
