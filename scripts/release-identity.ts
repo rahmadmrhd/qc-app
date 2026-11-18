@@ -5,7 +5,7 @@
 // Alasan penolakan sengaja generik: nilai masukan mentah (nama cabang, repositori) dapat dikendalikan penulis PR dan tidak
 // boleh ikut tercetak ke log. Hanya versi yang lolos validasi `isSemver` yang boleh disebut.
 import { appendFileSync } from 'node:fs';
-import { isSemver } from './changelog';
+import { type Component, isSemver } from './changelog';
 
 export interface IdentityInput {
   /** `github.repository` (pemilik/nama). */
@@ -18,15 +18,15 @@ export interface IdentityInput {
   baseRef: string;
   /** Jumlah induk commit merge (merge commit = 2; squash/rebase = 1). */
   parents: number;
-  /** `version` di `server/package.json` pada commit merge. */
+  /** `version` di `<komponen>/package.json` pada commit merge. */
   versionAtMerge: string;
+  /** Komponen yang dirilis; tanpa nilai = `server` (rilis server dulu satu-satunya). */
+  component?: Component | undefined;
 }
 
 export type IdentityResult =
-  | { ok: true; component: 'server'; version: string }
+  | { ok: true; component: Component; version: string }
   | { ok: false; reason: string };
-
-const BRANCH_PATTERN = /^release\/server-v(.+)$/;
 
 export function checkIdentity(input: IdentityInput): IdentityResult {
   const fail = (reason: string): IdentityResult => ({ ok: false, reason });
@@ -34,11 +34,12 @@ export function checkIdentity(input: IdentityInput): IdentityResult {
   if (input.baseRepo === '' || input.headRepo !== input.baseRepo) {
     return fail('PR rilis harus berasal dari repositori ini (bukan fork).');
   }
-  const match = BRANCH_PATTERN.exec(input.headRef);
-  const version = match?.[1] ?? '';
+  const component = input.component ?? 'server';
+  const prefix = `release/${component}-v`;
+  const version = input.headRef.startsWith(prefix) ? input.headRef.slice(prefix.length) : '';
   if (!isSemver(version)) {
     return fail(
-      'Nama cabang bukan release/server-vX.Y.Z yang sah (X.Y.Z tanpa awalan nol atau akhiran).',
+      `Nama cabang bukan release/${component}-vX.Y.Z yang sah (X.Y.Z tanpa awalan nol atau akhiran).`,
     );
   }
   if (input.parents !== 2) {
@@ -46,10 +47,10 @@ export function checkIdentity(input: IdentityInput): IdentityResult {
   }
   if (input.versionAtMerge !== version) {
     return fail(
-      `Versi di server/package.json pada commit merge tidak sama dengan versi cabang (${version}).`,
+      `Versi di ${component}/package.json pada commit merge tidak sama dengan versi cabang (${version}).`,
     );
   }
-  return { ok: true, component: 'server', version };
+  return { ok: true, component, version };
 }
 
 if (import.meta.main) {
@@ -61,11 +62,12 @@ if (import.meta.main) {
     baseRef: env.BASE_REF ?? '',
     parents: Number(env.PARENTS ?? ''),
     versionAtMerge: env.VERSION_AT_MERGE ?? '',
+    component: env.COMPONENT === 'desktop' ? 'desktop' : 'server',
   });
   if (!result.ok) {
     console.log(`::error::${result.reason}`);
     process.exit(1);
   }
-  console.log(`PR rilis server v${result.version} lolos pagar identitas.`);
+  console.log(`PR rilis ${result.component} v${result.version} lolos pagar identitas.`);
   if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, `version=${result.version}\n`);
 }
