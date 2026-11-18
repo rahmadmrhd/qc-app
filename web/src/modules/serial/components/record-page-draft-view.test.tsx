@@ -253,3 +253,31 @@ test('dialog Ubah baris: mengganti serial yang sah mengganti kartu dan mempertah
   expect(screen.getByText('1 foto')).toBeInTheDocument();
   expect(removedIds()).toEqual([]);
 });
+
+test('ruang untuk bar aksi ada di dasar halaman (pembungkus) hanya saat ada pilihan, bukan pengganjal di atas daftar', async () => {
+  media = mockMatchMedia(false);
+  seedDraft([{ serial: 'AAA111' }, { serial: 'BBB222' }]);
+  const { container } = renderPage();
+  const wrapper = container.firstElementChild as HTMLElement;
+  await screen.findByRole('button', { name: 'Ubah baris AAA111' });
+  expect(wrapper.className).not.toContain('max-md:pb-');
+  expect(wrapper).not.toHaveAttribute('data-selection-space');
+
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris AAA111' }));
+  expect(screen.getByText('1 dipilih')).toBeInTheDocument();
+  expect(wrapper.className).toContain('max-md:pb-');
+  expect(wrapper).toHaveAttribute('data-selection-space', 'on');
+  // Tidak ada elemen kosong aria-hidden di antara notice/bar dan judul daftar draft.
+  const heading = screen.getByRole('heading', { name: /^Draft \(/ });
+  const barSection = screen.getByRole('region', { name: 'Aksi baris terpilih' });
+  let node: Element | null = barSection.nextElementSibling;
+  while (node && !node.contains(heading)) {
+    expect(node.getAttribute('aria-hidden')).toBeNull();
+    node = node.nextElementSibling;
+  }
+  expect(wrapper.querySelector('div[aria-hidden]:empty')).toBeNull();
+
+  await userEvent.click(screen.getByRole('button', { name: 'Batalkan pilihan' }));
+  expect(wrapper.className).not.toContain('max-md:pb-');
+  expect(wrapper).not.toHaveAttribute('data-selection-space');
+});

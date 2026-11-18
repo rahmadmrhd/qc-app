@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { describeError } from '@/lib/api/describe-error';
+import { cn } from '@/lib/utils';
 import { useMe } from '@/modules/auth/use-me';
 import {
   addSerials,
@@ -45,7 +46,7 @@ import { ConfirmRemoveDialog } from './confirm-remove-dialog';
 import { ImportExportBar } from './import-export-bar';
 import { EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
 import { RowEditDialog, type RowEditResult } from './row-edit-dialog';
-import { SelectionBar } from './selection-bar';
+import { SELECTION_BAR_SPACE_CLASS, SelectionBar } from './selection-bar';
 import { SerialLocationField } from './serial-location-field';
 import { type ScanFeedback, SerialScanInput } from './serial-scan-input';
 import { StagingCards } from './staging-cards';
@@ -250,6 +251,8 @@ export function RecordPage({
   }, [onProofChange, withProof]);
 
   const selectedCount = rows.filter((row) => row.selected).length;
+  // Bar aksi pilihan tampil (di ponsel `fixed`): halaman diberi ruang di dasarnya, bukan di atas daftar.
+  const barVisible = selectedCount > 0 && !saving;
   const selectedPhotoCount = rows.reduce(
     (total, row) => total + (row.selected ? row.proofPhotos.length : 0),
     0,
@@ -697,7 +700,10 @@ export function RecordPage({
   const blockedCount = rows.filter((row) => rowStatus(row).tone !== 'ok').length;
 
   return (
-    <div className="space-y-5">
+    <div
+      className={cn('space-y-5', barVisible && SELECTION_BAR_SPACE_CLASS)}
+      data-selection-space={barVisible ? 'on' : undefined}
+    >
       <h1 className="text-xl font-semibold">Catat Serial Number</h1>
 
       <section

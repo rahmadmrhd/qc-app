@@ -35,3 +35,12 @@ test('menandai bar untuk Panduan Interaktif', () => {
   );
   expect(container.querySelector('[data-tour="serial-bulk"]')).not.toBeNull();
 });
+
+test('tidak merender pengganjal di tempat bar dipasang: hanya satu elemen (bar fixed tidak memakan tinggi alur)', () => {
+  const { container } = render(
+    <SelectionBar count={2} onEdit={vi.fn()} onRemove={vi.fn()} onClear={vi.fn()} />,
+  );
+  expect(container.children).toHaveLength(1);
+  expect(container.querySelector('[aria-hidden]')).toBeNull();
+  expect(container.firstElementChild?.className).toContain('fixed');
+});
