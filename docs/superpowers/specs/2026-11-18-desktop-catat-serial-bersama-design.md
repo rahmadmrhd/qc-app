@@ -48,7 +48,7 @@ Dua tampilan atau dua jalur simpan yang menyimpang; kehilangan serial hasil inje
 - Isi baris hasil inject: `source: 'countrylock'`, `serial` (hasil baca perangkat), `itemId`/`itemLabel` (Tipe: `id` dan `model`), `buId`/`buLabel` dan `locationId`/`locationLabel` (label `<kode> - <nama>` seperti sekarang), `testDate` = tanggal WIB hari itu (`todayWib`), `sample: false`, `note: ''`, `stickers: null` (diselesaikan saat Simpan), `capturedAt` = waktu inject, `clientId` UUID baru. `proofMin` dilengkapi `RecordPage` dari server saat dibuka dan online (`fetchProofMins`); server tetap menegakkan aturan.
 - Tanpa penjagaan versi di UI: `UI_MIN_BRIDGE_VERSION` 8 sudah memastikan UI baru tak pernah berjalan di jembatan lama.
 - Prop `draft` wajib menutup SEMUA jalur tulis/hapus draft di `RecordPage` (autosave dan simpan saat unmount, `saveDraft`/`clearDraft` setelah Simpan penuh dan setelah simpan di luar halaman, tombol "Kosongkan draft", `resumeDraftWrites`), sehingga mode `draft` tak pernah menyentuh `localStorage`.
-- `isRegistered`/`shouldAutoInject` di `countrylock/` (kini bertipe `PendingEntry[]`) dilonggarkan menjadi `readonly { serial: string }[]`; tes lama tetap lolos.
+- `shouldAutoInject`/`isRegistered` di `countrylock/` TIDAK dipakai lagi oleh UI (dibiarkan untuk tesnya): Auto Inject memakai `draft.isRegistered`, yang mencocokkan serial dalam bentuk web (MAC `aa:bb:..` menjadi heksadesimal polos) seperti baris draft, sedangkan `normalizeSerial` di `countrylock/` sengaja tidak menyamakan format itu.
 
 ### Kunci kolom Serial
 
