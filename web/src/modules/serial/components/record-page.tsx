@@ -28,6 +28,7 @@ import { clearDraft, loadDraft, resumeDraftWrites, saveDraft } from '../lib/draf
 import { isReferenceError, type VerifyDeps, verifyImported } from '../lib/import-verify';
 import { hasProofPhotos } from '../lib/leave-guard';
 import { todayWib, toLocationOptions } from '../lib/locations';
+import { applyProofMins, fetchProofMins, uniqueItemIds } from '../lib/proof-refresh';
 import type { ProofPhotoRef } from '../lib/proof-source';
 import type { QcsnImport } from '../lib/qcsn';
 import { useSerialLocations } from '../lib/use-serial-locations';
@@ -168,6 +169,32 @@ export function RecordPage({
     rowsRef.current = next;
     setRows(next);
   }, []);
+
+  // Item menurut id (verifikasi impor dan penyegaran draft): hanya item yang ada dan terlihat bagi pengguna.
+  const findItemLookups = useCallback(
+    async (itemIds: readonly string[]) => {
+      const page = await queryClient.fetchQuery(serialItemsByIdQueryOptions(itemIds));
+      return page.items.map((entry) => ({
+        id: entry.id,
+        label: entry.label,
+        buOptions: entry.buOptions,
+        proofMin: proofMinimumOf(entry),
+      }));
+    },
+    [queryClient],
+  );
+  // Draft lama tidak membawa `proofMin` (dibuat sebelum item wajib foto): segarkan sekali saat halaman dibuka, satu
+  // permintaan per kumpulan item unik. Gagal = baris tetap seperti semula; server tetap menegakkan aturan saat Simpan.
+  useEffect(() => {
+    const ids = uniqueItemIds(rowsRef.current);
+    if (ids.length === 0) return;
+    void fetchProofMins(ids, findItemLookups).then((mins) => {
+      if (!mountedRef.current) return;
+      const latest = rowsRef.current;
+      const next = applyProofMins(latest, mins);
+      if (next !== latest) setAllRows(next);
+    });
+  }, [findItemLookups, setAllRows]);
 
   const [item, setItem] = useState<ItemBuValue>(EMPTY_ITEM_BU);
   const [location, setLocation] = useState({ id: '', label: '' });
@@ -467,15 +494,7 @@ export function RecordPage({
         }
       };
       const deps: VerifyDeps = {
-        findItems: async (itemIds) => {
-          const page = await queryClient.fetchQuery(serialItemsByIdQueryOptions(itemIds));
-          return page.items.map((item) => ({
-            id: item.id,
-            label: item.label,
-            buOptions: item.buOptions,
-            proofMin: proofMinimumOf(item),
-          }));
-        },
+        findItems: findItemLookups,
         stickersOf: async (itemId, buId) => {
           const data = await queryClient.fetchQuery(serialStickerOptionsQueryOptions(itemId, buId));
           return data.stickers.map((sticker) => ({ id: sticker.id, name: sticker.name }));

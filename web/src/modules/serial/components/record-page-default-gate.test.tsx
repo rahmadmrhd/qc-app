@@ -31,6 +31,10 @@ let respond: (row: { clientId: string }) => { result: string; message: string };
 
 beforeEach(() => {
   localStorage.clear();
+  for (const item of ITEMS) {
+    item.proofRequired = false;
+    item.proofMin = 1;
+  }
   respond = () => ({ result: 'created', message: '' });
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
     if (id === 'serials.locationOptions') {
@@ -163,7 +167,12 @@ test('draft lama tanpa proofMin tetap dimuat dan baris dapat disimpan', async ()
 });
 
 test('baris item wajib foto yang fotonya kurang berstatus "Butuh n foto lagi" dan memblokir Simpan', async () => {
-  seedRow({ proofMin: 2 });
+  // Item kini wajib foto (min 2): draft lama tanpa proofMin disegarkan dari server dan baris ditandai.
+  for (const item of ITEMS) {
+    item.proofRequired = true;
+    item.proofMin = 2;
+  }
+  seedRow({});
   renderPage();
   expect(await screen.findByText('Butuh 2 foto lagi')).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
