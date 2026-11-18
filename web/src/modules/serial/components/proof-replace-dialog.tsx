@@ -4,7 +4,6 @@ import { toast } from 'sonner';
 import { FileDialog } from '@/components/file-dialog';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
-import { isMobileDevice } from '../lib/device';
 import { proofSource } from '../lib/proof-source';
 import { discardProofPhotos, useReplaceProof } from '../queries';
 
@@ -51,8 +50,6 @@ export function ProofReplaceDialog({ photo, open, onOpenChange }: ProofReplaceDi
       title="Unggah ulang foto bukti QC"
       confirmLabel="Ganti foto"
       hideNames
-      // Perangkat sentuh: tombol membuka aplikasi kamera bawaan; desktop hanya Telusuri.
-      capture={isMobileDevice() ? 'environment' : undefined}
       onDiscardUploaded={(items) => void discardProofPhotos(items.map((item) => item.id))}
       onSelect={(items) => {
         const [first, ...extras] = items;

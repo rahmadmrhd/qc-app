@@ -2,7 +2,7 @@ import type { SerialProofPhotoDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -47,8 +47,6 @@ beforeEach(() => {
   toastError.mockReset();
   toastSuccess.mockReset();
   prepareImageMock.mockReset();
-  // Perangkat sentuh: tombol kamera native tersedia di dialog Unggah ulang.
-  window.matchMedia = vi.fn(() => ({ matches: true })) as unknown as typeof window.matchMedia;
   apiMock.mockResolvedValue({ id: 'x' });
   prepareImageMock.mockResolvedValue({
     mime: 'image/webp',
@@ -58,15 +56,11 @@ beforeEach(() => {
   });
 });
 
-const realMatchMedia = window.matchMedia;
-afterEach(() => {
-  window.matchMedia = realMatchMedia;
-});
-
-/** Meniru hasil aplikasi kamera bawaan: berkas masuk lewat input `capture` pada dialog yang terbuka. */
+/** Meniru memilih satu foto lewat Telusuri pada dialog yang terbuka (kamera bawaan sistem tidak ditawarkan). */
 function shoot(dialog: HTMLElement) {
   const file = new File([new Uint8Array(4)], 'foto.jpg', { type: 'image/jpeg' });
-  fireEvent.change(within(dialog).getByTestId('capture-input'), { target: { files: [file] } });
+  const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, { target: { files: [file] } });
 }
 
 test('foto selesai: gambar kecil dari serialProofs.get; tanpa label status', () => {
