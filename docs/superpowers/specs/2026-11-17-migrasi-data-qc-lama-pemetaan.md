@@ -134,3 +134,24 @@ DELETE e FROM serial_events e JOIN serials s ON s.id = e.serial_id
 2. Konfirmasi ulang aturan BU item (`brand+serials`) sebelum `--apply` ke staging; uji lewat aplikasi (daftar, detail, ubah item).
 3. Cadangan database, lalu `--apply` ke produksi dengan `--confirm-database`.
 4. Setelah disetujui, pindahkan keputusan di §3 ke log keputusan spek terkait (butir Serial Number) dan PRD.
+
+## 6. Panduan menjalankan di staging dan produksi
+
+Skrip adalah alat lokal (belum ada di image Docker): ia dijalankan dari mesin pemilik lewat terowongan SSH ke MariaDB lingkungan itu. Skrip TIDAK menerapkan migrasi skema; skema tujuan harus sudah di migrasi 0024 atau lebih baru (aplikasi menerapkannya saat start setelah deploy). Bila belum, dry-run berhenti dengan `Unknown column 'firmware'` dan tidak menulis apa pun. Pada 2026-11-18 `origin/main` belum memuat 0023/0024, jadi produksi baru siap setelah rilis `dev` → `main`; staging sudah siap setelah PR yang memuat migrasi itu ter-deploy.
+
+| | Staging | Produksi |
+|---|---|---|
+| Port terowongan (VPS `127.0.0.1`) | 33064 | 33065 |
+| Pengguna / skema DB | `qc_dev` / `qc_dev` (staging memakai skema bernama `qc_dev`; lihat `QC_DB_USER`/`QC_DB_NAME` di `.env`) | `qc_production` / `qc_production` |
+| Kontainer DB | `qc-staging-db` | `qc-production-db` |
+| `.env` (kata sandi `QC_DB_PASSWORD`) | `/root/apps/qc-app/staging/.env` | `/root/apps/qc-app/production/.env` |
+
+Langkah (ganti nilai untuk lingkungan yang dituju; jangan menempel kata sandi ke chat, log, atau berkas yang dikomit):
+
+1. **Terowongan** (terminal terpisah, biarkan terbuka; port lokal sengaja sama dengan port VPS agar tak bertabrakan dengan terowongan dev 33063): `ssh -N -L 33064:127.0.0.1:33064 rhd_vps_ipv4` (produksi: `33065`).
+2. **Alamat tujuan lewat variabel lingkungan PROSES**, bukan `server/.env`. Bun otomatis membaca `server/.env` (isinya `DATABASE_URL` dev); variabel yang sudah diset di proses menang atas berkas itu, tetapi bila lupa diset skrip diam-diam mengarah ke `qc_dev`. Selalu periksa baris `Tujuan: host/skema` pada keluaran sebelum lanjut. PowerShell: `$env:DATABASE_URL = 'mysql://qc_dev:<sandi>@127.0.0.1:33064/qc_dev'` (karakter khusus pada sandi di-URL-encode: `@` → `%40`, `:` → `%3A`, `/` → `%2F`, `#` → `%23`).
+3. **Dry-run** (tidak menulis): `bun run --cwd server scripts/migrate-legacy-qc.ts --dump <berkas.sql> --report-dir ./laporan-<env>`. Tinjau: baris `HAMBATAN` (harus kosong; kode BU/lokasi bentrok = penerapan ditolak), `BU dibuat` dan `lokasi dibuat` (produksi umumnya sudah punya BU/lokasi bernama sama, yang dicocokkan menurut nama), `item: match-key/match-alias/create`, `firmware: fill/keep/skip`, dan CSV `bentrok-tujuan.csv` (serial yang sudah ada di tujuan, tidak ditulis), `dilewati.csv`, `dilipat.csv`, `item.csv`.
+4. **Cadangan sebelum menulis** (wajib untuk produksi), dari mesin pemilik: `ssh rhd_vps_ipv4 "docker exec qc-production-db sh -c 'mariadb-dump -uroot -p\"\$MARIADB_ROOT_PASSWORD\" --single-transaction qc_production'" | gzip > qc_production-sebelum-migrasi.sql.gz` (nama kontainer dan skema disesuaikan; periksa dulu dengan `docker ps`). Pastikan berkasnya tidak kosong. Untuk produksi, cadangan inilah pembatalan yang sesungguhnya; SQL pembatalan di §4 hanya untuk kasus terbatas.
+5. **Terapkan**: perintah dry-run yang sama ditambah `--apply --confirm-database <skema>` (harus persis sama dengan skema pada `DATABASE_URL`, kalau tidak dibatalkan sebelum menulis). Master (BU, lokasi, merk, item, tautan, audit) ditulis dalam SATU transaksi lebih dulu, lalu serial per potongan 150 (±10 menit untuk 208 ribu serial lewat terowongan). Bila terputus di tengah jalan, jalankan ulang perintah yang sama: yang sudah masuk dikenali lewat `client_id` dan dilewati.
+6. **Verifikasi**: putaran kedua dry-run harus menunjukkan `serial ditulis: 0; sudah dimigrasi: 208058`; hitungan serial per BU/lokasi sesuai ringkasan; buka aplikasi (daftar Serial Number, detail satu serial lama dengan riwayatnya, Data Item berfirmware) dan periksa `audit_log` aksi `legacy.migration`.
+7. **Urutan yang disarankan**: staging dulu sampai verifikasi lolos dan aturan BU item dikonfirmasi pemilik (butir 12, `--item-bu`), baru produksi. Skrip tidak memicu notifikasi, potongan stok, atau surel (menulis langsung ke tabel).
