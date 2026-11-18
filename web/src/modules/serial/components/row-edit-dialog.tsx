@@ -90,14 +90,16 @@ export function RowEditDialog({
   const settledRef = useRef(false);
 
   // Dialog dilepas (Batal, Esc, atau induk berhenti merendernya) tanpa Terapkan: foto yang baru diunggah dibuang.
-  useEffect(
-    () => () => {
+  // Penanda diturunkan lagi di setup efek: StrictMode (dev) memasang ulang efek, dan cleanup simulasinya tidak boleh
+  // meninggalkan penanda "selesai" yang membuat Batal tidak membuang foto.
+  useEffect(() => {
+    settledRef.current = false;
+    return () => {
       if (settledRef.current) return;
       settledRef.current = true;
       void discardProofPhotos([...addedRef.current]);
-    },
-    [],
-  );
+    };
+  }, []);
 
   function close() {
     if (!settledRef.current) {

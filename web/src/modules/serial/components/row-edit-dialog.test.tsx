@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { pickLink } from '@/test/link-field';
 import { makeRow, optionsApi, proofRef, testMe } from '../test-support';
@@ -10,6 +11,8 @@ vi.mock('@/lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api')>()),
   api: apiMock,
 }));
+const prepareImageMock = vi.hoisted(() => vi.fn());
+vi.mock('@/modules/files/image', () => ({ prepareImage: prepareImageMock }));
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => testMe() }));
 
 import type { StagingRow } from '../lib/draft';
@@ -17,7 +20,27 @@ import { RowEditDialog, type RowEditResult } from './row-edit-dialog';
 
 beforeEach(() => {
   apiMock.mockReset();
-  apiMock.mockImplementation(optionsApi);
+  prepareImageMock.mockReset();
+  prepareImageMock.mockResolvedValue({
+    mime: 'image/webp',
+    bytes: new Uint8Array(3),
+    width: 10,
+    height: 10,
+  });
+  apiMock.mockImplementation((id: string, input: Record<string, unknown>) =>
+    id === 'serialProofs.upload'
+      ? Promise.resolve({
+          id: 'new1',
+          state: 'draft',
+          mime: 'image/webp',
+          size: 100,
+          width: 10,
+          height: 10,
+          filename: 'bukti-new1.webp',
+          error: null,
+        })
+      : optionsApi(id, input),
+  );
 });
 
 function renderDialog(
@@ -171,4 +194,64 @@ test('batas foto per entri menonaktifkan Tambah foto', async () => {
   const { dialog } = await ready();
   expect(within(dialog).getByRole('button', { name: 'Tambah foto' })).toBeDisabled();
   expect(within(dialog).getByText('Batas 5 foto tercapai.')).toBeInTheDocument();
+});
+
+async function addOnePhoto(dialog: HTMLElement) {
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tambah foto' }));
+  const input = document.body.querySelector(
+    'input[type="file"]:not([capture])',
+  ) as HTMLInputElement;
+  fireEvent.change(input, {
+    target: { files: [new File([new Uint8Array(4)], 'foto.jpg', { type: 'image/jpeg' })] },
+  });
+  await userEvent.click(await screen.findByRole('button', { name: 'Tambahkan (1)' }));
+  await waitFor(() => expect(within(dialog).getByText('Foto bukti (1)')).toBeInTheDocument());
+}
+
+test('StrictMode: foto yang ditambahkan lalu dibatalkan dibuang di server', async () => {
+  const onClose = vi.fn();
+  render(
+    <StrictMode>
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <RowEditDialog
+          row={makeRow('AAA111')}
+          commitSerial={() => null}
+          onClose={onClose}
+          onApply={vi.fn()}
+        />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+  const { dialog } = await ready();
+  await addOnePhoto(dialog);
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
+  expect(onClose).toHaveBeenCalledOnce();
+  expect(removedIds()).toEqual(['new1']);
+});
+
+test('StrictMode: foto yang ditambahkan lalu diterapkan tidak dibuang', async () => {
+  const onApply = vi.fn();
+  render(
+    <StrictMode>
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <RowEditDialog
+          row={makeRow('AAA111')}
+          commitSerial={() => null}
+          onClose={vi.fn()}
+          onApply={onApply}
+        />
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+  const { dialog, apply } = await ready();
+  await addOnePhoto(dialog);
+  await userEvent.click(apply);
+  expect(onApply.mock.calls[0]?.[0].proofPhotos.map((photo: { id: string }) => photo.id)).toEqual([
+    'new1',
+  ]);
+  expect(removedIds()).toEqual([]);
 });
