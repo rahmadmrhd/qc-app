@@ -79,3 +79,14 @@ test('saat disabled kartu dan centang terkunci', () => {
   expect(screen.getByRole('checkbox', { name: 'Pilih baris AAA111' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Ubah baris AAA111' })).toBeDisabled();
 });
+
+test('item wajib foto dengan foto kurang menampilkan "Butuh n foto lagi" pada kartu', () => {
+  renderCards([
+    makeRow('AAA111', { proofMin: 3, proofPhotos: [proofRef('p1')] }),
+    makeRow('BBB222', { proofMin: 1, proofPhotos: [proofRef('p2')] }),
+  ]);
+  const [first, second] = screen.getAllByRole('listitem') as [HTMLElement, HTMLElement];
+  expect(within(first).getByText('Butuh 2 foto lagi')).toBeInTheDocument();
+  expect(within(first).queryByText('Siap')).toBeNull();
+  expect(within(second).getByText('Siap')).toBeInTheDocument();
+});

@@ -5,11 +5,20 @@ import { addSerials, type StagingRow } from './lib/draft';
 export const TEST_ITEMS = [
   { id: 'i1', label: 'Cisco C9200', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
   { id: 'i2', label: 'Aruba 2930', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
+  {
+    id: 'i3',
+    label: 'Strict Router',
+    buIds: ['b1'],
+    buOptions: [{ id: 'b1', code: 'BU1' }],
+    proofRequired: true,
+    proofMin: 3,
+  },
 ];
 
 export const TEST_STICKERS: Record<string, { id: string; name: string }[]> = {
   i1: [{ id: 's1', name: 'Stiker A' }],
   i2: [{ id: 's3', name: 'Stiker C' }],
+  i3: [{ id: 's4', name: 'Stiker D' }],
 };
 
 export function testMe(): MeDto {
