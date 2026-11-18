@@ -35,3 +35,30 @@ test('menandai bar untuk Panduan Interaktif', () => {
   );
   expect(container.querySelector('[data-tour="serial-bulk"]')).not.toBeNull();
 });
+
+test('tidak merender pengganjal di tempat bar dipasang: hanya satu elemen (bar fixed tidak memakan tinggi alur)', () => {
+  const { container } = render(
+    <SelectionBar count={2} onEdit={vi.fn()} onRemove={vi.fn()} onClear={vi.fn()} />,
+  );
+  expect(container.children).toHaveLength(1);
+  expect(container.querySelector('[aria-hidden]')).toBeNull();
+  expect(container.firstElementChild?.className).toContain('fixed');
+});
+
+test('urutan DOM: tombol dulu lalu "n dipilih" (urutan baca = visual di desktop); ponsel memajukan teks lewat order', () => {
+  render(<SelectionBar count={2} onEdit={vi.fn()} onRemove={vi.fn()} onClear={vi.fn()} />);
+  const status = screen.getByRole('status');
+  const bar = screen.getByRole('region', { name: 'Aksi baris terpilih' });
+  expect(bar.lastElementChild).toBe(status);
+  expect(bar.firstElementChild?.textContent).toBe('Edit');
+  expect(status.className).toContain('max-md:order-first');
+  expect(status.className).toContain('max-md:mr-auto');
+  expect(status.className).not.toContain('md:order-last');
+});
+
+test('bar fixed tanpa margin bawah di ponsel (tidak terangkat oleh space-y pembungkus)', () => {
+  render(<SelectionBar count={1} onEdit={vi.fn()} onRemove={vi.fn()} onClear={vi.fn()} />);
+  const bar = screen.getByRole('region', { name: 'Aksi baris terpilih' });
+  expect(bar.className).toContain('bottom-0');
+  expect(bar.className).toContain('max-md:m-0');
+});

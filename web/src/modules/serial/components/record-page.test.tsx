@@ -11,7 +11,7 @@ import { exportQcsn } from '../lib/qcsn';
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
 const toastSuccess = vi.hoisted(() => vi.fn());
-vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: vi.fn(), dismiss: vi.fn() } }));
 
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
@@ -167,7 +167,32 @@ test('menempel dua serial menambah dua baris dengan bawaan rombongan', async () 
     expect(within(row).getByText('Cisco C9200')).toBeInTheDocument();
     expect(within(row).getByText('Jakarta (JKT)')).toBeInTheDocument();
   }
-  expect(screen.getByText(/2 serial ditambahkan/)).toBeInTheDocument();
+  // Hasil murni sukses = toast (id tetap supaya scan berturut-turut mengganti, bukan menumpuk), bukan kotak inline.
+  expect(toastSuccess).toHaveBeenCalledWith(
+    '2 serial ditambahkan',
+    expect.objectContaining({ id: 'serial-add' }),
+  );
+  expect(screen.queryByText(/2 serial ditambahkan/)).toBeNull();
+});
+
+test('scan berturut-turut memakai id toast yang sama; duplikat tetap inline dan sukses berikutnya menghapusnya', async () => {
+  toastSuccess.mockClear();
+  renderPage();
+  await pickDefaults();
+  await paste('AAA111');
+  await paste('BBB222');
+  const addCalls = toastSuccess.mock.calls.filter((call) =>
+    String(call[0]).includes('ditambahkan'),
+  );
+  expect(addCalls).toHaveLength(2);
+  for (const call of addCalls) expect(call[1]).toMatchObject({ id: 'serial-add' });
+  const dismissed = vi.mocked((await import('sonner')).toast.dismiss);
+  dismissed.mockClear();
+  await paste('AAA111');
+  expect(dismissed).toHaveBeenCalledWith('serial-add');
+  expect(screen.getByText(/1 duplikat dilewati/)).toBeInTheDocument();
+  await paste('CCC333');
+  expect(screen.queryByText(/duplikat dilewati/)).toBeNull();
 });
 
 test('serial ganda menampilkan pesan dan tidak menambah baris', async () => {

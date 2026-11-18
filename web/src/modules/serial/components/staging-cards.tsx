@@ -49,6 +49,8 @@ const CardView = memo(function CardView({
       <button
         type="button"
         aria-label={`Ubah baris ${row.serial}`}
+        // Nama tombol (aria-label) menimpa isinya: status masalah dibacakan lewat deskripsi, kartu siap tanpa deskripsi.
+        aria-describedby={status.tone === 'ok' ? undefined : `row-status-${row.clientId}`}
         disabled={disabled}
         className="min-w-0 flex-1 space-y-1 text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-70"
         onClick={() => onOpenDetail(row.clientId)}
@@ -59,25 +61,27 @@ const CardView = memo(function CardView({
         </span>
         <span className="block text-sm">{itemLine || '—'}</span>
         <span className="block text-xs text-muted-foreground">{place || '—'}</span>
-        <span className="flex flex-wrap items-center gap-1 text-xs">
-          {status.tone === 'ok' ? (
-            <span className="rounded-full border px-1.5 py-px text-muted-foreground">Siap</span>
-          ) : (
-            <span
-              className={cn(
-                'rounded-full border px-1.5 py-px font-medium',
-                TONE_CLASS[status.tone],
-              )}
-            >
-              {status.text}
-            </span>
-          )}
-          {row.proofPhotos.length > 0 ? (
-            <span className="rounded-full border px-1.5 py-px text-muted-foreground">
-              {row.proofPhotos.length} foto
-            </span>
-          ) : null}
-        </span>
+        {/* Lencana status hanya untuk baris yang perlu ditinjau; kartu siap tidak membawa teks status. */}
+        {status.tone !== 'ok' || row.proofPhotos.length > 0 ? (
+          <span className="flex flex-wrap items-center gap-1 text-xs">
+            {status.tone !== 'ok' ? (
+              <span
+                id={`row-status-${row.clientId}`}
+                className={cn(
+                  'rounded-full border px-1.5 py-px font-medium',
+                  TONE_CLASS[status.tone],
+                )}
+              >
+                {status.text}
+              </span>
+            ) : null}
+            {row.proofPhotos.length > 0 ? (
+              <span className="rounded-full border px-1.5 py-px text-muted-foreground">
+                {row.proofPhotos.length} foto
+              </span>
+            ) : null}
+          </span>
+        ) : null}
         <RowBadges row={row} />
       </button>
     </li>
