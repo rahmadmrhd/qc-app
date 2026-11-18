@@ -1,55 +1,55 @@
 import { Eye, EyeOff } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { type StampPreviewInput, stampPreviewLines } from '../lib/stamp-preview';
 
 /**
- * Pratinjau cap di atas pandangan kamera: empat baris di kotak hitam berhuruf putih (mirip footer cap resmi) dan
- * keterangan bahwa cap resmi ditambahkan server. Hanya overlay HTML: bukan bagian dari gambar yang dipotret. Satu
- * tombol menyembunyikannya. Diletakkan di atas baris kontrol kiri dan di kiri kolom zoom.
+ * Pratinjau cap di atas pandangan kamera: empat baris di kotak hitam semi-transparan berhuruf putih (mirip footer cap
+ * resmi) dan keterangan bahwa cap resmi ditambahkan server. Hanya overlay HTML: bukan bagian dari gambar yang
+ * dipotret. Penataan letak (di atas strip foto dan rana) dan tombol sembunyikan (`StampToggleButton`) diatur
+ * pemanggil, yang memegang keadaan tampil/sembunyi.
  */
-export function StampPreview({ input }: { input: StampPreviewInput }) {
-  const [visible, setVisible] = useState(true);
+export function StampNote({ input }: { input: StampPreviewInput }) {
   const lines = useMemo(() => stampPreviewLines(input), [input]);
   return (
     <div
       data-testid="stamp-preview"
-      data-camera-control
-      className="absolute right-[4.75rem] bottom-[4.5rem] left-3 flex flex-col items-start gap-1"
+      role="note"
+      aria-label="Pratinjau cap"
+      className="w-full rounded-md bg-black/65 px-2 py-1.5 font-mono text-[11px] leading-snug text-white backdrop-blur-[2px]"
     >
-      <button
-        type="button"
-        aria-pressed={!visible}
-        aria-label={visible ? 'Sembunyikan pratinjau cap' : 'Tampilkan pratinjau cap'}
-        title={visible ? 'Sembunyikan pratinjau cap' : 'Tampilkan pratinjau cap'}
-        className="flex size-8 items-center justify-center rounded-full bg-black/50 text-white hover:bg-black/70"
-        onClick={(event) => {
-          event.stopPropagation();
-          setVisible((value) => !value);
-        }}
-      >
-        {visible ? (
-          <EyeOff aria-hidden className="size-4" />
-        ) : (
-          <Eye aria-hidden className="size-4" />
-        )}
-      </button>
-      {visible ? (
-        <div
-          role="note"
-          aria-label="Pratinjau cap"
-          className="w-full rounded-md bg-black/80 px-2 py-1.5 font-mono text-[11px] leading-snug text-white"
-        >
-          {lines.map((line, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: empat baris tetap, urutan = isi
-            <p key={index} className="truncate" title={line}>
-              {line}
-            </p>
-          ))}
-          <p className="mt-1 text-[10px] text-white/70">
-            Pratinjau: cap resmi ditambahkan server saat Simpan.
-          </p>
-        </div>
-      ) : null}
+      {lines.map((line, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: empat baris tetap, urutan = isi
+        <p key={index} className="truncate" title={line}>
+          {line}
+        </p>
+      ))}
+      {/* Di layar pendek (ponsel landscape) keterangan ini dilipat agar pratinjau tak menutup subjek. */}
+      <p className="mt-1 text-[10px] text-white/70 [@media(max-height:30rem)]:hidden">
+        Pratinjau: cap resmi ditambahkan server saat Simpan.
+      </p>
     </div>
+  );
+}
+
+/** Tombol bulat 44 px untuk menyembunyikan/menampilkan pratinjau cap (gaya sama dengan kontrol kamera lain). */
+export function StampToggleButton({
+  visible,
+  onToggle,
+}: {
+  visible: boolean;
+  onToggle: () => void;
+}) {
+  const label = visible ? 'Sembunyikan pratinjau cap' : 'Tampilkan pratinjau cap';
+  return (
+    <button
+      type="button"
+      aria-pressed={!visible}
+      aria-label={label}
+      title={label}
+      className="flex size-11 items-center justify-center rounded-full bg-black/50 text-white outline-none hover:bg-black/70 focus-visible:ring-3 focus-visible:ring-ring/50"
+      onClick={onToggle}
+    >
+      {visible ? <EyeOff aria-hidden className="size-5" /> : <Eye aria-hidden className="size-5" />}
+    </button>
   );
 }

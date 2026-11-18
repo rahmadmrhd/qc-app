@@ -8,7 +8,7 @@ import { zoomStepOf } from '../lib/zoom-math';
 import { ZoomSlider } from './zoom-slider';
 
 /** Tombol bulat semi-transparan gelap + ikon putih: terbaca di atas video, target ketuk 44 px. */
-const FLOAT_BUTTON =
+export const FLOAT_BUTTON =
   'size-11 rounded-full bg-black/50 text-white hover:bg-black/70 hover:text-white';
 
 /** Panjang trek slider vertikal: menyusut di layar pendek (ponsel landscape) agar tak melebihi area kamera. */
@@ -146,7 +146,7 @@ export function nextDevice(
  * Tombol + / - zoom (44 px): satu tekan = satu langkah, tahan = berulang. Klik dari papan ketik (`detail` 0) juga
  * menggeser satu langkah; klik sentuh/mouse sudah ditangani `pointerdown` (tidak dihitung dua kali).
  */
-function ZoomStepButton({
+export function ZoomStepButton({
   label,
   icon,
   disabled,

@@ -357,6 +357,8 @@ function ProofPhotoBody({
           remaining={remaining}
           stamp={stamp}
           shots={shots}
+          uploading={uploading}
+          onRemoveShot={removeShot}
           onShot={shoot}
           // Izin ditolak atau kamera tak ada: pesannya tampil di kamera, lalu tombol Kamera hilang (Telusuri tetap).
           onUnavailable={() => {
