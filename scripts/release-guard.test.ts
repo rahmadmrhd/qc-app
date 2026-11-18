@@ -8,10 +8,49 @@ const META = [
   'server/changelog.d/20261117-a.md',
 ];
 
+describe('evaluateGuard: perbandingan terpotong', () => {
+  test('300 berkas atau lebih (batas API compare; daftar terpotong diam-diam) ditolak, gagal tertutup', () => {
+    for (const fileCount of [300, 301, 5000]) {
+      const result = evaluateGuard({
+        compareStatus: 'ahead',
+        files: META,
+        fileCount,
+        changelogHasVersion: true,
+      });
+      expect(result.ok, String(fileCount)).toBe(false);
+      expect(result.reason).toMatch(/staging/i);
+    }
+  });
+
+  test('299 berkas masih dinilai dari daftarnya; jumlah bukan angka dianggap tak dapat dipercaya', () => {
+    expect(
+      evaluateGuard({
+        compareStatus: 'ahead',
+        files: META,
+        fileCount: META.length,
+        changelogHasVersion: true,
+      }).ok,
+    ).toBe(true);
+    expect(
+      evaluateGuard({
+        compareStatus: 'ahead',
+        files: META,
+        fileCount: Number.NaN,
+        changelogHasVersion: true,
+      }).ok,
+    ).toBe(false);
+  });
+});
+
 describe('evaluateGuard', () => {
   test('ahead + hanya berkas metadata + CHANGELOG punya bagian versi = lulus', () => {
     expect(
-      evaluateGuard({ compareStatus: 'ahead', files: META, changelogHasVersion: true }),
+      evaluateGuard({
+        compareStatus: 'ahead',
+        files: META,
+        fileCount: 4,
+        changelogHasVersion: true,
+      }),
     ).toEqual({ ok: true, reason: expect.any(String) });
   });
 

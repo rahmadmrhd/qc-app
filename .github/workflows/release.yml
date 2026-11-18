@@ -31,10 +31,13 @@ permissions:
   contents: read
 
 # Satu pipeline production pada satu waktu (grup yang sama dengan deploy-server.yml), tanpa membatalkan yang berjalan. Merge
-# biasa ke main (bukan cabang rilis yang di-merge) memakai grup sendiri agar tak menggantikan run rilis yang menunggu.
+# biasa ke main (bukan cabang rilis yang di-merge) dan SEMUA run saat RELEASE_FLOW bukan `tag` (semua job dilewati) memakai
+# grup sendiri agar run kosong tak menggantikan run production yang menunggu (deploy-server.yml atau rilis). Catatan: GitHub
+# menyimpan paling banyak satu run MENUNGGU per grup; rilis yang menunggu dapat dibatalkan run production berikutnya (dispatch
+# production, PR rilis lain): bila run rilis berstatus "cancelled", jalankan ulang lewat workflow_dispatch (input `versi`).
 # Ekspresi cabang di bawah HANYA dipakai di sini (nama grup); tak masuk ke `run`, `env`, `if`, atau checkout.
 concurrency:
-  group: deploy-server-${{ (github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/server-v'))) && 'production' || format('lewati-{0}', github.run_id) }}
+  group: deploy-server-${{ (vars.RELEASE_FLOW == 'tag' && (github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/server-v')))) && 'production' || format('lewati-{0}', github.run_id) }}
   cancel-in-progress: false
 
 jobs:
@@ -101,15 +104,23 @@ jobs:
           sha=$(jq -r '.merge_commit_sha // ""' <<< "$data")
           [[ $sha =~ ^[0-9a-f]{40}$ ]] || fail "Commit merge bukan SHA 40 heksa."
           parents=$(gh api "repos/$REPO/commits/$sha" --jq '.parents | length')
+          [[ $parents =~ ^[0-9]+$ ]] || fail "Jumlah induk commit merge tidak terbaca."
           version_at_merge=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/server/package.json?ref=$sha" | jq -r '.version // ""')
+          # Isi package.json dikendalikan commit: tolak apa pun selain X.Y.Z SEBELUM ditulis ke GITHUB_OUTPUT (baris baru di
+          # dalamnya dapat menimpa keluaran lain; kunci terakhir menang, jadi `sha` ditulis paling akhir).
+          [[ $version_at_merge =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Versi di server/package.json pada commit merge bukan X.Y.Z."
+          head_repo=$(jq -r '.head.repo.full_name // ""' <<< "$data")
+          base_ref=$(jq -r '.base.ref' <<< "$data")
+          [[ $head_repo =~ ^[A-Za-z0-9._/-]{0,200}$ ]] || fail "Nama repositori asal memuat karakter yang tidak diizinkan."
+          [[ $base_ref =~ ^[A-Za-z0-9._/-]{1,100}$ ]] || fail "Nama cabang tujuan memuat karakter yang tidak diizinkan."
           {
             echo "release=true"
-            echo "sha=$sha"
             echo "head_ref=$head_ref"
-            echo "head_repo=$(jq -r '.head.repo.full_name // ""' <<< "$data")"
-            echo "base_ref=$(jq -r '.base.ref' <<< "$data")"
+            echo "head_repo=$head_repo"
+            echo "base_ref=$base_ref"
             echo "parents=$parents"
             echo "version_at_merge=$version_at_merge"
+            echo "sha=$sha"
           } >> "$GITHUB_OUTPUT"
 
       # Pagar identitas (skrip murni, diuji tanpa GitHub). Gagal = job gagal = tak ada job lain yang jalan.
@@ -135,6 +146,9 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+    outputs:
+      # production SUDAH menjalankan commit ini (menjalankan ulang setelah sebagian rilis selesai): image dan deploy dilewati.
+      deployed: ${{ steps.compare.outputs.deployed }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -145,6 +159,10 @@ jobs:
         with:
           bun-version: 1.4.2
 
+      # Semua pemeriksaan yang butuh API (tag, penunjuk deploy, perbandingan, CHANGELOG) ada di sini, SEBELUM image dibangun.
+      # 404 dibedakan dari galat API lain (galat sementara tak boleh dibaca sebagai "belum ada"). Daftar berkas dikirim sebagai
+      # SATU baris JSON beserta jumlahnya: nama berkas git boleh memuat baris baru dan tak boleh menyelipkan baris GITHUB_OUTPUT
+      # palsu, dan API compare memotong daftar pada 300 berkas tanpa penanda (jumlah >= 300 = guard gagal tertutup).
       - name: Bandingkan dengan staging
         id: compare
         env:
@@ -155,25 +173,61 @@ jobs:
         run: |
           set -euo pipefail
           fail() { echo "::error::$1"; exit 1; }
+          # Kode 0 = ada (hasil dicetak), 44 = 404 (belum ada), 1 = galat lain.
+          api_try() {
+            local out
+            if out=$(gh api "$@" 2>&1); then printf '%s' "$out"; return 0; fi
+            if grep -qE 'HTTP 404|Not Found' <<< "$out"; then return 44; fi
+            echo "::error::Panggilan API GitHub gagal: ${out:0:300}" >&2
+            return 1
+          }
           [[ $SHA =~ ^[0-9a-f]{40}$ ]] || fail "Commit rilis bukan SHA 40 heksa."
           [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Versi rilis tidak valid."
-          staging=$(gh api "repos/$REPO/git/ref/deployed/staging" --jq '.object.sha' 2>/dev/null) || fail "Penunjuk refs/deployed/staging belum ada: deploy staging dulu, lalu jalankan ulang release.yml lewat workflow_dispatch."
-          [[ $staging =~ ^[0-9a-f]{40}$ ]] || fail "Penunjuk refs/deployed/staging tidak valid."
-          result=$(gh api "repos/$REPO/compare/$staging...$SHA")
+
+          # Tag server-vX.Y.Z tak boleh sudah ada pada commit lain: image `server-vX.Y.Z` akan menimpanya dan publish gagal sesudah
+          # production ter-deploy. Tag pada commit yang SAMA sah (menjalankan ulang).
+          rc=0; tag_info=$(api_try "repos/$REPO/git/ref/tags/server-v$VERSION" --jq '.object.type + " " + .object.sha') || rc=$?
+          if [ $rc -eq 0 ]; then
+            [ "${tag_info%% *}" = commit ] && [ "${tag_info##* }" = "$SHA" ] || fail "Tag server-v$VERSION sudah ada pada commit lain (atau bukan tag ringan): hapus atau pakai versi lain; tag tidak ditimpa."
+          elif [ $rc -ne 44 ]; then
+            fail "Gagal memeriksa tag server-v$VERSION (galat API)."
+          fi
+
+          # Production sudah menjalankan commit ini (menjalankan ulang): tak perlu membandingkan staging, image, dan deploy.
+          rc=0; prod=$(api_try "repos/$REPO/git/ref/deployed/production" --jq '.object.sha') || rc=$?
+          if [ $rc -ne 0 ] && [ $rc -ne 44 ]; then fail "Gagal membaca refs/deployed/production (galat API)."; fi
+          deployed=false
+          if [ $rc -eq 0 ] && [ "$prod" = "$SHA" ]; then deployed=true; fi
+
+          if [ "$deployed" = true ]; then
+            status=identical; files_json='[]'; file_count=0
+          else
+            rc=0; staging=$(api_try "repos/$REPO/git/ref/deployed/staging" --jq '.object.sha') || rc=$?
+            if [ $rc -eq 44 ]; then fail "Penunjuk refs/deployed/staging belum ada: deploy staging dulu, lalu jalankan ulang release.yml lewat workflow_dispatch."; fi
+            if [ $rc -ne 0 ]; then fail "Gagal membaca refs/deployed/staging (galat API)."; fi
+            [[ $staging =~ ^[0-9a-f]{40}$ ]] || fail "Penunjuk refs/deployed/staging tidak valid."
+            result=$(gh api "repos/$REPO/compare/$staging...$SHA")
+            status=$(jq -r '.status' <<< "$result")
+            files_json=$(jq -c '[.files[]? | .filename, (.previous_filename // empty)]' <<< "$result")
+            file_count=$(jq '.files | length' <<< "$result")
+          fi
           changelog=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/server/CHANGELOG.md?ref=$SHA")
           if grep -qF "## [$VERSION] - " <<< "$changelog"; then has=true; else has=false; fi
+          [[ $status =~ ^[a-z]{1,20}$ ]] || fail "Status perbandingan tidak terbaca."
+          [[ $file_count =~ ^[0-9]+$ ]] || fail "Jumlah berkas perbandingan tidak terbaca."
           {
-            echo "status=$(jq -r '.status' <<< "$result")"
+            echo "status=$status"
             echo "has_version=$has"
-            echo "files<<QC_FILES_EOF"
-            jq -r '.files[]? | .filename, (.previous_filename // empty)' <<< "$result"
-            echo "QC_FILES_EOF"
+            echo "deployed=$deployed"
+            echo "file_count=$file_count"
+            echo "files_json=$files_json"
           } >> "$GITHUB_OUTPUT"
 
       - name: Guard rilis
         env:
           COMPARE_STATUS: ${{ steps.compare.outputs.status }}
-          FILES: ${{ steps.compare.outputs.files }}
+          FILES_JSON: ${{ steps.compare.outputs.files_json }}
+          FILE_COUNT: ${{ steps.compare.outputs.file_count }}
           CHANGELOG_HAS_VERSION: ${{ steps.compare.outputs.has_version }}
         run: bun run scripts/release-guard.ts
 
@@ -181,7 +235,7 @@ jobs:
   # `packages: read` wajib walau tak dipakai: GitHub memvalidasi izin job di workflow dipanggil (uji bangun PR).
   ci:
     needs: [meta, guard]
-    if: needs.meta.outputs.release == 'true'
+    if: needs.meta.outputs.release == 'true' && needs.guard.outputs.deployed != 'true'
     permissions:
       contents: read
       pull-requests: read
@@ -195,7 +249,7 @@ jobs:
   # tertanam di image dari commit merge).
   image:
     needs: [meta, guard, ci]
-    if: needs.meta.outputs.release == 'true'
+    if: needs.meta.outputs.release == 'true' && needs.guard.outputs.deployed != 'true'
     permissions:
       contents: read
       packages: write
@@ -208,7 +262,7 @@ jobs:
   # `contents: write` hanya batas bagi `mark-deployed` di dalam workflow terpanggil (satu-satunya yang menulis).
   deploy:
     needs: [meta, guard, ci, image]
-    if: needs.meta.outputs.release == 'true' && needs.image.result == 'success'
+    if: needs.meta.outputs.release == 'true' && needs.guard.outputs.deployed != 'true' && needs.image.result == 'success'
     permissions:
       contents: write
     uses: ./.github/workflows/server-deploy.yml
@@ -220,8 +274,8 @@ jobs:
   # (menjalankan ulang tak membuat tag ganda), tag pada SHA lain menggagalkan. Catatan dibuat tanpa token; token hanya di
   # langkah yang memanggil API.
   publish:
-    needs: [meta, deploy]
-    if: needs.meta.outputs.release == 'true' && needs.deploy.result == 'success'
+    needs: [meta, guard, deploy]
+    if: ${{ !cancelled() && !failure() && needs.meta.outputs.release == 'true' && (needs.guard.outputs.deployed == 'true' || needs.deploy.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -261,7 +315,15 @@ jobs:
           [[ $SHA =~ ^[0-9a-f]{40}$ ]] || fail "Commit rilis bukan SHA 40 heksa."
           [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Versi rilis tidak valid."
           tag="server-v$VERSION"
-          existing=$(gh api "repos/$REPO/git/ref/tags/$tag" --jq '.object.type + " " + .object.sha' 2>/dev/null || true)
+          # 404 = tag belum ada; galat API lain (5xx, jaringan) TIDAK boleh dibaca sebagai "belum ada" (gh release create akan
+          # menempelkan Release ke tag lama bila tag sebenarnya ada pada commit lain).
+          if out=$(gh api "repos/$REPO/git/ref/tags/$tag" --jq '.object.type + " " + .object.sha' 2>&1); then
+            existing=$out
+          elif grep -qE 'HTTP 404|Not Found' <<< "$out"; then
+            existing=
+          else
+            fail "Gagal memeriksa tag $tag (galat API): ${out:0:300}"
+          fi
           if [ -n "$existing" ]; then
             [ "${existing%% *}" = commit ] || fail "Tag $tag sudah ada tetapi bukan tag ringan: periksa manual."
             [ "${existing##* }" = "$SHA" ] || fail "Tag $tag sudah ada pada commit lain: periksa manual (tag tidak ditimpa)."

@@ -1489,7 +1489,7 @@ describe('release.yml: pipeline rilis server dari PR rilis', () => {
     expect([jobs.ci?.needs ?? []].flat().sort()).toEqual(['guard', 'meta']);
     expect([jobs.image?.needs ?? []].flat().sort()).toEqual(['ci', 'guard', 'meta']);
     expect([jobs.deploy?.needs ?? []].flat().sort()).toEqual(['ci', 'guard', 'image', 'meta']);
-    expect([jobs.publish?.needs ?? []].flat().sort()).toEqual(['deploy', 'meta']);
+    expect([jobs.publish?.needs ?? []].flat().sort()).toEqual(['deploy', 'guard', 'meta']);
     expect([jobs['sync-dev']?.needs ?? []].flat().sort()).toEqual(['meta', 'publish']);
     expect(jobs.deploy?.if).toContain("needs.image.result == 'success'");
     expect(jobs.publish?.if).toContain("needs.deploy.result == 'success'");
@@ -1501,6 +1501,8 @@ describe('release.yml: pipeline rilis server dari PR rilis', () => {
     expect(release.concurrency?.group).toContain('deploy-server-${{');
     expect(release.concurrency?.group).toContain("'production'");
     expect(release.concurrency?.group).toContain('github.event.pull_request.merged == true');
+    // run yang semua job-nya dilewati (mode langsung) tak boleh menempati grup production dan membuang deploy yang menunggu
+    expect(release.concurrency?.group).toContain("vars.RELEASE_FLOW == 'tag'");
     expect(release.concurrency?.group).toContain("format('lewati-{0}', github.run_id)");
     // ekspresi cabang release hanya boleh muncul di kelompok concurrency (bukan di run/env/if/checkout)
     expect(codeOf(text).split(RELEASE_HEAD_REF_EXPR)).toHaveLength(2);
@@ -1572,6 +1574,60 @@ describe('release.yml: pipeline rilis server dari PR rilis', () => {
     const runs = (jobs.guard?.steps ?? []).map((s) => s.run ?? '').join('\n');
     expect(runs).toContain('git/ref/deployed/staging');
     expect(runs).toContain('compare/');
+  });
+
+  test('guard gagal tertutup: daftar berkas dikirim sebagai SATU baris JSON beserta jumlahnya (bukan teks per baris), 404 dibedakan dari galat API lain', () => {
+    const compare = (jobs.guard?.steps ?? []).find((s) => s.id === 'compare');
+    expect(compare?.run).toContain('jq -c');
+    expect(compare?.run).toContain('files_json=');
+    expect(compare?.run).toContain('file_count=');
+    expect(compare?.run).not.toContain('QC_FILES_EOF');
+    expect(compare?.run).not.toContain('2>/dev/null');
+    expect(compare?.run).toContain('404');
+    const run = (jobs.guard?.steps ?? []).find((s) => s.run?.includes('release-guard.ts'));
+    expect(run?.env?.FILES_JSON).toBe('${{ steps.compare.outputs.files_json }}');
+    expect(run?.env?.FILE_COUNT).toBe('${{ steps.compare.outputs.file_count }}');
+    expect(run?.env?.GH_TOKEN).toBeUndefined();
+  });
+
+  test('bentrok tag terdeteksi di guard SEBELUM image/deploy: tag ada pada commit lain menggagalkan; 404 dibedakan dari galat lain', () => {
+    const compare = (jobs.guard?.steps ?? []).find((s) => s.id === 'compare');
+    expect(compare?.run).toContain('git/ref/tags/server-v');
+    expect(compare?.run).toContain('Tag server-v');
+    // publish tak lagi menelan galat API sebagai "tag belum ada"
+    const create = (jobs.publish?.steps ?? []).find((s) => s.id === 'release');
+    expect(create?.run).not.toContain('2>/dev/null');
+    expect(create?.run).toContain('404');
+  });
+
+  test('menjalankan ulang (production sudah di commit itu): image dan deploy dilewati, guard tak membandingkan staging, tag dan Release tetap dituntaskan', () => {
+    expect(Object.keys(jobs.guard?.outputs ?? {})).toEqual(['deployed']);
+    for (const name of ['ci', 'image', 'deploy']) {
+      expect(jobs[name]?.if, name).toContain("needs.guard.outputs.deployed != 'true'");
+    }
+    const publishIf = jobs.publish?.if ?? '';
+    expect(publishIf).toContain('!cancelled()');
+    expect(publishIf).toContain('!failure()');
+    expect(publishIf).toContain("needs.guard.outputs.deployed == 'true'");
+    expect(publishIf).toContain("needs.deploy.result == 'success'");
+    const compare = (jobs.guard?.steps ?? []).find((s) => s.id === 'compare');
+    expect(compare?.run).toContain('git/ref/deployed/production');
+  });
+
+  test('meta memvalidasi versi di package.json (semver) sebelum menuliskannya ke GITHUB_OUTPUT (nilai dikendalikan isi commit)', () => {
+    const resolve = (jobs.meta?.steps ?? []).find((s) => s.id === 'resolve');
+    const run = resolve?.run ?? '';
+    expect(run).toContain('version_at_merge');
+    expect(
+      run.indexOf('=~ ^[0-9]+\\.[0-9]+\\.[0-9]+$ ]] || fail "Versi di server/package.json'),
+    ).toBeGreaterThan(-1);
+    // sha ditulis sebagai baris terakhir (kunci terakhir menang pada GITHUB_OUTPUT)
+    const lines = run.split('\n');
+    const shaLine = lines.findIndex((l) => l.includes('echo "sha=$sha"'));
+    const versionLine = lines.findIndex((l) =>
+      l.includes('echo "version_at_merge=$version_at_merge"'),
+    );
+    expect(shaLine).toBeGreaterThan(versionLine);
   });
 
   test('ci memanggil ci.yml untuk commit rilis (selektif sejak deploy production terakhir); image dan deploy memanggil workflow bersama untuk production', () => {

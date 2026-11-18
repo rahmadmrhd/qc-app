@@ -48,7 +48,8 @@ jobs:
     outputs:
       tag: ${{ inputs.sha }}
     steps:
-      # Pemanggil tak dipercaya: tolak masukan yang bentuknya salah SEBELUM checkout atau rahasia apa pun disentuh.
+      # Pemanggil tak dipercaya: tolak masukan yang bentuknya salah SEBELUM checkout atau langkah lain berjalan. (Environment
+      # sudah di-resolve saat job dimulai, jadi rahasianya tersedia; langkah ini hanya memastikan tak satu pun dipakai.)
       - name: Validasi masukan
         env:
           TARGET: ${{ inputs.target }}

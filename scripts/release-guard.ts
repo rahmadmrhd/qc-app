@@ -10,9 +10,17 @@ export interface GuardInput {
   compareStatus: string;
   /** Berkas yang berubah menurut perbandingan itu. */
   files: string[];
+  /**
+   * Jumlah berkas menurut API compare. API memotong daftar `files` pada 300 TANPA penanda, jadi jumlah >= 300 berarti daftar
+   * tak lengkap dan tak dapat dipercaya (gagal tertutup). Tak diberikan = panjang `files`; bukan angka = ditolak.
+   */
+  fileCount?: number;
   /** `server/CHANGELOG.md` memuat bagian `## [versi]`. */
   changelogHasVersion: boolean;
 }
+
+/** Batas API compare GitHub: daftar `files` maksimum 300 untuk seluruh perbandingan, sisanya terpotong diam-diam. */
+const COMPARE_FILE_LIMIT = 300;
 
 const RECOVERY =
   'Pulihkan: biarkan dev stabil, ulangi deploy staging, lalu jalankan ulang release.yml lewat workflow_dispatch (input versi).';
@@ -22,6 +30,13 @@ export function evaluateGuard(input: GuardInput): { ok: boolean; reason: string 
     return {
       ok: false,
       reason: `Commit rilis bukan turunan dari yang terakhir berjalan di staging (status: ${input.compareStatus === '' ? 'tidak diketahui' : 'tidak sejalan'}). ${RECOVERY}`,
+    };
+  }
+  const count = input.fileCount ?? input.files.length;
+  if (!Number.isFinite(count) || count >= COMPARE_FILE_LIMIT) {
+    return {
+      ok: false,
+      reason: `Daftar berkas perbandingan dengan staging terpotong atau tak terbaca (${COMPARE_FILE_LIMIT} berkas atau lebih): tak dapat dipastikan hanya metadata yang berbeda. ${RECOVERY}`,
     };
   }
   if (!isMetadataOnly(input.files, 'server')) {
@@ -38,9 +53,22 @@ export function evaluateGuard(input: GuardInput): { ok: boolean; reason: string 
 
 if (import.meta.main) {
   const env = process.env;
+  // Daftar berkas datang sebagai SATU baris JSON (`jq -c`), bukan teks per baris: nama berkas git boleh memuat baris baru dan
+  // tak boleh dapat menyelipkan baris `GITHUB_OUTPUT` palsu. JSON rusak = daftar kosong tak dipercaya = jumlah NaN (ditolak).
+  let files: string[] = [];
+  let fileCount = Number(env.FILE_COUNT ?? '');
+  try {
+    const parsed: unknown = JSON.parse(env.FILES_JSON ?? '[]');
+    if (Array.isArray(parsed))
+      files = parsed.filter((item): item is string => typeof item === 'string');
+    else fileCount = Number.NaN;
+  } catch {
+    fileCount = Number.NaN;
+  }
   const result = evaluateGuard({
     compareStatus: env.COMPARE_STATUS ?? '',
-    files: (env.FILES ?? '').split('\n').filter((line) => line.trim() !== ''),
+    files,
+    fileCount,
     changelogHasVersion: env.CHANGELOG_HAS_VERSION === 'true',
   });
   if (!result.ok) {
