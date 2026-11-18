@@ -354,6 +354,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     query: { itemId: 'string', buId: 'string' },
   },
   'serials.locationOptions': { verb: 'GET', path: '/serials/location-options' },
+  'serials.buOptions': { verb: 'GET', path: '/serials/bu-options' },
   'serials.serviceLocations': { verb: 'GET', path: '/serials/service-locations' },
   'serials.lookup': { verb: 'GET', path: '/serials/lookup', query: { serial: 'string' } },
   'serials.reportNew': { verb: 'POST', path: '/serials/report', status: 200 },

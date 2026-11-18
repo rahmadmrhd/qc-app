@@ -250,6 +250,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'serials.itemOptions': { query: 'm5', cursor: 'k', limit: 20, itemIds: ['i1', 'i2'] },
   'serials.stickerOptions': { itemId: 'i1', buId: 'b1' },
   'serials.locationOptions': null,
+  'serials.buOptions': null,
   'serials.serviceLocations': null,
   'serials.lookup': { serial: 'SN-1' },
   'serials.reportNew': {
