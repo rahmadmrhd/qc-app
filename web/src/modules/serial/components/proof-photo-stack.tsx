@@ -15,6 +15,8 @@ export interface ProofPhotoStackProps {
   /** Daftar (strip) sedang terbuka: memengaruhi label dan `aria-expanded`. */
   expanded: boolean;
   onToggle(): void;
+  /** Id elemen daftar foto yang dikendalikan (hanya dirujuk saat daftar tampil). */
+  controls?: string;
 }
 
 /**
@@ -27,6 +29,7 @@ export function ProofPhotoStack({
   uploading = 0,
   expanded,
   onToggle,
+  controls,
 }: ProofPhotoStackProps) {
   if (photos.length === 0) {
     return uploading > 0 ? (
@@ -49,6 +52,7 @@ export function ProofPhotoStack({
       aria-label={label}
       title={label}
       aria-expanded={expanded}
+      aria-controls={expanded ? controls : undefined}
       className="relative block size-14 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/60"
       onClick={onToggle}
     >

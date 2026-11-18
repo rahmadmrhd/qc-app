@@ -495,3 +495,134 @@ test('strip mengambang menimpa video: tidak ikut aliran tata letak, tak menggese
   expect(inFlow(bottomStack)).toEqual(bottomBefore);
   expect(inFlow(wrapper)).toEqual(wrapperBefore);
 });
+
+/** jsdom tak menilai `:focus-visible`: paksa hasilnya (papan ketik = true, klik mouse/sentuh = false). */
+function stubFocusVisible(visible: boolean) {
+  const real = Element.prototype.matches;
+  vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, selector) {
+    return selector === ':focus-visible' ? visible : real.call(this, selector);
+  });
+}
+
+test('fokus papan ketik di dalam strip menahan tutup-otomatis; setelah fokus keluar hitungan jalan lagi', async () => {
+  stubFocusVisible(true);
+  setup({ shots: makeShots(2) });
+  await ready();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    await openStrip();
+    const thumb = screen.getByRole('button', { name: 'Perbesar foto 1, hasil kamera' });
+    act(() => thumb.focus());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(screen.getByTestId('proof-photo-strip')).toBeInTheDocument();
+    // Fokus keluar dari strip: hitungan mundur mulai lagi dan strip menutup setelah jeda.
+    act(() => shutter().focus());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(screen.getByTestId('proof-photo-strip')).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(screen.queryByTestId('proof-photo-strip')).not.toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('papan ketik dan gulir di strip menunda tutup-otomatis', async () => {
+  setup({ shots: makeShots(2) });
+  await ready();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    await openStrip();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    fireEvent.keyDown(screen.getByTestId('proof-photo-strip'), { key: 'ArrowRight' });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(screen.getByTestId('proof-photo-strip')).toBeInTheDocument();
+    fireEvent.scroll(screen.getByTestId('proof-photo-strip'));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    expect(screen.getByTestId('proof-photo-strip')).toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('hover mouse di strip menahan tutup-otomatis sampai kursor keluar', async () => {
+  setup({ shots: makeShots(2) });
+  await ready();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    await openStrip();
+    const overlay = screen.getByTestId('proof-photo-strip-panel').closest('[data-camera-control]');
+    fireEvent.pointerEnter(overlay as Element, { pointerType: 'mouse' });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(screen.getByTestId('proof-photo-strip')).toBeInTheDocument();
+    fireEvent.pointerLeave(overlay as Element, { pointerType: 'mouse' });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4500);
+    });
+    expect(screen.queryByTestId('proof-photo-strip')).not.toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('tombol tumpukan menunjuk strip lewat aria-controls hanya saat strip tampil', async () => {
+  setup({ shots: makeShots(2) });
+  await ready();
+  expect(stackButton()).not.toHaveAttribute('aria-controls');
+  await openStrip();
+  const panel = screen.getByTestId('proof-photo-strip-panel');
+  expect(panel.id).not.toBe('');
+  expect(stackButton()).toHaveAttribute('aria-controls', panel.id);
+});
+
+test('foto terakhir dibuang dari strip: fokus pindah ke tombol rana', async () => {
+  const shots = makeShots(1);
+  const view = setup({ shots, onRemoveShot: () => undefined });
+  await ready();
+  await openStrip();
+  const remove = screen.getByRole('button', { name: 'Buang foto 1, hasil kamera' });
+  act(() => remove.focus());
+  expect(remove).toHaveFocus();
+  view.rerender(
+    <ProofCameraDialog
+      open
+      onOpenChange={() => undefined}
+      remaining={3}
+      shots={[]}
+      onShot={async () => undefined}
+      onRemoveShot={() => undefined}
+    />,
+  );
+  await waitFor(() => expect(shutter()).toHaveFocus());
+  expect(screen.queryByTestId('proof-photo-strip')).not.toBeInTheDocument();
+});
+
+test('fokus sisa klik (bukan fokus papan ketik) tidak menahan tutup-otomatis', async () => {
+  stubFocusVisible(false);
+  setup({ shots: makeShots(2) });
+  await ready();
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  try {
+    await openStrip();
+    act(() => screen.getByRole('button', { name: 'Perbesar foto 1, hasil kamera' }).focus());
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4500);
+    });
+    expect(screen.queryByTestId('proof-photo-strip')).not.toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
