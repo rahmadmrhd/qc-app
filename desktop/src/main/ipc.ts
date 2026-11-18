@@ -39,6 +39,7 @@ import {
   maskSecrets,
 } from './ssh/inject-session';
 import { SENTINEL_BY_BRAND } from './ssh/strategy';
+import type { DraftStore } from './store/draft-store';
 import type { PendingStore } from './store/pending-store';
 
 /** Sebagian kecil `IpcMainInvokeEvent` yang dipakai; memudahkan tes tanpa memuat `electron`. */
@@ -62,6 +63,8 @@ export interface IpcDeps {
   fetchHostKey(opts: HostKeyOptions): Promise<HostKey>;
   runInject(opts: InjectOptions): Promise<InjectOutcome>;
   pending: PendingStore;
+  /** Draft Catat Serial Number (jembatan v8): snapshot tunggal; galatnya sampai ke renderer apa adanya. */
+  draft: DraftStore;
   /** Login desktop (token hanya di proses utama; renderer hanya menerima `AuthStatus`). */
   auth: { status(): AuthStatus; start(): Promise<void>; logout(): void };
   /**
@@ -260,6 +263,16 @@ export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
   handle(BRIDGE_CHANNELS.pendingRemove, async (_event, ...args) => {
     const [serial] = parseArgs(BRIDGE_ARGS.pendingRemove, args);
     deps.pending.remove(serial);
+  });
+
+  handle(BRIDGE_CHANNELS.draftLoad, async (_event, ...args): Promise<unknown[]> => {
+    parseArgs(BRIDGE_ARGS.draftLoad, args);
+    return deps.draft.load();
+  });
+
+  handle(BRIDGE_CHANNELS.draftSave, async (_event, ...args) => {
+    const [rows] = parseArgs(BRIDGE_ARGS.draftSave, args);
+    deps.draft.save(rows);
   });
 
   // Pengelola bundel UI memakai ini agar bundel tak ditukar di tengah inject.

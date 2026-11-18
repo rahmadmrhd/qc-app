@@ -92,6 +92,10 @@ const bridge: QcBridge = {
     add: (entry) => invoke(BRIDGE_CHANNELS.pendingAdd, entry),
     remove: (serial) => invoke(BRIDGE_CHANNELS.pendingRemove, serial),
   },
+  draft: {
+    load: () => invoke(BRIDGE_CHANNELS.draftLoad),
+    save: (rows) => invoke(BRIDGE_CHANNELS.draftSave, rows),
+  },
 };
 
 contextBridge.exposeInMainWorld('qcBridge', bridge);
