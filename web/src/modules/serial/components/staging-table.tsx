@@ -5,11 +5,12 @@ import {
   SERIAL_PROOF_LIMITS,
   serialProblem,
 } from '@shared/serials';
-import { memo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { StagingRow } from '../lib/draft';
+import type { StampPreviewInput } from '../lib/stamp-preview';
 import { ProofPhotoField } from './proof-photo-field';
 
 export interface StagingTableProps {
@@ -24,6 +25,8 @@ export interface StagingTableProps {
   onRemove: (clientId: string) => void;
   /** Penyimpanan berjalan: seluruh sel dikunci agar suntingan tidak hilang saat baris dihapus oleh hasil `created`. */
   disabled?: boolean;
+  /** Nama pelaku untuk pratinjau cap di kamera foto (dari akun yang masuk); kosong = tanpa pratinjau cap. */
+  actorName?: string;
 }
 
 /** Penanda sebuah baris: hasil dari server, rujukan yang harus dipilih ulang, atau kolom wajib yang kosong. */
@@ -122,7 +125,9 @@ function SerialCell({ clientId, serial, onCommitSerial, disabled }: SerialCellPr
   );
 }
 
-interface RowViewProps extends Omit<StagingTableProps, 'rows' | 'onSelectAll' | 'disabled'> {
+interface RowViewProps
+  extends Omit<StagingTableProps, 'rows' | 'onSelectAll' | 'disabled' | 'actorName'> {
+  actorName: string;
   disabled: boolean;
   row: StagingRow;
   index: number;
@@ -137,8 +142,24 @@ const RowView = memo(function RowView({
   onOpenDetail,
   onRemove,
   disabled,
+  actorName,
 }: RowViewProps) {
   const status = rowStatus(row);
+  // Data cap dari kolom baris (primitif, jadi baris `memo` lain tak ikut dirender ulang).
+  const stamp = useMemo<StampPreviewInput | undefined>(
+    () =>
+      actorName === ''
+        ? undefined
+        : {
+            serial: row.serial,
+            itemLabel: row.itemLabel,
+            buLabel: row.buLabel,
+            locationLabel: row.locationLabel,
+            actorName,
+            actorTeam: 'QC',
+          },
+    [row.serial, row.itemLabel, row.buLabel, row.locationLabel, actorName],
+  );
   return (
     <tr
       data-tour="serial-row"
@@ -222,6 +243,7 @@ const RowView = memo(function RowView({
           max={SERIAL_PROOF_LIMITS.perEntryMax}
           disabled={disabled}
           label={row.serial}
+          stamp={stamp}
           onChange={(proofPhotos) => onEdit(row.clientId, { proofPhotos })}
         />
       </td>
@@ -262,6 +284,7 @@ export function StagingTable({
   onOpenDetail,
   onRemove,
   disabled = false,
+  actorName = '',
 }: StagingTableProps) {
   const allSelected = rows.length > 0 && rows.every((row) => row.selected);
   return (
@@ -327,6 +350,7 @@ export function StagingTable({
               onOpenDetail={onOpenDetail}
               onRemove={onRemove}
               disabled={disabled}
+              actorName={actorName}
             />
           ))}
         </tbody>

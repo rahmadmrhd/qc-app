@@ -626,7 +626,8 @@ async function attachPhotos(count: number) {
   );
   const input = document.body.querySelector('input[type="file"]') as HTMLInputElement;
   fireEvent.change(input, { target: { files } });
-  await userEvent.click(screen.getByRole('button', { name: `Tambahkan (${count})` }));
+  // Tiap foto langsung diunggah: Tambahkan baru aktif (dan berhitung) setelah semuanya naik.
+  await userEvent.click(await screen.findByRole('button', { name: `Tambahkan (${count})` }));
   await waitFor(() =>
     expect(screen.getByRole('button', { name: `Foto (${count})` })).toBeInTheDocument(),
   );
@@ -727,4 +728,29 @@ test('Batal dengan foto yang belum tersimpan membuang foto itu di server', async
       .sort(),
   ).toEqual(['p1', 'p2']);
   expect(onClose).toHaveBeenCalled();
+});
+
+test('Cek ulang: pratinjau cap di kamera foto memuat serial, item, BU, lokasi cek ulang, dan pelaku (QC)', async () => {
+  const track = {
+    stop: vi.fn(),
+    getCapabilities: () => ({}),
+    getSettings: () => ({}),
+    applyConstraints: vi.fn(),
+  };
+  const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+  Object.defineProperty(navigator, 'mediaDevices', {
+    value: { getUserMedia: vi.fn(async () => stream), enumerateDevices: vi.fn(async () => []) },
+    configurable: true,
+  });
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+  // Unit dalam perjalanan ke QC: lokasi cap = tujuan pengiriman (sama dengan cap resmi server).
+  renderDialog(RECHECK_TRANSIT, 'recheck');
+  await userEvent.click(screen.getByRole('button', { name: /^Foto \(/ }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Kamera' }));
+  const note = await screen.findByRole('note', { name: 'Pratinjau cap' });
+  expect(note).toHaveTextContent('SN: ABC123');
+  expect(note).toHaveTextContent('Cisco C9200');
+  expect(note).toHaveTextContent('BU1 · Jakarta');
+  expect(note).toHaveTextContent('Disimpan saat Simpan · A (QC)');
+  Reflect.deleteProperty(navigator, 'mediaDevices');
 });

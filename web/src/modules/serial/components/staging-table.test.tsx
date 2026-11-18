@@ -106,3 +106,48 @@ test('saat menyimpan (disabled) tombol Foto dan buang terkunci', () => {
   expect(screen.getByRole('button', { name: 'Foto (1), AAA111' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Buang foto 1, AAA111' })).toBeDisabled();
 });
+
+test('kamera foto baris memakai data barisnya untuk pratinjau cap (nama pelaku dari actorName)', async () => {
+  const track = {
+    stop: vi.fn(),
+    getCapabilities: () => ({}),
+    getSettings: () => ({}),
+    applyConstraints: vi.fn(),
+  };
+  const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+  Object.defineProperty(navigator, 'mediaDevices', {
+    value: { getUserMedia: vi.fn(async () => stream), enumerateDevices: vi.fn(async () => []) },
+    configurable: true,
+  });
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+  renderTable([photoRow('AAA111', [])], { actorName: 'Budi' });
+  await userEvent.click(screen.getByRole('button', { name: 'Foto (0), AAA111' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Kamera' }));
+  const note = await screen.findByRole('note', { name: 'Pratinjau cap' });
+  expect(note).toHaveTextContent('SN: AAA111');
+  expect(note).toHaveTextContent('Cisco');
+  expect(note).toHaveTextContent('BU1 · Jakarta');
+  expect(note).toHaveTextContent('Disimpan saat Simpan · Budi (QC)');
+  Reflect.deleteProperty(navigator, 'mediaDevices');
+});
+
+test('tanpa actorName kamera foto baris tidak menampilkan pratinjau cap', async () => {
+  const track = {
+    stop: vi.fn(),
+    getCapabilities: () => ({}),
+    getSettings: () => ({}),
+    applyConstraints: vi.fn(),
+  };
+  const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+  Object.defineProperty(navigator, 'mediaDevices', {
+    value: { getUserMedia: vi.fn(async () => stream), enumerateDevices: vi.fn(async () => []) },
+    configurable: true,
+  });
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+  renderTable([photoRow('AAA111', [])]);
+  await userEvent.click(screen.getByRole('button', { name: 'Foto (0), AAA111' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Kamera' }));
+  await screen.findByRole('button', { name: 'Ambil foto' });
+  expect(screen.queryByTestId('stamp-preview')).not.toBeInTheDocument();
+  Reflect.deleteProperty(navigator, 'mediaDevices');
+});

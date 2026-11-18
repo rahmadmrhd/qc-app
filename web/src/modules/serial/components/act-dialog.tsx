@@ -8,7 +8,7 @@ import {
   type ServiceDiagnosisStage,
 } from '@shared/serials';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { FieldError } from '@/components/field-error';
 import { Select } from '@/components/select';
@@ -43,6 +43,7 @@ import { serialKeys } from '../keys';
 import { isProofRejection } from '../lib/draft';
 import { todayWib } from '../lib/locations';
 import type { ProofPhotoRef } from '../lib/proof-source';
+import type { StampPreviewInput } from '../lib/stamp-preview';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
   discardProofPhotos,
@@ -251,6 +252,24 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
     occurredOn === '' ||
     (locationRequired && toLocation.id === '') ||
     Object.keys(clientErrors).length > 0;
+
+  // Pratinjau cap di kamera foto (Cek ulang): lokasi = tempat cek ulang dilakukan (tujuan pengiriman bila unit masih
+  // dalam perjalanan, selain itu lokasi serial), sama dengan yang dipakai cap resmi server.
+  const stampLocation = serial.transitToLocationName ?? serial.locationName;
+  const recheckStamp = useMemo<StampPreviewInput | undefined>(
+    () =>
+      stampLocation === ''
+        ? undefined
+        : {
+            serial: serial.serial,
+            itemLabel: serial.itemLabel,
+            buLabel: serial.buCode,
+            locationLabel: stampLocation,
+            actorName: me.name,
+            actorTeam: 'QC',
+          },
+    [serial.serial, serial.itemLabel, serial.buCode, stampLocation, me.name],
+  );
 
   const stickerRows: RecheckStickerRow[] =
     kind === 'recheck'
@@ -494,6 +513,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
                 value={proofPhotos}
                 max={SERIAL_PROOF_LIMITS.perEntryMax}
                 disabled={act.isPending}
+                stamp={recheckStamp}
                 onChange={setProofPhotos}
               />
               <p className="text-xs text-muted-foreground">

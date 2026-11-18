@@ -699,6 +699,7 @@ export function RecordPage({
             onCommitSerial={commitSerial}
             onOpenDetail={openDetail}
             onRemove={removeOne}
+            actorName={me.name}
           />
         )}
       </div>
