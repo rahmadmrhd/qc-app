@@ -1,6 +1,7 @@
 import type { PackageDto } from '@countrylock/bridge-contract';
+import type { CatalogItemDto } from '@shared/desktop-catalog';
 import { describe, expect, test } from 'vitest';
-import { resolveTypeApplication } from './type-firmware';
+import { resolveTypeApplication, tipeOptionsFor } from './type-firmware';
 
 const pkg = {
   config: {
@@ -47,5 +48,34 @@ describe('resolveTypeApplication', () => {
     }
     const missing = resolveTypeApplication({ brand: 'Ubiquiti', firmware: 'XW' }, pkg);
     expect(missing.ok ? '' : missing.message).toBe('Firmware "XW" tidak ada di paket skrip.');
+  });
+});
+
+describe('tipeOptionsFor', () => {
+  const item = (id: string, brand: string, model: string) =>
+    ({
+      id,
+      brand,
+      model,
+      aliases: [],
+      businessUnits: [],
+      stickerIds: [],
+      stickerPhotos: [],
+    }) as CatalogItemDto;
+  const items = [
+    item('1', 'Ubiquiti', 'XW'),
+    item('2', 'Mikrotik', 'RB-750'),
+    item('3', 'Ubiquiti', 'af5xhd'),
+    item('4', 'Cambium', 'ePMP'),
+  ];
+
+  test('hanya Tipe milik merk terpilih, urut menurut model tanpa peduli huruf besar/kecil', () => {
+    expect(tipeOptionsFor(items, 'ubiquiti').map((entry) => entry.model)).toEqual(['af5xhd', 'XW']);
+    expect(tipeOptionsFor(items, 'mikrotik').map((entry) => entry.id)).toEqual(['2']);
+  });
+  test('tanpa merk terpilih = kosong; daftar masukan tidak diubah urutannya', () => {
+    expect(tipeOptionsFor(items, null)).toEqual([]);
+    tipeOptionsFor(items, 'ubiquiti');
+    expect(items.map((entry) => entry.id)).toEqual(['1', '2', '3', '4']);
   });
 });
