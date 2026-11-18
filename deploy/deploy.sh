@@ -4,7 +4,7 @@
 # (jalur di `command=` = lokasi mutlak skrip ini yang sebenarnya, di `authorized_keys` milik pengguna deploy; `restrict` sudah
 # mencakup no-pty/no-port-forwarding/no-agent-forwarding/no-X11-forwarding/no-user-rc dan menutup fitur baru OpenSSH yang
 # kelak aktif bawaan. Bila pengguna deploy = root, periksa juga `PermitRootLogin prohibit-password` atau `forced-commands-only`.)
-# Klien (GitHub Actions) menjalankan `ssh ... "deploy <staging|production> <sha-40-heksa>"`; sshd mengisi SSH_ORIGINAL_COMMAND
+# Klien (GitHub Actions) menjalankan `ssh ... "deploy <staging|production> <sha-40-heksa>[ allow-schema-downgrade]"`; sshd mengisi SSH_ORIGINAL_COMMAND
 # dengan teks itu dan HANYA skrip ini yang berjalan. Input itu tak tepercaya: divalidasi ketat (regex), tidak pernah
 # di-eval, tidak diekspansi shell, dan tidak pernah dicetak balik. Argumen baris perintah hanya datang dari pemanggil
 # lokal/authorized_keys (klien jarak jauh tak bisa menambahkannya).
@@ -12,7 +12,14 @@
 # Alur: validasi -> kunci -> `compose config` (.env/compose.yml valid; bila rusak berhenti tanpa mengubah apa pun) ->
 # ganti QC_IMAGE_TAG di .env -> pull -> up -d -> tunggu sehat (dan memakai tag baru) -> uji /api/ping -> bila gagal di
 # langkah mana pun sesudah tag diganti, kembali ke tag sebelumnya; bila sukses penuh, image lama dibersihkan
-# (`cleanup_images`: simpan QC_KEEP_IMAGES tag terbaru, bawaan 3; kegagalannya tak mengubah kode keluar). Keluaran docker compose TIDAK diteruskan ke
+# (`cleanup_images`: simpan QC_KEEP_IMAGES tag terbaru, bawaan 3; kegagalannya tak mengubah kode keluar).
+# Sesudah pull dan SEBELUM up -d, `schema_guard` (pagar downgrade skema) membandingkan migrasi yang SUDAH diterapkan di basis data
+# (`schema_migrations`) dengan migrasi yang dibawa image target: migrasi tercatat yang tak ada di image target = downgrade melewati
+# migrasi, ditolak (kode 6) kecuali perintah membawa kata ` allow-schema-downgrade`; migrasi berpenanda `-- qc:contract` (baris pertama
+# berkasnya, dibaca dari image yang SEDANG berjalan) tak pernah boleh dilewati, kata izin tak berlaku. Pagar gagal tertutup: DB berjalan
+# tetapi daftar tak terbaca = kode 6. Kontainer DB tidak berjalan (deploy pertama) = dilewati. Pengembalian otomatis (rollback) tidak
+# memanggil pagar. Keterbatasan: hanya NAMA berkas migrasi yang dibandingkan, bukan isinya.
+# Keluaran docker compose TIDAK diteruskan ke
 # pemanggil (galat urai compose dapat memuat potongan nilai rahasia dari .env): ditulis ke $DIR/.deploy.log (izin 600,
 # ditimpa tiap deploy) dan yang dicetak hanya baris `[deploy] ...`.
 #
@@ -20,7 +27,8 @@
 # (tidak ada yang diubah; termasuk kredensial DB di .env yang tidak cocok dengan database yang berjalan, preflight);
 # 3 deploy lain sedang berjalan; 4 gagal dan pengembalian juga gagal/tidak mungkin; 5 versi baru
 # sehat dan aktif tetapi nginx host TIDAK TERJANGKAU (masalah infrastruktur, bukan versi: tidak dikembalikan dan image
-# lama tidak dibersihkan; periksa nginx). Bila nginx menjawab tetapi bukan 2xx, itu dianggap masalah versi: rollback.
+# lama tidak dibersihkan; periksa nginx); 6 downgrade skema ditolak pagar (tidak ada yang diubah; .env dipulihkan persis). Bila nginx
+# menjawab tetapi bukan 2xx, itu dianggap masalah versi: rollback.
 #
 # Argumen (hanya pemanggil lokal): --only staging|production (batasi lingkungan yang boleh diminta kunci ini), --dry-run
 # (validasi lalu cetak rencana; tidak menyentuh docker/berkas), --root DIR (bawaan: folder skrip ini),
@@ -32,6 +40,7 @@ umask 077
 # atau nilai lingkungan: tak bergantung pada pengguna dan bisa dipindah. `--root` hanya untuk tes.
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 ONLY=''
+ALLOW_DOWNGRADE=0
 DRY_RUN=0
 WAIT_SECONDS=150
 POLL_SECONDS=3
@@ -82,23 +91,25 @@ done
 # ---- 1. Validasi input (satu-satunya tempat input klien dibaca) ----
 REQUEST=${SSH_ORIGINAL_COMMAND-}
 [ -n "$REQUEST" ] || die 2 'perintah kosong (format: deploy <staging|production> <tag>)'
-[ "${#REQUEST}" -le 80 ] || die 2 'perintah terlalu panjang'
+[ "${#REQUEST}" -le 96 ] || die 2 'perintah terlalu panjang'
 # Persis: "deploy", satu spasi, nama lingkungan, satu spasi, tag. Tag permintaan = SHA commit penuh (40 heksa huruf
 # kecil, kontrak CI: satu tag per commit); tag yang dapat berubah seperti `latest` ditolak. (Tag SEBELUMNYA di .env,
 # PREV_TAG, sengaja lebih longgar agar `local-<sha>` lama masih dapat dikembalikan.)
-REQUEST_PATTERN='^deploy (staging|production) ([0-9a-f]{40})$'
+# Ekor opsional persis ` allow-schema-downgrade` (izin melewati migrasi saat downgrade; hanya dibaca `schema_guard`, tak pernah dicetak balik).
+REQUEST_PATTERN='^deploy (staging|production) ([0-9a-f]{40})( allow-schema-downgrade)?$'
 if [[ ! $REQUEST =~ $REQUEST_PATTERN ]]; then
-  die 2 'perintah ditolak (format: deploy <staging|production> <sha commit 40 heksa huruf kecil>)'
+  die 2 'perintah ditolak (format: deploy <staging|production> <sha commit 40 heksa huruf kecil>[ allow-schema-downgrade])'
 fi
 ENV_NAME=${BASH_REMATCH[1]}
 TAG=${BASH_REMATCH[2]}
+if [ -n "${BASH_REMATCH[3]}" ]; then ALLOW_DOWNGRADE=1; fi
 if [ -n "$ONLY" ] && [ "$ONLY" != "$ENV_NAME" ]; then
   die 2 'kunci ini tidak diizinkan untuk lingkungan itu'
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
   log "dry-run: lingkungan=$ENV_NAME tag=$TAG root=$ROOT"
-  log "rencana: set QC_IMAGE_TAG=$TAG di $ROOT/$ENV_NAME/.env; preflight kredensial DB (hanya bila kontainer DB berjalan: docker exec mariadb SELECT 1 dengan kata sandi lewat env MYSQL_PWD; gagal = kode 2 tanpa mengubah apa pun); docker compose pull qc-app; docker compose up -d; tunggu sehat; curl /api/ping lokal; uji /api/ping lewat nginx dari dalam VPS (https://<host APP_ORIGIN>, --resolve ke 127.0.0.1, -k; dilewati bila APP_ORIGIN bukan https); kembali ke tag sebelumnya bila gagal"
+  log "rencana: set QC_IMAGE_TAG=$TAG di $ROOT/$ENV_NAME/.env; preflight kredensial DB (hanya bila kontainer DB berjalan: docker exec mariadb SELECT 1 dengan kata sandi lewat env MYSQL_PWD; gagal = kode 2 tanpa mengubah apa pun); docker compose pull qc-app; pagar downgrade skema (hanya bila kontainer DB berjalan: bandingkan schema_migrations dengan migrasi di image target; downgrade melewati migrasi ditolak kode 6 kecuali ekor allow-schema-downgrade, dan migrasi berpenanda qc:contract tak pernah boleh dilewati); docker compose up -d; tunggu sehat; curl /api/ping lokal; uji /api/ping lewat nginx dari dalam VPS (https://<host APP_ORIGIN>, --resolve ke 127.0.0.1, -k; dilewati bila APP_ORIGIN bukan https); kembali ke tag sebelumnya bila gagal"
   log "rencana pembersihan (hanya setelah sukses penuh; gagal tak mengubah kode keluar): hapus image repositori QC_IMAGE (bawaan GHCR) bertag SHA/local-<sha> satu per satu dengan docker image rm, kecuali tag terpakai kontainer, tag baru, tag sebelumnya, tag di .env lingkungan lain, dan QC_KEEP_IMAGES (bawaan 3) tag terbaru; tanpa prune"
   exit 0
 fi
@@ -229,6 +240,15 @@ rollback() { # rollback: kembali ke PREV_TAG dan pastikan sehat; kode keluar 1 (
   die 4 "deploy $TAG gagal DAN pengembalian ke $PREV_TAG gagal; periksa kontainer secara manual ($LOG_HINT)"
 }
 
+image_repo() { # image_repo: repositori image stack ini (dari QC_IMAGE, atau bawaan yang tertulis di compose.yml); dipakai cleanup_images dan schema_guard
+  local repo=$IMAGE_NAME
+  if [ -z "$repo" ]; then
+    repo=$(sed -n 's/^[[:space:]]*image:[[:space:]]*\${QC_IMAGE:-\([^}]*\)}:.*/\1/p' "$DIR/compose.yml" | head -n1)
+    [ -n "$repo" ] || repo=ghcr.io/rahmadmrhd/qc-app
+  fi
+  printf '%s' "$repo"
+}
+
 cleanup_images() { # Pembersihan image lama; dipanggil HANYA setelah deploy sukses penuh. Tidak pernah gagal keras.
   # Hanya repositori image stack ini (dari QC_IMAGE, atau bawaan yang tertulis di compose.yml) dan hanya tag SHA/local-<sha>.
   # Dipertahankan: tag yang dipakai kontainer ini, tag baru, PREV_TAG, tag di .env lingkungan LAIN (satu repositori dipakai
@@ -236,11 +256,7 @@ cleanup_images() { # Pembersihan image lama; dipanggil HANYA setelah deploy suks
   local repo keep keep_n=3 override tags tag f other rank=0 removed=0 failed=0 current
   override=$(env_value QC_KEEP_IMAGES)
   if [[ $override =~ ^[1-9][0-9]?$ ]]; then keep_n=$override; fi
-  repo=$IMAGE_NAME
-  if [ -z "$repo" ]; then
-    repo=$(sed -n 's/^[[:space:]]*image:[[:space:]]*\${QC_IMAGE:-\([^}]*\)}:.*/\1/p' "$DIR/compose.yml" | head -n1)
-    [ -n "$repo" ] || repo=ghcr.io/rahmadmrhd/qc-app
-  fi
+  repo=$(image_repo)
   if [[ ! $repo =~ ^ghcr\.io/[a-z0-9][a-z0-9._/-]*$ ]]; then
     log 'pembersihan image dilewati: repositori image tidak valid'
     return 0
@@ -274,27 +290,89 @@ cleanup_images() { # Pembersihan image lama; dipanggil HANYA setelah deploy suks
   return 0
 }
 
+db_running() { # db_running: kontainer DB stack ini sedang berjalan
+  [ "$(docker inspect --format '{{.State.Running}}' "$NAME-db" 2>/dev/null || true)" = true ]
+}
+
+db_load_creds() { # db_load_creds: isi DB_USER/DB_NAME/DB_PASSWORD dari .env; tak valid = return 1 dan DB_CRED_ERROR berisi pesannya. Satu-satunya tempat kredensial DB dibaca.
+  DB_USER=$(env_value QC_DB_USER)
+  [ -n "$DB_USER" ] || DB_USER=qc_$ENV_NAME
+  DB_NAME=$(env_value QC_DB_NAME)
+  [ -n "$DB_NAME" ] || DB_NAME=qc_$ENV_NAME
+  DB_PASSWORD=$(env_value QC_DB_PASSWORD)
+  DB_CRED_ERROR=''
+  if [[ ! $DB_USER =~ ^[A-Za-z0-9_]{1,64}$ ]]; then DB_CRED_ERROR='QC_DB_USER di .env tidak valid'; return 1; fi
+  if [[ ! $DB_NAME =~ ^[A-Za-z0-9_]{1,64}$ ]]; then DB_CRED_ERROR='QC_DB_NAME di .env tidak valid'; return 1; fi
+}
+
+db_sql() { # db_sql SQL: jalankan SQL di kontainer DB; stdout = hasil (tanpa header), stderr ke log. Kata sandi hanya lewat env MYSQL_PWD (tak pernah argv/log).
+  MYSQL_PWD=$DB_PASSWORD docker exec -e MYSQL_PWD "$NAME-db" mariadb -N -h 127.0.0.1 "-u$DB_USER" "$DB_NAME" -e "$1" 2>>"$DEPLOY_LOG"
+}
+
 db_preflight() { # Preflight kredensial DB (keputusan pemilik 2026-11-07): sebelum apa pun diubah.
   # Kata sandi DB di .env hanya dipakai MariaDB saat inisialisasi volume; .env yang berubah (tak sengaja, atau rotasi dengan
   # urutan terbalik) membuat aplikasi baru gagal login dan rollback (hanya mengganti tag) tak menolong. Uji hanya bila
   # kontainer DB SEDANG berjalan (deploy pertama: dilewati). Kata sandi hanya lewat lingkungan (MYSQL_PWD), tak pernah argv/log.
-  local db_container=$NAME-db user db password running
-  running=$(docker inspect --format '{{.State.Running}}' "$db_container" 2>/dev/null || true)
-  if [ "$running" != true ]; then
-    log "preflight kredensial DB dilewati: kontainer $db_container tidak berjalan (deploy pertama?)"
+  if ! db_running; then
+    log "preflight kredensial DB dilewati: kontainer $NAME-db tidak berjalan (deploy pertama?)"
     return 0
   fi
-  user=$(env_value QC_DB_USER)
-  [ -n "$user" ] || user=qc_$ENV_NAME
-  db=$(env_value QC_DB_NAME)
-  [ -n "$db" ] || db=qc_$ENV_NAME
-  password=$(env_value QC_DB_PASSWORD)
-  [[ $user =~ ^[A-Za-z0-9_]{1,64}$ ]] || die 2 'QC_DB_USER di .env tidak valid'
-  [[ $db =~ ^[A-Za-z0-9_]{1,64}$ ]] || die 2 'QC_DB_NAME di .env tidak valid'
-  if ! MYSQL_PWD=$password docker exec -e MYSQL_PWD "$db_container" mariadb -h 127.0.0.1 "-u$user" "$db" -e 'SELECT 1' >>"$DEPLOY_LOG" 2>&1; then
+  db_load_creds || die 2 "$DB_CRED_ERROR"
+  if ! db_sql 'SELECT 1' >>"$DEPLOY_LOG"; then
     die 2 "kredensial DB di .env tidak cocok dengan database yang berjalan; tidak ada yang diubah (rotasi: ubah di database dulu, baru .env; lihat docs/deploy-vps.md; $LOG_HINT)"
   fi
   log 'preflight kredensial DB lulus'
+}
+
+schema_guard_reject() { # schema_guard_reject PESAN: pulihkan .env persis (image sudah ditarik tetapi tak ada yang dijalankan), lepas kunci (trap EXIT), kode 6
+  restore_env
+  die 6 "$1 ($LOG_HINT)"
+}
+
+schema_guard() { # Pagar downgrade skema (keputusan pemilik 2026-11-17): dipanggil SESUDAH pull dan SEBELUM up -d. Lihat komentar kepala.
+  local repo applied image_list name missing='' count=0 first nl=$'\n'
+  if ! db_running; then
+    log "pagar downgrade skema dilewati: kontainer $NAME-db tidak berjalan (deploy pertama?)"
+    return 0
+  fi
+  repo=$(image_repo)
+  [[ $repo =~ ^ghcr\.io/[a-z0-9][a-z0-9._/-]*$ ]] || schema_guard_reject 'repositori image tidak valid untuk pagar downgrade skema'
+  db_load_creds || schema_guard_reject "$DB_CRED_ERROR"
+  # A = migrasi yang sudah diterapkan di basis data; B = migrasi yang dibawa image target. Salah satunya tak terbaca = tolak (gagal tertutup).
+  applied=$(db_sql 'SELECT name FROM schema_migrations ORDER BY name') || schema_guard_reject 'daftar migrasi di basis data (schema_migrations) tidak terbaca; pagar downgrade skema menolak'
+  image_list=$(docker run --rm --pull never --network none --entrypoint ls "$repo:$TAG" /app/server/migrations 2>>"$DEPLOY_LOG") || schema_guard_reject 'daftar migrasi di image target tidak terbaca; pagar downgrade skema menolak'
+  image_list=$nl${image_list//$'\r'/}$nl
+  while IFS= read -r name; do
+    name=${name%$'\r'}
+    [ -n "$name" ] || continue
+    case $image_list in *"$nl$name$nl"*) continue ;; esac
+    missing+=$name$nl
+  done <<<"$applied"
+  if [ -z "$missing" ]; then
+    log 'pagar downgrade skema: tidak ada migrasi yang dilewati'
+    return 0
+  fi
+  # D tak kosong = downgrade melewati migrasi. Nama dari basis data tak tepercaya: harus NNNN_nama.sql sebelum dipakai di perintah docker.
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    [[ $name =~ ^[0-9]{4}_[a-z0-9_]+\.sql$ ]] || schema_guard_reject 'nama migrasi di basis data tidak sah; pagar downgrade skema menolak'
+    count=$((count + 1))
+  done <<<"$missing"
+  [ -n "$PREV_TAG" ] || schema_guard_reject 'tidak ada tag sebelumnya untuk membaca migrasi yang akan dilewati; pagar downgrade skema menolak'
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    first=$(docker run --rm --pull never --network none --entrypoint head "$repo:$PREV_TAG" -n1 "/app/server/migrations/$name" 2>>"$DEPLOY_LOG") || schema_guard_reject "migrasi $name tak terbaca dari image yang sedang berjalan; pagar downgrade skema menolak"
+    first=${first%$'\r'}
+    if [[ $first =~ ^--\ qc:contract[[:space:]]*$ ]]; then
+      schema_guard_reject "migrasi $name berpenanda qc:contract (destruktif) tidak boleh dilewati, kata izin tak berlaku"
+    fi
+  done <<<"$missing"
+  missing=${missing%$nl}
+  missing=${missing//$nl/ }
+  if [ "$ALLOW_DOWNGRADE" -ne 1 ]; then
+    schema_guard_reject "downgrade ini melewati $count migrasi yang sudah diterapkan ($missing); ulangi dengan ekor allow-schema-downgrade bila disengaja"
+  fi
+  log "downgrade skema diizinkan: $count migrasi dilewati: $missing"
 }
 
 # ---- 4. Deploy ----
@@ -321,6 +399,7 @@ if ! compose pull qc-app; then
   restore_env
   die 1 "pull image gagal; .env dipulihkan apa adanya (tag sebelumnya: ${PREV_TAG:-tidak ada}; $LOG_HINT)"
 fi
+schema_guard
 rm -f "$ENV_BACKUP"
 if ! compose up -d; then
   log 'up -d gagal'
