@@ -246,3 +246,11 @@ export function publicActorName(name: string): string {
   const shown = trimmed.includes('@') ? (trimmed.split('@')[0] ?? '').trim() : trimmed;
   return shown === '' ? 'Admin' : shown;
 }
+
+/**
+ * Jumlah foto bukti minimum yang wajib dipasang pada baris Catat Serial untuk item ini (spek 2026-11-18 §6.1):
+ * 0 bila item tidak wajib foto, selain itu `proofMin` item.
+ */
+export function proofMinimumOf(item: { proofRequired: boolean; proofMin: number }): number {
+  return item.proofRequired ? item.proofMin : 0;
+}

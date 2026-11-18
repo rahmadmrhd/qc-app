@@ -3,6 +3,7 @@ import {
   isIsoDate,
   listSerialsTooLong,
   normalizeSerial,
+  proofMinimumOf,
   publicActorName,
   reportLinkExpiresAt,
   SERIAL_ACTIONS,
@@ -209,5 +210,13 @@ describe('publicActorName (nama pelaku tanpa alamat surel)', () => {
     expect(publicActorName('@gmail.com')).toBe('Admin');
     expect(publicActorName('')).toBe('Admin');
     expect(publicActorName('   ')).toBe('Admin');
+  });
+});
+
+describe('proofMinimumOf', () => {
+  test('0 bila item tidak wajib foto, selain itu proofMin', () => {
+    expect(proofMinimumOf({ proofRequired: false, proofMin: 3 })).toBe(0);
+    expect(proofMinimumOf({ proofRequired: true, proofMin: 3 })).toBe(3);
+    expect(proofMinimumOf({ proofRequired: true, proofMin: 1 })).toBe(1);
   });
 });

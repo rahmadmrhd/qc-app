@@ -129,6 +129,8 @@ export function toItemDto(
     attachments: [...item.attachments],
     detail: item.detail,
     firmware: item.firmware,
+    proofRequired: item.proofRequired,
+    proofMin: item.proofMin,
     createdAt: item.createdAt,
     updatedBy: item.updatedBy,
   };
@@ -145,6 +147,8 @@ export function itemSnapshot(item: ItemView, detailHash?: string): Record<string
     model: item.model,
     isCountryLock: item.isCountryLock,
     firmware: item.firmware,
+    proofRequired: item.proofRequired,
+    proofMin: item.proofMin,
     status: item.status,
     aliases: [...item.aliases],
     // Skalar teks (bukan objek) agar terbaca di UI Log Audit.
@@ -497,12 +501,27 @@ function resolveItemFirmware(
   return isValidFirmware(brandName, kept) ? kept : '';
 }
 
+/**
+ * Bendera wajib foto bukti yang akan disimpan (spek 2026-11-18 §6.1): `proofMin` selalu 1 bila tidak wajib; dikirim di
+ * luar rentang ditolak validator. Tidak dikirim (klien lama) = pertahankan nilai tersimpan (create: false dan 1).
+ */
+function resolveItemProof(
+  input: SaveItemInput,
+  existing: ItemRecord | undefined,
+): { proofRequired: boolean; proofMin: number } {
+  const proofRequired = input.proofRequired ?? existing?.proofRequired ?? false;
+  if (!proofRequired) return { proofRequired: false, proofMin: 1 };
+  return { proofRequired: true, proofMin: input.proofMin ?? existing?.proofMin ?? 1 };
+}
+
 /** Bidang item yang dibandingkan `itemContentEquals`. Alias TIDAK termasuk. */
 type ComparableItem = {
   brandId: string;
   model: string;
   isCountryLock: boolean;
   firmware: string;
+  proofRequired: boolean;
+  proofMin: number;
   attachments: readonly string[];
   detail: string;
   accessories: readonly ItemAccessoryDto[];
@@ -519,6 +538,8 @@ export function itemContentEquals(a: ComparableItem, b: ComparableItem): boolean
     a.model !== b.model ||
     a.isCountryLock !== b.isCountryLock ||
     a.firmware !== b.firmware ||
+    a.proofRequired !== b.proofRequired ||
+    a.proofMin !== b.proofMin ||
     a.status !== b.status ||
     a.detail !== b.detail ||
     a.attachments.length !== b.attachments.length ||
@@ -793,6 +814,7 @@ export async function planItemWrite(
   }
   const key = itemKey(brand.name, input.model);
   const firmware = resolveItemFirmware(input, brand.name, existing);
+  const proof = resolveItemProof(input, existing);
   const id = existing?.id ?? options.id ?? crypto.randomUUID();
   const owners = await loadNameOwners(env, input, key, id, existing);
   assertItemNamesFree(input, key, owners);
@@ -815,6 +837,8 @@ export async function planItemWrite(
     key,
     isCountryLock: input.isCountryLock,
     firmware,
+    proofRequired: proof.proofRequired,
+    proofMin: proof.proofMin,
     aliases: [...input.aliases],
     accessories: input.accessories.map((accessory) => ({ ...accessory })),
     attachments: [...input.attachments],

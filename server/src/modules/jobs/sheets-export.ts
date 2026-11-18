@@ -131,6 +131,8 @@ export const EXPORT_TABLES: readonly ExportTableSpec[] = [
     'manual_book_design_id',
     'postel_id',
     'firmware',
+    'proof_required',
+    'proof_min',
     'status',
     'created_at',
     'updated_at',

@@ -12,6 +12,7 @@ import type {
 } from '@shared/contract';
 import { MARKDOWN_MAX_LENGTH } from '@shared/files';
 import { FIRMWARE_CODE_MAX } from '@shared/firmware';
+import { SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { ITEM_LIMITS, normalizeKey, normalizeNewlines } from '@shared/items';
 import { INSTRUCTION_LIMITS, type StickerMarkTarget } from '@shared/stickers';
 
@@ -343,6 +344,37 @@ function readOptionalFirmware(
   return value;
 }
 
+/** `proofRequired` opsional: tak dikirim = undefined (tak diubah); bila ada harus boolean. */
+function readOptionalProofRequired(
+  value: unknown,
+  reader: { fail(key: string, message: string): void },
+): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean') {
+    reader.fail('proofRequired', 'Harus true atau false');
+    return undefined;
+  }
+  return value;
+}
+
+/** `proofMin` opsional: tak dikirim = undefined (tak diubah); bila ada harus bilangan bulat 1 sampai batas foto per entri. */
+function readOptionalProofMin(
+  value: unknown,
+  reader: { fail(key: string, message: string): void },
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > SERIAL_PROOF_LIMITS.perEntryMax
+  ) {
+    reader.fail('proofMin', `Minimum foto harus 1 sampai ${SERIAL_PROOF_LIMITS.perEntryMax}`);
+    return undefined;
+  }
+  return value;
+}
+
 export function validateSaveItem(raw: unknown): SaveItemInput {
   const reader = readObject(raw);
   const id = reader.optionalId('id');
@@ -355,6 +387,8 @@ export function validateSaveItem(raw: unknown): SaveItemInput {
   const lock = reader.raw('isCountryLock');
   if (typeof lock !== 'boolean') reader.fail('isCountryLock', 'Harus true atau false');
   const firmware = readOptionalFirmware(reader.raw('firmware'), reader);
+  const proofRequired = readOptionalProofRequired(reader.raw('proofRequired'), reader);
+  const proofMin = readOptionalProofMin(reader.raw('proofMin'), reader);
   const lists = firstErrorReader(reader);
   const aliases = readItemAliases(reader.raw('aliases'), lists);
   const stickerPhotos = readStickerPhotos(reader.raw('stickerPhotos'), lists);
@@ -371,6 +405,8 @@ export function validateSaveItem(raw: unknown): SaveItemInput {
     model,
     isCountryLock: lock === true,
     ...(firmware !== undefined ? { firmware } : {}),
+    ...(proofRequired !== undefined ? { proofRequired } : {}),
+    ...(proofMin !== undefined ? { proofMin } : {}),
     aliases,
     stickerPhotos,
     accessories,
