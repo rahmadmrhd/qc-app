@@ -36,7 +36,7 @@ on:
         type: boolean
         default: false
       desktop-check:
-        description: Jalankan pemeriksaan build desktop (hanya PR/test.yml; deploy tak boleh tertahan olehnya).
+        description: Jalankan pemeriksaan build desktop (test.yml untuk PR dan release-desktop.yml untuk rilis desktop; deploy server tak boleh tertahan olehnya).
         type: boolean
         default: false
     outputs:

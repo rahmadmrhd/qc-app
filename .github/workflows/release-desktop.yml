@@ -1,0 +1,383 @@
+name: Release Desktop
+
+# Rilis aplikasi desktop (Windows x64 + arm64) dari PR rilis `release/desktop-vX.Y.Z` yang di-merge ke `main` (spek
+# docs/superpowers/specs/2026-11-17-rilis-desktop-auto-update-design.md; rencana
+# docs/superpowers/plans/2026-11-18-rilis-semver-4-desktop-auto-update.md). Jalur: meta (identitas) -> ci (pemeriksaan penuh)
+# -> build (installer di Windows, tanpa rahasia penandatangan) -> publish (Drive dulu, baru tag + GitHub Release) ->
+# sync-dev (main -> dev, workflow bersama sync-dev.yml). Penarikan rilis lewat `workflow_dispatch` input `tarik`.
+#
+# Penyimpanan installer (keputusan pemilik 2026-11-18): Google Drive, disalurkan server QC; pengguna dan aplikasi tak pernah
+# menyentuh GitHub, dan repositori boleh kembali privat. Aplikasi memeriksa manifest `release-<versi>.json` bertanda tangan
+# Ed25519 dengan kunci publik tertanam (terpisah dari kunci manifest UI), jadi server dan Drive tak perlu dipercaya.
+#
+# Tak ada saklar `RELEASE_FLOW`: rilis desktop tak men-deploy production, dan PR `release/desktop-v…` baru ada setelah
+# `bun run release:prepare desktop …`. Workflow ini tak pernah menyentuh deploy server.
+#
+# Keamanan `pull_request_target` (berjalan dari workflow di `main`, menerima rahasia): hanya PR yang SUDAH di-merge; data PR
+# dibaca lewat API (bukan field head dari event); `meta` dan `withdraw` hanya me-checkout `github.sha` (ujung `main`, kode
+# tepercaya) untuk menjalankan skrip; `build` dan `publish` hanya me-checkout commit merge hasil `meta`. Tak ada langkah yang
+# me-checkout atau menjalankan head PR, dan tak ada ekspresi di dalam `run`. Pagar identitas (`scripts/release-identity.ts`,
+# COMPONENT=desktop): bukan fork, cabang `release/desktop-v<semver>` persis, merge commit (dua induk), versi di
+# `desktop/package.json` pada commit merge sama dengan versi cabang. PR lain ke `main` dilewati diam-diam.
+#
+# Pemisahan rahasia: job `build` menjalankan kode dependensi dan electron-builder, jadi TIDAK memegang kunci penandatangan
+# atau kunci Drive (hanya token katalog, yang memang tertanam di installer). Kunci tanda tangan rilis dan kunci penerbit
+# Drive hanya ada di `publish`, yang tidak memasang dependensi (skripnya hanya memakai node:*, WebCrypto, dan fetch).
+# Environment `desktop-release` (hanya ref `main`) menyimpan semua secret dan Variable rilis desktop; rincian di
+# docs/desktop-release-signing.md dan docs/ci-cd.md.
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      versi:
+        description: 'Pemulihan: versi (X.Y.Z) dari PR rilis desktop yang SUDAH di-merge ke main; seluruh jalur dijalankan lagi (idempoten)'
+        type: string
+        required: false
+        default: ''
+      tarik:
+        description: 'Penarikan: versi (X.Y.Z) yang dicabut dari pengguna (menghapus tanda tangan di Drive; installer dan tag tetap). Jangan isi bersama `versi`'
+        type: string
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+# Satu rilis desktop pada satu waktu, tanpa membatalkan yang berjalan. Merge biasa ke main (bukan cabang rilis desktop) memakai
+# grup sendiri agar run kosong tak menggantikan run rilis yang menunggu (GitHub menyimpan paling banyak satu run MENUNGGU per
+# grup): bila run rilis berstatus "cancelled", jalankan ulang lewat workflow_dispatch (input `versi`). Ekspresi cabang di bawah
+# HANYA dipakai di sini (nama grup); tak masuk ke `run`, `env`, `if`, atau checkout.
+concurrency:
+  group: ${{ (github.event_name == 'workflow_dispatch' || (github.event.pull_request.merged == true && startsWith(github.event.pull_request.head.ref, 'release/desktop-v'))) && 'release-desktop' || format('lewati-desktop-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+jobs:
+  meta:
+    if: (github.event_name == 'workflow_dispatch' && inputs.versi != '' && inputs.tarik == '') || (github.event_name == 'pull_request_target' && github.event.pull_request.merged == true)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      release: ${{ steps.resolve.outputs.release }}
+      sha: ${{ steps.resolve.outputs.sha }}
+      version: ${{ steps.identity.outputs.version }}
+    steps:
+      # Kode tepercaya: ujung `main` (workflow ini sendiri berasal dari sana), BUKAN isi PR.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+
+      # Membaca PR lewat API. PR yang bukan cabang `release/desktop-v…` dilewati (`release=false`, bukan kegagalan); cabang itu
+      # lolos ke pagar identitas di langkah berikut, dan kegagalannya = galat (sinyal keamanan, bukan lewati diam-diam).
+      - name: Baca PR rilis
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          INPUT_VERSI: ${{ inputs.versi }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          case "$EVENT_NAME" in
+            pull_request_target)
+              [ "$REF" = refs/heads/main ] || fail "pull_request_target hanya sah dari branch default main."
+              [[ $PR_NUMBER =~ ^[0-9]+$ ]] || fail "Nomor PR tidak valid."
+              pr=$PR_NUMBER
+              ;;
+            workflow_dispatch)
+              [ "$REF" = refs/heads/main ] || fail "Rilis manual hanya dari branch main."
+              [[ $INPUT_VERSI =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Versi harus berbentuk X.Y.Z."
+              pr=$(gh pr list --head "release/desktop-v$INPUT_VERSI" --base main --state merged --json number --jq '.[0].number // empty')
+              [[ $pr =~ ^[0-9]+$ ]] || fail "Tidak ada PR rilis desktop yang sudah di-merge untuk versi itu."
+              ;;
+            *) fail "Pemicu tidak didukung." ;;
+          esac
+          data=$(gh api "repos/$REPO/pulls/$pr")
+          [ "$(jq -r '.merged' <<< "$data")" = true ] || fail "PR belum di-merge."
+          head_ref=$(jq -r '.head.ref' <<< "$data")
+          if [[ $head_ref != release/desktop-v* ]]; then
+            echo "Bukan PR rilis desktop; dilewati."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [[ $head_ref =~ ^[A-Za-z0-9._/+-]{1,100}$ ]] || fail "Nama cabang rilis memuat karakter yang tidak diizinkan."
+          sha=$(jq -r '.merge_commit_sha // ""' <<< "$data")
+          [[ $sha =~ ^[0-9a-f]{40}$ ]] || fail "Commit merge bukan SHA 40 heksa."
+          parents=$(gh api "repos/$REPO/commits/$sha" --jq '.parents | length')
+          [[ $parents =~ ^[0-9]+$ ]] || fail "Jumlah induk commit merge tidak terbaca."
+          version_at_merge=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/desktop/package.json?ref=$sha" | jq -r '.version // ""')
+          # Isi package.json dikendalikan commit: tolak apa pun selain X.Y.Z SEBELUM ditulis ke GITHUB_OUTPUT (baris baru di
+          # dalamnya dapat menimpa keluaran lain; kunci terakhir menang, jadi `sha` ditulis paling akhir).
+          [[ $version_at_merge =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Versi di desktop/package.json pada commit merge bukan X.Y.Z."
+          head_repo=$(jq -r '.head.repo.full_name // ""' <<< "$data")
+          base_ref=$(jq -r '.base.ref' <<< "$data")
+          [[ $head_repo =~ ^[A-Za-z0-9._/-]{0,200}$ ]] || fail "Nama repositori asal memuat karakter yang tidak diizinkan."
+          [[ $base_ref =~ ^[A-Za-z0-9._/-]{1,100}$ ]] || fail "Nama cabang tujuan memuat karakter yang tidak diizinkan."
+          {
+            echo "release=true"
+            echo "head_ref=$head_ref"
+            echo "head_repo=$head_repo"
+            echo "base_ref=$base_ref"
+            echo "parents=$parents"
+            echo "version_at_merge=$version_at_merge"
+            echo "sha=$sha"
+          } >> "$GITHUB_OUTPUT"
+
+      # Pagar identitas (skrip murni, diuji tanpa GitHub). Gagal = job gagal = tak ada job lain yang jalan.
+      - name: Pagar identitas
+        id: identity
+        if: steps.resolve.outputs.release == 'true'
+        env:
+          COMPONENT: desktop
+          BASE_REPO: ${{ github.repository }}
+          HEAD_REPO: ${{ steps.resolve.outputs.head_repo }}
+          HEAD_REF: ${{ steps.resolve.outputs.head_ref }}
+          BASE_REF: ${{ steps.resolve.outputs.base_ref }}
+          PARENTS: ${{ steps.resolve.outputs.parents }}
+          VERSION_AT_MERGE: ${{ steps.resolve.outputs.version_at_merge }}
+        run: bun run scripts/release-identity.ts
+
+  # Pemeriksaan penuh (tanpa daftar berkas: rilis desktop tak punya penunjuk deploy, jadi fail-safe = semua) pada commit rilis,
+  # termasuk uji kemas desktop. `packages: read` wajib walau tak dipakai: GitHub memvalidasi izin job di workflow dipanggil.
+  ci:
+    needs: meta
+    if: needs.meta.outputs.release == 'true'
+    permissions:
+      contents: read
+      pull-requests: read
+      packages: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.meta.outputs.sha }}
+      desktop-check: true
+
+  # Installer NSIS x64 + arm64 (satu job: arm64 dikemas silang dari x64; runner Windows arm64 tak tersedia). Tanpa kunci
+  # penandatangan dan tanpa kunci Drive. `CATALOG_TOKEN` (token katalog Tipe offline) memang tertanam di installer dan hanya
+  # diberikan ke langkah build; kosong = katalog nonaktif di aplikasi hasil build ini.
+  build:
+    needs: [meta, ci]
+    if: needs.meta.outputs.release == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    environment: desktop-release
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Runner Windows memakai core.autocrlf=true: matikan sebelum checkout agar bun.lock dan berkas tes tetap LF.
+      - name: Matikan konversi CRLF
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.meta.outputs.sha }}
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup
+
+      # Build web (UI dasar) lalu installer; `dist` menolak berjalan tanpa kunci publik UI dan kunci publik rilis.
+      - name: Bangun installer
+        env:
+          UI_PUBLIC_KEY_PEM: ${{ vars.UI_PUBLIC_KEY_PEM }}
+          DESKTOP_RELEASE_PUBLIC_KEY_PEM: ${{ vars.DESKTOP_RELEASE_PUBLIC_KEY_PEM }}
+          CATALOG_TOKEN: ${{ secrets.DESKTOP_CATALOG_TOKEN }}
+        run: bun run build:desktop
+
+      - name: Verifikasi x64 (asap penuh)
+        run: bun run --cwd desktop verify-pack --arch x64
+
+      - name: Verifikasi arm64 (statis)
+        run: bun run --cwd desktop verify-pack --arch arm64
+
+      - name: Periksa nama installer
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          set -euo pipefail
+          [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Versi rilis tidak valid."; exit 1; }
+          for arch in x64 arm64; do
+            [ -s "desktop/dist-app/QC-App-Setup-$VERSION-$arch.exe" ] || { echo "::error::Installer $arch tidak ditemukan atau kosong."; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: desktop-installers
+          path: |
+            desktop/dist-app/QC-App-Setup-${{ needs.meta.outputs.version }}-x64.exe
+            desktop/dist-app/QC-App-Setup-${{ needs.meta.outputs.version }}-arm64.exe
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0
+
+  # Menerbitkan: (1) unggah ke Drive (installer, manifest bertanda tangan, tanda tangan TERAKHIR = rilis terlihat), lalu
+  # (2) tag `desktop-vX.Y.Z` + GitHub Release berisi catatan rilis. Tag dan Release tak pernah dibuat bila unggahan gagal.
+  # Installer TIDAK dilampirkan ke Release: token katalog tertanam di dalamnya dan repositori ini publik. Idempoten: unggahan
+  # ulang dengan isi sama dilewati, tag yang sudah ada pada SHA yang sama dilewati, tag pada SHA lain menggagalkan. Tanpa
+  # `bun install`: tak ada kode dependensi yang berjalan di job yang memegang kunci. Berkas kunci berizin ketat dan dihapus
+  # di langkah akhir `if: always()`.
+  publish:
+    needs: [meta, build]
+    if: needs.meta.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: desktop-release
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.meta.outputs.sha }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: desktop-installers
+          path: ${{ runner.temp }}/installers
+
+      - name: Susun catatan rilis
+        id: notes
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+          NOTES_DIR: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Versi rilis tidak valid."; exit 1; }
+          bun run changelog extract desktop "$VERSION" > "$NOTES_DIR/notes.md"
+          [ -s "$NOTES_DIR/notes.md" ] || { echo "::error::Catatan rilis desktop kosong."; exit 1; }
+
+      - name: Terbitkan ke Drive
+        id: drive
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+          NOTES_DIR: ${{ runner.temp }}
+          INSTALLERS_DIR: ${{ runner.temp }}/installers
+          FOLDER_ID: ${{ vars.DESKTOP_RELEASES_FOLDER_ID }}
+          DESKTOP_RELEASE_PUBLIC_KEY_PEM: ${{ vars.DESKTOP_RELEASE_PUBLIC_KEY_PEM }}
+          GOOGLE_SA_KEY_JSON: ${{ secrets.DESKTOP_DRIVE_PUBLISHER_KEY }}
+          RELEASE_SIGNING_KEY: ${{ secrets.DESKTOP_RELEASE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Versi rilis tidak valid."; exit 1; }
+          [ -n "$FOLDER_ID" ] || { echo "::error::Variable DESKTOP_RELEASES_FOLDER_ID kosong."; exit 1; }
+          [ -n "$GOOGLE_SA_KEY_JSON" ] || { echo "::error::Secret DESKTOP_DRIVE_PUBLISHER_KEY kosong."; exit 1; }
+          [ -n "$RELEASE_SIGNING_KEY" ] || { echo "::error::Secret DESKTOP_RELEASE_SIGNING_KEY kosong."; exit 1; }
+          umask 077
+          sa_key="$RUNNER_TEMP/sa-key.json"
+          sign_key="$RUNNER_TEMP/release-signing-key.pem"
+          printf '%s' "$GOOGLE_SA_KEY_JSON" > "$sa_key"
+          printf '%s\n' "$RELEASE_SIGNING_KEY" > "$sign_key"
+          export GOOGLE_SA_KEY_FILE="$sa_key" RELEASE_SIGNING_KEY_FILE="$sign_key"
+          bun run scripts/publish-desktop-release.ts --version "$VERSION" --dir "$INSTALLERS_DIR" --changelog-file "$NOTES_DIR/notes.md" --folder-id "$FOLDER_ID"
+
+      # Tag dan Release hanya setelah unggahan Drive sukses. 404 = tag belum ada; galat API lain TIDAK boleh dibaca sebagai
+      # "belum ada" (gh release create akan menempelkan Release ke tag lama bila tag sebenarnya ada pada commit lain).
+      - name: Buat tag dan Release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ needs.meta.outputs.sha }}
+          VERSION: ${{ needs.meta.outputs.version }}
+          NOTES_DIR: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || fail "Commit rilis bukan SHA 40 heksa."
+          [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "Versi rilis tidak valid."
+          tag="desktop-v$VERSION"
+          if out=$(gh api "repos/$REPO/git/ref/tags/$tag" --jq '.object.type + " " + .object.sha' 2>&1); then
+            existing=$out
+          elif grep -qE 'HTTP 404|Not Found' <<< "$out"; then
+            existing=
+          else
+            fail "Gagal memeriksa tag $tag (galat API): ${out:0:300}"
+          fi
+          if [ -n "$existing" ]; then
+            [ "${existing%% *}" = commit ] || fail "Tag $tag sudah ada tetapi bukan tag ringan: periksa manual."
+            [ "${existing##* }" = "$SHA" ] || fail "Tag $tag sudah ada pada commit lain: periksa manual (tag tidak ditimpa)."
+            if gh release view "$tag" > /dev/null 2>&1; then
+              echo "Tag dan Release $tag sudah ada pada commit yang sama; dilewati."
+            else
+              gh release create "$tag" --verify-tag --title "Desktop v$VERSION" --notes-file "$NOTES_DIR/notes.md"
+            fi
+          else
+            gh release create "$tag" --target "$SHA" --title "Desktop v$VERSION" --notes-file "$NOTES_DIR/notes.md"
+          fi
+
+      - name: Hapus kunci
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sa-key.json" "$RUNNER_TEMP/release-signing-key.pem"
+
+  # Menyinkronkan `main` ke `dev` setelah rilis (workflow bersama; kegagalan hanya peringatan). Pemanggil tanpa
+  # `secrets: inherit`: secret environment `sync-dev` dibaca langsung oleh job terpanggil.
+  sync-dev:
+    needs: [meta, publish]
+    if: needs.meta.outputs.release == 'true' && needs.publish.result == 'success'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/sync-dev.yml
+    with:
+      sha: ${{ needs.meta.outputs.sha }}
+      version: ${{ needs.meta.outputs.version }}
+      komponen: desktop
+
+  # Penarikan: menghapus HANYA tanda tangan `release-<versi>.sig` di Drive, sehingga server berhenti menyajikan versi itu
+  # (installer, manifest, dan tag tetap untuk penelusuran). Pengguna yang sudah memasangnya tidak diturunkan. Hanya dari main.
+  withdraw:
+    if: github.event_name == 'workflow_dispatch' && inputs.tarik != '' && inputs.versi == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: desktop-release
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+
+      - name: Tarik rilis dari pengguna
+        env:
+          REF: ${{ github.ref }}
+          VERSION: ${{ inputs.tarik }}
+          FOLDER_ID: ${{ vars.DESKTOP_RELEASES_FOLDER_ID }}
+          GOOGLE_SA_KEY_JSON: ${{ secrets.DESKTOP_DRIVE_PUBLISHER_KEY }}
+        run: |
+          set -euo pipefail
+          [ "$REF" = refs/heads/main ] || { echo "::error::Penarikan hanya dari branch main."; exit 1; }
+          [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Versi harus berbentuk X.Y.Z."; exit 1; }
+          [ -n "$FOLDER_ID" ] || { echo "::error::Variable DESKTOP_RELEASES_FOLDER_ID kosong."; exit 1; }
+          [ -n "$GOOGLE_SA_KEY_JSON" ] || { echo "::error::Secret DESKTOP_DRIVE_PUBLISHER_KEY kosong."; exit 1; }
+          umask 077
+          sa_key="$RUNNER_TEMP/sa-key.json"
+          printf '%s' "$GOOGLE_SA_KEY_JSON" > "$sa_key"
+          export GOOGLE_SA_KEY_FILE="$sa_key"
+          bun run scripts/publish-desktop-release.ts --version "$VERSION" --folder-id "$FOLDER_ID" --withdraw
+
+      - name: Hapus kunci
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sa-key.json"
