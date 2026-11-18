@@ -315,7 +315,7 @@ function StrictBody({
             </section>
           </div>
 
-          <AlertDialogFooter className="bottom-0 mx-0 mb-0 shrink-0 flex-col rounded-none p-0">
+          <AlertDialogFooter className="bottom-0 mx-0 mb-0 shrink-0 flex-col items-stretch rounded-none p-0 sm:flex-col">
             <p
               role="status"
               className={`px-4 pt-3 text-xs ${canSave ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400'}`}
