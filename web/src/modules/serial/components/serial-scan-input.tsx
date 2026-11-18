@@ -2,6 +2,7 @@ import { lazy, Suspense, useRef, useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { DRAFT_FULL_NOTE } from '../lib/draft';
 import {
   FEEDBACK_FLASH,
   FEEDBACK_TEXT,
@@ -88,6 +89,13 @@ export function SerialScanInput({
     if (context.isKnown(pick.serial)) {
       setStrictNote(null);
       announce('duplicate');
+      inputRef.current?.focus();
+      return;
+    }
+    // Draft penuh: jangan buka dialog (pengguna akan memotret lalu kehilangan fotonya).
+    if (context.capacity && context.capacity() <= 0) {
+      setStrictNote(DRAFT_FULL_NOTE);
+      announce('rejected');
       inputRef.current?.focus();
       return;
     }
@@ -182,6 +190,7 @@ export function SerialScanInput({
             info={strict.info}
             isKnown={strict.isKnown}
             onConfirm={strict.onConfirm}
+            capacity={strict.capacity}
           />
         </Suspense>
       ) : null}

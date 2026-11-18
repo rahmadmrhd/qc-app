@@ -100,3 +100,24 @@ test('strict: tombol kamera membuka dialog dua langkah (langkah 1)', async () =>
   expect(await screen.findByRole('alertdialog')).toHaveTextContent('Scan serial item wajib foto');
   expect(screen.queryByRole('textbox', { name: 'Serial Number' })).not.toBeInTheDocument();
 });
+
+test('strict: draft penuh menolak dari awal dengan catatan batas, tanpa dialog', async () => {
+  const { onSubmit, field } = setup(strictContext({ capacity: () => 0 }));
+  await userEvent.click(field);
+  await userEvent.type(field, 'abc123{Enter}');
+  expect(await screen.findByText(/Draft sudah penuh \(maks\. 1000 baris\)/)).toBeInTheDocument();
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
+test('strict: tombol kamera dengan draft penuh membuka dialog yang hanya memberi tahu batas', async () => {
+  const getUserMedia = vi.fn();
+  Object.defineProperty(navigator, 'mediaDevices', {
+    value: { getUserMedia, enumerateDevices: vi.fn(async () => []) },
+    configurable: true,
+  });
+  setup(strictContext({ capacity: () => 0 }));
+  await userEvent.click(screen.getByRole('button', { name: 'Scan dengan kamera' }));
+  expect(await screen.findByTestId('strict-full')).toBeInTheDocument();
+  expect(getUserMedia).not.toHaveBeenCalled();
+});

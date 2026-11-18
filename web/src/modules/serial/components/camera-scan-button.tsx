@@ -21,6 +21,8 @@ export interface StrictScan {
   info: StrictInfo;
   isKnown: IsKnown;
   onConfirm: StrictScanDialogProps['onConfirm'];
+  /** Sisa kapasitas draft; habis = dialog hanya memberi tahu batas (lihat `StrictScanDialogProps.capacity`). */
+  capacity?: () => number;
 }
 
 export interface CameraScanButtonProps {
@@ -85,6 +87,7 @@ export function CameraScanButton({
             info={strict.info}
             isKnown={strict.isKnown}
             onConfirm={strict.onConfirm}
+            capacity={strict.capacity}
           />
         </Suspense>
       ) : null}

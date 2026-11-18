@@ -3,6 +3,9 @@ import type { QcsnRow } from '@shared/serial-file';
 import { normalizeSerial, SERIAL_LIMITS, splitSerialInput } from '@shared/serials';
 import type { ProofPhotoRef } from './proof-source';
 
+/** Pesan bila draft sudah memuat `SERIAL_LIMITS.tableRows` baris (jalur item wajib foto menolak dari awal). */
+export const DRAFT_FULL_NOTE = `Draft sudah penuh (maks. ${SERIAL_LIMITS.tableRows} baris). Simpan dulu atau hapus beberapa baris sebelum menambah serial.`;
+
 export interface StagingSticker {
   stickerId: string;
   name: string;

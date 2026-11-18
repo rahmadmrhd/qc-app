@@ -317,6 +317,7 @@ export function RecordPage({
             },
             isKnown: isKnownSerial,
             onConfirm: confirmStrict,
+            capacity: draftCapacity,
           }
         : undefined,
     [
@@ -328,6 +329,7 @@ export function RecordPage({
       me.name,
       isKnownSerial,
       confirmStrict,
+      draftCapacity,
     ],
   );
 

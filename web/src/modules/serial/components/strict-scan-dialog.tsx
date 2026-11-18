@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { BarcodeEngine } from '../lib/barcode-engine';
 import { createPayloadGate } from '../lib/camera-payload';
+import { DRAFT_FULL_NOTE } from '../lib/draft';
 import { mergeProofPhotos, type ProofPhotoRef } from '../lib/proof-source';
 import { type ScanFeedback, useScanFeedback } from '../lib/scan-feedback';
 import { type IsKnown, pickSingleSerial } from '../lib/scan-table';
@@ -66,6 +67,11 @@ export interface StrictScanDialogProps {
   isKnown: IsKnown;
   /** Dipanggil SAAT Simpan; pemanggil memasukkan baris ke draft. Foto sudah milik baris itu (tidak dibuang dialog). */
   onConfirm: (result: StrictScanResult) => void;
+  /**
+   * Sisa kapasitas draft (jumlah baris yang masih boleh ditambah). Habis (<= 0) saat dibuka atau saat serial diterima =
+   * dialog hanya menampilkan pemberitahuan batas, supaya pengguna tidak memotret lalu kehilangan fotonya.
+   */
+  capacity?: () => number;
   /** Disuntik tes. */
   createEngine?: () => Promise<BarcodeEngine>;
   now?: () => number;
@@ -120,6 +126,7 @@ function StrictBody({
   info,
   isKnown,
   onConfirm,
+  capacity,
   createEngine,
   now,
   onClose,
@@ -138,6 +145,9 @@ function StrictBody({
   const committedRef = useRef(false);
   const isKnownRef = useRef(isKnown);
   isKnownRef.current = isKnown;
+  const capacityRef = useRef(capacity);
+  capacityRef.current = capacity;
+  const [full, setFull] = useState(() => capacity !== undefined && capacity() <= 0);
 
   const max = SERIAL_PROOF_LIMITS.perEntryMax;
   const normalized = normalizeSerial(serialText);
@@ -229,9 +239,32 @@ function StrictBody({
   );
 
   const onScanned = useCallback((serial: string) => {
+    // Draft penuh: tolak sebelum pengguna sempat memotret (foto yang dibuang setelahnya = usaha sia-sia).
+    if (capacityRef.current && capacityRef.current() <= 0) {
+      setFull(true);
+      return;
+    }
     setSerialText(serial);
     setStep(2);
   }, []);
+
+  if (full) {
+    return (
+      <>
+        <div className="space-y-2 p-4">
+          <AlertDialogTitle>Draft penuh</AlertDialogTitle>
+          <AlertDialogDescription data-testid="strict-full">
+            {DRAFT_FULL_NOTE}
+          </AlertDialogDescription>
+        </div>
+        <AlertDialogFooter>
+          <Button type="button" onClick={onClose}>
+            Tutup
+          </Button>
+        </AlertDialogFooter>
+      </>
+    );
+  }
 
   return (
     <>

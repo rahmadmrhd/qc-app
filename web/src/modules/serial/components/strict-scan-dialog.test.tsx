@@ -105,6 +105,7 @@ function setup(
     initialSerial?: string;
     isKnown?: (serial: string) => boolean;
     info?: StrictInfo;
+    capacity?: () => number;
   } = {},
 ) {
   const media = fakeStream();
@@ -125,6 +126,7 @@ function setup(
       info={options.info ?? INFO}
       isKnown={options.isKnown ?? (() => false)}
       onConfirm={onConfirm}
+      capacity={options.capacity}
       createEngine={async () => engine}
       now={() => time}
     />,
@@ -357,4 +359,40 @@ test('pratinjau cap di kamera foto memakai serial yang sedang diedit', async () 
   const note = await screen.findByRole('note', { name: 'Pratinjau cap' });
   expect(note).toHaveTextContent('SN: EDIT-77');
   expect(note).toHaveTextContent('Disimpan saat Simpan · Budi (QC)');
+});
+
+test('draft penuh saat dibuka di langkah 1: pemberitahuan batas, kamera tidak dinyalakan', async () => {
+  const ctx = setup({ capacity: () => 0 });
+  expect(await screen.findByTestId('strict-full')).toHaveTextContent(
+    /Draft sudah penuh \(maks\. 1000 baris\)/,
+  );
+  expect(ctx.getUserMedia).not.toHaveBeenCalled();
+  expect(screen.queryByLabelText('Pratinjau kamera')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Tutup' }));
+  expect(ctx.onOpenChange).toHaveBeenCalledWith(false);
+  expect(ctx.onConfirm).not.toHaveBeenCalled();
+});
+
+test('draft penuh saat dibuka di langkah 2 (initialSerial): tanpa kolom serial dan tombol foto', async () => {
+  setup({ initialSerial: 'ABC123', capacity: () => 0 });
+  expect(await screen.findByTestId('strict-full')).toBeInTheDocument();
+  expect(screen.queryByRole('textbox', { name: 'Serial Number' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Tambah foto' })).not.toBeInTheDocument();
+});
+
+test('draft menjadi penuh selagi kamera terbuka: serial yang diterima di langkah 1 ditolak sebelum konfirmasi', async () => {
+  let room = 1;
+  const ctx = setup({ capacity: () => room });
+  await screen.findByLabelText('Pratinjau kamera');
+  room = 0;
+  ctx.state.current = ['ABC123'];
+  expect(await screen.findByTestId('strict-full')).toBeInTheDocument();
+  expect(screen.queryByRole('textbox', { name: 'Serial Number' })).not.toBeInTheDocument();
+  expect(removed()).toEqual([]);
+});
+
+test('ada ruang di draft: perilaku biasa', async () => {
+  setup({ initialSerial: 'ABC123', capacity: () => 5 });
+  expect(await screen.findByRole('textbox', { name: 'Serial Number' })).toHaveValue('ABC123');
+  expect(screen.queryByTestId('strict-full')).not.toBeInTheDocument();
 });
