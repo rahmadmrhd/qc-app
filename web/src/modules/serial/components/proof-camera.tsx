@@ -364,54 +364,71 @@ function ProofCameraBody({
               <StampNote input={stamp} />
             </Float>
           ) : null}
-          <p
-            aria-live="polite"
-            className="pointer-events-none w-fit self-center rounded-full bg-black/55 px-3 py-1.5 text-xs text-white"
-          >
-            {full ? 'Batas foto tercapai' : `Sisa ${remaining} foto`}
-          </p>
-          {stripShown ? (
-            // Sisakan kolom zoom di kanan agar strip tidak menimpanya.
-            <Float className="pr-[4.25rem]" onInteract={() => setStripTick((value) => value + 1)}>
-              <ProofPhotoGrid
-                variant="strip"
-                photos={shots}
-                uploading={uploading}
-                {...(onRemoveShot ? { onRemove: onRemoveShot } : {})}
-                onPreviewChange={setPreviewOpen}
-                label="hasil kamera"
-              />
-            </Float>
-          ) : null}
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-            <Float className="justify-self-start">
-              <ProofPhotoStack
-                photos={shots}
-                uploading={uploading}
-                expanded={stripShown}
-                onToggle={() => setStripOpen((value) => !value)}
-              />
-            </Float>
-            <Float>
-              <button
-                type="button"
-                aria-label="Ambil foto"
-                title={full ? 'Batas foto tercapai' : 'Ambil foto'}
-                disabled={!ready || capturing || full}
-                onClick={() => void shoot()}
-                className={cn(
-                  'flex size-16 items-center justify-center rounded-full border-4 border-white outline-none focus-visible:ring-4 focus-visible:ring-ring/60',
-                  'disabled:opacity-40',
-                )}
+          {/* Pembungkus relatif: strip foto MENGAMBANG di atasnya (absolute) dan tak pernah ikut aliran tata letak. */}
+          <div className="relative flex flex-col gap-2">
+            <p
+              aria-live="polite"
+              className="pointer-events-none w-fit self-center rounded-full bg-black/55 px-3 py-1.5 text-xs text-white"
+            >
+              {full ? 'Batas foto tercapai' : `Sisa ${remaining} foto`}
+            </p>
+            {stripShown ? (
+              // Overlay: menimpa video tepat di atas pil/rana tanpa menggeser elemen lain (cap, zoom, pil). Kolom zoom
+              // di kanan disisakan agar strip tidak menimpanya.
+              <Float
+                className="absolute inset-x-0 bottom-full mb-2 pr-[4.25rem]"
+                onInteract={() => setStripTick((value) => value + 1)}
               >
-                <span className="size-12 rounded-full bg-white" />
-              </button>
-            </Float>
-            <Float className="justify-self-end">
-              <Button type="button" size="lg" className="h-11 rounded-full px-4" onClick={onClose}>
-                {shots.length > 0 ? `Selesai (${shots.length})` : 'Selesai'}
-              </Button>
-            </Float>
+                <div
+                  data-testid="proof-photo-strip-panel"
+                  className="w-fit max-w-full rounded-xl bg-black/45 px-2 backdrop-blur-sm"
+                >
+                  <ProofPhotoGrid
+                    variant="strip"
+                    photos={shots}
+                    uploading={uploading}
+                    {...(onRemoveShot ? { onRemove: onRemoveShot } : {})}
+                    onPreviewChange={setPreviewOpen}
+                    label="hasil kamera"
+                  />
+                </div>
+              </Float>
+            ) : null}
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+              <Float className="justify-self-start">
+                <ProofPhotoStack
+                  photos={shots}
+                  uploading={uploading}
+                  expanded={stripShown}
+                  onToggle={() => setStripOpen((value) => !value)}
+                />
+              </Float>
+              <Float>
+                <button
+                  type="button"
+                  aria-label="Ambil foto"
+                  title={full ? 'Batas foto tercapai' : 'Ambil foto'}
+                  disabled={!ready || capturing || full}
+                  onClick={() => void shoot()}
+                  className={cn(
+                    'flex size-16 items-center justify-center rounded-full border-4 border-white outline-none focus-visible:ring-4 focus-visible:ring-ring/60',
+                    'disabled:opacity-40',
+                  )}
+                >
+                  <span className="size-12 rounded-full bg-white" />
+                </button>
+              </Float>
+              <Float className="justify-self-end">
+                <Button
+                  type="button"
+                  size="lg"
+                  className="h-11 rounded-full px-4"
+                  onClick={onClose}
+                >
+                  {shots.length > 0 ? `Selesai (${shots.length})` : 'Selesai'}
+                </Button>
+              </Float>
+            </div>
           </div>
         </div>
       </div>

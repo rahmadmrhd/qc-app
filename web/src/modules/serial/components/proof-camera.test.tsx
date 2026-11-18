@@ -458,3 +458,40 @@ test('penghitung sisa kuota tampil sebagai pil dan mengikuti prop remaining', as
   );
   expect(await screen.findByText('Sisa 1 foto')).toBeInTheDocument();
 });
+
+test('strip mengambang menimpa video: tidak ikut aliran tata letak, tak menggeser cap, pil, atau rana', async () => {
+  setup({ shots: makeShots(3) });
+  await ready();
+  const stampWrap = screen.getByTestId('stamp-preview').closest('[data-camera-control]');
+  const bottomStack = stampWrap?.parentElement as HTMLElement;
+  const pill = screen.getByText('Sisa 3 foto');
+  const wrapper = pill.parentElement as HTMLElement;
+  const inFlow = (el: HTMLElement) =>
+    Array.from(el.children).filter((child) => !child.className.includes('absolute'));
+  const bottomBefore = inFlow(bottomStack);
+  const wrapperBefore = inFlow(wrapper);
+  const stampHTML = stampWrap?.outerHTML;
+  const pillClass = pill.className;
+
+  await openStrip();
+  const panel = screen.getByTestId('proof-photo-strip-panel');
+  const overlay = panel.closest('[data-camera-control]') as HTMLElement;
+  // Strip = overlay absolut tepat di atas pembungkus pil+rana; bukan anak aliran siapa pun.
+  expect(overlay).toHaveClass('absolute', 'bottom-full');
+  expect(overlay.parentElement).toBe(wrapper);
+  expect(bottomStack.contains(overlay)).toBe(true);
+  // Elemen yang ikut aliran tata letak identik dengan saat strip tertutup (tanpa layout shift).
+  expect(inFlow(bottomStack)).toEqual(bottomBefore);
+  expect(inFlow(wrapper)).toEqual(wrapperBefore);
+  expect(screen.getByTestId('stamp-preview').closest('[data-camera-control]')?.outerHTML).toBe(
+    stampHTML,
+  );
+  expect(screen.getByText('Sisa 3 foto').className).toBe(pillClass);
+  // Latar semi transparan agar thumbnail terbaca di atas video.
+  expect(panel).toHaveClass('bg-black/45');
+
+  await openStrip();
+  expect(screen.queryByTestId('proof-photo-strip')).not.toBeInTheDocument();
+  expect(inFlow(bottomStack)).toEqual(bottomBefore);
+  expect(inFlow(wrapper)).toEqual(wrapperBefore);
+});
