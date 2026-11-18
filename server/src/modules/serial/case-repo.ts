@@ -5,9 +5,10 @@ import { isAppError, staleError } from '@server/core/errors';
 import { serialCaseNumber } from '@shared/serials';
 
 /**
- * Kasus tidak lolos (`serial_cases`) dan nomor `LP-YYYYMMDD-NNN`. Nomor dibagikan penghitung CAS di tabel `counters`
- * (kunci `lp:YYYYMMDD`, pola nomor serah terima `ST-…`): penjaga digabung ke pernyataan penyimpan, jadi dua kasus
- * serentak tidak pernah mendapat nomor sama dan salah satunya diulang oleh `runWithCaseNumber`.
+ * Kasus tidak lolos (`serial_cases`) dan nomor `LP/<kode BU>/YYMM-iiii` (keputusan pemilik 2026-11-18). Nomor dibagikan
+ * penghitung CAS di tabel `counters` (kunci `lp:<kode BU>:YYMM`, per BU dan bulan WIB; pola nomor serah terima `ST-…`):
+ * penjaga digabung ke pernyataan penyimpan, jadi dua kasus serentak tidak pernah mendapat nomor sama dan salah satunya
+ * diulang oleh `runWithCaseNumber`. Nomor lama `LP-YYYYMMDD-NNN` tetap sah, tidak ikut urutan baru, dan tidak diubah.
  * Penulis tabel ini hanya berkas ini (INSERT dan UPDATE; tidak pernah DELETE).
  */
 
@@ -17,11 +18,16 @@ export interface CaseReservation {
 }
 
 /**
- * Memesan SATU nomor kasus untuk `dateKey` (`YYYYMMDD`, hari dibuat WIB). `statements` (penjaga + simpan penghitung)
- * WAJIB ikut `batch()` yang menulis kasusnya. Tanpa baris penghitung, urutan dilanjutkan dari nomor tertinggi yang ada.
+ * Memesan SATU nomor kasus untuk (`buCode`, `period`): `period` = `YYMM` bulan WIB hari dibuat (`caseNumberPeriod`).
+ * `statements` (penjaga + simpan penghitung) WAJIB ikut `batch()` yang menulis kasusnya. Tanpa baris penghitung, urutan
+ * dilanjutkan dari nomor tertinggi yang ada pada (BU, bulan) itu.
  */
-export async function reserveCaseNumber(env: Env, dateKey: string): Promise<CaseReservation> {
-  const key = `lp:${dateKey}`;
+export async function reserveCaseNumber(
+  env: Env,
+  buCode: string,
+  period: string,
+): Promise<CaseReservation> {
+  const key = `lp:${buCode}:${period}`;
   const row = await env.DB.prepare('SELECT value FROM counters WHERE `key` = ?')
     .bind(key)
     .first<{ value: number }>();
@@ -31,18 +37,19 @@ export async function reserveCaseNumber(env: Env, dateKey: string): Promise<Case
     base = Number(row.value);
     expected = Number(row.value);
   } else {
-    // 'LP-YYYYMMDD-' = 12 karakter, urutan mulai karakter ke-13; '.' tepat setelah '-' menutup rentang awalan.
-    const prefix = `LP-${dateKey}-`;
+    // Awalan 'LP/<BU>/YYMM-' diikuti urutan; '.' tepat setelah '-' (ASCII) menutup rentang awalan. Kode BU berpola
+    // ^[A-Z0-9-]+$ dan diakhiri '/', jadi 'UM' dan 'UM-1' tidak pernah berbagi rentang.
+    const prefix = `LP/${buCode}/${period}-`;
     const max = await env.DB.prepare(
-      'SELECT MAX(CAST(SUBSTR(number, 13) AS UNSIGNED)) AS m FROM serial_cases WHERE number >= ? AND number < ?',
+      'SELECT MAX(CAST(SUBSTR(number, ?) AS UNSIGNED)) AS m FROM serial_cases WHERE number >= ? AND number < ?',
     )
-      .bind(prefix, `LP-${dateKey}.`)
+      .bind(prefix.length + 1, prefix, `LP/${buCode}/${period}.`)
       .first<{ m: number | string | null }>();
     base = max?.m === null || max?.m === undefined ? 0 : Number(max.m);
     expected = -1;
   }
   return {
-    number: serialCaseNumber(dateKey, base + 1),
+    number: serialCaseNumber(buCode, period, base + 1),
     // Penjaga + simpan dalam SATU pernyataan: nilai yang sudah berubah membatalkan batch (galat 1690); baris yang
     // belum ada disisipkan, dan penulis serentak yang menyisipkannya lebih dulu memicu cabang gagal atau PRIMARY.
     statements: [

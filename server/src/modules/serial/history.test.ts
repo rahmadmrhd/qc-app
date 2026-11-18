@@ -40,7 +40,7 @@ async function seedHistory(): Promise<void> {
     id: 'sn1',
     serial: 'AB12',
     status: 'reported',
-    openCase: { id: 'c1', number: 'LP-20261110-001' },
+    openCase: { id: 'c1', number: 'LP/A/2611-0001' },
   });
   await addEvents('sn1', [
     [2, 'recheck'],
@@ -103,7 +103,7 @@ describe('serials.history', () => {
       id: 'sn2',
       serial: 'ZZ99',
       status: 'reported',
-      openCase: { id: 'c2', number: 'LP-20261110-002' },
+      openCase: { id: 'c2', number: 'LP/A/2611-0002' },
     });
     const own = await call(W, 'serials.history', { id: 'sn1', caseId: 'c1' });
     expect(own.data.events.map((e: Json) => e.seq)).toEqual([6, 4, 3]);
@@ -165,10 +165,10 @@ describe('serials.get: kasus dan posisi', () => {
       transitFromLocationId: 'loc-sby',
       transitToLocationId: 'loc-jkt',
       transitOn: '2026-11-10',
-      openCase: { id: 'c-new', number: 'LP-20261110-002' },
+      openCase: { id: 'c-new', number: 'LP/A/2611-0002' },
     });
     await env.DB.prepare(
-      "INSERT INTO serial_cases (id, number, serial_id, bu_id, opened_on, closed_on, outcome, created_at, created_by, updated_at) VALUES ('c-old', 'LP-20261001-001', 'sn1', 'bu-a', '2026-10-01', '2026-10-03', 'good', '2026-10-01T00:00:00.000Z', 's', 't')",
+      "INSERT INTO serial_cases (id, number, serial_id, bu_id, opened_on, closed_on, outcome, created_at, created_by, updated_at) VALUES ('c-old', 'LP/A/2610-0001', 'sn1', 'bu-a', '2026-10-01', '2026-10-03', 'good', '2026-10-01T00:00:00.000Z', 's', 't')",
     ).run();
     await addEvents('sn1', [[2, 'report_failure', 'c-new']]);
     const out = await call(W, 'serials.get', { id: 'sn1' });
@@ -180,7 +180,7 @@ describe('serials.get: kasus dan posisi', () => {
       transitToLocationId: 'loc-jkt',
       transitToLocationName: 'Jakarta',
       transitOn: '2026-11-10',
-      openCaseNumber: 'LP-20261110-002',
+      openCaseNumber: 'LP/A/2611-0002',
     });
     expect(out.data.serial.openCase).toMatchObject({
       id: 'c-new',
@@ -218,7 +218,7 @@ describe('serials.list: posisi', () => {
       custody: 'transit',
       transitToLocationId: 'loc-jkt',
       transitOn: '2026-11-11',
-      openCase: { id: 'cb', number: 'LP-20261111-001' },
+      openCase: { id: 'cb', number: 'LP/A/2611-0001' },
     });
     await seedSerial(env, {
       id: 'c',
@@ -233,7 +233,7 @@ describe('serials.list: posisi', () => {
       transitToLocationId: 'loc-jkt',
       transitToLocationName: 'Jakarta',
       transitOn: '2026-11-11',
-      openCaseNumber: 'LP-20261111-001',
+      openCaseNumber: 'LP/A/2611-0001',
     });
     const service = await call(W, 'serials.list', { custody: 'service' });
     expect(service.data.items.map((s: Json) => s.serial)).toEqual(['C1']);

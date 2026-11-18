@@ -206,7 +206,7 @@ describe('lokasi dikunci selama bukan di QC (keputusan pemilik 2026-11-13)', () 
       serial,
       status: 'at_service',
       custody,
-      openCase: { id: `c-${id}`, number: `LP-20261110-${id}` },
+      openCase: { id: `c-${id}`, number: `LP/A/2611-${id}` },
       ...(custody === 'transit'
         ? {
             transitFromLocationId: 'loc-sby',
