@@ -122,6 +122,8 @@ const DEFAULT_FIELD_ID: Record<string, string> = {
 function describeAdd(report: ReturnType<typeof addSerials>['report']): {
   feedback: ScanFeedback;
   notice: Notice;
+  /** Murni sukses (ada yang ditambahkan, tanpa duplikat, ditolak, atau batas): cukup toast singkat, bukan kotak inline. */
+  quiet: boolean;
 } {
   const parts: string[] = [];
   if (report.added > 0) parts.push(`${report.added} serial ditambahkan`);
@@ -140,8 +142,15 @@ function describeAdd(report: ReturnType<typeof addSerials>['report']): {
         ? 'duplicate'
         : 'rejected';
   const tone: NoticeTone = report.added > 0 && !partial ? 'info' : 'warn';
-  return { feedback, notice: { tone, text: parts.join('; ') || 'Tidak ada serial yang dibaca' } };
+  return {
+    feedback,
+    notice: { tone, text: parts.join('; ') || 'Tidak ada serial yang dibaca' },
+    quiet: report.added > 0 && report.duplicates === 0 && !partial,
+  };
 }
+
+/** Id toast hasil tambah: scan berturut-turut mengganti toast yang sama, bukan menumpuk. */
+const ADD_TOAST_ID = 'serial-add';
 
 /** Halaman Catat Serial: bawaan rombongan, masukan pindai/tempel, tabel sementara, simpan per 200 baris. */
 export function RecordPage({
@@ -306,9 +315,20 @@ export function RecordPage({
   // Sisa baris draft yang masih boleh ditambah (dibaca tiap bacaan kamera): tabel hasil scan menolak yang melebihinya.
   const draftCapacity = useCallback(() => SERIAL_LIMITS.tableRows - rowsRef.current.length, []);
 
+  // Hasil tambah yang murni sukses = toast (id tetap: diganti, tidak menumpuk) dan kotak inline lama dibuang; yang
+  // bernada peringatan (duplikat, ditolak, batas draft) tetap inline karena bisa panjang dan perlu dibaca.
+  function announceAdd({ notice: message, quiet }: ReturnType<typeof describeAdd>) {
+    if (quiet) {
+      toast.success(message.text, { id: ADD_TOAST_ID, duration: 2500 });
+      setNotice(null);
+    } else {
+      setNotice(message);
+    }
+  }
+
   // Setelah Simpan dialog kamera: `addText` sudah dipanggil per baris (notice-nya saling menimpa); ringkas SEMUA baris.
   function summarizeCameraSave(results: { serial: string; feedback: ScanFeedback }[]) {
-    const { notice: message } = describeAdd({
+    const described = describeAdd({
       added: results.filter((result) => result.feedback === 'added').length,
       duplicates: results.filter((result) => result.feedback === 'duplicate').length,
       // Tabel kamera sudah memvalidasi serial dan menjaga sisa kapasitas draft: yang masih 'rejected' saat Simpan hanya
@@ -316,7 +336,7 @@ export function RecordPage({
       rejected: [],
       truncated: results.some((result) => result.feedback === 'rejected'),
     });
-    setNotice(message);
+    announceAdd(described);
   }
 
   // Item wajib foto: scan satu serial per kali lewat dialog dua langkah; baris masuk draft setelah Simpan di dialog.
@@ -375,12 +395,12 @@ export function RecordPage({
     const added = report.added === 1 ? next[next.length - 1] : undefined;
     if (!added) {
       void discardProofPhotos(result.photos.map((photo) => photo.id));
-      setNotice(describeAdd(report).notice);
+      announceAdd(describeAdd(report));
       return;
     }
     next[next.length - 1] = { ...added, proofPhotos: result.photos };
     setAllRows(next);
-    setNotice(describeAdd(report).notice);
+    announceAdd(describeAdd(report));
     setSummary(null);
   }
   addStrictRowRef.current = addStrictRow;
@@ -393,11 +413,11 @@ export function RecordPage({
       newClientId,
       nowIso,
     );
-    const { feedback, notice: message } = describeAdd(report);
+    const described = describeAdd(report);
     setAllRows(next);
-    setNotice(message);
+    announceAdd(described);
     setSummary(null);
-    return feedback;
+    return described.feedback;
   }
 
   // Handler baris stabil (hanya membaca `rowsRef`) agar `memo(RowView)` mencegah render ulang ribuan sel.

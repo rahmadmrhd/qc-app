@@ -29,7 +29,7 @@ test('merender kartu tanpa elemen table: serial, item dan BU, lokasi dan tanggal
   expect(within(first).getByText('AAA111')).toBeInTheDocument();
   expect(within(first).getByText('Cisco C9200 · BU1')).toBeInTheDocument();
   expect(within(first).getByText('Jakarta (JKT) · 2026-11-12')).toBeInTheDocument();
-  expect(within(first).getByText('Siap')).toBeInTheDocument();
+  expect(within(first).queryByText('Siap')).toBeNull();
 });
 
 test('mengetuk kartu membuka dialog ubah baris; mencentang tidak', async () => {
@@ -88,5 +88,22 @@ test('item wajib foto dengan foto kurang menampilkan "Butuh n foto lagi" pada ka
   const [first, second] = screen.getAllByRole('listitem') as [HTMLElement, HTMLElement];
   expect(within(first).getByText('Butuh 2 foto lagi')).toBeInTheDocument();
   expect(within(first).queryByText('Siap')).toBeNull();
-  expect(within(second).getByText('Siap')).toBeInTheDocument();
+  expect(within(second).queryByText('Siap')).toBeNull();
+});
+
+test('kartu siap tanpa lencana status; kartu bermasalah memperlihatkan statusnya', () => {
+  renderCards([
+    makeRow('OKOK01'),
+    makeRow('BAD001', { locationId: '', locationLabel: '' }),
+    makeRow('DUP001', { result: 'duplicate', message: 'Serial sudah terdaftar' }),
+    makeRow('NEED01', { proofMin: 2 }),
+  ]);
+  const [ok, bad, dup, need] = screen.getAllByRole('listitem') as HTMLElement[];
+  expect(within(ok as HTMLElement).queryByText('Siap')).toBeNull();
+  expect(within(ok as HTMLElement).queryByText(/belum|Butuh|sudah terdaftar/)).toBeNull();
+  expect(within(bad as HTMLElement).getByText('Lokasi belum dipilih')).toBeInTheDocument();
+  expect(within(dup as HTMLElement).getByText('Serial sudah terdaftar')).toBeInTheDocument();
+  expect(within(need as HTMLElement).getByText('Butuh 2 foto lagi')).toBeInTheDocument();
+  // Nama tombol kartu siap tidak membawa teks status tersembunyi.
+  expect(screen.getByRole('button', { name: 'Ubah baris OKOK01' })).toBeInTheDocument();
 });

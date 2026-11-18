@@ -141,6 +141,26 @@ test('setelah Simpan dialog, notice halaman meringkas SEMUA baris (bukan hanya y
   expect(screen.getByRole('status')).toHaveTextContent('3 serial ditambahkan; 1 duplikat dilewati');
 });
 
+test('ringkasan Simpan dialog kamera yang murni sukses memakai toast yang sama (id tetap), tanpa kotak inline', async () => {
+  const { toast } = await import('sonner');
+  vi.mocked(toast.success).mockClear();
+  renderPage();
+  await pickLink(screen, 'Item', 'Cisco C9200');
+  await pickLink(screen, 'Lokasi', 'Jakarta (JKT)');
+  act(() => {
+    captured.props?.onScan('OK1');
+    captured.props?.onScan('OK2');
+    captured.props?.onSaved?.([
+      { serial: 'OK1', feedback: 'added' },
+      { serial: 'OK2', feedback: 'added' },
+    ]);
+  });
+  const calls = vi.mocked(toast.success).mock.calls;
+  expect(calls.at(-1)?.[0]).toBe('2 serial ditambahkan');
+  for (const call of calls) expect(call[1]).toMatchObject({ id: 'serial-add' });
+  expect(screen.queryByText('2 serial ditambahkan')).toBeNull();
+});
+
 test('Lapor Rusak: pemindai kamera memakai mode satu-serial (tanpa tabel dan tanpa Simpan)', async () => {
   const { ReportPage } = await import('./report-page');
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

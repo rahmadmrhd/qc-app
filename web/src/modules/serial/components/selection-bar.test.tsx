@@ -44,3 +44,19 @@ test('tidak merender pengganjal di tempat bar dipasang: hanya satu elemen (bar f
   expect(container.querySelector('[aria-hidden]')).toBeNull();
   expect(container.firstElementChild?.className).toContain('fixed');
 });
+
+test('layar lebar: tombol di kiri lalu teks "n dipilih" (order), mobile tetap teks lebih dulu', () => {
+  render(<SelectionBar count={2} onEdit={vi.fn()} onRemove={vi.fn()} onClear={vi.fn()} />);
+  const status = screen.getByRole('status');
+  expect(status.className).toContain('md:order-last');
+  expect(status.className).toContain('md:mr-0');
+  // Susunan DOM (mobile) tidak berubah: teks pertama, lalu tombol.
+  expect(status.nextElementSibling?.textContent).toBe('Edit');
+});
+
+test('bar fixed tanpa margin bawah di ponsel (tidak terangkat oleh space-y pembungkus)', () => {
+  render(<SelectionBar count={1} onEdit={vi.fn()} onRemove={vi.fn()} onClear={vi.fn()} />);
+  const bar = screen.getByRole('region', { name: 'Aksi baris terpilih' });
+  expect(bar.className).toContain('bottom-0');
+  expect(bar.className).toContain('max-md:m-0');
+});
