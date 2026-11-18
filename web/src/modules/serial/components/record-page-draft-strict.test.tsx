@@ -209,3 +209,28 @@ test('draft lama: permintaan item gagal = baris tetap seperti semula, tanpa gala
   expect(screen.queryByText(/Butuh \d foto lagi/)).toBeNull();
   expect(screen.queryByRole('alert')).toBeNull();
 });
+
+test('balapan: penyegaran proofMin selesai selagi Ubah baris terbuka; Terapkan tanpa ganti item tidak menimpanya dengan nilai usang', async () => {
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  apiMock.mockImplementation(async (id: string, input: Record<string, unknown>) => {
+    if (id === 'serials.itemOptions' && Array.isArray(input.itemIds)) await gate;
+    return optionsApi(id, input);
+  });
+  seed([
+    makeRow('AAA111', { itemId: 'i3', itemLabel: 'Strict Router', proofPhotos: [proofRef('p1')] }),
+  ]);
+  renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: 'Detail AAA111' }));
+  const dialog = await screen.findByRole('dialog');
+  const apply = within(dialog).getByRole('button', { name: 'Terapkan' });
+  await waitFor(() => expect(apply).toBeEnabled());
+  expect(screen.queryByText(/Butuh \d foto lagi/)).toBeNull();
+  release();
+  await waitFor(() => expect(screen.getByText('Butuh 2 foto lagi')).toBeInTheDocument());
+  await userEvent.click(apply);
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(screen.getByText('Butuh 2 foto lagi')).toBeInTheDocument();
+});

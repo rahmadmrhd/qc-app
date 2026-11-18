@@ -39,12 +39,19 @@ test('applyProofMins: baris tanpa proofMin mendapat minimum item yang wajib foto
   expect(next[1]).toBe(rows[1]);
 });
 
-test('applyProofMins: nilai yang sudah diketahui tidak ditimpa kecuali item kini tak wajib', () => {
-  const known = makeRow('A1', { itemId: 'i3', proofMin: 3 });
-  expect(applyProofMins([known], new Map([['i3', 2]]))[0]?.proofMin).toBe(3);
+test('applyProofMins: nilai server menjadi kebenaran: naik, turun, atau dibuang bila item tak wajib', () => {
+  const known = makeRow('A1', { itemId: 'i3', proofMin: 2 });
+  expect(applyProofMins([known], new Map([['i3', 3]]))[0]?.proofMin).toBe(3);
+  expect(applyProofMins([known], new Map([['i3', 1]]))[0]?.proofMin).toBe(1);
   const cleared = applyProofMins([known], new Map([['i3', 0]]))[0];
   expect(cleared).toBeDefined();
   expect(cleared && 'proofMin' in cleared).toBe(false);
+});
+
+test('applyProofMins: item yang tak terselesaikan (tak ada di peta) membiarkan barisnya', () => {
+  const known = makeRow('A1', { itemId: 'i3', proofMin: 2 });
+  const rows = [known];
+  expect(applyProofMins(rows, new Map([['i9', 3]]))).toBe(rows);
 });
 
 test('applyProofMins: tanpa perubahan mengembalikan larik yang sama; hasil dan foto baris tidak disentuh', () => {

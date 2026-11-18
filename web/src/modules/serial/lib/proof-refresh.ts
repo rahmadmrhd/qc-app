@@ -32,8 +32,9 @@ export async function fetchProofMins(
 }
 
 /**
- * Menyegarkan `proofMin` baris draft (draft lama tidak membawanya). Nilai yang sudah diketahui (> 0) tidak ditimpa
- * kecuali item kini tak wajib foto (0, nilainya dibuang); baris tanpa nilai mendapat minimum item bila > 0. Hasil/pesan
+ * Menyegarkan `proofMin` baris draft dari server (draft lama tidak membawanya, atau aturan item berubah). Nilai dari
+ * `serials.itemOptions` adalah kebenaran untuk baris yang item-nya berhasil terselesaikan: naik, turun, atau dibuang
+ * (0 = tidak wajib). Item yang tak terselesaikan (gagal/tak ditemukan) tidak ada di `mins`, barisnya tetap. Hasil/pesan
  * penyimpanan dan foto baris tidak disentuh. Mengembalikan larik yang SAMA bila tak ada yang berubah.
  */
 export function applyProofMins(
@@ -44,14 +45,13 @@ export function applyProofMins(
   const next = rows.map((row) => {
     const fresh = mins.get(row.itemId);
     if (fresh === undefined) return row;
-    const current = row.proofMin ?? 0;
     if (fresh === 0) {
       if (row.proofMin === undefined) return row;
       changed = true;
       const { proofMin: _gone, ...rest } = row;
       return rest;
     }
-    if (current > 0) return row;
+    if (row.proofMin === fresh) return row;
     changed = true;
     return { ...row, proofMin: fresh };
   });

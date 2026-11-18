@@ -469,7 +469,11 @@ export function RecordPage({
         itemLabel: result.item.itemLabel,
         buId: result.item.buId,
         buLabel: result.item.buLabel,
-        proofMin: result.item.proofMin,
+        // Minimum foto hanya dibawa bila item/BU diganti di dialog: tanpa itu nilai baris (mungkin baru disegarkan dari
+        // server selagi dialog terbuka) tidak boleh ditimpa nilai usang dari keadaan awal dialog.
+        ...(result.item.itemId !== row.itemId || result.item.buId !== row.buId
+          ? { proofMin: result.item.proofMin }
+          : {}),
         locationId: result.location.id,
         locationLabel: result.location.label,
         testDate: result.testDate,
