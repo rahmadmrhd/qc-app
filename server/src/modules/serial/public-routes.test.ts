@@ -158,7 +158,7 @@ describe('GET /api/public/serial-reports/:token', () => {
     });
     expect(noted.ok).toBe(true);
     await env.DB.prepare(
-      "INSERT INTO serial_cases (id, number, serial_id, bu_id, opened_on, closed_on, outcome, created_at, created_by, updated_at) VALUES ('c-old', 'LP-20261001-001', ?, 'bu-a', '2026-10-01', '2026-10-03', 'good', '2026-10-01T00:00:00.000Z', 's', 't')",
+      "INSERT INTO serial_cases (id, number, serial_id, bu_id, opened_on, closed_on, outcome, created_at, created_by, updated_at) VALUES ('c-old', 'LP/A/2610-0001', ?, 'bu-a', '2026-10-01', '2026-10-03', 'good', '2026-10-01T00:00:00.000Z', 's', 't')",
     )
       .bind(serialId)
       .run();
@@ -172,7 +172,7 @@ describe('GET /api/public/serial-reports/:token', () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as Json;
     expect(body).toMatchObject({
-      number: expect.stringMatching(/^LP-20261112-\d{3}$/),
+      number: expect.stringMatching(/^LP\/A\/2611-\d{4}$/),
       openedOn: TODAY,
       closedOn: TODAY,
       outcome: 'broken',

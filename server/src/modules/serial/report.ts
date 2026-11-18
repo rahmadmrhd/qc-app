@@ -14,7 +14,12 @@ import type {
 } from '@shared/contract';
 import { extractFileRefs } from '@shared/items';
 import { wibDateIso } from '@shared/postel';
-import { normalizeSerial, SERIAL_STATUS_LABELS, serialProblem } from '@shared/serials';
+import {
+  caseNumberPeriod,
+  normalizeSerial,
+  SERIAL_STATUS_LABELS,
+  serialProblem,
+} from '@shared/serials';
 import { writableBuIds } from './access';
 import { insertCaseStmt, reserveCaseNumber, runWithCaseNumber } from './case-repo';
 import {
@@ -74,7 +79,7 @@ export async function lookupSerials(
 /**
  * Membuat serial baru berstatus Dilaporkan: kejadian `recorded` (seq 1) lalu `report_failure` (seq 2), tanggal uji =
  * `occurredOn`, tanpa stiker/stok. Urutan penolakan: tanggal masa depan, BU di luar hak tulis atau item/lokasi tak dikenal
- * (pesan generik tanpa menyebut BU/item lain), serial sudah ada di BU itu (`CONFLICT` generik). Nomor LP dipesan lewat
+ * (pesan generik tanpa menyebut BU/item lain), serial sudah ada di BU itu (`CONFLICT` generik). Nomor LP (LP/<BU>/YYMM-iiii) dipesan lewat
  * penghitung CAS dan seluruh pembuatan diulang bila penghitung diperebutkan (`runWithCaseNumber`).
  */
 export async function reportNewSerial(
@@ -96,7 +101,13 @@ export async function reportNewSerial(
   const caseId = crypto.randomUUID();
   const recordedEventId = crypto.randomUUID();
   const reportEventId = crypto.randomUUID();
-  const dateKey = today.replaceAll('-', '');
+  // Kode BU target (BU sudah tervalidasi lewat activeItemWritableForBu) dan periode WIB untuk nomor LP/<BU>/YYMM-iiii.
+  const buRow = await env.DB.prepare('SELECT code FROM business_units WHERE id = ?')
+    .bind(input.buId)
+    .first<{ code: string }>();
+  if (!buRow) throw validationError('itemId', ITEM_MESSAGE);
+  const buCode = buRow.code.trim();
+  const period = caseNumberPeriod(today);
 
   const attempt = async (): Promise<void> => {
     const exists = await env.DB.prepare(
@@ -105,7 +116,7 @@ export async function reportNewSerial(
       .bind(input.buId, input.serial)
       .first<{ present: number }>();
     if (exists) throw appError('CONFLICT', DUPLICATE_MESSAGE, { serial: DUPLICATE_MESSAGE });
-    const reservation = await reserveCaseNumber(env, dateKey);
+    const reservation = await reserveCaseNumber(env, buCode, period);
     const now = nowIso(env);
     const actor = {
       actorId: user.userId ?? '',

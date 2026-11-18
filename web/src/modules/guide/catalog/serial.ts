@@ -99,9 +99,9 @@ export const SERIAL_DETAIL: GuideEntry = {
     },
     {
       target: 'serial-timeline',
-      text: 'Riwayat dibagi per tab: Semua, satu tab per laporan (LP-…), Pengecekan, dan Perubahan data. Tiap kejadian jadi satu kartu di bawahnya dan yang terbaru ditandai.',
+      text: 'Riwayat dibagi per tab: Semua, satu tab per laporan (mis. LP/SBY/2611-0001), Pengecekan, dan Perubahan data. Tiap kejadian jadi satu kartu di bawahnya dan yang terbaru ditandai.',
       teksJikaKosong:
-        'Riwayat di detail serial dibagi per tab: Semua, satu tab per laporan (LP-…), Pengecekan, dan Perubahan data. Tiap kejadian jadi satu kartu dan yang terbaru ditandai.',
+        'Riwayat di detail serial dibagi per tab: Semua, satu tab per laporan (mis. LP/SBY/2611-0001), Pengecekan, dan Perubahan data. Tiap kejadian jadi satu kartu dan yang terbaru ditandai.',
       advance: 'next',
     },
   ],
@@ -249,7 +249,7 @@ export const SERIAL_LAPORAN: GuideEntry = {
     },
     {
       target: 'report-submit',
-      text: 'Lapor rusak membuka laporan LP-… berstatus Dilaporkan lalu membawamu ke detail serial. Aktif setelah catatan terisi. Panduan berhenti di sini: belum ada laporan yang dibuat.',
+      text: 'Lapor rusak membuka laporan baru (mis. LP/SBY/2611-0001) berstatus Dilaporkan lalu membawamu ke detail serial. Aktif setelah catatan terisi. Panduan berhenti di sini: belum ada laporan yang dibuat.',
       langsung: true,
       advance: 'next',
     },

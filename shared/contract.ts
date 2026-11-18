@@ -1501,7 +1501,7 @@ export interface SerialSummaryDto {
   transitToLocationName: string | null;
   /** Tanggal kirim (`YYYY-MM-DD`) pengiriman yang berjalan. */
   transitOn: string | null;
-  /** Nomor kasus yang sedang terbuka (`LP-…`), bila ada. */
+  /** Nomor kasus yang sedang terbuka (`LP/<BU>/YYMM-iiii`; nomor lama `LP-YYYYMMDD-NNN` tetap sah), bila ada. */
   openCaseNumber: string | null;
   /** Entri serial ini (Tambah/Cek ulang) punya bukti foto QC. */
   hasProofPhotos: boolean;
@@ -1512,7 +1512,7 @@ export interface SerialSummaryDto {
 /** Laporan rusak (`serial_cases`): satu episode kegagalan. */
 export interface SerialCaseDto {
   id: string;
-  /** `LP-YYYYMMDD-NNN`. */
+  /** `LP/<kode BU>/YYMM-iiii` (nomor lama `LP-YYYYMMDD-NNN` tetap sah). */
   number: string;
   openedOn: string;
   closedOn: string | null;
@@ -1759,7 +1759,7 @@ export interface SerialCaseListInput {
 }
 export interface SerialCaseRowDto {
   id: string;
-  /** `LP-YYYYMMDD-NNN`. */
+  /** `LP/<kode BU>/YYMM-iiii` (nomor lama `LP-YYYYMMDD-NNN` tetap sah). */
   number: string;
   serialId: string;
   serial: string;

@@ -113,7 +113,7 @@ const SERIAL: SerialDto = {
 
 const CASE = {
   id: 'c1',
-  number: 'LP-20261113-001',
+  number: 'LP/SBY/2611-0001',
   openedOn: '2026-11-13',
   closedOn: null,
   outcome: null,

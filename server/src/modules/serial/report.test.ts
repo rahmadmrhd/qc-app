@@ -52,7 +52,7 @@ describe('serials.lookup', () => {
       id: 'sn2',
       serial: 'CD34',
       status: 'reported',
-      openCase: { id: 'c1', number: 'LP-20261110-001' },
+      openCase: { id: 'c1', number: 'LP/A/2611-0001' },
     });
     const good = await lookup(W, 'AB12');
     expect(good.data.matches).toHaveLength(1);
@@ -72,7 +72,7 @@ describe('serials.lookup', () => {
     expect(reported.data.matches[0]).toMatchObject({
       status: 'reported',
       openCaseId: 'c1',
-      openCaseNumber: 'LP-20261110-001',
+      openCaseNumber: 'LP/A/2611-0001',
     });
   });
 
@@ -127,6 +127,15 @@ describe('serials.lookup', () => {
 });
 
 describe('serials.reportNew', () => {
+  test('nomor LP mengikuti bulan WIB hari dibuat: 23:59:59 WIB tetap bulan lama, 00:00:00 WIB mulai bulan baru dari 0001', async () => {
+    env.clock.set(Date.parse('2026-11-30T16:59:59.000Z'));
+    const lastOfMonth = await report({ serial: 'NEW-1', occurredOn: '2026-11-30' });
+    expect(lastOfMonth.data.openCaseNumber).toBe('LP/A/2611-0001');
+    env.clock.set(Date.parse('2026-11-30T17:00:00.000Z'));
+    const firstOfMonth = await report({ serial: 'NEW-2', occurredOn: '2026-12-01' });
+    expect(firstOfMonth.data.openCaseNumber).toBe('LP/A/2612-0001');
+  });
+
   test('membuat serial berstatus reported, satu laporan LP, kejadian recorded lalu report_failure; tanpa stiker dan stok', async () => {
     const out = await report({ serial: 'new-1' });
     expect(out.ok).toBe(true);
@@ -139,7 +148,7 @@ describe('serials.reportNew', () => {
       locationId: 'loc-sby',
       testDate: TODAY,
       sample: false,
-      openCaseNumber: 'LP-20261112-001',
+      openCaseNumber: 'LP/A/2611-0001',
       stickers: [],
     });
     expect(out.data.openCase).toMatchObject({ openedOn: TODAY, closedOn: null, outcome: null });
@@ -170,7 +179,7 @@ describe('serials.reportNew', () => {
     expect(JSON.parse(events[1]?.changes_json ?? '[]')).toEqual([
       { field: 'status', from: null, to: 'Dilaporkan' },
     ]);
-    expect(JSON.parse(events[1]?.data_json ?? '{}')).toEqual({ caseNumber: 'LP-20261112-001' });
+    expect(JSON.parse(events[1]?.data_json ?? '{}')).toEqual({ caseNumber: 'LP/A/2611-0001' });
     expect(JSON.parse(events[0]?.data_json ?? '{}')).toMatchObject({
       locationId: 'loc-sby',
       locationName: 'Surabaya',
@@ -264,9 +273,9 @@ describe('serials.reportNew', () => {
     const results = await Promise.all([1, 2, 3].map((n) => report({ serial: `PAR-${n}` })));
     expect(results.every((r) => r.ok)).toBe(true);
     expect(results.map((r) => r.data.openCaseNumber).sort()).toEqual([
-      'LP-20261112-001',
-      'LP-20261112-002',
-      'LP-20261112-003',
+      'LP/A/2611-0001',
+      'LP/A/2611-0002',
+      'LP/A/2611-0003',
     ]);
   });
 

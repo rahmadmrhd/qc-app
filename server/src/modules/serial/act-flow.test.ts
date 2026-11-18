@@ -20,7 +20,7 @@ let env: TestEnv;
 const W = SERIAL_USERS.writer;
 const AT = '2026-11-12T00:00:00.000Z';
 const TODAY = '2026-11-12';
-const CASE_1 = 'LP-20261112-001';
+const CASE_1 = 'LP/A/2611-0001';
 
 const call = async (email: string, id: string, input: unknown): Promise<CallOut> =>
   (await restCall(env, email, id, input)) as CallOut;
@@ -63,7 +63,7 @@ const seedOne = (over: Record<string, unknown> = {}) =>
 const seedReported = (over: Record<string, unknown> = {}) =>
   seedOne({
     status: 'reported',
-    openCase: { id: 'case-1', number: 'LP-20261110-001' },
+    openCase: { id: 'case-1', number: 'LP/A/2611-0001' },
     ...over,
   });
 /** Serial Menunggu cek ulang yang sedang dikirim balik dari servis ke QC (asal Surabaya). */
@@ -78,7 +78,7 @@ const seedRecheckTransit = (over: Record<string, unknown> = {}) =>
     transitFromLocationId: 'loc-jkt',
     transitToLocationId: 'loc-sby',
     transitOn: '2026-11-10',
-    openCase: { id: 'case-1', number: 'LP-20261110-001', originLocationId: 'loc-sby' },
+    openCase: { id: 'case-1', number: 'LP/A/2611-0001', originLocationId: 'loc-sby' },
     ...over,
   });
 
@@ -157,7 +157,26 @@ async function setServiceLocations(locationIds: string[]): Promise<void> {
 }
 
 describe('report_failure (baris 1)', () => {
-  test('membuka laporan LP-<hari ini>-001, status reported, kejadian ber-caseId membawa catatan', async () => {
+  test('nomor LP mengikuti bulan WIB hari dibuat: 23:59:59 WIB tetap bulan lama, 00:00:00 WIB mulai bulan baru dari 0001', async () => {
+    await seedOne();
+    await seedOne({ id: 'sn2', serial: 'CD34' });
+    env.clock.set(Date.parse('2026-11-30T16:59:59.000Z'));
+    const lastOfMonth = await act(
+      'report_failure',
+      { message: 'Layar mati' },
+      { id: 'sn1', occurredOn: '2026-11-30' },
+    );
+    expect(lastOfMonth.data.openCaseNumber).toBe('LP/A/2611-0001');
+    env.clock.set(Date.parse('2026-11-30T17:00:00.000Z'));
+    const firstOfMonth = await act(
+      'report_failure',
+      { message: 'Layar mati' },
+      { id: 'sn2', occurredOn: '2026-12-01' },
+    );
+    expect(firstOfMonth.data.openCaseNumber).toBe('LP/A/2612-0001');
+  });
+
+  test('membuka laporan LP/<BU>/YYMM-0001, status reported, kejadian ber-caseId membawa catatan', async () => {
     await seedOne();
     const result = await act('report_failure', { message: 'Layar mati saat uji' });
     expect(result.ok).toBe(true);
@@ -471,7 +490,7 @@ describe('cek ulang dengan stiker tercentang (baris 9-12)', () => {
     const event = (await eventsOf()).at(-1);
     expect(event).toMatchObject({ type: 'recheck_pass', case_id: 'case-1' });
     expect(JSON.parse(event?.data_json ?? '{}')).toMatchObject({
-      caseNumber: 'LP-20261110-001',
+      caseNumber: 'LP/A/2611-0001',
       outcome: 'good',
     });
     expect(await stock('s2', 'loc-sby')).toBe(9);
@@ -616,7 +635,7 @@ describe('izin per baris', () => {
       serial: 'AB12',
       status: 'at_service',
       custody: 'service',
-      openCase: { id: 'case-1', number: 'LP-20261110-001' },
+      openCase: { id: 'case-1', number: 'LP/A/2611-0001' },
     });
     for (const [action, extra] of [
       ['service_diagnosis', { stage: 'done' }],
@@ -714,8 +733,8 @@ describe('konkurensi laporan (Promise.all)', () => {
     expect(a.ok).toBe(true);
     expect(b.ok).toBe(true);
     expect([a.data.openCaseNumber, b.data.openCaseNumber].sort()).toEqual([
-      'LP-20261112-001',
-      'LP-20261112-002',
+      'LP/A/2611-0001',
+      'LP/A/2611-0002',
     ]);
   });
 

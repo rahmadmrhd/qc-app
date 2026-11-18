@@ -27,7 +27,7 @@ export interface TimelineTabsProps {
 }
 
 /**
- * Linimasa bertab: Semua, satu tab per laporan (LP-…), Pengecekan, Perubahan data. Tiap tab memuat `serials.history`
+ * Linimasa bertab: Semua, satu tab per laporan (LP/<BU>/YYMM-iiii), Pengecekan, Perubahan data. Tiap tab memuat `serials.history`
  * berkursor (server mengirim terbaru dulu) dengan tombol "Muat yang lebih lama" di dalam kelompok riwayat sebelumnya; jumlah di tab dari `counts` server.
  */
 export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
