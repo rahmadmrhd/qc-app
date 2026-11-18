@@ -1684,3 +1684,123 @@ describe('release.yml: pipeline rilis server dari PR rilis', () => {
     expect(doc).toContain('RELEASE_FLOW');
   });
 });
+
+describe('deploy-tag.yml: deploy versi tertentu lewat tag (rilis semver bagian 3)', () => {
+  const text = rawOf('deploy-tag.yml');
+  const wf = parse(text);
+  const jobs = wf.jobs;
+
+  test('pemicu hanya workflow_dispatch: tag (wajib), environment (pilihan staging|production), izinkan_downgrade_skema (boolean bawaan false)', () => {
+    const on = wf.on as {
+      workflow_dispatch: {
+        inputs: Record<
+          string,
+          { type: string; required?: boolean; default?: unknown; options?: string[] }
+        >;
+      };
+    };
+    expect(Object.keys(wf.on ?? {})).toEqual(['workflow_dispatch']);
+    const inputs = on.workflow_dispatch.inputs;
+    expect(Object.keys(inputs).sort()).toEqual(['environment', 'izinkan_downgrade_skema', 'tag']);
+    expect(inputs.tag?.required).toBe(true);
+    expect(inputs.environment?.type).toBe('choice');
+    expect(inputs.environment?.options).toEqual(['staging', 'production']);
+    expect(inputs.izinkan_downgrade_skema?.type).toBe('boolean');
+    expect(inputs.izinkan_downgrade_skema?.default).toBe(false);
+  });
+
+  test('concurrency: grup environment yang SAMA dengan deploy-server.yml dan release.yml, tanpa membatalkan', () => {
+    expect(wf.concurrency?.group).toBe('deploy-server-${{ inputs.environment }}');
+    expect(wf.concurrency?.['cancel-in-progress']).toBe(false);
+  });
+
+  test('urutan job: meta -> verify -> deploy; deploy memanggil server-deploy.yml dengan masukan dari meta dan input izin', () => {
+    expect(Object.keys(jobs)).toEqual(['meta', 'verify', 'deploy']);
+    expect([jobs.verify?.needs ?? []].flat()).toEqual(['meta']);
+    expect([jobs.deploy?.needs ?? []].flat().sort()).toEqual(['meta', 'verify']);
+    expect(jobs.deploy?.uses).toBe('./.github/workflows/server-deploy.yml');
+    expect(jobs.deploy?.with).toEqual({
+      target: '${{ inputs.environment }}',
+      sha: '${{ needs.meta.outputs.sha }}',
+      'allow-schema-downgrade': '${{ inputs.izinkan_downgrade_skema }}',
+    });
+    expect(codeOf(text)).not.toContain('secrets: inherit');
+  });
+
+  test('tanpa build image dan tanpa ci: hanya memverifikasi lalu men-deploy image yang sudah ada', () => {
+    expect(codeOf(text)).not.toMatch(/build-push-action|server-image\.yml|ci\.yml/);
+  });
+
+  test('izin: contents read tingkat atas; verify tambah packages read; contents: write hanya batas deploy (mark-deployed di workflow terpanggil)', () => {
+    expect(wf.permissions).toEqual({ contents: 'read' });
+    expect(jobs.meta?.permissions).toEqual({ contents: 'read' });
+    expect(jobs.verify?.permissions).toEqual({ contents: 'read', packages: 'read' });
+    expect(jobs.deploy?.permissions).toEqual({ contents: 'write' });
+  });
+
+  test('checkout: hanya verify, hanya github.sha (ujung ref yang di-dispatch, untuk menjalankan skrip keputusan), tak pernah kode tag; kredensial tak disimpan', () => {
+    const checkouts = stepsOf(wf).filter((s) => s.uses?.startsWith('actions/checkout'));
+    expect(checkouts).toHaveLength(1);
+    expect(checkouts[0]?.with?.ref).toBe('${{ github.sha }}');
+    expect(checkouts[0]?.with?.['persist-credentials']).toBe(false);
+    expect((jobs.verify?.steps ?? []).some((s) => s.uses?.startsWith('actions/checkout'))).toBe(
+      true,
+    );
+    expect((jobs.meta?.steps ?? []).some((s) => s.uses?.startsWith('actions/checkout'))).toBe(
+      false,
+    );
+  });
+
+  test('skrip `run` tanpa interpolasi ${{ }}; tak ada rahasia (login GHCR memakai github.token)', () => {
+    for (const step of stepsOf(wf)) {
+      if (step.run) expect(step.run, step.name).not.toContain('${{');
+    }
+    expect(codeOf(text)).not.toMatch(/secrets\./);
+  });
+
+  test('meta: production hanya dari refs/heads/main, staging dari main atau dev; tag divalidasi regex lalu diubah ke SHA (tag beranotasi didereferensi)', () => {
+    const runs = (jobs.meta?.steps ?? []).map((s) => s.run ?? '').join('\n');
+    expect(runs).toContain('refs/heads/main');
+    expect(runs).toContain('refs/heads/dev');
+    expect(runs).toContain('^server-v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$');
+    expect(runs).toContain('git/ref/tags/');
+    expect(runs).toContain('git/tags/');
+    expect(Object.keys(jobs.meta?.outputs ?? {}).sort()).toEqual(['sha', 'version']);
+  });
+
+  test('verify: provenance dan pagar downgrade lewat skrip murni; langkah pemegang token hanya memanggil API, langkah skrip tanpa token', () => {
+    const steps = jobs.verify?.steps ?? [];
+    const facts = steps.filter((s) => s.env?.GH_TOKEN !== undefined);
+    expect(facts.length).toBeGreaterThan(0);
+    for (const step of facts) expect(step.run ?? '', step.name).not.toContain('bun run');
+    const scripts = steps.filter((s) => s.run?.includes('bun run scripts/deploy-tag-check.ts'));
+    expect(scripts.map((s) => s.run?.trim()).sort()).toEqual([
+      'bun run scripts/deploy-tag-check.ts downgrade',
+      'bun run scripts/deploy-tag-check.ts provenance',
+    ]);
+    for (const step of scripts) expect(step.env?.GH_TOKEN, step.name).toBeUndefined();
+    const factsRuns = facts.map((s) => s.run ?? '').join('\n');
+    expect(factsRuns).toContain('compare/main...');
+    expect(factsRuns).toContain('releases/tags/');
+    expect(factsRuns).toContain('git/ref/deployed/');
+    expect(factsRuns).toContain('docker buildx imagetools inspect');
+    expect(factsRuns).toContain('server/migrations');
+  });
+
+  test('verify: login GHCR memakai aksi yang dipatok SHA sebelum memeriksa image; 404 dibedakan dari galat API lain', () => {
+    const steps = jobs.verify?.steps ?? [];
+    const login = steps.findIndex((s) => s.uses?.startsWith('docker/login-action@'));
+    const inspect = steps.findIndex((s) => s.run?.includes('docker buildx imagetools inspect'));
+    expect(login).toBeGreaterThanOrEqual(0);
+    expect(login).toBeLessThan(inspect);
+    expect(steps[login]?.with?.password).toBe('${{ github.token }}');
+    const runs = steps.map((s) => s.run ?? '').join('\n');
+    expect(runs).toMatch(/HTTP 404/);
+    expect(runs).toContain('api_try');
+  });
+
+  test('docs/ci-cd.md dan CLAUDE.md menjelaskan deploy-tag.yml', () => {
+    expect(read('docs/ci-cd.md')).toContain('deploy-tag.yml');
+    expect(read('CLAUDE.md')).toContain('deploy-tag.yml');
+  });
+});
