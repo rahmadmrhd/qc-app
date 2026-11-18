@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { app } from '@server/app';
 import { loadUserContext } from '@server/modules/access/context';
 import { uploadFile } from '@server/modules/files/service';
-import { seedRole, seedUser } from '@server-test/access-fixtures';
+import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { bytesOfBase64 } from '@server-test/bytes';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { seedGuideImage, seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
@@ -168,15 +168,37 @@ describe('katalog desktop: isi', () => {
     expect(changed.headers.get('etag')).not.toBe(etag);
   });
 
+  test('BU dan lokasi aktif ikut katalog (urut kode); yang nonaktif tidak', async () => {
+    await env.DB.prepare(
+      "INSERT IGNORE INTO business_units (id, code, name, status, created_at, updated_at, updated_by) VALUES ('bu-off', 'AAA', 'BU Mati', 'inactive', '2026-11-10T00:00:00.000Z', '2026-11-10T00:00:00.000Z', 'seed')",
+    ).run();
+    await seedLocation(env, { id: 'l-b', code: 'WH-B', name: 'Gudang B' });
+    await seedLocation(env, { id: 'l-a', code: 'QC-A', name: 'QC A' });
+    await seedLocation(env, { id: 'l-off', code: 'OFF', status: 'inactive' });
+
+    const catalog = parseDesktopCatalog(await (await get('', auth)).json());
+    expect(catalog?.locations).toEqual([
+      { id: 'l-a', code: 'QC-A', name: 'QC A' },
+      { id: 'l-b', code: 'WH-B', name: 'Gudang B' },
+    ]);
+    const codes = catalog?.businessUnits?.map((unit) => unit.code) ?? [];
+    expect(codes).toContain('BBB');
+    expect(codes).not.toContain('AAA');
+    expect([...codes]).toEqual([...codes].sort());
+  });
+
   test('tanpa item isCountryLock: katalog kosong yang sah', async () => {
     const res = await get('', auth);
-    expect(parseDesktopCatalog(await res.json())).toEqual({
+    const catalog = parseDesktopCatalog(await res.json());
+    expect(catalog).toMatchObject({
       version: 1,
       items: [],
+      locations: [],
       stickerTypes: [],
       stickers: [],
       files: [],
     });
+    expect(catalog?.businessUnits?.map((unit) => unit.code)).toContain('BBB');
   });
 });
 

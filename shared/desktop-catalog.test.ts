@@ -34,3 +34,23 @@ describe('parseDesktopCatalog: firmware item', () => {
     expect(parseDesktopCatalog(catalogOf({ ...item, firmware: 'x'.repeat(41) }))).toBeNull();
   });
 });
+
+describe('parseDesktopCatalog: BU dan lokasi (pilihan form inject)', () => {
+  const withTargets = (extra: Record<string, unknown>) => ({ ...catalogOf(item), ...extra });
+  const ref = { id: 'b1', code: 'DEF', name: 'BU Bawaan' };
+
+  test('server atau cache lama (tanpa businessUnits/locations) tetap sah', () => {
+    expect(parseDesktopCatalog(catalogOf(item))).not.toBeNull();
+  });
+  test('daftar BU dan lokasi yang benar diteruskan apa adanya', () => {
+    const parsed = parseDesktopCatalog(withTargets({ businessUnits: [ref], locations: [ref] }));
+    expect(parsed?.businessUnits).toEqual([ref]);
+    expect(parsed?.locations).toEqual([ref]);
+  });
+  test('bentuk salah (bukan larik, id kosong, field bukan teks) = katalog ditolak', () => {
+    expect(parseDesktopCatalog(withTargets({ locations: 'x' }))).toBeNull();
+    expect(parseDesktopCatalog(withTargets({ locations: [{ ...ref, id: '' }] }))).toBeNull();
+    expect(parseDesktopCatalog(withTargets({ businessUnits: [{ ...ref, name: 5 }] }))).toBeNull();
+    expect(parseDesktopCatalog(withTargets({ businessUnits: [null] }))).toBeNull();
+  });
+});

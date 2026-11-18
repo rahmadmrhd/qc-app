@@ -15,6 +15,7 @@ import {
   MIN_BRIDGE_VERSION,
   NOTIFICATIONS_BRIDGE_VERSION,
   NOTIFICATIONS_CHANGE_EVENT,
+  PENDING_TARGET_BRIDGE_VERSION,
   PendingEntrySchema,
   SerialArgSchema,
   stripTerminalControl,
@@ -118,6 +119,25 @@ describe('PendingEntrySchema dan SerialArgSchema', () => {
     expect(PendingEntrySchema.safeParse({ ...entry, brand: 'x' }).success).toBe(false);
     expect(PendingEntrySchema.safeParse({ ...entry, serial: 'A\nB' }).success).toBe(false);
   });
+  test('BU dan lokasi opsional (jembatan v6): id wajib terisi bila ada, label boleh kosong, karakter kontrol ditolak', () => {
+    const target = {
+      buId: 'bu-1',
+      buLabel: 'DEF - BU Bawaan',
+      locationId: 'loc-1',
+      locationLabel: 'QC-A - QC A',
+    };
+    expect(PendingEntrySchema.safeParse({ ...entry, ...target }).success).toBe(true);
+    expect(PendingEntrySchema.safeParse({ ...entry, buId: 'bu-1', buLabel: '' }).success).toBe(
+      true,
+    );
+    expect(PendingEntrySchema.safeParse({ ...entry, buId: '' }).success).toBe(false);
+    expect(PendingEntrySchema.safeParse({ ...entry, locationId: 'a'.repeat(101) }).success).toBe(
+      false,
+    );
+    expect(PendingEntrySchema.safeParse({ ...entry, locationLabel: 'A\nB' }).success).toBe(false);
+    // Bidang di luar daftar tetap ditolak (skema ketat).
+    expect(PendingEntrySchema.safeParse({ ...entry, extra: 'x' }).success).toBe(false);
+  });
   test('serial argumen remove: tidak kosong, tidak berkarakter kontrol', () => {
     expect(SerialArgSchema.safeParse('AB12').success).toBe(true);
     expect(SerialArgSchema.safeParse('').success).toBe(false);
@@ -132,7 +152,8 @@ describe('PendingEntrySchema dan SerialArgSchema', () => {
 
 describe('konstanta jembatan', () => {
   test('versi, dan semua nama kanal berpola qc:<grup>:<aksi> serta unik', () => {
-    expect(BRIDGE_VERSION).toBe(5);
+    expect(BRIDGE_VERSION).toBe(6);
+    expect(PENDING_TARGET_BRIDGE_VERSION).toBe(6);
     expect(NOTIFICATIONS_BRIDGE_VERSION).toBe(4);
     expect(CATALOG_BRIDGE_VERSION).toBe(5);
     expect(CATALOG_FILES_PATH).toBe('/catalog-files/');
