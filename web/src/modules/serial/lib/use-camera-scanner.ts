@@ -101,8 +101,9 @@ export function useCameraScanner({
     const confirmer = createScanConfirmer({ now: nowRef.current });
     const tick = async () => {
       timer = null;
-      if (cancelled) return;
-      // Tab tersembunyi tak sampai sini: kamera dilepas (status bukan scanning) dan dimulai ulang saat terlihat.
+      // Tab tersembunyi: kamera dilepas oleh aliran, jadi loop berhenti (tidak menjadwalkan lagi). Saat tab terlihat
+      // aliran dimulai ulang (loading lalu scanning) dan efek ini dijalankan baru dengan penguji bacaan yang baru.
+      if (cancelled || document.hidden) return;
       if (video.readyState >= 2) {
         try {
           // Hanya piksel di dalam bingkai yang dibaca, dan dari beberapa kode di bingkai hanya yang paling
