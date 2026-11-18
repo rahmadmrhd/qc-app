@@ -13,7 +13,7 @@ import { PublicReportPage } from './public-report-page';
 const TOKEN = 'v1.c1.1799999999.sig_abc-123';
 
 const REPORT: SerialPublicReportDto = {
-  number: 'LP-20261113-001',
+  number: 'LP/SBY/2611-0001',
   openedOn: '2026-11-13',
   closedOn: '2026-11-14',
   outcome: 'broken',
@@ -92,7 +92,7 @@ async function expandAll() {
 
 test('menampilkan nomor LP, hasil, detail unit, masa berlaku, dan linimasa tanpa tombol aksi', async () => {
   renderPage();
-  expect(await screen.findByRole('heading', { name: 'LP-20261113-001' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'LP/SBY/2611-0001' })).toBeInTheDocument();
   expect(screen.getByText('Rusak', { selector: '[data-slot="badge"]' })).toBeInTheDocument();
   expect(screen.getByText(/Tautan ini berlaku sampai 14 Des 2026/)).toBeInTheDocument();
   const unit = screen.getByRole('region', { name: 'Unit' });
@@ -108,8 +108,8 @@ test('menampilkan nomor LP, hasil, detail unit, masa berlaku, dan linimasa tanpa
   expect(within(list).getByText('Dinyatakan rusak')).toBeInTheDocument();
   expect(within(list).getByText('Status: Lolos → Dilaporkan')).toBeInTheDocument();
   // Nomor LP mengisi rincian kejadian (data mentah tidak dikirim server): bukan "Laporan — dibuka".
-  expect(within(list).getByText('Laporan LP-20261113-001 dibuka')).toBeInTheDocument();
-  expect(within(list).getByText('Laporan LP-20261113-001 ditutup: rusak')).toBeInTheDocument();
+  expect(within(list).getByText('Laporan LP/SBY/2611-0001 dibuka')).toBeInTheDocument();
+  expect(within(list).getByText('Laporan LP/SBY/2611-0001 ditutup: rusak')).toBeInTheDocument();
   // Lama di atas (seq naik); tanpa badge Terbaru dan tanpa stempel "dicatat".
   const seqs = within(list)
     .getAllByRole('listitem')
@@ -128,7 +128,7 @@ test('menampilkan nomor LP, hasil, detail unit, masa berlaku, dan linimasa tanpa
 
 test('memuat lewat fetch biasa ke rute publik: tanpa cache dan tanpa Referer', async () => {
   renderPage();
-  await screen.findByRole('heading', { name: 'LP-20261113-001' });
+  await screen.findByRole('heading', { name: 'LP/SBY/2611-0001' });
   expect(fetchMock).toHaveBeenCalledTimes(1);
   const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
   expect(url).toBe(`/api/public/serial-reports/${TOKEN}`);
@@ -138,7 +138,7 @@ test('memuat lewat fetch biasa ke rute publik: tanpa cache dan tanpa Referer', a
 
 test('gambar pesan memakai URL rute berkas bertoken, bukan klien berizin', async () => {
   const { container } = renderPage();
-  await screen.findByRole('heading', { name: 'LP-20261113-001' });
+  await screen.findByRole('heading', { name: 'LP/SBY/2611-0001' });
   await expandAll();
   const image = container.querySelector('img') as HTMLImageElement;
   expect(image.getAttribute('src')).toBe(
@@ -150,7 +150,7 @@ test('gambar pesan memakai URL rute berkas bertoken, bukan klien berizin', async
 
 test('tautan luar di catatan memakai noreferrer; meta referrer no-referrer dipasang dan dilepas', async () => {
   const { unmount } = renderPage();
-  await screen.findByRole('heading', { name: 'LP-20261113-001' });
+  await screen.findByRole('heading', { name: 'LP/SBY/2611-0001' });
   const link = screen.getByRole('link', { name: 'panduan' });
   expect(link.getAttribute('rel')).toContain('noreferrer');
   expect(
@@ -164,12 +164,12 @@ test('pemegang tautan berizin (viewerCanOpen) dialihkan ke halaman biasa tanpa m
   fetchMock.mockResolvedValue(jsonResponse({ ...REPORT, viewerCanOpen: true }));
   renderPage();
   await waitFor(() => expect(onOpenSerial).toHaveBeenCalledWith('s1', 'c1'));
-  expect(screen.queryByRole('heading', { name: 'LP-20261113-001' })).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'LP/SBY/2611-0001' })).toBeNull();
 });
 
 test('tanpa viewerCanOpen tidak ada pengalihan', async () => {
   renderPage();
-  await screen.findByRole('heading', { name: 'LP-20261113-001' });
+  await screen.findByRole('heading', { name: 'LP/SBY/2611-0001' });
   expect(onOpenSerial).not.toHaveBeenCalled();
 });
 
@@ -183,7 +183,7 @@ test.each([404, 429])(
     const alert = await screen.findByRole('alert');
     expect(alert).toHaveTextContent('Tautan tidak berlaku atau sudah kedaluwarsa');
     expect(screen.queryByRole('button')).toBeNull();
-    expect(screen.queryByRole('heading', { name: /LP-/ })).toBeNull();
+    expect(screen.queryByRole('heading', { name: /LP\// })).toBeNull();
   },
 );
 
@@ -194,7 +194,7 @@ test('galat jaringan atau 5xx tampil sebagai gagal memuat dengan Coba lagi, buka
   expect(alert).toHaveTextContent('Laporan belum bisa dimuat');
   expect(alert).not.toHaveTextContent('Tautan tidak berlaku');
   await userEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
-  expect(await screen.findByRole('heading', { name: 'LP-20261113-001' })).toBeInTheDocument();
+  expect(await screen.findByRole('heading', { name: 'LP/SBY/2611-0001' })).toBeInTheDocument();
 });
 
 test('laporan yang masih terbuka: lencana Masih terbuka tanpa tanggal selesai', async () => {
@@ -234,7 +234,7 @@ test('foto bukti QC tidak pernah tampil di halaman publik, walau data kejadian m
     }),
   );
   const { container } = renderPage();
-  await screen.findByRole('heading', { name: 'LP-20261113-001' });
+  await screen.findByRole('heading', { name: 'LP/SBY/2611-0001' });
   await expandAll();
   expect(screen.queryByText('Bukti foto QC')).not.toBeInTheDocument();
   expect(screen.queryByRole('list', { name: 'Foto bukti QC' })).not.toBeInTheDocument();

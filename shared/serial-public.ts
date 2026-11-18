@@ -18,7 +18,7 @@ export interface SerialPublicEventDto {
 }
 
 export interface SerialPublicReportDto {
-  /** `LP-YYYYMMDD-NNN`. */
+  /** `LP/<kode BU>/YYMM-iiii` (nomor lama `LP-YYYYMMDD-NNN` tetap sah). */
   number: string;
   openedOn: string;
   closedOn: string | null;

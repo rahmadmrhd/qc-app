@@ -597,7 +597,7 @@ test('tab linimasa: jumlah dari counts, Pengecekan dan tab kasus mengirim group 
       cases: [
         {
           id: 'c1',
-          number: 'LP-20261113-001',
+          number: 'LP/SBY/2611-0001',
           openedOn: '2026-11-13',
           closedOn: null,
           outcome: null,
@@ -610,7 +610,7 @@ test('tab linimasa: jumlah dari counts, Pengecekan dan tab kasus mengirim group 
         seq: 4,
         type: 'report_failure',
         caseId: 'c1',
-        data: { caseNumber: 'LP-20261113-001', damage: 'Port mati' },
+        data: { caseNumber: 'LP/SBY/2611-0001', damage: 'Port mati' },
       }),
       ...state.events,
     ],
@@ -619,13 +619,13 @@ test('tab linimasa: jumlah dari counts, Pengecekan dan tab kasus mengirim group 
   expect(await screen.findByRole('tab', { name: 'Semua (4)' })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: 'Pengecekan (2)' })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: 'Perubahan data (1)' })).toBeInTheDocument();
-  expect(screen.getByRole('tab', { name: 'LP-20261113-001 (1)' })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'LP/SBY/2611-0001 (1)' })).toBeInTheDocument();
 
   await userEvent.click(screen.getByRole('tab', { name: 'Pengecekan (2)' }));
   await waitFor(() =>
     expect(calls('serials.history').some((call) => call[1].group === 'checks')).toBe(true),
   );
-  await userEvent.click(screen.getByRole('tab', { name: 'LP-20261113-001 (1)' }));
+  await userEvent.click(screen.getByRole('tab', { name: 'LP/SBY/2611-0001 (1)' }));
   await waitFor(() =>
     expect(calls('serials.history').some((call) => call[1].caseId === 'c1')).toBe(true),
   );
@@ -635,7 +635,7 @@ test('tab linimasa: jumlah dari counts, Pengecekan dan tab kasus mengirim group 
       .getAllByRole('listitem')
       .filter((li) => li.hasAttribute('data-seq')),
   ).toHaveLength(1);
-  expect(within(list).getByText('Laporan LP-20261113-001 dibuka: Port mati')).toBeInTheDocument();
+  expect(within(list).getByText('Laporan LP/SBY/2611-0001 dibuka: Port mati')).toBeInTheDocument();
   // Jumlah tab tetap terlihat setelah berpindah tab.
   expect(screen.getByRole('tab', { name: 'Semua (4)' })).toBeInTheDocument();
 });
@@ -649,7 +649,7 @@ test('kartu declare_broken, kirim, dan terima menampilkan rincian kasus dan peng
         seq: 7,
         type: 'declare_broken',
         actorTeam: 'service',
-        data: { caseNumber: 'LP-20261113-001', outcome: 'broken' },
+        data: { caseNumber: 'LP/SBY/2611-0001', outcome: 'broken' },
       }),
       event({
         id: 'e6',
@@ -680,7 +680,7 @@ test('kartu declare_broken, kirim, dan terima menampilkan rincian kasus dan peng
   renderPage();
   const list = await screen.findByRole('list', { name: 'Linimasa' });
   await expandAll();
-  expect(within(list).getByText('Laporan LP-20261113-001 ditutup: rusak')).toBeInTheDocument();
+  expect(within(list).getByText('Laporan LP/SBY/2611-0001 ditutup: rusak')).toBeInTheDocument();
   expect(within(list).getByText('Diterima di servis')).toBeInTheDocument();
   expect(within(list).getByText('Dikirim ke servis')).toBeInTheDocument();
   expect(within(list).getByText('Lama di perjalanan: 3 hari')).toBeInTheDocument();
@@ -689,7 +689,7 @@ test('kartu declare_broken, kirim, dan terima menampilkan rincian kasus dan peng
 
 const CASE_DTO = {
   id: 'c1',
-  number: 'LP-20261113-001',
+  number: 'LP/SBY/2611-0001',
   openedOn: '2026-11-13',
   closedOn: null,
   outcome: null,
@@ -768,12 +768,12 @@ test('kepala menampilkan posisi dengan lokasi dan lencana laporan terbuka; panel
       ...SERIAL,
       status: 'reported',
       openCaseId: 'c1',
-      openCaseNumber: 'LP-20261113-001',
+      openCaseNumber: 'LP/SBY/2611-0001',
       openCase: CASE_DTO,
     },
   };
   renderPage();
-  expect(await screen.findByText('LP-20261113-001 (terbuka)')).toBeInTheDocument();
+  expect(await screen.findByText('LP/SBY/2611-0001 (terbuka)')).toBeInTheDocument();
   expect(screen.getByText('Di QC · Jakarta')).toBeInTheDocument();
   expect(screen.queryByText(/^Kerusakan:/)).toBeNull();
   expect(screen.queryByRole('region', { name: 'Pengiriman' })).toBeNull();
@@ -867,7 +867,7 @@ test('caseId dari URL membuka tab laporan itu; id yang bukan laporan serial ini 
     cases: [
       {
         id: 'c1',
-        number: 'LP-20261113-001',
+        number: 'LP/SBY/2611-0001',
         openedOn: '2026-11-13',
         closedOn: null,
         outcome: null,
@@ -884,7 +884,7 @@ test('caseId dari URL membuka tab laporan itu; id yang bukan laporan serial ini 
   await waitFor(() =>
     expect(calls('serials.history').some((call) => call[1].caseId === 'c1')).toBe(true),
   );
-  expect(await screen.findByRole('tab', { name: /^LP-20261113-001/ })).toHaveAttribute(
+  expect(await screen.findByRole('tab', { name: /^LP\/SBY\/2611-0001/ })).toHaveAttribute(
     'aria-selected',
     'true',
   );

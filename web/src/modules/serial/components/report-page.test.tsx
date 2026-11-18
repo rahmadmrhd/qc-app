@@ -154,16 +154,16 @@ test('serial dengan laporan aktif ditolak dengan tautan ke laporan itu; tidak ad
       ...MATCH,
       status: 'reported',
       openCaseId: 'c1',
-      openCaseNumber: 'LP-20261113-001',
+      openCaseNumber: 'LP/SBY/2611-0001',
     },
   ];
   renderPage();
   await search('ABC123');
   expect(
-    await screen.findByText(/Serial ini sudah punya laporan aktif \(LP-20261113-001\)/),
+    await screen.findByText(/Serial ini sudah punya laporan aktif \(LP\/SBY\/2611-0001\)/),
   ).toBeInTheDocument();
   expect(screen.queryByRole('textbox', { name: 'Catatan' })).toBeNull();
-  await userEvent.click(screen.getByRole('button', { name: 'Buka LP-20261113-001' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Buka LP/SBY/2611-0001' }));
   expect(onOpenSerial).toHaveBeenCalledWith('s1', 'c1');
   expect(calls('serials.act')).toHaveLength(0);
 });
@@ -249,7 +249,7 @@ test('galat CONFLICT serentak: pesan jelas tampil dan pencarian dimuat ulang', a
       ? Promise.reject(
           new ApiError(
             'CONFLICT',
-            'Serial Number ini sudah punya laporan aktif (LP-20261114-002)',
+            'Serial Number ini sudah punya laporan aktif (LP/SBY/2611-0002)',
             '-',
           ),
         )

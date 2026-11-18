@@ -17,7 +17,7 @@ import { CaseListPage } from './case-list-page';
 
 const row = (over: Partial<SerialCaseRowDto>): SerialCaseRowDto => ({
   id: 'c1',
-  number: 'LP-20261113-001',
+  number: 'LP/SBY/2611-0001',
   serialId: 's1',
   serial: 'ABC123',
   buId: 'b1',
@@ -40,7 +40,7 @@ const PAGE_1 = [
   row({}),
   row({
     id: 'c2',
-    number: 'LP-20261112-004',
+    number: 'LP/SBY/2611-0004',
     serialId: 's2',
     serial: 'XYZ789',
     status: 'at_service',
@@ -133,7 +133,7 @@ beforeEach(() => {
       return Promise.resolve(
         input.cursor
           ? {
-              items: [row({ id: 'c3', number: 'LP-20261101-002', serial: 'LAST1' })],
+              items: [row({ id: 'c3', number: 'LP/SBY/2611-0002', serial: 'LAST1' })],
               nextCursor: null,
             }
           : { items: PAGE_1, nextCursor: 'k1' },
@@ -145,7 +145,7 @@ beforeEach(() => {
 
 test('merender kolom laporan; filter bawaan = aktif (juga bagi tim servis murni)', async () => {
   renderPage();
-  expect(await screen.findByText('LP-20261113-001')).toBeInTheDocument();
+  expect(await screen.findByText('LP/SBY/2611-0001')).toBeInTheDocument();
   expect(lastInput()).toEqual({ status: 'active' });
   const rows = screen.getAllByRole('row');
   const first = rows[1] as HTMLElement;
@@ -184,7 +184,7 @@ test('laporan tertutup menampilkan hasil, tanggal selesai, status sekarang, dan 
           items: [
             row({
               id: 'c9',
-              number: 'LP-20261101-009',
+              number: 'LP/SBY/2611-0009',
               closedOn: '2026-11-05',
               outcome: 'broken',
               status: 'broken',
@@ -197,7 +197,7 @@ test('laporan tertutup menampilkan hasil, tanggal selesai, status sekarang, dan 
       : Promise.reject(new Error(`api tak dikenal: ${id}`)),
   );
   renderPage();
-  const line = (await screen.findByText('LP-20261101-009')).closest('tr') as HTMLElement;
+  const line = (await screen.findByText('LP/SBY/2611-0009')).closest('tr') as HTMLElement;
   expect(within(line).getByText('Hasil: Rusak')).toBeInTheDocument();
   expect(within(line).getByText(/Selesai .* status sekarang Rusak/)).toBeInTheDocument();
   expect(within(line).getByText('Selesai dalam 4 hari')).toBeInTheDocument();
@@ -206,7 +206,7 @@ test('laporan tertutup menampilkan hasil, tanggal selesai, status sekarang, dan 
 
 test('filter status dan BU menjadi parameter; Semua laporan tanpa status', async () => {
   renderPage();
-  await screen.findByText('LP-20261113-001');
+  await screen.findByText('LP/SBY/2611-0001');
   await pickSelect(screen, 'Filter status laporan', 'Laporan selesai');
   await waitFor(() => expect(lastInput()).toMatchObject({ status: 'closed' }));
   await pickSelect(screen, 'Filter status laporan', 'Semua laporan');
@@ -219,18 +219,20 @@ test('filter status dan BU menjadi parameter; Semua laporan tanpa status', async
 
 test('pencarian mengirim query awalan nomor LP atau serial setelah jeda', async () => {
   renderPage();
-  await screen.findByText('LP-20261113-001');
+  await screen.findByText('LP/SBY/2611-0001');
   fireEvent.change(screen.getByLabelText('Cari nomor LP atau Serial Number'), {
-    target: { value: 'LP-2026111' },
+    target: { value: 'LP/SBY/2611' },
   });
-  await waitFor(() => expect(lastInput()).toMatchObject({ status: 'active', query: 'LP-2026111' }));
+  await waitFor(() =>
+    expect(lastInput()).toMatchObject({ status: 'active', query: 'LP/SBY/2611' }),
+  );
 });
 
 test('muat berikutnya memakai kursor server', async () => {
   renderPage();
-  await screen.findByText('LP-20261113-001');
+  await screen.findByText('LP/SBY/2611-0001');
   await userEvent.click(screen.getByRole('button', { name: 'Muat lebih banyak' }));
-  expect(await screen.findByText('LP-20261101-002')).toBeInTheDocument();
+  expect(await screen.findByText('LP/SBY/2611-0002')).toBeInTheDocument();
   expect(lastInput()).toMatchObject({ cursor: 'k1' });
   expect(screen.queryByRole('button', { name: 'Muat lebih banyak' })).toBeNull();
 });
@@ -238,7 +240,7 @@ test('muat berikutnya memakai kursor server', async () => {
 test('klik nomor LP membuka detail serial pada tab laporan itu', async () => {
   const onOpen = vi.fn();
   renderPage(onOpen);
-  await userEvent.click(await screen.findByRole('button', { name: 'LP-20261112-004' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'LP/SBY/2611-0004' }));
   expect(onOpen).toHaveBeenCalledWith('s2', 'c2');
 });
 
@@ -250,7 +252,7 @@ test('tombol Lapor Rusak ada di halaman Laporan bagi yang berhak menulis, dan me
   unmount();
   // Tanpa hak menulis (hanya baca atau tim servis): tombol tidak tampil.
   renderPage();
-  await screen.findByRole('button', { name: 'LP-20261112-004' });
+  await screen.findByRole('button', { name: 'LP/SBY/2611-0004' });
   expect(screen.queryByRole('button', { name: 'Lapor Rusak' })).toBeNull();
 });
 
