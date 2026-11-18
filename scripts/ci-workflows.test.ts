@@ -1511,7 +1511,7 @@ describe('release.yml: pipeline rilis server dari PR rilis', () => {
     );
   });
 
-  test('izin: contents read tingkat atas; contents: write hanya publish dan sync-dev (plus batas deploy untuk mark-deployed); pull-requests: write hanya sync-dev; packages: write hanya image', () => {
+  test('izin: contents read tingkat atas; contents: write hanya publish (plus batas deploy untuk mark-deployed); sync-dev hanya baca; packages: write hanya image', () => {
     expect(release.permissions).toEqual({ contents: 'read' });
     const writes = (name: string) =>
       Object.entries(jobs[name]?.permissions ?? {})
@@ -1524,7 +1524,7 @@ describe('release.yml: pipeline rilis server dari PR rilis', () => {
     expect(writes('image')).toEqual(['packages']);
     expect(writes('deploy')).toEqual(['contents']);
     expect(writes('publish')).toEqual(['contents']);
-    // sync-dev menulis ke dev dengan token GitHub App (bypass ruleset dev*), bukan GITHUB_TOKEN: izin token bawaan cukup baca
+    // sync-dev menulis ke dev lewat deploy key (bypass ruleset dev*), bukan GITHUB_TOKEN: izin token bawaan cukup baca
     expect(writes('sync-dev')).toEqual([]);
     expect(jobs['sync-dev']?.permissions).toEqual({ contents: 'read' });
     expect(jobs.meta?.permissions).toEqual({ contents: 'read', 'pull-requests': 'read' });
@@ -1559,9 +1559,9 @@ describe('release.yml: pipeline rilis server dari PR rilis', () => {
     expect(metaRuns).toContain('bun run scripts/release-identity.ts');
     const guardRuns = (jobs.guard?.steps ?? []).map((s) => s.run ?? '').join('\n');
     expect(guardRuns).toContain('bun run scripts/release-guard.ts');
-    // satu-satunya rahasia: kunci GitHub App sync-dev, hanya di langkah pembuat token job sync-dev (environment sync-dev)
+    // satu-satunya rahasia: deploy key sync-dev, hanya di langkah merge job sync-dev (environment sync-dev)
     expect([...codeOf(text).matchAll(/secrets\.(\w+)/g)].map((m) => m[1])).toEqual([
-      'APP_PRIVATE_KEY',
+      'SYNC_DEPLOY_KEY',
     ]);
     expect(codeOf(text)).not.toContain('secrets: inherit');
   });
@@ -1675,32 +1675,38 @@ describe('release.yml: pipeline rilis server dari PR rilis', () => {
     expect(steps.indexOf(notes as Step)).toBeLessThan(steps.indexOf(create as Step));
   });
 
-  test('sync-dev: token GitHub App (bypass ruleset dev*) dari environment sync-dev; GITHUB_TOKEN tak dipakai; kunci hanya di langkah pembuat token', () => {
+  test('sync-dev: deploy key (bypass ruleset dev*) dari environment sync-dev; tanpa GITHUB_TOKEN tulis, tanpa app/PAT; kunci dibaca hanya sebagai env langkah dan dihapus di akhir', () => {
     const job = jobs['sync-dev'];
     expect(job?.environment).toBe('sync-dev');
     const steps = job?.steps ?? [];
-    const tokenStep = steps.find((s) => s.uses?.startsWith('actions/create-github-app-token@'));
-    expect(tokenStep?.uses).toMatch(/^actions\/create-github-app-token@[0-9a-f]{40}$/);
-    expect(tokenStep?.id).toBe('app-token');
-    expect(tokenStep?.with?.['client-id']).toBe('${{ vars.SYNC_APP_CLIENT_ID }}');
-    expect(tokenStep?.with?.['private-key']).toBe('${{ secrets.APP_PRIVATE_KEY }}');
-    // izin token dipersempit ke yang dibutuhkan (merge ke dev dan PR konflik) dan ke repo ini saja
-    expect(tokenStep?.with?.['permission-contents']).toBe('write');
-    expect(tokenStep?.with?.['permission-pull-requests']).toBe('write');
-    expect(tokenStep?.with?.repositories).toBe('${{ github.event.repository.name }}');
-    const sync = steps.find((s) => s.run?.includes('/merges'));
-    expect(steps.indexOf(tokenStep as Step)).toBeLessThan(steps.indexOf(sync as Step));
-    expect(sync?.env?.GH_TOKEN).toBe('${{ steps.app-token.outputs.token }}');
+    expect(steps.some((s) => s.uses?.startsWith('actions/create-github-app-token'))).toBe(false);
+    const sync = steps.find((s) => s.run?.includes('git push'));
+    expect(sync?.env?.SYNC_DEPLOY_KEY).toBe('${{ secrets.SYNC_DEPLOY_KEY }}');
     expect(JSON.stringify(job)).not.toContain('github.token');
     expect(JSON.stringify(job)).not.toContain('secrets.GITHUB_TOKEN');
+    expect(JSON.stringify(job)).not.toMatch(/secrets\.(?!SYNC_DEPLOY_KEY)/);
+    const cleanup = steps.at(-1);
+    expect(cleanup?.if).toBe('always()');
+    expect(cleanup?.run).toContain('sync_key');
   });
 
-  test('sync-dev: merge main ke dev lewat API tanpa PR; konflik membuka PR main -> dev (token app memicu check); gagal = peringatan jelas; tak butuh setelan "Allow GitHub Actions to create pull requests"', () => {
-    const sync = (jobs['sync-dev']?.steps ?? []).find((s) => s.run?.includes('/merges'));
-    expect(sync?.run).toContain('base=dev');
-    expect(sync?.run).toContain('gh pr create --base dev --head main');
-    expect(sync?.run).toContain('::warning::');
-    expect(sync?.run).not.toContain('Allow GitHub Actions to create pull requests');
+  test('sync-dev: merge main ke dev lewat git+SSH tanpa PR; host key GitHub dipatok (bukan ssh-keyscan); konflik = peringatan jelas, tanpa membuat PR', () => {
+    const sync = (jobs['sync-dev']?.steps ?? []).find((s) => s.run?.includes('git push'));
+    const run = sync?.run ?? '';
+    expect(run).toContain('git merge --no-ff');
+    expect(run).toContain('git push origin dev');
+    expect(run).toContain('git@github.com:');
+    // host key ed25519 GitHub (https://api.github.com/meta -> ssh_keys), diperiksa ketat
+    expect(run).toContain(
+      'github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl',
+    );
+    expect(run).toContain('StrictHostKeyChecking=yes');
+    expect(run).not.toMatch(/ssh-keyscan|StrictHostKeyChecking[= ]+no/i);
+    expect(run).toContain('::warning::');
+    expect(run).not.toContain('gh pr create');
+    expect(run).not.toContain('gh api');
+    // push hanya ke dev (bypass ruleset hanya di dev*); tak pernah ke main
+    expect(run).not.toMatch(/git push[^\n]*main/);
   });
 
   test('docs/ci-cd.md menjelaskan release.yml dan saklar RELEASE_FLOW', () => {

@@ -108,7 +108,7 @@ menolak berjalan tanpanya. Server tidak memegang kunci apa pun dan hanya menerus
    server, kunci SA penerbit dari secret `DESKTOP_DRIVE_PUBLISHER_KEY`, folder dari variable); idempoten (timpa menurut nama) sehingga
    dapat diulang lewat `workflow_dispatch` (`versi`) bila gagal di tengah.
 5. **sync-dev**: seperti rilis server (bagian 1, 5.4).
-Izin per job minimal; `contents: write` hanya pada `publish` dan `sync-dev`; semua nilai lewat `env`, tanpa `${{ }}` di `run`;
+Izin per job minimal; `contents: write` hanya pada `publish` (`sync-dev` memakai deploy key, token hanya-baca); semua nilai lewat `env`, tanpa `${{ }}` di `run`;
 aksi pihak ketiga dipatok SHA; `ci-workflows.test.ts` diperluas (pemicu, izin, regex cabang, urutan unggah).
 
 ### 5.7 Penarikan dan downgrade
