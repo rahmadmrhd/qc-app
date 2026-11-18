@@ -23,6 +23,7 @@ export {
   MIN_BRIDGE_VERSION,
   NOTIFICATIONS_BRIDGE_VERSION,
   NOTIFICATIONS_CHANGE_EVENT,
+  PENDING_TARGET_BRIDGE_VERSION,
   UI_UPDATE_READY_EVENT,
 } from './bridge-channels';
 
@@ -213,6 +214,11 @@ export const PendingEntrySchema = z.strictObject({
   serial: plain(64).refine((v) => v.trim().length > 0, 'Serial tidak boleh kosong'),
   brand: z.enum(['mikrotik', 'ubiquiti', 'none']),
   tipe: plain(128, 0),
+  // BU dan lokasi tujuan unggah (jembatan v6, `PENDING_TARGET_BRIDGE_VERSION`): id dari katalog offline + label tampilan.
+  buId: plain(100).optional(),
+  buLabel: plain(200, 0).optional(),
+  locationId: plain(100).optional(),
+  locationLabel: plain(200, 0).optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Tanggal harus YYYY-MM-DD'),
   timestamp: IsoTimestamp,
   reinjectedAt: IsoTimestamp.optional(),

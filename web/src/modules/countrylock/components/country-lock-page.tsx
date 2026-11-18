@@ -1,8 +1,10 @@
+import { PENDING_TARGET_BRIDGE_VERSION } from '@countrylock/bridge-channels';
 import type { QcBridge } from '@countrylock/bridge-contract';
 import type { Brand } from '@countrylock/script-template';
 import { canInject } from '@countrylock/session-machine';
 import { FolderOpen, KeyRound, TriangleAlert } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { LinkField } from '@/components/link-field';
 import { Select } from '@/components/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -23,7 +25,7 @@ import { Label } from '@/components/ui/label';
 import { tipeOptionsFor } from '../lib/type-firmware';
 import { useCatalog } from '../use-catalog';
 import { useCountryLock } from '../use-country-lock';
-import { CatalogPanelView } from './catalog-panel';
+import { useInjectTarget } from '../use-inject-target';
 import { CredentialDialog } from './credential-dialog';
 import { InjectProgressDialog } from './inject-progress-dialog';
 import { PendingList } from './pending-list';
@@ -65,8 +67,13 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
     actions,
   } = useCountryLock(bridge);
   const [confirmAuto, setConfirmAuto] = useState(false);
-  // Katalog dibaca sekali dan dipakai bersama dropdown Tipe di form dan panel katalog di bawahnya.
+  // Katalog offline dibaca sekali dan dipakai dropdown Tipe, BU, dan Lokasi di form.
   const catalog = useCatalog(bridge);
+  const target = useInjectTarget(catalog.snapshot?.catalog ?? null, tipe?.id ?? null);
+  const { setTarget } = actions;
+  const { pendingTarget } = target;
+  // BU/lokasi terpilih dicatat bersama serial saat inject sukses (dibaca hook inject lewat ref).
+  useEffect(() => setTarget(pendingTarget), [setTarget, pendingTarget]);
 
   if (loading) {
     return <p className="p-4 text-sm text-muted-foreground">Memuat paket skrip...</p>;
@@ -81,6 +88,9 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
   const showTipe = catalog.supported && catalog.status?.state !== 'disabled';
   // Firmware dikunci hanya bila Tipe terpilih punya firmware yang ada di paket (aplikasi lama).
   const firmwareLocked = tipe?.application.ok === true;
+  // BU/Lokasi ikut katalog offline dan hanya dicatat oleh jembatan v6 ke atas (skema `pending.add` ketat).
+  const showTarget = showTipe && bridge.version >= PENDING_TARGET_BRIDGE_VERSION;
+  const catalogReady = catalog.snapshot !== null;
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-4">
@@ -186,6 +196,42 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
                   disabled={!brandConfig || state.injecting || firmwareLocked}
                 />
               </div>
+              {showTarget ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <LinkField
+                    id="country-lock-bu"
+                    label="Business Unit"
+                    placeholder={
+                      !catalogReady
+                        ? 'Belum tersinkron'
+                        : target.buOptions.length === 0
+                          ? 'Tidak ada BU'
+                          : 'Pilih BU'
+                    }
+                    options={target.buOptions}
+                    value={target.buId === '' ? null : target.buId}
+                    onChange={target.setBu}
+                    localFilter
+                    disabled={state.injecting || target.buOptions.length === 0}
+                  />
+                  <LinkField
+                    id="country-lock-location"
+                    label="Lokasi"
+                    placeholder={
+                      !catalogReady
+                        ? 'Belum tersinkron'
+                        : target.locationOptions.length === 0
+                          ? 'Tidak ada lokasi'
+                          : 'Pilih lokasi'
+                    }
+                    options={target.locationOptions}
+                    value={target.locationId === '' ? null : target.locationId}
+                    onChange={target.setLocation}
+                    localFilter
+                    disabled={state.injecting || target.locationOptions.length === 0}
+                  />
+                </div>
+              ) : null}
               {tipe && !tipe.application.ok ? (
                 <p className="text-sm text-amber-600 dark:text-amber-400">
                   {tipe.application.message}
@@ -242,8 +288,6 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
           <PendingList entries={pending} />
         </>
       )}
-
-      <CatalogPanelView catalog={catalog} focusId={tipe?.id ?? null} />
 
       <AlertDialog open={confirmAuto} onOpenChange={setConfirmAuto}>
         <AlertDialogContent>

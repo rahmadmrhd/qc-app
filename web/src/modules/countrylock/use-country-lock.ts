@@ -3,6 +3,7 @@
 // `reduceSession`, menjalankan inject, dan mencatat pending HANYA setelah `inject.run` sukses.
 // Semua efek samping ada di sini; aturan murninya di `@countrylock/*`.
 
+import { PENDING_TARGET_BRIDGE_VERSION } from '@countrylock/bridge-channels';
 import type {
   InjectProgressDto,
   InjectResult,
@@ -32,6 +33,7 @@ import {
   safeLine,
 } from './lib/safe-text';
 import { resolveTypeApplication, type TypeApplication } from './lib/type-firmware';
+import type { PendingTarget } from './use-inject-target';
 
 /** Jeda sebelum dialog progres menutup sendiri setelah inject sukses/dibatalkan (legacy: 1 detik). */
 export const AUTO_CLOSE_MS = 1000;
@@ -66,6 +68,11 @@ export interface TipeSelection {
 
 export interface CountryLockActions {
   select(brand: Brand, firmwareCode: string | null): void;
+  /**
+   * BU dan lokasi tujuan yang dicatat bersama serial saat inject sukses (diisi halaman dari pilihan form; hanya
+   * dikirim ke jembatan v6 ke atas karena skema `pending.add` jembatan lama menolak field itu).
+   */
+  setTarget(target: PendingTarget): void;
   /** Memilih (atau mengosongkan, `null`) Tipe katalog; mengisi Firmware bila Tipe punya firmware yang ada di paket. */
   selectTipe(item: CatalogItemDto | null): void;
   inject(): void;
@@ -123,6 +130,7 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
   const pkgRef = useRef<PackageDto | null>(null);
   /** Salinan sinkron `tipe`: dibaca saat inject selesai untuk dicatat ke pending. */
   const tipeRef = useRef<TipeSelection | null>(null);
+  const targetRef = useRef<PendingTarget>({});
   const credentialsRef = useRef<Credentials>({ username: '', password: '' });
   /** Kredensial ditolak: pembacaan info berhenti sampai kredensial baru atau perangkat berganti. */
   const deniedRef = useRef(false);
@@ -334,6 +342,8 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
     const serial = start.serial;
     // Tipe dicatat sesuai pilihan saat inject dimulai (bukan saat selesai), agar tak berubah di tengah jalan.
     const tipeName = tipeRef.current?.name ?? '';
+    // BU/lokasi mengikuti pilihan saat inject dimulai juga; jembatan lama tidak menerimanya.
+    const target = bridge.version >= PENDING_TARGET_BRIDGE_VERSION ? { ...targetRef.current } : {};
     const credentials = credentialsRef.current;
     const id = newInjectId();
     injectIdRef.current = id;
@@ -370,6 +380,7 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
           serial,
           brand: brandName,
           tipe: tipeName,
+          ...target,
           date: localDate(),
           timestamp: new Date().toISOString(),
         });
@@ -435,6 +446,10 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
     },
     [apply, clearTipe, defaultCredentials],
   );
+
+  const setTarget = useCallback((target: PendingTarget) => {
+    targetRef.current = target;
+  }, []);
 
   const selectTipe = useCallback(
     (item: CatalogItemDto | null) => {
@@ -524,6 +539,7 @@ export function useCountryLock(bridge: QcBridge): UseCountryLock {
     actions: {
       select,
       selectTipe,
+      setTarget,
       inject: () => {
         void runInject();
       },

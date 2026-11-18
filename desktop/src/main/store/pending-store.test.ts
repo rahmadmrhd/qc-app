@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { PendingEntry } from '@countrylock/pending';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { openPendingStore } from './pending-store';
@@ -37,6 +38,47 @@ describe('openPendingStore', () => {
       entry('CD34', { brand: 'ubiquiti', tipe: 'XW' }),
     ]);
     second.close();
+  });
+
+  test('BU dan lokasi bertahan setelah ditutup dan dibuka lagi; tanpa keduanya tetap tak berisi field itu', () => {
+    const target = {
+      buId: 'bu-1',
+      buLabel: 'DEF - BU Bawaan',
+      locationId: 'loc-1',
+      locationLabel: 'QC-A - QC A',
+    };
+    const first = openPendingStore(file);
+    first.add(entry('AB12', target));
+    first.add(entry('CD34'));
+    first.close();
+
+    const second = openPendingStore(file);
+    expect(second.list()).toEqual([entry('AB12', target), entry('CD34')]);
+    second.close();
+  });
+
+  test('berkas pending lama (tanpa kolom BU/lokasi) dimigrasikan: baris lama tetap terbaca, entri baru memuat BU/lokasi', () => {
+    const legacy = new DatabaseSync(file);
+    legacy.exec(`CREATE TABLE pending (
+      serial TEXT PRIMARY KEY NOT NULL, brand TEXT NOT NULL, tipe TEXT NOT NULL,
+      date TEXT NOT NULL, timestamp TEXT NOT NULL, reinjected_at TEXT
+    )`);
+    legacy
+      .prepare('INSERT INTO pending (serial, brand, tipe, date, timestamp) VALUES (?, ?, ?, ?, ?)')
+      .run('OLD1', 'mikrotik', 'hAP', '2026-11-10', '2026-11-10T08:00:00.000Z');
+    legacy.close();
+
+    const store = openPendingStore(file);
+    expect(store.list()).toEqual([
+      entry('OLD1', { tipe: 'hAP', date: '2026-11-10', timestamp: '2026-11-10T08:00:00.000Z' }),
+    ]);
+    store.add(
+      entry('NEW1', { buId: 'bu-1', buLabel: 'DEF', locationId: 'l1', locationLabel: 'A' }),
+    );
+    expect(store.list()[1]).toMatchObject({ serial: 'NEW1', buId: 'bu-1', locationId: 'l1' });
+    store.close();
+    // Membuka lagi tidak menambah kolom dua kali (idempoten).
+    openPendingStore(file).close();
   });
 
   test('serial ganda tidak menimpa, reinjectedAt terisi, result duplicated', () => {
