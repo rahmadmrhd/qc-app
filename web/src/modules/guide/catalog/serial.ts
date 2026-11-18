@@ -109,15 +109,17 @@ export const SERIAL_DETAIL: GuideEntry = {
 
 /**
  * Catat Serial Number: bawaan, scan, draft, ubah massal, dan Simpan. Target: `serial-defaults`, `serial-scan`,
- * `serial-draft`, `serial-row-actions`, `serial-row-select`, `serial-bulk`, `serial-save` (`record-page.tsx`,
- * `staging-table.tsx`, `bulk-edit-bar.tsx`). Dua langkah `wait`: menunggu baris draft pertama, lalu menunggu pengguna
- * mencentang baris sampai bilah ubah massal muncul. Berhenti SEBELUM Simpan.
+ * `serial-draft`, `serial-row-actions` (hanya tabel; di ponsel baris berupa kartu tanpa tombol aksi, jadi langkahnya
+ * `langsung` dengan kartu pengganti), `serial-row-select` (ada di tabel dan kartu), `serial-bulk` (bar aksi pilihan),
+ * `serial-save` (`record-page.tsx`, `staging-table.tsx`, `staging-cards.tsx`, `selection-bar.tsx`). Dua langkah
+ * `wait`: menunggu baris draft pertama (`serial-row`, ada di tabel dan kartu), lalu menunggu pengguna mencentang baris
+ * sampai bar aksi pilihan muncul. Berhenti SEBELUM Simpan.
  */
 export const SERIAL_CATAT: GuideEntry = {
   id: 'serial-catat',
   kind: 'dasar',
   status: 'disimpan',
-  version: 1,
+  version: 2,
   title: 'Mencatat Serial Number',
   grup: 'Serial Number',
   izin: SERIAL_EDIT,
@@ -126,39 +128,42 @@ export const SERIAL_CATAT: GuideEntry = {
     {
       target: 'serial-defaults',
       route: '/serial/new',
-      text: 'Isi bawaan sekali saja: item (BU mengikuti item), lokasi, tanggal uji, catatan, sample, dan stiker yang ditempel (semua yang berlaku tercentang; tiap serial yang disimpan memotong stok stikernya). Dipakai untuk serial yang ditambahkan sesudahnya. Panduan tidak mengisi apa pun, jadi isi sendiri.',
+      text: 'Isi Default dulu: item (BU mengikuti item), lokasi, dan tanggal uji wajib terisi sebelum kamu bisa scan; catatan, sample, dan stiker yang ditempel opsional (semua yang berlaku tercentang; tiap serial yang disimpan memotong stok stikernya). Kolom scan tetap abu-abu dengan petunjuk "Isi Default dulu" selama masih ada yang kosong. Dipakai untuk serial yang ditambahkan sesudahnya. Panduan tidak mengisi apa pun, jadi isi sendiri.',
       advance: 'next',
     },
     {
       target: 'serial-scan',
-      text: 'Scan dengan pemindai barcode, ketik lalu Enter, tempel banyak serial (satu per baris), atau pakai tombol kamera di kanan atas. Coba ketik serial apa saja (mis. TEST-001) lalu Enter; Lanjut aktif setelah satu baris muncul di draft. Belum ada yang tersimpan sampai kamu menekan Simpan.',
+      text: 'Scan dengan pemindai barcode, ketik lalu Enter, tempel banyak serial (satu per baris), atau pakai tombol kamera di kanan atas. Coba ketik serial apa saja (mis. TEST-001) lalu Enter; Lanjut aktif setelah satu baris muncul di draft. Kalau kolomnya masih abu-abu, balik dulu ke Default. Item yang wajib foto bukti berbeda: satu serial per kali, lalu muncul dialog dua langkah (scan, lalu konfirmasi dengan info item, serial yang masih bisa diedit, dan foto). Tombol Simpan di dialog baru aktif setelah fotonya cukup, dan barisnya baru masuk draft sesudah itu. Belum ada yang tersimpan sampai kamu menekan Simpan di halaman.',
       advance: 'wait',
       waitFor: 'serial-row',
     },
     {
       target: 'serial-draft',
-      text: 'Tiap serial jadi satu baris draft. Tanggal uji, sample, catatan, dan foto bukti QC (opsional, maksimal 5) bisa diubah langsung. Kolom Hasil memberi tahu yang masih kurang dan hasil sesudah Simpan (duplikat atau gagal). Draft tersimpan otomatis di perangkat ini; Impor/Ekspor .qcsn untuk pindah perangkat.',
+      text: 'Tiap serial jadi satu baris draft (di ponsel berupa kartu). Serial dan tanggal uji bisa diubah langsung di tabel; item, lokasi, sample, catatan, stiker, dan foto bukti (maksimal 5) lewat dialog Ubah baris. Item wajib foto yang fotonya kurang ditandai "Butuh n foto lagi" dan menahan Simpan. Kolom Hasil juga memberi tahu hasil sesudah Simpan (duplikat atau gagal). Draft tersimpan otomatis di perangkat ini; Impor/Ekspor .qcsn untuk pindah perangkat.',
       advance: 'next',
     },
     {
       target: 'serial-row-actions',
-      text: 'Detail membuka pilihan item, lokasi, dan stiker khusus baris ini. Hapus membuang baris itu dari draft.',
+      text: 'Detail membuka dialog Ubah baris: semua kolom baris ini bisa diubah di sana. Hapus membuang baris itu dari draft.',
+      teksJikaKosong:
+        'Di layar sempit baris tampil sebagai kartu tanpa tombol aksi: ketuk kartunya untuk membuka dialog Ubah baris, tempat kamu mengubah semua kolom baris itu. Menghapus satu baris lewat centang lalu Hapus di bar aksi.',
+      langsung: true,
       advance: 'next',
     },
     {
       target: 'serial-row-select',
-      text: 'Mau ubah banyak baris sekaligus? Centang baris ini (atau kotak di judul kolom untuk semua baris). Begitu ada yang terpilih, bilah Ubah massal muncul dan Lanjut aktif.',
+      text: 'Mau ubah atau hapus banyak baris sekaligus? Centang baris ini (atau kotak "Pilih semua" di judul tabel/daftar untuk semuanya). Begitu ada yang terpilih, bar aksi muncul dan Lanjut aktif.',
       advance: 'wait',
       waitFor: 'serial-bulk',
     },
     {
       target: 'serial-bulk',
-      text: 'Isi hanya kolom yang mau diubah untuk semua baris terpilih (kosong = tidak diubah), lalu Terapkan. Hapus yang dipilih membuang semuanya; Batalkan pilihan menghapus centang. Panduan tidak menerapkan apa pun.',
+      text: 'Bar aksi punya tiga tombol: Edit membuka dialog ubah massal (isi hanya kolom yang mau diubah untuk semua baris terpilih, kosong = tidak diubah, lalu Terapkan), Hapus membuang baris terpilih beserta foto buktinya setelah kamu konfirmasi, dan Batalkan pilihan menghapus semua centang. Panduan tidak menerapkan atau menghapus apa pun.',
       advance: 'next',
     },
     {
       target: 'serial-save',
-      text: 'Simpan menyimpan semua baris sebagai Serial Number berstatus Lolos. Serial yang sudah tercatat ditandai duplikat dan baris yang gagal tetap di draft; kalau semuanya berhasil kamu kembali ke daftar. Panduan berhenti di sini: belum ada yang tersimpan, dan baris contohmu bisa dibuang dengan Kosongkan draft.',
+      text: 'Simpan menyimpan semua baris sebagai Serial Number berstatus Lolos. Baris yang belum lengkap (termasuk foto bukti kurang) menahan Simpan; serial yang sudah tercatat ditandai duplikat dan baris yang gagal tetap di draft. Kalau semuanya berhasil kamu kembali ke daftar. Panduan berhenti di sini: belum ada yang tersimpan, dan baris contohmu bisa dibuang dengan Kosongkan draft.',
       advance: 'next',
     },
   ],

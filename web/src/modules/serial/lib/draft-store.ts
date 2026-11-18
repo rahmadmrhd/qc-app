@@ -123,6 +123,10 @@ function readRow(raw: unknown): StagingRow | null {
     proofPhotos: readProofPhotos(Object.hasOwn(raw, 'proofPhotos') ? raw.proofPhotos : undefined),
     selected: false,
   };
+  const proofMin = Object.hasOwn(raw, 'proofMin') ? raw.proofMin : undefined;
+  if (typeof proofMin === 'number' && Number.isInteger(proofMin) && proofMin > 0 && proofMin <= 5) {
+    row.proofMin = proofMin;
+  }
   const result = text(raw, 'result');
   if (notGood) {
     row.result = 'invalid';

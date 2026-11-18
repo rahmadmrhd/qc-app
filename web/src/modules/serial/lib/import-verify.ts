@@ -5,6 +5,8 @@ export interface ItemLookup {
   id: string;
   label: string;
   buOptions: { id: string; code: string }[];
+  /** Minimum foto bukti item (0 atau tidak ada = tidak wajib foto). */
+  proofMin?: number;
 }
 
 /** Banyak id item per permintaan `serials.itemOptions` (batas server) dan jumlah permintaan verifikasi serentak. */
@@ -145,7 +147,16 @@ export async function verifyImported(
     } else if (lookup === null || info === undefined || info.buId === '') {
       flags.push('item');
     } else {
-      result = { ...result, itemLabel: lookup.label, buId: info.buId, buLabel: info.buLabel };
+      const { proofMin: _stale, ...withoutProof } = result;
+      const proofMin = lookup.proofMin ?? 0;
+      result = {
+        ...withoutProof,
+        itemLabel: lookup.label,
+        buId: info.buId,
+        buLabel: info.buLabel,
+        // Aturan wajib foto item terkini (impor `.qcsn` tidak membawanya; item yang tak wajib lagi dibersihkan).
+        ...(proofMin > 0 ? { proofMin } : {}),
+      };
       const list = stickers.get(`${row.itemId}|${info.buId}`);
       if (list === 'error') failed = true;
       else if (list === null || list === undefined) flags.push('item');

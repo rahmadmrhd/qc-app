@@ -646,6 +646,10 @@ export interface ItemDto extends ItemSummaryDto {
   detail: string;
   /** Kode firmware Country Lock (`shared/firmware.ts`); '' = belum diisi atau bukan item Country lock. */
   firmware: string;
+  /** Item wajib foto bukti pada Catat Serial (spek 2026-11-18); `proofMin` selalu 1 bila tidak wajib. */
+  proofRequired: boolean;
+  /** Jumlah foto bukti minimum (1 sampai `SERIAL_PROOF_LIMITS.perEntryMax`). */
+  proofMin: number;
   createdAt: string;
   updatedBy: string;
 }
@@ -664,6 +668,10 @@ export interface SaveItemInput {
    * lock atau kodenya tak berlaku bagi merk baru.
    */
   firmware?: string;
+  /** Wajib foto bukti; tidak dikirim = tak diubah (klien lama), item baru = false. */
+  proofRequired?: boolean;
+  /** Minimum foto (1 sampai 5); tidak dikirim = tak diubah, item baru = 1; disimpan 1 bila `proofRequired` salah. */
+  proofMin?: number;
   aliases: string[];
   /** Instruksi stiker; PUT utuh (daftar kosong = tanpa instruksi). */
   stickerPhotos: ItemStickerPhotoInput[];
@@ -1785,6 +1793,10 @@ export interface SerialItemOptionDto {
   label: string;
   buIds: string[];
   buOptions: { id: string; code: string }[];
+  /** Item wajib foto bukti pada Catat Serial (spek 2026-11-18); `proofMin` selalu 1 bila tidak wajib. */
+  proofRequired: boolean;
+  /** Jumlah foto bukti minimum (1 sampai 5). */
+  proofMin: number;
 }
 export interface ListSerialItemOptionsInput {
   query?: string;

@@ -1,4 +1,4 @@
-import { isIsoDate, normalizeSerial, SERIAL_LIMITS } from '@shared/serials';
+import { isIsoDate, normalizeSerial, proofMinimumOf, SERIAL_LIMITS } from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { describeError } from '@/lib/api/describe-error';
 import { useMe } from '@/modules/auth/use-me';
 import {
@@ -16,6 +17,7 @@ import {
   type BulkPatch,
   type Defaults,
   fromQcsnRows,
+  missingDefaults,
   proofIdsOf,
   removeRows,
   type StagingRow,
@@ -26,6 +28,8 @@ import { clearDraft, loadDraft, resumeDraftWrites, saveDraft } from '../lib/draf
 import { isReferenceError, type VerifyDeps, verifyImported } from '../lib/import-verify';
 import { hasProofPhotos } from '../lib/leave-guard';
 import { todayWib, toLocationOptions } from '../lib/locations';
+import { applyProofMins, fetchProofMins, uniqueItemIds } from '../lib/proof-refresh';
+import type { ProofPhotoRef } from '../lib/proof-source';
 import type { QcsnImport } from '../lib/qcsn';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
@@ -35,12 +39,16 @@ import {
   serialStickerOptionsQueryOptions,
   useSaveSerialBatch,
 } from '../queries';
-import { BulkEditBar } from './bulk-edit-bar';
+import { BulkEditDialog } from './bulk-edit-dialog';
+import type { StrictScan } from './camera-scan-button';
+import { ConfirmRemoveDialog } from './confirm-remove-dialog';
 import { ImportExportBar } from './import-export-bar';
 import { EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
-import { RowDetailDialog, type RowDetailResult } from './row-detail-dialog';
+import { RowEditDialog, type RowEditResult } from './row-edit-dialog';
+import { SelectionBar } from './selection-bar';
 import { SerialLocationField } from './serial-location-field';
 import { type ScanFeedback, SerialScanInput } from './serial-scan-input';
+import { StagingCards } from './staging-cards';
 import { rowStatus, StagingTable } from './staging-table';
 import { defaultStickerChoice, StickerChecklist, useApplicableStickers } from './sticker-checklist';
 
@@ -101,6 +109,14 @@ function clearOutcome(row: StagingRow): StagingRow {
   return rest;
 }
 
+/** Elemen field Default yang menerima fokus awal menurut label field kosong (`missingDefaults`). */
+const DEFAULT_FIELD_ID: Record<string, string> = {
+  Item: 'default-item',
+  'Business Unit': 'default-bu',
+  Lokasi: 'default-location',
+  'Tanggal uji': 'default-date',
+};
+
 /** Pesan ringkas untuk satu penambahan (tempel, ketik, atau pindai). */
 function describeAdd(report: ReturnType<typeof addSerials>['report']): {
   feedback: ScanFeedback;
@@ -154,6 +170,32 @@ export function RecordPage({
     setRows(next);
   }, []);
 
+  // Item menurut id (verifikasi impor dan penyegaran draft): hanya item yang ada dan terlihat bagi pengguna.
+  const findItemLookups = useCallback(
+    async (itemIds: readonly string[]) => {
+      const page = await queryClient.fetchQuery(serialItemsByIdQueryOptions(itemIds));
+      return page.items.map((entry) => ({
+        id: entry.id,
+        label: entry.label,
+        buOptions: entry.buOptions,
+        proofMin: proofMinimumOf(entry),
+      }));
+    },
+    [queryClient],
+  );
+  // Draft lama tidak membawa `proofMin` (dibuat sebelum item wajib foto): segarkan sekali saat halaman dibuka, satu
+  // permintaan per kumpulan item unik. Gagal = baris tetap seperti semula; server tetap menegakkan aturan saat Simpan.
+  useEffect(() => {
+    const ids = uniqueItemIds(rowsRef.current);
+    if (ids.length === 0) return;
+    void fetchProofMins(ids, findItemLookups).then((mins) => {
+      if (!mountedRef.current) return;
+      const latest = rowsRef.current;
+      const next = applyProofMins(latest, mins);
+      if (next !== latest) setAllRows(next);
+    });
+  }, [findItemLookups, setAllRows]);
+
   const [item, setItem] = useState<ItemBuValue>(EMPTY_ITEM_BU);
   const [location, setLocation] = useState({ id: '', label: '' });
   // Hanya satu lokasi yang dapat dipilih: jadi bawaan, sekali saja (pengguna yang mengosongkannya tak diisi lagi).
@@ -180,6 +222,9 @@ export function RecordPage({
   const [importing, setImporting] = useState(false);
   const [draftFailed, setDraftFailed] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const desktop = useIsDesktop();
 
   // Halaman dibuka: penulisan draf diizinkan lagi (dihentikan oleh `clearAllDrafts` saat keluar).
   useEffect(() => {
@@ -205,13 +250,34 @@ export function RecordPage({
   }, [onProofChange, withProof]);
 
   const selectedCount = rows.filter((row) => row.selected).length;
+  const selectedPhotoCount = rows.reduce(
+    (total, row) => total + (row.selected ? row.proofPhotos.length : 0),
+    0,
+  );
   const detailRow = detailId === null ? undefined : rows.find((row) => row.clientId === detailId);
+
+  // Gerbang Default: scan, kamera, dan tempel baru aktif setelah Item, BU, Lokasi, dan Tanggal uji terisi.
+  const missing = missingDefaults({
+    itemId: item.itemId,
+    buId: item.buId,
+    locationId: location.id,
+    testDate,
+  });
+  const gated = missing.length > 0;
+  // Fokus awal ke field Default pertama yang kosong (kolom scan terkunci selama Default belum lengkap).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hanya saat halaman dibuka.
+  useEffect(() => {
+    const first = missing[0];
+    if (first === undefined) return;
+    document.getElementById(DEFAULT_FIELD_ID[first] ?? 'default-item')?.focus();
+  }, []);
 
   const defaults = (): Defaults => ({
     itemId: item.itemId,
     itemLabel: item.itemLabel,
     buId: item.buId,
     buLabel: item.buLabel,
+    proofMin: item.proofMin,
     testDate,
     locationId: location.id,
     locationLabel: location.label,
@@ -249,6 +315,72 @@ export function RecordPage({
     });
     setNotice(message);
   }
+
+  // Item wajib foto: scan satu serial per kali lewat dialog dua langkah; baris masuk draft setelah Simpan di dialog.
+  const addStrictRowRef = useRef<(result: { serial: string; photos: ProofPhotoRef[] }) => void>(
+    () => undefined,
+  );
+  const confirmStrict = useCallback(
+    (result: { serial: string; photos: ProofPhotoRef[] }) => addStrictRowRef.current(result),
+    [],
+  );
+  const strict = useMemo<StrictScan | undefined>(
+    () =>
+      item.proofMin > 0
+        ? {
+            info: {
+              itemLabel: item.itemLabel,
+              buLabel: item.buLabel,
+              locationLabel: location.label,
+              testDate,
+              proofMin: item.proofMin,
+              stamp: {
+                itemLabel: item.itemLabel,
+                buLabel: item.buLabel,
+                locationLabel: location.label,
+                actorName: me.name,
+                actorTeam: 'QC',
+              },
+            },
+            isKnown: isKnownSerial,
+            onConfirm: confirmStrict,
+            capacity: draftCapacity,
+          }
+        : undefined,
+    [
+      item.proofMin,
+      item.itemLabel,
+      item.buLabel,
+      location.label,
+      testDate,
+      me.name,
+      isKnownSerial,
+      confirmStrict,
+      draftCapacity,
+    ],
+  );
+
+  /** Menambah satu baris item wajib foto beserta fotonya; bila tak muat (batas draft/duplikat), foto dibuang. */
+  function addStrictRow(result: { serial: string; photos: ProofPhotoRef[] }) {
+    const { rows: next, report } = addSerials(
+      rowsRef.current,
+      result.serial,
+      defaults(),
+      newClientId,
+      nowIso,
+    );
+    const added = report.added === 1 ? next[next.length - 1] : undefined;
+    if (!added) {
+      void discardProofPhotos(result.photos.map((photo) => photo.id));
+      setNotice(describeAdd(report).notice);
+      return;
+    }
+    next[next.length - 1] = { ...added, proofPhotos: result.photos };
+    setAllRows(next);
+    setNotice(describeAdd(report).notice);
+    setSummary(null);
+  }
+  addStrictRowRef.current = addStrictRow;
 
   function addText(text: string): ScanFeedback {
     const { rows: next, report } = addSerials(
@@ -318,21 +450,37 @@ export function RecordPage({
   function applyBulkEdit(patch: BulkPatch) {
     setAllRows(applyBulk(rowsRef.current, selectedIds(), patch).map(clearSelectedOutcome));
     setNotice({ tone: 'info', text: `${selectedCount} baris diubah` });
+    setBulkOpen(false);
   }
 
-  function applyDetail(result: RowDetailResult) {
+  function removeSelected() {
+    dropRows(selectedIds());
+    setRemoveOpen(false);
+  }
+
+  function applyDetail(result: RowEditResult) {
     if (detailId === null) return;
     patchRow(detailId, (row) => {
       const { unresolved: _unresolved, ...rest } = clearOutcome(row);
       return {
         ...rest,
+        serial: result.serial,
         itemId: result.item.itemId,
         itemLabel: result.item.itemLabel,
         buId: result.item.buId,
         buLabel: result.item.buLabel,
+        // Minimum foto hanya dibawa bila item/BU diganti di dialog: tanpa itu nilai baris (mungkin baru disegarkan dari
+        // server selagi dialog terbuka) tidak boleh ditimpa nilai usang dari keadaan awal dialog.
+        ...(result.item.itemId !== row.itemId || result.item.buId !== row.buId
+          ? { proofMin: result.item.proofMin }
+          : {}),
         locationId: result.location.id,
         locationLabel: result.location.label,
+        testDate: result.testDate,
+        sample: result.sample,
+        note: result.note,
         stickers: result.stickers,
+        proofPhotos: result.proofPhotos,
       };
     });
     setDetailId(null);
@@ -350,14 +498,7 @@ export function RecordPage({
         }
       };
       const deps: VerifyDeps = {
-        findItems: async (itemIds) => {
-          const page = await queryClient.fetchQuery(serialItemsByIdQueryOptions(itemIds));
-          return page.items.map((item) => ({
-            id: item.id,
-            label: item.label,
-            buOptions: item.buOptions,
-          }));
-        },
+        findItems: findItemLookups,
         stickersOf: async (itemId, buId) => {
           const data = await queryClient.fetchQuery(serialStickerOptionsQueryOptions(itemId, buId));
           return data.stickers.map((sticker) => ({ id: sticker.id, name: sticker.name }));
@@ -428,12 +569,13 @@ export function RecordPage({
         row.itemId === '' ||
         row.buId === '' ||
         row.locationId === '' ||
-        !isIsoDate(row.testDate),
+        !isIsoDate(row.testDate) ||
+        (row.proofMin ?? 0) > row.proofPhotos.length,
     );
     if (blocked.length > 0) {
       setNotice({
         tone: 'error',
-        text: `${blocked.length} baris belum lengkap (item, lokasi, atau tanggal uji); lihat kolom Hasil.`,
+        text: `${blocked.length} baris belum lengkap (item, lokasi, tanggal uji, atau foto bukti); lihat kolom Hasil.`,
       });
       return false;
     }
@@ -632,8 +774,15 @@ export function RecordPage({
           isKnown={isKnownSerial}
           onCameraSaved={summarizeCameraSave}
           cameraCapacity={draftCapacity}
+          disabled={gated}
+          strict={strict}
           autoFocus
         />
+        {gated ? (
+          <p role="status" className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+            Isi Default dulu: {missing.join(', ')}.
+          </p>
+        ) : null}
       </div>
 
       {notice ? (
@@ -654,12 +803,12 @@ export function RecordPage({
         </p>
       ) : null}
 
-      {selectedCount > 0 && !saving ? (
-        <BulkEditBar
+      {!saving ? (
+        <SelectionBar
           count={selectedCount}
-          onApply={applyBulkEdit}
-          onRemove={() => dropRows(selectedIds())}
-          onClearSelection={() => selectAll(false)}
+          onEdit={() => setBulkOpen(true)}
+          onRemove={() => setRemoveOpen(true)}
+          onClear={() => selectAll(false)}
         />
       ) : null}
 
@@ -689,7 +838,7 @@ export function RecordPage({
           <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
             Belum ada serial. Scan, ketik lalu Enter, tempel, atau impor berkas .qcsn.
           </p>
-        ) : (
+        ) : desktop ? (
           <StagingTable
             rows={rows}
             disabled={saving}
@@ -699,6 +848,15 @@ export function RecordPage({
             onCommitSerial={commitSerial}
             onOpenDetail={openDetail}
             onRemove={removeOne}
+            actorName={me.name}
+          />
+        ) : (
+          <StagingCards
+            rows={rows}
+            disabled={saving}
+            onSelect={select}
+            onSelectAll={selectAll}
+            onOpenDetail={openDetail}
           />
         )}
       </div>
@@ -752,13 +910,30 @@ export function RecordPage({
       </div>
 
       {detailRow && !saving ? (
-        <RowDetailDialog
+        <RowEditDialog
           key={detailRow.clientId}
           row={detailRow}
+          actorName={me.name}
+          commitSerial={(serial) => commitSerial(detailRow.clientId, serial)}
           onClose={() => setDetailId(null)}
           onApply={applyDetail}
         />
       ) : null}
+      {bulkOpen && selectedCount > 0 && !saving ? (
+        <BulkEditDialog
+          open
+          count={selectedCount}
+          onApply={applyBulkEdit}
+          onClose={() => setBulkOpen(false)}
+        />
+      ) : null}
+      <ConfirmRemoveDialog
+        open={removeOpen && selectedCount > 0 && !saving}
+        count={selectedCount}
+        photoCount={selectedPhotoCount}
+        onConfirm={removeSelected}
+        onCancel={() => setRemoveOpen(false)}
+      />
     </div>
   );
 }

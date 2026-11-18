@@ -113,12 +113,12 @@ test('tombol Foto menampilkan jumlah; dialog tanpa tab Pustaka maupun tab Kamera
   expect(within(dialog).queryByRole('tab')).not.toBeInTheDocument();
 });
 
-test('perangkat sentuh: tombol kamera native tampil dengan accept=image/* dan capture=environment', async () => {
+test('perangkat sentuh: tombol kamera bawaan tampil dengan accept=image/* dan capture=environment', async () => {
   const user = userEvent.setup();
   renderField();
   await user.click(openButton());
   const dialog = await screen.findByRole('dialog');
-  expect(within(dialog).getByRole('button', { name: 'Ambil foto dengan kamera' })).toBeEnabled();
+  expect(within(dialog).getByRole('button', { name: 'Kamera bawaan' })).toBeEnabled();
   const input = screen.getByTestId('capture-input');
   expect(input).toHaveAttribute('accept', 'image/*');
   expect(input).toHaveAttribute('capture', 'environment');
@@ -131,9 +131,7 @@ test('desktop (pointer halus): tidak ada tombol kamera, hanya Telusuri', async (
   await user.click(openButton());
   const dialog = await screen.findByRole('dialog');
   expect(within(dialog).getByRole('button', { name: 'Telusuri' })).toBeEnabled();
-  expect(
-    within(dialog).queryByRole('button', { name: 'Ambil foto dengan kamera' }),
-  ).not.toBeInTheDocument();
+  expect(within(dialog).queryByRole('button', { name: 'Kamera bawaan' })).not.toBeInTheDocument();
   expect(screen.queryByTestId('capture-input')).not.toBeInTheDocument();
   expect(within(dialog).queryByRole('tab', { name: 'Kamera' })).not.toBeInTheDocument();
 });
@@ -177,21 +175,21 @@ test('input kamera tanpa multiple; input Telusuri memakai multiple (pilih banyak
   expect(browse).toHaveAttribute('multiple');
 });
 
-test('jepretan berturut-turut: tombol menjadi "Ambil foto lagi (n dari 5)", nonaktif di batas, semuanya diteruskan sekali', async () => {
+test('hasil kamera bawaan berturut-turut: penghitung ikut, batas menonaktifkan tombol, semuanya diteruskan sekali', async () => {
   const user = userEvent.setup();
   const onChange = vi.fn();
   renderField({ initial: [ref('a'), ref('b')], max: 5, onChange });
   await user.click(openButton());
   const dialog = await screen.findByRole('dialog');
-  expect(within(dialog).getByRole('button', { name: 'Ambil foto dengan kamera' })).toBeEnabled();
+  expect(within(dialog).getByRole('button', { name: 'Kamera bawaan' })).toBeEnabled();
   shoot();
-  const again = await within(dialog).findByRole('button', { name: 'Ambil foto lagi (3 dari 5)' });
-  expect(again).toBeEnabled();
+  await within(dialog).findByText(/3 dari 5 foto/);
+  expect(within(dialog).getByRole('button', { name: 'Kamera bawaan' })).toBeEnabled();
   shoot();
   shoot();
-  const full = await within(dialog).findByRole('button', { name: 'Ambil foto lagi (5 dari 5)' });
-  expect(full).toBeDisabled();
-  await user.click(screen.getByRole('button', { name: /^Tambahkan \(3\)/ }));
+  await within(dialog).findByText(/5 dari 5 foto/);
+  expect(within(dialog).getByRole('button', { name: 'Kamera bawaan' })).toBeDisabled();
+  await user.click(await screen.findByRole('button', { name: /^Tambahkan \(3\)/ }));
   await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
   const merged = onChange.mock.calls[0]?.[0] as ProofPhotoRef[];
   expect(merged.map((photo) => photo.id)).toEqual(['a', 'b', 'p1', 'p2', 'p3']);
@@ -210,7 +208,8 @@ test('Telusuri banyak foto melebihi sisa kuota: yang muat masuk, sisanya ditolak
   await waitFor(() =>
     expect(screen.getByRole('button', { name: /^Tambahkan \(2\)/ })).toBeEnabled(),
   );
-  expect(await screen.findByText(/Maksimal 2 berkas per unggahan/)).toBeInTheDocument();
+  expect(await screen.findByText(/Batas 5 foto per entri tercapai/)).toBeInTheDocument();
+  expect(apiMock.mock.calls.filter((call) => call[0] === 'serialProofs.upload')).toHaveLength(2);
 });
 
 test('batas: sisa slot membatasi antrean; penuh = tombol Foto nonaktif', async () => {
@@ -247,21 +246,36 @@ test('buang tetap mencabut foto dari tampilan walau rute hapus gagal (draft disa
   expect(screen.queryByRole('img', { name: /^Foto bukti/ })).not.toBeInTheDocument();
 });
 
-test('galat unggah tampil per foto di antrean dan dialog tetap terbuka', async () => {
+test('galat unggah tampil per foto di antrean, tidak menahan foto lain, dan dialog tetap terbuka', async () => {
   const user = userEvent.setup();
   const onChange = vi.fn();
   apiMock.mockImplementation(async (id: string) => {
-    if (id === 'serialProofs.upload') throw new Error('Kuota foto sementara penuh');
+    if (id === 'serialProofs.upload') {
+      counter += 1;
+      if (counter === 1) throw new Error('Kuota foto sementara penuh');
+      return {
+        id: `p${counter}`,
+        state: 'draft',
+        mime: 'image/webp',
+        size: 100,
+        width: 10,
+        height: 10,
+        filename: `bukti-p${counter}.webp`,
+        error: null,
+      };
+    }
     return { id: 'x' };
   });
   renderField({ onChange });
   await user.click(openButton());
   await screen.findByRole('dialog');
   shoot();
-  await user.click(await screen.findByRole('button', { name: /^Tambahkan \(1\)/ }));
+  shoot();
   expect(await screen.findByText('Kuota foto sementara penuh')).toBeInTheDocument();
-  expect(onChange).not.toHaveBeenCalled();
-  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  await user.click(await screen.findByRole('button', { name: /^Tambahkan \(1\)/ }));
+  await waitFor(() => expect(onChange).toHaveBeenCalledTimes(1));
+  const added = onChange.mock.calls[0]?.[0] as ProofPhotoRef[];
+  expect(added.map((photo) => photo.id)).toEqual(['p2']);
 });
 
 test('disabled mengunci tombol Foto dan tombol buang', () => {
@@ -300,8 +314,8 @@ test('sebagian gagal lalu dialog dibatalkan: foto yang sudah naik tetapi tak dit
   await screen.findByRole('dialog');
   shoot();
   shoot();
-  await user.click(await screen.findByRole('button', { name: /^Tambahkan \(2\)/ }));
   expect(await screen.findByText('Drive penuh')).toBeInTheDocument();
+  await screen.findByRole('button', { name: /^Tambahkan \(1\)/ });
   await user.click(screen.getByRole('button', { name: 'Batal' }));
   await waitFor(() => expect(apiMock).toHaveBeenCalledWith('serialProofs.remove', { id: 'p1' }));
   expect(onChange).not.toHaveBeenCalled();
@@ -309,6 +323,7 @@ test('sebagian gagal lalu dialog dibatalkan: foto yang sudah naik tetapi tak dit
 
 test('dialog foto bukti tidak menawarkan ubah nama berkas', async () => {
   const user = userEvent.setup();
+  apiMock.mockImplementation(() => new Promise(() => undefined));
   renderField();
   await user.click(openButton());
   await screen.findByRole('dialog');

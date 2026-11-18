@@ -19,8 +19,22 @@ import { RecordPage } from './record-page';
 
 const NL = String.fromCharCode(10);
 const ITEMS = [
-  { id: 'i1', label: 'Cisco C9200', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
-  { id: 'i2', label: 'Aruba 2930', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
+  {
+    id: 'i1',
+    label: 'Cisco C9200',
+    buIds: ['b1'],
+    buOptions: [{ id: 'b1', code: 'BU1' }],
+    proofRequired: false,
+    proofMin: 1,
+  },
+  {
+    id: 'i2',
+    label: 'Aruba 2930',
+    buIds: ['b1'],
+    buOptions: [{ id: 'b1', code: 'BU1' }],
+    proofRequired: false,
+    proofMin: 1,
+  },
 ];
 const STICKERS: Record<string, { id: string; name: string }[]> = {
   i1: [
@@ -286,8 +300,8 @@ test('selama simpan tabel terkunci tetapi pemindai tetap menerima serial; yang b
     return baseApi(id, input);
   });
   await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
-  const catatan = await screen.findByRole('textbox', { name: 'Catatan A1' });
-  expect(catatan).toBeDisabled();
+  const tanggal = await screen.findByLabelText('Tanggal uji A1');
+  expect(tanggal).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Detail A1' })).toBeDisabled();
   await paste('LATE1');
   release();
@@ -319,11 +333,12 @@ test('ubah massal dapat mengosongkan catatan', async () => {
   await pickDefaults();
   await userEvent.type(screen.getByLabelText('Catatan'), 'salah');
   await paste('A1');
-  expect(screen.getByLabelText('Catatan A1')).toHaveValue('salah');
+  expect(screen.getByText('Catatan: salah')).toBeInTheDocument();
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris A1' }));
-  await userEvent.click(screen.getByRole('checkbox', { name: 'Kosongkan catatan' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Kosongkan catatan' }));
   await userEvent.click(screen.getByRole('button', { name: 'Terapkan ke 1 baris' }));
-  expect(screen.getByLabelText('Catatan A1')).toHaveValue('');
+  expect(screen.queryByText('Catatan: salah')).toBeNull();
 });
 
 test('daftar lokasi gagal dimuat saat impor: baris ditandai belum terverifikasi, bukan lokasi tak ditemukan', async () => {

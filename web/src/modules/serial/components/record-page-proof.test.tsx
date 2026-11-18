@@ -155,7 +155,8 @@ test('hapus massal baris terpilih membuang foto baris-baris itu saja', async () 
   renderPage();
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih baris AAA111' }));
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris CCC333' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus yang dipilih' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Hapus 2 baris' }));
   await waitFor(() => expect(removeCalls()).toEqual(['p1', 'p3']));
 });
 

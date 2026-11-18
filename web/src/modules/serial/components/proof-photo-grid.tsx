@@ -1,0 +1,94 @@
+import { X } from 'lucide-react';
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import type { ProofPhotoRef } from '../lib/proof-source';
+
+export interface ProofPhotoGridProps {
+  photos: ProofPhotoRef[];
+  /** Tanpa ini foto tidak punya tombol buang. */
+  onRemove?(photo: ProofPhotoRef): void;
+  disabled?: boolean;
+  /** Konteks untuk pembaca layar bila banyak kisi serupa di satu halaman (mis. serial barisnya). */
+  label?: string;
+}
+
+/**
+ * Kisi foto bukti kecil. Klik gambar membuka tampilan besar (dialog yang menutup dengan Esc, tanpa membuang foto);
+ * tombol buang terpisah per foto. Gambar yang gagal dimuat (draf pulih dengan foto yang sudah disapu server) diganti
+ * keterangan dan tombol buangnya tetap ada.
+ */
+export function ProofPhotoGrid({ photos, onRemove, disabled, label }: ProofPhotoGridProps) {
+  const [preview, setPreview] = useState<{ photo: ProofPhotoRef; index: number } | null>(null);
+  const [broken, setBroken] = useState<ReadonlySet<string>>(new Set());
+  const suffix = label ? `, ${label}` : '';
+  if (photos.length === 0) return null;
+  return (
+    <>
+      <ul className="flex flex-wrap gap-2">
+        {photos.map((photo, index) => (
+          <li key={photo.id} className="relative">
+            {broken.has(photo.id) ? (
+              <p className="flex size-14 items-center justify-center rounded-md border border-dashed p-1 text-center text-[10px] leading-tight text-muted-foreground">
+                Foto kedaluwarsa, unggah lagi
+              </p>
+            ) : (
+              <button
+                type="button"
+                aria-label={`Perbesar foto ${index + 1}${suffix}`}
+                className="block cursor-zoom-in rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+                onClick={() => setPreview({ photo, index })}
+              >
+                <img
+                  src={photo.thumbUrl}
+                  alt={`Foto bukti ${index + 1}${suffix}`}
+                  className="size-14 rounded-md border object-cover"
+                  loading="lazy"
+                  onError={() => setBroken((current) => new Set(current).add(photo.id))}
+                />
+              </button>
+            )}
+            {onRemove ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="icon-xs"
+                aria-label={`Buang foto ${index + 1}${suffix}`}
+                disabled={disabled}
+                className="absolute -top-1.5 -right-1.5 rounded-full"
+                onClick={() => onRemove(photo)}
+              >
+                <X />
+              </Button>
+            ) : null}
+          </li>
+        ))}
+      </ul>
+      <Dialog open={preview !== null} onOpenChange={(open) => !open && setPreview(null)}>
+        <DialogContent className="max-w-[calc(100%-1rem)] sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="pr-8">
+              Foto bukti {preview ? preview.index + 1 : ''}
+            </DialogTitle>
+            <DialogDescription className="sr-only">Pratinjau foto ukuran besar</DialogDescription>
+          </DialogHeader>
+          {preview ? (
+            <div className="flex max-h-[70dvh] items-center justify-center overflow-auto rounded-md bg-muted">
+              <img
+                src={preview.photo.thumbUrl}
+                alt={`Pratinjau besar foto ${preview.index + 1}`}
+                className="max-h-[70dvh] max-w-full object-contain"
+              />
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}

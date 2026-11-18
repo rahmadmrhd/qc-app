@@ -6,6 +6,8 @@ import {
   applyResults,
   type Defaults,
   fromQcsnRows,
+  isProofRejection,
+  missingDefaults,
   proofIdsOf,
   removeRows,
   type StagingRow,
@@ -297,4 +299,53 @@ test('applyResults: foto kedaluwarsa atau tak dikenal membuang foto baris (baris
   expect(next[1]).toMatchObject({ result: 'invalid', proofPhotos: [] });
   // Galat lain: foto tetap melekat agar tak hilang tanpa sebab.
   expect(next[2]?.proofPhotos).toHaveLength(1);
+});
+
+test('missingDefaults: daftar label field Default yang kosong menurut urutan form', () => {
+  const full = { itemId: 'i1', buId: 'b1', locationId: 'l1', testDate: '2026-11-12' };
+  expect(missingDefaults(full)).toEqual([]);
+  expect(missingDefaults({ itemId: '', buId: '', locationId: '', testDate: '' })).toEqual([
+    'Item',
+    'Business Unit',
+    'Lokasi',
+    'Tanggal uji',
+  ]);
+  expect(missingDefaults({ ...full, locationId: '' })).toEqual(['Lokasi']);
+  expect(missingDefaults({ ...full, buId: '', testDate: '' })).toEqual([
+    'Business Unit',
+    'Tanggal uji',
+  ]);
+});
+
+test('addSerials menyalin proofMin dari Defaults; tanpa wajib foto kuncinya tidak ada', () => {
+  const strict = addSerials([], 'A1', { ...defaults, proofMin: 3 }, counter(), now).rows;
+  expect(strict[0]?.proofMin).toBe(3);
+  const plain = addSerials([], 'A1', { ...defaults, proofMin: 0 }, counter(), now).rows;
+  expect(plain[0]).not.toHaveProperty('proofMin');
+});
+
+test('applyBulk: ganti item memperbarui proofMin baris terpilih saja', () => {
+  const rows = addSerials(
+    [],
+    `A1${String.fromCharCode(10)}B2`,
+    { ...defaults, proofMin: 2 },
+    counter(),
+    now,
+  ).rows;
+  const [first, second] = rows;
+  if (!first || !second) throw new Error('seed');
+  const next = applyBulk(rows, new Set([first.clientId]), {
+    itemId: 'i2',
+    itemLabel: 'Aruba',
+    buId: 'b1',
+    buLabel: 'BU1',
+    proofMin: 0,
+  });
+  expect(next[0]?.proofMin).toBe(0);
+  expect(next[1]?.proofMin).toBe(2);
+});
+
+test('isProofRejection tidak mengenali pesan wajib foto (foto baris tidak boleh dikosongkan)', () => {
+  expect(isProofRejection('Item ini wajib foto bukti minimal 2')).toBe(false);
+  expect(isProofRejection('Foto sudah kedaluwarsa, unggah ulang')).toBe(true);
 });

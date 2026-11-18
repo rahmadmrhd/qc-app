@@ -20,6 +20,8 @@ const item: ItemDto = {
   model: 'AF 5XHD',
   isCountryLock: true,
   firmware: '',
+  proofRequired: false,
+  proofMin: 1,
   status: 'active',
   aliases: ['AirFiber 5XHD', 'AF-5XHD'],
   imageCount: 2,
@@ -255,4 +257,22 @@ test('tautan Buka Postel tak tampil bila openPostelHref mengembalikan null', () 
   renderView({ postel: postelInfo, openPostelHref });
   expect(screen.queryByRole('link', { name: 'Buka Postel' })).toBeNull();
   expect(openPostelHref).toHaveBeenCalledTimes(1);
+});
+
+test('lencana Wajib foto (min n) hanya tampil untuk item wajib foto', () => {
+  const { unmount } = render(
+    <ItemDetailView
+      item={{ ...item, proofRequired: true, proofMin: 2 }}
+      canEdit
+      canManage
+      statusPending={false}
+      onBack={vi.fn()}
+      onEdit={vi.fn()}
+      onToggleStatus={vi.fn()}
+    />,
+  );
+  expect(screen.getByText('Wajib foto (min 2)')).toBeInTheDocument();
+  unmount();
+  renderView();
+  expect(screen.queryByText(/Wajib foto/)).not.toBeInTheDocument();
 });

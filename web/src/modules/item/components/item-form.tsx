@@ -8,6 +8,7 @@ import type {
 } from '@shared/contract';
 import { firmwareOptionsFor, isValidFirmware } from '@shared/firmware';
 import { normalizeKey } from '@shared/items';
+import { SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { useForm, useStore } from '@tanstack/react-form';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -380,6 +381,60 @@ export function ItemForm({
               </div>
             )}
           </form.Field>
+          <form.Field name="proofRequired">
+            {(field) => (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="item-proof-required"
+                  checked={field.state.value}
+                  onCheckedChange={(next) => {
+                    field.handleChange(next === true);
+                    if (next !== true) form.setFieldValue('proofMin', 1);
+                    clear('proofMin');
+                  }}
+                />
+                <Label htmlFor="item-proof-required" className="font-normal">
+                  Wajib foto bukti
+                </Label>
+              </div>
+            )}
+          </form.Field>
+          <form.Subscribe selector={(state) => state.values.proofRequired}>
+            {(required) =>
+              required ? (
+                <form.Field name="proofMin">
+                  {(field) => (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="item-proof-min">Minimum foto</Label>
+                      <Input
+                        id="item-proof-min"
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={SERIAL_PROOF_LIMITS.perEntryMax}
+                        step={1}
+                        className="w-28"
+                        value={Number.isNaN(field.state.value) ? '' : field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(event) => {
+                          field.handleChange(
+                            event.target.value === '' ? Number.NaN : Number(event.target.value),
+                          );
+                          clear('proofMin');
+                        }}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Saat mencatat Serial Number, item ini baru bisa disimpan kalau fotonya cukup
+                        (1–
+                        {SERIAL_PROOF_LIMITS.perEntryMax}).
+                      </p>
+                      <FieldError errors={[...field.state.meta.errors, serverError('proofMin')]} />
+                    </div>
+                  )}
+                </form.Field>
+              ) : null
+            }
+          </form.Subscribe>
           <form.Subscribe
             selector={(state) => ({
               lock: state.values.isCountryLock,

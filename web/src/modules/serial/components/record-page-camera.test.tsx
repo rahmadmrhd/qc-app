@@ -26,7 +26,14 @@ vi.mock('./camera-scan-button', () => ({
 import { RecordPage } from './record-page';
 
 const ITEMS = [
-  { id: 'i1', label: 'Cisco C9200', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
+  {
+    id: 'i1',
+    label: 'Cisco C9200',
+    buIds: ['b1'],
+    buOptions: [{ id: 'b1', code: 'BU1' }],
+    proofRequired: false,
+    proofMin: 1,
+  },
 ];
 
 beforeEach(() => {

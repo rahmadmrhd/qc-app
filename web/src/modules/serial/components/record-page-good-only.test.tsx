@@ -20,6 +20,8 @@ const ITEM = {
   label: 'Cisco C9200',
   buIds: ['b1'],
   buOptions: [{ id: 'b1', code: 'BU1' }],
+  proofRequired: false,
+  proofMin: 1,
 };
 
 interface SavedRow {
@@ -155,7 +157,7 @@ test('impor .qcsn memuat baris Lolos; draf 5b berisi baris Tidak lolos tetap tam
     screen.getByLabelText('Impor berkas .qcsn'),
     new File([text], 'serial.qcsn', { type: 'application/json' }),
   );
-  expect(await screen.findByLabelText('Catatan IMP1')).toBeInTheDocument();
+  expect(await screen.findByLabelText('Serial IMP1')).toBeInTheDocument();
   first.unmount();
   const base = {
     itemId: 'i1',
@@ -180,7 +182,7 @@ test('impor .qcsn memuat baris Lolos; draf 5b berisi baris Tidak lolos tetap tam
   );
   renderPage();
   expect(dataRows()).toHaveLength(2);
-  expect(screen.getByLabelText('Catatan OLD1')).toBeInTheDocument();
-  expect(screen.getByLabelText('Catatan OLD2')).toBeInTheDocument();
+  expect(screen.getByLabelText('Serial OLD1')).toBeInTheDocument();
+  expect(screen.getByLabelText('Serial OLD2')).toBeInTheDocument();
   expect(screen.getAllByText(/dicatat lewat Lapor Rusak/).length).toBeGreaterThan(0);
 });

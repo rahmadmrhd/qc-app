@@ -156,3 +156,17 @@ test('isQueryableItemId: kosong, koma, dan lebih dari 100 unit UTF-16 ditolak', 
   expect(isQueryableItemId('  ')).toBe(false);
   expect(isQueryableItemId('a,b')).toBe(false);
 });
+
+test('proofMin item dibawa ke baris impor; item yang tak wajib foto lagi membersihkan nilai lama', async () => {
+  const rows = rowsFor([{ id: 'i1' }, { id: 'i2' }]).map((row) =>
+    row.itemId === 'i2' ? { ...row, proofMin: 3 } : row,
+  );
+  const report = await verifyImported(rows, {
+    findItems: async (chunk) =>
+      chunk.map((id) => ({ ...lookup(id), proofMin: id === 'i1' ? 2 : 0 })),
+    stickersOf: async () => [],
+    locations,
+  });
+  expect(report.rows[0]?.proofMin).toBe(2);
+  expect(report.rows[1]).not.toHaveProperty('proofMin');
+});
