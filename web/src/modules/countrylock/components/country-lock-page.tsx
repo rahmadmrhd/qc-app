@@ -26,6 +26,7 @@ import { tipeOptionsFor } from '../lib/type-firmware';
 import { useCatalog } from '../use-catalog';
 import { useCountryLock } from '../use-country-lock';
 import { useInjectTarget } from '../use-inject-target';
+import { CatalogSyncButton } from './catalog-sync-button';
 import { CredentialDialog } from './credential-dialog';
 import { InjectProgressDialog } from './inject-progress-dialog';
 import { PendingList } from './pending-list';
@@ -108,12 +109,16 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-4 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">Country Lock</h1>
-        {pkg ? (
-          <Button type="button" variant="outline" onClick={actions.chooseDir}>
-            <FolderOpen />
-            Ganti folder paket
-          </Button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {/* Sinkron data offline hanya relevan di halaman ini (keputusan pemilik 2026-11-18). */}
+          <CatalogSyncButton bridge={bridge} />
+          {pkg ? (
+            <Button type="button" variant="outline" onClick={actions.chooseDir}>
+              <FolderOpen />
+              Ganti folder paket
+            </Button>
+          ) : null}
+        </div>
       </div>
 
       {loadError ? (
@@ -302,7 +307,7 @@ export function CountryLockPage({ bridge }: { bridge: QcBridge }) {
                 <p className="text-sm text-muted-foreground">
                   Wajib diisi sebelum inject: {missing.join(', ')}.
                   {showTipe && !catalogReady
-                    ? ' Katalog belum tersinkron: tekan tombol sinkron di navbar.'
+                    ? ' Katalog belum tersinkron: tekan tombol sinkron di kanan atas halaman ini.'
                     : ''}
                 </p>
               ) : null}

@@ -137,9 +137,9 @@ Prasyarat: server (staging) sudah memuat rute katalog dengan `DESKTOP_CATALOG_TO
 
 | # | Langkah | Hasil yang diharapkan | Hasil |
 |---|---|---|---|
-| I1 | Buka aplikasi desktop (tanpa login) dengan server terjangkau, buka Country Lock | Navbar menampilkan tombol sinkron dengan "Sinkron terakhir: <waktu>" (layar lebar; di layar sempit hanya ikon, waktu ada di tooltip); panel "Katalog Tipe" TIDAK ada; dropdown Tipe, Business Unit, dan Lokasi tampil di form inject | |
+| I1 | Buka aplikasi desktop (tanpa login) dengan server terjangkau, buka Country Lock | Baris judul halaman Country Lock menampilkan tombol sinkron dengan "Sinkron terakhir: <waktu>" (dan tombol itu TIDAK ada di navbar/halaman lain) (layar lebar; di layar sempit hanya ikon, waktu ada di tooltip); panel "Katalog Tipe" TIDAK ada; dropdown Tipe, Business Unit, dan Lokasi tampil di form inject | |
 | I2 | Pilih Merk, buka dropdown Tipe dan ketik sebagian nama | Hanya Tipe milik merk itu yang tampil dan tersaring sesuai ketikan | |
-| I3 | Matikan jaringan (atau hentikan server), tutup lalu buka aplikasi, buka Country Lock | Dropdown Tipe, BU, dan Lokasi tetap terisi dari cache; tombol sinkron di navbar berwarna amber dan tooltipnya "Tidak dapat terhubung ke server" tanpa menghapus katalog | |
+| I3 | Matikan jaringan (atau hentikan server), tutup lalu buka aplikasi, buka Country Lock | Dropdown Tipe, BU, dan Lokasi tetap terisi dari cache; tombol sinkron di halaman Country Lock berwarna amber dan tooltipnya "Tidak dapat terhubung ke server" tanpa menghapus katalog | |
 | I4 | Ubah instruksi/stiker sebuah item di web, tunggu deploy/memo server (30 dtk), tekan Sinkronkan | Perubahan muncul; gambar baru terunduh | |
 | I5 | Build desktop tanpa `CATALOG_TOKEN` | Tombol sinkron di navbar dan dropdown Tipe/BU/Lokasi tidak tampil; Country Lock tetap berjalan seperti biasa | |
 | I6 | Build dengan `CATALOG_TOKEN` salah | Setelah menekan tombol sinkron: tooltipnya "Server menolak sinkron"; tidak ada galat lain | |
@@ -150,10 +150,10 @@ Prasyarat: server (staging) sudah memuat rute katalog dengan `DESKTOP_CATALOG_TO
 | I12 | Pilih Tipe yang punya satu BU; lalu Tipe yang punya dua BU; lalu Tipe tanpa BU | BU terisi sendiri pada Tipe satu BU; pada Tipe dua BU kosong dan hanya dua BU itu yang ditawarkan; pada Tipe tanpa BU kolom BU nonaktif dan kosong | |
 | I13 | Pilih BU dan Lokasi, inject, lalu lihat daftar pending; tutup dan buka lagi aplikasi | Kolom BU dan Lokasi memuat "<kode> - <nama>"; setelah dibuka lagi pilihan terakhir masih terpilih | |
 | I14 | Matikan jaringan, buka aplikasi, inject dengan BU dan Lokasi terpilih | Pilihan BU/Lokasi tetap tersedia dari cache dan tercatat di pending | |
-| I15 | Ubah nama sebuah lokasi di web (atau nonaktifkan), tekan tombol sinkron di navbar | Pilihan Lokasi mengikuti perubahan; lokasi nonaktif hilang dan pilihan lama yang sudah tak ada dibuang | |
+| I15 | Ubah nama sebuah lokasi di web (atau nonaktifkan), tekan tombol sinkron di halaman Country Lock | Pilihan Lokasi mengikuti perubahan; lokasi nonaktif hilang dan pilihan lama yang sudah tak ada dibuang | |
 | I16 | Munculkan dialog Kredensial perangkat (tombol Kredensial) | Password tampil apa adanya, tidak tersamar | |
 | I17 | Biarkan salah satu dari Merk/Tipe/Firmware/BU/Lokasi kosong, sambungkan perangkat | Tombol Inject nonaktif; petunjuk "Wajib diisi sebelum inject: ..." menyebut yang kurang; dengan Auto Inject menyala perangkat TIDAK diinject sampai form lengkap, lalu jalan sendiri | |
-| I18 | Hapus folder `<userData>/catalog`, buka aplikasi tanpa jaringan | Inject nonaktif dengan petunjuk "Katalog belum tersinkron: tekan tombol sinkron di navbar" | |
+| I18 | Hapus folder `<userData>/catalog`, buka aplikasi tanpa jaringan | Inject nonaktif dengan petunjuk "Katalog belum tersinkron: tekan tombol sinkron di halaman Country Lock" | |
 | I10 | Di web, matikan centang Country lock pada item berfirmware, simpan | Kolom Firmware hilang dan tersimpan kosong; item keluar dari katalog desktop pada sinkron berikutnya | |
 
 ## Pengisian hasil
