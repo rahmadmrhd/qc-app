@@ -189,7 +189,8 @@ test('ubah massal tiga baris terpilih mengganti lokasi dan hanya baris itu yang 
   for (const serial of ['A1', 'A2', 'A4']) {
     await userEvent.click(screen.getByRole('checkbox', { name: `Pilih baris ${serial}` }));
   }
-  expect(screen.getByText('Ubah massal (3 baris terpilih)')).toBeInTheDocument();
+  expect(screen.getByText('3 dipilih')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
   await pickLink(screen, 'Lokasi (ubah massal)', 'Surabaya (SBY)');
   await userEvent.click(screen.getByRole('button', { name: 'Terapkan ke 3 baris' }));
   const locations = dataRows().map((row) =>
@@ -212,9 +213,10 @@ test('mengganti item pada baris mengosongkan stiker; detail memuat ulang dengan 
 
   // Ganti item lewat ubah massal: pilihan stiker dikosongkan (bawaan semua yang berlaku).
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris A1' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
   await pickLink(screen, 'Item (ubah massal)', 'Aruba 2930');
   await userEvent.click(screen.getByRole('button', { name: 'Terapkan ke 1 baris' }));
-  expect(screen.getByText('Semua stiker yang berlaku')).toBeInTheDocument();
+  expect(screen.queryByText(/^Stiker A ×/)).toBeNull();
 
   await userEvent.click(screen.getByRole('button', { name: 'Detail A1' }));
   const next = await screen.findByRole('dialog');
