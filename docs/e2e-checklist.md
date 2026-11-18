@@ -370,3 +370,15 @@ Spek: `docs/superpowers/specs/2026-11-13-panduan-interaktif-design.md` (bagian 4
 | 230 | Antre komentar dan centang pada task yang nanti dibatalkan pelaku lain; tutup aplikasi; nyalakan sinyal; tunggu; buka aplikasi | Toast beralasan muncul tepat sekali (muat ulang dua kali tidak mengulang toast); komentar memakai toast bertahan dengan "Salin teks"; centang memakai toast "N perubahan centang tidak dapat dikirim: <alasan>" | PWA FR-P23, FR-P18, FR-P22 |
 | 231 | Firefox (desktop) atau Safari (iOS), tanpa `SyncManager`: offline, antre, tutup aplikasi, nyalakan sinyal, lalu buka aplikasi | Entri terkirim saat aplikasi dibuka; tidak ada galat terkait sync di konsol | PWA FR-P23, FR-P17 |
 | 232 | Dua tab akun sama terbuka, antrean berisi komentar dan task baru, nyalakan sinyal, dan biarkan Background Sync dan penguras halaman berjalan bersamaan | Setiap entri terkirim sekali; tidak ada komentar atau task ganda; kedua tab menampilkan data yang sama tanpa penanda tertinggal | PWA FR-P23, FR-P22 |
+
+### Rilis server percobaan (CI/CD, saklar RELEASE_FLOW)
+
+> Dijalankan pemilik setelah PR pipeline rilis dipromosikan ke `main`. Bukan skenario aplikasi: memeriksa alur GitHub Actions yang tak dapat diuji tanpa GitHub.
+
+| # | Langkah | Hasil yang diharapkan | Rancangan |
+|---|---|---|---|
+| 233 | `RELEASE_FLOW` kosong: merge PR kecil ke `dev`, lalu `dev` ke `main` | Staging dan production ter-deploy seperti biasa; `/api/ping` memuat `version` `0.0.0` dan `build` = SHA; `release.yml` dilewati | Rilis semver 5.4 |
+| 234 | Setel `RELEASE_FLOW=tag`; merge PR biasa (bukan cabang `release/server-v...`) ke `main` | `deploy-server.yml` melewati production; `release.yml` berjalan dan melewati PR itu tanpa galat | Rilis semver 3, 5.4 |
+| 235 | `bun run release:prepare server 1.0.0` lalu merge PR rilis dengan merge commit | `release.yml` lolos meta dan guard, image bertag SHA dan `server-v1.0.0`, production ter-deploy, tag dan GitHub Release berisi changelog, `main` tergabung ke `dev` | Rilis semver 5.3, 5.4 |
+| 236 | Jalankan ulang `release.yml` lewat `workflow_dispatch` dengan versi yang sama | Tidak men-deploy ulang secara membabi buta dan tidak membuat tag ganda (tag pada SHA sama dilewati) | Rilis semver 5.4 |
+| 237 | Merge PR rilis dengan squash (bukan merge commit) | `meta` menolak (identitas); tidak ada build, deploy, atau tag | Rilis semver 5.4 |
