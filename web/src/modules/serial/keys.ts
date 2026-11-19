@@ -23,8 +23,9 @@ export const serialKeys = {
   itemsById: (ids: readonly string[]) => ['serial', 'itemsById', [...ids].sort()] as const,
   locationOptions: ['serial', 'locationOptions'] as const,
   buOptions: ['serial', 'buOptions'] as const,
-  stickerOptions: (itemId: string, buId: string) =>
-    ['serial', 'stickerOptions', itemId, buId] as const,
+  /** `serialId` kosong = daftar biasa; terisi = jalur cek ulang serial itu (kunci terpisah, tak saling membocorkan). */
+  stickerOptions: (itemId: string, buId: string, serialId = '') =>
+    ['serial', 'stickerOptions', itemId, buId, serialId] as const,
 };
 
 /** Foto bukti QC: awalan kunci sumber `FileDialog` (tanpa daftar; foto bukti tak punya pustaka). */

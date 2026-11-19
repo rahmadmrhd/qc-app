@@ -84,7 +84,11 @@ export function RowEditDialog({
   const [chosen, setChosen] = useState<Map<string, number> | null>(() =>
     row.stickers === null ? null : new Map(row.stickers.map((s) => [s.stickerId, s.qty])),
   );
-  const { options, state, loaded } = useApplicableStickers(item.itemId, item.buId);
+  const { options, state, loaded } = useApplicableStickers(
+    item.itemId,
+    item.buId,
+    row.existing?.id,
+  );
   // Baris Cek ulang (serial sudah tercatat): item dikunci ke catatan, BU dibatasi, Sample tidak berlaku.
   const existing = row.existing;
   const { bus, loading: busLoading } = useWritableBus();

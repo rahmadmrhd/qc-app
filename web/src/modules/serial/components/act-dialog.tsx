@@ -185,7 +185,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
   // Stiker yang berlaku mengikuti BU tujuan (hasil lolos boleh memindahkan BU).
   const stickerBuId = kind === 'recheck' && result === 'pass' ? targetBu.buId : serial.buId;
   const stickerOptions = useQuery({
-    ...serialStickerOptionsQueryOptions(serial.itemId, stickerBuId),
+    ...serialStickerOptionsQueryOptions(serial.itemId, stickerBuId, serial.id),
     enabled: kind === 'recheck' && stickerBuId !== '',
   });
   const { bus, loading: busLoading } = useWritableBus(kind === 'recheck');

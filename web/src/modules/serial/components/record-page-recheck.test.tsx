@@ -1,6 +1,6 @@
 import type { MeDto, SerialExistingDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { configure, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { expectLinkValue, linkOptionNames, pickLink } from '@/test/link-field';
@@ -12,6 +12,9 @@ const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
 const toastSuccess = vi.hoisted(() => vi.fn());
 vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: vi.fn(), dismiss: vi.fn() } }));
+
+// Pencarian serial memakai jeda (debounce): di bawah beban tes paralel waktu tunggu bawaan 1 dtk terlalu sempit.
+configure({ asyncUtilTimeout: 5000 });
 
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
@@ -40,6 +43,9 @@ function existing(over: Partial<SerialExistingDto> = {}): SerialExistingDto {
 let found: SerialExistingDto[] = [];
 let lookupCalls: string[][] = [];
 let lookupFails = false;
+/** Bila diisi, jawaban `serials.lookupMany` tertahan sampai janji ini diselesaikan (tes deterministik, tanpa waktu). */
+let lookupGate: Promise<void> | null = null;
+let stickerCalls: { itemId: string; buId: string; serialId?: unknown }[] = [];
 let saved: {
   serial: string;
   itemId: string;
@@ -55,6 +61,8 @@ beforeEach(() => {
   found = [];
   lookupCalls = [];
   lookupFails = false;
+  lookupGate = null;
+  stickerCalls = [];
   saved = [];
   saveResult = 'created';
   toastSuccess.mockClear();
@@ -82,7 +90,15 @@ beforeEach(() => {
       });
     }
     if (id === 'serials.stickerOptions') {
-      if (input.itemId !== 'i1') return Promise.reject(new Error('tidak ditemukan'));
+      stickerCalls.push({
+        itemId: String(input.itemId),
+        buId: String(input.buId),
+        serialId: input.serialId,
+      });
+      // Item catatan (i9) tak terlihat bagi pengguna: hanya jalur cek ulang (serialId) yang boleh memuat stikernya.
+      if (input.itemId !== 'i1' && input.serialId === undefined) {
+        return Promise.reject(new Error('tidak ditemukan'));
+      }
       return Promise.resolve({
         stickers: [{ id: 's1', name: 'Stiker A', alias: '', typeName: 'Jenis', defaultQty: 1 }],
       });
@@ -91,7 +107,8 @@ beforeEach(() => {
       lookupCalls.push(input.serials as string[]);
       if (lookupFails) return Promise.reject(new Error('jaringan'));
       const asked = new Set(input.serials as string[]);
-      return Promise.resolve({ found: found.filter((entry) => asked.has(entry.serial)) });
+      const answer = () => ({ found: found.filter((entry) => asked.has(entry.serial)) });
+      return lookupGate ? lookupGate.then(answer) : Promise.resolve(answer());
     }
     if (id === 'serials.saveBatch') {
       const rows = input.rows as {
@@ -279,16 +296,83 @@ test('pencarian gagal (jaringan): Simpan berhenti dengan pesan dan tidak mengiri
 
 test('Ubah baris dibuka sebelum pencarian selesai: setelah baris menjadi Cek ulang dialog dipasang ulang dengan item catatan', async () => {
   found = [existing()];
+  // Jawaban pencarian ditahan: dialog pasti terbuka SEBELUM baris menjadi Cek ulang (tanpa bergantung waktu).
+  let release: () => void = () => undefined;
+  lookupGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   renderPage();
   await pickDefaults();
   await paste('OLD001');
   await userEvent.click(await screen.findByRole('button', { name: 'Detail OLD001' }));
   expect(await screen.findByRole('dialog')).toBeInTheDocument();
-  // Pencarian selesai selagi dialog terbuka: dialog dipasang ulang dalam bentuk Cek ulang (item terkunci, tanpa Sample).
+  // Dialog masih berbentuk baris biasa (item dapat dipilih, ada Sample) selagi pencarian tertahan.
+  await waitFor(() => expect(lookupCalls).toHaveLength(1));
+  expect(screen.getByRole('checkbox', { name: 'Sample' })).toBeInTheDocument();
+  release();
   await waitFor(() =>
     expect(screen.getByRole('textbox', { name: 'Item baris' })).toHaveValue('Item Catatan'),
   );
   expect(screen.queryByRole('checkbox', { name: 'Sample' })).toBeNull();
+});
+
+test('Simpan menanyakan ulang SEMUA baris: serial yang kini sudah tercatat menghentikan Simpan, lalu Simpan lagi mengirim stiker kosong', async () => {
+  renderPage();
+  await pickDefaults();
+  await paste('NEW002');
+  await rowOf('NEW002');
+  await waitFor(() => expect(lookupCalls).toHaveLength(1));
+  // NEW002 belum ada saat ditanyakan: baris biasa, semua stiker berlaku (Stiker A) tercentang saat dikirim.
+  // Sesudahnya BU lain mencatatnya.
+  found = [existing({ serial: 'NEW002', id: 'sn-new' })];
+  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  expect(await screen.findByText(/1 baris berubah/)).toBeInTheDocument();
+  expect(saved).toHaveLength(0);
+  const row = await rowOf('NEW002');
+  expect(within(row).getByText('Cek ulang')).toBeInTheDocument();
+  expect(within(row).getByText('Item Catatan')).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  await waitFor(() => expect(saved).toHaveLength(1));
+  expect(saved[0]).toMatchObject({ serial: 'NEW002', itemId: 'i9', buId: 'b2', stickers: [] });
+  // Pencarian ulang terjadi di tiap Simpan (bukan hanya untuk baris yang belum pernah ditanyakan).
+  expect(lookupCalls.length).toBeGreaterThanOrEqual(3);
+});
+
+test('baris Cek ulang yang serialnya kini tak ada lagi kembali biasa (stiker bawaan) dan Simpan berhenti untuk ditinjau', async () => {
+  found = [existing()];
+  renderPage();
+  await pickDefaults();
+  await paste('OLD001');
+  await waitFor(() => expect(screen.getByText('Cek ulang')).toBeInTheDocument());
+  found = [];
+  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  expect(await screen.findByText(/1 baris berubah/)).toBeInTheDocument();
+  expect(saved).toHaveLength(0);
+  expect(screen.queryByText('Cek ulang')).toBeNull();
+});
+
+test('stiker baris Cek ulang dimuat dengan serialId; baris biasa tanpa serialId (kunci cache terpisah)', async () => {
+  found = [existing()];
+  renderPage();
+  await pickDefaults();
+  await paste('OLD001\nNEW002');
+  await waitFor(() => expect(screen.getByText('Cek ulang')).toBeInTheDocument());
+  await userEvent.click(screen.getByRole('button', { name: 'Detail OLD001' }));
+  const dialog = await screen.findByRole('dialog');
+  // Item i9 tak terlihat: daftar stiker tetap termuat karena permintaan membawa serialId catatan.
+  expect(await within(dialog).findByRole('checkbox', { name: 'Stiker A' })).not.toBeChecked();
+  expect(stickerCalls.some((call) => call.itemId === 'i9' && call.serialId === 'sn-old')).toBe(
+    true,
+  );
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
+
+  await userEvent.click(screen.getByRole('button', { name: 'Detail NEW002' }));
+  const plain = await screen.findByRole('dialog');
+  await within(plain).findByRole('checkbox', { name: 'Stiker A' });
+  const normalCalls = stickerCalls.filter((call) => call.itemId === 'i1');
+  expect(normalCalls.length).toBeGreaterThan(0);
+  for (const call of normalCalls) expect(call.serialId).toBeUndefined();
 });
 
 test('pencarian gagal (jaringan): baris tetap biasa dan halaman tidak rusak', async () => {

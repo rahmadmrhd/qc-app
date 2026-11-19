@@ -210,36 +210,61 @@ export function RecordPage({
   // Serial yang sudah tercatat (keunikan se-sistem): serial baru di draft ditanyakan ke server per kelompok; yang sudah
   // ada menjadi baris Cek ulang. Satu rantai janji agar permintaan tidak tumpang tindih dan Simpan bisa menunggunya.
   const lookedUpRef = useRef(new Set<string>());
-  const lookupChainRef = useRef<Promise<string | null>>(Promise.resolve(null));
-  /** Menjalankan pencarian untuk baris yang belum ditanyakan; hasilnya `null` bila semua sukses, selain itu pesan galat. */
-  const runLookup = useCallback((): Promise<string | null> => {
-    const task = lookupChainRef.current.then(async (): Promise<string | null> => {
-      let failure: string | null = null;
-      // Pasangan (baris, serial) yang sudah tidak ada di draft dilupakan (tak menumpuk).
-      const present = new Set(rowsRef.current.map(lookupKeyOf));
-      for (const key of lookedUpRef.current) if (!present.has(key)) lookedUpRef.current.delete(key);
-      const pendingRows = rowsToLookup(rowsRef.current, lookedUpRef.current);
-      const pending = [...new Set(pendingRows.map((row) => normalizeSerial(row.serial)))];
-      for (let at = 0; at < pending.length; at += SERIAL_LIMITS.batchRows) {
-        const chunk = new Set(pending.slice(at, at + SERIAL_LIMITS.batchRows));
-        try {
-          const data = await queryClient.fetchQuery(serialLookupManyQueryOptions([...chunk]));
-          for (const row of pendingRows) {
-            if (chunk.has(normalizeSerial(row.serial))) lookedUpRef.current.add(lookupKeyOf(row));
-          }
-          const next = applyLookup(rowsRef.current, chunk, data.found);
-          if (next !== rowsRef.current) setAllRows(next);
-        } catch (caught) {
-          // Gagal (jaringan/server): baris dibiarkan. Simpan menolak jalan terus (stiker bawaan akan salah dipotong
-          // bila serialnya ternyata sudah ada), sedangkan pencarian latar belakang diam saja.
-          failure = describeError(caught);
+  interface LookupOutcome {
+    /** `null` bila semua permintaan sukses, selain itu pesan galat. */
+    failure: string | null;
+    /** Banyak baris yang berubah bentuk (jadi Cek ulang, tak lagi Cek ulang, atau datanya berubah). */
+    changed: number;
+  }
+  const lookupChainRef = useRef<Promise<LookupOutcome>>(
+    Promise.resolve({ failure: null, changed: 0 }),
+  );
+  /**
+   * Menjalankan pencarian serial yang sudah ada. Bawaan: hanya baris yang BELUM pernah ditanyakan. `all` (dipakai
+   * Simpan): SEMUA baris ditanyakan ulang, karena orang lain bisa mencatat serial itu sejak terakhir ditanyakan.
+   */
+  const runLookup = useCallback(
+    (all = false): Promise<LookupOutcome> => {
+      const task = lookupChainRef.current.then(async (): Promise<LookupOutcome> => {
+        let failure: string | null = null;
+        let changed = 0;
+        // Pasangan (baris, serial) yang sudah tidak ada di draft dilupakan (tak menumpuk).
+        const present = new Set(rowsRef.current.map(lookupKeyOf));
+        for (const key of lookedUpRef.current) {
+          if (!present.has(key)) lookedUpRef.current.delete(key);
         }
-      }
-      return failure;
-    });
-    lookupChainRef.current = task;
-    return task;
-  }, [queryClient, setAllRows]);
+        const pendingRows = all
+          ? rowsRef.current.filter((row) => normalizeSerial(row.serial) !== '')
+          : rowsToLookup(rowsRef.current, lookedUpRef.current);
+        const pending = [...new Set(pendingRows.map((row) => normalizeSerial(row.serial)))];
+        for (let at = 0; at < pending.length; at += SERIAL_LIMITS.batchRows) {
+          const chunk = new Set(pending.slice(at, at + SERIAL_LIMITS.batchRows));
+          try {
+            const data = await queryClient.fetchQuery(serialLookupManyQueryOptions([...chunk]));
+            for (const row of pendingRows) {
+              if (chunk.has(normalizeSerial(row.serial))) {
+                lookedUpRef.current.add(lookupKeyOf(row));
+              }
+            }
+            const before = rowsRef.current;
+            const next = applyLookup(before, chunk, data.found);
+            if (next !== before) {
+              changed += next.filter((row, index) => row !== before[index]).length;
+              setAllRows(next);
+            }
+          } catch (caught) {
+            // Gagal (jaringan/server): baris dibiarkan. Simpan menolak jalan terus (stiker bawaan akan salah dipotong
+            // bila serialnya ternyata sudah ada), sedangkan pencarian latar belakang diam saja.
+            failure = describeError(caught);
+          }
+        }
+        return { failure, changed };
+      });
+      lookupChainRef.current = task;
+      return task;
+    },
+    [queryClient, setAllRows],
+  );
   // Berubah hanya bila ada baris baru atau serial yang diganti (bukan tiap suntingan lain); itu yang memicu pencarian.
   const serialsKey = useMemo(() => rows.map(lookupKeyOf).join('|'), [rows]);
   useEffect(() => {
@@ -247,7 +272,7 @@ export function RecordPage({
       lookedUpRef.current.clear();
       return;
     }
-    const timer = setTimeout(() => void runLookup(), LOOKUP_DELAY_MS);
+    const timer = setTimeout(() => void runLookup(false), LOOKUP_DELAY_MS);
     return () => clearTimeout(timer);
   }, [serialsKey, runLookup]);
 
@@ -688,18 +713,28 @@ export function RecordPage({
   async function handleSave(external = false): Promise<boolean> {
     if (saving || importing || preparingRef.current || rowsRef.current.length === 0) return false;
     preparingRef.current = true;
-    let lookupFailure: string | null;
+    let outcome: { failure: string | null; changed: number };
     try {
-      // Serial yang baru ditambahkan mungkin sudah tercatat: pastikan sudah ditanyakan (baris menjadi Cek ulang dengan
-      // stiker kosong) sebelum dikirim, supaya bawaan "semua stiker" tidak memotong stok pada cek ulang.
-      lookupFailure = await runLookup();
+      // Orang lain bisa mencatat serial yang sama sejak terakhir ditanyakan: SEMUA baris ditanyakan ulang sekarang.
+      // Baris yang ternyata sudah ada menjadi Cek ulang (stiker bawaan kosong), supaya bawaan "semua stiker" tidak
+      // memotong stok pada cek ulang.
+      outcome = await runLookup(true);
     } finally {
       preparingRef.current = false;
     }
-    if (lookupFailure !== null) {
+    if (outcome.failure !== null) {
       setNotice({
         tone: 'error',
-        text: `Pengecekan serial yang sudah tercatat gagal: ${lookupFailure}. Coba simpan lagi.`,
+        text: `Pengecekan serial yang sudah tercatat gagal: ${outcome.failure}. Coba simpan lagi.`,
+      });
+      return false;
+    }
+    if (outcome.changed > 0) {
+      // Status serial berubah pada saat Simpan: jangan langsung mengirim; pengguna meninjau baris yang berubah (lencana
+      // Cek ulang atau pesan bermasalah di kolom Hasil, stiker, dan BU) lalu menekan Simpan lagi.
+      setNotice({
+        tone: 'warn',
+        text: `${outcome.changed} baris berubah karena ada serial yang kini sudah tercatat atau statusnya berubah (jadi Cek ulang atau bermasalah). Periksa baris itu (stiker dan BU), lalu tekan Simpan lagi.`,
       });
       return false;
     }

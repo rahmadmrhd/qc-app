@@ -217,3 +217,24 @@ test('Cek ulang pada Dilaporkan (recheck_pass) juga dapat memindahkan BU; rechec
   expect(lastAct()).toMatchObject({ action: 'recheck_fail' });
   expect(lastAct()).not.toHaveProperty('buId');
 });
+
+test('stiker dimuat dengan serialId serial yang dicek ulang (item nonaktif/tak terlihat tidak menghalangi)', async () => {
+  renderDialog(MOVED);
+  await expectLinkValue(screen, 'Business Unit', 'BU2');
+  await waitFor(() =>
+    expect(apiMock).toHaveBeenCalledWith('serials.stickerOptions', {
+      itemId: 'i1',
+      buId: 'b2',
+      serialId: 's1',
+    }),
+  );
+  // BU tujuan diganti: daftar stiker mengikuti BU tujuan, tetap dengan serialId yang sama.
+  await pickLink(screen, 'Business Unit', 'BU3');
+  await waitFor(() =>
+    expect(apiMock).toHaveBeenCalledWith('serials.stickerOptions', {
+      itemId: 'i1',
+      buId: 'b3',
+      serialId: 's1',
+    }),
+  );
+});

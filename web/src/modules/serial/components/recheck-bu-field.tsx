@@ -18,17 +18,19 @@ export function useWritableBus(enabled = true): { bus: BuChoice[] | null; loadin
 
 /**
  * Pilihan BU untuk `allowedIds` (BU yang lolos aturan cek ulang menurut server), dengan kode dari daftar BU tulis;
- * `fallback` mengisi kode BU yang belum ada di daftar itu (mis. BU saat ini serial). Urutan `allowedIds` dipertahankan.
+ * `fallback` mengisi kode BU yang belum ada di daftar itu (mis. BU saat ini serial). Urutan `allowedIds` dipertahankan;
+ * id yang kodenya tidak diketahui dibuang (tidak pernah tampil sebagai id mentah).
  */
 export function choicesFor(
   allowedIds: readonly string[],
   bus: readonly BuChoice[] | null,
   fallback: readonly BuChoice[] = [],
 ): BuChoice[] {
-  return allowedIds.map((id) => ({
-    id,
-    code: bus?.find((bu) => bu.id === id)?.code ?? fallback.find((bu) => bu.id === id)?.code ?? id,
-  }));
+  return allowedIds.flatMap((id) => {
+    const code = bus?.find((bu) => bu.id === id)?.code ?? fallback.find((bu) => bu.id === id)?.code;
+    // Id yang kodenya tidak diketahui disembunyikan: label tak boleh berupa id mentah.
+    return code === undefined ? [] : [{ id, code }];
+  });
 }
 
 export interface RecheckBuFieldProps {
