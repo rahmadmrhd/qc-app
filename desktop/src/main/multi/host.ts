@@ -57,6 +57,7 @@ export interface MultiHost {
 }
 
 const MSG_SINGLE_BUSY = 'Hentikan inject tunggal dulu';
+const MSG_BRIDGE_BUSY = 'Tidak dapat menyiapkan bridge saat inject sedang berjalan';
 
 export function createMultiHost(deps: MultiHostDeps): MultiHost {
   // Pertahanan ganda: pesan hasil "Siapkan bridge router" disamarkan lagi di sini (sandi server dari paket aktif),
@@ -185,6 +186,10 @@ export function createMultiHost(deps: MultiHostDeps): MultiHost {
           engine.setRegistered(args[0] as string[]);
           return undefined;
         case 'multiPrepareBridge':
+          // Mengubah bridge port router memutus perangkat yang sedang di-inject (keputusan pemilik 2026-11-19).
+          if (deps.isSingleInjecting() || engine.isBusy() || busy(engine.snapshot())) {
+            throw new IpcError(MSG_BRIDGE_BUSY);
+          }
           return engine.prepareBridge();
         case 'multiSnapshot':
           return engine.snapshot();

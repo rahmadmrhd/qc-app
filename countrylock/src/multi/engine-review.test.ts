@@ -4,7 +4,7 @@
 import { describe, expect, test } from 'bun:test';
 import { getEventListeners } from 'node:events';
 import { createMultiEngine, EMIT_MIN_INTERVAL_MS, type MultiStartConfig } from './engine';
-import { createFakePorts } from './fakes';
+import { createFakePorts, serialOfIp } from './fakes';
 import type { MultiSnapshot } from './snapshot';
 import type { Credential } from './types';
 
@@ -215,6 +215,26 @@ describe('engine: blokir draft dan antrean manual', () => {
     await f.advance(0);
     expect(statusOf(engine, MACS[1] as string)).toBe('ready');
     expect(statusOf(engine, MACS[2] as string)).toBe('ready');
+    await engine.stop();
+  });
+});
+
+describe('engine: Inject All dan perangkat terdaftar', () => {
+  test('Inject All melewati perangkat alreadyRegistered; inject manual per perangkat tetap boleh', async () => {
+    const f = createFakePorts();
+    const engine = createMultiEngine(f.ports);
+    f.state.leases = MACS.slice(0, 3).map((mac, i) => ({ ip: IPS[i] as string, mac }));
+    engine.setRegistered([serialOfIp(IPS[1] as string)]);
+    engine.start(cfg());
+    await f.advance(0);
+    expect(device(engine, MACS[1] as string)?.alreadyRegistered).toBe(true);
+    engine.injectAll();
+    await f.advance(0);
+    expect(f.calls.inject.map((c) => c.ip).sort()).toEqual([IPS[0] as string, IPS[2] as string]);
+    expect(statusOf(engine, MACS[1] as string)).toBe('ready');
+    engine.injectDevice(MACS[1] as string);
+    await f.advance(0);
+    expect(statusOf(engine, MACS[1] as string)).toBe('injecting');
     await engine.stop();
   });
 });

@@ -534,6 +534,28 @@ describe('aksi massal dan bridge router', () => {
     await waitFor(() => expect(callsOf(bridge, 'prepareBridge')).toHaveLength(1));
   });
 
+  test('Siapkan bridge router nonaktif dengan petunjuk saat ada perangkat injecting atau antri; aktif lagi setelahnya', async () => {
+    const bridge = await openMulti();
+    await startMulti(bridge);
+    const button = screen.getByRole('button', { name: 'Siapkan bridge router' });
+    expect(button).toBeEnabled();
+    act(() =>
+      bridge.emitMulti({ running: true, devices: [device(MAC1, { status: 'injecting' })] }),
+    );
+    await waitFor(() => expect(button).toBeDisabled());
+    expect(button).toHaveAttribute(
+      'title',
+      'Tidak dapat menyiapkan bridge saat inject sedang berjalan',
+    );
+    expect(
+      screen.getByText('Tidak dapat menyiapkan bridge saat inject sedang berjalan.'),
+    ).toBeInTheDocument();
+    act(() => bridge.emitMulti({ running: true, devices: [device(MAC1, { status: 'queued' })] }));
+    await waitFor(() => expect(button).toBeDisabled());
+    act(() => bridge.emitMulti({ running: true, devices: [device(MAC1, { status: 'success' })] }));
+    await waitFor(() => expect(button).toBeEnabled());
+  });
+
   test('Mulai tidak pernah menyiapkan bridge router sendiri', async () => {
     const bridge = await openMulti();
     await startMulti(bridge);

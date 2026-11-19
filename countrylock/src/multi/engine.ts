@@ -78,7 +78,10 @@ export interface MultiEngine {
   injectDevice(mac: string): void;
   /** Perangkat antre kembali `ready`; yang sedang `injecting` diminta batal (menjadi `failed` "Dibatalkan"). */
   cancelDevice(mac: string): void;
-  /** Menyapu perangkat `ready` sekali (yang sudah di-inject di sesi ini dilewati) dan mencabut penghentian antrean. */
+  /**
+   * Menyapu perangkat `ready` sekali dan mencabut penghentian antrean. Yang sudah di-inject di sesi ini atau serialnya
+   * sudah terdaftar di draft dilewati (inject manual per perangkat tetap boleh).
+   */
   injectAll(): void;
   /** Menghentikan antrean: yang `queued` dibatalkan, yang `injecting` dibiarkan selesai. */
   stopQueue(): void;
@@ -1101,8 +1104,11 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
         return;
       }
       for (const d of [...r.devices.values()]) {
-        // Perangkat yang sudah di-inject pada sesi ini tidak disapu ulang (mis. muncul lagi setelah dicabut).
-        if (d.status === 'ready' && !d.injectedThisSession) queueDevice(r, d, true);
+        // Dilewati: perangkat yang sudah di-inject pada sesi ini (mis. muncul lagi setelah dicabut) dan yang serialnya
+        // sudah terdaftar di draft (keputusan pemilik 2026-11-19; inject manual per perangkat tetap boleh).
+        if (d.status === 'ready' && !d.injectedThisSession && !d.alreadyRegistered) {
+          queueDevice(r, d, true);
+        }
       }
     },
 

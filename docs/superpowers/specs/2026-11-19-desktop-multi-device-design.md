@@ -1,6 +1,6 @@
 # Desktop: Mode Multi-Device (Fase 3), rancangan
 
-Tanggal: 2026-11-19. Status: **menunggu persetujuan pemilik**. Induk: `2026-11-06-qc-desktop-country-lock-design.md` §6.4 dan §9 fase 3. Perilaku aplikasi lama: `2026-11-06-countrylock-legacy-behavior.md` bagian 4 (rujukan "L4.x" di bawah).
+Tanggal: 2026-11-19. Status: **menunggu persetujuan pemilik** (keputusan Inject All dan bridge 2026-11-19 sudah disetujui). Induk: `2026-11-06-qc-desktop-country-lock-design.md` §6.4 dan §9 fase 3. Perilaku aplikasi lama: `2026-11-06-countrylock-legacy-behavior.md` bagian 4 (rujukan "L4.x" di bawah).
 
 ## Maksud
 
@@ -10,12 +10,14 @@ Pemilik produk ingin desktop QC setara aplikasi WPF lama (G2 spek induk, "fitur 
 
 - **Satu Tipe per batch** (2026-11-19). Operator memilih Tipe, Business Unit, dan Lokasi sekali; semua perangkat yang sukses di-inject pada batch itu dicatat dengan nilai itu. Model perangkat yang terbaca hanya ditampilkan, tidak memilih Tipe (konsisten dengan keputusan 2026-11-18 bahwa Tipe tidak dipilih otomatis).
 - **Arsitektur B** (2026-11-19). Mesin Multi hidup di proses utama; logikanya murni di `countrylock/`; renderer hanya menampilkan snapshot dan mengirim perintah.
+- **Inject All melewati perangkat yang serialnya sudah terdaftar** (2026-11-19, disetujui pemilik produk). Aplikasi lama tidak membedakannya; kini Inject All hanya mengantre perangkat `ready` yang bukan `alreadyRegistered` dan belum di-inject pada sesi ini. Inject manual per perangkat (tombol Inject/Retry di baris) tetap boleh untuk perangkat terdaftar. Alasan: mencegah inject ulang tak sengaja atas perangkat yang sudah tercatat. Menutup pertanyaan terbuka "apakah Inject All ikut menyapu perangkat terdaftar".
+- **"Siapkan bridge router" diblokir saat ada inject berjalan** (2026-11-19, disetujui pemilik produk), baik inject tunggal maupun Multi (termasuk perangkat `queued` dan inject yang baru dibatalkan dan belum selesai). Host menolak dengan pesan "Tidak dapat menyiapkan bridge saat inject sedang berjalan" dan tombol di panel nonaktif dengan petunjuk yang sama. Alasan: mengubah bridge port router memutus perangkat di tengah skrip. Menutup pertanyaan terbuka "apakah prepareBridge diblokir saat inject berjalan".
 - Semua field form wajib terisi sebelum Multi dimulai (keputusan 2026-11-18 berlaku juga di sini): Tipe, Firmware, Business Unit, Lokasi.
 
 ## Tujuan
 
 1. Memindai DHCP lease router jump, mengenali perangkat dari **MAC** (bukan IP), dan menampilkannya dalam tabel dengan status yang diperbarui terus (L4.3, L4.4).
-2. Inject paralel (1 sampai 32, bawaan 4) lewat antrean; aksi Inject All, Stop Antrean, Cancel All; Auto Inject; perangkat yang sudah Selesai atau serialnya sudah ada di draft tidak di-inject ulang otomatis (L4.5).
+2. Inject paralel (1 sampai 32, bawaan 4) lewat antrean; aksi Inject All, Stop Antrean, Cancel All; Auto Inject; perangkat yang sudah Selesai atau serialnya sudah ada di draft tidak di-inject ulang otomatis, dan Inject All juga melewatinya (inject manual per perangkat tetap boleh; keputusan pemilik 2026-11-19, lihat "Keputusan pemilik").
 3. Hasil sukses masuk ke draft lewat jalur yang sama dengan mode tunggal (`useDraftRows.addInjected`), tanpa kehilangan baris walau jendela dimuat ulang saat inject berjalan.
 4. Mengganti dua cacat aplikasi lama yang tercatat di spek induk: retry tanpa batas saat kredensial habis (legacy §10 butir 6) dan semafor yang diganti di tengah inject (butir 5).
 
@@ -61,7 +63,7 @@ Dipilih B oleh pemilik. Mesin yang sepenuhnya di main tanpa memisahkan logika mu
 - `host.ts`: satu `MultiHost` per aplikasi; membuat engine dengan port nyata: `readLeases` memakai exec-channel SSH ke router (`ssh/exec.ts`, kredensial server dari `config.QC`, tidak pernah keluar dari main); `ping` memakai `device/ping.ts`; `readInfo` memakai `device/info.ts`; `inject` memakai jalur yang sama dengan `runInjectRequest` di `ipc.ts` (diekstrak menjadi fungsi bersama agar penyamaran sandi dan `{sshKey}` tak diduplikasi); `isSerialRegistered` membaca draft (`draft-store.ts`) dan antrean pending lama.
 - **Router dan paket**: Multi memakai paket skrip aktif yang sudah dimuat (`package.load`; operator tidak memilih paket lain) dan merk Ubiquiti di dalamnya. Lease, bridge router, dan host key dibaca dari `config.server` (host = `server.ip`, yaitu alamat SSH PC ke router; pengguna/sandi `config.server`). `ipServer` BUKAN host SSH: itu alamat router seperti terlihat dari perangkat (bisa beda karena NAT) dan hanya dipakai sebagai nilai placeholder `{ipServer}` pada skrip (legacy §2.5 dan §6, `FC.cs:226-231`). Rumusan awal spek ini yang memakai `ipServer` untuk lease keliru dan dikoreksi 2026-11-19; `connectVia` diabaikan di Multi (L4.1). Host key router diterima otomatis seperti inject tunggal (spek induk §6.3) dan direkam untuk `{sshKey}`.
 - **Saling-kecualikan dengan mode tunggal** (L4.2): Multi tidak dapat dimulai saat inject tunggal berjalan, dan sebaliknya; `blockReload` (F5) juga menahan selama ada inject Multi. Pesan jelas bila ditolak. Tombol mode Tunggal | Multi dinonaktifkan selama Multi berjalan ("Hentikan Multi dulu"); menutup jendela ke tray tidak menghentikan Multi (mesin ada di main), sedangkan keluar sungguhan dari menu tray menanyakan konfirmasi bila ada inject berjalan. Dipilih perancang.
-- **Siapkan bridge router** (`BridgePortSetup`, L4.2): hanya dijalankan oleh tombol eksplisit dengan dialog konfirmasi yang menyebut perintahnya (hapus bridge port selain `interfaceComp`, tambah semua `interfaceList` ke `interfaceBridge`). Tidak otomatis saat mode dimulai (perubahan atas aplikasi lama, yang menjalankannya diam-diam dan menelan semua galat). Galat dilaporkan ke operator.
+- **Siapkan bridge router** (`BridgePortSetup`, L4.2): hanya dijalankan oleh tombol eksplisit dengan dialog konfirmasi yang menyebut perintahnya (hapus bridge port semua interface selain `interfaceComp` dari SEMUA bridge, tambah `interfaceList` tanpa `interfaceComp` dan duplikat ke `interfaceBridge`; satu sumber rencana `countrylock/src/multi/bridge-plan.ts`). Ditolak (host) dan tombol nonaktif selama ada inject berjalan, tunggal atau Multi (keputusan pemilik 2026-11-19). Tidak otomatis saat mode dimulai (perubahan atas aplikasi lama, yang menjalankannya diam-diam dan menelan semua galat). Galat dilaporkan ke operator.
 
 ### 3. Jembatan v9 (`MULTI_BRIDGE_VERSION = 9`, `BRIDGE_VERSION` 9, `MIN_BRIDGE_VERSION` dan `UI_MIN_BRIDGE_VERSION` tidak naik: UI menyembunyikan mode Multi bila jembatan < 9)
 
@@ -94,7 +96,7 @@ Spek induk §6.4 dan §9 (fase 3), `CLAUDE.md` (bagian desktop), `docs/e2e-check
 
 ## Pilihan perancang (periksa saat membaca)
 
-1. Siapkan bridge router hanya lewat tombol eksplisit (bukan otomatis).
+1. Siapkan bridge router hanya lewat tombol eksplisit (bukan otomatis) dan tidak saat inject berjalan (keputusan pemilik 2026-11-19).
 2. Tiap kredensial dicoba sekali per sesi IP; pemicu coba ulang = kredensial baru, IP berubah, muncul kembali, atau Retry manual.
 3. Tipe, Firmware, BU, dan Lokasi dikunci selama mode berjalan.
 4. Peristiwa `injected` bertahan di main sampai di-`ack` renderer.

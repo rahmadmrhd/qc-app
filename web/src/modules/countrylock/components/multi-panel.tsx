@@ -65,6 +65,8 @@ export function MultiPanel({
   const counts = snapshot?.counts;
   const shown = filterDevices(devices, filter);
   const heldReason = running ? (snapshot?.blockedReason ?? null) : injectBlocker;
+  // Mengubah bridge port router memutus perangkat yang sedang di-inject (keputusan pemilik 2026-11-19).
+  const injectBusy = (counts?.injecting ?? 0) > 0 || (counts?.queued ?? 0) > 0;
 
   return (
     <>
@@ -80,10 +82,23 @@ export function MultiPanel({
               <Radar />
               Scan
             </Button>
-            <Button type="button" variant="outline" onClick={() => setConfirmBridge(true)}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={injectBusy}
+              title={
+                injectBusy ? 'Tidak dapat menyiapkan bridge saat inject sedang berjalan' : undefined
+              }
+              onClick={() => setConfirmBridge(true)}
+            >
               <Network />
               Siapkan bridge router
             </Button>
+            {injectBusy ? (
+              <p role="status" className="self-center text-xs text-muted-foreground">
+                Tidak dapat menyiapkan bridge saat inject sedang berjalan.
+              </p>
+            ) : null}
             <Button type="button" disabled={!running} onClick={actions.injectAll}>
               Inject All
             </Button>

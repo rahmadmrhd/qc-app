@@ -208,6 +208,33 @@ describe('isInjecting dan onIdle', () => {
   });
 });
 
+describe('prepareBridge diblokir saat inject berjalan', () => {
+  test('ditolak saat inject Multi berjalan, saat inject tunggal berjalan, dan saat inject yang dibatalkan belum selesai; boleh lagi setelahnya', async () => {
+    const { host, fake, setSingle } = setup();
+    fake.state.leases = LEASES;
+    fake.state.injectMode = 'manual';
+    await host.handle('multiStart', [startCfg()]);
+    await fake.advance(0);
+    await host.handle('multiInjectDevice', [MAC]);
+    await fake.advance(1000);
+    await expect(host.handle('multiPrepareBridge', [])).rejects.toThrow(
+      'Tidak dapat menyiapkan bridge saat inject sedang berjalan',
+    );
+    expect(fake.calls.ensureBridgePorts).toBe(0);
+    fake.finishInject('192.168.88.10', { ok: true, stage: 'completed', message: 'ok' });
+    await fake.advance(1000);
+
+    setSingle(true);
+    await expect(host.handle('multiPrepareBridge', [])).rejects.toBeInstanceOf(IpcError);
+    expect(fake.calls.ensureBridgePorts).toBe(0);
+    setSingle(false);
+    const ok = (await host.handle('multiPrepareBridge', [])) as { ok: boolean };
+    expect(ok.ok).toBe(true);
+    expect(fake.calls.ensureBridgePorts).toBe(1);
+    host.dispose();
+  });
+});
+
 describe('isInjecting setelah stop', () => {
   test('tetap benar sampai inject yang dibatalkan stop benar-benar selesai (inject tunggal tak boleh menyela)', async () => {
     const fake = createFakePorts();
