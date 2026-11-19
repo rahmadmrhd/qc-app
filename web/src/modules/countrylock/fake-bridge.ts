@@ -97,6 +97,7 @@ export function createFakeMultiSnapshot(
     concurrency: 4,
     credentialCount: 0,
     message: '',
+    injectedSeq: 0,
     counts,
     ...patch,
     devices,

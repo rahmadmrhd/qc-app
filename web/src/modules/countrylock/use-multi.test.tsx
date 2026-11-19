@@ -114,6 +114,15 @@ describe('useMulti: sinkron draft ke proses utama', () => {
     expect(callsOf(bridge, 'start')[0]?.args[0]).toEqual(START_CFG);
   });
 
+  test('serial terdaftar dikirim SEBELUM alasan blokir (pencabutan blokir menyapu Auto Inject dengan data terbaru)', async () => {
+    const bridge = createFakeBridge();
+    bridge.draftRows.push(savedRow('SN-1'));
+    await setup(bridge);
+    await waitFor(() => expect(callsOf(bridge, 'setBlocked').length).toBeGreaterThan(0));
+    const names = bridge.multiCalls.map((call) => call.name);
+    expect(names.indexOf('setRegistered')).toBeLessThan(names.indexOf('setBlocked'));
+  });
+
   test('setRegistered dikirim ulang saat draft berubah', async () => {
     const { bridge, result } = await setup();
     await act(async () => {
@@ -296,6 +305,30 @@ describe('useMulti: peristiwa injected ke draft', () => {
       bridge.emitMulti({ running: true, devices: [createFakeMultiDevice({ status: 'success' })] }),
     );
     await waitFor(() => expect(result.current.draft.rows.map((r) => r.serial)).toEqual(['SN9']));
+  });
+
+  test('injectedSeq yang naik memicu pencatatan walau jumlah Selesai sama', async () => {
+    const { bridge, result } = await setup();
+    act(() =>
+      bridge.emitMulti({
+        running: true,
+        injectedSeq: 1,
+        devices: [createFakeMultiDevice({ status: 'success' })],
+      }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    // Satu Selesai hilang dan satu muncul dalam satu jendela emisi: jumlah sama, injectedSeq naik.
+    bridge.multiEvents.push(injected('evt-10', 'SN10'));
+    act(() =>
+      bridge.emitMulti({
+        running: true,
+        injectedSeq: 2,
+        devices: [createFakeMultiDevice({ mac: 'AA:BB:CC:DD:EE:02', status: 'success' })],
+      }),
+    );
+    await waitFor(() => expect(result.current.draft.rows.map((r) => r.serial)).toEqual(['SN10']));
   });
 
   test('draft gagal dimuat: peristiwa tidak disentuh', async () => {

@@ -219,6 +219,159 @@ describe('engine: blokir draft dan antrean manual', () => {
   });
 });
 
+describe('engine: antrean Auto Inject yang tertahan blokir', () => {
+  async function heldAuto() {
+    const f = createFakePorts();
+    const engine = createMultiEngine(f.ports);
+    f.state.leases = [{ ip: IPS[0] as string, mac: MACS[0] as string }];
+    f.state.infoDelay = 100;
+    engine.start(cfg({ autoInject: true }));
+    await f.advance(0);
+    // Verifikasi lease lambat: perangkat tertahan di antrean saat blokir datang.
+    f.state.leaseDelay = 500;
+    await f.advance(100);
+    expect(statusOf(engine, MACS[0] as string)).toBe('queued');
+    engine.setBlocked('Draft belum termuat');
+    expect(statusOf(engine, MACS[0] as string)).toBe('ready');
+    return { f, engine };
+  }
+
+  test('Auto Inject dimatikan selama blokir: tak ada inject setelah blokir dicabut', async () => {
+    const { f, engine } = await heldAuto();
+    engine.setAutoInject(false);
+    engine.setBlocked(null);
+    await f.advance(2000);
+    expect(f.calls.inject).toHaveLength(0);
+    expect(statusOf(engine, MACS[0] as string)).toBe('ready');
+    await engine.stop();
+  });
+
+  test('serial yang baru terdaftar dalam perubahan yang sama (setRegistered sebelum setBlocked(null)) tidak di-inject', async () => {
+    const { f, engine } = await heldAuto();
+    engine.setRegistered([serialOfIp(IPS[0] as string)]);
+    engine.setBlocked(null);
+    await f.advance(2000);
+    expect(f.calls.inject).toHaveLength(0);
+    await engine.stop();
+  });
+
+  test('Auto Inject tetap menyala dan serial belum terdaftar: diantre lagi lewat autoSweep', async () => {
+    const { f, engine } = await heldAuto();
+    engine.setBlocked(null);
+    f.state.leaseDelay = 0;
+    await f.advance(1000);
+    expect(f.calls.inject).toHaveLength(1);
+    await engine.stop();
+  });
+});
+
+describe('engine: peristiwa gagal ditulis lintas perangkat dan Stop', () => {
+  test('perangkat dicabut: peristiwa tetap ditulis ulang otomatis', async () => {
+    const { f, engine } = await withReady(1);
+    f.state.injectMode = 'auto';
+    const original = f.ports.events.add;
+    f.ports.events.add = () => {
+      throw new Error('disk penuh');
+    };
+    engine.injectDevice(MACS[0] as string);
+    await f.advance(0);
+    expect(statusOf(engine, MACS[0] as string)).toBe('failed');
+    f.state.leases = [];
+    await f.advance(70_000); // terputus lalu dibuang setelah masa tenggang
+    expect(engine.snapshot().devices).toHaveLength(0);
+    f.ports.events.add = original;
+    await f.advance(70_000);
+    expect(f.events).toHaveLength(1);
+    expect(f.events[0]?.mac).toBe(MACS[0]);
+    await engine.stop();
+  });
+
+  test('Stop: peristiwa tertahan ditulis ulang setelah engine berhenti dan tak ganda; injectedSeq naik', async () => {
+    const { f, engine } = await withReady(1);
+    f.state.injectMode = 'auto';
+    const original = f.ports.events.add;
+    f.ports.events.add = () => {
+      throw new Error('disk penuh');
+    };
+    engine.injectDevice(MACS[0] as string);
+    await f.advance(0);
+    expect(engine.snapshot().injectedSeq).toBe(0);
+    await engine.stop();
+    f.ports.events.add = original;
+    await f.advance(5000);
+    expect(f.events).toHaveLength(1);
+    expect(engine.snapshot().injectedSeq).toBe(1);
+    await f.advance(120_000);
+    expect(f.events).toHaveLength(1);
+  });
+
+  test('penulisan ulang otomatis berhasil: perangkat yang masih ada menjadi success', async () => {
+    const { f, engine } = await withReady(1);
+    f.state.injectMode = 'auto';
+    const original = f.ports.events.add;
+    f.ports.events.add = () => {
+      throw new Error('disk penuh');
+    };
+    engine.injectDevice(MACS[0] as string);
+    await f.advance(0);
+    f.ports.events.add = original;
+    await f.advance(5000);
+    expect(statusOf(engine, MACS[0] as string)).toBe('success');
+    expect(f.events).toHaveLength(1);
+    await engine.stop();
+  });
+});
+
+describe('engine: batas percobaan ulang verifikasi lease', () => {
+  test('setelah 5 percobaan berturut-turut berhenti dengan pesan "tekan Retry"; Retry manual tetap jalan', async () => {
+    const f = createFakePorts();
+    const engine = createMultiEngine(f.ports);
+    f.state.leases = [{ ip: IPS[0] as string, mac: MACS[0] as string }];
+    f.state.infoDelay = 100;
+    engine.start(cfg({ autoInject: true }));
+    await f.advance(0);
+    f.state.leases = null;
+    await f.advance(100);
+    await f.advance(60_000);
+    const d = device(engine, MACS[0] as string);
+    expect(d?.status).toBe('ready');
+    expect(d?.message).toBe('Gagal memeriksa lease, tekan Retry');
+    const reads = f.calls.readLeases;
+    f.state.leases = [{ ip: IPS[0] as string, mac: MACS[0] as string }];
+    await f.advance(20_000);
+    expect(f.calls.inject).toHaveLength(0);
+    expect(f.calls.readLeases - reads).toBeLessThanOrEqual(8); // hanya irama pemindaian
+    engine.injectDevice(MACS[0] as string);
+    await f.advance(0);
+    expect(statusOf(engine, MACS[0] as string)).toBe('injecting');
+    await engine.stop();
+  });
+});
+
+describe('engine: inject menggantung tak menahan isBusy selamanya', () => {
+  test('setelah batal, engine menunggu paling lama 30 detik lalu melepas isBusy', async () => {
+    const { f, engine } = await withReady(1);
+    f.ports.inject = () => new Promise(() => undefined); // tak pernah selesai dan tak menghormati abort
+    engine.injectDevice(MACS[0] as string);
+    await f.advance(0);
+    const stopped = engine.stop();
+    await f.advance(29_000);
+    expect(engine.isBusy()).toBe(true);
+    await f.advance(2000);
+    await stopped;
+    expect(engine.isBusy()).toBe(false);
+    expect(f.pendingSleeps).toBe(0);
+  });
+
+  test('inject yang batal dan menyelesaikan diri sendiri tak meninggalkan timer tenggang', async () => {
+    const { f, engine } = await withReady(1);
+    engine.injectDevice(MACS[0] as string);
+    await f.advance(0);
+    await engine.stop();
+    expect(f.pendingSleeps).toBe(0);
+  });
+});
+
 describe('engine: Inject All dan perangkat terdaftar', () => {
   test('Inject All melewati perangkat alreadyRegistered; inject manual per perangkat tetap boleh', async () => {
     const f = createFakePorts();

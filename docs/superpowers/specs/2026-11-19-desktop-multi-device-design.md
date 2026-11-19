@@ -118,5 +118,7 @@ Pemisahan berkas di dalam `countrylock/src/multi/` dan `desktop/src/main/multi/`
 ## Risiko dan hal yang belum dapat diverifikasi
 
 - Perilaku `ssh2` terhadap router dengan banyak sesi exec berulang (pemindaian tiap 1 sampai 5 dtk) belum diuji di perangkat nyata; engine membatasi satu pemindaian berjalan pada satu waktu (`isScanning`, L4.3).
+- Verifikasi lease sebelum inject dapat bergabung ke pembacaan lease yang sudah berjalan (datanya paling usang `LEASE_TIMEOUT_MS`, sekitar 4 dtk). Ini diterima secara sadar sebagai kompromi untuk membatasi sesi SSH ke router (satu pembacaan pada satu waktu), bukan celah yang akan ditutup; keputusan perancang 2026-11-19, tanpa perubahan kode.
+- Peristiwa `injected` yang gagal ditulis ke penyimpanan ditahan di engine (lintas perangkat dan Stop) dan ditulis ulang otomatis dengan jeda bertahap 5 sampai 60 dtk serta lewat Retry; `MultiSnapshot.injectedSeq` (penghitung monoton) memicu pencatatan di renderer. Percobaan ulang otomatis atas verifikasi lease yang gagal dibatasi 5 kali berturut-turut per perangkat, lalu menunggu Retry manual.
 - Keluaran `lease print terse` hanya diverifikasi dari contoh di inventaris, bukan dari router nyata.
 - Beban: puluhan loop ping ICMP (`ping.exe`) per perangkat; batas jumlah perangkat aktif sengaja tidak dipasang (aplikasi lama juga tidak). Loop perangkat `disconnected` berhenti saat ia dibuang setelah masa tenggang 60 dtk.

@@ -26,6 +26,13 @@ describe('buildBridgePlan', () => {
     expect(plan.valid).toBe(true);
   });
 
+  test('nama bridge: multi.interfaceBridge bila ada, selain itu server.interfaceBridge (satu aturan)', () => {
+    expect(buildBridgePlan(server(), 'BridgeAll').bridge).toBe('BridgeAll');
+    expect(buildBridgePlan(server(), '  ').bridge).toBe('bridge1');
+    expect(buildBridgePlan(server(), undefined).bridge).toBe('bridge1');
+    expect(buildBridgePlan(server(), undefined).steps[1]?.command).toContain('bridge=bridge1');
+  });
+
   test('nama tak aman menandai rencana tidak valid', () => {
     expect(buildBridgePlan(server({ interfaceList: ['ether1; /system reset'] }), 'b').valid).toBe(
       false,

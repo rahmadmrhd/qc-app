@@ -43,6 +43,8 @@ export interface MultiSnapshot {
   counts: MultiCounts;
   credentialCount: number;
   message: string;
+  /** Penghitung monoton peristiwa `injected` yang berhasil ditulis; naik berarti ada peristiwa baru untuk dicatat. */
+  injectedSeq: number;
 }
 
 export function toDeviceDto(d: DeviceRecord): MultiDeviceDto {

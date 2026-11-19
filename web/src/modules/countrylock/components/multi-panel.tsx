@@ -36,8 +36,7 @@ const BADGES: { filter: DeviceFilter; label: string; tone: string }[] = [
  */
 function bridgeSetupText(pkg: PackageDto): string {
   const { server, brands } = pkg.config;
-  const bridge = brands[MULTI_BRAND]?.multi.interfaceBridge || server.interfaceBridge;
-  return describeBridgePlan(buildBridgePlan(server, bridge));
+  return describeBridgePlan(buildBridgePlan(server, brands[MULTI_BRAND]?.multi.interfaceBridge));
 }
 
 /**

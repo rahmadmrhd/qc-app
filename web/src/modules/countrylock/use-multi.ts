@@ -128,8 +128,9 @@ export function useMulti(bridge: QcBridge, draft: DraftRows): UseMulti {
   }, [draft.rows]);
 
   const pushDraftState = useCallback(async () => {
-    await bridge.multi.setBlocked(blockReason);
+    // Serial terdaftar lebih dulu: pencabutan blokir menyapu Auto Inject, yang harus sudah melihat serial terbaru.
     await bridge.multi.setRegistered(registeredKey === '' ? [] : registeredKey.split('\n'));
+    await bridge.multi.setBlocked(blockReason);
   }, [bridge, blockReason, registeredKey]);
   const pushDraftStateRef = useRef(pushDraftState);
   pushDraftStateRef.current = pushDraftState;
@@ -224,15 +225,16 @@ export function useMulti(bridge: QcBridge, draft: DraftRows): UseMulti {
   const draftStatus = draft.status;
   const draftFull = draft.isFull;
   const successCount = snapshot?.counts.success ?? 0;
+  const injectedSeq = snapshot?.injectedSeq ?? 0;
   const triggerKeyRef = useRef('');
   // biome-ignore lint/correctness/useExhaustiveDependencies: `snapshot` hanya memicu percobaan ulang; kunci pemicu menjaga sisanya.
   useEffect(() => {
     if (!supported || draftStatus === 'loading') return;
-    const key = `${successCount}|${draftStatus}|${draftFull}`;
+    const key = `${injectedSeq}|${successCount}|${draftStatus}|${draftFull}`;
     const changed = key !== triggerKeyRef.current;
     triggerKeyRef.current = key;
     if (changed || retryRef.current) void processEvents();
-  }, [supported, processEvents, snapshot, successCount, draftStatus, draftFull]);
+  }, [supported, processEvents, snapshot, successCount, injectedSeq, draftStatus, draftFull]);
 
   // --- Perintah -----------------------------------------------------------------------------
   const run = useCallback(async (work: () => Promise<unknown>): Promise<void> => {

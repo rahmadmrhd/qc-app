@@ -27,10 +27,13 @@ export interface BridgePlan {
   valid: boolean;
 }
 
-/** `bridge` = nama bridge mode Multi (`brand.multi.interfaceBridge`). */
-export function buildBridgePlan(server: ServerConfig, bridge: string): BridgePlan {
+/**
+ * `multiBridge` = `brand.multi.interfaceBridge`; kosong/tak ada = `server.interfaceBridge`. Aturan nama bridge ada di
+ * sini saja (dipakai perintah di proses utama dan teks dialog di web).
+ */
+export function buildBridgePlan(server: ServerConfig, multiBridge?: string): BridgePlan {
   const comp = server.interfaceComp.trim();
-  const bridgeName = bridge.trim();
+  const bridgeName = (multiBridge ?? '').trim() || server.interfaceBridge.trim();
   const interfaces = bridgeInterfaces(server);
   const names = [comp, bridgeName, ...interfaces];
   return {

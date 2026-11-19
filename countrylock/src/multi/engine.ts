@@ -114,6 +114,13 @@ const MAX_LOG_LINES = 100;
 export const EMIT_MIN_INTERVAL_MS = 150;
 /** Jeda sebelum perangkat yang gagal diverifikasi leasenya (jalur Auto Inject) diantre lagi. */
 const AUTO_RETRY_MS = 3000;
+/** Maks. percobaan ulang otomatis berturut-turut per perangkat atas verifikasi lease yang gagal (bukan retry tak berujung). */
+const AUTO_RETRY_MAX = 5;
+/** Jeda awal dan batas jeda menulis ulang peristiwa yang gagal tercatat (digandakan tiap gagal). */
+const UNWRITTEN_RETRY_MS = 5000;
+const UNWRITTEN_RETRY_MAX_MS = 60_000;
+/** Inject yang dibatalkan dibiarkan menyelesaikan diri paling lama ini; lewat itu engine tak lagi menunggunya. */
+const INJECT_CANCEL_GRACE_MS = 30_000;
 /** Sandi lebih pendek dari ini tidak disamarkan di teks (akan merusak angka/IP di baris log). */
 const MIN_MASK_LENGTH = 4;
 
@@ -123,7 +130,9 @@ const MSG_INCOMPLETE = 'Info perangkat tidak lengkap';
 const MSG_INFO_UNAVAILABLE = 'Info perangkat tidak terbaca';
 const MSG_IP_CHANGED = 'IP berubah, memeriksa ulang';
 const MSG_RECORD_FAILED =
-  'Inject selesai tetapi hasil gagal dicatat (tekan Retry untuk mencatat ulang)';
+  'Inject selesai tetapi hasil gagal dicatat (dicoba lagi otomatis, atau tekan Retry)';
+const MSG_LEASE_RETRY = 'Gagal memeriksa lease, coba lagi';
+const MSG_LEASE_GIVE_UP = 'Gagal memeriksa lease, tekan Retry';
 
 type InfoResult = Awaited<ReturnType<MultiPorts['readInfo']>>;
 
@@ -160,10 +169,10 @@ interface Run {
   queueStopped: boolean;
   /** Perangkat yang dikembalikan `ready` oleh blokir draft (nilai = diantre manual?): diantre lagi saat blokir dicabut. */
   heldByBlock: Map<string, boolean>;
-  /** Perangkat ter-inject yang peristiwanya gagal ditulis: Retry menulis ulang, TIDAK meng-inject ulang. */
-  unwritten: Map<string, InjectedEvent>;
   /** Perangkat dengan percobaan ulang Auto Inject terjadwal (satu per perangkat). */
   autoRetry: Set<string>;
+  /** Percobaan ulang otomatis berturut-turut atas verifikasi lease yang gagal; direset saat verifikasi menjawab. */
+  autoRetryCount: Map<string, number>;
 }
 
 /** Kunci pembanding serial: MAC-like tanpa pemisah dan huruf besar; lainnya sekadar huruf besar. */
@@ -245,6 +254,15 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
   let emitCtl = new AbortController();
   /** Run yang sudah dihentikan tetapi inject/tugasnya belum selesai (lihat `isBusy`). */
   const draining = new Set<Run>();
+  /** Penghitung monoton peristiwa `injected` yang berhasil ditulis (pemicu pencatatan di renderer). */
+  let injectedSeq = 0;
+  /**
+   * Peristiwa yang gagal ditulis (dikunci eventId). Hidup lintas Run: tidak hilang saat perangkat dicabut atau engine
+   * dihentikan; ditulis ulang otomatis (jeda bertahap) dan lewat Retry.
+   */
+  const unwritten = new Map<string, InjectedEvent>();
+  let unwrittenLoopOn = false;
+  const unwrittenCtl = new AbortController();
 
   // --- Emisi snapshot ------------------------------------------------------------------------
 
@@ -260,6 +278,7 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       counts: countDevices(devices),
       credentialCount: queue.length,
       message: run?.scanError ?? notice,
+      injectedSeq,
     };
   }
 
@@ -420,8 +439,8 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       r.loops.get(mac)?.abort();
       r.loops.delete(mac);
       r.heldByBlock.delete(mac);
-      r.unwritten.delete(mac);
       r.autoRetry.delete(mac);
+      r.autoRetryCount.delete(mac);
       const job = r.jobs.get(mac);
       if (job) abortJob(job);
     }
@@ -725,6 +744,7 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       log(d, 'SN sudah terdaftar di draft; inject manual dilanjutkan');
     }
     r.heldByBlock.delete(d.mac);
+    if (manual) r.autoRetryCount.delete(d.mac);
     const job: InjectJob = {
       ctl: child(r.ctl.signal),
       phase: 'queued',
@@ -789,6 +809,7 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
         throw e;
       }
       if (!jobAlive(r, d, job) || d.status !== 'queued') return;
+      if (check !== 'unknown') r.autoRetryCount.delete(mac);
       if (check === 'moved') {
         // Registri sudah mengatur status bila lease berubah/hilang; sisanya (mis. IP kembar) kembali memeriksa ulang.
         setStatus(d, 'waiting', MSG_IP_CHANGED);
@@ -796,9 +817,16 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
         return;
       }
       if (check === 'unknown') {
-        backToReady(d, 'Gagal memeriksa lease, coba lagi');
-        // Auto Inject tak akan menyapu perangkat ini lagi sendiri: coba lagi setelah jeda (satu percobaan terjadwal).
-        if (job.auto) scheduleAutoRetry(r, d);
+        // Auto Inject tak akan menyapu perangkat ini lagi sendiri: coba lagi setelah jeda, dengan batas jumlah
+        // percobaan berturut-turut (bukan retry tak berujung); setelah itu operator menekan Retry.
+        const attempts = (r.autoRetryCount.get(mac) ?? 0) + 1;
+        if (job.auto && attempts < AUTO_RETRY_MAX) {
+          r.autoRetryCount.set(mac, attempts);
+          backToReady(d, MSG_LEASE_RETRY);
+          scheduleAutoRetry(r, d);
+        } else {
+          backToReady(d, job.auto ? MSG_LEASE_GIVE_UP : MSG_LEASE_RETRY);
+        }
         return;
       }
       if (blockedReason !== null) {
@@ -812,14 +840,17 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       const cred = credentialAt(d.credentialIndex, r.cfg.base, queue) ?? r.cfg.base;
       let result: Awaited<ReturnType<MultiPorts['inject']>>;
       try {
-        result = await ports.inject(
-          { id: ports.newId(), ip, cred, firmwareCode: r.cfg.firmwareCode },
+        result = await injectWithGrace(
+          ports.inject(
+            { id: ports.newId(), ip, cred, firmwareCode: r.cfg.firmwareCode },
+            job.ctl.signal,
+            (message) => {
+              if (r.devices.get(mac) !== d || d.status !== 'injecting') return;
+              d.message = mask(message);
+              log(d, message);
+            },
+          ),
           job.ctl.signal,
-          (message) => {
-            if (r.devices.get(mac) !== d || d.status !== 'injecting') return;
-            d.message = mask(message);
-            log(d, message);
-          },
         );
       } catch (e) {
         const cancelled = isAbortError(e) || job.cancelled || job.ctl.signal.aborted;
@@ -835,6 +866,45 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       detachChild(job.ctl);
       release?.();
     }
+  }
+
+  /**
+   * Menunggu hasil inject. Setelah dibatalkan, port diberi `INJECT_CANCEL_GRACE_MS` untuk menyelesaikan diri; port yang
+   * menggantung dan tak menghormati abort tidak boleh menahan `stop()`/`isBusy` selamanya (hasilnya diabaikan bila baru
+   * datang kemudian).
+   */
+  function injectWithGrace(
+    p: Promise<Awaited<ReturnType<MultiPorts['inject']>>>,
+    signal: AbortSignal,
+  ): Promise<Awaited<ReturnType<MultiPorts['inject']>>> {
+    return new Promise((resolve, reject) => {
+      let graceCtl: AbortController | null = null;
+      const startGrace = (): void => {
+        if (graceCtl) return;
+        const ctl = new AbortController();
+        graceCtl = ctl;
+        ports.sleep(INJECT_CANCEL_GRACE_MS, ctl.signal).then(
+          () => resolve({ ok: false, stage: 'cancelled', message: 'Dibatalkan' }),
+          () => undefined,
+        );
+      };
+      const cleanup = (): void => {
+        signal.removeEventListener('abort', startGrace);
+        graceCtl?.abort();
+      };
+      if (signal.aborted) startGrace();
+      else signal.addEventListener('abort', startGrace, { once: true });
+      p.then(
+        (value) => {
+          cleanup();
+          resolve(value);
+        },
+        (error: unknown) => {
+          cleanup();
+          reject(error);
+        },
+      );
+    });
   }
 
   /** Perangkat kembali `ready` karena blokir draft; diantre lagi (dengan asal yang sama) saat blokir dicabut. */
@@ -879,7 +949,7 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       r.sessionSerials.add(serialKey(d.serial));
       d.injectedThisSession = true;
       // Ditulis SEBELUM status `success` terlihat, jadi renderer tak pernah melihat "Selesai" tanpa peristiwanya.
-      if (!recordEvent(r, d, event)) return;
+      if (!recordEvent(d, event)) return;
       setStatus(d, 'success', 'Selesai');
       log(d, '=== Selesai ===');
       return;
@@ -898,18 +968,60 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
    * ke `ports.logError`) dan peristiwa ditahan di engine: Retry menulis ulang, bukan meng-inject ulang perangkat yang
    * sudah ter-inject.
    */
-  function recordEvent(r: Run, d: DeviceRecord, event: InjectedEvent): boolean {
+  function recordEvent(d: DeviceRecord, event: InjectedEvent): boolean {
     try {
       ports.events.add(event);
-      r.unwritten.delete(d.mac);
+      unwritten.delete(event.eventId);
+      injectedSeq += 1;
       return true;
     } catch (e) {
       ports.logError?.('multi.events.add', e);
-      r.unwritten.set(d.mac, event);
+      unwritten.set(event.eventId, event);
+      ensureUnwrittenLoop();
       setStatus(d, 'failed', MSG_RECORD_FAILED);
       log(d, d.message);
       return false;
     }
+  }
+
+  /** Menulis ulang peristiwa yang tertahan; perangkat yang masih ada ikut menjadi `success`. */
+  function flushUnwritten(): void {
+    for (const [id, event] of [...unwritten]) {
+      try {
+        ports.events.add(event);
+      } catch (e) {
+        ports.logError?.('multi.events.add', e);
+        continue;
+      }
+      unwritten.delete(id);
+      injectedSeq += 1;
+      const d = run?.devices.get(event.mac);
+      if (d && d.status === 'failed' && d.message === MSG_RECORD_FAILED) {
+        setStatus(d, 'success', 'Selesai');
+        log(d, 'Hasil inject berhasil dicatat');
+      }
+    }
+    scheduleEmit();
+  }
+
+  /** Satu loop penulisan ulang (jeda bertahap 5 dtk sampai 60 dtk) selama ada peristiwa tertahan, juga setelah stop. */
+  function ensureUnwrittenLoop(): void {
+    if (unwrittenLoopOn) return;
+    unwrittenLoopOn = true;
+    void (async () => {
+      let delay = UNWRITTEN_RETRY_MS;
+      try {
+        while (unwritten.size > 0) {
+          await ports.sleep(delay, unwrittenCtl.signal);
+          flushUnwritten();
+          delay = Math.min(delay * 2, UNWRITTEN_RETRY_MAX_MS);
+        }
+      } catch {
+        // Dibatalkan.
+      } finally {
+        unwrittenLoopOn = false;
+      }
+    })();
   }
 
   /** Antre → `ready` (segera, tanpa menunggu job); injecting → minta batal (hasil dari port). */
@@ -957,10 +1069,11 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
         scanError: null,
         queueStopped: false,
         heldByBlock: new Map(),
-        unwritten: new Map(),
         autoRetry: new Set(),
+        autoRetryCount: new Map(),
       };
       run = r;
+      if (unwritten.size > 0) flushUnwritten();
       lastEmitAt = Number.NEGATIVE_INFINITY;
       scheduleEmit();
       track(r, scanLoop(r));
@@ -1049,12 +1162,13 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
         }
       } else if (r) {
         clearNoticeIfHold();
-        // Perangkat yang dikembalikan blokir (antrean manual) diantre lagi; yang tak pernah diantre tidak disentuh.
+        // Hanya antrean MANUAL yang diantre lagi; yang asalnya Auto Inject diserahkan ke `autoSweep` (memeriksa
+        // `autoEligible`: Auto Inject bisa sudah dimatikan atau serial baru terdaftar selama blokir).
         const held = [...r.heldByBlock];
         r.heldByBlock.clear();
         for (const [mac, manual] of held) {
           const d = r.devices.get(mac);
-          if (d && d.status === 'ready') queueDevice(r, d, manual);
+          if (manual && d && d.status === 'ready') queueDevice(r, d, true);
         }
         autoSweep(r);
       }
@@ -1065,11 +1179,11 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       const r = run;
       const d = r?.devices.get(mac);
       if (!r || !d) return;
-      const unwritten = r.unwritten.get(mac);
-      if (unwritten && (d.status === 'failed' || d.status === 'ready')) {
+      const pendingEvent = [...unwritten.values()].reverse().find((e) => e.mac === mac);
+      if (pendingEvent && (d.status === 'failed' || d.status === 'ready')) {
         // Perangkat sudah ter-inject; hanya pencatatan hasilnya yang gagal: tulis ulang, jangan inject lagi.
         log(d, 'Mencatat ulang hasil inject');
-        if (recordEvent(r, d, unwritten)) {
+        if (recordEvent(d, pendingEvent)) {
           setStatus(d, 'success', 'Selesai');
           log(d, '=== Selesai ===');
         }
