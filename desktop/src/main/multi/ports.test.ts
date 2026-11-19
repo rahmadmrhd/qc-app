@@ -247,6 +247,41 @@ describe('ensureBridgePorts', () => {
     events.close();
   });
 
+  test('daftar interface bersih: interfaceComp dan duplikat tidak ditambahkan (sama dengan teks dialog)', async () => {
+    const commands: string[] = [];
+    const server = await fakeRouter(
+      {
+        '/interface bridge port remove [find interface!=ether5]': '',
+        '/interface bridge port add bridge=BridgeAll interface=ether1': '',
+        '/interface bridge port add bridge=BridgeAll interface=ether2': '',
+      },
+      commands,
+    );
+    const dirty: LoadedPackage = {
+      ...pkg,
+      config: {
+        ...pkg.config,
+        server: {
+          ...pkg.config.server,
+          interfaceComp: 'ether5',
+          interfaceList: ['ether1', 'ether5', 'ether2', 'ether1'],
+        },
+      },
+    };
+    const { ports, events } = setup({
+      exec: execVia(server),
+      packages: { ensure: async () => dirty },
+    });
+    const result = await ports.ensureBridgePorts();
+    expect(result.ok).toBe(true);
+    expect(commands).toEqual([
+      '/interface bridge port remove [find interface!=ether5]',
+      '/interface bridge port add bridge=BridgeAll interface=ether1',
+      '/interface bridge port add bridge=BridgeAll interface=ether2',
+    ]);
+    events.close();
+  });
+
   test('"already have such entry" dianggap berhasil (idempoten); galat lain dilaporkan ringkas dan disamarkan', async () => {
     const server = await fakeRouter({
       '/interface bridge port remove [find interface!=ether5]': '',

@@ -515,6 +515,15 @@ describe('aksi massal dan bridge router', () => {
     expect(within(dialog).getByText(/bridge1/)).toBeInTheDocument();
     expect(within(dialog).getByText(/ether1/)).toBeInTheDocument();
     expect(within(dialog).getByText(/ether2, ether3/)).toBeInTheDocument();
+    // Teks dibangun dari rencana yang sama dengan perintah di proses utama: host SSH = server.ip, cakupan SEMUA bridge,
+    // dan perintah persis (interfaceComp tidak ikut ditambahkan).
+    const text = dialog.textContent ?? '';
+    expect(text).toContain('192.168.88.1');
+    expect(text).toContain('SEMUA bridge');
+    expect(text).toContain('/interface bridge port remove [find interface!=ether1]');
+    expect(text).toContain('/interface bridge port add bridge=bridge1 interface=ether2');
+    expect(text).toContain('/interface bridge port add bridge=bridge1 interface=ether3');
+    expect(text).not.toContain('interface=ether1');
     expect(callsOf(bridge, 'prepareBridge')).toHaveLength(0);
     await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
     expect(callsOf(bridge, 'prepareBridge')).toHaveLength(0);

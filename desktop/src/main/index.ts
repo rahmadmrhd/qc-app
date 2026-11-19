@@ -496,7 +496,12 @@ function runApp(): void {
       runInject: runInjectDetailed,
     });
     const multiHost = createMultiHost({
-      ports: createMultiPorts({ packages, runner: multiRunner, events: multiEvents }),
+      ports: createMultiPorts({
+        packages,
+        runner: multiRunner,
+        events: multiEvents,
+        logError: (scope, error) => console.error(`[${scope}]`, error),
+      }),
       ensurePackage: () => packages.ensure(),
       emitChange: (snapshot) => {
         if (mainWindow && !mainWindow.isDestroyed()) {

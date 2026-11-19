@@ -5,6 +5,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { stripTerminalControl } from '@countrylock/bridge-contract';
+import { buildBridgePlan } from '@countrylock/multi/bridge-plan';
 import type { MultiPorts } from '@countrylock/multi/engine';
 import { LEASE_COMMAND, parseDhcpLeases } from '@countrylock/multi/lease';
 import { abortError } from '@countrylock/multi/scheduler';
@@ -20,8 +21,6 @@ const PING_TIMEOUT_MS = 1000;
 const LEASE_TIMEOUT_MS = 4000;
 const BRIDGE_TIMEOUT_MS = 10_000;
 const MAX_OUTPUT_CHARS = 120;
-/** Nama interface/bridge RouterOS dari config.QC disisipkan ke perintah: hanya karakter aman. */
-const SAFE_ROUTER_NAME = /^[A-Za-z0-9_.-]{1,64}$/;
 /** Galat RouterOS datang sebagai teks keluaran (exec-channel tak mengubah kode keluar menjadi galat). */
 const ROUTER_ERROR =
   /failure:|bad command|syntax error|expected|invalid|no such|not allowed|permission|cannot|error/i;
@@ -36,6 +35,8 @@ export interface MultiPortsDeps {
   exec?: typeof execCommands;
   ping?: typeof pingOnce;
   readDeviceInfo?: typeof realReadDeviceInfo;
+  /** Detail galat internal (bisa memuat jalur lokal) hanya untuk log proses utama; tak pernah ke renderer. */
+  logError?: (scope: string, error: unknown) => void;
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -73,6 +74,7 @@ export function createMultiPorts(deps: MultiPortsDeps): MultiPorts {
     now: () => Date.now(),
     sleep,
     newId: () => randomUUID(),
+    ...(deps.logError ? { logError: deps.logError } : {}),
 
     async readLeases() {
       try {
@@ -144,30 +146,17 @@ export function createMultiPorts(deps: MultiPortsDeps): MultiPorts {
       const ubiquiti = pkg.config.brands.ubiquiti;
       if (!ubiquiti) return { ok: false, message: 'Paket skrip tidak memuat merk Ubiquiti' };
 
-      const comp = server.interfaceComp.trim();
-      const bridge = ubiquiti.multi.interfaceBridge.trim();
-      const names = [comp, bridge, ...server.interfaceList];
-      if (!names.every((n) => SAFE_ROUTER_NAME.test(n))) {
+      // Satu sumber dengan teks dialog konfirmasi di web (`bridge-plan.ts`).
+      const plan = buildBridgePlan(server, ubiquiti.multi.interfaceBridge);
+      if (!plan.valid) {
         return {
           ok: false,
           message:
             'Nama interface atau bridge di config.QC tidak valid (hanya huruf, angka, titik, garis bawah, dan tanda hubung)',
         };
       }
-
-      // L4.2: hapus bridge port selain interfaceComp, lalu pastikan semua interface masuk bridge Multi.
-      const steps = [
-        {
-          label: 'hapus bridge port',
-          command: `/interface bridge port remove [find interface!=${comp}]`,
-          idempotentAdd: false,
-        },
-        ...server.interfaceList.map((iface) => ({
-          label: `tambah ${iface}`,
-          command: `/interface bridge port add bridge=${bridge} interface=${iface}`,
-          idempotentAdd: true,
-        })),
-      ];
+      // L4.2: hapus bridge port selain interfaceComp, lalu pastikan interface lain masuk bridge Multi.
+      const steps = plan.steps;
 
       let outputs: string[];
       try {
@@ -199,7 +188,7 @@ export function createMultiPorts(deps: MultiPortsDeps): MultiPorts {
       }
       return {
         ok: true,
-        message: `Bridge router siap (${server.interfaceList.length} interface ke ${bridge})`,
+        message: `Bridge router siap (${plan.interfaces.length} interface ke ${plan.bridge})`,
       };
     },
 

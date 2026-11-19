@@ -1,5 +1,5 @@
 import type { PackageDto } from '@countrylock/bridge-contract';
-import { bridgeInterfaces } from '@countrylock/config';
+import { buildBridgePlan, describeBridgePlan } from '@countrylock/multi/bridge-plan';
 import type { DesktopCatalogDto } from '@shared/desktop-catalog';
 import { Network, Radar } from 'lucide-react';
 import { useState } from 'react';
@@ -30,16 +30,14 @@ const BADGES: { filter: DeviceFilter; label: string; tone: string }[] = [
   { filter: 'failed', label: 'Gagal', tone: 'border-red-500/60' },
 ];
 
-/** Bagian router yang diubah "Siapkan bridge router", disebut lengkap di dialog konfirmasi. */
+/**
+ * Teks konfirmasi "Siapkan bridge router": dibangun dari rencana yang SAMA dengan perintah yang dijalankan proses utama
+ * (`bridge-plan.ts`), jadi host, daftar interface, dan cakupan penghapusan selalu persis seperti kenyataannya.
+ */
 function bridgeSetupText(pkg: PackageDto): string {
   const { server, brands } = pkg.config;
-  const multi = brands[MULTI_BRAND]?.multi;
-  const host = multi?.ipServer || server.ip;
-  const bridge = multi?.interfaceBridge || server.interfaceBridge;
-  const others = bridgeInterfaces(server);
-  return `Ini mengubah konfigurasi router jump (${host}): semua bridge port di bridge ${bridge} selain interface ${server.interfaceComp} dihapus, lalu ${
-    others.length > 0 ? others.join(', ') : 'interface lain di daftar'
-  } ditambahkan ke bridge itu. Jalankan hanya bila memang perlu.`;
+  const bridge = brands[MULTI_BRAND]?.multi.interfaceBridge || server.interfaceBridge;
+  return describeBridgePlan(buildBridgePlan(server, bridge));
 }
 
 /**
