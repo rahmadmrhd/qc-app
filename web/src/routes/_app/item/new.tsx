@@ -21,6 +21,7 @@ import {
 } from '@/modules/sticker/queries';
 
 export const Route = createFileRoute('/_app/item/new')({
+  staticData: { crumb: 'Tambah', pageWidth: 'narrow' },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'edit'),
   loader: ({ context }) =>
     Promise.all([
@@ -63,7 +64,7 @@ function NewItemPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <ItemForm
         title="Tambah item"
         brands={brands}

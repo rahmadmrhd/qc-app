@@ -6,6 +6,14 @@ import { BrandDetailView } from '@/modules/brand/components/brand-detail-view';
 import { brandsQueryOptions } from '@/modules/brand/queries';
 
 export const Route = createFileRoute('/_app/item/brands/$brandId')({
+  staticData: {
+    crumb: ({ params, queryClient }) => ({
+      label:
+        queryClient
+          .getQueryData(brandsQueryOptions().queryKey)
+          ?.find((brand) => brand.id === params.brandId)?.name ?? 'Detail',
+    }),
+  },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'view'),
   loader: ({ context }) =>
     Promise.all([

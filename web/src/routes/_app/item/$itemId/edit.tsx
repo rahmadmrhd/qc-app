@@ -24,6 +24,16 @@ import {
 } from '@/modules/sticker/queries';
 
 export const Route = createFileRoute('/_app/item/$itemId/edit')({
+  staticData: {
+    crumb: ({ params, queryClient }) => {
+      const item = queryClient.getQueryData(itemQueryOptions(params.itemId ?? '').queryKey);
+      return [
+        { label: item ? `${item.brand} ${item.model}` : 'Detail', to: '/item/$itemId', params },
+        { label: 'Ubah' },
+      ];
+    },
+    pageWidth: 'narrow',
+  },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'edit'),
   loader: async ({ context, params }) => {
     const [item, me] = await Promise.all([
@@ -72,7 +82,7 @@ function EditItemPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <ItemForm
         title={`Ubah item: ${item.brand} ${item.model}`}
         key={item.updatedAt}

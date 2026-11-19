@@ -25,6 +25,14 @@ import {
 } from '@/modules/qrcode/schemas';
 
 export const Route = createFileRoute('/_app/qrcode/$designId/edit')({
+  staticData: {
+    crumb: ({ params, queryClient }) => {
+      const name = queryClient.getQueryData(
+        qrDesignQueryOptions(params.designId ?? '').queryKey,
+      )?.name;
+      return name ? [{ label: name }, { label: 'Ubah' }] : { label: 'Ubah' };
+    },
+  },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'edit'),
   loader: ({ context, params }) =>
     Promise.all([
@@ -65,7 +73,7 @@ function EditQrDesignPage() {
   }
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <QrDesignForm
         title={`Ubah konfigurasi: ${design.title}`}
         canExport={can(me, 'qrcode', 'edit')}

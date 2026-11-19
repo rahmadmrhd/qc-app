@@ -28,6 +28,14 @@ import {
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 
 export const Route = createFileRoute('/_app/handover/$handoverId/')({
+  staticData: {
+    crumb: ({ params, queryClient }) => {
+      const [hit] = queryClient.getQueriesData<{ number: string }>({
+        queryKey: ['handovers', 'one', params.handoverId ?? ''],
+      });
+      return { label: hit?.[1]?.number ?? 'Detail' };
+    },
+  },
   validateSearch: (search: Record<string, unknown>) => handoverSearchSchema.parse(search),
   beforeLoad: ({ context }) =>
     requireAnyPermission(context.queryClient, [

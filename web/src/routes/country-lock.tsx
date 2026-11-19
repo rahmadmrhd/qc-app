@@ -17,6 +17,7 @@ import { ThemeToggle } from '@/modules/theme/theme-toggle';
 const ME_WAIT_MS = 5000;
 
 export const Route = createFileRoute('/country-lock')({
+  staticData: { pageWidth: 'default' },
   beforeLoad: async ({ context }) => {
     if (!isAuthenticated()) return { withShell: false, canRecord: false };
     try {

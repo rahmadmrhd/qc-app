@@ -10,6 +10,7 @@ import {
 } from '@/modules/serial/lib/leave-guard';
 
 export const Route = createFileRoute('/_app/serial/new')({
+  staticData: { crumb: 'Tambah', pageWidth: 'full' },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'serial', 'edit'),
   component: NewSerialRoute,
 });
@@ -59,7 +60,7 @@ function NewSerialRoute() {
   }
 
   return (
-    <div className="max-w-7xl">
+    <div>
       <RecordPage
         handleRef={page}
         onDirtyChange={(value) => {

@@ -17,6 +17,14 @@ import {
 } from '@/modules/qrcode/schemas';
 
 export const Route = createFileRoute('/_app/qrcode/default/$presetId/edit')({
+  staticData: {
+    crumb: ({ params, queryClient }) => {
+      const name = queryClient
+        .getQueryData(qrDefaultsQueryOptions().queryKey)
+        ?.presets.find((preset) => preset.id === params.presetId)?.name;
+      return name ? [{ label: name }, { label: 'Ubah' }] : { label: 'Ubah' };
+    },
+  },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'manage'),
   loader: ({ context }) =>
     Promise.all([
@@ -66,7 +74,7 @@ function EditQrPresetPage() {
   }
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <QrDesignForm
         mode="defaults"
         title={`Ubah default: ${loaded.name}`}

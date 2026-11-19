@@ -14,6 +14,7 @@ import type { QrFieldErrors, QrFormOutput } from '@/modules/qrcode/schemas';
 import { QR_FIELD_KEYS, toQrFormDefaults, toSaveQrDesignInput } from '@/modules/qrcode/schemas';
 
 export const Route = createFileRoute('/_app/qrcode/new')({
+  staticData: { crumb: 'Tambah' },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'edit'),
   loader: ({ context }) => context.queryClient.ensureQueryData(qrDefaultsQueryOptions()),
   component: NewQrDesignPage,
@@ -47,7 +48,7 @@ function NewQrDesignPage() {
   }
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <QrDesignForm
         title="Konfigurasi QR baru"
         canExport={can(me, 'qrcode', 'edit')}

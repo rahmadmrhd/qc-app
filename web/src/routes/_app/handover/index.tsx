@@ -8,6 +8,7 @@ import {
 } from '@/modules/handover/lib/search';
 
 export const Route = createFileRoute('/_app/handover/')({
+  staticData: { pageWidth: 'full' },
   validateSearch: (search: Record<string, unknown>) => handoverSearchSchema.parse(search),
   beforeLoad: ({ context }) =>
     requireAnyPermission(context.queryClient, [

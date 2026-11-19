@@ -9,6 +9,12 @@ import { ItemDetailView } from '@/modules/item/components/item-detail-view';
 import { itemQueryOptions, useSetItemStatus } from '@/modules/item/queries';
 
 export const Route = createFileRoute('/_app/item/$itemId/')({
+  staticData: {
+    crumb: ({ params, queryClient }) => {
+      const item = queryClient.getQueryData(itemQueryOptions(params.itemId ?? '').queryKey);
+      return { label: item ? `${item.brand} ${item.model}` : 'Detail' };
+    },
+  },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'view'),
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(itemQueryOptions(params.itemId)),

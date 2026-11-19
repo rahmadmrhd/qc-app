@@ -3,6 +3,7 @@ import { requirePermission } from '@/modules/auth/permissions';
 import { ReportPage } from '@/modules/serial/components/report-page';
 
 export const Route = createFileRoute('/_app/serial/report')({
+  staticData: { crumb: 'Lapor Rusak' },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'serial', 'edit'),
   component: ReportRoute,
 });

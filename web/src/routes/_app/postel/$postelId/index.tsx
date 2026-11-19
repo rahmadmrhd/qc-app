@@ -5,6 +5,13 @@ import { PostelDetail } from '@/modules/postel/components/postel-detail';
 import { postelQueryOptions } from '@/modules/postel/queries';
 
 export const Route = createFileRoute('/_app/postel/$postelId/')({
+  staticData: {
+    crumb: ({ params, queryClient }) => ({
+      label:
+        queryClient.getQueryData(postelQueryOptions(params.postelId ?? '').queryKey)?.name ??
+        'Detail',
+    }),
+  },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'sticker', 'view'),
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(postelQueryOptions(params.postelId)),

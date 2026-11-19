@@ -6,6 +6,15 @@ import { postelQueryOptions } from '@/modules/postel/queries';
 import { useFrozen } from '@/modules/qrcode/lib/use-frozen';
 
 export const Route = createFileRoute('/_app/postel/$postelId/edit')({
+  staticData: {
+    crumb: ({ params, queryClient }) => {
+      const name = queryClient.getQueryData(
+        postelQueryOptions(params.postelId ?? '').queryKey,
+      )?.name;
+      return [{ label: name ?? 'Detail', to: '/postel/$postelId', params }, { label: 'Ubah' }];
+    },
+    pageWidth: 'narrow',
+  },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'sticker', 'edit'),
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(postelQueryOptions(params.postelId)),
@@ -20,7 +29,7 @@ function EditPostelRoute() {
   // menjawab versi usang (bukan ketikan pengguna hilang diam-diam).
   const postel = useFrozen(data);
   return (
-    <div className="max-w-4xl">
+    <div>
       <PostelFormPage
         postel={postel}
         soonDays={postel.soonDays}

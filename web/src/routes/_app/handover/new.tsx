@@ -15,6 +15,7 @@ import { toSaveHandoverBatchInput } from '@/modules/handover/schemas';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 
 export const Route = createFileRoute('/_app/handover/new')({
+  staticData: { crumb: 'Tambah', pageWidth: 'narrow' },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'handover', 'edit'),
   component: NewHandoverPage,
 });
@@ -54,7 +55,7 @@ function NewHandoverPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       {writable.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Tidak ada lokasi aktif terpilih yang boleh Anda ubah. Pilih lokasi di header.

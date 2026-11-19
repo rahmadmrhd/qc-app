@@ -5,6 +5,7 @@ import { PostelFormPage } from '@/modules/postel/components/postel-form-page';
 import { postelListQueryOptions } from '@/modules/postel/queries';
 
 export const Route = createFileRoute('/_app/postel/new')({
+  staticData: { crumb: 'Tambah', pageWidth: 'narrow' },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'sticker', 'edit'),
   // `today` dan `soonDays` (dasar lencana kondisi) diambil dari daftar yang sama dengan halaman Postel.
   loader: ({ context }) => context.queryClient.ensureQueryData(postelListQueryOptions()),
@@ -15,7 +16,7 @@ function NewPostelRoute() {
   const navigate = useNavigate();
   const { data: list } = useSuspenseQuery(postelListQueryOptions());
   return (
-    <div className="max-w-4xl">
+    <div>
       <PostelFormPage
         soonDays={list.soonDays}
         today={list.today}

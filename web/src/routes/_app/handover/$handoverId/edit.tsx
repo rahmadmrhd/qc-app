@@ -30,6 +30,18 @@ import {
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 
 export const Route = createFileRoute('/_app/handover/$handoverId/edit')({
+  staticData: {
+    crumb: ({ params, queryClient }) => {
+      const [hit] = queryClient.getQueriesData<{ number: string }>({
+        queryKey: ['handovers', 'one', params.handoverId ?? ''],
+      });
+      return [
+        { label: hit?.[1]?.number ?? 'Detail', to: '/handover/$handoverId', params },
+        { label: 'Ubah' },
+      ];
+    },
+    pageWidth: 'narrow',
+  },
   validateSearch: (search: Record<string, unknown>) => handoverSearchSchema.parse(search),
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'handover', 'edit'),
   component: EditHandoverPage,
@@ -93,7 +105,7 @@ function EditHandoverPage() {
     task.status !== 'cancelled' &&
     canAt(me, 'handover', 'edit', task.locationId);
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       {detail.isPending ? (
         <Skeleton className="h-64 w-full" />
       ) : !task ? (

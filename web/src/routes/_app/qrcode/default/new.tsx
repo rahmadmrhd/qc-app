@@ -16,6 +16,7 @@ import {
 } from '@/modules/qrcode/schemas';
 
 export const Route = createFileRoute('/_app/qrcode/default/new')({
+  staticData: { crumb: 'Tambah' },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'manage'),
   loader: ({ context }) =>
     Promise.all([
@@ -48,7 +49,7 @@ function NewQrPresetPage() {
   }
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <QrDesignForm
         mode="defaults"
         title="Konfigurasi default baru"
