@@ -7,8 +7,12 @@ name: Changelog
 # Dipisah dari test.yml agar memasang/melepas label tidak mengulang seluruh CI (tes server 8 job + web 4 job). Pemicu
 # `pull_request` (bukan `_target`): kode PR berjalan tanpa rahasia dan dengan token baca-saja.
 # Catatan: ini peringatan, bukan penghalang merge yang dipaksakan GitHub (branch protection tak tersedia di paket repo ini).
+#
+# Hanya PR ke `dev` (keputusan pemilik 2026-11-19): di sanalah fragmen menumpuk sampai `release:prepare` merangkumnya. PR ke
+# cabang kerja lain (mis. tumpukan PR fitur) dan PR rilis ke `main` tidak diperiksa.
 on:
   pull_request:
+    branches: [dev]
     types: [opened, reopened, synchronize, labeled, unlabeled]
 
 permissions:
