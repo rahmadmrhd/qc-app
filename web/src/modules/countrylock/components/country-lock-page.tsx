@@ -22,20 +22,21 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { isAuthenticated } from '@/modules/auth/session';
+import { AUTO_INJECT_WARNING } from '../lib/auto-inject';
 import { tipeOptionsFor } from '../lib/type-firmware';
 import { useCatalog } from '../use-catalog';
 import { useCountryLock } from '../use-country-lock';
 import { useDraftRows } from '../use-draft-rows';
 import { useInjectTarget } from '../use-inject-target';
+import { useMulti } from '../use-multi';
 import { CatalogSyncButton } from './catalog-sync-button';
 import { CredentialDialog } from './credential-dialog';
 import { DraftSummary } from './draft-summary';
 import { InjectProgressDialog } from './inject-progress-dialog';
+import { MultiPanel } from './multi-panel';
 import { RecordDialog } from './record-dialog';
 
-/** Teks konfirmasi Auto Inject (aplikasi lama, persis). */
-export const AUTO_INJECT_WARNING =
-  'Harap berhati-hati saat menggunakan "Auto Inject". Pastikan kembali tipe dan firmware cocok dengan perangkat yang akan di Country Lock. Yakin untuk lanjut?';
+export { AUTO_INJECT_WARNING };
 
 function StatusBadge({ label, up }: { label: string; up: boolean }) {
   return (
@@ -85,6 +86,17 @@ export function CountryLockPage({
   } = useCountryLock(bridge, draft);
   const [confirmAuto, setConfirmAuto] = useState(false);
   const [recordOpen, setRecordOpen] = useState(false);
+  const [mode, setMode] = useState<'single' | 'multi'>('single');
+  // Multi hidup di proses utama (jembatan v9); `useMulti` tetap terpasang di semua mode agar peristiwa inject yang belum
+  // dicatat selalu sampai ke draft, juga setelah batch dihentikan.
+  const multi = useMulti(bridge, draft);
+  const multiRunning = multi.snapshot?.running === true;
+  const multiAvailable = multi.supported && pkg?.config.brands.ubiquiti !== undefined;
+  const activeMode = multiAvailable ? mode : 'single';
+  // Jendela dimuat ulang di tengah batch: kembali ke tampilan Multi.
+  useEffect(() => {
+    if (multiRunning) setMode('multi');
+  }, [multiRunning]);
   // Katalog offline dibaca sekali dan dipakai dropdown Tipe, BU, dan Lokasi di form.
   const catalog = useCatalog(bridge);
   const target = useInjectTarget(catalog.snapshot?.catalog ?? null, tipe?.id ?? null);
@@ -109,6 +121,12 @@ export function CountryLockPage({
     [setForm, pendingTarget, formComplete],
   );
 
+  function chooseMode(next: 'single' | 'multi') {
+    // Auto Inject mode tunggal tak boleh tetap menyala di balik tampilan Multi.
+    if (next === 'multi' && state.autoInject) actions.toggleAuto(false);
+    setMode(next);
+  }
+
   if (loading) {
     return <p className="p-4 text-sm text-muted-foreground">Memuat paket skrip...</p>;
   }
@@ -129,6 +147,34 @@ export function CountryLockPage({
         <div className="flex items-center gap-2">
           {/* Sinkron data offline hanya relevan di halaman ini (keputusan pemilik 2026-11-18). */}
           <CatalogSyncButton bridge={bridge} />
+          {pkg && multiAvailable ? (
+            <fieldset className="m-0 flex min-w-0 items-center gap-1 border-0 p-0">
+              <legend className="sr-only">Mode</legend>
+              <Button
+                type="button"
+                size="sm"
+                variant={activeMode === 'single' ? 'default' : 'outline'}
+                aria-pressed={activeMode === 'single'}
+                disabled={multiRunning}
+                onClick={() => chooseMode('single')}
+              >
+                Tunggal
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={activeMode === 'multi' ? 'default' : 'outline'}
+                aria-pressed={activeMode === 'multi'}
+                disabled={state.injecting}
+                onClick={() => chooseMode('multi')}
+              >
+                Multi-Device
+              </Button>
+              {multiRunning ? (
+                <span className="text-xs text-muted-foreground">Hentikan Multi dulu</span>
+              ) : null}
+            </fieldset>
+          ) : null}
           {pkg ? (
             <Button type="button" variant="outline" onClick={actions.chooseDir}>
               <FolderOpen />
@@ -179,162 +225,173 @@ export function CountryLockPage({
             </Alert>
           ) : null}
 
-          <Card className="w-full max-w-4xl">
-            <CardHeader>
-              <CardTitle>Perangkat</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className={showTipe ? 'grid gap-4 sm:grid-cols-3' : 'grid gap-4 sm:grid-cols-2'}>
-                <Select
-                  id="country-lock-brand"
-                  label="Merk"
-                  placeholder="Pilih merk"
-                  value={state.brand ?? ''}
-                  options={brandEntries.map((entry) => ({
-                    value: entry.brand,
-                    label: entry.label,
-                  }))}
-                  onValueChange={(value) => actions.select(value as Brand, null)}
-                  disabled={state.injecting}
-                />
-                {showTipe ? (
-                  <LinkField
-                    id="country-lock-tipe"
-                    label="Tipe"
-                    placeholder={
-                      !brandConfig
-                        ? 'Pilih merk dulu'
-                        : tipeItems.length === 0
-                          ? 'Belum ada Tipe di katalog'
-                          : 'Pilih tipe'
-                    }
-                    value={tipe?.id ?? null}
-                    options={tipeItems.map((item) => ({ id: item.id, label: item.model }))}
-                    onChange={(id) =>
-                      actions.selectTipe(tipeItems.find((item) => item.id === id) ?? null)
-                    }
-                    localFilter
-                    disabled={!brandConfig || state.injecting || tipeItems.length === 0}
+          {activeMode === 'multi' ? (
+            <MultiPanel
+              pkg={pkg}
+              catalog={catalog.snapshot?.catalog ?? null}
+              multi={multi}
+              injectBlocker={draft.status === 'loading' ? null : injectBlocker}
+            />
+          ) : (
+            <Card className="w-full max-w-4xl">
+              <CardHeader>
+                <CardTitle>Perangkat</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div
+                  className={showTipe ? 'grid gap-4 sm:grid-cols-3' : 'grid gap-4 sm:grid-cols-2'}
+                >
+                  <Select
+                    id="country-lock-brand"
+                    label="Merk"
+                    placeholder="Pilih merk"
+                    value={state.brand ?? ''}
+                    options={brandEntries.map((entry) => ({
+                      value: entry.brand,
+                      label: entry.label,
+                    }))}
+                    onValueChange={(value) => actions.select(value as Brand, null)}
+                    disabled={state.injecting}
                   />
+                  {showTipe ? (
+                    <LinkField
+                      id="country-lock-tipe"
+                      label="Tipe"
+                      placeholder={
+                        !brandConfig
+                          ? 'Pilih merk dulu'
+                          : tipeItems.length === 0
+                            ? 'Belum ada Tipe di katalog'
+                            : 'Pilih tipe'
+                      }
+                      value={tipe?.id ?? null}
+                      options={tipeItems.map((item) => ({ id: item.id, label: item.model }))}
+                      onChange={(id) =>
+                        actions.selectTipe(tipeItems.find((item) => item.id === id) ?? null)
+                      }
+                      localFilter
+                      disabled={!brandConfig || state.injecting || tipeItems.length === 0}
+                    />
+                  ) : null}
+                  <Select
+                    id="country-lock-firmware"
+                    label="Firmware"
+                    placeholder={brandConfig ? 'Pilih firmware' : 'Pilih merk dulu'}
+                    value={state.firmwareCode ?? ''}
+                    options={(brandConfig?.firmware ?? []).map((firmware) => ({
+                      value: firmware.code,
+                      label: firmware.label || firmware.code,
+                    }))}
+                    onValueChange={(value) => state.brand && actions.select(state.brand, value)}
+                    disabled={!brandConfig || state.injecting || firmwareLocked}
+                  />
+                </div>
+                {showTarget ? (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <LinkField
+                      id="country-lock-bu"
+                      label="Business Unit"
+                      placeholder={
+                        !catalogReady
+                          ? 'Belum tersinkron'
+                          : target.buOptions.length === 0
+                            ? 'Tidak ada BU'
+                            : 'Pilih BU'
+                      }
+                      options={target.buOptions}
+                      value={target.buId === '' ? null : target.buId}
+                      onChange={target.setBu}
+                      localFilter
+                      disabled={state.injecting || target.buOptions.length === 0}
+                    />
+                    <LinkField
+                      id="country-lock-location"
+                      label="Lokasi"
+                      placeholder={
+                        !catalogReady
+                          ? 'Belum tersinkron'
+                          : target.locationOptions.length === 0
+                            ? 'Tidak ada lokasi'
+                            : 'Pilih lokasi'
+                      }
+                      options={target.locationOptions}
+                      value={target.locationId === '' ? null : target.locationId}
+                      onChange={target.setLocation}
+                      localFilter
+                      disabled={state.injecting || target.locationOptions.length === 0}
+                    />
+                  </div>
                 ) : null}
-                <Select
-                  id="country-lock-firmware"
-                  label="Firmware"
-                  placeholder={brandConfig ? 'Pilih firmware' : 'Pilih merk dulu'}
-                  value={state.firmwareCode ?? ''}
-                  options={(brandConfig?.firmware ?? []).map((firmware) => ({
-                    value: firmware.code,
-                    label: firmware.label || firmware.code,
-                  }))}
-                  onValueChange={(value) => state.brand && actions.select(state.brand, value)}
-                  disabled={!brandConfig || state.injecting || firmwareLocked}
-                />
-              </div>
-              {showTarget ? (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <LinkField
-                    id="country-lock-bu"
-                    label="Business Unit"
-                    placeholder={
-                      !catalogReady
-                        ? 'Belum tersinkron'
-                        : target.buOptions.length === 0
-                          ? 'Tidak ada BU'
-                          : 'Pilih BU'
-                    }
-                    options={target.buOptions}
-                    value={target.buId === '' ? null : target.buId}
-                    onChange={target.setBu}
-                    localFilter
-                    disabled={state.injecting || target.buOptions.length === 0}
-                  />
-                  <LinkField
-                    id="country-lock-location"
-                    label="Lokasi"
-                    placeholder={
-                      !catalogReady
-                        ? 'Belum tersinkron'
-                        : target.locationOptions.length === 0
-                          ? 'Tidak ada lokasi'
-                          : 'Pilih lokasi'
-                    }
-                    options={target.locationOptions}
-                    value={target.locationId === '' ? null : target.locationId}
-                    onChange={target.setLocation}
-                    localFilter
-                    disabled={state.injecting || target.locationOptions.length === 0}
-                  />
+                {tipe && !tipe.application.ok ? (
+                  <p className="text-sm text-amber-600 dark:text-amber-400">
+                    {tipe.application.message}
+                  </p>
+                ) : null}
+
+                {missingDeviceIp ? (
+                  <p className="text-sm text-destructive">
+                    IP perangkat mode tunggal belum diatur di config.QC untuk merk ini.
+                  </p>
+                ) : null}
+
+                <div className="flex flex-wrap gap-2">
+                  <StatusBadge label="Perangkat" up={state.devicePingable} />
+                  <StatusBadge label="Router jump" up={state.routerPingable} />
                 </div>
-              ) : null}
-              {tipe && !tipe.application.ok ? (
-                <p className="text-sm text-amber-600 dark:text-amber-400">
-                  {tipe.application.message}
-                </p>
-              ) : null}
 
-              {missingDeviceIp ? (
-                <p className="text-sm text-destructive">
-                  IP perangkat mode tunggal belum diatur di config.QC untuk merk ini.
-                </p>
-              ) : null}
+                <dl className="grid grid-cols-2 gap-3 rounded-md border p-3 sm:grid-cols-4">
+                  <InfoItem label="Model" value={info?.model ?? ''} />
+                  <InfoItem label="Serial" value={state.serial} />
+                  <InfoItem label="Negara" value={info?.country ?? ''} />
+                  <InfoItem label="Alamat" value={brandConfig?.single.ip ?? ''} />
+                </dl>
 
-              <div className="flex flex-wrap gap-2">
-                <StatusBadge label="Perangkat" up={state.devicePingable} />
-                <StatusBadge label="Router jump" up={state.routerPingable} />
-              </div>
-
-              <dl className="grid grid-cols-2 gap-3 rounded-md border p-3 sm:grid-cols-4">
-                <InfoItem label="Model" value={info?.model ?? ''} />
-                <InfoItem label="Serial" value={state.serial} />
-                <InfoItem label="Negara" value={info?.country ?? ''} />
-                <InfoItem label="Alamat" value={brandConfig?.single.ip ?? ''} />
-              </dl>
-
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="country-lock-auto"
-                    checked={state.autoInject}
-                    onCheckedChange={(checked) => {
-                      // Konfirmasi hanya saat dinyalakan; mematikan tanpa konfirmasi.
-                      if (checked === true) setConfirmAuto(true);
-                      else actions.toggleAuto(false);
-                    }}
-                  />
-                  <Label htmlFor="country-lock-auto">Auto Inject</Label>
+                <div className="flex flex-wrap items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="country-lock-auto"
+                      checked={state.autoInject}
+                      onCheckedChange={(checked) => {
+                        // Konfirmasi hanya saat dinyalakan; mematikan tanpa konfirmasi.
+                        if (checked === true) setConfirmAuto(true);
+                        else actions.toggleAuto(false);
+                      }}
+                    />
+                    <Label htmlFor="country-lock-auto">Auto Inject</Label>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={actions.inject}
+                    disabled={!canInject(state) || !formComplete || injectBlocker !== null}
+                  >
+                    Inject
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={actions.openCredentials}
+                    disabled={!brandConfig}
+                  >
+                    <KeyRound />
+                    Kredensial
+                  </Button>
                 </div>
-                <Button
-                  type="button"
-                  onClick={actions.inject}
-                  disabled={!canInject(state) || !formComplete || injectBlocker !== null}
-                >
-                  Inject
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={actions.openCredentials}
-                  disabled={!brandConfig}
-                >
-                  <KeyRound />
-                  Kredensial
-                </Button>
-              </div>
-              {injectBlocker !== null && draft.status !== 'loading' ? (
-                <p role="status" className="text-sm text-amber-600 dark:text-amber-400">
-                  {injectBlocker}
-                </p>
-              ) : null}
-              {!formComplete ? (
-                <p className="text-sm text-muted-foreground">
-                  Wajib diisi sebelum inject: {missing.join(', ')}.
-                  {showTipe && !catalogReady
-                    ? ' Katalog belum tersinkron: tekan tombol sinkron di kanan atas halaman ini.'
-                    : ''}
-                </p>
-              ) : null}
-            </CardContent>
-          </Card>
+                {injectBlocker !== null && draft.status !== 'loading' ? (
+                  <p role="status" className="text-sm text-amber-600 dark:text-amber-400">
+                    {injectBlocker}
+                  </p>
+                ) : null}
+                {!formComplete ? (
+                  <p className="text-sm text-muted-foreground">
+                    Wajib diisi sebelum inject: {missing.join(', ')}.
+                    {showTipe && !catalogReady
+                      ? ' Katalog belum tersinkron: tekan tombol sinkron di kanan atas halaman ini.'
+                      : ''}
+                  </p>
+                ) : null}
+              </CardContent>
+            </Card>
+          )}
 
           {draft.status === 'loading' ? (
             <p className="text-sm text-muted-foreground">Memuat draft...</p>

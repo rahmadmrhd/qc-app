@@ -79,6 +79,32 @@ describe('useDraftRows', () => {
     expect(bridge.draftRows).toHaveLength(1);
   });
 
+  test('addInjected memakai clientId dan injectedAt dari peristiwa; clientId yang sama tidak digandakan', async () => {
+    const { bridge, result } = await ready();
+    const outcomes: string[] = [];
+    await act(async () => {
+      outcomes.push(
+        await result.current.addInjected({
+          ...input('ab12'),
+          clientId: 'multi-evt-0001',
+          injectedAt: '2026-11-18T20:30:00.000Z',
+        }),
+      );
+      // Peristiwa dikirim ulang dengan serial berbentuk lain: tetap duplikat lewat clientId.
+      outcomes.push(
+        await result.current.addInjected({ ...input('zz99'), clientId: 'multi-evt-0001' }),
+      );
+    });
+    expect(outcomes).toEqual(['added', 'duplicate']);
+    expect(bridge.draftRows).toHaveLength(1);
+    expect(bridge.draftRows[0]).toMatchObject({
+      clientId: 'multi-evt-0001',
+      serial: 'AB12',
+      capturedAt: '2026-11-18T20:30:00.000Z',
+      testDate: '2026-11-19',
+    });
+  });
+
   test('draft penuh: addInjected menolak dan isFull menyala', async () => {
     const bridge = createFakeBridge();
     for (let i = 0; i < SERIAL_LIMITS.tableRows; i++) bridge.draftRows.push(savedRow(`S${i}`));
@@ -143,6 +169,41 @@ describe('useDraftRows', () => {
     expect(result.current.saveFailed).toBe(true);
     // Baris tetap ada di memori meski penyimpanan gagal.
     expect(result.current.rows).toHaveLength(1);
+  });
+
+  test('addInjected: simpan gagal = unsaved; panggilan ulang (clientId sama) menyimpan tanpa baris ganda', async () => {
+    let failing = true;
+    const bridge = createFakeBridge({
+      draft: {
+        save: async (rows) => {
+          if (failing) throw new Error('disk penuh');
+          bridge.draftRows.splice(0, bridge.draftRows.length, ...structuredClone([...rows]));
+        },
+      },
+    });
+    const { result } = await ready(bridge);
+    const evt = { ...input('AB12'), clientId: 'multi-evt-0001' };
+    let first: string | undefined;
+    await act(async () => {
+      first = await result.current.addInjected(evt);
+    });
+    expect(first).toBe('unsaved');
+    expect(bridge.draftRows).toHaveLength(0);
+
+    failing = false;
+    let second: string | undefined;
+    await act(async () => {
+      second = await result.current.addInjected(evt);
+    });
+    expect(second).toBe('duplicate');
+    expect(result.current.rows).toHaveLength(1);
+    expect(bridge.draftRows).toHaveLength(1);
+
+    let third: string | undefined;
+    await act(async () => {
+      third = await result.current.addInjected(evt);
+    });
+    expect(third).toBe('duplicate');
   });
 
   describe('migrasi pending', () => {

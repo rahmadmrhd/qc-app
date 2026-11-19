@@ -196,6 +196,8 @@ Router jump **selalu diperlakukan sebagai Mikrotik** apa pun merk target (sintak
 ### 6.4 Mode Multi-Device (Ubiquiti saja)
 Identitas perangkat = MAC (bukan IP); penemuan lewat DHCP lease router (`/ip dhcp-server lease print terse … where status=bound`), interval pemindaian adaptif (1/3/5 dtk), masa tenggang 1 menit sebelum perangkat dibuang, deteksi IP diambil alih; satu loop independen per perangkat; antrean inject dengan batas paralel 1–32 (bawaan 4); aksi Inject All / Stop Antrean / Cancel All; perangkat yang sudah `Success` tidak di-inject ulang otomatis. Perbaikan atas aplikasi lama: batas dan jeda untuk retry tak berujung saat antrean kredensial habis; konkurensi diubah tanpa mengganti semafor di tengah inject (hindari `SemaphoreFullException`).
 
+**Dikerjakan 2026-11-19** [Pemilik: "Satu Tipe per batch", Arsitektur B = mesin di proses utama dengan logika murni di `countrylock/`]; rancangan lengkap, 14 pilihan perancang, dan risiko: `docs/superpowers/specs/2026-11-19-desktop-multi-device-design.md`, rencana `docs/superpowers/plans/2026-11-19-desktop-multi-device.md`. Ringkas: mesin `countrylock/src/multi/` (`createMultiEngine(ports)`, tanpa I/O langsung; penemuan lewat `LEASE_COMMAND`, host SSH router = `config.server.ip`, BUKAN `ipServer`) dijalankan `desktop/src/main/multi/host.ts`; satu batch memakai SATU Tipe/Firmware/BU/Lokasi (field wajib sama dengan mode tunggal) dan kredensial dicoba sekali per sesi IP; jembatan v9 (`multi.*`, `MULTI_BRIDGE_VERSION`; UI menyembunyikan Multi bila jembatan < 9); inject sukses menambah baris draft (`source: 'countrylock'`, peristiwa `injected` ditahan di tabel `multi_injected` pada `draft.db` sampai renderer meng-ack). Mode tunggal dan Multi saling mengecualikan.
+
 ### 6.5 OCR stiker
 Kamera lewat `getUserMedia`; pengenalan teks Tesseract.js dengan **satu worker yang dipakai ulang** (lama: mesin baru tiap frame); pola `{key}` pada kotak Username/Password, kandidat sah dihitung, kemunculan ke-7 (`Count > 5`) mempromosikan ke antrean kredensial, timer bersih 5 dtk, antrean dicoba berurutan lewat SSH dan semua `IsFailed` direset tiap perangkat berganti. Kredensial tertangkap hanya `\w+` (aturan lama dipertahankan).
 
@@ -231,7 +233,7 @@ Ringkas (selengkapnya di lampiran §8.1): router jump selalu Mikrotik; serial = 
 | 0 | Spike perangkat nyata (§11); logika murni di `shared/` + skema config; dokumen | tidak bergantung migrasi |
 | 1 | Shell Electron, jembatan SSH/ping, `qc://`, installer dengan **UI dasar dibundel** dan penyaji `app://`; Country Lock mode tunggal; antrean lokal | spike lulus |
 | 2 | Modul server paket konfigurasi + editor web + unduhan klien; sinkron router; katalog Tipe offline (cache item `isCountryLock` + gambar stiker + instruksi penempelan stiker per item beserta aturan jenis→stiker, keputusan pemilik 2026-11-16, §6.6); **pengiriman bundel UI bertanda tangan dengan `minBridge` (§3.4)** | migrasi VPS/REST selesai (sudah); katalog offline dikerjakan lebih dulu sebagai potongan sendiri (`feat/desktop-katalog-offline`), paket konfigurasi/sinkron router menyusul (gerbang uji perangkat nyata) |
-| 3 | Mode Multi-Device | fase 1 |
+| 3 | Mode Multi-Device: **dikerjakan 2026-11-19** (§6.4; menunggu uji perangkat nyata, checklist E2E bagian J) | fase 1 |
 | 4 | OCR stiker | fase 1 |
 | 5 | Unggah hasil ke server: **dikerjakan 2026-11-18 sebagai Catat Serial Number bersama** (§6.6; menggantikan antrean pending + tombol unggah) | proyek 2 (Daftar Serial Number; sudah ada) |
 

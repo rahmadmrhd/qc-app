@@ -20,7 +20,11 @@ function errorText(cause: unknown): string {
 /** Jeda simpan untuk perubahan tabel (sama dengan draft web). Hasil inject disimpan seketika. */
 export const AUTOSAVE_DELAY_MS = 500;
 
-export type AddInjectedResult = 'added' | 'duplicate' | 'full';
+/**
+ * `unsaved` = baris ada di memori tetapi penyimpanan ke proses utama gagal (belum aman): pemanggil JANGAN menganggapnya
+ * tercatat. Memanggil ulang dengan `clientId` yang sama mencoba menyimpan lagi (tanpa baris ganda).
+ */
+export type AddInjectedResult = 'added' | 'duplicate' | 'full' | 'unsaved';
 
 export interface DraftRows {
   status: 'loading' | 'ready' | 'error';
@@ -35,7 +39,10 @@ export interface DraftRows {
   isRegistered(serial: string): boolean;
   /** Mengganti seluruh tabel (dipakai `RecordPage` mode terkontrol); tersimpan tertunda. */
   replace(next: StagingRow[]): void;
-  /** Menambah baris hasil inject lalu menyimpannya seketika; serial yang sudah ada tidak digandakan. */
+  /**
+   * Menambah baris hasil inject lalu menyimpannya seketika; serial yang sudah ada tidak digandakan. Hasil `unsaved`
+   * (penyimpanan gagal) menjaga peristiwa Multi tetap tertunda di proses utama sampai penyimpanan berhasil.
+   */
   addInjected(input: InjectedRowInput): Promise<AddInjectedResult>;
 }
 
@@ -56,6 +63,8 @@ export function useDraftRows(bridge: QcBridge): DraftRows {
   const mountedRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const chainRef = useRef<Promise<unknown>>(Promise.resolve());
+  /** `clientId` baris hasil inject yang belum pernah tersimpan dengan sukses ke proses utama. */
+  const unsavedRef = useRef<Set<string>>(new Set());
 
   const setNow = useCallback((next: StagingRow[]) => {
     rowsRef.current = next;
@@ -74,6 +83,7 @@ export function useDraftRows(bridge: QcBridge): DraftRows {
     const run = chainRef.current.then(async () => {
       try {
         await bridge.draft.save(snapshot);
+        for (const row of snapshot) unsavedRef.current.delete(row.clientId);
         if (mountedRef.current) setSaveFailed(false);
         return true;
       } catch {
@@ -160,12 +170,23 @@ export function useDraftRows(bridge: QcBridge): DraftRows {
     async (input: InjectedRowInput): Promise<AddInjectedResult> => {
       if (!readyRef.current) throw new Error('Draft belum siap');
       const current = rowsRef.current;
+      // Peristiwa Multi yang dikirim ulang (muat ulang renderer atau percobaan ulang) membawa `clientId` yang sama.
+      if (input.clientId !== undefined && current.some((row) => row.clientId === input.clientId)) {
+        // Baris sudah di memori tetapi belum tersimpan: coba simpan lagi; aman di-ack hanya bila berhasil.
+        if (unsavedRef.current.has(input.clientId)) {
+          return (await persist()) ? 'duplicate' : 'unsaved';
+        }
+        return 'duplicate';
+      }
       if (isRegistered(input.serial)) return 'duplicate';
       if (current.length >= SERIAL_LIMITS.tableRows) return 'full';
-      const row = buildInjectedRow(input, { clientId: newClientId(), now: new Date() });
+      const row = buildInjectedRow(input, {
+        clientId: input.clientId ?? newClientId(),
+        now: new Date(),
+      });
+      unsavedRef.current.add(row.clientId);
       setNow([...current, row]);
-      await persist();
-      return 'added';
+      return (await persist()) ? 'added' : 'unsaved';
     },
     [isRegistered, persist, setNow],
   );

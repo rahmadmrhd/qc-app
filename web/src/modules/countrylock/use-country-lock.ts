@@ -108,7 +108,7 @@ interface Credentials {
 
 let injectCounter = 0;
 /** Alasan draft memblokir inject (`null` = tidak diblokir). */
-function blockerOf(draft: DraftRows): string | null {
+export function blockerOf(draft: DraftRows): string | null {
   if (draft.status === 'loading') return 'Memuat draft...';
   if (draft.status === 'error') {
     return `Draft tidak dapat dimuat: ${draft.error ?? 'galat tak dikenal'}. Inject dinonaktifkan agar draft tersimpan tidak tertimpa.`;
@@ -402,6 +402,10 @@ export function useCountryLock(bridge: QcBridge, draft: DraftRows): UseCountryLo
         } else if (added === 'full') {
           setLog((previous) =>
             appendLog(previous, 'Peringatan: draft penuh, serial tidak dicatat.'),
+          );
+        } else if (added === 'unsaved') {
+          setLog((previous) =>
+            appendLog(previous, 'Peringatan: serial belum tersimpan ke draft (penyimpanan gagal).'),
           );
         }
       } catch {

@@ -31,6 +31,8 @@ export interface HostKeyOptions {
   username: string;
   password: string;
   timeoutMs?: number;
+  /** Membatalkan pengambilan (inject Multi yang dibatalkan tak boleh menunggu router). */
+  signal?: AbortSignal;
 }
 
 const DEFAULT_TIMEOUT_MS = 10_000;
@@ -57,6 +59,7 @@ export function probeHostKey(opts: HostKeyOptions): Promise<HostKey> {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      opts.signal?.removeEventListener('abort', onAbort);
       try {
         client.destroy();
       } catch {
@@ -73,6 +76,12 @@ export function probeHostKey(opts: HostKeyOptions): Promise<HostKey> {
         ),
       timeoutMs,
     );
+    const onAbort = (): void => settle(() => reject(new HostKeyError('UNREACHABLE', 'Dibatalkan')));
+    if (opts.signal) {
+      if (opts.signal.aborted) onAbort();
+      else opts.signal.addEventListener('abort', onAbort, { once: true });
+    }
+    if (settled) return;
 
     client.on('ready', () => {
       settle(() => {

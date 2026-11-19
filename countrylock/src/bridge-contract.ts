@@ -4,11 +4,20 @@
 
 import { z } from 'zod';
 import type { DesktopCatalogDto } from '../../shared/desktop-catalog';
-import { type BRIDGE_CHANNELS, DRAFT_MAX_BYTES, DRAFT_MAX_ROWS } from './bridge-channels';
+import {
+  type BRIDGE_CHANNELS,
+  DRAFT_MAX_BYTES,
+  DRAFT_MAX_ROWS,
+  MULTI_ACK_MAX,
+} from './bridge-channels';
 import type { CountryLockConfig } from './config';
 import type { DeviceInfo } from './device-info';
 import { isValidHost } from './host';
 import type { PingKind } from './inject-plan';
+import type { MultiStartConfig } from './multi/engine';
+import { isIpv4, normalizeMac } from './multi/lease';
+import type { MultiSnapshot } from './multi/snapshot';
+import type { InjectedEvent } from './multi/types';
 import type { AddResult, PendingEntry } from './pending';
 import type { Brand } from './script-template';
 
@@ -24,12 +33,18 @@ export {
   DRAFT_MAX_ROWS,
   INJECT_PROGRESS_EVENT,
   MIN_BRIDGE_VERSION,
+  MULTI_ACK_MAX,
+  MULTI_BRIDGE_VERSION,
+  MULTI_CHANGE_EVENT,
   NOTIFICATIONS_BRIDGE_VERSION,
   NOTIFICATIONS_CHANGE_EVENT,
   PENDING_TARGET_BRIDGE_VERSION,
   PENDING_UPLOAD_BRIDGE_VERSION,
   UI_UPDATE_READY_EVENT,
 } from './bridge-channels';
+
+export type { MultiDeviceDto, MultiSnapshot } from './multi/snapshot';
+export type { InjectedEvent, MultiTarget } from './multi/types';
 
 // --- Tipe kontrak -------------------------------------------------------------------------
 
@@ -108,6 +123,17 @@ export interface CatalogSnapshot {
   syncedAt: string;
 }
 
+/**
+ * Konfigurasi mode Multi dari renderer: kredensial dasar TIDAK ikut (proses utama membacanya dari paket skrip aktif,
+ * merk selalu Ubiquiti), jadi sandi tak pernah lewat renderer.
+ */
+export type MultiStartDto = Omit<MultiStartConfig, 'base'>;
+
+export interface MultiCredentialDto {
+  username: string;
+  password: string;
+}
+
 export interface QcBridge {
   version: number;
   package: {
@@ -164,6 +190,36 @@ export interface QcBridge {
   draft: {
     load(): Promise<unknown[]>;
     save(rows: readonly unknown[]): Promise<void>;
+  };
+  /**
+   * Jembatan v9 (`MULTI_BRIDGE_VERSION`): mode Multi-Device (Ubiquiti). Mesinnya hidup di proses utama; renderer hanya
+   * mengirim perintah dan menampilkan snapshot (tanpa sandi). `mac` selalu `AA:BB:CC:DD:EE:FF`. Pada jembatan < v9 field
+   * ini tidak ada (pemakai memeriksa `version`/`MULTI_BRIDGE_VERSION`).
+   */
+  multi: {
+    start(cfg: MultiStartDto): Promise<void>;
+    stop(): Promise<void>;
+    scan(): Promise<void>;
+    setConcurrency(n: number): Promise<void>;
+    setAutoInject(on: boolean): Promise<void>;
+    injectDevice(mac: string): Promise<void>;
+    cancelDevice(mac: string): Promise<void>;
+    injectAll(): Promise<void>;
+    stopQueue(): Promise<void>;
+    cancelAll(): Promise<void>;
+    addCredential(cred: MultiCredentialDto): Promise<void>;
+    /** Alasan inject ditahan (draft penuh/rusak/belum termuat), atau `null` untuk melepas. */
+    setBlocked(reason: string | null): Promise<void>;
+    /** Serial yang sudah ada di draft (sumber kebenaran = tabel draft di renderer). */
+    setRegistered(serials: readonly string[]): Promise<void>;
+    prepareBridge(): Promise<{ ok: boolean; message: string }>;
+    snapshot(): Promise<MultiSnapshot>;
+    /** Peristiwa inject sukses yang belum di-ack; dikirim ulang sampai `ackInjected`. */
+    pendingEvents(): Promise<InjectedEvent[]>;
+    ackInjected(eventIds: readonly string[]): Promise<void>;
+    /** Membuka `https://<ip>` perangkat (hanya MAC yang ada di snapshot) di peramban sistem. */
+    openWeb(mac: string): Promise<void>;
+    onChange(cb: (s: MultiSnapshot) => void): () => void;
   };
 }
 
@@ -254,6 +310,50 @@ export const SerialArgSchema = plain(64).refine(
   'Serial tidak boleh kosong',
 );
 
+// --- Skema mode Multi (jembatan v9) -------------------------------------------------------
+
+const ConcurrencySchema = z.number().int().min(1).max(32);
+
+/** MAC dari renderer: panjang dibatasi SEBELUM normalisasi; hasil parse sudah `AA:BB:CC:DD:EE:FF`. */
+export const MacArgSchema = z
+  .string()
+  .max(32)
+  .transform((value, ctx) => {
+    const mac = normalizeMac(value);
+    if (mac === null) {
+      ctx.addIssue({ code: 'custom', message: 'MAC tidak valid' });
+      return z.NEVER;
+    }
+    return mac;
+  });
+
+/** IPv4 ketat atau kosong (kosong = tak ada IP yang dikecualikan); nama host tidak diterima. */
+const ExcludeIpSchema = z
+  .string()
+  .max(15)
+  .refine((v) => v === '' || isIpv4(v), 'Exclude IP harus alamat IPv4 atau kosong');
+
+export const MultiStartSchema = z.strictObject({
+  firmwareCode: plain(100),
+  concurrency: ConcurrencySchema,
+  excludeIp: ExcludeIpSchema,
+  autoInject: z.boolean(),
+  target: z.strictObject({
+    itemId: plain(100),
+    itemLabel: plain(200, 0),
+    buId: plain(100),
+    buLabel: plain(200, 0),
+    locationId: plain(100),
+    locationLabel: plain(200, 0),
+  }),
+});
+
+// Kredensial manual (satu-satunya skema multi yang memuat sandi). Keduanya wajib terisi.
+export const MultiCredentialSchema = z.strictObject({
+  username: UsernameSchema,
+  password: plain(256, 1),
+});
+
 /**
  * Skema argumen per kanal (tuple: argumen berlebih ditolak). Dipegang di sini agar proses utama
  * tak perlu mengimpor zod sendiri dan agar kontrak serta validasinya satu tempat.
@@ -278,6 +378,24 @@ export const BRIDGE_ARGS = {
   catalogGet: z.tuple([]),
   catalogRefresh: z.tuple([]),
   catalogStatus: z.tuple([]),
+  multiStart: z.tuple([MultiStartSchema]),
+  multiStop: z.tuple([]),
+  multiScan: z.tuple([]),
+  multiSetConcurrency: z.tuple([ConcurrencySchema]),
+  multiSetAutoInject: z.tuple([z.boolean()]),
+  multiInjectDevice: z.tuple([MacArgSchema]),
+  multiCancelDevice: z.tuple([MacArgSchema]),
+  multiInjectAll: z.tuple([]),
+  multiStopQueue: z.tuple([]),
+  multiCancelAll: z.tuple([]),
+  multiAddCredential: z.tuple([MultiCredentialSchema]),
+  multiSetBlocked: z.tuple([z.union([z.null(), plain(200)])]),
+  multiSetRegistered: z.tuple([z.array(SerialArgSchema).max(DRAFT_MAX_ROWS)]),
+  multiPrepareBridge: z.tuple([]),
+  multiSnapshot: z.tuple([]),
+  multiPendingEvents: z.tuple([]),
+  multiAckInjected: z.tuple([z.array(InjectIdSchema).max(MULTI_ACK_MAX)]),
+  multiOpenWeb: z.tuple([MacArgSchema]),
 } as const satisfies Record<keyof typeof BRIDGE_CHANNELS, z.ZodType>;
 
 // --- Teks progres aman untuk renderer ------------------------------------------------------

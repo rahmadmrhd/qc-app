@@ -2,7 +2,7 @@
 // `bridge-contract.ts` (yang memuat zod) agar bundel preload tetap kecil.
 
 /** Versi kontrak jembatan; renderer menolak jembatan di bawah `MIN_BRIDGE_VERSION`. */
-export const BRIDGE_VERSION = 8;
+export const BRIDGE_VERSION = 9;
 export const MIN_BRIDGE_VERSION = 2;
 
 /** Kanal `ipcMain.handle` (permintaan-jawaban): `qc:<grup>:<aksi>`. */
@@ -26,6 +26,25 @@ export const BRIDGE_CHANNELS = {
   catalogGet: 'qc:catalog:get',
   catalogRefresh: 'qc:catalog:refresh',
   catalogStatus: 'qc:catalog:status',
+  // Mode Multi-Device (jembatan v9, `MULTI_BRIDGE_VERSION`).
+  multiStart: 'qc:multi:start',
+  multiStop: 'qc:multi:stop',
+  multiScan: 'qc:multi:scan',
+  multiSetConcurrency: 'qc:multi:setConcurrency',
+  multiSetAutoInject: 'qc:multi:setAutoInject',
+  multiInjectDevice: 'qc:multi:injectDevice',
+  multiCancelDevice: 'qc:multi:cancelDevice',
+  multiInjectAll: 'qc:multi:injectAll',
+  multiStopQueue: 'qc:multi:stopQueue',
+  multiCancelAll: 'qc:multi:cancelAll',
+  multiAddCredential: 'qc:multi:addCredential',
+  multiSetBlocked: 'qc:multi:setBlocked',
+  multiSetRegistered: 'qc:multi:setRegistered',
+  multiPrepareBridge: 'qc:multi:prepareBridge',
+  multiSnapshot: 'qc:multi:snapshot',
+  multiPendingEvents: 'qc:multi:pendingEvents',
+  multiAckInjected: 'qc:multi:ackInjected',
+  multiOpenWeb: 'qc:multi:openWeb',
 } as const satisfies Record<string, string>;
 
 /** Kanal peristiwa satu arah proses utama -> renderer (`webContents.send`); bukan `handle`. */
@@ -41,6 +60,18 @@ export const UI_UPDATE_READY_EVENT = 'qc:ui:updateReady';
 export const NOTIFICATIONS_CHANGE_EVENT = 'qc:notifications:changed';
 /** Katalog Tipe offline berubah (proses utama -> renderer); isinya hanya `CatalogStatus`. Diperkenalkan di jembatan v5. */
 export const CATALOG_CHANGE_EVENT = 'qc:catalog:changed';
+/**
+ * Snapshot mesin Multi-Device berubah (proses utama -> renderer); isinya `MultiSnapshot` (tanpa sandi). Diperkenalkan
+ * di jembatan v9.
+ */
+export const MULTI_CHANGE_EVENT = 'qc:multi:changed';
+/**
+ * Jembatan paling rendah yang punya `multi` (mode Multi-Device Ubiquiti, 2026-11-19). UI menyembunyikan mode Multi bila
+ * jembatannya lebih rendah; `UI_MIN_BRIDGE_VERSION` TIDAK dinaikkan (mode tunggal tetap jalan di jembatan lama).
+ */
+export const MULTI_BRIDGE_VERSION = 9;
+/** Maks. id peristiwa `injected` per panggilan `multi.ackInjected` (renderer meng-ack per potongan sebesar ini). */
+export const MULTI_ACK_MAX = 500;
 /** Jembatan paling rendah yang punya `catalog` (katalog Tipe offline); UI yang lebih baru memeriksa versinya sebelum memakai. */
 export const CATALOG_BRIDGE_VERSION = 5;
 /**

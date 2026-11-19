@@ -60,4 +60,20 @@ describe('buildInjectedRow', () => {
       'location',
     ]);
   });
+
+  test('clientId dan cap waktu dari peristiwa Multi dipakai apa adanya (tanggal uji WIB dihitung dari injectedAt)', () => {
+    // 2026-11-18 20:30 UTC = 2026-11-19 03:30 WIB.
+    const row = buildInjectedRow(
+      { ...input, clientId: 'multi-evt-0001', injectedAt: '2026-11-18T20:30:00.000Z' },
+      ctx,
+    );
+    expect(row.clientId).toBe('multi-evt-0001');
+    expect(row.capturedAt).toBe('2026-11-18T20:30:00.000Z');
+    expect(row.testDate).toBe('2026-11-19');
+  });
+
+  test('injectedAt tak sah diabaikan (memakai waktu konteks)', () => {
+    const row = buildInjectedRow({ ...input, injectedAt: 'bukan-tanggal' }, ctx);
+    expect(row.capturedAt).toBe('2026-11-18T08:00:00.000Z');
+  });
 });

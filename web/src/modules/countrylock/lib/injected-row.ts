@@ -11,6 +11,10 @@ export interface InjectedRowInput {
   buLabel: string;
   locationId: string;
   locationLabel: string;
+  /** Kunci idempoten baris; bawaan dibuat pemanggil (`ctx.clientId`). Mode Multi menurunkannya dari id peristiwa. */
+  clientId?: string;
+  /** Cap waktu inject (ISO) dari peristiwa Multi: tanggal uji WIB dan `capturedAt` dihitung darinya, bukan saat dicatat. */
+  injectedAt?: string;
 }
 
 /**
@@ -24,23 +28,25 @@ export function buildInjectedRow(
   ctx: { clientId: string; now: Date },
 ): StagingRow {
   const serial = normalizeSerial(input.serial);
+  const at = input.injectedAt === undefined ? Number.NaN : Date.parse(input.injectedAt);
+  const now = Number.isNaN(at) ? ctx.now : new Date(at);
   const problem = serialProblem(serial);
   const unresolved: ('item' | 'location')[] = [];
   if (input.itemId === '') unresolved.push('item');
   if (input.locationId === '') unresolved.push('location');
   return {
-    clientId: ctx.clientId,
+    clientId: input.clientId ?? ctx.clientId,
     serial,
     itemId: input.itemId,
     itemLabel: input.itemLabel,
     buId: input.buId,
     buLabel: input.buLabel,
-    testDate: todayWib(ctx.now.getTime()),
+    testDate: todayWib(now.getTime()),
     locationId: input.locationId,
     locationLabel: input.locationLabel,
     sample: false,
     note: '',
-    capturedAt: ctx.now.toISOString(),
+    capturedAt: now.toISOString(),
     source: 'countrylock',
     stickers: null,
     proofPhotos: [],

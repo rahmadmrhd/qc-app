@@ -8,6 +8,7 @@ import {
   BRIDGE_VERSION,
   CATALOG_CHANGE_EVENT,
   INJECT_PROGRESS_EVENT,
+  MULTI_CHANGE_EVENT,
   NOTIFICATIONS_CHANGE_EVENT,
   UI_UPDATE_READY_EVENT,
 } from '@countrylock/bridge-channels';
@@ -95,6 +96,35 @@ const bridge: QcBridge = {
   draft: {
     load: () => invoke(BRIDGE_CHANNELS.draftLoad),
     save: (rows) => invoke(BRIDGE_CHANNELS.draftSave, rows),
+  },
+  multi: {
+    start: (cfg) => invoke(BRIDGE_CHANNELS.multiStart, cfg),
+    stop: () => invoke(BRIDGE_CHANNELS.multiStop),
+    scan: () => invoke(BRIDGE_CHANNELS.multiScan),
+    setConcurrency: (n) => invoke(BRIDGE_CHANNELS.multiSetConcurrency, n),
+    setAutoInject: (on) => invoke(BRIDGE_CHANNELS.multiSetAutoInject, on),
+    injectDevice: (mac) => invoke(BRIDGE_CHANNELS.multiInjectDevice, mac),
+    cancelDevice: (mac) => invoke(BRIDGE_CHANNELS.multiCancelDevice, mac),
+    injectAll: () => invoke(BRIDGE_CHANNELS.multiInjectAll),
+    stopQueue: () => invoke(BRIDGE_CHANNELS.multiStopQueue),
+    cancelAll: () => invoke(BRIDGE_CHANNELS.multiCancelAll),
+    addCredential: (cred) => invoke(BRIDGE_CHANNELS.multiAddCredential, cred),
+    setBlocked: (reason) => invoke(BRIDGE_CHANNELS.multiSetBlocked, reason),
+    // Salinan array biasa: argumen `readonly` dari renderer dikloning struktural oleh IPC.
+    setRegistered: (serials) => invoke(BRIDGE_CHANNELS.multiSetRegistered, [...serials]),
+    prepareBridge: () => invoke(BRIDGE_CHANNELS.multiPrepareBridge),
+    snapshot: () => invoke(BRIDGE_CHANNELS.multiSnapshot),
+    pendingEvents: () => invoke(BRIDGE_CHANNELS.multiPendingEvents),
+    ackInjected: (eventIds) => invoke(BRIDGE_CHANNELS.multiAckInjected, [...eventIds]),
+    openWeb: (mac) => invoke(BRIDGE_CHANNELS.multiOpenWeb, mac),
+    onChange: (cb) => {
+      // Hanya `MultiSnapshot` (tanpa sandi) yang diteruskan; objek `event` Electron tidak bocor ke renderer.
+      const listener = (_event: unknown, payload: Parameters<typeof cb>[0]): void => cb(payload);
+      ipcRenderer.on(MULTI_CHANGE_EVENT, listener);
+      return () => {
+        ipcRenderer.removeListener(MULTI_CHANGE_EVENT, listener);
+      };
+    },
   },
 };
 
