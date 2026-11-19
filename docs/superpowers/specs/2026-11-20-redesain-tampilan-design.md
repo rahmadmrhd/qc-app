@@ -66,6 +66,7 @@ Pemilik memilih **A** (2026-11-20). Satu dokumen rancangan ini mencakup semua fa
 8. **Kanban**: warna kolom mengikuti warna badge dari nilai yang dikelompokkan.
 9. Banner, alert, dan toast mengikuti mockup (soft + ikon status; toast dengan garis kiri berwarna).
 10. Pengelompokan sidebar dan pola halaman pada mockup v3 disetujui.
+11. **Semua model memakai soft delete**, dapat **dipulihkan**, model berstatus wajib Nonaktif sebelum dihapus, keunikan menyertakan `deleted_at`, dan menghapus data master tidak menghapus data yang merujuknya. Dirinci di rancangan terpisah [Soft Delete untuk Semua Model](2026-11-20-soft-delete-design.md); aksi Hapus/Pulihkan dan rute batch hapus di dokumen ini mengikuti rancangan itu.
 
 ## 6. Rancangan
 
@@ -108,6 +109,7 @@ Komponen `ActionButton` (`web/src/components/action-button.tsx`) dengan `action`
 | `delete` | `Trash2` | destructive soft (ghost saat `compact`) | Hapus |
 | `activate` | `Power` | success soft | Aktifkan |
 | `deactivate` | `PowerOff` | warning soft | Nonaktifkan |
+| `restore` | `RotateCcw` | info soft | Pulihkan |
 | `cancel` | `X` | primary outline | Batal |
 | `download` / `export` | `Download` | secondary soft | Unduh / Ekspor |
 | `upload` | `Upload` | secondary soft | Unggah |
@@ -220,30 +222,31 @@ Konsekuensi: `LinkField` "Buka" (`openHref`) tersedia untuk semua model di atas;
 
 ### 6.9 Rute batch atomik
 
-Untuk setiap aksi massal di tabel berikut, satu rute REST baru per modul, mengikuti pola `serials.updateBatch`:
+Untuk setiap aksi massal di tabel berikut, satu rute REST baru per modul, mengikuti pola `serials.updateBatch`. Hapus dan Pulihkan mengikuti [rancangan soft delete](2026-11-20-soft-delete-design.md) (§4.3: model berstatus wajib Nonaktif dulu; §4.5: Pulihkan dari tampilan "Terhapus"):
 
 | Modul | Rute batch | Aksi massal di UI |
 |---|---|---|
-| Item | `items.setStatusBatch` | Aktifkan, Nonaktifkan |
-| Merk | `brands.setStatusBatch` | Aktifkan, Nonaktifkan |
-| Customer | `customers.setStatusBatch` | Aktifkan, Nonaktifkan |
-| Stiker | `stickers.setStatusBatch` | Aktifkan, Nonaktifkan |
-| Jenis Stiker | `stickerTypes.setStatusBatch` | Aktifkan, Nonaktifkan |
-| Pengguna | `access.users.setStatusBatch` | Aktifkan, Nonaktifkan |
-| Lokasi | `access.locations.setStatusBatch` | Aktifkan, Nonaktifkan |
-| Business Unit | `access.businessUnits.setStatusBatch` | Aktifkan, Nonaktifkan |
-| Role | `access.roles.deleteBatch` | Hapus |
-| QR Code | `qrcodes.deleteBatch` | Hapus |
-| Default QR | `qrcodes.deletePresetBatch` | Hapus |
-| Postel | `postels.removeBatch` | Hapus |
-| Pustaka Gambar | `stickerGuides.removeBatch` | Hapus |
-| Serial Number | `serials.updateBatch` (ada) | Ubah massal yang sudah ada |
+| Item | `items.setStatusBatch`, `items.removeBatch`, `items.restoreBatch` | Aktifkan, Nonaktifkan, Hapus, Pulihkan |
+| Merk | `brands.*` (sama) | sama |
+| Customer | `customers.*` (sama) | sama |
+| Stiker | `stickers.*` (sama) | sama |
+| Jenis Stiker | `stickerTypes.*` (sama) | sama |
+| Pengguna | `access.users.*` (sama) | sama |
+| Lokasi | `access.locations.*` (sama) | sama |
+| Business Unit | `access.businessUnits.*` (sama) | sama |
+| Role | `access.roles.removeBatch`, `restoreBatch` | Hapus, Pulihkan |
+| QR Code | `qrcodes.removeBatch`, `restoreBatch` | Hapus, Pulihkan |
+| Default QR | `qrcodes.removePresetBatch`, `restorePresetBatch` | Hapus, Pulihkan |
+| Postel | `postels.removeBatch`, `restoreBatch` | Hapus, Pulihkan |
+| Pustaka Gambar | `stickerGuides.removeBatch`, `restoreBatch` | Hapus, Pulihkan |
+| Serial Number | `serials.updateBatch` (ada), `serials.removeBatch`, `restoreBatch` | Ubah massal, Hapus, Pulihkan |
+| Serah Terima | `handovers.removeBatch`, `restoreBatch` | Hapus, Pulihkan (di tampilan daftar/"Terhapus"; papan kanban tanpa checkbox) |
 
 Kontrak bersama:
 - Masukan: `{ items: { id, updatedAt? }[], status? }` (`updatedAt` untuk model yang memakai CAS `updated_at`), maks. 100 id per permintaan (`BATCH_MAX`), id unik.
 - **Atomik**: semua perubahan dalam satu `batch()`/`transaction()` dengan penjaga CAS per baris; satu gagal = tak ada yang berubah. Kegagalan karena versi usang memakai `staleError` dan respons menyebut id yang usang agar UI dapat memuat ulang; record tak ditemukan/di luar hak = `NOT_FOUND` seragam untuk seluruh permintaan (tanpa membocorkan id mana yang ada).
 - **Idempoten**: menyetel status yang sudah sama = tanpa perubahan dan bukan galat; menghapus record yang sudah tidak ada = `NOT_FOUND` (sama dengan rute tunggal).
-- **Aturan bisnis sama dengan rute tunggal**: logika per record dipanggil dari fungsi service yang sama (bukan disalin), termasuk penjaga khusus (jenis sistem stiker tak dapat dinonaktifkan, `guardLatest` Manual Book, hapus Postel menonaktifkan stikernya, gambar pustaka yang dipakai ditolak `CONFLICT`, role yang dipakai, hak per BU item pada SEMUA BU, akun sendiri, dll.). Bila satu record melanggar, seluruh batch ditolak dengan pesan yang menyebut alasannya secara generik.
+- **Aturan bisnis sama dengan rute tunggal**: logika per record dipanggil dari fungsi service yang sama (bukan disalin), termasuk penjaga khusus (jenis sistem stiker tak dapat dinonaktifkan, `guardLatest` Manual Book, hak per BU item pada SEMUA BU, akun sendiri, role yang masih dipakai, dll.; aturan hapus/pulihkan mengikuti rancangan soft delete §4.3 dan §5). Bila satu record melanggar, seluruh batch ditolak dengan pesan yang menyebut alasannya secara generik.
 - Izin rute = izin rute tunggal yang setara; audit log per record seperti rute tunggal.
 - UI: setelah sukses, cache diperbarui dengan hasil server (`upsertInList`/`removeFromList`) dan toast "N item dinonaktifkan"; setelah gagal, toast galat + pilihan tetap terpasang.
 
@@ -253,6 +256,7 @@ Kontrak bersama:
 |---|---|---|
 | 1. Fondasi | §6.1-6.4 (token, Button/Badge/Alert/toast, `ActionButton`, Tooltip, sidebar + popover + penyimpanan, breadcrumb, `PageContainer` dipasang di semua rute), `required` pada label | Semua halaman memakai token dan cangkang baru; pemetaan varian lama aktif; tes hijau |
 | 2. Kit CRUD | `ListPage`, `useHeadroom`, `FilterBar`, `DataTable`, `KanbanBoard`, `GridView`, `ViewPage`, `FormPage`, `FormTabs`; Pustaka Gambar sebagai pemakai `GridView` | Komponen kit punya tes sendiri; satu halaman nyata (Pustaka Gambar) memakai kit |
+| 2b. Infrastruktur soft delete | Kolom `deleted_at`, indeks unik baru (expand), helper penyaring + tes penjaga, pola rute remove/restore, tampilan "Terhapus" (rancangan soft delete §4.6) | Tes penjaga aktif; belum ada modul yang memakai Hapus baru |
 | 3. Percontohan | Item + Merk sepenuhnya di kit, termasuk batch status, tautan kolom, form bertab, Form Dialog "Tambah Merk"/"Tambah item" | Pola dinilai pemilik di staging sebelum disebar |
 | 4a | Stiker (Katalog, Jenis, Stok, Konfigurasi) + View Stiker dan Jenis + batch | |
 | 4b | Manual Book (QR, Default QR) + Postel + View QR dan Preset + batch | |
@@ -277,7 +281,7 @@ Pertanyaan dari pemeriksaan pembangun independen yang dijawab perancang tanpa me
 2. **Panel "data terkait"** di View hanya memakai data yang sudah ada di DTO (pembuat/terakhir diubah bila ada) dan tautan ke halaman daftar terfilter (mis. "Lihat Serial Number item ini" ke `/serial` dengan filter item), tanpa rute hitungan baru.
 3. **Mockup** dikomit sebagai `docs/superpowers/specs/assets/2026-11-20-redesain-mockup-v3.html`.
 4. **Tes kerangka halaman** baru aktif di akhir fase 4d (lihat §6.4); setiap PR fase tetap hijau.
-5. **Checkbox** hanya ada di halaman yang punya aksi massal di §6.9. Serah Terima, Log Audit, Status Push, Stok Stiker, Laporan Serial, Country Lock, dan tab riwayat tanpa checkbox. Daftar Serial Number mendapat checkbox + "Ubah massal" (lokasi/item/BU) memakai `serials.updateBatch` dan dialog `bulk-edit-dialog` yang sudah ada; tanpa Hapus/Aktifkan massal.
+5. **Checkbox** hanya ada di halaman yang punya aksi massal di §6.9. Log Audit, Status Push, Stok Stiker, Laporan Serial, Country Lock, papan kanban Serah Terima, dan tab riwayat tanpa checkbox. Daftar Serial Number mendapat checkbox + "Ubah massal" (lokasi/item/BU) memakai `serials.updateBatch` dan dialog `bulk-edit-dialog` yang sudah ada, serta Hapus/Pulihkan massal (soft delete, keputusan 11).
 6. **Penjaga usang pada batch** mengikuti rute tunggal model itu: model yang rute tunggalnya memakai CAS `updated_at`/ETag mengirim `updatedAt` per id; model yang rute tunggalnya tanpa penjaga versi (mis. hapus) tidak. Penjaga khusus (akun sendiri, super admin, jenis sistem, dll.) menolak SELURUH batch dengan pesan generik; baris yang statusnya sudah sama tetap bukan galat (idempoten) dan tidak menulis audit.
 7. **Model yang hari ini diubah lewat dialog** (Merk, Customer, Lokasi, Role, Pengguna, Business Unit, Stiker, Jenis Stiker) tetap diubah lewat Form Dialog yang dibuka dari View dan dari daftar; tidak ada rute `…/$id/edit` baru. Model yang sudah punya halaman Ubah (Item, Postel, QR, Preset QR, Serah Terima) tetap memakai `FormPage`.
 8. **Halaman detail yang sudah ada** (Item, Merk, BU, Postel, Serial, Serah Terima) dipindah ke `ViewPage` pada fase modulnya (Item dan Merk di fase 3, Postel di 4b, BU di 4c, Serial dan Serah Terima di 4d).
