@@ -47,10 +47,11 @@ describe('classify: satu bagian monorepo', () => {
     expect(classify(['server/src/app.ts'])).toEqual(only('code', 'server_tests', 'image'));
   });
 
-  test('web saja: code, web_tests, desktop_pack, image', () => {
-    expect(classify(['web/src/main.tsx'])).toEqual(
-      only('code', 'web_tests', 'desktop_pack', 'image'),
-    );
+  test('web saja: code, web_tests, image; TANPA desktop_pack (keputusan pemilik 2026-11-20)', () => {
+    const result = classify(['web/src/main.tsx']);
+    expect(result).toEqual(only('code', 'web_tests', 'image'));
+    expect(result.desktop_pack).toBe(false);
+    expect(result.desktop_tests).toBe(false);
   });
 
   test('desktop saja: tanpa image dan tanpa tes server', () => {
@@ -97,9 +98,37 @@ describe('classify: satu bagian monorepo', () => {
     expect(classify(['desktop/src/main/index.ts']).image).toBe(false);
   });
 
-  test('campuran web + desktop = gabungan (OR)', () => {
+  test('campuran web + desktop = gabungan (OR): desktop_pack datang dari desktop, bukan dari web', () => {
     expect(classify(['web/src/a.ts', 'desktop/src/b.ts'])).toEqual(
       only('code', 'web_tests', 'desktop_tests', 'desktop_pack', 'image'),
+    );
+  });
+
+  test('.github/workflows/ saja: hanya code (lint + tes scripts), tanpa server/web/desktop/image (keputusan pemilik 2026-11-20)', () => {
+    expect(classify(['.github/workflows/x.yml'])).toEqual(only('code'));
+    expect(classify(['.github/workflows/x.yml', 'docs/a.md'])).toEqual(only('code'));
+    expect(classify(['.github/workflows/deploy-tag.yml', '.github/workflows/release.yml'])).toEqual(
+      only('code'),
+    );
+  });
+
+  test('.github/workflows/ bersama kode: OR biasa, tidak mematikan bagian lain', () => {
+    expect(classify(['.github/workflows/x.yml', 'server/src/a.ts'])).toEqual(
+      only('code', 'server_tests', 'image'),
+    );
+  });
+
+  test('.github/actions/ dan jalur .github lain tetap konservatif (aksi mariadb/setup dipakai tes server/web)', () => {
+    for (const path of [
+      '.github/actions/mariadb/action.yml',
+      '.github/actions/setup/action.yml',
+      '.github/dependabot.yml',
+      '.github/CODEOWNERS',
+    ]) {
+      expect(classify([path]), path).toEqual(ALL_CHANGES);
+    }
+    expect(classify(['.github/workflows/x.yml', '.github/actions/setup/action.yml'])).toEqual(
+      ALL_CHANGES,
     );
   });
 
@@ -113,7 +142,7 @@ describe('classify: satu bagian monorepo', () => {
 describe('classify: infra, tak dikenal, dan kasus aman', () => {
   test('jalur infra atau tak dikenal menyalakan semua', () => {
     for (const path of [
-      '.github/workflows/x.yml',
+      '.github/actions/setup/action.yml',
       'bun.lock',
       'package.json',
       'scripts/a.ts',
@@ -265,12 +294,14 @@ describe('peta aturan sesuai impor lintas-workspace (dipindai dari kode sumber)'
     }
   });
 
-  test('mengubah Y menyalakan image bila X ikut masuk image (server, web) dan desktop_pack bila X masuk installer (web, desktop)', () => {
+  test('mengubah Y menyalakan image bila X ikut masuk image (server, web) dan desktop_pack bila X dikemas ke installer lewat impor langsung (desktop)', () => {
     for (const edge of importEdges()) {
       const [from, to] = edge.split('->') as [string, string];
       const result = classify([`${to}/x.ts`]);
       if (from === 'server' || from === 'web') expect(result.image, edge).toBe(true);
-      if (from === 'web' || from === 'desktop') expect(result.desktop_pack, edge).toBe(true);
+      // `web` sengaja dikecualikan (keputusan pemilik 2026-11-20): UI dasar desktop diperbarui saat desktop dirilis,
+      // jadi perubahan web saja tak menjalankan kemas desktop; shared/countrylock tetap memicunya lewat impor desktop.
+      if (from === 'desktop') expect(result.desktop_pack, edge).toBe(true);
     }
   });
 });

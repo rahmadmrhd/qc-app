@@ -274,9 +274,20 @@ jobs:
       - name: Tes desktop
         if: needs.changes.outputs.desktop_tests == 'true'
         run: bun run --cwd desktop test
-      # Installer membawa UI dasar dari build web (server/dist).
-      - name: Build web
+      # Installer membawa UI dasar dari build web (server/dist). Keputusan pemilik 2026-11-20: PR yang hanya mengubah desktop/
+      # tak membangun ulang web; server/dist di-cache menurut hash masukan build web (web/, shared/, countrylock/, manifes
+      # akar). `bun run build:web` = vite build di web/ dan tak membaca scripts/, jadi scripts/ tak ikut di kunci. Kunci
+      # persis (tanpa restore-keys, agar tak pernah memakai build yang basi). Cache PR hanya terbaca di PR itu sendiri
+      # (job ini hanya jalan di PR, jadi tak ada cache di dev): hit baru terjadi pada push berikutnya di PR yang sama.
+      - name: Cache build web (UI dasar desktop)
+        id: web-dist
         if: needs.changes.outputs.desktop_pack == 'true'
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: server/dist
+          key: web-dist-${{ runner.os }}-${{ hashFiles('web/**', 'shared/**', 'countrylock/**', 'package.json', 'bun.lock', 'tsconfig.base.json', '!**/node_modules/**') }}
+      - name: Build web
+        if: needs.changes.outputs.desktop_pack == 'true' && steps.web-dist.outputs.cache-hit != 'true'
         run: bun run build:web
       - name: Kemas x64 dan arm64
         if: needs.changes.outputs.desktop_pack == 'true'
