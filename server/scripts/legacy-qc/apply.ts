@@ -154,14 +154,16 @@ export function resolvePlan(plan: Plan, target: TargetState): Resolved {
   const createBus: Named[] = [];
   const usedBuCodes = new Set(target.businessUnits.map((bu) => bu.code.trim().toLowerCase()));
   for (const name of plan.buNames) {
-    const found = target.businessUnits.find(
-      (bu) => bu.name.trim().toLowerCase() === name.toLowerCase(),
-    );
+    const code = BU_CODES[name] ?? name.slice(0, 8).toUpperCase();
+    // Nama diutamakan; bila tak ada, kode usulan (IJW, SPC, TKW) dianggap BU yang sama (keputusan pemilik 2026-11-19:
+    // BU "IJW" di dump lama = BU "Indoreka Jaya Wutama" berkode IJW di staging/produksi).
+    const found =
+      target.businessUnits.find((bu) => bu.name.trim().toLowerCase() === name.toLowerCase()) ??
+      target.businessUnits.find((bu) => bu.code.trim().toLowerCase() === code.toLowerCase());
     if (found) {
       buId.set(name, found.id.trim());
       continue;
     }
-    const code = BU_CODES[name] ?? name.slice(0, 8).toUpperCase();
     if (usedBuCodes.has(code.toLowerCase()))
       blockers.push(`Kode BU "${code}" untuk "${name}" sudah dipakai BU lain di tujuan.`);
     usedBuCodes.add(code.toLowerCase());

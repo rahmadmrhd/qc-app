@@ -109,12 +109,34 @@ describe('resolvePlan terhadap tujuan yang tidak kosong', () => {
     expect(resolved.alreadyMigrated).toBe(0);
   });
 
-  test('kode BU yang bentrok dengan BU lain di tujuan menjadi hambatan dan penerapan ditolak', async () => {
-    await seedBusinessUnit(env, { id: 'bu-lain', code: 'tkw', name: 'Lain' });
+  test('BU yang namanya beda tetapi kodenya sama dengan kode usulan dicocokkan, tidak dibuat ganda', async () => {
+    await seedBusinessUnit(env, { id: 'bu-tkw', code: 'tkw', name: 'Teakwave Indonesia' });
     const resolved = resolvePlan(plan(), await loadTargetState(env.DB));
-    expect(resolved.blockers.join('\n')).toContain('"TKW"');
-    await expect(applyPlan(env.DB, resolved, NOW)).rejects.toThrow('Penerapan dibatalkan');
-    expect(await count('serials')).toBe(0);
+    expect(resolved.blockers).toEqual([]);
+    expect(resolved.createBus.map((bu) => bu.name)).not.toContain('Teakwave');
+    await applyPlan(env.DB, resolved, NOW);
+    const rows = await env.DB.prepare(
+      "SELECT DISTINCT bu_id FROM serial_business_units WHERE bu_id = 'bu-tkw'",
+    ).all<{ bu_id: string }>();
+    expect(rows.results).toHaveLength(1);
+    expect(await count('business_units')).toBe(3);
+  });
+
+  test('nama yang sama diutamakan atas kode: BU bernama Teakwave dipakai walau BU lain berkode TKW', async () => {
+    await seedBusinessUnit(env, { id: 'bu-nama', code: 'TKX', name: 'Teakwave' });
+    await seedBusinessUnit(env, { id: 'bu-kode', code: 'tkw', name: 'Lain' });
+    const resolved = resolvePlan(plan(), await loadTargetState(env.DB));
+    expect(resolved.blockers).toEqual([]);
+    expect(resolved.createBus.map((bu) => bu.name)).not.toContain('Teakwave');
+    await applyPlan(env.DB, resolved, NOW);
+    const used = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM serial_business_units WHERE bu_id = 'bu-nama'",
+    ).first<{ n: number | string }>();
+    expect(Number(used?.n)).toBeGreaterThan(0);
+    const other = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM serial_business_units WHERE bu_id = 'bu-kode'",
+    ).first<{ n: number | string }>();
+    expect(Number(other?.n)).toBe(0);
   });
 
   test('serial yang sudah ada di tujuan (serial sama, di BU mana pun) dilaporkan sebagai bentrok, bukan ditulis', async () => {
