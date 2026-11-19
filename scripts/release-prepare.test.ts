@@ -150,7 +150,7 @@ function fakeFiles(initial: Record<string, string>): CliDeps & { files: Record<s
 const baseFiles = () => ({
   'server/package.json': '{\n  "name": "@qc/server",\n  "version": "0.0.0"\n}\n',
   'server/CHANGELOG.md': '# Changelog server\n',
-  'server/changelog.d/20261117-a.md': 'jenis: ditambah\nFitur A.',
+  'server/changelog.d/20261117-a.md': 'feat(web): Fitur A.',
 });
 
 const NOW = new Date('2026-11-17T17:30:00Z');
@@ -418,7 +418,7 @@ const bothFiles = () => ({
   ...baseFiles(),
   'desktop/package.json': '{\n  "name": "@qc/desktop",\n  "version": "0.0.0"\n}\n',
   'desktop/CHANGELOG.md': '# Changelog desktop\n',
-  'desktop/changelog.d/20261117-b.md': 'jenis: diubah\nFitur B.',
+  'desktop/changelog.d/20261117-b.md': 'change(desktop): Fitur B.',
 });
 const BOTH_STAGED =
   'server/package.json\ndesktop/package.json\nbun.lock\nserver/CHANGELOG.md\ndesktop/CHANGELOG.md\nserver/changelog.d/20261117-a.md\ndesktop/changelog.d/20261117-b.md\n';
