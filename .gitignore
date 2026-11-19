@@ -44,3 +44,6 @@ ui-signing-key.pem
 # Laporan dry-run migrasi data QC lama (berisi nomor serial; jangan dikomit)
 server/legacy-qc-report/
 server/laporan-*/
+
+# laporan skrip penyatuan serial ganda (berisi Serial Number; jangan dikomit)
+**/merge-serials-report/

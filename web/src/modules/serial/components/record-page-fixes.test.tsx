@@ -84,6 +84,7 @@ function baseApi(id: string, input: Record<string, unknown>) {
     }));
     return Promise.resolve({ results });
   }
+  if (id === 'serials.lookupMany') return Promise.resolve({ found: [] });
   return Promise.reject(new Error(`api tak dikenal: ${id}`));
 }
 

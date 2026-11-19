@@ -15,14 +15,18 @@ import { useOptionalActiveLocations } from '@/modules/location/active-locations-
 import {
   addSerials,
   applyBulk,
+  applyLookup,
   applyResults,
   type BulkPatch,
   type Defaults,
   type DraftControl,
   fromQcsnRows,
+  isExistingBlocked,
+  lookupKeyOf,
   missingDefaults,
   proofIdsOf,
   removeRows,
+  rowsToLookup,
   type StagingRow,
   toBatches,
   toRowInput,
@@ -40,6 +44,7 @@ import {
   serialBuOptionsQueryOptions,
   serialItemsByIdQueryOptions,
   serialLocationOptionsQueryOptions,
+  serialLookupManyQueryOptions,
   serialStickerOptionsQueryOptions,
   useSaveSerialBatch,
 } from '../queries';
@@ -65,6 +70,8 @@ interface Notice {
 
 interface SaveSummary {
   created: number;
+  /** Serial sudah ada: entri menjadi cek ulang lolos pada catatan yang sama. */
+  rechecked: number;
   duplicate: number;
   failed: number;
   /** Baris yang tidak dikirim karena item atau BU-nya tidak lagi sah (ditandai di tabel). */
@@ -107,6 +114,8 @@ const NOTICE_CLASS: Record<NoticeTone, string> = {
 };
 
 const AUTOSAVE_DELAY_MS = 500;
+/** Jeda mengumpulkan serial baru sebelum ditanyakan ke server (`serials.lookupMany`): scan beruntun jadi satu permintaan. */
+const LOOKUP_DELAY_MS = 250;
 
 function newClientId(): string {
   const random = globalThis.crypto?.randomUUID?.();
@@ -197,6 +206,75 @@ export function RecordPage({
     if (draftRef.current) draftRef.current.replace(next);
     else setOwnRows(next);
   }, []);
+
+  // Serial yang sudah tercatat (keunikan se-sistem): serial baru di draft ditanyakan ke server per kelompok; yang sudah
+  // ada menjadi baris Cek ulang. Satu rantai janji agar permintaan tidak tumpang tindih dan Simpan bisa menunggunya.
+  const lookedUpRef = useRef(new Set<string>());
+  interface LookupOutcome {
+    /** `null` bila semua permintaan sukses, selain itu pesan galat. */
+    failure: string | null;
+    /** Banyak baris yang berubah bentuk (jadi Cek ulang, tak lagi Cek ulang, atau datanya berubah). */
+    changed: number;
+  }
+  const lookupChainRef = useRef<Promise<LookupOutcome>>(
+    Promise.resolve({ failure: null, changed: 0 }),
+  );
+  /**
+   * Menjalankan pencarian serial yang sudah ada. Bawaan: hanya baris yang BELUM pernah ditanyakan. `all` (dipakai
+   * Simpan): SEMUA baris ditanyakan ulang, karena orang lain bisa mencatat serial itu sejak terakhir ditanyakan.
+   */
+  const runLookup = useCallback(
+    (all = false): Promise<LookupOutcome> => {
+      const task = lookupChainRef.current.then(async (): Promise<LookupOutcome> => {
+        let failure: string | null = null;
+        let changed = 0;
+        // Pasangan (baris, serial) yang sudah tidak ada di draft dilupakan (tak menumpuk).
+        const present = new Set(rowsRef.current.map(lookupKeyOf));
+        for (const key of lookedUpRef.current) {
+          if (!present.has(key)) lookedUpRef.current.delete(key);
+        }
+        const pendingRows = all
+          ? rowsRef.current.filter((row) => normalizeSerial(row.serial) !== '')
+          : rowsToLookup(rowsRef.current, lookedUpRef.current);
+        const pending = [...new Set(pendingRows.map((row) => normalizeSerial(row.serial)))];
+        for (let at = 0; at < pending.length; at += SERIAL_LIMITS.batchRows) {
+          const chunk = new Set(pending.slice(at, at + SERIAL_LIMITS.batchRows));
+          try {
+            const data = await queryClient.fetchQuery(serialLookupManyQueryOptions([...chunk]));
+            for (const row of pendingRows) {
+              if (chunk.has(normalizeSerial(row.serial))) {
+                lookedUpRef.current.add(lookupKeyOf(row));
+              }
+            }
+            const before = rowsRef.current;
+            const next = applyLookup(before, chunk, data.found);
+            if (next !== before) {
+              changed += next.filter((row, index) => row !== before[index]).length;
+              setAllRows(next);
+            }
+          } catch (caught) {
+            // Gagal (jaringan/server): baris dibiarkan. Simpan menolak jalan terus (stiker bawaan akan salah dipotong
+            // bila serialnya ternyata sudah ada), sedangkan pencarian latar belakang diam saja.
+            failure = describeError(caught);
+          }
+        }
+        return { failure, changed };
+      });
+      lookupChainRef.current = task;
+      return task;
+    },
+    [queryClient, setAllRows],
+  );
+  // Berubah hanya bila ada baris baru atau serial yang diganti (bukan tiap suntingan lain); itu yang memicu pencarian.
+  const serialsKey = useMemo(() => rows.map(lookupKeyOf).join('|'), [rows]);
+  useEffect(() => {
+    if (serialsKey === '') {
+      lookedUpRef.current.clear();
+      return;
+    }
+    const timer = setTimeout(() => void runLookup(false), LOOKUP_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [serialsKey, runLookup]);
 
   // Item menurut id (verifikasi impor dan penyegaran draft): hanya item yang ada dan terlihat bagi pengguna.
   const findItemLookups = useCallback(
@@ -468,10 +546,15 @@ export function RecordPage({
       if (rowsRef.current.some((row) => row.clientId !== clientId && row.serial === serial)) {
         return 'Serial sudah ada di tabel';
       }
-      edit(clientId, { serial });
+      // Serial diganti: penanda Cek ulang milik serial lama dibuang; serial baru ditanyakan ulang ke server.
+      patchRow(clientId, (row) => {
+        const { existing: _old, ...rest } = clearOutcome(row);
+        // Bukan lagi Cek ulang: stiker kembali ke bawaan (semua yang berlaku), seperti baris biasa.
+        return { ...rest, serial, ...(row.existing ? { stickers: null } : {}) };
+      });
       return null;
     },
-    [edit],
+    [patchRow],
   );
   // Membuang baris = foto draft barisnya ikut dibuang di server (upaya terbaik; sisanya disapu penjadwal).
   const dropRows = useCallback(
@@ -581,10 +664,19 @@ export function RecordPage({
         }
       }
       setAllRows([...latest, ...additions]);
+      // Serial yang sudah tercatat diperiksa sekarang: barisnya menjadi Cek ulang atau ditandai bermasalah.
+      await runLookup();
+      const addedIds = new Set(additions.map((row) => row.clientId));
+      const recheck = rowsRef.current.filter(
+        (row) => addedIds.has(row.clientId) && row.existing !== undefined,
+      );
       const parts = [
         `${fileName}: ${additions.length} baris baru`,
         `${skipped} dilewati (sudah ada)`,
       ];
+      if (recheck.length > 0) parts.push(`${recheck.length} baris jadi Cek ulang`);
+      const stuck = recheck.filter(isExistingBlocked).length;
+      if (stuck > 0) parts.push(`${stuck} tidak bisa dicek ulang (laporan aktif atau rusak)`);
       if (result.problems.length > 0) {
         parts.push(
           `${result.problems.length} bermasalah (${result.problems
@@ -602,6 +694,7 @@ export function RecordPage({
       if (truncated) parts.push(`batas ${SERIAL_LIMITS.tableRows} baris draft tercapai`);
       if (result.warning) parts.push(result.warning);
       const warn =
+        stuck > 0 ||
         result.problems.length > 0 ||
         verified.unresolved > 0 ||
         verified.unverified > 0 ||
@@ -614,9 +707,42 @@ export function RecordPage({
     }
   }
 
+  // Penjaga klik ganda selama menunggu pencarian serial yang sudah ada (sebelum `saving` menyala).
+  const preparingRef = useRef(false);
   /** `external` = dipicu penjaga keluar halaman: pemanggil yang melanjutkan navigasi, jadi `onAllSaved` tak dipanggil. */
   async function handleSave(external = false): Promise<boolean> {
-    if (saving || importing || rowsRef.current.length === 0) return false;
+    if (saving || importing || preparingRef.current || rowsRef.current.length === 0) return false;
+    preparingRef.current = true;
+    let outcome: { failure: string | null; changed: number };
+    try {
+      // Orang lain bisa mencatat serial yang sama sejak terakhir ditanyakan: SEMUA baris ditanyakan ulang sekarang.
+      // Baris yang ternyata sudah ada menjadi Cek ulang (stiker bawaan kosong), supaya bawaan "semua stiker" tidak
+      // memotong stok pada cek ulang.
+      outcome = await runLookup(true);
+    } finally {
+      preparingRef.current = false;
+    }
+    if (outcome.failure !== null) {
+      setNotice({
+        tone: 'error',
+        text: `Pengecekan serial yang sudah tercatat gagal: ${outcome.failure}. Coba simpan lagi.`,
+      });
+      return false;
+    }
+    if (outcome.changed > 0) {
+      // Status serial berubah pada saat Simpan: jangan langsung mengirim; pengguna meninjau baris yang berubah (lencana
+      // Cek ulang atau pesan bermasalah di kolom Hasil, stiker, dan BU) lalu menekan Simpan lagi.
+      setNotice({
+        tone: 'warn',
+        text: `${outcome.changed} baris berubah karena ada serial yang kini sudah tercatat atau statusnya berubah (jadi Cek ulang atau bermasalah). Periksa baris itu (stiker dan BU), lalu tekan Simpan lagi.`,
+      });
+      return false;
+    }
+    if (rowsRef.current.length === 0) return false;
+    return saveRows(external);
+  }
+
+  async function saveRows(external: boolean): Promise<boolean> {
     const current = rowsRef.current;
     const blocked = current.filter(
       (row) =>
@@ -625,12 +751,13 @@ export function RecordPage({
         row.buId === '' ||
         row.locationId === '' ||
         !isIsoDate(row.testDate) ||
-        (row.proofMin ?? 0) > row.proofPhotos.length,
+        (row.proofMin ?? 0) > row.proofPhotos.length ||
+        isExistingBlocked(row),
     );
     if (blocked.length > 0) {
       setNotice({
         tone: 'error',
-        text: `${blocked.length} baris belum lengkap (item, lokasi, tanggal uji, atau foto bukti); lihat kolom Hasil.`,
+        text: `${blocked.length} baris belum lengkap atau tidak bisa dicek ulang (item, lokasi, tanggal uji, foto bukti, atau status serial); lihat kolom Hasil.`,
       });
       return false;
     }
@@ -639,6 +766,7 @@ export function RecordPage({
     setSummary(null);
     let allSaved = false;
     let savedCount = 0;
+    let recheckedCount = 0;
     try {
       // Hanya baris yang ada saat Simpan ditekan yang dikirim; pindaian yang masuk sesudahnya menunggu simpan berikutnya.
       const sendIds = new Set(current.map((row) => row.clientId));
@@ -697,12 +825,13 @@ export function RecordPage({
       );
 
       const batches = toBatches(rowsRef.current.filter((row) => sendIds.has(row.clientId)));
-      const tally: SaveSummary = { created: 0, duplicate: 0, failed: 0, skipped };
+      const tally: SaveSummary = { created: 0, rechecked: 0, duplicate: 0, failed: 0, skipped };
       for (const [index, batch] of batches.entries()) {
         try {
           const output = await saveBatch.mutateAsync({ rows: batch.map(toRowInput) });
           for (const result of output.results) {
             if (result.result === 'created') tally.created++;
+            else if (result.result === 'rechecked') tally.rechecked++;
             else if (result.result === 'duplicate') tally.duplicate++;
             else tally.failed++;
           }
@@ -725,7 +854,8 @@ export function RecordPage({
       setSummary(tally);
       // Baris `created` (termasuk simpan ulang `clientId` yang sama) sudah keluar dari draft; semuanya sukses bila tak ada
       // yang gagal, ganda, atau tak terkirim, dan tidak ada baris baru yang masuk selama menyimpan.
-      savedCount = tally.created;
+      savedCount = tally.created + tally.rechecked;
+      recheckedCount = tally.rechecked;
       allSaved =
         tally.failed === 0 &&
         tally.duplicate === 0 &&
@@ -741,7 +871,11 @@ export function RecordPage({
     }
     if (allSaved && (external || onAllSaved)) {
       if (!draftRef.current) clearDraft(ownerKey);
-      toast.success('Serial Number berhasil disimpan');
+      toast.success(
+        recheckedCount > 0
+          ? `Serial Number berhasil disimpan (${savedCount - recheckedCount} dibuat, ${recheckedCount} dicek ulang)`
+          : 'Serial Number berhasil disimpan',
+      );
       if (!external) onAllSaved?.(savedCount);
     }
     return allSaved;
@@ -925,7 +1059,9 @@ export function RecordPage({
 
       {summary ? (
         <p role="status" className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
-          Dibuat {summary.created}, duplikat {summary.duplicate}, gagal {summary.failed}.
+          Dibuat {summary.created},{' '}
+          {summary.rechecked > 0 ? `${summary.rechecked} dicek ulang, ` : ''}
+          duplikat {summary.duplicate}, gagal {summary.failed}.
           {summary.skipped > 0
             ? ` ${summary.skipped} baris tidak dikirim: item atau Business Unit-nya sudah tidak berlaku.`
             : ''}
@@ -973,7 +1109,8 @@ export function RecordPage({
 
       {detailRow && !saving ? (
         <RowEditDialog
-          key={detailRow.clientId}
+          // Dibuka sebelum pencarian serial selesai lalu barisnya menjadi Cek ulang: dialog dipasang ulang dari baris baru.
+          key={`${detailRow.clientId}|${detailRow.existing?.id ?? ''}`}
           row={detailRow}
           actorName={me.name}
           commitSerial={(serial) => commitSerial(detailRow.clientId, serial)}
@@ -985,6 +1122,7 @@ export function RecordPage({
         <BulkEditDialog
           open
           count={selectedCount}
+          recheckCount={rows.filter((row) => row.selected && row.existing !== undefined).length}
           onApply={applyBulkEdit}
           onClose={() => setBulkOpen(false)}
         />

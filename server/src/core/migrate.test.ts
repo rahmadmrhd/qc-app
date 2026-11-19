@@ -1,7 +1,9 @@
 // Tes migrator dan skema baseline MariaDB terhadap database nyata di VPS (butuh `bun run db:tunnel`).
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { createDb, type Db, DbError } from '@server/core/db';
+import type { Env } from '@server/core/env';
 import { applyMigrations, loadMigrations } from '@server/core/migrate';
+import { ensureSerialUniqueIndex } from '@server/modules/serial/bu-history';
 import { newTestSchemaName, testDbUrl } from '@server-test/db-env';
 
 const URL_NO_DB = testDbUrl();
@@ -41,6 +43,7 @@ const EXPECTED_TABLES = [
   'rate_limits',
   'roles',
   'schema_migrations',
+  'serial_business_units',
   'serial_cases',
   'serial_events',
   'serial_proof_photos',
@@ -326,6 +329,7 @@ describe('skema baseline', () => {
       { name: '0023_firmware_item.sql' },
       { name: '0024_item_wajib_foto.sql' },
       { name: '0025_nomor_laporan_baru.sql' },
+      { name: '0026_serial_unik_sistem.sql' },
     ]);
   });
 
@@ -347,7 +351,9 @@ describe('skema baseline', () => {
     expect(columns.results.map((r) => r.c)).toEqual(['serial_event_id', 'serial_id']);
   });
 
-  test('serials: serial unik per (BU, serial) dan client_id unik', async () => {
+  test('serials: serial unik se-sistem (lintas BU, indeks dibuat ensureSerialUniqueIndex) dan client_id unik', async () => {
+    // Indeks unik serial dibuat server saat boot, bukan migrasi 0026 (pemeriksa dump menolak PREPARE).
+    expect(await ensureSerialUniqueIndex({ DB: db } as Env)).toBe('created');
     const insert = (id: string, clientId: string, bu: string, serial: string) =>
       db
         .prepare(
@@ -356,9 +362,26 @@ describe('skema baseline', () => {
         .bind(id, clientId, bu, serial, 'item-1')
         .run();
     await insert('a', 'ca', 'bu1', 'SN1');
-    await insert('b', 'cb', 'bu2', 'SN1');
+    await expect(insert('b', 'cb', 'bu2', 'SN1')).rejects.toBeInstanceOf(DbError);
     await expect(insert('c', 'cc', 'bu1', 'SN1')).rejects.toBeInstanceOf(DbError);
     await expect(insert('d', 'ca', 'bu3', 'SN9')).rejects.toBeInstanceOf(DbError);
+    await insert('e', 'ce', 'bu2', 'SN2');
+    // Skema ini dipakai tes berikutnya (daftar indeks hasil migrasi saja): kembalikan keadaan tanpa indeks bentukan boot.
+    await db.prepare('DROP INDEX serials_serial ON serials').run();
+  });
+
+  test('serial_events.client_id: NULLABLE, banyak NULL boleh, nilai terisi unik', async () => {
+    const insert = (id: string, seq: number, clientId: string | null) =>
+      db
+        .prepare(
+          "INSERT INTO serial_events (id, serial_id, seq, type, client_id) VALUES (?, 'sx', ?, 'recheck', ?)",
+        )
+        .bind(id, seq, clientId)
+        .run();
+    await insert('e1', 1, null);
+    await insert('e2', 2, null);
+    await insert('e3', 3, 'klien-1');
+    await expect(insert('e4', 4, 'klien-1')).rejects.toBeInstanceOf(DbError);
   });
 
   test('users.bu_assignments ada, bertipe teks panjang, bawaan kosong', async () => {
@@ -487,8 +510,10 @@ describe('skema baseline', () => {
         'serial_cases.serial_cases_bu_created',
         'serial_cases.serial_cases_bu_opened',
         'serial_cases.serial_cases_number',
+        'serial_business_units.serial_bu_by_bu',
         'serial_cases.serial_cases_serial',
         'serial_events.serial_events_case',
+        'serial_events.serial_events_client_id',
         'serial_events.serial_events_seq',
         'serial_proof_photos.serial_proof_photos_event',
         'serial_proof_photos.serial_proof_photos_owner',
@@ -525,6 +550,7 @@ describe('skema baseline', () => {
     expect(pks.handover_comments).toBe('id');
     expect(pks.counters).toBe('key');
     expect(pks.item_business_units).toBe('item_id,bu_id');
+    expect(pks.serial_business_units).toBe('serial_id,bu_id');
     expect(pks.brand_default_business_units).toBe('brand_id,bu_id');
     expect(pks.business_units).toBe('id');
     expect(pks.sticker_business_units).toBe('sticker_id,bu_id');

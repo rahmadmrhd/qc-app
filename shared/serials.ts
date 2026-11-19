@@ -264,3 +264,22 @@ export function publicActorName(name: string): string {
 export function proofMinimumOf(item: { proofRequired: boolean; proofMin: number }): number {
   return item.proofRequired ? item.proofMin : 0;
 }
+
+/**
+ * BU yang boleh dipilih pada cek ulang lolos (spek serial unik se-sistem §1 butir 4): BU tulis pengguna yang sama
+ * dengan BU saat ini atau BU yang belum pernah terlibat pada serial itu. BU yang pernah dilewati dan sudah
+ * ditinggalkan (A lalu B: A) tidak boleh. Urutan `writableBuIds` dipertahankan, duplikat dibuang.
+ */
+export function recheckBuCandidates(input: {
+  currentBuId: string;
+  involvedBuIds: readonly string[];
+  writableBuIds: readonly string[];
+}): string[] {
+  const involved = new Set(input.involvedBuIds);
+  const out: string[] = [];
+  for (const buId of input.writableBuIds) {
+    if (out.includes(buId)) continue;
+    if (buId === input.currentBuId || !involved.has(buId)) out.push(buId);
+  }
+  return out;
+}

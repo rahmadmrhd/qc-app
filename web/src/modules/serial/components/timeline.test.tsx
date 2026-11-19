@@ -207,3 +207,30 @@ test('badge Foto bermasalah di kepala kartu menghitung foto gagal pada kejadian 
   expect(screen.getByText('(2)')).toBeInTheDocument();
   expect(screen.getAllByText('Bukti foto QC')).toHaveLength(1);
 });
+
+test('cek ulang lolos tanpa perpindahan BU tidak menampilkan "Pindah BU"', () => {
+  render(
+    <Timeline events={[event(2, { type: 'recheck', message: '', data: { result: 'pass' } })]} />,
+  );
+  expect(screen.getByText('Hasil: Lolos')).toBeInTheDocument();
+  expect(screen.queryByText(/Pindah BU/)).toBeNull();
+});
+
+test('recheck_pass dengan data.bu menampilkan rincian Pindah BU di samping penutupan laporan', () => {
+  render(
+    <Timeline
+      events={[
+        event(3, {
+          type: 'recheck_pass',
+          message: '',
+          data: {
+            caseNumber: 'LP/BU1/2611-0001',
+            bu: { fromId: 'b1', fromCode: 'BU1', toId: 'b2', toCode: 'BU2' },
+          },
+        }),
+      ]}
+    />,
+  );
+  expect(screen.getByText('Pindah BU: BU1 → BU2')).toBeInTheDocument();
+  expect(screen.getByText('Laporan LP/BU1/2611-0001 ditutup: lolos')).toBeInTheDocument();
+});

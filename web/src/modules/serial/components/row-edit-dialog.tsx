@@ -19,13 +19,14 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { StagingRow, StagingSticker } from '../lib/draft';
+import { existingProblem, type StagingRow, type StagingSticker } from '../lib/draft';
 import { mergeProofPhotos, type ProofPhotoRef } from '../lib/proof-source';
 import type { StampPreviewInput } from '../lib/stamp-preview';
 import { discardProofPhotos } from '../queries';
 import { ItemBuField, type ItemBuValue } from './item-bu-field';
 import { ProofPhotoDialog } from './proof-photo-dialog';
 import { ProofPhotoGrid } from './proof-photo-grid';
+import { choicesFor, RecheckBuField, useWritableBus } from './recheck-bu-field';
 import { SerialLocationField } from './serial-location-field';
 import { SerialNoteField } from './serial-note-field';
 import { defaultStickerChoice, StickerChecklist, useApplicableStickers } from './sticker-checklist';
@@ -83,7 +84,22 @@ export function RowEditDialog({
   const [chosen, setChosen] = useState<Map<string, number> | null>(() =>
     row.stickers === null ? null : new Map(row.stickers.map((s) => [s.stickerId, s.qty])),
   );
-  const { options, state, loaded } = useApplicableStickers(item.itemId, item.buId);
+  const { options, state, loaded } = useApplicableStickers(
+    item.itemId,
+    item.buId,
+    row.existing?.id,
+  );
+  // Baris Cek ulang (serial sudah tercatat): item dikunci ke catatan, BU dibatasi, Sample tidak berlaku.
+  const existing = row.existing;
+  const { bus, loading: busLoading } = useWritableBus();
+  const buChoices = useMemo(
+    () =>
+      existing
+        ? choicesFor(existing.recheckBuIds, bus, [{ id: existing.buId, code: existing.buCode }])
+        : [],
+    [existing, bus],
+  );
+  const blocked = existingProblem(row);
 
   const [photos, setPhotos] = useState<ProofPhotoRef[]>(row.proofPhotos);
   const [photoOpen, setPhotoOpen] = useState(false);
@@ -113,15 +129,18 @@ export function RowEditDialog({
   }
 
   // Item/BU diganti: pilihan lama tidak berlaku lagi, kembali ke bawaan (semua tercentang).
+  // Baris Cek ulang: stiker bawaan KOSONG (pengguna mencentang yang ditempel lagi), bukan semua yang berlaku.
   function changeItem(next: ItemBuValue) {
-    if (next.itemId !== item.itemId || next.buId !== item.buId) setChosen(null);
+    if (next.itemId !== item.itemId || next.buId !== item.buId) {
+      setChosen(existing ? new Map() : null);
+    }
     setItem(next);
   }
 
   // Bawaan (belum ada pilihan eksplisit): semua stiker yang berlaku tercentang dengan jumlah awalnya.
   useEffect(() => {
-    if (chosen === null && loaded) setChosen(defaultStickerChoice(options));
-  }, [chosen, loaded, options]);
+    if (chosen === null && loaded) setChosen(existing ? new Map() : defaultStickerChoice(options));
+  }, [chosen, loaded, options, existing]);
 
   const current = chosen ?? new Map<string, number>();
   const normalizedSerial = normalizeSerial(serial);
@@ -140,9 +159,21 @@ export function RowEditDialog({
     [normalizedSerial, item.itemLabel, item.buLabel, location.label, actorName],
   );
 
+  const buAllowed = !existing || buChoices.some((bu) => bu.id === item.buId);
   const incomplete =
-    item.itemId === '' || item.buId === '' || location.id === '' || !isIsoDate(testDate);
-  const ready = !incomplete && loaded && chosen !== null && normalizedSerial !== '';
+    item.itemId === '' ||
+    item.buId === '' ||
+    !buAllowed ||
+    location.id === '' ||
+    !isIsoDate(testDate);
+  // Baris Cek ulang tidak menunggu daftar stiker: item catatan bisa saja tak terlihat/nonaktif bagi pengguna (daftar
+  // stiker gagal dimuat), padahal cek ulang tetap sah; stiker bawaan kosong dan dapat dibiarkan.
+  const ready =
+    !incomplete &&
+    (loaded || existing !== undefined) &&
+    chosen !== null &&
+    normalizedSerial !== '' &&
+    blocked === null;
   const room = Math.max(0, SERIAL_PROOF_LIMITS.perEntryMax - photos.length);
 
   function removePhoto(photo: ProofPhotoRef) {
@@ -178,10 +209,13 @@ export function RowEditDialog({
         return;
       }
     }
-    const stickers: StagingSticker[] = options.flatMap((sticker) => {
+    const computed: StagingSticker[] = options.flatMap((sticker) => {
       const qty = current.get(sticker.id);
       return qty === undefined ? [] : [{ stickerId: sticker.id, name: sticker.name, qty }];
     });
+    // Cek ulang dengan daftar stiker yang tak termuat: pilihan lama baris dipertahankan selama BU-nya tak diganti.
+    const stickers =
+      existing && !loaded ? (item.buId === row.buId ? (row.stickers ?? []) : []) : computed;
     settledRef.current = true;
     void discardProofPhotos([...removedRef.current]);
     onApply({
@@ -215,6 +249,7 @@ export function RowEditDialog({
                 id="edit-serial"
                 className="font-mono"
                 value={serial}
+                readOnly={existing !== undefined}
                 disabled={serialLocked}
                 aria-invalid={serialError ? true : undefined}
                 maxLength={SERIAL_LIMITS.serialMax * 4}
@@ -234,13 +269,47 @@ export function RowEditDialog({
                 </p>
               ) : null}
             </div>
-            <ItemBuField
-              idPrefix="detail"
-              label="Item baris"
-              buFieldLabel="Business Unit baris"
-              value={item}
-              onChange={changeItem}
-            />
+            {existing ? (
+              <>
+                <p
+                  role="status"
+                  className="rounded-md border border-primary/40 bg-primary/5 px-3 py-2 text-sm"
+                >
+                  Cek ulang: serial ini sudah tercatat di {existing.buCode}. Entri ini menjadi
+                  kejadian cek ulang lolos pada catatan yang sama; item mengikuti catatan itu.
+                </p>
+                {blocked !== null ? (
+                  <p role="alert" className="text-sm text-destructive">
+                    {blocked}
+                  </p>
+                ) : null}
+                <div className="space-y-1.5">
+                  <Label htmlFor="detail-item">Item baris</Label>
+                  <Input id="detail-item" readOnly value={row.itemLabel} />
+                </div>
+                <RecheckBuField
+                  id="detail-bu"
+                  label="Business Unit baris"
+                  choices={buChoices}
+                  value={{ buId: item.buId, buLabel: item.buLabel }}
+                  loading={bus === null && busLoading}
+                  onChange={(bu) => changeItem({ ...item, buId: bu.buId, buLabel: bu.buLabel })}
+                  error={
+                    item.buId !== '' && !buAllowed
+                      ? 'Business Unit ini tidak bisa dipakai untuk cek ulang serial ini'
+                      : undefined
+                  }
+                />
+              </>
+            ) : (
+              <ItemBuField
+                idPrefix="detail"
+                label="Item baris"
+                buFieldLabel="Business Unit baris"
+                value={item}
+                onChange={changeItem}
+              />
+            )}
             <SerialLocationField
               id="detail-location"
               label="Lokasi baris"
@@ -257,14 +326,21 @@ export function RowEditDialog({
                 onChange={(event) => setTestDate(event.target.value)}
               />
             </div>
-            <div className="flex items-center gap-2">
-              <Checkbox
-                id="edit-sample"
-                checked={sample}
-                onCheckedChange={(on) => setSample(on === true)}
-              />
-              <Label htmlFor="edit-sample">Sample</Label>
-            </div>
+            {existing ? (
+              <p className="text-xs text-muted-foreground">
+                Sample tidak berlaku untuk cek ulang. Tanggal uji di sini hanya menjadi tanggal
+                kejadian cek ulang.
+              </p>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="edit-sample"
+                  checked={sample}
+                  onCheckedChange={(on) => setSample(on === true)}
+                />
+                <Label htmlFor="edit-sample">Sample</Label>
+              </div>
+            )}
             <SerialNoteField id="edit-note" label="Catatan baris" value={note} onChange={setNote} />
             <StickerChecklist
               idPrefix="detail"

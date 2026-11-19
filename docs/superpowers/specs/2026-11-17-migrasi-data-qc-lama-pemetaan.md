@@ -28,7 +28,7 @@ Legenda keputusan: ✅ jelas, tanpa keputusan · ❓ butuh keputusan pemilik (li
 ### 2.1 `businessUnit` → `business_units` ✔ (keputusan pemilik 2026-11-17)
 - **Tabel BU lama TIDAK diikuti.** Daftar BU yang berlaku hanya **Spectrum, Teakwave, IJW**; dua baris lama dengan nama sama (`1 Spectrum Surabaya`, `3 Spectrum Jakarta`) adalah **satu BU "Spectrum"** yang berbeda lokasi.
 - Pemetaan BU: lama `1`→Spectrum, `3`→Spectrum, `2`→Teakwave. BU lama `0 None` (2.658 baris) ditentukan **menurut merk tipe**: Alta & Ubiquiti→Spectrum, Mikrotik→Teakwave, VSOL & Voltech→IJW. `-1 All` tidak dipakai.
-- BU dicocokkan **menurut nama** pada tujuan; yang belum ada dibuat (`code` usulan `SPC`, `TKW`, `IJW`, dapat diubah).
+- BU dicocokkan **menurut nama** pada tujuan, lalu (bila nama tidak ada) **menurut kode usulan** (`SPC`, `TKW`, `IJW`; keputusan pemilik 2026-11-19: BU "IJW" di dump lama = BU "Indoreka Jaya Wutama" berkode `IJW` di staging, dan aturan yang sama berlaku di produksi; nama tetap diutamakan atas kode); yang belum ada dibuat (`code` usulan tersebut).
 
 ### 2.2 `location` → `locations` ✅❓
 - `1 Surabaya`, `2 Jakarta` → `locations` (cocokkan nama; bila belum ada, dibuat). `-1`/`0` tidak dibuat.
@@ -52,7 +52,7 @@ Legenda keputusan: ✅ jelas, tanpa keputusan · ❓ butuh keputusan pemilik (li
 Pemetaan kolom: `date`→`test_date`; `idTypeItem`→`item_id`; `serialNumber`→`serial` (dinormalkan `normalizeSerial`: huruf besar, pangkas spasi, MAC `:`/`-`/`.`→12 heks); `sample`→`sample`; `note`→`note`; `last_businessUnit`→`bu_id`; `last_location`→`location_id` dan `recorded_location_id`; `status='good'`, `custody='qc'`; `client_id` = UUID deterministik dari `id` lama (idempotensi: migrasi dapat diulang tanpa menggandakan); `created_at`/`created_by` dari riwayat `Added`.
 
 Temuan yang perlu aturan:
-1. **Tabrakan keunikan.** Lama: unik `(serial, tipe)`. Baru: unik `(BU, serial)` (analisis 2026-11-17; sejak 2026-11-19 keunikan menjadi se-sistem pada nomor serial saja, jadi angka di bawah dihitung ulang di §3a). Dengan pemetaan BU baru (hanya baris `deleted=0`): 209.183 baris → **208.075 serial**, **1.107 grup bentrok** (1.106 berisi 2 baris, 1 berisi 3 = `INTERRUPTED`), 1.108 baris dilipat; 25 grup bertipe sama (selisih spasi), sisanya beda tipe (kemungkinan salah tipe lalu dicatat ulang); 2 grup timbul karena Spectrum Surabaya+Jakarta digabung. ✔ **Aturan: baris terbaru (tanggal lalu id terbesar) menang menjadi serial; baris lama dilipat ke riwayat serial itu** (kejadian `note` "Data lama digabung" + `data_changed` item bila tipe berbeda).
+1. **Tabrakan keunikan.** Lama: unik `(serial, tipe)`. Baru: unik `(BU, serial)` (analisis 2026-11-17; sejak keputusan pemilik 2026-11-18 keunikan menjadi se-sistem pada nomor serial saja, jadi angka di bawah dihitung ulang di §3a). Dengan pemetaan BU baru (hanya baris `deleted=0`): 209.183 baris → **208.075 serial**, **1.107 grup bentrok** (1.106 berisi 2 baris, 1 berisi 3 = `INTERRUPTED`), 1.108 baris dilipat; 25 grup bertipe sama (selisih spasi), sisanya beda tipe (kemungkinan salah tipe lalu dicatat ulang); 2 grup timbul karena Spectrum Surabaya+Jakarta digabung. ✔ **Aturan: baris terbaru (tanggal lalu id terbesar) menang menjadi serial; baris lama dilipat ke riwayat serial itu** (kejadian `note` "Data lama digabung" + `data_changed` item bila tipe berbeda).
 2. **BU `0 None`: 2.658 baris** ✔: BU menurut merk (lihat §2.1); lokasi `0` → **Surabaya** (keputusan pemilik 2026-11-17).
 3. **Baris terhapus lunak (`deleted=1`): 1.062** ✔ dilewati dan dilaporkan di CSV (56 di antaranya serialnya juga punya baris aktif; riwayatnya ikut dilipat sebagai `note`).
 4. **Serial sampah** ✔ dilewati dan dilaporkan di CSV: 88.373 non-MAC itu normal (nomor seri vendor); yang mencurigakan hanya ±15: `INTERRUPTED`(3), `UT`, `*`, `Q`, `12`, `10`, `AC8BA`, `ASFFKLDSFSD`, dan 9 baris berspasi (mis. `[11.14, 24/10/2025] RIZKYHARIADI: 0CEA14C49B9F`, `: D8B370CCD21F`). Daftar final dicetak di CSV sebelum tulis.
@@ -90,9 +90,9 @@ Temuan yang perlu aturan:
 | # | Pertanyaan | Keputusan |
 |---|---|---|
 | 1 ✔ | Basis data tujuan | Latihan di skema sementara qc_dev (tunnel), lalu staging, lalu produksi (2026-11-17). Akses saya hanya ke dev; staging/produksi dijalankan pemilik. |
-| 2 ✔ | BU | Tabel BU lama tidak diikuti: Spectrum, Teakwave, IJW (lihat §2.1). Cocokkan menurut nama pada tujuan. |
+| 2 ✔ | BU | Tabel BU lama tidak diikuti: Spectrum, Teakwave, IJW (lihat §2.1). Cocokkan menurut nama pada tujuan, lalu menurut kode usulan (diubah 2026-11-19, pemilik: IJW = Indoreka Jaya Wutama). |
 | 3 ✔ | Serial BU None dan lokasi | BU menurut merk; lokasi Surabaya. |
-| 4 ✔ | Tabrakan serial | Terbaru menang, lama dilipat ke riwayat. **Diubah 2026-11-19**: kunci lipat = nomor serial saja (unik se-sistem), termasuk lintas BU; BU lama masuk `serial_business_units` (§3a). |
+| 4 ✔ | Tabrakan serial | Terbaru menang, lama dilipat ke riwayat. **Diubah 2026-11-19** (penyelarasan skrip dengan keputusan keunikan se-sistem 2026-11-18): kunci lipat = nomor serial saja (unik se-sistem), termasuk lintas BU; BU lama masuk `serial_business_units` (§3a). |
 | 5 ✔ | Baris `deleted=1` dan serial sampah | Dilewati, dilaporkan di CSV. |
 | 6 ✔ | Manual Book | Tidak dimigrasi (opsi C). |
 | 7 default | Pengguna | Tidak dibuat (tanpa email); nama lama hanya di `actor_name`. Belum disanggah pemilik. |
@@ -120,7 +120,7 @@ DATABASE_URL=mysql://... bun run --cwd server scripts/migrate-legacy-qc.ts --dum
 DATABASE_URL=mysql://... bun run --cwd server scripts/migrate-legacy-qc.ts --dump qcspectrum.sql --apply --confirm-database <skema>
 ```
 
-Aturan tujuan TIDAK kosong: BU/lokasi dicocokkan menurut nama; merk menurut `key`; item menurut `items.key` lalu `item_alias_keys` (nama lain tujuan; satu ruang kunci dengan merk+tipe); yang sudah ada **tidak diubah** (hanya tautan item-BU yang kurang ditambah); serial yang sudah ada di tujuan (BU mana pun) dilaporkan di `bentrok-tujuan.csv` dan tidak ditulis; kode BU/lokasi baru yang bentrok = hambatan, penerapan dibatalkan sebelum menulis apa pun. Id turunan UUIDv5 dari id lama, jadi putaran ulang aman (`client_id` serial). Opsi `--item-bu brand|brand+serials` (bawaan `brand`, keputusan pemilik 2026-11-18, §3a).
+Aturan tujuan TIDAK kosong: BU dicocokkan menurut nama lalu menurut kode usulan (SPC/TKW/IJW), lokasi menurut nama; merk menurut `key`; item menurut `items.key` lalu `item_alias_keys` (nama lain tujuan; satu ruang kunci dengan merk+tipe); yang sudah ada **tidak diubah** (hanya tautan item-BU yang kurang ditambah); serial yang sudah ada di tujuan (BU mana pun) dilaporkan di `bentrok-tujuan.csv` dan tidak ditulis; kode BU/lokasi baru yang bentrok = hambatan, penerapan dibatalkan sebelum menulis apa pun. Id turunan UUIDv5 dari id lama, jadi putaran ulang aman (`client_id` serial). Opsi `--item-bu brand|brand+serials` (bawaan `brand`, keputusan pemilik 2026-11-18, §3a).
 
 Hasil latihan pada skema sementara `qc_test_legacy_rehearsal` (MariaDB dev, tujuan kosong, sudah dihapus): 3 BU, 2 lokasi, 5 merk, 286 item, 486 tautan item-BU, **208.058 serial**, **219.994 kejadian** (208.058 `recorded`, 4.965 `note`, 6.971 `data_changed`) dalam ±10 menit lewat tunnel; 0 serial tanpa `recorded` seq 1, 0 serial tanpa tautan item-BU, `item_count` cocok, tanpa entri stok/`serial_stickers`; putaran kedua = 0 ditulis, 208.058 sudah dimigrasi. Dilewati 1.081 (1.062 terhapus lunak + 19 serial sampah), dilipat 1.106, dilebur 4 tipe lama berkunci sama (US-8-150W, US-16-XG, USW-Pro-24-POE, U7 Pro-XG).
 
@@ -132,6 +132,7 @@ DELETE e FROM serial_events e JOIN serials s ON s.id = e.serial_id
 ```
 
 ## 5. Urutan eksekusi berikutnya
+0. **Urutan rilis DIKUNCI (2026-11-18).** Skrip ini menulis `serial_business_units` dan mengandalkan keunikan serial se-sistem, jadi BARU boleh dijalankan di produksi setelah rilis serial unik se-sistem (rencana `2026-11-18-serial-unik-sistem.md`, tugas 1-8, migrasi `0026`) sampai di produksi, dan setelah `merge-duplicate-serials.ts` dijalankan bila ada serial ganda. Menjalankannya lebih awal pada skema tanpa `serial_business_units` gagal; pada skema 0026 yang masih memuat serial ganda ia tetap aman tetapi menambah ganda baru yang harus disatukan lagi. Skrip ini tidak boleh dijalankan terhadap database mana pun sebelum syarat itu terpenuhi.
 1. Pemilik membuka akses ke staging (terowongan atau dari VPS), menjalankan **dry-run** dan meninjau CSV (`dilewati`, `dilipat`, `item`, `bentrok-tujuan`).
 2. Aturan BU item sudah diputuskan (`brand`, 2026-11-18); uji lewat aplikasi di staging (daftar, detail, ubah item serial yang BU-nya berbeda dari BU merk akan ditolak: itu perilaku yang diterima).
 3. Cadangan database, lalu `--apply` ke produksi dengan `--confirm-database`.
@@ -140,7 +141,7 @@ DELETE e FROM serial_events e JOIN serials s ON s.id = e.serial_id
 
 ## 6. Panduan menjalankan di staging dan produksi
 
-Skrip adalah alat lokal (belum ada di image Docker): ia dijalankan dari mesin pemilik lewat terowongan SSH ke MariaDB lingkungan itu. Skrip TIDAK menerapkan migrasi skema; skema tujuan harus sudah di migrasi 0024 atau lebih baru (aplikasi menerapkannya saat start setelah deploy). Bila belum, dry-run berhenti dengan `Unknown column 'firmware'` dan tidak menulis apa pun. Pada 2026-11-18 `origin/main` belum memuat 0023/0024, jadi produksi baru siap setelah rilis `dev` → `main`; staging sudah siap setelah PR yang memuat migrasi itu ter-deploy.
+Skrip adalah alat lokal (belum ada di image Docker): ia dijalankan dari mesin pemilik lewat terowongan SSH ke MariaDB lingkungan itu. Skrip TIDAK menerapkan migrasi skema; skema tujuan harus sudah di migrasi 0026 atau lebih baru (aplikasi menerapkannya saat start setelah deploy; 0024 untuk firmware, 0026 untuk riwayat BU dan keunikan serial se-sistem, lihat urutan rilis terkunci di §5 butir 0). Bila belum, dry-run berhenti dengan `Unknown column 'firmware'` dan tidak menulis apa pun; pada skema tanpa 0026 penulisan serial gagal di tengah jalan (master sudah tertulis, serial belum), jadi pastikan 0026 sudah terpasang SEBELUM `--apply`. Pada 2026-11-18 `origin/main` belum memuat 0023/0024, jadi produksi baru siap setelah rilis `dev` → `main`; staging sudah siap setelah PR yang memuat migrasi itu ter-deploy.
 
 | | Staging | Produksi |
 |---|---|---|

@@ -15,6 +15,7 @@ import type {
   ListSerialItemOptionsInput,
   SaveSerialBatchInput,
   SaveSerialBatchOutput,
+  SerialBuHistoryDto,
   SerialBuOptionsDto,
   SerialCaseDto,
   SerialChangeDto,
@@ -53,12 +54,13 @@ import {
   type SerialStatus,
   splitSerialInput,
 } from '@shared/serials';
-import { assertSerialVisible, canWriteBu, readableBuIds, writableBuIds } from './access';
+import { canReadSerial, canWriteBu, readableBuIds, writableBuIds } from './access';
 import { applicableStickersOf } from './applicable';
 import { loadCases, type SerialCaseRow } from './case-repo';
 import { canManageProof } from './proof/access';
 import { loadStampItemInfo, planProofAttach } from './proof/attach';
 import { listFailedProofsBySerial, listProofsByEvents } from './proof/repo';
+import { recheckExistingSerial, recheckStickerTargetAllowed } from './recheck-entry';
 import {
   activeItemWritableForBu,
   activeLocationName,
@@ -69,9 +71,11 @@ import {
   insertSerialStmt,
   itemLabelOf,
   listSerialRows,
+  loadBuHistory,
   loadSerialEvents,
   loadSerialRow,
   loadSerialStickers,
+  type SerialBuHistoryRow,
   type SerialColumn,
   type SerialEventRow,
   type SerialListFilter,
@@ -183,7 +187,12 @@ export async function stickerOptions(
   user: UserContext,
   input: SerialStickerOptionsInput,
 ): Promise<SerialStickerOptionsDto> {
-  if (!(await activeItemWritableForBu(env.DB, input.itemId, input.buId, user))) {
+  // Cek ulang serial yang sudah ada: item catatan adalah acuan, jadi syarat item aktif/terlihat dilewati bila serial itu
+  // bertipe `itemId` dan BU yang diminta sah sebagai tujuan cek ulang (spek serial unik se-sistem §5.1, §11 butir 9).
+  const viaSerial =
+    input.serialId !== undefined &&
+    (await recheckStickerTargetAllowed(env, user, input.serialId, input.itemId, input.buId));
+  if (!viaSerial && !(await activeItemWritableForBu(env.DB, input.itemId, input.buId, user))) {
     throw appError('NOT_FOUND', 'Item tidak ditemukan');
   }
   return { stickers: await applicableStickersOf(env, input.itemId, input.buId) };
@@ -233,6 +242,10 @@ const LOCATION_LOCKED_MESSAGE =
 const STICKER_MESSAGE = 'Stiker tidak berlaku bagi item ini';
 export const SERIAL_CONFLICTS = {
   serials_bu_serial: { message: DUPLICATE_MESSAGE, field: 'serial' },
+  // Keunikan se-sistem (migrasi 0026); `serials_bu_serial` dipertahankan sampai rilis contract.
+  serials_serial: { message: DUPLICATE_MESSAGE, field: 'serial' },
+  // Kunci idempoten kejadian (cek ulang dari Catat).
+  serial_events_client_id: { message: DUPLICATE_MESSAGE, field: 'clientId' },
   serials_client_id: { message: DUPLICATE_MESSAGE, field: 'clientId' },
 };
 
@@ -340,6 +353,10 @@ export async function createSerialOnce(
       ? idempotent(row, existing.id)
       : failRow(row, 'Baris tidak valid');
   }
+  // Serial yang sudah ada (unik se-sistem) menjadi cek ulang lolos pada catatan itu (spek serial unik se-sistem §5.1);
+  // syarat item aktif/terlihat di bawah TIDAK berlaku di jalur itu.
+  const rechecked = await recheckExistingSerial(env, user, row, memo);
+  if (rechecked) return rechecked;
   if (!(await memo.activeItemWritableForBu(row.itemId, row.buId, user))) {
     return failRow(row, ITEM_MESSAGE);
   }
@@ -486,6 +503,9 @@ export async function createSerialOnce(
       if (again && again.buId === row.buId && again.serial === row.serial) {
         return idempotent(row, again.id);
       }
+      // Serial yang sama dicatat serentak dari tempat lain dan pemenangnya sudah komit: baris ini menjadi cek ulang.
+      const fallback = await recheckExistingSerial(env, user, row, memo);
+      if (fallback) return fallback;
       const mapped = mapDuplicateError(error, SERIAL_CONFLICTS) as { message?: string };
       return {
         clientId: row.clientId,
@@ -574,11 +594,35 @@ export function toStickerStatus(status: string | null): SerialStickerStatus {
   return value === 'active' || value === 'deprecated' ? value : 'inactive';
 }
 
-function toDto(row: SerialRow, stickers: SerialStickerRow[], caseRows: SerialCaseRow[]): SerialDto {
+/**
+ * Riwayat BU untuk DTO. Serial tanpa baris untuk BU saat ini (ditulis image lama saat rollback; belum dilengkapi
+ * pengisi saat start) tetap menampilkan BU saat ini.
+ */
+function toBuHistory(row: SerialRow, history: SerialBuHistoryRow[]): SerialBuHistoryDto[] {
+  const entries = history.map((entry) => ({
+    buId: entry.bu_id.trim(),
+    buCode: entry.bu_code,
+    firstAt: entry.first_at,
+    leftAt: entry.left_at.trim(),
+  }));
+  const current = row.bu_id.trim();
+  if (!entries.some((entry) => entry.buId === current)) {
+    entries.push({ buId: current, buCode: row.bu_code, firstAt: row.created_at, leftAt: '' });
+  }
+  return entries;
+}
+
+function toDto(
+  row: SerialRow,
+  stickers: SerialStickerRow[],
+  caseRows: SerialCaseRow[],
+  buHistory: SerialBuHistoryRow[],
+): SerialDto {
   const cases = caseRows.map(toCase);
   const openCaseId = orNull(row.open_case_id);
   return {
     ...toSummary(row),
+    buHistory: toBuHistory(row, buHistory),
     note: row.note,
     recordedLocationId: row.recorded_location_id.trim(),
     stickers: stickers.map((sticker) => ({
@@ -659,12 +703,16 @@ export async function toEventsWithProofs(
 export async function loadSerialDto(env: Env, user: UserContext, id: string): Promise<SerialDto> {
   const row = await loadSerialRow(env.DB, id);
   if (!row) throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
-  assertSerialVisible(user, row.bu_id.trim());
-  const [stickers, cases] = await Promise.all([
+  // Baca: BU saat ini ATAU BU di riwayat (spek serial unik se-sistem §5.3); BU lain = NOT_FOUND.
+  if (!(await canReadSerial(env.DB, user, row.id.trim(), row.bu_id.trim()))) {
+    throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
+  }
+  const [stickers, cases, buHistory] = await Promise.all([
     loadSerialStickers(env.DB, row.id.trim()),
     loadCases(env.DB, row.id.trim()),
+    loadBuHistory(env.DB, row.id.trim()),
   ]);
-  return toDto(row, stickers, cases);
+  return toDto(row, stickers, cases, buHistory);
 }
 
 /** Detail serial beserta linimasa: maks. 500 kejadian TERBARU, terbaru di atas (`seq` menurun); `eventsTruncated` bila ada yang lebih lama. */
@@ -786,6 +834,16 @@ async function updateOnce(
   const currentItemLabel = `${row.brand_name ?? ''} ${(row.model ?? '').trim()}`.trim();
 
   if (fields.serial !== undefined && fields.serial !== row.serial) {
+    // Serial Number unik se-sistem: bentrok dengan catatan di BU mana pun. Indeks unik (`serials_serial`) tetap penjaga
+    // akhir; pemeriksaan ini menjaga juga selama indeks belum terpasang (ada serial ganda lama yang belum disatukan).
+    const taken = await env.DB.prepare(
+      'SELECT 1 AS present FROM serials WHERE serial = ? AND id <> ?',
+    )
+      .bind(fields.serial, row.id.trim())
+      .first<{ present: number }>();
+    if (taken) {
+      throw appError('CONFLICT', DUPLICATE_MESSAGE, { serial: DUPLICATE_MESSAGE });
+    }
     set.serial = fields.serial;
     changes.push({ field: 'serial', from: row.serial, to: fields.serial });
   }
