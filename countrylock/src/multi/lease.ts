@@ -18,6 +18,11 @@ export function normalizeMac(raw: string): string | null {
 
 const IPV4 = /^(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)$/;
 
+/** IPv4 desimal bertitik ketat (tanpa nol di depan, tanpa nama host). */
+export function isIpv4(value: string): boolean {
+  return IPV4.test(value);
+}
+
 /** Nilai `kunci=...` di baris terse (kunci harus didahului awal baris atau spasi, agar `mac-address=` tak terbaca `address=`). */
 function field(line: string, key: string): string | null {
   const m = new RegExp(`(?:^|\\s)${key}=(\\S*)`).exec(line);
