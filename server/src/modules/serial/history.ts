@@ -3,7 +3,7 @@ import { appError } from '@server/core/errors';
 import type { UserContext } from '@server/modules/access/context';
 import type { SerialHistoryInput, SerialHistoryOutput } from '@shared/contract';
 import { SERIAL_HISTORY_GROUPS, SERIAL_LIMITS } from '@shared/serials';
-import { assertSerialVisible } from './access';
+import { canReadSerial } from './access';
 import { loadSerialRow, type SerialEventRow } from './repo';
 import { toEventsWithProofs } from './service';
 
@@ -28,7 +28,9 @@ export async function serialHistory(
 ): Promise<SerialHistoryOutput> {
   const row = await loadSerialRow(env.DB, input.id);
   if (!row) throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
-  assertSerialVisible(user, row.bu_id.trim());
+  if (!(await canReadSerial(env.DB, user, row.id.trim(), row.bu_id.trim()))) {
+    throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
+  }
   const serialId = row.id.trim();
   const limit = input.limit ?? SERIAL_LIMITS.historyDefaultLimit;
 

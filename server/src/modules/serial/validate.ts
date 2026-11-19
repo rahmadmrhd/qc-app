@@ -13,6 +13,7 @@ import type {
   SerialHistoryInput,
   SerialListInput,
   SerialLookupInput,
+  SerialLookupManyInput,
   SerialReportNewInput,
   SerialRowInput,
   SerialStickerOptionsInput,
@@ -92,8 +93,9 @@ export function validateSerialStickerOptions(raw: unknown): SerialStickerOptions
   const reader = readObject(raw);
   const itemId = reader.str('itemId', { required: true, max: 100 });
   const buId = reader.str('buId', { required: true, max: 100 });
+  const serialId = reader.str('serialId', { max: 100 });
   reader.done();
-  return { itemId, buId };
+  return serialId === '' ? { itemId, buId } : { itemId, buId, serialId };
 }
 
 const CLIENT_ID = /^[A-Za-z0-9-]{8,100}$/;
@@ -429,8 +431,8 @@ const ACT_EXTRA_KEYS: Record<SerialAction, readonly string[]> = {
   send: ['toLocationId', 'shipmentNote'],
   receive: ['toLocationId'],
   service_diagnosis: ['stage'],
-  recheck: ['result', 'stickerIds', 'proofPhotoIds'],
-  recheck_pass: ['stickerIds', 'proofPhotoIds'],
+  recheck: ['result', 'buId', 'stickerIds', 'proofPhotoIds'],
+  recheck_pass: ['buId', 'stickerIds', 'proofPhotoIds'],
   recheck_fail: ['stickerIds', 'proofPhotoIds'],
 };
 const ACT_ALL_EXTRA_KEYS = [
@@ -438,6 +440,7 @@ const ACT_ALL_EXTRA_KEYS = [
   'shipmentNote',
   'stage',
   'result',
+  'buId',
   'stickerIds',
   'proofPhotoIds',
 ] as const;
@@ -449,6 +452,7 @@ const ACT_EXTRA_MESSAGES: Record<string, string> = {
   toLocationId: 'Lokasi hanya untuk kirim atau terima',
   shipmentNote: 'Catatan pengiriman hanya untuk kirim',
   result: 'Hasil hanya untuk cek ulang',
+  buId: 'BU hanya untuk cek ulang yang lolos',
 };
 
 /** Catatan wajib per aksi (rancangan §3 butir b): lapor rusak, cek ulang gagal, dan Rusak; juga catatan biasa. */
@@ -537,6 +541,16 @@ export function validateSerialAct(raw: unknown): SerialActInput {
       if (resultRaw !== 'pass' && resultRaw !== 'fail') {
         reader.fail('result', 'Hasil harus lolos atau gagal');
       } else out.result = resultRaw;
+    }
+  }
+  if (allowed.includes('buId')) {
+    // Memindahkan BU hanya pada cek ulang yang lolos; hasil gagal menolaknya.
+    const rawBu = source.buId;
+    if (action === 'recheck' && source.result === 'fail' && rawBu != null && rawBu !== '') {
+      reader.fail('buId', ACT_EXTRA_MESSAGES.buId ?? '');
+    } else {
+      const buId = reader.str('buId', { max: 100 });
+      if (buId !== '') out.buId = buId;
     }
   }
   if (action === 'service_diagnosis') {
@@ -661,6 +675,30 @@ export function validateSerialLookup(raw: unknown): SerialLookupInput {
   if (text !== '' && serialProblem(serial) !== null) reader.fail('serial', 'Serial tidak valid');
   reader.done();
   return { serial };
+}
+
+/**
+ * Pencarian banyak serial untuk draft Catat: tiap entri dinormalisasi, yang tak sah dan yang ganda dibuang diam-diam
+ * (draft sudah menyaringnya); maks. `SERIAL_LIMITS.batchRows` serial.
+ */
+export function validateSerialLookupMany(raw: unknown): SerialLookupManyInput {
+  const reader = readObject(raw);
+  const list = reader.raw('serials');
+  if (!Array.isArray(list)) {
+    reader.fail('serials', 'Daftar serial wajib');
+  } else if (list.length > SERIAL_LIMITS.batchRows) {
+    reader.fail('serials', `Maksimal ${SERIAL_LIMITS.batchRows} serial per permintaan`);
+  }
+  reader.done();
+  const serials: string[] = [];
+  if (Array.isArray(list)) {
+    for (const entry of list) {
+      if (typeof entry !== 'string' || entry.length > 100) continue;
+      const serial = normalizeSerial(entry);
+      if (serialProblem(serial) === null && !serials.includes(serial)) serials.push(serial);
+    }
+  }
+  return { serials };
 }
 
 /** Lapor Rusak untuk Serial Number yang belum tercatat: semua field wajib; catatan wajib (Markdown, gambar maks. 10). */

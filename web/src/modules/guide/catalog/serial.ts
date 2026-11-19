@@ -133,13 +133,13 @@ export const SERIAL_CATAT: GuideEntry = {
     },
     {
       target: 'serial-scan',
-      text: 'Scan dengan pemindai barcode, ketik lalu Enter, tempel banyak serial (satu per baris), atau pakai tombol kamera di kanan atas. Coba ketik serial apa saja (mis. TEST-001) lalu Enter; Lanjut aktif setelah satu baris muncul di draft. Kalau kolomnya masih abu-abu, balik dulu ke Default. Item yang wajib foto bukti berbeda: satu serial per kali, lalu muncul dialog dua langkah (scan, lalu konfirmasi dengan info item, serial yang masih bisa diedit, dan foto). Tombol Simpan di dialog baru aktif setelah fotonya cukup, dan barisnya baru masuk draft sesudah itu. Belum ada yang tersimpan sampai kamu menekan Simpan di halaman.',
+      text: 'Scan dengan pemindai barcode, ketik lalu Enter, tempel banyak serial (satu per baris), atau pakai tombol kamera di kanan atas. Coba ketik serial apa saja (mis. TEST-001) lalu Enter; Lanjut aktif setelah satu baris muncul di draft. Kalau kolomnya masih abu-abu, balik dulu ke Default. Item yang wajib foto bukti berbeda: satu serial per kali, lalu muncul dialog dua langkah (scan, lalu konfirmasi dengan info item, serial yang masih bisa diedit, dan foto). Tombol Simpan di dialog baru aktif setelah fotonya cukup, dan barisnya baru masuk draft sesudah itu. Serial yang ternyata sudah tercatat tidak jadi serial baru: barisnya menjadi baris Cek ulang. Belum ada yang tersimpan sampai kamu menekan Simpan di halaman.',
       advance: 'wait',
       waitFor: 'serial-row',
     },
     {
       target: 'serial-draft',
-      text: 'Tiap serial jadi satu baris draft (di ponsel berupa kartu). Serial dan tanggal uji bisa diubah langsung di tabel; item, lokasi, sample, catatan, stiker, dan foto bukti (maksimal 5) lewat dialog Ubah baris. Item wajib foto yang fotonya kurang ditandai "Butuh n foto lagi" dan menahan Simpan. Kolom Hasil juga memberi tahu hasil sesudah Simpan (duplikat atau gagal). Draft tersimpan otomatis di perangkat ini; Impor/Ekspor .qcsn untuk pindah perangkat.',
+      text: 'Tiap serial jadi satu baris draft (di ponsel berupa kartu). Serial dan tanggal uji bisa diubah langsung di tabel; item, lokasi, sample, catatan, stiker, dan foto bukti (maksimal 5) lewat dialog Ubah baris. Item wajib foto yang fotonya kurang ditandai "Butuh n foto lagi" dan menahan Simpan. Serial yang sudah tercatat berlencana "Cek ulang": item terkunci mengikuti catatannya, BU bisa dipilih bila perlu (hanya BU yang boleh), dan tidak ada stiker yang tercentang, jadi centang hanya stiker yang kamu tempel lagi lewat Ubah baris. Serial yang sedang punya laporan aktif atau sudah Rusak tidak bisa disimpan dari sini. Kolom Hasil juga memberi tahu hasil sesudah Simpan (gagal atau bermasalah). Draft tersimpan otomatis di perangkat ini; Impor/Ekspor .qcsn untuk pindah perangkat.',
       advance: 'next',
     },
     {
@@ -163,7 +163,7 @@ export const SERIAL_CATAT: GuideEntry = {
     },
     {
       target: 'serial-save',
-      text: 'Simpan menyimpan semua baris sebagai Serial Number berstatus Lolos. Baris yang belum lengkap (termasuk foto bukti kurang) menahan Simpan; serial yang sudah tercatat ditandai duplikat dan baris yang gagal tetap di draft. Kalau semuanya berhasil kamu kembali ke daftar. Panduan berhenti di sini: belum ada yang tersimpan, dan baris contohmu bisa dibuang dengan Kosongkan draft.',
+      text: 'Simpan menyimpan semua baris sebagai Serial Number berstatus Lolos. Baris yang belum lengkap (termasuk foto bukti kurang) menahan Simpan; baris Cek ulang dicatat sebagai cek ulang lolos pada serial yang sudah ada (bukan serial baru) dan baris yang gagal tetap di draft. Kalau semuanya berhasil kamu kembali ke daftar. Panduan berhenti di sini: belum ada yang tersimpan, dan baris contohmu bisa dibuang dengan Kosongkan draft.',
       advance: 'next',
     },
   ],

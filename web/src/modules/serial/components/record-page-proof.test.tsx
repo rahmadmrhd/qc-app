@@ -75,6 +75,7 @@ beforeEach(() => {
       });
     }
     if (id === 'serialProofs.remove') return Promise.resolve({ id: String(input.id) });
+    if (id === 'serials.lookupMany') return Promise.resolve({ found: [] });
     return Promise.reject(new Error(`api tak dikenal: ${id}`));
   });
   me = {

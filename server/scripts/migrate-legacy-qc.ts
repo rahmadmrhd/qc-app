@@ -15,6 +15,7 @@
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createDb } from '@server/core/db';
+import { csvCell } from './csv-cell';
 import { applyPlan, loadTargetState, type Resolved, resolvePlan } from './legacy-qc/apply';
 import { readDump } from './legacy-qc/dump';
 import { buildPlan, type ItemBuMode, type Plan } from './legacy-qc/plan';
@@ -59,11 +60,6 @@ export function parseArgs(argv: string[]): Args {
   if (args.dump === '') throw new Error('--dump <berkas.sql> wajib');
   if (args.apply && args.offline) throw new Error('--apply tidak dapat dipakai bersama --offline');
   return args;
-}
-
-function csvCell(value: unknown): string {
-  const text = String(value ?? '');
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 function csv(header: string[], rows: unknown[][]): string {

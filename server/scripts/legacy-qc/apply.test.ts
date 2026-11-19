@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { ensureSerialUniqueIndex } from '@server/modules/serial/bu-history';
 import { seedBusinessUnit, seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { restCall } from '@server-test/rest-call';
@@ -64,13 +65,12 @@ beforeEach(async () => {
 });
 
 /**
- * Tabel riwayat BU dari migrasi serial unik se-sistem (spek §4.1, rencana Tugas 2, belum ada di migrasi repo). Dibuat di
- * skema tes dengan definisi yang sama dengan rencana; `CREATE TABLE IF NOT EXISTS` tak berbuat apa pun begitu migrasi
- * aslinya ada. Harness hanya mengosongkan tabel templat, jadi tabel ini dikosongkan di sini.
+ * Tabel riwayat BU (migrasi 0026, spek serial unik se-sistem §4.1) sudah ada di templat skema tes; `CREATE TABLE IF NOT
+ * EXISTS` hanya jaring pengaman bila skema tes lama dipakai. Definisi sama dengan migrasi.
  */
 async function ensureSerialBuTable(): Promise<void> {
   await env.DB.prepare(
-    "CREATE TABLE IF NOT EXISTS serial_business_units (serial_id VARCHAR(100) NOT NULL, bu_id VARCHAR(100) NOT NULL, first_at VARCHAR(40) NOT NULL DEFAULT '', left_at VARCHAR(40) NOT NULL DEFAULT '', PRIMARY KEY (serial_id, bu_id), KEY serial_bu_by_bu (bu_id, serial_id))",
+    "CREATE TABLE IF NOT EXISTS serial_business_units (serial_id VARCHAR(100) NOT NULL, bu_id VARCHAR(100) NOT NULL, first_at VARCHAR(40) NOT NULL DEFAULT '', left_at VARCHAR(40) NOT NULL DEFAULT '', PRIMARY KEY (serial_id, bu_id), KEY serial_bu_by_bu (bu_id, left_at, serial_id)) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_nopad_bin",
   ).run();
   await env.DB.prepare('TRUNCATE TABLE serial_business_units').run();
 }
@@ -324,6 +324,13 @@ describe('serial unik se-sistem (riwayat BU)', () => {
     expect(Number(bad?.n)).toBe(0);
   });
 
+  test('hasil akhir lolos ensureSerialUniqueIndex pada tujuan yang belum punya indeks unik', async () => {
+    // Keadaan tujuan sebelum rilis unik: tanpa indeks, supaya tes menguji isi hasil (bukan penjaga indeks).
+    await env.DB.prepare('DROP INDEX IF EXISTS serials_serial ON serials').run();
+    await applyPlan(env.DB, resolvePlan(plan(), await loadTargetState(env.DB)), NOW);
+    expect(await ensureSerialUniqueIndex(env)).toBe('created');
+  });
+
   test('serial yang sudah ada di tujuan di BU LAIN juga bentrok (bukan hanya BU yang sama)', async () => {
     // XBU123456789 sudah dicatat pengguna di Spectrum; rencana menempatkannya di Teakwave (BU catatan terbaru).
     await env.DB.prepare(
@@ -337,19 +344,25 @@ describe('serial unik se-sistem (riwayat BU)', () => {
   });
 
   test('tanpa tabel serial_business_units di tujuan: hambatan, penerapan ditolak, tidak menulis apa pun', async () => {
-    await env.DB.prepare('DROP TABLE serial_business_units').run();
-    const resolved = resolvePlan(plan(), await loadTargetState(env.DB));
-    expect(resolved.blockers.join('\n')).toContain('serial_business_units belum ada');
-    await expect(applyPlan(env.DB, resolved, NOW)).rejects.toThrow('Penerapan dibatalkan');
-    expect(await count('serials')).toBe(0);
-    expect(await count('business_units')).toBe(1);
-    // Rencana tanpa serial tak membutuhkan tabel itu.
-    const dump = miniDump();
-    dump.dataqc = [];
-    const withoutSerials = resolvePlan(
-      buildPlan(dump, { itemBu: 'brand', now: NOW }),
-      await loadTargetState(env.DB),
-    );
-    expect(withoutSerials.blockers).toEqual([]);
+    // Diganti nama (bukan dihapus) lalu dikembalikan: skema tes dipakai bersama berkas lain di proses yang sama, jadi
+    // definisi tabel dari migrasi 0026 tak boleh berubah.
+    await env.DB.prepare('RENAME TABLE serial_business_units TO serial_business_units_off').run();
+    try {
+      const resolved = resolvePlan(plan(), await loadTargetState(env.DB));
+      expect(resolved.blockers.join('\n')).toContain('serial_business_units belum ada');
+      await expect(applyPlan(env.DB, resolved, NOW)).rejects.toThrow('Penerapan dibatalkan');
+      expect(await count('serials')).toBe(0);
+      expect(await count('business_units')).toBe(1);
+      // Rencana tanpa serial tak membutuhkan tabel itu.
+      const dump = miniDump();
+      dump.dataqc = [];
+      const withoutSerials = resolvePlan(
+        buildPlan(dump, { itemBu: 'brand', now: NOW }),
+        await loadTargetState(env.DB),
+      );
+      expect(withoutSerials.blockers).toEqual([]);
+    } finally {
+      await env.DB.prepare('RENAME TABLE serial_business_units_off TO serial_business_units').run();
+    }
   });
 });

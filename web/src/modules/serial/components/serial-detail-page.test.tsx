@@ -40,6 +40,7 @@ vi.mock('@/modules/markdown/wysiwyg-editor', () => ({
 import { SerialDetailPage } from './serial-detail-page';
 
 const SERIAL: SerialDto = {
+  buHistory: [],
   id: 's1',
   buId: 'b1',
   buCode: 'BU1',
@@ -1098,4 +1099,43 @@ describe('foto bukti bermasalah: banner dan badge', () => {
     expect(within(dialog).queryByRole('tab')).not.toBeInTheDocument();
     expect(within(dialog).queryByRole('tab', { name: /Pustaka/ })).not.toBeInTheDocument();
   });
+});
+
+test('"Pernah di" menampilkan BU yang sudah ditinggalkan, urut kronologis, tanpa BU saat ini', async () => {
+  state = {
+    ...state,
+    serial: {
+      ...SERIAL,
+      buHistory: [
+        {
+          buId: 'b3',
+          buCode: 'BU3',
+          firstAt: '2026-11-03T00:00:00.000Z',
+          leftAt: '2026-11-08T00:00:00.000Z',
+        },
+        {
+          buId: 'b2',
+          buCode: 'BU2',
+          firstAt: '2026-11-01T00:00:00.000Z',
+          leftAt: '2026-11-03T00:00:00.000Z',
+        },
+        { buId: 'b1', buCode: 'BU1', firstAt: '2026-11-08T00:00:00.000Z', leftAt: '' },
+      ],
+    },
+  };
+  renderPage();
+  expect(await screen.findByText('Pernah di: BU2, BU3')).toBeInTheDocument();
+});
+
+test('tanpa riwayat BU yang ditinggalkan, "Pernah di" tidak tampil', async () => {
+  state = {
+    ...state,
+    serial: {
+      ...SERIAL,
+      buHistory: [{ buId: 'b1', buCode: 'BU1', firstAt: '2026-11-01T00:00:00.000Z', leftAt: '' }],
+    },
+  };
+  renderPage();
+  await screen.findByRole('region', { name: 'Ringkasan' });
+  expect(screen.queryByText(/Pernah di/)).toBeNull();
 });

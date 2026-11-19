@@ -55,6 +55,14 @@ function recordedLocationName(
   return known.find((location) => location.id === recordedLocationId)?.name ?? '';
 }
 
+/** Kode BU yang sudah ditinggalkan serial ini (urut kronologis); BU saat ini tidak termasuk. */
+export function formerBuCodes(serial: SerialDto): string[] {
+  return serial.buHistory
+    .filter((entry) => entry.leftAt !== '')
+    .sort((a, b) => a.firstAt.localeCompare(b.firstAt))
+    .map((entry) => entry.buCode);
+}
+
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
@@ -150,6 +158,11 @@ export function SerialDetailPage({ serialId, onBack, caseId }: SerialDetailPageP
             {serial.hasProofPhotos ? <ProofBadge /> : null}
             <ProofProblemBadge count={serial.proofProblemCount} />
           </div>
+          {formerBuCodes(serial).length > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Pernah di: {formerBuCodes(serial).join(', ')}
+            </p>
+          ) : null}
         </div>
         {canWrite ? (
           <Button variant="outline" onClick={() => setEditing(true)}>

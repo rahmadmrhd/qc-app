@@ -351,12 +351,13 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'serials.stickerOptions': {
     verb: 'GET',
     path: '/serials/sticker-options',
-    query: { itemId: 'string', buId: 'string' },
+    query: { itemId: 'string', buId: 'string', serialId: 'string' },
   },
   'serials.locationOptions': { verb: 'GET', path: '/serials/location-options' },
   'serials.buOptions': { verb: 'GET', path: '/serials/bu-options' },
   'serials.serviceLocations': { verb: 'GET', path: '/serials/service-locations' },
   'serials.lookup': { verb: 'GET', path: '/serials/lookup', query: { serial: 'string' } },
+  'serials.lookupMany': { verb: 'POST', path: '/serials/lookup-many', status: 200 },
   'serials.reportNew': { verb: 'POST', path: '/serials/report', status: 200 },
   'serials.saveBatch': { verb: 'POST', path: '/serials/batch', status: 200 },
   'serials.list': {

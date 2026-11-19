@@ -1250,6 +1250,7 @@ export interface ApiContract {
   'serials.buOptions': { input: null; output: SerialBuOptionsDto };
   'serials.serviceLocations': { input: null; output: SerialLocationOptionsDto };
   'serials.lookup': { input: SerialLookupInput; output: SerialLookupOutput };
+  'serials.lookupMany': { input: SerialLookupManyInput; output: SerialLookupManyOutput };
   'serials.reportNew': { input: SerialReportNewInput; output: SerialDto };
   'serials.saveBatch': { input: SaveSerialBatchInput; output: SaveSerialBatchOutput };
   'serials.get': { input: GetSerialInput; output: GetSerialOutput };
@@ -1519,6 +1520,8 @@ export interface SerialCaseDto {
   outcome: 'good' | 'broken' | null;
 }
 export interface SerialDto extends SerialSummaryDto {
+  /** Riwayat BU serial (urut `firstAt`); BU saat ini = baris dengan `leftAt` kosong. */
+  buHistory: SerialBuHistoryDto[];
   note: string;
   recordedLocationId: string;
   stickers: SerialStickerDto[];
@@ -1555,7 +1558,8 @@ export interface SerialRowInput {
 }
 export type SerialRowResult = {
   clientId: string;
-  result: 'created' | 'duplicate' | 'invalid' | 'error';
+  /** `rechecked`: serial sudah ada, entri ini menjadi cek ulang lolos pada catatan itu (`id` = serial yang sama). */
+  result: 'created' | 'rechecked' | 'duplicate' | 'invalid' | 'error';
   message: string;
   id?: string;
   serial?: string;
@@ -1667,6 +1671,11 @@ export type SerialActInput =
       action: 'recheck';
       /** Bawaan `pass`. `fail` membuka laporan (catatan wajib). */
       result?: 'pass' | 'fail';
+      /**
+       * Hanya hasil `pass`: BU tujuan (kosong = BU saat ini). Harus BU saat ini atau BU yang belum pernah terlibat pada
+       * serial (`recheckBuCandidates`) dan BU yang boleh ditulis pengguna. Hasil `fail` menolak field ini.
+       */
+      buId?: string;
       /** Stiker yang DICENTANG: tiap id menambah 1 pada jumlah tempel dan memotong stok 1 di lokasi cek ulang. */
       stickerIds?: string[];
       /** Id foto bukti `draft` milik pengunggah (maks. `SERIAL_PROOF_LIMITS.perEntryMax`). */
@@ -1674,6 +1683,8 @@ export type SerialActInput =
     })
   | (SerialActBase & {
       action: 'recheck_pass' | 'recheck_fail';
+      /** Hanya `recheck_pass` (memindahkan BU, kosong = BU saat ini); `recheck_fail` menolaknya. */
+      buId?: string;
       stickerIds?: string[];
       proofPhotoIds?: string[];
     });
@@ -1736,6 +1747,45 @@ export interface SerialLookupMatchDto {
 }
 export interface SerialLookupOutput {
   matches: SerialLookupMatchDto[];
+  /**
+   * Serial ada tetapi BU saat ini di luar hak tulis pengguna: hanya kode BU itu yang diungkap (Lapor Rusak
+   * menampilkan peringatan). `null` = tidak ada serial, atau serial ada dan dapat ditulis (ada di `matches`).
+   */
+  elsewhere: { buCode: string } | null;
+}
+/** Draft Catat: serial yang sudah ada dicari sekaligus (maks. `SERIAL_LIMITS.batchRows`). */
+export interface SerialLookupManyInput {
+  serials: string[];
+}
+/**
+ * Serial yang sudah tercatat, DENGAN pengungkapan minimal lintas BU (spek serial unik se-sistem §5.4/§7): item, BU saat
+ * ini, status; tanpa catatan, riwayat, nama lokasi, atau pelaku.
+ */
+export interface SerialExistingDto {
+  /** Serial ternormalisasi (kunci pencocokan di draft). */
+  serial: string;
+  id: string;
+  itemId: string;
+  itemLabel: string;
+  buId: string;
+  buCode: string;
+  status: SerialStatus;
+  hasOpenCase: boolean;
+  /** Item serial ini wajib foto bukti QC pada cek ulang, dan jumlah minimumnya. */
+  proofRequired: boolean;
+  proofMin: number;
+  /** BU yang boleh dipilih pengguna pada cek ulang (BU tulisnya dikurangi BU yang pernah ditinggalkan serial ini). */
+  recheckBuIds: string[];
+}
+export interface SerialLookupManyOutput {
+  found: SerialExistingDto[];
+}
+/** Satu BU yang pernah memegang serial (`leftAt` kosong = BU saat ini). */
+export interface SerialBuHistoryDto {
+  buId: string;
+  buCode: string;
+  firstAt: string;
+  leftAt: string;
 }
 /** Lapor Rusak untuk Serial Number yang belum tercatat: serial dibuat langsung berstatus Dilaporkan. */
 export interface SerialReportNewInput {
@@ -1837,6 +1887,13 @@ export interface SerialBuOptionsDto {
 export interface SerialStickerOptionsInput {
   itemId: string;
   buId: string;
+  /**
+   * OPSIONAL: serial yang sudah ada yang akan dicek ulang (draft Catat, dialog Cek ulang). Bila diisi dan serial itu
+   * bertipe `itemId`, `buId` termasuk BU yang boleh dipilih pada cek ulang (BU saat ini atau BU yang belum pernah terlibat)
+   * dan boleh ditulis pengguna, maka syarat "item aktif dan terlihat" TIDAK diterapkan (jalur cek ulang memakai item
+   * catatan sebagai acuan). Selain itu perilaku biasa (`NOT_FOUND`), tanpa membedakan penyebabnya.
+   */
+  serialId?: string;
 }
 export interface SerialStickerOptionsDto {
   stickers: ApplicableStickerDto[];

@@ -1,7 +1,7 @@
 import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
 import { loadActiveUserContexts, type UserContext } from '@server/modules/access/context';
-import { readableBuIds } from '@server/modules/serial/access';
+import { canReadSerial } from '@server/modules/serial/access';
 import { isSerialNotificationKind, type NotificationSide } from '@shared/notifications';
 import { hasLevel } from '@shared/permissions';
 
@@ -49,7 +49,8 @@ export async function hasSerialReadAccess(
   const row = await env.DB.prepare('SELECT bu_id FROM serials WHERE id = ?')
     .bind(serialId)
     .first<{ bu_id: string }>();
-  return row !== null && readableBuIds(user).includes(row.bu_id.trim());
+  // BU saat ini ATAU BU di riwayat serial (spek serial unik se-sistem §5.3).
+  return row !== null && (await canReadSerial(env.DB, user, serialId, row.bu_id.trim()));
 }
 
 /** Berhak membaca satu notifikasi (aturan sadar jenis): Serial = BU serial entri, selain itu lokasi Serah Terima. */
