@@ -8,7 +8,7 @@ name: Sync Dev
 # Actions bawaan ditolak GitHub; keputusan pemilik 2026-11-18): deploy key repo ini (akses tulis, bypass HANYA pada ruleset
 # `Branch dev`, ruleset `Branch main` tanpa bypass) disimpan sebagai secret `SYNC_DEPLOY_KEY` di environment `sync-dev` (hanya
 # ref `main`), dibaca hanya oleh langkah merge, dan berkasnya dihapus di akhir job. Secret environment terbaca langsung oleh
-# job ini walau dipanggil dari workflow lain: pemanggil TIDAK memakai `secrets: inherit`. `GITHUB_TOKEN` tak dipakai (izin
+# job ini, asalkan pemanggil memakai `secrets: inherit` (tanpanya secret environment kosong di workflow terpanggil: actions/runner#4453, keputusan pemilik 2026-11-19; repositori tanpa secret tingkat repositori, jadi tak ada yang lain terbuka). `GITHUB_TOKEN` tak dipakai (izin
 # bawaan cukup baca) dan host key GitHub dipatok (bukan `ssh-keyscan`; nilai dari https://api.github.com/meta). Konflik
 # sungguhan tidak membuka PR: hanya peringatan agar main -> dev diselesaikan manual. Kegagalan di sini hanya peringatan
 # (rilis sudah selesai; keputusan pemilik 2026-11-18).

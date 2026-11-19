@@ -14,7 +14,7 @@ name: Deploy Tag
 # Keamanan: dipicu hanya `workflow_dispatch` (hanya pemegang izin tulis); production hanya dari `main`, staging dari `main`
 # atau `dev`. Satu-satunya checkout adalah `github.sha` (ujung ref yang di-dispatch, untuk menjalankan skrip keputusan), BUKAN
 # kode tag; tak ada ekspresi di dalam `run`; langkah yang memegang token hanya memanggil API, langkah yang menjalankan skrip
-# tak diberi token; rahasia SSH dibaca workflow terpanggil dari environment-nya (tanpa `secrets: inherit`).
+# tak diberi token; rahasia SSH dibaca workflow terpanggil dari environment-nya (pemanggil memakai `secrets: inherit`, kalau tidak secret environment kosong: actions/runner#4453; keputusan pemilik 2026-11-19).
 on:
   workflow_dispatch:
     inputs:
@@ -239,3 +239,4 @@ jobs:
       target: ${{ inputs.environment }}
       sha: ${{ needs.meta.outputs.sha }}
       allow-schema-downgrade: ${{ inputs.izinkan_downgrade_skema }}
+    secrets: inherit
