@@ -31,6 +31,8 @@ export interface ComboboxCommon {
   openHref?: (id: string) => string | null;
   error?: string;
   disabled?: boolean;
+  /** Field wajib: bintang merah pada label dan `aria-required` pada input (validasi tetap lewat zod). */
+  required?: boolean;
   /** Label hanya untuk pembaca layar (filter di halaman daftar yang tak punya label tampak). */
   hideLabel?: boolean;
   /** Kelas tambahan untuk pembungkus terluar (mis. lebar kolom filter: `sm:w-56`). */
@@ -175,6 +177,7 @@ export function ComboboxBase({
   localFilter,
   highlight,
   hideLabel,
+  required,
   className,
 }: ComboboxBaseProps) {
   const listId = useId();
@@ -291,7 +294,7 @@ export function ComboboxBase({
 
   return (
     <div className={cn('space-y-1.5', className)}>
-      <Label htmlFor={id} className={hideLabel ? 'sr-only' : undefined}>
+      <Label htmlFor={id} required={required} className={hideLabel ? 'sr-only' : undefined}>
         {label}
       </Label>
       <div className="flex items-start gap-1">
@@ -357,6 +360,7 @@ export function ComboboxBase({
                 showList && activeKey !== undefined ? optionDomId(activeKey) : undefined
               }
               aria-invalid={error ? true : undefined}
+              aria-required={required ? true : undefined}
               aria-describedby={describedBy}
               disabled={disabled}
               placeholder={multi && chips.length > 0 ? undefined : placeholder}

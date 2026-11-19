@@ -131,3 +131,11 @@ test('MultiSelect: memilih menambah chip, X chip dan Backspace melepasnya', asyn
   await userEvent.keyboard('{Backspace}');
   expect(onValueChange).toHaveBeenLastCalledWith([]);
 });
+
+test('Select wajib: label bertanda data-required dan input aria-required', () => {
+  render(
+    <Select id="s" label="Status" options={OPTIONS} value="" onValueChange={() => {}} required />,
+  );
+  expect(screen.getByLabelText('Status')).toHaveAttribute('aria-required', 'true');
+  expect(document.querySelector('label[for="s"]')).toHaveAttribute('data-required');
+});

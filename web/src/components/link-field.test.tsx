@@ -413,3 +413,10 @@ test('placeList: ruang bawah dan atas sama-sama sempit, tinggi dipangkas ke ruan
   expect(up.bottom).toBe(200 - 120 + 4);
   expect(up.maxHeight).toBe(120 - 8 - 4);
 });
+
+test('LinkField wajib: label bertanda data-required dan input aria-required', () => {
+  render(<Single required />);
+  const input = screen.getByLabelText('Merk');
+  expect(input).toHaveAttribute('aria-required', 'true');
+  expect(document.querySelector('label[for="f"]')).toHaveAttribute('data-required');
+});
