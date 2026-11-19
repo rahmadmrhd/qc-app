@@ -19,7 +19,7 @@ import {
   type QueryKind,
   routeShape,
 } from '@shared/api';
-import { parseApiId, restBase } from '@shared/api-versions';
+import { parseApiId } from '@shared/api-versions';
 import { type ApiId, ERROR_CODES } from '@shared/contract';
 
 // Dokumen OpenAPI 3.1 yang dibangun dari tabel `API_ROUTES` (BUKAN dari skema validator, yang ditulis tangan):
@@ -143,42 +143,41 @@ function operationFor(
   return { verb: shape.verb, path: shape.path, operation };
 }
 
-/** `servers` untuk path item rute versi >= 2 (jalurnya relatif terhadap `/api/vN`); v1 memakai `servers` dokumen. */
+/**
+ * Kunci path item dokumen: v1 memakai jalur tabel apa adanya (relatif terhadap `servers[0]` = `/api/v1`); versi >= 2
+ * SELALU diawali `/v<n>` (mis. `/v2/qrcodes/{id}`) supaya tak pernah bertabrakan dengan v1 dan tetap kunci sah OAS 3.1
+ * (tanpa query string). Pasangannya `serversFor`: path item versi >= 2 menimpa server menjadi `/api`.
+ */
+export function openApiPathKey(version: number, path: string): string {
+  return version <= 1 ? path : `/v${version}${path}`;
+}
+
+/** `servers` untuk path item rute versi >= 2 (kunci pathnya membawa `/v<n>`, jadi server = `/api`); v1 memakai `servers` dokumen. */
 export function serversFor(version: number): Array<{ url: string }> | undefined {
-  return version <= 1 ? undefined : [{ url: restBase(version) }];
+  return version <= 1 ? undefined : [{ url: '/api' }];
 }
 
 /**
- * Dokumen OpenAPI 3.1 dari seluruh tabel rute (jalur relatif terhadap `servers[0].url` = `/api/v1`). Rute versi >= 2
- * ditaruh pada path item sendiri dengan `servers` `/api/vN`; bila jalur yang sama dipakai versi lain (kunci path item
- * tak boleh ganda), kuncinya diberi akhiran `?v=N` supaya operasi v1 tidak tertimpa.
+ * Dokumen OpenAPI 3.1 dari seluruh tabel rute (jalur v1 relatif terhadap `servers[0].url` = `/api/v1`). Rute versi >= 2
+ * ditaruh pada path item berkunci `/v<n><jalur>` dengan `servers` `/api` (lihat `openApiPathKey`/`serversFor`).
  */
 export function buildOpenApi(
   routes: RouteTable,
   table: Record<string, ApiRouteDef> = API_ROUTES,
 ): OpenApiDocument {
-  const ids = Object.keys(table) as ApiId[];
-  const versionsOfPath = new Map<string, Set<number>>();
-  const shapes = ids.flatMap((id) => {
-    const def = table[id] as ApiRouteDef;
-    const version = parseApiId(id).version;
-    return (def.create ? [false, true] : [false]).map((created) => {
-      const built = operationFor(id, def, created, routes);
-      const versions = versionsOfPath.get(built.path) ?? new Set<number>();
-      versions.add(version);
-      versionsOfPath.set(built.path, versions);
-      return { ...built, version };
-    });
-  });
   const paths: OpenApiDocument['paths'] = {};
-  for (const { verb, path, operation, version } of shapes) {
-    const shared = (versionsOfPath.get(path)?.size ?? 1) > 1;
-    const key = version > 1 && shared ? `${path}?v=${version}` : path;
-    const item = paths[key] ?? {};
-    item[verb.toLowerCase()] = operation;
-    const servers = serversFor(version);
-    if (servers !== undefined) (item as Record<string, unknown>).servers = servers;
-    paths[key] = item;
+  for (const id of Object.keys(table) as ApiId[]) {
+    const def = table[id] as ApiRouteDef;
+    const { version } = parseApiId(id);
+    for (const created of def.create ? [false, true] : [false]) {
+      const { verb, path, operation } = operationFor(id, def, created, routes);
+      const key = openApiPathKey(version, path);
+      const item = paths[key] ?? {};
+      item[verb.toLowerCase()] = operation;
+      const servers = serversFor(version);
+      if (servers !== undefined) (item as Record<string, unknown>).servers = servers;
+      paths[key] = item;
+    }
   }
   return {
     openapi: '3.1.0',

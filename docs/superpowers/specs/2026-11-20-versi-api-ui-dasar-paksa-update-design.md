@@ -188,8 +188,10 @@ Penyimpangan dari rancangan:
 3. Catatan `createdAt` per versi UI disimpan di `state.json` (`created`). Versi tanpa catatan dianggap TIDAK lebih baru dari UI
    dasar (dibuang), sehingga state lama aman. Bila `ui-manifest.json` UI dasar tak ada atau rusak, perilaku lama dipertahankan
    (tanpa penentuan urutan).
-4. OpenAPI: path item rute versi >= 2 memakai `servers` `/api/vN` (`serversFor`). Bila jalur yang sama dipakai versi lain, kunci
-   path item versi >= 2 diberi akhiran `?v=N` supaya operasi v1 tidak tertimpa (`buildOpenApi`).
+4. OpenAPI: rute versi >= 2 SELALU memakai kunci path item `/v<n><jalur>` (mis. `/v2/qrcodes/{id}`, `openApiPathKey`) dengan
+   `servers` `[{ url: '/api' }]` pada path item itu (`serversFor`); v1 tak berubah (server dokumen `/api/v1`). Menggantikan skema
+   sementara akhiran `?v=N`, yang tidak sah menurut OAS 3.1 (kunci Paths Object tak boleh memuat query string); diputuskan
+   setelah review akhir 2026-11-20.
 5. Integrasi potret kontrak ke `release:prepare` dipindah ke fase 3. Sementara potret diperbarui manual lewat
    `bun run api:snapshot` (dan dicek lewat `bun run api:snapshot --check`).
 6. Di luar rancangan, untuk konsistensi: `server/src/app.ts` memeriksa `isServerPath` SEBELUM `staticDir`, sehingga `/api/v2/*`

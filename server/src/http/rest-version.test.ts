@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { app } from '@server/app';
 import type { RouteTable } from '@server/core/router';
-import { buildOpenApi, serversFor } from '@server/http/openapi';
+import { buildOpenApi, openApiPathKey, serversFor } from '@server/http/openapi';
 import { listOperations } from '@server/http/rest';
 import { isRestPath } from '@server/http/security';
 import { API_ROUTES, type ApiRouteDef } from '@shared/api';
@@ -55,9 +55,16 @@ describe('isRestPath', () => {
 });
 
 describe('serversFor', () => {
-  test('v1 tanpa override, v2 menunjuk /api/v2', () => {
+  test('v1 tanpa override, v2 ke atas memakai server /api (jalurnya membawa /v<n>)', () => {
     expect(serversFor(1)).toBeUndefined();
-    expect(serversFor(2)).toEqual([{ url: '/api/v2' }]);
+    expect(serversFor(2)).toEqual([{ url: '/api' }]);
+    expect(serversFor(10)).toEqual([{ url: '/api' }]);
+  });
+
+  test('openApiPathKey: v1 polos, v2 ke atas diawali /v<n>', () => {
+    expect(openApiPathKey(1, '/b/{id}')).toBe('/b/{id}');
+    expect(openApiPathKey(2, '/b/{id}')).toBe('/v2/b/{id}');
+    expect(openApiPathKey(12, '/b')).toBe('/v12/b');
   });
 });
 
@@ -70,8 +77,15 @@ describe('OpenAPI berversi', () => {
     }
   });
 
-  test('id @2 diberi servers /api/v2 dan tidak menimpa operasi v1 pada jalur yang sama', () => {
+  test('rute @n selalu memakai kunci /v<n><jalur> dan servers /api; v1 tak berubah dan tak tertimpa', () => {
     const doc = buildOpenApi(NO_ROUTES, FAKE);
+    // Kunci path item sah menurut OAS 3.1 (tanpa query string) dan tak pernah bertabrakan antar versi.
+    expect(Object.keys(doc.paths).sort()).toEqual(['/b', '/v2/b', '/v2/c/{id}']);
+    for (const key of Object.keys(doc.paths)) expect(key).not.toContain('?');
+    expect((doc.paths['/b'] as Record<string, unknown>).servers).toBeUndefined();
+    expect(Object.keys(doc.paths['/b'] as object)).toEqual(['get']);
+    expect((doc.paths['/v2/b'] as Record<string, unknown>).servers).toEqual([{ url: '/api' }]);
+    expect((doc.paths['/v2/c/{id}'] as Record<string, unknown>).servers).toEqual([{ url: '/api' }]);
     const operationIds = Object.values(doc.paths).flatMap((item) =>
       Object.values(item).flatMap((entry) =>
         typeof entry === 'object' && entry !== null && 'operationId' in entry
@@ -80,11 +94,6 @@ describe('OpenAPI berversi', () => {
       ),
     );
     expect(operationIds.sort()).toEqual(['a.b', 'a.b@2', 'a.c@2']);
-    const v2Items = Object.values(doc.paths).filter(
-      (item) => 'servers' in item,
-    ) as unknown as Array<{ servers: unknown }>;
-    expect(v2Items.length).toBe(2);
-    for (const item of v2Items) expect(item.servers).toEqual([{ url: '/api/v2' }]);
   });
 });
 
