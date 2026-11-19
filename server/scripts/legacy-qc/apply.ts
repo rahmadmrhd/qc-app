@@ -41,8 +41,8 @@ export interface TargetState {
   /** `${itemId}\u0000${buId}` yang sudah tertaut. */
   itemBuLinks: Set<string>;
   clientIds: Set<string>;
-  /** `${buId}\u0000${serial}` yang sudah ada di tujuan. */
-  serialPairs: Set<string>;
+  /** Serial Number yang sudah ada di tujuan, BU mana pun (unik se-sistem). */
+  serialNumbers: Set<string>;
 }
 
 export async function loadTargetState(db: Preparer): Promise<TargetState> {
@@ -57,7 +57,7 @@ export async function loadTargetState(db: Preparer): Promise<TargetState> {
     rows<{ key: string; item_id: string }>('SELECT `key`, item_id FROM item_alias_keys'),
     rows<{ item_id: string; bu_id: string }>('SELECT item_id, bu_id FROM item_business_units'),
     rows<{ client_id: string }>('SELECT client_id FROM serials'),
-    rows<{ bu_id: string; serial: string }>('SELECT bu_id, serial FROM serials'),
+    rows<{ serial: string }>('SELECT serial FROM serials'),
   ]);
   return {
     businessUnits: bus,
@@ -73,7 +73,7 @@ export async function loadTargetState(db: Preparer): Promise<TargetState> {
     aliasKeys: new Map(aliases.map((row) => [row.key.trim(), row.item_id.trim()])),
     itemBuLinks: new Set(links.map((row) => `${row.item_id.trim()}\u0000${row.bu_id.trim()}`)),
     clientIds: new Set(clients.map((row) => row.client_id.trim())),
-    serialPairs: new Set(pairs.map((row) => `${row.bu_id.trim()}\u0000${row.serial}`)),
+    serialNumbers: new Set(pairs.map((row) => row.serial)),
   };
 }
 
@@ -95,6 +95,8 @@ export interface ItemResolution {
 
 export interface ResolvedSerial extends PlannedSerial {
   buId: string;
+  /** `buHistory` dengan id BU (untuk `serial_business_units`). */
+  buHistoryIds: { buId: string; firstAt: string; leftAt: string }[];
   locationId: string;
   itemId: string;
 }
@@ -251,18 +253,23 @@ export function resolvePlan(plan: Plan, target: TargetState): Resolved {
       continue;
     }
     const resolvedBu = buId.get(serial.buName) as string;
-    if (target.serialPairs.has(`${resolvedBu}\u0000${serial.serial}`)) {
+    if (target.serialNumbers.has(serial.serial)) {
       conflicts.push({
         legacyId: serial.legacyId,
         serial: serial.serial,
         buName: serial.buName,
-        reason: 'sudah ada di tujuan (BU + serial sama)',
+        reason: 'sudah ada di tujuan (serial sama; unik se-sistem)',
       });
       continue;
     }
     serials.push({
       ...serial,
       buId: resolvedBu,
+      buHistoryIds: serial.buHistory.map((previous) => ({
+        buId: buId.get(previous.buName) as string,
+        firstAt: previous.firstAt,
+        leftAt: previous.leftAt,
+      })),
       locationId: locationId.get(serial.locationName) as string,
       itemId: itemIdByLegacy.get(serial.itemLegacyId) as string,
     });
@@ -320,6 +327,25 @@ function serialStatements(db: Preparer, chunk: ResolvedSerial[]): DbStatement[] 
         `INSERT INTO serials (id, client_id, bu_id, serial, item_id, test_date, sample, note, location_id, recorded_location_id, status, custody, created_at, created_by, updated_at, updated_by, open_case_id) VALUES ${chunk.map(() => tuple).join(', ')}`,
       )
       .bind(...binds),
+  );
+
+  // Riwayat BU (spek serial unik se-sistem §4.1): satu baris BU saat ini per serial (first_at = sejak kapan di BU itu) dan
+  // satu baris per BU lama yang sudah ditinggalkan (left_at terisi). Kunci utama (serial_id, bu_id) dijaga perencana.
+  const buRows = chunk.flatMap((serial) => [
+    [serial.id, serial.buId, serial.buSince, ''],
+    ...serial.buHistoryIds.map((previous) => [
+      serial.id,
+      previous.buId,
+      previous.firstAt,
+      previous.leftAt,
+    ]),
+  ]);
+  statements.push(
+    db
+      .prepare(
+        `INSERT INTO serial_business_units (serial_id, bu_id, first_at, left_at) VALUES ${placeholders(4, buRows.length)}`,
+      )
+      .bind(...buRows.flat()),
   );
 
   const events: { serial: ResolvedSerial; event: PlannedEvent }[] = chunk.flatMap((serial) =>

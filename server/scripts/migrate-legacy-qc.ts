@@ -79,10 +79,11 @@ async function writeReports(dir: string, plan: Plan, resolved: Resolved | null):
   await Bun.write(
     resolve(dir, 'dilipat.csv'),
     csv(
-      ['serial', 'bu', 'id_menang', 'tipe_menang', 'id_dilipat', 'tipe_dilipat'],
+      ['serial', 'bu', 'bu_dilipat', 'id_menang', 'tipe_menang', 'id_dilipat', 'tipe_dilipat'],
       plan.folded.map((row) => [
         row.serial,
         row.buName,
+        row.loserBuName,
         row.winnerLegacyId,
         row.winnerItem,
         row.loserLegacyId,

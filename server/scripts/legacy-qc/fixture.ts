@@ -1,6 +1,32 @@
 // Mini-dump untuk tes: meniru bentuk tabel QC lama (kolom sesuai `INSERT` mysqldump) dengan kasus pinggir yang nyata.
 import type { Tables } from './dump';
 
+/**
+ * Dump kecil + satu Serial Number yang sama di DUA BU lama (Spectrum 110 lama, Teakwave 111 baru) dan satu lagi yang
+ * dicatat tiga kali (Spectrum, Teakwave, lalu Spectrum lagi). Aturan: serial unik se-sistem, jadi terbaru menang dan
+ * BU lama masuk riwayat BU.
+ */
+export function crossBuDump(): Tables {
+  const dump = miniDump();
+  dump.dataqc = [
+    ...(dump.dataqc ?? []),
+    [110, '2024-03-01', 1, 'crossbu00001', 0, '', 1, 1, 0], // Spectrum, lama
+    [111, '2024-04-01', 1, 'CROSSBU00001', 0, '', 2, 2, 0], // Teakwave, baru: menang
+    [112, '2024-03-10', 1, 'PINGPONG0001', 0, '', 1, 1, 0], // Spectrum
+    [113, '2024-03-20', 1, 'PINGPONG0001', 0, '', 2, 2, 0], // Teakwave
+    [114, '2024-04-10', 1, 'PINGPONG0001', 0, '', 1, 1, 0], // Spectrum lagi: menang (BU sama dengan yang pertama)
+  ];
+  dump.historyDataqc = [
+    ...(dump.historyDataqc ?? []),
+    [110, 1, 1, 'desmon', 'Added to Database', '2024-03-01 08:00:00'],
+    [111, 2, 2, 'desmon', 'Added to Database', '2024-04-01 08:00:00'],
+    [112, 1, 1, 'desmon', 'Added to Database', '2024-03-10 08:00:00'],
+    [113, 2, 2, 'desmon', 'Added to Database', '2024-03-20 08:00:00'],
+    [114, 1, 1, 'desmon', 'Added to Database', '2024-04-10 08:00:00'],
+  ];
+  return dump;
+}
+
 export function miniDump(): Tables {
   return {
     users: [

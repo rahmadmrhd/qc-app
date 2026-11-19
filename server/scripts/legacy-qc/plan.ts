@@ -114,6 +114,13 @@ export interface PlannedSerial {
   updatedBy: string;
   events: PlannedEvent[];
   foldedLegacyIds: number[];
+  /** Sejak kapan serial berada di BU saat ini (`serial_business_units.first_at`, ISO UTC). */
+  buSince: string;
+  /**
+   * BU lain yang pernah memegang serial ini (catatan lama yang dilipat berada di BU berbeda): satu entri per BU, tanpa BU
+   * saat ini. Ditulis ke `serial_business_units` sebagai BU yang sudah ditinggalkan (`left_at` terisi).
+   */
+  buHistory: { buName: string; firstAt: string; leftAt: string }[];
 }
 
 export type SkipReason =
@@ -134,7 +141,10 @@ export interface FoldedRow {
   winnerLegacyId: number;
   loserLegacyId: number;
   serial: string;
+  /** BU pemenang (BU saat ini). */
   buName: string;
+  /** BU catatan yang dilipat (bisa sama dengan BU pemenang). */
+  loserBuName: string;
   winnerItem: string;
   loserItem: string;
 }
@@ -424,13 +434,13 @@ export function buildPlan(tables: Tables, options: PlanOptions): Plan {
       buName,
       locationName: locationNameOf(asNumber(row[7])),
     };
-    const key = `${buName}\u0000${serial}`;
-    const list = groups.get(key) ?? [];
+    // Serial Number unik se-sistem (spek serial unik se-sistem): kunci kelompok = serial saja, lintas BU.
+    const list = groups.get(serial) ?? [];
     list.push(candidate);
-    groups.set(key, list);
+    groups.set(serial, list);
   }
 
-  // ---- lipat tabrakan (BU, serial): terbaru menang -------------------------------------------
+  // ---- lipat tabrakan serial (lintas BU): terbaru menang -------------------------------------------
   const serials: PlannedSerial[] = [];
   const folded: FoldedRow[] = [];
   for (const members of groups.values()) {
@@ -445,6 +455,7 @@ export function buildPlan(tables: Tables, options: PlanOptions): Plan {
         loserLegacyId: loser.legacyId,
         serial: winner.serial,
         buName: winner.buName,
+        loserBuName: loser.buName,
         winnerItem: labelOfLegacy(winner.itemLegacyId),
         loserItem: labelOfLegacy(loser.itemLegacyId),
       });
@@ -583,6 +594,27 @@ export function buildPlan(tables: Tables, options: PlanOptions): Plan {
 
     const first = winnerEvents[0] as PlannedEvent;
     const last = winnerEvents[winnerEvents.length - 1] as PlannedEvent;
+
+    // Riwayat BU: catatan diurutkan menurut waktu; BU sebuah catatan ditinggalkan saat catatan berikutnya dimulai. BU yang
+    // sama dengan BU pemenang tidak dicatat (baris BU saat ini sudah ada); satu entri per BU lain.
+    const startOf = (member: Candidate): string =>
+      stamped.find((entry) => entry.source.owner === member.legacyId && entry.iso !== null)?.iso ??
+      wibToIso(`${member.date} 12:00:00`) ??
+      options.now;
+    const previousBus = new Map<string, { buName: string; firstAt: string; leftAt: string }>();
+    for (const [index, member] of ordered.slice(0, -1).entries()) {
+      if (member.buName === winner.buName) continue;
+      const firstAt = startOf(member);
+      const nextStart = startOf(ordered[index + 1] as Candidate);
+      const leftAt = nextStart > firstAt ? nextStart : firstAt;
+      const known = previousBus.get(member.buName);
+      previousBus.set(member.buName, {
+        buName: member.buName,
+        firstAt: known && known.firstAt < firstAt ? known.firstAt : firstAt,
+        leftAt: known && known.leftAt > leftAt ? known.leftAt : leftAt,
+      });
+    }
+    const buHistory = [...previousBus.values()].sort((a, b) => a.firstAt.localeCompare(b.firstAt));
     serials.push({
       legacyId: winner.legacyId,
       id: uuidV5(`serial:${winner.legacyId}`),
@@ -600,6 +632,8 @@ export function buildPlan(tables: Tables, options: PlanOptions): Plan {
       updatedBy: last.actorName,
       events: winnerEvents,
       foldedLegacyIds: losers.map((loser) => loser.legacyId),
+      buSince: buHistory.length > 0 ? startOf(winner) : first.createdAt,
+      buHistory,
     });
   }
   serials.sort((a, b) => a.legacyId - b.legacyId);
@@ -626,7 +660,10 @@ export function buildPlan(tables: Tables, options: PlanOptions): Plan {
   const items = [...itemsByKey.values()].sort((a, b) => a.legacyId - b.legacyId);
   const buNames = new Set<string>();
   for (const item of items) for (const name of item.buNames) buNames.add(name);
-  for (const serial of serials) buNames.add(serial.buName);
+  for (const serial of serials) {
+    buNames.add(serial.buName);
+    for (const previous of serial.buHistory) buNames.add(previous.buName);
+  }
   const locationNames = new Set(serials.map((serial) => serial.locationName));
   const brands = [...new Set(items.map((item) => item.brand))].sort();
   return {

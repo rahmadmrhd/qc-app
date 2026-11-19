@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { miniDump } from './fixture';
+import { crossBuDump, miniDump } from './fixture';
 import {
   buildPlan,
   buNameOf,
@@ -114,6 +114,7 @@ describe('buildPlan', () => {
         loserLegacyId: 103,
         serial: 'DUP12345X',
         buName: 'Spectrum',
+        loserBuName: 'Spectrum',
         winnerItem: 'Ubiquiti UAP AC LR',
         loserItem: 'Ubiquiti UAP AC Lite',
       },
@@ -219,6 +220,53 @@ describe('buildPlan', () => {
     expect(p.items.find((i) => i.legacyId === 2)?.detail).toBe('');
     expect(p.items.find((i) => i.legacyId === 1)?.createdAt).toBe('2022-03-01T03:00:00.000Z');
     expect(p.warnings.some((w) => w.includes('dilebur'))).toBe(true);
+  });
+
+  test('serial yang sama di dua BU lama: dilipat jadi satu (unik global), terbaru menang, BU lama menjadi riwayat', () => {
+    const p = buildPlan(crossBuDump(), { itemBu: 'brand', now: NOW });
+    expect(p.serials.filter((s) => s.serial === 'CROSSBU00001')).toHaveLength(1);
+    expect(p.serials.some((s) => s.legacyId === 110)).toBe(false);
+    const winner = serialOf(p, 111);
+    expect(winner.buName).toBe('Teakwave');
+    expect(winner.foldedLegacyIds).toEqual([110]);
+    expect(winner.buSince).toBe('2024-04-01T01:00:00.000Z');
+    expect(winner.buHistory).toEqual([
+      {
+        buName: 'Spectrum',
+        firstAt: '2024-03-01T01:00:00.000Z',
+        leftAt: '2024-04-01T01:00:00.000Z',
+      },
+    ]);
+    expect(p.folded).toContainEqual(
+      expect.objectContaining({
+        winnerLegacyId: 111,
+        loserLegacyId: 110,
+        buName: 'Teakwave',
+        loserBuName: 'Spectrum',
+      }),
+    );
+    // Riwayat catatan yang dilipat ikut ke pemenang.
+    expect(winner.events.some((e) => e.data.legacyId === 110)).toBe(true);
+  });
+
+  test('serial dicatat di BU A, B, lalu A lagi: satu baris per BU di riwayat; BU pemenang tidak masuk daftar BU lama', () => {
+    const p = buildPlan(crossBuDump(), { itemBu: 'brand', now: NOW });
+    const winner = serialOf(p, 114);
+    expect(winner.buName).toBe('Spectrum');
+    expect(winner.foldedLegacyIds).toEqual([112, 113]);
+    expect(winner.buHistory.map((h) => h.buName)).toEqual(['Teakwave']);
+    // Tak ada yang berbagi BU pemenang: tepat satu entri per BU lain.
+    expect(new Set(winner.buHistory.map((h) => h.buName)).size).toBe(winner.buHistory.length);
+    const history = winner.buHistory[0];
+    expect(history && history.leftAt >= history.firstAt).toBe(true);
+  });
+
+  test('serial tanpa tabrakan lintas BU: riwayat BU kosong dan buSince = waktu pencatatan', () => {
+    const s = serialOf(plan(), 100);
+    expect(s.buHistory).toEqual([]);
+    expect(s.buSince).toBe(s.createdAt);
+    // Lipatan satu BU (103/104 sama-sama Spectrum): tetap tanpa riwayat BU.
+    expect(serialOf(plan(), 104).buHistory).toEqual([]);
   });
 
   test('BU item: bawaan merk; "brand+serials" menambah BU tempat serialnya tercatat', () => {

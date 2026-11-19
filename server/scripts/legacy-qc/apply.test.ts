@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { ensureSerialUniqueIndex } from '@server/modules/serial/bu-history';
 import { seedBusinessUnit, seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
 import { restCall } from '@server-test/rest-call';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { applyPlan, loadTargetState, resolvePlan } from './apply';
-import { miniDump } from './fixture';
+import { crossBuDump, miniDump } from './fixture';
 import { buildPlan } from './plan';
 
 setDefaultTimeout(60_000);
@@ -104,7 +105,7 @@ describe('resolvePlan terhadap tujuan yang tidak kosong', () => {
     expect(await count('serials')).toBe(0);
   });
 
-  test('serial yang sudah ada di tujuan (BU + serial sama) dilaporkan sebagai bentrok, bukan ditulis', async () => {
+  test('serial yang sudah ada di tujuan (serial sama, BU mana pun) dilaporkan sebagai bentrok, bukan ditulis', async () => {
     await env.DB.prepare(
       "INSERT INTO serials (id, client_id, bu_id, serial, item_id) VALUES ('s-ada', 'c-ada', 'bu-spc', 'F5BC0F1E4059', 'it-existing')",
     ).run();
@@ -114,12 +115,93 @@ describe('resolvePlan terhadap tujuan yang tidak kosong', () => {
         legacyId: 100,
         serial: 'F5BC0F1E4059',
         buName: 'Spectrum',
-        reason: 'sudah ada di tujuan (BU + serial sama)',
+        reason: 'sudah ada di tujuan (serial sama; unik se-sistem)',
       },
     ]);
     expect(resolved.serials.map((s) => s.legacyId)).not.toContain(100);
     await applyPlan(env.DB, resolved, NOW);
     expect(await count('serials')).toBe(1 + 5);
+  });
+
+  test('serial yang sudah ada di tujuan pada BU LAIN juga bentrok (unik global, bukan per BU)', async () => {
+    await seedBusinessUnit(env, { id: 'bu-tkw', code: 'TKW', name: 'Teakwave' });
+    await env.DB.prepare(
+      "INSERT INTO serials (id, client_id, bu_id, serial, item_id) VALUES ('s-ada', 'c-ada', 'bu-tkw', 'F5BC0F1E4059', 'it-existing')",
+    ).run();
+    const resolved = resolvePlan(plan(), await loadTargetState(env.DB));
+    expect(resolved.conflicts.map((c) => c.legacyId)).toEqual([100]);
+    expect(resolved.serials.map((s) => s.legacyId)).not.toContain(100);
+  });
+});
+
+describe('applyPlan: serial lintas BU lama dilipat dan riwayat BU ditulis', () => {
+  const crossPlan = () => buildPlan(crossBuDump(), { itemBu: 'brand', now: NOW });
+
+  test('satu catatan per serial, baris riwayat BU untuk BU saat ini dan BU lama, lolos ensureSerialUniqueIndex', async () => {
+    // Keadaan tujuan sebelum rilis unik: tanpa indeks unik, supaya tes menguji hasil akhirnya (bukan penjaga indeks).
+    await env.DB.prepare('DROP INDEX IF EXISTS serials_serial ON serials').run();
+    const resolved = resolvePlan(crossPlan(), await loadTargetState(env.DB));
+    expect(resolved.blockers).toEqual([]);
+    await applyPlan(env.DB, resolved, NOW);
+
+    // Serial yang sama di dua BU lama: satu catatan, di BU terbaru (Teakwave).
+    const cross = await env.DB.prepare(
+      "SELECT s.id, bu.name FROM serials s JOIN business_units bu ON bu.id = s.bu_id WHERE s.serial = 'CROSSBU00001'",
+    ).all<{ id: string; name: string }>();
+    expect(cross.results.map((r) => r.name)).toEqual(['Teakwave']);
+    const id = cross.results[0]?.id;
+    const history = await env.DB.prepare(
+      'SELECT bu.name, h.first_at, h.left_at FROM serial_business_units h JOIN business_units bu ON bu.id = h.bu_id WHERE h.serial_id = ? ORDER BY bu.name',
+    )
+      .bind(id)
+      .all<{ name: string; first_at: string; left_at: string }>();
+    expect(history.results).toEqual([
+      {
+        name: 'Spectrum',
+        first_at: '2024-03-01T01:00:00.000Z',
+        left_at: '2024-04-01T01:00:00.000Z',
+      },
+      { name: 'Teakwave', first_at: '2024-04-01T01:00:00.000Z', left_at: '' },
+    ]);
+    // Dibaca lewat rute aplikasi: BU saat ini dan riwayat BU.
+    const got = (await restCall(env, VIEWER, 'serials.get', { id })) as { data: Json };
+    expect(got.data.serial.buCode).toBe('TKW');
+    expect(got.data.serial.buHistory.map((h: Json) => h.buCode).sort()).toEqual(['SPC', 'TKW']);
+
+    // Serial A, B, lalu A lagi: satu baris per BU, A tetap BU saat ini.
+    const ping = await env.DB.prepare(
+      "SELECT s.id, bu.name FROM serials s JOIN business_units bu ON bu.id = s.bu_id WHERE s.serial = 'PINGPONG0001'",
+    ).all<{ id: string; name: string }>();
+    expect(ping.results.map((r) => r.name)).toEqual(['Spectrum']);
+    const pingHistory = await env.DB.prepare(
+      'SELECT bu.name, h.left_at FROM serial_business_units h JOIN business_units bu ON bu.id = h.bu_id WHERE h.serial_id = ? ORDER BY bu.name',
+    )
+      .bind(ping.results[0]?.id)
+      .all<{ name: string; left_at: string }>();
+    expect(pingHistory.results.map((r) => [r.name, r.left_at === ''])).toEqual([
+      ['Spectrum', true],
+      ['Teakwave', false],
+    ]);
+
+    // Setiap serial yang ditulis punya baris penghubung "BU saat ini"; tidak ada serial ganda.
+    const orphan = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM serials s WHERE NOT EXISTS (SELECT 1 FROM serial_business_units b WHERE b.serial_id = s.id AND b.bu_id = s.bu_id AND b.left_at = '')",
+    ).first<{ n: number }>();
+    expect(Number(orphan?.n)).toBe(0);
+    const open = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM (SELECT serial_id FROM serial_business_units WHERE left_at = '' GROUP BY serial_id HAVING COUNT(*) > 1) d",
+    ).first<{ n: number }>();
+    expect(Number(open?.n)).toBe(0);
+    expect(await ensureSerialUniqueIndex(env)).toBe('created');
+  });
+
+  test('putaran kedua tidak menulis apa pun (termasuk baris riwayat BU)', async () => {
+    await applyPlan(env.DB, resolvePlan(crossPlan(), await loadTargetState(env.DB)), NOW);
+    const before = await count('serial_business_units');
+    const second = resolvePlan(crossPlan(), await loadTargetState(env.DB));
+    expect(second.serials).toHaveLength(0);
+    await applyPlan(env.DB, second, NOW);
+    expect(await count('serial_business_units')).toBe(before);
   });
 });
 
