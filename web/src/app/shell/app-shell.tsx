@@ -1,5 +1,5 @@
 import { Outlet } from '@tanstack/react-router';
-import type { ReactNode } from 'react';
+import { type ReactNode, useCallback, useState } from 'react';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useMe } from '@/modules/auth/use-me';
@@ -16,6 +16,7 @@ import { usePrefetchOnIdle } from '../prefetch';
 import { AppSidebar } from './app-sidebar';
 import { OutboxChip } from './outbox-chip';
 import { ServerStatusBanner } from './server-status-banner';
+import { readSidebarState, writeSidebarState } from './sidebar-state';
 import { UiUpdateBanner } from './ui-update-banner';
 import { UserMenu } from './user-menu';
 
@@ -25,10 +26,16 @@ import { UserMenu } from './user-menu';
  */
 export function AppShell({ children }: { children?: ReactNode } = {}) {
   usePrefetchOnIdle(useMe());
+  // Terkendali (bukan defaultOpen): terbuka/terlipat diingat di localStorage lewat `qc.sidebar`.
+  const [sidebarOpen, setSidebarOpen] = useState(() => readSidebarState().open);
+  const onSidebarOpenChange = useCallback((open: boolean) => {
+    setSidebarOpen(open);
+    writeSidebarState({ ...readSidebarState(), open });
+  }, []);
   return (
     <TooltipProvider>
       <ActiveLocationsProvider>
-        <SidebarProvider>
+        <SidebarProvider open={sidebarOpen} onOpenChange={onSidebarOpenChange}>
           {/* Di dalam SidebarProvider agar mesin tur dapat membuka sidebar ponsel; overlay-nya dimuat malas. */}
           <TourProvider renderTip={renderTourTip}>
             <AppSidebar />
