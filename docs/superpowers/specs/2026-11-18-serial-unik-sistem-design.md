@@ -82,7 +82,7 @@ Tiap baris (satu per serial ternormalisasi): server mencari serial **secara glob
 ## 7. Keamanan dan privasi
 
 - Penegakan hak tetap di server; web hanya membatasi pilihan.
-- Kebocoran lintas BU yang **disengaja dan minimal**: pencatat BU mana pun dapat mengetahui bahwa sebuah serial sudah ada (dari `lookupMany` dan hasil simpan) beserta item, BU saat ini, dan status. Ini konsekuensi langsung dari aturan "entri serial sama menjadi cek ulang lintas BU". Tidak ada catatan, riwayat, nama lokasi, atau data pelaku. Menunggu persetujuan (§11).
+- Kebocoran lintas BU yang **disengaja dan minimal**: pencatat BU mana pun dapat mengetahui bahwa sebuah serial sudah ada (dari `lookupMany` dan hasil simpan) beserta item, BU saat ini, dan status. Ini konsekuensi langsung dari aturan "entri serial sama menjadi cek ulang lintas BU". Tidak ada catatan, riwayat, nama lokasi, atau data pelaku. Disetujui pemilik produk 2026-11-18 (§11 butir 1).
 - Pindah BU melalui jalur Catat dapat dilakukan pengguna yang tidak berhak di BU asal; konsekuensinya BU asal kehilangan hak tulis (tetap membaca). Dicatat di linimasa sebagai kejadian berpelaku.
 - Pesan galat tanpa nama BU lain selain yang sudah diungkap di atas.
 
@@ -107,7 +107,7 @@ Tiap baris (satu per serial ternormalisasi): server mencari serial **secara glob
 3. **Web** (§6) dan dokumen (spek induk butir 4 dan 67, `CLAUDE.md`, panduan, checklist).
 4. **Penyelarasan skrip migrasi data lama** (§8 butir 3) dan peluncuran.
 
-## 11. Keputusan perancang yang menunggu persetujuan pemilik
+## 11. Keputusan perancang (SEMUA disetujui pemilik produk 2026-11-18; butir 3 dan 5 diubah pemilik seperti tertulis)
 
 1. **Pengungkapan lintas BU minimal** (§7): pencatat BU mana pun melihat item, BU saat ini, dan status serial yang sudah ada. Alternatif: hanya "serial sudah tercatat" tanpa detail (item tak bisa dicocokkan di draft, jadi item beda tidak terdeteksi sebelum simpan).
 2. **Item beda = ditolak** (bukan mengubah item diam-diam); pengguna mengubah item lewat detail serial.
