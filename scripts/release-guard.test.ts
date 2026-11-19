@@ -98,3 +98,37 @@ describe('evaluateGuard', () => {
     expect(result.reason).toMatch(/CHANGELOG/);
   });
 });
+
+describe('evaluateGuard: rilis gabungan (komponen server + desktop)', () => {
+  const BOTH_META = [
+    ...META,
+    'desktop/package.json',
+    'desktop/CHANGELOG.md',
+    'desktop/changelog.d/20261117-b.md',
+  ];
+  const input = (files: string[], components?: Array<'server' | 'desktop'>) => ({
+    compareStatus: 'ahead',
+    files,
+    fileCount: files.length,
+    changelogHasVersion: true,
+    ...(components ? { components } : {}),
+  });
+
+  test('metadata kedua komponen lulus bila komponen yang dirilis menyebut keduanya', () => {
+    expect(evaluateGuard(input(BOTH_META, ['server', 'desktop'])).ok).toBe(true);
+  });
+
+  test('tanpa daftar komponen (rilis server saja) metadata desktop tetap ditolak: perilaku lama tak berubah', () => {
+    expect(evaluateGuard(input(BOTH_META)).ok).toBe(false);
+    expect(evaluateGuard(input(BOTH_META, ['server'])).ok).toBe(false);
+  });
+
+  test('kode desktop atau berkas lain di luar metadata ditolak walau komponen desktop ikut dirilis', () => {
+    expect(
+      evaluateGuard(input([...BOTH_META, 'desktop/src/main/index.ts'], ['server', 'desktop'])).ok,
+    ).toBe(false);
+    expect(
+      evaluateGuard(input([...BOTH_META, 'server/src/app.ts'], ['server', 'desktop'])).ok,
+    ).toBe(false);
+  });
+});

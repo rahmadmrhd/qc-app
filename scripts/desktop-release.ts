@@ -1,5 +1,5 @@
 // Pembangunan, penandatanganan, dan penerbitan rilis aplikasi desktop (spek desktop 5.2-5.6, rencana bagian 4).
-// Dipakai CLI `scripts/publish-desktop-release.ts` (job `publish` di `release-desktop.yml`). Fungsi menerima klien Google
+// Dipakai CLI `scripts/publish-desktop-release.ts` (job `publish-desktop` di `release.yml`). Fungsi menerima klien Google
 // lewat parameter sehingga dapat diuji dengan `createFakeBridge()`.
 //
 // Tata letak folder Drive DATAR (keputusan pemilik 2026-11-18, mengubah spek 5.2): `QC-App-Setup-<v>-<arch>.exe`,

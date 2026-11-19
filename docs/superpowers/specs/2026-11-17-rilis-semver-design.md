@@ -117,7 +117,12 @@ commit, squash, rebase. Konsekuensi: semua pagar ada **di dalam workflow** (prov
 [keputusan perancang; dapat dibungkus workflow bila kelak ada GitHub App.]
 
 ### 5.4 `release.yml` (setelah PR rilis di-merge ke `main`)
-Pemicu `pull_request_target` (closed, merged, base `main`), hanya untuk cabang `release/server-v<semver>`. Pagar identitas:
+**Diperluas 2026-11-19 (keputusan pemilik produk, `2026-11-19-rilis-gabungan-design.md`)**: `release.yml` kini SATU workflow untuk semua rilis berversi:
+selain `release/server-v<semver>` ia mengenali `release/desktop-v<semver>` (jalur desktop, dulu `release-desktop.yml` yang dihapus) dan
+`release/gabungan-server-v<semver>-desktop-v<semver>` (keduanya dari satu PR); jalur server di bawah berjalan hanya bila komponen server
+dirilis, dan saklar `RELEASE_FLOW` hanya berlaku pada jalur server (tidak lagi "job pertama `meta` berhenti"; keputusan skrip identitas).
+Pemulihan lewat `workflow_dispatch` memakai `komponen` + `versi`. Teks di bawah menjelaskan jalur server.
+Pemicu `pull_request_target` (closed, merged, base `main`), untuk cabang `release/server-v<semver>`. Pagar identitas:
 `head.repo.full_name == github.repository` (menolak fork); nama cabang lolos regex ketat dan **sama dengan `version` di commit
 merge**; **PR dimerge dengan merge commit** (`merge_commit_sha` punya tepat dua induk; squash/rebase ditolak). Checkout hanya
 `merge_commit_sha`. Grup `concurrency` = grup production di `deploy-server.yml` (satu pipeline production pada satu waktu).

@@ -3,7 +3,8 @@
 // berjalan di staging: commit rilis harus MENDAHULUI `refs/deployed/staging` (status `ahead`, atau `identical`) dan semua
 // berkas yang berubah sejak itu hanya metadata rilis server (versi, bun.lock, CHANGELOG, fragmen), dan CHANGELOG sudah
 // memuat bagian versinya. Murni: perbandingan dilakukan pemanggil lewat `gh api compare`.
-import { isMetadataOnly } from './changelog-check';
+import type { Component } from './changelog';
+import { isMetadataOnlyOf } from './changelog-check';
 
 export interface GuardInput {
   /** `status` dari `repos/R/compare/<refs/deployed/staging>...<sha>`: ahead | identical | behind | diverged. */
@@ -15,15 +16,20 @@ export interface GuardInput {
    * tak lengkap dan tak dapat dipercaya (gagal tertutup). Tak diberikan = panjang `files`; bukan angka = ditolak.
    */
   fileCount?: number;
-  /** `server/CHANGELOG.md` memuat bagian `## [versi]`. */
+  /** `CHANGELOG.md` setiap komponen yang dirilis memuat bagian `## [versi]`-nya (dihitung pemanggil). */
   changelogHasVersion: boolean;
+  /**
+   * Komponen yang dirilis commit ini; berkas metadata komponen-komponen ini sah berbeda dari staging. Bawaan `['server']`
+   * (rilis server saja: metadata desktop tetap ditolak). Rilis gabungan memberi `['server', 'desktop']`.
+   */
+  components?: Component[];
 }
 
 /** Batas API compare GitHub: daftar `files` maksimum 300 untuk seluruh perbandingan, sisanya terpotong diam-diam. */
 const COMPARE_FILE_LIMIT = 300;
 
 const RECOVERY =
-  'Pulihkan: biarkan dev stabil, ulangi deploy staging, lalu jalankan ulang release.yml lewat workflow_dispatch (input versi).';
+  'Pulihkan: biarkan dev stabil, ulangi deploy staging, lalu jalankan ulang release.yml lewat workflow_dispatch (input komponen dan versi).';
 
 export function evaluateGuard(input: GuardInput): { ok: boolean; reason: string } {
   if (input.compareStatus !== 'ahead' && input.compareStatus !== 'identical') {
@@ -39,14 +45,18 @@ export function evaluateGuard(input: GuardInput): { ok: boolean; reason: string 
       reason: `Daftar berkas perbandingan dengan staging terpotong atau tak terbaca (${COMPARE_FILE_LIMIT} berkas atau lebih): tak dapat dipastikan hanya metadata yang berbeda. ${RECOVERY}`,
     };
   }
-  if (!isMetadataOnly(input.files, 'server')) {
+  if (!isMetadataOnlyOf(input.files, input.components ?? ['server'])) {
     return {
       ok: false,
       reason: `Ada perubahan selain metadata rilis yang belum berjalan di staging (kode belum teruji di sana). ${RECOVERY}`,
     };
   }
   if (!input.changelogHasVersion) {
-    return { ok: false, reason: 'server/CHANGELOG.md belum memuat bagian untuk versi rilis ini.' };
+    return {
+      ok: false,
+      reason:
+        'CHANGELOG.md belum memuat bagian untuk versi rilis ini (server, dan desktop bila ikut dirilis).',
+    };
   }
   return { ok: true, reason: 'Kode identik dengan staging; hanya metadata rilis yang berbeda.' };
 }
@@ -65,7 +75,11 @@ if (import.meta.main) {
   } catch {
     fileCount = Number.NaN;
   }
+  // Gagal tertutup: hanya nilai persis `server,desktop` yang menambah komponen desktop; selain itu server saja.
+  const components: Component[] =
+    env.COMPONENTS === 'server,desktop' ? ['server', 'desktop'] : ['server'];
   const result = evaluateGuard({
+    components,
     compareStatus: env.COMPARE_STATUS ?? '',
     files,
     fileCount,

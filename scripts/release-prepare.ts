@@ -3,6 +3,7 @@
 // fragmen, mendorong cabang, dan membuka PR ke `main` lewat `gh` (kredensial pemilik, jadi CI PR berjalan normal).
 //
 //   bun run release:prepare server <patch|minor|major|X.Y.Z> [--dry-run]
+//   bun run release:prepare both <kenaikan-server> <kenaikan-desktop> [--dry-run]   (satu cabang gabungan, satu PR)
 //
 // Semua prasyarat diperiksa SEBELUM cabang dibuat; kegagalan sesudahnya membatalkan cabang lokal dan kembali ke cabang
 // asal. `--dry-run` hanya menjalankan pemeriksaan baca-saja dan mencetak perintah pengubah tanpa menjalankannya.
@@ -58,35 +59,55 @@ export function nextVersion(current: string, bump: string, latestTag: string | n
   return bump;
 }
 
+/** Yang dirilis: satu komponen, atau `both` = server DAN desktop dalam satu cabang/commit/PR (spek rilis gabungan 2026-11-19). */
+export type ReleaseTarget = Component | 'both';
+
 export interface ParsedArgs {
-  component: Component;
+  component: ReleaseTarget;
+  /** Kenaikan komponen tunggal, atau kenaikan SERVER bila `component` = `both`. */
   bump: string;
+  /** Kenaikan desktop; hanya untuk `both`. */
+  desktopBump?: string;
   dryRun: boolean;
 }
 
-/** Argumen CLI: tepat <komponen> <kenaikan> dan opsional --dry-run; flag lain ditolak (salah ketik tak boleh diabaikan). */
+const USAGE =
+  'Pemakaian: bun run release:prepare <server|desktop> <patch|minor|major|X.Y.Z> [--dry-run]\n' +
+  '       bun run release:prepare both <kenaikan-server> <kenaikan-desktop> [--dry-run]';
+
+/**
+ * Argumen CLI: `<komponen> <kenaikan>` atau `both <kenaikan-server> <kenaikan-desktop>`, dan opsional --dry-run; flag lain
+ * ditolak (salah ketik tak boleh diabaikan).
+ */
 export function parseArgs(args: string[]): ParsedArgs {
   const flags = args.filter((arg) => arg.startsWith('--'));
   const unknown = flags.filter((flag) => flag !== '--dry-run');
   if (unknown.length > 0)
     throw new Error(`Opsi tidak dikenal: ${unknown.join(', ')} (hanya --dry-run)`);
   const positional = args.filter((arg) => !arg.startsWith('--'));
-  const [component, bump] = positional;
+  const [component, bump, desktopBump] = positional;
+  const dryRun = flags.length > 0;
+  if (component === 'both') {
+    if (positional.length !== 3 || bump === undefined || desktopBump === undefined)
+      throw new Error(USAGE);
+    return { component, bump, desktopBump, dryRun };
+  }
   if (
     positional.length !== 2 ||
     (component !== 'server' && component !== 'desktop') ||
     bump === undefined
   ) {
-    throw new Error(
-      'Pemakaian: bun run release:prepare <server|desktop> <patch|minor|major|X.Y.Z> [--dry-run]',
-    );
+    throw new Error(USAGE);
   }
-  return { component, bump, dryRun: flags.length > 0 };
+  return { component, bump, dryRun };
 }
 
 export interface PrepareInput {
-  component: Component;
+  component: ReleaseTarget;
+  /** Kenaikan komponen tunggal, atau kenaikan SERVER bila `component` = `both`. */
   bump: string;
+  /** Kenaikan desktop; wajib bila `component` = `both`. */
+  desktopBump?: string;
   shell: Shell;
   files: CliDeps;
   now: Date;
@@ -96,12 +117,22 @@ export interface PrepareInput {
 
 export interface PrepareResult {
   branch: string;
+  /** Satu komponen: versinya. `both`: ringkasan "server X + desktop Y" (rinci di `versions`). */
   version: string;
+  versions?: Partial<Record<Component, string>>;
   prUrl: string | null;
 }
 
 export async function prepareRelease(input: PrepareInput): Promise<PrepareResult> {
   const { component, bump, shell, files, now } = input;
+  const comps: Component[] = component === 'both' ? ['server', 'desktop'] : [component];
+  const bumpOf = (c: Component): string => {
+    if (component !== 'both') return bump;
+    const picked = c === 'server' ? bump : input.desktopBump;
+    if (picked === undefined)
+      throw new Error('Rilis gabungan butuh kenaikan untuk server dan desktop.');
+    return picked;
+  };
   const log = input.log ?? ((line: string) => console.log(line));
   const sh = async (cmd: string[], message?: string): Promise<string> => {
     const result = await shell.run(cmd);
@@ -110,6 +141,7 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
     return result.out;
   };
   const test = async (cmd: string[]): Promise<boolean> => (await shell.run(cmd)).code === 0;
+  const includesServer = comps.includes('server');
 
   // 1. Prasyarat (baca-saja).
   if ((await sh(['git', 'status', '--porcelain'])).trim() !== '') {
@@ -118,7 +150,7 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
   const original = (await sh(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])).trim();
   if (original === 'HEAD') throw new Error('Detached HEAD: pindah ke sebuah cabang lebih dulu.');
   await sh(['git', 'fetch', 'origin', '--tags', '--prune']);
-  if (component === 'server') {
+  if (includesServer) {
     // Saklar mode rilis (keputusan pemilik 2026-11-18): PR rilis yang di-merge saat RELEASE_FLOW bukan `tag` akan men-deploy
     // production lewat jalur lama tanpa tag dan Release, jadi rilis hanya disiapkan setelah saklar dinyalakan.
     const flow = await shell.run(['gh', 'variable', 'get', 'RELEASE_FLOW']);
@@ -134,7 +166,7 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
       'origin/main bukan leluhur origin/dev: sinkron rilis sebelumnya (main -> dev) belum masuk. Selesaikan dulu agar versi dan fragmen dihitung dari keadaan terbaru.',
     );
   }
-  if (component === 'server') {
+  if (includesServer) {
     const dev = (await sh(['git', 'rev-parse', 'origin/dev'])).trim();
     const stagingRef = await shell.run(['git', 'rev-parse', 'refs/remotes/deployed/staging']);
     if (stagingRef.code !== 0) {
@@ -151,34 +183,45 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
     const delta = (await sh(['git', 'diff', '--name-only', staging, 'origin/dev']))
       .split('\n')
       .filter((line) => line.trim() !== '');
-    if (!isMetadataOnly(delta, component)) {
+    if (!isMetadataOnly(delta, 'server')) {
       throw new Error(
         'Staging belum memuat semua kode di ujung dev (selisihnya bukan hanya berkas metadata rilis): tunggu deploy staging terbaru selesai. Rilis hanya boleh membawa kode yang sudah berjalan di staging.',
       );
     }
   }
-  const fragments = (
-    await sh(['git', 'ls-tree', '--name-only', 'origin/dev', '--', `${component}/changelog.d/`])
-  )
-    .split('\n')
-    .filter((path) => isFragmentPath(path.trim()));
-  if (fragments.length === 0) {
-    throw new Error(
-      `Tidak ada fragmen changelog di origin/dev (${component}/changelog.d/): tidak ada yang dirilis.`,
-    );
-  }
-  const tags = (await sh(['git', 'tag', '--list', `${component}-v*`]))
-    .split('\n')
-    .map((tag) => tag.trim())
-    .filter((tag) => new RegExp(`^${component}-v\\d+\\.\\d+\\.\\d+$`).test(tag))
-    .sort((a, b) => compareSemver(versionOfTag(a) ?? '0.0.0', versionOfTag(b) ?? '0.0.0'));
-  const current = (
-    JSON.parse(await sh(['git', 'show', `origin/dev:${component}/package.json`])) as {
-      version?: string;
+  const versions: Partial<Record<Component, string>> = {};
+  for (const c of comps) {
+    const fragments = (
+      await sh(['git', 'ls-tree', '--name-only', 'origin/dev', '--', `${c}/changelog.d/`])
+    )
+      .split('\n')
+      .filter((path) => isFragmentPath(path.trim()));
+    if (fragments.length === 0) {
+      throw new Error(
+        `Tidak ada fragmen changelog di origin/dev (${c}/changelog.d/): tidak ada yang dirilis.`,
+      );
     }
-  ).version;
-  const version = nextVersion(current ?? '', bump, tags.at(-1) ?? null);
-  const branch = `release/${component}-v${version}`;
+    const tags = (await sh(['git', 'tag', '--list', `${c}-v*`]))
+      .split('\n')
+      .map((tag) => tag.trim())
+      .filter((tag) => new RegExp(`^${c}-v\\d+\\.\\d+\\.\\d+$`).test(tag))
+      .sort((a, b) => compareSemver(versionOfTag(a) ?? '0.0.0', versionOfTag(b) ?? '0.0.0'));
+    const current = (
+      JSON.parse(await sh(['git', 'show', `origin/dev:${c}/package.json`])) as {
+        version?: string;
+      }
+    ).version;
+    versions[c] = nextVersion(current ?? '', bumpOf(c), tags.at(-1) ?? null);
+  }
+  const versionOf = (c: Component): string => versions[c] as string;
+  const branch =
+    component === 'both'
+      ? `release/gabungan-server-v${versionOf('server')}-desktop-v${versionOf('desktop')}`
+      : `release/${component}-v${versionOf(component)}`;
+  const label =
+    component === 'both'
+      ? `server v${versionOf('server')} + desktop v${versionOf('desktop')}`
+      : `${component} v${versionOf(component)}`;
   const remote = await sh(['git', 'ls-remote', '--heads', 'origin', branch]);
   const local = await shell.run([
     'git',
@@ -193,20 +236,19 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
     );
   }
 
-  const title = `Rilis ${component} v${version}`;
+  const title = `Rilis ${label}`;
+  const addPaths = [
+    ...comps.map((c) => `${c}/package.json`),
+    'bun.lock',
+    ...comps.map((c) => `${c}/CHANGELOG.md`),
+    ...comps.map((c) => `${c}/changelog.d`),
+  ];
   const planned = [
     ['git', 'switch', '--no-track', '-c', branch, 'origin/dev'],
     ['(ubah version di package.json, susun CHANGELOG dari fragmen)'],
     ['bun', 'install', '--lockfile-only'],
-    [
-      'git',
-      'add',
-      `${component}/package.json`,
-      'bun.lock',
-      `${component}/CHANGELOG.md`,
-      `${component}/changelog.d`,
-    ],
-    ['git', 'commit', '-m', `chore(rilis): ${component} v${version}`],
+    ['git', 'add', ...addPaths],
+    ['git', 'commit', '-m', `chore(rilis): ${label}`],
     ['git', 'push', '--set-upstream', 'origin', branch],
     ['git', 'switch', original],
     [
@@ -223,12 +265,18 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
       '<bagian CHANGELOG>',
     ],
   ];
+  const result = (prUrl: string | null): PrepareResult => ({
+    branch,
+    version: component === 'both' ? label.replaceAll(' v', ' ') : versionOf(component),
+    ...(component === 'both' ? { versions } : {}),
+    prUrl,
+  });
   if (input.dryRun) {
     log(
       `[dry-run] ${title} (cabang asal: ${original}). Pemeriksaan lulus; perintah yang akan dijalankan:`,
     );
     for (const cmd of planned) log(`[dry-run] ${cmd.join(' ')}`);
-    return { branch, version, prUrl: null };
+    return result(null);
   }
 
   // 2. Perubahan. Kegagalan sebelum push membatalkan cabang lokal.
@@ -236,33 +284,42 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
   try {
     await sh(['git', 'switch', '--no-track', '-c', branch, 'origin/dev']);
     created = true;
-    const packagePath = `${component}/package.json`;
-    const text = files.readFile(packagePath);
-    if (!/"version"\s*:\s*"[^"]*"/.test(text))
-      throw new Error(`${packagePath} tidak memuat "version"`);
-    files.writeFile(packagePath, text.replace(/("version"\s*:\s*")[^"]*(")/, `$1${version}$2`));
+    for (const c of comps) {
+      const packagePath = `${c}/package.json`;
+      const text = files.readFile(packagePath);
+      if (!/"version"\s*:\s*"[^"]*"/.test(text))
+        throw new Error(`${packagePath} tidak memuat "version"`);
+      files.writeFile(
+        packagePath,
+        text.replace(/("version"\s*:\s*")[^"]*(")/, `$1${versionOf(c)}$2`),
+      );
 
-    const messages: string[] = [];
-    const exit = runCli(['compile', component, version, wibDate(now)], {
-      ...files,
-      print: (line) => {
-        messages.push(line);
-        files.print(line);
-      },
-    });
-    if (exit !== 0) throw new Error(`Kompilasi changelog gagal: ${messages.join('; ')}`);
+      const messages: string[] = [];
+      const exit = runCli(['compile', c, versionOf(c), wibDate(now)], {
+        ...files,
+        print: (line) => {
+          messages.push(line);
+          files.print(line);
+        },
+      });
+      if (exit !== 0) throw new Error(`Kompilasi changelog gagal: ${messages.join('; ')}`);
+    }
 
     await sh(['bun', 'install', '--lockfile-only']);
-    await sh(['git', 'add', ...(planned[3] as string[]).slice(2)]);
+    await sh(['git', 'add', ...addPaths]);
     const staged = (await sh(['git', 'diff', '--cached', '--name-only']))
       .split('\n')
       .filter((l) => l.trim() !== '');
-    if (!isReleaseChange(staged, component)) {
+    const releaseShaped =
+      component === 'both'
+        ? isReleaseChange(staged) && comps.every((c) => staged.includes(`${c}/CHANGELOG.md`))
+        : isReleaseChange(staged, component);
+    if (!releaseShaped) {
       throw new Error(
-        `Commit rilis hanya boleh berisi berkas metadata, tetapi memuat: ${staged.join(', ')}`,
+        `Commit rilis hanya boleh berisi berkas metadata (dengan CHANGELOG.md tiap komponen yang dirilis), tetapi memuat: ${staged.join(', ')}`,
       );
     }
-    await sh(['git', 'commit', '-m', `chore(rilis): ${component} v${version}`]);
+    await sh(['git', 'commit', '-m', `chore(rilis): ${label}`]);
     if ((await sh(['git', 'status', '--porcelain'])).trim() !== '') {
       throw new Error(
         'Pohon kerja tidak bersih setelah commit rilis (ada perubahan di luar metadata): rilis dibatalkan.',
@@ -279,7 +336,19 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
   }
 
   // 3. Kembali ke cabang asal, lalu PR (cabang sudah di origin; bila PR gagal, cabang dibiarkan agar PR dapat dibuat manual).
-  const section = extractSection(files.readFile(`${component}/CHANGELOG.md`), version) ?? title;
+  const sections = comps.map(
+    (c) =>
+      extractSection(files.readFile(`${c}/CHANGELOG.md`), versionOf(c)) ?? `${c} v${versionOf(c)}`,
+  );
+  const body =
+    component === 'both'
+      ? comps
+          .map(
+            (c, i) =>
+              `## ${c === 'server' ? 'Server' : 'Desktop'} v${versionOf(c)}\n\n${sections[i]}`,
+          )
+          .join('\n\n')
+      : (sections[0] as string);
   const back = await shell.run(['git', 'switch', original]);
   if (back.code !== 0) {
     log(`Peringatan: gagal kembali ke cabang ${original}: ${back.out.trim()}`);
@@ -295,14 +364,14 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
     '--title',
     title,
     '--body',
-    section,
+    body,
   ]);
   if (pr.code !== 0) {
     throw new Error(
       `Cabang ${branch} sudah didorong, tetapi membuka PR gagal: ${pr.out}\nBuat PR ke main secara manual.`,
     );
   }
-  return { branch, version, prUrl: pr.out.trim() };
+  return result(pr.out.trim());
 }
 
 function realShell(): Shell {
@@ -326,10 +395,11 @@ function realShell(): Shell {
 
 if (import.meta.main) {
   try {
-    const { component, bump, dryRun } = parseArgs(process.argv.slice(2));
+    const { component, bump, desktopBump, dryRun } = parseArgs(process.argv.slice(2));
     const result = await prepareRelease({
       component,
       bump,
+      ...(desktopBump !== undefined ? { desktopBump } : {}),
       shell: realShell(),
       files: realDeps(),
       now: new Date(),
