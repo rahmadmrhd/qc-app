@@ -131,3 +131,10 @@ test('mode ubah menampilkan nama lokasi sebagai teks', () => {
   expect(screen.getByText('Lokasi A')).toBeInTheDocument();
   expect(screen.queryByRole('combobox', { name: 'Lokasi' })).not.toBeInTheDocument();
 });
+
+test('Lokasi dan Catatan wajib (aria-required); Customer opsional', () => {
+  renderForm();
+  expect(screen.getByLabelText('Lokasi')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('Catatan')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('Customer')).not.toHaveAttribute('aria-required');
+});

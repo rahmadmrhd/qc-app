@@ -8,11 +8,19 @@ export interface NoteEditorProps {
   value: string;
   onChange: (markdown: string) => void;
   labelledBy?: string;
+  required?: boolean;
   disabled?: boolean;
 }
 
 /** Editor Catatan Serah Terima: WYSIWYG tanpa gambar, dengan tempel WhatsApp, maksimal 5.000 karakter. */
-export function NoteEditor({ id, value, onChange, labelledBy, disabled }: NoteEditorProps) {
+export function NoteEditor({
+  id,
+  value,
+  onChange,
+  labelledBy,
+  required,
+  disabled,
+}: NoteEditorProps) {
   const [tooLong, setTooLong] = useState<number | null>(null);
   const extensions = useMemo(
     () => [
@@ -34,6 +42,7 @@ export function NoteEditor({ id, value, onChange, labelledBy, disabled }: NoteEd
           onChange(next);
         }}
         labelledBy={labelledBy}
+        required={required}
         disabled={disabled}
         maxLength={HANDOVER_LIMITS.note}
         extraExtensions={extensions}

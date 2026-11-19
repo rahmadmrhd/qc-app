@@ -149,9 +149,12 @@ export function UserForm({
       <form.Field name="email">
         {(field) => (
           <div className="space-y-1.5">
-            <Label htmlFor="user-email">Email</Label>
+            <Label htmlFor="user-email" required>
+              Email
+            </Label>
             <Input
               id="user-email"
+              aria-required="true"
               type="email"
               value={field.state.value}
               disabled={mode === 'edit'}
@@ -165,9 +168,12 @@ export function UserForm({
       <form.Field name="name">
         {(field) => (
           <div className="space-y-1.5">
-            <Label htmlFor="user-name">Nama</Label>
+            <Label htmlFor="user-name" required>
+              Nama
+            </Label>
             <Input
               id="user-name"
+              aria-required="true"
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(event) => field.handleChange(event.target.value)}

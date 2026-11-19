@@ -222,3 +222,9 @@ test('klik di luar dialog tidak menutupnya dan isian tetap; Escape menutup', asy
   await user.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
 });
+
+test('Nama merk wajib (aria-required); BU bawaan opsional', () => {
+  render(<Harness onSave={vi.fn()} />);
+  expect(screen.getByLabelText('Nama merk')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('BU bawaan')).not.toHaveAttribute('aria-required');
+});

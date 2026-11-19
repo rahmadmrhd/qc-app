@@ -14,6 +14,7 @@ export interface LocationFieldProps {
   level: Level;
   value: string;
   onChange: (locationId: string) => void;
+  required?: boolean;
 }
 
 /**
@@ -21,7 +22,14 @@ export interface LocationFieldProps {
  * `LinkField` (spek BU keputusan 24); tanpa Tambah dan Buka karena lokasi tidak punya dialog tambah di form ini
  * maupun halaman lihat.
  */
-export function LocationField({ id, module, level, value, onChange }: LocationFieldProps) {
+export function LocationField({
+  id,
+  module,
+  level,
+  value,
+  onChange,
+  required,
+}: LocationFieldProps) {
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   const [term, setTerm] = useState('');
@@ -42,6 +50,7 @@ export function LocationField({ id, module, level, value, onChange }: LocationFi
       <LinkField
         id={id}
         label="Lokasi"
+        required={required}
         placeholder="Pilih lokasi…"
         value={value === '' ? null : value}
         labelOf={labelOf}

@@ -214,6 +214,7 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
           idPrefix="report"
           label="Item"
           buFieldLabel="Business Unit"
+          required
           value={item}
           onChange={setItem}
           error={fields.itemId}
@@ -223,6 +224,7 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
         <div className="space-y-1.5">
           <SerialLocationField
             id="report-location"
+            required
             label="Lokasi"
             value={location.id}
             valueLabel={location.label}

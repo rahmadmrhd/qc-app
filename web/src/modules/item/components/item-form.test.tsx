@@ -665,3 +665,17 @@ test('galat server pada proofMin tampil di fieldnya', () => {
   expect(screen.getByLabelText('Minimum foto')).toHaveValue(2);
   expect(screen.getByText('Minimum foto harus 1 sampai 5')).toBeInTheDocument();
 });
+
+test('field wajib bertanda aria-required; Minimum foto wajib hanya saat "Wajib foto bukti" dicentang', async () => {
+  renderForm();
+  expect(screen.getByLabelText('Merk')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('BU')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('Tipe')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('Nama lain')).not.toHaveAttribute('aria-required');
+  expect(screen.queryByLabelText('Minimum foto')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByLabelText('Wajib foto bukti'));
+  expect(screen.getByLabelText('Minimum foto')).toHaveAttribute('aria-required', 'true');
+  // Firmware opsional pada skema: tak pernah wajib, juga setelah Country lock dicentang.
+  await userEvent.click(screen.getByLabelText(/Country lock/));
+  expect(screen.getByLabelText('Firmware')).not.toHaveAttribute('aria-required');
+});

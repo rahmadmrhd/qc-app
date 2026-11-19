@@ -23,6 +23,7 @@ export interface ItemPickerProps {
   openHref?: (id: string) => string | null;
   error?: string;
   disabled?: boolean;
+  required?: boolean;
 }
 
 /**
@@ -36,6 +37,7 @@ export function ItemPicker({
   openHref,
   error,
   disabled,
+  required,
 }: ItemPickerProps) {
   const [term, setTerm] = useState('');
   const { data, isFetching } = useQuery(qrItemOptionsQueryOptions(term.trim()));
@@ -55,6 +57,7 @@ export function ItemPicker({
   return (
     <LinkMultiField
       id="qr-items"
+      required={required}
       label="Item"
       placeholder="Cari merk atau tipe item…"
       value={selected.map((item) => item.id)}

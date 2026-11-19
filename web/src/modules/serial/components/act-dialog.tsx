@@ -428,9 +428,12 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="act-date">Tanggal</Label>
+            <Label htmlFor="act-date" required>
+              Tanggal
+            </Label>
             <Input
               id="act-date"
+              aria-required="true"
               type="date"
               max={today}
               {...(minDate !== undefined ? { min: minDate } : {})}
@@ -457,6 +460,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
             <div className="space-y-1.5">
               <SerialLocationField
                 id="act-to-location"
+                required
                 label={needsServiceChoice ? 'Lokasi servis' : 'Lokasi penerimaan'}
                 placeholder={needsServiceChoice ? 'Pilih lokasi servis…' : 'Pilih lokasi…'}
                 value={toLocation.id}
@@ -531,6 +535,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
                 <div className="space-y-1.5">
                   <RecheckBuField
                     id="act-bu"
+                    required
                     label="Business Unit"
                     choices={buChoices}
                     value={targetBu}

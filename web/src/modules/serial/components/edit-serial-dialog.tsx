@@ -217,9 +217,12 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5">
-            <Label htmlFor="edit-serial">Serial</Label>
+            <Label htmlFor="edit-serial" required>
+              Serial
+            </Label>
             <Input
               id="edit-serial"
+              aria-required="true"
               className="font-mono"
               value={serialText}
               aria-invalid={serialInvalid || fieldErrors.serial ? true : undefined}
@@ -230,6 +233,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
           </div>
           <LinkField
             id="edit-item"
+            required
             label="Item"
             placeholder="Cari merk atau tipe item…"
             value={item.id === '' ? null : item.id}
@@ -246,9 +250,12 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
           />
           <ConflictNote text={conflicts.itemId} />
           <div className="space-y-1.5">
-            <Label htmlFor="edit-date">Tanggal uji</Label>
+            <Label htmlFor="edit-date" required>
+              Tanggal uji
+            </Label>
             <Input
               id="edit-date"
+              aria-required="true"
               type="date"
               max={today}
               value={testDate}
@@ -259,6 +266,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
           </div>
           <SerialLocationField
             id="edit-location"
+            required
             label="Lokasi"
             value={location.id}
             valueLabel={location.label}

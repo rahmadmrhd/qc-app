@@ -44,6 +44,8 @@ export interface WysiwygEditorProps {
   disabled?: boolean;
   /** Id elemen label dari form induk; bila ada dipakai sebagai nama field (menggantikan aria-label bawaan). */
   labelledBy?: string;
+  /** Field wajib: `aria-required` pada kotak editor (bintang ada di label form induk). */
+  required?: boolean;
   /**
    * `item`: toolbar lengkap + gambar; `note`: tanpa gambar, centang dikunci (catatan Serah Terima); `message`: toolbar
    * ringkas + gambar, centang dapat diubah (pesan kejadian Serial Number; gambar memakai pemilik berkas `serial`).
@@ -94,6 +96,7 @@ export function WysiwygEditor({
   maxLength = MARKDOWN_MAX_LENGTH,
   disabled = false,
   labelledBy,
+  required = false,
   mode = 'item',
   maxImages,
   extraExtensions,
@@ -181,6 +184,7 @@ export function WysiwygEditor({
         id,
         role: 'textbox',
         'aria-multiline': 'true',
+        ...(required ? { 'aria-required': 'true' } : {}),
         ...(labelledBy ? { 'aria-labelledby': labelledBy } : { 'aria-label': 'Isi catatan' }),
         'aria-describedby': `${id}-count`,
         'aria-invalid': String(tooLong),

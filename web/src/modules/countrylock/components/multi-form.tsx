@@ -134,6 +134,7 @@ export function MultiForm({
       <div className="grid gap-4 sm:grid-cols-3">
         <Select
           id="multi-brand"
+          required
           label="Merk"
           value={MULTI_BRAND}
           options={[{ value: MULTI_BRAND, label: brandConfig?.label ?? 'Ubiquiti' }]}
@@ -142,6 +143,7 @@ export function MultiForm({
         />
         <LinkField
           id="multi-tipe"
+          required
           label="Tipe"
           placeholder={
             !catalogReady
@@ -161,6 +163,7 @@ export function MultiForm({
         />
         <Select
           id="multi-firmware"
+          required
           label="Firmware"
           placeholder="Pilih firmware"
           value={firmwareCode}
@@ -175,6 +178,7 @@ export function MultiForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <LinkField
           id="multi-bu"
+          required
           label="Business Unit"
           placeholder={
             !catalogReady
@@ -191,6 +195,7 @@ export function MultiForm({
         />
         <LinkField
           id="multi-location"
+          required
           label="Lokasi"
           placeholder={
             !catalogReady

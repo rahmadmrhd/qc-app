@@ -243,6 +243,7 @@ export function CountryLockPage({
                 >
                   <Select
                     id="country-lock-brand"
+                    required
                     label="Merk"
                     placeholder="Pilih merk"
                     value={state.brand ?? ''}
@@ -256,6 +257,7 @@ export function CountryLockPage({
                   {showTipe ? (
                     <LinkField
                       id="country-lock-tipe"
+                      required
                       label="Tipe"
                       placeholder={
                         !brandConfig
@@ -275,6 +277,7 @@ export function CountryLockPage({
                   ) : null}
                   <Select
                     id="country-lock-firmware"
+                    required
                     label="Firmware"
                     placeholder={brandConfig ? 'Pilih firmware' : 'Pilih merk dulu'}
                     value={state.firmwareCode ?? ''}
@@ -290,6 +293,7 @@ export function CountryLockPage({
                   <div className="grid gap-4 sm:grid-cols-2">
                     <LinkField
                       id="country-lock-bu"
+                      required
                       label="Business Unit"
                       placeholder={
                         !catalogReady
@@ -306,6 +310,7 @@ export function CountryLockPage({
                     />
                     <LinkField
                       id="country-lock-location"
+                      required
                       label="Lokasi"
                       placeholder={
                         !catalogReady

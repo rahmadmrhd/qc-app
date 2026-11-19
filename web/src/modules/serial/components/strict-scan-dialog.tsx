@@ -308,9 +308,12 @@ function StrictBody({
                 </p>
               </section>
               <div className="space-y-1.5">
-                <Label htmlFor="strict-serial">Serial Number</Label>
+                <Label htmlFor="strict-serial" required>
+                  Serial Number
+                </Label>
                 <Input
                   id="strict-serial"
+                  aria-required="true"
                   value={serialText}
                   autoComplete="off"
                   autoCapitalize="characters"

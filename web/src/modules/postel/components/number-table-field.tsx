@@ -52,8 +52,12 @@ export function NumberTableField({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Nomor</TableHead>
-              <TableHead>Tanggal habis</TableHead>
+              <TableHead className="after:ml-0.5 after:text-destructive-text after:content-['*']">
+                Nomor
+              </TableHead>
+              <TableHead className="after:ml-0.5 after:text-destructive-text after:content-['*']">
+                Tanggal habis
+              </TableHead>
               <TableHead>Tautan</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
@@ -71,6 +75,7 @@ export function NumberTableField({
                   <TableCell>
                     <Input
                       aria-label={`Nomor sertifikat ${index + 1}`}
+                      aria-required="true"
                       aria-invalid={invalid}
                       placeholder="Nomor sertifikat"
                       value={row.number}
@@ -82,6 +87,7 @@ export function NumberTableField({
                       type="date"
                       className="w-40"
                       aria-label={`Tanggal habis ${index + 1}`}
+                      aria-required="true"
                       aria-invalid={invalid}
                       value={row.expiresOn}
                       onChange={(event) => update(index, { expiresOn: event.target.value })}

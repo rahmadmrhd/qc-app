@@ -134,6 +134,7 @@ function OpnameBody({ rows, onSave, onClose }: BodyProps) {
     >
       <LocationField
         id="opname-location"
+        required
         module="stickerstock"
         level="manage"
         value={locationId}

@@ -295,6 +295,7 @@ export function ItemForm({
               <LinkField
                 id="item-brand"
                 label="Merk"
+                required
                 placeholder="Pilih merk"
                 value={field.state.value === '' ? null : field.state.value}
                 labelOf={brandLabel}
@@ -318,6 +319,7 @@ export function ItemForm({
                 <LinkMultiField
                   id="item-business-units"
                   label="BU"
+                  required
                   placeholder="Pilih BU"
                   value={field.state.value}
                   labelOf={(id) => {
@@ -347,9 +349,12 @@ export function ItemForm({
           <form.Field name="model">
             {(field) => (
               <div className="space-y-1.5">
-                <Label htmlFor="item-model">Tipe</Label>
+                <Label htmlFor="item-model" required>
+                  Tipe
+                </Label>
                 <Input
                   id="item-model"
+                  aria-required="true"
                   value={field.state.value}
                   onBlur={field.handleBlur}
                   onChange={(event) => {
@@ -405,9 +410,12 @@ export function ItemForm({
                 <form.Field name="proofMin">
                   {(field) => (
                     <div className="space-y-1.5">
-                      <Label htmlFor="item-proof-min">Minimum foto</Label>
+                      <Label htmlFor="item-proof-min" required>
+                        Minimum foto
+                      </Label>
                       <Input
                         id="item-proof-min"
+                        aria-required="true"
                         type="number"
                         inputMode="numeric"
                         min={1}

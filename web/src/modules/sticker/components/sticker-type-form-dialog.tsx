@@ -112,9 +112,12 @@ function StickerTypeFormBody({ type, onSave, onClose }: StickerTypeFormBodyProps
       }}
     >
       <div className="space-y-1.5">
-        <Label htmlFor="sticker-type-name">Nama jenis</Label>
+        <Label htmlFor="sticker-type-name" required>
+          Nama jenis
+        </Label>
         <Input
           id="sticker-type-name"
+          aria-required="true"
           autoFocus
           maxLength={STICKER_LIMITS.nameMax}
           value={name}

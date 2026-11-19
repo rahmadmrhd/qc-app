@@ -50,6 +50,7 @@ export function PostelItemPicker({
       <LinkMultiField
         id="postel-items"
         label="Item"
+        required
         placeholder="Cari merk atau tipe item…"
         value={selected.map((item) => item.id)}
         labelOf={(id) => {

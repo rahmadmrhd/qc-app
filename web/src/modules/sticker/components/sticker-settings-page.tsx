@@ -226,9 +226,12 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
           </Label>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="sticker-alert-hour">Jam kirim (WIB)</Label>
+          <Label htmlFor="sticker-alert-hour" required>
+            Jam kirim (WIB)
+          </Label>
           <Input
             id="sticker-alert-hour"
+            aria-required="true"
             type="number"
             inputMode="numeric"
             min={0}
@@ -252,9 +255,12 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
           ) : null}
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="sticker-alert-interval">Kirim setiap (hari)</Label>
+          <Label htmlFor="sticker-alert-interval" required>
+            Kirim setiap (hari)
+          </Label>
           <Input
             id="sticker-alert-interval"
+            aria-required="true"
             type="number"
             inputMode="numeric"
             min={1}

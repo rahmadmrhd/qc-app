@@ -38,9 +38,12 @@ export function RoleForm({ defaultValues, submitError, onSubmit, onCancel }: Rol
       <form.Field name="name">
         {(field) => (
           <div className="space-y-1.5">
-            <Label htmlFor="role-name">Nama role</Label>
+            <Label htmlFor="role-name" required>
+              Nama role
+            </Label>
             <Input
               id="role-name"
+              aria-required="true"
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(event) => field.handleChange(event.target.value)}

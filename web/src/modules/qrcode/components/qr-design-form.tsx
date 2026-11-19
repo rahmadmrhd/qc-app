@@ -364,6 +364,7 @@ export function QrDesignForm({
                     onChange={changeItems}
                     ownedIds={new Set((edit?.items ?? []).map((item) => item.id))}
                     openHref={openItemHref}
+                    required={requireItems}
                   />
                   <p className="text-xs text-muted-foreground">
                     Item yang berbagi satu Manual Book. Item yang sudah tergabung ke Manual Book
@@ -467,9 +468,12 @@ export function QrDesignForm({
                 >
                   {(field) => (
                     <div className="space-y-1.5">
-                      <Label htmlFor="qr-manual-name">Nama Manual Book</Label>
+                      <Label htmlFor="qr-manual-name" required={requireItems}>
+                        Nama Manual Book
+                      </Label>
                       <Input
                         id="qr-manual-name"
+                        aria-required={requireItems ? true : undefined}
                         value={field.state.value}
                         maxLength={QR_LIMITS.manualBookName}
                         onBlur={field.handleBlur}
@@ -606,6 +610,7 @@ export function QrDesignForm({
                     <div className="space-y-1.5">
                       <LinkField
                         id="qr-preset-bu"
+                        required
                         label="Business Unit"
                         placeholder="Pilih Business Unit…"
                         value={field.state.value === '' ? null : field.state.value}
@@ -628,6 +633,7 @@ export function QrDesignForm({
                     <div className="space-y-1.5">
                       <Select
                         id="qr-name-placement"
+                        required
                         label="Penempatan nama Manual Book"
                         placeholder="Pilih bagian label…"
                         options={[
@@ -657,9 +663,12 @@ export function QrDesignForm({
                 <form.Field name="name">
                   {(field) => (
                     <div className="space-y-1.5">
-                      <Label htmlFor="qr-name">Nama konfigurasi default</Label>
+                      <Label htmlFor="qr-name" required>
+                        Nama konfigurasi default
+                      </Label>
                       <Input
                         id="qr-name"
+                        aria-required="true"
                         value={field.state.value}
                         onBlur={field.handleBlur}
                         onChange={(event) => field.handleChange(event.target.value)}
@@ -673,7 +682,10 @@ export function QrDesignForm({
                 <form.Field key={name} name={name}>
                   {(field) => (
                     <div className="space-y-1.5">
-                      <Label htmlFor={`qr-${name}`}>
+                      <Label
+                        htmlFor={`qr-${name}`}
+                        required={name === 'title' && !isDefaults && lockedPart !== 'title'}
+                      >
                         {name === 'title' ? 'Title' : name === 'subtitle' ? 'Subtitle' : 'Footer'}
                       </Label>
                       <form.Subscribe selector={(state) => state.values.namePlacement}>
@@ -683,6 +695,9 @@ export function QrDesignForm({
                             <>
                               <Input
                                 id={`qr-${name}`}
+                                aria-required={
+                                  name === 'title' && !isDefaults && !locked ? true : undefined
+                                }
                                 value={isDefaults && locked ? '' : field.state.value}
                                 placeholder={
                                   isDefaults && locked ? 'Diisi nama Manual Book' : undefined

@@ -244,9 +244,12 @@ export function RowEditDialog({
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="edit-serial">Serial baris</Label>
+              <Label htmlFor="edit-serial" required>
+                Serial baris
+              </Label>
               <Input
                 id="edit-serial"
+                aria-required="true"
                 className="font-mono"
                 value={serial}
                 readOnly={existing !== undefined}
@@ -289,6 +292,7 @@ export function RowEditDialog({
                 </div>
                 <RecheckBuField
                   id="detail-bu"
+                  required
                   label="Business Unit baris"
                   choices={buChoices}
                   value={{ buId: item.buId, buLabel: item.buLabel }}
@@ -306,21 +310,26 @@ export function RowEditDialog({
                 idPrefix="detail"
                 label="Item baris"
                 buFieldLabel="Business Unit baris"
+                required
                 value={item}
                 onChange={changeItem}
               />
             )}
             <SerialLocationField
               id="detail-location"
+              required
               label="Lokasi baris"
               value={location.id}
               valueLabel={location.label}
               onChange={(id, label) => setLocation({ id, label })}
             />
             <div className="space-y-1.5">
-              <Label htmlFor="edit-date">Tanggal uji baris</Label>
+              <Label htmlFor="edit-date" required>
+                Tanggal uji baris
+              </Label>
               <Input
                 id="edit-date"
+                aria-required="true"
                 type="date"
                 value={testDate}
                 onChange={(event) => setTestDate(event.target.value)}

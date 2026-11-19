@@ -905,6 +905,7 @@ export function RecordPage({
           <div className="space-y-1.5">
             <SerialLocationField
               id="default-location"
+              required
               label="Lokasi"
               value={location.id}
               valueLabel={location.label}
@@ -920,9 +921,12 @@ export function RecordPage({
             ) : null}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="default-date">Tanggal uji</Label>
+            <Label htmlFor="default-date" required>
+              Tanggal uji
+            </Label>
             <Input
               id="default-date"
+              aria-required="true"
               type="date"
               value={testDate}
               onChange={(event) => setTestDate(event.target.value)}
@@ -932,6 +936,7 @@ export function RecordPage({
             idPrefix="default"
             label="Item"
             buFieldLabel="Business Unit"
+            required
             value={item}
             onChange={(next) => {
               // Item/BU bawaan diganti: pilihan stiker lama tidak berlaku, kembali ke semua tercentang.

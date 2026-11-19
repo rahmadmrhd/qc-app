@@ -286,6 +286,7 @@ function StickerFormBody({
         ) : (
           <LinkField
             id="sticker-form-type"
+            required
             label="Jenis"
             placeholder="Pilih jenis"
             value={typeId === '' ? null : typeId}
@@ -299,9 +300,12 @@ function StickerFormBody({
           />
         )}
         <div className="space-y-1.5">
-          <Label htmlFor="sticker-form-name">Nama stiker</Label>
+          <Label htmlFor="sticker-form-name" required>
+            Nama stiker
+          </Label>
           <Input
             id="sticker-form-name"
+            aria-required="true"
             autoFocus
             maxLength={STICKER_LIMITS.nameMax}
             value={name}
@@ -391,6 +395,7 @@ function StickerFormBody({
         {needsBusinessUnits ? (
           <LinkMultiField
             id="sticker-form-business-units"
+            required
             label="BU"
             placeholder="Pilih BU"
             value={businessUnitIds}

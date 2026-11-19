@@ -596,3 +596,12 @@ test('Aktifkan stiker Postel nonaktif tidak tampil bagi non-pengelola', () => {
   });
   expect(screen.queryByRole('button', { name: 'Aktifkan Postel' })).toBeNull();
 });
+
+test('dialog tambah: Jenis dan Nama stiker wajib (aria-required); Alias opsional', async () => {
+  renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  const dialog = await screen.findByRole('alertdialog');
+  expect(within(dialog).getByLabelText('Jenis')).toHaveAttribute('aria-required', 'true');
+  expect(within(dialog).getByLabelText('Nama stiker')).toHaveAttribute('aria-required', 'true');
+  expect(within(dialog).getByLabelText('Alias')).not.toHaveAttribute('aria-required');
+});

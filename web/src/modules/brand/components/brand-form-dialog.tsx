@@ -157,9 +157,12 @@ function BrandFormBody({
         }}
       >
         <div className="space-y-1.5">
-          <Label htmlFor="brand-form-name">Nama merk</Label>
+          <Label htmlFor="brand-form-name" required>
+            Nama merk
+          </Label>
           <Input
             id="brand-form-name"
+            aria-required="true"
             autoFocus
             maxLength={ITEM_LIMITS.brand}
             value={name}

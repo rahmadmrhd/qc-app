@@ -237,3 +237,12 @@ test('hanya satu baris Hapus lampiran memengaruhi lampiran, bukan nomor', async 
     .closest('section') as HTMLElement;
   expect(within(section).getAllByRole('listitem')).toHaveLength(2);
 });
+
+test('Item dan nomor wajib (aria-required); Catatan opsional', () => {
+  renderForm();
+  expect(screen.getByLabelText('Item')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('Nomor sertifikat 1')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('Tanggal habis 1')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('Tautan 1')).not.toHaveAttribute('aria-required');
+  expect(screen.getByLabelText('Catatan')).not.toHaveAttribute('aria-required');
+});

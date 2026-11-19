@@ -10,6 +10,8 @@ export interface SerialNoteFieldProps {
   onChange: (markdown: string) => void;
   disabled?: boolean;
   error?: string | undefined;
+  /** Catatan wajib: bintang pada label dan `aria-required` pada editor. */
+  required?: boolean;
 }
 
 /**
@@ -23,13 +25,17 @@ export function SerialNoteField({
   onChange,
   disabled,
   error,
+  required,
 }: SerialNoteFieldProps) {
   return (
     <div className="space-y-1.5">
-      <Label id={`${id}-label`}>{label}</Label>
+      <Label id={`${id}-label`} required={required}>
+        {label}
+      </Label>
       <WysiwygEditor
         id={id}
         labelledBy={`${id}-label`}
+        required={required}
         mode="note"
         value={value}
         onChange={onChange}

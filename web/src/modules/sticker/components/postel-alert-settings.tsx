@@ -279,9 +279,12 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
         </Button>
       </fieldset>
       <div className="space-y-1.5">
-        <Label htmlFor="postel-alert-repeat">Ulangi setiap (hari)</Label>
+        <Label htmlFor="postel-alert-repeat" required>
+          Ulangi setiap (hari)
+        </Label>
         <Input
           id="postel-alert-repeat"
+          aria-required="true"
           type="number"
           inputMode="numeric"
           min={0}

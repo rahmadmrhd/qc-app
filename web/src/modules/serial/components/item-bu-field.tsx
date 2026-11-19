@@ -36,6 +36,8 @@ export interface ItemBuFieldProps {
   /** Galat pada field BU. */
   buError?: string | undefined;
   disabled?: boolean;
+  /** Item dan BU sama-sama wajib: bintang pada label dan `aria-required`. */
+  required?: boolean;
 }
 
 /**
@@ -71,6 +73,7 @@ export function ItemBuField({
   error,
   buError,
   disabled,
+  required,
 }: ItemBuFieldProps) {
   const [term, setTerm] = useState('');
   const [buTerm, setBuTerm] = useState('');
@@ -122,6 +125,7 @@ export function ItemBuField({
         <LinkField
           id={`${idPrefix}-item`}
           label={label}
+          required={required}
           placeholder="Cari merk atau tipe item…"
           value={value.itemId === '' ? null : value.itemId}
           labelOf={(id) => (id === value.itemId ? value.itemLabel : (known.get(id)?.label ?? id))}
@@ -139,6 +143,7 @@ export function ItemBuField({
         <LinkField
           id={`${idPrefix}-bu`}
           label={buFieldLabel}
+          required={required}
           placeholder="Pilih Business Unit…"
           value={value.buId === '' ? null : value.buId}
           labelOf={(id) =>

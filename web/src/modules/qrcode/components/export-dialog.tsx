@@ -80,9 +80,12 @@ export function ExportDialog({ design, open, onOpenChange, onConfirm }: ExportDi
               {design.stickerVersion} menjadi usang (langsung nonaktif bila stoknya sudah 0).
             </p>
             <div className="space-y-1.5">
-              <Label htmlFor="qr-export-reason">Alasan perubahan label</Label>
+              <Label htmlFor="qr-export-reason" required>
+                Alasan perubahan label
+              </Label>
               <Textarea
                 id="qr-export-reason"
+                aria-required="true"
                 value={reason}
                 maxLength={QR_LIMITS.reason}
                 disabled={busy}
