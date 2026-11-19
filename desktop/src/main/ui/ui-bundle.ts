@@ -3,6 +3,12 @@
 // minBridge), lalu memindahkan ATOMIK ke `versions/<uiVersion>`. Bundel baru baru dipakai pada
 // peluncuran berikutnya atau `applyReady()` (tidak pernah di tengah inject). Dua kegagalan muat
 // berturut-turut mengembalikan ke `previous`, lalu ke UI dasar, dan menandai versi `bad`.
+//
+// UI dasar yang lebih baru menang (keputusan pemilik 2026-11-20): UI dasar terkemas punya `ui-manifest.json` sendiri
+// (hasil `bun run build`, ikut installer). Urutannya `createdAt` manifest (`uiVersion` adalah hash, tak berurutan):
+// bundel unduhan yang `createdAt`-nya <= UI dasar dibuang saat peluncuran, dan manifest server yang tak lebih baru dari
+// UI dasar tidak diunduh. UI dasar tak diverifikasi tanda tangan (bagian installer yang sudah dipercaya). Aman karena
+// UI yang lebih baru dari server tetap jalan: klien memilih versi API yang diumumkan server dan fitur baru disembunyikan.
 
 import { createHash } from 'node:crypto';
 import {
@@ -63,6 +69,8 @@ interface State {
   keyId: string | null;
   /** `bridgeVersion` aplikasi yang menulis keadaan ini (`null` = belum tercatat). */
   bridgeVersion: number | null;
+  /** `createdAt` manifest per versi yang tersimpan (dasar aturan "UI dasar yang lebih baru menang"). */
+  created: Record<string, number>;
 }
 
 type ManifestFetch =
@@ -106,11 +114,35 @@ function emptyState(): State {
     etag: null,
     keyId: null,
     bridgeVersion: null,
+    created: {},
   };
 }
 
 function versionOrNull(value: unknown): string | null {
   return typeof value === 'string' && HEX64.test(value) ? value : null;
+}
+
+/** Catatan `createdAt` dari state.json: hanya kunci HEX64 dengan nilai bilangan terhingga yang dipakai. */
+function createdOf(value: unknown): Record<string, number> {
+  const result: Record<string, number> = {};
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return result;
+  for (const [version, at] of Object.entries(value)) {
+    if (HEX64.test(version) && typeof at === 'number' && Number.isFinite(at)) result[version] = at;
+  }
+  return result;
+}
+
+/**
+ * `createdAt` manifest UI dasar, atau `null` bila `ui-manifest.json` tak ada atau tak valid (UI dasar tanpa manifest
+ * = aturan "UI dasar menang" tak berlaku, perilaku lama).
+ */
+export function readBaselineCreatedAt(baselineDir: string): number | null {
+  try {
+    const parsed = parseUiManifest(readFileSync(join(baselineDir, 'ui-manifest.json'), 'utf8'));
+    return parsed === null ? null : parsed.createdAt;
+  } catch {
+    return null;
+  }
 }
 
 /** Sidik kunci publik pembaruan UI (sha256 PEM); `'none'` bila pembaruan dimatikan. */
@@ -145,6 +177,7 @@ function readState(file: string): State {
         typeof raw.bridgeVersion === 'number' && Number.isInteger(raw.bridgeVersion)
           ? raw.bridgeVersion
           : null,
+      created: createdOf(raw.created),
     };
   } catch {
     return emptyState();
@@ -158,6 +191,7 @@ export function createUiBundleManager(deps: UiBundleDeps): UiBundleManager {
   const stateFile = join(deps.dir, 'state.json');
   const state = readState(stateFile);
   const keyId = keyIdOf(deps.publicKeyPem);
+  const baselineAt = readBaselineCreatedAt(deps.baselineDir);
   let inflight: Promise<UpdateResult> | null = null;
 
   const versionDir = (version: string): string => join(versionsDir, version);
@@ -180,6 +214,9 @@ export function createUiBundleManager(deps: UiBundleDeps): UiBundleManager {
   /** Hapus semua versi selain active/previous/ready (paling banyak 3 tersimpan). */
   const prune = (): void => {
     const keep = new Set([state.active, state.previous, state.ready].filter((v) => v !== null));
+    state.created = Object.fromEntries(
+      Object.entries(state.created).filter(([version]) => keep.has(version)),
+    );
     try {
       for (const entry of readdirSync(versionsDir)) {
         if (!keep.has(entry)) rmSync(join(versionsDir, entry), { recursive: true, force: true });
@@ -205,6 +242,7 @@ export function createUiBundleManager(deps: UiBundleDeps): UiBundleManager {
     state.bad = [];
     state.failures = 0;
     state.etag = null;
+    state.created = {};
     prune();
     persist();
   }
@@ -215,6 +253,39 @@ export function createUiBundleManager(deps: UiBundleDeps): UiBundleManager {
     state.active = null;
   }
   if (state.previous && !usable(state.previous)) state.previous = null;
+
+  // Awal: UI dasar yang lebih baru menang. Bundel yang `createdAt`-nya tak tercatat (state lama) atau <= UI dasar
+  // dibuang; ETag dan hitungan gagal ikut direset agar server diperiksa ulang dari nol (tanpa itu, 304 atas manifest
+  // yang bundelnya baru saja dibuang membuat UI macet di dasar tanpa pernah mengunduh ulang).
+  if (baselineAt !== null) {
+    let dropped = false;
+    for (const slot of ['active', 'previous', 'ready'] as const) {
+      const version = state[slot];
+      if (version === null) continue;
+      const at = state.created[version];
+      if (typeof at !== 'number' || at <= baselineAt) {
+        state[slot] = null;
+        dropped = true;
+      }
+    }
+    if (dropped) {
+      state.etag = null;
+      state.failures = 0;
+      prune();
+      persist();
+    }
+  }
+  // Tanpa bundel yang dipegang, ETag tersimpan tak berpasangan dengan apa pun (mis. UI dasar baru diganti installer
+  // lain): kosongkan agar pemeriksaan pertama sesi ini selalu membaca manifest utuh, bukan 304.
+  if (
+    state.active === null &&
+    state.previous === null &&
+    state.ready === null &&
+    state.etag !== null
+  ) {
+    state.etag = null;
+    persist();
+  }
   let current: string | null = state.active;
   rmSync(stagingDir, { recursive: true, force: true }); // sisa unduhan terputus pada sesi lalu
 
@@ -366,10 +437,15 @@ export function createUiBundleManager(deps: UiBundleDeps): UiBundleManager {
         uiVersion,
       };
     }
+    if (baselineAt !== null && manifest.createdAt <= baselineAt) {
+      remember(newEtag);
+      return { status: 'none', reason: 'UI dasar lebih baru dari bundel server', uiVersion };
+    }
     if (state.bad.includes(uiVersion)) {
       return { status: 'none', reason: 'versi ini pernah gagal dimuat', uiVersion };
     }
     if (uiVersion === state.active || uiVersion === state.ready) {
+      state.created[uiVersion] = manifest.createdAt;
       remember(newEtag);
       return { status: 'none', reason: 'sudah terbaru', uiVersion };
     }
@@ -388,6 +464,7 @@ export function createUiBundleManager(deps: UiBundleDeps): UiBundleManager {
     // Versi lama yang masih tersimpan (mis. server kembali ke build sebelumnya): cukup diterapkan.
     if (usable(uiVersion)) {
       state.ready = uiVersion;
+      state.created[uiVersion] = manifest.createdAt;
       remember(newEtag);
       return { status: 'ready', uiVersion };
     }
@@ -410,6 +487,7 @@ export function createUiBundleManager(deps: UiBundleDeps): UiBundleManager {
     await rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
 
     state.ready = uiVersion;
+    state.created[uiVersion] = manifest.createdAt;
     remember(newEtag);
     prune();
     return { status: 'ready', uiVersion };
