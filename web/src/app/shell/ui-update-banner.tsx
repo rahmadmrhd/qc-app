@@ -1,6 +1,6 @@
-import { RefreshCw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { hasUiBridge, startUiUpdateWatch, useUiUpdateReady } from '@/app/ui-update-store';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { getBridge } from '@/lib/platform';
 
@@ -37,13 +37,13 @@ export function UiUpdateBanner() {
   }
 
   return (
-    <div
+    <Alert
+      color="info"
       role="status"
-      className="flex flex-wrap items-center gap-2 border-b bg-muted px-4 py-2 text-sm"
+      className="flex flex-wrap items-center gap-2 rounded-none border-x-0 border-t-0 px-4"
     >
-      <RefreshCw className="size-4 shrink-0" aria-hidden="true" />
       <span>Versi UI baru tersedia.</span>
-      {failed ? <span className="text-destructive">Muat ulang gagal. Coba lagi.</span> : null}
+      {failed ? <span className="text-destructive-text">Muat ulang gagal. Coba lagi.</span> : null}
       <Button
         type="button"
         size="sm"
@@ -53,6 +53,6 @@ export function UiUpdateBanner() {
       >
         Muat ulang
       </Button>
-    </div>
+    </Alert>
   );
 }
