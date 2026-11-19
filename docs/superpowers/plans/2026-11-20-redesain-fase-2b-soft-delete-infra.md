@@ -56,7 +56,7 @@ Indeks baru (nama = lama + `_live`, kolom = kolom lama + `deleted_at`): `users_e
 - Modify: `shared/contract.ts` (ekspor ulang tipe dari `batch.ts` bila pola berkas itu mengharuskan)
 
 **Interfaces:**
-- Produces (`shared/batch.ts`): `BATCH_MAX = 100`; `interface IdBatchInput { ids: string[] }`; `interface VersionedBatchInput { items: { id: string; updatedAt: string }[] }`; `interface StatusBatchInput extends VersionedBatchInput { status: 'active' | 'inactive' }`; `interface BatchResult<T> { items: T[] }`; `interface SoftDeleteInfo { deletedAt: string; deletedBy: string }`; `type ListStatusFilter = 'active' | 'inactive' | 'deleted' | 'all'`.
+- Produces (`shared/batch.ts`): `BATCH_MAX = 100`; `interface IdBatchInput { ids: string[] }`; `interface VersionedBatchInput { items: { id: string; updatedAt: string }[] }`; `interface StatusBatchInput extends IdBatchInput { status: 'active' | 'inactive' }` (rute `setStatus` tunggal hari ini tak membawa `updatedAt` — Item/Merk/Stiker/Jenis/Customer/Pengguna/Lokasi/BU — jadi batch status cukup id; `VersionedBatchInput` hanya untuk model yang rute tunggalnya memeriksa versi); `interface BatchResult<T> { items: T[] }`; `interface SoftDeleteInfo { deletedAt: string; deletedBy: string }`; `type ListStatusFilter = 'active' | 'inactive' | 'deleted' | 'all'`.
 - Produces (`core/soft-delete.ts`):
   - `SOFT_DELETE_TABLES` (tuple `as const` urutan Task 1); `type SoftDeleteTable = (typeof SOFT_DELETE_TABLES)[number]`
   - `liveWhere(alias?: string): string` → `"deleted_at = ''"` / `` `${alias}.deleted_at = ''` ``; `deletedWhere(alias?)` → `deleted_at <> ''`
