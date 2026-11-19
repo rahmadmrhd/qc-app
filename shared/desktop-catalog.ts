@@ -52,9 +52,23 @@ export interface CatalogItemDto {
   stickerPhotos: ItemStickerPhotoDto[];
 }
 
+/** Lokasi aktif untuk pilihan di form inject (sama dengan `serials.locationOptions`: semua lokasi aktif). */
+export interface CatalogLocationDto {
+  id: string;
+  code: string;
+  name: string;
+}
+
 export interface DesktopCatalogDto {
   version: typeof DESKTOP_CATALOG_VERSION;
   items: CatalogItemDto[];
+  /**
+   * BU aktif dan lokasi aktif untuk form inject desktop (keputusan pemilik 2026-11-18: dipilih saat inject dan dicatat
+   * bersama serial, tersedia offline seperti Tipe). Opsional agar server lama dan cache lama tetap terbaca: tak ada =
+   * belum tersinkron.
+   */
+  businessUnits?: BusinessUnitRefDto[];
+  locations?: CatalogLocationDto[];
   stickerTypes: CatalogStickerTypeDto[];
   stickers: CatalogStickerDto[];
   /** Semua berkas yang dirujuk katalog (hanya ini yang boleh diunduh lewat rute berkas). */
@@ -66,6 +80,8 @@ export const CATALOG_LIMITS = {
   items: 5000,
   stickers: 5000,
   files: 20000,
+  /** BU dan lokasi aktif (jauh di bawah ini dalam praktik). */
+  targets: 1000,
 } as const;
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -124,6 +140,16 @@ function validPhoto(entry: unknown): boolean {
   );
 }
 
+function validRef(entry: unknown): boolean {
+  return (
+    isObject(entry) &&
+    isString(entry.id) &&
+    entry.id !== '' &&
+    isString(entry.code) &&
+    isString(entry.name)
+  );
+}
+
 function validItem(entry: unknown): boolean {
   return (
     isObject(entry) &&
@@ -150,7 +176,10 @@ export function parseDesktopCatalog(value: unknown): DesktopCatalogDto | null {
     !isArrayOf(value.items, CATALOG_LIMITS.items, validItem) ||
     !isArrayOf(value.stickerTypes, CATALOG_LIMITS.stickers, validType) ||
     !isArrayOf(value.stickers, CATALOG_LIMITS.stickers, validSticker) ||
-    !isArrayOf(value.files, CATALOG_LIMITS.files, validFile)
+    !isArrayOf(value.files, CATALOG_LIMITS.files, validFile) ||
+    (value.businessUnits !== undefined &&
+      !isArrayOf(value.businessUnits, CATALOG_LIMITS.targets, validRef)) ||
+    (value.locations !== undefined && !isArrayOf(value.locations, CATALOG_LIMITS.targets, validRef))
   ) {
     return null;
   }

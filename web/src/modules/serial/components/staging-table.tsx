@@ -5,11 +5,13 @@ import {
   SERIAL_PROOF_LIMITS,
   serialProblem,
 } from '@shared/serials';
-import { memo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import type { StagingRow } from '../lib/draft';
+import { noteSummary } from '../lib/note-summary';
+import type { StampPreviewInput } from '../lib/stamp-preview';
 import { ProofPhotoField } from './proof-photo-field';
 
 export interface StagingTableProps {
@@ -24,6 +26,8 @@ export interface StagingTableProps {
   onRemove: (clientId: string) => void;
   /** Penyimpanan berjalan: seluruh sel dikunci agar suntingan tidak hilang saat baris dihapus oleh hasil `created`. */
   disabled?: boolean;
+  /** Nama pelaku untuk pratinjau cap di kamera foto (dari akun yang masuk); kosong = tanpa pratinjau cap. */
+  actorName?: string;
 }
 
 /** Penanda sebuah baris: hasil dari server, rujukan yang harus dipilih ulang, atau kolom wajib yang kosong. */
@@ -44,17 +48,20 @@ export function rowStatus(row: StagingRow): { tone: 'error' | 'warn' | 'ok'; tex
   if (row.buId === '') return { tone: 'warn', text: 'Business Unit belum dipilih' };
   if (row.locationId === '') return { tone: 'warn', text: 'Lokasi belum dipilih' };
   if (!isIsoDate(row.testDate)) return { tone: 'warn', text: 'Tanggal uji belum diisi' };
+  const needed = (row.proofMin ?? 0) - row.proofPhotos.length;
+  if (needed > 0) return { tone: 'error', text: `Butuh ${needed} foto lagi` };
   return { tone: 'ok', text: '' };
 }
 
-const TONE_CLASS = {
+export const TONE_CLASS = {
   error: 'text-destructive',
   warn: 'text-amber-600 dark:text-amber-400',
   ok: 'text-muted-foreground',
 } as const;
 
-function stickerSummary(row: StagingRow): string {
-  if (row.stickers === null) return 'Semua stiker yang berlaku';
+/** Ringkasan pilihan stiker eksplisit; `null` (bawaan semua yang berlaku) tidak punya ringkasan. */
+export function stickerSummary(row: StagingRow): string | null {
+  if (row.stickers === null) return null;
   if (row.stickers.length === 0) return 'Tanpa stiker';
   return row.stickers.map((sticker) => `${sticker.name} ×${sticker.qty}`).join(', ');
 }
@@ -64,10 +71,12 @@ interface SerialCellProps {
   serial: string;
   onCommitSerial: StagingTableProps['onCommitSerial'];
   disabled: boolean;
+  /** Serial dari perangkat (hasil inject Country Lock): hanya dibaca, tidak dapat diubah di tabel. */
+  locked: boolean;
 }
 
 /** Sel serial: dinormalisasi saat keluar sel; serial ganda di tabel atau tak sah ditolak dan nilai lama dikembalikan. */
-function SerialCell({ clientId, serial, onCommitSerial, disabled }: SerialCellProps) {
+function SerialCell({ clientId, serial, onCommitSerial, disabled, locked }: SerialCellProps) {
   const [text, setText] = useState(serial);
   const [error, setError] = useState<string | null>(null);
   // Nilai berubah dari luar (mis. dipulihkan): ikuti.
@@ -98,12 +107,22 @@ function SerialCell({ clientId, serial, onCommitSerial, disabled }: SerialCellPr
     setError(null);
     setText(normalized);
   }
+  if (locked) {
+    return (
+      <span
+        title="Serial dari perangkat, tidak dapat diubah"
+        className="block h-8 w-36 truncate px-2 font-mono text-sm leading-8"
+      >
+        {serial}
+      </span>
+    );
+  }
   return (
     <div>
       <Input
         aria-label={`Serial ${serial}`}
         aria-invalid={error ? true : undefined}
-        className="h-8 w-44 font-mono"
+        className="h-8 w-36 font-mono"
         value={text}
         disabled={disabled}
         maxLength={SERIAL_LIMITS.serialMax * 4}
@@ -122,7 +141,32 @@ function SerialCell({ clientId, serial, onCommitSerial, disabled }: SerialCellPr
   );
 }
 
-interface RowViewProps extends Omit<StagingTableProps, 'rows' | 'onSelectAll' | 'disabled'> {
+/** Lencana kecil untuk kolom yang tidak punya sel sendiri: Sample, pilihan stiker eksplisit, dan catatan. */
+export function RowBadges({ row }: { row: StagingRow }) {
+  const stickers = stickerSummary(row);
+  // Catatan berbentuk Markdown: tabel dan kartu hanya menampilkan ringkasan teks polosnya.
+  const note = noteSummary(row.note);
+  if (!row.sample && stickers === null && note === '') return null;
+  return (
+    <span className="mt-0.5 flex flex-wrap gap-1 text-xs text-muted-foreground">
+      {row.sample ? (
+        <span className="rounded-full border px-1.5 py-px text-foreground">Sample</span>
+      ) : null}
+      {stickers !== null ? (
+        <span className="rounded-full border px-1.5 py-px">{stickers}</span>
+      ) : null}
+      {note !== '' ? (
+        <span className="max-w-full truncate rounded-full border px-1.5 py-px" title={note}>
+          Catatan: {note}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+interface RowViewProps
+  extends Omit<StagingTableProps, 'rows' | 'onSelectAll' | 'disabled' | 'actorName'> {
+  actorName: string;
   disabled: boolean;
   row: StagingRow;
   index: number;
@@ -137,8 +181,24 @@ const RowView = memo(function RowView({
   onOpenDetail,
   onRemove,
   disabled,
+  actorName,
 }: RowViewProps) {
   const status = rowStatus(row);
+  // Data cap dari kolom baris (primitif, jadi baris `memo` lain tak ikut dirender ulang).
+  const stamp = useMemo<StampPreviewInput | undefined>(
+    () =>
+      actorName === ''
+        ? undefined
+        : {
+            serial: row.serial,
+            itemLabel: row.itemLabel,
+            buLabel: row.buLabel,
+            locationLabel: row.locationLabel,
+            actorName,
+            actorTeam: 'QC',
+          },
+    [row.serial, row.itemLabel, row.buLabel, row.locationLabel, actorName],
+  );
   return (
     <tr
       data-tour="serial-row"
@@ -168,64 +228,40 @@ const RowView = memo(function RowView({
           serial={row.serial}
           onCommitSerial={onCommitSerial}
           disabled={disabled}
+          locked={row.source === 'countrylock'}
         />
       </td>
-      <td className="max-w-48 px-2 py-1.5 text-sm">
+      <td className="max-w-44 px-2 py-1.5 text-sm">
         <span className="block truncate" title={row.itemLabel}>
           {row.itemLabel || '—'}
         </span>
         {row.buLabel ? <span className="text-xs text-muted-foreground">{row.buLabel}</span> : null}
+        <RowBadges row={row} />
       </td>
-      <td className="px-2 py-1">
+      <td className="max-w-44 px-2 py-1">
+        <span className="block truncate text-sm" title={row.locationLabel}>
+          {row.locationLabel || '—'}
+        </span>
         <Input
           type="date"
           aria-label={`Tanggal uji ${row.serial}`}
-          className="h-8 w-36"
+          className="mt-1 h-8 w-36"
           value={row.testDate}
           disabled={disabled}
           onChange={(event) => onEdit(row.clientId, { testDate: event.target.value })}
         />
       </td>
-      <td className="max-w-40 px-2 py-1.5 text-sm">
-        <span className="block truncate" title={row.locationLabel}>
-          {row.locationLabel || '—'}
-        </span>
-      </td>
-      <td className="px-2 py-1.5">
-        <input
-          type="checkbox"
-          className="size-4 accent-primary"
-          aria-label={`Sample ${row.serial}`}
-          checked={row.sample}
-          disabled={disabled}
-          onChange={(event) => onEdit(row.clientId, { sample: event.target.checked })}
-        />
-      </td>
-      <td className="px-2 py-1">
-        <Input
-          aria-label={`Catatan ${row.serial}`}
-          className="h-8 w-44"
-          value={row.note}
-          disabled={disabled}
-          maxLength={SERIAL_LIMITS.noteMax}
-          onChange={(event) => onEdit(row.clientId, { note: event.target.value })}
-        />
-      </td>
-      <td className="max-w-48 px-2 py-1.5 text-xs text-muted-foreground">
-        <span className="block truncate" title={stickerSummary(row)}>
-          {stickerSummary(row)}
-        </span>
-      </td>
-      <td className="min-w-32 px-2 py-1.5">
+      <td className="min-w-24 px-2 py-1.5">
         <ProofPhotoField
           value={row.proofPhotos}
           max={SERIAL_PROOF_LIMITS.perEntryMax}
           disabled={disabled}
           label={row.serial}
+          stamp={stamp}
           onChange={(proofPhotos) => onEdit(row.clientId, { proofPhotos })}
         />
       </td>
-      <td className={cn('min-w-40 px-2 py-1.5 text-xs', TONE_CLASS[status.tone])}>{status.text}</td>
+      <td className={cn('min-w-28 px-2 py-1.5 text-xs', TONE_CLASS[status.tone])}>{status.text}</td>
       <td className="whitespace-nowrap px-2 py-1 text-right" data-tour="serial-row-actions">
         <Button
           type="button"
@@ -262,6 +298,7 @@ export function StagingTable({
   onOpenDetail,
   onRemove,
   disabled = false,
+  actorName = '',
 }: StagingTableProps) {
   const allSelected = rows.length > 0 && rows.every((row) => row.selected);
   return (
@@ -290,19 +327,7 @@ export function StagingTable({
               Item
             </th>
             <th scope="col" className="px-2 py-2 font-medium">
-              Tanggal uji
-            </th>
-            <th scope="col" className="px-2 py-2 font-medium">
-              Lokasi
-            </th>
-            <th scope="col" className="px-2 py-2 font-medium">
-              Sample
-            </th>
-            <th scope="col" className="px-2 py-2 font-medium">
-              Catatan
-            </th>
-            <th scope="col" className="px-2 py-2 font-medium">
-              Stiker
+              Lokasi dan tanggal uji
             </th>
             <th scope="col" className="px-2 py-2 font-medium">
               Foto
@@ -327,6 +352,7 @@ export function StagingTable({
               onOpenDetail={onOpenDetail}
               onRemove={onRemove}
               disabled={disabled}
+              actorName={actorName}
             />
           ))}
         </tbody>

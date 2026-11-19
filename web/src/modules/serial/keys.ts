@@ -20,6 +20,7 @@ export const serialKeys = {
   itemOptions: (query: string) => ['serial', 'itemOptions', query] as const,
   itemsById: (ids: readonly string[]) => ['serial', 'itemsById', [...ids].sort()] as const,
   locationOptions: ['serial', 'locationOptions'] as const,
+  buOptions: ['serial', 'buOptions'] as const,
   stickerOptions: (itemId: string, buId: string) =>
     ['serial', 'stickerOptions', itemId, buId] as const,
 };

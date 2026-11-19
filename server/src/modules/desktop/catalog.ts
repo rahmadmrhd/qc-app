@@ -13,6 +13,7 @@ import { latestManualBookStickerIds } from '@server/modules/sticker/repo';
 import {
   type CatalogFileDto,
   type CatalogItemDto,
+  type CatalogLocationDto,
   type CatalogStickerDto,
   type CatalogStickerTypeDto,
   catalogFileIds,
@@ -93,8 +94,31 @@ async function filesOf(db: Db, ids: readonly string[]): Promise<CatalogFileDto[]
   return result.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
+interface RefRow {
+  id: string;
+  code: string;
+  name: string;
+}
+
+const toRef = (row: RefRow): CatalogLocationDto => ({
+  id: row.id.trim(),
+  code: row.code.trim(),
+  name: row.name,
+});
+
 export async function buildDesktopCatalog(env: Env): Promise<DesktopCatalogDto> {
   const db = env.DB;
+  // Pilihan BU dan lokasi di form inject (keputusan pemilik 2026-11-18): semua yang aktif, tanpa saringan penugasan.
+  const [buRows, locationRows] = await Promise.all([
+    db
+      .prepare(
+        "SELECT id, code, name FROM business_units WHERE status = 'active' ORDER BY code, id",
+      )
+      .all<RefRow>(),
+    db
+      .prepare("SELECT id, code, name FROM locations WHERE status = 'active' ORDER BY code, id")
+      .all<RefRow>(),
+  ]);
   const itemRows = (
     await db
       .prepare(
@@ -227,7 +251,15 @@ export async function buildDesktopCatalog(env: Env): Promise<DesktopCatalogDto> 
       systemKind: type.systemKind,
     }));
 
-  return { version: DESKTOP_CATALOG_VERSION, items, stickerTypes, stickers, files };
+  return {
+    version: DESKTOP_CATALOG_VERSION,
+    items,
+    businessUnits: buRows.results.map(toRef),
+    locations: locationRows.results.map(toRef),
+    stickerTypes,
+    stickers,
+    files,
+  };
 }
 
 export interface ServedCatalog {

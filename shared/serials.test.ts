@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  caseNumberPeriod,
   isIsoDate,
   listSerialsTooLong,
   normalizeSerial,
+  proofMinimumOf,
   publicActorName,
   reportLinkExpiresAt,
   SERIAL_ACTIONS,
@@ -135,10 +137,18 @@ describe('listSerialsTooLong', () => {
 });
 
 describe('serialCaseNumber dan kelompok riwayat (5b)', () => {
-  test('nomor kasus', () => {
-    expect(serialCaseNumber('20261120', 1)).toBe('LP-20261120-001');
-    expect(serialCaseNumber('20261120', 42)).toBe('LP-20261120-042');
-    expect(serialCaseNumber('20261120', 1000)).toBe('LP-20261120-1000');
+  test('nomor kasus LP/<BU>/YYMM-iiii', () => {
+    expect(serialCaseNumber('SBY', '2611', 1)).toBe('LP/SBY/2611-0001');
+    expect(serialCaseNumber('SBY', '2611', 42)).toBe('LP/SBY/2611-0042');
+    expect(serialCaseNumber('UM-1', '2611', 1)).toBe('LP/UM-1/2611-0001');
+    expect(serialCaseNumber('SBY', '2611', 9999)).toBe('LP/SBY/2611-9999');
+    expect(serialCaseNumber('SBY', '2611', 10000)).toBe('LP/SBY/2611-10000');
+  });
+
+  test('periode nomor kasus dari tanggal WIB', () => {
+    expect(caseNumberPeriod('2026-11-18')).toBe('2611');
+    expect(caseNumberPeriod('2027-01-05')).toBe('2701');
+    expect(caseNumberPeriod('2026-12-31')).toBe('2612');
   });
 
   test('kelompok jenis kejadian', () => {
@@ -209,5 +219,13 @@ describe('publicActorName (nama pelaku tanpa alamat surel)', () => {
     expect(publicActorName('@gmail.com')).toBe('Admin');
     expect(publicActorName('')).toBe('Admin');
     expect(publicActorName('   ')).toBe('Admin');
+  });
+});
+
+describe('proofMinimumOf', () => {
+  test('0 bila item tidak wajib foto, selain itu proofMin', () => {
+    expect(proofMinimumOf({ proofRequired: false, proofMin: 3 })).toBe(0);
+    expect(proofMinimumOf({ proofRequired: true, proofMin: 3 })).toBe(3);
+    expect(proofMinimumOf({ proofRequired: true, proofMin: 1 })).toBe(1);
   });
 });

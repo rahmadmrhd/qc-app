@@ -58,7 +58,7 @@ Kosong = fitur nonaktif: `GET /api/desktop/app-manifest` dan `/api/desktop/app-f
 2. Merge PR itu ke `main` dengan **merge commit** (squash/rebase ditolak pagar identitas). `release.yml` berjalan (jalur desktop): `meta` -> `ci` -> `build-desktop` -> `publish-desktop` -> `sync-dev`.
 3. `publish-desktop` mengunggah installer, `release-<versi>.json`, lalu `release-<versi>.sig` **terakhir**: versi baru baru terlihat pengguna saat `.sig` ada. Setelah itu tag `desktop-vX.Y.Z` dan GitHub Release (catatan rilis dan installer x64 + arm64 yang sama dengan di Drive; keputusan pemilik 2026-11-18, token katalog diperlakukan publik) dibuat, dan Drive dibersihkan ke 10 versi terbaru.
 4. Run gagal di tengah: jalankan ulang lewat Actions > Release > Run workflow, input `komponen` = `desktop` dan `versi` (tag yang sudah ada pada commit yang sama dilewati; installer dibangun ulang dan NSIS tidak reproducible, jadi MD5-nya berbeda dan installer yang sudah live ditimpa. `.sig` lama dihapus lebih dulu, sehingga versi itu hilang dari server selama unggah ulang (sekitar 200 MB) dan tetap hilang bila run gagal sampai dijalankan ulang; pengguna yang sedang mengunduh pada saat itu gagal verifikasi `sha512` dan mencoba lagi pada cek berikutnya. Jalankan pemulihan di luar jam kerja bila versinya sudah terlihat pengguna).
-5. Pemeriksaan: `GET https://qc.rhd.my.id/api/desktop/app-manifest?arch=x64` menjawab 200 dengan `signature`; pasang versi sebelumnya dan ikuti `docs/e2e-checklist-desktop.md` bagian J.
+5. Pemeriksaan: `GET https://qc.rhd.my.id/api/desktop/app-manifest?arch=x64` menjawab 200 dengan `signature`; pasang versi sebelumnya dan ikuti `docs/e2e-checklist-desktop.md` bagian K.
 
 ## 6. Menarik rilis bermasalah
 

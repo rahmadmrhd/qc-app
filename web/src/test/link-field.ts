@@ -1,5 +1,6 @@
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { expect } from 'vitest';
 
 type Scope = Pick<typeof screen, 'getByRole'>;
 
@@ -26,3 +27,8 @@ export async function linkOptionNames(scope: Scope, field: string): Promise<stri
 
 /** Alias `linkOptionNames` untuk `Select`. */
 export const selectOptionNames = linkOptionNames;
+
+/** Menunggu `LinkField` terisi `value` (mis. lokasi Default yang terkunci dan terisi otomatis, tanpa dipilih manual). */
+export async function expectLinkValue(scope: Scope, field: string, value: string) {
+  await waitFor(() => expect(scope.getByRole('combobox', { name: field })).toHaveValue(value));
+}

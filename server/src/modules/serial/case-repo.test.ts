@@ -17,7 +17,8 @@ import { insertEventStmt, insertNextEventStmt } from './repo';
 setDefaultTimeout(60_000);
 
 let env: TestEnv;
-const DAY = '20261120';
+const BU = 'SBY';
+const PERIOD = '2611';
 const NOW = '2026-11-20T03:00:00.000Z';
 
 beforeEach(async () => {
@@ -28,13 +29,19 @@ beforeEach(async () => {
 });
 
 /** Membuka kasus untuk serial lewat jalur nyata: pesan nomor + INSERT dalam satu batch, dibungkus pengulang. */
-async function openCase(serialId: string, caseId: string, e: Env = env): Promise<string> {
+async function openCase(
+  serialId: string,
+  caseId: string,
+  e: Env = env,
+  buCode = BU,
+  period = PERIOD,
+): Promise<string> {
   return runWithCaseNumber(
     e,
     serialId,
     null,
     async () => {
-      const reservation = await reserveCaseNumber(e, DAY);
+      const reservation = await reserveCaseNumber(e, buCode, period);
       await e.DB.batch([
         ...reservation.statements,
         insertCaseStmt(e.DB, {
@@ -54,11 +61,11 @@ async function openCase(serialId: string, caseId: string, e: Env = env): Promise
 }
 
 describe('nomor LP', () => {
-  test('dua pembukaan kasus serentak pada hari yang sama mendapat nomor -001 dan -002', async () => {
+  test('dua pembukaan kasus serentak pada (BU, bulan) yang sama mendapat nomor -0001 dan -0002', async () => {
     const [a, b] = await Promise.all([openCase('sn1', 'c1'), openCase('sn2', 'c2')]);
-    expect([a, b].sort()).toEqual([`LP-${DAY}-001`, `LP-${DAY}-002`]);
+    expect([a, b].sort()).toEqual(['LP/SBY/2611-0001', 'LP/SBY/2611-0002']);
     const row = await env.DB.prepare('SELECT value FROM counters WHERE `key` = ?')
-      .bind(`lp:${DAY}`)
+      .bind('lp:SBY:2611')
       .first<{ value: number }>();
     expect(Number(row?.value)).toBe(2);
   });
@@ -67,36 +74,77 @@ describe('nomor LP', () => {
     const ids = ['c1', 'c2', 'c3', 'c4', 'c5', 'c6'];
     const numbers = await Promise.all(ids.map((id) => openCase('sn1', id)));
     expect(new Set(numbers).size).toBe(6);
-    expect([...numbers].sort()).toEqual(ids.map((_, i) => `LP-${DAY}-00${i + 1}`));
+    expect([...numbers].sort()).toEqual(ids.map((_, i) => `LP/SBY/2611-000${i + 1}`));
   });
 
-  test('tanpa baris counters mulai dari nomor tertinggi yang ada (hari lain tak ikut)', async () => {
+  test('BU lain pada bulan yang sama dan bulan berikutnya mulai lagi dari 0001', async () => {
+    expect(await openCase('sn1', 'c1')).toBe('LP/SBY/2611-0001');
+    expect(await openCase('sn2', 'c2')).toBe('LP/SBY/2611-0002');
+    expect((await reserveCaseNumber(env, 'JKT', PERIOD)).number).toBe('LP/JKT/2611-0001');
+    expect((await reserveCaseNumber(env, BU, '2612')).number).toBe('LP/SBY/2612-0001');
+  });
+
+  test('tanpa baris counters mulai dari nomor tertinggi yang ada pada (BU, bulan) itu saja', async () => {
+    const insert = (id: string, number: string, openedOn: string) =>
+      insertCaseStmt(env.DB, {
+        id,
+        number,
+        serialId: 'sn1',
+        buId: 'bu-a',
+        openedOn,
+        now: NOW,
+        actorEmail: 'a@x.com',
+      });
+    await env.DB.batch([
+      insert('x1', 'LP/SBY/2611-0007', '2026-11-20'),
+      insert('x2', 'LP/SBY/2612-0050', '2026-12-01'),
+      insert('x3', 'LP/JKT/2611-0090', '2026-11-20'),
+      // Nomor format lama tak memengaruhi urutan baru.
+      insert('x4', 'LP-20261118-003', '2026-11-18'),
+    ]);
+    expect((await reserveCaseNumber(env, BU, PERIOD)).number).toBe('LP/SBY/2611-0008');
+    expect((await reserveCaseNumber(env, BU, '2701')).number).toBe('LP/SBY/2701-0001');
+    expect((await reserveCaseNumber(env, 'BDG', PERIOD)).number).toBe('LP/BDG/2611-0001');
+  });
+
+  test('kode BU ber-angka dan tanda hubung tidak berbagi rentang dengan kode awalan yang sama', async () => {
+    const insert = (id: string, number: string) =>
+      insertCaseStmt(env.DB, {
+        id,
+        number,
+        serialId: 'sn1',
+        buId: 'bu-a',
+        openedOn: '2026-11-20',
+        now: NOW,
+        actorEmail: 'a@x.com',
+      });
+    await env.DB.batch([
+      insert('u1', 'LP/UM-1/2611-0004'),
+      insert('u2', 'LP/UM/2611-0020'),
+      insert('u3', 'LP/UM-10/2611-0099'),
+    ]);
+    expect((await reserveCaseNumber(env, 'UM-1', PERIOD)).number).toBe('LP/UM-1/2611-0005');
+    expect((await reserveCaseNumber(env, 'UM', PERIOD)).number).toBe('LP/UM/2611-0021');
+    expect((await reserveCaseNumber(env, 'UM-10', PERIOD)).number).toBe('LP/UM-10/2611-0100');
+  });
+
+  test('urutan di atas 9999 memanjang dan dilanjutkan dari nomor tertinggi', async () => {
     await env.DB.batch([
       insertCaseStmt(env.DB, {
-        id: 'x1',
-        number: `LP-${DAY}-007`,
+        id: 'big',
+        number: 'LP/SBY/2611-9999',
         serialId: 'sn1',
         buId: 'bu-a',
         openedOn: '2026-11-20',
         now: NOW,
         actorEmail: 'a@x.com',
       }),
-      insertCaseStmt(env.DB, {
-        id: 'x2',
-        number: 'LP-20261121-050',
-        serialId: 'sn1',
-        buId: 'bu-a',
-        openedOn: '2026-11-21',
-        now: NOW,
-        actorEmail: 'a@x.com',
-      }),
     ]);
-    expect((await reserveCaseNumber(env, DAY)).number).toBe(`LP-${DAY}-008`);
-    expect((await reserveCaseNumber(env, '20261122')).number).toBe('LP-20261122-001');
+    expect((await reserveCaseNumber(env, BU, PERIOD)).number).toBe('LP/SBY/2611-10000');
   });
 
   test('batch dengan penghitung usang dibatalkan seluruhnya (tak ada kasus yatim)', async () => {
-    const stale = await reserveCaseNumber(env, DAY);
+    const stale = await reserveCaseNumber(env, BU, PERIOD);
     await openCase('sn1', 'c1');
     const error = await env.DB.batch([
       ...stale.statements,
@@ -207,7 +255,7 @@ describe('pernyataan kasus', () => {
     await env.DB.batch([
       insertCaseStmt(env.DB, {
         id: 'c2',
-        number: 'LP-20261121-001',
+        number: 'LP/SBY/2611-9001',
         serialId: 'sn1',
         buId: 'bu-a',
         openedOn: '2026-11-21',

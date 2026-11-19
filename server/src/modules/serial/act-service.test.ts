@@ -43,7 +43,7 @@ const act = (
     ...extra,
   });
 
-const CASE = { id: 'case-1', number: 'LP-20261110-001', originLocationId: 'loc-sby' };
+const CASE = { id: 'case-1', number: 'LP/A/2611-0001', originLocationId: 'loc-sby' };
 /** Serial di tim servis (Jakarta). `transit` = baru dikirim dari Surabaya pada 2026-11-10. */
 const seedAt = (status: string, custody: string, over: Record<string, unknown> = {}) =>
   seedSerial(env, {
@@ -354,7 +354,7 @@ describe('declare_broken: Rusak (baris 7)', () => {
       message: 'Motherboard tidak bisa diperbaiki',
     });
     expect(JSON.parse(events[2]?.data_json ?? '{}')).toMatchObject({
-      caseNumber: 'LP-20261110-001',
+      caseNumber: 'LP/A/2611-0001',
       outcome: 'broken',
     });
 

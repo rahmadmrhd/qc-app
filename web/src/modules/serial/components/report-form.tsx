@@ -141,7 +141,7 @@ export interface NewReportFormProps {
 }
 
 /**
- * Serial belum tercatat: item (menentukan BU), lokasi, dan catatan wajib; serial dibuat langsung berstatus Dilaporkan
+ * Serial belum tercatat: item, BU, lokasi, dan catatan wajib; serial dibuat langsung berstatus Dilaporkan
  * dan laporannya terbuka (`serials.reportNew`). Tanggal uji = hari ini (WIB).
  */
 export function NewReportForm({ serial, onDone }: NewReportFormProps) {
@@ -206,7 +206,8 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
     >
       <p className="text-sm">
         Serial Number <span className="font-mono font-medium">{serial}</span> belum tercatat. Isi
-        item dan lokasinya, lalu laporkan. Serial Number akan dicatat langsung sebagai Dilaporkan.
+        item, BU, dan lokasinya, lalu laporkan. Serial Number akan dicatat langsung sebagai
+        Dilaporkan.
       </p>
       <div className="grid gap-4 sm:grid-cols-2" data-tour="report-new-fields">
         <ItemBuField
@@ -215,7 +216,8 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
           buFieldLabel="Business Unit"
           value={item}
           onChange={setItem}
-          error={fields.itemId ?? fields.buId}
+          error={fields.itemId}
+          buError={fields.buId}
           disabled={report.isPending}
         />
         <div className="space-y-1.5">

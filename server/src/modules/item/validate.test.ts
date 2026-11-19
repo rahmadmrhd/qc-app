@@ -335,3 +335,16 @@ test('validateListItems: filter instruksi (instruction, stickerId/typeId, sticke
     expect(Object.keys(fields ?? {}).length).toBeGreaterThan(0);
   }
 });
+
+test('proofRequired dan proofMin opsional: tak dikirim = tak ada di input; ada = divalidasi', () => {
+  const plain = validateSaveItem(base);
+  expect('proofRequired' in plain).toBe(false);
+  expect('proofMin' in plain).toBe(false);
+  const ok = validateSaveItem({ ...base, proofRequired: true, proofMin: 5 });
+  expect(ok.proofRequired).toBe(true);
+  expect(ok.proofMin).toBe(5);
+  expect(fieldsOf({ proofMin: 0 })?.proofMin).toBeDefined();
+  expect(fieldsOf({ proofMin: 6 })?.proofMin).toBeDefined();
+  expect(fieldsOf({ proofMin: 2.5 })?.proofMin).toBeDefined();
+  expect(fieldsOf({ proofRequired: 1 })?.proofRequired).toBeDefined();
+});

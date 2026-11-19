@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
+import { lazy, Suspense, useRef, useState } from 'react';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { DRAFT_FULL_NOTE } from '../lib/draft';
 import {
   FEEDBACK_FLASH,
   FEEDBACK_TEXT,
@@ -10,7 +11,18 @@ import {
   useScanFeedback,
 } from '../lib/scan-feedback';
 import type { IsKnown } from '../lib/scan-table';
-import { CameraScanButton, type CameraScanButtonProps } from './camera-scan-button';
+import { pickSingleSerial } from '../lib/scan-table';
+import {
+  CameraScanButton,
+  type CameraScanButtonProps,
+  type StrictScan,
+} from './camera-scan-button';
+
+const StrictScanDialog = lazy(() =>
+  import('./strict-scan-dialog').then((module) => ({ default: module.StrictScanDialog })),
+);
+
+const STRICT_MANY_NOTE = 'Item ini wajib foto: satu serial per kali';
 
 export type { ScanFeedback };
 
@@ -31,6 +43,11 @@ export interface SerialScanInputProps {
   cameraCapacity?: () => number;
   /** Hasil semua baris sesudah Simpan di dialog kamera (menggantikan toast ringkasan dialog). */
   onCameraSaved?: CameraScanButtonProps['onSaved'];
+  /**
+   * Item wajib foto: satu serial per kali lewat dialog dua langkah. Tempel, ketik, dan pemindai fisik (satu serial sah
+   * yang belum ada di draft) membuka dialog langsung di langkah konfirmasi; tempelan banyak serial ditolak.
+   */
+  strict?: StrictScan | undefined;
 }
 
 export function SerialScanInput({
@@ -44,14 +61,46 @@ export function SerialScanInput({
   cameraSingle,
   cameraCapacity,
   onCameraSaved,
+  strict,
 }: SerialScanInputProps) {
   const [value, setValue] = useState('');
   const { feedback, announce } = useScanFeedback();
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [strictSerial, setStrictSerial] = useState<string | null>(null);
+  const [strictNote, setStrictNote] = useState<string | null>(null);
 
   function submit(text: string) {
+    if (strict) {
+      submitStrict(text, strict);
+      return;
+    }
     announce(onSubmit(text));
     inputRef.current?.focus();
+  }
+
+  function submitStrict(text: string, context: StrictScan) {
+    const pick = pickSingleSerial(text);
+    if (pick.serial === null) {
+      setStrictNote(pick.reason === 'many' ? STRICT_MANY_NOTE : null);
+      announce('rejected');
+      inputRef.current?.focus();
+      return;
+    }
+    if (context.isKnown(pick.serial)) {
+      setStrictNote(null);
+      announce('duplicate');
+      inputRef.current?.focus();
+      return;
+    }
+    // Draft penuh: jangan buka dialog (pengguna akan memotret lalu kehilangan fotonya).
+    if (context.capacity && context.capacity() <= 0) {
+      setStrictNote(DRAFT_FULL_NOTE);
+      announce('rejected');
+      inputRef.current?.focus();
+      return;
+    }
+    setStrictNote(null);
+    setStrictSerial(pick.serial);
   }
 
   function submitTyped() {
@@ -72,6 +121,7 @@ export function SerialScanInput({
           single={cameraSingle}
           onSaved={onCameraSaved}
           draftCapacity={cameraCapacity}
+          strict={strict}
           disabled={disabled}
         />
       </div>
@@ -120,8 +170,30 @@ export function SerialScanInput({
         aria-live="polite"
         className={cn('min-h-4 text-xs', feedback ? FEEDBACK_TEXT_COLOR[feedback] : '')}
       >
-        {feedback ? (feedbackText?.[feedback] ?? FEEDBACK_TEXT[feedback]) : ''}
+        {feedback
+          ? feedback === 'rejected' && strictNote !== null
+            ? `${FEEDBACK_TEXT.rejected}: ${strictNote}`
+            : (feedbackText?.[feedback] ?? FEEDBACK_TEXT[feedback])
+          : ''}
       </p>
+      {strict && strictSerial !== null ? (
+        <Suspense fallback={null}>
+          <StrictScanDialog
+            open
+            onOpenChange={(open) => {
+              if (!open) {
+                setStrictSerial(null);
+                inputRef.current?.focus();
+              }
+            }}
+            initialSerial={strictSerial}
+            info={strict.info}
+            isKnown={strict.isKnown}
+            onConfirm={strict.onConfirm}
+            capacity={strict.capacity}
+          />
+        </Suspense>
+      ) : null}
     </div>
   );
 }

@@ -160,7 +160,7 @@ aksi pihak ketiga dipatok SHA; `ci-workflows.test.ts` diperluas (pemicu, izin, r
 - **Spike awal rencana**: **selesai sebagian** (rencana Task 1, tes kontrak `updater-contract.test.ts`): provider kustom `electron-updater` 6.8.11
   dapat diturunkan dari `Provider` dan dipakai lewat `setFeedURL({ provider: 'custom', updateProvider })`. Temuan: unduhan butuh `updaterCacheDirName`
   dari `app-update.yml`, sedangkan build `publish: null` tak menghasilkannya; aplikasi menulis berkas itu sendiri dan memakai setter publik
-  `updateConfigPath` (bagian 7, keputusan 9). **Belum terbukti** (tetap di checklist J): pemasangan senyap dan peluncuran ulang NSIS per
+  `updateConfigPath` (bagian 7, keputusan 9). **Belum terbukti** (tetap di checklist K): pemasangan senyap dan peluncuran ulang NSIS per
   pengguna pada perangkat x64 dan arm64 nyata. Bila gagal, jatuh ke pengunduh buatan sendiri (4.2) dengan rancangan keamanan yang sama.
 - **Repositori kembali privat atau publik**: tidak berdampak pada pembaruan atau unduhan (kendala 3.1). Yang berubah hanya GitHub Release arsip
   (bagi pemilik). Uji penerimaan: aplikasi dan server berfungsi penuh dengan token GitHub apa pun dicabut.

@@ -15,6 +15,7 @@ import {
   BRIDGE_VERSION,
   CATALOG_CHANGE_EVENT,
   INJECT_PROGRESS_EVENT,
+  MULTI_CHANGE_EVENT,
   UI_UPDATE_READY_EVENT,
 } from '@countrylock/bridge-channels';
 import {
@@ -39,7 +40,10 @@ import { createCatalogSync } from './catalog/catalog-sync';
 import { CATALOG_TOKEN } from './catalog/catalog-token';
 import { readDeviceInfo, readRouterInfo } from './device/info';
 import { pingOnce } from './device/ping';
-import { registerIpc } from './ipc';
+import { createInjectRunner } from './inject-runner';
+import { type IpcHandle, registerIpc } from './ipc';
+import { createMultiHost } from './multi/host';
+import { createMultiPorts } from './multi/ports';
 import {
   createTrayController,
   notificationsSupported,
@@ -49,12 +53,15 @@ import { forwardNotificationsChanged } from './notify/forward';
 import { createNotificationStream } from './notify/notification-stream';
 import { createNotifier } from './notify/notifier';
 import { loadLocalPackage } from './package/local-folder';
+import { createPackageSession } from './package/package-session';
 import { devProtocolRegistration } from './protocol-registration';
 import { parseQcUrl } from './qc-url';
 import { createSettingsStore } from './settings';
 import { collectSmokeReport } from './smoke';
 import { fetchHostKey } from './ssh/host-key';
 import { runInjectDetailed } from './ssh/inject-session';
+import { type DraftStore, openDraftStore } from './store/draft-store';
+import { type MultiEventStore, openMultiEventStore } from './store/multi-event-store';
 import { openPendingStore } from './store/pending-store';
 import { UI_PUBLIC_KEY_PEM } from './ui/public-key';
 import { createReloadGate, type ReloadGate } from './ui/reload-gate';
@@ -368,7 +375,7 @@ function runApp(): void {
     });
     // UI: bundel terunduh yang aktif bila ada, selain itu UI dasar terkemas. Bundel baru baru
     // diterapkan pada peluncuran berikutnya atau `ui.reload()`, tidak pernah di tengah inject.
-    let ipcHandle: { isInjecting(): boolean } | null = null;
+    let ipcHandle: IpcHandle | null = null;
     const bundles = createUiBundleManager({
       dir: join(userData, 'ui'),
       baselineDir: uiRoot(),
@@ -405,6 +412,38 @@ function runApp(): void {
       dialog.showErrorBox('QC App', error instanceof Error ? error.message : String(error));
       app.exit(1);
       return;
+    }
+
+    // Draft Catat Serial Number: berkas rusak TIDAK menutup aplikasi (Country Lock tetap harus jalan); kanal draft
+    // melempar galatnya sehingga renderer memblokir inject dan tidak menimpa draft. Berkas tak dihapus.
+    let draft: DraftStore;
+    try {
+      draft = openDraftStore(join(userData, 'draft.db'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      draft = {
+        load: () => {
+          throw new Error(message);
+        },
+        save: () => {
+          throw new Error(message);
+        },
+        close: () => undefined,
+      };
+    }
+
+    // Peristiwa inject Multi: berkas yang sama dengan draft, sambungan sendiri. Gagal dibuka TIDAK menutup aplikasi:
+    // pengganti yang melempar pada `add`/`list`/`ack` supaya engine menandai perangkat `failed` ("hasil gagal dicatat")
+    // alih-alih menampilkan "Selesai" tanpa peristiwanya; berkas tak dihapus.
+    let multiEvents: MultiEventStore;
+    try {
+      multiEvents = openMultiEventStore(join(userData, 'draft.db'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const broken = (): never => {
+        throw new Error(message);
+      };
+      multiEvents = { add: broken, list: broken, ack: broken, close: () => undefined };
     }
 
     reloadGate = createReloadGate({
@@ -450,10 +489,41 @@ function runApp(): void {
       openCountryLock: () => gate.load(`${APP_ORIGIN}/country-lock`),
     });
 
+    // Paket skrip aktif dibagi IPC, runner Multi, dan host Multi.
+    const packages = createPackageSession({
+      packageDir: () => settings.get().packageDir,
+      loadPackage: loadLocalPackage,
+    });
+    const multiRunner = createInjectRunner({
+      ensurePackage: () => packages.ensure(),
+      fetchHostKey,
+      runInject: runInjectDetailed,
+    });
+    const multiHost = createMultiHost({
+      ports: createMultiPorts({
+        packages,
+        runner: multiRunner,
+        events: multiEvents,
+        logError: (scope, error) => console.error(`[${scope}]`, error),
+      }),
+      ensurePackage: () => packages.ensure(),
+      emitChange: (snapshot) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(MULTI_CHANGE_EVENT, snapshot);
+        }
+      },
+      isSingleInjecting: () => ipcHandle?.isSingleInjecting() ?? false,
+      openExternal: (url) => shell.openExternal(url),
+      // Muat ulang halaman yang tertunda selama Multi sibuk dilepas saat Multi berhenti sibuk.
+      onIdle: () => gate.notifyIdle(),
+    });
+
     ipcHandle = registerIpc({
       ipcMain,
       settings,
       loadPackage: loadLocalPackage,
+      packages,
+      multi: multiHost,
       chooseDirectory: async () => {
         const options = { properties: ['openDirectory' as const] };
         const result = mainWindow
@@ -467,6 +537,7 @@ function runApp(): void {
       fetchHostKey,
       runInject: runInjectDetailed,
       pending,
+      draft,
       auth: { status: () => flow.status(), start: () => flow.start(), logout: () => flow.logout() },
       emitProgress: (event) => {
         if (mainWindow && !mainWindow.isDestroyed()) {
@@ -504,9 +575,40 @@ function runApp(): void {
 
     // Notifikasi latar (Web Push tidak tersedia di Electron; keputusan pemilik 2026-11-16): selama masuk, aliran
     // SSE dari server menjadi notifikasi OS dan menutup jendela hanya menyembunyikannya ke tray.
+    // Keluar sungguhan membatalkan inject Multi yang berjalan (mesinnya hidup di proses ini): tanyakan dulu.
+    let confirmingQuit = false;
+    const requestQuit = async (): Promise<void> => {
+      if (!multiHost.isInjecting()) {
+        app.quit();
+        return;
+      }
+      if (confirmingQuit) return;
+      confirmingQuit = true;
+      try {
+        focusWindow();
+        const options = {
+          type: 'warning' as const,
+          title: 'Keluar dari QC App?',
+          message: 'Inject Multi-Device masih berjalan.',
+          detail:
+            'Keluar membatalkan inject yang sedang berjalan; perangkat yang belum selesai perlu di-inject ulang.',
+          buttons: ['Keluar', 'Tetap berjalan'],
+          defaultId: 1,
+          cancelId: 1,
+          noLink: true,
+        };
+        const result =
+          mainWindow && !mainWindow.isDestroyed()
+            ? await dialog.showMessageBox(mainWindow, options)
+            : await dialog.showMessageBox(options);
+        if (result.response === 0) app.quit();
+      } finally {
+        confirmingQuit = false;
+      }
+    };
     const tray = createTrayController({
       openWindow: focusWindow,
-      quit: () => app.quit(),
+      quit: () => void requestQuit(),
     });
     const notifier = createNotifier({
       supported: notificationsSupported,
@@ -553,7 +655,15 @@ function runApp(): void {
     }
     let trayHinted = false;
     mainWindow.on('close', (event) => {
-      if (quitting || !tokens.get()) return;
+      if (quitting) return;
+      if (!tokens.get()) {
+        // Tanpa login tak ada tray: menutup jendela = keluar. Bila Multi sedang meng-inject, tanyakan dulu.
+        if (multiHost.isInjecting()) {
+          event.preventDefault();
+          void requestQuit();
+        }
+        return;
+      }
       event.preventDefault();
       mainWindow?.hide();
       if (!trayHinted) {
@@ -571,7 +681,11 @@ function runApp(): void {
       stream.stop();
       tray.destroy();
       flow.dispose();
+      // Menghentikan engine Multi (abort inject berjalan) sebelum penyimpanan peristiwa ditutup.
+      multiHost.dispose();
       pending.close();
+      draft.close();
+      multiEvents.close();
     });
     syncBackground();
 

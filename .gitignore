@@ -40,3 +40,7 @@ desktop/spike-report-*.json
 ui-signing-key.pem
 # kunci penandatangan rilis aplikasi desktop (rahasia; jangan dikomit)
 *.release-signing-key.pem
+
+# Laporan dry-run migrasi data QC lama (berisi nomor serial; jangan dikomit)
+server/legacy-qc-report/
+server/laporan-*/

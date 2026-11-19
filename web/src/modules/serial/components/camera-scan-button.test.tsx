@@ -29,6 +29,17 @@ test('kolom pindai menampilkan tombol kamera hanya bila getUserMedia tersedia', 
   expect(screen.getByRole('button', { name: 'Scan dengan kamera' })).toBeInTheDocument();
 });
 
+test('tombol kamera tampil primary (menonjol), bukan outline', () => {
+  Object.defineProperty(navigator, 'mediaDevices', {
+    value: { getUserMedia: vi.fn() },
+    configurable: true,
+  });
+  render(<SerialScanInput id="scan" label="Pindai serial" onSubmit={() => 'added'} />);
+  const button = screen.getByRole('button', { name: 'Scan dengan kamera' });
+  expect(button).toHaveAttribute('data-variant', 'default');
+  expect(button.className).toContain('bg-primary');
+});
+
 test('tombol dinonaktifkan mengikuti disabled dan membuka dialog (dimuat malas) bila diklik', async () => {
   const getUserMedia = vi.fn(async () => {
     throw Object.assign(new Error('x'), { name: 'NotAllowedError' });

@@ -25,6 +25,12 @@ interface Row {
   date: string;
   timestamp: string;
   reinjected_at: string | null;
+  bu_id: string | null;
+  bu_label: string | null;
+  location_id: string | null;
+  location_label: string | null;
+  item_id: string | null;
+  client_id: string | null;
 }
 
 const BUSY_TIMEOUT_MS = 5000;
@@ -38,6 +44,12 @@ function toEntry(row: Row): PendingEntry {
     timestamp: row.timestamp,
   };
   if (row.reinjected_at !== null) entry.reinjectedAt = row.reinjected_at;
+  if (row.bu_id !== null) entry.buId = row.bu_id;
+  if (row.bu_label !== null) entry.buLabel = row.bu_label;
+  if (row.location_id !== null) entry.locationId = row.location_id;
+  if (row.location_label !== null) entry.locationLabel = row.location_label;
+  if (row.item_id !== null) entry.itemId = row.item_id;
+  if (row.client_id !== null) entry.clientId = row.client_id;
   return entry;
 }
 
@@ -59,6 +71,22 @@ export function openPendingStore(file: string): PendingStore {
       timestamp TEXT NOT NULL,
       reinjected_at TEXT
     )`);
+    // Kolom BU/lokasi (jembatan v6) serta item/clientId (v7) ditambahkan ke berkas pending lama; baris lama tetap valid (NULL = tak dipilih).
+    const have = new Set(
+      (db.prepare('PRAGMA table_info(pending)').all() as unknown as Array<{ name: string }>).map(
+        (column) => column.name,
+      ),
+    );
+    for (const column of [
+      'bu_id',
+      'bu_label',
+      'location_id',
+      'location_label',
+      'item_id',
+      'client_id',
+    ]) {
+      if (!have.has(column)) db.exec(`ALTER TABLE pending ADD COLUMN ${column} TEXT`);
+    }
   } catch (error) {
     // Lepas pegangan berkas (di Windows pegangan yang bocor mengunci berkas), tetapi berkas
     // dibiarkan apa adanya: jangan hapus data pengguna, pemanggil yang memutuskan.
@@ -76,7 +104,7 @@ export function openPendingStore(file: string): PendingStore {
   const selectAll = db.prepare('SELECT * FROM pending ORDER BY rowid');
   const selectOne = db.prepare('SELECT * FROM pending WHERE serial = ?');
   const insert = db.prepare(
-    'INSERT INTO pending (serial, brand, tipe, date, timestamp, reinjected_at) VALUES (?, ?, ?, ?, ?, ?)',
+    'INSERT INTO pending (serial, brand, tipe, date, timestamp, reinjected_at, bu_id, bu_label, location_id, location_label, item_id, client_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
   );
   const markReinjected = db.prepare('UPDATE pending SET reinjected_at = ? WHERE serial = ?');
   const del = db.prepare('DELETE FROM pending WHERE serial = ?');
@@ -104,6 +132,12 @@ export function openPendingStore(file: string): PendingStore {
               stored.date,
               stored.timestamp,
               stored.reinjectedAt ?? null,
+              stored.buId ?? null,
+              stored.buLabel ?? null,
+              stored.locationId ?? null,
+              stored.locationLabel ?? null,
+              stored.itemId ?? null,
+              stored.clientId ?? null,
             );
           } else {
             markReinjected.run(stored.reinjectedAt ?? entry.timestamp, serial);

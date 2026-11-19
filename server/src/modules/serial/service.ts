@@ -15,6 +15,7 @@ import type {
   ListSerialItemOptionsInput,
   SaveSerialBatchInput,
   SaveSerialBatchOutput,
+  SerialBuOptionsDto,
   SerialCaseDto,
   SerialChangeDto,
   SerialDto,
@@ -42,6 +43,7 @@ import { normalizeKey } from '@shared/items';
 import { wibDateIso } from '@shared/postel';
 import {
   normalizeSerial,
+  proofMinimumOf,
   SERIAL_CUSTODIES,
   SERIAL_EVENT_TYPES,
   SERIAL_LIMITS,
@@ -58,7 +60,7 @@ import { canManageProof } from './proof/access';
 import { loadStampItemInfo, planProofAttach } from './proof/attach';
 import { listFailedProofsBySerial, listProofsByEvents } from './proof/repo';
 import {
-  activeItemInBu,
+  activeItemWritableForBu,
   activeLocationName,
   findSerialByClientId,
   insertEventStmt,
@@ -89,6 +91,8 @@ interface OptionRow {
   brand_name: string | null;
   model: string;
   key: string;
+  proof_required: number | string;
+  proof_min: number | string;
 }
 
 const placeholders = (count: number): string => Array.from({ length: count }, () => '?').join(',');
@@ -134,7 +138,7 @@ export async function queryItemOptions(
   }
   const effectiveLimit = byIds ? (input.itemIds?.length ?? 0) : limit;
   const rows = await env.DB.prepare(
-    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\` FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
+    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.proof_required, i.proof_min FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
   )
     .bind(...binds, effectiveLimit + 1)
     .all<OptionRow>();
@@ -160,6 +164,8 @@ export async function queryItemOptions(
       label: `${row.brand_name ?? ''} ${row.model.trim()}`.trim(),
       buIds: buOptions.map((bu) => bu.id),
       buOptions,
+      proofRequired: Number(row.proof_required) === 1,
+      proofMin: Number(row.proof_min),
     };
   });
   return {
@@ -168,20 +174,41 @@ export async function queryItemOptions(
   };
 }
 
-/** Stiker yang berlaku bagi item pada BU tertentu; BU di luar hak tulis user atau item di luar BU itu = `NOT_FOUND`. */
+/**
+ * Stiker yang berlaku bagi item pada BU tertentu; BU di luar hak tulis user, BU nonaktif, atau item yang tidak terlihat
+ * bagi user = `NOT_FOUND`. BU serial tidak lagi dibatasi pada BU item (spek 2026-11-18 butir N).
+ */
 export async function stickerOptions(
   env: Env,
   user: UserContext,
   input: SerialStickerOptionsInput,
 ): Promise<SerialStickerOptionsDto> {
-  if (!canWriteBu(user, input.buId)) throw appError('NOT_FOUND', 'Item tidak ditemukan');
-  const link = await env.DB.prepare(
-    'SELECT 1 AS ok FROM item_business_units WHERE item_id = ? AND bu_id = ?',
-  )
-    .bind(input.itemId, input.buId)
-    .first<{ ok: number }>();
-  if (!link) throw appError('NOT_FOUND', 'Item tidak ditemukan');
+  if (!(await activeItemWritableForBu(env.DB, input.itemId, input.buId, user))) {
+    throw appError('NOT_FOUND', 'Item tidak ditemukan');
+  }
   return { stickers: await applicableStickersOf(env, input.itemId, input.buId) };
+}
+
+/**
+ * BU AKTIF yang boleh dipilih saat mencatat serial: BU ber-level `serial: edit` (pembaca saja: BU yang boleh dibacanya,
+ * pola `queryItemOptions`), urut kode lalu id. BU di luar hak tidak pernah muncul.
+ */
+export async function buOptions(env: Env, user: UserContext): Promise<SerialBuOptionsDto> {
+  const writable = writableBuIds(user);
+  const scope = writable.length > 0 ? writable : readableBuIds(user);
+  if (scope.length === 0) return { businessUnits: [] };
+  const rows = await env.DB.prepare(
+    `SELECT id, code, name FROM business_units WHERE status = 'active' AND id IN (${placeholders(scope.length)}) ORDER BY code, id`,
+  )
+    .bind(...scope)
+    .all<{ id: string; code: string; name: string }>();
+  return {
+    businessUnits: rows.results.map((row) => ({
+      id: row.id.trim(),
+      code: row.code.trim(),
+      name: row.name,
+    })),
+  };
 }
 
 /** Semua lokasi AKTIF (id, kode, nama), urut kode; pilihan lokasi saat mencatat serial tidak dibatasi penugasan lokasi. */
@@ -230,17 +257,39 @@ type Applicable = Awaited<ReturnType<typeof applicableStickersOf>>;
  */
 export class SerialLookupMemo {
   private readonly items = new Map<string, Promise<boolean>>();
+  private readonly proofMins = new Map<string, Promise<number>>();
   private readonly locations = new Map<string, Promise<string | null>>();
   private readonly stickers = new Map<string, Promise<Map<string, Applicable[number]>>>();
 
   constructor(private readonly env: Env) {}
 
-  activeItemInBu(itemId: string, buId: string): Promise<boolean> {
+  /** Syarat item bagi serial di BU itu (`activeItemWritableForBu`); user sama selama satu permintaan. */
+  activeItemWritableForBu(itemId: string, buId: string, user: UserContext): Promise<boolean> {
     const key = `${itemId}\u0000${buId}`;
     let found = this.items.get(key);
     if (!found) {
-      found = activeItemInBu(this.env.DB, itemId, buId);
+      found = activeItemWritableForBu(this.env.DB, itemId, buId, user);
       this.items.set(key, found);
+    }
+    return found;
+  }
+
+  /** Jumlah foto bukti minimum item (0 = tidak wajib); dibaca sekali per item per permintaan (`proofMinimumOf`). */
+  proofMinOf(itemId: string): Promise<number> {
+    let found = this.proofMins.get(itemId);
+    if (!found) {
+      found = this.env.DB.prepare('SELECT proof_required, proof_min FROM items WHERE id = ?')
+        .bind(itemId)
+        .first<{ proof_required: number | string; proof_min: number | string }>()
+        .then((item) =>
+          item
+            ? proofMinimumOf({
+                proofRequired: Number(item.proof_required) === 1,
+                proofMin: Number(item.proof_min),
+              })
+            : 0,
+        );
+      this.proofMins.set(itemId, found);
     }
     return found;
   }
@@ -291,7 +340,15 @@ export async function createSerialOnce(
       ? idempotent(row, existing.id)
       : failRow(row, 'Baris tidak valid');
   }
-  if (!(await memo.activeItemInBu(row.itemId, row.buId))) return failRow(row, ITEM_MESSAGE);
+  if (!(await memo.activeItemWritableForBu(row.itemId, row.buId, user))) {
+    return failRow(row, ITEM_MESSAGE);
+  }
+  // Item wajib foto bukti: jumlah foto kurang dari minimum = baris `invalid` (mencakup draft lama dan impor `.qcsn`).
+  // Pesan sengaja tidak diawali kalimat penolakan foto web (`isProofRejection`), supaya foto baris tak dikosongkan.
+  const proofMin = await memo.proofMinOf(row.itemId);
+  if (proofMin > (row.proofPhotoIds?.length ?? 0)) {
+    return failRow(row, `Item ini wajib foto bukti minimal ${proofMin}`);
+  }
   const locationName = await memo.activeLocationName(row.locationId);
   if (locationName === null) return failRow(row, LOCATION_MESSAGE);
   // Stiker hanya dimuat bila perlu: `[]` eksplisit tak butuh daftar yang berlaku; tidak dikirim = semua yang berlaku.
@@ -733,7 +790,7 @@ async function updateOnce(
     changes.push({ field: 'serial', from: row.serial, to: fields.serial });
   }
   if (fields.itemId !== undefined && fields.itemId !== row.item_id.trim()) {
-    if (!(await activeItemInBu(env.DB, fields.itemId, buId))) {
+    if (!(await activeItemWritableForBu(env.DB, fields.itemId, buId, user))) {
       throw validationError('itemId', ITEM_MESSAGE);
     }
     set.item_id = fields.itemId;

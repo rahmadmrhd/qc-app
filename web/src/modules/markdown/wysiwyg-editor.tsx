@@ -52,6 +52,8 @@ export interface WysiwygEditorProps {
   /** Maks. gambar pada isi (mis. pesan Serial Number); sisipan melebihi batas ditolak dengan pesan. Bawaan: tanpa batas. */
   maxImages?: number;
   extraExtensions?: Extensions;
+  /** Kelas tambahan untuk permukaan penyunting (mis. `min-h-24` agar form ringkas); digabung setelah bawaan. */
+  editorClassName?: string;
   onReady?: (editor: Editor) => void;
 }
 
@@ -95,6 +97,7 @@ export function WysiwygEditor({
   mode = 'item',
   maxImages,
   extraExtensions,
+  editorClassName,
   onReady,
 }: WysiwygEditorProps) {
   const imagesEnabled = mode === 'item' || mode === 'message';
@@ -199,6 +202,7 @@ export function WysiwygEditor({
           '[&_table]:w-full [&_table]:border-collapse [&_td]:border [&_td]:px-2 [&_td]:py-1',
           '[&_th]:border [&_th]:bg-muted [&_th]:px-2 [&_th]:py-1 [&_th]:text-left',
           '[&_a]:text-primary [&_a]:underline [&_a]:underline-offset-2',
+          editorClassName,
         ),
       },
       // Catatan: klik pada kotak ATAU labelnya tidak boleh mengubah centang (CSS saja tidak cukup: label meneruskan aktivasi).

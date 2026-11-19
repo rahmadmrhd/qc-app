@@ -70,6 +70,9 @@ export function ItemDetailView({
                   item.firmware}
               </Badge>
             ) : null}
+            {item.proofRequired ? (
+              <Badge variant="outline">Wajib foto (min {item.proofMin})</Badge>
+            ) : null}
             {item.status === 'inactive' ? <Badge variant="secondary">Nonaktif</Badge> : null}
             {item.businessUnits.map((bu) => (
               <Badge key={bu.id} variant="outline" title={bu.name}>

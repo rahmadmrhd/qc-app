@@ -93,6 +93,35 @@ describe('fetchHostKey', () => {
     expect(Date.now() - started).toBeLessThan(3000);
   });
 
+  test('signal yang dibatalkan memutus pengambilan seketika (sebelum maupun sesudah mulai)', async () => {
+    const server = await fake();
+    const pre = new AbortController();
+    pre.abort();
+    const preError = await fetchHostKey({
+      host: '127.0.0.1',
+      port: server.port,
+      username: USER,
+      password: PASSWORD,
+      signal: pre.signal,
+    }).catch((e: unknown) => e);
+    expect(preError).toBeInstanceOf(HostKeyError);
+    expect((preError as HostKeyError).message).toBe('Dibatalkan');
+
+    const live = new AbortController();
+    const pending = fetchHostKey({
+      host: '192.0.2.1',
+      username: USER,
+      password: PASSWORD,
+      timeoutMs: 30_000,
+      signal: live.signal,
+    }).catch((e: unknown) => e);
+    const started = Date.now();
+    live.abort();
+    const error = await pending;
+    expect((error as HostKeyError).message).toBe('Dibatalkan');
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
   test('kredensial salah melempar AUTH', async () => {
     const server = await fake();
     const error = await fetchHostKey({

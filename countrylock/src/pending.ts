@@ -7,6 +7,14 @@ export interface PendingEntry {
   serial: string;
   brand: Brand | 'none';
   tipe: string;
+  /** BU dan lokasi tujuan unggah (id dari katalog offline + label); kosong bila tak dipilih saat inject. */
+  buId?: string;
+  buLabel?: string;
+  locationId?: string;
+  locationLabel?: string;
+  /** Id Tipe katalog (= item Serial Number) dan kunci idempoten unggah per baris (jembatan v7). */
+  itemId?: string;
+  clientId?: string;
   /** Tanggal lokal hari itu (tanpa jam). */
   date: string;
   /** Waktu pencatatan (ISO 8601). */

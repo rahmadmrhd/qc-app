@@ -67,3 +67,8 @@ export function useActiveLocations(): ActiveLocationsValue {
   if (!value) throw new Error('useActiveLocations harus dipakai di dalam ActiveLocationsProvider');
   return value;
 }
+
+/** Seperti `useActiveLocations`, tetapi `null` bila tidak ada penyedia (komponen yang berguna juga tanpa header). */
+export function useOptionalActiveLocations(): ActiveLocationsValue | null {
+  return useContext(ActiveLocationsContext);
+}

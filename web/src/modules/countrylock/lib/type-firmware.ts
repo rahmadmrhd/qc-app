@@ -35,3 +35,17 @@ export function resolveTypeApplication(
   }
   return { ok: true, brand, firmwareCode: entry.code, firmwareLabel: entry.label || entry.code };
 }
+
+/**
+ * Tipe katalog yang boleh dipilih untuk Merk tertentu (daftar Tipe di form inject, seperti `UpdateListTipe` aplikasi
+ * lama: hanya Tipe milik merk terpilih), diurut menurut nama Tipe (model) agar stabil antar sinkron.
+ */
+export function tipeOptionsFor(
+  items: readonly CatalogItemDto[],
+  brand: Brand | null,
+): CatalogItemDto[] {
+  if (!brand) return [];
+  return items
+    .filter((item) => firmwareBrandOf(item.brand) === brand)
+    .sort((a, b) => a.model.localeCompare(b.model, 'id', { sensitivity: 'base' }));
+}
