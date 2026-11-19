@@ -48,17 +48,17 @@ on:
   workflow_dispatch:
     inputs:
       komponen:
-        description: 'Pemulihan: komponen yang dirilis ulang (server atau desktop) dari PR rilis yang SUDAH di-merge; wajib bersama `versi`. PR gabungan dipulihkan satu komponen per run'
+        description: 'Kosongkan untuk rilis biasa (jalan sendiri saat PR rilis di-merge). Isi server atau desktop hanya kalau rilisnya macet di tengah dan mau diulang; wajib bareng "versi". Rilis gabungan: ulangi satu per satu.'
         type: string
         required: false
         default: ''
       versi:
-        description: 'Pemulihan: versi (X.Y.Z) komponen itu dari PR rilis yang SUDAH di-merge ke main; jalur komponen dijalankan lagi (idempoten, guard server memakai keadaan terbaru)'
+        description: 'Pasangan "komponen": nomor versi yang diulang, mis. 1.0.0. Harus dari PR rilis yang sudah di-merge ke main. Aman diulang, langkah yang sudah beres tidak dikerjakan dua kali.'
         type: string
         required: false
         default: ''
       tarik:
-        description: 'Penarikan desktop: versi (X.Y.Z) yang dicabut dari pengguna (menghapus tanda tangan di Drive; installer dan tag tetap). Jangan isi bersama `komponen` atau `versi`'
+        description: 'Tarik versi desktop supaya tidak ditawarkan lagi ke pengguna, mis. 1.0.0. Yang dihapus hanya tanda tangan di Drive; installer, tag, dan GitHub Release tetap ada. Jangan diisi bareng "komponen" atau "versi".'
         type: string
         required: false
         default: ''
