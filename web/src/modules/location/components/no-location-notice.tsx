@@ -24,7 +24,7 @@ export function NoLocationNotice({ relevant = true, className }: NoLocationNotic
     <p
       role="status"
       data-testid="no-location-notice"
-      className={`rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm ${className ?? ''}`.trim()}
+      className={`rounded-md border border-warning-text/35 bg-warning-text/10 px-3 py-2 text-sm ${className ?? ''}`.trim()}
     >
       {NO_LOCATION_MESSAGE}
     </p>

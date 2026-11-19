@@ -33,7 +33,7 @@ const CardView = memo(function CardView({
       className={cn(
         'flex items-start gap-3 rounded-lg border p-3',
         status.tone === 'error' && 'border-destructive/40 bg-destructive/5',
-        status.tone === 'warn' && 'border-amber-500/40 bg-amber-500/5',
+        status.tone === 'warn' && 'border-warning-text/35 bg-warning-text/5',
         row.selected && 'bg-muted/60',
       )}
     >

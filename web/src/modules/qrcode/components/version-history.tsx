@@ -51,7 +51,11 @@ export function VersionHistory({
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">v{entry.version}</span>
                   <span>{entry.name}</span>
-                  <Badge variant={entry.status === 'active' ? 'default' : 'outline'}>
+                  <Badge
+                    color={entry.status === 'active' ? 'success' : 'secondary'}
+                    variant="soft"
+                    dot
+                  >
                     {STICKER_STATUS_LABEL[entry.status]}
                   </Badge>
                 </div>

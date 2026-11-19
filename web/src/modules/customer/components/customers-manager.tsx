@@ -115,7 +115,11 @@ export function CustomersManager({
                 )}
               </TableCell>
               <TableCell>
-                <Badge variant={customer.status === 'active' ? 'default' : 'secondary'}>
+                <Badge
+                  color={customer.status === 'active' ? 'success' : 'secondary'}
+                  variant="soft"
+                  dot
+                >
                   {customer.status === 'active' ? 'Aktif' : 'Nonaktif'}
                 </Badge>
               </TableCell>

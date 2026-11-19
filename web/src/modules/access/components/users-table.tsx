@@ -100,7 +100,11 @@ export function UsersTable({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={user.status === 'active' ? 'default' : 'secondary'}>
+                  <Badge
+                    color={user.status === 'active' ? 'success' : 'secondary'}
+                    variant="soft"
+                    dot
+                  >
                     {user.status === 'active' ? 'Aktif' : 'Nonaktif'}
                   </Badge>
                 </TableCell>

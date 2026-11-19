@@ -24,10 +24,10 @@ import { MULTI_BRAND, MultiForm } from './multi-form';
 
 const BADGES: { filter: DeviceFilter; label: string; tone: string }[] = [
   { filter: 'waiting', label: 'Menunggu', tone: 'border-border' },
-  { filter: 'queued', label: 'Antri', tone: 'border-amber-500/60' },
-  { filter: 'injecting', label: 'Inject', tone: 'border-blue-500/60' },
-  { filter: 'success', label: 'Selesai', tone: 'border-emerald-500/60' },
-  { filter: 'failed', label: 'Gagal', tone: 'border-red-500/60' },
+  { filter: 'queued', label: 'Antri', tone: 'border-warning-text/35' },
+  { filter: 'injecting', label: 'Inject', tone: 'border-info-text/35' },
+  { filter: 'success', label: 'Selesai', tone: 'border-success-text/35' },
+  { filter: 'failed', label: 'Gagal', tone: 'border-destructive-text/35' },
 ];
 
 /**
@@ -126,12 +126,12 @@ export function MultiPanel({
             </p>
           ) : null}
           {heldReason !== null ? (
-            <p role="status" className="text-sm text-amber-600 dark:text-amber-400">
+            <p role="status" className="text-sm text-warning-text">
               Draft menahan inject: {heldReason}
             </p>
           ) : null}
           {running && snapshot?.queueStopped ? (
-            <p role="status" className="text-sm text-amber-600 dark:text-amber-400">
+            <p role="status" className="text-sm text-warning-text">
               Antrean sedang berhenti: tekan Inject All atau nyalakan Auto Inject untuk melanjutkan.
             </p>
           ) : null}

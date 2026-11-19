@@ -40,7 +40,7 @@ type FieldErrors = Partial<Record<keyof SerialEditable, string>>;
 function ConflictNote({ text }: { text: string | undefined }) {
   if (!text) return null;
   return (
-    <p className="text-xs text-amber-700 dark:text-amber-400">
+    <p className="text-xs text-warning-text">
       Orang lain sudah mengubahnya jadi: {text}. Kalau disimpan, perubahan itu tertimpa.
     </p>
   );
@@ -293,7 +293,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
             <ConflictNote text={conflicts.note} />
           </div>
           {notice ? (
-            <p role="status" className="text-sm text-amber-700 dark:text-amber-400">
+            <p role="status" className="text-sm text-warning-text">
               {notice}
             </p>
           ) : null}

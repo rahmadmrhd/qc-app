@@ -61,20 +61,20 @@ const KIND_STYLES: Record<Exclude<ChangeKind, 'unchanged'>, KindStyle> = {
   added: {
     label: 'Ditambah',
     icon: Plus,
-    box: 'border-emerald-500/60 bg-emerald-500/10',
-    tag: 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-200',
+    box: 'border-success-text/35 bg-success-text/10',
+    tag: 'bg-success-text/20 text-success-text',
   },
   changed: {
     label: 'Diubah',
     icon: Pencil,
-    box: 'border-amber-500/60 bg-amber-500/10',
-    tag: 'bg-amber-500/20 text-amber-900 dark:text-amber-200',
+    box: 'border-warning-text/35 bg-warning-text/10',
+    tag: 'bg-warning-text/20 text-warning-text',
   },
   removed: {
     label: 'Dihapus',
     icon: Minus,
-    box: 'border-red-500/60 bg-red-500/10',
-    tag: 'bg-red-500/20 text-red-800 dark:text-red-200',
+    box: 'border-destructive-text/35 bg-destructive-text/10',
+    tag: 'bg-destructive-text/20 text-destructive-text',
   },
 };
 

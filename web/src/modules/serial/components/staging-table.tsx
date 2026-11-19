@@ -60,7 +60,7 @@ export function rowStatus(row: StagingRow): { tone: 'error' | 'warn' | 'ok'; tex
 
 export const TONE_CLASS = {
   error: 'text-destructive',
-  warn: 'text-amber-600 dark:text-amber-400',
+  warn: 'text-warning-text',
   ok: 'text-muted-foreground',
 } as const;
 
@@ -229,7 +229,7 @@ const RowView = memo(function RowView({
       className={cn(
         'border-b align-top',
         status.tone === 'error' && 'bg-destructive/5',
-        status.tone === 'warn' && 'bg-amber-500/5',
+        status.tone === 'warn' && 'bg-warning-text/5',
         row.selected && 'bg-muted/50',
       )}
     >

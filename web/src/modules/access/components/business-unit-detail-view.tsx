@@ -38,7 +38,9 @@ export function BusinessUnitDetailView({ businessUnit, onBack }: BusinessUnitDet
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">{businessUnit.code}</Badge>
             {businessUnit.status === 'inactive' ? (
-              <Badge variant="secondary">Nonaktif</Badge>
+              <Badge color="secondary" variant="soft" dot>
+                Nonaktif
+              </Badge>
             ) : null}
           </div>
         </div>

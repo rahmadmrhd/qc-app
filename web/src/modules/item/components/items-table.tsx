@@ -87,11 +87,19 @@ export function ItemsTable({
                   </div>
                 </TableCell>
                 <TableCell>
-                  {item.isCountryLock ? <Badge variant="outline">Country lock</Badge> : null}
+                  {item.isCountryLock ? (
+                    <Badge color="secondary" variant="outline">
+                      Country lock
+                    </Badge>
+                  ) : null}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{item.imageCount}</TableCell>
                 <TableCell>
-                  <Badge variant={item.status === 'active' ? 'default' : 'secondary'}>
+                  <Badge
+                    color={item.status === 'active' ? 'success' : 'secondary'}
+                    variant="soft"
+                    dot
+                  >
                     {item.status === 'active' ? 'Aktif' : 'Nonaktif'}
                   </Badge>
                 </TableCell>

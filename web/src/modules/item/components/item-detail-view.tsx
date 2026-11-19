@@ -62,7 +62,11 @@ export function ItemDetailView({
             {item.brand} {item.model}
           </h1>
           <div className="flex flex-wrap items-center gap-2">
-            {item.isCountryLock ? <Badge variant="outline">Country lock</Badge> : null}
+            {item.isCountryLock ? (
+              <Badge color="secondary" variant="outline">
+                Country lock
+              </Badge>
+            ) : null}
             {item.firmware !== '' ? (
               <Badge variant="outline">
                 Firmware:{' '}
@@ -73,7 +77,11 @@ export function ItemDetailView({
             {item.proofRequired ? (
               <Badge variant="outline">Wajib foto (min {item.proofMin})</Badge>
             ) : null}
-            {item.status === 'inactive' ? <Badge variant="secondary">Nonaktif</Badge> : null}
+            {item.status === 'inactive' ? (
+              <Badge color="secondary" variant="soft" dot>
+                Nonaktif
+              </Badge>
+            ) : null}
             {item.businessUnits.map((bu) => (
               <Badge key={bu.id} variant="outline" title={bu.name}>
                 {bu.code}
@@ -121,7 +129,11 @@ export function ItemDetailView({
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="font-medium">{item.manualBook.name}</span>
             <Badge variant="outline">{`v${item.manualBook.version}`}</Badge>
-            <Badge variant={item.manualBook.status === 'active' ? 'default' : 'secondary'}>
+            <Badge
+              color={item.manualBook.status === 'active' ? 'success' : 'secondary'}
+              variant="soft"
+              dot
+            >
               {STICKER_STATUS_LABEL[item.manualBook.status]}
             </Badge>
             {openManualBookHref?.(item.manualBook.designId) ? (

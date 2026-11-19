@@ -303,7 +303,7 @@ function StrictBody({
                   <dt>Tanggal uji</dt>
                   <dd className="text-foreground">{info.testDate}</dd>
                 </dl>
-                <p className="pt-1 font-medium text-amber-600 dark:text-amber-400">
+                <p className="pt-1 font-medium text-warning-text">
                   Wajib foto minimal {info.proofMin}
                 </p>
               </section>
@@ -351,7 +351,7 @@ function StrictBody({
           <AlertDialogFooter className="bottom-0 mx-0 mb-0 shrink-0 flex-col items-stretch rounded-none p-0 sm:flex-col">
             <p
               role="status"
-              className={`px-4 pt-3 text-xs ${canSave ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400'}`}
+              className={`px-4 pt-3 text-xs ${canSave ? 'text-muted-foreground' : 'text-warning-text'}`}
             >
               {hint}
             </p>

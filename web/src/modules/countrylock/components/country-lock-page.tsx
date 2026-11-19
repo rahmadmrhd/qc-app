@@ -40,7 +40,7 @@ export { AUTO_INJECT_WARNING };
 
 function StatusBadge({ label, up }: { label: string; up: boolean }) {
   return (
-    <Badge variant={up ? 'default' : 'secondary'}>
+    <Badge color={up ? 'success' : 'destructive'} variant="soft" dot>
       {label}: {up ? 'terhubung' : 'tidak terjangkau'}
     </Badge>
   );
@@ -323,9 +323,7 @@ export function CountryLockPage({
                   </div>
                 ) : null}
                 {tipe && !tipe.application.ok ? (
-                  <p className="text-sm text-amber-600 dark:text-amber-400">
-                    {tipe.application.message}
-                  </p>
+                  <p className="text-sm text-warning-text">{tipe.application.message}</p>
                 ) : null}
 
                 {missingDeviceIp ? (
@@ -377,7 +375,7 @@ export function CountryLockPage({
                   </Button>
                 </div>
                 {injectBlocker !== null && draft.status !== 'loading' ? (
-                  <p role="status" className="text-sm text-amber-600 dark:text-amber-400">
+                  <p role="status" className="text-sm text-warning-text">
                     {injectBlocker}
                   </p>
                 ) : null}

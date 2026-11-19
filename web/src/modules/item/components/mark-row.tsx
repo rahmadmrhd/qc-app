@@ -204,7 +204,7 @@ export function MarkRow({
         onChange={(event) => onChange({ ...mark, note: event.target.value })}
       />
       {inactiveTarget ? (
-        <p role="status" className="text-sm text-amber-600 dark:text-amber-400">
+        <p role="status" className="text-sm text-warning-text">
           {target.kind === 'sticker' ? 'Stiker' : 'Jenis'} nonaktif: simpan akan ditolak bila
           penanda ini baru bagi item. Pilih sasaran lain.
         </p>

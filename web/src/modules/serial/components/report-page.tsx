@@ -77,7 +77,7 @@ export function ReportPage({ onOpenSerial }: ReportPageProps) {
       ) : matches.length === 0 && elsewhere !== null ? (
         <section
           aria-label="Tidak bisa dilaporkan"
-          className="space-y-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4"
+          className="space-y-3 rounded-lg border border-warning-text/35 bg-warning-text/10 p-4"
           data-tour="report-result"
         >
           <p role="status" className="text-sm">
@@ -127,7 +127,7 @@ function Blocked({
   return (
     <section
       aria-label="Tidak bisa dilaporkan"
-      className="space-y-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4"
+      className="space-y-3 rounded-lg border border-warning-text/35 bg-warning-text/10 p-4"
       data-tour="report-result"
     >
       <UnitSummary match={match} />

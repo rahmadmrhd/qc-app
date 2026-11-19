@@ -1,4 +1,4 @@
-import { CircleAlert, TriangleAlert } from 'lucide-react';
+import { CircleAlert } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 /** Ringkasan kondisi tata letak label yang perlu diperhatikan pengguna. */
@@ -30,11 +30,7 @@ export function LabelStatusAlerts({ status }: { status: LabelStatus | null }) {
         </Alert>
       ) : null}
       {status.tooDense ? (
-        <Alert
-          role="status"
-          className="border-amber-500/50 text-amber-700 *:data-[slot=alert-description]:text-amber-700/90 dark:text-amber-400 dark:*:data-[slot=alert-description]:text-amber-400/90"
-        >
-          <TriangleAlert />
+        <Alert role="status" color="warning">
           <AlertTitle>QR terlalu padat</AlertTitle>
           <AlertDescription>
             {(Math.floor(status.moduleMm * 100) / 100).toFixed(2).replace('.', ',')} mm per modul
@@ -44,11 +40,7 @@ export function LabelStatusAlerts({ status }: { status: LabelStatus | null }) {
         </Alert>
       ) : null}
       {status.frameTight ? (
-        <Alert
-          role="status"
-          className="border-amber-500/50 text-amber-700 *:data-[slot=alert-description]:text-amber-700/90 dark:text-amber-400 dark:*:data-[slot=alert-description]:text-amber-400/90"
-        >
-          <TriangleAlert />
+        <Alert role="status" color="warning">
           <AlertTitle>Bingkai terlalu dekat dengan QR</AlertTitle>
           <AlertDescription>
             Beri jarak minimal 0,5 mm antara bingkai dan QR agar QR tetap terbaca. Ekspor tetap

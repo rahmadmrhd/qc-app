@@ -122,7 +122,7 @@ export function CopyMarksDialog({
                 </li>
               ))}
             </ol>
-            <p role="status" className="text-sm text-amber-600 dark:text-amber-400">
+            <p role="status" className="text-sm text-warning-text">
               {inactiveCount} penanda bersasaran nonaktif. Simpan akan menolak sasaran nonaktif yang
               baru bagi item ini; ganti sasarannya setelah disalin.
             </p>

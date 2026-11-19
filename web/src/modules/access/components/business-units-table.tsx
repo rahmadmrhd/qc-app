@@ -74,7 +74,11 @@ export function BusinessUnitsTable({
               <TableCell className="font-medium">{businessUnit.code}</TableCell>
               <TableCell>{businessUnit.name}</TableCell>
               <TableCell>
-                <Badge variant={businessUnit.status === 'active' ? 'default' : 'secondary'}>
+                <Badge
+                  color={businessUnit.status === 'active' ? 'success' : 'secondary'}
+                  variant="soft"
+                  dot
+                >
                   {businessUnit.status === 'active' ? 'Aktif' : 'Nonaktif'}
                 </Badge>
               </TableCell>

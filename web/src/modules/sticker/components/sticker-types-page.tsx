@@ -79,7 +79,11 @@ export function StickerTypesPage({
                 <TableCell>{STICKER_RULE_LABEL[type.rule]}</TableCell>
                 <TableCell className="text-right tabular-nums">{type.stickerCount}</TableCell>
                 <TableCell>
-                  <Badge variant={type.status === 'active' ? 'default' : 'secondary'}>
+                  <Badge
+                    color={type.status === 'active' ? 'success' : 'secondary'}
+                    variant="soft"
+                    dot
+                  >
                     {type.status === 'active' ? 'Aktif' : 'Nonaktif'}
                   </Badge>
                 </TableCell>

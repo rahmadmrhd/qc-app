@@ -104,12 +104,18 @@ export function StockPage({
                 <TableCell>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{row.name}</span>
-                    {row.low ? <Badge variant="destructive">Menipis</Badge> : null}
+                    {row.low ? (
+                      <Badge color="warning" variant="soft" dot>
+                        Menipis
+                      </Badge>
+                    ) : null}
                     {row.status === 'active' ? null : (
                       <Badge variant="secondary">{STICKER_STATUS_LABEL[row.status]}</Badge>
                     )}
                     {row.typeStatus === 'inactive' ? (
-                      <Badge variant="secondary">Jenis nonaktif</Badge>
+                      <Badge color="secondary" variant="soft" dot>
+                        Jenis nonaktif
+                      </Badge>
                     ) : null}
                   </div>
                 </TableCell>

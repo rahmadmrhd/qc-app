@@ -145,7 +145,7 @@ export function UploadTab({
                 <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
                   {busy ? <Spinner /> : null}
                   {entry.status === 'done' ? (
-                    <CircleCheck aria-hidden className="size-4 text-green-600" />
+                    <CircleCheck aria-hidden className="size-4 text-success-text" />
                   ) : null}
                   {entry.status === 'failed' ? (
                     <CircleAlert aria-hidden className="size-4 text-destructive" />

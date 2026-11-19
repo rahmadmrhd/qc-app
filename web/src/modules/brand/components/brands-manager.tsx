@@ -94,7 +94,11 @@ export function BrandsManager({
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{brand.itemCount}</TableCell>
                 <TableCell>
-                  <Badge variant={brand.status === 'active' ? 'default' : 'secondary'}>
+                  <Badge
+                    color={brand.status === 'active' ? 'success' : 'secondary'}
+                    variant="soft"
+                    dot
+                  >
                     {brand.status === 'active' ? 'Aktif' : 'Nonaktif'}
                   </Badge>
                 </TableCell>

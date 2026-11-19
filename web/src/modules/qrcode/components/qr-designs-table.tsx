@@ -139,7 +139,11 @@ export function QrDesignsTable({
                 <TableCell>
                   <div className="space-y-1">
                     <StatusCell design={design} />
-                    {design.overflow ? <Badge variant="destructive">Tidak muat</Badge> : null}
+                    {design.overflow ? (
+                      <Badge color="destructive" variant="soft">
+                        Tidak muat
+                      </Badge>
+                    ) : null}
                   </div>
                 </TableCell>
                 <TableCell>

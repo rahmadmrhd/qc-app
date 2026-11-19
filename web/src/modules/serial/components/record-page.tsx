@@ -109,7 +109,7 @@ export interface RecordPageHandle {
 
 const NOTICE_CLASS: Record<NoticeTone, string> = {
   info: 'border-border bg-muted/40',
-  warn: 'border-amber-500/50 bg-amber-500/10',
+  warn: 'border-warning-text/35 bg-warning-text/10',
   error: 'border-destructive/50 bg-destructive/10 text-destructive',
 };
 
@@ -975,7 +975,7 @@ export function RecordPage({
           autoFocus
         />
         {gated ? (
-          <p role="status" className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+          <p role="status" className="mt-1 text-xs text-warning-text">
             Isi Default dulu: {missing.join(', ')}.
           </p>
         ) : null}
@@ -992,7 +992,7 @@ export function RecordPage({
       {(draft ? draft.saveFailed === true : draftFailed) ? (
         <p
           role="alert"
-          className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm"
+          className="rounded-md border border-warning-text/35 bg-warning-text/10 px-3 py-2 text-sm"
         >
           Draft tidak tersimpan otomatis (penyimpanan perangkat penuh atau diblokir). Simpan atau
           ekspor berkas .qcsn supaya hasil scan tidak hilang.

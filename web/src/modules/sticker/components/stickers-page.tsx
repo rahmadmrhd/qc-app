@@ -137,7 +137,11 @@ export function StickersPage({
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{label}</span>
-                      {sticker.low ? <Badge variant="destructive">Menipis</Badge> : null}
+                      {sticker.low ? (
+                        <Badge color="warning" variant="soft" dot>
+                          Menipis
+                        </Badge>
+                      ) : null}
                     </div>
                     {sticker.alias !== '' ? (
                       <div className="text-xs text-muted-foreground">{sticker.name}</div>
@@ -162,7 +166,11 @@ export function StickersPage({
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{sticker.minQty}</TableCell>
                   <TableCell>
-                    <Badge variant={sticker.status === 'active' ? 'default' : 'secondary'}>
+                    <Badge
+                      color={sticker.status === 'active' ? 'success' : 'secondary'}
+                      variant="soft"
+                      dot
+                    >
                       {STICKER_STATUS_LABEL[sticker.status]}
                     </Badge>
                   </TableCell>

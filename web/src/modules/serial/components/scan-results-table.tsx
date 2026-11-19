@@ -83,7 +83,7 @@ export function ScanResultsTable({
                   data-highlight={highlightId === row.id ? 'true' : undefined}
                   className={cn(
                     'border-b align-top transition-colors duration-700',
-                    highlightId === row.id && 'bg-emerald-500/20',
+                    highlightId === row.id && 'bg-success-text/20',
                   )}
                 >
                   <td className="px-3 py-2 text-center text-muted-foreground tabular-nums">

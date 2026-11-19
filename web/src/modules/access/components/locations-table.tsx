@@ -49,7 +49,11 @@ export function LocationsTable({
               <TableCell className="font-medium">{location.code}</TableCell>
               <TableCell>{location.name}</TableCell>
               <TableCell>
-                <Badge variant={location.status === 'active' ? 'default' : 'secondary'}>
+                <Badge
+                  color={location.status === 'active' ? 'success' : 'secondary'}
+                  variant="soft"
+                  dot
+                >
                   {location.status === 'active' ? 'Aktif' : 'Nonaktif'}
                 </Badge>
               </TableCell>

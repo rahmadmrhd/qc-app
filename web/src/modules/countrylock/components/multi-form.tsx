@@ -207,7 +207,7 @@ export function MultiForm({
         />
       </div>
       {tipe && application && !application.ok ? (
-        <p className="text-sm text-amber-600 dark:text-amber-400">{application.message}</p>
+        <p className="text-sm text-warning-text">{application.message}</p>
       ) : null}
 
       <div className="grid items-start gap-4 sm:grid-cols-3">

@@ -119,7 +119,7 @@ function Highlighted({ text, term }: { text: string; term: string }) {
   return text.split(pattern).map((part, index) =>
     index % 2 === 1 ? (
       // biome-ignore lint/suspicious/noArrayIndexKey: potongan teks statis, urutannya tetap
-      <mark key={index} className="rounded-sm bg-yellow-500/40 text-inherit">
+      <mark key={index} className="rounded-sm bg-warning/40 text-inherit">
         {part}
       </mark>
     ) : (

@@ -39,7 +39,11 @@ export function BrandDetailView({ brand, businessUnits, onBack }: BrandDetailVie
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold">{brand.name}</h1>
-          {brand.status === 'inactive' ? <Badge variant="secondary">Nonaktif</Badge> : null}
+          {brand.status === 'inactive' ? (
+            <Badge color="secondary" variant="soft" dot>
+              Nonaktif
+            </Badge>
+          ) : null}
         </div>
         <Button variant="outline" onClick={onBack}>
           Kembali ke daftar merk

@@ -209,7 +209,7 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
         {settings.smtpConfigured ? null : (
           <p
             role="status"
-            className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm"
+            className="rounded-md border border-warning-text/35 bg-warning-text/10 p-3 text-sm"
           >
             SMTP belum dikonfigurasi di server: ringkasan tidak akan terkirim sampai SMTP diatur
             (lihat dokumen penyebaran).

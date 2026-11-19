@@ -83,7 +83,7 @@ export function InjectProgressDialog({
             className={cn(
               'h-full w-full',
               running && 'animate-pulse bg-primary',
-              outcome === 'success' && 'bg-green-600',
+              outcome === 'success' && 'bg-success',
               outcome === 'failed' && 'bg-destructive',
               outcome === 'cancelled' && 'bg-muted-foreground',
             )}

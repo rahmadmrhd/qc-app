@@ -65,7 +65,7 @@ export function ExportDialog({ design, open, onOpenChange, onConfirm }: ExportDi
           </DialogDescription>
         </DialogHeader>
         {again ? (
-          <p className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+          <p className="rounded-md border border-warning-text/35 bg-warning-text/10 p-3 text-sm">
             Ekspor ulang menimpa berkas lama (diekspor {formatAuditTime(design.exportedAt)} oleh{' '}
             {design.exportedBy}
             ). Berkas lama dipindah ke tempat sampah Drive dan tidak dapat dipakai lagi dari
@@ -73,7 +73,7 @@ export function ExportDialog({ design, open, onOpenChange, onConfirm }: ExportDi
           </p>
         ) : null}
         {newVersion ? (
-          <div className="space-y-2 rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm">
+          <div className="space-y-2 rounded-md border border-warning-text/35 bg-warning-text/10 p-3 text-sm">
             <p>
               Label berubah sejak versi v{design.stickerVersion}. Ekspor ulang ini membuat stiker
               Manual Book baru (v{design.stickerVersion + 1}) di katalog; stiker v
