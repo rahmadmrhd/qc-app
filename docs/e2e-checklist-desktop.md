@@ -5,7 +5,7 @@ Dijalankan pemilik pada perangkat nyata sebelum Fase 2 ditulis (rencana `docs/su
 ## Prasyarat
 
 - Laptop Windows 10/11 x64 **bersih** (tanpa Node, Bun, atau Git) dan satu laptop/PC lain sebagai pembanding berisi **aplikasi WPF Country Lock lama**.
-- Installer: `desktop/dist-app/QC App Setup <versi>.exe` (dibuat `bun run build:desktop`; pasang per pengguna, tanpa hak admin). Untuk uji tanpa installer: `bun run build:web && bun run --cwd desktop pack`, lalu `desktop/dist-app/win-unpacked/QC App.exe`.
+- Installer: `desktop/dist-app/QC-App-Setup-<versi>-<arch>.exe` (`<arch>` = `x64` atau `arm64`; dibuat `bun run build:desktop`, atau diunduh dari Drive hasil `release.yml`; pasang per pengguna, tanpa hak admin). Untuk uji tanpa installer: `bun run build:web && bun run --cwd desktop pack`, lalu `desktop/dist-app/win-unpacked/QC App.exe`.
 - Paket skrip: folder `Country Lock2` (berisi `config.QC`, `MIKROTIK\`, `UBIQUITI\`).
 - Router jump Mikrotik (alamat sesuai `server.ip` di `config.QC`) dan perangkat uji: satu Ubiquiti dan satu Mikrotik, keduanya **bukan** perangkat produksi.
 - Akun QC terdaftar di server (staging `https://qc-dev.rhd.my.id` atau production `https://qc.rhd.my.id`) dan peramban sistem yang dapat login Google.
@@ -182,6 +182,25 @@ Prasyarat: build dengan katalog aktif (`CATALOG_TOKEN`), paket skrip Ubiquiti, r
 | J13 | Serial yang sudah ada di draft/terdaftar muncul lagi sebagai perangkat | Tidak diinject ulang otomatis (ditandai sudah terdaftar); Inject All juga melewatinya (keputusan pemilik 2026-11-19), sedangkan tombol Inject di baris perangkat itu tetap bisa meng-inject manual | |
 | J14 | Server SSH router mati atau perintah lease gagal | Pesan galat tampil, batch yang berjalan tidak crash, pemindaian dicoba lagi berjenjang | |
 | J15 | Jalankan di build dengan jembatan lama (< 9) | Tombol mode Multi tidak tampil; mode tunggal normal | |
+
+## K. Pembaruan otomatis (rilis desktop)
+
+Prasyarat: environment `desktop-release`, folder Drive, dan `DESKTOP_RELEASES_FOLDER_ID` di `.env` VPS sudah dipasang (`docs/desktop-release-signing.md`). Dua versi rilis berurutan, mis. N = `1.0.0` dan N+1 = `1.0.1`, sudah diterbitkan lewat `release.yml`; installer N diambil dari Drive (bukan dari GitHub). Uji pada Windows x64 **dan** Windows arm64 (ulangi K2-K9 di tiap arsitektur). Pembaruan hanya aktif pada aplikasi terpasang (`app.isPackaged`) yang dibangun dengan kunci publik rilis.
+
+| # | Langkah | Hasil yang diharapkan | Hasil |
+|---|---|---|---|
+| K1 | Terbitkan N, pasang installer N (`QC-App-Setup-<N>-<arch>.exe`) pada laptop bersih | Muncul peringatan SmartScreen "penerbit tak dikenal" (belum ada Authenticode); setelah "Tetap jalankan" terpasang per pengguna tanpa hak admin | |
+| K2 | Terbitkan N+1; buka aplikasi N, tunggu sekitar 90 detik (cek pertama) | Dialog bawaan OS "QC App versi N+1 tersedia" berisi catatan rilis dan tombol "Perbarui sekarang" / "Nanti" | |
+| K3 | Pilih "Nanti"; biarkan aplikasi terbuka | Tidak ada dialog lagi untuk versi yang sama pada sesi itu; cek berikutnya 6 jam kemudian | |
+| K4 | Tutup dan buka lagi aplikasi, tunggu dialog, pilih "Perbarui sekarang" | Unduhan berjalan tanpa login; muncul dialog "Pembaruan siap dipasang" | |
+| K5 | Pilih "Nanti saat keluar", tutup aplikasi sepenuhnya (keluar dari tray), buka lagi | Aplikasi sudah versi N+1 (periksa Properti > Detail pada `QC App.exe`) tanpa wizard | |
+| K6 | Ulangi J2-J4 lalu pilih "Mulai ulang sekarang" | Aplikasi tertutup, terpasang senyap, dan terbuka lagi sebagai N+1 | |
+| K7 | Mulai inject Country Lock (perangkat uji), biarkan berjalan saat cek pembaruan jatuh tempo | Tidak ada dialog dan tidak ada restart selama inject; dialog muncul setelah inject selesai | |
+| K8 | Tarik N+1 (`tarik` = N+1) lalu buka aplikasi N | Tidak ada tawaran pembaruan ke N+1 (server hanya menyajikan versi bertanda tangan terbaru yang tersisa) | |
+| K9 | Hubungkan ke server dengan Drive/folder rilis kosong atau `DESKTOP_RELEASES_FOLDER_ID` kosong | Tidak ada dialog dan tidak ada galat yang terlihat pengguna; Country Lock dan halaman lain normal | |
+| K10 | Ganti `DESKTOP_RELEASE_PUBLIC_KEY_PEM` di build uji dengan kunci lain, pasang, terbitkan rilis dari kunci asli | Aplikasi menolak manifest (tanda tangan tak sah): tidak ada tawaran pembaruan, log aplikasi menyebut penolakan | |
+| K11 | Ubah repositori menjadi **privat** dan/atau cabut token GitHub apa pun, ulangi K2-K5 | Pembaruan tetap berfungsi penuh (tak ada permintaan ke GitHub dari aplikasi atau server) | |
+| K12 | Unduh `app-file` dengan nama di luar manifest atau versi tanpa `.sig` (curl) | 404 seragam; lebih dari 60 unduhan installer per jam dari satu IP = 429 | |
 
 ## Pengisian hasil
 

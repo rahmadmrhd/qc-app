@@ -67,6 +67,10 @@ import { UI_PUBLIC_KEY_PEM } from './ui/public-key';
 import { createReloadGate, type ReloadGate } from './ui/reload-gate';
 import { createRenderProbe, RENDER_PROBE_TIMEOUT_MS } from './ui/render-probe';
 import { createUiBundleManager } from './ui/ui-bundle';
+import { shouldRunAppUpdater } from './update/app-updater';
+import { loadAutoUpdater } from './update/load-updater';
+import { RELEASE_PUBLIC_KEY_PEM } from './update/release-public-key';
+import { startAppUpdate } from './update/start-app-update';
 import { createMainWindow, lockDownSession } from './window';
 
 const smoke = process.argv.includes('--smoke');
@@ -750,6 +754,34 @@ function runApp(): void {
     runCatalog(0);
     mainWindow.on('focus', () => runCatalog(10 * 60 * 1000));
     setInterval(() => runCatalog(0), 60 * 60 * 1000).unref();
+    // Pembaruan otomatis aplikasi (spek desktop 5.5, rencana bagian 4): hanya aplikasi terkemas (bukan smoke) dengan kunci
+    // rilis tertanam dan alamat server sah. Alamat server yang diubah pengguna berlaku setelah aplikasi dimulai ulang.
+    const updateServerUrl = settings.get().serverUrl;
+    if (
+      RELEASE_PUBLIC_KEY_PEM !== null &&
+      shouldRunAppUpdater({
+        isPackaged: app.isPackaged,
+        smoke,
+        smokeUi,
+        serverUrl: updateServerUrl,
+        publicKeyPem: RELEASE_PUBLIC_KEY_PEM,
+      })
+    ) {
+      startAppUpdate({
+        loadUpdater: loadAutoUpdater,
+        configDir: join(userData, 'updater'),
+        serverUrl: updateServerUrl,
+        publicKeyPem: RELEASE_PUBLIC_KEY_PEM,
+        installedVersion: app.getVersion(),
+        arch: process.arch === 'arm64' ? 'arm64' : 'x64',
+        fetchImpl: net.fetch as typeof fetch,
+        dialog: { showMessageBox: (options) => dialog.showMessageBox(options) },
+        isBusy: () => ipcHandle?.isInjecting() ?? false,
+        log: (message) => console.log(`[pembaruan] ${message}`),
+      }).catch((error) =>
+        console.error(`[pembaruan] gagal dimulai: ${String(error).slice(0, 200)}`),
+      );
+    }
     for (const url of earlyAuthUrls.splice(0)) void flow.handleCallback(url);
     for (const handoff of earlyHandoffs.splice(0)) void handoffFlow.handle(handoff);
   });

@@ -70,9 +70,33 @@ case "$*" in
     [ -f "$FAKE_STATE/rm_fail" ] && exit 1
     exit 0 ;;
   "exec "*)
-    echo "exec rahasia-uji"; echo "exec err rahasia-uji" >&2
     echo "exec-env MYSQL_PWD=$MYSQL_PWD" >> "$FAKE_LOG_PRIVATE"
+    case "$*" in
+      *schema_migrations*)
+        # pagar downgrade skema: isi berkas keadaan "applied" = migrasi yang tercatat di basis data
+        echo "exec err rahasia-uji" >&2
+        [ -f "$FAKE_STATE/applied_fail" ] && exit 1
+        cat "$FAKE_STATE/applied" 2>/dev/null
+        exit 0 ;;
+    esac
+    echo "exec rahasia-uji"; echo "exec err rahasia-uji" >&2
     [ -f "$FAKE_STATE/db_auth_fail" ] && exit 1
+    exit 0 ;;
+  "run "*)
+    # docker run --rm --network none --entrypoint <ls|head> <repo>:<tag> ... : isi migrasi di dalam image
+    echo "run err rahasia-uji" >&2
+    img=$(echo "$*" | sed -n 's/.*qc-app:\\([^ ]*\\).*/\\1/p')
+    case "$*" in
+      *"--entrypoint ls "*)
+        [ -f "$FAKE_STATE/image_ls_fail" ] && exit 1
+        cat "$FAKE_STATE/image_migrations_$img" 2>/dev/null
+        exit 0 ;;
+      *"--entrypoint head "*)
+        name=$(basename "$(echo "$*" | awk '{print $NF}')")
+        [ -f "$FAKE_STATE/firstline_$name" ] || exit 1
+        cat "$FAKE_STATE/firstline_$name"
+        exit 0 ;;
+    esac
     exit 0 ;;
   inspect*State.Running*)
     [ -f "$FAKE_STATE/no_db" ] && exit 1
@@ -596,6 +620,210 @@ ${extra}`),
     expect((await run(`deploy staging ${SHA_NEW}`, ['--dry-run'])).out).toContain(
       'preflight kredensial DB',
     );
+  });
+});
+
+describe('deploy.sh: pagar downgrade skema', () => {
+  const ALLOW = ' allow-schema-downgrade';
+  const NL = String.fromCharCode(10);
+  const lines = (names: string[]) => (names.length > 0 ? `${names.join(NL)}${NL}` : '');
+  const setApplied = (names: string[]) => writeFileSync(join(state, 'applied'), lines(names));
+  const setImage = (tag: string, names: string[]) =>
+    writeFileSync(join(state, `image_migrations_${tag}`), lines(names));
+  const setFirstLine = (name: string, line: string) =>
+    writeFileSync(join(state, `firstline_${name}`), `${line}${NL}`);
+  const guardCalls = () =>
+    calls()
+      .split(NL)
+      .filter((l) => /^docker run /.test(l));
+  const envBefore = () => readFileSync(join(root, 'staging', '.env'), 'utf8');
+  const noResidue = () => readdirSync(join(root, 'staging')).filter((n) => n.startsWith('.env.'));
+
+  const M1 = '0001_baseline.sql';
+  const M2 = '0002_tambah_kolom.sql';
+
+  test('upgrade (image target punya semua migrasi tercatat) lolos tanpa kata izin', async () => {
+    setApplied([M1]);
+    setImage(SHA_NEW, [M1, M2]);
+    const result = await run(`deploy staging ${SHA_NEW}`);
+    expect(result.code).toBe(0);
+    expect(calls()).toContain(' up -d');
+  });
+
+  test('migrasi sama persis lolos', async () => {
+    setApplied([M1, M2]);
+    setImage(SHA_NEW, [M1, M2]);
+    expect((await run(`deploy staging ${SHA_NEW}`)).code).toBe(0);
+  });
+
+  test('downgrade tanpa kata izin: kode 6, .env identik, tanpa up -d, kunci dan salinan sementara bersih', async () => {
+    setApplied([M1, M2]);
+    setImage(SHA_NEW, [M1]);
+    setFirstLine(M2, '-- tambah kolom');
+    const before = envBefore();
+    const result = await run(`deploy staging ${SHA_NEW}`);
+    expect(result.code).toBe(6);
+    expect(result.out).toContain(M2);
+    expect(result.out).toContain('allow-schema-downgrade');
+    expect(result.out).not.toContain('rahasia-uji');
+    expect(envBefore()).toBe(before);
+    expect(calls()).not.toContain(' up ');
+    expect(existsSync(join(root, 'staging', '.deploy.lock'))).toBe(false);
+    expect(noResidue()).toEqual([]);
+  });
+
+  test('downgrade dengan kata izin lolos dan log menyebut migrasi yang dilewati', async () => {
+    setApplied([M1, M2]);
+    setImage(SHA_NEW, [M1]);
+    setFirstLine(M2, '-- tambah kolom');
+    const result = await run(`deploy staging ${SHA_NEW}${ALLOW}`);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain(M2);
+    expect(tagIn('staging')).toBe(SHA_NEW);
+    expect(calls()).toContain(' up -d');
+    // migrasi dibaca dari image yang SEDANG berjalan (tag sebelumnya), bukan image target
+    expect(guardCalls().some((l) => l.includes('qc-app:tag-lama') && l.includes(M2))).toBe(true);
+  });
+
+  test('migrasi berpenanda -- qc:contract ditolak walau ada kata izin', async () => {
+    setApplied([M1, M2]);
+    setImage(SHA_NEW, [M1]);
+    setFirstLine(M2, '-- qc:contract');
+    const before = envBefore();
+    const result = await run(`deploy staging ${SHA_NEW}${ALLOW}`);
+    expect(result.code).toBe(6);
+    expect(envBefore()).toBe(before);
+    expect(calls()).not.toContain(' up ');
+  });
+
+  test('berkas migrasi tak terbaca di image berjalan ditolak walau ada kata izin', async () => {
+    setApplied([M1, M2]);
+    setImage(SHA_NEW, [M1]);
+    const result = await run(`deploy staging ${SHA_NEW}${ALLOW}`);
+    expect(result.code).toBe(6);
+    expect(calls()).not.toContain(' up ');
+  });
+
+  test('tanpa tag sebelumnya (PREV_TAG kosong): downgrade ditolak walau ada kata izin, .env persis semula', async () => {
+    writeFileSync(join(root, 'staging', '.env'), envFile('', null));
+    setApplied([M1, M2]);
+    setImage(SHA_NEW, [M1]);
+    setFirstLine(M2, '-- tambah kolom');
+    const before = envBefore();
+    const result = await run(`deploy staging ${SHA_NEW}${ALLOW}`);
+    expect(result.code).toBe(6);
+    expect(envBefore()).toBe(before);
+    expect(noResidue()).toEqual([]);
+  });
+
+  test('schema_migrations gagal dibaca: kode 6 (gagal tertutup), kata izin tak melonggarkan', async () => {
+    writeFileSync(join(state, 'applied_fail'), '1');
+    setImage(SHA_NEW, [M1]);
+    for (const tail of ['', ALLOW]) {
+      const result = await run(`deploy staging ${SHA_NEW}${tail}`);
+      expect(result.code, `ekor=${JSON.stringify(tail)}`).toBe(6);
+    }
+    expect(calls()).not.toContain(' up ');
+  });
+
+  test('daftar migrasi image target gagal dibaca: kode 6, kata izin tak melonggarkan', async () => {
+    setApplied([M1]);
+    writeFileSync(join(state, 'image_ls_fail'), '1');
+    for (const tail of ['', ALLOW]) {
+      const result = await run(`deploy staging ${SHA_NEW}${tail}`);
+      expect(result.code, `ekor=${JSON.stringify(tail)}`).toBe(6);
+    }
+    expect(calls()).not.toContain(' up ');
+  });
+
+  test('kontainer DB tidak berjalan: pagar dilewati dan deploy lanjut tanpa docker run', async () => {
+    writeFileSync(join(state, 'no_db'), '1');
+    const result = await run(`deploy staging ${SHA_NEW}`);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain('pagar downgrade skema dilewati');
+    expect(guardCalls()).toEqual([]);
+  });
+
+  test('nama migrasi tercatat yang tak sah (bukan NNNN_nama.sql) ditolak walau ada kata izin, tanpa menjalankan nama itu', async () => {
+    for (const bad of ['../x.sql', '0001_A.sql', 'x.sql', '0001_a.sql;id']) {
+      setApplied([M1, bad]);
+      setImage(SHA_NEW, [M1]);
+      const result = await run(`deploy staging ${SHA_NEW}${ALLOW}`);
+      expect(result.code, bad).toBe(6);
+      expect(guardCalls().some((l) => l.includes(bad))).toBe(false);
+    }
+  });
+
+  test('perintah dengan kata izin sah diterima; bentuk lain ditolak kode 2 tanpa efek', async () => {
+    const dry = await run(`deploy production ${SHA_NEW}${ALLOW}`, ['--dry-run']);
+    expect(dry.code).toBe(0);
+    expect(dry.out).toContain(`tag=${SHA_NEW}`);
+    expect(`deploy production ${SHA_NEW}${ALLOW}`.length).toBe(81);
+    const bad = [
+      `deploy staging ${SHA_NEW}${ALLOW}${ALLOW}`,
+      `deploy staging ${SHA_NEW} ALLOW-SCHEMA-DOWNGRADE`,
+      `deploy staging ${SHA_NEW} allow-schema-downgrade-x`,
+      `deploy staging ${SHA_NEW} force`,
+      `deploy staging ${SHA_NEW}  allow-schema-downgrade`,
+      `deploy staging ${SHA_NEW} allow-schema-downgrade `,
+      // lebih panjang dari 96 karakter: ditolak (kode 2); regex sudah membatasi bentuk sah terpanjang 81, jadi batas 96
+      // hanyalah lapisan tambahan, bukan satu-satunya penolak
+      `deploy staging ${SHA_NEW}${ALLOW}${'x'.repeat(16)}`,
+    ];
+    for (const request of bad) {
+      const result = await run(request, ['--dry-run']);
+      expect(result.code, request).toBe(2);
+    }
+    expect(calls()).toBe('');
+  });
+
+  test('kata sandi DB tak muncul di argumen docker (kecuali -e MYSQL_PWD tanpa nilai), log, maupun stdout', async () => {
+    const SECRET = 'sandi-db-sentinel-9f3a';
+    writeFileSync(
+      join(root, 'staging', '.env'),
+      envFile(`QC_DB_USER=qc_dev\nQC_DB_NAME=qc_dev\nQC_DB_PASSWORD=${SECRET}\n`),
+    );
+    setApplied([M1, M2]);
+    setImage(SHA_NEW, [M1]);
+    setFirstLine(M2, '-- tambah kolom');
+    const result = await run(`deploy staging ${SHA_NEW}${ALLOW}`);
+    expect(result.code).toBe(0);
+    expect(calls()).not.toContain(SECRET);
+    expect(result.out).not.toContain(SECRET);
+    expect(readFileSync(join(root, 'staging', '.deploy.log'), 'utf8')).not.toContain(SECRET);
+    const execLines = calls()
+      .split(NL)
+      .filter((l) => l.startsWith('docker exec'));
+    expect(execLines.length).toBeGreaterThanOrEqual(2); // preflight + pembacaan schema_migrations
+    for (const line of execLines) expect(line).toContain('-e MYSQL_PWD qc-staging-db mariadb');
+  });
+
+  test('docker run pagar tak pernah menarik image dari registri (--pull never) dan tanpa jaringan', async () => {
+    setApplied([M1, M2]);
+    setImage(SHA_NEW, [M1]);
+    setFirstLine(M2, '-- tambah kolom');
+    expect((await run(`deploy staging ${SHA_NEW}${ALLOW}`)).code).toBe(0);
+    expect(guardCalls().length).toBeGreaterThanOrEqual(2);
+    for (const line of guardCalls()) {
+      expect(line).toContain('--pull never');
+      expect(line).toContain('--network none');
+    }
+  });
+
+  test('--dry-run menyebut pagar downgrade skema', async () => {
+    expect((await run(`deploy staging ${SHA_NEW}`, ['--dry-run'])).out).toContain(
+      'pagar downgrade skema',
+    );
+  });
+
+  test('pengembalian otomatis (versi baru tak sehat) tidak memanggil pagar lagi', async () => {
+    setApplied([M1]);
+    setImage(SHA_NEW, [M1, M2]);
+    setImage(SHA_BAD, [M1, M2]);
+    writeFileSync(join(state, 'unhealthy_tags'), `${SHA_BAD}${NL}`);
+    const result = await run(`deploy staging ${SHA_BAD}`);
+    expect(result.code).toBe(1);
+    expect(guardCalls().filter((l) => l.includes('--entrypoint ls')).length).toBe(1);
   });
 });
 

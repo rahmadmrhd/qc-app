@@ -53,7 +53,11 @@ describe('createServer: API', () => {
   test('GET /api/ping menjawab ok', async () => {
     const response = await get('/api/ping');
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true });
+    expect(await response.json()).toEqual({
+      ok: true,
+      version: expect.stringMatching(/^\d+\.\d+\.\d+$/),
+      build: expect.any(String),
+    });
   });
 
   test('GET /api/v1/me tanpa sesi -> 401 problem+json UNAUTHENTICATED', async () => {

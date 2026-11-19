@@ -22,6 +22,7 @@
 - DB berjalan tetapi `schema_migrations` tidak terbaca, atau daftar migrasi image gagal dibaca: kode 6 (gagal tertutup), kata izin tidak melonggarkan.
 - Migrasi di selisih downgrade yang berkasnya tak ada di image yang sedang berjalan atau berbaris pertama `-- qc:contract`: ditolak walau berizin.
 - Penolakan pagar memulihkan `.env` persis (izin 600), tidak menjalankan `up -d`, dan melepas kunci; rollback otomatis tidak memanggil pagar.
+- Catatan provenance (review bagian 2, 2026-11-18): Release buatan `github-actions[bot]` BUKAN bukti kuat sendirian, karena penulis berizin tulis dapat memicu workflow lain yang membuat Release dengan token yang sama; syarat lain di bawah (SHA leluhur `main`, `version` berkas = tag) tetap wajib dan menjadi pagar utama.
 - Tag palsu (dibuat siapa pun berizin tulis): tanpa Release buatan `github-actions[bot]`, atau SHA bukan leluhur `main`, atau `version` berkas ≠ tag: `deploy-tag.yml` menolak sebelum SSH.
 - Perintah SSH bentuk lama tetap bekerja tanpa perubahan (kompatibel mundur); bentuk dengan ekor lain, ganda, atau huruf besar ditolak kode 2; panjang 81 diterima, 97 ditolak.
 

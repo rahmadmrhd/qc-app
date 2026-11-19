@@ -1,3 +1,4 @@
+import { buildInfo } from '@server/core/build-info';
 import { httpStatusOf, type RouteTable, toErrorBody } from '@server/core/router';
 import { openApiResponse } from '@server/http/openapi';
 import { problemResponse, toProblem } from '@server/http/problem';
@@ -30,7 +31,8 @@ export function createApp(routes: RouteTable): Hono<AppBindings> {
   app.use('/api/*', csrfGuard);
   app.use('/auth/*', csrfGuard);
 
-  app.get('/api/ping', (c) => c.json({ ok: true }));
+  // `version`/`build` ditambahkan (rilis semver): pemeriksa kesehatan hanya memakai status 2xx, jadi aman.
+  app.get('/api/ping', (c) => c.json({ ok: true, ...buildInfo(c.env) }));
   // REST (`/api/v1`): satu tabel `shared/api.ts` untuk klien, server, dan OpenAPI; semua id terdaftar.
   const rest = new Hono<AppBindings>();
   registerRest(rest, routes);

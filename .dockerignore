@@ -37,6 +37,8 @@ coverage
 docs
 deploy
 **/*.md
+# Catatan perubahan server dibaca aplikasi (halaman "Pembaruan"); satu-satunya .md yang ikut image.
+!server/CHANGELOG.md
 
 # Skrip dev/tes server tidak dibutuhkan runtime.
 server/scripts

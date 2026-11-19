@@ -1,3 +1,4 @@
+-- qc:contract
 -- Serial Number (tahap 5a). Expand-only, idempoten (IF NOT EXISTS). Pengecualian tunggal: pencabutan CHECK stok di
 -- bawah, yaitu pelonggaran yang kompatibel mundur dengan image sebelumnya.
 

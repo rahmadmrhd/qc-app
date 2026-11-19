@@ -123,7 +123,7 @@ export async function issueDesktopCode(
  * Menukar kode: tanda tangan dan masa berlaku, `S256(verifier) = challenge`, akun masih aktif, lalu penanda
  * `rate_limits` (`dcode:<sha256 kode>`) lewat `INSERT` yang gagal duplikat bila kode sudah dipakai. `verifier`
  * salah/akun nonaktif TIDAK menghabiskan kode (penanda ditulis paling akhir). Penanda memakai `window_start = now`,
- * jadi `purgeExpiredRateLimits` membuangnya 10 menit kemudian, jauh setelah kode kedaluwarsa (2 menit).
+ * jadi `purgeExpiredRateLimits` membuangnya satu jam kemudian, jauh setelah kode kedaluwarsa (2 menit).
  * `null` untuk semua penolakan; alasannya hanya di log server (tanpa kode/verifier/token).
  */
 export async function consumeDesktopCode(

@@ -39,6 +39,15 @@ dibawa image sehingga web dapat membacanya tanpa token GitHub.
 - PR rilis dibuka dari `release/server-vX.Y.Z` (dipotong dari ujung `dev`) ke `main`; merge-nya adalah promosi `dev` -> `main`
   sekaligus pemicu rilis. `dev` disinkronkan sesudahnya.
 - **Merge ke `main` tidak lagi men-deploy production** secara otomatis; production hanya lewat rilis atau deploy tag.
+  **Berlaku hanya setelah saklar `RELEASE_FLOW=tag` dinyalakan** (keputusan pemilik 2026-11-18, lihat butir berikut).
+- **Masa pra-resmi: saklar mode rilis** (keputusan pemilik 2026-11-18, mengubah butir di atas): produk masih dalam pembangunan
+  dan belum punya versi resmi, jadi pemilik tidak mau menaikkan versi untuk setiap update production. Dipasang variabel
+  repositori `RELEASE_FLOW` (Settings > Variables). **Kosong atau `langsung` (bawaan)**: perilaku sekarang tetap berjalan, merge
+  ke `main` men-deploy production, versi tetap `0.0.0` (`/api/ping` melaporkan `version` `0.0.0` dan `build` = SHA), tanpa tag
+  dan tanpa Release. **`tag`**: alur rilis semver aktif (PR rilis, `release.yml`, deploy tag) dan merge ke `main` tidak lagi
+  men-deploy. Pemilik menyalakan `tag` sendiri kapan produk dinilai layak punya versi resmi; fragmen changelog yang
+  menumpuk selama masa pra-resmi dirangkum rilis pertama (`1.0.0`). Saklar dibaca saat workflow berjalan, sehingga PR
+  "bootstrap" boleh di-merge kapan saja tanpa mengubah perilaku sampai variabel dinyalakan.
 - Deploy lewat tag **memblokir downgrade yang melewati migrasi basis data** kecuali dicentang eksplisit; migrasi bertanda
   contract selalu memblokir (pilihan A).
 - **Pagar downgrade juga dipasang di sisi VPS** (`deploy/deploy.sh`, keputusan pemilik 2026-11-17 setelah ditawarkan): pagar CI
@@ -90,7 +99,11 @@ commit, squash, rebase. Konsekuensi: semua pagar ada **di dalam workflow** (prov
 - CI pada PR: bila `server/**`, `web/**`, atau `shared/**` berubah harus ada fragmen di `server/changelog.d/`; bila `desktop/**`
   berubah, di `desktop/changelog.d/`. Label `tanpa-changelog` melewatkan; `test.yml` menambah pemicu `labeled`/`unlabeled`.
   **PR rilis dikenali dari isi, bukan nama cabang** (diff-nya hanya berkas metadata), agar nama cabang tak dapat dipakai untuk
-  melewati pemeriksaan.
+  melewati pemeriksaan. **Keputusan pemilik 2026-11-19**: pemeriksaan ini hanya berjalan untuk PR yang bertujuan ke `dev`
+  (`on.pull_request.branches: [dev]` di `changelog.yml`), karena di sanalah fragmen menumpuk sampai `release:prepare`; PR ke cabang
+  kerja lain (mis. tumpukan PR fitur) dan PR rilis ke `main` tidak diperiksa lagi. Pengecualian itu sengaja: PR ke `main` selain
+  PR rilis (mis. perbaikan darurat) tidak mewajibkan fragmen, dan penulisnya perlu menambah fragmen sendiri di `dev` bila perubahan
+  itu harus tampil di changelog.
 - Penugasan komponen: `web/` dan `server/` -> `server`; `shared/` -> **`server` dan `desktop`** (desktop mengimpor
   `@shared/desktop-catalog` di `dev`); `countrylock/` -> `desktop` dan `server` (web memakainya).
 
@@ -108,13 +121,23 @@ commit, squash, rebase. Konsekuensi: semua pagar ada **di dalam workflow** (prov
 [keputusan perancang; dapat dibungkus workflow bila kelak ada GitHub App.]
 
 ### 5.4 `release.yml` (setelah PR rilis di-merge ke `main`)
-Pemicu `pull_request_target` (closed, merged, base `main`), hanya untuk cabang `release/server-v<semver>`. Pagar identitas:
+**Diperluas 2026-11-19 (keputusan pemilik produk, `2026-11-19-rilis-gabungan-design.md`)**: `release.yml` kini SATU workflow untuk semua rilis berversi:
+selain `release/server-v<semver>` ia mengenali `release/desktop-v<semver>` (jalur desktop, dulu `release-desktop.yml` yang dihapus) dan
+`release/gabungan-server-v<semver>-desktop-v<semver>` (keduanya dari satu PR); jalur server di bawah berjalan hanya bila komponen server
+dirilis, dan saklar `RELEASE_FLOW` hanya berlaku pada jalur server (tidak lagi "job pertama `meta` berhenti"; keputusan skrip identitas).
+Pemulihan lewat `workflow_dispatch` memakai `komponen` + `versi`. Teks di bawah menjelaskan jalur server.
+Pemicu `pull_request_target` (closed, merged, base `main`), untuk cabang `release/server-v<semver>`. Pagar identitas:
 `head.repo.full_name == github.repository` (menolak fork); nama cabang lolos regex ketat dan **sama dengan `version` di commit
 merge**; **PR dimerge dengan merge commit** (`merge_commit_sha` punya tepat dua induk; squash/rebase ditolak). Checkout hanya
 `merge_commit_sha`. Grup `concurrency` = grup production di `deploy-server.yml` (satu pipeline production pada satu waktu).
 Jalur: `meta` -> `guard` -> `ci` (selektif, `ci.yml`) -> `image` -> `deploy` (production) -> `mark-deployed` -> `publish` -> `sync-dev`.
 - **guard (pengganti uji ulang)**: bandingkan **`refs/deployed/staging...<merge_commit_sha>`**: (a) status `ahead` dan SEMUA berkas
-  yang berubah ada di daftar metadata (`server/package.json`, `bun.lock`, `server/CHANGELOG.md`, `server/changelog.d/**`);
+  yang berubah ada di daftar metadata (`server/package.json`, `bun.lock`, `server/CHANGELOG.md`, `server/changelog.d/**`)
+  ATAU tidak masuk image server (dokumentasi, `desktop/**` selain `desktop/package.json`; klasifikasi `image` di `scripts/ci-changes.ts`;
+  **diubah 2026-11-19, keputusan pemilik**: berkas jenis ini tak pernah men-deploy staging, sehingga menolaknya menggagalkan rilis tanpa
+  alasan; jalur tak dikenal tetap ditolak);
+  status `identical` (rilis tanpa perubahan kode sejak staging) juga lulus, dan perbandingan yang terpotong pada 300 berkas
+  (batas API `compare`, tanpa penanda) ditolak, gagal tertutup (dicatat 2026-11-18, pass perbaikan bagian 2);
   (b) `server/CHANGELOG.md` punya bagian versi itu. Memakai commit merge (bukan head cabang) menangkap kode di `main` yang tak
   pernah melalui staging (hotfix, PR langsung). Karena `refs/deployed/staging` hanya ditulis setelah deploy staging sukses,
   kode yang dirilis identik dengan yang sudah lulus di staging.
@@ -129,13 +152,26 @@ Jalur: `meta` -> `guard` -> `ci` (selektif, `ci.yml`) -> `image` -> `deploy` (pr
 - **publish** (hanya sesudah deploy sukses): membuat tag `server-vX.Y.Z` pada SHA itu dan GitHub Release (`changelog extract`
   sebagai isi; arsip sumber otomatis). Tag dibuat workflow dengan `GITHUB_TOKEN` (izin `contents: write` hanya di job ini);
   karena tag tak memicu workflow lain, semua pekerjaan rilis memang berada di run yang sama.
-- **sync-dev** (`contents: write` hanya di job ini): mencoba menggabung `main` ke `dev` langsung lewat API merge (tanpa PR,
-  karena branch protection tak ada dan deploy staging tak perlu dipicu: isinya hanya metadata). Bila konflik (409), membuka
-  PR `main` -> `dev` (butuh setelan repo "Allow GitHub Actions to create pull requests"). Guard `release:prepare` berikutnya
-  mengizinkan `dev` yang selisihnya dari `refs/deployed/staging` hanya berkas metadata.
-- `deploy-server.yml`: jalur `pull_request_target` ke `main` -> production **dihapus**; jalur ke `dev` -> staging dan
-  `workflow_dispatch` tetap. Dispatch production dari `main` tetap ada sebagai jalan darurat. **Urutan bootstrap**: penghapusan
-  pemicu `main` dan penambahan `release.yml` masuk di PR yang SAMA agar tak ada deploy ganda atau celah tanpa deploy.
+- **sync-dev**: mencoba menggabung `main` ke `dev` langsung lewat API merge (tanpa PR; deploy staging tak perlu dipicu: isinya
+  hanya metadata). Bila konflik, hanya peringatan (lihat catatan 2026-11-18 di bawah; semula membuka PR `main` -> `dev`). Guard `release:prepare` berikutnya mengizinkan `dev` yang
+  selisihnya dari `refs/deployed/staging` hanya berkas metadata.
+  **Diubah 2026-11-18 (keputusan pemilik)**: asumsi awal "branch protection tak ada" gugur (repo ternyata publik dan ruleset
+  `dev*` mewajibkan PR + check `test`; app GitHub Actions bawaan tidak dapat menjadi bypass actor di repo akun personal).
+  Job `sync-dev` kini memakai **deploy key** repo (akses tulis, id 170298444) yang menjadi bypass actor pada ruleset `Branch dev`
+  (`refs/heads/dev*`) SAJA; ruleset `Branch main` tanpa bypass. Kunci privat = secret `SYNC_DEPLOY_KEY` di environment `sync-dev`
+  (hanya ref `main`), dibaca hanya oleh langkah merge dan dihapus di langkah akhir. Pendekatan GitHub App `qc-app-sync` dicoba lebih
+  dulu tetapi ditolak GitHub (422: bypass actor Integration harus bagian dari sumber ruleset atau organisasi pemilik, tidak ada di
+  akun personal); pemilik memilih deploy key (risiko diterima: kunci berumur panjang tanpa kedaluwarsa, dimitigasi oleh environment
+  `sync-dev` hanya ref `main`, bypass terbatas ke `dev*`, dan rotasi manual). `GITHUB_TOKEN` job ini cukup `contents: read`; setelan
+  "Allow GitHub Actions to create pull requests" tidak diperlukan. Konflik sungguhan TIDAK membuka PR: hanya peringatan, PR
+  `main` -> `dev` dibuat manual. Host key GitHub dipatok di workflow (bukan `ssh-keyscan`).
+- `deploy-server.yml`: jalur `pull_request_target` ke `main` -> production **dilewati bila `vars.RELEASE_FLOW == 'tag'`** (pemicu
+  tetap ada; job `meta` yang memutuskan dari variabel, bukan dihapus dari berkas); jalur ke `dev` -> staging dan
+  `workflow_dispatch` tetap. Dispatch production dari `main` tetap ada sebagai jalan darurat. `release.yml` hanya berjalan bila
+  `vars.RELEASE_FLOW == 'tag'` (job pertama `meta` berhenti dengan jelas bila tidak), jadi tak pernah ada deploy ganda:
+  `langsung` = hanya `deploy-server.yml`, `tag` = hanya `release.yml`. Dengan saklar ini **urutan bootstrap tak lagi kritis**
+  (keduanya boleh di-merge kapan saja; perilaku berpindah saat variabel diubah). `release:prepare` menolak jalan bila
+  `gh variable get RELEASE_FLOW` bukan `tag` (PR rilis yang di-merge saat mode `langsung` akan men-deploy tanpa tag).
 
 ### 5.5 Deploy lewat tag (`deploy-tag.yml`, `workflow_dispatch`)
 Input: `tag` (`server-vX.Y.Z`), `environment` (staging|production), `izinkan_downgrade_skema` (boolean, bawaan false).
@@ -183,14 +219,20 @@ Grup `concurrency` = grup environment itu di `deploy-server.yml`.
   Urutan: salin `deploy.sh` baru ke staging dan production, baru merge PR `deploy-tag.yml`; dicatat di `docs/ci-cd.md` dan
   `docs/deploy-vps.md` (bagian 14).
 - Konvensi migrasi: migrasi yang menghapus/mengganti nama kolom atau tabel WAJIB berbaris pertama `-- qc:contract`; tes di
-  `scripts/` memeriksa migrasi yang memuat `DROP`/`RENAME` tanpa penanda itu (migrasi lama dikecualikan lewat daftar).
+  `scripts/` memeriksa migrasi yang memuat `DROP`/`RENAME` tanpa penanda itu. Keputusan 2026-11-18 (implementasi bagian 3): migrasi
+  lama yang destruktif (0002, 0003, 0012) TIDAK dikecualikan lewat daftar, melainkan diberi baris pertama `-- qc:contract`
+  (hanya komentar; `schema_migrations` hanya menyimpan nama, jadi aman bagi basis data yang sudah menerapkannya), karena pagar
+  di VPS membaca penanda dari berkas migrasi di image dan tak dapat melihat daftar pengecualian di repositori.
+- Catatan implementasi `deploy-tag.yml` (2026-11-18): job `verify` me-checkout `github.sha` (ujung ref yang di-dispatch; `main`
+  untuk production) hanya untuk menjalankan skrip keputusan murni (`scripts/deploy-tag-check.ts`), bukan kode tag; langkah yang
+  memegang token hanya memanggil API dan langkah skrip tak diberi token.
 - Catatan: image yang dirilis untuk production ditandatangani kunci environment `production`; bila kunci `staging` berbeda,
   deploy tag ke staging menyajikan manifest UI yang tak cocok dengan desktop staging (pembaruan UI desktop staging nonaktif
   sampai deploy `dev` berikutnya). Diterima.
 
 ### 5.6 Keamanan
 - Aturan `pull_request_target` yang ada berlaku: tanpa `${{ }}` di `run`, checkout hanya `merge_commit_sha`, `permissions` minimal
-  per job. `contents: write` (tag, Release, ref, merge) hanya di job `publish`, `mark-deployed`, `sync-dev`; `pull-requests: write` hanya di `sync-dev`.
+  per job. `contents: write` (tag, Release, ref) hanya di job `publish` dan `mark-deployed`; penulisan ke `dev` (merge) oleh `sync-dev` memakai deploy key, bukan `GITHUB_TOKEN` (lihat 5.4, diubah 2026-11-18).
 - Karena ruleset tag tak tersedia (5.0): siapa pun berizin tulis dapat mendorong tag `server-v*`; pagar provenance 5.5(1) mencegah
   tag palsu men-deploy sesuatu. Tag palsu tetap dapat mengotori daftar tag (diterima; tidak berefek ke deploy).
 - *Required reviewers* pada environment `production` dicatat sebagai opsi bila paket mendukung.
@@ -214,7 +256,9 @@ Grup `concurrency` = grup environment itu di `deploy-server.yml`.
   keluar baru 6 harus dikenali pemanggil lain (dokumentasi `deploy.sh`, `docs/deploy-vps.md`); pagar hanya melihat nama berkas
   migrasi, bukan isi data, jadi downgrade berizin atas migrasi data tetap tanggung jawab pemilik.
 - `release.yml` baru aktif setelah ada di `main` (aturan GitHub: workflow `pull_request_target` dari branch default); rilis pertama
-  melewati satu PR "bootstrap" biasa yang juga menghapus pemicu production lama (5.4).
+  melewati satu PR "bootstrap" biasa yang menambah `release.yml` dan syarat saklar pada `deploy-server.yml` (5.4); rilis pertama
+  baru dilakukan setelah pemilik menyalakan `RELEASE_FLOW=tag`. ~~Pertanyaan terbuka: apakah merge ke main tanpa rilis diizinkan~~
+  **diputuskan 2026-11-18**: selama mode `langsung`, merge ke `main` men-deploy production seperti sekarang tanpa versi.
 - Pembangunan production tanpa cache membuat rilis beberapa menit lebih lama (diterima). Image production dapat berbeda dari
   image staging pada lapisan non-kode (mis. paket `apk` yang diambil ulang); kodenya identik.
 - Penanda `-- qc:contract` tak menangkap migrasi data (mis. 0017 yang memetakan status); daftar pengecualian dan disiplin penulis.

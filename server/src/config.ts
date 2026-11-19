@@ -26,6 +26,8 @@ export interface Config {
   qrFolderId: string;
   qrDocFolderId: string;
   backupFolderId: string;
+  /** Folder rilis aplikasi desktop (installer, manifest, tanda tangan); kosong = rute pembaruan desktop 404. */
+  desktopReleasesFolderId: string;
   /** Folder tambahan di luar induk yang diizinkan klien Google. */
   allowedFolderIds: string[];
   /** Folder lokal (volume yang dapat ditulis) untuk dump cadangan; bawaan: `/var/backups/qc` di produksi, folder sementara OS di dev. */
@@ -65,7 +67,15 @@ export interface Config {
   trustedProxyText: string;
   /** Direktori berkas statis web (hasil `bun run build`). */
   staticDir: string;
+  /**
+   * SHA commit yang dibangun menjadi image ini (`GIT_SHA`, diisi build-arg Dockerfile; dilaporkan `/api/ping`). Bukan
+   * rahasia. Kosong atau bukan 7-40 heksa huruf kecil = `unknown` (pengembangan lokal, tes).
+   */
+  buildSha: string;
 }
+
+/** Bentuk SHA commit yang diterima untuk `GIT_SHA` (singkat 7 sampai penuh 40). */
+const BUILD_SHA_PATTERN = /^[0-9a-f]{7,40}$/;
 
 export const DEFAULT_PORT = 8788;
 export const DEFAULT_HOST = '127.0.0.1';
@@ -157,6 +167,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     'QR_FOLDER_ID',
     'QR_DOC_FOLDER_ID',
     'BACKUP_FOLDER_ID',
+    'DESKTOP_RELEASES_FOLDER_ID',
   ] as const;
   for (const name of googleIds) {
     if (get(name) !== '' && !isDriveId(get(name))) {
@@ -295,6 +306,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     qrFolderId: get('QR_FOLDER_ID'),
     qrDocFolderId: get('QR_DOC_FOLDER_ID'),
     backupFolderId: get('BACKUP_FOLDER_ID'),
+    desktopReleasesFolderId: get('DESKTOP_RELEASES_FOLDER_ID'),
     allowedFolderIds,
     backupLocalDir:
       get('BACKUP_LOCAL_DIR') ||
@@ -320,5 +332,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     trustedProxy,
     trustedProxyText,
     staticDir: staticDir === '' ? resolve(import.meta.dir, '../dist') : resolve(staticDir),
+    buildSha: BUILD_SHA_PATTERN.test(get('GIT_SHA')) ? get('GIT_SHA') : 'unknown',
   };
 }

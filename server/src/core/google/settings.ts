@@ -16,6 +16,8 @@ export interface GoogleSettings {
   QR_DOC_FOLDER_ID: string;
   /** Folder cadangan SQL (dipakai T30). */
   BACKUP_FOLDER_ID: string;
+  /** Folder rilis desktop (dibaca server, ditulis CI lewat service account penerbit); bukan anak folder induk. */
+  DESKTOP_RELEASES_FOLDER_ID: string;
   /** Folder tambahan yang diizinkan (di luar induk). */
   ALLOWED_FOLDER_IDS: string[];
 }

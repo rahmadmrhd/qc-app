@@ -335,11 +335,11 @@ describe('pembersihan rate_limits (I4)', () => {
       await env.DB.prepare('SELECT `key` FROM rate_limits ORDER BY `key`').all<{ key: string }>()
     ).results.map((row) => row.key);
 
-  test('purgeExpiredRateLimits membuang baris yang jendelanya (terbesar: blokir 10 menit) sudah lewat saja', async () => {
+  test('purgeExpiredRateLimits membuang baris yang jendelanya (terbesar: unduhan installer 1 jam) sudah lewat saja', async () => {
     const now = env.clock.now();
-    await seedLimit('sync:fails:basi', 3, now - 11 * MINUTE);
-    await seedLimit('sync:blocked:basi', 1, now - 10 * MINUTE - 1);
-    await seedLimit('sync:blocked:aktif', 1, now - 9 * MINUTE);
+    await seedLimit('sync:fails:basi', 3, now - 61 * MINUTE);
+    await seedLimit('sync:blocked:basi', 1, now - 60 * MINUTE - 1);
+    await seedLimit('sync:blocked:aktif', 1, now - 59 * MINUTE);
     await seedLimit('sync:fails:baru', 2, now - 1 * MINUTE);
     expect(await purgeExpiredRateLimits(env)).toBe(2);
     expect(await limitKeys()).toEqual(['sync:blocked:aktif', 'sync:fails:baru']);
@@ -347,9 +347,9 @@ describe('pembersihan rate_limits (I4)', () => {
 
   test('purgeExpiredRateLimits: baris penghitung bernilai 0 (jalur sah) yang kedaluwarsa dibuang, yang aktif tidak', async () => {
     const now = env.clock.now();
-    await seedLimit('sync:fails:nol-basi', 0, now - 11 * MINUTE);
+    await seedLimit('sync:fails:nol-basi', 0, now - 61 * MINUTE);
     await seedLimit('sync:fails:nol-aktif', 0, now - 2 * MINUTE);
-    await seedLimit('sync:fails:nol-batas', 0, now - 10 * MINUTE); // tepat di batas: belum kedaluwarsa
+    await seedLimit('sync:fails:nol-batas', 0, now - 60 * MINUTE); // tepat di batas: belum kedaluwarsa
     expect(await purgeExpiredRateLimits(env)).toBe(1);
     expect(await limitKeys()).toEqual(['sync:fails:nol-aktif', 'sync:fails:nol-batas']);
   });
