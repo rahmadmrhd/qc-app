@@ -350,6 +350,7 @@ jobs:
       target: production
       sha: ${{ needs.meta.outputs.sha }}
       extra-tags: server-v${{ needs.meta.outputs.server_version }}
+    secrets: inherit
 
   # `contents: write` hanya batas bagi `mark-deployed` di dalam workflow terpanggil (satu-satunya yang menulis).
   deploy:
@@ -361,6 +362,7 @@ jobs:
     with:
       target: production
       sha: ${{ needs.meta.outputs.sha }}
+    secrets: inherit
 
   # Tag `server-vX.Y.Z` + GitHub Release (arsip sumber otomatis). Idempoten: tag yang sudah ada pada SHA yang sama dilewati
   # (menjalankan ulang tak membuat tag ganda), tag pada SHA lain menggagalkan. Catatan dibuat tanpa token; token hanya di
@@ -607,8 +609,9 @@ jobs:
 
   # Menyinkronkan `main` ke `dev` setelah SEMUA komponen yang dirilis run ini selesai diterbitkan (versi dan changelog baru):
   # workflow bersama `sync-dev.yml` (deploy key dari environment `sync-dev`, git+SSH tanpa PR; kegagalan hanya peringatan;
-  # rincian dan keputusan pemilik 2026-11-18 ada di sana). Pemanggil tanpa `secrets: inherit`: secret environment dibaca
-  # langsung oleh job terpanggil. Komponen gabungan membawa kedua versi.
+  # rincian dan keputusan pemilik 2026-11-18 ada di sana). Pemanggil memakai `secrets: inherit` (tanpanya secret environment
+  # tak terbaca di workflow terpanggil: actions/runner#4453, lihat `deploy-server.yml`; keputusan pemilik 2026-11-19).
+  # Komponen gabungan membawa kedua versi.
   sync-dev:
     needs: [meta, publish-server, publish-desktop]
     if: ${{ !cancelled() && !failure() && needs.meta.outputs.release == 'true' && (needs.meta.outputs.server_version == '' || needs.publish-server.result == 'success') && (needs.meta.outputs.desktop_version == '' || needs.publish-desktop.result == 'success') }}
@@ -620,6 +623,7 @@ jobs:
       version: ${{ needs.meta.outputs.server_version || needs.meta.outputs.desktop_version }}
       komponen: ${{ needs.meta.outputs.server_version != '' && needs.meta.outputs.desktop_version != '' && 'gabungan' || needs.meta.outputs.server_version != '' && 'server' || 'desktop' }}
       version-desktop: ${{ needs.meta.outputs.server_version != '' && needs.meta.outputs.desktop_version || '' }}
+    secrets: inherit
 
   # Penarikan desktop: menghapus HANYA tanda tangan `release-<versi>.sig` di Drive, sehingga server berhenti menyajikan versi itu
   # (installer, manifest, dan tag tetap untuk penelusuran). Pengguna yang sudah memasangnya tidak diturunkan. Hanya dari main.

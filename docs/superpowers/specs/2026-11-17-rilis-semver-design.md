@@ -237,6 +237,17 @@ Grup `concurrency` = grup environment itu di `deploy-server.yml`.
   tag palsu men-deploy sesuatu. Tag palsu tetap dapat mengotori daftar tag (diterima; tidak berefek ke deploy).
 - *Required reviewers* pada environment `production` dicatat sebagai opsi bila paket mendukung.
 - Rahasia tak berubah: kunci SSH/host tetap secret environment; tidak ada PAT baru.
+- **Diubah 2026-11-19 (keputusan pemilik): pemanggil workflow terpanggil memakai `secrets: inherit`.** Rancangan awal melarangnya
+  (rahasia environment dibaca job terpanggil lewat `environment:`-nya sendiri). Deploy production pertama dengan struktur ini
+  gagal: di workflow terpanggil, variabel environment terbaca tetapi secret environment menjadi string kosong (`UI_SIGNING_KEY`
+  kosong, `UI_PUBLIC_KEY_PEM` terisi, pagar kunci UI menggagalkan job `image`). Itu bug GitHub yang tercatat
+  (actions/runner#4453): secret environment di workflow terpanggil hanya terbaca bila pemanggil memakai `secrets: inherit`.
+  Job pemanggil (`uses:`) tak dapat punya `environment:` dan tak dapat meneruskan secret environment satu per satu, jadi
+  `inherit` satu-satunya cara tanpa menulis ulang struktur. Berlaku hanya pada enam job pemanggil `server-image.yml`,
+  `server-deploy.yml`, dan `sync-dev.yml` (`deploy-server.yml`, `release.yml`, `deploy-tag.yml`); `ci.yml` tetap tanpa rahasia
+  dan workflow terpanggil tak pernah memuat kata itu (dijaga `scripts/ci-workflows.test.ts`, `inheritingJobs`). Risiko diterima
+  karena repositori tidak punya secret tingkat repositori atau organisasi, sehingga `inherit` tidak membuka rahasia lain. Risiko
+  tertutup: rahasia environment tetap hanya terbaca job terpanggil yang environment-nya cocok dengan aturan branch-nya.
 
 ### 5.7 Tes
 - `scripts/changelog.test.ts` (validate/compile/extract, kasus tepi: fragmen kosong, jenis tak dikenal, versi sudah ada).
