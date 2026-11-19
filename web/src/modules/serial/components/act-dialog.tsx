@@ -2,6 +2,7 @@ import type { SerialActInput, SerialDto } from '@shared/contract';
 import { extractFileRefs } from '@shared/items';
 import { availableActions, resolveAction } from '@shared/serial-flow';
 import {
+  recheckBuCandidates,
   SERIAL_LIMITS,
   SERIAL_PROOF_LIMITS,
   type SerialAction,
@@ -54,6 +55,7 @@ import {
 import type { ActKind } from './act-buttons';
 import { MessageField, RecheckStickerList, type RecheckStickerRow } from './act-fields';
 import { ProofPhotoField } from './proof-photo-field';
+import { choicesFor, RecheckBuField, useWritableBus } from './recheck-bu-field';
 import { SerialLocationField } from './serial-location-field';
 
 export interface ActDialogProps {
@@ -71,7 +73,8 @@ type FieldKey =
   | 'toLocationId'
   | 'stickerIds'
   | 'shipmentNote'
-  | 'proofPhotoIds';
+  | 'proofPhotoIds'
+  | 'buId';
 type FieldErrors = Partial<Record<FieldKey, string>>;
 
 type Stage = ServiceDiagnosisStage | 'broken';
@@ -171,16 +174,21 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [confirming, setConfirming] = useState(false);
+  // BU tujuan cek ulang lolos: bawaan BU saat ini (kosong di kiriman = BU saat ini).
+  const [targetBu, setTargetBu] = useState({ buId: serial.buId, buLabel: serial.buCode });
 
   const serviceLocations = useQuery({
     ...serialServiceLocationsQueryOptions(),
     enabled: kind === 'send',
   });
   const { locations: activeLocations } = useSerialLocations();
+  // Stiker yang berlaku mengikuti BU tujuan (hasil lolos boleh memindahkan BU).
+  const stickerBuId = kind === 'recheck' && result === 'pass' ? targetBu.buId : serial.buId;
   const stickerOptions = useQuery({
-    ...serialStickerOptionsQueryOptions(serial.itemId, serial.buId),
-    enabled: kind === 'recheck',
+    ...serialStickerOptionsQueryOptions(serial.itemId, stickerBuId),
+    enabled: kind === 'recheck' && stickerBuId !== '',
   });
+  const { bus, loading: busLoading } = useWritableBus(kind === 'recheck');
 
   // Aksi tabel transisi yang dipilih dialog ini.
   const hasRecheckRow = availableActions(state, actor).some((row) => row.action === 'recheck');
@@ -207,6 +215,21 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
     action === 'service_diagnosis' && stage !== '' && stage !== 'broken' ? stage : undefined,
   );
   const messageRequired = 'row' in resolved && resolved.row.required.includes('message');
+  // Pindah BU hanya pada hasil lolos (`recheck` lolos dan `recheck_pass`); gagal tak menerima `buId`.
+  const showBuField = kind === 'recheck' && result === 'pass';
+  const buChoices = useMemo(
+    () =>
+      choicesFor(
+        recheckBuCandidates({
+          currentBuId: serial.buId,
+          involvedBuIds: serial.buHistory.map((entry) => entry.buId),
+          writableBuIds: bus ? bus.map((bu) => bu.id) : [serial.buId],
+        }),
+        bus,
+        [{ id: serial.buId, code: serial.buCode }],
+      ),
+    [serial.buId, serial.buCode, serial.buHistory, bus],
+  );
 
   // Tujuan Kirim ke servis: field hanya bila konfigurasi servis punya lebih dari satu lokasi aktif.
   const serviceList = serviceLocations.data?.locations ?? [];
@@ -251,6 +274,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
     (kind === 'diagnosis' && stage === '') ||
     occurredOn === '' ||
     (locationRequired && toLocation.id === '') ||
+    (showBuField && targetBu.buId === '') ||
     Object.keys(clientErrors).length > 0;
 
   // Pratinjau cap di kamera foto (Cek ulang): lokasi = tempat cek ulang dilakukan (tujuan pengiriman bila unit masih
@@ -305,6 +329,9 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
     const proofPart =
       proofPhotos.length > 0 ? { proofPhotoIds: proofPhotos.map((photo) => photo.id) } : {};
     const shipmentPart = shipmentNote.trim() !== '' ? { shipmentNote: shipmentNote.trim() } : {};
+    // `buId` kosong = BU saat ini: hanya dikirim bila BU tujuan berbeda.
+    const buPart =
+      targetBu.buId !== '' && targetBu.buId !== serial.buId ? { buId: targetBu.buId } : {};
     const locationPart =
       toLocation.id !== '' && showLocationField ? { toLocationId: toLocation.id } : {};
     switch (action) {
@@ -320,8 +347,16 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
           stage: stage === '' || stage === 'broken' ? 'diagnosis' : stage,
         };
       case 'recheck':
-        return { ...common, action, result, ...stickerPart, ...proofPart };
+        return {
+          ...common,
+          action,
+          result,
+          ...stickerPart,
+          ...proofPart,
+          ...(result === 'pass' ? buPart : {}),
+        };
       case 'recheck_pass':
+        return { ...common, action, ...stickerPart, ...proofPart, ...buPart };
       case 'recheck_fail':
         return { ...common, action, ...stickerPart, ...proofPart };
       case 'declare_broken':
@@ -351,7 +386,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
       const visible: FieldKey[] = ['occurredOn', 'message'];
       if (kind === 'send' || kind === 'receive') visible.push('toLocationId');
       if (kind === 'send') visible.push('shipmentNote');
-      if (kind === 'recheck') visible.push('stickerIds', 'proofPhotoIds');
+      if (kind === 'recheck') visible.push('stickerIds', 'proofPhotoIds', 'buId');
       const split = splitError(caught, visible);
       setFieldErrors(split.fields);
       setError(split.general);
@@ -492,6 +527,24 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
                 options={RESULT_OPTIONS}
                 onValueChange={(next) => setResult(next === 'fail' ? 'fail' : 'pass')}
               />
+              {showBuField ? (
+                <div className="space-y-1.5">
+                  <RecheckBuField
+                    id="act-bu"
+                    label="Business Unit"
+                    choices={buChoices}
+                    value={targetBu}
+                    loading={bus === null && busLoading}
+                    disabled={act.isPending}
+                    error={errorOf('buId')}
+                    onChange={setTargetBu}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Bawaannya BU saat ini ({serial.buCode}). Pilih BU lain untuk sekalian
+                    memindahkan serial ini; BU yang pernah ditinggalkan tidak bisa dipilih lagi.
+                  </p>
+                </div>
+              ) : null}
               <RecheckStickerList
                 rows={stickerRows}
                 checked={checked}

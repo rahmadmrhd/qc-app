@@ -69,6 +69,7 @@ const MATCH: SerialLookupMatchDto = {
 };
 
 let matches: SerialLookupMatchDto[];
+let elsewhere: { buCode: string } | null;
 const onOpenSerial = vi.fn();
 
 function renderPage() {
@@ -91,8 +92,9 @@ beforeEach(() => {
   onOpenSerial.mockReset();
   me = meWith();
   matches = [];
+  elsewhere = null;
   apiMock.mockImplementation((id: string, input: Record<string, unknown>) => {
-    if (id === 'serials.lookup') return Promise.resolve({ matches });
+    if (id === 'serials.lookup') return Promise.resolve({ matches, elsewhere });
     if (id === 'serials.act') return Promise.resolve({ ...MATCH, id: 's1', updatedAt: 'baru' });
     if (id === 'serials.reportNew') {
       return Promise.resolve({ ...MATCH, id: 's9', serial: input.serial, status: 'reported' });
@@ -178,22 +180,27 @@ test('serial Rusak ditolak: Unit ini sudah dinyatakan rusak', async () => {
   expect(onOpenSerial).toHaveBeenCalledWith('s1');
 });
 
-test('serial ada di dua BU: pilih BU dulu, baru formulir tampil untuk BU itu', async () => {
-  matches = [
-    MATCH,
-    { ...MATCH, id: 's2', buId: 'b2', buCode: 'BU2', itemLabel: 'Aruba 2930', updatedAt: 'u2' },
-  ];
+test('serial ada di BU yang tidak boleh Anda tulis: peringatan dengan kode BU itu, tanpa formulir dan tombol kirim nonaktif', async () => {
+  matches = [];
+  elsewhere = { buCode: 'BU7' };
   renderPage();
   await search('ABC123');
-  const field = await screen.findByRole('combobox', { name: 'Business Unit' });
-  expect(field).toBeInTheDocument();
+  expect(
+    await screen.findByText(
+      'Serial ini ada di BU BU7 dan Anda tidak punya akses untuk melaporkannya.',
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Lapor rusak' })).toBeDisabled();
   expect(screen.queryByRole('textbox', { name: 'Catatan' })).toBeNull();
-  await pickLink(screen, 'Business Unit', 'BU2');
-  expect(await screen.findByText('Aruba 2930')).toBeInTheDocument();
-  await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'rusak');
-  await userEvent.click(screen.getByRole('button', { name: 'Lapor rusak' }));
-  await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
-  expect(calls('serials.act')[0]?.[1]).toMatchObject({ id: 's2', expectedUpdatedAt: 'u2' });
+  expect(screen.queryByRole('combobox', { name: 'Item' })).toBeNull();
+});
+
+test('tidak ada pemilih BU: satu kecocokan langsung menampilkan formulir', async () => {
+  matches = [MATCH];
+  renderPage();
+  await search('ABC123');
+  expect(await screen.findByRole('textbox', { name: 'Catatan' })).toBeInTheDocument();
+  expect(screen.queryByRole('combobox', { name: 'Business Unit' })).toBeNull();
 });
 
 test('belum tercatat: item, lokasi, dan catatan wajib; reportNew dikirim dan pindah ke detail', async () => {

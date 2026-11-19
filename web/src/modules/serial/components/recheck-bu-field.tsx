@@ -8,11 +8,11 @@ export interface BuChoice {
 }
 
 /** BU yang boleh ditulis pengguna (`serials.buOptions`); `bus` kosong (`null`) selagi memuat atau bila gagal. */
-export function useWritableBus(): { bus: BuChoice[] | null; loading: boolean } {
-  const { data, isPending } = useQuery(serialBuOptionsQueryOptions());
+export function useWritableBus(enabled = true): { bus: BuChoice[] | null; loading: boolean } {
+  const { data, isPending } = useQuery({ ...serialBuOptionsQueryOptions(), enabled });
   return {
     bus: data ? data.businessUnits.map((bu) => ({ id: bu.id, code: bu.code })) : null,
-    loading: isPending,
+    loading: enabled && isPending,
   };
 }
 
