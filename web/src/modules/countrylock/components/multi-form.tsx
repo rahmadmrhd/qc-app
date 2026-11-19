@@ -224,7 +224,7 @@ export function MultiForm({
             onChange={(event) => changeConcurrency(event.target.value)}
           />
           {concurrency === null ? (
-            <p className="text-xs text-destructive">
+            <p className="text-xs text-destructive-text">
               Concurrent harus {MULTI_CONCURRENCY_MIN} sampai {MULTI_CONCURRENCY_MAX}.
             </p>
           ) : null}
@@ -241,7 +241,9 @@ export function MultiForm({
             onChange={(event) => setExcludeIp(event.target.value)}
           />
           {!excludeIpValid ? (
-            <p className="text-xs text-destructive">Exclude IP harus alamat IPv4 atau kosong.</p>
+            <p className="text-xs text-destructive-text">
+              Exclude IP harus alamat IPv4 atau kosong.
+            </p>
           ) : null}
         </div>
         <div className="flex items-center gap-2 pt-6">

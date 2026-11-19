@@ -278,7 +278,7 @@ export function FileDialog({
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">{uploadTab}</div>
           )}
           {failed > 0 && !busy ? (
-            <p role="status" className="text-sm text-destructive">
+            <p role="status" className="text-sm text-destructive-text">
               {`${failed} berkas gagal diunggah. Periksa alasannya di daftar unggahan, lalu tekan ${confirmLabel} lagi; berkas yang sudah berhasil tidak diunggah ulang.`}
             </p>
           ) : null}

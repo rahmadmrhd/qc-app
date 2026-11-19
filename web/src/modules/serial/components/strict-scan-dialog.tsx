@@ -321,7 +321,11 @@ function StrictBody({
                   onChange={(event) => setSerialText(event.target.value.replace(/[\r\n]+/g, ' '))}
                 />
                 {serialError !== null ? (
-                  <p id="strict-serial-error" role="alert" className="text-xs text-destructive">
+                  <p
+                    id="strict-serial-error"
+                    role="alert"
+                    className="text-xs text-destructive-text"
+                  >
                     {serialError}
                   </p>
                 ) : null}

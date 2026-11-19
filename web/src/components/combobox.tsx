@@ -526,7 +526,7 @@ export function ComboboxBase({
         </div>
       </div>
       {error ? (
-        <p id={`${id}-error`} role="alert" className="text-sm text-destructive">
+        <p id={`${id}-error`} role="alert" className="text-sm text-destructive-text">
           {error}
         </p>
       ) : null}

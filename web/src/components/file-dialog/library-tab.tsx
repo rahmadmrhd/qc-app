@@ -240,7 +240,7 @@ export function LibraryTab({
 
       {showError ? (
         <div className="flex flex-col items-center gap-2 py-10 text-center text-sm">
-          <p className="text-destructive">Gagal memuat pustaka gambar</p>
+          <p className="text-destructive-text">Gagal memuat pustaka gambar</p>
           <Button type="button" variant="outline" onClick={() => void result.refetch()}>
             Coba lagi
           </Button>
@@ -371,7 +371,7 @@ export function LibraryTab({
           {isFetchingNextPage ? <Spinner /> : null}
           {isFetchNextPageError ? (
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-destructive">Gagal memuat halaman berikutnya</span>
+              <span className="text-destructive-text">Gagal memuat halaman berikutnya</span>
               <Button
                 type="button"
                 variant="outline"

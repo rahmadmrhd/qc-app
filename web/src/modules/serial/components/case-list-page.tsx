@@ -113,7 +113,7 @@ export function CaseListPage({ search, onSearchChange, onOpen, onReport }: CaseL
         />
       </div>
       {list.isError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Gagal memuat laporan: {describeError(list.error)}
         </p>
       ) : null}

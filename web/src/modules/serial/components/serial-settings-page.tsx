@@ -180,13 +180,17 @@ function Body({ settings, users, onSave, serverError, onServerError }: BodyProps
           Maksimal {MAX} penerima; alamat di luar daftar user boleh ditambahkan.
         </p>
         {recipientsError ? (
-          <p id="serial-alert-recipients-error" role="alert" className="text-sm text-destructive">
+          <p
+            id="serial-alert-recipients-error"
+            role="alert"
+            className="text-sm text-destructive-text"
+          >
             {recipientsError}
           </p>
         ) : null}
       </fieldset>
       {serverError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {serverError}
         </p>
       ) : null}

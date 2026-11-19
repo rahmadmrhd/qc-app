@@ -151,7 +151,7 @@ export function PostelForm({
                     clear('note');
                   }}
                 />
-                {error ? <p className="text-sm text-destructive">{error}</p> : null}
+                {error ? <p className="text-sm text-destructive-text">{error}</p> : null}
               </div>
             );
           }}
@@ -175,7 +175,7 @@ export function PostelForm({
       </Section>
 
       {submitError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {submitError}
         </p>
       ) : null}

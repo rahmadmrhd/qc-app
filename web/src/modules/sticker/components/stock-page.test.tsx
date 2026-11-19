@@ -437,5 +437,5 @@ test('stok negatif (pemotongan Serial Number) tampil "Kurang N" dengan warna per
   });
   const total = screen.getAllByText('Kurang 2')[0];
   expect(total).toBeInTheDocument();
-  expect(total?.className).toContain('text-destructive');
+  expect(total?.className).toContain('text-destructive-text');
 });

@@ -228,7 +228,7 @@ export function StickerInstructionsField({
           </p>
         ) : null}
         {grouped.general.map((message) => (
-          <p key={message} role="alert" className="text-sm text-destructive">
+          <p key={message} role="alert" className="text-sm text-destructive-text">
             {message}
           </p>
         ))}
@@ -426,7 +426,7 @@ function PhotoCard({
         onChange={(buId) => onUpdate((current) => ({ ...current, buId }))}
       />
       {photoErrors.map((message) => (
-        <p key={message} role="alert" className="text-sm text-destructive">
+        <p key={message} role="alert" className="text-sm text-destructive-text">
           {capitalize(message)}
         </p>
       ))}

@@ -71,7 +71,7 @@ export function ReportPage({ onOpenSerial }: ReportPageProps) {
       {query === '' ? null : lookup.isPending ? (
         <p className="text-sm text-muted-foreground">Mencari {query}…</p>
       ) : lookup.isError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {describeError(lookup.error)}
         </p>
       ) : matches.length === 0 && elsewhere !== null ? (

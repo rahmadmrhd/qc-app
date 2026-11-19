@@ -26,7 +26,7 @@ export function SerialSettingsView() {
   if (settings.isPending) return <p className="text-sm text-muted-foreground">Memuat…</p>;
   if (settings.isError || !settings.data) {
     return (
-      <p role="alert" className="text-sm text-destructive">
+      <p role="alert" className="text-sm text-destructive-text">
         {settings.error ? describeError(settings.error) : 'Pengaturan tidak bisa dimuat.'}
       </p>
     );

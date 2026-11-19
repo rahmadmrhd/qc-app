@@ -38,7 +38,7 @@ export function ProofProblemBanner({ count, photos }: ProofProblemBannerProps) {
       className="space-y-3 rounded-lg border border-destructive/40 bg-destructive/5 p-4"
     >
       <p className="flex items-start gap-2 text-sm">
-        <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive" />
+        <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-destructive-text" />
         <span>
           <span className="font-medium">{`Foto bukti QC bermasalah (${total} foto).`}</span>{' '}
           {expiry

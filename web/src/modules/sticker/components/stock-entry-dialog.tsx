@@ -68,7 +68,7 @@ export interface StockEntryDialogProps {
 
 function FieldError({ message }: { message: string | undefined }) {
   return message ? (
-    <p role="alert" className="text-sm text-destructive">
+    <p role="alert" className="text-sm text-destructive-text">
       {message}
     </p>
   ) : null;
@@ -321,7 +321,7 @@ function StockEntryBody({ mode, sticker, onSave, onClose }: BodyProps) {
         <FieldError message={errors.reason} />
       </div>
       {generalError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {generalError}
         </p>
       ) : null}

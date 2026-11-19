@@ -121,7 +121,7 @@ function ItemsPage() {
         />
       </div>
       {list.isError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Gagal memuat item. Coba muat ulang.
         </p>
       ) : null}

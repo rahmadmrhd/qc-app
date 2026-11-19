@@ -126,7 +126,7 @@ function StickerTypeFormBody({ type, onSave, onClose }: StickerTypeFormBodyProps
           }}
         />
         {nameError ? (
-          <p id="sticker-type-name-error" role="alert" className="text-sm text-destructive">
+          <p id="sticker-type-name-error" role="alert" className="text-sm text-destructive-text">
             {nameError}
           </p>
         ) : null}

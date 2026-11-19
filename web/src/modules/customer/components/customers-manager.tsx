@@ -105,7 +105,11 @@ export function CustomersManager({
                       }}
                     />
                     {error?.id === customer.id ? (
-                      <p id="customer-edit-error" role="alert" className="text-sm text-destructive">
+                      <p
+                        id="customer-edit-error"
+                        role="alert"
+                        className="text-sm text-destructive-text"
+                      >
                         {error.message}
                       </p>
                     ) : null}

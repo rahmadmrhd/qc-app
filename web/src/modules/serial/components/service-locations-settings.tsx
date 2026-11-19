@@ -77,7 +77,7 @@ function Body({ settings, serverError, onSave, onServerError }: BodyProps) {
         onChange={setIds}
       />
       {serverError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {serverError}
         </p>
       ) : null}
@@ -101,7 +101,7 @@ export function ServiceLocationsSettings() {
   if (settings.isPending) return <p className="text-sm text-muted-foreground">Memuat…</p>;
   if (settings.isError || !settings.data) {
     return (
-      <p role="alert" className="text-sm text-destructive">
+      <p role="alert" className="text-sm text-destructive-text">
         {settings.error ? describeError(settings.error) : 'Lokasi tim servis tidak bisa dimuat.'}
       </p>
     );

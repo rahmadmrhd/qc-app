@@ -51,7 +51,7 @@ export function CommentComposer({ quote, onSubmit, onCancel }: CommentComposerPr
         onChange={(event) => setBody(event.target.value)}
       />
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {error}
         </p>
       ) : null}

@@ -113,7 +113,7 @@ export function PostelHistory({ id }: { id: string }) {
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Memuat riwayat…</p>
       ) : isError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Riwayat tidak dapat dimuat.
         </p>
       ) : !data || data.entries.length === 0 ? (

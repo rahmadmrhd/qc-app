@@ -252,7 +252,7 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
               <p
                 id={`postel-alert-threshold-${index}-error`}
                 role="alert"
-                className="text-sm text-destructive"
+                className="text-sm text-destructive-text"
               >
                 {errors[`threshold-${index}`]}
               </p>
@@ -260,7 +260,11 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
           </div>
         ))}
         {errors.thresholds ? (
-          <p id="postel-alert-thresholds-error" role="alert" className="text-sm text-destructive">
+          <p
+            id="postel-alert-thresholds-error"
+            role="alert"
+            className="text-sm text-destructive-text"
+          >
             {errors.thresholds}
           </p>
         ) : null}
@@ -297,7 +301,7 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
           pengulangan.
         </p>
         {errors.repeat ? (
-          <p id="postel-alert-repeat-error" role="alert" className="text-sm text-destructive">
+          <p id="postel-alert-repeat-error" role="alert" className="text-sm text-destructive-text">
             {errors.repeat}
           </p>
         ) : null}
@@ -348,13 +352,17 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
           ditambahkan.
         </p>
         {errors.recipients ? (
-          <p id="postel-alert-recipients-error" role="alert" className="text-sm text-destructive">
+          <p
+            id="postel-alert-recipients-error"
+            role="alert"
+            className="text-sm text-destructive-text"
+          >
             {errors.recipients}
           </p>
         ) : null}
       </fieldset>
       {serverError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {serverError}
         </p>
       ) : null}

@@ -91,7 +91,7 @@ function StickerStockRoute() {
   if (stock.isPending) return <Skeleton className="h-64 w-full" />;
   if (stock.isError) {
     return (
-      <p role="alert" className="text-sm text-destructive">
+      <p role="alert" className="text-sm text-destructive-text">
         {describeError(stock.error)}
       </p>
     );

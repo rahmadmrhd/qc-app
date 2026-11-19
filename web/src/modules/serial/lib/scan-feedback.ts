@@ -17,7 +17,7 @@ export const FEEDBACK_FLASH: Record<ScanFeedback, string> = {
 export const FEEDBACK_TEXT_COLOR: Record<ScanFeedback, string> = {
   added: 'text-success-text',
   duplicate: 'text-warning-text',
-  rejected: 'text-destructive',
+  rejected: 'text-destructive-text',
 };
 
 /**

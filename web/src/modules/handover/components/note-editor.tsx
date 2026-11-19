@@ -39,7 +39,7 @@ export function NoteEditor({ id, value, onChange, labelledBy, disabled }: NoteEd
         extraExtensions={extensions}
       />
       {tooLong !== null ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {`Tempelan ${tooLong.toLocaleString('id-ID')} karakter melebihi batas ${HANDOVER_LIMITS.note.toLocaleString('id-ID')} karakter dan tidak dimasukkan. Bagi menjadi beberapa task atau persingkat dulu; catatan Anda tidak berubah.`}
         </p>
       ) : null}

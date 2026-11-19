@@ -95,7 +95,7 @@ export function ExportDialog({ design, open, onOpenChange, onConfirm }: ExportDi
           </div>
         ) : null}
         {error ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive-text">
             {error}
           </p>
         ) : null}

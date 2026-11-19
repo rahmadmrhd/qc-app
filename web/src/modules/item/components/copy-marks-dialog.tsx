@@ -128,7 +128,7 @@ export function CopyMarksDialog({
             </p>
           </div>
         ) : usages.isError ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive-text">
             {describeError(usages.error)}
           </p>
         ) : usages.isPending ? (
@@ -161,7 +161,7 @@ export function CopyMarksDialog({
           </ul>
         )}
         {error ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive-text">
             {error}
           </p>
         ) : null}

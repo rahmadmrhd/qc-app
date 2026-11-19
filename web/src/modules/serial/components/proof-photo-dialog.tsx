@@ -244,7 +244,7 @@ function ProofPhotoBody({
       {notices.length > 0 ? (
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
           <div className="flex items-start justify-between gap-2">
-            <p className="font-medium text-destructive">
+            <p className="font-medium text-destructive-text">
               {notices.length} berkas tidak dapat ditambahkan
             </p>
             <Button
@@ -281,14 +281,14 @@ function ProofPhotoBody({
                   {entry.name}
                 </span>
                 {entry.status === 'failed' && entry.error ? (
-                  <span className="text-xs text-destructive">{entry.error}</span>
+                  <span className="text-xs text-destructive-text">{entry.error}</span>
                 ) : null}
               </div>
               {entry.status === 'uploading' ? (
                 <Spinner />
               ) : (
                 <>
-                  <CircleAlert aria-hidden className="size-4 text-destructive" />
+                  <CircleAlert aria-hidden className="size-4 text-destructive-text" />
                   <Button
                     type="button"
                     variant="ghost"

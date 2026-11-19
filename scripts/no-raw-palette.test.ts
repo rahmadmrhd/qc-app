@@ -22,11 +22,11 @@ const ALLOWED: Record<string, string> = {
   'web/src/modules/serial/components/proof-camera-controls.tsx': `Tombol senter menyala (kuning di atas kamera). ${CAMERA_REASON}`,
 };
 
-function walk(dir: string, found: string[] = []): string[] {
+function walk(dir: string, found: string[] = [], ignored: Set<string> = IGNORED_DIRS): string[] {
   for (const entry of readdirSync(dir)) {
-    if (IGNORED_DIRS.has(entry)) continue;
+    if (ignored.has(entry)) continue;
     const path = join(dir, entry);
-    if (statSync(path).isDirectory()) walk(path, found);
+    if (statSync(path).isDirectory()) walk(path, found, ignored);
     else if (/\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path)) found.push(path);
   }
   return found;
@@ -52,4 +52,21 @@ test('setiap entri ALLOWED punya alasan dan berkasnya masih ada', () => {
     expect(reason.trim().length).toBeGreaterThan(10);
     expect(statSync(join(ROOT, file)).isFile()).toBe(true);
   }
+});
+
+// Teks status polos (`text-destructive`, dst.) memakai warna solid yang kontrasnya di atas latar halaman gelap
+// kurang dari AA; teks/ikon di atas latar halaman wajib memakai token `-text`.
+const PLAIN_STATUS_TEXT = /(?<![-\w])text-(destructive|success|warning|info)(?![-\w])/g;
+
+test('teks status memakai token -text (text-destructive-text, dst.), bukan text-destructive polos', () => {
+  const violations: string[] = [];
+  for (const file of walk(join(ROOT, SCAN_DIR), [], new Set(['node_modules', 'dist']))) {
+    const matches = stripComments(readFileSync(file, 'utf8')).match(PLAIN_STATUS_TEXT);
+    if (matches) {
+      violations.push(
+        `${relative(ROOT, file).split(sep).join('/')}: ${[...new Set(matches)].join(' ')} (gunakan akhiran -text)`,
+      );
+    }
+  }
+  expect(violations).toEqual([]);
 });

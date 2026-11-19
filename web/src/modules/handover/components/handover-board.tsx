@@ -41,7 +41,7 @@ class CardBoundary extends Component<{ number: string; children: ReactNode }, { 
       return (
         <p
           role="alert"
-          className="rounded-lg border border-destructive p-3 text-sm text-destructive"
+          className="rounded-lg border border-destructive p-3 text-sm text-destructive-text"
         >
           Task {this.props.number} tidak dapat ditampilkan (data rusak).
         </p>

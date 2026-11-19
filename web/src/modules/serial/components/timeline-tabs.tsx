@@ -92,7 +92,7 @@ export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
         {history.isPending ? (
           <p className="text-sm text-muted-foreground">Memuat…</p>
         ) : history.isError ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive-text">
             {describeError(history.error)}
           </p>
         ) : (

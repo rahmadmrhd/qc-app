@@ -121,7 +121,9 @@ function SessionNote({ device, unrecorded }: { device: MultiDeviceDto; unrecorde
   return (
     <>
       {unrecorded ? (
-        <span className="block text-xs font-medium text-destructive">Belum tercatat di draft</span>
+        <span className="block text-xs font-medium text-destructive-text">
+          Belum tercatat di draft
+        </span>
       ) : null}
       {device.injectedThisSession ? (
         <span className="block text-xs text-muted-foreground">Sudah di-inject di sesi ini</span>

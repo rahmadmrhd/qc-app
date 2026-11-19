@@ -109,14 +109,14 @@ function EditHandoverPage() {
       {detail.isPending ? (
         <Skeleton className="h-64 w-full" />
       ) : !task ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Task tidak ditemukan di lokasi aktif.{' '}
           <Link to="/handover" search={listSearch} className="underline">
             Kembali ke daftar
           </Link>
         </p>
       ) : !editable ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Task ini tidak dapat diubah (sudah dibatalkan atau Anda tidak punya izin ubah).{' '}
           <Link
             to="/handover/$handoverId"

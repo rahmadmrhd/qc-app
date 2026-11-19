@@ -170,7 +170,7 @@ export function PushSettingsDialog({ onClose }: { onClose: () => void }) {
         </DialogHeader>
         {data === undefined || kind === undefined ? (
           config.isError ? (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive-text">
               Gagal memuat pengaturan notifikasi push.
             </p>
           ) : (

@@ -12,7 +12,7 @@ export function LogoThumb({ id, label }: { id: string; label: string }) {
     );
   }
   if (isError || !url) {
-    return <span className="text-xs text-destructive">Logo tidak dapat dimuat</span>;
+    return <span className="text-xs text-destructive-text">Logo tidak dapat dimuat</span>;
   }
   return (
     <img src={url} alt={label} className="h-16 w-16 rounded border bg-white object-contain p-1" />

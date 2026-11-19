@@ -72,7 +72,7 @@ export function SerialListPage({ search, onSearchChange, onOpen, onNew }: Serial
         <SerialFilters search={search} onChange={onSearchChange} />
       </div>
       {list.isError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Gagal memuat serial: {describeError(list.error)}
         </p>
       ) : null}

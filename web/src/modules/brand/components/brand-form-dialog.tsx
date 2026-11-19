@@ -171,7 +171,7 @@ function BrandFormBody({
             }}
           />
           {error ? (
-            <p id="brand-form-error" role="alert" className="text-sm text-destructive">
+            <p id="brand-form-error" role="alert" className="text-sm text-destructive-text">
               {error}
             </p>
           ) : null}

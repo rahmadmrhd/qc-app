@@ -92,7 +92,7 @@ function buLabel(bu: BusinessUnitOptionDto): string {
 
 function FieldError({ id, message }: { id: string; message: string | undefined }) {
   return message ? (
-    <p id={id} role="alert" className="text-sm text-destructive">
+    <p id={id} role="alert" className="text-sm text-destructive-text">
       {message}
     </p>
   ) : null;

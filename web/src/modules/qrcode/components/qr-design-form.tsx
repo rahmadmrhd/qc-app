@@ -529,7 +529,7 @@ export function QrDesignForm({
                           </p>
                         ) : null}
                         {legacyError ? (
-                          <p role="alert" className="text-sm text-destructive">
+                          <p role="alert" className="text-sm text-destructive-text">
                             {legacyError}
                           </p>
                         ) : null}
@@ -743,7 +743,7 @@ export function QrDesignForm({
                                 }
                               />
                               {message ? (
-                                <span className="text-sm text-destructive">{message}</span>
+                                <span className="text-sm text-destructive-text">{message}</span>
                               ) : null}
                             </div>
                           );
@@ -891,7 +891,7 @@ export function QrDesignForm({
                                 }
                               />
                               {message ? (
-                                <p className="text-sm text-destructive">{message}</p>
+                                <p className="text-sm text-destructive-text">{message}</p>
                               ) : null}
                             </div>
                           );
@@ -937,7 +937,7 @@ export function QrDesignForm({
                               }
                             />
                             {layoutRangeMessage(key, field.state.value[key]) ? (
-                              <p className="text-sm text-destructive">
+                              <p className="text-sm text-destructive-text">
                                 {layoutRangeMessage(key, field.state.value[key])}
                               </p>
                             ) : null}
@@ -955,7 +955,7 @@ export function QrDesignForm({
             </Section>
 
             {submitError ? (
-              <p role="alert" className="text-sm text-destructive">
+              <p role="alert" className="text-sm text-destructive-text">
                 {submitError}
               </p>
             ) : null}

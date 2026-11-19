@@ -86,7 +86,7 @@ export function UploadTab({
       {rejected.length > 0 ? (
         <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
           <div className="flex items-start justify-between gap-2">
-            <p className="font-medium text-destructive">
+            <p className="font-medium text-destructive-text">
               {rejected.length} berkas tidak dapat ditambahkan
             </p>
             <Button
@@ -139,7 +139,7 @@ export function UploadTab({
                       : `${entry.file.name} · ${formatBytes(entry.file.size)}`}
                   </span>
                   {entry.status === 'failed' && entry.error ? (
-                    <span className="text-xs text-destructive">{entry.error}</span>
+                    <span className="text-xs text-destructive-text">{entry.error}</span>
                   ) : null}
                 </div>
                 <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
@@ -148,7 +148,7 @@ export function UploadTab({
                     <CircleCheck aria-hidden className="size-4 text-success-text" />
                   ) : null}
                   {entry.status === 'failed' ? (
-                    <CircleAlert aria-hidden className="size-4 text-destructive" />
+                    <CircleAlert aria-hidden className="size-4 text-destructive-text" />
                   ) : null}
                   {entry.status === 'failed' ? 'Gagal' : STATUS_LABEL[entry.status]}
                 </span>

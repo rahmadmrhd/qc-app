@@ -264,7 +264,7 @@ export function RowEditDialog({
                 </p>
               ) : null}
               {serialError ? (
-                <p role="alert" className="text-xs text-destructive">
+                <p role="alert" className="text-xs text-destructive-text">
                   {serialError}
                 </p>
               ) : null}
@@ -279,7 +279,7 @@ export function RowEditDialog({
                   kejadian cek ulang lolos pada catatan yang sama; item mengikuti catatan itu.
                 </p>
                 {blocked !== null ? (
-                  <p role="alert" className="text-sm text-destructive">
+                  <p role="alert" className="text-sm text-destructive-text">
                     {blocked}
                   </p>
                 ) : null}

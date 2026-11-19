@@ -91,7 +91,7 @@ function HandoverDetailPage() {
   if (!task) {
     const notFound = !(query.error instanceof ApiError) || denied;
     return (
-      <p role="alert" className="text-sm text-destructive">
+      <p role="alert" className="text-sm text-destructive-text">
         {notFound ? 'Task tidak ditemukan di lokasi aktif.' : 'Gagal memuat task. Coba muat ulang.'}{' '}
         <Link to="/handover" search={listSearch} className="underline">
           Kembali ke daftar

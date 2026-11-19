@@ -216,7 +216,7 @@ export function HandoverBatchForm({
                 />
               </div>
               {error ? (
-                <p role="alert" className="text-sm text-destructive">
+                <p role="alert" className="text-sm text-destructive-text">
                   {error}
                 </p>
               ) : null}
@@ -242,7 +242,7 @@ export function HandoverBatchForm({
       ) : null}
 
       {formError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {formError}
         </p>
       ) : null}

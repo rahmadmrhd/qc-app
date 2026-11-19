@@ -188,7 +188,7 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
                   }}
                 />
                 {errors[`default-${type.id}`] ? (
-                  <p role="alert" className="text-sm text-destructive">
+                  <p role="alert" className="text-sm text-destructive-text">
                     {errors[`default-${type.id}`]}
                   </p>
                 ) : null}
@@ -246,7 +246,7 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
             Ringkasan dikirim paling awal pada jam ini, hanya bila ada stok yang menipis atau habis.
           </p>
           {errors.digestHour ? (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive-text">
               {errors.digestHour}
             </p>
           ) : null}
@@ -273,7 +273,7 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
             seminggu.
           </p>
           {errors.intervalDays ? (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive-text">
               {errors.intervalDays}
             </p>
           ) : null}
@@ -319,7 +319,7 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
             ditambahkan.
           </p>
           {errors.recipients ? (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive-text">
               {errors.recipients}
             </p>
           ) : null}
@@ -327,7 +327,7 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
       </section>
 
       {serverError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {serverError}
         </p>
       ) : null}

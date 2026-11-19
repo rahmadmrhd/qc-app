@@ -149,7 +149,7 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
         />
         <p
           className={
-            normalized.capped ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'
+            normalized.capped ? 'text-xs text-destructive-text' : 'text-xs text-muted-foreground'
           }
           role={normalized.capped ? 'alert' : undefined}
         >

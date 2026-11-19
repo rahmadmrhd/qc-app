@@ -64,7 +64,7 @@ function EditQrPresetPage() {
 
   if (!preset || !loaded) {
     return (
-      <p role="alert" className="text-sm text-destructive">
+      <p role="alert" className="text-sm text-destructive-text">
         Konfigurasi default tidak ditemukan.{' '}
         <Link to="/qrcode/default" className="underline">
           Kembali ke daftar

@@ -146,7 +146,7 @@ export function HandoverBoardPage({
       ) : board.isPending ? (
         <Skeleton className="h-40 w-full" />
       ) : board.isError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Gagal memuat task. Coba muat ulang.
         </p>
       ) : board.total === 0 && pendingCreates.length === 0 ? (

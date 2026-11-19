@@ -15,7 +15,7 @@ function Label({
       data-slot="label"
       data-required={required ? "" : undefined}
       className={cn(
-        "flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 data-[required]:after:ml-0.5 data-[required]:after:text-destructive data-[required]:after:content-['*']",
+        "flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50 data-[required]:after:ml-0.5 data-[required]:after:text-destructive-text data-[required]:after:content-['*']",
         className
       )}
       {...props}

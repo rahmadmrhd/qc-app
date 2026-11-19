@@ -91,7 +91,7 @@ export function ExistingReportForm({ match, onDone }: ExistingReportFormProps) {
         />
       </div>
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {error}
         </p>
       ) : null}
@@ -247,7 +247,7 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
         />
       </div>
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {error}
         </p>
       ) : null}

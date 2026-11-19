@@ -166,7 +166,7 @@ function OpnameBody({ rows, onSave, onClose }: BodyProps) {
                   <div className="space-y-2">
                     <CountInput value={count} onChange={(next) => setCount(row.stickerId, next)} />
                     {pieces > STICKER_LIMITS.qtyMax ? (
-                      <p role="alert" className="text-sm text-destructive">
+                      <p role="alert" className="text-sm text-destructive-text">
                         {`${row.name}: jumlah butir maksimal ${STICKER_LIMITS.qtyMax}`}
                       </p>
                     ) : null}
@@ -206,12 +206,12 @@ function OpnameBody({ rows, onSave, onClose }: BodyProps) {
         tidak dihitung tidak disentuh.
       </p>
       {tooMany ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {`Maksimal ${STICKER_LIMITS.opnameRows} stiker per opname.`}
         </p>
       ) : null}
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {error}
         </p>
       ) : null}

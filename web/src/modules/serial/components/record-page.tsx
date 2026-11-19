@@ -110,7 +110,7 @@ export interface RecordPageHandle {
 const NOTICE_CLASS: Record<NoticeTone, string> = {
   info: 'border-border bg-muted/40',
   warn: 'border-warning-text/35 bg-warning-text/10',
-  error: 'border-destructive/50 bg-destructive/10 text-destructive',
+  error: 'border-destructive/50 bg-destructive/10 text-destructive-text',
 };
 
 const AUTOSAVE_DELAY_MS = 500;

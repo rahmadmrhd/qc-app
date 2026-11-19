@@ -298,7 +298,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
             </p>
           ) : null}
           {error ? (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive-text">
               {error}
             </p>
           ) : null}

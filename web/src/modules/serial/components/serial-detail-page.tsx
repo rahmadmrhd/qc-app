@@ -121,7 +121,7 @@ export function SerialDetailPage({ serialId, onBack, caseId }: SerialDetailPageP
   if (detail.isError || !detail.data) {
     return (
       <div className="space-y-3">
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {detail.error ? describeError(detail.error) : 'Serial tidak ditemukan.'}
         </p>
         <Button variant="outline" onClick={onBack}>

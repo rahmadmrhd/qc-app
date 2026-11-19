@@ -367,18 +367,18 @@ export function WysiwygEditor({
         </span>
         <span
           id={`${id}-count`}
-          className={cn(tooLong ? 'text-destructive' : 'text-muted-foreground')}
+          className={cn(tooLong ? 'text-destructive-text' : 'text-muted-foreground')}
         >
           {value.length}/{maxLength}
         </span>
       </div>
       {limitHit ? (
-        <p role="status" className="text-sm text-destructive">
+        <p role="status" className="text-sm text-destructive-text">
           Batas {maxLength} karakter tercapai; teks yang melebihi batas tidak dimasukkan.
         </p>
       ) : null}
       {uploadError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {uploadError}
         </p>
       ) : null}

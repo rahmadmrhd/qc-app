@@ -121,7 +121,7 @@ export function StockPage({
                 </TableCell>
                 <TableCell>{row.typeName}</TableCell>
                 <TableCell
-                  className={`text-right tabular-nums${row.total < 0 ? ' text-destructive' : ''}`}
+                  className={`text-right tabular-nums${row.total < 0 ? ' text-destructive-text' : ''}`}
                 >
                   {formatStockQty(row.total)}
                 </TableCell>

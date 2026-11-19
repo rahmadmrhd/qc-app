@@ -96,7 +96,7 @@ export function StockHistory({
                   ) : null}
                   <TableCell className="text-right tabular-nums">{signed(entry.delta)}</TableCell>
                   <TableCell
-                    className={`text-right tabular-nums${entry.qtyAfter < 0 ? ' text-destructive' : ''}`}
+                    className={`text-right tabular-nums${entry.qtyAfter < 0 ? ' text-destructive-text' : ''}`}
                   >
                     {formatStockQty(entry.qtyAfter)}
                   </TableCell>
@@ -145,7 +145,7 @@ function StockHistoryBody({
   if (query.isPending) return <p className="text-sm text-muted-foreground">Memuat riwayat…</p>;
   if (query.isError) {
     return (
-      <p role="alert" className="text-sm text-destructive">
+      <p role="alert" className="text-sm text-destructive-text">
         {describeError(query.error)}
       </p>
     );

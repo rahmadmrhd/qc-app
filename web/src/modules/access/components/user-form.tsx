@@ -394,7 +394,7 @@ export function UserForm({
         }}
       </form.Field>
       {submitError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {submitError}
         </p>
       ) : null}

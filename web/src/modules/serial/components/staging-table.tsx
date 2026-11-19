@@ -59,7 +59,7 @@ export function rowStatus(row: StagingRow): { tone: 'error' | 'warn' | 'ok'; tex
 }
 
 export const TONE_CLASS = {
-  error: 'text-destructive',
+  error: 'text-destructive-text',
   warn: 'text-warning-text',
   ok: 'text-muted-foreground',
 } as const;
@@ -138,7 +138,7 @@ function SerialCell({ clientId, serial, onCommitSerial, disabled, locked }: Seri
         }}
       />
       {error ? (
-        <p role="alert" className="mt-0.5 text-xs text-destructive">
+        <p role="alert" className="mt-0.5 text-xs text-destructive-text">
           {error}
         </p>
       ) : null}

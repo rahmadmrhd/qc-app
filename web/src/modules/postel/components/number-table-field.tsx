@@ -130,7 +130,7 @@ export function NumberTableField({
       {errors && errors.length > 0 ? (
         <div className="space-y-0.5">
           {errors.map((message) => (
-            <p key={message} className="text-sm text-destructive">
+            <p key={message} className="text-sm text-destructive-text">
               {message}
             </p>
           ))}

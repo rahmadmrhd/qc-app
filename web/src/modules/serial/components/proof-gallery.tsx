@@ -92,7 +92,7 @@ export function ProofGallery({ photos }: ProofGalleryProps) {
               {pending ? <p className="text-xs text-muted-foreground">Menunggu cap</p> : null}
               {failed ? (
                 <div className="space-y-1">
-                  <p className="flex items-center gap-1 text-xs font-medium text-destructive">
+                  <p className="flex items-center gap-1 text-xs font-medium text-destructive-text">
                     <CircleAlert aria-hidden className="size-3.5" />
                     Gagal
                   </p>

@@ -149,7 +149,7 @@ export function AttachmentsField({ value, onChange, error, onBusyChange }: Attac
         }}
       />
       {messages.map((message) => (
-        <p key={message} role="alert" className="text-sm text-destructive">
+        <p key={message} role="alert" className="text-sm text-destructive-text">
           {message}
         </p>
       ))}

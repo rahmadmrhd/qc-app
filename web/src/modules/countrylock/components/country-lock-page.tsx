@@ -327,7 +327,7 @@ export function CountryLockPage({
                 ) : null}
 
                 {missingDeviceIp ? (
-                  <p className="text-sm text-destructive">
+                  <p className="text-sm text-destructive-text">
                     IP perangkat mode tunggal belum diatur di config.QC untuk merk ini.
                   </p>
                 ) : null}

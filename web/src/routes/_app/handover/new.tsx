@@ -63,7 +63,7 @@ function NewHandoverPage() {
       ) : options.isPending ? (
         <Skeleton className="h-64 w-full" />
       ) : !formOptions ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Gagal memuat daftar customer.
         </p>
       ) : (

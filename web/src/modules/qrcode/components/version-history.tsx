@@ -23,7 +23,7 @@ export function VersionHistory({
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Memuat riwayat…</p>
       ) : isError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Riwayat versi tidak dapat dimuat.
         </p>
       ) : !data || data.length === 0 ? (
