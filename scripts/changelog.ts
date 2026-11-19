@@ -1,9 +1,11 @@
 // Perkakas changelog berbasis fragmen (rancangan docs/superpowers/specs/2026-11-17-rilis-semver-design.md bagian 5.2;
 // format berkas di ...-changelog-dan-unduh-desktop-web-design.md bagian 4).
 //
-// Satu fragmen = satu berkas `<komponen>/changelog.d/<yyyymmdd>-<slug>.md`: baris pertama `jenis: <jenis>`, sisanya SATU
-// paragraf teks untuk pengguna. `compile` menggabung fragmen menjadi bagian versi di `<komponen>/CHANGELOG.md` lalu
-// menghapus fragmennya; `extract` mengambil satu bagian (isi GitHub Release dan berkas yang dibawa image).
+// Satu fragmen = satu berkas `<komponen>/changelog.d/<yyyymmdd>-<slug>.md` berisi satu butir atau lebih, SATU per baris,
+// bergaya pesan commit: `tipe(area): ringkasan` (area boleh dihilangkan). Tipe menentukan bagian di changelog (feat =
+// Ditambah, fix = Diperbaiki, change/refactor/perf = Diubah, chore/ci/docs/test/build/style = Internal; keputusan pemilik
+// 2026-11-19). `compile` menggabung fragmen menjadi bagian versi di `<komponen>/CHANGELOG.md` lalu menghapus
+// fragmennya; `extract` mengambil satu bagian (isi GitHub Release dan berkas yang dibawa image).
 //
 //   bun run changelog validate <server|desktop>
 //   bun run changelog compile  <server|desktop> <X.Y.Z> <YYYY-MM-DD>
@@ -30,16 +32,37 @@ function isCalendarDate(yyyymmdd: string): boolean {
   );
 }
 
-/** Batas panjang teks satu fragmen (setelah baris digabung). */
-export const FRAGMENT_MAX_CHARS = 500;
+/** Batas panjang ringkasan satu butir (tanpa awalan `tipe(area): `). */
+export const FRAGMENT_MAX_CHARS = 200;
+
+/** Tipe gaya commit yang dikenali dan jenis (bagian changelog) yang dipakainya. */
+export const TYPE_TO_KIND: Record<string, FragmentKind> = {
+  feat: 'ditambah',
+  change: 'diubah',
+  refactor: 'diubah',
+  perf: 'diubah',
+  fix: 'diperbaiki',
+  chore: 'internal',
+  ci: 'internal',
+  docs: 'internal',
+  test: 'internal',
+  build: 'internal',
+  style: 'internal',
+};
 
 export const COMPONENTS = ['server', 'desktop'] as const;
 export type Component = (typeof COMPONENTS)[number];
 
+/** Satu butir changelog: satu baris fragmen. `area` kosong (null) = tanpa area. */
+export interface ChangeEntry {
+  kind: FragmentKind;
+  area: string | null;
+  text: string;
+}
+
 export interface Fragment {
   name: string;
-  kind: FragmentKind;
-  text: string;
+  entries: ChangeEntry[];
 }
 
 /** Judul bagian per jenis, dalam urutan penulisan. */
@@ -74,9 +97,14 @@ export function compareSemver(a: string, b: string): number {
   return 0;
 }
 
-const KIND_LINE = /^jenis: (ditambah|diubah|diperbaiki|internal)$/;
+/** `tipe(area): teks` atau `tipe: teks`; area huruf kecil/angka dipisah tanda hubung, tepat satu spasi setelah titik dua. */
+const ENTRY_LINE = /^([a-z]+)(?:\(([a-z0-9]+(?:-[a-z0-9]+)*)\))?: (.*)$/;
+const TYPES_HINT = Object.keys(TYPE_TO_KIND).join('|');
 
-/** Urai satu fragmen. Setiap galat memuat NAMA berkas supaya penulis tahu mana yang harus diperbaiki. */
+/**
+ * Urai satu fragmen: satu butir per baris (baris kosong diabaikan, baris lanjutan tidak ada). Setiap galat memuat NAMA
+ * berkas (dan nomor baris) supaya penulis tahu mana yang harus diperbaiki.
+ */
 export function parseFragment(name: string, text: string): Fragment {
   const fail = (reason: string): never => {
     throw new ChangelogError(`${name}: ${reason}`);
@@ -85,24 +113,30 @@ export function parseFragment(name: string, text: string): Fragment {
     fail('nama harus <yyyymmdd>-<slug-huruf-kecil>.md dengan tanggal kalender yang nyata');
   }
   if (text.includes('\r')) fail('memakai akhir baris Windows (CR); simpan dengan LF');
-  const lines = text.split('\n');
-  const match = KIND_LINE.exec((lines[0] ?? '').trimEnd());
-  if (!match) {
-    fail(
-      `baris pertama harus "jenis: ${FRAGMENT_KINDS.join('|')}" (huruf kecil, satu spasi setelah titik dua)`,
-    );
-  }
-  const body = lines.slice(1).join('\n').trim();
-  if (body === '') fail('teks perubahan kosong');
-  if (/\n[ \t]*\n/.test(body)) fail('teks harus satu paragraf (tanpa baris kosong di tengah)');
-  const joined = body
-    .split('\n')
-    .map((line) => line.trim())
-    .join(' ');
-  if (joined.length > FRAGMENT_MAX_CHARS) {
-    fail(`teks terlalu panjang (${joined.length} karakter; maksimal ${FRAGMENT_MAX_CHARS})`);
-  }
-  return { name, kind: (match as RegExpExecArray)[1] as FragmentKind, text: joined };
+  const entries: ChangeEntry[] = [];
+  text.split('\n').forEach((raw, index) => {
+    const line = raw.trim();
+    if (line === '') return;
+    const where = `baris ${index + 1}`;
+    const match = ENTRY_LINE.exec(line);
+    if (!match) {
+      fail(`${where}: harus "tipe(area): ringkasan" atau "tipe: ringkasan" (tipe: ${TYPES_HINT})`);
+    }
+    const [, type = '', area, summary = ''] = match as RegExpExecArray;
+    const kind = TYPE_TO_KIND[type];
+    if (kind === undefined) fail(`${where}: tipe "${type}" tidak dikenal (pilih: ${TYPES_HINT})`);
+    const body = summary.trim();
+    if (body === '') fail(`${where}: ringkasan kosong`);
+    if (body.length > FRAGMENT_MAX_CHARS) {
+      fail(
+        `${where}: ringkasan terlalu panjang (${body.length} karakter; maksimal ${FRAGMENT_MAX_CHARS})`,
+      );
+    }
+    entries.push({ kind: kind as FragmentKind, area: area ?? null, text: body });
+  });
+  if (entries.length === 0)
+    fail('tidak ada butir perubahan (isi minimal satu baris "tipe(area): ringkasan")');
+  return { name, entries };
 }
 
 function isRealDate(date: string): boolean {
@@ -130,13 +164,25 @@ export function compileRelease(input: CompileInput): string {
   if (new RegExp(`^## \\[${version.replaceAll('.', '\\.')}\\]`, 'm').test(existing)) {
     throw new ChangelogError(`Versi ${version} sudah ada di CHANGELOG`);
   }
-  const sorted = [...fragments].sort((a, b) => a.name.localeCompare(b.name));
+  // Urutan asal = nama fragmen lalu urutan baris; pengurutan per area stabil, jadi urutan asal dijaga dalam satu area.
+  const entries = [...fragments]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .flatMap((fragment) => fragment.entries);
   const lines = [`## [${version}] - ${date}`];
   for (const kind of FRAGMENT_KINDS) {
-    const group = sorted.filter((fragment) => fragment.kind === kind);
+    const group = entries
+      .filter((entry) => entry.kind === kind)
+      .sort((a, b) => {
+        if (a.area === b.area) return 0;
+        if (a.area === null) return 1; // tanpa area di akhir
+        if (b.area === null) return -1;
+        return a.area.localeCompare(b.area);
+      });
     if (group.length === 0) continue;
     lines.push(`### ${KIND_HEADINGS[kind]}`);
-    for (const fragment of group) lines.push(`- ${fragment.text}`);
+    for (const entry of group) {
+      lines.push(entry.area === null ? `- ${entry.text}` : `- ${entry.area}: ${entry.text}`);
+    }
   }
   const section = lines.join('\n');
   if (existing.trim() === '') return `# ${title}\n\n${section}\n`;
