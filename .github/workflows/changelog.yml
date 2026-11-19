@@ -53,7 +53,7 @@ jobs:
           gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | select(.status == "added") | .filename' > "$RUNNER_TEMP/pr-added.txt"
 
       # Langkah ini menjalankan skrip dari checkout PR, jadi TANPA token. Semua fragmen yang ada divalidasi bentuknya
-      # (nama, jenis, satu paragraf).
+      # (nama, satu butir "tipe(area): ringkasan" per baris).
       - name: Periksa fragmen changelog
         env:
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}

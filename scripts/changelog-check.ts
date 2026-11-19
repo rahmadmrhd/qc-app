@@ -143,7 +143,7 @@ if (import.meta.main) {
   }
   for (const component of result.missing) {
     console.log(
-      `::error::PR ini mengubah ${component} tetapi belum ada fragmen baru di ${component}/changelog.d/ (satu berkas <yyyymmdd>-<slug>.md; baris pertama "jenis: ditambah|diubah|diperbaiki|internal", lalu satu paragraf untuk pengguna). Bila memang tidak perlu dicatat, beri label "${LABEL_SKIP}".`,
+      `::error::PR ini mengubah ${component} tetapi belum ada fragmen baru di ${component}/changelog.d/ (satu berkas <yyyymmdd>-<slug>.md; satu baris per perubahan: "tipe(area): ringkasan", tipe = feat|fix|change|refactor|perf|chore|ci|docs|test|build|style). Bila memang tidak perlu dicatat, beri label "${LABEL_SKIP}".`,
     );
   }
   process.exit(1);
