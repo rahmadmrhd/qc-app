@@ -69,6 +69,13 @@ Pemilik memilih **A** (2026-11-20). Satu dokumen rancangan ini mencakup semua fa
 11. **Semua model memakai soft delete**, dapat **dipulihkan**, model berstatus wajib Nonaktif sebelum dihapus, keunikan menyertakan `deleted_at`, dan menghapus data master tidak menghapus data yang merujuknya. Dirinci di rancangan terpisah [Soft Delete untuk Semua Model](2026-11-20-soft-delete-design.md); aksi Hapus/Pulihkan dan rute batch hapus di dokumen ini mengikuti rancangan itu.
 12. **Semua fase digabung dalam satu PR** ke `dev` (bukan satu PR per fase); pemilik menyetujui di muka rencana implementasi setiap fase (2026-11-20). Akibatnya penilaian pola percontohan (fase 3) oleh pemilik di staging tidak menjadi gerbang sebelum fase 4; percontohan tetap dikerjakan lebih dulu agar kit teruji di kasus nyata, dan pemilik menilai keseluruhan saat PR.
 
+**Keputusan lanjutan pemilik (2026-11-20, atas inventaris fase 4):**
+
+13. **Serial Number tanpa ubah massal**: daftar Serial tidak punya aksi "Ubah massal" (BU serial hanya berpindah lewat Cek ulang sejak rancangan serial unik se-sistem). Checkbox daftar Serial hanya untuk Hapus/Pulihkan massal; `serials.updateBatch` tidak dipakai UI daftar. Menggantikan §8 butir 5 bagian "Ubah massal".
+14. **Serah Terima tanpa aksi massal**: tidak ada rute `handovers.removeBatch`/`restoreBatch` dan tidak ada tampilan daftar ber-checkbox. Hapus dan Pulihkan dilakukan per task dari halaman View task; task terhapus dilihat lewat filter "Terhapus" pada papan (tanpa checkbox). Alasan pemilik: aksi massal tidak dibutuhkan untuk kanban.
+15. **Stiker `deprecated` boleh langsung dihapus** (syarat hapus stiker = bukan Aktif); `deprecated` tetap tidak dapat diaktifkan lagi, termasuk lewat batch status.
+16. **Gambar Pustaka stiker tetap HAPUS PERMANEN** (tidak memakai soft delete) dan tetap DITOLAK bila masih dipakai penempatan item, seperti hari ini; tanpa Pulihkan. Batas 2.000 gambar tidak berubah. Rancangan soft delete diperbarui sesuai keputusan ini.
+
 ## 6. Rancangan
 
 ### 6.1 Token warna
@@ -239,9 +246,9 @@ Untuk setiap aksi massal di tabel berikut, satu rute REST baru per modul, mengik
 | QR Code | `qrcodes.removeBatch`, `restoreBatch` | Hapus, Pulihkan |
 | Default QR | `qrcodes.removePresetBatch`, `restorePresetBatch` | Hapus, Pulihkan |
 | Postel | `postels.removeBatch`, `restoreBatch` | Hapus, Pulihkan |
-| Pustaka Gambar | `stickerGuides.removeBatch`, `restoreBatch` | Hapus, Pulihkan |
-| Serial Number | `serials.updateBatch` (ada), `serials.removeBatch`, `restoreBatch` | Ubah massal, Hapus, Pulihkan |
-| Serah Terima | `handovers.removeBatch`, `restoreBatch` | Hapus, Pulihkan (di tampilan daftar/"Terhapus"; papan kanban tanpa checkbox) |
+| Pustaka Gambar | `stickerGuides.removeBatch` (hapus permanen; seluruh batch ditolak bila satu gambar masih dipakai; keputusan 16) | Hapus |
+| Serial Number | `serials.removeBatch`, `restoreBatch` (tanpa ubah massal; keputusan 13) | Hapus, Pulihkan |
+| Serah Terima | Tidak ada (keputusan 14); `handovers.remove`/`restore` tunggal dari View task | Tidak ada aksi massal |
 
 Kontrak bersama:
 - Masukan: `{ items: { id, updatedAt? }[], status? }` (`updatedAt` untuk model yang memakai CAS `updated_at`), maks. 100 id per permintaan (`BATCH_MAX`), id unik.
@@ -282,7 +289,7 @@ Pertanyaan dari pemeriksaan pembangun independen yang dijawab perancang tanpa me
 2. **Panel "data terkait"** di View hanya memakai data yang sudah ada di DTO (pembuat/terakhir diubah bila ada) dan tautan ke halaman daftar terfilter (mis. "Lihat Serial Number item ini" ke `/serial` dengan filter item), tanpa rute hitungan baru.
 3. **Mockup** dikomit sebagai `docs/superpowers/specs/assets/2026-11-20-redesain-mockup-v3.html`.
 4. **Tes kerangka halaman** baru aktif di akhir fase 4d (lihat §6.4); setiap PR fase tetap hijau.
-5. **Checkbox** hanya ada di halaman yang punya aksi massal di §6.9. Log Audit, Status Push, Stok Stiker, Laporan Serial, Country Lock, papan kanban Serah Terima, dan tab riwayat tanpa checkbox. Daftar Serial Number mendapat checkbox + "Ubah massal" (lokasi/item/BU) memakai `serials.updateBatch` dan dialog `bulk-edit-dialog` yang sudah ada, serta Hapus/Pulihkan massal (soft delete, keputusan 11).
+5. **Checkbox** hanya ada di halaman yang punya aksi massal di §6.9. Log Audit, Status Push, Stok Stiker, Laporan Serial, Country Lock, papan kanban Serah Terima, dan tab riwayat tanpa checkbox. Daftar Serial Number mendapat checkbox untuk Hapus/Pulihkan massal saja (soft delete, keputusan 11; "Ubah massal" dibatalkan oleh keputusan 13, 2026-11-20).
 6. **Penjaga usang pada batch** mengikuti rute tunggal model itu: model yang rute tunggalnya memakai CAS `updated_at`/ETag mengirim `updatedAt` per id; model yang rute tunggalnya tanpa penjaga versi (mis. hapus) tidak. Penjaga khusus (akun sendiri, super admin, jenis sistem, dll.) menolak SELURUH batch dengan pesan generik; baris yang statusnya sudah sama tetap bukan galat (idempoten) dan tidak menulis audit.
 7. **Model yang hari ini diubah lewat dialog** (Merk, Customer, Lokasi, Role, Pengguna, Business Unit, Stiker, Jenis Stiker) tetap diubah lewat Form Dialog yang dibuka dari View dan dari daftar; tidak ada rute `…/$id/edit` baru. Model yang sudah punya halaman Ubah (Item, Postel, QR, Preset QR, Serah Terima) tetap memakai `FormPage`.
 8. **Halaman detail yang sudah ada** (Item, Merk, BU, Postel, Serial, Serah Terima) dipindah ke `ViewPage` pada fase modulnya (Item dan Merk di fase 3, Postel di 4b, BU di 4c, Serial dan Serah Terima di 4d).

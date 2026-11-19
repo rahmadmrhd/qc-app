@@ -34,14 +34,16 @@ Sonnet: Task 1-5. Haiku: Task 6. Berurutan.
 
 ---
 
-### Task 1: Migrasi `0026_soft_delete.sql`
+### Task 1: Migrasi `0027_soft_delete.sql`
+
+> Prasyarat (koreksi 2026-11-20): cabang sudah menggabung `origin/dev` yang memuat `0026_serial_unik_sistem.sql` (PR 134). Bila nomor 0027 sudah terpakai di `dev` saat dikerjakan, pakai nomor bebas berikutnya.
 
 **Files:**
-- Create: `server/migrations/0026_soft_delete.sql`, `server/src/core/soft-delete-migration.test.ts`
+- Create: `server/migrations/0027_soft_delete.sql`, `server/src/core/soft-delete-migration.test.ts`
 
-Tabel ber-soft-delete (urutan tetap, diekspor juga di Task 2): `users`, `roles`, `locations`, `business_units`, `brands`, `customers`, `items`, `sticker_types`, `stickers`, `sticker_guide_images`, `qr_designs`, `qr_presets`, `postels`, `postel_numbers` (ikut induknya), `serials`, `handovers`.
+Tabel ber-soft-delete (urutan tetap, diekspor juga di Task 2): `users`, `roles`, `locations`, `business_units`, `brands`, `customers`, `items`, `sticker_types`, `stickers`, `qr_designs`, `qr_presets`, `postels`, `postel_numbers` (ikut induknya), `serials`, `handovers`. (`sticker_guide_images` SENGAJA tidak termasuk: gambar Pustaka tetap hapus permanen, keputusan pemilik 2026-11-20, rancangan soft delete §2 butir 6.)
 
-Indeks baru (nama = lama + `_live`, kolom = kolom lama + `deleted_at`): `users_email_live`, `roles_name_unique_live`, `locations_code_unique_live`, `locations_name_unique_live`, `business_units_code_unique_live`, `business_units_name_unique_live`, `brands_key_live`, `customers_key_live`, `items_key_live`, `sticker_types_name_unique_live`, `sticker_types_kind_unique_live`, `stickers_type_name_unique_live`, `qr_presets_bu_unique_live`, `postel_numbers_key_live`, `postels_sticker_live`, `serials_bu_serial_live`, `handovers_number_live`.
+Indeks baru (nama = lama + `_live`, kolom = kolom lama + `deleted_at`): `users_email_live`, `roles_name_unique_live`, `locations_code_unique_live`, `locations_name_unique_live`, `business_units_code_unique_live`, `business_units_name_unique_live`, `brands_key_live`, `customers_key_live`, `items_key_live`, `sticker_types_name_unique_live`, `sticker_types_kind_unique_live`, `stickers_type_name_unique_live`, `qr_presets_bu_unique_live`, `postel_numbers_key_live`, `postels_sticker_live`, `handovers_number_live`. Indeks serial TIDAK dibuat di migrasi ini: keunikan serial se-sistem (`serials_serial`) dibuat bersyarat oleh `ensureSerialUniqueIndex` (`server/src/modules/serial/bu-history.ts`) karena data lama dapat ganda; padanan `serials_serial_live` (`serial`, `deleted_at`) ditambahkan di fungsi yang sama pada fase 4d. `serials_bu_serial` (lama, dibuang di contract) tidak mendapat padanan `_live`.
 
 - [ ] **Step 1: Tes gagal** `soft-delete-migration.test.ts` (harness `createTestEnv`): untuk tiap tabel, `SHOW COLUMNS ... LIKE 'deleted_at'` → `Type` varchar(30), `Null` NO, `Default` ''; `deleted_by` ada; untuk tiap nama indeks `_live`, `SHOW INDEX` → unik, kolom terakhir `deleted_at`; INSERT dua merk dengan `key` sama dan `deleted_at` berbeda masih DITOLAK (indeks lama `brands_key` masih ada — membuktikan expand-only).
 - [ ] **Step 2:** `bun run --cwd server test src/core/soft-delete-migration.test.ts` → FAIL.
@@ -77,11 +79,11 @@ Indeks baru (nama = lama + `_live`, kolom = kolom lama + `deleted_at`): `users_e
 **Interfaces:**
 - Consumes: `SOFT_DELETE_TABLES`.
 - Produces: `SOFT_DELETE_PENDING: Record<string, readonly string[]>` di `soft-delete-pending.ts` — kunci = berkas relatif `server/src/...`, nilai = daftar kemunculan `"<TABEL>@<nomor urut kemunculan di berkas>"` yang BELUM menyaring, dikelompokkan dengan komentar per fase modul yang akan membersihkannya (3: item, brand; 4a: sticker; 4b: qrcode, postel; 4c: access, customer; 4d: serial, handover; lain-lain: modul yang membaca tabel lain, mis. notification, desktop catalog, digest). Juga `SOFT_DELETE_EXEMPT: Record<string, string>` — kemunculan yang sah tanpa penyaring (mis. `INSERT`, penulis `soft-delete.ts`, Log Audit, migrator, penampil rujukan) beserta alasan.
-- Aturan pemindaian: berkas `.ts` non-tes di `server/src` dan `server/scripts`; dalam tiap literal string/template, setiap `\b(FROM|JOIN)\s+\`?(tabel)\`?\b` untuk tabel di `SOFT_DELETE_TABLES` dianggap tersaring bila literal yang sama memuat `deleted_at` atau interpolasi `${liveWhere(` / `${deletedWhere(`. Tidak tersaring dan tidak ada di `PENDING`/`EXEMPT` → gagal ("<berkas>:<baris> FROM <tabel> tanpa penyaring"). Entri `PENDING`/`EXEMPT` yang tak lagi cocok → gagal ("entri basi").
+- Aturan pemindaian: berkas `.ts` non-tes di `server/src` dan `server/scripts`; dalam tiap literal string/template, setiap `\b(FROM|JOIN)\s+\`?(tabel)\`?\b` untuk tabel di `SOFT_DELETE_TABLES` dianggap tersaring bila literal yang sama memuat `deleted_at` atau interpolasi `${liveWhere(` / `${deletedWhere(`. Literal yang DIAWALI nama tabel ber-soft-delete diikuti alias atau `JOIN` (fragmen FROM tersusun, mis. `HANDOVER_FROM` di `handover/repo.ts`, `SERIAL_FROM` di `serial/repo.ts`: `'handovers h LEFT JOIN ...'`) juga dihitung sebagai kemunculan tabel itu. Tidak tersaring dan tidak ada di `PENDING`/`EXEMPT` → gagal ("<berkas>:<baris> FROM <tabel> tanpa penyaring"). Entri `PENDING`/`EXEMPT` yang tak lagi cocok → gagal ("entri basi").
 - [ ] **Step 1: Tes gagal**: tulis tes penjaga dengan `PENDING` kosong → FAIL dan mencetak semua kemunculan hari ini.
 - [ ] **Step 2:** Jalankan → FAIL (daftar).
 - [ ] **Step 3:** Isi `SOFT_DELETE_PENDING` dari daftar itu (dikelompokkan per fase) dan `EXEMPT` untuk yang sah.
-- [ ] **Step 4:** Tes → PASS. Tambahkan kasus uji mandiri dalam tes: sumber sintetis `"SELECT * FROM items WHERE id = ?"` dilaporkan; `` `SELECT * FROM items WHERE ${liveWhere()}` `` tidak.
+- [ ] **Step 4:** Tes → PASS. Tambahkan kasus uji mandiri dalam tes: sumber sintetis `"SELECT * FROM items WHERE id = ?"` dilaporkan; `` `SELECT * FROM items WHERE ${liveWhere()}` `` tidak. Sumber sintetis `const X_FROM = 'handovers h LEFT JOIN customers c ON c.id = h.customer_id'` dilaporkan (dua tabel).
 - [ ] **Step 5:** Commit `test(server): penjaga query soft delete dengan daftar tunggu per modul`.
 
 ### Task 4: Konteks akses mengabaikan record terhapus
