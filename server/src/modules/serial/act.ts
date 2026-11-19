@@ -1,11 +1,11 @@
 import { isGuardFailure } from '@server/core/cas';
-import type { DbStatement } from '@server/core/db';
+import { DbError, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
 import { statementsFor } from '@server/core/events';
 import type { UserContext } from '@server/modules/access/context';
-import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
+import { mapDuplicateError } from '@server/modules/access/repo';
 import { planAttachFiles } from '@server/modules/files/service';
 import type { SerialActInput, SerialChangeDto, SerialDto } from '@shared/contract';
 import { extractFileRefs } from '@shared/items';
@@ -13,6 +13,7 @@ import { wibDateIso } from '@shared/postel';
 import { type FlowRow, resolveAction, SERIAL_FLOW, sendLegOf } from '@shared/serial-flow';
 import {
   caseNumberPeriod,
+  recheckBuCandidates,
   SERIAL_CUSTODIES,
   SERIAL_CUSTODY_LABELS,
   SERIAL_STATUS_LABELS,
@@ -21,7 +22,8 @@ import {
   type SerialEventType,
   type SerialStatus,
 } from '@shared/serials';
-import { assertSerialVisible, modulesOn } from './access';
+import { assertSerialVisible, canWriteBu, modulesOn } from './access';
+import { involvedBuIds, moveBuStatements } from './bu-history';
 import { planProofAttach } from './proof/attach';
 import './alert-listener';
 import { applicableStickersOf } from './applicable';
@@ -167,6 +169,35 @@ export async function stickerRaise(
   return { statements, changes, raised };
 }
 
+const BU_TARGET_MESSAGE = 'BU ini tidak bisa dipilih untuk cek ulang ini';
+
+/**
+ * BU tujuan cek ulang lolos (spek serial unik se-sistem §6): harus BU yang boleh ditulis pengguna, aktif, dan BU saat ini
+ * atau BU yang belum pernah memegang serial (`recheckBuCandidates`). Semua penolakan = `VALIDATION` pada `buId` dengan
+ * pesan yang sama (tidak membocorkan BU mana yang ada atau pernah terlibat). Mengembalikan kode BU tujuan.
+ */
+async function resolveBuTarget(
+  env: Env,
+  user: UserContext,
+  serialId: string,
+  currentBuId: string,
+  targetBuId: string,
+): Promise<string> {
+  const allowed = recheckBuCandidates({
+    currentBuId,
+    involvedBuIds: await involvedBuIds(env.DB, serialId),
+    writableBuIds: canWriteBu(user, targetBuId) ? [targetBuId] : [],
+  });
+  if (allowed.length === 0) throw validationError('buId', BU_TARGET_MESSAGE);
+  const target = await env.DB.prepare(
+    "SELECT code FROM business_units WHERE id = ? AND status = 'active'",
+  )
+    .bind(targetBuId)
+    .first<{ code: string }>();
+  if (!target) throw validationError('buId', BU_TARGET_MESSAGE);
+  return target.code.trim();
+}
+
 /** Aksi yang membuka laporan baru (membutuhkan nomor LP dari penghitung CAS). */
 function opensCase(input: SerialActInput): boolean {
   return (
@@ -262,6 +293,8 @@ async function applyAct(
   const newCaseId = crypto.randomUUID();
   let currentLocationId = row.location_id.trim();
   let currentLocationName = row.location_name ?? '';
+  // Perpindahan BU (hanya cek ulang lolos yang membawa `buId`; validator menolaknya pada aksi lain): diisi di bawah.
+  let buMove: { toBuId: string; toCode: string } | null = null;
 
   const loadOpenCase = async () => {
     const found = openCaseId === '' ? null : await loadCase(env.DB, openCaseId);
@@ -483,7 +516,14 @@ async function applyAct(
     case 'recheck':
     case 'recheck_pass':
     case 'recheck_fail': {
-      // Lokasi cek ulang = lokasi unit (sesudah Terima otomatis bila `transit`).
+      const wantedBuId = input.buId ?? '';
+      if (wantedBuId !== '' && wantedBuId !== buId) {
+        buMove = {
+          toBuId: wantedBuId,
+          toCode: await resolveBuTarget(env, user, serialId, buId, wantedBuId),
+        };
+      }
+      // Lokasi cek ulang = lokasi unit (sesudah Terima otomatis bila `transit`). Stiker yang berlaku mengikuti BU tujuan.
       const raise = await stickerRaise(
         env,
         row,
@@ -493,6 +533,7 @@ async function applyAct(
         user,
         now,
         retried,
+        buMove?.toBuId ?? buId,
       );
       tail.push(...raise.statements);
       const checkData: Record<string, unknown> = {
@@ -500,6 +541,14 @@ async function applyAct(
         locationName: currentLocationName,
       };
       if (raise.raised.length > 0) checkData.stickers = raise.raised;
+      if (buMove) {
+        checkData.bu = {
+          fromId: buId,
+          fromCode: row.bu_code.trim(),
+          toId: buMove.toBuId,
+          toCode: buMove.toCode,
+        };
+      }
 
       if (input.action === 'recheck') {
         const result = input.result ?? 'pass';
@@ -566,7 +615,7 @@ async function applyAct(
         serial: row.serial,
         brand: row.brand_name ?? '',
         model: (row.model ?? '').trim(),
-        buCode: row.bu_code.trim(),
+        buCode: buMove?.toCode ?? row.bu_code.trim(),
         locationName: currentLocationName,
         actorName: user.name,
         actorTeam: flow.team === 'service' ? 'service' : 'qc',
@@ -596,6 +645,9 @@ async function applyAct(
       actorEmail: user.email,
       set,
     }),
+    ...(buMove
+      ? moveBuStatements(env, { serialId, fromBuId: buId, toBuId: buMove.toBuId, now })
+      : []),
     ...caseStatements,
     ...[...preEvents, main, ...extraEvents].map((event) =>
       insertNextEventStmt(env.DB, {
@@ -623,8 +675,18 @@ async function applyAct(
     await env.DB.batch(statements);
   } else {
     try {
-      await batchWrite(env.DB, statements, SERIAL_CONFLICTS);
+      await env.DB.batch(statements);
     } catch (error) {
+      // BU tujuan direbut penulis lain (baris riwayat sudah ada): serial berubah di sela, jawab usang. Duplikat lain
+      // dipetakan `actOnSerial`.
+      if (
+        buMove &&
+        error instanceof DbError &&
+        error.kind === 'duplicate' &&
+        error.key === 'PRIMARY'
+      ) {
+        throw staleError(STALE_MESSAGE);
+      }
       if (!isGuardFailure(error)) throw error;
       // Penjaga gagal: serial berubah (stale) ATAU foto diklaim Simpan lain/disapu di sela validasi dan komit.
       // Validasi ulang foto menghasilkan pesan yang tepat (spek 6.2); bila fotonya baik, penyebabnya serial usang.

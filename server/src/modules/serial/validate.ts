@@ -430,8 +430,8 @@ const ACT_EXTRA_KEYS: Record<SerialAction, readonly string[]> = {
   send: ['toLocationId', 'shipmentNote'],
   receive: ['toLocationId'],
   service_diagnosis: ['stage'],
-  recheck: ['result', 'stickerIds', 'proofPhotoIds'],
-  recheck_pass: ['stickerIds', 'proofPhotoIds'],
+  recheck: ['result', 'buId', 'stickerIds', 'proofPhotoIds'],
+  recheck_pass: ['buId', 'stickerIds', 'proofPhotoIds'],
   recheck_fail: ['stickerIds', 'proofPhotoIds'],
 };
 const ACT_ALL_EXTRA_KEYS = [
@@ -439,6 +439,7 @@ const ACT_ALL_EXTRA_KEYS = [
   'shipmentNote',
   'stage',
   'result',
+  'buId',
   'stickerIds',
   'proofPhotoIds',
 ] as const;
@@ -450,6 +451,7 @@ const ACT_EXTRA_MESSAGES: Record<string, string> = {
   toLocationId: 'Lokasi hanya untuk kirim atau terima',
   shipmentNote: 'Catatan pengiriman hanya untuk kirim',
   result: 'Hasil hanya untuk cek ulang',
+  buId: 'BU hanya untuk cek ulang yang lolos',
 };
 
 /** Catatan wajib per aksi (rancangan §3 butir b): lapor rusak, cek ulang gagal, dan Rusak; juga catatan biasa. */
@@ -538,6 +540,16 @@ export function validateSerialAct(raw: unknown): SerialActInput {
       if (resultRaw !== 'pass' && resultRaw !== 'fail') {
         reader.fail('result', 'Hasil harus lolos atau gagal');
       } else out.result = resultRaw;
+    }
+  }
+  if (allowed.includes('buId')) {
+    // Memindahkan BU hanya pada cek ulang yang lolos; hasil gagal menolaknya.
+    const rawBu = source.buId;
+    if (action === 'recheck' && source.result === 'fail' && rawBu != null && rawBu !== '') {
+      reader.fail('buId', ACT_EXTRA_MESSAGES.buId ?? '');
+    } else {
+      const buId = reader.str('buId', { max: 100 });
+      if (buId !== '') out.buId = buId;
     }
   }
   if (action === 'service_diagnosis') {
