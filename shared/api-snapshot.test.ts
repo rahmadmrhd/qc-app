@@ -39,6 +39,32 @@ describe('contractSnapshot', () => {
   });
 });
 
+describe('contractSnapshot: status deprecated', () => {
+  const table: Record<string, ApiRouteDef> = {
+    'a.get': { verb: 'GET', path: '/a/{id}' },
+    'a.get@2': { verb: 'GET', path: '/a/{id}' },
+    'a.get@3': { verb: 'GET', path: '/a/{id}' },
+    'b.list': { verb: 'GET', path: '/b' },
+  };
+  const groups = {
+    a: { latest: 3, deprecated: [1, 2] },
+    b: { latest: 1, deprecated: [] },
+  };
+
+  test('deprecated: true hanya pada id yang versinya tercantum di kelompoknya', () => {
+    const byId = Object.fromEntries(contractSnapshot(table, groups).map((e) => [e.id, e]));
+    expect(byId['a.get']?.deprecated).toBe(true);
+    expect(byId['a.get@2']?.deprecated).toBe(true);
+    expect('deprecated' in (byId['a.get@3'] as SnapshotEntry)).toBe(false);
+    expect('deprecated' in (byId['b.list'] as SnapshotEntry)).toBe(false);
+  });
+
+  test('kelompok yang tak ada di peta dianggap tidak deprecated', () => {
+    const byId = contractSnapshot({ 'z.x': { verb: 'GET', path: '/z' } }, groups);
+    expect('deprecated' in (byId[0] as SnapshotEntry)).toBe(false);
+  });
+});
+
 describe('compareContract', () => {
   test('potret sama dan sekadar penambahan lolos', () => {
     expect(compareContract(BASE, BASE, [])).toEqual([]);
@@ -65,9 +91,18 @@ describe('compareContract', () => {
     expect(result[0]).toContain('a.get');
   });
 
-  test('id hilang yang tercatat di retired lolos', () => {
+  test('id hilang yang tercatat di retired DAN berstatus deprecated di potret lama lolos', () => {
+    const previous = changed('a.get', (e) => ({ ...e, deprecated: true as const }));
     const current = BASE.filter((entry) => entry.id !== 'a.get');
-    expect(compareContract(BASE, current, [retired('a.get')])).toEqual([]);
+    expect(compareContract(previous, current, [retired('a.get')])).toEqual([]);
+  });
+
+  test('id hilang yang tercatat di retired tetapi belum deprecated di potret lama = pelanggaran', () => {
+    const current = BASE.filter((entry) => entry.id !== 'a.get');
+    const result = compareContract(BASE, current, [retired('a.get')]);
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain('a.get');
+    expect(result[0]).toContain('deprecated');
   });
 
   test('verb atau path berubah = pelanggaran', () => {

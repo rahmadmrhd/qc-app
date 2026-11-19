@@ -166,7 +166,9 @@ Yang sudah dibangun:
   jalur `/api/v<n>` per versi yang dipakai rute (`registerRest` menerima `version`, `isRestPath` mengenali `/api/v\d+`); `/api/ping`
   menambah `apis`; klien memilih id lewat `web/src/lib/api/versions.ts` (`startApiVersions`, `refreshServerApis`, `pickApi`,
   salinan di `localStorage` `qc.api.apis`); potret kontrak `shared/api-contract.snapshot.json` (`shared/api-snapshot.ts`,
-  `bun run api:snapshot` dan `--check`) dengan tes superset.
+  `bun run api:snapshot` dan `--check`) dengan tes superset. Potret memuat `deprecated: true` per id (dari `API_GROUP_VERSIONS`);
+  `compareContract` hanya meloloskan id yang hilang bila tercatat di `RETIRED_ROUTES` DAN berstatus deprecated di potret sebelumnya
+  (bagian 6.7; ditambahkan setelah review akhir 2026-11-20).
 - Fase 2 (UI dasar menang): `desktop/src/main/ui/ui-bundle.ts` membuang bundel unduhan yang `createdAt`-nya <= UI dasar, dan
   manifest server yang tak lebih baru dari UI dasar tidak diterapkan. Manifest UI dasar dijamin ada di installer oleh
   `build:desktop` (kini `bun run build` lalu `desktop dist`), job `desktop` di `ci.yml` (`bun run build`), dan `verify-pack`
