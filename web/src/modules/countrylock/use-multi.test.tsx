@@ -221,6 +221,19 @@ describe('useMulti: peristiwa injected ke draft', () => {
     expect(result.current.draft.rows).toHaveLength(SERIAL_LIMITS.tableRows);
   });
 
+  test('draft penuh: unrecorded memuat MAC peristiwa yang belum tercatat, kosong lagi setelah tercatat', async () => {
+    const bridge = createFakeBridge();
+    for (let i = 0; i < SERIAL_LIMITS.tableRows; i++) bridge.draftRows.push(savedRow(`S${i}`));
+    bridge.multiEvents.push(injected('evt-7', 'BARU7', 'AA:BB:CC:DD:EE:07'));
+    const { result } = await setup(bridge);
+    await waitFor(() =>
+      expect([...result.current.multi.unrecorded]).toEqual(['AA:BB:CC:DD:EE:07']),
+    );
+    act(() => result.current.draft.replace(result.current.draft.rows.slice(1)));
+    await waitFor(() => expect(result.current.multi.unrecorded.size).toBe(0));
+    expect(bridge.multiEvents).toHaveLength(0);
+  });
+
   test('draft gagal dimuat: peristiwa tidak disentuh', async () => {
     const bridge = createFakeBridge({
       draft: {

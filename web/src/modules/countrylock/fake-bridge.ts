@@ -172,7 +172,8 @@ export function createFakeBridge(overrides: FakeOverrides = {}): FakeBridge {
   let multiState = createFakeMultiSnapshot();
   const setMulti = (patch: Partial<MultiSnapshot>) => {
     const devices = patch.devices ?? multiState.devices;
-    multiState = createFakeMultiSnapshot({ ...multiState, ...patch }, devices);
+    const { counts: _counts, ...rest } = multiState;
+    multiState = createFakeMultiSnapshot({ ...rest, ...patch }, devices);
     for (const listener of [...multiListeners]) listener(multiState);
   };
   // Metode `multi` bawaan: mencatat panggilan dan menjaga keadaan sederhana; tes menimpa lewat `overrides.multi`.

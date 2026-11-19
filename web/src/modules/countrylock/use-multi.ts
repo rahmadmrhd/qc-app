@@ -35,6 +35,11 @@ export interface MultiState {
   supported: boolean;
   snapshot: MultiSnapshot | null;
   error: string | null;
+  /**
+   * MAC perangkat yang sudah selesai di-inject tetapi peristiwanya BELUM tercatat ke draft (draft penuh/rusak, atau gagal
+   * menulis): peristiwanya tetap di proses utama (belum di-ack) dan tabel menandai barisnya.
+   */
+  unrecorded: ReadonlySet<string>;
 }
 
 export interface UseMulti extends MultiState {
@@ -72,6 +77,7 @@ export function useMulti(bridge: QcBridge, draft: DraftRows): UseMulti {
     bridge.multi !== null;
   const [snapshot, setSnapshot] = useState<MultiSnapshot | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [unrecorded, setUnrecorded] = useState<ReadonlySet<string>>(new Set());
 
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -144,8 +150,6 @@ export function useMulti(bridge: QcBridge, draft: DraftRows): UseMulti {
     try {
       do {
         againRef.current = false;
-        // Draft belum siap atau rusak: peristiwa dibiarkan di proses utama (dicoba lagi saat draft siap).
-        if (draftRef.current.status !== 'ready') break;
         let events: InjectedEvent[];
         try {
           events = await bridge.multi.pendingEvents();
@@ -153,7 +157,13 @@ export function useMulti(bridge: QcBridge, draft: DraftRows): UseMulti {
           if (aliveRef.current) setError(errorText(cause));
           break;
         }
+        // Draft rusak/belum siap: peristiwa dibiarkan di proses utama (dicoba lagi saat draft siap), barisnya ditandai.
+        if (draftRef.current.status !== 'ready') {
+          if (aliveRef.current) setUnrecorded(new Set(events.map((event) => event.mac)));
+          break;
+        }
         const acked: string[] = [];
+        const pending = new Set<string>();
         for (const event of events) {
           try {
             const result = await draftRef.current.addInjected({
@@ -168,11 +178,14 @@ export function useMulti(bridge: QcBridge, draft: DraftRows): UseMulti {
               injectedAt: event.injectedAt,
             });
             // `duplicate` = baris sudah ada (kiriman ulang): aman di-ack. `full` = belum tercatat: tetap di proses utama.
-            if (result !== 'full') acked.push(event.eventId);
+            if (result === 'full') pending.add(event.mac);
+            else acked.push(event.eventId);
           } catch {
             // Gagal mencatat: tidak di-ack, dicoba lagi pada pemicu berikutnya.
+            pending.add(event.mac);
           }
         }
+        if (aliveRef.current) setUnrecorded(pending);
         if (acked.length > 0) {
           try {
             await bridge.multi.ackInjected(acked);
@@ -191,7 +204,7 @@ export function useMulti(bridge: QcBridge, draft: DraftRows): UseMulti {
   const draftFull = draft.isFull;
   // biome-ignore lint/correctness/useExhaustiveDependencies: `snapshot`, `draftStatus`, dan `draftFull` adalah pemicu murni.
   useEffect(() => {
-    if (supported && draftStatus === 'ready') void processEvents();
+    if (supported && draftStatus !== 'loading') void processEvents();
   }, [supported, processEvents, snapshot, draftStatus, draftFull]);
 
   // --- Perintah -----------------------------------------------------------------------------
@@ -250,5 +263,5 @@ export function useMulti(bridge: QcBridge, draft: DraftRows): UseMulti {
     };
   }, [bridge, supported, run]);
 
-  return { supported, snapshot, error, start, stop, actions };
+  return { supported, snapshot, error, unrecorded, start, stop, actions };
 }
