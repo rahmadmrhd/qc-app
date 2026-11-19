@@ -99,7 +99,11 @@ commit, squash, rebase. Konsekuensi: semua pagar ada **di dalam workflow** (prov
 - CI pada PR: bila `server/**`, `web/**`, atau `shared/**` berubah harus ada fragmen di `server/changelog.d/`; bila `desktop/**`
   berubah, di `desktop/changelog.d/`. Label `tanpa-changelog` melewatkan; `test.yml` menambah pemicu `labeled`/`unlabeled`.
   **PR rilis dikenali dari isi, bukan nama cabang** (diff-nya hanya berkas metadata), agar nama cabang tak dapat dipakai untuk
-  melewati pemeriksaan.
+  melewati pemeriksaan. **Keputusan pemilik 2026-11-19**: pemeriksaan ini hanya berjalan untuk PR yang bertujuan ke `dev`
+  (`on.pull_request.branches: [dev]` di `changelog.yml`), karena di sanalah fragmen menumpuk sampai `release:prepare`; PR ke cabang
+  kerja lain (mis. tumpukan PR fitur) dan PR rilis ke `main` tidak diperiksa lagi. Pengecualian itu sengaja: PR ke `main` selain
+  PR rilis (mis. perbaikan darurat) tidak mewajibkan fragmen, dan penulisnya perlu menambah fragmen sendiri di `dev` bila perubahan
+  itu harus tampil di changelog.
 - Penugasan komponen: `web/` dan `server/` -> `server`; `shared/` -> **`server` dan `desktop`** (desktop mengimpor
   `@shared/desktop-catalog` di `dev`); `countrylock/` -> `desktop` dan `server` (web memakainya).
 

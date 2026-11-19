@@ -1383,11 +1383,13 @@ describe('changelog.yml: gerbang fragmen changelog di PR', () => {
   const steps = job?.steps ?? [];
 
   test('pemicu: hanya pull_request (bukan pull_request_target); label dipasang/dilepas memicu ulang gerbang ini saja', () => {
-    const on = workflow.on as { pull_request: { types: string[] } };
+    const on = workflow.on as { pull_request: { types: string[]; branches?: string[] } };
     expect(Object.keys(workflow.on ?? {})).toEqual(['pull_request']);
     expect([...on.pull_request.types].sort()).toEqual(
       ['labeled', 'opened', 'reopened', 'synchronize', 'unlabeled'].sort(),
     );
+    // keputusan pemilik 2026-11-19: hanya PR ke `dev` (tempat fragmen menumpuk menjelang rilis), bukan PR ke cabang kerja
+    expect(on.pull_request.branches).toEqual(['dev']);
     expect(codeOf(text)).not.toContain('pull_request_target');
     expect(workflow.concurrency?.['cancel-in-progress']).toBe(true);
     expect(workflow.concurrency?.group).toContain('github.event.pull_request.number');
