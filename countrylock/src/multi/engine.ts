@@ -68,6 +68,25 @@ export interface MultiEngine {
   setRegistered(serials: string[]): void;
   /** Alasan inject ditahan (draft penuh/rusak/belum termuat) atau `null`. */
   setBlocked(reason: string | null): void;
+  /**
+   * Antre inject satu perangkat (`ready` atau `failed` = Retry). Pada perangkat `waiting` yang kredensialnya sudah habis,
+   * aksi yang sama berarti "coba ulang kredensial dari awal" (pemicu Retry manual di spek). Ditolak saat diblokir atau
+   * antrean dihentikan operator.
+   */
+  injectDevice(mac: string): void;
+  /** Perangkat antre kembali `ready`; yang sedang `injecting` diminta batal (menjadi `failed` "Dibatalkan"). */
+  cancelDevice(mac: string): void;
+  /** Menyapu perangkat `ready` sekali (yang sudah di-inject di sesi ini dilewati) dan mencabut penghentian antrean. */
+  injectAll(): void;
+  /** Menghentikan antrean: yang `queued` dibatalkan, yang `injecting` dibiarkan selesai. */
+  stopQueue(): void;
+  /** Seperti `stopQueue` lalu membatalkan juga yang `injecting`. */
+  cancelAll(): void;
+  /** Satu-satunya jalan mengubah konfigurasi router (tombol eksplisit); tidak pernah dipanggil otomatis. */
+  prepareBridge(): Promise<{ ok: boolean; message: string }>;
+  /** Peristiwa inject sukses yang belum di-ack (bertahan setelah berhenti dan muat ulang renderer). */
+  pendingEvents(): InjectedEvent[];
+  ackInjected(ids: string[]): void;
   snapshot(): MultiSnapshot;
   onChange(cb: (s: MultiSnapshot) => void): () => void;
 }
@@ -236,6 +255,14 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
   function setNotice(text: string): void {
     notice = mask(text);
     scheduleEmit();
+  }
+
+  /** Pesan penolakan antrean dibersihkan begitu penyebabnya dicabut (blokir dilepas, antrean dinyalakan lagi). */
+  function clearNoticeIfHold(): void {
+    if (notice.startsWith('Inject ditahan') || notice.startsWith('Antrian sedang dihentikan')) {
+      notice = '';
+      scheduleEmit();
+    }
   }
 
   function live(r: Run, d: DeviceRecord, signal?: AbortSignal): boolean {
@@ -555,8 +582,202 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
     );
   }
 
-  function maybeAutoInject(_r: Run, _d: DeviceRecord): void {
-    // Antrean inject ditambahkan di Task 5.
+  function maybeAutoInject(r: Run, d: DeviceRecord): void {
+    if (autoEligible(r, d)) queueDevice(r, d, false);
+  }
+
+  // --- Antrean dan eksekusi inject (L4.5) -----------------------------------------------------
+
+  function backToReady(d: DeviceRecord, message: string): void {
+    setStatus(d, 'ready', message);
+    log(d, message);
+  }
+
+  /**
+   * Memasukkan perangkat ke antrean. `manual` = aksi operator (menulis pesan bila ditolak; Auto Inject diam).
+   * Mengembalikan `true` bila job dibuat.
+   */
+  function queueDevice(r: Run, d: DeviceRecord, manual: boolean): boolean {
+    if (d.status !== 'ready' && d.status !== 'failed') return false;
+    if (r.jobs.has(d.mac)) return false;
+    if (blockedReason !== null) {
+      if (manual) setNotice(`Inject ditahan: ${blockedReason}`);
+      return false;
+    }
+    if (r.queueStopped) {
+      if (manual) setNotice('Antrian sedang dihentikan operator');
+      return false;
+    }
+    if (manual && d.alreadyRegistered) {
+      log(d, 'SN sudah terdaftar di draft; inject manual dilanjutkan');
+    }
+    const job: InjectJob = { ctl: child(r.ctl.signal), phase: 'queued', cancelled: false };
+    r.jobs.set(d.mac, job);
+    setStatus(d, 'queued', 'Antri');
+    log(d, 'Masuk antrean inject');
+    track(r, runInject(r, d, job));
+    return true;
+  }
+
+  /** Job masih relevan: engine sama, record sama, tak dibatalkan. */
+  function jobAlive(r: Run, d: DeviceRecord, job: InjectJob): boolean {
+    return run === r && r.devices.get(d.mac) === d && !job.cancelled && !job.ctl.signal.aborted;
+  }
+
+  /**
+   * Mencocokkan IP perangkat dengan lease TERBARU (Review Focus 1: dua MAC bertukar IP tidak boleh membuat inject
+   * salah sasaran). Keputusan diambil dari daftar lease segar itu sendiri, bukan dari hasil rekonsiliasi (yang dapat
+   * dibuang karena usang). Hasil pembacaan tetap diterapkan agar status perangkat konsisten.
+   */
+  async function verifyLease(
+    r: Run,
+    d: DeviceRecord,
+    ip: string,
+    signal: AbortSignal,
+  ): Promise<'ok' | 'moved' | 'unknown'> {
+    const seq = ++r.readSeq;
+    let leases: Lease[] | null;
+    try {
+      leases = await raceAbort(ports.readLeases(), signal);
+    } catch (e) {
+      if (isAbortError(e)) throw e;
+      leases = null;
+    }
+    if (leases === null) return 'unknown';
+    if (run === r) applyLeases(r, leases, seq);
+    const usable = leases.filter((l) => !(r.cfg.excludeIp !== '' && l.ip === r.cfg.excludeIp));
+    const mine = usable.find((l) => l.mac === d.mac);
+    if (!mine || mine.ip !== ip) return 'moved';
+    if (usable.some((l) => l.ip === ip && l.mac !== d.mac)) return 'moved';
+    return 'ok';
+  }
+
+  async function runInject(r: Run, d: DeviceRecord, job: InjectJob): Promise<void> {
+    const mac = d.mac;
+    const ip = d.ip;
+    let release: (() => void) | null = null;
+    try {
+      try {
+        release = await r.scheduler.acquire(job.ctl.signal);
+      } catch (e) {
+        if (isAbortError(e)) return; // status sudah diatur pembatal
+        throw e;
+      }
+      if (!jobAlive(r, d, job) || d.status !== 'queued') return;
+      if (blockedReason !== null) {
+        backToReady(d, `Ditahan: ${blockedReason}`);
+        return;
+      }
+
+      let check: 'ok' | 'moved' | 'unknown';
+      try {
+        check = await verifyLease(r, d, ip, job.ctl.signal);
+      } catch (e) {
+        if (isAbortError(e)) return;
+        throw e;
+      }
+      if (!jobAlive(r, d, job) || d.status !== 'queued') return;
+      if (check === 'moved') {
+        // Registri sudah mengatur status bila lease berubah/hilang; sisanya (mis. IP kembar) kembali memeriksa ulang.
+        setStatus(d, 'waiting', MSG_IP_CHANGED);
+        log(d, MSG_IP_CHANGED);
+        return;
+      }
+      if (check === 'unknown') {
+        backToReady(d, 'Gagal memeriksa lease, coba lagi');
+        return;
+      }
+      if (blockedReason !== null) {
+        backToReady(d, `Ditahan: ${blockedReason}`);
+        return;
+      }
+
+      job.phase = 'injecting';
+      setStatus(d, 'injecting', 'Inject...');
+      log(d, `=== Mulai inject (${ip}) ===`);
+      const cred = credentialAt(d.credentialIndex, r.cfg.base, queue) ?? r.cfg.base;
+      let result: Awaited<ReturnType<MultiPorts['inject']>>;
+      try {
+        result = await ports.inject(
+          { id: ports.newId(), ip, cred, firmwareCode: r.cfg.firmwareCode },
+          job.ctl.signal,
+          (message) => {
+            if (r.devices.get(mac) !== d || d.status !== 'injecting') return;
+            d.message = mask(message);
+            log(d, message);
+          },
+        );
+      } catch (e) {
+        const cancelled = isAbortError(e) || job.cancelled || job.ctl.signal.aborted;
+        result = {
+          ok: false,
+          stage: cancelled ? 'cancelled' : 'failed',
+          message: cancelled ? 'Dibatalkan' : e instanceof Error ? e.message : 'Inject gagal',
+        };
+      }
+      finishInject(r, d, job, result);
+    } finally {
+      if (r.jobs.get(mac) === job) r.jobs.delete(mac);
+      release?.();
+    }
+  }
+
+  function finishInject(
+    r: Run,
+    d: DeviceRecord,
+    job: InjectJob,
+    result: Awaited<ReturnType<MultiPorts['inject']>>,
+  ): void {
+    if (result.ok && result.stage === 'completed') {
+      const event: InjectedEvent = {
+        eventId: ports.newId(),
+        mac: d.mac,
+        serial: d.serial,
+        model: d.model,
+        injectedAt: new Date(ports.now()).toISOString(),
+        target: { ...r.cfg.target },
+      };
+      // Sesi menandai perangkat ini sebelum apa pun: inject ulang otomatis tak boleh terjadi walau pencatatan gagal.
+      r.sessionMacs.add(d.mac);
+      r.sessionSerials.add(serialKey(d.serial));
+      d.injectedThisSession = true;
+      try {
+        // Ditulis SEBELUM status `success` terlihat, jadi renderer tak pernah melihat "Selesai" tanpa peristiwanya.
+        ports.events.add(event);
+      } catch (e) {
+        const reason = e instanceof Error ? e.message : 'galat tak dikenal';
+        setStatus(d, 'failed', `Inject selesai tetapi hasil gagal dicatat: ${reason}`);
+        log(d, d.message);
+        return;
+      }
+      setStatus(d, 'success', 'Selesai');
+      log(d, '=== Selesai ===');
+      return;
+    }
+    if (result.stage === 'cancelled' || job.cancelled) {
+      setStatus(d, 'failed', 'Dibatalkan');
+      log(d, '=== Dibatalkan oleh operator ===');
+      return;
+    }
+    setStatus(d, 'failed', result.message || 'Inject gagal');
+    log(d, `=== Gagal: ${d.message} ===`);
+  }
+
+  /** Antre → `ready` (segera, tanpa menunggu job); injecting → minta batal (hasil dari port). */
+  function cancelJob(r: Run, d: DeviceRecord, readyMessage: string): void {
+    const job = r.jobs.get(d.mac);
+    if (!job) return;
+    if (job.phase === 'queued') {
+      abortJob(job);
+      if (d.status === 'queued') backToReady(d, readyMessage);
+    } else {
+      abortJob(job);
+      log(d, 'Pembatalan diminta...');
+    }
+  }
+
+  function autoSweep(r: Run): void {
+    for (const d of [...r.devices.values()]) maybeAutoInject(r, d);
   }
 
   // --- API ----------------------------------------------------------------------------------
@@ -613,6 +834,12 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
 
     setAutoInject(on) {
       autoInject = on;
+      if (on && run) {
+        // Menyalakan Auto Inject mencabut penghentian antrean (L4.5) dan menyapu perangkat yang sudah `ready`.
+        run.queueStopped = false;
+        clearNoticeIfHold();
+        autoSweep(run);
+      }
       scheduleEmit();
     },
 
@@ -649,7 +876,97 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
 
     setBlocked(reason) {
       blockedReason = reason;
+      const r = run;
+      if (r && reason !== null) {
+        // Tak ada slot baru: yang masih antre kembali `ready`; yang sudah `injecting` dibiarkan selesai.
+        for (const d of [...r.devices.values()]) {
+          const job = r.jobs.get(d.mac);
+          if (job && job.phase === 'queued') cancelJob(r, d, `Ditahan: ${reason}`);
+        }
+      } else if (r) {
+        clearNoticeIfHold();
+        autoSweep(r);
+      }
       scheduleEmit();
+    },
+
+    injectDevice(mac) {
+      const r = run;
+      const d = r?.devices.get(mac);
+      if (!r || !d) return;
+      if (d.status === 'waiting' && d.credentialsExhausted) {
+        // Retry manual: kredensial dicoba lagi dari awal.
+        d.credentialIndex = 0;
+        d.credentialsExhausted = false;
+        setStatus(d, 'waiting', MSG_WAITING);
+        log(d, 'Coba ulang kredensial');
+        return;
+      }
+      queueDevice(r, d, true);
+    },
+
+    cancelDevice(mac) {
+      const r = run;
+      const d = r?.devices.get(mac);
+      if (!r || !d) return;
+      cancelJob(r, d, 'Dibatalkan (masih antri)');
+    },
+
+    injectAll() {
+      const r = run;
+      if (!r) return;
+      r.queueStopped = false;
+      clearNoticeIfHold();
+      if (blockedReason !== null) {
+        setNotice(`Inject ditahan: ${blockedReason}`);
+        return;
+      }
+      for (const d of [...r.devices.values()]) {
+        // Perangkat yang sudah di-inject pada sesi ini tidak disapu ulang (mis. muncul lagi setelah dicabut).
+        if (d.status === 'ready' && !d.injectedThisSession) queueDevice(r, d, true);
+      }
+    },
+
+    stopQueue() {
+      const r = run;
+      if (!r) return;
+      r.queueStopped = true;
+      for (const d of [...r.devices.values()]) {
+        const job = r.jobs.get(d.mac);
+        if (job && job.phase === 'queued') cancelJob(r, d, 'Dibatalkan (masih antri)');
+      }
+      scheduleEmit();
+    },
+
+    cancelAll() {
+      const r = run;
+      if (!r) return;
+      r.queueStopped = true;
+      for (const d of [...r.devices.values()]) cancelJob(r, d, 'Dibatalkan (masih antri)');
+      scheduleEmit();
+    },
+
+    async prepareBridge() {
+      let result: { ok: boolean; message: string };
+      try {
+        result = await ports.ensureBridgePorts();
+      } catch (e) {
+        result = {
+          ok: false,
+          message: `Gagal menyiapkan bridge router: ${e instanceof Error ? e.message : 'galat tak dikenal'}`,
+        };
+      }
+      const out = { ok: result.ok, message: mask(result.message) };
+      setNotice(out.message);
+      return out;
+    },
+
+    pendingEvents() {
+      return ports.events.list();
+    },
+
+    ackInjected(ids) {
+      ports.events.ack(ids);
     },
 
     snapshot,
@@ -662,7 +979,5 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
     },
   };
 
-  // Dipakai Task 5 (aksi inject); dirujuk agar tidak dianggap tak terpakai.
-  void autoEligible;
   return engine;
 }
