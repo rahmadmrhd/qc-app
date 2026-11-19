@@ -86,8 +86,20 @@ describe('serials.lookup', () => {
   test('tidak ditemukan: daftar kosong; serial di BU yang tak boleh ditulis tidak muncul (generik)', async () => {
     await seedSerial(env, { id: 'sn-b', serial: 'BB-1', buId: 'bu-b', itemId: 'i-b' });
     expect((await lookup(W, 'TIDAK-ADA')).data).toEqual({ matches: [], elsewhere: null });
-    expect((await lookup(W, 'BB-1')).data).toEqual({ matches: [], elsewhere: null });
-    expect((await lookup(BOTH, 'BB-1')).data.matches).toHaveLength(1);
+    // Ada di BU lain yang tak boleh ditulis: tanpa data selain kode BU saat ini (keputusan pemilik 2026-11-18).
+    expect((await lookup(W, 'BB-1')).data).toEqual({ matches: [], elsewhere: { buCode: 'B' } });
+    const both = await lookup(BOTH, 'BB-1');
+    expect(both.data.matches).toHaveLength(1);
+    expect(both.data.elsewhere).toBeNull();
+  });
+
+  test('serial yang pernah di BU lain tetapi kini di BU yang boleh ditulis: kecocokan biasa; BU lama tak dibuka', async () => {
+    await seedSerial(env, { id: 'sn-m', serial: 'MV-1', buId: 'bu-b', itemId: 'i-b' });
+    await env.DB.prepare(
+      "INSERT INTO serial_business_units (serial_id, bu_id, first_at, left_at) VALUES ('sn-m', 'bu-a', '2026-01-01T00:00:00.000Z', '2026-02-01T00:00:00.000Z')",
+    ).run();
+    // W hanya menulis di BU A (BU lama): serial kini di BU B -> elsewhere menyebut BU saat ini saja.
+    expect((await lookup(W, 'MV-1')).data).toEqual({ matches: [], elsewhere: { buCode: 'B' } });
   });
 
   test('pembaca saja (serial view) tidak melihat apa pun di BU yang hanya boleh dibacanya', async () => {

@@ -829,6 +829,16 @@ async function updateOnce(
   const currentItemLabel = `${row.brand_name ?? ''} ${(row.model ?? '').trim()}`.trim();
 
   if (fields.serial !== undefined && fields.serial !== row.serial) {
+    // Serial Number unik se-sistem: bentrok dengan catatan di BU mana pun. Indeks unik (`serials_serial`) tetap penjaga
+    // akhir; pemeriksaan ini menjaga juga selama indeks belum terpasang (ada serial ganda lama yang belum disatukan).
+    const taken = await env.DB.prepare(
+      'SELECT 1 AS present FROM serials WHERE serial = ? AND id <> ?',
+    )
+      .bind(fields.serial, row.id.trim())
+      .first<{ present: number }>();
+    if (taken) {
+      throw appError('CONFLICT', DUPLICATE_MESSAGE, { serial: DUPLICATE_MESSAGE });
+    }
     set.serial = fields.serial;
     changes.push({ field: 'serial', from: row.serial, to: fields.serial });
   }
