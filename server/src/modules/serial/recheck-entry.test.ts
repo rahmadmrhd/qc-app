@@ -1,10 +1,11 @@
 // Mencatat serial yang sudah ada lewat Catat = cek ulang lolos pada catatan itu (spek serial unik se-sistem §5.1, §5.4).
-import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
-import { seedUser } from '@server-test/access-fixtures';
+import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import { seedBusinessUnit, seedUser } from '@server-test/access-fixtures';
 import { restCall } from '@server-test/rest-call';
 import { SERIAL_USERS, seedSerial, seedSerialWorld } from '@server-test/serial-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { moveBuStatements } from './bu-history';
+import { loadSerialRowBySerial } from './repo';
 
 setDefaultTimeout(60_000);
 
@@ -256,7 +257,11 @@ describe('pindah BU lewat cek ulang', () => {
   test('BU target nonaktif ditolak', async () => {
     await env.DB.prepare("UPDATE business_units SET status = 'inactive' WHERE id = 'bu-b'").run();
     const out = await save(BOTH, [row({ itemId: 'i-a2', buId: 'bu-b' })]);
-    expect(resultsOf(out)[0]).toMatchObject({ result: 'invalid' });
+    // Pesan khusus BU (bukan "Item tidak ditemukan..."): BU yang nonaktif tidak bisa dipilih.
+    expect(resultsOf(out)[0]).toMatchObject({
+      result: 'invalid',
+      message: 'BU ini tidak bisa dipilih untuk Serial Number yang sudah ada',
+    });
     expect((await serialRow('sn1'))?.bu_id).toBe('bu-a');
   });
 });
@@ -415,6 +420,16 @@ describe('serials.lookupMany', () => {
     expect(bOnly.data.found[0].recheckBuIds).toEqual(['bu-b']);
   });
 
+  test('BU nonaktif tidak termasuk recheckBuIds; BU saat ini tetap termasuk walau nonaktif', async () => {
+    await env.DB.prepare("UPDATE business_units SET status = 'inactive' WHERE id = 'bu-b'").run();
+    const out = await call(BOTH, 'serials.lookupMany', { serials: ['AB12'] });
+    expect(out.data.found[0].recheckBuIds).toEqual(['bu-a']);
+    await env.DB.prepare("UPDATE business_units SET status = 'inactive' WHERE id = 'bu-a'").run();
+    await env.DB.prepare("UPDATE business_units SET status = 'active' WHERE id = 'bu-b'").run();
+    const again = await call(BOTH, 'serials.lookupMany', { serials: ['AB12'] });
+    expect([...again.data.found[0].recheckBuIds].sort()).toEqual(['bu-a', 'bu-b']);
+  });
+
   test('laporan aktif ditandai hasOpenCase; pembaca saja (serial: view) ditolak FORBIDDEN', async () => {
     await env.DB.prepare('DELETE FROM serial_events').run();
     await env.DB.prepare('DELETE FROM serials').run();
@@ -440,5 +455,60 @@ describe('serials.lookupMany', () => {
     expect((await call(W, 'serials.lookupMany', { serials: 'AB12' })).error?.code).toBe(
       'VALIDATION',
     );
+  });
+});
+
+describe('serial ganda lama (indeks serials_serial belum terpasang): pilihan catatan deterministik', () => {
+  beforeEach(async () => {
+    await env.DB.prepare('DROP INDEX IF EXISTS serials_serial ON serials').run();
+    await seedBusinessUnit(env, { id: 'bu-c', code: 'C' });
+  });
+  afterEach(async () => {
+    // Skema dipakai bersama tes lain dalam proses ini: kembalikan indeks unik.
+    await env.DB.prepare('DELETE FROM serials').run();
+    await env.DB.prepare(
+      'CREATE UNIQUE INDEX IF NOT EXISTS serials_serial ON serials (serial)',
+    ).run();
+  });
+
+  const picked = async (): Promise<string | undefined> =>
+    (await loadSerialRowBySerial(env.DB, 'AB12'))?.id.trim();
+
+  test('laporan aktif, lalu Rusak, lalu terbaru (sama dengan pemenang skrip penyatuan), apa pun urutan penyisipan', async () => {
+    // sn1 (BU A, baik, 2026-11-12) sudah ada. Sisipkan yang lebih baru lebih dulu dan yang lama belakangan.
+    await seedSerial(env, {
+      id: 'z-new',
+      serial: 'AB12',
+      buId: 'bu-b',
+      itemId: 'i-b',
+      testDate: '2026-11-20',
+    });
+    expect(await picked()).toBe('z-new');
+    await seedSerial(env, {
+      id: 'a-broken',
+      serial: 'AB12',
+      buId: 'bu-c',
+      itemId: 'i-b',
+      testDate: '2026-10-01',
+      status: 'broken',
+    });
+    expect(await picked()).toBe('a-broken');
+    await env.DB.prepare(
+      "UPDATE serials SET status = 'reported', open_case_id = 'case-x' WHERE id = 'sn1'",
+    ).run();
+    expect(await picked()).toBe('sn1');
+  });
+
+  test('serials.lookupMany menjawab satu entri per serial: catatan yang sama dengan pilihan jalur tulis', async () => {
+    await seedSerial(env, {
+      id: 'z-new',
+      serial: 'AB12',
+      buId: 'bu-b',
+      itemId: 'i-b',
+      testDate: '2026-11-20',
+    });
+    const out = await call(BOTH, 'serials.lookupMany', { serials: ['AB12'] });
+    expect(out.data.found).toHaveLength(1);
+    expect(out.data.found[0].id).toBe(await picked());
   });
 });

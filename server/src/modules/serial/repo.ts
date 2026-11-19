@@ -216,13 +216,23 @@ export async function loadBuHistory(db: Preparer, serialId: string): Promise<Ser
   return rows.results;
 }
 
+/**
+ * Urutan pemilihan catatan bila (sementara, sebelum skrip penyatuan dijalankan dan indeks `serials_serial` terpasang)
+ * satu Serial Number ada di lebih dari satu catatan: laporan aktif, lalu Rusak, lalu terbaru (tanggal uji, lalu id). Sama
+ * dengan aturan pemenang `server/scripts/merge-duplicate-serials.ts`, jadi pilihan aplikasi = pemenang penyatuan.
+ */
+export const SERIAL_PICK_ORDER_SQL =
+  "(s.open_case_id <> '') DESC, (s.status = 'broken') DESC, s.test_date DESC, s.id DESC";
+
 /** Catatan serial menurut nomor serial ternormalisasi (unik se-sistem), atau `null` bila belum ada. */
 export async function loadSerialRowBySerial(
   db: Preparer,
   serial: string,
 ): Promise<SerialRow | null> {
   return db
-    .prepare(`SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE s.serial = ?`)
+    .prepare(
+      `SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE s.serial = ? ORDER BY ${SERIAL_PICK_ORDER_SQL} LIMIT 1`,
+    )
     .bind(serial)
     .first<SerialRow>();
 }
@@ -287,11 +297,6 @@ export async function loadSerialEvents(
 export interface SerialListFilter {
   /** BU yang boleh dibaca (tidak kosong). */
   buIds: readonly string[];
-  /**
-   * `history` (bawaan): serial terlihat bila BU saat ini ATAU salah satu BU di riwayatnya ada di `buIds` (baca).
-   * `current`: hanya BU SAAT INI (pencarian yang dipakai untuk menulis, mis. Lapor Rusak).
-   */
-  buScope?: 'history' | 'current';
   /** Kandidat awalan serial ternormalisasi (atau). */
   prefixes?: readonly string[];
   /** Serial persis (ternormalisasi). */
@@ -313,7 +318,7 @@ const placeholders = (count: number): string => Array.from({ length: count }, ()
 /**
  * Daftar serial urut `created_at DESC, id DESC`; mengambil `limit + 1` baris untuk menentukan kursor berikutnya.
  *
- * Cakupan baca (`history`) = BU saat ini ATAU riwayat BU. Predikat `OR` atas keduanya tidak dapat memakai indeks
+ * Cakupan baca = BU saat ini ATAU riwayat BU. Predikat `OR` atas keduanya tidak dapat memakai indeks
  * (diukur: 3-6 dtk pada 200 ribu serial), jadi daftar dipecah menjadi CABANG yang saling lepas, tiap cabang memakai
  * indeksnya sendiri dan dibatasi `LIMIT`, lalu digabung (`UNION ALL`) dan diurutkan ulang:
  *  - cur: BU saat ini ada di BU yang dapat dibaca (indeks `serials_bu_created`);
@@ -353,7 +358,7 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
     commonBinds.push(filter.createdBy);
   }
   if (filter.prefixes !== undefined && filter.prefixes.length > 0) {
-    // `LIKE 'awalan%'` (bukan `LEFT() = ?`) agar indeks `serials_bu_serial` dapat dipakai; metakarakter di-escape.
+    // `LIKE 'awalan%'` (bukan `LEFT() = ?`) agar indeks `serials_serial` (unik se-sistem; `serials_bu_serial` lama dipertahankan sampai tahap contract) dapat dipakai; metakarakter di-escape.
     common.push(`(${filter.prefixes.map(() => "s.serial LIKE ? ESCAPE '!'").join(' OR ')})`);
     for (const prefix of filter.prefixes) commonBinds.push(`${escapeLike(prefix)}%`);
   }
@@ -372,29 +377,24 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
     binds: unknown[];
   }
   const readable = placeholders(filter.buIds.length);
-  const readableParts: Part[] =
-    filter.buScope === 'current'
-      ? [{ sql: `s.bu_id IN (${readable})`, binds: [...filter.buIds] }]
-      : [
-          { sql: `s.bu_id IN (${readable})`, binds: [...filter.buIds] },
-          {
-            sql: `s.bu_id NOT IN (${readable}) AND s.id IN (SELECT serial_id FROM serial_business_units WHERE bu_id IN (${readable}) AND left_at > '')`,
-            binds: [...filter.buIds, ...filter.buIds],
-          },
-        ];
+  const readableParts: Part[] = [
+    { sql: `s.bu_id IN (${readable})`, binds: [...filter.buIds] },
+    {
+      sql: `s.bu_id NOT IN (${readable}) AND s.id IN (SELECT serial_id FROM serial_business_units WHERE bu_id IN (${readable}) AND left_at > '')`,
+      binds: [...filter.buIds, ...filter.buIds],
+    },
+  ];
   const buId = filter.buId;
   const buParts: Part[] =
     buId === undefined
       ? [{ sql: '', binds: [] }]
-      : filter.buScope === 'current'
-        ? [{ sql: 's.bu_id = ?', binds: [buId] }]
-        : [
-            { sql: 's.bu_id = ?', binds: [buId] },
-            {
-              sql: "s.bu_id <> ? AND s.id IN (SELECT serial_id FROM serial_business_units WHERE bu_id = ? AND left_at > '')",
-              binds: [buId, buId],
-            },
-          ];
+      : [
+          { sql: 's.bu_id = ?', binds: [buId] },
+          {
+            sql: "s.bu_id <> ? AND s.id IN (SELECT serial_id FROM serial_business_units WHERE bu_id = ? AND left_at > '')",
+            binds: [buId, buId],
+          },
+        ];
 
   const limit = filter.limit + 1;
   const arms: { sql: string; binds: unknown[] }[] = [];

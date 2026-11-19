@@ -26,7 +26,9 @@ import { loadStampItemInfo, planProofAttach } from './proof/attach';
 import {
   insertNextEventStmt,
   itemLabelOf,
+  loadSerialRow,
   loadSerialRowBySerial,
+  SERIAL_PICK_ORDER_SQL,
   type SerialColumn,
   type SerialRow,
   updateSerialStmt,
@@ -100,7 +102,7 @@ export async function planRecheckFromRow(
     )
       .bind(row.buId)
       .first<{ code: string }>();
-    if (!target) return fail(GENERIC_ITEM_MESSAGE);
+    if (!target) return fail(BU_MESSAGE);
   }
 
   const proofMin = await memo.proofMinOf(existingItemId);
@@ -203,6 +205,38 @@ export async function planRecheckFromRow(
     if (isAppError(error) && error.code === 'VALIDATION') return fail(error.message);
     throw error;
   }
+}
+
+/**
+ * Syarat dilewatinya "item aktif dan terlihat" pada `serials.stickerOptions` (jalur cek ulang): serial ada dan bertipe
+ * `itemId`; `buId` boleh ditulis pengguna dan termasuk BU tujuan cek ulang yang sah (BU saat ini atau BU yang belum pernah
+ * terlibat); BU tujuan aktif, kecuali BU saat ini (server tetap mengizinkan cek ulang di BU saat ini yang nonaktif).
+ * Semua penolakan = `false` tanpa membedakan penyebab.
+ */
+export async function recheckStickerTargetAllowed(
+  env: Env,
+  user: UserContext,
+  serialId: string,
+  itemId: string,
+  buId: string,
+): Promise<boolean> {
+  const existing = await loadSerialRow(env.DB, serialId);
+  if (!existing || existing.item_id.trim() !== itemId) return false;
+  if (!canWriteBu(user, buId)) return false;
+  const currentBuId = existing.bu_id.trim();
+  const candidates = recheckBuCandidates({
+    currentBuId,
+    involvedBuIds: await involvedBuIds(env.DB, existing.id.trim()),
+    writableBuIds: [buId],
+  });
+  if (!candidates.includes(buId)) return false;
+  if (buId === currentBuId) return true;
+  const target = await env.DB.prepare(
+    "SELECT 1 AS ok FROM business_units WHERE id = ? AND status = 'active'",
+  )
+    .bind(buId)
+    .first<{ ok: number }>();
+  return target !== null;
 }
 
 const rechecked = (row: SerialRowInput, id: string): SerialRowResult => ({
@@ -319,12 +353,16 @@ export async function lookupSerialsMany(
   if (serials.length === 0) return { found: [] };
   const marks = serials.map(() => '?').join(', ');
   const rows = await env.DB.prepare(
-    `SELECT s.id, s.serial, s.item_id, s.bu_id, bu.code AS bu_code, s.status, s.open_case_id, b.name AS brand_name, i.model, i.proof_required, i.proof_min FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE s.serial IN (${marks})`,
+    `SELECT s.id, s.serial, s.item_id, s.bu_id, bu.code AS bu_code, s.status, s.open_case_id, b.name AS brand_name, i.model, i.proof_required, i.proof_min FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE s.serial IN (${marks}) ORDER BY ${SERIAL_PICK_ORDER_SQL}`,
   )
     .bind(...serials)
     .all<ExistingRow>();
-  if (rows.results.length === 0) return { found: [] };
-  const ids = rows.results.map((entry) => entry.id.trim());
+  // Selama serial ganda lama belum disatukan: satu entri per serial, catatan yang sama dengan pilihan jalur tulis.
+  const picked = new Map<string, ExistingRow>();
+  for (const entry of rows.results) if (!picked.has(entry.serial)) picked.set(entry.serial, entry);
+  const chosen = [...picked.values()];
+  if (chosen.length === 0) return { found: [] };
+  const ids = chosen.map((entry) => entry.id.trim());
   const history = await env.DB.prepare(
     `SELECT serial_id, bu_id FROM serial_business_units WHERE serial_id IN (${ids.map(() => '?').join(', ')})`,
   )
@@ -336,8 +374,20 @@ export async function lookupSerialsMany(
     list.push(entry.bu_id.trim());
     involved.set(entry.serial_id.trim(), list);
   }
-  const writable = writableBuIds(user);
-  const found = rows.results.map((entry): SerialExistingDto => {
+  // BU nonaktif tidak dapat menjadi tujuan (server menolaknya); BU saat ini tetap boleh walau nonaktif.
+  const writableAll = writableBuIds(user);
+  const activeWritable = new Set(
+    writableAll.length === 0
+      ? []
+      : (
+          await env.DB.prepare(
+            `SELECT id FROM business_units WHERE status = 'active' AND id IN (${writableAll.map(() => '?').join(', ')})`,
+          )
+            .bind(...writableAll)
+            .all<{ id: string }>()
+        ).results.map((bu) => bu.id.trim()),
+  );
+  const found = chosen.map((entry): SerialExistingDto => {
     const id = entry.id.trim();
     const buId = entry.bu_id.trim();
     const status = entry.status.trim();
@@ -356,7 +406,7 @@ export async function lookupSerialsMany(
       recheckBuIds: recheckBuCandidates({
         currentBuId: buId,
         involvedBuIds: [...(involved.get(id) ?? []), buId],
-        writableBuIds: writable,
+        writableBuIds: writableAll.filter((id) => activeWritable.has(id) || id === buId),
       }),
     };
   });
