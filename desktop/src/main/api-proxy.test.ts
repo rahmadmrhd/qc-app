@@ -72,8 +72,13 @@ describe('jalur', () => {
     const handler = proxy();
     for (const path of [
       '/api/openapi.json',
-      '/api/v2/x',
-      '/api/v1', // tanpa garis miring penutup bukan awalan /api/v1/
+      '/api/v1', // tanpa garis miring penutup bukan awalan /api/v<n>/
+      '/api/v2', // idem untuk versi lain
+      '/api/v1x/me',
+      '/api/vx/me',
+      '/api/v/me',
+      '/api/desktop/catalog', // rute desktop tidak lewat proksi API
+      '/api/desktop/app-manifest',
       '/api/pingx',
       '/api/rpc',
       '/auth/login',
@@ -88,6 +93,15 @@ describe('jalur', () => {
       expect(((await res.json()) as { code: string }).code).toBe('FORBIDDEN');
     }
     expect(seen).toEqual([]);
+  });
+
+  test('semua versi /api/v<n>/ diizinkan (v2 ikut diteruskan ke server)', async () => {
+    const handler = proxy();
+    for (const path of ['/api/v1/me', '/api/v2/qrcodes/abc', '/api/v12/items']) {
+      const res = await handler(req(path));
+      expect(res.status, path).toBe(200);
+    }
+    expect(seen.map((s) => s.url)).toEqual(['/api/v1/me', '/api/v2/qrcodes/abc', '/api/v12/items']);
   });
 
   test('".." dan "//" dan "\\" ditolak, juga yang dikodekan', async () => {
