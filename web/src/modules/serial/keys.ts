@@ -14,6 +14,8 @@ export const serialKeys = {
   serviceSettings: ['serial', 'serviceSettings'] as const,
   serviceLocations: ['serial', 'serviceLocations'] as const,
   lookup: (serial: string) => ['serial', 'lookup', serial] as const,
+  lookupMany: (serials: readonly string[]) =>
+    ['serial', 'lookupMany', [...serials].sort()] as const,
   /** Awalan semua daftar laporan (satu per kombinasi filter). */
   cases: ['serial', 'cases'] as const,
   casePage: (filter: Omit<SerialCaseListInput, 'cursor'>) => ['serial', 'cases', filter] as const,

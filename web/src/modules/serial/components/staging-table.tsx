@@ -9,7 +9,7 @@ import { memo, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import type { StagingRow } from '../lib/draft';
+import { existingBuProblem, existingProblem, type StagingRow } from '../lib/draft';
 import { noteSummary } from '../lib/note-summary';
 import type { StampPreviewInput } from '../lib/stamp-preview';
 import { ProofPhotoField } from './proof-photo-field';
@@ -38,6 +38,9 @@ export function rowStatus(row: StagingRow): { tone: 'error' | 'warn' | 'ok'; tex
     );
     return { tone: 'error', text: `Pilih ulang ${names.join(', ')} (tidak ditemukan)` };
   }
+  // Baris Cek ulang yang serialnya punya laporan aktif atau sudah Rusak: tidak dapat disimpan dari Catat.
+  const blocked = existingProblem(row);
+  if (blocked !== null) return { tone: 'error', text: blocked };
   if (row.result === 'duplicate') {
     return { tone: 'warn', text: row.message || 'Serial sudah terdaftar' };
   }
@@ -45,6 +48,8 @@ export function rowStatus(row: StagingRow): { tone: 'error' | 'warn' | 'ok'; tex
     return { tone: 'error', text: row.message || 'Gagal disimpan' };
   }
   if (row.itemId === '') return { tone: 'warn', text: 'Item belum dipilih' };
+  const buProblem = existingBuProblem(row);
+  if (buProblem !== null) return { tone: 'error', text: buProblem };
   if (row.buId === '') return { tone: 'warn', text: 'Business Unit belum dipilih' };
   if (row.locationId === '') return { tone: 'warn', text: 'Lokasi belum dipilih' };
   if (!isIsoDate(row.testDate)) return { tone: 'warn', text: 'Tanggal uji belum diisi' };
@@ -129,14 +134,32 @@ function SerialCell({ clientId, serial, onCommitSerial, disabled }: SerialCellPr
   );
 }
 
-/** Lencana kecil untuk kolom yang tidak punya sel sendiri: Sample, pilihan stiker eksplisit, dan catatan. */
+/**
+ * Lencana kecil untuk kolom yang tidak punya sel sendiri: Cek ulang (serial sudah tercatat; plus perpindahan BU bila
+ * BU baris beda dari BU saat ini), Sample, pilihan stiker eksplisit, dan catatan.
+ */
 export function RowBadges({ row }: { row: StagingRow }) {
   const stickers = stickerSummary(row);
   // Catatan berbentuk Markdown: tabel dan kartu hanya menampilkan ringkasan teks polosnya.
   const note = noteSummary(row.note);
-  if (!row.sample && stickers === null && note === '') return null;
+  const existing = row.existing;
+  if (!existing && !row.sample && stickers === null && note === '') return null;
+  const moving = existing && row.buId !== '' && row.buId !== existing.buId;
   return (
     <span className="mt-0.5 flex flex-wrap gap-1 text-xs text-muted-foreground">
+      {existing ? (
+        <span
+          className="rounded-full border border-primary/50 bg-primary/10 px-1.5 py-px font-medium text-foreground"
+          title={`Serial sudah tercatat di ${existing.buCode}; entri ini menjadi cek ulang`}
+        >
+          Cek ulang
+        </span>
+      ) : null}
+      {existing && moving ? (
+        <span className="rounded-full border px-1.5 py-px text-foreground">
+          Pindah BU: {existing.buCode} → {row.buLabel}
+        </span>
+      ) : null}
       {row.sample ? (
         <span className="rounded-full border px-1.5 py-px text-foreground">Sample</span>
       ) : null}

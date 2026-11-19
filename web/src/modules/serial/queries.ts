@@ -101,6 +101,20 @@ export function serialLookupQueryOptions(serial: string) {
   });
 }
 
+/**
+ * Serial yang sudah tercatat, dicari sekaligus untuk draft Catat (maks. `SERIAL_LIMITS.batchRows` per permintaan;
+ * pemanggil memecahnya). Selalu segar: status serial (laporan aktif, Rusak) berubah-ubah.
+ */
+export function serialLookupManyQueryOptions(serials: readonly string[]) {
+  return queryOptions({
+    queryKey: serialKeys.lookupMany(serials),
+    queryFn: () => api('serials.lookupMany', { serials: [...serials] }),
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+}
+
 /** Daftar laporan berkursor; filter dikerjakan server. TIDAK masuk whitelist `query-persist`. */
 export type SerialCaseFilter = Omit<SerialCaseListInput, 'cursor'>;
 
