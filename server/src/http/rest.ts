@@ -259,7 +259,7 @@ function handlerFor(operation: Operation, routes: RouteTable) {
 }
 
 /** `Location` dari templat `def.location` dan field keluaran; `undefined` bila ada parameter yang tidak terisi. */
-function locationOf(template: string, output: unknown, version: number): string | undefined {
+export function locationOf(template: string, output: unknown, version: number): string | undefined {
   const source =
     typeof output === 'object' && output !== null ? (output as Record<string, unknown>) : {};
   const params: Record<string, string> = {};
@@ -281,8 +281,13 @@ export function restNotFound(): Response {
  * `API_ROUTES` untuk SEMUA id versi itu, lalu 404 problem+json untuk sisanya. Handler memakai `authorize` + `execute`
  * (= `runRoute`: sesi, izin, validasi, lokasi), jadi logika modul tidak berubah.
  */
-export function registerRest(app: Hono<AppBindings>, routes: RouteTable, version = 1): void {
-  for (const operation of listOperations(version)) {
+export function registerRest(
+  app: Hono<AppBindings>,
+  routes: RouteTable,
+  version = 1,
+  table: Record<string, ApiRouteDef> = API_ROUTES,
+): void {
+  for (const operation of listOperations(version, table)) {
     app.on(operation.verb, honoPath(operation.path), handlerFor(operation, routes));
   }
   app.all('*', () => restNotFound());
