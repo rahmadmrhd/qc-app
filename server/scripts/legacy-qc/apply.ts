@@ -41,24 +41,37 @@ export interface TargetState {
   /** `${itemId}\u0000${buId}` yang sudah tertaut. */
   itemBuLinks: Set<string>;
   clientIds: Set<string>;
-  /** `${buId}\u0000${serial}` yang sudah ada di tujuan. */
-  serialPairs: Set<string>;
+  /** Nomor serial yang sudah ada di tujuan, di BU MANA PUN (serial unik se-sistem: satu serial = satu catatan). */
+  serialKeys: Set<string>;
+  /**
+   * Tabel riwayat BU `serial_business_units` (migrasi serial unik se-sistem; spek §4.1) ada dengan kolom yang dibutuhkan
+   * (`serial_id`, `bu_id`, `first_at`, `left_at`). Tanpanya migrasi data lama ditolak: urutan rilis dikunci (spek §8
+   * butir 3), fitur itu harus sampai lebih dulu agar tiap serial yang ditulis punya riwayat BU-nya.
+   */
+  hasSerialBuTable: boolean;
 }
+
+const SERIAL_BU_COLUMNS = ['serial_id', 'bu_id', 'first_at', 'left_at'];
 
 export async function loadTargetState(db: Preparer): Promise<TargetState> {
   const rows = async <T>(sql: string): Promise<T[]> => (await db.prepare(sql).all<T>()).results;
-  const [bus, locations, brands, items, aliases, links, clients, pairs] = await Promise.all([
-    rows<Named>('SELECT id, code, name FROM business_units'),
-    rows<Named>('SELECT id, code, name FROM locations'),
-    rows<{ id: string; name: string; key: string }>('SELECT id, name, `key` FROM brands'),
-    rows<{ id: string; key: string; firmware: string; is_country_lock: string }>(
-      'SELECT id, `key`, firmware, is_country_lock FROM items',
-    ),
-    rows<{ key: string; item_id: string }>('SELECT `key`, item_id FROM item_alias_keys'),
-    rows<{ item_id: string; bu_id: string }>('SELECT item_id, bu_id FROM item_business_units'),
-    rows<{ client_id: string }>('SELECT client_id FROM serials'),
-    rows<{ bu_id: string; serial: string }>('SELECT bu_id, serial FROM serials'),
-  ]);
+  const [bus, locations, brands, items, aliases, links, clients, serialRows, buTableColumns] =
+    await Promise.all([
+      rows<Named>('SELECT id, code, name FROM business_units'),
+      rows<Named>('SELECT id, code, name FROM locations'),
+      rows<{ id: string; name: string; key: string }>('SELECT id, name, `key` FROM brands'),
+      rows<{ id: string; key: string; firmware: string; is_country_lock: string }>(
+        'SELECT id, `key`, firmware, is_country_lock FROM items',
+      ),
+      rows<{ key: string; item_id: string }>('SELECT `key`, item_id FROM item_alias_keys'),
+      rows<{ item_id: string; bu_id: string }>('SELECT item_id, bu_id FROM item_business_units'),
+      rows<{ client_id: string }>('SELECT client_id FROM serials'),
+      rows<{ serial: string }>('SELECT serial FROM serials'),
+      rows<{ column_name: string }>(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'serial_business_units'",
+      ),
+    ]);
+  const presentColumns = new Set(buTableColumns.map((row) => row.column_name.trim().toLowerCase()));
   return {
     businessUnits: bus,
     locations,
@@ -73,7 +86,8 @@ export async function loadTargetState(db: Preparer): Promise<TargetState> {
     aliasKeys: new Map(aliases.map((row) => [row.key.trim(), row.item_id.trim()])),
     itemBuLinks: new Set(links.map((row) => `${row.item_id.trim()}\u0000${row.bu_id.trim()}`)),
     clientIds: new Set(clients.map((row) => row.client_id.trim())),
-    serialPairs: new Set(pairs.map((row) => `${row.bu_id.trim()}\u0000${row.serial}`)),
+    serialKeys: new Set(serialRows.map((row) => row.serial)),
+    hasSerialBuTable: SERIAL_BU_COLUMNS.every((column) => presentColumns.has(column)),
   };
 }
 
@@ -93,7 +107,15 @@ export interface ItemResolution {
   buNames: string[];
 }
 
+/** Baris `serial_business_units` yang akan ditulis untuk satu serial (BU sudah ber-id). */
+export interface ResolvedBuLink {
+  buId: string;
+  firstAt: string;
+  leftAt: string;
+}
+
 export interface ResolvedSerial extends PlannedSerial {
+  buLinks: ResolvedBuLink[];
   buId: string;
   locationId: string;
   itemId: string;
@@ -242,6 +264,10 @@ export function resolvePlan(plan: Plan, target: TargetState): Resolved {
     }
   }
 
+  if (plan.serials.length > 0 && !target.hasSerialBuTable)
+    blockers.push(
+      'Tabel serial_business_units belum ada di tujuan: rilis "serial unik se-sistem" (migrasi riwayat BU) harus sampai lebih dulu, karena setiap serial yang ditulis wajib punya riwayat BU-nya (spek serial unik se-sistem §8 butir 3; urutan rilis dikunci).',
+    );
   const serials: ResolvedSerial[] = [];
   const conflicts: SerialConflict[] = [];
   let alreadyMigrated = 0;
@@ -251,17 +277,23 @@ export function resolvePlan(plan: Plan, target: TargetState): Resolved {
       continue;
     }
     const resolvedBu = buId.get(serial.buName) as string;
-    if (target.serialPairs.has(`${resolvedBu}\u0000${serial.serial}`)) {
+    // Keunikan se-sistem: serial yang sudah ada di tujuan di BU MANA PUN bentrok (satu serial = satu catatan).
+    if (target.serialKeys.has(serial.serial)) {
       conflicts.push({
         legacyId: serial.legacyId,
         serial: serial.serial,
         buName: serial.buName,
-        reason: 'sudah ada di tujuan (BU + serial sama)',
+        reason: 'sudah ada di tujuan (serial sama, di BU mana pun)',
       });
       continue;
     }
     serials.push({
       ...serial,
+      buLinks: serial.buHistory.map((link) => ({
+        buId: buId.get(link.buName) as string,
+        firstAt: link.firstAt,
+        leftAt: link.leftAt,
+      })),
       buId: resolvedBu,
       locationId: locationId.get(serial.locationName) as string,
       itemId: itemIdByLegacy.get(serial.itemLegacyId) as string,
@@ -322,6 +354,24 @@ function serialStatements(db: Preparer, chunk: ResolvedSerial[]): DbStatement[] 
       .bind(...binds),
   );
 
+  // Riwayat BU (`serial_business_units`): satu baris per BU yang pernah memegang serial; BU saat ini `left_at = ''`.
+  // Dalam batch yang sama dengan serialnya, jadi tak pernah ada serial tanpa riwayat BU. INSERT biasa (bukan IGNORE):
+  // kunci ganda berarti ada yang salah dan seluruh potongan harus gagal.
+  const links = chunk.flatMap((serial) =>
+    serial.buLinks.map((link) => [serial.id, link.buId, link.firstAt, link.leftAt]),
+  );
+  const LINKS_PER_STATEMENT = 400;
+  for (let start = 0; start < links.length; start += LINKS_PER_STATEMENT) {
+    const part = links.slice(start, start + LINKS_PER_STATEMENT);
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO serial_business_units (serial_id, bu_id, first_at, left_at) VALUES ${placeholders(4, part.length)}`,
+        )
+        .bind(...part.flat()),
+    );
+  }
+
   const events: { serial: ResolvedSerial; event: PlannedEvent }[] = chunk.flatMap((serial) =>
     serial.events.map((event) => ({ serial, event })),
   );
@@ -367,6 +417,7 @@ export interface ApplyResult {
   filledFirmware: number;
   linkedItemBus: number;
   insertedSerials: number;
+  insertedBuLinks: number;
   insertedEvents: number;
 }
 
@@ -504,6 +555,7 @@ export async function applyPlan(
     filledFirmware: resolved.firmwareFills.length,
     linkedItemBus: resolved.itemBuLinks.length,
     insertedSerials: resolved.serials.length,
+    insertedBuLinks: resolved.serials.reduce((sum, serial) => sum + serial.buLinks.length, 0),
     insertedEvents,
   };
 }

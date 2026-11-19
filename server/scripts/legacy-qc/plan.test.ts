@@ -91,7 +91,7 @@ describe('buildPlan', () => {
       '106:junk-serial',
       '107:junk-serial',
     ]);
-    expect(p.serials.map((s) => s.legacyId)).toEqual([100, 101, 102, 104, 108, 109]);
+    expect(p.serials.map((s) => s.legacyId)).toEqual([100, 101, 102, 104, 108, 109, 111]);
     expect(serialOf(p, 100).serial).toBe('F5BC0F1E4059');
     expect(serialOf(p, 108).serial).toBe('AC8BA9543AD8');
   });
@@ -106,7 +106,7 @@ describe('buildPlan', () => {
     expect(p.locationNames).toEqual(['Jakarta', 'Surabaya']);
   });
 
-  test('bentrok (BU, serial): yang terbaru menang dan yang lama dilipat ke riwayatnya', () => {
+  test('bentrok serial: yang terbaru menang dan yang lama dilipat ke riwayatnya', () => {
     const p = plan();
     expect(p.folded).toEqual([
       {
@@ -114,7 +114,17 @@ describe('buildPlan', () => {
         loserLegacyId: 103,
         serial: 'DUP12345X',
         buName: 'Spectrum',
+        loserBuName: 'Spectrum',
         winnerItem: 'Ubiquiti UAP AC LR',
+        loserItem: 'Ubiquiti UAP AC Lite',
+      },
+      {
+        winnerLegacyId: 111,
+        loserLegacyId: 110,
+        serial: 'XBU123456789',
+        buName: 'Teakwave',
+        loserBuName: 'Spectrum',
+        winnerItem: 'Ubiquiti UAP AC Lite',
         loserItem: 'Ubiquiti UAP AC Lite',
       },
     ]);
@@ -135,6 +145,79 @@ describe('buildPlan', () => {
       'Dicatat ulang sebagai Ubiquiti UAP AC Lite (catatan lama #103, digabung) (data lama)',
     );
     expect(p.serials.some((s) => s.legacyId === 103)).toBe(false);
+  });
+
+  test('serial yang sama di dua BU lama dilipat jadi satu: BU terbaru = BU saat ini, BU lama masuk riwayat BU', () => {
+    const p = plan();
+    // Hanya SATU catatan untuk XBU123456789 (bukan satu per BU): keunikan se-sistem.
+    expect(p.serials.filter((s) => s.serial === 'XBU123456789').map((s) => s.legacyId)).toEqual([
+      111,
+    ]);
+    const serial = serialOf(p, 111);
+    expect(serial).toMatchObject({
+      buName: 'Teakwave',
+      locationName: 'Jakarta',
+      foldedLegacyIds: [110],
+    });
+    expect(serial.buHistory).toEqual([
+      {
+        buName: 'Spectrum',
+        firstAt: '2024-02-01T01:00:00.000Z',
+        leftAt: '2024-06-01T02:00:00.000Z',
+      },
+      { buName: 'Teakwave', firstAt: '2024-06-01T02:00:00.000Z', leftAt: '' },
+    ]);
+    // Riwayat catatan Spectrum yang dilipat tetap terbaca: "Added" tertua menjadi recorded, milik Teakwave menjadi note.
+    expect(serial.events.map((e) => e.type)).toEqual(['recorded', 'note']);
+    expect(serial.events[0]?.data.legacyId).toBe(110);
+    expect(p.warnings.some((w) => w.includes('BU lama berbeda dilipat'))).toBe(true);
+  });
+
+  test('semua serial punya tepat satu baris riwayat untuk BU saat ini (leftAt kosong) dan satu baris per BU', () => {
+    for (const serial of plan().serials) {
+      const current = serial.buHistory.filter((link) => link.leftAt === '');
+      expect(current.map((link) => link.buName)).toEqual([serial.buName]);
+      expect(new Set(serial.buHistory.map((link) => link.buName)).size).toBe(
+        serial.buHistory.length,
+      );
+      for (const link of serial.buHistory) {
+        if (link.leftAt !== '') expect(link.leftAt >= link.firstAt).toBe(true);
+      }
+    }
+  });
+
+  test('rantai Spectrum -> Teakwave -> Spectrum: terbaru menang, BU yang dikunjungi dua kali tetap satu baris', () => {
+    const dump = miniDump();
+    dump.dataqc = [
+      [200, '2024-01-01', 1, 'CHAIN0000001', 0, '', 1, 1, 0],
+      [201, '2024-02-01', 1, 'CHAIN0000001', 0, '', 2, 2, 0],
+      [202, '2024-03-01', 1, 'chain0000001', 0, '', 3, 1, 0],
+    ];
+    dump.historyDataqc = [
+      [200, 1, 1, 'rahmadmrhd', 'Added to Database', '2024-01-01 08:00:00'],
+      [201, 2, 2, 'desmon', 'Added to Database', '2024-02-01 08:00:00'],
+      [202, 3, 1, 'desmon', 'Added to Database', '2024-03-01 08:00:00'],
+    ];
+    const p = buildPlan(dump, { itemBu: 'brand', now: NOW });
+    expect(p.serials).toHaveLength(1);
+    const serial = serialOf(p, 202);
+    expect(serial.buName).toBe('Spectrum');
+    expect(serial.foldedLegacyIds).toEqual([200, 201]);
+    expect(serial.buHistory).toEqual([
+      { buName: 'Spectrum', firstAt: '2024-01-01T01:00:00.000Z', leftAt: '' },
+      {
+        buName: 'Teakwave',
+        firstAt: '2024-02-01T01:00:00.000Z',
+        leftAt: '2024-03-01T01:00:00.000Z',
+      },
+    ]);
+    // Keterangan lipatan lintas BU menyebut BU asalnya; lipatan sesama BU tidak.
+    const notes = serial.events.map((e) => e.message);
+    expect(notes[1]).toContain('(catatan lama #201 di BU Teakwave, digabung)');
+    expect(p.folded.map((row) => `${row.loserLegacyId}:${row.loserBuName}`)).toEqual([
+      '200:Spectrum',
+      '201:Teakwave',
+    ]);
   });
 
   test('riwayat Update: Tipe dan Test Date menjadi data_changed berlabel merk + tipe, tanggal ISO', () => {
