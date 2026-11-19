@@ -3,7 +3,7 @@
 // MENJADI SATU-SATUNYA yang mencatat peristiwa `injected` Multi ke draft lewat `useDraftRows.addInjected`.
 // Sandi tidak pernah lewat sini: snapshot tak memuatnya dan kredensial dasar dibaca proses utama dari paket skrip.
 
-import { DRAFT_MAX_ROWS, MULTI_BRIDGE_VERSION } from '@countrylock/bridge-channels';
+import { DRAFT_MAX_ROWS, MULTI_ACK_MAX, MULTI_BRIDGE_VERSION } from '@countrylock/bridge-channels';
 import type {
   InjectedEvent,
   MultiCredentialDto,
@@ -84,6 +84,8 @@ export function useMulti(bridge: QcBridge, draft: DraftRows): UseMulti {
   const aliveRef = useRef(true);
   const processingRef = useRef(false);
   const againRef = useRef(false);
+  /** Kegagalan sementara (tulis draft, baca peristiwa, ack): dicoba lagi pada snapshot berikutnya. */
+  const retryRef = useRef(false);
 
   // --- Snapshot ---------------------------------------------------------------------------
   useEffect(() => {
@@ -150,16 +152,23 @@ export function useMulti(bridge: QcBridge, draft: DraftRows): UseMulti {
     try {
       do {
         againRef.current = false;
+        retryRef.current = false;
         let events: InjectedEvent[];
         try {
           events = await bridge.multi.pendingEvents();
         } catch (cause) {
+          retryRef.current = true;
           if (aliveRef.current) setError(errorText(cause));
           break;
         }
         // Draft rusak/belum siap: peristiwa dibiarkan di proses utama (dicoba lagi saat draft siap), barisnya ditandai.
         if (draftRef.current.status !== 'ready') {
           if (aliveRef.current) setUnrecorded(new Set(events.map((event) => event.mac)));
+          break;
+        }
+        if (events.length === 0) {
+          if (aliveRef.current)
+            setUnrecorded((current) => (current.size === 0 ? current : new Set()));
           break;
         }
         const acked: string[] = [];
@@ -177,19 +186,29 @@ export function useMulti(bridge: QcBridge, draft: DraftRows): UseMulti {
               clientId: multiClientId(event.eventId),
               injectedAt: event.injectedAt,
             });
-            // `duplicate` = baris sudah ada (kiriman ulang): aman di-ack. `full` = belum tercatat: tetap di proses utama.
-            if (result === 'full') pending.add(event.mac);
-            else acked.push(event.eventId);
+            // `duplicate` = baris sudah ada dan tersimpan (kiriman ulang): aman di-ack. `full` = belum tercatat dan
+            // `unsaved` = baris di memori tetapi gagal tersimpan: tetap di proses utama (`unsaved` dicoba lagi).
+            if (result === 'full') {
+              pending.add(event.mac);
+            } else if (result === 'unsaved') {
+              pending.add(event.mac);
+              retryRef.current = true;
+            } else {
+              acked.push(event.eventId);
+            }
           } catch {
             // Gagal mencatat: tidak di-ack, dicoba lagi pada pemicu berikutnya.
             pending.add(event.mac);
+            retryRef.current = true;
           }
         }
         if (aliveRef.current) setUnrecorded(pending);
-        if (acked.length > 0) {
+        // Potongan <= `MULTI_ACK_MAX` (skema kanal menolak lebih): satu potongan gagal tak menghalangi sisanya.
+        for (let at = 0; at < acked.length; at += MULTI_ACK_MAX) {
           try {
-            await bridge.multi.ackInjected(acked);
+            await bridge.multi.ackInjected(acked.slice(at, at + MULTI_ACK_MAX));
           } catch (cause) {
+            retryRef.current = true;
             if (aliveRef.current) setError(errorText(cause));
           }
         }
@@ -199,13 +218,21 @@ export function useMulti(bridge: QcBridge, draft: DraftRows): UseMulti {
     }
   }, [bridge, supported]);
 
-  // Pemicu: saat dipasang, tiap snapshot berubah (peristiwa baru dari inject sukses), draft siap, dan draft kembali longgar.
+  // Pemicu: saat dipasang, jumlah perangkat `success` berubah (peristiwa baru dicatat engine SEBELUM status `success`
+  // terlihat), draft siap, dan draft kembali longgar. Tanpa itu, snapshot (sering) tak memicu IPC + SELECT SQLite; setelah
+  // kegagalan sementara (`retryRef`) tiap snapshot mencoba lagi sampai berhasil.
   const draftStatus = draft.status;
   const draftFull = draft.isFull;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `snapshot`, `draftStatus`, dan `draftFull` adalah pemicu murni.
+  const successCount = snapshot?.counts.success ?? 0;
+  const triggerKeyRef = useRef('');
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `snapshot` hanya memicu percobaan ulang; kunci pemicu menjaga sisanya.
   useEffect(() => {
-    if (supported && draftStatus !== 'loading') void processEvents();
-  }, [supported, processEvents, snapshot, draftStatus, draftFull]);
+    if (!supported || draftStatus === 'loading') return;
+    const key = `${successCount}|${draftStatus}|${draftFull}`;
+    const changed = key !== triggerKeyRef.current;
+    triggerKeyRef.current = key;
+    if (changed || retryRef.current) void processEvents();
+  }, [supported, processEvents, snapshot, successCount, draftStatus, draftFull]);
 
   // --- Perintah -----------------------------------------------------------------------------
   const run = useCallback(async (work: () => Promise<unknown>): Promise<void> => {

@@ -403,6 +403,10 @@ export function useCountryLock(bridge: QcBridge, draft: DraftRows): UseCountryLo
           setLog((previous) =>
             appendLog(previous, 'Peringatan: draft penuh, serial tidak dicatat.'),
           );
+        } else if (added === 'unsaved') {
+          setLog((previous) =>
+            appendLog(previous, 'Peringatan: serial belum tersimpan ke draft (penyimpanan gagal).'),
+          );
         }
       } catch {
         setLog((previous) => appendLog(previous, 'Peringatan: serial gagal dicatat ke draft.'));

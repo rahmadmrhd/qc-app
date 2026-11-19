@@ -70,6 +70,8 @@ export const MULTI_CHANGE_EVENT = 'qc:multi:changed';
  * jembatannya lebih rendah; `UI_MIN_BRIDGE_VERSION` TIDAK dinaikkan (mode tunggal tetap jalan di jembatan lama).
  */
 export const MULTI_BRIDGE_VERSION = 9;
+/** Maks. id peristiwa `injected` per panggilan `multi.ackInjected` (renderer meng-ack per potongan sebesar ini). */
+export const MULTI_ACK_MAX = 500;
 /** Jembatan paling rendah yang punya `catalog` (katalog Tipe offline); UI yang lebih baru memeriksa versinya sebelum memakai. */
 export const CATALOG_BRIDGE_VERSION = 5;
 /**

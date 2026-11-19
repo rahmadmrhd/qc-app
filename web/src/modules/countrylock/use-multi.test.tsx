@@ -1,7 +1,7 @@
 import type { InjectedEvent } from '@countrylock/bridge-contract';
 import { SERIAL_LIMITS } from '@shared/serials';
 import { act, renderHook, waitFor } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { createFakeBridge, createFakeMultiDevice, createFakeMultiSnapshot } from './fake-bridge';
 import { useDraftRows } from './use-draft-rows';
 import { multiClientId, useMulti } from './use-multi';
@@ -232,6 +232,70 @@ describe('useMulti: peristiwa injected ke draft', () => {
     act(() => result.current.draft.replace(result.current.draft.rows.slice(1)));
     await waitFor(() => expect(result.current.multi.unrecorded.size).toBe(0));
     expect(bridge.multiEvents).toHaveLength(0);
+  });
+
+  test('draft.save gagal: peristiwa tidak di-ack; setelah berhasil di-ack tanpa baris ganda', async () => {
+    let failing = true;
+    const bridge = createFakeBridge({
+      draft: {
+        save: async (rows) => {
+          if (failing) throw new Error('disk penuh');
+          bridge.draftRows.splice(0, bridge.draftRows.length, ...structuredClone([...rows]));
+        },
+      },
+    });
+    bridge.multiEvents.push(injected('evt-8', 'SN8', 'AA:BB:CC:DD:EE:08'));
+    const { result } = await setup(bridge);
+    await waitFor(() =>
+      expect([...result.current.multi.unrecorded]).toEqual(['AA:BB:CC:DD:EE:08']),
+    );
+    expect(callsOf(bridge, 'ackInjected')).toHaveLength(0);
+    expect(bridge.multiEvents).toHaveLength(1);
+
+    failing = false;
+    act(() => bridge.emitMulti({ running: true }));
+    await waitFor(() => expect(callsOf(bridge, 'ackInjected')).toHaveLength(1));
+    expect(callsOf(bridge, 'ackInjected')[0]?.args[0]).toEqual(['evt-8']);
+    expect(result.current.draft.rows).toHaveLength(1);
+    expect(bridge.draftRows).toHaveLength(1);
+    expect(result.current.multi.unrecorded.size).toBe(0);
+  });
+
+  test('ack dipecah per potongan <= 500 id (1200 peristiwa: 1000 sudah di draft, 200 tertahan penuh)', async () => {
+    const bridge = createFakeBridge();
+    for (let i = 0; i < 1200; i++) {
+      const id = `evt-b${i}`;
+      if (i < SERIAL_LIMITS.tableRows)
+        bridge.draftRows.push(savedRow(`BULK${i}`, multiClientId(id)));
+      bridge.multiEvents.push(injected(id, `BULK${i}`, `AA:BB:CC:00:${i}`));
+    }
+    await setup(bridge);
+    await waitFor(() => expect(bridge.multiEvents).toHaveLength(200), { timeout: 10_000 });
+    const sizes = callsOf(bridge, 'ackInjected').map((call) => (call.args[0] as string[]).length);
+    expect(sizes).toEqual([500, 500]);
+  });
+
+  test('snapshot tanpa kenaikan jumlah Selesai tidak memicu pembacaan peristiwa lagi', async () => {
+    const { bridge, result } = await setup();
+    const pendingReads = vi.spyOn(bridge.multi, 'pendingEvents');
+    await waitFor(() => expect(result.current.multi.snapshot).not.toBeNull());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const baseline = pendingReads.mock.calls.length;
+    act(() => bridge.emitMulti({ running: true, devices: [createFakeMultiDevice()] }));
+    act(() =>
+      bridge.emitMulti({ running: true, devices: [createFakeMultiDevice({ message: 'x' })] }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(pendingReads.mock.calls.length).toBe(baseline);
+    bridge.multiEvents.push(injected('evt-9', 'SN9'));
+    act(() =>
+      bridge.emitMulti({ running: true, devices: [createFakeMultiDevice({ status: 'success' })] }),
+    );
+    await waitFor(() => expect(result.current.draft.rows.map((r) => r.serial)).toEqual(['SN9']));
   });
 
   test('draft gagal dimuat: peristiwa tidak disentuh', async () => {

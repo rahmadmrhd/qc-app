@@ -4,7 +4,12 @@
 
 import { z } from 'zod';
 import type { DesktopCatalogDto } from '../../shared/desktop-catalog';
-import { type BRIDGE_CHANNELS, DRAFT_MAX_BYTES, DRAFT_MAX_ROWS } from './bridge-channels';
+import {
+  type BRIDGE_CHANNELS,
+  DRAFT_MAX_BYTES,
+  DRAFT_MAX_ROWS,
+  MULTI_ACK_MAX,
+} from './bridge-channels';
 import type { CountryLockConfig } from './config';
 import type { DeviceInfo } from './device-info';
 import { isValidHost } from './host';
@@ -28,6 +33,7 @@ export {
   DRAFT_MAX_ROWS,
   INJECT_PROGRESS_EVENT,
   MIN_BRIDGE_VERSION,
+  MULTI_ACK_MAX,
   MULTI_BRIDGE_VERSION,
   MULTI_CHANGE_EVENT,
   NOTIFICATIONS_BRIDGE_VERSION,
@@ -388,7 +394,7 @@ export const BRIDGE_ARGS = {
   multiPrepareBridge: z.tuple([]),
   multiSnapshot: z.tuple([]),
   multiPendingEvents: z.tuple([]),
-  multiAckInjected: z.tuple([z.array(InjectIdSchema).max(500)]),
+  multiAckInjected: z.tuple([z.array(InjectIdSchema).max(MULTI_ACK_MAX)]),
   multiOpenWeb: z.tuple([MacArgSchema]),
 } as const satisfies Record<keyof typeof BRIDGE_CHANNELS, z.ZodType>;
 
