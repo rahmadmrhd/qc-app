@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { createMultiEngine, type MultiStartConfig } from './engine';
+import { createMultiEngine, EMIT_MIN_INTERVAL_MS, type MultiStartConfig } from './engine';
 import { createFakePorts, serialOfIp } from './fakes';
 import type { MultiSnapshot } from './snapshot';
 import type { Credential } from './types';
@@ -72,7 +72,10 @@ describe('engine: pemindaian dan loop perangkat', () => {
       alreadyRegistered: false,
       credentialSource: 'Default',
     });
-    expect(seen).toEqual(['pinging', 'fetching_info', 'ready']);
+    // Emisi digabung per `EMIT_MIN_INTERVAL_MS`: status sementara boleh terlewat, status akhir wajib sampai.
+    await f.advance(EMIT_MIN_INTERVAL_MS);
+    expect(seen.at(-1)).toBe('ready');
+    expect(seen.filter((status) => status === 'ready')).toHaveLength(1);
     await engine.stop();
   });
 
@@ -262,7 +265,7 @@ describe('engine: pemindaian dan loop perangkat', () => {
     const off = engine.onChange((s) => snaps.push(s));
     f.state.leases = [{ ip: IP1, mac: MAC1 }];
     engine.start(cfg());
-    await f.advance(0);
+    await f.advance(EMIT_MIN_INTERVAL_MS);
     expect(snaps.length).toBeGreaterThan(0);
     expect(snaps[snaps.length - 1]?.running).toBe(true);
     expect(snaps[snaps.length - 1]?.devices[0]?.status).toBe('ready');
@@ -281,7 +284,7 @@ describe('engine: pemindaian dan loop perangkat', () => {
     engine.onChange((s) => json.push(JSON.stringify(s)));
     f.state.leases = [{ ip: IP1, mac: MAC1 }];
     engine.start(cfg());
-    await f.advance(0);
+    await f.advance(EMIT_MIN_INTERVAL_MS);
     const n = json.length;
     await f.advance(20_000); // keadaan stabil: tak ada perubahan yang terlihat
     expect(json).toHaveLength(n);

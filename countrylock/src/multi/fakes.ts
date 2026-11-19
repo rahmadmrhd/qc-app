@@ -43,6 +43,8 @@ export function createFakePorts() {
     /** `null` = galat baca lease. */
     leases: [] as Lease[] | null,
     readLeaseThrows: false,
+    /** Lama `readLeases` (ms jam palsu); 0 = langsung. */
+    leaseDelay: 0,
     /** Lama ping/readInfo (ms jam palsu); 0 = langsung. */
     pingDelay: 0,
     infoDelay: 0,
@@ -116,6 +118,7 @@ export function createFakePorts() {
     },
     async readLeases() {
       calls.readLeases += 1;
+      if (state.leaseDelay > 0) await ports.sleep(state.leaseDelay, new AbortController().signal);
       if (state.readLeaseThrows) throw new Error('ssh putus');
       return state.leases === null ? null : state.leases.map((l) => ({ ...l }));
     },

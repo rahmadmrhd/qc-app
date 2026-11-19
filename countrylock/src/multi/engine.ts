@@ -45,6 +45,8 @@ export interface MultiPorts {
   ensureBridgePorts(): Promise<{ ok: boolean; message: string }>;
   events: { add(e: InjectedEvent): void; list(): InjectedEvent[]; ack(ids: string[]): void };
   newId(): string;
+  /** Detail galat internal (bisa memuat jalur lokal): hanya untuk log proses utama, TIDAK pernah masuk snapshot. */
+  logError?(scope: string, error: unknown): void;
 }
 
 export interface MultiStartConfig {
@@ -84,6 +86,11 @@ export interface MultiEngine {
   cancelAll(): void;
   /** Satu-satunya jalan mengubah konfigurasi router (tombol eksplisit); tidak pernah dipanggil otomatis. */
   prepareBridge(): Promise<{ ok: boolean; message: string }>;
+  /**
+   * Masih ada inject yang berjalan atau antre, TERMASUK inject yang sedang diselesaikan setelah `stop()` (stop membatalkan
+   * secara sinkron, tetapi inject baru benar-benar selesai saat port menyelesaikan diri).
+   */
+  isBusy(): boolean;
   /** Peristiwa inject sukses yang belum di-ack (bertahan setelah berhenti dan muat ulang renderer). */
   pendingEvents(): InjectedEvent[];
   ackInjected(ids: string[]): void;
@@ -100,6 +107,10 @@ const SCAN_INJECTING_MS = 5000;
 const LOOP_FAST_MS = 500;
 const LOOP_STABLE_MS = 800;
 const MAX_LOG_LINES = 100;
+/** Jeda minimum antar emisi snapshot (leading + trailing): progres SSH sering datang beruntun. */
+export const EMIT_MIN_INTERVAL_MS = 150;
+/** Jeda sebelum perangkat yang gagal diverifikasi leasenya (jalur Auto Inject) diantre lagi. */
+const AUTO_RETRY_MS = 3000;
 /** Sandi lebih pendek dari ini tidak disamarkan di teks (akan merusak angka/IP di baris log). */
 const MIN_MASK_LENGTH = 4;
 
@@ -108,6 +119,8 @@ const MSG_DENIED = 'Permission denied!!!';
 const MSG_INCOMPLETE = 'Info perangkat tidak lengkap';
 const MSG_INFO_UNAVAILABLE = 'Info perangkat tidak terbaca';
 const MSG_IP_CHANGED = 'IP berubah, memeriksa ulang';
+const MSG_RECORD_FAILED =
+  'Inject selesai tetapi hasil gagal dicatat (tekan Retry untuk mencatat ulang)';
 
 type InfoResult = Awaited<ReturnType<MultiPorts['readInfo']>>;
 
@@ -115,6 +128,14 @@ interface InjectJob {
   ctl: AbortController;
   phase: 'queued' | 'injecting';
   cancelled: boolean;
+  /** Diantre Auto Inject (bukan aksi operator). */
+  auto: boolean;
+}
+
+interface LeaseRead {
+  seq: number;
+  /** `null` = galat baca. */
+  leases: Lease[] | null;
 }
 
 interface Run {
@@ -130,9 +151,16 @@ interface Run {
   sessionSerials: Set<string>;
   readSeq: number;
   appliedSeq: number;
-  scanning: Promise<void> | null;
+  /** Satu pembacaan lease segar pada satu waktu; pemindaian dan verifikasi inject bergabung ke yang sedang berjalan. */
+  reading: Promise<LeaseRead> | null;
   scanError: string | null;
   queueStopped: boolean;
+  /** Perangkat yang dikembalikan `ready` oleh blokir draft (nilai = diantre manual?): diantre lagi saat blokir dicabut. */
+  heldByBlock: Map<string, boolean>;
+  /** Perangkat ter-inject yang peristiwanya gagal ditulis: Retry menulis ulang, TIDAK meng-inject ulang. */
+  unwritten: Map<string, InjectedEvent>;
+  /** Perangkat dengan percobaan ulang Auto Inject terjadwal (satu per perangkat). */
+  autoRetry: Set<string>;
 }
 
 /** Kunci pembanding serial: MAC-like tanpa pemisah dan huruf besar; lainnya sekadar huruf besar. */
@@ -150,12 +178,30 @@ function clockText(ms: number): string {
   return `${pad2(t.getHours())}:${pad2(t.getMinutes())}:${pad2(t.getSeconds())}`;
 }
 
-/** Controller anak: batal bersama induknya. */
+const detachers = new WeakMap<AbortController, () => void>();
+
+/**
+ * Controller anak: batal bersama induknya. Listener di induk dilepas saat anak batal sendiri atau `release(anak)`
+ * dipanggil (loop/job selesai), jadi tidak menumpuk di signal induk yang berumur panjang.
+ */
 function child(parent: AbortSignal): AbortController {
   const ctl = new AbortController();
-  if (parent.aborted) ctl.abort();
-  else parent.addEventListener('abort', () => ctl.abort(), { once: true });
+  if (parent.aborted) {
+    ctl.abort();
+    return ctl;
+  }
+  const onAbort = (): void => ctl.abort();
+  const detach = (): void => parent.removeEventListener('abort', onAbort);
+  parent.addEventListener('abort', onAbort, { once: true });
+  ctl.signal.addEventListener('abort', detach, { once: true });
+  detachers.set(ctl, detach);
   return ctl;
+}
+
+/** Melepas anak dari induknya tanpa membatalkannya. */
+function detachChild(ctl: AbortController): void {
+  detachers.get(ctl)?.();
+  detachers.delete(ctl);
 }
 
 /** Menunggu `p`, tetapi berhenti menunggu begitu `signal` batal (port nyata tak selalu menghormati pembatalan). */
@@ -191,6 +237,11 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
   const listeners = new Set<(s: MultiSnapshot) => void>();
   let lastJson = '';
   let emitScheduled = false;
+  let lastEmitAt = Number.NEGATIVE_INFINITY;
+  let trailingPending = false;
+  let emitCtl = new AbortController();
+  /** Run yang sudah dihentikan tetapi inject/tugasnya belum selesai (lihat `isBusy`). */
+  const draining = new Set<Run>();
 
   // --- Emisi snapshot ------------------------------------------------------------------------
 
@@ -215,17 +266,44 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
     const json = JSON.stringify(snap);
     if (json === lastJson) return;
     lastJson = json;
+    lastEmitAt = ports.now();
     for (const cb of [...listeners]) cb(snap);
   }
 
-  /** Digabung per rantai microtask; sengaja bukan timer agar tidak ada timer tersisa saat berhenti. */
+  /**
+   * Digabung per rantai microtask dan ditahan paling cepat `EMIT_MIN_INTERVAL_MS` antar emisi (leading + trailing: emisi
+   * pertama langsung, perubahan sesudahnya digabung menjadi satu emisi akhir). Timer trailing memakai `ports.sleep` dengan
+   * signal sendiri yang dibatalkan `stop()`, jadi tak ada timer tersisa saat berhenti; engine berhenti memancar langsung.
+   */
   function scheduleEmit(): void {
-    if (emitScheduled) return;
+    if (emitScheduled || trailingPending) return;
+    const wait = run ? lastEmitAt + EMIT_MIN_INTERVAL_MS - ports.now() : 0;
+    if (wait > 0) {
+      trailingPending = true;
+      const ctl = emitCtl;
+      ports.sleep(wait, ctl.signal).then(
+        () => {
+          if (emitCtl !== ctl) return;
+          trailingPending = false;
+          flushEmit();
+        },
+        () => {
+          if (emitCtl === ctl) trailingPending = false;
+        },
+      );
+      return;
+    }
     emitScheduled = true;
     void Promise.resolve().then(() => {
       emitScheduled = false;
       flushEmit();
     });
+  }
+
+  function cancelTrailingEmit(): void {
+    emitCtl.abort();
+    emitCtl = new AbortController();
+    trailingPending = false;
   }
 
   // --- Util perangkat ------------------------------------------------------------------------
@@ -338,6 +416,9 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
     for (const mac of res.removed) {
       r.loops.get(mac)?.abort();
       r.loops.delete(mac);
+      r.heldByBlock.delete(mac);
+      r.unwritten.delete(mac);
+      r.autoRetry.delete(mac);
       const job = r.jobs.get(mac);
       if (job) abortJob(job);
     }
@@ -348,7 +429,7 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       log(d, `Perangkat terdeteksi (${d.ip})`);
       const ctl = child(r.ctl.signal);
       r.loops.set(mac, ctl);
-      track(r, deviceLoop(r, d, ctl.signal));
+      track(r, deviceLoop(r, d, ctl));
     }
     for (const mac of res.ipChanged) {
       const d = next.get(mac);
@@ -372,30 +453,45 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
     scheduleEmit();
   }
 
-  function scanOnce(r: Run): Promise<void> {
-    if (r.scanning) return r.scanning;
-    const p = (async () => {
+  /**
+   * Satu pembacaan lease segar pada satu waktu (spek Risiko: satu pemindaian pada satu waktu): panggilan yang datang saat
+   * pembacaan sedang berjalan bergabung ke yang itu. Hasil diterapkan ke registri SEKALI, di sini. Menolak `AbortError`
+   * bila engine berhenti.
+   */
+  function readLeasesShared(r: Run): Promise<LeaseRead> {
+    if (r.reading) return r.reading;
+    const p = (async (): Promise<LeaseRead> => {
       const seq = ++r.readSeq;
       let leases: Lease[] | null;
       try {
         leases = await raceAbort(ports.readLeases(), r.ctl.signal);
       } catch (e) {
-        if (isAbortError(e)) return;
+        if (isAbortError(e)) throw e;
         leases = null;
       }
-      if (run !== r) return;
-      if (leases === null) {
-        r.scanError = 'Gagal membaca DHCP lease dari router';
-        scheduleEmit();
-        return;
+      if (run === r) {
+        if (leases === null) {
+          r.scanError = 'Gagal membaca DHCP lease dari router';
+          scheduleEmit();
+        } else {
+          r.scanError = null;
+          applyLeases(r, leases, seq);
+        }
       }
-      r.scanError = null;
-      applyLeases(r, leases, seq);
+      return { seq, leases };
     })().finally(() => {
-      r.scanning = null;
+      r.reading = null;
     });
-    r.scanning = p;
+    r.reading = p;
     return p;
+  }
+
+  async function scanOnce(r: Run): Promise<void> {
+    try {
+      await readLeasesShared(r);
+    } catch (e) {
+      if (!isAbortError(e)) throw e;
+    }
   }
 
   function scanInterval(r: Run): number {
@@ -416,7 +512,8 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
 
   // --- Loop per perangkat (L4.4) -------------------------------------------------------------
 
-  async function deviceLoop(r: Run, d: DeviceRecord, signal: AbortSignal): Promise<void> {
+  async function deviceLoop(r: Run, d: DeviceRecord, ctl: AbortController): Promise<void> {
+    const signal = ctl.signal;
     try {
       while (live(r, d, signal)) {
         const wait = await deviceStep(r, d, signal);
@@ -424,6 +521,8 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       }
     } catch (e) {
       if (!isAbortError(e)) throw e;
+    } finally {
+      detachChild(ctl);
     }
   }
 
@@ -495,10 +594,21 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
     if (!cred) return;
     const res = await safeReadInfo(ip, cred, signal);
     if (!live(r, d, signal) || d.ip !== ip || d.status !== 'success' || !res.ok) return;
-    if (res.model) d.model = res.model;
-    if (res.serial) d.serial = res.serial;
-    if (res.country) d.country = res.country;
-    scheduleEmit();
+    // Pembacaan ulang berkala (tiap 800 ms) hanya memicu emisi bila ada yang benar-benar berubah.
+    let changed = false;
+    if (res.model && res.model !== d.model) {
+      d.model = res.model;
+      changed = true;
+    }
+    if (res.serial && res.serial !== d.serial) {
+      d.serial = res.serial;
+      changed = true;
+    }
+    if (res.country && res.country !== d.country) {
+      d.country = res.country;
+      changed = true;
+    }
+    if (changed) scheduleEmit();
   }
 
   /** Dari `waiting`: baca info dengan kredensial berurutan, lalu `ready` (dan Auto Inject bila memenuhi syarat). */
@@ -611,7 +721,13 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
     if (manual && d.alreadyRegistered) {
       log(d, 'SN sudah terdaftar di draft; inject manual dilanjutkan');
     }
-    const job: InjectJob = { ctl: child(r.ctl.signal), phase: 'queued', cancelled: false };
+    r.heldByBlock.delete(d.mac);
+    const job: InjectJob = {
+      ctl: child(r.ctl.signal),
+      phase: 'queued',
+      cancelled: false,
+      auto: !manual,
+    };
     r.jobs.set(d.mac, job);
     setStatus(d, 'queued', 'Antri');
     log(d, 'Masuk antrean inject');
@@ -633,18 +749,10 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
     r: Run,
     d: DeviceRecord,
     ip: string,
-    signal: AbortSignal,
   ): Promise<'ok' | 'moved' | 'unknown'> {
-    const seq = ++r.readSeq;
-    let leases: Lease[] | null;
-    try {
-      leases = await raceAbort(ports.readLeases(), signal);
-    } catch (e) {
-      if (isAbortError(e)) throw e;
-      leases = null;
-    }
+    // Bergabung ke pembacaan yang sedang berjalan (satu sesi SSH untuk semua inject yang menunggu verifikasi).
+    const { leases } = await readLeasesShared(r);
     if (leases === null) return 'unknown';
-    if (run === r) applyLeases(r, leases, seq);
     const usable = leases.filter((l) => !(r.cfg.excludeIp !== '' && l.ip === r.cfg.excludeIp));
     const mine = usable.find((l) => l.mac === d.mac);
     if (!mine || mine.ip !== ip) return 'moved';
@@ -665,13 +773,14 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       }
       if (!jobAlive(r, d, job) || d.status !== 'queued') return;
       if (blockedReason !== null) {
-        backToReady(d, `Ditahan: ${blockedReason}`);
+        holdForBlock(r, d, job);
         return;
       }
 
       let check: 'ok' | 'moved' | 'unknown';
       try {
-        check = await verifyLease(r, d, ip, job.ctl.signal);
+        // Pembacaan bersama tak boleh membuat job ini menunggu setelah dibatalkan (port nyata tak selalu menghormati abort).
+        check = await raceAbort(verifyLease(r, d, ip), job.ctl.signal);
       } catch (e) {
         if (isAbortError(e)) return;
         throw e;
@@ -685,10 +794,12 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       }
       if (check === 'unknown') {
         backToReady(d, 'Gagal memeriksa lease, coba lagi');
+        // Auto Inject tak akan menyapu perangkat ini lagi sendiri: coba lagi setelah jeda (satu percobaan terjadwal).
+        if (job.auto) scheduleAutoRetry(r, d);
         return;
       }
       if (blockedReason !== null) {
-        backToReady(d, `Ditahan: ${blockedReason}`);
+        holdForBlock(r, d, job);
         return;
       }
 
@@ -718,8 +829,31 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       finishInject(r, d, job, result);
     } finally {
       if (r.jobs.get(mac) === job) r.jobs.delete(mac);
+      detachChild(job.ctl);
       release?.();
     }
+  }
+
+  /** Perangkat kembali `ready` karena blokir draft; diantre lagi (dengan asal yang sama) saat blokir dicabut. */
+  function holdForBlock(r: Run, d: DeviceRecord, job: InjectJob): void {
+    r.heldByBlock.set(d.mac, !job.auto);
+    backToReady(d, `Ditahan: ${blockedReason ?? 'draft'}`);
+  }
+
+  function scheduleAutoRetry(r: Run, d: DeviceRecord): void {
+    if (r.autoRetry.has(d.mac)) return;
+    r.autoRetry.add(d.mac);
+    track(
+      r,
+      (async () => {
+        try {
+          await ports.sleep(AUTO_RETRY_MS, r.ctl.signal);
+        } finally {
+          r.autoRetry.delete(d.mac);
+        }
+        if (live(r, d)) maybeAutoInject(r, d);
+      })(),
+    );
   }
 
   function finishInject(
@@ -741,15 +875,8 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       r.sessionMacs.add(d.mac);
       r.sessionSerials.add(serialKey(d.serial));
       d.injectedThisSession = true;
-      try {
-        // Ditulis SEBELUM status `success` terlihat, jadi renderer tak pernah melihat "Selesai" tanpa peristiwanya.
-        ports.events.add(event);
-      } catch (e) {
-        const reason = e instanceof Error ? e.message : 'galat tak dikenal';
-        setStatus(d, 'failed', `Inject selesai tetapi hasil gagal dicatat: ${reason}`);
-        log(d, d.message);
-        return;
-      }
+      // Ditulis SEBELUM status `success` terlihat, jadi renderer tak pernah melihat "Selesai" tanpa peristiwanya.
+      if (!recordEvent(r, d, event)) return;
       setStatus(d, 'success', 'Selesai');
       log(d, '=== Selesai ===');
       return;
@@ -763,12 +890,33 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
     log(d, `=== Gagal: ${d.message} ===`);
   }
 
+  /**
+   * Menulis peristiwa ke penyimpanan. Gagal = `failed` dengan pesan generik (detail, yang bisa memuat jalur lokal, hanya
+   * ke `ports.logError`) dan peristiwa ditahan di engine: Retry menulis ulang, bukan meng-inject ulang perangkat yang
+   * sudah ter-inject.
+   */
+  function recordEvent(r: Run, d: DeviceRecord, event: InjectedEvent): boolean {
+    try {
+      ports.events.add(event);
+      r.unwritten.delete(d.mac);
+      return true;
+    } catch (e) {
+      ports.logError?.('multi.events.add', e);
+      r.unwritten.set(d.mac, event);
+      setStatus(d, 'failed', MSG_RECORD_FAILED);
+      log(d, d.message);
+      return false;
+    }
+  }
+
   /** Antre → `ready` (segera, tanpa menunggu job); injecting → minta batal (hasil dari port). */
   function cancelJob(r: Run, d: DeviceRecord, readyMessage: string): void {
     const job = r.jobs.get(d.mac);
     if (!job) return;
     if (job.phase === 'queued') {
       abortJob(job);
+      // Dilepas segera (bukan menunggu job menyelesaikan diri) agar perangkat dapat diantre lagi seketika.
+      if (r.jobs.get(d.mac) === job) r.jobs.delete(d.mac);
       if (d.status === 'queued') backToReady(d, readyMessage);
     } else {
       abortJob(job);
@@ -802,11 +950,15 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
         sessionSerials: new Set(),
         readSeq: 0,
         appliedSeq: 0,
-        scanning: null,
+        reading: null,
         scanError: null,
         queueStopped: false,
+        heldByBlock: new Map(),
+        unwritten: new Map(),
+        autoRetry: new Set(),
       };
       run = r;
+      lastEmitAt = Number.NEGATIVE_INFINITY;
       scheduleEmit();
       track(r, scanLoop(r));
     },
@@ -816,9 +968,15 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       if (!r) return;
       run = null;
       notice = '';
+      draining.add(r);
       r.ctl.abort();
+      cancelTrailingEmit();
       flushEmit();
-      while (r.tasks.size > 0) await Promise.allSettled([...r.tasks]);
+      try {
+        while (r.tasks.size > 0) await Promise.allSettled([...r.tasks]);
+      } finally {
+        draining.delete(r);
+      }
       flushEmit();
     },
 
@@ -881,10 +1039,20 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
         // Tak ada slot baru: yang masih antre kembali `ready`; yang sudah `injecting` dibiarkan selesai.
         for (const d of [...r.devices.values()]) {
           const job = r.jobs.get(d.mac);
-          if (job && job.phase === 'queued') cancelJob(r, d, `Ditahan: ${reason}`);
+          if (job && job.phase === 'queued') {
+            r.heldByBlock.set(d.mac, !job.auto);
+            cancelJob(r, d, `Ditahan: ${reason}`);
+          }
         }
       } else if (r) {
         clearNoticeIfHold();
+        // Perangkat yang dikembalikan blokir (antrean manual) diantre lagi; yang tak pernah diantre tidak disentuh.
+        const held = [...r.heldByBlock];
+        r.heldByBlock.clear();
+        for (const [mac, manual] of held) {
+          const d = r.devices.get(mac);
+          if (d && d.status === 'ready') queueDevice(r, d, manual);
+        }
         autoSweep(r);
       }
       scheduleEmit();
@@ -894,6 +1062,16 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       const r = run;
       const d = r?.devices.get(mac);
       if (!r || !d) return;
+      const unwritten = r.unwritten.get(mac);
+      if (unwritten && (d.status === 'failed' || d.status === 'ready')) {
+        // Perangkat sudah ter-inject; hanya pencatatan hasilnya yang gagal: tulis ulang, jangan inject lagi.
+        log(d, 'Mencatat ulang hasil inject');
+        if (recordEvent(r, d, unwritten)) {
+          setStatus(d, 'success', 'Selesai');
+          log(d, '=== Selesai ===');
+        }
+        return;
+      }
       if (d.status === 'waiting' && d.credentialsExhausted) {
         // Retry manual: kredensial dicoba lagi dari awal.
         d.credentialIndex = 0;
@@ -909,6 +1087,7 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       const r = run;
       const d = r?.devices.get(mac);
       if (!r || !d) return;
+      r.heldByBlock.delete(mac);
       cancelJob(r, d, 'Dibatalkan (masih antri)');
     },
 
@@ -931,6 +1110,7 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       const r = run;
       if (!r) return;
       r.queueStopped = true;
+      r.heldByBlock.clear();
       for (const d of [...r.devices.values()]) {
         const job = r.jobs.get(d.mac);
         if (job && job.phase === 'queued') cancelJob(r, d, 'Dibatalkan (masih antri)');
@@ -942,6 +1122,7 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       const r = run;
       if (!r) return;
       r.queueStopped = true;
+      r.heldByBlock.clear();
       for (const d of [...r.devices.values()]) cancelJob(r, d, 'Dibatalkan (masih antri)');
       scheduleEmit();
     },
@@ -959,6 +1140,15 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       const out = { ok: result.ok, message: mask(result.message) };
       setNotice(out.message);
       return out;
+    },
+
+    isBusy() {
+      if (draining.size > 0) return true;
+      if (!run) return false;
+      for (const d of run.devices.values()) {
+        if (d.status === 'queued' || d.status === 'injecting') return true;
+      }
+      return false;
     },
 
     pendingEvents() {
