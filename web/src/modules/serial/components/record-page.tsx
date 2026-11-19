@@ -19,6 +19,7 @@ import {
   applyResults,
   type BulkPatch,
   type Defaults,
+  type DraftControl,
   fromQcsnRows,
   isExistingBlocked,
   lookupKeyOf,
@@ -93,6 +94,13 @@ export interface RecordPageProps {
    * tersimpan.
    */
   handleRef?: { current: RecordPageHandle | null };
+  /**
+   * Draft milik pemanggil (mode terkontrol): tabel berasal dari `draft.rows`, setiap perubahan lewat `draft.replace`, dan
+   * `RecordPage` tidak menyentuh `localStorage` sama sekali. Tanpa ini perilaku web (state sendiri + `localStorage`).
+   */
+  draft?: DraftControl;
+  /** Sembunyikan judul "Catat Serial Number" (pemanggil sudah punya judul halaman). */
+  hideTitle?: boolean;
 }
 
 export interface RecordPageHandle {
@@ -170,6 +178,8 @@ export function RecordPage({
   onAllSaved,
   onProofChange,
   handleRef,
+  draft,
+  hideTitle,
 }: RecordPageProps) {
   const me = useMe();
   const queryClient = useQueryClient();
@@ -184,12 +194,17 @@ export function RecordPage({
     };
   }, []);
 
-  const [rows, setRows] = useState<StagingRow[]>(() => loadDraft(ownerKey));
+  // Mode terkontrol (`draft`): tabel milik pemanggil dan `localStorage` tak disentuh; selain itu state sendiri.
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const [ownRows, setOwnRows] = useState<StagingRow[]>(() => (draft ? [] : loadDraft(ownerKey)));
+  const rows = draft ? draft.rows : ownRows;
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const setAllRows = useCallback((next: StagingRow[]) => {
     rowsRef.current = next;
-    setRows(next);
+    if (draftRef.current) draftRef.current.replace(next);
+    else setOwnRows(next);
   }, []);
 
   // Serial yang sudah tercatat (keunikan se-sistem): serial baru di draft ditanyakan ke server per kelompok; yang sudah
@@ -292,16 +307,17 @@ export function RecordPage({
 
   // Halaman dibuka: penulisan draf diizinkan lagi (dihentikan oleh `clearAllDrafts` saat keluar).
   useEffect(() => {
-    resumeDraftWrites();
+    if (!draftRef.current) resumeDraftWrites();
   }, []);
   // Draf otomatis (ditunda); saat halaman ditutup, isi terakhir langsung disimpan (kecuali sesudah keluar).
   useEffect(() => {
+    if (draftRef.current) return;
     const timer = setTimeout(() => setDraftFailed(!saveDraft(ownerKey, rows)), AUTOSAVE_DELAY_MS);
     return () => clearTimeout(timer);
   }, [ownerKey, rows]);
   useEffect(
     () => () => {
-      saveDraft(ownerKey, rowsRef.current);
+      if (!draftRef.current) saveDraft(ownerKey, rowsRef.current);
     },
     [ownerKey],
   );
@@ -815,11 +831,11 @@ export function RecordPage({
     }
     if (!mountedRef.current) {
       // Halaman sudah ditinggalkan: draf yang ditulis saat unlock masih memuat baris yang kini tersimpan; sinkronkan.
-      saveDraft(ownerKey, rowsRef.current);
+      if (!draftRef.current) saveDraft(ownerKey, rowsRef.current);
       return allSaved;
     }
     if (allSaved && (external || onAllSaved)) {
-      clearDraft(ownerKey);
+      if (!draftRef.current) clearDraft(ownerKey);
       toast.success(
         recheckedCount > 0
           ? `Serial Number berhasil disimpan (${savedCount - recheckedCount} dibuat, ${recheckedCount} dicek ulang)`
@@ -839,7 +855,7 @@ export function RecordPage({
       className={cn('space-y-5', barVisible && SELECTION_BAR_SPACE_CLASS)}
       data-selection-space={barVisible ? 'on' : undefined}
     >
-      <h1 className="text-xl font-semibold">Catat Serial Number</h1>
+      {hideTitle ? null : <h1 className="text-xl font-semibold">Catat Serial Number</h1>}
 
       <section
         aria-label="Default"
@@ -938,7 +954,7 @@ export function RecordPage({
           {notice.text}
         </p>
       ) : null}
-      {draftFailed ? (
+      {(draft ? draft.saveFailed === true : draftFailed) ? (
         <p
           role="alert"
           className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm"
@@ -1046,7 +1062,7 @@ export function RecordPage({
             onClick={() => {
               void discardProofPhotos(proofIdsOf(rowsRef.current));
               setAllRows([]);
-              clearDraft(ownerKey);
+              if (!draftRef.current) clearDraft(ownerKey);
               setNotice(null);
               setSummary(null);
             }}

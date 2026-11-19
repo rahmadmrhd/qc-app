@@ -5,7 +5,7 @@ Dijalankan pemilik pada perangkat nyata sebelum Fase 2 ditulis (rencana `docs/su
 ## Prasyarat
 
 - Laptop Windows 10/11 x64 **bersih** (tanpa Node, Bun, atau Git) dan satu laptop/PC lain sebagai pembanding berisi **aplikasi WPF Country Lock lama**.
-- Installer: `desktop/dist-app/QC App Setup <versi>.exe` (dibuat `bun run build:desktop`; pasang per pengguna, tanpa hak admin). Untuk uji tanpa installer: `bun run build:web && bun run --cwd desktop pack`, lalu `desktop/dist-app/win-unpacked/QC App.exe`.
+- Installer: `desktop/dist-app/QC-App-Setup-<versi>-<arch>.exe` (`<arch>` = `x64` atau `arm64`; dibuat `bun run build:desktop`, atau diunduh dari Drive hasil `release.yml`; pasang per pengguna, tanpa hak admin). Untuk uji tanpa installer: `bun run build:web && bun run --cwd desktop pack`, lalu `desktop/dist-app/win-unpacked/QC App.exe`.
 - Paket skrip: folder `Country Lock2` (berisi `config.QC`, `MIKROTIK\`, `UBIQUITI\`).
 - Router jump Mikrotik (alamat sesuai `server.ip` di `config.QC`) dan perangkat uji: satu Ubiquiti dan satu Mikrotik, keduanya **bukan** perangkat produksi.
 - Akun QC terdaftar di server (staging `https://qc-dev.rhd.my.id` atau production `https://qc.rhd.my.id`) dan peramban sistem yang dapat login Google.
@@ -154,11 +154,53 @@ Prasyarat: server (staging) sudah memuat rute katalog dengan `DESKTOP_CATALOG_TO
 | I16 | Munculkan dialog Kredensial perangkat (tombol Kredensial) | Password tampil apa adanya, tidak tersamar | |
 | I17 | Biarkan salah satu dari Merk/Tipe/Firmware/BU/Lokasi kosong, sambungkan perangkat | Tombol Inject nonaktif; petunjuk "Wajib diisi sebelum inject: ..." menyebut yang kurang; dengan Auto Inject menyala perangkat TIDAK diinject sampai form lengkap, lalu jalan sendiri | |
 | I18 | Hapus folder `<userData>/catalog`, buka aplikasi tanpa jaringan | Inject nonaktif dengan petunjuk "Katalog belum tersinkron: tekan tombol sinkron di halaman Country Lock" | |
-| I19 | Inject beberapa perangkat dengan Tipe, BU, dan Lokasi terpilih, lalu (sudah login) tekan "Unggah ke server (N)" | Serial muncul di halaman Serial Number (BU dan lokasi sesuai, asal Country Lock, stiker bawaan terpotong dari stok); baris yang berhasil hilang dari antrean; ringkasan "Hasil unggah: N terunggah" tampil | |
-| I20 | Unggah ulang serial yang sudah ada di BU yang sama (inject ulang setelah unggah, atau serial dari tes lain) | Baris tetap di antrean dengan "Serial sudah ada di BU ini" dan ringkasan menyebut duplikat; tombol Hapus (dengan konfirmasi) membuangnya | |
-| I21 | Belum login, atau matikan jaringan lalu unggah | Belum login: tombol nonaktif dengan "Masuk dulu untuk mengunggah"; jaringan mati: "Unggah berhenti: ..." dan antrean utuh; setelah pulih tombol bisa dicoba lagi tanpa duplikat (kunci idempoten) | |
-| I22 | Unggah entri lama (dicatat sebelum perubahan ini) dan Tipe yang wajib foto bukti | Entri lama: "Dicatat tanpa Tipe katalog: hapus lalu inject ulang", tidak ikut terkirim; item wajib foto: ditolak dengan "Item ini wajib foto bukti minimal N" dan tetap di antrean | |
+| I19 | Inject beberapa perangkat dengan Tipe, BU, dan Lokasi terpilih (sudah login, akun ber-`serial: edit`) | Tiap serial muncul sebagai baris di ringkasan "Draft Serial Number" di halaman (form Catat tidak ada di halaman); setelah tombol "Catat Serial Number" ditekan, dialog menampilkan baris yang sama dengan kolom Serial berupa teks terkunci (tooltip "Serial dari perangkat, tidak dapat diubah"); Item = Tipe, BU dan Lokasi sesuai form | |
+| I20 | Di dialog Catat Serial Number: tambah serial manual lewat Default (Item, BU, Lokasi) + kolom scan/tempel; ubah massal dan Ubah baris pada baris campuran | Baris manual masuk ke tabel yang sama dan serialnya dapat diubah; baris hasil inject tetap terkunci di tabel dan dialog Ubah baris | |
+| I21 | Item wajib foto bukti: tambah foto lewat Ubah baris (kamera atau berkas) lalu Simpan ke staging | Foto terunggah lewat proksi Bearer (tidak gagal multipart), Simpan sukses, serial muncul di halaman Serial Number web dengan asal Country Lock dan foto bukti | |
+| I22 | Tutup aplikasi dengan baris di draft, buka lagi; juga coba tanpa login dan dengan akun tanpa izin `serial: edit` | Draft utuh setelah dibuka lagi; tanpa login/izin: ringkasan hanya-baca dengan alasan, inject tetap jalan dan menambah baris; entri pending lama (jika ada) pindah ke draft | |
+| I23 | Draft penuh (1000 baris) atau berkas `draft.db` dirusak sengaja | Penuh: Inject dan Auto Inject nonaktif dengan alasan; rusak: galat tampil, Inject nonaktif, draft tidak ditimpa | |
 | I10 | Di web, matikan centang Country lock pada item berfirmware, simpan | Kolom Firmware hilang dan tersimpan kosong; item keluar dari katalog desktop pada sinkron berikutnya | |
+
+## J. Mode Multi-Device
+
+Prasyarat: build dengan katalog aktif (`CATALOG_TOKEN`), paket skrip Ubiquiti, router jump Mikrotik yang terjangkau lewat `server.ip` di `config.QC` dan memuat DHCP lease; beberapa perangkat Ubiquiti pabrikan di jaringan yang sama. Tombol mode "Tunggal | Multi-Device" hanya tampil pada jembatan >= 9.
+
+| # | Langkah | Hasil yang diharapkan | Hasil |
+|---|---|---|---|
+| J1 | Buka Country Lock, pilih mode Multi-Device, isi Merk (Ubiquiti), Tipe, Firmware, BU, Lokasi, tekan Mulai | Tabel perangkat terisi dari DHCP lease (MAC, IP, status); field yang kosong membuat Mulai nonaktif dengan petunjuk | |
+| J2 | Satu perangkat pabrikan terhubung, Inject All | Perangkat berstatus Berjalan lalu Sukses; satu baris baru di ringkasan "Draft Serial Number" dengan Tipe/BU/Lokasi batch | |
+| J3 | Banyak perangkat (>= 6) sekaligus, concurrency bawaan 4 | Paling banyak 4 inject berjalan bersamaan, sisanya antre; semua akhirnya Sukses atau Gagal dengan alasan | |
+| J4 | Ubah concurrency di tengah batch (mis. 4 menjadi 2 lalu 8) | Tidak ada galat; inject yang berjalan tidak terputus; batas baru berlaku untuk antrean berikutnya | |
+| J5 | Perangkat Sukses lalu dicabut dan dipasang lagi, atau lease berganti IP (IP berpindah ke perangkat lain) | MAC dikenali walau IP berpindah; perangkat yang sudah Sukses tidak diinject ulang otomatis; IP diambil alih perangkat lain terdeteksi | |
+| J6 | Cabut perangkat yang sedang berjalan | Status menjadi terputus setelah masa tenggang 60 dtk; baris hilang dari tabel setelah tenggang; tak ada retry tak berujung | |
+| J7 | Salah satu perangkat menolak kredensial bawaan | Panel kredensial muncul; sesudah kredensial diisi perangkat dicoba lagi; kredensial sama tidak dicoba berulang pada IP yang sama dalam sesi | |
+| J8 | Tekan Stop Antrean, lalu Cancel All saat banyak perangkat berjalan | Stop: yang berjalan selesai, antrean berhenti; Cancel All: semua inject dibatalkan, tak ada baris draft untuk yang batal | |
+| J9 | Muat ulang UI (Ctrl+R) atau tutup-buka jendela di tengah batch | Batch tetap berjalan di proses utama; setelah UI kembali, tabel dan hitungan pulih; baris `injected` yang belum di-ack tidak hilang dan tidak ganda | |
+| J10 | Mulai inject tunggal, lalu coba mulai Multi (dan sebaliknya) | Yang kedua ditolak dengan pesan jelas; mode pertama tidak terganggu | |
+| J11 | Tombol "Siapkan bridge router" (bila tersedia), juga saat ada perangkat antri atau injecting | Saat tidak ada inject: dialog menyebut host dan perintah, bridge disiapkan sekali dan hasilnya tampil; kegagalan tampil sebagai pesan, bukan crash. Saat ada inject (tunggal atau Multi) berjalan: tombol nonaktif dengan petunjuk, dan host menolak bila dipaksa. Selama bridge disiapkan: Inject All dan tombol Siapkan nonaktif, inject manual dan Auto Inject ditahan (inject tunggal ditolak), lalu Auto Inject berjalan lagi setelah selesai | |
+| J12 | Draft penuh (1000 baris) atau draft rusak di tengah batch | Inject baru ditahan dengan alasan; perangkat yang sudah berjalan tidak menghilangkan baris; setelah ruang tersedia, penahanan dilepas | |
+| J13 | Serial yang sudah ada di draft/terdaftar muncul lagi sebagai perangkat | Tidak diinject ulang otomatis (ditandai sudah terdaftar); Inject All juga melewatinya (keputusan pemilik 2026-11-19), sedangkan tombol Inject di baris perangkat itu tetap bisa meng-inject manual | |
+| J14 | Server SSH router mati atau perintah lease gagal | Pesan galat tampil, batch yang berjalan tidak crash, pemindaian dicoba lagi berjenjang | |
+| J15 | Jalankan di build dengan jembatan lama (< 9) | Tombol mode Multi tidak tampil; mode tunggal normal | |
+
+## K. Pembaruan otomatis (rilis desktop)
+
+Prasyarat: environment `desktop-release`, folder Drive, dan `DESKTOP_RELEASES_FOLDER_ID` di `.env` VPS sudah dipasang (`docs/desktop-release-signing.md`). Dua versi rilis berurutan, mis. N = `1.0.0` dan N+1 = `1.0.1`, sudah diterbitkan lewat `release.yml`; installer N diambil dari Drive (bukan dari GitHub). Uji pada Windows x64 **dan** Windows arm64 (ulangi K2-K9 di tiap arsitektur). Pembaruan hanya aktif pada aplikasi terpasang (`app.isPackaged`) yang dibangun dengan kunci publik rilis.
+
+| # | Langkah | Hasil yang diharapkan | Hasil |
+|---|---|---|---|
+| K1 | Terbitkan N, pasang installer N (`QC-App-Setup-<N>-<arch>.exe`) pada laptop bersih | Muncul peringatan SmartScreen "penerbit tak dikenal" (belum ada Authenticode); setelah "Tetap jalankan" terpasang per pengguna tanpa hak admin | |
+| K2 | Terbitkan N+1; buka aplikasi N, tunggu sekitar 90 detik (cek pertama) | Dialog bawaan OS "QC App versi N+1 tersedia" berisi catatan rilis dan tombol "Perbarui sekarang" / "Nanti" | |
+| K3 | Pilih "Nanti"; biarkan aplikasi terbuka | Tidak ada dialog lagi untuk versi yang sama pada sesi itu; cek berikutnya 6 jam kemudian | |
+| K4 | Tutup dan buka lagi aplikasi, tunggu dialog, pilih "Perbarui sekarang" | Unduhan berjalan tanpa login; muncul dialog "Pembaruan siap dipasang" | |
+| K5 | Pilih "Nanti saat keluar", tutup aplikasi sepenuhnya (keluar dari tray), buka lagi | Aplikasi sudah versi N+1 (periksa Properti > Detail pada `QC App.exe`) tanpa wizard | |
+| K6 | Ulangi J2-J4 lalu pilih "Mulai ulang sekarang" | Aplikasi tertutup, terpasang senyap, dan terbuka lagi sebagai N+1 | |
+| K7 | Mulai inject Country Lock (perangkat uji), biarkan berjalan saat cek pembaruan jatuh tempo | Tidak ada dialog dan tidak ada restart selama inject; dialog muncul setelah inject selesai | |
+| K8 | Tarik N+1 (`tarik` = N+1) lalu buka aplikasi N | Tidak ada tawaran pembaruan ke N+1 (server hanya menyajikan versi bertanda tangan terbaru yang tersisa) | |
+| K9 | Hubungkan ke server dengan Drive/folder rilis kosong atau `DESKTOP_RELEASES_FOLDER_ID` kosong | Tidak ada dialog dan tidak ada galat yang terlihat pengguna; Country Lock dan halaman lain normal | |
+| K10 | Ganti `DESKTOP_RELEASE_PUBLIC_KEY_PEM` di build uji dengan kunci lain, pasang, terbitkan rilis dari kunci asli | Aplikasi menolak manifest (tanda tangan tak sah): tidak ada tawaran pembaruan, log aplikasi menyebut penolakan | |
+| K11 | Ubah repositori menjadi **privat** dan/atau cabut token GitHub apa pun, ulangi K2-K5 | Pembaruan tetap berfungsi penuh (tak ada permintaan ke GitHub dari aplikasi atau server) | |
+| K12 | Unduh `app-file` dengan nama di luar manifest atau versi tanpa `.sig` (curl) | 404 seragam; lebih dari 60 unduhan installer per jam dari satu IP = 429 | |
 
 ## Pengisian hasil
 

@@ -72,6 +72,8 @@ COPY server/package.json server/tsconfig.json server/
 COPY server/src server/src
 # Migrator membaca berkas SQL dari disk: WAJIB ada di image.
 COPY server/migrations server/migrations
+# Catatan perubahan yang dibaca server untuk halaman "Pembaruan" di web (bagian rilis semver).
+COPY server/CHANGELOG.md server/CHANGELOG.md
 # CLI pemulihan cadangan (T31): dijalankan lewat `docker exec`; logikanya ada di server/src/modules/backup/restore.ts.
 COPY scripts/restore-backup.ts scripts/restore-backup.ts
 COPY --from=web-build /app/server/dist server/dist
@@ -86,6 +88,11 @@ RUN apk add --no-cache mariadb-client     && mkdir -p /var/backups/qc     && cho
 # Folder berkas sementara foto bukti QC Serial Number (volume `qc-proofs` dipasang di sini): dibuat dan dimiliki `bun`
 # SEBELUM USER dengan alasan yang sama seperti folder dump di atas.
 RUN mkdir -p /var/lib/qc/proofs && chown bun:bun /var/lib/qc/proofs
+
+# SHA commit yang dibangun (build-arg dari CI; dilaporkan /api/ping). Sengaja SETELAH semua RUN tahap runtime (apk add,
+# mkdir) agar SHA yang berubah tiap commit tidak membatalkan cache lapisan itu. Bukan rahasia.
+ARG GIT_SHA=unknown
+ENV GIT_SHA=$GIT_SHA
 
 # Pengguna non-root bawaan image oven/bun (uid 1000).
 USER bun

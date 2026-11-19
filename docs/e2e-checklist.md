@@ -375,6 +375,24 @@ Spek: `docs/superpowers/specs/2026-11-13-panduan-interaktif-design.md` (bagian 4
 | 231 | Firefox (desktop) atau Safari (iOS), tanpa `SyncManager`: offline, antre, tutup aplikasi, nyalakan sinyal, lalu buka aplikasi | Entri terkirim saat aplikasi dibuka; tidak ada galat terkait sync di konsol | PWA FR-P23, FR-P17 |
 | 232 | Dua tab akun sama terbuka, antrean berisi komentar dan task baru, nyalakan sinyal, dan biarkan Background Sync dan penguras halaman berjalan bersamaan | Setiap entri terkirim sekali; tidak ada komentar atau task ganda; kedua tab menampilkan data yang sama tanpa penanda tertinggal | PWA FR-P23, FR-P22 |
 
+### Rilis server percobaan (CI/CD, saklar RELEASE_FLOW)
+
+> Dijalankan pemilik setelah PR pipeline rilis dipromosikan ke `main`. Bukan skenario aplikasi: memeriksa alur GitHub Actions yang tak dapat diuji tanpa GitHub.
+
+| # | Langkah | Hasil yang diharapkan | Rancangan |
+|---|---|---|---|
+| 233 | `RELEASE_FLOW` kosong: merge PR kecil ke `dev`, lalu `dev` ke `main` | Staging dan production ter-deploy seperti biasa; `/api/ping` memuat `version` `0.0.0` dan `build` = SHA; `release.yml` dilewati | Rilis semver 5.4 |
+| 234 | Setel `RELEASE_FLOW=tag`; merge PR biasa (bukan cabang `release/server-v...`) ke `main` | `deploy-server.yml` melewati production; `release.yml` berjalan dan melewati PR itu tanpa galat | Rilis semver 3, 5.4 |
+| 235 | `bun run release:prepare server 1.0.0` lalu merge PR rilis dengan merge commit | `release.yml` lolos meta dan guard, image bertag SHA dan `server-v1.0.0`, production ter-deploy, tag dan GitHub Release berisi changelog, `main` tergabung ke `dev` | Rilis semver 5.3, 5.4 |
+| 236 | Jalankan ulang `release.yml` lewat `workflow_dispatch` dengan versi yang sama | Tidak men-deploy ulang secara membabi buta dan tidak membuat tag ganda (tag pada SHA sama dilewati) | Rilis semver 5.4 |
+| 237 | Merge PR rilis dengan squash (bukan merge commit) | `meta` menolak (identitas); tidak ada build, deploy, atau tag | Rilis semver 5.4 |
+| 238 | (Prasyarat: `deploy.sh` baru sudah disalin ke VPS, lihat `docs/deploy-vps.md`.) Actions > Deploy Tag: `tag` = versi LEBIH BARU dari yang berjalan, `environment` = staging, izin downgrade tidak dicentang | `verify` lulus, `deploy` sukses, `/api/ping` staging memuat versi itu, `refs/deployed/staging` = SHA tag | Rilis semver 5.5 |
+| 239 | Deploy Tag ke staging dengan `tag` LEBIH LAMA yang melewati minimal satu migrasi (bukan contract), izin TIDAK dicentang | `verify` gagal ("Downgrade ini melewati N migrasi ... izinkan_downgrade_skema") sebelum SSH; staging tak berubah | Rilis semver 5.5 |
+| 240 | Ulangi #239 tetapi lewati `verify` (mis. `SSH_ORIGINAL_COMMAND` manual di VPS tanpa kata izin) | `deploy.sh` keluar kode 6; `.env` persis semula (izin 600), kontainer tak tersentuh, kunci terlepas (`.deploy.lock` tidak ada) | Rilis semver 5.5.1 |
+| 241 | Ulangi #239 dengan `izinkan_downgrade_skema` dicentang | `verify` lulus dengan peringatan migrasi yang dilewati, `deploy` sukses, log VPS (`.deploy.log` dan keluaran job) menyebut jumlah dan nama migrasi; aplikasi sehat | Rilis semver 5.5 |
+| 242 | (Butuh rilis yang membawa migrasi `-- qc:contract` bernomor di atas `0023`, mis. pada rilis ber-migrasi destruktif berikutnya.) Setelah rilis itu ter-deploy di staging, Deploy Tag ke tag SEBELUMNYA dengan izin dicentang | Ditolak di `verify` DAN di `deploy.sh` (kode 6): izin tidak berlaku untuk migrasi contract | Rilis semver 5.5.1 |
+| 243 | Buat tag palsu `server-v9.9.9` pada commit apa pun tanpa Release, lalu Deploy Tag dengannya | `verify` gagal di provenance (Release tidak ada / versi tak cocok); SSH tak pernah dibuka. Hapus tag palsu lalu kembalikan staging ke versi semula | Rilis semver 5.5 |
+
 ## Serial Number unik se-sistem dan cek ulang lintas BU (2026-11-18)
 
 Spek: `docs/superpowers/specs/2026-11-18-serial-unik-sistem-design.md`. Uji di staging dengan tiga BU (A, B, C) dan akun yang punya `serial: edit` pada A dan B (tanpa hak di C), akun `serial: edit` hanya di B, dan akun `serial: view` hanya di A. Siapkan satu item yang boleh dicatat di A dan B, satu serial Lolos di A, satu serial dengan laporan aktif, dan satu serial Rusak. Setelah migrasi `0026`, indeks `serials_serial` hanya ada bila tidak ada serial ganda lintas BU (cek log start: tidak ada peringatan "Serial Number ganda").

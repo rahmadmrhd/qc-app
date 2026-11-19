@@ -1,0 +1,242 @@
+name: Deploy Tag
+
+# Men-deploy (naik ATAU turun) versi server tertentu ke staging atau production dari tag `server-vX.Y.Z`, tanpa build dan
+# tanpa `ci` (rancangan docs/superpowers/specs/2026-11-17-rilis-semver-design.md bagian 5.5; rencana
+# docs/superpowers/plans/2026-11-17-rilis-semver-3-deploy-tag.md). Image `qc-app:<sha>` dibangun saat rilis (`release.yml`);
+# di sini hanya diverifikasi lalu di-deploy lewat `server-deploy.yml` (deploy.sh di VPS + `mark-deployed`).
+#
+# Tag dapat dibuat siapa pun berizin tulis (ruleset tag tak tersedia), jadi `verify` memeriksa asalnya sebelum SSH: SHA leluhur
+# `main`, versi di `server/package.json` pada SHA itu = tag, GitHub Release untuk tag ada (bukan draf) dan dibuat
+# `github-actions[bot]`, image ada di GHCR. Lalu pagar downgrade dini: migrasi yang sudah diterapkan (SHA `refs/deployed/<env>`)
+# tetapi tak ada di SHA target ditolak kecuali `izinkan_downgrade_skema`, dan migrasi berpenanda `-- qc:contract` ditolak
+# selalu. Itu pemeriksaan terbaik dari CI (penunjuk dapat basi); pagar yang berwenang ada di VPS (`deploy.sh` `schema_guard`).
+#
+# Keamanan: dipicu hanya `workflow_dispatch` (hanya pemegang izin tulis); production hanya dari `main`, staging dari `main`
+# atau `dev`. Satu-satunya checkout adalah `github.sha` (ujung ref yang di-dispatch, untuk menjalankan skrip keputusan), BUKAN
+# kode tag; tak ada ekspresi di dalam `run`; langkah yang memegang token hanya memanggil API, langkah yang menjalankan skrip
+# tak diberi token; rahasia SSH dibaca workflow terpanggil dari environment-nya (pemanggil memakai `secrets: inherit`, kalau tidak secret environment kosong: actions/runner#4453; keputusan pemilik 2026-11-19).
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag versi server yang di-deploy (server-vX.Y.Z)'
+        type: string
+        required: true
+      environment:
+        description: 'Environment tujuan'
+        type: choice
+        options: [staging, production]
+        required: true
+      izinkan_downgrade_skema:
+        description: 'Izinkan downgrade yang melewati migrasi basis data (migrasi berpenanda qc:contract tetap tak boleh dilewati)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Grup environment yang sama dengan deploy-server.yml (dan release.yml untuk production): satu deploy per environment.
+concurrency:
+  group: deploy-server-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+      version: ${{ steps.resolve.outputs.version }}
+    steps:
+      - name: Validasi ref dan tag, ubah tag ke SHA
+        id: resolve
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref }}
+          TAG: ${{ inputs.tag }}
+          TARGET: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          # Kode 0 = ada (hasil dicetak), 44 = 404 (belum ada), 1 = galat lain.
+          api_try() {
+            local out
+            if out=$(gh api "$@" 2>&1); then printf '%s' "$out"; return 0; fi
+            if grep -qE 'HTTP 404|Not Found' <<< "$out"; then return 44; fi
+            echo "::error::Panggilan API GitHub gagal: ${out:0:300}" >&2
+            return 1
+          }
+          [[ $TARGET =~ ^(staging|production)$ ]] || fail "Environment harus staging atau production."
+          if [ "$TARGET" = production ]; then
+            [ "$REF" = refs/heads/main ] || fail "Production hanya dapat di-deploy dari branch main."
+          else
+            [ "$REF" = refs/heads/main ] || [ "$REF" = refs/heads/dev ] || fail "Staging hanya dapat di-deploy dari branch main atau dev."
+          fi
+          [[ $TAG =~ ^server-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || fail "Tag harus berbentuk server-vX.Y.Z (angka tanpa nol di depan)."
+          rc=0; info=$(api_try "repos/$REPO/git/ref/tags/$TAG" --jq '.object.type + " " + .object.sha') || rc=$?
+          if [ $rc -eq 44 ]; then fail "Tag $TAG tidak ada."; fi
+          if [ $rc -ne 0 ]; then fail "Gagal membaca tag $TAG (galat API)."; fi
+          type=${info%% *}; obj=${info##* }
+          [[ $obj =~ ^[0-9a-f]{40}$ ]] || fail "Tag tidak menunjuk ke objek 40 heksa."
+          # Tag beranotasi menunjuk ke objek tag: dereferensi ke commit.
+          if [ "$type" = tag ]; then
+            rc=0; info=$(api_try "repos/$REPO/git/tags/$obj" --jq '.object.type + " " + .object.sha') || rc=$?
+            if [ $rc -ne 0 ]; then fail "Gagal membaca objek tag beranotasi."; fi
+            type=${info%% *}; obj=${info##* }
+            [[ $obj =~ ^[0-9a-f]{40}$ ]] || fail "Tag beranotasi tidak menunjuk ke objek 40 heksa."
+          fi
+          [ "$type" = commit ] || fail "Tag tidak menunjuk ke commit."
+          {
+            echo "version=${TAG#server-v}"
+            echo "sha=$obj"
+          } >> "$GITHUB_OUTPUT"
+
+  # Provenance tag + pagar downgrade dini. `packages: read` untuk memeriksa image di GHCR. Tidak ada rahasia.
+  verify:
+    needs: meta
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      # Kode ref yang di-dispatch (main untuk production), BUKAN kode tag: hanya untuk menjalankan skrip keputusan.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # Mengumpulkan fakta lewat API (langkah ini memegang token dan TIDAK menjalankan skrip repositori). 404 dibedakan dari
+      # galat API lain (galat sementara tak boleh dibaca sebagai "tidak ada"). Daftar dikirim sebagai SATU baris JSON (`jq -c`).
+      - name: Kumpulkan fakta tag dan migrasi
+        id: facts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          TAG: ${{ inputs.tag }}
+          TARGET: ${{ inputs.environment }}
+          SHA: ${{ needs.meta.outputs.sha }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$1"; exit 1; }
+          api_try() {
+            local out
+            if out=$(gh api "$@" 2>&1); then printf '%s' "$out"; return 0; fi
+            if grep -qE 'HTTP 404|Not Found' <<< "$out"; then return 44; fi
+            echo "::error::Panggilan API GitHub gagal: ${out:0:300}" >&2
+            return 1
+          }
+          [[ $TARGET =~ ^(staging|production)$ ]] || fail "Environment tidak valid."
+          [[ $TAG =~ ^server-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || fail "Tag tidak valid."
+          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || fail "SHA tag bukan 40 heksa."
+
+          # --- provenance ---
+          # Bandingkan dengan SHA ujung branch main (heads/main), bukan nama `main`: nama itu ambigu bila ada tag bernama main.
+          main_sha=$(gh api "repos/$REPO/git/ref/heads/main" --jq '.object.sha')
+          [[ $main_sha =~ ^[0-9a-f]{40}$ ]] || fail "SHA ujung main tidak terbaca."
+          main_relation=$(gh api "repos/$REPO/compare/$main_sha...$SHA" --jq '.status')
+          [[ $main_relation =~ ^[a-z]{1,20}$ ]] || fail "Status perbandingan dengan main tidak terbaca."
+          version_at_sha=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/server/package.json?ref=$SHA" | jq -r '.version // ""')
+          [[ $version_at_sha =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || version_at_sha=''
+          release_exists=false; release_author=''; release_draft=false
+          rc=0; rel=$(api_try "repos/$REPO/releases/tags/$TAG" --jq '[(.author.login // ""), (.draft | tostring)] | join(" ")') || rc=$?
+          if [ $rc -eq 0 ]; then
+            release_exists=true
+            release_author=${rel% *}
+            release_draft=${rel##* }
+            [[ $release_author =~ ^[]A-Za-z0-9._[-]{0,100}$ ]] || fail "Pembuat Release memuat karakter yang tidak diizinkan."
+            [[ $release_draft =~ ^(true|false)$ ]] || fail "Status draf Release tidak terbaca."
+          elif [ $rc -ne 44 ]; then
+            fail "Gagal memeriksa Release untuk tag (galat API)."
+          fi
+          image="ghcr.io/${OWNER,,}/qc-app"
+          if docker buildx imagetools inspect "$image:$SHA" > /dev/null 2>&1; then image_exists=true; else image_exists=false; fi
+          # Cabut token GHCR dari disk (login-action menulisnya ke ~/.docker/config.json) sebelum langkah skrip repositori berjalan.
+          docker logout ghcr.io > /dev/null 2>&1 || true
+
+          # --- pagar downgrade dini (terbaik dari CI; pagar berwenang ada di VPS) ---
+          downgrade_check=false; applied='[]'; target='[]'; first_lines='{}'
+          rc=0; deployed=$(api_try "repos/$REPO/git/ref/deployed/$TARGET" --jq '.object.sha') || rc=$?
+          if [ $rc -eq 44 ]; then
+            echo "::notice::Penunjuk refs/deployed/$TARGET belum ada: pagar downgrade CI dilewati (pagar di VPS tetap berlaku)."
+          elif [ $rc -ne 0 ]; then
+            fail "Gagal membaca refs/deployed/$TARGET (galat API)."
+          else
+            [[ $deployed =~ ^[0-9a-f]{40}$ ]] || fail "Penunjuk refs/deployed/$TARGET tidak valid."
+            if [ "$deployed" != "$SHA" ]; then
+              list_migrations() { gh api "repos/$REPO/contents/server/migrations?ref=$1" | jq -c '[.[] | select(.type == "file") | .name | select(endswith(".sql"))]'; }
+              applied=$(list_migrations "$deployed")
+              target=$(list_migrations "$SHA")
+              # Baris pertama berkas yang akan dilewati dibaca dari SHA yang SEDANG aktif (image target tak memilikinya). Gagal
+              # membaca = kunci tak diisi = dianggap contract oleh skrip (gagal tertutup).
+              skipped=$(jq -rn --argjson a "$applied" --argjson b "$target" '($a - $b)[]')
+              while IFS= read -r name; do
+                [ -n "$name" ] || continue
+                [[ $name =~ ^[0-9]{4}_[a-z0-9_]+\.sql$ ]] || continue
+                line=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/server/migrations/$name?ref=$deployed" | sed -n 1p) || continue
+                first_lines=$(jq -c --arg k "$name" --arg v "${line%$'\r'}" '. + {($k): $v}' <<< "$first_lines")
+              done <<< "$skipped"
+              downgrade_check=true
+            fi
+          fi
+          {
+            echo "main_relation=$main_relation"
+            echo "version_at_sha=$version_at_sha"
+            echo "release_exists=$release_exists"
+            echo "release_author=$release_author"
+            echo "release_draft=$release_draft"
+            echo "image_exists=$image_exists"
+            echo "downgrade_check=$downgrade_check"
+            echo "applied_json=$applied"
+            echo "target_json=$target"
+            echo "first_lines_json=$first_lines"
+          } >> "$GITHUB_OUTPUT"
+
+      # Skrip murni diuji tanpa GitHub (scripts/deploy-tag-check.test.ts); langkah ini tak diberi token. Gagal = job gagal =
+      # `deploy` tidak jalan dan SSH tak pernah dibuka.
+      - name: Periksa asal tag (provenance)
+        env:
+          TAG: ${{ inputs.tag }}
+          TAG_SHA: ${{ needs.meta.outputs.sha }}
+          MAIN_RELATION: ${{ steps.facts.outputs.main_relation }}
+          VERSION_AT_SHA: ${{ steps.facts.outputs.version_at_sha }}
+          RELEASE_EXISTS: ${{ steps.facts.outputs.release_exists }}
+          RELEASE_AUTHOR: ${{ steps.facts.outputs.release_author }}
+          RELEASE_DRAFT: ${{ steps.facts.outputs.release_draft }}
+          IMAGE_EXISTS: ${{ steps.facts.outputs.image_exists }}
+        run: bun run scripts/deploy-tag-check.ts provenance
+
+      - name: Pagar downgrade skema (pemeriksaan dini)
+        if: steps.facts.outputs.downgrade_check == 'true'
+        env:
+          APPLIED_JSON: ${{ steps.facts.outputs.applied_json }}
+          TARGET_JSON: ${{ steps.facts.outputs.target_json }}
+          FIRST_LINES_JSON: ${{ steps.facts.outputs.first_lines_json }}
+          ALLOW: ${{ inputs.izinkan_downgrade_skema }}
+        run: bun run scripts/deploy-tag-check.ts downgrade
+
+  # Rahasia SSH ada di environment (dibaca `server-deploy.yml`); `contents: write` hanya batas untuk `mark-deployed`.
+  deploy:
+    needs: [meta, verify]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/server-deploy.yml
+    with:
+      target: ${{ inputs.environment }}
+      sha: ${{ needs.meta.outputs.sha }}
+      allow-schema-downgrade: ${{ inputs.izinkan_downgrade_skema }}
+    secrets: inherit

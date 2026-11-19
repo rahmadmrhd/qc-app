@@ -62,6 +62,7 @@ export async function createTestEnv(overrides: Partial<Env> = {}): Promise<TestE
     QR_FOLDER_ID: '',
     QR_DOC_FOLDER_ID: '',
     BACKUP_FOLDER_ID: '',
+    DESKTOP_RELEASES_FOLDER_ID: '',
     ALLOWED_FOLDER_IDS: [],
     ADMIN_EMAIL: 'admin@gmail.com',
     APP_ORIGIN: 'https://qc.test',

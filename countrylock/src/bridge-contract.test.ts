@@ -8,11 +8,16 @@ import {
   CATALOG_CHANGE_EVENT,
   CATALOG_FILES_PATH,
   DeviceRequestSchema,
+  DRAFT_BRIDGE_VERSION,
+  DRAFT_MAX_BYTES,
+  DRAFT_MAX_ROWS,
   HostSchema,
   INJECT_PROGRESS_EVENT,
   InjectIdSchema,
   InjectRequestSchema,
   MIN_BRIDGE_VERSION,
+  MULTI_BRIDGE_VERSION,
+  MULTI_CHANGE_EVENT,
   NOTIFICATIONS_BRIDGE_VERSION,
   NOTIFICATIONS_CHANGE_EVENT,
   PENDING_TARGET_BRIDGE_VERSION,
@@ -161,7 +166,9 @@ describe('PendingEntrySchema dan SerialArgSchema', () => {
 
 describe('konstanta jembatan', () => {
   test('versi, dan semua nama kanal berpola qc:<grup>:<aksi> serta unik', () => {
-    expect(BRIDGE_VERSION).toBe(7);
+    expect(BRIDGE_VERSION).toBe(9);
+    expect(MULTI_BRIDGE_VERSION).toBe(9);
+    expect(DRAFT_BRIDGE_VERSION).toBe(8);
     expect(PENDING_UPLOAD_BRIDGE_VERSION).toBe(7);
     expect(PENDING_TARGET_BRIDGE_VERSION).toBe(6);
     expect(NOTIFICATIONS_BRIDGE_VERSION).toBe(4);
@@ -177,6 +184,7 @@ describe('konstanta jembatan', () => {
       UI_UPDATE_READY_EVENT,
       NOTIFICATIONS_CHANGE_EVENT,
       CATALOG_CHANGE_EVENT,
+      MULTI_CHANGE_EVENT,
     ]) {
       expect(channel).toMatch(/^qc:[a-z]+:[A-Za-z]+$/);
     }
@@ -233,8 +241,234 @@ describe('UI_MIN_BRIDGE_VERSION', () => {
     expect(UI_MIN_BRIDGE_VERSION).toBeLessThanOrEqual(BRIDGE_VERSION);
   });
 
+  test('minimal 8: UI web memakai bridge.draft (Catat Serial Number bersama, jembatan v8)', () => {
+    expect(UI_MIN_BRIDGE_VERSION).toBe(8);
+  });
+
   test('minimal 3: UI web memakai bridge.ui (onUpdateReady/reload, diperkenalkan di jembatan v3)', () => {
     // Bundel yang diunduh memakai `bridge.ui`; di aplikasi dengan jembatan v2 spanduk pembaruan akan error.
     expect(UI_MIN_BRIDGE_VERSION).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('kanal draft (jembatan v8)', () => {
+  test('draftLoad tanpa argumen; draftSave menerima daftar objek', () => {
+    expect(BRIDGE_ARGS.draftLoad.safeParse([]).success).toBe(true);
+    expect(BRIDGE_ARGS.draftLoad.safeParse([1]).success).toBe(false);
+    expect(BRIDGE_ARGS.draftSave.safeParse([[]]).success).toBe(true);
+    expect(BRIDGE_ARGS.draftSave.safeParse([[{ serial: 'A' }]]).success).toBe(true);
+    expect(BRIDGE_CHANNELS.draftLoad).toBe('qc:draft:load');
+    expect(BRIDGE_CHANNELS.draftSave).toBe('qc:draft:save');
+  });
+
+  test('draftSave menolak argumen kosong/berlebih, baris bukan objek, dan melebihi batas baris', () => {
+    expect(BRIDGE_ARGS.draftSave.safeParse([]).success).toBe(false);
+    expect(BRIDGE_ARGS.draftSave.safeParse([[], []]).success).toBe(false);
+    expect(BRIDGE_ARGS.draftSave.safeParse([['x']]).success).toBe(false);
+    expect(BRIDGE_ARGS.draftSave.safeParse([[null]]).success).toBe(false);
+    const rows = (count: number) => Array.from({ length: count }, (_, i) => ({ i }));
+    expect(BRIDGE_ARGS.draftSave.safeParse([rows(DRAFT_MAX_ROWS)]).success).toBe(true);
+    expect(BRIDGE_ARGS.draftSave.safeParse([rows(DRAFT_MAX_ROWS + 1)]).success).toBe(false);
+  });
+
+  test('draftSave menolak muatan JSON melebihi DRAFT_MAX_BYTES', () => {
+    const big = { note: 'x'.repeat(DRAFT_MAX_BYTES + 1) };
+    expect(BRIDGE_ARGS.draftSave.safeParse([[big]]).success).toBe(false);
+  });
+});
+
+describe('kanal multi (jembatan v9)', () => {
+  const multiKeys = Object.keys(BRIDGE_CHANNELS).filter((k) => k.startsWith('multi'));
+  const validCfg = {
+    firmwareCode: 'XW',
+    concurrency: 4,
+    excludeIp: '192.168.88.10',
+    autoInject: false,
+    target: {
+      itemId: 'item-1',
+      itemLabel: 'NanoStation',
+      buId: 'bu-1',
+      buLabel: 'BU',
+      locationId: 'loc-1',
+      locationLabel: 'Lokasi',
+    },
+  };
+  const args = (name: keyof typeof BRIDGE_ARGS) => BRIDGE_ARGS[name];
+
+  test('18 kanal multi*, unik, berawalan qc:multi:, dan punya skema argumen', () => {
+    expect(multiKeys).toHaveLength(18);
+    for (const key of multiKeys) {
+      expect(BRIDGE_CHANNELS[key as keyof typeof BRIDGE_CHANNELS]).toMatch(/^qc:multi:[A-Za-z]+$/);
+      expect(key in BRIDGE_ARGS).toBe(true);
+    }
+    expect(MULTI_CHANGE_EVENT).toBe('qc:multi:changed');
+    expect(UI_MIN_BRIDGE_VERSION).toBe(8); // UI lama tetap jalan; mode Multi disembunyikan di jembatan < 9
+  });
+
+  test('kanal tanpa argumen menolak argumen berlebih', () => {
+    for (const name of [
+      'multiStop',
+      'multiScan',
+      'multiInjectAll',
+      'multiStopQueue',
+      'multiCancelAll',
+      'multiPrepareBridge',
+      'multiSnapshot',
+      'multiPendingEvents',
+    ] as const) {
+      expect(args(name).safeParse([]).success).toBe(true);
+      expect(args(name).safeParse(['x']).success).toBe(false);
+    }
+  });
+
+  test('multiStart: contoh sah diterima (excludeIp boleh kosong)', () => {
+    expect(BRIDGE_ARGS.multiStart.safeParse([validCfg]).success).toBe(true);
+    expect(BRIDGE_ARGS.multiStart.safeParse([{ ...validCfg, excludeIp: '' }]).success).toBe(true);
+    expect(BRIDGE_ARGS.multiStart.safeParse([{ ...validCfg, concurrency: 1 }]).success).toBe(true);
+    expect(BRIDGE_ARGS.multiStart.safeParse([{ ...validCfg, concurrency: 32 }]).success).toBe(true);
+  });
+
+  test('multiStart menolak argumen berlebih, concurrency 0/33/pecahan, excludeIp bukan IPv4, target tak lengkap, string kepanjangan', () => {
+    const parse = (patch: Record<string, unknown>) =>
+      BRIDGE_ARGS.multiStart.safeParse([{ ...validCfg, ...patch }]).success;
+    expect(BRIDGE_ARGS.multiStart.safeParse([]).success).toBe(false);
+    expect(BRIDGE_ARGS.multiStart.safeParse([validCfg, 1]).success).toBe(false);
+    expect(parse({ concurrency: 0 })).toBe(false);
+    expect(parse({ concurrency: 33 })).toBe(false);
+    expect(parse({ concurrency: 2.5 })).toBe(false);
+    expect(parse({ concurrency: '4' })).toBe(false);
+    for (const bad of [
+      'router.local',
+      '999.1.1.1',
+      '10.0.0',
+      '10.0.0.1 ',
+      '01.2.3.4',
+      '1.2.3.4;ls',
+    ]) {
+      expect(parse({ excludeIp: bad })).toBe(false);
+    }
+    expect(parse({ firmwareCode: '' })).toBe(false);
+    expect(parse({ firmwareCode: 'x'.repeat(101) })).toBe(false);
+    expect(parse({ autoInject: 'ya' })).toBe(false);
+    expect(parse({ extra: 1 })).toBe(false);
+    for (const key of Object.keys(validCfg.target)) {
+      const rest: Record<string, string> = { ...validCfg.target };
+      delete rest[key];
+      expect(parse({ target: rest })).toBe(false);
+    }
+    expect(parse({ target: { ...validCfg.target, itemLabel: 'x'.repeat(201) } })).toBe(false);
+    expect(parse({ target: { ...validCfg.target, buId: 'x'.repeat(101) } })).toBe(false);
+    expect(parse({ target: { ...validCfg.target, locationLabel: 'a\nb' } })).toBe(false);
+    expect(parse({ target: { ...validCfg.target, extra: 'x' } })).toBe(false);
+  });
+
+  test('multiStart tidak menerima kredensial (kredensial dasar dibaca proses utama dari paket)', () => {
+    expect(
+      BRIDGE_ARGS.multiStart.safeParse([{ ...validCfg, base: { username: 'u', password: 'p' } }])
+        .success,
+    ).toBe(false);
+    expect(BRIDGE_ARGS.multiStart.safeParse([{ ...validCfg, password: 'p' }]).success).toBe(false);
+  });
+
+  test('argumen MAC: dinormalisasi; bukan MAC, kepanjangan, atau berlebih ditolak', () => {
+    for (const name of ['multiInjectDevice', 'multiCancelDevice', 'multiOpenWeb'] as const) {
+      const ok = args(name).safeParse(['aa-bb-cc-dd-ee-ff']);
+      expect(ok.success).toBe(true);
+      expect(ok.data).toEqual(['AA:BB:CC:DD:EE:FF']);
+      for (const bad of [
+        '',
+        'xyz',
+        'AA:BB:CC:DD:EE',
+        'AA:BB:CC:DD:EE:FF:00',
+        'A'.repeat(40),
+        123,
+      ]) {
+        expect(args(name).safeParse([bad]).success).toBe(false);
+      }
+      expect(args(name).safeParse(['AA:BB:CC:DD:EE:FF', 'x']).success).toBe(false);
+      expect(args(name).safeParse([]).success).toBe(false);
+    }
+  });
+
+  test('multiSetConcurrency: bilangan bulat 1..32', () => {
+    expect(BRIDGE_ARGS.multiSetConcurrency.safeParse([1]).success).toBe(true);
+    expect(BRIDGE_ARGS.multiSetConcurrency.safeParse([32]).success).toBe(true);
+    for (const bad of [0, 33, 1.5, '4', null]) {
+      expect(BRIDGE_ARGS.multiSetConcurrency.safeParse([bad]).success).toBe(false);
+    }
+  });
+
+  test('multiSetAutoInject: boolean saja', () => {
+    expect(BRIDGE_ARGS.multiSetAutoInject.safeParse([true]).success).toBe(true);
+    expect(BRIDGE_ARGS.multiSetAutoInject.safeParse([false]).success).toBe(true);
+    expect(BRIDGE_ARGS.multiSetAutoInject.safeParse(['true']).success).toBe(false);
+    expect(BRIDGE_ARGS.multiSetAutoInject.safeParse([]).success).toBe(false);
+  });
+
+  test('multiAddCredential: satu-satunya skema multi yang memuat password; username dan sandi wajib terisi dan dibatasi', () => {
+    const cred = { username: 'admin', password: 's3cret' };
+    expect(BRIDGE_ARGS.multiAddCredential.safeParse([cred]).success).toBe(true);
+    expect(BRIDGE_ARGS.multiAddCredential.safeParse([{ ...cred, password: '' }]).success).toBe(
+      false,
+    );
+    expect(BRIDGE_ARGS.multiAddCredential.safeParse([{ ...cred, username: '' }]).success).toBe(
+      false,
+    );
+    expect(
+      BRIDGE_ARGS.multiAddCredential.safeParse([{ ...cred, username: 'u'.repeat(129) }]).success,
+    ).toBe(false);
+    expect(
+      BRIDGE_ARGS.multiAddCredential.safeParse([{ ...cred, password: 'p'.repeat(257) }]).success,
+    ).toBe(false);
+    expect(BRIDGE_ARGS.multiAddCredential.safeParse([{ ...cred, password: 'a\nb' }]).success).toBe(
+      false,
+    );
+    expect(BRIDGE_ARGS.multiAddCredential.safeParse([{ ...cred, extra: 1 }]).success).toBe(false);
+    // Skema multi lain tidak menerima objek ber-`password` (apa pun bentuk argumennya).
+    const withPassword = { username: 'u', password: 'p' };
+    for (const key of multiKeys) {
+      if (key === 'multiAddCredential') continue;
+      const schema = BRIDGE_ARGS[key as keyof typeof BRIDGE_ARGS];
+      expect(schema.safeParse([withPassword]).success).toBe(false);
+      expect(schema.safeParse([{ ...validCfg, password: 'p' }]).success).toBe(false);
+    }
+  });
+
+  test('multiSetBlocked: alasan 1..200 karakter atau null', () => {
+    expect(BRIDGE_ARGS.multiSetBlocked.safeParse([null]).success).toBe(true);
+    expect(BRIDGE_ARGS.multiSetBlocked.safeParse(['Draft penuh']).success).toBe(true);
+    expect(BRIDGE_ARGS.multiSetBlocked.safeParse(['x'.repeat(200)]).success).toBe(true);
+    expect(BRIDGE_ARGS.multiSetBlocked.safeParse(['x'.repeat(201)]).success).toBe(false);
+    expect(BRIDGE_ARGS.multiSetBlocked.safeParse(['']).success).toBe(false);
+    expect(BRIDGE_ARGS.multiSetBlocked.safeParse(['a\nb']).success).toBe(false);
+    expect(BRIDGE_ARGS.multiSetBlocked.safeParse([undefined]).success).toBe(false);
+    expect(BRIDGE_ARGS.multiSetBlocked.safeParse([]).success).toBe(false);
+  });
+
+  test('multiSetRegistered: daftar serial, maks. DRAFT_MAX_ROWS entri, tiap entri serial sah', () => {
+    expect(BRIDGE_ARGS.multiSetRegistered.safeParse([[]]).success).toBe(true);
+    expect(BRIDGE_ARGS.multiSetRegistered.safeParse([['AB12', 'CD34']]).success).toBe(true);
+    const many = (n: number) => Array.from({ length: n }, (_, i) => `S${i}`);
+    expect(BRIDGE_ARGS.multiSetRegistered.safeParse([many(DRAFT_MAX_ROWS)]).success).toBe(true);
+    expect(BRIDGE_ARGS.multiSetRegistered.safeParse([many(DRAFT_MAX_ROWS + 1)]).success).toBe(
+      false,
+    );
+    expect(BRIDGE_ARGS.multiSetRegistered.safeParse([['']]).success).toBe(false);
+    expect(BRIDGE_ARGS.multiSetRegistered.safeParse([['a'.repeat(65)]]).success).toBe(false);
+    expect(BRIDGE_ARGS.multiSetRegistered.safeParse([[1]]).success).toBe(false);
+    expect(BRIDGE_ARGS.multiSetRegistered.safeParse(['AB12']).success).toBe(false);
+  });
+
+  test('multiAckInjected: daftar id, maks. 500', () => {
+    expect(BRIDGE_ARGS.multiAckInjected.safeParse([[]]).success).toBe(true);
+    expect(
+      BRIDGE_ARGS.multiAckInjected.safeParse([['3f2b8c1e-5a4d-4e6f-9a1b-0c2d3e4f5a6b']]).success,
+    ).toBe(true);
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => `id-${i}`);
+    expect(BRIDGE_ARGS.multiAckInjected.safeParse([ids(500)]).success).toBe(true);
+    expect(BRIDGE_ARGS.multiAckInjected.safeParse([ids(501)]).success).toBe(false);
+    expect(BRIDGE_ARGS.multiAckInjected.safeParse([['a b']]).success).toBe(false);
+    expect(BRIDGE_ARGS.multiAckInjected.safeParse([['../x']]).success).toBe(false);
+    expect(BRIDGE_ARGS.multiAckInjected.safeParse([['']]).success).toBe(false);
   });
 });

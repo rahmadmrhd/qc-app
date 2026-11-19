@@ -76,10 +76,12 @@ interface SerialCellProps {
   serial: string;
   onCommitSerial: StagingTableProps['onCommitSerial'];
   disabled: boolean;
+  /** Serial dari perangkat (hasil inject Country Lock): hanya dibaca, tidak dapat diubah di tabel. */
+  locked: boolean;
 }
 
 /** Sel serial: dinormalisasi saat keluar sel; serial ganda di tabel atau tak sah ditolak dan nilai lama dikembalikan. */
-function SerialCell({ clientId, serial, onCommitSerial, disabled }: SerialCellProps) {
+function SerialCell({ clientId, serial, onCommitSerial, disabled, locked }: SerialCellProps) {
   const [text, setText] = useState(serial);
   const [error, setError] = useState<string | null>(null);
   // Nilai berubah dari luar (mis. dipulihkan): ikuti.
@@ -109,6 +111,16 @@ function SerialCell({ clientId, serial, onCommitSerial, disabled }: SerialCellPr
     }
     setError(null);
     setText(normalized);
+  }
+  if (locked) {
+    return (
+      <span
+        title="Serial dari perangkat, tidak dapat diubah"
+        className="block h-8 w-36 truncate px-2 font-mono text-sm leading-8"
+      >
+        {serial}
+      </span>
+    );
   }
   return (
     <div>
@@ -239,6 +251,7 @@ const RowView = memo(function RowView({
           serial={row.serial}
           onCommitSerial={onCommitSerial}
           disabled={disabled}
+          locked={row.source === 'countrylock'}
         />
       </td>
       <td className="max-w-44 px-2 py-1.5 text-sm">

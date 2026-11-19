@@ -9,6 +9,9 @@
 //   --report-dir <folder>        folder laporan (bawaan ./legacy-qc-report)
 //   --offline                    tanpa koneksi database: hanya rencana dan CSV (pencocokan tujuan dilewati)
 // Pemetaan dan keputusan: docs/superpowers/specs/2026-11-17-migrasi-data-qc-lama-pemetaan.md.
+// Serial unik se-sistem: serial yang sama di BU lama berbeda dilipat jadi satu catatan (terbaru menang; BU lama masuk
+// `serial_business_units`). Tujuan WAJIB sudah punya tabel itu (rilis serial unik se-sistem lebih dulu), kalau tidak
+// penerapan ditolak (HAMBATAN) dan dry-run tetap berjalan.
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createDb } from '@server/core/db';
@@ -79,7 +82,15 @@ async function writeReports(dir: string, plan: Plan, resolved: Resolved | null):
   await Bun.write(
     resolve(dir, 'dilipat.csv'),
     csv(
-      ['serial', 'bu', 'bu_dilipat', 'id_menang', 'tipe_menang', 'id_dilipat', 'tipe_dilipat'],
+      [
+        'serial',
+        'bu_menang',
+        'bu_dilipat',
+        'id_menang',
+        'tipe_menang',
+        'id_dilipat',
+        'tipe_dilipat',
+      ],
       plan.folded.map((row) => [
         row.serial,
         row.buName,
@@ -133,7 +144,7 @@ async function main(): Promise<void> {
     `Rencana: ${plan.serials.length} serial, ${plan.items.length} item, ${plan.brands.length} merk, BU ${plan.buNames.join('/')}`,
   );
   console.log(
-    `  dilewati: ${count(plan.skipped, (row) => row.reason)}; dilipat: ${plan.folded.length}`,
+    `  dilewati: ${count(plan.skipped, (row) => row.reason)}; dilipat: ${plan.folded.length} (lintas BU: ${plan.folded.filter((row) => row.loserBuName !== row.buName).length}); serial dengan riwayat BU lebih dari satu: ${plan.serials.filter((serial) => serial.buHistory.length > 1).length}`,
   );
   for (const warning of plan.warnings) console.log(`  peringatan: ${warning}`);
 

@@ -96,11 +96,24 @@ export interface PlannedEvent {
   data: Record<string, unknown>;
 }
 
+/**
+ * Satu BU dalam riwayat BU sebuah serial (tabel `serial_business_units`, spek serial unik se-sistem §4.1). Baris BU
+ * saat ini punya `leftAt = ''`; BU lama yang sudah ditinggalkan membawa waktu (ISO UTC) catatan berikutnya mulai.
+ */
+export interface PlannedBuLink {
+  buName: string;
+  firstAt: string;
+  leftAt: string;
+}
+
 export interface PlannedSerial {
   legacyId: number;
   id: string;
   clientId: string;
+  /** BU SAAT INI = BU catatan pemenang (serial unik se-sistem: satu serial = satu catatan, BU lama masuk `buHistory`). */
   buName: string;
+  /** Seluruh BU yang pernah memegang serial ini (satu baris per BU), BU saat ini ber-`leftAt` kosong. */
+  buHistory: PlannedBuLink[];
   locationName: string;
   /** Id tipe lama KANONIK (setelah peleburan kunci item). */
   itemLegacyId: number;
@@ -114,13 +127,6 @@ export interface PlannedSerial {
   updatedBy: string;
   events: PlannedEvent[];
   foldedLegacyIds: number[];
-  /** Sejak kapan serial berada di BU saat ini (`serial_business_units.first_at`, ISO UTC). */
-  buSince: string;
-  /**
-   * BU lain yang pernah memegang serial ini (catatan lama yang dilipat berada di BU berbeda): satu entri per BU, tanpa BU
-   * saat ini. Ditulis ke `serial_business_units` sebagai BU yang sudah ditinggalkan (`left_at` terisi).
-   */
-  buHistory: { buName: string; firstAt: string; leftAt: string }[];
 }
 
 export type SkipReason =
@@ -141,9 +147,9 @@ export interface FoldedRow {
   winnerLegacyId: number;
   loserLegacyId: number;
   serial: string;
-  /** BU pemenang (BU saat ini). */
+  /** BU catatan pemenang (= BU saat ini serial). */
   buName: string;
-  /** BU catatan yang dilipat (bisa sama dengan BU pemenang). */
+  /** BU catatan yang dilipat; berbeda dari `buName` = lipatan lintas BU. */
   loserBuName: string;
   winnerItem: string;
   loserItem: string;
@@ -434,13 +440,13 @@ export function buildPlan(tables: Tables, options: PlanOptions): Plan {
       buName,
       locationName: locationNameOf(asNumber(row[7])),
     };
-    // Serial Number unik se-sistem (spek serial unik se-sistem): kunci kelompok = serial saja, lintas BU.
+    // Kunci lipat = nomor serial SAJA (keunikan se-sistem, spek serial unik §1/§8 butir 3), bukan (BU, serial).
     const list = groups.get(serial) ?? [];
     list.push(candidate);
     groups.set(serial, list);
   }
 
-  // ---- lipat tabrakan serial (lintas BU): terbaru menang -------------------------------------------
+  // ---- lipat tabrakan serial (lintas BU juga): terbaru menang ---------------------------------
   const serials: PlannedSerial[] = [];
   const folded: FoldedRow[] = [];
   for (const members of groups.values()) {
@@ -458,6 +464,35 @@ export function buildPlan(tables: Tables, options: PlanOptions): Plan {
         loserBuName: loser.buName,
         winnerItem: labelOfLegacy(winner.itemLegacyId),
         loserItem: labelOfLegacy(loser.itemLegacyId),
+      });
+    }
+
+    // Riwayat BU: tiap catatan mulai pada waktu kejadian pertamanya (cadangan: tanggal uji siang WIB), dijaga tak mundur.
+    // BU pemenang = BU saat ini (`leftAt` kosong); BU lain "ditinggalkan" saat catatan berikutnya setelah catatan
+    // terakhirnya mulai (BU yang dikunjungi dua kali tetap satu baris: kunjungan pertama = `firstAt`).
+    const startOf = new Map<number, string>();
+    let previousStart = '';
+    for (const member of ordered) {
+      const stamps = (history.get(member.legacyId) ?? [])
+        .map((source) => wibToIso(source.ts))
+        .filter((iso): iso is string => iso !== null)
+        .sort();
+      const own = stamps[0] ?? wibToIso(`${member.date} 12:00:00`) ?? options.now;
+      const start = own < previousStart ? previousStart : own;
+      startOf.set(member.legacyId, start);
+      previousStart = start;
+    }
+    const buHistory: PlannedBuLink[] = [];
+    for (const member of ordered) {
+      if (buHistory.some((link) => link.buName === member.buName)) continue;
+      const lastIndex = ordered.map((m) => m.buName).lastIndexOf(member.buName);
+      const next = ordered[lastIndex + 1];
+      buHistory.push({
+        buName: member.buName,
+        firstAt: startOf.get(member.legacyId) as string,
+        // BU pemenang tak pernah punya catatan sesudahnya (pemenang = catatan terakhir), jadi `next` hanya kosong untuknya.
+        leftAt:
+          member.buName === winner.buName || !next ? '' : (startOf.get(next.legacyId) as string),
       });
     }
 
@@ -490,12 +525,15 @@ export function buildPlan(tables: Tables, options: PlanOptions): Plan {
         createdAt,
         actorName: actorOf(source.username),
       };
-      const ownerLabel = labelOfLegacy(
-        ordered.find((member) => member.legacyId === source.owner)?.itemLegacyId ??
-          winner.itemLegacyId,
-      );
+      const ownerMember = ordered.find((member) => member.legacyId === source.owner);
+      const ownerLabel = labelOfLegacy(ownerMember?.itemLegacyId ?? winner.itemLegacyId);
+      // Lipatan lintas BU menyebut BU asalnya di keterangan riwayat (BU itu juga masuk riwayat BU serial).
+      const ownerBu =
+        ownerMember && ownerMember.buName !== winner.buName ? ` di BU ${ownerMember.buName}` : '';
       const suffix =
-        source.owner === winner.legacyId ? '' : ` (catatan lama #${source.owner}, digabung)`;
+        source.owner === winner.legacyId
+          ? ''
+          : ` (catatan lama #${source.owner}${ownerBu}, digabung)`;
       if (source.action === 'Added to Database' && !recordedSeen) {
         recordedSeen = true;
         push({
@@ -594,32 +632,12 @@ export function buildPlan(tables: Tables, options: PlanOptions): Plan {
 
     const first = winnerEvents[0] as PlannedEvent;
     const last = winnerEvents[winnerEvents.length - 1] as PlannedEvent;
-
-    // Riwayat BU: catatan diurutkan menurut waktu; BU sebuah catatan ditinggalkan saat catatan berikutnya dimulai. BU yang
-    // sama dengan BU pemenang tidak dicatat (baris BU saat ini sudah ada); satu entri per BU lain.
-    const startOf = (member: Candidate): string =>
-      stamped.find((entry) => entry.source.owner === member.legacyId && entry.iso !== null)?.iso ??
-      wibToIso(`${member.date} 12:00:00`) ??
-      options.now;
-    const previousBus = new Map<string, { buName: string; firstAt: string; leftAt: string }>();
-    for (const [index, member] of ordered.slice(0, -1).entries()) {
-      if (member.buName === winner.buName) continue;
-      const firstAt = startOf(member);
-      const nextStart = startOf(ordered[index + 1] as Candidate);
-      const leftAt = nextStart > firstAt ? nextStart : firstAt;
-      const known = previousBus.get(member.buName);
-      previousBus.set(member.buName, {
-        buName: member.buName,
-        firstAt: known && known.firstAt < firstAt ? known.firstAt : firstAt,
-        leftAt: known && known.leftAt > leftAt ? known.leftAt : leftAt,
-      });
-    }
-    const buHistory = [...previousBus.values()].sort((a, b) => a.firstAt.localeCompare(b.firstAt));
     serials.push({
       legacyId: winner.legacyId,
       id: uuidV5(`serial:${winner.legacyId}`),
       clientId: uuidV5(`client:${winner.legacyId}`),
       buName: winner.buName,
+      buHistory,
       locationName: winner.locationName,
       itemLegacyId: winner.itemLegacyId,
       serial: winner.serial,
@@ -632,8 +650,6 @@ export function buildPlan(tables: Tables, options: PlanOptions): Plan {
       updatedBy: last.actorName,
       events: winnerEvents,
       foldedLegacyIds: losers.map((loser) => loser.legacyId),
-      buSince: buHistory.length > 0 ? startOf(winner) : first.createdAt,
-      buHistory,
     });
   }
   serials.sort((a, b) => a.legacyId - b.legacyId);
@@ -660,10 +676,13 @@ export function buildPlan(tables: Tables, options: PlanOptions): Plan {
   const items = [...itemsByKey.values()].sort((a, b) => a.legacyId - b.legacyId);
   const buNames = new Set<string>();
   for (const item of items) for (const name of item.buNames) buNames.add(name);
-  for (const serial of serials) {
-    buNames.add(serial.buName);
-    for (const previous of serial.buHistory) buNames.add(previous.buName);
-  }
+  // BU lama yang hanya muncul sebagai BU yang ditinggalkan tetap harus ada di tujuan (tertaut di riwayat BU).
+  for (const serial of serials) for (const link of serial.buHistory) buNames.add(link.buName);
+  const crossBu = folded.filter((row) => row.loserBuName !== row.buName).length;
+  if (crossBu > 0)
+    warnings.push(
+      `${crossBu} catatan serial yang sama di BU lama berbeda dilipat menjadi satu catatan (terbaru menang; BU lama masuk riwayat BU).`,
+    );
   const locationNames = new Set(serials.map((serial) => serial.locationName));
   const brands = [...new Set(items.map((item) => item.brand))].sort();
   return {

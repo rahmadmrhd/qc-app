@@ -1,32 +1,6 @@
 // Mini-dump untuk tes: meniru bentuk tabel QC lama (kolom sesuai `INSERT` mysqldump) dengan kasus pinggir yang nyata.
 import type { Tables } from './dump';
 
-/**
- * Dump kecil + satu Serial Number yang sama di DUA BU lama (Spectrum 110 lama, Teakwave 111 baru) dan satu lagi yang
- * dicatat tiga kali (Spectrum, Teakwave, lalu Spectrum lagi). Aturan: serial unik se-sistem, jadi terbaru menang dan
- * BU lama masuk riwayat BU.
- */
-export function crossBuDump(): Tables {
-  const dump = miniDump();
-  dump.dataqc = [
-    ...(dump.dataqc ?? []),
-    [110, '2024-03-01', 1, 'crossbu00001', 0, '', 1, 1, 0], // Spectrum, lama
-    [111, '2024-04-01', 1, 'CROSSBU00001', 0, '', 2, 2, 0], // Teakwave, baru: menang
-    [112, '2024-03-10', 1, 'PINGPONG0001', 0, '', 1, 1, 0], // Spectrum
-    [113, '2024-03-20', 1, 'PINGPONG0001', 0, '', 2, 2, 0], // Teakwave
-    [114, '2024-04-10', 1, 'PINGPONG0001', 0, '', 1, 1, 0], // Spectrum lagi: menang (BU sama dengan yang pertama)
-  ];
-  dump.historyDataqc = [
-    ...(dump.historyDataqc ?? []),
-    [110, 1, 1, 'desmon', 'Added to Database', '2024-03-01 08:00:00'],
-    [111, 2, 2, 'desmon', 'Added to Database', '2024-04-01 08:00:00'],
-    [112, 1, 1, 'desmon', 'Added to Database', '2024-03-10 08:00:00'],
-    [113, 2, 2, 'desmon', 'Added to Database', '2024-03-20 08:00:00'],
-    [114, 1, 1, 'desmon', 'Added to Database', '2024-04-10 08:00:00'],
-  ];
-  return dump;
-}
-
 export function miniDump(): Tables {
   return {
     users: [
@@ -63,6 +37,10 @@ export function miniDump(): Tables {
       [107, '2024-05-04', 1, 'AB 12 CD', 0, '', 1, 1, 0], // sampah: spasi
       [108, '2024-05-05', 1, 'AC8BA9543AD8  ', 0, '', 1, 1, 0], // spasi ekor dibuang; tanpa riwayat -> recorded sintetis
       [109, '2024-05-06', 1, 'ZZ99YY88XX77', 0, '', 2, 2, 0], // Ubiquiti di Teakwave
+      // Serial yang sama di DUA BU lama (kasus nyata: 105 serial Spectrum + Teakwave): dilipat jadi satu, terbaru (111,
+      // Teakwave) menang; Spectrum masuk riwayat BU sebagai BU yang sudah ditinggalkan.
+      [110, '2024-02-01', 1, 'XBU123456789', 0, '', 1, 1, 0],
+      [111, '2024-06-01', 1, 'xbu123456789', 0, '', 2, 2, 0],
     ],
     // [idDataqc, idBusinessUnit, idLocation, username, action, timestamp]
     historyDataqc: [
@@ -83,6 +61,8 @@ export function miniDump(): Tables {
       [103, 1, 1, 'desmon', 'Re-added to Database', '2024-06-01 08:00:00'], // riwayat catatan yang dilipat, paling akhir
       [105, 1, 1, 'rahmadmrhd', 'Added to Database', '2024-05-02 08:00:00'],
       [109, 2, 2, 'desmon', 'Added to Database', '2024-05-06 08:00:00'],
+      [110, 1, 1, 'rahmadmrhd', 'Added to Database', '2024-02-01 08:00:00'],
+      [111, 2, 2, 'desmon', 'Added to Database', '2024-06-01 09:00:00'],
     ],
   };
 }

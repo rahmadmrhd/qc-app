@@ -66,6 +66,8 @@ export function RowEditDialog({
   actorName = '',
 }: RowEditDialogProps) {
   const [serial, setSerial] = useState(row.serial);
+  // Serial hasil inject Country Lock berasal dari perangkat: tidak dapat diubah.
+  const serialLocked = row.source === 'countrylock';
   const [serialError, setSerialError] = useState<string | null>(null);
   const [item, setItem] = useState<ItemBuValue>({
     itemId: row.itemId,
@@ -190,7 +192,7 @@ export function RowEditDialog({
   }
 
   function apply() {
-    if (normalizedSerial !== row.serial) {
+    if (!serialLocked && normalizedSerial !== row.serial) {
       const problem = serialProblem(normalizedSerial);
       const message =
         problem === 'empty'
@@ -213,7 +215,7 @@ export function RowEditDialog({
     settledRef.current = true;
     void discardProofPhotos([...removedRef.current]);
     onApply({
-      serial: normalizedSerial,
+      serial: serialLocked ? row.serial : normalizedSerial,
       item,
       location,
       testDate,
@@ -244,6 +246,7 @@ export function RowEditDialog({
                 className="font-mono"
                 value={serial}
                 readOnly={existing !== undefined}
+                disabled={serialLocked}
                 aria-invalid={serialError ? true : undefined}
                 maxLength={SERIAL_LIMITS.serialMax * 4}
                 onChange={(event) => {
@@ -251,6 +254,11 @@ export function RowEditDialog({
                   setSerialError(null);
                 }}
               />
+              {serialLocked ? (
+                <p className="text-xs text-muted-foreground">
+                  Serial dari perangkat, tidak dapat diubah.
+                </p>
+              ) : null}
               {serialError ? (
                 <p role="alert" className="text-xs text-destructive">
                   {serialError}

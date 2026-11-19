@@ -5,6 +5,7 @@ import {
   clearDraft,
   loadDraft,
   NOT_GOOD_MESSAGE,
+  parseDraftRows,
   resumeDraftWrites,
   saveDraft,
 } from './draft-store';
@@ -225,4 +226,14 @@ test('proofMin baris dipulihkan; draft lama tanpa proofMin tetap dimuat tanpa ni
   );
   const rows = loadDraft('p@x.com');
   expect(rows.map((row) => row.proofMin)).toEqual([2, undefined, undefined, undefined]);
+});
+
+test('parseDraftRows: bukan larik = kosong; entri rusak dan clientId kembar dibuang; dibatasi 1.000 baris', () => {
+  expect(parseDraftRows(null)).toEqual([]);
+  expect(parseDraftRows({ rows: [] })).toEqual([]);
+  const good = rows(2).map(({ selected: _selected, ...row }) => row);
+  const parsed = parseDraftRows([good[0], 'rusak', { serial: 1 }, good[0], good[1]]);
+  expect(parsed.map((row) => row.serial)).toEqual(rows(2).map((row) => row.serial));
+  expect(parsed.every((row) => row.selected === false)).toBe(true);
+  expect(parseDraftRows(rows(1005))).toHaveLength(1000);
 });

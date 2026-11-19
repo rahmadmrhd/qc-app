@@ -1,8 +1,10 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
 import { join, resolve, sep } from 'node:path';
+import { type DriveDownload, getBridge } from '@server/core/bridge-client';
 import { nowOf } from '@server/core/env';
 import { appError, isAppError } from '@server/core/errors';
+import { isDriveId } from '@server/core/google/settings';
 import { problemResponse, toProblem } from '@server/http/problem';
 import { limiterAddress } from '@server/http/proxy';
 import { type AppBindings, newRequestId } from '@server/http/security';
@@ -11,6 +13,7 @@ import { readFile as readAppFile } from '@server/modules/files/service';
 import { etagMatches, formatEtag } from '@shared/api';
 import { CATALOG_FILE_ID } from '@shared/desktop-catalog';
 import { Hono } from 'hono/tiny';
+import { createReleaseReader, type ReleaseReader, type ServedRelease } from './app-release';
 import { getServedCatalog } from './catalog';
 
 /** Rute publik untuk aplikasi desktop (dipasang di `app.route('/api/desktop', desktopApp)`). */
@@ -294,4 +297,122 @@ desktopApp.get('/catalog/files/:id', async (c) => {
     if (isAppError(error) && error.code === 'NOT_FOUND') return catalogNotFound();
     throw error;
   }
+});
+
+/**
+ * Pembaruan aplikasi desktop (spek desktop 5.4, rencana bagian 4): manifest rilis bertanda tangan dan installer dari
+ * folder Drive `DESKTOP_RELEASES_FOLDER_ID`. Publik tanpa sesi (Country Lock harus dapat diperbarui tanpa login):
+ * integritas dijaga tanda tangan Ed25519 yang diverifikasi aplikasi dengan kunci publik tertanam, bukan kerahasiaan;
+ * server tidak memegang kunci apa pun dan TIDAK PERNAH menyebut GitHub (syarat pemilik 2026-11-18). Semua kegagalan
+ * (folder belum dikonfigurasi, tak ada rilis, nama tak dikenal, galat Drive) = 404 generik; penyebab hanya di log server.
+ */
+const releaseNotFound = (): Response =>
+  problemResponse(toProblem(appError('NOT_FOUND', 'Pembaruan belum tersedia'), newRequestId()));
+
+const releaseReaders = new WeakMap<object, { folderId: string; reader: ReleaseReader }>();
+function releaseReaderOf(env: AppBindings['Bindings']): ReleaseReader | null {
+  const folderId = env.DESKTOP_RELEASES_FOLDER_ID ?? '';
+  if (!isDriveId(folderId)) return null;
+  // Satu pembaca per klien Google (per proses di produksi; per env di tes) agar memo tak bocor antar tes.
+  const client = getBridge(env);
+  const known = releaseReaders.get(client);
+  if (known?.folderId === folderId) return known.reader;
+  const reader = createReleaseReader({ client, folderId, now: () => nowOf(env) });
+  releaseReaders.set(client, { folderId, reader });
+  return reader;
+}
+
+desktopApp.get('/app-manifest', async (c) => {
+  const arch = c.req.query('arch');
+  const reader = releaseReaderOf(c.env);
+  if (!reader || (arch !== 'x64' && arch !== 'arm64') || c.req.queries('arch')?.length !== 1) {
+    return releaseNotFound();
+  }
+  let release: ServedRelease | null;
+  try {
+    release = await reader.latest(arch);
+  } catch {
+    console.warn('Pembaruan desktop: folder rilis tak terbaca');
+    return releaseNotFound();
+  }
+  if (!release) return releaseNotFound();
+  const headers = { 'cache-control': 'no-cache', etag: formatEtag(release.etag) };
+  if (etagMatches(c.req.header('if-none-match'), release.etag)) {
+    return new Response(null, { status: 304, headers });
+  }
+  return c.json({ manifest: release.manifest, signature: release.signature }, 200, headers);
+});
+
+/** Unduhan installer (~100 MB) dibatasi per IP: 60 permintaan per jam (kantor satu NAT dengan banyak mesin tetap longgar). */
+const APP_FILE_LIMIT = 60;
+const APP_FILE_WINDOW_MS = 60 * 60 * 1000;
+const APP_FILE_PREFIX = '/api/desktop/app-file/';
+
+/** `true` bila IP ini sudah melewati batas (menghitung SETIAP permintaan, bukan hanya yang gagal). */
+async function appFileOverLimit(env: AppBindings['Bindings']): Promise<boolean> {
+  const key = `desktop-app-file:${limiterAddress(env.clientIp ?? 'unknown')}`;
+  const now = nowOf(env);
+  const cutoff = now - APP_FILE_WINDOW_MS;
+  try {
+    await env.DB.prepare(
+      'INSERT INTO rate_limits (`key`, count, window_start) VALUES (?, 1, ?) ON DUPLICATE KEY UPDATE count = IF(window_start < ?, 1, count + 1), window_start = IF(window_start < ?, ?, window_start)',
+    )
+      .bind(key, now, cutoff, cutoff, now)
+      .run();
+    const row = await env.DB.prepare('SELECT count FROM rate_limits WHERE `key` = ?')
+      .bind(key)
+      .first<{ count: number | string }>();
+    return Number(row?.count ?? 0) > APP_FILE_LIMIT;
+  } catch {
+    return false; // pembatas best-effort
+  }
+}
+
+desktopApp.get('/app-file/*', async (c) => {
+  const reader = releaseReaderOf(c.env);
+  if (!reader) return releaseNotFound();
+  const rawPath = new URL(c.req.url).pathname;
+  if (!rawPath.startsWith(APP_FILE_PREFIX)) return releaseNotFound();
+  if (await appFileOverLimit(c.env)) {
+    return problemResponse(
+      toProblem(appError('FORBIDDEN', 'Terlalu banyak unduhan, coba lagi nanti'), newRequestId(), {
+        status: 429,
+      }),
+    );
+  }
+  const segments = rawPath.slice(APP_FILE_PREFIX.length).split('/');
+  if (segments.length !== 2) return releaseNotFound();
+  let version: string;
+  let name: string;
+  try {
+    version = decodeURIComponent(segments[0] as string);
+    name = decodeURIComponent(segments[1] as string);
+  } catch {
+    return releaseNotFound();
+  }
+  let entry: { id: string; size: number } | null;
+  try {
+    entry = await reader.file(version, name);
+  } catch {
+    console.warn('Pembaruan desktop: folder rilis tak terbaca');
+    return releaseNotFound();
+  }
+  if (!entry) return releaseNotFound();
+  let download: DriveDownload | null;
+  try {
+    download = await getBridge(c.env).downloadFile(entry.id, c.env.DESKTOP_RELEASES_FOLDER_ID);
+  } catch {
+    console.warn('Pembaruan desktop: installer tak terunduh');
+    return releaseNotFound();
+  }
+  if (!download) return releaseNotFound();
+  return new Response(download.body, {
+    headers: {
+      'content-type': 'application/octet-stream',
+      'content-length': String(download.size),
+      'cache-control': 'no-cache, no-transform',
+      'x-content-type-options': 'nosniff',
+      'content-disposition': `attachment; filename="${name}"`,
+    },
+  });
 });

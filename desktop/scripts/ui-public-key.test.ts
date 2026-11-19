@@ -1,7 +1,7 @@
 import { generateKeyPairSync } from 'node:crypto';
 import { describe, expect, test } from 'vitest';
 import { publicKeyFingerprint, publicKeyOneLine } from '../../countrylock/src/ui-manifest';
-import { resolveUiPublicKey } from './ui-public-key';
+import { resolveReleasePublicKey, resolveUiPublicKey } from './ui-public-key';
 
 function publicPem(type: 'ed25519' | 'rsa' = 'ed25519'): string {
   const { publicKey } =
@@ -51,5 +51,27 @@ describe('resolveUiPublicKey', () => {
     } catch (error) {
       expect(String(error)).not.toContain(publicKeyOneLine(rsa).slice(0, 40));
     }
+  });
+});
+
+describe('resolveReleasePublicKey (kunci tanda tangan rilis, env DESKTOP_RELEASE_PUBLIC_KEY_PEM)', () => {
+  test('membaca env namanya sendiri, bukan UI_PUBLIC_KEY_PEM', () => {
+    const pem = publicPem();
+    expect(resolveReleasePublicKey({ DESKTOP_RELEASE_PUBLIC_KEY_PEM: pem }).pem).toBe(pem);
+    expect(resolveReleasePublicKey({ UI_PUBLIC_KEY_PEM: pem })).toEqual({
+      pem: null,
+      fingerprint: null,
+    });
+  });
+
+  test('wajib (build rilis) galat dengan nama env dan dokumen yang benar; kunci rusak selalu galat tanpa isi', () => {
+    expect(() => resolveReleasePublicKey({}, true)).toThrow('DESKTOP_RELEASE_PUBLIC_KEY_PEM');
+    expect(() => resolveReleasePublicKey({}, true)).toThrow('docs/desktop-release-signing.md');
+    expect(() => resolveReleasePublicKey({ DESKTOP_RELEASE_PUBLIC_KEY_PEM: 'AAAA' })).toThrow(
+      'Ed25519',
+    );
+    expect(() =>
+      resolveReleasePublicKey({ DESKTOP_RELEASE_PUBLIC_KEY_PEM: 'bukan kunci!!' }),
+    ).toThrow('dapat dibaca');
   });
 });

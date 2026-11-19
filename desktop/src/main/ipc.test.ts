@@ -9,10 +9,13 @@ import {
 import { secretForms } from '@countrylock/script-template';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { type IpcDeps, type IpcEventLike, registerIpc } from './ipc';
+import { IpcError } from './ipc-support';
+import type { MultiHost } from './multi/host';
 import { type LoadedPackage, loadLocalPackage, PackageError } from './package/local-folder';
 import { DEFAULT_SERVER_URL, type Settings } from './settings';
 import type { InjectOptions, InjectOutcome } from './ssh/inject-session';
 import { SENTINEL_BY_BRAND } from './ssh/strategy';
+import { openDraftStore } from './store/draft-store';
 import { openPendingStore } from './store/pending-store';
 
 const FIXTURE = resolve(__dirname, '../../../countrylock/fixtures/country-lock2');
@@ -39,6 +42,20 @@ afterEach(() => {
 function setup(overrides: Partial<IpcDeps> = {}, packageDir: string | null = 'D:\\Paket') {
   const handlers = new Map<string, Listener>();
   const store = openPendingStore(join(tmp, 'pending.db'));
+  const draftStore = openDraftStore(join(tmp, 'draft.db'));
+  // Tes menutup `store` di akhir; draft ikut ditutup agar berkasnya tak terkunci (Windows).
+  const closePending = store.close.bind(store);
+  store.close = () => {
+    closePending();
+    draftStore.close();
+  };
+  const multi = {
+    handle: vi.fn(async (): Promise<unknown> => undefined),
+    isRunning: vi.fn(() => false),
+    isInjecting: vi.fn(() => false),
+    isPreparingBridge: vi.fn(() => false),
+    dispose: vi.fn(),
+  } satisfies MultiHost;
   const progress: Array<{ id: string } & InjectProgressDto> = [];
   const saved: Settings = { packageDir, serverUrl: DEFAULT_SERVER_URL };
   const deps: IpcDeps = {
@@ -58,6 +75,7 @@ function setup(overrides: Partial<IpcDeps> = {}, packageDir: string | null = 'D:
     fetchHostKey: vi.fn(async () => ({ type: 'ssh-rsa', base64: 'QUFBQUhPU1RLRVk=' })),
     runInject: vi.fn(async (): Promise<InjectOutcome> => ({ ok: true, reason: 'completed' })),
     pending: store,
+    draft: draftStore,
     auth: {
       status: vi.fn(() => ({ signedIn: false, email: null, serverUrl: DEFAULT_SERVER_URL })),
       start: vi.fn(async () => undefined),
@@ -74,6 +92,7 @@ function setup(overrides: Partial<IpcDeps> = {}, packageDir: string | null = 'D:
       })),
     },
     ui: { reload: vi.fn(async () => undefined) },
+    multi,
     emitProgress: (e) => progress.push(e),
     ...overrides,
   };
@@ -83,7 +102,7 @@ function setup(overrides: Partial<IpcDeps> = {}, packageDir: string | null = 'D:
     if (!handler) throw new Error(`kanal tak terdaftar: ${channel}`);
     return Promise.resolve(handler({}, ...args));
   };
-  return { deps, handlers, call, progress, saved, store, ipc };
+  return { deps, handlers, call, progress, saved, store, ipc, multi };
 }
 
 const injectReq = (patch: Record<string, unknown> = {}) => ({
@@ -130,6 +149,10 @@ describe('registerIpc', () => {
       [BRIDGE_CHANNELS.pendingAdd, [{ ...entry, date: 'kemarin' }]],
       [BRIDGE_CHANNELS.pendingRemove, ['']],
       [BRIDGE_CHANNELS.pendingList, ['jalur']],
+      [BRIDGE_CHANNELS.draftLoad, ['jalur']],
+      [BRIDGE_CHANNELS.draftSave, []],
+      [BRIDGE_CHANNELS.draftSave, [['bukan objek']]],
+      [BRIDGE_CHANNELS.draftSave, [[{ serial: 'A' }], 'lebih']],
       [BRIDGE_CHANNELS.packageLoad, ['D:\\Lain']],
       [BRIDGE_CHANNELS.packageChooseDir, ['D:\\Lain']],
     ];
@@ -436,6 +459,41 @@ describe('registerIpc', () => {
     });
   });
 
+  describe('draft', () => {
+    test('save lalu load lewat IPC; save kosong menghapus draft', async () => {
+      const { call, store } = setup();
+      expect(await call(BRIDGE_CHANNELS.draftLoad)).toEqual([]);
+      await call(BRIDGE_CHANNELS.draftSave, [{ serial: 'AB12' }, { serial: 'CD34' }]);
+      expect(await call(BRIDGE_CHANNELS.draftLoad)).toEqual([
+        { serial: 'AB12' },
+        { serial: 'CD34' },
+      ]);
+      await call(BRIDGE_CHANNELS.draftSave, []);
+      expect(await call(BRIDGE_CHANNELS.draftLoad)).toEqual([]);
+      store.close();
+    });
+  });
+
+  describe('draft: galat penyimpanan', () => {
+    test('pesan berkas draft rusak diteruskan; galat lain menjadi pesan generik tanpa isi aslinya', async () => {
+      const { call, deps, store } = setup();
+      deps.draft = {
+        load: () => {
+          throw new Error('Draft tersimpan rusak: isinya tidak terbaca.');
+        },
+        save: () => {
+          throw new Error('SQLITE_FULL: rahasia di C:\\Users\\x\\draft.db');
+        },
+        close: () => undefined,
+      };
+      await expect(call(BRIDGE_CHANNELS.draftLoad)).rejects.toThrow('Draft tersimpan rusak');
+      const failure = call(BRIDGE_CHANNELS.draftSave, [{ serial: 'A' }]);
+      await expect(failure).rejects.toThrow('Draft tidak dapat disimpan');
+      await expect(failure).rejects.not.toThrow(/SQLITE_FULL|draft\.db/);
+      store.close();
+    });
+  });
+
   describe('inject.run', () => {
     test('mengambil host key router, merencanakan inject, menjalankan eksekutor dengan SENTINEL_BY_BRAND dan menyamarkan kata sandi', async () => {
       let captured: InjectOptions | undefined;
@@ -463,6 +521,7 @@ describe('registerIpc', () => {
         host: '192.168.88.2',
         username: 'admin',
         password: SERVER_PASSWORD,
+        signal: expect.any(AbortSignal),
       });
       expect(captured?.sentinel).toBe(SENTINEL_BY_BRAND.ubiquiti);
       expect(captured?.script).toContain('QUFBQUhPU1RLRVk='); // {sshKey} terisi dari host key
@@ -577,6 +636,147 @@ describe('registerIpc', () => {
       });
       // batal id yang tak ada tidak melempar
       await expect(call(BRIDGE_CHANNELS.injectCancel, 'tidak-ada')).resolves.toBeUndefined();
+      store.close();
+    });
+  });
+
+  describe('multi', () => {
+    const validStart = () => ({
+      firmwareCode: 'WA',
+      concurrency: 4,
+      excludeIp: '',
+      autoInject: false,
+      target: {
+        itemId: 'item-1',
+        itemLabel: 'NS Loco',
+        buId: 'bu-1',
+        buLabel: 'Retail',
+        locationId: 'loc-1',
+        locationLabel: 'Gudang',
+      },
+    });
+
+    test('argumen divalidasi sebelum sampai ke host (concurrency di luar 1..32, MAC ngawur, argumen berlebih)', async () => {
+      const { call, multi, store } = setup();
+      const bad: Array<[string, unknown[]]> = [
+        [BRIDGE_CHANNELS.multiStart, [{ ...validStart(), concurrency: 99 }]],
+        [BRIDGE_CHANNELS.multiStart, [{ ...validStart(), concurrency: 0 }]],
+        [BRIDGE_CHANNELS.multiStart, [{ ...validStart(), excludeIp: 'bukan-ip' }]],
+        [BRIDGE_CHANNELS.multiStart, [{ ...validStart(), extra: 1 }]],
+        [BRIDGE_CHANNELS.multiSetConcurrency, [99]],
+        [BRIDGE_CHANNELS.multiInjectDevice, ['bukan-mac']],
+        [BRIDGE_CHANNELS.multiCancelDevice, ['58:D6:1F:0E:4E']],
+        [BRIDGE_CHANNELS.multiOpenWeb, ['xyz']],
+        [BRIDGE_CHANNELS.multiStop, ['berlebih']],
+        [BRIDGE_CHANNELS.multiSetBlocked, [123]],
+        [BRIDGE_CHANNELS.multiAckInjected, ['bukan-array']],
+        [BRIDGE_CHANNELS.multiAddCredential, [{ username: 'a' }]],
+      ];
+      for (const [channel, args] of bad) {
+        await expect(call(channel, ...args)).rejects.toThrow('Argumen tidak valid');
+      }
+      expect(multi.handle).not.toHaveBeenCalled();
+      store.close();
+    });
+
+    test('argumen sah diteruskan ke host dengan nama kunci kanal dan MAC yang sudah dinormalisasi', async () => {
+      const { call, multi, store } = setup();
+      await call(BRIDGE_CHANNELS.multiInjectDevice, '58-d6-1f-0e-4e-fe');
+      expect(multi.handle).toHaveBeenLastCalledWith('multiInjectDevice', ['58:D6:1F:0E:4E:FE']);
+      await call(BRIDGE_CHANNELS.multiStart, validStart());
+      expect(multi.handle).toHaveBeenLastCalledWith('multiStart', [validStart()]);
+      await call(BRIDGE_CHANNELS.multiSetBlocked, null);
+      expect(multi.handle).toHaveBeenLastCalledWith('multiSetBlocked', [null]);
+      store.close();
+    });
+
+    test('hanya IpcError dari host yang diteruskan; galat lain menjadi pesan generik tanpa sandi', async () => {
+      const { call, multi, store } = setup();
+      multi.handle.mockRejectedValueOnce(new IpcError('Hentikan inject tunggal dulu'));
+      await expect(call(BRIDGE_CHANNELS.multiStart, validStart())).rejects.toThrow(
+        'Hentikan inject tunggal dulu',
+      );
+      multi.handle.mockRejectedValueOnce(new Error('ssh gagal dengan Pa$$w"rd?'));
+      await expect(call(BRIDGE_CHANNELS.multiStart, validStart())).rejects.toThrow(
+        'Terjadi galat pada proses utama',
+      );
+      store.close();
+    });
+
+    test('injectRun ditolak saat Multi sedang inject, dengan pesan jelas dan tanpa menyentuh eksekutor', async () => {
+      const { call, multi, deps, store } = setup();
+      multi.isInjecting.mockReturnValue(true);
+      expect(await call(BRIDGE_CHANNELS.injectRun, injectReq())).toEqual({
+        ok: false,
+        stage: 'failed',
+        message: 'Hentikan Multi dulu',
+      });
+      expect(deps.runInject).not.toHaveBeenCalled();
+      multi.isInjecting.mockReturnValue(false);
+      const ok = (await call(BRIDGE_CHANNELS.injectRun, injectReq())) as { message: string };
+      expect(ok.message).not.toBe('Hentikan Multi dulu');
+      store.close();
+    });
+
+    test('injectRun ditolak selama Multi menyiapkan bridge router, dan jalan lagi setelahnya', async () => {
+      const { call, multi, deps, store } = setup();
+      multi.isPreparingBridge.mockReturnValue(true);
+      expect(await call(BRIDGE_CHANNELS.injectRun, injectReq())).toEqual({
+        ok: false,
+        stage: 'failed',
+        message: 'Sedang menyiapkan bridge router, coba lagi sebentar',
+      });
+      expect(deps.runInject).not.toHaveBeenCalled();
+      multi.isPreparingBridge.mockReturnValue(false);
+      const ok = (await call(BRIDGE_CHANNELS.injectRun, injectReq())) as { message: string };
+      expect(ok.message).not.toContain('menyiapkan bridge');
+      store.close();
+    });
+
+    test('isInjecting menggabungkan inject tunggal dan Multi; isMultiBusy hanya Multi', async () => {
+      const { ipc, multi, call, deps, store } = setup();
+      expect(ipc.isInjecting()).toBe(false);
+      multi.isInjecting.mockReturnValue(true);
+      expect(ipc.isInjecting()).toBe(true);
+      expect(ipc.isMultiBusy()).toBe(true);
+      expect(ipc.isSingleInjecting()).toBe(false);
+      multi.isInjecting.mockReturnValue(false);
+
+      let release: () => void = () => undefined;
+      let started: () => void = () => undefined;
+      const startedPromise = new Promise<void>((resolveStarted) => {
+        started = resolveStarted;
+      });
+      vi.mocked(deps.runInject).mockImplementationOnce(
+        () =>
+          new Promise<InjectOutcome>((resolveRun) => {
+            release = () => resolveRun({ ok: true, reason: 'completed' });
+            started();
+          }),
+      );
+      const running = call(BRIDGE_CHANNELS.injectRun, injectReq());
+      await startedPromise;
+      expect(ipc.isSingleInjecting()).toBe(true);
+      expect(ipc.isInjecting()).toBe(true);
+      expect(ipc.isMultiBusy()).toBe(false);
+      release();
+      await running;
+      expect(ipc.isInjecting()).toBe(false);
+      store.close();
+    });
+
+    test('paket tak dapat diganti selama Multi berjalan; package.load tidak memuat ulang dari folder', async () => {
+      const { call, multi, deps, store } = setup();
+      await call(BRIDGE_CHANNELS.packageLoad);
+      expect(deps.loadPackage).toHaveBeenCalledTimes(1);
+      multi.isRunning.mockReturnValue(true);
+      await expect(call(BRIDGE_CHANNELS.packageChooseDir)).rejects.toThrow('Hentikan Multi dulu');
+      expect(deps.chooseDirectory).not.toHaveBeenCalled();
+      await call(BRIDGE_CHANNELS.packageLoad);
+      expect(deps.loadPackage).toHaveBeenCalledTimes(1);
+      multi.isRunning.mockReturnValue(false);
+      await call(BRIDGE_CHANNELS.packageLoad);
+      expect(deps.loadPackage).toHaveBeenCalledTimes(2);
       store.close();
     });
   });
