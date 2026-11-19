@@ -8,7 +8,11 @@ import type { Settings } from './settings';
 
 // Semua versi API (`/api/v<n>/`) diizinkan; versi yang sebenarnya dilayani server ditentukan
 // server (rute tak dikenal = 404 problem+json dari server, bukan dari proksi).
-export const PROXY_ALLOW: readonly RegExp[] = [/^\/api\/v\d+\//, /^\/api\/ping$/, /^\/auth\/logout$/];
+export const PROXY_ALLOW: readonly RegExp[] = [
+  /^\/api\/v\d+\//,
+  /^\/api\/ping$/,
+  /^\/auth\/logout$/,
+];
 
 /** Permintaan ke awalan ini ditangani proxy (diizinkan atau ditolak 403), bukan penyaji berkas. */
 export function isProxyRoute(pathname: string): boolean {
