@@ -25,6 +25,7 @@ interface Args {
   apply: boolean;
   confirmDatabase: string;
   itemBu: ItemBuMode;
+  keepUnusedItems: boolean;
   reportDir: string;
   offline: boolean;
 }
@@ -35,6 +36,7 @@ export function parseArgs(argv: string[]): Args {
     apply: false,
     confirmDatabase: '',
     itemBu: 'brand',
+    keepUnusedItems: false,
     reportDir: './legacy-qc-report',
     offline: false,
   };
@@ -53,7 +55,8 @@ export function parseArgs(argv: string[]): Args {
       if (mode !== 'brand' && mode !== 'brand+serials')
         throw new Error('--item-bu harus brand atau brand+serials');
       args.itemBu = mode;
-    } else if (flag === '--report-dir') args.reportDir = value();
+    } else if (flag === '--sertakan-tipe-tanpa-serial') args.keepUnusedItems = true;
+    else if (flag === '--report-dir') args.reportDir = value();
     else if (flag === '--offline') args.offline = true;
     else throw new Error(`Argumen tak dikenal: ${flag}`);
   }
@@ -73,6 +76,13 @@ async function writeReports(dir: string, plan: Plan, resolved: Resolved | null):
     csv(
       ['id_lama', 'serial', 'alasan', 'rincian'],
       plan.skipped.map((row) => [row.legacyId, row.serial, row.reason, row.detail]),
+    ),
+  );
+  await Bun.write(
+    resolve(dir, 'tipe-tanpa-serial.csv'),
+    csv(
+      ['id_lama', 'merk', 'tipe', 'firmware'],
+      plan.unusedItems.map((item) => [item.legacyId, item.brand, item.model, item.firmware]),
     ),
   );
   await Bun.write(
@@ -135,7 +145,11 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const now = new Date().toISOString();
   console.log(`Membaca dump ${args.dump} ...`);
-  const plan = buildPlan(await readDump(args.dump), { itemBu: args.itemBu, now });
+  const plan = buildPlan(await readDump(args.dump), {
+    itemBu: args.itemBu,
+    now,
+    keepUnusedItems: args.keepUnusedItems,
+  });
   console.log(
     `Rencana: ${plan.serials.length} serial, ${plan.items.length} item, ${plan.brands.length} merk, BU ${plan.buNames.join('/')}`,
   );

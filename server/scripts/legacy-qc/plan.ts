@@ -58,6 +58,11 @@ export interface PlanOptions {
   itemBu: ItemBuMode;
   /** ISO 8601; dipakai bila sumber tak punya waktu (item tanpa riwayat). */
   now: string;
+  /**
+   * Tipe lama yang tak punya satu pun serial untuk dimigrasikan TIDAK dibuat di tujuan (keputusan pemilik
+   * 2026-11-19); true = tetap dibuat seperti sebelumnya.
+   */
+  keepUnusedItems?: boolean;
 }
 
 export interface PlannedItem {
@@ -160,6 +165,8 @@ export interface Plan {
   locationNames: string[];
   brands: string[];
   items: PlannedItem[];
+  /** Tipe lama tanpa serial yang dimigrasikan, sengaja tidak dibuat (kosong bila `keepUnusedItems`). */
+  unusedItems: PlannedItem[];
   serials: PlannedSerial[];
   skipped: SkippedRow[];
   folded: FoldedRow[];
@@ -654,6 +661,22 @@ export function buildPlan(tables: Tables, options: PlanOptions): Plan {
   }
   serials.sort((a, b) => a.legacyId - b.legacyId);
 
+  // ---- tipe tanpa serial dibuang (kecuali keepUnusedItems) --------------------------------------
+  const unusedItems: PlannedItem[] = [];
+  if (!options.keepUnusedItems) {
+    const usedItems = new Set(serials.map((serial) => serial.itemLegacyId));
+    for (const [key, item] of itemsByKey) {
+      if (usedItems.has(item.legacyId)) continue;
+      unusedItems.push(item);
+      itemsByKey.delete(key);
+    }
+    unusedItems.sort((a, b) => a.legacyId - b.legacyId);
+    if (unusedItems.length > 0)
+      warnings.push(
+        `${unusedItems.length} tipe lama tanpa serial yang dimigrasikan tidak dibuat di tujuan (daftar di tipe-tanpa-serial.csv).`,
+      );
+  }
+
   // ---- BU item: bawaan merk (+ BU pemakai serial) ---------------------------------------------
   const usedBus = new Map<number, Set<string>>();
   for (const serial of serials) {
@@ -690,6 +713,7 @@ export function buildPlan(tables: Tables, options: PlanOptions): Plan {
     locationNames: [...locationNames].sort(),
     brands,
     items,
+    unusedItems,
     serials,
     skipped,
     folded,
