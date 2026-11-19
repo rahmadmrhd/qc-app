@@ -258,6 +258,9 @@ const WORST: Inputs = {
     stickerIds: longList(SERIAL_LIMITS.picksMax, () => UUID),
     proofPhotoIds: longList(SERIAL_PROOF_LIMITS.perEntryMax, () => UUID),
   },
+  'serials.lookupMany': {
+    serials: longList(SERIAL_LIMITS.batchRows, () => 'S'.repeat(SERIAL_LIMITS.serialMax)),
+  },
   'serials.reportNew': {
     serial: 'S'.repeat(SERIAL_LIMITS.serialMax),
     itemId: UUID,

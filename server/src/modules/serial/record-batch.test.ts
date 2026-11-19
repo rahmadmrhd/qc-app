@@ -122,10 +122,11 @@ describe('baris saveBatch hanya good', () => {
     expect(await stock('s1')).toBe(9);
   });
 
-  test('serial yang sama dicatat dua kali dengan clientId berbeda: duplicate', async () => {
+  test('serial yang sama dicatat dua kali dengan clientId berbeda: rechecked; tanpa stiker tercentang stok tak berubah', async () => {
     await save(W, [row({ serial: 'DUP-1' })]);
     const out = await save(W, [row({ serial: 'DUP-1' })]);
-    expect(out.data.results[0].result).toBe('duplicate');
+    expect(out.data.results[0].result).toBe('rechecked');
+    // Baris pertama memotong semua stiker yang berlaku; cek ulang (stiker tak dikirim = tak ada yang tercentang) tidak.
     expect(await stock('s1')).toBe(9);
   });
 

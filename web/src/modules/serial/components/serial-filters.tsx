@@ -163,19 +163,24 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
         </p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <LinkField
-          id="serial-filter-bu"
-          label="Filter BU"
-          hideLabel
-          placeholder="Semua BU"
-          localFilter
-          value={search.bu ?? null}
-          labelOf={(id) =>
-            buOptions.find((option) => option.id === id)?.label ?? 'BU tidak dikenal'
-          }
-          options={buOptions}
-          onChange={(id) => onChange({ bu: id ?? undefined })}
-        />
+        <div className="space-y-1">
+          <LinkField
+            id="serial-filter-bu"
+            label="Filter BU"
+            hideLabel
+            placeholder="Semua BU"
+            localFilter
+            value={search.bu ?? null}
+            labelOf={(id) =>
+              buOptions.find((option) => option.id === id)?.label ?? 'BU tidak dikenal'
+            }
+            options={buOptions}
+            onChange={(id) => onChange({ bu: id ?? undefined })}
+          />
+          {search.bu ? (
+            <p className="text-xs text-muted-foreground">Termasuk serial yang pernah di BU ini.</p>
+          ) : null}
+        </div>
         <LinkField
           id="serial-filter-item"
           label="Filter item"

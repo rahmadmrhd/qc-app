@@ -15,9 +15,15 @@ export interface ApplicableStickers {
   loaded: boolean;
 }
 
-/** Stiker yang berlaku bagi (item, BU) lewat `serials.stickerOptions`; `none` bila item atau BU belum dipilih. */
-export function useApplicableStickers(itemId: string, buId: string): ApplicableStickers {
-  const { data, isFetching, isError } = useQuery(serialStickerOptionsQueryOptions(itemId, buId));
+/** Stiker yang berlaku bagi (item, BU; plus `serialId` pada Cek ulang) lewat `serials.stickerOptions`; `none` bila item atau BU belum dipilih. */
+export function useApplicableStickers(
+  itemId: string,
+  buId: string,
+  serialId?: string,
+): ApplicableStickers {
+  const { data, isFetching, isError } = useQuery(
+    serialStickerOptionsQueryOptions(itemId, buId, serialId),
+  );
   const options = data?.stickers ?? [];
   const state: StickerListState =
     itemId === '' || buId === ''

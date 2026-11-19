@@ -27,7 +27,7 @@ import {
   activeLocationName,
   insertEventStmt,
   insertSerialStmt,
-  listSerialRows,
+  loadSerialRowBySerial,
 } from './repo';
 import {
   ITEM_MESSAGE,
@@ -39,11 +39,11 @@ import {
 
 /**
  * Lapor Rusak (rancangan 2026-11-14 §4.3). `serials.lookup` mencocokkan Serial Number yang diketik/dipindai dengan serial
- * di BU yang dapat DITULIS pengguna (BU lain tak pernah muncul, jadi tak ada kebocoran keberadaan); `serials.reportNew`
+ * yang BU SAAT INI-nya dapat DITULIS pengguna (Serial Number unik se-sistem); serial di BU lain hanya mengungkap kode BU
+ * saat ini (`elsewhere`), tanpa data lain. `serials.reportNew`
  * membuat serial yang belum tercatat langsung berstatus Dilaporkan beserta laporannya, dalam satu transaksi.
  */
 const DUPLICATE_MESSAGE = 'Serial Number sudah terdaftar, cari dulu lewat kolom Serial Number';
-const LOOKUP_MAX = 50;
 
 export async function lookupSerials(
   env: Env,
@@ -53,10 +53,16 @@ export async function lookupSerials(
   const buIds = writableBuIds(user);
   // Validator sudah menormalkan; dinormalkan lagi di sini agar pemanggil langsung (tes, layanan lain) tetap aman.
   const serial = normalizeSerial(input.serial);
-  if (buIds.length === 0 || serialProblem(serial) !== null) return { matches: [] };
-  const serials = [serial];
-  const rows = await listSerialRows(env.DB, { buIds, serials, limit: LOOKUP_MAX });
-  const matches = rows.slice(0, LOOKUP_MAX).map((row): SerialLookupMatchDto => {
+  if (buIds.length === 0 || serialProblem(serial) !== null) return { matches: [], elsewhere: null };
+  // Serial Number unik se-sistem: cari global lalu nilai hak tulis pada BU SAAT INI. Di luar hak tulis, hanya kode BU
+  // saat ini yang terungkap (`elsewhere`), tanpa data lain.
+  const found = await loadSerialRowBySerial(env.DB, serial);
+  if (!found) return { matches: [], elsewhere: null };
+  if (!buIds.includes(found.bu_id.trim())) {
+    return { matches: [], elsewhere: { buCode: found.bu_code.trim() } };
+  }
+  const rows = [found];
+  const matches = rows.map((row): SerialLookupMatchDto => {
     const summary = toSummary(row);
     return {
       id: summary.id,
@@ -72,14 +78,13 @@ export async function lookupSerials(
       updatedAt: row.updated_at,
     };
   });
-  matches.sort((a, b) => (a.buCode < b.buCode ? -1 : a.buCode > b.buCode ? 1 : 0));
-  return { matches };
+  return { matches, elsewhere: null };
 }
 
 /**
  * Membuat serial baru berstatus Dilaporkan: kejadian `recorded` (seq 1) lalu `report_failure` (seq 2), tanggal uji =
  * `occurredOn`, tanpa stiker/stok. Urutan penolakan: tanggal masa depan, BU di luar hak tulis atau item/lokasi tak dikenal
- * (pesan generik tanpa menyebut BU/item lain), serial sudah ada di BU itu (`CONFLICT` generik). Nomor LP (LP/<BU>/YYMM-iiii) dipesan lewat
+ * (pesan generik tanpa menyebut BU/item lain), serial sudah ada di BU mana pun (unik se-sistem; `CONFLICT` generik). Nomor LP (LP/<BU>/YYMM-iiii) dipesan lewat
  * penghitung CAS dan seluruh pembuatan diulang bila penghitung diperebutkan (`runWithCaseNumber`).
  */
 export async function reportNewSerial(
@@ -110,10 +115,8 @@ export async function reportNewSerial(
   const period = caseNumberPeriod(today);
 
   const attempt = async (): Promise<void> => {
-    const exists = await env.DB.prepare(
-      'SELECT 1 AS present FROM serials WHERE bu_id = ? AND serial = ?',
-    )
-      .bind(input.buId, input.serial)
+    const exists = await env.DB.prepare('SELECT 1 AS present FROM serials WHERE serial = ?')
+      .bind(input.serial)
       .first<{ present: number }>();
     if (exists) throw appError('CONFLICT', DUPLICATE_MESSAGE, { serial: DUPLICATE_MESSAGE });
     const reservation = await reserveCaseNumber(env, buCode, period);
@@ -203,6 +206,7 @@ export async function reportNewSerial(
       // Serial yang sama dilaporkan serentak: pemenang sudah komit; yang kalah dijawab generik.
       throw mapDuplicateError(error, {
         serials_bu_serial: { message: DUPLICATE_MESSAGE, field: 'serial' },
+        serials_serial: { message: DUPLICATE_MESSAGE, field: 'serial' },
         serials_client_id: { message: DUPLICATE_MESSAGE, field: 'serial' },
       });
     }

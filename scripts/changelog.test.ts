@@ -8,31 +8,55 @@ import {
   compareSemver,
   compileRelease,
   extractSection,
+  FRAGMENT_MAX_CHARS,
   FRAGMENT_NAME_PATTERN,
+  type FragmentKind,
   isSemver,
   parseFragment,
   realDeps,
   runCli,
 } from './changelog';
 
-const frag = (name: string, kind: string, text: string) => ({
+/** Satu fragmen berisi satu butir; `area` kosong = tanpa area. */
+const frag = (name: string, kind: FragmentKind, text: string, area: string | null = null) => ({
   name,
-  kind: kind as 'ditambah',
-  text,
+  entries: [{ kind, area, text }],
 });
 
 describe('parseFragment', () => {
-  test('menerima jenis dan satu paragraf; baris dalam paragraf digabung dengan spasi', () => {
+  test('satu baris "tipe(area): teks" menjadi satu butir; area boleh dihilangkan', () => {
     expect(
-      parseFragment('20261117-tombol-baru.md', 'jenis: ditambah\nTombol baru di beranda.\n'),
+      parseFragment('20261117-tombol-baru.md', 'feat(beranda): tombol baru di beranda\n'),
     ).toEqual({
       name: '20261117-tombol-baru.md',
-      kind: 'ditambah',
-      text: 'Tombol baru di beranda.',
+      entries: [{ kind: 'ditambah', area: 'beranda', text: 'tombol baru di beranda' }],
     });
-    expect(parseFragment('20261117-a.md', 'jenis: diubah\nBaris satu\nbaris dua.').text).toBe(
-      'Baris satu baris dua.',
+    expect(parseFragment('20261117-a.md', 'fix: perbaikan tanpa area').entries).toEqual([
+      { kind: 'diperbaiki', area: null, text: 'perbaikan tanpa area' },
+    ]);
+  });
+
+  test('tipe dipetakan ke jenis: feat=ditambah, change/refactor/perf=diubah, fix=diperbaiki, sisanya internal', () => {
+    const kindOf = (type: string) =>
+      parseFragment('20261117-a.md', `${type}: isi`).entries[0]?.kind;
+    expect(kindOf('feat')).toBe('ditambah');
+    for (const type of ['change', 'refactor', 'perf']) expect(kindOf(type), type).toBe('diubah');
+    expect(kindOf('fix')).toBe('diperbaiki');
+    for (const type of ['chore', 'ci', 'docs', 'test', 'build', 'style']) {
+      expect(kindOf(type), type).toBe('internal');
+    }
+  });
+
+  test('satu berkas boleh memuat beberapa butir (satu per baris); baris kosong diabaikan', () => {
+    const parsed = parseFragment(
+      '20261117-a.md',
+      'feat(serial): satu\n\nfix(desktop): dua\nchore(ci): tiga\n',
     );
+    expect(parsed.entries.map((e) => [e.kind, e.area, e.text])).toEqual([
+      ['ditambah', 'serial', 'satu'],
+      ['diperbaiki', 'desktop', 'dua'],
+      ['internal', 'ci', 'tiga'],
+    ]);
   });
 
   test('menolak nama tanpa tanggal, huruf besar, atau ekstensi lain, dan pesan memuat nama berkas', () => {
@@ -43,39 +67,54 @@ describe('parseFragment', () => {
       '20261117-x.txt',
       '20261117-.md',
     ]) {
-      expect(() => parseFragment(bad, 'jenis: diubah\nIsi.')).toThrow(bad);
+      expect(() => parseFragment(bad, 'fix: isi')).toThrow(bad);
     }
     expect(FRAGMENT_NAME_PATTERN.test('20261117-a-b-c.md')).toBe(true);
   });
 
   test('menolak tanggal yang bukan tanggal kalender nyata (bulan 13, hari 32, 30 Februari); tahun kabisat diterima', () => {
     for (const bad of ['20261301-a.md', '20261132-a.md', '20260230-a.md', '20260000-a.md']) {
-      expect(() => parseFragment(bad, 'jenis: diubah\nIsi.')).toThrow(bad);
+      expect(() => parseFragment(bad, 'fix: isi')).toThrow(bad);
     }
-    expect(() => parseFragment('20240229-a.md', 'jenis: diubah\nIsi.')).not.toThrow();
+    expect(() => parseFragment('20240229-a.md', 'fix: isi')).not.toThrow();
   });
 
-  test('menolak baris pertama bukan "jenis: ...", jenis tak dikenal, atau salah ketik', () => {
-    for (const first of [
-      '',
-      'Isi saja',
-      'jenis:ditambah',
-      'jenis: tambah',
-      'Jenis: ditambah',
-      'jenis: Ditambah',
+  test('menolak tipe tak dikenal, huruf besar, tanda baca salah, area tak sah, dan format lama "jenis: ..."', () => {
+    for (const line of [
+      'tambah: isi',
+      'Feat: isi',
+      'FIX: isi',
+      'feat:isi',
+      'feat : isi',
+      'feat isi',
+      'feat(Serial): isi',
+      'feat(): isi',
+      'feat(a b): isi',
+      'feat(serial) isi',
+      'feat(serial)): isi',
+      'jenis: ditambah',
+      'Isi saja tanpa tipe',
     ]) {
-      expect(() => parseFragment('20261117-x.md', `${first}\nIsi.`)).toThrow('20261117-x.md');
+      expect(() => parseFragment('20261117-x.md', line), line).toThrow('20261117-x.md');
     }
   });
 
-  test('menolak badan kosong, dua paragraf, CR, dan badan lebih dari 500 karakter', () => {
+  test('menolak berkas kosong, teks butir kosong, baris lanjutan (bukan butir), CR, dan teks lebih dari batas', () => {
     const name = '20261117-x.md';
-    expect(() => parseFragment(name, 'jenis: diubah\n')).toThrow(name);
-    expect(() => parseFragment(name, 'jenis: diubah\n   \n')).toThrow(name);
-    expect(() => parseFragment(name, 'jenis: diubah\nSatu.\n\nDua.')).toThrow(name);
-    expect(() => parseFragment(name, 'jenis: diubah\r\nIsi.')).toThrow(name);
-    expect(() => parseFragment(name, `jenis: diubah\n${'a'.repeat(501)}`)).toThrow(name);
-    expect(parseFragment(name, `jenis: diubah\n${'a'.repeat(500)}`).text).toHaveLength(500);
+    expect(() => parseFragment(name, '')).toThrow(name);
+    expect(() => parseFragment(name, '\n  \n')).toThrow(name);
+    expect(() => parseFragment(name, 'fix: ')).toThrow(name);
+    expect(() => parseFragment(name, 'fix(a):   ')).toThrow(name);
+    expect(() => parseFragment(name, 'feat(a): satu\nlanjutan baris tanpa tipe')).toThrow(name);
+    expect(() => parseFragment(name, 'fix: isi\r\nfix: dua')).toThrow(name);
+    expect(() => parseFragment(name, `fix: ${'a'.repeat(FRAGMENT_MAX_CHARS + 1)}`)).toThrow(name);
+    expect(
+      parseFragment(name, `fix: ${'a'.repeat(FRAGMENT_MAX_CHARS)}`).entries[0]?.text,
+    ).toHaveLength(FRAGMENT_MAX_CHARS);
+  });
+
+  test('galat menyebut nomor baris bila bermasalah di baris tertentu', () => {
+    expect(() => parseFragment('20261117-x.md', 'fix: satu\nngawur')).toThrow('baris 2');
   });
 
   test('galat bertipe ChangelogError', () => {
@@ -129,6 +168,54 @@ describe('compileRelease', () => {
         '- Rapikan CI.',
         '',
       ].join('\n'),
+    );
+  });
+
+  test('butir berarea diawali "area: " dan dikelompokkan per area (abjad); tanpa area di akhir; urutan asal dijaga dalam satu area', () => {
+    const out = compileRelease({
+      title: 'T',
+      existing: '',
+      version: '1.0.0',
+      date: '2026-11-17',
+      fragments: [
+        frag('20261117-a.md', 'ditambah', 'Tanpa area A.'),
+        frag('20261117-b.md', 'ditambah', 'Serial satu.', 'serial'),
+        frag('20261117-c.md', 'ditambah', 'Postel satu.', 'postel'),
+        frag('20261117-d.md', 'ditambah', 'Serial dua.', 'serial'),
+        frag('20261117-e.md', 'ditambah', 'Tanpa area B.'),
+      ],
+    });
+    expect(out).toContain(
+      [
+        '### Ditambah',
+        '- postel: Postel satu.',
+        '- serial: Serial satu.',
+        '- serial: Serial dua.',
+        '- Tanpa area A.',
+        '- Tanpa area B.',
+      ].join('\n'),
+    );
+  });
+
+  test('beberapa butir dalam satu berkas ikut tersusun dan urutan barisnya dijaga', () => {
+    const out = compileRelease({
+      title: 'T',
+      existing: '',
+      version: '1.0.0',
+      date: '2026-11-17',
+      fragments: [
+        {
+          name: '20261117-a.md',
+          entries: [
+            { kind: 'ditambah', area: 'serial', text: 'satu' },
+            { kind: 'diperbaiki', area: 'serial', text: 'dua' },
+            { kind: 'ditambah', area: 'serial', text: 'tiga' },
+          ],
+        },
+      ],
+    });
+    expect(out).toContain(
+      '### Ditambah\n- serial: satu\n- serial: tiga\n### Diperbaiki\n- serial: dua',
     );
   });
 
@@ -259,7 +346,7 @@ describe('realDeps.listDir', () => {
   test('entri subfolder muncul sebagai masalah validasi (bukan diam-diam hilang)', () => {
     const deps: CliDeps = {
       listDir: () => ['sub/', '20261117-a.md'],
-      readFile: () => 'jenis: diubah\nIsi.',
+      readFile: () => 'fix: isi',
       writeFile: () => {},
       removeFile: () => {},
       print: () => {},
@@ -274,11 +361,11 @@ describe('runCli', () => {
   test('validate: lulus bila semua fragmen sah (.gitkeep diabaikan), gagal dan menyebut berkas bermasalah', () => {
     const ok = fakeDeps({
       [`${dir}/.gitkeep`]: '',
-      [`${dir}/20261117-a.md`]: 'jenis: diubah\nIsi.',
+      [`${dir}/20261117-a.md`]: 'fix(web): isi',
     });
     expect(runCli(['validate', 'server'], ok)).toBe(0);
     const bad = fakeDeps({
-      [`${dir}/20261117-a.md`]: 'jenis: salah\nIsi.',
+      [`${dir}/20261117-a.md`]: 'salah: isi',
       [`${dir}/ngawur.md`]: 'x',
     });
     expect(runCli(['validate', 'server'], bad)).toBe(1);
@@ -289,11 +376,12 @@ describe('runCli', () => {
   test('compile: menulis CHANGELOG lalu menghapus fragmen (bukan .gitkeep)', () => {
     const deps = fakeDeps({
       [`${dir}/.gitkeep`]: '',
-      [`${dir}/20261117-a.md`]: 'jenis: ditambah\nFitur A.',
+      [`${dir}/20261117-a.md`]: 'feat(web): Fitur A.',
       'server/CHANGELOG.md': '# Changelog server\n',
     });
     expect(runCli(['compile', 'server', '1.0.0', '2026-11-17'], deps)).toBe(0);
     expect(deps.files['server/CHANGELOG.md']).toContain('## [1.0.0] - 2026-11-17');
+    expect(deps.files['server/CHANGELOG.md']).toContain('- web: Fitur A.');
     expect(
       Object.keys(deps.files).filter((p) => p.endsWith('.md') && p.includes('changelog.d')),
     ).toEqual([]);
@@ -302,7 +390,7 @@ describe('runCli', () => {
 
   test('compile: gagal menulis = fragmen tetap ada; fragmen rusak atau nol fragmen = tidak ada yang berubah', () => {
     const failing = fakeDeps(
-      { [`${dir}/20261117-a.md`]: 'jenis: ditambah\nFitur A.', 'server/CHANGELOG.md': '# C\n' },
+      { [`${dir}/20261117-a.md`]: 'feat: Fitur A.', 'server/CHANGELOG.md': '# C\n' },
       { failWrite: true },
     );
     expect(() => runCli(['compile', 'server', '1.0.0', '2026-11-17'], failing)).toThrow(
@@ -311,7 +399,7 @@ describe('runCli', () => {
     expect(`${dir}/20261117-a.md` in failing.files).toBe(true);
 
     const broken = fakeDeps({
-      [`${dir}/20261117-a.md`]: 'jenis: salah\nx',
+      [`${dir}/20261117-a.md`]: 'salah: x',
       'server/CHANGELOG.md': '# C\n',
     });
     expect(runCli(['compile', 'server', '1.0.0', '2026-11-17'], broken)).toBe(1);
@@ -324,11 +412,11 @@ describe('runCli', () => {
 
   test('compile dua kali untuk versi sama gagal tanpa mengubah apa pun', () => {
     const deps = fakeDeps({
-      [`${dir}/20261117-a.md`]: 'jenis: ditambah\nFitur A.',
+      [`${dir}/20261117-a.md`]: 'feat: Fitur A.',
       'server/CHANGELOG.md': '# C\n',
     });
     expect(runCli(['compile', 'server', '1.0.0', '2026-11-17'], deps)).toBe(0);
-    deps.files[`${dir}/20261118-b.md`] = 'jenis: diubah\nB.';
+    deps.files[`${dir}/20261118-b.md`] = 'change: B.';
     const before = deps.files['server/CHANGELOG.md'];
     expect(runCli(['compile', 'server', '1.0.0', '2026-11-18'], deps)).toBe(1);
     expect(deps.files['server/CHANGELOG.md']).toBe(before);

@@ -86,8 +86,17 @@ commit, squash, rebase. Konsekuensi: semua pagar ada **di dalam workflow** (prov
 ### 5.2 Changelog: berkas fragmen
 - Folder `server/changelog.d/` dan `desktop/changelog.d/`. Satu berkas per perubahan, nama `<yyyymmdd>-<slug>.md` (nomor PR belum
   ada saat fragmen ditulis, jadi tidak dipakai; bentrok nama diselesaikan penulis dengan slug lain).
-  Baris pertama `jenis: ditambah|diubah|diperbaiki|internal`, sisanya teks satu paragraf berbahasa Indonesia santai, ditulis
-  untuk pengguna (jangan sebut nama berkas atau fungsi). `internal` = hanya tampil di GitHub Release dan tidak di web.
+  Isi berkas = satu butir atau lebih, SATU per baris, bergaya pesan commit: `tipe(area): ringkasan` (area boleh dihilangkan;
+  ringkasan maks. 200 karakter, bahasa Indonesia teknis ringan yang tetap terbaca staf, tanpa nama berkas atau fungsi karena
+  teksnya tampil di dialog pembaruan desktop dan GitHub Release). Tipe menentukan bagian: `feat` = Ditambah, `fix` =
+  Diperbaiki, `change`/`refactor`/`perf` = Diubah, `chore`/`ci`/`docs`/`test`/`build`/`style` = Internal (hanya tampil di
+  GitHub Release dan tidak di web). Hasil kompilasi mengelompokkan butir per area (abjad; tanpa area di akhir) dan menulis
+  `- <area>: <ringkasan>` (teks polos, tanpa tebal, karena dialog OS menampilkannya apa adanya).
+  **Diubah 2026-11-19, keputusan pemilik produk**: format lama (baris pertama `jenis: ...` lalu satu paragraf maks. 500
+  karakter) diganti format commit ini agar lebih cepat ditulis dan dibaca; fragmen yang sudah ada dikonversi. Pilihan
+  pelaksana (dapat dikoreksi): satu berkas boleh memuat beberapa butir, tanpa baris lanjutan, baris kosong diabaikan.
+  Changelog dari riwayat commit otomatis dipertimbangkan dan ditolak untuk rilis `1.0.0` (riwayat ~1.300 commit penuh
+  perbaikan atas fitur yang belum pernah dirilis dan teks yang terlalu teknis untuk dialog pembaruan); fragmen tetap.
 - `server/CHANGELOG.md` dan `desktop/CHANGELOG.md` memuat bagian per versi (Keep a Changelog). `scripts/changelog.ts` (murni,
   diuji) punya tiga perintah: `validate` (bentuk fragmen), `compile <komponen> <versi> <tanggal>` (menggabung fragmen menjadi
   bagian versi di `CHANGELOG.md`, lalu menghapus fragmennya), `extract <komponen> <versi>` (mengambil satu bagian, untuk isi

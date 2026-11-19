@@ -101,6 +101,20 @@ export function serialLookupQueryOptions(serial: string) {
   });
 }
 
+/**
+ * Serial yang sudah tercatat, dicari sekaligus untuk draft Catat (maks. `SERIAL_LIMITS.batchRows` per permintaan;
+ * pemanggil memecahnya). Selalu segar: status serial (laporan aktif, Rusak) berubah-ubah.
+ */
+export function serialLookupManyQueryOptions(serials: readonly string[]) {
+  return queryOptions({
+    queryKey: serialKeys.lookupMany(serials),
+    queryFn: () => api('serials.lookupMany', { serials: [...serials] }),
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+}
+
 /** Daftar laporan berkursor; filter dikerjakan server. TIDAK masuk whitelist `query-persist`. */
 export type SerialCaseFilter = Omit<SerialCaseListInput, 'cursor'>;
 
@@ -160,11 +174,19 @@ export function serialBuOptionsQueryOptions() {
   });
 }
 
-/** Stiker yang berlaku bagi (item, BU): bahan daftar centang stiker. */
-export function serialStickerOptionsQueryOptions(itemId: string, buId: string) {
+/**
+ * Stiker yang berlaku bagi (item, BU): bahan daftar centang stiker. `serialId` HANYA untuk baris/dialog Cek ulang
+ * (serial yang sudah ada): server lalu tidak menuntut item aktif dan terlihat. Tanpa `serialId` tidak dikirim.
+ */
+export function serialStickerOptionsQueryOptions(itemId: string, buId: string, serialId?: string) {
   return queryOptions({
-    queryKey: serialKeys.stickerOptions(itemId, buId),
-    queryFn: () => api('serials.stickerOptions', { itemId, buId }),
+    queryKey: serialKeys.stickerOptions(itemId, buId, serialId),
+    queryFn: () =>
+      api('serials.stickerOptions', {
+        itemId,
+        buId,
+        ...(serialId ? { serialId } : {}),
+      }),
     enabled: itemId !== '' && buId !== '',
   });
 }

@@ -20,6 +20,7 @@ const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
 
 const dto = (over: Partial<SerialDto> = {}): SerialDto => ({
+  buHistory: [],
   id: 's1',
   buId: 'b1',
   buCode: 'BU1',

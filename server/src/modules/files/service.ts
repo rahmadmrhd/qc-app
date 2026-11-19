@@ -8,6 +8,7 @@ import { appError } from '@server/core/errors';
 import { cachedFileContent, dropCachedFile } from '@server/core/file-cache';
 import { folderIdOf, SETTING_DRIVE_FOLDER_ID, setSettingIfAbsent } from '@server/core/settings';
 import type { UserContext } from '@server/modules/access/context';
+import { readableSerialSql } from '@server/modules/serial/bu-history';
 import type { FileContentDto, FileDto, GetFileInput, UploadFileInput } from '@shared/contract';
 import type { FileOwnerType } from '@shared/files';
 import { isImageMime, MAX_UNATTACHED_UPLOADS } from '@shared/files';
@@ -147,10 +148,13 @@ async function serialFileVisible(
   serialBuIds: readonly string[],
 ): Promise<boolean> {
   if (serialBuIds.length === 0) return false;
-  const row = await env.DB.prepare('SELECT bu_id FROM serials WHERE id = ?')
-    .bind(serialId)
-    .first<{ bu_id: string }>();
-  return row !== null && serialBuIds.includes(row.bu_id.trim());
+  // BU saat ini ATAU BU di riwayat serial (baca; spek serial unik se-sistem §5.3).
+  const row = await env.DB.prepare(
+    `SELECT 1 AS ok FROM serials s WHERE s.id = ? AND ${readableSerialSql('s', serialBuIds.length)}`,
+  )
+    .bind(serialId, ...serialBuIds, ...serialBuIds)
+    .first<{ ok: number }>();
+  return row !== null;
 }
 
 /** Item pemilik berkas terlihat bagi viewer? SATU kueri (`LIMIT 1`); himpunan kosong tanpa kueri. */

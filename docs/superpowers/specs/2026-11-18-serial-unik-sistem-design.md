@@ -34,7 +34,7 @@ Keputusan pemilik (semua 2026-11-18):
 `serial_id` (PK bagian), `bu_id` (PK bagian), `first_at` (ISO UTC, saat BU itu mulai terlibat), `left_at` (ISO UTC atau `''`; terisi saat serial meninggalkan BU itu). Indeks sekunder (`bu_id`, `serial_id`) untuk filter daftar. **Invarian**: `serials.bu_id` selalu punya baris dengan `left_at = ''`; paling banyak satu baris per serial berstatus "saat ini". Isi awal (backfill idempoten): satu baris per serial dari `serials.bu_id`, `first_at = created_at`. Backfill yang sama dijalankan lagi tiap start server (`INSERT ... SELECT ... WHERE NOT EXISTS`, seperti `backfillPostelStickers`) agar rollback ke image lama yang menulis serial tanpa baris penghubung tetap pulih saat maju lagi.
 
 ### 4.2 Keunikan serial
-Indeks baru `serials_serial` (unik pada `serial`) menggantikan `serials_bu_serial` (indeks lama dipertahankan sampai rilis berikutnya: expand, lalu contract). Migrasi membuat indeks unik lewat SQL bersyarat: bila **belum ada serial ganda** lintas BU, indeks dibuat; bila ada, dilewati tanpa menggagalkan start (hanya peringatan log; keunikan dijaga di aplikasi, §5.1) sampai skrip penyatuan (§8) dijalankan dan indeks dibuat pada start berikutnya (`ensureSerialUniqueIndex` idempoten saat boot). Peta konflik (`mapDuplicateError`/`SERIAL_CONFLICTS`) mendapat nama indeks baru.
+Indeks baru `serials_serial` (unik pada `serial`) menggantikan `serials_bu_serial` (indeks lama dipertahankan sampai rilis berikutnya: expand, lalu contract). Indeks unik dibuat BERSYARAT oleh `ensureSerialUniqueIndex` (idempoten) saat boot, setelah migrasi, dan pada templat tes, BUKAN oleh migrasi (pemeriksa dump pemulihan menolak `PREPARE`/`SET @var`; diputuskan saat memperbaiki CI 2026-11-19): bila **belum ada serial ganda** lintas BU, indeks dibuat; bila ada, dilewati tanpa menggagalkan start (hanya peringatan log; keunikan dijaga di aplikasi, §5.1) sampai skrip penyatuan (§8) dijalankan dan indeks dibuat pada start berikutnya. Peta konflik (`mapDuplicateError`/`SERIAL_CONFLICTS`) mendapat nama indeks baru.
 
 ### 4.3 Kolom lain
 - `serial_cases.number`: `VARCHAR(32)` diperlebar menjadi `VARCHAR(64)` (nomor baru memuat kode BU; kode BU maks. 32 pada skema, validasi lokasi memakai maks. 10).
@@ -82,7 +82,7 @@ Tiap baris (satu per serial ternormalisasi): server mencari serial **secara glob
 ## 7. Keamanan dan privasi
 
 - Penegakan hak tetap di server; web hanya membatasi pilihan.
-- Kebocoran lintas BU yang **disengaja dan minimal**: pencatat BU mana pun dapat mengetahui bahwa sebuah serial sudah ada (dari `lookupMany` dan hasil simpan) beserta item, BU saat ini, dan status. Ini konsekuensi langsung dari aturan "entri serial sama menjadi cek ulang lintas BU". Tidak ada catatan, riwayat, nama lokasi, atau data pelaku. Menunggu persetujuan (§11).
+- Kebocoran lintas BU yang **disengaja dan minimal**: pencatat BU mana pun dapat mengetahui bahwa sebuah serial sudah ada (dari `lookupMany` dan hasil simpan) beserta item, BU saat ini, dan status. Ini konsekuensi langsung dari aturan "entri serial sama menjadi cek ulang lintas BU". Tidak ada catatan, riwayat, nama lokasi, atau data pelaku. Disetujui pemilik produk 2026-11-18 (§11 butir 1).
 - Pindah BU melalui jalur Catat dapat dilakukan pengguna yang tidak berhak di BU asal; konsekuensinya BU asal kehilangan hak tulis (tetap membaca). Dicatat di linimasa sebagai kejadian berpelaku.
 - Pesan galat tanpa nama BU lain selain yang sudah diungkap di atas.
 
@@ -107,7 +107,7 @@ Tiap baris (satu per serial ternormalisasi): server mencari serial **secara glob
 3. **Web** (§6) dan dokumen (spek induk butir 4 dan 67, `CLAUDE.md`, panduan, checklist).
 4. **Penyelarasan skrip migrasi data lama** (§8 butir 3) dan peluncuran.
 
-## 11. Keputusan perancang yang menunggu persetujuan pemilik
+## 11. Keputusan perancang (SEMUA disetujui pemilik produk 2026-11-18; butir 3 dan 5 diubah pemilik seperti tertulis)
 
 1. **Pengungkapan lintas BU minimal** (§7): pencatat BU mana pun melihat item, BU saat ini, dan status serial yang sudah ada. Alternatif: hanya "serial sudah tercatat" tanpa detail (item tak bisa dicocokkan di draft, jadi item beda tidak terdeteksi sebelum simpan).
 2. **Item beda = ditolak** (bukan mengubah item diam-diam); pengguna mengubah item lewat detail serial.

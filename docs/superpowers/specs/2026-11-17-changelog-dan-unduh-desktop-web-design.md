@@ -37,7 +37,9 @@ installer (bagian 4), panduan interaktif baru (halaman informasi sederhana; tida
 - Hanya tampil di GitHub Release.
 ```
 - Tiap versi satu bagian `## [X.Y.Z] - YYYY-MM-DD` (tanggal WIB), terbaru di atas. Bagian jenis kosong tidak ditulis; `### Internal` ditulis
-  bila ada fragmen `internal`. `scripts/changelog.ts compile` menghasilkannya persis begini.
+  bila ada fragmen bertipe `chore`/`ci`/`docs`/`test`/`build`/`style`. `scripts/changelog.ts compile` menghasilkannya persis begini.
+  Sejak 2026-11-19 (keputusan pemilik; spek rilis semver 5.2) butir yang berarea ditulis `- <area>: <ringkasan>` dan
+  dikelompokkan per area, jadi parser web memperlakukan isi butir sebagai teks biasa.
 - Parser murni `shared/changelog.ts`: `parseChangelog(markdown): ChangelogRelease[]` dan tipe `ChangelogRelease = { version, date,
   groups: { added: string[]; changed: string[]; fixed: string[] } }` (**`Internal` dibuang**, tak pernah sampai ke pengguna). Toleran:
   baris tak dikenal diabaikan, versi/tanggal tak valid melewatkan bagian itu (bukan menggagalkan seluruh berkas), tiap butir dipotong
