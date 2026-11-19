@@ -14,7 +14,7 @@
     "dev:server": "bun run --cwd server dev",
     "dev:web": "bun run --cwd web dev",
     "build:web": "bun run --cwd web build",
-    "build:desktop": "bun run build:web && bun run --cwd desktop dist",
+    "build:desktop": "bun run build && bun run --cwd desktop dist",
     "check:ui-key": "bun run scripts/check-ui-key.ts",
     "changelog": "bun run scripts/changelog.ts",
     "release:prepare": "bun run scripts/release-prepare.ts",

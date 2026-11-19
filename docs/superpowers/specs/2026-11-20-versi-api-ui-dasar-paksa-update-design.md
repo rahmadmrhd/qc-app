@@ -41,8 +41,10 @@ Seluruh butir di bawah disetujui pemilik produk pada 2026-11-20 dan menggantikan
 - `GET /api/ping` mengembalikan `{ ok, version, build }` (`server/src/core/build-info.ts`; `version` = semver server, kini `0.0.0`).
   Jalur itu ada di daftar izin proksi desktop dan tak butuh sesi.
 - Manifest UI (`countrylock/src/ui-manifest.ts`): `uiVersion` berupa **hash SHA-256** (tidak berurutan), `minBridge`, `files`,
-  `createdAt`. Seluruh `server/dist` (termasuk `ui-manifest.json`) disalin ke installer sebagai `resources/ui-baseline`
-  (`desktop/electron-builder.yml`), jadi UI dasar punya manifest sendiri.
+  `createdAt`. Seluruh `server/dist` disalin ke installer sebagai `resources/ui-baseline` (`desktop/electron-builder.yml`).
+  `ui-manifest.json` ditulis HANYA oleh skrip akar `bun run build` (`scripts/build-ui-manifest.ts`), bukan `build:web`; sebelum
+  koreksi 2026-11-20 `build:desktop` dan job `desktop` di CI memakai `build:web` sehingga installer tak membawa manifest
+  (lihat bagian 11, penyimpangan 7).
 - `desktop/src/main/ui/ui-bundle.ts`: `activeRoot = bundel aktif ?? baselineDir` (baris 419); bundel unduhan dibuang hanya bila ID
   kunci atau `BRIDGE_VERSION` berubah (baris 200-210); tak ada perbandingan dengan UI dasar.
 - Antrean offline PWA kedaluwarsa dalam 24 jam; Background Sync (`web/public/sync-sw.js`) mengirim permintaan dalam bentuk saat
@@ -166,7 +168,9 @@ Yang sudah dibangun:
   salinan di `localStorage` `qc.api.apis`); potret kontrak `shared/api-contract.snapshot.json` (`shared/api-snapshot.ts`,
   `bun run api:snapshot` dan `--check`) dengan tes superset.
 - Fase 2 (UI dasar menang): `desktop/src/main/ui/ui-bundle.ts` membuang bundel unduhan yang `createdAt`-nya <= UI dasar, dan
-  manifest server yang tak lebih baru dari UI dasar tidak diterapkan. Proksi desktop (`desktop/src/main/api-proxy.ts`,
+  manifest server yang tak lebih baru dari UI dasar tidak diterapkan. Manifest UI dasar dijamin ada di installer oleh
+  `build:desktop` (kini `bun run build` lalu `desktop dist`), job `desktop` di `ci.yml` (`bun run build`), dan `verify-pack`
+  (x64 penuh dan arm64 statis menolak hasil kemas tanpa `resources/ui-baseline/ui-manifest.json` yang lolos `parseUiManifest`). Proksi desktop (`desktop/src/main/api-proxy.ts`,
   `PROXY_ALLOW`) mengizinkan `/api/v<n>/`.
 - Fase 4 (kebijakan kerja): `CLAUDE.md` dan `docs/adding-a-module.md` (bagian "Mengubah kontrak yang merusak").
 
@@ -189,6 +193,12 @@ Penyimpangan dari rancangan:
 6. Di luar rancangan, untuk konsistensi: `server/src/app.ts` memeriksa `isServerPath` SEBELUM `staticDir`, sehingga `/api/v2/*`
    yang tak dikenal menjawab 404 (bukan 500 saat tanpa `c.env`). `ui-bundle.ts` mengosongkan ETag saat peluncuran bila tak ada
    bundel yang dipegang, agar pemeriksaan pertama tidak menjawab 304 atas manifest yang bundelnya sudah dibuang.
+
+7. Koreksi setelah review akhir (2026-11-20): rancangan awal mengira `server/dist` selalu memuat `ui-manifest.json`; kenyataannya
+   `build:web` tak menulisnya dan Vite mengosongkan `server/dist`, jadi installer rilis tak membawa manifest dan aturan UI dasar
+   menang tak pernah aktif. `build:desktop` dan CI desktop dialihkan ke `bun run build`, `verify-pack` menegaskan manifest ada
+   dan sah, dan tes penjaga (`desktop/scripts/packaging-config.test.ts`, `verify-pack-args.test.ts`, `scripts/ci-workflows.test.ts`)
+   mencegah regresi.
 
 Keputusan pemilik yang dicatat di sini: bagian 3 (2026-11-20). Pertanyaan terbuka bagian 10 belum diputuskan, kecuali yang
 tercakup oleh bagian 3.

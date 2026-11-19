@@ -274,10 +274,11 @@ jobs:
       - name: Tes desktop
         if: needs.changes.outputs.desktop_tests == 'true'
         run: bun run --cwd desktop test
-      # Installer membawa UI dasar dari build web (server/dist).
-      - name: Build web
+      # Installer membawa UI dasar dari server/dist: `bun run build` (bukan `build:web` saja) agar `ui-manifest.json` ikut
+      # tertulis; desktop memakainya untuk aturan "UI dasar yang lebih baru menang" (dicek `verify-pack`).
+      - name: Build web dan manifest UI dasar
         if: needs.changes.outputs.desktop_pack == 'true'
-        run: bun run build:web
+        run: bun run build
       - name: Kemas x64 dan arm64
         if: needs.changes.outputs.desktop_pack == 'true'
         run: bun run --cwd desktop pack:all
