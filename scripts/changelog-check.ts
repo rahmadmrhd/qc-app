@@ -66,6 +66,14 @@ export function isMetadataOnly(files: string[], component: Component): boolean {
 }
 
 /**
+ * Semua berkas adalah metadata rilis dari SALAH SATU komponen yang dirilis (rilis gabungan memuat metadata server dan desktop
+ * dalam satu commit). Daftar berkas kosong = true.
+ */
+export function isMetadataOnlyOf(files: string[], components: Component[]): boolean {
+  return normalize(files).every((path) => components.some((c) => isMetadataOf(path, c)));
+}
+
+/**
  * PR yang hanya berisi metadata rilis (mis. sinkron `main` -> `dev`): SEMUA berkas adalah metadata (versi, bun.lock,
  * CHANGELOG, fragmen) DAN `CHANGELOG.md` komponen ikut berubah (hanya `package.json` + `bun.lock` = kenaikan dependensi,
  * bukan rilis). Tanpa `component` metadata kedua komponen diterima. Daftar kosong bukan PR rilis.

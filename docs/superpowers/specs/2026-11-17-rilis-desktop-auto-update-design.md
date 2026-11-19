@@ -108,8 +108,12 @@ menolak berjalan tanpanya. Server tidak memegang kunci apa pun dan hanya menerus
 - Pembaruan berjalan tanpa login (Country Lock tak butuh login); tanpa Bearer dan tanpa cookie.
 - `electron-updater` ditambah ke dependensi desktop (versi dipatok); build desktop menyertakannya di asar.
 
-### 5.6 Workflow rilis desktop (`release-desktop.yml`)
-`pull_request_target` (closed, merged, base `main`) dari `release/desktop-vX.Y.Z`:
+### 5.6 Workflow rilis desktop (jalur desktop di `release.yml`)
+**Diubah 2026-11-19 (keputusan pemilik produk, `2026-11-19-rilis-gabungan-design.md`)**: workflow ini tidak lagi berkas sendiri (`release-desktop.yml`
+dihapus); jalurnya menjadi job bersyarat di `release.yml` bersama jalur server, dengan nama job `build-desktop` dan `publish-desktop` (yang di bawah
+disebut `build` dan `publish`), `meta` dan `ci` dipakai bersama, dan pemicu `workflow_dispatch` memakai input `komponen`+`versi` (pemulihan) atau `tarik`.
+Isi jalur (identitas, `ci` dengan `desktop-check`, build tanpa kunci penandatangan, publish dengan kunci, pemisahan rahasia, penarikan) tidak berubah.
+`pull_request_target` (closed, merged, base `main`) dari `release/desktop-vX.Y.Z` (atau cabang gabungan `release/gabungan-server-vX.Y.Z-desktop-vA.B.C`):
 1. **meta**: pagar identitas yang sama dengan rilis server (repo sama, cabang cocok regex, `desktop/package.json` pada commit merge
    = versi di nama cabang, merge commit 2 induk, bagian CHANGELOG versi itu ada); logika dipakai bersama (`scripts/release-identity.ts`).
 2. **test**: memanggil `ci.yml` pada commit merge dengan `desktop-check` benar (tes desktop, kemas x64+arm64, `verify-pack`); karena desktop
@@ -187,7 +191,7 @@ ditarik lewat `withdraw`; 9: `app-update.yml` dua baris buatan aplikasi sendiri)
    melampirkan tak menambah paparan; Release menjadi arsip installer di luar Drive. Pengguna dan aplikasi tetap mengunduh lewat server QC, bukan GitHub.
    Pemulihan `versi` menimpa lampiran (`gh release upload --clobber`) agar sama dengan Drive. Menggantikan keputusan pelaksana semula; sesuai 5.6 butir 4
    revisi 1-2 ("berisi installer"). Bila repositori kembali privat, lampiran hanya terlihat pemilik/kolaborator.
-8. **Tanpa saklar `RELEASE_FLOW`** pada `release-desktop.yml` (rilis desktop tak men-deploy production; `release:prepare` yang menjaga), penarikan lewat
+8. **Tanpa saklar `RELEASE_FLOW`** pada jalur desktop (sejak 2026-11-19 bagian dari `release.yml`; saklar hanya berlaku pada jalur server) (rilis desktop tak men-deploy production; `release:prepare` yang menjaga), penarikan lewat
    job `withdraw` terpisah, `ci` memakai `desktop-check` tanpa daftar berkas (semua pemeriksaan, fail-safe), dan `sync-dev.yml` punya grup concurrency
    sendiri.
 9. **`app-update.yml` ditulis aplikasi sendiri** (`<userData>/updater/`, lewat setter publik `updateConfigPath`): satu-satunya cara agar provider kustom

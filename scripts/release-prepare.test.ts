@@ -79,6 +79,26 @@ function fakeShell(overrides: Record<string, Result | Result[]> = {}): Shell & {
       out: 'server/package.json\nbun.lock\nserver/CHANGELOG.md\nserver/changelog.d/20261117-a.md\n',
     },
     'gh pr create': { code: 0, out: 'https://github.com/o/r/pull/9\n' },
+    // komponen desktop dan rilis gabungan
+    'git ls-tree --name-only origin/dev -- desktop/changelog.d/': {
+      code: 0,
+      out: 'desktop/changelog.d/20261117-b.md\n',
+    },
+    'git tag --list desktop-v*': { code: 0, out: '' },
+    'git show origin/dev:desktop/package.json': {
+      code: 0,
+      out: '{\n  "name": "@qc/desktop",\n  "version": "0.0.0"\n}\n',
+    },
+    'git ls-remote --heads origin release/desktop-v1.0.0': { code: 0, out: '' },
+    'git rev-parse --verify --quiet refs/heads/release/desktop-v1.0.0': { code: 1, out: '' },
+    'git ls-remote --heads origin release/gabungan-server-v1.0.0-desktop-v1.0.0': {
+      code: 0,
+      out: '',
+    },
+    'git rev-parse --verify --quiet refs/heads/release/gabungan-server-v1.0.0-desktop-v1.0.0': {
+      code: 1,
+      out: '',
+    },
   };
   return {
     calls,
@@ -187,6 +207,23 @@ describe('prepareRelease: prasyarat (berhenti SEBELUM membuat cabang)', () => {
       [`git diff --name-only ${STAGING} origin/dev`]: { code: 0, out: '' },
     });
     await expect(run(empty)).resolves.toBeDefined();
+  });
+
+  test('selisih staging..dev hanya berkas di luar image server (kode desktop, dokumentasi) lolos: PR itu tak men-deploy staging', async () => {
+    const outside = fakeShell({
+      [`git diff --name-only ${STAGING} origin/dev`]: {
+        code: 0,
+        out: 'desktop/src/main/index.ts\ndesktop/changelog.d/20261119-a.md\ndocs/ci-cd.md\n',
+      },
+    });
+    await expect(run(outside)).resolves.toBeDefined();
+    const mixed = fakeShell({
+      [`git diff --name-only ${STAGING} origin/dev`]: {
+        code: 0,
+        out: 'docs/ci-cd.md\nweb/src/main.tsx\n',
+      },
+    });
+    await expect(run(mixed)).rejects.toThrow(/staging/);
   });
 
   test('tanpa fragmen di origin/dev: berhenti sebelum membuat cabang', async () => {
@@ -373,6 +410,206 @@ describe('parseArgs', () => {
     expect(() => parseArgs(['server'])).toThrow();
     expect(() => parseArgs(['server', 'minor', 'extra'])).toThrow();
     expect(() => parseArgs(['web', 'minor'])).toThrow();
+  });
+});
+
+const BOTH_BRANCH = 'release/gabungan-server-v1.0.0-desktop-v1.0.0';
+const bothFiles = () => ({
+  ...baseFiles(),
+  'desktop/package.json': '{\n  "name": "@qc/desktop",\n  "version": "0.0.0"\n}\n',
+  'desktop/CHANGELOG.md': '# Changelog desktop\n',
+  'desktop/changelog.d/20261117-b.md': 'jenis: diubah\nFitur B.',
+});
+const BOTH_STAGED =
+  'server/package.json\ndesktop/package.json\nbun.lock\nserver/CHANGELOG.md\ndesktop/CHANGELOG.md\nserver/changelog.d/20261117-a.md\ndesktop/changelog.d/20261117-b.md\n';
+const both = (shell: Shell, files = fakeFiles(bothFiles()), extra: { dryRun?: boolean } = {}) =>
+  prepareRelease({
+    component: 'both',
+    bump: '1.0.0',
+    desktopBump: '1.0.0',
+    shell,
+    files,
+    now: NOW,
+    ...extra,
+  });
+
+describe('prepareRelease: rilis gabungan server + desktop (satu cabang, satu commit, satu PR)', () => {
+  test('jalur sukses: satu cabang gabungan, kedua versi dan changelog diubah, satu PR berbadan kedua bagian', async () => {
+    const shell = fakeShell({ 'git diff --cached --name-only': { code: 0, out: BOTH_STAGED } });
+    const files = fakeFiles(bothFiles());
+    const result = await both(shell, files);
+    expect(result).toEqual({
+      branch: BOTH_BRANCH,
+      version: 'server 1.0.0 + desktop 1.0.0',
+      versions: { server: '1.0.0', desktop: '1.0.0' },
+      prUrl: 'https://github.com/o/r/pull/9',
+    });
+    expect(mutating(shell)).toEqual([
+      `git switch --no-track -c ${BOTH_BRANCH} origin/dev`,
+      'bun install --lockfile-only',
+      'git add server/package.json desktop/package.json bun.lock server/CHANGELOG.md desktop/CHANGELOG.md server/changelog.d desktop/changelog.d',
+      expect.stringMatching(/^git commit -m chore\(rilis\): server v1\.0\.0 \+ desktop v1\.0\.0/),
+      `git push --set-upstream origin ${BOTH_BRANCH}`,
+      'git switch feat/kerja',
+      expect.stringMatching(
+        new RegExp(
+          `^gh pr create --base main --head ${BOTH_BRANCH.replaceAll('/', '\\/')} --title `,
+        ),
+      ),
+    ]);
+    expect(files.files['server/package.json']).toContain('"version": "1.0.0"');
+    expect(files.files['desktop/package.json']).toContain('"version": "1.0.0"');
+    expect(files.files['server/CHANGELOG.md']).toContain('## [1.0.0] - 2026-11-18');
+    expect(files.files['desktop/CHANGELOG.md']).toContain('## [1.0.0] - 2026-11-18');
+    expect(files.files['server/changelog.d/20261117-a.md']).toBeUndefined();
+    expect(files.files['desktop/changelog.d/20261117-b.md']).toBeUndefined();
+    const pr = shell.calls.find((c) => c.startsWith('gh pr create')) ?? '';
+    expect(pr).toContain('--title Rilis server v1.0.0 + desktop v1.0.0');
+    expect(pr).toContain('Fitur A.');
+    expect(pr).toContain('Fitur B.');
+  });
+
+  test('kenaikan dihitung per komponen (versi dan tag masing-masing)', async () => {
+    const shell = fakeShell({
+      'git diff --cached --name-only': { code: 0, out: BOTH_STAGED },
+      'git tag --list desktop-v*': { code: 0, out: 'desktop-v1.4.0\n' },
+      'git show origin/dev:desktop/package.json': {
+        code: 0,
+        out: '{\n  "name": "@qc/desktop",\n  "version": "1.4.0"\n}\n',
+      },
+      'git ls-remote --heads origin release/gabungan-server-v1.0.0-desktop-v1.4.1': {
+        code: 0,
+        out: '',
+      },
+      'git rev-parse --verify --quiet refs/heads/release/gabungan-server-v1.0.0-desktop-v1.4.1': {
+        code: 1,
+        out: '',
+      },
+    });
+    const result = await prepareRelease({
+      component: 'both',
+      bump: '1.0.0',
+      desktopBump: 'patch',
+      shell,
+      files: fakeFiles(bothFiles()),
+      now: NOW,
+    });
+    expect(result.branch).toBe('release/gabungan-server-v1.0.0-desktop-v1.4.1');
+  });
+
+  test('prasyarat server berlaku (saklar RELEASE_FLOW, staging) dan berhenti SEBELUM membuat cabang', async () => {
+    const flow = fakeShell({ 'gh variable get RELEASE_FLOW': { code: 0, out: 'langsung\n' } });
+    await expect(both(flow)).rejects.toThrow(/RELEASE_FLOW/);
+    expect(mutating(flow)).toEqual([]);
+    const staging = fakeShell({
+      'git rev-parse refs/remotes/deployed/staging': { code: 128, out: '' },
+    });
+    await expect(both(staging)).rejects.toThrow(/staging/);
+    expect(mutating(staging)).toEqual([]);
+  });
+
+  test('tanpa fragmen pada SALAH SATU komponen: ditolak sebelum membuat cabang, menyebut komponennya', async () => {
+    const noDesktop = fakeShell({
+      'git ls-tree --name-only origin/dev -- desktop/changelog.d/': {
+        code: 0,
+        out: 'desktop/changelog.d/.gitkeep\n',
+      },
+    });
+    await expect(both(noDesktop)).rejects.toThrow(/desktop\/changelog\.d/);
+    expect(mutating(noDesktop)).toEqual([]);
+    const noServer = fakeShell({
+      'git ls-tree --name-only origin/dev -- server/changelog.d/': {
+        code: 0,
+        out: 'server/changelog.d/.gitkeep\n',
+      },
+    });
+    await expect(both(noServer)).rejects.toThrow(/server\/changelog\.d/);
+    expect(mutating(noServer)).toEqual([]);
+  });
+
+  test('versi eksplisit tidak sah pada salah satu komponen ditolak sebelum membuat cabang', async () => {
+    const shell = fakeShell();
+    await expect(
+      prepareRelease({
+        component: 'both',
+        bump: '1.0.0',
+        desktopBump: 'besar',
+        shell,
+        files: fakeFiles(bothFiles()),
+        now: NOW,
+      }),
+    ).rejects.toThrow();
+    expect(mutating(shell)).toEqual([]);
+  });
+
+  test('cabang gabungan sudah ada di origin atau lokal ditolak', async () => {
+    const remote = fakeShell({
+      [`git ls-remote --heads origin ${BOTH_BRANCH}`]: {
+        code: 0,
+        out: `abc\trefs/heads/${BOTH_BRANCH}\n`,
+      },
+    });
+    await expect(both(remote)).rejects.toThrow(/gabungan/);
+    expect(mutating(remote)).toEqual([]);
+  });
+
+  test('indeks tanpa CHANGELOG salah satu komponen, atau memuat berkas lain, membatalkan rilis dan memulihkan cabang asal', async () => {
+    for (const out of [
+      'server/package.json\ndesktop/package.json\nbun.lock\nserver/CHANGELOG.md\nserver/changelog.d/20261117-a.md\n',
+      `${BOTH_STAGED}server/src/app.ts\n`,
+    ]) {
+      const shell = fakeShell({ 'git diff --cached --name-only': { code: 0, out } });
+      await expect(both(shell)).rejects.toThrow(/metadata|CHANGELOG/);
+      expect(mutating(shell).some((c) => c.startsWith('git commit'))).toBe(false);
+      expect(mutating(shell).some((c) => c.startsWith('git push'))).toBe(false);
+      expect(shell.calls).toContain('git switch feat/kerja');
+      expect(shell.calls).toContain(`git branch -D ${BOTH_BRANCH}`);
+    }
+  });
+
+  test('--dry-run: hanya perintah baca, perintah pengubah dicetak, tanpa PR', async () => {
+    const shell = fakeShell();
+    const printed: string[] = [];
+    const files = fakeFiles(bothFiles());
+    const result = await prepareRelease({
+      component: 'both',
+      bump: '1.0.0',
+      desktopBump: '1.0.0',
+      shell,
+      files,
+      now: NOW,
+      dryRun: true,
+      log: (line) => printed.push(line),
+    });
+    expect(result.prUrl).toBeNull();
+    expect(result.branch).toBe(BOTH_BRANCH);
+    expect(mutating(shell)).toEqual([]);
+    expect(files.files['desktop/package.json']).toContain('"version": "0.0.0"');
+    expect(printed.join('\n')).toContain(`git switch --no-track -c ${BOTH_BRANCH} origin/dev`);
+  });
+});
+
+describe('parseArgs: both', () => {
+  test('both <kenaikan-server> <kenaikan-desktop> [--dry-run]', () => {
+    expect(parseArgs(['both', 'minor', 'patch'])).toEqual({
+      component: 'both',
+      bump: 'minor',
+      desktopBump: 'patch',
+      dryRun: false,
+    });
+    expect(parseArgs(['both', '1.0.0', '2.0.0', '--dry-run'])).toEqual({
+      component: 'both',
+      bump: '1.0.0',
+      desktopBump: '2.0.0',
+      dryRun: true,
+    });
+  });
+
+  test('jumlah argumen salah ditolak: both butuh dua kenaikan, komponen tunggal tepat satu', () => {
+    expect(() => parseArgs(['both', 'minor'])).toThrow();
+    expect(() => parseArgs(['both', 'minor', 'patch', 'major'])).toThrow();
+    expect(() => parseArgs(['server', 'minor', 'patch'])).toThrow();
+    expect(() => parseArgs(['both'])).toThrow();
   });
 });
 

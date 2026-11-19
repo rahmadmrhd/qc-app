@@ -1,9 +1,14 @@
 // Guard rilis (pengganti uji ulang; workflow .github/workflows/release.yml, job `guard`; rancangan
 // docs/superpowers/specs/2026-11-17-rilis-semver-design.md bagian 5.4). Kode yang dirilis harus identik dengan yang sudah
-// berjalan di staging: commit rilis harus MENDAHULUI `refs/deployed/staging` (status `ahead`, atau `identical`) dan semua
-// berkas yang berubah sejak itu hanya metadata rilis server (versi, bun.lock, CHANGELOG, fragmen), dan CHANGELOG sudah
-// memuat bagian versinya. Murni: perbandingan dilakukan pemanggil lewat `gh api compare`.
-import { isMetadataOnly } from './changelog-check';
+// berjalan di staging: commit rilis harus MENDAHULUI `refs/deployed/staging` (status `ahead`, atau `identical`) dan setiap
+// berkas yang berubah sejak itu adalah metadata rilis (versi, bun.lock, CHANGELOG, fragmen) ATAU berkas yang tak masuk image
+// server (dokumentasi, kode desktop; klasifikasi `image` di `ci-changes.ts`, satu-satunya definisi "men-deploy staging"), dan
+// CHANGELOG sudah memuat bagian versinya. Berkas jenis kedua tak pernah men-deploy staging (PR-nya tak memajukan
+// `refs/deployed/staging`), jadi menolaknya menggagalkan rilis tanpa alasan (keputusan pemilik 2026-11-19). Murni: perbandingan
+// dilakukan pemanggil lewat `gh api compare`.
+import type { Component } from './changelog';
+import { isMetadataOnlyOf } from './changelog-check';
+import { classify } from './ci-changes';
 
 export interface GuardInput {
   /** `status` dari `repos/R/compare/<refs/deployed/staging>...<sha>`: ahead | identical | behind | diverged. */
@@ -15,15 +20,34 @@ export interface GuardInput {
    * tak lengkap dan tak dapat dipercaya (gagal tertutup). Tak diberikan = panjang `files`; bukan angka = ditolak.
    */
   fileCount?: number;
-  /** `server/CHANGELOG.md` memuat bagian `## [versi]`. */
+  /** `CHANGELOG.md` setiap komponen yang dirilis memuat bagian `## [versi]`-nya (dihitung pemanggil). */
   changelogHasVersion: boolean;
+  /**
+   * Komponen yang dirilis commit ini; berkas metadata komponen-komponen ini sah berbeda dari staging. Bawaan `['server']`
+   * (rilis server saja: metadata desktop tetap ditolak). Rilis gabungan memberi `['server', 'desktop']`.
+   */
+  components?: Component[];
+}
+
+/**
+ * Berkas yang mengubah isi image server (jalur tak dikenal dianggap mengubahnya: `classify` gagal tertutup). Jalur berspasi atau
+ * berkarakter kontrol di ujung juga dianggap mengubahnya: `classify` memangkasnya, sedangkan Docker tidak (`a.md ` tetap di-COPY).
+ */
+const touchesImage = (path: string): boolean => path !== path.trim() || classify([path]).image;
+
+/**
+ * Berkas selisih yang BELUM berjalan di staging dan tak boleh ikut rilis server: bukan metadata rilis `components` dan masuk
+ * image server. Dipakai guard CI (`evaluateGuard`) dan `release:prepare` agar keduanya satu definisi.
+ */
+export function unverifiedFiles(files: string[], components: Component[] = ['server']): string[] {
+  return files.filter((path) => !isMetadataOnlyOf([path], components) && touchesImage(path));
 }
 
 /** Batas API compare GitHub: daftar `files` maksimum 300 untuk seluruh perbandingan, sisanya terpotong diam-diam. */
 const COMPARE_FILE_LIMIT = 300;
 
 const RECOVERY =
-  'Pulihkan: biarkan dev stabil, ulangi deploy staging, lalu jalankan ulang release.yml lewat workflow_dispatch (input versi).';
+  'Pulihkan: biarkan dev stabil, ulangi deploy staging, lalu jalankan ulang release.yml lewat workflow_dispatch (input komponen dan versi).';
 
 export function evaluateGuard(input: GuardInput): { ok: boolean; reason: string } {
   if (input.compareStatus !== 'ahead' && input.compareStatus !== 'identical') {
@@ -39,16 +63,28 @@ export function evaluateGuard(input: GuardInput): { ok: boolean; reason: string 
       reason: `Daftar berkas perbandingan dengan staging terpotong atau tak terbaca (${COMPARE_FILE_LIMIT} berkas atau lebih): tak dapat dipastikan hanya metadata yang berbeda. ${RECOVERY}`,
     };
   }
-  if (!isMetadataOnly(input.files, 'server')) {
+  const unverified = unverifiedFiles(input.files, input.components);
+  if (unverified.length > 0) {
+    const shown = unverified.slice(0, 5).map((path) => JSON.stringify(path));
+    const more =
+      unverified.length > shown.length ? ` +${unverified.length - shown.length} lagi` : '';
     return {
       ok: false,
-      reason: `Ada perubahan selain metadata rilis yang belum berjalan di staging (kode belum teruji di sana). ${RECOVERY}`,
+      reason: `Ada perubahan yang masuk image server dan belum berjalan di staging (kode belum teruji di sana): ${shown.join(', ')}${more}. ${RECOVERY}`,
     };
   }
   if (!input.changelogHasVersion) {
-    return { ok: false, reason: 'server/CHANGELOG.md belum memuat bagian untuk versi rilis ini.' };
+    return {
+      ok: false,
+      reason:
+        'CHANGELOG.md belum memuat bagian untuk versi rilis ini (server, dan desktop bila ikut dirilis).',
+    };
   }
-  return { ok: true, reason: 'Kode identik dengan staging; hanya metadata rilis yang berbeda.' };
+  return {
+    ok: true,
+    reason:
+      'Isi image server identik dengan staging; yang berbeda hanya metadata rilis dan berkas di luar image (dokumentasi, kode desktop).',
+  };
 }
 
 if (import.meta.main) {
@@ -65,7 +101,11 @@ if (import.meta.main) {
   } catch {
     fileCount = Number.NaN;
   }
+  // Gagal tertutup: hanya nilai persis `server,desktop` yang menambah komponen desktop; selain itu server saja.
+  const components: Component[] =
+    env.COMPONENTS === 'server,desktop' ? ['server', 'desktop'] : ['server'];
   const result = evaluateGuard({
+    components,
     compareStatus: env.COMPARE_STATUS ?? '',
     files,
     fileCount,

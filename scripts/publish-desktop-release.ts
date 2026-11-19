@@ -1,5 +1,5 @@
 /**
- * CLI penerbitan rilis desktop ke folder Drive (dipanggil job `publish` di `.github/workflows/release-desktop.yml`).
+ * CLI penerbitan rilis desktop ke folder Drive (dipanggil job `publish-desktop` di `.github/workflows/release.yml`).
  *
  *   publish:  bun run scripts/publish-desktop-release.ts --version X.Y.Z --dir <folder installer> --changelog-file <berkas> --folder-id <idDrive>
  *   tarik:    bun run scripts/publish-desktop-release.ts --version X.Y.Z --folder-id <idDrive> --withdraw

@@ -1,8 +1,8 @@
 name: Sync Dev
 
 # Menyinkronkan `main` ke `dev` setelah rilis (versi dan changelog baru) lewat git+SSH tanpa PR; isinya hanya metadata, jadi
-# tak perlu deploy staging. Dipanggil `release.yml` (komponen server) dan `release-desktop.yml` (komponen desktop) setelah
-# rilis selesai.
+# tak perlu deploy staging. Dipanggil `release.yml` setelah rilis selesai (komponen server, desktop, atau gabungan keduanya
+# dari satu PR rilis gabungan).
 #
 # Ruleset `dev*` mewajibkan PR dan hanya DEPLOY KEY yang boleh jadi bypass actor di repo akun personal (GitHub App dan app
 # Actions bawaan ditolak GitHub; keputusan pemilik 2026-11-18): deploy key repo ini (akses tulis, bypass HANYA pada ruleset
@@ -13,8 +13,8 @@ name: Sync Dev
 # sungguhan tidak membuka PR: hanya peringatan agar main -> dev diselesaikan manual. Kegagalan di sini hanya peringatan
 # (rilis sudah selesai; keputusan pemilik 2026-11-18).
 #
-# Satu sinkron pada satu waktu (rilis server dan desktop yang selesai berdekatan tak berebut push ke `dev`); grup ini
-# sengaja berbeda dari grup concurrency milik pemanggil.
+# Satu sinkron pada satu waktu (dua rilis yang selesai berdekatan tak berebut push ke `dev`); grup ini sengaja berbeda dari
+# grup concurrency milik pemanggil.
 on:
   workflow_call:
     inputs:
@@ -23,13 +23,18 @@ on:
         type: string
         required: true
       version:
-        description: Versi rilis (X.Y.Z); hanya untuk pesan merge.
+        description: Versi rilis (X.Y.Z); untuk komponen gabungan = versi server. Hanya untuk pesan merge.
         type: string
         required: true
       komponen:
-        description: Komponen yang dirilis (server atau desktop); hanya untuk pesan merge.
+        description: Komponen yang dirilis (server, desktop, atau gabungan); hanya untuk pesan merge.
         type: string
         required: true
+      version-desktop:
+        description: Versi desktop (X.Y.Z); wajib untuk komponen gabungan, harus kosong untuk yang lain.
+        type: string
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -52,12 +57,20 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ inputs.sha }}
           VERSION: ${{ inputs.version }}
+          VERSION_DESKTOP: ${{ inputs.version-desktop }}
           KOMPONEN: ${{ inputs.komponen }}
         run: |
           set -uo pipefail
           [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Commit rilis bukan SHA 40 heksa."; exit 1; }
           [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Versi rilis tidak valid."; exit 1; }
-          [[ $KOMPONEN =~ ^(server|desktop)$ ]] || { echo "::error::Komponen rilis tidak valid."; exit 1; }
+          [[ $KOMPONEN =~ ^(server|desktop|gabungan)$ ]] || { echo "::error::Komponen rilis tidak valid."; exit 1; }
+          if [ "$KOMPONEN" = gabungan ]; then
+            [[ $VERSION_DESKTOP =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::Versi desktop rilis gabungan tidak valid."; exit 1; }
+            label="server v$VERSION + desktop v$VERSION_DESKTOP"
+          else
+            [ -z "$VERSION_DESKTOP" ] || { echo "::error::Versi desktop hanya untuk rilis gabungan."; exit 1; }
+            label="$KOMPONEN v$VERSION"
+          fi
           warn() { echo "::warning::$1 Sinkronkan manual sebelum rilis berikutnya (release:prepare menolak bila main bukan leluhur dev)."; exit 0; }
           [ -n "$SYNC_DEPLOY_KEY" ] || warn "Secret SYNC_DEPLOY_KEY kosong."
           umask 077
@@ -77,7 +90,7 @@ jobs:
             echo "dev sudah memuat commit rilis; tidak ada yang digabung."
             exit 0
           fi
-          if ! git merge --no-ff -m "chore(rilis): sinkron main ke dev ($KOMPONEN v$VERSION)" "$SHA"; then
+          if ! git merge --no-ff -m "chore(rilis): sinkron main ke dev ($label)" "$SHA"; then
             git merge --abort 2> /dev/null || true
             warn "Penggabungan main -> dev konflik. Buat PR main -> dev dan selesaikan konfliknya."
           fi

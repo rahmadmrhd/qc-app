@@ -5,7 +5,7 @@ Dijalankan pemilik pada perangkat nyata sebelum Fase 2 ditulis (rencana `docs/su
 ## Prasyarat
 
 - Laptop Windows 10/11 x64 **bersih** (tanpa Node, Bun, atau Git) dan satu laptop/PC lain sebagai pembanding berisi **aplikasi WPF Country Lock lama**.
-- Installer: `desktop/dist-app/QC-App-Setup-<versi>-<arch>.exe` (`<arch>` = `x64` atau `arm64`; dibuat `bun run build:desktop`, atau diunduh dari Drive hasil `release-desktop.yml`; pasang per pengguna, tanpa hak admin). Untuk uji tanpa installer: `bun run build:web && bun run --cwd desktop pack`, lalu `desktop/dist-app/win-unpacked/QC App.exe`.
+- Installer: `desktop/dist-app/QC-App-Setup-<versi>-<arch>.exe` (`<arch>` = `x64` atau `arm64`; dibuat `bun run build:desktop`, atau diunduh dari Drive hasil `release.yml`; pasang per pengguna, tanpa hak admin). Untuk uji tanpa installer: `bun run build:web && bun run --cwd desktop pack`, lalu `desktop/dist-app/win-unpacked/QC App.exe`.
 - Paket skrip: folder `Country Lock2` (berisi `config.QC`, `MIKROTIK\`, `UBIQUITI\`).
 - Router jump Mikrotik (alamat sesuai `server.ip` di `config.QC`) dan perangkat uji: satu Ubiquiti dan satu Mikrotik, keduanya **bukan** perangkat produksi.
 - Akun QC terdaftar di server (staging `https://qc-dev.rhd.my.id` atau production `https://qc.rhd.my.id`) dan peramban sistem yang dapat login Google.
@@ -150,7 +150,7 @@ Prasyarat: server (staging) sudah memuat rute katalog dengan `DESKTOP_CATALOG_TO
 
 ## J. Pembaruan otomatis (rilis desktop)
 
-Prasyarat: environment `desktop-release`, folder Drive, dan `DESKTOP_RELEASES_FOLDER_ID` di `.env` VPS sudah dipasang (`docs/desktop-release-signing.md`). Dua versi rilis berurutan, mis. N = `1.0.0` dan N+1 = `1.0.1`, sudah diterbitkan lewat `release-desktop.yml`; installer N diambil dari Drive (bukan dari GitHub). Uji pada Windows x64 **dan** Windows arm64 (ulangi J2-J9 di tiap arsitektur). Pembaruan hanya aktif pada aplikasi terpasang (`app.isPackaged`) yang dibangun dengan kunci publik rilis.
+Prasyarat: environment `desktop-release`, folder Drive, dan `DESKTOP_RELEASES_FOLDER_ID` di `.env` VPS sudah dipasang (`docs/desktop-release-signing.md`). Dua versi rilis berurutan, mis. N = `1.0.0` dan N+1 = `1.0.1`, sudah diterbitkan lewat `release.yml`; installer N diambil dari Drive (bukan dari GitHub). Uji pada Windows x64 **dan** Windows arm64 (ulangi J2-J9 di tiap arsitektur). Pembaruan hanya aktif pada aplikasi terpasang (`app.isPackaged`) yang dibangun dengan kunci publik rilis.
 
 | # | Langkah | Hasil yang diharapkan | Hasil |
 |---|---|---|---|
