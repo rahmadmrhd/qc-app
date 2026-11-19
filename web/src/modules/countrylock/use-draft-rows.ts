@@ -161,8 +161,15 @@ export function useDraftRows(bridge: QcBridge): DraftRows {
       if (!readyRef.current) throw new Error('Draft belum siap');
       const current = rowsRef.current;
       if (isRegistered(input.serial)) return 'duplicate';
+      // Peristiwa Multi yang dikirim ulang (muat ulang renderer) membawa `clientId` yang sama.
+      if (input.clientId !== undefined && current.some((row) => row.clientId === input.clientId)) {
+        return 'duplicate';
+      }
       if (current.length >= SERIAL_LIMITS.tableRows) return 'full';
-      const row = buildInjectedRow(input, { clientId: newClientId(), now: new Date() });
+      const row = buildInjectedRow(input, {
+        clientId: input.clientId ?? newClientId(),
+        now: new Date(),
+      });
       setNow([...current, row]);
       await persist();
       return 'added';

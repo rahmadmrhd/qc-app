@@ -108,7 +108,7 @@ interface Credentials {
 
 let injectCounter = 0;
 /** Alasan draft memblokir inject (`null` = tidak diblokir). */
-function blockerOf(draft: DraftRows): string | null {
+export function blockerOf(draft: DraftRows): string | null {
   if (draft.status === 'loading') return 'Memuat draft...';
   if (draft.status === 'error') {
     return `Draft tidak dapat dimuat: ${draft.error ?? 'galat tak dikenal'}. Inject dinonaktifkan agar draft tersimpan tidak tertimpa.`;
