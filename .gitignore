@@ -46,4 +46,4 @@ server/legacy-qc-report/
 server/laporan-*/
 
 # laporan skrip penyatuan serial ganda (berisi Serial Number; jangan dikomit)
-server/merge-serials-report/
+**/merge-serials-report/

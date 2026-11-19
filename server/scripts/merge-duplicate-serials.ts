@@ -18,15 +18,18 @@
 //     dari cek ulang berikutnya seperti BU lain yang pernah dilewati dan tetap dapat membaca riwayatnya.
 //   - Semua perubahan SATU serial ada dalam SATU transaksi (gagal = tidak ada yang berubah untuk serial itu).
 //
-// PENGECUALIAN append-only yang disengaja: skrip operator ini mengubah `serial_id` dan `seq` baris `serial_events`
-// (kejadian kalah dipindahkan dan seq disusun ulang). Tes statis `events-append-only.test.ts` hanya memindai `server/src`,
-// bukan skrip ini; isi kejadian (waktu, pelaku, pesan, data) tidak pernah diubah.
+// PENYIMPANGAN yang disengaja (disetujui, spek serial unik se-sistem §8 butir 2): skrip operator ini meng-UPDATE
+// `serial_events` (`serial_id` dan `seq`; kejadian kalah dipindahkan dan seq disusun ulang) dan `sticker_stock_entries.serial_id`,
+// memindahkan baris anak lain (kasus, jumlah stiker, foto bukti, notifikasi, pemilik berkas) dan menghapus catatan serial
+// yang kalah. Tes statis `events-append-only.test.ts` hanya memindai `server/src`, bukan skrip ini; isi kejadian (waktu,
+// pelaku, pesan, data) tidak pernah diubah.
 //
 // Setelah selesai tanpa sisa serial ganda, mulai ulang server (atau jalankan `ensureSerialUniqueIndex`) agar indeks unik
 // `serials_serial` dibuat. Laporan CSV berisi Serial Number: JANGAN di-commit.
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createDb, type Db, type DbTx } from '@server/core/db';
+import { csvCell } from './csv-cell';
 
 export interface DupRow {
   id: string;
@@ -297,11 +300,6 @@ export function mergeSerial(db: Db, serial: string, now: string): Promise<MergeO
     return { kind: 'merged', plan };
   });
 }
-
-const csvCell = (value: unknown): string => {
-  const text = String(value ?? '');
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-};
 
 export function reportCsv(plans: GroupPlan[], applied: boolean): string {
   const header = [
