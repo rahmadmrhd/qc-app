@@ -7,7 +7,7 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 1 | Buka URL `/exec` di jendela privat | Halaman login dengan tombol "Masuk dengan Google" | FR-A1 |
 | 2 | Login dengan akun A | Kembali ke aplikasi, beranda tampil, URL tanpa `?code=`/`&state=` | FR-A1, FR-A6 |
 | 3 | Refresh halaman (F5) | Tetap login, tidak muncul "Login gagal" | FR-A3, FR-A6 |
-| 4 | Buka Pengaturan Akses → Users, refresh | Tetap di halaman Users (hash di URL) | FR-A6 |
+| 4 | Buka Akses → Pengguna, refresh | Tetap di halaman Pengguna (hash di URL) | FR-A6 |
 | 5 | Buat role "Pemantau" (access: Lihat) dan user B dengan role itu | Tersimpan, tercatat di sheet `audit_log` | FR-M2, FR-M5, FR-M7 |
 | 6 | Login sebagai B di browser lain | Melihat Users/Roles tanpa tombol Tambah/Ubah | FR-P5 |
 | 7 | Sebagai B, di console DevTools frame aplikasi jalankan `google.script.run.withSuccessHandler(console.log).api('access.users.save', JSON.stringify({email:'x@y.com',name:'X',status:'active',roleIds:[]}), localStorage.getItem('qc.session'))` | Respons `"code":"FORBIDDEN"` | FR-P4 |
@@ -19,11 +19,11 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 13 | Buka di ponsel | Sidebar menjadi menu geser, tabel bisa digulir | FR-S1, NFR-7 |
 | 14 | Isi nama user `=1+1`, buka sheet `users` | Sel berisi teks `=1+1`, bukan `2` | NFR-1 |
 | 15 | Ganti tema ke Gelap, refresh; lalu ganti ke Ikuti sistem | Tema bertahan setelah refresh tanpa kedipan putih; toast ikut tema | FR-S4 |
-| 16 | Buat dua lokasi (mis. JKT dan BDG) di Pengaturan Akses → Lokasi | Tersimpan, tercatat di `audit_log` (`location.create`) | FR-L1–L4 |
+| 16 | Buat dua lokasi (mis. JKT dan BDG) di Akses → Lokasi | Tersimpan, tercatat di `audit_log` (`location.create`) | FR-L1–L4 |
 | 17 | Edit user B: tambah penugasan JKT = role Manajer dan BDG = role Pemantau | Tersimpan; tabel Users merangkum penugasan per lokasi | FR-AS1, FR-AS4 |
 | 18 | Login sebagai B | Pemilih lokasi tampil di header ("Semua lokasi"); memilih satu lokasi mengubah label dan bertahan setelah refresh | FR-C1, FR-C2 |
 | 19 | Nonaktifkan lokasi BDG, muat ulang B | BDG hilang dari pemilih | FR-L3, FR-P8 |
-| 20 | Pasang role ber-Pengaturan Akses pada penugasan lokasi tertentu (bukan Semua lokasi) | Menu Pengaturan Akses tidak tampil untuk user itu | FR-P7 |
+| 20 | Pasang role ber-Akses pada penugasan lokasi tertentu (bukan Semua lokasi) | Menu Akses tidak tampil untuk user itu | FR-P7 |
 | 21 | Di console frame aplikasi, panggil `api` method berlokasi dengan `locationIds` berisi lokasi yang tidak diizinkan | `"code":"FORBIDDEN"`, tidak ada data | FR-E2 |
 | 22 | Admin non-super mengedit penugasannya sendiri hingga kehilangan Kelola global | Ditolak dengan pesan jelas | FR-AS5 |
 | 23 | Buka Log Audit, detail `user.update` yang mengubah penugasan | Diff menampilkan lokasi dan role yang ditambah, diubah, dihapus | FR-AU2, FR-AU3 |
@@ -75,7 +75,7 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 69 | Buat item bertipe `0815`, `1/2`, atau `2026-10-15`, lalu buka daftar dan detail | Tipe tampil persis seperti diketik (bukan 815 atau tanggal); sel sheet berformat teks | Sel teks |
 | 70 | Tekan Mark done pada task tanpa butir checklist (catatan berupa paragraf saja); lalu buka Log Audit | Task Selesai; Mark done tidak lagi tampil untuk task Selesai; satu baris `handover.done` | FQ2, FAU1 |
 | 71 | Centang satu butir, lalu batal centang dari halaman detail; buka Log Audit | Dua baris audit `handover.check` dan `handover.uncheck`, masing-masing dengan pelaku dan waktu | FQ1, FQ4 |
-| 72 | Pengaturan Akses → Role: modul "QR Code Label" tampil dengan level Lihat/Ubah/Kelola | Level tersimpan dan menentukan tombol di halaman QR Code | FQR/izin |
+| 72 | Akses → Role: modul "QR Code Label" tampil dengan level Lihat/Ubah/Kelola | Level tersimpan dan menentukan tombol di halaman QR Code | FQR/izin |
 | 73 | Jalankan `setup` setelah deploy | Laporan memuat folder "QC App QR" dan "QC App QR Dokumen" siap; sheet `qr_designs` dan `qr_documents` ada | FS13 serupa |
 | 74 | Buat konfigurasi: title, subtitle, link, footer, ukuran diubah | Pratinjau 3 × 3 berubah seketika; overflow memunculkan peringatan merah | FQR2, FQR3 |
 | 75 | Tekan "Pratinjau lembar" | Dialog menampilkan lembar 10 × 14 dengan garis potong; menutupnya tanpa efek | FQR4 |
@@ -244,7 +244,7 @@ Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (mat
 
 ## Panduan interaktif (2026-11-13)
 
-Spek: `docs/superpowers/specs/2026-11-13-panduan-interaktif-design.md` (bagian 4.2-4.7). Uji di staging dengan akun individu, akun bersama (sudah ditandai di Pengaturan Akses), akun WH (`handover: view`/`edit`), dan akun QC (`qc: edit`). Pengguna yang sudah menyelesaikan panduan `dasar` tidak ditawari panduan `baru`-nya.
+Spek: `docs/superpowers/specs/2026-11-13-panduan-interaktif-design.md` (bagian 4.2-4.7). Uji di staging dengan akun individu, akun bersama (sudah ditandai di Akses), akun WH (`handover: view`/`edit`), dan akun QC (`qc: edit`). Pengguna yang sudah menyelesaikan panduan `dasar` tidak ditawari panduan `baru`-nya.
 
 | # | Langkah | Hasil yang diharapkan | Spek |
 |---|---|---|---|
@@ -256,7 +256,7 @@ Spek: `docs/superpowers/specs/2026-11-13-panduan-interaktif-design.md` (bagian 4
 | G6 | Selesaikan tur dengan akun individu di peramban A, lalu login akun sama di peramban B | Panduan yang sudah selesai tidak ditawarkan lagi di peramban B; penanda dimuat dari server | 4.3 |
 | G7 | Selesaikan tur dengan akun bersama di peramban A, lalu login akun sama di peramban B | Panduan ditawarkan lagi di peramban B (disengaja); di peramban A tetap tidak ditawarkan | 4.3 |
 | G8 | Ulangi tur dari menu profil "Ulangi" pada panduan yang sudah selesai | Tur berjalan dari awal tanpa mengubah penanda selain yang ditulis saat tur selesai | 4.4 |
-| G9 | Ubah satu akun dari individu ke bersama lalu kembali ke individu di Pengaturan Akses | Setelah diubah ke bersama, panduan ditawarkan lagi di tiap perangkat; setelah kembali ke individu, ditawarkan sekali lagi bila belum pernah selesai di database | 4.3 Mengubah jenis akun |
+| G9 | Ubah satu akun dari individu ke bersama lalu kembali ke individu di Akses | Setelah diubah ke bersama, panduan ditawarkan lagi di tiap perangkat; setelah kembali ke individu, ditawarkan sekali lagi bila belum pernah selesai di database | 4.3 Mengubah jenis akun |
 | G10 | Buka `/handover` pertama kali (panduan belum selesai) | Banner "Pertama kali di ...? Ada panduan N langkah." tampil dengan Mulai, Nanti, dan Sudah paham; N hanya menghitung langkah yang lolos izin akun | 4.4 Banner |
 | G11 | Tekan "Nanti" lalu buka tab baru aplikasi | Banner tidak tampil di sesi tab itu; di sesi tab baru banner muncul lagi selama panduan belum selesai | 4.4 Banner |
 | G12 | Tekan "Sudah paham" pada banner panduan `dasar` | Banner hilang dan tidak muncul lagi; panduan `baru` yang tercakup ikut tertutup; panduan tetap ada di menu profil "Panduan" | 4.4, 4.2 |

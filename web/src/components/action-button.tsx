@@ -155,6 +155,8 @@ export type ActionButtonProps = {
   compact?: boolean;
   /** Proses berjalan: tombol nonaktif dengan spinner; simpan = "Menyimpan…". */
   busy?: boolean;
+  /** Teks saat `busy` (bawaan: "Menyimpan…" untuk simpan, lainnya "{label}…"). */
+  busyLabel?: string;
 } & Omit<ComponentProps<typeof Button>, 'color' | 'variant' | 'children'>;
 
 function busyText(action: ActionKind, label: string): string {
@@ -166,6 +168,7 @@ export function ActionButton({
   label,
   compact = false,
   busy = false,
+  busyLabel,
   disabled,
   size,
   ...rest
@@ -206,7 +209,7 @@ export function ActionButton({
       disabled={disabled || busy}
     >
       {busy ? (
-        <BusyLabel>{busyText(action, text)}</BusyLabel>
+        <BusyLabel>{busyLabel ?? busyText(action, text)}</BusyLabel>
       ) : (
         <>
           <Icon aria-hidden data-icon="inline-start" />

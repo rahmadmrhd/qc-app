@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
-import { BusyLabel } from '@/components/spinner';
-import { Button } from '@/components/ui/button';
+import { ActionButton } from '@/components/action-button';
 
 export interface FormHeaderProps {
   /** Judul halaman form (h1). */
@@ -47,13 +46,17 @@ export function FormHeader({
     >
       <h1 className="text-2xl font-semibold">{title}</h1>
       <div data-tour={dataTour} className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Batal
-        </Button>
+        <ActionButton action="cancel" onClick={onCancel} />
         {extra}
-        <Button type="submit" disabled={submitting || submitDisabled} onClick={onSubmitClick}>
-          {submitting ? <BusyLabel>{busyText}</BusyLabel> : submitLabel}
-        </Button>
+        <ActionButton
+          action="save"
+          type="submit"
+          label={submitLabel}
+          busy={submitting}
+          busyLabel={busyText}
+          disabled={submitDisabled}
+          onClick={onSubmitClick}
+        />
       </div>
     </div>
   );
