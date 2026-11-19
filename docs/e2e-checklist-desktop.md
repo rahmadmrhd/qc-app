@@ -161,6 +161,28 @@ Prasyarat: server (staging) sudah memuat rute katalog dengan `DESKTOP_CATALOG_TO
 | I23 | Draft penuh (1000 baris) atau berkas `draft.db` dirusak sengaja | Penuh: Inject dan Auto Inject nonaktif dengan alasan; rusak: galat tampil, Inject nonaktif, draft tidak ditimpa | |
 | I10 | Di web, matikan centang Country lock pada item berfirmware, simpan | Kolom Firmware hilang dan tersimpan kosong; item keluar dari katalog desktop pada sinkron berikutnya | |
 
+## J. Mode Multi-Device
+
+Prasyarat: build dengan katalog aktif (`CATALOG_TOKEN`), paket skrip Ubiquiti, router jump Mikrotik yang terjangkau lewat `server.ip` di `config.QC` dan memuat DHCP lease; beberapa perangkat Ubiquiti pabrikan di jaringan yang sama. Tombol mode "Tunggal | Multi-Device" hanya tampil pada jembatan >= 9.
+
+| # | Langkah | Hasil yang diharapkan | Hasil |
+|---|---|---|---|
+| J1 | Buka Country Lock, pilih mode Multi-Device, isi Merk (Ubiquiti), Tipe, Firmware, BU, Lokasi, tekan Mulai | Tabel perangkat terisi dari DHCP lease (MAC, IP, status); field yang kosong membuat Mulai nonaktif dengan petunjuk | |
+| J2 | Satu perangkat pabrikan terhubung, Inject All | Perangkat berstatus Berjalan lalu Sukses; satu baris baru di ringkasan "Draft Serial Number" dengan Tipe/BU/Lokasi batch | |
+| J3 | Banyak perangkat (>= 6) sekaligus, concurrency bawaan 4 | Paling banyak 4 inject berjalan bersamaan, sisanya antre; semua akhirnya Sukses atau Gagal dengan alasan | |
+| J4 | Ubah concurrency di tengah batch (mis. 4 menjadi 2 lalu 8) | Tidak ada galat; inject yang berjalan tidak terputus; batas baru berlaku untuk antrean berikutnya | |
+| J5 | Perangkat Sukses lalu dicabut dan dipasang lagi, atau lease berganti IP (IP berpindah ke perangkat lain) | MAC dikenali walau IP berpindah; perangkat yang sudah Sukses tidak diinject ulang otomatis; IP diambil alih perangkat lain terdeteksi | |
+| J6 | Cabut perangkat yang sedang berjalan | Status menjadi terputus setelah masa tenggang 60 dtk; baris hilang dari tabel setelah tenggang; tak ada retry tak berujung | |
+| J7 | Salah satu perangkat menolak kredensial bawaan | Panel kredensial muncul; sesudah kredensial diisi perangkat dicoba lagi; kredensial sama tidak dicoba berulang pada IP yang sama dalam sesi | |
+| J8 | Tekan Stop Antrean, lalu Cancel All saat banyak perangkat berjalan | Stop: yang berjalan selesai, antrean berhenti; Cancel All: semua inject dibatalkan, tak ada baris draft untuk yang batal | |
+| J9 | Muat ulang UI (Ctrl+R) atau tutup-buka jendela di tengah batch | Batch tetap berjalan di proses utama; setelah UI kembali, tabel dan hitungan pulih; baris `injected` yang belum di-ack tidak hilang dan tidak ganda | |
+| J10 | Mulai inject tunggal, lalu coba mulai Multi (dan sebaliknya) | Yang kedua ditolak dengan pesan jelas; mode pertama tidak terganggu | |
+| J11 | Tombol "Siapkan bridge router" (bila tersedia) | Bridge router disiapkan sekali dan hasilnya tampil; kegagalan tampil sebagai pesan, bukan crash | |
+| J12 | Draft penuh (1000 baris) atau draft rusak di tengah batch | Inject baru ditahan dengan alasan; perangkat yang sudah berjalan tidak menghilangkan baris; setelah ruang tersedia, penahanan dilepas | |
+| J13 | Serial yang sudah ada di draft/terdaftar muncul lagi sebagai perangkat | Tidak diinject ulang otomatis (ditandai sudah terdaftar); catat apakah Inject All (aksi manual) ikut menyapu perangkat itu: keputusan pemilik soal ini masih terbuka | |
+| J14 | Server SSH router mati atau perintah lease gagal | Pesan galat tampil, batch yang berjalan tidak crash, pemindaian dicoba lagi berjenjang | |
+| J15 | Jalankan di build dengan jembatan lama (< 9) | Tombol mode Multi tidak tampil; mode tunggal normal | |
+
 ## Pengisian hasil
 
 - Penguji dan tanggal: 
