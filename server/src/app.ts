@@ -18,7 +18,7 @@ import { notificationStreamApp } from '@server/modules/notification/stream-route
 import { publicSerialApp } from '@server/modules/serial/public-routes';
 import { getRoutes } from '@server/routes';
 import { API_ROUTES } from '@shared/api';
-import { apiVersionsInUse, restBase } from '@shared/api-versions';
+import { announcedApis, apiVersionsInUse, restBase } from '@shared/api-versions';
 import { Hono } from 'hono/tiny';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
@@ -33,8 +33,9 @@ export function createApp(routes: RouteTable): Hono<AppBindings> {
   app.use('/api/*', csrfGuard);
   app.use('/auth/*', csrfGuard);
 
-  // `version`/`build` ditambahkan (rilis semver): pemeriksa kesehatan hanya memakai status 2xx, jadi aman.
-  app.get('/api/ping', (c) => c.json({ ok: true, ...buildInfo(c.env) }));
+  // `version`/`build` ditambahkan (rilis semver) dan `apis` (versi API per kelompok, dibaca klien untuk memilih id berversi):
+  // pemeriksa kesehatan hanya memakai status 2xx, jadi penambahan field aman.
+  app.get('/api/ping', (c) => c.json({ ok: true, ...buildInfo(c.env), apis: announcedApis() }));
   // REST (`/api/v<n>`): satu tabel `shared/api.ts` untuk klien, server, dan OpenAPI; semua id terdaftar, satu sub-aplikasi
   // per versi yang dipakai id tabel (hari ini hanya v1; id berversi `<id>@<n>` dipasang di `/api/v<n>`).
   // Aliran SSE notifikasi desktop: satu-satunya rute `/api/v1` di luar `API_ROUTES` (respons berumur panjang, bukan
