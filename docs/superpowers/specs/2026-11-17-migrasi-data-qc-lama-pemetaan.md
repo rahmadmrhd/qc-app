@@ -1,6 +1,6 @@
 # Pemetaan migrasi data: database QC lama (`qcspectrum`) → database QC saat ini
 
-Status: **Pemetaan disetujui sebagian oleh pemilik produk pada 2026-11-17 (butir bertanda ✔ di §3); belum ada data yang dimigrasi.**
+Status: **SELESAI. Produksi dimigrasi 2026-11-19 (207.953 serial, 245 item, 51 firmware; `--apply` 816 dtk, dry-run verifikasi: 0 ditulis, 207.953 sudah dimigrasi; backup pra-migrasi di VPS). Skrip `server/scripts/migrate-legacy-qc.ts` + `server/scripts/legacy-qc/` dihapus 2026-11-19 atas persetujuan pemilik produk (tanpa tag; hanya ada di riwayat git sebelum PR penghapusan). Dokumen ini dipertahankan sebagai catatan keputusan; bagian 4 dan 6 menggambarkan alat yang kini sudah tidak ada.**
 Sumber: dump `qcspectrum_2026-11-17_230717.sql` (MySQL 5.7.34, 16 tabel/tampilan, 28 MB, dibuat 2026-11-17 23:08 WIB).
 Tujuan: skema MariaDB 11.8 di `server/migrations/0001`–`0022` (cabang `origin/dev`, commit `de2a1adb`).
 
