@@ -1,6 +1,6 @@
 import { useRouterState } from '@tanstack/react-router';
 import { useState } from 'react';
-import { NAV_GROUPS } from '@/app/navigation';
+import { flattenNavItems, NAV_GROUPS } from '@/app/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useMe } from '@/modules/auth/use-me';
@@ -38,11 +38,8 @@ function writeLater(email: string, ids: readonly string[]): void {
 /** Nama halaman untuk teks banner: label menu yang tujuannya `halaman`; selain itu judul panduan. */
 function pageLabel(offer: GuideOffer): string {
   const { halaman, title } = offer.entry;
-  for (const group of NAV_GROUPS) {
-    const item = group.items.find((candidate) => candidate.to === halaman);
-    if (item) return item.label;
-  }
-  return title;
+  const item = flattenNavItems(NAV_GROUPS).find((candidate) => candidate.to === halaman);
+  return item ? item.label : title;
 }
 
 /**

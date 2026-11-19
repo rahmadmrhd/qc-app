@@ -74,7 +74,7 @@ describe('AppSidebar titik panduan', () => {
   test('titik muncul pada item yang punya panduan belum selesai, tidak pada item lain', () => {
     state.offers = [offer('item-dasar', '/item')];
     renderSidebar();
-    const dataItem = screen.getByRole('link', { name: /Data Item/ });
+    const dataItem = screen.getByRole('link', { name: /Daftar Item/ });
     expect(within(dataItem).getByLabelText('Ada panduan')).toBeInTheDocument();
     const merk = screen.getByRole('link', { name: /Merk/ });
     expect(within(merk).queryByLabelText('Ada panduan')).toBeNull();

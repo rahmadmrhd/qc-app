@@ -1,6 +1,6 @@
 import { Link, useMatchRoute } from '@tanstack/react-router';
 import type { NavItem } from '@/app/navigation';
-import { isNavItemActive, NAV_GROUPS, visibleNavGroups } from '@/app/navigation';
+import { isNavItemActive, isNavParent, NAV_GROUPS, visibleNavGroups } from '@/app/navigation';
 import {
   Sidebar,
   SidebarContent,
@@ -34,44 +34,46 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent data-tour="sidebar-menu">
         {visibleNavGroups(NAV_GROUPS, me, selectedIds, isDesktop()).map((group) => (
-          <SidebarGroup key={group.label}>
-            <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
+          <SidebarGroup key={group.label ?? 'tanpa-judul'}>
+            {group.label ? <SidebarGroupLabel>{group.label}</SidebarGroupLabel> : null}
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.items.map((item) => (
-                  <SidebarMenuItem key={item.label}>
-                    <SidebarMenuButton
-                      asChild
-                      tooltip={item.label}
-                      isActive={isNavItemActive(item, (to, fuzzy) =>
-                        Boolean(matchRoute({ to: to as NavItem['to'], fuzzy })),
-                      )}
-                    >
-                      <Link
-                        to={item.to}
-                        onClick={
-                          item.opensDesktopApp && !isDesktop()
-                            ? () => {
-                                // Gagal (server mati, izin dicabut) tak mengganggu: halaman tujuan menampilkan
-                                // tombol dan alasannya.
-                                void openInDesktop().catch(() => undefined);
-                              }
-                            : undefined
-                        }
-                      >
-                        <item.icon />
-                        <span>{item.label}</span>
-                        {hasPendingGuide(offers, item.to as string) && (
-                          <span
-                            role="img"
-                            aria-label="Ada panduan"
-                            className="ml-auto size-2 shrink-0 rounded-full bg-primary group-data-[collapsible=icon]:hidden"
-                          />
+                {group.items
+                  .flatMap((entry) => (isNavParent(entry) ? entry.children : [entry]))
+                  .map((item) => (
+                    <SidebarMenuItem key={item.label}>
+                      <SidebarMenuButton
+                        asChild
+                        tooltip={item.label}
+                        isActive={isNavItemActive(item, (to, fuzzy) =>
+                          Boolean(matchRoute({ to: to as NavItem['to'], fuzzy })),
                         )}
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
+                      >
+                        <Link
+                          to={item.to}
+                          onClick={
+                            item.opensDesktopApp && !isDesktop()
+                              ? () => {
+                                  // Gagal (server mati, izin dicabut) tak mengganggu: halaman tujuan menampilkan
+                                  // tombol dan alasannya.
+                                  void openInDesktop().catch(() => undefined);
+                                }
+                              : undefined
+                          }
+                        >
+                          <item.icon />
+                          <span>{item.label}</span>
+                          {hasPendingGuide(offers, item.to as string) && (
+                            <span
+                              role="img"
+                              aria-label="Ada panduan"
+                              className="ml-auto size-2 shrink-0 rounded-full bg-primary group-data-[collapsible=icon]:hidden"
+                            />
+                          )}
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
