@@ -48,11 +48,11 @@ Pemilik produk ingin **satu bahasa desain** yang konsisten, sederhana, informati
 
 | | Pendekatan | Untung | Rugi |
 |---|---|---|---|
-| **A (dipilih)** | Bertahap per fase, tiap fase satu PR ke `dev`: fondasi → kit → modul percontohan → modul lain berkelompok | Tiap PR dapat direview; aplikasi tetap jalan di antara fase; kit diuji di kasus nyata sebelum disebar | Selama fase 3-4, sebagian halaman sudah pola baru dan sebagian belum |
+| **A (dipilih)** | Bertahap per fase (fondasi → kit → modul percontohan → modul lain berkelompok); semua fase dalam SATU cabang dan SATU PR ke `dev` (keputusan pemilik 2026-11-20, lihat keputusan 12) | Tiap PR dapat direview; aplikasi tetap jalan di antara fase; kit diuji di kasus nyata sebelum disebar | Selama fase 3-4, sebagian halaman sudah pola baru dan sebagian belum |
 | B | Satu cabang besar, semuanya sekaligus | Seragam sekaligus saat rilis | Diff sangat besar, sulit direview; regresi satu modul menahan semua |
 | C | Kit dibuat, modul lama dipindah bila sempat | Paling murah di awal | Bertentangan dengan tujuan konsistensi; pola lama bertahan tanpa batas |
 
-Pemilik memilih **A** (2026-11-20). Satu dokumen rancangan ini mencakup semua fase; rencana implementasi ditulis per fase.
+Pemilik memilih **A** (2026-11-20). Satu dokumen rancangan ini mencakup semua fase; rencana implementasi ditulis per fase. Fase adalah putaran kerja (implementasi → review akhir putaran → perbaikan) di satu cabang, bukan PR terpisah.
 
 ## 5. Keputusan pemilik (2026-11-20)
 
@@ -67,6 +67,7 @@ Pemilik memilih **A** (2026-11-20). Satu dokumen rancangan ini mencakup semua fa
 9. Banner, alert, dan toast mengikuti mockup (soft + ikon status; toast dengan garis kiri berwarna).
 10. Pengelompokan sidebar dan pola halaman pada mockup v3 disetujui.
 11. **Semua model memakai soft delete**, dapat **dipulihkan**, model berstatus wajib Nonaktif sebelum dihapus, keunikan menyertakan `deleted_at`, dan menghapus data master tidak menghapus data yang merujuknya. Dirinci di rancangan terpisah [Soft Delete untuk Semua Model](2026-11-20-soft-delete-design.md); aksi Hapus/Pulihkan dan rute batch hapus di dokumen ini mengikuti rancangan itu.
+12. **Semua fase digabung dalam satu PR** ke `dev` (bukan satu PR per fase); pemilik menyetujui di muka rencana implementasi setiap fase (2026-11-20). Akibatnya penilaian pola percontohan (fase 3) oleh pemilik di staging tidak menjadi gerbang sebelum fase 4; percontohan tetap dikerjakan lebih dulu agar kit teruji di kasus nyata, dan pemilik menilai keseluruhan saat PR.
 
 ## 6. Rancangan
 
@@ -257,13 +258,13 @@ Kontrak bersama:
 | 1. Fondasi | §6.1-6.4 (token, Button/Badge/Alert/toast, `ActionButton`, Tooltip, sidebar + popover + penyimpanan, breadcrumb, `PageContainer` dipasang di semua rute), `required` pada label | Semua halaman memakai token dan cangkang baru; pemetaan varian lama aktif; tes hijau |
 | 2. Kit CRUD | `ListPage`, `useHeadroom`, `FilterBar`, `DataTable`, `KanbanBoard`, `GridView`, `ViewPage`, `FormPage`, `FormTabs`; Pustaka Gambar sebagai pemakai `GridView` | Komponen kit punya tes sendiri; satu halaman nyata (Pustaka Gambar) memakai kit |
 | 2b. Infrastruktur soft delete | Kolom `deleted_at`, indeks unik baru (expand), helper penyaring + tes penjaga, pola rute remove/restore, tampilan "Terhapus" (rancangan soft delete §4.6) | Tes penjaga aktif; belum ada modul yang memakai Hapus baru |
-| 3. Percontohan | Item + Merk sepenuhnya di kit, termasuk batch status, tautan kolom, form bertab, Form Dialog "Tambah Merk"/"Tambah item" | Pola dinilai pemilik di staging sebelum disebar |
+| 3. Percontohan | Item + Merk sepenuhnya di kit, termasuk batch status, tautan kolom, form bertab, Form Dialog "Tambah Merk"/"Tambah item" | Pola teruji di Item/Merk sebelum disebar (penilaian pemilik saat PR, keputusan 12) |
 | 4a | Stiker (Katalog, Jenis, Stok, Konfigurasi) + View Stiker dan Jenis + batch | |
 | 4b | Manual Book (QR, Default QR) + Postel + View QR dan Preset + batch | |
 | 4c | Akses (Pengguna, Role, Lokasi, BU, Log Audit, Status Push) + Customer + View baru + batch | |
 | 4d | Serial Number (Daftar, Laporan, Pengaturan, Catat) + Serah Terima (Kanban) + Country Lock | Pemetaan varian lama dihapus; tak ada halaman pola lama |
 
-Tiap fase: rencana implementasi sendiri, PR ke `dev`, catatan changelog (`server/changelog.d/`), dan pembaruan CLAUDE.md (struktur `components/page`, `data-table`, aturan View untuk semua model, aturan aksi massal) pada fase yang memperkenalkannya. Panduan interaktif: target `data-tour` dipertahankan; langkah tur yang menyorot sidebar diperbarui (kosmetik) pada fase 1.
+Tiap fase: rencana implementasi sendiri, commit di cabang yang sama (satu PR untuk semua fase, keputusan 12), catatan changelog (`server/changelog.d/`), dan pembaruan CLAUDE.md (struktur `components/page`, `data-table`, aturan View untuk semua model, aturan aksi massal) pada fase yang memperkenalkannya. Panduan interaktif: target `data-tour` dipertahankan; langkah tur yang menyorot sidebar diperbarui (kosmetik) pada fase 1.
 
 ## 7. Diserahkan kepada pembangun
 
