@@ -59,7 +59,7 @@ Dipilih B oleh pemilik. Mesin yang sepenuhnya di main tanpa memisahkan logika mu
 ### 2. Proses utama `desktop/src/main/multi/`
 
 - `host.ts`: satu `MultiHost` per aplikasi; membuat engine dengan port nyata: `readLeases` memakai exec-channel SSH ke router (`ssh/exec.ts`, kredensial server dari `config.QC`, tidak pernah keluar dari main); `ping` memakai `device/ping.ts`; `readInfo` memakai `device/info.ts`; `inject` memakai jalur yang sama dengan `runInjectRequest` di `ipc.ts` (diekstrak menjadi fungsi bersama agar penyamaran sandi dan `{sshKey}` tak diduplikasi); `isSerialRegistered` membaca draft (`draft-store.ts`) dan antrean pending lama.
-- **Router dan paket**: Multi memakai paket skrip aktif yang sudah dimuat (`package.load`; operator tidak memilih paket lain) dan merk Ubiquiti di dalamnya. Lease dibaca dari `config.server` (host = `ipServer` mode Multi dengan fallback `server.ip`, pengguna/sandi `config.server`); `connectVia` diabaikan di Multi (L4.1). Host key router diterima otomatis seperti inject tunggal (spek induk §6.3) dan direkam untuk `{sshKey}`.
+- **Router dan paket**: Multi memakai paket skrip aktif yang sudah dimuat (`package.load`; operator tidak memilih paket lain) dan merk Ubiquiti di dalamnya. Lease, bridge router, dan host key dibaca dari `config.server` (host = `server.ip`, yaitu alamat SSH PC ke router; pengguna/sandi `config.server`). `ipServer` BUKAN host SSH: itu alamat router seperti terlihat dari perangkat (bisa beda karena NAT) dan hanya dipakai sebagai nilai placeholder `{ipServer}` pada skrip (legacy §2.5 dan §6, `FC.cs:226-231`). Rumusan awal spek ini yang memakai `ipServer` untuk lease keliru dan dikoreksi 2026-11-19; `connectVia` diabaikan di Multi (L4.1). Host key router diterima otomatis seperti inject tunggal (spek induk §6.3) dan direkam untuk `{sshKey}`.
 - **Saling-kecualikan dengan mode tunggal** (L4.2): Multi tidak dapat dimulai saat inject tunggal berjalan, dan sebaliknya; `blockReload` (F5) juga menahan selama ada inject Multi. Pesan jelas bila ditolak. Tombol mode Tunggal | Multi dinonaktifkan selama Multi berjalan ("Hentikan Multi dulu"); menutup jendela ke tray tidak menghentikan Multi (mesin ada di main), sedangkan keluar sungguhan dari menu tray menanyakan konfirmasi bila ada inject berjalan. Dipilih perancang.
 - **Siapkan bridge router** (`BridgePortSetup`, L4.2): hanya dijalankan oleh tombol eksplisit dengan dialog konfirmasi yang menyebut perintahnya (hapus bridge port selain `interfaceComp`, tambah semua `interfaceList` ke `interfaceBridge`). Tidak otomatis saat mode dimulai (perubahan atas aplikasi lama, yang menjalankannya diam-diam dan menelan semua galat). Galat dilaporkan ke operator.
 
@@ -106,7 +106,7 @@ Spek induk §6.4 dan §9 (fase 3), `CLAUDE.md` (bagian desktop), `docs/e2e-check
 10. Himpunan MAC/serial sukses per sesi Multi mencegah inject ulang otomatis; perangkat `success` yang IP-nya berubah tidak diproses ulang.
 11. Ketidakcocokan model dengan Tipe/Firmware batch hanya ditampilkan.
 12. Pindah mode saat Multi berjalan ditolak; menutup jendela tidak menghentikan Multi.
-13. Router dibaca dari `config.server` dengan `ipServer` Multi; `connectVia` diabaikan; host key diterima otomatis.
+13. Router dibaca dari `config.server` (`server.ip`); `ipServer` hanya untuk placeholder skrip; `connectVia` diabaikan; host key diterima otomatis.
 14. Tanggal uji dihitung dari `injectedAt` milik engine (WIB).
 
 ## Diserahkan ke builder
