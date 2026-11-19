@@ -17,6 +17,7 @@ import { startServerStatus } from '@/app/server-status';
 import { handleRemoteLogout, startSessionListener } from '@/app/session-broadcast';
 import { OfflineScreen } from '@/app/shell/offline-screen';
 import { startUiUpdateWatch } from '@/app/ui-update-store';
+import { startApiVersions } from '@/lib/api/versions';
 import { isDesktop, shouldRegisterServiceWorker } from '@/lib/platform';
 import { meQueryKey } from '@/modules/auth/queries';
 import { clearSession, initSession } from '@/modules/auth/session';
@@ -49,6 +50,9 @@ async function start() {
 
   // Sesi cookie diverifikasi server (GET /api/v1/me) SEBELUM router dibuat; hasilnya sekaligus data `auth.me`.
   // Di desktop proses utama menambahkan Bearer lewat app://qc/api, dan boot punya batas waktu (`loadMeForBoot`).
+  // Peta versi API per kelompok (`/api/ping`): dimuat dari salinan tersimpan lalu disegarkan di latar, tanpa menunggu
+  // jaringan, supaya jalur boot normal dan offline sama-sama sudah punya peta (belum ada = semua v1).
+  startApiVersions();
   const { me, unreachable } = await loadMeForBoot();
   const root = document.getElementById('app');
   if (!root) throw new Error('Elemen #app tidak ditemukan');
