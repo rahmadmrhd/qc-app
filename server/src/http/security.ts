@@ -36,9 +36,9 @@ export function newRequestId(): string {
   return crypto.randomUUID().replace(/-/g, '').slice(0, 8);
 }
 
-/** Jalur REST (`/api/v1` dan turunannya): galatnya problem+json, bukan amplop JSON lama. */
+/** Jalur REST (`/api/v<n>` dan turunannya, mis. `/api/v1`, `/api/v2`): galatnya problem+json, bukan amplop JSON lama. */
 export function isRestPath(path: string): boolean {
-  return path === '/api/v1' || path.startsWith('/api/v1/');
+  return /^\/api\/v\d+(\/|$)/.test(path);
 }
 
 /** Amplop galat jalur non-REST (`{ ok:false, error }`), mis. `/auth/*`. */
