@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mockup Redesain QC</title>
+<style>
+:root{
+  --bg:#ffffff;--fg:#18181b;--muted:#f4f4f5;--muted-fg:#71717a;--border:#e4e4e7;--card:#ffffff;--sidebar:#fafafa;
+  /* tiap warna: X = latar solid, X-fg = teks di atas solid, X-text = warna teks/ikon di latar halaman */
+  --primary:#18181b;--primary-fg:#fafafa;--primary-text:#18181b;
+  --secondary:#71717a;--secondary-fg:#fff;--secondary-text:#52525b;
+  --success:#16a34a;--success-fg:#fff;--success-text:#15803d;
+  --warning:#f59e0b;--warning-fg:#1c1917;--warning-text:#b45309;
+  --info:#2563eb;--info-fg:#fff;--info-text:#1d4ed8;
+  --destructive:#dc2626;--destructive-fg:#fff;--destructive-text:#b91c1c;
+}
+html.dark{
+  --bg:#18181b;--fg:#fafafa;--muted:#27272a;--muted-fg:#a1a1aa;--border:#2e2e33;--card:#1f1f23;--sidebar:#141417;
+  --primary:#fafafa;--primary-fg:#18181b;--primary-text:#fafafa;
+  --secondary:#52525b;--secondary-fg:#fafafa;--secondary-text:#a1a1aa;
+  --success:#16a34a;--success-fg:#fff;--success-text:#22c55e;
+  --warning:#d97706;--warning-fg:#fff;--warning-text:#f59e0b;
+  --info:#2563eb;--info-fg:#fff;--info-text:#3b82f6;
+  --destructive:#ef4444;--destructive-fg:#fff;--destructive-text:#ef4444;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Geist",ui-sans-serif,system-ui,sans-serif;font-size:14px;background:var(--bg);color:var(--fg)}
+svg.i{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+/* tab mockup (di luar aplikasi) */
+.demo-tabs{display:flex;gap:4px;padding:8px 12px;background:#0b0b0d;color:#fff;align-items:center;flex-wrap:wrap;position:sticky;top:0;z-index:100}
+.demo-tabs button{background:transparent;color:#bbb;border:1px solid #333;border-radius:6px;padding:6px 10px;cursor:pointer;font:inherit}
+.demo-tabs button.on{background:#fff;color:#000}
+.demo-tabs .sp{flex:1}
+.screen{display:none}.screen.on{display:block}
+/* tombol: warna × gaya */
+.btn{--c:var(--primary);--cf:var(--primary-fg);display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:8px;border:1px solid transparent;font:inherit;font-weight:500;cursor:pointer;white-space:nowrap}
+.btn.sm{height:28px;padding:0 8px;font-size:13px}
+.btn.icon{width:28px;padding:0;justify-content:center}
+.c-primary{--c:var(--primary);--cf:var(--primary-fg);--ct:var(--primary-text)}
+.c-secondary{--c:var(--secondary);--cf:var(--secondary-fg);--ct:var(--secondary-text)}
+.c-success{--c:var(--success);--cf:var(--success-fg);--ct:var(--success-text)}
+.c-warning{--c:var(--warning);--cf:var(--warning-fg);--ct:var(--warning-text)}
+.c-info{--c:var(--info);--cf:var(--info-fg);--ct:var(--info-text)}
+.c-destructive{--c:var(--destructive);--cf:var(--destructive-fg);--ct:var(--destructive-text)}
+.v-solid{background:var(--c);color:var(--cf)}
+.v-solid:hover{filter:brightness(.92)}
+.v-soft{background:color-mix(in oklab,var(--ct) 15%,transparent);color:var(--ct)}
+.c-primary.v-soft{background:var(--muted);color:var(--fg)}
+.v-soft:hover{background:color-mix(in oklab,var(--ct) 24%,transparent)}
+.v-outline{background:transparent;border-color:color-mix(in oklab,var(--ct) 50%,transparent);color:var(--ct)}
+.c-primary.v-outline{border-color:var(--border);color:var(--fg)}
+.v-outline:hover{background:color-mix(in oklab,var(--ct) 10%,transparent)}
+.v-ghost{background:transparent;color:var(--ct)}
+.v-ghost:hover{background:color-mix(in oklab,var(--ct) 12%,transparent)}
+.v-link{background:transparent;color:var(--ct);padding:0 2px}
+.v-link:hover{text-decoration:underline}
+.badge{display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 8px;border-radius:999px;font-size:12px;font-weight:500;border:1px solid transparent}
+/* tooltip gaya shadcn */
+.tip{position:fixed;z-index:200;background:var(--primary);color:var(--primary-fg);font-size:12px;padding:6px 10px;border-radius:6px;pointer-events:none;white-space:nowrap;animation:tipin .12s ease-out}
+.tip::after{content:"";position:absolute;left:50%;bottom:-4px;width:8px;height:8px;background:inherit;transform:translateX(-50%) rotate(45deg);border-radius:1px}
+@keyframes tipin{from{opacity:0;transform:translateY(2px) scale(.96)}to{opacity:1}}
+/* popover submenu saat sidebar dilipat */
+.flyout{position:fixed;z-index:150;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.2);padding:4px;min-width:180px}
+.flyout .fh{font-size:12px;color:var(--muted-fg);padding:6px 8px 4px;font-weight:600}
+.flyout .nav{padding:6px 8px}
+.badge .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.matrix{display:grid;grid-template-columns:110px repeat(5,1fr);gap:10px 12px;align-items:center}
+.matrix .h{font-size:12px;color:var(--muted-fg);text-transform:uppercase;letter-spacing:.04em}
+.alert{display:flex;gap:10px;padding:10px 12px;border-radius:10px;border:1px solid color-mix(in oklab,var(--c) 35%,transparent);background:color-mix(in oklab,var(--c) 9%,transparent);color:var(--fg);margin-bottom:8px}
+.alert svg{color:var(--c);margin-top:2px}
+.alert b{color:var(--c)}
+.toast{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:10px;background:var(--card);border:1px solid var(--border);border-left:4px solid var(--c);box-shadow:0 6px 20px rgba(0,0,0,.12);margin-bottom:8px;width:340px}
+.toast svg{color:var(--c)}
+/* shell aplikasi */
+.app{display:flex;min-height:calc(100vh - 46px)}
+.sidebar{width:248px;background:var(--sidebar);border-right:1px solid var(--border);padding:10px 8px;flex-shrink:0;transition:width .15s;overflow:hidden}
+.app.collapsed .sidebar{width:52px}
+.app.collapsed .sidebar .lbl,.app.collapsed .sidebar .grp,.app.collapsed .sidebar .sub,.app.collapsed .sidebar .chev{display:none}
+.brand{font-weight:600;font-size:16px;padding:6px 8px 12px}
+.grp{font-size:11px;color:var(--muted-fg);text-transform:uppercase;letter-spacing:.05em;padding:12px 8px 4px}
+.nav{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:8px;cursor:pointer;color:var(--fg);white-space:nowrap}
+.nav:hover{background:var(--muted)}
+.nav.active{background:var(--muted);font-weight:600}
+.nav .chev{margin-left:auto;transition:transform .15s}
+.nav.open .chev{transform:rotate(90deg)}
+.sub{margin-left:18px;border-left:1px solid var(--border);padding-left:6px;display:none}
+.sub.open{display:block}
+.sub .nav{padding:5px 8px;color:var(--muted-fg)}
+.sub .nav.active{color:var(--fg)}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.topbar{height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:0 14px;background:color-mix(in oklab,var(--bg) 92%,transparent);backdrop-filter:blur(6px);position:sticky;top:46px;z-index:30}
+.crumb{display:flex;align-items:center;gap:6px;color:var(--muted-fg)}
+.crumb a{color:var(--muted-fg);text-decoration:none}.crumb a:hover{color:var(--fg)}
+.crumb .cur{color:var(--fg);font-weight:600}
+.topbar .right{margin-left:auto;display:flex;gap:6px;align-items:center}
+.pill{height:30px;border:1px solid var(--border);border-radius:8px;display:inline-flex;align-items:center;padding:0 10px;gap:6px;color:var(--muted-fg)}
+.content{padding:20px}
+.container{margin:0 auto;width:100%}
+.w-narrow{max-width:900px}.w-default{max-width:1180px}.w-full{max-width:none}
+/* halaman daftar */
+.listbar{position:sticky;top:98px;z-index:20;background:var(--bg);padding:10px 0;transition:transform .2s,box-shadow .2s;border-bottom:1px solid transparent}
+.headroom.hidden{transform:translateY(-130%)}
+.headroom.floating{border-bottom-color:var(--border);box-shadow:0 6px 12px -8px rgba(0,0,0,.25)}
+.titlerow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.titlerow h1{font-size:22px;margin:0 auto 0 0}
+.filters{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.input{height:32px;border:1px solid var(--border);border-radius:8px;padding:0 10px;background:transparent;color:var(--fg);font:inherit;min-width:220px;display:inline-flex;align-items:center;gap:6px;color:var(--muted-fg)}
+.chipf{height:32px;border:1px dashed var(--border);border-radius:8px;padding:0 10px;display:inline-flex;align-items:center;gap:6px;color:var(--muted-fg)}
+.chipf.set{border-style:solid;color:var(--fg)}
+.chipf.set b{color:var(--info-text)}
+.tablewrap{border:1px solid var(--border);border-radius:10px;overflow:clip}
+table{width:100%;border-collapse:separate;border-spacing:0}
+th{position:sticky;top:var(--th-top,0);background:var(--muted);text-align:left;font-weight:500;color:var(--muted-fg);padding:8px 10px;font-size:13px;border-bottom:1px solid var(--border);z-index:5}
+td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+tr:hover td{background:color-mix(in oklab,var(--muted) 50%,transparent)}
+tr.sel td{background:color-mix(in oklab,var(--info) 8%,transparent)}
+td.act,th.act{width:1%;white-space:nowrap}
+.acts{display:flex;gap:2px}
+a.lk{color:var(--info-text);text-decoration:none;font-weight:500}
+a.lk:hover{text-decoration:underline}
+.sub-note{font-size:12px;color:var(--muted-fg)}
+.bulkbar{position:sticky;bottom:12px;margin:12px auto 0;width:fit-content;display:none;align-items:center;gap:8px;padding:8px 10px;border-radius:12px;background:var(--card);border:1px solid var(--border);box-shadow:0 10px 30px rgba(0,0,0,.2);z-index:25}
+.bulkbar.on{display:flex}
+input[type=checkbox]{width:16px;height:16px;accent-color:var(--info);cursor:pointer}
+/* form */
+.formhead{position:sticky;top:98px;z-index:20;background:var(--bg);transition:transform .2s;display:flex;align-items:center;gap:8px;padding:10px 0}
+.formhead h1{font-size:20px;margin:0 auto 0 0;display:flex;align-items:center;gap:8px}
+.ftabs{display:flex;gap:20px;border-bottom:1px solid var(--border);position:sticky;top:156px;z-index:19;background:var(--bg);transition:top .2s}
+.ftabs span{padding:10px 0;color:var(--muted-fg);cursor:pointer;border-bottom:2px solid transparent}
+.ftabs span.on{color:var(--fg);border-bottom-color:var(--fg);font-weight:500}
+.section{padding:20px 0;border-bottom:1px solid var(--border)}
+.section h3{margin:0 0 14px;font-size:15px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px 28px}
+.field label{display:block;font-size:13px;color:var(--muted-fg);margin-bottom:6px}
+.req{color:var(--destructive);margin-left:2px}
+.field .box{height:34px;border-radius:8px;background:var(--muted);display:flex;align-items:center;padding:0 10px;gap:6px}
+.field .box.ta{height:70px;align-items:flex-start;padding-top:8px}
+.chip{display:inline-flex;align-items:center;gap:4px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:1px 6px;font-size:12px}
+.hint{font-size:12px;color:var(--muted-fg);margin-top:4px}
+.linkopt{position:relative}
+.dropdown{position:absolute;top:62px;left:0;right:0;background:var(--card);border:1px solid var(--border);border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:4px;z-index:10}
+.dropdown div{padding:6px 8px;border-radius:6px}
+.dropdown div:hover{background:var(--muted)}
+.dropdown .add{border-top:1px solid var(--border);margin-top:4px;color:var(--info-text);display:flex;gap:6px;align-items:center}
+/* view */
+.viewgrid{display:grid;grid-template-columns:1fr 260px;gap:24px}
+.kv{display:grid;grid-template-columns:160px 1fr;gap:10px 16px}
+.kv dt{color:var(--muted-fg)}.kv dd{margin:0}
+.aside{border-left:1px solid var(--border);padding-left:20px}
+.aside .row{display:flex;align-items:center;gap:8px;padding:8px 0;color:var(--muted-fg)}
+/* kanban */
+.kanban{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px}
+.col{min-width:290px;flex:1;background:color-mix(in oklab,var(--ct,var(--muted-fg)) 7%,var(--bg));border:1px solid color-mix(in oklab,var(--ct,var(--muted-fg)) 22%,transparent);border-top:3px solid var(--ct);border-radius:12px;padding:10px}
+.col .kcard{border-left:3px solid color-mix(in oklab,var(--ct) 60%,transparent)}
+.col h4{margin:0 0 10px;display:flex;align-items:center;gap:8px;font-size:13px}
+.kcard{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px;margin-bottom:8px}
+.kcard .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.prog{height:6px;background:var(--border);border-radius:9px;overflow:hidden;margin-top:8px}
+.prog i{display:block;height:100%;background:var(--success)}
+.gridc{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.gcard{border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--card)}
+.gcard .img{aspect-ratio:4/3;background:linear-gradient(135deg,color-mix(in oklab,var(--info) 25%,var(--muted)),var(--muted))}
+.gcard .meta{padding:8px 10px;display:flex;justify-content:space-between;align-items:center}
+.note{max-width:1180px;margin:14px auto;padding:10px 14px;border-radius:10px;background:color-mix(in oklab,var(--info) 8%,transparent);border:1px dashed color-mix(in oklab,var(--info) 40%,transparent);font-size:13px}
+.note b{color:var(--info-text)}
+h2.s{font-size:16px;margin:28px 0 12px}
+</style>
+</head>
+<body>
+<div class="demo-tabs">
+  <b style="margin-right:8px">Mockup QC</b>
+  <button class="on" data-s="s1">1. Warna & Tombol</button>
+  <button data-s="s2">2. Daftar (Tabel)</button>
+  <button data-s="s3">3. Form Edit (Tab)</button>
+  <button data-s="s4">4. View</button>
+  <button data-s="s5">5. Kanban & Grid</button>
+  <span class="sp"></span>
+  <button id="theme">Terang / Gelap</button>
+</div>
+
+<!-- ============ 1. WARNA & TOMBOL ============ -->
+<section class="screen on" id="s1">
+<div class="content"><div class="container w-default">
+  <div class="note"><b>Layar ini:</b> semua warna × gaya. Primary tetap netral (hitam/putih), secondary abu-abu, info biru (juga warna tautan). Coba tombol "Terang / Gelap" di kanan atas.</div>
+  <h2 class="s">Tombol: warna × gaya</h2>
+  <div class="matrix" id="matrix"></div>
+
+  <h2 class="s">Badge (status)</h2>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <span class="badge v-soft c-success"><span class="dot"></span>Aktif</span>
+    <span class="badge v-soft c-secondary"><span class="dot"></span>Nonaktif</span>
+    <span class="badge v-soft c-warning"><span class="dot"></span>Menipis</span>
+    <span class="badge v-soft c-destructive"><span class="dot"></span>Habis</span>
+    <span class="badge v-soft c-info"><span class="dot"></span>Dalam pengiriman</span>
+    <span class="badge v-outline c-secondary">QC</span>
+    <span class="badge v-solid c-destructive">Kedaluwarsa</span>
+    <span class="badge v-solid c-success">Selesai</span>
+  </div>
+
+  <h2 class="s">Kosakata aksi (ikon + warna tetap di seluruh aplikasi)</h2>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <button class="btn v-solid c-primary"><svg class="i" data-i="plus"></svg>Tambah</button>
+    <button class="btn v-solid c-primary"><svg class="i" data-i="save"></svg>Simpan</button>
+    <button class="btn v-outline c-primary"><svg class="i" data-i="pencil"></svg>Ubah</button>
+    <button class="btn v-soft c-success"><svg class="i" data-i="power"></svg>Aktifkan</button>
+    <button class="btn v-soft c-warning"><svg class="i" data-i="poweroff"></svg>Nonaktifkan</button>
+    <button class="btn v-soft c-destructive"><svg class="i" data-i="trash"></svg>Hapus</button>
+    <button class="btn v-soft c-secondary"><svg class="i" data-i="download"></svg>Unduh</button>
+    <button class="btn v-outline c-primary"><svg class="i" data-i="x"></svg>Batal</button>
+  </div>
+  <p class="sub-note" style="margin-top:10px">Versi ringkas (ikon saja, untuk tabel; nama aksi muncul sebagai tooltip):</p>
+  <div class="acts">
+    <button class="btn sm icon v-ghost c-primary" data-tip="Ubah"><svg class="i" data-i="pencil"></svg></button>
+    <button class="btn sm icon v-ghost c-success" data-tip="Aktifkan"><svg class="i" data-i="power"></svg></button>
+    <button class="btn sm icon v-ghost c-warning" data-tip="Nonaktifkan"><svg class="i" data-i="poweroff"></svg></button>
+    <button class="btn sm icon v-ghost c-destructive" data-tip="Hapus"><svg class="i" data-i="trash"></svg></button>
+    <button class="btn sm icon v-ghost c-secondary" data-tip="Unduh"><svg class="i" data-i="download"></svg></button>
+  </div>
+
+  <h2 class="s">Banner (alert) & toast</h2>
+  <div style="display:grid;grid-template-columns:1fr 360px;gap:24px">
+    <div>
+      <div class="alert" style="--c:var(--info-text)"><svg class="i" data-i="info"></svg><div><b>Info.</b> Data terakhir dari 10:24. Server sedang tidak terjangkau.</div></div>
+      <div class="alert" style="--c:var(--success-text)"><svg class="i" data-i="ccheck"></svg><div><b>Berhasil.</b> 12 serial tersimpan.</div></div>
+      <div class="alert" style="--c:var(--warning-text)"><svg class="i" data-i="warn"></svg><div><b>Perhatian.</b> 3 foto bukti gagal diunggah.</div></div>
+      <div class="alert" style="--c:var(--destructive-text)"><svg class="i" data-i="cx"></svg><div><b>Gagal.</b> Item ini wajib foto bukti minimal 2.</div></div>
+    </div>
+    <div>
+      <div class="toast" style="--c:var(--success-text)"><svg class="i" data-i="ccheck"></svg>Item diaktifkan</div>
+      <div class="toast" style="--c:var(--destructive-text)"><svg class="i" data-i="cx"></svg>Gagal menyimpan: nama sudah dipakai</div>
+      <div class="toast" style="--c:var(--warning-text)"><svg class="i" data-i="warn"></svg>2 centang menunggu koneksi</div>
+      <div class="toast" style="--c:var(--info-text)"><svg class="i" data-i="info"></svg>Versi baru tersedia. Muat ulang?</div>
+    </div>
+  </div>
+</div></div>
+</section>
+
+<!-- ============ shell (dipakai layar 2-5) ============ -->
+<template id="shell">
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><span class="lbl">QC App</span></div>
+    <div class="nav"><svg class="i" data-i="house"></svg><span class="lbl">Beranda</span></div>
+    <div class="grp">Operasional</div>
+    <div class="nav" data-k="handover"><svg class="i" data-i="clip"></svg><span class="lbl">Serah Terima</span></div>
+    <div class="nav"><svg class="i" data-i="lock"></svg><span class="lbl">Country Lock</span></div>
+    <div class="nav tog"><svg class="i" data-i="list"></svg><span class="lbl">Serial Number</span><svg class="i chev" data-i="chev"></svg></div>
+    <div class="sub"><div class="nav"><span class="lbl">Daftar</span></div><div class="nav"><span class="lbl">Laporan</span></div><div class="nav"><span class="lbl">Pengaturan</span></div></div>
+    <div class="grp">Data Master</div>
+    <div class="nav tog open" data-k="item"><svg class="i" data-i="pkg"></svg><span class="lbl">Item</span><svg class="i chev" data-i="chev"></svg></div>
+    <div class="sub open"><div class="nav" data-k="item-list"><span class="lbl">Daftar Item</span></div><div class="nav"><span class="lbl">Merk</span></div></div>
+    <div class="nav"><svg class="i" data-i="users"></svg><span class="lbl">Customer</span></div>
+    <div class="grp">Stiker & Dokumen</div>
+    <div class="nav tog" data-k="sticker"><svg class="i" data-i="sticker"></svg><span class="lbl">Stiker</span><svg class="i chev" data-i="chev"></svg></div>
+    <div class="sub"><div class="nav"><span class="lbl">Katalog</span></div><div class="nav"><span class="lbl">Jenis</span></div><div class="nav"><span class="lbl">Stok</span></div><div class="nav" data-k="library"><span class="lbl">Pustaka Gambar</span></div><div class="nav"><span class="lbl">Konfigurasi</span></div></div>
+    <div class="nav tog"><svg class="i" data-i="qr"></svg><span class="lbl">Manual Book</span><svg class="i chev" data-i="chev"></svg></div>
+    <div class="sub"><div class="nav"><span class="lbl">QR Code</span></div><div class="nav"><span class="lbl">Default QR</span></div></div>
+    <div class="nav"><svg class="i" data-i="file"></svg><span class="lbl">Postel</span></div>
+    <div class="grp">Pengaturan</div>
+    <div class="nav tog"><svg class="i" data-i="shield"></svg><span class="lbl">Akses</span><svg class="i chev" data-i="chev"></svg></div>
+    <div class="sub"><div class="nav"><span class="lbl">Pengguna</span></div><div class="nav"><span class="lbl">Role</span></div><div class="nav"><span class="lbl">Lokasi</span></div><div class="nav"><span class="lbl">Business Unit</span></div></div>
+    <div class="nav tog"><svg class="i" data-i="settings"></svg><span class="lbl">Sistem</span><svg class="i chev" data-i="chev"></svg></div>
+    <div class="sub"><div class="nav"><span class="lbl">Status Push</span></div><div class="nav"><span class="lbl">Log Audit</span></div></div>
+  </aside>
+  <div class="main">
+    <div class="topbar">
+      <button class="btn sm icon v-ghost c-primary collapse" data-tip="Buka/tutup sidebar (diingat setelah refresh)"><svg class="i" data-i="panel"></svg></button>
+      <nav class="crumb"></nav>
+      <div class="right"><span class="pill"><svg class="i" data-i="pin"></svg>Gudang Pusat</span><span class="pill">🔔</span><span class="pill">RM</span></div>
+    </div>
+    <div class="content"><div class="container slot"></div></div>
+  </div>
+</div>
+</template>
+
+<section class="screen" id="s2" data-crumb="Item|Daftar Item" data-active="item-list" data-w="w-default">
+  <div class="note"><b>Layar ini:</b> gulir tabel ke bawah, lalu gulir naik sedikit: bar judul + filter muncul lagi. Header tabel menempel. Centang beberapa baris untuk melihat bar aksi massal. Tombol ⊟ di header melipat sidebar; dalam mode ikon, klik Item/Stiker/Serial Number membuka popover submenu. Arahkan kursor ke tombol aksi untuk tooltip.</div>
+  <div class="listbar headroom">
+    <div class="titlerow">
+      <h1>Data Item</h1>
+      <button class="btn v-outline c-primary"><svg class="i" data-i="download"></svg>Ekspor</button>
+      <button class="btn v-solid c-primary"><svg class="i" data-i="plus"></svg>Tambah</button>
+    </div>
+    <div class="filters">
+      <span class="input"><svg class="i" data-i="search"></svg>Cari merk, tipe, atau nama lain</span>
+      <span class="chipf set">Status: <b>Aktif</b> ✕</span>
+      <span class="chipf"><svg class="i" data-i="plus"></svg>Merk</span>
+      <span class="chipf"><svg class="i" data-i="plus"></svg>Business Unit</span>
+      <span class="chipf"><svg class="i" data-i="plus"></svg>Manual Book</span>
+      <span class="chipf"><svg class="i" data-i="plus"></svg>Postel</span>
+    </div>
+  </div>
+  <div class="tablewrap" style="--th-top:0"><table>
+    <thead><tr><th class="act"><input type="checkbox" class="all"></th><th class="act">Aksi</th><th>Merk</th><th>Tipe</th><th>Business Unit</th><th>Lock</th><th style="text-align:right">Gambar</th><th>Status</th></tr></thead>
+    <tbody class="rows"></tbody>
+  </table></div>
+  <div class="bulkbar"><b class="cnt">0 dipilih</b>
+    <button class="btn sm v-soft c-success"><svg class="i" data-i="power"></svg>Aktifkan</button>
+    <button class="btn sm v-soft c-warning"><svg class="i" data-i="poweroff"></svg>Nonaktifkan</button>
+    <button class="btn sm v-soft c-destructive"><svg class="i" data-i="trash"></svg>Hapus</button>
+    <button class="btn sm v-ghost c-primary clr"><svg class="i" data-i="x"></svg>Batalkan pilihan</button>
+  </div>
+</section>
+
+<section class="screen" id="s3" data-crumb="Item|Daftar Item|Asus RT-AX55|Ubah" data-active="item-list" data-w="w-narrow">
+  <div class="note"><b>Layar ini:</b> Form Edit bertab (seperti Frappe). Satu tab boleh berisi beberapa section. Bar judul + tombol berperilaku sama dengan halaman daftar (muncul lagi saat scroll naik), tab selalu menempel. Label wajib bertanda <span class="req">*</span> merah. Field relasi memakai LinkField: daftar saran + baris "Tambah" (bila berhak) + tautan Buka. Form yang sama dipakai di dialog.</div>
+  <div class="formhead headroom">
+    <h1>Asus RT-AX55 <span class="badge v-soft c-success"><span class="dot"></span>Aktif</span></h1>
+    <button class="btn v-outline c-primary"><svg class="i" data-i="x"></svg>Batal</button>
+    <button class="btn v-solid c-primary"><svg class="i" data-i="save"></svg>Simpan</button>
+  </div>
+  <div class="ftabs"><span class="on">Detail</span><span>Gambar</span><span>Instruksi Stiker</span><span>Manual Book & Postel</span></div>
+  <div class="section">
+    <h3>Identitas</h3>
+    <div class="grid2">
+      <div class="field linkopt"><label>Merk<span class="req">*</span></label><div class="box">Asu<span style="margin-left:auto" data-tip="Buka Merk"><svg class="i" data-i="ext" style="color:var(--info-text)"></svg></span></div>
+        <div class="dropdown"><div><b>Asu</b>s</div><div>Aruba (<b>A</b>…)</div><div class="add"><svg class="i" data-i="plus"></svg>Tambah Merk "Asu"</div></div>
+      </div>
+      <div class="field"><label>Tipe<span class="req">*</span></label><div class="box">RT-AX55</div></div>
+      <div class="field" style="margin-top:84px"><label>Business Unit<span class="req">*</span></label><div class="box"><span class="chip">QC Router ✕</span><span class="chip">Retail ✕</span></div></div>
+      <div class="field" style="margin-top:84px"><label>Nama lain</label><div class="box"><span class="chip">AX1800 ✕</span></div><div class="hint">Dipakai saat mencari item.</div></div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>Country Lock</h3>
+    <div class="grid2">
+      <div class="field"><label><input type="checkbox" checked style="vertical-align:-3px"> Country lock</label></div>
+      <div class="field"><label>Firmware<span class="req">*</span></label><div class="box">ASUSWRT 3.0.0.4 <span style="margin-left:auto">⌄</span></div></div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>Foto bukti</h3>
+    <div class="grid2">
+      <div class="field"><label><input type="checkbox" style="vertical-align:-3px"> Wajib foto bukti</label></div>
+      <div class="field"><label>Minimum foto</label><div class="box">1</div></div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>Aksesori</h3>
+    <div class="grid2">
+      <div class="field"><label>Daftar aksesori</label><div class="box ta">Adaptor 12V, kabel LAN, buku panduan</div></div>
+      <div class="field"><label>Catatan QC</label><div class="box ta">Periksa LED WPS menyala.</div></div>
+    </div>
+  </div>
+  <div class="section">
+    <h3>Detail</h3>
+    <div class="field"><label>Deskripsi (Markdown)</label><div class="box ta" style="height:220px">## Spesifikasi
+- Wi-Fi 6 AX1800
+- 4 port LAN gigabit</div></div>
+  </div>
+</section>
+
+<section class="screen" id="s4" data-crumb="Item|Daftar Item|Asus RT-AX55" data-active="item-list" data-w="w-default">
+  <div class="note"><b>Layar ini:</b> halaman View. Aksi lebar = ikon + label. Nilai relasi (Merk, BU, Manual Book) berupa tautan biru ke View model itu. Info samping: pembuat, terakhir diubah.</div>
+  <div class="formhead headroom">
+    <h1>Asus RT-AX55 <span class="badge v-soft c-success"><span class="dot"></span>Aktif</span></h1>
+    <button class="btn v-soft c-warning"><svg class="i" data-i="poweroff"></svg>Nonaktifkan</button>
+    <button class="btn v-solid c-primary"><svg class="i" data-i="pencil"></svg>Ubah</button>
+  </div>
+  <div class="ftabs"><span class="on">Detail</span><span>Gambar (4)</span><span>Instruksi Stiker</span><span>Serial Number</span><span>Riwayat</span></div>
+  <div class="viewgrid" style="margin-top:18px">
+    <div>
+      <h3 style="margin-top:0">Identitas</h3>
+      <dl class="kv">
+        <dt>Merk</dt><dd><a class="lk" href="#">Asus</a></dd>
+        <dt>Tipe</dt><dd>RT-AX55</dd>
+        <dt>Business Unit</dt><dd><a class="lk" href="#">QC Router</a>, <a class="lk" href="#">Retail</a></dd>
+        <dt>Nama lain</dt><dd>AX1800</dd>
+        <dt>Country lock</dt><dd><span class="badge v-soft c-info">Ya</span> · Firmware ASUSWRT 3.0.0.4</dd>
+      </dl>
+      <h3>Dokumen</h3>
+      <dl class="kv">
+        <dt>Manual Book</dt><dd><a class="lk" href="#">Manual Book - RT-AX55 v3</a></dd>
+        <dt>Postel</dt><dd><span class="badge v-soft c-warning"><span class="dot"></span>Belum ada Postel</span></dd>
+      </dl>
+    </div>
+    <div class="aside">
+      <div class="row"><svg class="i" data-i="users"></svg>Dibuat oleh rahmad · 2 minggu lalu</div>
+      <div class="row"><svg class="i" data-i="pencil"></svg>Diubah oleh admin · 3 hari lalu</div>
+      <div class="row"><svg class="i" data-i="list"></svg><a class="lk" href="#">128 Serial Number</a></div>
+    </div>
+  </div>
+</section>
+
+<section class="screen" id="s5" data-crumb="Serah Terima" data-active="handover" data-w="w-full">
+  <div class="note"><b>Layar ini:</b> Kanban: warna kolom mengikuti badge status yang dikelompokkan, lebar minimum per kolom (geser ke samping di layar tanggung) dan bar filter yang sama dengan daftar. Di bawahnya Grid mengikuti Pustaka Gambar.</div>
+  <div class="listbar" style="position:static">
+    <div class="titlerow"><h1>Serah Terima</h1><button class="btn v-solid c-primary"><svg class="i" data-i="plus"></svg>Tambah</button></div>
+    <div class="filters"><span class="input"><svg class="i" data-i="search"></svg>Cari nomor atau customer</span><span class="chipf set">Lokasi: <b>Gudang Pusat</b> ✕</span><span class="chipf"><svg class="i" data-i="plus"></svg>Customer</span><span class="chipf"><svg class="i" data-i="plus"></svg>Tanggal</span></div>
+  </div>
+  <div class="kanban" style="margin-top:12px">
+    <div class="col c-secondary"><h4><span class="badge v-soft c-secondary">Baru</span> 3</h4>
+      <div class="kcard"><div class="top"><a class="lk" href="#">ST-20261120-004</a><span class="badge v-outline c-secondary">WH</span></div>PT Sinar Jaya · 12 butir<div class="prog"><i style="width:0"></i></div></div>
+      <div class="kcard"><div class="top"><a class="lk" href="#">ST-20261120-003</a><span class="badge v-outline c-secondary">WH</span></div>CV Maju · 4 butir<div class="prog"><i style="width:0"></i></div></div>
+    </div>
+    <div class="col c-info"><h4><span class="badge v-soft c-info">Dikerjakan</span> 2</h4>
+      <div class="kcard"><div class="top"><a class="lk" href="#">ST-20261119-011</a><span class="badge v-soft c-warning">2 komentar</span></div>Toko Elektra · 8/20 butir<div class="prog"><i style="width:40%"></i></div></div>
+    </div>
+    <div class="col c-success"><h4><span class="badge v-soft c-success">Selesai</span> 5</h4>
+      <div class="kcard"><div class="top"><a class="lk" href="#">ST-20261118-002</a></div>PT Delta · 10/10 butir<div class="prog"><i style="width:100%"></i></div></div>
+    </div>
+    <div class="col c-destructive"><h4><span class="badge v-soft c-destructive">Dibatalkan</span> 1</h4>
+      <div class="kcard"><div class="top"><a class="lk" href="#">ST-20261117-007</a></div>CV Nusantara</div>
+    </div>
+  </div>
+  <h2 class="s">Grid (contoh: Pustaka Gambar)</h2>
+  <div class="gridc">
+    <div class="gcard"><div class="img"></div><div class="meta"><span>stiker-depan.jpg</span><button class="btn sm icon v-ghost c-destructive" data-tip="Hapus"><svg class="i" data-i="trash"></svg></button></div></div>
+    <div class="gcard"><div class="img"></div><div class="meta"><span>belakang-unit.png</span><button class="btn sm icon v-ghost c-destructive" data-tip="Hapus"><svg class="i" data-i="trash"></svg></button></div></div>
+    <div class="gcard"><div class="img"></div><div class="meta"><span>dus-samping.jpg</span><button class="btn sm icon v-ghost c-destructive" data-tip="Hapus"><svg class="i" data-i="trash"></svg></button></div></div>
+    <div class="gcard"><div class="img"></div><div class="meta"><span>label-imei.jpg</span><button class="btn sm icon v-ghost c-destructive" data-tip="Hapus"><svg class="i" data-i="trash"></svg></button></div></div>
+    <div class="gcard"><div class="img"></div><div class="meta"><span>port-lan.jpg</span><button class="btn sm icon v-ghost c-destructive" data-tip="Hapus"><svg class="i" data-i="trash"></svg></button></div></div>
+  </div>
+</section>
+
+<script>
+const P={
+plus:'<path d="M5 12h14"/><path d="M12 5v14"/>',
+pencil:'<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/>',
+trash:'<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>',
+power:'<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>',
+poweroff:'<path d="M18.36 6.64A9 9 0 0 1 20.77 15"/><path d="M6.16 6.16a9 9 0 1 0 12.68 12.68"/><path d="M12 2v4"/><path d="m2 2 20 20"/>',
+x:'<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+save:'<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>',
+download:'<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
+chev:'<path d="m9 18 6-6-6-6"/>',
+panel:'<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>',
+search:'<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+warn:'<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+cx:'<circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/>',
+ccheck:'<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+house:'<path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+clip:'<rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
+lock:'<rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>',
+list:'<path d="M3 12h.01"/><path d="M3 18h.01"/><path d="M3 6h.01"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M8 6h13"/>',
+pkg:'<path d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"/><path d="M12 22V12"/><path d="m3.3 7 8.7 5 8.7-5"/>',
+users:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>',
+sticker:'<path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><path d="M15 3v6h6"/>',
+qr:'<rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/>',
+file:'<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+shield:'<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M2 12h3"/><path d="M19 12h3"/>',
+pin:'<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+ext:'<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'
+};
+function icons(root){root.querySelectorAll('svg[data-i]').forEach(s=>{s.setAttribute('viewBox','0 0 24 24');s.innerHTML=P[s.dataset.i]||''})}
+
+// matriks tombol
+const colors=['primary','secondary','success','warning','info','destructive'];
+const styles=['solid','soft','outline','ghost','link'];
+const lbl={primary:'Simpan',secondary:'Unduh',success:'Aktifkan',warning:'Nonaktifkan',info:'Info',destructive:'Hapus'};
+const m=document.getElementById('matrix');
+m.innerHTML='<div></div>'+styles.map(s=>`<div class="h">${s==='soft'?'soft (muted)':s}</div>`).join('')+
+ colors.map(c=>`<div class="h">${c}</div>`+styles.map(s=>`<div><button class="btn v-${s} c-${c}">${lbl[c]}</button></div>`).join('')).join('');
+
+// pasang shell ke layar 2-5
+let collapsed=false;
+document.querySelectorAll('section[data-crumb]').forEach(sec=>{
+  const tpl=document.getElementById('shell').content.cloneNode(true);
+  const slot=tpl.querySelector('.slot');
+  slot.classList.add(sec.dataset.w);
+  while(sec.firstChild) slot.appendChild(sec.firstChild);
+  const parts=sec.dataset.crumb.split('|');
+  tpl.querySelector('.crumb').innerHTML=parts.map((p,i)=>i===parts.length-1?`<span class="cur">${p}</span>`:`<a href="#">${p}</a>`).join('<svg class="i" data-i="chev" style="width:14px"></svg>');
+  tpl.querySelectorAll('.sidebar .nav').forEach(n=>{if(!n.classList.contains('tog'))n.dataset.tip=n.textContent.trim()});
+  const act=tpl.querySelector(`[data-k="${sec.dataset.active}"]`); if(act) act.classList.add('active');
+  sec.appendChild(tpl);
+});
+
+// tabel item
+const brands=['Asus','TP-Link','Huawei','ZTE','Xiaomi','Tenda','Mercusys','Ruijie'];
+const models=['RT-AX55','Archer C6','HG8245H5','F670L','AX3000','AC10','MR30G','RG-EW1200'];
+const bus=[['QC Router'],['QC Router','Retail'],['Retail'],['ONT']];
+const rows=document.querySelector('#s2 .rows');let html='';
+for(let i=0;i<40;i++){
+  const b=brands[i%8],mo=models[(i*3)%8]+(i>7?'-'+(i):''),st=i%6!==4,lock=i%3===0;
+  html+=`<tr><td class="act"><input type="checkbox" class="rc"></td>
+  <td class="act"><div class="acts">
+   <button class="btn sm icon v-ghost c-primary" data-tip="Ubah ${b} ${mo}"><svg class="i" data-i="pencil"></svg></button>
+   ${st?`<button class="btn sm icon v-ghost c-warning" data-tip="Nonaktifkan"><svg class="i" data-i="poweroff"></svg></button>`:`<button class="btn sm icon v-ghost c-success" data-tip="Aktifkan"><svg class="i" data-i="power"></svg></button>`}
+  </div></td>
+  <td><a class="lk" href="#" data-tip="Buka View Merk">${b}</a></td>
+  <td><a class="lk" href="#" data-tip="Buka View Item">${mo}</a>${i%5===1?'<div class="sub-note">⚠ Belum ada QR Manual Book</div>':''}</td>
+  <td>${bus[i%4].map(x=>`<a class="lk" href="#">${x}</a>`).join(', ')}</td>
+  <td>${lock?'<span class="badge v-soft c-info">Country lock</span>':''}</td>
+  <td style="text-align:right">${(i*7)%5}</td>
+  <td>${st?'<span class="badge v-soft c-success"><span class="dot"></span>Aktif</span>':'<span class="badge v-soft c-secondary"><span class="dot"></span>Nonaktif</span>'}</td></tr>`;
+}
+rows.innerHTML=html;
+icons(document);
+
+// seleksi + bar massal
+const s2=document.getElementById('s2');
+function syncSel(){const n=s2.querySelectorAll('.rc:checked').length;s2.querySelectorAll('.rc').forEach(c=>c.closest('tr').classList.toggle('sel',c.checked));const bar=s2.querySelector('.bulkbar');bar.classList.toggle('on',n>0);bar.querySelector('.cnt').textContent=n+' dipilih'}
+s2.addEventListener('change',e=>{if(e.target.classList.contains('all')){s2.querySelectorAll('.rc').forEach(c=>c.checked=e.target.checked)}syncSel()});
+s2.querySelector('.clr').onclick=()=>{s2.querySelectorAll('input[type=checkbox]').forEach(c=>c.checked=false);syncSel()};
+
+// headroom: bar judul (daftar & form) sembunyi saat turun, muncul saat naik sedikit.
+// Yang mengikutinya (header tabel, tab form) selalu menempel tepat di bawahnya.
+let lastY=window.scrollY;
+const TOP=98;
+function follow(bar){
+  const top=bar.classList.contains('hidden')?TOP:TOP+bar.offsetHeight;
+  document.querySelectorAll('.screen.on th, .screen.on .ftabs').forEach(t=>t.style.top=top+'px');
+}
+window.addEventListener('scroll',()=>{
+  const y=window.scrollY,bar=document.querySelector('.screen.on .headroom');
+  if(bar){
+    if(y>lastY+2 && y>220) bar.classList.add('hidden');
+    else if(y<lastY-2) bar.classList.remove('hidden');
+    bar.classList.toggle('floating',y>160);
+    follow(bar);
+  }
+  lastY=y;
+},{passive:true});
+
+// sidebar: lipat + submenu; saat dilipat, menu bersubmenu membuka popover
+function closeFly(){document.querySelectorAll('.flyout').forEach(f=>f.remove())}
+document.addEventListener('click',e=>{
+  const c=e.target.closest('.collapse');
+  if(c){collapsed=!collapsed;closeFly();document.querySelectorAll('.app').forEach(a=>a.classList.toggle('collapsed',collapsed));return}
+  const t=e.target.closest('.nav.tog');
+  if(t && collapsed){
+    const was=document.querySelector('.flyout')?.dataset.for===t.querySelector('.lbl').textContent;
+    closeFly(); if(was) return;
+    const r=t.getBoundingClientRect(),f=document.createElement('div');
+    f.className='flyout';f.dataset.for=t.querySelector('.lbl').textContent;
+    f.innerHTML=`<div class="fh">${f.dataset.for}</div>`+t.nextElementSibling.innerHTML;
+    f.style.left=(r.right+8)+'px';f.style.top=r.top+'px';
+    document.body.appendChild(f);return;
+  }
+  if(!e.target.closest('.flyout')) closeFly();
+  if(t){const open=!t.classList.contains('open');document.querySelectorAll('.nav.tog').forEach(x=>{if(x.querySelector('.lbl').textContent===t.querySelector('.lbl').textContent){x.classList.toggle('open',open);x.nextElementSibling.classList.toggle('open',open)}})}
+});
+
+// tooltip gaya shadcn (menggantikan title bawaan peramban)
+let tipEl=null;
+document.addEventListener('mouseover',e=>{
+  const el=e.target.closest('[data-tip]');
+  if(!el||(el.classList.contains('nav')&&!collapsed)){tipEl?.remove();tipEl=null;return}
+  if(tipEl?.dataset.src===el.dataset.tip) return;
+  tipEl?.remove();
+  tipEl=document.createElement('div');tipEl.className='tip';tipEl.textContent=el.dataset.tip;tipEl.dataset.src=el.dataset.tip;
+  document.body.appendChild(tipEl);
+  const r=el.getBoundingClientRect();
+  tipEl.style.left=(r.left+r.width/2-tipEl.offsetWidth/2)+'px';tipEl.style.top=(r.top-tipEl.offsetHeight-8)+'px';
+});
+
+// tab mockup
+document.querySelectorAll('.demo-tabs button[data-s]').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('.demo-tabs button[data-s]').forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('on',s.id===b.dataset.s));
+  window.scrollTo(0,0);closeFly();
+  const hb=document.querySelector('.screen.on .headroom');if(hb){hb.classList.remove('hidden');follow(hb)}
+});
+document.getElementById('theme').onclick=()=>document.documentElement.classList.toggle('dark');
+</script>
+</body>
+</html>
