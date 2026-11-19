@@ -37,6 +37,10 @@ export function miniDump(): Tables {
       [107, '2024-05-04', 1, 'AB 12 CD', 0, '', 1, 1, 0], // sampah: spasi
       [108, '2024-05-05', 1, 'AC8BA9543AD8  ', 0, '', 1, 1, 0], // spasi ekor dibuang; tanpa riwayat -> recorded sintetis
       [109, '2024-05-06', 1, 'ZZ99YY88XX77', 0, '', 2, 2, 0], // Ubiquiti di Teakwave
+      // Serial yang sama di DUA BU lama (kasus nyata: 105 serial Spectrum + Teakwave): dilipat jadi satu, terbaru (111,
+      // Teakwave) menang; Spectrum masuk riwayat BU sebagai BU yang sudah ditinggalkan.
+      [110, '2024-02-01', 1, 'XBU123456789', 0, '', 1, 1, 0],
+      [111, '2024-06-01', 1, 'xbu123456789', 0, '', 2, 2, 0],
     ],
     // [idDataqc, idBusinessUnit, idLocation, username, action, timestamp]
     historyDataqc: [
@@ -57,6 +61,8 @@ export function miniDump(): Tables {
       [103, 1, 1, 'desmon', 'Re-added to Database', '2024-06-01 08:00:00'], // riwayat catatan yang dilipat, paling akhir
       [105, 1, 1, 'rahmadmrhd', 'Added to Database', '2024-05-02 08:00:00'],
       [109, 2, 2, 'desmon', 'Added to Database', '2024-05-06 08:00:00'],
+      [110, 1, 1, 'rahmadmrhd', 'Added to Database', '2024-02-01 08:00:00'],
+      [111, 2, 2, 'desmon', 'Added to Database', '2024-06-01 09:00:00'],
     ],
   };
 }
