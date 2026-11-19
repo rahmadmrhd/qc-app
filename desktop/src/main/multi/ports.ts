@@ -78,11 +78,11 @@ export function createMultiPorts(deps: MultiPortsDeps): MultiPorts {
       try {
         const pkg = await deps.packages.ensure();
         if (!pkg) return null;
+        // Semua SSH dari PC ke router (lease, bridge, host key) = `config.server.ip` dengan kredensial `config.server`.
+        // `ipServer` BUKAN host SSH: hanya nilai placeholder `{ipServer}` di skrip.
         const { server } = pkg.config;
-        // Host = ipServer mode Multi (hasil config: nilai Multi, lalu tunggal, lalu `server.ip`); kredensial = server.
-        const host = pkg.config.brands.ubiquiti?.multi.ipServer || server.ip;
         const [out = ''] = await exec(
-          { host, username: server.username, password: server.password },
+          { host: server.ip, username: server.username, password: server.password },
           [LEASE_COMMAND],
           { timeoutMs: LEASE_TIMEOUT_MS },
         );

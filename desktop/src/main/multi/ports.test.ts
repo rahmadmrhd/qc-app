@@ -105,9 +105,16 @@ describe('readLeases', () => {
       { ip: '192.168.88.11', mac: '58:D6:1F:0E:4E:FF' },
     ]);
     expect(commands).toEqual([LEASE_COMMAND]);
-    // Host = ipServer mode Multi (hasil config), kredensial = config.server.
+    // Lease dan bridge memakai satu sumber host yang sama.
+    const bridgeTargets: SshTarget[] = [];
+    const bridge = setup({ exec: execVia(server, bridgeTargets) });
+    await bridge.ports.ensureBridgePorts();
+    expect(bridgeTargets[0]?.host).toBe(targets[0]?.host);
+    bridge.events.close();
+    // Host = config.server.ip (BUKAN ipServer, yang berbeda di fixture), kredensial = config.server.
+    expect(pkg.config.brands.ubiquiti?.multi.ipServer).not.toBe(pkg.config.server.ip);
     expect(targets[0]).toMatchObject({
-      host: pkg.config.brands.ubiquiti?.multi.ipServer,
+      host: pkg.config.server.ip,
       username: SERVER_USER,
       password: SERVER_PASSWORD,
     });
