@@ -63,6 +63,14 @@ export function createMultiHost(deps: MultiHostDeps): MultiHost {
   // walau port nyata sudah menyamarkannya; pesan itu juga masuk `snapshot().message`.
   const ports: MultiPorts = {
     ...deps.ports,
+    // Arah sebaliknya dari penjaga `injectRun`: inject tunggal yang baru mulai saat Multi berjalan (diam) tak boleh
+    // berbagi router dengan inject perangkat Multi (Auto Inject, Inject All, atau manual); perangkat ditandai gagal.
+    async inject(req, signal, onProgress) {
+      if (deps.isSingleInjecting()) {
+        return { ok: false, stage: 'failed', message: MSG_SINGLE_BUSY };
+      }
+      return deps.ports.inject(req, signal, onProgress);
+    },
     async ensureBridgePorts() {
       const result = await deps.ports.ensureBridgePorts();
       let secrets: string[] = [];
@@ -189,7 +197,8 @@ export function createMultiHost(deps: MultiHostDeps): MultiHost {
           return openWeb(args[0] as string);
       }
     },
-    isRunning: () => engine.snapshot().running,
+    // Termasuk jendela saat `multiStart` menunggu paket dimuat (paket tak boleh diganti di sela itu).
+    isRunning: () => starting || engine.snapshot().running,
     isInjecting: () => busy(engine.snapshot()),
     dispose() {
       if (disposed) return;

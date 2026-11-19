@@ -208,6 +208,43 @@ describe('isInjecting dan onIdle', () => {
   });
 });
 
+describe('saling-kecualikan arah sebaliknya', () => {
+  test('inject tunggal yang berjalan saat Multi aktif menggagalkan inject perangkat tanpa menyentuh port', async () => {
+    const { host, fake, setSingle } = setup();
+    fake.state.leases = LEASES;
+    await host.handle('multiStart', [startCfg()]);
+    await fake.advance(0);
+    setSingle(true);
+    await host.handle('multiInjectDevice', [MAC]);
+    await fake.advance(2000);
+    expect(fake.calls.inject).toHaveLength(0);
+    const snap = (await host.handle('multiSnapshot', [])) as MultiSnapshot;
+    expect(snap.devices[0]).toMatchObject({
+      status: 'failed',
+      message: 'Hentikan inject tunggal dulu',
+    });
+    host.dispose();
+  });
+
+  test('isRunning benar juga selama multiStart menunggu paket dimuat', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolveGate) => {
+      release = resolveGate;
+    });
+    const { host } = setup({
+      ensurePackage: async () => {
+        await gate;
+        return pkg;
+      },
+    });
+    const starting = host.handle('multiStart', [startCfg()]);
+    expect(host.isRunning()).toBe(true);
+    release();
+    await starting;
+    host.dispose();
+  });
+});
+
 describe('snapshot tidak membocorkan sandi', () => {
   test('snapshot, peristiwa, hasil prepareBridge, dan pesan galat bebas dari sandi sentinel', async () => {
     const { host, fake, emitted } = setup();
