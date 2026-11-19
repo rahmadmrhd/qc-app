@@ -1,5 +1,6 @@
-import { Outlet } from '@tanstack/react-router';
+import { Outlet, useMatches } from '@tanstack/react-router';
 import { type ReactNode, useCallback, useState } from 'react';
+import { PageContainer } from '@/components/page/page-container';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useMe } from '@/modules/auth/use-me';
@@ -13,6 +14,8 @@ import { NotificationBell } from '@/modules/notification/notification-bell';
 import { PushOnboarding } from '@/modules/push/components/push-onboarding';
 import { ThemeToggle } from '@/modules/theme/theme-toggle';
 import { usePrefetchOnIdle } from '../prefetch';
+import { pageWidthOf } from '../route-meta';
+import { AppBreadcrumb } from './app-breadcrumb';
 import { AppSidebar } from './app-sidebar';
 import { OutboxChip } from './outbox-chip';
 import { ServerStatusBanner } from './server-status-banner';
@@ -26,6 +29,7 @@ import { UserMenu } from './user-menu';
  */
 export function AppShell({ children }: { children?: ReactNode } = {}) {
   usePrefetchOnIdle(useMe());
+  const pageWidth = pageWidthOf(useMatches());
   // Terkendali (bukan defaultOpen): terbuka/terlipat diingat di localStorage lewat `qc.sidebar`.
   const [sidebarOpen, setSidebarOpen] = useState(() => readSidebarState().open);
   const onSidebarOpenChange = useCallback((open: boolean) => {
@@ -43,6 +47,7 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
               <UiUpdateBanner />
               <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
                 <SidebarTrigger data-tour="sidebar-trigger" />
+                <AppBreadcrumb />
                 <div className="ml-auto flex items-center gap-1">
                   <LocationPicker />
                   <OutboxChip />
@@ -55,7 +60,9 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
               <PushOnboarding />
               <GuideGreeting />
               <GuideBanner />
-              <main className="flex-1 p-4 md:p-6">{children ?? <Outlet />}</main>
+              <main className="flex-1 p-4 md:p-6">
+                <PageContainer width={pageWidth}>{children ?? <Outlet />}</PageContainer>
+              </main>
             </SidebarInset>
           </TourProvider>
         </SidebarProvider>

@@ -32,6 +32,7 @@ vi.mock('@tanstack/react-router', async () => {
   }
   return {
     Outlet,
+    useMatches: () => [],
     useNavigate: () => vi.fn(),
     useRouterState: ({ select }: { select: (s: { location: { pathname: string } }) => unknown }) =>
       select({ location: { pathname: state.pathname } }),
@@ -63,6 +64,7 @@ vi.mock('./app-sidebar', async () => {
     AppSidebar: () => <div data-testid="sidebar" data-state={useSidebar().state} />,
   };
 });
+vi.mock('./app-breadcrumb', () => ({ AppBreadcrumb: stubs.make('breadcrumb') }));
 vi.mock('./user-menu', () => ({ UserMenu: stubs.make('user-menu') }));
 vi.mock('@/modules/location/location-picker', () => ({ LocationPicker: stubs.make('picker') }));
 vi.mock('@/modules/notification/notification-bell', () => ({
@@ -154,4 +156,12 @@ test('tanpa penyimpanan sidebar terbuka dan tidak menulis cookie sidebar_state',
   render(<AppShell />);
   expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'expanded');
   expect(document.cookie).not.toContain('sidebar_state');
+});
+
+test('isi halaman dibungkus PageContainer rata tengah berlebar bawaan', () => {
+  render(<AppShell />);
+  const main = screen.getAllByRole('main').at(-1) as HTMLElement;
+  const container = main.firstElementChild as HTMLElement;
+  expect(container.className).toContain('mx-auto');
+  expect(container.className).toContain('max-w-7xl');
 });
