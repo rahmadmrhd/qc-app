@@ -53,6 +53,7 @@ function setup(overrides: Partial<IpcDeps> = {}, packageDir: string | null = 'D:
     handle: vi.fn(async (): Promise<unknown> => undefined),
     isRunning: vi.fn(() => false),
     isInjecting: vi.fn(() => false),
+    isPreparingBridge: vi.fn(() => false),
     dispose: vi.fn(),
   } satisfies MultiHost;
   const progress: Array<{ id: string } & InjectProgressDto> = [];
@@ -714,6 +715,21 @@ describe('registerIpc', () => {
       multi.isInjecting.mockReturnValue(false);
       const ok = (await call(BRIDGE_CHANNELS.injectRun, injectReq())) as { message: string };
       expect(ok.message).not.toBe('Hentikan Multi dulu');
+      store.close();
+    });
+
+    test('injectRun ditolak selama Multi menyiapkan bridge router, dan jalan lagi setelahnya', async () => {
+      const { call, multi, deps, store } = setup();
+      multi.isPreparingBridge.mockReturnValue(true);
+      expect(await call(BRIDGE_CHANNELS.injectRun, injectReq())).toEqual({
+        ok: false,
+        stage: 'failed',
+        message: 'Sedang menyiapkan bridge router, coba lagi sebentar',
+      });
+      expect(deps.runInject).not.toHaveBeenCalled();
+      multi.isPreparingBridge.mockReturnValue(false);
+      const ok = (await call(BRIDGE_CHANNELS.injectRun, injectReq())) as { message: string };
+      expect(ok.message).not.toContain('menyiapkan bridge');
       store.close();
     });
 

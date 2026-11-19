@@ -87,8 +87,13 @@ export interface MultiEngine {
   stopQueue(): void;
   /** Seperti `stopQueue` lalu membatalkan juga yang `injecting`. */
   cancelAll(): void;
-  /** Satu-satunya jalan mengubah konfigurasi router (tombol eksplisit); tidak pernah dipanggil otomatis. */
+  /**
+   * Satu-satunya jalan mengubah konfigurasi router (tombol eksplisit); tidak pernah dipanggil otomatis. Selama berjalan,
+   * semua inject ditahan (alasan terpisah dari blokir draft); setelah selesai Auto Inject menyapu lagi.
+   */
   prepareBridge(): Promise<{ ok: boolean; message: string }>;
+  /** `prepareBridge` sedang berjalan. */
+  isPreparingBridge(): boolean;
   /**
    * Masih ada inject yang berjalan atau antre, TERMASUK inject yang sedang diselesaikan setelah `stop()` (stop membatalkan
    * secara sinkron, tetapi inject baru benar-benar selesai saat port menyelesaikan diri).
@@ -131,6 +136,7 @@ const MSG_INFO_UNAVAILABLE = 'Info perangkat tidak terbaca';
 const MSG_IP_CHANGED = 'IP berubah, memeriksa ulang';
 const MSG_RECORD_FAILED =
   'Inject selesai tetapi hasil gagal dicatat (dicoba lagi otomatis, atau tekan Retry)';
+const MSG_PREPARING_BRIDGE = 'Sedang menyiapkan bridge router';
 const MSG_LEASE_RETRY = 'Gagal memeriksa lease, coba lagi';
 const MSG_LEASE_GIVE_UP = 'Gagal memeriksa lease, tekan Retry';
 
@@ -240,6 +246,8 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
   let concurrency = 4;
   let autoInject = false;
   let blockedReason: string | null = null;
+  /** `prepareBridge` sedang berjalan: menahan inject (mengubah bridge port memutus perangkat), terpisah dari blokir draft. */
+  let preparingBridge = false;
   let notice = '';
   let queue: Credential[] = [];
   let baseCred: Credential | null = null;
@@ -363,6 +371,11 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       notice = '';
       scheduleEmit();
     }
+  }
+
+  /** Alasan inject ditahan: blokir draft dari renderer lebih dulu, lalu penyiapan bridge router. */
+  function activeBlock(): string | null {
+    return blockedReason ?? (preparingBridge ? MSG_PREPARING_BRIDGE : null);
   }
 
   function live(r: Run, d: DeviceRecord, signal?: AbortSignal): boolean {
@@ -706,7 +719,7 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
   function autoEligible(r: Run, d: DeviceRecord): boolean {
     return (
       autoInject &&
-      blockedReason === null &&
+      activeBlock() === null &&
       !r.queueStopped &&
       d.status === 'ready' &&
       !d.alreadyRegistered &&
@@ -732,8 +745,9 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
   function queueDevice(r: Run, d: DeviceRecord, manual: boolean): boolean {
     if (d.status !== 'ready' && d.status !== 'failed') return false;
     if (r.jobs.has(d.mac)) return false;
-    if (blockedReason !== null) {
-      if (manual) setNotice(`Inject ditahan: ${blockedReason}`);
+    const block = activeBlock();
+    if (block !== null) {
+      if (manual) setNotice(`Inject ditahan: ${block}`);
       return false;
     }
     if (r.queueStopped) {
@@ -795,7 +809,7 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
         throw e;
       }
       if (!jobAlive(r, d, job) || d.status !== 'queued') return;
-      if (blockedReason !== null) {
+      if (activeBlock() !== null) {
         holdForBlock(r, d, job);
         return;
       }
@@ -829,7 +843,7 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
         }
         return;
       }
-      if (blockedReason !== null) {
+      if (activeBlock() !== null) {
         holdForBlock(r, d, job);
         return;
       }
@@ -910,7 +924,7 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
   /** Perangkat kembali `ready` karena blokir draft; diantre lagi (dengan asal yang sama) saat blokir dicabut. */
   function holdForBlock(r: Run, d: DeviceRecord, job: InjectJob): void {
     r.heldByBlock.set(d.mac, !job.auto);
-    backToReady(d, `Ditahan: ${blockedReason ?? 'draft'}`);
+    backToReady(d, `Ditahan: ${activeBlock() ?? 'draft'}`);
   }
 
   function scheduleAutoRetry(r: Run, d: DeviceRecord): void {
@@ -1039,6 +1053,34 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
     }
   }
 
+  /** Menerapkan alasan tahan yang berlaku (blokir draft atau penyiapan bridge) pada antrean yang ada. */
+  function applyBlock(): void {
+    const r = run;
+    if (!r) return;
+    const block = activeBlock();
+    if (block !== null) {
+      // Tak ada slot baru: yang masih antre kembali `ready`; yang sudah `injecting` dibiarkan selesai.
+      for (const d of [...r.devices.values()]) {
+        const job = r.jobs.get(d.mac);
+        if (job && job.phase === 'queued') {
+          r.heldByBlock.set(d.mac, !job.auto);
+          cancelJob(r, d, `Ditahan: ${block}`);
+        }
+      }
+      return;
+    }
+    clearNoticeIfHold();
+    // Hanya antrean MANUAL yang diantre lagi; yang asalnya Auto Inject diserahkan ke `autoSweep` (memeriksa
+    // `autoEligible`: Auto Inject bisa sudah dimatikan atau serial baru terdaftar selama blokir).
+    const held = [...r.heldByBlock];
+    r.heldByBlock.clear();
+    for (const [mac, manual] of held) {
+      const d = r.devices.get(mac);
+      if (manual && d && d.status === 'ready') queueDevice(r, d, true);
+    }
+    autoSweep(r);
+  }
+
   function autoSweep(r: Run): void {
     for (const d of [...r.devices.values()]) maybeAutoInject(r, d);
   }
@@ -1150,28 +1192,7 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
 
     setBlocked(reason) {
       blockedReason = reason;
-      const r = run;
-      if (r && reason !== null) {
-        // Tak ada slot baru: yang masih antre kembali `ready`; yang sudah `injecting` dibiarkan selesai.
-        for (const d of [...r.devices.values()]) {
-          const job = r.jobs.get(d.mac);
-          if (job && job.phase === 'queued') {
-            r.heldByBlock.set(d.mac, !job.auto);
-            cancelJob(r, d, `Ditahan: ${reason}`);
-          }
-        }
-      } else if (r) {
-        clearNoticeIfHold();
-        // Hanya antrean MANUAL yang diantre lagi; yang asalnya Auto Inject diserahkan ke `autoSweep` (memeriksa
-        // `autoEligible`: Auto Inject bisa sudah dimatikan atau serial baru terdaftar selama blokir).
-        const held = [...r.heldByBlock];
-        r.heldByBlock.clear();
-        for (const [mac, manual] of held) {
-          const d = r.devices.get(mac);
-          if (manual && d && d.status === 'ready') queueDevice(r, d, true);
-        }
-        autoSweep(r);
-      }
+      applyBlock();
       scheduleEmit();
     },
 
@@ -1213,8 +1234,9 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
       if (!r) return;
       r.queueStopped = false;
       clearNoticeIfHold();
-      if (blockedReason !== null) {
-        setNotice(`Inject ditahan: ${blockedReason}`);
+      const block = activeBlock();
+      if (block !== null) {
+        setNotice(`Inject ditahan: ${block}`);
         return;
       }
       for (const d of [...r.devices.values()]) {
@@ -1248,6 +1270,11 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
     },
 
     async prepareBridge() {
+      if (preparingBridge) return { ok: false, message: MSG_PREPARING_BRIDGE };
+      // Selama berjalan, inject (manual, Inject All, Auto Inject) ditahan; dilepas di finally lalu Auto Inject menyapu lagi.
+      preparingBridge = true;
+      applyBlock();
+      scheduleEmit();
       let result: { ok: boolean; message: string };
       try {
         result = await ports.ensureBridgePorts();
@@ -1256,10 +1283,17 @@ export function createMultiEngine(ports: MultiPorts): MultiEngine {
           ok: false,
           message: `Gagal menyiapkan bridge router: ${e instanceof Error ? e.message : 'galat tak dikenal'}`,
         };
+      } finally {
+        preparingBridge = false;
       }
+      applyBlock();
       const out = { ok: result.ok, message: mask(result.message) };
       setNotice(out.message);
       return out;
+    },
+
+    isPreparingBridge() {
+      return preparingBridge;
     },
 
     isBusy() {

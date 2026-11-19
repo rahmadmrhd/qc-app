@@ -372,6 +372,125 @@ describe('engine: inject menggantung tak menahan isBusy selamanya', () => {
   });
 });
 
+describe('engine: inject ditahan selama Siapkan bridge router berjalan', () => {
+  /** `ensureBridgePorts` yang baru selesai saat `finish()` dipanggil. */
+  function pendingBridge(f: ReturnType<typeof createFakePorts>) {
+    let finish: () => void = () => undefined;
+    f.ports.ensureBridgePorts = () =>
+      new Promise((resolve) => {
+        finish = () => resolve({ ok: true, message: 'Bridge siap' });
+      });
+    return { finish: () => finish() };
+  }
+
+  test('inject manual, Inject All, dan Auto Inject ditolak selama prepare; setelah selesai Auto Inject menyapu', async () => {
+    const f = createFakePorts();
+    const engine = createMultiEngine(f.ports);
+    f.state.leases = MACS.slice(0, 2).map((mac, i) => ({ ip: IPS[i] as string, mac }));
+    engine.start(cfg());
+    await f.advance(0);
+    const bridge = pendingBridge(f);
+    const prepared = engine.prepareBridge();
+    expect(engine.isPreparingBridge()).toBe(true);
+
+    engine.injectDevice(MACS[0] as string);
+    expect(statusOf(engine, MACS[0] as string)).toBe('ready');
+    expect(engine.snapshot().message).toBe('Inject ditahan: Sedang menyiapkan bridge router');
+    engine.injectAll();
+    engine.setAutoInject(true);
+    await f.advance(2000);
+    expect(f.calls.inject).toHaveLength(0);
+
+    bridge.finish();
+    await prepared;
+    expect(engine.isPreparingBridge()).toBe(false);
+    await f.advance(0);
+    // Auto Inject menyala dan perangkat siap: disapu setelah blokir dilepas.
+    expect(f.calls.inject.map((c) => c.ip).sort()).toEqual([IPS[0] as string, IPS[1] as string]);
+    await engine.stop();
+  });
+
+  test('antrean yang sudah ada dikembalikan ready saat prepare mulai; antrean manual diantre lagi setelah selesai', async () => {
+    const f = createFakePorts();
+    const engine = createMultiEngine(f.ports);
+    f.state.leases = [{ ip: IPS[0] as string, mac: MACS[0] as string }];
+    engine.start(cfg());
+    await f.advance(0);
+    f.state.leaseDelay = 500; // verifikasi lambat: perangkat tertahan di antrean
+    engine.injectDevice(MACS[0] as string);
+    await f.advance(0);
+    expect(statusOf(engine, MACS[0] as string)).toBe('queued');
+    const bridge = pendingBridge(f);
+    const prepared = engine.prepareBridge();
+    expect(statusOf(engine, MACS[0] as string)).toBe('ready');
+    expect(device(engine, MACS[0] as string)?.message).toContain('Sedang menyiapkan bridge router');
+    bridge.finish();
+    await prepared;
+    f.state.leaseDelay = 0;
+    await f.advance(1000);
+    expect(f.calls.inject).toHaveLength(1);
+    await engine.stop();
+  });
+
+  test('blokir draft tetap berlaku sesudah prepare selesai, dan pencabutannya selama prepare tidak melepas tahan', async () => {
+    const f = createFakePorts();
+    const engine = createMultiEngine(f.ports);
+    f.state.leases = [{ ip: IPS[0] as string, mac: MACS[0] as string }];
+    engine.start(cfg({ autoInject: true }));
+    engine.setBlocked('Draft penuh');
+    await f.advance(0);
+    const bridge = pendingBridge(f);
+    const prepared = engine.prepareBridge();
+    engine.setBlocked(null); // draft longgar saat prepare masih berjalan
+    await f.advance(1000);
+    expect(f.calls.inject).toHaveLength(0);
+    expect(engine.snapshot().blockedReason).toBeNull();
+    bridge.finish();
+    await prepared;
+    await f.advance(0);
+    expect(f.calls.inject).toHaveLength(1);
+
+    // Kebalikannya: blokir draft datang selama prepare, lalu prepare selesai: tetap ditahan.
+    const g = createFakePorts();
+    const engine2 = createMultiEngine(g.ports);
+    g.state.leases = [{ ip: IPS[0] as string, mac: MACS[0] as string }];
+    engine2.start(cfg({ autoInject: true }));
+    engine2.setBlocked('Draft penuh');
+    await g.advance(0);
+    const bridge2 = pendingBridge(g);
+    const prepared2 = engine2.prepareBridge();
+    bridge2.finish();
+    await prepared2;
+    await g.advance(1000);
+    expect(g.calls.inject).toHaveLength(0);
+    expect(engine2.snapshot().blockedReason).toBe('Draft penuh');
+    await engine.stop();
+    await engine2.stop();
+  });
+
+  test('prepare yang gagal juga melepas tahan; prepare kedua saat yang pertama berjalan ditolak', async () => {
+    const f = createFakePorts();
+    const engine = createMultiEngine(f.ports);
+    f.state.leases = [{ ip: IPS[0] as string, mac: MACS[0] as string }];
+    engine.start(cfg());
+    await f.advance(0);
+    let reject: (e: Error) => void = () => undefined;
+    f.ports.ensureBridgePorts = () =>
+      new Promise((_resolve, rej) => {
+        reject = rej;
+      });
+    const first = engine.prepareBridge();
+    expect((await engine.prepareBridge()).ok).toBe(false);
+    reject(new Error('router mati'));
+    expect((await first).ok).toBe(false);
+    expect(engine.isPreparingBridge()).toBe(false);
+    engine.injectDevice(MACS[0] as string);
+    await f.advance(0);
+    expect(statusOf(engine, MACS[0] as string)).toBe('injecting');
+    await engine.stop();
+  });
+});
+
 describe('engine: Inject All dan perangkat terdaftar', () => {
   test('Inject All melewati perangkat alreadyRegistered; inject manual per perangkat tetap boleh', async () => {
     const f = createFakePorts();

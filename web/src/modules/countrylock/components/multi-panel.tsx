@@ -59,6 +59,7 @@ export function MultiPanel({
   const running = snapshot?.running === true;
   const [filter, setFilter] = useState<DeviceFilter | null>(null);
   const [confirmBridge, setConfirmBridge] = useState(false);
+  const [preparing, setPreparing] = useState(false);
 
   const devices = snapshot?.devices ?? [];
   const counts = snapshot?.counts;
@@ -84,7 +85,7 @@ export function MultiPanel({
             <Button
               type="button"
               variant="outline"
-              disabled={injectBusy}
+              disabled={injectBusy || preparing}
               title={
                 injectBusy ? 'Tidak dapat menyiapkan bridge saat inject sedang berjalan' : undefined
               }
@@ -98,7 +99,12 @@ export function MultiPanel({
                 Tidak dapat menyiapkan bridge saat inject sedang berjalan.
               </p>
             ) : null}
-            <Button type="button" disabled={!running} onClick={actions.injectAll}>
+            {preparing ? (
+              <p role="status" className="self-center text-xs text-muted-foreground">
+                Sedang menyiapkan bridge router; inject ditahan sampai selesai.
+              </p>
+            ) : null}
+            <Button type="button" disabled={!running || preparing} onClick={actions.injectAll}>
               Inject All
             </Button>
             <Button type="button" variant="outline" disabled={!running} onClick={actions.stopQueue}>
@@ -189,7 +195,13 @@ export function MultiPanel({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void actions.prepareBridge()}>
+            <AlertDialogAction
+              onClick={() => {
+                // Inject ditahan selama penyiapan (host dan engine juga menahannya); dilepas setelah selesai.
+                setPreparing(true);
+                void actions.prepareBridge().finally(() => setPreparing(false));
+              }}
+            >
               Siapkan
             </AlertDialogAction>
           </AlertDialogFooter>

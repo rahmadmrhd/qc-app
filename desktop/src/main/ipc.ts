@@ -201,6 +201,14 @@ export function registerIpc(deps: IpcDeps): IpcHandle {
     if (deps.multi.isInjecting()) {
       return { ok: false, stage: 'failed', message: 'Hentikan Multi dulu' } satisfies InjectResult;
     }
+    // Mengubah bridge port router memutus perangkat: inject tunggal menunggu penyiapan bridge selesai.
+    if (deps.multi.isPreparingBridge()) {
+      return {
+        ok: false,
+        stage: 'failed',
+        message: 'Sedang menyiapkan bridge router, coba lagi sebentar',
+      } satisfies InjectResult;
+    }
     return runInjectRequest(req);
   });
 

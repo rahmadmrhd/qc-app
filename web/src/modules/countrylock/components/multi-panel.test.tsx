@@ -556,6 +556,31 @@ describe('aksi massal dan bridge router', () => {
     await waitFor(() => expect(button).toBeEnabled());
   });
 
+  test('selama bridge disiapkan, Inject All dan tombol Siapkan nonaktif; aktif lagi setelah selesai', async () => {
+    let finish: () => void = () => undefined;
+    const bridge = await openMulti(
+      bridgeWith({
+        multi: {
+          prepareBridge: () =>
+            new Promise((resolve) => {
+              finish = () => resolve({ ok: true, message: 'Bridge siap' });
+            }),
+        },
+      }),
+    );
+    await startMulti(bridge);
+    await userEvent.click(screen.getByRole('button', { name: 'Siapkan bridge router' }));
+    await userEvent.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Siapkan' }),
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Inject All' })).toBeDisabled());
+    expect(screen.getByRole('button', { name: 'Siapkan bridge router' })).toBeDisabled();
+    expect(screen.getByText(/inject ditahan sampai selesai/)).toBeInTheDocument();
+    act(() => finish());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Inject All' })).toBeEnabled());
+    expect(screen.getByRole('button', { name: 'Siapkan bridge router' })).toBeEnabled();
+  });
+
   test('Mulai tidak pernah menyiapkan bridge router sendiri', async () => {
     const bridge = await openMulti();
     await startMulti(bridge);

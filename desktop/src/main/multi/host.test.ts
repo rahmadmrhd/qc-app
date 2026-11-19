@@ -235,6 +235,37 @@ describe('prepareBridge diblokir saat inject berjalan', () => {
   });
 });
 
+describe('inject ditahan selama prepareBridge', () => {
+  test('isPreparingBridge benar selama berjalan; inject Multi ditolak lalu jalan setelahnya', async () => {
+    const { host, fake } = setup();
+    fake.state.leases = LEASES;
+    fake.state.injectMode = 'manual';
+    await host.handle('multiStart', [startCfg()]);
+    await fake.advance(0);
+    let finish: () => void = () => undefined;
+    fake.ports.ensureBridgePorts = () =>
+      new Promise((resolve) => {
+        finish = () => resolve({ ok: true, message: 'Bridge siap' });
+      });
+    const preparing = host.handle('multiPrepareBridge', []);
+    expect(host.isPreparingBridge()).toBe(true);
+    await host.handle('multiInjectDevice', [MAC]);
+    await fake.advance(1000);
+    expect(fake.calls.inject).toHaveLength(0);
+    const snap = (await host.handle('multiSnapshot', [])) as MultiSnapshot;
+    expect(snap.message).toContain('Sedang menyiapkan bridge router');
+    // Prepare kedua selama yang pertama berjalan tidak menjalankan perintah lagi.
+    await host.handle('multiPrepareBridge', []).catch(() => undefined);
+    finish();
+    await preparing;
+    expect(host.isPreparingBridge()).toBe(false);
+    await host.handle('multiInjectDevice', [MAC]);
+    await fake.advance(1000);
+    expect(fake.calls.inject).toHaveLength(1);
+    host.dispose();
+  });
+});
+
 describe('isInjecting setelah stop', () => {
   test('tetap benar sampai inject yang dibatalkan stop benar-benar selesai (inject tunggal tak boleh menyela)', async () => {
     const fake = createFakePorts();
