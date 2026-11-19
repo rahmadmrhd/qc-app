@@ -16,8 +16,9 @@ import {
   realDeps,
   runCli,
 } from './changelog';
-import { isFragmentPath, isMetadataOnly, isReleaseChange } from './changelog-check';
+import { isFragmentPath, isReleaseChange } from './changelog-check';
 import { ROOT_DIR } from './paths';
+import { unverifiedFiles } from './release-guard';
 
 export interface Shell {
   run(cmd: string[]): Promise<{ code: number; out: string }>;
@@ -183,9 +184,10 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
     const delta = (await sh(['git', 'diff', '--name-only', staging, 'origin/dev']))
       .split('\n')
       .filter((line) => line.trim() !== '');
-    if (!isMetadataOnly(delta, 'server')) {
+    // Sama dengan guard CI: berkas di luar image server (dokumentasi, kode desktop) tak men-deploy staging, jadi tak dihitung.
+    if (unverifiedFiles(delta, comps).length > 0) {
       throw new Error(
-        'Staging belum memuat semua kode di ujung dev (selisihnya bukan hanya berkas metadata rilis): tunggu deploy staging terbaru selesai. Rilis hanya boleh membawa kode yang sudah berjalan di staging.',
+        'Staging belum memuat semua kode image server di ujung dev (selisihnya memuat berkas yang masuk image selain metadata rilis): tunggu deploy staging terbaru selesai. Rilis hanya boleh membawa kode yang sudah berjalan di staging.',
       );
     }
   }

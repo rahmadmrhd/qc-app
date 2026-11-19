@@ -209,8 +209,8 @@ jobs:
         run: bun run scripts/release-identity.ts
 
   # Pengganti uji ulang (hanya komponen server): kode yang dirilis identik dengan yang sudah berjalan di staging
-  # (`refs/deployed/staging`), selisihnya hanya metadata rilis (server, dan desktop bila PR gabungan), dan CHANGELOG memuat bagian
-  # versinya (scripts/release-guard.ts). Langkah yang memegang token hanya memanggil API; langkah yang menjalankan skrip tak diberi
+  # (`refs/deployed/staging`), selisihnya hanya metadata rilis (server, dan desktop bila PR gabungan) atau berkas di luar image
+  # server (dokumentasi, kode desktop; tak men-deploy staging), dan CHANGELOG memuat bagian versinya (scripts/release-guard.ts). Langkah yang memegang token hanya memanggil API; langkah yang menjalankan skrip tak diberi
   # token.
   guard:
     needs: meta

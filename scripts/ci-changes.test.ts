@@ -27,6 +27,11 @@ describe('classify: satu bagian monorepo', () => {
     ).toEqual(NONE);
   });
 
+  test('.md dikenali persis seperti .dockerignore (peka huruf): .MD berarti berkas biasa, bukan dokumen', () => {
+    expect(classify(['web/public/x.MD']).image).toBe(true);
+    expect(classify(['docs/x.md']).image).toBe(false);
+  });
+
   test('fragmen dan CHANGELOG (.md) adalah dokumen: tak menyalakan apa pun (rilis selalu menyertakan package.json)', () => {
     expect(
       classify([

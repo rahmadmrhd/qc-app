@@ -92,8 +92,9 @@ function normalize(files: string[]): string[] {
   return [...seen];
 }
 
+// `.md` peka huruf, persis seperti pola `**/*.md` di .dockerignore: `x.MD` tetap masuk konteks build image, jadi bukan dokumen.
 const isDoc = (path: string) =>
-  path.toLowerCase().endsWith('.md') || DOC_PREFIXES.some((prefix) => path.startsWith(prefix));
+  path.endsWith('.md') || DOC_PREFIXES.some((prefix) => path.startsWith(prefix));
 
 export function classify(files: string[] | null): Changes {
   if (files === null) return { ...ALL_CHANGES };

@@ -132,7 +132,10 @@ merge**; **PR dimerge dengan merge commit** (`merge_commit_sha` punya tepat dua 
 `merge_commit_sha`. Grup `concurrency` = grup production di `deploy-server.yml` (satu pipeline production pada satu waktu).
 Jalur: `meta` -> `guard` -> `ci` (selektif, `ci.yml`) -> `image` -> `deploy` (production) -> `mark-deployed` -> `publish` -> `sync-dev`.
 - **guard (pengganti uji ulang)**: bandingkan **`refs/deployed/staging...<merge_commit_sha>`**: (a) status `ahead` dan SEMUA berkas
-  yang berubah ada di daftar metadata (`server/package.json`, `bun.lock`, `server/CHANGELOG.md`, `server/changelog.d/**`);
+  yang berubah ada di daftar metadata (`server/package.json`, `bun.lock`, `server/CHANGELOG.md`, `server/changelog.d/**`)
+  ATAU tidak masuk image server (dokumentasi, `desktop/**` selain `desktop/package.json`; klasifikasi `image` di `scripts/ci-changes.ts`;
+  **diubah 2026-11-19, keputusan pemilik**: berkas jenis ini tak pernah men-deploy staging, sehingga menolaknya menggagalkan rilis tanpa
+  alasan; jalur tak dikenal tetap ditolak);
   status `identical` (rilis tanpa perubahan kode sejak staging) juga lulus, dan perbandingan yang terpotong pada 300 berkas
   (batas API `compare`, tanpa penanda) ditolak, gagal tertutup (dicatat 2026-11-18, pass perbaikan bagian 2);
   (b) `server/CHANGELOG.md` punya bagian versi itu. Memakai commit merge (bukan head cabang) menangkap kode di `main` yang tak

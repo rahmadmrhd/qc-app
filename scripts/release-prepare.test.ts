@@ -209,6 +209,23 @@ describe('prepareRelease: prasyarat (berhenti SEBELUM membuat cabang)', () => {
     await expect(run(empty)).resolves.toBeDefined();
   });
 
+  test('selisih staging..dev hanya berkas di luar image server (kode desktop, dokumentasi) lolos: PR itu tak men-deploy staging', async () => {
+    const outside = fakeShell({
+      [`git diff --name-only ${STAGING} origin/dev`]: {
+        code: 0,
+        out: 'desktop/src/main/index.ts\ndesktop/changelog.d/20261119-a.md\ndocs/ci-cd.md\n',
+      },
+    });
+    await expect(run(outside)).resolves.toBeDefined();
+    const mixed = fakeShell({
+      [`git diff --name-only ${STAGING} origin/dev`]: {
+        code: 0,
+        out: 'docs/ci-cd.md\nweb/src/main.tsx\n',
+      },
+    });
+    await expect(run(mixed)).rejects.toThrow(/staging/);
+  });
+
   test('tanpa fragmen di origin/dev: berhenti sebelum membuat cabang', async () => {
     const shell = fakeShell({
       'git ls-tree --name-only origin/dev -- server/changelog.d/': {

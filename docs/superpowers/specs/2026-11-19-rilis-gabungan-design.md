@@ -70,11 +70,12 @@ ke `dev`/`main`, dan deploy versi lama dari tag).
 - Rahasia desktop (environment `desktop-release`, hanya ref `main`) kini berada dalam workflow yang sama dengan jalur server. Pemisahan dijaga per
   job (tes `release.yml`): jalur server tanpa rahasia apa pun; `build-desktop` hanya token katalog; kunci tanda tangan dan kunci Drive hanya
   `publish-desktop` dan `withdraw`.
-- **Celah yang sudah ada sebelum penggabungan (tidak diperbaiki di sini)**: `refs/deployed/staging` hanya maju saat staging benar-benar ter-deploy,
+- **Celah yang sudah ada sebelum penggabungan (DITUTUP 2026-11-19, keputusan pemilik "Ya, perbaiki"; `unverifiedFiles` di `scripts/release-guard.ts` dipakai guard CI dan `release:prepare`; yang di bawah ini adalah latar belakangnya)**: `refs/deployed/staging` hanya maju saat staging benar-benar ter-deploy,
   sedangkan PR ke `dev` yang hanya mengubah `desktop/` atau dokumentasi tidak men-deploy. `guard` lalu menganggap perubahan kode desktop itu
   "belum berjalan di staging" dan menolak rilis server/gabungan. Rilis gabungan hampir selalu membawa perubahan desktop, jadi celah ini lebih
-  sering terkena. Pemulihan operasional: deploy staging manual dari `dev` sebelum merge PR rilis. Perbaikan permanen (guard hanya menghitung
-  berkas yang memengaruhi image, memakai klasifikasi `ci-changes`) mengubah semantik guard dan menunggu keputusan pemilik.
+  sering terkena. Perbaikan yang dipilih: guard dan `release:prepare` hanya menghitung berkas yang memengaruhi image (klasifikasi `image` di
+  `ci-changes`, satu definisi dengan "men-deploy staging"; jalur tak dikenal tetap ditolak). Sisa batasan: selisih >= 300 berkas (batas API
+  `compare`) tetap gagal tertutup; pemulihannya deploy staging manual dari `dev`.
 - **Satu `ci` dipakai bersama pada rilis gabungan (DIPUTUSKAN pemilik 2026-11-19)**: kegagalan uji kemas desktop (`desktop-check`)
   menahan `image`/`deploy`/`publish-server` walau server tak berubah. Alternatif yang ditolak: memisahkan `ci` server (selektif) dari `ci` desktop (penuh),
   yang menjalankan pemeriksaan server dua kali. Alasan: sederhana dan fail-safe, dan pemilik dapat memilih per rilis antara cabang tunggal (server saja
@@ -94,5 +95,5 @@ komponen ketiga.
 2. (2026-11-19) **`release.yml` dan `release-desktop.yml` digabung menjadi satu `release.yml`**; `deploy-server.yml` dan `deploy-tag.yml` tetap terpisah.
 3. (2026-11-19) **Tetap satu `ci`** pada rilis gabungan, dan bentuk rilis (tunggal atau gabungan) dipilih per rilis oleh pemilik lewat nama cabang
    yang disiapkan `release:prepare`; kedua alur tetap didukung berdampingan.
-4. Keputusan pelaksana yang menunggu tinjauan pemilik: urutan server-dulu pada rilis gabungan (butir 5 bagian 3), pemulihan per komponen (butir 7),
-   dan celah staging-ref (bagian 4).
+4. (2026-11-19) **Celah staging-ref ditutup**: guard dan `release:prepare` mengabaikan berkas yang tak masuk image server (dokumentasi, kode desktop).
+5. Keputusan pelaksana yang menunggu tinjauan pemilik: urutan server-dulu pada rilis gabungan (butir 5 bagian 3) dan pemulihan per komponen (butir 7).
