@@ -2,7 +2,7 @@
 // sebelum menyentuh layanan, tidak ada kanal yang menerima jalur berkas (folder paket dipilih lewat
 // dialog proses utama), dan galat ke renderer tidak pernah memuat kata sandi.
 //
-// Mode inject: Fase 0-1 hanya mode tunggal ('single'); `InjectRequest` tidak membawa mode.
+// Mode inject: `InjectRequest` selalu mode tunggal; mode Multi (jembatan v9) lewat kanal `multi*` ke `multi/host.ts`.
 
 import {
   type AuthStatus,
@@ -23,7 +23,9 @@ import type { AddResult, PendingEntry } from '@countrylock/pending';
 import type { Brand } from '@countrylock/script-template';
 import { createInjectRunner } from './inject-runner';
 import { IpcError, parseArgs, sanitizeProgress } from './ipc-support';
+import { MULTI_CHANNEL_KEYS, type MultiHost } from './multi/host';
 import { type LoadedPackage, PackageError } from './package/local-folder';
+import { createPackageSession, type PackageSession } from './package/package-session';
 import type { Settings } from './settings';
 import type { HostKey, HostKeyOptions } from './ssh/host-key';
 import type { InjectOptions, InjectOutcome } from './ssh/inject-session';
@@ -43,6 +45,11 @@ export interface IpcDeps {
   ipcMain: IpcMainLike;
   settings: { get(): Settings; set(next: Partial<Settings>): void };
   loadPackage(dir: string): Promise<LoadedPackage>;
+  /**
+   * Paket aktif yang dibagi dengan runner Multi dan host Multi (satu muatan untuk semuanya). Tanpa ini `registerIpc`
+   * membuat sendiri dari `settings` + `loadPackage`.
+   */
+  packages?: PackageSession;
   /** Dialog pilih folder milik proses utama; null bila dibatalkan. Jalur tak pernah dari renderer. */
   chooseDirectory(): Promise<string | null>;
   ping(host: string, timeoutMs: number): Promise<{ ok: boolean; kind: PingKind }>;
@@ -53,6 +60,8 @@ export interface IpcDeps {
   pending: PendingStore;
   /** Draft Catat Serial Number (jembatan v8): snapshot tunggal; galatnya sampai ke renderer apa adanya. */
   draft: DraftStore;
+  /** Host mode Multi-Device (jembatan v9); argumen kanal `multi*` sudah divalidasi di sini sebelum sampai ke host. */
+  multi: MultiHost;
   /** Login desktop (token hanya di proses utama; renderer hanya menerima `AuthStatus`). */
   auth: { status(): AuthStatus; start(): Promise<void>; logout(): void };
   /**
@@ -104,9 +113,23 @@ function draftSafe<T>(action: () => T, fallback: string): T {
   }
 }
 
-export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
+export interface IpcHandle {
+  /** Ada inject yang berjalan (tunggal ATAU Multi): pengelola bundel UI dan penjaga muat ulang memakainya. */
+  isInjecting(): boolean;
+  /** Hanya inject mode tunggal. */
+  isSingleInjecting(): boolean;
+  /** Multi sedang meng-inject atau mengantre. */
+  isMultiBusy(): boolean;
+}
+
+export function registerIpc(deps: IpcDeps): IpcHandle {
   const running = new Map<string, AbortController>();
-  let current: LoadedPackage | null = null;
+  const packages =
+    deps.packages ??
+    createPackageSession({
+      packageDir: () => deps.settings.get().packageDir,
+      loadPackage: deps.loadPackage,
+    });
 
   const handle = (
     channel: string,
@@ -126,16 +149,8 @@ export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
     });
   };
 
-  const ensurePackage = async (): Promise<LoadedPackage | null> => {
-    if (current) return current;
-    const dir = deps.settings.get().packageDir;
-    if (!dir) return null;
-    current = await deps.loadPackage(dir);
-    return current;
-  };
-
   const runner = createInjectRunner({
-    ensurePackage,
+    ensurePackage: () => packages.ensure(),
     fetchHostKey: deps.fetchHostKey,
     runInject: deps.runInject,
     emitProgress: deps.emitProgress,
@@ -143,19 +158,21 @@ export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
 
   handle(BRIDGE_CHANNELS.packageLoad, async (_event, ...args) => {
     parseArgs(BRIDGE_ARGS.packageLoad, args);
-    current = null;
-    const pkg = await ensurePackage();
+    // Selama Multi berjalan paketnya tak boleh diganti di bawah batch (skrip, firmware, dan kredensial dibaca darinya):
+    // halaman yang dibuka ulang tetap mendapat paket aktif tanpa memuat ulang dari folder.
+    const pkg = deps.multi.isRunning() ? await packages.ensure() : await packages.reload();
     return pkg ? toPackageDto(pkg) : null;
   });
 
   handle(BRIDGE_CHANNELS.packageChooseDir, async (_event, ...args) => {
     parseArgs(BRIDGE_ARGS.packageChooseDir, args);
+    if (deps.multi.isRunning()) throw new IpcError('Hentikan Multi dulu');
     const dir = await deps.chooseDirectory();
     if (!dir) return null;
     // Dimuat dulu: folder tanpa config.QC yang sah tidak menggantikan paket aktif.
     const pkg = await deps.loadPackage(dir);
     deps.settings.set({ packageDir: dir });
-    current = pkg;
+    packages.adopt(pkg);
     return toPackageDto(pkg);
   });
 
@@ -180,6 +197,10 @@ export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
 
   handle(BRIDGE_CHANNELS.injectRun, async (_event, ...args) => {
     const [req] = parseArgs(BRIDGE_ARGS.injectRun, args);
+    // Saling-kecualikan dengan Multi (L4.2): router yang sama tidak boleh dipakai dua mode sekaligus.
+    if (deps.multi.isInjecting()) {
+      return { ok: false, stage: 'failed', message: 'Hentikan Multi dulu' } satisfies InjectResult;
+    }
     return runInjectRequest(req);
   });
 
@@ -253,8 +274,21 @@ export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
     draftSafe(() => deps.draft.save(rows), 'Draft tidak dapat disimpan');
   });
 
-  // Pengelola bundel UI memakai ini agar bundel tak ditukar di tengah inject.
-  return { isInjecting: () => running.size > 0 };
+  // Mode Multi (jembatan v9): argumen divalidasi di sini (zod, tuple ketat), lalu perintah diteruskan ke host. Hanya galat
+  // berpesan buatan sendiri (`IpcError`) yang sampai ke renderer.
+  for (const key of MULTI_CHANNEL_KEYS) {
+    handle(BRIDGE_CHANNELS[key], async (_event, ...args) => {
+      const parsed = parseArgs(BRIDGE_ARGS[key], args);
+      return deps.multi.handle(key, parsed as unknown[]);
+    });
+  }
+
+  // Pengelola bundel UI memakai ini agar bundel tak ditukar di tengah inject (tunggal maupun Multi).
+  return {
+    isInjecting: () => running.size > 0 || deps.multi.isInjecting(),
+    isSingleInjecting: () => running.size > 0,
+    isMultiBusy: () => deps.multi.isInjecting(),
+  };
 
   async function runInjectRequest(req: InjectRequest): Promise<InjectResult> {
     if (running.has(req.id)) {
