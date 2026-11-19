@@ -133,7 +133,11 @@ jobs:
   # Build web + image dan dorong ke GHCR dengan tag SHA commit: workflow bersama `server-image.yml` (langkah keamanannya,
   # termasuk kunci tanda tangan UI dan kebijakan cache, hidup di sana dan dipakai juga oleh rilis). Dilewati bila isi image
   # tak berubah (`ci.outputs.image`). Izin pemanggil adalah BATAS bagi job terpanggil: `packages: write` untuk mendorong image.
-  # Rahasia environment dibaca job terpanggil lewat `environment:`-nya; pemanggil tak meneruskan rahasia (tanpa `secrets: inherit`).
+  # Rahasia environment dibaca job terpanggil lewat `environment:`-nya, dan itu HANYA bekerja bila pemanggil memakai
+  # `secrets: inherit` (bug GitHub actions/runner#4453: tanpanya secret environment menjadi string kosong di workflow
+  # terpanggil walau variabel environment terbaca; teramati 2026-11-19 pada deploy production pertama struktur ini, keputusan
+  # pemilik 2026-11-19). Aman: repositori tanpa secret tingkat repositori/organisasi, jadi `inherit` tidak membuka apa pun yang
+  # lain; job pemanggil (`uses:`) tak dapat punya `environment:`, jadi tak ada rahasia environment di sisi pemanggil.
   image:
     needs: [meta, ci]
     if: needs.ci.outputs.image == 'true'
@@ -144,6 +148,7 @@ jobs:
     with:
       target: ${{ needs.meta.outputs.target }}
       sha: ${{ needs.meta.outputs.sha }}
+    secrets: inherit
 
   # Deploy ke VPS lewat SSH lalu catat `refs/deployed/<env>`: workflow bersama `server-deploy.yml`. `contents: write` di sini
   # hanya batas bagi job `mark-deployed` di dalamnya (satu-satunya yang menulis); job `deploy` terpanggil tanpa izin dan tanpa
@@ -157,3 +162,4 @@ jobs:
     with:
       target: ${{ needs.meta.outputs.target }}
       sha: ${{ needs.meta.outputs.sha }}
+    secrets: inherit

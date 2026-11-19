@@ -37,6 +37,8 @@ interface Job {
   /** Job pemanggil workflow yang dapat dipanggil (`workflow_call`). */
   uses?: string;
   with?: Record<string, unknown>;
+  /** Hanya `inherit` yang diizinkan: pemanggil workflow terpanggil milik repo ini (lihat `inheritingJobs`). */
+  secrets?: unknown;
   outputs?: Record<string, string>;
   strategy?: { 'fail-fast'?: boolean; matrix?: Record<string, unknown> };
   'runs-on'?: string;
@@ -73,6 +75,26 @@ const deployerText = rawOf('server-deploy.yml');
 const deployer = parse(deployerText);
 /** Ketiga berkas yang bersama-sama menggantikan deploy-server.yml lama. */
 const serverPipelineTexts = [deployText, imageText, deployerText];
+
+/**
+ * `secrets: inherit` hanya sah di job pemanggil workflow terpanggil yang membaca secret environment lewat `environment:`
+ * miliknya (server-image: kunci UI; server-deploy: SSH; sync-dev: deploy key). Tanpanya secret environment menjadi string
+ * kosong di workflow terpanggil (bug GitHub actions/runner#4453; keputusan pemilik 2026-11-19, dipicu deploy production
+ * yang gagal). Aman karena repositori tanpa secret tingkat repositori/organisasi. Tidak sah di job lain (`ci.yml` tak
+ * butuh rahasia) dan tidak pernah di workflow terpanggil itu sendiri.
+ */
+function inheritingJobs(jobs: Record<string, Job>): string[] {
+  return Object.entries(jobs)
+    .filter(([, job]) => job.secrets !== undefined)
+    .map(([name, job]) => {
+      expect(job.secrets, name).toBe('inherit');
+      expect(job.uses, name).toMatch(
+        /^\.\/\.github\/workflows\/(server-image|server-deploy|sync-dev)\.yml$/,
+      );
+      return name;
+    })
+    .sort();
+}
 const serverPipeline = [deploy, imageWf, deployer];
 
 /** Ekspresi cabang rilis di kelompok concurrency release.yml (server-v, gabungan-, desktop-v); satu-satunya pemakai `head.ref` event. */
@@ -342,9 +364,12 @@ describe('deploy-server.yml: keamanan', () => {
       'since-deploy':
         "${{ github.event_name == 'pull_request_target' && needs.meta.outputs.target || '' }}",
     });
-    // Rahasia environment (kunci UI, SSH) dibaca job terpanggil lewat `environment:`-nya sendiri; pemanggil tak meneruskan
-    // rahasia apa pun (`secrets: inherit` akan membuka rahasia repositori ke workflow terpanggil tanpa perlu).
-    for (const text of serverPipelineTexts) expect(codeOf(text)).not.toContain('secrets: inherit');
+    // Rahasia environment (kunci UI, SSH) dibaca job terpanggil lewat `environment:`-nya sendiri, dan itu hanya bekerja bila
+    // pemanggil memakai `secrets: inherit` (actions/runner#4453). Hanya image dan deploy (bukan ci, meta); workflow terpanggil
+    // sendiri tak pernah memuatnya.
+    expect(inheritingJobs(deploy.jobs as Record<string, Job>)).toEqual(['deploy', 'image']);
+    for (const text of [imageText, deployerText])
+      expect(codeOf(text)).not.toContain('secrets: inherit');
     // packages: read wajib walau ci memakainya hanya untuk uji bangun PR (validasi izin workflow dipanggil)
     expect(ci.permissions).toEqual({
       contents: 'read',
@@ -1599,7 +1624,8 @@ describe('release.yml: pipeline rilis server, desktop, atau gabungan dari PR ril
       'DESKTOP_RELEASE_SIGNING_KEY',
     ]);
     expect(secretsOf('withdraw')).toEqual(['DESKTOP_DRIVE_PUBLISHER_KEY']);
-    expect(codeOf(text)).not.toContain('secrets: inherit');
+    // `secrets: inherit` hanya di pemanggil workflow terpanggil (image, deploy, sync-dev), tidak di job lain (actions/runner#4453)
+    expect(inheritingJobs(jobs as Record<string, Job>)).toEqual(['deploy', 'image', 'sync-dev']);
     expect(codeOf(text)).not.toContain('UI_SIGNING_KEY');
     // kunci tanda tangan TIDAK ada di job build-desktop (yang menjalankan kode dependensi dan electron-builder)
     expect(JSON.stringify(jobs['build-desktop'])).not.toContain('SIGNING_KEY');
@@ -2018,7 +2044,8 @@ describe('deploy-tag.yml: deploy versi tertentu lewat tag (rilis semver bagian 3
       sha: '${{ needs.meta.outputs.sha }}',
       'allow-schema-downgrade': '${{ inputs.izinkan_downgrade_skema }}',
     });
-    expect(codeOf(text)).not.toContain('secrets: inherit');
+    // secret SSH environment hanya terbaca di workflow terpanggil bila pemanggil memakai `secrets: inherit` (actions/runner#4453)
+    expect(inheritingJobs(jobs as Record<string, Job>)).toEqual(['deploy']);
   });
 
   test('tanpa build image dan tanpa ci: hanya memverifikasi lalu men-deploy image yang sudah ada', () => {
