@@ -126,6 +126,8 @@ test('applyLookup: serial yang tak ada lagi membuang penanda Cek ulang; serial t
   const [marked] = applyLookup([row as StagingRow], new Set(['AAA111']), [dto()]);
   const [cleared] = applyLookup([marked as StagingRow], new Set(['AAA111']), []);
   expect(cleared?.existing).toBeUndefined();
+  // Kembali jadi baris biasa: stiker ke bawaan (semua yang berlaku).
+  expect(cleared?.stickers).toBeNull();
   const rows = [marked as StagingRow];
   expect(applyLookup(rows, new Set(['LAIN']), [])).toBe(rows);
 });

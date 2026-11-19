@@ -263,6 +263,34 @@ test('draf yang dimuat disegarkan: baris tanpa penanda yang serialnya sudah ada 
   expect(within(old).getByText('Item Catatan')).toBeInTheDocument();
 });
 
+test('pencarian gagal (jaringan): Simpan berhenti dengan pesan dan tidak mengirim apa pun (stiker bawaan tak boleh memotong stok cek ulang)', async () => {
+  found = [existing()];
+  lookupFails = true;
+  renderPage();
+  await pickDefaults();
+  await paste('OLD001');
+  await rowOf('OLD001');
+  await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
+  expect(
+    await screen.findByText(/Pengecekan serial yang sudah tercatat gagal/),
+  ).toBeInTheDocument();
+  expect(saved).toHaveLength(0);
+});
+
+test('Ubah baris dibuka sebelum pencarian selesai: setelah baris menjadi Cek ulang dialog dipasang ulang dengan item catatan', async () => {
+  found = [existing()];
+  renderPage();
+  await pickDefaults();
+  await paste('OLD001');
+  await userEvent.click(await screen.findByRole('button', { name: 'Detail OLD001' }));
+  expect(await screen.findByRole('dialog')).toBeInTheDocument();
+  // Pencarian selesai selagi dialog terbuka: dialog dipasang ulang dalam bentuk Cek ulang (item terkunci, tanpa Sample).
+  await waitFor(() =>
+    expect(screen.getByRole('textbox', { name: 'Item baris' })).toHaveValue('Item Catatan'),
+  );
+  expect(screen.queryByRole('checkbox', { name: 'Sample' })).toBeNull();
+});
+
 test('pencarian gagal (jaringan): baris tetap biasa dan halaman tidak rusak', async () => {
   found = [existing()];
   lookupFails = true;

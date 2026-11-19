@@ -84,6 +84,7 @@ export function optionsApi(id: string, input: Record<string, unknown>): Promise<
     });
   }
   if (id === 'serialProofs.remove') return Promise.resolve({ id: input.id });
+  if (id === 'serials.lookupMany') return Promise.resolve({ found: [] });
   return Promise.reject(new Error(`api tak dikenal: ${id}`));
 }
 

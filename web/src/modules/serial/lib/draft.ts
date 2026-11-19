@@ -331,7 +331,8 @@ export function applyLookup(
       if (!row.existing) return row;
       changed = true;
       const { existing: _gone, ...rest } = row;
-      return rest;
+      // Bukan lagi Cek ulang: stiker kembali ke bawaan (semua yang berlaku), seperti baris biasa.
+      return { ...rest, stickers: null };
     }
     if (row.existing && sameExisting(row.existing, existing)) return row;
     changed = true;

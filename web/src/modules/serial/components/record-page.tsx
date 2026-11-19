@@ -195,9 +195,11 @@ export function RecordPage({
   // Serial yang sudah tercatat (keunikan se-sistem): serial baru di draft ditanyakan ke server per kelompok; yang sudah
   // ada menjadi baris Cek ulang. Satu rantai janji agar permintaan tidak tumpang tindih dan Simpan bisa menunggunya.
   const lookedUpRef = useRef(new Set<string>());
-  const lookupChainRef = useRef<Promise<void>>(Promise.resolve());
-  const runLookup = useCallback((): Promise<void> => {
-    const task = lookupChainRef.current.then(async () => {
+  const lookupChainRef = useRef<Promise<string | null>>(Promise.resolve(null));
+  /** Menjalankan pencarian untuk baris yang belum ditanyakan; hasilnya `null` bila semua sukses, selain itu pesan galat. */
+  const runLookup = useCallback((): Promise<string | null> => {
+    const task = lookupChainRef.current.then(async (): Promise<string | null> => {
+      let failure: string | null = null;
       // Pasangan (baris, serial) yang sudah tidak ada di draft dilupakan (tak menumpuk).
       const present = new Set(rowsRef.current.map(lookupKeyOf));
       for (const key of lookedUpRef.current) if (!present.has(key)) lookedUpRef.current.delete(key);
@@ -212,10 +214,13 @@ export function RecordPage({
           }
           const next = applyLookup(rowsRef.current, chunk, data.found);
           if (next !== rowsRef.current) setAllRows(next);
-        } catch {
-          // Gagal (jaringan/server): baris dibiarkan; server tetap menilai serial yang sudah ada saat Simpan.
+        } catch (caught) {
+          // Gagal (jaringan/server): baris dibiarkan. Simpan menolak jalan terus (stiker bawaan akan salah dipotong
+          // bila serialnya ternyata sudah ada), sedangkan pencarian latar belakang diam saja.
+          failure = describeError(caught);
         }
       }
+      return failure;
     });
     lookupChainRef.current = task;
     return task;
@@ -503,7 +508,8 @@ export function RecordPage({
       // Serial diganti: penanda Cek ulang milik serial lama dibuang; serial baru ditanyakan ulang ke server.
       patchRow(clientId, (row) => {
         const { existing: _old, ...rest } = clearOutcome(row);
-        return { ...rest, serial };
+        // Bukan lagi Cek ulang: stiker kembali ke bawaan (semua yang berlaku), seperti baris biasa.
+        return { ...rest, serial, ...(row.existing ? { stickers: null } : {}) };
       });
       return null;
     },
@@ -666,12 +672,20 @@ export function RecordPage({
   async function handleSave(external = false): Promise<boolean> {
     if (saving || importing || preparingRef.current || rowsRef.current.length === 0) return false;
     preparingRef.current = true;
+    let lookupFailure: string | null;
     try {
       // Serial yang baru ditambahkan mungkin sudah tercatat: pastikan sudah ditanyakan (baris menjadi Cek ulang dengan
       // stiker kosong) sebelum dikirim, supaya bawaan "semua stiker" tidak memotong stok pada cek ulang.
-      await runLookup();
+      lookupFailure = await runLookup();
     } finally {
       preparingRef.current = false;
+    }
+    if (lookupFailure !== null) {
+      setNotice({
+        tone: 'error',
+        text: `Pengecekan serial yang sudah tercatat gagal: ${lookupFailure}. Coba simpan lagi.`,
+      });
+      return false;
     }
     if (rowsRef.current.length === 0) return false;
     return saveRows(external);
@@ -1044,7 +1058,8 @@ export function RecordPage({
 
       {detailRow && !saving ? (
         <RowEditDialog
-          key={detailRow.clientId}
+          // Dibuka sebelum pencarian serial selesai lalu barisnya menjadi Cek ulang: dialog dipasang ulang dari baris baru.
+          key={`${detailRow.clientId}|${detailRow.existing?.id ?? ''}`}
           row={detailRow}
           actorName={me.name}
           commitSerial={(serial) => commitSerial(detailRow.clientId, serial)}
