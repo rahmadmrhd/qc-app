@@ -26,6 +26,8 @@ export interface Config {
   qrFolderId: string;
   qrDocFolderId: string;
   backupFolderId: string;
+  /** Folder rilis aplikasi desktop (installer, manifest, tanda tangan); kosong = rute pembaruan desktop 404. */
+  desktopReleasesFolderId: string;
   /** Folder tambahan di luar induk yang diizinkan klien Google. */
   allowedFolderIds: string[];
   /** Folder lokal (volume yang dapat ditulis) untuk dump cadangan; bawaan: `/var/backups/qc` di produksi, folder sementara OS di dev. */
@@ -42,6 +44,11 @@ export interface Config {
   alertTo: string[];
   /** Kunci VAPID Web Push; `null` = tidak diisi/tidak valid (push dinonaktifkan, aplikasi tetap berjalan). */
   vapid: VapidSettings | null;
+  /**
+   * Token bersama pembaca katalog Tipe offline desktop (`DESKTOP_CATALOG_TOKEN`, minimal 32 karakter). Kosong atau
+   * terlalu pendek = rute katalog dinonaktifkan (404 seragam); tidak pernah menggagalkan start (seperti VAPID).
+   */
+  desktopCatalogToken: string;
   /** Ambang peringatan pemakaian kuota Drive, persen (`QUOTA_ALERT_PERCENT`, bawaan 80). */
   quotaAlertPercent: number;
   adminEmail: string;
@@ -60,7 +67,15 @@ export interface Config {
   trustedProxyText: string;
   /** Direktori berkas statis web (hasil `bun run build`). */
   staticDir: string;
+  /**
+   * SHA commit yang dibangun menjadi image ini (`GIT_SHA`, diisi build-arg Dockerfile; dilaporkan `/api/ping`). Bukan
+   * rahasia. Kosong atau bukan 7-40 heksa huruf kecil = `unknown` (pengembangan lokal, tes).
+   */
+  buildSha: string;
 }
+
+/** Bentuk SHA commit yang diterima untuk `GIT_SHA` (singkat 7 sampai penuh 40). */
+const BUILD_SHA_PATTERN = /^[0-9a-f]{7,40}$/;
 
 export const DEFAULT_PORT = 8788;
 export const DEFAULT_HOST = '127.0.0.1';
@@ -78,6 +93,7 @@ export const PRODUCTION_BACKUP_DIR = '/var/backups/qc';
 export const PRODUCTION_PROOF_DIR = '/var/lib/qc/proofs';
 export const DEFAULT_PROOF_STAGING_MAX_BYTES = 2 * 1024 ** 3;
 const SESSION_SECRET_MIN_LENGTH = 16;
+export const CATALOG_TOKEN_MIN_LENGTH = 32;
 
 /** Galat konfigurasi: memuat NAMA variabel yang bermasalah saja, tidak pernah nilainya. */
 export class ConfigError extends Error {
@@ -151,6 +167,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     'QR_FOLDER_ID',
     'QR_DOC_FOLDER_ID',
     'BACKUP_FOLDER_ID',
+    'DESKTOP_RELEASES_FOLDER_ID',
   ] as const;
   for (const name of googleIds) {
     if (get(name) !== '' && !isDriveId(get(name))) {
@@ -289,6 +306,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     qrFolderId: get('QR_FOLDER_ID'),
     qrDocFolderId: get('QR_DOC_FOLDER_ID'),
     backupFolderId: get('BACKUP_FOLDER_ID'),
+    desktopReleasesFolderId: get('DESKTOP_RELEASES_FOLDER_ID'),
     allowedFolderIds,
     backupLocalDir:
       get('BACKUP_LOCAL_DIR') ||
@@ -300,6 +318,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     smtp,
     alertTo,
     vapid,
+    desktopCatalogToken:
+      get('DESKTOP_CATALOG_TOKEN').length >= CATALOG_TOKEN_MIN_LENGTH
+        ? get('DESKTOP_CATALOG_TOKEN')
+        : '',
     quotaAlertPercent,
     adminEmail: get('ADMIN_EMAIL'),
     appOrigin: appOrigin === '' ? undefined : appOrigin,
@@ -310,5 +332,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     trustedProxy,
     trustedProxyText,
     staticDir: staticDir === '' ? resolve(import.meta.dir, '../dist') : resolve(staticDir),
+    buildSha: BUILD_SHA_PATTERN.test(get('GIT_SHA')) ? get('GIT_SHA') : 'unknown',
   };
 }

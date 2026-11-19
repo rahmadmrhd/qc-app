@@ -41,14 +41,6 @@ export interface FileDialogProps {
   confirmLabel?: string;
   /** Bawaan 'Pilih gambar'. */
   title?: string;
-  /**
-   * Opsional: menambah tombol "Ambil foto dengan kamera" di tab Unggah yang membuka aplikasi kamera bawaan perangkat
-   * (`<input type="file" capture>`); hasilnya masuk antrean seperti berkas biasa. Pemanggil mengisinya hanya di perangkat
-   * mobile. Tanpa prop ini dialog persis seperti semula.
-   */
-  capture?: 'environment' | 'user' | undefined;
-  /** Berkas yang sudah ada di luar antrean; ikut dihitung pada "n dari m" tombol kamera. */
-  captureCountOffset?: number | undefined;
   /** Sembunyikan pengubah nama berkas di antrean unggah (bawaan false). */
   hideNames?: boolean;
   /**
@@ -79,8 +71,6 @@ export function FileDialog({
   showLibrary = true,
   confirmLabel = 'Lampirkan',
   title = 'Pilih gambar',
-  capture,
-  captureCountOffset,
   hideNames,
   onDiscardUploaded,
   onSelect,
@@ -215,9 +205,6 @@ export function FileDialog({
       nameMax={source.nameMax}
       disabled={busy}
       hideNames={hideNames}
-      capture={capture}
-      countOffset={captureCountOffset}
-      single={mode === 'single'}
       onFiles={handleFiles}
     />
   );
@@ -259,11 +246,7 @@ export function FileDialog({
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription className="sr-only">
-              {showLibrary
-                ? 'Unggah berkas baru atau pilih dari pustaka.'
-                : capture
-                  ? 'Unggah berkas baru atau ambil foto dengan kamera.'
-                  : 'Unggah berkas baru.'}
+              {showLibrary ? 'Unggah berkas baru atau pilih dari pustaka.' : 'Unggah berkas baru.'}
             </DialogDescription>
           </DialogHeader>
           {showLibrary ? (

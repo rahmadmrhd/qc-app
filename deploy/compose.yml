@@ -85,6 +85,7 @@ services:
       QR_FOLDER_ID: ${QR_FOLDER_ID:-}
       QR_DOC_FOLDER_ID: ${QR_DOC_FOLDER_ID:-}
       BACKUP_FOLDER_ID: ${BACKUP_FOLDER_ID:-}
+      DESKTOP_RELEASES_FOLDER_ID: ${DESKTOP_RELEASES_FOLDER_ID:-}
       ALLOWED_FOLDER_IDS: ${ALLOWED_FOLDER_IDS:-}
       # Cadangan malam (T30): dump disimpan sementara di volume qc-backups (3 salinan terakhir; sisanya di Drive).
       BACKUP_LOCAL_DIR: /var/backups/qc
@@ -106,6 +107,8 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
+      # Katalog Tipe offline aplikasi desktop: token bersama (kosong/< 32 karakter = rute dinonaktifkan; lihat deploy/.env.example).
+      DESKTOP_CATALOG_TOKEN: ${DESKTOP_CATALOG_TOKEN:-}
     volumes:
       - qc-backups:/var/backups/qc
       - qc-proofs:/var/lib/qc/proofs

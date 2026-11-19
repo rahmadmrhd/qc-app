@@ -14,7 +14,7 @@ const MODULES_WITHOUT_GUIDE_YET: readonly string[] = [
   'item',
   'sticker',
   'stickerstock',
-  'serial',
+  // `serial` sudah punya panduan dasar (2026-11-17); tim servis (`serialservice`) belum dicakup.
   'serialservice',
 ];
 

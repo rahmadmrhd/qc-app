@@ -1,6 +1,12 @@
 name: Test
 
 # Berjalan saat PR dibuka. `reopened` dan `synchronize` ikut agar commit susulan pada PR juga teruji.
+#
+# Seluruh pemeriksaan ada di ci.yml (dipilih menurut bagian yang berubah: server, web, desktop; tes server dibagi 8 job
+# matrix; uji bangun image paralel dengan tes). Job `test` di bawah = GERBANG: status check wajib branch protection
+# (docs/ci-cd.md, "Disarankan") menunjuk nama job `test`, jadi gerbang ada di sini dan bukan di ci.yml (nama check dari
+# workflow yang dipanggil menjadi `<job pemanggil> / <job>`). Pekerjaan yang dilewati (mis. PR hanya dokumentasi) dihitung
+# lulus; gagal atau dibatalkan tidak.
 on:
   pull_request:
     types: [opened, reopened, synchronize]
@@ -13,52 +19,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  ci:
+    # pull-requests: daftar berkas PR; packages: baca cache lapisan image di GHCR (uji bangun). Tanpa rahasia.
+    permissions:
+      contents: read
+      pull-requests: read
+      packages: read
+    uses: ./.github/workflows/ci.yml
+    with:
+      pr: ${{ github.event.pull_request.number }}
+      build-image: true
+      desktop-check: true
+
   test:
+    needs: ci
+    if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 2
     env:
-      # Tes server memakai MariaDB sungguhan (skema sementara qc_test_* dikloning dari qc_test_template); lihat
-      # .github/actions/mariadb. Pengguna root hanya untuk basis data sekali pakai di runner ini.
-      QC_TEST_DB_URL: mysql://root:ci-only@127.0.0.1:3306/
+      CI_RESULT: ${{ needs.ci.result }}
     steps:
-      # Aksi pihak ketiga dipatok ke SHA commit (tag mayor di komentar; SHA diambil 2026-11-06).
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-
-      - uses: ./.github/actions/mariadb
-
-      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: 1.4.2
-
-      - name: Pasang dependensi
-        run: bun install --frozen-lockfile
-
-      # typecheck + Biome + semua test (shared, web, scripts, server).
-      - name: Check
-        run: bun run check
-
-      # build web ke server/dist + verifikasi (verify-dist: tanpa mock, anggaran potongan JS)
-      - name: Build
-        run: bun run build
-
-  # Dockerfile harus selalu dapat dibangun (tanpa dorong): menangkap Dockerfile/.dockerignore yang rusak sebelum
-  # deploy. Image tidak dijalankan di sini.
-  image:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          persist-credentials: false
-
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
-
-      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
-        with:
-          context: .
-          push: false
-          provenance: false
-          cache-from: type=gha,scope=qc-app
-          cache-to: type=gha,scope=qc-app,mode=max
+      - name: Periksa hasil
+        run: |
+          set -uo pipefail
+          case "$CI_RESULT" in
+            success | skipped) echo "Semua pemeriksaan lulus atau dilewati." ;;
+            *)
+              echo "::error::Pemeriksaan CI gagal atau dibatalkan (hasil: ${CI_RESULT:-kosong})."
+              exit 1
+              ;;
+          esac

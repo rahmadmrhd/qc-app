@@ -5,7 +5,7 @@ import { GUIDE_IDS, GUIDE_VERSIONS } from '@shared/guides';
 import { describe, expect, test } from 'vitest';
 import { getDemoScenes, loadDemoScenes } from '../lib/demo-types';
 import { offeredGuides } from '../lib/offer';
-import { HANDOVER_DASAR, HANDOVER_TIP_WA } from './handover';
+import { HANDOVER_BUAT, HANDOVER_DASAR, HANDOVER_TIP_WA } from './handover';
 import { GUIDE_CATALOG } from './index';
 
 function me(locations: LocationAccessDto[]): MeDto {
@@ -31,14 +31,14 @@ const qcUser = me([location({ qc: 'edit' })]);
 const both = me([location({ handover: 'edit', qc: 'edit' })]);
 const nobody = me([location({ item: 'view' })]);
 
-function offerFor(user: MeDto) {
+function offerFor(user: MeDto, id = 'handover-dasar') {
   return offeredGuides({
     me: user,
     catalog: GUIDE_CATALOG,
     done: new Map(),
     derived: new Map(),
     activeLocationIds: ['L1'],
-  }).find((offer) => offer.entry.id === 'handover-dasar');
+  }).find((offer) => offer.entry.id === id);
 }
 
 describe('muat malas adegan demo', () => {
@@ -63,7 +63,7 @@ describe('muat malas adegan demo', () => {
 
 describe('panduan Serah Terima', () => {
   test('id terdaftar di GUIDE_IDS dengan versi yang sama, dan ada di katalog', () => {
-    for (const entry of [HANDOVER_DASAR, HANDOVER_TIP_WA]) {
+    for (const entry of [HANDOVER_DASAR, HANDOVER_BUAT, HANDOVER_TIP_WA]) {
       expect(GUIDE_IDS as readonly string[]).toContain(entry.id);
       expect((GUIDE_VERSIONS as Record<string, number>)[entry.id]).toBe(entry.version);
       expect(GUIDE_CATALOG).toContain(entry);
@@ -85,32 +85,48 @@ describe('panduan Serah Terima', () => {
     expect(viewer?.stepCount).toBe(3);
     expect(viewer?.stepCount).toBeLessThan(qc?.stepCount ?? 0);
     expect(qc?.stepCount).toBe(4);
-    expect(editor?.stepCount).toBe(13);
+    expect(editor?.stepCount).toBe(4);
     expect(all?.stepCount).toBe(HANDOVER_DASAR.steps.length);
   });
 
-  test('sisi WH: setelah panel tempel, tur menjelaskan pengisian task sampai tepat sebelum tombol simpan', () => {
-    const targets = HANDOVER_DASAR.steps.map((step) => step.target);
-    const afterPaste = targets.slice(targets.indexOf('handover-paste-panel') + 1);
-    expect(afterPaste).toEqual([
+  test('dua panduan Serah Terima: papan (5) dan formulir (7), masing-masing ringkas', () => {
+    expect(HANDOVER_DASAR.steps.length).toBeLessThanOrEqual(5);
+    expect(HANDOVER_BUAT.steps.length).toBeLessThanOrEqual(7);
+    expect(GUIDE_IDS as readonly string[]).not.toContain('handover-simpan');
+  });
+
+  test('panduan formulir hanya untuk penulis WH, dan pembaca/QC saja tidak ditawari', () => {
+    expect(offerFor(whEditor, 'handover-buat')).toBeDefined();
+    expect(offerFor(both, 'handover-buat')).toBeDefined();
+    expect(offerFor(whViewer, 'handover-buat')).toBeUndefined();
+    expect(offerFor(qcUser, 'handover-buat')).toBeUndefined();
+    expect(HANDOVER_BUAT.izin).toEqual({ module: 'handover', level: 'edit', scope: 'location' });
+  });
+
+  test('banner: papan di /handover (tanpa formulir), formulir di /handover/new', () => {
+    expect(HANDOVER_DASAR.halaman).toBe('/handover');
+    expect(HANDOVER_DASAR.halamanKecuali).toEqual(['/handover/new']);
+    expect(HANDOVER_BUAT.halaman).toBe('/handover/new');
+  });
+
+  test('formulir: satu panduan dari lokasi sampai tepat sebelum Simpan semua', () => {
+    expect(HANDOVER_BUAT.steps.map((step) => step.target)).toEqual([
+      'handover-location',
+      'handover-paste-panel',
       'handover-task-card',
       'handover-customer',
       'handover-note',
       'handover-card-actions',
-      'handover-add-task',
       'handover-save',
     ]);
-    // Lokasi dijelaskan sebelum panel tempel; semua langkah formulir hanya untuk penulis WH.
-    expect(targets.indexOf('handover-location')).toBeLessThan(
-      targets.indexOf('handover-paste-panel'),
-    );
-    for (const target of ['handover-location', ...afterPaste]) {
-      const step = HANDOVER_DASAR.steps.find((candidate) => candidate.target === target);
-      expect(step?.izin).toEqual({ module: 'handover', level: 'edit', scope: 'location' });
-      expect(step?.advance).toBe('next');
-    }
+    expect(HANDOVER_BUAT.steps[0]?.route).toBe('/handover/new');
+    for (const step of HANDOVER_BUAT.steps) expect(step.advance).toBe('next');
+    // Gandakan/Hapus dan Tambah task dijelaskan dalam satu langkah.
+    const actions = HANDOVER_BUAT.steps.find((step) => step.target === 'handover-card-actions');
+    expect(actions?.text).toMatch(/Gandakan/);
+    expect(actions?.text).toMatch(/Tambah task/);
     // Tur berhenti di tombol simpan: tak ada langkah sesudahnya.
-    expect(targets.at(-1)).toBe('handover-save');
+    expect(HANDOVER_BUAT.steps.at(-1)?.target).toBe('handover-save');
   });
 
   test('langkah checklist dan komentar: demo kartu contoh + teks pengganti saat papan kosong', () => {
@@ -134,8 +150,12 @@ describe('panduan Serah Terima', () => {
   });
 
   test('langkah yang bukan bergantung data tidak punya teks pengganti (dilewati bila hilang)', () => {
-    for (const target of ['handover-new', 'handover-batch-form', 'handover-paste-panel']) {
-      const step = HANDOVER_DASAR.steps.find((candidate) => candidate.target === target);
+    for (const [guide, target] of [
+      [HANDOVER_DASAR, 'handover-new'],
+      [HANDOVER_BUAT, 'handover-location'],
+      [HANDOVER_BUAT, 'handover-paste-panel'],
+    ] as const) {
+      const step = guide.steps.find((candidate) => candidate.target === target);
       expect(step?.teksJikaKosong, target).toBeUndefined();
     }
   });
@@ -145,7 +165,7 @@ describe('panduan Serah Terima', () => {
   });
 
   test('langkah panel tempel menyematkan demo tip yang terdaftar di registri', async () => {
-    const pasteStep = HANDOVER_DASAR.steps.find((step) => step.target === 'handover-paste-panel');
+    const pasteStep = HANDOVER_BUAT.steps.find((step) => step.target === 'handover-paste-panel');
     expect(pasteStep?.tip).toBe(HANDOVER_TIP_WA.id);
     expect((await loadDemoScenes(HANDOVER_TIP_WA.id))?.length).toBeGreaterThan(0);
   });

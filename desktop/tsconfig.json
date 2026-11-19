@@ -3,7 +3,10 @@
   "compilerOptions": {
     "types": ["node"],
     "lib": ["ES2023"],
-    "paths": { "@countrylock/*": ["../countrylock/src/*"] }
+    "paths": {
+      "@countrylock/*": ["../countrylock/src/*"],
+      "@shared/*": ["../shared/*"]
+    }
   },
   "include": ["src", "test-support", "spike", "vitest.config.ts"]
 }

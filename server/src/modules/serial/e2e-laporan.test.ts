@@ -147,7 +147,7 @@ describe('e2e laporan rusak: jalur 1 (serial A sampai Lolos)', () => {
       custody: 'qc',
       locationId: 'loc-sby',
     });
-    expect(serialA.openCase.number).toBe('LP-20261114-001');
+    expect(serialA.openCase.number).toBe('LP/A/2611-0001');
     expect(serialA.openCaseId).toBe(serialA.openCase.id);
 
     const got = await getSerial(serialA.id);
@@ -180,7 +180,7 @@ describe('e2e laporan rusak: jalur 1 (serial A sampai Lolos)', () => {
       id: serialA.id,
       status: 'reported',
       openCaseId: serialA.openCaseId,
-      openCaseNumber: 'LP-20261114-001',
+      openCaseNumber: 'LP/A/2611-0001',
     });
   });
 
@@ -293,7 +293,7 @@ describe('e2e laporan rusak: jalur 1 (serial A sampai Lolos)', () => {
     expect(passed.ok).toBe(true);
     expect(passed.data).toMatchObject({ status: 'good', custody: 'qc', openCaseId: null });
     serialA = passed.data;
-    expect(serialA.cases[0]).toMatchObject({ number: 'LP-20261114-001', outcome: 'good' });
+    expect(serialA.cases[0]).toMatchObject({ number: 'LP/A/2611-0001', outcome: 'good' });
     expect(serialA.cases[0].closedOn).toBe(TODAY);
     // Jumlah tempel naik tepat 1 dan stok di lokasi cek ulang turun tepat 1 (satu entri stok).
     expect(await stickerQty(serialA.id, 's1')).toBe(1);
@@ -329,7 +329,7 @@ describe('e2e laporan rusak: jalur 2 (serial B sampai Rusak, surel, halaman publ
     expect(created.ok).toBe(true);
     serialB = created.data;
     caseB = serialB.openCaseId;
-    expect(serialB.openCase.number).toBe('LP-20261114-002');
+    expect(serialB.openCase.number).toBe('LP/A/2611-0002');
 
     const sent = await act(W, serialB, 'send', { message: 'Kirim servis' });
     expect(sent.ok).toBe(true);
@@ -349,7 +349,7 @@ describe('e2e laporan rusak: jalur 2 (serial B sampai Rusak, surel, halaman publ
     expect(broken.ok).toBe(true);
     expect(broken.data).toMatchObject({ status: 'broken', custody: 'service', openCaseId: null });
     serialB = broken.data;
-    expect(serialB.cases[0]).toMatchObject({ number: 'LP-20261114-002', outcome: 'broken' });
+    expect(serialB.cases[0]).toMatchObject({ number: 'LP/A/2611-0002', outcome: 'broken' });
     expect(serialB.cases[0].closedOn).toBe(TODAY);
     // Rusak langsung dari transit: receive otomatis + declare_broken, keduanya dalam lingkup laporan.
     const got = await getSerial(serialB.id);
@@ -370,7 +370,7 @@ describe('e2e laporan rusak: jalur 2 (serial B sampai Rusak, surel, halaman publ
     const text = mail.text ?? '';
     expect(text).toContain('Serial Number: E2E-B1');
     expect(text).toContain('Item: Merk Alfa');
-    expect(text).toContain('Nomor LP: LP-20261114-002');
+    expect(text).toContain('Nomor LP: LP/A/2611-0002');
     expect(text).toContain('Dilaporkan: 2026-11-14');
     expect(text).toContain('Dinyatakan rusak: 2026-11-14');
     expect(text).toContain('Oleh: Budi Servis');
@@ -450,7 +450,7 @@ describe('e2e laporan rusak: jalur 2 (serial B sampai Rusak, surel, halaman publ
       ].sort(),
     );
     expect(body).toMatchObject({
-      number: 'LP-20261114-002',
+      number: 'LP/A/2611-0002',
       openedOn: TODAY,
       closedOn: TODAY,
       outcome: 'broken',
@@ -487,7 +487,7 @@ describe('e2e laporan rusak: jalur 2 (serial B sampai Rusak, surel, halaman publ
     expect(raw).not.toContain('@');
     expect(raw).not.toContain('Klaim-vendor-123');
     expect(raw.toLowerCase()).not.toContain('stok');
-    // Laporan serial A (LP-001) tidak ikut di halaman B.
+    // Laporan serial A (LP/A/2611-0001) tidak ikut di halaman B.
     expect(raw).not.toContain('E2E-A1');
     expect(raw).not.toContain('Layar mati total');
   });

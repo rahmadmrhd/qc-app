@@ -1,4 +1,5 @@
-# Pengemasan QC App (Windows x64, NSIS per pengguna tanpa hak admin). Hasil: desktop/dist-app/.
+# Pengemasan QC App (Windows x64 dan arm64, NSIS per pengguna tanpa hak admin). Hasil: desktop/dist-app/.
+# Nama installer dipatok (dipakai manifest rilis `release-<versi>.json`; shared/desktop-release.ts `installerName`).
 appId: id.my.rhd.qc-app
 productName: QC App
 directories:
@@ -8,6 +9,9 @@ files:
   - '!dist/spike/**'
   - package.json
 asar: true
+# Tanpa publish: pembaruan memakai provider kustom ke server QC (src/main/update/), bukan konfigurasi builder; builder tak
+# membuat app-update.yml dan tak mengunggah apa pun (aplikasi menulis app-update.yml-nya sendiri; lihat start-app-update.ts).
+publish: null
 # Tanpa modul native yang perlu dikompilasi ulang; node:sqlite dan ssh2 (JS murni) cukup.
 npmRebuild: false
 # UI dasar: build web (bun run build:web) dibawa apa adanya di samping asar.
@@ -19,8 +23,10 @@ win:
     - target: nsis
       arch:
         - x64
+        - arm64
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
   deleteAppDataOnUninstall: false
+  artifactName: QC-App-Setup-${version}-${arch}.${ext}

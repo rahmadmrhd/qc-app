@@ -3,6 +3,7 @@
 
 import { BrowserWindow, session } from 'electron';
 import { APP_ORIGIN, isAppUrl } from './app-protocol';
+import { allowPermissionCheck, allowPermissionRequest } from './permissions';
 import { shouldBlockReloadKey } from './ui/reload-gate';
 
 export interface WindowOptions {
@@ -48,10 +49,25 @@ export function createMainWindow(opts: WindowOptions): BrowserWindow {
   return win;
 }
 
-/** Tolak semua permintaan izin perangkat (kamera, lokasi, dll.); aplikasi tak membutuhkannya. */
+/**
+ * Tolak semua izin perangkat (lokasi, mikrofon, notifikasi web, dll.) KECUALI kamera untuk halaman `app://qc`: pemindai
+ * serial dan foto bukti Catat Serial Number memakainya (`permissions.ts`).
+ */
 export function lockDownSession(): void {
-  session.defaultSession.setPermissionRequestHandler((_contents, _permission, callback) =>
-    callback(false),
+  session.defaultSession.setPermissionRequestHandler((_contents, permission, callback, details) => {
+    const media = details as { mediaTypes?: readonly string[] };
+    callback(
+      allowPermissionRequest(permission, {
+        requestingUrl: details.requestingUrl,
+        isMainFrame: details.isMainFrame,
+        mediaTypes: media.mediaTypes,
+      }),
+    );
+  });
+  session.defaultSession.setPermissionCheckHandler(
+    (_contents, permission, requestingOrigin, details) =>
+      allowPermissionCheck(permission, requestingOrigin, {
+        mediaType: (details as { mediaType?: string }).mediaType,
+      }),
   );
-  session.defaultSession.setPermissionCheckHandler(() => false);
 }

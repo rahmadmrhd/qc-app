@@ -46,12 +46,16 @@ export interface Env extends GoogleSettings {
   PUSH?: PushSender;
   /** Kunci publik VAPID (base64url) untuk klien; bersama `PUSH`. */
   VAPID_PUBLIC_KEY?: string;
+  /** Token bersama katalog Tipe offline desktop; kosong/tak diisi = rute katalog dinonaktifkan (404 seragam). */
+  DESKTOP_CATALOG_TOKEN?: string;
   /** Pengirim email peringatan (T32); kosong = SMTP/`ALERT_TO` belum dikonfigurasi, peringatan dilewati dan dicatat. */
   MAILER?: Mailer;
   /** Penerima peringatan (`ALERT_TO`). */
   ALERT_TO?: string[];
   /** Ambang peringatan pemakaian kuota Drive, persen (bawaan 80). */
   QUOTA_ALERT_PERCENT?: number;
+  /** SHA commit build image (`config.buildSha`); kosong = `unknown` di `/api/ping`. */
+  BUILD_SHA?: string;
   /** Hanya untuk tes: jam terkendali (milidetik epoch). */
   NOW?: () => number;
   /** Hanya untuk tes: cache isi berkas (bawaan: cache memori LRU proses, maks. 32 MB; null = tanpa cache). */

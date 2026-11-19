@@ -48,6 +48,7 @@ export function envFromConfig(config: Config, db: Db): Env {
     QR_FOLDER_ID: config.qrFolderId,
     QR_DOC_FOLDER_ID: config.qrDocFolderId,
     BACKUP_FOLDER_ID: config.backupFolderId,
+    DESKTOP_RELEASES_FOLDER_ID: config.desktopReleasesFolderId,
     ALLOWED_FOLDER_IDS: config.allowedFolderIds,
   };
   return {
@@ -58,6 +59,7 @@ export function envFromConfig(config: Config, db: Db): Env {
     SESSION_SECRET: config.sessionSecret,
     OAUTH_CLIENT_ID: config.oauthClientId,
     OAUTH_CLIENT_SECRET: config.oauthClientSecret,
+    BUILD_SHA: config.buildSha,
     ADMIN_EMAIL: config.adminEmail,
     // Cadangan malam hanya di produksi dengan Google terkonfigurasi dan `BACKUP_ENABLED` tidak `false` (staging memakainya untuk mati; CLI pemulihan tak terpengaruh) (dev memakai basis data bersama di VPS dan tak
     // punya mariadb-dump); `parseDatabaseUrl` hanya dipakai bila dump dijalankan (URL sudah divalidasi `loadConfig`).
@@ -76,6 +78,9 @@ export function envFromConfig(config: Config, db: Db): Env {
     ...(config.vapid === null
       ? {}
       : { PUSH: createWebPushSender(config.vapid), VAPID_PUBLIC_KEY: config.vapid.publicKey }),
+    ...(config.desktopCatalogToken === ''
+      ? {}
+      : { DESKTOP_CATALOG_TOKEN: config.desktopCatalogToken }),
     QUOTA_ALERT_PERCENT: config.quotaAlertPercent,
     ...(config.appOrigin === undefined ? {} : { APP_ORIGIN: config.appOrigin }),
     ...(config.devLoginEmail === undefined ? {} : { DEV_LOGIN_EMAIL: config.devLoginEmail }),

@@ -1,3 +1,4 @@
+-- qc:contract
 -- Menghapus `external_id` (id MySQL era sinkron QC Desktop) dari `brands` dan `items`, beserta indeksnya. Sejak modul
 -- sinkron dihapus (migrasi 0002) tidak ada kode yang mengisinya, dan belum ada item di staging maupun production.
 --

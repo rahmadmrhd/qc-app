@@ -41,6 +41,10 @@ const lookup = (id: string, label = `Item ${id}`): ItemLookup => ({
 });
 
 const locations = [{ id: 'l1', label: 'Jakarta (JKT)' }];
+const bus = [
+  { id: 'b1', code: 'BU1' },
+  { id: 'b2', code: 'BU2' },
+];
 
 test('mapLimit: tidak melebihi batas serentak dan mempertahankan urutan hasil', async () => {
   let inFlight = 0;
@@ -68,6 +72,7 @@ test('item dicocokkan menurut id (label berkas tidak dipakai), dipotong 50 id pe
       },
       stickersOf: async () => [],
       locations,
+      buOptions: bus,
     },
   );
   expect(requests.map((chunk) => chunk.length)).toEqual([50, 50, 20]);
@@ -84,6 +89,7 @@ test('berkas tanpa itemLabel tidak bermasalah; id yang tak kembali ditandai tida
     findItems: async (chunk) => chunk.filter((id) => id !== 'iGone').map((id) => lookup(id)),
     stickersOf: async () => [],
     locations,
+    buOptions: bus,
   });
   expect(report.rows[0]?.unresolved).toBeUndefined();
   expect(report.rows[0]?.itemLabel).toBe('Item i1');
@@ -100,6 +106,7 @@ test('galat jaringan pada satu potongan: hanya baris potongan itu belum terverif
     },
     stickersOf: async () => [],
     locations,
+    buOptions: bus,
   });
   expect(report.unverified).toBe(50);
   expect(report.unresolved).toBe(0);
@@ -122,6 +129,7 @@ test('stikerOptions dibatasi serentak dan NOT_FOUND pasangan menandai item', asy
       return [];
     },
     locations,
+    buOptions: bus,
   });
   expect(peak).toBeLessThanOrEqual(VERIFY_CONCURRENCY);
   expect(report.rows[3]?.unresolved).toEqual(['item']);
@@ -139,6 +147,7 @@ test('id item beracun disaring sebelum dipotong: tidak menjatuhkan id sah dalam 
     },
     stickersOf: async () => [],
     locations,
+    buOptions: bus,
   });
   expect(requested).toHaveLength(1);
   expect(requested[0]).toEqual(Array.from({ length: 10 }, (_, index) => `i${index}`));
@@ -155,4 +164,66 @@ test('isQueryableItemId: kosong, koma, dan lebih dari 100 unit UTF-16 ditolak', 
   expect(isQueryableItemId('')).toBe(false);
   expect(isQueryableItemId('  ')).toBe(false);
   expect(isQueryableItemId('a,b')).toBe(false);
+});
+
+test('proofMin item dibawa ke baris impor; item yang tak wajib foto lagi membersihkan nilai lama', async () => {
+  const rows = rowsFor([{ id: 'i1' }, { id: 'i2' }]).map((row) =>
+    row.itemId === 'i2' ? { ...row, proofMin: 3 } : row,
+  );
+  const report = await verifyImported(rows, {
+    findItems: async (chunk) =>
+      chunk.map((id) => ({ ...lookup(id), proofMin: id === 'i1' ? 2 : 0 })),
+    stickersOf: async () => [],
+    locations,
+    buOptions: bus,
+  });
+  expect(report.rows[0]?.proofMin).toBe(2);
+  expect(report.rows[1]).not.toHaveProperty('proofMin');
+});
+
+function rowWithBu(buId: string): StagingRow[] {
+  return rowsFor([{ id: 'i1' }]).map((row) => ({ ...row, buId, buLabel: 'dari berkas' }));
+}
+
+const deps = (buOptions: typeof bus | null) => ({
+  findItems: async (chunk: readonly string[]) => chunk.map((id) => lookup(id)),
+  stickersOf: async () => [],
+  locations,
+  buOptions,
+});
+
+test('BU baris di luar BU item tetapi ada di daftar BU tulis: tidak lagi "pilih ulang"; label BU dari server', async () => {
+  const report = await verifyImported(rowWithBu('b2'), deps(bus));
+  expect(report.unresolved).toBe(0);
+  expect(report.rows[0]).toMatchObject({ buId: 'b2', buLabel: 'BU2' });
+  expect(report.rows[0]?.unresolved).toBeUndefined();
+});
+
+test('BU baris yang tidak ada di daftar BU tulis ditandai pilih ulang item', async () => {
+  const report = await verifyImported(rowWithBu('b9'), deps(bus));
+  expect(report.unresolved).toBe(1);
+  expect(report.rows[0]?.unresolved).toEqual(['item']);
+});
+
+test('BU kosong: terisi dari item hanya bila item punya tepat satu BU tulis', async () => {
+  const one = await verifyImported(rowWithBu(''), deps(bus));
+  expect(one.rows[0]).toMatchObject({ buId: 'b1', buLabel: 'BU1' });
+  // BU item bukan BU tulis pengguna: tidak dapat ditentukan.
+  const none = await verifyImported(rowWithBu(''), deps([{ id: 'b2', code: 'BU2' }]));
+  expect(none.rows[0]?.unresolved).toEqual(['item']);
+});
+
+test('daftar BU tulis gagal dimuat (null): BU item dipakai sebagai batas sementara', async () => {
+  const ok = await verifyImported(rowWithBu('b1'), deps(null));
+  expect(ok.unresolved).toBe(0);
+  const outside = await verifyImported(rowWithBu('b2'), deps(null));
+  expect(outside.rows[0]?.unresolved).toEqual(['item']);
+});
+
+test('item tidak dikenal tetap ditandai pilih ulang walau BU ada di daftar BU tulis', async () => {
+  const report = await verifyImported(rowWithBu('b1'), {
+    ...deps(bus),
+    findItems: async () => [],
+  });
+  expect(report.rows[0]?.unresolved).toEqual(['item']);
 });

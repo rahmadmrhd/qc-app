@@ -88,6 +88,8 @@ chmod 600 .env
 
 Nilai yang diisi pemilik (OAUTH_*, SMTP_*, GOOGLE_ROOT_FOLDER_ID, GOOGLE_SPREADSHEET_ID; kunci service account bukan variabel melainkan berkas `secrets/google-sa.json`, lihat `docs/setup-google.md`) ditulis `ISI_OLEH_PEMILIK` sampai diisi. Pastikan `QC_ENV` sama dengan nama folder, `QC_NAME=qc-staging` (staging), `QC_SUBNET`, `TRUSTED_PROXY` (loopback + `QC_SUBNET`), `APP_PORT`, `DB_PORT`, dan `APP_ORIGIN` (`https://qc-dev.rhd.my.id` atau `https://qc.rhd.my.id`). Kata sandi hanya heksa (aman-URL). Jangan `cat .env`.
 
+Katalog Tipe offline desktop (opsional): isi `DESKTOP_CATALOG_TOKEN` di `.env` dengan string acak minimal 32 karakter (mis. `openssl rand -hex 32`). Kosong atau lebih pendek = rute `/api/desktop/catalog` menjawab 404 dan desktop tak menyinkronkan katalog; server tetap berjalan. Nilai yang sama dipakai saat membangun installer desktop (env `CATALOG_TOKEN`); token ikut terdistribusi di installer (menghalangi pengambilan sembarangan, bukan kontrol akses). `deploy/compose.yml` dan `.env` tidak dibawa CI, jadi isi manual SEBELUM push yang men-deploy.
+
 Pembatalan: hapus `.env` (rahasia dapat dibangkitkan ulang; belum ada data).
 
 ## 6. Kunci service account Google
@@ -226,3 +228,15 @@ Checklist (bukan implementasi; server kantor dibangun nanti). Tidak ada kode yan
 - [ ] **`.env`** di `<INSTALL_DIR>/<env>/`: `QC_SECRETS_DIR` biarkan bawaan (`./secrets`) atau isi jalur mutlak/relatif yang benar; berkas `google-sa.json` berpemilik uid 1000 seperti langkah 6.
 - [ ] **nginx/DNS/OAuth**: contoh `deploy/nginx/qc.conf.example` tidak memuat jalur instalasi; yang berubah hanya host/port dan sertifikat origin bila server baru. Daftarkan URI redirect OAuth untuk hostname baru.
 - [ ] **Uji**: `SSH_ORIGINAL_COMMAND='deploy staging <sha>' <INSTALL_DIR>/deploy.sh --dry-run` (melaporkan `root=<INSTALL_DIR>`), lalu satu deploy nyata dari Actions.
+
+### Menyalin `deploy.sh` baru (pagar downgrade skema, rilis semver bagian 3)
+
+`deploy.sh` TIDAK dibawa CI. Perubahannya (`schema_guard`, kode keluar 6, ekor perintah ` allow-schema-downgrade`, batas panjang perintah 96) hanya berlaku setelah pemilik menyalinnya ke VPS, dan HARUS dilakukan sebelum PR yang menambah `deploy-tag.yml` di-merge ke `main`. Langkah (pemilik, bukan agen), untuk `staging` lalu `production` (satu skrip dipakai kedua lingkungan, di `<INSTALL_DIR>/deploy.sh`):
+
+0. **Periksa dulu `schema_migrations`** (di staging dan production): `docker exec -e MYSQL_PWD <NAME>-db mariadb -N -u<user> <db> -e 'SELECT name FROM schema_migrations ORDER BY name'` (kata sandi lewat env, jangan di argumen) lalu bandingkan dengan `ls /app/server/migrations` di image yang SEDANG berjalan (`docker run --rm --pull never --network none --entrypoint ls <image-berjalan> /app/server/migrations`). Semua nama di basis data harus ada di image itu: nama yang tak ada di image berjalan (migrasi yang kemudian diganti nama atau di-revert, atau sisa downgrade berizin) membuat deploy BERIKUTNYA berkode 6 walau dengan izin, karena berkasnya dianggap contract (tak terbaca di image berjalan).
+1. Cadangkan skrip lama: `cp -p <INSTALL_DIR>/deploy.sh <INSTALL_DIR>/deploy.sh.bak`.
+2. Salin berkas dari repositori (`deploy/deploy.sh` pada commit yang akan di-merge), pertahankan izin eksekusi dan pemilik pengguna deploy.
+3. Uji tanpa efek: `SSH_ORIGINAL_COMMAND='deploy staging <sha-40-heksa>' bash <INSTALL_DIR>/deploy.sh --dry-run` harus menyebut "pagar downgrade skema"; lalu `SSH_ORIGINAL_COMMAND='deploy staging <sha-40-heksa> allow-schema-downgrade' bash <INSTALL_DIR>/deploy.sh --dry-run` harus berkode keluar 0.
+4. Prasyarat pagar: image yang SEDANG berjalan harus ada di Docker lokal (tag di `.env`), karena baris pertama migrasi yang akan dilewati dibaca dari sana; pembersihan image (`QC_KEEP_IMAGES`, bawaan 3) tidak menghapusnya. `deploy.sh` baru juga memakai `docker run --rm --pull never --network none --entrypoint ls|head` pada image target dan berjalan; pengguna deploy sudah berhak menjalankan docker.
+5. **Pemulihan bila deploy terkunci kode 6 karena nama migrasi basi** (pesan: "migrasi <nama> tak terbaca dari image yang sedang berjalan"): pastikan benar bahwa migrasi itu memang tak lagi ada di kode mana pun (mis. sisa downgrade berizin ke versi lama, atau migrasi yang diganti nama), pastikan skemanya tak lagi dipakai, lalu hapus barisnya secara manual: `DELETE FROM schema_migrations WHERE name = '<nama>'` (satu per satu; bukan `TRUNCATE`). Bila migrasi itu ternyata masih dibawa image yang akan datang, jangan dihapus: deploy ke image yang membawanya. Pagar sengaja tidak memulihkan diri sendiri (keputusan 2026-11-18: perubahan aturan "tak terbaca = contract" menunggu keputusan pemilik; reviewer bagian 3 merekomendasikan mencari penanda di image lokal lain).
+6. Pembatalan: kembalikan `deploy.sh.bak`. `deploy.sh` lama menolak ekor ` allow-schema-downgrade` dengan kode 2 dan tidak punya pagar; deploy biasa tetap berjalan.

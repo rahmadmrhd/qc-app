@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { restCall } from '@server-test/rest-call';
 import { SERIAL_USERS, seedSerialWorld } from '@server-test/serial-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import { insertDraftStmt } from './proof/repo';
 
 setDefaultTimeout(60_000);
 
@@ -160,5 +161,89 @@ describe('source', () => {
   test('source di luar enum: invalid', async () => {
     const out = await save(W, [row({ serial: 'SRC-9', source: 'lain' })]);
     expect(out.data.results[0].result).toBe('invalid');
+  });
+});
+
+describe('item wajib foto bukti (spek 2026-11-18 D)', () => {
+  const NEED = (n: number) => `Item ini wajib foto bukti minimal ${n}`;
+  const setProof = (itemId: string, required: boolean, min: number) =>
+    env.DB.prepare('UPDATE items SET proof_required = ?, proof_min = ? WHERE id = ?')
+      .bind(required ? 1 : 0, min, itemId)
+      .run();
+  const draft = async (id: string): Promise<string> => {
+    await insertDraftStmt(env.DB, {
+      id,
+      createdBy: W,
+      now: '2026-11-11T00:00:00.000Z',
+      mime: 'image/jpeg',
+      width: 640,
+      height: 480,
+      size: 1000,
+      stagedName: `staged-${id}`,
+    }).run();
+    return id;
+  };
+  const serialCount = async () =>
+    Number(
+      (await env.DB.prepare('SELECT COUNT(*) AS n FROM serials').first<{ n: number | string }>())
+        ?.n,
+    );
+
+  test('0 dan 1 foto pada item min 2 = invalid bermakna; baris lain dalam batch tetap created', async () => {
+    await setProof('i-a1', true, 2);
+    const p1 = await draft('pf-1');
+    const out = await save(W, [
+      row({ serial: 'W-0' }),
+      row({ serial: 'W-1', proofPhotoIds: [p1] }),
+      row({ serial: 'W-OK', itemId: 'i-a2' }),
+    ]);
+    const results = out.data.results as Json[];
+    expect(results.map((r) => r.result)).toEqual(['invalid', 'invalid', 'created']);
+    expect(results[0].message).toBe(NEED(2));
+    expect(results[1].message).toBe(NEED(2));
+    // Pesan baru TIDAK dikenali web sebagai penolakan foto (yang mengosongkan foto baris).
+    expect(results[1].message).not.toMatch(/^(Foto sudah kedaluwarsa|Ada foto yang tidak dikenal)/);
+    expect(await serialCount()).toBe(1);
+  });
+
+  test('dua foto draft sah pada item min 2 = created', async () => {
+    await setProof('i-a1', true, 2);
+    const ids = [await draft('pf-a'), await draft('pf-b')];
+    const out = await save(W, [row({ serial: 'W-2', proofPhotoIds: ids })]);
+    expect(out.data.results[0].result).toBe('created');
+    expect(await serialCount()).toBe(1);
+  });
+
+  test('item tak wajib foto tanpa foto tetap created', async () => {
+    await setProof('i-a1', false, 3);
+    const out = await save(W, [row({ serial: 'N-0' })]);
+    expect(out.data.results[0].result).toBe('created');
+  });
+
+  test('kirim ulang clientId yang sama setelah sukses = idempoten, aturan tak dievaluasi ulang', async () => {
+    const clientId = cid();
+    const first = await save(W, [row({ clientId, serial: 'IDEM-1' })]);
+    expect(first.data.results[0].result).toBe('created');
+    await setProof('i-a1', true, 3);
+    const again = await save(W, [row({ clientId, serial: 'IDEM-1' })]);
+    expect(again.data.results[0]).toMatchObject({
+      result: 'created',
+      id: first.data.results[0].id,
+    });
+    expect(await serialCount()).toBe(1);
+  });
+
+  test('bendera item diubah di antara dua permintaan: permintaan kedua memakai nilai terbaru', async () => {
+    await setProof('i-a1', true, 1);
+    const p1 = await draft('pf-c');
+    const ok = await save(W, [row({ serial: 'CHG-1', proofPhotoIds: [p1] })]);
+    expect(ok.data.results[0].result).toBe('created');
+    await setProof('i-a1', true, 3);
+    const p2 = await draft('pf-d');
+    const next = await save(W, [row({ serial: 'CHG-2', proofPhotoIds: [p2] })]);
+    expect(next.data.results[0]).toMatchObject({ result: 'invalid', message: NEED(3) });
+    await setProof('i-a1', false, 1);
+    const free = await save(W, [row({ serial: 'CHG-3' })]);
+    expect(free.data.results[0].result).toBe('created');
   });
 });

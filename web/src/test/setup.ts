@@ -2,11 +2,14 @@ import '@testing-library/jest-dom/vitest';
 import { cleanup } from '@testing-library/react';
 import { afterEach } from 'vitest';
 import { resetUiUpdateStore } from '@/app/ui-update-store';
+import { resetCameraBlocked } from '@/modules/serial/lib/camera-session';
 
 afterEach(() => {
   cleanup();
   // Keadaan "UI baru siap" bersifat tingkat modul; jangan bocor antar tes.
   resetUiUpdateStore();
+  // Penanda "kamera tak dapat dipakai" bersifat tingkat modul; jangan bocor antar tes.
+  resetCameraBlocked();
 });
 
 // Radix (Checkbox, dsb.) membutuhkan ResizeObserver yang tidak ada di jsdom.

@@ -90,10 +90,25 @@ describe('serials.itemOptions', () => {
       label: 'Merk Alfa',
       buIds: ['bu-a'],
       buOptions: [{ id: 'bu-a', code: 'A' }],
+      proofRequired: false,
+      proofMin: 1,
     });
     // i-a2 juga ada di BU B, tetapi pencatat hanya boleh menulis di A.
     expect(data.items[1].buOptions).toEqual([{ id: 'bu-a', code: 'A' }]);
     expect(data.nextCursor).toBeNull();
+  });
+
+  test('membawa bendera wajib foto item (mode query dan mode itemIds)', async () => {
+    await env.DB.prepare(
+      "UPDATE items SET proof_required = 1, proof_min = 3 WHERE id = 'i-a2'",
+    ).run();
+    const listed = (await call(WRITER, 'serials.itemOptions', {})).data as Json;
+    const flags = (items: Json[]) =>
+      Object.fromEntries(items.map((i: Json) => [i.id, [i.proofRequired, i.proofMin]]));
+    expect(flags(listed.items)).toEqual({ 'i-a1': [false, 1], 'i-a2': [true, 3] });
+    const byIds = (await call(WRITER, 'serials.itemOptions', { itemIds: ['i-a2', 'i-a1'] }))
+      .data as Json;
+    expect(flags(byIds.items)).toEqual({ 'i-a1': [false, 1], 'i-a2': [true, 3] });
   });
 
   test('pengguna dengan dua BU melihat item kedua BU dan kedua buOptions', async () => {
@@ -134,6 +149,8 @@ describe('serials.itemOptions', () => {
       label: 'Merk Alfa',
       buIds: ['bu-a'],
       buOptions: [{ id: 'bu-a', code: 'A' }],
+      proofRequired: false,
+      proofMin: 1,
     });
     expect(exact.items[1].buOptions).toEqual([{ id: 'bu-a', code: 'A' }]);
     expect(exact.nextCursor).toBeNull();
@@ -230,6 +247,42 @@ describe('serials.locationOptions', () => {
   });
 });
 
+describe('serials.buOptions', () => {
+  test('pencatat: hanya BU aktif yang boleh ditulis, urut kode lalu id', async () => {
+    const result = await call(WRITER, 'serials.buOptions', null);
+    expect(result.ok).toBe(true);
+    expect((result.data as Json).businessUnits).toEqual([{ id: 'bu-a', code: 'A', name: 'A' }]);
+    await seedBusinessUnit(env, { id: 'bu-c', code: '0C', name: 'Nol C' });
+    await seedUser(env, {
+      id: 'u-three',
+      email: 'tiga-bu@gmail.com',
+      buAssignments: [
+        { buId: 'bu-b', roleIds: ['r-edit'] },
+        { buId: 'bu-c', roleIds: ['r-edit'] },
+        { buId: 'bu-a', roleIds: ['r-edit'] },
+      ],
+    });
+    const both = await call('tiga-bu@gmail.com', 'serials.buOptions', null);
+    expect((both.data as Json).businessUnits.map((b: Json) => b.code)).toEqual(['0C', 'A', 'B']);
+  });
+
+  test('BU nonaktif tidak muncul; BU di luar hak tidak bocor', async () => {
+    await env.DB.prepare("UPDATE business_units SET status = 'inactive' WHERE id = 'bu-b'").run();
+    const both = await call(BOTH, 'serials.buOptions', null);
+    expect((both.data as Json).businessUnits.map((b: Json) => b.id)).toEqual(['bu-a']);
+    const writer = await call(WRITER, 'serials.buOptions', null);
+    expect(JSON.stringify(writer.data)).not.toContain('bu-b');
+  });
+
+  test('pembaca saja: BU yang boleh dibacanya; tanpa peran FORBIDDEN', async () => {
+    const viewer = await call(VIEWER, 'serials.buOptions', null);
+    expect((viewer.data as Json).businessUnits.map((b: Json) => b.id)).toEqual(['bu-a']);
+    const service = await call(SERVICE, 'serials.buOptions', null);
+    expect((service.data as Json).businessUnits.map((b: Json) => b.id)).toEqual(['bu-b']);
+    expect((await call(NOBU, 'serials.buOptions', null)).error?.code).toBe('FORBIDDEN');
+  });
+});
+
 describe('serials.stickerOptions', () => {
   beforeEach(async () => {
     await seedGuideImage(env, { id: 'g1' });
@@ -251,18 +304,138 @@ describe('serials.stickerOptions', () => {
     ]);
   });
 
-  test('BU di luar hak tulis atau item di luar BU: NOT_FOUND; serial view saja: FORBIDDEN', async () => {
+  test('BU di luar hak tulis atau item yang tak terlihat: NOT_FOUND; serial view saja: FORBIDDEN', async () => {
     const outsideBu = await call(WRITER, 'serials.stickerOptions', { itemId: 'i-b', buId: 'bu-b' });
     expect(outsideBu.error?.code).toBe('NOT_FOUND');
-    const notInBu = await call(WRITER, 'serials.stickerOptions', { itemId: 'i-b', buId: 'bu-a' });
-    expect(notInBu.error?.code).toBe('NOT_FOUND');
+    // i-b hanya di BU B: tak terlihat bagi pencatat BU A, walau BU A yang diminta.
+    const invisible = await call(WRITER, 'serials.stickerOptions', { itemId: 'i-b', buId: 'bu-a' });
+    expect(invisible.error?.code).toBe('NOT_FOUND');
+    const inactiveItem = await call(WRITER, 'serials.stickerOptions', {
+      itemId: 'i-off',
+      buId: 'bu-a',
+    });
+    expect(inactiveItem.error?.code).toBe('NOT_FOUND');
     const viewer = await call(VIEWER, 'serials.stickerOptions', { itemId: 'i-a1', buId: 'bu-a' });
     expect(viewer.error?.code).toBe('FORBIDDEN');
+  });
+
+  test('BU yang bukan BU item boleh dipakai (butir N): stiker dihitung dari item dan BU serial', async () => {
+    // i-a1 hanya tergabung di BU A, tetapi BOTH boleh menulis di BU B: tidak lagi NOT_FOUND.
+    const result = await call(BOTH, 'serials.stickerOptions', { itemId: 'i-a1', buId: 'bu-b' });
+    expect(result.ok).toBe(true);
+    expect((result.data as Json).stickers.map((s: Json) => s.id)).toEqual(['s1']);
+  });
+
+  test('BU nonaktif: NOT_FOUND', async () => {
+    await env.DB.prepare("UPDATE business_units SET status = 'inactive' WHERE id = 'bu-b'").run();
+    const result = await call(BOTH, 'serials.stickerOptions', { itemId: 'i-a1', buId: 'bu-b' });
+    expect(result.error?.code).toBe('NOT_FOUND');
   });
 
   test('validator: itemId dan buId wajib', async () => {
     const result = await call(WRITER, 'serials.stickerOptions', { itemId: '', buId: '' });
     expect(result.error?.code).toBe('VALIDATION');
+  });
+});
+
+describe('stiker mengikuti BU serial, bukan BU item (butir N)', () => {
+  const LOC = 'loc-seal';
+  let counter = 0;
+  const cid = () => `ffff${String(++counter).padStart(4, '0')}-0000-4000-8000-000000000000`;
+  const stock = async (stickerId: string): Promise<number | null> => {
+    const found = await env.DB.prepare(
+      'SELECT qty FROM sticker_stock WHERE sticker_id = ? AND location_id = ?',
+    )
+      .bind(stickerId, LOC)
+      .first<{ qty: number | string }>();
+    return found ? Number(found.qty) : null;
+  };
+  const row = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+    clientId: cid(),
+    serial: 'SEAL-1',
+    itemId: 'i-seal',
+    buId: 'bu-b',
+    testDate: '2026-11-12',
+    locationId: LOC,
+    sample: false,
+    note: '',
+    status: 'good',
+    ...overrides,
+  });
+  const save = async (rows: Record<string, unknown>[], email = BOTH): Promise<Json[]> =>
+    ((await call(email, 'serials.saveBatch', { rows })).data as Json).results;
+
+  beforeEach(async () => {
+    env.clock.set(Date.parse('2026-11-12T03:00:00.000Z'));
+    await seedLocation(env, { id: LOC, code: 'SEAL' });
+    await seedGuideImage(env, { id: 'g-seal' });
+    // Jenis "segel" (aturan bu): segel-A tertaut BU A, segel-B tertaut BU B. Stiker tertentu `sx` tanpa BU.
+    await seedStickerType(env, { id: 't-seg', name: 'Segel', rule: 'bu' });
+    await seedStickerType(env, { id: 't-free', name: 'Bebas', rule: 'none' });
+    await seedSticker(env, { id: 'seg-a', typeId: 't-seg', name: 'Segel A', buIds: ['bu-a'] });
+    await seedSticker(env, { id: 'seg-b', typeId: 't-seg', name: 'Segel B', buIds: ['bu-b'] });
+    await seedSticker(env, { id: 'sx', typeId: 't-free', name: 'Stiker Khusus' });
+    // Item hanya di BU A; foto instruksi: satu penanda JENIS segel dan satu penanda ke stiker tertentu.
+    await seedItem(env, {
+      id: 'i-seal',
+      brand: 'Merk',
+      model: 'AF-5XHD',
+      businessUnitIds: ['bu-a'],
+    });
+    await env.DB.prepare(
+      "INSERT INTO item_sticker_photos (item_id, guide_id, caption, bu_id, `position`) VALUES ('i-seal', 'g-seal', '', '', 0)",
+    ).run();
+    await env.DB.prepare(
+      "INSERT INTO item_sticker_marks (item_id, guide_id, `position`, x, y, sticker_id, type_id, note) VALUES ('i-seal', 'g-seal', 0, 1, 1, '', 't-seg', ''), ('i-seal', 'g-seal', 1, 2, 2, 'sx', '', '')",
+    ).run();
+    await env.DB.prepare(
+      "INSERT INTO sticker_stock (sticker_id, location_id, qty, updated_at) VALUES ('seg-a', ?, 10, ''), ('seg-b', ?, 10, ''), ('sx', ?, 10, '')",
+    )
+      .bind(LOC, LOC, LOC)
+      .run();
+  });
+
+  test('stickerOptions untuk BU B: segel-B (penanda jenis) dan stiker tertentu; segel-A tidak ada', async () => {
+    const forB = await call(BOTH, 'serials.stickerOptions', { itemId: 'i-seal', buId: 'bu-b' });
+    expect((forB.data as Json).stickers.map((x: Json) => x.id)).toEqual(['seg-b', 'sx']);
+    const forA = await call(BOTH, 'serials.stickerOptions', { itemId: 'i-seal', buId: 'bu-a' });
+    expect((forA.data as Json).stickers.map((x: Json) => x.id)).toEqual(['seg-a', 'sx']);
+  });
+
+  test('saveBatch BU B tanpa daftar stiker: serial_stickers dan stok segel-B terpotong, segel-A utuh', async () => {
+    const [result] = await save([row()]);
+    expect(result).toMatchObject({ result: 'created' });
+    const stored = await env.DB.prepare(
+      'SELECT sticker_id, qty FROM serial_stickers ORDER BY sticker_id',
+    ).all<{ sticker_id: string; qty: number | string }>();
+    expect(stored.results.map((r) => [r.sticker_id, Number(r.qty)])).toEqual([
+      ['seg-b', 1],
+      ['sx', 1],
+    ]);
+    expect(await stock('seg-b')).toBe(9);
+    expect(await stock('sx')).toBe(9);
+    expect(await stock('seg-a')).toBe(10);
+  });
+
+  test('saveBatch BU B memilih segel-A eksplisit: baris invalid "Stiker tidak berlaku", tidak ada efek', async () => {
+    const [result] = await save([row({ stickers: [{ stickerId: 'seg-a', qty: 1 }] })]);
+    expect(result).toMatchObject({
+      result: 'invalid',
+      message: 'Stiker tidak berlaku bagi item ini',
+    });
+    expect(await stock('seg-a')).toBe(10);
+    expect(await stock('seg-b')).toBe(10);
+    const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM serials').first<{
+      n: number | string;
+    }>();
+    expect(Number(count?.n)).toBe(0);
+  });
+
+  test('penanda ke stiker tertentu tidak disaring BU: sx berlaku di BU B walau tak tertaut BU mana pun', async () => {
+    const [result] = await save([row({ stickers: [{ stickerId: 'sx', qty: 2 }] })]);
+    expect(result).toMatchObject({ result: 'created' });
+    expect(await stock('sx')).toBe(8);
+    expect(await stock('seg-b')).toBe(10);
   });
 });
 
@@ -374,6 +547,53 @@ describe('serials.saveBatch', () => {
     expect(entry?.serial_id).not.toBe('');
   });
 
+  test('BU yang bukan BU item boleh dipakai bila user boleh menulis di BU itu (butir N)', async () => {
+    // i-a1 hanya tergabung di BU A; BOTH boleh menulis di BU B dan melihat item lewat BU A.
+    const out = await save(BOTH, [row({ serial: 'SN-LAIN', buId: 'bu-b' })]);
+    expect(resultsOf(out)[0]).toMatchObject({ result: 'created', serial: 'SN-LAIN' });
+    const stored = await env.DB.prepare(
+      "SELECT bu_id, item_id FROM serials WHERE serial = 'SN-LAIN'",
+    ).first<{ bu_id: string; item_id: string }>();
+    expect(stored).toEqual({ bu_id: 'bu-b', item_id: 'i-a1' });
+    expect(await stockOf('s1')).toBe(4);
+  });
+
+  test('ditolak generik: BU di luar hak tulis, BU nonaktif, item tak terlihat atau nonaktif', async () => {
+    await seedBusinessUnit(env, { id: 'bu-x', code: 'X', status: 'inactive' });
+    await seedUser(env, {
+      id: 'u-x',
+      email: 'pemegang-x@gmail.com',
+      buAssignments: [
+        { buId: 'bu-a', roleIds: ['r-edit'] },
+        { buId: 'bu-x', roleIds: ['r-edit'] },
+      ],
+    });
+    const rejected = [
+      await save(WRITER, [row({ serial: 'R-1', buId: 'bu-b' })]), // tak boleh menulis di BU B
+      await save('pemegang-x@gmail.com', [row({ serial: 'R-2', buId: 'bu-x' })]), // BU nonaktif
+      await save(WRITER, [row({ serial: 'R-3', itemId: 'i-b' })]), // item hanya di BU B: tak terlihat
+      await save(WRITER, [row({ serial: 'R-4', itemId: 'i-off' })]), // item nonaktif
+    ];
+    for (const out of rejected) {
+      expect(resultsOf(out)[0]).toMatchObject({
+        result: 'invalid',
+        message: 'Item tidak ditemukan atau tidak bisa dipakai',
+      });
+    }
+    expect(await count('serials')).toBe(0);
+  });
+
+  test('catatan memuat rujukan gambar qcfile: baris invalid, tidak tersimpan; teks biasa lolos', async () => {
+    const bad = await save(WRITER, [row({ serial: 'IMG-1', note: 'x ![a](qcfile:abc-123) y' })]);
+    expect(resultsOf(bad)[0]).toMatchObject({
+      result: 'invalid',
+      message: 'Catatan tidak boleh memuat gambar.',
+    });
+    expect(await count('serials')).toBe(0);
+    const ok = await save(WRITER, [row({ serial: 'IMG-2', note: 'tanpa gambar, **tebal**' })]);
+    expect(resultsOf(ok)[0]).toMatchObject({ result: 'created' });
+  });
+
   test('stickers tidak dikirim = semua stiker yang berlaku (defaultQty 1); [] eksplisit = tanpa stiker', async () => {
     const all = await save(WRITER, [row({ serial: 'SN-ALL', stickers: undefined })]);
     expect(resultsOf(all)[0]).toMatchObject({ result: 'created' });
@@ -474,9 +694,9 @@ describe('serials.saveBatch', () => {
   });
 
   test('sebagian baris gagal tidak menggagalkan yang lain; invalid tidak membocorkan item', async () => {
-    const out = await save(BOTH, [
+    const out = await save(WRITER, [
       row({ serial: 'AB\u0000C' }),
-      row({ serial: 'SN-2', itemId: 'i-b' }), // item hanya di BU B, dikirim untuk BU A
+      row({ serial: 'SN-2', itemId: 'i-b' }), // item hanya di BU B, tak terlihat bagi pencatat BU A
       row({ serial: 'SN-3' }),
     ]);
     const results = resultsOf(out);

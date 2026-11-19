@@ -7,6 +7,9 @@ const valid = {
   businessUnitIds: ['bu-a'],
   model: 'ES 24 250W',
   isCountryLock: false,
+  firmware: '',
+  proofRequired: false,
+  proofMin: 1,
   aliasesText: '',
   stickerPhotos: [],
   accessories: [],
@@ -188,6 +191,9 @@ test('toSaveItemInput merapikan teks dan mengubah nama lain menjadi daftar; id h
     businessUnitIds: ['bu-a'],
     model: 'ES 24',
     isCountryLock: false,
+    firmware: '',
+    proofRequired: false,
+    proofMin: 1,
     aliases: ['ES24', 'AirFiber'],
     stickerPhotos: [
       {
@@ -213,6 +219,9 @@ const baseItem = {
   brand: 'Ubiquiti',
   model: 'ES 24',
   isCountryLock: true,
+  firmware: '',
+  proofRequired: false,
+  proofMin: 1,
   status: 'active',
   aliases: ['ES24', 'AirFiber'],
   imageCount: 1,
@@ -260,6 +269,9 @@ test('toItemFormDefaults: kosong tanpa item; dari item menggabungkan nama lain p
     businessUnitIds: [],
     model: '',
     isCountryLock: false,
+    firmware: '',
+    proofRequired: false,
+    proofMin: 1,
     aliasesText: '',
     stickerPhotos: [],
     accessories: [],
@@ -269,6 +281,7 @@ test('toItemFormDefaults: kosong tanpa item; dari item menggabungkan nama lain p
   expect(toItemFormDefaults(baseItem)).toMatchObject({
     brandId: 'b1',
     isCountryLock: true,
+    firmware: '',
     aliasesText: 'ES24\nAirFiber',
     stickerPhotos: [
       {
@@ -314,6 +327,9 @@ test('toSaveItemInput menyertakan expectedUpdatedAt hanya untuk ubah', () => {
     businessUnitIds: ['bu-a'],
     model: 'ES',
     isCountryLock: false,
+    firmware: '',
+    proofRequired: false,
+    proofMin: 1,
     aliasesText: '',
     stickerPhotos: [],
     accessories: [],
@@ -331,4 +347,26 @@ test('toItemFormDefaults memuat id merk dan id BU item', () => {
   const defaults = toItemFormDefaults({ ...baseItem, isCountryLock: false, stickerPhotos: [] });
   expect(defaults.brandId).toBe('b1');
   expect(defaults.businessUnitIds).toEqual(['bu-a', 'bu-b']);
+});
+
+test('wajib foto: toSaveItemInput mengirim proofMin 1 bila tidak wajib, dan nilai form bila wajib', () => {
+  const off = itemFormSchema.parse({ ...valid, proofRequired: false, proofMin: 4 });
+  expect(toSaveItemInput(off)).toMatchObject({ proofRequired: false, proofMin: 1 });
+  const on = itemFormSchema.parse({ ...valid, proofRequired: true, proofMin: 4 });
+  expect(toSaveItemInput(on)).toMatchObject({ proofRequired: true, proofMin: 4 });
+});
+
+test('wajib foto: proofMin di luar 1-5, pecahan, atau NaN ditolak hanya bila wajib', () => {
+  for (const proofMin of [0, 6, 2.5, Number.NaN]) {
+    expect(messages({ proofRequired: true, proofMin })).toContain('Minimum foto harus 1–5');
+    expect(
+      messages({ proofRequired: false, proofMin: Number.isNaN(proofMin) ? 1 : proofMin }),
+    ).toEqual([]);
+  }
+  expect(messages({ proofRequired: true, proofMin: 5 })).toEqual([]);
+});
+
+test('toItemFormDefaults mengisi wajib foto dari ItemDto', () => {
+  const defaults = toItemFormDefaults({ ...baseItem, proofRequired: true, proofMin: 3 });
+  expect(defaults).toMatchObject({ proofRequired: true, proofMin: 3 });
 });

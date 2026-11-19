@@ -209,6 +209,44 @@ function renderPage() {
   );
 }
 
+test('catatan serial berbentuk Markdown dirender sebagai Markdown pada ringkasan', async () => {
+  state = { ...state, serial: { ...SERIAL, note: '**Penting** cek kabel' } };
+  renderPage();
+  const summary = await screen.findByRole('region', { name: 'Ringkasan' });
+  const strong = summary.querySelector('strong');
+  expect(strong).toHaveTextContent('Penting');
+});
+
+test('catatan lama teks biasa: baris baru tunggal tetap terpisah (pembungkus memberi pre-line pada paragraf, newline ada di DOM)', async () => {
+  state = { ...state, serial: { ...SERIAL, note: 'baris satu\nbaris dua' } };
+  renderPage();
+  const summary = await screen.findByRole('region', { name: 'Ringkasan' });
+  const paragraph = within(summary).getByText(/baris satu/);
+  expect(paragraph.tagName).toBe('P');
+  // Pembungkus Markdown memberi `white-space: pre-line` pada paragraf (jsdom tidak menghitung CSS: periksa kelasnya).
+  expect(paragraph.parentElement?.className).toContain('[&_p]:whitespace-pre-line');
+  // Satu paragraf; baris baru tunggal dipertahankan sebagai newline (dan ditampilkan oleh pre-line), tidak dilebur.
+  expect(paragraph.textContent).toBe('baris satu\nbaris dua');
+});
+
+test('catatan lama dengan garis bawah di tengah kata (SN_123_456) tidak menjadi miring', async () => {
+  state = { ...state, serial: { ...SERIAL, note: 'cek SN_123_456 dan file_name_ini' } };
+  renderPage();
+  const summary = await screen.findByRole('region', { name: 'Ringkasan' });
+  expect(within(summary).getByText('cek SN_123_456 dan file_name_ini')).toBeInTheDocument();
+  expect(summary.querySelector('em, strong')).toBeNull();
+});
+
+test('batas perilaku: garis bawah/bintang yang mengapit kata TETAP menjadi miring/tebal (Markdown), tidak dapat dicegah tanpa mengubah penerjemah', async () => {
+  state = { ...state, serial: { ...SERIAL, note: '_miring_ dan *juga*' } };
+  renderPage();
+  const summary = await screen.findByRole('region', { name: 'Ringkasan' });
+  expect([...summary.querySelectorAll('em')].map((node) => node.textContent)).toEqual([
+    'miring',
+    'juga',
+  ]);
+});
+
 const calls = (id: string) => apiMock.mock.calls.filter((call) => call[0] === id);
 
 beforeEach(() => {
@@ -396,10 +434,10 @@ test('dialog ubah data mengirim data lengkap dan menampilkan "Serial sudah terda
     note: 'catatan awal',
     locationId: 'l1',
   });
-  // Hanya item pada BU serial yang ditawarkan.
+  // Item tidak lagi dibatasi pada BU serial (BU tidak terikat BU item): semua item yang terlihat ditawarkan.
   const names = await linkOptionNames(within(dialog), 'Item');
   expect(names).toContain('Aruba 2930');
-  expect(names).not.toContain('Lain BU');
+  expect(names).toContain('Lain BU');
 });
 
 test('dialog ubah data setelah 412: formulir dibasiskan ulang ke data server dan simpan ulang memakai versi baru', async () => {
@@ -559,7 +597,7 @@ test('tab linimasa: jumlah dari counts, Pengecekan dan tab kasus mengirim group 
       cases: [
         {
           id: 'c1',
-          number: 'LP-20261113-001',
+          number: 'LP/SBY/2611-0001',
           openedOn: '2026-11-13',
           closedOn: null,
           outcome: null,
@@ -572,7 +610,7 @@ test('tab linimasa: jumlah dari counts, Pengecekan dan tab kasus mengirim group 
         seq: 4,
         type: 'report_failure',
         caseId: 'c1',
-        data: { caseNumber: 'LP-20261113-001', damage: 'Port mati' },
+        data: { caseNumber: 'LP/SBY/2611-0001', damage: 'Port mati' },
       }),
       ...state.events,
     ],
@@ -581,13 +619,13 @@ test('tab linimasa: jumlah dari counts, Pengecekan dan tab kasus mengirim group 
   expect(await screen.findByRole('tab', { name: 'Semua (4)' })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: 'Pengecekan (2)' })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: 'Perubahan data (1)' })).toBeInTheDocument();
-  expect(screen.getByRole('tab', { name: 'LP-20261113-001 (1)' })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'LP/SBY/2611-0001 (1)' })).toBeInTheDocument();
 
   await userEvent.click(screen.getByRole('tab', { name: 'Pengecekan (2)' }));
   await waitFor(() =>
     expect(calls('serials.history').some((call) => call[1].group === 'checks')).toBe(true),
   );
-  await userEvent.click(screen.getByRole('tab', { name: 'LP-20261113-001 (1)' }));
+  await userEvent.click(screen.getByRole('tab', { name: 'LP/SBY/2611-0001 (1)' }));
   await waitFor(() =>
     expect(calls('serials.history').some((call) => call[1].caseId === 'c1')).toBe(true),
   );
@@ -597,9 +635,17 @@ test('tab linimasa: jumlah dari counts, Pengecekan dan tab kasus mengirim group 
       .getAllByRole('listitem')
       .filter((li) => li.hasAttribute('data-seq')),
   ).toHaveLength(1);
-  expect(within(list).getByText('Laporan LP-20261113-001 dibuka: Port mati')).toBeInTheDocument();
+  expect(within(list).getByText('Laporan LP/SBY/2611-0001 dibuka: Port mati')).toBeInTheDocument();
   // Jumlah tab tetap terlihat setelah berpindah tab.
   expect(screen.getByRole('tab', { name: 'Semua (4)' })).toBeInTheDocument();
+});
+
+test('baris tab linimasa bisa digeser mendatar dan tidak dibungkus saat tab banyak', async () => {
+  renderPage();
+  const tablist = await screen.findByRole('tablist');
+  expect(tablist).toHaveClass('overflow-x-auto');
+  expect(tablist).not.toHaveClass('flex-wrap');
+  expect(screen.getByRole('tab', { name: /^Semua/ })).toHaveClass('flex-none');
 });
 
 test('kartu declare_broken, kirim, dan terima menampilkan rincian kasus dan pengiriman', async () => {
@@ -611,7 +657,7 @@ test('kartu declare_broken, kirim, dan terima menampilkan rincian kasus dan peng
         seq: 7,
         type: 'declare_broken',
         actorTeam: 'service',
-        data: { caseNumber: 'LP-20261113-001', outcome: 'broken' },
+        data: { caseNumber: 'LP/SBY/2611-0001', outcome: 'broken' },
       }),
       event({
         id: 'e6',
@@ -642,7 +688,7 @@ test('kartu declare_broken, kirim, dan terima menampilkan rincian kasus dan peng
   renderPage();
   const list = await screen.findByRole('list', { name: 'Linimasa' });
   await expandAll();
-  expect(within(list).getByText('Laporan LP-20261113-001 ditutup: rusak')).toBeInTheDocument();
+  expect(within(list).getByText('Laporan LP/SBY/2611-0001 ditutup: rusak')).toBeInTheDocument();
   expect(within(list).getByText('Diterima di servis')).toBeInTheDocument();
   expect(within(list).getByText('Dikirim ke servis')).toBeInTheDocument();
   expect(within(list).getByText('Lama di perjalanan: 3 hari')).toBeInTheDocument();
@@ -651,7 +697,7 @@ test('kartu declare_broken, kirim, dan terima menampilkan rincian kasus dan peng
 
 const CASE_DTO = {
   id: 'c1',
-  number: 'LP-20261113-001',
+  number: 'LP/SBY/2611-0001',
   openedOn: '2026-11-13',
   closedOn: null,
   outcome: null,
@@ -730,12 +776,12 @@ test('kepala menampilkan posisi dengan lokasi dan lencana laporan terbuka; panel
       ...SERIAL,
       status: 'reported',
       openCaseId: 'c1',
-      openCaseNumber: 'LP-20261113-001',
+      openCaseNumber: 'LP/SBY/2611-0001',
       openCase: CASE_DTO,
     },
   };
   renderPage();
-  expect(await screen.findByText('LP-20261113-001 (terbuka)')).toBeInTheDocument();
+  expect(await screen.findByText('LP/SBY/2611-0001 (terbuka)')).toBeInTheDocument();
   expect(screen.getByText('Di QC · Jakarta')).toBeInTheDocument();
   expect(screen.queryByText(/^Kerusakan:/)).toBeNull();
   expect(screen.queryByRole('region', { name: 'Pengiriman' })).toBeNull();
@@ -829,7 +875,7 @@ test('caseId dari URL membuka tab laporan itu; id yang bukan laporan serial ini 
     cases: [
       {
         id: 'c1',
-        number: 'LP-20261113-001',
+        number: 'LP/SBY/2611-0001',
         openedOn: '2026-11-13',
         closedOn: null,
         outcome: null,
@@ -846,7 +892,7 @@ test('caseId dari URL membuka tab laporan itu; id yang bukan laporan serial ini 
   await waitFor(() =>
     expect(calls('serials.history').some((call) => call[1].caseId === 'c1')).toBe(true),
   );
-  expect(await screen.findByRole('tab', { name: /^LP-20261113-001/ })).toHaveAttribute(
+  expect(await screen.findByRole('tab', { name: /^LP\/SBY\/2611-0001/ })).toHaveAttribute(
     'aria-selected',
     'true',
   );

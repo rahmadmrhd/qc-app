@@ -1,0 +1,289 @@
+name: CI
+
+# Pemeriksaan kode yang dapat dipanggil (`workflow_call`) oleh test.yml (PR) dan deploy-server.yml (PR di-merge).
+# Rancangan: docs/superpowers/specs/2026-11-17-ci-selektif-shard-design.md; panduan: docs/ci-cd.md.
+#
+# - Job `changes` menghitung bagian monorepo yang berubah (scripts/ci-changes.ts); job lain memakai keluarannya lewat `if:`.
+#   Sumber daftar berkas: berkas PR (`pr`) atau perbandingan sejak deploy terakhir environment (`since-deploy`, ref
+#   `refs/deployed/<env>`). Tanpa keduanya (dispatch), atau bila daftar tak dapat diambil/tak dapat dipercaya (ref belum ada,
+#   dasar bukan leluhur, 300 berkas atau lebih terpotong), SEMUA dijalankan (fail-safe).
+# - Tes server dibagi 8 job matrix (QC_TEST_SHARD=<i>/8): tiap job = runner + MariaDB sendiri. Proses paralel di satu
+#   runner tak membantu (terikat CPU, dan melebihi max_connections 40); banyak runner membantu.
+# - Gerbang `test` (status check wajib branch protection) SENGAJA ada di pemanggil (test.yml), bukan di sini: nama check
+#   job dari workflow yang dipanggil menjadi `<job pemanggil> / <job>`, sehingga gerbang di sini akan mengganti namanya.
+# - Tanpa rahasia: workflow ini tak membaca secrets dan tak boleh menyebut kunci tanda tangan UI (ditegakkan tes).
+#   `ref` = commit yang diperiksa (deploy: commit hasil merge dari job `meta`; kosong = checkout bawaan PR).
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit yang di-checkout; kosong = checkout bawaan pemicu.
+        type: string
+        default: ''
+      pr:
+        description: Nomor PR untuk daftar berkas yang berubah; kosong = jalankan semuanya.
+        type: string
+        default: ''
+      since-deploy:
+        description: >-
+          staging atau production: hitung perubahan SEJAK DEPLOY TERAKHIR environment itu (refs/deployed/<env>, ditulis job
+          mark-deployed di deploy-server.yml), bukan dari berkas PR; menang atas `pr`. Dipakai deploy agar kode dari PR yang
+          dibuang antrean concurrency atau berlabel skip-deploy tak tertinggal. Kosong = pakai `pr`.
+        type: string
+        default: ''
+      build-image:
+        description: Uji bangun image (tanpa dorong) bila isi image berubah; dipakai test.yml, paralel dengan tes.
+        type: boolean
+        default: false
+      desktop-check:
+        description: Jalankan pemeriksaan build desktop (test.yml untuk PR dan release.yml untuk rilis desktop dan gabungan; deploy server biasa tak boleh tertahan olehnya, tetapi pada rilis gabungan satu `ci` dipakai bersama sehingga kegagalannya ikut menahan deploy server).
+        type: boolean
+        default: false
+    outputs:
+      image:
+        description: '"true" bila isi image server berubah (bangun dan deploy), selain itu "false".'
+        value: ${{ jobs.changes.outputs.image }}
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # `pull-requests: read` hanya untuk membaca daftar berkas PR (data, bukan kode PR); tak ada izin tulis.
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.detect.outputs.code }}
+      server_tests: ${{ steps.detect.outputs.server_tests }}
+      web_tests: ${{ steps.detect.outputs.web_tests }}
+      shared_tests: ${{ steps.detect.outputs.shared_tests }}
+      desktop_tests: ${{ steps.detect.outputs.desktop_tests }}
+      desktop_pack: ${{ steps.detect.outputs.desktop_pack }}
+      image: ${{ steps.detect.outputs.image }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.4.2
+
+      # Sumber daftar berkas: (1) `since-deploy` = perbandingan commit yang dibangun dengan commit deploy terakhir environment
+      # itu (ref `refs/deployed/<env>`), atau (2) berkas PR (`pr`). Berkas yang di-rename ikut lewat nama lama
+      # (`previous_filename`) dan baru. Parameter tak sah, ref belum ada, atau API gagal = semua true (aman: menjalankan/men-deploy
+      # lebih banyak, tak pernah melewatkan). `since` dan SHA divalidasi ketat sebelum dipakai di jalur API.
+      - name: Deteksi
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+          SINCE: ${{ inputs.since-deploy }}
+          HEAD_SHA: ${{ inputs.ref }}
+        run: |
+          set -uo pipefail
+          files=""
+          fallback() {
+            echo "::warning::$1; semua pekerjaan dijalankan."
+            files=""
+          }
+          if [ -n "$SINCE" ]; then
+            if [[ "$SINCE" =~ ^(staging|production)$ ]] && [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+              if ! base=$(gh api "repos/$REPO/git/ref/deployed/$SINCE" --jq '.object.sha') || ! [[ "$base" =~ ^[0-9a-f]{40}$ ]]; then
+                fallback "Penunjuk deploy terakhir ($SINCE) belum ada atau tak terbaca"
+              # SATU panggilan tanpa --paginate: GitHub hanya memuat daftar berkas di halaman pertama, maksimum 300 untuk
+              # SELURUH perbandingan (lebih dari itu terpotong diam-diam). Keluaran --jq: baris 1 status, baris 2 jumlah berkas,
+              # sisanya nama berkas (+ nama lama untuk rename).
+              elif ! out=$(gh api "repos/$REPO/compare/$base...$HEAD_SHA" --jq '.status, ((.files // []) | length), ((.files // [])[] | .filename, (.previous_filename // empty))'); then
+                fallback "Gagal membandingkan dengan deploy terakhir"
+              else
+                status=$(printf '%s\n' "$out" | sed -n 1p)
+                count=$(printf '%s\n' "$out" | sed -n 2p)
+                # Tiga-titik menghitung dari merge-base: bila deploy terakhir BUKAN leluhur commit ini (mis. staging pernah
+                # di-dispatch dari main) selisih sebenarnya lebih besar dari daftar ini.
+                if [ "$status" != ahead ]; then
+                  fallback "Deploy terakhir bukan leluhur commit ini (status perbandingan: ${status:-kosong})"
+                elif ! [[ "$count" =~ ^[0-9]+$ ]] || [ "$count" -ge 300 ]; then
+                  fallback "Perbandingan memuat 300 berkas atau lebih (batas API; daftar terpotong)"
+                else
+                  files=$(printf '%s\n' "$out" | tail -n +3)
+                fi
+              fi
+            else
+              fallback "Parameter since-deploy atau commit tak sah"
+            fi
+          elif [[ "$PR" =~ ^[0-9]+$ ]]; then
+            if ! files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)'); then
+              fallback "Gagal mengambil daftar berkas PR"
+            fi
+          fi
+          printf '%s\n' "$files" | bun run scripts/ci-changes.ts
+
+  lint:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Typecheck
+        run: bun run typecheck
+      - name: Biome
+        run: bun run lint
+
+  scripts:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Tes scripts
+        run: bun run scripts/test-scripts.ts
+      - name: Tes shared
+        run: bun run --cwd shared test
+      - name: Tes countrylock
+        run: bun run --cwd countrylock test
+
+  server:
+    name: server ${{ matrix.shard }}/8
+    needs: changes
+    if: needs.changes.outputs.server_tests == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+    env:
+      # Tes server memakai MariaDB sungguhan (skema sementara qc_test_* dikloning dari qc_test_template); lihat
+      # .github/actions/mariadb. Pengguna root hanya untuk basis data sekali pakai di runner ini.
+      QC_TEST_DB_URL: mysql://root:ci-only@127.0.0.1:3306/
+      QC_TEST_SHARD: ${{ matrix.shard }}/8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/mariadb
+      - uses: ./.github/actions/setup
+        with:
+          filter: '!@qc/desktop'
+      - name: Tes server (shard)
+        run: bun run --cwd server test
+
+  # Tes web dibagi 4 job matrix lewat `vitest --shard=<i>/4` (vitest membagi berkas tes sendiri; ~7,6 menit sebelumnya dalam
+  # satu job). Tiap job menginstal dependensi sendiri; tes web tak butuh basis data.
+  web:
+    name: web ${{ matrix.shard }}/4
+    needs: changes
+    if: needs.changes.outputs.web_tests == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    env:
+      WEB_TEST_SHARD: ${{ matrix.shard }}/4
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          filter: '!@qc/desktop'
+      - name: Tes web (shard)
+        run: bun run --cwd web test --shard="$WEB_TEST_SHARD"
+
+  # Dockerfile harus selalu dapat dibangun (tanpa dorong): menangkap Dockerfile/.dockerignore yang rusak sebelum deploy.
+  # Ada di sini (bukan di test.yml) agar berjalan PARALEL dengan tes: output workflow yang dipanggil baru tersedia setelah
+  # seluruh ci.yml selesai, jadi job di pemanggil yang menunggunya akan berjalan serial. Cache lapisan dibaca dari GHCR
+  # (ditulis deploy-server.yml); PR tak pernah menulis cache atau mendorong image. Hanya login baca dengan github.token.
+  # Izin `packages: read` harus diberikan pemanggil walau `build-image` false (GitHub memvalidasi izin job di workflow dipanggil).
+  image-check:
+    needs: changes
+    if: inputs.build-image && needs.changes.outputs.image == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # Nama repositori GHCR harus huruf kecil; sama dengan bawaan QC_IMAGE di deploy/compose.yml.
+      - name: Nama image
+        id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/qc-app" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          push: false
+          provenance: false
+          cache-from: |
+            type=registry,ref=${{ steps.name.outputs.image }}:buildcache-staging
+            type=registry,ref=${{ steps.name.outputs.image }}:buildcache-production
+
+  # Pemeriksaan build desktop (tanpa artefak, bukan rilis; keputusan pemilik 2026-11-17: hanya uji build, installer nanti di
+  # workflow rilis) dan HANYA di PR (`desktop-check`): Windows x64 dijalankan penuh (`--smoke`); arm64 dikemas silang dan
+  # hanya diperiksa statis karena runner Windows arm64 tak tersedia untuk repo privat (lihat docs/ci-cd.md).
+  desktop:
+    needs: changes
+    if: inputs.desktop-check && (needs.changes.outputs.desktop_tests == 'true' || needs.changes.outputs.desktop_pack == 'true')
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # Runner Windows memakai core.autocrlf=true: matikan sebelum checkout agar bun.lock dan berkas tes tetap LF.
+      - name: Matikan konversi CRLF
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Tes desktop
+        if: needs.changes.outputs.desktop_tests == 'true'
+        run: bun run --cwd desktop test
+      # Installer membawa UI dasar dari build web (server/dist).
+      - name: Build web
+        if: needs.changes.outputs.desktop_pack == 'true'
+        run: bun run build:web
+      - name: Kemas x64 dan arm64
+        if: needs.changes.outputs.desktop_pack == 'true'
+        run: bun run --cwd desktop pack:all
+      - name: Verifikasi x64 (asap penuh)
+        if: needs.changes.outputs.desktop_pack == 'true'
+        run: bun run --cwd desktop verify-pack --arch x64
+      - name: Verifikasi arm64 (statis)
+        if: needs.changes.outputs.desktop_pack == 'true'
+        run: bun run --cwd desktop verify-pack --arch arm64

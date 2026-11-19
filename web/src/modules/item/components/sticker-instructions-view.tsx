@@ -16,6 +16,11 @@ export interface StickerInstructionsViewProps {
   buLabels?: Readonly<Record<string, string>>;
   /** Item punya lebih dari satu BU: baris daftar menampilkan kode BU penyebab tiap stiker. */
   multiBu?: boolean;
+  /**
+   * Sumber gambar pengganti. Bawaan: foto lewat REST (butuh sesi). Katalog Tipe offline di desktop memberi alamat cache
+   * lokal (`app://qc/catalog-files/<id>`) agar tampilan yang sama jalan tanpa login dan tanpa jaringan.
+   */
+  imageSource?: { guide(id: string): string; sticker(id: string): string };
 }
 
 /** Tanda kecil "belum ada instruksi stiker"; dipakai juga oleh tabel daftar item. */
@@ -74,6 +79,7 @@ export function StickerInstructionsView({
   onEdit,
   buLabels = {},
   multiBu = false,
+  imageSource,
 }: StickerInstructionsViewProps) {
   const [selected, setSelected] = useState<string | null>(null);
   const rowRefs = useRef(new Map<string, HTMLLIElement>());
@@ -125,7 +131,7 @@ export function StickerInstructionsView({
               </div>
             ) : null}
             <PhotoFrame
-              src={guidePreviewUrl(photo.guideId)}
+              src={imageSource ? imageSource.guide(photo.guideId) : guidePreviewUrl(photo.guideId)}
               width={photo.width}
               height={photo.height}
             >
@@ -191,7 +197,13 @@ export function StickerInstructionsView({
                         ) : null}
                         {mark.resolved.map((sticker) => (
                           <div key={sticker.id} className="flex items-start gap-3">
-                            {sticker.fileId ? (
+                            {sticker.fileId && imageSource ? (
+                              <img
+                                src={imageSource.sticker(sticker.fileId)}
+                                alt={`Contoh ${sticker.name}`}
+                                className="size-16 shrink-0 rounded-md border object-cover"
+                              />
+                            ) : sticker.fileId ? (
                               <ImageThumb
                                 id={sticker.fileId}
                                 alt={`Contoh ${sticker.name}`}

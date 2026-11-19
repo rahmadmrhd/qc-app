@@ -4,6 +4,8 @@ import { publicKeyFingerprint, publicKeyOneLine } from '../countrylock/src/ui-ma
 
 /** Berkas kunci privat wajib berakhiran ini agar tertangkap `.gitignore` (`*.ui-signing-key.pem`). */
 const PRIVATE_KEY_SUFFIX = '.ui-signing-key.pem';
+/** Kunci penandatangan rilis desktop memakai generator yang sama dengan sufiks sendiri (`gen-release-signing-key.ts`). */
+export const RELEASE_PRIVATE_KEY_SUFFIX = '.release-signing-key.pem';
 
 export interface GeneratedSigningKey {
   publicKeyPath: string;
@@ -15,9 +17,12 @@ export interface GeneratedSigningKey {
  * (izin 0600, tidak menimpa berkas yang ada) dan TIDAK dikembalikan atau dicetak; kunci publik (bukan rahasia,
  * ditanam di aplikasi desktop) ditulis ke `<nama>.pub.pem` di sebelahnya.
  */
-export function generateSigningKey(privateKeyPath: string): GeneratedSigningKey {
-  if (!privateKeyPath.endsWith(PRIVATE_KEY_SUFFIX)) {
-    throw new Error(`Nama berkas kunci privat harus berakhiran ${PRIVATE_KEY_SUFFIX}`);
+export function generateSigningKey(
+  privateKeyPath: string,
+  suffix: string = PRIVATE_KEY_SUFFIX,
+): GeneratedSigningKey {
+  if (!privateKeyPath.endsWith(suffix)) {
+    throw new Error(`Nama berkas kunci privat harus berakhiran ${suffix}`);
   }
   const { privateKey, publicKey } = generateKeyPairSync('ed25519');
   const publicKeyPem = publicKey.export({ type: 'spki', format: 'pem' }).toString();

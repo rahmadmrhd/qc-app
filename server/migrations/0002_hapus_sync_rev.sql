@@ -1,3 +1,4 @@
+-- qc:contract
 -- Menghapus penghitung revisi sinkron QC Desktop: kolom `brands.sync_rev` dan `items.sync_rev`, indeksnya, dan tabel
 -- `sync_state`. Modul sinkron REST (`/api/v1/sync/*`) dan kontraknya (`docs/api/desktop-sync.md`) dihapus karena QC
 -- Desktop dibuat ulang (Electron, di monorepo ini) dan tidak memakai kontrak itu.

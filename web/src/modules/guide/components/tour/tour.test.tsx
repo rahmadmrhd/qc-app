@@ -556,6 +556,29 @@ describe('ketahanan mesin (putaran perbaikan review)', () => {
     expect(state.navigate).not.toHaveBeenCalled();
   });
 
+  test('M13: formulir berdraf: langkah langsung ber-teks pengganti tetap jadi langkah awal (tidak melompat ke target yang ada)', async () => {
+    state.pathname = '/form';
+    render(
+      <Page
+        extra={<DirtyForm />}
+        entry={entryOf([
+          step({
+            target: 'hantu',
+            text: 'Bagian ini belum ada',
+            route: '/form',
+            langsung: true,
+            teksJikaKosong: 'Pilih item dulu, lalu mulai lagi.',
+          }),
+          step({ target: 'a', text: 'Ada di sini' }),
+        ])}
+      />,
+    );
+    await startTour();
+    expect(await screen.findByText('Pilih item dulu, lalu mulai lagi.')).toBeInTheDocument();
+    expect(screen.queryByText('Ada di sini')).toBeNull();
+    expect(state.navigate).not.toHaveBeenCalled();
+  });
+
   test('M13: formulir berdraf: langkah yang menuntut pindah halaman dilewati (draf tak dibuang)', async () => {
     state.pathname = '/form';
     render(
@@ -655,6 +678,42 @@ describe('langkah yang bergantung data jatuh ke kartu contoh (keputusan pemilik 
     await userEvent.click(screen.getByRole('button', { name: 'Lanjut' }));
     expect(await screen.findByText('Masih kosong juga:')).toBeInTheDocument();
     expect(screen.getByText('Langkah 2 dari 2')).toBeInTheDocument();
+  });
+
+  test('langsung: kartu pengganti tampil seketika tanpa menunggu batas waktu target', async () => {
+    render(<Page entry={entryOf([missing({ langsung: true })])} />);
+    await startTour();
+    // Batas tunggu di tes ini 80 ms: tanpa `langsung`, kartu pengganti baru muncul sesudahnya.
+    await waitFor(
+      () =>
+        expect(screen.getByText('Papan masih kosong, ini contoh kartunya:')).toBeInTheDocument(),
+      { timeout: 40, interval: 5 },
+    );
+    expect(screen.queryByTestId('tour-highlight')).toBeNull();
+  });
+
+  test('langsung tanpa teksJikaKosong: langkah bersyarat dilewati seketika bila targetnya tak ada', async () => {
+    render(
+      <Page
+        entry={entryOf([
+          step({ target: 'tidak-ada', text: 'Bersyarat', langsung: true }),
+          step({ target: 'b', text: 'Berikutnya' }),
+        ])}
+      />,
+    );
+    await startTour();
+    await waitFor(() => expect(screen.getByText('Berikutnya')).toBeInTheDocument(), {
+      timeout: 40,
+      interval: 5,
+    });
+    expect(screen.queryByText('Bersyarat')).toBeNull();
+  });
+
+  test('langsung dengan target yang ada: tetap disorot seperti biasa', async () => {
+    render(<Page entry={entryOf([missing({ target: 'a', langsung: true })])} />);
+    await startTour();
+    expect(await screen.findByText('Teks sorotan')).toBeInTheDocument();
+    expect(screen.getByTestId('tour-highlight')).toBeInTheDocument();
   });
 
   test('tur tidak macet: Lanjut maju, dan selesai menulis penanda seperti biasa', async () => {

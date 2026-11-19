@@ -6,10 +6,11 @@ import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveUiPublicKey } from './ui-public-key';
+import { resolveCatalogToken } from './catalog-token';
+import { resolveReleasePublicKey, resolveUiPublicKey } from './ui-public-key';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
-const external = ['electron', 'ssh2', 'node:sqlite'];
+const external = ['electron', 'electron-updater', 'ssh2', 'node:sqlite'];
 
 const spikeOnly = process.argv.includes('--spike');
 // Kunci publik tanda tangan UI disuntikkan dari env `UI_PUBLIC_KEY_PEM` (bukan ditulis di source). `--require-ui-key`
@@ -24,11 +25,39 @@ function resolveKeyOrExit(): ReturnType<typeof resolveUiPublicKey> {
   }
 }
 const uiKey = resolveKeyOrExit();
+// Kunci publik tanda tangan RILIS aplikasi (env `DESKTOP_RELEASE_PUBLIC_KEY_PEM`), terpisah dari kunci UI; `--require-release-key`
+// (skrip `dist`) menggagalkan build bila kosong: tanpa kunci pembaruan aplikasi mati diam-diam.
+function resolveReleaseKeyOrExit(): ReturnType<typeof resolveReleasePublicKey> {
+  try {
+    return resolveReleasePublicKey(process.env, process.argv.includes('--require-release-key'));
+  } catch (error) {
+    console.error(`build desktop gagal: ${error instanceof Error ? error.message : error}`);
+    process.exit(1);
+  }
+}
+const releaseKey = resolveReleaseKeyOrExit();
+// Token katalog Tipe offline dari env `CATALOG_TOKEN` (bukan di source); kosong/tak sah = katalog dinonaktifkan.
+const catalogToken = resolveCatalogToken(process.env);
 if (!spikeOnly) {
   console.log(
     uiKey.fingerprint
       ? `kunci publik tanda tangan UI ditanam (sidik SHA-256: ${uiKey.fingerprint})`
       : 'UI_PUBLIC_KEY_PEM kosong: kunci publik tidak ditanam, pembaruan UI desktop nonaktif (UI dasar saja)',
+  );
+}
+if (!spikeOnly) {
+  console.log(
+    catalogToken.token
+      ? 'token katalog Tipe offline ditanam'
+      : (catalogToken.problem ??
+          'CATALOG_TOKEN kosong: katalog Tipe offline dinonaktifkan (Tipe dipilih manual)'),
+  );
+}
+if (!spikeOnly) {
+  console.log(
+    releaseKey.fingerprint
+      ? `kunci publik tanda tangan rilis ditanam (sidik SHA-256: ${releaseKey.fingerprint})`
+      : 'DESKTOP_RELEASE_PUBLIC_KEY_PEM kosong: pembaruan aplikasi desktop nonaktif',
   );
 }
 if (!spikeOnly) await rm(`${root}dist`, { recursive: true, force: true });
@@ -43,7 +72,11 @@ async function bundle(entry: string, outdir: string, format: 'esm' | 'cjs', nami
     sourcemap: 'linked',
     minify: false,
     // `typeof __UI_PUBLIC_KEY_PEM__` di src/main/ui/public-key.ts menjadi literal; tanpa kunci = tak didefinisikan.
-    define: { __UI_PUBLIC_KEY_PEM__: JSON.stringify(uiKey.pem) },
+    define: {
+      __UI_PUBLIC_KEY_PEM__: JSON.stringify(uiKey.pem),
+      __RELEASE_PUBLIC_KEY_PEM__: JSON.stringify(releaseKey.pem),
+      __CATALOG_TOKEN__: JSON.stringify(catalogToken.token),
+    },
     ...(naming ? { naming } : {}),
   });
   if (!result.success) {

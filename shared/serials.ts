@@ -139,9 +139,19 @@ export function reportLinkExpiresAt(closedOn: string): number {
 /** Tim pelaku kejadian (`actor_team`): QC atau tim servis. */
 export type SerialTeam = 'qc' | 'service';
 
-/** Nomor kasus tidak lolos: `LP-YYYYMMDD-NNN` (urutan minimal 3 digit; lebih dari 999 menjadi lebih panjang). */
-export function serialCaseNumber(dateKey: string, sequence: number): string {
-  return `LP-${dateKey}-${String(sequence).padStart(3, '0')}`;
+/**
+ * Nomor kasus tidak lolos: `LP/<kode BU>/YYMM-iiii` (keputusan pemilik 2026-11-18; spek serial unik se-sistem §5.5).
+ * `period` = `YYMM` bulan WIB hari dibuat (`caseNumberPeriod`); urutan per (BU, bulan), minimal 4 digit (lebih dari
+ * 9999 menjadi lebih panjang). Kode BU tak dapat diubah dan berpola `^[A-Z0-9-]+$`. Nomor lama (`LP-YYYYMMDD-NNN`)
+ * tetap sah dan tidak dinomori ulang.
+ */
+export function serialCaseNumber(buCode: string, period: string, sequence: number): string {
+  return `LP/${buCode}/${period}-${String(sequence).padStart(4, '0')}`;
+}
+
+/** `YYMM` dari tanggal WIB `YYYY-MM-DD` (periode urutan nomor kasus). */
+export function caseNumberPeriod(isoDate: string): string {
+  return `${isoDate.slice(2, 4)}${isoDate.slice(5, 7)}`;
 }
 
 /** Kelompok jenis kejadian untuk tab linimasa (`serials.history` `group`). */
@@ -245,4 +255,12 @@ export function publicActorName(name: string): string {
   const trimmed = name.trim();
   const shown = trimmed.includes('@') ? (trimmed.split('@')[0] ?? '').trim() : trimmed;
   return shown === '' ? 'Admin' : shown;
+}
+
+/**
+ * Jumlah foto bukti minimum yang wajib dipasang pada baris Catat Serial untuk item ini (spek 2026-11-18 §6.1):
+ * 0 bila item tidak wajib foto, selain itu `proofMin` item.
+ */
+export function proofMinimumOf(item: { proofRequired: boolean; proofMin: number }): number {
+  return item.proofRequired ? item.proofMin : 0;
 }

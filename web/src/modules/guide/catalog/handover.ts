@@ -14,19 +14,22 @@ const QC_EDIT: GuidePermission = { module: 'qc', level: 'edit', scope: 'location
  * Demo kartu task contoh (kartu PALSU dari komponen asli dengan data contoh): entri `tip` dan adegannya milik
  * `handover-tips.ts`, dipakai langkah checklist/komentar dan sebagai kartu pengganti saat papan kosong.
  *
- * Panduan dasar Serah Terima (spek 7 butir 2). Izin panduan = izin item sidebar Serah Terima (sisi WH `view` atau
- * sisi QC `edit`); langkah sisi WH (menambah task) dan sisi QC (mencentang) punya `izin` sendiri sehingga satu
- * panduan melayani keduanya. Target `data-tour`: `handover-board` (`handover-board-page.tsx`), `handover-checklist`
- * (`handover-card.tsx`, `handover-detail-view.tsx`), `handover-new` (tombol Tambah task), `handover-batch-form`,
- * `handover-location`, `handover-task-card`, `handover-customer`, `handover-note`, `handover-card-actions`,
- * `handover-add-task`, dan `handover-save` (semuanya di `handover-batch-form.tsx`), serta `handover-paste-panel`
- * (`whatsapp-paste-panel.tsx`). Langkah setelah panel tempel (lokasi, kartu hasil Pecah, customer, catatan, aksi
- * kartu, tambah task, simpan; keputusan pemilik 2026-11-16) menjelaskan pengisian task sampai tepat sebelum tombol
- * simpan; targetnya selalu ada (kartu pertama, kosong atau hasil Pecah), jadi tanpa gerbang `wait`. Komposer komentar baru ada
- * saat teks dipilih, jadi tak bisa disorot: langkah komentar menyorot kartu/detail task dan memperagakannya lewat
- * `tip`. Langkah yang bergantung data kartu task (checklist, komentar, centang QC) punya `teksJikaKosong`: di papan
- * kosong tampil sebagai kartu contoh di tengah layar, bukan dilewati (keputusan pemilik 2026-11-14). Tur tidak
- * mengisi field apa pun: demo ditampilkan lewat `tip`, bukan dengan menempel atau mencentang sungguhan.
+ * Panduan Serah Terima (spek 7 butir 3), DUA panduan `dasar` (keputusan pemilik 2026-11-17, bagian 6 butir N: 14
+ * langkah dalam satu tur terlalu panjang): `handover-dasar` (papan dan checklist, `/handover`) dan `handover-buat`
+ * (formulir task, `/handover/new`, 7 langkah; satu halaman = satu panduan).
+ * Izin `handover-dasar` = izin item sidebar Serah Terima (sisi WH `view` atau sisi QC `edit`); langkah sisi QC
+ * (mencentang) dan sisi WH (tombol Tambah task) punya `izin` sendiri sehingga satu panduan melayani keduanya.
+ * Panduan formulir seluruhnya sisi WH (`handover: edit`). `handover-dasar` mengecualikan `/handover/new`
+ * (`halamanKecuali`) agar banner formulir tidak jatuh ke banner papan. Target `data-tour`: `handover-board`
+ * (`handover-board-page.tsx`), `handover-checklist` (`handover-card.tsx`, `handover-detail-view.tsx`), `handover-new`
+ * (tombol Tambah task), `handover-batch-form`, `handover-location`, `handover-task-card`, `handover-customer`,
+ * `handover-note`, `handover-card-actions`, `handover-add-task`, dan `handover-save` (semuanya di
+ * `handover-batch-form.tsx`), serta `handover-paste-panel` (`whatsapp-paste-panel.tsx`). Target formulir selalu ada
+ * (kartu pertama, kosong atau hasil Pecah), jadi tanpa gerbang `wait`. Komposer komentar baru ada saat teks dipilih,
+ * jadi tak bisa disorot: langkah komentar menyorot kartu/detail task dan memperagakannya lewat `tip`. Langkah yang
+ * bergantung data kartu task (checklist, komentar, centang QC) punya `teksJikaKosong`: di papan kosong tampil
+ * sebagai kartu contoh di tengah layar, bukan dilewati (keputusan pemilik 2026-11-14). Tur tidak mengisi field apa
+ * pun: demo ditampilkan lewat `tip`, bukan dengan menempel atau mencentang sungguhan.
  */
 export const HANDOVER_DASAR: GuideEntry = {
   id: 'handover-dasar',
@@ -34,8 +37,10 @@ export const HANDOVER_DASAR: GuideEntry = {
   status: 'disimpan',
   version: 1,
   title: 'Mengenal Serah Terima',
+  grup: 'Serah Terima',
   izin: [WH_VIEW, QC_EDIT],
   halaman: '/handover',
+  halamanKecuali: ['/handover/new'],
   steps: [
     {
       target: 'handover-board',
@@ -70,65 +75,60 @@ export const HANDOVER_DASAR: GuideEntry = {
     },
     {
       target: 'handover-new',
-      text: 'Sisi WH: tombol ini membuka formulir untuk menambah task baru.',
+      text: 'Sisi WH: tombol ini membuka formulir untuk menambah task baru. Formulirnya punya panduan sendiri.',
       advance: 'next',
       izin: WH_EDIT,
     },
-    {
-      target: 'handover-batch-form',
-      route: '/handover/new',
-      text: 'Satu formulir bisa memuat banyak task sekaligus, lalu disimpan sekali jalan.',
-      advance: 'next',
-      izin: WH_EDIT,
-    },
+  ],
+};
+
+/** Formulir task baru: lokasi, tempel WhatsApp, kartu, customer, catatan, Gandakan/Hapus/Tambah task, dan Simpan semua. */
+export const HANDOVER_BUAT: GuideEntry = {
+  id: 'handover-buat',
+  kind: 'dasar',
+  status: 'disimpan',
+  version: 1,
+  title: 'Membuat task Serah Terima',
+  grup: 'Serah Terima',
+  izin: WH_EDIT,
+  halaman: '/handover/new',
+  steps: [
     {
       target: 'handover-location',
-      text: 'Pilih lokasi dulu. Satu batch punya satu lokasi untuk semua task di dalamnya, dan yang bisa dipilih hanya lokasi tempat kamu boleh menulis task.',
+      route: '/handover/new',
+      text: 'Satu formulir bisa memuat banyak task sekaligus, lalu disimpan sekali jalan. Pilih lokasi dulu: satu batch punya satu lokasi untuk semua task di dalamnya, dan yang bisa dipilih hanya lokasi tempat kamu boleh menulis task.',
       advance: 'next',
-      izin: WH_EDIT,
     },
     {
       target: 'handover-paste-panel',
       text: 'Punya banyak orderan di WhatsApp? Tempel sekaligus di sini lalu tekan Pecah, nanti dipecah jadi kartu task di bawahnya. Lihat demonya.',
       advance: 'next',
-      izin: WH_EDIT,
       tip: WHATSAPP_TIP_ID,
     },
     {
       target: 'handover-task-card',
       text: 'Hasil Pecah muncul sebagai kartu seperti ini, satu kartu satu task (kalau kamu mengetik sendiri, mulai dari kartu kosong ini). Tempelan belum tersimpan: periksa dan koreksi dulu di kartunya.',
       advance: 'next',
-      izin: WH_EDIT,
     },
     {
       target: 'handover-customer',
       text: 'Customer: baris judul dari WhatsApp (mis. nama PT) jadi usulan namanya. Kalau kamu mengetik, saran muncul dan toleran terhadap salah ketik. Nama yang belum ada dibuat otomatis saat task disimpan, dan kolom ini boleh dikosongkan.',
       advance: 'next',
-      izin: WH_EDIT,
     },
     {
       target: 'handover-note',
       text: 'Catatan wajib diisi, berupa checklist satu butir per baris (maksimal 5.000 karakter). Tempelan WhatsApp yang kamu tempel langsung di sini juga otomatis jadi checklist. Di sini kotaknya hanya penanda butir; mencentang dilakukan sisi QC setelah task tersimpan.',
       advance: 'next',
-      izin: WH_EDIT,
     },
     {
       target: 'handover-card-actions',
-      text: 'Gandakan menyalin catatan ke kartu baru tepat di bawahnya (customer-nya dikosongkan), berguna untuk task yang mirip. Hapus membuang kartu ini; minimal satu kartu harus tersisa.',
+      text: 'Gandakan menyalin catatan ke kartu baru tepat di bawahnya (customer-nya dikosongkan), berguna untuk task yang mirip. Hapus membuang kartu ini; minimal satu kartu harus tersisa. Tombol Tambah task di bawah kartu menambah kartu kosong, maksimal 30 task per batch.',
       advance: 'next',
-      izin: WH_EDIT,
-    },
-    {
-      target: 'handover-add-task',
-      text: 'Perlu task lain di batch yang sama? Tombol ini menambah kartu kosong. Satu batch maksimal 30 task.',
-      advance: 'next',
-      izin: WH_EDIT,
     },
     {
       target: 'handover-save',
       text: 'Simpan semua menyimpan seluruh kartu sekaligus. Kalau satu kartu bermasalah (mis. catatan kosong), tidak ada yang tersimpan, kartu itu ditandai, dan isianmu tetap utuh. Panduan berhenti di sini: belum ada yang tersimpan.',
       advance: 'next',
-      izin: WH_EDIT,
     },
   ],
 };
@@ -151,4 +151,8 @@ registerDemoLoader(WHATSAPP_TIP_ID, async () => {
   return WhatsappDemoScenes;
 });
 
-export const HANDOVER_GUIDES: readonly GuideEntry[] = [HANDOVER_DASAR, HANDOVER_TIP_WA];
+export const HANDOVER_GUIDES: readonly GuideEntry[] = [
+  HANDOVER_DASAR,
+  HANDOVER_BUAT,
+  HANDOVER_TIP_WA,
+];

@@ -6,6 +6,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@countrylock': fileURLToPath(new URL('../countrylock/src', import.meta.url)),
+      '@shared': fileURLToPath(new URL('../shared', import.meta.url)),
     },
   },
   test: {

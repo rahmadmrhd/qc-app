@@ -19,7 +19,10 @@ vi.mock('./camera-scan-button', () => ({
     <button
       type="button"
       aria-label="Scan dengan kamera"
-      onClick={() => onScan('bbb222\nAAA111\nccc333')}
+      // Seperti "Simpan" di dialog kamera: onScan satu kali per serial, berurutan (sinkron, sebelum render ulang).
+      onClick={() => {
+        for (const serial of ['bbb222', 'AAA111', 'ccc333']) onScan(serial);
+      }}
     >
       kamera
     </button>
@@ -487,13 +490,13 @@ test('kolom posisi: "Dalam pengiriman · 3 hari" dengan tujuan, dan nomor kasus 
                 transitOn: '2026-11-10',
                 transitToLocationId: 'l2',
                 transitToLocationName: 'Surabaya',
-                openCaseNumber: 'LP-20261110-001',
+                openCaseNumber: 'LP/SBY/2611-0001',
               }),
               row({
                 id: 's8',
                 serial: 'DIAM1',
                 status: 'reported',
-                openCaseNumber: 'LP-20261112-004',
+                openCaseNumber: 'LP/SBY/2611-0004',
               }),
             ],
             nextCursor: null,
@@ -506,10 +509,10 @@ test('kolom posisi: "Dalam pengiriman · 3 hari" dengan tujuan, dan nomor kasus 
     const sending = within(rows[1] as HTMLElement);
     expect(sending.getByText('Dalam pengiriman · 3 hari')).toBeInTheDocument();
     expect(sending.getByText('ke Surabaya')).toBeInTheDocument();
-    expect(sending.getByText('LP-20261110-001')).toBeInTheDocument();
+    expect(sending.getByText('LP/SBY/2611-0001')).toBeInTheDocument();
     const still = within(rows[2] as HTMLElement);
     expect(still.getByText('Di QC')).toBeInTheDocument();
-    expect(still.getByText('LP-20261112-004')).toBeInTheDocument();
+    expect(still.getByText('LP/SBY/2611-0004')).toBeInTheDocument();
   } finally {
     vi.useRealTimers();
   }

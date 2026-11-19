@@ -1,0 +1,167 @@
+name: Server Deploy
+
+# Men-deploy image server yang SUDAH dibangun ke VPS lewat SSH (`deploy.sh`) lalu mencatat `refs/deployed/<env>`. Workflow
+# yang dapat dipanggil, dipakai SAMA oleh `deploy-server.yml` (PR/dispatch), `release.yml` (rilis), dan `deploy-tag.yml`
+# (rencana rilis semver 2 dan 3). Dipindah apa adanya dari job `deploy` dan `mark-deployed` di `deploy-server.yml`.
+#
+# Masukan divalidasi di sini (pemanggil tak dipercaya). Rahasia SSH ada di secret ENVIRONMENT (dibaca lewat `environment:`
+# job `deploy`); pemanggil TIDAK meneruskan rahasia. Tidak ada checkout kode di workflow ini.
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: 'staging atau production'
+        type: string
+        required: true
+      sha:
+        description: 'Tag image yang di-deploy (SHA commit, 40 heksa)'
+        type: string
+        required: true
+      allow-schema-downgrade:
+        description: 'Izinkan downgrade yang melewati migrasi basis data (diteruskan ke deploy.sh)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Rahasia SSH ada di secret ENVIRONMENT (bukan repositori), sehingga hanya job yang berjalan dari branch yang
+    # diizinkan aturan environment yang dapat membacanya. Job ini tidak men-checkout kode apa pun.
+    environment: ${{ inputs.target }}
+    permissions: {}
+    env:
+      TARGET: ${{ inputs.target }}
+      TAG: ${{ inputs.sha }}
+    steps:
+      - name: Siapkan SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST_KEY: ${{ secrets.DEPLOY_HOST_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          for name in SSH_KEY HOST_KEY DEPLOY_HOST DEPLOY_PORT DEPLOY_USER; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Secret environment untuk ${name} belum diisi (lihat docs/ci-cd.md)."
+              exit 1
+            fi
+          done
+          [[ $DEPLOY_PORT =~ ^[0-9]{1,5}$ ]] || { echo "::error::DEPLOY_PORT tidak valid."; exit 1; }
+          [[ $DEPLOY_USER =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || { echo "::error::DEPLOY_USER tidak valid."; exit 1; }
+          [[ $DEPLOY_HOST =~ ^[A-Za-z0-9.:-]{1,253}$ ]] || { echo "::error::DEPLOY_HOST tidak valid."; exit 1; }
+          umask 077
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_KEY" > "$HOME/.ssh/deploy_key"
+          # Kunci host dipatok dari secret (hasil ssh-keyscan yang sidik jarinya diperiksa pemilik): koneksi ke host
+          # lain ditolak. TIDAK memakai StrictHostKeyChecking=no.
+          printf '%s\n' "$HOST_KEY" > "$HOME/.ssh/known_hosts"
+          {
+            echo "Host qc-deploy"
+            echo "  HostName $DEPLOY_HOST"
+            echo "  Port $DEPLOY_PORT"
+            echo "  User $DEPLOY_USER"
+            echo "  IdentityFile $HOME/.ssh/deploy_key"
+            echo "  IdentitiesOnly yes"
+            echo "  BatchMode yes"
+            echo "  StrictHostKeyChecking yes"
+            echo "  UserKnownHostsFile $HOME/.ssh/known_hosts"
+            echo "  ConnectTimeout 20"
+            echo "  ServerAliveInterval 15"
+          } > "$HOME/.ssh/config"
+
+      # Kunci SSH di VPS dibatasi `command="<INSTALL_DIR>/deploy.sh --only <env>"` (jalur mutlak lokasi deploy.sh di server; VPS pribadi: /root/apps/qc-app): yang dijalankan hanya skrip
+      # itu dengan perintah di bawah sebagai SSH_ORIGINAL_COMMAND (divalidasi ketat di sisi VPS). Kode keluar:
+      # 0 sukses, 1 gagal dan dikembalikan ke tag sebelumnya, 4 gagal dan pengembalian gagal, 5 versi baru sehat dan aktif
+      # tetapi nginx tidak terjangkau (tidak dikembalikan), 2/3 ditolak/terkunci. Kata ` allow-schema-downgrade` hanya
+      # ditambahkan bila diminta eksplisit (pagar downgrade skema di deploy.sh, rencana rilis 3).
+      - name: Deploy di VPS
+        env:
+          ALLOW_DOWNGRADE: ${{ inputs.allow-schema-downgrade }}
+        run: |
+          set -uo pipefail
+          [[ $TARGET =~ ^(staging|production)$ ]] || { echo "::error::Target tidak valid."; exit 1; }
+          [[ $TAG =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Tag image bukan SHA commit."; exit 1; }
+          [[ $ALLOW_DOWNGRADE =~ ^(true|false)$ ]] || { echo "::error::allow-schema-downgrade harus true atau false."; exit 1; }
+          cmd="deploy $TARGET $TAG"
+          if [ "$ALLOW_DOWNGRADE" = true ]; then cmd="$cmd allow-schema-downgrade"; fi
+          ssh qc-deploy "$cmd"
+          code=$?
+          case $code in
+            0) ;;
+            1) echo "::error::Deploy gagal; VPS dikembalikan ke tag sebelumnya (lihat log di atas)." ;;
+            4) echo "::error::Deploy gagal DAN pengembalian gagal: periksa VPS secara manual." ;;
+            5) echo "::error::Versi baru sehat dan aktif, tetapi nginx di VPS tidak terjangkau (systemctl status nginx / konfigurasi). TIDAK dikembalikan: ini masalah infrastruktur, bukan versi." ;;
+            6) echo "::error::Downgrade skema ditolak: versi tujuan lebih lama dari skema basis data yang berjalan. Ulangi dengan izin downgrade skema bila memang disengaja." ;;
+            *) echo "::error::Deploy ditolak atau gagal (kode ${code})." ;;
+          esac
+          exit "$code"
+
+      # INFORMATIF: uji lewat nginx yang menentukan (dan memicu rollback) dilakukan `deploy.sh` dari dalam VPS. Runner GitHub
+      # tak dapat diandalkan di sini: Cloudflare memblokir IP datacenter (403) dan origin hanya menerima IP Cloudflare.
+      - name: Uji asap publik (informatif)
+        continue-on-error: true
+        env:
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          set -uo pipefail
+          if ! [[ $APP_URL =~ ^https://[A-Za-z0-9.-]+$ ]]; then
+            echo "::warning::Uji asap publik dilewati: variabel environment APP_URL belum diisi atau bukan https://<host>."
+            exit 0
+          fi
+          if ! curl -fsS --retry 3 --retry-delay 5 --retry-all-errors --max-time 15 "$APP_URL/api/ping"; then
+            echo "::warning::Uji asap publik gagal (mis. Cloudflare memblokir IP runner). Tidak menggagalkan deploy: kesehatan sudah diuji deploy.sh dari dalam VPS."
+            exit 1
+          fi
+          echo
+
+      - name: Ringkasan
+        if: success()
+        run: |
+          {
+            echo "### Deploy server: ${TARGET}"
+            echo
+            echo "Image tag \`${TAG}\` aktif dan sehat (\`/api/ping\` OK)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Jangan tinggalkan kunci di runner.
+      - name: Hapus kredensial SSH
+        if: always()
+        run: rm -rf "$HOME/.ssh/deploy_key" "$HOME/.ssh/config" "$HOME/.ssh/known_hosts"
+
+  # Mencatat commit yang BARU SAJA berhasil di-deploy ke environment ini sebagai ref git `refs/deployed/<environment>`
+  # (bukan tag atau release: tak muncul di daftar rilis dan tak bertabrakan dengan tag semver `server-v*` nantinya). Run
+  # berikutnya membandingkan commitnya dengan ref ini untuk memilih pemeriksaan (ci.yml, `since-deploy`), sehingga deploy yang
+  # dilewati/dibuang antrean tak membuat perubahannya terlupa. Ref belum ada = semua pemeriksaan dijalankan.
+  # Job ini SATU-SATUNYA yang berizin `contents: write`; tanpa checkout, aksi pihak ketiga, dan rahasia lain. Gagal menulis
+  # ref hanya berakibat run berikutnya memeriksa lebih banyak (peringatan, bukan kegagalan: deploy sudah sukses).
+  mark-deployed:
+    needs: deploy
+    if: needs.deploy.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      TARGET: ${{ inputs.target }}
+      SHA: ${{ inputs.sha }}
+    steps:
+      - name: Catat deploy terakhir
+        run: |
+          set -uo pipefail
+          [[ $TARGET =~ ^(staging|production)$ ]] || { echo "::error::Target tidak valid."; exit 1; }
+          [[ $SHA =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Commit bukan SHA 40 heksa."; exit 1; }
+          if gh api -X PATCH "repos/$REPO/git/refs/deployed/$TARGET" -f "sha=$SHA" -F force=true > /dev/null; then
+            echo "Penunjuk refs/deployed/$TARGET diperbarui."
+          elif gh api -X POST "repos/$REPO/git/refs" -f "ref=refs/deployed/$TARGET" -f "sha=$SHA" > /dev/null; then
+            echo "Penunjuk refs/deployed/$TARGET dibuat."
+          else
+            echo "::warning::Gagal mencatat refs/deployed/$TARGET; run berikutnya memeriksa lebih banyak."
+          fi

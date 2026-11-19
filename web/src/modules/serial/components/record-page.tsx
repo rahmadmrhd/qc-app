@@ -1,21 +1,26 @@
-import { isIsoDate, normalizeSerial, SERIAL_LIMITS } from '@shared/serials';
+import { isIsoDate, normalizeSerial, proofMinimumOf, SERIAL_LIMITS } from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { describeError } from '@/lib/api/describe-error';
+import { cn } from '@/lib/utils';
 import { useMe } from '@/modules/auth/use-me';
+import { useOptionalActiveLocations } from '@/modules/location/active-locations-context';
 import {
   addSerials,
   applyBulk,
   applyResults,
   type BulkPatch,
   type Defaults,
+  type DraftControl,
   fromQcsnRows,
+  missingDefaults,
   proofIdsOf,
   removeRows,
   type StagingRow,
@@ -25,22 +30,30 @@ import {
 import { clearDraft, loadDraft, resumeDraftWrites, saveDraft } from '../lib/draft-store';
 import { isReferenceError, type VerifyDeps, verifyImported } from '../lib/import-verify';
 import { hasProofPhotos } from '../lib/leave-guard';
-import { todayWib, toLocationOptions } from '../lib/locations';
+import { lockedLocationOf, todayWib, toLocationOptions } from '../lib/locations';
+import { applyProofMins, fetchProofMins, uniqueItemIds } from '../lib/proof-refresh';
+import type { ProofPhotoRef } from '../lib/proof-source';
 import type { QcsnImport } from '../lib/qcsn';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
   discardProofPhotos,
+  serialBuOptionsQueryOptions,
   serialItemsByIdQueryOptions,
   serialLocationOptionsQueryOptions,
   serialStickerOptionsQueryOptions,
   useSaveSerialBatch,
 } from '../queries';
-import { BulkEditBar } from './bulk-edit-bar';
+import { BulkEditDialog } from './bulk-edit-dialog';
+import type { StrictScan } from './camera-scan-button';
+import { ConfirmRemoveDialog } from './confirm-remove-dialog';
 import { ImportExportBar } from './import-export-bar';
 import { EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
-import { RowDetailDialog, type RowDetailResult } from './row-detail-dialog';
+import { RowEditDialog, type RowEditResult } from './row-edit-dialog';
+import { SELECTION_BAR_SPACE_CLASS, SelectionBar } from './selection-bar';
 import { SerialLocationField } from './serial-location-field';
+import { SerialNoteField } from './serial-note-field';
 import { type ScanFeedback, SerialScanInput } from './serial-scan-input';
+import { StagingCards } from './staging-cards';
 import { rowStatus, StagingTable } from './staging-table';
 import { defaultStickerChoice, StickerChecklist, useApplicableStickers } from './sticker-checklist';
 
@@ -74,6 +87,13 @@ export interface RecordPageProps {
    * tersimpan.
    */
   handleRef?: { current: RecordPageHandle | null };
+  /**
+   * Draft milik pemanggil (mode terkontrol): tabel berasal dari `draft.rows`, setiap perubahan lewat `draft.replace`, dan
+   * `RecordPage` tidak menyentuh `localStorage` sama sekali. Tanpa ini perilaku web (state sendiri + `localStorage`).
+   */
+  draft?: DraftControl;
+  /** Sembunyikan judul "Catat Serial Number" (pemanggil sudah punya judul halaman). */
+  hideTitle?: boolean;
 }
 
 export interface RecordPageHandle {
@@ -101,10 +121,20 @@ function clearOutcome(row: StagingRow): StagingRow {
   return rest;
 }
 
+/** Elemen field Default yang menerima fokus awal menurut label field kosong (`missingDefaults`). */
+const DEFAULT_FIELD_ID: Record<string, string> = {
+  Item: 'default-item',
+  'Business Unit': 'default-bu',
+  Lokasi: 'default-location',
+  'Tanggal uji': 'default-date',
+};
+
 /** Pesan ringkas untuk satu penambahan (tempel, ketik, atau pindai). */
 function describeAdd(report: ReturnType<typeof addSerials>['report']): {
   feedback: ScanFeedback;
   notice: Notice;
+  /** Murni sukses (ada yang ditambahkan, tanpa duplikat, ditolak, atau batas): cukup toast singkat, bukan kotak inline. */
+  quiet: boolean;
 } {
   const parts: string[] = [];
   if (report.added > 0) parts.push(`${report.added} serial ditambahkan`);
@@ -123,8 +153,15 @@ function describeAdd(report: ReturnType<typeof addSerials>['report']): {
         ? 'duplicate'
         : 'rejected';
   const tone: NoticeTone = report.added > 0 && !partial ? 'info' : 'warn';
-  return { feedback, notice: { tone, text: parts.join('; ') || 'Tidak ada serial yang dibaca' } };
+  return {
+    feedback,
+    notice: { tone, text: parts.join('; ') || 'Tidak ada serial yang dibaca' },
+    quiet: report.added > 0 && report.duplicates === 0 && !partial,
+  };
 }
+
+/** Id toast hasil tambah: scan berturut-turut mengganti toast yang sama, bukan menumpuk. */
+const ADD_TOAST_ID = 'serial-add';
 
 /** Halaman Catat Serial: bawaan rombongan, masukan pindai/tempel, tabel sementara, simpan per 200 baris. */
 export function RecordPage({
@@ -132,6 +169,8 @@ export function RecordPage({
   onAllSaved,
   onProofChange,
   handleRef,
+  draft,
+  hideTitle,
 }: RecordPageProps) {
   const me = useMe();
   const queryClient = useQueryClient();
@@ -146,27 +185,56 @@ export function RecordPage({
     };
   }, []);
 
-  const [rows, setRows] = useState<StagingRow[]>(() => loadDraft(ownerKey));
+  // Mode terkontrol (`draft`): tabel milik pemanggil dan `localStorage` tak disentuh; selain itu state sendiri.
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+  const [ownRows, setOwnRows] = useState<StagingRow[]>(() => (draft ? [] : loadDraft(ownerKey)));
+  const rows = draft ? draft.rows : ownRows;
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
   const setAllRows = useCallback((next: StagingRow[]) => {
     rowsRef.current = next;
-    setRows(next);
+    if (draftRef.current) draftRef.current.replace(next);
+    else setOwnRows(next);
   }, []);
 
-  const [item, setItem] = useState<ItemBuValue>(EMPTY_ITEM_BU);
-  const [location, setLocation] = useState({ id: '', label: '' });
-  // Hanya satu lokasi yang dapat dipilih: jadi bawaan, sekali saja (pengguna yang mengosongkannya tak diisi lagi).
-  const { locations: pickableLocations } = useSerialLocations();
-  const defaultLocationDecided = useRef(false);
+  // Item menurut id (verifikasi impor dan penyegaran draft): hanya item yang ada dan terlihat bagi pengguna.
+  const findItemLookups = useCallback(
+    async (itemIds: readonly string[]) => {
+      const page = await queryClient.fetchQuery(serialItemsByIdQueryOptions(itemIds));
+      return page.items.map((entry) => ({
+        id: entry.id,
+        label: entry.label,
+        buOptions: entry.buOptions,
+        proofMin: proofMinimumOf(entry),
+      }));
+    },
+    [queryClient],
+  );
+  // Draft lama tidak membawa `proofMin` (dibuat sebelum item wajib foto): segarkan sekali saat halaman dibuka, satu
+  // permintaan per kumpulan item unik. Gagal = baris tetap seperti semula; server tetap menegakkan aturan saat Simpan.
   useEffect(() => {
-    if (defaultLocationDecided.current || pickableLocations.length === 0) return;
-    defaultLocationDecided.current = true;
-    const [only] = toLocationOptions(pickableLocations);
-    if (only && pickableLocations.length === 1) {
-      setLocation((current) => (current.id === '' ? { id: only.id, label: only.label } : current));
-    }
-  }, [pickableLocations]);
+    const ids = uniqueItemIds(rowsRef.current);
+    if (ids.length === 0) return;
+    void fetchProofMins(ids, findItemLookups).then((mins) => {
+      if (!mountedRef.current) return;
+      const latest = rowsRef.current;
+      const next = applyProofMins(latest, mins);
+      if (next !== latest) setAllRows(next);
+    });
+  }, [findItemLookups, setAllRows]);
+
+  const [item, setItem] = useState<ItemBuValue>(EMPTY_ITEM_BU);
+  const [pickedLocation, setLocation] = useState({ id: '', label: '' });
+  // Lokasi Default terkunci (terisi otomatis, tak dapat diubah di sini) bila lokasi aktif di header tepat satu atau hanya
+  // ada satu pilihan lokasi (spek Catat wajib foto, butir N.2); mengganti lokasi = mengganti pilihan di header.
+  const { locations: pickableLocations, isPending: locationsPending } = useSerialLocations();
+  const activeSelection = useOptionalActiveLocations()?.selectedIds;
+  const locked = useMemo(
+    () => lockedLocationOf(pickableLocations, activeSelection ?? []),
+    [pickableLocations, activeSelection],
+  );
+  const location = locked ? { id: locked.id, label: locked.label } : pickedLocation;
   const [testDate, setTestDate] = useState(() => todayWib());
   const [sample, setSample] = useState(false);
   const [note, setNote] = useState('');
@@ -180,19 +248,23 @@ export function RecordPage({
   const [importing, setImporting] = useState(false);
   const [draftFailed, setDraftFailed] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [removeOpen, setRemoveOpen] = useState(false);
+  const desktop = useIsDesktop();
 
   // Halaman dibuka: penulisan draf diizinkan lagi (dihentikan oleh `clearAllDrafts` saat keluar).
   useEffect(() => {
-    resumeDraftWrites();
+    if (!draftRef.current) resumeDraftWrites();
   }, []);
   // Draf otomatis (ditunda); saat halaman ditutup, isi terakhir langsung disimpan (kecuali sesudah keluar).
   useEffect(() => {
+    if (draftRef.current) return;
     const timer = setTimeout(() => setDraftFailed(!saveDraft(ownerKey, rows)), AUTOSAVE_DELAY_MS);
     return () => clearTimeout(timer);
   }, [ownerKey, rows]);
   useEffect(
     () => () => {
-      saveDraft(ownerKey, rowsRef.current);
+      if (!draftRef.current) saveDraft(ownerKey, rowsRef.current);
     },
     [ownerKey],
   );
@@ -205,13 +277,40 @@ export function RecordPage({
   }, [onProofChange, withProof]);
 
   const selectedCount = rows.filter((row) => row.selected).length;
+  // Bar aksi pilihan tampil (di ponsel `fixed`): halaman diberi ruang di dasarnya, bukan di atas daftar.
+  const barVisible = selectedCount > 0 && !saving;
+  const selectedPhotoCount = rows.reduce(
+    (total, row) => total + (row.selected ? row.proofPhotos.length : 0),
+    0,
+  );
   const detailRow = detailId === null ? undefined : rows.find((row) => row.clientId === detailId);
+
+  // Gerbang Default: scan, kamera, dan tempel baru aktif setelah Item, BU, Lokasi, dan Tanggal uji terisi.
+  const missing = missingDefaults({
+    itemId: item.itemId,
+    buId: item.buId,
+    locationId: location.id,
+    testDate,
+  });
+  const gated = missing.length > 0;
+  // Fokus awal ke field Default pertama yang kosong (kolom scan terkunci selama Default belum lengkap), sekali, setelah
+  // daftar lokasi diketahui supaya lokasi yang terkunci (terisi otomatis) tak menjadi sasaran fokus.
+  const focusedRef = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hanya sekali sesudah lokasi diketahui.
+  useEffect(() => {
+    if (focusedRef.current || locationsPending) return;
+    focusedRef.current = true;
+    const first = missing[0];
+    if (first === undefined) return;
+    document.getElementById(DEFAULT_FIELD_ID[first] ?? 'default-item')?.focus();
+  }, [locationsPending]);
 
   const defaults = (): Defaults => ({
     itemId: item.itemId,
     itemLabel: item.itemLabel,
     buId: item.buId,
     buLabel: item.buLabel,
+    proofMin: item.proofMin,
     testDate,
     locationId: location.id,
     locationLabel: location.label,
@@ -227,6 +326,108 @@ export function RecordPage({
           }),
   });
 
+  // Serial yang sudah ada di draft (bentuk ternormalisasi): pemindai kamera tidak menambahkannya ke tabel hasilnya.
+  const knownSerials = useMemo(
+    () => new Set(rows.map((row) => normalizeSerial(row.serial))),
+    [rows],
+  );
+  const isKnownSerial = useCallback((serial: string) => knownSerials.has(serial), [knownSerials]);
+
+  // Sisa baris draft yang masih boleh ditambah (dibaca tiap bacaan kamera): tabel hasil scan menolak yang melebihinya.
+  const draftCapacity = useCallback(() => SERIAL_LIMITS.tableRows - rowsRef.current.length, []);
+
+  // Hasil tambah yang murni sukses = toast (id tetap: diganti, tidak menumpuk) dan kotak inline lama dibuang; yang
+  // bernada peringatan (duplikat, ditolak, batas draft) tetap inline karena bisa panjang dan perlu dibaca.
+  function announceAdd({ notice: message, quiet }: ReturnType<typeof describeAdd>) {
+    if (quiet) {
+      toast.success(message.text, { id: ADD_TOAST_ID, duration: 2500 });
+      setNotice(null);
+    } else {
+      // Peringatan inline: toast sukses sebelumnya jangan menempel di sampingnya.
+      toast.dismiss(ADD_TOAST_ID);
+      setNotice(message);
+    }
+  }
+
+  // Setelah Simpan dialog kamera: `addText` sudah dipanggil per baris (notice-nya saling menimpa); ringkas SEMUA baris.
+  function summarizeCameraSave(results: { serial: string; feedback: ScanFeedback }[]) {
+    const described = describeAdd({
+      added: results.filter((result) => result.feedback === 'added').length,
+      duplicates: results.filter((result) => result.feedback === 'duplicate').length,
+      // Tabel kamera sudah memvalidasi serial dan menjaga sisa kapasitas draft: yang masih 'rejected' saat Simpan hanya
+      // bisa terbentur batas draft (bukan serial tak sah).
+      rejected: [],
+      truncated: results.some((result) => result.feedback === 'rejected'),
+    });
+    announceAdd(described);
+  }
+
+  // Item wajib foto: scan satu serial per kali lewat dialog dua langkah; baris masuk draft setelah Simpan di dialog.
+  const addStrictRowRef = useRef<(result: { serial: string; photos: ProofPhotoRef[] }) => void>(
+    () => undefined,
+  );
+  const confirmStrict = useCallback(
+    (result: { serial: string; photos: ProofPhotoRef[] }) => addStrictRowRef.current(result),
+    [],
+  );
+  const strict = useMemo<StrictScan | undefined>(
+    () =>
+      item.proofMin > 0
+        ? {
+            info: {
+              itemLabel: item.itemLabel,
+              buLabel: item.buLabel,
+              locationLabel: location.label,
+              testDate,
+              proofMin: item.proofMin,
+              stamp: {
+                itemLabel: item.itemLabel,
+                buLabel: item.buLabel,
+                locationLabel: location.label,
+                actorName: me.name,
+                actorTeam: 'QC',
+              },
+            },
+            isKnown: isKnownSerial,
+            onConfirm: confirmStrict,
+            capacity: draftCapacity,
+          }
+        : undefined,
+    [
+      item.proofMin,
+      item.itemLabel,
+      item.buLabel,
+      location.label,
+      testDate,
+      me.name,
+      isKnownSerial,
+      confirmStrict,
+      draftCapacity,
+    ],
+  );
+
+  /** Menambah satu baris item wajib foto beserta fotonya; bila tak muat (batas draft/duplikat), foto dibuang. */
+  function addStrictRow(result: { serial: string; photos: ProofPhotoRef[] }) {
+    const { rows: next, report } = addSerials(
+      rowsRef.current,
+      result.serial,
+      defaults(),
+      newClientId,
+      nowIso,
+    );
+    const added = report.added === 1 ? next[next.length - 1] : undefined;
+    if (!added) {
+      void discardProofPhotos(result.photos.map((photo) => photo.id));
+      announceAdd(describeAdd(report));
+      return;
+    }
+    next[next.length - 1] = { ...added, proofPhotos: result.photos };
+    setAllRows(next);
+    announceAdd(describeAdd(report));
+    setSummary(null);
+  }
+  addStrictRowRef.current = addStrictRow;
+
   function addText(text: string): ScanFeedback {
     const { rows: next, report } = addSerials(
       rowsRef.current,
@@ -235,11 +436,11 @@ export function RecordPage({
       newClientId,
       nowIso,
     );
-    const { feedback, notice: message } = describeAdd(report);
+    const described = describeAdd(report);
     setAllRows(next);
-    setNotice(message);
+    announceAdd(described);
     setSummary(null);
-    return feedback;
+    return described.feedback;
   }
 
   // Handler baris stabil (hanya membaca `rowsRef`) agar `memo(RowView)` mencegah render ulang ribuan sel.
@@ -295,21 +496,37 @@ export function RecordPage({
   function applyBulkEdit(patch: BulkPatch) {
     setAllRows(applyBulk(rowsRef.current, selectedIds(), patch).map(clearSelectedOutcome));
     setNotice({ tone: 'info', text: `${selectedCount} baris diubah` });
+    setBulkOpen(false);
   }
 
-  function applyDetail(result: RowDetailResult) {
+  function removeSelected() {
+    dropRows(selectedIds());
+    setRemoveOpen(false);
+  }
+
+  function applyDetail(result: RowEditResult) {
     if (detailId === null) return;
     patchRow(detailId, (row) => {
       const { unresolved: _unresolved, ...rest } = clearOutcome(row);
       return {
         ...rest,
+        serial: result.serial,
         itemId: result.item.itemId,
         itemLabel: result.item.itemLabel,
         buId: result.item.buId,
         buLabel: result.item.buLabel,
+        // Minimum foto hanya dibawa bila item/BU diganti di dialog: tanpa itu nilai baris (mungkin baru disegarkan dari
+        // server selagi dialog terbuka) tidak boleh ditimpa nilai usang dari keadaan awal dialog.
+        ...(result.item.itemId !== row.itemId || result.item.buId !== row.buId
+          ? { proofMin: result.item.proofMin }
+          : {}),
         locationId: result.location.id,
         locationLabel: result.location.label,
+        testDate: result.testDate,
+        sample: result.sample,
+        note: result.note,
         stickers: result.stickers,
+        proofPhotos: result.proofPhotos,
       };
     });
     setDetailId(null);
@@ -326,20 +543,22 @@ export function RecordPage({
           return null;
         }
       };
+      const loadBus = async () => {
+        try {
+          const data = await queryClient.fetchQuery(serialBuOptionsQueryOptions());
+          return data.businessUnits.map((bu) => ({ id: bu.id, code: bu.code }));
+        } catch {
+          return null;
+        }
+      };
       const deps: VerifyDeps = {
-        findItems: async (itemIds) => {
-          const page = await queryClient.fetchQuery(serialItemsByIdQueryOptions(itemIds));
-          return page.items.map((item) => ({
-            id: item.id,
-            label: item.label,
-            buOptions: item.buOptions,
-          }));
-        },
+        findItems: findItemLookups,
         stickersOf: async (itemId, buId) => {
           const data = await queryClient.fetchQuery(serialStickerOptionsQueryOptions(itemId, buId));
           return data.stickers.map((sticker) => ({ id: sticker.id, name: sticker.name }));
         },
         locations: await loadLocations(),
+        buOptions: await loadBus(),
       };
       // Pindaian dan suntingan boleh terjadi selama verifikasi menunggu: hasilnya digabung ke tabel TERBARU.
       const snapshot = rowsRef.current;
@@ -405,12 +624,13 @@ export function RecordPage({
         row.itemId === '' ||
         row.buId === '' ||
         row.locationId === '' ||
-        !isIsoDate(row.testDate),
+        !isIsoDate(row.testDate) ||
+        (row.proofMin ?? 0) > row.proofPhotos.length,
     );
     if (blocked.length > 0) {
       setNotice({
         tone: 'error',
-        text: `${blocked.length} baris belum lengkap (item, lokasi, atau tanggal uji); lihat kolom Hasil.`,
+        text: `${blocked.length} baris belum lengkap (item, lokasi, tanggal uji, atau foto bukti); lihat kolom Hasil.`,
       });
       return false;
     }
@@ -516,11 +736,11 @@ export function RecordPage({
     }
     if (!mountedRef.current) {
       // Halaman sudah ditinggalkan: draf yang ditulis saat unlock masih memuat baris yang kini tersimpan; sinkronkan.
-      saveDraft(ownerKey, rowsRef.current);
+      if (!draftRef.current) saveDraft(ownerKey, rowsRef.current);
       return allSaved;
     }
     if (allSaved && (external || onAllSaved)) {
-      clearDraft(ownerKey);
+      if (!draftRef.current) clearDraft(ownerKey);
       toast.success('Serial Number berhasil disimpan');
       if (!external) onAllSaved?.(savedCount);
     }
@@ -532,15 +752,48 @@ export function RecordPage({
   const blockedCount = rows.filter((row) => rowStatus(row).tone !== 'ok').length;
 
   return (
-    <div className="space-y-5">
-      <h1 className="text-xl font-semibold">Catat Serial Number</h1>
+    <div
+      className={cn('space-y-5', barVisible && SELECTION_BAR_SPACE_CLASS)}
+      data-selection-space={barVisible ? 'on' : undefined}
+    >
+      {hideTitle ? null : <h1 className="text-xl font-semibold">Catat Serial Number</h1>}
 
-      <section aria-label="Default" className="space-y-3 rounded-lg border p-4">
+      <section
+        aria-label="Default"
+        className="space-y-3 rounded-lg border p-4"
+        data-tour="serial-defaults"
+      >
         <h2 className="text-sm font-semibold">Default</h2>
         <p className="text-xs text-muted-foreground">
           Dipakai untuk serial yang ditambahkan setelah ini; baris yang sudah ada tidak berubah.
         </p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-1.5">
+            <SerialLocationField
+              id="default-location"
+              label="Lokasi"
+              value={location.id}
+              valueLabel={location.label}
+              onChange={(id, label) => setLocation({ id, label })}
+              disabled={locked !== null}
+            />
+            {locked ? (
+              <p className="text-xs text-muted-foreground" data-testid="default-location-lock">
+                {locked.source === 'active'
+                  ? `Terkunci ke lokasi aktif: ${locked.label}. Ganti lewat pemilih lokasi di header.`
+                  : `Hanya satu lokasi yang bisa dipilih: ${locked.label}.`}
+              </p>
+            ) : null}
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="default-date">Tanggal uji</Label>
+            <Input
+              id="default-date"
+              type="date"
+              value={testDate}
+              onChange={(event) => setTestDate(event.target.value)}
+            />
+          </div>
           <ItemBuField
             idPrefix="default"
             label="Item"
@@ -552,31 +805,6 @@ export function RecordPage({
               setItem(next);
             }}
           />
-          <SerialLocationField
-            id="default-location"
-            label="Lokasi"
-            value={location.id}
-            valueLabel={location.label}
-            onChange={(id, label) => setLocation({ id, label })}
-          />
-          <div className="space-y-1.5">
-            <Label htmlFor="default-date">Tanggal uji</Label>
-            <Input
-              id="default-date"
-              type="date"
-              value={testDate}
-              onChange={(event) => setTestDate(event.target.value)}
-            />
-          </div>
-          <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="default-note">Catatan</Label>
-            <Input
-              id="default-note"
-              value={note}
-              maxLength={SERIAL_LIMITS.noteMax}
-              onChange={(event) => setNote(event.target.value)}
-            />
-          </div>
           <div className="flex items-end gap-2 pb-1.5">
             <Checkbox
               id="default-sample"
@@ -594,15 +822,30 @@ export function RecordPage({
               onChange={setStickerChoice}
             />
           </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <SerialNoteField id="default-note" label="Catatan" value={note} onChange={setNote} />
+          </div>
         </div>
       </section>
 
-      <SerialScanInput
-        id="serial-scan"
-        label="Scan atau tempel serial (satu per baris)"
-        onSubmit={addText}
-        autoFocus
-      />
+      <div data-tour="serial-scan">
+        <SerialScanInput
+          id="serial-scan"
+          label="Scan atau tempel serial (satu per baris)"
+          onSubmit={addText}
+          isKnown={isKnownSerial}
+          onCameraSaved={summarizeCameraSave}
+          cameraCapacity={draftCapacity}
+          disabled={gated}
+          strict={strict}
+          autoFocus
+        />
+        {gated ? (
+          <p role="status" className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+            Isi Default dulu: {missing.join(', ')}.
+          </p>
+        ) : null}
+      </div>
 
       {notice ? (
         <p
@@ -612,7 +855,7 @@ export function RecordPage({
           {notice.text}
         </p>
       ) : null}
-      {draftFailed ? (
+      {(draft ? draft.saveFailed === true : draftFailed) ? (
         <p
           role="alert"
           className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm"
@@ -622,12 +865,12 @@ export function RecordPage({
         </p>
       ) : null}
 
-      {selectedCount > 0 && !saving ? (
-        <BulkEditBar
+      {!saving ? (
+        <SelectionBar
           count={selectedCount}
-          onApply={applyBulkEdit}
-          onRemove={() => dropRows(selectedIds())}
-          onClearSelection={() => selectAll(false)}
+          onEdit={() => setBulkOpen(true)}
+          onRemove={() => setRemoveOpen(true)}
+          onClear={() => selectAll(false)}
         />
       ) : null}
 
@@ -652,22 +895,33 @@ export function RecordPage({
         />
       </div>
 
-      {rows.length === 0 ? (
-        <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
-          Belum ada serial. Scan, ketik lalu Enter, tempel, atau impor berkas .qcsn.
-        </p>
-      ) : (
-        <StagingTable
-          rows={rows}
-          disabled={saving}
-          onSelect={select}
-          onSelectAll={selectAll}
-          onEdit={edit}
-          onCommitSerial={commitSerial}
-          onOpenDetail={openDetail}
-          onRemove={removeOne}
-        />
-      )}
+      <div data-tour="serial-draft">
+        {rows.length === 0 ? (
+          <p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+            Belum ada serial. Scan, ketik lalu Enter, tempel, atau impor berkas .qcsn.
+          </p>
+        ) : desktop ? (
+          <StagingTable
+            rows={rows}
+            disabled={saving}
+            onSelect={select}
+            onSelectAll={selectAll}
+            onEdit={edit}
+            onCommitSerial={commitSerial}
+            onOpenDetail={openDetail}
+            onRemove={removeOne}
+            actorName={me.name}
+          />
+        ) : (
+          <StagingCards
+            rows={rows}
+            disabled={saving}
+            onSelect={select}
+            onSelectAll={selectAll}
+            onOpenDetail={openDetail}
+          />
+        )}
+      </div>
 
       {summary ? (
         <p role="status" className="rounded-md border bg-muted/40 px-3 py-2 text-sm">
@@ -679,7 +933,7 @@ export function RecordPage({
         </p>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3" data-tour="serial-save">
         <Button
           type="button"
           disabled={saving || importing || rows.length === 0}
@@ -707,7 +961,7 @@ export function RecordPage({
             onClick={() => {
               void discardProofPhotos(proofIdsOf(rowsRef.current));
               setAllRows([]);
-              clearDraft(ownerKey);
+              if (!draftRef.current) clearDraft(ownerKey);
               setNotice(null);
               setSummary(null);
             }}
@@ -718,13 +972,30 @@ export function RecordPage({
       </div>
 
       {detailRow && !saving ? (
-        <RowDetailDialog
+        <RowEditDialog
           key={detailRow.clientId}
           row={detailRow}
+          actorName={me.name}
+          commitSerial={(serial) => commitSerial(detailRow.clientId, serial)}
           onClose={() => setDetailId(null)}
           onApply={applyDetail}
         />
       ) : null}
+      {bulkOpen && selectedCount > 0 && !saving ? (
+        <BulkEditDialog
+          open
+          count={selectedCount}
+          onApply={applyBulkEdit}
+          onClose={() => setBulkOpen(false)}
+        />
+      ) : null}
+      <ConfirmRemoveDialog
+        open={removeOpen && selectedCount > 0 && !saving}
+        count={selectedCount}
+        photoCount={selectedPhotoCount}
+        onConfirm={removeSelected}
+        onCancel={() => setRemoveOpen(false)}
+      />
     </div>
   );
 }

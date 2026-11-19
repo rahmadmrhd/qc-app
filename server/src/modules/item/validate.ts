@@ -11,7 +11,9 @@ import type {
   SetItemStatusInput,
 } from '@shared/contract';
 import { MARKDOWN_MAX_LENGTH } from '@shared/files';
+import { FIRMWARE_CODE_MAX } from '@shared/firmware';
 import { ITEM_LIMITS, normalizeKey, normalizeNewlines } from '@shared/items';
+import { SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { INSTRUCTION_LIMITS, type StickerMarkTarget } from '@shared/stickers';
 
 const ITEM_STATUS_VALUES = ['active', 'inactive'] as const;
@@ -324,6 +326,55 @@ function firstErrorReader(reader: ObjectReader): ObjectReader {
   };
 }
 
+/** `firmware` opsional: tak dikirim = undefined (tak diubah); bila ada harus teks pendek tanpa karakter kontrol. */
+function readOptionalFirmware(
+  value: unknown,
+  reader: { fail(key: string, message: string): void },
+): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string') {
+    reader.fail('firmware', 'Harus berupa teks');
+    return undefined;
+  }
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: sengaja menolak karakter kontrol
+  if (value.length > FIRMWARE_CODE_MAX || /[\u0000-\u001f\u007f]/.test(value)) {
+    reader.fail('firmware', 'Firmware tidak valid');
+    return undefined;
+  }
+  return value;
+}
+
+/** `proofRequired` opsional: tak dikirim = undefined (tak diubah); bila ada harus boolean. */
+function readOptionalProofRequired(
+  value: unknown,
+  reader: { fail(key: string, message: string): void },
+): boolean | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'boolean') {
+    reader.fail('proofRequired', 'Harus true atau false');
+    return undefined;
+  }
+  return value;
+}
+
+/** `proofMin` opsional: tak dikirim = undefined (tak diubah); bila ada harus bilangan bulat 1 sampai batas foto per entri. */
+function readOptionalProofMin(
+  value: unknown,
+  reader: { fail(key: string, message: string): void },
+): number | undefined {
+  if (value === undefined) return undefined;
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > SERIAL_PROOF_LIMITS.perEntryMax
+  ) {
+    reader.fail('proofMin', `Minimum foto harus 1 sampai ${SERIAL_PROOF_LIMITS.perEntryMax}`);
+    return undefined;
+  }
+  return value;
+}
+
 export function validateSaveItem(raw: unknown): SaveItemInput {
   const reader = readObject(raw);
   const id = reader.optionalId('id');
@@ -335,6 +386,9 @@ export function validateSaveItem(raw: unknown): SaveItemInput {
   }
   const lock = reader.raw('isCountryLock');
   if (typeof lock !== 'boolean') reader.fail('isCountryLock', 'Harus true atau false');
+  const firmware = readOptionalFirmware(reader.raw('firmware'), reader);
+  const proofRequired = readOptionalProofRequired(reader.raw('proofRequired'), reader);
+  const proofMin = readOptionalProofMin(reader.raw('proofMin'), reader);
   const lists = firstErrorReader(reader);
   const aliases = readItemAliases(reader.raw('aliases'), lists);
   const stickerPhotos = readStickerPhotos(reader.raw('stickerPhotos'), lists);
@@ -350,6 +404,9 @@ export function validateSaveItem(raw: unknown): SaveItemInput {
     brandId,
     model,
     isCountryLock: lock === true,
+    ...(firmware !== undefined ? { firmware } : {}),
+    ...(proofRequired !== undefined ? { proofRequired } : {}),
+    ...(proofMin !== undefined ? { proofMin } : {}),
     aliases,
     stickerPhotos,
     accessories,

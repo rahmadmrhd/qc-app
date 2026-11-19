@@ -210,17 +210,12 @@ describe('dasar-layout', () => {
     expect(layout?.stepCount).toBe(DASAR_LAYOUT.steps.length);
   });
 
-  test('urutan langkah: tiap tombol disusul isi menunya yang dibuka tur (lokasi, lonceng, tema, profil)', () => {
+  test('urutan langkah: satu langkah per menu header yang dibuka tur (lokasi, lonceng, tema, profil), maks. 5', () => {
     expect(DASAR_LAYOUT.steps.map((step) => [step.target, step.buka])).toEqual([
       ['sidebar-menu', undefined],
-      ['location-picker', undefined],
       ['location-menu', 'location-picker'],
-      ['notification-bell', undefined],
       ['notification-menu', 'notification-bell'],
-      ['theme-toggle', undefined],
       ['theme-menu', 'theme-toggle'],
-      ['user-menu', undefined],
-      ['user-menu-account', 'user-menu'],
       ['user-menu-content', 'user-menu'],
     ]);
   });
@@ -232,7 +227,7 @@ describe('dasar-layout', () => {
     expect(text('notification-menu')).toMatch(/buka|task/i);
     expect(text('theme-menu')).toMatch(/Terang/);
     expect(text('theme-menu')).toMatch(/Gelap/);
-    expect(text('user-menu-account')).toMatch(/email/i);
+    expect(text('user-menu-content')).toMatch(/email/i);
     expect(text('user-menu-content')).toMatch(/Pasang aplikasi/);
   });
 

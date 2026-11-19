@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { pickNearestCenter, SCAN_FRAME, scanCropRect } from './scan-region';
+import {
+  pickNearestCenter,
+  pickNearestCenterCode,
+  SCAN_FRAME,
+  scanCropRect,
+  tapToVideoPoint,
+} from './scan-region';
 
 describe('scanCropRect', () => {
   const frame = { width: 0.8, height: 0.5 };
@@ -15,6 +21,33 @@ describe('scanCropRect', () => {
     const rect = scanCropRect({ width: 720, height: 1280 }, { width: 300, height: 300 }, frame);
     expect(rect).toEqual({ x: 72, y: 460, width: 576, height: 360 });
   });
+
+  test.each([
+    ['kotak potret 360x420 (kamera + tabel di layar ponsel), video landscape', 1280, 720, 360, 420],
+    ['kotak potret 360x420, video potret', 720, 1280, 360, 420],
+    ['kotak lebar 900x330 (desktop), video landscape', 1280, 720, 900, 330],
+    ['kotak lebar 900x330, video potret', 720, 1280, 900, 330],
+  ])(
+    'kotak tidak persegi: %s, potongan sebangun dengan bingkai dan berpusat di tengah video',
+    (_name, vw, vh, bw, bh) => {
+      const rect = scanCropRect({ width: vw, height: vh }, { width: bw, height: bh }, frame);
+      expect(rect).not.toBeNull();
+      const r = rect as NonNullable<typeof rect>;
+      // Bingkai di layar 0,8bw x 0,5bh; pada piksel video dibagi skala `cover` yang sama di kedua sumbu.
+      const scale = Math.max(bw / vw, bh / vh);
+      // Pembulatan keluar (mulai ke bawah, ujung ke atas) menambah paling banyak 2 piksel video.
+      expect(Math.abs(r.width * scale - bw * 0.8)).toBeLessThanOrEqual(2 * scale);
+      expect(Math.abs(r.height * scale - bh * 0.5)).toBeLessThanOrEqual(2 * scale);
+      // Video `cover` dipusatkan: pusat bingkai (pusat kotak) = pusat video.
+      expect(r.x + r.width / 2).toBeCloseTo(vw / 2, 0);
+      expect(r.y + r.height / 2).toBeCloseTo(vh / 2, 0);
+      // Tidak pernah keluar dari video.
+      expect(r.x).toBeGreaterThanOrEqual(0);
+      expect(r.y).toBeGreaterThanOrEqual(0);
+      expect(r.x + r.width).toBeLessThanOrEqual(vw);
+      expect(r.y + r.height).toBeLessThanOrEqual(vh);
+    },
+  );
 
   test('video persegi: bingkai = fraksi langsung', () => {
     expect(scanCropRect({ width: 1000, height: 1000 }, { width: 250, height: 250 }, frame)).toEqual(
@@ -137,5 +170,72 @@ describe('pickNearestCenter', () => {
         center,
       ),
     ).toBe('A');
+  });
+});
+
+describe('pickNearestCenterCode', () => {
+  test('mengembalikan kode utuh (teks, format, kotak) yang terdekat pusat', () => {
+    const near = { text: 'B', format: 'qr_code', box: { x: 90, y: 95, width: 20, height: 20 } };
+    const far = { text: 'A', format: 'code_128', box: { x: 0, y: 0, width: 20, height: 20 } };
+    expect(pickNearestCenterCode([far, near], { x: 100, y: 100 })).toBe(near);
+    expect(pickNearestCenterCode([], { x: 0, y: 0 })).toBeNull();
+    expect(pickNearestCenterCode([{ text: '', box: null }], null)).toBeNull();
+  });
+});
+
+describe('tapToVideoPoint', () => {
+  test('video persegi di kotak persegi: pecahan langsung', () => {
+    expect(
+      tapToVideoPoint(
+        { x: 75, y: 150 },
+        { width: 1000, height: 1000 },
+        { width: 300, height: 300 },
+      ),
+    ).toEqual({ x: 0.25, y: 0.5 });
+  });
+
+  test('landscape di kotak persegi (cover): sisi kiri-kanan terpotong, pusat tetap 0,5', () => {
+    // skala 300/720; video tampil 533,3 lebar, offsetX 116,67.
+    const point = tapToVideoPoint(
+      { x: 150, y: 150 },
+      { width: 1280, height: 720 },
+      { width: 300, height: 300 },
+    );
+    expect(point?.x).toBeCloseTo(0.5, 5);
+    expect(point?.y).toBeCloseTo(0.5, 5);
+    // Tepi kiri kotak = (116,67 / 533,33) dari lebar video.
+    const left = tapToVideoPoint(
+      { x: 0, y: 0 },
+      { width: 1280, height: 720 },
+      { width: 300, height: 300 },
+    );
+    expect(left?.x).toBeCloseTo(116.6667 / 533.3333, 4);
+    expect(left?.y).toBe(0);
+  });
+
+  test('potret di kotak persegi (cover): sisi atas-bawah terpotong', () => {
+    const top = tapToVideoPoint(
+      { x: 150, y: 0 },
+      { width: 720, height: 1280 },
+      { width: 300, height: 300 },
+    );
+    expect(top?.x).toBeCloseTo(0.5, 5);
+    expect(top?.y).toBeCloseTo(116.6667 / 533.3333, 4);
+  });
+
+  test('di luar kotak dijepit 0-1; ukuran atau titik tak valid = null', () => {
+    expect(
+      tapToVideoPoint({ x: -50, y: 999 }, { width: 100, height: 100 }, { width: 100, height: 100 }),
+    ).toEqual({ x: 0, y: 1 });
+    expect(
+      tapToVideoPoint({ x: 1, y: 1 }, { width: 0, height: 100 }, { width: 100, height: 100 }),
+    ).toBeNull();
+    expect(
+      tapToVideoPoint(
+        { x: Number.NaN, y: 1 },
+        { width: 100, height: 100 },
+        { width: 100, height: 100 },
+      ),
+    ).toBeNull();
   });
 });

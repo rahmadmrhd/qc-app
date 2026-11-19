@@ -6,7 +6,9 @@ import type {
   StickerDto,
   StickerTypeDto,
 } from '@shared/contract';
+import { firmwareOptionsFor, isValidFirmware } from '@shared/firmware';
 import { normalizeKey } from '@shared/items';
+import { SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { useForm, useStore } from '@tanstack/react-form';
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -14,6 +16,7 @@ import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
 import { FormHeader } from '@/components/form-header';
 import { LinkField, LinkMultiField, type LinkOption } from '@/components/link-field';
+import { Select } from '@/components/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -251,6 +254,12 @@ export function ItemForm({
   function selectBrand(id: string | null, known?: BrandDto) {
     form.setFieldValue('brandId', id ?? '');
     clear('brandId');
+    // Kode firmware hanya berlaku untuk merk tertentu: kosongkan bila tak berlaku bagi merk baru.
+    const brandName = id === null ? '' : (known ?? brandById(id))?.name;
+    if (!isValidFirmware(brandName ?? '', form.getFieldValue('firmware'))) {
+      form.setFieldValue('firmware', '');
+      clear('firmware');
+    }
     if (id !== null && !buTouched.current) {
       form.setFieldValue(
         'businessUnitIds',
@@ -358,7 +367,13 @@ export function ItemForm({
                 <Checkbox
                   id="item-country-lock"
                   checked={field.state.value}
-                  onCheckedChange={(next) => field.handleChange(next === true)}
+                  onCheckedChange={(next) => {
+                    field.handleChange(next === true);
+                    if (next !== true) {
+                      form.setFieldValue('firmware', '');
+                      clear('firmware');
+                    }
+                  }}
                 />
                 <Label htmlFor="item-country-lock" className="font-normal">
                   Country lock (wajib)
@@ -366,6 +381,103 @@ export function ItemForm({
               </div>
             )}
           </form.Field>
+          <form.Field name="proofRequired">
+            {(field) => (
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="item-proof-required"
+                  checked={field.state.value}
+                  onCheckedChange={(next) => {
+                    field.handleChange(next === true);
+                    if (next !== true) form.setFieldValue('proofMin', 1);
+                    clear('proofMin');
+                  }}
+                />
+                <Label htmlFor="item-proof-required" className="font-normal">
+                  Wajib foto bukti
+                </Label>
+              </div>
+            )}
+          </form.Field>
+          <form.Subscribe selector={(state) => state.values.proofRequired}>
+            {(required) =>
+              required ? (
+                <form.Field name="proofMin">
+                  {(field) => (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="item-proof-min">Minimum foto</Label>
+                      <Input
+                        id="item-proof-min"
+                        type="number"
+                        inputMode="numeric"
+                        min={1}
+                        max={SERIAL_PROOF_LIMITS.perEntryMax}
+                        step={1}
+                        className="w-28"
+                        value={Number.isNaN(field.state.value) ? '' : field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(event) => {
+                          field.handleChange(
+                            event.target.value === '' ? Number.NaN : Number(event.target.value),
+                          );
+                          clear('proofMin');
+                        }}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Saat mencatat Serial Number, item ini baru bisa disimpan kalau fotonya cukup
+                        (1–
+                        {SERIAL_PROOF_LIMITS.perEntryMax}).
+                      </p>
+                      <FieldError errors={[...field.state.meta.errors, serverError('proofMin')]} />
+                    </div>
+                  )}
+                </form.Field>
+              ) : null
+            }
+          </form.Subscribe>
+          <form.Subscribe
+            selector={(state) => ({
+              lock: state.values.isCountryLock,
+              brandId: state.values.brandId,
+            })}
+          >
+            {({ lock, brandId }) => {
+              const options = lock ? firmwareOptionsFor(brandById(brandId)?.name ?? '') : [];
+              if (!lock) return null;
+              return (
+                <form.Field name="firmware">
+                  {(field) => (
+                    <div className="space-y-1.5">
+                      <Select
+                        id="item-firmware"
+                        label="Firmware"
+                        placeholder={
+                          options.length > 0
+                            ? 'Pilih firmware'
+                            : 'Merk ini tak punya firmware Country lock'
+                        }
+                        value={field.state.value}
+                        options={options.map((option) => ({
+                          value: option.code,
+                          label: option.label,
+                        }))}
+                        onValueChange={(value) => {
+                          field.handleChange(value);
+                          clear('firmware');
+                        }}
+                        clearable
+                        disabled={options.length === 0}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Dipakai aplikasi desktop untuk memilih skrip Country Lock otomatis.
+                      </p>
+                      <FieldError errors={[...field.state.meta.errors, serverError('firmware')]} />
+                    </div>
+                  )}
+                </form.Field>
+              );
+            }}
+          </form.Subscribe>
           <form.Field name="aliasesText">
             {(field) => (
               <div className="space-y-1.5">

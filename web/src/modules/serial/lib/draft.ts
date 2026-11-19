@@ -3,6 +3,9 @@ import type { QcsnRow } from '@shared/serial-file';
 import { normalizeSerial, SERIAL_LIMITS, splitSerialInput } from '@shared/serials';
 import type { ProofPhotoRef } from './proof-source';
 
+/** Pesan bila draft sudah memuat `SERIAL_LIMITS.tableRows` baris (jalur item wajib foto menolak dari awal). */
+export const DRAFT_FULL_NOTE = `Draft sudah penuh (maks. ${SERIAL_LIMITS.tableRows} baris). Simpan dulu atau hapus beberapa baris sebelum menambah serial.`;
+
 export interface StagingSticker {
   stickerId: string;
   name: string;
@@ -26,6 +29,11 @@ export interface StagingRow {
   source: 'manual' | 'countrylock';
   /** `null` = bawaan semua stiker yang berlaku; diisi klien saat opsi stiker dimuat. */
   stickers: StagingSticker[] | null;
+  /**
+   * Minimum foto bukti item baris ini (0 atau tidak ada = item tidak wajib foto). Diisi dari opsi item saat baris
+   * dibuat atau item diganti; draft lama tanpa nilai ini berarti 0 (server tetap menegakkan aturan saat Simpan).
+   */
+  proofMin?: number;
   /** Foto bukti QC yang sudah diunggah (`draft` di server); hanya id yang dikirim saat Simpan. Tidak ikut `.qcsn`. */
   proofPhotos: ProofPhotoRef[];
   result?: 'duplicate' | 'invalid' | 'error';
@@ -33,6 +41,18 @@ export interface StagingRow {
   selected: boolean;
   /** Rujukan hasil impor yang tidak ditemukan; wajib dipilih ulang sebelum simpan. */
   unresolved?: ('item' | 'location' | 'stickers')[];
+}
+
+/**
+ * Draft yang dimiliki pemanggil (mode terkontrol `RecordPage`): tabel dan penyimpanannya diatur dari luar, mis. draft
+ * SQLite di aplikasi desktop. Tanpa ini `RecordPage` memakai state sendiri dan `localStorage` per pengguna.
+ */
+export interface DraftControl {
+  rows: StagingRow[];
+  /** Mengganti seluruh tabel (pemanggil menyimpannya). */
+  replace(next: StagingRow[]): void;
+  /** Penyimpanan terakhir gagal: peringatan "Draft tidak tersimpan otomatis" tampil. */
+  saveFailed?: boolean;
 }
 
 /** Nilai bawaan "rombongan" yang dipakai baris-baris baru. */
@@ -48,6 +68,23 @@ export interface Defaults {
   note: string;
   /** Pilihan stiker bawaan; `null`/tidak ada = semua yang berlaku (diselesaikan saat simpan). Disalin ke tiap baris. */
   stickers?: StagingSticker[] | null;
+  /** Minimum foto bukti item bawaan (0/tidak ada = tidak wajib); disalin ke tiap baris. */
+  proofMin?: number;
+}
+
+/** Label field Default yang masih kosong (menurut urutan form); kosong = Default siap dipakai untuk scan. */
+export function missingDefaults(d: {
+  itemId: string;
+  buId: string;
+  locationId: string;
+  testDate: string;
+}): string[] {
+  const missing: string[] = [];
+  if (d.locationId === '') missing.push('Lokasi');
+  if (d.testDate === '') missing.push('Tanggal uji');
+  if (d.itemId === '') missing.push('Item');
+  if (d.buId === '') missing.push('Business Unit');
+  return missing;
 }
 
 export interface AddReport {
@@ -69,6 +106,7 @@ export type BulkPatch = Partial<
     | 'locationLabel'
     | 'sample'
     | 'note'
+    | 'proofMin'
   >
 >;
 
@@ -115,6 +153,7 @@ export function addSerials(
       capturedAt: nowIso(),
       source: 'manual',
       stickers: defaults.stickers ? defaults.stickers.map((sticker) => ({ ...sticker })) : null,
+      ...(defaults.proofMin ? { proofMin: defaults.proofMin } : {}),
       proofPhotos: [],
       selected: false,
     });

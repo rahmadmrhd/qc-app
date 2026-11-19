@@ -644,6 +644,12 @@ export interface ItemDto extends ItemSummaryDto {
   attachments: string[];
   /** Detail Markdown. */
   detail: string;
+  /** Kode firmware Country Lock (`shared/firmware.ts`); '' = belum diisi atau bukan item Country lock. */
+  firmware: string;
+  /** Item wajib foto bukti pada Catat Serial (spek 2026-11-18); `proofMin` selalu 1 bila tidak wajib. */
+  proofRequired: boolean;
+  /** Jumlah foto bukti minimum (1 sampai `SERIAL_PROOF_LIMITS.perEntryMax`). */
+  proofMin: number;
   createdAt: string;
   updatedBy: string;
 }
@@ -656,6 +662,16 @@ export interface SaveItemInput {
   brandId: string;
   model: string;
   isCountryLock: boolean;
+  /**
+   * Kode firmware Country Lock; harus salah satu kode merk itu (`shared/firmware.ts`) atau '' dan hanya untuk item
+   * Country lock (selain itu ditolak). Tidak dikirim = tak diubah (klien lama), dan dikosongkan bila item bukan Country
+   * lock atau kodenya tak berlaku bagi merk baru.
+   */
+  firmware?: string;
+  /** Wajib foto bukti; tidak dikirim = tak diubah (klien lama), item baru = false. */
+  proofRequired?: boolean;
+  /** Minimum foto (1 sampai 5); tidak dikirim = tak diubah, item baru = 1; disimpan 1 bila `proofRequired` salah. */
+  proofMin?: number;
   aliases: string[];
   /** Instruksi stiker; PUT utuh (daftar kosong = tanpa instruksi). */
   stickerPhotos: ItemStickerPhotoInput[];
@@ -1231,6 +1247,7 @@ export interface ApiContract {
   'serials.itemOptions': { input: ListSerialItemOptionsInput; output: SerialItemOptionsPageDto };
   'serials.stickerOptions': { input: SerialStickerOptionsInput; output: SerialStickerOptionsDto };
   'serials.locationOptions': { input: null; output: SerialLocationOptionsDto };
+  'serials.buOptions': { input: null; output: SerialBuOptionsDto };
   'serials.serviceLocations': { input: null; output: SerialLocationOptionsDto };
   'serials.lookup': { input: SerialLookupInput; output: SerialLookupOutput };
   'serials.reportNew': { input: SerialReportNewInput; output: SerialDto };
@@ -1484,7 +1501,7 @@ export interface SerialSummaryDto {
   transitToLocationName: string | null;
   /** Tanggal kirim (`YYYY-MM-DD`) pengiriman yang berjalan. */
   transitOn: string | null;
-  /** Nomor kasus yang sedang terbuka (`LP-…`), bila ada. */
+  /** Nomor kasus yang sedang terbuka (`LP/<BU>/YYMM-iiii`; nomor lama `LP-YYYYMMDD-NNN` tetap sah), bila ada. */
   openCaseNumber: string | null;
   /** Entri serial ini (Tambah/Cek ulang) punya bukti foto QC. */
   hasProofPhotos: boolean;
@@ -1495,7 +1512,7 @@ export interface SerialSummaryDto {
 /** Laporan rusak (`serial_cases`): satu episode kegagalan. */
 export interface SerialCaseDto {
   id: string;
-  /** `LP-YYYYMMDD-NNN`. */
+  /** `LP/<kode BU>/YYMM-iiii` (nomor lama `LP-YYYYMMDD-NNN` tetap sah). */
   number: string;
   openedOn: string;
   closedOn: string | null;
@@ -1742,7 +1759,7 @@ export interface SerialCaseListInput {
 }
 export interface SerialCaseRowDto {
   id: string;
-  /** `LP-YYYYMMDD-NNN`. */
+  /** `LP/<kode BU>/YYMM-iiii` (nomor lama `LP-YYYYMMDD-NNN` tetap sah). */
   number: string;
   serialId: string;
   serial: string;
@@ -1777,6 +1794,10 @@ export interface SerialItemOptionDto {
   label: string;
   buIds: string[];
   buOptions: { id: string; code: string }[];
+  /** Item wajib foto bukti pada Catat Serial (spek 2026-11-18); `proofMin` selalu 1 bila tidak wajib. */
+  proofRequired: boolean;
+  /** Jumlah foto bukti minimum (1 sampai 5). */
+  proofMin: number;
 }
 export interface ListSerialItemOptionsInput {
   query?: string;
@@ -1802,6 +1823,16 @@ export interface SerialLocationOptionDto {
 export interface SerialLocationOptionsDto {
   /** Semua lokasi AKTIF, urut kode. */
   locations: SerialLocationOptionDto[];
+}
+/** Business Unit aktif yang boleh dipilih saat mencatat serial (BU serial tidak lagi dibatasi pada BU item; spek 2026-11-18 butir N). */
+export interface SerialBuOptionDto {
+  id: string;
+  code: string;
+  name: string;
+}
+export interface SerialBuOptionsDto {
+  /** BU AKTIF tempat user berlevel `serial: edit` (pembaca saja: BU yang boleh dibacanya), urut kode. */
+  businessUnits: SerialBuOptionDto[];
 }
 export interface SerialStickerOptionsInput {
   itemId: string;

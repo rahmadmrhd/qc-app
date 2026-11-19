@@ -1,8 +1,9 @@
 import type { HandoverDto } from '@shared/contract';
 import type { HandoverStatus } from '@shared/handover';
 import type { ReactNode } from 'react';
-import { Component, useEffect, useState } from 'react';
+import { Component, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { cn } from '@/lib/utils';
 import { BOARD_STATUSES, filterByStatus, groupBoard } from '../lib/group-board';
 import { hasIntersectionObserver, ScrollRootProvider, useOnNear } from '../lib/near-viewport';
@@ -28,24 +29,6 @@ export interface HandoverBoardProps {
 }
 
 const NO_PENDING: readonly PendingCreateView[] = [];
-
-const DESKTOP_QUERY = '(min-width: 768px)';
-
-/** Lebar ≥ 768 px = kanban; lebih sempit = daftar kartu. Tanpa `matchMedia` (mis. jsdom) dianggap lebar. */
-export function useIsDesktop(): boolean {
-  const read = () =>
-    typeof window.matchMedia === 'function' ? window.matchMedia(DESKTOP_QUERY).matches : true;
-  const [desktop, setDesktop] = useState(read);
-  useEffect(() => {
-    if (typeof window.matchMedia !== 'function') return;
-    const media = window.matchMedia(DESKTOP_QUERY);
-    const update = () => setDesktop(media.matches);
-    update();
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
-  }, []);
-  return desktop;
-}
 
 /** Data satu task yang rusak hanya menjatuhkan kartunya sendiri, bukan seluruh board. */
 class CardBoundary extends Component<{ number: string; children: ReactNode }, { failed: boolean }> {

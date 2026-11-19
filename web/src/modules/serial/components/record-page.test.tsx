@@ -5,12 +5,13 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { pickLink } from '@/test/link-field';
 import { addSerials, type StagingRow } from '../lib/draft';
+import { saveDraft } from '../lib/draft-store';
 import { exportQcsn } from '../lib/qcsn';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
 const toastSuccess = vi.hoisted(() => vi.fn());
-vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: vi.fn(), dismiss: vi.fn() } }));
 
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
@@ -18,8 +19,22 @@ vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
 import { RecordPage } from './record-page';
 
 const ITEMS = [
-  { id: 'i1', label: 'Cisco C9200', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
-  { id: 'i2', label: 'Aruba 2930', buIds: ['b1'], buOptions: [{ id: 'b1', code: 'BU1' }] },
+  {
+    id: 'i1',
+    label: 'Cisco C9200',
+    buIds: ['b1'],
+    buOptions: [{ id: 'b1', code: 'BU1' }],
+    proofRequired: false,
+    proofMin: 1,
+  },
+  {
+    id: 'i2',
+    label: 'Aruba 2930',
+    buIds: ['b1'],
+    buOptions: [{ id: 'b1', code: 'BU1' }],
+    proofRequired: false,
+    proofMin: 1,
+  },
 ];
 const STICKERS: Record<string, { id: string; name: string }[]> = {
   i1: [
@@ -152,7 +167,32 @@ test('menempel dua serial menambah dua baris dengan bawaan rombongan', async () 
     expect(within(row).getByText('Cisco C9200')).toBeInTheDocument();
     expect(within(row).getByText('Jakarta (JKT)')).toBeInTheDocument();
   }
-  expect(screen.getByText(/2 serial ditambahkan/)).toBeInTheDocument();
+  // Hasil murni sukses = toast (id tetap supaya scan berturut-turut mengganti, bukan menumpuk), bukan kotak inline.
+  expect(toastSuccess).toHaveBeenCalledWith(
+    '2 serial ditambahkan',
+    expect.objectContaining({ id: 'serial-add' }),
+  );
+  expect(screen.queryByText(/2 serial ditambahkan/)).toBeNull();
+});
+
+test('scan berturut-turut memakai id toast yang sama; duplikat tetap inline dan sukses berikutnya menghapusnya', async () => {
+  toastSuccess.mockClear();
+  renderPage();
+  await pickDefaults();
+  await paste('AAA111');
+  await paste('BBB222');
+  const addCalls = toastSuccess.mock.calls.filter((call) =>
+    String(call[0]).includes('ditambahkan'),
+  );
+  expect(addCalls).toHaveLength(2);
+  for (const call of addCalls) expect(call[1]).toMatchObject({ id: 'serial-add' });
+  const dismissed = vi.mocked((await import('sonner')).toast.dismiss);
+  dismissed.mockClear();
+  await paste('AAA111');
+  expect(dismissed).toHaveBeenCalledWith('serial-add');
+  expect(screen.getByText(/1 duplikat dilewati/)).toBeInTheDocument();
+  await paste('CCC333');
+  expect(screen.queryByText(/duplikat dilewati/)).toBeNull();
 });
 
 test('serial ganda menampilkan pesan dan tidak menambah baris', async () => {
@@ -189,7 +229,8 @@ test('ubah massal tiga baris terpilih mengganti lokasi dan hanya baris itu yang 
   for (const serial of ['A1', 'A2', 'A4']) {
     await userEvent.click(screen.getByRole('checkbox', { name: `Pilih baris ${serial}` }));
   }
-  expect(screen.getByText('Ubah massal (3 baris terpilih)')).toBeInTheDocument();
+  expect(screen.getByText('3 dipilih')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
   await pickLink(screen, 'Lokasi (ubah massal)', 'Surabaya (SBY)');
   await userEvent.click(screen.getByRole('button', { name: 'Terapkan ke 3 baris' }));
   const locations = dataRows().map((row) =>
@@ -212,9 +253,10 @@ test('mengganti item pada baris mengosongkan stiker; detail memuat ulang dengan 
 
   // Ganti item lewat ubah massal: pilihan stiker dikosongkan (bawaan semua yang berlaku).
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris A1' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Edit' }));
   await pickLink(screen, 'Item (ubah massal)', 'Aruba 2930');
   await userEvent.click(screen.getByRole('button', { name: 'Terapkan ke 1 baris' }));
-  expect(screen.getByText('Semua stiker yang berlaku')).toBeInTheDocument();
+  expect(screen.queryByText(/^Stiker A ×/)).toBeNull();
 
   await userEvent.click(screen.getByRole('button', { name: 'Detail A1' }));
   const next = await screen.findByRole('dialog');
@@ -303,8 +345,13 @@ test('galat jaringan menandai baris tersisa sebagai error dan menawarkan Coba la
 });
 
 test('simpan ditolak bila ada baris tanpa item atau lokasi', async () => {
+  // Gerbang Default mencegah baris baru tanpa item; baris tak lengkap datang dari draft lama atau impor.
+  const [row] = stagingRows(['A1']);
+  if (!row) throw new Error('seed');
+  saveDraft('a@gmail.com', [
+    { ...row, itemId: '', itemLabel: '', buId: '', buLabel: '', locationId: '', locationLabel: '' },
+  ]);
   renderPage();
-  await paste('A1');
   await userEvent.click(screen.getByRole('button', { name: /^Simpan/ }));
   expect(screen.getByText(/1 baris belum lengkap/)).toBeInTheDocument();
   expect(saveCalls).toHaveLength(0);

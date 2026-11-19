@@ -2,12 +2,14 @@
 // sebelum menyentuh layanan, tidak ada kanal yang menerima jalur berkas (folder paket dipilih lewat
 // dialog proses utama), dan galat ke renderer tidak pernah memuat kata sandi.
 //
-// Mode inject: Fase 0-1 hanya mode tunggal ('single'); `InjectRequest` tidak membawa mode.
+// Mode inject: `InjectRequest` selalu mode tunggal; mode Multi (jembatan v9) lewat kanal `multi*` ke `multi/host.ts`.
 
 import {
   type AuthStatus,
   BRIDGE_ARGS,
   BRIDGE_CHANNELS,
+  type CatalogSnapshot,
+  type CatalogStatus,
   type DeviceInfoResult,
   type InjectProgressDto,
   type InjectRequest,
@@ -15,28 +17,19 @@ import {
   type PackageDto,
   type PingResult,
   type RouterInfoResult,
-  stripTerminalControl,
 } from '@countrylock/bridge-contract';
-import {
-  type ConnectTarget,
-  type PingKind,
-  PlanError,
-  planInject,
-  scriptKey,
-} from '@countrylock/inject-plan';
+import type { ConnectTarget, PingKind } from '@countrylock/inject-plan';
 import type { AddResult, PendingEntry } from '@countrylock/pending';
-import { type Brand, ScriptRenderError } from '@countrylock/script-template';
-import type { z } from 'zod';
+import type { Brand } from '@countrylock/script-template';
+import { createInjectRunner } from './inject-runner';
+import { IpcError, parseArgs, sanitizeProgress } from './ipc-support';
+import { MULTI_CHANNEL_KEYS, type MultiHost } from './multi/host';
 import { type LoadedPackage, PackageError } from './package/local-folder';
+import { createPackageSession, type PackageSession } from './package/package-session';
 import type { Settings } from './settings';
-import { type HostKey, HostKeyError, type HostKeyOptions } from './ssh/host-key';
-import {
-  type InjectOptions,
-  type InjectOutcome,
-  type InjectReason,
-  maskSecrets,
-} from './ssh/inject-session';
-import { SENTINEL_BY_BRAND } from './ssh/strategy';
+import type { HostKey, HostKeyOptions } from './ssh/host-key';
+import type { InjectOptions, InjectOutcome } from './ssh/inject-session';
+import type { DraftStore } from './store/draft-store';
 import type { PendingStore } from './store/pending-store';
 
 /** Sebagian kecil `IpcMainInvokeEvent` yang dipakai; memudahkan tes tanpa memuat `electron`. */
@@ -52,6 +45,11 @@ export interface IpcDeps {
   ipcMain: IpcMainLike;
   settings: { get(): Settings; set(next: Partial<Settings>): void };
   loadPackage(dir: string): Promise<LoadedPackage>;
+  /**
+   * Paket aktif yang dibagi dengan runner Multi dan host Multi (satu muatan untuk semuanya). Tanpa ini `registerIpc`
+   * membuat sendiri dari `settings` + `loadPackage`.
+   */
+  packages?: PackageSession;
   /** Dialog pilih folder milik proses utama; null bila dibatalkan. Jalur tak pernah dari renderer. */
   chooseDirectory(): Promise<string | null>;
   ping(host: string, timeoutMs: number): Promise<{ ok: boolean; kind: PingKind }>;
@@ -60,8 +58,21 @@ export interface IpcDeps {
   fetchHostKey(opts: HostKeyOptions): Promise<HostKey>;
   runInject(opts: InjectOptions): Promise<InjectOutcome>;
   pending: PendingStore;
+  /** Draft Catat Serial Number (jembatan v8): snapshot tunggal; galatnya sampai ke renderer apa adanya. */
+  draft: DraftStore;
+  /** Host mode Multi-Device (jembatan v9); argumen kanal `multi*` sudah divalidasi di sini sebelum sampai ke host. */
+  multi: MultiHost;
   /** Login desktop (token hanya di proses utama; renderer hanya menerima `AuthStatus`). */
   auth: { status(): AuthStatus; start(): Promise<void>; logout(): void };
+  /**
+   * Katalog Tipe offline (potret tersimpan + sinkron). Hanya data katalog dan status yang sampai ke renderer: tanpa token,
+   * alamat server, atau jalur berkas.
+   */
+  catalog: {
+    snapshot(): CatalogSnapshot | null;
+    status(): CatalogStatus;
+    refresh(): Promise<CatalogStatus>;
+  };
   /** Menerapkan bundel UI siap dan memuat ulang jendela (proses utama yang memutuskan boleh/tidaknya). */
   ui: { reload(): Promise<void> };
   /** Kirim progres ke renderer (`webContents.send(INJECT_PROGRESS_EVENT, ...)`). */
@@ -76,32 +87,6 @@ export interface IpcDeps {
 }
 
 const PING_TIMEOUT_MS = 1000;
-const MAX_PROGRESS_CHARS = 500;
-
-/** Galat yang pesannya aman ditampilkan ke renderer (tanpa kata sandi). */
-class IpcError extends Error {}
-
-const REASON_MESSAGES: Record<InjectReason, string> = {
-  completed: 'Inject selesai',
-  'dropped-after-output':
-    'Inject selesai; perangkat memutus sambungan setelah skrip berjalan (kemungkinan memulai ulang)',
-  timeout: 'Perangkat tidak menjawab dalam batas waktu',
-  dropped: 'Sambungan ke perangkat terputus sebelum skrip selesai',
-  auth: 'Perangkat menolak kredensial',
-  connect: 'Tidak dapat tersambung ke perangkat',
-  cancelled: 'Inject dibatalkan',
-  error: 'Terjadi galat saat menjalankan skrip',
-};
-
-/** Argumen IPC divalidasi sebagai tuple (argumen berlebih ditolak); pesan tidak memuat nilai. */
-function parseArgs<T extends z.ZodType>(schema: T, args: unknown[]): z.infer<T> {
-  const result = schema.safeParse(args);
-  if (!result.success) {
-    const where = result.error.issues[0]?.path.filter((p) => typeof p === 'string').join('.');
-    throw new IpcError(`Argumen tidak valid${where ? `: ${where}` : ''}`);
-  }
-  return result.data;
-}
 
 function toPackageDto(pkg: LoadedPackage): PackageDto {
   return {
@@ -113,15 +98,38 @@ function toPackageDto(pkg: LoadedPackage): PackageDto {
   };
 }
 
-/** Buang escape terminal dulu, baru samarkan sandi (ANSI di tengah sandi tak boleh lolos). */
-function sanitizeProgress(text: string, secrets: readonly string[]): string {
-  const clean = maskSecrets(stripTerminalControl(text), secrets);
-  return clean.length > MAX_PROGRESS_CHARS ? `${clean.slice(0, MAX_PROGRESS_CHARS)}...` : clean;
+/**
+ * Galat penyimpanan draft: hanya pesan buatan sendiri (berkas draft rusak) yang diteruskan ke renderer agar pengguna tahu
+ * kenapa inject diblokir; selebihnya pesan generik (tanpa isi galat SQLite).
+ */
+function draftSafe<T>(action: () => T, fallback: string): T {
+  try {
+    return action();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    throw new IpcError(
+      /^(Draft tersimpan rusak|Berkas draft rusak)/.test(message) ? message : fallback,
+    );
+  }
 }
 
-export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
+export interface IpcHandle {
+  /** Ada inject yang berjalan (tunggal ATAU Multi): pengelola bundel UI dan penjaga muat ulang memakainya. */
+  isInjecting(): boolean;
+  /** Hanya inject mode tunggal. */
+  isSingleInjecting(): boolean;
+  /** Multi sedang meng-inject atau mengantre. */
+  isMultiBusy(): boolean;
+}
+
+export function registerIpc(deps: IpcDeps): IpcHandle {
   const running = new Map<string, AbortController>();
-  let current: LoadedPackage | null = null;
+  const packages =
+    deps.packages ??
+    createPackageSession({
+      packageDir: () => deps.settings.get().packageDir,
+      loadPackage: deps.loadPackage,
+    });
 
   const handle = (
     channel: string,
@@ -141,29 +149,30 @@ export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
     });
   };
 
-  const ensurePackage = async (): Promise<LoadedPackage | null> => {
-    if (current) return current;
-    const dir = deps.settings.get().packageDir;
-    if (!dir) return null;
-    current = await deps.loadPackage(dir);
-    return current;
-  };
+  const runner = createInjectRunner({
+    ensurePackage: () => packages.ensure(),
+    fetchHostKey: deps.fetchHostKey,
+    runInject: deps.runInject,
+    emitProgress: deps.emitProgress,
+  });
 
   handle(BRIDGE_CHANNELS.packageLoad, async (_event, ...args) => {
     parseArgs(BRIDGE_ARGS.packageLoad, args);
-    current = null;
-    const pkg = await ensurePackage();
+    // Selama Multi berjalan paketnya tak boleh diganti di bawah batch (skrip, firmware, dan kredensial dibaca darinya):
+    // halaman yang dibuka ulang tetap mendapat paket aktif tanpa memuat ulang dari folder.
+    const pkg = deps.multi.isRunning() ? await packages.ensure() : await packages.reload();
     return pkg ? toPackageDto(pkg) : null;
   });
 
   handle(BRIDGE_CHANNELS.packageChooseDir, async (_event, ...args) => {
     parseArgs(BRIDGE_ARGS.packageChooseDir, args);
+    if (deps.multi.isRunning()) throw new IpcError('Hentikan Multi dulu');
     const dir = await deps.chooseDirectory();
     if (!dir) return null;
     // Dimuat dulu: folder tanpa config.QC yang sah tidak menggantikan paket aktif.
     const pkg = await deps.loadPackage(dir);
     deps.settings.set({ packageDir: dir });
-    current = pkg;
+    packages.adopt(pkg);
     return toPackageDto(pkg);
   });
 
@@ -188,6 +197,18 @@ export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
 
   handle(BRIDGE_CHANNELS.injectRun, async (_event, ...args) => {
     const [req] = parseArgs(BRIDGE_ARGS.injectRun, args);
+    // Saling-kecualikan dengan Multi (L4.2): router yang sama tidak boleh dipakai dua mode sekaligus.
+    if (deps.multi.isInjecting()) {
+      return { ok: false, stage: 'failed', message: 'Hentikan Multi dulu' } satisfies InjectResult;
+    }
+    // Mengubah bridge port router memutus perangkat: inject tunggal menunggu penyiapan bridge selesai.
+    if (deps.multi.isPreparingBridge()) {
+      return {
+        ok: false,
+        stage: 'failed',
+        message: 'Sedang menyiapkan bridge router, coba lagi sebentar',
+      } satisfies InjectResult;
+    }
     return runInjectRequest(req);
   });
 
@@ -221,6 +242,21 @@ export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
     await deps.ui.reload();
   });
 
+  handle(BRIDGE_CHANNELS.catalogGet, async (_event, ...args): Promise<CatalogSnapshot | null> => {
+    parseArgs(BRIDGE_ARGS.catalogGet, args);
+    return deps.catalog.snapshot();
+  });
+
+  handle(BRIDGE_CHANNELS.catalogStatus, async (_event, ...args): Promise<CatalogStatus> => {
+    parseArgs(BRIDGE_ARGS.catalogStatus, args);
+    return deps.catalog.status();
+  });
+
+  handle(BRIDGE_CHANNELS.catalogRefresh, async (_event, ...args): Promise<CatalogStatus> => {
+    parseArgs(BRIDGE_ARGS.catalogRefresh, args);
+    return deps.catalog.refresh();
+  });
+
   handle(BRIDGE_CHANNELS.pendingList, async (_event, ...args): Promise<PendingEntry[]> => {
     parseArgs(BRIDGE_ARGS.pendingList, args);
     return deps.pending.list();
@@ -236,89 +272,53 @@ export function registerIpc(deps: IpcDeps): { isInjecting(): boolean } {
     deps.pending.remove(serial);
   });
 
-  // Pengelola bundel UI memakai ini agar bundel tak ditukar di tengah inject.
-  return { isInjecting: () => running.size > 0 };
+  handle(BRIDGE_CHANNELS.draftLoad, async (_event, ...args): Promise<unknown[]> => {
+    parseArgs(BRIDGE_ARGS.draftLoad, args);
+    return draftSafe(() => deps.draft.load(), 'Draft tidak dapat dibaca');
+  });
+
+  handle(BRIDGE_CHANNELS.draftSave, async (_event, ...args) => {
+    const [rows] = parseArgs(BRIDGE_ARGS.draftSave, args);
+    draftSafe(() => deps.draft.save(rows), 'Draft tidak dapat disimpan');
+  });
+
+  // Mode Multi (jembatan v9): argumen divalidasi di sini (zod, tuple ketat), lalu perintah diteruskan ke host. Hanya galat
+  // berpesan buatan sendiri (`IpcError`) yang sampai ke renderer.
+  for (const key of MULTI_CHANNEL_KEYS) {
+    handle(BRIDGE_CHANNELS[key], async (_event, ...args) => {
+      const parsed = parseArgs(BRIDGE_ARGS[key], args);
+      return deps.multi.handle(key, parsed as unknown[]);
+    });
+  }
+
+  // Pengelola bundel UI memakai ini agar bundel tak ditukar di tengah inject (tunggal maupun Multi).
+  return {
+    isInjecting: () => running.size > 0 || deps.multi.isInjecting(),
+    isSingleInjecting: () => running.size > 0,
+    isMultiBusy: () => deps.multi.isInjecting(),
+  };
 
   async function runInjectRequest(req: InjectRequest): Promise<InjectResult> {
-    // Sandi yang diketahui sejauh ini; diperluas setelah paket dimuat. Semua pesan hasil disamarkan.
-    let known: string[] = [req.target.password];
-    const failed = (message: string): InjectResult => ({
-      ok: false,
-      stage: 'failed',
-      message: sanitizeProgress(message, known),
-    });
-
-    if (running.has(req.id)) return failed('Inject dengan id ini sedang berjalan');
+    if (running.has(req.id)) {
+      return {
+        ok: false,
+        stage: 'failed',
+        message: sanitizeProgress('Inject dengan id ini sedang berjalan', [req.target.password]),
+      };
+    }
     const controller = new AbortController();
     running.set(req.id, controller);
     try {
-      const pkg = await ensurePackage();
-      if (!pkg) return failed('Paket skrip belum dipilih');
-
-      const { config } = pkg;
-      const serverPassword = config.server.password;
-      known = [req.target.password, serverPassword];
-
-      // {sshKey} = host key RSA router (server) yang diambil SAAT tersambung; hanya bila skrip memakainya.
-      let sshKey = '';
-      const brandConfig = config.brands[req.brand];
-      const firmware = brandConfig?.firmware.find((f) => f.code === req.firmwareCode);
-      const rawScript =
-        brandConfig && firmware ? pkg.scripts[scriptKey(brandConfig, firmware.file)] : undefined;
-      if (rawScript?.includes('{sshKey}')) {
-        const hostKey = await deps.fetchHostKey({
-          host: config.server.ip,
-          username: config.server.username,
-          password: serverPassword,
-        });
-        sshKey = hostKey.base64;
-      }
-
-      const plan = planInject({
-        config,
-        brand: req.brand,
-        mode: 'single',
-        firmwareCode: req.firmwareCode,
-        scripts: new Map(Object.entries(pkg.scripts)),
-        target: req.target,
-        sshKey,
-      });
-      // plan.secrets = semua bentuk sisipan sandi di skrip (escape); ditambah sandi mentah.
-      const secrets = [...new Set([...plan.secrets, ...known.filter((p) => p.length > 0)])];
-      known = secrets;
-
-      const outcome = await deps.runInject({
-        host: plan.connect.host,
-        username: plan.connect.username,
-        password: plan.connect.password,
-        script: plan.script,
-        sentinel: SENTINEL_BY_BRAND[req.brand],
-        secrets,
-        signal: controller.signal,
-        onProgress: (progress) => {
-          deps.emitProgress({
-            id: req.id,
-            stage: progress.stage,
-            message: sanitizeProgress(progress.message, secrets),
-          });
+      return await runner.run(
+        {
+          id: req.id,
+          mode: 'single',
+          brand: req.brand,
+          firmwareCode: req.firmwareCode,
+          target: req.target,
         },
-      });
-      const stage = outcome.ok
-        ? 'completed'
-        : outcome.reason === 'cancelled'
-          ? 'cancelled'
-          : 'failed';
-      return { ok: outcome.ok, stage, message: REASON_MESSAGES[outcome.reason] };
-    } catch (error) {
-      if (
-        error instanceof PlanError ||
-        error instanceof ScriptRenderError ||
-        error instanceof PackageError ||
-        error instanceof HostKeyError
-      ) {
-        return failed(error.message);
-      }
-      return failed('Terjadi galat saat menyiapkan inject');
+        controller.signal,
+      );
     } finally {
       running.delete(req.id);
       if (running.size === 0) deps.onInjectIdle?.();

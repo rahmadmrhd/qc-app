@@ -1,6 +1,6 @@
 import type { SerialDto } from '@shared/contract';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -27,7 +27,7 @@ export interface TimelineTabsProps {
 }
 
 /**
- * Linimasa bertab: Semua, satu tab per laporan (LP-…), Pengecekan, Perubahan data. Tiap tab memuat `serials.history`
+ * Linimasa bertab: Semua, satu tab per laporan (LP/<BU>/YYMM-iiii), Pengecekan, Perubahan data. Tiap tab memuat `serials.history`
  * berkursor (server mengirim terbaru dulu) dengan tombol "Muat yang lebih lama" di dalam kelompok riwayat sebelumnya; jumlah di tab dari `counts` server.
  */
 export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
@@ -51,9 +51,28 @@ export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
   const count = (value: number | undefined) => (value === undefined ? '' : ` (${value})`);
   const events = history.data?.pages.flatMap((page) => page.events) ?? [];
 
+  // Tab aktif (mis. tab laporan yang dibuka dari tautan) digeser ke area terlihat; hanya menggeser baris tab itu sendiri,
+  // bukan halaman (beda dengan scrollIntoView).
+  const listRef = useRef<HTMLDivElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dijalankan ulang tiap `tab` berganti
+  useEffect(() => {
+    const list = listRef.current;
+    const active = list?.querySelector<HTMLElement>('[data-state="active"]');
+    if (!list || !active) return;
+    const listBox = list.getBoundingClientRect();
+    const box = active.getBoundingClientRect();
+    if (box.left < listBox.left) list.scrollLeft += box.left - listBox.left - 8;
+    else if (box.right > listBox.right) list.scrollLeft += box.right - listBox.right + 8;
+  }, [tab]);
+
   return (
-    <Tabs value={tab} onValueChange={setTab}>
-      <TabsList className="h-auto w-full flex-wrap justify-start gap-1">
+    <Tabs value={tab} onValueChange={setTab} className="min-w-0">
+      {/* Baris tab tidak dibungkus: banyak tab laporan membuatnya bisa digeser mendatar di dalam pembungkusnya. */}
+      <TabsList
+        ref={listRef}
+        className="h-auto w-full justify-start gap-1 overflow-x-auto overflow-y-hidden"
+        data-tour="serial-timeline"
+      >
         <TabsTrigger value="all" className="flex-none">
           {`${HISTORY_GROUP_LABEL.all}${count(counts.current?.all)}`}
         </TabsTrigger>

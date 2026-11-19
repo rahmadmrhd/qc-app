@@ -48,7 +48,12 @@ function AlertDialogContent({
   children,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
-  size?: "default" | "sm"
+  /**
+   * `full` = layar penuh (lebar dan tinggi viewport, tanpa sudut membulat, menghormati area aman notch/bilah gestur);
+   * badan tanpa padding dan tanpa jarak antaranak supaya pemakai menata sendiri bagian yang menyusut
+   * (`min-h-0 flex-1 overflow-*`). Header/footer tetap menempel di penggulir.
+   */
+  size?: "default" | "sm" | "full"
 }) {
   return (
     <AlertDialogPortal>
@@ -57,7 +62,7 @@ function AlertDialogContent({
         data-slot="alert-dialog-content"
         data-size={size}
         className={cn(
-          "group/alert-dialog-content fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "group/alert-dialog-content fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-[size=full]:inset-0 data-[size=full]:h-dvh data-[size=full]:max-h-none data-[size=full]:w-screen data-[size=full]:max-w-none data-[size=full]:translate-x-0 data-[size=full]:translate-y-0 data-[size=full]:rounded-none data-[size=full]:pt-[env(safe-area-inset-top)] data-[size=full]:pb-[env(safe-area-inset-bottom)] data-[size=full]:ring-0",
           className
         )}
         {...props}
@@ -65,7 +70,10 @@ function AlertDialogContent({
         {/* Hanya badan ini yang di-scroll; header dan footer menempel (sticky) di tepinya (lihat ui/dialog.tsx). */}
         <div
           data-slot="alert-dialog-scroll"
-          className="flex min-h-0 flex-1 scroll-py-20 flex-col gap-4 overflow-x-hidden overflow-y-auto p-4"
+          className={cn(
+            "flex min-h-0 flex-1 scroll-py-20 flex-col gap-4 overflow-x-hidden overflow-y-auto p-4",
+            size === "full" && "gap-0 p-0"
+          )}
         >
           {children}
         </div>

@@ -83,7 +83,7 @@ async function enableAlert(recipients = ['a@contoh.com', 'b@contoh.com']): Promi
   expect(out.ok).toBe(true);
 }
 
-const CASE = { id: 'case-1', number: 'LP-20261110-001', openedOn: '2026-11-10' };
+const CASE = { id: 'case-1', number: 'LP/A/2611-0001', openedOn: '2026-11-10' };
 const seedBroken = () =>
   seedSerial(env, {
     id: 'sn1',
@@ -146,7 +146,7 @@ describe('declare_broken dan antrean job', () => {
         'Serial Number: AB12',
         'Item: Merk Alfa',
         'BU: A (A)',
-        'Nomor LP: LP-20261110-001',
+        'Nomor LP: LP/A/2611-0001',
         'Lokasi unit: Surabaya',
         'Dilaporkan: 2026-11-10',
         'Dinyatakan rusak: 2026-11-12',

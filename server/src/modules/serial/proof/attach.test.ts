@@ -104,7 +104,7 @@ const seedOne = (over: Record<string, unknown> = {}) =>
     ...over,
   });
 const seedReported = (over: Record<string, unknown> = {}) =>
-  seedOne({ status: 'reported', openCase: { id: 'case-1', number: 'LP-20261110-001' }, ...over });
+  seedOne({ status: 'reported', openCase: { id: 'case-1', number: 'LP/A/2611-0001' }, ...over });
 const seedRecheckTransit = (over: Record<string, unknown> = {}) =>
   seedSerial(env, {
     id: 'sn1',
@@ -116,7 +116,7 @@ const seedRecheckTransit = (over: Record<string, unknown> = {}) =>
     transitFromLocationId: 'loc-jkt',
     transitToLocationId: 'loc-sby',
     transitOn: '2026-11-10',
-    openCase: { id: 'case-1', number: 'LP-20261110-001', originLocationId: 'loc-sby' },
+    openCase: { id: 'case-1', number: 'LP/A/2611-0001', originLocationId: 'loc-sby' },
     ...over,
   });
 

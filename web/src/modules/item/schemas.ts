@@ -1,6 +1,7 @@
 import type { ItemDto, SaveItemInput } from '@shared/contract';
 import { MARKDOWN_MAX_LENGTH } from '@shared/files';
 import { ITEM_LIMITS, normalizeKey } from '@shared/items';
+import { SERIAL_PROOF_LIMITS } from '@shared/serials';
 import { INSTRUCTION_LIMITS } from '@shared/stickers';
 import { z } from 'zod';
 import { copyMarks } from './lib/sticker-instructions';
@@ -10,6 +11,8 @@ export const ITEM_FIELD_KEYS = [
   'brandId',
   'businessUnitIds',
   'model',
+  'firmware',
+  'proofMin',
   'aliases',
   'stickerPhotos',
   'accessories',
@@ -75,6 +78,10 @@ export const itemFormSchema = z
         'Tipe harus memuat huruf atau angka',
       ),
     isCountryLock: z.boolean(),
+    firmware: z.string(),
+    proofRequired: z.boolean(),
+    /** Hanya bermakna bila `proofRequired`; kolom kosong atau di luar rentang ditolak lewat `superRefine` di bawah. */
+    proofMin: z.number(`Minimum foto harus 1–${SERIAL_PROOF_LIMITS.perEntryMax}`),
     aliasesText: z.string().superRefine((text, ctx) => {
       const lines = text
         .split('\n')
@@ -157,6 +164,18 @@ export const itemFormSchema = z
     detail: z.string().max(MARKDOWN_MAX_LENGTH, `Maksimal ${MARKDOWN_MAX_LENGTH} karakter`),
   })
   .superRefine((values, ctx) => {
+    if (
+      values.proofRequired &&
+      (!Number.isInteger(values.proofMin) ||
+        values.proofMin < 1 ||
+        values.proofMin > SERIAL_PROOF_LIMITS.perEntryMax)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['proofMin'],
+        message: `Minimum foto harus 1–${SERIAL_PROOF_LIMITS.perEntryMax}`,
+      });
+    }
     values.stickerPhotos.forEach((photo, index) => {
       if (photo.buId !== null && !values.businessUnitIds.includes(photo.buId)) {
         ctx.addIssue({
@@ -176,6 +195,9 @@ export function toItemFormDefaults(item?: ItemDto): ItemFormInput {
     businessUnitIds: item ? item.businessUnits.map((bu) => bu.id) : [],
     model: item?.model ?? '',
     isCountryLock: item?.isCountryLock ?? false,
+    firmware: item?.firmware ?? '',
+    proofRequired: item?.proofRequired ?? false,
+    proofMin: item?.proofMin ?? 1,
     aliasesText: item ? item.aliases.join('\n') : '',
     stickerPhotos: item
       ? item.stickerPhotos.map((photo) => ({
@@ -201,6 +223,9 @@ export function toSaveItemInput(
     businessUnitIds: [...values.businessUnitIds],
     model: values.model.trim(),
     isCountryLock: values.isCountryLock,
+    firmware: values.isCountryLock ? values.firmware : '',
+    proofRequired: values.proofRequired,
+    proofMin: values.proofRequired ? values.proofMin : 1,
     aliases: parseAliasLines(values.aliasesText),
     stickerPhotos: values.stickerPhotos.map((photo) => ({
       guideId: photo.guideId,

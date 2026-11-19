@@ -63,7 +63,9 @@ describe('resolveAppFile', () => {
 describe('CSP', () => {
   test('APP_CSP memuat default-src self dan tidak mengizinkan unsafe-eval', () => {
     expect(APP_CSP).toContain("default-src 'self'");
-    expect(APP_CSP).not.toContain('unsafe-eval');
+    // Hanya 'wasm-unsafe-eval' (pemindai WASM); 'unsafe-eval' polos (eval/new Function) tidak boleh ada.
+    expect(APP_CSP).not.toMatch(/(?<!wasm-)unsafe-eval/);
+    expect(APP_CSP).toMatch(/script-src[^;]*'wasm-unsafe-eval'/);
     expect(APP_CSP).not.toMatch(/script-src[^;]*unsafe-inline/);
     expect(APP_CSP).toContain("object-src 'none'");
     expect(APP_CSP).toContain("frame-ancestors 'none'");
@@ -75,8 +77,8 @@ describe('CSP', () => {
     const hashes = inlineScriptHashes(html);
     expect(hashes).toHaveLength(1);
     const csp = buildAppCsp(hashes);
-    expect(csp).toContain(`script-src 'self' 'sha256-${hashes[0]}'`);
-    expect(csp).not.toContain('unsafe-eval');
+    expect(csp).toContain(`script-src 'self' 'wasm-unsafe-eval' 'sha256-${hashes[0]}'`);
+    expect(csp).not.toMatch(/(?<!wasm-)unsafe-eval/);
   });
 });
 
@@ -189,5 +191,44 @@ describe('akar UI dinamis', () => {
       rmSync(a, { recursive: true, force: true });
       rmSync(b, { recursive: true, force: true });
     }
+  });
+});
+
+describe('gambar katalog Tipe offline (/catalog-files/<id>)', () => {
+  const png = Buffer.from([137, 80, 78, 71]);
+  const read = (id: string) => (id === 'g1' ? { data: png, mime: 'image/png' } : null);
+
+  test('menyajikan gambar dari cache dengan tipe dan header keamanan', async () => {
+    const res = await createAppHandler(ROOT, undefined, { read })(
+      new Request('app://qc/catalog-files/g1'),
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('image/png');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(Buffer.from(await res.arrayBuffer())).toEqual(png);
+  });
+
+  test('id tak dikenal, tak sah (traversal, titik, kosong), atau tanpa sumber katalog = 404 tanpa menyentuh UI', async () => {
+    const handler = createAppHandler(ROOT, undefined, { read });
+    for (const path of [
+      '/catalog-files/tidak-ada',
+      '/catalog-files/..%2F..%2Fx',
+      '/catalog-files/a.png',
+      '/catalog-files/',
+      '/catalog-files/g1/extra',
+    ]) {
+      expect((await handler(new Request(`app://qc${path}`))).status, path).toBe(404);
+    }
+    expect((await createAppHandler(ROOT)(new Request('app://qc/catalog-files/g1'))).status).toBe(
+      404,
+    );
+  });
+
+  test('origin lain tidak dilayani sebagai gambar katalog', async () => {
+    const res = await createAppHandler(ROOT, undefined, { read })(
+      new Request('app://lain/catalog-files/g1'),
+    );
+    expect(res.status).toBe(403);
   });
 });

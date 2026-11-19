@@ -55,7 +55,7 @@ Status serial (`serials.status`, `VARCHAR(32)` tanpa batasan): `good` Lolos, `re
 
 | Aksi | Dari (status, custody) | Hasil | Modul |
 |---|---|---|---|
-| Lapor rusak | `good` (custody `qc`) atau serial baru | `reported`, membuka laporan (`LP-…`); catatan wajib | `serial` |
+| Lapor rusak | `good` (custody `qc`) atau serial baru | `reported`, membuka laporan (`LP/<BU>/YYMM-iiii`; format diubah 2026-11-18 oleh keputusan pemilik, spek 2026-11-12 butir 11); catatan wajib | `serial` |
 | Kirim ke servis | `reported` | `at_service`, custody `transit`; lokasi tujuan dari konfigurasi lokasi servis | `serial` |
 | Terima (servis) | `at_service`, `transit` | custody `service`, lokasi = lokasi servis | `serialservice` |
 | Diagnosis, dengan pilihan status | `at_service` (custody `transit` atau `service`; `transit` berarti diterima otomatis), `diagnosis`, `service_repair`, custody `service` | pilihan: `diagnosis`; `service_repair`; Selesai → `recheck`, custody `transit`, tujuan lokasi QC asal; Rusak → `broken`, laporan ditutup (`outcome` `broken`), surel (catatan wajib) | `serialservice` |
@@ -65,7 +65,7 @@ Status serial (`serials.status`, `VARCHAR(32)` tanpa batasan): `good` Lolos, `re
 | Cek ulang, hasil gagal | `reported`, `recheck` | `reported`; laporan tetap terbuka; stiker bertambah | `serial` |
 | Catatan | semua status termasuk `broken` | tetap | `serial` (semua), `serialservice` (status servis: `at_service`, `diagnosis`, `service_repair`) |
 
-Dihapus: Tidak lolos, identifikasi kerusakan, perbaikan QC sebagai aksi tersendiri, "nyatakan rusak" sebagai aksi tersendiri, `send`/`receive` antar lokasi, `send` kembali ke QC (diganti Selesai), dan field Kerusakan. Kasus (`serial_cases`) dan nomor `LP-YYYYMMDD-NNN` tetap; kolom `damage` dibiarkan (tidak diisi lagi), dihapus pada rilis berikutnya. Aksi di luar tabel ditolak seperti 5b (`CONFLICT`, `FORBIDDEN`, `VALIDATION`). Satu laporan aktif per serial (diperiksa di server, bukan hanya UI); permintaan serentak diselesaikan lewat CAS seperti 5b.
+Dihapus: Tidak lolos, identifikasi kerusakan, perbaikan QC sebagai aksi tersendiri, "nyatakan rusak" sebagai aksi tersendiri, `send`/`receive` antar lokasi, `send` kembali ke QC (diganti Selesai), dan field Kerusakan. Kasus (`serial_cases`) dan nomor tetap (`LP-YYYYMMDD-NNN`; sejak 2026-11-18 nomor baru berformat `LP/<kode BU>/YYMM-iiii` atas keputusan pemilik, dan nomor lama tetap sah tanpa dinomori ulang); kolom `damage` dibiarkan (tidak diisi lagi), dihapus pada rilis berikutnya. Aksi di luar tabel ditolak seperti 5b (`CONFLICT`, `FORBIDDEN`, `VALIDATION`). Satu laporan aktif per serial (diperiksa di server, bukan hanya UI); permintaan serentak diselesaikan lewat CAS seperti 5b.
 
 Pemeriksaan "lokasi tujuan harus beda dengan lokasi sekarang" (`act.ts`) dicabut: kirim dari QC Surabaya ke servis Surabaya sah.
 
@@ -83,7 +83,7 @@ Halaman Lapor Rusak (`/serial/report`, `serial: edit`; dibuka dari tombol "Lapor
 - Ketik atau pindai Serial Number (normalisasi `normalizeSerial`, spek §5.1). Dicocokkan dengan serial di BU yang dapat ditulis pengguna; bila ada di lebih dari satu BU, pengguna memilih BU.
 - Ditemukan, `good`: tampil ringkasan unit dan kolom catatan (wajib); tombol Lapor membuka laporan dan meneruskan riwayat serial itu.
 - Ditemukan, punya laporan aktif: ditolak "sudah ada laporan aktif" dengan tautan ke laporan itu (nomor LP). Ditemukan, `broken`: ditolak "unit ini sudah dinyatakan rusak". Keduanya tidak membuat kejadian.
-- Tidak ditemukan: form meminta item (menentukan BU; bila item ada di dua BU atau lebih, pilih BU), lokasi, dan catatan; serial dibuat langsung berstatus `reported` dengan kejadian `recorded` lalu `report_failure`, tanggal uji = hari ini WIB, satu transaksi.
+- Tidak ditemukan: form meminta item dan BU (BU bawaan dari item, boleh dipilih bebas di antara BU yang boleh ditulis pengguna; diubah 2026-11-18, spek wajib foto butir N), lokasi, dan catatan; serial dibuat langsung berstatus `reported` dengan kejadian `recorded` lalu `report_failure`, tanggal uji = hari ini WIB, satu transaksi.
 - Pesan galat dan data masuk tetap generik soal BU lain (spek BU keputusan 13).
 
 Tambah Serial Number tidak punya kolom status dan "Catat langsung Tidak lolos" dihapus; `saveBatch` dan `.qcsn` hanya `good` (baris berstatus lain dianggap bermasalah). Menggantikan butir 40 (d).

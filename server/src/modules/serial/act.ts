@@ -12,6 +12,7 @@ import { extractFileRefs } from '@shared/items';
 import { wibDateIso } from '@shared/postel';
 import { type FlowRow, resolveAction, SERIAL_FLOW, sendLegOf } from '@shared/serial-flow';
 import {
+  caseNumberPeriod,
   SERIAL_CUSTODIES,
   SERIAL_CUSTODY_LABELS,
   SERIAL_STATUS_LABELS,
@@ -267,7 +268,7 @@ async function applyAct(
   };
   /** Membuka laporan baru: nomor LP dipesan dan penjaganya ikut batch (selalu paling depan). */
   const openNewCase = async (): Promise<string> => {
-    const reservation = await reserveCaseNumber(env, today.replaceAll('-', ''));
+    const reservation = await reserveCaseNumber(env, row.bu_code.trim(), caseNumberPeriod(today));
     counterStatements.push(...reservation.statements);
     caseStatements.push(
       insertCaseStmt(env.DB, {

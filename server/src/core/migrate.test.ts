@@ -323,6 +323,9 @@ describe('skema baseline', () => {
       { name: '0020_notifikasi_serial.sql' },
       { name: '0021_indeks_notifikasi_serial.sql' },
       { name: '0022_push_perangkat_senyap.sql' },
+      { name: '0023_firmware_item.sql' },
+      { name: '0024_item_wajib_foto.sql' },
+      { name: '0025_nomor_laporan_baru.sql' },
     ]);
   });
 

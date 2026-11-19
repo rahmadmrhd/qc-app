@@ -44,7 +44,16 @@ export function mergeProofSelection(
   items: readonly LibraryItem[],
   max: number,
 ): { next: ProofPhotoRef[]; extras: string[] } {
-  const merged = [...value, ...items.map(toProofRef)];
+  return mergeProofPhotos(value, items.map(toProofRef), max);
+}
+
+/** Seperti `mergeProofSelection` untuk foto yang sudah berbentuk `ProofPhotoRef` (dialog Foto bukti). */
+export function mergeProofPhotos(
+  value: readonly ProofPhotoRef[],
+  photos: readonly ProofPhotoRef[],
+  max: number,
+): { next: ProofPhotoRef[]; extras: string[] } {
+  const merged = [...value, ...photos];
   return { next: merged.slice(0, max), extras: merged.slice(max).map((photo) => photo.id) };
 }
 

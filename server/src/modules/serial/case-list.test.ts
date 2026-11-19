@@ -45,6 +45,7 @@ async function seedCase(
     closed?: boolean;
     createdAt?: string;
     message?: string;
+    number?: string;
   } = {},
 ): Promise<void> {
   const createdAt = over.createdAt ?? `2026-11-0${n}T00:00:00.000Z`;
@@ -56,7 +57,7 @@ async function seedCase(
     status: over.closed ? 'good' : 'reported',
     openCase: {
       id,
-      number: `LP-2026110${n}-001`,
+      number: over.number ?? `LP/A/2611-000${n}`,
       openedOn: `2026-11-0${n}`,
       createdAt,
       createdBy: 'pelapor@gmail.com',
@@ -83,7 +84,7 @@ describe('serialCases.list', () => {
     expect(out.ok).toBe(true);
     expect(out.data.items.map((i: Json) => i.id)).toEqual(['c2', 'c1']);
     expect(out.data.items[0]).toMatchObject({
-      number: 'LP-20261103-001',
+      number: 'LP/A/2611-0003',
       serialId: 'sn-c2',
       serial: 'SN-C2',
       buId: 'bu-a',
@@ -162,12 +163,34 @@ describe('serialCases.list', () => {
   test('pencarian menurut nomor LP atau Serial Number (awalan, huruf besar tak dibedakan)', async () => {
     await seedCase('c1', 1);
     await seedCase('c2', 2);
-    const byNumber = await list(SERIAL_USERS.viewer, { query: 'lp-20261102' });
+    const byNumber = await list(SERIAL_USERS.viewer, { query: 'lp/a/2611-0002' });
     expect(byNumber.data.items.map((i: Json) => i.id)).toEqual(['c2']);
     const bySerial = await list(SERIAL_USERS.viewer, { query: 'sn-c1' });
     expect(bySerial.data.items.map((i: Json) => i.id)).toEqual(['c1']);
     // karakter LIKE tidak diperlakukan sebagai wildcard
     expect((await list(SERIAL_USERS.viewer, { query: '%' })).data.items).toEqual([]);
+  });
+
+  test('daftar memuat nomor format lama dan baru: urutan terbaru dulu, pencarian awalan keduanya, kursor melewati nomor ber-/', async () => {
+    await seedCase('old', 1, { number: 'LP-20261101-001' });
+    await seedCase('n1', 2, { number: 'LP/SBY/2611-0001' });
+    await seedCase('n2', 3, { number: 'LP/SBY/2611-0002' });
+    await seedCase('n3', 4, { number: 'LP/JKT/2611-0001' });
+    const all = await list(SERIAL_USERS.viewer);
+    expect(all.data.items.map((i: Json) => i.id)).toEqual(['n3', 'n2', 'n1', 'old']);
+    const byNew = await list(SERIAL_USERS.viewer, { query: 'LP/SBY/2611' });
+    expect(byNew.data.items.map((i: Json) => i.id)).toEqual(['n2', 'n1']);
+    const byOld = await list(SERIAL_USERS.viewer, { query: 'LP-2026' });
+    expect(byOld.data.items.map((i: Json) => i.id)).toEqual(['old']);
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    for (let guard = 0; guard < 4; guard++) {
+      const out = await list(SERIAL_USERS.viewer, { limit: 1, ...(cursor ? { cursor } : {}) });
+      seen.push(...out.data.items.map((i: Json) => i.id));
+      if (!out.data.nextCursor) break;
+      cursor = out.data.nextCursor;
+    }
+    expect(seen).toEqual(['n3', 'n2', 'n1', 'old']);
   });
 
   test('halaman berkursor: tanpa duplikat dan tanpa celah', async () => {
