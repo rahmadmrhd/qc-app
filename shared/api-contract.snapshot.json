@@ -1,0 +1,793 @@
+[
+  {
+    "id": "access.audit.list",
+    "verb": "GET",
+    "path": "/audit-logs",
+    "query": {
+      "action": "string",
+      "cursor": "string",
+      "limit": "number",
+      "query": "string"
+    }
+  },
+  {
+    "id": "access.businessUnits.list",
+    "verb": "GET",
+    "path": "/business-units"
+  },
+  {
+    "id": "access.businessUnits.save",
+    "verb": "PUT",
+    "path": "/business-units/{id}",
+    "create": {
+      "verb": "POST",
+      "path": "/business-units"
+    }
+  },
+  {
+    "id": "access.businessUnits.setStatus",
+    "verb": "PATCH",
+    "path": "/business-units/{id}"
+  },
+  {
+    "id": "access.locations.list",
+    "verb": "GET",
+    "path": "/locations"
+  },
+  {
+    "id": "access.locations.save",
+    "verb": "PUT",
+    "path": "/locations/{id}",
+    "create": {
+      "verb": "POST",
+      "path": "/locations"
+    }
+  },
+  {
+    "id": "access.locations.setStatus",
+    "verb": "PATCH",
+    "path": "/locations/{id}"
+  },
+  {
+    "id": "access.roles.delete",
+    "verb": "DELETE",
+    "path": "/roles/{id}"
+  },
+  {
+    "id": "access.roles.list",
+    "verb": "GET",
+    "path": "/roles"
+  },
+  {
+    "id": "access.roles.save",
+    "verb": "PUT",
+    "path": "/roles/{id}",
+    "create": {
+      "verb": "POST",
+      "path": "/roles"
+    }
+  },
+  {
+    "id": "access.users.list",
+    "verb": "GET",
+    "path": "/users"
+  },
+  {
+    "id": "access.users.save",
+    "verb": "PUT",
+    "path": "/users/{id}",
+    "create": {
+      "verb": "POST",
+      "path": "/users"
+    }
+  },
+  {
+    "id": "access.users.setStatus",
+    "verb": "PATCH",
+    "path": "/users/{id}"
+  },
+  {
+    "id": "auth.me",
+    "verb": "GET",
+    "path": "/me"
+  },
+  {
+    "id": "brands.list",
+    "verb": "GET",
+    "path": "/brands"
+  },
+  {
+    "id": "brands.save",
+    "verb": "PUT",
+    "path": "/brands/{id}",
+    "create": {
+      "verb": "POST",
+      "path": "/brands"
+    }
+  },
+  {
+    "id": "brands.setStatus",
+    "verb": "PATCH",
+    "path": "/brands/{id}"
+  },
+  {
+    "id": "businessUnits.options",
+    "verb": "GET",
+    "path": "/business-units/options"
+  },
+  {
+    "id": "customers.list",
+    "verb": "GET",
+    "path": "/customers"
+  },
+  {
+    "id": "customers.rename",
+    "verb": "PUT",
+    "path": "/customers/{id}"
+  },
+  {
+    "id": "customers.setStatus",
+    "verb": "PATCH",
+    "path": "/customers/{id}"
+  },
+  {
+    "id": "desktop.handoff",
+    "verb": "POST",
+    "path": "/desktop/handoff"
+  },
+  {
+    "id": "exports.sheets",
+    "verb": "POST",
+    "path": "/exports/sheets"
+  },
+  {
+    "id": "files.get",
+    "verb": "GET",
+    "path": "/files/{id}"
+  },
+  {
+    "id": "files.upload",
+    "verb": "POST",
+    "path": "/files",
+    "query": {
+      "height": "number",
+      "width": "number"
+    }
+  },
+  {
+    "id": "guides.list",
+    "verb": "GET",
+    "path": "/guides"
+  },
+  {
+    "id": "guides.mark",
+    "verb": "PUT",
+    "path": "/guides/{id}"
+  },
+  {
+    "id": "guides.reset",
+    "verb": "POST",
+    "path": "/guides/{id}/reset"
+  },
+  {
+    "id": "handovers.board",
+    "verb": "GET",
+    "path": "/handovers",
+    "query": {
+      "cursor": "string",
+      "limit": "number",
+      "locationIds": "list",
+      "status": "string"
+    }
+  },
+  {
+    "id": "handovers.cancel",
+    "verb": "POST",
+    "path": "/handovers/{id}/cancel"
+  },
+  {
+    "id": "handovers.comment",
+    "verb": "POST",
+    "path": "/handovers/{id}/comments"
+  },
+  {
+    "id": "handovers.get",
+    "verb": "GET",
+    "path": "/handovers/{id}",
+    "query": {
+      "locationIds": "list"
+    }
+  },
+  {
+    "id": "handovers.options",
+    "verb": "GET",
+    "path": "/handovers/options",
+    "query": {
+      "locationIds": "list"
+    }
+  },
+  {
+    "id": "handovers.reopen",
+    "verb": "POST",
+    "path": "/handovers/{id}/reopen"
+  },
+  {
+    "id": "handovers.save",
+    "verb": "PUT",
+    "path": "/handovers/{id}",
+    "create": {
+      "verb": "POST",
+      "path": "/handovers"
+    }
+  },
+  {
+    "id": "handovers.saveBatch",
+    "verb": "POST",
+    "path": "/handovers/batch"
+  },
+  {
+    "id": "handovers.setCheck",
+    "verb": "PUT",
+    "path": "/handovers/{id}/checks"
+  },
+  {
+    "id": "handovers.setDone",
+    "verb": "POST",
+    "path": "/handovers/{id}/done"
+  },
+  {
+    "id": "items.get",
+    "verb": "GET",
+    "path": "/items/{id}"
+  },
+  {
+    "id": "items.list",
+    "verb": "GET",
+    "path": "/items",
+    "query": {
+      "cursor": "string",
+      "instruction": "string",
+      "limit": "number",
+      "manualBook": "string",
+      "postel": "string",
+      "query": "string",
+      "status": "string",
+      "stickerId": "string",
+      "stickerMode": "string",
+      "typeId": "string"
+    }
+  },
+  {
+    "id": "items.save",
+    "verb": "PUT",
+    "path": "/items/{id}",
+    "create": {
+      "verb": "POST",
+      "path": "/items"
+    }
+  },
+  {
+    "id": "items.setStatus",
+    "verb": "PATCH",
+    "path": "/items/{id}"
+  },
+  {
+    "id": "jobs.get",
+    "verb": "GET",
+    "path": "/jobs/{id}"
+  },
+  {
+    "id": "notifications.list",
+    "verb": "GET",
+    "path": "/notifications",
+    "query": {
+      "before": "string",
+      "limit": "number"
+    }
+  },
+  {
+    "id": "notifications.markAllRead",
+    "verb": "POST",
+    "path": "/notifications/read-all"
+  },
+  {
+    "id": "notifications.markRead",
+    "verb": "POST",
+    "path": "/notifications/{id}/read"
+  },
+  {
+    "id": "postelFiles.get",
+    "verb": "GET",
+    "path": "/postel-files/{id}"
+  },
+  {
+    "id": "postelFiles.upload",
+    "verb": "POST",
+    "path": "/postel-files"
+  },
+  {
+    "id": "postelSettings.get",
+    "verb": "GET",
+    "path": "/postel-settings"
+  },
+  {
+    "id": "postelSettings.save",
+    "verb": "PUT",
+    "path": "/postel-settings"
+  },
+  {
+    "id": "postels.get",
+    "verb": "GET",
+    "path": "/postels/{id}"
+  },
+  {
+    "id": "postels.history",
+    "verb": "GET",
+    "path": "/postels/{id}/history",
+    "query": {
+      "cursor": "string",
+      "limit": "number"
+    }
+  },
+  {
+    "id": "postels.itemOptions",
+    "verb": "GET",
+    "path": "/postels/item-options",
+    "query": {
+      "cursor": "string",
+      "limit": "number",
+      "query": "string"
+    }
+  },
+  {
+    "id": "postels.list",
+    "verb": "GET",
+    "path": "/postels"
+  },
+  {
+    "id": "postels.remove",
+    "verb": "DELETE",
+    "path": "/postels/{id}"
+  },
+  {
+    "id": "postels.save",
+    "verb": "PUT",
+    "path": "/postels/{id}",
+    "create": {
+      "verb": "POST",
+      "path": "/postels"
+    }
+  },
+  {
+    "id": "push.config",
+    "verb": "GET",
+    "path": "/push/config"
+  },
+  {
+    "id": "push.deviceState",
+    "verb": "POST",
+    "path": "/push/device/state"
+  },
+  {
+    "id": "push.reportPermission",
+    "verb": "PUT",
+    "path": "/push/permission"
+  },
+  {
+    "id": "push.setDeviceMuted",
+    "verb": "PUT",
+    "path": "/push/device"
+  },
+  {
+    "id": "push.setPreference",
+    "verb": "PUT",
+    "path": "/push/preference"
+  },
+  {
+    "id": "push.status",
+    "verb": "GET",
+    "path": "/push/status"
+  },
+  {
+    "id": "push.subscribe",
+    "verb": "POST",
+    "path": "/push/subscriptions"
+  },
+  {
+    "id": "push.unsubscribe",
+    "verb": "POST",
+    "path": "/push/unsubscribe"
+  },
+  {
+    "id": "qrcodes.cloneFromDrive",
+    "verb": "POST",
+    "path": "/qrcode-documents/clone"
+  },
+  {
+    "id": "qrcodes.clonePreset",
+    "verb": "POST",
+    "path": "/qrcode-presets/{id}/clone"
+  },
+  {
+    "id": "qrcodes.delete",
+    "verb": "DELETE",
+    "path": "/qrcodes/{id}"
+  },
+  {
+    "id": "qrcodes.deletePreset",
+    "verb": "DELETE",
+    "path": "/qrcode-presets/{id}"
+  },
+  {
+    "id": "qrcodes.export",
+    "verb": "POST",
+    "path": "/qrcodes/{id}/exports",
+    "query": {
+      "reason": "string"
+    }
+  },
+  {
+    "id": "qrcodes.file",
+    "verb": "GET",
+    "path": "/qrcodes/{id}/files/{kind}"
+  },
+  {
+    "id": "qrcodes.get",
+    "verb": "GET",
+    "path": "/qrcodes/{id}"
+  },
+  {
+    "id": "qrcodes.getDefaults",
+    "verb": "GET",
+    "path": "/qrcode-defaults"
+  },
+  {
+    "id": "qrcodes.itemOptions",
+    "verb": "GET",
+    "path": "/qrcode-item-options",
+    "query": {
+      "cursor": "string",
+      "limit": "number",
+      "query": "string"
+    }
+  },
+  {
+    "id": "qrcodes.list",
+    "verb": "GET",
+    "path": "/qrcodes"
+  },
+  {
+    "id": "qrcodes.save",
+    "verb": "PUT",
+    "path": "/qrcodes/{id}",
+    "create": {
+      "verb": "POST",
+      "path": "/qrcodes"
+    }
+  },
+  {
+    "id": "qrcodes.saveLogoLibrary",
+    "verb": "PUT",
+    "path": "/qrcode-defaults/logos"
+  },
+  {
+    "id": "qrcodes.savePreset",
+    "verb": "PUT",
+    "path": "/qrcode-presets/{id}",
+    "create": {
+      "verb": "POST",
+      "path": "/qrcode-presets"
+    }
+  },
+  {
+    "id": "qrcodes.uploadPdf",
+    "verb": "POST",
+    "path": "/qrcode-documents",
+    "query": {
+      "name": "string",
+      "replaceDocumentId": "string"
+    }
+  },
+  {
+    "id": "qrcodes.versions",
+    "verb": "GET",
+    "path": "/qrcodes/{id}/versions"
+  },
+  {
+    "id": "serialCases.list",
+    "verb": "GET",
+    "path": "/serial-cases",
+    "query": {
+      "buId": "string",
+      "cursor": "string",
+      "limit": "number",
+      "query": "string",
+      "status": "string"
+    }
+  },
+  {
+    "id": "serialProofs.get",
+    "verb": "GET",
+    "path": "/serial-proofs/{id}"
+  },
+  {
+    "id": "serialProofs.remove",
+    "verb": "DELETE",
+    "path": "/serial-proofs/{id}"
+  },
+  {
+    "id": "serialProofs.replace",
+    "verb": "POST",
+    "path": "/serial-proofs/{photoId}/replace"
+  },
+  {
+    "id": "serialProofs.retry",
+    "verb": "POST",
+    "path": "/serial-proofs/{id}/retry"
+  },
+  {
+    "id": "serialProofs.upload",
+    "verb": "POST",
+    "path": "/serial-proofs",
+    "query": {
+      "height": "number",
+      "width": "number"
+    }
+  },
+  {
+    "id": "serialServiceSettings.get",
+    "verb": "GET",
+    "path": "/serial-service-settings"
+  },
+  {
+    "id": "serialServiceSettings.save",
+    "verb": "PUT",
+    "path": "/serial-service-settings"
+  },
+  {
+    "id": "serialSettings.get",
+    "verb": "GET",
+    "path": "/serial-settings"
+  },
+  {
+    "id": "serialSettings.save",
+    "verb": "PUT",
+    "path": "/serial-settings"
+  },
+  {
+    "id": "serials.act",
+    "verb": "POST",
+    "path": "/serials/{id}/act"
+  },
+  {
+    "id": "serials.buOptions",
+    "verb": "GET",
+    "path": "/serials/bu-options"
+  },
+  {
+    "id": "serials.get",
+    "verb": "GET",
+    "path": "/serials/{id}"
+  },
+  {
+    "id": "serials.history",
+    "verb": "GET",
+    "path": "/serials/{id}/history",
+    "query": {
+      "caseId": "string",
+      "cursor": "string",
+      "group": "string",
+      "limit": "number"
+    }
+  },
+  {
+    "id": "serials.itemOptions",
+    "verb": "GET",
+    "path": "/serials/item-options",
+    "query": {
+      "cursor": "string",
+      "itemIds": "list",
+      "limit": "number",
+      "query": "string"
+    }
+  },
+  {
+    "id": "serials.list",
+    "verb": "GET",
+    "path": "/serials",
+    "query": {
+      "buId": "string",
+      "createdBy": "string",
+      "cursor": "string",
+      "custody": "string",
+      "from": "string",
+      "itemId": "string",
+      "limit": "number",
+      "locationId": "string",
+      "query": "string",
+      "serials": "string",
+      "status": "string",
+      "to": "string"
+    }
+  },
+  {
+    "id": "serials.locationOptions",
+    "verb": "GET",
+    "path": "/serials/location-options"
+  },
+  {
+    "id": "serials.lookup",
+    "verb": "GET",
+    "path": "/serials/lookup",
+    "query": {
+      "serial": "string"
+    }
+  },
+  {
+    "id": "serials.lookupMany",
+    "verb": "POST",
+    "path": "/serials/lookup-many"
+  },
+  {
+    "id": "serials.reportNew",
+    "verb": "POST",
+    "path": "/serials/report"
+  },
+  {
+    "id": "serials.saveBatch",
+    "verb": "POST",
+    "path": "/serials/batch"
+  },
+  {
+    "id": "serials.serviceLocations",
+    "verb": "GET",
+    "path": "/serials/service-locations"
+  },
+  {
+    "id": "serials.stickerOptions",
+    "verb": "GET",
+    "path": "/serials/sticker-options",
+    "query": {
+      "buId": "string",
+      "itemId": "string",
+      "serialId": "string"
+    }
+  },
+  {
+    "id": "serials.update",
+    "verb": "PUT",
+    "path": "/serials/{id}"
+  },
+  {
+    "id": "serials.updateBatch",
+    "verb": "POST",
+    "path": "/serials/batch-update"
+  },
+  {
+    "id": "stickerGuides.list",
+    "verb": "GET",
+    "path": "/sticker-guides",
+    "query": {
+      "cursor": "string",
+      "limit": "number",
+      "mine": "boolean",
+      "search": "string",
+      "sort": "string",
+      "unused": "boolean"
+    }
+  },
+  {
+    "id": "stickerGuides.remove",
+    "verb": "DELETE",
+    "path": "/sticker-guides/{id}"
+  },
+  {
+    "id": "stickerGuides.rename",
+    "verb": "PATCH",
+    "path": "/sticker-guides/{id}"
+  },
+  {
+    "id": "stickerGuides.thumbnail",
+    "verb": "GET",
+    "path": "/sticker-guides/{id}/thumbnail"
+  },
+  {
+    "id": "stickerGuides.upload",
+    "verb": "POST",
+    "path": "/sticker-guides",
+    "query": {
+      "height": "number",
+      "mime": "string",
+      "name": "string",
+      "thumbMime": "string",
+      "width": "number"
+    }
+  },
+  {
+    "id": "stickerGuides.usages",
+    "verb": "GET",
+    "path": "/sticker-guides/{id}/usages"
+  },
+  {
+    "id": "stickerSettings.get",
+    "verb": "GET",
+    "path": "/sticker-settings"
+  },
+  {
+    "id": "stickerSettings.save",
+    "verb": "PUT",
+    "path": "/sticker-settings"
+  },
+  {
+    "id": "stickerStock.adjust",
+    "verb": "POST",
+    "path": "/sticker-stock/adjustments"
+  },
+  {
+    "id": "stickerStock.history",
+    "verb": "GET",
+    "path": "/sticker-stock/entries",
+    "query": {
+      "cursor": "string",
+      "limit": "number",
+      "locationIds": "list",
+      "stickerId": "string"
+    }
+  },
+  {
+    "id": "stickerStock.list",
+    "verb": "GET",
+    "path": "/sticker-stock",
+    "query": {
+      "locationIds": "list"
+    }
+  },
+  {
+    "id": "stickerStock.opname",
+    "verb": "POST",
+    "path": "/sticker-stock/opname"
+  },
+  {
+    "id": "stickerStock.record",
+    "verb": "POST",
+    "path": "/sticker-stock/entries"
+  },
+  {
+    "id": "stickerTypes.list",
+    "verb": "GET",
+    "path": "/sticker-types"
+  },
+  {
+    "id": "stickerTypes.save",
+    "verb": "PUT",
+    "path": "/sticker-types/{id}",
+    "create": {
+      "verb": "POST",
+      "path": "/sticker-types"
+    }
+  },
+  {
+    "id": "stickerTypes.setStatus",
+    "verb": "PATCH",
+    "path": "/sticker-types/{id}"
+  },
+  {
+    "id": "stickers.list",
+    "verb": "GET",
+    "path": "/stickers"
+  },
+  {
+    "id": "stickers.save",
+    "verb": "PUT",
+    "path": "/stickers/{id}",
+    "create": {
+      "verb": "POST",
+      "path": "/stickers"
+    }
+  },
+  {
+    "id": "stickers.setStatus",
+    "verb": "PATCH",
+    "path": "/stickers/{id}"
+  }
+]
