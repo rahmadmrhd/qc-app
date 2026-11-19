@@ -1,7 +1,9 @@
 // Tes migrator dan skema baseline MariaDB terhadap database nyata di VPS (butuh `bun run db:tunnel`).
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
 import { createDb, type Db, DbError } from '@server/core/db';
+import type { Env } from '@server/core/env';
 import { applyMigrations, loadMigrations } from '@server/core/migrate';
+import { ensureSerialUniqueIndex } from '@server/modules/serial/bu-history';
 import { newTestSchemaName, testDbUrl } from '@server-test/db-env';
 
 const URL_NO_DB = testDbUrl();
@@ -349,7 +351,9 @@ describe('skema baseline', () => {
     expect(columns.results.map((r) => r.c)).toEqual(['serial_event_id', 'serial_id']);
   });
 
-  test('serials: serial unik se-sistem (lintas BU) dan client_id unik', async () => {
+  test('serials: serial unik se-sistem (lintas BU, indeks dibuat ensureSerialUniqueIndex) dan client_id unik', async () => {
+    // Indeks unik serial dibuat server saat boot, bukan migrasi 0026 (pemeriksa dump menolak PREPARE).
+    expect(await ensureSerialUniqueIndex({ DB: db } as Env)).toBe('created');
     const insert = (id: string, clientId: string, bu: string, serial: string) =>
       db
         .prepare(
@@ -362,6 +366,8 @@ describe('skema baseline', () => {
     await expect(insert('c', 'cc', 'bu1', 'SN1')).rejects.toBeInstanceOf(DbError);
     await expect(insert('d', 'ca', 'bu3', 'SN9')).rejects.toBeInstanceOf(DbError);
     await insert('e', 'ce', 'bu2', 'SN2');
+    // Skema ini dipakai tes berikutnya (daftar indeks hasil migrasi saja): kembalikan keadaan tanpa indeks bentukan boot.
+    await db.prepare('DROP INDEX serials_serial ON serials').run();
   });
 
   test('serial_events.client_id: NULLABLE, banyak NULL boleh, nilai terisi unik', async () => {
@@ -519,7 +525,6 @@ describe('skema baseline', () => {
         'serials.serials_client_id',
         'serials.serials_custody',
         'serials.serials_item',
-        'serials.serials_serial',
         'serials.serials_location',
         'serials.serials_status',
         'sticker_business_units.sticker_business_units_bu',

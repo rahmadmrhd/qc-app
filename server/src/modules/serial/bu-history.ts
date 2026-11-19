@@ -25,6 +25,9 @@ export async function backfillSerialBusinessUnits(env: Env): Promise<void> {
  * Membuat indeks unik `serials_serial` bila belum ada dan tidak ada serial ganda (idempoten, dipanggil tiap start
  * setelah migrasi). Ada serial ganda lintas BU = `'duplicates'`: dicatat sebagai peringatan (hanya jumlahnya, tanpa
  * nilai serial) dan start TIDAK digagalkan; keunikan dijaga aplikasi sampai skrip penyatuan dijalankan.
+ *
+ * Ini SATU-SATUNYA pembuat indeks (migrasi 0026 tidak membuatnya: pemeriksa dump pemulihan menolak PREPARE/SET @var).
+ * Templat tes (`test-support/test-db.ts`) memanggilnya juga, supaya tes punya penjaga DB yang sama dengan produksi.
  */
 export async function ensureSerialUniqueIndex(
   env: Env,

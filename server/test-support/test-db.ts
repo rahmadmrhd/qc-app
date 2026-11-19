@@ -1,7 +1,9 @@
 // Skema tes MariaDB: templat `qc_test_template` (diperbarui bila hash migrasi berubah), klon per proses/berkas tes
 // `qc_test_<epoch detik>_<hex>`, pengosongan per tes, pembersihan skema yatim. Butuh `bun run db:tunnel`.
 import { createDb, type Db } from '@server/core/db';
+import type { Env } from '@server/core/env';
 import { applyMigrations, hashMigrations, loadMigrations } from '@server/core/migrate';
+import { ensureSerialUniqueIndex } from '@server/modules/serial/bu-history';
 import mysql from 'mysql2/promise';
 import { newTestSchemaName, TEST_SCHEMA_PREFIX, testDbUrl } from './db-env';
 
@@ -54,6 +56,8 @@ async function refreshTemplate(): Promise<void> {
     const template = createDb({ url: testDbUrl(), database: TEMPLATE_SCHEMA, connectionLimit: 2 });
     try {
       await applyMigrations(template, migrations);
+      // Indeks unik serial dibuat server saat boot (bukan migrasi); templat tes meniru keadaan itu (idempoten).
+      await ensureSerialUniqueIndex({ DB: template } as Env);
       await template.exec(
         `CREATE TABLE _template_meta (hash VARCHAR(64) NOT NULL) ENGINE=InnoDB; INSERT INTO _template_meta VALUES ('${hash}')`,
       );

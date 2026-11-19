@@ -1,9 +1,11 @@
-// Tes migrasi 0026 (serial unik se-sistem): backfill riwayat BU dan indeks unik BERSYARAT terhadap MariaDB nyata
-// (butuh `bun run db:tunnel`).
+// Tes migrasi 0026 (serial unik se-sistem): backfill riwayat BU, kolom `client_id`, dan indeks unik `serials_serial`
+// yang dibuat BERSYARAT oleh `ensureSerialUniqueIndex` (bukan migrasi) terhadap MariaDB nyata (butuh `bun run db:tunnel`).
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { createDb, type Db } from '@server/core/db';
+import type { Env } from '@server/core/env';
 import { applyMigrations, loadMigrations } from '@server/core/migrate';
 import { newTestSchemaName, testDbUrl } from '@server-test/db-env';
+import { ensureSerialUniqueIndex } from './bu-history';
 
 setDefaultTimeout(60_000);
 
@@ -53,7 +55,7 @@ const hasUnique = async (db: Db): Promise<boolean> => {
 };
 
 describe('migrasi 0026 serial unik se-sistem', () => {
-  test('tanpa serial ganda: tabel riwayat terisi dari serials, indeks unik dibuat, aman diulang', async () => {
+  test('tanpa serial ganda: tabel riwayat terisi dari serials; migrasi tidak membuat indeks, ensureSerialUniqueIndex membuatnya; aman diulang', async () => {
     const { db, sql } = await schemaBefore();
     try {
       await insertSerial(db, 's1', 'bu1', 'SN1', '2026-11-01T00:00:00.000Z');
@@ -68,7 +70,11 @@ describe('migrasi 0026 serial unik se-sistem', () => {
         { serial_id: 's1', bu_id: 'bu1', first_at: '2026-11-01T00:00:00.000Z', left_at: '' },
         { serial_id: 's2', bu_id: 'bu2', first_at: '2026-11-02T00:00:00.000Z', left_at: '' },
       ]);
+      // Migrasi sendiri tidak membuat indeks unik (pemeriksa dump pemulihan menolak PREPARE).
+      expect(await hasUnique(db)).toBe(false);
+      expect(await ensureSerialUniqueIndex({ DB: db } as Env)).toBe('created');
       expect(await hasUnique(db)).toBe(true);
+      expect(await ensureSerialUniqueIndex({ DB: db } as Env)).toBe('exists');
       // Idempoten: diterapkan lagi tidak melempar galat dan tidak menggandakan baris.
       await db.exec(sql);
       const count = await db
@@ -81,12 +87,13 @@ describe('migrasi 0026 serial unik se-sistem', () => {
     }
   });
 
-  test('ada serial ganda lintas BU: migrasi tetap berhasil, indeks unik dilewati, data utuh', async () => {
+  test('ada serial ganda lintas BU: migrasi tetap berhasil, ensureSerialUniqueIndex melapor duplicates tanpa indeks, data utuh', async () => {
     const { db, sql } = await schemaBefore();
     try {
       await insertSerial(db, 's1', 'bu1', 'SN1', '2026-11-01T00:00:00.000Z');
       await insertSerial(db, 's2', 'bu2', 'SN1', '2026-11-02T00:00:00.000Z');
       await db.exec(sql);
+      expect(await ensureSerialUniqueIndex({ DB: db } as Env)).toBe('duplicates');
       expect(await hasUnique(db)).toBe(false);
       const serials = await db.prepare('SELECT COUNT(*) AS n FROM serials').first<{
         n: number | string;

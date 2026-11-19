@@ -26,11 +26,8 @@ INSERT IGNORE INTO serial_business_units (serial_id, bu_id, first_at, left_at)
 ALTER TABLE serial_events ADD COLUMN IF NOT EXISTS client_id VARCHAR(100) NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS serial_events_client_id ON serial_events (client_id);
 
--- Keunikan serial se-sistem, BERSYARAT: dibuat hanya bila belum ada serial ganda lintas BU. Bila ada, dilewati tanpa
--- menggagalkan start (keunikan dijaga di aplikasi; `ensureSerialUniqueIndex` mencoba lagi tiap start, mis. setelah
--- skrip penyatuan dijalankan). `serials_bu_serial` tetap ada.
-SET @qc_serial_dups := (SELECT COUNT(*) FROM (SELECT 1 FROM serials GROUP BY serial HAVING COUNT(*) > 1 LIMIT 1) AS d);
-SET @qc_serial_sql := IF(@qc_serial_dups = 0, 'CREATE UNIQUE INDEX IF NOT EXISTS serials_serial ON serials (serial)', 'DO 0');
-PREPARE qc_serial_stmt FROM @qc_serial_sql;
-EXECUTE qc_serial_stmt;
-DEALLOCATE PREPARE qc_serial_stmt;
+-- Keunikan serial se-sistem: indeks unik `serials_serial` TIDAK dibuat di sini. Ia dibuat bersyarat oleh
+-- `ensureSerialUniqueIndex` (server/src/modules/serial/bu-history.ts) tiap start server, setelah migrasi: hanya bila belum
+-- ada serial ganda lintas BU; bila ada, start tidak digagalkan dan keunikan dijaga aplikasi sampai skrip penyatuan
+-- dijalankan. Alasan: pemeriksa dump pemulihan menolak PREPARE/SET @var, dan semua migrasi harus lolos pemeriksa itu.
+-- `serials_bu_serial` tetap ada (dibuang pada tahap contract).
