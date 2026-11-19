@@ -520,6 +520,7 @@ describe('registerIpc', () => {
         host: '192.168.88.2',
         username: 'admin',
         password: SERVER_PASSWORD,
+        signal: expect.any(AbortSignal),
       });
       expect(captured?.sentinel).toBe(SENTINEL_BY_BRAND.ubiquiti);
       expect(captured?.script).toContain('QUFBQUhPU1RLRVk='); // {sshKey} terisi dari host key

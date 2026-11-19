@@ -83,6 +83,7 @@ export function createInjectRunner(deps: InjectRunnerDeps): InjectRunner {
             host: config.server.ip,
             username: config.server.username,
             password: serverPassword,
+            signal,
           });
           sshKey = hostKey.base64;
         }
@@ -121,6 +122,10 @@ export function createInjectRunner(deps: InjectRunnerDeps): InjectRunner {
             : 'failed';
         return { ok: outcome.ok, stage, message: REASON_MESSAGES[outcome.reason] };
       } catch (error) {
+        // Dibatalkan saat mengambil host key router: sama dengan pembatalan saat inject berjalan.
+        if (signal.aborted && error instanceof HostKeyError) {
+          return { ok: false, stage: 'cancelled', message: REASON_MESSAGES.cancelled };
+        }
         if (
           error instanceof PlanError ||
           error instanceof ScriptRenderError ||

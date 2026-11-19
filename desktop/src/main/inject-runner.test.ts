@@ -55,6 +55,7 @@ describe('createInjectRunner', () => {
       host: '192.168.88.2',
       username: 'admin',
       password: SERVER_PASSWORD,
+      signal: expect.any(AbortSignal),
     });
     expect(captured?.sentinel).toBe(SENTINEL_BY_BRAND.ubiquiti);
     expect(captured?.host).toBe('192.168.1.20');
@@ -153,6 +154,23 @@ describe('createInjectRunner', () => {
       message: 'Kredensial router ditolak',
     });
     expect(hk.deps.runInject).not.toHaveBeenCalled();
+  });
+
+  test('dibatalkan saat mengambil host key = stage cancelled (bukan gagal), tanpa menjalankan skrip', async () => {
+    const abort = new AbortController();
+    const { deps, runner } = setup({
+      fetchHostKey: vi.fn(async (opts: { signal?: AbortSignal }) => {
+        abort.abort();
+        expect(opts.signal).toBe(abort.signal);
+        throw new HostKeyError('UNREACHABLE', 'Dibatalkan');
+      }),
+    });
+    expect(await runner.run(input(), abort.signal)).toEqual({
+      ok: false,
+      stage: 'cancelled',
+      message: 'Inject dibatalkan',
+    });
+    expect(deps.runInject).not.toHaveBeenCalled();
   });
 
   test('galat tak terduga tidak membocorkan sandi', async () => {

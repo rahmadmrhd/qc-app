@@ -51,7 +51,7 @@ export interface MultiHost {
   /** `args` = argumen yang sudah divalidasi zod untuk kanal itu. */
   handle(channel: MultiChannelKey, args: unknown[]): Promise<unknown>;
   isRunning(): boolean;
-  /** Ada perangkat yang sedang atau akan di-inject (`injecting` atau `queued`). */
+  /** Ada perangkat yang sedang atau akan di-inject (`injecting` atau `queued`), termasuk yang dibatalkan dan belum selesai. */
   isInjecting(): boolean;
   dispose(): void;
 }
@@ -199,7 +199,8 @@ export function createMultiHost(deps: MultiHostDeps): MultiHost {
     },
     // Termasuk jendela saat `multiStart` menunggu paket dimuat (paket tak boleh diganti di sela itu).
     isRunning: () => starting || engine.snapshot().running,
-    isInjecting: () => busy(engine.snapshot()),
+    // Termasuk inject yang dibatalkan `stop()` tetapi belum selesai menutup sesi SSH-nya (`engine.isBusy`).
+    isInjecting: () => engine.isBusy() || busy(engine.snapshot()),
     dispose() {
       if (disposed) return;
       disposed = true;

@@ -208,6 +208,39 @@ describe('isInjecting dan onIdle', () => {
   });
 });
 
+describe('isInjecting setelah stop', () => {
+  test('tetap benar sampai inject yang dibatalkan stop benar-benar selesai (inject tunggal tak boleh menyela)', async () => {
+    const fake = createFakePorts();
+    let settle: (() => void) | null = null;
+    // Port yang tak segera menyelesaikan diri saat dibatalkan (sesi SSH masih ditutup).
+    fake.ports.inject = () =>
+      new Promise((resolve) => {
+        settle = () => resolve({ ok: false, stage: 'cancelled', message: 'Dibatalkan' });
+      });
+    const host = createMultiHost({
+      ports: fake.ports,
+      ensurePackage: async () => pkg,
+      emitChange: () => undefined,
+      isSingleInjecting: () => false,
+      openExternal: async () => undefined,
+    });
+    fake.state.leases = LEASES;
+    await host.handle('multiStart', [startCfg()]);
+    await fake.advance(0);
+    await host.handle('multiInjectDevice', [MAC]);
+    await fake.advance(1000);
+    expect(host.isInjecting()).toBe(true);
+    const stopped = host.handle('multiStop', []);
+    await fake.advance(0);
+    expect(host.isRunning()).toBe(false);
+    expect(host.isInjecting()).toBe(true);
+    (settle as unknown as () => void)();
+    await stopped;
+    expect(host.isInjecting()).toBe(false);
+    host.dispose();
+  });
+});
+
 describe('saling-kecualikan arah sebaliknya', () => {
   test('inject tunggal yang berjalan saat Multi aktif menggagalkan inject perangkat tanpa menyentuh port', async () => {
     const { host, fake, setSingle } = setup();
