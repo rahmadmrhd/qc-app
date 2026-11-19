@@ -1,7 +1,6 @@
 # Versi API per kelompok, UI dasar yang lebih baru menang, dan paksa pembaruan klien
 
-Status: **DRAFT, menunggu persetujuan pemilik** (disusun 2026-11-20). Keputusan pemilik ada di bagian 3; butir bertanda
-"usulan perancang" belum diputuskan pemilik dan wajib dibaca sebelum menyetujui. Belum ada kode.
+Status: **Disetujui pemilik 2026-11-20 (desain); implementasi dipecah: rencana `2026-11-20-versi-api-ui-dasar.md` untuk fase 1, 2, 4 dan rencana terpisah untuk fase 3.** Keputusan pemilik ada di bagian 3; penyimpangan rencana dari spek dicatat di bagian 11. Fase 1, 2, dan 4 sudah dibangun (lihat bagian 11); fase 3 (deprecated dan paksa pembaruan) belum.
 
 ## 1. Maksud dan alasan
 Server dan klien dirilis di waktu yang berbeda: desktop memuat UI dasar dari installer (dan UI terbaru dari server), tab web
@@ -154,3 +153,42 @@ berdampingan lewat `restClient`. Uji perangkat nyata: pembaruan paksa installer 
 4. **Peta `apis` saat desktop offline:** salinan terakhir tersimpan (usulan, `localStorage`/IndexedDB); klien baru yang belum pernah
    online memakai v1.
 5. Rute di luar `API_ROUTES` (`/api/desktop/*`, `/auth/*`, publik) belum punya mekanisme versi; tetap lewat aturan kompatibel mundur manual.
+
+## 11. Catatan implementasi (2026-11-20)
+Bagian ini mencatat apa yang sudah dibangun dan di mana penyimpangannya dari rancangan di bagian 6-9. Keputusan di bagian 3
+tetap berlaku; penyimpangan di bawah ini adalah keputusan teknis (pemilik produk menyetujui arah desain, bukan detail kode).
+
+Yang sudah dibangun:
+- Fase 1 (fondasi tanpa perubahan perilaku): `shared/api-versions.ts` (`parseApiId`, `apiGroup`, `API_GROUP_VERSIONS` untuk
+  28 kelompok, `RETIRED_ROUTES` kosong, `announcedApis`, `parseServerApis`, `pickApiId`, `apiVersionsInUse`); server memasang
+  jalur `/api/v<n>` per versi yang dipakai rute (`registerRest` menerima `version`, `isRestPath` mengenali `/api/v\d+`); `/api/ping`
+  menambah `apis`; klien memilih id lewat `web/src/lib/api/versions.ts` (`startApiVersions`, `refreshServerApis`, `pickApi`,
+  salinan di `localStorage` `qc.api.apis`); potret kontrak `shared/api-contract.snapshot.json` (`shared/api-snapshot.ts`,
+  `bun run api:snapshot` dan `--check`) dengan tes superset.
+- Fase 2 (UI dasar menang): `desktop/src/main/ui/ui-bundle.ts` membuang bundel unduhan yang `createdAt`-nya <= UI dasar, dan
+  manifest server yang tak lebih baru dari UI dasar tidak diterapkan. Proksi desktop (`desktop/src/main/api-proxy.ts`,
+  `PROXY_ALLOW`) mengizinkan `/api/v<n>/`.
+- Fase 4 (kebijakan kerja): `CLAUDE.md` dan `docs/adding-a-module.md` (bagian "Mengubah kontrak yang merusak").
+
+Yang belum dibangun: `deprecated` (header `Deprecation`, spanduk), `RETIRED_ROUTES` yang menjawab 426 `CLIENT_OUTDATED`,
+`minClient` di `/api/ping`, layar penahan desktop, pemuatan paksa web, dan integrasi potret ke `release:prepare` (semuanya fase 3).
+
+Penyimpangan dari rancangan:
+1. Tidak ada field `version?` di `ApiRouteDef` (bagian 6.2). Versi diturunkan dari akhiran id `<idDasar>@<n>` (`parseApiId`),
+   satu sumber kebenaran; tak ada field terpisah yang bisa tak sejalan dengan id.
+2. `api(id, input)` tetap menerima id persis dan belum memanggil `pickApi` (bagian 6.4). Pemilihan versi lewat `pickApi()`
+   dipanggil lapisan compat modul (`web/src/modules/<modul>/compat.ts`) sebelum `toRequestParts`. Ini wajib dipasang pada rute
+   v2 pertama; selama semua id masih v1, perilakunya identik.
+3. Catatan `createdAt` per versi UI disimpan di `state.json` (`created`). Versi tanpa catatan dianggap TIDAK lebih baru dari UI
+   dasar (dibuang), sehingga state lama aman. Bila `ui-manifest.json` UI dasar tak ada atau rusak, perilaku lama dipertahankan
+   (tanpa penentuan urutan).
+4. OpenAPI: path item rute versi >= 2 memakai `servers` `/api/vN` (`serversFor`). Bila jalur yang sama dipakai versi lain, kunci
+   path item versi >= 2 diberi akhiran `?v=N` supaya operasi v1 tidak tertimpa (`buildOpenApi`).
+5. Integrasi potret kontrak ke `release:prepare` dipindah ke fase 3. Sementara potret diperbarui manual lewat
+   `bun run api:snapshot` (dan dicek lewat `bun run api:snapshot --check`).
+6. Di luar rancangan, untuk konsistensi: `server/src/app.ts` memeriksa `isServerPath` SEBELUM `staticDir`, sehingga `/api/v2/*`
+   yang tak dikenal menjawab 404 (bukan 500 saat tanpa `c.env`). `ui-bundle.ts` mengosongkan ETag saat peluncuran bila tak ada
+   bundel yang dipegang, agar pemeriksaan pertama tidak menjawab 304 atas manifest yang bundelnya sudah dibuang.
+
+Keputusan pemilik yang dicatat di sini: bagian 3 (2026-11-20). Pertanyaan terbuka bagian 10 belum diputuskan, kecuali yang
+tercakup oleh bagian 3.
