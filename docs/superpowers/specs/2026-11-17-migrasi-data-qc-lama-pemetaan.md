@@ -28,7 +28,7 @@ Legenda keputusan: ✅ jelas, tanpa keputusan · ❓ butuh keputusan pemilik (li
 ### 2.1 `businessUnit` → `business_units` ✔ (keputusan pemilik 2026-11-17)
 - **Tabel BU lama TIDAK diikuti.** Daftar BU yang berlaku hanya **Spectrum, Teakwave, IJW**; dua baris lama dengan nama sama (`1 Spectrum Surabaya`, `3 Spectrum Jakarta`) adalah **satu BU "Spectrum"** yang berbeda lokasi.
 - Pemetaan BU: lama `1`→Spectrum, `3`→Spectrum, `2`→Teakwave. BU lama `0 None` (2.658 baris) ditentukan **menurut merk tipe**: Alta & Ubiquiti→Spectrum, Mikrotik→Teakwave, VSOL & Voltech→IJW. `-1 All` tidak dipakai.
-- BU dicocokkan **menurut nama** pada tujuan; yang belum ada dibuat (`code` usulan `SPC`, `TKW`, `IJW`, dapat diubah).
+- BU dicocokkan **menurut nama** pada tujuan, lalu (bila nama tidak ada) **menurut kode usulan** (`SPC`, `TKW`, `IJW`; keputusan pemilik 2026-11-19: BU "IJW" di dump lama = BU "Indoreka Jaya Wutama" berkode `IJW` di staging, dan aturan yang sama berlaku di produksi; nama tetap diutamakan atas kode); yang belum ada dibuat (`code` usulan tersebut).
 
 ### 2.2 `location` → `locations` ✅❓
 - `1 Surabaya`, `2 Jakarta` → `locations` (cocokkan nama; bila belum ada, dibuat). `-1`/`0` tidak dibuat.
@@ -90,7 +90,7 @@ Temuan yang perlu aturan:
 | # | Pertanyaan | Keputusan |
 |---|---|---|
 | 1 ✔ | Basis data tujuan | Latihan di skema sementara qc_dev (tunnel), lalu staging, lalu produksi (2026-11-17). Akses saya hanya ke dev; staging/produksi dijalankan pemilik. |
-| 2 ✔ | BU | Tabel BU lama tidak diikuti: Spectrum, Teakwave, IJW (lihat §2.1). Cocokkan menurut nama pada tujuan. |
+| 2 ✔ | BU | Tabel BU lama tidak diikuti: Spectrum, Teakwave, IJW (lihat §2.1). Cocokkan menurut nama pada tujuan, lalu menurut kode usulan (diubah 2026-11-19, pemilik: IJW = Indoreka Jaya Wutama). |
 | 3 ✔ | Serial BU None dan lokasi | BU menurut merk; lokasi Surabaya. |
 | 4 ✔ | Tabrakan serial | Terbaru menang, lama dilipat ke riwayat. **Diubah 2026-11-19** (penyelarasan skrip dengan keputusan keunikan se-sistem 2026-11-18): kunci lipat = nomor serial saja (unik se-sistem), termasuk lintas BU; BU lama masuk `serial_business_units` (§3a). |
 | 5 ✔ | Baris `deleted=1` dan serial sampah | Dilewati, dilaporkan di CSV. |
@@ -120,7 +120,7 @@ DATABASE_URL=mysql://... bun run --cwd server scripts/migrate-legacy-qc.ts --dum
 DATABASE_URL=mysql://... bun run --cwd server scripts/migrate-legacy-qc.ts --dump qcspectrum.sql --apply --confirm-database <skema>
 ```
 
-Aturan tujuan TIDAK kosong: BU/lokasi dicocokkan menurut nama; merk menurut `key`; item menurut `items.key` lalu `item_alias_keys` (nama lain tujuan; satu ruang kunci dengan merk+tipe); yang sudah ada **tidak diubah** (hanya tautan item-BU yang kurang ditambah); serial yang sudah ada di tujuan (BU mana pun) dilaporkan di `bentrok-tujuan.csv` dan tidak ditulis; kode BU/lokasi baru yang bentrok = hambatan, penerapan dibatalkan sebelum menulis apa pun. Id turunan UUIDv5 dari id lama, jadi putaran ulang aman (`client_id` serial). Opsi `--item-bu brand|brand+serials` (bawaan `brand`, keputusan pemilik 2026-11-18, §3a).
+Aturan tujuan TIDAK kosong: BU dicocokkan menurut nama lalu menurut kode usulan (SPC/TKW/IJW), lokasi menurut nama; merk menurut `key`; item menurut `items.key` lalu `item_alias_keys` (nama lain tujuan; satu ruang kunci dengan merk+tipe); yang sudah ada **tidak diubah** (hanya tautan item-BU yang kurang ditambah); serial yang sudah ada di tujuan (BU mana pun) dilaporkan di `bentrok-tujuan.csv` dan tidak ditulis; kode BU/lokasi baru yang bentrok = hambatan, penerapan dibatalkan sebelum menulis apa pun. Id turunan UUIDv5 dari id lama, jadi putaran ulang aman (`client_id` serial). Opsi `--item-bu brand|brand+serials` (bawaan `brand`, keputusan pemilik 2026-11-18, §3a).
 
 Hasil latihan pada skema sementara `qc_test_legacy_rehearsal` (MariaDB dev, tujuan kosong, sudah dihapus): 3 BU, 2 lokasi, 5 merk, 286 item, 486 tautan item-BU, **208.058 serial**, **219.994 kejadian** (208.058 `recorded`, 4.965 `note`, 6.971 `data_changed`) dalam ±10 menit lewat tunnel; 0 serial tanpa `recorded` seq 1, 0 serial tanpa tautan item-BU, `item_count` cocok, tanpa entri stok/`serial_stickers`; putaran kedua = 0 ditulis, 208.058 sudah dimigrasi. Dilewati 1.081 (1.062 terhapus lunak + 19 serial sampah), dilipat 1.106, dilebur 4 tipe lama berkunci sama (US-8-150W, US-16-XG, USW-Pro-24-POE, U7 Pro-XG).
 
