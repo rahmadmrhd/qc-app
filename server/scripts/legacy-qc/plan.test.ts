@@ -13,7 +13,8 @@ import {
 } from './plan';
 
 const NOW = '2026-11-17T16:00:00.000Z';
-const plan = () => buildPlan(miniDump(), { itemBu: 'brand+serials', now: NOW });
+const plan = () =>
+  buildPlan(miniDump(), { itemBu: 'brand+serials', now: NOW, keepUnusedItems: true });
 const serialOf = (p: ReturnType<typeof plan>, legacyId: number) => {
   const found = p.serials.find((serial) => serial.legacyId === legacyId);
   if (!found) throw new Error(`serial ${legacyId} tidak ada`);
@@ -198,7 +199,7 @@ describe('buildPlan', () => {
       [201, 2, 2, 'desmon', 'Added to Database', '2024-02-01 08:00:00'],
       [202, 3, 1, 'desmon', 'Added to Database', '2024-03-01 08:00:00'],
     ];
-    const p = buildPlan(dump, { itemBu: 'brand', now: NOW });
+    const p = buildPlan(dump, { itemBu: 'brand', now: NOW, keepUnusedItems: true });
     expect(p.serials).toHaveLength(1);
     const serial = serialOf(p, 202);
     expect(serial.buName).toBe('Spectrum');
@@ -282,7 +283,7 @@ describe('buildPlan', () => {
       [3, 'Mikrotik', 'RB-4011', 1, '', '', 0],
       [12, 'Mikrotik', 'RB 4011', 1, 'AX', '', 0],
     ];
-    const merged = buildPlan(dump, { itemBu: 'brand', now: NOW });
+    const merged = buildPlan(dump, { itemBu: 'brand', now: NOW, keepUnusedItems: true });
     expect(merged.items).toHaveLength(1);
     expect(merged.items[0]).toMatchObject({ legacyId: 3, firmware: 'AX', mergedLegacyIds: [12] });
   });
@@ -309,8 +310,26 @@ describe('buildPlan', () => {
     expect(both.items.find((i) => i.legacyId === 1)?.buNames).toEqual(['Spectrum', 'Teakwave']);
     expect(both.items.find((i) => i.legacyId === 3)?.buNames).toEqual(['Teakwave']);
     expect(both.items.find((i) => i.legacyId === 4)?.buNames).toEqual(['IJW']);
-    const brandOnly = buildPlan(miniDump(), { itemBu: 'brand', now: NOW });
+    const brandOnly = buildPlan(miniDump(), { itemBu: 'brand', now: NOW, keepUnusedItems: true });
     expect(brandOnly.items.find((i) => i.legacyId === 1)?.buNames).toEqual(['Spectrum']);
+  });
+
+  test('tipe tanpa serial yang dimigrasikan tidak dibuat (bawaan); keepUnusedItems mempertahankannya', () => {
+    const kept = plan();
+    const dropped = buildPlan(miniDump(), { itemBu: 'brand+serials', now: NOW });
+    const used = new Set(kept.serials.map((s) => s.itemLegacyId));
+    const unused = kept.items.filter((i) => !used.has(i.legacyId)).map((i) => i.legacyId);
+    expect(unused.length).toBeGreaterThan(0);
+    // Hanya tipe yang dipakai serial yang tersisa; sisanya dilaporkan, bukan hilang diam-diam.
+    expect(dropped.items.map((i) => i.legacyId)).toEqual(
+      kept.items.filter((i) => used.has(i.legacyId)).map((i) => i.legacyId),
+    );
+    expect(dropped.unusedItems.map((i) => i.legacyId)).toEqual(unused);
+    expect(kept.unusedItems).toEqual([]);
+    expect(dropped.serials).toEqual(kept.serials);
+    expect(dropped.warnings.some((w) => w.includes('tanpa serial'))).toBe(true);
+    // Merk yang semua tipenya dibuang ikut hilang dari daftar merk.
+    expect(dropped.brands).toEqual([...new Set(dropped.items.map((i) => i.brand))].sort());
   });
 
   test('deterministik: id turunan identik antar putaran dan berbentuk UUID', () => {

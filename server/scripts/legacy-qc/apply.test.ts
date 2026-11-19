@@ -18,7 +18,8 @@ let env: TestEnv;
 // biome-ignore lint/suspicious/noExplicitAny: bentuk respons beragam, diperiksa per tes
 type Json = any;
 
-const plan = () => buildPlan(miniDump(), { itemBu: 'brand+serials', now: NOW });
+const plan = () =>
+  buildPlan(miniDump(), { itemBu: 'brand+serials', now: NOW, keepUnusedItems: true });
 
 /** Tujuan TIDAK kosong: BU Spectrum, lokasi Surabaya, merk Ubiquiti dan satu item yang sudah ada (+ nama lain). */
 beforeEach(async () => {
@@ -298,7 +299,7 @@ describe('applyPlan', () => {
       rows.push([1000 + i, '2024-07-01', 3, `BULK${String(i).padStart(8, '0')}`, 0, '', 2, 2, 0]);
     }
     dump.dataqc = [...(dump.dataqc ?? []), ...rows];
-    const big = buildPlan(dump, { itemBu: 'brand+serials', now: NOW });
+    const big = buildPlan(dump, { itemBu: 'brand+serials', now: NOW, keepUnusedItems: true });
     const resolved = resolvePlan(big, await loadTargetState(env.DB));
     const progress: number[] = [];
     await applyPlan(env.DB, resolved, NOW, (done) => progress.push(done));
@@ -379,7 +380,7 @@ describe('serial unik se-sistem (riwayat BU)', () => {
       const dump = miniDump();
       dump.dataqc = [];
       const withoutSerials = resolvePlan(
-        buildPlan(dump, { itemBu: 'brand', now: NOW }),
+        buildPlan(dump, { itemBu: 'brand', now: NOW, keepUnusedItems: true }),
         await loadTargetState(env.DB),
       );
       expect(withoutSerials.blockers).toEqual([]);
