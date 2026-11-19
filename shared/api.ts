@@ -351,7 +351,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'serials.stickerOptions': {
     verb: 'GET',
     path: '/serials/sticker-options',
-    query: { itemId: 'string', buId: 'string' },
+    query: { itemId: 'string', buId: 'string', serialId: 'string' },
   },
   'serials.locationOptions': { verb: 'GET', path: '/serials/location-options' },
   'serials.buOptions': { verb: 'GET', path: '/serials/bu-options' },

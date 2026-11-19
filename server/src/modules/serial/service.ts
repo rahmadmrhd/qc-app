@@ -60,7 +60,7 @@ import { loadCases, type SerialCaseRow } from './case-repo';
 import { canManageProof } from './proof/access';
 import { loadStampItemInfo, planProofAttach } from './proof/attach';
 import { listFailedProofsBySerial, listProofsByEvents } from './proof/repo';
-import { recheckExistingSerial } from './recheck-entry';
+import { recheckExistingSerial, recheckStickerTargetAllowed } from './recheck-entry';
 import {
   activeItemWritableForBu,
   activeLocationName,
@@ -187,7 +187,12 @@ export async function stickerOptions(
   user: UserContext,
   input: SerialStickerOptionsInput,
 ): Promise<SerialStickerOptionsDto> {
-  if (!(await activeItemWritableForBu(env.DB, input.itemId, input.buId, user))) {
+  // Cek ulang serial yang sudah ada: item catatan adalah acuan, jadi syarat item aktif/terlihat dilewati bila serial itu
+  // bertipe `itemId` dan BU yang diminta sah sebagai tujuan cek ulang (spek serial unik se-sistem §5.1, §11 butir 9).
+  const viaSerial =
+    input.serialId !== undefined &&
+    (await recheckStickerTargetAllowed(env, user, input.serialId, input.itemId, input.buId));
+  if (!viaSerial && !(await activeItemWritableForBu(env.DB, input.itemId, input.buId, user))) {
     throw appError('NOT_FOUND', 'Item tidak ditemukan');
   }
   return { stickers: await applicableStickersOf(env, input.itemId, input.buId) };

@@ -93,8 +93,9 @@ export function validateSerialStickerOptions(raw: unknown): SerialStickerOptions
   const reader = readObject(raw);
   const itemId = reader.str('itemId', { required: true, max: 100 });
   const buId = reader.str('buId', { required: true, max: 100 });
+  const serialId = reader.str('serialId', { max: 100 });
   reader.done();
-  return { itemId, buId };
+  return serialId === '' ? { itemId, buId } : { itemId, buId, serialId };
 }
 
 const CLIENT_ID = /^[A-Za-z0-9-]{8,100}$/;

@@ -1887,6 +1887,13 @@ export interface SerialBuOptionsDto {
 export interface SerialStickerOptionsInput {
   itemId: string;
   buId: string;
+  /**
+   * OPSIONAL: serial yang sudah ada yang akan dicek ulang (draft Catat, dialog Cek ulang). Bila diisi dan serial itu
+   * bertipe `itemId`, `buId` termasuk BU yang boleh dipilih pada cek ulang (BU saat ini atau BU yang belum pernah terlibat)
+   * dan boleh ditulis pengguna, maka syarat "item aktif dan terlihat" TIDAK diterapkan (jalur cek ulang memakai item
+   * catatan sebagai acuan). Selain itu perilaku biasa (`NOT_FOUND`), tanpa membedakan penyebabnya.
+   */
+  serialId?: string;
 }
 export interface SerialStickerOptionsDto {
   stickers: ApplicableStickerDto[];
