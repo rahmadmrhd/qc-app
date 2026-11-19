@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Token warna persis tabel spek §6.1 (terang dan gelap); nilai boleh `oklch` setara.
+- Token warna persis tabel spek §6.1 (palet v3 terang dan gelap; token solid yang gagal WCAG AA 4,5:1 digeser ke nilai akhir di Task 10, keputusan pemilik 21); nilai boleh `oklch` setara.
 - Tanpa `<select>` bawaan; field relasi tetap `LinkField`/`LinkMultiField` (CLAUDE.md "Aturan frontend").
 - Tombol ikon WAJIB punya nama aksesibel = label teks lamanya (tes `getByRole('button', { name })` tak boleh berubah karena ikon).
 - Tooltip = shadcn `Tooltip` (`components/ui/tooltip.tsx`), bukan atribut `title`.
@@ -29,6 +29,8 @@
 3. Halaman detail dibuka langsung sebelum data ada di cache → breadcrumb menampilkan label cadangan lalu nama record begitu query termuat, tanpa galat. (Task 8)
 4. Mode ikon: popover submenu dapat dibuka dengan keyboard (Enter/Space) dan ditutup Escape; butir bersubmenu tidak menavigasi. (Task 7)
 5. Pemakai varian lama (`variant="destructive"`, `"secondary"`, `"default"`, `"outline"`, `"ghost"`, `"link"`) tetap tampil dengan makna sama (merah tetap merah). (Task 2)
+6. Setiap pasangan teks/latar solid dan `-text` di atas latar halaman lolos 4,5:1 pada tema terang dan gelap; token yang digeser tetap bermakna sama (success hijau, warning kuning/oranye, destructive merah). (Task 10)
+7. Rute non-tujuan-nav mana pun (termasuk `/serial/report`) punya `crumb`; View memakai lebar `default`, form dan pengaturan `narrow`; Country Lock di luar cangkang tidak mendapat breadcrumb. (Task 9)
 
 ---
 
@@ -51,7 +53,7 @@ Urutan: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → (9 Haiku ‖ 10 Sonnet) 
 
 - [ ] **Step 1: Tes gagal** `styles.test.ts`: baca `styles.css` sebagai teks; untuk blok `:root` dan `.dark`, `expect` tiap token di atas ada; `expect` nilai gelap `--success-text` = `#22c55e`, `--info-text` = `#3b82f6`, `--destructive` = `#ef4444`, `--warning` = `#d97706` (atau `oklch` setara bila ditulis oklch: maka tes membandingkan string yang ditulis); `expect` `@theme inline` memuat `--color-success-text: var(--success-text)` dan pasangan lainnya.
 - [ ] **Step 2:** `bun run --cwd web test src/styles.test.ts` → FAIL.
-- [ ] **Step 3:** Isi token persis tabel spek §6.1. `--primary` tetap netral; `--secondary` = abu-abu spek (bukan abu muda shadcn). Cari pemakai `bg-secondary`/`text-secondary-foreground` di luar `components/ui` yang bermaksud "latar abu muda" dan ganti ke `bg-muted`/`text-muted-foreground`.
+- [ ] **Step 3:** Isi token persis tabel spek §6.1 (palet v3; nilai solid yang gagal AA digeser di Task 10). `--primary` tetap netral; `--secondary` = abu-abu spek (bukan abu muda shadcn). Cari pemakai `bg-secondary`/`text-secondary-foreground` di luar `components/ui` yang bermaksud "latar abu muda" dan ganti ke `bg-muted`/`text-muted-foreground`.
 - [ ] **Step 4:** Tes → PASS.
 - [ ] **Step 5:** Commit `feat(web): token warna semantik terang/gelap`.
 
@@ -150,9 +152,9 @@ Urutan: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → (9 Haiku ‖ 10 Sonnet) 
   - `findNavTrail(groups: readonly NavGroup[], matches: (to: string, fuzzy: boolean) => boolean): { parent: NavParent | null; item: NavItem } | null` — memakai `isNavItemActive`; butir dengan `to` terpanjang yang aktif menang.
   - `NAV_GROUPS` = pohon spek §6.4: grup `null` [Beranda]; "Operasional" [Serah Terima, Country Lock, induk `serial` "Serial Number" (Daftar `/serial`, Laporan `/serial/reports`, Pengaturan `/serial/settings`)]; "Data Master" [induk `item` "Item" (Daftar Item `/item`, Merk `/item/brands`), Customer]; "Stiker & Dokumen" [induk `sticker` "Stiker" (Katalog, Jenis, Stok, Pustaka Gambar, Konfigurasi), induk `manual-book` "Manual Book" (QR Code `/qrcode`, Default QR `/qrcode/default`), Postel `/postel`]; "Pengaturan" [induk `access` "Akses" (Pengguna, Role, Lokasi, Business Unit), induk `system` "Sistem" (Status Push, Log Audit)]. Ikon, izin, `excludes`, `alsoActiveOn`, `visible`, `opensDesktopApp` dibawa dari definisi lama; QR Code mendapat `excludes: ['/qrcode/default']`; Default QR memakai izin yang sama dengan `beforeLoad` rute `/qrcode/default`.
 
-- [ ] **Step 1: Tes gagal** di `navigation.test.ts`: (a) `flattenNavItems(NAV_GROUPS)` memuat `/qrcode/default` dan tak memuat induk; (b) pengguna hanya `item: view` → grup "Data Master" berisi induk `item` dengan dua anak + Customer, dan tak ada grup "Pengaturan"; (c) `findNavTrail` untuk `/item/brands/abc` → parent `item`, item Merk; untuk `/qrcode/default/x/edit` → item Default QR (bukan QR Code); untuk `/` → item Beranda tanpa parent; (d) tes lama tentang izin/`excludes` disesuaikan ke label baru ("Pengguna", "Role").
+- [ ] **Step 1: Tes gagal** di `navigation.test.ts`: (a) `flattenNavItems(NAV_GROUPS)` memuat `/qrcode/default` dan tak memuat induk; (b) pengguna hanya `item: view` → grup "Data Master" berisi induk `item` dengan dua anak + Customer, dan tak ada grup "Pengaturan"; (c) `findNavTrail` untuk `/item/brands/abc` → parent `item`, item Merk; untuk `/qrcode/default/x/edit` → item Default QR (bukan QR Code); untuk `/` → item Beranda tanpa parent; (d) tes lama tentang izin/`excludes` disesuaikan ke label baru ("Pengguna", "Role"); (e) `pageLabel` banner panduan untuk butir anak berlabel generik ("Daftar", "Laporan", "Pengaturan") memakai label induknya.
 - [ ] **Step 2:** Jalankan → FAIL.
-- [ ] **Step 3:** Implementasi; `guide-banner.tsx` `pageLabel` memakai `flattenNavItems`.
+- [ ] **Step 3:** Implementasi; `guide-banner.tsx` `pageLabel` memakai `flattenNavItems` dan label induk (`NavParent.label`) bila label butir anak generik ("Daftar", "Laporan", "Pengaturan"); judul `h1` halaman memakai nama lengkap ("Daftar Serial Number", "Data Item") (keputusan perancang 2026-11-20).
 - [ ] **Step 4:** `bun run --cwd web test src/app src/modules/guide` → PASS.
 - [ ] **Step 5:** Commit `feat(web): navigasi berpohon dengan submenu per fitur`.
 
@@ -196,11 +198,11 @@ Urutan: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → (9 Haiku ‖ 10 Sonnet) 
   - `PAGE_WIDTH_CLASS: Record<PageWidth, string>` = `{ narrow: 'max-w-4xl', default: 'max-w-7xl', full: 'max-w-none' }`
 - `PageContainer({ width = 'default', className, children })` → `div` `mx-auto w-full` + `PAGE_WIDTH_CLASS[width]`.
 - `AppBreadcrumb`: `useMatches()` + `useMatchRoute()` → `findNavTrail` → `buildCrumbs`; berlangganan `queryClient.getQueryCache().subscribe` agar label dari cache diperbarui; tingkat terakhir `BreadcrumbPage` (tanpa tautan), lainnya `BreadcrumbLink asChild` + `Link`. `< 768px` (`useIsMobile`): hanya tingkat terakhir + tombol ikon `ChevronLeft` bernama "Kembali ke {label sebelumnya}" yang menaut ke tingkat sebelumnya yang punya `to`. Dipasang di header `AppShell` tepat setelah `SidebarTrigger`.
-- `AppShell` membungkus `children ?? <Outlet />` dengan `PageContainer width={pageWidthOf(useMatches())}`.
+- `AppShell` membungkus `children ?? <Outlet />` dengan `PageContainer width={pageWidthOf(useMatches())}`. Rute di luar `AppShell` (Country Lock, `/laporan/$token`, login) tidak mendapat breadcrumb maupun `PageContainer` dari sini; Country Lock memasang `PageContainer` sendiri di fase 4d.
 
 - [ ] **Step 1: Tes gagal**:
   - `route-meta.test.ts`: `buildCrumbs` dengan trail `{parent:{label:'Item'}, item:{label:'Daftar Item', to:'/item'}}` + match crumb fungsi yang mengembalikan `[{label:'Asus RT-AX55', to:'/item/$itemId', params:{itemId:'1'}}, {label:'Ubah'}]` → 4 bagian berurutan; fungsi yang mengembalikan `undefined` dilewati; `pageWidthOf([{staticData:{pageWidth:'narrow'}},{staticData:{}}])` → `'narrow'`; `pageWidthOf([])` → `'default'`.
-  - `app-breadcrumb.test.tsx` (router uji dengan rute `/item/$itemId` ber-crumb membaca cache `['items','detail',id]`): sebelum cache terisi tampil label cadangan dari crumb (mis. "Detail"); setelah `queryClient.setQueryData` → tampil nama; `navigation` "Daftar Item" berupa tautan ke `/item`; tingkat terakhir tanpa tautan; viewport ponsel → hanya tingkat terakhir + tombol "Kembali ke Daftar Item".
+  - `app-breadcrumb.test.tsx` (router uji dengan rute `/item/$itemId` ber-crumb membaca cache `['items','detail',id]`): sebelum cache terisi tampil label cadangan dari crumb (mis. "Detail"); setelah `queryClient.setQueryData` → tampil nama; `navigation` "Daftar Item" berupa tautan ke `/item`; tingkat terakhir tanpa tautan; viewport ponsel → hanya tingkat terakhir + tombol "Kembali ke Daftar Item"; header lengkap (breadcrumb, `LocationPicker`, `OutboxChip`, `NotificationBell`, `ThemeToggle`, `UserMenu`) diuji pada lebar 360 px tanpa luapan horizontal.
 - [ ] **Step 2:** Jalankan → FAIL.
 - [ ] **Step 3:** Implementasi.
 - [ ] **Step 4:** `bun run --cwd web test src/app` → PASS.
@@ -209,21 +211,21 @@ Urutan: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → (9 Haiku ‖ 10 Sonnet) 
 ### Task 9 (Haiku): Metadata tiap rute dan pembersihan lebar lama
 
 **Files:**
-- Modify: semua `web/src/routes/_app/**/*.tsx` (bukan tes), `web/src/routes/country-lock.tsx`; pembungkus `max-w-*` teratas di rute: `handover/new.tsx`, `handover/$handoverId/edit.tsx`, `item/new.tsx`, `item/$itemId/edit.tsx`, `postel/new.tsx`, `postel/$postelId/edit.tsx`, `qrcode/new.tsx`, `qrcode/$designId/edit.tsx`, `qrcode/default/index.tsx`, `qrcode/default/new.tsx`, `qrcode/default/$presetId/edit.tsx`, `serial/new.tsx`, `sticker/settings.tsx`
+- Modify: semua `web/src/routes/_app/**/*.tsx` (bukan tes; `web/src/routes/country-lock.tsx` tidak diubah di sini karena di luar cangkang, lihat fase 4d); pembungkus `max-w-*` teratas di rute: `handover/new.tsx`, `handover/$handoverId/edit.tsx`, `item/new.tsx`, `item/$itemId/edit.tsx`, `postel/new.tsx`, `postel/$postelId/edit.tsx`, `qrcode/new.tsx`, `qrcode/$designId/edit.tsx`, `qrcode/default/index.tsx`, `qrcode/default/new.tsx`, `qrcode/default/$presetId/edit.tsx`, `serial/new.tsx`, `sticker/settings.tsx`
 - Test: `web/src/app/route-meta-coverage.test.ts` (Create)
 
 **Interfaces:**
 - Consumes: `CrumbSpec`, `PageWidth` (Task 8).
 
 Aturan `staticData`:
-- Rute indeks yang menjadi tujuan butir nav: tanpa `crumb` (nav sudah menamainya).
+- Rute yang `fullPath`-nya tujuan butir nav (`flattenNavItems(NAV_GROUPS)`): tanpa `crumb` (nav sudah menamainya). SEMUA rute `_app` lain WAJIB `crumb`, termasuk `/serial/report` (bukan tujuan nav) dan rute View/Ubah baru fase berikutnya. `/` dan rute di luar `_app` (Country Lock, `/laporan/$token`, login) tanpa `crumb`.
 - `…/new` → `crumb: 'Tambah'`. `forbidden` → `crumb: 'Akses ditolak'`.
 - `…/$id` (View) → `crumb` fungsi yang membaca data query yang sama dengan `loader`/komponen rute itu dari `queryClient.getQueryData(<queryOptions>(id).queryKey)` dan mengembalikan nama record (Item: `"${brand} ${model}"`; Merk/BU: nama dari daftar yang dimuat; Serial: nomor serial; Postel: nama Postel; Serah Terima: nomor `ST-…`), atau `{ label: 'Detail' }` bila belum ada.
 - `…/$id/edit` → fungsi yang mengembalikan `[{ label: <nama>, to: <rute View>, params }, { label: 'Ubah' }]` bila ada rute View, selain itu `[{ label: <nama> }, { label: 'Ubah' }]`.
-- `pageWidth`: `'narrow'` untuk `new`/`edit` Item, Serah Terima, Postel, halaman `settings` (Serial, Stiker), View Item/Merk/BU/Postel; `'default'` untuk semua daftar, QR/Preset `new`/`edit` (form + pratinjau), View Serial dan Serah Terima, Country Lock; `'full'` untuk `/handover` (kanban) dan `/serial/new`.
+- `pageWidth` (keputusan pemilik 17; kelas di `PAGE_WIDTH_CLASS`): `'narrow'` untuk form (`new`/`edit` Item, Serah Terima, Postel) dan halaman `settings` (Serial, Stiker); `'default'` untuk SEMUA View (Item, Merk, BU, Postel, Serial, Serah Terima), semua daftar/grid, dan QR/Preset `new`/`edit` (form + pratinjau berdampingan: sengaja `default` karena butuh lebar pratinjau); `'full'` untuk kanban dan tabel lebar: `/handover` dan `/serial/new`. Country Lock = `default` tetapi di luar cangkang: memasang `PageContainer width="default"` sendiri di fase 4d.
 - Pembungkus `max-w-*` teratas yang tercantum di Files dihapus (kelas lain seperti `space-y-4` dipertahankan) karena lebarnya kini dari `pageWidth`. Pembungkus `max-w` di dalam komponen modul (bukan teratas di rute) tidak disentuh di fase ini.
 
-- [ ] **Step 1: Tes gagal** `route-meta-coverage.test.ts`: impor `routeTree`; telusuri semua rute di bawah `/_app`; setiap rute yang `fullPath`-nya berakhiran `/new`, `/edit`, atau segmen `$param` terakhir WAJIB punya `staticData.crumb`; setiap rute daun punya `pageWidth` atau memakai bawaan secara sengaja (daftar rute yang memakai bawaan ditulis di tes sebagai himpunan eksplisit).
+- [ ] **Step 1: Tes gagal** `route-meta-coverage.test.ts`: impor `routeTree`; telusuri semua rute di bawah `/_app`; setiap rute di bawah `/_app` yang BUKAN tujuan butir nav (`flattenNavItems(NAV_GROUPS)`) dan bukan `/` WAJIB punya `staticData.crumb` (mencakup `/new`, `/edit`, segmen `$param`, `/serial/report`), sedangkan rute tujuan nav tidak boleh punya `crumb`; setiap rute daun punya `pageWidth` atau memakai bawaan `default` secara sengaja (daftar rute yang memakai bawaan ditulis di tes sebagai himpunan eksplisit).
 - [ ] **Step 2:** `bun run --cwd web test src/app/route-meta-coverage.test.ts` → FAIL.
 - [ ] **Step 3:** Isi `staticData` di tiap rute sesuai aturan; hapus pembungkus `max-w` teratas.
 - [ ] **Step 4:** Tes → PASS; `bun run --cwd web test` seluruhnya hijau.
@@ -233,7 +235,8 @@ Aturan `staticData`:
 
 **Files:**
 - Modify: berkas `web/src/**/*.tsx` di luar `components/ui` yang memakai kelas palet Tailwind mentah (±126 kemunculan di ±32 berkas; temukan lewat pola di Step 1), dan pemakai `Badge` untuk status Aktif/Nonaktif/Menipis/Habis
-- Create: `scripts/no-raw-palette.test.ts`
+- Modify (penyesuaian token AA, keputusan pemilik 21): `web/src/styles.css`, `web/src/styles.test.ts`
+- Create: `scripts/no-raw-palette.test.ts`, `web/src/styles.contrast.test.ts`
 
 **Interfaces:**
 - Consumes: token Task 1, `Badge color/variant/dot` Task 2, `Alert color` Task 3.
@@ -246,8 +249,10 @@ Peta penggantian:
 - Pengecualian yang TIDAK diganti (warna data, bukan UI): warna yang dipilih pengguna atau warna cetak label QR/PDF; tulis di daftar izin tes beserta alasannya.
 
 - [ ] **Step 1: Tes gagal** `scripts/no-raw-palette.test.ts` (pola `scripts/no-native-select.test.ts`): pindai `web/src` (abaikan `components/ui`, berkas `*.test.*`, komentar); larang `/\b(?:bg|text|border|ring|fill|stroke|from|to|via|outline|decoration|divide|placeholder|accent|caret)-(?:red|rose|amber|yellow|orange|green|emerald|lime|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink)-\d{2,3}\b/`; daftar izin `ALLOWED: Record<string, string>` (berkas → alasan) kosong di awal.
-- [ ] **Step 2:** `bun test scripts/no-raw-palette.test.ts` → FAIL dengan daftar pelanggaran.
+- [ ] **Step 1b: Tes gagal** `web/src/styles.contrast.test.ts` (keputusan pemilik 21): parse token `--X`, `--X-foreground`, `--X-text`, `--background`, `--card`, `--muted`, `--muted-foreground`, `--foreground` dari blok `:root` dan `.dark` di `styles.css` (hex atau `oklch`, dikonversi ke luminans relatif WCAG); `expect` rasio kontras >= 4,5 untuk: (a) tiap `--X` dengan `--X-foreground` (keenam warna); (b) tiap `--X-text` di atas `--background` dan `--card`; (c) tiap `--X-text` di atas latar soft (`--X-text` beralfa 0,10 dicampur ke `--background`); (d) `--muted-foreground` di atas `--background` dan `--muted`; pada kedua tema. Dengan palet v3 tes gagal untuk success solid (terang dan gelap), warning solid gelap, dan destructive solid gelap.
+- [ ] **Step 2:** `bun test scripts/no-raw-palette.test.ts` dan `bun run --cwd web test src/styles.contrast.test.ts` → FAIL dengan daftar pelanggaran.
 - [ ] **Step 3:** Ganti sesuai peta; badge status berwarna.
+- [ ] **Step 3b:** Geser token yang gagal kontras: success solid `#15803d` (terang dan gelap), warning solid gelap `#b45309`, destructive solid gelap `#dc2626` (angka akhir ditentukan tes; geser lagi bila ada pasangan lain yang gagal). Perbarui `styles.test.ts` (nilai v3 yang berubah: `--warning` gelap, `--destructive` gelap, `--success` terang/gelap; nilai v3 lain tetap) dan tabel "Nilai akhir" di spek redesain §6.1 bila angka akhir berbeda. Palet v3 TETAP tertulis di spek sebagai acuan mockup; berkas mockup tidak diubah.
 - [ ] **Step 4:** Tes penjaga → PASS; `bun run --cwd web test` hijau (tes yang memeriksa kelas warna lama diperbarui ke kelas token).
 - [ ] **Step 5:** Commit `refactor(web): warna mentah ke token semantik dan badge status berwarna`.
 
@@ -278,6 +283,6 @@ Aturan: field ditandai wajib bila skema zod form (atau validator `onSubmit`/`onC
 
 - [ ] **Step 1: Tes gagal** `form-header.test.tsx`: tombol "Batal" dan tombol simpan (label `submitLabel`) memuat svg; saat `submitting` tombol simpan nonaktif dan berteks `busyText`. Tes lama tetap.
 - [ ] **Step 2:** Jalankan → FAIL.
-- [ ] **Step 3:** `FormHeader` memakai `ActionButton action="cancel"` dan `ActionButton action="save" type="submit" label={submitLabel} busy={submitting}` (prop lain tetap). CLAUDE.md "Aturan frontend": tambah butir sistem desain (token §6.1 dan tiga nadanya, `Button`/`Badge` `color` × `variant` dengan pemetaan lama sementara, `ActionButton` untuk aksi umum, `Alert color`, tooltip shadcn, `Label required`/`aria-required`, larangan palet mentah dijaga `scripts/no-raw-palette.test.ts`), butir cangkang (navigasi berpohon `NAV_GROUPS`, `qc.sidebar`, `staticData.crumb`/`pageWidth` wajib untuk rute baru, `PageContainer`). Fragmen changelog: baris pertama `jenis: diubah`, lalu satu paragraf santai untuk pengguna tentang tampilan baru (warna status, menu dikelompokkan dan diingat, breadcrumb, tanda * pada isian wajib).
+- [ ] **Step 3:** `FormHeader` memakai `ActionButton action="cancel"` dan `ActionButton action="save" type="submit" label={submitLabel} busy={submitting}` (prop lain tetap). CLAUDE.md "Aturan frontend": tambah butir sistem desain (token §6.1 dan tiga nadanya, `Button`/`Badge` `color` × `variant` dengan pemetaan lama sementara, `ActionButton` untuk aksi umum, `Alert color`, tooltip shadcn, `Label required`/`aria-required`, larangan palet mentah dijaga `scripts/no-raw-palette.test.ts`), butir cangkang (navigasi berpohon `NAV_GROUPS`, `qc.sidebar`, `staticData.crumb`/`pageWidth` wajib untuk rute baru, `PageContainer`); tambahkan pula: pasangan teks/latar solid wajib AA 4,5:1 (dijaga `web/src/styles.contrast.test.ts`), lebar `narrow`/`default`/`full` = `max-w-4xl`/`max-w-7xl`/`max-w-none`, Country Lock di luar cangkang memasang `PageContainer` sendiri. SUNTING (bukan hanya menambah) pernyataan CLAUDE.md yang kini bertentangan; periksa `docs/e2e-checklist*.md` dan teks langkah panduan yang menyebut letak/nama menu sidebar (kosmetik: perbaiki target/teks katalog, versi panduan tidak dinaikkan). Fragmen changelog: baris pertama `jenis: diubah`, lalu satu paragraf santai untuk pengguna tentang tampilan baru (warna status, menu dikelompokkan dan diingat, breadcrumb, tanda * pada isian wajib).
 - [ ] **Step 4:** Verifikasi: `bun run --cwd web test`, `bun run typecheck`, `bun run lint`, `bun test scripts/`, `bun run changelog validate`, `bun run build` → semua sukses (catat keluaran ringkas). `bun run check` penuh bila terowongan DB hidup; bila mati, laporkan bahwa tes server tak dijalankan (fase ini tak mengubah server).
 - [ ] **Step 5:** Commit `docs: aturan sistem desain dan cangkang + changelog fondasi`.
