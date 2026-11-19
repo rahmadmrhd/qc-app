@@ -75,9 +75,10 @@ ke `dev`/`main`, dan deploy versi lama dari tag).
   "belum berjalan di staging" dan menolak rilis server/gabungan. Rilis gabungan hampir selalu membawa perubahan desktop, jadi celah ini lebih
   sering terkena. Pemulihan operasional: deploy staging manual dari `dev` sebelum merge PR rilis. Perbaikan permanen (guard hanya menghitung
   berkas yang memengaruhi image, memakai klasifikasi `ci-changes`) mengubah semantik guard dan menunggu keputusan pemilik.
-- **Keputusan pelaksana yang menunggu tinjauan pemilik**: satu `ci` dipakai bersama pada rilis gabungan, sehingga kegagalan uji kemas desktop (`desktop-check`)
-  menahan `image`/`deploy`/`publish-server` walau server tak berubah. Alternatif: memisahkan `ci` server (selektif) dari `ci` desktop (penuh) dengan
-  konsekuensi menjalankan pemeriksaan server dua kali. Dipilih satu `ci` karena sederhana dan fail-safe; perilaku ini tercatat di `docs/ci-cd.md`.
+- **Satu `ci` dipakai bersama pada rilis gabungan (DIPUTUSKAN pemilik 2026-11-19)**: kegagalan uji kemas desktop (`desktop-check`)
+  menahan `image`/`deploy`/`publish-server` walau server tak berubah. Alternatif yang ditolak: memisahkan `ci` server (selektif) dari `ci` desktop (penuh),
+  yang menjalankan pemeriksaan server dua kali. Alasan: sederhana dan fail-safe, dan pemilik dapat memilih per rilis antara cabang tunggal (server saja
+  atau desktop saja, tanpa saling menahan) dan cabang gabungan; perilaku tercatat di `docs/ci-cd.md`.
 - Rilis server dan gabungan memegang grup concurrency production selama build Windows dan penerbitan desktop (hingga ±75 menit): dispatch production
   dan deploy lain mengantre, dan run gabungan yang menunggu dapat tergeser (dipulihkan lewat `workflow_dispatch`). Konsekuensi rancangan, diterima.
 - PR rilis server yang tak sah (squash, versi salah) kini membuat `meta` merah walau `RELEASE_FLOW` bukan `tag` (dulu `meta` dilewati total): pagar identitas
@@ -91,5 +92,7 @@ komponen ketiga.
 ## 6. Keputusan pemilik produk
 1. (2026-11-19) Rilis bersama lewat **satu PR gabungan** (bukan dua PR, bukan tombol Actions).
 2. (2026-11-19) **`release.yml` dan `release-desktop.yml` digabung menjadi satu `release.yml`**; `deploy-server.yml` dan `deploy-tag.yml` tetap terpisah.
-3. Keputusan pelaksana yang menunggu tinjauan pemilik: urutan server-dulu pada rilis gabungan (butir 5 bagian 3), pemulihan per komponen (butir 7),
+3. (2026-11-19) **Tetap satu `ci`** pada rilis gabungan, dan bentuk rilis (tunggal atau gabungan) dipilih per rilis oleh pemilik lewat nama cabang
+   yang disiapkan `release:prepare`; kedua alur tetap didukung berdampingan.
+4. Keputusan pelaksana yang menunggu tinjauan pemilik: urutan server-dulu pada rilis gabungan (butir 5 bagian 3), pemulihan per komponen (butir 7),
    dan celah staging-ref (bagian 4).
