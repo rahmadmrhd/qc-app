@@ -391,6 +391,7 @@ test('ActionButton: janji yang ditolak membuka kunci tombol lagi dan thenable ik
   const onClick = vi.fn(
     () =>
       ({
+        // biome-ignore lint/suspicious/noThenProperty: sengaja thenable untuk menguji `ActionButton` yang menunggu hasil
         then: (_ok: () => void, fail: (reason: Error) => void) => {
           reject = fail;
         },

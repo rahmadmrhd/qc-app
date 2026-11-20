@@ -25,6 +25,8 @@ declare module '@tanstack/react-router' {
   interface StaticDataRouteOption {
     crumb?: CrumbSpec;
     pageWidth?: PageWidth;
+    /** Halaman bergantung pada lokasi aktif: header ponsel menampilkan baris lokasi (butir 42c). */
+    locationAware?: boolean;
   }
 }
 
@@ -97,4 +99,15 @@ export function pageWidthOf(
     if (width) return width;
   }
   return 'default';
+}
+
+/** Rute terdalam yang menyatakan `locationAware` menang; bawaan `false`. */
+export function locationAwareOf(
+  matches: readonly { staticData?: { locationAware?: boolean } }[],
+): boolean {
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const flag = matches[i]?.staticData?.locationAware;
+    if (flag !== undefined) return flag;
+  }
+  return false;
 }

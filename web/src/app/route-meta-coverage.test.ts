@@ -4,7 +4,10 @@ import type { PageWidth } from '@/app/route-meta';
 import { routeTree } from '@/routeTree.gen';
 
 interface RouteNode {
-  options: { id: string; staticData?: { crumb?: unknown; pageWidth?: PageWidth } };
+  options: {
+    id: string;
+    staticData?: { crumb?: unknown; pageWidth?: PageWidth; locationAware?: boolean };
+  };
   children?: unknown;
 }
 
@@ -119,5 +122,25 @@ test('rute daun yang bukan tujuan butir nav punya crumb; tujuan nav tidak', () =
     const crumb = leaf.options.staticData?.crumb;
     if (navTargets.has(path)) expect(crumb, path).toBeUndefined();
     else expect(crumb, path).toBeDefined();
+  }
+});
+
+/** Halaman bergantung lokasi aktif (baris lokasi di header ponsel, butir 42c); rute baru wajib memutuskan. */
+const LOCATION_AWARE = [
+  '/handover',
+  '/handover/$handoverId',
+  '/handover/$handoverId/edit',
+  '/handover/new',
+  '/serial/new',
+  '/sticker',
+  '/sticker/opname',
+];
+
+test('locationAware sesuai himpunan (hanya halaman yang membaca lokasi aktif)', () => {
+  for (const leaf of appLeaves()) {
+    const path = pathOf(leaf);
+    const flag = leaf.options.staticData?.locationAware;
+    if (LOCATION_AWARE.includes(path)) expect(flag, path).toBe(true);
+    else expect(flag, path).toBeUndefined();
   }
 });

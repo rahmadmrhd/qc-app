@@ -1,6 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useMatches, useMatchRoute } from '@tanstack/react-router';
-import { ChevronLeft } from 'lucide-react';
 import { Fragment, useEffect, useReducer } from 'react';
 import { findNavTrail, NAV_GROUPS, type NavItem } from '@/app/navigation';
 import { buildCrumbs, type CrumbPart } from '@/app/route-meta';
@@ -12,7 +11,6 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
-import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 function CrumbLink({ part }: { part: CrumbPart }) {
@@ -58,24 +56,14 @@ export function AppBreadcrumb() {
   const last = crumbs[crumbs.length - 1] as CrumbPart;
 
   if (isMobile) {
-    const previous = [...crumbs.slice(0, -1)].reverse().find((part) => part.to !== undefined);
+    // Judul tingkat terakhir saja; kembali = tombol/gestur back sistem (tumpukan riwayat, butir 41).
     return (
-      <Breadcrumb className="flex min-w-0 items-center gap-1">
-        {previous ? (
-          <Button asChild variant="ghost" size="icon-sm">
-            <Link
-              to={previous.to as NavItem['to']}
-              params={previous.params as never}
-              search={previous.search as never}
-              aria-label={`Kembali ke ${previous.label}`}
-            >
-              <ChevronLeft aria-hidden />
-            </Link>
-          </Button>
-        ) : null}
+      <Breadcrumb className="min-w-0 flex-1" data-slot="phone-title">
         <BreadcrumbList className="min-w-0 flex-nowrap">
           <BreadcrumbItem className="min-w-0">
-            <BreadcrumbPage className="truncate">{last.label}</BreadcrumbPage>
+            <BreadcrumbPage className="truncate text-base font-semibold">
+              {last.label}
+            </BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>

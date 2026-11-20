@@ -166,7 +166,7 @@ test('isi halaman dibungkus PageContainer rata tengah berlebar bawaan', () => {
   expect(container.className).toContain('max-w-7xl');
 });
 
-test('K1: di ponsel breadcrumb pindah dari header ke baris di atas isi halaman (header muat di 360 px)', () => {
+test('butir 41: di ponsel judul ada di header di sebelah tombol menu, tanpa baris breadcrumb dan tanpa tombol tema', () => {
   window.innerWidth = 360;
   window.matchMedia = vi.fn(() => ({
     matches: true,
@@ -174,7 +174,8 @@ test('K1: di ponsel breadcrumb pindah dari header ke baris di atas isi halaman (
     removeEventListener: () => undefined,
   })) as unknown as typeof window.matchMedia;
   const { container } = render(<AppShell />);
-  expect(container.querySelector('[data-slot="phone-breadcrumb"]')).not.toBeNull();
-  expect(container.querySelector('header [data-slot="breadcrumb"]')).toBeNull();
+  expect(container.querySelector('[data-slot="phone-breadcrumb"]')).toBeNull();
+  expect(container.querySelector('header [data-slot="sidebar-trigger"]')).not.toBeNull();
+  expect(container.querySelector('header [aria-label="Ganti tema"]')).toBeNull();
   window.innerWidth = 1024;
 });

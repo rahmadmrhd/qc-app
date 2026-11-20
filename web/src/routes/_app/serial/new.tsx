@@ -10,7 +10,7 @@ import {
 } from '@/modules/serial/lib/leave-guard';
 
 export const Route = createFileRoute('/_app/serial/new')({
-  staticData: { crumb: 'Tambah', pageWidth: 'full' },
+  staticData: { crumb: 'Tambah', pageWidth: 'full', locationAware: true },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'serial', 'edit'),
   component: NewSerialRoute,
 });

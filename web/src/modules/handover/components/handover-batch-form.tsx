@@ -144,6 +144,7 @@ export function HandoverBatchForm({
       <section data-tour="handover-location" className="space-y-1.5 rounded-lg border p-4">
         <LocationField
           id={`${baseId}-location`}
+          highlightInitial
           module="handover"
           level="edit"
           value={locationId}

@@ -82,13 +82,10 @@ test('tautan butir menu, induk tanpa tautan, tingkat terakhir tanpa tautan; labe
   expect(screen.queryByText('Detail')).toBeNull();
 });
 
-test('ponsel: hanya tingkat terakhir dan tombol Kembali ke tingkat sebelumnya yang bertautan', async () => {
+test('ponsel: hanya judul tingkat terakhir, tanpa tombol kembali dan tanpa tautan tingkat lain', async () => {
   setViewport(500);
   await renderAt('/item/1', new QueryClient());
-  expect(screen.getByRole('link', { name: 'Kembali ke Daftar Item' })).toHaveAttribute(
-    'href',
-    '/item',
-  );
+  expect(screen.queryByRole('link', { name: /Kembali ke/ })).toBeNull();
   expect(screen.getByText('Detail')).toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Daftar Item' })).toBeNull();
 });

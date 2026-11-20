@@ -161,6 +161,7 @@ export function OpnamePage({ rows, onSave, onDone, onCancel, onDirtyChange }: Op
       </div>
       <LocationField
         id="opname-location"
+        highlightInitial
         module="stickerstock"
         level="manage"
         value={locationId}

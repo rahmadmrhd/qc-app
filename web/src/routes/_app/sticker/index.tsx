@@ -39,6 +39,7 @@ import {
 } from '@/modules/sticker/queries';
 
 export const Route = createFileRoute('/_app/sticker/')({
+  staticData: { locationAware: true },
   // Katalog (`sticker: view`) ATAU stok (`stickerstock: view` di minimal satu lokasi): halaman menyesuaikan isinya.
   beforeLoad: ({ context }) =>
     requireAnyPermission(context.queryClient, [

@@ -21,7 +21,7 @@ import { stickerStockQuery, useOpname } from '@/modules/sticker/queries';
 export const Route = createFileRoute('/_app/sticker/opname')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'stickerstock', 'manage'),
   component: StickerOpnameRoute,
-  staticData: { crumb: 'Opname stok' },
+  staticData: { crumb: 'Opname stok', locationAware: true },
 });
 
 const LEAVE_MESSAGE = 'Hitungan opname belum disimpan dan akan hilang. Tetap keluar dari halaman?';

@@ -228,6 +228,7 @@ function StockEntryBody({ mode, sticker, onSave, onClose }: BodyProps) {
       <div className="space-y-1.5">
         <LocationField
           id="stock-entry-location"
+          highlightInitial
           required
           module="stickerstock"
           level={level}

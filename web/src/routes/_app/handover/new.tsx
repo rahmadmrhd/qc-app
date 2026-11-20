@@ -15,7 +15,7 @@ import { toSaveHandoverBatchInput } from '@/modules/handover/schemas';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 
 export const Route = createFileRoute('/_app/handover/new')({
-  staticData: { crumb: 'Tambah', pageWidth: 'narrow' },
+  staticData: { crumb: 'Tambah', pageWidth: 'narrow', locationAware: true },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'handover', 'edit'),
   component: NewHandoverPage,
 });

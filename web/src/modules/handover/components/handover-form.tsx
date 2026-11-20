@@ -77,6 +77,7 @@ export function HandoverForm({
               ) : (
                 <LocationField
                   id="handover-location"
+                  highlightInitial
                   required
                   module="handover"
                   level="edit"

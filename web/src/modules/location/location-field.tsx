@@ -1,7 +1,7 @@
 import type { LocatedModule } from '@shared/assignments';
 import { normalizeKey } from '@shared/items';
 import type { Level } from '@shared/permissions';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { LinkField, type LinkOption } from '@/components/link-field';
 import { locationsWith } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
@@ -15,6 +15,11 @@ export interface LocationFieldProps {
   value: string;
   onChange: (locationId: string) => void;
   required?: boolean;
+  /**
+   * Form tulis baru (butir 42e): nilai awal yang terisi dari lokasi aktif disorot dengan keterangan agar diperiksa
+   * sebelum menyimpan; hilang begitu nilainya diubah. Jangan dipakai pada form ubah (nilai dari record).
+   */
+  highlightInitial?: boolean;
 }
 
 /**
@@ -29,7 +34,9 @@ export function LocationField({
   value,
   onChange,
   required,
+  highlightInitial,
 }: LocationFieldProps) {
+  const initialRef = useRef(value);
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   const [term, setTerm] = useState('');
@@ -41,12 +48,20 @@ export function LocationField({
     const location = writable.find((item) => item.id === locationId) ?? known;
     return location ? `${location.name} (${location.code})` : '(lokasi tidak tersedia)';
   };
+  const fromActive =
+    highlightInitial === true &&
+    value !== '' &&
+    value === initialRef.current &&
+    writable.some((location) => location.id === value);
   const key = normalizeKey(term);
   const options: LinkOption[] = writable
     .map((location) => ({ id: location.id, label: `${location.name} (${location.code})` }))
     .filter((option) => key === '' || normalizeKey(option.label).includes(key));
   return (
-    <div className="space-y-1.5">
+    <div
+      className={`space-y-1.5${fromActive ? ' rounded-md ring-2 ring-info-text/40 ring-offset-4 ring-offset-background' : ''}`}
+      data-from-active={fromActive || undefined}
+    >
       <LinkField
         id={id}
         label="Lokasi"
@@ -60,6 +75,11 @@ export function LocationField({
         onChange={(next) => onChange(next ?? '')}
         disabled={writable.length === 0}
       />
+      {fromActive ? (
+        <p className="text-xs text-info-text">
+          Nilai awal diambil dari lokasi aktif. Periksa sebelum menyimpan.
+        </p>
+      ) : null}
       {writable.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           Tidak ada lokasi aktif yang boleh Anda ubah.

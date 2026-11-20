@@ -31,6 +31,7 @@ import { useActiveLocations } from '@/modules/location/active-locations-context'
 
 export const Route = createFileRoute('/_app/handover/$handoverId/edit')({
   staticData: {
+    locationAware: true,
     crumb: ({ params, search, queryClient }) => {
       const [hit] = queryClient.getQueriesData<{ number: string }>({
         queryKey: ['handovers', 'one', params.handoverId ?? ''],

@@ -10,7 +10,7 @@ import { useOutboxSummary } from '@/modules/handover/lib/use-outbox-summary';
 import { formatClock } from '../server-status';
 
 /** Daftar entri. Komponen terpisah: nomor task dibaca dari cache saat popover dibuka (bukan saat chip dirender). */
-function OutboxList({ entries }: { entries: readonly OutboxEntry[] }) {
+export function OutboxList({ entries }: { entries: readonly OutboxEntry[] }) {
   const queryClient = useQueryClient();
   return (
     <ul className="max-h-64 space-y-2 overflow-y-auto">

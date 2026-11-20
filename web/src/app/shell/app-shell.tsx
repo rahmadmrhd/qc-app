@@ -12,12 +12,14 @@ import { TourProvider } from '@/modules/guide/components/tour/tour-provider';
 import { renderTourTip } from '@/modules/guide/components/tour/tour-tip';
 import { ItemCreateHost } from '@/modules/item/components/item-create-host';
 import { ActiveLocationsProvider } from '@/modules/location/active-locations-context';
+import { LocationLine } from '@/modules/location/components/location-line';
+import { LocationReconfirm } from '@/modules/location/components/location-reconfirm';
 import { LocationPicker } from '@/modules/location/location-picker';
 import { NotificationBell } from '@/modules/notification/notification-bell';
 import { PushOnboarding } from '@/modules/push/components/push-onboarding';
 import { ThemeToggle } from '@/modules/theme/theme-toggle';
 import { usePrefetchOnIdle } from '../prefetch';
-import { pageWidthOf } from '../route-meta';
+import { locationAwareOf, pageWidthOf } from '../route-meta';
 import { AppBreadcrumb } from './app-breadcrumb';
 import { AppSidebar } from './app-sidebar';
 import { OutboxChip } from './outbox-chip';
@@ -35,10 +37,11 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
   // Papan ketik layar ponsel: variabel --vvh/--vv-top/--kb dan gulir field fokus ke area terlihat.
   useVisualViewport();
   useFocusIntoView();
-  // Ponsel: header hanya memuat tombol (trigger, lokasi, lonceng, tema, akun) agar muat di 360 px; breadcrumb pindah
-  // ke baris sendiri di atas isi halaman (tombol kembali + judul tingkat terakhir).
+  // Ponsel (butir 41): header = ☰ + judul tingkat terakhir + tombol kanan (lokasi, lonceng, akun); tanpa tombol kembali.
   const phone = useIsMobile();
-  const pageWidth = pageWidthOf(useMatches());
+  const matches = useMatches();
+  const pageWidth = pageWidthOf(matches);
+  const locationAware = locationAwareOf(matches);
   // Terkendali (bukan defaultOpen): terbuka/terlipat diingat di localStorage lewat `qc.sidebar`.
   const [sidebarOpen, setSidebarOpen] = useState(() => readSidebarState().open);
   const onSidebarOpenChange = useCallback((open: boolean) => {
@@ -53,16 +56,27 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
             {/* Di dalam SidebarProvider agar mesin tur dapat membuka sidebar ponsel; overlay-nya dimuat malas. */}
             <TourProvider renderTip={renderTourTip}>
               <AppSidebar />
+              <LocationReconfirm />
               <SidebarInset className="min-w-0">
                 <UiUpdateBanner />
                 <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
                   <SidebarTrigger data-tour="sidebar-trigger" />
-                  {phone ? null : <AppBreadcrumb />}
-                  <div className="ml-auto flex items-center gap-1">
-                    <LocationPicker />
-                    <OutboxChip />
+                  {/* Ponsel: judul tingkat terakhir di sebelah ☰ (tanpa tombol kembali: back = tombol sistem). */}
+                  {phone ? (
+                    <div className="flex min-w-0 flex-1 flex-col justify-center">
+                      <AppBreadcrumb />
+                      {/* Baris kedua hanya di halaman berlokasi (butir 42c). */}
+                      {locationAware ? <LocationLine /> : null}
+                    </div>
+                  ) : (
+                    <AppBreadcrumb />
+                  )}
+                  <div className="ml-auto flex shrink-0 items-center gap-1">
+                    {/* Ponsel (butir 42): lokasi, antrean, dan tema pindah ke baris kedua/lembar avatar. */}
+                    {phone ? null : <LocationPicker />}
+                    {phone ? null : <OutboxChip />}
                     <NotificationBell />
-                    <ThemeToggle />
+                    {phone ? null : <ThemeToggle />}
                     <UserMenu />
                   </div>
                 </header>
@@ -71,11 +85,6 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
                 <GuideGreeting />
                 <GuideBanner />
                 <main className="flex-1 p-[var(--main-pad)] [--main-pad:1rem] md:[--main-pad:1.5rem]">
-                  {phone ? (
-                    <div className="-mt-2 mb-2" data-slot="phone-breadcrumb">
-                      <AppBreadcrumb />
-                    </div>
-                  ) : null}
                   <PageContainer width={pageWidth}>{children ?? <Outlet />}</PageContainer>
                 </main>
               </SidebarInset>
