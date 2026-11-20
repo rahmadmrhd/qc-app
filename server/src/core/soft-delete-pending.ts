@@ -130,16 +130,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'manual_book_versions@2',
   ],
   // Fase 4c (access, customer)
-  'server/src/modules/access/context.ts': [
-    'users@1',
-    'roles@1',
-    'locations@1',
-    'business_units@1',
-    'roles@2',
-    'locations@2',
-    'business_units@2',
-    'users@2',
-  ],
   'server/src/modules/access/location-brief.ts': ['locations@1'],
   'server/src/modules/access/repo.ts': [
     'users@1',

@@ -119,16 +119,22 @@ export function buIdsWithLevel(
     .map(([buId]) => buId);
 }
 
-/** `true` hanya bila `buIds` tidak kosong dan setiap BU di dalamnya berlevel minimal `level`. */
+/**
+ * `true` hanya bila `buIds` tidak kosong dan setiap BU di dalamnya berlevel minimal `level`. BU di `deletedBuIds`
+ * (soft delete) diabaikan dari syarat "SEMUA BU" selama masih ada BU hidup di `buIds` (keputusan pemilik 9); bila
+ * semuanya terhapus, syarat berlaku atas semuanya (BU terhapus tetap memberi hak seperti BU nonaktif).
+ */
 export function canActOnAllBus(
   byBu: Readonly<Record<string, BuPermissionMap>>,
   module: BuModule,
   level: Level,
   buIds: readonly string[],
+  deletedBuIds: readonly string[] = [],
 ): boolean {
   if (buIds.length === 0) return false;
   const required = levelRank(level);
-  return buIds.every((buId) => {
+  const live = buIds.filter((buId) => !deletedBuIds.includes(buId));
+  return (live.length > 0 ? live : buIds).every((buId) => {
     const permissions = byBu[buId];
     return permissions !== undefined && levelRank(permissions[module]) >= required;
   });

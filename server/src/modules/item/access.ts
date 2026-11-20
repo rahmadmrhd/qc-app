@@ -28,7 +28,7 @@ export function assertCanActOnItem(
   level: Level,
   message: string,
 ): void {
-  if (!canActOnAllBus(user.businessUnits, 'item', level, itemBuIds)) {
+  if (!canActOnAllBus(user.businessUnits, 'item', level, itemBuIds, user.deletedBuIds)) {
     throw appError('FORBIDDEN', message);
   }
 }
