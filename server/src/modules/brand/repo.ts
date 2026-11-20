@@ -85,13 +85,20 @@ export interface BrandBuBrief {
   status: ItemStatus;
 }
 
-/** Ringkasan semua BU (kecil) untuk validasi dan pengurutan BU bawaan. */
+/**
+ * Ringkasan semua BU (kecil) untuk validasi dan pengurutan BU bawaan. BU terhapus (soft delete) dibaca `inactive`
+ * (sama dengan BU nonaktif): tak dapat ditambahkan sebagai BU bawaan baru, tetapi yang sudah tersimpan tetap dipertahankan.
+ */
 export async function listBuBriefs(db: Preparer): Promise<BrandBuBrief[]> {
-  const result = await db.prepare('SELECT id, code, status FROM business_units').all<{
-    id: string;
-    code: string;
-    status: string;
-  }>();
+  const result = await db
+    .prepare(
+      "SELECT id, code, CASE WHEN deleted_at = '' THEN status ELSE 'inactive' END AS status FROM business_units",
+    )
+    .all<{
+      id: string;
+      code: string;
+      status: string;
+    }>();
   return result.results
     .map((row) => ({
       id: row.id.trim(),
@@ -114,7 +121,7 @@ export function activeBuGuardStmt(db: Preparer, ids: readonly string[]): DbState
   const unique = [...new Set(ids)];
   return db
     .prepare(
-      `SELECT CASE WHEN COUNT(*) = ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM business_units WHERE id IN (${unique.map(() => '?').join(',')}) AND status = 'active' LOCK IN SHARE MODE`,
+      `SELECT CASE WHEN COUNT(*) = ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM business_units WHERE id IN (${unique.map(() => '?').join(',')}) AND status = 'active' AND ${liveWhere()} LOCK IN SHARE MODE`,
     )
     .bind(unique.length, ...unique);
 }

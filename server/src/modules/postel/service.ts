@@ -578,6 +578,7 @@ export async function savePostel(
           actor: actor.email,
           action: 'postel.create',
           target: postelTarget(postelId),
+          targetId: postelId,
           before: null,
           after,
         }),
@@ -632,6 +633,7 @@ export async function savePostel(
               actor: actor.email,
               action: 'postel.update',
               target: postelTarget(postelId),
+              targetId: postelId,
               before,
               after,
             }),
@@ -680,6 +682,7 @@ export async function removePostel(env: Env, id: string, actor: UserContext): Pr
       actor: actor.email,
       action: 'postel.delete',
       target: postelTarget(id),
+      targetId: id,
       before,
       after: null,
     }).run();

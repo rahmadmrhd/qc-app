@@ -263,6 +263,7 @@ export const qrExportHandler: JobHandler = {
                   actor: ctx.job.createdBy,
                   action: 'qrcode.export',
                   target: current.title,
+                  targetId: current.id,
                   before: { exported: current.exportedAt === '' ? 'belum' : current.exportedAt },
                   after: {
                     exported: now,

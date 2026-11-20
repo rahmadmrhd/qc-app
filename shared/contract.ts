@@ -1,4 +1,5 @@
 import type { Assignment, LocationPermissionMap } from './assignments';
+import type { AuditTargetKind } from './audit';
 import type {
   BatchResult,
   IdBatchInput,
@@ -104,6 +105,13 @@ export interface UserDto {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** Ada hanya pada pengguna terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+  /**
+   * Id role pada penugasan (lokasi dan BU) yang sudah dihapus: form menampilkan "Terhapus" dan izin role itu tidak
+   * berlaku. Selalu terisi dari server (kosong bila tak ada).
+   */
+  deletedRoleIds?: string[];
 }
 
 export interface RoleDto {
@@ -111,10 +119,31 @@ export interface RoleDto {
   name: string;
   description: string;
   permissions: PartialPermissionMap;
+  /** Jumlah pengguna HIDUP yang memakai role ini (pengguna terhapus tak dihitung). */
   userCount: number;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** Ada hanya pada role terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+}
+
+export interface ListUsersInput {
+  /** Bawaan = pengguna hidup (aktif + nonaktif). `deleted` hanya bagi `access: manage`; selain itu `FORBIDDEN`. */
+  status?: ListStatusFilter;
+}
+
+export interface GetUserInput {
+  id: string;
+}
+
+export interface ListRolesInput {
+  /** Bawaan = role hidup. `deleted` hanya bagi `access: manage`; selain itu `FORBIDDEN`. Role tak punya status aktif/nonaktif. */
+  status?: ListStatusFilter;
+}
+
+export interface GetRoleInput {
+  id: string;
 }
 
 export interface SaveUserInput {
@@ -164,6 +193,11 @@ export interface AuditEntryDto {
   target: string;
   before: AuditSnapshot;
   after: AuditSnapshot;
+  /**
+   * Entitas yang diubah entri ini (menaut ke View-nya). Hanya entri BARU yang memuatnya (kolom `audit_log.target_id`
+   * terisi); entri lama dan aksi tanpa entitas (pengaturan) tidak punya `targetRef`.
+   */
+  targetRef?: { kind: AuditTargetKind; id: string };
 }
 
 export interface ListAuditInput {
@@ -192,6 +226,17 @@ export interface LocationDto {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** Ada hanya pada lokasi terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+}
+
+export interface ListLocationsInput {
+  /** Bawaan = lokasi hidup. `deleted` hanya bagi `access: manage`; selain itu `FORBIDDEN`. */
+  status?: ListStatusFilter;
+}
+
+export interface GetLocationInput {
+  id: string;
 }
 
 export interface SaveLocationInput {
@@ -216,6 +261,11 @@ export interface BusinessUnitRefDto {
 /** Ringkasan BU untuk pemilih (Merk, form item): tanpa hitungan dan metadata. */
 export interface BusinessUnitOptionDto extends BusinessUnitRefDto {
   status: BusinessUnitStatus;
+  /**
+   * True bila BU sudah dihapus (soft delete). BU terhapus tetap dikembalikan agar rujukan tersimpan dapat menampilkan
+   * namanya, tetapi pemilih dan filter harus menyaringnya (tidak ditawarkan untuk pilihan baru).
+   */
+  deleted?: boolean;
 }
 
 export interface BusinessUnitDto extends BusinessUnitOptionDto {
@@ -226,6 +276,21 @@ export interface BusinessUnitDto extends BusinessUnitOptionDto {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /**
+   * Ada hanya pada BU terhapus (soft delete); jejak penghapusan. Berbeda dari DTO lain: `deleted` pada BU adalah
+   * penanda boolean (diwarisi `BusinessUnitOptionDto`, agar daftar BU tetap dapat dipakai sebagai pilihan), jadi jejaknya
+   * ada di `deletedInfo`.
+   */
+  deletedInfo?: SoftDeleteInfo;
+}
+
+export interface ListBusinessUnitsInput {
+  /** Bawaan = BU hidup. `deleted` hanya bagi `access: manage`; selain itu `FORBIDDEN`. */
+  status?: ListStatusFilter;
+}
+
+export interface GetBusinessUnitInput {
+  id: string;
 }
 
 export interface SaveBusinessUnitInput {
@@ -731,6 +796,17 @@ export interface CustomerDto {
   name: string;
   status: ItemStatus;
   updatedAt: string;
+  /** Ada hanya pada customer terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+}
+
+export interface ListCustomersInput {
+  /** Bawaan = customer hidup. `deleted` hanya bagi `item: manage`; selain itu `FORBIDDEN`. */
+  status?: ListStatusFilter;
+}
+
+export interface GetCustomerInput {
+  id: string;
 }
 
 export interface RenameCustomerInput {
@@ -1203,20 +1279,56 @@ export interface PostelFileContentDto {
 
 export interface ApiContract {
   'auth.me': { input: null; output: MeDto };
-  'access.users.list': { input: null; output: UserDto[] };
+  'access.users.list': { input: ListUsersInput | null; output: UserDto[] };
+  /** Pengguna terhapus hanya bagi `access: manage`; selain itu `NOT_FOUND`. */
+  'access.users.get': { input: GetUserInput; output: UserDto };
   'access.users.save': { input: SaveUserInput; output: UserDto };
   'access.users.setStatus': { input: SetUserStatusInput; output: UserDto };
-  'access.roles.list': { input: null; output: RoleDto[] };
+  /** Batch atomik (maks. `BATCH_MAX` id): satu gagal = tidak ada yang berubah; akun pemanggil di dalamnya menolak seluruhnya. */
+  'access.users.setStatusBatch': { input: StatusBatchInput; output: BatchResult<UserDto> };
+  /** Hapus lunak: hanya pengguna Nonaktif, bukan akun sendiri/super admin; hapus ulang = sukses tanpa audit. */
+  'access.users.remove': { input: GetUserInput; output: RemoveResult };
+  'access.users.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  /** Pulihkan: kembali Nonaktif. */
+  'access.users.restore': { input: GetUserInput; output: UserDto };
+  'access.users.restoreBatch': { input: IdBatchInput; output: BatchResult<UserDto> };
+  'access.roles.list': { input: ListRolesInput | null; output: RoleDto[] };
+  /** Role terhapus hanya bagi `access: manage`; selain itu `NOT_FOUND`. */
+  'access.roles.get': { input: GetRoleInput; output: RoleDto };
   'access.roles.save': { input: SaveRoleInput; output: RoleDto };
+  /** Sejak soft delete: hapus LUNAK (bentuk keluaran tetap). Role hanya bila tak dipakai pengguna hidup. */
   'access.roles.delete': { input: DeleteRoleInput; output: { id: string } };
+  'access.roles.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'access.roles.restore': { input: GetRoleInput; output: RoleDto };
+  'access.roles.restoreBatch': { input: IdBatchInput; output: BatchResult<RoleDto> };
   'access.audit.list': { input: ListAuditPageInput; output: AuditCursorPageDto };
-  'access.locations.list': { input: null; output: LocationDto[] };
+  'access.locations.list': { input: ListLocationsInput | null; output: LocationDto[] };
+  /** Lokasi terhapus hanya bagi `access: manage`; selain itu `NOT_FOUND`. */
+  'access.locations.get': { input: GetLocationInput; output: LocationDto };
   'access.locations.save': { input: SaveLocationInput; output: LocationDto };
   'access.locations.setStatus': { input: SetLocationStatusInput; output: LocationDto };
-  'access.businessUnits.list': { input: null; output: BusinessUnitDto[] };
+  'access.locations.setStatusBatch': { input: StatusBatchInput; output: BatchResult<LocationDto> };
+  'access.locations.remove': { input: GetLocationInput; output: RemoveResult };
+  'access.locations.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'access.locations.restore': { input: GetLocationInput; output: LocationDto };
+  'access.locations.restoreBatch': { input: IdBatchInput; output: BatchResult<LocationDto> };
+  'access.businessUnits.list': { input: ListBusinessUnitsInput | null; output: BusinessUnitDto[] };
+  /** BU terhapus hanya bagi `access: manage`; selain itu `NOT_FOUND`. */
+  'access.businessUnits.get': { input: GetBusinessUnitInput; output: BusinessUnitDto };
   'access.businessUnits.save': { input: SaveBusinessUnitInput; output: BusinessUnitDto };
   'access.businessUnits.setStatus': { input: SetBusinessUnitStatusInput; output: BusinessUnitDto };
-  /** Daftar BU ringkas untuk pemilih; izin `item: view` (user tanpa `access: view`). */
+  'access.businessUnits.setStatusBatch': {
+    input: StatusBatchInput;
+    output: BatchResult<BusinessUnitDto>;
+  };
+  'access.businessUnits.remove': { input: GetBusinessUnitInput; output: RemoveResult };
+  'access.businessUnits.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'access.businessUnits.restore': { input: GetBusinessUnitInput; output: BusinessUnitDto };
+  'access.businessUnits.restoreBatch': {
+    input: IdBatchInput;
+    output: BatchResult<BusinessUnitDto>;
+  };
+  /** Daftar BU ringkas untuk pemilih; izin `item: view` (user tanpa `access: view`). BU terhapus ikut, bertanda `deleted`. */
   'businessUnits.options': { input: null; output: BusinessUnitOptionDto[] };
   'files.upload': { input: UploadFileInput; output: FileDto };
   'files.get': { input: GetFileInput; output: FileContentDto };
@@ -1252,9 +1364,18 @@ export interface ApiContract {
   'stickerStock.adjust': { input: AdjustStockInput; output: StockEntryDto };
   'stickerStock.opname': { input: OpnameInput; output: StockEntryDto[] };
   'stickerStock.history': { input: StockHistoryInput; output: StockHistoryPageDto };
-  'customers.list': { input: null; output: CustomerDto[] };
+  'customers.list': { input: ListCustomersInput | null; output: CustomerDto[] };
+  /** Customer terhapus hanya bagi `item: manage`; selain itu `NOT_FOUND`. */
+  'customers.get': { input: GetCustomerInput; output: CustomerDto };
   'customers.rename': { input: RenameCustomerInput; output: CustomerDto };
   'customers.setStatus': { input: SetCustomerStatusInput; output: CustomerDto };
+  'customers.setStatusBatch': { input: StatusBatchInput; output: BatchResult<CustomerDto> };
+  /** Hapus lunak: hanya customer Nonaktif; hapus ulang = sukses tanpa audit. */
+  'customers.remove': { input: GetCustomerInput; output: RemoveResult };
+  'customers.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  /** Pulihkan: kembali Nonaktif. */
+  'customers.restore': { input: GetCustomerInput; output: CustomerDto };
+  'customers.restoreBatch': { input: IdBatchInput; output: BatchResult<CustomerDto> };
   'handovers.options': { input: ListHandoversInput; output: HandoverOptionsDto };
   'handovers.board': { input: BoardPageInput; output: BoardPageDto };
   'handovers.get': { input: GetHandoverInput; output: HandoverDto };
