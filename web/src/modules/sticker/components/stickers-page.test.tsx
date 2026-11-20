@@ -7,7 +7,6 @@ import { linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
 import { stickerSaveFailure } from './sticker-form-dialog';
 import { StickersPage } from './stickers-page';
 
-vi.mock('@/modules/files/use-upload-image', () => ({ useUploadImage: () => vi.fn() }));
 vi.mock('@/modules/item/components/image-thumb', () => ({ ImageThumb: () => null }));
 
 const types: StickerTypeDto[] = [

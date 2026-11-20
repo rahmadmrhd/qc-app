@@ -31,15 +31,24 @@ vi.mock('@/modules/markdown/wysiwyg-editor', () => ({
     labelledBy?: string;
     mode?: string;
     maxImages?: number;
+    onBusyChange?: (busy: boolean) => void;
   }) => (
-    <textarea
-      id={props.id}
-      aria-labelledby={props.labelledBy}
-      data-mode={props.mode}
-      data-max-images={props.maxImages}
-      value={props.value}
-      onChange={(event) => props.onChange(event.target.value)}
-    />
+    <>
+      <textarea
+        id={props.id}
+        aria-labelledby={props.labelledBy}
+        data-mode={props.mode}
+        data-max-images={props.maxImages}
+        value={props.value}
+        onChange={(event) => props.onChange(event.target.value)}
+      />
+      <button type="button" onClick={() => props.onBusyChange?.(true)}>
+        Simulasi gambar diunggah
+      </button>
+      <button type="button" onClick={() => props.onBusyChange?.(false)}>
+        Simulasi unggah selesai
+      </button>
+    </>
   ),
 }));
 
@@ -836,4 +845,14 @@ test('Cek ulang: pratinjau cap di kamera foto memuat serial, item, BU, lokasi ce
   expect(note).toHaveTextContent('BU1 · Jakarta');
   expect(note).toHaveTextContent('Disimpan saat Simpan · A (QC)');
   Reflect.deleteProperty(navigator, 'mediaDevices');
+});
+
+test('gambar catatan yang masih diunggah menahan tombol kirim sampai selesai', async () => {
+  renderDialog({ ...SERIAL, status: 'broken', custody: 'service' }, 'note');
+  await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'Klaim vendor dibuka');
+  expect(screen.getByRole('button', { name: 'Kirim catatan' })).toBeEnabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Simulasi gambar diunggah' }));
+  expect(screen.getByRole('button', { name: 'Kirim catatan' })).toBeDisabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Simulasi unggah selesai' }));
+  expect(screen.getByRole('button', { name: 'Kirim catatan' })).toBeEnabled();
 });

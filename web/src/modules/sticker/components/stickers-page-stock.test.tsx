@@ -14,7 +14,6 @@ import { StickersPage, type StickersPageProps } from './stickers-page';
 
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
-vi.mock('@/modules/files/use-upload-image', () => ({ useUploadImage: () => vi.fn() }));
 vi.mock('@/modules/item/components/image-thumb', () => ({ ImageThumb: () => null }));
 const toastInfo = vi.hoisted(() => vi.fn());
 vi.mock('sonner', () => ({ toast: { info: toastInfo, success: vi.fn(), error: vi.fn() } }));

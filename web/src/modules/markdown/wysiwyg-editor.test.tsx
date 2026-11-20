@@ -1,11 +1,17 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { Editor } from '@tiptap/core';
 import { useState } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 const uploadMock = vi.hoisted(() => vi.fn());
-vi.mock('@/modules/files/use-upload-image', () => ({ useUploadImage: () => uploadMock }));
+vi.mock('@/modules/files/file-source', () => ({
+  itemFileSource: {
+    key: 'item-files',
+    mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+    upload: uploadMock,
+  },
+}));
 vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: 'data:image/png;base64,AAA', isLoading: false, isError: false }),
 }));
@@ -35,6 +41,59 @@ function Harness({ initial = '', ...rest }: { initial?: string } & Partial<Wysiw
 }
 
 const png = (name = 'foto.png') => new File(['x'], name, { type: 'image/png' });
+const item = (id: string, name: string) => ({
+  id,
+  name,
+  size: 1,
+  width: 1,
+  height: 1,
+  uploadedBy: '',
+  createdAt: '',
+  usageCount: 0,
+  canRename: false,
+  canRemove: false,
+  thumbUrl: '',
+  previewUrl: '',
+});
+/** Unggahan sukses: id berurutan dari `ids`, nama = nama antrean (nama berkas tanpa ekstensi). */
+function uploadsAs(...ids: string[]) {
+  const queue = [...ids];
+  uploadMock.mockImplementation(async (_file: File, name: string) =>
+    item(queue.shift() ?? 'fx', name),
+  );
+}
+const onBusyChange = vi.fn();
+
+/** Membuka dialog lewat tombol Gambar toolbar, memilih berkas lewat Telusuri, lalu menekan Sisipkan. */
+async function insertViaDialog(...files: File[]) {
+  await userEvent.click(screen.getByRole('button', { name: 'Gambar' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Sisipkan gambar' });
+  const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, { target: { files } });
+  await userEvent.click(
+    await within(dialog).findByRole('button', { name: `Sisipkan (${files.length})` }),
+  );
+}
+
+function pasteFiles(files: File[]) {
+  const paste = new Event('paste', { cancelable: true });
+  Object.assign(paste, { clipboardData: { files, types: ['Files'] } });
+  return editor.options.editorProps.handlePaste?.(
+    editor.view,
+    paste as ClipboardEvent,
+    null as never,
+  );
+}
+function dropFiles(files: File[]) {
+  const drop = new Event('drop', { cancelable: true });
+  Object.assign(drop, { dataTransfer: { files, types: ['Files'] } });
+  return editor.options.editorProps.handleDrop?.(
+    editor.view,
+    drop as DragEvent,
+    null as never,
+    false,
+  );
+}
 const SAMPLE = [
   '## Spesifikasi',
   '',
@@ -61,6 +120,7 @@ const SAMPLE = [
 
 beforeEach(() => {
   uploadMock.mockReset();
+  onBusyChange.mockReset();
   lastValue = '';
 });
 
@@ -143,33 +203,46 @@ test('mode note tidak menampilkan tombol gambar; mode item menampilkannya', () =
 });
 
 test('mode message menampilkan tombol gambar; tempel gambar memicu unggah dan menyisipkan rujukan', async () => {
-  uploadMock.mockResolvedValue('f9');
+  uploadsAs('f9');
   render(<Harness mode="message" />);
   await waitFor(() => expect(editor).toBeDefined());
   expect(screen.getByRole('button', { name: 'Gambar' })).toBeInTheDocument();
-  expect(screen.getByLabelText('Pilih gambar')).toBeInTheDocument();
+  // Tanpa input file tersembunyi: memilih gambar lewat dialog lampiran.
+  expect(screen.queryByLabelText('Pilih gambar')).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Checklist' })).toBeInTheDocument();
   // Toolbar mode message tetap ringkas: tanpa Tautan (khusus item).
   expect(screen.queryByRole('button', { name: 'Tautan' })).not.toBeInTheDocument();
   const file = png('tempel.png');
-  const paste = new Event('paste', { cancelable: true });
-  Object.assign(paste, { clipboardData: { files: [file], types: ['Files'] } });
-  const handled = editor.options.editorProps.handlePaste?.(
-    editor.view,
-    paste as ClipboardEvent,
-    null as never,
-  );
-  expect(handled).toBe(true);
+  expect(pasteFiles([file])).toBe(true);
   await waitFor(() => expect(lastValue).toContain('![tempel](qcfile:f9)'));
-  expect(uploadMock).toHaveBeenCalledWith(file);
+  expect(uploadMock.mock.calls[0]?.[0]).toBe(file);
 });
 
-test('maxImages: gambar melebihi batas tidak diunggah dan menampilkan pesan', async () => {
+test('maxImages: tombol Gambar saat sudah penuh menampilkan pesan tanpa dialog', async () => {
   render(<Harness mode="message" maxImages={1} initial="![a](qcfile:f1)" />);
   await waitFor(() => expect(editor).toBeDefined());
-  await userEvent.upload(screen.getByLabelText('Pilih gambar'), png('kedua.png'));
+  await userEvent.click(screen.getByRole('button', { name: 'Gambar' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Maksimal 1 gambar');
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   expect(uploadMock).not.toHaveBeenCalled();
+});
+
+test('maxImages: tempel melebihi sisa hanya mengunggah yang muat dan menampilkan pesan', async () => {
+  uploadsAs('f2');
+  render(<Harness mode="message" maxImages={2} initial="![a](qcfile:f1)" />);
+  await waitFor(() => expect(editor).toBeDefined());
+  expect(pasteFiles([png('b.png'), png('c.png')])).toBe(true);
+  expect(await screen.findByRole('alert')).toHaveTextContent('Maksimal 2 gambar');
+  await waitFor(() => expect(lastValue).toContain('qcfile:f2'));
+  expect(uploadMock).toHaveBeenCalledTimes(1);
+});
+
+test('dialog: maxFiles = sisa maxImages', async () => {
+  render(<Harness mode="message" maxImages={3} initial="![a](qcfile:f1)" />);
+  await waitFor(() => expect(editor).toBeDefined());
+  await userEvent.click(screen.getByRole('button', { name: 'Gambar' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Sisipkan gambar' });
+  expect(within(dialog).getByText(/hingga 2 berkas sekali unggah/)).toBeInTheDocument();
 });
 
 test('centang task list dapat diubah pada mode message, terkunci pada mode note', async () => {
@@ -198,59 +271,76 @@ test('tidak ada HTML mentah di keluaran', async () => {
   expect((window as unknown as { __xss?: number }).__xss).toBeUndefined();
 });
 
-test('memilih gambar mengunggah lalu menyisipkan rujukan qcfile di kursor', async () => {
-  uploadMock.mockResolvedValue('f1');
-  render(<Harness initial="awal" />);
+test('toolbar membuka dialog; Sisipkan mengunggah lalu menyisipkan rujukan qcfile di kursor', async () => {
+  uploadsAs('f1');
+  render(<Harness initial="awal" onBusyChange={onBusyChange} />);
+  await waitFor(() => expect(editor).toBeDefined());
   const file = png('foto kucing.png');
-  await userEvent.upload(screen.getByLabelText('Pilih gambar'), file);
+  await insertViaDialog(file);
   await waitFor(() => expect(lastValue).toContain('![foto kucing](qcfile:f1)'));
-  expect(uploadMock).toHaveBeenCalledWith(file);
+  expect(uploadMock.mock.calls[0]?.[0]).toBe(file);
+  expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
 });
 
-test('berkas bukan gambar ditolak dengan pesan dan tidak diunggah', async () => {
-  render(<Harness initial="isi" />);
-  fireEvent.change(screen.getByLabelText('Pilih gambar'), {
-    target: { files: [new File(['x'], 'catatan.txt', { type: 'text/plain' })] },
-  });
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Hanya gambar JPEG, PNG, atau WebP yang dapat disisipkan',
+test('onBusyChange true selama unggahan berjalan dan false setelah selesai; progres di baris status', async () => {
+  let finish: (value: ReturnType<typeof item>) => void = () => undefined;
+  uploadMock.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
   );
+  render(<Harness initial="awal" onBusyChange={onBusyChange} />);
+  await waitFor(() => expect(editor).toBeDefined());
+  await insertViaDialog(png('a.png'));
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(true));
+  expect(await screen.findByText('Mengunggah gambar…')).toBeInTheDocument();
+  expect(screen.getByTestId('attachment-pending')).toBeInTheDocument();
+  finish(item('f1', 'a'));
+  await waitFor(() => expect(lastValue).toContain('![a](qcfile:f1)'));
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
+  expect(screen.queryByTestId('attachment-pending')).not.toBeInTheDocument();
+});
+
+test('berkas bukan gambar (PDF) ditolak dengan pesan seragam dan tidak diunggah', async () => {
+  render(<Harness initial="isi" />);
+  await waitFor(() => expect(editor).toBeDefined());
+  expect(pasteFiles([new File(['x'], 'catatan.pdf', { type: 'application/pdf' })])).toBe(true);
+  expect(await screen.findByText(/Format PDF tidak didukung/)).toBeInTheDocument();
+  expect(screen.getByText('catatan.pdf')).toBeInTheDocument();
   expect(uploadMock).not.toHaveBeenCalled();
 });
 
-test('gagal mengunggah menampilkan pesan dan tidak mengubah isi', async () => {
+test('berkas melebihi 10 MB ditolak dengan kalimat seragam', async () => {
+  render(<Harness initial="isi" />);
+  await waitFor(() => expect(editor).toBeDefined());
+  expect(
+    dropFiles([new File([new Uint8Array(10_485_761)], 'besar.png', { type: 'image/png' })]),
+  ).toBe(true);
+  expect(await screen.findByText(/Ukuran melebihi 10 MB/)).toBeInTheDocument();
+  expect(uploadMock).not.toHaveBeenCalled();
+});
+
+test('gagal mengunggah menampilkan pesan pada entri dan tidak mengubah isi', async () => {
   uploadMock.mockRejectedValue(
     new Error('Gambar masih terlalu besar setelah dikompres (maks. 1 MB)'),
   );
   render(<Harness initial="isi" />);
-  fireEvent.change(screen.getByLabelText('Pilih gambar'), { target: { files: [png()] } });
-  expect(await screen.findByRole('alert')).toHaveTextContent('Gambar masih terlalu besar');
+  await waitFor(() => expect(editor).toBeDefined());
+  await insertViaDialog(png());
+  expect(await screen.findByText(/Gambar masih terlalu besar/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Ulangi foto' })).toBeInTheDocument();
   expect(lastValue).toBe('');
 });
 
 test('menempel dan menyeret gambar mengunggahnya', async () => {
-  uploadMock.mockResolvedValueOnce('f3').mockResolvedValueOnce('f4');
+  uploadsAs('f3', 'f4');
   render(<Harness />);
   await waitFor(() => expect(editor).toBeDefined());
   // jsdom tidak mendukung hit-testing seret/tempel ProseMirror: panggil penangan editor langsung.
-  const paste = new Event('paste', { cancelable: true });
-  Object.assign(paste, { clipboardData: { files: [png('tempel.png')], types: ['Files'] } });
-  const handledPaste = editor.options.editorProps.handlePaste?.(
-    editor.view,
-    paste as ClipboardEvent,
-    null as never,
-  );
-  expect(handledPaste).toBe(true);
+  expect(pasteFiles([png('tempel.png')])).toBe(true);
   await waitFor(() => expect(lastValue).toContain('![tempel](qcfile:f3)'));
-  const drop = new Event('drop', { cancelable: true });
-  Object.assign(drop, { dataTransfer: { files: [png('seret.png')], types: ['Files'] } });
-  const handledDrop = editor.options.editorProps.handleDrop?.(
-    editor.view,
-    drop as DragEvent,
-    null as never,
-    false,
-  );
-  expect(handledDrop).toBe(true);
+  expect(dropFiles([png('seret.png')])).toBe(true);
   await waitFor(() => expect(lastValue).toContain('![seret](qcfile:f4)'));
 });
 
@@ -269,19 +359,25 @@ test('menempel gambar bersama teks biasa (Excel/Word) tidak dicegat', () => {
   expect(uploadMock).not.toHaveBeenCalled();
 });
 
-test('unggahan yang selesai setelah editor ditutup tidak menyisipkan apa pun', async () => {
-  let resolve!: (id: string) => void;
-  uploadMock.mockReturnValue(
-    new Promise<string>((r) => {
-      resolve = r;
-    }),
+test('unggahan yang berjalan saat editor ditutup dibatalkan dan tidak menyisipkan apa pun', async () => {
+  let aborted = 0;
+  let resolve: (value: ReturnType<typeof item>) => void = () => undefined;
+  uploadMock.mockImplementation(
+    (_file: File, _name: string, ctx?: { signal?: AbortSignal }) =>
+      new Promise((r) => {
+        resolve = r;
+        ctx?.signal?.addEventListener('abort', () => {
+          aborted += 1;
+        });
+      }),
   );
   const onChange = vi.fn();
   const { unmount } = render(<WysiwygEditor id="md" value="a" onChange={onChange} />);
-  fireEvent.change(screen.getByLabelText('Pilih gambar'), { target: { files: [png()] } });
+  await insertViaDialog(png());
   await screen.findByText('Mengunggah gambar…');
   unmount();
-  resolve('f1');
+  expect(aborted).toBe(1);
+  resolve(item('f1', 'foto'));
   await new Promise((r) => setTimeout(r, 0));
   expect(onChange).not.toHaveBeenCalled();
 });

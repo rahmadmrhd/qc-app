@@ -10,6 +10,8 @@ export interface SerialNoteFieldProps {
   onChange: (markdown: string) => void;
   disabled?: boolean;
   error?: string | undefined;
+  /** Diteruskan ke editor (mode `note` tanpa gambar sehingga tidak pernah sibuk; ada agar kontraknya seragam). */
+  onBusyChange?: ((busy: boolean) => void) | undefined;
 }
 
 /**
@@ -23,6 +25,7 @@ export function SerialNoteField({
   onChange,
   disabled,
   error,
+  onBusyChange,
 }: SerialNoteFieldProps) {
   return (
     <div className="space-y-1.5">
@@ -36,6 +39,7 @@ export function SerialNoteField({
         maxLength={SERIAL_LIMITS.noteMax}
         disabled={disabled ?? false}
         editorClassName="min-h-24"
+        onBusyChange={onBusyChange}
       />
       <FieldError errors={[error]} />
     </div>

@@ -3,7 +3,6 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 
-const uploadMock = vi.hoisted(() => vi.fn());
 const galleryUploadMock = vi.hoisted(() => vi.fn());
 vi.mock('@/modules/files/file-source', () => ({
   itemFileSource: {
@@ -12,7 +11,6 @@ vi.mock('@/modules/files/file-source', () => ({
     upload: galleryUploadMock,
   },
 }));
-vi.mock('@/modules/files/use-upload-image', () => ({ useUploadImage: () => uploadMock }));
 vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: 'data:image/png;base64,AAA', isLoading: false, isError: false }),
 }));
@@ -110,7 +108,6 @@ async function pickBusinessUnit(name: string) {
 }
 
 beforeEach(() => {
-  uploadMock.mockReset();
   galleryUploadMock.mockReset();
 });
 
@@ -691,6 +688,40 @@ test('gambar galeri yang masih diunggah menahan Simpan sampai selesai', async ()
     target: { files: [new File([new Uint8Array(4)], 'a.png', { type: 'image/png' })] },
   });
   await userEvent.click(await within(dialog).findByRole('button', { name: 'Tambahkan (1)' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled());
+  finish({
+    id: 'g1',
+    name: 'a',
+    size: 1,
+    width: 1,
+    height: 1,
+    uploadedBy: '',
+    createdAt: '',
+    usageCount: 0,
+    canRename: false,
+    canRemove: false,
+    thumbUrl: '',
+    previewUrl: '',
+  });
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled());
+});
+
+test('gambar yang disisipkan ke Detail dan masih diunggah menahan Simpan sampai selesai', async () => {
+  let finish: (value: unknown) => void = () => undefined;
+  galleryUploadMock.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  renderForm();
+  await userEvent.click(screen.getByRole('button', { name: 'Gambar' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Sisipkan gambar' });
+  const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, {
+    target: { files: [new File([new Uint8Array(4)], 'a.png', { type: 'image/png' })] },
+  });
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Sisipkan (1)' }));
   await waitFor(() => expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled());
   finish({
     id: 'g1',

@@ -9,10 +9,19 @@ export interface NoteEditorProps {
   onChange: (markdown: string) => void;
   labelledBy?: string;
   disabled?: boolean;
+  /** Diteruskan ke editor (mode `note` tanpa gambar sehingga tidak pernah sibuk; ada agar kontraknya seragam). */
+  onBusyChange?: ((busy: boolean) => void) | undefined;
 }
 
 /** Editor Catatan Serah Terima: WYSIWYG tanpa gambar, dengan tempel WhatsApp, maksimal 5.000 karakter. */
-export function NoteEditor({ id, value, onChange, labelledBy, disabled }: NoteEditorProps) {
+export function NoteEditor({
+  id,
+  value,
+  onChange,
+  labelledBy,
+  disabled,
+  onBusyChange,
+}: NoteEditorProps) {
   const [tooLong, setTooLong] = useState<number | null>(null);
   const extensions = useMemo(
     () => [
@@ -37,6 +46,7 @@ export function NoteEditor({ id, value, onChange, labelledBy, disabled }: NoteEd
         disabled={disabled}
         maxLength={HANDOVER_LIMITS.note}
         extraExtensions={extensions}
+        onBusyChange={onBusyChange}
       />
       {tooLong !== null ? (
         <p role="alert" className="text-sm text-destructive">

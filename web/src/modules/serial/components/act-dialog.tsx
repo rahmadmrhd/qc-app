@@ -187,6 +187,8 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
   });
   const ownProofUploads = proofUploads.forOwner(PROOF_OWNER);
   const proofUploadsBlocked = proofUploads.busy || proofUploads.hasFailed;
+  // Gambar catatan yang masih diunggah: tombol kirim ditahan agar gambarnya tidak tertinggal.
+  const [messageBusy, setMessageBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [confirming, setConfirming] = useState(false);
@@ -285,6 +287,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
     act.isPending ||
     // Foto bukti belum beres: masih diunggah atau gagal (diulang atau dibuang dulu).
     proofUploadsBlocked ||
+    messageBusy ||
     // Kirim: pilihan lokasi servis belum dimuat (field-nya baru tampil bila ada lebih dari satu).
     (kind === 'send' && serviceLocations.isPending) ||
     (messageRequired && message.trim() === '') ||
@@ -603,6 +606,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
             onChange={setMessage}
             error={errorOf('message')}
             disabled={act.isPending}
+            onBusyChange={setMessageBusy}
           />
           {error ? (
             <p role="alert" className="text-sm text-destructive">
