@@ -7,6 +7,7 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
 import { dropCachedFile } from '@server/core/file-cache';
+import { baseIndexName } from '@server/core/index-names';
 import { ensureDriveFolder } from '@server/modules/files/service';
 import type { JobHandler, StepContext, StepOutcome } from '@server/modules/jobs/consumer';
 import { deleteBlobs, findActiveJob, readBlob } from '@server/modules/jobs/repo';
@@ -279,7 +280,7 @@ export const qrExportHandler: JobHandler = {
                 throw staleError(QR_STALE_MESSAGE);
               }
               // Dua konfigurasi dengan nama Manual Book sama menghasilkan nama stiker yang sama pada jenis ini.
-              if (error.key === 'stickers_type_name_unique') {
+              if (baseIndexName(error.key ?? '') === 'stickers_type_name_unique') {
                 throw appError(
                   'CONFLICT',
                   'Nama stiker Manual Book sudah dipakai konfigurasi lain; ubah nama konfigurasi ini lalu ekspor ulang',

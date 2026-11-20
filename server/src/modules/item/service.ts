@@ -4,6 +4,7 @@ import { type Db, DbError, type DbResult, type DbStatement } from '@server/core/
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
+import { baseIndexName } from '@server/core/index-names';
 import type { UserContext } from '@server/modules/access/context';
 import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
 import type { BrandRecord } from '@server/modules/brand/repo';
@@ -690,7 +691,11 @@ export async function batchItemWrite(db: Db, statements: DbStatement[]): Promise
   try {
     return await db.batch(statements);
   } catch (error) {
-    if (error instanceof DbError && error.kind === 'duplicate' && error.key === 'brands_key') {
+    if (
+      error instanceof DbError &&
+      error.kind === 'duplicate' &&
+      baseIndexName(error.key ?? '') === 'brands_key'
+    ) {
       throw error;
     }
     // Gambar pustaka yang dihapus tepat di antara pemeriksaan rujukan dan penulisan: kunci asing menolak foto yatim.

@@ -3,6 +3,7 @@ import { DbError, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError as coreStaleError } from '@server/core/errors';
+import { baseIndexName } from '@server/core/index-names';
 import type { UserContext } from '@server/modules/access/context';
 import { mapDuplicateError } from '@server/modules/access/repo';
 import { PAGE_DEFAULT_LIMIT, parseAuditCursor } from '@server/modules/access/validate';
@@ -310,7 +311,8 @@ export async function runPostelBatch(
     const mapped = mapDuplicateError(error, POSTEL_CONFLICTS);
     // Bentrok nama stiker bisa hanya akibat sampingan kalah berebut item (dua catatan memasang item sama menurunkan nama
     // yang sama): sebab sebenarnya dipilah di bawah lebih dulu, bentrok nama dilaporkan bila bukan itu sebabnya.
-    const nameClash = error instanceof DbError && error.key === 'stickers_type_name_unique';
+    const nameClash =
+      error instanceof DbError && baseIndexName(error.key ?? '') === 'stickers_type_name_unique';
     if (mapped !== error && !nameClash) throw mapped;
     if (!nameClash && (error as { stale?: boolean }).stale !== true) throw error;
     if (!nameClash && expectedUpdatedAt !== '') {

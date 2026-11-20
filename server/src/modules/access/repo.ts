@@ -3,6 +3,7 @@ import { DbError } from '@server/core/db';
 import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { baseIndexName } from '@server/core/index-names';
 import type { Assignment } from '@shared/assignments';
 import { sanitizeAssignments } from '@shared/assignments';
 import type { BuAssignment } from '@shared/business-units';
@@ -405,7 +406,13 @@ export function mapDuplicateError(
   conflicts: Record<string, { message: string; field: string }>,
 ): unknown {
   if (error instanceof DbError && error.kind === 'duplicate') {
-    const conflict = error.key === undefined ? undefined : conflicts[error.key];
+    // Nama indeks `_live` (soft delete) dan nama lamanya dipetakan ke konflik yang sama (`baseIndexName`).
+    const conflict =
+      error.key === undefined
+        ? undefined
+        : (conflicts[error.key] ??
+          conflicts[baseIndexName(error.key)] ??
+          conflicts[`${error.key}_live`]);
     if (conflict) {
       return appError('CONFLICT', conflict.message, { [conflict.field]: conflict.message });
     }

@@ -1,3 +1,4 @@
+import { BATCH_MAX, type IdBatchInput, type VersionedBatchInput } from '@shared/batch';
 import { isValidEmail, normalizeEmail } from './email';
 import { appError } from './errors';
 
@@ -87,4 +88,54 @@ export function expectNull(input: unknown): null {
     throw appError('VALIDATION', 'Method ini tidak menerima input');
   }
   return null;
+}
+
+function batchIds(raw: unknown, label: string): string[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw appError('VALIDATION', `${label} wajib berisi minimal 1 id`, { ids: 'Wajib diisi' });
+  }
+  if (raw.length > BATCH_MAX) {
+    throw appError('VALIDATION', `Maksimal ${BATCH_MAX} data per permintaan`, {
+      ids: `Maksimal ${BATCH_MAX}`,
+    });
+  }
+  const seen = new Set<string>();
+  for (const id of raw) {
+    if (typeof id !== 'string' || id === '' || id.length > 100) {
+      throw appError('VALIDATION', 'ID tidak valid', { ids: 'ID tidak valid' });
+    }
+    if (seen.has(id)) throw appError('VALIDATION', 'ID ganda', { ids: 'ID tidak boleh ganda' });
+    seen.add(id);
+  }
+  return raw as string[];
+}
+
+/** Masukan batch id: 1..`BATCH_MAX` id unik, tiap id string tak kosong. Pelanggaran = `VALIDATION`. */
+export function validateIdBatch(raw: unknown): IdBatchInput {
+  const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  return { ids: batchIds(source.ids, 'Daftar id') };
+}
+
+/** Masukan batch berversi: 1..`BATCH_MAX` entri `{ id, updatedAt }` dengan id unik. */
+export function validateVersionedBatch(raw: unknown): VersionedBatchInput {
+  const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const list = source.items;
+  if (!Array.isArray(list)) {
+    throw appError('VALIDATION', 'Daftar wajib berisi minimal 1 data', { items: 'Wajib diisi' });
+  }
+  const entries = list.map((entry) =>
+    entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {},
+  );
+  const ids = batchIds(
+    entries.map((entry) => entry.id),
+    'Daftar',
+  );
+  return {
+    items: entries.map((entry, index) => {
+      if (typeof entry.updatedAt !== 'string' || entry.updatedAt === '') {
+        throw appError('VALIDATION', 'updatedAt wajib diisi', { items: 'updatedAt wajib diisi' });
+      }
+      return { id: ids[index] as string, updatedAt: entry.updatedAt };
+    }),
+  };
 }
