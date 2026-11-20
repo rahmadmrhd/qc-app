@@ -8,6 +8,7 @@ import {
   FormDialogDescription,
   FormDialogTitle,
 } from '@/components/form-dialog';
+import { mockMatchMedia } from '@/test/match-media';
 import { LinkField, LinkMultiField, type LinkOption, placeList } from './link-field';
 
 const OPTIONS: LinkOption[] = [
@@ -419,4 +420,58 @@ test('LinkField wajib: label bertanda data-required dan input aria-required', ()
   const input = screen.getByLabelText('Merk');
   expect(input).toHaveAttribute('aria-required', 'true');
   expect(document.querySelector('label[for="f"]')).toHaveAttribute('data-required');
+});
+
+test('placeList ponsel: di bawah field pada ruang di atas papan ketik (visualViewport)', () => {
+  // Layar 800, papan ketik 300 terbawah: terlihat 0..500; field di y=100 (tinggi 32) -> ruang bawah luas.
+  const place = placeList(rectAt(100, 32), 800, { phone: true, visible: { top: 0, bottom: 500 } });
+  expect(place.sheet).toBeUndefined();
+  expect(place.top).toBe(136);
+  expect(place.maxHeight).toBe(320);
+});
+
+test('placeList ponsel: ruang di atas papan ketik < 3 baris menjadi lembar bawah menempel di atas papan ketik', () => {
+  const place = placeList(rectAt(420, 32), 800, {
+    phone: true,
+    visible: { top: 0, bottom: 500 },
+    viewportWidth: 360,
+  });
+  expect(place.sheet).toBe(true);
+  expect(place.top).toBeUndefined();
+  // bawah = tinggi layar - dasar area terlihat + tepi
+  expect(place.bottom).toBe(800 - 500 + 8);
+  expect(place.left).toBe(8);
+  expect(place.width).toBe(344);
+  expect(place.maxHeight).toBeGreaterThanOrEqual(132);
+});
+
+test('placeList ponsel: offsetTop viewport (iOS) menggeser batas atas dan bawah ruang terlihat', () => {
+  const place = placeList(rectAt(300, 32), 800, {
+    phone: true,
+    visible: { top: 60, bottom: 560 },
+  });
+  expect(place.top).toBe(336);
+  expect(place.maxHeight).toBe(Math.min(320, 560 - 332 - 12));
+});
+
+test('ponsel: membuka daftar menggulirkan field ke atas area terlihat dan menyediakan ruang gulir', async () => {
+  const media = mockMatchMedia(false);
+  const listeners: Array<() => void> = [];
+  const viewport = {
+    height: 500,
+    offsetTop: 0,
+    addEventListener: (_type: string, listener: () => void) => listeners.push(listener),
+    removeEventListener: () => undefined,
+  };
+  Object.defineProperty(window, 'visualViewport', { value: viewport, configurable: true });
+  Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+  const scroll = vi.fn();
+  window.HTMLElement.prototype.scrollIntoView = scroll;
+  render(<Single />);
+  await userEvent.click(screen.getByLabelText('Merk'));
+  expect(await screen.findByRole('listbox')).toBeInTheDocument();
+  expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' });
+  expect(document.querySelector('[data-slot="combobox-spacer"]')).not.toBeNull();
+  Reflect.deleteProperty(window, 'visualViewport');
+  media.restore();
 });

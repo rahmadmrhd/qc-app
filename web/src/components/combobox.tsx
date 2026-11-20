@@ -3,6 +3,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { cn } from '@/lib/utils';
 
 export interface LinkOption {
@@ -58,6 +59,11 @@ const LIST_EDGE = 8;
 /** Ruang di bawah input yang masih dianggap cukup untuk membuka daftar ke bawah. */
 const LIST_MIN_BELOW = 160;
 
+/** Tinggi satu baris opsi di ponsel (target sentuh) dan jumlah baris minimum agar daftar dibuka di bawah field. */
+const PHONE_ROW = 44;
+const PHONE_MIN_ROWS = 3;
+const PHONE_MAX_HEIGHT = 320;
+
 /** Letak daftar saran di layar (`position: fixed`): di bawah input, atau di atasnya bila ruang bawah sempit. */
 export interface ListPlacement {
   left: number;
@@ -65,16 +71,52 @@ export interface ListPlacement {
   maxHeight: number;
   top?: number;
   bottom?: number;
+  /** Ponsel dengan ruang < 3 baris: daftar menjadi lembar bawah yang menempel tepat di atas papan ketik. */
+  sheet?: boolean;
+}
+
+export interface PlaceOptions {
+  /** Bagian layar yang terlihat (`visualViewport`); papan ketik layar mengecilkannya. Bawaan seluruh layar. */
+  visible?: { top: number; bottom: number };
+  /** Ponsel: selalu dibuka di bawah field pada ruang di atas papan ketik, atau lembar bawah bila < 3 baris. */
+  phone?: boolean;
+  viewportWidth?: number;
 }
 
 /**
  * Menghitung letak daftar dari kotak input (`rect`) dan tinggi layar. Daftar dirender di `document.body`, bukan di
  * dalam kontainer yang bisa di-scroll (dialog), agar tidak terpotong; karena itu letaknya dihitung sendiri.
  */
-export function placeList(rect: DOMRect, viewportHeight: number): ListPlacement {
-  const below = viewportHeight - rect.bottom - LIST_EDGE - LIST_GAP;
-  const above = rect.top - LIST_EDGE - LIST_GAP;
+export function placeList(
+  rect: DOMRect,
+  viewportHeight: number,
+  options: PlaceOptions = {},
+): ListPlacement {
+  const visibleBottom = options.visible?.bottom ?? viewportHeight;
+  const visibleTop = options.visible?.top ?? 0;
+  const below = visibleBottom - rect.bottom - LIST_EDGE - LIST_GAP;
+  const above = rect.top - visibleTop - LIST_EDGE - LIST_GAP;
   const base = { left: rect.left, width: rect.width };
+  if (options.phone) {
+    if (below >= PHONE_ROW * PHONE_MIN_ROWS) {
+      return {
+        ...base,
+        top: rect.bottom + LIST_GAP,
+        maxHeight: Math.min(PHONE_MAX_HEIGHT, below),
+      };
+    }
+    const visibleHeight = visibleBottom - visibleTop;
+    return {
+      left: LIST_EDGE,
+      width: (options.viewportWidth ?? rect.left * 2 + rect.width) - LIST_EDGE * 2,
+      bottom: viewportHeight - visibleBottom + LIST_EDGE,
+      maxHeight: Math.max(
+        PHONE_ROW * PHONE_MIN_ROWS,
+        Math.min(PHONE_MAX_HEIGHT, visibleHeight * 0.5),
+      ),
+      sheet: true,
+    };
+  }
   if (below >= LIST_MIN_BELOW || below >= above) {
     return {
       ...base,
@@ -212,6 +254,7 @@ export function ComboboxBase({
   // ukuran berubah, atau jumlah chip (tinggi bingkai) berubah.
   const anchorRef = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<ListPlacement | null>(null);
+  const phone = !useIsDesktop();
   // biome-ignore lint/correctness/useExhaustiveDependencies: `chips.length` hanya memicu ukur ulang saat bingkai membesar
   useLayoutEffect(() => {
     const anchor = anchorRef.current;
@@ -219,19 +262,47 @@ export function ComboboxBase({
       setPlacement(null);
       return;
     }
+    const viewport = window.visualViewport;
     const update = () =>
-      setPlacement(placeList(anchor.getBoundingClientRect(), window.innerHeight));
+      setPlacement(
+        placeList(anchor.getBoundingClientRect(), window.innerHeight, {
+          phone,
+          viewportWidth: window.innerWidth,
+          ...(viewport && phone
+            ? { visible: { top: viewport.offsetTop, bottom: viewport.offsetTop + viewport.height } }
+            : {}),
+        }),
+      );
     update();
     window.addEventListener('scroll', update, true);
     window.addEventListener('resize', update);
+    if (phone) {
+      viewport?.addEventListener('resize', update);
+      viewport?.addEventListener('scroll', update);
+    }
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
     observer?.observe(anchor);
     return () => {
       window.removeEventListener('scroll', update, true);
       window.removeEventListener('resize', update);
+      viewport?.removeEventListener('resize', update);
+      viewport?.removeEventListener('scroll', update);
       observer?.disconnect();
     };
-  }, [showList, chips.length]);
+  }, [showList, chips.length, phone]);
+
+  // Ponsel: saat daftar terbuka, gulirkan field ke bagian atas area terlihat (di bawah header menempel) agar
+  // daftar punya ruang di atas papan ketik layar. Hanya sekali per pembukaan.
+  const scrolledFor = useRef(false);
+  useEffect(() => {
+    if (!showList || !phone) {
+      scrolledFor.current = false;
+      return;
+    }
+    if (scrolledFor.current) return;
+    scrolledFor.current = true;
+    anchorRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+  }, [showList, phone]);
 
   function close() {
     setOpen(false);
@@ -298,7 +369,10 @@ export function ComboboxBase({
         {label}
       </Label>
       <div className="flex items-start gap-1">
-        <div ref={anchorRef} className="min-w-0 flex-1">
+        <div
+          ref={anchorRef}
+          className="min-w-0 flex-1 max-md:scroll-mt-[calc(var(--dialog-header-height,var(--headroom-offset,3.5rem))+0.5rem)]"
+        >
           {/* biome-ignore lint/a11y/noStaticElementInteractions: bingkai hanya mengarahkan klik ke input di dalamnya */}
           <div
             data-slot="link-field-frame"
@@ -433,7 +507,8 @@ export function ComboboxBase({
                   aria-label={label}
                   aria-multiselectable={multi || undefined}
                   data-slot="link-field-list"
-                  className="fixed z-[60] overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10"
+                  data-sheet={placement.sheet || undefined}
+                  className="fixed z-[60] overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 data-[sheet]:rounded-b-none data-[sheet]:shadow-xl"
                   style={{
                     pointerEvents: 'auto',
                     left: placement.left,
@@ -529,6 +604,10 @@ export function ComboboxBase({
         <p id={`${id}-error`} role="alert" className="text-sm text-destructive-text">
           {error}
         </p>
+      ) : null}
+      {/* Ponsel: ruang gulir tambahan setinggi daftar agar field bisa naik ke atas area terlihat. */}
+      {showList && phone && placement ? (
+        <div aria-hidden data-slot="combobox-spacer" style={{ height: placement.maxHeight + 16 }} />
       ) : null}
     </div>
   );
