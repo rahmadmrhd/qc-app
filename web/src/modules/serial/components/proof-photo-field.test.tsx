@@ -146,6 +146,7 @@ test('memilih foto beberapa kali menambah antrean; Tambahkan mengunggah semuanya
   expect(apiMock).toHaveBeenCalledWith(
     'serialProofs.upload',
     expect.objectContaining({ mime: 'image/webp', width: 10, height: 10 }),
+    {},
   );
   await waitFor(() => expect(openButton()).toHaveTextContent('Foto (2)'));
   expect(screen.getByRole('img', { name: 'Foto bukti 1' })).toHaveAttribute(

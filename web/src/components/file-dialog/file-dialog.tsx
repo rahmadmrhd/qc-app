@@ -16,7 +16,7 @@ import { type FileCategory, resolveAccept } from './accept';
 import { errorText } from './error-text';
 import { LibraryTab } from './library-tab';
 import { PreviewDialog } from './preview-dialog';
-import type { FileLibrarySource, LibraryItem, RejectedFile } from './types';
+import { type FileSource, isLibrarySource, type LibraryItem, type RejectedFile } from './types';
 import { UploadTab } from './upload-tab';
 import { useUploadQueue } from './use-upload-queue';
 
@@ -25,7 +25,7 @@ const DEFAULT_MAX_FILES = 20;
 export interface FileDialogProps {
   open: boolean;
   onOpenChange(open: boolean): void;
-  source: FileLibrarySource;
+  source: FileSource;
   mode: 'single' | 'multiple';
   accept: readonly FileCategory[];
   maxBytes: number;
@@ -75,6 +75,8 @@ export function FileDialog({
   onDiscardUploaded,
   onSelect,
 }: FileDialogProps) {
+  // Tab Pustaka hanya untuk sumber yang punya pustaka (daftar, ubah nama, hapus).
+  const librarySource = showLibrary && isLibrarySource(source) ? source : null;
   const mimes = resolveAccept(accept, source.mimeTypes);
   const [tab, setTab] = useState<TabValue>('upload');
   const [selection, setSelection] = useState<ReadonlyMap<string, LibraryItem>>(new Map());
@@ -208,9 +210,9 @@ export function FileDialog({
       onFiles={handleFiles}
     />
   );
-  const libraryTab = (
+  const libraryTab = librarySource ? (
     <LibraryTab
-      source={source}
+      source={librarySource}
       selection={selection}
       mode={mode}
       onToggle={toggle}
@@ -232,7 +234,7 @@ export function FileDialog({
         })
       }
     />
-  );
+  ) : null;
 
   return (
     <>
@@ -246,10 +248,12 @@ export function FileDialog({
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
             <DialogDescription className="sr-only">
-              {showLibrary ? 'Unggah berkas baru atau pilih dari pustaka.' : 'Unggah berkas baru.'}
+              {librarySource
+                ? 'Unggah berkas baru atau pilih dari pustaka.'
+                : 'Unggah berkas baru.'}
             </DialogDescription>
           </DialogHeader>
-          {showLibrary ? (
+          {librarySource ? (
             <Tabs
               value={tab}
               onValueChange={(value) => setTab(value as TabValue)}
@@ -259,7 +263,7 @@ export function FileDialog({
                 <TabsTrigger value="upload">
                   Unggah{queue.entries.length > 0 ? ` (${queue.entries.length})` : ''}
                 </TabsTrigger>
-                {showLibrary ? (
+                {librarySource ? (
                   <TabsTrigger value="library">
                     Pustaka{selection.size > 0 ? ` (${selection.size})` : ''}
                   </TabsTrigger>
@@ -268,7 +272,7 @@ export function FileDialog({
               <TabsContent value="upload" className="min-h-0 flex-1 overflow-y-auto">
                 {uploadTab}
               </TabsContent>
-              {showLibrary ? (
+              {librarySource ? (
                 <TabsContent value="library" className="min-h-0 flex-1 overflow-y-auto">
                   {libraryTab}
                 </TabsContent>

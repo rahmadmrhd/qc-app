@@ -7,7 +7,13 @@ vi.mock('@/modules/files/image', () => ({
   prepareImage: (...args: unknown[]) => prepareImageMock(...args),
 }));
 
+const discardMock = vi.fn();
+vi.mock('../queries', () => ({
+  discardProofPhotos: (...args: unknown[]) => discardMock(...args),
+}));
+
 import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
+import { isLibrarySource } from '@/components/file-dialog/types';
 import { proofSource, proofThumbUrl, toProofRef } from './proof-source';
 
 const dto = {
@@ -22,6 +28,7 @@ const dto = {
 };
 
 beforeEach(() => {
+  discardMock.mockReset();
   apiMock.mockReset();
   prepareImageMock.mockReset();
   resetBusyForTests();
@@ -44,12 +51,11 @@ test('upload mengecilkan gambar lalu mengunggah lewat serialProofs.upload', asyn
   const file = new File([new Uint8Array(4)], 'x.png', { type: 'image/png' });
   const item = await proofSource.upload(file, 'x');
   expect(prepareImageMock).toHaveBeenCalledWith(file);
-  expect(apiMock).toHaveBeenCalledWith('serialProofs.upload', {
-    mime: 'image/webp',
-    bytes,
-    width: 800,
-    height: 600,
-  });
+  expect(apiMock).toHaveBeenCalledWith(
+    'serialProofs.upload',
+    { mime: 'image/webp', bytes, width: 800, height: 600 },
+    {},
+  );
   expect(item).toMatchObject({
     id: 'p1',
     size: 1234,
@@ -93,12 +99,83 @@ test('upload dihitung sebagai penulisan berjalan dan dilepas setelah galat', asy
   expect(isBusy()).toBe(false);
 });
 
-test('list, rename, dan remove tidak dipakai (tanpa pustaka)', async () => {
+test('upload melapor fase preparing lalu uploading, dan processing setelah byte penuh', async () => {
+  prepareImageMock.mockResolvedValue({
+    mime: 'image/webp',
+    bytes: new Uint8Array(3),
+    width: 1,
+    height: 1,
+  });
+  apiMock.mockImplementation(
+    async (
+      _id: string,
+      _input: unknown,
+      options: { onUploadProgress?: (loaded: number, total: number) => void },
+    ) => {
+      options.onUploadProgress?.(1, 4);
+      options.onUploadProgress?.(4, 4);
+      return dto;
+    },
+  );
+  const phases: [string, number | null][] = [];
+  await proofSource.upload(new File([new Uint8Array(1)], 'x.png', { type: 'image/png' }), 'x', {
+    onProgress: (phase, fraction) => phases.push([phase, fraction]),
+  });
+  expect(phases.map(([phase]) => phase)).toEqual([
+    'preparing',
+    'uploading',
+    'uploading',
+    'uploading',
+    'processing',
+  ]);
+  expect(phases[2]?.[1]).toBe(0.25);
+  expect(phases[3]?.[1]).toBe(1);
+});
+
+test('signal yang sudah abort tidak memanggil API; signal hidup diteruskan ke api()', async () => {
+  const controller = new AbortController();
+  controller.abort();
   await expect(
-    proofSource.list({ search: '', sort: 'newest', mine: false, unused: false }, null),
+    proofSource.upload(new File([new Uint8Array(1)], 'x.png', { type: 'image/png' }), 'x', {
+      signal: controller.signal,
+    }),
   ).rejects.toThrow();
-  await expect(proofSource.rename('p1', 'x')).rejects.toThrow();
-  await expect(proofSource.remove('p1')).rejects.toThrow();
+  expect(apiMock).not.toHaveBeenCalled();
+  expect(prepareImageMock).not.toHaveBeenCalled();
+
+  prepareImageMock.mockResolvedValue({
+    mime: 'image/webp',
+    bytes: new Uint8Array(1),
+    width: 1,
+    height: 1,
+  });
+  apiMock.mockResolvedValue(dto);
+  const live = new AbortController();
+  await proofSource.upload(new File([new Uint8Array(1)], 'x.png', { type: 'image/png' }), 'x', {
+    signal: live.signal,
+  });
+  expect(apiMock.mock.calls[0]?.[2]).toMatchObject({ signal: live.signal });
+});
+
+test('abort setelah pengecilan membatalkan sebelum unggah', async () => {
+  const controller = new AbortController();
+  prepareImageMock.mockImplementation(async () => {
+    controller.abort();
+    return { mime: 'image/webp', bytes: new Uint8Array(1), width: 1, height: 1 };
+  });
+  await expect(
+    proofSource.upload(new File([new Uint8Array(1)], 'x.png', { type: 'image/png' }), 'x', {
+      signal: controller.signal,
+    }),
+  ).rejects.toThrow();
+  expect(apiMock).not.toHaveBeenCalled();
+});
+
+test('onDiscard membuang foto lewat discardProofPhotos; proofSource bukan sumber pustaka', async () => {
+  discardMock.mockResolvedValue(undefined);
+  await proofSource.onDiscard?.([{ id: 'a' }, { id: 'b' }] as never);
+  expect(discardMock).toHaveBeenCalledWith(['a', 'b']);
+  expect(isLibrarySource(proofSource)).toBe(false);
 });
 
 test('mergeProofSelection: kelebihan di atas batas dikembalikan agar dibuang', async () => {

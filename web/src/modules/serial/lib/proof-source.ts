@@ -1,10 +1,12 @@
 import { IMAGE_MIME_TYPES } from '@shared/files';
 import { runBusy } from '@/app/pwa/busy';
-import type { FileLibrarySource, LibraryItem } from '@/components/file-dialog/types';
+import type { FileSource, LibraryItem } from '@/components/file-dialog/types';
 import { api } from '@/lib/api';
 import { API_BASE } from '@/lib/api/client';
 import { prepareImage } from '@/modules/files/image';
+import { throwIfAborted, uploadCallOptions } from '@/modules/files/upload-context';
 import { proofKeys } from '../keys';
+import { discardProofPhotos } from '../queries';
 
 /** Foto bukti `draft` yang sudah terunggah dan menempel pada satu baris/dialog (bukan gambarnya, hanya rujukan). */
 export interface ProofPhotoRef {
@@ -57,28 +59,27 @@ export function mergeProofPhotos(
   return { next: merged.slice(0, max), extras: merged.slice(max).map((photo) => photo.id) };
 }
 
-const unused = () => Promise.reject(new Error('Foto bukti tidak memakai pustaka'));
-
 /**
- * Sumber `FileDialog` untuk foto bukti QC: HANYA unggah. Dialognya dipakai dengan `showLibrary={false}`, jadi `list`,
- * `rename`, dan `remove` tidak pernah dipanggil (foto bukti tidak boleh tampil di pustaka mana pun).
+ * Sumber unggah foto bukti QC: HANYA unggah (foto bukti tidak boleh tampil di pustaka mana pun). Hasil yang tak jadi
+ * dipakai dibuang di server lewat `onDiscard`.
  */
-export const proofSource: FileLibrarySource = {
+export const proofSource: FileSource = {
   key: proofKeys.upload[0],
   mimeTypes: IMAGE_MIME_TYPES,
-  list: unused,
-  rename: unused,
-  remove: unused,
-  upload(file) {
+  onDiscard: (items) => discardProofPhotos(items.map((item) => item.id)),
+  upload(file, _name, ctx) {
     // Siapkan + kirim = satu penulisan berjalan (muat ulang otomatis PWA tak boleh memotongnya).
     return runBusy(async () => {
+      throwIfAborted(ctx?.signal);
+      ctx?.onProgress?.('preparing', null);
       const image = await prepareImage(file);
-      const dto = await api('serialProofs.upload', {
-        mime: image.mime,
-        bytes: image.bytes,
-        width: image.width,
-        height: image.height,
-      });
+      throwIfAborted(ctx?.signal);
+      ctx?.onProgress?.('uploading', 0);
+      const dto = await api(
+        'serialProofs.upload',
+        { mime: image.mime, bytes: image.bytes, width: image.width, height: image.height },
+        uploadCallOptions(ctx),
+      );
       const item: ProofLibraryItem = {
         id: dto.id,
         name: dto.filename,

@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { runBusy } from '@/app/pwa/busy';
 import { baseName, checkFile } from './accept';
 import { errorText } from './error-text';
-import type { FileLibrarySource, LibraryItem, RejectedFile } from './types';
+import type { FileSource, LibraryItem, RejectedFile } from './types';
 
 export type QueueStatus = 'waiting' | 'uploading' | 'done' | 'failed';
 
@@ -16,7 +16,7 @@ export interface QueueEntry {
 }
 
 export interface UploadQueueOptions {
-  source: FileLibrarySource;
+  source: FileSource;
   accept: readonly string[];
   maxBytes: number;
   /** Maksimum berkas dalam satu antrean (satu unggahan). */
