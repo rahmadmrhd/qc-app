@@ -149,7 +149,7 @@ export async function loadItemInstructions(
  * spek §5 butir 9: turunan dihitung dari record hidup saja). Satu definisi untuk `hasInstructions` dan filter daftar.
  */
 function liveMarkSql(alias: string): string {
-  return `(${alias}.sticker_id = '' OR EXISTS (SELECT 1 FROM stickers ls WHERE ls.id = ${alias}.sticker_id AND ls.deleted_at = '')) AND (${alias}.type_id = '' OR EXISTS (SELECT 1 FROM sticker_types lt WHERE lt.id = ${alias}.type_id AND lt.deleted_at = ''))`;
+  return `NOT EXISTS (SELECT 1 FROM stickers ls WHERE ls.id = ${alias}.sticker_id AND ls.deleted_at <> '') AND NOT EXISTS (SELECT 1 FROM sticker_types lt WHERE lt.id = ${alias}.type_id AND lt.deleted_at <> '')`;
 }
 
 /**

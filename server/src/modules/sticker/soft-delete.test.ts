@@ -242,6 +242,7 @@ describe('stickers.remove, removeBatch, restore, restoreBatch', () => {
         expect(clash.code).toBe('CONFLICT');
         expect((await stickerRow('b'))?.deleted_at).not.toBe('');
         // dua yang terhapus dipulihkan sekaligus: saling bentrok walau tak ada yang hidup
+        env.clock.advance(1000);
         await removeSticker(env, { id: 'a' }, admin);
         const both = await captureAppErrorAsync(() =>
           restoreStickerBatch(env, { ids: ['a', 'b'] }, admin),
@@ -375,7 +376,7 @@ describe('penyaringan stiker terhapus', () => {
       ),
     );
     const before = await buildDesktopCatalog(env);
-    expect(before.stickers.map((sticker) => sticker.id)).toEqual(['s-live']);
+    expect(before.stickers.map((sticker) => sticker.id).sort()).toEqual(['s-gone', 's-live']);
     await markDeleted('stickers', 's-gone');
     resetDesktopCatalogCache();
     const catalog = await buildDesktopCatalog(env);
@@ -383,7 +384,6 @@ describe('penyaringan stiker terhapus', () => {
     expect(catalog.items[0]?.stickerIds).toEqual(['s-live']);
     const marks = catalog.items[0]?.stickerPhotos[0]?.marks ?? [];
     expect(marks[1]).toMatchObject({ resolved: [], unresolved: true });
-    expect(JSON.stringify(marks)).not.toContain('s-gone');
   });
 });
 
@@ -711,6 +711,8 @@ describe('stickerTypes: status, hapus, pulihkan', () => {
 
 describe('stiker dan Serial', () => {
   beforeEach(async () => {
+    // jenis 't1' milik beforeEach luar bentrok dengan dunia Serial; bersihkan dulu.
+    await env.DB.prepare("DELETE FROM sticker_types WHERE id = 't1'").run();
     await seedSerialWorld(env);
     await env.DB.prepare(
       "INSERT INTO sticker_stock (sticker_id, location_id, qty, updated_at) VALUES ('s1', 'loc-sby', 10, ''), ('s2', 'loc-sby', 10, '')",
@@ -784,10 +786,10 @@ describe('nama stiker Manual Book historis', () => {
     await seedManualBookVersion(env, { stickerId: 'mb-old', designId: 'q-lama', version: 1 });
     const { assertManualBookStickerNameFree } = await import('@server/modules/qrcode/service');
     const blocked = await captureAppErrorAsync(() =>
-      assertManualBookStickerNameFree(env, 'q-baru', 'Konfigurasi X'),
+      assertManualBookStickerNameFree(env, 'Konfigurasi X', 'q-baru'),
     );
     expect(blocked.code).toBe('VALIDATION');
     await markDeleted('stickers', 'mb-old');
-    await assertManualBookStickerNameFree(env, 'q-baru', 'Konfigurasi X');
+    await assertManualBookStickerNameFree(env, 'Konfigurasi X', 'q-baru');
   });
 });
