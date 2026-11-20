@@ -38,28 +38,6 @@ export function toProofRef(item: LibraryItem): ProofPhotoRef {
 }
 
 /**
- * Menggabungkan hasil unggah ke nilai field dan memotong di batas `max`; foto yang terpotong (sudah naik ke server tetapi
- * tak muat) dikembalikan di `extras` agar dibuang, bukan menunggu sapuan draft.
- */
-export function mergeProofSelection(
-  value: readonly ProofPhotoRef[],
-  items: readonly LibraryItem[],
-  max: number,
-): { next: ProofPhotoRef[]; extras: string[] } {
-  return mergeProofPhotos(value, items.map(toProofRef), max);
-}
-
-/** Seperti `mergeProofSelection` untuk foto yang sudah berbentuk `ProofPhotoRef` (dialog Foto bukti). */
-export function mergeProofPhotos(
-  value: readonly ProofPhotoRef[],
-  photos: readonly ProofPhotoRef[],
-  max: number,
-): { next: ProofPhotoRef[]; extras: string[] } {
-  const merged = [...value, ...photos];
-  return { next: merged.slice(0, max), extras: merged.slice(max).map((photo) => photo.id) };
-}
-
-/**
  * Sumber unggah foto bukti QC: HANYA unggah (foto bukti tidak boleh tampil di pustaka mana pun). Hasil yang tak jadi
  * dipakai dibuang di server lewat `onDiscard`.
  */

@@ -15,7 +15,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { AttachDialog, AttachmentView } from '@/components/file-dialog';
+import { AttachmentView, FileDialog } from '@/components/file-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -428,7 +428,7 @@ function StrictBody({
       )}
 
       {step === 2 && photoDialogOpen ? (
-        <AttachDialog
+        <FileDialog
           open
           onOpenChange={setPhotoDialogOpen}
           source={proofSource}

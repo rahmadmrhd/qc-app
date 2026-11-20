@@ -3,9 +3,9 @@ import { ITEM_LIMITS } from '@shared/items';
 import { ChevronLeft, ChevronRight, ImagePlus, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
-  AttachDialog,
   type AttachmentItem,
   AttachmentView,
+  FileDialog,
   FileDropZone,
   PreviewDialog,
 } from '@/components/file-dialog';
@@ -208,7 +208,7 @@ export function ImageGalleryField({
         </fieldset>
       </FileDropZone>
       {dialog.open ? (
-        <AttachDialog
+        <FileDialog
           open
           onOpenChange={(open) => {
             if (!open) setDialog(CLOSED);

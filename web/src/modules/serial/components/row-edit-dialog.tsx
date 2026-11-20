@@ -8,7 +8,7 @@ import {
 } from '@shared/serials';
 import { Camera } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AttachDialog, AttachmentView } from '@/components/file-dialog';
+import { AttachmentView, FileDialog } from '@/components/file-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -418,7 +418,7 @@ export function RowEditDialog({
         </DialogContent>
       </Dialog>
       {photoOpen ? (
-        <AttachDialog
+        <FileDialog
           open
           onOpenChange={setPhotoOpen}
           source={proofSource}

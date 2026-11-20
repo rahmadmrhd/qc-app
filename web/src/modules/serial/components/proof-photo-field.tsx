@@ -2,9 +2,9 @@ import { MAX_IMAGE_BYTES } from '@shared/files';
 import { Camera } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
-  AttachDialog,
   type AttachmentItem,
   AttachmentView,
+  FileDialog,
   FileDropZone,
   type RejectedFile,
 } from '@/components/file-dialog';
@@ -161,7 +161,7 @@ export function ProofPhotoField({
         onCancel={uploads.remove}
       />
       {dialog.open ? (
-        <AttachDialog
+        <FileDialog
           open
           onOpenChange={(open) => {
             if (!open) setDialog(CLOSED);

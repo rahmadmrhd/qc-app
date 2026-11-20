@@ -5,8 +5,8 @@ import { INSTRUCTION_LIMITS } from '@shared/stickers';
 import { ArrowDown, ArrowUp, ImagePlus, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
-  AttachDialog,
   AttachmentView,
+  FileDialog,
   FileDropZone,
   type LibraryItem,
 } from '@/components/file-dialog';
@@ -270,7 +270,7 @@ export function StickerInstructionsField({
         ))}
       </FileDropZone>
       {dialog.open ? (
-        <AttachDialog
+        <FileDialog
           open
           onOpenChange={(open) => {
             if (!open) setDialog(CLOSED);

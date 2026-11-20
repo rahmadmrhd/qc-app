@@ -9,7 +9,6 @@ vi.mock('@/modules/files/queries', () => ({
     isLoading: false,
     isError: false,
   }),
-  useUploadFile: () => ({ mutateAsync: vi.fn() }),
 }));
 
 test('memilih logo dari pustaka atau tanpa logo; tidak ada unggah', async () => {

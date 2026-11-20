@@ -23,8 +23,8 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { EditorContent, useEditor } from '@tiptap/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AttachDialog,
   AttachmentView,
+  FileDialog,
   type RejectedFile,
   RejectedList,
 } from '@/components/file-dialog';
@@ -412,7 +412,7 @@ export function WysiwygEditor({
         onCancel={own.remove}
       />
       {imagesEnabled && dialogOpen ? (
-        <AttachDialog
+        <FileDialog
           open
           onOpenChange={setDialogOpen}
           source={itemFileSource}

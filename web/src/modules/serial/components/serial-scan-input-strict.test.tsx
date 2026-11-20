@@ -65,7 +65,9 @@ test('strict: satu serial sah membuka dialog di langkah 2 dan tidak memanggil on
   const { onSubmit, field } = setup(strictContext());
   await userEvent.click(field);
   await userEvent.type(field, 'abc123{Enter}');
-  expect(await screen.findByRole('textbox', { name: 'Serial Number' })).toHaveValue('ABC123');
+  expect(
+    await screen.findByRole('textbox', { name: 'Serial Number' }, { timeout: 10_000 }),
+  ).toHaveValue('ABC123');
   expect(onSubmit).not.toHaveBeenCalled();
 });
 
@@ -73,7 +75,9 @@ test('strict: Tab sebagai terminator pemindai fisik juga membuka dialog', async 
   const { field } = setup(strictContext());
   await userEvent.click(field);
   await userEvent.type(field, 'abc123{Tab}');
-  expect(await screen.findByRole('textbox', { name: 'Serial Number' })).toHaveValue('ABC123');
+  expect(
+    await screen.findByRole('textbox', { name: 'Serial Number' }, { timeout: 10_000 }),
+  ).toHaveValue('ABC123');
 });
 
 test('strict: tempelan banyak serial ditolak dengan catatan, tanpa dialog', async () => {

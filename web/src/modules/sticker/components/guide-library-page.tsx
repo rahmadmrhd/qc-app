@@ -3,8 +3,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
-  AttachDialog,
   AttachmentView,
+  FileDialog,
   FileDropZone,
   type LibraryItem,
   LibraryTab,
@@ -100,7 +100,7 @@ export function GuideLibraryPage({ canUpload }: { canUpload: boolean }) {
         />
       </FileDropZone>
       {canUpload && upload.open ? (
-        <AttachDialog
+        <FileDialog
           open
           onOpenChange={(open) => {
             if (!open) setUpload(CLOSED);

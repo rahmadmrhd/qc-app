@@ -1,5 +1,5 @@
 import { MAX_IMAGE_BYTES } from '@shared/files';
-import { AttachDialog, type QueuedFile, UploadProgress } from '@/components/file-dialog';
+import { FileDialog, type QueuedFile, UploadProgress } from '@/components/file-dialog';
 import { Button } from '@/components/ui/button';
 import { proofSource } from '../lib/proof-source';
 import type { ProofReplaceState } from '../lib/use-proof-replace';
@@ -19,7 +19,7 @@ export interface ProofReplaceDialogProps {
 export function ProofReplaceDialog({ open, onOpenChange, onPicked }: ProofReplaceDialogProps) {
   if (!open) return null;
   return (
-    <AttachDialog
+    <FileDialog
       open
       onOpenChange={onOpenChange}
       source={proofSource}

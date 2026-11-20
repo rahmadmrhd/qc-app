@@ -2,9 +2,9 @@ import { POSTEL_LIMITS } from '@shared/postel';
 import { Paperclip } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import {
-  AttachDialog,
   type AttachmentItem,
   AttachmentView,
+  FileDialog,
   FileDropZone,
 } from '@/components/file-dialog';
 import { fileMime } from '@/components/file-dialog/accept';
@@ -211,7 +211,7 @@ export function AttachmentsField({ value, onChange, error, onBusyChange }: Attac
         ))}
       </FileDropZone>
       {dialog.open ? (
-        <AttachDialog
+        <FileDialog
           open
           onOpenChange={(open) => {
             if (!open) setDialog(CLOSED);

@@ -1,5 +1,4 @@
-import type { UploadFileInput } from '@shared/contract';
-import { queryOptions, type UseQueryResult, useMutation, useQuery } from '@tanstack/react-query';
+import { queryOptions, type UseQueryResult, useQuery } from '@tanstack/react-query';
 import { useLayoutEffect, useState } from 'react';
 import { api } from '@/lib/api';
 
@@ -59,6 +58,3 @@ export function useBlobUrl(
     isError: query.isError,
   };
 }
-
-export const useUploadFile = () =>
-  useMutation({ mutationFn: (input: UploadFileInput) => api('files.upload', input) });

@@ -22,7 +22,7 @@ vi.mock('@/components/file-dialog', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/components/file-dialog')>();
   return {
     ...original,
-    AttachDialog: (props: {
+    FileDialog: (props: {
       open: boolean;
       onConfirm: (result: { library: unknown[]; files: unknown[] }) => void;
       onOpenChange: (open: boolean) => void;

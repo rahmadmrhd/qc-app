@@ -2,9 +2,9 @@ import { MAX_IMAGE_BYTES } from '@shared/files';
 import { ImagePlus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AttachDialog,
   type AttachmentItem,
   AttachmentView,
+  FileDialog,
   FileDropZone,
   PreviewDialog,
 } from '@/components/file-dialog';
@@ -131,7 +131,7 @@ export function ImagePicker({ value, onChange, label, onBusyChange }: ImagePicke
         />
       </FileDropZone>
       {dialog.open ? (
-        <AttachDialog
+        <FileDialog
           open
           onOpenChange={(open) => {
             if (!open) setDialog(CLOSED);
