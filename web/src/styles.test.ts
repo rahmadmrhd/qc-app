@@ -37,14 +37,14 @@ describe('token warna semantik', () => {
 
   it('nilai gelap sesuai spek', () => {
     expect(dark).toContain('--success-text: #22c55e;');
-    expect(dark).toContain('--info-text: #3b82f6;');
+    expect(dark).toContain('--info-text: #60a5fa;');
     expect(dark).toContain('--destructive: #dc2626;');
     expect(dark).toContain('--warning: #b45309;');
   });
 
   it('nilai terang sesuai spek', () => {
     expect(light).toContain('--success: #15803d;');
-    expect(light).toContain('--warning-text: #b45309;');
+    expect(light).toContain('--warning-text: #92400e;');
     expect(light).toContain('--secondary: #71717a;');
     expect(light).toContain('--destructive-text: #b91c1c;');
   });
