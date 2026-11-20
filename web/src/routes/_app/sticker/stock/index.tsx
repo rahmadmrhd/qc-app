@@ -1,19 +1,14 @@
-import type { OpnameInput, StickerStockDto } from '@shared/contract';
+import type { StickerStockDto } from '@shared/contract';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
 import { locationsWith, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 import { NoLocationNotice } from '@/modules/location/components/no-location-notice';
-import {
-  OPNAME_STALE_MESSAGE,
-  type OpnameSaveResult,
-} from '@/modules/sticker/components/opname-dialog';
 import {
   type StockSaveResult,
   type StockWrite,
@@ -22,14 +17,9 @@ import {
 import { StockHistoryDialog } from '@/modules/sticker/components/stock-history';
 import { StockPage } from '@/modules/sticker/components/stock-page';
 import { stickerKeys } from '@/modules/sticker/keys';
-import {
-  stickerStockQuery,
-  useAdjustStock,
-  useOpname,
-  useRecordStock,
-} from '@/modules/sticker/queries';
+import { stickerStockQuery, useAdjustStock, useRecordStock } from '@/modules/sticker/queries';
 
-export const Route = createFileRoute('/_app/sticker/stock')({
+export const Route = createFileRoute('/_app/sticker/stock/')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'stickerstock', 'view'),
   component: StickerStockRoute,
 });
@@ -44,7 +34,7 @@ function StickerStockRoute() {
   const stock = useQuery(stickerStockQuery(readableIds));
   const record = useRecordStock();
   const adjust = useAdjustStock();
-  const opname = useOpname();
+  const navigate = useNavigate();
   const [historyOf, setHistoryOf] = useState<StickerStockDto | null>(null);
 
   const refetchStock = () => queryClient.invalidateQueries({ queryKey: stickerKeys.stocks });
@@ -59,21 +49,6 @@ function StickerStockRoute() {
       // Stok bisa berubah oleh orang lain (mis. stok tidak cukup): muat ulang agar angka yang tampil terbaru.
       void refetchStock();
       return stockSaveFailure(error);
-    }
-  }
-
-  async function handleOpname(input: OpnameInput): Promise<OpnameSaveResult> {
-    try {
-      await opname.mutateAsync(input);
-      toast.success('Stok opname disimpan');
-      return null;
-    } catch (error) {
-      if (error instanceof ApiError && error.code === 'CONFLICT') {
-        // Opname tak berETag: 409 berarti stok berubah sejak dihitung. Muat ulang dulu agar "Hitung ulang" memakai data baru.
-        await refetchStock();
-        return { message: OPNAME_STALE_MESSAGE, stale: true };
-      }
-      return { message: describeError(error) };
     }
   }
 
@@ -105,7 +80,7 @@ function StickerStockRoute() {
         canEdit={locationsWith(me, 'stickerstock', 'edit', selectedIds).length > 0}
         canManage={locationsWith(me, 'stickerstock', 'manage', selectedIds).length > 0}
         onWrite={handleWrite}
-        onOpname={handleOpname}
+        onStartOpname={() => void navigate({ to: '/sticker/stock/opname' })}
         onShowHistory={setHistoryOf}
       />
       <StockHistoryDialog
