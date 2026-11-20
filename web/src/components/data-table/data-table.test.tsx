@@ -185,14 +185,11 @@ test('ponsel: kartu bertumpuk (tanpa tabel); satu tombol "Aksi <nama>" membuka m
   await userEvent.keyboard('{Escape}');
 });
 
-test('ponsel: checkbox kartu dan Pilih semua bekerja; tak ada render ganda', async () => {
+test('ponsel: tanpa checkbox di kartu (pilih massal menyusul) dan tak ada render ganda', () => {
   mockWidth(false);
   render(<Harness />);
-  expect(screen.getAllByRole('checkbox', { name: 'Pilih Asus' })).toHaveLength(1);
-  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Asus' }));
-  expect(screen.getByText('1 dipilih')).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
-  expect(screen.getByText('3 dipilih')).toBeInTheDocument();
+  expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+  expect(screen.getAllByRole('button', { name: 'Aksi Asus' })).toHaveLength(1);
 });
 
 test('ponsel: peran kolom (title, badge, meta berlabel, hide) menentukan isi kartu', () => {

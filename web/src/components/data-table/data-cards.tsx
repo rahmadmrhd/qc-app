@@ -1,6 +1,4 @@
-import { cn } from 'cn';
 import { Children, Fragment, isValidElement, type ReactNode } from 'react';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DataColumn, MobileRole } from './data-table';
 import { type RowAction, RowActions } from './row-actions';
@@ -35,14 +33,12 @@ interface DataCardsProps<T> {
   selection?: RowSelection | undefined;
   actions?: ((row: T) => readonly RowAction[]) | undefined;
   isLoading?: boolean | undefined;
-  ids: readonly string[];
-  allSelected: boolean;
-  someSelected: boolean;
 }
 
 /**
- * Tampilan kartu bertumpuk `DataTable` di < 768 px: checkbox di pojok kiri atas, judul (tautan) di tengah, menu
- * "⋯" berlabel di kanan atas, lencana status di bawah judul, lalu pasangan label–nilai dari kolom `meta`.
+ * Tampilan kartu bertumpuk `DataTable` di < 768 px: judul (tautan), menu "⋯" berlabel di kanan atas, lencana status
+ * di bawah judul, lalu pasangan label–nilai dari kolom `meta`. Pilih massal di ponsel (tekan lama) menyusul:
+ * `selection` sudah diteruskan (kartu terpilih ditandai `data-state`), interaksinya belum dipasang.
  */
 export function DataCards<T>({
   rows,
@@ -53,9 +49,6 @@ export function DataCards<T>({
   selection,
   actions,
   isLoading,
-  ids,
-  allSelected,
-  someSelected,
 }: DataCardsProps<T>) {
   const roles = resolveMobileRoles(columns);
   const byRole = (role: MobileRole) =>
@@ -82,17 +75,6 @@ export function DataCards<T>({
 
   return (
     <div className="space-y-2">
-      {selection ? (
-        // biome-ignore lint/a11y/noLabelWithoutControl: Checkbox Radix adalah kontrolnya
-        <label className="flex min-h-11 items-center gap-3 px-3 text-sm text-muted-foreground">
-          <Checkbox
-            aria-label="Pilih semua"
-            checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-            onCheckedChange={() => selection.setAll(ids, !allSelected)}
-          />
-          <span aria-hidden>Pilih semua</span>
-        </label>
-      ) : null}
       <ul aria-label={label} className="space-y-2">
         {rows.map((row) => {
           const id = rowKey(row);
@@ -111,15 +93,6 @@ export function DataCards<T>({
               className="rounded-lg border bg-card p-3 data-[state=selected]:bg-info-text/8"
             >
               <div className="flex items-start gap-3">
-                {selection ? (
-                  <div className="flex min-h-6 shrink-0 items-center pt-0.5">
-                    <Checkbox
-                      aria-label={`Pilih ${nameOf(row)}`}
-                      checked={isSelected}
-                      onCheckedChange={() => selection.toggle(id)}
-                    />
-                  </div>
-                ) : null}
                 <div className="min-w-0 flex-1 space-y-1 break-words">
                   {titles.map(({ column }) => (
                     <div key={column.id} className="text-base">
@@ -134,21 +107,14 @@ export function DataCards<T>({
                 ) : null}
               </div>
               {badgeEntries.length > 0 ? (
-                <div
-                  className={cn('mt-2 flex flex-wrap items-center gap-1.5', selection && 'pl-7')}
-                >
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   {badgeEntries.map(({ column, content }) => (
                     <span key={column.id}>{content}</span>
                   ))}
                 </div>
               ) : null}
               {metaEntries.length > 0 ? (
-                <dl
-                  className={cn(
-                    'mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm',
-                    selection && 'pl-7',
-                  )}
-                >
+                <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
                   {metaEntries.map(({ column, content }) => (
                     <div key={column.id} className="contents">
                       <dt className="text-muted-foreground">{column.header}</dt>

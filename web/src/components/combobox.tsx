@@ -71,16 +71,9 @@ export interface ListPlacement {
  * Menghitung letak daftar dari kotak input (`rect`) dan tinggi layar. Daftar dirender di `document.body`, bukan di
  * dalam kontainer yang bisa di-scroll (dialog), agar tidak terpotong; karena itu letaknya dihitung sendiri.
  */
-export function placeList(
-  rect: DOMRect,
-  viewportHeight: number,
-  /** Bagian layar yang benar-benar terlihat (papan ketik layar ponsel mengecilkannya); bawaan seluruh layar. */
-  visible?: { top: number; bottom: number },
-): ListPlacement {
-  const visibleBottom = visible?.bottom ?? viewportHeight;
-  const visibleTop = visible?.top ?? 0;
-  const below = visibleBottom - rect.bottom - LIST_EDGE - LIST_GAP;
-  const above = rect.top - visibleTop - LIST_EDGE - LIST_GAP;
+export function placeList(rect: DOMRect, viewportHeight: number): ListPlacement {
+  const below = viewportHeight - rect.bottom - LIST_EDGE - LIST_GAP;
+  const above = rect.top - LIST_EDGE - LIST_GAP;
   const base = { left: rect.left, width: rect.width };
   if (below >= LIST_MIN_BELOW || below >= above) {
     return {
@@ -226,29 +219,16 @@ export function ComboboxBase({
       setPlacement(null);
       return;
     }
-    const viewport = window.visualViewport;
     const update = () =>
-      setPlacement(
-        placeList(
-          anchor.getBoundingClientRect(),
-          window.innerHeight,
-          viewport
-            ? { top: viewport.offsetTop, bottom: viewport.offsetTop + viewport.height }
-            : undefined,
-        ),
-      );
+      setPlacement(placeList(anchor.getBoundingClientRect(), window.innerHeight));
     update();
     window.addEventListener('scroll', update, true);
     window.addEventListener('resize', update);
-    viewport?.addEventListener('resize', update);
-    viewport?.addEventListener('scroll', update);
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
     observer?.observe(anchor);
     return () => {
       window.removeEventListener('scroll', update, true);
       window.removeEventListener('resize', update);
-      viewport?.removeEventListener('resize', update);
-      viewport?.removeEventListener('scroll', update);
       observer?.disconnect();
     };
   }, [showList, chips.length]);

@@ -199,9 +199,6 @@ export function DataTable<T>({
           selection={selection}
           actions={actions}
           isLoading={isLoading}
-          allSelected={allSelected}
-          someSelected={someSelected}
-          ids={ids}
         />
       )}
       {loadMoreError ? (
