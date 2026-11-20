@@ -30,7 +30,7 @@ vi.mock('@/modules/push/components/push-onboarding', () => ({
   useBlockingOnboardingActive: () => state.blocking,
 }));
 
-import { GuideBanner } from './guide-banner';
+import { GuideBanner, pageLabelFor } from './guide-banner';
 
 function entry(overrides: Partial<GuideEntry> = {}): GuideEntry {
   return {
@@ -164,5 +164,20 @@ describe('GuideBanner', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Nanti' }));
     expect(screen.queryByTestId('guide-banner')).toBeNull();
     vi.restoreAllMocks();
+  });
+});
+
+describe('pageLabelFor', () => {
+  test('label anak generik digabung dengan label induknya', () => {
+    expect(pageLabelFor('/serial', 'Judul')).toBe('Daftar Serial Number');
+    expect(pageLabelFor('/serial/reports', 'Judul')).toBe('Laporan Serial Number');
+    expect(pageLabelFor('/serial/settings', 'Judul')).toBe('Pengaturan Serial Number');
+  });
+
+  test('label anak spesifik dan butir tingkat atas tetap apa adanya; tak dikenal = judul', () => {
+    expect(pageLabelFor('/item/brands', 'Judul')).toBe('Merk');
+    expect(pageLabelFor('/handover', 'Judul')).toBe('Serah Terima');
+    expect(pageLabelFor('/tidak-ada', 'Judul')).toBe('Judul');
+    expect(pageLabelFor(undefined, 'Judul')).toBe('Judul');
   });
 });

@@ -1,6 +1,6 @@
 import { useRouterState } from '@tanstack/react-router';
 import { useState } from 'react';
-import { flattenNavItems, NAV_GROUPS } from '@/app/navigation';
+import { isNavParent, NAV_GROUPS } from '@/app/navigation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useMe } from '@/modules/auth/use-me';
@@ -35,11 +35,29 @@ function writeLater(email: string, ids: readonly string[]): void {
   }
 }
 
-/** Nama halaman untuk teks banner: label menu yang tujuannya `halaman`; selain itu judul panduan. */
+/** Label anak menu yang tak bermakna tanpa induknya ("Daftar", "Laporan", "Pengaturan"): dipakai bersama label induk. */
+const GENERIC_CHILD_LABELS: ReadonlySet<string> = new Set(['Daftar', 'Laporan', 'Pengaturan']);
+
+/**
+ * Nama halaman untuk teks banner: label menu yang tujuannya `halaman` (label anak generik digabung dengan label
+ * induknya, mis. "Daftar Serial Number"); selain itu judul panduan.
+ */
+export function pageLabelFor(halaman: string | undefined, title: string): string {
+  for (const group of NAV_GROUPS) {
+    for (const entry of group.items) {
+      const children = isNavParent(entry) ? entry.children : [entry];
+      const item = children.find((candidate) => candidate.to === halaman);
+      if (!item) continue;
+      return isNavParent(entry) && GENERIC_CHILD_LABELS.has(item.label)
+        ? `${item.label} ${entry.label}`
+        : item.label;
+    }
+  }
+  return title;
+}
+
 function pageLabel(offer: GuideOffer): string {
-  const { halaman, title } = offer.entry;
-  const item = flattenNavItems(NAV_GROUPS).find((candidate) => candidate.to === halaman);
-  return item ? item.label : title;
+  return pageLabelFor(offer.entry.halaman, offer.entry.title);
 }
 
 /**
