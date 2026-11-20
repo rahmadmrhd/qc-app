@@ -52,10 +52,10 @@ export function NumberTableField({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="after:ml-0.5 after:text-destructive-text after:content-['*']">
+              <TableHead className="after:ml-0.5 after:text-destructive-text after:content-['*'_/_'']">
                 Nomor
               </TableHead>
-              <TableHead className="after:ml-0.5 after:text-destructive-text after:content-['*']">
+              <TableHead className="after:ml-0.5 after:text-destructive-text after:content-['*'_/_'']">
                 Tanggal habis
               </TableHead>
               <TableHead>Tautan</TableHead>

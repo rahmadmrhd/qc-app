@@ -13,3 +13,8 @@ it('tanpa required tidak bertanda', () => {
   render(<Label>Merk</Label>)
   expect(screen.getByText('Merk')).not.toHaveAttribute('data-required')
 })
+
+it('bintang CSS punya teks alternatif kosong agar tak masuk nama aksesibel', () => {
+  render(<Label required>Merk</Label>)
+  expect(screen.getByText('Merk').className).toContain("after:content-['*'_/_'']")
+})
