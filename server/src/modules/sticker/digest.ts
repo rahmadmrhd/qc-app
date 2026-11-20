@@ -36,7 +36,7 @@ export interface StockDigestRows {
  */
 export async function stockDigestRows(env: Env): Promise<StockDigestRows> {
   const result = await env.DB.prepare(
-    "SELECT s.name, t.name AS type_name, s.min_qty, COALESCE(SUM(k.qty), 0) AS total FROM stickers s JOIN sticker_types t ON t.id = s.type_id LEFT JOIN sticker_stock k ON k.sticker_id = s.id WHERE s.status = 'active' GROUP BY s.id, s.name, t.name, s.min_qty HAVING COALESCE(SUM(k.qty), 0) <= 0 OR (s.min_qty > 0 AND COALESCE(SUM(k.qty), 0) <= s.min_qty) ORDER BY t.name, s.name",
+    "SELECT s.name, t.name AS type_name, s.min_qty, COALESCE(SUM(k.qty), 0) AS total FROM stickers s JOIN sticker_types t ON t.id = s.type_id LEFT JOIN sticker_stock k ON k.sticker_id = s.id WHERE s.status = 'active' AND s.deleted_at = '' AND t.deleted_at = '' GROUP BY s.id, s.name, t.name, s.min_qty HAVING COALESCE(SUM(k.qty), 0) <= 0 OR (s.min_qty > 0 AND COALESCE(SUM(k.qty), 0) <= s.min_qty) ORDER BY t.name, s.name",
   ).all<{ name: string; type_name: string; min_qty: number | string; total: number | string }>();
   const rows: StockDigestRows = { out: [], low: [] };
   for (const row of result.results) {

@@ -11,6 +11,7 @@ import {
 import { loadItemInstructions } from '@server/modules/sticker/instruction-repo';
 import { buildInstructionViews } from '@server/modules/sticker/instruction-service';
 import { latestManualBookStickerIds } from '@server/modules/sticker/repo';
+import type { ItemStickerPhotoDto } from '@shared/contract';
 import {
   type CatalogFileDto,
   type CatalogItemDto,
@@ -107,6 +108,23 @@ const toRef = (row: RefRow): CatalogLocationDto => ({
   name: row.name,
 });
 
+/**
+ * Katalog desktop hanya memuat stiker hidup: penempatan ke stiker/jenis terhapus tetap ada (rujukan tersimpan), tetapi
+ * tak menghasilkan stiker; tandanya dibuang dan penanda dianggap tak terselesaikan.
+ */
+function withoutDeletedStickers(photos: ItemStickerPhotoDto[]): ItemStickerPhotoDto[] {
+  return photos.map((photo) => ({
+    ...photo,
+    marks: photo.marks.map((mark) => {
+      const { targetDeleted: _targetDeleted, ...rest } = mark;
+      const resolved = mark.resolved.filter((sticker) => sticker.deleted !== true);
+      return resolved.length === mark.resolved.length
+        ? rest
+        : { ...rest, resolved, unresolved: resolved.length === 0 };
+    }),
+  }));
+}
+
 export async function buildDesktopCatalog(env: Env): Promise<DesktopCatalogDto> {
   const db = env.DB;
   // Pilihan BU dan lokasi di form inject (keputusan pemilik 2026-11-18): semua yang aktif, tanpa saringan penugasan.
@@ -132,10 +150,14 @@ export async function buildDesktopCatalog(env: Env): Promise<DesktopCatalogDto> 
   const [typeRows, stickerRows, stickerBuRows, itemBus, instructions, designIds, postelStickers] =
     await Promise.all([
       db
-        .prepare('SELECT id, name, rule, system_kind FROM sticker_types ORDER BY name, id')
+        .prepare(
+          `SELECT id, name, rule, system_kind FROM sticker_types WHERE ${liveWhere()} ORDER BY name, id`,
+        )
         .all<TypeRow>(),
       db
-        .prepare('SELECT id, type_id, name, alias, file_id, status FROM stickers ORDER BY name, id')
+        .prepare(
+          `SELECT s.id, s.type_id, s.name, s.alias, s.file_id, s.status FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE ${liveWhere('s')} AND ${liveWhere('t')} ORDER BY s.name, s.id`,
+        )
         .all<StickerRow>(),
       db
         .prepare('SELECT sticker_id, bu_id FROM sticker_business_units')
@@ -205,7 +227,9 @@ export async function buildDesktopCatalog(env: Env): Promise<DesktopCatalogDto> 
           firmware: row.firmware.trim(),
           businessUnits,
           stickerIds: applicableTo(id, buIds),
-          stickerPhotos: await buildInstructionViews(env, id, buIds, instructions.get(id) ?? []),
+          stickerPhotos: withoutDeletedStickers(
+            await buildInstructionViews(env, id, buIds, instructions.get(id) ?? []),
+          ),
         };
       }),
     );

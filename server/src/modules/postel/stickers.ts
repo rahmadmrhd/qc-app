@@ -76,6 +76,8 @@ export function newPostelStickerStmt(
     createdAt: now,
     updatedAt: now,
     updatedBy: actor,
+    deletedAt: '',
+    deletedBy: '',
   };
   return { stickerId: sticker.id, statement: insertStickerStmt(db, sticker) };
 }

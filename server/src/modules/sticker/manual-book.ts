@@ -64,9 +64,12 @@ export async function ensureManualBookType(env: Env, actor: string): Promise<Sti
           systemKind: 'manual_book',
           defaultMinQty: 0,
           stickerCount: 0,
+          liveStickerCount: 0,
           createdAt: now,
           updatedAt: now,
           updatedBy: actor,
+          deletedAt: '',
+          deletedBy: '',
         }),
       ]);
     }
@@ -142,6 +145,8 @@ export async function manualBookCommitStatements(
     createdAt: input.now,
     updatedAt: input.now,
     updatedBy: input.actor,
+    deletedAt: '',
+    deletedBy: '',
   };
   const { content } = input;
   const statements: DbStatement[] = [];

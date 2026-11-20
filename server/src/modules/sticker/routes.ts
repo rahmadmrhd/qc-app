@@ -1,13 +1,26 @@
 import type { RouteTable } from '@server/core/router';
+import { validateIdBatch, validateStatusBatch } from '@server/core/soft-delete';
 import { expectNull } from '@server/core/validate';
 import { type GuideMethod, guideRoutes } from './guide-routes';
 import {
+  getStickerDto,
+  getStickerTypeDto,
   listStickers,
   listStickerTypes,
+  removeSticker,
+  removeStickerBatch,
+  removeStickerType,
+  removeStickerTypeBatch,
+  restoreSticker,
+  restoreStickerBatch,
+  restoreStickerType,
+  restoreStickerTypeBatch,
   saveSticker,
   saveStickerType,
   setStickerStatus,
+  setStickerStatusBatch,
   setStickerTypeStatus,
+  setStickerTypeStatusBatch,
 } from './service';
 import { getStickerSettings, saveStickerSettings } from './settings';
 import {
@@ -19,7 +32,11 @@ import {
 } from './stock-service';
 import {
   validateAdjustStock,
+  validateGetSticker,
+  validateGetStickerType,
   validateListStickerStock,
+  validateListStickers,
+  validateListStickerTypes,
   validateOpname,
   validateRecordStock,
   validateSaveSticker,
@@ -34,11 +51,23 @@ type StickerMethod =
   | 'stickerSettings.get'
   | 'stickerSettings.save'
   | 'stickerTypes.list'
+  | 'stickerTypes.get'
   | 'stickerTypes.save'
   | 'stickerTypes.setStatus'
+  | 'stickerTypes.setStatusBatch'
+  | 'stickerTypes.remove'
+  | 'stickerTypes.removeBatch'
+  | 'stickerTypes.restore'
+  | 'stickerTypes.restoreBatch'
   | 'stickers.list'
+  | 'stickers.get'
   | 'stickers.save'
   | 'stickers.setStatus'
+  | 'stickers.setStatusBatch'
+  | 'stickers.remove'
+  | 'stickers.removeBatch'
+  | 'stickers.restore'
+  | 'stickers.restoreBatch'
   | 'stickerStock.list'
   | 'stickerStock.record'
   | 'stickerStock.adjust'
@@ -76,8 +105,13 @@ export function stickerRoutes(): Pick<RouteTable, StickerMethod | GuideMethod> {
     },
     'stickerTypes.list': {
       permission: CATALOG_READ_PERMISSION,
-      validate: expectNull,
-      handler: (_input, ctx) => listStickerTypes(ctx.env),
+      validate: validateListStickerTypes,
+      handler: (input, ctx) => listStickerTypes(ctx.env, input, ctx.user),
+    },
+    'stickerTypes.get': {
+      permission: CATALOG_READ_PERMISSION,
+      validate: validateGetStickerType,
+      handler: (input, ctx) => getStickerTypeDto(ctx.env, input, ctx.user),
     },
     'stickerTypes.save': {
       permission: { module: 'sticker', level: 'edit' },
@@ -89,10 +123,40 @@ export function stickerRoutes(): Pick<RouteTable, StickerMethod | GuideMethod> {
       validate: validateSetStickerTypeStatus,
       handler: (input, ctx) => setStickerTypeStatus(ctx.env, input, ctx.user),
     },
+    'stickerTypes.setStatusBatch': {
+      permission: { module: 'sticker', level: 'manage' },
+      validate: validateStatusBatch,
+      handler: (input, ctx) => setStickerTypeStatusBatch(ctx.env, input, ctx.user),
+    },
+    'stickerTypes.remove': {
+      permission: { module: 'sticker', level: 'manage' },
+      validate: validateGetStickerType,
+      handler: (input, ctx) => removeStickerType(ctx.env, input, ctx.user),
+    },
+    'stickerTypes.removeBatch': {
+      permission: { module: 'sticker', level: 'manage' },
+      validate: validateIdBatch,
+      handler: (input, ctx) => removeStickerTypeBatch(ctx.env, input, ctx.user),
+    },
+    'stickerTypes.restore': {
+      permission: { module: 'sticker', level: 'manage' },
+      validate: validateGetStickerType,
+      handler: (input, ctx) => restoreStickerType(ctx.env, input, ctx.user),
+    },
+    'stickerTypes.restoreBatch': {
+      permission: { module: 'sticker', level: 'manage' },
+      validate: validateIdBatch,
+      handler: (input, ctx) => restoreStickerTypeBatch(ctx.env, input, ctx.user),
+    },
     'stickers.list': {
       permission: CATALOG_READ_PERMISSION,
-      validate: expectNull,
-      handler: (_input, ctx) => listStickers(ctx.env),
+      validate: validateListStickers,
+      handler: (input, ctx) => listStickers(ctx.env, input, ctx.user),
+    },
+    'stickers.get': {
+      permission: CATALOG_READ_PERMISSION,
+      validate: validateGetSticker,
+      handler: (input, ctx) => getStickerDto(ctx.env, input, ctx.user),
     },
     'stickers.save': {
       permission: { module: 'sticker', level: 'edit' },
@@ -103,6 +167,31 @@ export function stickerRoutes(): Pick<RouteTable, StickerMethod | GuideMethod> {
       permission: { module: 'sticker', level: 'manage' },
       validate: validateSetStickerStatus,
       handler: (input, ctx) => setStickerStatus(ctx.env, input, ctx.user),
+    },
+    'stickers.setStatusBatch': {
+      permission: { module: 'sticker', level: 'manage' },
+      validate: validateStatusBatch,
+      handler: (input, ctx) => setStickerStatusBatch(ctx.env, input, ctx.user),
+    },
+    'stickers.remove': {
+      permission: { module: 'sticker', level: 'manage' },
+      validate: validateGetSticker,
+      handler: (input, ctx) => removeSticker(ctx.env, input, ctx.user),
+    },
+    'stickers.removeBatch': {
+      permission: { module: 'sticker', level: 'manage' },
+      validate: validateIdBatch,
+      handler: (input, ctx) => removeStickerBatch(ctx.env, input, ctx.user),
+    },
+    'stickers.restore': {
+      permission: { module: 'sticker', level: 'manage' },
+      validate: validateGetSticker,
+      handler: (input, ctx) => restoreSticker(ctx.env, input, ctx.user),
+    },
+    'stickers.restoreBatch': {
+      permission: { module: 'sticker', level: 'manage' },
+      validate: validateIdBatch,
+      handler: (input, ctx) => restoreStickerBatch(ctx.env, input, ctx.user),
     },
     'stickerStock.list': {
       permission: { module: 'stickerstock', level: 'view', scope: 'location' },

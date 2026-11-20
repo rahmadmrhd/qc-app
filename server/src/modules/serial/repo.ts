@@ -246,13 +246,17 @@ export interface SerialStickerRow {
   status: string | null;
 }
 
+/**
+ * Stiker serial dengan nama dan status; stiker TERHAPUS dibaca `inactive` (rujukan tetap tampil dengan namanya, tetapi
+ * tak dapat dicentang lagi pada cek ulang, seperti stiker nonaktif; spek soft delete T9).
+ */
 export async function loadSerialStickers(
   db: Preparer,
   serialId: string,
 ): Promise<SerialStickerRow[]> {
   const rows = await db
     .prepare(
-      'SELECT ss.sticker_id, st.name, st.alias, st.status, ss.qty FROM serial_stickers ss LEFT JOIN stickers st ON st.id = ss.sticker_id WHERE ss.serial_id = ? ORDER BY st.name, ss.sticker_id',
+      "SELECT ss.sticker_id, st.name, st.alias, CASE WHEN st.deleted_at <> '' THEN 'inactive' ELSE st.status END AS status, ss.qty FROM serial_stickers ss LEFT JOIN stickers st ON st.id = ss.sticker_id WHERE ss.serial_id = ? ORDER BY st.name, ss.sticker_id",
     )
     .bind(serialId)
     .all<SerialStickerRow>();

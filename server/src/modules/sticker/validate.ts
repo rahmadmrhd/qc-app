@@ -4,7 +4,11 @@ import { readObject } from '@server/core/validate';
 import { validateLocationIds } from '@server/modules/handover/validate';
 import type {
   AdjustStockInput,
+  GetStickerInput,
+  GetStickerTypeInput,
   ListStickerStockInput,
+  ListStickersInput,
+  ListStickerTypesInput,
   OpnameInput,
   OpnameRowInput,
   RecordStockInput,
@@ -107,6 +111,46 @@ export function validateSetStickerStatus(raw: unknown): SetStickerStatusInput {
   const status = reader.oneOf('status', STATUS_VALUES);
   reader.done();
   return { id, status };
+}
+
+const LIST_STATUS_VALUES = ['active', 'inactive', 'deleted', 'all'] as const;
+
+/** Masukan daftar boleh kosong; `status` opsional (`deleted` hanya bagi `sticker: manage`, dicek di service). */
+function readListStatus(raw: unknown): { status?: (typeof LIST_STATUS_VALUES)[number] } | null {
+  if (raw === null || raw === undefined) return null;
+  const reader = readObject(raw);
+  const value = reader.raw('status');
+  if (value === undefined || value === null || value === '') {
+    reader.done();
+    return {};
+  }
+  const status = reader.oneOf('status', LIST_STATUS_VALUES);
+  reader.done();
+  return { status };
+}
+
+export function validateListStickers(raw: unknown): ListStickersInput | null {
+  return readListStatus(raw);
+}
+
+export function validateListStickerTypes(raw: unknown): ListStickerTypesInput | null {
+  return readListStatus(raw);
+}
+
+/** `id` saja (get, remove, restore). */
+function readIdOnly(raw: unknown): { id: string } {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true, max: 100 });
+  reader.done();
+  return { id };
+}
+
+export function validateGetSticker(raw: unknown): GetStickerInput {
+  return readIdOnly(raw);
+}
+
+export function validateGetStickerType(raw: unknown): GetStickerTypeInput {
+  return readIdOnly(raw);
 }
 
 export function validateSetStickerTypeStatus(raw: unknown): SetStickerTypeStatusInput {

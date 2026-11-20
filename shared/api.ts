@@ -190,7 +190,8 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     ifMatch: 'expectedUpdatedAt',
     etag: 'updatedAt',
   },
-  'stickerTypes.list': { verb: 'GET', path: '/sticker-types' },
+  'stickerTypes.list': { verb: 'GET', path: '/sticker-types', query: { status: 'string' } },
+  'stickerTypes.get': { verb: 'GET', path: '/sticker-types/{id}', etag: 'updatedAt' },
   'stickerTypes.save': {
     verb: 'PUT',
     path: '/sticker-types/{id}',
@@ -199,7 +200,14 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     etag: 'updatedAt',
   },
   'stickerTypes.setStatus': { verb: 'PATCH', path: '/sticker-types/{id}', etag: 'updatedAt' },
-  'stickers.list': { verb: 'GET', path: '/stickers' },
+  // Urutan tabel = urutan pendaftaran: `/sticker-types/batch/restore` harus SEBELUM `/sticker-types/{id}/restore`.
+  'stickerTypes.setStatusBatch': { verb: 'POST', path: '/sticker-types/batch/status' },
+  'stickerTypes.remove': { verb: 'DELETE', path: '/sticker-types/{id}' },
+  'stickerTypes.removeBatch': { verb: 'POST', path: '/sticker-types/batch/delete' },
+  'stickerTypes.restoreBatch': { verb: 'POST', path: '/sticker-types/batch/restore' },
+  'stickerTypes.restore': { verb: 'POST', path: '/sticker-types/{id}/restore', etag: 'updatedAt' },
+  'stickers.list': { verb: 'GET', path: '/stickers', query: { status: 'string' } },
+  'stickers.get': { verb: 'GET', path: '/stickers/{id}', etag: 'updatedAt' },
   'stickers.save': {
     verb: 'PUT',
     path: '/stickers/{id}',
@@ -208,6 +216,12 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     etag: 'updatedAt',
   },
   'stickers.setStatus': { verb: 'PATCH', path: '/stickers/{id}', etag: 'updatedAt' },
+  // Urutan tabel = urutan pendaftaran: `/stickers/batch/restore` harus SEBELUM `/stickers/{id}/restore`.
+  'stickers.setStatusBatch': { verb: 'POST', path: '/stickers/batch/status' },
+  'stickers.remove': { verb: 'DELETE', path: '/stickers/{id}' },
+  'stickers.removeBatch': { verb: 'POST', path: '/stickers/batch/delete' },
+  'stickers.restoreBatch': { verb: 'POST', path: '/stickers/batch/restore' },
+  'stickers.restore': { verb: 'POST', path: '/stickers/{id}/restore', etag: 'updatedAt' },
   'stickerStock.list': { verb: 'GET', path: '/sticker-stock', query: { locationIds: 'list' } },
   'stickerStock.record': { verb: 'POST', path: '/sticker-stock/entries', status: 201 },
   'stickerStock.adjust': { verb: 'POST', path: '/sticker-stock/adjustments', status: 201 },

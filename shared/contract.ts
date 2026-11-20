@@ -351,6 +351,8 @@ export interface ResolvedStickerDto {
   /** Kode BU stiker (terurut). */
   buCodes: string[];
   inactive: boolean;
+  /** Ada (true) hanya bila stiker ini terhapus (penempatan lama tetap menampilkannya, bertanda "Terhapus"). */
+  deleted?: true;
 }
 
 /** Penanda untuk tampilan: sasaran + nama + stiker yang cocok untuk BU item. */
@@ -360,6 +362,8 @@ export interface ItemStickerMarkView extends ItemStickerMarkDto {
   resolved: ResolvedStickerDto[];
   /** Jenis tanpa stiker aktif yang cocok untuk BU item (peringatan; simpan tidak diblokir). */
   unresolved: boolean;
+  /** Ada (true) hanya bila stiker atau jenis sasaran ini terhapus (rujukan tersimpan tetap tampil bertanda "Terhapus"). */
+  targetDeleted?: true;
 }
 
 export interface ItemStickerPhotoDto {
@@ -435,9 +439,20 @@ export interface StickerTypeDto {
   systemKind: StickerSystemKind;
   /** Minimum stok bawaan bagi stiker versi pertama pada jenis ini (0 = tanpa peringatan). */
   defaultMinQty: number;
-  /** Jumlah stiker (aktif maupun nonaktif) pada jenis ini. */
+  /** Jumlah stiker HIDUP (aktif, nonaktif, dan digantikan; tanpa yang terhapus) pada jenis ini. */
   stickerCount: number;
   updatedAt: string;
+  /** Ada hanya pada jenis terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+}
+
+export interface ListStickerTypesInput {
+  /** Bawaan = jenis hidup (aktif + nonaktif). `deleted` hanya bagi `sticker: manage`; selain itu `FORBIDDEN`. */
+  status?: ListStatusFilter;
+}
+
+export interface GetStickerTypeInput {
+  id: string;
 }
 
 export interface SaveStickerTypeInput {
@@ -476,6 +491,22 @@ export interface StickerDto {
    */
   latestManualBookVersion: boolean;
   updatedAt: string;
+  /** Ada hanya pada stiker terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+  /** Ada (true) hanya bila jenis stiker ini terhapus; stiker tetap ada dan tampil dengan nama jenisnya. */
+  typeDeleted?: boolean;
+}
+
+export interface ListStickersInput {
+  /**
+   * Bawaan = stiker hidup (aktif, nonaktif, digantikan). `active` = status aktif; `inactive` = bukan aktif (nonaktif atau
+   * digantikan, sama dengan syarat Hapus). `deleted` hanya bagi `sticker: manage`; selain itu `FORBIDDEN`.
+   */
+  status?: ListStatusFilter;
+}
+
+export interface GetStickerInput {
+  id: string;
 }
 
 export interface SaveStickerInput {
@@ -1239,14 +1270,26 @@ export interface ApiContract {
   /** Pulihkan: kembali Nonaktif. */
   'brands.restore': { input: GetBrandInput; output: BrandDto };
   'brands.restoreBatch': { input: IdBatchInput; output: BatchResult<BrandDto> };
-  'stickerTypes.list': { input: null; output: StickerTypeDto[] };
+  'stickerTypes.list': { input: ListStickerTypesInput | null; output: StickerTypeDto[] };
+  'stickerTypes.get': { input: GetStickerTypeInput; output: StickerTypeDto };
   'stickerTypes.save': { input: SaveStickerTypeInput; output: StickerTypeDto };
   'stickerTypes.setStatus': { input: SetStickerTypeStatusInput; output: StickerTypeDto };
+  'stickerTypes.setStatusBatch': { input: StatusBatchInput; output: BatchResult<StickerTypeDto> };
+  'stickerTypes.remove': { input: GetStickerTypeInput; output: RemoveResult };
+  'stickerTypes.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'stickerTypes.restoreBatch': { input: IdBatchInput; output: BatchResult<StickerTypeDto> };
+  'stickerTypes.restore': { input: GetStickerTypeInput; output: StickerTypeDto };
   'stickerSettings.get': { input: null; output: StickerSettingsDto };
   'stickerSettings.save': { input: SaveStickerSettingsInput; output: StickerSettingsDto };
-  'stickers.list': { input: null; output: StickerDto[] };
+  'stickers.list': { input: ListStickersInput | null; output: StickerDto[] };
+  'stickers.get': { input: GetStickerInput; output: StickerDto };
   'stickers.save': { input: SaveStickerInput; output: StickerDto };
   'stickers.setStatus': { input: SetStickerStatusInput; output: StickerDto };
+  'stickers.setStatusBatch': { input: StatusBatchInput; output: BatchResult<StickerDto> };
+  'stickers.remove': { input: GetStickerInput; output: RemoveResult };
+  'stickers.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'stickers.restoreBatch': { input: IdBatchInput; output: BatchResult<StickerDto> };
+  'stickers.restore': { input: GetStickerInput; output: StickerDto };
   'stickerStock.list': { input: ListStickerStockInput; output: StickerStockDto[] };
   'stickerStock.record': { input: RecordStockInput; output: StockEntryDto };
   'stickerStock.adjust': { input: AdjustStockInput; output: StockEntryDto };

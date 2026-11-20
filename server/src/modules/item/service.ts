@@ -691,7 +691,7 @@ export async function assertInstructionRefs(env: Env, input: SaveItemInput): Pro
     slots.stickers = reads.length;
     reads.push(
       env.DB.prepare(
-        `SELECT s.id, s.status, t.system_kind FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id IN (${placeholders(stickerIds.size)})`,
+        `SELECT s.id, s.status, s.deleted_at, t.system_kind FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id IN (${placeholders(stickerIds.size)})`,
       ).bind(...stickerIds),
     );
   }
@@ -699,7 +699,7 @@ export async function assertInstructionRefs(env: Env, input: SaveItemInput): Pro
     slots.types = reads.length;
     reads.push(
       env.DB.prepare(
-        `SELECT id, status FROM sticker_types WHERE id IN (${placeholders(typeIds.size)})`,
+        `SELECT id, status, deleted_at FROM sticker_types WHERE id IN (${placeholders(typeIds.size)})`,
       ).bind(...typeIds),
     );
   }
@@ -716,13 +716,15 @@ export async function assertInstructionRefs(env: Env, input: SaveItemInput): Pro
     slot < 0 ? [] : ((results[slot]?.results ?? []) as T[]);
   const knownGuides = new Set(rowsOf<{ id: string }>(0).map((row) => row.id));
   const stickerRows = new Map(
-    rowsOf<{ id: string; status: string; system_kind: string }>(slots.stickers).map((row) => [
+    rowsOf<{ id: string; status: string; deleted_at: string; system_kind: string }>(
+      slots.stickers,
+    ).map((row) => [row.id, row]),
+  );
+  const typeRows = new Map(
+    rowsOf<{ id: string; status: string; deleted_at: string }>(slots.types).map((row) => [
       row.id,
       row,
     ]),
-  );
-  const typeStatus = new Map(
-    rowsOf<{ id: string; status: string }>(slots.types).map((row) => [row.id, row.status]),
   );
   const stored = rowsOf<{ sticker_id: string; type_id: string }>(slots.stored);
   const storedStickers = new Set(stored.map((row) => row.sticker_id).filter((id) => id !== ''));
@@ -742,13 +744,23 @@ export async function assertInstructionRefs(env: Env, input: SaveItemInput): Pro
         if ((sticker?.system_kind ?? '').trim() !== '') {
           fail(`${label}: Stiker jenis sistem dipilih lewat jenisnya`);
         }
-        if (sticker?.status !== 'active' && !storedStickers.has(mark.target.stickerId)) {
+        // Rujukan tersimpan yang tidak berubah tetap sah walau stikernya kini terhapus atau nonaktif (T1); sasaran BARU
+        // harus stiker hidup dan aktif.
+        const stored = storedStickers.has(mark.target.stickerId);
+        if (sticker !== undefined && sticker.deleted_at !== '' && !stored) {
+          fail(`${label}: stiker sudah dihapus; pilih stiker yang aktif`);
+        }
+        if (sticker?.status !== 'active' && !stored) {
           fail(`${label}: stiker dinonaktifkan; pilih stiker yang aktif`);
         }
       } else {
-        const status = typeStatus.get(mark.target.typeId);
-        if (status === undefined) fail(`${label}: jenis tidak ditemukan`);
-        if (status !== 'active' && !storedTypes.has(mark.target.typeId)) {
+        const type = typeRows.get(mark.target.typeId);
+        if (type === undefined) fail(`${label}: jenis tidak ditemukan`);
+        const stored = storedTypes.has(mark.target.typeId);
+        if (type !== undefined && type.deleted_at !== '' && !stored) {
+          fail(`${label}: jenis sudah dihapus; pilih jenis yang aktif`);
+        }
+        if (type?.status !== 'active' && !stored) {
           fail(`${label}: jenis dinonaktifkan; pilih jenis yang aktif`);
         }
       }

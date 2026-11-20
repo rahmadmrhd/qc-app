@@ -95,6 +95,9 @@ const WORST: Inputs = {
     businessUnitIds: Array.from({ length: 50 }, () => UUID),
   },
   'stickers.setStatus': { id: UUID, status: 'inactive' },
+  'stickers.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
+  'stickers.removeBatch': { ids: BATCH_IDS },
+  'stickers.restoreBatch': { ids: BATCH_IDS },
   'stickerStock.record': {
     locationId: UUID,
     stickerId: UUID,
@@ -130,6 +133,9 @@ const WORST: Inputs = {
   },
   'stickerGuides.rename': { id: UUID, name: text(GUIDE_LIMITS.nameMax) },
   'stickerTypes.setStatus': { id: UUID, status: 'inactive' },
+  'stickerTypes.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
+  'stickerTypes.removeBatch': { ids: BATCH_IDS },
+  'stickerTypes.restoreBatch': { ids: BATCH_IDS },
   'customers.rename': { id: UUID, name: text(HANDOVER_LIMITS.customerName) },
   'customers.setStatus': { id: UUID, status: 'inactive' },
   'items.save': {

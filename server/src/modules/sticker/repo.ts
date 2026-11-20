@@ -1,6 +1,7 @@
 import { CAS_FAIL_SQL, CAS_UPDATED_AT_SET } from '@server/core/cas';
 import type { DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
+import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import type { ItemStatus } from '@shared/contract';
 import {
   STICKER_SYSTEM_KINDS,
@@ -18,11 +19,19 @@ export interface StickerTypeRecord {
   systemKind: StickerSystemKind;
   /** Minimum stok bawaan bagi stiker versi pertama pada jenis ini. */
   defaultMinQty: number;
-  /** Jumlah stiker (aktif + nonaktif) pada jenis ini; dihitung saat dibaca. */
+  /**
+   * Jumlah SEMUA stiker pada jenis ini, juga yang terhapus; dihitung saat dibaca. Dasar penguncian aturan jenis dan
+   * pengadopsian jenis (stiker terhapus yang dipulihkan kelak tak boleh menyalahi aturan jenisnya).
+   */
   stickerCount: number;
+  /** Jumlah stiker HIDUP pada jenis ini (yang ditampilkan di DTO dan dialog hapus). */
+  liveStickerCount: number;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** Soft delete: '' = hidup (ISO UTC bila terhapus) dan pelakunya (email). */
+  deletedAt: string;
+  deletedBy: string;
 }
 
 export interface StickerTypeRow {
@@ -33,15 +42,22 @@ export interface StickerTypeRow {
   system_kind: string;
   default_min_qty: number | string;
   sticker_count: number | string;
+  live_sticker_count: number | string;
   created_at: string;
   updated_at: string;
   updated_by: string;
+  deleted_at: string;
+  deleted_by: string;
 }
 
-/** Kolom jenis + jumlah stiker (subkueri berindeks `stickers_type`); satu kueri, bukan N+1. */
+/**
+ * Kolom jenis + jumlah stiker (subkueri berindeks `stickers_type`); satu kueri, bukan N+1. Tanpa penyaring jenis:
+ * pemakai menambahkan `WHERE` sesuai keadaan yang diminta (hidup, terhapus, atau menurut id).
+ */
 const TYPE_SELECT =
-  'SELECT t.id, t.name, t.rule, t.status, t.system_kind, t.default_min_qty, t.created_at, t.updated_at, t.updated_by, ' +
-  '(SELECT COUNT(*) FROM stickers s WHERE s.type_id = t.id) AS sticker_count FROM sticker_types t';
+  'SELECT t.id, t.name, t.rule, t.status, t.system_kind, t.default_min_qty, t.created_at, t.updated_at, t.updated_by, t.deleted_at, t.deleted_by, ' +
+  '(SELECT COUNT(*) FROM stickers s WHERE s.type_id = t.id) AS sticker_count, ' +
+  "(SELECT COUNT(*) FROM stickers sl WHERE sl.type_id = t.id AND sl.deleted_at = '') AS live_sticker_count FROM sticker_types t";
 
 function toStickerRule(value: string): StickerRule {
   const rule = value.trim();
@@ -62,27 +78,42 @@ export function toStickerType(row: StickerTypeRow): StickerTypeRecord {
     systemKind: toSystemKind(row.system_kind),
     defaultMinQty: Number(row.default_min_qty) || 0,
     stickerCount: Number(row.sticker_count) || 0,
+    liveStickerCount: Number(row.live_sticker_count) || 0,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
+    deletedAt: row.deleted_at ?? '',
+    deletedBy: row.deleted_by ?? '',
   };
 }
 
-/** Semua jenis (digabung ke `batch()` baca); hasilnya lewat `stickerTypesFromResult`. */
+/**
+ * SEMUA jenis, hidup maupun terhapus (digabung ke `batch()` baca; hasilnya lewat `stickerTypesFromResult`). Penampil
+ * rujukan: nama jenis dan penanda "Terhapus" bagi stiker yang jenisnya terhapus; pemanggil menilai `deletedAt`.
+ */
 export function stickerTypesStatement(db: Preparer): DbStatement {
   return db.prepare(TYPE_SELECT);
 }
 
-/** Semua jenis stiker (kecil), langsung dari MariaDB. */
-export async function listStickerTypeRecords(db: Preparer): Promise<StickerTypeRecord[]> {
-  const result = await db.prepare(TYPE_SELECT).all<StickerTypeRow>();
+/**
+ * Jenis stiker (kecil), langsung dari MariaDB. Bawaan `live` = jenis hidup; `deleted` = hanya yang terhapus (tampilan
+ * "Terhapus", hanya bagi `sticker: manage`).
+ */
+export async function listStickerTypeRecords(
+  db: Preparer,
+  state: 'live' | 'deleted' = 'live',
+): Promise<StickerTypeRecord[]> {
+  const result =
+    state === 'live'
+      ? await db.prepare(`${TYPE_SELECT} WHERE ${liveWhere('t')}`).all<StickerTypeRow>()
+      : await db.prepare(`${TYPE_SELECT} WHERE ${deletedWhere('t')}`).all<StickerTypeRow>();
   return result.results.map(toStickerType).filter((type) => type.id !== '');
 }
 
 /**
- * Satu jenis menurut id dengan kunci baris (`FOR UPDATE`) untuk dipakai di dalam transaksi tulis: penulis lain
- * (ganti nama/aturan/status serentak, dan penyisipan stiker yang mengambil kunci bersama baris jenis) menunggu
- * sampai COMMIT dan membaca hasil akhir.
+ * Satu jenis menurut id (hidup atau terhapus; pemanggil menilai `deletedAt`) dengan kunci baris (`FOR UPDATE`) untuk
+ * dipakai di dalam transaksi tulis: penulis lain (ganti nama/aturan/status serentak, dan penyisipan stiker yang
+ * mengambil kunci bersama baris jenis) menunggu sampai COMMIT dan membaca hasil akhir.
  */
 export async function lockStickerType(
   db: Preparer,
@@ -145,6 +176,9 @@ export interface StickerRecord {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** Soft delete: '' = hidup (ISO UTC bila terhapus) dan pelakunya (email). */
+  deletedAt: string;
+  deletedBy: string;
 }
 
 export interface StickerRow {
@@ -158,10 +192,12 @@ export interface StickerRow {
   created_at: string;
   updated_at: string;
   updated_by: string;
+  deleted_at: string;
+  deleted_by: string;
 }
 
 export const STICKER_COLUMNS =
-  'id, type_id, name, alias, file_id, min_qty, status, created_at, updated_at, updated_by';
+  'id, type_id, name, alias, file_id, min_qty, status, created_at, updated_at, updated_by, deleted_at, deleted_by';
 
 export function toStickerStatus(value: string): StickerStatus {
   const status = value.trim();
@@ -180,14 +216,22 @@ export function toSticker(row: StickerRow): StickerRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
+    deletedAt: row.deleted_at ?? '',
+    deletedBy: row.deleted_by ?? '',
   };
 }
 
-/** Semua stiker (digabung ke `batch()` baca); hasilnya lewat `stickersFromResult`. */
-export function stickersStatement(db: Preparer): DbStatement {
-  return db.prepare(`SELECT ${STICKER_COLUMNS} FROM stickers`);
+/**
+ * Stiker untuk digabung ke `batch()` baca; hasilnya lewat `stickersFromResult`. Bawaan `live` = stiker hidup;
+ * `deleted` = hanya yang terhapus (tampilan "Terhapus", hanya bagi `sticker: manage`).
+ */
+export function stickersStatement(db: Preparer, state: 'live' | 'deleted' = 'live'): DbStatement {
+  return state === 'live'
+    ? db.prepare(`SELECT ${STICKER_COLUMNS} FROM stickers WHERE ${liveWhere()}`)
+    : db.prepare(`SELECT ${STICKER_COLUMNS} FROM stickers WHERE ${deletedWhere()}`);
 }
 
+/** Stiker menurut id, hidup atau terhapus: pemanggil menilai `deletedAt` (hapus, pulihkan, status, simpan, detail). */
 export function stickerByIdStatement(db: Preparer, id: string): DbStatement {
   return db.prepare(`SELECT ${STICKER_COLUMNS} FROM stickers WHERE id = ?`).bind(id);
 }

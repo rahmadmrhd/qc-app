@@ -23,47 +23,22 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'qr_designs@1#6d982a3a',
     'manual_book_versions@1#6d982a3a',
     'manual_book_versions@2#6d982a3a',
-    'stickers@1#6d982a3a',
     'postels@1#2bbba95b',
     'item_business_units@2#69d917f0',
     'item_business_units@3#f44ff848',
   ],
-  'server/src/modules/item/service.ts': [
-    'stickers@1#5184736e',
-    'sticker_types@1#5184736e',
-    'sticker_types@2#4f247cff',
-    'item_sticker_marks@1#0ea287d8',
-  ],
+  'server/src/modules/item/service.ts': ['item_sticker_marks@1#0ea287d8'],
   // Fase 4a (sticker)
   'server/src/modules/sticker/guide-repo.ts': [
     'item_sticker_photos@1#dae36bcd',
     'users@1#21ba7e4d',
     'users@2#efe68088',
   ],
-  'server/src/modules/sticker/instruction-repo.ts': [
-    'item_sticker_photos@1#6f472aca',
-    'item_sticker_marks@1#be14975d',
-    'item_sticker_marks@2#0e97424a',
-  ],
-  'server/src/modules/sticker/instruction-service.ts': [
-    'stickers@1#9204cfe1',
-    'stickers@2#93bb44dd',
-    'business_units@1#8607d2a9',
-    'sticker_types@1#c42f0ce4',
-  ],
-  'server/src/modules/sticker/manual-book.ts': [
-    'stickers@1#a90f3bf0',
-    'manual_book_versions@1#921b68f4',
-    'stickers@2#921b68f4',
-  ],
+  'server/src/modules/sticker/instruction-service.ts': ['business_units@1#8607d2a9'],
+  'server/src/modules/sticker/manual-book.ts': ['manual_book_versions@1#921b68f4'],
   'server/src/modules/sticker/repo.ts': [
-    'stickers@1#8f1c6a01',
-    'sticker_types@1#8f1c6a01',
-    'stickers@2#73cccc40',
-    'stickers@3#429e9da2',
     'business_units@1#c2e2358a',
     'business_units@2#2023d3e3',
-    'sticker_types@2#985384cd',
     'manual_book_versions@1#e7d844e9',
     'manual_book_versions@2#34832c17',
     'manual_book_versions@3#34832c17',
@@ -73,18 +48,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'manual_book_versions@7#37170634',
     'manual_book_versions@8#6e617267',
     'manual_book_versions@9#6e617267',
-  ],
-  'server/src/modules/sticker/service.ts': ['postels@1#27c4fac2'],
-  'server/src/modules/sticker/stock-repo.ts': [
-    'stickers@1#5b8116d4',
-    'sticker_types@1#5b8116d4',
-    'stickers@2#88064441',
-    'sticker_types@2#88064441',
-    'stickers@3#a3e7cae4',
-    'stickers@4#2be9e855',
-    'stickers@5#8f38dd07',
-    'sticker_types@3#8f38dd07',
-    'stickers@6#27173699',
   ],
   // Fase 4b (qrcode, postel)
   // Ekspor Sheets: `files` (pemilik stiker/pustaka fase 4a, QR/postel fase 4b) dan `qr_documents` belum disaring
@@ -97,16 +60,10 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'postel_numbers@1#3c3bd5ee',
     'postel_numbers@2#5b246666',
   ],
-  'server/src/modules/postel/stickers.ts': [
-    'stickers@1#72c37a09',
-    'stickers@2#a3e7cae4',
-    'stickers@3#53d6d36d',
-    'postels@1#53d6d36d',
-  ],
+  'server/src/modules/postel/stickers.ts': ['postels@1#53d6d36d'],
   'server/src/modules/qrcode/items.ts': [
     'qr_designs@1#7892692c',
     'manual_book_versions@1#1a057869',
-    'stickers@1#1a057869',
     'manual_book_versions@2#1a057869',
     'manual_book_versions@3#b1ac013b',
   ],
@@ -118,9 +75,7 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
   'server/src/modules/qrcode/service.ts': [
     'qr_designs@1#c70c7365',
     'manual_book_versions@1#97faa561',
-    'stickers@1#fc2aad1c',
-    'sticker_types@1#fc2aad1c',
-    'manual_book_versions@2#fc2aad1c',
+    'manual_book_versions@2#88c1616f',
   ],
   // Fase 4c (access, customer)
   'server/src/modules/access/location-brief.ts': ['locations@1#d3dc66da'],
@@ -178,7 +133,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'serial_events@1#94659661',
   ],
   'server/src/modules/serial/alert.ts': ['business_units@1#3002fa34'],
-  'server/src/modules/serial/applicable.ts': ['stickers@1#0bbe3d52', 'sticker_types@1#0bbe3d52'],
   'server/src/modules/serial/bu-history.ts': [
     'serials@1#9e00df83',
     'serials@2#55c321bc',
@@ -247,8 +201,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'locations@7#ab57a715',
     'locations@8#ab57a715',
     'serial_cases@2#ab57a715',
-    'serial_stickers@1#99ae892d',
-    'stickers@1#99ae892d',
     'serial_events@1#daa6e6f2',
     'serial_proof_photos@3#2afb7690',
     'serials@4#2afb7690',
@@ -258,6 +210,7 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'locations@11#2afb7690',
     'serial_cases@3#2afb7690',
     'serial_events@2#3b3831f0',
+    'serial_stickers@1#3f0e2215',
   ],
   'server/src/modules/serial/report.ts': ['business_units@1#71a9e696', 'serials@1#8f846d75'],
   'server/src/modules/serial/service-locations.ts': [
@@ -272,12 +225,7 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'serials@1#be7ddb50',
   ],
   // Lain-lain (modul yang membaca tabel milik fase lain: notification, desktop catalog, files, digest stok)
-  'server/src/modules/desktop/catalog.ts': [
-    'business_units@1#219cc539',
-    'locations@1#60985b63',
-    'sticker_types@1#122492eb',
-    'stickers@1#483e4878',
-  ],
+  'server/src/modules/desktop/catalog.ts': ['business_units@1#219cc539', 'locations@1#60985b63'],
   'server/src/modules/files/service.ts': ['serials@1#28642dd5', 'item_business_units@1#546f26ad'],
   'server/src/modules/notification/emit.ts': ['users@1#203620e5'],
   'server/src/modules/notification/flush.ts': ['handovers@1#f37698e5'],
@@ -295,7 +243,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'serial_proof_photos@1#45516398',
     'serials@1#45516398',
   ],
-  'server/src/modules/sticker/digest.ts': ['stickers@1#aa168eb3', 'sticker_types@1#aa168eb3'],
 };
 
 /**
@@ -421,4 +368,54 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/sticker/guide-service.ts#brands@1#45c3a46c':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/item/service.ts#stickers@1#e827a7c8':
+    'Penampil rujukan: nama/status stiker tampil walau terhapus (penempatan lama di item, versi Manual Book, stiker serial); pemanggil menilai `deleted_at` atau memakai id yang sudah dikenal (soft delete T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/item/service.ts#sticker_types@1#e827a7c8':
+    'Penampil rujukan: nama/status stiker tampil walau terhapus (penempatan lama di item, versi Manual Book, stiker serial); pemanggil menilai `deleted_at` atau memakai id yang sudah dikenal (soft delete T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/item/service.ts#sticker_types@2#91b309c6':
+    'Penampil rujukan: nama/status stiker tampil walau terhapus (penempatan lama di item, versi Manual Book, stiker serial); pemanggil menilai `deleted_at` atau memakai id yang sudah dikenal (soft delete T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/item/repo.ts#stickers@1#6d982a3a':
+    'Penampil rujukan: nama/status stiker tampil walau terhapus (penempatan lama di item, versi Manual Book, stiker serial); pemanggil menilai `deleted_at` atau memakai id yang sudah dikenal (soft delete T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/sticker/instruction-repo.ts#item_sticker_photos@1#6f472aca':
+    'Anak item (foto/penanda instruksi) dimuat menurut id item yang sudah disaring hidup oleh pemanggil (detail item, katalog desktop, penerjemah stiker Serial).',
+  'server/src/modules/sticker/instruction-repo.ts#item_sticker_marks@1#be14975d':
+    'Anak item (foto/penanda instruksi) dimuat menurut id item yang sudah disaring hidup oleh pemanggil (detail item, katalog desktop, penerjemah stiker Serial).',
+  'server/src/modules/sticker/instruction-repo.ts#item_sticker_marks@2#2574375f':
+    'Anak item (foto/penanda instruksi) dimuat menurut id item yang sudah disaring hidup oleh pemanggil (detail item, katalog desktop, penerjemah stiker Serial).',
+  'server/src/modules/sticker/instruction-service.ts#stickers@1#7b040e33':
+    'Penampil rujukan: nama/status stiker tampil walau terhapus (penempatan lama di item, versi Manual Book, stiker serial); pemanggil menilai `deleted_at` atau memakai id yang sudah dikenal (soft delete T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/sticker/instruction-service.ts#stickers@2#93bb44dd':
+    'Penampil rujukan: nama/status stiker tampil walau terhapus (penempatan lama di item, versi Manual Book, stiker serial); pemanggil menilai `deleted_at` atau memakai id yang sudah dikenal (soft delete T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/sticker/instruction-service.ts#sticker_types@1#58d5cdd5':
+    'Penampil rujukan: nama/status stiker tampil walau terhapus (penempatan lama di item, versi Manual Book, stiker serial); pemanggil menilai `deleted_at` atau memakai id yang sudah dikenal (soft delete T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/sticker/manual-book.ts#stickers@1#a90f3bf0':
+    'Baca menurut id oleh pemanggil yang menilai `deletedAt` sendiri (hapus, pulihkan, status, simpan, detail).',
+  'server/src/modules/sticker/manual-book.ts#stickers@2#921b68f4':
+    'Penampil rujukan: nama/status stiker tampil walau terhapus (penempatan lama di item, versi Manual Book, stiker serial); pemanggil menilai `deleted_at` atau memakai id yang sudah dikenal (soft delete T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/sticker/repo.ts#stickers@1#f209c508':
+    'Pembaca jenis/stiker untuk penampil rujukan (nama jenis + penanda terhapus) dan penguncian aturan jenis/adopsi: menghitung SEMUA stiker jenis itu termasuk yang terhapus, agar stiker yang dipulihkan kelak tak menyalahi aturan jenisnya; daftar hidup/terhapus disaring di pemanggil (`liveWhere`).',
+  'server/src/modules/sticker/repo.ts#sticker_types@1#79b9b73c':
+    'Pembaca jenis/stiker untuk penampil rujukan (nama jenis + penanda terhapus) dan penguncian aturan jenis/adopsi: menghitung SEMUA stiker jenis itu termasuk yang terhapus, agar stiker yang dipulihkan kelak tak menyalahi aturan jenisnya; daftar hidup/terhapus disaring di pemanggil (`liveWhere`).',
+  'server/src/modules/sticker/repo.ts#stickers@5#429e9da2':
+    'Baca menurut id oleh pemanggil yang menilai `deletedAt` sendiri (hapus, pulihkan, status, simpan, detail).',
+  'server/src/modules/sticker/repo.ts#sticker_types@2#985384cd':
+    'Penjaga/kunci TULIS atas baris yang baru dibaca penulis (SELECT ... LOCK IN SHARE MODE / FOR UPDATE); keadaan dinilai lewat kolom lain: stiker aktif tak pernah terhapus (hapus mensyaratkan bukan Aktif), jadi penjaga tetap menolak stiker terhapus.',
+  'server/src/modules/sticker/stock-repo.ts#sticker_types@1#eb2fc28a':
+    'Penampil rujukan: nama/status stiker tampil walau terhapus (penempatan lama di item, versi Manual Book, stiker serial); pemanggil menilai `deleted_at` atau memakai id yang sudah dikenal (soft delete T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/sticker/stock-repo.ts#stickers@2#88064441':
+    'Penjaga/kunci TULIS atas baris yang baru dibaca penulis (SELECT ... LOCK IN SHARE MODE / FOR UPDATE); keadaan dinilai lewat kolom lain: stiker aktif tak pernah terhapus (hapus mensyaratkan bukan Aktif), jadi penjaga tetap menolak stiker terhapus.',
+  'server/src/modules/sticker/stock-repo.ts#sticker_types@2#88064441':
+    'Penjaga/kunci TULIS atas baris yang baru dibaca penulis (SELECT ... LOCK IN SHARE MODE / FOR UPDATE); keadaan dinilai lewat kolom lain: stiker aktif tak pernah terhapus (hapus mensyaratkan bukan Aktif), jadi penjaga tetap menolak stiker terhapus.',
+  'server/src/modules/sticker/stock-repo.ts#stickers@3#a3e7cae4':
+    'Penjaga/kunci TULIS atas baris yang baru dibaca penulis (SELECT ... LOCK IN SHARE MODE / FOR UPDATE); keadaan dinilai lewat kolom lain: stiker aktif tak pernah terhapus (hapus mensyaratkan bukan Aktif), jadi penjaga tetap menolak stiker terhapus.',
+  'server/src/modules/postel/stickers.ts#stickers@1#72c37a09':
+    'Nama stiker terhapus tetap menahan nama (indeks unik lama + spek soft delete butir 13: Postel baru bernama sama ditolak selama Postel lama ada di Terhapus); jalur tulis nama stiker Postel.',
+  'server/src/modules/postel/stickers.ts#stickers@2#a3e7cae4':
+    'Penjaga/kunci TULIS atas baris yang baru dibaca penulis (SELECT ... LOCK IN SHARE MODE / FOR UPDATE); keadaan dinilai lewat kolom lain: stiker aktif tak pernah terhapus (hapus mensyaratkan bukan Aktif), jadi penjaga tetap menolak stiker terhapus.',
+  'server/src/modules/postel/stickers.ts#stickers@3#53d6d36d':
+    'Pengadopsi stiker "Postel" bersama yang lama: pengisi satu kali saat start; stiker jenis sistem tak pernah dihapus sendiri (hanya bersama catatannya, 4b).',
+  'server/src/modules/qrcode/items.ts#stickers@1#1a057869':
+    'Penampil rujukan: nama/status stiker tampil walau terhapus (penempatan lama di item, versi Manual Book, stiker serial); pemanggil menilai `deleted_at` atau memakai id yang sudah dikenal (soft delete T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/applicable.ts#sticker_types@1#fbf3edf8':
+    'Penampil rujukan: nama/status stiker tampil walau terhapus (penempatan lama di item, versi Manual Book, stiker serial); pemanggil menilai `deleted_at` atau memakai id yang sudah dikenal (soft delete T1, rujukan tersimpan tetap sah).',
 };
