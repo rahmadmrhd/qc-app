@@ -193,6 +193,8 @@ export function createUiBundleManager(deps: UiBundleDeps): UiBundleManager {
   const keyId = keyIdOf(deps.publicKeyPem);
   const baselineAt = readBaselineCreatedAt(deps.baselineDir);
   let inflight: Promise<UpdateResult> | null = null;
+  // Root bundel yang dipakai sesi ini; dideklarasikan di atas `prune` agar berkasnya tak ikut terhapus di tengah sesi.
+  let current: string | null = null;
 
   const versionDir = (version: string): string => join(versionsDir, version);
   const usable = (version: string | null): version is string =>
@@ -213,9 +215,13 @@ export function createUiBundleManager(deps: UiBundleDeps): UiBundleManager {
 
   /** Hapus semua versi selain active/previous/ready (paling banyak 3 tersimpan). */
   const prune = (): void => {
-    const keep = new Set([state.active, state.previous, state.ready].filter((v) => v !== null));
+    // `current` ikut dijaga: bundel yang dibuang dari state (rollback server) tetap dipakai sesi ini sampai peluncuran berikutnya.
+    const keep = new Set(
+      [state.active, state.previous, state.ready, current].filter((v) => v !== null),
+    );
+    const stateKeep = new Set([state.active, state.previous, state.ready]);
     state.created = Object.fromEntries(
-      Object.entries(state.created).filter(([version]) => keep.has(version)),
+      Object.entries(state.created).filter(([version]) => stateKeep.has(version)),
     );
     try {
       for (const entry of readdirSync(versionsDir)) {
@@ -286,7 +292,9 @@ export function createUiBundleManager(deps: UiBundleDeps): UiBundleManager {
     state.etag = null;
     persist();
   }
-  let current: string | null = state.active;
+  current = state.active;
+  // Direktori versi yang tak lagi dirujuk state (mis. dibuang oleh rollback server pada sesi sebelumnya) dihapus sekarang.
+  prune();
   rmSync(stagingDir, { recursive: true, force: true }); // sisa unduhan terputus pada sesi lalu
 
   const applyReady = (): boolean => {
@@ -438,8 +446,24 @@ export function createUiBundleManager(deps: UiBundleDeps): UiBundleManager {
       };
     }
     if (baselineAt !== null && manifest.createdAt <= baselineAt) {
+      // Server tak lebih baru dari UI dasar (mis. rollback server): bundel unduhan yang dipegang dibuang supaya desktop
+      // kembali ke UI dasar (keputusan pemilik 2026-11-20). Root sesi ini (`current`) dan berkasnya TIDAK disentuh:
+      // pergantian terjadi pada peluncuran berikutnya (`prune()` di awal menghapus direktorinya).
+      const held = state.active !== null || state.previous !== null || state.ready !== null;
+      if (held) {
+        state.active = null;
+        state.previous = null;
+        state.ready = null;
+        state.failures = 0;
+      }
       remember(newEtag);
-      return { status: 'none', reason: 'UI dasar lebih baru dari bundel server', uiVersion };
+      return {
+        status: 'none',
+        reason: held
+          ? 'UI dasar lebih baru dari bundel server (bundel unduhan dibuang)'
+          : 'UI dasar lebih baru dari bundel server',
+        uiVersion,
+      };
     }
     if (state.bad.includes(uiVersion)) {
       return { status: 'none', reason: 'versi ini pernah gagal dimuat', uiVersion };

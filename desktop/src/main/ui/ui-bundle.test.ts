@@ -680,4 +680,99 @@ describe('UI dasar yang lebih baru menang (keputusan pemilik 2026-11-20)', () =>
     expect((await m.checkForUpdate()).status).toBe('ready');
     expect(requests.some((r) => r.includes('[inm]'))).toBe(false);
   });
+
+  describe('rollback server ke build yang tak lebih baru dari UI dasar (keputusan pemilik 2026-11-20)', () => {
+    /** Server menyajikan bundel lain (ETag baru) ber-`createdAt` tertentu. */
+    function serve(html: string, createdAt: number): void {
+      current = build({ ...BASE_FILES, 'index.html': html }, { tweak: at(createdAt) });
+      manifestEtag = `"s-${html}"`;
+    }
+    const readStateFull = () =>
+      JSON.parse(readFileSync(join(dir, 'state.json'), 'utf8')) as {
+        active: string | null;
+        previous: string | null;
+        ready: string | null;
+      };
+
+    test('bundel aktif dibuang dari state, tetapi sesi berjalan tetap memakai berkasnya', async () => {
+      const a = await activate('<html>a</html>', NEW);
+      writeBaselineManifest(BASELINE_AT);
+      const m = manager();
+      expect(m.activeRoot()).toBe(join(dir, 'versions', a));
+      serve('<html>rollback</html>', BASELINE_AT);
+      requests = [];
+      const result = await m.checkForUpdate();
+      expect(result.status).toBe('none');
+      expect(result.reason).toMatch(/UI dasar lebih baru.*dibuang/);
+      expect(fileRequests()).toEqual([]);
+      const state = readStateFull();
+      expect(state.active).toBeNull();
+      expect(state.previous).toBeNull();
+      expect(state.ready).toBeNull();
+      // Root sesi ini tak berganti di tengah jalan (potongan lazy masih dibaca dari sana).
+      expect(m.activeRoot()).toBe(join(dir, 'versions', a));
+      expect(existsSync(join(dir, 'versions', a, 'index.html'))).toBe(true);
+    });
+
+    test('peluncuran berikutnya memakai UI dasar dan direktori bundel dihapus', async () => {
+      const a = await activate('<html>a</html>', NEW);
+      writeBaselineManifest(BASELINE_AT);
+      const m = manager();
+      serve('<html>rollback</html>', BASELINE_AT);
+      await m.checkForUpdate();
+      const next = manager();
+      expect(next.activeRoot()).toBe(baseline);
+      expect(existsSync(join(dir, 'versions', a))).toBe(false);
+      expect(versionsOnDisk()).toEqual([]);
+    });
+
+    test('previous dan ready ikut dibuang', async () => {
+      await activate('<html>satu</html>', NEW);
+      await activate('<html>dua</html>', NEW + 1); // aktif = dua, previous = satu
+      writeBaselineManifest(BASELINE_AT);
+      const m = manager();
+      serve('<html>tiga</html>', NEW + 2);
+      expect((await m.checkForUpdate()).status).toBe('ready'); // ready = tiga
+      expect(readStateFull().ready).not.toBeNull();
+      serve('<html>rollback</html>', BASELINE_AT);
+      expect((await m.checkForUpdate()).reason).toMatch(/dibuang/);
+      const state = readStateFull();
+      expect([state.active, state.previous, state.ready]).toEqual([null, null, null]);
+      expect(manager().activeRoot()).toBe(baseline);
+      expect(versionsOnDisk()).toEqual([]);
+    });
+
+    test('unduhan berikutnya tidak menghapus berkas bundel yang sedang dipakai sesi', async () => {
+      const a = await activate('<html>a</html>', NEW);
+      writeBaselineManifest(BASELINE_AT);
+      const m = manager();
+      serve('<html>rollback</html>', BASELINE_AT);
+      await m.checkForUpdate();
+      serve('<html>baru</html>', NEW + 9);
+      expect((await m.checkForUpdate()).status).toBe('ready');
+      expect(existsSync(join(dir, 'versions', a, 'index.html'))).toBe(true);
+      expect(m.activeRoot()).toBe(join(dir, 'versions', a));
+    });
+
+    test('tanpa bundel dipegang: alasan lama, tak ada yang dibuang, tak melempar', async () => {
+      writeBaselineManifest(BASELINE_AT);
+      serve('<html>rollback</html>', BASELINE_AT);
+      const m = manager();
+      const result = await m.checkForUpdate();
+      expect(result.status).toBe('none');
+      expect(result.reason).toBe('UI dasar lebih baru dari bundel server');
+      expect(m.activeRoot()).toBe(baseline);
+    });
+
+    test('manifest server lebih baru dari UI dasar: alur unduh normal, bundel yang dipegang tak dibuang', async () => {
+      const a = await activate('<html>a</html>', NEW);
+      writeBaselineManifest(BASELINE_AT);
+      const m = manager();
+      serve('<html>lebih-baru</html>', NEW + 5);
+      const result = await m.checkForUpdate();
+      expect(result.status).toBe('ready');
+      expect(readStateFull().active).toBe(a);
+      expect(readStateFull().ready).toBe(current?.uiVersion ?? null);
+    });
+  });
 });
