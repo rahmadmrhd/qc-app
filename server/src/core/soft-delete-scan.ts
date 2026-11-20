@@ -21,6 +21,8 @@ export interface SqlLiteral {
   text: string;
   /** Nomor baris (1-based) awal literal. */
   line: number;
+  /** Offset karakter pertama isi literal (setelah tanda kutip pembuka) di sumber. */
+  start: number;
 }
 
 export interface TableRef {
@@ -29,7 +31,11 @@ export interface TableRef {
   line: number;
   /** Nomor urut kemunculan tabel ini di berkas (1-based; menghitung semua rujukan yang dipindai). */
   n: number;
-  /** Kunci `"<tabel>@<n>"` untuk `SOFT_DELETE_PENDING`/`SOFT_DELETE_EXEMPT`. */
+  /**
+   * Kunci `"<tabel>@<n>#<sidik>"` untuk `SOFT_DELETE_PENDING`/`SOFT_DELETE_EXEMPT`; sidik = 8 heksa dari isi literal
+   * (spasi dinormalkan), sehingga mengubah kueri yang tercantum, atau menyisipkan kueri lain pada urutan itu, membuat
+   * entri tak cocok. Rujukan tabel dinamis (`FROM ${...}`) bertabel `*dinamis`.
+   */
   key: string;
   /** Lolos pemindai: tersaring (tabel soft delete) atau disertai induk tersaring (tabel anak). */
   ok: boolean;
@@ -167,8 +173,9 @@ export function extractLiterals(source: string): SqlLiteral[] {
     } else if (ch === '`' || ch === "'" || ch === '"') {
       const startLine = line;
       i += 1;
+      const start = i;
       const text = ch === '`' ? readTemplate() : readQuoted(ch);
-      out.push({ text, line: startLine });
+      out.push({ text, line: startLine, start });
     } else {
       bump(ch);
       i += 1;
@@ -273,59 +280,159 @@ function findRefs(text: string): RawRef[] {
   return refs.sort((a, b) => a.index - b.index);
 }
 
-/** Alias/tabel yang disebut `deleted_at`-nya, plus penanda penyaring tak-berkualifikasi. */
+/**
+ * Alias/tabel yang `deleted_at`-nya DIBANDINGKAN (`x.deleted_at = ''`, `<>`, `!=`) atau disaring lewat
+ * `${liveWhere('x')}`/`${deletedWhere('x')}`, plus penanda penyaring tak-berkualifikasi. Sekadar menyebut kolom
+ * (`SELECT i.deleted_at`, `ORDER BY ...`) bukan penyaring (M3).
+ */
 function filterQualifiers(text: string): { qualified: Set<string>; bare: boolean } {
   const qualified = new Set<string>();
   let bare = false;
-  for (const m of text.matchAll(/([A-Za-z_][A-Za-z0-9_]*)\.deleted_at\b/g))
+  for (const m of text.matchAll(/([A-Za-z_][A-Za-z0-9_]*)\.deleted_at\s*(?:=|<>|!=)/g)) {
     qualified.add(m[1] as string);
+  }
   for (const m of text.matchAll(
     /\$\{\s*(?:liveWhere|deletedWhere)\(\s*(?:(['"`])([A-Za-z_][A-Za-z0-9_]*)\1)?\s*\)/g,
   )) {
     if (m[2]) qualified.add(m[2]);
     else bare = true;
   }
-  const withoutQualified = text.replace(/[A-Za-z_][A-Za-z0-9_]*\.deleted_at\b/g, '');
-  if (/\bdeleted_at\b/.test(withoutQualified)) bare = true;
+  if (/(?<![.\w])deleted_at\s*(?:=|<>|!=)/.test(text)) bare = true;
   return { qualified, bare };
 }
 
-/** Pindai satu berkas sumber; kembalikan semua rujukan tabel beserta penilaiannya. */
-export function scanSource(source: string): TableRef[] {
+/** Konteks pemindaian lintas berkas: konstanta literal tingkat-modul dan nama yang dirujuk lewat `${NAME}`. */
+export interface ScanContext {
+  /** Nama konstanta -> teks (hanya nama yang tak ambigu antar berkas). */
+  constants: ReadonlyMap<string, string>;
+  /** Nama konstanta yang dirujuk lewat `${NAME}` di suatu literal (dinilai di tempat pemakainya, bukan sendiri). */
+  referenced: ReadonlySet<string>;
+}
+
+const CONST_DECL =
+  /(?:^|\n)[ \t]*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)(?:\s*:[^=\n]+)?\s*=\s*(?=['"`])/g;
+
+/** Konstanta literal tingkat-modul sebuah sumber: nama -> teks. */
+function constantsOf(source: string): Map<string, string> {
+  const literals = new Map(extractLiterals(source).map((literal) => [literal.start, literal.text]));
+  const found = new Map<string, string>();
+  for (const m of source.matchAll(CONST_DECL)) {
+    const text = literals.get(m.index + m[0].length + 1);
+    if (text !== undefined) found.set(m[1] as string, text);
+  }
+  return found;
+}
+
+/**
+ * Membangun konteks dari seluruh sumber yang dipindai: `${HANDOVER_FROM}` di satu berkas dapat merujuk konstanta di
+ * berkas lain (diimpor). Nama yang didefinisikan dengan teks berbeda di dua berkas dianggap ambigu dan tak diperluas.
+ */
+export function buildScanContext(sources: readonly string[]): ScanContext {
+  const constants = new Map<string, string>();
+  const ambiguous = new Set<string>();
+  const referenced = new Set<string>();
+  for (const source of sources) {
+    for (const [name, text] of constantsOf(source)) {
+      const prior = constants.get(name);
+      if (prior !== undefined && prior !== text) ambiguous.add(name);
+      constants.set(name, text);
+    }
+    for (const literal of extractLiterals(source)) {
+      for (const m of literal.text.matchAll(/\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g)) {
+        referenced.add(m[1] as string);
+      }
+    }
+  }
+  for (const name of ambiguous) constants.delete(name);
+  return { constants, referenced };
+}
+
+/** Mengganti `${NAME}` dengan teks konstanta (bersarang sampai 4 tingkat); interpolasi lain dibiarkan. */
+function expand(text: string, constants: ReadonlyMap<string, string>): string {
+  let out = text;
+  for (let pass = 0; pass < 4; pass += 1) {
+    const next = out.replace(
+      /\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g,
+      (whole, name: string) => constants.get(name) ?? whole,
+    );
+    if (next === out) break;
+    out = next;
+  }
+  return out;
+}
+
+/** Sidik FNV-1a 32-bit (8 heksa) atas teks dengan spasi dinormalkan. */
+function fingerprint(text: string): string {
+  let hash = 0x811c9dc5;
+  for (const ch of text.replace(/\s+/g, ' ').trim()) {
+    hash ^= ch.codePointAt(0) ?? 0;
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, '0');
+}
+
+const DYNAMIC = '*dinamis';
+
+/** Posisi `FROM|JOIN ${...}` yang tak dapat diperluas: nama tabel tak diketahui, wajib dicatat di PENDING/EXEMPT. */
+function dynamicRefs(text: string): RawRef[] {
+  const refs: RawRef[] = [];
+  for (const m of text.matchAll(/\b(FROM|JOIN)\s+\$\{/gi)) {
+    if (m[1]?.toUpperCase() === 'FROM' && /\bDELETE\s+$/i.test(text.slice(0, m.index))) continue;
+    refs.push({ table: DYNAMIC, alias: DYNAMIC, index: m.index });
+  }
+  return refs;
+}
+
+/**
+ * Pindai satu berkas sumber; kembalikan semua rujukan tabel beserta penilaiannya. Interpolasi `${NAME}` ke konstanta
+ * literal (fragmen FROM tersusun seperti `HANDOVER_FROM`) diperluas lebih dulu, sehingga SETIAP kueri pemakainya dinilai
+ * dan fragmennya sendiri tidak dihitung. Rujukan dinamis yang tak dapat diperluas dilaporkan (tak pernah `ok`).
+ */
+export function scanSource(source: string, context?: ScanContext): TableRef[] {
+  const ctx = context ?? buildScanContext([source]);
+  const fragmentStarts = new Set<number>();
+  for (const m of source.matchAll(CONST_DECL)) {
+    if (ctx.referenced.has(m[1] as string)) fragmentStarts.add(m.index + m[0].length + 1);
+  }
+  const constants = new Map([...ctx.constants, ...constantsOf(source)]);
   const counters = new Map<string, number>();
   const result: TableRef[] = [];
   for (const literal of extractLiterals(source)) {
-    const text = literal.text;
+    if (fragmentStarts.has(literal.start)) continue;
+    const text = expand(literal.text, constants);
     // Literal tulis (UPDATE/DELETE) di luar cakupan: dijaga tes perilaku tiap modul.
     if (/^\s*(UPDATE|DELETE)\b/i.test(text)) continue;
     const skip = existsRanges(text);
-    const refs = findRefs(text).filter(
-      (ref) => !skip.some(([from, to]) => ref.index >= from && ref.index < to),
-    );
+    const refs = [...findRefs(text), ...dynamicRefs(text)]
+      .filter((ref) => !skip.some(([from, to]) => ref.index >= from && ref.index < to))
+      .sort((a, b) => a.index - b.index);
     if (refs.length === 0) continue;
+    const print = fingerprint(literal.text);
     const { qualified, bare } = filterQualifiers(text);
     const lineAt = (index: number) =>
       literal.line + (text.slice(0, index).match(/\n/g)?.length ?? 0);
     const tableFiltered = (ref: RawRef): boolean =>
-      qualified.has(ref.alias) || qualified.has(ref.table) || (bare && refs.length === 1);
-    const filteredTables = new Set(
-      refs
-        .filter((ref) => !(ref.table in CHILD_PARENTS) && tableFiltered(ref))
-        .map((ref) => ref.table),
-    );
+      ref.table !== DYNAMIC &&
+      (qualified.has(ref.alias) || qualified.has(ref.table) || (bare && refs.length === 1));
+    const plain = refs.filter((ref) => !(ref.table in CHILD_PARENTS) && ref.table !== DYNAMIC);
+    const filteredTables = new Set(plain.filter(tableFiltered).map((ref) => ref.table));
+    const presentTables = new Set(plain.map((ref) => ref.table));
     for (const ref of refs) {
       const n = (counters.get(ref.table) ?? 0) + 1;
       counters.set(ref.table, n);
       const parents = CHILD_PARENTS[ref.table];
-      const ok = parents
-        ? parents.some((parent) => filteredTables.has(parent))
-        : tableFiltered(ref);
+      let ok: boolean;
+      if (parents) {
+        // Setiap induk yang ikut di-JOIN harus tersaring, dan minimal satu induk harus ada (M4).
+        const present = parents.filter((parent) => presentTables.has(parent));
+        ok = present.length > 0 && present.every((parent) => filteredTables.has(parent));
+      } else ok = tableFiltered(ref);
       result.push({
         table: ref.table,
         alias: ref.alias,
         line: lineAt(ref.index),
         n,
-        key: `${ref.table}@${n}`,
+        key: `${ref.table}@${n}#${print}`,
         ok,
       });
     }

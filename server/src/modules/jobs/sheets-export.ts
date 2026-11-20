@@ -1,5 +1,6 @@
 import type { SheetsExportChunk } from '@server/core/bridge-client';
 import type { Db } from '@server/core/db';
+import { isSoftDeleteTable, liveWhere } from '@server/core/soft-delete';
 
 /**
  * Pembaca potongan baris database untuk ekspor Spreadsheet (Spek 8.3, Task 3.4). Fungsi murni terhadap `Db`:
@@ -243,16 +244,13 @@ export async function readExportPage(
   const key = quote(table.key);
   const after =
     afterKey === null ? null : table.keyType === 'integer' ? Number(afterKey) : afterKey;
-  const statement =
-    after === null
-      ? db
-          .prepare(`SELECT ${columnList} FROM ${quote(table.table)} ORDER BY ${key} LIMIT ?`)
-          .bind(pageRows)
-      : db
-          .prepare(
-            `SELECT ${columnList} FROM ${quote(table.table)} WHERE ${key} > ? ORDER BY ${key} LIMIT ?`,
-          )
-          .bind(after, pageRows);
+  // Record terhapus (soft delete) tidak diekspor (rancangan soft delete §4.2); tabel di luar daftar tak punya kolomnya.
+  const live = isSoftDeleteTable(table.table) ? liveWhere() : '';
+  const conditions = [live, after === null ? '' : `${key} > ?`].filter((part) => part !== '');
+  const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+  const statement = db
+    .prepare(`SELECT ${columnList} FROM ${quote(table.table)}${where} ORDER BY ${key} LIMIT ?`)
+    .bind(...(after === null ? [pageRows] : [after, pageRows]));
   const result = await statement.all<Record<string, unknown>>();
   const rows = result.results.map((row) => table.columns.map((column) => cellText(row[column])));
 

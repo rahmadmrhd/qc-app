@@ -34,7 +34,7 @@ function referencedIndexNames(): Map<string, string> {
       found.set(m[1] as string, rel);
     }
     // Kunci peta konflik: `nama_indeks: { field|message: ...`
-    for (const m of text.matchAll(/^\s+([A-Za-z][A-Za-z0-9_]*):\s*\{\s*(?:field|message)\b/gm)) {
+    for (const m of text.matchAll(/\b([A-Za-z][A-Za-z0-9_]*):\s*\{\s*(?:field|message)\b/g)) {
       found.set(m[1] as string, rel);
     }
     // Himpunan kunci yang dapat diulang di luar cas.ts (mis. CASE_RETRYABLE_KEYS).
@@ -49,7 +49,14 @@ function referencedIndexNames(): Map<string, string> {
 
 test('pemindai menemukan nama indeks yang sudah kita kenal', () => {
   const names = referencedIndexNames();
-  for (const expected of ['brands_key', 'items_key', 'PRIMARY', 'stickers_type_name_unique']) {
+  // `users_email` hanya muncul di peta konflik satu baris (`USER_CONFLICTS = { users_email: { ... } }`).
+  for (const expected of [
+    'brands_key',
+    'items_key',
+    'PRIMARY',
+    'stickers_type_name_unique',
+    'users_email',
+  ]) {
     expect(names.has(expected), expected).toBe(true);
   }
 });

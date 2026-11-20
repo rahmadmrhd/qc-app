@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { SheetsExportChunk } from '@server/core/bridge-client';
+import { isSoftDeleteTable } from '@server/core/soft-delete';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
   EXPORT_CELL_MAX_CHARS,
@@ -61,6 +62,18 @@ describe('exportTableChunks', () => {
     const chunks = await collect('brands');
     expect(chunks.map((chunk) => chunk.rows.length)).toEqual([500, 500]);
     expect(chunks.map((chunk) => chunk.mode)).toEqual(['replace', 'append']);
+  });
+
+  test('baris terhapus (soft delete) tidak diekspor, di halaman pertama maupun lanjutan', async () => {
+    await insertBrands(5);
+    await env.DB.prepare(
+      "UPDATE brands SET deleted_at = '2026-02-02T00:00:00.000Z' WHERE id IN ('b00001', 'b00003')",
+    ).run();
+    const chunks = await collect('brands', 2);
+    const ids = chunks.flatMap((chunk) =>
+      chunk.rows.map((row) => row[chunk.columns.indexOf('id')]),
+    );
+    expect(ids).toEqual(['b00000', 'b00002', 'b00004']);
   });
 
   test('tabel kosong tetap menghasilkan satu potongan replace berisi header saja', async () => {
@@ -142,7 +155,9 @@ describe('exportTableChunks', () => {
       handover_comments: ['seq', 'client_id'],
       qr_presets: ['bu_key'],
     };
+    // `deleted_at`/`deleted_by` (soft delete) juga teknis: baris terhapus disaring dari ekspor, jadi isinya selalu kosong.
     for (const spec of EXPORT_TABLES) {
+      const softDeleteColumns = isSoftDeleteTable(spec.table) ? ['deleted_at', 'deleted_by'] : [];
       const info = await env.DB.prepare(
         'SELECT COLUMN_NAME AS name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
       )
@@ -150,7 +165,10 @@ describe('exportTableChunks', () => {
         .all<{ name: string }>();
       const actual = info.results
         .map((row) => row.name)
-        .filter((name) => !(technical[spec.table] ?? []).includes(name))
+        .filter(
+          (name) =>
+            !(technical[spec.table] ?? []).includes(name) && !softDeleteColumns.includes(name),
+        )
         .sort();
       expect({ table: spec.table, columns: [...spec.columns].sort() }).toEqual({
         table: spec.table,

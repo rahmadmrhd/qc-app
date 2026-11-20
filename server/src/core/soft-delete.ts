@@ -30,6 +30,11 @@ export const SOFT_DELETE_TABLES = [
 
 export type SoftDeleteTable = (typeof SOFT_DELETE_TABLES)[number];
 
+/** True bila `table` ber-soft-delete (punya kolom `deleted_at`). */
+export function isSoftDeleteTable(table: string): table is SoftDeleteTable {
+  return (SOFT_DELETE_TABLES as readonly string[]).includes(table);
+}
+
 /** Penyaring "hidup" (`deleted_at = ''`), dengan alias tabel bila ada. */
 export function liveWhere(alias?: string): string {
   return alias ? `${checkedColumn(alias)}.deleted_at = ''` : "deleted_at = ''";

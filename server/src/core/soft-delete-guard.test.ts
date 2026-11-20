@@ -7,7 +7,7 @@ import { describe, expect, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { SOFT_DELETE_EXEMPT, SOFT_DELETE_PENDING } from './soft-delete-pending';
-import { scanSource } from './soft-delete-scan';
+import { buildScanContext, scanSource } from './soft-delete-scan';
 
 const ROOT = join(import.meta.dir, '..', '..', '..');
 
@@ -27,6 +27,7 @@ const relPath = (file: string) => relative(ROOT, file).split('\\').join('/');
 
 describe('pemindai (kasus sintetis)', () => {
   const bad = (source: string) => scanSource(source).filter((ref) => !ref.ok);
+  const stripHash = (key: string) => key.replace(/#.*/, '');
 
   test('FROM tanpa penyaring dilaporkan; dengan liveWhere() tidak', () => {
     expect(bad('const q = "SELECT * FROM items WHERE id = ?"').map((r) => r.table)).toEqual([
@@ -76,12 +77,25 @@ describe('pemindai (kasus sintetis)', () => {
     ).toEqual(['serial_events', 'serials']);
   });
 
-  test('notifications lolos bila salah satu induknya (handovers/serials) tersaring', () => {
+  test('notifications lolos bila induk yang ikut di-JOIN tersaring', () => {
     expect(
       bad(
         'const q = "FROM notifications n JOIN handovers h ON h.id = n.handover_id WHERE h.deleted_at = \'\'"',
       ),
     ).toEqual([]);
+  });
+
+  test('anak multi-induk: SEMUA induk yang ikut di-JOIN harus tersaring', () => {
+    const both =
+      'q("FROM notifications n JOIN handovers h ON h.id = n.handover_id JOIN serials s ON s.id = n.serial_id WHERE h.deleted_at = \'\'")';
+    expect(
+      scanSource(both)
+        .filter((r) => !r.ok)
+        .map((r) => r.table),
+    ).toEqual(['notifications', 'serials']);
+    const ok =
+      "q(\"FROM notifications n JOIN handovers h ON h.id = n.handover_id JOIN serials s ON s.id = n.serial_id WHERE h.deleted_at = '' AND s.deleted_at = ''\")";
+    expect(scanSource(ok).every((r) => r.ok)).toBe(true);
   });
 
   test('UPDATE, DELETE, dan EXISTS di luar cakupan; komentar dan teks bukan SQL diabaikan', () => {
@@ -98,14 +112,26 @@ describe('pemindai (kasus sintetis)', () => {
     expect(bad("const m = 'dari items ke brands';")).toEqual([]);
   });
 
-  test('nomor urut menghitung semua kemunculan tabel di berkas', () => {
+  test('nomor urut menghitung semua kemunculan tabel di berkas; kunci memuat sidik literal', () => {
     const refs = scanSource(
       "a(`FROM items WHERE ${liveWhere()}`);\nb('SELECT 1 FROM items WHERE id = ?');",
     );
-    expect(refs.map((r) => [r.key, r.ok, r.line])).toEqual([
-      ['items@1', true, 1],
-      ['items@2', false, 2],
+    expect(refs.map((r) => [r.ok, r.line, stripHash(r.key)])).toEqual([
+      [true, 1, 'items@1'],
+      [false, 2, 'items@2'],
     ]);
+    expect(refs[1]?.key).toMatch(/^items@2#[0-9a-f]{8}$/);
+    // mengubah isi kueri mengubah sidik
+    const edited = scanSource("b('SELECT 2 FROM items WHERE id = ?');");
+    expect(edited[0]?.key.split('#')[1]).not.toBe(refs[1]?.key.split('#')[1]);
+  });
+
+  test('menyisipkan kueri baru tak menggeser entri lama hingga lolos (sidik berbeda)', () => {
+    const old = scanSource("b('SELECT 1 FROM items WHERE id = ?');")[0]?.key;
+    const after = scanSource(
+      "a('SELECT 9 FROM items WHERE x = ?');\nb(`SELECT 1 FROM items i WHERE ${liveWhere('i')}`);",
+    );
+    expect(after.map((r) => r.key)).not.toContain(old);
   });
 
   test('literal template dengan interpolasi bersarang dibaca utuh', () => {
@@ -114,6 +140,43 @@ describe('pemindai (kasus sintetis)', () => {
     );
     expect(refs.map((r) => [r.table, r.ok])).toEqual([['items', false]]);
   });
+
+  const FRAGMENT = "const H_FROM = 'handovers h LEFT JOIN customers c ON c.id = h.customer_id';\n";
+
+  test('fragmen + pemakai tanpa penyaring: tiap kueri pemakai dilaporkan, fragmen sendiri tak dihitung', () => {
+    const refs = scanSource(`${FRAGMENT}q('SELECT 1 FROM \${H_FROM} WHERE h.id = ?');`);
+    expect(refs).toHaveLength(2);
+    expect(refs.filter((r) => !r.ok).map((r) => r.table)).toEqual(['handovers', 'customers']);
+  });
+
+  test('fragmen + pemakai dengan liveWhere per alias: lolos', () => {
+    const refs = scanSource(
+      `${FRAGMENT}q(\`SELECT 1 FROM \${H_FROM} WHERE \${liveWhere('h')} AND \${liveWhere('c')}\`);`,
+    );
+    expect(refs).toHaveLength(2);
+    expect(refs.every((r) => r.ok)).toBe(true);
+  });
+
+  test('konstanta diimpor dari berkas lain diperluas lewat konteks bersama', () => {
+    const a = "export const H_FROM = 'handovers h JOIN customers c ON c.id = h.customer_id';";
+    const b = "q('SELECT 1 FROM ${H_FROM} WHERE h.id = ?');";
+    const context = buildScanContext([a, b]);
+    expect(scanSource(b, context).filter((r) => !r.ok)).toHaveLength(2);
+    expect(scanSource(a, context)).toEqual([]);
+  });
+
+  test('FROM/JOIN dinamis yang tak dapat diperluas selalu dilaporkan; DELETE FROM dinamis di luar cakupan', () => {
+    const refs = scanSource('q(`SELECT 1 FROM ${quote(table)} WHERE ${liveWhere()}`);');
+    expect(refs.map((r) => [r.table, r.ok])).toEqual([['*dinamis', false]]);
+    expect(scanSource('q(`DELETE FROM ${table} WHERE id = ?`);')).toEqual([]);
+  });
+
+  test('menyebut deleted_at tanpa membandingkan (SELECT/ORDER BY) bukan penyaring', () => {
+    expect(
+      bad("q('SELECT i.deleted_at, i.name FROM items i WHERE i.id = ?')").map((r) => r.table),
+    ).toEqual(['items']);
+    expect(bad('q("SELECT 1 FROM items i WHERE i.deleted_at <> \'\'")')).toEqual([]);
+  });
 });
 
 describe('kode server', () => {
@@ -121,9 +184,9 @@ describe('kode server', () => {
     ...sourceFiles(join(ROOT, 'server', 'src')),
     ...sourceFiles(join(ROOT, 'server', 'scripts')),
   ];
-  const scanned = new Map(
-    files.map((file) => [relPath(file), scanSource(readFileSync(file, 'utf8'))] as const),
-  );
+  const texts = files.map((file) => [relPath(file), readFileSync(file, 'utf8')] as const);
+  const context = buildScanContext(texts.map(([, text]) => text));
+  const scanned = new Map(texts.map(([file, text]) => [file, scanSource(text, context)] as const));
 
   test('setiap FROM/JOIN ke tabel ber-soft-delete menyaring, atau tercantum di PENDING/EXEMPT', () => {
     const problems: string[] = [];
@@ -158,8 +221,10 @@ describe('kode server', () => {
       for (const key of keys) if (!now.has(key)) stale.push(`${file} ${key} (entri basi)`);
     }
     for (const key of Object.keys(SOFT_DELETE_EXEMPT)) {
-      const [file, ref] = key.split('#') as [string, string];
-      if (!violating(file).has(ref)) stale.push(`${key} (entri basi)`);
+      const split = key.indexOf('#');
+      if (!violating(key.slice(0, split)).has(key.slice(split + 1))) {
+        stale.push(`${key} (entri basi)`);
+      }
     }
     expect(stale).toEqual([]);
   });
