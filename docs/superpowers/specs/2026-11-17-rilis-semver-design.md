@@ -144,7 +144,11 @@ Jalur: `meta` -> `guard` -> `ci` (selektif, `ci.yml`) -> `image` -> `deploy` (pr
   yang berubah ada di daftar metadata (`server/package.json`, `bun.lock`, `server/CHANGELOG.md`, `server/changelog.d/**`)
   ATAU tidak masuk image server (dokumentasi, `desktop/**` selain `desktop/package.json`; klasifikasi `image` di `scripts/ci-changes.ts`;
   **diubah 2026-11-19, keputusan pemilik**: berkas jenis ini tak pernah men-deploy staging, sehingga menolaknya menggagalkan rilis tanpa
-  alasan; jalur tak dikenal tetap ditolak);
+  alasan; jalur tak dikenal tetap ditolak;
+  **diubah 2026-11-20, keputusan pemilik produk**: perubahan `.github/workflows/` juga diloloskan (tak masuk image, ada di
+  `.dockerignore`, dan sejalan dengan `classify` yang kini hanya menyalakan `code` untuknya); `.github/` lain, mis. aksi lokal
+  `.github/actions/`, tetap jalur tak dikenal dan ditolak. Risiko diterima: perubahan pada workflow rilis ikut terbawa tanpa
+  melewati staging, diimbangi review PR);
   status `identical` (rilis tanpa perubahan kode sejak staging) juga lulus, dan perbandingan yang terpotong pada 300 berkas
   (batas API `compare`, tanpa penanda) ditolak, gagal tertutup (dicatat 2026-11-18, pass perbaikan bagian 2);
   (b) `server/CHANGELOG.md` punya bagian versi itu. Memakai commit merge (bukan head cabang) menangkap kode di `main` yang tak
