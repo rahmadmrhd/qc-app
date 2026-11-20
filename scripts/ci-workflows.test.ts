@@ -1168,7 +1168,9 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
     expect(runs).toContain('bun run --cwd desktop pack:all');
     expect(runs).toContain('verify-pack --arch x64');
     expect(runs).toContain('verify-pack --arch arm64');
-    expect(runs).toContain('bun run build:web');
+    // `bun run build` (bukan `build:web`): manifest UI dasar harus ikut tertulis (verify-pack memeriksanya).
+    expect(runs).toMatch(/bun run build(\s|$)/);
+    expect(runs).not.toContain('build:web');
     const steps = stepsOfJob('desktop');
     const crlf = steps.findIndex((step) => (step.run ?? '').includes('core.autocrlf false'));
     const checkout = steps.findIndex((step) => step.uses?.startsWith('actions/checkout'));

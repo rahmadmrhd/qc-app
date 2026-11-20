@@ -362,7 +362,9 @@ describe('I2: penyapu berkas yatim', () => {
   });
 
   afterEach(async () => {
-    await rm(dir, { recursive: true, force: true });
+    // Penjaga: bila `beforeEach` luar gagal (mis. koneksi DB putus), `dir` masih '' dan `rm('')` menghapus isi direktori kerja.
+    if (dir) await rm(dir, { recursive: true, force: true });
+    dir = '';
   });
 
   /** Menulis berkas `name` dengan waktu ubah `ageMs` sebelum jam uji. */

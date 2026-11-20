@@ -221,7 +221,9 @@ describe('penyapu yatim: rujukan dan hitungan', () => {
   });
 
   afterEach(async () => {
-    await rm(dir, { recursive: true, force: true });
+    // Penjaga: bila `beforeEach` luar gagal (mis. koneksi DB putus), `dir` masih '' dan `rm('')` menghapus isi direktori kerja.
+    if (dir) await rm(dir, { recursive: true, force: true });
+    dir = '';
   });
 
   async function plantOld(name: string): Promise<string> {
