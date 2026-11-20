@@ -143,6 +143,16 @@ describe('AppSidebar submenu', () => {
     await waitFor(() => expect(screen.queryByRole('menuitem', { name: /Katalog/ })).toBeNull());
   });
 
+  test('mode ikon: anak di popover memakai tautan yang sama dan ditandai aktif', async () => {
+    state.path = '/sticker';
+    renderSidebar(false);
+    const parent = screen.getByRole('button', { name: 'Stiker' });
+    parent.focus();
+    await userEvent.keyboard('{Enter}');
+    const active = await screen.findByRole('menuitem', { name: /Katalog/ });
+    expect(active.querySelector('[data-active]') ?? active).toHaveAttribute('data-active');
+  });
+
   test('titik panduan pada induk bila salah satu anak punya panduan', () => {
     state.offers = [offer('item-dasar', '/item/brands')];
     renderSidebar();

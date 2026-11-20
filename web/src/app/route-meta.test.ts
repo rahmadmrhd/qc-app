@@ -46,7 +46,33 @@ test('tanpa trail dan tanpa crumb = kosong; tanpa induk tidak ada label induk', 
       matches: [],
       queryClient,
     }),
-  ).toEqual([{ label: 'Beranda', to: '/' }]);
+  ).toEqual([]);
+});
+
+test('Beranda tanpa crumb rute = tanpa breadcrumb; crumb rute di Beranda tetap tampil', () => {
+  const home = { parent: null, item: { label: 'Beranda', to: '/' } };
+  expect(buildCrumbs({ trail: home, matches: [], queryClient })).toEqual([]);
+  expect(
+    buildCrumbs({
+      trail: home,
+      matches: [{ staticData: { crumb: 'Sesuatu' }, params: {} }],
+      queryClient,
+    }).map((part) => part.label),
+  ).toEqual(['Beranda', 'Sesuatu']);
+});
+
+test('crumb menerima search rute dan meneruskannya ke tautan', () => {
+  const spec: CrumbSpec = ({ search }) => ({
+    label: 'Detail',
+    to: '/x',
+    search: { loc: search.loc },
+  });
+  const parts = buildCrumbs({
+    trail: null,
+    matches: [{ staticData: { crumb: spec }, params: {}, search: { loc: 'L1' } }],
+    queryClient,
+  });
+  expect(parts).toEqual([{ label: 'Detail', to: '/x', search: { loc: 'L1' } }]);
 });
 
 test('pageWidthOf mengambil match terdalam yang menyatakan lebar; bawaan default', () => {

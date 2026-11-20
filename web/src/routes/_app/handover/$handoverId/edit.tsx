@@ -31,12 +31,17 @@ import { useActiveLocations } from '@/modules/location/active-locations-context'
 
 export const Route = createFileRoute('/_app/handover/$handoverId/edit')({
   staticData: {
-    crumb: ({ params, queryClient }) => {
+    crumb: ({ params, search, queryClient }) => {
       const [hit] = queryClient.getQueriesData<{ number: string }>({
         queryKey: ['handovers', 'one', params.handoverId ?? ''],
       });
       return [
-        { label: hit?.[1]?.number ?? 'Detail', to: '/handover/$handoverId', params },
+        {
+          label: hit?.[1]?.number ?? 'Detail',
+          to: '/handover/$handoverId',
+          params,
+          search: { loc: search.loc, status: search.status },
+        },
         { label: 'Ubah' },
       ];
     },

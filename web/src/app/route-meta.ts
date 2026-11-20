@@ -7,10 +7,14 @@ export interface CrumbPart {
   label: string;
   to?: string;
   params?: Record<string, string>;
+  /** Search param tautan (mis. `loc` Serah Terima) agar crumb membuka halaman dengan cakupan yang sama. */
+  search?: Record<string, unknown>;
 }
 
 export interface CrumbContext {
   params: Record<string, string>;
+  /** Search param rute ini (sudah divalidasi rute). */
+  search: Record<string, unknown>;
   queryClient: QueryClient;
 }
 
@@ -33,6 +37,7 @@ export const PAGE_WIDTH_CLASS: Record<PageWidth, string> = {
 interface CrumbMatch {
   staticData?: { crumb?: CrumbSpec };
   params: Record<string, string>;
+  search?: Record<string, unknown>;
 }
 
 /**
@@ -56,10 +61,16 @@ export function buildCrumbs(input: {
       parts.push({ label: spec });
       continue;
     }
-    const result = spec({ params: match.params, queryClient: input.queryClient });
+    const result = spec({
+      params: match.params,
+      search: match.search ?? {},
+      queryClient: input.queryClient,
+    });
     if (result === undefined) continue;
     parts.push(...(Array.isArray(result) ? result : [result]));
   }
+  // Beranda (`/`) tanpa crumb rute: tidak ada breadcrumb (spek §6.4).
+  if (parts.length === 1 && parts[0]?.to === '/') return [];
   return parts;
 }
 

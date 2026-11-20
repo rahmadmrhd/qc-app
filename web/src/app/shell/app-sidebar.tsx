@@ -63,6 +63,7 @@ export function AppSidebar() {
     return (
       <Link
         to={item.to}
+        data-active={isActive(item) || undefined}
         onClick={
           item.opensDesktopApp && !isDesktop()
             ? () => {
@@ -116,17 +117,7 @@ export function AppSidebar() {
               <DropdownMenuLabel>{parent.label}</DropdownMenuLabel>
               {parent.children.map((child) => (
                 <DropdownMenuItem key={child.to as string} asChild>
-                  <Link to={child.to}>
-                    <child.icon />
-                    <span>{child.label}</span>
-                    {hasPendingGuide(offers, child.to as string) && (
-                      <span
-                        role="img"
-                        aria-label="Ada panduan"
-                        className="ml-auto size-2 shrink-0 rounded-full bg-primary"
-                      />
-                    )}
-                  </Link>
+                  {itemLink(child)}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

@@ -19,7 +19,11 @@ function CrumbLink({ part }: { part: CrumbPart }) {
   return (
     <BreadcrumbLink asChild>
       {/* `to` berasal dari tabel navigasi/metadata rute yang sudah bertipe; di sini longgar karena dinamis. */}
-      <Link to={part.to as NavItem['to']} params={part.params as never}>
+      <Link
+        to={part.to as NavItem['to']}
+        params={part.params as never}
+        search={part.search as never}
+      >
         {part.label}
       </Link>
     </BreadcrumbLink>
@@ -62,6 +66,7 @@ export function AppBreadcrumb() {
             <Link
               to={previous.to as NavItem['to']}
               params={previous.params as never}
+              search={previous.search as never}
               aria-label={`Kembali ke ${previous.label}`}
             >
               <ChevronLeft aria-hidden />
