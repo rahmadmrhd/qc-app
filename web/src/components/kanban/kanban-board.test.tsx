@@ -116,3 +116,32 @@ test('mode viewport menghitung tinggi spanduk aplikasi yang tampil', async () =>
     Element.prototype.getBoundingClientRect = original;
   }
 });
+
+test('mode viewport mengurangi padding main (--main-pad) dan celah bar-isi dari tinggi', () => {
+  renderBoard(columns(), 'viewport');
+  const height = screen.getByRole('region', { name: 'Papan' }).style.height;
+  expect(height).toContain('var(--main-pad');
+  expect(height).toContain('2 *');
+  expect(height).toContain('0.75rem');
+});
+
+test('spanduk yang ditambah belakangan ikut dihitung dan yang dibuang tak lagi dihitung', async () => {
+  const original = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function mocked(this: Element) {
+    const height = this.hasAttribute('data-app-banner') ? 25 : 0;
+    return { ...original.call(this), height } as DOMRect;
+  };
+  try {
+    renderBoard(columns(), 'viewport');
+    const board = screen.getByRole('region', { name: 'Papan' });
+    expect(board.style.height).toContain('0px');
+    const banner = document.createElement('div');
+    banner.setAttribute('data-app-banner', '');
+    document.body.appendChild(banner);
+    await vi.waitFor(() => expect(board.style.height).toContain('25px'));
+    banner.remove();
+    await vi.waitFor(() => expect(board.style.height).toContain('0px'));
+  } finally {
+    Element.prototype.getBoundingClientRect = original;
+  }
+});

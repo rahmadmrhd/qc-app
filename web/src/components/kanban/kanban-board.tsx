@@ -45,29 +45,78 @@ const TONE: Record<UiColor, { column: string; card: string }> = {
   },
 };
 
-/** Jumlah tinggi (px) semua spanduk aplikasi yang sedang tampil (`data-app-banner`); dihitung ulang saat DOM/ukuran berubah. */
+const BANNER_SELECTOR = '[data-app-banner]';
+
+function touchesBanner(nodes: NodeList): boolean {
+  for (const node of nodes) {
+    if (
+      node instanceof Element &&
+      (node.matches(BANNER_SELECTOR) || node.querySelector(BANNER_SELECTOR))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Jumlah tinggi (px) semua spanduk aplikasi yang sedang tampil (`data-app-banner`). Hanya mengukur ulang saat
+ * spanduk ditambah/dibuang dari DOM (MutationObserver menyaring catatan yang tak menyentuh spanduk) atau saat ukuran
+ * spanduk berubah (ResizeObserver), digabung per frame, jadi perubahan DOM lain (kartu, toast) tak memicu layout paksa.
+ */
 function useAppBannerHeight(enabled: boolean): number {
   const [height, setHeight] = useState(0);
   useEffect(() => {
     if (!enabled) return;
+    let frame = 0;
+    const resize =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => schedule());
+    const observed = new Set<Element>();
     const measure = () => {
+      frame = 0;
       let sum = 0;
-      for (const element of document.querySelectorAll('[data-app-banner]')) {
-        sum += element.getBoundingClientRect().height;
-      }
+      const banners = document.querySelectorAll(BANNER_SELECTOR);
+      for (const element of banners) sum += element.getBoundingClientRect().height;
       setHeight(Math.round(sum));
+      if (resize) {
+        const current = new Set<Element>(banners);
+        for (const element of observed) {
+          if (!current.has(element)) {
+            resize.unobserve(element);
+            observed.delete(element);
+          }
+        }
+        for (const element of current) {
+          if (!observed.has(element)) {
+            resize.observe(element);
+            observed.add(element);
+          }
+        }
+      }
     };
+    function schedule() {
+      if (frame === 0) frame = requestAnimationFrame(measure);
+    }
     measure();
-    const mutation = new MutationObserver(measure);
+    const mutation = new MutationObserver((records) => {
+      if (records.some((r) => touchesBanner(r.addedNodes) || touchesBanner(r.removedNodes))) {
+        schedule();
+      }
+    });
     mutation.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener('resize', measure);
+    window.addEventListener('resize', schedule);
     return () => {
       mutation.disconnect();
-      window.removeEventListener('resize', measure);
+      resize?.disconnect();
+      window.removeEventListener('resize', schedule);
+      if (frame !== 0) cancelAnimationFrame(frame);
     };
   }, [enabled]);
   return height;
 }
+
+/** Celah vertikal antara bar halaman dan isi (`gap-3` pada `ListPage`/`ViewPage`). */
+const FRAME_GAP = '0.75rem';
 
 /** Tombol/penanda "Muat lebih banyak" satu kolom (otomatis di mode viewport bila `IntersectionObserver` ada). */
 function ColumnLoadMore<T>({ column, auto }: { column: KanbanColumn<T>; auto: boolean }) {
@@ -115,8 +164,8 @@ function ScrollingCards({ children }: { children: ReactNode }) {
 
 /**
  * Papan kanban berwarna (spek redesain 6.5): kolom selebar minimum ±290 px dan gulir horizontal bila tak muat.
- * `height="viewport"`: wadah setinggi sisa viewport (dikurangi header, bar headroom, dan spanduk aplikasi yang
- * tampil) dan tiap kolom menggulir sendiri.
+ * `height="viewport"`: wadah setinggi sisa viewport (dikurangi header, bar headroom, spanduk aplikasi yang
+ * tampil, padding atas dan bawah `main` (`--main-pad`), dan celah bar-isi) dan tiap kolom menggulir sendiri.
  */
 export function KanbanBoard<T>({
   columns,
@@ -144,7 +193,7 @@ export function KanbanBoard<T>({
       style={
         viewport
           ? {
-              height: `calc(100dvh - var(--headroom-offset, 3.5rem) - ${bannerHeight}px - 1.5rem)`,
+              height: `calc(100dvh - var(--headroom-offset, 3.5rem) - ${bannerHeight}px - 2 * var(--main-pad, 1.5rem) - ${FRAME_GAP})`,
             }
           : undefined
       }
