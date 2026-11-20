@@ -1226,6 +1226,20 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
       expect(pack).toBeGreaterThan(buildAt);
     });
 
+    test('verify-dist dan manifest UI dasar selalu jalan (juga saat cache kena), sesudah build web dan sebelum kemas', () => {
+      const order = (predicate: (step: Step) => boolean) => steps().findIndex(predicate);
+      const buildAt = order((step) => (step.run ?? '').includes('bun run build:web'));
+      const verify = order((step) => step.run === 'bun run scripts/verify-dist.ts');
+      const manifest = order((step) => step.run === 'bun run scripts/build-ui-manifest.ts');
+      const pack = order((step) => (step.run ?? '').includes('pack:all'));
+      expect(verify).toBeGreaterThan(buildAt);
+      expect(manifest).toBeGreaterThan(verify);
+      expect(pack).toBeGreaterThan(manifest);
+      for (const at of [verify, manifest]) {
+        expect(steps()[at]?.if).toBe("needs.changes.outputs.desktop_pack == 'true'");
+      }
+    });
+
     test('masukan hash sama dengan yang dibaca build web: skrip build:web tidak menyentuh scripts/', () => {
       const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string> };
       expect(pkg.scripts['build:web']).toBe('bun run --cwd web build');

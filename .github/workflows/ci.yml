@@ -289,6 +289,15 @@ jobs:
       - name: Build web
         if: needs.changes.outputs.desktop_pack == 'true' && steps.web-dist.outputs.cache-hit != 'true'
         run: bun run build:web
+      # Dua langkah ini menggantikan sisa `bun run build` (akar) yang terlewat saat cache kena: `verify-dist` memeriksa
+      # build (dari cache atau baru) dan `build-ui-manifest` SELALU menulis ulang `ui-manifest.json` (`createdAt` baru;
+      # dibutuhkan aturan "UI dasar yang lebih baru menang" dan dicek `verify-pack`). Murah: hanya membaca server/dist.
+      - name: Verifikasi build web
+        if: needs.changes.outputs.desktop_pack == 'true'
+        run: bun run scripts/verify-dist.ts
+      - name: Manifest UI dasar
+        if: needs.changes.outputs.desktop_pack == 'true'
+        run: bun run scripts/build-ui-manifest.ts
       - name: Kemas x64 dan arm64
         if: needs.changes.outputs.desktop_pack == 'true'
         run: bun run --cwd desktop pack:all
