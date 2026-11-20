@@ -34,6 +34,35 @@ async function brandRow(env: TestEnv, id: string) {
     .first<{ at: string; who: string }>();
 }
 
+/**
+ * Menjalankan `fn` tanpa indeks unik LAMA `index` (skema tes dipakai bersama semua berkas di satu proses). Dibuang
+ * hanya bila ada, dan dipasang kembali hanya bila tadi ada: setelah migrasi contract (indeks lama sudah tak ada di
+ * templat) tes ini tidak memasang indeks yang sudah dibuang.
+ */
+async function withoutOldIndex(
+  env: TestEnv,
+  table: string,
+  index: string,
+  columns: string,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const found = await env.DB.prepare(
+    'SELECT COUNT(*) AS n FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?',
+  )
+    .bind(table, index)
+    .first<{ n: number | string }>();
+  const existed = Number(found?.n) > 0;
+  if (existed) await env.DB.prepare(`ALTER TABLE ${table} DROP INDEX ${index}`).run();
+  try {
+    await fn();
+  } finally {
+    if (existed) {
+      await env.DB.prepare(`DELETE FROM ${table}`).run();
+      await env.DB.prepare(`CREATE UNIQUE INDEX ${index} ON ${table} (${columns})`).run();
+    }
+  }
+}
+
 const CONFLICTS = { brands_key: { field: 'name', message: 'Nama merk sudah dipakai' } };
 
 describe('helper SQL', () => {
@@ -42,6 +71,11 @@ describe('helper SQL', () => {
     expect(liveWhere('i')).toBe("i.deleted_at = ''");
     expect(deletedWhere()).toBe("deleted_at <> ''");
     expect(deletedWhere('i')).toBe("i.deleted_at <> ''");
+  });
+
+  test('alias bukan pengenal SQL ditolak', () => {
+    expect(() => liveWhere("x' OR 1=1 --")).toThrow();
+    expect(() => deletedWhere('a b')).toThrow();
   });
 
   test('SOFT_DELETE_TABLES berurutan tetap dan tanpa sticker_guide_images', () => {
@@ -100,25 +134,20 @@ describe('hapus dan pulihkan', () => {
     await addBrand(env, 'b1', 'a');
     await softDeleteStmt(env.DB, 'brands', 'b1', 'u', nowIso(env)).run();
     // merk hidup baru dengan kunci sama: hanya boleh bila indeks lama brands_key tidak ada (setelah contract)
-    await env.DB.prepare('ALTER TABLE brands DROP INDEX IF EXISTS brands_key').run();
-    try {
+    await withoutOldIndex(env, 'brands', 'brands_key', '`key`', async () => {
       await addBrand(env, 'b2', 'a');
       env.clock.advance(1000);
       await softDeleteStmt(env.DB, 'brands', 'b2', 'u', nowIso(env)).run();
       const rows = await env.DB.prepare("SELECT id FROM brands WHERE `key` = 'a'").all();
       expect(rows.results).toHaveLength(2);
-    } finally {
-      await env.DB.prepare('DELETE FROM brands').run();
-      await env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS brands_key ON brands (`key`)').run();
-    }
+    });
   });
 
   test('pulihkan saat kunci dipakai record hidup = DbError duplicate dipetakan CONFLICT', async () => {
     const env = await createTestEnv();
     await addBrand(env, 'b1', 'a');
     await softDeleteStmt(env.DB, 'brands', 'b1', 'u', nowIso(env)).run();
-    await env.DB.prepare('ALTER TABLE brands DROP INDEX IF EXISTS brands_key').run();
-    try {
+    await withoutOldIndex(env, 'brands', 'brands_key', '`key`', async () => {
       await addBrand(env, 'b2', 'a');
       let caught: unknown;
       try {
@@ -132,10 +161,7 @@ describe('hapus dan pulihkan', () => {
       const mapped = mapLiveDuplicate(caught, CONFLICTS) as { code: string; message: string };
       expect(mapped).toMatchObject({ code: 'CONFLICT', message: 'Nama merk sudah dipakai' });
       expect((await brandRow(env, 'b1'))?.at).not.toBe('');
-    } finally {
-      await env.DB.prepare('DELETE FROM brands').run();
-      await env.DB.prepare('CREATE UNIQUE INDEX IF NOT EXISTS brands_key ON brands (`key`)').run();
-    }
+    });
   });
 
   test('requireExistsStmt: satu id asing membatalkan seluruh batch', async () => {
@@ -200,24 +226,41 @@ describe('induk dengan anak', () => {
     expect(await state(env)).toEqual({ parent: '', children: ['', ''] });
   });
 
+  test('hapus dan pulihkan serentak: induk dan nomornya selalu searah', async () => {
+    for (let round = 0; round < 5; round += 1) {
+      const env = await createTestEnv();
+      await addPostel(env);
+      const t0 = '2026-03-03T00:00:00.000Z';
+      await env.DB.batch(softDeleteWithChildren(env.DB, 'postels', CHILDREN, 'p1', 'u', t0));
+      await Promise.all([
+        env.DB.batch(restoreWithChildren(env.DB, 'postels', CHILDREN, 'p1')),
+        env.DB.batch(
+          softDeleteWithChildren(
+            env.DB,
+            'postels',
+            CHILDREN,
+            'p1',
+            'u2',
+            '2026-04-04T00:00:00.000Z',
+          ),
+        ),
+      ]);
+      const { parent, children } = await state(env);
+      // Hasil sah: semuanya hidup, atau semuanya terhapus; tak pernah induk terhapus dengan nomor hidup.
+      expect(new Set([parent === '', ...children.map((c) => c === '')]).size).toBe(1);
+    }
+  });
+
   test('nomor terhapus membebaskan kunci nomor untuk catatan lain', async () => {
     const env = await createTestEnv();
     await addPostel(env);
     await env.DB.batch(softDeleteWithChildren(env.DB, 'postels', CHILDREN, 'p1', 'u', nowIso(env)));
     await env.DB.prepare("INSERT INTO postels (id, updated_at) VALUES ('p2', 't')").run();
-    await env.DB.prepare(
-      'ALTER TABLE postel_numbers DROP INDEX IF EXISTS postel_numbers_key',
-    ).run();
-    try {
+    await withoutOldIndex(env, 'postel_numbers', 'postel_numbers_key', 'number_key', async () => {
       await env.DB.prepare(
         "INSERT INTO postel_numbers (id, postel_id, number, number_key, seq) VALUES ('n9', 'p2', 'N-1', 'n-1', 1)",
       ).run();
-    } finally {
-      await env.DB.prepare('DELETE FROM postel_numbers').run();
-      await env.DB.prepare(
-        'CREATE UNIQUE INDEX IF NOT EXISTS postel_numbers_key ON postel_numbers (number_key)',
-      ).run();
-    }
+    });
   });
 });
 

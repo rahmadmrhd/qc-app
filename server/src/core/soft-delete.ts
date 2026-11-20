@@ -32,12 +32,12 @@ export type SoftDeleteTable = (typeof SOFT_DELETE_TABLES)[number];
 
 /** Penyaring "hidup" (`deleted_at = ''`), dengan alias tabel bila ada. */
 export function liveWhere(alias?: string): string {
-  return alias ? `${alias}.deleted_at = ''` : "deleted_at = ''";
+  return alias ? `${checkedColumn(alias)}.deleted_at = ''` : "deleted_at = ''";
 }
 
 /** Penyaring "terhapus" (`deleted_at <> ''`), dengan alias tabel bila ada. */
 export function deletedWhere(alias?: string): string {
-  return alias ? `${alias}.deleted_at <> ''` : "deleted_at <> ''";
+  return alias ? `${checkedColumn(alias)}.deleted_at <> ''` : "deleted_at <> ''";
 }
 
 function checkedTable(table: string): SoftDeleteTable {
@@ -102,9 +102,10 @@ export interface SoftDeleteChild {
 }
 
 /**
- * Hapus lunak induk beserta anaknya dalam satu `batch()` (T5). Anak mengambil `deleted_at` yang sama dengan induk,
- * sehingga `restoreWithChildren` memulihkan tepat anak yang ikut terhapus bersama induknya. Anak yang induknya sudah
- * terhapus tidak disentuh (hapus ulang idempoten).
+ * Hapus lunak induk beserta anaknya dalam satu `batch()` (T5). INDUK LEBIH DULU: `UPDATE` induk mengunci barisnya,
+ * sehingga pulihkan yang bersamaan tertahan sampai batch ini komit; anak lalu mengambil `deleted_at` yang sama dengan
+ * induk (syarat `EXISTS` pada induk bernilai `now` ini), jadi `restoreWithChildren` memulihkan tepat anak yang ikut
+ * terhapus bersama induknya. Hapus ulang (induk sudah terhapus) tidak menyentuh apa pun.
  */
 export function softDeleteWithChildren(
   db: Preparer,
@@ -116,14 +117,14 @@ export function softDeleteWithChildren(
 ): DbStatement[] {
   const parentName = checkedTable(parent);
   return [
+    softDeleteStmt(db, parent, id, actor, now),
     ...children.map((child) =>
       db
         .prepare(
-          `UPDATE ${checkedTable(child.table)} SET deleted_at = ?, deleted_by = ? WHERE ${checkedColumn(child.fk)} = ? AND deleted_at = '' AND EXISTS (SELECT 1 FROM ${parentName} WHERE id = ? AND deleted_at = '')`,
+          `UPDATE ${checkedTable(child.table)} SET deleted_at = ?, deleted_by = ? WHERE ${checkedColumn(child.fk)} = ? AND deleted_at = '' AND EXISTS (SELECT 1 FROM ${parentName} WHERE id = ? AND deleted_at = ?)`,
         )
-        .bind(now, actor, id, id),
+        .bind(now, actor, id, id, now),
     ),
-    softDeleteStmt(db, parent, id, actor, now),
   ];
 }
 
