@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { SheetsExportChunk } from '@server/core/bridge-client';
 import { isSoftDeleteTable } from '@server/core/soft-delete';
+import { seedHandover, seedHandoverEnv } from '@server-test/handover-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
   EXPORT_CELL_MAX_CHARS,
@@ -74,6 +75,28 @@ describe('exportTableChunks', () => {
       chunk.rows.map((row) => row[chunk.columns.indexOf('id')]),
     );
     expect(ids).toEqual(['b00000', 'b00002', 'b00004']);
+  });
+
+  test('komentar milik task terhapus tidak diekspor (anak ikut induk, N4)', async () => {
+    await seedHandoverEnv(env);
+    const comment = (id: string) => ({
+      id,
+      author: 'wh@gmail.com',
+      at: '2026-02-02T00:00:00.000Z',
+      quote: '',
+      before: '',
+      after: '',
+      body: 'halo',
+    });
+    await seedHandover(env, { id: 'h1', number: 'ST-1', locationId: 'loc-a' }, [comment('c1')]);
+    await seedHandover(env, { id: 'h2', number: 'ST-2', locationId: 'loc-a' }, [comment('c2')]);
+    await env.DB.prepare(
+      "UPDATE handovers SET deleted_at = '2026-02-02T00:00:00.000Z' WHERE id = 'h2'",
+    ).run();
+    const chunks = await collect('handover_comments');
+    expect(
+      chunks.flatMap((chunk) => chunk.rows.map((row) => row[chunk.columns.indexOf('id')])),
+    ).toEqual(['c1']);
   });
 
   test('tabel kosong tetap menghasilkan satu potongan replace berisi header saja', async () => {

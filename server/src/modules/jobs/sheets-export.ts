@@ -229,6 +229,21 @@ function quote(identifier: string): string {
 }
 
 /**
+ * Tabel ANAK yang diekspor dan induk yang menentukan "hidup"-nya (rancangan soft delete §5 butir 15): baris anak milik
+ * induk terhapus tidak diekspor. `files` (pemilik per `owner_type`) dan `qr_documents` (tak punya kolom induk) belum
+ * disaring: pemiliknya menyusul bersama fase modulnya (item/QR fase 3-4); dicatat di `soft-delete-pending.ts`.
+ */
+export const EXPORT_CHILD_PARENTS: Readonly<Record<string, { parent: string; fk: string }>> = {
+  handover_comments: { parent: 'handovers', fk: 'handover_id' },
+};
+
+function childLive(table: string): string {
+  const link = EXPORT_CHILD_PARENTS[table];
+  if (!link || !isSoftDeleteTable(link.parent)) return '';
+  return `EXISTS (SELECT 1 FROM ${quote(link.parent)} p WHERE p.id = ${quote(table)}.${quote(link.fk)} AND ${liveWhere('p')})`;
+}
+
+/**
  * Membaca SATU halaman (satu kueri database, berindeks kunci) setelah `afterKey` dan memecahnya menjadi potongan
  * bila melebihi anggaran karakter. `first` = halaman pertama tabel: potongan pertamanya `replace`
  * (menimpa sheet, juga untuk tabel kosong sehingga sheet lama dibersihkan) dan membawa header.
@@ -246,7 +261,9 @@ export async function readExportPage(
     afterKey === null ? null : table.keyType === 'integer' ? Number(afterKey) : afterKey;
   // Record terhapus (soft delete) tidak diekspor (rancangan soft delete §4.2); tabel di luar daftar tak punya kolomnya.
   const live = isSoftDeleteTable(table.table) ? liveWhere() : '';
-  const conditions = [live, after === null ? '' : `${key} > ?`].filter((part) => part !== '');
+  const conditions = [live, childLive(table.table), after === null ? '' : `${key} > ?`].filter(
+    (part) => part !== '',
+  );
   const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
   const statement = db
     .prepare(`SELECT ${columnList} FROM ${quote(table.table)}${where} ORDER BY ${key} LIMIT ?`)
