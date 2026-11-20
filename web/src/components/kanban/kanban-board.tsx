@@ -1,5 +1,5 @@
 import { cn } from 'cn';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { UiColor } from '@/components/ui/variant-style';
@@ -115,8 +115,42 @@ function useAppBannerHeight(enabled: boolean): number {
   return height;
 }
 
-/** Celah vertikal antara bar halaman dan isi (`gap-3` pada `ListPage`/`ViewPage`). */
-const FRAME_GAP = '0.75rem';
+/** Celah vertikal antara bar halaman dan isi (`gap-3` pada `ListPage`/`ViewPage`), dalam px. */
+const FRAME_GAP_PX = 12;
+
+/**
+ * Tinggi (px) konten yang berada di antara bar halaman dan papan di dalam kerangka headroom yang sama (Alert,
+ * keterangan, dan sejenisnya), supaya papan tidak meluap bila tidak tepat di bawah bar. Diukur dari posisi dokumen
+ * papan (tak berubah oleh bar yang menempel): jarak atas papan dari awal kerangka dikurangi tinggi bar dan celah.
+ */
+function useContentAboveBoard(board: RefObject<HTMLElement | null>, enabled: boolean): number {
+  const [extra, setExtra] = useState(0);
+  useEffect(() => {
+    const node = board.current;
+    const frame = node?.closest<HTMLElement>('[data-headroom-frame]');
+    const bar = frame?.firstElementChild as HTMLElement | null | undefined;
+    if (!enabled || !node || !frame || !bar) return;
+    let raf = 0;
+    const measure = () => {
+      raf = 0;
+      const above = node.getBoundingClientRect().top - frame.getBoundingClientRect().top;
+      setExtra(Math.max(0, Math.round(above - bar.offsetHeight - FRAME_GAP_PX)));
+    };
+    const schedule = () => {
+      if (raf === 0) raf = requestAnimationFrame(measure);
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
+    observer?.observe(frame);
+    window.addEventListener('resize', schedule);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', schedule);
+      if (raf !== 0) cancelAnimationFrame(raf);
+    };
+  }, [board, enabled]);
+  return extra;
+}
 
 /** Tombol/penanda "Muat lebih banyak" satu kolom (otomatis di mode viewport bila `IntersectionObserver` ada). */
 function ColumnLoadMore<T>({ column, auto }: { column: KanbanColumn<T>; auto: boolean }) {
@@ -184,16 +218,19 @@ export function KanbanBoard<T>({
 }) {
   const viewport = height === 'viewport';
   const bannerHeight = useAppBannerHeight(viewport);
+  const boardRef = useRef<HTMLElement>(null);
+  const aboveBoard = useContentAboveBoard(boardRef, viewport);
 
   return (
     <section
+      ref={boardRef}
       aria-label={label}
       data-height={height}
       className={cn('flex gap-3 overflow-x-auto', viewport && 'items-stretch')}
       style={
         viewport
           ? {
-              height: `calc(100dvh - var(--headroom-offset, 3.5rem) - ${bannerHeight}px - 2 * var(--main-pad, 1.5rem) - ${FRAME_GAP})`,
+              height: `calc(100dvh - var(--headroom-offset, 3.5rem) - ${bannerHeight + aboveBoard}px - 2 * var(--main-pad, 1.5rem) - ${FRAME_GAP_PX}px)`,
             }
           : undefined
       }

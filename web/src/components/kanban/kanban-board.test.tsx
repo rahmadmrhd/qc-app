@@ -2,6 +2,7 @@ import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { ServerStatusBanner } from '@/app/shell/server-status-banner';
+import { HeadroomFrame } from '@/components/page/headroom-bar';
 import { KanbanBoard, type KanbanColumn } from './kanban-board';
 
 vi.mock('@/app/server-status', () => ({
@@ -122,7 +123,7 @@ test('mode viewport mengurangi padding main (--main-pad) dan celah bar-isi dari 
   const height = screen.getByRole('region', { name: 'Papan' }).style.height;
   expect(height).toContain('var(--main-pad');
   expect(height).toContain('2 *');
-  expect(height).toContain('0.75rem');
+  expect(height).toContain('12px');
 });
 
 test('spanduk yang ditambah belakangan ikut dihitung dan yang dibuang tak lagi dihitung', async () => {
@@ -143,5 +144,41 @@ test('spanduk yang ditambah belakangan ikut dihitung dan yang dibuang tak lagi d
     await vi.waitFor(() => expect(board.style.height).toContain('0px'));
   } finally {
     Element.prototype.getBoundingClientRect = original;
+  }
+});
+
+test('konten di antara bar dan papan (mis. Alert) ikut dikurangi dari tinggi papan', async () => {
+  const rect = Element.prototype.getBoundingClientRect;
+  const offset = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+  Element.prototype.getBoundingClientRect = function mocked(this: Element) {
+    let top = 0;
+    if (this.getAttribute('aria-label') === 'Papan') top = 112; // 60 bar + 12 celah + 40 konten
+    return { ...rect.call(this), top, height: 0 } as DOMRect;
+  };
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+    configurable: true,
+    get(this: HTMLElement) {
+      return this.dataset.barMock === '' ? 60 : 0;
+    },
+  });
+  try {
+    render(
+      <HeadroomFrame>
+        <div data-bar-mock="">bar</div>
+        <p>keterangan di atas papan</p>
+        <KanbanBoard
+          label="Papan"
+          height="viewport"
+          columns={columns()}
+          itemKey={(card) => card.id}
+          renderCard={(card) => <span>{card.title}</span>}
+        />
+      </HeadroomFrame>,
+    );
+    await act(async () => {});
+    expect(screen.getByRole('region', { name: 'Papan' }).style.height).toContain('- 40px -');
+  } finally {
+    Element.prototype.getBoundingClientRect = rect;
+    if (offset) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', offset);
   }
 });
