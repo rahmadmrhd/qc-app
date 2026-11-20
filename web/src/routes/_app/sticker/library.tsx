@@ -1,26 +1,10 @@
-import { GUIDE_LIMITS } from '@shared/stickers';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { z } from 'zod';
 import type { LibraryQuery } from '@/components/file-dialog';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { can, requireAnyPermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { GuideLibraryPage } from '@/modules/sticker/components/guide-library-page';
-
-const SORTS = ['newest', 'oldest', 'nameAsc', 'nameDesc', 'sizeDesc', 'usageDesc'] as const;
-
-/** Cari/urut/filter Pustaka Gambar di URL; nilai bawaan tak ditulis (URL tetap bersih). */
-export const librarySearchSchema = z.object({
-  // `?q=123` diketik tangan di-parse sebagai angka: terima sebagai teks; potong ke batas nama gambar.
-  q: z
-    .union([z.string(), z.number()])
-    .transform((value) => String(value).slice(0, GUIDE_LIMITS.nameMax))
-    .optional()
-    .catch(undefined),
-  sort: z.enum(SORTS).optional().catch(undefined),
-  mine: z.boolean().optional().catch(undefined),
-  unused: z.boolean().optional().catch(undefined),
-});
+import { librarySearchSchema } from '@/modules/sticker/lib/library-search';
 
 export const Route = createFileRoute('/_app/sticker/library')({
   validateSearch: librarySearchSchema,
@@ -33,7 +17,7 @@ export const Route = createFileRoute('/_app/sticker/library')({
   component: GuideLibraryRoute,
 });
 
-export function GuideLibraryRoute() {
+function GuideLibraryRoute() {
   const me = useMe();
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });

@@ -8,9 +8,11 @@ import {
 } from '@tanstack/react-router';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ComponentType } from 'react';
 import { expect, test, vi } from 'vitest';
 import type { FileLibrarySource } from '@/components/file-dialog';
-import { GuideLibraryRoute, librarySearchSchema, Route } from './library';
+import { librarySearchSchema } from '@/modules/sticker/lib/library-search';
+import { Route } from './library';
 
 const fake = vi.hoisted(() => ({ source: null as unknown as FileLibrarySource }));
 vi.mock('@/modules/sticker/lib/guide-source', () => ({
@@ -41,12 +43,15 @@ test('mengetik di tengah teks tidak memindahkan kursor ke ujung (teks lokal + de
     rename: vi.fn(),
     remove: vi.fn(),
   };
+  // Komponen rute dipecah otomatis (lazy): dimuat dulu agar render pertama langsung memakai isinya.
+  const Component = Route.options.component as ComponentType & { preload?: () => Promise<void> };
+  await Component.preload?.();
   const root = createRootRoute();
   const route = createRoute({
     getParentRoute: () => root,
     path: '/_app/sticker/library',
     validateSearch: Route.options.validateSearch,
-    component: GuideLibraryRoute,
+    component: Component as never,
   });
   const router = createRouter({
     routeTree: root.addChildren([route]),
