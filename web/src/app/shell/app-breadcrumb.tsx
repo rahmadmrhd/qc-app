@@ -44,13 +44,18 @@ export function AppBreadcrumb() {
   const trail = findNavTrail(NAV_GROUPS, (to, fuzzy) =>
     Boolean(matchRoute({ to: to as NavItem['to'], fuzzy })),
   );
-  const crumbs = buildCrumbs({
+  const built = buildCrumbs({
     trail: trail
       ? { parent: trail.parent, item: { label: trail.item.label, to: trail.item.to as string } }
       : null,
     matches,
     queryClient,
   });
+  // Ponsel selalu punya judul (Beranda tak punya crumb): ☰ tanpa judul membingungkan.
+  const crumbs: CrumbPart[] =
+    built.length === 0 && isMobile
+      ? [{ label: matchRoute({ to: '/', fuzzy: false }) ? 'Beranda' : 'QC App' }]
+      : built;
   if (crumbs.length === 0) return null;
 
   const last = crumbs[crumbs.length - 1] as CrumbPart;

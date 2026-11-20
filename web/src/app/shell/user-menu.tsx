@@ -154,7 +154,9 @@ function PhoneAccount(props: PhoneAccountProps) {
               </div>
             ) : null}
             <div className="flex items-center gap-3 px-2 py-1.5" data-tour="theme-menu">
-              <span className="text-sm">Tema</span>
+              <span className="text-sm" aria-hidden="true">
+                Tema
+              </span>
               <fieldset className="ml-auto flex gap-1 border-0 p-0">
                 <legend className="sr-only">Tema</legend>
                 {(

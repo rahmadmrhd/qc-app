@@ -179,6 +179,8 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
+          // Tanpa fokus otomatis ke kolom cari: papan ketik tak boleh muncul sendiri saat panel dibuka.
+          onOpenAutoFocus={(event) => event.preventDefault()}
           className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
           style={
             {
