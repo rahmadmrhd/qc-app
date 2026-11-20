@@ -60,7 +60,7 @@ function filtersDeleted(key: readonly unknown[]): boolean {
 }
 
 /**
- * Whitelist dinilai dari dua bagian pertama kunci (`root/sub`): keputusan sadar (M6) agar daftar yang kelak berkunci
+ * Whitelist dinilai dari dua bagian pertama kunci (`root/sub`): KEPUTUSAN IMPLEMENTASI (bukan keputusan pemilik; tidak bertentangan dengan spek, yang hanya melarang daftar Terhapus) agar daftar yang kelak berkunci
  * `['brands', 'list', { status }]` tetap tersimpan untuk filter Aktif/Nonaktif/Semua; varian `deleted` selalu
  * dikecualikan. Log Audit, user, dan isi berkas tetap di luar whitelist.
  */
