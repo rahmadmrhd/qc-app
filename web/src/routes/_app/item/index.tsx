@@ -11,6 +11,7 @@ import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
 import { statusFilterOptions } from '@/components/soft-delete/status-filter';
+import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
 import { brandLinkAccess, businessUnitLinkAccess } from '@/lib/link-access';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
@@ -107,18 +108,21 @@ function ItemsPage() {
     selection,
     verb: 'diaktifkan',
     send: (ids) => statusBatch.mutateAsync({ ids, status: 'active' }).then((r) => r.items),
+    undo: { run: (ids) => statusBatch.mutateAsync({ ids, status: 'inactive' }) },
     reload,
   });
   const deactivate = useBulkAction({
     selection,
     verb: 'dinonaktifkan',
     send: (ids) => statusBatch.mutateAsync({ ids, status: 'inactive' }).then((r) => r.items),
+    undo: { run: (ids) => statusBatch.mutateAsync({ ids, status: 'active' }) },
     reload,
   });
   const remove = useBulkAction({
     selection,
     verb: 'dihapus',
     send: (ids) => removeItems.mutateAsync({ ids }).then((r) => r.ids),
+    undo: { label: 'Pulihkan', run: (ids) => restoreItems.mutateAsync({ ids }) },
     reload,
   });
   const restore = useBulkAction({
@@ -185,10 +189,25 @@ function ItemsPage() {
       ? (restoreItems.variables.ids[0] ?? null)
       : null;
 
+  const filtered =
+    filter.query !== '' ||
+    filter.status !== 'all' ||
+    filter.instruction !== 'all' ||
+    filter.stickerKey !== '' ||
+    filter.manualBook !== 'all' ||
+    filter.postel !== 'all' ||
+    filter.brandId !== '' ||
+    filter.buId !== '';
+  const countLabel =
+    list.isSuccess && (visible.length > 0 || filtered)
+      ? `${visible.length}${list.hasNextPage ? '+' : ''} item`
+      : undefined;
+
   return (
     <>
       <ListPage
         title="Data Item"
+        count={countLabel}
         createAction={
           canCreate
             ? { label: 'Tambah item', onClick: () => void navigate({ to: '/item/new' }) }
@@ -300,6 +319,18 @@ function ItemsPage() {
           onToggleStatus={toggleStatus}
           onDelete={(item) => setDeleteTarget({ kind: 'row', item })}
           onRestore={restoreRow}
+          filtered={filtered}
+          onClearFilters={() => {
+            setText('');
+            void navigate({ search: {}, replace: true });
+          }}
+          emptyAction={
+            canCreate ? (
+              <Button type="button" onClick={() => void navigate({ to: '/item/new' })}>
+                Tambah item
+              </Button>
+            ) : undefined
+          }
           isLoading={list.isPending}
           isError={list.isLoadingError}
           onRetry={reload}

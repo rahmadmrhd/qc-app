@@ -141,7 +141,7 @@ test('tampilan Terhapus: hanya aksi Pulihkan', async () => {
 
 test('daftar kosong menampilkan pesan', async () => {
   await renderTable({ items: [] });
-  expect(screen.getByText('Tidak ada item yang cocok.')).toBeInTheDocument();
+  expect(screen.getByText('Belum ada item.')).toBeInTheDocument();
 });
 
 function WithSelection() {

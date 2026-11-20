@@ -13,6 +13,7 @@ import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
 import { statusFilterOptions } from '@/components/soft-delete/status-filter';
+import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
 import { businessUnitLinkAccess } from '@/lib/link-access';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
@@ -94,6 +95,7 @@ function BrandsPage() {
     subject: 'merk',
     verb: 'diaktifkan',
     send: (ids) => statusBatch.mutateAsync({ ids, status: 'active' }).then((r) => r.items),
+    undo: { run: (ids) => statusBatch.mutateAsync({ ids, status: 'inactive' }) },
     reload,
   });
   const deactivate = useBulkAction({
@@ -101,6 +103,7 @@ function BrandsPage() {
     subject: 'merk',
     verb: 'dinonaktifkan',
     send: (ids) => statusBatch.mutateAsync({ ids, status: 'inactive' }).then((r) => r.items),
+    undo: { run: (ids) => statusBatch.mutateAsync({ ids, status: 'active' }) },
     reload,
   });
   const remove = useBulkAction({
@@ -108,6 +111,7 @@ function BrandsPage() {
     subject: 'merk',
     verb: 'dihapus',
     send: (ids) => removeBrands.mutateAsync({ ids }).then((r) => r.ids),
+    undo: { label: 'Pulihkan', run: (ids) => restoreBrands.mutateAsync({ ids }) },
     reload,
   });
   const restore = useBulkAction({
@@ -173,10 +177,15 @@ function BrandsPage() {
       ? (restoreBrands.variables.ids[0] ?? null)
       : null;
 
+  const filtered = termKey !== '' || status !== 'all';
+  const countLabel =
+    list.isSuccess && (visible.length > 0 || filtered) ? `${visible.length} merk` : undefined;
+
   return (
     <>
       <ListPage
         title="Merk"
+        count={countLabel}
         createAction={
           canEdit ? { label: 'Tambah merk', onClick: () => setDialog('new') } : undefined
         }
@@ -252,6 +261,18 @@ function BrandsPage() {
           onToggleStatus={toggleStatus}
           onDelete={(brand) => setDeleteTarget({ kind: 'row', brand })}
           onRestore={restoreRow}
+          filtered={filtered}
+          onClearFilters={() => {
+            setText('');
+            void navigate({ search: {}, replace: true });
+          }}
+          emptyAction={
+            canEdit ? (
+              <Button type="button" onClick={() => setDialog('new')}>
+                Tambah merk
+              </Button>
+            ) : undefined
+          }
           isLoading={list.isPending}
           isError={list.isLoadingError}
           onRetry={reload}

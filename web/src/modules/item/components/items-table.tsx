@@ -1,4 +1,5 @@
 import type { ItemSummaryDto } from '@shared/contract';
+import type { ReactNode } from 'react';
 import { type DataColumn, DataTable, LinkCell, type RowAction } from '@/components/data-table';
 import type { RowSelection } from '@/components/data-table/use-row-selection';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
@@ -29,6 +30,11 @@ export interface ItemsTableProps {
   onToggleStatus: (item: ItemSummaryDto) => void;
   onDelete: (item: ItemSummaryDto) => void;
   onRestore: (item: ItemSummaryDto) => void;
+  /** Ada filter/pencarian aktif: kosong berarti "tidak cocok" dan menawarkan hapus filter. */
+  filtered?: boolean;
+  onClearFilters?: () => void;
+  /** Ajakan pada daftar kosong tanpa filter (mis. tombol Tambah item). */
+  emptyAction?: ReactNode;
   isLoading?: boolean;
   isError?: boolean;
   onRetry?: () => void;
@@ -54,6 +60,9 @@ export function ItemsTable({
   onToggleStatus,
   onDelete,
   onRestore,
+  filtered,
+  onClearFilters,
+  emptyAction,
   isLoading,
   isError,
   onRetry,
@@ -224,7 +233,10 @@ export function ItemsTable({
       selectLabel={itemLabel}
       selection={selection}
       actions={actions}
-      empty="Tidak ada item yang cocok."
+      empty="Belum ada item."
+      filtered={filtered}
+      onClearFilters={onClearFilters}
+      emptyAction={emptyAction}
       isLoading={isLoading}
       isError={isError}
       onRetry={onRetry}

@@ -8,8 +8,13 @@ import {
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
-import { expect, test, vi } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
+import { mockMatchMedia } from '@/test/match-media';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from './view-page';
+
+afterEach(() => {
+  Reflect.deleteProperty(window, 'matchMedia');
+});
 
 async function renderInRouter(element: ReactNode) {
   const root = createRootRoute({ component: () => <>{element}</> });
@@ -135,4 +140,31 @@ test('tab terkendali dengan id tak dikenal jatuh ke tab pertama', () => {
   );
   expect(screen.getByText('isi detail')).toBeVisible();
   expect(screen.getByRole('tab', { name: 'Detail' })).toHaveAttribute('aria-selected', 'true');
+});
+
+const ITEMS = (onEdit: () => void, onDelete: () => void) => [
+  { id: 'edit', action: 'edit' as const, label: 'Ubah', onSelect: onEdit },
+  { id: 'delete', action: 'delete' as const, onSelect: onDelete },
+];
+
+test('actionItems di desktop: semua aksi jadi tombol di bar judul, tanpa bar bawah', () => {
+  mockMatchMedia(true);
+  render(<ViewPage title="X" actionItems={ITEMS(vi.fn(), vi.fn())} />);
+  expect(screen.getByRole('button', { name: 'Ubah' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus' })).toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Aksi halaman' })).toBeNull();
+});
+
+test('actionItems di ponsel: aksi utama di bar bawah, sisanya di menu "Aksi lainnya"', async () => {
+  mockMatchMedia(false);
+  const onEdit = vi.fn();
+  const onDelete = vi.fn();
+  render(<ViewPage title="X" actionItems={ITEMS(onEdit, onDelete)} />);
+  const bar = screen.getByRole('region', { name: 'Aksi halaman' });
+  await userEvent.click(within(bar).getByRole('button', { name: 'Ubah' }));
+  expect(onEdit).toHaveBeenCalledTimes(1);
+  expect(within(bar).queryByRole('button', { name: 'Hapus' })).toBeNull();
+  await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Hapus' }));
+  expect(onDelete).toHaveBeenCalledTimes(1);
 });

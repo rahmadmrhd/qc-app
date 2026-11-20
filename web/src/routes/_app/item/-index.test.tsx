@@ -162,7 +162,12 @@ test('pilih dua baris: "2 dipilih" dan Nonaktifkan memanggil items.setStatusBatc
     ids: ['i1', 'i2'],
     status: 'inactive',
   });
-  await waitFor(() => expect(toast.success).toHaveBeenCalledWith('2 item dinonaktifkan'));
+  await waitFor(() =>
+    expect(toast.success).toHaveBeenCalledWith(
+      '2 item dinonaktifkan',
+      expect.objectContaining({ action: expect.objectContaining({ label: 'Urungkan' }) }),
+    ),
+  );
 });
 
 test('Hapus massal membuka konfirmasi "Hapus 2 item?" lalu memanggil items.removeBatch', async () => {
@@ -173,7 +178,12 @@ test('Hapus massal membuka konfirmasi "Hapus 2 item?" lalu memanggil items.remov
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
   await waitFor(() => expect(callsOf('items.removeBatch')).toHaveLength(1));
   expect(callsOf('items.removeBatch')[0]?.input).toEqual({ ids: ['i1', 'i2'] });
-  await waitFor(() => expect(toast.success).toHaveBeenCalledWith('2 item dihapus'));
+  await waitFor(() =>
+    expect(toast.success).toHaveBeenCalledWith(
+      '2 item dihapus',
+      expect.objectContaining({ action: expect.objectContaining({ label: 'Pulihkan' }) }),
+    ),
+  );
 });
 
 test('Hapus massal nonaktif bila ada item Aktif yang terpilih', async () => {
@@ -303,4 +313,22 @@ test('?brandId= merk terhapus: chip Merk menampilkan nama dan penanda Terhapus (
     await screen.findByRole('button', { name: 'Merk: Merk Lawas — Terhapus' }),
   ).toBeInTheDocument();
   expect(callsOf('brands.get')[0]?.input).toEqual({ id: 'bx' });
+});
+
+test('toast Nonaktifkan massal memuat Urungkan yang mengaktifkan lagi item itu', async () => {
+  await mount();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  await userEvent.click(
+    within(screen.getByRole('region', { name: 'Aksi massal' })).getByRole('button', {
+      name: 'Nonaktifkan',
+    }),
+  );
+  await waitFor(() => expect(toast.success).toHaveBeenCalled());
+  const options = toast.success.mock.calls[0]?.[1] as { action: { onClick: () => void } };
+  options.action.onClick();
+  await waitFor(() => expect(callsOf('items.setStatusBatch')).toHaveLength(2));
+  expect(callsOf('items.setStatusBatch')[1]?.input).toEqual({
+    ids: ['i1', 'i2'],
+    status: 'active',
+  });
 });

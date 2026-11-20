@@ -67,6 +67,10 @@ export interface LibraryTabProps {
    * internal tab tidak dirender dan pencarian tetap ditunda (debounce) di sini.
    */
   query?: LibraryQuery;
+  /** Tombol "Hapus filter" pada hasil kosong karena filter (halaman Pustaka: kontrol ada di luar tab). */
+  onClearFilters?(): void;
+  /** Jumlah gambar termuat (dan masih ada halaman berikutnya) untuk hitungan hasil di judul halaman. */
+  onCountChange?(count: number | null, hasMore: boolean): void;
 }
 
 type ListData = InfiniteData<LibraryPage, string | null>;
@@ -94,6 +98,8 @@ export function LibraryTab({
   onRenamed,
   onRemoved,
   query: externalQuery,
+  onClearFilters,
+  onCountChange,
 }: LibraryTabProps) {
   const queryClient = useQueryClient();
   const [searchText, setSearchText] = useState('');
@@ -182,6 +188,11 @@ export function LibraryTab({
   }
 
   const filtered = search !== '' || mine || unused;
+  const loadedCount = result.isSuccess ? items.length : null;
+  const more = Boolean(hasNextPage);
+  useEffect(() => {
+    onCountChange?.(loadedCount, more);
+  }, [onCountChange, loadedCount, more]);
   const showSkeleton = result.isPending;
   const showError = result.isError && items.length === 0 && !result.isFetching;
   const showEmpty = !showSkeleton && !result.isError && items.length === 0;
@@ -252,6 +263,8 @@ export function LibraryTab({
         isError={showError}
         errorText="Gagal memuat pustaka gambar"
         onRetry={() => void result.refetch()}
+        filtered={filtered}
+        onClearFilters={onClearFilters}
         empty={showEmpty ? (filtered ? 'Tidak ada hasil' : 'Belum ada gambar') : undefined}
         hasMore={Boolean(hasNextPage)}
         loadingMore={isFetchingNextPage}

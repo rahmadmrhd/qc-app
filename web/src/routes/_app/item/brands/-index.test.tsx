@@ -120,7 +120,12 @@ test('pilih dua merk: Nonaktifkan memanggil brands.setStatusBatch dengan dua id'
     ids: ['b1', 'b2'],
     status: 'inactive',
   });
-  await waitFor(() => expect(toast.success).toHaveBeenCalledWith('2 merk dinonaktifkan'));
+  await waitFor(() =>
+    expect(toast.success).toHaveBeenCalledWith(
+      '2 merk dinonaktifkan',
+      expect.objectContaining({ action: expect.objectContaining({ label: 'Urungkan' }) }),
+    ),
+  );
 });
 
 test('Hapus massal: konfirmasi memuat jumlah item terpakai, lalu brands.removeBatch', async () => {

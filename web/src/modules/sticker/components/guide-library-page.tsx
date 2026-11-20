@@ -1,6 +1,6 @@
 import { MAX_IMAGE_BYTES } from '@shared/files';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   AttachmentView,
@@ -107,6 +107,20 @@ export function GuideLibraryPage({
     if (files.length > 0 || rejected.length > 0) setUpload({ open: true, files, rejected });
   }
 
+  const [loaded, setLoaded] = useState<{ count: number | null; more: boolean }>({
+    count: null,
+    more: false,
+  });
+  const handleCount = useCallback(
+    (count: number | null, more: boolean) => setLoaded({ count, more }),
+    [],
+  );
+  const filtered = query.search !== '' || query.mine || query.unused;
+  const countLabel =
+    loaded.count !== null && (loaded.count > 0 || filtered)
+      ? `${loaded.count}${loaded.more ? '+' : ''} gambar`
+      : undefined;
+
   const sortLabel = SORT_OPTIONS.find((option) => option.value === query.sort)?.label;
 
   return (
@@ -115,6 +129,7 @@ export function GuideLibraryPage({
       <FileDropZone accept={source.mimeTypes} onFiles={handleFiles}>
         <ListPage
           title="Pustaka Gambar"
+          count={countLabel}
           createAction={
             canUpload
               ? {
@@ -194,6 +209,10 @@ export function GuideLibraryPage({
             query={query}
             onToggle={() => undefined}
             onPreview={setPreview}
+            onCountChange={handleCount}
+            onClearFilters={() =>
+              setQuery((current) => ({ ...current, search: '', mine: false, unused: false }))
+            }
             dropZone={false}
             onFiles={handleFiles}
           />

@@ -60,28 +60,39 @@ export function BrandDetailView({
     <ViewPage
       title={brand.name}
       badge={deleted ? <DeletedBadge /> : <ActiveStatusBadge status={brand.status} />}
-      actions={
-        deleted ? (
-          canManage && onRestore ? (
-            <ActionButton action="restore" busy={restorePending} onClick={onRestore} />
-          ) : null
-        ) : (
-          <>
-            {canEdit && onEdit ? (
-              <ActionButton action="edit" label="Ubah" onClick={onEdit} />
-            ) : null}
-            {canManage && onToggleStatus ? (
-              <ActionButton
-                action={brand.status === 'active' ? 'deactivate' : 'activate'}
-                busy={statusPending}
-                onClick={onToggleStatus}
-              />
-            ) : null}
-            {canManage && brand.status === 'inactive' && onDelete ? (
-              <ActionButton action="delete" onClick={onDelete} />
-            ) : null}
-          </>
-        )
+      actionItems={
+        deleted
+          ? [
+              {
+                id: 'restore',
+                action: 'restore',
+                busy: restorePending,
+                hidden: !(canManage && onRestore),
+                onSelect: () => onRestore?.(),
+              },
+            ]
+          : [
+              {
+                id: 'edit',
+                action: 'edit',
+                label: 'Ubah',
+                hidden: !(canEdit && onEdit),
+                onSelect: () => onEdit?.(),
+              },
+              {
+                id: 'status',
+                action: brand.status === 'active' ? 'deactivate' : 'activate',
+                busy: statusPending,
+                hidden: !(canManage && onToggleStatus),
+                onSelect: () => onToggleStatus?.(),
+              },
+              {
+                id: 'delete',
+                action: 'delete',
+                hidden: !(canManage && brand.status === 'inactive' && onDelete),
+                onSelect: () => onDelete?.(),
+              },
+            ]
       }
       banner={
         brand.deleted ? (

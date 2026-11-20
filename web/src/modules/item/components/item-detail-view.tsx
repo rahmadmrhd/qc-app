@@ -243,26 +243,33 @@ export function ItemDetailView({
     <ViewPage
       title={`${item.brand} ${item.model}`}
       badge={deleted ? <DeletedBadge /> : <ActiveStatusBadge status={item.status} />}
-      actions={
-        deleted ? (
-          canRestore && onRestore ? (
-            <ActionButton action="restore" busy={restorePending} onClick={onRestore} />
-          ) : null
-        ) : (
-          <>
-            {canEdit ? <ActionButton action="edit" label="Ubah" onClick={onEdit} /> : null}
-            {canManage ? (
-              <ActionButton
-                action={item.status === 'active' ? 'deactivate' : 'activate'}
-                busy={statusPending}
-                onClick={onToggleStatus}
-              />
-            ) : null}
-            {canManage && item.status === 'inactive' && onDelete ? (
-              <ActionButton action="delete" onClick={onDelete} />
-            ) : null}
-          </>
-        )
+      actionItems={
+        deleted
+          ? [
+              {
+                id: 'restore',
+                action: 'restore',
+                busy: restorePending,
+                hidden: !(canRestore && onRestore),
+                onSelect: () => onRestore?.(),
+              },
+            ]
+          : [
+              { id: 'edit', action: 'edit', label: 'Ubah', hidden: !canEdit, onSelect: onEdit },
+              {
+                id: 'status',
+                action: item.status === 'active' ? 'deactivate' : 'activate',
+                busy: statusPending,
+                hidden: !canManage,
+                onSelect: onToggleStatus,
+              },
+              {
+                id: 'delete',
+                action: 'delete',
+                hidden: !(canManage && item.status === 'inactive' && onDelete),
+                onSelect: () => onDelete?.(),
+              },
+            ]
       }
       banner={
         item.deleted ? (

@@ -1,4 +1,5 @@
 import type { BrandDto, BusinessUnitOptionDto } from '@shared/contract';
+import type { ReactNode } from 'react';
 import { type DataColumn, DataTable, LinkCell, type RowAction } from '@/components/data-table';
 import type { RowSelection } from '@/components/data-table/use-row-selection';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
@@ -22,6 +23,9 @@ export interface BrandsManagerProps {
   onToggleStatus: (brand: BrandDto) => void;
   onDelete: (brand: BrandDto) => void;
   onRestore: (brand: BrandDto) => void;
+  filtered?: boolean;
+  onClearFilters?: () => void;
+  emptyAction?: ReactNode;
   isLoading?: boolean;
   isError?: boolean;
   onRetry?: () => void;
@@ -44,6 +48,9 @@ export function BrandsManager({
   onToggleStatus,
   onDelete,
   onRestore,
+  filtered,
+  onClearFilters,
+  emptyAction,
   isLoading,
   isError,
   onRetry,
@@ -181,6 +188,9 @@ export function BrandsManager({
       selection={selection}
       actions={actions}
       empty="Belum ada merk."
+      filtered={filtered}
+      onClearFilters={onClearFilters}
+      emptyAction={emptyAction}
       isLoading={isLoading}
       isError={isError}
       onRetry={onRetry}

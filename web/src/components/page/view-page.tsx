@@ -1,12 +1,37 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
+import { Ellipsis } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
+import { ACTIONS, ActionButton, type ActionKind } from '@/components/action-button';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
+import { StickyActionBar } from './sticky-action-bar';
 
 export interface ViewTab {
   id: string;
   label: ReactNode;
   content: ReactNode;
+}
+
+/** Aksi halaman View: tombol di bar judul (>= 768 px); di ponsel yang utama ke bar bawah, sisanya ke menu overflow. */
+export interface ViewAction {
+  id: string;
+  action: ActionKind;
+  /** Bawaan: label `ACTIONS[action]`. */
+  label?: string;
+  onSelect: () => void;
+  disabled?: boolean;
+  busy?: boolean;
+  hidden?: boolean;
+  /** Aksi utama di bar bawah ponsel (bawaan: aksi pertama yang terlihat). */
+  primary?: boolean;
 }
 
 /**
@@ -17,6 +42,7 @@ export function ViewPage({
   title,
   badge,
   actions,
+  actionItems,
   tabs,
   aside,
   banner,
@@ -27,6 +53,8 @@ export function ViewPage({
   title: ReactNode;
   badge?: ReactNode;
   actions?: ReactNode;
+  /** Aksi terstruktur (disarankan): desktop = tombol di bar judul, ponsel = bar bawah + menu overflow (spek butir 38d). */
+  actionItems?: readonly ViewAction[];
   tabs?: readonly ViewTab[];
   aside?: ReactNode;
   banner?: ReactNode;
@@ -35,6 +63,10 @@ export function ViewPage({
   tab?: string;
   onTabChange?: (id: string) => void;
 }) {
+  const desktop = useIsDesktop();
+  const visibleActions = (actionItems ?? []).filter((entry) => !entry.hidden);
+  const primaryAction = visibleActions.find((entry) => entry.primary) ?? visibleActions[0];
+  const menuActions = visibleActions.filter((entry) => entry !== primaryAction);
   const [localTab, setLocalTab] = useState(tabs?.[0]?.id);
   const requested = tab ?? localTab;
   // Id tak dikenal (mis. `?tab=` basi) jatuh ke tab pertama agar panel tak kosong.
@@ -79,8 +111,22 @@ export function ViewPage({
             <h1 className="min-w-0 text-xl font-semibold break-words">{title}</h1>
             {badge}
           </div>
-          {actions ? (
-            <div className="flex flex-wrap items-center gap-2 max-md:w-full">{actions}</div>
+          {actions || (desktop && visibleActions.length > 0) ? (
+            <div className="flex flex-wrap items-center gap-2 max-md:w-full">
+              {actions}
+              {desktop
+                ? visibleActions.map((entry) => (
+                    <ActionButton
+                      key={entry.id}
+                      action={entry.action}
+                      label={entry.label}
+                      busy={entry.busy}
+                      disabled={entry.disabled}
+                      onClick={entry.onSelect}
+                    />
+                  ))
+                : null}
+            </div>
           ) : null}
         </div>
       </HeadroomBar>
@@ -93,6 +139,43 @@ export function ViewPage({
           </aside>
         ) : null}
       </div>
+      {!desktop && primaryAction ? (
+        <StickyActionBar label="Aksi halaman" busy={visibleActions.some((entry) => entry.busy)}>
+          <ActionButton
+            action={primaryAction.action}
+            label={primaryAction.label}
+            busy={primaryAction.busy}
+            disabled={primaryAction.disabled}
+            onClick={primaryAction.onSelect}
+            className="flex-1"
+          />
+          {menuActions.length > 0 ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button type="button" variant="outline" size="icon" aria-label="Aksi lainnya">
+                  <Ellipsis aria-hidden />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" side="top">
+                {menuActions.map((entry) => {
+                  const Icon = ACTIONS[entry.action].icon;
+                  return (
+                    <DropdownMenuItem
+                      key={entry.id}
+                      variant={entry.action === 'delete' ? 'destructive' : 'default'}
+                      disabled={entry.disabled || entry.busy}
+                      onSelect={entry.onSelect}
+                    >
+                      <Icon aria-hidden />
+                      {entry.label ?? ACTIONS[entry.action].label}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : null}
+        </StickyActionBar>
+      ) : null}
     </HeadroomFrame>
   );
 }
