@@ -33,7 +33,7 @@ test('10 lembar x 12 dan 3 x 10 ditambah 5 lepas menampilkan 155 butir', async (
   await userEvent.click(screen.getByRole('button', { name: 'Tambah baris' }));
   await userEvent.type(screen.getByLabelText('Lembar baris 2'), '3');
   await userEvent.type(screen.getByLabelText('Isi per lembar baris 2'), '10');
-  await userEvent.type(screen.getByLabelText('Butir lepas'), '5');
+  await userEvent.type(screen.getByLabelText('Butir'), '5');
   expect(screen.getByText('155 butir')).toBeInTheDocument();
   const last = onChange.mock.calls.at(-1)?.[0] as StockCount;
   expect(piecesOfCount(last)).toBe(155);

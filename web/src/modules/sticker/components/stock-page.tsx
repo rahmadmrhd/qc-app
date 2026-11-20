@@ -1,4 +1,4 @@
-import type { OpnameInput, StickerStockDto } from '@shared/contract';
+import type { StickerStockDto } from '@shared/contract';
 import { formatStockQty } from '@shared/stickers';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
@@ -13,7 +13,6 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { STICKER_STATUS_LABEL } from '../lib/status';
-import { OpnameDialog, type OpnameSaveResult } from './opname-dialog';
 import {
   StockEntryDialog,
   type StockEntryMode,
@@ -36,18 +35,19 @@ export interface StockPageProps {
   /** Koreksi dan stok opname (`stickerstock: manage`). */
   canManage: boolean;
   onWrite: (write: StockWrite) => Promise<StockSaveResult>;
-  onOpname: (input: OpnameInput) => Promise<OpnameSaveResult>;
+  /** Membuka halaman stok opname. */
+  onStartOpname: () => void;
   onShowHistory: (row: StickerStockDto) => void;
 }
 
-/** Stok stiker untuk lokasi terpilih: total, rincian per lokasi, penanda "Menipis", catat/koreksi/opname, riwayat. */
+/** Stok stiker untuk lokasi terpilih: total, rincian per lokasi, penanda "Menipis", catat/koreksi, tombol ke halaman opname, riwayat. */
 export function StockPage({
   rows,
   locations,
   canEdit,
   canManage,
   onWrite,
-  onOpname,
+  onStartOpname,
   onShowHistory,
 }: StockPageProps) {
   // Hanya mode dan id yang disimpan; barisnya diturunkan dari `rows` terbaru agar "Stok saat ini" di dialog ikut
@@ -62,7 +62,6 @@ export function StockPage({
       toast.info('Stok stiker berubah; dialog ditutup');
     }
   }, [entry, entryRow]);
-  const [opnameOpen, setOpnameOpen] = useState(false);
   const codeById = new Map(locations.map((location) => [location.id, location.code]));
   const showBreakdown = locations.length > 1;
   const columns = 4 + (showBreakdown ? 1 : 0);
@@ -72,7 +71,7 @@ export function StockPage({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Stok Stiker</h1>
         {canManage ? (
-          <Button variant="outline" onClick={() => setOpnameOpen(true)}>
+          <Button variant="outline" onClick={onStartOpname}>
             Stok opname
           </Button>
         ) : null}
@@ -181,7 +180,6 @@ export function StockPage({
         onOpenChange={(open) => (open ? undefined : setEntry(null))}
         onSave={onWrite}
       />
-      <OpnameDialog open={opnameOpen} onOpenChange={setOpnameOpen} rows={rows} onSave={onOpname} />
     </div>
   );
 }

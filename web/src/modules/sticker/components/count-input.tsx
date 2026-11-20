@@ -94,7 +94,7 @@ export function CountInput({ value, onChange }: CountInputProps) {
       </Button>
       <div className="flex items-center gap-2">
         <label htmlFor={looseId} className="text-sm">
-          Butir lepas
+          Butir
         </label>
         <Input
           id={looseId}
