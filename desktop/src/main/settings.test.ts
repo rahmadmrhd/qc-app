@@ -1,7 +1,8 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { removeTempDirSync } from '../../test-support/safe-rm';
 import { createSettingsStore, DEFAULT_SERVER_URL, normalizeServerUrl } from './settings';
 
 let dir: string;
@@ -9,7 +10,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'qc-settings-'));
 });
 afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
+  removeTempDirSync(dir);
 });
 
 describe('createSettingsStore', () => {

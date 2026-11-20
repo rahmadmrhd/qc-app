@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { LEASE_COMMAND } from '@countrylock/multi/lease';
 import type { InjectedEvent } from '@countrylock/multi/types';
 import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import { type FakeSshServer, startFakeSshServer } from '../../../test-support/fake-ssh-server';
+import { removeTempDirSync } from '../../../test-support/safe-rm';
 import type { InjectRunner } from '../inject-runner';
 import { type LoadedPackage, loadLocalPackage } from '../package/local-folder';
 import { execCommands, type SshTarget } from '../ssh/exec';
@@ -41,7 +42,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((s) => s.close()));
-  rmSync(tmp, { recursive: true, force: true });
+  removeTempDirSync(tmp);
 });
 
 async function fakeRouter(execMap: Record<string, string>, commands: string[] = []) {

@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { removeTempDirSync } from '../test-support/safe-rm';
 import { baselineManifestProblem, canRun, parseArch, unpackedDirName } from './verify-pack-args';
 
 describe('parseArch', () => {
@@ -45,7 +46,7 @@ describe('baselineManifestProblem (UI dasar harus membawa ui-manifest.json yang 
     mkdirSync(join(dir, 'ui-baseline'));
   });
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDirSync(dir);
   });
   const manifest = JSON.stringify({
     uiVersion: 'a'.repeat(64),

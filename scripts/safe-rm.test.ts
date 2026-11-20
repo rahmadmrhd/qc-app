@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, test } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { removeTempDir, removeTempDirSync } from '../server/test-support/safe-rm';
 
 const victim = mkdtempSync(join(tmpdir(), 'qc-safe-rm-victim-'));
@@ -9,12 +9,16 @@ writeFileSync(join(victim, 'penting.txt'), 'jangan hapus');
 mkdirSync(join(victim, 'dalam'));
 afterAll(() => removeTempDirSync(victim));
 
+// cwd di bawah tmpdir (checkout di folder sementara) sah dihapus; kasus 'cwd' hanya bermakna bila tidak begitu.
+const cwdRel = relative(tmpdir(), process.cwd());
+const cwdInsideTmp = cwdRel !== '' && !cwdRel.startsWith('..') && !/^[A-Za-z]:/.test(cwdRel);
+
 describe('removeTempDir', () => {
   const rejected: Array<[string, string]> = [
     ['kosong', ''],
     ['spasi', '   '],
     ['relatif', 'server'],
-    ['cwd', process.cwd()],
+    ...(cwdInsideTmp ? [] : ([['cwd', process.cwd()]] as Array<[string, string]>)),
     ['tmpdir itu sendiri', tmpdir()],
     ['induk tmpdir', join(tmpdir(), '..')],
   ];
@@ -23,7 +27,6 @@ describe('removeTempDir', () => {
       await expect(removeTempDir(path)).rejects.toThrow();
       expect(() => removeTempDirSync(path)).toThrow();
       expect(existsSync(join(victim, 'penting.txt'))).toBe(true);
-      expect(existsSync(join(process.cwd(), 'package.json'))).toBe(true);
     });
   }
 
@@ -52,4 +55,12 @@ describe('removeTempDir', () => {
     removeTempDirSync(missing);
     expect(existsSync(missing)).toBe(false);
   });
+});
+
+// Tes desktop/ dan web/ memakai salinan per paket (impor lintas workspace menyalakan aturan CI): isinya harus identik.
+test('salinan helper di desktop/ dan web/ identik dengan versi server', () => {
+  const read = (p: string) => readFileSync(join(import.meta.dir, '..', p), 'utf8');
+  const original = read('server/test-support/safe-rm.ts');
+  expect(read('desktop/test-support/safe-rm.ts')).toBe(original);
+  expect(read('web/src/test/safe-rm.ts')).toBe(original);
 });
