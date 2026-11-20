@@ -92,3 +92,19 @@ test('ponsel: hanya tingkat terakhir dan tombol Kembali ke tingkat sebelumnya ya
   expect(screen.getByText('Detail')).toBeInTheDocument();
   expect(screen.queryByRole('link', { name: 'Daftar Item' })).toBeNull();
 });
+
+test('ponsel 360 px: label panjang dipotong (truncate), tanpa pembungkusan baris, dan bisa menyusut', async () => {
+  setViewport(360);
+  const queryClient = new QueryClient();
+  queryClient.setQueryData(['items', 'detail', '1'], {
+    name: 'Nama item yang sangat panjang sekali sampai tidak muat di header ponsel 360 px',
+  });
+  await renderAt('/item/1', queryClient);
+  const label = await screen.findByText(/Nama item yang sangat panjang/);
+  expect(label.className).toContain('truncate');
+  expect(label.closest('li')?.className).toContain('min-w-0');
+  const list = label.closest('ol');
+  expect(list?.className).toContain('flex-nowrap');
+  expect(list?.className).toContain('min-w-0');
+  expect(screen.getByRole('navigation', { name: 'breadcrumb' }).className).toContain('min-w-0');
+});
