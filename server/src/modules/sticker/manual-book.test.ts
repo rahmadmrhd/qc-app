@@ -279,7 +279,7 @@ describe('ekspor pertama', () => {
     const rows = await stickers();
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
-      name: 'Manual Book - PBE M5-400 v1',
+      name: 'MB - PBE M5-400 v1',
       status: 'active',
       min_qty: 0,
     });
@@ -372,8 +372,8 @@ describe('ekspor ulang', () => {
     await exportOk(design, 'Logo diganti');
     const rows = await stickers();
     expect(rows).toHaveLength(2);
-    const old = rows.find((row) => row.name === 'Manual Book - PBE M5-400 v1');
-    const fresh = rows.find((row) => row.name === 'Manual Book - PBE M5-400 v2');
+    const old = rows.find((row) => row.name === 'MB - PBE M5-400 v1');
+    const fresh = rows.find((row) => row.name === 'MB - PBE M5-400 v2');
     expect(old?.status).toBe('inactive');
     expect(fresh).toMatchObject({ status: 'active', min_qty: 200 });
     const v = await versions(design.id);
@@ -400,10 +400,8 @@ describe('ekspor ulang', () => {
     await relabel(design, 'Judul Lain');
     await exportOk(design, 'Perubahan isi');
     const rows = await stickers();
-    expect(rows.find((row) => row.name === 'Manual Book - PBE M5-400 v1')?.status).toBe(
-      'deprecated',
-    );
-    expect(rows.find((row) => row.name === 'Manual Book - PBE M5-400 v2')?.status).toBe('active');
+    expect(rows.find((row) => row.name === 'MB - PBE M5-400 v1')?.status).toBe('deprecated');
+    expect(rows.find((row) => row.name === 'MB - PBE M5-400 v2')?.status).toBe('active');
   });
 
   test('ekspor ulang tanpa perubahan label: tidak ada stiker atau versi baru, berkas Drive tetap diganti', async () => {
@@ -525,7 +523,7 @@ describe('qrcodes.versions', () => {
     }>;
     expect(list.map((row) => row.version)).toEqual([2, 1]);
     expect(list[0]).toMatchObject({
-      name: 'Manual Book - PBE M5-400 v2',
+      name: 'MB - PBE M5-400 v2',
       status: 'active',
       reason: 'Alasan dua',
     });
@@ -593,7 +591,7 @@ describe('konkurensi dengan komit ekspor', () => {
 
   test('hapus vs komit ekspor serentak: hapus ditolak, konfigurasi dan item utuh, tanpa versi yatim', async () => {
     const design = await makeDesign();
-    await seedMbSticker('Manual Book - PBE M5-400 v1');
+    await seedMbSticker('MB - PBE M5-400 v1');
     const itemsBefore = await ownedItems(design.id);
     expect(itemsBefore).toBeGreaterThan(0);
     // Komit ekspor menahan baris konfigurasi dan melahirkan versi (updated_at tidak naik) sesudah hapus lolos
@@ -615,7 +613,7 @@ describe('konkurensi dengan komit ekspor', () => {
 
   test('simpan tanpa nama/item (kelonggaran) vs komit ekspor serentak: ditolak 412, nama tetap', async () => {
     const design = await legacyDesign();
-    await seedMbSticker('Manual Book - PBE M5-400 v1');
+    await seedMbSticker('MB - PBE M5-400 v1');
     const current = await reload(design.id);
     const { out } = await whileLocked(
       { sql: DESIGN_LOCK, id: design.id },
@@ -708,10 +706,8 @@ describe('konkurensi dengan komit ekspor', () => {
     expect(holderRuns).toBe(1);
     expect(out.kind).toBe('advanced');
     const rows = await stickers();
-    expect(rows.find((row) => row.name === 'Manual Book - PBE M5-400 v1')?.status).toBe(
-      'deprecated',
-    );
-    expect(rows.find((row) => row.name === 'Manual Book - PBE M5-400 v2')?.status).toBe('active');
+    expect(rows.find((row) => row.name === 'MB - PBE M5-400 v1')?.status).toBe('deprecated');
+    expect(rows.find((row) => row.name === 'MB - PBE M5-400 v2')?.status).toBe('active');
   });
 });
 
@@ -721,7 +717,7 @@ describe('aktivasi stiker versi terbaru vs komit ekspor serentak', () => {
     await exportOk(design);
     await relabel(design, 'Label Dua');
     await exportOk(design, 'Alasan dua');
-    const v2 = (await stickers()).find((row) => row.name === 'Manual Book - PBE M5-400 v2');
+    const v2 = (await stickers()).find((row) => row.name === 'MB - PBE M5-400 v2');
     if (!v2) throw new Error('v2 hilang');
     await setStickerStatus(env, { id: v2.id, status: 'inactive' }, { email: 'qredit@gmail.com' });
     // Komit ekspor v3 mengunci baris v2 (stiker terbaru) lebih dulu, lalu melahirkan v3 dan melepas kunci.
@@ -730,7 +726,7 @@ describe('aktivasi stiker versi terbaru vs komit ekspor serentak', () => {
       async (tx) => {
         await tx
           .prepare(
-            "INSERT INTO stickers (id, type_id, name, alias, file_id, min_qty, status, created_at, updated_at, updated_by) VALUES ('s-v3', ?, 'Manual Book - PBE M5-400 v3', '', '', 0, 'active', 't', 't', 'x')",
+            "INSERT INTO stickers (id, type_id, name, alias, file_id, min_qty, status, created_at, updated_at, updated_by) VALUES ('s-v3', ?, 'MB - PBE M5-400 v3', '', '', 0, 'active', 't', 't', 'x')",
           )
           .bind(v2.type_id)
           .run();
@@ -757,9 +753,9 @@ describe('aktivasi stiker versi terbaru vs komit ekspor serentak', () => {
     expect(out).toBe('Hanya versi terbaru Manual Book yang dapat diaktifkan');
     const rows = await stickers();
     expect(rows.filter((row) => row.status === 'active').map((row) => row.name)).toEqual([
-      'Manual Book - PBE M5-400 v3',
+      'MB - PBE M5-400 v3',
     ]);
-    expect(rows.find((row) => row.name === 'Manual Book - PBE M5-400 v2')?.status).toBe('inactive');
+    expect(rows.find((row) => row.name === 'MB - PBE M5-400 v2')?.status).toBe('inactive');
   });
 });
 
@@ -939,7 +935,7 @@ describe('nama Manual Book unik antar konfigurasi (keputusan pemilik 2026-11-11)
     };
     expect(job.status).toBe('failed');
     expect(job.error).toContain('Nama stiker Manual Book sudah dipakai konfigurasi lain');
-    expect((await stickers()).map((row) => row.name)).toEqual(['Manual Book - PBE M5-400 v1']);
+    expect((await stickers()).map((row) => row.name)).toEqual(['MB - PBE M5-400 v1']);
     expect(await versions(b.id)).toHaveLength(0);
   });
 
@@ -995,10 +991,7 @@ describe('nama Manual Book unik antar konfigurasi (keputusan pemilik 2026-11-11)
       await exportOk(a); // stiker "X v1"
       await renameDesign(a, 'Y', 'Judul Y');
       await exportOk(a, 'Ganti nama'); // stiker "Y v2"
-      expect((await stickers()).map((row) => row.name)).toEqual([
-        'Manual Book - X v1',
-        'Manual Book - Y v2',
-      ]);
+      expect((await stickers()).map((row) => row.name)).toEqual(['MB - X v1', 'MB - Y v2']);
       const b = await makeDesign({ name: 'Z' });
       return { a, b };
     }
@@ -1036,9 +1029,9 @@ describe('nama Manual Book unik antar konfigurasi (keputusan pemilik 2026-11-11)
       await renameDesign(a, 'Y', 'Judul Y2');
       await exportOk(a, 'Label lagi'); // versi baru "Y v3"
       expect((await stickers()).map((row) => row.name)).toEqual([
-        'Manual Book - X v1',
-        'Manual Book - Y v2',
-        'Manual Book - Y v3',
+        'MB - X v1',
+        'MB - Y v2',
+        'MB - Y v3',
       ]);
     });
 
@@ -1066,10 +1059,7 @@ describe('nama Manual Book unik antar konfigurasi (keputusan pemilik 2026-11-11)
       )) as { status: string; error: string };
       expect(job.status).toBe('failed');
       expect(job.error).toContain('Nama stiker Manual Book sudah dipakai konfigurasi lain');
-      expect((await stickers()).map((row) => row.name)).toEqual([
-        'Manual Book - X v1',
-        'Manual Book - Y v2',
-      ]);
+      expect((await stickers()).map((row) => row.name)).toEqual(['MB - X v1', 'MB - Y v2']);
       expect(await versions(b.id)).toHaveLength(0);
     });
   });

@@ -78,7 +78,7 @@ export const QRCODE_BUAT: GuideEntry = {
     },
     {
       target: 'qr-name',
-      text: 'Nama Manual Book dibuat otomatis dari tipe item, dan boleh kamu edit. Namanya harus unik. Saat QR pertama kali diekspor, nama ini jadi nama stiker "Manual Book - nama vN".',
+      text: 'Nama Manual Book dibuat otomatis dari tipe item, dan boleh kamu edit. Namanya harus unik. Saat QR pertama kali diekspor, nama ini jadi nama stiker "MB - nama vN".',
       advance: 'next',
     },
     {

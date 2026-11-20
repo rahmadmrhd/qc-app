@@ -29,7 +29,7 @@ export interface OpnamePageProps {
   /** Stok terbaru yang dilihat halaman; salinannya saat dibuka menjadi `expectedQty` tiap baris. */
   rows: readonly StickerStockDto[];
   onSave: (input: OpnameInput) => Promise<OpnameSaveResult>;
-  /** Dipanggil setelah simpan berhasil (biasanya kembali ke halaman Stok Stiker). */
+  /** Dipanggil setelah simpan berhasil (biasanya kembali ke halaman Stiker). */
   onDone: () => void;
   onCancel: () => void;
   /** Ada hitungan yang belum disimpan? Dipakai rute untuk menahan navigasi keluar. */

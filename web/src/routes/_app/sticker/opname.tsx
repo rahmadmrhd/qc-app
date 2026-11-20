@@ -18,7 +18,7 @@ import {
 import { stickerKeys } from '@/modules/sticker/keys';
 import { stickerStockQuery, useOpname } from '@/modules/sticker/queries';
 
-export const Route = createFileRoute('/_app/sticker/stock/opname')({
+export const Route = createFileRoute('/_app/sticker/opname')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'stickerstock', 'manage'),
   component: StickerOpnameRoute,
 });
@@ -46,7 +46,7 @@ function StickerOpnameRoute() {
     enableBeforeUnload: () => dirty.current,
   });
 
-  const backToStock = () => void navigate({ to: '/sticker/stock' });
+  const backToStock = () => void navigate({ to: '/sticker' });
 
   async function handleOpname(input: OpnameInput): Promise<OpnameSaveResult> {
     try {
