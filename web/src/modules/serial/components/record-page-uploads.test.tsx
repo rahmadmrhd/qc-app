@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { mockMatchMedia } from '@/test/match-media';
 import { addSerials, type StagingRow } from '../lib/draft';
 import { loadDraft, saveDraft } from '../lib/draft-store';
 
@@ -248,7 +249,7 @@ test('onProofChange true selama ada unggahan berjalan walau belum ada baris berf
   await waitFor(() => expect(onProofChange).toHaveBeenLastCalledWith(false));
 });
 
-test('beralih dari tabel ke kartu saat unggahan berjalan tidak menghentikannya; kartu menampilkan jumlahnya', async () => {
+test('beralih dari tabel ke kartu saat unggahan berjalan tidak menghentikannya; kartu menampilkan progresnya', async () => {
   const real = window.matchMedia;
   let matches = true;
   const listeners: Array<() => void> = [];
@@ -268,15 +269,63 @@ test('beralih dari tabel ke kartu saat unggahan berjalan tidak menghentikannya; 
     act(() => {
       for (const listener of listeners) listener();
     });
-    expect(await screen.findByText('1 foto diunggah')).toBeInTheDocument();
+    expect(await screen.findByTestId('attachment-pending')).toBeInTheDocument();
     expect(aborted).toBe(0);
     await act(async () => uploads[0]?.ok());
     expect(await screen.findByText('1 foto')).toBeInTheDocument();
-    expect(screen.queryByText('1 foto diunggah')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('attachment-pending')).not.toBeInTheDocument();
     await waitFor(() =>
       expect(loadDraft('a@gmail.com')[0]?.proofPhotos.map((photo) => photo.id)).toEqual(['up1']),
     );
   } finally {
     window.matchMedia = real;
+  }
+});
+
+test('F5: foto yang mulai diunggah selagi Simpan menunggu pencarian serial membuat Simpan batal (tanpa kirim)', async () => {
+  seedDraft(['AAA111']);
+  let finishLookup: () => void = () => undefined;
+  const base = apiMock.getMockImplementation();
+  apiMock.mockImplementation((id: string, input: Record<string, unknown>, options?: unknown) => {
+    if (id === 'serials.lookupMany') {
+      return new Promise((resolve) => {
+        finishLookup = () => resolve({ found: [] });
+      });
+    }
+    return base?.(id, input, options);
+  });
+  renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: /^Simpan 1 serial/ }));
+  // Selama pencarian berjalan, tabel belum `saving`: foto masih bisa ditambahkan.
+  await addPhoto('AAA111');
+  await waitFor(() => expect(uploads).toHaveLength(1));
+  await act(async () => finishLookup());
+  expect(
+    await screen.findByText(/Masih ada foto yang diunggah atau gagal diunggah/),
+  ).toBeInTheDocument();
+  expect(apiMock.mock.calls.some((call) => call[0] === 'serials.saveBatch')).toBe(false);
+});
+
+test('F2: di layar sempit unggahan gagal pada kartu dapat dibuang atau diulang (Simpan tidak macet)', async () => {
+  const media = mockMatchMedia(true);
+  try {
+    seedDraft(['AAA111']);
+    renderPage();
+    await addPhoto('AAA111');
+    await waitFor(() => expect(uploads).toHaveLength(1));
+    await act(async () => uploads[0]?.fail('Server menolak'));
+    media.set(false);
+    // Kartu: kendali Ulangi/Buang tersedia pada baris itu sendiri.
+    const list = await screen.findByRole('list', { name: 'Draft serial yang akan disimpan' });
+    const card = within(list).getAllByRole('listitem')[0] as HTMLElement;
+    expect(within(card).getByText('Server menolak')).toBeInTheDocument();
+    expect(saveButton()).toBeDisabled();
+    await userEvent.click(within(card).getByRole('button', { name: /^Ulangi / }));
+    await waitFor(() => expect(uploads).toHaveLength(2));
+    await act(async () => uploads[1]?.fail('Gagal lagi'));
+    await userEvent.click(await screen.findByRole('button', { name: /^Buang / }));
+    await waitFor(() => expect(saveButton()).toBeEnabled());
+  } finally {
+    media.restore();
   }
 });

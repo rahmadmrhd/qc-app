@@ -767,17 +767,21 @@ export function RecordPage({
 
   // Penjaga klik ganda selama menunggu pencarian serial yang sudah ada (sebelum `saving` menyala).
   const preparingRef = useRef(false);
+  /** Simpan ditolak selagi ada unggahan foto berjalan atau gagal (pesan ditampilkan); true bila ditolak. */
+  function rejectPendingUploads(): boolean {
+    const current = proofUploadsRef.current;
+    if (!current.busy && !current.hasFailed) return false;
+    setNotice({
+      tone: 'error',
+      text: 'Masih ada foto yang diunggah atau gagal diunggah. Tunggu selesai atau buang dulu, lalu simpan.',
+    });
+    return true;
+  }
   /** `external` = dipicu penjaga keluar halaman: pemanggil yang melanjutkan navigasi, jadi `onAllSaved` tak dipanggil. */
   async function handleSave(external = false): Promise<boolean> {
     if (saving || importing || preparingRef.current || rowsRef.current.length === 0) return false;
     // Dipicu penjaga keluar halaman: unggahan yang belum beres tidak boleh terlewat.
-    if (proofUploadsRef.current.busy || proofUploadsRef.current.hasFailed) {
-      setNotice({
-        tone: 'error',
-        text: 'Masih ada foto yang diunggah atau gagal diunggah. Tunggu selesai atau buang dulu, lalu simpan.',
-      });
-      return false;
-    }
+    if (rejectPendingUploads()) return false;
     preparingRef.current = true;
     let outcome: { failure: string | null; changed: number };
     try {
@@ -788,6 +792,8 @@ export function RecordPage({
     } finally {
       preparingRef.current = false;
     }
+    // Pencarian bisa memakan waktu dan tabel belum `saving` selama itu: foto yang baru mulai diunggah tak boleh terlewat.
+    if (rejectPendingUploads()) return false;
     if (outcome.failure !== null) {
       setNotice({
         tone: 'error',
@@ -1124,6 +1130,8 @@ export function RecordPage({
             onSelectAll={selectAll}
             onOpenDetail={openDetail}
             uploadEntries={proofUploads.entries}
+            onRetryUpload={retryUpload}
+            onCancelUpload={cancelUpload}
           />
         )}
       </div>
