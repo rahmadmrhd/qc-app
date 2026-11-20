@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Env } from '@server/core/env';
 import { createMemoryFileCache } from '@server/core/file-cache';
 import { createProofStore } from '@server/modules/serial/proof/store';
 import { createFakeBridge, type FakeBridge } from './fake-bridge';
+import { removeTempDirSync } from './safe-rm';
 import { acquireTestDb, resetTestDb } from './test-db';
 
 export interface TestClock {
@@ -29,7 +30,7 @@ function newProofDir(): string {
   if (proofRoot === null) {
     const root = mkdtempSync(join(tmpdir(), 'qc-test-proofs-'));
     proofRoot = root;
-    process.on('exit', () => rmSync(root, { recursive: true, force: true }));
+    process.on('exit', () => removeTempDirSync(root));
   }
   proofSeq += 1;
   return join(proofRoot, String(proofSeq));

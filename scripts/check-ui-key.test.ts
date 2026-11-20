@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { generateKeyPairSync } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -9,6 +9,7 @@ import {
   publicKeyFingerprint,
   publicKeyOneLine,
 } from '../countrylock/src/ui-manifest';
+import { removeTempDirSync } from '../server/test-support/safe-rm';
 import { writeUiManifest } from './build-ui-manifest';
 import { checkUiKey } from './check-ui-key';
 import { signDistManifest } from './sign-ui-manifest';
@@ -36,7 +37,7 @@ beforeEach(() => {
   root = mkdtempSync(path.join(tmpdir(), 'qc-check-ui-key-'));
 });
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true });
+  removeTempDirSync(root);
 });
 
 describe('sidik dan normalisasi kunci publik', () => {
@@ -188,7 +189,7 @@ describe('signDistManifest dengan kunci publik desktop', () => {
       const dist = prepareDist();
       signDistManifest(dist, file, { publicKey, requirePublicKey: true });
       expect(existsSync(sigOf(dist))).toBe(true);
-      rmSync(dist, { recursive: true });
+      removeTempDirSync(dist);
     }
   });
 

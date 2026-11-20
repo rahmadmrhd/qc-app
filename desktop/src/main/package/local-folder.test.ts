@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { removeTempDirSync } from '../../../test-support/safe-rm';
 import { isSafePathComponent, loadLocalPackage, PackageError } from './local-folder';
 
 const FIXTURE = resolve(__dirname, '../../../../countrylock/fixtures/country-lock2');
@@ -11,7 +12,7 @@ beforeEach(() => {
   tmp = mkdtempSync(join(tmpdir(), 'qc-pkg-'));
 });
 afterEach(() => {
-  rmSync(tmp, { recursive: true, force: true });
+  removeTempDirSync(tmp);
 });
 
 /** config.QC minimal dengan satu merk Mikrotik; `folder`/`file` dapat diisi nilai berbahaya. */

@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { publicKeyFingerprint, publicKeyPemOf } from '../countrylock/src/ui-manifest';
+import { removeTempDirSync } from '../server/test-support/safe-rm';
 import { generateSigningKey, RELEASE_PRIVATE_KEY_SUFFIX } from './gen-ui-signing-key';
 
 describe('generateSigningKey dengan sufiks rilis', () => {
@@ -18,7 +19,7 @@ describe('generateSigningKey dengan sufiks rilis', () => {
       );
       expect(result.publicKeyPath.endsWith('.release-signing-key.pub.pem')).toBe(true);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     }
   });
 
@@ -30,7 +31,7 @@ describe('generateSigningKey dengan sufiks rilis', () => {
       ).toThrow(RELEASE_PRIVATE_KEY_SUFFIX);
       expect(existsSync(join(dir, 'x.ui-signing-key.pem'))).toBe(false);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     }
   });
 
@@ -41,7 +42,7 @@ describe('generateSigningKey dengan sufiks rilis', () => {
       generateSigningKey(file, RELEASE_PRIVATE_KEY_SUFFIX);
       expect(() => generateSigningKey(file, RELEASE_PRIVATE_KEY_SUFFIX)).toThrow();
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     }
   });
 });

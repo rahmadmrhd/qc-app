@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { removeTempDirSync } from '../../test-support/safe-rm';
 import {
   APP_CSP,
   buildAppCsp,
@@ -109,7 +110,7 @@ describe('createAppHandler', () => {
     writeFileSync(join(dir, 'index.html'), '<html><script>window.a=1</script></html>');
   });
   afterEach(() => {
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDirSync(dir);
   });
 
   test('menyajikan berkas dengan tipe konten dan header keamanan', async () => {
@@ -158,7 +159,7 @@ describe('API lewat proxy', () => {
       ).toContain('text/html');
       expect(calls).toHaveLength(2);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     }
   });
 
@@ -170,7 +171,7 @@ describe('API lewat proxy', () => {
       expect((await handler(new Request('app://qc/api/v1/me'))).status).toBe(404);
       expect((await handler(new Request('app://qc/auth/login'))).status).toBe(404);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     }
   });
 });
@@ -188,8 +189,8 @@ describe('akar UI dinamis', () => {
       active = b;
       expect(await (await handler(new Request('app://qc/country-lock'))).text()).toBe('B');
     } finally {
-      rmSync(a, { recursive: true, force: true });
-      rmSync(b, { recursive: true, force: true });
+      removeTempDirSync(a);
+      removeTempDirSync(b);
     }
   });
 });

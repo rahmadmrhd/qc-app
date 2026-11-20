@@ -1,7 +1,8 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { removeTempDirSync } from '../../../test/safe-rm';
 import { type DemoScene, klipUrl, loadDemoScenes } from '../lib/demo-types';
 import { GUIDE_CATALOG } from './index';
 
@@ -60,7 +61,7 @@ describe('pemeriksa klip menangkap pelanggaran (contoh salah)', () => {
       expect(klipProblems('t', klip(undefined), root)).toEqual([]);
       expect(klipProblems('t', klip(''), root)).toEqual([]);
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      removeTempDirSync(root);
     }
   });
 
@@ -73,7 +74,7 @@ describe('pemeriksa klip menangkap pelanggaran (contoh salah)', () => {
       expect(klipProblems('t', klip('klip/ada.webm'), root)).toHaveLength(1);
       expect(klipProblems('t', klip('../ada.webm'), root)).toHaveLength(1);
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      removeTempDirSync(root);
     }
   });
 
@@ -86,7 +87,7 @@ describe('pemeriksa klip menangkap pelanggaran (contoh salah)', () => {
       // Vite menyajikan `public/` di akar: URL `/klip/x` = `<public>/klip/x`.
       expect(existsSync(join(root, klipUrl('tip-a-1.webm')))).toBe(true);
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      removeTempDirSync(root);
     }
   });
 });

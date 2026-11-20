@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { app } from '@server/app';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import { removeTempDirSync } from '../../../test-support/safe-rm';
 
 let env: TestEnv;
 let dist: string;
@@ -26,7 +27,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  rmSync(dist, { recursive: true, force: true });
+  removeTempDirSync(dist);
 });
 
 /** mtime tetap (detik bulat): perbandingan memo berdasar mtime tak bergantung presisi sistem berkas. */

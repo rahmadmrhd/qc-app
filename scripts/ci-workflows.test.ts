@@ -15,6 +15,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
+import { removeTempDirSync } from '../server/test-support/safe-rm';
 import { ROOT_DIR } from './paths';
 
 interface Step {
@@ -249,7 +250,7 @@ describe('deploy-server.yml: keamanan', () => {
     });
 
     test('bersihkan', () => {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     });
   });
 
@@ -347,7 +348,7 @@ describe('deploy-server.yml: keamanan', () => {
     });
 
     test('bersihkan', () => {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     });
   });
 
@@ -760,7 +761,7 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
   });
 
   test('bersihkan', () => {
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDirSync(dir);
   });
 });
 
@@ -912,7 +913,7 @@ describe('deploy-server.yml: kunci tanda tangan manifest UI desktop', () => {
     });
 
     test('bersihkan', () => {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     });
   });
 });
@@ -1477,7 +1478,7 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
     });
 
     test('bersihkan', () => {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     });
   });
 });

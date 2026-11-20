@@ -1,9 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { PendingEntry } from '@countrylock/pending';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { removeTempDirSync } from '../../../test-support/safe-rm';
 import { openPendingStore } from './pending-store';
 
 let dir: string;
@@ -13,7 +14,7 @@ beforeEach(() => {
   file = join(dir, 'pending.db');
 });
 afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
+  removeTempDirSync(dir);
 });
 
 const entry = (serial: string, extra: Partial<PendingEntry> = {}): PendingEntry => ({

@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { publicKeyPemOf, signUiManifest } from '@countrylock/ui-manifest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { removeTempDirSync } from '../../../test-support/safe-rm';
 import { createUiBundleManager, readBaselineCreatedAt, type UiBundleDeps } from './ui-bundle';
 
 const sha = (data: Buffer | string): string => createHash('sha256').update(data).digest('hex');
@@ -138,7 +139,7 @@ beforeEach(() => {
   manifestEtag = '"etag-1"';
 });
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true });
+  removeTempDirSync(root);
 });
 
 const manager = (over: Partial<UiBundleDeps> = {}) =>
