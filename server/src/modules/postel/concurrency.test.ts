@@ -122,8 +122,13 @@ describe('postels.save serentak', () => {
 
   test('simpan dan hapus serentak atas catatan yang sama: keadaan akhir konsisten (tanpa baris yatim)', async () => {
     for (let round = 0; round < 4; round++) {
-      const created = (await call('postels.save', body(['i1', 'i2'], [`R${round}-1`])))
-        .data as Json;
+      // Item per ronde: nama stiker catatan terhapus tetap dipegangnya (Postel baru bernama sama ditolak), jadi tiap
+      // ronde memakai model sendiri agar rondenya tidak saling bentrok.
+      const [a, b, c] = [`r${round}a`, `r${round}b`, `r${round}c`];
+      for (const id of [a, b, c]) {
+        await seedItem(env, { id, brand: 'PBE', model: `R${round}-${id}` });
+      }
+      const created = (await call('postels.save', body([a, b], [`R${round}-1`]))).data as Json;
       env.clock.advance(1000);
       const numbers = created.numbers as Json[];
       const [saved, removed] = await Promise.all([
@@ -131,7 +136,7 @@ describe('postels.save serentak', () => {
           id: created.id,
           expectedUpdatedAt: created.updatedAt,
           note: `ronde ${round}`,
-          itemIds: ['i1', 'i3'],
+          itemIds: [a, c],
           numbers: [
             {
               id: numbers[0].id,

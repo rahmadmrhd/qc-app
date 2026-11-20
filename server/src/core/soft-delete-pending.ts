@@ -85,19 +85,9 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
   // Ekspor Sheets: `files` (pemilik stiker/pustaka fase 4a, QR/postel fase 4b) dan `qr_documents` belum disaring
   // (pemilik `item` sudah, fase 3). Setelah semuanya disaring, pindahkan kuncinya ke SOFT_DELETE_EXEMPT dengan alasan.
   'server/src/modules/jobs/sheets-export.ts': ['*dinamis@1#62151e07'],
-  'server/src/modules/postel/stickers.ts': [
-    'stickers@1#1337aea8',
-    'stickers@3#53d6d36d',
-    'postels@1#53d6d36d',
-  ],
-  'server/src/modules/qrcode/items.ts': [
-    'manual_book_versions@1#1a057869',
-    'stickers@1#1a057869',
-    'manual_book_versions@2#1a057869',
-    'manual_book_versions@3#b1ac013b',
-  ],
+  'server/src/modules/postel/stickers.ts': ['stickers@1#1337aea8', 'stickers@3#53d6d36d'],
+  'server/src/modules/qrcode/items.ts': ['stickers@1#1a057869'],
   'server/src/modules/qrcode/repo.ts': [],
-  'server/src/modules/qrcode/service.ts': ['manual_book_versions@1#97faa561'],
   // Fase 4c (access, customer)
   'server/src/modules/access/location-brief.ts': ['locations@1#d3dc66da'],
   'server/src/modules/access/repo.ts': [
@@ -417,4 +407,14 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Baca catatan menurut id (hidup atau terhapus); pemanggil menilai `deletedAt` (hak baca pemulih, simpan, hapus/pulihkan).',
   'server/src/modules/postel/repo.ts#postel_numbers@3#fbcdf7ae':
     'Nomor catatan TERHAPUS menurut id catatan yang sudah lolos pemeriksaan hak di pemanggil: nomor anak ikut `deleted_at` induknya, jadi tak disaring hidup.',
+  'server/src/modules/postel/stickers.ts#postels@1#53d6d36d':
+    'Pengisi saat start: stiker milik catatan TERHAPUS tetap dihitung sudah berpemilik, jadi tak diadopsi catatan lain (sengaja tanpa penyaring hidup).',
+  'server/src/modules/qrcode/items.ts#manual_book_versions@1#1a057869':
+    'Versi terbaru per konfigurasi untuk pembentuk tampilan (`designViews`) bagi daftar hidup MAUPUN terhapus; konfigurasi yang diminta sudah disaring keadaannya di pemanggil.',
+  'server/src/modules/qrcode/items.ts#manual_book_versions@2#1a057869':
+    'Subkueri versi terbaru milik kueri yang sama (menurut id konfigurasi yang sama); keadaan konfigurasi ditentukan pemanggil.',
+  'server/src/modules/qrcode/items.ts#manual_book_versions@3#b1ac013b':
+    'Pemeriksaan ada-tidaknya versi menurut id konfigurasi yang sudah dimuat/dikunci pemanggil.',
+  'server/src/modules/qrcode/service.ts#manual_book_versions@1#97faa561':
+    'Versi tertinggi menurut id konfigurasi yang sedang disimpan pemanggil (penentu nama stiker `<nama> v<n>`); keadaan konfigurasi sudah diperiksa.',
 };

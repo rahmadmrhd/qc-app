@@ -580,7 +580,11 @@ describe('pencabutan berbagi PDF sumber', () => {
       env.clock.advance(2 * 60 * 60 * 1000);
       await cleanupQrDocuments(env);
     }
-    expect(logged.filter((m) => m.includes('Berkas milik akun lain'))).toHaveLength(1);
+    // Hanya dokumen yang dilepas yang diperiksa (unggahan yatim lain ikut dicoba cabut dan dicatat terpisah).
+    const docDrive = await driveIdOf(doc.id);
+    expect(
+      logged.filter((m) => m.includes(docDrive) && m.includes('Berkas milik akun lain')),
+    ).toHaveLength(1);
   });
 
   test('gagal mencabut berbagi di Drive tidak menggagalkan hapus; galat dicatat; dicoba lagi kemudian', async () => {

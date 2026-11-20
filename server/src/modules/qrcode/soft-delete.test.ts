@@ -415,6 +415,28 @@ describe('preset QR', () => {
 });
 
 describe('konfigurasi terhapus pada item dan stiker', () => {
+  test('stiker Manual Book konfigurasi terhapus tidak dapat diaktifkan; setelah dipulihkan dapat', async () => {
+    const made = await createDesign();
+    await seedVersionedSticker(made.id, 's1', 1, 0);
+    await call(MANAGE, 'qrcodes.delete', { id: made.id });
+    expect(await stickerStatus('s1')).toBe('inactive');
+    const blocked = await call('admin@gmail.com', 'stickers.setStatus', {
+      id: 's1',
+      status: 'active',
+    });
+    expect(blocked.ok).toBe(false);
+    expect(blocked.error.code).toBe('VALIDATION');
+    expect(blocked.error.message).toContain('sudah dihapus');
+    await call(MANAGE, 'qrcodes.restore', { id: made.id });
+    expect(await stickerStatus('s1')).toBe('inactive');
+    const allowed = await call('admin@gmail.com', 'stickers.setStatus', {
+      id: 's1',
+      status: 'active',
+    });
+    expect(allowed.ok).toBe(true);
+    expect(await stickerStatus('s1')).toBe('active');
+  });
+
   test('hasInstructions stiker Manual Book tidak menghitung konfigurasi terhapus', async () => {
     const made = await seedQrDesign(env, { id: 'd-seed', name: 'Seed' });
     await env.DB.prepare("UPDATE items SET manual_book_design_id = ? WHERE id = 'i1'")
