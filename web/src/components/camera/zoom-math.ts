@@ -2,7 +2,7 @@
  * Hitungan zoom murni (tanpa DOM) untuk kontrol kamera: slider vertikal buatan sendiri, papan ketik, dan cubit dua jari.
  * Semua hasil dijepit dan dibulatkan ke langkah rentang lewat `clampZoom` (satu sumber aturan zoom).
  */
-import { clampZoom, type ZoomRange } from './camera-controls';
+import { clampZoom, type ZoomRange } from './camera-caps';
 
 /** Langkah terkecil yang masuk akal untuk satu ketukan tombol/panah (langkah perangkat bisa 0,01). */
 const MIN_BUTTON_STEP = 0.1;

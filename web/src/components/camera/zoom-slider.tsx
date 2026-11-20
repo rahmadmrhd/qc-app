@@ -6,8 +6,8 @@ import {
   useRef,
 } from 'react';
 import { cn } from '@/lib/utils';
-import { formatZoom, type ZoomRange } from '../lib/camera-controls';
-import { fractionOfZoom, keyboardZoom, zoomFromTrackY } from '../lib/zoom-math';
+import { formatZoom, type ZoomRange } from './camera-caps';
+import { fractionOfZoom, keyboardZoom, zoomFromTrackY } from './zoom-math';
 
 /** Jari-jari thumb (px): pusat thumb bergerak di antara bantalan ini dari tiap ujung area tekan. */
 const THUMB_RADIUS = 16;

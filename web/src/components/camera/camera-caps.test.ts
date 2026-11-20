@@ -9,7 +9,7 @@ import {
   initialZoom,
   readCameraCaps,
   restoreContinuousFocus,
-} from './camera-controls';
+} from './camera-caps';
 
 function track(caps: Record<string, unknown>, settings: Record<string, unknown> = {}) {
   return {

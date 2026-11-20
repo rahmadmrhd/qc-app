@@ -1,9 +1,9 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { clampZoom, type ZoomRange } from '@/modules/serial/lib/camera-controls';
-import type { UseCameraScanner } from '@/modules/serial/lib/use-camera-scanner';
+import { clampZoom, type ZoomRange } from './camera-caps';
 import { ScanCameraControls } from './camera-controls';
+import type { CameraStream } from './use-camera-stream';
 
 const RANGE: ZoomRange = { min: 1, max: 2, step: 0.25 };
 
@@ -30,7 +30,7 @@ function Harness({
       log.push(next);
       setZoomState(next);
     },
-  } as unknown as UseCameraScanner;
+  } as unknown as CameraStream;
   return <ScanCameraControls camera={camera} onSwitchCamera={() => {}} />;
 }
 

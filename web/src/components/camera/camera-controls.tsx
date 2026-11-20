@@ -2,10 +2,10 @@ import { Flashlight, FlashlightOff, Minus, Plus, SwitchCamera } from 'lucide-rea
 import { type ReactNode, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { ZoomSlider } from '@/modules/serial/components/zoom-slider';
-import { clampZoom, formatZoom } from '@/modules/serial/lib/camera-controls';
-import type { UseCameraScanner } from '@/modules/serial/lib/use-camera-scanner';
-import { zoomStepOf } from '@/modules/serial/lib/zoom-math';
+import { clampZoom, formatZoom } from './camera-caps';
+import type { CameraStream } from './use-camera-stream';
+import { zoomStepOf } from './zoom-math';
+import { ZoomSlider } from './zoom-slider';
 
 /** Tombol bulat semi-transparan gelap + ikon putih: terbaca di atas video, target ketuk 44 px. */
 export const FLOAT_BUTTON =
@@ -27,7 +27,7 @@ export function ScanCameraControls({
   camera,
   onSwitchCamera,
 }: {
-  camera: UseCameraScanner;
+  camera: CameraStream;
   onSwitchCamera: () => void;
 }) {
   const range = camera.zoomRange;
@@ -133,7 +133,7 @@ export function ScanCameraControls({
 
 /** Kamera berikutnya (melingkar) untuk tombol ganti kamera; id aktif tak dikenal = kamera pertama. */
 export function nextDevice(
-  camera: Pick<UseCameraScanner, 'devices' | 'activeDeviceId'>,
+  camera: Pick<CameraStream, 'devices' | 'activeDeviceId'>,
   currentId: string = camera.activeDeviceId,
 ) {
   const { devices } = camera;

@@ -1,5 +1,4 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
-import { ScannerLoadError } from '@/modules/serial/lib/barcode-engine';
 import {
   applyContinuousFocus,
   applyTapFocus,
@@ -11,8 +10,9 @@ import {
   readCameraCaps,
   restoreContinuousFocus,
   type ZoomRange,
-} from '@/modules/serial/lib/camera-controls';
-import { type Point, type Size, tapToVideoPoint } from '@/modules/serial/lib/scan-region';
+} from './camera-caps';
+import { ScannerLoadError } from './scanner-load-error';
+import { type Point, type Size, tapToVideoPoint } from './tap-point';
 
 /** Setelah ketuk-untuk-fokus (sekali), fokus kembali ke mode kontinu sesudah jeda ini (cukup lama agar single-shot lambat tak terpotong). */
 export const TAP_FOCUS_RESTORE_MS = 2500;

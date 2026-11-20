@@ -1,6 +1,6 @@
 import { type PointerEvent, useCallback, useEffect, useRef } from 'react';
-import type { ZoomRange } from '@/modules/serial/lib/camera-controls';
-import { pinchZoom, pointerDistance } from '@/modules/serial/lib/zoom-math';
+import type { ZoomRange } from './camera-caps';
+import { pinchZoom, pointerDistance } from './zoom-math';
 
 export interface UsePinchZoomOptions {
   /** Zoom saat ini (dibaca sekali tiap cubitan dimulai). */

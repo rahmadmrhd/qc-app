@@ -3,7 +3,7 @@
  * deteksi fitur: tak satu pun diandalkan, galat `applyConstraints` ditelan, dan `advanced` bersifat "sebisanya" (peramban
  * mengabaikan batasan yang tak bisa dipenuhi). Kebanyakan sifat ini belum ada di tipe DOM, jadi dideklarasikan di sini.
  */
-import type { Point } from './scan-region';
+import type { Point } from './tap-point';
 
 export interface ZoomRange {
   min: number;

@@ -1,12 +1,12 @@
 import { Flashlight, FlashlightOff, Minus, Plus, SwitchCamera } from 'lucide-react';
 import { useRef } from 'react';
+import { clampZoom, formatZoom } from '@/components/camera/camera-caps';
 import { FLOAT_BUTTON, nextDevice, ZoomStepButton } from '@/components/camera/camera-controls';
+import { zoomStepOf } from '@/components/camera/zoom-math';
+import { ZoomSlider } from '@/components/camera/zoom-slider';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { clampZoom, formatZoom } from '../lib/camera-controls';
 import type { UseCameraScanner } from '../lib/use-camera-scanner';
-import { zoomStepOf } from '../lib/zoom-math';
-import { ZoomSlider } from './zoom-slider';
 
 /**
  * Panjang trek slider zoom kamera foto: menyusut di layar pendek (ponsel landscape ~360 px) agar kolom zoom tidak
