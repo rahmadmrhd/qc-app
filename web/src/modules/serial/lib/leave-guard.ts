@@ -14,9 +14,15 @@ export function shouldWarnBeforeUnload(dirty: boolean): boolean {
   return dirty && !draftWritesSuspended();
 }
 
-/** Ada baris draft yang memuat foto bukti QC (sudah terunggah ke server dengan status draft)? */
-export function hasProofPhotos(rows: readonly { proofPhotos: readonly unknown[] }[]): boolean {
-  return rows.some((row) => row.proofPhotos.length > 0);
+/**
+ * Ada foto bukti QC yang perlu dijaga: baris draft yang memuat foto (sudah terunggah ke server dengan status draft),
+ * atau unggahan yang masih berjalan/gagal (foto yang belum menempel pada baris mana pun).
+ */
+export function hasProofPhotos(
+  rows: readonly { proofPhotos: readonly unknown[] }[],
+  uploadsBusy = false,
+): boolean {
+  return uploadsBusy || rows.some((row) => row.proofPhotos.length > 0);
 }
 
 /**

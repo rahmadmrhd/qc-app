@@ -1,7 +1,14 @@
-import { isIsoDate, normalizeSerial, proofMinimumOf, SERIAL_LIMITS } from '@shared/serials';
+import {
+  isIsoDate,
+  normalizeSerial,
+  proofMinimumOf,
+  SERIAL_LIMITS,
+  SERIAL_PROOF_LIMITS,
+} from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import type { OwnerUploads } from '@/components/file-dialog/use-background-uploads';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -38,6 +45,7 @@ import { lockedLocationOf, todayWib, toLocationOptions } from '../lib/locations'
 import { applyProofMins, fetchProofMins, uniqueItemIds } from '../lib/proof-refresh';
 import type { ProofPhotoRef } from '../lib/proof-source';
 import type { QcsnImport } from '../lib/qcsn';
+import { useProofUploads } from '../lib/use-proof-uploads';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
   discardProofPhotos,
@@ -207,6 +215,45 @@ export function RecordPage({
     else setOwnRows(next);
   }, []);
 
+  // Unggah latar foto bukti: dipegang halaman (bukan baris/sel) dan dikunci ke `clientId` baris, sehingga beralih
+  // tabel/kartu tidak menghentikannya. Draf hanya menyimpan foto yang sudah selesai (menempel pada `proofPhotos`).
+  const proofUploads = useProofUploads({
+    onAdd: (owner, photo) => {
+      const target = rowsRef.current.find((row) => row.clientId === owner);
+      // Baris sudah dihapus/diganti atau sudah penuh: hasil dibuang di server oleh hook.
+      if (!target || target.proofPhotos.length >= SERIAL_PROOF_LIMITS.perEntryMax) return false;
+      setAllRows(
+        rowsRef.current.map((row) =>
+          row.clientId === owner
+            ? { ...clearOutcome(row), proofPhotos: [...row.proofPhotos, photo] }
+            : row,
+        ),
+      );
+      return true;
+    },
+  });
+  const proofUploadsRef = useRef(proofUploads);
+  proofUploadsRef.current = proofUploads;
+  const uploadFiles = useCallback(
+    (owner: string, files: Parameters<OwnerUploads['add']>[0]) =>
+      proofUploadsRef.current.forOwner(owner).add(files),
+    [],
+  );
+  const retryUpload = useCallback(
+    (key: string) => proofUploadsRef.current.forOwner('').retry(key),
+    [],
+  );
+  const cancelUpload = useCallback(
+    (key: string) => proofUploadsRef.current.forOwner('').remove(key),
+    [],
+  );
+  const cancelRowUploads = useCallback((owners: Iterable<string>) => {
+    for (const owner of owners) proofUploadsRef.current.cancelOwner(owner);
+  }, []);
+  // Foto yang belum selesai (berjalan, menunggu, atau gagal) menahan Simpan; yang berjalan juga menahan keluar halaman.
+  const uploadsPending = proofUploads.entries.length;
+  const uploadsBlocked = proofUploads.busy || proofUploads.hasFailed;
+
   // Serial yang sudah tercatat (keunikan se-sistem): serial baru di draft ditanyakan ke server per kelompok; yang sudah
   // ada menjadi baris Cek ulang. Satu rantai janji agar permintaan tidak tumpang tindih dan Simpan bisa menunggunya.
   const lookedUpRef = useRef(new Set<string>());
@@ -349,7 +396,7 @@ export function RecordPage({
   useEffect(() => {
     onDirtyChange?.(rows.length > 0);
   }, [onDirtyChange, rows.length]);
-  const withProof = hasProofPhotos(rows);
+  const withProof = hasProofPhotos(rows, proofUploads.busy);
   useEffect(() => {
     onProofChange?.(withProof);
   }, [onProofChange, withProof]);
@@ -560,10 +607,11 @@ export function RecordPage({
   const dropRows = useCallback(
     (ids: ReadonlySet<string>) => {
       const dropped = rowsRef.current.filter((row) => ids.has(row.clientId));
+      cancelRowUploads(ids);
       void discardProofPhotos(proofIdsOf(dropped));
       setAllRows(removeRows(rowsRef.current, ids));
     },
-    [setAllRows],
+    [setAllRows, cancelRowUploads],
   );
   const removeOne = useCallback((clientId: string) => dropRows(new Set([clientId])), [dropRows]);
   const openDetail = useCallback((clientId: string) => setDetailId(clientId), []);
@@ -712,6 +760,14 @@ export function RecordPage({
   /** `external` = dipicu penjaga keluar halaman: pemanggil yang melanjutkan navigasi, jadi `onAllSaved` tak dipanggil. */
   async function handleSave(external = false): Promise<boolean> {
     if (saving || importing || preparingRef.current || rowsRef.current.length === 0) return false;
+    // Dipicu penjaga keluar halaman: unggahan yang belum beres tidak boleh terlewat.
+    if (proofUploadsRef.current.busy || proofUploadsRef.current.hasFailed) {
+      setNotice({
+        tone: 'error',
+        text: 'Masih ada foto yang diunggah atau gagal diunggah. Tunggu selesai atau buang dulu, lalu simpan.',
+      });
+      return false;
+    }
     preparingRef.current = true;
     let outcome: { failure: string | null; changed: number };
     try {
@@ -1045,6 +1101,10 @@ export function RecordPage({
             onOpenDetail={openDetail}
             onRemove={removeOne}
             actorName={me.name}
+            uploadEntries={proofUploads.entries}
+            onUploadFiles={uploadFiles}
+            onRetryUpload={retryUpload}
+            onCancelUpload={cancelUpload}
           />
         ) : (
           <StagingCards
@@ -1053,6 +1113,7 @@ export function RecordPage({
             onSelect={select}
             onSelectAll={selectAll}
             onOpenDetail={openDetail}
+            uploadEntries={proofUploads.entries}
           />
         )}
       </div>
@@ -1072,7 +1133,7 @@ export function RecordPage({
       <div className="flex flex-wrap items-center gap-3" data-tour="serial-save">
         <Button
           type="button"
-          disabled={saving || importing || rows.length === 0}
+          disabled={saving || importing || rows.length === 0 || uploadsBlocked}
           onClick={() => void handleSave()}
         >
           {saving ? (
@@ -1083,6 +1144,11 @@ export function RecordPage({
             `Simpan ${rows.length} serial`
           )}
         </Button>
+        {uploadsBlocked ? (
+          <span role="status" className="text-xs text-muted-foreground">
+            {uploadsPending} foto masih diunggah atau gagal; selesaikan, ulangi, atau buang dulu.
+          </span>
+        ) : null}
         {blockedCount > 0 ? (
           <span className="text-xs text-muted-foreground">
             {blockedCount} baris perlu dilengkapi atau diperbaiki.
@@ -1095,6 +1161,7 @@ export function RecordPage({
             size="sm"
             disabled={saving}
             onClick={() => {
+              cancelRowUploads(rowsRef.current.map((row) => row.clientId));
               void discardProofPhotos(proofIdsOf(rowsRef.current));
               setAllRows([]);
               if (!draftRef.current) clearDraft(ownerKey);

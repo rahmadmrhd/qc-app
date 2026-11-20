@@ -9,7 +9,7 @@ import {
   type ServiceDiagnosisStage,
 } from '@shared/serials';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { FieldError } from '@/components/field-error';
 import { Select } from '@/components/select';
@@ -45,6 +45,7 @@ import { isProofRejection } from '../lib/draft';
 import { todayWib } from '../lib/locations';
 import type { ProofPhotoRef } from '../lib/proof-source';
 import type { StampPreviewInput } from '../lib/stamp-preview';
+import { useProofUploads } from '../lib/use-proof-uploads';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
   discardProofPhotos,
@@ -65,6 +66,7 @@ export interface ActDialogProps {
 }
 
 const STALE_RELOAD_MESSAGE = `${STALE_SAVE_MESSAGE}. Halaman sudah dimuat ulang. Catatan Anda tetap ada; cek lagi lalu kirim ulang.`;
+const PROOF_OWNER = 'recheck';
 
 /** Field yang galat servernya tampil di bawah field-nya sendiri. */
 type FieldKey =
@@ -171,6 +173,18 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   // Foto bukti QC (hanya Cek ulang): `draft` di server sampai Simpan menautkannya ke entri.
   const [proofPhotos, setProofPhotos] = useState<ProofPhotoRef[]>([]);
+  // Unggah latar foto bukti milik dialog ini (pemilik form); Task 13 melengkapi penahan Kirim dan pembersihan saat tutup.
+  const proofCountRef = useRef(0);
+  proofCountRef.current = proofPhotos.length;
+  const proofUploads = useProofUploads({
+    onAdd: (_owner, photo) => {
+      if (proofCountRef.current >= SERIAL_PROOF_LIMITS.perEntryMax) return false;
+      proofCountRef.current += 1;
+      setProofPhotos((current) => [...current, photo]);
+      return true;
+    },
+  });
+  const ownProofUploads = proofUploads.forOwner(PROOF_OWNER);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [confirming, setConfirming] = useState(false);
@@ -564,6 +578,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
               <Label id="act-proof-label">Bukti foto (opsional)</Label>
               <ProofPhotoField
                 value={proofPhotos}
+                uploads={ownProofUploads}
                 max={SERIAL_PROOF_LIMITS.perEntryMax}
                 disabled={act.isPending}
                 stamp={recheckStamp}

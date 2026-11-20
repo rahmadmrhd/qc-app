@@ -47,3 +47,9 @@ test('leaveMode: kosong none, draft biasa confirm, draft berfoto dialog, keluar 
   resumeDraftWrites();
   expect(leaveMode(true, true)).toBe('dialog');
 });
+
+test('hasProofPhotos: unggahan yang masih berjalan dihitung walau belum ada baris berfoto', () => {
+  expect(hasProofPhotos([{ proofPhotos: [] }], true)).toBe(true);
+  expect(hasProofPhotos([], true)).toBe(true);
+  expect(hasProofPhotos([{ proofPhotos: [] }], false)).toBe(false);
+});

@@ -1,4 +1,5 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
+import type { UploadEntry } from '@/components/file-dialog/use-background-uploads';
 import { cn } from '@/lib/utils';
 import type { StagingRow } from '../lib/draft';
 import { RowBadges, rowStatus, type StagingTableProps, TONE_CLASS } from './staging-table';
@@ -6,7 +7,16 @@ import { RowBadges, rowStatus, type StagingTableProps, TONE_CLASS } from './stag
 export type StagingCardsProps = Pick<
   StagingTableProps,
   'rows' | 'onSelect' | 'onSelectAll' | 'onOpenDetail' | 'disabled'
->;
+> & {
+  /** Unggahan foto bukti yang berjalan/gagal; kartu menampilkan jumlahnya per baris (unggahnya sendiri tetap berjalan). */
+  uploadEntries?: readonly UploadEntry[];
+};
+
+interface UploadCount {
+  running: number;
+  failed: number;
+}
+const NO_UPLOADS: UploadCount = { running: 0, failed: 0 };
 
 interface CardViewProps {
   row: StagingRow;
@@ -14,6 +24,7 @@ interface CardViewProps {
   onSelect: StagingTableProps['onSelect'];
   onOpenDetail: StagingTableProps['onOpenDetail'];
   disabled: boolean;
+  uploads: UploadCount;
 }
 
 const CardView = memo(function CardView({
@@ -22,6 +33,7 @@ const CardView = memo(function CardView({
   onSelect,
   onOpenDetail,
   disabled,
+  uploads,
 }: CardViewProps) {
   const status = rowStatus(row);
   const place = [row.locationLabel, row.testDate].filter((part) => part !== '').join(' · ');
@@ -62,7 +74,9 @@ const CardView = memo(function CardView({
         <span className="block text-sm">{itemLine || '—'}</span>
         <span className="block text-xs text-muted-foreground">{place || '—'}</span>
         {/* Lencana status hanya untuk baris yang perlu ditinjau; kartu siap tidak membawa teks status. */}
-        {status.tone !== 'ok' || row.proofPhotos.length > 0 ? (
+        {status.tone !== 'ok' ||
+        row.proofPhotos.length > 0 ||
+        uploads.running + uploads.failed > 0 ? (
           <span className="flex flex-wrap items-center gap-1 text-xs">
             {status.tone !== 'ok' ? (
               <span
@@ -78,6 +92,16 @@ const CardView = memo(function CardView({
             {row.proofPhotos.length > 0 ? (
               <span className="rounded-full border px-1.5 py-px text-muted-foreground">
                 {row.proofPhotos.length} foto
+              </span>
+            ) : null}
+            {uploads.running > 0 ? (
+              <span className="rounded-full border px-1.5 py-px text-muted-foreground">
+                {uploads.running} foto diunggah
+              </span>
+            ) : null}
+            {uploads.failed > 0 ? (
+              <span className="rounded-full border px-1.5 py-px font-medium text-destructive">
+                {uploads.failed} foto gagal
               </span>
             ) : null}
           </span>
@@ -98,8 +122,19 @@ export function StagingCards({
   onSelectAll,
   onOpenDetail,
   disabled = false,
+  uploadEntries,
 }: StagingCardsProps) {
   const allSelected = rows.length > 0 && rows.every((row) => row.selected);
+  const counts = useMemo(() => {
+    const byRow = new Map<string, UploadCount>();
+    for (const entry of uploadEntries ?? []) {
+      const count = byRow.get(entry.owner) ?? { running: 0, failed: 0 };
+      if (entry.phase === 'failed') count.failed += 1;
+      else count.running += 1;
+      byRow.set(entry.owner, count);
+    }
+    return byRow;
+  }, [uploadEntries]);
   return (
     <div className="space-y-2">
       <label className="flex items-center gap-3 px-1 text-sm text-muted-foreground">
@@ -122,6 +157,7 @@ export function StagingCards({
             onSelect={onSelect}
             onOpenDetail={onOpenDetail}
             disabled={disabled}
+            uploads={counts.get(row.clientId) ?? NO_UPLOADS}
           />
         ))}
       </ul>
