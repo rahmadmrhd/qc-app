@@ -129,7 +129,7 @@ test('merk terhapus: banner dan Pulihkan memanggil brands.restoreBatch', async (
   server = { ...base, deleted: { deletedAt: '2026-11-20T00:00:00.000Z', deletedBy: 'a@x.com' } };
   await mount();
   expect(await screen.findByText('Data ini sudah dihapus')).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Pulihkan' }));
+  await userEvent.click(screen.getAllByRole('button', { name: 'Pulihkan' })[0] as HTMLElement);
   await waitFor(() => expect(callsOf('brands.restoreBatch')[0]?.input).toEqual({ ids: ['b1'] }));
   await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Merk dipulihkan (Nonaktif)'));
 });
@@ -160,4 +160,25 @@ test('merk tidak ditemukan (NOT_FOUND): pesan dan tombol kembali', async () => {
   await mount();
   expect(await screen.findByRole('heading', { name: 'Merk tidak ditemukan' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Kembali ke daftar merk' })).toBeInTheDocument();
+});
+
+test('Pulihkan dari toast "Dihapus" setelah navigasi tetap memberi toast sukses atau galat', async () => {
+  const { router } = await mount();
+  await userEvent.click(await screen.findByRole('button', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 merk?' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/item/brands'));
+  const options = toast.success.mock.calls.find((call) => call[0] === 'Dihapus')?.[1] as {
+    action: { onClick: () => void };
+  };
+  toast.success.mockClear();
+  options.action.onClick();
+  await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Merk dipulihkan (Nonaktif)'));
+  const original = apiMock.getMockImplementation();
+  apiMock.mockImplementation(async (id: string, input: unknown) => {
+    if (id === 'brands.restoreBatch') throw new Error('gagal');
+    return original?.(id, input);
+  });
+  options.action.onClick();
+  await waitFor(() => expect(toast.error).toHaveBeenCalled());
 });

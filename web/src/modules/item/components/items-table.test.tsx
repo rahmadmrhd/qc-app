@@ -211,3 +211,13 @@ test('tanda "Belum ada Postel" hanya untuk item aktif tanpa Postel, tanpa syarat
   const juniper = screen.getByRole('row', { name: /Juniper/ });
   expect(within(juniper).queryByText('Belum ada Postel')).toBeNull();
 });
+
+test('merk terhapus tanpa hak Pulihkan: teks + Terhapus tanpa tautan', async () => {
+  await renderTable({
+    items: [{ ...(items[0] as ItemSummaryDto), brandDeleted: true }],
+    canOpenDeletedBrand: false,
+  });
+  expect(screen.queryByRole('link', { name: 'Ubiquiti' })).toBeNull();
+  expect(screen.getByText('Ubiquiti')).toBeInTheDocument();
+  expect(screen.getByText('Terhapus')).toBeInTheDocument();
+});

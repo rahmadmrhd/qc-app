@@ -197,3 +197,13 @@ test('Tambah merk membuka dialog dengan form merk', async () => {
   const dialog = await screen.findByRole('alertdialog');
   expect(within(dialog).getByLabelText('Nama merk')).toBeInTheDocument();
 });
+
+test('alasan Hapus massal nonaktif dapat dijangkau (bukan atribut title)', async () => {
+  live = [brand('b1', { status: 'active' })];
+  await mount();
+  await screen.findByText('Merk b1');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Merk b1' }));
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).getByRole('button', { name: 'Hapus' })).not.toHaveAttribute('title');
+  expect(within(bar).getByText('Nonaktifkan merk dulu sebelum dihapus')).toBeInTheDocument();
+});

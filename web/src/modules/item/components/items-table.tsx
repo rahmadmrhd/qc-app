@@ -17,6 +17,8 @@ export interface ItemsTableProps {
   canManage: (item: ItemSummaryDto) => boolean;
   /** Nama merk menaut ke View merk hanya bila pengguna berhak (`brandLinkAccess`). */
   canOpenBrand?: boolean;
+  /** Merk terhapus hanya menaut ke View bagi pemegang izin Pulihkan (`item: manage`); selain itu teks + penanda. */
+  canOpenDeletedBrand?: boolean;
   /** Kode BU menaut ke halaman BU hanya bila pengguna berhak (`businessUnitLinkAccess`). */
   canOpenBusinessUnit?: boolean;
   /** Ada = kolom checkbox (hanya bagi pemegang `item: manage`). */
@@ -43,6 +45,7 @@ export function ItemsTable({
   canEdit,
   canManage,
   canOpenBrand = true,
+  canOpenDeletedBrand = true,
   canOpenBusinessUnit = true,
   selection,
   pendingId = null,
@@ -64,7 +67,7 @@ export function ItemsTable({
       header: 'Merk',
       cell: (item) => (
         <span className="inline-flex flex-wrap items-center gap-1.5">
-          {canOpenBrand ? (
+          {canOpenBrand && (!item.brandDeleted || canOpenDeletedBrand) ? (
             <LinkCell to="/item/brands/$brandId" params={{ brandId: item.brandId }}>
               {item.brand}
             </LinkCell>

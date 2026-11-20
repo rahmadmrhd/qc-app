@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { ActionButton } from '@/components/action-button';
 import { BulkBar, useBulkAction, useRowSelection } from '@/components/data-table';
+import { DisabledReason } from '@/components/disabled-reason';
 import { FilterBar, FilterChip } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
@@ -115,6 +116,10 @@ function ItemsPage() {
   // Aksi massal hanya bila pengguna berhak `manage` pada SEMUA item terpilih.
   const allManageable = selected.length > 0 && selected.every((item) => canManageItem(me, item));
   const allInactive = selected.every((item) => item.status === 'inactive');
+  const manageReason = allManageable
+    ? undefined
+    : 'Anda tidak berhak mengelola sebagian item yang dipilih';
+  const deleteReason = allInactive ? undefined : 'Nonaktifkan item dulu sebelum dihapus';
 
   function toggleStatus(item: ItemSummaryDto) {
     const status = item.status === 'active' ? 'inactive' : 'active';
@@ -224,20 +229,39 @@ function ItemsPage() {
           </FilterBar>
         }
         bulkBar={
-          manageAny && allManageable ? (
+          manageAny ? (
             <BulkBar count={selection.count} onClear={selection.clear} busy={bulkBusy}>
               {deletedView ? (
-                <ActionButton action="restore" onClick={() => void restore.run()} />
+                <DisabledReason reason={manageReason}>
+                  <ActionButton
+                    action="restore"
+                    disabled={!allManageable}
+                    onClick={() => void restore.run()}
+                  />
+                </DisabledReason>
               ) : (
                 <>
-                  <ActionButton action="activate" onClick={() => void activate.run()} />
-                  <ActionButton action="deactivate" onClick={() => void deactivate.run()} />
-                  <ActionButton
-                    action="delete"
-                    disabled={!allInactive}
-                    title={allInactive ? undefined : 'Nonaktifkan item dulu sebelum dihapus'}
-                    onClick={() => setDeleteTarget({ kind: 'bulk' })}
-                  />
+                  <DisabledReason reason={manageReason}>
+                    <ActionButton
+                      action="activate"
+                      disabled={!allManageable}
+                      onClick={() => void activate.run()}
+                    />
+                  </DisabledReason>
+                  <DisabledReason reason={manageReason}>
+                    <ActionButton
+                      action="deactivate"
+                      disabled={!allManageable}
+                      onClick={() => void deactivate.run()}
+                    />
+                  </DisabledReason>
+                  <DisabledReason reason={manageReason ?? deleteReason}>
+                    <ActionButton
+                      action="delete"
+                      disabled={!allManageable || !allInactive}
+                      onClick={() => setDeleteTarget({ kind: 'bulk' })}
+                    />
+                  </DisabledReason>
                 </>
               )}
             </BulkBar>
@@ -250,6 +274,7 @@ function ItemsPage() {
           canEdit={(item) => canEditItem(me, item)}
           canManage={(item) => canManageItem(me, item)}
           canOpenBrand={brandLinkAccess(me).openBrandHref !== undefined}
+          canOpenDeletedBrand={manageAny}
           canOpenBusinessUnit={businessUnitLinkAccess(me).openBusinessUnitHref !== undefined}
           selection={manageAny ? selection : undefined}
           pendingId={pendingId}

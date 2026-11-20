@@ -240,3 +240,27 @@ test('tombol Tambah item tampil bagi yang boleh membuat, tanpa "Kelola merk"', a
   expect(screen.getByRole('button', { name: 'Tambah item' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Kelola merk' })).toBeNull();
 });
+
+test('pilihan yang tak dapat dikelola: bar tetap tampil, aksi nonaktif dengan alasan, Batalkan pilihan jalan', async () => {
+  rows = [summary('i1', { businessUnits: [{ id: 'bu-z', code: 'ZZZ', name: 'Lain' }] })];
+  await mount();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Asus M-i1' }));
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).getByText('1 dipilih')).toBeInTheDocument();
+  expect(within(bar).getByRole('button', { name: 'Aktifkan' })).toBeDisabled();
+  expect(within(bar).getByRole('button', { name: 'Hapus' })).toBeDisabled();
+  expect(
+    within(bar).getAllByText('Anda tidak berhak mengelola sebagian item yang dipilih').length,
+  ).toBeGreaterThan(0);
+  await userEvent.click(within(bar).getByRole('button', { name: 'Batalkan pilihan' }));
+  expect(screen.queryByText(/dipilih/)).toBeNull();
+});
+
+test('alasan Hapus massal nonaktif dapat dijangkau (bukan atribut title)', async () => {
+  rows = [summary('i1', { status: 'active' })];
+  await mount();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Asus M-i1' }));
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).getByRole('button', { name: 'Hapus' })).not.toHaveAttribute('title');
+  expect(within(bar).getByText('Nonaktifkan item dulu sebelum dihapus')).toBeInTheDocument();
+});

@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { ActionButton } from '@/components/action-button';
 import { BulkBar, useBulkAction, useRowSelection } from '@/components/data-table';
+import { DisabledReason } from '@/components/disabled-reason';
 import { FilterBar, FilterChip } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
@@ -225,12 +226,15 @@ function BrandsPage() {
                 <>
                   <ActionButton action="activate" onClick={() => void activate.run()} />
                   <ActionButton action="deactivate" onClick={() => void deactivate.run()} />
-                  <ActionButton
-                    action="delete"
-                    disabled={!allInactive}
-                    title={allInactive ? undefined : 'Nonaktifkan merk dulu sebelum dihapus'}
-                    onClick={() => setDeleteTarget({ kind: 'bulk' })}
-                  />
+                  <DisabledReason
+                    reason={allInactive ? undefined : 'Nonaktifkan merk dulu sebelum dihapus'}
+                  >
+                    <ActionButton
+                      action="delete"
+                      disabled={!allInactive}
+                      onClick={() => setDeleteTarget({ kind: 'bulk' })}
+                    />
+                  </DisabledReason>
                 </>
               )}
             </BulkBar>

@@ -61,7 +61,11 @@ export function BrandDetailView({
       title={brand.name}
       badge={deleted ? <DeletedBadge /> : <ActiveStatusBadge status={brand.status} />}
       actions={
-        deleted ? null : (
+        deleted ? (
+          canManage && onRestore ? (
+            <ActionButton action="restore" busy={restorePending} onClick={onRestore} />
+          ) : null
+        ) : (
           <>
             {canEdit && onEdit ? (
               <ActionButton action="edit" label="Ubah" onClick={onEdit} />

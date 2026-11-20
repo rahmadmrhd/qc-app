@@ -89,7 +89,9 @@ test('merk terhapus: banner, badge Terhapus, dan hanya Pulihkan bagi manage', as
   expect(screen.getByText('Data ini sudah dihapus')).toBeInTheDocument();
   expect(screen.getAllByText('Terhapus').length).toBeGreaterThan(0);
   expect(screen.queryByRole('button', { name: /^(Ubah|Aktifkan|Nonaktifkan|Hapus)$/ })).toBeNull();
-  await userEvent.click(screen.getByRole('button', { name: 'Pulihkan' }));
+  const buttons = screen.getAllByRole('button', { name: 'Pulihkan' });
+  expect(buttons).toHaveLength(2);
+  await userEvent.click(buttons[0] as HTMLElement);
   expect(onRestore).toHaveBeenCalledTimes(1);
 });
 

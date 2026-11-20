@@ -58,13 +58,12 @@ function ItemDetailPage() {
   const canManage = canManageItem(me, item);
 
   function restore() {
-    restoreItems.mutate(
-      { ids: [item.id] },
-      {
-        onSuccess: () => toast.success('Item dipulihkan (Nonaktif)'),
-        onError: (error) => toast.error(describeError(error)),
-      },
-    );
+    // `mutateAsync` + toast di closure: aksi "Pulihkan" pada toast "Dihapus" dipanggil setelah navigasi, saat
+    // komponen ini sudah dilepas (callback per-`mutate` tidak berjalan lagi).
+    restoreItems
+      .mutateAsync({ ids: [item.id] })
+      .then(() => toast.success('Item dipulihkan (Nonaktif)'))
+      .catch((error: unknown) => toast.error(describeError(error)));
   }
 
   const afterDelete = useAfterDelete({

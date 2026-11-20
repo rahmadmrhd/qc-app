@@ -226,7 +226,10 @@ test('item terhapus: banner, badge Terhapus, dan hanya tombol Pulihkan bagi mana
   expect(screen.queryByRole('button', { name: 'Ubah' })).toBeNull();
   expect(screen.queryByRole('button', { name: /aktifkan/i })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
-  await userEvent.click(screen.getByRole('button', { name: 'Pulihkan' }));
+  // Pulihkan ada di bar aksi dan di banner.
+  const buttons = screen.getAllByRole('button', { name: 'Pulihkan' });
+  expect(buttons).toHaveLength(2);
+  await userEvent.click(buttons[0] as HTMLElement);
   expect(onRestore).toHaveBeenCalledTimes(1);
 });
 
@@ -341,4 +344,22 @@ test('tautan Buka Postel tak tampil bila akses tidak diberikan atau null', async
   await openTab('Manual Book & Postel');
   expect(screen.queryByRole('link', { name: 'Buka Postel' })).toBeNull();
   expect(openPostelHref).toHaveBeenCalledTimes(1);
+});
+
+test('merk terhapus: tautan merk hanya bagi pemegang izin Pulihkan, selain itu teks + Terhapus', async () => {
+  const { unmount } = await renderView({
+    item: { ...item, brandDeleted: true },
+    canRestore: true,
+    openBrandHref: (id) => `/item/brands/${id}`,
+  });
+  expect(screen.getByRole('link', { name: 'Ubiquiti' })).toBeInTheDocument();
+  unmount();
+  await renderView({
+    item: { ...item, brandDeleted: true },
+    canRestore: false,
+    openBrandHref: (id) => `/item/brands/${id}`,
+  });
+  expect(screen.queryByRole('link', { name: 'Ubiquiti' })).toBeNull();
+  expect(screen.getByText('Ubiquiti')).toBeInTheDocument();
+  expect(screen.getByText('Terhapus')).toBeInTheDocument();
 });

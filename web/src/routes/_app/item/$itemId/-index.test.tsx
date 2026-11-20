@@ -157,9 +157,31 @@ test('item terhapus: banner Pulihkan memanggil items.restoreBatch', async () => 
   };
   await mount();
   expect(screen.getByText('Data ini sudah dihapus')).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Pulihkan' }));
+  await userEvent.click(screen.getAllByRole('button', { name: 'Pulihkan' })[0] as HTMLElement);
   await waitFor(() =>
     expect(calls.find((call) => call.id === 'items.restoreBatch')?.input).toEqual({ ids: ['i1'] }),
   );
   await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Item dipulihkan (Nonaktif)'));
+});
+
+test('Pulihkan dari toast "Dihapus" setelah navigasi tetap memberi toast sukses atau galat', async () => {
+  const { router } = await mount();
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 item?' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(router.state.location.pathname).toBe('/item'));
+  const options = toast.success.mock.calls.find((call) => call[0] === 'Dihapus')?.[1] as {
+    action: { onClick: () => void };
+  };
+  toast.success.mockClear();
+  options.action.onClick();
+  await waitFor(() => expect(toast.success).toHaveBeenCalledWith('Item dipulihkan (Nonaktif)'));
+  // Galat (mis. CONFLICT nama sudah dipakai) juga tampil.
+  const original = apiMock.getMockImplementation();
+  apiMock.mockImplementation(async (id: string, input: unknown) => {
+    if (id === 'items.restoreBatch') throw new Error('gagal');
+    return original?.(id, input);
+  });
+  options.action.onClick();
+  await waitFor(() => expect(toast.error).toHaveBeenCalled());
 });

@@ -74,7 +74,8 @@ export function ItemDetailView({
 }: ItemDetailViewProps) {
   const deleted = item.deleted !== undefined;
   const postelHref = postel ? (openPostelHref?.(postel.id) ?? null) : null;
-  const brandHref = openBrandHref?.(item.brandId);
+  // Merk terhapus: View-nya hanya terbuka bagi pemegang izin Pulihkan (soft delete 4.4).
+  const brandHref = item.brandDeleted && !canRestore ? undefined : openBrandHref?.(item.brandId);
   const firmwareLabel =
     item.firmware === ''
       ? ''
@@ -243,7 +244,11 @@ export function ItemDetailView({
       title={`${item.brand} ${item.model}`}
       badge={deleted ? <DeletedBadge /> : <ActiveStatusBadge status={item.status} />}
       actions={
-        deleted ? null : (
+        deleted ? (
+          canRestore && onRestore ? (
+            <ActionButton action="restore" busy={restorePending} onClick={onRestore} />
+          ) : null
+        ) : (
           <>
             {canEdit ? <ActionButton action="edit" label="Ubah" onClick={onEdit} /> : null}
             {canManage ? (

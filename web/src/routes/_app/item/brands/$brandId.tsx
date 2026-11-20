@@ -64,13 +64,12 @@ function BrandDetailPage() {
   const brand = query.data;
 
   function restore() {
-    restoreBrands.mutate(
-      { ids: [brandId] },
-      {
-        onSuccess: () => toast.success('Merk dipulihkan (Nonaktif)'),
-        onError: (error) => toast.error(describeError(error)),
-      },
-    );
+    // `mutateAsync` + toast di closure: aksi "Pulihkan" pada toast "Dihapus" dipanggil setelah navigasi, saat
+    // komponen ini sudah dilepas (callback per-`mutate` tidak berjalan lagi).
+    restoreBrands
+      .mutateAsync({ ids: [brandId] })
+      .then(() => toast.success('Merk dipulihkan (Nonaktif)'))
+      .catch((error: unknown) => toast.error(describeError(error)));
   }
 
   const afterDelete = useAfterDelete({
