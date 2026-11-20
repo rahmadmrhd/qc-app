@@ -32,8 +32,12 @@ export interface GuardInput {
 /**
  * Berkas yang mengubah isi image server (jalur tak dikenal dianggap mengubahnya: `classify` gagal tertutup). Jalur berspasi atau
  * berkarakter kontrol di ujung juga dianggap mengubahnya: `classify` memangkasnya, sedangkan Docker tidak (`a.md ` tetap di-COPY).
+ * Berkas `.github/workflows/` juga tetap dianggap mengubahnya di guard ini (gagal tertutup, keputusan 2026-11-19), walau
+ * `classify` kini hanya menyalakan `code` untuknya (keputusan CI 2026-11-20): melonggarkan guard rilis adalah keputusan
+ * terpisah yang belum diambil pemilik.
  */
-const touchesImage = (path: string): boolean => path !== path.trim() || classify([path]).image;
+const touchesImage = (path: string): boolean =>
+  path !== path.trim() || path.startsWith('.github/workflows/') || classify([path]).image;
 
 /**
  * Berkas selisih yang BELUM berjalan di staging dan tak boleh ikut rilis server: bukan metadata rilis `components` dan masuk
