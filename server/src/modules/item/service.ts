@@ -303,14 +303,15 @@ export async function listItemPage(
   if (deletedOnly && buIdsWithLevel(user.businessUnits, 'item', 'manage').length === 0) {
     throw appError('FORBIDDEN', 'Anda tidak berhak melihat item terhapus');
   }
-  const visible = deletedOnly
-    ? buIdsWithLevel(user.businessUnits, 'item', 'manage')
-    : visibleBuIds(user);
-  if (visible.length === 0) return { items: [], nextCursor: null };
+  const visible = visibleBuIds(user);
+  if (!deletedOnly && visible.length === 0) return { items: [], nextCursor: null };
+  const restorable = deletedOnly ? restorableItemsSql(user) : null;
   const where: string[] = [
-    `EXISTS (SELECT 1 FROM item_business_units x WHERE x.item_id = i.id AND x.bu_id IN (${visible.map(() => '?').join(',')}))`,
+    restorable
+      ? restorable.sql
+      : `EXISTS (SELECT 1 FROM item_business_units x WHERE x.item_id = i.id AND x.bu_id IN (${visible.map(() => '?').join(',')}))`,
   ];
-  const binds: unknown[] = [...visible];
+  const binds: unknown[] = restorable ? [...restorable.binds] : [...visible];
   if (input.status === 'active' || input.status === 'inactive') {
     where.push('i.status = ?');
     binds.push(input.status);
@@ -382,6 +383,29 @@ export async function listItemPage(
     ),
     nextCursor: rows.length > limit && last ? last.key : null,
   };
+}
+
+/**
+ * Penyaring SQL item terhapus yang boleh DIPULIHKAN pemanggil: `item: manage` pada SEMUA BU item, BU terhapus
+ * diabaikan selama masih ada BU hidup (keputusan 9). Cermin SQL `canActOnItem(user, buIds, 'manage')`, yang dipakai
+ * `items.get`, `items.restore`, dan `items.remove` (tes kesepakatan `soft-delete.test.ts` menjaganya sama). Item tanpa
+ * BU tak pernah lolos. Tanpa BU ber-`manage` sama sekali tak ada item yang lolos (`1 = 0`).
+ */
+export function restorableItemsSql(user: UserContext): { sql: string; binds: string[] } {
+  const managed = buIdsWithLevel(user.businessUnits, 'item', 'manage');
+  if (managed.length === 0) return { sql: '1 = 0', binds: [] };
+  const deleted = [...user.deletedBuIds];
+  const marks = (ids: readonly string[]) => ids.map(() => '?').join(',');
+  const notManaged = `r.bu_id NOT IN (${marks(managed)})`;
+  const live = deleted.length > 0 ? `r.bu_id NOT IN (${marks(deleted)})` : '1 = 1';
+  const exists = (condition: string) =>
+    `EXISTS (SELECT 1 FROM item_business_units r WHERE r.item_id = i.id AND ${condition})`;
+  const notExists = (condition: string) =>
+    `NOT EXISTS (SELECT 1 FROM item_business_units r WHERE r.item_id = i.id AND ${condition})`;
+  // (ada BU) AND (tak ada BU hidup tanpa manage) AND (ada BU hidup ATAU tak ada BU tanpa manage)
+  const sql = `(${exists('1 = 1')} AND ${notExists(`${live} AND ${notManaged}`)} AND (${exists(live)} OR ${notExists(notManaged)}))`;
+  const binds = [...deleted, ...managed, ...deleted, ...managed];
+  return { sql, binds: deleted.length > 0 ? binds : [...managed, ...managed] };
 }
 
 /**

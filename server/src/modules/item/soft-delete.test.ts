@@ -643,4 +643,81 @@ describe('perbaikan putaran fase 3 (server)', () => {
     expect(deletedBrand.items.length).toBe(2);
     expect(deletedBrand.items[0]?.brandDeleted).toBe(true);
   });
+
+  test('daftar terhapus hanya memuat item yang boleh dipulihkan pemanggil (manage pada SEMUA BU, BU terhapus diabaikan) dan sama dengan restore', async () => {
+    await seedBusinessUnit(env, { id: 'bu-c', code: 'C', name: 'BU C' });
+    await seedUser(env, {
+      id: 'u-mixed',
+      email: 'mixed@gmail.com',
+      buAssignments: [
+        { buId: 'bu-a', roleIds: ['r-manage'] },
+        { buId: 'bu-b', roleIds: ['r-view'] },
+        { buId: 'bu-c', roleIds: ['r-manage'] },
+      ],
+    });
+    await seedUser(env, {
+      id: 'u-abc',
+      email: 'abc@gmail.com',
+      buAssignments: ['bu-a', 'bu-b', 'bu-c'].map((buId) => ({ buId, roleIds: ['r-manage'] })),
+    });
+    const seed = async (id: string, buIds: string[]) => {
+      await seedItem(env, {
+        id,
+        brand: 'Sony',
+        model: id,
+        status: 'inactive',
+        businessUnitIds: buIds,
+      });
+    };
+    await seed('only-a', ['bu-a']);
+    await seed('a-and-b-view', ['bu-a', 'bu-b']);
+    await seed('a-and-c', ['bu-a', 'bu-c']);
+    await seed('a-and-b-deleted', ['bu-a', 'bu-b']);
+    const admin = await ctxOf('abc@gmail.com');
+    for (const id of ['only-a', 'a-and-b-view', 'a-and-c', 'a-and-b-deleted']) {
+      await removeItem(env, { id }, admin);
+    }
+    // bu-b dihapus (soft delete): bagi 'mixed' BU itu tak lagi menghalangi item {A manage, B terhapus}
+    await env.DB.prepare(
+      "UPDATE business_units SET deleted_at = '2026-11-19T00:00:00.000Z', deleted_by = 'seed', status = 'inactive' WHERE id = 'bu-b'",
+    ).run();
+    const user = await ctxOf('mixed@gmail.com');
+    const listed = (await listItemPage(env, { status: 'deleted' }, user)).items
+      .map((item) => item.id)
+      .sort();
+    // dengan bu-b terhapus: setiap item ber-BU {A, B(terhapus)} dan {A, C} lolos; semuanya memuat BU hidup yang di-manage
+    expect(listed).toEqual(['a-and-b-deleted', 'a-and-b-view', 'a-and-c', 'only-a']);
+    // kesepakatan daftar == restore: semua yang tampil dapat dipulihkan, dan sebaliknya
+    for (const id of ['only-a', 'a-and-b-view', 'a-and-c', 'a-and-b-deleted']) {
+      expect((await restoreItem(env, { id }, user)).id, id).toBe(id);
+    }
+  });
+
+  test('B hidup dengan level view menyembunyikan item dari daftar terhapus dan restore menjawab NOT_FOUND', async () => {
+    await seedUser(env, {
+      id: 'u-av',
+      email: 'amanage-bview@gmail.com',
+      buAssignments: [
+        { buId: 'bu-a', roleIds: ['r-manage'] },
+        { buId: 'bu-b', roleIds: ['r-view'] },
+      ],
+    });
+    await seedItem(env, {
+      id: 'ab',
+      brand: 'Sony',
+      model: 'AB',
+      status: 'inactive',
+      businessUnitIds: ['bu-a', 'bu-b'],
+    });
+    await seedInactive('only-a', 'OnlyA');
+    const admin = await ctxOf('mab@gmail.com');
+    await removeItem(env, { id: 'ab' }, admin);
+    await removeItem(env, { id: 'only-a' }, admin);
+    const user = await ctxOf('amanage-bview@gmail.com');
+    const listed = (await listItemPage(env, { status: 'deleted' }, user)).items.map((i) => i.id);
+    expect(listed).toEqual(['only-a']);
+    const hidden = await captureAppErrorAsync(() => restoreItem(env, { id: 'ab' }, user));
+    expect(hidden.code).toBe('NOT_FOUND');
+    await restoreItem(env, { id: 'only-a' }, user);
+  });
 });
