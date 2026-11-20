@@ -83,6 +83,7 @@ const DEFAULT_WIDTH = [
   '/serial/reports',
   '/sticker',
   '/sticker/library',
+  '/sticker/opname',
   '/sticker/stock',
   '/sticker/types',
 ];

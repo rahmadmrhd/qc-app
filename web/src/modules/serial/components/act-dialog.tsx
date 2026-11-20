@@ -9,7 +9,7 @@ import {
   type ServiceDiagnosisStage,
 } from '@shared/serials';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { FieldError } from '@/components/field-error';
 import { Select } from '@/components/select';
@@ -45,6 +45,7 @@ import { isProofRejection } from '../lib/draft';
 import { todayWib } from '../lib/locations';
 import type { ProofPhotoRef } from '../lib/proof-source';
 import type { StampPreviewInput } from '../lib/stamp-preview';
+import { useProofUploads } from '../lib/use-proof-uploads';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
   discardProofPhotos,
@@ -65,6 +66,7 @@ export interface ActDialogProps {
 }
 
 const STALE_RELOAD_MESSAGE = `${STALE_SAVE_MESSAGE}. Halaman sudah dimuat ulang. Catatan Anda tetap ada; cek lagi lalu kirim ulang.`;
+const PROOF_OWNER = 'recheck';
 
 /** Field yang galat servernya tampil di bawah field-nya sendiri. */
 type FieldKey =
@@ -171,6 +173,22 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   // Foto bukti QC (hanya Cek ulang): `draft` di server sampai Simpan menautkannya ke entri.
   const [proofPhotos, setProofPhotos] = useState<ProofPhotoRef[]>([]);
+  // Unggah latar foto bukti milik dialog ini (pemilik form): menahan tombol kirim selama berjalan/gagal, dan ditutup
+  // bersama dialog (unggahan dibatalkan, foto selesai yang belum terkirim dibuang).
+  const proofCountRef = useRef(0);
+  proofCountRef.current = proofPhotos.length;
+  const proofUploads = useProofUploads({
+    onAdd: (_owner, photo) => {
+      if (proofCountRef.current >= SERIAL_PROOF_LIMITS.perEntryMax) return false;
+      proofCountRef.current += 1;
+      setProofPhotos((current) => [...current, photo]);
+      return true;
+    },
+  });
+  const ownProofUploads = proofUploads.forOwner(PROOF_OWNER);
+  const proofUploadsBlocked = proofUploads.busy || proofUploads.hasFailed;
+  // Gambar catatan yang masih diunggah: tombol kirim ditahan agar gambarnya tidak tertinggal.
+  const [messageBusy, setMessageBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [confirming, setConfirming] = useState(false);
@@ -267,6 +285,9 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
 
   const submitDisabled =
     act.isPending ||
+    // Foto bukti belum beres: masih diunggah atau gagal (diulang atau dibuang dulu).
+    proofUploadsBlocked ||
+    messageBusy ||
     // Kirim: pilihan lokasi servis belum dimuat (field-nya baru tampil bila ada lebih dari satu).
     (kind === 'send' && serviceLocations.isPending) ||
     (messageRequired && message.trim() === '') ||
@@ -398,6 +419,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
   // Menutup tanpa menyimpan: foto draft yang sudah diunggah dibuang (upaya terbaik; sisanya disapu penjadwal).
   function cancel() {
     if (act.isPending) return;
+    proofUploads.cancelOwner(PROOF_OWNER);
     void discardProofPhotos(proofPhotos.map((photo) => photo.id));
     onClose();
   }
@@ -569,6 +591,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
               <Label id="act-proof-label">Bukti foto (opsional)</Label>
               <ProofPhotoField
                 value={proofPhotos}
+                uploads={ownProofUploads}
                 max={SERIAL_PROOF_LIMITS.perEntryMax}
                 disabled={act.isPending}
                 stamp={recheckStamp}
@@ -588,10 +611,17 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
             onChange={setMessage}
             error={errorOf('message')}
             disabled={act.isPending}
+            onBusyChange={setMessageBusy}
           />
           {error ? (
             <p role="alert" className="text-sm text-destructive-text">
               {error}
+            </p>
+          ) : null}
+          {proofUploadsBlocked ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              {ownProofUploads.entries.length} foto masih diunggah atau gagal; selesaikan, ulangi,
+              atau buang dulu sebelum menyimpan.
             </p>
           ) : null}
         </div>

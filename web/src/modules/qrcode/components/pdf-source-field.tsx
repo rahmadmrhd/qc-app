@@ -2,6 +2,14 @@ import type { QrDocumentDto } from '@shared/contract';
 import { QR_LIMITS } from '@shared/qrcode';
 import { useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
+import {
+  FileDropZone,
+  FilePicker,
+  type RejectedFile,
+  RejectedList,
+  UploadProgress,
+} from '@/components/file-dialog';
+import { intakeFiles } from '@/components/file-dialog/intake';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,13 +22,18 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { looksLikePdf } from '../lib/document-name';
+
+const PDF_MIME = ['application/pdf'];
 
 export interface PdfSourceFieldProps {
   document: QrDocumentDto | null;
   onDocument: (document: QrDocumentDto) => void;
   /** Mengunggah (atau mengganti isi bila `replaceId` ada) dan mengembalikan dokumen terbaru. */
-  onUpload: (file: File, replaceId?: string) => Promise<QrDocumentDto>;
+  onUpload: (
+    file: File,
+    replaceId?: string,
+    ctx?: { onProgress(fraction: number | null): void },
+  ) => Promise<QrDocumentDto>;
   /** Menyalin berkas Drive (link atau fileId) ke folder aplikasi; dengan `replaceId` mengganti isi PDF yang ada. */
   onClone: (source: string, replaceId?: string) => Promise<QrDocumentDto>;
   /** Dipanggil saat proses (unggah/salin) mulai/selesai; induk menonaktifkan Simpan selama berjalan. */
@@ -38,6 +51,13 @@ export function PdfSourceField({
   // Penggantian isi (PDF sudah terpasang) selalu dikonfirmasi lebih dulu; sumbernya berkas unggahan atau berkas Drive.
   const [pending, setPending] = useState<{ file: File } | { drive: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Berkas yang ditolak saat masuk (jenis/ukuran); pesan seragam dengan dialog lampiran.
+  const [rejected, setRejected] = useState<RejectedFile[]>([]);
+  // Progres unggah PDF: tanpa tahap menyiapkan; byte penuh = server masih memproses.
+  const [progress, setProgress] = useState<{
+    phase: 'uploading' | 'processing';
+    fraction: number | null;
+  } | null>(null);
   const [task, setTaskState] = useState<'clone' | 'upload' | null>(null);
   const busy = task !== null;
   const setTask = (next: 'clone' | 'upload' | null) => {
@@ -51,18 +71,17 @@ export function PdfSourceField({
   // Unggah ulang SELALU mengganti isi PDF yang terpasang (URL tetap); PDF baru hanya saat belum ada PDF.
   const replacing = document !== null;
 
-  function choose(file: File | undefined) {
+  /** Pilih atau seret-lepas: jenis dan ukuran diperiksa seragam (`intakeFiles`), lalu masuk alur konfirmasi yang sama. */
+  function choose(files: File[], refused: RejectedFile[]) {
     setError(null);
-    if (!file) return;
-    if (!looksLikePdf(file)) {
-      setError('Hanya berkas PDF yang dapat diunggah');
-      return;
-    }
-    if (file.size > QR_LIMITS.documentMaxBytes) {
-      setError('Ukuran PDF maksimal 10 MB');
-      return;
-    }
-    setPending({ file });
+    const result = intakeFiles(files, {
+      accept: PDF_MIME,
+      maxBytes: QR_LIMITS.documentMaxBytes,
+      room: 1,
+    });
+    setRejected([...refused, ...result.rejected]);
+    const first = result.queued[0];
+    if (first) setPending({ file: first.file });
   }
 
   async function cloneFromDrive(source: string) {
@@ -87,16 +106,33 @@ export function PdfSourceField({
       return;
     }
     setTask('upload');
+    setProgress({ phase: 'uploading', fraction: null });
     try {
-      onDocument(await onUpload(pending.file, document?.id));
+      onDocument(
+        await onUpload(pending.file, document?.id, {
+          onProgress: (fraction) =>
+            setProgress({
+              phase: fraction !== null && fraction >= 1 ? 'processing' : 'uploading',
+              fraction,
+            }),
+        }),
+      );
       setPending(null);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Gagal mengunggah PDF');
       setPending(null);
     } finally {
+      setProgress(null);
       setTask(null);
     }
   }
+
+  const progressEl =
+    task === 'upload' && progress ? (
+      <div role="status" aria-label="Progres unggah PDF">
+        <UploadProgress phase={progress.phase} fraction={progress.fraction} />
+      </div>
+    ) : null;
 
   const pendingName =
     pending === null ? '' : 'file' in pending ? pending.file.name : 'berkas Drive';
@@ -109,22 +145,22 @@ export function PdfSourceField({
           tetap).
         </p>
       ) : null}
-      <div className="space-y-1.5">
-        <Label htmlFor="qr-pdf-file">Pilih PDF</Label>
-        <Input
-          id="qr-pdf-file"
-          type="file"
-          accept="application/pdf"
-          disabled={busy}
-          onChange={(event) => {
-            choose(event.target.files?.[0]);
-            event.target.value = '';
-          }}
-        />
+      <FileDropZone
+        accept={PDF_MIME}
+        disabled={busy}
+        onFiles={choose}
+        className="space-y-1.5 rounded-md border border-dashed p-3"
+      >
+        <FilePicker accept={PDF_MIME} disabled={busy} onFiles={choose}>
+          Pilih PDF
+        </FilePicker>
         <p className="text-xs text-muted-foreground">
-          {replacing ? 'Mengganti PDF mempertahankan URL yang sama. ' : ''}Maksimal 10 MB.
+          Atau seret PDF ke sini. {replacing ? 'Mengganti PDF mempertahankan URL yang sama. ' : ''}
+          Maksimal 10 MB.
         </p>
-      </div>
+        {pending === null ? progressEl : null}
+      </FileDropZone>
+      <RejectedList items={rejected} onClear={() => setRejected([])} />
       <div className="space-y-1.5">
         <Label htmlFor="qr-drive-source">
           {replacing ? 'Atau ganti isi dari Google Drive' : 'Atau salin dari Google Drive'}
@@ -212,6 +248,7 @@ export function PdfSourceField({
                 : `"${pendingName}" akan disimpan di Drive dan dibagikan kepada siapa saja yang punya link (hanya lihat). Siapa pun yang memindai QR atau memegang link dapat membukanya. Berbagi dicabut otomatis bila PDF tidak dipakai konfigurasi mana pun.`}
             </DialogDescription>
           </DialogHeader>
+          {progressEl}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setPending(null)}>
               Batal

@@ -193,7 +193,7 @@ function parseCount(value: unknown, minPieces: number): StockCount | string {
     }
     rows.push({ sheets: entry.sheets, perSheet: entry.perSheet });
   }
-  if (!isCountPart(source.loose)) return 'Butir lepas harus bilangan bulat tidak negatif';
+  if (!isCountPart(source.loose)) return 'Butir harus bilangan bulat tidak negatif';
   const count: StockCount = { rows, loose: source.loose };
   const pieces = piecesOfCount(count);
   if (pieces < minPieces || pieces > STICKER_LIMITS.qtyMax) {

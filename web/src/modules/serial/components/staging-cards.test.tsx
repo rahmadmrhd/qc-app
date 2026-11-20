@@ -1,6 +1,7 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+import type { UploadEntry } from '@/components/file-dialog/use-background-uploads';
 import { makeRow, proofRef } from '../test-support';
 import { StagingCards } from './staging-cards';
 
@@ -122,4 +123,49 @@ test('catatan Markdown tampil sebagai ringkasan teks polos pada lencana kartu', 
   expect(
     within(card).getByText('Catatan: Penting: cek kabel - port 1 - port 2'),
   ).toBeInTheDocument();
+});
+
+const uploadEntry = (owner: string, over: Partial<UploadEntry> = {}): UploadEntry => ({
+  key: `u-${owner}`,
+  owner,
+  file: new File([new Uint8Array(2)], 'baru.jpg', { type: 'image/jpeg' }),
+  name: 'baru.jpg',
+  phase: 'uploading',
+  fraction: 0.4,
+  error: null,
+  ...over,
+});
+
+test('F2: unggahan berjalan tampil di kartu barisnya dengan tombol Batalkan', async () => {
+  const onCancelUpload = vi.fn();
+  renderCards(undefined, {
+    uploadEntries: [uploadEntry('id-AAA111')],
+    onCancelUpload,
+    onRetryUpload: vi.fn(),
+  });
+  const first = screen.getAllByRole('listitem')[0] as HTMLElement;
+  expect(within(first).getByTestId('attachment-pending')).toBeInTheDocument();
+  expect(
+    within(screen.getAllByRole('listitem')[1] as HTMLElement).queryByTestId('attachment-pending'),
+  ).toBeNull();
+  await userEvent.click(within(first).getByRole('button', { name: /^Batalkan / }));
+  expect(onCancelUpload).toHaveBeenCalledWith('u-id-AAA111');
+});
+
+test('F2: unggahan gagal di kartu dapat diulang atau dibuang (pengguna ponsel tidak buntu)', async () => {
+  const onRetryUpload = vi.fn();
+  const onCancelUpload = vi.fn();
+  renderCards(undefined, {
+    uploadEntries: [
+      uploadEntry('id-AAA111', { phase: 'failed', fraction: null, error: 'Server menolak' }),
+    ],
+    onRetryUpload,
+    onCancelUpload,
+  });
+  const first = screen.getAllByRole('listitem')[0] as HTMLElement;
+  expect(within(first).getByText('Server menolak')).toBeInTheDocument();
+  await userEvent.click(within(first).getByRole('button', { name: /^Ulangi / }));
+  expect(onRetryUpload).toHaveBeenCalledWith('u-id-AAA111');
+  await userEvent.click(within(first).getByRole('button', { name: /^Buang / }));
+  expect(onCancelUpload).toHaveBeenCalledWith('u-id-AAA111');
 });

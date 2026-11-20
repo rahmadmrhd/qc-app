@@ -9,6 +9,7 @@ import { useMe } from '@/modules/auth/use-me';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
 import { CUSTODY_LABEL, formatDay, STATUS_LABEL } from '../lib/labels';
 import { todayWib } from '../lib/locations';
+import { ProofReplaceProvider } from '../lib/proof-replace-context';
 import { hasPendingProof, PROOF_POLL_MS } from '../lib/proof-state';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import { serialDetailQueryOptions } from '../queries';
@@ -134,61 +135,65 @@ export function SerialDetailPage({ serialId, onBack, caseId }: SerialDetailPageP
   const canWrite = buIdsWithLevelOf(me, 'serial', 'edit').includes(serial.buId);
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1.5">
-          <Button variant="link" className="h-auto p-0 text-xs" onClick={onBack}>
-            ← Daftar serial
-          </Button>
-          <h1 className="font-mono text-2xl font-semibold">{serial.serial}</h1>
-          <p className="text-sm text-muted-foreground">{serial.itemLabel}</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{serial.buCode}</Badge>
-            <Badge variant={serial.status === 'good' ? 'secondary' : 'destructive'}>
-              {STATUS_LABEL[serial.status]}
-            </Badge>
-            <Badge variant="outline">
-              {serial.custody === 'transit'
-                ? `${CUSTODY_LABEL.transit}${serial.transitToLocationName ? ` · ke ${serial.transitToLocationName}` : ''}`
-                : `${CUSTODY_LABEL[serial.custody]} · ${serial.locationName}`}
-            </Badge>
-            {serial.openCase ? (
-              <Badge variant="outline">{`${serial.openCase.number} (terbuka)`}</Badge>
+    <ProofReplaceProvider>
+      <div className="space-y-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1.5">
+            <Button variant="link" className="h-auto p-0 text-xs" onClick={onBack}>
+              ← Daftar serial
+            </Button>
+            <h1 className="font-mono text-2xl font-semibold">{serial.serial}</h1>
+            <p className="text-sm text-muted-foreground">{serial.itemLabel}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="outline">{serial.buCode}</Badge>
+              <Badge variant={serial.status === 'good' ? 'secondary' : 'destructive'}>
+                {STATUS_LABEL[serial.status]}
+              </Badge>
+              <Badge variant="outline">
+                {serial.custody === 'transit'
+                  ? `${CUSTODY_LABEL.transit}${serial.transitToLocationName ? ` · ke ${serial.transitToLocationName}` : ''}`
+                  : `${CUSTODY_LABEL[serial.custody]} · ${serial.locationName}`}
+              </Badge>
+              {serial.openCase ? (
+                <Badge variant="outline">{`${serial.openCase.number} (terbuka)`}</Badge>
+              ) : null}
+              {serial.hasProofPhotos ? <ProofBadge /> : null}
+              <ProofProblemBadge count={serial.proofProblemCount} />
+            </div>
+            {formerBuCodes(serial).length > 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Pernah di: {formerBuCodes(serial).join(', ')}
+              </p>
             ) : null}
-            {serial.hasProofPhotos ? <ProofBadge /> : null}
-            <ProofProblemBadge count={serial.proofProblemCount} />
           </div>
-          {formerBuCodes(serial).length > 0 ? (
-            <p className="text-xs text-muted-foreground">
-              Pernah di: {formerBuCodes(serial).join(', ')}
-            </p>
+          {canWrite ? (
+            <Button variant="outline" onClick={() => setEditing(true)}>
+              Ubah data
+            </Button>
           ) : null}
         </div>
-        {canWrite ? (
-          <Button variant="outline" onClick={() => setEditing(true)}>
-            Ubah data
-          </Button>
-        ) : null}
-      </div>
-      <ProofProblemBanner count={serial.proofProblemCount} photos={problemPhotos} />
-      <div data-tour="serial-stepper">
-        <SerialStepper status={serial.status} hasCases={serial.cases.length > 0} />
-      </div>
-      <CustodyPanel serial={serial} today={todayWib()} />
-      <Summary serial={serial} events={events} />
-      <section aria-label="Riwayat" className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold">Riwayat</h2>
-          <ActButtons
-            state={{ status: serial.status, custody: serial.custody }}
-            actor={serialActorModules(me, serial.buId)}
-            onPick={setActing}
-          />
+        <ProofProblemBanner count={serial.proofProblemCount} photos={problemPhotos} />
+        <div data-tour="serial-stepper">
+          <SerialStepper status={serial.status} hasCases={serial.cases.length > 0} />
         </div>
-        <TimelineTabs serial={serial} {...(caseId ? { initialCaseId: caseId } : {})} />
-      </section>
-      {acting ? <ActDialog serial={serial} kind={acting} onClose={() => setActing(null)} /> : null}
-      {editing ? <EditSerialDialog serial={serial} onClose={() => setEditing(false)} /> : null}
-    </div>
+        <CustodyPanel serial={serial} today={todayWib()} />
+        <Summary serial={serial} events={events} />
+        <section aria-label="Riwayat" className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold">Riwayat</h2>
+            <ActButtons
+              state={{ status: serial.status, custody: serial.custody }}
+              actor={serialActorModules(me, serial.buId)}
+              onPick={setActing}
+            />
+          </div>
+          <TimelineTabs serial={serial} {...(caseId ? { initialCaseId: caseId } : {})} />
+        </section>
+        {acting ? (
+          <ActDialog serial={serial} kind={acting} onClose={() => setActing(null)} />
+        ) : null}
+        {editing ? <EditSerialDialog serial={serial} onClose={() => setEditing(false)} /> : null}
+      </div>
+    </ProofReplaceProvider>
   );
 }

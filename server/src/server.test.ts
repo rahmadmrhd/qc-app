@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import { announcedApis } from '@shared/api-versions';
 import { removeTempDirSync } from '../test-support/safe-rm';
 import { type Config, loadConfig } from './config';
 import { signSessionToken } from './core/session';
@@ -58,6 +59,8 @@ describe('createServer: API', () => {
       ok: true,
       version: expect.stringMatching(/^\d+\.\d+\.\d+$/),
       build: expect.any(String),
+      // Peta versi API per kelompok (kebijakan versi API 2026-11-20): klien memilih id berversi darinya.
+      apis: announcedApis(),
     });
   });
 

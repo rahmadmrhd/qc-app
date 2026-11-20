@@ -5,7 +5,7 @@ Dijalankan pemilik pada perangkat nyata sebelum Fase 2 ditulis (rencana `docs/su
 ## Prasyarat
 
 - Laptop Windows 10/11 x64 **bersih** (tanpa Node, Bun, atau Git) dan satu laptop/PC lain sebagai pembanding berisi **aplikasi WPF Country Lock lama**.
-- Installer: `desktop/dist-app/QC-App-Setup-<versi>-<arch>.exe` (`<arch>` = `x64` atau `arm64`; dibuat `bun run build:desktop`, atau diunduh dari Drive hasil `release.yml`; pasang per pengguna, tanpa hak admin). Untuk uji tanpa installer: `bun run build:web && bun run --cwd desktop pack`, lalu `desktop/dist-app/win-unpacked/QC App.exe`.
+- Installer: `desktop/dist-app/QC-App-Setup-<versi>-<arch>.exe` (`<arch>` = `x64` atau `arm64`; dibuat `bun run build:desktop`, atau diunduh dari Drive hasil `release.yml`; pasang per pengguna, tanpa hak admin). Untuk uji tanpa installer: `bun run build && bun run --cwd desktop pack`, lalu `desktop/dist-app/win-unpacked/QC App.exe`.
 - Paket skrip: folder `Country Lock2` (berisi `config.QC`, `MIKROTIK\`, `UBIQUITI\`).
 - Router jump Mikrotik (alamat sesuai `server.ip` di `config.QC`) dan perangkat uji: satu Ubiquiti dan satu Mikrotik, keduanya **bukan** perangkat produksi.
 - Akun QC terdaftar di server (staging `https://qc-dev.rhd.my.id` atau production `https://qc.rhd.my.id`) dan peramban sistem yang dapat login Google.

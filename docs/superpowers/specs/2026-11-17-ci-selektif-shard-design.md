@@ -84,12 +84,12 @@ Masukan: daftar jalur berkas (satu per baris). Keluaran (`key=true|false` ke `GI
 
 | Keluaran | Benar bila ada perubahan di |
 |---|---|
-| `code` | apa pun selain `docs/**`, `**/*.md`, `.superpowers/**` |
+| `code` | apa pun selain `docs/**`, `**/*.md`, `.superpowers/**`; `.github/workflows/**` HANYA menyalakan `code` (keputusan pemilik 2026-11-20) |
 | `server_tests` | `server/**`, `shared/**`, `deploy/**` (tes `deploy-files`/`deploy-script` ada di server), atau infra |
 | `web_tests` | `web/**`, `shared/**`, `countrylock/**`, atau infra |
 | `shared_tests` | `shared/**` atau infra |
 | `desktop_tests` | `desktop/**`, `countrylock/**`, `shared/**` (desktop di `dev` mengimpornya), atau infra |
-| `desktop_pack` | `desktop/**`, `countrylock/**`, `web/**`, `shared/**`, atau infra (installer membawa UI dasar dari build web) |
+| `desktop_pack` | `desktop/**`, `countrylock/**`, `shared/**`, atau infra. `web/**` TIDAK memicunya (keputusan pemilik 2026-11-20, lihat §6) |
 | `image` | `server/**`, `shared/**`, `web/**`, `countrylock/**`, `scripts/**`, `Dockerfile`, `.dockerignore`, `package.json`, `bun.lock`, `tsconfig.base.json`, dan `desktop/package.json` saja (Dockerfile menyalinnya; keputusan pemilik 2026-11-17) |
 
 Pengecualian dokumentasi (keputusan pemilik 2026-11-17): `docs/ci-cd.md` dibaca tes `scripts/ci-workflows.test.ts`, jadi
@@ -97,7 +97,7 @@ mengubahnya menyalakan `code` (lint + tes `scripts`, tanpa tes server/image); do
 
 "Infra" = **setiap jalur yang tidak cocok dengan aturan tabel di atas dan bukan dokumentasi** (`docs/**`, `**/*.md`,
 `.superpowers/**`, `.claude/**`), mis. `.github/**`, `package.json`, `bun.lock`, `biome.json`, `tsconfig*.json`, `scripts/**`,
-berkas akar baru, atau folder baru: **semua keluaran menjadi true** (konservatif; lebih baik menjalankan berlebih daripada
+berkas akar baru, atau folder baru: **semua keluaran menjadi true** (kecuali `.github/workflows/**`, aturan sendiri yang hanya menyalakan `code`, keputusan pemilik 2026-11-20; `.github/actions/**` dan `.github/` lain tetap konservatif karena aksi lokal dipakai tes server/web) (konservatif; lebih baik menjalankan berlebih daripada
 melewatkan). Jalur berkas yang di-rename memakai nama lama DAN baru. Daftar berkas kosong, lebih dari
 2.900 berkas (mendekati batas API 3.000), atau galat API: semua true. `workflow_dispatch`: semua true.
 Typecheck, Biome, dan tes `scripts/` selalu jalan bila `code` benar (murah dan lintas-workspace).
@@ -131,7 +131,7 @@ failure/cancelled. Setiap job menginstal dependensi lewat aksi lokal `./.github/
 `bun run build` terpisah di job test dihapus: build web sudah dijalankan Dockerfile (`image`), jadi tidak diulang.
 
 ### 5.4 Job desktop (hanya pemeriksaan build; tidak ada artefak)
-Runner `windows-latest`. Langkah: instal dependensi → `bun run --cwd desktop test` (vitest) → `bun run build:web`
+Runner `windows-latest`. Langkah: instal dependensi → `bun run --cwd desktop test` (vitest) → pulihkan cache `server/dist` (bila meleset: `bun run build:web`, lihat di bawah)
 → `bun run --cwd desktop pack` untuk x64 dan arm64 (`electron-builder --dir --win --x64 --arm64`) →
 `verify-pack`. Yang dijalankan:
 - **x64**: asap penuh (`QC App.exe --smoke`) + cek `ui-baseline`.
@@ -141,6 +141,10 @@ Runner `windows-latest`. Langkah: instal dependensi → `bun run --cwd desktop t
   baris matrix. `verify-pack.ts` mendapat argumen `--arch x64|arm64` (arm64 melewati `spawn`).
 `electron-builder.yml` tidak diubah (NSIS tetap x64); arm64 installer menunggu workflow rilis. Dijalankan hanya bila
 `desktop_pack` benar. `UI_PUBLIC_KEY_PEM` tidak dipakai (bukan build rilis).
+UI dasar (`server/dist`) tidak dibangun ulang tiap run: job memakai cache `actions/cache` berkunci hash masukan build web
+(`web/**`, `shared/**`, `countrylock/**`, `package.json`, `bun.lock`, `tsconfig.base.json`), kunci persis tanpa `restore-keys`;
+langkah "Build web" hanya jalan bila cache meleset (keputusan pemilik 2026-11-20, §6). Cache PR hanya terbaca di PR itu
+sendiri (tak ada cache di `dev`, karena job hanya jalan di PR), jadi hit baru terjadi pada push berikutnya di PR yang sama.
 
 ### 5.5 `test.yml` dan `deploy-server.yml`
 - `test.yml` (PR): satu job `ci` yang memanggil `ci.yml` (`ref` kosong, `pr` = nomor PR, `build-image: true`) dan gerbang `test`.
@@ -189,6 +193,14 @@ dan tanpa artefak; pembuatan installer menunggu workflow rilis.
 - Cache registry: production tanpa cache (`no-cache`); staging membaca kedua tag (5.5). Diterapkan sebagai `no-cache` penuh
   (lebih luas daripada pilihan literal "tanpa cache web-build") karena lapisan `RUN` lain juga masuk image runtime; pemilik
   dapat menyempitkannya bila build production terasa terlalu lambat.
+- (2026-11-20, pemilik produk; mengubah butir 5.2, 5.4, dan 5.6 yang bertentangan) Tiga penyempitan aturan setelah PR #139
+  (hanya `.github/workflows/` dan fragmen changelog) memicu seluruh CI dan deploy staging: (1) `.github/workflows/**` hanya
+  menyalakan `code` (lint + tes `scripts/`); `.github/actions/**` dan jalur `.github/` lain tetap menyalakan semua karena
+  aksi lokal `mariadb`/`setup` dipakai tes server/web. (2) `web/**` tak lagi menyalakan `desktop_pack`: UI dasar desktop
+  diperbarui saat desktop dirilis dan UI terbarunya lewat manifest bertanda tangan; `shared/**` dan `countrylock/**`
+  (diimpor langsung desktop) tetap memicunya. (3) PR yang hanya mengubah `desktop/**` tak membangun ulang web: `server/dist`
+  di-cache menurut hash masukan build web. Risiko diterima: mengubah `ci.yml` sendiri tak lagi menjalankan jobnya; cache
+  tak lintas PR. Pertanyaan terbuka tertutup: jalur `.github/` memang tak masuk image (`.dockerignore`).
 
 ## 7. Risiko dan pertanyaan terbuka
 - **Pemilihan salah (false negative):** diredam oleh aturan konservatif "infra → semua", dan tes unit `ci-changes.ts` untuk

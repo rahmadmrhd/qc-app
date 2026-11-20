@@ -67,6 +67,7 @@ export function SerialScanInput({
   const { feedback, announce } = useScanFeedback();
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [strictSerial, setStrictSerial] = useState<string | null>(null);
+  const [strictOwner, setStrictOwner] = useState('');
   const [strictNote, setStrictNote] = useState<string | null>(null);
 
   function submit(text: string) {
@@ -100,6 +101,7 @@ export function SerialScanInput({
       return;
     }
     setStrictNote(null);
+    setStrictOwner(context.newOwnerId());
     setStrictSerial(pick.serial);
   }
 
@@ -188,6 +190,8 @@ export function SerialScanInput({
             }}
             initialSerial={strictSerial}
             info={strict.info}
+            ownerId={strictOwner}
+            proof={strict.proof}
             isKnown={strict.isKnown}
             onConfirm={strict.onConfirm}
             capacity={strict.capacity}

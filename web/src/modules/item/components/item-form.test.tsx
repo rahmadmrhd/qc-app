@@ -1,10 +1,17 @@
 import type { BrandDto, BusinessUnitOptionDto, StickerDto, StickerTypeDto } from '@shared/contract';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
-const uploadMock = vi.hoisted(() => vi.fn());
-vi.mock('@/modules/files/use-upload-image', () => ({ useUploadImage: () => uploadMock }));
+const galleryUploadMock = vi.hoisted(() => vi.fn());
+vi.mock('@/modules/files/file-source', () => ({
+  itemFileSource: {
+    key: 'item-files',
+    mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+    upload: galleryUploadMock,
+  },
+}));
 vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: 'data:image/png;base64,AAA', isLoading: false, isError: false }),
 }));
@@ -15,10 +22,12 @@ import { ItemForm, type ItemFormProps } from './item-form';
 
 /** Tombol Simpan berada di luar form (seperti di bar halaman/footer dialog) dan memakai `form={formId}`. */
 function Harness(props: Omit<ItemFormProps, 'formId'>) {
+  // Seperti pembungkus (FormPage/FormDialogShell): Simpan ditahan selama form melaporkan unggahan berjalan.
+  const [busy, setBusy] = useState(false);
   return (
     <>
-      <ItemForm formId="item-form" {...props} />
-      <button type="submit" form="item-form">
+      <ItemForm formId="item-form" {...props} onBusyChange={setBusy} />
+      <button type="submit" form="item-form" disabled={busy}>
         Simpan
       </button>
     </>
@@ -116,7 +125,7 @@ async function pickBusinessUnit(name: string) {
 }
 
 beforeEach(() => {
-  uploadMock.mockReset();
+  galleryUploadMock.mockReset();
 });
 
 test('merk, BU, dan tipe wajib; tidak mengirim bila kosong', async () => {
@@ -769,4 +778,76 @@ test('merk terhapus yang tersimpan tampil dengan nama dan "Terhapus", bukan id',
     defaultValues: { ...toItemFormDefaults(), brandId: 'b-del', businessUnitIds: ['bu-a'] },
   });
   expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveValue('Sony — Terhapus');
+});
+
+test('gambar galeri yang masih diunggah menahan Simpan sampai selesai', async () => {
+  let finish: (value: unknown) => void = () => undefined;
+  galleryUploadMock.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  renderForm();
+  await openTab('Gambar');
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah gambar' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Tambah gambar' });
+  const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, {
+    target: { files: [new File([new Uint8Array(4)], 'a.png', { type: 'image/png' })] },
+  });
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Tambahkan (1)' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled());
+  finish({
+    id: 'g1',
+    name: 'a',
+    size: 1,
+    width: 1,
+    height: 1,
+    uploadedBy: '',
+    createdAt: '',
+    usageCount: 0,
+    canRename: false,
+    canRemove: false,
+    thumbUrl: '',
+    previewUrl: '',
+  });
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled());
+});
+
+test('gambar yang disisipkan ke Detail dan masih diunggah menahan Simpan sampai selesai', async () => {
+  let finish: (value: unknown) => void = () => undefined;
+  galleryUploadMock.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  renderForm();
+  await openTab('Spesifikasi');
+  await userEvent.click(screen.getByRole('button', { name: 'Gambar' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Sisipkan gambar' });
+  const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, {
+    target: { files: [new File([new Uint8Array(4)], 'a.png', { type: 'image/png' })] },
+  });
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Sisipkan (1)' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled());
+  finish({
+    id: 'g1',
+    name: 'a',
+    size: 1,
+    width: 1,
+    height: 1,
+    uploadedBy: '',
+    createdAt: '',
+    usageCount: 0,
+    canRename: false,
+    canRemove: false,
+    thumbUrl: '',
+    previewUrl: '',
+  });
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled(), {
+    timeout: 4000,
+  });
 });

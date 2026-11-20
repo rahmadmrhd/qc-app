@@ -1,7 +1,8 @@
+import type { ApiId } from '@shared/contract';
 import { expect, test, vi } from 'vitest';
 import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
 import { ApiError } from './api-error';
-import { createApiClient } from './client';
+import { createApiClient, requestUrl } from './client';
 
 function respond(body: unknown, init: ResponseInit = {}, contentType = 'application/json') {
   const text = typeof body === 'string' ? body : JSON.stringify(body);
@@ -454,4 +455,15 @@ test('permintaan tulis menandai registri sibuk selama berjalan (termasuk saat ga
   expect(isBusy()).toBe(false);
   releaseGet();
   await read;
+});
+
+test('requestUrl: id dasar memakai /api/v1, id @2 memakai /api/v2', () => {
+  const parts = { verb: 'PUT' as const, path: '/qrcodes/x', query: {} };
+  expect(requestUrl('', 'brands.list', { verb: 'GET', path: '/brands', query: {} })).toBe(
+    '/api/v1/brands',
+  );
+  expect(requestUrl('', 'qrcodes.save@2' as ApiId, parts)).toBe('/api/v2/qrcodes/x');
+  expect(requestUrl('https://qc.test', 'qrcodes.save', { ...parts, query: { a: 'b' } })).toBe(
+    'https://qc.test/api/v1/qrcodes/x?a=b',
+  );
 });

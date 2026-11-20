@@ -21,7 +21,7 @@ export function ItemFormPage(props: { mode: 'create' } | { mode: 'edit'; item: I
   const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
   const { data: stickers } = useSuspenseQuery(stickersQuery());
   const { data: stickerTypes } = useSuspenseQuery(stickerTypesQuery());
-  const { formProps, submitting } = useItemFormController({
+  const { formProps, submitting, blocking } = useItemFormController({
     item,
     lists: { brands, businessUnits, stickers, stickerTypes },
     onSaved: (saved) => navigate({ to: '/item/$itemId', params: { itemId: saved.id } }),
@@ -37,6 +37,7 @@ export function ItemFormPage(props: { mode: 'create' } | { mode: 'edit'; item: I
       title={item ? `Ubah item: ${item.brand} ${item.model}` : 'Tambah item'}
       onCancel={cancel}
       submitting={submitting}
+      submitDisabled={blocking}
       busyText="Menyimpan item…"
     >
       <ItemForm key={item?.updatedAt} formId={ITEM_FORM_ID} {...formProps} />

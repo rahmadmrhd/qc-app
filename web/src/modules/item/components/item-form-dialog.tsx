@@ -23,7 +23,7 @@ function OpenItemFormDialog({ open, onOpenChange, onCreated, allowedBuIds }: Ite
   const stickers = useQuery(stickersQuery());
   const stickerTypes = useQuery(stickerTypesQuery());
   const ready = brands.data && businessUnits.data && stickers.data && stickerTypes.data;
-  const { formProps, submitting } = useItemFormController({
+  const { formProps, submitting, blocking } = useItemFormController({
     allowedBusinessUnitIds: allowedBuIds,
     lists: {
       brands: brands.data ?? [],
@@ -44,6 +44,7 @@ function OpenItemFormDialog({ open, onOpenChange, onCreated, allowedBuIds }: Ite
       title="Tambah item"
       size="lg"
       submitting={submitting}
+      submitDisabled={blocking}
     >
       {ready ? (
         <ItemForm formId={ITEM_FORM_DIALOG_ID} {...formProps} />

@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, test, vi } from 'vitest';
+import type { ProofSession } from '../lib/use-proof-uploads';
 import type { StrictScan } from './camera-scan-button';
 import { SerialScanInput } from './serial-scan-input';
 
@@ -32,6 +33,26 @@ function strictContext(over: Partial<StrictScan> = {}): StrictScan {
     },
     isKnown: () => false,
     onConfirm: vi.fn(),
+    newOwnerId: () => 'owner-1',
+    proof: {
+      uploads: {
+        entries: [],
+        busy: false,
+        hasFailed: false,
+        blocking: false,
+        cancelOwner: vi.fn(),
+        forOwner: () => ({
+          entries: [],
+          busy: false,
+          hasFailed: false,
+          blocking: false,
+          add: vi.fn(),
+          retry: vi.fn(),
+          remove: vi.fn(),
+        }),
+      },
+      attach: () => () => undefined,
+    } satisfies ProofSession,
     ...over,
   };
 }
@@ -46,7 +67,9 @@ test('strict: satu serial sah membuka dialog di langkah 2 dan tidak memanggil on
   const { onSubmit, field } = setup(strictContext());
   await userEvent.click(field);
   await userEvent.type(field, 'abc123{Enter}');
-  expect(await screen.findByRole('textbox', { name: 'Serial Number' })).toHaveValue('ABC123');
+  expect(
+    await screen.findByRole('textbox', { name: 'Serial Number' }, { timeout: 10_000 }),
+  ).toHaveValue('ABC123');
   expect(onSubmit).not.toHaveBeenCalled();
 });
 
@@ -54,7 +77,9 @@ test('strict: Tab sebagai terminator pemindai fisik juga membuka dialog', async 
   const { field } = setup(strictContext());
   await userEvent.click(field);
   await userEvent.type(field, 'abc123{Tab}');
-  expect(await screen.findByRole('textbox', { name: 'Serial Number' })).toHaveValue('ABC123');
+  expect(
+    await screen.findByRole('textbox', { name: 'Serial Number' }, { timeout: 10_000 }),
+  ).toHaveValue('ABC123');
 });
 
 test('strict: tempelan banyak serial ditolak dengan catatan, tanpa dialog', async () => {

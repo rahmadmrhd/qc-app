@@ -12,6 +12,7 @@ import {
   useDeleteQrDesign,
   useExportQrDesign,
   useSaveQrDesign,
+  useUploadQrPdf,
 } from './queries';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -149,4 +150,24 @@ test('refreshQrDesign memuat konfigurasi terbaru dan memasangnya ke daftar dan d
   expect(apiMock).toHaveBeenCalledWith('qrcodes.get', { id: 'a' });
   expect((client.getQueryData(qrKeys.list) as QrDesignDto[])[0]?.title).toBe('Baru');
   expect(client.getQueryData(qrKeys.one('a'))).toEqual(fresh);
+});
+
+test('unggah PDF: onUploadProgress diteruskan ke api sebagai opsi panggilan, bukan sebagai input', async () => {
+  apiMock.mockResolvedValue({ id: 'd1' });
+  const onUploadProgress = vi.fn();
+  const { result } = renderHook(() => useUploadQrPdf(), { wrapper });
+  const bytes = new Uint8Array([1]);
+  await act(async () => {
+    await result.current.mutateAsync({ name: 'a.pdf', bytes, onUploadProgress });
+  });
+  expect(apiMock).toHaveBeenCalledWith(
+    'qrcodes.uploadPdf',
+    { name: 'a.pdf', bytes },
+    { onUploadProgress },
+  );
+  apiMock.mockClear();
+  await act(async () => {
+    await result.current.mutateAsync({ name: 'b.pdf', bytes });
+  });
+  expect(apiMock).toHaveBeenCalledWith('qrcodes.uploadPdf', { name: 'b.pdf', bytes }, undefined);
 });

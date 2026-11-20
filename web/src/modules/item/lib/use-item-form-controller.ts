@@ -75,6 +75,8 @@ export function useItemFormController({
   const saveStickerType = useSaveStickerType();
   const links = itemFormLinkAccess(me);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Gambar yang masih diunggah di form: pembungkus menahan Simpan selama true (`blocking`).
+  const [blocking, setBlocking] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<ItemFieldErrors>({});
 
   async function onSubmit(values: ItemFormOutput) {
@@ -128,7 +130,8 @@ export function useItemFormController({
     submitError,
     fieldErrors,
     onSubmit,
+    onBusyChange: setBlocking,
   } satisfies Omit<ItemFormProps, 'formId'>;
 
-  return { formProps, submitting: saveItem.isPending };
+  return { formProps, submitting: saveItem.isPending, blocking };
 }

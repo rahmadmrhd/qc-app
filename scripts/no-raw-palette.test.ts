@@ -20,8 +20,8 @@ const CAMERA_REASON =
   'Dipasang di atas pratinjau kamera yang selalu gelap (tak mengikuti tema); token tema terang akan kehilangan kontras di atasnya.';
 const ALLOWED: Record<string, string> = {
   'web/src/modules/serial/components/scan-camera-pane.tsx': `Teks hasil pindai di atas pratinjau kamera. ${CAMERA_REASON}`,
-  'web/src/modules/serial/components/scan-camera-controls.tsx': `Tombol senter menyala (kuning di atas kamera). ${CAMERA_REASON}`,
-  'web/src/modules/serial/components/proof-camera-controls.tsx': `Tombol senter menyala (kuning di atas kamera). ${CAMERA_REASON}`,
+  'web/src/components/camera/camera-controls.tsx': `Tombol senter menyala (kuning di atas kamera). ${CAMERA_REASON}`,
+  'web/src/components/file-dialog/camera/camera-top-buttons.tsx': `Tombol senter menyala (kuning di atas kamera). ${CAMERA_REASON}`,
 };
 
 function walk(dir: string, found: string[] = [], ignored: Set<string> = IGNORED_DIRS): string[] {

@@ -12,6 +12,8 @@ export interface SerialNoteFieldProps {
   error?: string | undefined;
   /** Catatan wajib: bintang pada label dan `aria-required` pada editor. */
   required?: boolean;
+  /** Diteruskan ke editor (mode `note` tanpa gambar sehingga tidak pernah sibuk; ada agar kontraknya seragam). */
+  onBusyChange?: ((busy: boolean) => void) | undefined;
 }
 
 /**
@@ -26,6 +28,7 @@ export function SerialNoteField({
   disabled,
   error,
   required,
+  onBusyChange,
 }: SerialNoteFieldProps) {
   return (
     <div className="space-y-1.5">
@@ -35,13 +38,14 @@ export function SerialNoteField({
       <WysiwygEditor
         id={id}
         labelledBy={`${id}-label`}
-        required={required}
         mode="note"
         value={value}
         onChange={onChange}
         maxLength={SERIAL_LIMITS.noteMax}
         disabled={disabled ?? false}
+        required={required}
         editorClassName="min-h-24"
+        onBusyChange={onBusyChange}
       />
       <FieldError errors={[error]} />
     </div>

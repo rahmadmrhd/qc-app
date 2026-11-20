@@ -5,7 +5,6 @@ import type { LucideIcon } from 'lucide-react';
 import {
   BellRing,
   BookOpen,
-  Boxes,
   Building2,
   ClipboardList,
   Contact,
@@ -191,20 +190,18 @@ export const NAV_GROUPS: NavGroup[] = [
             label: 'Katalog',
             to: '/sticker',
             icon: Sticker,
-            excludes: ['/sticker/types', '/sticker/stock', '/sticker/library', '/sticker/settings'],
-            permission: { module: 'sticker', level: 'view' },
+            excludes: ['/sticker/types', '/sticker/library', '/sticker/settings'],
+            // Katalog dan stok digabung (2026-11-20): cukup salah satu izin.
+            permission: [
+              { module: 'sticker', level: 'view' },
+              { module: 'stickerstock', level: 'view', scope: 'location' },
+            ],
           },
           {
             label: 'Jenis',
             to: '/sticker/types',
             icon: Shapes,
             permission: { module: 'sticker', level: 'view' },
-          },
-          {
-            label: 'Stok',
-            to: '/sticker/stock',
-            icon: Boxes,
-            permission: { module: 'stickerstock', level: 'view', scope: 'location' },
           },
           {
             label: 'Pustaka Gambar',

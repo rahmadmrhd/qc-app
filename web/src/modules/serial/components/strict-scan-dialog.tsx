@@ -1,3 +1,4 @@
+import { MAX_IMAGE_BYTES } from '@shared/files';
 import {
   normalizeSerial,
   SERIAL_LIMITS,
@@ -15,6 +16,12 @@ import {
   useState,
 } from 'react';
 import {
+  AttachmentView,
+  FileDialog,
+  FileDropZone,
+  type RejectedFile,
+} from '@/components/file-dialog';
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -29,15 +36,16 @@ import { Label } from '@/components/ui/label';
 import type { BarcodeEngine } from '../lib/barcode-engine';
 import { createPayloadGate } from '../lib/camera-payload';
 import { DRAFT_FULL_NOTE } from '../lib/draft';
-import { mergeProofPhotos, type ProofPhotoRef } from '../lib/proof-source';
+import { type ProofPhotoRef, proofSource } from '../lib/proof-source';
 import { type ScanFeedback, useScanFeedback } from '../lib/scan-feedback';
 import { type IsKnown, pickSingleSerial } from '../lib/scan-table';
 import type { StampPreviewInput } from '../lib/stamp-preview';
 import { useCameraScanner } from '../lib/use-camera-scanner';
+import type { ProofSession } from '../lib/use-proof-uploads';
 import { discardProofPhotos } from '../queries';
-import { ProofPhotoDialog } from './proof-photo-dialog';
-import { ProofPhotoGrid } from './proof-photo-grid';
+import { proofAttachmentItems } from './proof-photo-field';
 import { ScanCameraPane } from './scan-camera-pane';
+import { proofCameraStamp } from './stamp-preview';
 
 /** Informasi item (dari Default) yang ditampilkan di langkah konfirmasi dan dipakai pratinjau cap. */
 export interface StrictInfo {
@@ -52,8 +60,14 @@ export interface StrictInfo {
 }
 
 export interface StrictScanResult {
+  /**
+   * Kunci pemilik unggahan dialog ini (= `ownerId`); dipakai pemanggil sebagai `clientId` baris baru, sehingga
+   * unggahan yang masih berjalan lanjut di bawah baris itu.
+   */
+  clientId: string;
   /** Serial ternormalisasi. */
   serial: string;
+  /** Hanya foto yang SUDAH selesai; yang masih berjalan menyusul ke baris lewat antrean halaman. */
   photos: ProofPhotoRef[];
 }
 
@@ -63,6 +77,10 @@ export interface StrictScanDialogProps {
   /** Ada = mulai di langkah konfirmasi (serial sudah diketik/ditempel/dipindai fisik); tidak ada = mulai di langkah scan. */
   initialSerial?: string | undefined;
   info: StrictInfo;
+  /** Kunci pemilik unggahan sesi dialog ini (dibuat halaman tiap dibuka; kelak `clientId` baris). */
+  ownerId: string;
+  /** Antrean unggah bersama milik halaman, dan pemasangan penerima foto selesai selama baris belum ada. */
+  proof: ProofSession;
   /** Serial (ternormalisasi) yang sudah ada di draft. */
   isKnown: IsKnown;
   /** Dipanggil SAAT Simpan; pemanggil memasukkan baris ke draft. Foto sudah milik baris itu (tidak dibuang dialog). */
@@ -124,6 +142,8 @@ export function StrictScanDialog({ open, onOpenChange, ...rest }: StrictScanDial
 function StrictBody({
   initialSerial,
   info,
+  ownerId,
+  proof,
   isKnown,
   onConfirm,
   capacity,
@@ -139,10 +159,19 @@ function StrictBody({
   const [step, setStep] = useState<1 | 2>(initialSerial === undefined ? 1 : 2);
   const [serialText, setSerialText] = useState(initialSerial ?? '');
   const [photos, setPhotos] = useState<ProofPhotoRef[]>([]);
-  const [photoDialogOpen, setPhotoDialogOpen] = useState(false);
+  const [photoDialog, setPhotoDialog] = useState<{
+    open: boolean;
+    files: File[];
+    rejected: RejectedFile[];
+  }>({ open: false, files: [], rejected: [] });
   const [confirm, setConfirm] = useState<'cancel' | 'rescan' | null>(null);
   const photosRef = useRef<ProofPhotoRef[]>([]);
   const committedRef = useRef(false);
+  const proofRef = useRef(proof);
+  proofRef.current = proof;
+  const own = proof.uploads.forOwner(ownerId);
+  // Foto yang masih menunggu/berjalan sudah dihitung terhadap minimum dan batas; yang gagal tidak.
+  const running = own.entries.filter((entry) => entry.phase !== 'failed').length;
   const isKnownRef = useRef(isKnown);
   isKnownRef.current = isKnown;
   const capacityRef = useRef(capacity);
@@ -162,7 +191,7 @@ function StrictBody({
           : isKnown(normalized)
             ? 'Sudah ada di draft.'
             : null;
-  const missingPhotos = Math.max(0, info.proofMin - photos.length);
+  const missingPhotos = Math.max(0, info.proofMin - photos.length - running);
   const canSave = serialError === null && missingPhotos === 0;
   const hint =
     serialError !== null
@@ -176,22 +205,42 @@ function StrictBody({
     setPhotos(next);
   }
 
-  // Foto yang belum dikonfirmasi dibuang saat dialog ditutup dengan cara apa pun selain Simpan (Batal, Esc, unmount).
+  // Foto selesai milik sesi ini masuk ke dialog (bukan ke baris, yang belum ada); penuh = ditolak dan dibuang.
+  useLayoutEffect(
+    () =>
+      proofRef.current.attach(ownerId, (photo) => {
+        if (photosRef.current.length >= max) return false;
+        const next = [...photosRef.current, photo];
+        photosRef.current = next;
+        setPhotos(next);
+        return true;
+      }),
+    [ownerId],
+  );
+
+  // Dialog ditutup dengan cara apa pun selain Simpan (Batal, Esc, unmount): unggahan dibatalkan dan foto yang sudah
+  // selesai tetapi belum dikonfirmasi dibuang di server.
   useLayoutEffect(() => {
     return () => {
-      if (!committedRef.current && photosRef.current.length > 0) {
+      if (committedRef.current) return;
+      proofRef.current.uploads.cancelOwner(ownerId);
+      if (photosRef.current.length > 0) {
         void discardProofPhotos(photosRef.current.map((photo) => photo.id));
       }
     };
-  }, []);
+  }, [ownerId]);
 
   function discardAllPhotos() {
+    proofRef.current.uploads.cancelOwner(ownerId);
     if (photosRef.current.length > 0) void discardProofPhotos(photosRef.current.map((p) => p.id));
     setPhotoList([]);
   }
 
+  /** Ada yang akan hilang bila ditutup: foto selesai atau unggahan yang masih berjalan/gagal. */
+  const hasWork = () => photosRef.current.length > 0 || own.entries.length > 0;
+
   function requestCancel() {
-    if (photosRef.current.length > 0) setConfirm('cancel');
+    if (hasWork()) setConfirm('cancel');
     else onClose();
   }
 
@@ -211,27 +260,23 @@ function StrictBody({
   }
 
   function requestRescan() {
-    if (photosRef.current.length > 0) setConfirm('rescan');
+    if (hasWork()) setConfirm('rescan');
     else rescan();
   }
 
   function save() {
     if (!canSave) return;
     committedRef.current = true;
-    onConfirm({ serial: normalized, photos: photosRef.current });
+    onConfirm({ clientId: ownerId, serial: normalized, photos: photosRef.current });
     onClose();
   }
 
-  function removePhoto(photo: ProofPhotoRef) {
-    void discardProofPhotos([photo.id]);
-    setPhotoList(photosRef.current.filter((item) => item.id !== photo.id));
+  function removePhoto(id: string) {
+    void discardProofPhotos([id]);
+    setPhotoList(photosRef.current.filter((item) => item.id !== id));
   }
 
-  function addPhotos(added: ProofPhotoRef[]) {
-    const { next, extras } = mergeProofPhotos(photosRef.current, added, max);
-    if (extras.length > 0) void discardProofPhotos(extras);
-    setPhotoList(next);
-  }
+  const items = useMemo(() => proofAttachmentItems(photos, 'serial ini'), [photos]);
 
   const stamp = useMemo<StampPreviewInput>(
     () => ({ ...info.stamp, serial: normalized }),
@@ -334,25 +379,42 @@ function StrictBody({
                 ) : null}
               </div>
             </div>
-            <section aria-label="Lampiran foto" className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-medium">Lampiran foto</h3>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={photos.length >= max}
-                  onClick={() => setPhotoDialogOpen(true)}
-                >
-                  <Camera aria-hidden />
-                  Tambah foto
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {photos.length} dari minimal {info.proofMin} (maks. {max})
-              </p>
-              <ProofPhotoGrid photos={photos} onRemove={removePhoto} label="serial ini" />
-            </section>
+            <FileDropZone
+              accept={proofSource.mimeTypes}
+              disabled={photos.length + running >= max}
+              className="space-y-2"
+              onFiles={(files, rejected) => {
+                if (photos.length + running < max) setPhotoDialog({ open: true, files, rejected });
+              }}
+            >
+              <section aria-label="Lampiran foto" className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-medium">Lampiran foto</h3>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={photos.length + running >= max}
+                    onClick={() => setPhotoDialog({ open: true, files: [], rejected: [] })}
+                  >
+                    <Camera aria-hidden />
+                    Tambah foto
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {photos.length + running} dari minimal {info.proofMin} (maks. {max})
+                </p>
+                <AttachmentView
+                  items={items}
+                  pending={own.entries}
+                  layout="grid"
+                  label="serial ini"
+                  onRemove={removePhoto}
+                  onRetry={own.retry}
+                  onCancel={own.remove}
+                />
+              </section>
+            </FileDropZone>
           </div>
 
           <AlertDialogFooter className="bottom-0 mx-0 mb-0 shrink-0 flex-col items-stretch rounded-none p-0 sm:flex-col">
@@ -390,14 +452,24 @@ function StrictBody({
         </>
       )}
 
-      {step === 2 ? (
-        <ProofPhotoDialog
-          open={photoDialogOpen}
-          onOpenChange={setPhotoDialogOpen}
-          existingCount={photos.length}
-          max={max}
-          stamp={stamp}
-          onAdd={addPhotos}
+      {step === 2 && photoDialog.open ? (
+        <FileDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setPhotoDialog({ open: false, files: [], rejected: [] });
+          }}
+          source={proofSource}
+          mode="multiple"
+          accept={['image']}
+          maxBytes={MAX_IMAGE_BYTES}
+          maxFiles={Math.max(1, max - photos.length - running)}
+          hideNames
+          title="Foto bukti"
+          confirmLabel="Tambahkan"
+          camera={{ stamp: proofCameraStamp(stamp) }}
+          initialFiles={photoDialog.files.length > 0 ? photoDialog.files : undefined}
+          initialRejected={photoDialog.rejected.length > 0 ? photoDialog.rejected : undefined}
+          onConfirm={(result) => own.add(result.files)}
         />
       ) : null}
 
@@ -405,7 +477,9 @@ function StrictBody({
       <AlertDialog open={confirm !== null} onOpenChange={(next) => !next && setConfirm(null)}>
         <AlertDialogContent size="sm">
           <AlertDialogTitle>
-            {confirm === 'rescan' ? 'Scan ulang dan buang foto?' : `Buang ${photos.length} foto?`}
+            {confirm === 'rescan'
+              ? 'Scan ulang dan buang foto?'
+              : `Buang ${photos.length + own.entries.length} foto?`}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {confirm === 'rescan'

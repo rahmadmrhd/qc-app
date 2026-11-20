@@ -1,5 +1,6 @@
 import { Eye, EyeOff } from 'lucide-react';
 import { useMemo } from 'react';
+import type { CameraStampSlot } from '@/components/file-dialog/camera/camera-dialog';
 import { type StampPreviewInput, stampPreviewLines } from '../lib/stamp-preview';
 
 /**
@@ -52,4 +53,14 @@ export function StampToggleButton({
       {visible ? <EyeOff aria-hidden className="size-5" /> : <Eye aria-hidden className="size-5" />}
     </button>
   );
+}
+
+/** Slot cap untuk `CameraDialog`: tombol sembunyikan dan pratinjau cap foto bukti QC. */
+export function proofCameraStamp(input: StampPreviewInput): CameraStampSlot {
+  return {
+    renderToggle: (visible, onToggle) => (
+      <StampToggleButton visible={visible} onToggle={onToggle} />
+    ),
+    renderNote: () => <StampNote input={input} />,
+  };
 }

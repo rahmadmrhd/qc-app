@@ -5,7 +5,10 @@
  * malas dari `barcode-fallback.ts`. Semua pemrosesan di perangkat: tidak ada bingkai yang keluar dari peramban.
  */
 
+import { ScannerLoadError } from '@/components/camera/scanner-load-error';
 import type { LocatedCode } from './scan-region';
+
+export { ScannerLoadError };
 
 /**
  * Format yang dibaca. Pemilik produk menyatakan (2026-11-16) label dari vendor bercampur 1D dan 2D dan formatnya bisa
@@ -66,15 +69,6 @@ export interface EngineDeps {
   /** Memuat pustaka WASM (impor dinamis); dipanggil hanya bila bawaan tidak memadai. */
   loadFallback: () => Promise<BarcodeDetectorConstructor>;
   formats: readonly string[];
-}
-
-/** Galat pemuat pemindai (WASM gagal diunduh/dikompilasi), dibedakan dari galat kamera. */
-export class ScannerLoadError extends Error {
-  constructor(cause?: unknown) {
-    super('Pemindai gagal dimuat');
-    this.name = 'ScannerLoadError';
-    this.cause = cause;
-  }
 }
 
 function wrap(

@@ -1,17 +1,20 @@
 import { MAX_IMAGE_BYTES } from '@shared/files';
 import { useQueryClient } from '@tanstack/react-query';
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ActionButton } from '@/components/action-button';
 import {
+  AttachmentView,
   FileDialog,
   FileDropZone,
   type LibraryItem,
   type LibraryQuery,
   type LibrarySort,
   LibraryTab,
+  libraryItemToAttachment,
   PreviewDialog,
 } from '@/components/file-dialog';
+import { useBackgroundUploads } from '@/components/file-dialog/use-background-uploads';
 import { FilterBar, FilterChip } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
@@ -25,6 +28,7 @@ interface UploadDialogState {
   rejected: { name: string; reason: string }[];
 }
 
+const OWNER = 'guides';
 const CLOSED: UploadDialogState = { open: false, files: [], rejected: [] };
 
 const SORT_OPTIONS: ReadonlyArray<{ value: LibrarySort; label: string }> = [
@@ -66,6 +70,16 @@ export function GuideLibraryPage({
   const source = stickerGuideSource;
   const [upload, setUpload] = useState<UploadDialogState>(CLOSED);
   const [preview, setPreview] = useState<LibraryItem | null>(null);
+  // Unggahan berjalan di latar (progres tampil di halaman); tiap yang selesai langsung memuat ulang kisi.
+  const done = useRef(0);
+  const uploads = useBackgroundUploads({
+    source,
+    onUploaded: () => {
+      done.current += 1;
+      void refresh();
+    },
+  });
+  const own = uploads.forOwner(OWNER);
   const [local, setLocal] = useState<LibraryQuery>(DEFAULT_LIBRARY_QUERY);
   const query = controlled ?? local;
   const setQuery = (update: (current: LibraryQuery) => LibraryQuery) => {
@@ -77,6 +91,14 @@ export function GuideLibraryPage({
   function refresh() {
     return queryClient.invalidateQueries({ queryKey: [source.key] });
   }
+
+  // Antrean habis (yang gagal tak dihitung): satu toast untuk semua yang berhasil.
+  const busy = own.busy;
+  useEffect(() => {
+    if (busy || done.current === 0) return;
+    toast.success(`${done.current} gambar ditambahkan`);
+    done.current = 0;
+  }, [busy]);
 
   function handleFiles(files: File[], rejected: { name: string; reason: string }[]) {
     if (!canUpload) {
@@ -156,6 +178,14 @@ export function GuideLibraryPage({
           <p className="mb-3 text-sm text-muted-foreground">
             Gambar acuan penempelan stiker pada item. Seret berkas ke halaman ini untuk mengunggah.
           </p>
+          <AttachmentView
+            items={[]}
+            pending={own.entries}
+            layout="list"
+            label="unggahan gambar"
+            onRetry={own.retry}
+            onCancel={own.remove}
+          />
           <LibraryTab
             source={source}
             selection={new Map()}
@@ -170,14 +200,11 @@ export function GuideLibraryPage({
           />
         </ListPage>
       </FileDropZone>
-      {canUpload ? (
+      {canUpload && upload.open ? (
         <FileDialog
-          open={upload.open}
+          open
           onOpenChange={(open) => {
-            if (open) return;
-            setUpload(CLOSED);
-            // Sebagian berkas mungkin sudah terunggah walau dialog ditutup sebelum selesai.
-            void refresh();
+            if (!open) setUpload(CLOSED);
           }}
           source={source}
           mode="multiple"
@@ -188,13 +215,13 @@ export function GuideLibraryPage({
           showLibrary={false}
           confirmLabel="Unggah"
           title="Unggah gambar"
-          onSelect={(items) => {
-            void refresh();
-            toast.success(`${items.length} gambar ditambahkan`);
-          }}
+          onConfirm={(result) => own.add(result.files)}
         />
       ) : null}
-      <PreviewDialog item={preview} onClose={() => setPreview(null)} />
+      <PreviewDialog
+        item={preview ? libraryItemToAttachment(preview) : null}
+        onClose={() => setPreview(null)}
+      />
     </>
   );
 }

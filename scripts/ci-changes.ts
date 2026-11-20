@@ -3,8 +3,14 @@
 // $GITHUB_OUTPUT (dan stdout) yang dipakai `if:` job lain. Aturan di spek docs/superpowers/specs/2026-11-17-ci-selektif-shard-design.md §5.2.
 //
 // Prinsip: lebih baik menjalankan berlebih daripada melewatkan. Jalur di luar aturan yang dikenal (berkas akar baru,
-// folder baru, .github/, scripts/, bun.lock, ...) menyalakan SEMUA keluaran; begitu pula daftar kosong, daftar yang
-// terlalu panjang (mendekati batas 3.000 berkas API GitHub), atau daftar yang tak dapat diambil (`null`).
+// folder baru, .github/actions/, scripts/, bun.lock, ...) menyalakan SEMUA keluaran; begitu pula daftar kosong, daftar
+// yang terlalu panjang (mendekati batas 3.000 berkas API GitHub), atau daftar yang tak dapat diambil (`null`).
+//
+// Keputusan pemilik 2026-11-20 (menyempitkan aturan; PR yang hanya menyentuh workflow memicu seluruh CI):
+// - `.github/workflows/` hanya menyalakan `code` (lint + tes `scripts/`, termasuk ci-workflows.test.ts). `.github/actions/`
+//   dan jalur `.github/` lain tetap konservatif karena aksi lokal `mariadb`/`setup` dipakai tes server/web.
+// - `web/` tidak menyalakan `desktop_pack`: UI dasar desktop diperbarui saat desktop dirilis dan UI terbarunya lewat
+//   manifest bertanda tangan. `shared/` dan `countrylock/` (diimpor langsung desktop) tetap memicunya.
 import { appendFileSync } from 'node:fs';
 
 export interface Changes {
@@ -14,7 +20,7 @@ export interface Changes {
   web_tests: boolean;
   shared_tests: boolean;
   desktop_tests: boolean;
-  /** Pemeriksaan kemas desktop: installer membawa UI dasar dari build web, jadi web/shared juga memicunya. */
+  /** Pemeriksaan kemas desktop: perubahan desktop/, shared/, dan countrylock/ (web/ TIDAK memicunya, keputusan 2026-11-20). */
   desktop_pack: boolean;
   /** Isi image server berubah: bangun dan deploy. Perubahan desktop/docs saja TIDAK memicunya. */
   image: boolean;
@@ -70,7 +76,7 @@ const RULES: { prefix: string; sets: (keyof Changes)[] }[] = [
       'image',
     ],
   },
-  { prefix: 'web/', sets: ['code', 'web_tests', 'desktop_pack', 'image'] },
+  { prefix: 'web/', sets: ['code', 'web_tests', 'image'] },
   {
     prefix: 'countrylock/',
     sets: ['code', 'web_tests', 'desktop_tests', 'desktop_pack', 'image'],
@@ -79,6 +85,10 @@ const RULES: { prefix: string; sets: (keyof Changes)[] }[] = [
   // 2026-11-17); isi desktop lain tak masuk image. Harus SEBELUM aturan `desktop/` (aturan pertama yang cocok dipakai).
   { prefix: 'desktop/package.json', sets: ['code', 'desktop_tests', 'desktop_pack', 'image'] },
   { prefix: 'desktop/', sets: ['code', 'desktop_tests', 'desktop_pack'] },
+  // Workflow CI/CD: tesnya hanya di `scripts/` (ci-workflows.test.ts), jadi cukup `code`. Aturan ini hanya untuk
+  // `.github/workflows/`; `.github/` lain (aksi lokal, dst.) jatuh ke ALL_CHANGES. `.github` ada di .dockerignore,
+  // jadi tak masuk image. Risiko diterima pemilik: mengubah ci.yml sendiri tak lagi menjalankan job lain.
+  { prefix: '.github/workflows/', sets: ['code'] },
   // deploy/ tak masuk image (.dockerignore), tetapi tes deploy-files/deploy-script ada di server.
   { prefix: 'deploy/', sets: ['code', 'server_tests'] },
 ];

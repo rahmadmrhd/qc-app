@@ -31,6 +31,7 @@ export function FormDialogShell({
   title,
   description,
   submitting,
+  submitDisabled,
   submitLabel = 'Simpan',
   size = 'md',
   children,
@@ -41,6 +42,8 @@ export function FormDialogShell({
   title: ReactNode;
   description?: ReactNode;
   submitting?: boolean;
+  /** Menonaktifkan Simpan tanpa tampil sibuk (mis. gambar masih diunggah). */
+  submitDisabled?: boolean;
   submitLabel?: string;
   size?: FormDialogSize;
   children: ReactNode;
@@ -61,6 +64,7 @@ export function FormDialogShell({
             form={formId}
             label={submitLabel}
             busy={submitting}
+            disabled={submitDisabled}
           />
         </FormDialogFooter>
       </FormDialogContent>

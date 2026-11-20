@@ -312,28 +312,35 @@ test('induk Stiker memuat Jenis (sticker view) dan hanya tampil bagi user ber-iz
   expect(visibleLabels(stickerMe({ sticker: 'view' }))).toContain('Jenis');
 });
 
-test('menu Katalog (sticker view) tidak ikut aktif di Jenis, Stok, Pustaka, Konfigurasi', () => {
+test('menu Katalog tidak ikut aktif di Jenis, Pustaka, Konfigurasi; tetap aktif di opname', () => {
   const katalog = itemTo('/sticker');
   expect(katalog).toMatchObject({
     label: 'Katalog',
-    permission: { module: 'sticker', level: 'view' },
-    excludes: ['/sticker/types', '/sticker/stock', '/sticker/library', '/sticker/settings'],
+    permission: [
+      { module: 'sticker', level: 'view' },
+      { module: 'stickerstock', level: 'view', scope: 'location' },
+    ],
+    excludes: ['/sticker/types', '/sticker/library', '/sticker/settings'],
   });
   expect(isNavItemActive(katalog, at('/sticker'))).toBe(true);
+  expect(isNavItemActive(katalog, at('/sticker/opname'))).toBe(true);
   expect(isNavItemActive(katalog, at('/sticker/types'))).toBe(false);
-  expect(isNavItemActive(katalog, at('/sticker/stock'))).toBe(false);
   expect(isNavItemActive(katalog, at('/sticker/library'))).toBe(false);
   expect(isNavItemActive(itemTo('/sticker/types'), at('/sticker/types'))).toBe(true);
-  expect(isNavItemActive(itemTo('/sticker/stock'), at('/sticker/stock'))).toBe(true);
 });
 
-test('Stok hanya tampil bila stickerstock view di lokasi aktif', () => {
-  expect(itemTo('/sticker/stock')).toMatchObject({
-    label: 'Stok',
-    permission: { module: 'stickerstock', level: 'view', scope: 'location' },
-  });
+test('Stok digabung ke Katalog: tidak ada menu Stok tersendiri', () => {
+  const sticker = NAV_GROUPS.flatMap((group) => group.items).find(
+    (entry) => 'children' in entry && entry.id === 'sticker',
+  );
+  const children = sticker && 'children' in sticker ? sticker.children : [];
+  expect(children.some((entry) => entry.label === 'Stok')).toBe(false);
+  expect(children.some((entry) => entry.to === '/sticker/stock')).toBe(false);
+});
+
+test('menu Katalog tampil bagi pemegang sticker view ATAU stickerstock view di lokasi aktif', () => {
   const me: MeDto = {
-    ...stickerMe({ sticker: 'view' }),
+    ...stickerMe({}),
     locations: [
       {
         id: 'l-a',
@@ -349,11 +356,13 @@ test('Stok hanya tampil bila stickerstock view di lokasi aktif', () => {
       },
     ],
   };
-  expect(visibleLabels(me, ['l-a'])).toContain('Stok');
-  expect(visibleLabels(me, ['l-b'])).not.toContain('Stok');
-  expect(visibleLabels(me, ['l-b'])).toContain('Katalog');
-  // Tanpa izin stok di lokasi mana pun, induk Stiker tetap tampil lewat katalog tetapi tanpa Stok.
-  expect(visibleLabels(stickerMe({ sticker: 'view' }), ['l-a'])).not.toContain('Stok');
+  // Hanya izin stok: tampil di lokasi yang berizin, tidak di lokasi lain.
+  expect(visibleLabels(me, ['l-a'])).toContain('Katalog');
+  expect(visibleLabels(me, ['l-b'])).not.toContain('Katalog');
+  // Hanya izin katalog: tampil di lokasi mana pun.
+  expect(
+    visibleLabels({ ...me, ...stickerMe({ sticker: 'view' }), locations: me.locations }, ['l-b']),
+  ).toContain('Katalog');
 });
 
 test('menu Pustaka Gambar tampil bagi pemegang item view atau sticker view saja, dan aktif sendiri', () => {

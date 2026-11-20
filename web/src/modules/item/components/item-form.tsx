@@ -73,6 +73,11 @@ export interface ItemFormProps {
   /** Tab aktif terkendali; tanpa ini tab dikelola sendiri. */
   activeTab?: ItemFormTab;
   onActiveTabChange?: (tab: ItemFormTab) => void;
+  /**
+   * Dipanggil saat ada gambar (galeri, foto instruksi, atau gambar di Detail) yang masih diunggah (true) dan saat
+   * semuanya selesai (false); pembungkus menahan tombol Simpan (`submitDisabled`) selama true.
+   */
+  onBusyChange?: (busy: boolean) => void;
   /** Tab yang memuat galat (validasi atau server), diteruskan ke pembungkus. */
   onTabErrorsChange?: (errors: Record<ItemFormTab, boolean>) => void;
   /** Merk yang sudah ada (pilihan field Merk). */
@@ -143,7 +148,16 @@ export function ItemForm({
   submitError,
   fieldErrors,
   onSubmit,
+  onBusyChange,
 }: ItemFormProps) {
+  // Gambar galeri atau foto instruksi yang masih diunggah: Simpan ditahan agar tidak ada yang tertinggal.
+  const [galleryBusy, setGalleryBusy] = useState(false);
+  const [photosBusy, setPhotosBusy] = useState(false);
+  // Gambar yang disisipkan ke Detail dan spesifikasi masih diunggah.
+  const [detailBusy, setDetailBusy] = useState(false);
+  const anyBusy = galleryBusy || photosBusy || detailBusy;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hanya `anyBusy` yang melaporkan; `onBusyChange` boleh berganti identitas
+  useEffect(() => onBusyChange?.(anyBusy), [anyBusy]);
   // Galat server pada sebuah field hilang begitu user mengoreksi field itu (dan kembali saat ada galat baru).
   const [cleared, setCleared] = useState<ReadonlySet<string>>(new Set());
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset setiap kali galat server yang baru datang
@@ -589,6 +603,7 @@ export function ItemForm({
                   <ImageGalleryField
                     value={field.state.value}
                     itemLabel={itemLabel}
+                    onBusyChange={setGalleryBusy}
                     onChange={(ids) => {
                       field.handleChange(ids);
                       clear('attachments');
@@ -628,6 +643,7 @@ export function ItemForm({
                   types={allTypes}
                   knownGuides={guides ?? []}
                   currentItemId={itemId}
+                  onBusyChange={setPhotosBusy}
                   errors={errorTexts([...field.state.meta.errors, serverError('stickerPhotos')])}
                   {...(onCreateSticker
                     ? {
@@ -665,6 +681,7 @@ export function ItemForm({
               <WysiwygEditor
                 id="item-detail"
                 labelledBy="item-detail-label"
+                onBusyChange={setDetailBusy}
                 value={field.state.value}
                 onChange={(text) => {
                   field.handleChange(text);

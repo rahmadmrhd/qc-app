@@ -4,7 +4,7 @@ import { partitionByType } from './accept';
 
 export interface FileDropZoneProps {
   accept: readonly string[];
-  /** Berkas bertipe sah, dan berkas yang ditolak (nama + alasan). Ukuran diperiksa oleh antrean unggah. */
+  /** Berkas bertipe sah, dan berkas yang ditolak (nama + alasan). Ukuran diperiksa oleh `intakeFiles`/`checkFile`. */
   onFiles(files: File[], rejected: { name: string; reason: string }[]): void;
   children: ReactNode;
   className?: string;
@@ -35,6 +35,8 @@ export function FileDropZone({
   function onDrop(event: DragEvent<HTMLDivElement>) {
     if (disabled || !hasFiles(event)) return;
     event.preventDefault();
+    // Sudah ditangani di sini: event React menggelembung lewat portal ke zona leluhur (mis. dialog di dalam field).
+    event.stopPropagation();
     reset();
     const { files, rejected } = partitionByType(Array.from(event.dataTransfer.files), accept);
     if (files.length > 0 || rejected.length > 0) onFiles(files, rejected);
@@ -49,16 +51,19 @@ export function FileDropZone({
       onDragEnter={(event) => {
         if (disabled || !hasFiles(event)) return;
         event.preventDefault();
+        event.stopPropagation();
         depth.current += 1;
         setActive(true);
       }}
       onDragOver={(event) => {
         if (disabled || !hasFiles(event)) return;
         event.preventDefault();
+        event.stopPropagation();
         event.dataTransfer.dropEffect = 'copy';
       }}
       onDragLeave={(event) => {
         if (disabled || !hasFiles(event)) return;
+        event.stopPropagation();
         depth.current = Math.max(0, depth.current - 1);
         if (depth.current === 0) setActive(false);
       }}

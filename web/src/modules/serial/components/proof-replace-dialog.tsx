@@ -1,46 +1,26 @@
-import type { SerialProofPhotoDto } from '@shared/contract';
 import { MAX_IMAGE_BYTES } from '@shared/files';
-import { toast } from 'sonner';
-import { FileDialog } from '@/components/file-dialog';
-import { ApiError } from '@/lib/api/api-error';
-import { describeError } from '@/lib/api/describe-error';
+import { FileDialog, type QueuedFile, UploadProgress } from '@/components/file-dialog';
+import { Button } from '@/components/ui/button';
 import { proofSource } from '../lib/proof-source';
-import { discardProofPhotos, useReplaceProof } from '../queries';
-
-/** Galat yang pasti berarti "pengganti tidak terpasang": unggahan drafnya tak berguna dan dibuang di server. */
-const DISCARD_CODES: ReadonlySet<string> = new Set(['VALIDATION', 'CONFLICT', 'NOT_FOUND']);
+import type { ProofReplaceState } from '../lib/use-proof-replace';
 
 export interface ProofReplaceDialogProps {
-  /** Foto `failed` yang diganti. */
-  photo: SerialProofPhotoDto;
   open: boolean;
   onOpenChange(open: boolean): void;
+  /** Satu foto pengganti sudah dipilih; pemanggil (hook `useProofReplace`, pemiliknya `ProofReplaceProvider`) yang mengunggah dan memanggil `replace`. */
+  onPicked(files: QueuedFile[]): void;
 }
 
 /**
- * Dialog "Unggah ulang" foto bukti yang gagal: dialog foto bukti yang sama dengan form Tambah/Cek ulang (tab Unggah +
- * Kamera, tanpa Pustaka), tetapi SATU foto. Foto terunggah sebagai draft lewat `serialProofs.upload`, lalu
- * `serialProofs.replace` menggantikan foto gagal itu (pengganti masuk antrean cap). Dialog menutup begitu foto
- * diteruskan; kegagalan penggantian tampil sebagai toast dan draf yang tak terpakai dibuang.
+ * Dialog "Unggah ulang" foto bukti yang gagal: dialog lampiran yang sama dengan form Tambah/Cek ulang (tab Unggah +
+ * Kamera, tanpa Pustaka), tetapi SATU foto. Dialog hanya mengumpulkan berkas dan menutup; unggahannya dan penggantian
+ * (`serialProofs.replace`) dikerjakan hook `useProofReplace` yang dibagi lewat `ProofReplaceProvider` (banner dan galeri satu pemilik), dengan progres di kartu foto.
  */
-export function ProofReplaceDialog({ photo, open, onOpenChange }: ProofReplaceDialogProps) {
-  const replace = useReplaceProof();
-
-  async function run(newPhotoId: string) {
-    try {
-      await replace.mutateAsync({ photoId: photo.id, newPhotoId });
-      toast.success('Foto pengganti diterima, sedang diberi cap.');
-    } catch (error) {
-      if (error instanceof ApiError && DISCARD_CODES.has(error.code)) {
-        void discardProofPhotos([newPhotoId]);
-      }
-      toast.error(describeError(error));
-    }
-  }
-
+export function ProofReplaceDialog({ open, onOpenChange, onPicked }: ProofReplaceDialogProps) {
+  if (!open) return null;
   return (
     <FileDialog
-      open={open}
+      open
       onOpenChange={onOpenChange}
       source={proofSource}
       mode="single"
@@ -50,12 +30,48 @@ export function ProofReplaceDialog({ photo, open, onOpenChange }: ProofReplaceDi
       title="Unggah ulang foto bukti QC"
       confirmLabel="Ganti foto"
       hideNames
-      onDiscardUploaded={(items) => void discardProofPhotos(items.map((item) => item.id))}
-      onSelect={(items) => {
-        const [first, ...extras] = items;
-        if (extras.length > 0) void discardProofPhotos(extras.map((item) => item.id));
-        if (first) void run(first.id);
-      }}
+      onConfirm={(result) => onPicked(result.files)}
     />
+  );
+}
+
+export interface ProofReplaceStatusProps {
+  state: ProofReplaceState;
+  /** Penggantian (`serialProofs.replace`) foto ini sedang berjalan. */
+  replacing: boolean;
+  onCancel(): void;
+}
+
+/**
+ * Keadaan penggantian pada kartu foto gagal: bar progres + "Mengganti…" selama diunggah atau diganti, atau pesan galat
+ * (unggahan atau penggantian gagal) dengan "Unggah ulang" yang tersedia lagi di kartu. Tanpa keduanya tidak menampilkan apa pun.
+ */
+export function ProofReplaceStatus({ state, replacing, onCancel }: ProofReplaceStatusProps) {
+  const { entry, error } = state;
+  if (entry && entry.phase !== 'failed') {
+    return (
+      <div data-testid="proof-replacing" className="space-y-1">
+        <p className="text-xs font-medium">Mengganti…</p>
+        <UploadProgress phase={entry.phase} fraction={entry.fraction} />
+        <Button type="button" variant="ghost" size="xs" onClick={onCancel}>
+          Batalkan
+        </Button>
+      </div>
+    );
+  }
+  if (replacing) {
+    return (
+      <div data-testid="proof-replacing" className="space-y-1">
+        <p className="text-xs font-medium">Mengganti…</p>
+        <UploadProgress phase="processing" fraction={null} />
+      </div>
+    );
+  }
+  const message = entry?.error ?? error;
+  if (!message) return null;
+  return (
+    <p role="alert" className="text-xs text-destructive-text">
+      {entry ? `Unggah ulang gagal: ${message}` : message}
+    </p>
   );
 }
