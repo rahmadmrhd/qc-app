@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+import type { UploadEntry } from '@/components/file-dialog/use-background-uploads';
 import { addSerials, type StagingRow } from '../lib/draft';
 import { rowStatus, StagingTable } from './staging-table';
 
@@ -20,6 +21,10 @@ test('wadah gulir tabel draft menampung elemen absolut (relative + overflow-x-au
       onCommitSerial={() => null}
       onOpenDetail={noop}
       onRemove={noop}
+      uploadEntries={[]}
+      onUploadFiles={noop}
+      onRetryUpload={noop}
+      onCancelUpload={noop}
     />,
   );
   const wrapper = container.querySelector('table')?.parentElement;
@@ -66,6 +71,9 @@ function photoRow(serial: string, ids: string[]): StagingRow {
 function renderTable(rows: StagingRow[], over: Partial<Parameters<typeof StagingTable>[0]> = {}) {
   const noop = vi.fn();
   const onEdit = vi.fn();
+  const onUploadFiles = vi.fn();
+  const onRetryUpload = vi.fn();
+  const onCancelUpload = vi.fn();
   const view = render(
     <QueryClientProvider client={new QueryClient()}>
       <StagingTable
@@ -76,11 +84,15 @@ function renderTable(rows: StagingRow[], over: Partial<Parameters<typeof Staging
         onCommitSerial={() => null}
         onOpenDetail={noop}
         onRemove={noop}
+        uploadEntries={[]}
+        onUploadFiles={onUploadFiles}
+        onRetryUpload={onRetryUpload}
+        onCancelUpload={onCancelUpload}
         {...over}
       />
     </QueryClientProvider>,
   );
-  return { ...view, onEdit };
+  return { ...view, onEdit, onUploadFiles, onRetryUpload, onCancelUpload };
 }
 
 test('kolom Foto: tiap baris menampilkan jumlah dan kisi fotonya', () => {
@@ -220,4 +232,57 @@ test('baris hasil inject Country Lock: serial hanya teks, baris manual tetap ber
     'AAA111',
   );
   expect(screen.getByRole('textbox', { name: 'Serial BBB222' })).toBeInTheDocument();
+});
+
+const entry = (owner: string, over: Partial<UploadEntry> = {}): UploadEntry => ({
+  key: `u-${owner}`,
+  owner,
+  file: new File([new Uint8Array(2)], 'baru.jpg', { type: 'image/jpeg' }),
+  name: 'baru.jpg',
+  phase: 'uploading',
+  fraction: 0.4,
+  error: null,
+  ...over,
+});
+
+test('unggahan latar tampil sebagai kartu progres hanya di baris pemiliknya dan ikut dihitung pada tombol Foto', () => {
+  renderTable([photoRow('AAA111', ['p1']), photoRow('BBB222', [])], {
+    uploadEntries: [entry('id-AAA111')],
+  });
+  const [first, second] = screen.getAllByRole('row').slice(1) as [HTMLElement, HTMLElement];
+  expect(within(first).getByTestId('attachment-pending')).toBeInTheDocument();
+  expect(within(second).queryByTestId('attachment-pending')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Foto (2), AAA111' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Foto (0), BBB222' })).toBeInTheDocument();
+});
+
+test('Ulangi dan Batalkan pada kartu progres diteruskan ke halaman per kunci entri', async () => {
+  const { onRetryUpload, onCancelUpload } = renderTable([photoRow('AAA111', [])], {
+    uploadEntries: [
+      entry('id-AAA111', { key: 'k-gagal', phase: 'failed', error: 'Server menolak' }),
+      entry('id-AAA111', { key: 'k-jalan' }),
+    ],
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Ulangi baru.jpg' }));
+  expect(onRetryUpload).toHaveBeenCalledWith('k-gagal');
+  await userEvent.click(screen.getByRole('button', { name: 'Batalkan baru.jpg' }));
+  expect(onCancelUpload).toHaveBeenCalledWith('k-jalan');
+});
+
+test('Tambahkan di dialog foto baris mengantrekan berkas untuk baris itu (tanpa mengunggah sendiri)', async () => {
+  const { onUploadFiles } = renderTable([photoRow('AAA111', []), photoRow('BBB222', [])]);
+  await userEvent.click(screen.getByRole('button', { name: 'Foto (0), BBB222' }));
+  await screen.findByRole('alertdialog');
+  const input = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, {
+    target: { files: [new File([new Uint8Array(4)], 'x.jpg', { type: 'image/jpeg' })] },
+  });
+  await userEvent.click(await screen.findByRole('button', { name: /^Tambahkan \(1\)/ }));
+  expect(onUploadFiles).toHaveBeenCalledTimes(1);
+  expect(onUploadFiles).toHaveBeenCalledWith('id-BBB222', [expect.objectContaining({ name: 'x' })]);
+  expect(apiMock).not.toHaveBeenCalledWith(
+    'serialProofs.upload',
+    expect.anything(),
+    expect.anything(),
+  );
 });

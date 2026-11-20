@@ -544,11 +544,17 @@ export function QrDesignForm({
                         document={document}
                         onDocument={applyDocument}
                         onBusyChange={setPdfBusy}
-                        onUpload={async (file, replaceId) =>
+                        onUpload={async (file, replaceId, ctx) =>
                           uploadPdf.mutateAsync({
                             name: limitDocumentName(file.name),
                             bytes: new Uint8Array(await file.arrayBuffer()),
                             ...(replaceId ? { replaceDocumentId: replaceId } : {}),
+                            ...(ctx
+                              ? {
+                                  onUploadProgress: (loaded: number, total: number) =>
+                                    ctx.onProgress(total > 0 ? Math.min(1, loaded / total) : null),
+                                }
+                              : {}),
                           })
                         }
                         onClone={(source, replaceId) =>

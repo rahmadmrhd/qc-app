@@ -12,6 +12,7 @@ import { api } from '@/lib/api';
 import { API_BASE } from '@/lib/api/client';
 import { prepareImage } from '@/modules/files/image';
 import { prepareThumbnail } from '@/modules/files/thumbnail';
+import { throwIfAborted, uploadCallOptions } from '@/modules/files/upload-context';
 import { stickerKeys } from '../keys';
 
 /**
@@ -55,21 +56,29 @@ export const stickerGuideSource: FileLibrarySource = {
     });
     return { items: page.items.map(toLibraryItem), nextCursor: page.nextCursor };
   },
-  upload(file, name) {
+  upload(file, name, ctx) {
     // Siapkan + kirim = satu penulisan berjalan (muat ulang otomatis PWA tak boleh memotongnya).
     return runBusy(async () => {
+      throwIfAborted(ctx?.signal);
+      ctx?.onProgress?.('preparing', null);
       // Berurutan (bukan paralel): dua decode gambar besar sekaligus memboroskan memori ponsel.
       const image = await prepareImage(file);
       const thumbnail = await prepareThumbnail(file);
-      const dto = await api('stickerGuides.upload', {
-        name,
-        mime: image.mime,
-        thumbMime: thumbnail.mime,
-        width: image.width,
-        height: image.height,
-        image: image.bytes,
-        thumbnail: thumbnail.bytes,
-      });
+      throwIfAborted(ctx?.signal);
+      ctx?.onProgress?.('uploading', 0);
+      const dto = await api(
+        'stickerGuides.upload',
+        {
+          name,
+          mime: image.mime,
+          thumbMime: thumbnail.mime,
+          width: image.width,
+          height: image.height,
+          image: image.bytes,
+          thumbnail: thumbnail.bytes,
+        },
+        uploadCallOptions(ctx),
+      );
       return toLibraryItem(dto);
     });
   },

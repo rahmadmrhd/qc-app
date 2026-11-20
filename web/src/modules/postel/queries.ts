@@ -6,10 +6,11 @@ import type {
 } from '@shared/contract';
 import { comparePostels } from '@shared/postel';
 import type { QueryClient } from '@tanstack/react-query';
-import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
+import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { markStale } from '@/lib/query-cache';
 import { accessKeys } from '@/modules/access/queries';
+import { useBlobUrl } from '@/modules/files/queries';
 import { itemKeys } from '@/modules/item/queries';
 import { stickerKeys } from '@/modules/sticker/keys';
 import { postelKeys } from './keys';
@@ -17,6 +18,21 @@ import { toPostelSummary } from './lib/summary';
 
 export function postelListQueryOptions() {
   return queryOptions({ queryKey: postelKeys.list, queryFn: () => api('postels.list', null) });
+}
+
+/** Isi satu lampiran Postel tidak berubah untuk id yang sama, jadi di-cache lama (kunci terpisah dari catatan). */
+export function postelFileQueryOptions(id: string) {
+  return queryOptions({
+    queryKey: ['postel-file', id] as const,
+    queryFn: () => api('postelFiles.get', { id }),
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: 30 * 60 * 1000,
+  });
+}
+
+/** URL objek (Blob) lampiran gambar Postel untuk thumbnail/pratinjau; dimuat lewat `postelFiles.get` (privat). */
+export function usePostelFileUrl(id: string) {
+  return useBlobUrl(useQuery(postelFileQueryOptions(id)));
 }
 
 export function postelQueryOptions(id: string) {

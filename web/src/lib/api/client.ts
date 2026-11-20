@@ -15,7 +15,9 @@ import {
   type ErrorCode,
 } from '@shared/contract';
 import { beginBusy } from '@/app/pwa/busy';
+import { isDesktop } from '@/lib/platform';
 import { ApiError } from './api-error';
+import { XHR_PROGRESS_ON_DESKTOP, xhrSend } from './xhr-upload';
 
 /**
  * Awalan jalur REST v1; jalur tabel (`/brands/{id}`) relatif terhadap awalan versi id-nya (`restBase`). Nilainya tetap
@@ -36,6 +38,12 @@ export interface ApiClientOptions {
 export interface ApiCallOptions {
   /** Pembatal permintaan (mis. batas waktu pengurasan antrean). Abort dipetakan ke `UNAVAILABLE` seperti galat jaringan. */
   signal?: AbortSignal;
+  /**
+   * Progres unggah (byte terkirim dari total). Bila diberikan pada rute non-unduhan, permintaan dikirim lewat
+   * `XMLHttpRequest` (`fetch` tak punya progres unggah), kecuali di desktop selama `XHR_PROGRESS_ON_DESKTOP` false.
+   * Persen dapat 100% sebelum server selesai menjawab.
+   */
+  onUploadProgress?(loaded: number, total: number): void;
 }
 
 export type ApiCall = <M extends ApiId>(
@@ -135,6 +143,22 @@ function bodyOf(parts: RequestParts): string | Blob | FormData | undefined {
   return parts.body === undefined ? undefined : JSON.stringify(parts.body);
 }
 
+/** Bagian setelah respons (fetch atau XHR): galat non-2xx, unduhan biner, atau JSON. */
+function finishResponse<M extends ApiId>(
+  id: M,
+  input: ApiInput<M>,
+  response: { ok: boolean; status: number; headers: Headers },
+  text: string,
+  bytes: Uint8Array | undefined,
+): ApiOutput<M> {
+  if (!response.ok) throw errorFromResponse(response.status, text);
+  if (bytes !== undefined) return downloadOutput(id, input, response.headers, bytes);
+  if (text === '') return undefined as unknown as ApiOutput<M>;
+  const data = parseJson(text);
+  if (data === undefined) throw new ApiError('INTERNAL', 'Respons server tidak valid', '-');
+  return data as ApiOutput<M>;
+}
+
 /**
  * Klien REST bertipe berbasis tabel rute `shared/api.ts`: `api(id, input)` merakit verba, jalur, query, badan,
  * dan `If-Match` dari input datar (bentuk input/keluaran sama dengan kabel lama, jadi `queries.ts` hampir tak
@@ -163,34 +187,61 @@ export function createApiClient(options: ApiClientOptions = {}): ApiCall {
     callOptions?: ApiCallOptions,
   ): Promise<ApiOutput<M>> {
     const isDownload = API_ROUTES[id].download !== undefined;
-    const doFetch = options.fetchImpl ?? fetch;
-    let response: Response;
+    const url = requestUrl(baseUrl, id, parts);
+    const headers = headersOf(parts.verb, parts, isDownload);
+    const body = bodyOf(parts);
+    const useXhr =
+      callOptions?.onUploadProgress !== undefined &&
+      !isDownload &&
+      (!isDesktop() || XHR_PROGRESS_ON_DESKTOP);
+    let status: number;
+    let responseHeaders: Headers;
     let text = '';
     let bytes: Uint8Array | undefined;
     try {
-      response = await doFetch(requestUrl(baseUrl, id, parts), {
-        method: parts.verb,
-        credentials: 'same-origin',
-        // JSON jangan pernah dilayani dari cache HTTP peramban (ETag updatedAt bukan validator isi); unduhan biner
-        // mengikuti kebijakan Cache-Control server (immutable/revalidate).
-        ...(isDownload ? {} : { cache: 'no-store' as const }),
-        headers: headersOf(parts.verb, parts, isDownload),
-        body: bodyOf(parts),
-        ...(callOptions?.signal ? { signal: callOptions.signal } : {}),
-      });
-      // Unduhan sukses = byte mentah; selain itu teks (JSON atau problem+json).
-      if (isDownload && response.ok) bytes = new Uint8Array(await response.arrayBuffer());
-      else text = await response.text();
+      if (useXhr) {
+        const result = await xhrSend(url, {
+          method: parts.verb,
+          headers,
+          body,
+          ...(callOptions?.signal ? { signal: callOptions.signal } : {}),
+          ...(callOptions?.onUploadProgress
+            ? { onUploadProgress: callOptions.onUploadProgress }
+            : {}),
+        });
+        status = result.status;
+        responseHeaders = result.headers;
+        text = result.text;
+      } else {
+        const doFetch = options.fetchImpl ?? fetch;
+        const response = await doFetch(url, {
+          method: parts.verb,
+          credentials: 'same-origin',
+          // JSON jangan pernah dilayani dari cache HTTP peramban (ETag updatedAt bukan validator isi); unduhan biner
+          // mengikuti kebijakan Cache-Control server (immutable/revalidate).
+          ...(isDownload ? {} : { cache: 'no-store' as const }),
+          headers,
+          body,
+          ...(callOptions?.signal ? { signal: callOptions.signal } : {}),
+        });
+        status = response.status;
+        responseHeaders = response.headers;
+        // Unduhan sukses = byte mentah; selain itu teks (JSON atau problem+json).
+        if (isDownload && response.ok) bytes = new Uint8Array(await response.arrayBuffer());
+        else text = await response.text();
+      }
     } catch (error) {
       // Offline, DNS gagal, atau badan terputus: server tidak terjangkau (FR-P15); UI menampilkan data terakhir/antrean.
+      if (error instanceof ApiError) throw error;
       throw new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-', undefined, { cause: error });
     }
-    if (!response.ok) throw errorFromResponse(response.status, text);
-    if (bytes !== undefined) return downloadOutput(id, input, response.headers, bytes);
-    if (text === '') return undefined as unknown as ApiOutput<M>;
-    const data = parseJson(text);
-    if (data === undefined) throw new ApiError('INTERNAL', 'Respons server tidak valid', '-');
-    return data as ApiOutput<M>;
+    return finishResponse(
+      id,
+      input,
+      { ok: status >= 200 && status < 300, status, headers: responseHeaders },
+      text,
+      bytes,
+    );
   }
   return call;
 }

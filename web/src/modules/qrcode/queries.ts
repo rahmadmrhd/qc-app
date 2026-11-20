@@ -15,6 +15,7 @@ import type {
 import type { QueryClient } from '@tanstack/react-query';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import type { ApiCallOptions } from '@/lib/api/client';
 import { markStale, removeFromList, upsertInList } from '@/lib/query-cache';
 import { accessKeys } from '@/modules/access/queries';
 import { itemKeys } from '@/modules/item/queries';
@@ -171,7 +172,13 @@ export const useDeleteQrDesign = () =>
 export const useCloneQrPdf = () =>
   useQrMutation((input: CloneQrPdfInput) => api('qrcodes.cloneFromDrive', input));
 export const useUploadQrPdf = () =>
-  useQrMutation((input: UploadQrPdfInput) => api('qrcodes.uploadPdf', input));
+  useQrMutation(
+    ({
+      onUploadProgress,
+      ...input
+    }: UploadQrPdfInput & { onUploadProgress?: ApiCallOptions['onUploadProgress'] }) =>
+      api('qrcodes.uploadPdf', input, onUploadProgress ? { onUploadProgress } : undefined),
+  );
 /**
  * Ekspor QR kini pekerjaan latar (Queues): `qrcodes.export` hanya mengantre dan membalas `{ jobId }`. Mutasi ini
  * menunggu job selesai (polling `jobs.get` bertahap), lalu memuat desain terbaru (status ekspor berubah) sehingga

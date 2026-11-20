@@ -1,53 +1,97 @@
+import { MAX_FILE_BYTES } from '@shared/files';
 import { QR_LIMITS } from '@shared/qrcode';
-import { useState } from 'react';
-import { runBusy } from '@/app/pwa/busy';
-import { BusyLabel } from '@/components/spinner';
+import { useEffect, useRef, useState } from 'react';
+import {
+  type AttachmentItem,
+  AttachmentView,
+  FileDropZone,
+  FilePicker,
+  PreviewDialog,
+  type RejectedFile,
+  RejectedList,
+} from '@/components/file-dialog';
+import { intakeFiles } from '@/components/file-dialog/intake';
+import { useBackgroundUploads } from '@/components/file-dialog/use-background-uploads';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { prepareImage } from '@/modules/files/image';
-import { useUploadFile } from '@/modules/files/queries';
+import { logoFileSource } from '@/modules/files/file-source';
 import { LogoThumb } from './logo-picker';
-
-const LOGO_MAX_SIDE = 512;
 
 export interface LogoLibraryFieldProps {
   /** Pustaka logo bersama (id berkas). */
   library: readonly string[];
   onLibraryChange: (ids: string[]) => void;
+  /** Ada logo yang masih diunggah (true) atau tidak (false); induk menahan tombol simpan pustaka. */
   onBusyChange?: (busy: boolean) => void;
 }
 
-/** Mengelola pustaka logo bersama (khusus pengelola): tambah dan hapus logo. */
+const OWNER = 'logos';
+
+/** Mengelola pustaka logo bersama (khusus pengelola): tambah (pilih atau seret-lepas, dikecilkan 512 px) dan hapus logo. */
 export function LogoLibraryField({
   library,
   onLibraryChange,
   onBusyChange,
 }: LogoLibraryFieldProps) {
-  const upload = useUploadFile();
-  const [phase, setPhase] = useState<'resize' | 'upload' | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const full = library.length >= QR_LIMITS.logoLibrary;
+  // Nilai terbaru, termasuk perubahan yang belum sempat dirender induk; dibaca ulang saat unggahan selesai.
+  // Mengikuti prop hanya saat induk benar-benar memberi nilai baru: render ulang karena sebab lain (progres unggahan)
+  // tak boleh menimpa perubahan yang belum sempat sampai ke induk.
+  const libraryRef = useRef(library);
+  const lastLibraryProp = useRef(library);
+  if (lastLibraryProp.current !== library) {
+    lastLibraryProp.current = library;
+    libraryRef.current = library;
+  }
+  const [rejected, setRejected] = useState<RejectedFile[]>([]);
+  const [preview, setPreview] = useState<AttachmentItem | null>(null);
 
-  async function add(file: File | undefined) {
-    setError(null);
-    if (!file) return;
-    onBusyChange?.(true);
-    setPhase('resize');
-    try {
-      // Pengecilan + unggah = satu penulisan berjalan (muat ulang otomatis PWA tak boleh memotongnya).
-      const saved = await runBusy(async () => {
-        const prepared = await prepareImage(file, LOGO_MAX_SIDE);
-        setPhase('upload');
-        return upload.mutateAsync(prepared);
-      });
-      onLibraryChange([...library, saved.id]);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Gagal mengunggah logo');
-    } finally {
-      setPhase(null);
-      onBusyChange?.(false);
-    }
+  // Satu per waktu agar urutan logo mengikuti urutan pilihan.
+  const uploads = useBackgroundUploads({
+    source: logoFileSource,
+    concurrency: 1,
+    onUploaded: (_owner, item) => {
+      if (libraryRef.current.length >= QR_LIMITS.logoLibrary) return false;
+      const next = [...libraryRef.current, item.id];
+      libraryRef.current = next;
+      onLibraryChange(next);
+      return true;
+    },
+  });
+  const own = uploads.forOwner(OWNER);
+  // Unggahan yang menunggu/berjalan sudah mengisi kuota; yang gagal tidak.
+  const reserved = own.entries.filter((entry) => entry.phase !== 'failed').length;
+  const room = Math.max(0, QR_LIMITS.logoLibrary - library.length - reserved);
+  const full = room <= 0;
+  const busy = own.blocking;
+  const onBusyChangeRef = useRef(onBusyChange);
+  onBusyChangeRef.current = onBusyChange;
+  useEffect(() => {
+    onBusyChangeRef.current?.(busy);
+    return () => onBusyChangeRef.current?.(false);
+  }, [busy]);
+
+  function add(files: File[], refused: RejectedFile[]) {
+    const result = intakeFiles(files, {
+      accept: logoFileSource.mimeTypes,
+      maxBytes: MAX_FILE_BYTES,
+      room,
+    });
+    setRejected([...refused, ...result.rejected]);
+    if (result.queued.length > 0) own.add(result.queued);
+  }
+
+  function previewOf(id: string, index: number): AttachmentItem {
+    const label = `Logo ${index + 1}`;
+    return {
+      id,
+      name: label,
+      mime: 'image/*',
+      renderImage: (variant) =>
+        variant === 'thumb' ? (
+          <LogoThumb id={id} label={label} className="size-full object-contain" />
+        ) : (
+          <LogoThumb id={id} label={label} className="max-h-[70dvh] max-w-full object-contain" />
+        ),
+    };
   }
 
   return (
@@ -55,54 +99,61 @@ export function LogoLibraryField({
       <div className="flex flex-wrap gap-3">
         {library.map((id, index) => (
           <div key={id} className="flex flex-col items-center gap-1 text-sm">
-            <LogoThumb id={id} label={`Logo ${index + 1}`} />
+            <button
+              type="button"
+              aria-label={`Perbesar logo ${index + 1}`}
+              className="block h-16 w-16 cursor-zoom-in overflow-hidden rounded border bg-white p-1 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+              onClick={() => setPreview(previewOf(id, index))}
+            >
+              {previewOf(id, index).renderImage?.('thumb')}
+            </button>
             <Button
               type="button"
               variant="outline"
               size="sm"
               aria-label={`Hapus logo ${index + 1} dari pustaka`}
-              onClick={() => onLibraryChange(library.filter((item) => item !== id))}
+              onClick={() => {
+                // Nilai terbaru (termasuk logo yang baru selesai diunggah dan belum dirender induk), bukan prop basi.
+                const next = libraryRef.current.filter((item) => item !== id);
+                libraryRef.current = next;
+                onLibraryChange(next);
+              }}
             >
               Hapus
             </Button>
           </div>
         ))}
-        {library.length === 0 ? (
+        {library.length === 0 && own.entries.length === 0 ? (
           <p className="text-sm text-muted-foreground">Pustaka masih kosong.</p>
         ) : null}
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="qr-logo-library-file">Tambah logo ke pustaka</Label>
-        <Input
-          id="qr-logo-library-file"
-          type="file"
-          accept="image/png,image/jpeg,image/webp"
-          disabled={phase !== null || full}
-          onChange={(event) => {
-            void add(event.target.files?.[0]);
-            event.target.value = '';
-          }}
-        />
+      <AttachmentView
+        items={[]}
+        pending={own.entries}
+        layout="grid"
+        label="logo"
+        onRetry={own.retry}
+        onCancel={own.remove}
+      />
+      <FileDropZone
+        accept={logoFileSource.mimeTypes}
+        disabled={full}
+        onFiles={add}
+        className="space-y-1.5 rounded-md border border-dashed p-3"
+      >
+        <FilePicker accept={logoFileSource.mimeTypes} multiple disabled={full} onFiles={add}>
+          Tambah logo ke pustaka
+        </FilePicker>
         <p className="text-xs text-muted-foreground">
-          {full ? `Pustaka penuh (maksimal ${QR_LIMITS.logoLibrary} logo). ` : ''}
+          {full
+            ? `Pustaka penuh (maksimal ${QR_LIMITS.logoLibrary} logo). `
+            : 'Atau seret gambar ke sini. '}
           Logo dikecilkan otomatis. Perubahan pustaka tersimpan setelah Anda menekan Simpan pustaka
           logo.
         </p>
-      </div>
-      {phase !== null ? (
-        <p role="status" className="text-sm">
-          <BusyLabel>
-            {phase === 'resize'
-              ? 'Memeriksa dan mengecilkan gambar logo…'
-              : 'Mengunggah logo ke Drive…'}
-          </BusyLabel>
-        </p>
-      ) : null}
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
+      </FileDropZone>
+      <RejectedList items={rejected} onClear={() => setRejected([])} />
+      <PreviewDialog item={preview} onClose={() => setPreview(null)} />
     </div>
   );
 }

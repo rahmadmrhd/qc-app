@@ -175,7 +175,7 @@ test('mode ubah: id nomor tersimpan dibawa, nomor baru tanpa id, lampiran urut, 
   await userEvent.type(screen.getByLabelText('Nomor sertifikat 3'), 'NEW-3');
   setDate('Tanggal habis 3', '2028-01-01');
   // hapus lampiran pertama lalu pastikan sisanya tetap berurutan
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus lampiran 1' }));
+  await userEvent.click(screen.getByRole('button', { name: /^Buang lampiran-aaaaaaaa\.pdf/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   await waitFor(() => expect(props.onSubmit).toHaveBeenCalledTimes(1));
   expect(vi.mocked(props.onSubmit).mock.calls[0]?.[0]).toEqual({

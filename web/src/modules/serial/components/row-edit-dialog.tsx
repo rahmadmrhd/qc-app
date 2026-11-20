@@ -1,3 +1,4 @@
+import { MAX_IMAGE_BYTES } from '@shared/files';
 import {
   isIsoDate,
   normalizeSerial,
@@ -7,6 +8,12 @@ import {
 } from '@shared/serials';
 import { Camera } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AttachmentView,
+  FileDialog,
+  FileDropZone,
+  type RejectedFile,
+} from '@/components/file-dialog';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
@@ -20,15 +27,16 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { existingProblem, type StagingRow, type StagingSticker } from '../lib/draft';
-import { mergeProofPhotos, type ProofPhotoRef } from '../lib/proof-source';
+import { type ProofPhotoRef, proofSource } from '../lib/proof-source';
 import type { StampPreviewInput } from '../lib/stamp-preview';
+import type { ProofSession } from '../lib/use-proof-uploads';
 import { discardProofPhotos } from '../queries';
 import { ItemBuField, type ItemBuValue } from './item-bu-field';
-import { ProofPhotoDialog } from './proof-photo-dialog';
-import { ProofPhotoGrid } from './proof-photo-grid';
+import { proofAttachmentItems } from './proof-photo-field';
 import { choicesFor, RecheckBuField, useWritableBus } from './recheck-bu-field';
 import { SerialLocationField } from './serial-location-field';
 import { SerialNoteField } from './serial-note-field';
+import { proofCameraStamp } from './stamp-preview';
 import { defaultStickerChoice, StickerChecklist, useApplicableStickers } from './sticker-checklist';
 
 export interface RowEditResult {
@@ -48,6 +56,8 @@ export interface RowEditDialogProps {
   commitSerial(serial: string): string | null;
   onClose(): void;
   onApply(result: RowEditResult): void;
+  /** Antrean unggah bersama milik halaman; foto baru dialog ini memakai pemilik sendiri dan baru menempel saat Terapkan. */
+  proof: ProofSession;
   /** Nama pelaku untuk pratinjau cap di kamera foto; kosong = tanpa pratinjau cap. */
   actorName?: string;
 }
@@ -63,6 +73,7 @@ export function RowEditDialog({
   commitSerial,
   onClose,
   onApply,
+  proof,
   actorName = '',
 }: RowEditDialogProps) {
   const [serial, setSerial] = useState(row.serial);
@@ -102,9 +113,33 @@ export function RowEditDialog({
   const blocked = existingProblem(row);
 
   const [photos, setPhotos] = useState<ProofPhotoRef[]>(row.proofPhotos);
-  const [photoOpen, setPhotoOpen] = useState(false);
+  const photosRef = useRef(photos);
+  photosRef.current = photos;
+  const [photoDialog, setPhotoDialog] = useState<{
+    open: boolean;
+    files: File[];
+    rejected: RejectedFile[];
+  }>({ open: false, files: [], rejected: [] });
+  // Foto baru dialog ini diunggah di latar dengan pemilik sendiri (bukan baris: Batal harus membuangnya).
+  const ownerId = `edit:${row.clientId}`;
+  const proofRef = useRef(proof);
+  proofRef.current = proof;
+  const own = proof.uploads.forOwner(ownerId);
+  // Unggahan milik BARIS ini (mis. dari dialog scan wajib foto atau kolom foto tabel) bisa masih berjalan atau gagal
+  // selagi dialog terbuka: ditampilkan di sini, ikut mengisi kuota, dan menahan Terapkan.
+  const rowOwn = proof.uploads.forOwner(row.clientId);
+  const pendingEntries = useMemo(
+    () => [...rowOwn.entries, ...own.entries],
+    [rowOwn.entries, own.entries],
+  );
+  const running = pendingEntries.filter((entry) => entry.phase !== 'failed').length;
+  // Berjalan ATAU gagal menahan Terapkan: entri gagal tak boleh dibuang diam-diam (diulang atau dibuang pengguna).
+  const uploadsHeld = pendingEntries.length > 0;
   // Foto yang ditambahkan selama dialog terbuka (dibuang bila tidak jadi) dan foto lama yang dibuang (dihapus saat Terapkan).
   const addedRef = useRef(new Set<string>());
+  // Foto baris yang sudah dikenal dialog; foto baru yang menempel pada baris selagi dialog terbuka (unggahan latar
+  // baris yang selesai) ikut masuk daftar dialog supaya Terapkan tidak menimpanya.
+  const knownRef = useRef(new Set(row.proofPhotos.map((photo) => photo.id)));
   const removedRef = useRef(new Set<string>());
   const settledRef = useRef(false);
 
@@ -114,13 +149,37 @@ export function RowEditDialog({
   useEffect(() => {
     settledRef.current = false;
     return () => {
+      proofRef.current.uploads.cancelOwner(ownerId);
       if (settledRef.current) return;
       settledRef.current = true;
       void discardProofPhotos([...addedRef.current]);
     };
-  }, []);
+  }, [ownerId]);
+
+  useEffect(() => {
+    const fresh = row.proofPhotos.filter((photo) => !knownRef.current.has(photo.id));
+    if (fresh.length === 0) return;
+    for (const photo of fresh) knownRef.current.add(photo.id);
+    setPhotos((list) => [
+      ...list,
+      ...fresh.filter((photo) => !list.some((x) => x.id === photo.id)),
+    ]);
+  }, [row.proofPhotos]);
+
+  // Foto selesai milik dialog ini masuk ke daftar dialog (dan dicatat sebagai baru); penuh = ditolak dan dibuang.
+  useEffect(
+    () =>
+      proofRef.current.attach(ownerId, (photo) => {
+        if (photosRef.current.length >= SERIAL_PROOF_LIMITS.perEntryMax) return false;
+        addedRef.current.add(photo.id);
+        setPhotos([...photosRef.current, photo]);
+        return true;
+      }),
+    [ownerId],
+  );
 
   function close() {
+    proofRef.current.uploads.cancelOwner(ownerId);
     if (!settledRef.current) {
       settledRef.current = true;
       void discardProofPhotos([...addedRef.current]);
@@ -173,26 +232,19 @@ export function RowEditDialog({
     (loaded || existing !== undefined) &&
     chosen !== null &&
     normalizedSerial !== '' &&
-    blocked === null;
-  const room = Math.max(0, SERIAL_PROOF_LIMITS.perEntryMax - photos.length);
+    blocked === null &&
+    !uploadsHeld;
+  const room = Math.max(0, SERIAL_PROOF_LIMITS.perEntryMax - photos.length - running);
+  const items = useMemo(() => proofAttachmentItems(photos, row.serial), [photos, row.serial]);
 
-  function removePhoto(photo: ProofPhotoRef) {
-    if (addedRef.current.has(photo.id)) {
-      addedRef.current.delete(photo.id);
-      void discardProofPhotos([photo.id]);
+  function removePhoto(id: string) {
+    if (addedRef.current.has(id)) {
+      addedRef.current.delete(id);
+      void discardProofPhotos([id]);
     } else {
-      removedRef.current.add(photo.id);
+      removedRef.current.add(id);
     }
-    setPhotos((list) => list.filter((entry) => entry.id !== photo.id));
-  }
-
-  function addPhotos(added: ProofPhotoRef[]) {
-    const { next, extras } = mergeProofPhotos(photos, added, SERIAL_PROOF_LIMITS.perEntryMax);
-    if (extras.length > 0) void discardProofPhotos(extras);
-    for (const photo of next) {
-      if (!row.proofPhotos.some((own) => own.id === photo.id)) addedRef.current.add(photo.id);
-    }
-    setPhotos(next);
+    setPhotos((list) => list.filter((entry) => entry.id !== id));
   }
 
   function apply() {
@@ -217,6 +269,8 @@ export function RowEditDialog({
     const stickers =
       existing && !loaded ? (item.buId === row.buId ? (row.stickers ?? []) : []) : computed;
     settledRef.current = true;
+    // Tak ada unggahan tersisa (berjalan atau gagal menahan Terapkan); pemilik dialog dilepaskan.
+    proofRef.current.uploads.cancelOwner(ownerId);
     void discardProofPhotos([...removedRef.current]);
     onApply({
       serial: serialLocked ? row.serial : normalizedSerial,
@@ -351,44 +405,82 @@ export function RowEditDialog({
             />
             <div className="space-y-2">
               <p className="text-sm font-medium">Foto bukti ({photos.length})</p>
-              <ProofPhotoGrid photos={photos} onRemove={removePhoto} label={row.serial} />
-              <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={room === 0}
-                  onClick={() => setPhotoOpen(true)}
-                >
-                  <Camera aria-hidden />
-                  Tambah foto
-                </Button>
-                {room === 0 ? (
-                  <span className="text-xs text-muted-foreground">
-                    Batas {SERIAL_PROOF_LIMITS.perEntryMax} foto tercapai.
-                  </span>
-                ) : null}
-              </div>
+              <FileDropZone
+                accept={proofSource.mimeTypes}
+                disabled={room === 0}
+                className="space-y-2"
+                onFiles={(files, rejected) => {
+                  if (room > 0) setPhotoDialog({ open: true, files, rejected });
+                }}
+              >
+                <AttachmentView
+                  items={items}
+                  pending={pendingEntries}
+                  layout="grid"
+                  label={row.serial}
+                  onRemove={removePhoto}
+                  onRetry={own.retry}
+                  onCancel={own.remove}
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={room === 0}
+                    onClick={() => setPhotoDialog({ open: true, files: [], rejected: [] })}
+                  >
+                    <Camera aria-hidden />
+                    Tambah foto
+                  </Button>
+                  {room === 0 ? (
+                    <span className="text-xs text-muted-foreground">
+                      Batas {SERIAL_PROOF_LIMITS.perEntryMax} foto tercapai.
+                    </span>
+                  ) : null}
+                </div>
+              </FileDropZone>
             </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={close}>
               Batal
             </Button>
+            {running > 0 ? (
+              <span role="status" className="self-center text-xs text-muted-foreground">
+                Menunggu {running} foto selesai diunggah
+              </span>
+            ) : uploadsHeld ? (
+              <span role="status" className="self-center text-xs text-destructive">
+                Ada foto yang gagal diunggah. Ulangi atau buang dulu.
+              </span>
+            ) : null}
             <Button type="button" disabled={!ready} onClick={apply}>
               Terapkan
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <ProofPhotoDialog
-        open={photoOpen}
-        onOpenChange={setPhotoOpen}
-        existingCount={photos.length}
-        max={SERIAL_PROOF_LIMITS.perEntryMax}
-        stamp={stamp}
-        onAdd={addPhotos}
-      />
+      {photoDialog.open ? (
+        <FileDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setPhotoDialog({ open: false, files: [], rejected: [] });
+          }}
+          source={proofSource}
+          mode="multiple"
+          accept={['image']}
+          maxBytes={MAX_IMAGE_BYTES}
+          maxFiles={Math.max(1, room)}
+          hideNames
+          title="Foto bukti"
+          confirmLabel="Tambahkan"
+          camera={stamp ? { stamp: proofCameraStamp(stamp) } : true}
+          initialFiles={photoDialog.files.length > 0 ? photoDialog.files : undefined}
+          initialRejected={photoDialog.rejected.length > 0 ? photoDialog.rejected : undefined}
+          onConfirm={(result) => own.add(result.files)}
+        />
+      ) : null}
     </>
   );
 }

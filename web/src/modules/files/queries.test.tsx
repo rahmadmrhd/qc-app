@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
 
-import { useFileUrl, useUploadFile } from './queries';
+import { useFileUrl } from './queries';
 
 /** Satu QueryClient per tes (bukan per render) agar hasil cache tidak direset. */
 function makeWrapper() {
@@ -119,21 +119,4 @@ test('useFileUrl dengan id kosong tidak memanggil server dan tidak memuat', () =
   const { result } = renderHook(() => useFileUrl(''), { wrapper: makeWrapper() });
   expect(result.current).toEqual({ url: null, isLoading: false, isError: false });
   expect(apiMock).not.toHaveBeenCalled();
-});
-
-test('useUploadFile mengirim byte mentah (Uint8Array) ke files.upload, bukan base64', async () => {
-  const saved = { id: 'f9', mime: 'image/webp', size: 3, width: 2, height: 2 };
-  apiMock.mockResolvedValue(saved);
-  const { result } = renderHook(() => useUploadFile(), { wrapper: makeWrapper() });
-  const bytes = new Uint8Array([1, 2, 3]);
-  await expect(
-    result.current.mutateAsync({ mime: 'image/webp', bytes, width: 2, height: 2 }),
-  ).resolves.toEqual(saved);
-  expect(apiMock).toHaveBeenCalledWith('files.upload', {
-    mime: 'image/webp',
-    bytes,
-    width: 2,
-    height: 2,
-  });
-  expect(JSON.stringify(apiMock.mock.calls[0])).not.toContain('base64');
 });

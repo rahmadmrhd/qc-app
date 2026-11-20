@@ -1,8 +1,11 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { type ReactNode, useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { BarcodeEngine } from '../lib/barcode-engine';
+import type { ProofPhotoRef } from '../lib/proof-source';
 import type { LocatedCode } from '../lib/scan-region';
+import { ProofSessionHost } from '../test-support-proof';
 import { type StrictInfo, StrictScanDialog, type StrictScanResult } from './strict-scan-dialog';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -54,7 +57,27 @@ function fakeEngine() {
   return { engine, state };
 }
 
+/** Seperti halaman: dialog dilepas (unmount) begitu ditutup, sedangkan antrean unggah tetap hidup di induknya. */
+function ClosableDialog({
+  onOpenChange,
+  children,
+}: {
+  onOpenChange: (open: boolean) => void;
+  children: (handleOpenChange: (open: boolean) => void) => ReactNode;
+}) {
+  const [open, setOpen] = useState(true);
+  if (!open) return null;
+  return children((next) => {
+    if (!next) setOpen(false);
+    onOpenChange(next);
+  });
+}
+
 let uploadCounter = 0;
+/** Unggahan yang ditahan (saat `defer` menyala) dan jumlah yang dibatalkan lewat AbortSignal. */
+let defer = false;
+let held: Array<() => void> = [];
+let aborted = 0;
 const removed = () =>
   apiMock.mock.calls
     .filter((call) => call[0] === 'serialProofs.remove')
@@ -63,6 +86,9 @@ const removed = () =>
 
 beforeEach(() => {
   uploadCounter = 0;
+  defer = false;
+  held = [];
+  aborted = 0;
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
   Object.defineProperty(HTMLMediaElement.prototype, 'readyState', {
     get: () => 4,
@@ -76,10 +102,10 @@ beforeEach(() => {
     height: 10,
   });
   apiMock.mockReset();
-  apiMock.mockImplementation(async (id: string) => {
+  apiMock.mockImplementation((id: string, _input: unknown, options?: { signal?: AbortSignal }) => {
     if (id === 'serialProofs.upload') {
       uploadCounter += 1;
-      return {
+      const dto = {
         id: `p${uploadCounter}`,
         state: 'draft',
         mime: 'image/webp',
@@ -89,8 +115,16 @@ beforeEach(() => {
         filename: `bukti-p${uploadCounter}.webp`,
         error: null,
       };
+      if (!defer) return Promise.resolve(dto);
+      return new Promise((resolve, reject) => {
+        options?.signal?.addEventListener('abort', () => {
+          aborted += 1;
+          reject(new DOMException('Dibatalkan', 'AbortError'));
+        });
+        held.push(() => resolve(dto));
+      });
     }
-    return { id: 'x' };
+    return Promise.resolve({ id: 'x' });
   });
 });
 
@@ -106,6 +140,7 @@ function setup(
     isKnown?: (serial: string) => boolean;
     info?: StrictInfo;
     capacity?: () => number;
+    onRow?: (owner: string, photo: ProofPhotoRef) => boolean;
   } = {},
 ) {
   const media = fakeStream();
@@ -119,17 +154,27 @@ function setup(
   const onConfirm = vi.fn((_result: StrictScanResult) => undefined);
   const onOpenChange = vi.fn();
   const view = render(
-    <StrictScanDialog
-      open
-      onOpenChange={onOpenChange}
-      initialSerial={options.initialSerial}
-      info={options.info ?? INFO}
-      isKnown={options.isKnown ?? (() => false)}
-      onConfirm={onConfirm}
-      capacity={options.capacity}
-      createEngine={async () => engine}
-      now={() => time}
-    />,
+    <ProofSessionHost {...(options.onRow ? { onRow: options.onRow } : {})}>
+      {(proof) => (
+        <ClosableDialog onOpenChange={onOpenChange}>
+          {(handleOpenChange) => (
+            <StrictScanDialog
+              ownerId="owner-1"
+              proof={proof}
+              open
+              onOpenChange={handleOpenChange}
+              initialSerial={options.initialSerial}
+              info={options.info ?? INFO}
+              isKnown={options.isKnown ?? (() => false)}
+              onConfirm={onConfirm}
+              capacity={options.capacity}
+              createEngine={async () => engine}
+              now={() => time}
+            />
+          )}
+        </ClosableDialog>
+      )}
+    </ProofSessionHost>,
   );
   return {
     ...view,
@@ -158,10 +203,10 @@ function pickFiles(count: number) {
 /** Menambah `count` foto lewat tombol Tambah foto, dialog Foto bukti, dan Telusuri. */
 async function addPhotos(count: number) {
   await userEvent.click(screen.getByRole('button', { name: 'Tambah foto' }));
-  await screen.findByRole('dialog', { name: 'Foto bukti' });
+  await screen.findByRole('alertdialog', { name: 'Foto bukti' });
   pickFiles(count);
   await userEvent.click(await screen.findByRole('button', { name: `Tambahkan (${count})` }));
-  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Foto bukti' })).toBeNull());
+  await waitFor(() => expect(screen.queryByRole('alertdialog', { name: 'Foto bukti' })).toBeNull());
 }
 
 const serialField = () => screen.getByRole('textbox', { name: 'Serial Number' });
@@ -395,4 +440,76 @@ test('ada ruang di draft: perilaku biasa', async () => {
   setup({ initialSerial: 'ABC123', capacity: () => 5 });
   expect(await screen.findByRole('textbox', { name: 'Serial Number' })).toHaveValue('ABC123');
   expect(screen.queryByTestId('strict-full')).not.toBeInTheDocument();
+});
+
+test('Simpan aktif bila foto selesai + berjalan mencapai minimum; baris diserahkan dengan foto selesai dan unggahan lanjut ke baris yang sama', async () => {
+  const onRow = vi.fn(() => true);
+  const ctx = setup({ initialSerial: 'abc123', onRow });
+  await screen.findByRole('textbox', { name: 'Serial Number' });
+  await addPhotos(1);
+  expect(save()).toBeDisabled();
+  defer = true;
+  await addPhotos(1);
+  // 1 selesai + 1 berjalan = minimum 2.
+  expect(screen.getByRole('status')).toHaveTextContent('Siap disimpan');
+  expect(save()).toBeEnabled();
+  expect(screen.getByTestId('attachment-pending')).toBeInTheDocument();
+  await userEvent.click(save());
+  const result = ctx.onConfirm.mock.calls[0]?.[0] as StrictScanResult;
+  expect(result.clientId).toBe('owner-1');
+  expect(result.photos.map((photo) => photo.id)).toEqual(['p1']);
+  expect(ctx.onOpenChange).toHaveBeenCalledWith(false);
+  // Unggahan tidak dibatalkan; hasilnya tiba kemudian dan diterima baris (pemilik yang sama).
+  expect(aborted).toBe(0);
+  await waitFor(() => expect(held).toHaveLength(1));
+  held[0]?.();
+  await waitFor(() =>
+    expect(onRow).toHaveBeenCalledWith('owner-1', expect.objectContaining({ id: 'p2' })),
+  );
+  expect(removed()).toEqual([]);
+});
+
+test('Batal sebelum Simpan membatalkan unggahan berjalan dan membuang foto selesai', async () => {
+  const ctx = setup({ initialSerial: 'ABC123' });
+  await screen.findByRole('textbox', { name: 'Serial Number' });
+  await addPhotos(1);
+  defer = true;
+  await addPhotos(1);
+  await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Buang 2 foto?' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Buang' }));
+  expect(ctx.onOpenChange).toHaveBeenCalledWith(false);
+  ctx.unmount();
+  expect(aborted).toBe(1);
+  expect(removed()).toEqual(['p1']);
+  expect(ctx.onConfirm).not.toHaveBeenCalled();
+});
+
+test('foto yang selesai selagi dialog masih terbuka masuk daftar dialog (bukan baris)', async () => {
+  const onRow = vi.fn(() => true);
+  setup({ initialSerial: 'ABC123', onRow });
+  await screen.findByRole('textbox', { name: 'Serial Number' });
+  defer = true;
+  await addPhotos(1);
+  await waitFor(() => expect(held).toHaveLength(1));
+  held[0]?.();
+  await waitFor(() => expect(screen.getByText('1 dari minimal 2 (maks. 5)')).toBeInTheDocument());
+  expect(screen.queryByTestId('attachment-pending')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Buang foto 1, serial ini' })).toBeInTheDocument();
+  expect(onRow).not.toHaveBeenCalled();
+});
+
+test('F7: seret-lepas ke area foto membuka dialog berisi berkas itu', async () => {
+  setup({ initialSerial: 'ABC123' });
+  await screen.findByRole('textbox', { name: 'Serial Number' });
+  const section = screen.getByRole('region', { name: 'Lampiran foto' });
+  const zone = section.closest('[data-file-drop-zone]') as HTMLElement;
+  expect(zone).not.toBeNull();
+  fireEvent.drop(zone, {
+    dataTransfer: {
+      files: [new File([new Uint8Array(4)], 'seret.jpg', { type: 'image/jpeg' })],
+      types: ['Files'],
+    },
+  });
+  expect(await screen.findByRole('button', { name: 'Tambahkan (1)' })).toBeInTheDocument();
 });
