@@ -4,6 +4,7 @@ import { useLongPressSelect } from '@/components/data-table/use-long-press-selec
 import type { RowSelection } from '@/components/data-table/use-row-selection';
 import { AttachmentView } from '@/components/file-dialog';
 import type { UploadEntry } from '@/components/file-dialog/use-background-uploads';
+import { MobileCard } from '@/components/mobile/mobile-card';
 import { cn } from '@/lib/utils';
 import type { StagingRow } from '../lib/draft';
 import { RowBadges, rowStatus, type StagingTableProps, TONE_CLASS } from './staging-table';
@@ -50,29 +51,29 @@ const CardView = memo(function CardView({
   const place = [row.locationLabel, row.testDate].filter((part) => part !== '').join(' · ');
   const itemLine = [row.itemLabel, row.buLabel].filter((part) => part !== '').join(' · ');
   return (
-    <li
-      data-tour="serial-row"
-      data-result={row.result ?? (status.tone === 'ok' ? 'ok' : 'incomplete')}
-      className={cn(
-        'flex items-start gap-3 rounded-lg border p-3 select-none [-webkit-touch-callout:none]',
-        status.tone === 'error' && 'border-destructive/40 bg-destructive/5',
-        status.tone === 'warn' && 'border-warning-text/35 bg-warning-text/5',
-        row.selected && 'bg-muted/60',
-      )}
-      {...bind(row.clientId)}
-    >
-      {selecting ? (
-        <input
-          type="checkbox"
-          className="mt-0.5 size-5 shrink-0 accent-primary"
-          data-tour="serial-row-select"
-          aria-label={`Pilih baris ${row.serial}`}
-          checked={row.selected}
-          disabled={disabled}
-          onChange={(event) => onSelect(row.clientId, event.target.checked)}
-        />
-      ) : null}
-      <div className="min-w-0 flex-1 space-y-2">
+    <MobileCard
+      selected={row.selected}
+      tone={status.tone === 'error' ? 'error' : status.tone === 'warn' ? 'warn' : undefined}
+      rootProps={{
+        'data-tour': 'serial-row',
+        'data-result': row.result ?? (status.tone === 'ok' ? 'ok' : 'incomplete'),
+        className: 'select-none [-webkit-touch-callout:none]',
+        ...bind(row.clientId),
+      }}
+      leading={
+        selecting ? (
+          <input
+            type="checkbox"
+            className="size-5 shrink-0 accent-primary"
+            data-tour="serial-row-select"
+            aria-label={`Pilih baris ${row.serial}`}
+            checked={row.selected}
+            disabled={disabled}
+            onChange={(event) => onSelect(row.clientId, event.target.checked)}
+          />
+        ) : undefined
+      }
+      title={
         <button
           type="button"
           aria-label={`Ubah baris ${row.serial}`}
@@ -111,8 +112,10 @@ const CardView = memo(function CardView({
           ) : null}
           <RowBadges row={row} />
         </button>
-        {/* Di luar tombol (tombol tak boleh bersarang): unggahan baris ini dapat diulang/dibuang/dibatalkan. */}
-        {uploads.length > 0 ? (
+      }
+      footer={
+        // Di luar tombol (tombol tak boleh bersarang): unggahan baris ini dapat diulang/dibuang/dibatalkan.
+        uploads.length > 0 ? (
           <AttachmentView
             items={[]}
             pending={uploads}
@@ -122,9 +125,9 @@ const CardView = memo(function CardView({
             onRetry={onRetryUpload}
             onCancel={onCancelUpload}
           />
-        ) : null}
-      </div>
-    </li>
+        ) : undefined
+      }
+    />
   );
 });
 

@@ -1,5 +1,5 @@
-import { cn } from 'cn';
 import { Children, Fragment, isValidElement, type ReactNode } from 'react';
+import { MobileCard } from '@/components/mobile/mobile-card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DataColumn, MobileRole } from './data-table';
@@ -107,56 +107,37 @@ export function DataCards<T>({
             .map(({ column }) => ({ column, content: column.cell(row) }))
             .filter((entry) => hasContent(entry.content));
           return (
-            <li
+            <MobileCard
               key={id}
-              data-state={isSelected ? 'selected' : undefined}
-              className={cn(
-                'rounded-lg border bg-card p-3 data-[state=selected]:bg-info-text/8',
-                selection && 'select-none [-webkit-touch-callout:none]',
-              )}
-              {...bind(id)}
-            >
-              <div className="flex items-start gap-3">
-                {selection && selecting ? (
-                  <div className="flex min-h-6 shrink-0 items-center pt-0.5">
-                    <Checkbox
-                      aria-label={`Pilih ${nameOf(row)}`}
-                      checked={isSelected}
-                      onCheckedChange={() => selection.toggle(id)}
-                    />
-                  </div>
-                ) : null}
-                <div className="min-w-0 flex-1 space-y-1 break-words">
-                  {titles.map(({ column }) => (
-                    <div key={column.id} className="text-base">
-                      {column.cell(row)}
-                    </div>
-                  ))}
-                </div>
-                {(actions || selection) && !selecting ? (
-                  <div className="-mt-2.5 -mr-2 shrink-0">
-                    <RowActions name={nameOf(row)} actions={rowActions} />
-                  </div>
-                ) : null}
-              </div>
-              {badgeEntries.length > 0 ? (
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  {badgeEntries.map(({ column, content }) => (
-                    <span key={column.id}>{content}</span>
-                  ))}
-                </div>
-              ) : null}
-              {metaEntries.length > 0 ? (
-                <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-                  {metaEntries.map(({ column, content }) => (
-                    <div key={column.id} className="contents">
-                      <dt className="text-muted-foreground">{column.header}</dt>
-                      <dd className="min-w-0 break-words">{content}</dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : null}
-            </li>
+              selected={isSelected}
+              rootProps={{
+                className: selection ? 'select-none [-webkit-touch-callout:none]' : undefined,
+                ...bind(id),
+              }}
+              leading={
+                selection && selecting ? (
+                  <Checkbox
+                    aria-label={`Pilih ${nameOf(row)}`}
+                    checked={isSelected}
+                    onCheckedChange={() => selection.toggle(id)}
+                  />
+                ) : undefined
+              }
+              title={titles.map(({ column }) => <div key={column.id}>{column.cell(row)}</div>)}
+              actions={
+                (actions || selection) && !selecting ? (
+                  <RowActions name={nameOf(row)} actions={rowActions} />
+                ) : undefined
+              }
+              badges={badgeEntries.map(({ column, content }) => (
+                <Fragment key={column.id}>{content}</Fragment>
+              ))}
+              meta={metaEntries.map(({ column, content }) => ({
+                id: column.id,
+                label: column.header,
+                value: content,
+              }))}
+            />
           );
         })}
       </ul>

@@ -16,7 +16,7 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import type { ComponentProps } from 'react';
+import { type ComponentProps, type MouseEvent, useRef, useState } from 'react';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -176,12 +176,36 @@ export function ActionButton({
   action,
   label,
   compact = false,
-  busy = false,
+  busy: busyProp = false,
   busyLabel,
   disabled,
   size,
+  onClick,
   ...rest
 }: ActionButtonProps) {
+  // Idempoten: `onClick` yang mengembalikan janji (async) mematikan tombol sampai selesai, dan ketukan kedua pada
+  // tick yang sama (sebelum render ulang) diabaikan lewat `inflight`; `busy` dari pemanggil tetap berlaku.
+  const inflight = useRef(false);
+  const [pending, setPending] = useState(false);
+  const busy = busyProp || pending;
+  const handleClick = onClick
+    ? (event: MouseEvent<HTMLButtonElement>) => {
+        if (inflight.current) {
+          event.preventDefault();
+          return;
+        }
+        const result: unknown = onClick(event);
+        if (result instanceof Promise) {
+          inflight.current = true;
+          setPending(true);
+          const done = () => {
+            inflight.current = false;
+            setPending(false);
+          };
+          result.then(done, done);
+        }
+      }
+    : undefined;
   const spec = ACTIONS[action];
   const text = label ?? spec.label;
   const Icon = spec.icon;
@@ -196,6 +220,7 @@ export function ActionButton({
         size={size ?? 'icon-sm'}
         aria-label={text}
         disabled={disabled || busy}
+        onClick={handleClick}
       >
         {busy ? <LoaderCircle aria-hidden className="animate-spin" /> : <Icon aria-hidden />}
       </Button>
@@ -216,6 +241,7 @@ export function ActionButton({
       variant={spec.variant}
       size={size}
       disabled={disabled || busy}
+      onClick={handleClick}
     >
       {busy ? (
         <BusyLabel>{busyLabel ?? busyText(action, text)}</BusyLabel>

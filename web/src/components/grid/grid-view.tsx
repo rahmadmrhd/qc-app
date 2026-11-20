@@ -4,6 +4,7 @@ import { LongPressHint, SelectionBar } from '@/components/data-table/selection-b
 import { useLongPressSelect } from '@/components/data-table/use-long-press-select';
 import { type RowSelection, usePruneSelection } from '@/components/data-table/use-row-selection';
 import { useInfiniteSentinel } from '@/components/file-dialog/use-infinite-sentinel';
+import { ListState } from '@/components/page/list-state';
 import { Spinner } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -23,6 +24,11 @@ interface GridViewBase<T> {
   isError?: boolean;
   /** Teks galat muat awal. */
   errorText?: string;
+  /** Ada filter aktif: kosong = "tidak cocok" dengan tombol hapus filter (lihat `ListState`). */
+  filtered?: boolean;
+  onClearFilters?: () => void;
+  /** Ajakan aksi pada keadaan kosong biasa. */
+  emptyAction?: ReactNode;
   onRetry?: () => void;
   empty?: ReactNode;
   hasMore?: boolean;
@@ -58,6 +64,9 @@ export function GridView<T>({
   errorText = 'Gagal memuat data',
   onRetry,
   empty,
+  filtered,
+  onClearFilters,
+  emptyAction,
   hasMore,
   loadingMore,
   loadMoreError,
@@ -89,23 +98,23 @@ export function GridView<T>({
     );
   }
 
-  if (isError && items.length === 0) {
-    return (
-      <div className="flex flex-col items-center gap-2 py-10 text-center text-sm">
-        <p className="text-destructive-text">{errorText}</p>
-        {onRetry ? (
-          <Button type="button" variant="outline" onClick={onRetry}>
-            Coba lagi
-          </Button>
-        ) : null}
-      </div>
-    );
-  }
-
   if (items.length === 0) {
-    return empty ? (
-      <div className="py-10 text-center text-sm text-muted-foreground">{empty}</div>
-    ) : null;
+    // Tanpa teks kosong, tanpa galat, dan tanpa filter: tak ada yang ditampilkan (perilaku lama).
+    if (!empty && !emptyAction && !isError && !filtered) return null;
+    return (
+      <ListState
+        isError={isError}
+        onRetry={onRetry}
+        errorText={errorText}
+        isEmpty
+        filtered={filtered}
+        onClearFilters={onClearFilters}
+        empty={empty}
+        emptyAction={emptyAction}
+      >
+        {null}
+      </ListState>
+    );
   }
 
   return (

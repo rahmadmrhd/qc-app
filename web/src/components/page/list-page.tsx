@@ -1,9 +1,10 @@
 import { type ReactNode, useState } from 'react';
-import { ACTIONS, ActionButton, type ActionKind } from '@/components/action-button';
-import { Button } from '@/components/ui/button';
+import { ActionButton, type ActionKind } from '@/components/action-button';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { BulkActiveContext } from './bulk-active';
+import { Fab } from './fab';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
+import { ScrollToTop } from './scroll-to-top';
 
 /** Aksi utama halaman daftar (mis. Tambah): tombol di header >= 768 px, tombol mengambang (FAB 48 px) di ponsel. */
 export interface ListCreateAction {
@@ -21,6 +22,7 @@ export function ListPage({
   title,
   actions,
   createAction,
+  count,
   filters,
   bulkBar,
   children,
@@ -32,6 +34,8 @@ export function ListPage({
   actions?: ReactNode;
   /** Aksi utama: header di desktop, FAB di ponsel (disembunyikan saat mode pilih). */
   createAction?: ListCreateAction;
+  /** Hitungan hasil di samping judul, mis. "12 item" (diumumkan sopan ke pembaca layar). */
+  count?: ReactNode;
   filters?: ReactNode;
   bulkBar?: ReactNode;
   children: ReactNode;
@@ -51,7 +55,14 @@ export function ListPage({
     <HeadroomFrame pinned={pinned} className={fab ? 'gap-3 max-md:pb-20' : 'gap-3'}>
       <HeadroomBar tour={tour} className="space-y-3 pt-1 pb-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-xl font-semibold">{title}</h1>
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+            <h1 className="text-xl font-semibold">{title}</h1>
+            {count ? (
+              <span role="status" className="text-sm text-muted-foreground">
+                {count}
+              </span>
+            ) : null}
+          </div>
           {hasActions ? (
             <div data-tour={actionsTour} className="flex flex-wrap items-center gap-2">
               {headerAction ? (
@@ -69,23 +80,10 @@ export function ListPage({
       </HeadroomBar>
       <div className="min-w-0">{children}</div>
       <BulkActiveContext.Provider value={setBulkActive}>{bulkBar}</BulkActiveContext.Provider>
-      {fab && !bulkActive ? <FloatingCreateButton action={fab} /> : null}
+      {!desktop && !bulkActive ? <ScrollToTop aboveFab={fab !== null} /> : null}
+      {fab && !bulkActive ? (
+        <Fab label={fab.label} onClick={fab.onClick} kind={fab.kind ?? 'create'} />
+      ) : null}
     </HeadroomFrame>
-  );
-}
-
-/** FAB 48 px kanan bawah (ikon saja; `aria-label` = label aksi), menghormati area aman. */
-function FloatingCreateButton({ action }: { action: ListCreateAction }) {
-  const Icon = ACTIONS[action.kind ?? 'create'].icon;
-  return (
-    <Button
-      type="button"
-      size="icon"
-      aria-label={action.label}
-      onClick={action.onClick}
-      className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 size-12 rounded-full shadow-lg max-md:size-12"
-    >
-      <Icon aria-hidden className="size-5" />
-    </Button>
   );
 }

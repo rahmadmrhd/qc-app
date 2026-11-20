@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { describeError } from '@/lib/api/describe-error';
 import { batchSummary, runChunkedBatch } from '@/lib/run-chunked-batch';
 import type { RowSelection } from './use-row-selection';
 
@@ -15,6 +16,11 @@ export interface BulkActionOptions<T> {
   onResults?: (results: readonly T[]) => void;
   /** Memuat ulang data; dipanggil bila ada tahap gagal atau id hilang (`NOT_FOUND`). */
   reload?: () => void;
+  /**
+   * Jalan kembali (mis. aktifkan lagi / pulihkan): toast sukses memuat tombol `undo.label` (bawaan "Urungkan") yang
+   * menjalankan `undo.run(idYangBerhasil)` satu kali. Hanya untuk aksi yang punya lawan aman.
+   */
+  undo?: { label?: string; run: (ids: string[]) => Promise<unknown> };
 }
 
 /**
@@ -34,7 +40,7 @@ export function useBulkAction<T>(options: BulkActionOptions<T>): {
 
   const run = useCallback(async () => {
     if (running.current) return;
-    const { selection, send, verb, subject, onResults, reload } = latest.current;
+    const { selection, send, verb, subject, onResults, reload, undo } = latest.current;
     const ids = [...selection.selected];
     if (ids.length === 0) return;
     running.current = true;
@@ -44,8 +50,24 @@ export function useBulkAction<T>(options: BulkActionOptions<T>): {
       if (outcome.results.length > 0) onResults?.(outcome.results);
       if (outcome.doneIds.length > 0) selection.remove(outcome.doneIds);
       const summary = batchSummary(outcome, verb, subject);
-      if (summary.kind === 'success') toast.success(summary.message);
-      else if (summary.kind === 'partial') toast.warning(summary.message);
+      if (summary.kind === 'success') {
+        const doneIds = outcome.doneIds;
+        let undone = false;
+        if (undo) {
+          toast.success(summary.message, {
+            action: {
+              label: undo.label ?? 'Urungkan',
+              onClick: () => {
+                if (undone) return;
+                undone = true;
+                void undo.run(doneIds).catch((error: unknown) => toast.error(describeError(error)));
+              },
+            },
+          });
+        } else {
+          toast.success(summary.message);
+        }
+      } else if (summary.kind === 'partial') toast.warning(summary.message);
       else toast.error(summary.message);
       if (outcome.failedIds.length > 0) reload?.();
     } finally {

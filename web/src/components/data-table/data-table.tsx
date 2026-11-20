@@ -1,5 +1,6 @@
 import { cn } from 'cn';
 import type { ReactNode } from 'react';
+import { ListState } from '@/components/page/list-state';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -46,6 +47,11 @@ interface DataTableBase<T> {
   /** Gagal memuat halaman berikutnya: pesan + "Coba lagi" (memanggil `onLoadMore`). */
   loadMoreError?: boolean;
   onLoadMore?: () => void;
+  /** Ada filter/pencarian aktif: kosong berarti "tidak cocok" (dengan tombol hapus filter bila `onClearFilters` ada). */
+  filtered?: boolean;
+  onClearFilters?: () => void;
+  /** Ajakan aksi pada keadaan kosong biasa (mis. tombol Tambah). */
+  emptyAction?: ReactNode;
 }
 
 /** `selectLabel` (nama baris untuk checkbox dan menu aksi ponsel) wajib bila ada `selection` atau `actions`. */
@@ -82,24 +88,14 @@ export function DataTable<T>({
   loadingMore,
   loadMoreError,
   onLoadMore,
+  filtered,
+  onClearFilters,
+  emptyAction,
 }: DataTableProps<T>) {
   const desktop = useIsDesktop();
   const nameOf = (row: T) => selectLabel?.(row) ?? rowKey(row);
   const ids = rows.map(rowKey);
   usePruneSelection(selection, ids, !isLoading);
-
-  if (isError && rows.length === 0) {
-    return (
-      <Alert color="destructive" className="flex flex-wrap items-center gap-2">
-        <span>Gagal memuat data. Coba muat ulang.</span>
-        {onRetry ? (
-          <Button type="button" size="sm" variant="outline" onClick={onRetry}>
-            Coba lagi
-          </Button>
-        ) : null}
-      </Alert>
-    );
-  }
 
   const selectedCount = selection ? ids.filter((id) => selection.selected.has(id)).length : 0;
   const allSelected = ids.length > 0 && selectedCount === ids.length;
@@ -183,24 +179,30 @@ export function DataTable<T>({
 
   return (
     <div className="space-y-3">
-      {!isLoading && rows.length === 0 ? (
-        <div className="rounded-lg border p-8 text-center text-sm text-muted-foreground">
-          {empty}
-        </div>
-      ) : desktop ? (
-        <div className="rounded-lg border">{table}</div>
-      ) : (
-        <DataCards
-          rows={rows}
-          rowKey={rowKey}
-          columns={columns}
-          label={label}
-          nameOf={nameOf}
-          selection={selection}
-          actions={actions}
-          isLoading={isLoading}
-        />
-      )}
+      <ListState
+        isError={isError}
+        onRetry={onRetry}
+        isEmpty={rows.length === 0 && (!isLoading || Boolean(isError))}
+        filtered={filtered}
+        onClearFilters={onClearFilters}
+        empty={empty}
+        emptyAction={emptyAction}
+      >
+        {desktop ? (
+          <div className="rounded-lg border">{table}</div>
+        ) : (
+          <DataCards
+            rows={rows}
+            rowKey={rowKey}
+            columns={columns}
+            label={label}
+            nameOf={nameOf}
+            selection={selection}
+            actions={actions}
+            isLoading={isLoading}
+          />
+        )}
+      </ListState>
       {loadMoreError ? (
         <Alert color="destructive" className="flex flex-wrap items-center gap-2">
           <span>Gagal memuat halaman berikutnya.</span>
