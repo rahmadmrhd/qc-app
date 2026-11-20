@@ -89,8 +89,13 @@ installer (bagian 4), panduan interaktif baru (halaman informasi sederhana; tida
   `/api/desktop/*` dan navigasi dikunci ke `app://qc`).
 - Tampilan: kartu utama berisi versi terbaru, tanggal, dan **tombol unduh sesuai OS/arsitektur terdeteksi** (Windows x64/arm64 lewat
   `navigator.userAgentData` dengan cadangan UA; OS lain = kalimat "Aplikasi desktop baru tersedia untuk Windows", tanpa tombol, dan daftar
-  tetap tampil); di bawahnya "Semua versi": baris per versi (nomor, tanggal, tautan x64 dan arm64 dengan ukuran, "Rincian" yang melipat
-  changelog versi itu, checksum SHA-512 dengan tombol salin). Versi lama diberi catatan "Pasang versi lama hanya bila perlu".
+  tetap tampil); di bawahnya "Versi yang didukung": baris per versi (nomor, tanggal, tautan x64 dan arm64 dengan ukuran, "Rincian" yang melipat
+  changelog versi itu, checksum SHA-512 dengan tombol salin). **Diubah 2026-11-20 (keputusan pemilik produk):** hanya versi yang
+  didukung server yang ditampilkan, yaitu versi >= `minClient.desktop` dari `/api/ping` (bukan lagi "semua versi"); versi yang tak
+  didukung tidak muncul sama sekali. Halaman ini menjadi tujuan tautan layar penahan "Perlu pembaruan" di desktop (spek fase 3
+  versi API, `2026-11-20-versi-api-fase3-design.md`), dibuka di peramban sistem. Versi lama yang masih didukung diberi catatan
+  "Pasang versi lama hanya bila perlu". Pelepasan bertahap installer yang tak didukung (hapus `.sig`, lalu installer dari Drive):
+  `2026-11-17-rilis-desktop-auto-update-design.md` bagian retensi.
 - Teks bantuan tetap (selama belum ada tanda tangan Authenticode, bagian 4, pertanyaan terbuka): "Windows mungkin menampilkan peringatan
   'penerbit tak dikenal': pilih *Info lebih lanjut* lalu *Tetap jalankan*." dan satu baris perintah PowerShell `Get-FileHash -Algorithm SHA512 <berkas>` untuk memeriksa checksum.
   `enabled=false` = pesan "Unduhan belum tersedia".
@@ -109,6 +114,14 @@ installer (bagian 4), panduan interaktif baru (halaman informasi sederhana; tida
 ### 5.5 Dokumentasi
 `docs/ci-cd.md` (rujukan alur rilis → tampilan web), `CLAUDE.md` (ringkas modul changelog dan halaman desktop), `docs/e2e-checklist.md`
 (lihat versi/penanda setelah deploy staging; unduh installer dari halaman).
+
+### 5.6 Status pembangunan (2026-11-20)
+Dibangun: rute `desktop.releases` (5.1) dan halaman `/desktop` (5.3); rencana `docs/superpowers/plans/2026-11-20-halaman-unduh-desktop.md`.
+Belum dibangun: `app.changelog`, `/changelog`, parser `shared/changelog.ts`, penanda "ada yang baru", label versi (5.1, 5.2, 5.4 bagian changelog).
+Deviasi yang disengaja (pemilik produk menyetujui rencana 2026-11-20): (1) penyaringan versi didukung dilakukan SERVER dengan konstanta `MIN_CLIENT.desktop`
+(`shared/api-versions.ts`, nilai awal `0.0.0`), bukan dibaca halaman dari `/api/ping`; `/api/ping` baru memuat `minClient` di fase 3 dari konstanta yang sama.
+(2) `sha512` di DTO heksadesimal 128 karakter (konversi di server dari base64 manifest), agar sama dengan keluaran `Get-FileHash`.
+(3) "Rincian" menampilkan `changelog` manifest sebagai teks biasa (manifest menyimpan teks, bukan `groups` seperti tertulis di 4).
 
 ## 6. Risiko dan pertanyaan terbuka
 - **Menunggu persetujuan pemilik**: seluruh dokumen. Keputusan perancang yang dapat diubah: halaman Desktop terbuka bagi semua pengguna
