@@ -5,6 +5,7 @@ import {
   announcedApis,
   apiGroup,
   apiVersionsInUse,
+  MIN_CLIENT,
   parseApiId,
   parseServerApis,
   pickApiId,
@@ -143,5 +144,11 @@ describe('apiVersionsInUse', () => {
     expect(apiVersionsInUse(['a', 'a@2', 'b@4'])).toEqual([1, 2, 4]);
     expect(apiVersionsInUse([])).toEqual([1]);
     expect(apiVersionsInUse(['b@4', 'b@2', 'b@4'])).toEqual([1, 2, 4]);
+  });
+});
+
+describe('MIN_CLIENT', () => {
+  test('desktop berupa semver X.Y.Z sah', () => {
+    expect(MIN_CLIENT.desktop).toMatch(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
   });
 });

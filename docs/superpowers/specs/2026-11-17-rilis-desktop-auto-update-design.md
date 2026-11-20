@@ -143,6 +143,10 @@ aksi pihak ketiga dipatok SHA; `ci-workflows.test.ts` diperluas (pemicu, izin, r
 - Retensi: dipertahankan 10 versi terbaru (urutan numerik, satu himpunan versi untuk kedua arsitektur; `pruneInstallers` jalan setelah publish dan menghapus
   installer, manifest, dan `.sig` versi yang lebih lama; berkas yang bukan nama rilis tak disentuh); GitHub Release (catatan) tetap. Revisi 3:
   manifest versi lama ikut dihapus agar daftar Drive tak menumpuk dan tak menyisakan manifest yang installernya sudah tak ada.
+- **Ditambah 2026-11-20 (keputusan pemilik produk, fase 3 versi API):** selain retensi 10 versi, versi yang tak lagi didukung server (di bawah
+  `minClient.desktop`) dilepas BERTAHAP: `.sig` dihapus lebih dulu (versi tak terlihat lagi oleh pembaruan otomatis dan halaman unduh), lalu
+  installer dan manifestnya dihapus dari Drive. Halaman unduh hanya menampilkan versi yang didukung. Alur pelepasan otomatis ini belum
+  dibangun dan direncanakan terpisah; sampai itu ada, retensi 10 versi di atas tetap satu-satunya penghapusan otomatis.
 
 ### 5.8 Dokumentasi
 `docs/ci-cd.md` (alur rilis desktop), `docs/desktop-release-signing.md` (kunci, environment, SA penerbit, langkah pemilik),

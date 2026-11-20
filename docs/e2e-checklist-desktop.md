@@ -202,6 +202,16 @@ Prasyarat: environment `desktop-release`, folder Drive, dan `DESKTOP_RELEASES_FO
 | K11 | Ubah repositori menjadi **privat** dan/atau cabut token GitHub apa pun, ulangi K2-K5 | Pembaruan tetap berfungsi penuh (tak ada permintaan ke GitHub dari aplikasi atau server) | |
 | K12 | Unduh `app-file` dengan nama di luar manifest atau versi tanpa `.sig` (curl) | 404 seragam; lebih dari 60 unduhan installer per jam dari satu IP = 429 | |
 
+Halaman unduh di web (spek `2026-11-17-changelog-dan-unduh-desktop-web-design.md` 5.3, dibangun 2026-11-20), diuji di PERAMBAN (bukan di dalam aplikasi desktop):
+
+| # | Langkah | Hasil yang diharapkan | Hasil |
+|---|---|---|---|
+| K13 | Masuk di peramban Windows (x64 lalu ARM bila ada), buka menu "Aplikasi Desktop" (`/desktop`) | Kartu "Versi terbaru" menampilkan tombol "Unduh untuk Windows x64" (atau ARM) yang sesuai; daftar "Versi yang didukung" memuat versi terbit beserta ukuran | |
+| K14 | Unduh installer dari tombol, jalankan `Get-FileHash -Algorithm SHA512 <berkas>` di PowerShell | Hash sama dengan checksum yang tampil di halaman (tombol "Salin" menyalin nilainya) | |
+| K15 | Buka `/desktop` dari macOS/Linux/ponsel | Kalimat "Aplikasi desktop baru tersedia untuk Windows" tanpa tombol utama; tautan di daftar tetap ada | |
+| K16 | Tarik rilis terbaru (hapus `.sig`), muat ulang halaman setelah memo 5 menit | Versi yang ditarik tidak tampil lagi; folder rilis kosong = "Belum ada versi yang tersedia untuk diunduh", `DESKTOP_RELEASES_FOLDER_ID` kosong = "Unduhan belum tersedia" | |
+| K17 | Buka aplikasi desktop terpasang | Butir "Aplikasi Desktop" tidak ada di sidebar | |
+
 ## Pengisian hasil
 
 - Penguji dan tanggal: 

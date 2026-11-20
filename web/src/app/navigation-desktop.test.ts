@@ -55,3 +55,12 @@ test('di peramban butir Country Lock membuka aplikasi desktop; di desktop rute b
   expect(item?.opensDesktopApp).toBe(true);
   expect(item?.to).toBe('/country-lock');
 });
+
+test('butir Aplikasi Desktop tampil di peramban tanpa izin apa pun dan tersembunyi di aplikasi desktop', () => {
+  const nobody = noPermissions(false, 'none');
+  expect(namesFor(nobody, false)).toContain('Aplikasi Desktop');
+  expect(namesFor(nobody, true)).not.toContain('Aplikasi Desktop');
+  const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.label === 'Aplikasi Desktop');
+  expect(item?.to).toBe('/desktop');
+  expect(item?.webOnly).toBe(true);
+});
