@@ -172,20 +172,85 @@ test('desktop: satu tombol ikon per aksi, tanpa menu', async () => {
   expect(screen.queryByRole('button', { name: 'Aksi Asus' })).toBeNull();
 });
 
-test('ponsel: satu tombol "Aksi <nama>" membuka menu berisi tiap aksi; kolom pertama sticky kiri', async () => {
+test('ponsel: kartu bertumpuk (tanpa tabel); satu tombol "Aksi <nama>" membuka menu berisi tiap aksi', async () => {
   mockWidth(false);
   render(<Harness />);
+  expect(screen.queryByRole('table')).toBeNull();
+  expect(screen.getAllByRole('listitem')).toHaveLength(3);
   expect(screen.queryByRole('button', { name: 'Ubah Asus' })).toBeNull();
   await userEvent.click(screen.getByRole('button', { name: 'Aksi Asus' }));
   const menu = await screen.findByRole('menu');
   expect(within(menu).getByRole('menuitem', { name: 'Ubah Asus' })).toBeInTheDocument();
   expect(within(menu).getByRole('menuitem', { name: 'Hapus Asus' })).toBeInTheDocument();
   await userEvent.keyboard('{Escape}');
-  const cell = screen.getByText('Asus').closest('td');
-  expect(cell?.className).toContain('sticky');
-  expect(screen.getByRole('table', { name: 'Merk' }).parentElement?.className).toContain(
-    'overflow-x-auto',
+});
+
+test('ponsel: checkbox kartu dan Pilih semua bekerja; tak ada render ganda', async () => {
+  mockWidth(false);
+  render(<Harness />);
+  expect(screen.getAllByRole('checkbox', { name: 'Pilih Asus' })).toHaveLength(1);
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Asus' }));
+  expect(screen.getByText('1 dipilih')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  expect(screen.getByText('3 dipilih')).toBeInTheDocument();
+});
+
+test('ponsel: peran kolom (title, badge, meta berlabel, hide) menentukan isi kartu', () => {
+  mockWidth(false);
+  const rows = [
+    { id: '1', name: 'Asus', status: 'Aktif', note: 'catatan', skip: 'x', empty: null },
+  ];
+  render(
+    <DataTable
+      rows={rows}
+      rowKey={(row) => row.id}
+      label="Merk"
+      columns={[
+        { id: 'name', header: 'Nama', cell: (row) => row.name },
+        { id: 'status', header: 'Status', cell: (row) => row.status },
+        { id: 'note', header: 'Catatan', cell: (row) => row.note },
+        { id: 'skip', header: 'Disembunyikan', cell: (row) => row.skip, mobile: 'hide' },
+        { id: 'empty', header: 'Kosong', cell: (row) => row.empty },
+      ]}
+    />,
   );
+  const card = screen.getByRole('listitem');
+  expect(within(card).getByText('Asus')).toBeInTheDocument();
+  expect(within(card).getByText('Aktif')).toBeInTheDocument();
+  expect(within(card).getByText('Catatan')).toBeInTheDocument();
+  expect(within(card).getByText('catatan')).toBeInTheDocument();
+  expect(within(card).queryByText('Disembunyikan')).toBeNull();
+  expect(within(card).queryByText('Kosong')).toBeNull();
+});
+
+test('ponsel: mobile="title" eksplisit menggantikan kolom pertama sebagai judul', () => {
+  mockWidth(false);
+  render(
+    <DataTable
+      rows={[{ id: '1', a: 'Merk A', b: 'Tipe B' }]}
+      rowKey={(row) => row.id}
+      label="Item"
+      columns={[
+        { id: 'a', header: 'Merk', cell: (row) => row.a },
+        { id: 'b', header: 'Tipe', cell: (row) => row.b, mobile: 'title' },
+      ]}
+    />,
+  );
+  const card = screen.getByRole('listitem');
+  expect(within(card).getByText('Merk')).toBeInTheDocument();
+  expect(within(card).queryByText('Tipe')).toBeNull();
+});
+
+test('ponsel: memuat menampilkan kartu kerangka; galat awal tetap alert', () => {
+  mockWidth(false);
+  const { rerender } = render(
+    <DataTable rows={[]} rowKey={(row: Row) => row.id} columns={COLUMNS} label="Merk" isLoading />,
+  );
+  expect(screen.getByRole('list', { name: 'Merk' })).toHaveAttribute('aria-busy', 'true');
+  rerender(
+    <DataTable rows={[]} rowKey={(row: Row) => row.id} columns={COLUMNS} label="Merk" isError />,
+  );
+  expect(screen.getByRole('alert')).toBeInTheDocument();
 });
 
 test('desktop: tabel tanpa pembungkus overflow-x-auto agar sticky bekerja', () => {

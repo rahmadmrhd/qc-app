@@ -21,7 +21,7 @@ export function BulkBar({
     <section
       aria-label="Aksi massal"
       aria-busy={busy || undefined}
-      className="sticky bottom-0 z-20 mt-3 flex flex-wrap items-center gap-2 rounded-lg border bg-background p-2 shadow-lg"
+      className="sticky bottom-0 z-20 mt-3 flex flex-wrap items-center gap-2 rounded-lg border bg-background p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-lg max-md:rounded-b-none"
     >
       <span className="px-2 text-sm font-medium">{count} dipilih</span>
       <fieldset

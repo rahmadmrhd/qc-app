@@ -54,7 +54,7 @@ export function RowActions({ name, actions }: { name: string; actions: readonly 
           <Ellipsis aria-hidden />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
+      <DropdownMenuContent align="end">
         {visible.map((entry) => {
           const Icon = ACTIONS[entry.action].icon;
           return (

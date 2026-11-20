@@ -48,10 +48,14 @@ export function ViewPage({
     <Tabs value={active} onValueChange={select}>
       <TabsList
         variant="line"
-        className="sticky top-[var(--headroom-offset,3.5rem)] z-10 h-auto w-full justify-start rounded-none border-b bg-background"
+        className="sticky top-[var(--headroom-offset,3.5rem)] z-10 h-auto w-full justify-start overflow-x-auto overflow-y-hidden rounded-none border-b bg-background pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((entry) => (
-          <TabsTrigger key={entry.id} value={entry.id} className="flex-none px-3 py-2">
+          <TabsTrigger
+            key={entry.id}
+            value={entry.id}
+            className="flex-none px-3 py-2 max-md:min-h-11"
+          >
             {entry.label}
           </TabsTrigger>
         ))}
@@ -75,7 +79,9 @@ export function ViewPage({
             <h1 className="min-w-0 text-xl font-semibold break-words">{title}</h1>
             {badge}
           </div>
-          {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+          {actions ? (
+            <div className="flex flex-wrap items-center gap-2 max-md:w-full">{actions}</div>
+          ) : null}
         </div>
       </HeadroomBar>
       {banner}

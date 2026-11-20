@@ -71,9 +71,16 @@ export interface ListPlacement {
  * Menghitung letak daftar dari kotak input (`rect`) dan tinggi layar. Daftar dirender di `document.body`, bukan di
  * dalam kontainer yang bisa di-scroll (dialog), agar tidak terpotong; karena itu letaknya dihitung sendiri.
  */
-export function placeList(rect: DOMRect, viewportHeight: number): ListPlacement {
-  const below = viewportHeight - rect.bottom - LIST_EDGE - LIST_GAP;
-  const above = rect.top - LIST_EDGE - LIST_GAP;
+export function placeList(
+  rect: DOMRect,
+  viewportHeight: number,
+  /** Bagian layar yang benar-benar terlihat (papan ketik layar ponsel mengecilkannya); bawaan seluruh layar. */
+  visible?: { top: number; bottom: number },
+): ListPlacement {
+  const visibleBottom = visible?.bottom ?? viewportHeight;
+  const visibleTop = visible?.top ?? 0;
+  const below = visibleBottom - rect.bottom - LIST_EDGE - LIST_GAP;
+  const above = rect.top - visibleTop - LIST_EDGE - LIST_GAP;
   const base = { left: rect.left, width: rect.width };
   if (below >= LIST_MIN_BELOW || below >= above) {
     return {
@@ -219,16 +226,29 @@ export function ComboboxBase({
       setPlacement(null);
       return;
     }
+    const viewport = window.visualViewport;
     const update = () =>
-      setPlacement(placeList(anchor.getBoundingClientRect(), window.innerHeight));
+      setPlacement(
+        placeList(
+          anchor.getBoundingClientRect(),
+          window.innerHeight,
+          viewport
+            ? { top: viewport.offsetTop, bottom: viewport.offsetTop + viewport.height }
+            : undefined,
+        ),
+      );
     update();
     window.addEventListener('scroll', update, true);
     window.addEventListener('resize', update);
+    viewport?.addEventListener('resize', update);
+    viewport?.addEventListener('scroll', update);
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
     observer?.observe(anchor);
     return () => {
       window.removeEventListener('scroll', update, true);
       window.removeEventListener('resize', update);
+      viewport?.removeEventListener('resize', update);
+      viewport?.removeEventListener('scroll', update);
       observer?.disconnect();
     };
   }, [showList, chips.length]);
@@ -303,7 +323,7 @@ export function ComboboxBase({
           <div
             data-slot="link-field-frame"
             className={cn(
-              'flex min-h-8 w-full flex-wrap items-center gap-1 rounded-lg border border-input bg-transparent px-1.5 py-0.5 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30',
+              'flex min-h-8 max-md:min-h-11 w-full flex-wrap items-center gap-1 rounded-lg border border-input bg-transparent px-1.5 py-0.5 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30',
               error &&
                 'border-destructive focus-within:border-destructive focus-within:ring-destructive/20',
               disabled && 'pointer-events-none cursor-not-allowed opacity-50',
@@ -338,7 +358,7 @@ export function ComboboxBase({
                     type="button"
                     tabIndex={-1}
                     aria-label={`Hapus ${chip.label}`}
-                    className="text-muted-foreground hover:text-foreground"
+                    className="text-muted-foreground hover:text-foreground max-md:-m-[15px] max-md:p-[15px]"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => onRemove(chip.id)}
                   >
@@ -365,7 +385,7 @@ export function ComboboxBase({
               disabled={disabled}
               placeholder={multi && chips.length > 0 ? undefined : placeholder}
               value={inputValue}
-              className="h-6 min-w-24 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground"
+              className="h-6 min-w-24 flex-1 bg-transparent px-1 text-base outline-none md:text-sm max-md:h-9 placeholder:text-muted-foreground"
               onFocus={(event) => {
                 if (!multi) event.currentTarget.select();
               }}
@@ -456,7 +476,7 @@ export function ComboboxBase({
                       aria-selected={selected.has(option.id)}
                       aria-disabled={option.disabled || undefined}
                       className={cn(
-                        'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none',
+                        'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none max-md:min-h-11',
                         option.id === activeKey && 'bg-muted text-foreground',
                         option.disabled && 'pointer-events-none opacity-50',
                       )}
@@ -507,7 +527,7 @@ export function ComboboxBase({
                         tabIndex={-1}
                         aria-selected={false}
                         className={cn(
-                          'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none',
+                          'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none max-md:min-h-11',
                           activeKey === CREATE_ID && 'bg-muted text-foreground',
                         )}
                         onMouseDown={(event) => event.preventDefault()}

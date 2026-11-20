@@ -51,7 +51,7 @@ export function FormDialogShell({
   return (
     <FormDialog open={open} onOpenChange={onOpenChange}>
       <FormDialogContent className={SIZE_CLASS[size]}>
-        <FormDialogHeader>
+        <FormDialogHeader className="pr-10 max-md:pr-12">
           <FormDialogTitle>{title}</FormDialogTitle>
           {description ? <FormDialogDescription>{description}</FormDialogDescription> : null}
         </FormDialogHeader>

@@ -48,7 +48,10 @@ export function FormPage({
             <h1 className="min-w-0 text-xl font-semibold break-words">{title}</h1>
             {badge}
           </div>
-          <div data-tour={actionsTour} className="flex flex-wrap items-center gap-2">
+          <div
+            data-tour={actionsTour}
+            className="flex flex-wrap items-center gap-2 max-md:w-full max-md:justify-end"
+          >
             <ActionButton action="cancel" onClick={onCancel} disabled={submitting} />
             {extra}
             <ActionButton

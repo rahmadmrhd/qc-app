@@ -61,8 +61,8 @@ export function FilterChip({
       data-filled={filled || undefined}
       className={
         filled
-          ? 'inline-flex h-8 items-center rounded-full border border-info-text/35 bg-info-text/10 text-sm'
-          : 'inline-flex h-8 items-center rounded-full border border-dashed text-sm'
+          ? 'inline-flex h-8 items-center rounded-full border border-info-text/35 bg-info-text/10 text-sm max-md:h-11'
+          : 'inline-flex h-8 items-center rounded-full border border-dashed text-sm max-md:h-11'
       }
     >
       <Popover>
@@ -83,7 +83,7 @@ export function FilterChip({
             )}
           </button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-72">
+        <PopoverContent align="start" className="w-72 max-w-[calc(100vw-2rem)]">
           {children}
         </PopoverContent>
       </Popover>
@@ -92,7 +92,7 @@ export function FilterChip({
           type="button"
           onClick={onClear}
           aria-label={`Hapus filter ${label}`}
-          className="mr-1 inline-flex size-6 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-info-text/15 focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="mr-1 inline-flex size-6 max-md:size-9 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-info-text/15 focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           <X aria-hidden className="size-3.5" />
         </button>

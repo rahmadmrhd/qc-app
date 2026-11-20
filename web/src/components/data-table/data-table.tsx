@@ -6,8 +6,16 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
+import { DataCards } from './data-cards';
 import { type RowAction, RowActions } from './row-actions';
 import { type RowSelection, usePruneSelection } from './use-row-selection';
+
+/**
+ * Peran kolom di tampilan kartu ponsel (< 768 px): `title` = judul kartu (tautan), `badge` = lencana status di bawah
+ * judul, `meta` = pasangan label (header kolom) dan nilai, `hide` = tak ditampilkan di kartu. Bawaan: kolom pertama
+ * = `title` (bila tak ada kolom ber-`title`), kolom berid `status` = `badge`, selebihnya `meta`.
+ */
+export type MobileRole = 'title' | 'badge' | 'meta' | 'hide';
 
 export interface DataColumn<T> {
   id: string;
@@ -15,6 +23,8 @@ export interface DataColumn<T> {
   cell: (row: T) => ReactNode;
   align?: 'left' | 'right';
   className?: string;
+  /** Peran di kartu ponsel; lihat `MobileRole`. */
+  mobile?: MobileRole;
 }
 
 interface DataTableBase<T> {
@@ -52,8 +62,9 @@ export type DataTableProps<T> = DataTableBase<T> &
 const HEAD_STICKY = 'sticky top-[var(--headroom-offset,3.5rem)] z-10 bg-muted';
 
 /**
- * Tabel data kit CRUD. Di >= 768 px TANPA pembungkus gulir horizontal agar header `sticky` mengikuti bar headroom;
- * di < 768 px menggulir horizontal dan kolom data pertama menempel di kiri.
+ * Daftar data kit CRUD. Di >= 768 px tabel TANPA pembungkus gulir horizontal agar header `sticky` mengikuti bar
+ * headroom; di < 768 px kartu bertumpuk (`DataCards`; peran kolom lewat `DataColumn.mobile`). Hanya salah satu
+ * yang dirender pada satu waktu.
  */
 export function DataTable<T>({
   rows,
@@ -93,7 +104,6 @@ export function DataTable<T>({
   const selectedCount = selection ? ids.filter((id) => selection.selected.has(id)).length : 0;
   const allSelected = ids.length > 0 && selectedCount === ids.length;
   const someSelected = selectedCount > 0 && !allSelected;
-  const stickyFirst = !desktop;
 
   const table = (
     <table aria-label={label} className="w-full caption-bottom text-sm">
@@ -109,13 +119,12 @@ export function DataTable<T>({
             </TableHead>
           ) : null}
           {actions ? <TableHead className={cn(HEAD_STICKY, 'w-px')}>Aksi</TableHead> : null}
-          {columns.map((column, index) => (
+          {columns.map((column) => (
             <TableHead
               key={column.id}
               className={cn(
                 HEAD_STICKY,
                 column.align === 'right' && 'text-right',
-                stickyFirst && index === 0 && 'left-0 z-20',
                 column.className,
               )}
             >
@@ -157,16 +166,10 @@ export function DataTable<T>({
                       <RowActions name={nameOf(row)} actions={actions(row)} />
                     </TableCell>
                   ) : null}
-                  {columns.map((column, index) => (
+                  {columns.map((column) => (
                     <TableCell
                       key={column.id}
-                      className={cn(
-                        column.align === 'right' && 'text-right',
-                        stickyFirst &&
-                          index === 0 &&
-                          'sticky left-0 z-[1] bg-background group-data-[state=selected]/row:bg-[color-mix(in_oklab,var(--color-info-text)_8%,var(--background))]',
-                        column.className,
-                      )}
+                      className={cn(column.align === 'right' && 'text-right', column.className)}
                     >
                       {column.cell(row)}
                     </TableCell>
@@ -187,7 +190,19 @@ export function DataTable<T>({
       ) : desktop ? (
         <div className="rounded-lg border">{table}</div>
       ) : (
-        <div className="overflow-x-auto rounded-lg border">{table}</div>
+        <DataCards
+          rows={rows}
+          rowKey={rowKey}
+          columns={columns}
+          label={label}
+          nameOf={nameOf}
+          selection={selection}
+          actions={actions}
+          isLoading={isLoading}
+          allSelected={allSelected}
+          someSelected={someSelected}
+          ids={ids}
+        />
       )}
       {loadMoreError ? (
         <Alert color="destructive" className="flex flex-wrap items-center gap-2">

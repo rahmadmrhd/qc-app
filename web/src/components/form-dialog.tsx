@@ -22,6 +22,14 @@ const FormDialogFooter = DialogFooter;
 const FormDialogTitle = AlertDialogTitle;
 const FormDialogDescription = AlertDialogDescription;
 
+/**
+ * Di < 768 px dialog form menjadi layar penuh (header dan footer Simpan tetap terlihat, badan menggulir, area aman
+ * notch/bilah gestur dihormati, tinggi `dvh`); >= 768 px ukuran `size` dialog berlaku. Selektor `max-md:data-[size=default]`
+ * sengaja lebih spesifik daripada kelas lebar maksimum bawaan agar menang di antara 640 dan 767 px juga.
+ */
+const FULL_ON_PHONE =
+  'max-md:data-[size=default]:inset-0 max-md:data-[size=default]:h-dvh max-md:data-[size=default]:max-h-none max-md:data-[size=default]:w-screen max-md:data-[size=default]:max-w-none max-md:data-[size=default]:translate-x-0 max-md:data-[size=default]:translate-y-0 max-md:data-[size=default]:rounded-none max-md:data-[size=default]:ring-0 max-md:data-[size=default]:pt-[env(safe-area-inset-top)] max-md:data-[size=default]:pb-[env(safe-area-inset-bottom)]';
+
 function FormDialogContent({
   className,
   children,
@@ -61,7 +69,7 @@ function FormDialogContent({
   return (
     <AlertDialogContent
       ref={attach}
-      className={`data-[size=default]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-sm ${className ?? ''}`}
+      className={`data-[size=default]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-sm ${FULL_ON_PHONE} ${className ?? ''}`}
       // Bawaan AlertDialog memfokuskan tombol Batal; form lebih baik memfokus isian pertama.
       onOpenAutoFocus={(event) => {
         onOpenAutoFocus?.(event);
@@ -78,7 +86,11 @@ function FormDialogContent({
     >
       {children}
       <AlertDialogPrimitive.Cancel asChild>
-        <Button variant="ghost" className="absolute top-2 right-2 z-20" size="icon-sm">
+        <Button
+          variant="ghost"
+          className="absolute top-2 right-2 z-20 max-md:top-[calc(0.5rem+env(safe-area-inset-top))]"
+          size="icon-sm"
+        >
           <XIcon />
           <span className="sr-only">Tutup</span>
         </Button>

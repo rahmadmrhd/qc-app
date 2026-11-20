@@ -49,7 +49,7 @@ export function FormTabs({
       <TabsList
         variant="line"
         style={{ top: stickyTop }}
-        className="sticky z-10 h-auto w-full justify-start rounded-none border-b bg-background"
+        className="sticky z-10 h-auto w-full justify-start overflow-x-auto overflow-y-hidden rounded-none border-b bg-background pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((tab) => (
           <TabsTrigger
@@ -57,7 +57,7 @@ export function FormTabs({
             value={tab.id}
             data-form-tab={tab.id}
             aria-describedby={tab.hasError ? hintId : undefined}
-            className="flex-none px-3 py-2"
+            className="flex-none px-3 py-2 max-md:min-h-11"
           >
             {tab.label}
             {tab.hasError ? (

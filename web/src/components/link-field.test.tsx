@@ -420,3 +420,10 @@ test('LinkField wajib: label bertanda data-required dan input aria-required', ()
   expect(input).toHaveAttribute('aria-required', 'true');
   expect(document.querySelector('label[for="f"]')).toHaveAttribute('data-required');
 });
+
+test('placeList: papan ketik mengecilkan layar terlihat, daftar pindah ke atas input', () => {
+  // Layar 800, papan ketik memakai 300 terbawah: sisa terlihat 0..500, input di y=420.
+  const place = placeList(rectAt(420, 32), 800, { top: 0, bottom: 500 });
+  expect(place.top).toBeUndefined();
+  expect(place.bottom).toBeDefined();
+});

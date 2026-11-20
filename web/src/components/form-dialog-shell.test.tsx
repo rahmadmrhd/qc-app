@@ -165,3 +165,17 @@ test('size lg memakai kelas lebar berbeda dari md', async () => {
   expect(lg).toContain('max-w-2xl');
   expect(md).toContain('max-w-lg');
 });
+
+test('di < 768 px dialog form layar penuh (dvh, area aman); >= 768 px memakai size', () => {
+  render(
+    <TooltipProvider>
+      <FormDialogShell open onOpenChange={() => undefined} formId="f" title="Tambah" size="lg">
+        <form id="f" />
+      </FormDialogShell>
+    </TooltipProvider>,
+  );
+  const dialog = screen.getByRole('alertdialog');
+  expect(dialog.className).toContain('max-md:data-[size=default]:h-dvh');
+  expect(dialog.className).toContain('max-md:data-[size=default]:pt-[env(safe-area-inset-top)]');
+  expect(dialog.className).toContain('data-[size=default]:sm:max-w-2xl');
+});
