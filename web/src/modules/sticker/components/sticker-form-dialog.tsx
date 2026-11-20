@@ -129,6 +129,8 @@ function StickerFormBody({
   const [errors, setErrors] = useState<FieldErrors>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Gambar contoh yang masih diunggah: Simpan ditahan agar gambarnya tidak tertinggal.
+  const [imageBusy, setImageBusy] = useState(false);
   useUnsavedChanges(
     typeId !== (sticker?.typeId ?? '') ||
       name !== (sticker?.name ?? '') ||
@@ -357,6 +359,7 @@ function StickerFormBody({
             <ImagePicker
               value={fileId}
               label={name.trim() || 'stiker'}
+              onBusyChange={setImageBusy}
               onChange={(id) => {
                 setFileId(id);
                 clearError('fileId');
@@ -414,7 +417,7 @@ function StickerFormBody({
           <Button type="button" variant="outline" onClick={onClose}>
             Batal
           </Button>
-          <Button type="submit" disabled={busy || name.trim() === '' || typeId === ''}>
+          <Button type="submit" disabled={busy || imageBusy || name.trim() === '' || typeId === ''}>
             {busy ? 'Menyimpan…' : 'Simpan'}
           </Button>
         </FormDialogFooter>

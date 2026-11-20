@@ -1,9 +1,17 @@
 import type { BrandDto, BusinessUnitOptionDto, StickerDto, StickerTypeDto } from '@shared/contract';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 
 const uploadMock = vi.hoisted(() => vi.fn());
+const galleryUploadMock = vi.hoisted(() => vi.fn());
+vi.mock('@/modules/files/file-source', () => ({
+  itemFileSource: {
+    key: 'item-files',
+    mimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
+    upload: galleryUploadMock,
+  },
+}));
 vi.mock('@/modules/files/use-upload-image', () => ({ useUploadImage: () => uploadMock }));
 vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: 'data:image/png;base64,AAA', isLoading: false, isError: false }),
@@ -103,6 +111,7 @@ async function pickBusinessUnit(name: string) {
 
 beforeEach(() => {
   uploadMock.mockReset();
+  galleryUploadMock.mockReset();
 });
 
 test('merk, BU, dan tipe wajib; tidak mengirim bila kosong', async () => {
@@ -664,4 +673,38 @@ test('galat server pada proofMin tampil di fieldnya', () => {
   });
   expect(screen.getByLabelText('Minimum foto')).toHaveValue(2);
   expect(screen.getByText('Minimum foto harus 1 sampai 5')).toBeInTheDocument();
+});
+
+test('gambar galeri yang masih diunggah menahan Simpan sampai selesai', async () => {
+  let finish: (value: unknown) => void = () => undefined;
+  galleryUploadMock.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  renderForm();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah gambar' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Tambah gambar' });
+  const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, {
+    target: { files: [new File([new Uint8Array(4)], 'a.png', { type: 'image/png' })] },
+  });
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Tambahkan (1)' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled());
+  finish({
+    id: 'g1',
+    name: 'a',
+    size: 1,
+    width: 1,
+    height: 1,
+    uploadedBy: '',
+    createdAt: '',
+    usageCount: 0,
+    canRename: false,
+    canRemove: false,
+    thumbUrl: '',
+    previewUrl: '',
+  });
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled());
 });
