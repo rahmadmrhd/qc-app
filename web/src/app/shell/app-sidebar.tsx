@@ -1,6 +1,7 @@
 import { Link, useMatchRoute } from '@tanstack/react-router';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Search } from 'lucide-react';
 import { useState } from 'react';
+import { filterNavGroups } from '@/app/nav-search';
 import type { NavItem, NavParent } from '@/app/navigation';
 import { isNavItemActive, isNavParent, NAV_GROUPS, visibleNavGroups } from '@/app/navigation';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -11,6 +12,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Input } from '@/components/ui/input';
 import {
   Sidebar,
   SidebarContent,
@@ -26,6 +28,7 @@ import {
   SidebarMenuSubItem,
   useSidebar,
 } from '@/components/ui/sidebar';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { isDesktop } from '@/lib/platform';
 import { useMe } from '@/modules/auth/use-me';
 import { openInDesktop } from '@/modules/countrylock/lib/handoff';
@@ -48,14 +51,20 @@ export function AppSidebar() {
   const { state, isMobile } = useSidebar();
   const [expanded, setExpanded] = useState<string[]>(() => readSidebarState().expanded);
   const iconMode = state === 'collapsed' && !isMobile;
+  const stack = useStackNavigation();
+  const [query, setQuery] = useState('');
+  const searching = isMobile && query.trim() !== '';
 
   const isActive = (item: NavItem) =>
     isNavItemActive(item, (to, fuzzy) => Boolean(matchRoute({ to: to as NavItem['to'], fuzzy })));
 
   function toggleParent(id: string, open: boolean) {
     setExpanded((current) => {
+      // Ponsel: akordeon (satu induk terbuka pada satu waktu).
       const next = open
-        ? [...current.filter((v) => v !== id), id]
+        ? isMobile
+          ? [id]
+          : [...current.filter((v) => v !== id), id]
         : current.filter((v) => v !== id);
       writeSidebarState({ ...readSidebarState(), expanded: next });
       return next;
@@ -68,15 +77,26 @@ export function AppSidebar() {
         to={item.to}
         className={className}
         data-active={isActive(item) || undefined}
-        onClick={
-          item.opensDesktopApp && !isDesktop()
-            ? () => {
-                // Gagal (server mati, izin dicabut) tak mengganggu: halaman tujuan menampilkan
-                // tombol dan alasannya.
-                void openInDesktop().catch(() => undefined);
-              }
-            : undefined
-        }
+        onClick={(event) => {
+          if (item.opensDesktopApp && !isDesktop()) {
+            // Gagal (server mati, izin dicabut) tak mengganggu: halaman tujuan menampilkan
+            // tombol dan alasannya.
+            void openInDesktop().catch(() => undefined);
+          }
+          // Ponsel (butir 41c): ganti modul lewat menu = replace (bukan push), dan panel menutup sendiri lewat
+          // pelepasan entri overlay. Klik dengan tombol pengubah dibiarkan (buka di tab baru).
+          if (
+            isMobile &&
+            !event.metaKey &&
+            !event.ctrlKey &&
+            !event.shiftKey &&
+            event.button === 0
+          ) {
+            event.preventDefault();
+            setQuery('');
+            stack.replace({ to: item.to });
+          }
+        }}
       >
         <item.icon />
         <span>{item.label}</span>
@@ -131,7 +151,7 @@ export function AppSidebar() {
     }
 
     // Induk yang memuat rute aktif selalu terbuka; keadaan pilihan pengguna tetap tersimpan terpisah.
-    const open = containsActive || expanded.includes(parent.id);
+    const open = searching || containsActive || expanded.includes(parent.id);
     return (
       <Collapsible
         key={parent.id}
@@ -171,7 +191,26 @@ export function AppSidebar() {
         </div>
       </SidebarHeader>
       <SidebarContent data-tour="sidebar-menu">
-        {visibleNavGroups(NAV_GROUPS, me, selectedIds, isDesktop()).map((group) => (
+        {isMobile ? (
+          <div className="relative px-2 pt-1" data-slot="menu-search">
+            <Search
+              aria-hidden
+              className="pointer-events-none absolute top-1/2 left-5 size-4 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Cari menu…"
+              aria-label="Cari menu"
+              className="pl-8"
+            />
+          </div>
+        ) : null}
+        {filterNavGroups(
+          visibleNavGroups(NAV_GROUPS, me, selectedIds, isDesktop()),
+          isMobile ? query : '',
+        ).map((group) => (
           <SidebarGroup key={group.label ?? 'tanpa-judul'}>
             {group.label ? <SidebarGroupLabel>{group.label}</SidebarGroupLabel> : null}
             <SidebarGroupContent>
@@ -191,6 +230,11 @@ export function AppSidebar() {
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
+        {searching &&
+        filterNavGroups(visibleNavGroups(NAV_GROUPS, me, selectedIds, isDesktop()), query)
+          .length === 0 ? (
+          <p className="px-4 py-2 text-sm text-muted-foreground">Tidak ada menu yang cocok.</p>
+        ) : null}
       </SidebarContent>
     </Sidebar>
   );

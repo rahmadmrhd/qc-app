@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { restoreBoardCache, startBoardPersistence } from '@/app/board-persist';
 import { loadMeForBoot, readAuthError, resolveInitialSession } from '@/app/boot';
 import { startOutboxSync } from '@/app/outbox-sync';
+import { insertParentChain } from '@/app/parent-chain';
 import { startInstallCapture } from '@/app/pwa/install';
 import { setMutationSource } from '@/app/pwa/safe-reload';
 import { attachNavigationTrigger, startPwaUpdates } from '@/app/pwa/update';
@@ -98,6 +99,8 @@ async function start() {
     );
   }
 
+  // Tautan dalam di ponsel: sisipkan rantai induk SEBELUM router dibuat (router membaca riwayat saat dibuat).
+  insertParentChain();
   const router = createAppRouter(queryClient);
   setUnauthenticatedHandler(() => {
     clearSession();

@@ -1,8 +1,9 @@
 import { Outlet, useMatches } from '@tanstack/react-router';
 import { type ReactNode, useCallback, useState } from 'react';
 import { PageContainer } from '@/components/page/page-container';
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
+import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { useEdgeSwipe } from '@/hooks/use-edge-swipe';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useFocusIntoView, useVisualViewport } from '@/hooks/use-visual-viewport';
 import { useMe } from '@/modules/auth/use-me';
@@ -27,6 +28,13 @@ import { ServerStatusBanner } from './server-status-banner';
 import { readSidebarState, writeSidebarState } from './sidebar-state';
 import { UiUpdateBanner } from './ui-update-banner';
 import { UserMenu } from './user-menu';
+
+/** Ponsel: geser dari tepi kiri layar membuka panel menu (butir 41). Di dalam SidebarProvider. */
+function EdgeSwipeOpener() {
+  const { isMobile, openMobile, setOpenMobile } = useSidebar();
+  useEdgeSwipe(() => setOpenMobile(true), isMobile && !openMobile);
+  return null;
+}
 
 /**
  * Cangkang aplikasi (sidebar + header). Dipakai rute `_app` (isi lewat `<Outlet />`) dan rute di luar `_app` yang
@@ -56,6 +64,7 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
             {/* Di dalam SidebarProvider agar mesin tur dapat membuka sidebar ponsel; overlay-nya dimuat malas. */}
             <TourProvider renderTip={renderTourTip}>
               <AppSidebar />
+              <EdgeSwipeOpener />
               <LocationReconfirm />
               <SidebarInset className="min-w-0">
                 <UiUpdateBanner />

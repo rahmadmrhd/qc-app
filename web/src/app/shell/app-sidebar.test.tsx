@@ -16,6 +16,7 @@ vi.mock('@tanstack/react-router', () => ({
       {children}
     </a>
   ),
+  useRouter: () => ({ navigate: () => Promise.resolve() }),
   useMatchRoute:
     () =>
     ({ to, fuzzy }: { to: string; fuzzy?: boolean }) =>
