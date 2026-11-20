@@ -16,7 +16,9 @@ vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: toastError } }
 const prepareImageMock = vi.hoisted(() => vi.fn());
 vi.mock('@/modules/files/image', () => ({ prepareImage: prepareImageMock }));
 
+import { ProofReplaceProvider } from '../lib/proof-replace-context';
 import { ProofGallery } from './proof-gallery';
+import { ProofProblemBanner } from './proof-problem-banner';
 
 const photo = (id: string, over: Partial<SerialProofPhotoDto> = {}): SerialProofPhotoDto => ({
   id,
@@ -410,4 +412,32 @@ test('berpindah halaman (kartu dilepas) saat diunggah membatalkan unggahan dan t
   held.release[0]?.();
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(apiMock).not.toHaveBeenCalledWith('serialProofs.replace', expect.anything());
+});
+
+test('F11: penggantian dari banner tampil dan mengunci kartu galeri foto yang sama (dan sebaliknya)', async () => {
+  const held = holdUpload();
+  const failed = photo('dddddddd-4', { state: 'failed', error: 'Cap gagal' });
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <ProofReplaceProvider>
+        <ProofProblemBanner count={1} photos={[failed]} />
+        <ProofGallery photos={[failed]} />
+      </ProofReplaceProvider>
+    </QueryClientProvider>,
+  );
+  const banner = screen.getByRole('region', { name: 'Foto bukti QC bermasalah' });
+  // Mulai dari banner.
+  await pickReplacement(within(banner).getByRole('button', { name: 'Unggah ulang' }));
+  await waitFor(() => expect(held.release).toHaveLength(1));
+  // Progres tampil di kedua tempat dan kedua tombol terkunci.
+  expect(await screen.findAllByTestId('proof-replacing')).toHaveLength(2);
+  for (const button of screen.getAllByRole('button', { name: 'Unggah ulang' })) {
+    expect(button).toBeDisabled();
+  }
+  // Membatalkan dari kartu galeri membatalkan unggahan yang dimulai dari banner.
+  const buttons = screen.getAllByRole('button', { name: 'Batalkan' });
+  await userEvent.click(buttons[buttons.length - 1] as HTMLElement);
+  expect(held.aborted).toBe(1);
+  await waitFor(() => expect(screen.queryByTestId('proof-replacing')).not.toBeInTheDocument());
 });

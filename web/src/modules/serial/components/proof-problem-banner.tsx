@@ -4,9 +4,9 @@ import { CircleAlert } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { formatDay } from '../lib/labels';
+import { EnsureProofReplace, useProofReplace } from '../lib/proof-replace-context';
 import { proofThumbUrl } from '../lib/proof-source';
 import { earliestProofExpiry } from '../lib/proof-state';
-import { useProofReplace } from '../lib/use-proof-replace';
 import { usePendingReplaceIds } from '../queries';
 import { ProofReplaceDialog, ProofReplaceStatus } from './proof-replace-dialog';
 
@@ -22,7 +22,15 @@ export interface ProofProblemBannerProps {
  * meminta unggah ulang sebelum foto dibuang otomatis (batas terdekat). Tombol "Unggah ulang" hanya untuk foto yang
  * `canManage` bagi pengguna ini; satu baris per foto agar jelas foto mana yang diganti.
  */
-export function ProofProblemBanner({ count, photos }: ProofProblemBannerProps) {
+export function ProofProblemBanner(props: ProofProblemBannerProps) {
+  return (
+    <EnsureProofReplace>
+      <ProofProblemBannerBody {...props} />
+    </EnsureProofReplace>
+  );
+}
+
+function ProofProblemBannerBody({ count, photos }: ProofProblemBannerProps) {
   const failed = photos;
   const total = Math.max(count, failed.length);
   const [replacingId, setReplacingId] = useState<string | null>(null);

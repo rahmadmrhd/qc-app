@@ -23,8 +23,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { describeError } from '@/lib/api/describe-error';
+import { EnsureProofReplace, useProofReplace } from '../lib/proof-replace-context';
 import { proofThumbUrl } from '../lib/proof-source';
-import { useProofReplace } from '../lib/use-proof-replace';
 import { usePendingReplaceIds, useRemoveProof, useRetryProof } from '../queries';
 import { ProofReplaceDialog, ProofReplaceStatus } from './proof-replace-dialog';
 
@@ -37,7 +37,15 @@ export interface ProofGalleryProps {
  * klik membuka tampilan besar dengan tombol unduh. Foto `failed` menampilkan alasan; foto yang sudah tersimpan tidak
  * dapat dibuang kecuali yang gagal.
  */
-export function ProofGallery({ photos }: ProofGalleryProps) {
+export function ProofGallery(props: ProofGalleryProps) {
+  return (
+    <EnsureProofReplace>
+      <ProofGalleryBody {...props} />
+    </EnsureProofReplace>
+  );
+}
+
+function ProofGalleryBody({ photos }: ProofGalleryProps) {
   const [open, setOpen] = useState<{ photo: SerialProofPhotoDto; index: number } | null>(null);
   const [discarding, setDiscarding] = useState<SerialProofPhotoDto | null>(null);
   // Foto gagal yang dipilih untuk diganti (dialog terbuka); unggahan dan penggantiannya dipegang hook di komponen ini,

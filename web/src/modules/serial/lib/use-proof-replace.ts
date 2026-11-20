@@ -26,13 +26,13 @@ export interface ProofReplace {
 }
 
 /**
- * Unggah ulang foto bukti QC yang gagal. Dipasang di komponen yang membuka dialog (galeri foto atau banner masalah):
- * unggahan dikerjakan hook latar (progres tampil di kartu foto gagal), dan hanya bila unggahan selesai
+ * Unggah ulang foto bukti QC yang gagal. Dipegang SATU pemilik per halaman (`ProofReplaceProvider`, dipakai banner masalah
+ * dan galeri foto bersama; lihat `proof-replace-context.tsx`): unggahan dikerjakan hook latar (progres tampil di kartu foto gagal), dan hanya bila unggahan selesai
  * `serialProofs.replace` dipanggil. Foto gagal lama tetap tampil sampai penggantian berhasil; gagal = kartu kembali ke
  * keadaan gagal dengan pesan dan "Unggah ulang" tersedia lagi. Berpindah halaman (komponen dilepas) saat unggahan
  * berjalan membatalkannya tanpa memanggil `replace`.
  */
-export function useProofReplace(): ProofReplace {
+export function useProofReplaceController(): ProofReplace {
   const replace = useReplaceProof();
   const [errors, setErrors] = useState<Readonly<Record<string, string>>>({});
   const { mutateAsync } = replace;
