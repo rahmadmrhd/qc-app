@@ -13,7 +13,7 @@ const SAVE_DELAY_MS = 1500;
 
 /**
  * Hanya query berikut yang disimpan: data referensi non-sensitif yang sering dibuka. TIDAK termasuk Log Audit, daftar
- * user, atau isi berkas. Daftar item tidak ikut: berkursor per filter dan murah dimuat (20 per halaman). Kuncinya `root/sub` dari queryKey.
+ * user, atau isi berkas. Daftar item tidak ikut: berkursor per filter dan murah dimuat (20 per halaman). Kuncinya `root/sub` dari dua bagian pertama queryKey (varian filter ikut, kecuali status `deleted`).
  */
 const PERSISTED_KEYS: ReadonlySet<string> = new Set([
   'auth/me',
@@ -42,22 +42,28 @@ function keyId(key: readonly unknown[]): string {
   return key.map(String).join('/');
 }
 
-/**
- * Query daftar yang disaring ke record terhapus (soft delete, T21) tidak pernah disimpan: ia memuat data yang hanya
- * boleh dilihat pemegang izin Pulihkan dan tak boleh muncul sebagai data referensi tersimpan. Dikenali dari bagian
- * kunci `'deleted'` atau objek filter ber-`status: 'deleted'`.
- */
-function filtersDeleted(key: readonly unknown[]): boolean {
-  return key.some(
-    (part) =>
-      part === 'deleted' ||
-      (typeof part === 'object' &&
-        part !== null &&
-        (part as { status?: unknown }).status === 'deleted'),
-  );
+/** Apakah `value` (kunci, objek filter, atau larik, di kedalaman berapa pun) menyebut status `deleted`. */
+function mentionsDeleted(value: unknown, depth = 0): boolean {
+  if (value === 'deleted') return true;
+  if (depth > 4 || typeof value !== 'object' || value === null) return false;
+  const parts = Array.isArray(value) ? value : Object.values(value);
+  return parts.some((part) => mentionsDeleted(part, depth + 1));
 }
 
-/** Whitelist dinilai dari dua bagian pertama kunci (`root/sub`); filter status `deleted` selalu dikecualikan. */
+/**
+ * Query daftar yang disaring ke record terhapus (soft delete, T21) tidak pernah disimpan: ia memuat data yang hanya
+ * boleh dilihat pemegang izin Pulihkan dan tak boleh muncul sebagai data referensi tersimpan. Dikenali dari nilai
+ * `'deleted'` di bagian kunci mana pun, termasuk di dalam objek filter atau larik bersarang.
+ */
+function filtersDeleted(key: readonly unknown[]): boolean {
+  return mentionsDeleted(key);
+}
+
+/**
+ * Whitelist dinilai dari dua bagian pertama kunci (`root/sub`): keputusan sadar (M6) agar daftar yang kelak berkunci
+ * `['brands', 'list', { status }]` tetap tersimpan untuk filter Aktif/Nonaktif/Semua; varian `deleted` selalu
+ * dikecualikan. Log Audit, user, dan isi berkas tetap di luar whitelist.
+ */
 function isPersistable(key: readonly unknown[]): boolean {
   return !filtersDeleted(key) && PERSISTED_KEYS.has(keyId(key.slice(0, 2)));
 }

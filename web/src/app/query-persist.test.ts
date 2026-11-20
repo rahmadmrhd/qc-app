@@ -74,6 +74,15 @@ test('query daftar berfilter status deleted tidak disimpan maupun dipulihkan (T2
   expect(restored.getQueryData(['brands', 'list', { status: 'deleted' }])).toBeUndefined();
 });
 
+test('filter deleted bersarang (objek/larik) dikenali; varian filter non-deleted ikut disimpan (keputusan M6)', () => {
+  expect(isPersistedQueryKey(['brands', 'list', { filter: { status: 'deleted' } }])).toBe(false);
+  expect(isPersistedQueryKey(['brands', 'list', { statuses: ['active', 'deleted'] }])).toBe(false);
+  expect(isPersistedQueryKey(['brands', 'list', { status: 'inactive' }])).toBe(true);
+  expect(isPersistedQueryKey(['qrcodes', 'list', 'aktif'])).toBe(true);
+  expect(isPersistedQueryKey(['access', 'users', { status: 'active' }])).toBe(false);
+  expect(isPersistedQueryKey(['items', 'list'])).toBe(false);
+});
+
 test('cache milik pengguna lain atau terlalu tua tidak dipulihkan', () => {
   login('a@x.com');
   const client = new QueryClient();

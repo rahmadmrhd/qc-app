@@ -1,7 +1,7 @@
 import type { SoftDeleteInfo } from '@shared/batch';
 import { ActionButton } from '@/components/action-button';
 import { Alert, AlertAction, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { formatStamp } from '@/modules/serial/lib/labels';
+import { formatStamp } from '@/lib/format-stamp';
 
 /**
  * Banner View record terhapus (hanya bagi pemegang izin Pulihkan): "Data ini sudah dihapus", pelaku, waktu WIB, dan

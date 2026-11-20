@@ -52,7 +52,8 @@ export function ConfirmDeleteDialog({
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>Batal</AlertDialogCancel>
           <AlertDialogAction
-            variant="destructive"
+            color="destructive"
+            variant="solid"
             disabled={busy}
             onClick={(event) => {
               // Dialog ditutup induk setelah proses selesai (bukan otomatis oleh Radix).
