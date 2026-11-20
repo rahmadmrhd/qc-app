@@ -97,6 +97,11 @@ export interface RecordPageProps {
   /** Dipanggil saat ada/tidaknya baris draft berfoto bukti berubah (menentukan jenis penjaga keluar halaman). */
   onProofChange?: (hasProof: boolean) => void;
   /**
+   * Dipanggil saat ada/tidaknya unggahan foto bukti yang berjalan ATAU gagal berubah. Melepas halaman membatalkan unggahan
+   * itu, jadi pemanggil yang menutup halaman (dialog) perlu konfirmasi lebih dulu.
+   */
+  onUploadsPendingChange?: (pending: boolean) => void;
+  /**
    * Diisi pegangan untuk menjalankan Simpan dari luar (dialog penjaga keluar). `save()` sama dengan tombol Simpan tetapi
    * TIDAK memanggil `onAllSaved` (pemanggil sendiri yang melanjutkan navigasi); hasilnya `true` bila semua baris
    * tersimpan.
@@ -185,6 +190,7 @@ export function RecordPage({
   onDirtyChange,
   onAllSaved,
   onProofChange,
+  onUploadsPendingChange,
   handleRef,
   draft,
   hideTitle,
@@ -403,6 +409,10 @@ export function RecordPage({
   useEffect(() => {
     onDirtyChange?.(rows.length > 0);
   }, [onDirtyChange, rows.length]);
+  const uploadsPendingNow = proofUploads.blocking;
+  useEffect(() => {
+    onUploadsPendingChange?.(uploadsPendingNow);
+  }, [onUploadsPendingChange, uploadsPendingNow]);
   const withProof = hasProofPhotos(rows, proofUploads.blocking);
   useEffect(() => {
     onProofChange?.(withProof);

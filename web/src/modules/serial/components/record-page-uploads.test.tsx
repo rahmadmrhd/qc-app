@@ -132,7 +132,12 @@ afterEach(() => {
   apiMock.mockReset();
 });
 
-function renderPage(extra: { onProofChange?: (hasProof: boolean) => void } = {}) {
+function renderPage(
+  extra: {
+    onProofChange?: (hasProof: boolean) => void;
+    onUploadsPendingChange?: (pending: boolean) => void;
+  } = {},
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
@@ -328,4 +333,17 @@ test('F2: di layar sempit unggahan gagal pada kartu dapat dibuang atau diulang (
   } finally {
     media.restore();
   }
+});
+
+test('onUploadsPendingChange true selama unggahan berjalan atau gagal, false setelah selesai atau dibuang', async () => {
+  seedDraft(['AAA111']);
+  const onPending = vi.fn();
+  renderPage({ onUploadsPendingChange: onPending });
+  await addPhoto('AAA111');
+  await waitFor(() => expect(onPending).toHaveBeenLastCalledWith(true));
+  await act(async () => uploads[0]?.fail('Server menolak'));
+  expect(await screen.findByText('Server menolak')).toBeInTheDocument();
+  expect(onPending).toHaveBeenLastCalledWith(true);
+  await userEvent.click(screen.getByRole('button', { name: /^Buang / }));
+  await waitFor(() => expect(onPending).toHaveBeenLastCalledWith(false));
 });
