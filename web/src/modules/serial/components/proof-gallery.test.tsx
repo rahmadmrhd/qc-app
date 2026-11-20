@@ -6,7 +6,10 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 
 const apiMock = vi.hoisted(() => vi.fn());
-vi.mock('@/lib/api', () => ({ api: apiMock }));
+vi.mock('@/lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api')>()),
+  api: apiMock,
+}));
 const toastError = vi.hoisted(() => vi.fn());
 const toastSuccess = vi.hoisted(() => vi.fn());
 vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: toastError } }));
@@ -188,7 +191,7 @@ test('foto yang bukan gagal tidak punya tombol Unggah ulang', () => {
 /** Buka dialog Unggah ulang dan masukkan satu foto hasil kamera native, lalu tekan "Ganti foto". */
 async function replaceViaCamera() {
   await userEvent.click(screen.getByRole('button', { name: 'Unggah ulang' }));
-  const dialog = await screen.findByRole('dialog', { name: 'Unggah ulang foto bukti QC' });
+  const dialog = await screen.findByRole('alertdialog', { name: 'Unggah ulang foto bukti QC' });
   expect(within(dialog).queryByRole('tab', { name: /Pustaka/ })).not.toBeInTheDocument();
   shoot(dialog);
   await userEvent.click(await within(dialog).findByRole('button', { name: /^Ganti foto \(1\)/ }));
@@ -231,7 +234,7 @@ test('Unggah ulang: unggah draf lalu replace berurutan, lalu memuat ulang riwaya
   expect(keys).toContain(JSON.stringify(['serial', 'history']));
   expect(keys).toContain(JSON.stringify(['serial', 'list']));
   expect(keys).toContain(JSON.stringify(['serial', 'one']));
-  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
   expect(toastError).not.toHaveBeenCalled();
   expect(apiMock).not.toHaveBeenCalledWith('serialProofs.remove', expect.anything());
 });
@@ -269,7 +272,7 @@ test('CONFLICT: pesan tampil, draf dibuang, dan tampilan dimuat ulang', async ()
 test('dialog Unggah ulang ditutup tanpa memilih: replace tidak dipanggil', async () => {
   renderGallery([photo('dddddddd-4', { state: 'failed', error: 'x' })]);
   await userEvent.click(screen.getByRole('button', { name: 'Unggah ulang' }));
-  const dialog = await screen.findByRole('dialog', { name: 'Unggah ulang foto bukti QC' });
+  const dialog = await screen.findByRole('alertdialog', { name: 'Unggah ulang foto bukti QC' });
   await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
   expect(apiMock).not.toHaveBeenCalledWith('serialProofs.replace', expect.anything());
 });
@@ -282,13 +285,13 @@ test('selama replace berjalan, Coba lagi/Unggah ulang/Buang foto itu dikunci; te
     photo('eeeeeeee-5', { state: 'failed', error: 'y' }),
   ]);
   await userEvent.click(screen.getAllByRole('button', { name: 'Unggah ulang' })[0] as HTMLElement);
-  const dialog = await screen.findByRole('dialog', { name: 'Unggah ulang foto bukti QC' });
+  const dialog = await screen.findByRole('alertdialog', { name: 'Unggah ulang foto bukti QC' });
   shoot(dialog);
   await userEvent.click(await within(dialog).findByRole('button', { name: /^Ganti foto \(1\)/ }));
   await waitFor(() =>
     expect(apiMock).toHaveBeenCalledWith('serialProofs.replace', expect.anything()),
   );
-  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
   const [firstItem, secondItem] = screen.getAllByRole('listitem');
   for (const name of ['Coba lagi', 'Unggah ulang', 'Buang']) {
     expect(within(firstItem as HTMLElement).getByRole('button', { name })).toBeDisabled();
@@ -299,4 +302,112 @@ test('selama replace berjalan, Coba lagi/Unggah ulang/Buang foto itu dikunci; te
   await waitFor(() =>
     expect(within(firstItem as HTMLElement).getByRole('button', { name: 'Buang' })).toBeEnabled(),
   );
+});
+
+/** Membuat unggahan menggantung (dengan AbortSignal) sampai dilepas; replace mengikuti `replace`. */
+function holdUpload(replace: () => unknown = () => photo('newnewnew-1', { state: 'queued' })) {
+  const state = { release: [] as Array<() => void>, aborted: 0 };
+  apiMock.mockImplementation((id: string, _input: unknown, options?: { signal?: AbortSignal }) => {
+    if (id === 'serialProofs.upload') {
+      return new Promise((resolve, reject) => {
+        options?.signal?.addEventListener('abort', () => {
+          state.aborted += 1;
+          reject(new DOMException('Dibatalkan', 'AbortError'));
+        });
+        state.release.push(() =>
+          resolve({
+            id: 'newnewnew-1',
+            state: 'draft',
+            mime: 'image/webp',
+            size: 100,
+            width: 10,
+            height: 10,
+            filename: 'bukti-newnewne.webp',
+            error: null,
+          }),
+        );
+      });
+    }
+    if (id === 'serialProofs.replace') return Promise.resolve(replace());
+    return Promise.resolve({ id: 'x' });
+  });
+  return state;
+}
+
+async function pickReplacement(button: HTMLElement) {
+  await userEvent.click(button);
+  const dialog = await screen.findByRole('alertdialog', { name: 'Unggah ulang foto bukti QC' });
+  shoot(dialog);
+  await userEvent.click(await within(dialog).findByRole('button', { name: /^Ganti foto \(1\)/ }));
+}
+
+test('selama diunggah: dialog menutup, kartu menampilkan "Mengganti…" dengan progres, foto gagal lama tetap terlihat, replace belum dipanggil', async () => {
+  const held = holdUpload();
+  renderGallery([photo('dddddddd-4', { state: 'failed', error: 'Cap gagal' })]);
+  await pickReplacement(screen.getByRole('button', { name: 'Unggah ulang' }));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  const status = await screen.findByTestId('proof-replacing');
+  expect(status).toHaveTextContent('Mengganti…');
+  expect(within(status).getByRole('progressbar')).toBeInTheDocument();
+  // Foto gagal lama masih ada (gambar, alasan, tombol terkunci).
+  expect(screen.getByRole('img', { name: 'Foto bukti 1' })).toBeInTheDocument();
+  expect(screen.getByText('Cap gagal')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Unggah ulang' })).toBeDisabled();
+  expect(apiMock).not.toHaveBeenCalledWith('serialProofs.replace', expect.anything());
+  await waitFor(() => expect(held.release).toHaveLength(1));
+  held.release[0]?.();
+  await waitFor(() =>
+    expect(apiMock).toHaveBeenCalledWith('serialProofs.replace', {
+      photoId: 'dddddddd-4',
+      newPhotoId: 'newnewnew-1',
+    }),
+  );
+  await waitFor(() => expect(toastSuccess).toHaveBeenCalled());
+});
+
+test('Batalkan pada kartu membatalkan unggahan tanpa memanggil replace; Unggah ulang tersedia lagi', async () => {
+  const held = holdUpload();
+  renderGallery([photo('dddddddd-4', { state: 'failed', error: 'x' })]);
+  await pickReplacement(screen.getByRole('button', { name: 'Unggah ulang' }));
+  await waitFor(() => expect(held.release).toHaveLength(1));
+  await userEvent.click(await screen.findByRole('button', { name: 'Batalkan' }));
+  expect(held.aborted).toBe(1);
+  expect(screen.queryByTestId('proof-replacing')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Unggah ulang' })).toBeEnabled();
+  expect(apiMock).not.toHaveBeenCalledWith('serialProofs.replace', expect.anything());
+});
+
+test('unggahan pengganti gagal: kartu kembali ke keadaan gagal dengan pesan dan Unggah ulang tersedia lagi', async () => {
+  apiMock.mockImplementation(async (id: string) => {
+    if (id === 'serialProofs.upload') throw new Error('Jaringan putus');
+    return { id: 'x' };
+  });
+  renderGallery([photo('dddddddd-4', { state: 'failed', error: 'x' })]);
+  await pickReplacement(screen.getByRole('button', { name: 'Unggah ulang' }));
+  expect(await screen.findByText(/Unggah ulang gagal: Jaringan putus/)).toBeInTheDocument();
+  expect(screen.queryByTestId('proof-replacing')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Unggah ulang' })).toBeEnabled();
+  expect(apiMock).not.toHaveBeenCalledWith('serialProofs.replace', expect.anything());
+});
+
+test('replace ditolak: pesan tampil di kartu (bukan hanya toast) dan Unggah ulang tersedia lagi', async () => {
+  mockUploadAndReplace(() => {
+    throw new ApiError('VALIDATION', 'Dimensi gambar terlalu besar', '-');
+  });
+  renderGallery([photo('dddddddd-4', { state: 'failed', error: 'x' })]);
+  await replaceViaCamera();
+  expect(await screen.findByText('Dimensi gambar terlalu besar')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Unggah ulang' })).toBeEnabled();
+});
+
+test('berpindah halaman (kartu dilepas) saat diunggah membatalkan unggahan dan tidak memanggil replace', async () => {
+  const held = holdUpload();
+  const view = renderGallery([photo('dddddddd-4', { state: 'failed', error: 'x' })]);
+  await pickReplacement(screen.getByRole('button', { name: 'Unggah ulang' }));
+  await waitFor(() => expect(held.release).toHaveLength(1));
+  view.unmount();
+  expect(held.aborted).toBe(1);
+  held.release[0]?.();
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  expect(apiMock).not.toHaveBeenCalledWith('serialProofs.replace', expect.anything());
 });

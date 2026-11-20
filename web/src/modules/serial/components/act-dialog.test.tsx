@@ -7,7 +7,10 @@ import { ApiError } from '@/lib/api/api-error';
 import { linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
 
 const apiMock = vi.hoisted(() => vi.fn());
-vi.mock('@/lib/api', () => ({ api: apiMock }));
+vi.mock('@/lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api')>()),
+  api: apiMock,
+}));
 vi.mock('@/modules/files/image', () => ({
   prepareImage: vi.fn(async () => ({
     mime: 'image/webp',
@@ -730,6 +733,83 @@ test('Batal dengan foto yang belum tersimpan membuang foto itu di server', async
       .map((call) => (call[1] as { id: string }).id)
       .sort(),
   ).toEqual(['p1', 'p2']);
+  expect(onClose).toHaveBeenCalled();
+});
+
+/** Unggahan foto menggantung (dengan AbortSignal) sampai dilepas atau digagalkan; id lain mengikuti mock bawaan. */
+function holdProofUpload() {
+  const base = apiMock.getMockImplementation() as (
+    id: string,
+    input?: unknown,
+    options?: unknown,
+  ) => unknown;
+  const state = { release: [] as Array<() => void>, fail: [] as Array<() => void>, aborted: 0 };
+  apiMock.mockImplementation((id: string, input?: unknown, options?: { signal?: AbortSignal }) => {
+    if (id !== 'serialProofs.upload') return base(id, input, options);
+    return new Promise((resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => {
+        state.aborted += 1;
+        reject(new DOMException('Dibatalkan', 'AbortError'));
+      });
+      state.release.push(() =>
+        resolve({
+          id: 'p1',
+          state: 'draft',
+          mime: 'image/webp',
+          size: 10,
+          width: 10,
+          height: 10,
+          filename: 'bukti-p1.webp',
+          error: null,
+        }),
+      );
+      state.fail.push(() => reject(new Error('Jaringan putus')));
+    });
+  });
+  return state;
+}
+
+async function pickOnePhotoWithoutWaiting() {
+  await userEvent.click(screen.getByRole('button', { name: /^Foto \(/ }));
+  const input = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, {
+    target: { files: [new File([new Uint8Array(4)], 'f0.png', { type: 'image/png' })] },
+  });
+  await userEvent.click(await screen.findByRole('button', { name: 'Tambahkan (1)' }));
+}
+
+test('foto masih diunggah: Simpan cek ulang ditahan dengan pesan, lalu aktif setelah unggahan selesai', async () => {
+  const held = holdProofUpload();
+  renderDialog(SERIAL, 'recheck');
+  await pickOnePhotoWithoutWaiting();
+  await waitFor(() => expect(held.release).toHaveLength(1));
+  expect(screen.getByRole('button', { name: 'Simpan cek ulang' })).toBeDisabled();
+  expect(screen.getByRole('status')).toHaveTextContent('1 foto masih diunggah atau gagal');
+  held.release[0]?.();
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Simpan cek ulang' })).toBeEnabled(),
+  );
+  expect(screen.queryByText(/masih diunggah atau gagal/)).not.toBeInTheDocument();
+});
+
+test('unggahan foto gagal: Simpan tetap ditahan sampai dibuang atau diulang', async () => {
+  const held = holdProofUpload();
+  renderDialog(SERIAL, 'recheck');
+  await pickOnePhotoWithoutWaiting();
+  await waitFor(() => expect(held.fail).toHaveLength(1));
+  held.fail[0]?.();
+  await screen.findByText('Jaringan putus');
+  expect(screen.getByRole('button', { name: 'Simpan cek ulang' })).toBeDisabled();
+});
+
+test('Batal saat foto masih diunggah membatalkan unggahannya dan tidak mengirim apa pun', async () => {
+  const held = holdProofUpload();
+  renderDialog(SERIAL, 'recheck');
+  await pickOnePhotoWithoutWaiting();
+  await waitFor(() => expect(held.release).toHaveLength(1));
+  await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
+  expect(held.aborted).toBe(1);
+  expect(calls('serials.act')).toHaveLength(0);
   expect(onClose).toHaveBeenCalled();
 });
 

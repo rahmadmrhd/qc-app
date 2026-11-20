@@ -173,7 +173,8 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   // Foto bukti QC (hanya Cek ulang): `draft` di server sampai Simpan menautkannya ke entri.
   const [proofPhotos, setProofPhotos] = useState<ProofPhotoRef[]>([]);
-  // Unggah latar foto bukti milik dialog ini (pemilik form); Task 13 melengkapi penahan Kirim dan pembersihan saat tutup.
+  // Unggah latar foto bukti milik dialog ini (pemilik form): menahan tombol kirim selama berjalan/gagal, dan ditutup
+  // bersama dialog (unggahan dibatalkan, foto selesai yang belum terkirim dibuang).
   const proofCountRef = useRef(0);
   proofCountRef.current = proofPhotos.length;
   const proofUploads = useProofUploads({
@@ -185,6 +186,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
     },
   });
   const ownProofUploads = proofUploads.forOwner(PROOF_OWNER);
+  const proofUploadsBlocked = proofUploads.busy || proofUploads.hasFailed;
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [confirming, setConfirming] = useState(false);
@@ -281,6 +283,8 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
 
   const submitDisabled =
     act.isPending ||
+    // Foto bukti belum beres: masih diunggah atau gagal (diulang atau dibuang dulu).
+    proofUploadsBlocked ||
     // Kirim: pilihan lokasi servis belum dimuat (field-nya baru tampil bila ada lebih dari satu).
     (kind === 'send' && serviceLocations.isPending) ||
     (messageRequired && message.trim() === '') ||
@@ -412,6 +416,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
   // Menutup tanpa menyimpan: foto draft yang sudah diunggah dibuang (upaya terbaik; sisanya disapu penjadwal).
   function cancel() {
     if (act.isPending) return;
+    proofUploads.cancelOwner(PROOF_OWNER);
     void discardProofPhotos(proofPhotos.map((photo) => photo.id));
     onClose();
   }
@@ -602,6 +607,12 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
           {error ? (
             <p role="alert" className="text-sm text-destructive">
               {error}
+            </p>
+          ) : null}
+          {proofUploadsBlocked ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              {ownProofUploads.entries.length} foto masih diunggah atau gagal; selesaikan, ulangi,
+              atau buang dulu sebelum menyimpan.
             </p>
           ) : null}
         </div>
