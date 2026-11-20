@@ -1,4 +1,12 @@
-import { type MouseEvent, type PointerEvent, useCallback, useEffect, useRef } from 'react';
+import {
+  type MouseEvent,
+  type PointerEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { markLongPressHintSeen } from './selection-bar';
 import type { RowSelection } from './use-row-selection';
 
 /** Lama tekan (ms) untuk masuk mode pilih. */
@@ -28,7 +36,19 @@ export interface LongPressBinding {
  */
 export function useLongPressSelect(selection: RowSelection | undefined, enabled: boolean) {
   const active = enabled && selection !== undefined;
-  const selecting = active && (selection?.count ?? 0) > 0;
+  // Mode pilih yang dimulai tanpa gestur (tombol "Pilih"): ada walau belum ada butir terpilih; berakhir saat pilihan
+  // kosong lagi (otomatis) atau lewat `exit`.
+  const [manual, setManual] = useState(false);
+  const count = selection?.count ?? 0;
+  const hadSelection = useRef(false);
+  useEffect(() => {
+    if (count > 0) hadSelection.current = true;
+    else if (hadSelection.current) {
+      hadSelection.current = false;
+      setManual(false);
+    }
+  }, [count]);
+  const selecting = active && (count > 0 || manual);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const origin = useRef<{ x: number; y: number } | null>(null);
   const fired = useRef(false);
@@ -72,6 +92,7 @@ export function useLongPressSelect(selection: RowSelection | undefined, enabled:
             timer.current = null;
             fired.current = true;
             navigator.vibrate?.(10);
+            markLongPressHintSeen();
             selectionRef.current?.toggle(id);
           }, LONG_PRESS_MS);
         },
@@ -107,5 +128,10 @@ export function useLongPressSelect(selection: RowSelection | undefined, enabled:
     [active, cancel],
   );
 
-  return { selecting, bind };
+  const enter = useCallback(() => setManual(true), []);
+  const exit = useCallback(() => {
+    setManual(false);
+    selectionRef.current?.clear();
+  }, []);
+  return { selecting, bind, enter, exit };
 }

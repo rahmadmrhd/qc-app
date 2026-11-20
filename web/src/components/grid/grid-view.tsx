@@ -1,6 +1,10 @@
 import { cn } from 'cn';
 import type { ReactNode } from 'react';
-import { LongPressHint, SelectionBar } from '@/components/data-table/selection-bar';
+import {
+  LongPressHint,
+  SelectionBar,
+  StartSelectButton,
+} from '@/components/data-table/selection-bar';
 import { useLongPressSelect } from '@/components/data-table/use-long-press-select';
 import { type RowSelection, usePruneSelection } from '@/components/data-table/use-row-selection';
 import { useInfiniteSentinel } from '@/components/file-dialog/use-infinite-sentinel';
@@ -80,7 +84,7 @@ export function GridView<T>({
   usePruneSelection(selection, items.map(itemKey), !isLoading);
   const desktop = useIsDesktop();
   // Ponsel: pilih massal tahan-lama (checkbox hanya tampil di mode pilih); >= 768 px checkbox selalu tampil.
-  const { selecting, bind } = useLongPressSelect(selection, !desktop);
+  const { selecting, bind, enter, exit } = useLongPressSelect(selection, !desktop);
   const { ref: sentinelRef, supported } = useInfiniteSentinel({
     enabled: Boolean(hasMore) && !loadingMore && !loadMoreError,
     onVisible: () => onLoadMore?.(),
@@ -120,9 +124,14 @@ export function GridView<T>({
   return (
     <>
       {selection && selecting ? (
-        <SelectionBar selection={selection} ids={items.map(itemKey)} />
+        <SelectionBar selection={selection} ids={items.map(itemKey)} onExit={exit} />
       ) : null}
-      {selection && !desktop && !selecting ? <LongPressHint /> : null}
+      {selection && !desktop && !selecting ? (
+        <>
+          <StartSelectButton label={`Pilih ${label}`} onStart={enter} />
+          <LongPressHint />
+        </>
+      ) : null}
       <ul role={role} aria-label={label} className={cn(GRID_CLASS, className)}>
         {items.map((item) => {
           const id = itemKey(item);

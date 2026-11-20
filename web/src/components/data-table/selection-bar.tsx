@@ -11,9 +11,12 @@ import type { RowSelection } from './use-row-selection';
 export function SelectionBar({
   selection,
   ids,
+  onExit,
 }: {
   selection: RowSelection;
   ids: readonly string[];
+  /** Keluar dari mode pilih (bawaan: kosongkan pilihan). Mode yang dimulai lewat tombol "Pilih" perlu ini. */
+  onExit?: () => void;
 }) {
   const allSelected = ids.length > 0 && ids.every((id) => selection.selected.has(id));
   return (
@@ -26,7 +29,7 @@ export function SelectionBar({
         variant="ghost"
         size="icon"
         aria-label="Keluar dari mode pilih"
-        onClick={selection.clear}
+        onClick={onExit ?? selection.clear}
       >
         <X aria-hidden />
       </Button>
@@ -46,12 +49,35 @@ export function SelectionBar({
 
 const HINT_KEY = 'qc.hint.long-press';
 
+/** Petunjuk dianggap sudah dipelajari setelah tekan lama pertama berhasil (sekali per perangkat). */
+export function markLongPressHintSeen(): void {
+  try {
+    localStorage.setItem(HINT_KEY, '1');
+  } catch {
+    // penyimpanan tak tersedia: petunjuk tetap muncul
+  }
+}
+
 function hintDismissed(): boolean {
   try {
     return localStorage.getItem(HINT_KEY) === '1';
   } catch {
     return false;
   }
+}
+
+/**
+ * Jalan masuk mode pilih TANPA gestur (pengguna keyboard dan pembaca layar; review I6): tombol "Pilih" di atas daftar
+ * kartu, berdampingan dengan petunjuk tekan lama.
+ */
+export function StartSelectButton({ label, onStart }: { label: string; onStart: () => void }) {
+  return (
+    <div className="flex justify-end">
+      <Button type="button" variant="outline" size="sm" aria-label={label} onClick={onStart}>
+        Pilih
+      </Button>
+    </div>
+  );
 }
 
 /** Petunjuk sekali per perangkat: "Tahan kartu untuk memilih beberapa" (bisa ditutup). */

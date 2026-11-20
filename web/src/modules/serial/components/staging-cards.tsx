@@ -1,5 +1,9 @@
 import { memo, useMemo } from 'react';
-import { LongPressHint, SelectionBar } from '@/components/data-table/selection-bar';
+import {
+  LongPressHint,
+  SelectionBar,
+  StartSelectButton,
+} from '@/components/data-table/selection-bar';
 import { useLongPressSelect } from '@/components/data-table/use-long-press-select';
 import type { RowSelection } from '@/components/data-table/use-row-selection';
 import { AttachmentView } from '@/components/file-dialog';
@@ -159,7 +163,10 @@ export function StagingCards({
     };
   }, [rows, onSelect, onSelectAll]);
   const ids = useMemo(() => rows.map((row) => row.clientId), [rows]);
-  const { selecting, bind } = useLongPressSelect(disabled ? undefined : selection, true);
+  const { selecting, bind, enter, exit } = useLongPressSelect(
+    disabled ? undefined : selection,
+    true,
+  );
   const uploadsByRow = useMemo(() => {
     const byRow = new Map<string, UploadEntry[]>();
     for (const entry of uploadEntries ?? []) {
@@ -171,8 +178,13 @@ export function StagingCards({
   }, [uploadEntries]);
   return (
     <div className="space-y-2">
-      {selecting ? <SelectionBar selection={selection} ids={ids} /> : null}
-      {!selecting && !disabled && rows.length > 0 ? <LongPressHint /> : null}
+      {selecting ? <SelectionBar selection={selection} ids={ids} onExit={exit} /> : null}
+      {!selecting && !disabled && rows.length > 0 ? (
+        <>
+          <StartSelectButton label="Pilih baris draft" onStart={enter} />
+          <LongPressHint />
+        </>
+      ) : null}
       <ul aria-label="Draft serial yang akan disimpan" className="space-y-2">
         {rows.map((row, index) => (
           <CardView

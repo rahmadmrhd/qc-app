@@ -214,6 +214,30 @@ test('GridView ponsel: checkbox hanya di mode pilih (tekan lama)', () => {
   expect(screen.getByRole('checkbox', { name: 'Pilih Asus' })).toBeChecked();
 });
 
+test('GridView ponsel: tombol "Pilih" masuk mode pilih tanpa gestur; tanda silang keluar (review I6)', async () => {
+  function Grid() {
+    const selection = useRowSelection('g');
+    return (
+      <GridView
+        items={ROWS}
+        itemKey={(row) => row.id}
+        renderItem={(row) => <div>{row.name}</div>}
+        label="Gambar"
+        selection={selection}
+        selectLabel={(row) => row.name}
+      />
+    );
+  }
+  render(<Grid />);
+  await userEvent.click(screen.getByRole('button', { name: 'Pilih Gambar' }));
+  expect(screen.getByText('0 dipilih')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Asus' }));
+  expect(screen.getByText('1 dipilih')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Keluar dari mode pilih' }));
+  expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+  expect(screen.getByRole('button', { name: 'Pilih Gambar' })).toBeInTheDocument();
+});
+
 function Page({ onCreate = () => undefined }: { onCreate?: () => void }) {
   const selection = useRowSelection('p');
   return (

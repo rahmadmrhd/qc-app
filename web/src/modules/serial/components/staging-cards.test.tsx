@@ -49,6 +49,15 @@ test('tekan lama kartu memilih barisnya tanpa membuka dialog', async () => {
   expect(onOpenDetail).not.toHaveBeenCalled();
 });
 
+test('tombol "Pilih baris draft" masuk mode pilih tanpa gestur (review I6)', async () => {
+  const { onSelect } = renderCards();
+  await userEvent.click(screen.getByRole('button', { name: 'Pilih baris draft' }));
+  expect(screen.getByText('0 dipilih')).toBeInTheDocument();
+  expect(screen.getByRole('checkbox', { name: 'Pilih baris AAA111' })).not.toBeChecked();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris AAA111' }));
+  expect(onSelect).toHaveBeenCalledWith('id-AAA111', true);
+});
+
 test('mode pilih (ada baris terpilih): kotak centang tampil dan Pilih semua di header mode pilih', async () => {
   const { onSelectAll, onSelect } = renderCards([
     makeRow('AAA111', { selected: true }),
