@@ -10,9 +10,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { useNearViewport } from '@/lib/near-viewport';
 import { cn } from '@/lib/utils';
 import { handoverActions } from '../lib/actions';
-import { useNearViewport } from '../lib/near-viewport';
 import { HANDOVER_STATUS_LABELS, HANDOVER_STATUS_STYLES } from '../lib/status';
 import { useOutboxOverlay } from '../lib/use-pending-checks';
 import { CancelDialog } from './cancel-dialog';

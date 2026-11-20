@@ -102,6 +102,7 @@ export function GuideBanner() {
       color="info"
       role="status"
       data-testid="guide-banner"
+      data-app-banner=""
       className="rounded-none border-x-0 border-t-0 px-4 py-3"
     >
       <div className="flex flex-col gap-2 text-foreground sm:flex-row sm:items-center sm:gap-3">

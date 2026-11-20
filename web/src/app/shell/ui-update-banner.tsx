@@ -40,6 +40,7 @@ export function UiUpdateBanner() {
     <Alert
       color="info"
       role="status"
+      data-app-banner=""
       className="flex flex-wrap items-center gap-2 rounded-none border-x-0 border-t-0 px-4"
     >
       <span>Versi UI baru tersedia.</span>

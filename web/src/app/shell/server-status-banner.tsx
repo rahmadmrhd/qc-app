@@ -10,6 +10,7 @@ export function ServerStatusBanner() {
       color="warning"
       role="status"
       data-testid="server-status-banner"
+      data-app-banner=""
       className="break-words rounded-none border-x-0 border-t-0 px-4"
     >
       Server sedang tidak tersedia — menampilkan data terakhir ({formatClock(unavailableSince)})
