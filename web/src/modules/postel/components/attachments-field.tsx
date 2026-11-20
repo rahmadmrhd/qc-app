@@ -149,15 +149,14 @@ export function AttachmentsField({ value, onChange, error, onBusyChange }: Attac
     name: row.filename,
     mime: row.mime,
     size: row.size,
-    // Gambar tak dikecilkan (resolusi asli untuk desain stiker): selain pratinjau, berkas aslinya tetap bisa diunduh.
-    onDownload: () => void download(row),
+    // Gambar hanya pratinjau; hanya PDF yang diunduh (spek dialog unggah §5.4, keputusan pemilik 2026-11-20).
     ...(row.mime.startsWith('image/')
       ? {
           renderImage: (variant: 'thumb' | 'large') => (
             <PostelImage id={row.id} alt={row.filename} variant={variant} />
           ),
         }
-      : {}),
+      : { onDownload: () => void download(row) }),
   }));
 
   const messages = [

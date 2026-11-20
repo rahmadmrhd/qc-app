@@ -54,12 +54,11 @@ test('item tanpa renderImage (PDF): ikon + tombol Unduh, tidak membuka pratinjau
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });
 
-test('gambar dengan onDownload: pratinjau dan tombol Unduh tampil bersamaan', async () => {
-  const onDownload = vi.fn();
-  render(<AttachmentView items={[{ ...image('a'), onDownload }]} layout="grid" />);
+test('gambar hanya pratinjau: tanpa tombol Unduh walau onDownload ada; PDF punya Unduh', () => {
+  render(<AttachmentView items={[{ ...image('a'), onDownload: vi.fn() }, pdf()]} layout="list" />);
   expect(screen.getByRole('button', { name: /Perbesar Foto a/ })).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: /Unduh Foto a/ }));
-  expect(onDownload).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('button', { name: /Unduh Foto a/ })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Unduh sertifikat.pdf/ })).toBeInTheDocument();
 });
 
 test('tombol buang memanggil onRemove dengan id; nonaktif saat disabled', async () => {

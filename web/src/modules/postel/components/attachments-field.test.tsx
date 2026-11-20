@@ -207,15 +207,9 @@ test('gambar dimuat lewat postelFiles.get; thumbnail diklik membuka pratinjau be
   await waitFor(() => expect(apiMock).toHaveBeenCalledWith('postelFiles.get', { id: 'g1' }));
   const thumb = await screen.findByRole('button', { name: /^Perbesar lampiran-bbbbbbbb\.png/ });
   expect(within(thumb).getByRole('img')).toHaveAttribute('src', 'blob:postel-g1');
-  // Berkas asli gambar tetap bisa diunduh di samping pratinjau (tombol Unduh tidak hanya untuk PDF).
-  await userEvent.click(screen.getByRole('button', { name: /^Unduh lampiran-bbbbbbbb.png/ }));
-  await waitFor(() =>
-    expect(downloadMock).toHaveBeenCalledWith({
-      bytes: new Uint8Array([137, 80, 78, 71]),
-      mime: 'image/png',
-      filename: 'lampiran-bbbbbbbb.png',
-    }),
-  );
+  // Gambar hanya pratinjau: tanpa tombol Unduh (hanya PDF yang diunduh; keputusan pemilik 2026-11-20).
+  expect(screen.queryByRole('button', { name: /^Unduh / })).not.toBeInTheDocument();
+  expect(downloadMock).not.toHaveBeenCalled();
   await userEvent.click(thumb);
   const dialog = await screen.findByRole('dialog', { name: 'lampiran-bbbbbbbb.png' });
   expect(within(dialog).getByRole('img', { name: 'lampiran-bbbbbbbb.png' })).toHaveAttribute(
