@@ -1,5 +1,6 @@
 import type { StickerTypeDto } from '@shared/contract';
 import { useState } from 'react';
+import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -79,13 +80,7 @@ export function StickerTypesPage({
                 <TableCell>{STICKER_RULE_LABEL[type.rule]}</TableCell>
                 <TableCell className="text-right tabular-nums">{type.stickerCount}</TableCell>
                 <TableCell>
-                  <Badge
-                    color={type.status === 'active' ? 'success' : 'secondary'}
-                    variant="soft"
-                    dot
-                  >
-                    {type.status === 'active' ? 'Aktif' : 'Nonaktif'}
-                  </Badge>
+                  <ActiveStatusBadge status={type.status} />
                 </TableCell>
                 <TableCell className="space-x-2 text-right">
                   {/* Jenis sistem dikelola aplikasi: nama dan aturannya tak dapat diubah lewat form. */}

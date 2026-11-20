@@ -1,6 +1,6 @@
 import type { BusinessUnitDto } from '@shared/contract';
 import { useState } from 'react';
-import { Badge } from '@/components/ui/badge';
+import { ActiveStatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -74,13 +74,7 @@ export function BusinessUnitsTable({
               <TableCell className="font-medium">{businessUnit.code}</TableCell>
               <TableCell>{businessUnit.name}</TableCell>
               <TableCell>
-                <Badge
-                  color={businessUnit.status === 'active' ? 'success' : 'secondary'}
-                  variant="soft"
-                  dot
-                >
-                  {businessUnit.status === 'active' ? 'Aktif' : 'Nonaktif'}
-                </Badge>
+                <ActiveStatusBadge status={businessUnit.status} />
               </TableCell>
               <TableCell className="text-right tabular-nums">{businessUnit.itemCount}</TableCell>
               <TableCell className="text-right tabular-nums">{businessUnit.userCount}</TableCell>

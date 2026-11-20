@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Badge } from '@/components/ui/badge';
+import { ActiveStatusBadge } from '@/components/status-badge';
 import { formatAuditTime } from '@/modules/access/lib/audit-actions';
 import { ImageThumb } from '@/modules/item/components/image-thumb';
 import { STICKER_STATUS_LABEL } from '@/modules/sticker/lib/status';
@@ -51,13 +51,10 @@ export function VersionHistory({
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">v{entry.version}</span>
                   <span>{entry.name}</span>
-                  <Badge
-                    color={entry.status === 'active' ? 'success' : 'secondary'}
-                    variant="soft"
-                    dot
-                  >
-                    {STICKER_STATUS_LABEL[entry.status]}
-                  </Badge>
+                  <ActiveStatusBadge
+                    status={entry.status}
+                    label={STICKER_STATUS_LABEL[entry.status]}
+                  />
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {formatAuditTime(entry.createdAt)} · {entry.createdBy}

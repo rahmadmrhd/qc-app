@@ -1,4 +1,5 @@
 import type { ItemSummaryDto } from '@shared/contract';
+import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -95,13 +96,7 @@ export function ItemsTable({
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{item.imageCount}</TableCell>
                 <TableCell>
-                  <Badge
-                    color={item.status === 'active' ? 'success' : 'secondary'}
-                    variant="soft"
-                    dot
-                  >
-                    {item.status === 'active' ? 'Aktif' : 'Nonaktif'}
-                  </Badge>
+                  <ActiveStatusBadge status={item.status} />
                 </TableCell>
                 <TableCell className="space-x-2 text-right">
                   <Button

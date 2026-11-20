@@ -1,6 +1,7 @@
 import type { ItemDto, ItemPostelDto } from '@shared/contract';
 import { firmwareOptionsFor } from '@shared/firmware';
 import type { ReactNode } from 'react';
+import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
@@ -129,13 +130,10 @@ export function ItemDetailView({
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="font-medium">{item.manualBook.name}</span>
             <Badge variant="outline">{`v${item.manualBook.version}`}</Badge>
-            <Badge
-              color={item.manualBook.status === 'active' ? 'success' : 'secondary'}
-              variant="soft"
-              dot
-            >
-              {STICKER_STATUS_LABEL[item.manualBook.status]}
-            </Badge>
+            <ActiveStatusBadge
+              status={item.manualBook.status}
+              label={STICKER_STATUS_LABEL[item.manualBook.status]}
+            />
             {openManualBookHref?.(item.manualBook.designId) ? (
               <a
                 href={openManualBookHref(item.manualBook.designId) ?? undefined}

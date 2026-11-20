@@ -1,5 +1,6 @@
 import type { BrandDto, BusinessUnitOptionDto } from '@shared/contract';
 import { useState } from 'react';
+import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -94,13 +95,7 @@ export function BrandsManager({
                 </TableCell>
                 <TableCell className="text-right tabular-nums">{brand.itemCount}</TableCell>
                 <TableCell>
-                  <Badge
-                    color={brand.status === 'active' ? 'success' : 'secondary'}
-                    variant="soft"
-                    dot
-                  >
-                    {brand.status === 'active' ? 'Aktif' : 'Nonaktif'}
-                  </Badge>
+                  <ActiveStatusBadge status={brand.status} />
                 </TableCell>
                 <TableCell className="space-x-2 text-right">
                   {canEdit ? (

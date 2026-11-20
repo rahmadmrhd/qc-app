@@ -1,6 +1,7 @@
 import { assignmentKey } from '@shared/assignments';
 import { ALL_BU_KEY } from '@shared/business-units';
 import type { UserDto } from '@shared/contract';
+import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -100,13 +101,7 @@ export function UsersTable({
                   </div>
                 </TableCell>
                 <TableCell>
-                  <Badge
-                    color={user.status === 'active' ? 'success' : 'secondary'}
-                    variant="soft"
-                    dot
-                  >
-                    {user.status === 'active' ? 'Aktif' : 'Nonaktif'}
-                  </Badge>
+                  <ActiveStatusBadge status={user.status} />
                 </TableCell>
                 {canManage ? (
                   <TableCell className="space-x-2 text-right">

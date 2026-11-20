@@ -3,6 +3,7 @@ import type { StickerStatus } from '@shared/stickers';
 import { useState } from 'react';
 import { LinkField } from '@/components/link-field';
 import { Select } from '@/components/select';
+import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -166,13 +167,10 @@ export function StickersPage({
                   </TableCell>
                   <TableCell className="text-right tabular-nums">{sticker.minQty}</TableCell>
                   <TableCell>
-                    <Badge
-                      color={sticker.status === 'active' ? 'success' : 'secondary'}
-                      variant="soft"
-                      dot
-                    >
-                      {STICKER_STATUS_LABEL[sticker.status]}
-                    </Badge>
+                    <ActiveStatusBadge
+                      status={sticker.status}
+                      label={STICKER_STATUS_LABEL[sticker.status]}
+                    />
                   </TableCell>
                   <TableCell className="space-x-2 text-right">
                     {canEdit ? (
