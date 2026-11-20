@@ -15,7 +15,7 @@ Tambahkan DTO, input, dan entri `ApiContract` (`shared/contract.ts`), mis. `'ite
 ## 3. Frontend — `web/src/modules/item/`
 - `queries.ts` — `queryOptions` + mutation (invalidate key modul).
 - `schemas.ts` — skema zod form.
-- `components/` — form & tabel.
+- `components/` — form & tabel. Pakai kit CRUD (`web/src/components/page/`, `data-table/`, `grid/`, `kanban/`; aturan lengkap di CLAUDE.md, bagian "Kit CRUD"): daftar `ListPage` + `FilterBar`, View `ViewPage`, form `FormPage` (halaman) atau `FormDialogShell` (dialog), tabel `DataTable`, aksi massal lewat `runChunkedBatch`. Jangan membuat kerangka halaman sendiri.
 - Route di `web/src/routes/_app/item/*.tsx` dengan `beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'view')`.
 - Tambahkan menu di `NAV_GROUPS` (`web/src/app/navigation.ts`) dan link di `MODULE_LINKS` (`web/src/app/module-links.ts`).
 - Data contoh untuk dev ada di seed (`server/scripts/seed-dev.ts`, `bun run db:seed`); klien memanggil rute lewat `api(id, input)` (`web/src/lib/api`).
