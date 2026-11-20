@@ -1,10 +1,21 @@
 import { Check, ExternalLink, Plus, X } from 'lucide-react';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { cn } from '@/lib/utils';
+
+/** `true` di dalam popover chip filter: combobox mulai dengan daftar terbuka (K8). */
+export const ComboboxAutoOpenContext = createContext(false);
 
 export interface LinkOption {
   id: string;
@@ -227,7 +238,9 @@ export function ComboboxBase({
 }: ComboboxBaseProps) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false);
+  // Di dalam popover chip filter daftar langsung terbuka (satu ketukan lebih sedikit; K8).
+  const autoOpen = useContext(ComboboxAutoOpenContext);
+  const [open, setOpen] = useState(autoOpen);
   const [editing, setEditing] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [term, setTerm] = useSearchTerm(onSearchChange, searchDebounceMs ?? DEFAULT_DEBOUNCE_MS);

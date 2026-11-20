@@ -1,5 +1,6 @@
 import { Plus, Search, X } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { ComboboxAutoOpenContext } from '@/components/combobox';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
@@ -20,7 +21,7 @@ export function FilterBar({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 max-md:flex-col max-md:items-stretch">
+    <div className="flex flex-wrap items-center gap-2 max-md:flex-col max-md:flex-nowrap max-md:items-stretch">
       {search ? (
         <InputGroup className="w-full sm:w-64">
           <InputGroupAddon>
@@ -39,7 +40,7 @@ export function FilterBar({
       {children ? (
         <div
           data-slot="filter-chips"
-          className="flex items-center gap-2 max-md:overflow-x-auto max-md:pb-1 max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden md:contents"
+          className="flex items-center gap-2 max-md:min-w-0 max-md:overflow-x-auto max-md:pb-1 max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden md:contents"
         >
           {children}
         </div>
@@ -92,7 +93,7 @@ export function FilterChip({
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-72 max-w-[calc(100vw-2rem)]">
-          {children}
+          <ComboboxAutoOpenContext.Provider value>{children}</ComboboxAutoOpenContext.Provider>
         </PopoverContent>
       </Popover>
       {filled && onClear ? (
