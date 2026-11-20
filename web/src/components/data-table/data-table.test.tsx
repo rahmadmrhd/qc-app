@@ -244,3 +244,68 @@ test('LinkCell merender tautan berkelas text-info-text dan meneruskan data-tour'
   expect(link.className).toContain('text-info-text');
   expect(link).toHaveAttribute('data-tour', 'x');
 });
+
+test('galat refetch dengan baris tetap menampilkan baris; galat awal punya Coba lagi', async () => {
+  const onRetry = vi.fn();
+  const { rerender } = render(
+    <DataTable rows={ROWS} rowKey={(row) => row.id} columns={COLUMNS} label="Merk" isError />,
+  );
+  expect(screen.getByText('Asus')).toBeInTheDocument();
+  expect(screen.queryByRole('alert')).toBeNull();
+  rerender(
+    <DataTable
+      rows={[]}
+      rowKey={(row: Row) => row.id}
+      columns={COLUMNS}
+      label="Merk"
+      isError
+      onRetry={onRetry}
+    />,
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+  expect(onRetry).toHaveBeenCalledTimes(1);
+});
+
+test('loadMoreError menampilkan pesan dan Coba lagi memanggil onLoadMore', async () => {
+  const onLoadMore = vi.fn();
+  render(
+    <DataTable
+      rows={ROWS}
+      rowKey={(row) => row.id}
+      columns={COLUMNS}
+      label="Merk"
+      hasMore
+      loadMoreError
+      onLoadMore={onLoadMore}
+    />,
+  );
+  expect(screen.getByRole('alert')).toHaveTextContent('Gagal memuat halaman berikutnya');
+  await userEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+  expect(onLoadMore).toHaveBeenCalledTimes(1);
+});
+
+test('pilihan dipangkas ke baris yang masih dimuat', async () => {
+  function Prune({ rows }: { rows: Row[] }) {
+    const selection = useRowSelection('x');
+    return (
+      <>
+        <DataTable
+          rows={rows}
+          rowKey={(row) => row.id}
+          columns={COLUMNS}
+          label="Merk"
+          selectLabel={(row) => row.name}
+          selection={selection}
+        />
+        <BulkBar count={selection.count} onClear={selection.clear}>
+          <span>aksi</span>
+        </BulkBar>
+      </>
+    );
+  }
+  const { rerender } = render(<Prune rows={ROWS} />);
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  expect(screen.getByText('3 dipilih')).toBeInTheDocument();
+  rerender(<Prune rows={ROWS.slice(0, 1)} />);
+  expect(await screen.findByText('1 dipilih')).toBeInTheDocument();
+});

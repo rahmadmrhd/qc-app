@@ -1,6 +1,6 @@
 import { cn } from 'cn';
 import type { ReactNode } from 'react';
-import type { RowSelection } from '@/components/data-table/use-row-selection';
+import { type RowSelection, usePruneSelection } from '@/components/data-table/use-row-selection';
 import { useInfiniteSentinel } from '@/components/file-dialog/use-infinite-sentinel';
 import { Spinner } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 
 export const GRID_CLASS = 'grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5';
 
-export interface GridViewProps<T> {
+interface GridViewBase<T> {
   items: readonly T[];
   itemKey: (item: T) => string;
   /** Isi kartu; kartunya sendiri milik pemanggil. */
@@ -32,10 +32,14 @@ export interface GridViewProps<T> {
   itemClassName?: (item: T) => string | undefined;
   /** Peran daftar (bawaan `list`). */
   role?: 'list' | 'radiogroup';
-  /** Pilihan banyak: tiap kartu mendapat checkbox "Pilih <nama>". */
-  selection?: RowSelection;
-  selectLabel?: (item: T) => string;
 }
+
+/** `selectLabel` wajib bila ada `selection`: tiap kartu mendapat checkbox "Pilih <nama>". */
+export type GridViewProps<T> = GridViewBase<T> &
+  (
+    | { selection?: undefined; selectLabel?: (item: T) => string }
+    | { selection: RowSelection; selectLabel: (item: T) => string }
+  );
 
 /**
  * Kisi kartu kit CRUD: kerangka, skeleton, keadaan kosong/galat, dan gulir tak terbatas (sentinel
@@ -61,6 +65,7 @@ export function GridView<T>({
   selection,
   selectLabel,
 }: GridViewProps<T>) {
+  usePruneSelection(selection, items.map(itemKey), !isLoading);
   const { ref: sentinelRef, supported } = useInfiniteSentinel({
     enabled: Boolean(hasMore) && !loadingMore && !loadMoreError,
     onVisible: () => onLoadMore?.(),

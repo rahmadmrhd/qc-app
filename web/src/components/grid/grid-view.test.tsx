@@ -81,3 +81,28 @@ test('dengan selection tiap kartu punya checkbox "Pilih <nama>"; tanpa selection
   render(<WithSelection withSelection={false} />);
   expect(screen.queryByRole('checkbox')).toBeNull();
 });
+
+test('pilihan dipangkas ke butir yang masih dimuat', async () => {
+  function Prune({ items }: { items: string[] }) {
+    const selection = useRowSelection('x');
+    return (
+      <>
+        <GridView
+          items={items}
+          itemKey={(item) => item}
+          renderItem={(item) => <span>{item}</span>}
+          label="Daftar"
+          selection={selection}
+          selectLabel={(item) => item}
+        />
+        <output>{selection.count}</output>
+      </>
+    );
+  }
+  const { rerender } = render(<Prune items={['a', 'b']} />);
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih a' }));
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih b' }));
+  expect(screen.getByRole('status')).toHaveTextContent('2');
+  rerender(<Prune items={['a']} />);
+  expect(await screen.findByText('1')).toBeInTheDocument();
+});

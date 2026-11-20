@@ -7,7 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { type RowAction, RowActions } from './row-actions';
-import type { RowSelection } from './use-row-selection';
+import { type RowSelection, usePruneSelection } from './use-row-selection';
 
 export interface DataColumn<T> {
   id: string;
@@ -17,23 +17,37 @@ export interface DataColumn<T> {
   className?: string;
 }
 
-export interface DataTableProps<T> {
+interface DataTableBase<T> {
   rows: readonly T[];
   rowKey: (row: T) => string;
   columns: readonly DataColumn<T>[];
   /** Nama aksesibel tabel. */
   label: string;
-  /** Nama baris untuk checkbox dan menu aksi ponsel (bawaan: kunci baris). */
-  selectLabel?: (row: T) => string;
-  actions?: (row: T) => readonly RowAction[];
-  selection?: RowSelection;
   empty?: ReactNode;
+  /**
+   * Galat muat AWAL (tanpa data). Galat refetch/halaman berikutnya TIDAK menyembunyikan baris: pemanggil meneruskan
+   * `isLoadingError` untuk ini dan `loadMoreError` untuk halaman berikutnya.
+   */
   isError?: boolean;
+  onRetry?: () => void;
   isLoading?: boolean;
   hasMore?: boolean;
   loadingMore?: boolean;
+  /** Gagal memuat halaman berikutnya: pesan + "Coba lagi" (memanggil `onLoadMore`). */
+  loadMoreError?: boolean;
   onLoadMore?: () => void;
 }
+
+/** `selectLabel` (nama baris untuk checkbox dan menu aksi ponsel) wajib bila ada `selection` atau `actions`. */
+export type DataTableProps<T> = DataTableBase<T> &
+  (
+    | { selectLabel?: (row: T) => string; selection?: undefined; actions?: undefined }
+    | {
+        selectLabel: (row: T) => string;
+        selection?: RowSelection;
+        actions?: (row: T) => readonly RowAction[];
+      }
+  );
 
 const HEAD_STICKY = 'sticky top-[var(--headroom-offset,3.5rem)] z-10 bg-muted';
 
@@ -51,19 +65,31 @@ export function DataTable<T>({
   selection,
   empty = 'Tidak ada data yang cocok.',
   isError,
+  onRetry,
   isLoading,
   hasMore,
   loadingMore,
+  loadMoreError,
   onLoadMore,
 }: DataTableProps<T>) {
   const desktop = useIsDesktop();
   const nameOf = (row: T) => selectLabel?.(row) ?? rowKey(row);
+  const ids = rows.map(rowKey);
+  usePruneSelection(selection, ids, !isLoading);
 
-  if (isError) {
-    return <Alert color="destructive">Gagal memuat data. Coba muat ulang.</Alert>;
+  if (isError && rows.length === 0) {
+    return (
+      <Alert color="destructive" className="flex flex-wrap items-center gap-2">
+        <span>Gagal memuat data. Coba muat ulang.</span>
+        {onRetry ? (
+          <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+            Coba lagi
+          </Button>
+        ) : null}
+      </Alert>
+    );
   }
 
-  const ids = rows.map(rowKey);
   const selectedCount = selection ? ids.filter((id) => selection.selected.has(id)).length : 0;
   const allSelected = ids.length > 0 && selectedCount === ids.length;
   const someSelected = selectedCount > 0 && !allSelected;
@@ -115,7 +141,7 @@ export function DataTable<T>({
                 <TableRow
                   key={id}
                   data-state={isSelected ? 'selected' : undefined}
-                  className="data-[state=selected]:bg-info-text/8"
+                  className="group/row data-[state=selected]:bg-info-text/8"
                 >
                   {selection ? (
                     <TableCell className="w-px">
@@ -136,7 +162,9 @@ export function DataTable<T>({
                       key={column.id}
                       className={cn(
                         column.align === 'right' && 'text-right',
-                        stickyFirst && index === 0 && 'sticky left-0 z-[1] bg-background',
+                        stickyFirst &&
+                          index === 0 &&
+                          'sticky left-0 z-[1] bg-background group-data-[state=selected]/row:bg-[color-mix(in_oklab,var(--color-info-text)_8%,var(--background))]',
                         column.className,
                       )}
                     >
@@ -161,7 +189,14 @@ export function DataTable<T>({
       ) : (
         <div className="overflow-x-auto rounded-lg border">{table}</div>
       )}
-      {hasMore ? (
+      {loadMoreError ? (
+        <Alert color="destructive" className="flex flex-wrap items-center gap-2">
+          <span>Gagal memuat halaman berikutnya.</span>
+          <Button type="button" size="sm" variant="outline" onClick={onLoadMore}>
+            Coba lagi
+          </Button>
+        </Alert>
+      ) : hasMore ? (
         <div className="flex justify-center">
           <Button type="button" variant="outline" disabled={loadingMore} onClick={onLoadMore}>
             {loadingMore ? 'Memuat…' : 'Muat lebih banyak'}
