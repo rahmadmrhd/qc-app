@@ -210,3 +210,17 @@ test('busy menonaktifkan Ubah dan Hapus', () => {
   expect(screen.getByRole('button', { name: 'Ubah' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
 });
+
+test('item terhapus tampil dengan penanda Terhapus; item hidup tanpa penanda', () => {
+  renderView({
+    postel: postel({
+      items: [
+        { id: 'i1', brand: 'PBE', model: 'M5-400' },
+        { id: 'i2', brand: 'PBE', model: 'M5-200', deleted: true },
+      ],
+    }),
+  });
+  const rows = screen.getAllByRole('listitem');
+  expect(within(rows[0] as HTMLElement).queryByText('Terhapus')).toBeNull();
+  expect(within(rows[1] as HTMLElement).getByText('Terhapus')).toBeInTheDocument();
+});

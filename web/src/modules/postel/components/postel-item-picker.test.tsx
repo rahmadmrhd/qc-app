@@ -148,3 +148,16 @@ test('baris "Tambah Item" hanya bila canCreateItem; item baru dari dialog langsu
   ]);
   expect(first.onChange).not.toHaveBeenCalled();
 });
+
+test('item terpilih yang terhapus tampil bertanda Terhapus dan tetap terbawa saat pilihan lain berubah', async () => {
+  const props = renderPicker({
+    selected: [{ id: 'gone', brand: 'PBE', model: 'Lawas', deleted: true }],
+  });
+  expect(screen.getByRole('button', { name: 'Hapus PBE Lawas — Terhapus' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('combobox', { name: 'Item' }));
+  await userEvent.click(await screen.findByRole('option', { name: /PBE M5-400/ }));
+  expect(props.onChange).toHaveBeenCalledWith([
+    { id: 'gone', brand: 'PBE', model: 'Lawas', deleted: true },
+    { id: 'i1', brand: 'PBE', model: 'M5-400' },
+  ]);
+});

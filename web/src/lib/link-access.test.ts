@@ -173,3 +173,9 @@ test('serialItemCreateAccess: irisan kosong atau tanpa me = tanpa Tambah', () =>
   expect(serialItemCreateAccess(none)).toEqual({ canCreate: false, allowedBuIds: [] });
   expect(serialItemCreateAccess(null).canCreate).toBe(false);
 });
+
+test('itemLinkAccess.canOpenDeleted: hanya pemegang manage (pemulih)', () => {
+  expect(itemLinkAccess(makeMe({ itemLevel: 'manage' })).canOpenDeleted).toBe(true);
+  expect(itemLinkAccess(makeMe({ itemLevel: 'edit' })).canOpenDeleted).toBe(false);
+  expect(itemLinkAccess(null).canOpenDeleted).toBe(false);
+});

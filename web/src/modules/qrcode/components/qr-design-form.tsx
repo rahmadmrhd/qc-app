@@ -67,6 +67,8 @@ export interface QrDesignFormProps {
   edit?: QrEditContext;
   /** Tautan buka item pada pemilih item (`itemLinkAccess`). */
   openItemHref?: (id: string) => string | null;
+  /** Boleh membuka View item terhapus (`itemLinkAccess(...).canOpenDeleted`); selain itu item terhapus tanpa tautan. */
+  canOpenDeletedItem?: boolean;
   /** Boleh menambah item dari pemilih item (`itemLinkAccess(...).canCreate`): memunculkan baris "Tambah Item". */
   canCreateItem?: boolean;
   /** Ubah/duplikat: konfigurasi default yang dapat diterapkan ulang (tombol "Perbarui sesuai konfigurasi default"). */
@@ -143,6 +145,7 @@ export function QrDesignForm({
   updatePresets,
   edit,
   openItemHref,
+  canOpenDeletedItem,
   canCreateItem = false,
   businessUnits = [],
   takenBuIds,
@@ -371,6 +374,7 @@ export function QrDesignForm({
                       onChange={changeItems}
                       ownedIds={new Set((edit?.items ?? []).map((item) => item.id))}
                       openHref={openItemHref}
+                      canOpenDeleted={canOpenDeletedItem}
                       onCreate={canCreateItem ? () => setItemDialogOpen(true) : undefined}
                       required={requireItems}
                     />

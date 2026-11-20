@@ -8,7 +8,8 @@ import { postelItemOptionsQueryOptions } from '../queries';
 
 export type { PickedItem } from '../lib/schemas';
 
-const labelOf = (item: Pick<PickedItem, 'brand' | 'model'>) => `${item.brand} ${item.model}`;
+const labelOf = (item: Pick<PickedItem, 'brand' | 'model'> & { deleted?: boolean | undefined }) =>
+  `${item.brand} ${item.model}${item.deleted ? ' — Terhapus' : ''}`;
 
 export interface PostelItemPickerProps {
   selected: readonly PickedItem[];
@@ -87,7 +88,15 @@ export function PostelItemPicker({
           onChange(
             ids.flatMap((id) => {
               const item = known.get(id);
-              return item ? [{ id, brand: item.brand, model: item.model }] : [];
+              if (!item) return [];
+              return [
+                {
+                  id,
+                  brand: item.brand,
+                  model: item.model,
+                  ...('deleted' in item && item.deleted ? { deleted: true } : {}),
+                },
+              ];
             }),
           )
         }

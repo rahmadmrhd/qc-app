@@ -227,3 +227,22 @@ test('kolom Item (jumlah dan nama pertama) dan Versi stiker dengan badge status'
   expect(rows[4]).toHaveTextContent('Belum ada item');
   expect(rows[4]).toHaveTextContent('—');
 });
+
+test('kolom Item: item pertama terhapus bertanda Terhapus', () => {
+  render(
+    <QrDesignsTable
+      designs={[
+        design({
+          id: 'a',
+          title: 'Satu',
+          items: [{ id: 'i1', brand: 'PBE', model: 'M5-400', deleted: true }],
+        }),
+      ]}
+      canEdit
+      canManage
+      busyId={null}
+      {...handlers()}
+    />,
+  );
+  expect(screen.getByText('Terhapus')).toBeInTheDocument();
+});

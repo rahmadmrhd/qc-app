@@ -1,4 +1,5 @@
 import type { QrDesignDto, QrFileKind } from '@shared/contract';
+import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -34,6 +35,7 @@ function ItemsCell({ design }: { design: QrDesignDto }) {
       {first ? (
         <div className="text-xs text-muted-foreground">
           {first.brand} {first.model}
+          {first.deleted ? <DeletedBadge /> : null}
           {total > 1 ? ' …' : ''}
         </div>
       ) : null}

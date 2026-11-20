@@ -93,6 +93,7 @@ function EditQrDesignPage() {
         edit={toEditContext(loaded)}
         openItemHref={itemLinkAccess(me).openItemHref}
         canCreateItem={itemLinkAccess(me).canCreate}
+        canOpenDeletedItem={itemLinkAccess(me).canOpenDeleted}
         submitError={submitError}
         fieldErrors={fieldErrors}
         onSubmit={handleSubmit}

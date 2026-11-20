@@ -1,5 +1,6 @@
 import type { PostelAttachmentDto, PostelDto, PostelNumberDto } from '@shared/contract';
 import { type ReactNode, useState } from 'react';
+import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -188,7 +189,15 @@ export function PostelView({
         ) : (
           <ul className="list-disc space-y-1 pl-5 text-sm">
             {postel.items.map((item) => (
-              <li key={item.id}>{`${item.brand} ${item.model}`}</li>
+              <li key={item.id}>
+                {`${item.brand} ${item.model}`}
+                {item.deleted ? (
+                  <>
+                    {' '}
+                    <DeletedBadge />
+                  </>
+                ) : null}
+              </li>
             ))}
           </ul>
         )}

@@ -113,3 +113,44 @@ test('baris "Tambah Item" hanya ada bila onCreate diberikan dan memanggilnya', a
   await userEvent.click(await screen.findByRole('option', { name: 'Tambah Item' }));
   expect(onCreate).toHaveBeenCalledTimes(1);
 });
+
+test('item terhapus: chip bertanda Terhapus, tautan Buka hanya bagi pemulih, tetap terbawa', async () => {
+  const gone = { id: 'gone', brand: 'Brand', model: 'Lawas', businessUnitIds: [], deleted: true };
+  const live = { id: 'i1', brand: 'Brand', model: 'PBE M5-400', businessUnitIds: [] };
+  const open = (id: string) => `/item/${id}`;
+  function Wrapped({ canOpenDeleted }: { canOpenDeleted: boolean }) {
+    const [selected, setSelected] = useState<PickedItem[]>([gone, live]);
+    return (
+      <>
+        <ItemPicker
+          selected={selected}
+          onChange={setSelected}
+          openHref={open}
+          canOpenDeleted={canOpenDeleted}
+        />
+        <output aria-label="dipilih">
+          {JSON.stringify(selected.map((i) => i.deleted === true))}
+        </output>
+      </>
+    );
+  }
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const first = render(
+    <QueryClientProvider client={client}>
+      <Wrapped canOpenDeleted={false} />
+    </QueryClientProvider>,
+  );
+  const goneChip = screen.getByText('Brand Lawas — Terhapus');
+  expect(goneChip.closest('a')).toBeNull();
+  expect(screen.getByText('Brand PBE M5-400').closest('a')).not.toBeNull();
+  first.unmount();
+  render(
+    <QueryClientProvider client={client}>
+      <Wrapped canOpenDeleted />
+    </QueryClientProvider>,
+  );
+  expect(screen.getByText('Brand Lawas — Terhapus').closest('a')).not.toBeNull();
+  // Menghapus item hidup tidak menghilangkan penanda terhapus item lain.
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus Brand PBE M5-400' }));
+  expect(screen.getByLabelText('dipilih')).toHaveTextContent('[true]');
+});
