@@ -57,8 +57,14 @@ function setup(
   return { onChange };
 }
 
-test('filter instruksi: Semua / Belum ada; memilih memanggil onChange', async () => {
+/** Membuka popover chip (nama tombol = label chip, dengan atau tanpa nilai terisi). */
+async function openChip(label: string) {
+  await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${label}(:|$)`) }));
+}
+
+test('filter instruksi: chip kosong membuka Select Semua / Belum ada; memilih memanggil onChange', async () => {
   const { onChange } = setup();
+  await openChip('Instruksi stiker');
   expect(await selectOptionNames(screen, 'Filter instruksi stiker')).toEqual([
     'Semua item',
     'Belum ada instruksi stiker',
@@ -69,6 +75,7 @@ test('filter instruksi: Semua / Belum ada; memilih memanggil onChange', async ()
 
 test('pilihan stiker/jenis berurutan per jenis (deskripsi = jenis): jenis lalu stikernya', async () => {
   const { onChange } = setup();
+  await openChip('Stiker/Jenis');
   expect(await linkOptionNames(screen, 'Filter stiker atau jenis')).toEqual([
     'Semua jenis Postel',
     'Stiker PostelPostel',
@@ -82,6 +89,7 @@ test('pilihan stiker/jenis berurutan per jenis (deskripsi = jenis): jenis lalu s
 
 test('pilihan jenis memanggil onChange dengan kunci jenis; mengetik menyaring daftar', async () => {
   const { onChange } = setup();
+  await openChip('Stiker/Jenis');
   await userEvent.type(screen.getByRole('combobox', { name: 'Filter stiker atau jenis' }), 'lama');
   expect(await linkOptionNames(screen, 'Filter stiker atau jenis')).toEqual([
     'Manual Lama — nonaktifManual',
@@ -91,8 +99,9 @@ test('pilihan jenis memanggil onChange dengan kunci jenis; mengetik menyaring da
   expect(onChange).toHaveBeenLastCalledWith({ stickerKey: 't:t1' });
 });
 
-test('mode Memakai/Belum memakai tersembunyi tanpa pilihan stiker dan tampil setelah dipilih', async () => {
+test('mode Memakai/Belum memakai tersembunyi tanpa pilihan stiker', async () => {
   const first = setup();
+  await openChip('Stiker/Jenis');
   expect(screen.queryByRole('combobox', { name: 'Mode filter stiker' })).not.toBeInTheDocument();
   expect(screen.getByRole('combobox', { name: 'Filter stiker atau jenis' })).toHaveValue('');
   expect(first.onChange).not.toHaveBeenCalled();
@@ -100,6 +109,7 @@ test('mode Memakai/Belum memakai tersembunyi tanpa pilihan stiker dan tampil set
 
 test('dengan pilihan stiker: mode tampil dan mengubahnya memanggil onChange', async () => {
   const { onChange } = setup({ stickerKey: 's:s1' });
+  await openChip('Stiker/Jenis');
   const mode = screen.getByRole('combobox', { name: 'Mode filter stiker' });
   expect(mode).toHaveValue('Memakai');
   expect(await selectOptionNames(screen, 'Mode filter stiker')).toEqual([
@@ -110,25 +120,33 @@ test('dengan pilihan stiker: mode tampil dan mengubahnya memanggil onChange', as
   expect(onChange).toHaveBeenCalledWith({ stickerMode: 'missing' });
 });
 
-test('Bersihkan filter mengembalikan bawaan dan hanya tampil bila ada filter aktif', async () => {
-  const { onChange } = setup({ instruction: 'none', stickerKey: 't:t1', stickerMode: 'missing' });
-  await userEvent.click(screen.getByRole('button', { name: 'Bersihkan filter' }));
-  expect(onChange).toHaveBeenCalledWith({
-    instruction: 'all',
-    stickerKey: '',
-    stickerMode: 'has',
-    manualBook: 'all',
-    postel: 'all',
-  });
+test('chip stiker terisi memuat nama dan mode; hapus mengosongkan pilihan dan mode', async () => {
+  const { onChange } = setup({ stickerKey: 't:t1', stickerMode: 'missing' });
+  expect(
+    screen.getByRole('button', { name: 'Stiker/Jenis: Semua jenis Postel (belum memakai)' }),
+  ).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus filter Stiker/Jenis' }));
+  expect(onChange).toHaveBeenCalledWith({ stickerKey: '', stickerMode: 'has' });
+});
+
+test('chip Instruksi, Manual Book, dan Postel terisi punya tombol hapus yang mengembalikan bawaan', async () => {
+  const { onChange } = setup({ instruction: 'none', manualBook: 'missing', postel: 'missing' });
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus filter Instruksi stiker' }));
+  expect(onChange).toHaveBeenLastCalledWith({ instruction: 'all' });
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus filter Manual Book' }));
+  expect(onChange).toHaveBeenLastCalledWith({ manualBook: 'all' });
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus filter Postel' }));
+  expect(onChange).toHaveBeenLastCalledWith({ postel: 'all' });
 });
 
 test('filter Postel selalu tampil bagi pembaca item (parity Manual Book)', () => {
   setup();
-  expect(screen.getByRole('combobox', { name: 'Filter Postel' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Postel' })).toBeInTheDocument();
 });
 
 test('filter Postel: Semua item / Belum ada Postel; memilih memanggil onChange', async () => {
   const { onChange } = setup();
+  await openChip('Postel');
   expect(screen.getByRole('combobox', { name: 'Filter Postel' })).toHaveAttribute(
     'id',
     'item-filter-postel',
@@ -141,15 +159,9 @@ test('filter Postel: Semua item / Belum ada Postel; memilih memanggil onChange',
   expect(onChange).toHaveBeenCalledWith({ postel: 'missing' });
 });
 
-test('filter Postel aktif memunculkan Bersihkan filter yang ikut mengosongkan postel', async () => {
-  const { onChange } = setup({ postel: 'missing' });
-  expect(screen.getByRole('combobox', { name: 'Filter Postel' })).toHaveValue('Belum ada Postel');
-  await userEvent.click(screen.getByRole('button', { name: 'Bersihkan filter' }));
-  expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ postel: 'all' }));
-});
-
 test('filter Manual Book: Semua / Belum ada QR Manual Book; memilih memanggil onChange', async () => {
   const { onChange } = setup();
+  await openChip('Manual Book');
   expect(await selectOptionNames(screen, 'Filter Manual Book')).toEqual([
     'Semua item',
     'Belum ada QR Manual Book',
@@ -158,12 +170,9 @@ test('filter Manual Book: Semua / Belum ada QR Manual Book; memilih memanggil on
   expect(onChange).toHaveBeenCalledWith({ manualBook: 'missing' });
 });
 
-test('filter Manual Book aktif memunculkan tombol Bersihkan; tetap tampil tanpa izin katalog', () => {
+test('filter Manual Book aktif tetap tampil tanpa izin katalog', () => {
   setup({ manualBook: 'missing' }, { showStickerFilter: false });
-  expect(screen.getByRole('combobox', { name: 'Filter Manual Book' })).toHaveValue(
-    'Belum ada QR Manual Book',
-  );
-  expect(screen.getByRole('button', { name: 'Bersihkan filter' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Manual Book: Belum ada QR' })).toBeInTheDocument();
 });
 
 test('stiker Usang diberi tanda nonaktif seperti stiker nonaktif di pilihan filter', async () => {
@@ -174,27 +183,25 @@ test('stiker Usang diberi tanda nonaktif seperti stiker nonaktif di pilihan filt
       types: [type({})],
     },
   );
+  await openChip('Stiker/Jenis');
   expect(await linkOptionNames(screen, 'Filter stiker atau jenis')).toContain(
     'Manual v1 — nonaktifPostel',
   );
 });
 
-test('tanpa filter aktif tidak ada tombol Bersihkan', () => {
-  setup();
-  expect(screen.queryByRole('button', { name: 'Bersihkan filter' })).not.toBeInTheDocument();
-});
-
-test('tanpa izin baca katalog: filter stiker/jenis dan mode disembunyikan, filter instruksi tetap ada', () => {
+test('tanpa izin baca katalog: chip stiker/jenis disembunyikan, chip instruksi tetap ada', () => {
   setup({}, { showStickerFilter: false });
-  expect(screen.getByRole('combobox', { name: 'Filter instruksi stiker' })).toBeInTheDocument();
-  expect(
-    screen.queryByRole('combobox', { name: 'Filter stiker atau jenis' }),
-  ).not.toBeInTheDocument();
-  expect(screen.queryByRole('combobox', { name: 'Mode filter stiker' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Instruksi stiker' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Stiker\/Jenis/ })).not.toBeInTheDocument();
 });
 
-test('pilihan dari URL yang tak ada di katalog tetap terlihat sebagai tidak dikenal', () => {
+test('pilihan dari URL yang tak ada di katalog tetap terlihat sebagai tidak dikenal', async () => {
   setup({ stickerKey: 's:hilang' });
-  const select = screen.getByRole('combobox', { name: 'Filter stiker atau jenis' });
-  expect(select).toHaveValue('Stiker tidak dikenal');
+  expect(
+    screen.getByRole('button', { name: 'Stiker/Jenis: Stiker tidak dikenal (memakai)' }),
+  ).toBeInTheDocument();
+  await openChip('Stiker/Jenis');
+  expect(screen.getByRole('combobox', { name: 'Filter stiker atau jenis' })).toHaveValue(
+    'Stiker tidak dikenal',
+  );
 });

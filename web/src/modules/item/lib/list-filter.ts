@@ -4,7 +4,7 @@ import { DEFAULT_ITEM_FILTER, type ItemListFilter } from '../queries';
 /** Search params halaman daftar item; nilai tak sah dibuang (bukan galat) agar URL lama/rusak tetap terbuka. */
 export const itemsSearchSchema = z.object({
   q: z.string().optional().catch(undefined),
-  status: z.enum(['all', 'active', 'inactive']).optional().catch(undefined),
+  status: z.enum(['all', 'active', 'inactive', 'deleted']).optional().catch(undefined),
   /** Hanya `none` bermakna ("Belum ada instruksi stiker"); bawaan tidak ditulis ke URL. */
   instruction: z.literal('none').optional().catch(undefined),
   /** `s:<id stiker>` atau `t:<id jenis>`. */

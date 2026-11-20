@@ -193,6 +193,11 @@ export function canManageItem(
   return hasLevelOnAllBus(me, item, 'manage');
 }
 
+/** Memegang `manage` item pada minimal satu BU (menampilkan pilihan massal dan tampilan Terhapus; server tetap menegakkan). */
+export function canManageAnyItem(me: MeDto | null | undefined): boolean {
+  return buIdsWithLevelFor(me, 'manage').length > 0;
+}
+
 /** Buat item: ada minimal satu BU aktif ber-`edit`. */
 export function canCreateItem(me: MeDto | null | undefined): boolean {
   return itemBusinessUnits(me).some(

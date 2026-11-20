@@ -1,7 +1,7 @@
 import type { StickerDto, StickerTypeDto } from '@shared/contract';
 import { LinkField, type LinkOption } from '@/components/link-field';
+import { FilterChip } from '@/components/page/filter-bar';
 import { Select } from '@/components/select';
-import { Button } from '@/components/ui/button';
 import type { ItemListFilter } from '../queries';
 
 type FilterPatch = Partial<
@@ -52,10 +52,10 @@ function groupByType(stickers: readonly StickerDto[], types: readonly StickerTyp
 }
 
 /**
- * Filter instruksi stiker pada halaman daftar item: "Belum ada instruksi", satu pilihan stiker-atau-jenis
- * dan mode Memakai/Belum memakai. Pilihan stiker-atau-jenis merujuk record model lain, jadi memakai `LinkField`
- * (keputusan pemilik 2026-11-11: aturan LinkField berlaku juga untuk filter halaman daftar); pilihan tetap
- * (semua/belum, Memakai/Belum memakai) memakai `Select`.
+ * Filter instruksi stiker, Manual Book, Postel, dan stiker/jenis pada halaman daftar item, masing-masing satu
+ * `FilterChip` (popover berisi kontrol). Pilihan stiker-atau-jenis merujuk record model lain, jadi memakai `LinkField`
+ * (keputusan pemilik 2026-11-11: aturan LinkField berlaku juga untuk filter halaman daftar); pilihan tetap memakai
+ * `Select`. Chip yang terisi punya tombol hapus sendiri.
  */
 export function ItemFilters({
   filter,
@@ -75,102 +75,107 @@ export function ItemFilters({
   ]);
   const known = new Set(stickerOptions.map((option) => option.id));
   const unknown = showStickerFilter && filter.stickerKey !== '' && !known.has(filter.stickerKey);
-  const active =
-    filter.instruction !== 'all' ||
-    filter.stickerKey !== '' ||
-    filter.stickerMode !== 'has' ||
-    filter.manualBook !== 'all' ||
-    (filter.postel ?? 'all') !== 'all';
+  const stickerLabel = (key: string): string | undefined => {
+    if (unknown && key === filter.stickerKey) {
+      return key.startsWith('t:') ? 'Jenis tidak dikenal' : 'Stiker tidak dikenal';
+    }
+    return stickerOptions.find((option) => option.id === key)?.label;
+  };
+  const postel = filter.postel ?? 'all';
 
   return (
     <>
-      <Select
-        id="item-filter-instruction"
-        label="Filter instruksi stiker"
-        hideLabel
-        className="sm:w-56"
-        options={[
-          { value: 'all', label: 'Semua item' },
-          { value: 'none', label: 'Belum ada instruksi stiker' },
-        ]}
-        value={filter.instruction}
-        onValueChange={(next) => onChange({ instruction: next as 'all' | 'none' })}
-      />
-      <Select
-        id="item-filter-manual-book"
-        label="Filter Manual Book"
-        hideLabel
-        className="sm:w-56"
-        options={[
-          { value: 'all', label: 'Semua item' },
-          { value: 'missing', label: 'Belum ada QR Manual Book' },
-        ]}
-        value={filter.manualBook}
-        onValueChange={(next) => onChange({ manualBook: next as 'all' | 'missing' })}
-      />
-      <Select
-        id="item-filter-postel"
-        label="Filter Postel"
-        hideLabel
-        className="sm:w-48"
-        options={[
-          { value: 'all', label: 'Semua item' },
-          { value: 'missing', label: 'Belum ada Postel' },
-        ]}
-        value={filter.postel ?? 'all'}
-        onValueChange={(next) => onChange({ postel: next as 'all' | 'missing' })}
-      />
-      {showStickerFilter ? (
-        <LinkField
-          id="item-filter-sticker"
-          label="Filter stiker atau jenis"
-          hideLabel
-          className="sm:w-64"
-          placeholder="Semua stiker"
-          options={stickerOptions}
-          localFilter
-          highlight
-          value={filter.stickerKey === '' ? null : filter.stickerKey}
-          labelOf={(key) =>
-            unknown && key === filter.stickerKey
-              ? key.startsWith('t:')
-                ? 'Jenis tidak dikenal'
-                : 'Stiker tidak dikenal'
-              : undefined
-          }
-          onChange={(next) => onChange({ stickerKey: next ?? '' })}
-        />
-      ) : null}
-      {showStickerFilter && filter.stickerKey !== '' ? (
+      <FilterChip
+        label="Instruksi stiker"
+        display={filter.instruction === 'none' ? 'Belum ada' : null}
+        onClear={() => onChange({ instruction: 'all' })}
+      >
         <Select
-          id="item-filter-sticker-mode"
-          label="Mode filter stiker"
+          id="item-filter-instruction"
+          label="Filter instruksi stiker"
           hideLabel
-          className="sm:w-40"
           options={[
-            { value: 'has', label: 'Memakai' },
-            { value: 'missing', label: 'Belum memakai' },
+            { value: 'all', label: 'Semua item' },
+            { value: 'none', label: 'Belum ada instruksi stiker' },
           ]}
-          value={filter.stickerMode}
-          onValueChange={(next) => onChange({ stickerMode: next as 'has' | 'missing' })}
+          value={filter.instruction}
+          onValueChange={(next) => onChange({ instruction: next as 'all' | 'none' })}
         />
-      ) : null}
-      {active ? (
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() =>
-            onChange({
-              instruction: 'all',
-              stickerKey: '',
-              stickerMode: 'has',
-              manualBook: 'all',
-              postel: 'all',
-            })
+      </FilterChip>
+      <FilterChip
+        label="Manual Book"
+        display={filter.manualBook === 'missing' ? 'Belum ada QR' : null}
+        onClear={() => onChange({ manualBook: 'all' })}
+      >
+        <Select
+          id="item-filter-manual-book"
+          label="Filter Manual Book"
+          hideLabel
+          options={[
+            { value: 'all', label: 'Semua item' },
+            { value: 'missing', label: 'Belum ada QR Manual Book' },
+          ]}
+          value={filter.manualBook}
+          onValueChange={(next) => onChange({ manualBook: next as 'all' | 'missing' })}
+        />
+      </FilterChip>
+      <FilterChip
+        label="Postel"
+        display={postel === 'missing' ? 'Belum ada' : null}
+        onClear={() => onChange({ postel: 'all' })}
+      >
+        <Select
+          id="item-filter-postel"
+          label="Filter Postel"
+          hideLabel
+          options={[
+            { value: 'all', label: 'Semua item' },
+            { value: 'missing', label: 'Belum ada Postel' },
+          ]}
+          value={postel}
+          onValueChange={(next) => onChange({ postel: next as 'all' | 'missing' })}
+        />
+      </FilterChip>
+      {showStickerFilter ? (
+        <FilterChip
+          label="Stiker/Jenis"
+          display={
+            filter.stickerKey === ''
+              ? null
+              : `${stickerLabel(filter.stickerKey) ?? filter.stickerKey} (${filter.stickerMode === 'has' ? 'memakai' : 'belum memakai'})`
           }
+          onClear={() => onChange({ stickerKey: '', stickerMode: 'has' })}
         >
-          Bersihkan filter
-        </Button>
+          <div className="space-y-2">
+            <LinkField
+              id="item-filter-sticker"
+              label="Filter stiker atau jenis"
+              hideLabel
+              placeholder="Semua stiker"
+              options={stickerOptions}
+              localFilter
+              highlight
+              value={filter.stickerKey === '' ? null : filter.stickerKey}
+              labelOf={(key) =>
+                unknown && key === filter.stickerKey ? stickerLabel(key) : undefined
+              }
+              onChange={(next) => onChange({ stickerKey: next ?? '' })}
+            />
+            {filter.stickerKey !== '' ? (
+              <Select
+                id="item-filter-sticker-mode"
+                label="Mode filter stiker"
+                hideLabel
+                options={[
+                  { value: 'has', label: 'Memakai' },
+                  { value: 'missing', label: 'Belum memakai' },
+                ]}
+                value={filter.stickerMode}
+                onValueChange={(next) => onChange({ stickerMode: next as 'has' | 'missing' })}
+              />
+            ) : null}
+          </div>
+        </FilterChip>
       ) : null}
     </>
   );

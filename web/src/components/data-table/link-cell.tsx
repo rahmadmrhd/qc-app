@@ -7,12 +7,15 @@ export function LinkCell({
   params,
   search,
   tour,
+  title,
   children,
 }: {
   to: LinkProps['to'];
   params?: Record<string, string>;
   search?: Record<string, unknown>;
   tour?: string;
+  /** Tooltip bawaan peramban (mis. nama lengkap di balik kode). */
+  title?: string;
   children: ReactNode;
 }) {
   return (
@@ -21,6 +24,7 @@ export function LinkCell({
       params={params as never}
       search={search as never}
       data-tour={tour}
+      title={title}
       className="font-medium text-info-text underline-offset-4 hover:underline"
     >
       {children}

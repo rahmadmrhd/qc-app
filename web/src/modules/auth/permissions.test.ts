@@ -8,6 +8,7 @@ import {
   canAt,
   canCreateItem,
   canEditItem,
+  canManageAnyItem,
   canManageItem,
   canManageSerialSettings,
   canRecordSerials,
@@ -275,4 +276,11 @@ test('item ber-BU {A hidup, B terhapus}: pengguna hanya berhak di A tetap dapat 
   expect(canManageItem(live, { businessUnits: [ref('a'), ref('b')] })).toBe(false);
   // BU lain yang hidup dan bukan penugasan tetap menolak
   expect(canManageItem(user, { businessUnits: [ref('a'), ref('c')] })).toBe(false);
+});
+
+test('canManageAnyItem: manage pada minimal satu BU (juga nonaktif)', () => {
+  expect(canManageAnyItem(meWithBus([bu('a', 'edit')]))).toBe(false);
+  expect(canManageAnyItem(meWithBus([bu('a', 'view'), bu('b', 'manage')]))).toBe(true);
+  expect(canManageAnyItem(meWithBus([]))).toBe(false);
+  expect(canManageAnyItem(null)).toBe(false);
 });
