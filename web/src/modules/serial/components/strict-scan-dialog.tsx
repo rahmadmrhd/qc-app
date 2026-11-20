@@ -15,7 +15,12 @@ import {
   useRef,
   useState,
 } from 'react';
-import { AttachmentView, FileDialog } from '@/components/file-dialog';
+import {
+  AttachmentView,
+  FileDialog,
+  FileDropZone,
+  type RejectedFile,
+} from '@/components/file-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -154,7 +159,11 @@ function StrictBody({
   const [step, setStep] = useState<1 | 2>(initialSerial === undefined ? 1 : 2);
   const [serialText, setSerialText] = useState(initialSerial ?? '');
   const [photos, setPhotos] = useState<ProofPhotoRef[]>([]);
-  const [photoDialogOpen, setPhotoDialogOpen] = useState(false);
+  const [photoDialog, setPhotoDialog] = useState<{
+    open: boolean;
+    files: File[];
+    rejected: RejectedFile[];
+  }>({ open: false, files: [], rejected: [] });
   const [confirm, setConfirm] = useState<'cancel' | 'rescan' | null>(null);
   const photosRef = useRef<ProofPhotoRef[]>([]);
   const committedRef = useRef(false);
@@ -363,33 +372,42 @@ function StrictBody({
                 ) : null}
               </div>
             </div>
-            <section aria-label="Lampiran foto" className="space-y-2">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-sm font-medium">Lampiran foto</h3>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={photos.length + running >= max}
-                  onClick={() => setPhotoDialogOpen(true)}
-                >
-                  <Camera aria-hidden />
-                  Tambah foto
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {photos.length + running} dari minimal {info.proofMin} (maks. {max})
-              </p>
-              <AttachmentView
-                items={items}
-                pending={own.entries}
-                layout="grid"
-                label="serial ini"
-                onRemove={removePhoto}
-                onRetry={own.retry}
-                onCancel={own.remove}
-              />
-            </section>
+            <FileDropZone
+              accept={proofSource.mimeTypes}
+              disabled={photos.length + running >= max}
+              className="space-y-2"
+              onFiles={(files, rejected) => {
+                if (photos.length + running < max) setPhotoDialog({ open: true, files, rejected });
+              }}
+            >
+              <section aria-label="Lampiran foto" className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-medium">Lampiran foto</h3>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={photos.length + running >= max}
+                    onClick={() => setPhotoDialog({ open: true, files: [], rejected: [] })}
+                  >
+                    <Camera aria-hidden />
+                    Tambah foto
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {photos.length + running} dari minimal {info.proofMin} (maks. {max})
+                </p>
+                <AttachmentView
+                  items={items}
+                  pending={own.entries}
+                  layout="grid"
+                  label="serial ini"
+                  onRemove={removePhoto}
+                  onRetry={own.retry}
+                  onCancel={own.remove}
+                />
+              </section>
+            </FileDropZone>
           </div>
 
           <AlertDialogFooter className="bottom-0 mx-0 mb-0 shrink-0 flex-col items-stretch rounded-none p-0 sm:flex-col">
@@ -427,10 +445,12 @@ function StrictBody({
         </>
       )}
 
-      {step === 2 && photoDialogOpen ? (
+      {step === 2 && photoDialog.open ? (
         <FileDialog
           open
-          onOpenChange={setPhotoDialogOpen}
+          onOpenChange={(open) => {
+            if (!open) setPhotoDialog({ open: false, files: [], rejected: [] });
+          }}
           source={proofSource}
           mode="multiple"
           accept={['image']}
@@ -440,6 +460,8 @@ function StrictBody({
           title="Foto bukti"
           confirmLabel="Tambahkan"
           camera={{ stamp: proofCameraStamp(stamp) }}
+          initialFiles={photoDialog.files.length > 0 ? photoDialog.files : undefined}
+          initialRejected={photoDialog.rejected.length > 0 ? photoDialog.rejected : undefined}
           onConfirm={(result) => own.add(result.files)}
         />
       ) : null}

@@ -498,3 +498,18 @@ test('foto yang selesai selagi dialog masih terbuka masuk daftar dialog (bukan b
   expect(screen.getByRole('button', { name: 'Buang foto 1, serial ini' })).toBeInTheDocument();
   expect(onRow).not.toHaveBeenCalled();
 });
+
+test('F7: seret-lepas ke area foto membuka dialog berisi berkas itu', async () => {
+  setup({ initialSerial: 'ABC123' });
+  await screen.findByRole('textbox', { name: 'Serial Number' });
+  const section = screen.getByRole('region', { name: 'Lampiran foto' });
+  const zone = section.closest('[data-file-drop-zone]') as HTMLElement;
+  expect(zone).not.toBeNull();
+  fireEvent.drop(zone, {
+    dataTransfer: {
+      files: [new File([new Uint8Array(4)], 'seret.jpg', { type: 'image/jpeg' })],
+      types: ['Files'],
+    },
+  });
+  expect(await screen.findByRole('button', { name: 'Tambahkan (1)' })).toBeInTheDocument();
+});

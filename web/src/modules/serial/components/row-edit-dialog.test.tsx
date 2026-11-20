@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { StrictMode } from 'react';
+import { StrictMode, useState } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { pickLink } from '@/test/link-field';
 import { makeRow, optionsApi, proofRef, testMe } from '../test-support';
@@ -17,6 +17,7 @@ vi.mock('@/modules/files/image', () => ({ prepareImage: prepareImageMock }));
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => testMe() }));
 
 import type { StagingRow } from '../lib/draft';
+import type { ProofSession } from '../lib/use-proof-uploads';
 import { RowEditDialog, type RowEditResult } from './row-edit-dialog';
 
 beforeEach(() => {
@@ -391,4 +392,117 @@ test('foto bukti memakai tampilan lampiran bersama (daftar bernama serial baris)
   renderDialog(makeRow('AAA111', { proofPhotos: [proofRef('p1')] }));
   const { dialog } = await ready();
   expect(within(dialog).getByRole('list', { name: 'Lampiran AAA111' })).toBeInTheDocument();
+});
+
+/** Render dengan baris yang dapat diubah dari luar (meniru halaman yang menempelkan foto selesai ke baris). */
+function renderLive(initial: StagingRow) {
+  const onApply = vi.fn<(result: RowEditResult) => void>();
+  const handle: {
+    session: ProofSession | null;
+    setRow: (row: StagingRow) => void;
+  } = { session: null, setRow: () => undefined };
+  function Live() {
+    const [row, setRow] = useState(initial);
+    handle.setRow = setRow;
+    return (
+      <ProofSessionHost onRow={() => true}>
+        {(proof) => {
+          handle.session = proof;
+          return (
+            <RowEditDialog
+              proof={proof}
+              row={row}
+              commitSerial={() => null}
+              onClose={vi.fn()}
+              onApply={onApply}
+              actorName="Budi"
+            />
+          );
+        }}
+      </ProofSessionHost>
+    );
+  }
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <Live />
+    </QueryClientProvider>,
+  );
+  return { onApply, handle };
+}
+
+const queuedFile = (name: string) => ({
+  key: name,
+  name,
+  file: new File([new Uint8Array(4)], `${name}.jpg`, { type: 'image/jpeg' }),
+});
+
+test('F3: foto baris yang selesai di latar selagi dialog terbuka tidak hilang saat Terapkan', async () => {
+  const held = holdUploads();
+  const row = makeRow('AAA111');
+  const { onApply, handle } = renderLive(row);
+  const { dialog, apply } = await ready();
+  // Unggahan milik BARIS (bukan dialog) masih berjalan: tampil di dialog dan menahan Terapkan.
+  act(() => handle.session?.uploads.forOwner(row.clientId).add([queuedFile('latar')]));
+  expect(await within(dialog).findByTestId('attachment-pending')).toBeInTheDocument();
+  await waitFor(() => expect(apply).toBeDisabled());
+  await waitFor(() => expect(held.release).toHaveLength(1));
+  held.release[0]?.();
+  // Halaman menempelkan foto selesai ke baris (prop baris berubah selagi dialog terbuka).
+  await waitFor(() => expect(within(dialog).queryByTestId('attachment-pending')).toBeNull());
+  act(() => handle.setRow({ ...row, proofPhotos: [proofRef('late1')] }));
+  await waitFor(() => expect(within(dialog).getByText('Foto bukti (1)')).toBeInTheDocument());
+  await waitFor(() => expect(apply).toBeEnabled());
+  await userEvent.click(apply);
+  expect(onApply.mock.calls[0]?.[0].proofPhotos.map((photo) => photo.id)).toEqual(['late1']);
+  expect(removedIds()).toEqual([]);
+});
+
+test('F3: unggahan gagal milik baris menahan Terapkan (tidak dibuang diam-diam) sampai dibuang', async () => {
+  apiMock.mockImplementation((id: string, input: Record<string, unknown>) =>
+    id === 'serialProofs.upload'
+      ? Promise.reject(new Error('Server menolak'))
+      : optionsApi(id, input),
+  );
+  const row = makeRow('AAA111');
+  const { handle } = renderLive(row);
+  const { dialog, apply } = await ready();
+  act(() => handle.session?.uploads.forOwner(row.clientId).add([queuedFile('gagal')]));
+  expect(await within(dialog).findByText('Server menolak')).toBeInTheDocument();
+  expect(apply).toBeDisabled();
+  expect(within(dialog).getByText(/Ada foto yang gagal diunggah/)).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: /^Buang / }));
+  await waitFor(() => expect(apply).toBeEnabled());
+});
+
+test('F3: unggahan gagal milik dialog juga menahan Terapkan (tidak dibuang diam-diam)', async () => {
+  apiMock.mockImplementation((id: string, input: Record<string, unknown>) =>
+    id === 'serialProofs.upload'
+      ? Promise.reject(new Error('Server menolak'))
+      : optionsApi(id, input),
+  );
+  renderDialog();
+  const { dialog, apply } = await ready();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tambah foto' }));
+  const input = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, {
+    target: { files: [new File([new Uint8Array(4)], 'foto.jpg', { type: 'image/jpeg' })] },
+  });
+  await userEvent.click(await screen.findByRole('button', { name: 'Tambahkan (1)' }));
+  expect(await within(dialog).findByText('Server menolak')).toBeInTheDocument();
+  expect(apply).toBeDisabled();
+});
+
+test('F7: seret-lepas ke area foto membuka dialog berisi berkas itu', async () => {
+  renderDialog();
+  const { dialog } = await ready();
+  const zone = dialog.querySelector('[data-file-drop-zone]') as HTMLElement;
+  fireEvent.drop(zone, {
+    dataTransfer: {
+      files: [new File([new Uint8Array(4)], 'seret.jpg', { type: 'image/jpeg' })],
+      types: ['Files'],
+    },
+  });
+  expect(await screen.findByRole('button', { name: 'Tambahkan (1)' })).toBeInTheDocument();
 });
