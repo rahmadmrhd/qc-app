@@ -7,20 +7,24 @@ import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const apiMock = vi.hoisted(() => vi.fn());
-vi.mock('@/lib/api', () => ({ api: apiMock }));
+vi.mock('@/lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api')>()),
+  api: apiMock,
+}));
 
-// Dialog berkas sudah diuji sendiri: di sini cukup tiruan yang menyerahkan pilihan tetap.
+// Dialog lampiran sudah diuji sendiri: di sini cukup tiruan yang menyerahkan hasil tetap.
 const dialogState = vi.hoisted(() => ({
   items: [] as unknown[],
+  files: [] as { file: File; name: string }[],
   props: undefined as undefined | Record<string, unknown>,
 }));
 vi.mock('@/components/file-dialog', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/components/file-dialog')>();
   return {
     ...original,
-    FileDialog: (props: {
+    AttachDialog: (props: {
       open: boolean;
-      onSelect: (items: unknown[]) => void;
+      onConfirm: (result: { library: unknown[]; files: unknown[] }) => void;
       onOpenChange: (open: boolean) => void;
     }) => {
       dialogState.props = props as unknown as Record<string, unknown>;
@@ -29,7 +33,7 @@ vi.mock('@/components/file-dialog', async (importOriginal) => {
           <button
             type="button"
             onClick={() => {
-              props.onSelect(dialogState.items);
+              props.onConfirm({ library: dialogState.items, files: dialogState.files });
               props.onOpenChange(false);
             }}
           >
@@ -38,6 +42,16 @@ vi.mock('@/components/file-dialog', async (importOriginal) => {
         </div>
       ) : null;
     },
+  };
+});
+
+// Unggahan nyata ke stickerGuides.upload tidak relevan di sini: sumbernya diganti agar hasilnya terkendali.
+const uploadMock = vi.hoisted(() => vi.fn());
+vi.mock('@/modules/sticker/lib/guide-source', async (importOriginal) => {
+  const original = await importOriginal<typeof import('@/modules/sticker/lib/guide-source')>();
+  return {
+    ...original,
+    stickerGuideSource: { ...original.stickerGuideSource, upload: uploadMock },
   };
 });
 
@@ -164,6 +178,8 @@ function renderField(props: { initial?: Photos } & Partial<StickerInstructionsFi
 beforeEach(() => {
   apiMock.mockReset();
   dialogState.items = [];
+  dialogState.files = [];
+  uploadMock.mockReset();
   latest = [];
 });
 afterEach(() => {
@@ -182,13 +198,14 @@ test('tanpa foto: pesan kosong dan tombol Tambah foto', () => {
   expect(screen.getByRole('button', { name: 'Tambah foto' })).toBeEnabled();
 });
 
-test('Tambah foto membuka dialog berkas (mode banyak, gambar); pilihan menambah kartu foto tanpa penanda', async () => {
+test('Tambah foto membuka dialog lampiran (mode banyak, gambar, dengan Pustaka); pilihan menambah kartu foto tanpa penanda', async () => {
   renderField();
   await addPhotosFromDialog([libraryItem('g1'), libraryItem('g2')]);
   expect(latest).toEqual([photo('g1'), photo('g2')]);
   expect(screen.getByRole('group', { name: 'Foto instruksi 1' })).toBeInTheDocument();
   expect(screen.getByRole('group', { name: 'Foto instruksi 2' })).toBeInTheDocument();
-  expect(dialogState.props).toMatchObject({ mode: 'multiple', accept: ['image'] });
+  expect(dialogState.props).toMatchObject({ mode: 'multiple', accept: ['image'], maxFiles: 10 });
+  expect(dialogState.props?.showLibrary).not.toBe(false);
   // gambar penuh dari pembaca pustaka
   const first = screen.getByRole('group', { name: 'Foto instruksi 1' });
   expect(first.querySelector('img')?.getAttribute('src')).toBe('/api/v1/files/g1');
@@ -631,4 +648,105 @@ test('penanda tersimpan ke stiker Usang diberi tanda nonaktif', () => {
   });
   expect(screen.getByRole('combobox', { name: 'Stiker' })).toHaveValue('PBE M5-400 v1 — nonaktif');
   expect(screen.getByRole('status')).toHaveTextContent('Stiker nonaktif');
+});
+
+const queued = (name: string) => ({
+  file: new File([new Uint8Array(4)], name, { type: 'image/png' }),
+  name,
+});
+
+function deferUploads() {
+  const resolvers: Record<string, (item: ReturnType<typeof libraryItem>) => void> = {};
+  uploadMock.mockImplementation(
+    (_file: File, name: string) =>
+      new Promise((resolve) => {
+        resolvers[name] = (item) => resolve(item);
+      }),
+  );
+  return resolvers;
+}
+
+test('berkas baru dari dialog: dialog tertutup, kartu progres tampil, lalu menjadi foto tanpa penanda', async () => {
+  const resolvers = deferUploads();
+  renderField();
+  dialogState.files = [queued('baru.png')];
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah foto' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Pilih contoh' }));
+  await waitFor(() => expect(uploadMock).toHaveBeenCalledTimes(1));
+  expect(screen.queryByRole('dialog', { name: 'Dialog berkas tiruan' })).not.toBeInTheDocument();
+  expect(await screen.findByTestId('attachment-pending')).toBeInTheDocument();
+  expect(latest).toEqual([]);
+
+  resolvers['baru.png']?.(libraryItem('gNew'));
+  await waitFor(() => expect(latest).toEqual([photo('gNew')]));
+  await waitFor(() => expect(screen.queryByTestId('attachment-pending')).not.toBeInTheDocument());
+  expect(screen.getByRole('group', { name: 'Foto instruksi 1' })).toBeInTheDocument();
+});
+
+test('pilihan Pustaka masuk langsung bersama berkas baru dalam satu konfirmasi', async () => {
+  const resolvers = deferUploads();
+  renderField();
+  dialogState.items = [libraryItem('g1')];
+  dialogState.files = [queued('baru.png')];
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah foto' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Pilih contoh' }));
+  expect(latest).toEqual([photo('g1')]);
+  resolvers['baru.png']?.(libraryItem('gNew'));
+  await waitFor(() => expect(latest.map((p) => p.guideId)).toEqual(['g1', 'gNew']));
+});
+
+test('unggahan berjalan mengisi kuota: sisa dialog berkurang dan tombol dinonaktifkan di batas', async () => {
+  deferUploads();
+  const eight = Array.from({ length: 8 }, (_, i) => photo(`x${i}`));
+  renderField({ initial: eight });
+  dialogState.files = [queued('satu.png')];
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah foto' }));
+  expect(dialogState.props).toMatchObject({ maxFiles: 2 });
+  await userEvent.click(await screen.findByRole('button', { name: 'Pilih contoh' }));
+  await waitFor(() => expect(uploadMock).toHaveBeenCalledTimes(1));
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah foto' }));
+  expect(dialogState.props).toMatchObject({ maxFiles: 1 });
+  dialogState.files = [queued('dua.png')];
+  await userEvent.click(await screen.findByRole('button', { name: 'Pilih contoh' }));
+  await waitFor(() => expect(uploadMock).toHaveBeenCalledTimes(2));
+  expect(screen.getByRole('button', { name: 'Tambah foto' })).toBeDisabled();
+  expect(screen.getByText(/10\/10 foto/)).toBeInTheDocument();
+});
+
+test('hasil unggahan yang gambarnya sudah dipakai item ini ditolak dan tidak menggandakan foto', async () => {
+  const resolvers = deferUploads();
+  renderField({ initial: [photo('g1')] });
+  dialogState.files = [queued('kembar.png')];
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah foto' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Pilih contoh' }));
+  await waitFor(() => expect(uploadMock).toHaveBeenCalledTimes(1));
+  resolvers['kembar.png']?.(libraryItem('g1'));
+  await waitFor(() => expect(screen.queryByTestId('attachment-pending')).not.toBeInTheDocument());
+  expect(latest.map((p) => p.guideId)).toEqual(['g1']);
+  expect(screen.getByRole('status')).toHaveTextContent('1 gambar tidak ditambahkan');
+});
+
+test('unggahan gagal tampil dengan Ulangi, tidak mengisi kuota, dan dapat dibuang', async () => {
+  uploadMock.mockRejectedValue(new Error('Server menolak'));
+  renderField();
+  dialogState.files = [queued('rusak.png')];
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah foto' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Pilih contoh' }));
+  expect(await screen.findByRole('button', { name: 'Ulangi rusak.png' })).toBeInTheDocument();
+  expect(screen.getByText('Server menolak')).toBeInTheDocument();
+  expect(screen.getByText(/0\/10 foto/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Buang rusak.png' }));
+  expect(screen.queryByTestId('attachment-pending')).not.toBeInTheDocument();
+});
+
+test('onBusyChange: true selama ada unggahan yang berjalan, false setelah selesai', async () => {
+  const resolvers = deferUploads();
+  const onBusyChange = vi.fn();
+  renderField({ onBusyChange });
+  dialogState.files = [queued('a.png')];
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah foto' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Pilih contoh' }));
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(true));
+  resolvers['a.png']?.(libraryItem('gA'));
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
 });

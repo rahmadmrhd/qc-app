@@ -4,7 +4,13 @@ import { normalizeKey } from '@shared/items';
 import { INSTRUCTION_LIMITS } from '@shared/stickers';
 import { ArrowDown, ArrowUp, ImagePlus, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { FileDialog, FileDropZone, type LibraryItem } from '@/components/file-dialog';
+import {
+  AttachDialog,
+  AttachmentView,
+  FileDropZone,
+  type LibraryItem,
+} from '@/components/file-dialog';
+import { useBackgroundUploads } from '@/components/file-dialog/use-background-uploads';
 import { LinkField, type LinkOption } from '@/components/link-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -45,6 +51,8 @@ export interface StickerInstructionsFieldProps {
   onCreateType?: (onCreated: (type: StickerTypeDto) => void) => void;
   /** Pesan galat bagian ini (skema form dan server); yang bernomor ("Foto N: …") tampil pada foto/penandanya. */
   errors?: readonly string[];
+  /** Dipanggil saat ada foto yang menunggu/sedang diunggah (form menahan Simpan selama itu). */
+  onBusyChange?: ((busy: boolean) => void) | undefined;
 }
 
 interface DialogState {
@@ -57,6 +65,7 @@ const CLOSED: DialogState = { open: false, files: [], rejected: [] };
 /** Penanda baru dari tombol (papan ketik): posisi tengah foto. */
 const CENTER = { x: 500, y: 500 } as const;
 const BU_OPTION_LIMIT = 30;
+const UPLOAD_OWNER = 'guides';
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -83,6 +92,7 @@ export function StickerInstructionsField({
   onCreateSticker,
   onCreateType,
   errors = [],
+  onBusyChange,
 }: StickerInstructionsFieldProps) {
   // Nilai terbaru (tahan balapan dengan dialog/permintaan async): dibaca ulang saat callback async berjalan.
   const valueRef = useRef(value);
@@ -96,7 +106,23 @@ export function StickerInstructionsField({
   const [copyQueue, setCopyQueue] = useState<{ id: string; name: string }[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const grouped = groupInstructionErrors(errors);
-  const full = value.length >= INSTRUCTION_LIMITS.photos;
+  // Unggahan latar milik field ini (pemegang nilainya): dibatalkan otomatis saat field dilepas. Hasil sukses langsung
+  // menjadi foto (lewat `addSelected`); yang ditolak (kembar/penuh) tetap berada di pustaka karena sumbernya tanpa `onDiscard`.
+  const uploads = useBackgroundUploads({
+    source: stickerGuideSource,
+    onUploaded: (_owner, item) => addSelected([item]) > 0,
+  });
+  const own = uploads.forOwner(UPLOAD_OWNER);
+  // Unggahan yang menunggu/berjalan sudah mengisi kuota; yang gagal tidak.
+  const reserved = own.entries.filter((entry) => entry.phase !== 'failed').length;
+  const full = value.length + reserved >= INSTRUCTION_LIMITS.photos;
+  const busy = own.busy;
+  const onBusyChangeRef = useRef(onBusyChange);
+  onBusyChangeRef.current = onBusyChange;
+  useEffect(() => {
+    onBusyChangeRef.current?.(busy);
+    return () => onBusyChangeRef.current?.(false);
+  }, [busy]);
 
   const guideOf = (id: string): GuideInfo =>
     addedGuides[id] ??
@@ -118,7 +144,7 @@ export function StickerInstructionsField({
   }, [buKey, value]);
 
   function openDialog(files: File[], rejected: { name: string; reason: string }[]) {
-    if (valueRef.current.length >= INSTRUCTION_LIMITS.photos) {
+    if (full) {
       setNotice(`Batas ${INSTRUCTION_LIMITS.photos} foto instruksi tercapai.`);
       return;
     }
@@ -126,7 +152,8 @@ export function StickerInstructionsField({
     setDialog({ open: true, files, rejected });
   }
 
-  function addSelected(items: LibraryItem[]) {
+  /** Menambah foto dari gambar pustaka; mengembalikan jumlah yang benar-benar ditambahkan. */
+  function addSelected(items: LibraryItem[]): number {
     const current = valueRef.current;
     const have = new Set(current.map((photo) => photo.guideId));
     const room = INSTRUCTION_LIMITS.photos - current.length;
@@ -142,7 +169,7 @@ export function StickerInstructionsField({
         ? `${skipped} gambar tidak ditambahkan (sudah dipakai pada item ini atau melebihi batas ${INSTRUCTION_LIMITS.photos} foto).`
         : null,
     );
-    if (added.length === 0) return;
+    if (added.length === 0) return 0;
     setAddedGuides((previous) => ({
       ...previous,
       ...Object.fromEntries(
@@ -164,6 +191,7 @@ export function StickerInstructionsField({
         ...reused.map((item) => ({ id: item.id, name: item.name })),
       ]);
     }
+    return added.length;
   }
 
   function updatePhoto(guideId: string, update: (photo: Photo) => Photo) {
@@ -174,7 +202,7 @@ export function StickerInstructionsField({
     commit(moveEntry(valueRef.current, index, index + delta));
   }
 
-  const remaining = Math.max(1, INSTRUCTION_LIMITS.photos - value.length);
+  const remaining = Math.max(1, INSTRUCTION_LIMITS.photos - value.length - reserved);
   const copying = copyQueue[0];
 
   return (
@@ -206,6 +234,14 @@ export function StickerInstructionsField({
             {...(onCreateType ? { onCreateType } : {})}
           />
         ))}
+        <AttachmentView
+          items={[]}
+          pending={own.entries}
+          layout="grid"
+          label="foto instruksi"
+          onRetry={own.retry}
+          onCancel={own.remove}
+        />
         <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
@@ -218,8 +254,8 @@ export function StickerInstructionsField({
             Tambah foto
           </Button>
           <span className="text-xs text-muted-foreground">
-            {value.length}/{INSTRUCTION_LIMITS.photos} foto. Seret gambar ke bagian ini untuk
-            mengunggah.
+            {value.length + reserved}/{INSTRUCTION_LIMITS.photos} foto. Seret gambar ke bagian ini
+            untuk mengunggah.
           </span>
         </div>
         {notice ? (
@@ -234,7 +270,7 @@ export function StickerInstructionsField({
         ))}
       </FileDropZone>
       {dialog.open ? (
-        <FileDialog
+        <AttachDialog
           open
           onOpenChange={(open) => {
             if (!open) setDialog(CLOSED);
@@ -248,7 +284,10 @@ export function StickerInstructionsField({
           initialRejected={dialog.rejected.length > 0 ? dialog.rejected : undefined}
           confirmLabel="Tambahkan"
           title="Pilih foto instruksi"
-          onSelect={addSelected}
+          onConfirm={(result) => {
+            addSelected(result.library);
+            own.add(result.files);
+          }}
         />
       ) : null}
       {copying ? (

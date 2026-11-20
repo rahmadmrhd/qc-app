@@ -134,6 +134,8 @@ export function ItemForm({
 }: ItemFormProps) {
   // Galat server pada sebuah field hilang begitu user mengoreksi field itu (dan kembali saat ada galat baru).
   const [cleared, setCleared] = useState<ReadonlySet<string>>(new Set());
+  // Foto instruksi yang masih diunggah: Simpan ditahan agar fotonya tidak tertinggal.
+  const [photosBusy, setPhotosBusy] = useState(false);
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset setiap kali galat server yang baru datang
   useEffect(() => setCleared(new Set()), [fieldErrors]);
   const serverError = (key: keyof ItemFieldErrors) =>
@@ -285,6 +287,7 @@ export function ItemForm({
               title={title}
               onCancel={onCancel}
               submitting={isSubmitting}
+              submitDisabled={photosBusy}
               busyText="Menyimpan item…"
             />
           )}
@@ -552,6 +555,7 @@ export function ItemForm({
                     types={allTypes}
                     knownGuides={guides ?? []}
                     currentItemId={itemId}
+                    onBusyChange={setPhotosBusy}
                     errors={errorTexts([...field.state.meta.errors, serverError('stickerPhotos')])}
                     {...(onCreateSticker
                       ? {
