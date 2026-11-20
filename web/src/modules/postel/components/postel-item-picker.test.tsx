@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { ItemCreateHost } from '@/modules/item/components/item-create-host';
 import { PostelItemPicker } from './postel-item-picker';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -37,7 +38,11 @@ function renderPicker(over: Partial<Parameters<typeof PostelItemPicker>[0]> = {}
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <PostelItemPicker {...props} />
+      <ItemCreateHost>
+        <form data-testid="outer-form">
+          <PostelItemPicker {...props} />
+        </form>
+      </ItemCreateHost>
     </QueryClientProvider>,
   );
   return props;
@@ -133,7 +138,10 @@ test('baris "Tambah Item" hanya bila canCreateItem; item baru dari dialog langsu
   });
   await userEvent.click(screen.getByRole('combobox', { name: 'Item' }));
   await userEvent.click(await screen.findByRole('option', { name: 'Tambah Item' }));
-  await userEvent.click(await screen.findByRole('button', { name: 'Simpan item stub' }));
+  const stub = await screen.findByRole('button', { name: 'Simpan item stub' });
+  // Aturan proyek: dialog Tambah dirender di luar pohon <form> induk (bukan hanya di luar DOM-nya).
+  expect(stub.closest('form')).toBeNull();
+  await userEvent.click(stub);
   expect(props.onChange).toHaveBeenCalledWith([
     { id: 'i1', brand: 'PBE', model: 'M5-400' },
     { id: 'new', brand: 'Baru', model: 'X1' },

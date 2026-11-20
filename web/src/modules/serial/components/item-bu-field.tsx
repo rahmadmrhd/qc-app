@@ -2,11 +2,11 @@ import type { ItemDto, SerialItemOptionDto } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
 import { proofMinimumOf } from '@shared/serials';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { LinkField, type LinkOption } from '@/components/link-field';
 import { serialItemCreateAccess } from '@/lib/link-access';
 import { meQueryOptions } from '@/modules/auth/queries';
-import { ItemFormDialog } from '@/modules/item/components/item-form-dialog';
+import { useItemCreate } from '@/modules/item/components/item-create-host';
 import { serialBuOptionsQueryOptions, serialItemOptionsQueryOptions } from '../queries';
 
 /** Item dan BU yang dipilih pada rombongan, baris, atau ubah massal. */
@@ -81,7 +81,8 @@ export function ItemBuField({
   const [term, setTerm] = useState('');
   const [buTerm, setBuTerm] = useState('');
   const [picked, setPicked] = useState<SerialItemOptionDto | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
+  // Dialog Tambah item dirender tuan rumah di luar `<form>` pemanggil; field hanya meminta lewat `useItemCreate`.
+  const itemCreate = useItemCreate();
   // Tanpa suspense: data pengguna sudah dimuat cangkang; bila belum, baris Tambah item sekadar tak tampil.
   const create = serialItemCreateAccess(useQuery(meQueryOptions()).data);
   const queryClient = useQueryClient();
@@ -127,6 +128,9 @@ export function ItemBuField({
     pickItem(option.id);
   }
 
+  const latestPick = useRef(pickCreated);
+  latestPick.current = pickCreated;
+
   function pickItem(id: string | null) {
     if (id === null) {
       setPicked(null);
@@ -163,19 +167,19 @@ export function ItemBuField({
           onSearchChange={setTerm}
           searchDebounceMs={200}
           onChange={pickItem}
-          onCreate={create.canCreate && !disabled ? () => setCreateOpen(true) : undefined}
+          onCreate={
+            create.canCreate && itemCreate.available && !disabled
+              ? () =>
+                  itemCreate.open({
+                    allowedBuIds: create.allowedBuIds,
+                    onCreated: (created) => latestPick.current(created),
+                  })
+              : undefined
+          }
           error={error}
           disabled={disabled ?? false}
         />
       </div>
-      {create.canCreate ? (
-        <ItemFormDialog
-          open={createOpen}
-          onOpenChange={setCreateOpen}
-          allowedBuIds={create.allowedBuIds}
-          onCreated={pickCreated}
-        />
-      ) : null}
       <div className="space-y-1.5">
         <LinkField
           id={`${idPrefix}-bu`}

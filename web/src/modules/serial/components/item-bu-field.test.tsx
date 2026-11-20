@@ -47,6 +47,7 @@ vi.mock('@/lib/api', async (importOriginal) => ({
   api: apiMock,
 }));
 
+import { ItemCreateHost } from '@/modules/item/components/item-create-host';
 import { defaultBuForItem, EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
 
 const BU1 = { id: 'b1', code: 'BU1' };
@@ -101,7 +102,11 @@ function renderField(initial?: ItemBuValue, me?: ReturnType<typeof makeMe>) {
   if (me) client.setQueryData(meQueryOptions().queryKey, me);
   return render(
     <QueryClientProvider client={client}>
-      <Harness {...(initial ? { initial } : {})} />
+      <ItemCreateHost>
+        <form data-testid="outer-form">
+          <Harness {...(initial ? { initial } : {})} />
+        </form>
+      </ItemCreateHost>
     </QueryClientProvider>,
   );
 }
@@ -222,7 +227,10 @@ test('dengan irisan: baris Tambah item memberi dialog hanya BU irisan; item baru
   await userEvent.click(screen.getByRole('combobox', { name: 'Item' }));
   await userEvent.click(await screen.findByRole('option', { name: 'Tambah Item' }));
   expect(dialogProps.last?.allowedBuIds).toEqual(['b1']);
-  await userEvent.click(await screen.findByRole('button', { name: 'Simpan item stub' }));
+  const stub = await screen.findByRole('button', { name: 'Simpan item stub' });
+  // Aturan proyek: dialog Tambah dirender di luar pohon <form> induk (bukan hanya di luar DOM-nya).
+  expect(stub.closest('form')).toBeNull();
+  await userEvent.click(stub);
   await waitFor(() => expect(latest).toMatchObject({ itemId: 'new', itemLabel: 'Baru X1' }));
   // BU yang tak berhak (b9) tak ikut; tersisa satu BU irisan = terisi otomatis.
   await waitFor(() => expect(buField()).toHaveValue('BU1'));

@@ -1,8 +1,8 @@
 import type { PostelItemOptionDto } from '@shared/contract';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
-import { ItemFormDialog } from '@/modules/item/components/item-form-dialog';
+import { useItemCreate } from '@/modules/item/components/item-create-host';
 import type { PickedItem } from '../lib/schemas';
 import { postelItemOptionsQueryOptions } from '../queries';
 
@@ -35,7 +35,10 @@ export function PostelItemPicker({
   canCreateItem = false,
 }: PostelItemPickerProps) {
   const [term, setTerm] = useState('');
-  const [createOpen, setCreateOpen] = useState(false);
+  // Dialog Tambah item dirender tuan rumah di luar `<form>` Postel; pemilih hanya meminta lewat `useItemCreate`.
+  const itemCreate = useItemCreate();
+  const latest = useRef({ selected, onChange });
+  latest.current = { selected, onChange };
   const { data, isFetching } = useQuery(postelItemOptionsQueryOptions(term.trim()));
   const known = new Map<string, PostelItemOptionDto | PickedItem>();
   for (const item of data?.items ?? []) known.set(item.id, item);
@@ -68,7 +71,18 @@ export function PostelItemPicker({
         onSearchChange={setTerm}
         searchDebounceMs={200}
         error={error}
-        onCreate={canCreateItem ? () => setCreateOpen(true) : undefined}
+        onCreate={
+          canCreateItem && itemCreate.available
+            ? () =>
+                itemCreate.open({
+                  onCreated: (item) =>
+                    latest.current.onChange([
+                      ...latest.current.selected,
+                      { id: item.id, brand: item.brand, model: item.model },
+                    ]),
+                })
+            : undefined
+        }
         onChange={(ids) =>
           onChange(
             ids.flatMap((id) => {
@@ -78,16 +92,6 @@ export function PostelItemPicker({
           )
         }
       />
-      {canCreateItem ? (
-        // Submit dialog tidak menjalar ke form Postel di atasnya (ItemForm menghentikan propagasi submit).
-        <ItemFormDialog
-          open={createOpen}
-          onOpenChange={setCreateOpen}
-          onCreated={(item) =>
-            onChange([...selected, { id: item.id, brand: item.brand, model: item.model }])
-          }
-        />
-      ) : null}
       {hiddenCount > 0 ? (
         <p className="text-sm text-muted-foreground">
           {`${hiddenCount} item lain tergabung di sini tetapi tidak terlihat oleh Anda; tetap terpasang.`}

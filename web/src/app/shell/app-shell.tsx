@@ -8,6 +8,7 @@ import { GuideBanner } from '@/modules/guide/components/guide-banner';
 import { GuideGreeting } from '@/modules/guide/components/guide-greeting';
 import { TourProvider } from '@/modules/guide/components/tour/tour-provider';
 import { renderTourTip } from '@/modules/guide/components/tour/tour-tip';
+import { ItemCreateHost } from '@/modules/item/components/item-create-host';
 import { ActiveLocationsProvider } from '@/modules/location/active-locations-context';
 import { LocationPicker } from '@/modules/location/location-picker';
 import { NotificationBell } from '@/modules/notification/notification-bell';
@@ -38,35 +39,37 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
   }, []);
   return (
     <TooltipProvider>
-      <ActiveLocationsProvider>
-        <SidebarProvider open={sidebarOpen} onOpenChange={onSidebarOpenChange}>
-          {/* Di dalam SidebarProvider agar mesin tur dapat membuka sidebar ponsel; overlay-nya dimuat malas. */}
-          <TourProvider renderTip={renderTourTip}>
-            <AppSidebar />
-            <SidebarInset className="min-w-0">
-              <UiUpdateBanner />
-              <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
-                <SidebarTrigger data-tour="sidebar-trigger" />
-                <AppBreadcrumb />
-                <div className="ml-auto flex items-center gap-1">
-                  <LocationPicker />
-                  <OutboxChip />
-                  <NotificationBell />
-                  <ThemeToggle />
-                  <UserMenu />
-                </div>
-              </header>
-              <ServerStatusBanner />
-              <PushOnboarding />
-              <GuideGreeting />
-              <GuideBanner />
-              <main className="flex-1 p-[var(--main-pad)] [--main-pad:1rem] md:[--main-pad:1.5rem]">
-                <PageContainer width={pageWidth}>{children ?? <Outlet />}</PageContainer>
-              </main>
-            </SidebarInset>
-          </TourProvider>
-        </SidebarProvider>
-      </ActiveLocationsProvider>
+      <ItemCreateHost>
+        <ActiveLocationsProvider>
+          <SidebarProvider open={sidebarOpen} onOpenChange={onSidebarOpenChange}>
+            {/* Di dalam SidebarProvider agar mesin tur dapat membuka sidebar ponsel; overlay-nya dimuat malas. */}
+            <TourProvider renderTip={renderTourTip}>
+              <AppSidebar />
+              <SidebarInset className="min-w-0">
+                <UiUpdateBanner />
+                <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
+                  <SidebarTrigger data-tour="sidebar-trigger" />
+                  <AppBreadcrumb />
+                  <div className="ml-auto flex items-center gap-1">
+                    <LocationPicker />
+                    <OutboxChip />
+                    <NotificationBell />
+                    <ThemeToggle />
+                    <UserMenu />
+                  </div>
+                </header>
+                <ServerStatusBanner />
+                <PushOnboarding />
+                <GuideGreeting />
+                <GuideBanner />
+                <main className="flex-1 p-[var(--main-pad)] [--main-pad:1rem] md:[--main-pad:1.5rem]">
+                  <PageContainer width={pageWidth}>{children ?? <Outlet />}</PageContainer>
+                </main>
+              </SidebarInset>
+            </TourProvider>
+          </SidebarProvider>
+        </ActiveLocationsProvider>
+      </ItemCreateHost>
     </TooltipProvider>
   );
 }
