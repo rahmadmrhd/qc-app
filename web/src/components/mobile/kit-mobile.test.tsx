@@ -11,6 +11,7 @@ import { FormPage } from '@/components/page/form-page';
 import { ListPage } from '@/components/page/list-page';
 import { ListState } from '@/components/page/list-state';
 import { SCROLL_TOP_THRESHOLD, ScrollToTop } from '@/components/page/scroll-to-top';
+import { StickyActionBar } from '@/components/page/sticky-action-bar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { mockMatchMedia } from '@/test/match-media';
 import { MobileCard } from './mobile-card';
@@ -376,4 +377,11 @@ test('Urungkan yang gagal tidak terkunci: dapat ditekan lagi untuk id yang tersi
   });
   expect(run).toHaveBeenCalledTimes(2);
   expect(run).toHaveBeenLastCalledWith(['1']);
+});
+
+test('StickyActionBar naik setinggi papan ketik layar (--kb) agar tak tertutup di iOS (review I8)', () => {
+  render(<StickyActionBar label="Aksi">isi</StickyActionBar>);
+  expect(screen.getByRole('region', { name: 'Aksi' }).className).toContain(
+    'bottom-[var(--kb,0px)]',
+  );
 });

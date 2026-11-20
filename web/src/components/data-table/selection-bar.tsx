@@ -70,10 +70,26 @@ function hintDismissed(): boolean {
  * Jalan masuk mode pilih TANPA gestur (pengguna keyboard dan pembaca layar; review I6): tombol "Pilih" di atas daftar
  * kartu, berdampingan dengan petunjuk tekan lama.
  */
-export function StartSelectButton({ label, onStart }: { label: string; onStart: () => void }) {
+export function StartSelectButton({
+  label,
+  onStart,
+  tour,
+}: {
+  label: string;
+  onStart: () => void;
+  /** `data-tour` untuk panduan interaktif. */
+  tour?: string;
+}) {
   return (
     <div className="flex justify-end">
-      <Button type="button" variant="outline" size="sm" aria-label={label} onClick={onStart}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-label={label}
+        data-tour={tour}
+        onClick={onStart}
+      >
         Pilih
       </Button>
     </div>

@@ -181,7 +181,7 @@ export function StagingCards({
       {selecting ? <SelectionBar selection={selection} ids={ids} onExit={exit} /> : null}
       {!selecting && !disabled && rows.length > 0 ? (
         <>
-          <StartSelectButton label="Pilih baris draft" onStart={enter} />
+          <StartSelectButton label="Pilih baris draft" onStart={enter} tour="serial-row-select" />
           <LongPressHint />
         </>
       ) : null}

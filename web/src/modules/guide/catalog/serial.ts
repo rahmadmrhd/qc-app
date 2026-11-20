@@ -146,23 +146,26 @@ export const SERIAL_CATAT: GuideEntry = {
       target: 'serial-row-actions',
       text: 'Detail membuka dialog Ubah baris: semua kolom baris ini bisa diubah di sana. Hapus membuang baris itu dari draft.',
       teksJikaKosong:
-        'Di layar sempit baris tampil sebagai kartu tanpa tombol aksi: ketuk kartunya untuk membuka dialog Ubah baris, tempat kamu mengubah semua kolom baris itu. Menghapus satu baris lewat centang lalu Hapus di bar aksi.',
+        'Di layar sempit baris tampil sebagai kartu tanpa tombol aksi: ketuk kartunya untuk membuka dialog Ubah baris, tempat kamu mengubah semua kolom baris itu. Menghapus satu baris: pilih dulu barisnya (tombol Pilih di atas daftar, atau tahan kartunya), lalu Hapus di bar aksi.',
       langsung: true,
       advance: 'next',
     },
     {
       target: 'serial-row-select',
-      text: 'Mau ubah atau hapus banyak baris sekaligus? Centang baris ini (atau kotak "Pilih semua" di judul tabel/daftar untuk semuanya). Begitu ada yang terpilih, bar aksi muncul dan Lanjut aktif.',
+      text: 'Mau ubah atau hapus banyak baris sekaligus? Di tabel, centang baris ini (atau kotak "Pilih semua" di judul tabel untuk semuanya). Di ponsel, ketuk tombol Pilih di atas daftar (atau tahan sebuah kartu beberapa saat) untuk masuk mode pilih, lalu ketuk kartu yang mau dipilih; "Pilih semua" ada di header mode pilih. Begitu ada yang terpilih, bar aksi muncul dan Lanjut aktif.',
       advance: 'wait',
       waitFor: 'serial-bulk',
     },
     {
       target: 'serial-bulk',
-      text: 'Bar aksi punya tiga tombol: Edit membuka dialog ubah massal (isi hanya kolom yang mau diubah untuk semua baris terpilih, kosong = tidak diubah, lalu Terapkan), Hapus membuang baris terpilih beserta foto buktinya setelah kamu konfirmasi, dan Batalkan pilihan menghapus semua centang. Panduan tidak menerapkan atau menghapus apa pun.',
+      text: 'Bar aksi punya tiga tombol: Edit membuka dialog ubah massal (isi hanya kolom yang mau diubah untuk semua baris terpilih, kosong = tidak diubah, lalu Terapkan), Hapus membuang baris terpilih beserta foto buktinya setelah kamu konfirmasi, dan Batalkan pilihan mengosongkan pilihan. Panduan tidak menerapkan atau menghapus apa pun.',
       advance: 'next',
     },
     {
       target: 'serial-save',
+      teksJikaKosong:
+        'Simpan ada di bar bawah halaman (di ponsel bar itu tersembunyi selama ada baris terpilih: keluar dari mode pilih dulu). Simpan menyimpan semua baris sebagai Serial Number berstatus Lolos. Panduan berhenti di sini: belum ada yang tersimpan.',
+      langsung: true,
       text: 'Simpan menyimpan semua baris sebagai Serial Number berstatus Lolos. Baris yang belum lengkap (termasuk foto bukti kurang) menahan Simpan; baris Cek ulang dicatat sebagai cek ulang lolos pada serial yang sudah ada (bukan serial baru) dan baris yang gagal tetap di draft. Kalau semuanya berhasil kamu kembali ke daftar. Panduan berhenti di sini: belum ada yang tersimpan, dan baris contohmu bisa dibuang dengan Kosongkan draft.',
       advance: 'next',
     },
