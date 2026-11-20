@@ -66,6 +66,14 @@ export const API_GROUP_VERSIONS: Record<string, GroupVersions> = {
   stickers: { latest: 1, deprecated: [] },
 };
 
+/**
+ * Versi klien paling rendah yang masih didukung server (keputusan pemilik 2026-11-20). Nilai awal `0.0.0` = tidak memaksa
+ * siapa pun; dinaikkan hanya bersamaan dengan penghapusan versi API yang masih dipakai installer lama, lewat PR yang dapat
+ * ditinjau (jangan dari variabel lingkungan). Dipakai daftar unduhan desktop (versi di bawahnya tidak ditampilkan) dan,
+ * di fase 3, `/api/ping` serta layar penahan desktop.
+ */
+export const MIN_CLIENT: { readonly desktop: string } = { desktop: '0.0.0' };
+
 /** Rute yang sudah dihapus dari `API_ROUTES` (dicatat agar potret kontrak tak menganggapnya hilang tanpa sengaja). */
 export interface RetiredRoute {
   id: string;

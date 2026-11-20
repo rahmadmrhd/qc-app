@@ -1286,6 +1286,7 @@ export interface ApiContract {
   'push.reportPermission': { input: PushPermissionInput; output: { ok: true } };
   'push.status': { input: null; output: PushUserStatusDto[] };
   'desktop.handoff': { input: Record<string, never>; output: DesktopHandoffDto };
+  'desktop.releases': { input: null; output: DesktopReleasesDto };
   'guides.list': { input: null; output: GuideProgressDto[] };
   'guides.mark': { input: MarkGuideInput; output: GuideProgressDto[] };
   'guides.reset': { input: ResetGuideInput; output: GuideProgressDto[] };
@@ -2009,4 +2010,30 @@ export type ExportSheetsJobDto = ExportQrJobDto;
 export interface DesktopHandoffDto {
   ticket: string;
   email: string;
+}
+
+/** Satu installer sebuah versi desktop; `url` mengarah ke rute publik `/api/desktop/app-file/<versi>/<nama>`. */
+export interface DesktopReleaseFileDto {
+  arch: 'x64' | 'arm64';
+  name: string;
+  size: number;
+  /** SHA-512 isi berkas, heksadesimal huruf kecil 128 karakter (sama dengan keluaran `Get-FileHash -Algorithm SHA512`). */
+  sha512: string;
+  url: string;
+}
+
+/** Satu versi aplikasi desktop yang terlihat dan masih didukung server (daftar unduhan, `desktop.releases`). */
+export interface DesktopReleaseDto {
+  version: string;
+  /** ISO 8601 UTC. */
+  publishedAt: string;
+  /** Catatan rilis versi ini (teks biasa untuk pengguna). */
+  changelog: string;
+  files: DesktopReleaseFileDto[];
+}
+
+/** `enabled` = false bila folder rilis belum dikonfigurasi; daftar terbaru di atas, maks. 50. */
+export interface DesktopReleasesDto {
+  enabled: boolean;
+  releases: DesktopReleaseDto[];
 }

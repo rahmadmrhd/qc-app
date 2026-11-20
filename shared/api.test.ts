@@ -341,6 +341,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'notifications.markRead': { id: 'n1' },
   'notifications.markAllRead': {},
   'desktop.handoff': {},
+  'desktop.releases': null,
   'push.config': null,
   'push.subscribe': { endpoint: 'https://push.example.test/abc', p256dh: 'BP', auth: 'au' },
   'push.unsubscribe': { endpoint: 'https://push.example.test/abc' },

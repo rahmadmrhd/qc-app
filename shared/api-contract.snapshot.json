@@ -136,6 +136,11 @@
     "path": "/desktop/handoff"
   },
   {
+    "id": "desktop.releases",
+    "verb": "GET",
+    "path": "/desktop/releases"
+  },
+  {
     "id": "exports.sheets",
     "verb": "POST",
     "path": "/exports/sheets"
