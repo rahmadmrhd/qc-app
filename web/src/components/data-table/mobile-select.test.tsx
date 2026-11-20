@@ -123,6 +123,33 @@ test('klik setelah tekan lama tidak membuka tautan; di mode pilih ketukan mengub
   expect(screen.getByRole('checkbox', { name: 'Pilih Tenda' })).not.toBeChecked();
 });
 
+test('tekan lama TANPA click susulan: ketukan pertama pada kartu lain tetap mengubah pilihan (review I1)', () => {
+  vi.useFakeTimers();
+  render(<Harness />);
+  const first = screen.getAllByRole('listitem')[0] as HTMLElement;
+  pressCard(first);
+  act(() => {
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+  });
+  fireEvent.pointerUp(first);
+  // Tanpa `click` pada kartu pertama (perangkat yang membatalkan tap setelah tekan lama): ketukan kartu kedua.
+  const second = screen.getAllByRole('listitem')[1] as HTMLElement;
+  pressCard(second);
+  fireEvent.pointerUp(second);
+  fireEvent.click(within(second).getByRole('link'));
+  expect(screen.getByRole('checkbox', { name: 'Pilih Tenda' })).toBeChecked();
+});
+
+test('menu konteks dicegah untuk sentuhan tetapi klik kanan tetikus tidak diblokir', () => {
+  render(<Harness />);
+  const first = screen.getAllByRole('listitem')[0] as HTMLElement;
+  fireEvent.pointerDown(first, { clientX: 5, clientY: 5, button: 0, pointerType: 'touch' });
+  expect(fireEvent.contextMenu(first)).toBe(false);
+  fireEvent.pointerUp(first);
+  fireEvent.pointerDown(first, { clientX: 5, clientY: 5, button: 2, pointerType: 'mouse' });
+  expect(fireEvent.contextMenu(first)).toBe(true);
+});
+
 test('jalur cadangan: Pilih di menu aksi; Pilih semua; keluar dengan tombol silang', async () => {
   render(<Harness />);
   await userEvent.click(screen.getByRole('button', { name: 'Aksi Asus' }));

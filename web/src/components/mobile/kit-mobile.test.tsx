@@ -25,6 +25,8 @@ beforeEach(() => {
   media = mockMatchMedia(false);
   localStorage.clear();
   toast.success.mockReset();
+  toast.error.mockReset();
+  toast.warning.mockReset();
 });
 afterEach(() => {
   media.restore();
@@ -262,7 +264,7 @@ test('idempoten: useBulkAction hanya satu proses per waktu', async () => {
 });
 
 test('toast hasil aksi massal memuat Urungkan bila ada jalan kembali dan menjalankannya satu kali', async () => {
-  const undo = vi.fn(async () => undefined);
+  const undo = vi.fn(async (ids: string[]) => ids);
   const { result } = renderHook(() => {
     const selection = useRowSelection('x');
     return {
@@ -291,4 +293,87 @@ test('toast hasil aksi massal memuat Urungkan bila ada jalan kembali dan menjala
   options.action.onClick();
   expect(undo).toHaveBeenCalledTimes(1);
   expect(undo).toHaveBeenCalledWith(['1']);
+});
+
+function renderUndo(options: {
+  send?: (ids: string[]) => Promise<string[]>;
+  changed?: (ids: string[]) => string[];
+  run: (ids: string[]) => Promise<readonly unknown[]>;
+  reload?: () => void;
+}) {
+  return renderHook(() => {
+    const selection = useRowSelection('x');
+    return {
+      selection,
+      bulk: useBulkAction({
+        selection,
+        send: options.send ?? (async (ids) => ids),
+        verb: 'diaktifkan',
+        reload: options.reload,
+        undo: { changed: options.changed, run: options.run },
+      }),
+    };
+  });
+}
+
+function undoOptions() {
+  return toast.success.mock.calls[0]?.[1] as { action: { onClick: () => void } };
+}
+
+test('Urungkan hanya membalik id yang benar-benar berubah (changed) dan memuat ulang sesudahnya', async () => {
+  const run = vi.fn(async (ids: string[]) => ids);
+  const reload = vi.fn();
+  const { result } = renderUndo({ changed: (ids) => ids.filter((id) => id !== '2'), run, reload });
+  act(() => {
+    result.current.selection.toggle('1');
+    result.current.selection.toggle('2');
+  });
+  await act(async () => {
+    await result.current.bulk.run();
+  });
+  await act(async () => {
+    undoOptions().action.onClick();
+  });
+  expect(run).toHaveBeenCalledTimes(1);
+  expect(run).toHaveBeenCalledWith(['1']);
+  expect(reload).toHaveBeenCalled();
+});
+
+test('Urungkan dipecah per 100 id', async () => {
+  const ids = Array.from({ length: 150 }, (_, index) => `i${index}`);
+  const run = vi.fn(async (chunk: string[]) => chunk);
+  const { result } = renderUndo({ run });
+  act(() => {
+    for (const id of ids) result.current.selection.toggle(id);
+  });
+  await act(async () => {
+    await result.current.bulk.run();
+  });
+  await act(async () => {
+    undoOptions().action.onClick();
+  });
+  expect(run).toHaveBeenCalledTimes(2);
+  expect(run.mock.calls[0]?.[0]).toHaveLength(100);
+  expect(run.mock.calls[1]?.[0]).toHaveLength(50);
+});
+
+test('Urungkan yang gagal tidak terkunci: dapat ditekan lagi untuk id yang tersisa', async () => {
+  const run = vi
+    .fn<(ids: string[]) => Promise<readonly unknown[]>>()
+    .mockRejectedValueOnce(new Error('gagal'))
+    .mockImplementation(async (ids) => ids);
+  const { result } = renderUndo({ run });
+  act(() => result.current.selection.toggle('1'));
+  await act(async () => {
+    await result.current.bulk.run();
+  });
+  await act(async () => {
+    undoOptions().action.onClick();
+  });
+  expect(toast.error).toHaveBeenCalled();
+  await act(async () => {
+    undoOptions().action.onClick();
+  });
+  expect(run).toHaveBeenCalledTimes(2);
+  expect(run).toHaveBeenLastCalledWith(['1']);
 });

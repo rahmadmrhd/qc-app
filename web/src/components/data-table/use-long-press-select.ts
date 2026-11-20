@@ -32,6 +32,7 @@ export function useLongPressSelect(selection: RowSelection | undefined, enabled:
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const origin = useRef<{ x: number; y: number } | null>(null);
   const fired = useRef(false);
+  const pointerType = useRef('touch');
   const selectionRef = useRef(selection);
   selectionRef.current = selection;
   const selectingRef = useRef(selecting);
@@ -58,10 +59,13 @@ export function useLongPressSelect(selection: RowSelection | undefined, enabled:
       if (!active) return {};
       return {
         onPointerDown: (event) => {
+          // Penanda "klik berikutnya ditelan" milik tekan lama sebelumnya dibersihkan lebih dulu: sebagian perangkat tak
+          // mengirim `click` setelah tekan lama, dan penanda basi akan menelan ketukan pertama berikutnya (review I1).
+          fired.current = false;
+          pointerType.current = event.pointerType;
           if (event.button !== 0 && event.pointerType === 'mouse') return;
           if ((event.target as HTMLElement).closest(NO_PRESS)) return;
           if (selectingRef.current) return;
-          fired.current = false;
           cancel();
           origin.current = { x: event.clientX, y: event.clientY };
           timer.current = setTimeout(() => {
@@ -80,7 +84,10 @@ export function useLongPressSelect(selection: RowSelection | undefined, enabled:
         onPointerUp: cancel,
         onPointerCancel: cancel,
         onPointerLeave: cancel,
-        onContextMenu: (event) => event.preventDefault(),
+        // Menu konteks hanya dicegah untuk sentuhan/pena: klik kanan tetikus ("buka di tab baru") tetap bekerja.
+        onContextMenu: (event) => {
+          if (pointerType.current !== 'mouse') event.preventDefault();
+        },
         onClickCapture: (event) => {
           // Klik setelah tekan lama, atau ketukan di mode pilih: ubah pilihan, bukan buka tautan.
           if (fired.current) {

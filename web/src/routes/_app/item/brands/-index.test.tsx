@@ -108,6 +108,7 @@ async function mount({ manage = true, path = '/_app/item/brands/' } = {}) {
 const callsOf = (id: string) => calls.filter((call) => call.id === id);
 
 test('pilih dua merk: Nonaktifkan memanggil brands.setStatusBatch dengan dua id', async () => {
+  live = [brand('b1', { status: 'active' }), brand('b2', { status: 'active' })];
   await mount();
   await screen.findByText('Merk b1');
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Merk b1' }));

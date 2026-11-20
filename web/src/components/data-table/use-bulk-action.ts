@@ -17,10 +17,18 @@ export interface BulkActionOptions<T> {
   /** Memuat ulang data; dipanggil bila ada tahap gagal atau id hilang (`NOT_FOUND`). */
   reload?: () => void;
   /**
-   * Jalan kembali (mis. aktifkan lagi / pulihkan): toast sukses memuat tombol `undo.label` (bawaan "Urungkan") yang
-   * menjalankan `undo.run(idYangBerhasil)` satu kali. Hanya untuk aksi yang punya lawan aman.
+   * Jalan kembali (mis. aktifkan lagi / pulihkan): toast sukses memuat tombol `undo.label` (bawaan "Urungkan").
+   * - `changed(ids)` dipanggil SEBELUM aksi berjalan dengan id terpilih dan mengembalikan id yang benar-benar akan
+   *   berubah (mis. yang belum Aktif); hanya itu yang dibalik. Tanpa `changed`, semua id yang berhasil dibalik.
+   * - `run(chunk)` membalik satu tahap (maks. `BATCH_MAX` id; dikirim bertahap seperti aksi utamanya) dan
+   *   mengembalikan hasil server per id. Gagal = tombol dapat ditekan lagi untuk id yang tersisa; setelah berjalan
+   *   `reload` dipanggil agar hasilnya langsung tampak.
    */
-  undo?: { label?: string; run: (ids: string[]) => Promise<unknown> };
+  undo?: {
+    label?: string;
+    changed?: (ids: string[]) => string[];
+    run: (ids: string[]) => Promise<readonly unknown[]>;
+  };
 }
 
 /**
@@ -43,6 +51,7 @@ export function useBulkAction<T>(options: BulkActionOptions<T>): {
     const { selection, send, verb, subject, onResults, reload, undo } = latest.current;
     const ids = [...selection.selected];
     if (ids.length === 0) return;
+    const undoable = undo ? new Set(undo.changed ? undo.changed(ids) : ids) : null;
     running.current = true;
     setBusy(true);
     try {
@@ -51,16 +60,28 @@ export function useBulkAction<T>(options: BulkActionOptions<T>): {
       if (outcome.doneIds.length > 0) selection.remove(outcome.doneIds);
       const summary = batchSummary(outcome, verb, subject);
       if (summary.kind === 'success') {
-        const doneIds = outcome.doneIds;
-        let undone = false;
-        if (undo) {
+        const undoIds = undoable ? outcome.doneIds.filter((id) => undoable.has(id)) : [];
+        if (undo && undoIds.length > 0) {
+          let pending = undoIds;
+          let undoing = false;
           toast.success(summary.message, {
             action: {
               label: undo.label ?? 'Urungkan',
               onClick: () => {
-                if (undone) return;
-                undone = true;
-                void undo.run(doneIds).catch((error: unknown) => toast.error(describeError(error)));
+                if (undoing || pending.length === 0) return;
+                undoing = true;
+                void runChunkedBatch(pending, undo.run)
+                  .then((result) => {
+                    pending = result.failedIds;
+                    const note = batchSummary(result, 'dikembalikan', subject);
+                    if (note.kind === 'success') toast.success(note.message);
+                    else if (note.kind === 'partial') toast.warning(note.message);
+                    else toast.error(note.message);
+                    reload?.();
+                  })
+                  .finally(() => {
+                    undoing = false;
+                  });
               },
             },
           });

@@ -90,12 +90,21 @@ function BrandsPage() {
   );
 
   const reload = () => void list.refetch();
+  /** Id terpilih yang memenuhi `changes` (mis. belum Aktif): hanya itu yang dibalik oleh Urungkan. */
+  const changedIds = (ids: string[], changes: (brand: BrandDto) => boolean) =>
+    ids.filter((id) => {
+      const brand = visible.find((entry) => entry.id === id);
+      return brand === undefined || changes(brand);
+    });
   const activate = useBulkAction({
     selection,
     subject: 'merk',
     verb: 'diaktifkan',
     send: (ids) => statusBatch.mutateAsync({ ids, status: 'active' }).then((r) => r.items),
-    undo: { run: (ids) => statusBatch.mutateAsync({ ids, status: 'inactive' }) },
+    undo: {
+      changed: (ids) => changedIds(ids, (brand) => brand.status !== 'active'),
+      run: (ids) => statusBatch.mutateAsync({ ids, status: 'inactive' }).then((r) => r.items),
+    },
     reload,
   });
   const deactivate = useBulkAction({
@@ -103,7 +112,10 @@ function BrandsPage() {
     subject: 'merk',
     verb: 'dinonaktifkan',
     send: (ids) => statusBatch.mutateAsync({ ids, status: 'inactive' }).then((r) => r.items),
-    undo: { run: (ids) => statusBatch.mutateAsync({ ids, status: 'active' }) },
+    undo: {
+      changed: (ids) => changedIds(ids, (brand) => brand.status !== 'inactive'),
+      run: (ids) => statusBatch.mutateAsync({ ids, status: 'active' }).then((r) => r.items),
+    },
     reload,
   });
   const remove = useBulkAction({
@@ -111,7 +123,10 @@ function BrandsPage() {
     subject: 'merk',
     verb: 'dihapus',
     send: (ids) => removeBrands.mutateAsync({ ids }).then((r) => r.ids),
-    undo: { label: 'Pulihkan', run: (ids) => restoreBrands.mutateAsync({ ids }) },
+    undo: {
+      label: 'Pulihkan',
+      run: (ids) => restoreBrands.mutateAsync({ ids }).then((r) => r.items),
+    },
     reload,
   });
   const restore = useBulkAction({

@@ -151,6 +151,7 @@ async function mount({
 const callsOf = (id: string) => calls.filter((call) => call.id === id);
 
 test('pilih dua baris: "2 dipilih" dan Nonaktifkan memanggil items.setStatusBatch dengan dua id', async () => {
+  rows = [summary('i1', { status: 'active' }), summary('i2', { status: 'active' })];
   await mount();
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Asus M-i1' }));
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Asus M-i2' }));
@@ -316,6 +317,7 @@ test('?brandId= merk terhapus: chip Merk menampilkan nama dan penanda Terhapus (
 });
 
 test('toast Nonaktifkan massal memuat Urungkan yang mengaktifkan lagi item itu', async () => {
+  rows = [summary('i1', { status: 'active' }), summary('i2', { status: 'active' })];
   await mount();
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
   await userEvent.click(
