@@ -2,7 +2,16 @@ import { BusyLabel } from '@/components/spinner';
 import { useFileUrl } from '@/modules/files/queries';
 
 /** Gambar logo dari Drive dengan keterangan saat dimuat. */
-export function LogoThumb({ id, label }: { id: string; label: string }) {
+export function LogoThumb({
+  id,
+  label,
+  className,
+}: {
+  id: string;
+  label: string;
+  /** Mengganti kelas gambar (mis. untuk pratinjau besar). */
+  className?: string;
+}) {
   const { url, isLoading, isError } = useFileUrl(id);
   if (isLoading) {
     return (
@@ -15,7 +24,11 @@ export function LogoThumb({ id, label }: { id: string; label: string }) {
     return <span className="text-xs text-destructive">Logo tidak dapat dimuat</span>;
   }
   return (
-    <img src={url} alt={label} className="h-16 w-16 rounded border bg-white object-contain p-1" />
+    <img
+      src={url}
+      alt={label}
+      className={className ?? 'h-16 w-16 rounded border bg-white object-contain p-1'}
+    />
   );
 }
 
