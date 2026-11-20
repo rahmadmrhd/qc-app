@@ -1,4 +1,4 @@
--- Soft delete untuk semua model (keputusan pemilik 2026-11-20; spek 2026-11-20-soft-delete-design.md ง2 dan ง4.1).
+-- Soft delete untuk semua model (keputusan pemilik 2026-11-20; spek 2026-11-20-soft-delete-design.md ยง2 dan ยง4.1).
 -- EXPAND-ONLY, idempoten, kompatibel mundur dengan image sebelumnya: hanya menambah kolom dan indeks unik baru
 -- (`<nama lama>_live` = kolom indeks lama + `deleted_at`) di samping indeks lama; tak ada yang dihapus di sini.
 -- Migrasi contract (membuang indeks unik lama, berpenanda `-- qc:contract`) menyusul di PR yang sama pada task
@@ -7,8 +7,8 @@
 --
 -- `deleted_at` = ISO UTC, '' = hidup (sengaja bukan NULL: NULL dalam indeks unik MariaDB selalu dianggap berbeda).
 -- `deleted_by` = email pelaku. `sticker_guide_images` SENGAJA tidak termasuk (tetap hapus permanen, keputusan 6).
--- `users_email` TETAP unik penuh, tanpa padanan `_live` (keputusan 10). Indeks serial (`serials_serial_live`) dibuat
--- bersyarat oleh `ensureSerialUniqueIndex`, bukan di sini (data lama dapat ganda; pemeriksa dump menolak PREPARE).
+-- `users_email` TETAP unik penuh, tanpa padanan `_live` (keputusan 10). Indeks serial (`serials_serial_live`) AKAN dibuat
+-- bersyarat oleh `ensureSerialUniqueIndex` pada fase 4d (belum diubah), bukan di sini (data lama dapat ganda; pemeriksa dump menolak PREPARE).
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at VARCHAR(30) NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_by VARCHAR(254) NOT NULL DEFAULT '';
