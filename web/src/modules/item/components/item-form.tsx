@@ -170,6 +170,7 @@ export function ItemForm({
   const brandLabel = (id: string) => {
     const brand = brandById(id);
     if (!brand) return undefined;
+    if (brand.deleted) return `${brand.name} — Terhapus`;
     return brand.status === 'inactive' ? `${brand.name} — nonaktif` : brand.name;
   };
   const brandTermKey = normalizeKey(brandTerm);

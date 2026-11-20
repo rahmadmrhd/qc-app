@@ -21,6 +21,27 @@ import type { ItemFieldErrors, ItemFormOutput } from '../schemas';
 import { ITEM_FIELD_KEYS, toItemFormDefaults, toSaveItemInput } from '../schemas';
 import { mergeBusinessUnits } from './default-business-units';
 
+/**
+ * Menambahkan merk milik item yang diubah bila tak ada di daftar merk hidup (merk terhapus): form menampilkan nama
+ * dan penanda "Terhapus" alih-alih id, dan opsi firmware tetap dihitung dari namanya. Status nonaktif = tak
+ * ditawarkan untuk pilihan baru (hanya tetap terpilih).
+ */
+export function mergeItemBrand(brands: readonly BrandDto[], item?: ItemDto): readonly BrandDto[] {
+  if (!item || brands.some((brand) => brand.id === item.brandId)) return brands;
+  return [
+    ...brands,
+    {
+      id: item.brandId,
+      name: item.brand,
+      status: 'inactive',
+      itemCount: 0,
+      updatedAt: '',
+      businessUnitIds: [],
+      ...(item.brandDeleted ? { deleted: { deletedAt: '', deletedBy: '' } } : {}),
+    },
+  ];
+}
+
 export interface ItemFormLists {
   brands: readonly BrandDto[];
   businessUnits: readonly BusinessUnitOptionDto[];
@@ -70,7 +91,7 @@ export function useItemFormController({
   }
 
   const formProps = {
-    brands: lists.brands,
+    brands: mergeItemBrand(lists.brands, item),
     businessUnits: item
       ? mergeBusinessUnits(lists.businessUnits, item.businessUnits)
       : lists.businessUnits,

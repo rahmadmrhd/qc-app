@@ -753,3 +753,20 @@ test('onTabErrorsChange melaporkan tab bergalat', async () => {
     }),
   );
 });
+
+test('merk terhapus yang tersimpan tampil dengan nama dan "Terhapus", bukan id', async () => {
+  const deletedBrand: BrandDto = {
+    id: 'b-del',
+    name: 'Sony',
+    status: 'inactive',
+    itemCount: 0,
+    updatedAt: '',
+    businessUnitIds: [],
+    deleted: { deletedAt: '', deletedBy: '' },
+  };
+  renderForm({
+    brands: [...brands, deletedBrand],
+    defaultValues: { ...toItemFormDefaults(), brandId: 'b-del', businessUnitIds: ['bu-a'] },
+  });
+  expect(screen.getByRole('combobox', { name: 'Merk' })).toHaveValue('Sony — Terhapus');
+});
