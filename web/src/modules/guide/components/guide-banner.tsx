@@ -1,6 +1,7 @@
 import { useRouterState } from '@tanstack/react-router';
 import { useState } from 'react';
 import { isNavParent, NAV_GROUPS } from '@/app/navigation';
+import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useMe } from '@/modules/auth/use-me';
@@ -97,31 +98,34 @@ export function GuideBanner() {
   };
 
   return (
-    <div
+    <Alert
+      color="info"
       role="status"
       data-testid="guide-banner"
-      className="flex flex-col gap-2 border-b bg-muted/60 px-4 py-3 text-sm sm:flex-row sm:items-center sm:gap-3"
+      className="rounded-none border-x-0 border-t-0 px-4 py-3"
     >
-      <p className="min-w-0 flex-1">
-        <span className="font-medium">Pertama kali di {pageLabel(offer)}?</span>{' '}
-        <span className="text-muted-foreground">Ada panduan {stepCount} langkah.</span>
-        {offer.updated ? (
-          <Badge variant="secondary" className="ml-2 align-middle">
-            Diperbarui
-          </Badge>
-        ) : null}
-      </p>
-      <div className="flex shrink-0 flex-wrap gap-2">
-        <Button type="button" size="sm" onClick={() => tour.start(entry)}>
-          Mulai
-        </Button>
-        <Button type="button" size="sm" variant="outline" onClick={hide}>
-          Nanti
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={understood}>
-          Sudah paham
-        </Button>
+      <div className="flex flex-col gap-2 text-foreground sm:flex-row sm:items-center sm:gap-3">
+        <p className="min-w-0 flex-1">
+          <span className="font-medium">Pertama kali di {pageLabel(offer)}?</span>{' '}
+          <span className="text-muted-foreground">Ada panduan {stepCount} langkah.</span>
+          {offer.updated ? (
+            <Badge variant="secondary" className="ml-2 align-middle">
+              Diperbarui
+            </Badge>
+          ) : null}
+        </p>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button type="button" size="sm" onClick={() => tour.start(entry)}>
+            Mulai
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={hide}>
+            Nanti
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={understood}>
+            Sudah paham
+          </Button>
+        </div>
       </div>
-    </div>
+    </Alert>
   );
 }

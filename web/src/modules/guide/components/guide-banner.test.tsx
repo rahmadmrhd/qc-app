@@ -62,6 +62,9 @@ describe('GuideBanner', () => {
     render(<GuideBanner />);
     const banner = screen.getByTestId('guide-banner');
     expect(banner).toHaveTextContent('Pertama kali di Serah Terima?');
+    expect(banner).toHaveAttribute('data-slot', 'alert');
+    expect(banner).toHaveAttribute('data-color', 'info');
+    expect(banner).toHaveAttribute('role', 'status');
     expect(banner).toHaveTextContent('Ada panduan 4 langkah.');
     expect(screen.getByRole('button', { name: 'Mulai' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Nanti' })).toBeInTheDocument();
