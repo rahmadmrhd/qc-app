@@ -3,11 +3,17 @@ import { cn } from "cn"
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
+import { useBackToCloseRoot } from "@/hooks/use-back-to-close"
 
 function AlertDialog({
+  open,
+  defaultOpen,
+  onOpenChange,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
-  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
+  // Ponsel: back menutup dialog (hook no-op di desktop).
+  const root = useBackToCloseRoot({ open, defaultOpen, onOpenChange })
+  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...root} {...props} />
 }
 
 function AlertDialogTrigger({

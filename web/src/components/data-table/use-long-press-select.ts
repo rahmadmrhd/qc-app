@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useBackToClose } from '@/hooks/use-back-to-close';
 import { markLongPressHintSeen } from './selection-bar';
 import type { RowSelection } from './use-row-selection';
 
@@ -139,5 +140,7 @@ export function useLongPressSelect(selection: RowSelection | undefined, enabled:
     setManual(false);
     selectionRef.current?.clear();
   }, []);
+  // Mode pilih adalah "layar" di atas daftar: back keluar dari mode pilih (butir 41b).
+  useBackToClose(selecting, exit);
   return { selecting, bind, enter, exit };
 }

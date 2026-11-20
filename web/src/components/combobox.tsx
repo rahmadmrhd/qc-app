@@ -11,6 +11,7 @@ import {
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { useBackToClose } from '@/hooks/use-back-to-close';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { cn } from '@/lib/utils';
 
@@ -271,6 +272,8 @@ export function ComboboxBase({
   const anchorRef = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<ListPlacement | null>(null);
   const phone = !useIsDesktop();
+  // Lembar bawah (daftar terlalu sempit di atas/bawah): back menutupnya lebih dulu (butir 41b).
+  useBackToClose(showList && placement?.sheet === true, close);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `chips.length` hanya memicu ukur ulang saat bingkai membesar
   useLayoutEffect(() => {
     const anchor = anchorRef.current;
