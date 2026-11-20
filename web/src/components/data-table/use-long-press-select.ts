@@ -6,6 +6,9 @@ export const LONG_PRESS_MS = 500;
 /** Geser jari melebihi ini (px) = gulir, bukan tekan lama. */
 export const LONG_PRESS_TOLERANCE = 8;
 
+/** Target yang tidak memulai tekan lama: kontrol isian, checkbox, dan pemicu menu (aksi kartu). */
+const NO_PRESS = 'input,[role=checkbox],[role=menuitem],[aria-haspopup],[data-no-longpress]';
+
 export interface LongPressBinding {
   onPointerDown: (event: PointerEvent<HTMLElement>) => void;
   onPointerMove: (event: PointerEvent<HTMLElement>) => void;
@@ -56,8 +59,7 @@ export function useLongPressSelect(selection: RowSelection | undefined, enabled:
       return {
         onPointerDown: (event) => {
           if (event.button !== 0 && event.pointerType === 'mouse') return;
-          if ((event.target as HTMLElement).closest('button,[role=menuitem],input,[role=checkbox]'))
-            return;
+          if ((event.target as HTMLElement).closest(NO_PRESS)) return;
           if (selectingRef.current) return;
           fired.current = false;
           cancel();
@@ -88,8 +90,7 @@ export function useLongPressSelect(selection: RowSelection | undefined, enabled:
             return;
           }
           if (!selectingRef.current) return;
-          if ((event.target as HTMLElement).closest('[role=checkbox],button,[role=menuitem]'))
-            return;
+          if ((event.target as HTMLElement).closest('[role=checkbox],input[type=checkbox]')) return;
           event.preventDefault();
           event.stopPropagation();
           selectionRef.current?.toggle(id);

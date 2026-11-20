@@ -1,4 +1,7 @@
 import { memo, useMemo } from 'react';
+import { LongPressHint, SelectionBar } from '@/components/data-table/selection-bar';
+import { useLongPressSelect } from '@/components/data-table/use-long-press-select';
+import type { RowSelection } from '@/components/data-table/use-row-selection';
 import { AttachmentView } from '@/components/file-dialog';
 import type { UploadEntry } from '@/components/file-dialog/use-background-uploads';
 import { cn } from '@/lib/utils';
@@ -23,6 +26,9 @@ interface CardViewProps {
   onSelect: StagingTableProps['onSelect'];
   onOpenDetail: StagingTableProps['onOpenDetail'];
   disabled: boolean;
+  /** Mode pilih (tekan lama): kotak centang tampil dan ketukan kartu mengubah pilihan. */
+  selecting: boolean;
+  bind: (id: string) => object;
   uploads: readonly UploadEntry[];
   onRetryUpload: ((key: string) => void) | undefined;
   onCancelUpload: ((key: string) => void) | undefined;
@@ -34,6 +40,8 @@ const CardView = memo(function CardView({
   onSelect,
   onOpenDetail,
   disabled,
+  selecting,
+  bind,
   uploads,
   onRetryUpload,
   onCancelUpload,
@@ -46,21 +54,24 @@ const CardView = memo(function CardView({
       data-tour="serial-row"
       data-result={row.result ?? (status.tone === 'ok' ? 'ok' : 'incomplete')}
       className={cn(
-        'flex items-start gap-3 rounded-lg border p-3',
+        'flex items-start gap-3 rounded-lg border p-3 select-none [-webkit-touch-callout:none]',
         status.tone === 'error' && 'border-destructive/40 bg-destructive/5',
         status.tone === 'warn' && 'border-warning-text/35 bg-warning-text/5',
         row.selected && 'bg-muted/60',
       )}
+      {...bind(row.clientId)}
     >
-      <input
-        type="checkbox"
-        className="mt-0.5 size-5 shrink-0 accent-primary"
-        data-tour="serial-row-select"
-        aria-label={`Pilih baris ${row.serial}`}
-        checked={row.selected}
-        disabled={disabled}
-        onChange={(event) => onSelect(row.clientId, event.target.checked)}
-      />
+      {selecting ? (
+        <input
+          type="checkbox"
+          className="mt-0.5 size-5 shrink-0 accent-primary"
+          data-tour="serial-row-select"
+          aria-label={`Pilih baris ${row.serial}`}
+          checked={row.selected}
+          disabled={disabled}
+          onChange={(event) => onSelect(row.clientId, event.target.checked)}
+        />
+      ) : null}
       <div className="min-w-0 flex-1 space-y-2">
         <button
           type="button"
@@ -119,7 +130,8 @@ const CardView = memo(function CardView({
 
 /**
  * Draft sebagai daftar kartu (layar < 768 px): tanpa scroll horizontal; mengetuk kartu membuka dialog "Ubah baris".
- * Kartu tidak membawa tombol kecil yang mudah tertekan; hapus lewat bar aksi pilihan atau dialog.
+ * Memilih beberapa baris = tekan lama kartu (mode pilih: kotak centang, ketuk = ubah pilihan, "Pilih semua" di header
+ * mode pilih); hapus lewat bar aksi pilihan atau dialog.
  */
 export function StagingCards({
   rows,
@@ -131,7 +143,20 @@ export function StagingCards({
   onRetryUpload,
   onCancelUpload,
 }: StagingCardsProps) {
-  const allSelected = rows.length > 0 && rows.every((row) => row.selected);
+  // Adaptor ke `RowSelection` agar mode pilih tahan-lama kit dipakai ulang (pilihan sebenarnya tetap di baris draft).
+  const selection = useMemo<RowSelection>(() => {
+    const selected = new Set(rows.filter((row) => row.selected).map((row) => row.clientId));
+    return {
+      selected,
+      count: selected.size,
+      toggle: (id) => onSelect(id, !selected.has(id)),
+      setAll: (_ids, on) => onSelectAll(on),
+      remove: () => undefined,
+      clear: () => onSelectAll(false),
+    };
+  }, [rows, onSelect, onSelectAll]);
+  const ids = useMemo(() => rows.map((row) => row.clientId), [rows]);
+  const { selecting, bind } = useLongPressSelect(disabled ? undefined : selection, true);
   const uploadsByRow = useMemo(() => {
     const byRow = new Map<string, UploadEntry[]>();
     for (const entry of uploadEntries ?? []) {
@@ -143,17 +168,8 @@ export function StagingCards({
   }, [uploadEntries]);
   return (
     <div className="space-y-2">
-      <label className="flex items-center gap-3 px-1 text-sm text-muted-foreground">
-        <input
-          type="checkbox"
-          className="size-5 accent-primary"
-          aria-label="Pilih semua baris"
-          checked={allSelected}
-          disabled={disabled}
-          onChange={(event) => onSelectAll(event.target.checked)}
-        />
-        Pilih semua
-      </label>
+      {selecting ? <SelectionBar selection={selection} ids={ids} /> : null}
+      {!selecting && !disabled && rows.length > 0 ? <LongPressHint /> : null}
       <ul aria-label="Draft serial yang akan disimpan" className="space-y-2">
         {rows.map((row, index) => (
           <CardView
@@ -163,6 +179,8 @@ export function StagingCards({
             onSelect={onSelect}
             onOpenDetail={onOpenDetail}
             disabled={disabled}
+            selecting={selecting}
+            bind={bind}
             uploads={uploadsByRow.get(row.clientId) ?? NO_UPLOADS}
             onRetryUpload={onRetryUpload}
             onCancelUpload={onCancelUpload}

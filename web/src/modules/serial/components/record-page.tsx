@@ -6,9 +6,11 @@ import {
   SERIAL_PROOF_LIMITS,
 } from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
+import { Camera } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { OwnerUploads } from '@/components/file-dialog/use-background-uploads';
+import { StickyActionBar } from '@/components/page/sticky-action-bar';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -964,7 +966,47 @@ export function RecordPage({
   }
   if (handleRef) handleRef.current = { save: () => handleSave(true) };
 
+  const importExportProps = {
+    rows,
+    disabled: saving || importing,
+    onImported: (result: QcsnImport, name: string) => void handleImported(result, name),
+    onImportFailed: (message: string) =>
+      setNotice({ tone: 'error', text: `Impor gagal: ${message}` }),
+    onExported: ({ exported, skipped }: { exported: number; skipped: number }) =>
+      setNotice({
+        tone: skipped > 0 ? 'warn' : 'info',
+        text:
+          skipped > 0
+            ? `${exported} baris diekspor; ${skipped} baris belum lengkap tidak diekspor`
+            : `${exported} baris diekspor`,
+      }),
+  };
+  function clearDraftRows() {
+    cancelRowUploads(rowsRef.current.map((row) => row.clientId));
+    void discardProofPhotos(proofIdsOf(rowsRef.current));
+    setAllRows([]);
+    if (!draftRef.current) clearDraft(ownerKey);
+    setNotice(null);
+    setSummary(null);
+  }
+  /** Ponsel: pindai lewat tombol kamera yang sudah ada di kolom scan (satu pemilik dialog kamera). */
+  function openCameraScan() {
+    document
+      .querySelector<HTMLButtonElement>(
+        '[data-tour="serial-scan"] button[aria-label="Scan dengan kamera"]',
+      )
+      ?.click();
+  }
+
   const hasFailed = rows.some((row) => row.result === 'error');
+
+  const saveLabel = saving ? (
+    <BusyLabel>Menyimpan…</BusyLabel>
+  ) : hasFailed ? (
+    'Coba lagi'
+  ) : (
+    `Simpan ${rows.length} serial`
+  );
   const blockedCount = rows.filter((row) => rowStatus(row).tone !== 'ok').length;
 
   return (
@@ -1097,23 +1139,7 @@ export function RecordPage({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">Draft ({rows.length} baris)</h2>
-        <ImportExportBar
-          rows={rows}
-          disabled={saving || importing}
-          onImported={(result, name) => void handleImported(result, name)}
-          onImportFailed={(message) =>
-            setNotice({ tone: 'error', text: `Impor gagal: ${message}` })
-          }
-          onExported={({ exported, skipped }) =>
-            setNotice({
-              tone: skipped > 0 ? 'warn' : 'info',
-              text:
-                skipped > 0
-                  ? `${exported} baris diekspor; ${skipped} baris belum lengkap tidak diekspor`
-                  : `${exported} baris diekspor`,
-            })
-          }
-        />
+        {desktop ? <ImportExportBar {...importExportProps} /> : null}
       </div>
 
       <div data-tour="serial-draft">
@@ -1163,49 +1189,80 @@ export function RecordPage({
         </p>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3" data-tour="serial-save">
-        <Button
-          type="button"
-          disabled={saving || importing || rows.length === 0 || uploadsBlocked}
-          onClick={() => void handleSave()}
-        >
-          {saving ? (
-            <BusyLabel>Menyimpan…</BusyLabel>
-          ) : hasFailed ? (
-            'Coba lagi'
-          ) : (
-            `Simpan ${rows.length} serial`
-          )}
-        </Button>
-        {uploadsBlocked ? (
-          <span role="status" className="text-xs text-muted-foreground">
-            {uploadsPending} foto masih diunggah atau gagal; selesaikan, ulangi, atau buang dulu.
-          </span>
-        ) : null}
-        {blockedCount > 0 ? (
-          <span className="text-xs text-muted-foreground">
-            {blockedCount} baris perlu dilengkapi atau diperbaiki.
-          </span>
-        ) : null}
-        {rows.length > 0 ? (
+      {desktop ? (
+        <div className="flex flex-wrap items-center gap-3" data-tour="serial-save">
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
-            disabled={saving}
-            onClick={() => {
-              cancelRowUploads(rowsRef.current.map((row) => row.clientId));
-              void discardProofPhotos(proofIdsOf(rowsRef.current));
-              setAllRows([]);
-              if (!draftRef.current) clearDraft(ownerKey);
-              setNotice(null);
-              setSummary(null);
-            }}
+            disabled={saving || importing || rows.length === 0 || uploadsBlocked}
+            onClick={() => void handleSave()}
           >
-            Kosongkan draft
+            {saveLabel}
           </Button>
-        ) : null}
-      </div>
+          {uploadsBlocked ? (
+            <span role="status" className="text-xs text-muted-foreground">
+              {uploadsPending} foto masih diunggah atau gagal; selesaikan, ulangi, atau buang dulu.
+            </span>
+          ) : null}
+          {blockedCount > 0 ? (
+            <span className="text-xs text-muted-foreground">
+              {blockedCount} baris perlu dilengkapi atau diperbaiki.
+            </span>
+          ) : null}
+          {rows.length > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={saving}
+              onClick={clearDraftRows}
+            >
+              Kosongkan draft
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        <>
+          {uploadsBlocked ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              {uploadsPending} foto masih diunggah atau gagal; selesaikan, ulangi, atau buang dulu.
+            </p>
+          ) : null}
+          {blockedCount > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {blockedCount} baris perlu dilengkapi atau diperbaiki.
+            </p>
+          ) : null}
+          {/* Ponsel: Simpan selalu terlihat tanpa gulir. Saat mode pilih, bar aksi pilihan mengambil alih tepi bawah. */}
+          {selectedCount === 0 ? (
+            <StickyActionBar
+              label="Aksi draft"
+              className="-mx-[var(--main-pad,1rem)] rounded-none border-x-0 border-b-0"
+            >
+              <div data-tour="serial-save" className="flex w-full items-center gap-2">
+                <Button
+                  type="button"
+                  className="flex-1"
+                  disabled={saving || importing || rows.length === 0 || uploadsBlocked}
+                  onClick={() => void handleSave()}
+                >
+                  {saveLabel}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Pindai dengan kamera"
+                  disabled={gated || saving}
+                  onClick={openCameraScan}
+                >
+                  <Camera aria-hidden />
+                </Button>
+                <ImportExportBar compact onClearDraft={clearDraftRows} {...importExportProps} />
+              </div>
+            </StickyActionBar>
+          ) : null}
+        </>
+      )}
 
       {detailRow && !saving ? (
         <RowEditDialog
