@@ -1,6 +1,6 @@
 # Dialog unggah berkas seragam (satu `FileDialog`)
 
-Tanggal: 2026-11-20. Status: DRAF untuk disetujui pemilik produk. Keputusan di bawah berasal dari pemilik produk pada 2026-11-20 kecuali ditandai "(keputusan perancang)".
+Tanggal: 2026-11-20. Status: keputusan disetujui pemilik produk 2026-11-20 (kecuali yang ditandai "(keputusan perancang)"); **dibangun 2026-11-20** (Task 1-18; penamaan akhir komponen `FileDialog`, `AttachDialog` hanya nama kerja selama pengerjaan); hasil uji Task 1 (XHR di Electron) tercatat di 5.3; uji perangkat nyata menunggu pemilik. Bagian 1 menggambarkan keadaan SEBELUM pekerjaan ini.
 
 ## 1. Tujuan dan latar belakang
 
@@ -58,7 +58,7 @@ Satu komponen di `web/src/components/file-dialog/`, dirender sebagai `AlertDialo
 
 - Tab "Unggah" (selalu) dan tab "Pustaka" (hanya bila `showLibrary` dan sumber punya pustaka, seperti sekarang).
 - Area seret-lepas + tombol "Telusuri" + tombol "Kamera" (kamera di dalam aplikasi; tampil bila `camera` aktif, peramban mendukung, dan izin tidak diblokir; bawaan aktif untuk dialog yang menerima gambar).
-- Antrean: bila permintaan HANYA gambar, tampil sebagai grid thumbnail (seperti kisi `ProofPhotoDialog`); bila memuat PDF (Postel), tampil sebagai daftar (thumbnail kecil untuk gambar, ikon untuk PDF). Ubah nama per entri hanya bila sumber punya `nameMax` dan `hideNames` tidak diset (mis. Pustaka, instruksi stiker); foto bukti dan lampiran tanpa pustaka menyembunyikan nama.
+- Antrean: bila permintaan HANYA gambar, tampil sebagai grid thumbnail (seperti kisi dialog Foto bukti sebelumnya); bila memuat PDF (Postel), tampil sebagai daftar (thumbnail kecil untuk gambar, ikon untuk PDF). Ubah nama per entri hanya bila sumber punya `nameMax` dan `hideNames` tidak diset (mis. Pustaka, instruksi stiker); foto bukti dan lampiran tanpa pustaka menyembunyikan nama.
 - Panel "berkas tidak dapat ditambahkan" satu bentuk untuk semua (daftar nama + alasan, tombol tutup).
 - Tombol konfirmasi ("Lampirkan" bawaan; label per pemanggil boleh diubah) dan "Batal". Konfirmasi TIDAK mengunggah di dalam dialog: ia menyerahkan hasil ke pemanggil dan menutup dialog.
 - Kontrak keluaran: `onConfirm({ library: LibraryItem[]; files: QueuedFile[] })` dengan `QueuedFile = { key, file, name }`. `library` = pilihan dari tab Pustaka (sudah di server); `files` = berkas baru yang akan diunggah pemanggil. Mode `single` memakai satu berkas atau satu pilihan, mode `multiple` memakai `maxFiles` (sisa kapasitas dari pemanggil).
@@ -142,7 +142,7 @@ Tempat pemakaian: galeri item, contoh stiker (`ImagePicker`), lampiran Postel, f
 
 ### 5.10 Kode yang dihapus atau dipindah
 
-Dihapus: `ProofPhotoDialog` (isinya dilebur), `use-upload-queue.ts` (diganti hook latar), input file tersembunyi dan penanganan unggah per-field (galeri, picker, Postel), set pesan validasi ganda. Dipindah: kamera dan pendukungnya ke `components/file-dialog/camera/`. `ProofCameraDialog` tidak lagi dialog terpisah milik modul Serial.
+Dihapus (selesai 2026-11-20): `ProofPhotoDialog` dan `ProofPhotoGrid` (dilebur), `use-upload-queue.ts` dan `upload-tab.tsx` (diganti hook latar dan dialog terpadu), `use-upload-image.ts` dan `useUploadFile`, input file tersembunyi dan penanganan unggah per-field (galeri, picker, Postel, editor), set pesan validasi ganda. Dipindah: kamera dan pendukungnya ke `components/file-dialog/camera/`. `ProofCameraDialog` tidak lagi dialog terpisah milik modul Serial.
 
 ## 6. Dokumentasi yang diubah dalam pekerjaan ini
 
@@ -161,7 +161,9 @@ Dihapus: `ProofPhotoDialog` (isinya dilebur), `use-upload-queue.ts` (diganti hoo
 - Catat Serial: Simpan ditahan selama unggah berjalan atau gagal, minimum foto, penjaga keluar.
 - Uji manual (pemilik): kamera ponsel nyata, progres di aplikasi desktop, unggah besar pada jaringan lambat.
 
-## 8. Diserahkan ke pembuat rencana
+## 8. Diserahkan ke pembuat rencana (terjawab saat pembangunan)
+
+Jawaban singkat: `ProofPhotoGrid` dihapus (digantikan `AttachmentView`); kartu progres dan grid di `attachment-view.tsx`; pratinjau cap di kamera tersedia lewat slot `stamp` (`proofCameraStamp`), sedangkan dialog unggah ulang foto bukti tidak memakai pratinjau cap (cap resmi tetap digambar server); progres XHR diuji di jsdom lewat `xhr-upload.test.ts` dan di Electron lewat Task 1.
 
 - Pembagian berkas dan urutan migrasi per tempat; apakah `ProofPhotoGrid` dilebur atau menjadi pembungkus.
 - Bentuk persis kartu progres dan tata letak grid pada layar sempit.
@@ -170,7 +172,7 @@ Dihapus: `ProofPhotoDialog` (isinya dilebur), `use-upload-queue.ts` (diganti hoo
 
 ## 9. Pertanyaan terbuka
 
-- Progres unggah dengan persen asli di aplikasi desktop (`app://` + proksi proses utama) belum terbukti; diputuskan lewat uji Electron di awal pekerjaan (5.3), dan bila gagal desktop memakai bar tak-tentu. Pengujian di perangkat nyata (bukan hanya skrip uji) tetap tercatat sebagai sisa uji pemilik.
+- **Terjawab 2026-11-20:** progres unggah dengan persen asli di aplikasi desktop (`app://` + proksi proses utama) tidak terbukti pada uji Electron (5.3), jadi desktop memakai bar tak-tentu (`XHR_PROGRESS_ON_DESKTOP = false`). Pengujian di perangkat nyata (bukan hanya skrip uji) tetap tercatat sebagai sisa uji pemilik.
 - Pratinjau PDF di dalam aplikasi: tidak dibuat; dapat ditambah kemudian.
 
 ## 10. Catatan keputusan (untuk disalin ke spek terkait saat diterapkan)
