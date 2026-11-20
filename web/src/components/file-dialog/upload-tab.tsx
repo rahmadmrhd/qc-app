@@ -1,10 +1,11 @@
-import { CircleAlert, CircleCheck, RotateCcw, Trash2, Upload, X } from 'lucide-react';
+import { CircleAlert, CircleCheck, RotateCcw, Trash2, Upload } from 'lucide-react';
 import { useRef } from 'react';
 import { Spinner } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { formatBytes, partitionByType } from './accept';
 import { FileDropZone } from './file-drop-zone';
 import { InlineName } from './inline-name';
+import { RejectedList } from './rejected-list';
 import type { UploadQueue } from './use-upload-queue';
 
 export interface UploadTabProps {
@@ -83,33 +84,7 @@ export function UploadTab({
         </p>
       </div>
 
-      {rejected.length > 0 ? (
-        <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
-          <div className="flex items-start justify-between gap-2">
-            <p className="font-medium text-destructive">
-              {rejected.length} berkas tidak dapat ditambahkan
-            </p>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-xs"
-              aria-label="Tutup daftar berkas ditolak"
-              onClick={queue.clearRejected}
-            >
-              <X />
-            </Button>
-          </div>
-          <ul aria-label="Berkas ditolak" className="mt-1 space-y-0.5">
-            {rejected.map((item, index) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: nama berkas boleh kembar
-              <li key={`${item.name}-${index}`} className="break-words">
-                <span className="font-medium">{item.name}</span>
-                <span className="text-muted-foreground"> — {item.reason}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
+      <RejectedList items={rejected} onClear={queue.clearRejected} />
 
       {entries.length > 0 ? (
         <ul aria-label="Antrean unggah" className="min-h-0 flex-1 space-y-1 overflow-y-auto">

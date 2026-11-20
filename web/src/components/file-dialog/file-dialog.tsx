@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { type FileCategory, resolveAccept } from './accept';
+import { libraryItemToAttachment } from './attachment-view';
 import { errorText } from './error-text';
 import { LibraryTab } from './library-tab';
 import { PreviewDialog } from './preview-dialog';
@@ -302,7 +303,10 @@ export function FileDialog({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <PreviewDialog item={preview} onClose={() => setPreview(null)} />
+      <PreviewDialog
+        item={preview ? libraryItemToAttachment(preview) : null}
+        onClose={() => setPreview(null)}
+      />
     </>
   );
 }

@@ -7,6 +7,7 @@ import {
   FileDropZone,
   type LibraryItem,
   LibraryTab,
+  libraryItemToAttachment,
   PreviewDialog,
 } from '@/components/file-dialog';
 import { Button } from '@/components/ui/button';
@@ -93,7 +94,10 @@ export function GuideLibraryPage({ canUpload }: { canUpload: boolean }) {
           }}
         />
       ) : null}
-      <PreviewDialog item={preview} onClose={() => setPreview(null)} />
+      <PreviewDialog
+        item={preview ? libraryItemToAttachment(preview) : null}
+        onClose={() => setPreview(null)}
+      />
     </>
   );
 }
