@@ -9,51 +9,26 @@
 // Kemunculan yang sah tanpa penyaring dicatat di `SOFT_DELETE_EXEMPT` beserta alasannya.
 
 export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
-  // Fase 3 (item, brand)
+  // Modul item/brand membaca tabel milik fase lain (items/brands sendiri sudah disaring di fase 3: lihat EXEMPT):
+  // business_units (4c), qr_designs/manual_book_versions/postels (4b), stickers dan turunannya (4a).
   'server/src/modules/brand/repo.ts': [
-    'brands@1#66ad97fc',
     'business_units@1#699ffdd3',
     'business_units@2#d9475f00',
     'business_units@3#0faa6f9a',
     'business_units@4#6492887a',
-    'brands@2#7a248a06',
-    'brands@3#fca7a41a',
-    'brands@4#7a248a06',
-  ],
-  'server/src/modules/brand/service.ts': [
-    'brands@1#d056d0b2',
-    'brands@2#4084743c',
-    'items@1#759837a3',
   ],
   'server/src/modules/item/repo.ts': [
-    'items@1#ebd0f806',
     'item_business_units@1#1236ca45',
     'business_units@1#1236ca45',
-    'items@2#e3b205b7',
-    'items@3#4e671591',
     'qr_designs@1#6d982a3a',
     'manual_book_versions@1#6d982a3a',
     'manual_book_versions@2#6d982a3a',
     'stickers@1#6d982a3a',
-    'items@4#6d982a3a',
-    'items@5#7dc4cfed',
-    'items@6#2bbba95b',
     'postels@1#2bbba95b',
     'item_business_units@2#69d917f0',
     'item_business_units@3#f44ff848',
-    'business_units@2#fe17c7d8',
-    'items@7#da5f0736',
-    'brands@1#da5f0736',
-    'brands@2#2eb4a4cf',
   ],
   'server/src/modules/item/service.ts': [
-    'brands@1#5f4de088',
-    'items@1#61651cdd',
-    'brands@2#61651cdd',
-    'items@2#42aaf5e4',
-    'brands@3#42aaf5e4',
-    'items@3#42aaf5e4',
-    'brands@4#42aaf5e4',
     'stickers@1#5184736e',
     'sticker_types@1#5184736e',
     'sticker_types@2#4f247cff',
@@ -128,8 +103,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'items@3#02e2a2d0',
     'brands@3#02e2a2d0',
     'items@4#abf12ed1',
-    'items@5#d69bad47',
-    'brands@4#d69bad47',
   ],
   'server/src/modules/postel/repo.ts': [
     'postels@1#0eefd984',
@@ -151,8 +124,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'brands@2#adbf1807',
     'items@3#8787746b',
     'qr_designs@1#7892692c',
-    'items@4#f8048465',
-    'brands@3#f8048465',
     'manual_book_versions@1#1a057869',
     'stickers@1#1a057869',
     'manual_book_versions@2#1a057869',
@@ -178,7 +149,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'locations@1#0ffd7332',
     'business_units@1#d10a2860',
     'business_units@2#fe17c7d8',
-    'item_business_units@1#d5556ea1',
   ],
   'server/src/modules/customer/repo.ts': [
     'customers@1#96f7892e',
@@ -333,8 +303,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'locations@2#92c7c99c',
   ],
   'server/src/modules/serial/service.ts': [
-    'items@1#8dc70e76',
-    'brands@1#8dc70e76',
     'item_business_units@1#43393540',
     'business_units@1#43393540',
     'business_units@2#f25b4f00',
@@ -346,8 +314,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
   'server/src/modules/desktop/catalog.ts': [
     'business_units@1#219cc539',
     'locations@1#60985b63',
-    'items@1#98266f5f',
-    'brands@1#98266f5f',
     'sticker_types@1#122492eb',
     'stickers@1#483e4878',
   ],
@@ -380,4 +346,52 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'nameGuardStmt: penjaga TULIS (SELECT ... FOR UPDATE) atas baris merk/customer yang baru dibaca penulis; hapus/pulihkan memakai soft-delete.ts. Tabel dinamis (brands|customers).',
   'server/src/modules/backup/restore.ts#*dinamis@1#4b20ad1c':
     'Pemulihan cadangan: menghitung SEMUA baris tiap tabel di skema pemulihan untuk verifikasi; baris terhapus (soft delete) memang ikut dicadangkan dan harus terhitung.',
+  'server/src/core/soft-delete.ts#*dinamis@1#fd86e8cd':
+    'versionGuardStmt: penjaga TULIS (SELECT ... FOR UPDATE) atas baris yang baru dibaca perencana hapus/pulihkan; menilai keadaan terhapus lewat parameter `state`, bukan lewat penyaring. Tabel dinamis.',
+  'server/src/modules/brand/repo.ts#brands@3#7a248a06':
+    'Baca/tulis merk menurut id oleh pemanggil yang menilai `deletedAt` sendiri (hapus, pulihkan, status; rujukan merk item tetap sah walau terhapus).',
+  'server/src/modules/brand/repo.ts#brands@5#7a248a06':
+    'Baca/tulis merk menurut id oleh pemanggil yang menilai `deletedAt` sendiri (hapus, pulihkan, status; rujukan merk item tetap sah walau terhapus).',
+  'server/src/modules/brand/service.ts#brands@3#7a248a06':
+    'Baca merk menurut id (hidup atau terhapus) untuk hapus/pulihkan/status; pemanggil menilai `deletedAt`.',
+  'server/src/modules/desktop/catalog.ts#brands@1#309d8a43':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/item/repo.ts#items@2#ebd0f806':
+    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
+  'server/src/modules/item/repo.ts#items@3#e3b205b7':
+    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
+  'server/src/modules/item/repo.ts#items@4#4e671591':
+    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
+  'server/src/modules/item/repo.ts#items@5#6d982a3a':
+    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
+  'server/src/modules/item/repo.ts#items@6#7dc4cfed':
+    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
+  'server/src/modules/item/repo.ts#items@7#2bbba95b':
+    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
+  'server/src/modules/item/repo.ts#brands@1#1b357af7':
+    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
+  'server/src/modules/item/repo.ts#items@9#eab0e51b':
+    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
+  'server/src/modules/item/repo.ts#brands@2#eab0e51b':
+    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
+  'server/src/modules/item/repo.ts#brands@3#2eb4a4cf':
+    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
+  'server/src/modules/item/service.ts#brands@1#e236d2d5':
+    'JOIN merk untuk nama tampilan/penjaga: item disaring `liveWhere` di kueri yang sama; merk terhapus tetap memberi nama (T1).',
+  'server/src/modules/item/service.ts#brands@2#c9e5bc97':
+    'JOIN merk untuk nama tampilan/penjaga: item disaring `liveWhere` di kueri yang sama; merk terhapus tetap memberi nama (T1).',
+  'server/src/modules/item/service.ts#brands@3#c01510e4':
+    'JOIN merk untuk nama tampilan/penjaga: item disaring `liveWhere` di kueri yang sama; merk terhapus tetap memberi nama (T1).',
+  'server/src/modules/item/service.ts#brands@4#1d26e0dc':
+    'JOIN merk untuk nama tampilan/penjaga: item disaring `liveWhere` di kueri yang sama; merk terhapus tetap memberi nama (T1).',
+  'server/src/modules/item/service.ts#brands@5#1d26e0dc':
+    'JOIN merk untuk nama tampilan/penjaga: item disaring `liveWhere` di kueri yang sama; merk terhapus tetap memberi nama (T1).',
+  'server/src/modules/postel/items.ts#brands@4#e8d77043':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/qrcode/items.ts#brands@3#b9169b9d':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/service.ts#brands@1#4f1cc96e':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/brand/service.ts#items@1#759837a3':
+    'Ganti nama merk: mengunci (FOR UPDATE) dan menurunkan ulang `items.key` SEMUA item merk itu, termasuk yang terhapus (T4: kunci item terhapus ikut berubah agar tetap konsisten saat dipulihkan).',
 };

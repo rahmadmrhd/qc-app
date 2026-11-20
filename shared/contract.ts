@@ -1,4 +1,13 @@
 import type { Assignment, LocationPermissionMap } from './assignments';
+import type {
+  BatchResult,
+  IdBatchInput,
+  ListStatusFilter,
+  RemoveBatchResult,
+  RemoveResult,
+  SoftDeleteInfo,
+  StatusBatchInput,
+} from './batch';
 import type { BuAssignment, BuPermissionMap } from './business-units';
 import type { GuideProgressDto } from './guides';
 import type { HandoverStatus } from './handover';
@@ -391,6 +400,17 @@ export interface BrandDto {
   updatedAt: string;
   /** BU bawaan merk (terurut menurut kode BU); hanya mengisi otomatis form item, tidak memberi hak apa pun. */
   businessUnitIds: string[];
+  /** Ada hanya pada merk terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+}
+
+export interface ListBrandsInput {
+  /** Bawaan = merk hidup (aktif + nonaktif). `deleted` hanya bagi `item: manage`; selain itu `FORBIDDEN`. */
+  status?: ListStatusFilter;
+}
+
+export interface GetBrandInput {
+  id: string;
 }
 
 export interface SaveBrandInput {
@@ -617,6 +637,10 @@ export interface ItemSummaryDto {
   /** Semua BU item (bukan hanya yang terlihat user), terurut menurut kode. */
   businessUnits: BusinessUnitRefDto[];
   updatedAt: string;
+  /** Ada hanya pada item terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+  /** True bila merk item ini terhapus (rujukan tampil dengan nama + "Terhapus"). */
+  brandDeleted?: boolean;
 }
 
 /** Manual Book sebuah item: konfigurasi QR yang menaunginya dan versi terbarunya. */
@@ -1198,9 +1222,19 @@ export interface ApiContract {
   'stickerGuides.remove': { input: RemoveStickerGuideInput; output: { id: string } };
   'stickerGuides.thumbnail': { input: GetStickerGuideThumbInput; output: FileContentDto };
   'stickerGuides.usages': { input: ListGuideUsagesInput; output: GuideUsageDto[] };
-  'brands.list': { input: null; output: BrandDto[] };
+  'brands.list': { input: ListBrandsInput | null; output: BrandDto[] };
+  /** Merk terhapus hanya bagi `item: manage`; selain itu `NOT_FOUND`. */
+  'brands.get': { input: GetBrandInput; output: BrandDto };
   'brands.save': { input: SaveBrandInput; output: BrandDto };
   'brands.setStatus': { input: SetBrandStatusInput; output: BrandDto };
+  /** Batch atomik (maks. `BATCH_MAX` id): satu gagal = tidak ada yang berubah; status sama = bukan galat. */
+  'brands.setStatusBatch': { input: StatusBatchInput; output: BatchResult<BrandDto> };
+  /** Hapus lunak: hanya merk Nonaktif; hapus ulang = sukses tanpa audit. */
+  'brands.remove': { input: GetBrandInput; output: RemoveResult };
+  'brands.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  /** Pulihkan: kembali Nonaktif. */
+  'brands.restore': { input: GetBrandInput; output: BrandDto };
+  'brands.restoreBatch': { input: IdBatchInput; output: BatchResult<BrandDto> };
   'stickerTypes.list': { input: null; output: StickerTypeDto[] };
   'stickerTypes.save': { input: SaveStickerTypeInput; output: StickerTypeDto };
   'stickerTypes.setStatus': { input: SetStickerTypeStatusInput; output: StickerTypeDto };
@@ -1232,6 +1266,14 @@ export interface ApiContract {
   'items.get': { input: GetItemInput; output: ItemDto };
   'items.save': { input: SaveItemInput; output: ItemDto };
   'items.setStatus': { input: SetItemStatusInput; output: ItemDto };
+  /** Batch atomik (maks. `BATCH_MAX` id): `manage` pada SEMUA BU tiap item; di luar hak = seluruh permintaan `NOT_FOUND`. */
+  'items.setStatusBatch': { input: StatusBatchInput; output: BatchResult<ItemDto> };
+  /** Hapus lunak: hanya item Nonaktif; hapus ulang = sukses tanpa audit. */
+  'items.remove': { input: GetItemInput; output: RemoveResult };
+  'items.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  /** Pulihkan: kembali Nonaktif; ditolak generik bila merk+tipe/nama lainnya kini dipakai item hidup. */
+  'items.restore': { input: GetItemInput; output: ItemDto };
+  'items.restoreBatch': { input: IdBatchInput; output: BatchResult<ItemDto> };
   'qrcodes.list': { input: null; output: QrDesignDto[] };
   'qrcodes.get': { input: QrDesignRefInput; output: QrDesignDto };
   'qrcodes.versions': { input: QrDesignRefInput; output: QrVersionDto[] };
@@ -1333,7 +1375,11 @@ export interface ListItemsPageInput {
   limit?: number;
   /** Pencarian kunci (awalan/substring), opsional. */
   query?: string;
-  status?: ItemStatus;
+  /**
+   * Bawaan = item hidup (aktif + nonaktif; `all` sama). `deleted` = hanya item terhapus, hanya bagi pemegang
+   * `item: manage` pada minimal satu BU (selain itu `FORBIDDEN`) dan terbatas pada BU ber-`manage` itu.
+   */
+  status?: ListStatusFilter;
   /** `none` = hanya item tanpa instruksi stiker. */
   instruction?: 'none';
   /** Filter item menurut penanda ke stiker tertentu (bersama `stickerMode`). */

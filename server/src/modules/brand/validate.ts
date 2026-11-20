@@ -1,6 +1,11 @@
 import type { ObjectReader } from '@server/core/validate';
 import { readObject } from '@server/core/validate';
-import type { SaveBrandInput, SetBrandStatusInput } from '@shared/contract';
+import type {
+  GetBrandInput,
+  ListBrandsInput,
+  SaveBrandInput,
+  SetBrandStatusInput,
+} from '@shared/contract';
 import { ITEM_LIMITS, normalizeKey } from '@shared/items';
 
 const BRAND_STATUS_VALUES = ['active', 'inactive'] as const;
@@ -45,4 +50,28 @@ export function validateSetBrandStatus(raw: unknown): SetBrandStatusInput {
   const status = reader.oneOf('status', BRAND_STATUS_VALUES);
   reader.done();
   return { id, status };
+}
+
+/** `id` saja (get, remove, restore). */
+export function validateGetBrand(raw: unknown): GetBrandInput {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true, max: 100 });
+  reader.done();
+  return { id };
+}
+
+const BRAND_LIST_STATUS_VALUES = ['active', 'inactive', 'deleted', 'all'] as const;
+
+/** Daftar merk: input boleh kosong; `status` opsional (`deleted` hanya bagi `item: manage`, dicek di service). */
+export function validateListBrands(raw: unknown): ListBrandsInput | null {
+  if (raw === null || raw === undefined) return null;
+  const reader = readObject(raw);
+  const value = reader.raw('status');
+  if (value === undefined || value === null || value === '') {
+    reader.done();
+    return {};
+  }
+  const status = reader.oneOf('status', BRAND_LIST_STATUS_VALUES);
+  reader.done();
+  return { status };
 }

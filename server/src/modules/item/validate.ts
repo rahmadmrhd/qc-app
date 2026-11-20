@@ -1,5 +1,6 @@
 import type { ObjectReader } from '@server/core/validate';
 import { readObject } from '@server/core/validate';
+import type { ListStatusFilter } from '@shared/batch';
 import type {
   GetItemInput,
   ItemAccessoryDto,
@@ -436,6 +437,8 @@ export const ITEM_PAGE_DEFAULT_LIMIT = 20;
 export const ITEM_PAGE_MAX_LIMIT = 50;
 
 /** Daftar item berhalaman: input boleh kosong; `cursor` buram (kunci item terakhir), `query` memakai kunci ternormalisasi. */
+const ITEM_LIST_STATUS_VALUES = ['active', 'inactive', 'deleted', 'all'] as const;
+
 export function validateListItems(raw: unknown): ListItemsPageInput {
   const reader = readObject(raw ?? {});
   const cursor = reader.raw('cursor');
@@ -453,9 +456,9 @@ export function validateListItems(raw: unknown): ListItemsPageInput {
   }
   const query = reader.str('query', { max: 100 });
   const statusRaw = reader.raw('status');
-  let status: ItemStatus | undefined;
+  let status: ListStatusFilter | undefined;
   if (statusRaw !== undefined && statusRaw !== null && statusRaw !== '') {
-    status = reader.oneOf('status', ITEM_STATUS_VALUES);
+    status = reader.oneOf('status', ITEM_LIST_STATUS_VALUES);
   }
   const hasValue = (raw: unknown): boolean => raw !== undefined && raw !== null && raw !== '';
   let instruction: 'none' | undefined;

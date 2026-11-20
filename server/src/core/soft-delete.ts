@@ -3,7 +3,7 @@ import { CAS_FAIL_SQL } from './cas';
 import type { DbStatement, Preparer } from './db';
 
 export { baseIndexName } from './index-names';
-export { validateIdBatch, validateVersionedBatch } from './validate';
+export { validateIdBatch, validateStatusBatch, validateVersionedBatch } from './validate';
 
 /**
  * Tabel ber-soft-delete (migrasi 0027; rancangan `docs/superpowers/specs/2026-11-20-soft-delete-design.md` §4.1).
@@ -98,6 +98,44 @@ export function requireExistsStmt(db: Preparer, table: SoftDeleteTable, id: stri
       `SELECT CASE WHEN EXISTS (SELECT 1 FROM ${checkedTable(table)} WHERE id = ?) THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok`,
     )
     .bind(id);
+}
+
+/**
+ * Penjaga versi untuk `batch()` hapus/pulihkan/status (tabel dengan kolom `updated_at`): mengunci baris (`FOR UPDATE`)
+ * lalu membatalkan seluruh batch (`CAS_FAIL_SQL`) bila `updated_at` bukan yang dibaca perencana ATAU keadaan hapusnya
+ * sudah berubah (`state`: `live` = harus hidup, `deleted` = harus terhapus). Penulis serentak yang lolos lebih dulu
+ * menaikkan `updated_at` (lihat `stampStmt`), sehingga yang kedua gagal di sini dan `runCas` merencanakan ulang
+ * (mis. hapus yang menyusul hapus = "sudah terhapus" = sukses tanpa audit).
+ */
+export function versionGuardStmt(
+  db: Preparer,
+  table: SoftDeleteTable,
+  id: string,
+  updatedAt: string,
+  state: 'live' | 'deleted',
+): DbStatement {
+  const stateSql = state === 'live' ? "deleted_at = ''" : "deleted_at <> ''";
+  return db
+    .prepare(
+      `SELECT CASE WHEN updated_at = ? AND ${stateSql} THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM ${checkedTable(table)} WHERE id = ? FOR UPDATE`,
+    )
+    .bind(updatedAt, id);
+}
+
+/**
+ * Menaikkan `updated_at`/`updated_by` (versi baru) sesudah hapus/pulihkan, agar penulis lain yang merencanakan dari
+ * versi lama gagal CAS-nya. Dijalankan SETELAH `softDeleteStmt`/`restoreStmt` di `batch()` yang sama.
+ */
+export function stampStmt(
+  db: Preparer,
+  table: SoftDeleteTable,
+  id: string,
+  now: string,
+  actor: string,
+): DbStatement {
+  return db
+    .prepare(`UPDATE ${checkedTable(table)} SET updated_at = ?, updated_by = ? WHERE id = ?`)
+    .bind(now, actor, id);
 }
 
 /** Anak yang keunikannya ikut induk (mis. `postel_numbers` lewat `postel_id`). */

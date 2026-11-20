@@ -1,13 +1,36 @@
 import { writeAudit } from '@server/core/audit';
-import { isGuardFailure, nameGuardStmt, runCas } from '@server/core/cas';
+import { isGuardFailure } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
 import type { DbStatement, DbTx } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { type PlanOutcome, runRecordBatch, runSingleRecord } from '@server/core/record-batch';
+import {
+  liveWhere,
+  restoreStmt,
+  softDeleteStmt,
+  stampStmt,
+  versionGuardStmt,
+} from '@server/core/soft-delete';
+import type { UserContext } from '@server/modules/access/context';
 import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
-import type { BrandDto, SaveBrandInput, SetBrandStatusInput } from '@shared/contract';
+import type {
+  BatchResult,
+  IdBatchInput,
+  RemoveBatchResult,
+  RemoveResult,
+  StatusBatchInput,
+} from '@shared/batch';
+import type {
+  BrandDto,
+  GetBrandInput,
+  ListBrandsInput,
+  SaveBrandInput,
+  SetBrandStatusInput,
+} from '@shared/contract';
 import { itemKey, normalizeKey } from '@shared/items';
+import { hasLevel } from '@shared/permissions';
 import type { BrandBuBrief, BrandRecord, BrandRow } from './repo';
 import {
   activeBuGuardStmt,
@@ -46,6 +69,9 @@ function toBrandDto(brand: BrandRecord, businessUnitIds: readonly string[]): Bra
     itemCount: brand.itemCount,
     updatedAt: brand.updatedAt,
     businessUnitIds: [...businessUnitIds],
+    ...(brand.deletedAt === ''
+      ? {}
+      : { deleted: { deletedAt: brand.deletedAt, deletedBy: brand.deletedBy } }),
   };
 }
 
@@ -100,6 +126,8 @@ function newBrandRecord(env: Env, name: string, actor: ActorRef): BrandRecord {
     createdAt: now,
     updatedAt: now,
     updatedBy: actor.email,
+    deletedAt: '',
+    deletedBy: '',
   };
 }
 
@@ -128,16 +156,43 @@ export function createBrandStmts(
   ];
 }
 
-/** Daftar merk beserta BU bawaan: dua kueri dalam SATU `batch()` (satu kueri tambahan, bukan N+1). */
-export async function listBrandDtos(env: Env): Promise<BrandDto[]> {
+/**
+ * Daftar merk beserta BU bawaan: dua kueri dalam SATU `batch()` (satu kueri tambahan, bukan N+1). Bawaan = merk hidup
+ * (`status` `active`/`inactive` menyaring lagi; `all` sama dengan bawaan). `deleted` = hanya merk terhapus, hanya bagi
+ * `item: manage` (selain itu `FORBIDDEN`).
+ */
+export async function listBrandDtos(
+  env: Env,
+  input: ListBrandsInput | null,
+  user: UserContext,
+): Promise<BrandDto[]> {
+  const filter = input?.status;
+  if (filter === 'deleted' && !hasLevel(user.permissions.item, 'manage')) {
+    throw appError('FORBIDDEN', 'Anda tidak berhak melihat merk terhapus');
+  }
   const [brandResult, defaultResult] = await env.DB.batch([
-    brandsStatement(env),
+    brandsStatement(env, filter === 'deleted' ? 'deleted' : 'live'),
     brandDefaultsStatement(env.DB),
   ]);
   const defaults = brandDefaultsFromResult(defaultResult ?? { results: [] });
   return brandsFromResult(brandResult ?? { results: [] })
+    .filter((brand) => filter !== 'active' || brand.status === 'active')
+    .filter((brand) => filter !== 'inactive' || brand.status === 'inactive')
     .map((brand) => toBrandDto(brand, defaults.get(brand.id) ?? []))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Satu merk menurut id. Merk terhapus hanya bagi `item: manage`; selain itu `NOT_FOUND` (seperti merk tak dikenal). */
+export async function getBrandDto(
+  env: Env,
+  input: GetBrandInput,
+  user: UserContext,
+): Promise<BrandDto> {
+  const found = await loadBrandAny(env, input.id);
+  if (!found || (found.brand.deletedAt !== '' && !hasLevel(user.permissions.item, 'manage'))) {
+    throw appError('NOT_FOUND', 'Merk tidak ditemukan');
+  }
+  return toBrandDto(found.brand, found.buIds);
 }
 
 /** Item per pernyataan `UPDATE` ganti nama (2 nilai terikat per item; driver tanpa batas parameter). */
@@ -196,7 +251,7 @@ async function updateBrand(
 ): Promise<BrandDto> {
   return env.DB.transaction(async (tx) => {
     const row = await tx
-      .prepare(`SELECT ${BRAND_COLUMNS} FROM brands WHERE id = ? FOR UPDATE`)
+      .prepare(`SELECT ${BRAND_COLUMNS} FROM brands WHERE id = ? AND ${liveWhere()} FOR UPDATE`)
       .bind(id)
       .first<BrandRow>();
     const existing = row ? brandsFromResult({ results: [row] })[0] : undefined;
@@ -221,7 +276,9 @@ async function updateBrand(
     let own: Array<{ id: string; next: string }> = [];
     if (nameChanged) {
       const clash = await tx
-        .prepare('SELECT 1 AS hit FROM brands WHERE `key` = ? AND id <> ? LIMIT 1')
+        .prepare(
+          `SELECT 1 AS hit FROM brands WHERE \`key\` = ? AND id <> ? AND ${liveWhere()} LIMIT 1`,
+        )
         .bind(key, id)
         .first();
       if (clash) throw appError('CONFLICT', NAME_TAKEN_MESSAGE, { name: NAME_TAKEN_MESSAGE });
@@ -307,52 +364,194 @@ export async function saveBrand(
   return toBrandDto(created, sortByBuCode(input.businessUnitIds, bus));
 }
 
-export async function setBrandStatus(
-  env: Env,
-  input: SetBrandStatusInput,
-  actor: ActorRef,
-): Promise<BrandDto> {
-  // Penjaga nama: ganti nama yang menyela membatalkan batch dan keadaan dimuat ulang (audit memakai nama terkini).
-  return runCas(() => setBrandStatusOnce(env, input, actor), BRAND_STALE_MESSAGE);
+const BRAND_STALE_MESSAGE = 'Merk diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
+const BRAND_NOT_FOUND = 'Merk tidak ditemukan';
+
+type LoadedBrand = { brand: BrandRecord; buIds: string[] };
+
+/** Merk (hidup atau terhapus) menurut id beserta id BU bawaannya; `null` bila id tak dikenal. */
+async function loadBrandAny(env: Env, id: string): Promise<LoadedBrand | null> {
+  const [brandResult, defaultResult] = await env.DB.batch([
+    env.DB.prepare(`SELECT ${BRAND_COLUMNS} FROM brands WHERE id = ?`).bind(id),
+    brandDefaultsOfStatement(env.DB, id),
+  ]);
+  const brand = brandsFromResult(brandResult ?? { results: [] })[0];
+  if (!brand) return null;
+  return { brand, buIds: brandDefaultsFromResult(defaultResult ?? { results: [] }).get(id) ?? [] };
 }
 
-const BRAND_STALE_MESSAGE = 'Merk diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
+/** Pemuat perencana: merk menurut id, harus ada (selain itu `NOT_FOUND`). `live` menolak merk terhapus. */
+async function loadBrandForAction(
+  env: Env,
+  id: string,
+  state: 'live' | 'any',
+): Promise<LoadedBrand> {
+  const found = await loadBrandAny(env, id);
+  if (!found || (state === 'live' && found.brand.deletedAt !== '')) {
+    throw appError('NOT_FOUND', BRAND_NOT_FOUND);
+  }
+  return found;
+}
 
-async function setBrandStatusOnce(
+/** Perencana ubah status (merk HIDUP). Status sama = `unchanged`. Penjaga versi membatalkan batch bila merk berubah. */
+export function planBrandStatus(
+  env: Env,
+  found: LoadedBrand,
+  status: 'active' | 'inactive',
+  actor: ActorRef,
+): PlanOutcome<BrandDto> {
+  const { brand, buIds } = found;
+  if (brand.status === status) return { unchanged: toBrandDto(brand, buIds) };
+  const now = nowIso(env);
+  const updated: BrandRecord = { ...brand, status, updatedAt: now, updatedBy: actor.email };
+  const [update] = setBrandStatusStmts(env.DB, updated);
+  return {
+    dto: toBrandDto(updated, buIds),
+    stmts: [
+      versionGuardStmt(env.DB, 'brands', brand.id, brand.updatedAt, 'live'),
+      update as DbStatement,
+      writeAudit(env.DB, {
+        ts: now,
+        actor: actor.email,
+        action: status === 'active' ? 'brand.activate' : 'brand.deactivate',
+        target: updated.name,
+        before: brandSnapshot(brand),
+        after: brandSnapshot(updated),
+      }),
+    ],
+  };
+}
+
+/** Perencana hapus lunak: hanya merk Nonaktif; sudah terhapus = `unchanged` (tanpa audit; `deleted_at` asli utuh). */
+export function planBrandRemove(
+  env: Env,
+  found: LoadedBrand,
+  actor: ActorRef,
+): PlanOutcome<RemoveResult> {
+  const { brand } = found;
+  if (brand.deletedAt !== '') return { unchanged: { id: brand.id } };
+  if (brand.status !== 'inactive') {
+    throw appError('CONFLICT', 'Nonaktifkan merk dulu sebelum dihapus');
+  }
+  const now = nowIso(env);
+  return {
+    dto: { id: brand.id },
+    stmts: [
+      versionGuardStmt(env.DB, 'brands', brand.id, brand.updatedAt, 'live'),
+      softDeleteStmt(env.DB, 'brands', brand.id, actor.email, now),
+      stampStmt(env.DB, 'brands', brand.id, now, actor.email),
+      writeAudit(env.DB, {
+        ts: now,
+        actor: actor.email,
+        action: 'brand.delete',
+        target: brand.name,
+        before: brandSnapshot(brand),
+        after: { ...brandSnapshot(brand), deleted: true },
+      }),
+    ],
+  };
+}
+
+/**
+ * Perencana pulihkan: kembali Nonaktif; belum terhapus = `unchanged`. Nama yang kini dipakai merk hidup lain ditolak
+ * (`CONFLICT`); indeks unik `_live` tetap menjadi pagar bila ada balapan.
+ */
+export async function planBrandRestore(
+  env: Env,
+  found: LoadedBrand,
+  actor: ActorRef,
+): Promise<PlanOutcome<BrandDto>> {
+  const { brand, buIds } = found;
+  if (brand.deletedAt === '') return { unchanged: toBrandDto(brand, buIds) };
+  if (await findBrandByKey(env, brand.key)) {
+    throw appError('CONFLICT', NAME_TAKEN_MESSAGE, { name: NAME_TAKEN_MESSAGE });
+  }
+  const now = nowIso(env);
+  const restored: BrandRecord = {
+    ...brand,
+    status: 'inactive',
+    updatedAt: now,
+    updatedBy: actor.email,
+    deletedAt: '',
+    deletedBy: '',
+  };
+  return {
+    dto: toBrandDto(restored, buIds),
+    stmts: [
+      versionGuardStmt(env.DB, 'brands', brand.id, brand.updatedAt, 'deleted'),
+      restoreStmt(env.DB, 'brands', brand.id),
+      env.DB.prepare("UPDATE brands SET status = 'inactive' WHERE id = ?").bind(brand.id),
+      stampStmt(env.DB, 'brands', brand.id, now, actor.email),
+      writeAudit(env.DB, {
+        ts: now,
+        actor: actor.email,
+        action: 'brand.restore',
+        target: brand.name,
+        before: { ...brandSnapshot(brand), deleted: true },
+        after: brandSnapshot(restored),
+      }),
+    ],
+  };
+}
+
+const BRAND_BATCH = { conflicts: BRAND_CONFLICTS, stale: BRAND_STALE_MESSAGE };
+
+const statusPlanner =
+  (env: Env, status: 'active' | 'inactive', actor: ActorRef) =>
+  async (id: string): Promise<PlanOutcome<BrandDto>> =>
+    planBrandStatus(env, await loadBrandForAction(env, id, 'live'), status, actor);
+
+const removePlanner =
+  (env: Env, actor: ActorRef) =>
+  async (id: string): Promise<PlanOutcome<RemoveResult>> =>
+    planBrandRemove(env, await loadBrandForAction(env, id, 'any'), actor);
+
+const restorePlanner =
+  (env: Env, actor: ActorRef) =>
+  async (id: string): Promise<PlanOutcome<BrandDto>> =>
+    planBrandRestore(env, await loadBrandForAction(env, id, 'any'), actor);
+
+export function setBrandStatusBatch(
+  env: Env,
+  input: StatusBatchInput,
+  actor: ActorRef,
+): Promise<BatchResult<BrandDto>> {
+  return runRecordBatch(env, input.ids, statusPlanner(env, input.status, actor), BRAND_BATCH);
+}
+
+export function setBrandStatus(
   env: Env,
   input: SetBrandStatusInput,
   actor: ActorRef,
 ): Promise<BrandDto> {
-  const [brandResult, defaultResult] = await env.DB.batch([
-    brandsStatement(env),
-    brandDefaultsOfStatement(env.DB, input.id),
-  ]);
-  const existing = brandsFromResult(brandResult ?? { results: [] }).find(
-    (brand) => brand.id === input.id,
-  );
-  if (!existing) throw appError('NOT_FOUND', 'Merk tidak ditemukan');
-  const buIds = brandDefaultsFromResult(defaultResult ?? { results: [] }).get(existing.id) ?? [];
-  if (existing.status === input.status) return toBrandDto(existing, buIds);
-  const now = nowIso(env);
-  const updated: BrandRecord = {
-    ...existing,
-    status: input.status,
-    updatedAt: now,
-    updatedBy: actor.email,
-  };
-  // Hanya kolom status yang ditulis; baris terkini dibaca di akhir batch untuk DTO (nama bisa baru diganti orang lain).
-  const results = await env.DB.batch([
-    nameGuardStmt(env.DB, 'brands', existing.id, existing.name),
-    ...setBrandStatusStmts(env.DB, updated),
-    writeAudit(env.DB, {
-      ts: now,
-      actor: actor.email,
-      action: input.status === 'active' ? 'brand.activate' : 'brand.deactivate',
-      target: updated.name,
-      before: brandSnapshot(existing),
-      after: brandSnapshot(updated),
-    }),
-  ]);
-  const fresh = brandsFromResult(results[2] as { results: unknown[] })[0];
-  return toBrandDto(fresh ?? updated, buIds);
+  return runSingleRecord(env, input.id, statusPlanner(env, input.status, actor), BRAND_BATCH);
+}
+
+export async function removeBrandBatch(
+  env: Env,
+  input: IdBatchInput,
+  actor: ActorRef,
+): Promise<RemoveBatchResult> {
+  const { items } = await runRecordBatch(env, input.ids, removePlanner(env, actor), BRAND_BATCH);
+  return { ids: items.map((item) => item.id) };
+}
+
+export function removeBrand(
+  env: Env,
+  input: GetBrandInput,
+  actor: ActorRef,
+): Promise<RemoveResult> {
+  return runSingleRecord(env, input.id, removePlanner(env, actor), BRAND_BATCH);
+}
+
+export function restoreBrandBatch(
+  env: Env,
+  input: IdBatchInput,
+  actor: ActorRef,
+): Promise<BatchResult<BrandDto>> {
+  return runRecordBatch(env, input.ids, restorePlanner(env, actor), BRAND_BATCH);
+}
+
+export function restoreBrand(env: Env, input: GetBrandInput, actor: ActorRef): Promise<BrandDto> {
+  return runSingleRecord(env, input.id, restorePlanner(env, actor), BRAND_BATCH);
 }

@@ -4,6 +4,7 @@ import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, isAppError, staleError } from '@server/core/errors';
 import { statementsFor } from '@server/core/events';
+import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { mapDuplicateError } from '@server/modules/access/repo';
 // Impor efek-samping: mendaftarkan pendengar stok bus event (`core/events.ts`). Kode di berkas ini tidak memakai
@@ -142,7 +143,7 @@ export async function queryItemOptions(
   }
   const effectiveLimit = byIds ? (input.itemIds?.length ?? 0) : limit;
   const rows = await env.DB.prepare(
-    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.proof_required, i.proof_min FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
+    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.proof_required, i.proof_min FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('i')} AND ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
   )
     .bind(...binds, effectiveLimit + 1)
     .all<OptionRow>();

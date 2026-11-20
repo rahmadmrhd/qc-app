@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { captureAppErrorAsync } from '@server-test/errors';
+import { withoutOldIndex } from '@server-test/soft-delete';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { BATCH_MAX } from '@shared/batch';
 import { batchGuarded } from './cas';
@@ -32,35 +33,6 @@ async function brandRow(env: TestEnv, id: string) {
   return env.DB.prepare('SELECT deleted_at AS at, deleted_by AS who FROM brands WHERE id = ?')
     .bind(id)
     .first<{ at: string; who: string }>();
-}
-
-/**
- * Menjalankan `fn` tanpa indeks unik LAMA `index` (skema tes dipakai bersama semua berkas di satu proses). Dibuang
- * hanya bila ada, dan dipasang kembali hanya bila tadi ada: setelah migrasi contract (indeks lama sudah tak ada di
- * templat) tes ini tidak memasang indeks yang sudah dibuang.
- */
-async function withoutOldIndex(
-  env: TestEnv,
-  table: string,
-  index: string,
-  columns: string,
-  fn: () => Promise<void>,
-): Promise<void> {
-  const found = await env.DB.prepare(
-    'SELECT COUNT(*) AS n FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?',
-  )
-    .bind(table, index)
-    .first<{ n: number | string }>();
-  const existed = Number(found?.n) > 0;
-  if (existed) await env.DB.prepare(`ALTER TABLE ${table} DROP INDEX ${index}`).run();
-  try {
-    await fn();
-  } finally {
-    if (existed) {
-      await env.DB.prepare(`DELETE FROM ${table}`).run();
-      await env.DB.prepare(`CREATE UNIQUE INDEX ${index} ON ${table} (${columns})`).run();
-    }
-  }
 }
 
 const CONFLICTS = { brands_key: { field: 'name', message: 'Nama merk sudah dipakai' } };

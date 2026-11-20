@@ -1,6 +1,7 @@
 import { CAS_FAIL_SQL, CAS_UPDATED_AT_SET } from '@server/core/cas';
 import type { Db, DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
+import { liveWhere } from '@server/core/soft-delete';
 import { adjustItemCountStmt } from '@server/modules/brand/repo';
 import { listItemsOfPostels } from '@server/modules/postel/items';
 import { listPostelNumbers } from '@server/modules/postel/repo';
@@ -32,6 +33,9 @@ export interface ItemRecord {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** Soft delete: '' = hidup (ISO UTC bila terhapus) dan pelakunya (email). */
+  deletedAt: string;
+  deletedBy: string;
 }
 
 export interface ItemRow {
@@ -51,6 +55,8 @@ export interface ItemRow {
   created_at: string;
   updated_at: string;
   updated_by: string;
+  deleted_at: string;
+  deleted_by: string;
 }
 
 /** Kolom `items` yang dibaca `toItem` (satu sumber kebenaran; nama = kunci `ItemRow`). */
@@ -71,6 +77,8 @@ const ITEM_COLUMN_LIST = [
   'created_at',
   'updated_at',
   'updated_by',
+  'deleted_at',
+  'deleted_by',
 ] as const;
 
 export const ITEM_COLUMNS = ITEM_COLUMN_LIST.join(', ');
@@ -130,14 +138,28 @@ export function toItem(row: ItemRow): ItemRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
+    deletedAt: row.deleted_at ?? '',
+    deletedBy: row.deleted_by ?? '',
   };
 }
 
-/** Kueri satu item menurut id (untuk digabung ke `batch()` baca; hasilnya baris pertama lewat `toItem`). */
+/** Kueri satu item HIDUP menurut id (untuk digabung ke `batch()` baca; hasilnya baris pertama lewat `toItem`). */
 export function findItemStmt(db: Db, id: string): DbStatement {
-  return db.prepare(`SELECT ${ITEM_COLUMNS} FROM items WHERE id = ?`).bind(id);
+  return db.prepare(`SELECT ${ITEM_COLUMNS} FROM items WHERE id = ? AND ${liveWhere()}`).bind(id);
 }
 
+/**
+ * Item HIDUP MAUPUN TERHAPUS menurut id: tampilan "Terhapus" dan hapus/pulihkan bagi pemegang izin. Pemanggil menilai
+ * hak dan `deletedAt`; jalur baca/tulis biasa memakai `findItem` (hidup saja).
+ */
+export async function findItemAny(env: Env, id: string): Promise<ItemRecord | null> {
+  const row = await env.DB.prepare(`SELECT ${ITEM_COLUMNS} FROM items WHERE id = ?`)
+    .bind(id)
+    .first<ItemRow>();
+  return row ? toItem(row) : null;
+}
+
+/** Item HIDUP menurut id; item terhapus = `null` (seperti item tak ada). */
 export async function findItem(env: Env, id: string): Promise<ItemRecord | null> {
   const row = await findItemStmt(env.DB, id).first<ItemRow>();
   return row ? toItem(row) : null;
@@ -380,7 +402,10 @@ export function itemBusinessUnitIdsStmt(db: Db, itemId: string): DbStatement {
 
 /** Ringkasan semua BU (kecil) untuk validasi tulis; digabung ke `batch()` baca. */
 export function businessUnitBriefsStmt(db: Db): DbStatement {
-  return db.prepare('SELECT id, code, name, status FROM business_units');
+  // BU terhapus dibaca sebagai nonaktif: tak dapat dipilih baru, tetapi BU yang sudah tersimpan tetap dipertahankan.
+  return db.prepare(
+    "SELECT id, code, name, CASE WHEN deleted_at = '' THEN status ELSE 'inactive' END AS status FROM business_units",
+  );
 }
 
 export interface BusinessUnitBrief extends BusinessUnitRefDto {
@@ -440,20 +465,55 @@ export interface ItemWithBrand {
   brandKey: string;
 }
 
+/** Item beserta nama dan kunci merk TERSIMPAN yang dibaca dalam satu snapshot (lihat `findItemWithBrand`). */
+export interface ItemWithBrand {
+  item: ItemRecord;
+  brandName: string;
+  brandKey: string;
+  /** Merk terhapus (soft delete): item tetap tampil dengan nama merk + penanda "Terhapus". */
+  brandDeleted: boolean;
+}
+
+type ItemWithBrandRow = ItemRow & {
+  brand_name: string | null;
+  brand_key: string | null;
+  brand_deleted_at: string | null;
+};
+
+/** SELECT item + merknya (kolom merk memakai alias `brand_*`); pemakai menambahkan `WHERE`. */
+const ITEM_WITH_BRAND_SELECT = `SELECT ${itemColumnsOf('i')}, b.name AS brand_name, b.\`key\` AS brand_key, b.deleted_at AS brand_deleted_at FROM items i LEFT JOIN brands b ON b.id = i.brand_id`;
+
+function toItemWithBrand(row: ItemWithBrandRow): ItemWithBrand {
+  return {
+    item: toItem(row),
+    brandName: row.brand_name ?? '',
+    brandKey: row.brand_key ?? '',
+    brandDeleted: (row.brand_deleted_at ?? '') !== '',
+  };
+}
+
 /**
- * Item dan merknya dalam SATU kueri (JOIN): kunci item (`items.key`) dan kunci merk (`brands.key`) berasal dari
+ * Item HIDUP dan merknya dalam SATU kueri (JOIN): kunci item (`items.key`) dan kunci merk (`brands.key`) berasal dari
  * snapshot yang sama, sehingga `brandKeyGuardStmt(.., brandKey)` menjaga persis keadaan yang dibaca: ganti nama
  * merk yang commit sesudahnya membatalkan batch, yang commit sebelumnya sudah tercermin di `items.key` (N1).
+ * Item terhapus = `null`; merk dibaca apa adanya (penampil rujukan: merk terhapus tetap memberi nama).
  */
 export async function findItemWithBrand(env: Env, id: string): Promise<ItemWithBrand | null> {
-  const columns = itemColumnsOf('i');
-  const row = await env.DB.prepare(
-    `SELECT ${columns}, b.name AS brand_name, b.\`key\` AS brand_key FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE i.id = ?`,
-  )
+  const row = await env.DB.prepare(`${ITEM_WITH_BRAND_SELECT} WHERE i.id = ? AND ${liveWhere('i')}`)
     .bind(id)
-    .first<ItemRow & { brand_name: string | null; brand_key: string | null }>();
-  if (!row) return null;
-  return { item: toItem(row), brandName: row.brand_name ?? '', brandKey: row.brand_key ?? '' };
+    .first<ItemWithBrandRow>();
+  return row ? toItemWithBrand(row) : null;
+}
+
+/**
+ * Seperti `findItemWithBrand` tetapi item HIDUP MAUPUN TERHAPUS: untuk hapus/pulihkan dan tampilan "Terhapus" bagi
+ * pemegang izin Pulihkan. Pemanggil menilai `item.deletedAt` dan hak.
+ */
+export async function findItemWithBrandAny(env: Env, id: string): Promise<ItemWithBrand | null> {
+  const row = await env.DB.prepare(`${ITEM_WITH_BRAND_SELECT} WHERE i.id = ?`)
+    .bind(id)
+    .first<ItemWithBrandRow>();
+  return row ? toItemWithBrand(row) : null;
 }
 
 /** `|kunci1|kunci2|` dari nama lain (kosong bila tanpa nama lain); kolom `items.alias_keys`. */
@@ -468,7 +528,11 @@ export function aliasKeyList(aliases: readonly string[]): string[] {
 }
 
 /** Baris `item_alias_keys` baru: keunikan kunci nama lain dijaga PRIMARY KEY. */
-function insertAliasKeyStmts(db: Db, itemId: string, keys: readonly string[]): DbStatement[] {
+export function insertAliasKeyStmts(
+  db: Db,
+  itemId: string,
+  keys: readonly string[],
+): DbStatement[] {
   return keys.map((key) =>
     db.prepare('INSERT INTO item_alias_keys (`key`, item_id) VALUES (?, ?)').bind(key, itemId),
   );

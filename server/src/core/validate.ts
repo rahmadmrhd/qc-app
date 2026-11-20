@@ -1,4 +1,9 @@
-import { BATCH_MAX, type IdBatchInput, type VersionedBatchInput } from '@shared/batch';
+import {
+  BATCH_MAX,
+  type IdBatchInput,
+  type StatusBatchInput,
+  type VersionedBatchInput,
+} from '@shared/batch';
 import { isValidEmail, normalizeEmail } from './email';
 import { appError } from './errors';
 
@@ -114,6 +119,17 @@ function batchIds(raw: unknown, label: string): string[] {
 export function validateIdBatch(raw: unknown): IdBatchInput {
   const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   return { ids: batchIds(source.ids, 'Daftar id') };
+}
+
+/** Masukan batch status: `ids` seperti `validateIdBatch` ditambah `status` (`active` | `inactive`). */
+export function validateStatusBatch(raw: unknown): StatusBatchInput {
+  const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const ids = batchIds(source.ids, 'Daftar id');
+  const status = source.status;
+  if (status !== 'active' && status !== 'inactive') {
+    throw appError('VALIDATION', 'Status tidak valid', { status: 'Status tidak valid' });
+  }
+  return { ids, status };
 }
 
 /** Masukan batch berversi: 1..`BATCH_MAX` entri `{ id, updatedAt }` dengan id unik. */

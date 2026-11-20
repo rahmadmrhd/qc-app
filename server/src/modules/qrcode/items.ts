@@ -1,6 +1,7 @@
 import { CAS_FAIL_SQL } from '@server/core/cas';
 import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
+import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { visibleBuIds } from '@server/modules/item/access';
 import { itemBusinessUnitsOf, itemIdsVisibleIn } from '@server/modules/item/repo';
@@ -196,7 +197,7 @@ export async function queryItemOptions(
     binds.push(input.cursor);
   }
   const rows = await env.DB.prepare(
-    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.manual_book_design_id FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
+    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.manual_book_design_id FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('i')} AND ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
   )
     .bind(...binds, limit + 1)
     .all<OptionRow>();

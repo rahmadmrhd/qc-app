@@ -4,6 +4,7 @@ import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { baseIndexName } from '@server/core/index-names';
+import { liveWhere } from '@server/core/soft-delete';
 import type { Assignment } from '@shared/assignments';
 import { sanitizeAssignments } from '@shared/assignments';
 import type { BuAssignment } from '@shared/business-units';
@@ -252,10 +253,10 @@ export async function listBusinessUnitBriefs(env: Env): Promise<BusinessUnitOpti
     .filter((bu) => bu.id !== '' && bu.code !== '');
 }
 
-/** Jumlah item per BU (baris `item_business_units`); BU tanpa item tidak ada di peta. */
+/** Jumlah item HIDUP per BU (baris `item_business_units`); BU tanpa item tidak ada di peta. */
 export async function countItemsByBu(env: Env): Promise<Map<string, number>> {
   const rows = await env.DB.prepare(
-    'SELECT bu_id, COUNT(*) AS n FROM item_business_units GROUP BY bu_id',
+    `SELECT ibu.bu_id, COUNT(*) AS n FROM item_business_units ibu JOIN items i ON i.id = ibu.item_id WHERE ${liveWhere('i')} GROUP BY ibu.bu_id`,
   ).all<{ bu_id: string; n: number | string }>();
   return new Map(rows.results.map((row) => [row.bu_id, Number(row.n)]));
 }

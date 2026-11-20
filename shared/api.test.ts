@@ -70,9 +70,15 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'stickerGuides.remove': { id: 'g1' },
   'stickerGuides.thumbnail': { id: 'g1' },
   'stickerGuides.usages': { id: 'g1' },
-  'brands.list': null,
+  'brands.list': { status: 'deleted' },
   'brands.save': { id: 'b1', name: 'Sony', businessUnitIds: ['bu1'] },
+  'brands.get': { id: 'b1' },
   'brands.setStatus': { id: 'b1', status: 'inactive' },
+  'brands.setStatusBatch': { ids: ['b1', 'b2'], status: 'inactive' },
+  'brands.remove': { id: 'b1' },
+  'brands.removeBatch': { ids: ['b1', 'b2'] },
+  'brands.restore': { id: 'b1' },
+  'brands.restoreBatch': { ids: ['b1', 'b2'] },
   'stickerSettings.get': null,
   'stickerSettings.save': {
     expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
@@ -165,6 +171,11 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     businessUnitIds: ['bu1'],
   },
   'items.setStatus': { id: 'i1', status: 'inactive' },
+  'items.setStatusBatch': { ids: ['i1', 'i2'], status: 'inactive' },
+  'items.remove': { id: 'i1' },
+  'items.removeBatch': { ids: ['i1', 'i2'] },
+  'items.restore': { id: 'i1' },
+  'items.restoreBatch': { ids: ['i1', 'i2'] },
   'qrcodes.list': null,
   'qrcodes.get': { id: 'q1' },
   'qrcodes.versions': { id: 'q1' },
@@ -397,6 +408,18 @@ function pathParams(id: ApiId, filled: string, created: boolean) {
 }
 
 describe('tabel rute', () => {
+  test('jalur statis batch didaftarkan sebelum jalur {id}/restore dan {id} berverba sama', () => {
+    const order = Object.keys(API_ROUTES);
+    for (const model of ['items', 'brands']) {
+      const at = (id: string) => order.indexOf(`${model}.${id}`);
+      expect(at('restoreBatch')).toBeLessThan(at('restore'));
+      expect(API_ROUTES[`${model}.restoreBatch` as ApiId].path).toBe(`/${model}/batch/restore`);
+      expect(API_ROUTES[`${model}.restore` as ApiId].path).toBe(`/${model}/{id}/restore`);
+      expect(API_ROUTES[`${model}.setStatusBatch` as ApiId].verb).toBe('POST');
+      expect(API_ROUTES[`${model}.removeBatch` as ApiId].path).toBe(`/${model}/batch/delete`);
+    }
+  });
+
   test('tiap id punya jalur+verba unik (termasuk jalur create)', () => {
     const seen = new Map<string, string>();
     for (const id of IDS) {
@@ -496,11 +519,16 @@ describe('toRequestParts <-> fromRequestParts', () => {
 
   test('id tanpa input (lists) menjadi null', () => {
     expect(
-      fromRequestParts('brands.list', { params: {}, query: {}, body: undefined, created: false }),
+      fromRequestParts('customers.list', {
+        params: {},
+        query: {},
+        body: undefined,
+        created: false,
+      }),
     ).toBeNull();
-    expect(toRequestParts('brands.list', null)).toEqual({
+    expect(toRequestParts('customers.list', null)).toEqual({
       verb: 'GET',
-      path: '/brands',
+      path: '/customers',
       query: {},
       ifMatch: undefined,
     });

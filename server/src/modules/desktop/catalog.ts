@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { Db } from '@server/core/db';
 import { type Env, nowOf } from '@server/core/env';
+import { liveWhere } from '@server/core/soft-delete';
 import {
   itemBusinessUnitsOf,
   manualBookDesignIdsOf,
@@ -122,7 +123,7 @@ export async function buildDesktopCatalog(env: Env): Promise<DesktopCatalogDto> 
   const itemRows = (
     await db
       .prepare(
-        "SELECT i.id, b.name AS brand, i.model, i.aliases, i.firmware FROM items i JOIN brands b ON b.id = i.brand_id WHERE i.is_country_lock = 'true' AND i.status = 'active' AND EXISTS (SELECT 1 FROM item_business_units ibu WHERE ibu.item_id = i.id) ORDER BY b.name, i.model, i.id",
+        `SELECT i.id, b.name AS brand, i.model, i.aliases, i.firmware FROM items i JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('i')} AND i.is_country_lock = 'true' AND i.status = 'active' AND EXISTS (SELECT 1 FROM item_business_units ibu WHERE ibu.item_id = i.id) ORDER BY b.name, i.model, i.id`,
       )
       .all<ItemRow>()
   ).results;

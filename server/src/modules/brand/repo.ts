@@ -1,6 +1,7 @@
 import { CAS_FAIL_SQL } from '@server/core/cas';
 import type { DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
+import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import type { ItemStatus } from '@shared/contract';
 
 export interface BrandRecord {
@@ -14,6 +15,9 @@ export interface BrandRecord {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** Soft delete: '' = hidup (ISO UTC bila terhapus) dan pelakunya (email). */
+  deletedAt: string;
+  deletedBy: string;
 }
 
 export interface BrandRow {
@@ -25,10 +29,12 @@ export interface BrandRow {
   created_at: string;
   updated_at: string;
   updated_by: string;
+  deleted_at: string;
+  deleted_by: string;
 }
 
 export const BRAND_COLUMNS =
-  'id, name, `key`, status, item_count, created_at, updated_at, updated_by';
+  'id, name, `key`, status, item_count, created_at, updated_at, updated_by, deleted_at, deleted_by';
 
 function toBrand(row: BrandRow): BrandRecord {
   return {
@@ -40,12 +46,19 @@ function toBrand(row: BrandRow): BrandRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
+    deletedAt: row.deleted_at ?? '',
+    deletedBy: row.deleted_by ?? '',
   };
 }
 
-/** Kueri seluruh merk untuk digabung ke `batch()` pemanggil (langsung dari MariaDB, tanpa cache); lihat `brandsFromResult`. */
-export function brandsStatement(env: Env): DbStatement {
-  return env.DB.prepare(`SELECT ${BRAND_COLUMNS} FROM brands`);
+/**
+ * Kueri merk untuk digabung ke `batch()` pemanggil (langsung dari MariaDB, tanpa cache); lihat `brandsFromResult`.
+ * Bawaan `live` = merk hidup; `deleted` = hanya merk terhapus (tampilan "Terhapus", hanya bagi `item: manage`).
+ */
+export function brandsStatement(env: Env, state: 'live' | 'deleted' = 'live'): DbStatement {
+  return state === 'live'
+    ? env.DB.prepare(`SELECT ${BRAND_COLUMNS} FROM brands WHERE ${liveWhere()}`)
+    : env.DB.prepare(`SELECT ${BRAND_COLUMNS} FROM brands WHERE ${deletedWhere()}`);
 }
 
 /** Hasil `brandsStatement` sebagai rekaman merk. */
@@ -56,7 +69,7 @@ export function brandsFromResult(result: { results: unknown[] }): BrandRecord[] 
 }
 
 /**
- * Seluruh merk (kecil), dibaca langsung dari MariaDB (tanpa cache). `options.fresh` diabaikan (tersisa agar
+ * Seluruh merk HIDUP (kecil), dibaca langsung dari MariaDB (tanpa cache). `options.fresh` diabaikan (tersisa agar
  * pemanggil di modul yang belum dipindah tetap terkompilasi; dibuang bersama cache di T13).
  */
 export async function listBrands(
@@ -172,14 +185,19 @@ export function syncBrandDefaultsStmts(
   return statements;
 }
 
-/** Kueri satu merk menurut id (digabung ke `batch()` baca); hasilnya lewat `brandsFromResult`. */
+/**
+ * Kueri satu merk menurut id, HIDUP MAUPUN TERHAPUS (digabung ke `batch()` baca; hasilnya lewat `brandsFromResult`).
+ * Pemanggil menilai `deletedAt`: rujukan tersimpan (merk item) tetap sah walau terhapus, merk baru harus hidup.
+ */
 export function brandByIdStatement(env: Env, id: string): DbStatement {
   return env.DB.prepare(`SELECT ${BRAND_COLUMNS} FROM brands WHERE id = ?`).bind(id);
 }
 
-/** Merk menurut kunci (kueri berindeks langsung ke MariaDB: dipakai sebelum menulis). */
+/** Merk HIDUP menurut kunci (kueri berindeks langsung ke MariaDB: dipakai sebelum menulis; merk terhapus tak menghalangi). */
 export async function findBrandByKey(env: Env, key: string): Promise<BrandRecord | null> {
-  const row = await env.DB.prepare(`SELECT ${BRAND_COLUMNS} FROM brands WHERE \`key\` = ?`)
+  const row = await env.DB.prepare(
+    `SELECT ${BRAND_COLUMNS} FROM brands WHERE \`key\` = ? AND ${liveWhere()}`,
+  )
     .bind(key)
     .first<BrandRow>();
   return row ? toBrand(row) : null;

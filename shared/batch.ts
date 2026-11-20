@@ -31,3 +31,13 @@ export interface SoftDeleteInfo {
 
 /** Filter status daftar; `deleted` hanya bagi pemegang izin Pulihkan. */
 export type ListStatusFilter = 'active' | 'inactive' | 'deleted' | 'all';
+
+/** Hasil hapus tunggal (`<model>.remove`). */
+export interface RemoveResult {
+  id: string;
+}
+
+/** Hasil hapus batch (`<model>.removeBatch`): id masukan, urut sesuai masukan. */
+export interface RemoveBatchResult {
+  ids: string[];
+}

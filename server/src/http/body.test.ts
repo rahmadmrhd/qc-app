@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { API_ROUTES, toRequestParts } from '@shared/api';
+import { BATCH_MAX } from '@shared/batch';
 import type { ApiId, ApiInput } from '@shared/contract';
 import { MARKDOWN_MAX_LENGTH, MAX_IMAGE_BYTES } from '@shared/files';
 import { HANDOVER_LIMITS } from '@shared/handover';
@@ -17,6 +18,8 @@ const WORST_CHAR = String.fromCharCode(1);
 const text = (chars: number) => WORST_CHAR.repeat(chars);
 const UUID = '123e4567-e89b-12d3-a456-426614174000';
 const STAMP = '2026-11-06T00:00:00.000Z';
+/** Batch terbesar yang sah: `BATCH_MAX` id (panjang id maksimum 100). */
+const BATCH_IDS = Array.from({ length: BATCH_MAX }, (_, index) => `${'i'.repeat(90)}-${index}`);
 
 type Inputs = { [M in ApiId]?: ApiInput<M> };
 
@@ -56,6 +59,9 @@ const WORST: Inputs = {
     businessUnitIds: Array.from({ length: 50 }, () => UUID),
   },
   'brands.setStatus': { id: UUID, status: 'inactive' },
+  'brands.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
+  'brands.removeBatch': { ids: BATCH_IDS },
+  'brands.restoreBatch': { ids: BATCH_IDS },
   'stickerSettings.save': {
     expectedUpdatedAt: STAMP,
     alert: {
@@ -153,6 +159,9 @@ const WORST: Inputs = {
     businessUnitIds: Array.from({ length: 50 }, () => UUID),
   },
   'items.setStatus': { id: UUID, status: 'inactive' },
+  'items.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
+  'items.removeBatch': { ids: BATCH_IDS },
+  'items.restoreBatch': { ids: BATCH_IDS },
   'handovers.save': {
     id: UUID,
     locationId: UUID,
