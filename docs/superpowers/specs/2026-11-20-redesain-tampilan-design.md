@@ -110,7 +110,7 @@ Di `web/src/styles.css`, setiap warna semantik punya tiga token, didaftarkan di 
 | info | `#2563eb` / `#fff` / `#1d4ed8` | `#2563eb` / `#fff` / `#3b82f6` |
 | destructive | `#dc2626` / `#fff` / `#b91c1c` | `#ef4444` / `#fff` / `#ef4444` |
 
-**Nilai akhir (AA, keputusan pemilik 21).** Hanya token yang berubah dari palet v3; yang tidak tercantum tetap. Alasan: latar solid dengan teks `-foreground` di bawah 4,5:1.
+**Nilai akhir (AA, keputusan pemilik 21).** Hanya token yang berubah dari palet v3; yang tidak tercantum tetap. Alasan: latar solid dengan teks `-foreground` di bawah 4,5:1, dan (keputusan 24) teks `-text`/muted di atas latar soft, alert, `--card`, atau `--muted` di bawah 4,5:1.
 
 | Token | v3 | Nilai akhir | Alasan |
 |---|---|---|---|
@@ -118,8 +118,13 @@ Di `web/src/styles.css`, setiap warna semantik punya tiga token, didaftarkan di 
 | success solid (gelap) | `#16a34a` | `#15803d` | sama |
 | warning solid (gelap) | `#d97706` | `#b45309` | teks putih di `#d97706` ±3,2:1 |
 | destructive solid (gelap) | `#ef4444` | `#dc2626` | teks putih di `#ef4444` ±3,8:1 |
+| success-text (terang) | `#15803d` | `#166534` | keputusan 24: di atas tint soft 15% ±4,1:1 dan alert 10% ±4,4:1 |
+| warning-text (terang) | `#b45309` | `#92400e` | keputusan 24: soft ±4,1:1, alert ±4,4:1 |
+| muted-foreground (terang) | `oklch(0.556 0 0)` | `oklch(0.53 0 0)` | keputusan 24: di atas `--muted` ±4,35:1 |
+| info-text (gelap) | `#3b82f6` | `#60a5fa` | keputusan 24: soft di atas `--card` ±4,1:1 |
+| destructive-text (gelap) | `#ef4444` | `#f87171` | keputusan 24: soft di atas `--card` ±4,1:1 |
 
-Angka di atas adalah acuan terkini; yang berwenang adalah tes kontras (`web/src/styles.contrast.test.ts`), yang menghitung setiap pasangan solid/foreground dan `-text` di atas `--background`/`--card` pada tema terang dan gelap, dan boleh menggeser nilai lagi bila ada pasangan yang masih gagal (perubahan dicatat di tabel ini). Nilai boleh ditulis dalam `oklch` setara (gaya file saat ini) asalkan tampil sama dengan tabel yang berlaku (nilai akhir untuk token yang tercantum, v3 untuk sisanya). Token shadcn lama (`--primary`, `--secondary`, `--destructive`, `--muted`, dst.) tetap ada dan dipetakan ke nilai di atas; `--secondary` shadcn (latar abu muda untuk tombol sekunder lama) diganti maknanya menjadi abu-abu sesuai tabel, dan pemakai lama dimigrasi (§6.2). Sorotan komentar `::highlight(qc-comment)` tidak berubah.
+Angka di atas adalah acuan terkini; yang berwenang adalah tes kontras (`web/src/styles.contrast.test.ts`), yang menghitung setiap pasangan solid/foreground dan `-text` di atas `--background`/`--card`, latar soft (tint 15%) dan alert (tint 10%), serta `muted-foreground` di atas `--muted` pada tema terang dan gelap, dan boleh menggeser nilai lagi bila ada pasangan yang masih gagal (perubahan dicatat di tabel ini). Nilai boleh ditulis dalam `oklch` setara (gaya file saat ini) asalkan tampil sama dengan tabel yang berlaku (nilai akhir untuk token yang tercantum, v3 untuk sisanya). Token shadcn lama (`--primary`, `--secondary`, `--destructive`, `--muted`, dst.) tetap ada dan dipetakan ke nilai di atas; `--secondary` shadcn (latar abu muda untuk tombol sekunder lama) diganti maknanya menjadi abu-abu sesuai tabel, dan pemakai lama dimigrasi (§6.2). Sorotan komentar `::highlight(qc-comment)` tidak berubah.
 
 ### 6.2 Tombol, badge, alert, toast
 
