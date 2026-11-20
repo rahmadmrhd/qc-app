@@ -606,16 +606,16 @@ describe('toRequestParts <-> fromRequestParts', () => {
 
   test('id tanpa input (lists) menjadi null', () => {
     expect(
-      fromRequestParts('stickerTypes.list', {
+      fromRequestParts('guides.list', {
         params: {},
         query: {},
         body: undefined,
         created: false,
       }),
     ).toBeNull();
-    expect(toRequestParts('stickerTypes.list', null)).toEqual({
+    expect(toRequestParts('guides.list', null)).toEqual({
       verb: 'GET',
-      path: '/sticker-types',
+      path: '/guides',
       query: {},
       ifMatch: undefined,
     });
