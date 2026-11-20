@@ -70,6 +70,12 @@ export interface MeDto {
   /** BU yang user punya level apa pun atasnya (termasuk BU nonaktif), terurut menurut kode. */
   businessUnits: BusinessUnitAccessDto[];
   /**
+   * Id SEMUA BU yang terhapus (soft delete), bukan hanya yang ada di penugasan user: syarat tulis "SEMUA BU item"
+   * mengabaikan BU terhapus (keputusan pemilik 9), jadi web perlu mengenalinya juga untuk BU yang bukan miliknya
+   * (item ber-BU {hidup, terhapus}). Hanya id; tidak sensitif. Opsional: salinan `me` tersimpan lama tak memuatnya.
+   */
+  deletedBusinessUnitIds?: string[];
+  /**
    * Akun bersama (dipakai beberapa orang): panduan interaktif tetap ditawarkan, tetapi penandanya disimpan per
    * perangkat (bukan di server), jadi ditawarkan lagi di tiap perangkat.
    */

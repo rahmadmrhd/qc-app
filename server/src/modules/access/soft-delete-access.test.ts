@@ -194,6 +194,16 @@ describe('BU terhapus', () => {
     ]);
   });
 
+  test('me.deletedBusinessUnitIds memuat SEMUA BU terhapus, juga yang bukan penugasan pengguna (web mengenalinya)', async () => {
+    await softDelete('business_units', 'bu-b');
+    const me = await restCall(env, 'ea@gmail.com', 'auth.me', null);
+    const body = (
+      me as { data: { businessUnits: { id: string }[]; deletedBusinessUnitIds: string[] } }
+    ).data;
+    expect(body.businessUnits.map((b) => b.id)).toEqual(['bu-a']);
+    expect(body.deletedBusinessUnitIds).toEqual(['bu-b']);
+  });
+
   test('item yang hanya ber-BU terhapus tetap dapat diubah oleh pemegang hak BU itu', async () => {
     await softDelete('business_units', 'bu-b');
     const user = await ctxOf('eab@gmail.com');

@@ -108,13 +108,17 @@ export function liveBuIdsWithLevelOf(
     .map((bu) => bu.id);
 }
 
-/** Id BU yang terhapus di antara BU berhak user (diabaikan syarat "SEMUA BU", keputusan soft delete 9). */
+/**
+ * Id SEMUA BU yang terhapus (dari server, `me.deletedBusinessUnitIds`), ditambah penanda `deleted` pada BU berhak user.
+ * Diabaikan dari syarat "SEMUA BU" (keputusan soft delete 9), juga untuk BU yang bukan penugasan user.
+ */
 function deletedBuIdsOf(me: MeDto | null | undefined): Set<string> {
-  return new Set(
-    itemBusinessUnits(me)
+  return new Set([
+    ...(me?.deletedBusinessUnitIds ?? []),
+    ...itemBusinessUnits(me)
       .filter((bu) => bu.deleted)
       .map((bu) => bu.id),
-  );
+  ]);
 }
 
 /** Id BU (aktif maupun nonaktif) tempat user punya minimal `level` pada modul `item`. */
@@ -146,9 +150,9 @@ export function canManageSerialSettings(me: MeDto | null | undefined): boolean {
   return me?.canManageSerialSettings === true;
 }
 
-/** Mencatat serial: level `edit` pada minimal satu BU. */
+/** Mencatat serial: level `edit` pada minimal satu BU HIDUP (BU terhapus tak tampil di pilihan). */
 export function canWriteSerials(me: MeDto | null | undefined): boolean {
-  return buIdsWithLevelOf(me, 'serial', 'edit').length > 0;
+  return liveBuIdsWithLevelOf(me, 'serial', 'edit').length > 0;
 }
 
 function hasLevelOnAllBus(

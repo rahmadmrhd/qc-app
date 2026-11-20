@@ -250,7 +250,7 @@ test('BU terhapus tidak ditawarkan sebagai pilihan: liveBuIdsWithLevelOf dan can
   expect(canCreateItem(meWithBus([deletedBu('b', 'edit')]))).toBe(false);
 });
 
-test('serialActorModules dan canWriteSerials: BU serial terhapus tetap memberi hak', () => {
+test('serialActorModules: BU serial terhapus tetap memberi hak; canWriteSerials hanya menghitung BU hidup (N5)', () => {
   const user = meWithBus([
     {
       ...deletedBu('s', 'view'),
@@ -258,5 +258,18 @@ test('serialActorModules dan canWriteSerials: BU serial terhapus tetap memberi h
     },
   ]);
   expect(serialActorModules(user, 's').serial).toBe(true);
-  expect(canWriteSerials(user)).toBe(true);
+  expect(canWriteSerials(user)).toBe(false);
+  expect(canWriteSerials(meWithBus([serialBu('a', 'edit'), ...user.businessUnits]))).toBe(true);
+});
+
+test('item ber-BU {A hidup, B terhapus}: pengguna hanya berhak di A tetap dapat mengubah (B bukan penugasannya, N1)', () => {
+  // Server menandai B terhapus lewat `deletedBusinessUnitIds` walau B tak ada di `businessUnits` pengguna.
+  const user = { ...meWithBus([bu('a', 'manage')]), deletedBusinessUnitIds: ['b'] };
+  expect(canEditItem(user, { businessUnits: [ref('a'), ref('b')] })).toBe(true);
+  expect(canManageItem(user, { businessUnits: [ref('a'), ref('b')] })).toBe(true);
+  // tanpa penanda dari server (B hidup) tetap ditolak
+  const live = meWithBus([bu('a', 'manage')]);
+  expect(canManageItem(live, { businessUnits: [ref('a'), ref('b')] })).toBe(false);
+  // BU lain yang hidup dan bukan penugasan tetap menolak
+  expect(canManageItem(user, { businessUnits: [ref('a'), ref('c')] })).toBe(false);
 });
