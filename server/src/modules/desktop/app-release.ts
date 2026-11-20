@@ -30,6 +30,8 @@ export interface ServedRelease {
 export interface ReleaseReader {
   /** Versi tertinggi yang terlihat dan memuat installer untuk `arch`; tak ada = `null`. */
   latest(arch: ReleaseArch): Promise<ServedRelease | null>;
+  /** Semua versi yang terlihat dan utuh, urut versi menurun; yang tak lolos dilewati satu-satu (galat Drive dilempar). */
+  list(): Promise<ServedRelease[]>;
   /** Berkas installer sebuah versi yang terlihat; hanya nama yang tercantum di manifest. */
   file(version: string, name: string): Promise<{ id: string; size: number } | null>;
 }
@@ -157,6 +159,16 @@ export function createReleaseReader(deps: ReleaseReaderDeps): ReleaseReader {
         if (release?.files.has(installerName(version, arch))) return release;
       }
       return null;
+    },
+    async list() {
+      const idx = await readIndex();
+      const versions = [...idx.versions.keys()].sort((a, b) => compareVersions(b, a));
+      const releases: ServedRelease[] = [];
+      for (const version of versions) {
+        const release = await resolve(version);
+        if (release) releases.push(release);
+      }
+      return releases;
     },
     async file(version, name) {
       const kind = isReleaseFileName(name);

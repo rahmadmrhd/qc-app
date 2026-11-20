@@ -164,3 +164,43 @@ describe('createReleaseReader.file', () => {
     expect(await r.file('bukan-versi', 'QC-App-Setup-1.1.0-x64.exe')).toBeNull();
   });
 });
+
+describe('createReleaseReader.list', () => {
+  test('mendaftar semua versi yang terlihat, menurun secara numerik', async () => {
+    await seed('1.0.0');
+    await seed('1.2.0');
+    await seed('1.10.0');
+    const versions = (await reader().list()).map((release) => release.version);
+    expect(versions).toEqual(['1.10.0', '1.2.0', '1.0.0']);
+  });
+
+  test('versi tak terlihat atau rusak dilewati tanpa menggagalkan versi lain', async () => {
+    await seed('1.0.0');
+    await seed('1.1.0', { signed: false }); // tanpa .sig = ditarik
+    await seed('1.3.0', { installers: false }); // installer yang tercantum tak ada
+    await seed('1.4.0', { json: '{bukan json' }); // manifest rusak
+    const versions = (await reader().list()).map((release) => release.version);
+    expect(versions).toEqual(['1.0.0']);
+  });
+
+  test('folder kosong = daftar kosong', async () => {
+    expect(await reader().list()).toEqual([]);
+  });
+
+  test('galat listing Drive dilempar, tidak ditelan', async () => {
+    await seed('1.0.0');
+    bridge.failNext('listFolder', new Error('drive mati'));
+    await expect(reader().list()).rejects.toThrow();
+  });
+
+  test('panggilan kedua dalam masa memo tidak membaca ulang berkas', async () => {
+    await seed('1.0.0');
+    await seed('1.1.0');
+    const r = reader();
+    await r.list();
+    const reads = () => bridge.calls.filter((c) => c.action === 'readFile').length;
+    const before = reads();
+    expect((await r.list()).length).toBe(2);
+    expect(reads()).toBe(before);
+  });
+});
