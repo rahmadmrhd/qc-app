@@ -42,9 +42,29 @@ function keyId(key: readonly unknown[]): string {
   return key.map(String).join('/');
 }
 
+/**
+ * Query daftar yang disaring ke record terhapus (soft delete, T21) tidak pernah disimpan: ia memuat data yang hanya
+ * boleh dilihat pemegang izin Pulihkan dan tak boleh muncul sebagai data referensi tersimpan. Dikenali dari bagian
+ * kunci `'deleted'` atau objek filter ber-`status: 'deleted'`.
+ */
+function filtersDeleted(key: readonly unknown[]): boolean {
+  return key.some(
+    (part) =>
+      part === 'deleted' ||
+      (typeof part === 'object' &&
+        part !== null &&
+        (part as { status?: unknown }).status === 'deleted'),
+  );
+}
+
+/** Whitelist dinilai dari dua bagian pertama kunci (`root/sub`); filter status `deleted` selalu dikecualikan. */
+function isPersistable(key: readonly unknown[]): boolean {
+  return !filtersDeleted(key) && PERSISTED_KEYS.has(keyId(key.slice(0, 2)));
+}
+
 /** Apakah query dengan kunci ini termasuk data referensi yang disimpan (dipakai spanduk status server, FR-P16). */
 export function isPersistedQueryKey(key: readonly unknown[]): boolean {
-  return PERSISTED_KEYS.has(keyId(key));
+  return isPersistable(key);
 }
 
 /** Memasang cache tersimpan (stale-while-revalidate: tampil instan, lalu dimuat ulang di latar belakang bila basi). */
@@ -66,7 +86,7 @@ export function restoreQueryCache(queryClient: QueryClient, owner: string | null
     }
     let restored = 0;
     for (const entry of saved.entries) {
-      if (!PERSISTED_KEYS.has(keyId(entry.key))) continue;
+      if (!isPersistable(entry.key)) continue;
       queryClient.setQueryData(entry.key, entry.data, { updatedAt: entry.updatedAt });
       restored++;
     }
@@ -81,7 +101,7 @@ export function savePersistedQueryCache(queryClient: QueryClient): void {
   if (!owner) return;
   const entries: PersistedEntry[] = [];
   for (const query of queryClient.getQueryCache().findAll()) {
-    if (query.state.status !== 'success' || !PERSISTED_KEYS.has(keyId(query.queryKey))) continue;
+    if (query.state.status !== 'success' || !isPersistable(query.queryKey)) continue;
     entries.push({
       key: [...query.queryKey],
       data: query.state.data,

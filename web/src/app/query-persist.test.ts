@@ -7,6 +7,7 @@ import {
   PERSISTED_CACHE_KEY,
 } from '@/modules/auth/session';
 import {
+  isPersistedQueryKey,
   PERSIST_MAX_AGE_MS,
   restoreQueryCache,
   savePersistedQueryCache,
@@ -45,6 +46,32 @@ test('menyimpan HANYA query daftar yang di-whitelist; Log Audit, user, dan berka
   expect(restoreQueryCache(restored, owner)).toBe(2);
   expect(restored.getQueryData(['brands', 'list'])).toEqual([{ id: 'i1' }]);
   expect(restored.getQueryData(['access', 'users'])).toBeUndefined();
+});
+
+test('query daftar berfilter status deleted tidak disimpan maupun dipulihkan (T21)', () => {
+  const owner = login('a@x.com');
+  const client = new QueryClient();
+  client.setQueryData(['brands', 'list'], [{ id: 'aktif' }]);
+  client.setQueryData(['brands', 'list', { status: 'deleted' }], [{ id: 'hapus' }]);
+  client.setQueryData(['qrcodes', 'list', 'deleted'], [{ id: 'hapus2' }]);
+  expect(isPersistedQueryKey(['brands', 'list'])).toBe(true);
+  expect(isPersistedQueryKey(['brands', 'list', { status: 'deleted' }])).toBe(false);
+  expect(isPersistedQueryKey(['brands', 'list', { status: 'active' }])).toBe(true);
+  savePersistedQueryCache(client);
+  const saved = JSON.parse(localStorage.getItem(PERSISTED_CACHE_KEY) ?? '{}');
+  expect(saved.entries.map((entry: { data: { id: string }[] }) => entry.data[0]?.id)).toEqual([
+    'aktif',
+  ]);
+  // entri tersimpan yang memuat filter deleted (mis. dari versi lain) tak dipulihkan
+  saved.entries.push({
+    key: ['brands', 'list', { status: 'deleted' }],
+    data: [{ id: 'hapus' }],
+    updatedAt: Date.now(),
+  });
+  localStorage.setItem(PERSISTED_CACHE_KEY, JSON.stringify(saved));
+  const restored = new QueryClient();
+  expect(restoreQueryCache(restored, owner)).toBe(1);
+  expect(restored.getQueryData(['brands', 'list', { status: 'deleted' }])).toBeUndefined();
 });
 
 test('cache milik pengguna lain atau terlalu tua tidak dipulihkan', () => {
