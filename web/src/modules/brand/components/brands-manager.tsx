@@ -4,6 +4,7 @@ import type { RowSelection } from '@/components/data-table/use-row-selection';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
+import { formatStamp } from '@/lib/format-stamp';
 
 export interface BrandsManagerProps {
   brands: readonly BrandDto[];
@@ -106,11 +107,27 @@ export function BrandsManager({
           </LinkCell>
         ),
     },
-    {
-      id: 'status',
-      header: 'Status',
-      cell: (brand) => <ActiveStatusBadge status={brand.status} />,
-    },
+    // Tampilan Terhapus (soft delete 4.5): "Dihapus oleh" dan "Dihapus pada" menggantikan Status (selalu Nonaktif).
+    ...(deletedView
+      ? ([
+          {
+            id: 'deletedBy',
+            header: 'Dihapus oleh',
+            cell: (brand) => brand.deleted?.deletedBy ?? '—',
+          },
+          {
+            id: 'deletedAt',
+            header: 'Dihapus pada',
+            cell: (brand) => (brand.deleted ? formatStamp(brand.deleted.deletedAt) : '—'),
+          },
+        ] satisfies DataColumn<BrandDto>[])
+      : ([
+          {
+            id: 'status',
+            header: 'Status',
+            cell: (brand) => <ActiveStatusBadge status={brand.status} />,
+          },
+        ] satisfies DataColumn<BrandDto>[])),
   ];
 
   const actions = (brand: BrandDto): RowAction[] => {

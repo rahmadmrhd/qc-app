@@ -221,3 +221,23 @@ test('merk terhapus tanpa hak Pulihkan: teks + Terhapus tanpa tautan', async () 
   expect(screen.getByText('Ubiquiti')).toBeInTheDocument();
   expect(screen.getByText('Terhapus')).toBeInTheDocument();
 });
+
+test('tampilan Terhapus: kolom Dihapus oleh dan Dihapus pada menggantikan Lock/Gambar/Status', async () => {
+  const deleted = items.map((item) => ({
+    ...item,
+    status: 'inactive' as const,
+    deleted: { deletedAt: '2026-11-20T03:04:00.000Z', deletedBy: 'admin@x.com' },
+  }));
+  await renderTable({ items: deleted, deletedView: true });
+  expect(screen.getByRole('columnheader', { name: 'Dihapus oleh' })).toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: 'Dihapus pada' })).toBeInTheDocument();
+  expect(screen.queryByRole('columnheader', { name: 'Gambar' })).toBeNull();
+  expect(screen.getAllByText('admin@x.com')).toHaveLength(2);
+  expect(screen.getAllByText(/20 Nov 2026/)).toHaveLength(2);
+});
+
+test('tampilan biasa tidak memuat kolom Dihapus', async () => {
+  await renderTable();
+  expect(screen.queryByRole('columnheader', { name: 'Dihapus oleh' })).toBeNull();
+  expect(screen.getByRole('columnheader', { name: 'Status' })).toBeInTheDocument();
+});

@@ -145,3 +145,16 @@ test('checkbox baris berlabel nama merk hanya bila selection diberikan', async (
   await renderManager();
   expect(screen.queryByRole('checkbox')).toBeNull();
 });
+
+test('tampilan Terhapus: kolom Dihapus oleh dan Dihapus pada menggantikan Status', async () => {
+  const deleted = brands.map((brand) => ({
+    ...brand,
+    status: 'inactive' as const,
+    deleted: { deletedAt: '2026-11-20T03:04:00.000Z', deletedBy: 'admin@x.com' },
+  }));
+  await renderManager({ brands: deleted, deletedView: true });
+  expect(screen.getByRole('columnheader', { name: 'Dihapus oleh' })).toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: 'Dihapus pada' })).toBeInTheDocument();
+  expect(screen.queryByRole('columnheader', { name: 'Status' })).toBeNull();
+  expect(screen.getAllByText('admin@x.com')).toHaveLength(2);
+});

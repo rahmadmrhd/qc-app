@@ -4,6 +4,7 @@ import type { RowSelection } from '@/components/data-table/use-row-selection';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
+import { formatStamp } from '@/lib/format-stamp';
 import { NoManualBookNote } from './manual-book-note';
 import { NoPostelNote } from './no-postel-note';
 import { NoInstructionsNote } from './sticker-instructions-view';
@@ -130,28 +131,45 @@ export function ItemsTable({
         </div>
       ),
     },
-    {
-      id: 'lock',
-      header: 'Lock',
-      cell: (item) =>
-        item.isCountryLock ? (
-          <Badge color="secondary" variant="outline">
-            Country lock
-          </Badge>
-        ) : null,
-    },
-    {
-      id: 'images',
-      header: 'Gambar',
-      align: 'right',
-      className: 'tabular-nums',
-      cell: (item) => item.imageCount,
-    },
-    {
-      id: 'status',
-      header: 'Status',
-      cell: (item) => <ActiveStatusBadge status={item.status} />,
-    },
+    // Tampilan Terhapus (soft delete 4.5): "Dihapus oleh" dan "Dihapus pada" menggantikan Lock, Gambar, dan
+    // Status (selalu Nonaktif) agar jumlah kolom tetap.
+    ...(deletedView
+      ? ([
+          {
+            id: 'deletedBy',
+            header: 'Dihapus oleh',
+            cell: (item) => item.deleted?.deletedBy ?? '—',
+          },
+          {
+            id: 'deletedAt',
+            header: 'Dihapus pada',
+            cell: (item) => (item.deleted ? formatStamp(item.deleted.deletedAt) : '—'),
+          },
+        ] satisfies DataColumn<ItemSummaryDto>[])
+      : ([
+          {
+            id: 'lock',
+            header: 'Lock',
+            cell: (item) =>
+              item.isCountryLock ? (
+                <Badge color="secondary" variant="outline">
+                  Country lock
+                </Badge>
+              ) : null,
+          },
+          {
+            id: 'images',
+            header: 'Gambar',
+            align: 'right',
+            className: 'tabular-nums',
+            cell: (item) => item.imageCount,
+          },
+          {
+            id: 'status',
+            header: 'Status',
+            cell: (item) => <ActiveStatusBadge status={item.status} />,
+          },
+        ] satisfies DataColumn<ItemSummaryDto>[])),
   ];
 
   const actions = (item: ItemSummaryDto): RowAction[] => {
