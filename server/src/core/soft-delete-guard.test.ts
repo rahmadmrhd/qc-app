@@ -159,10 +159,42 @@ describe('pemindai (kasus sintetis)', () => {
 
   test('konstanta diimpor dari berkas lain diperluas lewat konteks bersama', () => {
     const a = "export const H_FROM = 'handovers h JOIN customers c ON c.id = h.customer_id';";
-    const b = "q('SELECT 1 FROM ${H_FROM} WHERE h.id = ?');";
+    const b = "import { H_FROM } from './a';\nq('SELECT 1 FROM ${H_FROM} WHERE h.id = ?');";
     const context = buildScanContext([a, b]);
     expect(scanSource(b, context).filter((r) => !r.ok)).toHaveLength(2);
     expect(scanSource(a, context)).toEqual([]);
+  });
+
+  test('konstanta berkas lain yang TIDAK diimpor tidak diperluas, juga bila namanya sama dengan variabel lokal (N3)', () => {
+    const a = 'export const where = "s.deleted_at = \'\'";';
+    const b = 'function f(where) { return q(`SELECT 1 FROM serials s WHERE ${where}`); }';
+    const context = buildScanContext([a, b]);
+    // tanpa impor: `${where}` tak diperluas menjadi penyaring palsu
+    expect(scanSource(b, context).map((r) => [r.table, r.ok])).toEqual([['serials', false]]);
+    // const lokal berindentasi tak menjadi konstanta tingkat-modul
+    const c = 'function g() {\n  const base = "a.deleted_at = \'\'";\n  return 1;\n}';
+    const d = 'q(`SELECT 1 FROM serials a WHERE ${base}`);';
+    const ctx2 = buildScanContext([c, d]);
+    expect(scanSource(d, ctx2).map((r) => r.ok)).toEqual([false]);
+    // nama ganda dalam satu berkas ambigu: tak diperluas
+    const e =
+      "const x = 'a';\nconst x = \"serials.deleted_at = ''\";\nq(`FROM serials WHERE ${x}`);";
+    expect(
+      scanSource(e)
+        .filter((r) => r.table === 'serials')
+        .every((r) => !r.ok),
+    ).toBe(true);
+  });
+
+  test('fragmen yang juga dipakai langsung tanpa ${} tetap dinilai pada deklarasinya (N2)', () => {
+    const src =
+      "const SEL = 'SELECT * FROM serials s';\nq1(SEL);\nq2(`${SEL} WHERE ${liveWhere('s')}`);";
+    const refs = scanSource(src);
+    expect(refs.filter((r) => !r.ok)).toHaveLength(1);
+    expect(refs.filter((r) => r.ok)).toHaveLength(1);
+    // hanya dipakai lewat ${}: deklarasi tak dihitung sendiri
+    const only = "const SEL = 'SELECT * FROM serials s';\nq2(`${SEL} WHERE ${liveWhere('s')}`);";
+    expect(scanSource(only).every((r) => r.ok)).toBe(true);
   });
 
   test('FROM/JOIN dinamis yang tak dapat diperluas selalu dilaporkan; DELETE FROM dinamis di luar cakupan', () => {

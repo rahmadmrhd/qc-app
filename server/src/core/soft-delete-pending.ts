@@ -13,8 +13,9 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
   'server/src/modules/brand/repo.ts': [
     'brands@1#66ad97fc',
     'business_units@1#699ffdd3',
-    'business_units@2#0faa6f9a',
-    'business_units@3#6492887a',
+    'business_units@2#d9475f00',
+    'business_units@3#0faa6f9a',
+    'business_units@4#6492887a',
     'brands@2#7a248a06',
     'brands@3#fca7a41a',
     'brands@4#7a248a06',
@@ -90,7 +91,8 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'sticker_types@1#8f1c6a01',
     'stickers@2#73cccc40',
     'stickers@3#429e9da2',
-    'business_units@1#2023d3e3',
+    'business_units@1#c2e2358a',
+    'business_units@2#2023d3e3',
     'sticker_types@2#985384cd',
     'manual_book_versions@1#e7d844e9',
     'manual_book_versions@2#34832c17',
@@ -374,7 +376,7 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
   'server/src/core/cas.ts#*dinamis@1#2d23e851':
     'nameGuardStmt: penjaga TULIS (SELECT ... FOR UPDATE) atas baris merk/customer yang baru dibaca penulis; hapus/pulihkan memakai soft-delete.ts. Tabel dinamis (brands|customers).',
   'server/src/modules/jobs/sheets-export.ts#*dinamis@1#62151e07':
-    'Ekspor Sheets: tabel dinamis dari EXPORT_TABLES; tabel ber-soft-delete disaring lewat liveWhere() (isSoftDeleteTable), dijaga sheets-export.test.ts.',
+    'Ekspor Sheets: tabel dinamis dari EXPORT_TABLES; tabel ber-soft-delete disaring lewat liveWhere() (isSoftDeleteTable), anak dari induk terhapus lewat EXPORT_CHILD_PARENTS (handover_comments); DIPENDING: `files` (pemilik per owner_type) dan `qr_documents` (tanpa kolom induk) baru disaring bersama fase modul pemiliknya (item/QR, fase 3-4). Dijaga sheets-export.test.ts.',
   'server/src/modules/backup/restore.ts#*dinamis@1#4b20ad1c':
     'Pemulihan cadangan: menghitung SEMUA baris tiap tabel di skema pemulihan untuk verifikasi; baris terhapus (soft delete) memang ikut dicadangkan dan harus terhitung.',
 };

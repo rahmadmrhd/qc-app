@@ -301,41 +301,89 @@ function filterQualifiers(text: string): { qualified: Set<string>; bare: boolean
   return { qualified, bare };
 }
 
-/** Konteks pemindaian lintas berkas: konstanta literal tingkat-modul dan nama yang dirujuk lewat `${NAME}`. */
+/** Konteks pemindaian lintas berkas: konstanta literal tingkat-modul per berkas dan konstanta yang diekspor. */
 export interface ScanContext {
-  /** Nama konstanta -> teks (hanya nama yang tak ambigu antar berkas). */
-  constants: ReadonlyMap<string, string>;
+  /** Konstanta tingkat-modul tiap sumber (kunci = teks sumber), hanya nama yang tak ambigu dalam berkasnya. */
+  own: ReadonlyMap<string, ReadonlyMap<string, string>>;
+  /** Konstanta `export const` (nama -> teks) yang tak ambigu antar berkas: satu-satunya yang dapat diimpor. */
+  exported: ReadonlyMap<string, string>;
   /** Nama konstanta yang dirujuk lewat `${NAME}` di suatu literal (dinilai di tempat pemakainya, bukan sendiri). */
   referenced: ReadonlySet<string>;
+  /** Nama konstanta yang JUGA dipakai langsung (mis. `db.prepare(NAME)`): literal deklarasinya tetap dinilai (N2). */
+  direct: ReadonlySet<string>;
 }
 
-const CONST_DECL =
-  /(?:^|\n)[ \t]*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)(?:\s*:[^=\n]+)?\s*=\s*(?=['"`])/g;
+/** Hanya deklarasi tingkat-modul (tanpa indentasi): `const` lokal fungsi tak ikut (N3). */
+const CONST_DECL = /^(export\s+)?const\s+([A-Za-z_$][\w$]*)(?:\s*:[^=\n]+)?\s*=\s*(?=['"`])/gm;
 
-/** Konstanta literal tingkat-modul sebuah sumber: nama -> teks. */
-function constantsOf(source: string): Map<string, string> {
+interface TopConst {
+  name: string;
+  text: string;
+  exported: boolean;
+  /** Offset karakter pertama isi literal. */
+  start: number;
+}
+
+function topLevelConstants(source: string): TopConst[] {
   const literals = new Map(extractLiterals(source).map((literal) => [literal.start, literal.text]));
-  const found = new Map<string, string>();
+  const found: TopConst[] = [];
   for (const m of source.matchAll(CONST_DECL)) {
-    const text = literals.get(m.index + m[0].length + 1);
-    if (text !== undefined) found.set(m[1] as string, text);
+    const start = m.index + m[0].length + 1;
+    const text = literals.get(start);
+    if (text !== undefined)
+      found.push({ name: m[2] as string, text, exported: m[1] !== undefined, start });
   }
   return found;
 }
 
+/** Konstanta tingkat-modul sebuah sumber; nama ganda dalam satu berkas dianggap ambigu dan dibuang. */
+function constantsOf(source: string): Map<string, string> {
+  const seen = new Map<string, string | null>();
+  for (const { name, text } of topLevelConstants(source))
+    seen.set(name, seen.has(name) ? null : text);
+  const out = new Map<string, string>();
+  for (const [name, text] of seen) if (text !== null) out.set(name, text);
+  return out;
+}
+
+/** Nama lokal -> nama yang diimpor, dari pernyataan `import { A, B as C } from '...'`. */
+function importedNames(source: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of source.matchAll(/^import\s+(?:type\s+)?\{([^}]*)\}\s+from\s+['"][^'"]+['"]/gm)) {
+    for (const part of (m[1] as string).split(',')) {
+      const bits = part
+        .trim()
+        .replace(/^type\s+/, '')
+        .split(/\s+as\s+/);
+      const imported = bits[0]?.trim();
+      const local = (bits[1] ?? bits[0])?.trim();
+      if (imported && local) out.set(local, imported);
+    }
+  }
+  return out;
+}
+
+const escapeRegExp = (text: string) => text.replace(/[$\\^.*+?()[\]{}|]/g, '\\$&');
+
 /**
- * Membangun konteks dari seluruh sumber yang dipindai: `${HANDOVER_FROM}` di satu berkas dapat merujuk konstanta di
- * berkas lain (diimpor). Nama yang didefinisikan dengan teks berbeda di dua berkas dianggap ambigu dan tak diperluas.
+ * Membangun konteks dari seluruh sumber yang dipindai. `${NAME}` hanya diperluas dengan konstanta berkas itu sendiri
+ * atau yang benar-benar diimpor (pernyataan `import { NAME }` dan ada `export const NAME` yang tak ambigu); nama
+ * lokal, nama ganda, atau nama dari berkas yang tak diimpor tidak diperluas (N3).
  */
 export function buildScanContext(sources: readonly string[]): ScanContext {
-  const constants = new Map<string, string>();
+  const own = new Map<string, Map<string, string>>();
+  const exported = new Map<string, string>();
   const ambiguous = new Set<string>();
   const referenced = new Set<string>();
+  const declared = new Map<string, number>();
   for (const source of sources) {
-    for (const [name, text] of constantsOf(source)) {
-      const prior = constants.get(name);
+    own.set(source, constantsOf(source));
+    for (const { name, text, exported: isExported } of topLevelConstants(source)) {
+      declared.set(name, (declared.get(name) ?? 0) + 1);
+      if (!isExported) continue;
+      const prior = exported.get(name);
       if (prior !== undefined && prior !== text) ambiguous.add(name);
-      constants.set(name, text);
+      exported.set(name, text);
     }
     for (const literal of extractLiterals(source)) {
       for (const m of literal.text.matchAll(/\$\{\s*([A-Za-z_$][\w$]*)\s*\}/g)) {
@@ -343,8 +391,38 @@ export function buildScanContext(sources: readonly string[]): ScanContext {
       }
     }
   }
-  for (const name of ambiguous) constants.delete(name);
-  return { constants, referenced };
+  for (const name of ambiguous) exported.delete(name);
+  // Pemakaian langsung: kemunculan pengenal di luar `${}`, pernyataan import, dan deklarasinya (N2).
+  const uses = new Map<string, number>();
+  for (const source of sources) {
+    // Komentar (baris penuh dan blok) dan pernyataan import bukan pemakaian.
+    const code = source
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+      .replace(/^import\s[^;]*;/gm, '');
+    for (const name of referenced) {
+      if (!declared.has(name)) continue;
+      const id = escapeRegExp(name);
+      const total = code.match(new RegExp(`(?<![\\w$.])${id}(?![\\w$])`, 'g'));
+      const interp = code.match(new RegExp(`\\$\\{\\s*${id}\\s*\\}`, 'g'));
+      uses.set(name, (uses.get(name) ?? 0) + (total?.length ?? 0) - (interp?.length ?? 0));
+    }
+  }
+  const direct = new Set<string>();
+  for (const name of referenced) {
+    if ((uses.get(name) ?? 0) - (declared.get(name) ?? 0) > 0) direct.add(name);
+  }
+  return { own, exported, referenced, direct };
+}
+
+/** Konstanta yang boleh diperluas di `source`: miliknya sendiri, lalu yang diimpor. */
+function availableConstants(source: string, ctx: ScanContext): Map<string, string> {
+  const available = new Map(ctx.own.get(source) ?? constantsOf(source));
+  for (const [local, imported] of importedNames(source)) {
+    const text = ctx.exported.get(imported);
+    if (text !== undefined && !available.has(local)) available.set(local, text);
+  }
+  return available;
 }
 
 /** Mengganti `${NAME}` dengan teks konstanta (bersarang sampai 4 tingkat); interpolasi lain dibiarkan. */
@@ -391,10 +469,10 @@ function dynamicRefs(text: string): RawRef[] {
 export function scanSource(source: string, context?: ScanContext): TableRef[] {
   const ctx = context ?? buildScanContext([source]);
   const fragmentStarts = new Set<number>();
-  for (const m of source.matchAll(CONST_DECL)) {
-    if (ctx.referenced.has(m[1] as string)) fragmentStarts.add(m.index + m[0].length + 1);
+  for (const { name, start } of topLevelConstants(source)) {
+    if (ctx.referenced.has(name) && !ctx.direct.has(name)) fragmentStarts.add(start);
   }
-  const constants = new Map([...ctx.constants, ...constantsOf(source)]);
+  const constants = availableConstants(source, ctx);
   const counters = new Map<string, number>();
   const result: TableRef[] = [];
   for (const literal of extractLiterals(source)) {
