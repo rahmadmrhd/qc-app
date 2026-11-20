@@ -16,6 +16,11 @@ export interface ItemFiltersProps {
     Partial<Pick<ItemListFilter, 'postel' | 'brandId' | 'buId'>>;
   /** Pilihan chip Merk (merk hidup); chip tak tampil bila tidak diberikan. */
   brands?: readonly BrandDto[] | undefined;
+  /**
+   * Merk dari `filter.brandId` yang tak ada di `brands` (mis. merk terhapus dari tautan View merk), dimuat lewat
+   * `brands.get`; dipakai hanya untuk nama chip (terhapus = penanda "Terhapus"). Kosong = "Merk tidak dikenal".
+   */
+  knownBrand?: BrandDto | undefined;
   /** Pilihan chip Business Unit (BU hidup yang boleh dilihat user); chip tak tampil bila tidak diberikan. */
   businessUnits?: readonly { id: string; code: string; name: string }[] | undefined;
   /** Katalog untuk filter stiker/jenis; tidak dipakai bila `showStickerFilter` false. */
@@ -27,6 +32,7 @@ export interface ItemFiltersProps {
 }
 
 const INACTIVE = ' — nonaktif';
+const DELETED = ' — Terhapus';
 
 interface Group {
   id: string;
@@ -69,6 +75,7 @@ export function ItemFilters({
   stickers,
   types,
   brands,
+  knownBrand,
   businessUnits,
   showStickerFilter = true,
   onChange,
@@ -102,7 +109,12 @@ export function ItemFilters({
     label: `${bu.name} (${bu.code})`,
   }));
   // Id dari URL yang tak ada di pilihan (mis. merk terhapus dari tautan View merk) tetap tampil sebagai tidak dikenal.
-  const brandName = (id: string) => brandOptions.find((option) => option.id === id)?.label;
+  const brandName = (id: string) => {
+    const option = brandOptions.find((entry) => entry.id === id);
+    if (option) return option.label;
+    if (knownBrand?.id !== id) return undefined;
+    return knownBrand.deleted ? `${knownBrand.name}${DELETED}` : knownBrand.name;
+  };
   const buName = (id: string) => buOptions.find((option) => option.id === id)?.label;
 
   return (

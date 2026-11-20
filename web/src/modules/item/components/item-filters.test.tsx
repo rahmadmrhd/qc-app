@@ -260,3 +260,22 @@ test('chip terisi menampilkan nama, hapus mengosongkan; id tak dikenal tetap ter
   setup({ brandId: 'terhapus' }, { brands: BRANDS, businessUnits: BUS });
   expect(screen.getByRole('button', { name: 'Merk: Merk tidak dikenal' })).toBeInTheDocument();
 });
+
+test('chip Merk: merk terhapus dari tautan View merk tampil dengan nama dan penanda Terhapus', () => {
+  const gone = {
+    id: 'bx',
+    name: 'Merk Lawas',
+    status: 'inactive',
+    itemCount: 0,
+    updatedAt: '',
+    businessUnitIds: [],
+    deleted: { deletedAt: '2026-11-20T00:00:00.000Z', deletedBy: 'a@x.com' },
+  } as BrandDto;
+  setup({ brandId: 'bx' }, { brands: BRANDS, businessUnits: BUS, knownBrand: gone });
+  expect(screen.getByRole('button', { name: 'Merk: Merk Lawas — Terhapus' })).toBeInTheDocument();
+});
+
+test('chip Merk: brandId tak ada di daftar dan tak terbaca = Merk tidak dikenal', () => {
+  setup({ brandId: 'bx' }, { brands: BRANDS, businessUnits: BUS });
+  expect(screen.getByRole('button', { name: 'Merk: Merk tidak dikenal' })).toBeInTheDocument();
+});

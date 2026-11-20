@@ -1,5 +1,5 @@
 import type { ItemSummaryDto } from '@shared/contract';
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -24,7 +24,7 @@ import {
   requirePermission,
 } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
-import { brandsQueryOptions } from '@/modules/brand/queries';
+import { brandQueryOptions, brandsQueryOptions } from '@/modules/brand/queries';
 import { ItemFilters } from '@/modules/item/components/item-filters';
 import { ItemsTable } from '@/modules/item/components/items-table';
 import { filterOfSearch, itemsSearchSchema, searchPatchOf } from '@/modules/item/lib/list-filter';
@@ -76,6 +76,15 @@ function ItemsPage() {
   const showStickerFilter = canReadCatalog && stickers.isSuccess && types.isSuccess;
   // Chip Merk dan BU: merk hidup dan BU hidup yang boleh dilihat (BU terhapus hanya memberi hak, bukan pilihan).
   const brands = useQuery({ ...brandsQueryOptions(), retry: false });
+  // Merk terhapus dari tautan "Lihat item merk ini" tak ada di daftar hidup: nama untuk chip dimuat lewat `brands.get`
+  // (hanya bila `brandId` di URL dan belum ada di daftar; galat/ditolak = chip "Merk tidak dikenal").
+  const queryClient = useQueryClient();
+  const brandIdInUrl = filter.brandId;
+  const brandInList = brands.data?.some((brand) => brand.id === brandIdInUrl) ?? false;
+  const knownBrand = useQuery({
+    ...brandQueryOptions(queryClient, brandIdInUrl),
+    enabled: brandIdInUrl !== '' && brands.isSuccess && !brandInList,
+  });
   const filterBus = liveBuIdsWithLevelOf(me, 'item', 'view').flatMap((id) => {
     const bu = me.businessUnits.find((entry) => entry.id === id);
     return bu ? [{ id, code: bu.code, name: bu.name }] : [];
@@ -227,6 +236,7 @@ function ItemsPage() {
               stickers={stickers.data ?? []}
               types={types.data ?? []}
               brands={brands.data}
+              knownBrand={knownBrand.data}
               businessUnits={filterBus}
               showStickerFilter={showStickerFilter}
               onChange={(patch) =>

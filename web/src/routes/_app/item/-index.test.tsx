@@ -84,6 +84,16 @@ beforeEach(() => {
             businessUnitIds: [],
           },
         ];
+      case 'brands.get':
+        return {
+          id: 'bx',
+          name: 'Merk Lawas',
+          status: 'inactive',
+          itemCount: 0,
+          updatedAt: '',
+          businessUnitIds: [],
+          deleted: { deletedAt: '2026-11-20T00:00:00.000Z', deletedBy: 'a@x.com' },
+        };
       case 'stickers.list':
       case 'stickerTypes.list':
         return [];
@@ -285,4 +295,12 @@ test('?brandId= dari tautan Merk diteruskan ke items.list dan chip Merk menampil
   );
   expect(await screen.findByRole('button', { name: 'Merk: Asus' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Business Unit' })).toBeInTheDocument();
+});
+
+test('?brandId= merk terhapus: chip Merk menampilkan nama dan penanda Terhapus (brands.get)', async () => {
+  await mount({ path: '/_app/item/?brandId=bx' });
+  expect(
+    await screen.findByRole('button', { name: 'Merk: Merk Lawas — Terhapus' }),
+  ).toBeInTheDocument();
+  expect(callsOf('brands.get')[0]?.input).toEqual({ id: 'bx' });
 });
