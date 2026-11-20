@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
-import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runPendingJobs } from '@server/jobs/runner';
@@ -7,6 +7,7 @@ import { findJob } from '@server/modules/jobs/repo';
 import { restCall } from '@server-test/rest-call';
 import { SERIAL_USERS, seedSerial, seedSerialWorld } from '@server-test/serial-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import { removeTempDir } from '../../../../test-support/safe-rm';
 import { canManageProof } from './access';
 import { serialProofJobStmt } from './job';
 import { encodePngRgba } from './png';
@@ -222,7 +223,7 @@ describe('penyapu yatim: rujukan dan hitungan', () => {
 
   afterEach(async () => {
     // Penjaga: bila `beforeEach` luar gagal (mis. koneksi DB putus), `dir` masih '' dan `rm('')` menghapus isi direktori kerja.
-    if (dir) await rm(dir, { recursive: true, force: true });
+    if (dir) await removeTempDir(dir);
     dir = '';
   });
 

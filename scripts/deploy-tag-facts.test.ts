@@ -14,6 +14,7 @@ import {
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import { removeTempDirSync } from '../server/test-support/safe-rm';
 import { ROOT_DIR } from './paths';
 
 setDefaultTimeout(30_000);
@@ -87,7 +88,7 @@ beforeAll(() => {
     chmodSync(join(bin, name), 0o755);
   }
 });
-afterAll(() => rmSync(base, { recursive: true, force: true }));
+afterAll(() => removeTempDirSync(base));
 
 const posix = (path: string) => path.replaceAll('\\', '/');
 const put = (path: string, body: unknown) =>

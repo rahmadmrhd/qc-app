@@ -1,9 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { announcedApis } from '@shared/api-versions';
+import { removeTempDirSync } from '../test-support/safe-rm';
 import { type Config, loadConfig } from './config';
 import { signSessionToken } from './core/session';
 import { MAX_REQUEST_BODY_BYTES } from './http/body';
@@ -39,7 +40,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  rmSync(root, { recursive: true, force: true });
+  removeTempDirSync(root);
 });
 
 beforeEach(async () => {

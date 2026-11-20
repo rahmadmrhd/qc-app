@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
-import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdtemp, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runPendingJobs, startScheduler } from '@server/jobs/runner';
@@ -8,6 +8,7 @@ import { seedRole, seedUser } from '@server-test/access-fixtures';
 import { restCall } from '@server-test/rest-call';
 import { SERIAL_USERS, seedSerial, seedSerialWorld } from '@server-test/serial-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import { removeTempDir } from '../../../../test-support/safe-rm';
 import { serialProofJobStmt } from './job';
 import { encodePngRgba } from './png';
 import {
@@ -363,7 +364,7 @@ describe('I2: penyapu berkas yatim', () => {
 
   afterEach(async () => {
     // Penjaga: bila `beforeEach` luar gagal (mis. koneksi DB putus), `dir` masih '' dan `rm('')` menghapus isi direktori kerja.
-    if (dir) await rm(dir, { recursive: true, force: true });
+    if (dir) await removeTempDir(dir);
     dir = '';
   });
 
@@ -433,7 +434,7 @@ describe('I2: penyapu berkas yatim', () => {
   });
 
   test('folder belum ada atau tanpa PROOF_STORE = 0', async () => {
-    await rm(dir, { recursive: true, force: true });
+    await removeTempDir(dir);
     expect(await sweepOrphanProofFiles(env)).toBe(0);
     env.PROOF_STORE = undefined;
     expect(await sweepOrphanProofFiles(env)).toBe(0);

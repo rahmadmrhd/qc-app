@@ -25,6 +25,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
+import { removeTempDirSync } from '../test-support/safe-rm';
 
 // Tiap tes memulai proses bash (lambat di Windows); rollback menjalankan beberapa subproses.
 setDefaultTimeout(30_000);
@@ -140,7 +141,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  rmSync(base, { recursive: true, force: true });
+  removeTempDirSync(base);
 });
 
 function envFile(extra = '', tag: string | null = 'tag-lama'): string {
@@ -1049,8 +1050,8 @@ describe('deploy.sh: folder instalasi', () => {
       expect(reported.endsWith(basename(install))).toBe(true);
       expect(reported).not.toContain('/root/apps/qc-app');
     } finally {
-      rmSync(install, { recursive: true, force: true });
-      rmSync(elsewhere, { recursive: true, force: true });
+      removeTempDirSync(install);
+      removeTempDirSync(elsewhere);
     }
   });
 });
