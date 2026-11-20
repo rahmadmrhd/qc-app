@@ -19,6 +19,7 @@ import {
   type QueryKind,
   routeShape,
 } from '@shared/api';
+import { parseApiId } from '@shared/api-versions';
 import { type ApiId, ERROR_CODES } from '@shared/contract';
 
 // Dokumen OpenAPI 3.1 yang dibangun dari tabel `API_ROUTES` (BUKAN dari skema validator, yang ditulis tangan):
@@ -142,16 +143,40 @@ function operationFor(
   return { verb: shape.verb, path: shape.path, operation };
 }
 
-/** Dokumen OpenAPI 3.1 dari seluruh tabel rute (jalur relatif terhadap `servers[0].url` = `/api/v1`). */
-export function buildOpenApi(routes: RouteTable): OpenApiDocument {
+/**
+ * Kunci path item dokumen: v1 memakai jalur tabel apa adanya (relatif terhadap `servers[0]` = `/api/v1`); versi >= 2
+ * SELALU diawali `/v<n>` (mis. `/v2/qrcodes/{id}`) supaya tak pernah bertabrakan dengan v1 dan tetap kunci sah OAS 3.1
+ * (tanpa query string). Pasangannya `serversFor`: path item versi >= 2 menimpa server menjadi `/api`.
+ */
+export function openApiPathKey(version: number, path: string): string {
+  return version <= 1 ? path : `/v${version}${path}`;
+}
+
+/** `servers` untuk path item rute versi >= 2 (kunci pathnya membawa `/v<n>`, jadi server = `/api`); v1 memakai `servers` dokumen. */
+export function serversFor(version: number): Array<{ url: string }> | undefined {
+  return version <= 1 ? undefined : [{ url: '/api' }];
+}
+
+/**
+ * Dokumen OpenAPI 3.1 dari seluruh tabel rute (jalur v1 relatif terhadap `servers[0].url` = `/api/v1`). Rute versi >= 2
+ * ditaruh pada path item berkunci `/v<n><jalur>` dengan `servers` `/api` (lihat `openApiPathKey`/`serversFor`).
+ */
+export function buildOpenApi(
+  routes: RouteTable,
+  table: Record<string, ApiRouteDef> = API_ROUTES,
+): OpenApiDocument {
   const paths: OpenApiDocument['paths'] = {};
-  for (const id of Object.keys(API_ROUTES) as ApiId[]) {
-    const def = API_ROUTES[id];
+  for (const id of Object.keys(table) as ApiId[]) {
+    const def = table[id] as ApiRouteDef;
+    const { version } = parseApiId(id);
     for (const created of def.create ? [false, true] : [false]) {
       const { verb, path, operation } = operationFor(id, def, created, routes);
-      const item = paths[path] ?? {};
+      const key = openApiPathKey(version, path);
+      const item = paths[key] ?? {};
       item[verb.toLowerCase()] = operation;
-      paths[path] = item;
+      const servers = serversFor(version);
+      if (servers !== undefined) (item as Record<string, unknown>).servers = servers;
+      paths[key] = item;
     }
   }
   return {

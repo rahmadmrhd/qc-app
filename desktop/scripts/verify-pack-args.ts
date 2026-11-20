@@ -1,6 +1,10 @@
 // Logika murni `verify-pack.ts`: arsitektur hasil kemas yang diperiksa dan apakah host dapat menjalankannya.
 // Dipisah agar dapat diuji (Vitest) tanpa membangun Electron.
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { parseUiManifest, UI_MANIFEST_FILE } from '../../countrylock/src/ui-manifest';
+
 export type PackArch = 'x64' | 'arm64';
 
 const ARCHES: readonly string[] = ['x64', 'arm64'];
@@ -32,4 +36,21 @@ export function unpackedDirName(arch: PackArch): string {
  */
 export function canRun(arch: PackArch, hostArch: string): boolean {
   return arch === 'x64' || hostArch === 'arm64';
+}
+
+/**
+ * Masalah pada `ui-manifest.json` di folder UI dasar terkemas (`resources/ui-baseline`), atau `null` bila sah.
+ * Desktop memakai `createdAt` manifest itu untuk aturan "UI dasar yang lebih baru menang" (`ui-bundle.ts`); tanpanya
+ * aturan mati dan bundel server yang lebih lama tetap menang atas UI installer. Manifest ditulis `bun run build` akar
+ * (`scripts/build-ui-manifest.ts`), bukan `build:web`.
+ */
+export function baselineManifestProblem(baselineDir: string): string | null {
+  const file = join(baselineDir, UI_MANIFEST_FILE);
+  let text: string;
+  try {
+    text = readFileSync(file, 'utf8');
+  } catch {
+    return `UI dasar tanpa ${UI_MANIFEST_FILE} (build installer harus lewat "bun run build", bukan "build:web" saja)`;
+  }
+  return parseUiManifest(text) === null ? `${UI_MANIFEST_FILE} UI dasar tidak valid` : null;
 }

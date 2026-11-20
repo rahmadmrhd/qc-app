@@ -146,9 +146,15 @@ describe('evaluateGuard: berkas di luar image server tak membuat guard menolak',
     }
   });
 
-  test('jalur tak dikenal (infra, workflow) ditolak: gagal tertutup', () => {
-    for (const path of ['.github/workflows/deploy-server.yml', 'brand-baru/x.ts', 'catatan.txt']) {
+  test('jalur tak dikenal (aksi lokal, folder baru, berkas akar baru) ditolak: gagal tertutup', () => {
+    for (const path of ['.github/actions/setup/action.yml', 'brand-baru/x.ts', 'catatan.txt']) {
       expect(withExtra([path]).ok, path).toBe(false);
+    }
+  });
+
+  test('perubahan .github/workflows/ diloloskan: tak masuk image (keputusan pemilik 2026-11-20)', () => {
+    for (const path of ['.github/workflows/deploy-server.yml', '.github/workflows/release.yml']) {
+      expect(withExtra([path]).ok, path).toBe(true);
     }
   });
 
