@@ -1,11 +1,27 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { PostelItemPicker } from './postel-item-picker';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
+
+// Dialog item diganti stub: yang diuji di sini hanya penyambungan baris "Tambah Item" dan item baru yang terpilih.
+vi.mock('@/modules/item/components/item-form-dialog', () => ({
+  ItemFormDialog: ({
+    open,
+    onCreated,
+  }: {
+    open: boolean;
+    onCreated: (item: { id: string; brand: string; model: string }) => void;
+  }) =>
+    open ? (
+      <button type="button" onClick={() => onCreated({ id: 'new', brand: 'Baru', model: 'X1' })}>
+        Simpan item stub
+      </button>
+    ) : null,
+}));
 
 const OPTIONS = {
   items: [
@@ -103,4 +119,24 @@ test('mengetik memanggil postels.itemOptions dengan query setelah 200 ms; chip t
   expect(await screen.findByRole('option', { name: /ACME ZZ-1/ })).toBeInTheDocument();
   // chip item terpilih tetap tampil walau tak ada di hasil pencarian
   expect(screen.getByText('PBE M5-400')).toBeInTheDocument();
+});
+
+test('baris "Tambah Item" hanya bila canCreateItem; item baru dari dialog langsung terpilih', async () => {
+  const first = renderPicker();
+  await userEvent.click(screen.getByRole('combobox', { name: 'Item' }));
+  await screen.findByRole('option', { name: /PBE M5-400/ });
+  expect(screen.queryByRole('option', { name: 'Tambah Item' })).toBeNull();
+  cleanup();
+  const props = renderPicker({
+    canCreateItem: true,
+    selected: [{ id: 'i1', brand: 'PBE', model: 'M5-400' }],
+  });
+  await userEvent.click(screen.getByRole('combobox', { name: 'Item' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'Tambah Item' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Simpan item stub' }));
+  expect(props.onChange).toHaveBeenCalledWith([
+    { id: 'i1', brand: 'PBE', model: 'M5-400' },
+    { id: 'new', brand: 'Baru', model: 'X1' },
+  ]);
+  expect(first.onChange).not.toHaveBeenCalled();
 });

@@ -2,6 +2,7 @@ import type { PostelItemOptionDto } from '@shared/contract';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
+import { ItemFormDialog } from '@/modules/item/components/item-form-dialog';
 import type { PickedItem } from '../lib/schemas';
 import { postelItemOptionsQueryOptions } from '../queries';
 
@@ -17,6 +18,8 @@ export interface PostelItemPickerProps {
   /** Jumlah item tergabung yang tak terlihat oleh pengguna (tetap terpasang); hanya angka. */
   hiddenCount?: number | undefined;
   error?: string | undefined;
+  /** Boleh menambah item dari pemilih (`itemLinkAccess(...).canCreate`): memunculkan baris "Tambah Item". */
+  canCreateItem?: boolean | undefined;
 }
 
 /**
@@ -29,8 +32,10 @@ export function PostelItemPicker({
   ownedIds,
   hiddenCount = 0,
   error,
+  canCreateItem = false,
 }: PostelItemPickerProps) {
   const [term, setTerm] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
   const { data, isFetching } = useQuery(postelItemOptionsQueryOptions(term.trim()));
   const known = new Map<string, PostelItemOptionDto | PickedItem>();
   for (const item of data?.items ?? []) known.set(item.id, item);
@@ -63,6 +68,7 @@ export function PostelItemPicker({
         onSearchChange={setTerm}
         searchDebounceMs={200}
         error={error}
+        onCreate={canCreateItem ? () => setCreateOpen(true) : undefined}
         onChange={(ids) =>
           onChange(
             ids.flatMap((id) => {
@@ -72,6 +78,16 @@ export function PostelItemPicker({
           )
         }
       />
+      {canCreateItem ? (
+        // Submit dialog tidak menjalar ke form Postel di atasnya (ItemForm menghentikan propagasi submit).
+        <ItemFormDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          onCreated={(item) =>
+            onChange([...selected, { id: item.id, brand: item.brand, model: item.model }])
+          }
+        />
+      ) : null}
       {hiddenCount > 0 ? (
         <p className="text-sm text-muted-foreground">
           {`${hiddenCount} item lain tergabung di sini tetapi tidak terlihat oleh Anda; tetap terpasang.`}

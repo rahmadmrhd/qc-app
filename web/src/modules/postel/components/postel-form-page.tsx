@@ -1,8 +1,11 @@
 import type { PostelDto, SavePostelInput } from '@shared/contract';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
+import { itemLinkAccess } from '@/lib/link-access';
+import { meQueryOptions } from '@/modules/auth/queries';
 import { isStaleSaveError, STALE_SAVE_MESSAGE } from '@/modules/sticker/lib/stale';
 import { POSTEL_FIELD_KEYS, type PostelFieldErrors } from '../lib/schemas';
 import { useSavePostel } from '../queries';
@@ -34,6 +37,8 @@ function pickPostelFieldErrors(error: unknown): PostelFieldErrors {
  */
 export function PostelFormPage({ postel, soonDays, today, onDone, onCancel }: PostelFormPageProps) {
   const save = useSavePostel();
+  // Tanpa suspense: data pengguna sudah dimuat cangkang; bila belum, baris Tambah item sekadar tak tampil.
+  const me = useQuery(meQueryOptions()).data;
   const [fieldErrors, setFieldErrors] = useState<PostelFieldErrors>({});
 
   async function handleSubmit(input: SavePostelInput): Promise<string | null> {
@@ -60,6 +65,7 @@ export function PostelFormPage({ postel, soonDays, today, onDone, onCancel }: Po
       soonDays={soonDays}
       today={today}
       fieldErrors={fieldErrors}
+      canCreateItem={itemLinkAccess(me).canCreate}
       onSubmit={handleSubmit}
       onCancel={onCancel}
     />
