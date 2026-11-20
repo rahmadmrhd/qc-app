@@ -16,6 +16,9 @@ function sources(dir: string): string[] {
 test('varian CSS touch: memakai ambang viewport dari lib/layout (cermin yang dijaga)', () => {
   const css = readFileSync(path.join(SRC, 'styles.css'), 'utf8');
   expect(css).toContain(`(max-width: ${VIEWPORT_MD - 1}px)`);
+  // Selektor varian harus menunjuk `html` (bukan sembarang leluhur): `:where(:not([data-narrow]))` cocok dengan <body> dan membuat wide: selalu aktif.
+  expect(css).toContain('@custom-variant narrow (:where(html[data-narrow="true"]) &);');
+  expect(css).toContain('@custom-variant wide (:where(html:not([data-narrow="true"])) &);');
 });
 
 test('angka ambang 768/704 hanya didefinisikan di lib/layout (tak ada literal lain di sumber)', () => {

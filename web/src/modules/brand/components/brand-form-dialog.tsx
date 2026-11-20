@@ -11,6 +11,7 @@ import { FormDialogShell } from '@/components/form-dialog-shell';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { describeError } from '@/lib/api/describe-error';
 import { BusinessUnitFormDialog } from '@/modules/access/components/business-unit-form-dialog';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
@@ -84,6 +85,8 @@ export function BrandForm({
   onClose,
   onBusyChange,
 }: BrandFormProps) {
+  // Ponsel: tanpa fokus otomatis (papan ketik layar akan menutupi separuh form; review audit K9).
+  const desktop = useIsDesktop();
   const [name, setName] = useState(brand?.name ?? '');
   const [businessUnitIds, setBusinessUnitIds] = useState<string[]>(brand?.businessUnitIds ?? []);
   const [buTerm, setBuTerm] = useState('');
@@ -172,7 +175,7 @@ export function BrandForm({
           <Input
             id="brand-form-name"
             aria-required="true"
-            autoFocus
+            autoFocus={desktop}
             maxLength={ITEM_LIMITS.brand}
             value={name}
             aria-invalid={error ? true : undefined}
