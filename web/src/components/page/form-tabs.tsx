@@ -31,7 +31,9 @@ export function FormTabs({
 }) {
   const [local, setLocal] = useState(tabs[0]?.id);
   const hintId = useId();
-  const active = value ?? local;
+  const requested = value ?? local;
+  // Id tak dikenal (mis. `?tab=` basi) jatuh ke tab pertama agar panel tak kosong.
+  const active = tabs.some((tab) => tab.id === requested) ? requested : tabs[0]?.id;
   return (
     <Tabs
       value={active}

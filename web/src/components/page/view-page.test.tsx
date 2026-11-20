@@ -121,3 +121,18 @@ test('ViewMeta menampilkan Dibuat bila DTO punya createdBy dan tautan tanpa angk
   expect(link).toHaveAttribute('href', '/item');
   expect(within(link.closest('ul') as HTMLElement).queryByText(/\d/)).toBeNull();
 });
+
+test('tab terkendali dengan id tak dikenal jatuh ke tab pertama', () => {
+  render(
+    <ViewPage
+      title="Merk"
+      tab="hilang"
+      tabs={[
+        { id: 'detail', label: 'Detail', content: <p>isi detail</p> },
+        { id: 'riwayat', label: 'Riwayat', content: <p>isi riwayat</p> },
+      ]}
+    />,
+  );
+  expect(screen.getByText('isi detail')).toBeVisible();
+  expect(screen.getByRole('tab', { name: 'Detail' })).toHaveAttribute('aria-selected', 'true');
+});

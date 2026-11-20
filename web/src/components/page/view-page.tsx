@@ -36,7 +36,9 @@ export function ViewPage({
   onTabChange?: (id: string) => void;
 }) {
   const [localTab, setLocalTab] = useState(tabs?.[0]?.id);
-  const active = tab ?? localTab;
+  const requested = tab ?? localTab;
+  // Id tak dikenal (mis. `?tab=` basi) jatuh ke tab pertama agar panel tak kosong.
+  const active = tabs?.some((entry) => entry.id === requested) ? requested : tabs?.[0]?.id;
   const select = (id: string) => {
     setLocalTab(id);
     onTabChange?.(id);

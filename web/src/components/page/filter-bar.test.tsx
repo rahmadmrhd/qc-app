@@ -1,6 +1,9 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { expect, test, vi } from 'vitest';
+import { Select } from '@/components/select';
+import { pickSelect } from '@/test/link-field';
 import { FilterBar, FilterChip } from './filter-bar';
 
 test('mengetik di kolom cari memanggil onChange', async () => {
@@ -43,4 +46,30 @@ test('chip kosong tak punya tombol hapus', () => {
     </FilterChip>,
   );
   expect(screen.queryByRole('button', { name: 'Hapus filter Status' })).toBeNull();
+});
+
+test('Select di dalam popover chip: memilih opsi tidak menutup popover dan label chip berubah', async () => {
+  function Harness() {
+    const [value, setValue] = useState('');
+    return (
+      <FilterChip label="Urut" display={value === 'name' ? 'Nama A-Z' : undefined}>
+        <Select
+          id="urut"
+          label="Urut"
+          value={value}
+          onValueChange={setValue}
+          options={[
+            { value: 'name', label: 'Nama A-Z' },
+            { value: 'new', label: 'Terbaru' },
+          ]}
+        />
+      </FilterChip>
+    );
+  }
+  render(<Harness />);
+  await userEvent.click(screen.getByRole('button', { name: 'Urut' }));
+  await screen.findByRole('dialog');
+  await pickSelect(screen, 'Urut', 'Nama A-Z');
+  expect(screen.getByRole('dialog')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Urut: Nama A-Z' })).toBeInTheDocument();
 });

@@ -47,3 +47,9 @@ test('stickyTop bawaan memakai offset headroom', () => {
   render(<FormTabs tabs={TABS} />);
   expect(screen.getByRole('tablist').style.top).toBe('var(--headroom-offset,3.5rem)');
 });
+
+test('value dengan id tak dikenal jatuh ke tab pertama', () => {
+  render(<FormTabs tabs={TABS} value="hilang" />);
+  expect(screen.getByLabelText('Nama').closest('[role="tabpanel"]')).not.toHaveAttribute('hidden');
+  expect(screen.getByRole('tab', { name: 'Detail' })).toHaveAttribute('aria-selected', 'true');
+});
