@@ -24,6 +24,7 @@ let current: ServerApis | null = null;
 let loaded = false;
 let currentMin: MinClient | null = null;
 let minLoaded = false;
+const minListeners = new Set<() => void>();
 let lastRefreshAt = 0;
 let stopListening: (() => void) | null = null;
 
@@ -74,8 +75,19 @@ function setServerMinClient(value: unknown): void {
   const parsed = parseMinClient(value);
   if (parsed === null) return;
   minLoaded = true;
+  // Referensi lama dipertahankan bila nilainya sama, supaya pelanggan (`useSyncExternalStore`) tak render ulang tiap ping.
+  if (currentMin !== null && currentMin.desktop === parsed.desktop) return;
   currentMin = parsed;
   writeStoredMin(parsed);
+  for (const listener of [...minListeners]) listener();
+}
+
+/** Berlangganan perubahan `minClient` (dipakai layar penahan desktop); mengembalikan fungsi berhenti. */
+export function subscribeServerMinClient(listener: () => void): () => void {
+  minListeners.add(listener);
+  return () => {
+    minListeners.delete(listener);
+  };
 }
 
 /** Peta terakhir yang diketahui (memori, atau salinan tersimpan saat pertama dibaca); `null` = belum ada. */
