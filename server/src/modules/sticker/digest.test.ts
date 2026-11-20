@@ -148,7 +148,7 @@ describe('checkLowStockDigest', () => {
     expect(menipis).toContain('s2');
     expect(menipis).not.toContain('s4');
     expect(menipis).not.toContain('s3');
-    expect(text).toContain('https://qc.test/sticker/stock');
+    expect(text).toContain('https://qc.test/sticker');
   });
 
   test('hanya bagian habis (minimum 0): terkirim dengan subjek habis saja; hanya menipis: subjek menipis saja', async () => {

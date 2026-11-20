@@ -272,8 +272,8 @@ describe('stiker: habis dan bagian ringkasan harian', () => {
 });
 
 describe('nama stiker jenis sistem berawalan (keputusan pemilik 2026-11-12)', () => {
-  test('Manual Book: "Manual Book - <nama> v<versi>"', () => {
-    expect(manualBookStickerName('PBE M5-400', 2)).toBe('Manual Book - PBE M5-400 v2');
+  test('Manual Book: "MB - <nama> v<versi>"', () => {
+    expect(manualBookStickerName('PBE M5-400', 2)).toBe('MB - PBE M5-400 v2');
   });
 
   test('Postel: "Postel - <nama>" dengan pembeda opsional', () => {
