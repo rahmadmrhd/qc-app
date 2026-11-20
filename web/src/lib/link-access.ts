@@ -1,5 +1,5 @@
 import type { MeDto } from '@shared/contract';
-import { can } from '@/modules/auth/permissions';
+import { can, canCreateItem } from '@/modules/auth/permissions';
 
 /**
  * Tautan "buka record" dan izin "tambah" pada field relasi (`LinkField`/`LinkMultiField`). Semuanya hanya untuk UX
@@ -37,12 +37,17 @@ export function stickerLinkAccess(me: MeDto | null | undefined) {
   return { canCreateSticker: can(me, 'sticker', 'edit') };
 }
 
-/** Item pada form QR Manual Book: halaman lihat butuh `item: view`; tanpa Tambah (item dibuat di Data Item). */
+/**
+ * Item pada field relasi (mis. form QR Manual Book): halaman lihat butuh `item: view`; Tambah butuh `item: edit` pada
+ * minimal satu BU aktif (`canCreateItem`, sama dengan halaman Tambah item; keputusan pemilik 18). Dialog Tambah:
+ * `ItemFormDialog`.
+ */
 export function itemLinkAccess(me: MeDto | null | undefined) {
   return {
     openItemHref: can(me, 'item', 'view')
       ? (id: string) => `/item/${encodeURIComponent(id)}`
       : undefined,
+    canCreate: canCreateItem(me),
   };
 }
 

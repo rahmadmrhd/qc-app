@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useFileUrl } from '@/modules/files/queries';
+import { ItemFormDialog } from '@/modules/item/components/item-form-dialog';
 import { limitDocumentName } from '../lib/document-name';
 import { businessUnitOptions, presetOptions } from '../lib/preset-options';
 import { useCloneQrPdf, useUploadQrPdf } from '../queries';
@@ -66,6 +67,8 @@ export interface QrDesignFormProps {
   edit?: QrEditContext;
   /** Tautan buka item pada pemilih item (`itemLinkAccess`). */
   openItemHref?: (id: string) => string | null;
+  /** Boleh menambah item dari pemilih item (`itemLinkAccess(...).canCreate`): memunculkan baris "Tambah Item". */
+  canCreateItem?: boolean;
   /** Ubah/duplikat: konfigurasi default yang dapat diterapkan ulang (tombol "Perbarui sesuai konfigurasi default"). */
   updatePresets?: readonly QrPresetDto[];
   /** Mode `defaults`: BU yang dapat dipilih sebagai pemilik preset. */
@@ -140,6 +143,7 @@ export function QrDesignForm({
   updatePresets,
   edit,
   openItemHref,
+  canCreateItem = false,
   businessUnits = [],
   takenBuIds,
   submitError,
@@ -255,6 +259,8 @@ export function QrDesignForm({
     if (lockedPart !== '') form.setFieldValue(lockedPart, nameValue);
   }, [lockedPart, nameValue, form]);
 
+  const [itemDialogOpen, setItemDialogOpen] = useState(false);
+
   function changeItems(next: PickedItem[]) {
     setSelected(next);
     form.setFieldValue(
@@ -292,579 +298,554 @@ export function QrDesignForm({
   }
 
   return (
-    <form
-      noValidate
-      className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void form.handleSubmit();
-      }}
-    >
-      <div className="contents">
-        <form.Subscribe selector={(state) => state.isSubmitting}>
-          {(submitting) => (
-            <FormHeader
-              className="lg:col-span-2"
-              data-tour="qr-save"
-              title={title}
-              onCancel={onCancel}
-              submitting={submitting}
-              busyText={isDefaults ? 'Menyimpan konfigurasi default…' : 'Menyimpan konfigurasi…'}
-              submitLabel={isDefaults ? 'Simpan default' : undefined}
-              submitDisabled={!ready || logoBusy || pdfBusy || legacyCloning}
-              onSubmitClick={() => (exportAfterRef.current = false)}
-              extra={
-                canExport && !isDefaults ? (
-                  <Button
-                    type="submit"
-                    variant="secondary"
-                    disabled={
-                      !ready ||
-                      submitting ||
-                      logoBusy ||
-                      pdfBusy ||
-                      legacyCloning ||
-                      labelStatus?.overflow === true
-                    }
-                    title={
-                      labelStatus?.overflow
-                        ? 'Isi tidak muat di kanvas 3 × 3 cm: perbaiki dulu agar bisa diekspor'
-                        : undefined
-                    }
-                    onClick={() => (exportAfterRef.current = true)}
-                  >
-                    Simpan dan ekspor
-                  </Button>
-                ) : null
-              }
-            />
-          )}
-        </form.Subscribe>
-        <div className="lg:col-span-2">
-          <LabelStatusAlerts status={labelStatus} />
+    <>
+      <form
+        noValidate
+        className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto]"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void form.handleSubmit();
+        }}
+      >
+        <div className="contents">
+          <form.Subscribe selector={(state) => state.isSubmitting}>
+            {(submitting) => (
+              <FormHeader
+                className="lg:col-span-2"
+                data-tour="qr-save"
+                title={title}
+                onCancel={onCancel}
+                submitting={submitting}
+                busyText={isDefaults ? 'Menyimpan konfigurasi default…' : 'Menyimpan konfigurasi…'}
+                submitLabel={isDefaults ? 'Simpan default' : undefined}
+                submitDisabled={!ready || logoBusy || pdfBusy || legacyCloning}
+                onSubmitClick={() => (exportAfterRef.current = false)}
+                extra={
+                  canExport && !isDefaults ? (
+                    <Button
+                      type="submit"
+                      variant="secondary"
+                      disabled={
+                        !ready ||
+                        submitting ||
+                        logoBusy ||
+                        pdfBusy ||
+                        legacyCloning ||
+                        labelStatus?.overflow === true
+                      }
+                      title={
+                        labelStatus?.overflow
+                          ? 'Isi tidak muat di kanvas 3 × 3 cm: perbaiki dulu agar bisa diekspor'
+                          : undefined
+                      }
+                      onClick={() => (exportAfterRef.current = true)}
+                    >
+                      Simpan dan ekspor
+                    </Button>
+                  ) : null
+                }
+              />
+            )}
+          </form.Subscribe>
+          <div className="lg:col-span-2">
+            <LabelStatusAlerts status={labelStatus} />
+          </div>
         </div>
-      </div>
-      <div className="space-y-4">
-        {manualBookFlow ? (
-          <Section title="Item Manual Book" data-tour="qr-items">
-            <form.Field
-              name="itemIds"
-              validators={{
-                // Item yang tak terlihat tetap terpasang (spek 4a §3 butir 18): daftar terlihat boleh kosong.
-                onSubmit: ({ value }) =>
-                  requireItems && value.length === 0 && (edit?.hiddenItemCount ?? 0) === 0
-                    ? 'Pilih minimal satu item'
-                    : undefined,
-              }}
-            >
-              {(field) => (
-                <div className="space-y-1.5">
-                  <ItemPicker
-                    selected={selected}
-                    onChange={changeItems}
-                    ownedIds={new Set((edit?.items ?? []).map((item) => item.id))}
-                    openHref={openItemHref}
-                    required={requireItems}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Item yang berbagi satu Manual Book. Item yang sudah tergabung ke Manual Book
-                    lain harus dikeluarkan dulu dari sana.
-                  </p>
-                  {edit && edit.hiddenItemCount > 0 ? (
-                    <p className="text-xs text-muted-foreground">
-                      {edit.hiddenItemCount} item lain tergabung di sini tetapi tidak terlihat oleh
-                      Anda; tetap terpasang.
-                    </p>
-                  ) : null}
-                  <FieldError errors={[...field.state.meta.errors, fieldErrors?.itemIds]} />
-                </div>
-              )}
-            </form.Field>
-          </Section>
-        ) : null}
-        {newFlow && selected.length > 0 ? (
-          <Section title="Konfigurasi default" data-tour="qr-preset">
-            {candidates.length === 1 ? (
-              <p className="text-sm">
-                Memakai konfigurasi default BU item:{' '}
-                <span className="font-medium">{(candidates[0] as QrPresetDto).name}</span>{' '}
-                (otomatis). Isian di bawah terisi darinya dan dapat diubah.
-              </p>
-            ) : (presets ?? []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Belum ada konfigurasi default; QR dibuat dengan nilai bawaan aplikasi.
-              </p>
-            ) : (
-              <div className="space-y-1.5">
-                <LinkField
-                  id="qr-preset"
-                  label="Pilih konfigurasi default"
-                  placeholder="Pilih konfigurasi default…"
-                  value={chosenPreset === '' ? null : chosenPreset}
-                  labelOf={(id) =>
-                    id === NO_PRESET
-                      ? 'Tanpa preset'
-                      : presets?.find((preset) => preset.id === id)?.name
-                  }
-                  options={[
-                    ...presetOptions(
-                      candidates.length > 1 ? candidates : (presets ?? []),
-                      presetTerm,
-                    ),
-                    ...(candidates.length > 1
-                      ? []
-                      : [
-                          {
-                            id: NO_PRESET,
-                            label: 'Tanpa preset',
-                            description: 'Nilai bawaan aplikasi',
-                          },
-                        ]),
-                  ]}
-                  onSearchChange={setPresetTerm}
-                  searchDebounceMs={0}
-                  onChange={(id) => setChosenPreset(id ?? '')}
-                />
-                <p className="text-xs text-muted-foreground">
-                  {candidates.length > 1
-                    ? 'Item berlainan BU: pilih satu konfigurasi default.'
-                    : 'BU item belum punya konfigurasi default: pilih salah satu atau tanpa preset.'}{' '}
-                  Isian di bawah terisi darinya dan dapat diubah.
-                </p>
-              </div>
-            )}
-          </Section>
-        ) : null}
-        {ready && !isDefaults && updatePresets && updatePresets.length > 0 ? (
-          <Section title="Konfigurasi default">
-            <div className="flex flex-wrap items-center gap-3">
-              <Button type="button" variant="outline" onClick={() => setApplyOpen(true)}>
-                Perbarui sesuai konfigurasi default
-              </Button>
-              <p className="text-xs text-muted-foreground">
-                Pilih konfigurasi default dan bagian isi yang disalin ulang ke form ini.
-              </p>
-            </div>
-            <ApplyPresetDialog
-              open={applyOpen}
-              onOpenChange={setApplyOpen}
-              presets={updatePresets}
-              onApply={applyPreset}
-            />
-          </Section>
-        ) : null}
-        {ready ? (
-          <>
-            {manualBookFlow ? (
-              <Section title="Nama Manual Book" data-tour="qr-name">
-                <form.Field
-                  name="name"
-                  validators={{
-                    onSubmit: ({ value }) =>
-                      requireItems && (value ?? '').trim() === ''
-                        ? 'Nama Manual Book wajib diisi'
-                        : undefined,
-                  }}
-                >
-                  {(field) => (
-                    <div className="space-y-1.5">
-                      <Label htmlFor="qr-manual-name" required={requireItems}>
-                        Nama Manual Book
-                      </Label>
-                      <Input
-                        id="qr-manual-name"
-                        aria-required={requireItems ? true : undefined}
-                        value={field.state.value}
-                        maxLength={QR_LIMITS.manualBookName}
-                        onBlur={field.handleBlur}
-                        onChange={(event) => {
-                          nameTouched.current = true;
-                          field.handleChange(event.target.value);
-                        }}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        {newFlow
-                          ? 'Dibuat dari tipe item dan boleh diedit. Menambah atau mengeluarkan item tidak mengubah nama yang sudah tersimpan.'
-                          : 'Menambah atau mengeluarkan item tidak mengubah nama.'}
-                      </p>
-                      <FieldError errors={[...field.state.meta.errors, fieldErrors?.name]} />
-                    </div>
-                  )}
-                </form.Field>
-              </Section>
-            ) : null}
-            {isDefaults ? null : (
-              <Section title="Sumber link" data-tour="qr-source">
-                <form.Subscribe selector={(state) => state.values}>
-                  {(values) => {
-                    if (values.linkSource !== 'url') return null;
-                    const driveLink = parseDriveFileId(values.link) !== null;
-                    return (
-                      <div className="space-y-2 rounded-md border p-3">
-                        <p className="text-sm text-muted-foreground">
-                          Link saat ini (bukan salinan di aplikasi):{' '}
-                          <span className="break-all">{values.link}</span>
-                        </p>
-                        {driveLink ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={legacyCloning || pdfBusy}
-                            onClick={() => void cloneLegacy(values.link)}
-                          >
-                            {legacyCloning ? (
-                              <BusyLabel>Menyalin…</BusyLabel>
-                            ) : (
-                              'Salin link ini ke Drive aplikasi'
-                            )}
-                          </Button>
-                        ) : (
-                          <p className="text-xs text-muted-foreground">
-                            Link ini bukan link Drive sehingga tidak dapat disalin. Unggah PDF atau
-                            salin berkas dari Drive di bawah untuk menggantinya.
-                          </p>
-                        )}
-                        {legacyCloning ? (
-                          <p role="status" className="text-sm">
-                            <BusyLabel>
-                              Memeriksa berkas di Drive, lalu menyalinnya ke folder aplikasi…
-                            </BusyLabel>
-                          </p>
-                        ) : null}
-                        {legacyError ? (
-                          <p role="alert" className="text-sm text-destructive-text">
-                            {legacyError}
-                          </p>
-                        ) : null}
-                      </div>
-                    );
-                  }}
-                </form.Subscribe>
-                <form.Field name="documentId">
-                  {(field) => (
-                    <div className="space-y-1.5">
-                      <PdfSourceField
-                        document={document}
-                        onDocument={applyDocument}
-                        onBusyChange={setPdfBusy}
-                        onUpload={async (file, replaceId) =>
-                          uploadPdf.mutateAsync({
-                            name: limitDocumentName(file.name),
-                            bytes: new Uint8Array(await file.arrayBuffer()),
-                            ...(replaceId ? { replaceDocumentId: replaceId } : {}),
-                          })
-                        }
-                        onClone={(source, replaceId) =>
-                          cloneQrPdf.mutateAsync({
-                            source,
-                            ...(replaceId ? { replaceDocumentId: replaceId } : {}),
-                          })
-                        }
-                      />
-                      <FieldError errors={[...field.state.meta.errors, fieldErrors?.documentId]} />
-                      <FieldError errors={[fieldErrors?.link]} />
-                    </div>
-                  )}
-                </form.Field>
-              </Section>
-            )}
-            {manualBookFlow ? (
-              <form.Subscribe selector={(state) => state.values}>
-                {(values) => {
-                  const preset = newFlow
-                    ? activePreset
-                    : (updatePresets ?? presets)?.find((item) => item.id === edit?.presetId);
-                  if (!preset) return null;
-                  return (
-                    <PresetDeviationBanner
-                      presetName={preset.name}
-                      deviations={qrPresetDeviations(
-                        {
-                          title: values.title,
-                          subtitle: values.subtitle,
-                          footer: values.footer,
-                          logoFileId: values.logoFileId,
-                          layout: values.layout,
-                          style: values.style,
-                        },
-                        {
-                          title: preset.title,
-                          subtitle: preset.subtitle,
-                          footer: preset.footer,
-                          defaultLogoId: preset.defaultLogoId,
-                          layout: preset.layout,
-                          style: preset.style,
-                          namePlacement: preset.namePlacement,
-                        },
-                      )}
-                    />
-                  );
+        <div className="space-y-4">
+          {manualBookFlow ? (
+            <Section title="Item Manual Book" data-tour="qr-items">
+              <form.Field
+                name="itemIds"
+                validators={{
+                  // Item yang tak terlihat tetap terpasang (spek 4a §3 butir 18): daftar terlihat boleh kosong.
+                  onSubmit: ({ value }) =>
+                    requireItems && value.length === 0 && (edit?.hiddenItemCount ?? 0) === 0
+                      ? 'Pilih minimal satu item'
+                      : undefined,
                 }}
-              </form.Subscribe>
-            ) : null}
-            {isDefaults ? (
-              <Section title="Business Unit dan nama Manual Book">
-                <form.Field name="buId">
-                  {(field) => (
-                    <div className="space-y-1.5">
-                      <LinkField
-                        id="qr-preset-bu"
-                        required
-                        label="Business Unit"
-                        placeholder="Pilih Business Unit…"
-                        value={field.state.value === '' ? null : field.state.value}
-                        labelOf={(id) => businessUnits.find((unit) => unit.id === id)?.name}
-                        options={businessUnitOptions(businessUnits, buTerm, takenBuIds)}
-                        onSearchChange={setBuTerm}
-                        searchDebounceMs={0}
-                        onChange={(id) => field.handleChange(id ?? '')}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Satu BU hanya punya satu konfigurasi default; QR untuk item BU ini
-                        memakainya otomatis.
-                      </p>
-                      <FieldError errors={[...field.state.meta.errors, fieldErrors?.buId]} />
-                    </div>
-                  )}
-                </form.Field>
-                <form.Field name="namePlacement">
-                  {(field) => (
-                    <div className="space-y-1.5">
-                      <Select
-                        id="qr-name-placement"
-                        required
-                        label="Penempatan nama Manual Book"
-                        placeholder="Pilih bagian label…"
-                        options={[
-                          { value: 'title', label: 'Title' },
-                          { value: 'subtitle', label: 'Subtitle' },
-                          { value: 'footer', label: 'Footer' },
-                        ]}
-                        value={field.state.value}
-                        onValueChange={(next) =>
-                          field.handleChange(next as typeof field.state.value)
-                        }
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Bagian ini diisi nama Manual Book pada QR yang dibuat dari konfigurasi ini
-                        dan terkunci; gaya teksnya tetap dapat diubah.
-                      </p>
-                      <FieldError
-                        errors={[...field.state.meta.errors, fieldErrors?.namePlacement]}
-                      />
-                    </div>
-                  )}
-                </form.Field>
-              </Section>
-            ) : null}
-            <Section title="Isi label" data-tour="qr-label">
-              {isDefaults ? (
-                <form.Field name="name">
-                  {(field) => (
-                    <div className="space-y-1.5">
-                      <Label htmlFor="qr-name" required>
-                        Nama konfigurasi default
-                      </Label>
-                      <Input
-                        id="qr-name"
-                        aria-required="true"
-                        value={field.state.value}
-                        onBlur={field.handleBlur}
-                        onChange={(event) => field.handleChange(event.target.value)}
-                      />
-                      <FieldError errors={[...field.state.meta.errors, fieldErrors?.name]} />
-                    </div>
-                  )}
-                </form.Field>
-              ) : null}
-              {(['title', 'subtitle', 'footer'] as const).map((name) => (
-                <form.Field key={name} name={name}>
-                  {(field) => (
-                    <div className="space-y-1.5">
-                      <Label
-                        htmlFor={`qr-${name}`}
-                        required={name === 'title' && !isDefaults && lockedPart !== 'title'}
-                      >
-                        {name === 'title' ? 'Title' : name === 'subtitle' ? 'Subtitle' : 'Footer'}
-                      </Label>
-                      <form.Subscribe selector={(state) => state.values.namePlacement}>
-                        {(placement) => {
-                          const locked = isDefaults ? placement === name : lockedPart === name;
-                          return (
-                            <>
-                              <Input
-                                id={`qr-${name}`}
-                                aria-required={
-                                  name === 'title' && !isDefaults && !locked ? true : undefined
-                                }
-                                value={isDefaults && locked ? '' : field.state.value}
-                                placeholder={
-                                  isDefaults && locked ? 'Diisi nama Manual Book' : undefined
-                                }
-                                disabled={locked}
-                                onBlur={field.handleBlur}
-                                onChange={(event) => field.handleChange(event.target.value)}
-                              />
-                              {locked ? (
-                                <p className="text-xs text-muted-foreground">
-                                  {isDefaults
-                                    ? 'Bagian ini diisi nama Manual Book saat QR dibuat.'
-                                    : 'Terkunci: bagian ini mengikuti Nama Manual Book (gayanya tetap dapat diubah).'}
-                                </p>
-                              ) : null}
-                            </>
-                          );
-                        }}
-                      </form.Subscribe>
-                      <FieldError errors={[...field.state.meta.errors, fieldErrors?.[name]]} />
-                      <form.Subscribe
-                        selector={(state) => state.values.layout[TEXT_SIZE_KEY[name]]}
-                      >
-                        {(size) => {
-                          const sizeKey = TEXT_SIZE_KEY[name];
-                          const part =
-                            name === 'title'
-                              ? 'Title'
-                              : name === 'subtitle'
-                                ? 'Subtitle'
-                                : 'Footer';
-                          const message = layoutRangeMessage(sizeKey, size);
-                          return (
-                            <div className="flex items-center gap-2">
-                              <Label
-                                htmlFor={`qr-size-${name}`}
-                                className="text-xs text-muted-foreground"
-                              >
-                                {`Ukuran ${part} (pt)`}
-                              </Label>
-                              <Input
-                                id={`qr-size-${name}`}
-                                type="number"
-                                className="h-8 w-24"
-                                step={QR_LAYOUT_RANGES[sizeKey].step}
-                                min={QR_LAYOUT_RANGES[sizeKey].min}
-                                max={QR_LAYOUT_RANGES[sizeKey].max}
-                                aria-invalid={message ? true : undefined}
-                                value={Number.isNaN(size) ? '' : size}
-                                onChange={(event) =>
-                                  form.setFieldValue('layout', {
-                                    ...form.state.values.layout,
-                                    [sizeKey]:
-                                      event.target.value === ''
-                                        ? Number.NaN
-                                        : Number(event.target.value),
-                                  })
-                                }
-                              />
-                              {message ? (
-                                <span className="text-sm text-destructive-text">{message}</span>
-                              ) : null}
-                            </div>
-                          );
-                        }}
-                      </form.Subscribe>
-                      <form.Subscribe selector={(state) => state.values.style[name]}>
-                        {(textStyle) => (
-                          <TextStyleToolbar
-                            part={
-                              name === 'title'
-                                ? 'Title'
-                                : name === 'subtitle'
-                                  ? 'Subtitle'
-                                  : 'Footer'
-                            }
-                            value={textStyle}
-                            onChange={(next) =>
-                              form.setFieldValue('style', {
-                                ...form.state.values.style,
-                                [name]: next,
-                              })
-                            }
-                          />
-                        )}
-                      </form.Subscribe>
-                    </div>
-                  )}
-                </form.Field>
-              ))}
-            </Section>
-
-            <Section title={isDefaults ? 'Logo awal' : 'Logo di tengah QR'} data-tour="qr-logo">
-              <form.Field name="logoFileId">
+              >
                 {(field) => (
                   <div className="space-y-1.5">
-                    <LogoPicker
-                      value={field.state.value}
-                      onChange={field.handleChange}
-                      library={logoLibrary}
+                    <ItemPicker
+                      selected={selected}
+                      onChange={changeItems}
+                      ownedIds={new Set((edit?.items ?? []).map((item) => item.id))}
+                      openHref={openItemHref}
+                      onCreate={canCreateItem ? () => setItemDialogOpen(true) : undefined}
+                      required={requireItems}
                     />
-                    <FieldError
-                      errors={[
-                        ...field.state.meta.errors,
-                        fieldErrors?.logoFileId,
-                        fieldErrors?.defaultLogoId,
-                      ]}
-                    />
+                    <p className="text-xs text-muted-foreground">
+                      Item yang berbagi satu Manual Book. Item yang sudah tergabung ke Manual Book
+                      lain harus dikeluarkan dulu dari sana.
+                    </p>
+                    {edit && edit.hiddenItemCount > 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        {edit.hiddenItemCount} item lain tergabung di sini tetapi tidak terlihat
+                        oleh Anda; tetap terpasang.
+                      </p>
+                    ) : null}
+                    <FieldError errors={[...field.state.meta.errors, fieldErrors?.itemIds]} />
                   </div>
                 )}
               </form.Field>
             </Section>
+          ) : null}
+          {newFlow && selected.length > 0 ? (
+            <Section title="Konfigurasi default" data-tour="qr-preset">
+              {candidates.length === 1 ? (
+                <p className="text-sm">
+                  Memakai konfigurasi default BU item:{' '}
+                  <span className="font-medium">{(candidates[0] as QrPresetDto).name}</span>{' '}
+                  (otomatis). Isian di bawah terisi darinya dan dapat diubah.
+                </p>
+              ) : (presets ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  Belum ada konfigurasi default; QR dibuat dengan nilai bawaan aplikasi.
+                </p>
+              ) : (
+                <div className="space-y-1.5">
+                  <LinkField
+                    id="qr-preset"
+                    label="Pilih konfigurasi default"
+                    placeholder="Pilih konfigurasi default…"
+                    value={chosenPreset === '' ? null : chosenPreset}
+                    labelOf={(id) =>
+                      id === NO_PRESET
+                        ? 'Tanpa preset'
+                        : presets?.find((preset) => preset.id === id)?.name
+                    }
+                    options={[
+                      ...presetOptions(
+                        candidates.length > 1 ? candidates : (presets ?? []),
+                        presetTerm,
+                      ),
+                      ...(candidates.length > 1
+                        ? []
+                        : [
+                            {
+                              id: NO_PRESET,
+                              label: 'Tanpa preset',
+                              description: 'Nilai bawaan aplikasi',
+                            },
+                          ]),
+                    ]}
+                    onSearchChange={setPresetTerm}
+                    searchDebounceMs={0}
+                    onChange={(id) => setChosenPreset(id ?? '')}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    {candidates.length > 1
+                      ? 'Item berlainan BU: pilih satu konfigurasi default.'
+                      : 'BU item belum punya konfigurasi default: pilih salah satu atau tanpa preset.'}{' '}
+                    Isian di bawah terisi darinya dan dapat diubah.
+                  </p>
+                </div>
+              )}
+            </Section>
+          ) : null}
+          {ready && !isDefaults && updatePresets && updatePresets.length > 0 ? (
+            <Section title="Konfigurasi default">
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" variant="outline" onClick={() => setApplyOpen(true)}>
+                  Perbarui sesuai konfigurasi default
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Pilih konfigurasi default dan bagian isi yang disalin ulang ke form ini.
+                </p>
+              </div>
+              <ApplyPresetDialog
+                open={applyOpen}
+                onOpenChange={setApplyOpen}
+                presets={updatePresets}
+                onApply={applyPreset}
+              />
+            </Section>
+          ) : null}
+          {ready ? (
+            <>
+              {manualBookFlow ? (
+                <Section title="Nama Manual Book" data-tour="qr-name">
+                  <form.Field
+                    name="name"
+                    validators={{
+                      onSubmit: ({ value }) =>
+                        requireItems && (value ?? '').trim() === ''
+                          ? 'Nama Manual Book wajib diisi'
+                          : undefined,
+                    }}
+                  >
+                    {(field) => (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="qr-manual-name" required={requireItems}>
+                          Nama Manual Book
+                        </Label>
+                        <Input
+                          id="qr-manual-name"
+                          aria-required={requireItems ? true : undefined}
+                          value={field.state.value}
+                          maxLength={QR_LIMITS.manualBookName}
+                          onBlur={field.handleBlur}
+                          onChange={(event) => {
+                            nameTouched.current = true;
+                            field.handleChange(event.target.value);
+                          }}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          {newFlow
+                            ? 'Dibuat dari tipe item dan boleh diedit. Menambah atau mengeluarkan item tidak mengubah nama yang sudah tersimpan.'
+                            : 'Menambah atau mengeluarkan item tidak mengubah nama.'}
+                        </p>
+                        <FieldError errors={[...field.state.meta.errors, fieldErrors?.name]} />
+                      </div>
+                    )}
+                  </form.Field>
+                </Section>
+              ) : null}
+              {isDefaults ? null : (
+                <Section title="Sumber link" data-tour="qr-source">
+                  <form.Subscribe selector={(state) => state.values}>
+                    {(values) => {
+                      if (values.linkSource !== 'url') return null;
+                      const driveLink = parseDriveFileId(values.link) !== null;
+                      return (
+                        <div className="space-y-2 rounded-md border p-3">
+                          <p className="text-sm text-muted-foreground">
+                            Link saat ini (bukan salinan di aplikasi):{' '}
+                            <span className="break-all">{values.link}</span>
+                          </p>
+                          {driveLink ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              disabled={legacyCloning || pdfBusy}
+                              onClick={() => void cloneLegacy(values.link)}
+                            >
+                              {legacyCloning ? (
+                                <BusyLabel>Menyalin…</BusyLabel>
+                              ) : (
+                                'Salin link ini ke Drive aplikasi'
+                              )}
+                            </Button>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              Link ini bukan link Drive sehingga tidak dapat disalin. Unggah PDF
+                              atau salin berkas dari Drive di bawah untuk menggantinya.
+                            </p>
+                          )}
+                          {legacyCloning ? (
+                            <p role="status" className="text-sm">
+                              <BusyLabel>
+                                Memeriksa berkas di Drive, lalu menyalinnya ke folder aplikasi…
+                              </BusyLabel>
+                            </p>
+                          ) : null}
+                          {legacyError ? (
+                            <p role="alert" className="text-sm text-destructive-text">
+                              {legacyError}
+                            </p>
+                          ) : null}
+                        </div>
+                      );
+                    }}
+                  </form.Subscribe>
+                  <form.Field name="documentId">
+                    {(field) => (
+                      <div className="space-y-1.5">
+                        <PdfSourceField
+                          document={document}
+                          onDocument={applyDocument}
+                          onBusyChange={setPdfBusy}
+                          onUpload={async (file, replaceId) =>
+                            uploadPdf.mutateAsync({
+                              name: limitDocumentName(file.name),
+                              bytes: new Uint8Array(await file.arrayBuffer()),
+                              ...(replaceId ? { replaceDocumentId: replaceId } : {}),
+                            })
+                          }
+                          onClone={(source, replaceId) =>
+                            cloneQrPdf.mutateAsync({
+                              source,
+                              ...(replaceId ? { replaceDocumentId: replaceId } : {}),
+                            })
+                          }
+                        />
+                        <FieldError
+                          errors={[...field.state.meta.errors, fieldErrors?.documentId]}
+                        />
+                        <FieldError errors={[fieldErrors?.link]} />
+                      </div>
+                    )}
+                  </form.Field>
+                </Section>
+              )}
+              {manualBookFlow ? (
+                <form.Subscribe selector={(state) => state.values}>
+                  {(values) => {
+                    const preset = newFlow
+                      ? activePreset
+                      : (updatePresets ?? presets)?.find((item) => item.id === edit?.presetId);
+                    if (!preset) return null;
+                    return (
+                      <PresetDeviationBanner
+                        presetName={preset.name}
+                        deviations={qrPresetDeviations(
+                          {
+                            title: values.title,
+                            subtitle: values.subtitle,
+                            footer: values.footer,
+                            logoFileId: values.logoFileId,
+                            layout: values.layout,
+                            style: values.style,
+                          },
+                          {
+                            title: preset.title,
+                            subtitle: preset.subtitle,
+                            footer: preset.footer,
+                            defaultLogoId: preset.defaultLogoId,
+                            layout: preset.layout,
+                            style: preset.style,
+                            namePlacement: preset.namePlacement,
+                          },
+                        )}
+                      />
+                    );
+                  }}
+                </form.Subscribe>
+              ) : null}
+              {isDefaults ? (
+                <Section title="Business Unit dan nama Manual Book">
+                  <form.Field name="buId">
+                    {(field) => (
+                      <div className="space-y-1.5">
+                        <LinkField
+                          id="qr-preset-bu"
+                          required
+                          label="Business Unit"
+                          placeholder="Pilih Business Unit…"
+                          value={field.state.value === '' ? null : field.state.value}
+                          labelOf={(id) => businessUnits.find((unit) => unit.id === id)?.name}
+                          options={businessUnitOptions(businessUnits, buTerm, takenBuIds)}
+                          onSearchChange={setBuTerm}
+                          searchDebounceMs={0}
+                          onChange={(id) => field.handleChange(id ?? '')}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Satu BU hanya punya satu konfigurasi default; QR untuk item BU ini
+                          memakainya otomatis.
+                        </p>
+                        <FieldError errors={[...field.state.meta.errors, fieldErrors?.buId]} />
+                      </div>
+                    )}
+                  </form.Field>
+                  <form.Field name="namePlacement">
+                    {(field) => (
+                      <div className="space-y-1.5">
+                        <Select
+                          id="qr-name-placement"
+                          required
+                          label="Penempatan nama Manual Book"
+                          placeholder="Pilih bagian label…"
+                          options={[
+                            { value: 'title', label: 'Title' },
+                            { value: 'subtitle', label: 'Subtitle' },
+                            { value: 'footer', label: 'Footer' },
+                          ]}
+                          value={field.state.value}
+                          onValueChange={(next) =>
+                            field.handleChange(next as typeof field.state.value)
+                          }
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Bagian ini diisi nama Manual Book pada QR yang dibuat dari konfigurasi ini
+                          dan terkunci; gaya teksnya tetap dapat diubah.
+                        </p>
+                        <FieldError
+                          errors={[...field.state.meta.errors, fieldErrors?.namePlacement]}
+                        />
+                      </div>
+                    )}
+                  </form.Field>
+                </Section>
+              ) : null}
+              <Section title="Isi label" data-tour="qr-label">
+                {isDefaults ? (
+                  <form.Field name="name">
+                    {(field) => (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="qr-name" required>
+                          Nama konfigurasi default
+                        </Label>
+                        <Input
+                          id="qr-name"
+                          aria-required="true"
+                          value={field.state.value}
+                          onBlur={field.handleBlur}
+                          onChange={(event) => field.handleChange(event.target.value)}
+                        />
+                        <FieldError errors={[...field.state.meta.errors, fieldErrors?.name]} />
+                      </div>
+                    )}
+                  </form.Field>
+                ) : null}
+                {(['title', 'subtitle', 'footer'] as const).map((name) => (
+                  <form.Field key={name} name={name}>
+                    {(field) => (
+                      <div className="space-y-1.5">
+                        <Label
+                          htmlFor={`qr-${name}`}
+                          required={name === 'title' && !isDefaults && lockedPart !== 'title'}
+                        >
+                          {name === 'title' ? 'Title' : name === 'subtitle' ? 'Subtitle' : 'Footer'}
+                        </Label>
+                        <form.Subscribe selector={(state) => state.values.namePlacement}>
+                          {(placement) => {
+                            const locked = isDefaults ? placement === name : lockedPart === name;
+                            return (
+                              <>
+                                <Input
+                                  id={`qr-${name}`}
+                                  aria-required={
+                                    name === 'title' && !isDefaults && !locked ? true : undefined
+                                  }
+                                  value={isDefaults && locked ? '' : field.state.value}
+                                  placeholder={
+                                    isDefaults && locked ? 'Diisi nama Manual Book' : undefined
+                                  }
+                                  disabled={locked}
+                                  onBlur={field.handleBlur}
+                                  onChange={(event) => field.handleChange(event.target.value)}
+                                />
+                                {locked ? (
+                                  <p className="text-xs text-muted-foreground">
+                                    {isDefaults
+                                      ? 'Bagian ini diisi nama Manual Book saat QR dibuat.'
+                                      : 'Terkunci: bagian ini mengikuti Nama Manual Book (gayanya tetap dapat diubah).'}
+                                  </p>
+                                ) : null}
+                              </>
+                            );
+                          }}
+                        </form.Subscribe>
+                        <FieldError errors={[...field.state.meta.errors, fieldErrors?.[name]]} />
+                        <form.Subscribe
+                          selector={(state) => state.values.layout[TEXT_SIZE_KEY[name]]}
+                        >
+                          {(size) => {
+                            const sizeKey = TEXT_SIZE_KEY[name];
+                            const part =
+                              name === 'title'
+                                ? 'Title'
+                                : name === 'subtitle'
+                                  ? 'Subtitle'
+                                  : 'Footer';
+                            const message = layoutRangeMessage(sizeKey, size);
+                            return (
+                              <div className="flex items-center gap-2">
+                                <Label
+                                  htmlFor={`qr-size-${name}`}
+                                  className="text-xs text-muted-foreground"
+                                >
+                                  {`Ukuran ${part} (pt)`}
+                                </Label>
+                                <Input
+                                  id={`qr-size-${name}`}
+                                  type="number"
+                                  className="h-8 w-24"
+                                  step={QR_LAYOUT_RANGES[sizeKey].step}
+                                  min={QR_LAYOUT_RANGES[sizeKey].min}
+                                  max={QR_LAYOUT_RANGES[sizeKey].max}
+                                  aria-invalid={message ? true : undefined}
+                                  value={Number.isNaN(size) ? '' : size}
+                                  onChange={(event) =>
+                                    form.setFieldValue('layout', {
+                                      ...form.state.values.layout,
+                                      [sizeKey]:
+                                        event.target.value === ''
+                                          ? Number.NaN
+                                          : Number(event.target.value),
+                                    })
+                                  }
+                                />
+                                {message ? (
+                                  <span className="text-sm text-destructive-text">{message}</span>
+                                ) : null}
+                              </div>
+                            );
+                          }}
+                        </form.Subscribe>
+                        <form.Subscribe selector={(state) => state.values.style[name]}>
+                          {(textStyle) => (
+                            <TextStyleToolbar
+                              part={
+                                name === 'title'
+                                  ? 'Title'
+                                  : name === 'subtitle'
+                                    ? 'Subtitle'
+                                    : 'Footer'
+                              }
+                              value={textStyle}
+                              onChange={(next) =>
+                                form.setFieldValue('style', {
+                                  ...form.state.values.style,
+                                  [name]: next,
+                                })
+                              }
+                            />
+                          )}
+                        </form.Subscribe>
+                      </div>
+                    )}
+                  </form.Field>
+                ))}
+              </Section>
 
-            <Section title="Bingkai QR" data-tour="qr-frame">
-              <form.Subscribe selector={(state) => state.values.style.frame}>
-                {(frame) => (
-                  <div className="space-y-3">
-                    <div
-                      role="radiogroup"
-                      aria-label="Jenis bingkai"
-                      className="flex flex-wrap gap-4"
-                    >
-                      {(
-                        [
-                          ['none', 'Tanpa bingkai'],
-                          ['corners', 'Siku di sudut'],
-                          ['box', 'Kotak penuh'],
-                        ] as const
-                      ).map(([kind, label]) => (
-                        <label key={kind} className="flex items-center gap-2 text-sm">
-                          <input
-                            type="radio"
-                            name="qr-frame-kind"
-                            checked={frame.kind === kind}
-                            onChange={() =>
-                              form.setFieldValue('style', {
-                                ...form.state.values.style,
-                                frame: { ...form.state.values.style.frame, kind },
-                              })
-                            }
-                          />
-                          {label}
-                        </label>
-                      ))}
+              <Section title={isDefaults ? 'Logo awal' : 'Logo di tengah QR'} data-tour="qr-logo">
+                <form.Field name="logoFileId">
+                  {(field) => (
+                    <div className="space-y-1.5">
+                      <LogoPicker
+                        value={field.state.value}
+                        onChange={field.handleChange}
+                        library={logoLibrary}
+                      />
+                      <FieldError
+                        errors={[
+                          ...field.state.meta.errors,
+                          fieldErrors?.logoFileId,
+                          fieldErrors?.defaultLogoId,
+                        ]}
+                      />
                     </div>
-                    {frame.kind !== 'none' ? (
+                  )}
+                </form.Field>
+              </Section>
+
+              <Section title="Bingkai QR" data-tour="qr-frame">
+                <form.Subscribe selector={(state) => state.values.style.frame}>
+                  {(frame) => (
+                    <div className="space-y-3">
                       <div
                         role="radiogroup"
-                        aria-label="Gaya garis"
+                        aria-label="Jenis bingkai"
                         className="flex flex-wrap gap-4"
                       >
                         {(
                           [
-                            ['solid', 'Solid'],
-                            ['dashed', 'Putus-putus'],
-                            ['dotted', 'Titik-titik'],
+                            ['none', 'Tanpa bingkai'],
+                            ['corners', 'Siku di sudut'],
+                            ['box', 'Kotak penuh'],
                           ] as const
-                        ).map(([line, label]) => (
-                          <label key={line} className="flex items-center gap-2 text-sm">
+                        ).map(([kind, label]) => (
+                          <label key={kind} className="flex items-center gap-2 text-sm">
                             <input
                               type="radio"
-                              name="qr-frame-line"
-                              checked={frame.line === line}
+                              name="qr-frame-kind"
+                              checked={frame.kind === kind}
                               onChange={() =>
                                 form.setFieldValue('style', {
                                   ...form.state.values.style,
-                                  frame: { ...form.state.values.style.frame, line },
+                                  frame: { ...form.state.values.style.frame, kind },
                                 })
                               }
                             />
@@ -872,142 +853,196 @@ export function QrDesignForm({
                           </label>
                         ))}
                       </div>
-                    ) : null}
-                    {frame.kind !== 'none' ? (
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        {QR_FRAME_KEYS.filter(
-                          (key) => key !== 'arm' || frame.kind === 'corners',
-                        ).map((key) => {
-                          const range = QR_FRAME_RANGES[key];
-                          const id = `qr-frame-${key}`;
-                          const message = frameRangeMessage(key, frame[key]);
-                          return (
-                            <div key={key} className="space-y-1.5">
-                              <Label htmlFor={id}>{`${range.label} (${range.unit})`}</Label>
-                              <Input
-                                id={id}
-                                type="number"
-                                step={range.step}
-                                min={range.min}
-                                max={range.max}
-                                aria-invalid={message ? true : undefined}
-                                value={Number.isNaN(frame[key]) ? '' : frame[key]}
-                                onChange={(event) =>
+                      {frame.kind !== 'none' ? (
+                        <div
+                          role="radiogroup"
+                          aria-label="Gaya garis"
+                          className="flex flex-wrap gap-4"
+                        >
+                          {(
+                            [
+                              ['solid', 'Solid'],
+                              ['dashed', 'Putus-putus'],
+                              ['dotted', 'Titik-titik'],
+                            ] as const
+                          ).map(([line, label]) => (
+                            <label key={line} className="flex items-center gap-2 text-sm">
+                              <input
+                                type="radio"
+                                name="qr-frame-line"
+                                checked={frame.line === line}
+                                onChange={() =>
                                   form.setFieldValue('style', {
                                     ...form.state.values.style,
-                                    frame: {
-                                      ...form.state.values.style.frame,
+                                    frame: { ...form.state.values.style.frame, line },
+                                  })
+                                }
+                              />
+                              {label}
+                            </label>
+                          ))}
+                        </div>
+                      ) : null}
+                      {frame.kind !== 'none' ? (
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {QR_FRAME_KEYS.filter(
+                            (key) => key !== 'arm' || frame.kind === 'corners',
+                          ).map((key) => {
+                            const range = QR_FRAME_RANGES[key];
+                            const id = `qr-frame-${key}`;
+                            const message = frameRangeMessage(key, frame[key]);
+                            return (
+                              <div key={key} className="space-y-1.5">
+                                <Label htmlFor={id}>{`${range.label} (${range.unit})`}</Label>
+                                <Input
+                                  id={id}
+                                  type="number"
+                                  step={range.step}
+                                  min={range.min}
+                                  max={range.max}
+                                  aria-invalid={message ? true : undefined}
+                                  value={Number.isNaN(frame[key]) ? '' : frame[key]}
+                                  onChange={(event) =>
+                                    form.setFieldValue('style', {
+                                      ...form.state.values.style,
+                                      frame: {
+                                        ...form.state.values.style.frame,
+                                        [key]:
+                                          event.target.value === ''
+                                            ? Number.NaN
+                                            : Number(event.target.value),
+                                      },
+                                    })
+                                  }
+                                />
+                                {message ? (
+                                  <p className="text-sm text-destructive-text">{message}</p>
+                                ) : null}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </form.Subscribe>
+              </Section>
+
+              <Section title="Ukuran" data-tour="qr-size">
+                <form.Field name="layout">
+                  {(field) => (
+                    <div className="space-y-2">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {QR_LAYOUT_KEYS.filter((key) => !TEXT_SIZE_KEYS.includes(key)).map(
+                          (key) => {
+                            const range = QR_LAYOUT_RANGES[key];
+                            const id = `qr-layout-${key}`;
+                            return (
+                              <div key={key} className="space-y-1.5">
+                                <Label htmlFor={id}>{`${range.label} (${range.unit})`}</Label>
+                                <Input
+                                  id={id}
+                                  type="number"
+                                  step={range.step}
+                                  min={range.min}
+                                  max={range.max}
+                                  value={
+                                    Number.isNaN(field.state.value[key])
+                                      ? ''
+                                      : field.state.value[key]
+                                  }
+                                  aria-invalid={
+                                    layoutRangeMessage(key, field.state.value[key])
+                                      ? true
+                                      : undefined
+                                  }
+                                  onChange={(event) =>
+                                    field.handleChange({
+                                      ...field.state.value,
                                       [key]:
                                         event.target.value === ''
                                           ? Number.NaN
                                           : Number(event.target.value),
-                                    },
-                                  })
-                                }
-                              />
-                              {message ? (
-                                <p className="text-sm text-destructive-text">{message}</p>
-                              ) : null}
-                            </div>
-                          );
-                        })}
+                                    })
+                                  }
+                                />
+                                {layoutRangeMessage(key, field.state.value[key]) ? (
+                                  <p className="text-sm text-destructive-text">
+                                    {layoutRangeMessage(key, field.state.value[key])}
+                                  </p>
+                                ) : null}
+                              </div>
+                            );
+                          },
+                        )}
                       </div>
-                    ) : null}
-                  </div>
-                )}
-              </form.Subscribe>
-            </Section>
-
-            <Section title="Ukuran" data-tour="qr-size">
-              <form.Field name="layout">
-                {(field) => (
-                  <div className="space-y-2">
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {QR_LAYOUT_KEYS.filter((key) => !TEXT_SIZE_KEYS.includes(key)).map((key) => {
-                        const range = QR_LAYOUT_RANGES[key];
-                        const id = `qr-layout-${key}`;
-                        return (
-                          <div key={key} className="space-y-1.5">
-                            <Label htmlFor={id}>{`${range.label} (${range.unit})`}</Label>
-                            <Input
-                              id={id}
-                              type="number"
-                              step={range.step}
-                              min={range.min}
-                              max={range.max}
-                              value={
-                                Number.isNaN(field.state.value[key]) ? '' : field.state.value[key]
-                              }
-                              aria-invalid={
-                                layoutRangeMessage(key, field.state.value[key]) ? true : undefined
-                              }
-                              onChange={(event) =>
-                                field.handleChange({
-                                  ...field.state.value,
-                                  [key]:
-                                    event.target.value === ''
-                                      ? Number.NaN
-                                      : Number(event.target.value),
-                                })
-                              }
-                            />
-                            {layoutRangeMessage(key, field.state.value[key]) ? (
-                              <p className="text-sm text-destructive-text">
-                                {layoutRangeMessage(key, field.state.value[key])}
-                              </p>
-                            ) : null}
-                          </div>
-                        );
-                      })}
+                      <FieldError
+                        stacked
+                        errors={[...field.state.meta.errors, fieldErrors?.layout]}
+                      />
                     </div>
-                    <FieldError
-                      stacked
-                      errors={[...field.state.meta.errors, fieldErrors?.layout]}
-                    />
-                  </div>
-                )}
-              </form.Field>
-            </Section>
+                  )}
+                </form.Field>
+              </Section>
 
-            {submitError ? (
-              <p role="alert" className="text-sm text-destructive-text">
-                {submitError}
-              </p>
-            ) : null}
-          </>
+              {submitError ? (
+                <p role="alert" className="text-sm text-destructive-text">
+                  {submitError}
+                </p>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+
+        {ready ? (
+          <aside data-tour="qr-preview" className="space-y-3 lg:sticky lg:top-36 lg:self-start">
+            <form.Subscribe selector={(state) => state.values}>
+              {(values) => (
+                <PreviewPane
+                  values={
+                    isDefaults && values.namePlacement !== ''
+                      ? { ...values, [values.namePlacement]: 'Nama Manual Book' }
+                      : values
+                  }
+                  document={document}
+                  sheetOpen={sheetOpen}
+                  onSheetOpenChange={setSheetOpen}
+                  onStatus={setLabelStatus}
+                />
+              )}
+            </form.Subscribe>
+          </aside>
         ) : null}
-      </div>
-
-      {ready ? (
-        <aside data-tour="qr-preview" className="space-y-3 lg:sticky lg:top-36 lg:self-start">
-          <form.Subscribe selector={(state) => state.values}>
-            {(values) => (
-              <PreviewPane
-                values={
-                  isDefaults && values.namePlacement !== ''
-                    ? { ...values, [values.namePlacement]: 'Nama Manual Book' }
-                    : values
-                }
-                document={document}
-                sheetOpen={sheetOpen}
-                onSheetOpenChange={setSheetOpen}
-                onStatus={setLabelStatus}
-              />
-            )}
-          </form.Subscribe>
-        </aside>
+        <ExportChangeWarning
+          open={pendingSave !== null}
+          stickerVersion={edit?.stickerVersion ?? 0}
+          onCancel={() => setPendingSave(null)}
+          onConfirm={() => {
+            const pending = pendingSave;
+            setPendingSave(null);
+            if (pending) void onSubmit(pending.values, pending.options);
+          }}
+        />
+      </form>
+      {canCreateItem ? (
+        // Dirender di luar `<form>`: submit dialog lewat portal React tidak boleh naik ke form QR.
+        <ItemFormDialog
+          open={itemDialogOpen}
+          onOpenChange={setItemDialogOpen}
+          onCreated={(item) =>
+            changeItems([
+              ...selected,
+              {
+                id: item.id,
+                brand: item.brand,
+                model: item.model,
+                businessUnitIds: item.businessUnits.map((bu) => bu.id),
+              },
+            ])
+          }
+        />
       ) : null}
-      <ExportChangeWarning
-        open={pendingSave !== null}
-        stickerVersion={edit?.stickerVersion ?? 0}
-        onCancel={() => setPendingSave(null)}
-        onConfirm={() => {
-          const pending = pendingSave;
-          setPendingSave(null);
-          if (pending) void onSubmit(pending.values, pending.options);
-        }}
-      />
-    </form>
+    </>
   );
 }
 

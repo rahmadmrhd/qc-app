@@ -23,11 +23,24 @@ const option = (
   ...extra,
 });
 
-function Harness({ initial = [], ownedIds = [] }: { initial?: PickedItem[]; ownedIds?: string[] }) {
+function Harness({
+  initial = [],
+  ownedIds = [],
+  onCreate,
+}: {
+  initial?: PickedItem[];
+  ownedIds?: string[];
+  onCreate?: () => void;
+}) {
   const [selected, setSelected] = useState<PickedItem[]>(initial);
   return (
     <>
-      <ItemPicker selected={selected} onChange={setSelected} ownedIds={new Set(ownedIds)} />
+      <ItemPicker
+        selected={selected}
+        onChange={setSelected}
+        ownedIds={new Set(ownedIds)}
+        onCreate={onCreate}
+      />
       <output aria-label="dipilih">{selected.map((item) => item.id).join(',')}</output>
     </>
   );
@@ -86,4 +99,17 @@ test('mengetik mencari lewat qrcodes.itemOptions dengan query', async () => {
       expect.objectContaining({ query: 'pbe' }),
     ),
   );
+});
+
+test('baris "Tambah Item" hanya ada bila onCreate diberikan dan memanggilnya', async () => {
+  const first = renderPicker();
+  await userEvent.click(screen.getByRole('combobox', { name: 'Item' }));
+  await screen.findByRole('option', { name: /PBE M5-400/ });
+  expect(screen.queryByRole('option', { name: 'Tambah Item' })).toBeNull();
+  first.unmount();
+  const onCreate = vi.fn();
+  renderPicker({ onCreate });
+  await userEvent.click(screen.getByRole('combobox', { name: 'Item' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'Tambah Item' }));
+  expect(onCreate).toHaveBeenCalledTimes(1);
 });

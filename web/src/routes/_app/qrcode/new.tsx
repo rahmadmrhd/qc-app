@@ -56,6 +56,7 @@ function NewQrDesignPage() {
         logoLibrary={defaults.logoFileIds}
         presets={defaults.presets}
         openItemHref={itemLinkAccess(me).openItemHref}
+        canCreateItem={itemLinkAccess(me).canCreate}
         submitError={submitError}
         fieldErrors={fieldErrors}
         onSubmit={handleSubmit}

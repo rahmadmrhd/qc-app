@@ -21,6 +21,8 @@ export interface ItemPickerProps {
   ownedIds?: ReadonlySet<string>;
   /** Tautan ke halaman lihat item (`itemLinkAccess` di `lib/link-access.ts`); kosong = tanpa tautan. */
   openHref?: (id: string) => string | null;
+  /** Membuka dialog Tambah item (baris "Tambah Item" di dasar daftar); tanpa ini baris tidak ada. */
+  onCreate?: () => void;
   error?: string;
   disabled?: boolean;
   required?: boolean;
@@ -35,6 +37,7 @@ export function ItemPicker({
   onChange,
   ownedIds,
   openHref,
+  onCreate,
   error,
   disabled,
   required,
@@ -71,6 +74,7 @@ export function ItemPicker({
       onSearchChange={setTerm}
       searchDebounceMs={200}
       openHref={openHref}
+      onCreate={onCreate}
       error={error}
       disabled={disabled}
       onChange={(ids) =>

@@ -1,10 +1,12 @@
 import type { MeDto } from '@shared/contract';
 import type { Level } from '@shared/permissions';
 import { expect, test } from 'vitest';
+import { makeMe } from '@/test/make-me';
 import {
   brandLinkAccess,
   businessUnitLinkAccess,
   itemFormLinkAccess,
+  itemLinkAccess,
   manualBookLinkAccess,
   postelLinkAccess,
   stickerTypeLinkAccess,
@@ -109,4 +111,28 @@ test('tautan ke halaman Postel hanya dengan sticker view; selain itu null', () =
   expect(postelLinkAccess(withSticker('view')).openPostelHref('p1')).toBe('/postel/p1');
   expect(postelLinkAccess(withSticker('edit')).openPostelHref('p 1')).toBe('/postel/p%201');
   expect(postelLinkAccess(null).openPostelHref('p1')).toBeNull();
+});
+
+test('itemLinkAccess.canCreate: item edit pada BU aktif; view saja, BU nonaktif, atau tanpa me = tidak', () => {
+  expect(itemLinkAccess(makeMe({ itemLevel: 'edit' })).canCreate).toBe(true);
+  expect(itemLinkAccess(makeMe({ itemLevel: 'manage' })).canCreate).toBe(true);
+  expect(itemLinkAccess(makeMe({ itemLevel: 'view' })).canCreate).toBe(false);
+  expect(
+    itemLinkAccess(
+      makeMe({
+        itemLevel: 'edit',
+        businessUnits: [
+          {
+            id: 'bu-old',
+            code: 'OLD',
+            name: 'Lama',
+            status: 'inactive',
+            permissions: { item: 'edit', serial: 'none', serialservice: 'none' },
+          },
+        ],
+      }),
+    ).canCreate,
+  ).toBe(false);
+  expect(itemLinkAccess(null).canCreate).toBe(false);
+  expect(itemLinkAccess(makeMe({ itemLevel: 'view' })).openItemHref?.('i 1')).toBe('/item/i%201');
 });

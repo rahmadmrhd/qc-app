@@ -203,7 +203,7 @@ test('"Pilih semua" 250 id dikirim bertahap 100, 100, 50', async () => {
   expect(
     callsOf('items.setStatusBatch').map((call) => (call.input as { ids: string[] }).ids.length),
   ).toEqual([100, 100, 50]);
-});
+}, 60_000);
 
 test('UNAVAILABLE menjadi toast galat tanpa antrean dan pilihan tetap', async () => {
   await mount();

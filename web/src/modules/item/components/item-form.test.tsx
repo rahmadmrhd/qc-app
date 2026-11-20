@@ -11,7 +11,19 @@ vi.mock('@/modules/files/queries', () => ({
 
 import { linkOptionNames, pickSelect } from '@/test/link-field';
 import { toItemFormDefaults } from '../schemas';
-import { ItemForm } from './item-form';
+import { ItemForm, type ItemFormProps } from './item-form';
+
+/** Tombol Simpan berada di luar form (seperti di bar halaman/footer dialog) dan memakai `form={formId}`. */
+function Harness(props: Omit<ItemFormProps, 'formId'>) {
+  return (
+    <>
+      <ItemForm formId="item-form" {...props} />
+      <button type="submit" form="item-form">
+        Simpan
+      </button>
+    </>
+  );
+}
 
 const brands: BrandDto[] = [
   {
@@ -73,21 +85,23 @@ const STICKER_TYPES: StickerTypeDto[] = [
 // bu-x tidak boleh diisi user ini; bu-old nonaktif jadi tak pernah ditawarkan.
 const editableBusinessUnitIds = ['bu-a', 'bu-b', 'bu-old'];
 
-function renderForm(props: Partial<Parameters<typeof ItemForm>[0]> = {}) {
+function renderForm(props: Partial<ItemFormProps> = {}) {
   const onSubmit = vi.fn(async () => undefined);
   render(
-    <ItemForm
-      title="Form item"
+    <Harness
       brands={brands}
       businessUnits={businessUnits}
       editableBusinessUnitIds={editableBusinessUnitIds}
       defaultValues={toItemFormDefaults()}
       onSubmit={onSubmit}
-      onCancel={() => undefined}
       {...props}
     />,
   );
   return { onSubmit };
+}
+
+async function openTab(name: string) {
+  await userEvent.click(screen.getByRole('tab', { name }));
 }
 
 async function pickBrand(name: string) {
@@ -122,6 +136,7 @@ test('mengirim brandId, businessUnitIds, dan nilai lengkap lainnya', async () =>
   await userEvent.type(screen.getByLabelText('Nama lain'), 'ES24{enter}AirSwitch');
   await userEvent.click(screen.getByRole('button', { name: 'Tambah kelengkapan' }));
   await userEvent.type(screen.getByLabelText('Nama kelengkapan 1'), 'Kabel daya');
+  await openTab('Spesifikasi');
   await userEvent.type(
     screen.getByRole('textbox', { name: 'Detail dan spesifikasi' }),
     '## Spesifikasi',
@@ -206,13 +221,7 @@ test('mode ubah: merk nonaktif tetap berlabel, BU nonaktif tampil sebagai chip y
 
 test('merk nonaktif tidak ditawarkan pada item baru; pada item ber-merk nonaktif merk itu tetap ada di pilihan', async () => {
   const { unmount } = render(
-    <ItemForm
-      title="Form item"
-      brands={brands}
-      defaultValues={toItemFormDefaults()}
-      onSubmit={vi.fn()}
-      onCancel={vi.fn()}
-    />,
+    <Harness brands={brands} defaultValues={toItemFormDefaults()} onSubmit={vi.fn()} />,
   );
   await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
   expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual([
@@ -231,13 +240,7 @@ test('merk nonaktif tidak ditawarkan pada item baru; pada item ber-merk nonaktif
 
 test('baris Tambah merk hanya ada bila onCreateBrand disediakan', async () => {
   const { unmount } = render(
-    <ItemForm
-      title="Form item"
-      brands={brands}
-      defaultValues={toItemFormDefaults()}
-      onSubmit={vi.fn()}
-      onCancel={vi.fn()}
-    />,
+    <Harness brands={brands} defaultValues={toItemFormDefaults()} onSubmit={vi.fn()} />,
   );
   await userEvent.click(screen.getByRole('combobox', { name: 'Merk' }));
   expect(screen.queryByRole('option', { name: 'Tambah Merk' })).not.toBeInTheDocument();
@@ -320,7 +323,7 @@ test('pesan galat instruksi stiker dan kelengkapan bernomor tampil di bagiannya'
   expect(screen.getByText('Kelengkapan 1: nama wajib diisi')).toBeInTheDocument();
 });
 
-test('bagian Instruksi stiker memuat foto item, penanda, dan sasaran dari katalog', () => {
+test('bagian Instruksi stiker memuat foto item, penanda, dan sasaran dari katalog', async () => {
   renderForm({
     defaultValues: {
       ...toItemFormDefaults(),
@@ -338,6 +341,7 @@ test('bagian Instruksi stiker memuat foto item, penanda, dan sasaran dari katalo
     stickerTypes: STICKER_TYPES,
     guides: GUIDES,
   });
+  await openTab('Instruksi Stiker');
   expect(screen.getByRole('heading', { name: 'Instruksi stiker' })).toBeInTheDocument();
   const card = screen.getByRole('group', { name: 'Foto instruksi 1' });
   expect(within(card).getByRole('textbox', { name: 'Catatan foto 1' })).toHaveValue(
@@ -359,9 +363,12 @@ test('melepas BU item mengosongkan label BU foto yang memakainya', async () => {
     },
     guides: GUIDES,
   });
+  await openTab('Instruksi Stiker');
   const label = screen.getByRole('combobox', { name: 'Label BU foto 1' });
   expect(label).toHaveValue('Retail (RTL)');
+  await openTab('Detail');
   await userEvent.click(screen.getByRole('button', { name: 'Hapus Retail (RTL)' }));
+  await openTab('Instruksi Stiker');
   await waitFor(() =>
     expect(screen.getByRole('combobox', { name: 'Label BU foto 1' })).toHaveValue(''),
   );
@@ -396,6 +403,7 @@ test('Tambah jenis dari penanda: dialog jenis, jenis baru langsung terpilih tanp
     guides: GUIDES,
     onCreateStickerType,
   });
+  await openTab('Instruksi Stiker');
   await userEvent.click(screen.getByRole('combobox', { name: 'Jenis' }));
   await userEvent.click(screen.getByRole('option', { name: 'Tambah Jenis' }));
   const dialog = await screen.findByRole('alertdialog');
@@ -426,6 +434,7 @@ test('tanpa pembuat stiker/jenis, baris Tambah tidak ada pada penanda', async ()
     stickers: STICKERS,
     guides: GUIDES,
   });
+  await openTab('Instruksi Stiker');
   await userEvent.click(screen.getByRole('combobox', { name: 'Stiker' }));
   expect(screen.queryByRole('option', { name: 'Tambah Stiker' })).not.toBeInTheDocument();
 });
@@ -449,7 +458,7 @@ test('galat per field dari server tampil di bawah field terkait dan galat umum s
   );
 });
 
-test('mode ubah memuat nilai awal', () => {
+test('mode ubah memuat nilai awal', async () => {
   renderForm({
     defaultValues: {
       ...toItemFormDefaults(),
@@ -467,6 +476,7 @@ test('mode ubah memuat nilai awal', () => {
   expect(screen.getByRole('checkbox', { name: 'Country lock (wajib)' })).toBeChecked();
   expect(screen.getByLabelText('Nama lain')).toHaveValue('AirFiber');
   expect(screen.getByText('2/10')).toBeInTheDocument();
+  await openTab('Gambar');
   expect(
     within(screen.getByRole('group', { name: 'Gambar lampiran' })).getAllByRole('img'),
   ).toHaveLength(2);
@@ -678,4 +688,68 @@ test('field wajib bertanda aria-required; Minimum foto wajib hanya saat "Wajib f
   // Firmware opsional pada skema: tak pernah wajib, juga setelah Country lock dicentang.
   await userEvent.click(screen.getByLabelText(/Country lock/));
   expect(screen.getByLabelText('Firmware')).not.toHaveAttribute('aria-required');
+});
+
+const dotOf = (name: string) =>
+  screen
+    .getByRole('tab', { name: new RegExp(`^${name}`) })
+    .querySelector('[data-slot="tab-error-dot"]');
+
+test('empat tab berlabel dan Detail aktif pertama', () => {
+  renderForm();
+  expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+    'Detail',
+    'Gambar',
+    'Instruksi Stiker',
+    'Spesifikasi',
+  ]);
+  expect(screen.getByRole('tab', { name: 'Detail', selected: true })).toBeInTheDocument();
+});
+
+test('simpan dengan Tipe kosong dari tab lain: tab Detail dibuka dan bertitik galat', async () => {
+  const { onSubmit } = renderForm();
+  await openTab('Gambar');
+  expect(screen.getByRole('tab', { name: 'Gambar', selected: true })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await waitFor(() =>
+    expect(screen.getByRole('tab', { name: /^Detail/, selected: true })).toBeInTheDocument(),
+  );
+  expect(dotOf('Detail')).not.toBeNull();
+  expect(dotOf('Gambar')).toBeNull();
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
+test('galat server pada stickerPhotos: tab Instruksi Stiker dibuka dan bertitik galat', async () => {
+  renderForm({
+    defaultValues: {
+      ...toItemFormDefaults(),
+      brandId: 'b1',
+      businessUnitIds: ['bu-a'],
+      model: 'X',
+    },
+    fieldErrors: { stickerPhotos: 'Gambar pustaka tidak dikenal' },
+  });
+  await waitFor(() =>
+    expect(
+      screen.getByRole('tab', { name: /^Instruksi Stiker/, selected: true }),
+    ).toBeInTheDocument(),
+  );
+  expect(dotOf('Instruksi Stiker')).not.toBeNull();
+  expect(dotOf('Detail')).toBeNull();
+});
+
+test('onTabErrorsChange melaporkan tab bergalat', async () => {
+  const onTabErrorsChange = vi.fn();
+  renderForm({
+    fieldErrors: { detail: 'Terlalu panjang' },
+    onTabErrorsChange,
+  });
+  await waitFor(() =>
+    expect(onTabErrorsChange).toHaveBeenLastCalledWith({
+      detail: false,
+      gambar: false,
+      instruksi: false,
+      spesifikasi: true,
+    }),
+  );
 });
