@@ -13,8 +13,7 @@ export function BulkBar({
 }) {
   if (count === 0) return null;
   return (
-    <div
-      role="region"
+    <section
       aria-label="Aksi massal"
       className="sticky bottom-0 z-20 mt-3 flex flex-wrap items-center gap-2 rounded-lg border bg-background p-2 shadow-lg"
     >
@@ -23,6 +22,6 @@ export function BulkBar({
       <div className="ml-auto">
         <ActionButton action="cancel" label="Batalkan pilihan" onClick={onClear} />
       </div>
-    </div>
+    </section>
   );
 }

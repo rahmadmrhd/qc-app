@@ -166,12 +166,11 @@ export function KanbanBoard<T>({
           </>
         );
         return (
-          <div
+          <fieldset
             key={column.key}
-            role="group"
             aria-label={column.label}
             className={cn(
-              'flex min-w-[290px] flex-1 flex-col rounded-lg border border-t-[3px] p-2',
+              'm-0 flex min-w-[290px] flex-1 flex-col rounded-lg border border-t-[3px] p-2',
               tone.column,
               viewport && 'min-h-0',
             )}
@@ -189,7 +188,7 @@ export function KanbanBoard<T>({
             ) : (
               <div className="space-y-2">{cards}</div>
             )}
-          </div>
+          </fieldset>
         );
       })}
     </section>
