@@ -1,7 +1,9 @@
 import { Download, FileText, RotateCcw, X } from 'lucide-react';
 import { memo, type ReactNode, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { formatBytes } from './accept';
+import { InlineName } from './inline-name';
 import { PreviewDialog } from './preview-dialog';
 import type { LibraryItem } from './types';
 import { UploadProgress } from './upload-progress';
@@ -25,6 +27,9 @@ export interface AttachmentViewProps {
   /** `grid` = kisi thumbnail kecil; `list` = satu baris per lampiran. */
   layout: 'grid' | 'list';
   onRemove?(id: string): void;
+  /** Dengan ini nama tiap item dapat diubah di tempat (`InlineName`), maks. `nameMax` karakter. */
+  onRename?(id: string, name: string): void;
+  nameMax?: number;
   onRetry?(key: string): void;
   /** Membuang entri unggahan (berjalan = dibatalkan, gagal = dibuang). */
   onCancel?(key: string): void;
@@ -132,6 +137,8 @@ export function AttachmentView({
   pending = [],
   layout,
   onRemove,
+  onRename,
+  nameMax,
   onRetry,
   onCancel,
   disabled,
@@ -156,7 +163,7 @@ export function AttachmentView({
               data-testid="attachment-item"
               className={
                 grid
-                  ? 'relative shrink-0'
+                  ? cn('relative shrink-0', onRename && 'w-20')
                   : 'flex items-center gap-2 rounded-md border px-2 py-1.5 text-sm'
               }
             >
@@ -177,11 +184,29 @@ export function AttachmentView({
                   ) : null}
                 </span>
               )}
+              {grid && onRename ? (
+                <InlineName
+                  value={item.name}
+                  maxLength={nameMax}
+                  readOnly={disabled}
+                  className="mt-1 block w-20 text-[11px]"
+                  onSave={(name) => onRename(item.id, name)}
+                />
+              ) : null}
               {grid ? null : (
                 <div className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate" title={item.name}>
-                    {item.name}
-                  </span>
+                  {onRename ? (
+                    <InlineName
+                      value={item.name}
+                      maxLength={nameMax}
+                      readOnly={disabled}
+                      onSave={(name) => onRename(item.id, name)}
+                    />
+                  ) : (
+                    <span className="truncate" title={item.name}>
+                      {item.name}
+                    </span>
+                  )}
                   {item.size !== undefined ? (
                     <span className="text-xs text-muted-foreground">{formatBytes(item.size)}</span>
                   ) : null}

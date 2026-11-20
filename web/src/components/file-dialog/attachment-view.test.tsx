@@ -171,3 +171,20 @@ test('libraryItemToAttachment: thumb dari thumbUrl, large dari previewUrl', () =
   const large = render(<div>{attachment.renderImage?.('large')}</div>);
   expect(large.container.querySelector('img')).toHaveAttribute('src', '/preview');
 });
+
+test('onRename: nama item dapat diubah di tempat (grid dan list), tanpa onRename tidak ada tombol ubah nama', async () => {
+  const onRename = vi.fn();
+  const { rerender } = render(
+    <AttachmentView items={[image('a')]} layout="list" onRename={onRename} nameMax={30} />,
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah nama Foto a' }));
+  await userEvent.clear(screen.getByLabelText('Nama'));
+  await userEvent.type(screen.getByLabelText('Nama'), 'Baru{Enter}');
+  expect(onRename).toHaveBeenCalledWith('a', 'Baru');
+
+  rerender(<AttachmentView items={[image('a')]} layout="grid" onRename={onRename} nameMax={30} />);
+  expect(screen.getByRole('button', { name: 'Ubah nama Foto a' })).toBeInTheDocument();
+
+  rerender(<AttachmentView items={[image('a')]} layout="grid" />);
+  expect(screen.queryByRole('button', { name: /Ubah nama/ })).not.toBeInTheDocument();
+});
