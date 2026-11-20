@@ -1,6 +1,7 @@
 import { CAS_FAIL_SQL, isGuardFailure } from '@server/core/cas';
 import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
+import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import type { QrLayout, QrLinkSource, QrNamePlacement, QrStyle } from '@shared/qrcode';
 import { clampQrLayout, clampQrStyle } from '@shared/qrcode';
 
@@ -40,8 +41,12 @@ export interface QrPresetRecord {
   createdBy: string;
   updatedAt: string;
   updatedBy: string;
+  /** Soft delete: ISO UTC; `''` = hidup. Hanya dibaca; ditulis helper `core/soft-delete`, bukan `insert`/`update`. */
+  deletedAt: string;
+  deletedBy: string;
 }
-export type NewQrPresetRecord = QrPresetRecord;
+/** Rekaman untuk ditulis: tanpa penanda hapus (ditulis hanya oleh hapus/pulihkan). */
+export type NewQrPresetRecord = Omit<QrPresetRecord, 'deletedAt' | 'deletedBy'>;
 
 export interface QrDesignRecord {
   id: string;
@@ -72,8 +77,12 @@ export interface QrDesignRecord {
   createdBy: string;
   updatedAt: string;
   updatedBy: string;
+  /** Soft delete: ISO UTC; `''` = hidup. Hanya dibaca; ditulis helper `core/soft-delete`, bukan `insert`/`update`. */
+  deletedAt: string;
+  deletedBy: string;
 }
-export type NewQrDesignRecord = QrDesignRecord;
+/** Rekaman untuk ditulis: tanpa penanda hapus (ditulis hanya oleh hapus/pulihkan). */
+export type NewQrDesignRecord = Omit<QrDesignRecord, 'deletedAt' | 'deletedBy'>;
 
 export interface QrDocumentRecord {
   id: string;
@@ -132,8 +141,11 @@ function parseQrIdList(value: string): string[] {
   }
 }
 
+/** Kolom tulis (insert/update); kolom penanda hapus HANYA dibaca (`DESIGN_READ_COLUMNS`) dan ditulis helper hapus/pulihkan. */
 const DESIGN_COLUMNS =
   'id, title, link_source, link, document_id, subtitle, footer, logo_file_id, layout, style, overflow, exported_hash, exported_at, exported_by, export_pdf_drive_id, export_png_drive_id, created_at, created_by, updated_at, updated_by, name, name_placement, preset_id';
+
+const DESIGN_READ_COLUMNS = `${DESIGN_COLUMNS}, deleted_at, deleted_by`;
 
 function toDesign(row: Row): QrDesignRecord {
   return {
@@ -160,15 +172,43 @@ function toDesign(row: Row): QrDesignRecord {
     createdBy: text(row.created_by),
     updatedAt: text(row.updated_at),
     updatedBy: text(row.updated_by),
+    deletedAt: text(row.deleted_at),
+    deletedBy: text(row.deleted_by),
   };
 }
 
-export async function listQrDesigns(env: Env): Promise<QrDesignRecord[]> {
-  const result = await env.DB.prepare(`SELECT ${DESIGN_COLUMNS} FROM qr_designs`).all<Row>();
+/**
+ * Konfigurasi menurut keadaan hapus: `live` (bawaan) = hanya yang hidup, `deleted` = hanya yang terhapus. Penyaring SQL
+ * ada di dua literal terpisah agar pemindai soft delete melihat penyaringnya. Pembaca yang butuh keduanya memakai
+ * `listAllQrDesigns` (penampil rujukan / penjaga keunikan).
+ */
+export async function listQrDesigns(
+  env: Env,
+  state: 'live' | 'deleted' = 'live',
+): Promise<QrDesignRecord[]> {
+  const sql =
+    state === 'live'
+      ? `SELECT ${DESIGN_READ_COLUMNS} FROM qr_designs WHERE ${liveWhere()}`
+      : `SELECT ${DESIGN_READ_COLUMNS} FROM qr_designs WHERE ${deletedWhere()}`;
+  const result = await env.DB.prepare(sql).all<Row>();
   return result.results.map(toDesign).filter((design) => design.id !== '');
 }
 
-function designValues(design: QrDesignRecord): Array<string | number> {
+/** SEMUA konfigurasi, hidup dan terhapus (penjaga keunikan PDF/logo dan pencabutan berbagi: pemilik terhapus tetap sah). */
+export async function listAllQrDesigns(env: Env): Promise<QrDesignRecord[]> {
+  const result = await env.DB.prepare(`SELECT ${DESIGN_READ_COLUMNS} FROM qr_designs`).all<Row>();
+  return result.results.map(toDesign).filter((design) => design.id !== '');
+}
+
+/** Satu konfigurasi menurut id, hidup atau terhapus (pemanggil menilai `deletedAt`); `null` bila id tak dikenal. */
+export async function findQrDesign(env: Env, id: string): Promise<QrDesignRecord | null> {
+  const row = await env.DB.prepare(`SELECT ${DESIGN_READ_COLUMNS} FROM qr_designs WHERE id = ?`)
+    .bind(id)
+    .first<Row>();
+  return row === null ? null : toDesign(row);
+}
+
+function designValues(design: NewQrDesignRecord): Array<string | number> {
   return [
     design.id,
     design.title,
@@ -196,7 +236,7 @@ function designValues(design: QrDesignRecord): Array<string | number> {
   ];
 }
 
-export function insertQrDesignStmt(db: Db, design: QrDesignRecord): DbStatement {
+export function insertQrDesignStmt(db: Db, design: NewQrDesignRecord): DbStatement {
   return db
     .prepare(
       `INSERT INTO qr_designs (${DESIGN_COLUMNS}) VALUES (${designValues(design)
@@ -212,14 +252,14 @@ export function insertQrDesignStmt(db: Db, design: QrDesignRecord): DbStatement 
  */
 export function updateQrDesignStmt(
   db: Db,
-  design: QrDesignRecord,
+  design: NewQrDesignRecord,
   guardUpdatedAt?: string,
 ): DbStatement {
   const names = DESIGN_COLUMNS.split(', ').slice(1);
   const values = designValues(design).slice(1);
   return db
     .prepare(
-      `UPDATE qr_designs SET ${names.map((name) => `${name} = ?`).join(', ')} WHERE id = ?${
+      `UPDATE qr_designs SET ${names.map((name) => `${name} = ?`).join(', ')} WHERE id = ? AND ${liveWhere()}${
         guardUpdatedAt === undefined ? '' : ' AND updated_at = ?'
       }`,
     )
@@ -242,7 +282,7 @@ const EXPORT_COLUMN_NAMES: ReadonlySet<string> = new Set([
  */
 export function updateQrDesignContentStmt(
   db: Db,
-  design: QrDesignRecord,
+  design: NewQrDesignRecord,
   guardUpdatedAt?: string,
 ): DbStatement {
   const values = designValues(design);
@@ -251,7 +291,7 @@ export function updateQrDesignContentStmt(
     .filter(([name]) => name !== 'id' && !EXPORT_COLUMN_NAMES.has(name));
   return db
     .prepare(
-      `UPDATE qr_designs SET ${pairs.map(([name]) => `${name} = ?`).join(', ')} WHERE id = ?${
+      `UPDATE qr_designs SET ${pairs.map(([name]) => `${name} = ?`).join(', ')} WHERE id = ? AND ${liveWhere()}${
         guardUpdatedAt === undefined ? '' : ' AND updated_at = ?'
       }`,
     )
@@ -278,7 +318,7 @@ export function updateQrDesignExportStmt(
 ): DbStatement {
   return db
     .prepare(
-      'UPDATE qr_designs SET exported_hash = ?, exported_at = ?, exported_by = ?, export_pdf_drive_id = ?, export_png_drive_id = ? WHERE id = ? AND updated_at = ?',
+      `UPDATE qr_designs SET exported_hash = ?, exported_at = ?, exported_by = ?, export_pdf_drive_id = ?, export_png_drive_id = ? WHERE id = ? AND updated_at = ? AND ${liveWhere()}`,
     )
     .bind(
       exported.exportedHash,
@@ -298,22 +338,11 @@ export function setQrDesignOverflowStmt(db: Db, id: string, overflow: boolean): 
     .bind(overflow ? '1' : '', id);
 }
 
-/**
- * Mengunci baris konfigurasi (`FOR UPDATE`) di AWAL batch yang bergantung pada keadaan versi Manual Book (hapus,
- * simpan dengan kelonggaran). Komit ekspor memulai batch-nya dengan `UPDATE qr_designs` (kunci yang sama) tanpa
- * menaikkan `updated_at`, jadi keduanya saling menunggu: pembacaan penjaga sesudah kunci ini melihat komit
- * ekspor yang lebih dulu selesai, dan komit ekspor yang menyusul melihat baris sudah terhapus (basi).
- */
-export function lockQrDesignRowStmt(db: Db, id: string): DbStatement {
-  return db.prepare('SELECT id FROM qr_designs WHERE id = ? FOR UPDATE').bind(id);
-}
-
-export function deleteQrDesignStmt(db: Db, id: string): DbStatement {
-  return db.prepare('DELETE FROM qr_designs WHERE id = ?').bind(id);
-}
-
+/** Kolom tulis (insert/update); penanda hapus HANYA dibaca (`PRESET_READ_COLUMNS`). */
 const PRESET_COLUMNS =
   'id, name, title, subtitle, footer, layout, style, default_logo_id, created_at, created_by, updated_at, updated_by, bu_id, name_placement';
+
+const PRESET_READ_COLUMNS = `${PRESET_COLUMNS}, deleted_at, deleted_by`;
 
 function toPreset(row: Row): QrPresetRecord {
   return {
@@ -331,15 +360,36 @@ function toPreset(row: Row): QrPresetRecord {
     createdBy: text(row.created_by),
     updatedAt: text(row.updated_at),
     updatedBy: text(row.updated_by),
+    deletedAt: text(row.deleted_at),
+    deletedBy: text(row.deleted_by),
   };
 }
 
-export async function listQrPresets(env: Env): Promise<QrPresetRecord[]> {
-  const result = await env.DB.prepare(`SELECT ${PRESET_COLUMNS} FROM qr_presets`).all<Row>();
+/**
+ * Preset menurut keadaan hapus: `live` (bawaan) = hanya yang hidup (dasar tarik otomatis, keunikan BU dan nama, batas
+ * jumlah), `deleted` = hanya yang terhapus. Pembaca yang butuh keduanya memakai `listAllQrPresets`.
+ */
+export async function listQrPresets(
+  env: Env,
+  state: 'live' | 'deleted' = 'live',
+): Promise<QrPresetRecord[]> {
+  const sql =
+    state === 'live'
+      ? `SELECT ${PRESET_READ_COLUMNS} FROM qr_presets WHERE ${liveWhere()}`
+      : `SELECT ${PRESET_READ_COLUMNS} FROM qr_presets WHERE ${deletedWhere()}`;
+  const result = await env.DB.prepare(sql).all<Row>();
   return result.results.map(toPreset).filter((preset) => preset.id !== '');
 }
 
-function presetValues(preset: QrPresetRecord): Array<string | number> {
+/** Satu preset menurut id, hidup atau terhapus (pemanggil menilai `deletedAt`); `null` bila id tak dikenal. */
+export async function findQrPreset(env: Env, id: string): Promise<QrPresetRecord | null> {
+  const row = await env.DB.prepare(`SELECT ${PRESET_READ_COLUMNS} FROM qr_presets WHERE id = ?`)
+    .bind(id)
+    .first<Row>();
+  return row === null ? null : toPreset(row);
+}
+
+function presetValues(preset: NewQrPresetRecord): Array<string | number> {
   return [
     preset.id,
     preset.name,
@@ -358,7 +408,7 @@ function presetValues(preset: QrPresetRecord): Array<string | number> {
   ];
 }
 
-export function insertQrPresetStmt(db: Db, preset: QrPresetRecord): DbStatement {
+export function insertQrPresetStmt(db: Db, preset: NewQrPresetRecord): DbStatement {
   return db
     .prepare(
       `INSERT INTO qr_presets (${PRESET_COLUMNS}) VALUES (${presetValues(preset)
@@ -370,22 +420,30 @@ export function insertQrPresetStmt(db: Db, preset: QrPresetRecord): DbStatement 
 
 export function updateQrPresetStmt(
   db: Db,
-  preset: QrPresetRecord,
+  preset: NewQrPresetRecord,
   guardUpdatedAt?: string,
 ): DbStatement {
   const names = PRESET_COLUMNS.split(', ').slice(1);
   const values = presetValues(preset).slice(1);
   return db
     .prepare(
-      `UPDATE qr_presets SET ${names.map((name) => `${name} = ?`).join(', ')} WHERE id = ?${
+      `UPDATE qr_presets SET ${names.map((name) => `${name} = ?`).join(', ')} WHERE id = ? AND ${liveWhere()}${
         guardUpdatedAt === undefined ? '' : ' AND updated_at = ?'
       }`,
     )
     .bind(...values, preset.id, ...(guardUpdatedAt === undefined ? [] : [guardUpdatedAt]));
 }
 
-export function deleteQrPresetStmt(db: Db, id: string): DbStatement {
-  return db.prepare('DELETE FROM qr_presets WHERE id = ?').bind(id);
+/**
+ * Mengosongkan logo awal sebuah preset, HIDUP MAUPUN TERHAPUS (logo keluar dari pustaka: preset terhapus tidak boleh
+ * membawa logo basi saat dipulihkan). Tanpa penjaga `updated_at`: sama seperti pembersihan preset hidup sebelumnya.
+ */
+export function clearQrPresetLogoStmt(db: Db, id: string, now: string, actor: string): DbStatement {
+  return db
+    .prepare(
+      "UPDATE qr_presets SET default_logo_id = '', updated_at = ?, updated_by = ? WHERE id = ?",
+    )
+    .bind(now, actor, id);
 }
 
 const DEFAULTS_COLUMNS =

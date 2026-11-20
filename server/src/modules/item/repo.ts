@@ -197,8 +197,10 @@ export async function itemBusinessUnitsOf(
 }
 
 /**
- * Konfigurasi QR (Manual Book) tiap item: peta id item -> `qr_designs.id` untuk item yang sudah tergabung. `ItemRecord`
- * tidak memuat kolom ini (penulisnya modul QR, bukan `items.save`); item tanpa Manual Book tidak ada di peta.
+ * Konfigurasi QR (Manual Book) tiap item: peta id item -> `qr_designs.id` untuk item yang sudah tergabung ke konfigurasi
+ * HIDUP. `ItemRecord` tidak memuat kolom ini (penulisnya modul QR, bukan `items.save`); item tanpa Manual Book, atau
+ * yang menunjuk konfigurasi terhapus (rujukan terhapus dihitung belum tergabung, soft delete §5 butir 1), tidak ada di
+ * peta. Sumber aturan `group` jenis Manual Book (tampilan instruksi dan katalog desktop).
  */
 export async function manualBookDesignIdsOf(
   db: Db,
@@ -210,7 +212,7 @@ export async function manualBookDesignIdsOf(
     const chunk = unique.slice(from, from + IN_CHUNK);
     const rows = await db
       .prepare(
-        `SELECT id, manual_book_design_id FROM items WHERE id IN (${chunk.map(() => '?').join(',')}) AND manual_book_design_id <> ''`,
+        `SELECT i.id, i.manual_book_design_id FROM items i JOIN qr_designs d ON d.id = i.manual_book_design_id AND ${liveWhere('d')} WHERE i.id IN (${chunk.map(() => '?').join(',')}) AND i.manual_book_design_id <> ''`,
       )
       .bind(...chunk)
       .all<{ id: string; manual_book_design_id: string }>();
@@ -220,8 +222,9 @@ export async function manualBookDesignIdsOf(
 }
 
 /**
- * Catatan Postel tiap item: peta id item -> `postels.id` untuk item yang sudah tertaut. `ItemRecord` tidak memuat kolom
- * ini (penulisnya modul Postel, bukan `items.save`); item tanpa Postel tidak ada di peta.
+ * Catatan Postel tiap item: peta id item -> `postels.id` untuk item yang sudah tertaut ke catatan HIDUP. `ItemRecord`
+ * tidak memuat kolom ini (penulisnya modul Postel, bukan `items.save`); item tanpa Postel, atau yang menunjuk catatan
+ * terhapus (rujukan terhapus dihitung belum tertaut), tidak ada di peta.
  */
 export async function postelIdsOf(
   db: Preparer,
@@ -233,7 +236,7 @@ export async function postelIdsOf(
     const chunk = unique.slice(from, from + IN_CHUNK);
     const rows = await db
       .prepare(
-        `SELECT id, postel_id FROM items WHERE id IN (${chunk.map(() => '?').join(',')}) AND postel_id IS NOT NULL`,
+        `SELECT i.id, i.postel_id FROM items i JOIN postels p ON p.id = i.postel_id AND ${liveWhere('p')} WHERE i.id IN (${chunk.map(() => '?').join(',')}) AND i.postel_id IS NOT NULL`,
       )
       .bind(...chunk)
       .all<{ id: string; postel_id: string }>();
@@ -243,11 +246,11 @@ export async function postelIdsOf(
 }
 
 /**
- * Definisi TUNGGAL "item ber-Manual Book" (alias tabel `i` = `items`): tergabung ke konfigurasi QR yang punya minimal satu
- * versi. Dipakai filter `items.list` (`manualBook`) dan pemuat `loadItemManualBooks` (sumber `hasManualBook`/`manualBook`).
+ * Definisi TUNGGAL "item ber-Manual Book" (alias tabel `i` = `items`): tergabung ke konfigurasi QR HIDUP yang punya minimal
+ * satu versi (item yang menunjuk konfigurasi terhapus dihitung belum ber-Manual Book, soft delete §5 butir 1). Dipakai
+ * filter `items.list` (`manualBook`) dan pemuat `loadItemManualBooks` (sumber `hasManualBook`/`manualBook`).
  */
-export const HAS_MANUAL_BOOK_SQL =
-  "(i.manual_book_design_id <> '' AND EXISTS (SELECT 1 FROM manual_book_versions mv WHERE mv.design_id = i.manual_book_design_id))";
+export const HAS_MANUAL_BOOK_SQL = `(i.manual_book_design_id <> '' AND EXISTS (SELECT 1 FROM qr_designs d0 WHERE d0.id = i.manual_book_design_id AND ${liveWhere('d0')}) AND EXISTS (SELECT 1 FROM manual_book_versions mv WHERE mv.design_id = i.manual_book_design_id))`;
 
 /**
  * Manual Book tiap item (peta id item -> versi terbaru). Item tanpa Manual Book berversi tidak ada di peta. Satu kueri
@@ -263,7 +266,7 @@ export async function loadItemManualBooks(
     const chunk = unique.slice(from, from + IN_CHUNK);
     const rows = await db
       .prepare(
-        `SELECT i.id, i.manual_book_design_id AS design_id, COALESCE((SELECT d.name FROM qr_designs d WHERE d.id = i.manual_book_design_id), '') AS design_name, (SELECT MAX(m.version) FROM manual_book_versions m WHERE m.design_id = i.manual_book_design_id) AS version, COALESCE((SELECT s.status FROM manual_book_versions m JOIN stickers s ON s.id = m.sticker_id WHERE m.design_id = i.manual_book_design_id ORDER BY m.version DESC LIMIT 1), 'inactive') AS sticker_status FROM items i WHERE i.id IN (${chunk.map(() => '?').join(',')}) AND ${HAS_MANUAL_BOOK_SQL}`,
+        `SELECT i.id, i.manual_book_design_id AS design_id, COALESCE((SELECT d.name FROM qr_designs d WHERE d.id = i.manual_book_design_id AND ${liveWhere('d')}), '') AS design_name, (SELECT MAX(m.version) FROM manual_book_versions m WHERE m.design_id = i.manual_book_design_id) AS version, COALESCE((SELECT s.status FROM manual_book_versions m JOIN stickers s ON s.id = m.sticker_id WHERE m.design_id = i.manual_book_design_id ORDER BY m.version DESC LIMIT 1), 'inactive') AS sticker_status FROM items i WHERE i.id IN (${chunk.map(() => '?').join(',')}) AND ${HAS_MANUAL_BOOK_SQL}`,
       )
       .bind(...chunk)
       .all<{
@@ -286,12 +289,13 @@ export async function loadItemManualBooks(
 }
 
 /**
- * Definisi TUNGGAL "item ber-Postel" (alias tabel `i` = `items`): `postel_id` terisi. Kunci asing `items_postel_fk`
- * (migrasi 0010, `ON DELETE SET NULL`) menjamin penunjuk terisi selalu menunjuk catatan yang ada, jadi tak perlu
- * `EXISTS` lagi (penunjuk yatim tak mungkin ada). Dipakai filter `items.list` (`postel`) dan `itemIdsWithPostel`
- * (sumber `hasPostel`); aturan `group` jenis Postel memakai stiker milik catatan (`postelStickerIdsOf`).
+ * Definisi TUNGGAL "item ber-Postel" (alias tabel `i` = `items`): `postel_id` terisi dan menunjuk catatan HIDUP. Kunci
+ * asing `items_postel_fk` (migrasi 0010) menjamin penunjuk terisi menunjuk catatan yang ada; catatan terhapus (soft
+ * delete) tetap ditunjuk, tetapi item itu dihitung belum ber-Postel (soft delete §5 butir 1). Dipakai filter
+ * `items.list` (`postel`) dan `itemIdsWithPostel` (sumber `hasPostel`); aturan `group` jenis Postel memakai stiker milik
+ * catatan hidup (`postelStickerIdsOf`).
  */
-export const HAS_POSTEL_SQL = '(i.postel_id IS NOT NULL)';
+export const HAS_POSTEL_SQL = `(i.postel_id IS NOT NULL AND EXISTS (SELECT 1 FROM postels p0 WHERE p0.id = i.postel_id AND ${liveWhere('p0')}))`;
 
 /** Dari `itemIds`, id item ber-Postel (`HAS_POSTEL_SQL`); satu kueri per 500 id. */
 export async function itemIdsWithPostel(db: Db, itemIds: readonly string[]): Promise<Set<string>> {
@@ -325,7 +329,7 @@ export async function postelStickerIdsOf(
     const chunk = unique.slice(from, from + IN_CHUNK);
     const rows = await db
       .prepare(
-        `SELECT i.id, p.sticker_id FROM items i JOIN postels p ON p.id = i.postel_id WHERE i.id IN (${chunk.map(() => '?').join(',')}) AND p.sticker_id IS NOT NULL`,
+        `SELECT i.id, p.sticker_id FROM items i JOIN postels p ON p.id = i.postel_id WHERE ${liveWhere('p')} AND i.id IN (${chunk.map(() => '?').join(',')}) AND p.sticker_id IS NOT NULL`,
       )
       .bind(...chunk)
       .all<{ id: string; sticker_id: string }>();

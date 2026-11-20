@@ -589,7 +589,7 @@ describe('konkurensi dengan komit ekspor', () => {
       .bind(designId)
       .run();
 
-  test('hapus vs komit ekspor serentak: hapus ditolak, konfigurasi dan item utuh, tanpa versi yatim', async () => {
+  test('hapus lunak vs komit ekspor serentak: hapus menunggu lalu melihat versi baru dan ikut mempensiunkan stikernya', async () => {
     const design = await makeDesign();
     await seedMbSticker('MB - PBE M5-400 v1');
     const itemsBefore = await ownedItems(design.id);
@@ -603,12 +603,21 @@ describe('konkurensi dengan komit ekspor', () => {
       },
       () => rest.del(`/qrcodes/${design.id}`, { email: 'qrmanage@gmail.com' }),
     );
-    expect(out.status).toBe(409);
+    expect(out.status).toBe(200);
+    // Konfigurasi terhapus lunak (hilang bagi penyunting, terbaca pemegang manage); penunjuk item tetap; versi yang
+    // lahir serentak tetap tercatat dan stikernya ikut dipensiunkan (tidak ada stiker aktif tanpa konfigurasi hidup).
     expect((await rest.get(`/qrcodes/${design.id}`, { email: 'qredit@gmail.com' })).status).toBe(
+      404,
+    );
+    expect((await rest.get(`/qrcodes/${design.id}`, { email: 'qrmanage@gmail.com' })).status).toBe(
       200,
     );
     expect(await ownedItems(design.id)).toBe(itemsBefore);
     expect(await versions(design.id)).toHaveLength(1);
+    const sticker = await env.DB.prepare("SELECT status FROM stickers WHERE id = 's-x'").first<{
+      status: string;
+    }>();
+    expect(sticker?.status).toBe('inactive');
   });
 
   test('simpan tanpa nama/item (kelonggaran) vs komit ekspor serentak: ditolak 412, nama tetap', async () => {

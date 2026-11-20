@@ -491,15 +491,30 @@ describe('postels.save: lampiran', () => {
     expect((await rest.get(`/postel-files/${a.id as string}`, { email: EDITOR })).status).toBe(404);
   });
 
-  test('postels.remove membuang semua lampirannya', async () => {
+  test('postels.remove (hapus lunak) tidak membuang lampiran: berkas tetap aktif dan Drive tak disentuh', async () => {
     const a = await upload(pdf(), 'application/pdf');
     const b = await upload(png(), 'image/png');
     const driveIds = (await rows('SELECT drive_id FROM files')).map((r) => r.drive_id as string);
     const postel = await createPostel([a.id, b.id]);
     expect((await call(EDITOR, 'postels.remove', { id: postel.id })).ok).toBe(true);
-    expect(await rows('SELECT id FROM files')).toHaveLength(0);
-    for (const driveId of driveIds) expect(env.BRIDGE.state.files.get(driveId)?.trashed).toBe(true);
-    expect(await rows('SELECT id FROM postels')).toHaveLength(0);
+    expect(await rows("SELECT id FROM files WHERE status = 'active'")).toHaveLength(2);
+    for (const driveId of driveIds)
+      expect(env.BRIDGE.state.files.get(driveId)?.trashed).toBe(false);
+    expect(await rows("SELECT id FROM postels WHERE deleted_at <> ''")).toHaveLength(1);
+  });
+
+  test('lampiran catatan terhapus: sticker edit tetap dapat mengunduh, sticker view saja NOT_FOUND (sebelum cache isi dibaca)', async () => {
+    const file = await upload(pdf(), 'application/pdf');
+    const postel = await createPostel([file.id]);
+    const path = `/postel-files/${file.id as string}`;
+    expect((await rest.get(path, { email: VIEWER })).status).toBe(200);
+    expect((await call(EDITOR, 'postels.remove', { id: postel.id })).ok).toBe(true);
+    expect((await rest.get(path, { email: VIEWER })).status).toBe(404);
+    expect((await call(VIEWER, 'postelFiles.get', { id: file.id })).error?.code).toBe('NOT_FOUND');
+    expect((await rest.get(path, { email: EDITOR })).status).toBe(200);
+    // sesudah dipulihkan, pembaca biasa dapat mengunduh lagi
+    expect((await call(EDITOR, 'postels.restore', { id: postel.id })).ok).toBe(true);
+    expect((await rest.get(path, { email: VIEWER })).status).toBe(200);
   });
 
   test('simpan serentak dua catatan memasang unggahan yang sama: tepat satu berhasil, yang kalah tidak menyimpan apa pun', async () => {

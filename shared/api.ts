@@ -299,7 +299,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   // `/items/batch/restore` SEBELUM `/items/{id}/restore` (urutan tabel = urutan pendaftaran; jalur statis harus lebih dulu).
   'items.restoreBatch': { verb: 'POST', path: '/items/batch/restore' },
   'items.restore': { verb: 'POST', path: '/items/{id}/restore', etag: 'updatedAt' },
-  'qrcodes.list': { verb: 'GET', path: '/qrcodes' },
+  'qrcodes.list': { verb: 'GET', path: '/qrcodes', query: { status: 'string' } },
   'qrcodes.get': { verb: 'GET', path: '/qrcodes/{id}', etag: 'updatedAt' },
   'qrcodes.versions': { verb: 'GET', path: '/qrcodes/{id}/versions' },
   'qrcodes.save': {
@@ -310,7 +310,12 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     etag: 'updatedAt',
   },
   'qrcodes.delete': { verb: 'DELETE', path: '/qrcodes/{id}' },
-  'qrcodes.getDefaults': { verb: 'GET', path: '/qrcode-defaults' },
+  // `/qrcodes/batch/restore` SEBELUM `/qrcodes/{id}/restore` (urutan tabel = urutan pendaftaran; jalur statis lebih dulu).
+  'qrcodes.removeBatch': { verb: 'POST', path: '/qrcodes/batch/delete' },
+  'qrcodes.restoreBatch': { verb: 'POST', path: '/qrcodes/batch/restore' },
+  'qrcodes.restore': { verb: 'POST', path: '/qrcodes/{id}/restore', etag: 'updatedAt' },
+  'qrcodes.getDefaults': { verb: 'GET', path: '/qrcode-defaults', query: { status: 'string' } },
+  'qrcodes.getPreset': { verb: 'GET', path: '/qrcode-presets/{id}', etag: 'updatedAt' },
   'qrcodes.itemOptions': {
     verb: 'GET',
     path: '/qrcode-item-options',
@@ -325,6 +330,14 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   },
   'qrcodes.clonePreset': { verb: 'POST', path: '/qrcode-presets/{id}/clone', status: 201 },
   'qrcodes.deletePreset': { verb: 'DELETE', path: '/qrcode-presets/{id}' },
+  // `/qrcode-presets/batch/restore` SEBELUM `/qrcode-presets/{id}/restore`.
+  'qrcodes.removePresetBatch': { verb: 'POST', path: '/qrcode-presets/batch/delete' },
+  'qrcodes.restorePresetBatch': { verb: 'POST', path: '/qrcode-presets/batch/restore' },
+  'qrcodes.restorePreset': {
+    verb: 'POST',
+    path: '/qrcode-presets/{id}/restore',
+    etag: 'updatedAt',
+  },
   'qrcodes.saveLogoLibrary': {
     verb: 'PUT',
     path: '/qrcode-defaults/logos',
@@ -377,7 +390,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     path: '/postels/item-options',
     query: { query: 'string', cursor: 'string', limit: 'number' },
   },
-  'postels.list': { verb: 'GET', path: '/postels' },
+  'postels.list': { verb: 'GET', path: '/postels', query: { status: 'string' } },
   // Serial Number: rute statis (`item-options`, `sticker-options`) didaftarkan SEBELUM `/serials/{id}` kelak.
   'serials.itemOptions': {
     verb: 'GET',
@@ -443,6 +456,10 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     etag: 'updatedAt',
   },
   'postels.remove': { verb: 'DELETE', path: '/postels/{id}' },
+  // `/postels/batch/delete` dan `/postels/batch/restore` SEBELUM `/postels/{id}/restore` (jalur statis lebih dulu).
+  'postels.removeBatch': { verb: 'POST', path: '/postels/batch/delete' },
+  'postels.restoreBatch': { verb: 'POST', path: '/postels/batch/restore' },
+  'postels.restore': { verb: 'POST', path: '/postels/{id}/restore', etag: 'updatedAt' },
   'serialSettings.get': { verb: 'GET', path: '/serial-settings', etag: 'updatedAt' },
   'serialSettings.save': {
     verb: 'PUT',

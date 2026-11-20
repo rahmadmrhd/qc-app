@@ -390,16 +390,16 @@ describe('qrcodes.itemOptions', () => {
 });
 
 describe('hapus konfigurasi', () => {
-  test('tanpa stiker: dihapus dan item dilepas', async () => {
+  test('tanpa stiker: dihapus lunak; item tetap menunjuk konfigurasi tetapi dihitung belum tergabung', async () => {
     const made = await save({ itemIds: ['i1', 'i2'] });
     const out = await call('qrmanage@gmail.com', 'qrcodes.delete', { id: made.data.id });
     expect(out.ok).toBe(true);
-    expect(await ownerOf('i1')).toBe('');
-    expect(await ownerOf('i2')).toBe('');
+    expect(await ownerOf('i1')).toBe(made.data.id);
+    expect(await ownerOf('i2')).toBe(made.data.id);
     expect((await call(FULL, 'qrcodes.list', null)).data).toEqual([]);
   });
 
-  test('berstiker: CONFLICT dan tak ada yang berubah', async () => {
+  test('berstiker: dihapus, stiker menjadi tidak aktif/usang dan tak ada yang dibuang', async () => {
     const made = await save({ itemIds: ['i1'] });
     await seedStickerType(env, {
       id: 't-mb',
@@ -410,9 +410,13 @@ describe('hapus konfigurasi', () => {
     await seedSticker(env, { id: 's-mb', typeId: 't-mb', name: 'X v1' });
     await seedManualBookVersion(env, { stickerId: 's-mb', designId: made.data.id, version: 1 });
     const out = await call('qrmanage@gmail.com', 'qrcodes.delete', { id: made.data.id });
-    expect(out.error.code).toBe('CONFLICT');
+    expect(out.ok).toBe(true);
     expect(await ownerOf('i1')).toBe(made.data.id);
-    expect((await call(FULL, 'qrcodes.list', null)).data).toHaveLength(1);
+    expect((await call(FULL, 'qrcodes.list', null)).data).toHaveLength(0);
+    const sticker = await env.DB.prepare('SELECT status FROM stickers WHERE id = ?')
+      .bind('s-mb')
+      .first<{ status: string }>();
+    expect(sticker?.status).toBe('inactive');
   });
 
   test('DTO memuat versi dan status stiker terbaru', async () => {

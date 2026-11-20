@@ -1,4 +1,5 @@
 import type { Db, DbStatement, Preparer } from '@server/core/db';
+import { liveWhere } from '@server/core/soft-delete';
 import type { ItemStickerMarkDto, ItemStickerPhotoInput } from '@shared/contract';
 
 /** Foto instruksi tersimpan: urutan (`position`), label BU (`null` = tanpa label), dan penanda berurutan. */
@@ -205,7 +206,7 @@ export function instructionFilterSql(filter: InstructionFilter): {
   const negate = filter.stickerMode === 'missing' ? 'NOT ' : '';
   if (filter.stickerId !== undefined) {
     clauses.push(
-      `${negate}EXISTS (SELECT 1 FROM item_sticker_marks m WHERE m.item_id = i.id AND (m.sticker_id = ? OR (m.type_id <> '' AND EXISTS (SELECT 1 FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id = ? AND s.type_id = m.type_id AND s.status = 'active' AND s.deleted_at = '' AND t.deleted_at = '' AND (t.rule = 'none' OR (t.rule = 'group' AND ((t.system_kind = 'manual_book' AND s.id = (SELECT mv.sticker_id FROM manual_book_versions mv WHERE mv.design_id = i.manual_book_design_id ORDER BY mv.version DESC LIMIT 1)) OR (t.system_kind = 'postel' AND s.id = (SELECT pp.sticker_id FROM postels pp WHERE pp.id = i.postel_id)))) OR (t.rule NOT IN ('none', 'group') AND EXISTS (SELECT 1 FROM sticker_business_units sb JOIN item_business_units ib ON ib.bu_id = sb.bu_id WHERE sb.sticker_id = s.id AND ib.item_id = i.id)))))))`,
+      `${negate}EXISTS (SELECT 1 FROM item_sticker_marks m WHERE m.item_id = i.id AND (m.sticker_id = ? OR (m.type_id <> '' AND EXISTS (SELECT 1 FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id = ? AND s.type_id = m.type_id AND s.status = 'active' AND s.deleted_at = '' AND t.deleted_at = '' AND (t.rule = 'none' OR (t.rule = 'group' AND ((t.system_kind = 'manual_book' AND s.id = (SELECT mv.sticker_id FROM manual_book_versions mv JOIN qr_designs dd ON dd.id = mv.design_id AND ${liveWhere('dd')} WHERE mv.design_id = i.manual_book_design_id ORDER BY mv.version DESC LIMIT 1)) OR (t.system_kind = 'postel' AND s.id = (SELECT pp.sticker_id FROM postels pp WHERE pp.id = i.postel_id AND ${liveWhere('pp')})))) OR (t.rule NOT IN ('none', 'group') AND EXISTS (SELECT 1 FROM sticker_business_units sb JOIN item_business_units ib ON ib.bu_id = sb.bu_id WHERE sb.sticker_id = s.id AND ib.item_id = i.id)))))))`,
     );
     binds.push(filter.stickerId, filter.stickerId);
   } else if (filter.typeId !== undefined) {

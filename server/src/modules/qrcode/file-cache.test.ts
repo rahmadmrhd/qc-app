@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { createMemoryFileCache, fileCacheKey } from '@server/core/file-cache';
+import { loadUserContext } from '@server/modules/access/context';
 import { ensureQrFolder } from '@server/modules/qrcode/folders';
 import { readQrFile } from '@server/modules/qrcode/service';
 import { bytesOfBase64 } from '@server-test/bytes';
@@ -21,6 +22,12 @@ beforeEach(async () => {
   await seedQrEnv(env);
 });
 
+async function viewer() {
+  const user = await loadUserContext(env, 'qrview@gmail.com');
+  if (!user) throw new Error('pengguna uji tidak ada');
+  return user;
+}
+
 async function exportedDesign(): Promise<string> {
   const folder = await ensureQrFolder(env);
   const driveId = await env.BRIDGE.createFile(folder, 'x.pdf', 'application/pdf', PDF1);
@@ -35,8 +42,8 @@ async function exportedDesign(): Promise<string> {
 describe('cache memori untuk berkas ekspor QR dan penggantian isi', () => {
   test('qrcodes.file: miss ke jembatan sekali, lalu hit dengan mime tersimpan', async () => {
     await exportedDesign();
-    const first = await readQrFile(env, { id: 'd1', kind: 'pdf' });
-    const second = await readQrFile(env, { id: 'd1', kind: 'pdf' });
+    const first = await readQrFile(env, { id: 'd1', kind: 'pdf' }, await viewer());
+    const second = await readQrFile(env, { id: 'd1', kind: 'pdf' }, await viewer());
     expect(first.bytes).toEqual(bytesOfBase64(PDF1));
     expect(second).toEqual(first);
     expect(second.mime).toBe('application/pdf');
@@ -45,7 +52,7 @@ describe('cache memori untuk berkas ekspor QR dan penggantian isi', () => {
 
   test('qrcodes.file lewat router: tanpa izin qrcode tidak mendapat isi dari cache', async () => {
     await exportedDesign();
-    await readQrFile(env, { id: 'd1', kind: 'pdf' });
+    await readQrFile(env, { id: 'd1', kind: 'pdf' }, await viewer());
     const out = await qrCall(env, 'noqr@gmail.com', 'qrcodes.file', { id: 'd1', kind: 'pdf' });
     expect(out.ok).toBe(false);
     const ok = await qrCall(env, 'qrview@gmail.com', 'qrcodes.file', { id: 'd1', kind: 'pdf' });

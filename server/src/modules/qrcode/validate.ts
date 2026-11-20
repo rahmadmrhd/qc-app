@@ -3,6 +3,8 @@ import type {
   ClonePresetInput,
   CloneQrPdfInput,
   ExportQrDesignInput,
+  GetQrDefaultsInput,
+  ListQrDesignsInput,
   ListQrItemOptionsInput,
   QrDesignRefInput,
   QrFileInput,
@@ -167,6 +169,32 @@ export function validateSaveQrLogoLibrary(raw: unknown): SaveQrLogoLibraryInput 
     ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
     logoFileIds: [...new Set(ids as string[])],
   };
+}
+
+const QR_LIST_STATUS_VALUES = ['live', 'deleted'] as const;
+
+/** Masukan opsional `{ status }` (daftar konfigurasi, konfigurasi default): kosong = hanya yang hidup. */
+function readLiveStatus(raw: unknown): { status?: 'live' | 'deleted' } | null {
+  if (raw === null || raw === undefined) return null;
+  const reader = readObject(raw);
+  const value = reader.raw('status');
+  if (value === undefined || value === null || value === '') {
+    reader.done();
+    return {};
+  }
+  const status = reader.oneOf('status', QR_LIST_STATUS_VALUES);
+  reader.done();
+  return { status };
+}
+
+/** `qrcodes.list`: input boleh kosong; `status` opsional (`deleted` hanya bagi `qrcode: manage`, dicek di service). */
+export function validateListQrDesigns(raw: unknown): ListQrDesignsInput | null {
+  return readLiveStatus(raw);
+}
+
+/** `qrcodes.getDefaults`: sama seperti daftar (preset terhapus hanya bagi `qrcode: manage`). */
+export function validateGetQrDefaults(raw: unknown): GetQrDefaultsInput | null {
+  return readLiveStatus(raw);
 }
 
 export function validateQrDesignRef(raw: unknown): QrDesignRefInput {

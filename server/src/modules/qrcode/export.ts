@@ -5,7 +5,7 @@ import type { ActorRef } from '@server/core/context';
 import { DbError } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
-import { appError, staleError } from '@server/core/errors';
+import { appError, isAppError, staleError } from '@server/core/errors';
 import { dropCachedFile } from '@server/core/file-cache';
 import { baseIndexName } from '@server/core/index-names';
 import { ensureDriveFolder } from '@server/modules/files/service';
@@ -20,7 +20,7 @@ import { manualBookFileName, QR_LIMITS, qrContentHash } from '@shared/qrcode';
 import { ensureQrFolder } from './folders';
 import { listAttachedItems } from './items';
 import type { QrDesignRecord } from './repo';
-import { guardChanged, listQrDesigns, runGuardedBatch, updateQrDesignExportStmt } from './repo';
+import { findQrDesign, guardChanged, runGuardedBatch, updateQrDesignExportStmt } from './repo';
 import {
   assertManualBookNameFree,
   assertManualBookStickerNameFree,
@@ -62,9 +62,23 @@ interface ExportState {
 const OVERFLOW_MESSAGE =
   'Isi label melebihi kanvas 3 × 3 cm; perbaiki ukuran atau teks lalu simpan ulang';
 
-async function loadDesign(env: Env, id: string): Promise<QrDesignRecord> {
-  const design = (await listQrDesigns(env)).find((row) => row.id === id);
-  if (!design) throw appError('NOT_FOUND', 'Konfigurasi tidak ditemukan');
+const DELETED_MESSAGE = 'Konfigurasi sudah dihapus';
+
+/**
+ * Konfigurasi HIDUP menurut id. Konfigurasi yang dihapus saat ekspor berjalan = galat tegas "sudah dihapus" (job gagal,
+ * berkas baru dibuang oleh `onFail`); id tak dikenal = NOT_FOUND. Pada permintaan ekspor (`request`) konfigurasi terhapus
+ * dijawab NOT_FOUND seperti id tak dikenal.
+ */
+async function loadDesign(
+  env: Env,
+  id: string,
+  from: 'request' | 'job' | 'committed-ok' = 'job',
+): Promise<QrDesignRecord> {
+  const design = await findQrDesign(env, id);
+  if (!design || (design.deletedAt !== '' && from === 'request')) {
+    throw appError('NOT_FOUND', 'Konfigurasi tidak ditemukan');
+  }
+  if (design.deletedAt !== '' && from === 'job') throw appError('CONFLICT', DELETED_MESSAGE);
   return design;
 }
 
@@ -94,7 +108,7 @@ export async function requestQrExport(
   input: ExportQrDesignInput,
   actor: ActorRef,
 ): Promise<ExportQrJobDto> {
-  const design = await loadDesign(env, input.id);
+  const design = await loadDesign(env, input.id, 'request');
   assertExportable(design, input.expectedUpdatedAt);
   if (design.name === '') {
     throw fieldError('name', 'Konfigurasi belum bernama; lengkapi nama Manual Book lewat Ubah');
@@ -212,7 +226,9 @@ export const qrExportHandler: JobHandler = {
         return { progress: 70 };
       }
       case 3: {
-        const current = await loadDesign(ctx.env, input.designId);
+        // Konfigurasi terhapus diterima hanya bila komit ini sudah terjadi (langkah diulang setelah crash): berkas yang
+        // sudah dicatat tidak boleh dibuang `onFail`. Selain itu terhapus = gagal tegas.
+        const current = await loadDesign(ctx.env, input.designId, 'committed-ok');
         if (!state.previous) {
           state.previous = { pdf: current.exportPdfDriveId, png: current.exportPngDriveId };
           await ctx.save();
@@ -221,6 +237,7 @@ export const qrExportHandler: JobHandler = {
           current.exportPdfDriveId === state.pdfDriveId &&
           current.exportPngDriveId === state.pngDriveId;
         if (!alreadyCommitted) {
+          if (current.deletedAt !== '') throw appError('CONFLICT', DELETED_MESSAGE);
           assertExportable(current, input.expectedUpdatedAt);
           const documents = await qrDocumentMap(ctx.env);
           const content = qrDesignContent(current, documents);
@@ -274,6 +291,14 @@ export const qrExportHandler: JobHandler = {
               () => staleError(QR_STALE_MESSAGE),
             );
           } catch (error) {
+            // Konfigurasi dihapus di antara pembacaan dan penulisan: penjaga `deleted_at` membatalkan batch (basi); jawab tegas.
+            if (
+              isAppError(error) &&
+              error.stale === true &&
+              (await findQrDesign(ctx.env, current.id))?.deletedAt
+            ) {
+              throw appError('CONFLICT', DELETED_MESSAGE);
+            }
             if (error instanceof DbError && error.kind === 'duplicate') {
               // Ekspor serentak lain sudah membuat versi yang sama (UNIQUE design_id + version).
               if (error.key === 'manual_book_versions_design_version') {

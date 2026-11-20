@@ -15,6 +15,7 @@ import { ensurePostelType } from '@server/modules/sticker/postel';
 import type {
   AuditCursorPageDto,
   ListPostelHistoryInput,
+  ListPostelsInput,
   PostelAttachmentDto,
   PostelDto,
   PostelListDto,
@@ -23,6 +24,7 @@ import type {
   SavePostelInput,
 } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
+import { hasLevel } from '@shared/permissions';
 import {
   comparePostels,
   daysUntil,
@@ -33,33 +35,24 @@ import {
   wibDateIso,
 } from '@shared/postel';
 import { readPostelAlert } from './alert';
-import {
-  loadAttachmentDtos,
-  planPostelAttachments,
-  purgeReleasedAttachments,
-  releaseAttachmentStmts,
-} from './attachments';
+import { loadAttachmentDtos, planPostelAttachments, purgeReleasedAttachments } from './attachments';
 import { postelSnapshot, postelTarget } from './audit';
 import {
   claimItemsForPostelStmts,
   findPostelItemsById,
-  listItemsOfPostels,
   listLinkedItemsOfPostels,
   type PostelItem,
-  releaseAllItemsFromPostelStmt,
   releaseItemsFromPostelStmt,
 } from './items';
 import {
   deletePostelNumberStmt,
-  deletePostelNumbersOfStmt,
-  deletePostelStmt,
   findPostelRecord,
   insertPostelNumberStmt,
   insertPostelStmt,
   linkPostelStickerStmt,
   listPostelNumbers,
+  listPostelNumbersOfDeleted,
   listPostelRecords,
-  lockPostelRowStmt,
   type PostelNumberRecord,
   type PostelRecord,
   parkPostelNumberKeyStmt,
@@ -71,7 +64,6 @@ import {
   pickPostelStickerName,
   postelStickerBase,
   renameStickerStmt,
-  retirePostelSticker,
 } from './stickers';
 
 export { queryPostelItemOptions } from './items';
@@ -82,7 +74,7 @@ export const POSTEL_STALE_MESSAGE =
 export { SETTING_POSTEL_ALERT } from './alert';
 
 /** Bentrok indeks unik nomor sertifikat; pesan generik (tidak memuat catatan pemilik nomor itu). */
-const POSTEL_CONFLICTS = {
+export const POSTEL_CONFLICTS = {
   postel_numbers_key: { field: 'number', message: 'Nomor sertifikat sudah dipakai' },
   stickers_type_name_unique: {
     field: 'itemIds',
@@ -109,14 +101,19 @@ export async function postelSoonDays(env: Env): Promise<number> {
 }
 
 /** Waktu tulis baru yang SELALU lebih besar dari `previous` (agar penjaga `updated_at` tak terkecoh jam yang sama). */
-function nextUpdatedAt(env: Env, previous: string): string {
+export function nextUpdatedAt(env: Env, previous: string): string {
   const now = nowIso(env);
   if (previous === '' || now > previous) return now;
   return new Date(Date.parse(previous) + 1).toISOString();
 }
 
+/** Pembaca catatan terhapus: hanya pemegang izin Pulihkan (`sticker: edit`, putusan 15a); selain itu `NOT_FOUND`. */
+export function canSeeDeletedPostel(user: UserContext): boolean {
+  return hasLevel(user.permissions.sticker, 'edit');
+}
+
 /** Data baca satu atau banyak catatan: nomor, item, dan himpunan item yang terlihat bagi pembaca. */
-interface PostelRead {
+export interface PostelRead {
   records: PostelRecord[];
   numbers: Map<string, PostelNumberRecord[]>;
   items: Map<string, PostelItem[]>;
@@ -125,15 +122,17 @@ interface PostelRead {
   today: string;
 }
 
-async function readPostels(
+export async function readPostels(
   env: Env,
   user: UserContext,
   records: PostelRecord[],
   ids?: readonly string[],
   withVisible = true,
+  deleted = false,
 ): Promise<PostelRead> {
   const [numberRows, items, soonDays] = await Promise.all([
-    listPostelNumbers(env.DB, ids),
+    // Nomor catatan terhapus ikut terhapus bersama induknya: dibaca lewat jalur khusus menurut id catatan.
+    deleted ? listPostelNumbersOfDeleted(env.DB, ids ?? []) : listPostelNumbers(env.DB, ids),
     // Penampil rujukan: item terhapus ikut (bertanda); semua turunan memakai `liveItemsOf` di bawah.
     listLinkedItemsOfPostels(env.DB, ids),
     postelSoonDays(env),
@@ -184,7 +183,12 @@ function postelNameOf(items: readonly PostelItem[]): string {
   return postelName(liveItemsOf(items).map((item) => item.model));
 }
 
-function toPostelDto(
+const deletedInfo = (record: PostelRecord) =>
+  record.deletedAt === ''
+    ? {}
+    : { deleted: { deletedAt: record.deletedAt, deletedBy: record.deletedBy } };
+
+export function toPostelDto(
   record: PostelRecord,
   read: PostelRead,
   attachments: PostelAttachmentDto[],
@@ -211,6 +215,7 @@ function toPostelDto(
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     updatedBy: record.updatedBy,
+    ...deletedInfo(record),
   };
 }
 
@@ -230,6 +235,7 @@ function toSummaryDto(record: PostelRecord, read: PostelRead): PostelSummaryDto 
     numbers: numbers.map((entry) => entry.number),
     models: distinctModels(liveItemsOf(read.items.get(record.id) ?? [])),
     updatedAt: record.updatedAt,
+    ...deletedInfo(record),
   };
 }
 
@@ -247,10 +253,28 @@ function distinctModels(items: readonly PostelItem[]): string[] {
   return models.sort((a, b) => a.localeCompare(b));
 }
 
-/** Semua catatan (maks. 500), urut tanggal habis nomor Aktif menaik; penyaringan dan pencarian di klien. */
-export async function listPostels(env: Env, user: UserContext): Promise<PostelListDto> {
-  const records = await listPostelRecords(env.DB);
-  const read = await readPostels(env, user, records, undefined, false);
+/**
+ * Semua catatan hidup (maks. 500), urut tanggal habis nomor Aktif menaik; penyaringan dan pencarian di klien.
+ * `status: 'deleted'` = hanya catatan terhapus, hanya bagi `sticker: edit` (selain itu `FORBIDDEN`).
+ */
+export async function listPostels(
+  env: Env,
+  user: UserContext,
+  input: ListPostelsInput | null = null,
+): Promise<PostelListDto> {
+  const deleted = input?.status === 'deleted';
+  if (deleted && !canSeeDeletedPostel(user)) {
+    throw appError('FORBIDDEN', 'Anda tidak berhak melihat Postel yang dihapus');
+  }
+  const records = await listPostelRecords(env.DB, deleted ? 'deleted' : 'live');
+  const read = await readPostels(
+    env,
+    user,
+    records,
+    deleted ? records.map((record) => record.id) : undefined,
+    false,
+    deleted,
+  );
   const summaries = records
     .map((record) => toSummaryDto(record, read))
     .sort(comparePostels)
@@ -258,11 +282,19 @@ export async function listPostels(env: Env, user: UserContext): Promise<PostelLi
   return { postels: summaries, today: read.today, soonDays: read.soonDays };
 }
 
-async function loadPostelDto(env: Env, user: UserContext, id: string): Promise<PostelDto> {
+/** Catatan menurut id bagi pembaca: terhapus hanya terbaca pemegang izin Pulihkan, selain itu `NOT_FOUND`. */
+async function readablePostel(env: Env, user: UserContext, id: string): Promise<PostelRecord> {
   const record = await findPostelRecord(env.DB, id);
-  if (!record) throw appError('NOT_FOUND', 'Postel tidak ditemukan');
+  if (!record || (record.deletedAt !== '' && !canSeeDeletedPostel(user))) {
+    throw appError('NOT_FOUND', 'Postel tidak ditemukan');
+  }
+  return record;
+}
+
+async function loadPostelDto(env: Env, user: UserContext, id: string): Promise<PostelDto> {
+  const record = await readablePostel(env, user, id);
   const [read, attachments] = await Promise.all([
-    readPostels(env, user, [record], [id]),
+    readPostels(env, user, [record], [id], true, record.deletedAt !== ''),
     loadAttachmentDtos(env, record.attachments),
   ]);
   return toPostelDto(record, read, attachments);
@@ -277,10 +309,9 @@ export async function postelHistory(
   env: Env,
   id: string,
   input: ListPostelHistoryInput,
+  user: UserContext,
 ): Promise<AuditCursorPageDto> {
-  if ((await findPostelRecord(env.DB, id)) === null) {
-    throw appError('NOT_FOUND', 'Postel tidak ditemukan');
-  }
+  await readablePostel(env, user, id);
   const cursor = input.cursor ? parseAuditCursor(input.cursor) : null;
   return listAuditByTarget(env, postelTarget(id), {
     ...(cursor ? { cursor } : {}),
@@ -296,6 +327,11 @@ export async function getPostel(env: Env, user: UserContext, id: string): Promis
 async function activeNumberOf(env: Env, postelId: string): Promise<string> {
   const numbers = await listPostelNumbers(env.DB, [postelId]);
   return numbers[numbers.length - 1]?.number ?? '';
+}
+
+/** Item yang kini dimiliki catatan HIDUP lain (penunjuk ke catatan terhapus dihitung belum tertaut). */
+function takenByOther(item: PostelItem, postelId: string): boolean {
+  return item.postelId !== '' && item.postelId !== postelId && item.postelLive;
 }
 
 function itemTakenMessage(item: { brand: string; model: string }, activeNumber: string): string {
@@ -330,13 +366,14 @@ export async function runPostelBatch(
     if (!nameClash && (error as { stale?: boolean }).stale !== true) throw error;
     if (!nameClash && expectedUpdatedAt !== '') {
       const current = await findPostelRecord(env.DB, postelId);
-      if (!current || current.updatedAt !== expectedUpdatedAt) throw error;
+      if (!current || current.updatedAt !== expectedUpdatedAt || current.deletedAt !== '')
+        throw error;
     }
     if (claimedIds.length > 0) {
       const now = await findPostelItemsById(env.DB, claimedIds);
       const taken = claimedIds
         .map((id) => now.get(id))
-        .find((item) => item !== undefined && item.postelId !== '' && item.postelId !== postelId);
+        .find((item) => item !== undefined && takenByOther(item, postelId));
       if (taken) {
         const message = itemTakenMessage(taken, await activeNumberOf(env, taken.postelId));
         throw appError('CONFLICT', message, { itemIds: message });
@@ -376,7 +413,10 @@ export async function savePostel(
   actor: UserContext,
 ): Promise<PostelDto> {
   const existing = input.id ? await findPostelRecord(env.DB, input.id) : null;
-  if (input.id && !existing) throw appError('NOT_FOUND', 'Postel tidak ditemukan');
+  // Catatan terhapus tidak dapat disimpan (pulihkan dulu): dijawab seperti id tak dikenal.
+  if (input.id && existing?.deletedAt !== '') {
+    throw appError('NOT_FOUND', 'Postel tidak ditemukan');
+  }
   if (existing && input.expectedUpdatedAt !== existing.updatedAt) throw staleError();
 
   // Nomor: baris ber-id harus milik catatan ini; baris baru mendapat seq berurutan di atas seq tersimpan.
@@ -468,7 +508,7 @@ export async function savePostel(
     if (!item || !visible.has(id) || (item.deleted && !ownedIds.has(id))) {
       throw fieldFail('itemIds', 'Item tidak ditemukan');
     }
-    if (item.postelId !== '' && item.postelId !== postelId) {
+    if (takenByOther(item, postelId)) {
       throw fieldFail(
         'itemIds',
         itemTakenMessage(item, await activeNumberOf(env, item.postelId)),
@@ -543,6 +583,7 @@ export async function savePostel(
     stickerBase,
     activeNumber,
     stickerId,
+    { canRestore: canSeeDeletedPostel(actor) },
   );
   if (stickerId === '') {
     const created = newPostelStickerStmt(env.DB, type, stickerName, actor.email, stickerNow);
@@ -562,6 +603,8 @@ export async function savePostel(
     createdAt: existing?.createdAt ?? updatedAt,
     updatedAt,
     updatedBy: actor.email,
+    deletedAt: '',
+    deletedBy: '',
   };
   const after = postelSnapshot(next, finalNumbers, finalItemCount, next.attachments.length);
   if (!existing) {
@@ -645,46 +688,4 @@ export async function savePostel(
   // Lampiran yang dilepas dibuang dari Drive SETELAH komit (bukan di dalam batch/transaksi yang dapat diulang).
   await purgeReleasedAttachments(env, attach.released);
   return loadPostelDto(env, actor, postelId);
-}
-
-/**
- * Menghapus catatan: melepas semua itemnya dan menghapus nomornya dalam satu batch. Stiker catatan itu menjadi nonaktif
- * (stok 0) atau usang (masih berstok) dan stoknya tetap terbaca (stiker tidak pernah dihapus). Lampirannya ditandai
- * `pending_delete` di transaksi yang sama (langsung tak terbaca) dan berkas Drive-nya dibuang SETELAH komit.
- */
-export async function removePostel(env: Env, id: string, actor: UserContext): Promise<null> {
-  // Satu transaksi dengan kunci baris catatan (`FOR UPDATE`) lebih dulu: snapshot audit dibaca SESUDAH kunci, jadi memuat
-  // simpanan serentak yang lebih dulu selesai; penyimpan yang menyusul menunggu lalu mendapati catatan sudah hilang.
-  const released = await env.DB.transaction(async (tx) => {
-    if ((await lockPostelRowStmt(tx, id).first()) === null) {
-      throw appError('NOT_FOUND', 'Postel tidak ditemukan');
-    }
-    const record = await findPostelRecord(tx, id);
-    if (!record) throw appError('NOT_FOUND', 'Postel tidak ditemukan');
-    const numbers = await listPostelNumbers(tx, [id]);
-    const items = await listItemsOfPostels(tx, [id]);
-    const before = postelSnapshot(
-      record,
-      numbers,
-      (items.get(id) ?? []).length,
-      record.attachments.length,
-    );
-    await retirePostelSticker(tx, record.stickerId, actor.email, nowIso(env));
-    await releaseAllItemsFromPostelStmt(tx, id).run();
-    for (const statement of releaseAttachmentStmts(tx, id, record.attachments))
-      await statement.run();
-    await deletePostelNumbersOfStmt(tx, id).run();
-    await deletePostelStmt(tx, id).run();
-    await writeAudit(tx, {
-      ts: nowIso(env),
-      actor: actor.email,
-      action: 'postel.delete',
-      target: postelTarget(id),
-      before,
-      after: null,
-    }).run();
-    return record.attachments;
-  });
-  await purgeReleasedAttachments(env, released);
-  return null;
 }

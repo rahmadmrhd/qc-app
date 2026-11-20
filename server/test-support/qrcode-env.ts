@@ -74,6 +74,18 @@ export async function qrPdfDocumentId(env: TestEnv): Promise<string> {
 
 const QR_SEED_TIME = '2026-11-10T00:00:00.000Z';
 
+/** Penanda hapus lunak tidak ikut `INSERT` produksi (selalu hidup): fixture menuliskannya bila diminta (`deletedAt`). */
+async function markSeedDeleted(
+  env: Pick<Env, 'DB'>,
+  table: 'qr_designs' | 'qr_presets',
+  record: { id: string; deletedAt: string; deletedBy: string },
+): Promise<void> {
+  if (record.deletedAt === '') return;
+  await env.DB.prepare(`UPDATE ${table} SET deleted_at = ?, deleted_by = ? WHERE id = ?`)
+    .bind(record.deletedAt, record.deletedBy, record.id)
+    .run();
+}
+
 /** Konfigurasi QR uji langsung ke basis data (tanpa lewat validasi layanan); bagian yang tak disebut berbawaan. */
 export async function seedQrDesign(
   env: Pick<Env, 'DB'>,
@@ -102,9 +114,12 @@ export async function seedQrDesign(
     createdBy: 'seed@gmail.com',
     updatedAt: QR_SEED_TIME,
     updatedBy: 'seed@gmail.com',
+    deletedAt: '',
+    deletedBy: '',
     ...design,
   };
   await env.DB.batch([insertQrDesignStmt(env.DB, record)]);
+  await markSeedDeleted(env, 'qr_designs', record);
   return record;
 }
 
@@ -127,9 +142,12 @@ export async function seedQrPreset(
     createdBy: 'seed@gmail.com',
     updatedAt: QR_SEED_TIME,
     updatedBy: 'seed@gmail.com',
+    deletedAt: '',
+    deletedBy: '',
     ...preset,
   };
   await env.DB.batch([insertQrPresetStmt(env.DB, record)]);
+  await markSeedDeleted(env, 'qr_presets', record);
   return record;
 }
 

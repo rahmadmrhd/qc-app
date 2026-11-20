@@ -81,6 +81,8 @@ const NOT_LATEST_MESSAGE = 'Hanya versi terbaru Manual Book yang dapat diaktifka
 const SYSTEM_TYPE_MESSAGE = 'Jenis sistem dikelola aplikasi dan tidak dapat diubah';
 const SYSTEM_STICKER_MESSAGE =
   'Stiker jenis sistem dibuat otomatis; hanya minimum stok, alias, dan status yang dapat diubah';
+const MANUAL_BOOK_GONE_MESSAGE =
+  'Konfigurasi Manual Book stiker ini sudah dihapus; pulihkan konfigurasinya lebih dulu';
 const POSTEL_GONE_MESSAGE =
   'Catatan Postel stiker ini sudah dihapus; stiker tidak dapat diaktifkan kembali';
 const POSTEL_STICKER_MESSAGE =
@@ -709,6 +711,18 @@ export async function planStickerStatus(
       .first<{ tied: number }>();
     if (!tied) {
       throw appError('VALIDATION', POSTEL_GONE_MESSAGE, { status: POSTEL_GONE_MESSAGE });
+    }
+  }
+  // Stiker Manual Book milik konfigurasi yang dihapus lunak tidak dapat diaktifkan kembali selama konfigurasinya di
+  // Terhapus (memulihkan konfigurasi mengembalikan stiker versi terbarunya menjadi `inactive`).
+  if (status === 'active' && type !== undefined && type.systemKind === 'manual_book') {
+    const state = await env.DB.prepare(
+      `SELECT EXISTS (SELECT 1 FROM manual_book_versions mv WHERE mv.sticker_id = ?) AND NOT EXISTS (SELECT 1 FROM manual_book_versions mv JOIN qr_designs d ON d.id = mv.design_id AND ${liveWhere('d')} WHERE mv.sticker_id = ?) AS gone`,
+    )
+      .bind(sticker.id, sticker.id)
+      .first<{ gone: number | string }>();
+    if (Number(state?.gone) === 1) {
+      throw appError('VALIDATION', MANUAL_BOOK_GONE_MESSAGE, { status: MANUAL_BOOK_GONE_MESSAGE });
     }
   }
   // Stiker Manual Book hanya boleh diaktifkan bila masih versi terbaru konfigurasinya.
