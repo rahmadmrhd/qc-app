@@ -72,7 +72,7 @@ export function ImageGalleryField({
   // Unggahan yang menunggu/berjalan sudah mengisi kuota; yang gagal tidak.
   const reserved = own.entries.filter((entry) => entry.phase !== 'failed').length;
   const remaining = Math.max(0, max - value.length - reserved);
-  const busy = own.busy;
+  const busy = own.blocking;
   const onBusyChangeRef = useRef(onBusyChange);
   onBusyChangeRef.current = onBusyChange;
   useEffect(() => {

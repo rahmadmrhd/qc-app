@@ -28,7 +28,7 @@ export function intakeFiles(
     } else if (room <= 0) {
       rejected.push({
         name: file.name,
-        reason: `Maksimal ${rule.max ?? rule.room} berkas per unggahan`,
+        reason: `Maksimal ${rule.max ?? rule.room} berkas`,
       });
     } else {
       room -= 1;

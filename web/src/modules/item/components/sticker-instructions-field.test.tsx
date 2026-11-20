@@ -739,6 +739,19 @@ test('unggahan gagal tampil dengan Ulangi, tidak mengisi kuota, dan dapat dibuan
   expect(screen.queryByTestId('attachment-pending')).not.toBeInTheDocument();
 });
 
+test('F1: onBusyChange tetap true saat unggahan gagal; false setelah Buang', async () => {
+  uploadMock.mockRejectedValueOnce(new Error('putus'));
+  const onBusyChange = vi.fn();
+  renderField({ onBusyChange });
+  dialogState.files = [queued('a.png')];
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah foto' }));
+  await userEvent.click(await screen.findByRole('button', { name: 'Pilih contoh' }));
+  expect(await screen.findByRole('button', { name: /^Ulangi / })).toBeInTheDocument();
+  expect(onBusyChange).toHaveBeenLastCalledWith(true);
+  await userEvent.click(screen.getByRole('button', { name: /^Buang / }));
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
+});
+
 test('onBusyChange: true selama ada unggahan yang berjalan, false setelah selesai', async () => {
   const resolvers = deferUploads();
   const onBusyChange = vi.fn();

@@ -39,11 +39,13 @@ function strictContext(over: Partial<StrictScan> = {}): StrictScan {
         entries: [],
         busy: false,
         hasFailed: false,
+        blocking: false,
         cancelOwner: vi.fn(),
         forOwner: () => ({
           entries: [],
           busy: false,
           hasFailed: false,
+          blocking: false,
           add: vi.fn(),
           retry: vi.fn(),
           remove: vi.fn(),

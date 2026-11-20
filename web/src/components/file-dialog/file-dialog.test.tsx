@@ -214,10 +214,10 @@ test('mode single: berkas kedua menggantikan yang pertama', async () => {
   ]);
 });
 
-test('melebihi maxFiles: sisanya ditolak dengan "Maksimal N berkas per unggahan"', async () => {
+test('melebihi maxFiles: sisanya ditolak dengan "Maksimal N berkas"', async () => {
   setup({ maxFiles: 2 });
   await pick([png('a.png'), png('b.png'), png('c.png')]);
-  expect(await screen.findByText(/Maksimal 2 berkas per unggahan/)).toBeInTheDocument();
+  expect(await screen.findByText(/Maksimal 2 berkas/)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Lampirkan (2)' })).toBeInTheDocument();
 });
 

@@ -33,8 +33,14 @@ export function LogoLibraryField({
   onBusyChange,
 }: LogoLibraryFieldProps) {
   // Nilai terbaru, termasuk perubahan yang belum sempat dirender induk; dibaca ulang saat unggahan selesai.
+  // Mengikuti prop hanya saat induk benar-benar memberi nilai baru: render ulang karena sebab lain (progres unggahan)
+  // tak boleh menimpa perubahan yang belum sempat sampai ke induk.
   const libraryRef = useRef(library);
-  libraryRef.current = library;
+  const lastLibraryProp = useRef(library);
+  if (lastLibraryProp.current !== library) {
+    lastLibraryProp.current = library;
+    libraryRef.current = library;
+  }
   const [rejected, setRejected] = useState<RejectedFile[]>([]);
   const [preview, setPreview] = useState<AttachmentItem | null>(null);
 
@@ -55,7 +61,7 @@ export function LogoLibraryField({
   const reserved = own.entries.filter((entry) => entry.phase !== 'failed').length;
   const room = Math.max(0, QR_LIMITS.logoLibrary - library.length - reserved);
   const full = room <= 0;
-  const busy = own.busy;
+  const busy = own.blocking;
   const onBusyChangeRef = useRef(onBusyChange);
   onBusyChangeRef.current = onBusyChange;
   useEffect(() => {
@@ -106,7 +112,12 @@ export function LogoLibraryField({
               variant="outline"
               size="sm"
               aria-label={`Hapus logo ${index + 1} dari pustaka`}
-              onClick={() => onLibraryChange(library.filter((item) => item !== id))}
+              onClick={() => {
+                // Nilai terbaru (termasuk logo yang baru selesai diunggah dan belum dirender induk), bukan prop basi.
+                const next = libraryRef.current.filter((item) => item !== id);
+                libraryRef.current = next;
+                onLibraryChange(next);
+              }}
             >
               Hapus
             </Button>

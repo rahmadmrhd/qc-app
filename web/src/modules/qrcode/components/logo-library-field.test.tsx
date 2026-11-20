@@ -117,9 +117,7 @@ test('berkas melebihi sisa ruang pustaka ditolak dan tidak diunggah', async () =
   uploadMock.mockResolvedValueOnce(item('baru'));
   render(<Harness initial={initial} />);
   fireEvent.change(picker(), { target: { files: [png('a.png'), png('b.png')] } });
-  await waitFor(() =>
-    expect(screen.getByText(/Maksimal 1 berkas per unggahan/)).toBeInTheDocument(),
-  );
+  await waitFor(() => expect(screen.getByText(/Maksimal 1 berkas/)).toBeInTheDocument());
   expect(uploadMock).toHaveBeenCalledTimes(1);
 });
 
@@ -143,4 +141,33 @@ test('unggahan gagal tampil dengan Ulangi dan tidak menambah logo', async () => 
   expect(await screen.findByText('Server menolak')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Ulangi rusak' })).toBeInTheDocument();
   expect(logos()).toEqual([]);
+});
+
+test('F10: Hapus memakai nilai pustaka terbaru; logo yang baru selesai diunggah tak ikut terbuang', async () => {
+  uploadMock.mockResolvedValueOnce(item('baru'));
+  const onChange = vi.fn();
+  // Induk yang belum merender ulang: prop `library` tetap ['lama'] saat Hapus ditekan.
+  render(<LogoLibraryField library={['lama']} onLibraryChange={onChange} />);
+  await userEvent.upload(picker(), png('l.png'), { applyAccept: false });
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith(['lama', 'baru']));
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus logo 1 dari pustaka' }));
+  expect(onChange).toHaveBeenLastCalledWith(['baru']);
+});
+
+test('F1: unggahan gagal tetap menahan (onBusyChange true) sampai Ulangi berhasil atau dibuang', async () => {
+  uploadMock.mockRejectedValueOnce(new Error('putus'));
+  render(<Harness />);
+  await userEvent.upload(picker(), png('l.png'), { applyAccept: false });
+  expect(await screen.findByRole('button', { name: /^Ulangi / })).toBeInTheDocument();
+  expect(onBusyChange).toHaveBeenLastCalledWith(true);
+  // Ulangi berhasil: penahan lepas.
+  uploadMock.mockResolvedValueOnce(item('ok'));
+  await userEvent.click(screen.getByRole('button', { name: /^Ulangi / }));
+  await waitFor(() => expect(logos()).toEqual(['ok']));
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
+  // Gagal lagi lalu dibuang: penahan lepas.
+  uploadMock.mockRejectedValueOnce(new Error('putus'));
+  await userEvent.upload(picker(), png('m.png'), { applyAccept: false });
+  await userEvent.click(await screen.findByRole('button', { name: /^Buang / }));
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
 });

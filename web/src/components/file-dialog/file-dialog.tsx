@@ -191,7 +191,7 @@ export function FileDialog({
       return;
     }
     if (roomLeft() <= 0) {
-      addRejected([{ name: item.name, reason: `Maksimal ${capacity} berkas per unggahan` }]);
+      addRejected([{ name: item.name, reason: `Maksimal ${capacity} berkas` }]);
       return;
     }
     setSelection(new Map(current).set(item.id, item));

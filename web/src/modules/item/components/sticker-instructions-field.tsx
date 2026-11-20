@@ -116,7 +116,7 @@ export function StickerInstructionsField({
   // Unggahan yang menunggu/berjalan sudah mengisi kuota; yang gagal tidak.
   const reserved = own.entries.filter((entry) => entry.phase !== 'failed').length;
   const full = value.length + reserved >= INSTRUCTION_LIMITS.photos;
-  const busy = own.busy;
+  const busy = own.blocking;
   const onBusyChangeRef = useRef(onBusyChange);
   onBusyChangeRef.current = onBusyChange;
   useEffect(() => {

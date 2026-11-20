@@ -403,7 +403,7 @@ export function RecordPage({
   useEffect(() => {
     onDirtyChange?.(rows.length > 0);
   }, [onDirtyChange, rows.length]);
-  const withProof = hasProofPhotos(rows, proofUploads.busy);
+  const withProof = hasProofPhotos(rows, proofUploads.blocking);
   useEffect(() => {
     onProofChange?.(withProof);
   }, [onProofChange, withProof]);

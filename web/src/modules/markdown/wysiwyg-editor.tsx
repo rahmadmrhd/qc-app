@@ -161,7 +161,7 @@ export function WysiwygEditor({
   const own = uploads.forOwner('editor');
   const ownRef = useRef(own);
   ownRef.current = own;
-  const busy = own.busy;
+  const busy = own.blocking;
   const onBusyChangeRef = useRef(onBusyChange);
   onBusyChangeRef.current = onBusyChange;
   useEffect(() => {

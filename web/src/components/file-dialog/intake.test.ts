@@ -38,13 +38,13 @@ test('format salah dan terlalu besar ditolak dengan alasan', () => {
   expect(rejected[2]?.reason).toBe('Berkas kosong');
 });
 
-test('melebihi room: sisanya ditolak dengan alasan Maksimal N berkas per unggahan', () => {
+test('melebihi room: sisanya ditolak dengan alasan Maksimal N berkas', () => {
   const files = [1, 2, 3, 4].map((i) => make(`f${i}.png`, 'image/png'));
   const { queued, rejected } = intakeFiles(files, { accept, maxBytes: 10_485_760, room: 2 });
   expect(queued.map((q) => q.name)).toEqual(['f1', 'f2']);
   expect(rejected).toEqual([
-    { name: 'f3.png', reason: 'Maksimal 2 berkas per unggahan' },
-    { name: 'f4.png', reason: 'Maksimal 2 berkas per unggahan' },
+    { name: 'f3.png', reason: 'Maksimal 2 berkas' },
+    { name: 'f4.png', reason: 'Maksimal 2 berkas' },
   ]);
 });
 
@@ -55,7 +55,7 @@ test('max eksplisit dipakai pada pesan bila room tinggal sisa', () => {
     room: 0,
     max: 10,
   });
-  expect(rejected[0]?.reason).toBe('Maksimal 10 berkas per unggahan');
+  expect(rejected[0]?.reason).toBe('Maksimal 10 berkas');
 });
 
 test('kunci unik walau nama berkas sama, juga antar panggilan', () => {

@@ -215,3 +215,54 @@ test('progres dari sumber memperbarui fase dan fraksi entri', async () => {
   act(() => calls[0]?.ctx?.onProgress?.('processing', null));
   expect(result.current.entries[0]).toMatchObject({ phase: 'processing', fraction: null });
 });
+
+test('F8: banyak event progres digabung (sedikit render), fase dan nilai akhir tetap segera', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  try {
+    const { source, calls } = controlledSource();
+    let renders = 0;
+    const { result } = renderHook(() => {
+      renders += 1;
+      return useBackgroundUploads({ source, onUploaded: () => undefined });
+    });
+    act(() => result.current.forOwner('a').add([queued('x')]));
+    act(() => calls[0]?.ctx?.onProgress?.('uploading', 0));
+    expect(result.current.entries[0]).toMatchObject({ phase: 'uploading', fraction: 0 });
+    const before = renders;
+    // Tiap event di act sendiri (seperti event XHR terpisah): tanpa throttle tiap event = satu render.
+    for (let i = 1; i <= 50; i += 1) act(() => calls[0]?.ctx?.onProgress?.('uploading', i / 100));
+    // Selang yang sama: paling banyak satu pembaruan di depan (bukan 50 render).
+    expect(renders - before).toBeLessThanOrEqual(2);
+    // Nilai terakhir menyusul setelah selang throttle.
+    act(() => {
+      vi.advanceTimersByTime(150);
+    });
+    expect(result.current.entries[0]?.fraction).toBe(0.5);
+    // Perubahan fase dan nilai akhir tidak ditunda.
+    act(() => calls[0]?.ctx?.onProgress?.('uploading', 1));
+    expect(result.current.entries[0]?.fraction).toBe(1);
+    act(() => calls[0]?.ctx?.onProgress?.('processing', null));
+    expect(result.current.entries[0]).toMatchObject({ phase: 'processing', fraction: null });
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('F8: pembaruan progres yang tertunda tak menimpa fase gagal', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  try {
+    const { source, calls } = controlledSource();
+    const { result } = setup(source);
+    act(() => result.current.forOwner('a').add([queued('x')]));
+    act(() => calls[0]?.ctx?.onProgress?.('uploading', 0));
+    act(() => calls[0]?.ctx?.onProgress?.('uploading', 0.2));
+    act(() => calls[0]?.ctx?.onProgress?.('uploading', 0.3));
+    await act(async () => calls[0]?.reject(new Error('putus')));
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(result.current.entries[0]).toMatchObject({ phase: 'failed', fraction: null });
+  } finally {
+    vi.useRealTimers();
+  }
+});

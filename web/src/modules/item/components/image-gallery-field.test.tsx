@@ -99,7 +99,7 @@ test('melebihi sisa kapasitas ditolak dengan pesan seragam dan tidak diunggah', 
   const dialog = await screen.findByRole('alertdialog', { name: 'Tambah gambar' });
   const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
   fireEvent.change(input, { target: { files: [png('1.png'), png('2.png')] } });
-  expect(await within(dialog).findByText(/Maksimal 1 berkas per unggahan/)).toBeInTheDocument();
+  expect(await within(dialog).findByText(/Maksimal 1 berkas/)).toBeInTheDocument();
   expect(uploadMock).not.toHaveBeenCalled();
 });
 
@@ -147,6 +147,22 @@ test('onBusyChange true selama unggahan berjalan, false setelah selesai', async 
   finish(item('a'));
   await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
   expect(shown()).toEqual(['Gambar 1']);
+});
+
+test('F1: unggahan gagal tetap menahan (true) sampai Ulangi berhasil atau dibuang', async () => {
+  uploadMock.mockRejectedValueOnce(new Error('putus'));
+  render(<Harness />);
+  await addViaDialog([png('1.png')]);
+  expect(await screen.findByRole('button', { name: /^Ulangi / })).toBeInTheDocument();
+  expect(onBusyChange).toHaveBeenLastCalledWith(true);
+  uploadMock.mockResolvedValueOnce(item('a'));
+  await userEvent.click(screen.getByRole('button', { name: /^Ulangi / }));
+  await waitFor(() => expect(shown()).toEqual(['Gambar 1']));
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
+  uploadMock.mockRejectedValueOnce(new Error('putus'));
+  await addViaDialog([png('2.png')]);
+  await userEvent.click(await screen.findByRole('button', { name: /^Buang 2/ }));
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
 });
 
 test('berkas bukan gambar ditolak dengan pesan seragam dan tidak diunggah', async () => {

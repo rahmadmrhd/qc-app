@@ -16,7 +16,7 @@ export function shouldWarnBeforeUnload(dirty: boolean): boolean {
 
 /**
  * Ada foto bukti QC yang perlu dijaga: baris draft yang memuat foto (sudah terunggah ke server dengan status draft),
- * atau unggahan yang masih berjalan/gagal (foto yang belum menempel pada baris mana pun).
+ * atau unggahan yang masih berjalan atau gagal (`blocking`: foto yang belum menempel pada baris mana pun).
  */
 export function hasProofPhotos(
   rows: readonly { proofPhotos: readonly unknown[] }[],

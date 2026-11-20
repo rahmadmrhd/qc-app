@@ -123,6 +123,18 @@ test('onBusyChange true selama unggahan berjalan, false setelah selesai; tombol 
   expect(changes).toEqual(['f1']);
 });
 
+test('F1: unggahan gagal tetap menahan (true) sampai Ulangi berhasil atau dibuang', async () => {
+  uploadMock.mockRejectedValueOnce(new Error('putus'));
+  render(<Harness />);
+  await pick(png('a.png'), 'Pilih gambar');
+  expect(await screen.findByRole('button', { name: /^Ulangi / })).toBeInTheDocument();
+  expect(onBusyChange).toHaveBeenLastCalledWith(true);
+  uploadMock.mockResolvedValueOnce(item('f1'));
+  await userEvent.click(screen.getByRole('button', { name: /^Ulangi / }));
+  await waitFor(() => expect(changes).toEqual(['f1']));
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
+});
+
 test('berkas bukan gambar ditolak dengan pesan seragam dan tidak diunggah', async () => {
   render(<Harness />);
   await userEvent.click(screen.getByRole('button', { name: 'Pilih gambar' }));

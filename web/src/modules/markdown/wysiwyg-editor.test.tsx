@@ -302,6 +302,23 @@ test('onBusyChange true selama unggahan berjalan dan false setelah selesai; prog
   expect(screen.queryByTestId('attachment-pending')).not.toBeInTheDocument();
 });
 
+test('F1: unggahan gambar gagal tetap menahan (true) sampai Ulangi berhasil atau dibuang', async () => {
+  uploadMock.mockRejectedValueOnce(new Error('putus'));
+  render(<Harness initial="awal" onBusyChange={onBusyChange} />);
+  await waitFor(() => expect(editor).toBeDefined());
+  await insertViaDialog(png('a.png'));
+  expect(await screen.findByRole('button', { name: /^Ulangi / })).toBeInTheDocument();
+  expect(onBusyChange).toHaveBeenLastCalledWith(true);
+  uploadMock.mockResolvedValueOnce(item('f1', 'a'));
+  await userEvent.click(screen.getByRole('button', { name: /^Ulangi / }));
+  await waitFor(() => expect(lastValue).toContain('![a](qcfile:f1)'));
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
+  uploadMock.mockRejectedValueOnce(new Error('putus'));
+  await insertViaDialog(png('b.png'));
+  await userEvent.click(await screen.findByRole('button', { name: /^Buang / }));
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
+});
+
 test('berkas bukan gambar (PDF) ditolak dengan pesan seragam dan tidak diunggah', async () => {
   render(<Harness initial="isi" />);
   await waitFor(() => expect(editor).toBeDefined());

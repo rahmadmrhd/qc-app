@@ -48,7 +48,7 @@ export function ImagePicker({ value, onChange, label, onBusyChange }: ImagePicke
     },
   });
   const own = uploads.forOwner(OWNER);
-  const busy = own.busy;
+  const busy = own.blocking;
   const onBusyChangeRef = useRef(onBusyChange);
   onBusyChangeRef.current = onBusyChange;
   useEffect(() => {
