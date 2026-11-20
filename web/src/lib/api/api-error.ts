@@ -8,6 +8,7 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   VALIDATION: 422,
   CONFLICT: 409,
   UNAVAILABLE: 503,
+  CLIENT_OUTDATED: 426,
   INTERNAL: 500,
 };
 

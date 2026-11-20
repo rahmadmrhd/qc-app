@@ -1,6 +1,6 @@
 # Fase 3 versi API: deprecated, paksa pembaruan, dan pagar rilis
 
-Tanggal: 2026-11-20. Turunan dari `2026-11-20-versi-api-ui-dasar-paksa-update-design.md` (bagian 6.7, 6.8, 9 butir 3). Fondasi (fase 1 dan 2) sudah
+Tanggal: 2026-11-20. **Status: DIBANGUN 2026-11-20** (rencana `docs/superpowers/plans/2026-11-20-versi-api-fase3.md`; deviasi dan catatan di bagian 7). Turunan dari `2026-11-20-versi-api-ui-dasar-paksa-update-design.md` (bagian 6.7, 6.8, 9 butir 3). Fondasi (fase 1 dan 2) sudah
 masuk lewat PR 144; dokumen ini hanya fase 3.
 
 ## 1. Maksud
@@ -108,3 +108,29 @@ membuang entri antrean ke jalur ditolak di halaman DAN di `sync-sw.js`, (c) `rel
 
 ## 6. Uji perangkat nyata (tidak dapat dipastikan mesin)
 Pembaruan paksa installer (checklist E2E desktop bagian K) dan tab web lama; dicatat sebagai butir manual di `docs/e2e-checklist-desktop.md`.
+
+## 7. Catatan implementasi (2026-11-20)
+Fase 3 dibangun penuh sesuai cakupan bagian 2 (satu PR, komit per fase internal). Pertanyaan terbuka induk 10.2 sampai 10.4 ditutup oleh
+keputusan pemilik produk 2026-11-20 yang sudah tercantum di bagian 3 dan 5b (jeda 24 jam, konstanta `MIN_CLIENT`, peta `apis` tersimpan);
+spek induk dan `docs/adding-a-module.md` diperbarui. Penyimpangan dari bagian 5a dan teks sebelumnya, semuanya keputusan teknis
+pembangun atas arahan yang sama (pemilik produk menyetujui arah, bukan detail kode):
+1. **Kunci penyimpanan:** peta `apis` disimpan di `localStorage` kunci `qc.api.apis` (sudah dipakai fase 1), bukan `qc.api.versions` seperti
+   tertulis di 5a butir 5; `minClient` disimpan di `qc.api.minClient`. Sifat lain 5a butir 5 tak berubah (bukan per pemilik, tak dibuang saat logout).
+2. **Tiga kanal jembatan, bukan satu:** 5a butir 2 hanya menyebut `app.version`. Dibangun `app.version`, `app.update`, dan `app.openDownloads`
+   (jembatan v10, `BRIDGE_VERSION` 9 -> 10; `UI_MIN_BRIDGE_VERSION` tetap 8) karena tombol "Perbarui sekarang" dan tautan unduh butuh
+   dua kanal lainnya agar dapat berjalan, sesuai keputusan pemilik 5b butir 1 dan 3. Renderer tetap tak menerima token, alamat server, atau
+   jalur berkas: `app.openDownloads` tanpa argumen, alamat dari pengaturan di proses utama.
+3. **`updateNow` tanpa dialog:** pembaruan dari layar penahan memakai `AppUpdater.updateNow()` (periksa, unduh, pasang, mulai ulang) tanpa
+   dialog OS; ditolak (`busy`) selama inject Country Lock berjalan, sejalan dengan alur pembaruan biasa.
+4. **Jawaban 426 untuk rute terhapus** dijawab sebelum `authorize` tetapi sesudah `csrfGuard`; 426 hanya diperlakukan klien sebagai
+   `CLIENT_OUTDATED` bila badannya problem+json berkode itu (426 polos dari proksi/CDN = galat biasa), agar perantara tak dapat memaksa pemuatan ulang.
+5. **Tingkat `deprecated` di web** hanya spanduk (tanpa memuat ulang), dan tak tampil di aplikasi desktop (jalurnya layar penahan). Karena
+   `api()` belum memanggil `pickApi`, pemicunya diuji dengan data sintetis sampai rute v2 pertama ada.
+6. **Pagar rilis:** potret kontrak menjadi metadata rilis SERVER (`isMetadataOf('server')`), dicatat juga di spek rilis semver 5.3 dan 5.4.
+   `--dry-run` membaca potret dan umur tag tetapi tidak menjalankan pagar (butuh pohon cabang `origin/dev`); pagar nyata berjalan pada eksekusi
+   sungguhan. Rilis server pertama (belum ada tag) memakai potret kosong dan umur `none`.
+7. Antara komit pertama dan keempat fase 3, tes paritas antrean offline (`outbox-parity.test.ts`) sempat merah karena `ERROR_CODES` bergeser
+   (kode `CLIENT_OUTDATED` ditambahkan di komit pertama); diperbaiki di komit antrean offline yang menambahkan kode itu ke `sync-sw.js`.
+   PR ditinjau sebagai satu kesatuan, jadi tak ada komit hijau-merah yang dirilis terpisah.
+8. Uji "404 pada rute deprecated" pada rencana dibaca sebagai galat handler (rute deprecated tetap melayani permintaan dan hanya menambah
+   header `Deprecation`); 404 sungguhan hanya dijawab untuk id yang tak dikenal.

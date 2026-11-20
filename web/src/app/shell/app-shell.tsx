@@ -13,6 +13,7 @@ import { NotificationBell } from '@/modules/notification/notification-bell';
 import { PushOnboarding } from '@/modules/push/components/push-onboarding';
 import { ThemeToggle } from '@/modules/theme/theme-toggle';
 import { usePrefetchOnIdle } from '../prefetch';
+import { ApiDeprecatedBanner } from '../pwa/api-deprecated-banner';
 import { AppSidebar } from './app-sidebar';
 import { OutboxChip } from './outbox-chip';
 import { ServerStatusBanner } from './server-status-banner';
@@ -34,6 +35,7 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
             <AppSidebar />
             <SidebarInset className="min-w-0">
               <UiUpdateBanner />
+              <ApiDeprecatedBanner />
               <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
                 <SidebarTrigger data-tour="sidebar-trigger" />
                 <div className="ml-auto flex items-center gap-1">

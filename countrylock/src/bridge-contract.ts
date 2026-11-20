@@ -22,6 +22,7 @@ import type { AddResult, PendingEntry } from './pending';
 import type { Brand } from './script-template';
 
 export {
+  APP_BRIDGE_VERSION,
   AUTH_CHANGE_EVENT,
   BRIDGE_CHANNELS,
   BRIDGE_VERSION,
@@ -134,6 +135,15 @@ export interface MultiCredentialDto {
   password: string;
 }
 
+/**
+ * Hasil "Perbarui sekarang" dari layar penahan. `message` selalu pesan terkontrol berbahasa Indonesia: isi galat mentah
+ * tak pernah sampai ke renderer.
+ */
+export interface UpdateNowResult {
+  status: 'restarting' | 'up-to-date' | 'busy' | 'unavailable' | 'failed';
+  message: string;
+}
+
 export interface QcBridge {
   version: number;
   package: {
@@ -162,6 +172,15 @@ export interface QcBridge {
     onUpdateReady(cb: (info: UiUpdateInfo) => void): () => void;
     /** Menerapkan bundel siap (bila tak ada inject berjalan) lalu memuat ulang jendela. */
     reload(): Promise<void>;
+  };
+  /** Jembatan v10 (`APP_BRIDGE_VERSION`): pembaruan aplikasi untuk layar penahan; pemakai memeriksa versinya. */
+  app: {
+    /** Versi aplikasi desktop terpasang (semver). */
+    version(): Promise<string>;
+    /** Memeriksa, mengunduh, memasang, dan memulai ulang TANPA dialog; hasilnya selalu pesan terkontrol. */
+    update(): Promise<UpdateNowResult>;
+    /** Membuka halaman daftar unduhan di peramban sistem (alamat dari pengaturan, bukan dari renderer). */
+    openDownloads(): Promise<void>;
   };
   /** Jembatan v5 (`CATALOG_BRIDGE_VERSION`): katalog Tipe offline; pemakai memeriksa versinya. */
   catalog: {
@@ -396,6 +415,9 @@ export const BRIDGE_ARGS = {
   multiPendingEvents: z.tuple([]),
   multiAckInjected: z.tuple([z.array(InjectIdSchema).max(MULTI_ACK_MAX)]),
   multiOpenWeb: z.tuple([MacArgSchema]),
+  appVersion: z.tuple([]),
+  appUpdate: z.tuple([]),
+  appOpenDownloads: z.tuple([]),
 } as const satisfies Record<keyof typeof BRIDGE_CHANNELS, z.ZodType>;
 
 // --- Teks progres aman untuk renderer ------------------------------------------------------

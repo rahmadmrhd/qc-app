@@ -100,3 +100,36 @@ export function compareContract(
   }
   return problems;
 }
+
+/** Umur minimum rilis yang menandai deprecated sebelum rutenya boleh dihapus (spek fase 3, bagian 5b). */
+export const REMOVAL_MIN_AGE_MS = 24 * 60 * 60 * 1000;
+
+export interface RemovalCheckInput {
+  previous: readonly SnapshotEntry[];
+  current: readonly SnapshotEntry[];
+  retired: readonly RetiredRoute[];
+  /** Umur tag rilis server sebelumnya (ms); `null` = belum ada rilis sebelumnya. */
+  previousTagAgeMs: number | null;
+  minAgeMs: number;
+}
+
+/**
+ * Pagar rilis: pelanggaran `compareContract` DITAMBAH satu pelanggaran bila ada rute yang dihapus padahal rilis yang
+ * menandainya deprecated baru terbit kurang dari `minAgeMs`. Rilis pertama (`previousTagAgeMs` `null`) lolos.
+ */
+export function removalProblems(input: RemovalCheckInput): string[] {
+  const problems = compareContract(input.previous, input.current, input.retired);
+  const now = new Set(input.current.map((entry) => entry.id));
+  const removed = input.previous.filter((entry) => !now.has(entry.id));
+  const age = input.previousTagAgeMs;
+  if (removed.length > 0 && age !== null && age < input.minAgeMs) {
+    const hours = Math.floor(age / (60 * 60 * 1000));
+    const limit = Math.round(input.minAgeMs / (60 * 60 * 1000));
+    for (const entry of removed) {
+      problems.push(
+        `Rute ${entry.id} baru berstatus deprecated kurang dari ${limit} jam (rilis sebelumnya baru terbit ${hours} jam lalu)`,
+      );
+    }
+  }
+  return problems;
+}

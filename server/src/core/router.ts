@@ -40,6 +40,7 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   CONFLICT: 409,
   INTERNAL: 500,
   UNAVAILABLE: 503,
+  CLIENT_OUTDATED: 426,
 };
 
 /** Status HTTP bawaan per kode galat (rute non-REST seperti OAuth/sinkron). */

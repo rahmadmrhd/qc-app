@@ -1,4 +1,5 @@
 import type { ApiVerb } from './api';
+import { compareVersions } from './desktop-release';
 
 // Versi API per kelompok rute (spek 2026-11-20-versi-api-ui-dasar-paksa-update-design.md). Murni: tanpa API runtime
 // (`shared/` tak boleh memakai `URL`, `fetch`, dsb.), dipakai server (pemasangan jalur, ping) dan klien (pemilih id).
@@ -145,4 +146,66 @@ export function pickApiId(base: string, ids: readonly string[], apis: ServerApis
 /** Versi unik (naik) yang dipakai id-id ini; v1 selalu ada. */
 export function apiVersionsInUse(ids: readonly string[]): number[] {
   return [...new Set([1, ...ids.map((id) => parseApiId(id).version)])].sort((a, b) => a - b);
+}
+
+/**
+ * Mencari rute terhapus yang cocok dengan permintaan. `path` relatif terhadap awalan versi (`/brands/abc`, tanpa query).
+ * Cocok bila verba dan versi sama dan templat `route.path` cocok segmen per segmen (`{nama}` = satu segmen tak kosong,
+ * selain itu sama persis). Jalur berakhiran `/` atau berisi `//` tidak pernah cocok. Dipakai server untuk menjawab 426.
+ */
+export function matchRetiredRoute(
+  retired: readonly RetiredRoute[],
+  verb: string,
+  version: number,
+  path: string,
+): RetiredRoute | null {
+  if (path.endsWith('/') || path.includes('//')) return null;
+  const actual = path.split('/');
+  for (const route of retired) {
+    if (route.verb !== verb || parseApiId(route.id).version !== version) continue;
+    const template = route.path.split('/');
+    if (template.length !== actual.length) continue;
+    const same = template.every((part, index) => {
+      const segment = actual[index] as string;
+      return part.startsWith('{') && part.endsWith('}') ? segment !== '' : part === segment;
+    });
+    if (same) return route;
+  }
+  return null;
+}
+
+/**
+ * Kelompok yang versi pilihan klien ini (`pickApiId`) sudah ditandai deprecated oleh server: klien hanya mengenal
+ * versi yang akan dihapus, jadi perlu diperbarui. Urut abjad, tanpa ganda; `apis` `null` = tidak ada.
+ */
+export function deprecatedGroupsInUse(ids: readonly string[], apis: ServerApis | null): string[] {
+  if (apis === null) return [];
+  const groups = new Set<string>();
+  for (const base of new Set(ids.map((id) => parseApiId(id).base))) {
+    const group = apiGroup(base);
+    if (!Object.hasOwn(apis, group)) continue;
+    const chosen = parseApiId(pickApiId(base, ids, apis)).version;
+    if ((apis[group] as { deprecated: number[] }).deprecated.includes(chosen)) groups.add(group);
+  }
+  return [...groups].sort();
+}
+
+/** Versi klien paling rendah yang diumumkan server di `/api/ping` (bentuk `MIN_CLIENT`). */
+export interface MinClient {
+  desktop: string;
+}
+
+const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+
+/** Membaca `minClient` dari respons ping yang tak tepercaya; apa pun yang rusak = `null` (tidak menahan siapa pun). */
+export function parseMinClient(value: unknown): MinClient | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const { desktop } = value as { desktop?: unknown };
+  return typeof desktop === 'string' && SEMVER.test(desktop) ? { desktop } : null;
+}
+
+/** `true` hanya bila versi terpasang sah dan lebih rendah dari minimum; data tak lengkap tidak pernah menahan. */
+export function isBelowMinClient(installed: string, min: MinClient | null): boolean {
+  if (min === null || !SEMVER.test(installed)) return false;
+  return compareVersions(installed, min.desktop) < 0;
 }

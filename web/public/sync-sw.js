@@ -38,10 +38,11 @@
     'VALIDATION',
     'CONFLICT',
     'UNAVAILABLE',
+    'CLIENT_OUTDATED',
     'INTERNAL',
   ];
-  /** Hanya penolakan nyata dari server yang menandai entri (sama dengan `REJECTION_CODES` di `outbox-flush.ts`). */
-  const REJECTION_CODES = ['CONFLICT', 'FORBIDDEN', 'NOT_FOUND', 'VALIDATION'];
+  /** Hanya penolakan nyata dari server yang menandai entri (sama dengan `REJECTION_CODES` di `outbox-flush.ts`, termasuk `CLIENT_OUTDATED` untuk 426 problem+json). */
+  const REJECTION_CODES = ['CLIENT_OUTDATED', 'CONFLICT', 'FORBIDDEN', 'NOT_FOUND', 'VALIDATION'];
   const EXPIRED_REASON = 'Kedaluwarsa: lebih dari 24 jam sejak dibuat';
   /** Sama dengan `NO_TASK_REASON` di `outbox-flush.ts` (dijaga `outbox-parity.test.ts`). */
   const NO_TASK_REASON = 'Entri tidak memiliki task tujuan';

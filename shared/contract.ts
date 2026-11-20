@@ -30,6 +30,7 @@ export const ERROR_CODES = [
   'VALIDATION',
   'CONFLICT',
   'UNAVAILABLE',
+  'CLIENT_OUTDATED',
   'INTERNAL',
 ] as const;
 export type ErrorCode = (typeof ERROR_CODES)[number];

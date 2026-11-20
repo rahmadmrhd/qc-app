@@ -15,6 +15,7 @@ import {
   type ErrorCode,
 } from '@shared/contract';
 import { beginBusy } from '@/app/pwa/busy';
+import { raiseOutdatedLevel } from '@/app/pwa/client-outdated';
 import { isDesktop } from '@/lib/platform';
 import { ApiError } from './api-error';
 import { XHR_PROGRESS_ON_DESKTOP, xhrSend } from './xhr-upload';
@@ -151,7 +152,12 @@ function finishResponse<M extends ApiId>(
   text: string,
   bytes: Uint8Array | undefined,
 ): ApiOutput<M> {
-  if (!response.ok) throw errorFromResponse(response.status, text);
+  if (!response.ok) {
+    const error = errorFromResponse(response.status, text);
+    // Hanya kode dari badan problem+json sah yang dihitung: 426 polos (mis. dari proksi) jatuh ke INTERNAL.
+    if (error.code === 'CLIENT_OUTDATED') raiseOutdatedLevel('outdated');
+    throw error;
+  }
   if (bytes !== undefined) return downloadOutput(id, input, response.headers, bytes);
   if (text === '') return undefined as unknown as ApiOutput<M>;
   const data = parseJson(text);

@@ -1,8 +1,11 @@
 import type { ApiId } from '@shared/contract';
-import { expect, test, vi } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { isBusy, resetBusyForTests } from '@/app/pwa/busy';
+import { getOutdatedLevel, resetOutdatedForTests } from '@/app/pwa/client-outdated';
 import { ApiError } from './api-error';
 import { createApiClient, requestUrl } from './client';
+
+afterEach(() => resetOutdatedForTests());
 
 function respond(body: unknown, init: ResponseInit = {}, contentType = 'application/json') {
   const text = typeof body === 'string' ? body : JSON.stringify(body);
@@ -466,4 +469,26 @@ test('requestUrl: id dasar memakai /api/v1, id @2 memakai /api/v2', () => {
   expect(requestUrl('https://qc.test', 'qrcodes.save', { ...parts, query: { a: 'b' } })).toBe(
     'https://qc.test/api/v1/qrcodes/x?a=b',
   );
+});
+
+test('426 problem+json CLIENT_OUTDATED = ApiError CLIENT_OUTDATED dan level outdated', async () => {
+  const { api } = setup(() =>
+    respond(
+      { code: 'CLIENT_OUTDATED', detail: 'Perbarui aplikasi', requestId: 'r1', status: 426 },
+      { status: 426 },
+      'application/problem+json',
+    ),
+  );
+  expect(getOutdatedLevel()).toBe('none');
+  const error = await api('brands.list', null).catch((e: unknown) => e);
+  expect(error).toBeInstanceOf(ApiError);
+  expect(error).toMatchObject({ code: 'CLIENT_OUTDATED', status: 426 });
+  expect(getOutdatedLevel()).toBe('outdated');
+});
+
+test('426 polos (mis. dari proksi) = INTERNAL dan level tetap none', async () => {
+  const { api } = setup(() => respond('<html>426</html>', { status: 426 }, 'text/html'));
+  const error = await api('brands.list', null).catch((e: unknown) => e);
+  expect(error).toMatchObject({ code: 'INTERNAL', status: 426 });
+  expect(getOutdatedLevel()).toBe('none');
 });

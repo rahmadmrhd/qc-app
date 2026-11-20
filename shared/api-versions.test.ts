@@ -1,16 +1,24 @@
 import { describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { API_ROUTES } from './api';
 import {
   API_GROUP_VERSIONS,
   announcedApis,
   apiGroup,
   apiVersionsInUse,
+  deprecatedGroupsInUse,
+  isBelowMinClient,
   MIN_CLIENT,
+  matchRetiredRoute,
   parseApiId,
+  parseMinClient,
   parseServerApis,
   pickApiId,
+  type RetiredRoute,
   restBase,
 } from './api-versions';
+import { ERROR_CODES } from './contract';
+import { compareVersions } from './desktop-release';
 
 describe('restBase', () => {
   test('menyusun awalan jalur per versi', () => {
@@ -150,5 +158,85 @@ describe('apiVersionsInUse', () => {
 describe('MIN_CLIENT', () => {
   test('desktop berupa semver X.Y.Z sah', () => {
     expect(MIN_CLIENT.desktop).toMatch(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
+  });
+});
+
+describe('CLIENT_OUTDATED', () => {
+  test('kode galat dikenal kontrak', () => {
+    expect(ERROR_CODES).toContain('CLIENT_OUTDATED');
+  });
+});
+
+describe('matchRetiredRoute', () => {
+  const retired: RetiredRoute[] = [
+    { id: 'brands.rename', verb: 'PUT', path: '/brands/{id}', removedIn: 'server-v1.4.0' },
+    { id: 'a.b@2', verb: 'GET', path: '/x', removedIn: 'server-v1.4.0' },
+  ];
+  test('verba, versi, dan templat segmen cocok', () => {
+    expect(matchRetiredRoute(retired, 'PUT', 1, '/brands/abc')?.id).toBe('brands.rename');
+    expect(matchRetiredRoute(retired, 'GET', 2, '/x')?.id).toBe('a.b@2');
+  });
+  test('verba, versi, atau bentuk jalur yang berbeda tidak cocok', () => {
+    expect(matchRetiredRoute(retired, 'GET', 1, '/brands/abc')).toBeNull();
+    expect(matchRetiredRoute(retired, 'PUT', 1, '/brands/abc/extra')).toBeNull();
+    expect(matchRetiredRoute(retired, 'PUT', 1, '/brands/')).toBeNull();
+    expect(matchRetiredRoute(retired, 'PUT', 1, '/brands//')).toBeNull();
+    expect(matchRetiredRoute(retired, 'PUT', 2, '/brands/abc')).toBeNull();
+  });
+  test('daftar kosong = tidak ada yang cocok', () => {
+    expect(matchRetiredRoute([], 'PUT', 1, '/brands/abc')).toBeNull();
+  });
+});
+
+describe('deprecatedGroupsInUse', () => {
+  const ids = ['a.b', 'a.b@2', 'c.d'];
+  test('peta server null = tidak ada', () => {
+    expect(deprecatedGroupsInUse(ids, null)).toEqual([]);
+  });
+  test('klien mengenal v2 yang masih sehat = tidak ada', () => {
+    const apis = { a: { latest: 2, deprecated: [1] }, c: { latest: 1, deprecated: [] } };
+    expect(deprecatedGroupsInUse(ids, apis)).toEqual([]);
+  });
+  test('versi pilihan klien ikut deprecated = kelompoknya terdaftar', () => {
+    expect(deprecatedGroupsInUse(ids, { a: { latest: 2, deprecated: [1, 2] } })).toEqual(['a']);
+  });
+  test('klien hanya mengenal v1 yang sudah deprecated = terdaftar', () => {
+    expect(deprecatedGroupsInUse(['a.b', 'c.d'], { a: { latest: 2, deprecated: [1] } })).toEqual([
+      'a',
+    ]);
+  });
+  test('kelompok yang tak ada di peta server tidak dihitung', () => {
+    expect(deprecatedGroupsInUse(ids, { z: { latest: 1, deprecated: [1] } })).toEqual([]);
+  });
+});
+
+describe('parseMinClient dan isBelowMinClient', () => {
+  test('hanya objek dengan desktop semver X.Y.Z yang sah', () => {
+    expect(parseMinClient({ desktop: '1.2.3' })).toEqual({ desktop: '1.2.3' });
+    for (const bad of [
+      null,
+      'x',
+      [],
+      {},
+      { desktop: 3 },
+      { desktop: '1.2' },
+      { desktop: '01.2.3' },
+    ]) {
+      expect(parseMinClient(bad)).toBeNull();
+    }
+  });
+  test('versi terpasang di bawah minimum = true; selebihnya false', () => {
+    expect(isBelowMinClient('1.2.0', { desktop: '1.10.0' })).toBe(true);
+    expect(isBelowMinClient('1.10.0', { desktop: '1.2.0' })).toBe(false);
+    expect(isBelowMinClient('1.2.0', { desktop: '1.2.0' })).toBe(false);
+    expect(isBelowMinClient('x', { desktop: '1.2.0' })).toBe(false);
+    expect(isBelowMinClient('1.2.0', null)).toBe(false);
+  });
+  test('MIN_CLIENT tak memaksa installer terpasang (<= versi desktop/package.json) dan sah', () => {
+    const pkg = JSON.parse(
+      readFileSync(new URL('../desktop/package.json', import.meta.url), 'utf-8'),
+    ) as { version: string };
+    expect(compareVersions(MIN_CLIENT.desktop, pkg.version)).toBeLessThanOrEqual(0);
+    expect(parseMinClient({ desktop: MIN_CLIENT.desktop })).not.toBeNull();
   });
 });

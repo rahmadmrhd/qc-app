@@ -67,7 +67,8 @@ import { UI_PUBLIC_KEY_PEM } from './ui/public-key';
 import { createReloadGate, type ReloadGate } from './ui/reload-gate';
 import { createRenderProbe, RENDER_PROBE_TIMEOUT_MS } from './ui/render-probe';
 import { createUiBundleManager } from './ui/ui-bundle';
-import { shouldRunAppUpdater } from './update/app-updater';
+import { type AppUpdater, shouldRunAppUpdater } from './update/app-updater';
+import { downloadsPageUrl } from './update/downloads-url';
 import { loadAutoUpdater } from './update/load-updater';
 import { RELEASE_PUBLIC_KEY_PEM } from './update/release-public-key';
 import { startAppUpdate } from './update/start-app-update';
@@ -518,6 +519,9 @@ function runApp(): void {
       onIdle: () => gate.notifyIdle(),
     });
 
+    // Pengendali pembaruan (diisi `startAppUpdate`, sesudah registerIpc): kanal `app.update` memakainya; null = tak aktif
+    // (tak terkemas, tanpa kunci rilis, `--smoke`).
+    let appUpdater: AppUpdater | null = null;
     ipcHandle = registerIpc({
       ipcMain,
       settings,
@@ -558,6 +562,21 @@ function runApp(): void {
           if (ipcHandle?.isInjecting()) return;
           bundles.applyReady();
           mainWindow?.webContents.reloadIgnoringCache();
+        },
+      },
+      app: {
+        version: () => app.getVersion(),
+        update: async () =>
+          appUpdater
+            ? appUpdater.updateNow()
+            : {
+                status: 'unavailable' as const,
+                message: 'Pembaruan otomatis tidak aktif di instalasi ini',
+              },
+        openDownloads: async () => {
+          const url = downloadsPageUrl(settings.get().serverUrl);
+          if (url === null) throw new Error('alamat server tidak sah');
+          await shell.openExternal(url);
         },
       },
       onInjectIdle: () => gate.notifyIdle(),
@@ -778,9 +797,13 @@ function runApp(): void {
         dialog: { showMessageBox: (options) => dialog.showMessageBox(options) },
         isBusy: () => ipcHandle?.isInjecting() ?? false,
         log: (message) => console.log(`[pembaruan] ${message}`),
-      }).catch((error) =>
-        console.error(`[pembaruan] gagal dimulai: ${String(error).slice(0, 200)}`),
-      );
+      })
+        .then((controller) => {
+          appUpdater = controller;
+        })
+        .catch((error) =>
+          console.error(`[pembaruan] gagal dimulai: ${String(error).slice(0, 200)}`),
+        );
     }
     for (const url of earlyAuthUrls.splice(0)) void flow.handleCallback(url);
     for (const handoff of earlyHandoffs.splice(0)) void handoffFlow.handle(handoff);

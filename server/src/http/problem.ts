@@ -24,6 +24,7 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   VALIDATION: 422,
   CONFLICT: 409,
   UNAVAILABLE: 503,
+  CLIENT_OUTDATED: 426,
   INTERNAL: 500,
 };
 
@@ -34,6 +35,7 @@ const TITLE_BY_CODE: Record<ErrorCode, string> = {
   VALIDATION: 'Input tidak valid',
   CONFLICT: 'Konflik',
   UNAVAILABLE: 'Layanan tidak tersedia',
+  CLIENT_OUTDATED: 'Klien perlu diperbarui',
   INTERNAL: 'Kesalahan server',
 };
 

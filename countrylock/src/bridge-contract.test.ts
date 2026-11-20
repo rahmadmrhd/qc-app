@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import {
+  APP_BRIDGE_VERSION,
   AUTH_CHANGE_EVENT,
   BRIDGE_ARGS,
   BRIDGE_CHANNELS,
@@ -166,7 +167,8 @@ describe('PendingEntrySchema dan SerialArgSchema', () => {
 
 describe('konstanta jembatan', () => {
   test('versi, dan semua nama kanal berpola qc:<grup>:<aksi> serta unik', () => {
-    expect(BRIDGE_VERSION).toBe(9);
+    expect(BRIDGE_VERSION).toBe(10);
+    expect(APP_BRIDGE_VERSION).toBe(10);
     expect(MULTI_BRIDGE_VERSION).toBe(9);
     expect(DRAFT_BRIDGE_VERSION).toBe(8);
     expect(PENDING_UPLOAD_BRIDGE_VERSION).toBe(7);
@@ -470,5 +472,20 @@ describe('kanal multi (jembatan v9)', () => {
     expect(BRIDGE_ARGS.multiAckInjected.safeParse([['a b']]).success).toBe(false);
     expect(BRIDGE_ARGS.multiAckInjected.safeParse([['../x']]).success).toBe(false);
     expect(BRIDGE_ARGS.multiAckInjected.safeParse([['']]).success).toBe(false);
+  });
+});
+
+describe('kanal app (jembatan v10)', () => {
+  test('tiga kanal terdaftar dan tanpa argumen (argumen berlebih ditolak)', () => {
+    expect(BRIDGE_CHANNELS.appVersion).toBe('qc:app:version');
+    expect(BRIDGE_CHANNELS.appUpdate).toBe('qc:app:update');
+    expect(BRIDGE_CHANNELS.appOpenDownloads).toBe('qc:app:openDownloads');
+    for (const key of ['appVersion', 'appUpdate', 'appOpenDownloads'] as const) {
+      expect(BRIDGE_ARGS[key].safeParse([]).success).toBe(true);
+      expect(BRIDGE_ARGS[key].safeParse(['C:\rahasia']).success).toBe(false);
+    }
+  });
+  test('UI_MIN_BRIDGE_VERSION tidak naik: UI lama tetap jalan di jembatan sebelum v10', () => {
+    expect(UI_MIN_BRIDGE_VERSION).toBe(8);
   });
 });
