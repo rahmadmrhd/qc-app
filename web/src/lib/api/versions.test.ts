@@ -1,7 +1,9 @@
 import type { ApiId } from '@shared/contract';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { getOutdatedLevel, resetOutdatedForTests } from '@/app/pwa/client-outdated';
 import {
   getServerApis,
+  getServerMinClient,
   pickApi,
   refreshServerApis,
   resetServerApisForTests,
@@ -23,11 +25,13 @@ function failingFetch(): typeof fetch {
 beforeEach(() => {
   localStorage.clear();
   resetServerApisForTests();
+  resetOutdatedForTests();
 });
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   resetServerApisForTests();
+  resetOutdatedForTests();
 });
 
 test('peta tersimpan terbaca setelah startApiVersions', () => {
@@ -96,4 +100,63 @@ test('startApiVersions memanggil ping tiap dipanggil dan tiap event online, tanp
   await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
   window.dispatchEvent(new Event('online'));
   await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(3));
+});
+
+const MIN_KEY = 'qc.api.minClient';
+// Klien nyata hanya mengenal v1 untuk semua kelompok: kelompok yang v1-nya deprecated = klien perlu diperbarui.
+const DEPRECATED_V1 = { qrcodes: { latest: 2, deprecated: [1] } };
+
+test('ping memuat minClient: disimpan di memori dan localStorage', async () => {
+  await refreshServerApis(pingFetch({ ok: true, apis: SAMPLE, minClient: { desktop: '1.2.0' } }));
+  expect(getServerMinClient()).toEqual({ desktop: '1.2.0' });
+  expect(JSON.parse(localStorage.getItem(MIN_KEY) ?? 'null')).toEqual({ desktop: '1.2.0' });
+});
+
+test('minClient tersimpan terbaca lagi setelah muat ulang halaman', () => {
+  localStorage.setItem(MIN_KEY, JSON.stringify({ desktop: '1.5.0' }));
+  expect(getServerMinClient()).toEqual({ desktop: '1.5.0' });
+});
+
+test('ping tanpa minClient (server lama) tidak menghapus nilai tersimpan', async () => {
+  await refreshServerApis(pingFetch({ ok: true, apis: SAMPLE, minClient: { desktop: '1.2.0' } }));
+  await refreshServerApis(pingFetch({ ok: true, apis: SAMPLE }));
+  expect(getServerMinClient()).toEqual({ desktop: '1.2.0' });
+});
+
+test('minClient rusak diabaikan tanpa melempar, termasuk di penyimpanan', async () => {
+  localStorage.setItem(MIN_KEY, 'bukan json');
+  expect(getServerMinClient()).toBeNull();
+  for (const bad of [{ desktop: 3 }, 'x', [], { desktop: '1.2' }, null]) {
+    await expect(
+      refreshServerApis(pingFetch({ ok: true, apis: SAMPLE, minClient: bad })),
+    ).resolves.toBeUndefined();
+    expect(getServerMinClient()).toBeNull();
+  }
+});
+
+test('versi klien yang dipakai ditandai deprecated server = level deprecated', async () => {
+  expect(getOutdatedLevel()).toBe('none');
+  await refreshServerApis(pingFetch({ ok: true, apis: DEPRECATED_V1 }));
+  expect(getOutdatedLevel()).toBe('deprecated');
+});
+
+test('peta sehat atau tanpa kelompok klien tidak menaikkan level', async () => {
+  await refreshServerApis(pingFetch({ ok: true, apis: SAMPLE }));
+  expect(getOutdatedLevel()).toBe('none');
+  await refreshServerApis(pingFetch({ ok: true, apis: { zzz: { latest: 1, deprecated: [1] } } }));
+  expect(getOutdatedLevel()).toBe('none');
+});
+
+test('localStorage yang melempar tidak membuat minClient melempar', async () => {
+  vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    throw new Error('diblokir');
+  });
+  vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+    throw new Error('diblokir');
+  });
+  expect(getServerMinClient()).toBeNull();
+  await expect(
+    refreshServerApis(pingFetch({ ok: true, apis: SAMPLE, minClient: { desktop: '1.2.0' } })),
+  ).resolves.toBeUndefined();
+  expect(getServerMinClient()).toEqual({ desktop: '1.2.0' });
 });

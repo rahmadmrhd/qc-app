@@ -1,12 +1,14 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { beginBusy, resetBusyForTests } from './busy';
+import { raiseOutdatedLevel, resetOutdatedForTests } from './client-outdated';
 import { resetSafeReloadForTests, setMutationSource } from './safe-reload';
 import { resetUnsavedChangesForTests, useUnsavedChanges } from './unsaved-changes';
 import {
   attachNavigationTrigger,
   isChunkLoadError,
   notifyChunkLoadFailure,
+  notifyClientOutdated,
   notifyNavigation,
   type RegisterSW,
   resetPwaUpdateForTests,
@@ -133,6 +135,7 @@ beforeEach(() => {
   resetSafeReloadForTests();
   resetBusyForTests();
   resetUnsavedChangesForTests();
+  resetOutdatedForTests();
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -1334,4 +1337,70 @@ test('pemulihan: tanpa halaman rusak (bukan galat muat potongan) klik Muat ulang
   renderHook(() => usePwaUpdate()).result.current.reload();
   expect(view.location.reload).toHaveBeenCalledTimes(1);
   expect(unregister).not.toHaveBeenCalled();
+});
+
+// Fase 3 versi API: 426 CLIENT_OUTDATED memakai alur pembaruan yang sama dengan galat muat potongan.
+
+test('426: tingkat outdated menyalakan needRefresh dan visible; formulir belum tersimpan menunda pemuatan ulang', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  const form = renderHook(() => useUnsavedChanges(true));
+  const hook = renderHook(() => usePwaUpdate());
+  act(() => raiseOutdatedLevel('outdated'));
+  expect(hook.result.current.needRefresh).toBe(true);
+  expect(hook.result.current.visible).toBe(true);
+  expect(reg.updateSW).not.toHaveBeenCalled();
+  expect(view.location.reload).not.toHaveBeenCalled();
+  form.unmount();
+});
+
+test('426: bila aman, pemuatan ulang otomatis berjalan sekali (pembatas autoTried)', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  act(() => raiseOutdatedLevel('outdated'));
+  expect(reg.updateSW).toHaveBeenCalledTimes(1);
+  expect(reg.updateSW).toHaveBeenCalledWith(true);
+  act(() => notifyClientOutdated());
+  expect(reg.updateSW).toHaveBeenCalledTimes(1);
+});
+
+test('426: tingkat deprecated saja tidak memuat ulang dan tidak menyalakan spanduk pembaruan', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  startPwaUpdates({ register: reg.register, win: view.win });
+  reg.registerSw();
+  act(() => raiseOutdatedLevel('deprecated'));
+  expect(usePwaUpdateSnapshotForTests()).toBe(false);
+  expect(reg.updateSW).not.toHaveBeenCalled();
+});
+
+test('426 yang sudah terjadi sebelum startPwaUpdates tetap ditangani saat dimulai', () => {
+  raiseOutdatedLevel('outdated');
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  const form = renderHook(() => useUnsavedChanges(true));
+  startPwaUpdates({ register: reg.register, win: view.win });
+  expect(usePwaUpdateSnapshotForTests()).toBe(true);
+  form.unmount();
+});
+
+test('426: offline tidak melakukan apa-apa (seperti galat muat potongan)', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow({ onLine: false });
+  startPwaUpdates({ register: reg.register, win: view.win });
+  act(() => raiseOutdatedLevel('outdated'));
+  expect(usePwaUpdateSnapshotForTests()).toBe(false);
+});
+
+test('426: pembersih menghentikan langganan tingkat outdated', () => {
+  const reg = fakeRegister();
+  const view = fakeWindow();
+  const stop = startPwaUpdates({ register: reg.register, win: view.win });
+  stop();
+  act(() => raiseOutdatedLevel('outdated'));
+  expect(usePwaUpdateSnapshotForTests()).toBe(false);
 });

@@ -1,4 +1,5 @@
 import { useMemo, useSyncExternalStore } from 'react';
+import { getOutdatedLevel, subscribeOutdated } from './client-outdated';
 import { isSafeToReload, isUnsafeForDisplay, subscribeSafety } from './safe-reload';
 
 /** Bentuk `registerSW` dari `virtual:pwa-register` yang dipakai di sini (disuntik agar mudah dites). */
@@ -61,6 +62,8 @@ let autoStorageUnavailable = false;
 let autoInitiated = false;
 // Hindari memuat ulang dua kali untuk satu peristiwa (pendengar controllerchange sendiri + onNeedReload pustaka).
 let reloading = false;
+// Satu langganan tingkat `outdated`: `startPwaUpdates` yang dipanggil ulang mengganti, bukan menumpuk.
+let offOutdatedWatch: (() => void) | undefined;
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -109,6 +112,19 @@ export function notifyChunkLoadFailure(): void {
   markUrgent();
   setNeedRefresh(true);
   runCheck();
+}
+
+/**
+ * Server menolak klien ini dengan 426 `CLIENT_OUTDATED`: sama seperti galat muat potongan, nyalakan spanduk "versi
+ * baru", periksa pembaruan, dan muat ulang otomatis bila AMAN (`maybeAutoReload` memeriksa formulir belum tersimpan
+ * dan penulisan berjalan; bila tidak aman, spanduk tetap tampil). Saat offline tidak melakukan apa-apa.
+ */
+export function notifyClientOutdated(): void {
+  if (isOffline()) return;
+  markUrgent();
+  setNeedRefresh(true);
+  runCheck();
+  maybeAutoReload();
 }
 
 function setPending(cancel: (() => void) | undefined) {
@@ -289,6 +305,13 @@ export function startPwaUpdates(options: {
   win.addEventListener('focus', checkOnEvent);
   win.addEventListener('vite:preloadError', onPreloadError);
   const timer = win.setInterval(check, intervalMs);
+  // 426 CLIENT_OUTDATED (fase 3 versi API): tingkat `outdated` memicu alur yang sama; `deprecated` hanya spanduk lain.
+  offOutdatedWatch?.();
+  offOutdatedWatch = subscribeOutdated(() => {
+    if (getOutdatedLevel() === 'outdated') notifyClientOutdated();
+  });
+  // 426 yang datang sebelum pendaftaran selesai tetap ditangani.
+  if (getOutdatedLevel() === 'outdated') notifyClientOutdated();
 
   return () => {
     stopped = true;
@@ -297,6 +320,8 @@ export function startPwaUpdates(options: {
     win.removeEventListener('focus', checkOnEvent);
     win.removeEventListener('vite:preloadError', onPreloadError);
     win.clearInterval(timer);
+    offOutdatedWatch?.();
+    offOutdatedWatch = undefined;
     // Lepas rujukan ke jendela/registrasi lama; status spanduk (needRefresh/dismissed) sengaja dibiarkan.
     updateSW = undefined;
     currentWin = undefined;
@@ -664,6 +689,8 @@ export function usePwaUpdateSnapshotForTests(): boolean {
 }
 
 export function resetPwaUpdateForTests(): void {
+  offOutdatedWatch?.();
+  offOutdatedWatch = undefined;
   needRefresh = false;
   dismissed = false;
   updateSW = undefined;
