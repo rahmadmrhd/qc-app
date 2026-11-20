@@ -28,31 +28,42 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { ProofPhotoRef } from '../lib/proof-source';
-import type { StampPreviewInput } from '../lib/stamp-preview';
-import { CameraTopButtons, CameraZoomRail } from './proof-camera-controls';
-import { ProofPhotoGrid } from './proof-photo-grid';
-import { ProofPhotoStack } from './proof-photo-stack';
-import { StampNote, StampToggleButton } from './stamp-preview';
+import { CameraTopButtons, CameraZoomRail } from './camera-top-buttons';
+import { ShotStack } from './shot-stack';
+import { ShotStrip } from './shot-strip';
 
-export interface ProofCameraDialogProps {
+/** Slot pratinjau cap di atas pandangan kamera (diisi pemanggil; kamera sendiri tidak tahu isi cap). */
+export interface CameraStampSlot {
+  /** Tombol sembunyikan/tampilkan di gugus kanan atas; `visible` = pratinjau sedang tampil. */
+  renderToggle(visible: boolean, onToggle: () => void): ReactNode;
+  /** Pratinjau yang ditaruh di atas strip foto dan rana. */
+  renderNote(): ReactNode;
+}
+
+/** Satu jepretan di strip: kunci stabil dan URL thumbnail (mis. object URL atau URL foto yang sudah naik). */
+export interface CameraShot {
+  key: string;
+  url: string;
+}
+
+export interface CameraDialogProps {
   open: boolean;
   onOpenChange(open: boolean): void;
   /** Sisa foto yang masih boleh ditambah; 0 = rana nonaktif. */
   remaining: number;
-  /** Tanpa ini pratinjau cap tidak ditampilkan. */
-  stamp?: StampPreviewInput | undefined;
+  /** Tanpa ini tombol dan pratinjau cap tidak ditampilkan. */
+  stamp?: CameraStampSlot | undefined;
   /**
    * Dipanggil dengan berkas JPEG tiap jepretan. Menolak (Error berpesan) bila foto tak dapat ditambahkan; pesannya
-   * tampil di dialog. Tidak ditunggu oleh rana: jepretan berikutnya boleh jalan selagi yang sebelumnya diunggah.
+   * tampil di dialog. Tidak ditunggu oleh rana: jepretan berikutnya boleh jalan selagi yang sebelumnya diproses.
    */
-  onShot(file: File): Promise<void>;
-  /** Foto yang sudah dibidik pada pembukaan dialog foto ini (strip thumbnail). */
-  shots: ProofPhotoRef[];
-  /** Jumlah foto yang sedang diunggah: tiap satu tampil sebagai sel berputar di ujung strip. */
-  uploading?: number;
+  onShot(file: File): void | Promise<void>;
+  /** Jepretan pada pembukaan dialog ini (strip thumbnail). */
+  shots: readonly CameraShot[];
   /** Tanpa ini thumbnail di strip tidak punya tombol buang. */
-  onRemoveShot?(photo: ProofPhotoRef): void;
+  onRemoveShot?(key: string): void;
+  /** Judul untuk pembaca layar. */
+  title?: string;
   /** Kamera dilaporkan tak dapat dipakai (izin ditolak dsb.): pemanggil boleh menyembunyikan tombol Kamera. */
   onUnavailable?(kind: CameraErrorKind): void;
   /** Kamera menyala (termasuk sesudah "Coba lagi" yang berhasil): pemanggil boleh menampilkan tombol Kamera lagi. */
@@ -87,7 +98,7 @@ function messageOf(reason: unknown, fallback: string): string {
  * aliran kamera dilepas. Foto hanya dibidik di sini; unggah dan penyimpanan oleh pemanggil (`onShot`). Aturan dialog
  * "header/footer tetap" tidak berlaku di sini: tidak ada bagian yang menggulir.
  */
-export function ProofCameraDialog({ open, onOpenChange, ...rest }: ProofCameraDialogProps) {
+export function CameraDialog({ open, onOpenChange, ...rest }: CameraDialogProps) {
   const contentRef = useRef<HTMLDivElement>(null);
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
@@ -106,23 +117,23 @@ export function ProofCameraDialog({ open, onOpenChange, ...rest }: ProofCameraDi
           onOpenChange(false);
         }}
       >
-        <ProofCameraBody onClose={() => onOpenChange(false)} {...rest} />
+        <CameraBody onClose={() => onOpenChange(false)} {...rest} />
       </AlertDialogContent>
     </AlertDialog>
   );
 }
 
-function ProofCameraBody({
+function CameraBody({
   onClose,
   remaining,
   stamp,
   onShot,
   shots,
-  uploading = 0,
   onRemoveShot,
+  title = 'Kamera',
   onUnavailable,
   onAvailable,
-}: Omit<ProofCameraDialogProps, 'open' | 'onOpenChange'> & { onClose: () => void }) {
+}: Omit<CameraDialogProps, 'open' | 'onOpenChange'> & { onClose: () => void }) {
   const [deviceId, setDeviceId] = useState('');
   const camera = useCameraStream({ open: true, deviceId });
   const { state } = camera;
@@ -190,7 +201,7 @@ function ProofCameraBody({
     return () => clearTimeout(timer);
   }, [cameraName]);
 
-  const hasPhotos = shots.length > 0 || uploading > 0;
+  const hasPhotos = shots.length > 0;
   const stripShown = stripOpen && hasPhotos;
   stripShownRef.current = stripShown;
   stripOpenRef.current = stripOpen;
@@ -255,14 +266,14 @@ function ProofCameraBody({
     armStripTimer();
   }, [photoCount, armStripTimer]);
 
-  function removeShot(photo: ProofPhotoRef) {
+  function removeShot(key: string) {
     if (panelRef.current?.contains(document.activeElement)) {
       pendingFocusRef.current = Math.max(
         0,
-        shots.findIndex((item) => item.id === photo.id),
+        shots.findIndex((item) => item.key === key),
       );
     }
-    onRemoveShot?.(photo);
+    onRemoveShot?.(key);
   }
 
   // Interaksi di strip/tumpukan menunda penutupan; fokus dinilai ulang oleh armStripTimer (blur: fokus tujuan belum
@@ -331,9 +342,11 @@ function ProofCameraBody({
         // Getar tidak didukung.
       }
       // Tidak ditunggu: jepretan berikutnya boleh jalan selagi ini diunggah. Pesan penolakan tampil di dialog.
-      onShotRef.current(file).catch((reason: unknown) => {
-        if (aliveRef.current) setError(messageOf(reason, 'Foto gagal ditambahkan'));
-      });
+      void Promise.resolve()
+        .then(() => onShotRef.current(file))
+        .catch((reason: unknown) => {
+          if (aliveRef.current) setError(messageOf(reason, 'Foto gagal ditambahkan'));
+        });
     } catch (reason) {
       if (aliveRef.current) setError(messageOf(reason, 'Gagal mengambil foto'));
     } finally {
@@ -347,9 +360,9 @@ function ProofCameraBody({
 
   return (
     <>
-      <AlertDialogTitle className="sr-only">Kamera foto bukti</AlertDialogTitle>
+      <AlertDialogTitle className="sr-only">{title}</AlertDialogTitle>
       <AlertDialogDescription className="sr-only">
-        Arahkan kamera ke unit lalu tekan tombol bulat untuk memotret. Tekan Selesai bila sudah
+        Arahkan kamera ke objek lalu tekan tombol bulat untuk memotret. Tekan Selesai bila sudah
         cukup.
       </AlertDialogDescription>
 
@@ -423,12 +436,9 @@ function ProofCameraBody({
           </Float>
           {state.status !== 'error' ? (
             <Float className="flex items-center gap-2">
-              {stamp ? (
-                <StampToggleButton
-                  visible={stampVisible}
-                  onToggle={() => setStampVisible((value) => !value)}
-                />
-              ) : null}
+              {stamp
+                ? stamp.renderToggle(stampVisible, () => setStampVisible((value) => !value))
+                : null}
               <CameraTopButtons camera={camera} onSwitchCamera={switchCamera} />
             </Float>
           ) : null}
@@ -459,9 +469,7 @@ function ProofCameraBody({
           ) : null}
           {stamp && stampVisible && state.status !== 'error' ? (
             // Sisakan kolom zoom di kanan agar pratinjau tidak menimpanya.
-            <Float className="pr-[4.25rem]">
-              <StampNote input={stamp} />
-            </Float>
+            <Float className="pr-[4.25rem]">{stamp.renderNote()}</Float>
           ) : null}
           {/* Pembungkus relatif: strip foto MENGAMBANG di atasnya (absolute) dan tak pernah ikut aliran tata letak. */}
           <div className="relative flex flex-col gap-2">
@@ -483,10 +491,8 @@ function ProofCameraBody({
                   data-testid="proof-photo-strip-panel"
                   className="w-fit max-w-full rounded-xl bg-black/45 px-2 backdrop-blur-sm"
                 >
-                  <ProofPhotoGrid
-                    variant="strip"
-                    photos={shots}
-                    uploading={uploading}
+                  <ShotStrip
+                    shots={shots}
                     {...(onRemoveShot ? { onRemove: removeShot } : {})}
                     onPreviewChange={(open) => {
                       stripHoldRef.current.preview = open;
@@ -499,9 +505,8 @@ function ProofCameraBody({
             ) : null}
             <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
               <Float ref={stackRef} className="justify-self-start" {...holdEvents}>
-                <ProofPhotoStack
-                  photos={shots}
-                  uploading={uploading}
+                <ShotStack
+                  shots={shots}
                   expanded={stripShown}
                   controls={stripId}
                   onToggle={() => setStripOpen((value) => !value)}

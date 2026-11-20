@@ -2,11 +2,11 @@ import { Flashlight, FlashlightOff, Minus, Plus, SwitchCamera } from 'lucide-rea
 import { useRef } from 'react';
 import { clampZoom, formatZoom } from '@/components/camera/camera-caps';
 import { FLOAT_BUTTON, nextDevice, ZoomStepButton } from '@/components/camera/camera-controls';
+import type { CameraStream } from '@/components/camera/use-camera-stream';
 import { zoomStepOf } from '@/components/camera/zoom-math';
 import { ZoomSlider } from '@/components/camera/zoom-slider';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { UseCameraScanner } from '../lib/use-camera-scanner';
 
 /**
  * Panjang trek slider zoom kamera foto: menyusut di layar pendek (ponsel landscape ~360 px) agar kolom zoom tidak
@@ -25,7 +25,7 @@ export function CameraTopButtons({
   camera,
   onSwitchCamera,
 }: {
-  camera: UseCameraScanner;
+  camera: CameraStream;
   onSwitchCamera: () => void;
 }) {
   const canSwitch = camera.devices.length > 1;
@@ -70,7 +70,7 @@ export function CameraTopButtons({
  * Kolom zoom di kanan-tengah pandangan kamera: tombol +, slider vertikal, tombol -, dan label zoom (ketuk = 1x).
  * Tidak dirender bila kamera tak mendukung zoom. Ketukan di sini tidak diteruskan ke area video (tanpa ketuk-fokus).
  */
-export function CameraZoomRail({ camera }: { camera: UseCameraScanner }) {
+export function CameraZoomRail({ camera }: { camera: CameraStream }) {
   const range = camera.zoomRange;
   // Nilai zoom terkini untuk tombol yang berulang (penutup interval tak boleh memakai nilai basi).
   const zoomRef = useRef(camera.zoom);

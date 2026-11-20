@@ -1,6 +1,6 @@
 import { IMAGE_MIME_TYPES, MAX_IMAGE_BYTES } from '@shared/files';
 import { Camera, CircleAlert, ImagePlus, X } from 'lucide-react';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   isCameraBlocked,
   markCameraBlocked,
@@ -8,6 +8,7 @@ import {
 } from '@/components/camera/camera-session';
 import { cameraSupported } from '@/components/camera/use-camera-stream';
 import { checkFile, formatBytes, partitionByType } from '@/components/file-dialog/accept';
+import { CameraDialog, type CameraShot } from '@/components/file-dialog/camera/camera-dialog';
 import { errorText } from '@/components/file-dialog/error-text';
 import { FileDropZone } from '@/components/file-dialog/file-drop-zone';
 import { Spinner } from '@/components/spinner';
@@ -23,8 +24,8 @@ import {
 import { type ProofPhotoRef, proofSource, toProofRef } from '../lib/proof-source';
 import type { StampPreviewInput } from '../lib/stamp-preview';
 import { discardProofPhotos } from '../queries';
-import { ProofCameraDialog } from './proof-camera';
 import { ProofPhotoGrid } from './proof-photo-grid';
+import { proofCameraStamp } from './stamp-preview';
 
 export interface ProofPhotoDialogProps {
   open: boolean;
@@ -167,6 +168,18 @@ function ProofPhotoBody({
     },
     [existingCount, max, upload],
   );
+
+  // Strip kamera memakai CameraShot (kunci + URL thumbnail); foto yang sedang naik tampil di daftar dialog ini.
+  const cameraShots = useMemo<CameraShot[]>(
+    () => shots.map((photo) => ({ key: photo.id, url: photo.thumbUrl })),
+    [shots],
+  );
+  const cameraStamp = useMemo(() => (stamp ? proofCameraStamp(stamp) : undefined), [stamp]);
+
+  function removeShotByKey(key: string) {
+    const photo = shotsRef.current.find((item) => item.id === key);
+    if (photo) removeShot(photo);
+  }
 
   function removeShot(photo: ProofPhotoRef) {
     void discardProofPhotos([photo.id]);
@@ -323,14 +336,14 @@ function ProofPhotoBody({
       </DialogFooter>
 
       {canCamera || cameraOpen ? (
-        <ProofCameraDialog
+        <CameraDialog
           open={cameraOpen}
           onOpenChange={setCameraOpen}
+          title="Kamera foto bukti"
           remaining={remaining}
-          stamp={stamp}
-          shots={shots}
-          uploading={uploading}
-          onRemoveShot={removeShot}
+          stamp={cameraStamp}
+          shots={cameraShots}
+          onRemoveShot={removeShotByKey}
           onShot={shoot}
           // Izin ditolak atau kamera tak ada: pesannya tampil di kamera, lalu tombol Kamera hilang (Telusuri tetap).
           onUnavailable={() => {

@@ -2,17 +2,28 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { CAMERA_ERROR_TEXT } from '@/components/camera/use-camera-stream';
-import type { ProofPhotoRef } from '../lib/proof-source';
-import type { StampPreviewInput } from '../lib/stamp-preview';
-import { ProofCameraDialog, type ProofCameraDialogProps } from './proof-camera';
+import {
+  CameraDialog,
+  type CameraDialogProps,
+  type CameraShot,
+  type CameraStampSlot,
+} from './camera-dialog';
 
-const STAMP: StampPreviewInput = {
-  serial: 'ABC123',
-  itemLabel: 'Cisco C9200',
-  buLabel: 'BU1',
-  locationLabel: 'Surabaya',
-  actorName: 'Budi',
-  actorTeam: 'QC',
+/** Slot cap tiruan: tombol sembunyikan + catatan; isi cap sebenarnya dites di modul Serial. */
+const STAMP: CameraStampSlot = {
+  renderToggle: (visible, onToggle) => (
+    <button
+      type="button"
+      aria-pressed={!visible}
+      aria-label={visible ? 'Sembunyikan pratinjau cap' : 'Tampilkan pratinjau cap'}
+      onClick={onToggle}
+    />
+  ),
+  renderNote: () => (
+    <div data-testid="stamp-preview" role="note" aria-label="Pratinjau cap">
+      SN: ABC123
+    </div>
+  ),
 };
 
 function fakeStream() {
@@ -71,7 +82,7 @@ afterEach(() => {
   }
 });
 
-function setup(props: Partial<ProofCameraDialogProps> = {}) {
+function setup(props: Partial<CameraDialogProps> = {}) {
   const media = fakeStream();
   setMediaDevices({
     getUserMedia: vi.fn(async () => media.stream),
@@ -80,7 +91,7 @@ function setup(props: Partial<ProofCameraDialogProps> = {}) {
   const onShot = vi.fn(async (_file: File) => undefined);
   const onOpenChange = vi.fn();
   const view = render(
-    <ProofCameraDialog
+    <CameraDialog
       open
       onOpenChange={onOpenChange}
       remaining={3}
@@ -99,7 +110,7 @@ const ready = () => waitFor(() => expect(shutter()).toBeEnabled());
 test('dialog layar penuh dengan judul untuk pembaca layar; rana aktif setelah kamera siap', async () => {
   setup();
   expect(await screen.findByRole('alertdialog')).toHaveAttribute('data-size', 'full');
-  expect(screen.getByText('Kamera foto bukti')).toBeInTheDocument();
+  expect(screen.getByText('Kamera')).toBeInTheDocument();
   await ready();
 });
 
@@ -120,15 +131,11 @@ test('rana memanggil onShot dengan berkas JPEG dari bingkai video', async () => 
   );
 });
 
-test('pratinjau cap: empat baris tampil, dapat disembunyikan, dan bukan bagian dari berkas foto', async () => {
+test('pratinjau cap dari slot: tampil, dapat disembunyikan, dan bukan bagian dari berkas foto', async () => {
   const ctx = setup();
   await ready();
   const note = screen.getByRole('note', { name: 'Pratinjau cap' });
   expect(note).toHaveTextContent('SN: ABC123');
-  expect(note).toHaveTextContent('Cisco C9200');
-  expect(note).toHaveTextContent('BU1 · Surabaya');
-  expect(note).toHaveTextContent('Disimpan saat Simpan · Budi (QC)');
-  expect(note).toHaveTextContent('cap resmi ditambahkan server saat Simpan');
 
   await userEvent.click(screen.getByRole('button', { name: 'Sembunyikan pratinjau cap' }));
   expect(screen.queryByRole('note', { name: 'Pratinjau cap' })).not.toBeInTheDocument();
@@ -142,10 +149,11 @@ test('pratinjau cap: empat baris tampil, dapat disembunyikan, dan bukan bagian d
   expect(fillText).not.toHaveBeenCalled();
 });
 
-test('tanpa data cap pratinjau tidak ditampilkan', async () => {
+test('tanpa slot cap tidak ada tombol maupun catatan cap', async () => {
   setup({ stamp: undefined });
   await ready();
   expect(screen.queryByTestId('stamp-preview')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /pratinjau cap/ })).not.toBeInTheDocument();
 });
 
 test('jepretan memberi kilat singkat dan getar ringan', async () => {
@@ -189,7 +197,7 @@ test('kamera dilepas saat dialog ditutup (open=false) dan saat unmount', async (
   await ready();
   expect(closed.track.stop).not.toHaveBeenCalled();
   closed.rerender(
-    <ProofCameraDialog
+    <CameraDialog
       open={false}
       onOpenChange={() => undefined}
       remaining={3}
@@ -223,7 +231,7 @@ test('izin ditolak: pesan dan Coba lagi, tanpa rana aktif; onUnavailable dilapor
   setMediaDevices({ getUserMedia });
   const onUnavailable = vi.fn();
   render(
-    <ProofCameraDialog
+    <CameraDialog
       open
       onOpenChange={() => undefined}
       remaining={3}
@@ -239,12 +247,10 @@ test('izin ditolak: pesan dan Coba lagi, tanpa rana aktif; onUnavailable dilapor
   await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
 });
 
-function makeShots(count: number): ProofPhotoRef[] {
+function makeShots(count: number): CameraShot[] {
   return Array.from({ length: count }, (_, index) => ({
-    id: `p${index + 1}`,
-    mime: 'image/webp',
-    size: 1,
-    thumbUrl: `/api/v1/serial-proofs/p${index + 1}`,
+    key: `p${index + 1}`,
+    url: `blob:foto-${index + 1}`,
   }));
 }
 
@@ -297,9 +303,9 @@ test('tumpukan di samping rana: foto terakhir di depan, lapisan belakang, lencan
   // Foto terakhir + paling banyak dua lapis di belakangnya.
   expect(layers).toHaveLength(3);
   expect(layers.map((img) => img.getAttribute('src'))).toEqual([
-    '/api/v1/serial-proofs/p3',
-    '/api/v1/serial-proofs/p2',
-    '/api/v1/serial-proofs/p4',
+    'blob:foto-3',
+    'blob:foto-2',
+    'blob:foto-4',
   ]);
   expect(within(stack).getByTestId('proof-photo-stack-count')).toHaveTextContent('4');
   expect(stack).toHaveAttribute('aria-expanded', 'false');
@@ -320,8 +326,8 @@ test('strip tersembunyi awalnya; ketuk tumpukan memunculkan satu baris horizonta
   expect(strip).not.toHaveClass('flex-wrap');
   expect(strip.children).toHaveLength(5);
   for (const item of Array.from(strip.children)) expect(item).toHaveClass('shrink-0');
-  expect(screen.getByRole('img', { name: 'Foto bukti 1, hasil kamera' })).toBeInTheDocument();
-  expect(screen.getByRole('img', { name: 'Foto bukti 5, hasil kamera' })).toBeInTheDocument();
+  expect(screen.getByRole('img', { name: 'Foto 1, hasil kamera' })).toBeInTheDocument();
+  expect(screen.getByRole('img', { name: 'Foto 5, hasil kamera' })).toBeInTheDocument();
 });
 
 test('ketuk tumpukan lagi menutup strip', async () => {
@@ -409,31 +415,13 @@ test('tombol buang kecil di thumbnail strip memanggil onRemoveShot; tanpa pemang
   await ready();
   await openStrip();
   await userEvent.click(screen.getByRole('button', { name: 'Buang foto 2, hasil kamera' }));
-  expect(onRemoveShot).toHaveBeenCalledWith(shots[1]);
+  expect(onRemoveShot).toHaveBeenCalledWith('p2');
   view.unmount();
 
   setup({ shots });
   await ready();
   await openStrip();
   expect(screen.queryByRole('button', { name: /Buang foto/ })).not.toBeInTheDocument();
-});
-
-test('foto yang sedang diunggah: penanda di tumpukan dan sel berputar di ujung strip', async () => {
-  setup({ shots: makeShots(1), uploading: 2 });
-  await ready();
-  const stack = screen.getByTestId('proof-photo-stack');
-  expect(within(stack).getByTestId('proof-photo-stack-uploading')).toBeInTheDocument();
-  await openStrip();
-  const strip = screen.getByTestId('proof-photo-strip');
-  expect(strip.children).toHaveLength(3);
-  expect(within(strip).getAllByTestId('proof-photo-uploading')).toHaveLength(2);
-});
-
-test('foto pertama masih diunggah: penanda tampil di samping rana tanpa tumpukan', async () => {
-  setup({ uploading: 1 });
-  await ready();
-  expect(screen.queryByTestId('proof-photo-stack')).not.toBeInTheDocument();
-  expect(screen.getByTestId('proof-photo-stack-uploading')).toBeInTheDocument();
 });
 
 test('Selesai menampilkan hitungan foto dan menutup dialog', async () => {
@@ -448,7 +436,7 @@ test('penghitung sisa kuota tampil sebagai pil dan mengikuti prop remaining', as
   await ready();
   expect(screen.getByText('Sisa 2 foto')).toBeInTheDocument();
   view.rerender(
-    <ProofCameraDialog
+    <CameraDialog
       open
       onOpenChange={() => undefined}
       remaining={1}
@@ -597,7 +585,7 @@ test('foto terakhir dibuang dari strip: fokus pindah ke tombol rana', async () =
   act(() => remove.focus());
   expect(remove).toHaveFocus();
   view.rerender(
-    <ProofCameraDialog
+    <CameraDialog
       open
       onOpenChange={() => undefined}
       remaining={3}
@@ -627,12 +615,9 @@ test('fokus sisa klik (bukan fokus papan ketik) tidak menahan tutup-otomatis', a
   }
 });
 
-function rerenderWith(
-  view: { rerender: (ui: React.ReactElement) => void },
-  shots: ProofPhotoRef[],
-) {
+function rerenderWith(view: { rerender: (ui: React.ReactElement) => void }, shots: CameraShot[]) {
   view.rerender(
-    <ProofCameraDialog
+    <CameraDialog
       open
       onOpenChange={() => undefined}
       remaining={3}
@@ -654,7 +639,7 @@ test('buang thumbnail yang sedang fokus (bukan yang terakhir): fokus tak menahan
     // Papan ketik (bukan klik mouse, yang menahan lewat hover): fokus ke tombol buang lalu Enter.
     act(() => screen.getByRole('button', { name: 'Buang foto 2, hasil kamera' }).focus());
     await userEvent.keyboard('{Enter}');
-    rerenderWith(view, [shots[0] as ProofPhotoRef, shots[2] as ProofPhotoRef]);
+    rerenderWith(view, [shots[0] as CameraShot, shots[2] as CameraShot]);
     expect(screen.getAllByRole('button', { name: /Buang foto/ })).toHaveLength(2);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(4500);
@@ -676,7 +661,7 @@ test('buang thumbnail yang fokus: fokus pindah ke tombol buang tetangga dan (fok
     // Papan ketik (bukan klik mouse, yang menahan lewat hover): fokus ke tombol buang lalu Enter.
     act(() => screen.getByRole('button', { name: 'Buang foto 2, hasil kamera' }).focus());
     await userEvent.keyboard('{Enter}');
-    rerenderWith(view, [shots[0] as ProofPhotoRef, shots[2] as ProofPhotoRef]);
+    rerenderWith(view, [shots[0] as CameraShot, shots[2] as CameraShot]);
     // Tetangga (kini foto ke-2) mendapat fokus.
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Buang foto 2, hasil kamera' })).toHaveFocus(),
@@ -733,4 +718,28 @@ test('unmount saat strip terbuka tidak meninggalkan timer strip', async () => {
   } finally {
     vi.useRealTimers();
   }
+});
+
+test('onShot melempar Error("Batas 5 foto per entri tercapai"): pesannya tampil di kamera', async () => {
+  const ctx = setup();
+  ctx.onShot.mockRejectedValueOnce(new Error('Batas 5 foto per entri tercapai'));
+  await ready();
+  await userEvent.click(shutter());
+  expect(await screen.findByRole('alert')).toHaveTextContent('Batas 5 foto per entri tercapai');
+});
+
+test('onShot sinkron yang melempar juga ditampilkan, bukan menjatuhkan dialog', async () => {
+  const onShot = vi.fn((): void => {
+    throw new Error('Gagal sinkron');
+  });
+  setup({ onShot });
+  await ready();
+  await userEvent.click(shutter());
+  expect(await screen.findByRole('alert')).toHaveTextContent('Gagal sinkron');
+});
+
+test('title khusus dipakai sebagai judul untuk pembaca layar', async () => {
+  setup({ title: 'Kamera foto bukti' });
+  await ready();
+  expect(screen.getByText('Kamera foto bukti')).toBeInTheDocument();
 });
