@@ -9,10 +9,11 @@ function AlertDialog({
   open,
   defaultOpen,
   onOpenChange,
+  backToClose,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
+}: React.ComponentProps<typeof AlertDialogPrimitive.Root> & { backToClose?: boolean }) {
   // Ponsel: back menutup dialog (hook no-op di desktop).
-  const root = useBackToCloseRoot({ open, defaultOpen, onOpenChange })
+  const root = useBackToCloseRoot({ open, defaultOpen, onOpenChange, backToClose })
   return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...root} {...props} />
 }
 

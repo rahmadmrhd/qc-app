@@ -1,5 +1,6 @@
-import { VIEWPORT_MD } from '@/lib/layout';
+import { isPhoneViewport } from '@/lib/layout';
 import { overlayDepth } from '@/lib/nav-stack';
+import { isDesktop } from '@/lib/platform';
 import { seedTrail } from '@/lib/stack-nav';
 import { routeTree } from '@/routeTree.gen';
 import { findNavTrail, NAV_GROUPS } from './navigation';
@@ -12,7 +13,7 @@ import { findNavTrail, NAV_GROUPS } from './navigation';
  * saat ini ber-`__TSR_index` > 0, jadi tidak disisipi lagi.
  */
 
-const SKIP_PREFIXES = ['/login', '/laporan', '/auth', '/api'];
+const SKIP_PREFIXES = ['/login', '/laporan', '/auth', '/api', '/country-lock'];
 
 interface RouteNode {
   options: { id: string };
@@ -79,9 +80,14 @@ function isFirstEntry(state: { __TSR_index?: unknown } | null): boolean {
   return state === null || state.__TSR_index === undefined || state.__TSR_index === 0;
 }
 
-export function insertParentChain(win: Window = window, patterns = appRoutePatterns()): boolean {
+export function insertParentChain(
+  win: Window = window,
+  patterns = appRoutePatterns(),
+  signedIn = true,
+): boolean {
   const history = win.history;
-  if (win.innerWidth >= VIEWPORT_MD) return false;
+  // Hanya ponsel di peramban dengan sesi sah: Electron (jendela sempit) dan tamu yang akan dialihkan ke login tidak disisipi.
+  if (!isPhoneViewport() || isDesktop() || !signedIn) return false;
   // Muat ulang saat overlay terbuka: entri overlay tak berarti lagi; lepas satu langkah dan biarkan router menyesuaikan.
   if (overlayDepth() > 0) {
     history.back();
@@ -90,6 +96,8 @@ export function insertParentChain(win: Window = window, patterns = appRoutePatte
   const state = history.state as { __TSR_index?: unknown } | null;
   if (!isFirstEntry(state)) return false;
   const here = win.location.pathname;
+  // Jalur aneh (`//host/...`) dapat berubah menjadi origin lain saat didorong: abaikan.
+  if (here.startsWith('//')) return false;
   if (SKIP_PREFIXES.some((prefix) => here === prefix || here.startsWith(`${prefix}/`)))
     return false;
   const chain = parentChainFor(here, patterns);
@@ -103,13 +111,23 @@ export function insertParentChain(win: Window = window, patterns = appRoutePatte
     __TSR_index: index,
   });
   // Entri pertama menggantikan entri saat ini (jadi Beranda), sisanya didorong; halaman asli di paling atas.
-  history.replaceState(entry(0), '', chain[0]);
-  seedTrail(0, chain[0] as string);
-  chain.slice(1).forEach((path, i) => {
-    history.pushState(entry(i + 1), '', path);
-    seedTrail(i + 1, path);
-  });
-  history.pushState(entry(chain.length), '', target);
-  seedTrail(chain.length, here);
+  try {
+    history.replaceState(entry(0), '', chain[0]);
+    seedTrail(0, chain[0] as string);
+    chain.slice(1).forEach((path, i) => {
+      history.pushState(entry(i + 1), '', path);
+      seedTrail(i + 1, path);
+    });
+    history.pushState(entry(chain.length), '', target);
+    seedTrail(chain.length, here);
+  } catch {
+    // Gagal di tengah: pulihkan alamat semula agar boot tetap jalan (tanpa rantai).
+    try {
+      history.replaceState(null, '', target);
+    } catch {
+      // abaikan
+    }
+    return false;
+  }
   return true;
 }

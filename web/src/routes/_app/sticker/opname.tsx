@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
+import { leaveBlocker } from '@/lib/leave-blocker';
 import { locationsWith, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
@@ -45,7 +46,7 @@ function StickerOpnameRoute() {
   }, []);
   // Hitungan hilang bila halaman ditinggalkan (tautan sidebar, tombol kembali): tanyakan dulu. Menutup tab juga.
   useBlocker({
-    shouldBlockFn: () => dirty.current && !window.confirm(LEAVE_MESSAGE),
+    shouldBlockFn: leaveBlocker(() => dirty.current && !window.confirm(LEAVE_MESSAGE)),
     enableBeforeUnload: () => dirty.current,
   });
 

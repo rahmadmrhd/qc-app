@@ -10,10 +10,11 @@ function Dialog({
   open,
   defaultOpen,
   onOpenChange,
+  backToClose,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Root>) {
+}: React.ComponentProps<typeof DialogPrimitive.Root> & { backToClose?: boolean }) {
   // Ponsel: back menutup dialog (hook no-op di desktop).
-  const root = useBackToCloseRoot({ open, defaultOpen, onOpenChange })
+  const root = useBackToCloseRoot({ open, defaultOpen, onOpenChange, backToClose })
   return <DialogPrimitive.Root data-slot="dialog" {...root} {...props} />
 }
 

@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { overlayDepth, pushOverlayEntry } from '@/lib/nav-stack';
-import { useIsDesktop } from './use-is-desktop';
+import { closeOverlay, openOverlay } from '@/lib/nav-stack';
+import { useIsMobile } from './use-mobile';
 
 /**
- * Back menutup overlay (spek redesain butir 41b): di ponsel, selama `open` true hook menyisipkan satu entri riwayat;
- * back (popstate) memanggil `onClose`. Ditutup lewat UI = entri itu dibuang (`history.back()`), tanpa entri sisa dan
- * tanpa double-pop (penutupan karena back tidak membuang lagi). Bila `onClose` ditolak pemanggil (mis. form kotor
- * menahan penutupan) dan overlay masih terbuka, entri dipasang ulang agar back berikutnya tetap menutup overlay.
- * Desktop (`useIsDesktop` true) tidak berubah sama sekali.
+ * Back menutup overlay (spek redesain butir 41b): di ponsel, selama `open` true hook mendaftarkan satu entri riwayat
+ * lewat pengelola `lib/nav-stack` (back dari pengguna memanggil `onClose`; ditutup lewat UI melepas entri tanpa
+ * double-pop; `onClose` yang ditolak memasang entri lagi). Gerbang ponsel = `useIsMobile` (viewport < 768), sama
+ * dengan panel menu dan header. Desktop tidak berubah sama sekali. `enabled: false` untuk dialog yang dibuka oleh
+ * penjaga keluar halaman (blocker), yang tidak boleh menyisipkan entri riwayat.
  */
-export function useBackToClose(open: boolean, onClose: () => void): void {
-  const desktop = useIsDesktop();
-  const active = open && !desktop;
+export function useBackToClose(open: boolean, onClose: () => void, enabled = true): void {
+  const phone = useIsMobile();
+  const active = open && phone && enabled;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const openRef = useRef(open);
@@ -19,25 +19,11 @@ export function useBackToClose(open: boolean, onClose: () => void): void {
 
   useEffect(() => {
     if (!active) return;
-    let depth = pushOverlayEntry();
-    let popped = false;
-    const onPop = () => {
-      if (popped || overlayDepth() >= depth) return;
-      popped = true;
-      onCloseRef.current();
-      // Overlay ditahan terbuka oleh pemanggil: pasang entri lagi agar back berikutnya menutupnya.
-      setTimeout(() => {
-        if (!openRef.current) return;
-        depth = pushOverlayEntry();
-        popped = false;
-      }, 30);
-    };
-    window.addEventListener('popstate', onPop);
-    return () => {
-      window.removeEventListener('popstate', onPop);
-      // Ditutup lewat UI: buang entri milik kita bila masih paling atas.
-      if (!popped && overlayDepth() >= depth) window.history.back();
-    };
+    const handle = openOverlay(
+      () => onCloseRef.current(),
+      () => openRef.current,
+    );
+    return () => closeOverlay(handle);
   }, [active]);
 }
 
@@ -45,13 +31,15 @@ interface RootOpenProps {
   open?: boolean | undefined;
   defaultOpen?: boolean | undefined;
   onOpenChange?: ((open: boolean) => void) | undefined;
+  /** `false` = tanpa entri riwayat (dialog penjaga keluar halaman). */
+  backToClose?: boolean | undefined;
 }
 
 /**
  * Untuk akar Dialog/AlertDialog/Sheet: menyatukan mode terkendali dan tak terkendali menjadi `open` + `onOpenChange`
  * terkendali, dan memasang `useBackToClose`.
  */
-export function useBackToCloseRoot({ open, defaultOpen, onOpenChange }: RootOpenProps): {
+export function useBackToCloseRoot({ open, defaultOpen, onOpenChange, backToClose }: RootOpenProps): {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 } {
@@ -62,6 +50,6 @@ export function useBackToCloseRoot({ open, defaultOpen, onOpenChange }: RootOpen
     if (!controlled) setInner(next);
     onOpenChange?.(next);
   };
-  useBackToClose(isOpen, () => change(false));
+  useBackToClose(isOpen, () => change(false), backToClose !== false);
   return { open: isOpen, onOpenChange: change };
 }

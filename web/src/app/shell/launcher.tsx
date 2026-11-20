@@ -6,6 +6,7 @@ import { NAV_GROUPS, visibleNavGroups } from '@/app/navigation';
 import { Input } from '@/components/ui/input';
 import { isDesktop } from '@/lib/platform';
 import { useMe } from '@/modules/auth/use-me';
+import { openInDesktop } from '@/modules/countrylock/lib/handoff';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 
 /**
@@ -43,6 +44,14 @@ export function Launcher() {
             <li key={item.to as string}>
               <Link
                 to={item.to}
+                onClick={
+                  item.opensDesktopApp && !isDesktop()
+                    ? () => {
+                        // Sama dengan sidebar: serah-terima ke aplikasi desktop; gagal tak mengganggu (halaman tujuan menjelaskan).
+                        void openInDesktop().catch(() => undefined);
+                      }
+                    : undefined
+                }
                 className="flex min-h-24 flex-col items-center justify-center gap-1.5 rounded-xl border bg-card p-2 text-center text-sm active:bg-muted"
               >
                 <item.icon aria-hidden className="size-6 text-primary-text" />

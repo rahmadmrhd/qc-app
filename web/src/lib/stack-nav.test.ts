@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { pushOverlayEntry } from './nav-stack';
+import { openOverlay, resetOverlayManager } from './nav-stack';
 import {
   popTo,
   previousPath,
@@ -20,6 +20,7 @@ const nav: StackNavigator<string> = { go, pathOf: (target) => target.split('?')[
 
 beforeEach(() => {
   go.mockClear();
+  resetOverlayManager();
   resetTrail();
   at(1, '/item');
   at(2, '/item/1');
@@ -57,7 +58,11 @@ test('popTo: entri sebelumnya bukan tujuan (atau tak diketahui) = replace ke tuj
 });
 
 test('dengan overlay terbuka: navigasi menunggu overlay dilepas dulu', async () => {
-  pushOverlayEntry();
+  window.innerWidth = 360;
+  openOverlay(
+    () => undefined,
+    () => true,
+  );
   replaceTo(nav, '/x');
   expect(go).not.toHaveBeenCalled();
   await vi.waitFor(() => expect(go).toHaveBeenCalledWith('/x', { replace: true }));

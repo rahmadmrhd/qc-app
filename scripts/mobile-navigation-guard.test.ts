@@ -109,3 +109,14 @@ test('rute form tulis (new/edit) bernavigasi lewat useStackNavigation, bukan nav
   }
   expect(violations).toEqual([]);
 });
+
+test('setiap useBlocker memakai leaveBlocker (pop berdelta 0 dari overlay tak boleh dihalangi; review nav C1)', () => {
+  const offenders: string[] = [];
+  for (const file of walk(WEB)) {
+    const source = stripComments(readFileSync(file, 'utf8'));
+    for (const call of callsOf(source, 'useBlocker(')) {
+      if (!call.includes('leaveBlocker(')) offenders.push(rel(file));
+    }
+  }
+  expect(offenders).toEqual([]);
+});

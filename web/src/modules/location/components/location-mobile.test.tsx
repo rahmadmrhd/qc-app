@@ -5,14 +5,10 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { mockMatchMedia } from '@/test/match-media';
 import { ACTIVE_LOCATIONS_STORAGE_KEY } from '../active-locations';
 import { ActiveLocationsProvider } from '../active-locations-context';
+import { lastActiveKey } from '../last-active';
 import { LocationField } from '../location-field';
 import { LocationLine } from './location-line';
-import {
-  LAST_ACTIVE_KEY,
-  LocationReconfirm,
-  RECONFIRM_AFTER_MS,
-  shouldReconfirm,
-} from './location-reconfirm';
+import { LocationReconfirm, RECONFIRM_AFTER_MS, shouldReconfirm } from './location-reconfirm';
 import { LocationSheet } from './location-sheet';
 
 const none = { handover: 'none', qc: 'none', stock: 'none', stickerstock: 'none' } as const;
@@ -87,22 +83,22 @@ test('shouldReconfirm: tanpa penanda tidak; di bawah 4 jam tidak; 4 jam atau leb
 test('dialog konfirmasi lokasi: tidak muncul saat pertama kali, muncul setelah 4 jam, Sudah benar menyegarkan penanda', async () => {
   const first = wrap(<LocationReconfirm />);
   expect(screen.queryByText(/Apakah lokasi ini masih benar/)).toBeNull();
-  expect(localStorage.getItem(LAST_ACTIVE_KEY)).not.toBeNull();
+  expect(localStorage.getItem(lastActiveKey('a@x.com'))).not.toBeNull();
   first.unmount();
 
   const old = Date.now() - RECONFIRM_AFTER_MS - 1000;
-  localStorage.setItem(LAST_ACTIVE_KEY, String(old));
+  localStorage.setItem(lastActiveKey('a@x.com'), String(old));
   wrap(<LocationReconfirm />);
   expect(await screen.findByText(/Apakah lokasi ini masih benar/)).toBeInTheDocument();
   expect(screen.getByText(/Lokasi aktif: Semua lokasi/)).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Sudah benar' }));
-  expect(Number(localStorage.getItem(LAST_ACTIVE_KEY))).toBeGreaterThan(old);
+  expect(Number(localStorage.getItem(lastActiveKey('a@x.com')))).toBeGreaterThan(old);
   expect(screen.queryByText(/Apakah lokasi ini masih benar/)).toBeNull();
 });
 
 test('dialog konfirmasi: kembali ke tab setelah lama memicu, Ganti membuka lembar pemilih', async () => {
   wrap(<LocationReconfirm />);
-  localStorage.setItem(LAST_ACTIVE_KEY, String(Date.now() - RECONFIRM_AFTER_MS - 1000));
+  localStorage.setItem(lastActiveKey('a@x.com'), String(Date.now() - RECONFIRM_AFTER_MS - 1000));
   act(() => {
     document.dispatchEvent(new Event('visibilitychange'));
   });

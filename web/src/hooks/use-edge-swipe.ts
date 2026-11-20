@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
+import { overlayDepth } from '@/lib/nav-stack';
 
 /** Lebar zona tepi kiri layar (px) tempat gestur geser dimulai. */
-export const EDGE_ZONE_PX = 20;
+export const EDGE_ZONE_PX = 14;
 /** Jarak geser minimum (px) agar dihitung membuka. */
 export const EDGE_SWIPE_MIN_PX = 56;
 
@@ -16,6 +17,11 @@ export function useEdgeSwipe(onSwipe: () => void, enabled: boolean): void {
     if (!enabled) return;
     let start: { x: number; y: number } | null = null;
     const onStart = (event: TouchEvent) => {
+      // Dialog/kamera layar penuh terbuka: panel menu tak boleh menumpuk di atasnya (review navigasi M5).
+      if (overlayDepth() > 0) {
+        start = null;
+        return;
+      }
       const touch = event.touches[0];
       start = touch && touch.clientX <= EDGE_ZONE_PX ? { x: touch.clientX, y: touch.clientY } : null;
     };

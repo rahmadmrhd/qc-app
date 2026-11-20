@@ -29,6 +29,7 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
+import { isPhoneViewport } from '@/lib/layout';
 import { isDesktop } from '@/lib/platform';
 import { useMe } from '@/modules/auth/use-me';
 import { openInDesktop } from '@/modules/countrylock/lib/handoff';
@@ -36,6 +37,9 @@ import { hasPendingGuide } from '@/modules/guide/lib/guide-for-route';
 import { useOfferedGuides } from '@/modules/guide/lib/use-offered-guides';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 import { readSidebarState, writeSidebarState } from './sidebar-state';
+
+/** Penanda akordeon ponsel: pengguna menutup semua induk (induk aktif tak boleh membuka diri lagi). */
+const CLOSED_ALL = '__none__';
 
 const GUIDE_DOT_CLASS =
   'ml-auto size-2 shrink-0 rounded-full bg-primary group-data-[collapsible=icon]:hidden';
@@ -49,7 +53,10 @@ export function AppSidebar() {
   const matchRoute = useMatchRoute();
   const { offers } = useOfferedGuides();
   const { state, isMobile } = useSidebar();
-  const [expanded, setExpanded] = useState<string[]>(() => readSidebarState().expanded);
+  // Ponsel: akordeon, mulai tanpa pilihan tersimpan (induk yang memuat halaman aktif terbuka sendiri).
+  const [expanded, setExpanded] = useState<string[]>(() =>
+    isPhoneViewport() ? [] : readSidebarState().expanded,
+  );
   const iconMode = state === 'collapsed' && !isMobile;
   const stack = useStackNavigation();
   const [query, setQuery] = useState('');
@@ -65,8 +72,10 @@ export function AppSidebar() {
         ? isMobile
           ? [id]
           : [...current.filter((v) => v !== id), id]
-        : current.filter((v) => v !== id);
-      writeSidebarState({ ...readSidebarState(), expanded: next });
+        : isMobile
+          ? [CLOSED_ALL]
+          : current.filter((v) => v !== id);
+      if (!isMobile) writeSidebarState({ ...readSidebarState(), expanded: next });
       return next;
     });
   }
@@ -151,7 +160,14 @@ export function AppSidebar() {
     }
 
     // Induk yang memuat rute aktif selalu terbuka; keadaan pilihan pengguna tetap tersimpan terpisah.
-    const open = searching || containsActive || expanded.includes(parent.id);
+    // Ponsel (akordeon ketat): setelah pengguna memilih, hanya induk pilihannya yang terbuka; sebelumnya induk aktif.
+    const open =
+      searching ||
+      (isMobile
+        ? expanded.length > 0
+          ? expanded.includes(parent.id)
+          : containsActive
+        : containsActive || expanded.includes(parent.id));
     return (
       <Collapsible
         key={parent.id}

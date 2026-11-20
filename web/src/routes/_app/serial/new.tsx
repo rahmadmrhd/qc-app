@@ -1,6 +1,7 @@
 import { createFileRoute, useBlocker } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
+import { leaveBlocker } from '@/lib/leave-blocker';
 import { requirePermission } from '@/modules/auth/permissions';
 import { LeaveProofDialog } from '@/modules/serial/components/leave-proof-dialog';
 import { RecordPage, type RecordPageHandle } from '@/modules/serial/components/record-page';
@@ -27,14 +28,16 @@ function NewSerialRoute() {
   const stack = useStackNavigation();
   // Draft biasa: konfirmasi bawaan peramban seperti semula. Draft berfoto bukti ditangani penjaga kedua (dialog).
   useBlocker({
-    shouldBlockFn: () =>
-      leaveMode(dirty.current, hasProof.current) === 'confirm' &&
-      shouldBlockLeave(true, () => window.confirm(LEAVE_MESSAGE)),
+    shouldBlockFn: leaveBlocker(
+      () =>
+        leaveMode(dirty.current, hasProof.current) === 'confirm' &&
+        shouldBlockLeave(true, () => window.confirm(LEAVE_MESSAGE)),
+    ),
     // Menutup tab/memuat ulang tetap diperingatkan (juga saat ada foto).
     enableBeforeUnload: () => shouldWarnBeforeUnload(dirty.current),
   });
   const blocker = useBlocker({
-    shouldBlockFn: () => leaveMode(dirty.current, hasProof.current) === 'dialog',
+    shouldBlockFn: leaveBlocker(() => leaveMode(dirty.current, hasProof.current) === 'dialog'),
     withResolver: true,
   });
 

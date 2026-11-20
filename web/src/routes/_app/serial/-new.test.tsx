@@ -16,6 +16,8 @@ const state = vi.hoisted(() => ({
   /** Memicu penjaga dialog seperti navigasi keluar: mengembalikan hasil `shouldBlockFn` dan memasang status. */
   triggerDialog: undefined as (() => boolean) | undefined,
 }));
+// Lokasi berbeda: simulasi meninggalkan halaman (lokasi sama tak pernah diblokir, lihat leaveBlocker).
+const LEAVE = { current: { pathname: '/serial/new' }, next: { pathname: '/serial' } };
 vi.mock('@tanstack/react-router', async () => ({
   ...(await vi.importActual<object>('@tanstack/react-router')),
   createFileRoute: () => (options: { component: () => unknown }) => ({ options }),
@@ -24,12 +26,12 @@ vi.mock('@tanstack/react-router', async () => ({
   useBlocker: (opts: { shouldBlockFn: () => boolean; withResolver?: boolean }) => {
     const [status, setStatus] = useState<'idle' | 'blocked'>('idle');
     if (!opts.withResolver) {
-      state.blockerFn = opts.shouldBlockFn;
+      state.blockerFn = () => (opts.shouldBlockFn as (a: unknown) => boolean)(LEAVE);
       return undefined;
     }
-    state.dialogFn = opts.shouldBlockFn;
+    state.dialogFn = () => (opts.shouldBlockFn as (a: unknown) => boolean)(LEAVE);
     state.triggerDialog = () => {
-      const blocked = opts.shouldBlockFn();
+      const blocked = (opts.shouldBlockFn as (a: unknown) => boolean)(LEAVE);
       if (blocked) setStatus('blocked');
       return blocked;
     };

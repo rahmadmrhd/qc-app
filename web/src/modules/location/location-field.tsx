@@ -1,7 +1,7 @@
 import type { LocatedModule } from '@shared/assignments';
 import { normalizeKey } from '@shared/items';
 import type { Level } from '@shared/permissions';
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { LinkField, type LinkOption } from '@/components/link-field';
 import { locationsWith } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
@@ -36,7 +36,8 @@ export function LocationField({
   required,
   highlightInitial,
 }: LocationFieldProps) {
-  const initialRef = useRef(value);
+  // Sorotan hilang begitu pengguna mengubah nilai (dan tidak muncul lagi bila dikembalikan ke nilai awal).
+  const [touched, setTouched] = useState(false);
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   const [term, setTerm] = useState('');
@@ -51,7 +52,7 @@ export function LocationField({
   const fromActive =
     highlightInitial === true &&
     value !== '' &&
-    value === initialRef.current &&
+    !touched &&
     writable.some((location) => location.id === value);
   const key = normalizeKey(term);
   const options: LinkOption[] = writable
@@ -72,7 +73,10 @@ export function LocationField({
         options={options}
         onSearchChange={setTerm}
         searchDebounceMs={0}
-        onChange={(next) => onChange(next ?? '')}
+        onChange={(next) => {
+          setTouched(true);
+          onChange(next ?? '');
+        }}
         disabled={writable.length === 0}
       />
       {fromActive ? (

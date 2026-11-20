@@ -55,3 +55,26 @@ test('desktop, Beranda, login, dan halaman publik tidak disisipi', () => {
     expect(window.history.length).toBe(length);
   }
 });
+
+test('belum masuk (tamu) tidak disisipi (review nav M1)', () => {
+  const length = window.history.length;
+  expect(insertParentChain(window, patterns, false)).toBe(false);
+  expect(window.history.length).toBe(length);
+});
+
+test('/country-lock dilewati', () => {
+  for (const path of ['/country-lock']) {
+    window.history.replaceState(null, '', path);
+    const length = window.history.length;
+    expect(insertParentChain(window, patterns)).toBe(false);
+    expect(window.history.length).toBe(length);
+  }
+});
+
+test('jalur //host tidak disisipi (review nav M2)', () => {
+  const fake = {
+    history: { state: null, pushState: () => undefined, replaceState: () => undefined },
+    location: { pathname: '//evil.test/item/abc', search: '', hash: '' },
+  } as unknown as Window;
+  expect(insertParentChain(fake, patterns)).toBe(false);
+});

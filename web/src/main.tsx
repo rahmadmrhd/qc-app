@@ -100,7 +100,7 @@ async function start() {
   }
 
   // Tautan dalam di ponsel: sisipkan rantai induk SEBELUM router dibuat (router membaca riwayat saat dibuat).
-  insertParentChain();
+  insertParentChain(window, undefined, me !== null);
   const router = createAppRouter(queryClient);
   setUnauthenticatedHandler(() => {
     clearSession();

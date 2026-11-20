@@ -12,10 +12,11 @@ function Sheet({
   open,
   defaultOpen,
   onOpenChange,
+  backToClose,
   ...props
-}: React.ComponentProps<typeof SheetPrimitive.Root>) {
+}: React.ComponentProps<typeof SheetPrimitive.Root> & { backToClose?: boolean }) {
   // Ponsel: back menutup panel (hook no-op di desktop).
-  const root = useBackToCloseRoot({ open, defaultOpen, onOpenChange })
+  const root = useBackToCloseRoot({ open, defaultOpen, onOpenChange, backToClose })
   return <SheetPrimitive.Root data-slot="sheet" {...root} {...props} />
 }
 

@@ -24,7 +24,12 @@ export interface LeaveProofDialogProps {
  */
 export function LeaveProofDialog({ open, saving, onSave, onLeave, onStay }: LeaveProofDialogProps) {
   return (
-    <AlertDialog open={open} onOpenChange={(next) => !next && !saving && onStay()}>
+    <AlertDialog
+      open={open}
+      // Dibuka oleh penjaga keluar halaman: tak boleh menyisipkan entri riwayat (riwayat sudah di tengah navigasi).
+      backToClose={false}
+      onOpenChange={(next) => !next && !saving && onStay()}
+    >
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Simpan dulu sebelum pindah halaman?</AlertDialogTitle>
