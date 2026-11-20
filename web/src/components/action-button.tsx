@@ -156,6 +156,14 @@ export const ACTIONS: Record<ActionKind, ActionSpec> = {
   },
 };
 
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === 'function'
+  );
+}
+
 export type ActionButtonProps = {
   action: ActionKind;
   /** Menimpa label bawaan (mis. "Tambah item"). Pada `compact` menjadi aria-label dan isi tooltip. */
@@ -195,7 +203,7 @@ export function ActionButton({
           return;
         }
         const result: unknown = onClick(event);
-        if (result instanceof Promise) {
+        if (isThenable(result)) {
           inflight.current = true;
           setPending(true);
           const done = () => {

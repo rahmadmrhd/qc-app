@@ -70,7 +70,13 @@ export function BulkBar({
                 </Button>
               </PopoverTrigger>
               <PopoverContent align="end" className="flex w-auto flex-col items-stretch gap-2 p-2">
-                {rest}
+                {/* Portal: di luar fieldset induk, jadi dinonaktifkan sendiri selama aksi berjalan (review M1). */}
+                <fieldset
+                  disabled={busy}
+                  className="m-0 flex flex-col items-stretch gap-2 border-0 p-0"
+                >
+                  {rest}
+                </fieldset>
               </PopoverContent>
             </Popover>
           ) : null}

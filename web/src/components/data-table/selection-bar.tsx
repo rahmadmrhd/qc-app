@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { RowSelection } from './use-row-selection';
@@ -19,12 +19,18 @@ export function SelectionBar({
   onExit?: () => void;
 }) {
   const allSelected = ids.length > 0 && ids.every((id) => selection.selected.has(id));
+  // Pemicu mode pilih ("Pilih" di menu, tombol, tekan lama) hilang dari layar: fokus pindah ke bar ini, bukan ke body (M7).
+  const exitRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    exitRef.current?.focus({ preventScroll: true });
+  }, []);
   return (
     <div
       data-slot="selection-bar"
       className="sticky top-[var(--headroom-offset,3.5rem)] z-10 flex items-center gap-2 rounded-lg border bg-background px-1 py-0.5"
     >
       <Button
+        ref={exitRef}
         type="button"
         variant="ghost"
         size="icon"
@@ -33,7 +39,9 @@ export function SelectionBar({
       >
         <X aria-hidden />
       </Button>
-      <span className="flex-1 text-sm font-medium">{selection.count} dipilih</span>
+      <span role="status" className="flex-1 text-sm font-medium">
+        {selection.count} dipilih
+      </span>
       {/* biome-ignore lint/a11y/noLabelWithoutControl: Checkbox Radix adalah kontrolnya */}
       <label className="flex min-h-11 items-center gap-2 pr-3 text-sm">
         <Checkbox

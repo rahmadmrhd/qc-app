@@ -2,7 +2,7 @@ import { act, fireEvent, render, renderHook, screen, within } from '@testing-lib
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ActionButton } from '@/components/action-button';
-import { DataTable } from '@/components/data-table';
+import { BulkBar, DataTable } from '@/components/data-table';
 import { useBulkAction } from '@/components/data-table/use-bulk-action';
 import { useRowSelection } from '@/components/data-table/use-row-selection';
 import { GridView } from '@/components/grid/grid-view';
@@ -384,4 +384,38 @@ test('StickyActionBar naik setinggi papan ketik layar (--kb) agar tak tertutup d
   expect(screen.getByRole('region', { name: 'Aksi' }).className).toContain(
     'bottom-[var(--kb,0px)]',
   );
+});
+
+test('ActionButton: janji yang ditolak membuka kunci tombol lagi dan thenable ikut dihitung (review M3)', async () => {
+  let reject: (reason: Error) => void = () => undefined;
+  const onClick = vi.fn(
+    () =>
+      ({
+        then: (_ok: () => void, fail: (reason: Error) => void) => {
+          reject = fail;
+        },
+      }) as PromiseLike<void>,
+  );
+  render(<ActionButton action="save" onClick={onClick} />);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(screen.getByRole('button')).toBeDisabled();
+  await act(async () => {
+    reject(new Error('gagal'));
+  });
+  expect(screen.getByRole('button')).toBeEnabled();
+});
+
+test('BulkBar ponsel: aksi di "Aksi lainnya" ikut nonaktif selama aksi massal berjalan (review M1)', async () => {
+  const bar = (busy: boolean) => (
+    <BulkBar count={2} onClear={() => undefined} busy={busy}>
+      <ActionButton action="activate" />
+      <ActionButton action="deactivate" />
+      <ActionButton action="delete" />
+    </BulkBar>
+  );
+  const { rerender } = render(bar(false));
+  await userEvent.click(screen.getByRole('button', { name: 'Aksi lainnya' }));
+  expect(await screen.findByRole('button', { name: 'Hapus' })).toBeEnabled();
+  rerender(bar(true));
+  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
 });

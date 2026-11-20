@@ -5,7 +5,10 @@ import { VIEWPORT_MD } from "@/lib/layout"
 const MOBILE_BREAKPOINT = VIEWPORT_MD
 
 export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
+  // Nilai awal dari viewport saat ini (bukan `undefined`): tanpa satu frame salah di ponsel (review M11).
+  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(() =>
+    typeof window === "undefined" ? undefined : window.innerWidth < MOBILE_BREAKPOINT,
+  )
 
   React.useEffect(() => {
     const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)

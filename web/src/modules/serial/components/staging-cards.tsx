@@ -61,7 +61,9 @@ const CardView = memo(function CardView({
       rootProps={{
         'data-tour': 'serial-row',
         'data-result': row.result ?? (status.tone === 'ok' ? 'ok' : 'incomplete'),
-        className: 'select-none [-webkit-touch-callout:none]',
+        className: selecting
+          ? 'select-none [-webkit-touch-callout:none]'
+          : '[-webkit-touch-callout:none] data-[pressing]:select-none',
         ...bind(row.clientId),
       }}
       leading={

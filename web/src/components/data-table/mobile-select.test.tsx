@@ -280,3 +280,14 @@ test('ListPage desktop: Tambah di header, bukan FAB', () => {
   const button = screen.getByRole('button', { name: 'Tambah merk' });
   expect(button.className).not.toContain('fixed');
 });
+
+test('teks kartu dapat diseleksi di luar tekan lama: data-pressing hanya selama menekan (review M6)', () => {
+  vi.useFakeTimers();
+  render(<Harness />);
+  const first = screen.getAllByRole('listitem')[0] as HTMLElement;
+  expect(first.className).not.toContain('select-none ');
+  pressCard(first);
+  expect(first.hasAttribute('data-pressing')).toBe(true);
+  fireEvent.pointerUp(first);
+  expect(first.hasAttribute('data-pressing')).toBe(false);
+});

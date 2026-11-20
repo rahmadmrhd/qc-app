@@ -58,10 +58,14 @@ export function useLongPressSelect(selection: RowSelection | undefined, enabled:
   const selectingRef = useRef(selecting);
   selectingRef.current = selecting;
 
+  const pressed = useRef<HTMLElement | null>(null);
   const cancel = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
     origin.current = null;
+    // Teks kartu baru terkunci (tak dapat diseleksi) selama tekan berlangsung; di luar itu dapat disalin.
+    pressed.current?.removeAttribute('data-pressing');
+    pressed.current = null;
   }, []);
 
   // Gulir halaman = bukan tekan lama.
@@ -88,6 +92,8 @@ export function useLongPressSelect(selection: RowSelection | undefined, enabled:
           if (selectingRef.current) return;
           cancel();
           origin.current = { x: event.clientX, y: event.clientY };
+          pressed.current = event.currentTarget;
+          event.currentTarget.setAttribute('data-pressing', '');
           timer.current = setTimeout(() => {
             timer.current = null;
             fired.current = true;

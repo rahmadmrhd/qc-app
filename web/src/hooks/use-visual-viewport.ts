@@ -105,6 +105,8 @@ export function useFocusIntoView(): void {
     };
     const onFocusIn = (event: FocusEvent) => {
       if (!phone() || !isTextField(event.target as Element | null)) return;
+      // Combobox menggulirkan dirinya sendiri ke atas saat daftar terbuka; gulir ke tengah akan membatalkannya (review M5).
+      if ((event.target as Element).getAttribute('role') === 'combobox') return;
       target = event.target as HTMLElement;
       arm(KEYBOARD_FALLBACK_MS);
     };

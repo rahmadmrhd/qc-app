@@ -41,8 +41,8 @@ interface DataCardsProps<T> {
 
 /**
  * Tampilan kartu bertumpuk `DataTable` di < 768 px: judul (tautan), menu "⋯" berlabel di kanan atas, lencana status
- * di bawah judul, lalu pasangan label–nilai dari kolom `meta`. Pilih massal di ponsel (tekan lama) menyusul:
- * `selection` sudah diteruskan (kartu terpilih ditandai `data-state`), interaksinya belum dipasang.
+ * di bawah judul, lalu pasangan label–nilai dari kolom `meta`. Pilih massal: tekan lama kartu (`useLongPressSelect`) atau
+ * "Pilih" di menu "⋯"; mode pilih menampilkan checkbox dan `SelectionBar` (kartu terpilih ditandai `data-state`).
  */
 export function DataCards<T>({
   rows,
@@ -111,7 +111,9 @@ export function DataCards<T>({
               key={id}
               selected={isSelected}
               rootProps={{
-                className: selection ? 'select-none [-webkit-touch-callout:none]' : undefined,
+                className: selection
+                  ? `${selecting ? 'select-none ' : ''}[-webkit-touch-callout:none] data-[pressing]:select-none`
+                  : undefined,
                 ...bind(id),
               }}
               leading={

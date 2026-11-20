@@ -140,7 +140,8 @@ export function GridView<T>({
               key={id}
               className={cn(
                 'relative',
-                selection && !desktop && 'select-none [-webkit-touch-callout:none]',
+                selection && !desktop && '[-webkit-touch-callout:none] data-[pressing]:select-none',
+                selection && selecting && 'select-none',
                 itemClassName?.(item),
               )}
               {...bind(id)}
