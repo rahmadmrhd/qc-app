@@ -212,7 +212,7 @@ export function AttachmentView({
                   ) : null}
                 </div>
               )}
-              {!image && item.onDownload ? (
+              {item.onDownload ? (
                 <Button
                   type="button"
                   variant="outline"

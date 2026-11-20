@@ -116,7 +116,7 @@ export function AttachmentsField({ value, onChange, error, onBusyChange }: Attac
   // Unggahan yang menunggu/berjalan sudah mengisi kuota; yang gagal tidak.
   const reserved = own.entries.filter((entry) => entry.phase !== 'failed').length;
   const remaining = Math.max(0, MAX - value.length - reserved);
-  const busy = own.busy;
+  const busy = own.blocking;
   const onBusyChangeRef = useRef(onBusyChange);
   onBusyChangeRef.current = onBusyChange;
   useEffect(() => {
@@ -149,13 +149,15 @@ export function AttachmentsField({ value, onChange, error, onBusyChange }: Attac
     name: row.filename,
     mime: row.mime,
     size: row.size,
+    // Gambar tak dikecilkan (resolusi asli untuk desain stiker): selain pratinjau, berkas aslinya tetap bisa diunduh.
+    onDownload: () => void download(row),
     ...(row.mime.startsWith('image/')
       ? {
           renderImage: (variant: 'thumb' | 'large') => (
             <PostelImage id={row.id} alt={row.filename} variant={variant} />
           ),
         }
-      : { onDownload: () => void download(row) }),
+      : {}),
   }));
 
   const messages = [

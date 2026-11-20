@@ -149,7 +149,7 @@ test('11 berkas sekaligus: dialog menerima 10 dan menolak yang ke-11', async () 
   fireEvent.change(input, {
     target: { files: Array.from({ length: 11 }, (_, i) => png(`f${i}.png`)) },
   });
-  expect(await within(dialog).findByText(/Maksimal 10 berkas per unggahan/)).toBeInTheDocument();
+  expect(await within(dialog).findByText(/Maksimal 10 berkas/)).toBeInTheDocument();
   expect(within(dialog).getByRole('button', { name: 'Tambahkan (10)' })).toBeInTheDocument();
 });
 
@@ -207,7 +207,15 @@ test('gambar dimuat lewat postelFiles.get; thumbnail diklik membuka pratinjau be
   await waitFor(() => expect(apiMock).toHaveBeenCalledWith('postelFiles.get', { id: 'g1' }));
   const thumb = await screen.findByRole('button', { name: /^Perbesar lampiran-bbbbbbbb\.png/ });
   expect(within(thumb).getByRole('img')).toHaveAttribute('src', 'blob:postel-g1');
-  expect(screen.queryByRole('button', { name: /^Unduh / })).not.toBeInTheDocument();
+  // Berkas asli gambar tetap bisa diunduh di samping pratinjau (tombol Unduh tidak hanya untuk PDF).
+  await userEvent.click(screen.getByRole('button', { name: /^Unduh lampiran-bbbbbbbb.png/ }));
+  await waitFor(() =>
+    expect(downloadMock).toHaveBeenCalledWith({
+      bytes: new Uint8Array([137, 80, 78, 71]),
+      mime: 'image/png',
+      filename: 'lampiran-bbbbbbbb.png',
+    }),
+  );
   await userEvent.click(thumb);
   const dialog = await screen.findByRole('dialog', { name: 'lampiran-bbbbbbbb.png' });
   expect(within(dialog).getByRole('img', { name: 'lampiran-bbbbbbbb.png' })).toHaveAttribute(
@@ -245,6 +253,22 @@ test('onBusyChange true selama unggahan berjalan, false setelah selesai', async 
   expect(await screen.findByTestId('attachment-pending')).toBeInTheDocument();
   finish(dto(1, 'pdf'));
   await screen.findByText('lampiran-u1.pdf');
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
+});
+
+test('F1: unggahan gagal tetap menahan (true) sampai Ulangi berhasil atau dibuang', async () => {
+  apiMock.mockRejectedValueOnce(new Error('putus'));
+  render(<Harness />);
+  await addViaDialog(pdf('a.pdf'));
+  expect(await screen.findByRole('button', { name: /^Ulangi / })).toBeInTheDocument();
+  expect(onBusyChange).toHaveBeenLastCalledWith(true);
+  apiMock.mockResolvedValueOnce(dto(1, 'pdf'));
+  await userEvent.click(screen.getByRole('button', { name: /^Ulangi / }));
+  await screen.findByText('lampiran-u1.pdf');
+  await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
+  apiMock.mockRejectedValueOnce(new Error('putus'));
+  await addViaDialog(pdf('b.pdf'));
+  await userEvent.click(await screen.findByRole('button', { name: /^Buang b/ }));
   await waitFor(() => expect(onBusyChange).toHaveBeenLastCalledWith(false));
 });
 
