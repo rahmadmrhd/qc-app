@@ -43,6 +43,7 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'stickerGuides.upload': true,
   'stickerGuides.rename': true,
   'stickerGuides.remove': true,
+  'stickerGuides.removeBatch': true,
   'stickerGuides.thumbnail': true,
   'stickerGuides.usages': true,
   'brands.list': true,

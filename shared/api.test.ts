@@ -68,6 +68,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   },
   'stickerGuides.rename': { id: 'g1', name: 'Kardus Baru' },
   'stickerGuides.remove': { id: 'g1' },
+  'stickerGuides.removeBatch': { ids: ['g1', 'g2'] },
   'stickerGuides.thumbnail': { id: 'g1' },
   'stickerGuides.usages': { id: 'g1' },
   'brands.list': { status: 'deleted' },

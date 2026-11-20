@@ -132,6 +132,7 @@ const WORST: Inputs = {
     reason: text(STICKER_LIMITS.reasonMax),
   },
   'stickerGuides.rename': { id: UUID, name: text(GUIDE_LIMITS.nameMax) },
+  'stickerGuides.removeBatch': { ids: BATCH_IDS },
   'stickerTypes.setStatus': { id: UUID, status: 'inactive' },
   'stickerTypes.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
   'stickerTypes.removeBatch': { ids: BATCH_IDS },

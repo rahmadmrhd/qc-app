@@ -29,11 +29,7 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
   ],
   'server/src/modules/item/service.ts': ['item_sticker_marks@1#0ea287d8'],
   // Fase 4a (sticker)
-  'server/src/modules/sticker/guide-repo.ts': [
-    'item_sticker_photos@1#dae36bcd',
-    'users@1#21ba7e4d',
-    'users@2#efe68088',
-  ],
+  'server/src/modules/sticker/guide-repo.ts': ['users@1#21ba7e4d', 'users@2#efe68088'],
   'server/src/modules/sticker/instruction-service.ts': ['business_units@1#8607d2a9'],
   'server/src/modules/sticker/manual-book.ts': ['manual_book_versions@1#921b68f4'],
   'server/src/modules/sticker/repo.ts': [

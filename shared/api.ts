@@ -161,6 +161,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   },
   'stickerGuides.rename': { verb: 'PATCH', path: '/sticker-guides/{id}' },
   'stickerGuides.remove': { verb: 'DELETE', path: '/sticker-guides/{id}' },
+  'stickerGuides.removeBatch': { verb: 'POST', path: '/sticker-guides/batch/delete' },
   'stickerGuides.thumbnail': {
     verb: 'GET',
     path: '/sticker-guides/{id}/thumbnail',

@@ -1255,6 +1255,7 @@ export interface ApiContract {
   'stickerGuides.upload': { input: UploadStickerGuideInput; output: StickerGuideDto };
   'stickerGuides.rename': { input: RenameStickerGuideInput; output: StickerGuideDto };
   'stickerGuides.remove': { input: RemoveStickerGuideInput; output: { id: string } };
+  'stickerGuides.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
   'stickerGuides.thumbnail': { input: GetStickerGuideThumbInput; output: FileContentDto };
   'stickerGuides.usages': { input: ListGuideUsagesInput; output: GuideUsageDto[] };
   'brands.list': { input: ListBrandsInput | null; output: BrandDto[] };
