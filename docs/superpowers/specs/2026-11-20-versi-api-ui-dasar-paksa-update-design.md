@@ -34,6 +34,11 @@ Seluruh butir di bawah disetujui pemilik produk pada 2026-11-20 dan menggantikan
    yang bergantung pada API yang ditahan.
 7. **Satuan versi = kelompok rute di server; syarat fitur disusun di sisi UI** (jawaban pemilik atas usulan perancang): server
    mengumumkan versi per kelompok id (`qrcodes`, `serials`, ...); UI memiliki tabel kecil "fitur X butuh kelompok A ≥ n dan B ≥ m".
+8. **Rollback server sampai ke desktop** (diputuskan pemilik produk 2026-11-20, di luar rancangan awal): bila manifest server TIDAK
+   lebih baru dari UI dasar (`createdAt` manifest <= UI dasar), bundel unduhan yang dipegang desktop (`active`, `previous`, `ready`)
+   dibuang dan desktop kembali ke UI dasar, bukan terus memakai bundel unduhan yang lebih baru dari server. Alasan: rollback server
+   (`deploy.sh` otomatis atau `deploy-tag.yml` downgrade) harus menurunkan klien juga; tanpa ini bundel yang rusak secara fungsional
+   bertahan sampai server menerbitkan build yang lebih baru darinya. Menutup temuan review akhir (Important 2).
 
 ## 4. Kondisi sekarang (fakta kode, 2026-11-20)
 - `shared/api.ts`: satu tabel `API_ROUTES` (123 id dalam 28 kelompok menurut awalan sebelum titik, dihitung dari berkas); `REST_BASE = '/api/v1'`
@@ -98,7 +103,11 @@ ada di `API_GROUP_VERSIONS` dan versinya tidak melebihi `latest`.
 - Penanda urutan: `createdAt` manifest (usulan perancang; `uiVersion` hash tak berurutan, dan nomor run CI berbeda per workflow).
 - Saat peluncuran, `ui-bundle.ts` membaca `ui-baseline/ui-manifest.json`; bila `createdAt` UI dasar > `createdAt` bundel aktif,
   bundel unduhan dan `ready`-nya dibuang (kembali ke UI dasar) dan versinya ditandai sudah dikalahkan. Saat mengunduh, manifest
-  server dengan `createdAt` ≤ UI dasar tidak diterapkan (hasil `none`, alasan "UI dasar lebih baru").
+  server dengan `createdAt` ≤ UI dasar tidak diterapkan (hasil `none`, alasan "UI dasar lebih baru"); dan bila saat itu desktop
+  memegang bundel unduhan (`active`/`previous`/`ready`), semuanya dibuang dari `state.json` (keputusan 8: rollback server sampai
+  ke desktop) dan desktop kembali ke UI dasar pada peluncuran berikutnya. Sesi yang sedang berjalan tetap memakai berkas bundelnya
+  (root tak berganti di tengah sesi, jadi potongan lazy tak rusak dan inject tak terganggu); direktori versi dihapus pada
+  peluncuran berikutnya (`prune()` di awal) dan `current` dijaga dari `prune` selama sesi.
 - UI dasar bukan berkas yang diverifikasi tanda tangan (ia bagian installer yang sudah dipercaya, seperti kode).
 - Mengapa aman: UI yang lebih baru dari server tetap berfungsi karena keputusan 2-4 (fallback ke versi lama, fitur baru disembunyikan).
   Syarat `minBridge` tetap berlaku untuk bundel unduhan; UI dasar selalu cocok dengan jembatan installernya.
@@ -148,6 +157,7 @@ berdampingan lewat `restClient`. Uji perangkat nyata: pembaruan paksa installer 
 ## 10. Pertanyaan terbuka dan risiko
 1. **Penanda urutan UI** (`createdAt`): rebuild commit lama yang lebih belakangan terlihat "lebih baru". Dampaknya kecil karena
    keputusan 2-4 membuat UI lebih baru selalu aman, tetapi UI dasar bisa menang atas bundel server yang sebenarnya lebih baru secara kode.
+   Akibat turunannya (rollback server ke build <= UI dasar menurunkan desktop ke UI dasar) sudah diputuskan pemilik: butir 8 bagian 3.
 2. **Jeda minimum deprecated → hapus:** "rilis berikutnya" bisa hanya beberapa jam setelah rilis sebelumnya (hotfix), padahal antrean
    offline hidup 24 jam. Usulan perancang: `release:prepare server` menolak penghapusan bila potret yang menandai deprecated
    berumur < 24 jam (nilai bisa diperpanjang oleh pemilik).
@@ -203,6 +213,10 @@ Penyimpangan dari rancangan:
    menang tak pernah aktif. `build:desktop` dan CI desktop dialihkan ke `bun run build`, `verify-pack` menegaskan manifest ada
    dan sah, dan tes penjaga (`desktop/scripts/packaging-config.test.ts`, `verify-pack-args.test.ts`, `scripts/ci-workflows.test.ts`)
    mencegah regresi.
+8. Rollback server (review akhir, Important 2; keputusan pemilik butir 8 bagian 3): `check()` di `ui-bundle.ts` mengosongkan
+   `active`/`previous`/`ready` dan hitungan gagal saat manifest server <= UI dasar dan ada bundel dipegang, tanpa menyentuh root sesi
+   berjalan; `current` ikut dijaga `prune()` dan `prune()` dipanggil di awal peluncuran agar direktori yatim terhapus. Pertanyaan
+   terbuka terkait: tidak ada yang tersisa.
 
 Keputusan pemilik yang dicatat di sini: bagian 3 (2026-11-20). Pertanyaan terbuka bagian 10 belum diputuskan, kecuali yang
 tercakup oleh bagian 3.
