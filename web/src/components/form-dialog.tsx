@@ -32,7 +32,8 @@ function FormDialogContent({
   const contentRef = useRef<HTMLDivElement | null>(null);
   const stopObserving = useRef<(() => void) | null>(null);
   // Isi dialog dipasang di portal setelah efek pertama, jadi pengukuran lewat ref callback (bukan useEffect).
-  // Tinggi header (sticky) ditulis ke `--dialog-header-height` agar `FormTabs` menempel tepat di bawahnya.
+  // Tinggi header (sticky) dikurangi padding atas penggulir ditulis ke `--dialog-header-height` agar `FormTabs`
+  // menempel tepat di bawahnya.
   const attach = useCallback((content: HTMLDivElement | null) => {
     stopObserving.current?.();
     stopObserving.current = null;
@@ -41,8 +42,16 @@ function FormDialogContent({
       '[data-slot="dialog-header"], [data-slot="alert-dialog-header"]',
     );
     if (!content || !header) return;
-    const write = () =>
-      content.style.setProperty('--dialog-header-height', `${header.offsetHeight}px`);
+    // Header sticky berada di `top: -padding` penggulir, sedangkan `sticky top` tab dihitung dari tepi KONTEN
+    // penggulir: tanpa mengurangi padding atas, tersisa celah selebar padding di antara header dan tab.
+    const scroller = header.closest<HTMLElement>('[data-slot="alert-dialog-scroll"]');
+    const write = () => {
+      const padding = scroller ? Number.parseFloat(getComputedStyle(scroller).paddingTop) || 0 : 0;
+      content.style.setProperty(
+        '--dialog-header-height',
+        `${Math.max(0, header.offsetHeight - padding)}px`,
+      );
+    };
     write();
     if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(write);

@@ -79,13 +79,21 @@ test('Batal memanggil onOpenChange(false)', async () => {
   expect(onOpenChange).toHaveBeenCalledWith(false);
 });
 
-test('FormTabs di dalam dialog menempel tepat di bawah header dialog (offset diukur, bukan 0)', async () => {
+test('FormTabs di dalam dialog menempel tepat di bawah header dialog (tinggi header 72 - padding penggulir 16 = 56, bukan 0 atau 72)', async () => {
   const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
     configurable: true,
     get(this: HTMLElement) {
       return this.dataset.slot === 'dialog-header' ? 72 : 0;
     },
+  });
+  const computed = window.getComputedStyle.bind(window);
+  vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
+    const style = computed(element, pseudo);
+    if ((element as HTMLElement).dataset?.slot === 'alert-dialog-scroll') {
+      return { ...style, paddingTop: '16px' } as CSSStyleDeclaration;
+    }
+    return style;
   });
   try {
     render(
@@ -104,9 +112,10 @@ test('FormTabs di dalam dialog menempel tepat di bawah header dialog (offset diu
     const dialog = await screen.findByRole('alertdialog', { name: 'Judul' });
     expect(list.className).toContain('sticky');
     expect(list.style.top).toContain('--dialog-header-height');
-    expect(dialog.style.getPropertyValue('--dialog-header-height')).toBe('72px');
+    expect(dialog.style.getPropertyValue('--dialog-header-height')).toBe('56px');
     expect(screen.getByRole('tab', { name: 'Gambar' })).toHaveAttribute('data-form-tab', 'gambar');
   } finally {
+    vi.restoreAllMocks();
     if (original) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', original);
   }
 });
