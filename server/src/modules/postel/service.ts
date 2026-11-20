@@ -44,6 +44,7 @@ import {
   claimItemsForPostelStmts,
   findPostelItemsById,
   listItemsOfPostels,
+  listLinkedItemsOfPostels,
   type PostelItem,
   releaseAllItemsFromPostelStmt,
   releaseItemsFromPostelStmt,
@@ -133,7 +134,8 @@ async function readPostels(
 ): Promise<PostelRead> {
   const [numberRows, items, soonDays] = await Promise.all([
     listPostelNumbers(env.DB, ids),
-    listItemsOfPostels(env.DB, ids),
+    // Penampil rujukan: item terhapus ikut (bertanda); semua turunan memakai `liveItemsOf` di bawah.
+    listLinkedItemsOfPostels(env.DB, ids),
     postelSoonDays(env),
   ]);
   const numbers = new Map<string, PostelNumberRecord[]>();
@@ -173,8 +175,13 @@ function numberDtos(
   });
 }
 
+/** Item HIDUP sebuah catatan: dasar nama turunan, hitungan, dan model (item terhapus tidak dihitung). */
+function liveItemsOf(items: readonly PostelItem[]): PostelItem[] {
+  return items.filter((item) => !item.deleted);
+}
+
 function postelNameOf(items: readonly PostelItem[]): string {
-  return postelName(items.map((item) => item.model));
+  return postelName(liveItemsOf(items).map((item) => item.model));
 }
 
 function toPostelDto(
@@ -182,16 +189,22 @@ function toPostelDto(
   read: PostelRead,
   attachments: PostelAttachmentDto[],
 ): PostelDto {
-  const all = read.items.get(record.id) ?? [];
-  const shown = all.filter((item) => read.visible.has(item.id));
+  const linked = read.items.get(record.id) ?? [];
+  const all = liveItemsOf(linked);
+  const shown = linked.filter((item) => read.visible.has(item.id));
   return {
     id: record.id,
     name: postelNameOf(all),
     note: record.note,
     numbers: numberDtos(read.numbers.get(record.id) ?? [], read.soonDays, read.today),
-    items: shown.map((item) => ({ id: item.id, brand: item.brand, model: item.model })),
+    items: shown.map((item) => ({
+      id: item.id,
+      brand: item.brand,
+      model: item.model,
+      ...(item.deleted ? { deleted: true } : {}),
+    })),
     itemCount: all.length,
-    hiddenItemCount: all.length - shown.length,
+    hiddenItemCount: all.filter((item) => !read.visible.has(item.id)).length,
     attachments,
     today: read.today,
     soonDays: read.soonDays,
@@ -208,14 +221,14 @@ function toSummaryDto(record: PostelRecord, read: PostelRead): PostelSummaryDto 
   return {
     id: record.id,
     name: postelNameOf(read.items.get(record.id) ?? []),
-    itemCount: (read.items.get(record.id) ?? []).length,
+    itemCount: liveItemsOf(read.items.get(record.id) ?? []).length,
     activeNumber: active?.number ?? '',
     activeExpiresOn: active?.expiresOn ?? '',
     condition: active ? postelCondition(daysLeft, read.soonDays) : 'valid',
     daysLeft,
     oldNumberCount: Math.max(0, numbers.length - 1),
     numbers: numbers.map((entry) => entry.number),
-    models: distinctModels(read.items.get(record.id) ?? []),
+    models: distinctModels(liveItemsOf(read.items.get(record.id) ?? [])),
     updatedAt: record.updatedAt,
   };
 }
@@ -435,8 +448,10 @@ export async function savePostel(
   }
 
   // Item: hanya yang terlihat bagi penyimpan yang boleh dipilih/dilepas; yang tak terlihat tetap terpasang.
+  // `owned` memuat juga item terhapus yang masih terpasang (rujukan tersimpan, T1): dipertahankan atau dilepas sesuai
+  // pilihan; hanya item HIDUP yang dihitung ke batas dan nama turunan.
   const owned = existing
-    ? ((await listItemsOfPostels(env.DB, [existing.id])).get(existing.id) ?? [])
+    ? ((await listLinkedItemsOfPostels(env.DB, [existing.id])).get(existing.id) ?? [])
     : [];
   const ownedIds = new Set(owned.map((item) => item.id));
   const requested = input.itemIds;
@@ -449,7 +464,10 @@ export async function savePostel(
   for (const id of requested) {
     const item = fetched.get(id);
     // Item tak ada dan item di luar BU penyimpan dijawab sama (keberadaan item BU lain tidak bocor).
-    if (!item || !visible.has(id)) throw fieldFail('itemIds', 'Item tidak ditemukan');
+    // Item terhapus hanya sah bila sudah terpasang di catatan ini; tak boleh dipilih baru.
+    if (!item || !visible.has(id) || (item.deleted && !ownedIds.has(id))) {
+      throw fieldFail('itemIds', 'Item tidak ditemukan');
+    }
     if (item.postelId !== '' && item.postelId !== postelId) {
       throw fieldFail(
         'itemIds',
@@ -469,7 +487,9 @@ export async function savePostel(
   const toRemove = owned
     .filter((item) => visible.has(item.id) && !requested.includes(item.id))
     .map((item) => item.id);
-  const finalItemCount = hiddenOwned.length + requested.length;
+  const finalItemCount =
+    hiddenOwned.filter((item) => !item.deleted).length +
+    requested.filter((id) => !fetched.get(id)?.deleted).length;
   if (finalItemCount === 0) throw fieldFail('itemIds', 'Pilih minimal satu item');
   if (finalItemCount > POSTEL_LIMITS.itemsMax) {
     throw fieldFail('itemIds', `Maksimal ${POSTEL_LIMITS.itemsMax} item per catatan`);
@@ -505,13 +525,13 @@ export async function savePostel(
   // dibuat di batch yang sama dengan catatannya (catatan baru, atau catatan lama yang belum bersiker), dan namanya
   // disamakan dengan nama turunan bila berubah (item ditambah/dikurangi; keputusan pemilik 2026-11-12).
   const type = await ensurePostelType(env, actor);
-  const finalItems: PostelItem[] = [
+  const finalItems: PostelItem[] = liveItemsOf([
     ...requested.flatMap((id) => {
       const item = fetched.get(id);
       return item ? [item] : [];
     }),
     ...hiddenOwned,
-  ];
+  ]);
   const activeNumber = [...finalNumbers].sort((a, b) => b.seq - a.seq)[0]?.number ?? '';
   const stickerBase = postelStickerBase(finalItems);
   const stickerNow = nowIso(env);

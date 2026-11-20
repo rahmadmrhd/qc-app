@@ -8,6 +8,7 @@ import { nowIso } from '@server/core/env';
 import { appError, isAppError } from '@server/core/errors';
 import { dropCachedFile } from '@server/core/file-cache';
 import { folderIdOf, SETTING_DRIVE_FOLDER_ID } from '@server/core/settings';
+import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { insertFileStmt } from '@server/modules/files/repo';
 import { EXTENSIONS, ensureDriveFolder, purgePendingFiles } from '@server/modules/files/service';
@@ -133,7 +134,7 @@ export async function listGuideUsages(
   const visible = visibleBuIds(user);
   if (visible.length === 0) return [];
   const result = await env.DB.prepare(
-    `SELECT i.id, i.model, i.status, b.name AS brand_name FROM item_sticker_photos p JOIN items i ON i.id = p.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE p.guide_id = ? AND EXISTS (SELECT 1 FROM item_business_units x WHERE x.item_id = i.id AND x.bu_id IN (${visible.map(() => '?').join(', ')})) ORDER BY i.\`key\`, i.id LIMIT ?`,
+    `SELECT i.id, i.model, i.status, b.name AS brand_name FROM item_sticker_photos p JOIN items i ON i.id = p.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('i')} AND p.guide_id = ? AND EXISTS (SELECT 1 FROM item_business_units x WHERE x.item_id = i.id AND x.bu_id IN (${visible.map(() => '?').join(', ')})) ORDER BY i.\`key\`, i.id LIMIT ?`,
   )
     .bind(input.id, ...visible, USAGES_MAX)
     .all<{ id: string; model: string; status: string; brand_name: string | null }>();

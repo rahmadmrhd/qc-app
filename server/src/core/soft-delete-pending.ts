@@ -40,11 +40,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'users@1#21ba7e4d',
     'users@2#efe68088',
   ],
-  'server/src/modules/sticker/guide-service.ts': [
-    'item_sticker_photos@1#457ed2f0',
-    'items@1#457ed2f0',
-    'brands@1#457ed2f0',
-  ],
   'server/src/modules/sticker/instruction-repo.ts': [
     'item_sticker_photos@1#6f472aca',
     'item_sticker_marks@1#be14975d',
@@ -95,15 +90,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
   // Ekspor Sheets: `files` (pemilik stiker/pustaka fase 4a, QR/postel fase 4b) dan `qr_documents` belum disaring
   // (pemilik `item` sudah, fase 3). Setelah semuanya disaring, pindahkan kuncinya ke SOFT_DELETE_EXEMPT dengan alasan.
   'server/src/modules/jobs/sheets-export.ts': ['*dinamis@1#62151e07'],
-  'server/src/modules/postel/items.ts': [
-    'items@1#4a02043e',
-    'brands@1#4a02043e',
-    'items@2#8b7dfc72',
-    'brands@2#8b7dfc72',
-    'items@3#02e2a2d0',
-    'brands@3#02e2a2d0',
-    'items@4#abf12ed1',
-  ],
   'server/src/modules/postel/repo.ts': [
     'postels@1#0eefd984',
     'postels@2#b320a3de',
@@ -118,11 +104,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'postels@1#53d6d36d',
   ],
   'server/src/modules/qrcode/items.ts': [
-    'items@1#91289ce5',
-    'brands@1#91289ce5',
-    'items@2#adbf1807',
-    'brands@2#adbf1807',
-    'items@3#8787746b',
     'qr_designs@1#7892692c',
     'manual_book_versions@1#1a057869',
     'stickers@1#1a057869',
@@ -192,8 +173,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
   'server/src/modules/serial/alert-job.ts': [
     'serials@1#94659661',
     'business_units@1#94659661',
-    'items@1#94659661',
-    'brands@1#94659661',
     'locations@1#94659661',
     'serial_cases@1#94659661',
     'serial_events@1#94659661',
@@ -213,8 +192,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'serials@1#d1858e02',
     'locations@1#d1858e02',
     'business_units@1#d1858e02',
-    'items@1#d1858e02',
-    'brands@1#d1858e02',
   ],
   'server/src/modules/serial/case-repo.ts': [
     'serial_cases@1#ce0211b9',
@@ -223,11 +200,7 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'serials@1#7041f237',
   ],
   'server/src/modules/serial/history.ts': ['serial_events@1#c42b6fdb', 'serial_events@2#fc41b582'],
-  'server/src/modules/serial/proof/attach.ts': [
-    'items@1#b355d3af',
-    'brands@1#b355d3af',
-    'business_units@1#71a9e696',
-  ],
+  'server/src/modules/serial/proof/attach.ts': ['business_units@1#71a9e696'],
   'server/src/modules/serial/proof/repo.ts': [
     'serial_proof_photos@1#d2a2206f',
     'serial_proof_photos@2#2516c7c7',
@@ -253,20 +226,15 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'serial_events@1#cb0debcf',
     'serials@1#3ef659b5',
     'business_units@4#3ef659b5',
-    'items@1#3ef659b5',
-    'brands@1#3ef659b5',
     'business_units@5#129328ee',
   ],
   'server/src/modules/serial/repo.ts': [
     'serials@1#aa389142',
     'locations@1#ff23409a',
-    'items@1#e7b829f3',
     'locations@2#f283f2e8',
     'serial_proof_photos@1#bbce0dc9',
     'serials@2#bbce0dc9',
     'business_units@1#bbce0dc9',
-    'items@2#bbce0dc9',
-    'brands@1#bbce0dc9',
     'locations@3#bbce0dc9',
     'locations@4#bbce0dc9',
     'locations@5#bbce0dc9',
@@ -275,8 +243,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'serial_proof_photos@2#ab57a715',
     'serials@3#ab57a715',
     'business_units@3#ab57a715',
-    'items@3#ab57a715',
-    'brands@2#ab57a715',
     'locations@6#ab57a715',
     'locations@7#ab57a715',
     'locations@8#ab57a715',
@@ -287,15 +253,11 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'serial_proof_photos@3#2afb7690',
     'serials@4#2afb7690',
     'business_units@4#2afb7690',
-    'items@4#2afb7690',
-    'brands@3#2afb7690',
     'locations@9#2afb7690',
     'locations@10#2afb7690',
     'locations@11#2afb7690',
     'serial_cases@3#2afb7690',
     'serial_events@2#3b3831f0',
-    'items@5#205e41f7',
-    'brands@4#205e41f7',
   ],
   'server/src/modules/serial/report.ts': ['business_units@1#71a9e696', 'serials@1#8f846d75'],
   'server/src/modules/serial/service-locations.ts': [
@@ -307,7 +269,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'business_units@1#43393540',
     'business_units@2#f25b4f00',
     'locations@1#60985b63',
-    'items@2#122b7dd8',
     'serials@1#be7ddb50',
   ],
   // Lain-lain (modul yang membaca tabel milik fase lain: notification, desktop catalog, files, digest stok)
@@ -374,8 +335,6 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
   'server/src/modules/item/repo.ts#brands@2#eab0e51b':
     'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
-  'server/src/modules/item/repo.ts#brands@3#2eb4a4cf':
-    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
   'server/src/modules/item/service.ts#brands@1#e236d2d5':
     'JOIN merk untuk nama tampilan/penjaga: item disaring `liveWhere` di kueri yang sama; merk terhapus tetap memberi nama (T1).',
   'server/src/modules/item/service.ts#brands@2#c9e5bc97':
@@ -386,12 +345,80 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'JOIN merk untuk nama tampilan/penjaga: item disaring `liveWhere` di kueri yang sama; merk terhapus tetap memberi nama (T1).',
   'server/src/modules/item/service.ts#brands@5#1d26e0dc':
     'JOIN merk untuk nama tampilan/penjaga: item disaring `liveWhere` di kueri yang sama; merk terhapus tetap memberi nama (T1).',
-  'server/src/modules/postel/items.ts#brands@4#e8d77043':
-    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
-  'server/src/modules/qrcode/items.ts#brands@3#b9169b9d':
-    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/serial/service.ts#brands@1#4f1cc96e':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/brand/service.ts#items@1#759837a3':
     'Ganti nama merk: mengunci (FOR UPDATE) dan menurunkan ulang `items.key` SEMUA item merk itu, termasuk yang terhapus (T4: kunci item terhapus ikut berubah agar tetap konsisten saat dipulihkan).',
+  'server/src/modules/serial/alert-job.ts#items@1#94659661':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/alert-job.ts#brands@1#94659661':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/case-list.ts#items@1#d1858e02':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/case-list.ts#brands@1#d1858e02':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/recheck-entry.ts#items@1#3ef659b5':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/recheck-entry.ts#brands@1#3ef659b5':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/proof/attach.ts#items@1#b355d3af':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/proof/attach.ts#brands@1#b355d3af':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/repo.ts#items@2#bbce0dc9':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/repo.ts#brands@1#bbce0dc9':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/repo.ts#items@3#ab57a715':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/repo.ts#brands@2#ab57a715':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/repo.ts#items@4#2afb7690':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/repo.ts#brands@3#2afb7690':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/repo.ts#items@5#205e41f7':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/repo.ts#brands@4#205e41f7':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/service.ts#items@2#122b7dd8':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/item/repo.ts#brands@3#66854c46':
+    'Penjaga TULIS (SELECT ... FOR UPDATE) atas baris merk yang baru dibaca penulis; menilai `deleted_at` lewat parameter `chosenNow` (merk baru wajib hidup, rujukan tersimpan tetap sah).',
+  'server/src/modules/postel/items.ts#brands@1#fbdbcd86':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/postel/items.ts#brands@2#17f8c82a':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/postel/items.ts#items@3#4a02043e':
+    'Penampil rujukan: daftar anggota catatan/konfigurasi menampilkan item terhapus bertanda (`deleted`); semua turunan dan hitungan memakai pembaca yang menyaring item hidup.',
+  'server/src/modules/postel/items.ts#brands@3#4a02043e':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/postel/items.ts#items@4#8b7dfc72':
+    'Penampil rujukan: daftar anggota catatan/konfigurasi menampilkan item terhapus bertanda (`deleted`); semua turunan dan hitungan memakai pembaca yang menyaring item hidup.',
+  'server/src/modules/postel/items.ts#brands@4#8b7dfc72':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/postel/items.ts#items@5#02e2a2d0':
+    'Baca menurut id: pemanggil menilai `deleted` sendiri (item terhapus hanya sah bila sudah terpasang, rujukan tersimpan T1; pemilihan baru menolaknya).',
+  'server/src/modules/postel/items.ts#brands@5#02e2a2d0':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/postel/items.ts#items@6#abf12ed1':
+    'Penjaga TULIS klaim item: item terhapus selalu Nonaktif, jadi `status = active` sudah menolaknya; yang sudah terpasang tetap dipertahankan (T1).',
+  'server/src/modules/postel/items.ts#brands@6#e8d77043':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/qrcode/items.ts#brands@1#7196d9cd':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/qrcode/items.ts#items@2#91289ce5':
+    'Penampil rujukan: daftar anggota catatan/konfigurasi menampilkan item terhapus bertanda (`deleted`); semua turunan dan hitungan memakai pembaca yang menyaring item hidup.',
+  'server/src/modules/qrcode/items.ts#brands@2#91289ce5':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/qrcode/items.ts#items@3#adbf1807':
+    'Baca menurut id: pemanggil menilai `deleted` sendiri (item terhapus hanya sah bila sudah terpasang, rujukan tersimpan T1; pemilihan baru menolaknya).',
+  'server/src/modules/qrcode/items.ts#brands@3#adbf1807':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/qrcode/items.ts#items@4#8787746b':
+    'Penjaga TULIS klaim item: item terhapus selalu Nonaktif, jadi `status = active` sudah menolaknya; yang sudah terpasang tetap dipertahankan (T1).',
+  'server/src/modules/qrcode/items.ts#brands@4#b9169b9d':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/sticker/guide-service.ts#brands@1#45c3a46c':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
 };

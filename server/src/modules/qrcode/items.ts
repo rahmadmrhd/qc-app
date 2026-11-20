@@ -22,6 +22,8 @@ export interface AttachedItem {
   model: string;
   status: 'active' | 'inactive';
   designId: string;
+  /** Item terhapus (soft delete): hanya penampil rujukan yang membacanya; turunan dan hitungan memakai item hidup. */
+  deleted: boolean;
 }
 
 interface AttachedRow {
@@ -30,6 +32,7 @@ interface AttachedRow {
   model: string;
   status: string;
   manual_book_design_id: string;
+  deleted_at: string;
 }
 
 function toAttached(row: AttachedRow): AttachedItem {
@@ -39,19 +42,39 @@ function toAttached(row: AttachedRow): AttachedItem {
     model: row.model.trim(),
     status: row.status.trim() === 'inactive' ? 'inactive' : 'active',
     designId: row.manual_book_design_id.trim(),
+    deleted: (row.deleted_at ?? '') !== '',
   };
 }
 
 const ATTACHED_SELECT =
-  'SELECT i.id, b.name AS brand_name, i.model, i.status, i.manual_book_design_id FROM items i LEFT JOIN brands b ON b.id = i.brand_id';
+  'SELECT i.id, b.name AS brand_name, i.model, i.status, i.manual_book_design_id, i.deleted_at FROM items i LEFT JOIN brands b ON b.id = i.brand_id';
 
-/** Semua item yang tergabung ke konfigurasi mana pun, dikelompokkan per konfigurasi (satu kueri). */
+/**
+ * Item HIDUP yang tergabung ke konfigurasi mana pun, dikelompokkan per konfigurasi (satu kueri). Dasar hitungan dan
+ * turunan (jumlah item, ekspor, penghapusan): item terhapus tidak dihitung (soft delete §5).
+ */
 export async function listAttachedItems(db: Db): Promise<Map<string, AttachedItem[]>> {
+  const rows = await db
+    .prepare(`${ATTACHED_SELECT} WHERE ${liveWhere('i')} AND i.manual_book_design_id <> ''`)
+    .all<AttachedRow>();
+  return groupByDesign(rows.results);
+}
+
+/**
+ * Semua item yang tergabung, HIDUP MAUPUN TERHAPUS (penampil rujukan): daftar anggota di View/form konfigurasi memakai
+ * ini agar item terhapus tampil bertanda "Terhapus" dan tetap terpasang saat simpan (rujukan tersimpan, T1). Pemanggil
+ * wajib memisahkan `deleted` sebelum menghitung atau menurunkan apa pun.
+ */
+export async function listLinkedItems(db: Db): Promise<Map<string, AttachedItem[]>> {
   const rows = await db
     .prepare(`${ATTACHED_SELECT} WHERE i.manual_book_design_id <> ''`)
     .all<AttachedRow>();
+  return groupByDesign(rows.results);
+}
+
+function groupByDesign(results: readonly AttachedRow[]): Map<string, AttachedItem[]> {
   const byDesign = new Map<string, AttachedItem[]>();
-  for (const row of rows.results) {
+  for (const row of results) {
     const item = toAttached(row);
     const list = byDesign.get(item.designId) ?? [];
     list.push(item);
@@ -63,7 +86,7 @@ export async function listAttachedItems(db: Db): Promise<Map<string, AttachedIte
   return byDesign;
 }
 
-/** Item menurut id (apa pun statusnya); id yang tak ada tidak muncul di peta. */
+/** Item menurut id (apa pun statusnya, termasuk terhapus: pemanggil menilai `deleted`); id yang tak ada tidak muncul di peta. */
 export async function findItemsById(
   db: Db,
   ids: readonly string[],

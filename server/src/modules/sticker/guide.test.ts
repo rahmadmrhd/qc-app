@@ -1236,6 +1236,11 @@ describe('pemakaian nyata pustaka (3b-2)', () => {
     expect(JSON.stringify(visible)).not.toContain('Rahasia');
     // admin melihat semua, termasuk item BU lain
     expect((await usages('g1')).map((u) => u.itemId).sort()).toEqual(['i1', 'i2', 'i3', 'i4']);
+    // item terhapus tidak dihitung sebagai pemakai (soft delete §5 butir 16)
+    await env.DB.prepare(
+      "UPDATE items SET deleted_at = '2026-11-19T00:00:00.000Z', deleted_by = 'seed', status = 'inactive' WHERE id = 'i3'",
+    ).run();
+    expect((await usages('g1')).map((u) => u.itemId).sort()).toEqual(['i1', 'i2', 'i4']);
   });
 
   test('usages: maksimal 20 item; id tak dikenal = daftar kosong; izin item:view (sticker:view saja dan tanpa izin 403)', async () => {

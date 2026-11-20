@@ -57,6 +57,7 @@ import {
   findItemsById,
   latestVersionsByDesign,
   listAttachedItems,
+  listLinkedItems,
   noVersionsGuardStmt,
   queryItemOptions,
   releaseAllItemsStmt,
@@ -146,7 +147,7 @@ const EMPTY_VIEW: QrDesignView = {
 /** Tampilan per konfigurasi bagi `user`: item terlihat, jumlah tersembunyi, dan versi stiker terbaru. */
 async function designViews(env: Env, user: UserContext): Promise<Map<string, QrDesignView>> {
   const [attached, latest] = await Promise.all([
-    listAttachedItems(env.DB),
+    listLinkedItems(env.DB),
     latestVersionsByDesign(env.DB),
   ]);
   const visible = await visibleItemIds(
@@ -160,8 +161,14 @@ async function designViews(env: Env, user: UserContext): Promise<Map<string, QrD
     const shown = all.filter((item) => visible.has(item.id));
     const version = latest.get(designId);
     views.set(designId, {
-      items: shown.map((item) => ({ id: item.id, brand: item.brand, model: item.model })),
-      hiddenItemCount: all.length - shown.length,
+      // Item terhapus tetap tampil (penampil rujukan) dengan penanda; hitungan hanya item hidup.
+      items: shown.map((item) => ({
+        id: item.id,
+        brand: item.brand,
+        model: item.model,
+        ...(item.deleted ? { deleted: true } : {}),
+      })),
+      hiddenItemCount: all.filter((item) => !item.deleted && !visible.has(item.id)).length,
       stickerVersion: version?.version ?? 0,
       stickerStatus: version?.status ?? '',
     });
@@ -760,7 +767,7 @@ async function saveQrDesignNow(
   const namePlacement = existing ? existing.namePlacement : (preset?.namePlacement ?? '');
 
   // Item: hanya yang terlihat bagi penyimpan yang boleh dipilih/dilepas; yang tak terlihat tetap terpasang.
-  const attached = await listAttachedItems(env.DB);
+  const attached = await listLinkedItems(env.DB);
   const ownedNow = existing ? (attached.get(existing.id) ?? []) : [];
   const ownedIds = new Set(ownedNow.map((item) => item.id));
   const requested = input.itemIds;
@@ -776,7 +783,10 @@ async function saveQrDesignNow(
   for (const id of requested) {
     const item = fetched.get(id);
     // Item tak ada dan item di luar BU penyimpan dijawab sama (keberadaan item BU lain tidak bocor).
-    if (!item || !visible.has(id)) throw fieldFail('itemIds', 'Item tidak ditemukan');
+    // Item terhapus hanya sah bila sudah terpasang di konfigurasi ini (rujukan tersimpan); tak boleh dipilih baru.
+    if (!item || !visible.has(id) || (item.deleted && !ownedIds.has(id))) {
+      throw fieldFail('itemIds', 'Item tidak ditemukan');
+    }
     if (item.designId !== '' && item.designId !== existing?.id) {
       throw fieldFail('itemIds', itemTakenMessage(item, otherNames.get(item.designId)), 'CONFLICT');
     }
@@ -793,12 +803,17 @@ async function saveQrDesignNow(
     .filter((item) => visible.has(item.id) && !requested.includes(item.id))
     .map((item) => item.id);
   const finalIds = [...hiddenOwned, ...requested].sort();
+  // Hitungan "minimal satu item" memakai item HIDUP saja (item terhapus tidak dihitung, soft delete §5).
+  const deletedIds = new Set(
+    [...ownedNow, ...fetched.values()].filter((item) => item.deleted).map((item) => item.id),
+  );
+  const liveFinalCount = finalIds.filter((id) => !deletedIds.has(id)).length;
   // Konfigurasi baru, yang sudah punya stiker, atau yang menampung nama di label wajib bernama dan beritem;
   // konfigurasi lama tanpa stiker boleh disimpan tanpa keduanya (baru menjadi Manual Book setelah dilengkapi).
   const hasVersions = existing ? await designHasVersions(env.DB, existing.id) : false;
   if (!existing || hasVersions || namePlacement !== '') {
     if (input.name === '') throw fieldFail('name', 'Nama Manual Book wajib diisi');
-    if (finalIds.length === 0) throw fieldFail('itemIds', 'Pilih minimal satu item');
+    if (liveFinalCount === 0) throw fieldFail('itemIds', 'Pilih minimal satu item');
   }
   // Nama Manual Book unik antar konfigurasi (tanpa beda huruf besar, seperti kunci nama stiker `<nama> vN`).
   if (input.name !== '') {
@@ -807,7 +822,7 @@ async function saveQrDesignNow(
   }
   // Kelonggaran dipakai: komit ekspor serentak (tidak menaikkan `updated_at`) dapat melahirkan versi sesudah
   // pembacaan di atas, jadi batch simpan menjaganya ulang (`noVersionsGuardStmt`, sesudah kunci baris dari UPDATE).
-  const usesRelaxation = existing !== undefined && (input.name === '' || finalIds.length === 0);
+  const usesRelaxation = existing !== undefined && (input.name === '' || liveFinalCount === 0);
 
   const now = nowIso(env);
   const next: NewQrDesignRecord = {

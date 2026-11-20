@@ -430,3 +430,54 @@ describe('hapus konfigurasi', () => {
     expect(got).toMatchObject({ stickerVersion: 2, stickerStatus: 'active' });
   });
 });
+
+describe('item terhapus pada konfigurasi (soft delete, penampil rujukan)', () => {
+  const softDelete = (id: string) =>
+    env.DB.prepare(
+      "UPDATE items SET deleted_at = '2026-11-19T00:00:00.000Z', deleted_by = 'seed', status = 'inactive' WHERE id = ?",
+    )
+      .bind(id)
+      .run();
+
+  test('item terhapus tampil bertanda, tak dihitung ke tersembunyi; simpan mempertahankannya dan menolak pilihan baru', async () => {
+    const made = await save({ itemIds: ['i1', 'i2'] });
+    await softDelete('i2');
+    const got = (await call(FULL, 'qrcodes.get', { id: made.data.id })).data;
+    expect(got.items.map((i: { id: string }) => i.id)).toEqual(['i1', 'i2']);
+    expect(got.items[1]).toMatchObject({ id: 'i2', deleted: true });
+    expect(got.items[0].deleted).toBeUndefined();
+    // simpan dengan item terhapus yang tetap terpilih (rujukan tersimpan) berhasil dan tetap terpasang
+    const again = await call(
+      FULL,
+      'qrcodes.save',
+      await body({ id: made.data.id, expectedUpdatedAt: got.updatedAt, itemIds: ['i1', 'i2'] }),
+    );
+    expect(again.ok).toBe(true);
+    expect(await ownerOf('i2')).toBe(made.data.id);
+    // item terhapus lain tidak dapat dipilih baru
+    await softDelete('i3');
+    const picked = await save({ itemIds: ['i3'], name: 'Lain' });
+    expect(picked.error.code).toBe('VALIDATION');
+  });
+
+  test('konfigurasi yang sudah punya stiker: semua item terhapus tidak memenuhi "minimal satu item"', async () => {
+    const made = await save({ itemIds: ['i1'] });
+    await seedStickerType(env, {
+      id: 't-mb',
+      name: 'Manual Book',
+      rule: 'group',
+      systemKind: 'manual_book',
+    });
+    await seedSticker(env, { id: 's1', typeId: 't-mb', name: 'X v1' });
+    await seedManualBookVersion(env, { stickerId: 's1', designId: made.data.id, version: 1 });
+    await softDelete('i1');
+    const got = (await call(FULL, 'qrcodes.get', { id: made.data.id })).data;
+    const out = await call(
+      FULL,
+      'qrcodes.save',
+      await body({ id: made.data.id, expectedUpdatedAt: got.updatedAt, itemIds: ['i1'] }),
+    );
+    expect(out.error.code).toBe('VALIDATION');
+    expect(out.error.fields.itemIds).toBeDefined();
+  });
+});

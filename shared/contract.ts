@@ -864,6 +864,8 @@ export interface QrDesignItemDto {
   id: string;
   brand: string;
   model: string;
+  /** True bila item ini terhapus (soft delete): tampil bertanda "Terhapus", tak dihitung di `itemCount` mana pun. */
+  deleted?: boolean;
 }
 export interface QrDesignDto {
   id: string;
@@ -1088,6 +1090,8 @@ export interface PostelItemDto {
   id: string;
   brand: string;
   model: string;
+  /** True bila item ini terhapus (soft delete): tampil bertanda "Terhapus", tak dihitung di `itemCount`. */
+  deleted?: boolean;
 }
 /** Lampiran catatan Postel (gambar atau PDF). */
 export interface PostelAttachmentDto {
