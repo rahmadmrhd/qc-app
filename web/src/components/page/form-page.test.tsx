@@ -1,7 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { mockMatchMedia } from '@/test/match-media';
 import { FormPage } from './form-page';
 import { FormSection } from './form-section';
 
@@ -82,4 +83,19 @@ test('FormSection menyusun kisi dua kolom atau satu', () => {
     </FormSection>,
   );
   expect(container.querySelector('.md\\:grid-cols-2')).toBeNull();
+});
+
+test('ponsel: Batal + Simpan pindah ke bar bawah menempel; bar judul tinggal tombol kembali dan judul', async () => {
+  const media = mockMatchMedia(false);
+  const onCancel = vi.fn();
+  const onSubmit = renderPage({ onCancel });
+  const bar = screen.getByRole('region', { name: 'Aksi form' });
+  expect(within(bar).getByRole('button', { name: 'Batal' })).toBeInTheDocument();
+  const save = within(bar).getByRole('button', { name: 'Simpan' });
+  expect(save.className).toContain('flex-[2]');
+  await userEvent.click(save);
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+  await userEvent.click(screen.getByRole('button', { name: 'Kembali' }));
+  expect(onCancel).toHaveBeenCalledTimes(1);
+  media.restore();
 });
