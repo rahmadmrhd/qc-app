@@ -1,7 +1,8 @@
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { removeTempDirSync } from '../../../test-support/safe-rm';
 import { createTokenStore, type TokenCrypto } from './token-store';
 
 let dir: string;
@@ -11,7 +12,7 @@ beforeEach(() => {
   file = join(dir, 'sub', 'token.json');
 });
 afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
+  removeTempDirSync(dir);
 });
 
 /** Tiruan safeStorage: XOR + penanda; bukan enkripsi sungguhan, cukup agar isi disk != polos. */

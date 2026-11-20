@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { CatalogStatus } from '@countrylock/bridge-contract';
 import type { DesktopCatalogDto } from '@shared/desktop-catalog';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { removeTempDirSync } from '../../../test-support/safe-rm';
 import { createCatalogStore } from './catalog-store';
 import { createCatalogSync } from './catalog-sync';
 
@@ -47,7 +48,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'qc-catalog-'));
 });
 afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
+  removeTempDirSync(dir);
 });
 
 function setup(

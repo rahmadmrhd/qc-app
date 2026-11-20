@@ -1,9 +1,10 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { InjectedEvent } from '@countrylock/multi/types';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { removeTempDirSync } from '../../../test-support/safe-rm';
 import { openDraftStore } from './draft-store';
 import { openMultiEventStore } from './multi-event-store';
 
@@ -14,7 +15,7 @@ beforeEach(() => {
   file = join(dir, 'draft.db');
 });
 afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
+  removeTempDirSync(dir);
 });
 
 const event = (id: string, serial = `SN-${id}`): InjectedEvent => ({

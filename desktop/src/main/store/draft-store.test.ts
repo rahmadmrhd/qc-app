@@ -1,8 +1,9 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { removeTempDirSync } from '../../../test-support/safe-rm';
 import { openDraftStore } from './draft-store';
 import { openPendingStore } from './pending-store';
 
@@ -13,7 +14,7 @@ beforeEach(() => {
   file = join(dir, 'draft.db');
 });
 afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
+  removeTempDirSync(dir);
 });
 
 const row = (serial: string) => ({ clientId: `cid-${serial}`, serial, source: 'countrylock' });

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
@@ -8,6 +8,7 @@ import {
 } from '@countrylock/bridge-contract';
 import { secretForms } from '@countrylock/script-template';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { removeTempDirSync } from '../../test-support/safe-rm';
 import { type IpcDeps, type IpcEventLike, registerIpc } from './ipc';
 import { IpcError } from './ipc-support';
 import type { MultiHost } from './multi/host';
@@ -36,7 +37,7 @@ beforeEach(async () => {
   };
 });
 afterEach(() => {
-  rmSync(tmp, { recursive: true, force: true });
+  removeTempDirSync(tmp);
 });
 
 function setup(overrides: Partial<IpcDeps> = {}, packageDir: string | null = 'D:\\Paket') {
