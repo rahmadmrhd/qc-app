@@ -178,7 +178,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'items.removeBatch': { ids: ['i1', 'i2'] },
   'items.restore': { id: 'i1' },
   'items.restoreBatch': { ids: ['i1', 'i2'] },
-  'qrcodes.list': null,
+  'qrcodes.list': { status: 'deleted' },
   'qrcodes.get': { id: 'q1' },
   'qrcodes.versions': { id: 'q1' },
   'qrcodes.save': {
@@ -197,7 +197,11 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     layout: 'a' as never,
   },
   'qrcodes.delete': { id: 'q1' },
-  'qrcodes.getDefaults': null,
+  'qrcodes.removeBatch': { ids: ['q1', 'q2'] },
+  'qrcodes.restore': { id: 'q1' },
+  'qrcodes.restoreBatch': { ids: ['q1', 'q2'] },
+  'qrcodes.getDefaults': { status: 'deleted' },
+  'qrcodes.getPreset': { id: 'p1' },
   'qrcodes.itemOptions': { query: 'a7', cursor: 'k', limit: 20 },
   'qrcodes.savePreset': {
     id: 'p1',
@@ -214,6 +218,9 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   },
   'qrcodes.clonePreset': { id: 'p1', buId: 'bu2', name: 'Salinan' },
   'qrcodes.deletePreset': { id: 'p1' },
+  'qrcodes.removePresetBatch': { ids: ['p1', 'p2'] },
+  'qrcodes.restorePreset': { id: 'p1' },
+  'qrcodes.restorePresetBatch': { ids: ['p1', 'p2'] },
   'qrcodes.saveLogoLibrary': {
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
     logoFileIds: ['f1'],
@@ -420,6 +427,23 @@ describe('tabel rute', () => {
       expect(API_ROUTES[`${model}.setStatusBatch` as ApiId].verb).toBe('POST');
       expect(API_ROUTES[`${model}.removeBatch` as ApiId].path).toBe(`/${model}/batch/delete`);
     }
+  });
+
+  test('fase 4b: jalur batch hapus/pulihkan QR, preset QR, dan Postel sebelum {id}/restore', () => {
+    const order = Object.keys(API_ROUTES);
+    const cases: [string, string, string][] = [
+      ['qrcodes', 'restore', '/qrcodes'],
+      ['qrcodes', 'restorePreset', '/qrcode-presets'],
+    ];
+    for (const [group, single, base] of cases) {
+      const batch = single === 'restorePreset' ? 'restorePresetBatch' : `${single}Batch`;
+      expect(order.indexOf(`${group}.${batch}`)).toBeLessThan(order.indexOf(`${group}.${single}`));
+      expect(API_ROUTES[`${group}.${batch}` as ApiId].path).toBe(`${base}/batch/restore`);
+      expect(API_ROUTES[`${group}.${single}` as ApiId].path).toBe(`${base}/{id}/restore`);
+    }
+    expect(API_ROUTES['qrcodes.removeBatch'].path).toBe('/qrcodes/batch/delete');
+    expect(API_ROUTES['qrcodes.removePresetBatch'].path).toBe('/qrcode-presets/batch/delete');
+    expect(API_ROUTES['qrcodes.getPreset'].path).toBe('/qrcode-presets/{id}');
   });
 
   test('tiap id punya jalur+verba unik (termasuk jalur create)', () => {

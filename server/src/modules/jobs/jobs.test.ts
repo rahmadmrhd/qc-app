@@ -345,6 +345,26 @@ describe('Review Focus 2: kegagalan di tengah dan pemanggil serentak', () => {
     expect(await audits()).toEqual(['qrcode.create']);
   });
 
+  test('konfigurasi dihapus lunak saat ekspor berjalan: job gagal "sudah dihapus", berkas baru dibuang, desain tak ter-ekspor', async () => {
+    const made = await makeDesign();
+    const { jobId } = (await requestExport(made)).data;
+    await step(jobId); // PDF
+    await step(jobId); // PNG
+    await step(jobId); // gambar contoh
+    expect((await call('qrmanage@gmail.com', 'qrcodes.delete', { id: made.id })).ok).toBe(true);
+    await step(jobId);
+    const job = await findJob(env, jobId);
+    expect(job?.status).toBe('failed');
+    expect(job?.error).toContain('sudah dihapus');
+    expect((await design(made.id))?.exported_hash).toBe('');
+    const exports = await exportFiles();
+    expect(exports).toHaveLength(2);
+    expect(exports.every((f) => f.trashed)).toBe(true);
+    expect(await audits()).toEqual(['qrcode.create', 'qrcode.delete']);
+    // permintaan ekspor baru atas konfigurasi terhapus = NOT_FOUND
+    expect((await requestExport(made)).error.code).toBe('NOT_FOUND');
+  });
+
   test('pemanggil serentak pada langkah yang sama: langkah berjalan sekali, hasil tidak digandakan', async () => {
     const made = await makeDesign();
     const { jobId } = (await requestExport(made)).data;

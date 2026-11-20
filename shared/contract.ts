@@ -904,6 +904,14 @@ export interface QrDesignDto {
   createdBy: string;
   updatedAt: string;
   updatedBy: string;
+  /** Ada hanya pada konfigurasi terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+  /** True bila preset asal (`presetId`) kini terhapus: tampil bertanda "Terhapus", tak memengaruhi perhitungan apa pun. */
+  presetDeleted?: boolean;
+}
+/** Daftar konfigurasi QR: bawaan konfigurasi hidup; `deleted` = hanya yang terhapus, hanya bagi `qrcode: manage`. */
+export interface ListQrDesignsInput {
+  status?: 'live' | 'deleted';
 }
 export interface SaveQrDesignInput {
   id?: string;
@@ -949,6 +957,15 @@ export interface QrPresetDto {
   createdBy: string;
   updatedAt: string;
   updatedBy: string;
+  /** Ada hanya pada preset terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+}
+/**
+ * Masukan `qrcodes.getDefaults`: bawaan = preset hidup. `deleted` = hanya preset terhapus (pustaka logo tetap
+ * dikembalikan), hanya bagi `qrcode: manage`; selain itu `FORBIDDEN`.
+ */
+export interface GetQrDefaultsInput {
+  status?: 'live' | 'deleted';
 }
 /** Seluruh konfigurasi default dan pustaka logo bersama (dipilih user saat membuat/mengubah QR). */
 export interface QrDefaultsDto {
@@ -1118,6 +1135,8 @@ export interface PostelSummaryDto {
   /** Model item yang berbeda (tanpa merk) dari SEMUA item catatan, termasuk yang tak terlihat; bahan pencarian. */
   models: string[];
   updatedAt: string;
+  /** Ada hanya pada catatan terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
 }
 export interface PostelDto {
   id: string;
@@ -1139,6 +1158,12 @@ export interface PostelDto {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** Ada hanya pada catatan terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+}
+/** Daftar Postel: bawaan catatan hidup; `deleted` = hanya yang terhapus, hanya bagi `sticker: edit`. */
+export interface ListPostelsInput {
+  status?: 'live' | 'deleted';
 }
 export interface PostelListDto {
   postels: PostelSummaryDto[];
@@ -1278,16 +1303,26 @@ export interface ApiContract {
   /** Pulihkan: kembali Nonaktif; ditolak generik bila merk+tipe/nama lainnya kini dipakai item hidup. */
   'items.restore': { input: GetItemInput; output: ItemDto };
   'items.restoreBatch': { input: IdBatchInput; output: BatchResult<ItemDto> };
-  'qrcodes.list': { input: null; output: QrDesignDto[] };
+  /** Konfigurasi terhapus hanya bagi `qrcode: manage` (`status=deleted`; selain itu `FORBIDDEN`). */
+  'qrcodes.list': { input: ListQrDesignsInput | null; output: QrDesignDto[] };
   'qrcodes.get': { input: QrDesignRefInput; output: QrDesignDto };
   'qrcodes.versions': { input: QrDesignRefInput; output: QrVersionDto[] };
   'qrcodes.save': { input: SaveQrDesignInput; output: QrDesignDto };
+  /** Hapus lunak (id dan bentuk lama tetap; perilaku beralih dari hapus keras). */
   'qrcodes.delete': { input: QrDesignRefInput; output: QrDesignRefInput };
-  'qrcodes.getDefaults': { input: null; output: QrDefaultsDto };
+  'qrcodes.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'qrcodes.restore': { input: QrDesignRefInput; output: QrDesignDto };
+  'qrcodes.restoreBatch': { input: IdBatchInput; output: BatchResult<QrDesignDto> };
+  'qrcodes.getDefaults': { input: GetQrDefaultsInput | null; output: QrDefaultsDto };
+  /** Preset terhapus hanya bagi `qrcode: manage`; selain itu `NOT_FOUND`. */
+  'qrcodes.getPreset': { input: QrDesignRefInput; output: QrPresetDto };
   'qrcodes.itemOptions': { input: ListQrItemOptionsInput; output: QrItemOptionsPageDto };
   'qrcodes.savePreset': { input: SaveQrPresetInput; output: QrPresetDto };
   'qrcodes.clonePreset': { input: ClonePresetInput; output: QrPresetDto };
   'qrcodes.deletePreset': { input: QrDesignRefInput; output: QrDesignRefInput };
+  'qrcodes.removePresetBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'qrcodes.restorePreset': { input: QrDesignRefInput; output: QrPresetDto };
+  'qrcodes.restorePresetBatch': { input: IdBatchInput; output: BatchResult<QrPresetDto> };
   'qrcodes.saveLogoLibrary': { input: SaveQrLogoLibraryInput; output: QrLogoLibraryDto };
   'qrcodes.uploadPdf': { input: UploadQrPdfInput; output: QrDocumentDto };
   'qrcodes.cloneFromDrive': { input: CloneQrPdfInput; output: QrDocumentDto };

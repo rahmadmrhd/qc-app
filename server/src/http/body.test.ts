@@ -62,6 +62,10 @@ const WORST: Inputs = {
   'brands.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
   'brands.removeBatch': { ids: BATCH_IDS },
   'brands.restoreBatch': { ids: BATCH_IDS },
+  'qrcodes.removeBatch': { ids: BATCH_IDS },
+  'qrcodes.restoreBatch': { ids: BATCH_IDS },
+  'qrcodes.removePresetBatch': { ids: BATCH_IDS },
+  'qrcodes.restorePresetBatch': { ids: BATCH_IDS },
   'stickerSettings.save': {
     expectedUpdatedAt: STAMP,
     alert: {

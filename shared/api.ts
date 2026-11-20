@@ -278,7 +278,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   // `/items/batch/restore` SEBELUM `/items/{id}/restore` (urutan tabel = urutan pendaftaran; jalur statis harus lebih dulu).
   'items.restoreBatch': { verb: 'POST', path: '/items/batch/restore' },
   'items.restore': { verb: 'POST', path: '/items/{id}/restore', etag: 'updatedAt' },
-  'qrcodes.list': { verb: 'GET', path: '/qrcodes' },
+  'qrcodes.list': { verb: 'GET', path: '/qrcodes', query: { status: 'string' } },
   'qrcodes.get': { verb: 'GET', path: '/qrcodes/{id}', etag: 'updatedAt' },
   'qrcodes.versions': { verb: 'GET', path: '/qrcodes/{id}/versions' },
   'qrcodes.save': {
@@ -289,7 +289,12 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     etag: 'updatedAt',
   },
   'qrcodes.delete': { verb: 'DELETE', path: '/qrcodes/{id}' },
-  'qrcodes.getDefaults': { verb: 'GET', path: '/qrcode-defaults' },
+  // `/qrcodes/batch/restore` SEBELUM `/qrcodes/{id}/restore` (urutan tabel = urutan pendaftaran; jalur statis lebih dulu).
+  'qrcodes.removeBatch': { verb: 'POST', path: '/qrcodes/batch/delete' },
+  'qrcodes.restoreBatch': { verb: 'POST', path: '/qrcodes/batch/restore' },
+  'qrcodes.restore': { verb: 'POST', path: '/qrcodes/{id}/restore', etag: 'updatedAt' },
+  'qrcodes.getDefaults': { verb: 'GET', path: '/qrcode-defaults', query: { status: 'string' } },
+  'qrcodes.getPreset': { verb: 'GET', path: '/qrcode-presets/{id}', etag: 'updatedAt' },
   'qrcodes.itemOptions': {
     verb: 'GET',
     path: '/qrcode-item-options',
@@ -304,6 +309,14 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   },
   'qrcodes.clonePreset': { verb: 'POST', path: '/qrcode-presets/{id}/clone', status: 201 },
   'qrcodes.deletePreset': { verb: 'DELETE', path: '/qrcode-presets/{id}' },
+  // `/qrcode-presets/batch/restore` SEBELUM `/qrcode-presets/{id}/restore`.
+  'qrcodes.removePresetBatch': { verb: 'POST', path: '/qrcode-presets/batch/delete' },
+  'qrcodes.restorePresetBatch': { verb: 'POST', path: '/qrcode-presets/batch/restore' },
+  'qrcodes.restorePreset': {
+    verb: 'POST',
+    path: '/qrcode-presets/{id}/restore',
+    etag: 'updatedAt',
+  },
   'qrcodes.saveLogoLibrary': {
     verb: 'PUT',
     path: '/qrcode-defaults/logos',

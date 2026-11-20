@@ -102,6 +102,8 @@ export async function seedQrDesign(
     createdBy: 'seed@gmail.com',
     updatedAt: QR_SEED_TIME,
     updatedBy: 'seed@gmail.com',
+    deletedAt: '',
+    deletedBy: '',
     ...design,
   };
   await env.DB.batch([insertQrDesignStmt(env.DB, record)]);
@@ -127,6 +129,8 @@ export async function seedQrPreset(
     createdBy: 'seed@gmail.com',
     updatedAt: QR_SEED_TIME,
     updatedBy: 'seed@gmail.com',
+    deletedAt: '',
+    deletedBy: '',
     ...preset,
   };
   await env.DB.batch([insertQrPresetStmt(env.DB, record)]);

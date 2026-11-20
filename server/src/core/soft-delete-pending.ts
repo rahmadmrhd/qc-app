@@ -20,11 +20,7 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
   'server/src/modules/item/repo.ts': [
     'item_business_units@1#1236ca45',
     'business_units@1#1236ca45',
-    'qr_designs@1#6d982a3a',
-    'manual_book_versions@1#6d982a3a',
-    'manual_book_versions@2#6d982a3a',
-    'stickers@1#6d982a3a',
-    'postels@1#2bbba95b',
+    'stickers@1#2e0e05ed',
     'item_business_units@2#69d917f0',
     'item_business_units@3#f44ff848',
   ],
@@ -104,24 +100,13 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'postels@1#53d6d36d',
   ],
   'server/src/modules/qrcode/items.ts': [
-    'qr_designs@1#7892692c',
     'manual_book_versions@1#1a057869',
     'stickers@1#1a057869',
     'manual_book_versions@2#1a057869',
     'manual_book_versions@3#b1ac013b',
   ],
-  'server/src/modules/qrcode/repo.ts': [
-    'qr_designs@1#4cd41f80',
-    'qr_designs@2#9d843d8b',
-    'qr_presets@1#f7133ef0',
-  ],
-  'server/src/modules/qrcode/service.ts': [
-    'qr_designs@1#c70c7365',
-    'manual_book_versions@1#97faa561',
-    'stickers@1#fc2aad1c',
-    'sticker_types@1#fc2aad1c',
-    'manual_book_versions@2#fc2aad1c',
-  ],
+  'server/src/modules/qrcode/repo.ts': [],
+  'server/src/modules/qrcode/service.ts': ['manual_book_versions@1#97faa561'],
   // Fase 4c (access, customer)
   'server/src/modules/access/location-brief.ts': ['locations@1#d3dc66da'],
   'server/src/modules/access/repo.ts': [
@@ -319,15 +304,7 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/item/repo.ts#items@2#ebd0f806':
     'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
-  'server/src/modules/item/repo.ts#items@3#e3b205b7':
-    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
-  'server/src/modules/item/repo.ts#items@4#4e671591':
-    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
-  'server/src/modules/item/repo.ts#items@5#6d982a3a':
-    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
   'server/src/modules/item/repo.ts#items@6#7dc4cfed':
-    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
-  'server/src/modules/item/repo.ts#items@7#2bbba95b':
     'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
   'server/src/modules/item/repo.ts#brands@1#1b357af7':
     'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
@@ -421,4 +398,28 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/sticker/guide-service.ts#brands@1#45c3a46c':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/item/repo.ts#items@3#d2c69cc7':
+    'Pembaca hak Manual Book menurut id item: gabungan ke `qr_designs` memakai `liveWhere`, `items` dibaca menurut id yang sudah lolos penyaring di pemanggil.',
+  'server/src/modules/item/repo.ts#items@4#15b163c8':
+    'Pembaca penunjuk Postel menurut id item: gabungan ke `postels` memakai `liveWhere`, `items` dibaca menurut id yang sudah lolos penyaring di pemanggil.',
+  'server/src/modules/item/repo.ts#items@5#2e0e05ed':
+    'Baca menurut id yang SUDAH lolos penyaring hidup di pemanggil (daftar/detail) atau perencana hapus/pulihkan yang menilai `deletedAt` sendiri; JOIN merk = nama untuk tampilan.',
+  'server/src/modules/item/repo.ts#items@7#a315a2dc':
+    'Pembaca stiker Postel menurut id item: `postels` disaring `liveWhere`, `items` dibaca menurut id yang sudah lolos penyaring di pemanggil.',
+  'server/src/modules/qrcode/items.ts#manual_book_versions@4#97faa561':
+    'Versi Manual Book dibaca menurut id konfigurasi yang dikunci pemanggil (hapus/ekspor); tak ada daftar lintas konfigurasi.',
+  'server/src/modules/qrcode/items.ts#manual_book_versions@5#0ab64f55':
+    'Penjaga versi Manual Book menurut id konfigurasi yang dikunci pemanggil (`MAX(version)` tak berubah); tak ada daftar lintas konfigurasi.',
+  'server/src/modules/qrcode/repo.ts#qr_designs@3#fedda493':
+    'Daftar SEMUA konfigurasi (hidup dan terhapus) untuk pembaca internal (pencabutan PDF yatim, simpan menurut id); daftar tampilan memakai `listQrDesigns` dengan penyaring keadaan.',
+  'server/src/modules/qrcode/repo.ts#qr_designs@4#ca4f8a7b':
+    'Baca konfigurasi menurut id (hidup atau terhapus); pemanggil menilai `deletedAt` (ekspor, hapus/pulihkan, pembaca berhak).',
+  'server/src/modules/qrcode/repo.ts#qr_presets@3#ba8689c9':
+    'Baca preset menurut id (hidup atau terhapus); pemanggil menilai `deletedAt` (perencana hapus/pulihkan, pembaca berhak).',
+  'server/src/modules/qrcode/service.ts#manual_book_versions@2#9e72c7c1':
+    'Versi Manual Book dibaca menurut id konfigurasi yang sudah lolos pemeriksaan hak/keadaan di pemanggil.',
+  'server/src/modules/qrcode/soft-delete.ts#manual_book_versions@1#3dca0d0d':
+    'Stiker versi dibaca menurut id konfigurasi yang dikunci dan sedang dihapus/dipulihkan dalam batch yang sama (harus melihat semua versi, juga untuk konfigurasi yang baru ditandai terhapus).',
+  'server/src/modules/qrcode/soft-delete.ts#manual_book_versions@2#8762d12f':
+    'Stiker versi dibaca menurut id konfigurasi yang dikunci dan sedang dihapus/dipulihkan dalam batch yang sama (harus melihat semua versi, juga untuk konfigurasi yang baru ditandai terhapus).',
 };

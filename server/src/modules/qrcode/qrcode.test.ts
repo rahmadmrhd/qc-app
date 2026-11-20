@@ -289,7 +289,7 @@ describe('konfigurasi QR', () => {
     expect((await audits()).at(-1)).toBe('qrcode.update');
   });
 
-  test('hapus: baris hilang, audit qrcode.delete, berkas ekspor masuk sampah, dokumen tidak dibuang', async () => {
+  test('hapus lunak: baris bertanda, audit qrcode.delete, berkas Drive tidak dibuang dan berbagi tidak dicabut', async () => {
     const made = await save();
     const folder = 'EXPORT';
     env.BRIDGE.state.folders.add(folder);
@@ -301,12 +301,20 @@ describe('konfigurasi QR', () => {
     expect((await call('qrmanage@gmail.com', 'qrcodes.delete', { id: made.data.id })).ok).toBe(
       true,
     );
-    expect(await designs()).toHaveLength(0);
-    expect(env.BRIDGE.state.files.get(pdfId)?.trashed).toBe(true);
+    const rows = await designs();
+    expect(rows).toHaveLength(1);
+    expect(env.BRIDGE.state.files.get(pdfId)?.trashed).toBe(false);
     expect(env.BRIDGE.state.files.get(docDrive)?.trashed).toBe(false);
+    expect(shared(docDrive)).toBe(true);
     expect((await audits()).at(-1)).toBe('qrcode.delete');
+    // hapus ulang idempoten (tanpa audit baru); id tak dikenal NOT_FOUND
+    const auditsBefore = (await audits()).length;
+    expect((await call('qrmanage@gmail.com', 'qrcodes.delete', { id: made.data.id })).ok).toBe(
+      true,
+    );
+    expect((await audits()).length).toBe(auditsBefore);
     expect(
-      (await call('qrmanage@gmail.com', 'qrcodes.delete', { id: made.data.id })).error.code,
+      (await call('qrmanage@gmail.com', 'qrcodes.delete', { id: 'tidak-ada' })).error.code,
     ).toBe('NOT_FOUND');
   });
 
@@ -507,15 +515,19 @@ describe('link, logo, dan berkas', () => {
 });
 
 describe('pencabutan berbagi PDF sumber', () => {
-  test('menghapus konfigurasi yang terakhir memakai PDF mencabut berbagi PDF itu', async () => {
+  test('menghapus lunak konfigurasi TIDAK mencabut berbagi PDF-nya (konfigurasi dapat dipulihkan)', async () => {
     const doc = (await upload()).data;
     const design = (await usePdf(doc.id)).data;
     const drive = await driveIdOf(doc.id);
     expect(shared(drive)).toBe(true);
     expect((await call('qrmanage@gmail.com', 'qrcodes.delete', { id: design.id })).ok).toBe(true);
-    expect(shared(drive)).toBe(false);
-    expect((await docs()).find((d) => d.id === doc.id)?.shared).toBe('0');
+    expect(shared(drive)).toBe(true);
+    expect((await docs()).find((d) => d.id === doc.id)?.shared).toBe('1');
     expect(env.BRIDGE.state.files.get(drive)?.trashed).toBe(false);
+    // pembersihan berkala pun tak mencabutnya selama konfigurasinya masih ada (terhapus lunak)
+    env.clock.advance(2 * 60 * 60 * 1000);
+    await cleanupQrDocuments(env);
+    expect(shared(drive)).toBe(true);
   });
 
   test('mengganti PDF sumber ke dokumen lain mencabut berbagi PDF yang tidak lagi dipakai', async () => {
@@ -531,8 +543,9 @@ describe('pencabutan berbagi PDF sumber', () => {
 
   test('memakai kembali PDF yang sudah dicabut membagikannya lagi', async () => {
     const doc = (await upload()).data;
+    const other = (await upload('lain.pdf')).data;
     const design = (await usePdf(doc.id)).data;
-    await call('qrmanage@gmail.com', 'qrcodes.delete', { id: design.id });
+    await usePdf(other.id, { id: design.id, expectedUpdatedAt: design.updatedAt });
     expect(shared(await driveIdOf(doc.id))).toBe(false);
     expect((await usePdf(doc.id, { title: 'Pakai lagi' })).ok).toBe(true);
     expect(shared(await driveIdOf(doc.id))).toBe(true);
@@ -555,11 +568,14 @@ describe('pencabutan berbagi PDF sumber', () => {
 
   test('galat pencabutan yang sama untuk dokumen yang sama dicatat sekali walau pembersihan berulang', async () => {
     const doc = (await upload()).data;
+    const other = (await upload('lain.pdf')).data;
     const design = (await usePdf(doc.id)).data;
     env.BRIDGE.revokeSharing = async () => {
       throw new Error('Berkas milik akun lain');
     };
-    expect((await call('qrmanage@gmail.com', 'qrcodes.delete', { id: design.id })).ok).toBe(true);
+    expect(
+      (await usePdf(other.id, { id: design.id, expectedUpdatedAt: design.updatedAt })).ok,
+    ).toBe(true);
     for (let i = 0; i < 3; i++) {
       env.clock.advance(2 * 60 * 60 * 1000);
       await cleanupQrDocuments(env);
@@ -569,12 +585,15 @@ describe('pencabutan berbagi PDF sumber', () => {
 
   test('gagal mencabut berbagi di Drive tidak menggagalkan hapus; galat dicatat; dicoba lagi kemudian', async () => {
     const doc = (await upload()).data;
+    const other = (await upload('lain.pdf')).data;
     const design = (await usePdf(doc.id)).data;
     const original = env.BRIDGE.revokeSharing;
     env.BRIDGE.revokeSharing = async () => {
       throw new Error('Drive menolak');
     };
-    expect((await call('qrmanage@gmail.com', 'qrcodes.delete', { id: design.id })).ok).toBe(true);
+    expect(
+      (await usePdf(other.id, { id: design.id, expectedUpdatedAt: design.updatedAt })).ok,
+    ).toBe(true);
     expect(logged.some((m) => m.includes('Drive menolak'))).toBe(true);
     expect((await docs()).find((d) => d.id === doc.id)?.shared).toBe('1');
     env.BRIDGE.revokeSharing = original;
