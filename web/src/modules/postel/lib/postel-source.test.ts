@@ -4,6 +4,7 @@ const apiMock = vi.fn();
 vi.mock('@/lib/api', () => ({ api: (...args: unknown[]) => apiMock(...args) }));
 
 import { resetBusyForTests } from '@/app/pwa/busy';
+import { ApiError } from '@/lib/api/api-error';
 import { postelSource } from './postel-source';
 
 const dto = { id: 'a1', mime: 'application/pdf', size: 5, filename: 'lampiran-a1.pdf' };
@@ -33,7 +34,7 @@ test('mengunggah apa adanya (tanpa pengecilan), jenis dari ekstensi bila type ko
   expect(input.mime).toBe('application/pdf');
   expect(Array.from(input.bytes)).toEqual([37, 80, 68, 70, 45]);
   expect(options).toEqual({});
-  expect(item).toMatchObject({ id: 'a1', name: 'Sertifikat', size: 5, thumbUrl: '' });
+  expect(item).toMatchObject({ id: 'a1', name: 'lampiran-a1.pdf', size: 5, thumbUrl: '' });
 });
 
 test('fase: uploading lalu processing setelah byte penuh (tanpa preparing)', async () => {
@@ -61,4 +62,14 @@ test('abort sebelum unggah: tak memanggil API; signal diteruskan bila hidup', as
   const live = new AbortController();
   await postelSource.upload(pdf(), 'x', { signal: live.signal });
   expect(apiMock.mock.calls[0]?.[2]).toMatchObject({ signal: live.signal });
+});
+
+test('galat server pada field bytes/mime menjadi galat biasa dengan pesan field apa adanya; abort tidak diubah', async () => {
+  apiMock.mockRejectedValueOnce(
+    new ApiError('VALIDATION', 'Data tidak valid', 'r', { bytes: 'Dimensi gambar tidak terbaca' }),
+  );
+  await expect(postelSource.upload(pdf(), 'x')).rejects.toThrow('Dimensi gambar tidak terbaca');
+  const failure = new TypeError('putus');
+  apiMock.mockRejectedValueOnce(failure);
+  await expect(postelSource.upload(pdf(), 'x')).rejects.toBe(failure);
 });
