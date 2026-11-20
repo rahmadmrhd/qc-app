@@ -8,10 +8,12 @@ import { join, relative, sep } from 'node:path';
 
 const ROOT = join(import.meta.dir, '..');
 const SCAN_DIR = 'web/src';
-const IGNORED_DIRS = new Set(['node_modules', 'dist', 'ui']);
+const IGNORED_DIRS = new Set(['node_modules', 'dist']);
+/** Folder shadcn (kode salinan, dikecualikan): hanya jalur ini, bukan folder bernama `ui` di tempat lain. */
+const UI_DIR = 'web/src/components/ui';
 
 const RAW_PALETTE =
-  /\b(?:bg|text|border|ring|fill|stroke|from|to|via|outline|decoration|divide|placeholder|accent|caret)(?:-(?:t|r|b|l|x|y|s|e))?-(?:red|rose|amber|yellow|orange|green|emerald|lime|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink)-\d{2,3}\b/g;
+  /\b(?:bg|text|border|ring|fill|stroke|from|to|via|outline|decoration|divide|placeholder|accent|caret|shadow|ring-offset)(?:-(?:t|r|b|l|x|y|s|e))?-(?:gray|zinc|slate|neutral|stone|red|rose|amber|yellow|orange|green|emerald|lime|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink)-\d{2,3}\b/g;
 
 /** Berkas (relatif terhadap akar repo, pemisah `/`) yang boleh memuat warna palet mentah, beserta alasannya. */
 const CAMERA_REASON =
@@ -26,6 +28,7 @@ function walk(dir: string, found: string[] = [], ignored: Set<string> = IGNORED_
   for (const entry of readdirSync(dir)) {
     if (ignored.has(entry)) continue;
     const path = join(dir, entry);
+    if (ignored === IGNORED_DIRS && relative(ROOT, path).split(sep).join('/') === UI_DIR) continue;
     if (statSync(path).isDirectory()) walk(path, found, ignored);
     else if (/\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path)) found.push(path);
   }

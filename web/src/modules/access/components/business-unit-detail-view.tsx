@@ -22,7 +22,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 export function BusinessUnitDetailView({ businessUnit, onBack }: BusinessUnitDetailViewProps) {
   if (!businessUnit) {
     return (
-      <div className="max-w-3xl space-y-4">
+      <div className="space-y-4">
         <h1 className="text-2xl font-semibold">BU tidak ditemukan</h1>
         <Button variant="outline" onClick={onBack}>
           Kembali ke daftar BU
@@ -31,7 +31,7 @@ export function BusinessUnitDetailView({ businessUnit, onBack }: BusinessUnitDet
     );
   }
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold">{businessUnit.name}</h1>

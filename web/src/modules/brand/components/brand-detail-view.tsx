@@ -23,7 +23,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
 export function BrandDetailView({ brand, businessUnits, onBack }: BrandDetailViewProps) {
   if (!brand) {
     return (
-      <div className="max-w-3xl space-y-4">
+      <div className="space-y-4">
         <h1 className="text-2xl font-semibold">Merk tidak ditemukan</h1>
         <Button variant="outline" onClick={onBack}>
           Kembali ke daftar merk
@@ -35,7 +35,7 @@ export function BrandDetailView({ brand, businessUnits, onBack }: BrandDetailVie
     (id) => businessUnits.find((bu) => bu.id === id) ?? { id, code: id, name: id },
   );
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h1 className="text-2xl font-semibold">{brand.name}</h1>

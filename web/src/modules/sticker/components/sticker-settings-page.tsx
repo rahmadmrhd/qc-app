@@ -347,7 +347,7 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
 /** Konfigurasi Stiker: minimum bawaan per jenis dan email ringkasan harian stok menipis (`sticker: manage`). */
 export function StickerSettingsPage(props: StickerSettingsPageProps) {
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <h1 className="text-2xl font-semibold">Konfigurasi Stiker</h1>
       {/* `key` = versi tersimpan: setelah simpan (atau muat ulang) isian mulai dari data server terbaru. */}
       <Body key={props.settings.updatedAt} {...props} />

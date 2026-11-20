@@ -208,7 +208,7 @@ function Body({ settings, users, onSave, serverError, onServerError }: BodyProps
 export function SerialSettingsPage({ children, ...props }: SerialSettingsPageProps) {
   const [serverError, setServerError] = useState<string | null>(null);
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <h1 className="text-2xl font-semibold">Pengaturan Serial Number</h1>
       <Body
         key={props.settings.updatedAt}

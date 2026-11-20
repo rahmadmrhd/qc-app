@@ -50,6 +50,7 @@ const NARROW_WIDTH = [
   '/postel/$postelId/edit',
   '/sticker/settings',
   '/serial/settings',
+  '/serial/report',
 ];
 const FULL_WIDTH = ['/handover', '/serial/new'];
 /** Rute yang memakai bawaan `default` secara sengaja (semua View, daftar, QR/Preset, dan halaman lain). */
@@ -79,7 +80,6 @@ const DEFAULT_WIDTH = [
   '/qrcode/new',
   '/serial',
   '/serial/$serialId',
-  '/serial/report',
   '/serial/reports',
   '/sticker',
   '/sticker/library',
