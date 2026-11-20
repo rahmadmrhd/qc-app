@@ -68,6 +68,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   },
   'stickerGuides.rename': { id: 'g1', name: 'Kardus Baru' },
   'stickerGuides.remove': { id: 'g1' },
+  'stickerGuides.removeBatch': { ids: ['g1', 'g2'] },
   'stickerGuides.thumbnail': { id: 'g1' },
   'stickerGuides.usages': { id: 'g1' },
   'brands.list': { status: 'deleted' },
@@ -85,7 +86,8 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     alert: { enabled: true, recipients: ['a@contoh.com'], digestHour: 8, intervalDays: 1 },
     defaults: [{ typeId: 'st1', defaultMinQty: 5 }],
   },
-  'stickerTypes.list': null,
+  'stickerTypes.list': { status: 'deleted' },
+  'stickerTypes.get': { id: 'st1' },
   'stickerTypes.save': {
     id: 'st1',
     expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
@@ -93,7 +95,13 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     rule: 'bu',
   },
   'stickerTypes.setStatus': { id: 'st1', status: 'inactive' },
-  'stickers.list': null,
+  'stickerTypes.setStatusBatch': { ids: ['st1', 'st2'], status: 'inactive' },
+  'stickerTypes.remove': { id: 'st1' },
+  'stickerTypes.removeBatch': { ids: ['st1', 'st2'] },
+  'stickerTypes.restore': { id: 'st1' },
+  'stickerTypes.restoreBatch': { ids: ['st1', 'st2'] },
+  'stickers.list': { status: 'deleted' },
+  'stickers.get': { id: 's1' },
   'stickers.save': {
     id: 's1',
     expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
@@ -105,6 +113,11 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     businessUnitIds: ['bu1'],
   },
   'stickers.setStatus': { id: 's1', status: 'inactive' },
+  'stickers.setStatusBatch': { ids: ['s1', 's2'], status: 'inactive' },
+  'stickers.remove': { id: 's1' },
+  'stickers.removeBatch': { ids: ['s1', 's2'] },
+  'stickers.restore': { id: 's1' },
+  'stickers.restoreBatch': { ids: ['s1', 's2'] },
   'stickerStock.list': { locationIds: ['l1', 'l2'] },
   'stickerStock.record': {
     locationId: 'l1',
@@ -114,6 +127,21 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     reason: '',
   },
   'stickerStock.adjust': { locationId: 'l1', stickerId: 's1', delta: -2, reason: 'rusak' },
+  'stickerStock.recordBatch': {
+    kind: 'out',
+    reason: 'kirim',
+    rows: [
+      { stickerId: 's1', locationId: 'l1', quantity: 3 },
+      { stickerId: 's2', locationId: 'l1', count: { rows: [], loose: 4 } },
+    ],
+  },
+  'stickerStock.adjustBatch': {
+    reason: 'rusak',
+    rows: [
+      { stickerId: 's1', locationId: 'l1', delta: -2 },
+      { stickerId: 's2', locationId: 'l2', delta: 5 },
+    ],
+  },
   'stickerStock.opname': {
     rows: [{ stickerId: 's1', locationId: 'l1', expectedQty: 10, count: { rows: [], loose: 12 } }],
   },

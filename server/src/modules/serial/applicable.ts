@@ -1,4 +1,5 @@
 import type { Env } from '@server/core/env';
+import { liveWhere } from '@server/core/soft-delete';
 import { loadItemInstructions } from '@server/modules/sticker/instruction-repo';
 import { buildInstructionViews } from '@server/modules/sticker/instruction-service';
 import type { ApplicableStickerDto } from '@shared/contract';
@@ -28,7 +29,7 @@ export async function applicableStickersOf(
   if (resolved.size === 0) return [];
   const ids = [...resolved.keys()];
   const rows = await env.DB.prepare(
-    `SELECT s.id, t.name AS type_name FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id IN (${ids.map(() => '?').join(', ')})`,
+    `SELECT s.id, t.name AS type_name FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id IN (${ids.map(() => '?').join(', ')}) AND ${liveWhere('s')}`,
   )
     .bind(...ids)
     .all<{ id: string; type_name: string }>();

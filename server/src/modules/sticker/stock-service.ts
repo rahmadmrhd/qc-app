@@ -1,12 +1,14 @@
 import { runCas } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
-import type { DbStatement } from '@server/core/db';
+import type { DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
 import type {
+  AdjustStockBatchInput,
   AdjustStockInput,
   OpnameInput,
+  RecordStockBatchInput,
   RecordStockInput,
   StickerStockDto,
   StockEntryDto,
@@ -31,6 +33,7 @@ import {
   stickerActiveGuardStmt,
   stickerStatusStatement,
   stickersExistStatement,
+  stickersStatusStatement,
   stickersWithTypeStatement,
   stockPairsStatement,
   stockQtyStatement,
@@ -56,6 +59,79 @@ interface StockChange {
   amountField: 'quantity' | 'delta';
 }
 
+/** Alasan stiker tak dapat menerima stok masuk (`null` = boleh): digantikan, nonaktif, atau jenisnya nonaktif. */
+function receivingProblem(sticker: { status: string; type_status: string }): string | null {
+  if (sticker.status.trim() === 'deprecated') {
+    return 'Stiker sudah digantikan versi baru; stok masuk tidak dapat dicatat';
+  }
+  if (sticker.status.trim() !== 'active') return 'Stiker nonaktif tidak dapat menerima stok masuk';
+  if (sticker.type_status.trim() !== 'active') {
+    return 'Jenis stiker nonaktif; stok masuk tidak dapat dicatat';
+  }
+  return null;
+}
+
+/** Pernyataan satu perubahan stok, dipisah per tahap agar batch banyak baris dapat menyusunnya dalam urutan kunci tetap. */
+interface ChangeParts {
+  /** Kunci baris stiker (`FOR UPDATE`), hanya untuk pengurangan. */
+  lock: DbStatement | null;
+  /** Penjaga stiker+jenis aktif (`LOCK IN SHARE MODE`), hanya untuk catatan masuk. */
+  guard: DbStatement | null;
+  /** Pembaruan stok (penjaga CAS pada pengurangan) lalu penulisan riwayat. */
+  apply: DbStatement[];
+  /** Penonaktifan otomatis stiker `deprecated` yang kosong, hanya setelah pengurangan. */
+  inactivate: DbStatement | null;
+  /** Pembacaan baris riwayat yang baru (segera setelah `apply`, sebelum penulisan riwayat berikutnya). */
+  read: DbStatement;
+}
+
+/**
+ * SATU definisi pernyataan perubahan stok (dipakai `applyChangeOnce` dan entri batch): pengurangan memakai penjaga CAS
+ * di `UPDATE`, pengurangan mengunci baris stiker lebih dulu agar penonaktifan otomatis stiker `deprecated` tak
+ * terlewat saat dua pengurangan di lokasi berbeda berjalan serentak, catatan masuk memakai penjaga stiker+jenis aktif.
+ */
+function changeStatements(
+  db: Preparer,
+  change: StockChange,
+  now: string,
+  actor: string,
+): ChangeParts {
+  const amount = Math.abs(change.delta);
+  return {
+    lock: change.delta < 0 ? lockStickerRowStmt(db, change.stickerId) : null,
+    guard: change.requireActive ? stickerActiveGuardStmt(db, change.stickerId) : null,
+    apply: [
+      change.delta > 0
+        ? addStockStmt(db, change.stickerId, change.locationId, amount, now)
+        : subtractStockStmt(db, change.stickerId, change.locationId, amount, now),
+      insertEntryStmt(db, {
+        stickerId: change.stickerId,
+        locationId: change.locationId,
+        kind: change.kind,
+        delta: change.delta,
+        count: change.count,
+        reason: change.reason,
+        actor,
+        ts: now,
+      }),
+    ],
+    inactivate:
+      change.delta < 0 ? inactivateDeprecatedIfEmptyStmt(db, change.stickerId, now, actor) : null,
+    read: lastEntryStatement(db),
+  };
+}
+
+/** Urutan satu perubahan: kunci, penjaga, pembaruan+riwayat, penonaktifan otomatis, lalu pembacaan riwayat (terakhir). */
+function flattenChange(parts: ChangeParts): DbStatement[] {
+  const statements: DbStatement[] = [];
+  if (parts.lock) statements.push(parts.lock);
+  if (parts.guard) statements.push(parts.guard);
+  statements.push(...parts.apply);
+  if (parts.inactivate) statements.push(parts.inactivate);
+  statements.push(parts.read);
+  return statements;
+}
+
 /**
  * Satu perubahan stok: SATU `batch()` (transaksi) berisi penjaga, pembaruan stok, riwayat (dengan `qty_after` dari
  * stok sesudah pembaruan), dan pembacaan baris riwayat yang baru. Pengurangan memakai penjaga CAS di `UPDATE` (stok
@@ -76,17 +152,9 @@ async function applyChangeOnce(
     type_status: string;
   } | null;
   if (!sticker) throw appError('NOT_FOUND', 'Stiker tidak ditemukan');
-  if (change.requireActive && sticker.status.trim() === 'deprecated') {
-    const message = 'Stiker sudah digantikan versi baru; stok masuk tidak dapat dicatat';
-    throw appError('VALIDATION', message, { stickerId: message });
-  }
-  if (change.requireActive && sticker.status.trim() !== 'active') {
-    const message = 'Stiker nonaktif tidak dapat menerima stok masuk';
-    throw appError('VALIDATION', message, { stickerId: message });
-  }
-  if (change.requireActive && sticker.type_status.trim() !== 'active') {
-    const message = 'Jenis stiker nonaktif; stok masuk tidak dapat dicatat';
-    throw appError('VALIDATION', message, { stickerId: message });
+  const notReceivable = change.requireActive ? receivingProblem(sticker) : null;
+  if (notReceivable !== null) {
+    throw appError('VALIDATION', notReceivable, { stickerId: notReceivable });
   }
   const current = Number((qtyResult?.results[0] as { qty: number | string } | undefined)?.qty ?? 0);
   const amount = Math.abs(change.delta);
@@ -94,30 +162,7 @@ async function applyChangeOnce(
     throw appError('VALIDATION', NOT_ENOUGH_MESSAGE, { [change.amountField]: NOT_ENOUGH_MESSAGE });
   }
   const now = nowIso(env);
-  const statements: DbStatement[] = [];
-  // Pengurangan: kunci baris stiker lebih dulu agar penonaktifan otomatis stiker `deprecated` tidak terlewat
-  // saat dua pengurangan di lokasi berbeda berjalan serentak.
-  if (change.delta < 0) statements.push(lockStickerRowStmt(env.DB, change.stickerId));
-  if (change.requireActive) statements.push(stickerActiveGuardStmt(env.DB, change.stickerId));
-  statements.push(
-    change.delta > 0
-      ? addStockStmt(env.DB, change.stickerId, change.locationId, amount, now)
-      : subtractStockStmt(env.DB, change.stickerId, change.locationId, amount, now),
-    insertEntryStmt(env.DB, {
-      stickerId: change.stickerId,
-      locationId: change.locationId,
-      kind: change.kind,
-      delta: change.delta,
-      count: change.count,
-      reason: change.reason,
-      actor: actor.email,
-      ts: now,
-    }),
-  );
-  if (change.delta < 0) {
-    statements.push(inactivateDeprecatedIfEmptyStmt(env.DB, change.stickerId, now, actor.email));
-  }
-  statements.push(lastEntryStatement(env.DB));
+  const statements = flattenChange(changeStatements(env.DB, change, now, actor.email));
   const results = await env.DB.batch(statements);
   const row = results[results.length - 1]?.results[0] as StockEntryRow | undefined;
   if (!row) throw appError('INTERNAL', 'Riwayat stok gagal dicatat');
@@ -348,4 +393,148 @@ export async function opnameStock(
   actor: ActorRef,
 ): Promise<StockEntryDto[]> {
   return runCas(() => opnameOnce(env, input, actor), OPNAME_STALE_MESSAGE);
+}
+
+const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * Entri stok batch: SATU `batch()` untuk semua baris, di bawah `runCas`. Semua baris diperiksa SEBELUM menulis (stiker
+ * tak dikenal atau terhapus = `NOT_FOUND`; satu baris yang melanggar = `VALIDATION` bermuatan "Baris N: ..." yang
+ * menolak seluruh permintaan). Urutan kunci tetap agar dua batch serentak tak saling deadlock: baris stiker (urut id),
+ * lalu penjaga aktif (urut id), lalu pembaruan stok urut (stiker, lokasi), lalu penonaktifan otomatis (urut id).
+ * Penjaga CAS pada pengurangan tetap pagar atas balapan; hasil mengikuti urutan masukan.
+ */
+async function applyBatchOnce(
+  env: Env,
+  changes: readonly StockChange[],
+  actor: ActorRef,
+): Promise<StockEntryDto[]> {
+  const stickerIds = [...new Set(changes.map((change) => change.stickerId))];
+  const [statusResult, qtyResult] = await env.DB.batch([
+    stickersStatusStatement(env.DB, stickerIds),
+    stockPairsStatement(env.DB, changes),
+  ]);
+  const statusOf = new Map<string, { status: string; type_status: string }>();
+  for (const row of (statusResult?.results ?? []) as Array<{
+    id: string;
+    status: string;
+    type_status: string;
+  }>) {
+    statusOf.set(row.id.trim(), row);
+  }
+  const stored = new Map<string, number>();
+  for (const row of (qtyResult?.results ?? []) as Array<{
+    sticker_id: string;
+    location_id: string;
+    qty: number | string;
+  }>) {
+    stored.set(pairOf(row.sticker_id.trim(), row.location_id.trim()), Number(row.qty) || 0);
+  }
+  for (const change of changes) {
+    if (!statusOf.has(change.stickerId)) throw appError('NOT_FOUND', 'Stiker tidak ditemukan');
+  }
+  for (const [index, change] of changes.entries()) {
+    const sticker = statusOf.get(change.stickerId);
+    let problem: string | null = null;
+    if (change.requireActive && sticker) problem = receivingProblem(sticker);
+    if (
+      problem === null &&
+      change.delta < 0 &&
+      (stored.get(pairOf(change.stickerId, change.locationId)) ?? 0) < Math.abs(change.delta)
+    ) {
+      problem = NOT_ENOUGH_MESSAGE;
+    }
+    if (problem !== null) {
+      const message = `Baris ${index + 1}: ${problem}`;
+      throw appError('VALIDATION', message, { rows: message });
+    }
+  }
+  const now = nowIso(env);
+  const parts = changes.map((change) => changeStatements(env.DB, change, now, actor.email));
+  const locks = new Map<string, DbStatement>();
+  const guards = new Map<string, DbStatement>();
+  const inactivations = new Map<string, DbStatement>();
+  for (const [index, part] of parts.entries()) {
+    const stickerId = (changes[index] as StockChange).stickerId;
+    if (part.lock && !locks.has(stickerId)) locks.set(stickerId, part.lock);
+    if (part.guard && !guards.has(stickerId)) guards.set(stickerId, part.guard);
+    if (part.inactivate && !inactivations.has(stickerId)) {
+      inactivations.set(stickerId, part.inactivate);
+    }
+  }
+  const statements: DbStatement[] = [];
+  for (const group of [locks, guards]) {
+    for (const stickerId of [...group.keys()].sort(byText)) {
+      statements.push(group.get(stickerId) as DbStatement);
+    }
+  }
+  const order = changes
+    .map((_, index) => index)
+    .sort((a, b) => {
+      const left = changes[a] as StockChange;
+      const right = changes[b] as StockChange;
+      return byText(left.stickerId, right.stickerId) || byText(left.locationId, right.locationId);
+    });
+  const readSlot = new Map<number, number>();
+  for (const index of order) {
+    const part = parts[index] as ChangeParts;
+    statements.push(...part.apply, part.read);
+    readSlot.set(index, statements.length - 1);
+  }
+  for (const stickerId of [...inactivations.keys()].sort(byText)) {
+    statements.push(inactivations.get(stickerId) as DbStatement);
+  }
+  const results = await env.DB.batch(statements);
+  return changes.map((_, index) => {
+    const row = results[readSlot.get(index) ?? -1]?.results[0] as StockEntryRow | undefined;
+    if (!row) throw appError('INTERNAL', 'Riwayat stok gagal dicatat');
+    return toStockEntry(row);
+  });
+}
+
+/**
+ * Catat stok masuk atau keluar untuk banyak stiker x lokasi sekaligus (atomik; lihat `applyBatchOnce`). Satu
+ * `reason` disalin ke setiap entri. Izin lokasi SEMUA baris diperiksa router (`locationIds` dari validator).
+ */
+export async function recordStockBatch(
+  env: Env,
+  input: RecordStockBatchInput,
+  actor: ActorRef,
+): Promise<StockEntryDto[]> {
+  const changes = input.rows.map((row): StockChange => {
+    const count = row.count ?? null;
+    const pieces = count === null ? (row.quantity ?? 0) : piecesOfCount(count);
+    return {
+      stickerId: row.stickerId,
+      locationId: row.locationId,
+      kind: input.kind,
+      delta: input.kind === 'in' ? pieces : -pieces,
+      count,
+      reason: input.reason,
+      requireActive: input.kind === 'in',
+      amountField: 'quantity',
+    };
+  });
+  return runCas(() => applyBatchOnce(env, changes, actor), STALE_MESSAGE);
+}
+
+/** Koreksi stok banyak stiker x lokasi sekaligus (atomik, alasan wajib; diizinkan pada stiker nonaktif). */
+export async function adjustStockBatch(
+  env: Env,
+  input: AdjustStockBatchInput,
+  actor: ActorRef,
+): Promise<StockEntryDto[]> {
+  const changes = input.rows.map(
+    (row): StockChange => ({
+      stickerId: row.stickerId,
+      locationId: row.locationId,
+      kind: 'adjust',
+      delta: row.delta,
+      count: null,
+      reason: input.reason,
+      requireActive: false,
+      amountField: 'delta',
+    }),
+  );
+  return runCas(() => applyBatchOnce(env, changes, actor), STALE_MESSAGE);
 }

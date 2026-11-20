@@ -373,7 +373,7 @@ export async function assertManualBookStickerNameFree(
     ) + 1;
   const stickerName = manualBookStickerName(name, next);
   const taken = await env.DB.prepare(
-    "SELECT 1 AS taken FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE t.system_kind = 'manual_book' AND LOWER(s.name) = LOWER(?) AND s.id NOT IN (SELECT sticker_id FROM manual_book_versions WHERE design_id = ?) LIMIT 1",
+    "SELECT 1 AS taken FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE t.system_kind = 'manual_book' AND s.deleted_at = '' AND t.deleted_at = '' AND LOWER(s.name) = LOWER(?) AND s.id NOT IN (SELECT sticker_id FROM manual_book_versions WHERE design_id = ?) LIMIT 1",
   )
     .bind(stickerName, designId)
     .first<{ taken: number }>();
