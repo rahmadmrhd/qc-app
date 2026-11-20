@@ -7,6 +7,7 @@ import {
   Building2,
   ClipboardList,
   Contact,
+  Download,
   FileBadge,
   FileText,
   History,
@@ -46,6 +47,8 @@ export interface NavItem {
   permission?: NavPermission | readonly NavPermission[];
   /** Hanya tampil di aplikasi desktop (jembatan `window.qcBridge` ada). */
   desktopOnly?: boolean;
+  /** Hanya tampil di peramban (jembatan `window.qcBridge` tak ada); kebalikan `desktopOnly`. */
+  webOnly?: boolean;
   /**
    * Di peramban, menekan item ini juga membuka aplikasi desktop dengan akun yang sama (serah-terima tiket; halaman `to`
    * tetap terbuka sebagai cadangan bila aplikasi belum terpasang). Di aplikasi desktop item ini rute biasa.
@@ -72,6 +75,8 @@ export const NAV_GROUPS: NavGroup[] = [
         permission: { module: 'countrylock', level: 'view' },
         opensDesktopApp: true,
       },
+      // Daftar unduhan aplikasi desktop; di dalam aplikasi desktop tautan unduh tak berfungsi, jadi hanya di peramban.
+      { label: 'Aplikasi Desktop', to: '/desktop', icon: Download, webOnly: true },
     ],
   },
   {
@@ -268,6 +273,7 @@ export function visibleNavGroups(
       ...group,
       items: group.items.filter((item) => {
         if (item.desktopOnly && !desktop) return false;
+        if (item.webOnly && desktop) return false;
         if (item.visible && !item.visible(me)) return false;
         if (!item.permission) return true;
         const alternatives: readonly NavPermission[] = Array.isArray(item.permission)
