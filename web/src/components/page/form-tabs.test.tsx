@@ -45,7 +45,9 @@ test('daftar tab sticky dengan stickyTop; pemicu dan panel membawa data-form-tab
 
 test('stickyTop bawaan memakai offset headroom', () => {
   render(<FormTabs tabs={TABS} />);
-  expect(screen.getByRole('tablist').style.top).toBe('var(--headroom-offset,3.5rem)');
+  expect(screen.getByRole('tablist').style.top).toBe(
+    'var(--dialog-header-height,var(--headroom-offset,3.5rem))',
+  );
 });
 
 test('value dengan id tak dikenal jatuh ke tab pertama', () => {

@@ -1,7 +1,7 @@
 import { XIcon } from 'lucide-react';
 import { AlertDialog as AlertDialogPrimitive } from 'radix-ui';
 import type * as React from 'react';
-import { useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -29,10 +29,29 @@ function FormDialogContent({
   'aria-describedby': describedBy,
   ...props
 }: React.ComponentProps<typeof AlertDialogContent>) {
-  const contentRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const stopObserving = useRef<(() => void) | null>(null);
+  // Isi dialog dipasang di portal setelah efek pertama, jadi pengukuran lewat ref callback (bukan useEffect).
+  // Tinggi header (sticky) ditulis ke `--dialog-header-height` agar `FormTabs` menempel tepat di bawahnya.
+  const attach = useCallback((content: HTMLDivElement | null) => {
+    stopObserving.current?.();
+    stopObserving.current = null;
+    contentRef.current = content;
+    const header = content?.querySelector<HTMLElement>(
+      '[data-slot="dialog-header"], [data-slot="alert-dialog-header"]',
+    );
+    if (!content || !header) return;
+    const write = () =>
+      content.style.setProperty('--dialog-header-height', `${header.offsetHeight}px`);
+    write();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(write);
+    observer.observe(header);
+    stopObserving.current = () => observer.disconnect();
+  }, []);
   return (
     <AlertDialogContent
-      ref={contentRef}
+      ref={attach}
       className={`data-[size=default]:max-w-[calc(100%-2rem)] data-[size=default]:sm:max-w-sm ${className ?? ''}`}
       // Bawaan AlertDialog memfokuskan tombol Batal; form lebih baik memfokus isian pertama.
       onOpenAutoFocus={(event) => {

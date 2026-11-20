@@ -16,13 +16,14 @@ export function firstTabWithError(tabs: readonly FormTab[]): string | undefined 
 
 /**
  * Tab form. Semua isi tab tetap ter-mount (hanya `hidden`) agar nilai dan validasi field di tab lain tetap hidup.
- * Daftar tab menempel di bawah header (`stickyTop`: offset headroom di halaman, `0px` di dalam dialog).
+ * Daftar tab menempel di bawah header: di dalam `FormDialogContent` tepat di bawah header dialog
+ * (`--dialog-header-height`, diukur), di halaman di bawah bar headroom (`--headroom-offset`); `stickyTop` menimpa.
  */
 export function FormTabs({
   tabs,
   value,
   onValueChange,
-  stickyTop = 'var(--headroom-offset,3.5rem)',
+  stickyTop = 'var(--dialog-header-height,var(--headroom-offset,3.5rem))',
 }: {
   tabs: readonly FormTab[];
   value?: string;

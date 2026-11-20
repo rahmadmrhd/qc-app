@@ -79,24 +79,36 @@ test('Batal memanggil onOpenChange(false)', async () => {
   expect(onOpenChange).toHaveBeenCalledWith(false);
 });
 
-test('FormTabs di dalam dialog: daftar tab sticky top 0px dan tiap tab punya data-form-tab', async () => {
-  render(
-    <FormDialogShell open onOpenChange={() => undefined} formId="x" title="Judul">
-      <form id="x">
-        <FormTabs
-          stickyTop="0px"
-          tabs={[
-            { id: 'detail', label: 'Detail', content: <p>a</p> },
-            { id: 'gambar', label: 'Gambar', content: <p>b</p> },
-          ]}
-        />
-      </form>
-    </FormDialogShell>,
-  );
-  const list = await screen.findByRole('tablist');
-  expect(list.className).toContain('sticky');
-  expect(list.style.top).toBe('0px');
-  expect(screen.getByRole('tab', { name: 'Gambar' })).toHaveAttribute('data-form-tab', 'gambar');
+test('FormTabs di dalam dialog menempel tepat di bawah header dialog (offset diukur, bukan 0)', async () => {
+  const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
+  Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+    configurable: true,
+    get(this: HTMLElement) {
+      return this.dataset.slot === 'dialog-header' ? 72 : 0;
+    },
+  });
+  try {
+    render(
+      <FormDialogShell open onOpenChange={() => undefined} formId="x" title="Judul">
+        <form id="x">
+          <FormTabs
+            tabs={[
+              { id: 'detail', label: 'Detail', content: <p>a</p> },
+              { id: 'gambar', label: 'Gambar', content: <p>b</p> },
+            ]}
+          />
+        </form>
+      </FormDialogShell>,
+    );
+    const list = await screen.findByRole('tablist');
+    const dialog = await screen.findByRole('alertdialog', { name: 'Judul' });
+    expect(list.className).toContain('sticky');
+    expect(list.style.top).toContain('--dialog-header-height');
+    expect(dialog.style.getPropertyValue('--dialog-header-height')).toBe('72px');
+    expect(screen.getByRole('tab', { name: 'Gambar' })).toHaveAttribute('data-form-tab', 'gambar');
+  } finally {
+    if (original) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', original);
+  }
 });
 
 function Stacked() {
