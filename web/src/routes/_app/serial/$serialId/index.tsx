@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { requireAnyPermission } from '@/modules/auth/permissions';
 import { SerialDetailPage } from '@/modules/serial/components/serial-detail-page';
 import { serialDetailQueryOptions } from '@/modules/serial/queries';
@@ -28,12 +29,13 @@ function SerialDetailRoute() {
   const { serialId } = Route.useParams();
   const { case: caseId } = Route.useSearch();
   const navigate = useNavigate();
+  const stack = useStackNavigation();
   return (
     <SerialDetailPage
       key={serialId}
       serialId={serialId}
       {...(caseId ? { caseId } : {})}
-      onBack={() => void navigate({ to: '/serial' })}
+      onBack={() => stack.pop({ to: '/serial' })}
     />
   );
 }

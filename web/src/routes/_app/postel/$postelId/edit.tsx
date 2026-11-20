@@ -1,5 +1,6 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { requirePermission } from '@/modules/auth/permissions';
 import { PostelFormPage } from '@/modules/postel/components/postel-form-page';
 import { postelQueryOptions } from '@/modules/postel/queries';
@@ -23,7 +24,7 @@ export const Route = createFileRoute('/_app/postel/$postelId/edit')({
 
 function EditPostelRoute() {
   const { postelId } = Route.useParams();
-  const navigate = useNavigate();
+  const stack = useStackNavigation();
   const { data } = useSuspenseQuery(postelQueryOptions(postelId));
   // Versi saat halaman dibuka: muat ulang di latar tidak me-reset isian; bila orang lain sudah menyimpan, server
   // menjawab versi usang (bukan ketikan pengguna hilang diam-diam).
@@ -34,8 +35,8 @@ function EditPostelRoute() {
         postel={postel}
         soonDays={postel.soonDays}
         today={postel.today}
-        onDone={(id) => navigate({ to: '/postel/$postelId', params: { postelId: id } })}
-        onCancel={() => void navigate({ to: '/postel/$postelId', params: { postelId } })}
+        onDone={(id) => stack.pop({ to: '/postel/$postelId', params: { postelId: id } })}
+        onCancel={() => stack.pop({ to: '/postel/$postelId', params: { postelId } })}
       />
     </div>
   );

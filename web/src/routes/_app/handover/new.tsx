@@ -1,9 +1,10 @@
 import type { HandoverOptionsDto } from '@shared/contract';
 import { useQuery } from '@tanstack/react-query';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { useRef } from 'react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { locationsWith, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
@@ -21,7 +22,7 @@ export const Route = createFileRoute('/_app/handover/new')({
 });
 
 function NewHandoverPage() {
-  const navigate = useNavigate();
+  const stack = useStackNavigation();
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   const writable = locationsWith(me, 'handover', 'edit', selectedIds);
@@ -37,7 +38,9 @@ function NewHandoverPage() {
     (options.error instanceof ApiError && options.error.code === 'UNAVAILABLE'
       ? { customers: [], inactiveCustomerNames: [] }
       : null);
-  const toList = () => void navigate({ to: '/handover' });
+  // Simpan = replace ke daftar; Batal = kembali ke asal (butir 41c).
+  const toList = () => stack.replace({ to: '/handover' });
+  const cancel = () => stack.pop({ to: '/handover' });
 
   async function handleBatch(values: HandoverBatchFormOutput) {
     // SATU permintaan atomik (<= 30 task). Galat dilempar ke form bulk: kartu bermasalah ditandai dan draf utuh;
@@ -72,7 +75,7 @@ function NewHandoverPage() {
           defaultLocationId={defaultLocation}
           onSubmit={handleBatch}
           onSaved={handleBatchSaved}
-          onCancel={toList}
+          onCancel={cancel}
         />
       )}
     </div>

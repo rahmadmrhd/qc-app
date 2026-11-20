@@ -1,6 +1,7 @@
-import { type LinkProps, useNavigate } from '@tanstack/react-router';
+import type { LinkProps } from '@tanstack/react-router';
 import { useCallback } from 'react';
 import { toast } from 'sonner';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 
 /**
  * Aksi sesudah Hapus dari halaman View berhasil: kembali ke indeks induk lalu toast "Dihapus" dengan aksi
@@ -15,12 +16,13 @@ export function useAfterDelete({
   canRestore: boolean;
   onRestore?: () => void;
 }): () => void {
-  const navigate = useNavigate();
+  const stack = useStackNavigation();
   return useCallback(() => {
-    void navigate({ to: indexTo });
+    // Hapus dari View = kembali ke daftar asal (pop; replace bila entri sebelumnya bukan daftar).
+    stack.pop({ to: indexTo });
     toast.success(
       'Dihapus',
       canRestore && onRestore ? { action: { label: 'Pulihkan', onClick: onRestore } } : undefined,
     );
-  }, [navigate, indexTo, canRestore, onRestore]);
+  }, [stack, indexTo, canRestore, onRestore]);
 }

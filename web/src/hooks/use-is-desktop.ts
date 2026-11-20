@@ -37,13 +37,13 @@ export function useIsDesktop(): boolean {
     };
     update();
     const media = typeof window.matchMedia === 'function' ? window.matchMedia(DESKTOP_QUERY) : null;
-    media?.addEventListener('change', update);
+    media?.addEventListener?.('change', update);
     const main = document.querySelector('main');
     const observer =
       main && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(update) : null;
     if (main) observer?.observe(main);
     return () => {
-      media?.removeEventListener('change', update);
+      media?.removeEventListener?.('change', update);
       observer?.disconnect();
     };
   }, []);

@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   success: vi.fn(),
 }));
 
-vi.mock('@tanstack/react-router', () => ({ useNavigate: () => mocks.navigate }));
+vi.mock('@tanstack/react-router', () => ({ useRouter: () => ({ navigate: mocks.navigate }) }));
 vi.mock('sonner', () => ({ toast: { success: mocks.success } }));
 
 import { useAfterDelete } from './use-after-delete';
@@ -22,7 +22,7 @@ test('navigasi ke indeks induk dan toast "Dihapus" dengan aksi Pulihkan bila can
     useAfterDelete({ indexTo: '/item/brands', canRestore: true, onRestore }),
   );
   result.current();
-  expect(mocks.navigate).toHaveBeenCalledWith({ to: '/item/brands' });
+  expect(mocks.navigate).toHaveBeenCalledWith({ to: '/item/brands', replace: true });
   const [message, options] = mocks.success.mock.calls[0] as [
     string,
     { action: { label: string; onClick: () => void } },

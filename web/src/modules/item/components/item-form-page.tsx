@@ -1,7 +1,7 @@
 import type { ItemDto } from '@shared/contract';
 import { useSuspenseQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
 import { FormPage } from '@/components/page/form-page';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
 import { brandsQueryOptions } from '@/modules/brand/queries';
 import { stickersQuery, stickerTypesQuery } from '@/modules/sticker/queries';
@@ -15,7 +15,7 @@ export const ITEM_FORM_ID = 'item-form';
  * rute (`loader`), jadi query di sini tak menunda tampil.
  */
 export function ItemFormPage(props: { mode: 'create' } | { mode: 'edit'; item: ItemDto }) {
-  const navigate = useNavigate();
+  const stack = useStackNavigation();
   const item = props.mode === 'edit' ? props.item : undefined;
   const { data: brands } = useSuspenseQuery(brandsQueryOptions());
   const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
@@ -24,12 +24,17 @@ export function ItemFormPage(props: { mode: 'create' } | { mode: 'edit'; item: I
   const { formProps, submitting, blocking } = useItemFormController({
     item,
     lists: { brands, businessUnits, stickers, stickerTypes },
-    onSaved: (saved) => navigate({ to: '/item/$itemId', params: { itemId: saved.id } }),
+    // Tambah = replace ke View record baru; Ubah = kembali ke View asal (butir 41c).
+    onSaved: (saved) => {
+      const target = { to: '/item/$itemId', params: { itemId: saved.id } } as const;
+      if (item) stack.pop(target);
+      else stack.replace(target);
+    },
   });
   const cancel = () =>
-    void (item
-      ? navigate({ to: '/item/$itemId', params: { itemId: item.id } })
-      : navigate({ to: '/item' }));
+    item
+      ? stack.pop({ to: '/item/$itemId', params: { itemId: item.id } })
+      : stack.pop({ to: '/item' });
 
   return (
     <FormPage

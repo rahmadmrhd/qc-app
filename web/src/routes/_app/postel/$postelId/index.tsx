@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { PostelDetail } from '@/modules/postel/components/postel-detail';
@@ -21,12 +22,13 @@ export const Route = createFileRoute('/_app/postel/$postelId/')({
 function PostelDetailRoute() {
   const { postelId } = Route.useParams();
   const navigate = useNavigate();
+  const stack = useStackNavigation();
   const me = useMe();
   return (
     <PostelDetail
       postelId={postelId}
       canEdit={can(me, 'sticker', 'edit')}
-      onBack={() => navigate({ to: '/postel' })}
+      onBack={() => stack.pop({ to: '/postel' })}
       onEdit={() => void navigate({ to: '/postel/$postelId/edit', params: { postelId } })}
     />
   );

@@ -4,6 +4,7 @@ import { createFileRoute, useBlocker, useNavigate } from '@tanstack/react-router
 import { useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
 import { locationsWith, requirePermission } from '@/modules/auth/permissions';
@@ -30,6 +31,7 @@ function StickerOpnameRoute() {
   const me = useMe();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const stack = useStackNavigation();
   const { selectedIds } = useActiveLocations();
   // Hanya lokasi terpilih yang boleh dilihat user yang diminta: satu lokasi terlarang menolak seluruh permintaan.
   const readable = locationsWith(me, 'stickerstock', 'view', selectedIds);
@@ -47,7 +49,7 @@ function StickerOpnameRoute() {
     enableBeforeUnload: () => dirty.current,
   });
 
-  const backToStock = () => void navigate({ to: '/sticker' });
+  const backToStock = () => stack.pop({ to: '/sticker' });
 
   async function handleOpname(input: OpnameInput): Promise<OpnameSaveResult> {
     try {

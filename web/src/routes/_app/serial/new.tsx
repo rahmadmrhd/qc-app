@@ -1,5 +1,6 @@
-import { createFileRoute, useBlocker, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, useBlocker } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { requirePermission } from '@/modules/auth/permissions';
 import { LeaveProofDialog } from '@/modules/serial/components/leave-proof-dialog';
 import { RecordPage, type RecordPageHandle } from '@/modules/serial/components/record-page';
@@ -23,7 +24,7 @@ function NewSerialRoute() {
   const hasProof = useRef(false);
   const page = useRef<RecordPageHandle | null>(null);
   const [saving, setSaving] = useState(false);
-  const navigate = useNavigate();
+  const stack = useStackNavigation();
   // Draft biasa: konfirmasi bawaan peramban seperti semula. Draft berfoto bukti ditangani penjaga kedua (dialog).
   useBlocker({
     shouldBlockFn: () =>
@@ -72,7 +73,7 @@ function NewSerialRoute() {
         // Semua baris tersimpan: kembali ke daftar tanpa konfirmasi keluar (draft sudah kosong).
         onAllSaved={() => {
           dirty.current = false;
-          void navigate({ to: '/serial' });
+          stack.replace({ to: '/serial' });
         }}
       />
       <LeaveProofDialog

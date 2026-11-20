@@ -1,7 +1,8 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
@@ -27,7 +28,7 @@ export const Route = createFileRoute('/_app/qrcode/default/new')({
 });
 
 function NewQrPresetPage() {
-  const navigate = useNavigate();
+  const stack = useStackNavigation();
   const { data: defaults } = useSuspenseQuery(qrDefaultsQueryOptions());
   const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
   const save = useSaveQrPreset();
@@ -40,7 +41,7 @@ function NewQrPresetPage() {
     try {
       await save.mutateAsync(toSaveQrPresetInput(values));
       toast.success('Konfigurasi default disimpan');
-      await navigate({ to: '/qrcode/default' });
+      stack.replace({ to: '/qrcode/default' });
     } catch (error) {
       const picked = pickFieldErrors(error, QR_PRESET_FIELD_KEYS);
       if (Object.keys(picked).length > 0) setFieldErrors(picked);
@@ -60,7 +61,7 @@ function NewQrPresetPage() {
         submitError={submitError}
         fieldErrors={fieldErrors}
         onSubmit={handleSubmit}
-        onCancel={() => void navigate({ to: '/qrcode/default' })}
+        onCancel={() => stack.pop({ to: '/qrcode/default' })}
       />
     </div>
   );

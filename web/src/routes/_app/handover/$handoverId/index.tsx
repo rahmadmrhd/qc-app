@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
 import { canAt, requireAnyPermission } from '@/modules/auth/permissions';
@@ -51,6 +52,7 @@ function HandoverDetailPage() {
   const search = Route.useSearch();
   const listSearch = searchFromStatus(statusFromSearch(search), search.loc);
   const navigate = useNavigate();
+  const stack = useStackNavigation();
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   // Hanya lokasi yang boleh dibaca user: satu lokasi terlarang menolak seluruh permintaan.
@@ -118,7 +120,7 @@ function HandoverDetailPage() {
       canCancel={canAt(me, 'handover', 'manage', task.locationId)}
       canProgress={canAt(me, 'qc', 'edit', task.locationId)}
       pending={pending}
-      onBack={() => void navigate({ to: '/handover', search: listSearch })}
+      onBack={() => stack.pop({ to: '/handover', search: listSearch })}
       onEdit={() =>
         void navigate({
           to: '/handover/$handoverId/edit',

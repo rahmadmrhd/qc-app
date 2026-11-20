@@ -1,9 +1,10 @@
 import type { HandoverDto } from '@shared/contract';
 import { useQuery } from '@tanstack/react-query';
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { canAt, requirePermission } from '@/modules/auth/permissions';
@@ -57,7 +58,7 @@ function EditHandoverPage() {
   const { handoverId } = Route.useParams();
   const search = Route.useSearch();
   const listSearch = searchFromStatus(statusFromSearch(search), search.loc);
-  const navigate = useNavigate();
+  const stack = useStackNavigation();
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   const detail = useQuery(
@@ -73,7 +74,7 @@ function EditHandoverPage() {
   const [fieldErrors, setFieldErrors] = useState<HandoverFieldErrors>({});
 
   const back = () =>
-    void navigate({ to: '/handover/$handoverId', params: { handoverId }, search: listSearch });
+    stack.pop({ to: '/handover/$handoverId', params: { handoverId }, search: listSearch });
 
   // Keadaan task saat form dibuka: dasar `expectedUpdatedAt` dan nilai awal. Muat ulang latar (mis. QC
   // mencentang, atau sambung ulang jaringan) TIDAK me-mount ulang form dan tidak mengganti draf; bentrokan

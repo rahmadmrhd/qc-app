@@ -1,7 +1,8 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
@@ -36,7 +37,7 @@ export const Route = createFileRoute('/_app/qrcode/default/$presetId/edit')({
 
 function EditQrPresetPage() {
   const { presetId } = Route.useParams();
-  const navigate = useNavigate();
+  const stack = useStackNavigation();
   const { data: defaults } = useSuspenseQuery(qrDefaultsQueryOptions());
   const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
   const preset = defaults.presets.find((item) => item.id === presetId);
@@ -54,7 +55,7 @@ function EditQrPresetPage() {
     try {
       await save.mutateAsync(toSaveQrPresetInput(values, presetId, loadedAt));
       toast.success('Konfigurasi default disimpan');
-      await navigate({ to: '/qrcode/default' });
+      stack.pop({ to: '/qrcode/default' });
     } catch (error) {
       const picked = pickFieldErrors(error, QR_PRESET_FIELD_KEYS);
       if (Object.keys(picked).length > 0) setFieldErrors(picked);
@@ -88,7 +89,7 @@ function EditQrPresetPage() {
         submitError={submitError}
         fieldErrors={fieldErrors}
         onSubmit={handleSubmit}
-        onCancel={() => void navigate({ to: '/qrcode/default' })}
+        onCancel={() => stack.pop({ to: '/qrcode/default' })}
       />
     </div>
   );

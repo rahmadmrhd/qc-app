@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useAfterDelete } from '@/components/page/use-after-delete';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
 import { businessUnitLinkAccess } from '@/lib/link-access';
@@ -48,6 +49,7 @@ function isMissing(error: unknown): boolean {
 function BrandDetailPage() {
   const { brandId } = Route.useParams();
   const navigate = useNavigate();
+  const stack = useStackNavigation();
   const queryClient = useQueryClient();
   const me = useMe();
   const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
@@ -120,7 +122,7 @@ function BrandDetailPage() {
         canOpenBusinessUnit={buLinks.openBusinessUnitHref !== undefined}
         statusPending={setStatus.isPending}
         restorePending={restoreBrands.isPending}
-        onBack={() => void navigate({ to: '/item/brands' })}
+        onBack={() => stack.pop({ to: '/item/brands' })}
         onEdit={() => setEditing(true)}
         onToggleStatus={toggleStatus}
         onDelete={() => setConfirmDelete(true)}

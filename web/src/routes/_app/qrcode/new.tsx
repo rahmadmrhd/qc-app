@@ -1,7 +1,8 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
 import { itemLinkAccess } from '@/lib/link-access';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
@@ -21,7 +22,7 @@ export const Route = createFileRoute('/_app/qrcode/new')({
 });
 
 function NewQrDesignPage() {
-  const navigate = useNavigate();
+  const stack = useStackNavigation();
   const me = useMe();
   const { data: defaults } = useSuspenseQuery(qrDefaultsQueryOptions());
   const save = useSaveQrDesign();
@@ -37,7 +38,8 @@ function NewQrDesignPage() {
       );
       toast.success('Konfigurasi disimpan');
       // "Simpan dan ekspor": lanjut ke dialog konfirmasi ekspor di daftar.
-      await navigate(
+      // Tambah = replace (butir 41c): back dari daftar tidak kembali ke form yang sudah tersimpan.
+      stack.replace(
         options.thenExport ? { to: '/qrcode', search: { export: saved.id } } : { to: '/qrcode' },
       );
     } catch (error) {
@@ -61,7 +63,7 @@ function NewQrDesignPage() {
         submitError={submitError}
         fieldErrors={fieldErrors}
         onSubmit={handleSubmit}
-        onCancel={() => void navigate({ to: '/qrcode' })}
+        onCancel={() => stack.pop({ to: '/qrcode' })}
       />
     </div>
   );
