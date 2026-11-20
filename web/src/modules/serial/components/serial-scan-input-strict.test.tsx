@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, test, vi } from 'vitest';
+import type { ProofSession } from '../lib/use-proof-uploads';
 import type { StrictScan } from './camera-scan-button';
 import { SerialScanInput } from './serial-scan-input';
 
@@ -32,6 +33,24 @@ function strictContext(over: Partial<StrictScan> = {}): StrictScan {
     },
     isKnown: () => false,
     onConfirm: vi.fn(),
+    newOwnerId: () => 'owner-1',
+    proof: {
+      uploads: {
+        entries: [],
+        busy: false,
+        hasFailed: false,
+        cancelOwner: vi.fn(),
+        forOwner: () => ({
+          entries: [],
+          busy: false,
+          hasFailed: false,
+          add: vi.fn(),
+          retry: vi.fn(),
+          remove: vi.fn(),
+        }),
+      },
+      attach: () => () => undefined,
+    } satisfies ProofSession,
     ...over,
   };
 }

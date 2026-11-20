@@ -77,6 +77,22 @@ function ProofThumb({
   );
 }
 
+/** Foto bukti selesai sebagai item `AttachmentView` (juga dipakai dialog scan wajib foto dan Ubah baris). */
+export function proofAttachmentItems(
+  photos: readonly ProofPhotoRef[],
+  suffix = '',
+): AttachmentItem[] {
+  return photos.map((photo, index) => ({
+    id: photo.id,
+    name: `foto ${index + 1}`,
+    mime: photo.mime,
+    size: photo.size,
+    renderImage: (variant) => (
+      <ProofThumb photo={photo} index={index} suffix={suffix} variant={variant} />
+    ),
+  }));
+}
+
 /**
  * Field foto bukti QC: tombol "Foto (n)" membuka dialog lampiran (kamera di dalam aplikasi, Telusuri), seret-lepas ke
  * field, lalu foto selesai (masih `draft`: boleh dibuang, klik untuk memperbesar) dan kartu progres unggahan latar.
@@ -104,19 +120,7 @@ export function ProofPhotoField({
     onChange(value.filter((item) => item.id !== id));
   }
 
-  const items = useMemo<AttachmentItem[]>(
-    () =>
-      value.map((photo, index) => ({
-        id: photo.id,
-        name: `foto ${index + 1}`,
-        mime: photo.mime,
-        size: photo.size,
-        renderImage: (variant) => (
-          <ProofThumb photo={photo} index={index} suffix={suffix} variant={variant} />
-        ),
-      })),
-    [value, suffix],
-  );
+  const items = useMemo(() => proofAttachmentItems(value, suffix), [value, suffix]);
 
   function openDialog(files: File[], rejected: RejectedFile[]) {
     if (disabled || room === 0) return;

@@ -43,9 +43,8 @@ import { isReferenceError, type VerifyDeps, verifyImported } from '../lib/import
 import { hasProofPhotos } from '../lib/leave-guard';
 import { lockedLocationOf, todayWib, toLocationOptions } from '../lib/locations';
 import { applyProofMins, fetchProofMins, uniqueItemIds } from '../lib/proof-refresh';
-import type { ProofPhotoRef } from '../lib/proof-source';
 import type { QcsnImport } from '../lib/qcsn';
-import { useProofUploads } from '../lib/use-proof-uploads';
+import { type ProofSession, useProofSinks, useProofUploads } from '../lib/use-proof-uploads';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
   discardProofPhotos,
@@ -69,6 +68,7 @@ import { type ScanFeedback, SerialScanInput } from './serial-scan-input';
 import { StagingCards } from './staging-cards';
 import { rowStatus, StagingTable } from './staging-table';
 import { defaultStickerChoice, StickerChecklist, useApplicableStickers } from './sticker-checklist';
+import type { StrictScanResult } from './strict-scan-dialog';
 
 type NoticeTone = 'info' | 'warn' | 'error';
 interface Notice {
@@ -217,11 +217,14 @@ export function RecordPage({
 
   // Unggah latar foto bukti: dipegang halaman (bukan baris/sel) dan dikunci ke `clientId` baris, sehingga beralih
   // tabel/kartu tidak menghentikannya. Draf hanya menyimpan foto yang sudah selesai (menempel pada `proofPhotos`).
+  // Pemilik yang belum menjadi baris (dialog scan wajib foto, Ubah baris) memasang penerima sendiri di sini.
+  const proofSinks = useProofSinks();
   const proofUploads = useProofUploads({
     onAdd: (owner, photo) => {
       const target = rowsRef.current.find((row) => row.clientId === owner);
-      // Baris sudah dihapus/diganti atau sudah penuh: hasil dibuang di server oleh hook.
-      if (!target || target.proofPhotos.length >= SERIAL_PROOF_LIMITS.perEntryMax) return false;
+      if (!target) return proofSinks.deliver(owner, photo) ?? false;
+      // Baris penuh: hasil dibuang di server oleh hook.
+      if (target.proofPhotos.length >= SERIAL_PROOF_LIMITS.perEntryMax) return false;
       setAllRows(
         rowsRef.current.map((row) =>
           row.clientId === owner
@@ -252,6 +255,10 @@ export function RecordPage({
   }, []);
   // Foto yang belum selesai (berjalan, menunggu, atau gagal) menahan Simpan; yang berjalan juga menahan keluar halaman.
   const uploadsPending = proofUploads.entries.length;
+  const proofSession = useMemo<ProofSession>(
+    () => ({ uploads: proofUploads, attach: proofSinks.attach }),
+    [proofUploads, proofSinks],
+  );
   const uploadsBlocked = proofUploads.busy || proofUploads.hasFailed;
 
   // Serial yang sudah tercatat (keunikan se-sistem): serial baru di draft ditanyakan ke server per kelompok; yang sudah
@@ -488,11 +495,9 @@ export function RecordPage({
   }
 
   // Item wajib foto: scan satu serial per kali lewat dialog dua langkah; baris masuk draft setelah Simpan di dialog.
-  const addStrictRowRef = useRef<(result: { serial: string; photos: ProofPhotoRef[] }) => void>(
-    () => undefined,
-  );
+  const addStrictRowRef = useRef<(result: StrictScanResult) => void>(() => undefined);
   const confirmStrict = useCallback(
-    (result: { serial: string; photos: ProofPhotoRef[] }) => addStrictRowRef.current(result),
+    (result: StrictScanResult) => addStrictRowRef.current(result),
     [],
   );
   const strict = useMemo<StrictScan | undefined>(
@@ -515,6 +520,8 @@ export function RecordPage({
             },
             isKnown: isKnownSerial,
             onConfirm: confirmStrict,
+            newOwnerId: newClientId,
+            proof: proofSession,
             capacity: draftCapacity,
           }
         : undefined,
@@ -528,20 +535,23 @@ export function RecordPage({
       isKnownSerial,
       confirmStrict,
       draftCapacity,
+      proofSession,
     ],
   );
 
   /** Menambah satu baris item wajib foto beserta fotonya; bila tak muat (batas draft/duplikat), foto dibuang. */
-  function addStrictRow(result: { serial: string; photos: ProofPhotoRef[] }) {
+  function addStrictRow(result: StrictScanResult) {
+    // clientId baris = kunci pemilik unggahan dialog: unggahan yang masih berjalan lanjut ke baris ini.
     const { rows: next, report } = addSerials(
       rowsRef.current,
       result.serial,
       defaults(),
-      newClientId,
+      () => result.clientId,
       nowIso,
     );
     const added = report.added === 1 ? next[next.length - 1] : undefined;
     if (!added) {
+      proofUploads.cancelOwner(result.clientId);
       void discardProofPhotos(result.photos.map((photo) => photo.id));
       announceAdd(describeAdd(report));
       return;
@@ -1180,6 +1190,7 @@ export function RecordPage({
           key={`${detailRow.clientId}|${detailRow.existing?.id ?? ''}`}
           row={detailRow}
           actorName={me.name}
+          proof={proofSession}
           commitSerial={(serial) => commitSerial(detailRow.clientId, serial)}
           onClose={() => setDetailId(null)}
           onApply={applyDetail}

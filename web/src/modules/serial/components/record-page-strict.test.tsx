@@ -37,11 +37,16 @@ const ITEMS = [
 ];
 
 let uploads = 0;
+/** Saat menyala, unggahan ditahan sampai `held[i]()` dipanggil. */
+let defer = false;
+let held: Array<() => void> = [];
 let saved: { rows: { serial: string; proofPhotoIds?: string[] }[] }[] = [];
 
 beforeEach(() => {
   localStorage.clear();
   uploads = 0;
+  defer = false;
+  held = [];
   saved = [];
   prepareImageMock.mockReset();
   prepareImageMock.mockResolvedValue({
@@ -64,7 +69,7 @@ beforeEach(() => {
     if (id === 'serials.stickerOptions') return Promise.resolve({ stickers: [] });
     if (id === 'serialProofs.upload') {
       uploads += 1;
-      return Promise.resolve({
+      const dto = {
         id: `p${uploads}`,
         state: 'draft',
         mime: 'image/webp',
@@ -73,7 +78,9 @@ beforeEach(() => {
         height: 10,
         filename: `bukti-p${uploads}.webp`,
         error: null,
-      });
+      };
+      if (!defer) return Promise.resolve(dto);
+      return new Promise((resolve) => held.push(() => resolve(dto)));
     }
     if (id === 'serialProofs.remove') return Promise.resolve({ id: String(input.id) });
     if (id === 'serials.saveBatch') {
@@ -145,17 +152,17 @@ function pickFiles(count: number) {
     fileCounter += 1;
     return new File([new Uint8Array(4)], `foto-${fileCounter}.jpg`, { type: 'image/jpeg' });
   });
-  const dialog = screen.getByRole('dialog', { name: 'Foto bukti' });
+  const dialog = screen.getByRole('alertdialog', { name: 'Foto bukti' });
   const input = dialog.querySelector('input[type="file"]:not([capture])');
   fireEvent.change(input as HTMLInputElement, { target: { files } });
 }
 
 async function addPhotos(count: number) {
   await userEvent.click(screen.getByRole('button', { name: 'Tambah foto' }));
-  await screen.findByRole('dialog', { name: 'Foto bukti' });
+  await screen.findByRole('alertdialog', { name: 'Foto bukti' });
   pickFiles(count);
   await userEvent.click(await screen.findByRole('button', { name: `Tambahkan (${count})` }));
-  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Foto bukti' })).toBeNull());
+  await waitFor(() => expect(screen.queryByRole('alertdialog', { name: 'Foto bukti' })).toBeNull());
 }
 
 test('item wajib foto: tempel satu serial membuka dialog di langkah 2; Simpan menambah baris dengan foto dan proofMin', async () => {
@@ -247,4 +254,30 @@ test('item biasa tidak berubah: tempel langsung menambah baris tanpa dialog', as
   expect(await screen.findByRole('textbox', { name: 'Serial N1' })).toBeInTheDocument();
   expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
   expect(loadDraft('a@gmail.com')[0]?.proofMin).toBeUndefined();
+});
+
+test('Simpan di dialog saat 1 foto masih diunggah: baris masuk dengan foto selesai, unggahan lanjut ke baris itu dan menahan Simpan halaman', async () => {
+  renderPage();
+  await pickStrictDefaults();
+  await typeSerial('s1');
+  await screen.findByRole('alertdialog');
+  await addPhotos(1);
+  defer = true;
+  await addPhotos(1);
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  expect(await screen.findByRole('textbox', { name: 'Serial S1' })).toBeInTheDocument();
+  // Satu foto selesai menempel; satu lagi masih berjalan di bawah baris yang sama.
+  expect(screen.getByRole('button', { name: 'Foto (2), S1' })).toBeInTheDocument();
+  expect(screen.getByTestId('attachment-pending')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Simpan 1 serial/ })).toBeDisabled();
+  await waitFor(() => expect(held).toHaveLength(1));
+  held[0]?.();
+  await waitFor(() => expect(screen.queryByTestId('attachment-pending')).not.toBeInTheDocument());
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: /^Simpan 1 serial/ })).toBeEnabled(),
+  );
+  await waitFor(() =>
+    expect(loadDraft('a@gmail.com')[0]?.proofPhotos.map((photo) => photo.id)).toEqual(['p1', 'p2']),
+  );
 });
