@@ -35,6 +35,10 @@ export interface ItemListFilter {
   manualBook: 'all' | 'missing';
   /** `missing` = hanya item aktif yang belum punya Postel (catatan nomor Postel). */
   postel: 'all' | 'missing';
+  /** Id merk ('' = semua merk); merk terhapus tetap sah (tautan dari View merk). */
+  brandId: string;
+  /** Id BU ('' = semua BU yang boleh dilihat). */
+  buId: string;
 }
 
 export const DEFAULT_ITEM_FILTER: ItemListFilter = {
@@ -45,6 +49,8 @@ export const DEFAULT_ITEM_FILTER: ItemListFilter = {
   stickerMode: 'has',
   manualBook: 'all',
   postel: 'all',
+  brandId: '',
+  buId: '',
 };
 
 /** `stickerKey` -> parameter `stickerId`/`typeId` + `stickerMode` untuk `items.list`; kosong/tak dikenal = tanpa filter. */
@@ -75,6 +81,8 @@ export const itemKeys = {
       filter.stickerMode,
       filter.manualBook,
       filter.postel,
+      filter.brandId,
+      filter.buId,
     ] as const,
   one: (id: string) => ['items', 'one', id] as const,
 };
@@ -97,6 +105,8 @@ export function itemsInfiniteQueryOptions(filter: ItemListFilter = DEFAULT_ITEM_
         ...stickerFilterInput(filter),
         ...(filter.manualBook === 'missing' ? { manualBook: 'missing' as const } : {}),
         ...(filter.postel === 'missing' ? { postel: 'missing' as const } : {}),
+        ...(filter.brandId !== '' ? { brandId: filter.brandId } : {}),
+        ...(filter.buId !== '' ? { buId: filter.buId } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
       }),
     initialPageParam: undefined as string | undefined,

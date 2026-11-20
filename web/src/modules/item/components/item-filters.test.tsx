@@ -1,5 +1,5 @@
-import type { StickerDto, StickerTypeDto } from '@shared/contract';
-import { render, screen } from '@testing-library/react';
+import type { BrandDto, StickerDto, StickerTypeDto } from '@shared/contract';
+import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { linkOptionNames, pickLink, pickSelect, selectOptionNames } from '@/test/link-field';
@@ -204,4 +204,59 @@ test('pilihan dari URL yang tak ada di katalog tetap terlihat sebagai tidak dike
   expect(screen.getByRole('combobox', { name: 'Filter stiker atau jenis' })).toHaveValue(
     'Stiker tidak dikenal',
   );
+});
+
+const BRANDS = [
+  {
+    id: 'b1',
+    name: 'Ubiquiti',
+    status: 'active',
+    itemCount: 1,
+    updatedAt: '',
+    businessUnitIds: [],
+  },
+  { id: 'b2', name: 'Lama', status: 'inactive', itemCount: 0, updatedAt: '', businessUnitIds: [] },
+] as BrandDto[];
+const BUS = [
+  { id: 'bu-a', code: 'RTL', name: 'Retail' },
+  { id: 'bu-b', code: 'WHL', name: 'Wholesale' },
+];
+
+test('chip Merk dan Business Unit hanya tampil bila pilihannya diberikan', () => {
+  setup();
+  expect(screen.queryByRole('button', { name: /^Merk/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /^Business Unit/ })).toBeNull();
+});
+
+test('chip Merk: LinkField berisi merk (nonaktif bertanda); memilih memanggil onChange dengan id', async () => {
+  const { onChange } = setup({}, { brands: BRANDS, businessUnits: BUS });
+  await openChip('Merk');
+  expect(await linkOptionNames(screen, 'Filter merk')).toEqual(['Ubiquiti', 'Lama — nonaktif']);
+  await pickLink(screen, 'Filter merk', 'Ubiquiti');
+  expect(onChange).toHaveBeenCalledWith({ brandId: 'b1' });
+});
+
+test('chip Business Unit: memilih memanggil onChange dengan id BU', async () => {
+  const { onChange } = setup({}, { brands: BRANDS, businessUnits: BUS });
+  await openChip('Business Unit');
+  expect(await linkOptionNames(screen, 'Filter business unit')).toEqual([
+    'Retail (RTL)',
+    'Wholesale (WHL)',
+  ]);
+  await pickLink(screen, 'Filter business unit', 'Wholesale (WHL)');
+  expect(onChange).toHaveBeenCalledWith({ buId: 'bu-b' });
+});
+
+test('chip terisi menampilkan nama, hapus mengosongkan; id tak dikenal tetap terlihat', async () => {
+  const { onChange } = setup(
+    { brandId: 'b1', buId: 'bu-a' },
+    { brands: BRANDS, businessUnits: BUS },
+  );
+  expect(screen.getByRole('button', { name: 'Merk: Ubiquiti' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Business Unit: Retail (RTL)' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus filter Merk' }));
+  expect(onChange).toHaveBeenCalledWith({ brandId: '' });
+  cleanup();
+  setup({ brandId: 'terhapus' }, { brands: BRANDS, businessUnits: BUS });
+  expect(screen.getByRole('button', { name: 'Merk: Merk tidak dikenal' })).toBeInTheDocument();
 });

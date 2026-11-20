@@ -20,9 +20,11 @@ import {
   canEditItem,
   canManageAnyItem,
   canManageItem,
+  liveBuIdsWithLevelOf,
   requirePermission,
 } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
+import { brandsQueryOptions } from '@/modules/brand/queries';
 import { ItemFilters } from '@/modules/item/components/item-filters';
 import { ItemsTable } from '@/modules/item/components/items-table';
 import { filterOfSearch, itemsSearchSchema, searchPatchOf } from '@/modules/item/lib/list-filter';
@@ -72,6 +74,12 @@ function ItemsPage() {
   const stickers = useQuery({ ...stickersQuery(), enabled: canReadCatalog, retry: false });
   const types = useQuery({ ...stickerTypesQuery(), enabled: canReadCatalog, retry: false });
   const showStickerFilter = canReadCatalog && stickers.isSuccess && types.isSuccess;
+  // Chip Merk dan BU: merk hidup dan BU hidup yang boleh dilihat (BU terhapus hanya memberi hak, bukan pilihan).
+  const brands = useQuery({ ...brandsQueryOptions(), retry: false });
+  const filterBus = liveBuIdsWithLevelOf(me, 'item', 'view').flatMap((id) => {
+    const bu = me.businessUnits.find((entry) => entry.id === id);
+    return bu ? [{ id, code: bu.code, name: bu.name }] : [];
+  });
   const visible = list.data?.pages.flatMap((page) => page.items) ?? [];
   const setStatus = useSetItemStatus();
   const statusBatch = useSetItemStatusBatch();
@@ -218,6 +226,8 @@ function ItemsPage() {
               filter={filter}
               stickers={stickers.data ?? []}
               types={types.data ?? []}
+              brands={brands.data}
+              businessUnits={filterBus}
               showStickerFilter={showStickerFilter}
               onChange={(patch) =>
                 void navigate({

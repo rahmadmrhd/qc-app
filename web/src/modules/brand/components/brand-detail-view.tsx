@@ -96,7 +96,7 @@ export function BrandDetailView({
       aside={
         <ViewMeta
           updatedAt={brand.updatedAt}
-          links={[{ label: 'Lihat item merk ini', to: '/item', search: { q: brand.name } }]}
+          links={[{ label: 'Lihat item merk ini', to: '/item', search: { brandId: brand.id } }]}
         />
       }
     >
@@ -135,7 +135,7 @@ export function BrandDetailView({
                 brand.itemCount === 0 ? (
                   0
                 ) : (
-                  <Link to="/item" search={{ q: brand.name }} className={textLink}>
+                  <Link to="/item" search={{ brandId: brand.id }} className={textLink}>
                     {brand.itemCount}
                   </Link>
                 ),

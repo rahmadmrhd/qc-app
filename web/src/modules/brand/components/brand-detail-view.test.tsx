@@ -46,7 +46,7 @@ test('menampilkan nama, status, BU bawaan tautan, jumlah item tautan, dan Diubah
     'href',
     '/access/business-units/bu-a',
   );
-  expect(screen.getByRole('link', { name: '3' })).toHaveAttribute('href', '/item?q=Ubiquiti');
+  expect(screen.getByRole('link', { name: '3' })).toHaveAttribute('href', '/item?brandId=b1');
   expect(screen.getByRole('link', { name: 'Lihat item merk ini' })).toBeInTheDocument();
   expect(screen.getByText('Diubah')).toBeInTheDocument();
   // DTO merk tidak memuat pembuat: baris "Dibuat" tidak tampil.

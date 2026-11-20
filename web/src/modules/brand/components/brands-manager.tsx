@@ -97,12 +97,11 @@ export function BrandsManager({
       header: 'Item',
       align: 'right',
       className: 'tabular-nums',
-      // `/item` belum punya filter merk: pencarian teks `q` memuat item bermerk itu (dan kecocokan nama lain).
       cell: (brand) =>
         brand.itemCount === 0 ? (
           0
         ) : (
-          <LinkCell to="/item" search={{ q: brand.name }}>
+          <LinkCell to="/item" search={{ brandId: brand.id }}>
             {brand.itemCount}
           </LinkCell>
         ),

@@ -73,10 +73,10 @@ test('kode BU menaut ke halaman BU bila berhak, selain itu lencana', async () =>
   expect(screen.getByText('RTL')).toHaveAttribute('title', 'Retail');
 });
 
-test('jumlah item menaut ke daftar item dengan pencarian nama merk; nol tanpa tautan', async () => {
+test('jumlah item menaut ke daftar item terfilter merk; nol tanpa tautan', async () => {
   await renderManager();
   const link = screen.getByRole('link', { name: '2' });
-  expect(link).toHaveAttribute('href', '/item?q=Mikrotik');
+  expect(link).toHaveAttribute('href', '/item?brandId=b1');
   expect(screen.getAllByText('0')).toHaveLength(1);
   expect(screen.queryByRole('link', { name: '0' })).toBeNull();
 });

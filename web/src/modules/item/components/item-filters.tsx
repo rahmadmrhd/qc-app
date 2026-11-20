@@ -1,16 +1,23 @@
-import type { StickerDto, StickerTypeDto } from '@shared/contract';
+import type { BrandDto, StickerDto, StickerTypeDto } from '@shared/contract';
 import { LinkField, type LinkOption } from '@/components/link-field';
 import { FilterChip } from '@/components/page/filter-bar';
 import { Select } from '@/components/select';
 import type { ItemListFilter } from '../queries';
 
 type FilterPatch = Partial<
-  Pick<ItemListFilter, 'instruction' | 'stickerKey' | 'stickerMode' | 'manualBook' | 'postel'>
+  Pick<
+    ItemListFilter,
+    'instruction' | 'stickerKey' | 'stickerMode' | 'manualBook' | 'postel' | 'brandId' | 'buId'
+  >
 >;
 
 export interface ItemFiltersProps {
   filter: Pick<ItemListFilter, 'instruction' | 'stickerKey' | 'stickerMode' | 'manualBook'> &
-    Partial<Pick<ItemListFilter, 'postel'>>;
+    Partial<Pick<ItemListFilter, 'postel' | 'brandId' | 'buId'>>;
+  /** Pilihan chip Merk (merk hidup); chip tak tampil bila tidak diberikan. */
+  brands?: readonly BrandDto[] | undefined;
+  /** Pilihan chip Business Unit (BU hidup yang boleh dilihat user); chip tak tampil bila tidak diberikan. */
+  businessUnits?: readonly { id: string; code: string; name: string }[] | undefined;
   /** Katalog untuk filter stiker/jenis; tidak dipakai bila `showStickerFilter` false. */
   stickers: readonly StickerDto[];
   types: readonly StickerTypeDto[];
@@ -61,6 +68,8 @@ export function ItemFilters({
   filter,
   stickers,
   types,
+  brands,
+  businessUnits,
   showStickerFilter = true,
   onChange,
 }: ItemFiltersProps) {
@@ -82,9 +91,62 @@ export function ItemFilters({
     return stickerOptions.find((option) => option.id === key)?.label;
   };
   const postel = filter.postel ?? 'all';
+  const brandId = filter.brandId ?? '';
+  const buId = filter.buId ?? '';
+  const brandOptions: LinkOption[] = (brands ?? []).map((brand) => ({
+    id: brand.id,
+    label: brand.status === 'active' ? brand.name : `${brand.name}${INACTIVE}`,
+  }));
+  const buOptions: LinkOption[] = (businessUnits ?? []).map((bu) => ({
+    id: bu.id,
+    label: `${bu.name} (${bu.code})`,
+  }));
+  // Id dari URL yang tak ada di pilihan (mis. merk terhapus dari tautan View merk) tetap tampil sebagai tidak dikenal.
+  const brandName = (id: string) => brandOptions.find((option) => option.id === id)?.label;
+  const buName = (id: string) => buOptions.find((option) => option.id === id)?.label;
 
   return (
     <>
+      {brands ? (
+        <FilterChip
+          label="Merk"
+          display={brandId === '' ? null : (brandName(brandId) ?? 'Merk tidak dikenal')}
+          onClear={() => onChange({ brandId: '' })}
+        >
+          <LinkField
+            id="item-filter-brand"
+            label="Filter merk"
+            hideLabel
+            placeholder="Semua merk"
+            options={brandOptions}
+            localFilter
+            highlight
+            value={brandId === '' ? null : brandId}
+            labelOf={(id) => brandName(id) ?? 'Merk tidak dikenal'}
+            onChange={(next) => onChange({ brandId: next ?? '' })}
+          />
+        </FilterChip>
+      ) : null}
+      {businessUnits ? (
+        <FilterChip
+          label="Business Unit"
+          display={buId === '' ? null : (buName(buId) ?? 'BU tidak dikenal')}
+          onClear={() => onChange({ buId: '' })}
+        >
+          <LinkField
+            id="item-filter-bu"
+            label="Filter business unit"
+            hideLabel
+            placeholder="Semua BU"
+            options={buOptions}
+            localFilter
+            highlight
+            value={buId === '' ? null : buId}
+            labelOf={(id) => buName(id) ?? 'BU tidak dikenal'}
+            onChange={(next) => onChange({ buId: next ?? '' })}
+          />
+        </FilterChip>
+      ) : null}
       <FilterChip
         label="Instruksi stiker"
         display={filter.instruction === 'none' ? 'Belum ada' : null}

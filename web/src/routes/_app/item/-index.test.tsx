@@ -73,6 +73,17 @@ beforeEach(() => {
     switch (id) {
       case 'items.list':
         return { items: rows, nextCursor: null };
+      case 'brands.list':
+        return [
+          {
+            id: 'b1',
+            name: 'Asus',
+            status: 'active',
+            itemCount: 2,
+            updatedAt: '',
+            businessUnitIds: [],
+          },
+        ];
       case 'stickers.list':
       case 'stickerTypes.list':
         return [];
@@ -263,4 +274,15 @@ test('alasan Hapus massal nonaktif dapat dijangkau (bukan atribut title)', async
   const bar = screen.getByRole('region', { name: 'Aksi massal' });
   expect(within(bar).getByRole('button', { name: 'Hapus' })).not.toHaveAttribute('title');
   expect(within(bar).getByText('Nonaktifkan item dulu sebelum dihapus')).toBeInTheDocument();
+});
+
+test('?brandId= dari tautan Merk diteruskan ke items.list dan chip Merk menampilkan namanya', async () => {
+  await mount({ path: '/_app/item/?brandId=b1' });
+  await waitFor(() =>
+    expect(
+      callsOf('items.list').some((call) => (call.input as { brandId?: string }).brandId === 'b1'),
+    ).toBe(true),
+  );
+  expect(await screen.findByRole('button', { name: 'Merk: Asus' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Business Unit' })).toBeInTheDocument();
 });

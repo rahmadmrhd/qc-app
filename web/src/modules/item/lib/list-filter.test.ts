@@ -22,6 +22,8 @@ test('search params memetakan pencarian, status, instruksi, stiker/jenis, dan mo
     stickerMode: 'missing',
     manualBook: 'all',
     postel: 'all',
+    brandId: '',
+    buId: '',
   });
   expect(filterOfSearch(itemsSearchSchema.parse({ sticker: 't:ty1' })).stickerKey).toBe('t:ty1');
 });
@@ -70,4 +72,10 @@ test('postel=missing dipetakan ke filter; nilai lain dibuang dan bawaan tidak di
   expect(DEFAULT_ITEM_FILTER.postel).toBe('all');
   expect(searchPatchOf({ postel: 'missing' })).toEqual({ postel: 'missing' });
   expect(searchPatchOf({ postel: 'all' })).toEqual({ postel: undefined });
+});
+
+test('brandId dan buId dari URL masuk filter; patch kosong menghapusnya dari URL', () => {
+  const filter = filterOfSearch(itemsSearchSchema.parse({ brandId: 'b1', buId: 'bu-a' }));
+  expect(filter).toMatchObject({ brandId: 'b1', buId: 'bu-a' });
+  expect(searchPatchOf({ brandId: 'b2', buId: '' })).toEqual({ brandId: 'b2', buId: undefined });
 });
