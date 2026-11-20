@@ -7,14 +7,14 @@ import type { ProofReplaceState } from '../lib/use-proof-replace';
 export interface ProofReplaceDialogProps {
   open: boolean;
   onOpenChange(open: boolean): void;
-  /** Satu foto pengganti sudah dipilih; pemanggil (hook `useProofReplace`) yang mengunggah dan memanggil `replace`. */
+  /** Satu foto pengganti sudah dipilih; pemanggil (hook `useProofReplace`, pemiliknya `ProofReplaceProvider`) yang mengunggah dan memanggil `replace`. */
   onPicked(files: QueuedFile[]): void;
 }
 
 /**
  * Dialog "Unggah ulang" foto bukti yang gagal: dialog lampiran yang sama dengan form Tambah/Cek ulang (tab Unggah +
  * Kamera, tanpa Pustaka), tetapi SATU foto. Dialog hanya mengumpulkan berkas dan menutup; unggahannya dan penggantian
- * (`serialProofs.replace`) dikerjakan hook `useProofReplace` milik komponen pembukanya, dengan progres di kartu foto.
+ * (`serialProofs.replace`) dikerjakan hook `useProofReplace` yang dibagi lewat `ProofReplaceProvider` (banner dan galeri satu pemilik), dengan progres di kartu foto.
  */
 export function ProofReplaceDialog({ open, onOpenChange, onPicked }: ProofReplaceDialogProps) {
   if (!open) return null;
