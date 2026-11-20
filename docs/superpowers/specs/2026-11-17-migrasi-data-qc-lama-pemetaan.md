@@ -1,6 +1,6 @@
 # Pemetaan migrasi data: database QC lama (`qcspectrum`) → database QC saat ini
 
-Status: **Pemetaan disetujui sebagian oleh pemilik produk pada 2026-11-17 (butir bertanda ✔ di §3); belum ada data yang dimigrasi.**
+Status: **SELESAI. Produksi dimigrasi 2026-11-19 (207.953 serial, 245 item, 51 firmware; `--apply` 816 dtk, dry-run verifikasi: 0 ditulis, 207.953 sudah dimigrasi; backup pra-migrasi di VPS). Skrip `server/scripts/migrate-legacy-qc.ts` + `server/scripts/legacy-qc/` dihapus 2026-11-19 atas persetujuan pemilik produk (tanpa tag; hanya ada di riwayat git sebelum PR penghapusan). Dokumen ini dipertahankan sebagai catatan keputusan; bagian 4 dan 6 menggambarkan alat yang kini sudah tidak ada.**
 Sumber: dump `qcspectrum_2026-11-17_230717.sql` (MySQL 5.7.34, 16 tabel/tampilan, 28 MB, dibuat 2026-11-17 23:08 WIB).
 Tujuan: skema MariaDB 11.8 di `server/migrations/0001`–`0022` (cabang `origin/dev`, commit `de2a1adb`).
 
@@ -42,7 +42,7 @@ Legenda keputusan: ✅ jelas, tanpa keputusan · ❓ butuh keputusan pemilik (li
 
 ### 2.4 `typeItem` → `brands` + `items` (+ `item_business_units`) ✅❓
 - `merk` (5 nilai: Ubiquiti 194, Mikrotik 56, VSOL 31, Alta 5, Voltech 4) → `brands` (cocok nama, `key = normalizeKey`; buat bila belum ada).
-- Tiap baris → `items`: `brand_id`, `model = name`, `key = itemKey(merk, name)`, `is_country_lock` = `'true'|'false'`, `status` = `deleted=1` → `inactive`, selain itu `active`, `created_at` = waktu baris `Added to Database` di `historyTypeItem` (bila ada, jika tidak waktu migrasi). Nama lama unik se-tabel, jadi tidak ada tabrakan `key` di sumber; tabrakan dengan item yang sudah ada di tujuan dicek dan dilaporkan.
+- Tiap baris yang punya minimal satu serial untuk dimigrasikan → `items` (tipe tanpa serial dilewati dan dilaporkan di `tipe-tanpa-serial.csv`; keputusan pemilik 2026-11-19, butir 13 §3): `brand_id`, `model = name`, `key = itemKey(merk, name)`, `is_country_lock` = `'true'|'false'`, `status` = `deleted=1` → `inactive`, selain itu `active`, `created_at` = waktu baris `Added to Database` di `historyTypeItem` (bila ada, jika tidak waktu migrasi). Nama lama unik se-tabel, jadi tidak ada tabrakan `key` di sumber; tabrakan dengan item yang sudah ada di tujuan dicek dan dilaporkan.
 - Anomali: item `Test` (id 198, `isCountryLock=2`, dihapus) → `inactive`, `false`.
 - `firmware` (236 kosong; 54 terisi: `M`, `5Ghz`, `WA`, …) → **kolom `items.firmware`** (migrasi `0023`, ada sejak 2026-11-18; keputusan pemilik 2026-11-18). Dibawa hanya bila item Country Lock DAN kodenya ada di daftar merk (`shared/firmware.ts`, `isValidFirmware`: aturan yang sama dengan validator `items.save`). Pada dump 2026-11-17 ke-54 nilai lolos (semua Country Lock Mikrotik dan Ubiquiti, tak ada kode asing). Nilai yang tak memenuhi syarat tidak dibuang: masuk `detail_md` item baru sebagai "Firmware (aplikasi lama)" dan dilaporkan sebagai peringatan. Tipe lama yang dilebur memberi firmware bila tipe induk kosong. Item yang sudah ada di tujuan: firmware hanya DIISI bila item itu Country Lock dan firmwarenya masih kosong; yang sudah berisi tidak pernah ditimpa (CSV `item.csv` kolom `aksi_firmware`: `new`, `fill`, `keep`, `skip`, `none`).
 - `stickers` (teks `QC=True;CountryLock=…`) → kolom `items.stickers` lama tidak dibaca lagi. Aturan stiker baru dihitung dari jenis stiker + penanda instruksi (butuh foto pustaka). **Tidak dimigrasi per item**; lihat §2.7.
@@ -101,6 +101,7 @@ Temuan yang perlu aturan:
 | 10 default | Zona waktu riwayat | WIB (UTC+7). |
 | 11 ✔ | Stiker lama dan stoknya | Tidak dimigrasi (2026-11-17); tidak butuh peta stiker. |
 | 12 ✔ | BU serial vs BU merk | Serial tetap di BU entrinya; BU merk = default; BU item = default merk saja; keputusan 2026-11-18 (§3a). |
+| 13 ✔ | Tipe tanpa serial | **Diputuskan 2026-11-19 (pemilik produk: "bersihkan dulu tipe yang tidak pernah ada catatan serialnya")**: tipe lama (`typeItem`) yang tidak punya satu pun serial untuk dimigrasikan TIDAK dibuat sebagai item di tujuan (hanya serial yang masuk rencana yang dihitung; serial `deleted=1`/sampah tidak menghitung). Pada dump 2026-11-17: 41 dari 286 tipe (36 Ubiquiti, 2 Mikrotik, 2 Alta, 1 VSOL; 3 di antaranya berfirmware) dilewati, tercatat di `tipe-tanpa-serial.csv`; merk yang semua tipenya terbuang ikut tidak dibuat. Mengubah §2.4 ("tiap baris → `items`"). Dapat dibalik tanpa merusak data: jalankan ulang dengan `--sertakan-tipe-tanpa-serial` (hanya menambah item yang kurang). |
 
 Butir 7-10 memakai bawaan yang direkomendasikan; ubah bila tidak sesuai sebelum skrip dijalankan ke staging.
 

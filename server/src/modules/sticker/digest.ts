@@ -134,7 +134,7 @@ export async function checkLowStockDigest(env: Env): Promise<DigestOutcome> {
     .filter((part) => part !== null)
     .join(', ')}`;
   const link = env.APP_ORIGIN
-    ? `\n\nLihat stok: ${env.APP_ORIGIN.replace(/\/+$/, '')}/sticker/stock`
+    ? `\n\nLihat stok: ${env.APP_ORIGIN.replace(/\/+$/, '')}/sticker`
     : '';
   try {
     await mailer.send({

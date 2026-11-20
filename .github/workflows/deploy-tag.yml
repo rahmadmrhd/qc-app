@@ -19,16 +19,16 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag versi server yang di-deploy (server-vX.Y.Z)'
+        description: 'Versi server yang mau dipasang, tulis persis nama tag-nya, mis. server-v1.0.0. Pilihan "Use workflow from" di atas cukup main (production wajib main).'
         type: string
         required: true
       environment:
-        description: 'Environment tujuan'
+        description: 'Dipasang ke mana: staging atau production'
         type: choice
         options: [staging, production]
         required: true
       izinkan_downgrade_skema:
-        description: 'Izinkan downgrade yang melewati migrasi basis data (migrasi berpenanda qc:contract tetap tak boleh dilewati)'
+        description: 'Centang hanya kalau sengaja turun ke versi lama yang skemanya lebih tua dari database sekarang. Migrasi penghapus kolom/tabel (qc:contract) tetap tidak bisa dilewati.'
         type: boolean
         default: false
 

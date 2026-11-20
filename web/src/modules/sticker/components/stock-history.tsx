@@ -30,11 +30,11 @@ const KIND_LABEL: Record<StockEntryKind, string> = {
   serial: 'Dipotong Serial Number',
 };
 
-/** "10 × 12 + 3 × 10 + 5 lepas"; kosong bila entri tidak memakai hitungan lembar. */
+/** "10 × 12 + 3 × 10 + 5 butir"; kosong bila entri tidak memakai hitungan lembar. */
 function describeCount(count: StockCount | null): string {
   if (!count) return '';
   const parts = count.rows.map((row) => `${row.sheets} × ${row.perSheet}`);
-  if (count.loose > 0) parts.push(`${count.loose} lepas`);
+  if (count.loose > 0) parts.push(`${count.loose} butir`);
   return parts.join(' + ');
 }
 
