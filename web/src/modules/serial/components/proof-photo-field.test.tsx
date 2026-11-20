@@ -279,3 +279,28 @@ test('gambar draf yang tak bisa dimuat (mis. sudah disapu) diganti keterangan; t
   await user.click(screen.getByRole('button', { name: 'Buang foto 1' }));
   expect(screen.queryByText(/Foto kedaluwarsa/)).not.toBeInTheDocument();
 });
+
+test('seret-lepas ke zona dialog tidak menggandakan berkas dan tak menyalakan lapisan zona field', async () => {
+  const user = userEvent.setup();
+  renderField();
+  await user.click(openButton());
+  const dialog = await screen.findByRole('alertdialog');
+  const zone = dialog.querySelector('[data-file-drop-zone]') as HTMLElement;
+  const files = [jpg(), jpg()];
+  fireEvent.dragEnter(zone, { dataTransfer: { files, types: ['Files'] } });
+  expect(screen.queryAllByText('Lepaskan berkas di sini')).toHaveLength(1);
+  fireEvent.drop(zone, { dataTransfer: { files, types: ['Files'] } });
+  expect(await screen.findByRole('button', { name: /^Tambahkan \(2\)/ })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Tambahkan \(4\)/ })).not.toBeInTheDocument();
+  expect(screen.queryByText('Lepaskan berkas di sini')).not.toBeInTheDocument();
+});
+
+test('foto dengan thumbUrl tak tepercaya merender URL turunan id, bukan thumbUrl-nya', () => {
+  renderField({
+    initial: [{ id: 'z1', mime: 'image/webp', size: 1, thumbUrl: 'https://evil.example/x.png' }],
+  });
+  expect(screen.getByRole('img', { name: 'Foto bukti 1' })).toHaveAttribute(
+    'src',
+    '/api/v1/serial-proofs/z1',
+  );
+});

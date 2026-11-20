@@ -10,7 +10,7 @@ import {
 } from '@/components/file-dialog';
 import type { OwnerUploads } from '@/components/file-dialog/use-background-uploads';
 import { Button } from '@/components/ui/button';
-import { type ProofPhotoRef, proofSource } from '../lib/proof-source';
+import { type ProofPhotoRef, proofSource, proofThumbUrl } from '../lib/proof-source';
 import type { StampPreviewInput } from '../lib/stamp-preview';
 import { discardProofPhotos } from '../queries';
 import { proofCameraStamp } from './stamp-preview';
@@ -53,6 +53,7 @@ function ProofThumb({
   variant: 'thumb' | 'large';
 }) {
   const [broken, setBroken] = useState(false);
+  // Selalu diturunkan dari id: `thumbUrl` hasil bacaan draf tak dipercaya (draf dapat diubah di perangkat).
   if (broken) {
     return (
       <p className="flex size-14 items-center justify-center rounded-md border border-dashed p-1 text-center text-[10px] leading-tight text-muted-foreground">
@@ -62,7 +63,7 @@ function ProofThumb({
   }
   return variant === 'thumb' ? (
     <img
-      src={photo.thumbUrl}
+      src={proofThumbUrl(photo.id)}
       alt={`Foto bukti ${index + 1}${suffix}`}
       className="size-full object-cover"
       loading="lazy"
@@ -70,7 +71,7 @@ function ProofThumb({
     />
   ) : (
     <img
-      src={photo.thumbUrl}
+      src={proofThumbUrl(photo.id)}
       alt={`Pratinjau besar foto ${index + 1}`}
       className="max-h-[70dvh] max-w-full object-contain"
     />
@@ -128,38 +129,41 @@ export function ProofPhotoField({
   }
 
   return (
-    <FileDropZone
-      accept={proofSource.mimeTypes}
-      onFiles={openDialog}
-      disabled={disabled || room === 0}
-      className="flex flex-col gap-2"
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={disabled || room === 0}
-          aria-label={`Foto (${count})${suffix}`}
-          onClick={() => openDialog([], [])}
-        >
-          <Camera aria-hidden />
-          Foto ({count})
-        </Button>
-        {room === 0 ? (
-          <span className="text-xs text-muted-foreground">Batas {max} foto tercapai.</span>
-        ) : null}
-      </div>
-      <AttachmentView
-        items={items}
-        pending={uploads.entries}
-        layout="grid"
-        label={label}
-        disabled={disabled}
-        onRemove={remove}
-        onRetry={uploads.retry}
-        onCancel={uploads.remove}
-      />
+    <>
+      <FileDropZone
+        accept={proofSource.mimeTypes}
+        onFiles={openDialog}
+        disabled={disabled || room === 0}
+        className="flex flex-col gap-2"
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={disabled || room === 0}
+            aria-label={`Foto (${count})${suffix}`}
+            onClick={() => openDialog([], [])}
+          >
+            <Camera aria-hidden />
+            Foto ({count})
+          </Button>
+          {room === 0 ? (
+            <span className="text-xs text-muted-foreground">Batas {max} foto tercapai.</span>
+          ) : null}
+        </div>
+        <AttachmentView
+          items={items}
+          pending={uploads.entries}
+          layout="grid"
+          label={label}
+          disabled={disabled}
+          onRemove={remove}
+          onRetry={uploads.retry}
+          onCancel={uploads.remove}
+        />
+      </FileDropZone>
+      {/* Di luar zona: event React dari portal dialog tak boleh menggelembung ke zona field (berkas ganda). */}
       {dialog.open ? (
         <FileDialog
           open
@@ -180,6 +184,6 @@ export function ProofPhotoField({
           onConfirm={(result) => uploads.add(result.files)}
         />
       ) : null}
-    </FileDropZone>
+    </>
   );
 }

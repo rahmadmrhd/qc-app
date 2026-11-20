@@ -99,7 +99,7 @@ export function baseName(filename: string, max?: number): string {
   return [...collapsed].slice(0, max).join('').trim();
 }
 
-/** Memisahkan berkas menurut tipe: yang sah, dan yang ditolak beserta alasan (ukuran diperiksa oleh antrean unggah). */
+/** Memisahkan berkas menurut tipe: yang sah, dan yang ditolak beserta alasan (ukuran diperiksa oleh `intakeFiles`/`checkFile`). */
 export function partitionByType(
   files: readonly File[],
   accept: readonly string[],
