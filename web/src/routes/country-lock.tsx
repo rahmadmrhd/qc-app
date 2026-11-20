@@ -3,7 +3,7 @@ import { AppShell } from '@/app/shell/app-shell';
 import { UiUpdateBanner } from '@/app/shell/ui-update-banner';
 import { ApiError } from '@/lib/api/api-error';
 import { getBridge } from '@/lib/platform';
-import { canWriteSerials } from '@/modules/auth/permissions';
+import { canRecordSerials } from '@/modules/auth/permissions';
 import { meQueryOptions } from '@/modules/auth/queries';
 import { clearSession, isAuthenticated } from '@/modules/auth/session';
 import { CountryLockPage } from '@/modules/countrylock/components/country-lock-page';
@@ -29,7 +29,7 @@ export const Route = createFileRoute('/country-lock')({
         ),
       ]);
       // Mencatat Serial Number di halaman ini butuh cangkang (data pengguna termuat) dan izin `serial: edit`.
-      return { withShell: true, canRecord: canWriteSerials(me) };
+      return { withShell: true, canRecord: canRecordSerials(me) };
     } catch (error) {
       if (error instanceof ApiError && error.code === 'UNAUTHENTICATED') {
         clearSession();

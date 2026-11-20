@@ -10,8 +10,9 @@ import {
   canEditItem,
   canManageItem,
   canManageSerialSettings,
+  canRecordSerials,
+  canReportSerials,
   canUseSerialLocationOptions,
-  canWriteSerials,
   liveBuIdsWithLevelOf,
   locationsWith,
   serialActorModules,
@@ -169,11 +170,11 @@ test('buIdsWithLevelOf: per modul ber-BU, campuran level', () => {
   expect(buIdsWithLevelOf(user, 'serialservice', 'view')).toEqual([]);
 });
 
-test('canWriteSerials: butuh edit pada minimal satu BU', () => {
-  expect(canWriteSerials(meWithBus([serialBu('a', 'view')]))).toBe(false);
-  expect(canWriteSerials(meWithBus([serialBu('a', 'view'), serialBu('b', 'edit')]))).toBe(true);
-  expect(canWriteSerials(meWithBus([bu('a', 'manage')]))).toBe(false);
-  expect(canWriteSerials(null)).toBe(false);
+test('canRecordSerials: butuh edit pada minimal satu BU', () => {
+  expect(canRecordSerials(meWithBus([serialBu('a', 'view')]))).toBe(false);
+  expect(canRecordSerials(meWithBus([serialBu('a', 'view'), serialBu('b', 'edit')]))).toBe(true);
+  expect(canRecordSerials(meWithBus([bu('a', 'manage')]))).toBe(false);
+  expect(canRecordSerials(null)).toBe(false);
 });
 
 test('canUseSerialLocationOptions: hanya serial: edit global (gerbang serials.locationOptions; tim servis tidak memilih lokasi lagi)', () => {
@@ -250,7 +251,7 @@ test('BU terhapus tidak ditawarkan sebagai pilihan: liveBuIdsWithLevelOf dan can
   expect(canCreateItem(meWithBus([deletedBu('b', 'edit')]))).toBe(false);
 });
 
-test('serialActorModules: BU serial terhapus tetap memberi hak; canWriteSerials hanya menghitung BU hidup (N5)', () => {
+test('serialActorModules dan canReportSerials: BU serial terhapus tetap memberi hak; canRecordSerials hanya BU hidup (N5, N6)', () => {
   const user = meWithBus([
     {
       ...deletedBu('s', 'view'),
@@ -258,8 +259,10 @@ test('serialActorModules: BU serial terhapus tetap memberi hak; canWriteSerials 
     },
   ]);
   expect(serialActorModules(user, 's').serial).toBe(true);
-  expect(canWriteSerials(user)).toBe(false);
-  expect(canWriteSerials(meWithBus([serialBu('a', 'edit'), ...user.businessUnits]))).toBe(true);
+  expect(canRecordSerials(user)).toBe(false);
+  expect(canReportSerials(user)).toBe(true);
+  expect(canReportSerials(meWithBus([serialBu('a', 'view')]))).toBe(false);
+  expect(canRecordSerials(meWithBus([serialBu('a', 'edit'), ...user.businessUnits]))).toBe(true);
 });
 
 test('item ber-BU {A hidup, B terhapus}: pengguna hanya berhak di A tetap dapat mengubah (B bukan penugasannya, N1)', () => {

@@ -1,6 +1,6 @@
 import type { SheetsExportChunk } from '@server/core/bridge-client';
 import type { Db } from '@server/core/db';
-import { isSoftDeleteTable, liveWhere } from '@server/core/soft-delete';
+import { deletedWhere, isSoftDeleteTable, liveWhere } from '@server/core/soft-delete';
 
 /**
  * Pembaca potongan baris database untuk ekspor Spreadsheet (Spek 8.3, Task 3.4). Fungsi murni terhadap `Db`:
@@ -230,17 +230,36 @@ function quote(identifier: string): string {
 
 /**
  * Tabel ANAK yang diekspor dan induk yang menentukan "hidup"-nya (rancangan soft delete §5 butir 15): baris anak milik
- * induk terhapus tidak diekspor. `files` (pemilik per `owner_type`) dan `qr_documents` (tak punya kolom induk) belum
- * disaring: pemiliknya menyusul bersama fase modulnya (item/QR fase 3-4); dicatat di `soft-delete-pending.ts`.
+ * induk terhapus tidak diekspor.
  */
 export const EXPORT_CHILD_PARENTS: Readonly<Record<string, { parent: string; fk: string }>> = {
   handover_comments: { parent: 'handovers', fk: 'handover_id' },
 };
 
+/**
+ * `files` milik pemilik terhapus: pemiliknya beragam (`owner_type`), jadi tiap jenis pemilik ber-soft-delete didaftarkan
+ * di sini begitu fase modulnya menyaringnya. Sekarang: `item` (fase 3). Menyusul: stiker/pustaka (fase 4a) dan
+ * `qrdesign`/`qrlogo`/`postel` (fase 4b), bersama `qr_documents` (tak punya kolom induk). Selama belum lengkap, entri
+ * `*dinamis` ekspor ini berada di `SOFT_DELETE_PENDING` (fase 4b) di `soft-delete-pending.ts`, bukan `SOFT_DELETE_EXEMPT`;
+ * pindahkan ke EXEMPT setelah `files` dan `qr_documents` seluruhnya disaring.
+ */
+export const EXPORT_FILE_OWNERS: Readonly<Record<string, string>> = { item: 'items' };
+
 function childLive(table: string): string {
   const link = EXPORT_CHILD_PARENTS[table];
-  if (!link || !isSoftDeleteTable(link.parent)) return '';
-  return `EXISTS (SELECT 1 FROM ${quote(link.parent)} p WHERE p.id = ${quote(table)}.${quote(link.fk)} AND ${liveWhere('p')})`;
+  if (link && isSoftDeleteTable(link.parent)) {
+    return `EXISTS (SELECT 1 FROM ${quote(link.parent)} p WHERE p.id = ${quote(table)}.${quote(link.fk)} AND ${liveWhere('p')})`;
+  }
+  if (table === 'files') {
+    const parts = Object.entries(EXPORT_FILE_OWNERS)
+      .filter(([, owner]) => isSoftDeleteTable(owner))
+      .map(
+        ([type, owner]) =>
+          `NOT (\`owner_type\` = '${type}' AND EXISTS (SELECT 1 FROM ${quote(owner)} p WHERE p.id = \`owner_id\` AND ${deletedWhere('p')}))`,
+      );
+    return parts.join(' AND ');
+  }
+  return '';
 }
 
 /**

@@ -150,9 +150,17 @@ export function canManageSerialSettings(me: MeDto | null | undefined): boolean {
   return me?.canManageSerialSettings === true;
 }
 
-/** Mencatat serial: level `edit` pada minimal satu BU HIDUP (BU terhapus tak tampil di pilihan). */
-export function canWriteSerials(me: MeDto | null | undefined): boolean {
+/** Mencatat serial baru (Tambah, Country Lock): level `edit` pada minimal satu BU HIDUP (BU terhapus tak tampil di pilihan). */
+export function canRecordSerials(me: MeDto | null | undefined): boolean {
   return liveBuIdsWithLevelOf(me, 'serial', 'edit').length > 0;
+}
+
+/**
+ * Lapor Rusak atas serial yang sudah ada: level `edit` pada BU apa pun yang memberi hak, termasuk BU terhapus
+ * (keputusan soft delete 9: serial BU terhapus tetap dapat ditindak). Tidak memilih BU, jadi tak perlu BU hidup.
+ */
+export function canReportSerials(me: MeDto | null | undefined): boolean {
+  return buIdsWithLevelOf(me, 'serial', 'edit').length > 0;
 }
 
 function hasLevelOnAllBus(

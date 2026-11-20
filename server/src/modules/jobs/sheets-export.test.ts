@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from 'bun:test';
 import type { SheetsExportChunk } from '@server/core/bridge-client';
 import { isSoftDeleteTable } from '@server/core/soft-delete';
 import { seedHandover, seedHandoverEnv } from '@server-test/handover-env';
+import { seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
   EXPORT_CELL_MAX_CHARS,
@@ -97,6 +98,21 @@ describe('exportTableChunks', () => {
     expect(
       chunks.flatMap((chunk) => chunk.rows.map((row) => row[chunk.columns.indexOf('id')])),
     ).toEqual(['c1']);
+  });
+
+  test('berkas milik item terhapus tidak diekspor; pemilik lain tetap (files)', async () => {
+    await seedItem(env, { id: 'i1', brand: 'Sony', model: 'A' });
+    await seedItem(env, { id: 'i2', brand: 'Sony', model: 'B' });
+    await env.DB.prepare(
+      "INSERT INTO files (id, owner_type, owner_id) VALUES ('f1', 'item', 'i1'), ('f2', 'item', 'i2'), ('f3', 'sticker', 'i2')",
+    ).run();
+    await env.DB.prepare(
+      "UPDATE items SET deleted_at = '2026-02-02T00:00:00.000Z' WHERE id = 'i2'",
+    ).run();
+    const chunks = await collect('files');
+    expect(
+      chunks.flatMap((chunk) => chunk.rows.map((row) => row[chunk.columns.indexOf('id')])),
+    ).toEqual(['f1', 'f3']);
   });
 
   test('tabel kosong tetap menghasilkan satu potongan replace berisi header saja', async () => {

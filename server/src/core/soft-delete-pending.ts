@@ -117,6 +117,9 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'stickers@6#27173699',
   ],
   // Fase 4b (qrcode, postel)
+  // Ekspor Sheets: `files` (pemilik stiker/pustaka fase 4a, QR/postel fase 4b) dan `qr_documents` belum disaring
+  // (pemilik `item` sudah, fase 3). Setelah semuanya disaring, pindahkan kuncinya ke SOFT_DELETE_EXEMPT dengan alasan.
+  'server/src/modules/jobs/sheets-export.ts': ['*dinamis@1#62151e07'],
   'server/src/modules/postel/items.ts': [
     'items@1#4a02043e',
     'brands@1#4a02043e',
@@ -375,8 +378,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
 export const SOFT_DELETE_EXEMPT: Record<string, string> = {
   'server/src/core/cas.ts#*dinamis@1#2d23e851':
     'nameGuardStmt: penjaga TULIS (SELECT ... FOR UPDATE) atas baris merk/customer yang baru dibaca penulis; hapus/pulihkan memakai soft-delete.ts. Tabel dinamis (brands|customers).',
-  'server/src/modules/jobs/sheets-export.ts#*dinamis@1#62151e07':
-    'Ekspor Sheets: tabel dinamis dari EXPORT_TABLES; tabel ber-soft-delete disaring lewat liveWhere() (isSoftDeleteTable), anak dari induk terhapus lewat EXPORT_CHILD_PARENTS (handover_comments); DIPENDING: `files` (pemilik per owner_type) dan `qr_documents` (tanpa kolom induk) baru disaring bersama fase modul pemiliknya (item/QR, fase 3-4). Dijaga sheets-export.test.ts.',
   'server/src/modules/backup/restore.ts#*dinamis@1#4b20ad1c':
     'Pemulihan cadangan: menghitung SEMUA baris tiap tabel di skema pemulihan untuk verifikasi; baris terhapus (soft delete) memang ikut dicadangkan dan harus terhitung.',
 };
