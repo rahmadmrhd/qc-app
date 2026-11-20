@@ -1,7 +1,11 @@
+import { cn } from 'cn';
 import { Children, Fragment, isValidElement, type ReactNode } from 'react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { DataColumn, MobileRole } from './data-table';
 import { type RowAction, RowActions } from './row-actions';
+import { LongPressHint, SelectionBar } from './selection-bar';
+import { useLongPressSelect } from './use-long-press-select';
 import type { RowSelection } from './use-row-selection';
 
 /** Peran tiap kolom di kartu: yang dinyatakan, selain itu bawaan (lihat `MobileRole`). */
@@ -51,6 +55,8 @@ export function DataCards<T>({
   isLoading,
 }: DataCardsProps<T>) {
   const roles = resolveMobileRoles(columns);
+  const { selecting, bind } = useLongPressSelect(selection, true);
+  const ids = rows.map(rowKey);
   const byRole = (role: MobileRole) =>
     columns
       .map((column, index) => ({ column, role: roles[index] }))
@@ -75,11 +81,25 @@ export function DataCards<T>({
 
   return (
     <div className="space-y-2">
+      {selection && selecting ? <SelectionBar selection={selection} ids={ids} /> : null}
+      {selection && !selecting && rows.length > 0 ? <LongPressHint /> : null}
       <ul aria-label={label} className="space-y-2">
         {rows.map((row) => {
           const id = rowKey(row);
           const isSelected = selection?.selected.has(id) ?? false;
-          const rowActions = actions?.(row) ?? [];
+          const baseActions = actions?.(row) ?? [];
+          // Jalur cadangan non-sentuh: "Pilih" di menu ⋯ masuk mode pilih dengan kartu ini terpilih.
+          const rowActions: readonly RowAction[] = selection
+            ? [
+                ...baseActions,
+                {
+                  id: 'select',
+                  action: 'select',
+                  label: `Pilih ${nameOf(row)}`,
+                  onSelect: () => selection.toggle(id),
+                },
+              ]
+            : baseActions;
           const metaEntries = metas
             .map(({ column }) => ({ column, content: column.cell(row) }))
             .filter((entry) => hasContent(entry.content));
@@ -90,9 +110,22 @@ export function DataCards<T>({
             <li
               key={id}
               data-state={isSelected ? 'selected' : undefined}
-              className="rounded-lg border bg-card p-3 data-[state=selected]:bg-info-text/8"
+              className={cn(
+                'rounded-lg border bg-card p-3 data-[state=selected]:bg-info-text/8',
+                selection && 'select-none [-webkit-touch-callout:none]',
+              )}
+              {...bind(id)}
             >
               <div className="flex items-start gap-3">
+                {selection && selecting ? (
+                  <div className="flex min-h-6 shrink-0 items-center pt-0.5">
+                    <Checkbox
+                      aria-label={`Pilih ${nameOf(row)}`}
+                      checked={isSelected}
+                      onCheckedChange={() => selection.toggle(id)}
+                    />
+                  </div>
+                ) : null}
                 <div className="min-w-0 flex-1 space-y-1 break-words">
                   {titles.map(({ column }) => (
                     <div key={column.id} className="text-base">
@@ -100,7 +133,7 @@ export function DataCards<T>({
                     </div>
                   ))}
                 </div>
-                {actions ? (
+                {(actions || selection) && !selecting ? (
                   <div className="-mt-2.5 -mr-2 shrink-0">
                     <RowActions name={nameOf(row)} actions={rowActions} />
                   </div>

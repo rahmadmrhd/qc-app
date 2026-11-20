@@ -1,4 +1,5 @@
 import {
+  CheckSquare,
   Copy,
   Download,
   LoaderCircle,
@@ -35,7 +36,8 @@ export type ActionKind =
   | 'upload'
   | 'print'
   | 'copy'
-  | 'refresh';
+  | 'refresh'
+  | 'select';
 
 type ActionSpec = {
   icon: LucideIcon;
@@ -141,6 +143,13 @@ export const ACTIONS: Record<ActionKind, ActionSpec> = {
   refresh: {
     icon: RefreshCw,
     label: 'Muat ulang',
+    color: 'secondary',
+    variant: 'ghost',
+    compactVariant: 'ghost',
+  },
+  select: {
+    icon: CheckSquare,
+    label: 'Pilih',
     color: 'secondary',
     variant: 'ghost',
     compactVariant: 'ghost',

@@ -189,14 +189,10 @@ function ItemsPage() {
     <>
       <ListPage
         title="Data Item"
-        actions={
-          canCreate ? (
-            <ActionButton
-              action="create"
-              label="Tambah item"
-              onClick={() => void navigate({ to: '/item/new' })}
-            />
-          ) : null
+        createAction={
+          canCreate
+            ? { label: 'Tambah item', onClick: () => void navigate({ to: '/item/new' }) }
+            : undefined
         }
         filters={
           <FilterBar

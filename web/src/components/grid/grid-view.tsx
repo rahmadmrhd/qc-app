@@ -1,11 +1,14 @@
 import { cn } from 'cn';
 import type { ReactNode } from 'react';
+import { LongPressHint, SelectionBar } from '@/components/data-table/selection-bar';
+import { useLongPressSelect } from '@/components/data-table/use-long-press-select';
 import { type RowSelection, usePruneSelection } from '@/components/data-table/use-row-selection';
 import { useInfiniteSentinel } from '@/components/file-dialog/use-infinite-sentinel';
 import { Spinner } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useIsDesktop } from '@/hooks/use-is-desktop';
 
 export const GRID_CLASS = 'grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5';
 
@@ -66,6 +69,9 @@ export function GridView<T>({
   selectLabel,
 }: GridViewProps<T>) {
   usePruneSelection(selection, items.map(itemKey), !isLoading);
+  const desktop = useIsDesktop();
+  // Ponsel: pilih massal tahan-lama (checkbox hanya tampil di mode pilih); >= 768 px checkbox selalu tampil.
+  const { selecting, bind } = useLongPressSelect(selection, !desktop);
   const { ref: sentinelRef, supported } = useInfiniteSentinel({
     enabled: Boolean(hasMore) && !loadingMore && !loadMoreError,
     onVisible: () => onLoadMore?.(),
@@ -104,13 +110,25 @@ export function GridView<T>({
 
   return (
     <>
+      {selection && selecting ? (
+        <SelectionBar selection={selection} ids={items.map(itemKey)} />
+      ) : null}
+      {selection && !desktop && !selecting ? <LongPressHint /> : null}
       <ul role={role} aria-label={label} className={cn(GRID_CLASS, className)}>
         {items.map((item) => {
           const id = itemKey(item);
           return (
-            <li key={id} className={cn('relative', itemClassName?.(item))}>
+            <li
+              key={id}
+              className={cn(
+                'relative',
+                selection && !desktop && 'select-none [-webkit-touch-callout:none]',
+                itemClassName?.(item),
+              )}
+              {...bind(id)}
+            >
               {renderItem(item)}
-              {selection ? (
+              {selection && (desktop || selecting) ? (
                 <div className="absolute top-1.5 left-1.5 rounded bg-background/80 p-1">
                   <Checkbox
                     aria-label={`Pilih ${selectLabel?.(item) ?? id}`}

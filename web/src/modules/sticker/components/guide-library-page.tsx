@@ -2,7 +2,6 @@ import { MAX_IMAGE_BYTES } from '@shared/files';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { ActionButton } from '@/components/action-button';
 import {
   AttachmentView,
   FileDialog,
@@ -116,14 +115,14 @@ export function GuideLibraryPage({
       <FileDropZone accept={source.mimeTypes} onFiles={handleFiles}>
         <ListPage
           title="Pustaka Gambar"
-          actions={
-            canUpload ? (
-              <ActionButton
-                action="upload"
-                label="Unggah gambar"
-                onClick={() => setUpload({ open: true, files: [], rejected: [] })}
-              />
-            ) : null
+          createAction={
+            canUpload
+              ? {
+                  kind: 'upload',
+                  label: 'Unggah gambar',
+                  onClick: () => setUpload({ open: true, files: [], rejected: [] }),
+                }
+              : undefined
           }
           filters={
             <FilterBar

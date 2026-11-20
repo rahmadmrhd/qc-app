@@ -177,10 +177,8 @@ function BrandsPage() {
     <>
       <ListPage
         title="Merk"
-        actions={
-          canEdit ? (
-            <ActionButton action="create" label="Tambah merk" onClick={() => setDialog('new')} />
-          ) : null
+        createAction={
+          canEdit ? { label: 'Tambah merk', onClick: () => setDialog('new') } : undefined
         }
         filters={
           <FilterBar
