@@ -36,6 +36,8 @@ export interface NewEvent {
   message: string;
   changes: unknown[];
   data: Record<string, unknown>;
+  /** Kunci idempoten kejadian (`serial_events.client_id`, unik): kirim ulang baris Catat tidak menggandakan kejadian. */
+  clientId?: string;
 }
 
 /** Catatan serial yang sudah memakai `clientId` ini (kunci idempoten per baris). */
@@ -196,6 +198,45 @@ export async function loadSerialRow(db: Preparer, id: string): Promise<SerialRow
     .first<SerialRow>();
 }
 
+export interface SerialBuHistoryRow {
+  bu_id: string;
+  bu_code: string;
+  first_at: string;
+  left_at: string;
+}
+
+/** Riwayat BU serial (urut `first_at`), berikut kode BU; baris dengan `left_at` kosong = BU saat ini. */
+export async function loadBuHistory(db: Preparer, serialId: string): Promise<SerialBuHistoryRow[]> {
+  const rows = await db
+    .prepare(
+      'SELECT h.bu_id, bu.code AS bu_code, h.first_at, h.left_at FROM serial_business_units h JOIN business_units bu ON bu.id = h.bu_id WHERE h.serial_id = ? ORDER BY h.first_at, h.bu_id',
+    )
+    .bind(serialId)
+    .all<SerialBuHistoryRow>();
+  return rows.results;
+}
+
+/**
+ * Urutan pemilihan catatan bila (sementara, sebelum skrip penyatuan dijalankan dan indeks `serials_serial` terpasang)
+ * satu Serial Number ada di lebih dari satu catatan: laporan aktif, lalu Rusak, lalu terbaru (tanggal uji, lalu id). Sama
+ * dengan aturan pemenang `server/scripts/merge-duplicate-serials.ts`, jadi pilihan aplikasi = pemenang penyatuan.
+ */
+export const SERIAL_PICK_ORDER_SQL =
+  "(s.open_case_id <> '') DESC, (s.status = 'broken') DESC, s.test_date DESC, s.id DESC";
+
+/** Catatan serial menurut nomor serial ternormalisasi (unik se-sistem), atau `null` bila belum ada. */
+export async function loadSerialRowBySerial(
+  db: Preparer,
+  serial: string,
+): Promise<SerialRow | null> {
+  return db
+    .prepare(
+      `SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE s.serial = ? ORDER BY ${SERIAL_PICK_ORDER_SQL} LIMIT 1`,
+    )
+    .bind(serial)
+    .first<SerialRow>();
+}
+
 export interface SerialStickerRow {
   sticker_id: string;
   name: string | null;
@@ -274,61 +315,111 @@ export interface SerialListFilter {
 
 const placeholders = (count: number): string => Array.from({ length: count }, () => '?').join(', ');
 
-/** Daftar serial urut `created_at DESC, id DESC`; mengambil `limit + 1` baris untuk menentukan kursor berikutnya. */
+/**
+ * Daftar serial urut `created_at DESC, id DESC`; mengambil `limit + 1` baris untuk menentukan kursor berikutnya.
+ *
+ * Cakupan baca = BU saat ini ATAU riwayat BU. Predikat `OR` atas keduanya tidak dapat memakai indeks
+ * (diukur: 3-6 dtk pada 200 ribu serial), jadi daftar dipecah menjadi CABANG yang saling lepas, tiap cabang memakai
+ * indeksnya sendiri dan dibatasi `LIMIT`, lalu digabung (`UNION ALL`) dan diurutkan ulang:
+ *  - cur: BU saat ini ada di BU yang dapat dibaca (indeks `serials_bu_created`);
+ *  - hist: BU saat ini di luar, tetapi serial pernah di BU yang dapat dibaca (baris `left_at` terisi pada
+ *    `serial_business_units`, himpunan kecil; indeks `serial_bu_by_bu`).
+ * Filter BU (pernah di BU itu) memecah lagi: eq (BU saat ini = BU itu) dan hist (BU itu pernah ditinggalkan).
+ */
 export async function listSerialRows(db: Preparer, filter: SerialListFilter): Promise<SerialRow[]> {
-  const where = [`s.bu_id IN (${placeholders(filter.buIds.length)})`];
-  const binds: unknown[] = [...filter.buIds];
-  if (filter.buId !== undefined) {
-    where.push('s.bu_id = ?');
-    binds.push(filter.buId);
-  }
+  const common: string[] = [];
+  const commonBinds: unknown[] = [];
   if (filter.itemId !== undefined) {
-    where.push('s.item_id = ?');
-    binds.push(filter.itemId);
+    common.push('s.item_id = ?');
+    commonBinds.push(filter.itemId);
   }
   if (filter.locationId !== undefined) {
-    where.push('s.location_id = ?');
-    binds.push(filter.locationId);
+    common.push('s.location_id = ?');
+    commonBinds.push(filter.locationId);
   }
   if (filter.status !== undefined) {
-    where.push('s.status = ?');
-    binds.push(filter.status);
+    common.push('s.status = ?');
+    commonBinds.push(filter.status);
   }
   if (filter.custody !== undefined) {
-    where.push('s.custody = ?');
-    binds.push(filter.custody);
+    common.push('s.custody = ?');
+    commonBinds.push(filter.custody);
   }
   if (filter.from !== undefined) {
-    where.push('s.test_date >= ?');
-    binds.push(filter.from);
+    common.push('s.test_date >= ?');
+    commonBinds.push(filter.from);
   }
   if (filter.to !== undefined) {
-    where.push('s.test_date <= ?');
-    binds.push(filter.to);
+    common.push('s.test_date <= ?');
+    commonBinds.push(filter.to);
   }
   if (filter.createdBy !== undefined) {
-    where.push('s.created_by = ?');
-    binds.push(filter.createdBy);
+    common.push('s.created_by = ?');
+    commonBinds.push(filter.createdBy);
   }
   if (filter.prefixes !== undefined && filter.prefixes.length > 0) {
-    // `LIKE 'awalan%'` (bukan `LEFT() = ?`) agar indeks `serials_bu_serial` dapat dipakai; metakarakter di-escape.
-    where.push(`(${filter.prefixes.map(() => "s.serial LIKE ? ESCAPE '!'").join(' OR ')})`);
-    for (const prefix of filter.prefixes) binds.push(`${escapeLike(prefix)}%`);
+    // `LIKE 'awalan%'` (bukan `LEFT() = ?`) agar indeks `serials_serial` (unik se-sistem; `serials_bu_serial` lama dipertahankan sampai tahap contract) dapat dipakai; metakarakter di-escape.
+    common.push(`(${filter.prefixes.map(() => "s.serial LIKE ? ESCAPE '!'").join(' OR ')})`);
+    for (const prefix of filter.prefixes) commonBinds.push(`${escapeLike(prefix)}%`);
   }
   if (filter.serials !== undefined) {
     if (filter.serials.length === 0) return [];
-    where.push(`s.serial IN (${placeholders(filter.serials.length)})`);
-    binds.push(...filter.serials);
+    common.push(`s.serial IN (${placeholders(filter.serials.length)})`);
+    commonBinds.push(...filter.serials);
   }
   if (filter.cursor) {
-    where.push('(s.created_at < ? OR (s.created_at = ? AND s.id < ?))');
-    binds.push(filter.cursor.createdAt, filter.cursor.createdAt, filter.cursor.id);
+    common.push('(s.created_at < ? OR (s.created_at = ? AND s.id < ?))');
+    commonBinds.push(filter.cursor.createdAt, filter.cursor.createdAt, filter.cursor.id);
+  }
+
+  interface Part {
+    sql: string;
+    binds: unknown[];
+  }
+  const readable = placeholders(filter.buIds.length);
+  const readableParts: Part[] = [
+    { sql: `s.bu_id IN (${readable})`, binds: [...filter.buIds] },
+    {
+      sql: `s.bu_id NOT IN (${readable}) AND s.id IN (SELECT serial_id FROM serial_business_units WHERE bu_id IN (${readable}) AND left_at > '')`,
+      binds: [...filter.buIds, ...filter.buIds],
+    },
+  ];
+  const buId = filter.buId;
+  const buParts: Part[] =
+    buId === undefined
+      ? [{ sql: '', binds: [] }]
+      : [
+          { sql: 's.bu_id = ?', binds: [buId] },
+          {
+            sql: "s.bu_id <> ? AND s.id IN (SELECT serial_id FROM serial_business_units WHERE bu_id = ? AND left_at > '')",
+            binds: [buId, buId],
+          },
+        ];
+
+  const limit = filter.limit + 1;
+  const arms: { sql: string; binds: unknown[] }[] = [];
+  for (const readablePart of readableParts) {
+    for (const buPart of buParts) {
+      const where = [readablePart.sql, ...(buPart.sql === '' ? [] : [buPart.sql]), ...common];
+      arms.push({
+        sql: `SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE ${where.join(' AND ')} ORDER BY s.created_at DESC, s.id DESC LIMIT ?`,
+        binds: [...readablePart.binds, ...buPart.binds, ...commonBinds, limit],
+      });
+    }
+  }
+  const only = arms[0];
+  if (arms.length === 1 && only) {
+    const rows = await db
+      .prepare(only.sql)
+      .bind(...only.binds)
+      .all<SerialRow>();
+    return rows.results;
   }
   const rows = await db
     .prepare(
-      `SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE ${where.join(' AND ')} ORDER BY s.created_at DESC, s.id DESC LIMIT ?`,
+      `${arms.map((arm) => `(${arm.sql})`).join(' UNION ALL ')} ORDER BY created_at DESC, id DESC LIMIT ?`,
     )
-    .bind(...binds, filter.limit + 1)
+    .bind(...arms.flatMap((arm) => arm.binds), limit)
     .all<SerialRow>();
   return rows.results;
 }
@@ -386,7 +477,7 @@ export function updateSerialStmt(
 export function insertNextEventStmt(db: Preparer, event: Omit<NewEvent, 'seq'>): DbStatement {
   return db
     .prepare(
-      'INSERT INTO serial_events (id, serial_id, case_id, seq, type, occurred_on, created_at, actor_id, actor_name, actor_team, message, changes_json, data_json) SELECT ?, ?, ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM serial_events WHERE serial_id = ?',
+      'INSERT INTO serial_events (id, serial_id, case_id, seq, type, occurred_on, created_at, actor_id, actor_name, actor_team, message, changes_json, data_json, client_id) SELECT ?, ?, ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? FROM serial_events WHERE serial_id = ?',
     )
     .bind(
       event.id,
@@ -401,6 +492,7 @@ export function insertNextEventStmt(db: Preparer, event: Omit<NewEvent, 'seq'>):
       event.message,
       JSON.stringify(event.changes),
       JSON.stringify(event.data),
+      event.clientId ?? null,
       event.serialId,
     );
 }

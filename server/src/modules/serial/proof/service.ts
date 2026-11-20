@@ -18,7 +18,7 @@ import type {
 } from '@shared/contract';
 import { type ImageMime, readImageDimensions } from '@shared/files';
 import { SERIAL_PROOF_LIMITS } from '@shared/serials';
-import { readableBuIds } from '../access';
+import { canReadSerial, readableBuIds } from '../access';
 import { canManageProof } from './access';
 import { serialProofJobStmt } from './job';
 import {
@@ -78,7 +78,7 @@ async function visibleProof(env: Env, id: string, user: UserContext): Promise<Pr
     return proof;
   }
   const buId = await serialBuOf(env, proof.serialId);
-  if (buId === '' || !readableBuIds(user).includes(buId)) {
+  if (buId === '' || !(await canReadSerial(env.DB, user, proof.serialId, buId))) {
     throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
   }
   return proof;

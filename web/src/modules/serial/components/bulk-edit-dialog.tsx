@@ -20,6 +20,8 @@ import { SerialNoteField } from './serial-note-field';
 export interface BulkEditDialogProps {
   open: boolean;
   count: number;
+  /** Banyak baris terpilih yang berstatus Cek ulang (item dan Sample tidak berlaku untuk baris itu). */
+  recheckCount?: number;
   onApply(patch: BulkPatch): void;
   onClose(): void;
 }
@@ -31,12 +33,23 @@ const SAMPLE_OPTIONS = [
 ];
 
 /** Ubah massal baris terpilih dalam dialog: hanya kolom yang diisi yang diterapkan (kosong = tidak diubah). */
-export function BulkEditDialog({ open, count, onApply, onClose }: BulkEditDialogProps) {
+export function BulkEditDialog({
+  open,
+  count,
+  recheckCount = 0,
+  onApply,
+  onClose,
+}: BulkEditDialogProps) {
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       {/* Isi dimuat hanya selama dialog terbuka: tiap pembukaan mulai dari form kosong. */}
       <DialogContent className="sm:max-w-lg">
-        <BulkEditBody count={count} onApply={onApply} onClose={onClose} />
+        <BulkEditBody
+          count={count}
+          recheckCount={recheckCount}
+          onApply={onApply}
+          onClose={onClose}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -44,9 +57,10 @@ export function BulkEditDialog({ open, count, onApply, onClose }: BulkEditDialog
 
 function BulkEditBody({
   count,
+  recheckCount = 0,
   onApply,
   onClose,
-}: Pick<BulkEditDialogProps, 'count' | 'onApply' | 'onClose'>) {
+}: Pick<BulkEditDialogProps, 'count' | 'recheckCount' | 'onApply' | 'onClose'>) {
   const [item, setItem] = useState<ItemBuValue>(EMPTY_ITEM_BU);
   const [testDate, setTestDate] = useState('');
   const [location, setLocation] = useState({ id: '', label: '' });
@@ -93,6 +107,9 @@ function BulkEditBody({
         <DialogTitle>Ubah {count} baris</DialogTitle>
         <DialogDescription>
           Hanya kolom yang diisi yang diterapkan; kolom kosong tidak mengubah apa-apa.
+          {recheckCount > 0
+            ? ` ${recheckCount} baris berstatus Cek ulang: item dan Sample tidak diubah untuk baris itu, dan Business Unit yang tidak boleh dipakai cek ulang akan ditandai.`
+            : ''}
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-4">

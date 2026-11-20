@@ -234,38 +234,37 @@ test('grup Stiker memuat Jenis Stiker (sticker view) dan hanya tampil bagi user 
   expect(stiker?.items.map((entry) => entry.label)).toContain('Jenis Stiker');
 });
 
-test('menu Stiker (sticker view) tidak ikut aktif di Jenis Stiker', () => {
+test('menu Stiker tidak ikut aktif di Jenis Stiker, Pustaka Gambar, dan Konfigurasi; tetap aktif di opname', () => {
   const items = NAV_GROUPS.find((group) => group.label === 'Stiker')?.items ?? [];
   const stiker = items.find((entry) => entry.to === '/sticker');
   const jenis = items.find((entry) => entry.to === '/sticker/types');
   if (!stiker || !jenis) throw new Error('menu hilang');
   expect(stiker).toMatchObject({
     label: 'Stiker',
-    permission: { module: 'sticker', level: 'view' },
-    excludes: ['/sticker/types', '/sticker/stock', '/sticker/library', '/sticker/settings'],
+    permission: [
+      { module: 'sticker', level: 'view' },
+      { module: 'stickerstock', level: 'view', scope: 'location' },
+    ],
+    excludes: ['/sticker/types', '/sticker/library', '/sticker/settings'],
   });
   const at = (path: string) => (to: string, fuzzy: boolean) =>
     fuzzy ? path.startsWith(to) : path === to;
   expect(isNavItemActive(stiker, at('/sticker'))).toBe(true);
+  expect(isNavItemActive(stiker, at('/sticker/opname'))).toBe(true);
   expect(isNavItemActive(stiker, at('/sticker/types'))).toBe(false);
-  expect(isNavItemActive(stiker, at('/sticker/stock'))).toBe(false);
   expect(isNavItemActive(stiker, at('/sticker/library'))).toBe(false);
   expect(isNavItemActive(jenis, at('/sticker/types'))).toBe(true);
-  const stok = items.find((entry) => entry.to === '/sticker/stock');
-  if (!stok) throw new Error('menu hilang');
-  expect(isNavItemActive(stok, at('/sticker/stock'))).toBe(true);
 });
 
-test('Stok Stiker hanya tampil bila stickerstock view di lokasi aktif', () => {
-  const stok = NAV_GROUPS.find((group) => group.label === 'Stiker')?.items.find(
-    (entry) => entry.to === '/sticker/stock',
-  );
-  expect(stok).toMatchObject({
-    label: 'Stok Stiker',
-    permission: { module: 'stickerstock', level: 'view', scope: 'location' },
-  });
+test('Stok Stiker digabung ke menu Stiker: tidak ada menu Stok Stiker tersendiri', () => {
+  const items = NAV_GROUPS.find((group) => group.label === 'Stiker')?.items ?? [];
+  expect(items.some((entry) => entry.label === 'Stok Stiker')).toBe(false);
+  expect(items.some((entry) => entry.to === '/sticker/stock')).toBe(false);
+});
+
+test('menu Stiker tampil bagi pemegang sticker view ATAU stickerstock view di lokasi aktif', () => {
   const me: MeDto = {
-    ...stickerMe({ sticker: 'view' }),
+    ...stickerMe({}),
     locations: [
       {
         id: 'l-a',
@@ -281,21 +280,17 @@ test('Stok Stiker hanya tampil bila stickerstock view di lokasi aktif', () => {
       },
     ],
   };
-  const labels = (ids: string[]) =>
+  const labels = (user: MeDto, ids: string[]) =>
     (
-      visibleNavGroups(NAV_GROUPS, me, ids).find((group) => group.label === 'Stiker')?.items ?? []
+      visibleNavGroups(NAV_GROUPS, user, ids).find((group) => group.label === 'Stiker')?.items ?? []
     ).map((entry) => entry.label);
-  expect(labels(['l-a'])).toContain('Stok Stiker');
-  expect(labels(['l-b'])).not.toContain('Stok Stiker');
-  expect(labels(['l-b'])).toContain('Stiker');
-  // Tanpa izin stok di lokasi mana pun, grup Stiker tetap tampil lewat katalog tetapi tanpa Stok Stiker.
+  // Hanya izin stok: tampil di lokasi yang berizin, tidak di lokasi lain.
+  expect(labels(me, ['l-a'])).toContain('Stiker');
+  expect(labels(me, ['l-b'])).not.toContain('Stiker');
+  // Hanya izin katalog: tampil di lokasi mana pun.
   expect(
-    (
-      visibleNavGroups(NAV_GROUPS, stickerMe({ sticker: 'view' }), ['l-a']).find(
-        (group) => group.label === 'Stiker',
-      )?.items ?? []
-    ).map((entry) => entry.label),
-  ).not.toContain('Stok Stiker');
+    labels({ ...me, ...stickerMe({ sticker: 'view' }), locations: me.locations }, ['l-b']),
+  ).toContain('Stiker');
 });
 
 test('menu Pustaka Gambar tampil bagi pemegang item view atau sticker view saja, dan aktif sendiri', () => {

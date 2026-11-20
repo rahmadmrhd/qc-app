@@ -155,16 +155,17 @@ describe('serials.update', () => {
     expect((await counts()).events).toBe(1);
   });
 
-  test('serial baru bentrok di BU yang sama: CONFLICT generik; di BU lain bukan bentrok', async () => {
+  test('serial baru bentrok di BU mana pun (unik se-sistem): CONFLICT generik', async () => {
     await seedSerial(env, { id: 'sn2', serial: 'XY99' });
     await seedSerial(env, { id: 'sn-b', serial: 'FREE-1', buId: 'bu-b', itemId: 'i-b' });
     const clash = await update(W, { serial: 'xy99' });
     expect(clash.error?.code).toBe('CONFLICT');
     expect(clash.error?.message).toBe('Serial sudah terdaftar');
-    // serial yang sama dengan catatan di BU B boleh.
+    // catatan di BU lain juga bentrok: satu Serial Number = satu catatan di seluruh sistem.
     await seedSerial(env, { id: 'sn3', serial: 'DUP-B', buId: 'bu-b', itemId: 'i-b' });
-    const ok = await update(W, { serial: 'DUP-B' });
-    expect(ok.ok).toBe(true);
+    const other = await update(W, { serial: 'DUP-B' });
+    expect(other.error?.code).toBe('CONFLICT');
+    expect(other.error?.message).toBe('Serial sudah terdaftar');
   });
 
   test('If-Match usang lewat REST: 412; tanpa perubahan: tidak ada kejadian dan updatedAt tetap', async () => {

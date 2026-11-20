@@ -59,6 +59,7 @@ beforeEach(() => {
         results: rows.map((row) => ({ clientId: row.clientId, ...respond(row) })),
       });
     }
+    if (id === 'serials.lookupMany') return Promise.resolve({ found: [] });
     return Promise.reject(new Error(`api tak dikenal: ${id}`));
   });
   me = {

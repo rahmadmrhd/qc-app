@@ -1,8 +1,6 @@
-import { normalizeKey } from '@shared/items';
 import { splitSerialInput } from '@shared/serials';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { LinkField } from '@/components/link-field';
 import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
 import { STATUS_LABEL } from '../lib/labels';
@@ -18,15 +16,14 @@ export interface ReportPageProps {
 const FEEDBACK_TEXT = { added: 'Dicari', duplicate: 'Dicari ulang', rejected: 'Ditolak' } as const;
 
 /**
- * Halaman Lapor Rusak: ketik atau pindai Serial Number, lalu dicocokkan dengan serial pada BU yang boleh ditulis.
- * Lolos = catatan lalu Lapor; sudah punya laporan aktif atau sudah Rusak = ditolak dengan tautan; belum tercatat =
- * dicatat langsung sebagai Dilaporkan (item, lokasi, catatan). Teks galat dan pencocokan tetap generik soal BU lain.
+ * Halaman Lapor Rusak: ketik atau pindai Serial Number, lalu dicocokkan dengan serial yang boleh ditulis (Serial Number
+ * unik se-sistem: paling banyak satu kecocokan, jadi tidak ada pemilih BU). Lolos = catatan lalu Lapor; sudah punya
+ * laporan aktif atau sudah Rusak = ditolak dengan tautan; belum tercatat = dicatat langsung sebagai Dilaporkan (item,
+ * lokasi, catatan); ada di BU yang tak boleh Anda tulis = peringatan dengan kode BU itu saja (tanpa data lain).
  */
 export function ReportPage({ onOpenSerial }: ReportPageProps) {
   const [query, setQuery] = useState('');
   const [hint, setHint] = useState<string | null>(null);
-  const [buId, setBuId] = useState('');
-  const [buTerm, setBuTerm] = useState('');
   const lookup = useQuery(serialLookupQueryOptions(query));
 
   function search(text: string): ScanFeedback {
@@ -43,16 +40,12 @@ export function ReportPage({ onOpenSerial }: ReportPageProps) {
       return 'duplicate';
     }
     setQuery(first);
-    setBuId('');
     return 'added';
   }
 
   const matches = lookup.data?.matches ?? [];
-  const selected = matches.length === 1 ? matches[0] : matches.find((match) => match.buId === buId);
-  const buKey = normalizeKey(buTerm);
-  const buOptions = matches
-    .map((match) => ({ id: match.buId, label: match.buCode }))
-    .filter((option) => buKey === '' || normalizeKey(option.label).includes(buKey));
+  const selected = matches[0];
+  const elsewhere = lookup.data?.elsewhere ?? null;
 
   return (
     <div className="max-w-3xl space-y-5">
@@ -81,23 +74,23 @@ export function ReportPage({ onOpenSerial }: ReportPageProps) {
         <p role="alert" className="text-sm text-destructive">
           {describeError(lookup.error)}
         </p>
+      ) : matches.length === 0 && elsewhere !== null ? (
+        <section
+          aria-label="Tidak bisa dilaporkan"
+          className="space-y-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4"
+          data-tour="report-result"
+        >
+          <p role="status" className="text-sm">
+            {`Serial ini ada di BU ${elsewhere.buCode} dan Anda tidak punya akses untuk melaporkannya.`}
+          </p>
+          <Button type="button" variant="destructive" disabled>
+            Lapor rusak
+          </Button>
+        </section>
       ) : matches.length === 0 ? (
         <NewReportForm key={query} serial={query} onDone={onOpenSerial} />
       ) : (
         <div className="space-y-4">
-          {matches.length > 1 ? (
-            <LinkField
-              id="report-bu"
-              label="Business Unit"
-              placeholder="Serial Number ini ada di beberapa BU, pilih satu…"
-              value={buId === '' ? null : buId}
-              labelOf={(id) => matches.find((match) => match.buId === id)?.buCode ?? id}
-              options={buOptions}
-              onSearchChange={setBuTerm}
-              searchDebounceMs={0}
-              onChange={(next) => setBuId(next ?? '')}
-            />
-          ) : null}
           {selected === undefined ? null : selected.status === 'broken' ? (
             <Blocked match={selected} onOpen={onOpenSerial}>
               Unit ini sudah dinyatakan rusak. Laporan baru tidak bisa dibuka; catatan klaim vendor

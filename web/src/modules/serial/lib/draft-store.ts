@@ -1,5 +1,10 @@
-import { SERIAL_LIMITS, SERIAL_PROOF_LIMITS } from '@shared/serials';
-import type { StagingRow, StagingSticker } from './draft';
+import {
+  SERIAL_LIMITS,
+  SERIAL_PROOF_LIMITS,
+  SERIAL_STATUSES,
+  type SerialStatus,
+} from '@shared/serials';
+import type { StagingExisting, StagingRow, StagingSticker } from './draft';
 import type { ProofPhotoRef } from './proof-source';
 
 const PREFIX = 'qc.serial.draft:';
@@ -70,6 +75,48 @@ function readProofPhotos(value: unknown): ProofPhotoRef[] {
   return photos;
 }
 
+function isSerialStatus(value: unknown): value is SerialStatus {
+  return typeof value === 'string' && (SERIAL_STATUSES as readonly string[]).includes(value);
+}
+
+/**
+ * Penanda Cek ulang tersimpan (`existing`). Draf lama tidak punya field ini (= baris biasa); bentuk yang rusak
+ * dibuang seluruhnya (baris dipulihkan sebagai baris biasa dan dicek ulang ke server saat halaman dibuka).
+ */
+function readExisting(value: unknown): StagingExisting | undefined {
+  if (!isRecord(value)) return undefined;
+  const id = text(value, 'id');
+  const itemId = text(value, 'itemId');
+  const itemLabel = text(value, 'itemLabel');
+  const buId = text(value, 'buId');
+  const buCode = text(value, 'buCode');
+  const status = Object.hasOwn(value, 'status') ? value.status : undefined;
+  const hasOpenCase = Object.hasOwn(value, 'hasOpenCase') ? value.hasOpenCase : undefined;
+  const recheckBuIds = Object.hasOwn(value, 'recheckBuIds') ? value.recheckBuIds : undefined;
+  const proofMin = Object.hasOwn(value, 'proofMin') ? value.proofMin : undefined;
+  if (id === null || itemId === null || itemLabel === null || buId === null || buCode === null) {
+    return undefined;
+  }
+  if (!isSerialStatus(status) || typeof hasOpenCase !== 'boolean') return undefined;
+  if (!Array.isArray(recheckBuIds) || !recheckBuIds.every((entry) => typeof entry === 'string')) {
+    return undefined;
+  }
+  if (typeof proofMin !== 'number' || !Number.isInteger(proofMin) || proofMin < 0 || proofMin > 5) {
+    return undefined;
+  }
+  return {
+    id,
+    itemId,
+    itemLabel,
+    buId,
+    buCode,
+    status,
+    hasOpenCase,
+    recheckBuIds: [...recheckBuIds],
+    proofMin,
+  };
+}
+
 const TEXT_FIELDS = [
   'clientId',
   'serial',
@@ -127,6 +174,8 @@ function readRow(raw: unknown): StagingRow | null {
   if (typeof proofMin === 'number' && Number.isInteger(proofMin) && proofMin > 0 && proofMin <= 5) {
     row.proofMin = proofMin;
   }
+  const existing = readExisting(Object.hasOwn(raw, 'existing') ? raw.existing : undefined);
+  if (existing) row.existing = existing;
   const result = text(raw, 'result');
   if (notGood) {
     row.result = 'invalid';

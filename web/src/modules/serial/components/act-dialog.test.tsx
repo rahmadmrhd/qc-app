@@ -79,6 +79,7 @@ function meWith(serial: Level, serialservice: Level = 'none'): MeDto {
 }
 
 const SERIAL: SerialDto = {
+  buHistory: [],
   id: 's1',
   buId: 'b1',
   buCode: 'BU1',
@@ -584,6 +585,7 @@ test('galat server per field tampil di bawah field-nya; sisanya pesan umum', asy
         }),
       );
     }
+    if (id === 'serials.buOptions') return Promise.resolve({ businessUnits: [] });
     return id === 'serials.stickerOptions'
       ? Promise.resolve({ stickers: [] })
       : Promise.resolve({ locations: activeLocations, input });
@@ -704,6 +706,7 @@ test('foto kedaluwarsa: galat tampil di bawah field Bukti foto, foto dibuang dar
         error: null,
       });
     }
+    if (id === 'serials.buOptions') return Promise.resolve({ businessUnits: [] });
     return id === 'serials.stickerOptions'
       ? Promise.resolve({ stickers: [] })
       : Promise.resolve({ locations: activeLocations });

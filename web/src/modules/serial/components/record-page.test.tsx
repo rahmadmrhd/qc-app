@@ -91,6 +91,7 @@ function installApi() {
         })),
       });
     }
+    if (id === 'serials.lookupMany') return Promise.resolve({ found: [] });
     return Promise.reject(new Error(`api tak dikenal: ${id}`));
   });
 }

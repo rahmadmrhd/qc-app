@@ -132,6 +132,14 @@ test('applyResults: created dibuang, lainnya ditandai, urutan terjaga', () => {
   expect(next[2]?.result).toBeUndefined();
 });
 
+test('applyResults: rechecked (sudah tersimpan sebagai cek ulang) dibuang seperti created', () => {
+  const rows = seed(['A1', 'A2']);
+  const next = applyResults(rows, [
+    { clientId: rows[0]?.clientId ?? '', result: 'rechecked', message: '', id: 's1' },
+  ]);
+  expect(next.map((row) => row.serial)).toEqual(['A2']);
+});
+
 test('toRowInput: stiker null melempar; selain itu bentuk kiriman server', () => {
   const [row] = seed(['A1']);
   if (!row) throw new Error('seed');

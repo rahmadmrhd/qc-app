@@ -540,8 +540,11 @@ test('filter BU hanya menawarkan BU yang terbaca (serial atau serialservice) dan
   await screen.findByText('ABC123');
   const names = await linkOptionNames(screen, 'Filter BU');
   expect(names).toEqual(['B1 · Unit b1', 'B2 · Unit b2']);
+  // Teks bantu hanya selagi filter BU aktif: serial yang pernah di BU itu ikut tampil.
+  expect(screen.queryByText(/pernah di BU ini/)).toBeNull();
   await userEvent.click(await screen.findByRole('option', { name: 'B2 · Unit b2' }));
   await waitFor(() => expect(lastListInput()).toMatchObject({ buId: 'b2' }));
+  expect(await screen.findByText('Termasuk serial yang pernah di BU ini.')).toBeInTheDocument();
 });
 
 test('sakelar "Dicatat oleh saya" mengisi createdBy dengan email akun', async () => {

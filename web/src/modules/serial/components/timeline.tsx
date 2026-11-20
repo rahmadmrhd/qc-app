@@ -37,6 +37,15 @@ function recordedLocation(event: SerialEventDto): string {
 
 const text = (value: unknown): string => (typeof value === 'string' ? value : '');
 
+/** Perpindahan BU pada cek ulang lolos (`data.bu = { fromCode, toCode }`, hanya bila BU berubah); selain itu `null`. */
+function buMove(data: SerialEventDto['data']): string | null {
+  const bu = data.bu;
+  if (typeof bu !== 'object' || bu === null) return null;
+  const { fromCode, toCode } = bu as { fromCode?: unknown; toCode?: unknown };
+  if (typeof fromCode !== 'string' || typeof toCode !== 'string') return null;
+  return `Pindah BU: ${fromCode || '—'} → ${toCode || '—'}`;
+}
+
 /** Tahap diagnosis (`data.stage`); kejadian lama tanpa `stage` tidak menampilkan baris tahap. */
 const DIAGNOSIS_STAGE_LABEL: Record<string, string> = {
   diagnosis: 'Diagnosis',
@@ -112,6 +121,10 @@ function eventDetails(event: SerialEventDto): string[] {
     }
     default:
       break;
+  }
+  if (event.type === 'recheck' || event.type === 'recheck_pass') {
+    const move = buMove(data);
+    if (move !== null) details.push(move);
   }
   return details;
 }

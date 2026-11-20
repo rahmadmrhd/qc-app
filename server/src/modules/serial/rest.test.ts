@@ -627,17 +627,15 @@ describe('serials.saveBatch', () => {
     expect(await stockOf('s2')).toBe(0);
   });
 
-  test('serial yang sama di BU lain tercatat terpisah', async () => {
-    const out = await save(BOTH, [
-      row(),
-      row({ buId: 'bu-b', itemId: 'i-a2' }),
-      row({ itemId: 'i-a2' }),
-    ]);
-    expect(resultsOf(out).map((r) => r.result)).toEqual(['created', 'created', 'duplicate']);
-    expect(await count('serials')).toBe(2);
+  test('serial yang sama di BU lain menjadi cek ulang dan memindahkan BU; kembali ke BU lama ditolak', async () => {
+    const out = await save(BOTH, [row(), row({ buId: 'bu-b' }), row({ buId: 'bu-a' })]);
+    expect(resultsOf(out).map((r) => r.result)).toEqual(['created', 'rechecked', 'invalid']);
+    expect(await count('serials')).toBe(1);
+    const stored = await env.DB.prepare('SELECT bu_id FROM serials').first<{ bu_id: string }>();
+    expect(stored?.bu_id).toBe('bu-b');
   });
 
-  test('duplikat di BU yang sama, termasuk varian MAC', async () => {
+  test('serial yang sama di BU yang sama, termasuk varian MAC: cek ulang', async () => {
     const first = await save(WRITER, [row({ serial: '4C5E0C1A2B3D', stickers: [] })]);
     expect(resultsOf(first)[0].result).toBe('created');
     const out = await save(WRITER, [
@@ -645,12 +643,13 @@ describe('serials.saveBatch', () => {
       row({ serial: '4c-5e-0c-1a-2b-3d', stickers: [] }),
     ]);
     for (const result of resultsOf(out)) {
-      expect(result).toMatchObject({ result: 'duplicate', message: 'Serial sudah terdaftar' });
+      expect(result).toMatchObject({ result: 'rechecked', serial: '4C5E0C1A2B3D' });
     }
     expect(await count('serials')).toBe(1);
+    expect(await count('serial_events')).toBe(3);
   });
 
-  test('5 permintaan serentak dengan serial sama: satu created, empat duplicate, stok dipotong sekali', async () => {
+  test('5 permintaan serentak dengan serial sama: satu created, empat rechecked, tiap entri memotong stok sekali', async () => {
     const outs = await Promise.all(
       Array.from({ length: 5 }, () =>
         save(WRITER, [row({ stickers: [{ stickerId: 's1', qty: 1 }] })]),
@@ -658,9 +657,10 @@ describe('serials.saveBatch', () => {
     );
     const flat = outs.flatMap(resultsOf).map((r) => r.result);
     expect(flat.filter((r) => r === 'created')).toHaveLength(1);
-    expect(flat.filter((r) => r === 'duplicate')).toHaveLength(4);
-    expect(await stockOf('s1')).toBe(4);
+    expect(flat.filter((r) => r === 'rechecked')).toHaveLength(4);
+    expect(await stockOf('s1')).toBe(0);
     expect(await count('serials')).toBe(1);
+    expect(await count('serial_events')).toBe(5);
   });
 
   test('5 permintaan serentak dengan clientId SAMA: semua created dengan id sama, stok dipotong sekali', async () => {

@@ -61,7 +61,7 @@ test('menampilkan jenis, perubahan bertanda, stok sesudah, alasan, dan pelaku', 
   const masuk = screen.getByRole('row', { name: /ani@gmail.com/ });
   expect(within(masuk).getByText('+155')).toBeInTheDocument();
   expect(within(masuk).getByText(/10 × 12/)).toBeInTheDocument();
-  expect(within(masuk).getByText(/5 lepas/)).toBeInTheDocument();
+  expect(within(masuk).getByText(/5 butir/)).toBeInTheDocument();
 });
 
 test('kolom Lokasi hanya bila showLocation', () => {
