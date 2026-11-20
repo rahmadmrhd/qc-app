@@ -116,7 +116,7 @@ Tempat pemakaian: galeri item, contoh stiker (`ImagePicker`), lampiran Postel, f
 | Foto bukti (Catat, Ubah baris, Cek ulang, `strict-scan-dialog`) | `ProofPhotoDialog` + kamera | `FileDialog` baru dengan kamera + pratinjau cap, unggah latar; hook dipasang di level halaman Catat Serial |
 | `ImagePicker` (contoh stiker) | tombol + input tersembunyi | tombol membuka `FileDialog` (satu gambar), seret-lepas, thumbnail klik = pratinjau |
 | `ImageGalleryField` (galeri item) | tombol + input tersembunyi | `FileDialog` (banyak gambar), seret-lepas, pratinjau |
-| `AttachmentsField` (Postel) | tombol + input tersembunyi | `FileDialog` (gambar + PDF, daftar), seret-lepas, pratinjau gambar, PDF diunduh |
+| `AttachmentsField` (Postel) | tombol + input tersembunyi | `FileDialog` (gambar + PDF, daftar), seret-lepas, pratinjau gambar, PDF diunduh; lampiran gambar tetap bisa diunduh (berkas asli tidak dikecilkan; dipulihkan 2026-11-20 pada putaran perbaikan 1: regresi dari alur lama yang memberi Unduh pada setiap lampiran) |
 | Editor Markdown | tombol toolbar + drop/tempel | tombol toolbar membuka `FileDialog`; drop/tempel tetap langsung; progres dan validasi seragam |
 | `PdfSourceField` | `<Input type="file">` + konfirmasi bagikan | tetap inline dan alur konfirmasi sama; tambah seret-lepas, validasi dan galat seragam, progres seragam |
 | `LogoLibraryField` | `<Input type="file">` | tetap inline; tambah seret-lepas, validasi seragam, progres seragam, thumbnail klik = pratinjau |
