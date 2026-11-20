@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react';
 import { runBusy } from '@/app/pwa/busy';
 import { baseName, checkFile } from './accept';
 import { errorText } from './error-text';
-import type { FileLibrarySource, LibraryItem } from './types';
+import type { FileLibrarySource, LibraryItem, RejectedFile } from './types';
 
 export type QueueStatus = 'waiting' | 'uploading' | 'done' | 'failed';
 
@@ -13,11 +13,6 @@ export interface QueueEntry {
   status: QueueStatus;
   error: string | null;
   result: LibraryItem | null;
-}
-
-export interface RejectedFile {
-  name: string;
-  reason: string;
 }
 
 export interface UploadQueueOptions {

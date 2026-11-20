@@ -16,9 +16,9 @@ import { type FileCategory, resolveAccept } from './accept';
 import { errorText } from './error-text';
 import { LibraryTab } from './library-tab';
 import { PreviewDialog } from './preview-dialog';
-import type { FileLibrarySource, LibraryItem } from './types';
+import type { FileLibrarySource, LibraryItem, RejectedFile } from './types';
 import { UploadTab } from './upload-tab';
-import { type RejectedFile, useUploadQueue } from './use-upload-queue';
+import { useUploadQueue } from './use-upload-queue';
 
 const DEFAULT_MAX_FILES = 20;
 

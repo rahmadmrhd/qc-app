@@ -1,7 +1,7 @@
 /** Kategori berkas yang dapat diminta pemanggil dialog; kategori baru ditambah di sini saja. */
-export type FileCategory = 'image';
+export type FileCategory = 'image' | 'pdf';
 
-const CATEGORY_PREFIX: Record<FileCategory, string> = { image: 'image/' };
+const CATEGORY_PREFIX: Record<FileCategory, string> = { image: 'image/', pdf: 'application/pdf' };
 
 /** Mime yang diterima dialog: yang didukung sumber DAN termasuk salah satu kategori. */
 export function resolveAccept(
@@ -23,7 +23,16 @@ const MIME_LABELS: Record<string, string> = {
   'image/jpeg': 'JPEG',
   'image/png': 'PNG',
   'image/webp': 'WebP',
+  'application/pdf': 'PDF',
 };
+
+const MIME_BY_EXTENSION = new Map<string, string>([
+  ['pdf', 'application/pdf'],
+  ['jpg', 'image/jpeg'],
+  ['jpeg', 'image/jpeg'],
+  ['png', 'image/png'],
+  ['webp', 'image/webp'],
+]);
 
 function mimeLabel(mime: string): string {
   return MIME_LABELS[mime] ?? (mime.split('/')[1] ?? mime).toUpperCase();
@@ -32,6 +41,17 @@ function mimeLabel(mime: string): string {
 function extensionOf(name: string): string {
   const dot = name.lastIndexOf('.');
   return dot >= 0 ? name.slice(dot + 1).toLowerCase() : '';
+}
+
+/**
+ * Jenis berkas: `file.type`; bila kosong (sebagian peramban/OS tak mengisinya) diturunkan dari ekstensi. Hanya untuk UX:
+ * server tetap memvalidasi jenis dan isi berdasarkan tanda tangan byte.
+ */
+export function fileMime(file: { name: string; type: string }): string {
+  if (file.type !== '') return file.type;
+  // Ekstensi harus didahului titik: nama "pdf" (tanpa titik) bukan ekstensi.
+  const extension = /\.([^./\\]+)$/.exec(file.name)?.[1]?.toLowerCase() ?? '';
+  return MIME_BY_EXTENSION.get(extension) ?? '';
 }
 
 /** Nama format untuk alasan penolakan, dari tipe (atau ekstensi bila tipe kosong, mis. HEIC di sebagian peramban). */
@@ -54,7 +74,7 @@ export function checkFile(
   file: { name: string; size: number; type: string },
   rule: { accept: readonly string[]; maxBytes: number },
 ): string | null {
-  if (!rule.accept.includes(file.type)) {
+  if (!rule.accept.includes(fileMime(file))) {
     const supported = rule.accept.map(mimeLabel).join(', ');
     const format = describeFormat(file);
     return format

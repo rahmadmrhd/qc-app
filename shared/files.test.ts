@@ -6,11 +6,23 @@ import {
   isBase64Text,
   isImageMime,
   isPostelFileMime,
+  MAX_FILE_BYTES,
   MAX_IMAGE_BYTES,
   matchesImageSignature,
   parseFileRef,
   readImageDimensions,
 } from './files';
+import { POSTEL_LIMITS } from './postel';
+import { QR_LIMITS } from './qrcode';
+
+describe('batas ukuran berkas seragam (spek dialog unggah seragam 5.5)', () => {
+  test('semua batas unggahan sama dengan MAX_FILE_BYTES (10 MB)', () => {
+    expect(MAX_FILE_BYTES).toBe(10 * 1024 * 1024);
+    expect(MAX_IMAGE_BYTES).toBe(MAX_FILE_BYTES);
+    expect(POSTEL_LIMITS.attachmentMaxBytes).toBe(MAX_FILE_BYTES);
+    expect(QR_LIMITS.documentMaxBytes).toBe(MAX_FILE_BYTES);
+  });
+});
 
 describe('batas ukuran gambar (T30a, keputusan pemilik 2026-11-06)', () => {
   test('batas terima server (tepi) 10 MB; target pengecilan gambar di klien TIDAK ikut naik (tetap 1 MB)', () => {

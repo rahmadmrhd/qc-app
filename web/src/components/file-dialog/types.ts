@@ -43,3 +43,16 @@ export interface FileLibrarySource {
   rename(id: string, name: string): Promise<LibraryItem>;
   remove(id: string): Promise<void>;
 }
+
+/** Berkas yang ditolak saat masuk (nama + alasan siap tampil). */
+export interface RejectedFile {
+  name: string;
+  reason: string;
+}
+
+/** Berkas yang lolos pemeriksaan dan menunggu diunggah. */
+export interface QueuedFile {
+  key: string;
+  file: File;
+  name: string;
+}

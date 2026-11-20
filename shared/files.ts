@@ -3,8 +3,13 @@ export type ImageMime = (typeof IMAGE_MIME_TYPES)[number];
 
 /** Sisi terpanjang gambar setelah dikecilkan klien. */
 export const MAX_IMAGE_SIDE = 1600;
-/** Batas TERIMA di server (byte; batas tepi 10 MB, keputusan pemilik 2026-11-06, spek §19 butir 5). */
-export const MAX_IMAGE_BYTES = 10_485_760;
+/**
+ * Batas ukuran SATU berkas unggahan apa pun (byte; 10 MB, keputusan pemilik 2026-11-06 dan penyeragaman 2026-11-20).
+ * Gambar, lampiran Postel, dan PDF sumber QR diturunkan dari sini; literal di `shared/api.ts` dijaga `api.test.ts`.
+ */
+export const MAX_FILE_BYTES = 10_485_760;
+/** Batas TERIMA gambar di server (byte; batas tepi 10 MB, keputusan pemilik 2026-11-06, spek §19 butir 5). */
+export const MAX_IMAGE_BYTES = MAX_FILE_BYTES;
 /** Target ukuran hasil kompresi gambar di klien (byte): TETAP 1 MB, bukan batas terima server. */
 export const IMAGE_TARGET_BYTES = 1_048_576;
 /** Batas wajar lebar/tinggi yang diterima server. */
