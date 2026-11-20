@@ -14,6 +14,7 @@ import { Route as CountryLockRouteImport } from './routes/country-lock'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppCustomerRouteImport } from './routes/_app/customer'
+import { Route as AppDesktopRouteImport } from './routes/_app/desktop'
 import { Route as AppForbiddenRouteImport } from './routes/_app/forbidden'
 import { Route as LaporanTokenRouteImport } from './routes/laporan.$token'
 import { Route as AppAccessAuditRouteImport } from './routes/_app/access/audit'
@@ -78,6 +79,11 @@ const AppIndexRoute = AppIndexRouteImport.update({
 const AppCustomerRoute = AppCustomerRouteImport.update({
   id: '/customer',
   path: '/customer',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDesktopRoute = AppDesktopRouteImport.update({
+  id: '/desktop',
+  path: '/desktop',
   getParentRoute: () => AppRoute,
 } as any)
 const AppForbiddenRoute = AppForbiddenRouteImport.update({
@@ -296,6 +302,7 @@ export interface FileRoutesByFullPath {
   '/country-lock': typeof CountryLockRoute
   '/login': typeof LoginRoute
   '/customer': typeof AppCustomerRoute
+  '/desktop': typeof AppDesktopRoute
   '/forbidden': typeof AppForbiddenRoute
   '/laporan/$token': typeof LaporanTokenRoute
   '/access/audit': typeof AppAccessAuditRoute
@@ -342,6 +349,7 @@ export interface FileRoutesByTo {
   '/country-lock': typeof CountryLockRoute
   '/login': typeof LoginRoute
   '/customer': typeof AppCustomerRoute
+  '/desktop': typeof AppDesktopRoute
   '/forbidden': typeof AppForbiddenRoute
   '/laporan/$token': typeof LaporanTokenRoute
   '/': typeof AppIndexRoute
@@ -391,6 +399,7 @@ export interface FileRoutesById {
   '/country-lock': typeof CountryLockRoute
   '/login': typeof LoginRoute
   '/_app/customer': typeof AppCustomerRoute
+  '/_app/desktop': typeof AppDesktopRoute
   '/_app/forbidden': typeof AppForbiddenRoute
   '/laporan/$token': typeof LaporanTokenRoute
   '/_app/': typeof AppIndexRoute
@@ -441,6 +450,7 @@ export interface FileRouteTypes {
     | '/country-lock'
     | '/login'
     | '/customer'
+    | '/desktop'
     | '/forbidden'
     | '/laporan/$token'
     | '/access/audit'
@@ -487,6 +497,7 @@ export interface FileRouteTypes {
     | '/country-lock'
     | '/login'
     | '/customer'
+    | '/desktop'
     | '/forbidden'
     | '/laporan/$token'
     | '/'
@@ -535,6 +546,7 @@ export interface FileRouteTypes {
     | '/country-lock'
     | '/login'
     | '/_app/customer'
+    | '/_app/desktop'
     | '/_app/forbidden'
     | '/laporan/$token'
     | '/_app/'
@@ -621,6 +633,13 @@ declare module '@tanstack/react-router' {
       path: '/customer'
       fullPath: '/customer'
       preLoaderRoute: typeof AppCustomerRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/desktop': {
+      id: '/_app/desktop'
+      path: '/desktop'
+      fullPath: '/desktop'
+      preLoaderRoute: typeof AppDesktopRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/forbidden': {
@@ -915,6 +934,7 @@ declare module '@tanstack/react-router' {
 
 interface AppRouteChildren {
   AppCustomerRoute: typeof AppCustomerRoute
+  AppDesktopRoute: typeof AppDesktopRoute
   AppForbiddenRoute: typeof AppForbiddenRoute
   AppIndexRoute: typeof AppIndexRoute
   AppAccessAuditRoute: typeof AppAccessAuditRoute
@@ -960,6 +980,7 @@ interface AppRouteChildren {
 
 const AppRouteChildren: AppRouteChildren = {
   AppCustomerRoute: AppCustomerRoute,
+  AppDesktopRoute: AppDesktopRoute,
   AppForbiddenRoute: AppForbiddenRoute,
   AppIndexRoute: AppIndexRoute,
   AppAccessAuditRoute: AppAccessAuditRoute,
