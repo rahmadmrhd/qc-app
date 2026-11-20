@@ -1,9 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { CAMERA_ERROR_TEXT } from '@/components/camera/use-camera-stream';
 import type { ProofPhotoRef } from '../lib/proof-source';
 import type { StampPreviewInput } from '../lib/stamp-preview';
-import { CAMERA_ERROR_TEXT } from '../lib/use-camera-stream';
 import { ProofCameraDialog, type ProofCameraDialogProps } from './proof-camera';
 
 const STAMP: StampPreviewInput = {

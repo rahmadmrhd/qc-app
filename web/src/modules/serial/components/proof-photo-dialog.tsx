@@ -1,6 +1,12 @@
 import { IMAGE_MIME_TYPES, MAX_IMAGE_BYTES } from '@shared/files';
 import { Camera, CircleAlert, ImagePlus, X } from 'lucide-react';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import {
+  isCameraBlocked,
+  markCameraBlocked,
+  resetCameraBlocked,
+} from '@/components/camera/camera-session';
+import { cameraSupported } from '@/components/camera/use-camera-stream';
 import { checkFile, formatBytes, partitionByType } from '@/components/file-dialog/accept';
 import { errorText } from '@/components/file-dialog/error-text';
 import { FileDropZone } from '@/components/file-dialog/file-drop-zone';
@@ -14,10 +20,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { isCameraBlocked, markCameraBlocked, resetCameraBlocked } from '../lib/camera-session';
 import { type ProofPhotoRef, proofSource, toProofRef } from '../lib/proof-source';
 import type { StampPreviewInput } from '../lib/stamp-preview';
-import { cameraSupported } from '../lib/use-camera-stream';
 import { discardProofPhotos } from '../queries';
 import { ProofCameraDialog } from './proof-camera';
 import { ProofPhotoGrid } from './proof-photo-grid';

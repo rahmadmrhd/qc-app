@@ -13,7 +13,7 @@ vi.mock('@/lib/api', async (importOriginal) => ({
 }));
 vi.mock('@/modules/files/image', () => ({ prepareImage: prepareImageMock }));
 
-import { isCameraBlocked } from '../lib/camera-session';
+import { isCameraBlocked } from '@/components/camera/camera-session';
 import { ProofPhotoDialog } from './proof-photo-dialog';
 
 const STAMP: StampPreviewInput = {

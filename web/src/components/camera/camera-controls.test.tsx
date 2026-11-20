@@ -1,9 +1,9 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { clampZoom, type ZoomRange } from '../lib/camera-controls';
-import type { UseCameraScanner } from '../lib/use-camera-scanner';
-import { ScanCameraControls } from './scan-camera-controls';
+import { clampZoom, type ZoomRange } from '@/modules/serial/lib/camera-controls';
+import type { UseCameraScanner } from '@/modules/serial/lib/use-camera-scanner';
+import { ScanCameraControls } from './camera-controls';
 
 const RANGE: ZoomRange = { min: 1, max: 2, step: 0.25 };
 

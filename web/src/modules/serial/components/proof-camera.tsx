@@ -12,6 +12,14 @@ import {
   useRef,
   useState,
 } from 'react';
+import { FLOAT_BUTTON, nextDevice } from '@/components/camera/camera-controls';
+import { captureFrame } from '@/components/camera/photo-capture';
+import {
+  CAMERA_ERROR_TEXT,
+  type CameraErrorKind,
+  useCameraStream,
+} from '@/components/camera/use-camera-stream';
+import { usePinchZoom } from '@/components/camera/use-pinch-zoom';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -20,15 +28,11 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { captureFrame } from '../lib/photo-capture';
 import type { ProofPhotoRef } from '../lib/proof-source';
 import type { StampPreviewInput } from '../lib/stamp-preview';
-import { CAMERA_ERROR_TEXT, type CameraErrorKind, useCameraStream } from '../lib/use-camera-stream';
-import { usePinchZoom } from '../lib/use-pinch-zoom';
 import { CameraTopButtons, CameraZoomRail } from './proof-camera-controls';
 import { ProofPhotoGrid } from './proof-photo-grid';
 import { ProofPhotoStack } from './proof-photo-stack';
-import { FLOAT_BUTTON, nextDevice } from './scan-camera-controls';
 import { StampNote, StampToggleButton } from './stamp-preview';
 
 export interface ProofCameraDialogProps {

@@ -2,10 +2,10 @@ import { Flashlight, FlashlightOff, Minus, Plus, SwitchCamera } from 'lucide-rea
 import { type ReactNode, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { clampZoom, formatZoom } from '../lib/camera-controls';
-import type { UseCameraScanner } from '../lib/use-camera-scanner';
-import { zoomStepOf } from '../lib/zoom-math';
-import { ZoomSlider } from './zoom-slider';
+import { ZoomSlider } from '@/modules/serial/components/zoom-slider';
+import { clampZoom, formatZoom } from '@/modules/serial/lib/camera-controls';
+import type { UseCameraScanner } from '@/modules/serial/lib/use-camera-scanner';
+import { zoomStepOf } from '@/modules/serial/lib/zoom-math';
 
 /** Tombol bulat semi-transparan gelap + ikon putih: terbaca di atas video, target ketuk 44 px. */
 export const FLOAT_BUTTON =

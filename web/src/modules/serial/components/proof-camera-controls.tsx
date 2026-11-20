@@ -1,11 +1,11 @@
 import { Flashlight, FlashlightOff, Minus, Plus, SwitchCamera } from 'lucide-react';
 import { useRef } from 'react';
+import { FLOAT_BUTTON, nextDevice, ZoomStepButton } from '@/components/camera/camera-controls';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { clampZoom, formatZoom } from '../lib/camera-controls';
 import type { UseCameraScanner } from '../lib/use-camera-scanner';
 import { zoomStepOf } from '../lib/zoom-math';
-import { FLOAT_BUTTON, nextDevice, ZoomStepButton } from './scan-camera-controls';
 import { ZoomSlider } from './zoom-slider';
 
 /**
