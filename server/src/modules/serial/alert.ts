@@ -6,6 +6,7 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
 import { getSetting } from '@server/core/settings';
+import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { canActOnAllBus } from '@shared/business-units';
 import type {
@@ -80,8 +81,11 @@ export async function canManageSerialSettings(env: Env, user: UserContext): Prom
   if (user.isSuperAdmin) return true;
   // Jelas tidak berhak (tanpa `serial: manage` di BU mana pun): tidak perlu membaca daftar BU.
   if (!Object.values(user.businessUnits).some((level) => level.serial === 'manage')) return false;
-  // Hanya BU AKTIF yang dihitung (keputusan pemilik 2026-11-13): BU nonaktif tidak dipakai dan tak boleh menghalangi.
-  const rows = await env.DB.prepare("SELECT id FROM business_units WHERE status = 'active'").all<{
+  // Hanya BU AKTIF yang dihitung (keputusan pemilik 2026-11-13): BU nonaktif tidak dipakai dan tak boleh menghalangi;
+  // BU terhapus (soft delete) berperilaku sama dengan BU nonaktif.
+  const rows = await env.DB.prepare(
+    `SELECT id FROM business_units WHERE status = 'active' AND ${liveWhere()}`,
+  ).all<{
     id: string;
   }>();
   const allBuIds = rows.results.map((row) => row.id.trim());

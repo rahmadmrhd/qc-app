@@ -331,6 +331,7 @@ describe('skema baseline', () => {
       { name: '0025_nomor_laporan_baru.sql' },
       { name: '0026_serial_unik_sistem.sql' },
       { name: '0027_soft_delete.sql' },
+      { name: '0028_audit_target_id.sql' },
     ]);
   });
 

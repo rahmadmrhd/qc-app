@@ -34,6 +34,12 @@ export interface RecordBatchOptions<T = unknown> {
    * bertabrakan antar record yang dipulihkan sekaligus). Melempar galat = seluruh permintaan batal.
    */
   verify?: (changed: T[]) => void;
+  /**
+   * Dipanggil di AWAL tiap percobaan (termasuk pengulangan `runCas`) sebelum perencana dijalankan: mengosongkan
+   * muatan bersama yang dibaca perencana (mis. tabel akses yang dimuat sekali per percobaan, bukan sekali per id),
+   * agar percobaan ulang merencanakan dari keadaan terkini.
+   */
+  prepare?: () => void;
 }
 
 /**
@@ -67,6 +73,7 @@ export async function runRecordBatch<T>(
 ): Promise<BatchResult<T>> {
   const unique = [...new Set(ids)];
   return runCas(async () => {
+    options.prepare?.();
     // Paralel (latensi), tetapi galat pertama MENURUT URUTAN MASUKAN yang dilempar (deterministik).
     const settled = await Promise.allSettled(unique.map((id) => plan(id)));
     const outcomes: PlanOutcome<T>[] = [];

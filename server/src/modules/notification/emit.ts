@@ -2,6 +2,7 @@ import type { ActorRef } from '@server/core/context';
 import type { DbStatement } from '@server/core/db';
 import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
+import { liveWhere } from '@server/core/soft-delete';
 import { listLocationBriefs } from '@server/modules/access/repo';
 import { matchedChecks } from '@server/modules/handover/checklist';
 import type { HandoverRecord } from '@server/modules/handover/repo';
@@ -59,7 +60,7 @@ function snapOf(record: HandoverRecord): HandoverSnap {
 
 /** Nama tampilan pelaku: `users.name` bila ada, selain itu email. */
 async function actorDisplayName(env: Env, email: string): Promise<string> {
-  const row = await env.DB.prepare('SELECT name FROM users WHERE email = ?')
+  const row = await env.DB.prepare(`SELECT name FROM users WHERE email = ? AND ${liveWhere()}`)
     .bind(normalizeEmail(email))
     .first<{ name: string | null }>();
   const name = (row?.name ?? '').trim();

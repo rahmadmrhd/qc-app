@@ -217,6 +217,7 @@ export async function removeProof(
           actor: user.email,
           action: 'serial.proof_remove',
           target: `serial:${proof.serialId}`,
+          targetId: proof.serialId,
           before: {
             id: proof.id,
             eventId: proof.eventId,
@@ -370,6 +371,7 @@ export async function replaceProof(
         actor: user.email,
         action: 'serial.proof_reupload',
         target: `serial:${old.serialId}`,
+        targetId: old.serialId,
         before: { id: old.id, eventId: old.eventId, state: old.state, error: old.lastError },
         after: { id: draft.id },
       }),

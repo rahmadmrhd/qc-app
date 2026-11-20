@@ -6,6 +6,7 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { staleError } from '@server/core/errors';
 import { getSetting } from '@server/core/settings';
+import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import type {
   SaveSerialServiceSettingsInput,
@@ -56,10 +57,10 @@ async function readServiceSettings(
   return { locationIds: stored?.locationIds ?? [], updatedAt: stored?.updatedAt ?? '', raw };
 }
 
-/** Semua lokasi aktif, urut kode. */
+/** Semua lokasi aktif dan hidup (lokasi terhapus tak ditawarkan), urut kode. */
 async function activeLocations(env: Env): Promise<SerialLocationOptionDto[]> {
   const rows = await env.DB.prepare(
-    "SELECT id, code, name FROM locations WHERE status = 'active' ORDER BY code, id",
+    `SELECT id, code, name FROM locations WHERE status = 'active' AND ${liveWhere()} ORDER BY code, id`,
   ).all<{ id: string; code: string; name: string }>();
   return rows.results.map((row) => ({ id: row.id.trim(), code: row.code.trim(), name: row.name }));
 }

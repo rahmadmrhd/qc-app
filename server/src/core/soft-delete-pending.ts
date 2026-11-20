@@ -11,15 +11,8 @@
 export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
   // Modul item/brand membaca tabel milik fase lain (items/brands sendiri sudah disaring di fase 3: lihat EXEMPT):
   // business_units (4c), qr_designs/manual_book_versions/postels (4b), stickers dan turunannya (4a).
-  'server/src/modules/brand/repo.ts': [
-    'business_units@1#699ffdd3',
-    'business_units@2#d9475f00',
-    'business_units@3#0faa6f9a',
-    'business_units@4#6492887a',
-  ],
   'server/src/modules/item/repo.ts': [
     'item_business_units@1#1236ca45',
-    'business_units@1#1236ca45',
     'item_business_units@2#69d917f0',
     'item_business_units@3#f44ff848',
   ],
@@ -48,19 +41,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
   'server/src/modules/qrcode/items.ts': ['stickers@1#1a057869'],
   'server/src/modules/qrcode/repo.ts': [],
   // Fase 4c (access, customer)
-  'server/src/modules/access/location-brief.ts': ['locations@1#d3dc66da'],
-  'server/src/modules/access/repo.ts': [
-    'users@1#1129a5fb',
-    'roles@1#e4701458',
-    'locations@1#0ffd7332',
-    'business_units@1#d10a2860',
-    'business_units@2#fe17c7d8',
-  ],
-  'server/src/modules/customer/repo.ts': [
-    'customers@1#96f7892e',
-    'customers@2#76b15b64',
-    'customers@3#637d0fb0',
-  ],
   // Fase 4d (serial, handover)
   'server/scripts/merge-duplicate-serials.ts': [
     'serials@1#5be5daeb',
@@ -102,7 +82,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'serial_cases@1#94659661',
     'serial_events@1#94659661',
   ],
-  'server/src/modules/serial/alert.ts': ['business_units@1#3002fa34'],
   'server/src/modules/serial/bu-history.ts': [
     'serials@1#9e00df83',
     'serials@2#55c321bc',
@@ -183,23 +162,15 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'serial_stickers@1#3f0e2215',
   ],
   'server/src/modules/serial/report.ts': ['business_units@1#71a9e696', 'serials@1#8f846d75'],
-  'server/src/modules/serial/service-locations.ts': [
-    'locations@1#60985b63',
-    'locations@2#92c7c99c',
-  ],
+  'server/src/modules/serial/service-locations.ts': ['locations@2#92c7c99c'],
   'server/src/modules/serial/service.ts': [
     'item_business_units@1#43393540',
     'business_units@1#43393540',
-    'business_units@2#f25b4f00',
-    'locations@1#60985b63',
     'serials@1#be7ddb50',
   ],
   // Lain-lain (modul yang membaca tabel milik fase lain: notification, desktop catalog, files, digest stok)
-  'server/src/modules/desktop/catalog.ts': ['business_units@1#219cc539', 'locations@1#60985b63'],
   'server/src/modules/files/service.ts': ['serials@1#28642dd5', 'item_business_units@1#546f26ad'],
-  'server/src/modules/notification/emit.ts': ['users@1#203620e5'],
   'server/src/modules/notification/flush.ts': ['handovers@1#f37698e5'],
-  'server/src/modules/notification/push-service.ts': ['users@1#df14f492'],
   'server/src/modules/notification/push.ts': ['notifications@1#e392efab'],
   'server/src/modules/notification/recipients.ts': ['serials@1#c9827557'],
   'server/src/modules/notification/repo.ts': [
@@ -328,6 +299,24 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Penjaga TULIS klaim item: UPDATE klaim mensyaratkan item aktif dan tidak terhapus (`status`, `deleted_at`) untuk pemasangan baru; yang sudah terpasang tetap dipertahankan (T1).',
   'server/src/modules/qrcode/items.ts#brands@4#b9169b9d':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/access/repo.ts#users@1#1f819367':
+    'loadAccessTables memuat SEMUA baris beserta deleted_at/deleted_by: keunikan email dan rujukan tersimpan perlu melihat yang terhapus; daftar, hitungan pemakaian, dan pilihan memilah lewat isLiveRecord.',
+  'server/src/modules/access/repo.ts#roles@1#9e3e1828':
+    'loadAccessTables memuat SEMUA baris beserta deleted_at/deleted_by: keunikan email dan rujukan tersimpan perlu melihat yang terhapus; daftar, hitungan pemakaian, dan pilihan memilah lewat isLiveRecord.',
+  'server/src/modules/access/repo.ts#locations@1#09251e36':
+    'loadAccessTables memuat SEMUA baris beserta deleted_at/deleted_by: keunikan email dan rujukan tersimpan perlu melihat yang terhapus; daftar, hitungan pemakaian, dan pilihan memilah lewat isLiveRecord.',
+  'server/src/modules/access/repo.ts#business_units@1#9f4fcc3c':
+    'loadAccessTables memuat SEMUA baris beserta deleted_at/deleted_by: keunikan email dan rujukan tersimpan perlu melihat yang terhapus; daftar, hitungan pemakaian, dan pilihan memilah lewat isLiveRecord.',
+  'server/src/modules/access/repo.ts#business_units@2#9a67ecb7':
+    'Ringkasan SEMUA BU termasuk yang terhapus (bertanda `deleted`): BU terhapus tetap memberi nama pada rujukan tersimpan dan tetap memberi hak (keputusan pemilik soft delete 9); pemakai sebagai pilihan/filter menyaring entri `deleted`.',
+  'server/src/modules/brand/repo.ts#business_units@2#d9475f00':
+    'Penampil rujukan: BU bawaan merk menampilkan kode BU walau BU terhapus; BU terhapus tetap memberi hak dan nama (soft delete 9). Penambahan BU bawaan baru dijaga activeBuGuardStmt dan listBuBriefs (BU terhapus dibaca nonaktif).',
+  'server/src/modules/brand/repo.ts#business_units@4#6492887a':
+    'Penampil rujukan: BU bawaan merk menampilkan kode BU walau BU terhapus; BU terhapus tetap memberi hak dan nama (soft delete 9). Penambahan BU bawaan baru dijaga activeBuGuardStmt dan listBuBriefs (BU terhapus dibaca nonaktif).',
+  'server/src/modules/item/repo.ts#business_units@1#1236ca45':
+    'Penampil rujukan: BU item (kode/nama) tampil walau BU terhapus; BU terhapus tetap memberi hak dan nama (soft delete 9), dan syarat tulis "semua BU item" mengabaikannya lewat deletedBuIds.',
+  'server/src/modules/customer/repo.ts#customers@4#0305824f':
+    'Baca customer menurut id (hidup atau terhapus) untuk perencana ubah status/hapus/pulihkan dan get; pemanggil menilai `deletedAt` sendiri.',
   'server/src/modules/sticker/guide-service.ts#brands@1#45c3a46c':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/item/service.ts#stickers@1#e827a7c8':

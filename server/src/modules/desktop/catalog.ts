@@ -131,11 +131,13 @@ export async function buildDesktopCatalog(env: Env): Promise<DesktopCatalogDto> 
   const [buRows, locationRows] = await Promise.all([
     db
       .prepare(
-        "SELECT id, code, name FROM business_units WHERE status = 'active' ORDER BY code, id",
+        `SELECT id, code, name FROM business_units WHERE status = 'active' AND ${liveWhere()} ORDER BY code, id`,
       )
       .all<RefRow>(),
     db
-      .prepare("SELECT id, code, name FROM locations WHERE status = 'active' ORDER BY code, id")
+      .prepare(
+        `SELECT id, code, name FROM locations WHERE status = 'active' AND ${liveWhere()} ORDER BY code, id`,
+      )
       .all<RefRow>(),
   ]);
   const itemRows = (
