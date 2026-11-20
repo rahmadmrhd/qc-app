@@ -57,14 +57,6 @@ test('disabled (pinned) tak pernah menyembunyikan', () => {
   expect(result.current.hidden).toBe(false);
 });
 
-test('reveal memunculkan bar lagi', () => {
-  const { result } = renderHook(() => useHeadroom());
-  scrollTo(300);
-  expect(result.current.hidden).toBe(true);
-  act(() => result.current.reveal());
-  expect(result.current.hidden).toBe(false);
-});
-
 test('headroomOffset menambah tinggi bar hanya saat terlihat', () => {
   expect(headroomOffset(false, 96)).toBe('calc(3.5rem + 96px)');
   expect(headroomOffset(true, 96)).toBe('calc(3.5rem + 0px)');

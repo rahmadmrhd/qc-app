@@ -57,13 +57,19 @@ test('tour dan actionsTour menjadi data-tour', () => {
   );
 });
 
-test('bar tersembunyi inert dan kembali saat anaknya menerima fokus', () => {
+test('bar tersembunyi inert dan tampil lagi HANYA lewat gulir naik (bukan karena fokus)', () => {
   const { container } = renderPage();
   const bar = container.querySelector('[data-headroom-frame] > div') as HTMLElement;
+  expect(bar).not.toHaveAttribute('inert');
   scrollTo(300);
   expect(bar).toHaveAttribute('data-hidden');
   expect(bar).toHaveAttribute('inert');
-  act(() => screen.getByLabelText('Cari').focus());
+  // Fokus (mis. dari skrip/tur) tidak memunculkan bar.
+  act(() => {
+    bar.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+  });
+  expect(bar).toHaveAttribute('inert');
+  scrollTo(296);
   expect(bar).not.toHaveAttribute('data-hidden');
   expect(bar).not.toHaveAttribute('inert');
 });

@@ -22,8 +22,6 @@ export interface HeadroomState {
   hidden: boolean;
   floating: boolean;
   height: number;
-  /** Memunculkan bar lagi (dipakai saat salah satu anaknya menerima fokus). */
-  reveal: () => void;
 }
 
 /**
@@ -84,7 +82,5 @@ export function useHeadroom({
     return () => window.removeEventListener('scroll', onScroll);
   }, [revealAfter, delta, disabled]);
 
-  const reveal = useCallback(() => setHidden(false), []);
-
-  return { ref, hidden: disabled ? false : hidden, floating, height, reveal };
+  return { ref, hidden: disabled ? false : hidden, floating, height };
 }

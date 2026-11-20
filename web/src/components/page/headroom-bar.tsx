@@ -59,7 +59,6 @@ export function HeadroomBar({
       data-hidden={hidden || undefined}
       data-floating={context?.floating || undefined}
       inert={hidden}
-      onFocusCapture={() => context?.reveal()}
       className={cn(
         'sticky top-14 z-20 bg-background motion-safe:transition-transform',
         hidden && '-translate-y-[calc(100%+3.5rem)]',
