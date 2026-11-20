@@ -59,6 +59,7 @@ import {
 } from '../queries';
 import { BulkEditDialog } from './bulk-edit-dialog';
 import type { StrictScan } from './camera-scan-button';
+import { ConfirmClearDraftDialog } from './confirm-clear-draft-dialog';
 import { ConfirmRemoveDialog } from './confirm-remove-dialog';
 import { ImportExportBar } from './import-export-bar';
 import { EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
@@ -390,6 +391,7 @@ export function RecordPage({
   const [detailId, setDetailId] = useState<string | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
   const desktop = useIsDesktop();
 
   // Halaman dibuka: penulisan draf diizinkan lagi (dihentikan oleh `clearAllDrafts` saat keluar).
@@ -423,6 +425,7 @@ export function RecordPage({
   const selectedCount = rows.filter((row) => row.selected).length;
   // Bar aksi pilihan tampil (di ponsel `fixed`): halaman diberi ruang di dasarnya, bukan di atas daftar.
   const barVisible = selectedCount > 0 && !saving;
+  const draftPhotoCount = rows.reduce((total, row) => total + row.proofPhotos.length, 0);
   const selectedPhotoCount = rows.reduce(
     (total, row) => total + (row.selected ? row.proofPhotos.length : 0),
     0,
@@ -982,6 +985,7 @@ export function RecordPage({
       }),
   };
   function clearDraftRows() {
+    setClearOpen(false);
     cancelRowUploads(rowsRef.current.map((row) => row.clientId));
     void discardProofPhotos(proofIdsOf(rowsRef.current));
     setAllRows([]);
@@ -1214,7 +1218,7 @@ export function RecordPage({
               variant="ghost"
               size="sm"
               disabled={saving}
-              onClick={clearDraftRows}
+              onClick={() => setClearOpen(true)}
             >
               Kosongkan draft
             </Button>
@@ -1257,7 +1261,11 @@ export function RecordPage({
                 >
                   <Camera aria-hidden />
                 </Button>
-                <ImportExportBar compact onClearDraft={clearDraftRows} {...importExportProps} />
+                <ImportExportBar
+                  compact
+                  onClearDraft={() => setClearOpen(true)}
+                  {...importExportProps}
+                />
               </div>
             </StickyActionBar>
           ) : null}
@@ -1285,6 +1293,13 @@ export function RecordPage({
           onClose={() => setBulkOpen(false)}
         />
       ) : null}
+      <ConfirmClearDraftDialog
+        open={clearOpen && rows.length > 0 && !saving}
+        count={rows.length}
+        photoCount={draftPhotoCount}
+        onConfirm={clearDraftRows}
+        onCancel={() => setClearOpen(false)}
+      />
       <ConfirmRemoveDialog
         open={removeOpen && selectedCount > 0 && !saving}
         count={selectedCount}
