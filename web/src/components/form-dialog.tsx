@@ -75,6 +75,14 @@ function FormDialogContent({
         onOpenAutoFocus?.(event);
         if (event.defaultPrevented) return;
         event.preventDefault();
+        // Ponsel: jangan langsung memunculkan papan ketik layar (menutup separuh form); fokus ke dialog saja.
+        if (
+          typeof window.matchMedia === 'function' &&
+          !window.matchMedia('(min-width: 768px)').matches
+        ) {
+          contentRef.current?.focus();
+          return;
+        }
         contentRef.current
           ?.querySelector<HTMLElement>(
             'input:not([type=hidden]), textarea, select, [role=combobox]',

@@ -57,7 +57,7 @@ export function FormTabs({
             value={tab.id}
             data-form-tab={tab.id}
             aria-describedby={tab.hasError ? hintId : undefined}
-            className="flex-none px-3 py-2 max-md:min-h-11"
+            className="flex-none px-3 py-2 touch:min-h-11"
           >
             {tab.label}
             {tab.hasError ? (

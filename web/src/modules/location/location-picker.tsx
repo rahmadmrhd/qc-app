@@ -32,7 +32,8 @@ export function LocationPicker() {
           data-tour="location-picker"
         >
           <MapPin aria-hidden="true" />
-          {label}
+          {/* Ponsel sempit: ikon saja agar header muat di 360 px (nama lengkap tetap dibacakan lewat aria-label). */}
+          <span className="max-sm:sr-only">{label}</span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent

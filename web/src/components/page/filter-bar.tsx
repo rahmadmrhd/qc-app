@@ -20,7 +20,7 @@ export function FilterBar({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2 max-md:flex-col max-md:items-stretch">
       {search ? (
         <InputGroup className="w-full sm:w-64">
           <InputGroupAddon>
@@ -35,7 +35,15 @@ export function FilterBar({
           />
         </InputGroup>
       ) : null}
-      {children}
+      {/* Ponsel: chip dalam SATU baris yang digeser horizontal (bar judul tetap pendek); >= 768 px membungkus seperti biasa. */}
+      {children ? (
+        <div
+          data-slot="filter-chips"
+          className="flex items-center gap-2 max-md:overflow-x-auto max-md:pb-1 max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden md:contents"
+        >
+          {children}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -61,8 +69,8 @@ export function FilterChip({
       data-filled={filled || undefined}
       className={
         filled
-          ? 'inline-flex h-8 items-center rounded-full border border-info-text/35 bg-info-text/10 text-sm max-md:h-11'
-          : 'inline-flex h-8 items-center rounded-full border border-dashed text-sm max-md:h-11'
+          ? 'shrink-0 inline-flex h-8 items-center rounded-full border border-info-text/35 bg-info-text/10 text-sm touch:h-11'
+          : 'shrink-0 inline-flex h-8 items-center rounded-full border border-dashed text-sm touch:h-11'
       }
     >
       <Popover>
@@ -92,7 +100,7 @@ export function FilterChip({
           type="button"
           onClick={onClear}
           aria-label={`Hapus filter ${label}`}
-          className="mr-1 inline-flex size-6 max-md:size-9 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-info-text/15 focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="mr-1 inline-flex size-6 touch:size-9 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-info-text/15 focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           <X aria-hidden className="size-3.5" />
         </button>

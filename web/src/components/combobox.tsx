@@ -46,6 +46,8 @@ export interface ComboboxCommon {
   localFilter?: boolean;
   /** Tandai potongan label opsi yang cocok dengan yang diketik (`<mark>`). */
   highlight?: boolean;
+  /** Daftar pendek yang tak perlu diketik (enum kecil): papan ketik layar tidak dimunculkan saat field diketuk. */
+  keyboardless?: boolean;
 }
 
 const DEFAULT_DEBOUNCE_MS = 200;
@@ -218,6 +220,7 @@ export function ComboboxBase({
   openLink,
   localFilter,
   highlight,
+  keyboardless,
   hideLabel,
   required,
   className,
@@ -377,7 +380,7 @@ export function ComboboxBase({
           <div
             data-slot="link-field-frame"
             className={cn(
-              'flex min-h-8 max-md:min-h-11 w-full flex-wrap items-center gap-1 rounded-lg border border-input bg-transparent px-1.5 py-0.5 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30',
+              'flex min-h-8 touch:min-h-11 w-full flex-wrap items-center gap-1 rounded-lg border border-input bg-transparent px-1.5 py-0.5 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30',
               error &&
                 'border-destructive focus-within:border-destructive focus-within:ring-destructive/20',
               disabled && 'pointer-events-none cursor-not-allowed opacity-50',
@@ -412,7 +415,7 @@ export function ComboboxBase({
                     type="button"
                     tabIndex={-1}
                     aria-label={`Hapus ${chip.label}`}
-                    className="text-muted-foreground hover:text-foreground max-md:-m-[15px] max-md:p-[15px]"
+                    className="text-muted-foreground hover:text-foreground touch:-m-[15px] touch:p-[15px]"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => onRemove(chip.id)}
                   >
@@ -426,6 +429,7 @@ export function ComboboxBase({
               id={id}
               type="text"
               role="combobox"
+              inputMode={keyboardless ? 'none' : undefined}
               autoComplete="off"
               aria-expanded={showList}
               aria-controls={showList ? listId : undefined}
@@ -439,7 +443,7 @@ export function ComboboxBase({
               disabled={disabled}
               placeholder={multi && chips.length > 0 ? undefined : placeholder}
               value={inputValue}
-              className="h-6 min-w-24 flex-1 bg-transparent px-1 text-base outline-none md:text-sm max-md:h-9 placeholder:text-muted-foreground"
+              className="h-6 min-w-24 flex-1 bg-transparent px-1 text-base outline-none md:text-sm touch:h-9 placeholder:text-muted-foreground"
               onFocus={(event) => {
                 if (!multi) event.currentTarget.select();
               }}
@@ -531,7 +535,7 @@ export function ComboboxBase({
                       aria-selected={selected.has(option.id)}
                       aria-disabled={option.disabled || undefined}
                       className={cn(
-                        'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none max-md:min-h-11',
+                        'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none touch:min-h-11',
                         option.id === activeKey && 'bg-muted text-foreground',
                         option.disabled && 'pointer-events-none opacity-50',
                       )}
@@ -582,7 +586,7 @@ export function ComboboxBase({
                         tabIndex={-1}
                         aria-selected={false}
                         className={cn(
-                          'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none max-md:min-h-11',
+                          'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none touch:min-h-11',
                           activeKey === CREATE_ID && 'bg-muted text-foreground',
                         )}
                         onMouseDown={(event) => event.preventDefault()}

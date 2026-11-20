@@ -54,7 +54,7 @@ export function ViewPage({
           <TabsTrigger
             key={entry.id}
             value={entry.id}
-            className="flex-none px-3 py-2 max-md:min-h-11"
+            className="flex-none px-3 py-2 touch:min-h-11"
           >
             {entry.label}
           </TabsTrigger>

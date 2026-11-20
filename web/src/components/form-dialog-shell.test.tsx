@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { expect, test, vi } from 'vitest';
+import { mockMatchMedia } from '@/test/match-media';
 import { FormDialogShell } from './form-dialog-shell';
 import { FormPage } from './page/form-page';
 import { FormTabs } from './page/form-tabs';
@@ -178,4 +179,33 @@ test('di < 768 px dialog form layar penuh (dvh, area aman); >= 768 px memakai si
   expect(dialog.className).toContain('max-md:data-[size=default]:h-[var(--vvh,100dvh)]');
   expect(dialog.className).toContain('max-md:data-[size=default]:pt-[env(safe-area-inset-top)]');
   expect(dialog.className).toContain('data-[size=default]:sm:max-w-2xl');
+});
+
+test('K9: di ponsel dialog tidak memfokus field pertama (papan ketik layar tidak langsung muncul); desktop memfokusnya', async () => {
+  const media = mockMatchMedia(false);
+  const { unmount } = render(
+    <TooltipProvider>
+      <FormDialogShell open onOpenChange={() => undefined} formId="f" title="Tambah">
+        <form id="f">
+          <input aria-label="Nama" />
+        </form>
+      </FormDialogShell>
+    </TooltipProvider>,
+  );
+  await screen.findByRole('alertdialog');
+  expect(screen.getByLabelText('Nama')).not.toHaveFocus();
+  unmount();
+  media.set(true);
+  render(
+    <TooltipProvider>
+      <FormDialogShell open onOpenChange={() => undefined} formId="f" title="Tambah">
+        <form id="f">
+          <input aria-label="Nama" />
+        </form>
+      </FormDialogShell>
+    </TooltipProvider>,
+  );
+  await screen.findByRole('alertdialog');
+  expect(screen.getByLabelText('Nama')).toHaveFocus();
+  media.restore();
 });

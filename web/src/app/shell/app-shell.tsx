@@ -3,6 +3,7 @@ import { type ReactNode, useCallback, useState } from 'react';
 import { PageContainer } from '@/components/page/page-container';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useFocusIntoView, useVisualViewport } from '@/hooks/use-visual-viewport';
 import { useMe } from '@/modules/auth/use-me';
 import { GuideBanner } from '@/modules/guide/components/guide-banner';
@@ -34,6 +35,9 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
   // Papan ketik layar ponsel: variabel --vvh/--vv-top/--kb dan gulir field fokus ke area terlihat.
   useVisualViewport();
   useFocusIntoView();
+  // Ponsel: header hanya memuat tombol (trigger, lokasi, lonceng, tema, akun) agar muat di 360 px; breadcrumb pindah
+  // ke baris sendiri di atas isi halaman (tombol kembali + judul tingkat terakhir).
+  const phone = useIsMobile();
   const pageWidth = pageWidthOf(useMatches());
   // Terkendali (bukan defaultOpen): terbuka/terlipat diingat di localStorage lewat `qc.sidebar`.
   const [sidebarOpen, setSidebarOpen] = useState(() => readSidebarState().open);
@@ -53,7 +57,7 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
                 <UiUpdateBanner />
                 <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
                   <SidebarTrigger data-tour="sidebar-trigger" />
-                  <AppBreadcrumb />
+                  {phone ? null : <AppBreadcrumb />}
                   <div className="ml-auto flex items-center gap-1">
                     <LocationPicker />
                     <OutboxChip />
@@ -67,6 +71,11 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
                 <GuideGreeting />
                 <GuideBanner />
                 <main className="flex-1 p-[var(--main-pad)] [--main-pad:1rem] md:[--main-pad:1.5rem]">
+                  {phone ? (
+                    <div className="-mt-2 mb-2" data-slot="phone-breadcrumb">
+                      <AppBreadcrumb />
+                    </div>
+                  ) : null}
                   <PageContainer width={pageWidth}>{children ?? <Outlet />}</PageContainer>
                 </main>
               </SidebarInset>

@@ -165,3 +165,16 @@ test('isi halaman dibungkus PageContainer rata tengah berlebar bawaan', () => {
   expect(container.className).toContain('mx-auto');
   expect(container.className).toContain('max-w-7xl');
 });
+
+test('K1: di ponsel breadcrumb pindah dari header ke baris di atas isi halaman (header muat di 360 px)', () => {
+  window.innerWidth = 360;
+  window.matchMedia = vi.fn(() => ({
+    matches: true,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  })) as unknown as typeof window.matchMedia;
+  const { container } = render(<AppShell />);
+  expect(container.querySelector('[data-slot="phone-breadcrumb"]')).not.toBeNull();
+  expect(container.querySelector('header [data-slot="breadcrumb"]')).toBeNull();
+  window.innerWidth = 1024;
+});

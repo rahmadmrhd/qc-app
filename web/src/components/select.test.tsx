@@ -139,3 +139,18 @@ test('Select wajib: label bertanda data-required dan input aria-required', () =>
   expect(screen.getByLabelText('Status')).toHaveAttribute('aria-required', 'true');
   expect(document.querySelector('label[for="s"]')).toHaveAttribute('data-required');
 });
+
+test('K8: pilihan tetap pendek tidak memunculkan papan ketik layar (inputMode none); daftar panjang tetap bisa diketik', () => {
+  const { rerender } = render(
+    <Select id="s" label="Status" options={OPTIONS} value="" onValueChange={() => undefined} />,
+  );
+  expect(screen.getByRole('combobox', { name: 'Status' })).toHaveAttribute('inputmode', 'none');
+  const many: SelectOption[] = Array.from({ length: 12 }, (_, index) => ({
+    value: `v${index}`,
+    label: `Opsi ${index}`,
+  }));
+  rerender(
+    <Select id="s" label="Status" options={many} value="" onValueChange={() => undefined} />,
+  );
+  expect(screen.getByRole('combobox', { name: 'Status' })).not.toHaveAttribute('inputmode');
+});

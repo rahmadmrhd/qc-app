@@ -4,6 +4,12 @@
 @import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
+/* Layar sentuh: ponsel (< 768 px) ATAU penunjuk utama kasar (tablet); dipakai untuk target sentuh 44 px dan ukuran isian. */
+@custom-variant touch {
+  @media (max-width: 767px), (pointer: coarse) {
+    @slot;
+  }
+}
 
 * {
   box-sizing: border-box;
@@ -196,5 +202,14 @@ body {
   [role="combobox"] {
     scroll-margin-top: calc(var(--headroom-offset, 3.5rem) + 4.5rem);
     scroll-margin-bottom: 6rem;
+  }
+}
+
+/* Layar sentuh: kotak centang dan radio bawaan peramban (di luar komponen kit) cukup besar untuk disentuh. */
+@media (max-width: 767px), (pointer: coarse) {
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 1.5rem;
+    height: 1.5rem;
   }
 }
