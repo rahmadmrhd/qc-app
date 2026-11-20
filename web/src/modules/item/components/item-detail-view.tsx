@@ -1,6 +1,5 @@
 import type { ItemDto, ItemPostelDto } from '@shared/contract';
 import { firmwareOptionsFor } from '@shared/firmware';
-import { ActionButton } from '@/components/action-button';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';

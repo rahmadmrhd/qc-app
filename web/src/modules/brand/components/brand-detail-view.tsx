@@ -1,6 +1,5 @@
 import type { BrandDto, BusinessUnitOptionDto } from '@shared/contract';
 import { Link } from '@tanstack/react-router';
-import { ActionButton } from '@/components/action-button';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
