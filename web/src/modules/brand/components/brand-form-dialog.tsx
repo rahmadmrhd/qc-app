@@ -7,16 +7,8 @@ import type {
 import { ITEM_LIMITS, normalizeKey } from '@shared/items';
 import { useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
-import {
-  FormDialog,
-  FormDialogContent,
-  FormDialogDescription,
-  FormDialogFooter,
-  FormDialogHeader,
-  FormDialogTitle,
-} from '@/components/form-dialog';
+import { FormDialogShell } from '@/components/form-dialog-shell';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { describeError } from '@/lib/api/describe-error';
@@ -60,28 +52,38 @@ export interface BrandFormDialogProps {
   openBusinessUnitHref?: (id: string) => string | null;
 }
 
-interface BrandFormBodyProps {
+export interface BrandFormProps {
+  /** Id elemen `<form>`: tombol Simpan ada di luar form (footer dialog) dan memakai `form={formId}`. */
+  formId: string;
   brand?: Pick<BrandDto, 'id' | 'name' | 'businessUnitIds'>;
   businessUnits: readonly BusinessUnitOptionDto[];
   onSave: BrandFormDialogProps['onSave'];
   onCreateBusinessUnit: BrandFormDialogProps['onCreateBusinessUnit'];
   openBusinessUnitHref: BrandFormDialogProps['openBusinessUnitHref'];
+  /** Dipanggil setelah simpan berhasil. */
   onClose: () => void;
+  /** Proses simpan berjalan atau tidak (untuk tombol Simpan di luar form). */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 function buLabel(bu: BusinessUnitOptionDto): string {
   return `${bu.name} (${bu.code})${bu.status === 'inactive' ? ' — nonaktif' : ''}`;
 }
 
-/** Terpasang hanya saat dialog terbuka, sehingga isian dan galat selalu mulai bersih. */
-function BrandFormBody({
+/**
+ * Field form merk (nama + BU bawaan): hanya `<form id={formId}>`, tanpa tombol. Terpasang hanya saat dialog terbuka,
+ * sehingga isian dan galat selalu mulai bersih.
+ */
+export function BrandForm({
+  formId,
   brand,
   businessUnits,
   onSave,
   onCreateBusinessUnit,
   openBusinessUnitHref,
   onClose,
-}: BrandFormBodyProps) {
+  onBusyChange,
+}: BrandFormProps) {
   const [name, setName] = useState(brand?.name ?? '');
   const [businessUnitIds, setBusinessUnitIds] = useState<string[]>(brand?.businessUnitIds ?? []);
   const [buTerm, setBuTerm] = useState('');
@@ -127,8 +129,13 @@ function BrandFormBody({
   }
 
   async function submit() {
-    if (busy || name.trim() === '') return;
+    if (busy) return;
+    if (name.trim() === '') {
+      setError('Nama merk wajib diisi');
+      return;
+    }
     setBusy(true);
+    onBusyChange?.(true);
     let failure: BrandSaveFailure | null;
     try {
       const input = brand ? { id: brand.id, name, businessUnitIds } : { name, businessUnitIds };
@@ -139,6 +146,7 @@ function BrandFormBody({
       failure = { message: 'Gagal menyimpan merk' };
     }
     setBusy(false);
+    onBusyChange?.(false);
     setError(failure?.message ?? null);
     setBuError(failure?.businessUnitIds ?? null);
     if (failure === null) onClose();
@@ -147,6 +155,7 @@ function BrandFormBody({
   return (
     <>
       <form
+        id={formId}
         noValidate
         className="space-y-4"
         onSubmit={(event) => {
@@ -199,14 +208,8 @@ function BrandFormBody({
           }}
           error={buError ?? undefined}
         />
-        <FormDialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
-            Batal
-          </Button>
-          <Button type="submit" disabled={busy || name.trim() === ''}>
-            {busy ? 'Menyimpan…' : 'Simpan'}
-          </Button>
-        </FormDialogFooter>
+        {/* Penerima Enter di kolom isian: tombol Simpan sebenarnya ada di footer dialog (di luar form). */}
+        <button type="submit" hidden tabIndex={-1} aria-hidden />
       </form>
       {/* Dialog turunan di luar <form>: event submit dari portalnya tidak menjalar ke form merk. */}
       {onCreateBusinessUnit ? (
@@ -220,6 +223,8 @@ function BrandFormBody({
   );
 }
 
+export const BRAND_FORM_ID = 'brand-form';
+
 /** Dialog tambah/ganti nama merk beserta BU bawaan; dipakai halaman Merk dan tombol "Tambah" pada field Merk di form item. */
 export function BrandFormDialog({
   open,
@@ -230,29 +235,33 @@ export function BrandFormDialog({
   onCreateBusinessUnit,
   openBusinessUnitHref,
 }: BrandFormDialogProps) {
+  const [busy, setBusy] = useState(false);
   return (
-    <FormDialog open={open} onOpenChange={onOpenChange}>
-      <FormDialogContent>
-        <FormDialogHeader>
-          <FormDialogTitle>{brand ? `Ubah merk ${brand.name}` : 'Tambah merk'}</FormDialogTitle>
-          <FormDialogDescription>
-            {brand
-              ? 'Mengganti nama berlaku untuk semua item merk ini.'
-              : 'Merk baru langsung dapat dipilih.'}
-          </FormDialogDescription>
-        </FormDialogHeader>
-        {open ? (
-          <BrandFormBody
-            key={brand?.id ?? 'new'}
-            brand={brand}
-            businessUnits={businessUnits}
-            onSave={onSave}
-            onCreateBusinessUnit={onCreateBusinessUnit}
-            openBusinessUnitHref={openBusinessUnitHref}
-            onClose={() => onOpenChange(false)}
-          />
-        ) : null}
-      </FormDialogContent>
-    </FormDialog>
+    <FormDialogShell
+      open={open}
+      onOpenChange={onOpenChange}
+      formId={BRAND_FORM_ID}
+      title={brand ? `Ubah merk ${brand.name}` : 'Tambah merk'}
+      description={
+        brand
+          ? 'Mengganti nama berlaku untuk semua item merk ini.'
+          : 'Merk baru langsung dapat dipilih.'
+      }
+      submitting={busy}
+    >
+      {open ? (
+        <BrandForm
+          key={brand?.id ?? 'new'}
+          formId={BRAND_FORM_ID}
+          brand={brand}
+          businessUnits={businessUnits}
+          onSave={onSave}
+          onCreateBusinessUnit={onCreateBusinessUnit}
+          openBusinessUnitHref={openBusinessUnitHref}
+          onClose={() => onOpenChange(false)}
+          onBusyChange={setBusy}
+        />
+      ) : null}
+    </FormDialogShell>
   );
 }

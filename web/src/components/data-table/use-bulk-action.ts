@@ -7,8 +7,10 @@ export interface BulkActionOptions<T> {
   selection: RowSelection;
   /** Mengirim satu tahap (maks. `BATCH_MAX` id) dan mengembalikan hasil server per id. */
   send: (ids: string[]) => Promise<readonly T[]>;
-  /** Kata kerja untuk toast sukses: "N item {verb}". */
+  /** Kata kerja untuk toast sukses: "N {subject} {verb}". */
   verb: string;
+  /** Sebutan yang dihitung pada toast sukses (bawaan "item"; mis. "merk"). */
+  subject?: string;
   /** Memasang hasil tahap yang berhasil ke cache (mis. `upsertInList`). */
   onResults?: (results: readonly T[]) => void;
   /** Memuat ulang data; dipanggil bila ada tahap gagal atau id hilang (`NOT_FOUND`). */
@@ -32,7 +34,7 @@ export function useBulkAction<T>(options: BulkActionOptions<T>): {
 
   const run = useCallback(async () => {
     if (running.current) return;
-    const { selection, send, verb, onResults, reload } = latest.current;
+    const { selection, send, verb, subject, onResults, reload } = latest.current;
     const ids = [...selection.selected];
     if (ids.length === 0) return;
     running.current = true;
@@ -41,7 +43,7 @@ export function useBulkAction<T>(options: BulkActionOptions<T>): {
       const outcome = await runChunkedBatch(ids, send);
       if (outcome.results.length > 0) onResults?.(outcome.results);
       if (outcome.doneIds.length > 0) selection.remove(outcome.doneIds);
-      const summary = batchSummary(outcome, verb);
+      const summary = batchSummary(outcome, verb, subject);
       if (summary.kind === 'success') toast.success(summary.message);
       else if (summary.kind === 'partial') toast.warning(summary.message);
       else toast.error(summary.message);

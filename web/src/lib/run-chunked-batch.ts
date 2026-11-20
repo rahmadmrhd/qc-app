@@ -53,9 +53,10 @@ export async function runChunkedBatch<T>(
 export function batchSummary<T>(
   outcome: ChunkedBatchOutcome<T>,
   verb: string,
+  subject = 'item',
 ): { kind: 'success' | 'partial' | 'error'; message: string } {
   if (outcome.failedIds.length === 0) {
-    return { kind: 'success', message: `${outcome.doneIds.length} item ${verb}` };
+    return { kind: 'success', message: `${outcome.doneIds.length} ${subject} ${verb}` };
   }
   const reason = describeError(outcome.error);
   if (outcome.doneIds.length === 0) return { kind: 'error', message: reason };

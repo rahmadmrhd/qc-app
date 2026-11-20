@@ -1,8 +1,10 @@
 import type { BrandDto, BusinessUnitOptionDto } from '@shared/contract';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
-import { BrandsManager } from './brands-manager';
+import { useRowSelection } from '@/components/data-table';
+import { renderInRouter } from '@/test/render-in-router';
+import { BrandsManager, type BrandsManagerProps } from './brands-manager';
 
 const brands: BrandDto[] = [
   {
@@ -21,27 +23,32 @@ const businessUnits: BusinessUnitOptionDto[] = [
   { id: 'bu-b', code: 'WHL', name: 'Wholesale', status: 'active' },
 ];
 
-function renderManager(props: Partial<Parameters<typeof BrandsManager>[0]> = {}) {
-  const onSave = vi.fn().mockResolvedValue(null);
-  const onToggleStatus = vi.fn();
-  render(
+function handlers() {
+  return {
+    onEdit: vi.fn(),
+    onToggleStatus: vi.fn(),
+    onDelete: vi.fn(),
+    onRestore: vi.fn(),
+  };
+}
+
+async function renderManager(props: Partial<BrandsManagerProps> = {}) {
+  const fns = handlers();
+  const view = await renderInRouter(
     <BrandsManager
       brands={brands}
       businessUnits={businessUnits}
       canEdit
       canManage
-      pendingStatusId={null}
-      onSave={onSave}
-      onToggleStatus={onToggleStatus}
+      {...fns}
       {...props}
     />,
   );
-  return { onSave, onToggleStatus };
+  return { ...fns, unmount: view.unmount };
 }
 
-test('menampilkan merk, BU bawaan, jumlah item, dan status', () => {
-  renderManager();
-  expect(screen.getByText('Mikrotik')).toBeInTheDocument();
+test('menampilkan merk, BU bawaan, jumlah item, dan status', async () => {
+  await renderManager();
   expect(screen.getByRole('columnheader', { name: 'BU bawaan' })).toBeInTheDocument();
   expect(screen.getByText('RTL')).toBeInTheDocument();
   expect(screen.getByText('—')).toBeInTheDocument();
@@ -49,72 +56,92 @@ test('menampilkan merk, BU bawaan, jumlah item, dan status', () => {
   expect(screen.getByText('Nonaktif')).toBeInTheDocument();
 });
 
-test('menambah merk lewat dialog; galat server tampil di dialog dan dialog tetap terbuka', async () => {
-  const { onSave } = renderManager();
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah merk' }));
-  await userEvent.type(
-    within(await screen.findByRole('alertdialog')).getByLabelText('Nama merk'),
-    'Ubiquiti',
-  );
-  await userEvent.click(
-    within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Simpan' }),
-  );
-  expect(onSave).toHaveBeenCalledWith({ name: 'Ubiquiti', businessUnitIds: [] });
-  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
-
-  onSave.mockResolvedValueOnce('Nama merk sudah dipakai');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah merk' }));
-  await userEvent.type(
-    within(await screen.findByRole('alertdialog')).getByLabelText('Nama merk'),
-    'mikrotik',
-  );
-  await userEvent.click(
-    within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Simpan' }),
-  );
-  expect(await screen.findByRole('alert')).toHaveTextContent('Nama merk sudah dipakai');
-  expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+test('nama merk menaut ke View; tidak ada tombol "Lihat"', async () => {
+  await renderManager();
+  expect(screen.getByRole('link', { name: 'Mikrotik' })).toHaveAttribute('href', '/item/brands/b1');
+  expect(screen.queryByRole('button', { name: /^Lihat/ })).toBeNull();
 });
 
-test('mengganti nama: dialog terisi nama lama dan BU bawaan, simpan mengirim id, batal menutup', async () => {
-  const { onSave } = renderManager();
-  await userEvent.click(screen.getByRole('button', { name: 'Ubah Mikrotik' }));
-  const dialog = await screen.findByRole('alertdialog');
-  const input = within(dialog).getByLabelText('Nama merk');
-  expect(input).toHaveValue('Mikrotik');
-  expect(within(dialog).getByRole('button', { name: 'Hapus Retail (RTL)' })).toBeInTheDocument();
-  await userEvent.clear(input);
-  await userEvent.type(input, 'MikroTik');
-  await userEvent.click(
-    within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Simpan' }),
-  );
-  expect(onSave).toHaveBeenCalledWith({ id: 'b1', name: 'MikroTik', businessUnitIds: ['bu-a'] });
-  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
-
-  await userEvent.click(screen.getByRole('button', { name: 'Ubah Mikrotik' }));
-  await userEvent.click(
-    within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Batal' }),
-  );
-  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
-  expect(onSave).toHaveBeenCalledTimes(1);
+test('kode BU menaut ke halaman BU bila berhak, selain itu lencana', async () => {
+  const { unmount } = await renderManager();
+  const link = screen.getByRole('link', { name: 'RTL' });
+  expect(link).toHaveAttribute('href', '/access/business-units/bu-a');
+  expect(link).toHaveAttribute('title', 'Retail');
+  unmount();
+  await renderManager({ canOpenBusinessUnit: false });
+  expect(screen.queryByRole('link', { name: 'RTL' })).toBeNull();
+  expect(screen.getByText('RTL')).toHaveAttribute('title', 'Retail');
 });
 
-test('nonaktifkan dan aktifkan memanggil callback; izin menyembunyikan tombol', async () => {
-  const { onToggleStatus } = renderManager();
+test('jumlah item menaut ke daftar item dengan pencarian nama merk; nol tanpa tautan', async () => {
+  await renderManager();
+  const link = screen.getByRole('link', { name: '2' });
+  expect(link).toHaveAttribute('href', '/item?q=Mikrotik');
+  expect(screen.getAllByText('0')).toHaveLength(1);
+  expect(screen.queryByRole('link', { name: '0' })).toBeNull();
+});
+
+test('aksi baris: Ubah, Aktifkan/Nonaktifkan, dan Hapus hanya untuk merk Nonaktif', async () => {
+  const { onEdit, onToggleStatus, onDelete } = await renderManager();
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah Mikrotik' }));
   await userEvent.click(screen.getByRole('button', { name: 'Nonaktifkan Mikrotik' }));
-  expect(onToggleStatus).toHaveBeenCalledWith(brands[0]);
   await userEvent.click(screen.getByRole('button', { name: 'Aktifkan Lama' }));
-  expect(onToggleStatus).toHaveBeenCalledWith(brands[1]);
+  expect(onEdit).toHaveBeenCalledWith(brands[0]);
+  expect(onToggleStatus).toHaveBeenNthCalledWith(1, brands[0]);
+  expect(onToggleStatus).toHaveBeenNthCalledWith(2, brands[1]);
+  expect(screen.queryByRole('button', { name: 'Hapus Mikrotik' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus Lama' }));
+  expect(onDelete).toHaveBeenCalledWith(brands[1]);
 });
 
-test('tanpa izin edit/manage tidak ada form tambah, Ubah, maupun Nonaktifkan', () => {
-  renderManager({ canEdit: false, canManage: false });
-  expect(screen.queryByRole('button', { name: 'Tambah merk' })).toBeNull();
-  expect(screen.queryByRole('button', { name: /Ubah|Nonaktifkan|Aktifkan/ })).toBeNull();
+test('aksi mengikuti izin: edit saja tanpa Nonaktifkan/Hapus; tanpa edit tanpa Ubah', async () => {
+  const { unmount } = await renderManager({ canManage: false });
+  expect(screen.getByRole('button', { name: 'Ubah Mikrotik' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Nonaktifkan|Aktifkan/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /^Hapus/ })).toBeNull();
+  unmount();
+  await renderManager({ canEdit: false });
+  expect(screen.queryByRole('button', { name: /^Ubah/ })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Aktifkan Lama' })).toBeInTheDocument();
 });
 
-test('merk tanpa field businessUnitIds (data cache lama) tidak membuat halaman crash', () => {
-  const legacy = { id: 'b9', name: 'Warisan', status: 'active', itemCount: 0, updatedAt: '' };
-  renderManager({ brands: [legacy as unknown as BrandDto] });
-  expect(screen.getByText('Warisan')).toBeInTheDocument();
-  expect(screen.getByText('—')).toBeInTheDocument();
+test('tampilan Terhapus: hanya aksi Pulihkan, dengan penanda Terhapus', async () => {
+  const deleted = brands.map((brand) => ({
+    ...brand,
+    status: 'inactive' as const,
+    deleted: { deletedAt: '2026-11-20T00:00:00.000Z', deletedBy: 'a@x.com' },
+  }));
+  const { onRestore } = await renderManager({ brands: deleted, deletedView: true });
+  expect(screen.queryByRole('button', { name: /^Ubah/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /^Hapus/ })).toBeNull();
+  expect(screen.getAllByText('Terhapus')).toHaveLength(2);
+  await userEvent.click(screen.getByRole('button', { name: 'Pulihkan Lama' }));
+  expect(onRestore).toHaveBeenCalledWith(deleted[1]);
+});
+
+test('daftar kosong menampilkan pesan', async () => {
+  await renderManager({ brands: [] });
+  expect(screen.getByText('Belum ada merk.')).toBeInTheDocument();
+});
+
+function WithSelection() {
+  const selection = useRowSelection('x');
+  return (
+    <BrandsManager
+      brands={brands}
+      businessUnits={businessUnits}
+      canEdit
+      canManage
+      selection={selection}
+      {...handlers()}
+    />
+  );
+}
+
+test('checkbox baris berlabel nama merk hanya bila selection diberikan', async () => {
+  const { unmount } = await renderInRouter(<WithSelection />);
+  expect(screen.getByRole('checkbox', { name: 'Pilih Mikrotik' })).toBeInTheDocument();
+  unmount();
+  await renderManager();
+  expect(screen.queryByRole('checkbox')).toBeNull();
 });

@@ -1,26 +1,47 @@
 import type { BrandDto, BusinessUnitOptionDto } from '@shared/contract';
-import type { ReactNode } from 'react';
+import { Link } from '@tanstack/react-router';
+import { ActionButton } from '@/components/action-button';
+import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
+import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
+import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
+import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 
 export interface BrandDetailViewProps {
-  /** `undefined` = merk tidak ada (id salah atau sudah dihapus). */
+  /** `undefined` = merk tidak ada (id salah, sudah dihapus, atau tak boleh dilihat). */
   brand: BrandDto | undefined;
   businessUnits: readonly BusinessUnitOptionDto[];
+  canEdit?: boolean;
+  canManage?: boolean;
+  /** Kode BU bawaan menaut ke halaman BU hanya bila pengguna berhak. */
+  canOpenBusinessUnit?: boolean;
+  statusPending?: boolean;
+  restorePending?: boolean;
   onBack: () => void;
+  onEdit?: () => void;
+  onToggleStatus?: () => void;
+  onDelete?: () => void;
+  onRestore?: () => void;
 }
 
-function Row({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="grid gap-1 sm:grid-cols-[10rem_1fr]">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="text-sm">{children}</dd>
-    </div>
-  );
-}
+const textLink = 'text-info-text underline-offset-4 hover:underline';
 
-/** Halaman baca-saja satu merk: tujuan tautan "buka" dari field Merk. */
-export function BrandDetailView({ brand, businessUnits, onBack }: BrandDetailViewProps) {
+/** Halaman baca satu merk: tujuan tautan "buka" dari field Merk dan dari tabel merk/item. */
+export function BrandDetailView({
+  brand,
+  businessUnits,
+  canEdit = false,
+  canManage = false,
+  canOpenBusinessUnit = true,
+  statusPending = false,
+  restorePending = false,
+  onBack,
+  onEdit,
+  onToggleStatus,
+  onDelete,
+  onRestore,
+}: BrandDetailViewProps) {
   if (!brand) {
     return (
       <div className="space-y-4">
@@ -31,44 +52,93 @@ export function BrandDetailView({ brand, businessUnits, onBack }: BrandDetailVie
       </div>
     );
   }
+  const deleted = brand.deleted !== undefined;
   const defaults = brand.businessUnitIds.map(
     (id) => businessUnits.find((bu) => bu.id === id) ?? { id, code: id, name: id },
   );
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold">{brand.name}</h1>
-          {brand.status === 'inactive' ? (
-            <Badge color="secondary" variant="soft" dot>
-              Nonaktif
-            </Badge>
-          ) : null}
-        </div>
-        <Button variant="outline" onClick={onBack}>
-          Kembali ke daftar merk
-        </Button>
-      </div>
-      <section className="space-y-3 rounded-lg border p-4">
-        <h2 className="text-base font-semibold">Informasi merk</h2>
-        <dl className="space-y-2">
-          <Row label="Jumlah item">{brand.itemCount}</Row>
-          <Row label="BU bawaan">
-            {defaults.length === 0 ? (
-              <span className="text-muted-foreground">Tidak ada</span>
-            ) : (
-              <span className="flex flex-wrap gap-1">
-                {defaults.map((bu) => (
-                  <Badge key={bu.id} variant="outline" title={bu.name}>
-                    {bu.code}
-                  </Badge>
-                ))}
-              </span>
-            )}
-          </Row>
-          <Row label="Terakhir diubah">{new Date(brand.updatedAt).toLocaleString('id-ID')}</Row>
-        </dl>
-      </section>
-    </div>
+    <ViewPage
+      title={brand.name}
+      badge={deleted ? <DeletedBadge /> : <ActiveStatusBadge status={brand.status} />}
+      actions={
+        deleted ? null : (
+          <>
+            {canEdit && onEdit ? (
+              <ActionButton action="edit" label="Ubah" onClick={onEdit} />
+            ) : null}
+            {canManage && onToggleStatus ? (
+              <ActionButton
+                action={brand.status === 'active' ? 'deactivate' : 'activate'}
+                busy={statusPending}
+                onClick={onToggleStatus}
+              />
+            ) : null}
+            {canManage && brand.status === 'inactive' && onDelete ? (
+              <ActionButton action="delete" onClick={onDelete} />
+            ) : null}
+          </>
+        )
+      }
+      banner={
+        brand.deleted ? (
+          <DeletedBanner
+            info={brand.deleted}
+            canRestore={canManage}
+            {...(onRestore ? { onRestore } : {})}
+            restoring={restorePending}
+          />
+        ) : null
+      }
+      aside={
+        <ViewMeta
+          updatedAt={brand.updatedAt}
+          links={[{ label: 'Lihat item merk ini', to: '/item', search: { q: brand.name } }]}
+        />
+      }
+    >
+      <ViewSection title="Identitas">
+        <DetailList
+          items={[
+            { label: 'Nama', value: brand.name },
+            {
+              label: 'BU bawaan',
+              value:
+                defaults.length === 0 ? null : (
+                  <span className="flex flex-wrap gap-2">
+                    {defaults.map((bu) =>
+                      canOpenBusinessUnit ? (
+                        <Link
+                          key={bu.id}
+                          to="/access/business-units/$businessUnitId"
+                          params={{ businessUnitId: bu.id }}
+                          title={bu.name}
+                          className={textLink}
+                        >
+                          {bu.code}
+                        </Link>
+                      ) : (
+                        <Badge key={bu.id} variant="outline" title={bu.name}>
+                          {bu.code}
+                        </Badge>
+                      ),
+                    )}
+                  </span>
+                ),
+            },
+            {
+              label: 'Jumlah item',
+              value:
+                brand.itemCount === 0 ? (
+                  0
+                ) : (
+                  <Link to="/item" search={{ q: brand.name }} className={textLink}>
+                    {brand.itemCount}
+                  </Link>
+                ),
+            },
+          ]}
+        />
+      </ViewSection>
+    </ViewPage>
   );
 }
