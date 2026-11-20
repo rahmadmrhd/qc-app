@@ -3,6 +3,7 @@ import { type ReactNode, useCallback, useState } from 'react';
 import { PageContainer } from '@/components/page/page-container';
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { useFocusIntoView, useVisualViewport } from '@/hooks/use-visual-viewport';
 import { useMe } from '@/modules/auth/use-me';
 import { GuideBanner } from '@/modules/guide/components/guide-banner';
 import { GuideGreeting } from '@/modules/guide/components/guide-greeting';
@@ -30,6 +31,9 @@ import { UserMenu } from './user-menu';
  */
 export function AppShell({ children }: { children?: ReactNode } = {}) {
   usePrefetchOnIdle(useMe());
+  // Papan ketik layar ponsel: variabel --vvh/--vv-top/--kb dan gulir field fokus ke area terlihat.
+  useVisualViewport();
+  useFocusIntoView();
   const pageWidth = pageWidthOf(useMatches());
   // Terkendali (bukan defaultOpen): terbuka/terlipat diingat di localStorage lewat `qc.sidebar`.
   const [sidebarOpen, setSidebarOpen] = useState(() => readSidebarState().open);

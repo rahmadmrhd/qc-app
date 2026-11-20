@@ -24,11 +24,11 @@ const FormDialogDescription = AlertDialogDescription;
 
 /**
  * Di < 768 px dialog form menjadi layar penuh (header dan footer Simpan tetap terlihat, badan menggulir, area aman
- * notch/bilah gestur dihormati, tinggi `dvh`); >= 768 px ukuran `size` dialog berlaku. Selektor `max-md:data-[size=default]`
+ * notch/bilah gestur dihormati, tinggi `var(--vvh, 100dvh)` dan `top: var(--vv-top, 0)` agar footer Simpan menempel di atas papan ketik layar); >= 768 px ukuran `size` dialog berlaku. Selektor `max-md:data-[size=default]`
  * sengaja lebih spesifik daripada kelas lebar maksimum bawaan agar menang di antara 640 dan 767 px juga.
  */
 const FULL_ON_PHONE =
-  'max-md:data-[size=default]:inset-0 max-md:data-[size=default]:h-dvh max-md:data-[size=default]:max-h-none max-md:data-[size=default]:w-screen max-md:data-[size=default]:max-w-none max-md:data-[size=default]:translate-x-0 max-md:data-[size=default]:translate-y-0 max-md:data-[size=default]:rounded-none max-md:data-[size=default]:ring-0 max-md:data-[size=default]:pt-[env(safe-area-inset-top)] max-md:data-[size=default]:pb-[env(safe-area-inset-bottom)]';
+  'max-md:data-[size=default]:top-[var(--vv-top,0px)] max-md:data-[size=default]:left-0 max-md:data-[size=default]:h-[var(--vvh,100dvh)] max-md:data-[size=default]:max-h-none max-md:data-[size=default]:w-screen max-md:data-[size=default]:max-w-none max-md:data-[size=default]:translate-x-0 max-md:data-[size=default]:translate-y-0 max-md:data-[size=default]:rounded-none max-md:data-[size=default]:ring-0 max-md:data-[size=default]:pt-[env(safe-area-inset-top)] max-md:data-[size=default]:pb-[env(safe-area-inset-bottom)]';
 
 function FormDialogContent({
   className,

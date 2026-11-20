@@ -188,3 +188,13 @@ body {
 .dark ::highlight(qc-comment) {
   background-color: rgb(251 191 36 / 0.28);
 }
+
+/* Ponsel: field yang digulirkan ke area terlihat (papan ketik layar) tidak tertutup header atau bar bawah yang menempel. */
+@media (max-width: 767px) {
+  input,
+  textarea,
+  [role="combobox"] {
+    scroll-margin-top: calc(var(--headroom-offset, 3.5rem) + 4.5rem);
+    scroll-margin-bottom: 6rem;
+  }
+}
