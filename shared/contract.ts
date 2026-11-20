@@ -47,6 +47,11 @@ export interface LocationAccessDto {
 export interface BusinessUnitAccessDto extends BusinessUnitOptionDto {
   /** Izin efektif user di BU ini (gabungan "Semua BU" dan penugasan BU itu) untuk modul ber-BU. */
   permissions: BuPermissionMap;
+  /**
+   * BU sudah dihapus (soft delete). Entri TETAP ada karena BU terhapus tetap memberi hak (keputusan pemilik 9), tetapi
+   * tidak boleh ditawarkan di pilihan/filter. Tak ada pada `me` lama = false.
+   */
+  deleted?: boolean;
 }
 
 export interface MeDto {

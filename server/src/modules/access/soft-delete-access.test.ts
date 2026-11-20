@@ -182,13 +182,16 @@ describe('BU terhapus', () => {
     expect(Object.keys(admin.businessUnits).sort()).toEqual(['bu-a', 'bu-b', 'bu-n']);
   });
 
-  test('BU terhapus tak ada di pilihan/filter (me.businessUnits), BU nonaktif tetap ada', async () => {
+  test('me.businessUnits tetap memuat BU terhapus (sumber hak web) dengan penanda deleted; BU lain tak bertanda', async () => {
     await softDelete('business_units', 'bu-b');
     const me = await restCall(env, 'eab@gmail.com', 'auth.me', null);
-    const ids = (me as { data: { businessUnits: { id: string }[] } }).data.businessUnits.map(
-      (b) => b.id,
-    );
-    expect(ids).toEqual(['bu-a', 'bu-n']);
+    const list = (me as { data: { businessUnits: { id: string; deleted?: boolean }[] } }).data
+      .businessUnits;
+    expect(list.map((b) => [b.id, b.deleted])).toEqual([
+      ['bu-a', false],
+      ['bu-b', true],
+      ['bu-n', false],
+    ]);
   });
 
   test('item yang hanya ber-BU terhapus tetap dapat diubah oleh pemegang hak BU itu', async () => {

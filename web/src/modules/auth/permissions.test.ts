@@ -12,6 +12,7 @@ import {
   canManageSerialSettings,
   canUseSerialLocationOptions,
   canWriteSerials,
+  liveBuIdsWithLevelOf,
   locationsWith,
   serialActorModules,
 } from './permissions';
@@ -221,4 +222,41 @@ test('canManageSerialSettings membaca penanda dari server (auth.me), bukan mengh
   const { canManageSerialSettings: _omit, ...legacy } = base;
   expect(canManageSerialSettings(legacy as typeof base)).toBe(false);
   expect(canManageSerialSettings(null)).toBe(false);
+});
+
+const deletedBu = (id: string, level: 'view' | 'edit' | 'manage') => ({
+  ...bu(id, level),
+  deleted: true,
+});
+
+test('BU terhapus tetap memberi hak: item hanya ber-BU terhapus tetap dapat diubah/dikelola dari web', () => {
+  const user = meWithBus([deletedBu('b', 'manage')]);
+  expect(canEditItem(user, { businessUnits: [ref('b')] })).toBe(true);
+  expect(canManageItem(user, { businessUnits: [ref('b')] })).toBe(true);
+});
+
+test('BU terhapus diabaikan pada syarat SEMUA BU selama ada BU hidup (sama dengan server)', () => {
+  const user = meWithBus([bu('a', 'manage'), deletedBu('b', 'view')]);
+  expect(canManageItem(user, { businessUnits: [ref('a'), ref('b')] })).toBe(true);
+  // BU nonaktif (bukan terhapus) tetap dihitung
+  const inactive = meWithBus([bu('a', 'manage'), bu('b', 'view', 'inactive')]);
+  expect(canManageItem(inactive, { businessUnits: [ref('a'), ref('b')] })).toBe(false);
+});
+
+test('BU terhapus tidak ditawarkan sebagai pilihan: liveBuIdsWithLevelOf dan canCreateItem', () => {
+  const user = meWithBus([bu('a', 'edit'), deletedBu('b', 'edit')]);
+  expect(buIdsWithLevelFor(user, 'edit')).toEqual(['a', 'b']);
+  expect(liveBuIdsWithLevelOf(user, 'item', 'edit')).toEqual(['a']);
+  expect(canCreateItem(meWithBus([deletedBu('b', 'edit')]))).toBe(false);
+});
+
+test('serialActorModules dan canWriteSerials: BU serial terhapus tetap memberi hak', () => {
+  const user = meWithBus([
+    {
+      ...deletedBu('s', 'view'),
+      permissions: { item: 'none', serial: 'edit', serialservice: 'none' },
+    },
+  ]);
+  expect(serialActorModules(user, 's').serial).toBe(true);
+  expect(canWriteSerials(user)).toBe(true);
 });

@@ -97,6 +97,26 @@ export function buIdsWithLevelOf(
     .map((bu) => bu.id);
 }
 
+/** Seperti `buIdsWithLevelOf` tetapi tanpa BU terhapus: untuk PILIHAN dan filter (BU terhapus hanya memberi hak). */
+export function liveBuIdsWithLevelOf(
+  me: MeDto | null | undefined,
+  module: BuModule,
+  level: Level,
+): string[] {
+  return itemBusinessUnits(me)
+    .filter((bu) => !bu.deleted && hasLevel(bu.permissions[module], level))
+    .map((bu) => bu.id);
+}
+
+/** Id BU yang terhapus di antara BU berhak user (diabaikan syarat "SEMUA BU", keputusan soft delete 9). */
+function deletedBuIdsOf(me: MeDto | null | undefined): Set<string> {
+  return new Set(
+    itemBusinessUnits(me)
+      .filter((bu) => bu.deleted)
+      .map((bu) => bu.id),
+  );
+}
+
 /** Id BU (aktif maupun nonaktif) tempat user punya minimal `level` pada modul `item`. */
 export function buIdsWithLevelFor(me: MeDto | null | undefined, level: Level): string[] {
   return buIdsWithLevelOf(me, 'item', level);
@@ -139,7 +159,10 @@ function hasLevelOnAllBus(
   const attached = item.businessUnits ?? [];
   if (attached.length === 0) return false;
   const allowed = new Set(buIdsWithLevelFor(me, level));
-  return attached.every((bu) => allowed.has(bu.id));
+  // Sama dengan `canActOnAllBus` server: BU terhapus diabaikan selama masih ada BU hidup pada item.
+  const deleted = deletedBuIdsOf(me);
+  const live = attached.filter((bu) => !deleted.has(bu.id));
+  return (live.length > 0 ? live : attached).every((bu) => allowed.has(bu.id));
 }
 
 /** Ubah item: `edit` pada SEMUA BU item (keputusan 13). Item tanpa BU tidak dapat diubah. */
@@ -161,6 +184,6 @@ export function canManageItem(
 /** Buat item: ada minimal satu BU aktif ber-`edit`. */
 export function canCreateItem(me: MeDto | null | undefined): boolean {
   return itemBusinessUnits(me).some(
-    (bu) => bu.status === 'active' && hasLevel(bu.permissions.item, 'edit'),
+    (bu) => bu.status === 'active' && !bu.deleted && hasLevel(bu.permissions.item, 'edit'),
   );
 }

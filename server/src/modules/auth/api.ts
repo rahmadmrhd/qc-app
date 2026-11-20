@@ -37,15 +37,20 @@ function locationsOf(user: UserContext, briefs: readonly LocationBrief[]): MeDto
 
 /**
  * BU yang user punya level apa pun atasnya (peta `businessUnits` konteks sudah hanya memuat BU berhak). BU terhapus
- * (soft delete) tetap memberi hak tetapi dibuang dari daftar ini karena daftar ini menjadi pilihan dan filter di web.
+ * (soft delete) TETAP ada (hak tetap berlaku, web memakai daftar ini sebagai sumber hak) dan ditandai `deleted`;
+ * pemakai sebagai pilihan/filter menyaringnya.
  */
 function businessUnitsOf(
   user: UserContext,
   briefs: readonly BusinessUnitOptionDto[],
 ): MeDto['businessUnits'] {
   return briefs
-    .filter((bu) => user.businessUnits[bu.id] !== undefined && !user.deletedBuIds.includes(bu.id))
-    .map((bu) => ({ ...bu, permissions: user.businessUnits[bu.id] as BuPermissionMap }))
+    .filter((bu) => user.businessUnits[bu.id] !== undefined)
+    .map((bu) => ({
+      ...bu,
+      permissions: user.businessUnits[bu.id] as BuPermissionMap,
+      deleted: user.deletedBuIds.includes(bu.id),
+    }))
     .sort((a, b) => a.code.localeCompare(b.code));
 }
 

@@ -6,7 +6,7 @@ import { describeError } from '@/lib/api/describe-error';
 import { itemFormLinkAccess } from '@/lib/link-access';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { businessUnitOptionsQueryOptions, useSaveBusinessUnit } from '@/modules/access/queries';
-import { buIdsWithLevelFor, can, requirePermission } from '@/modules/auth/permissions';
+import { can, liveBuIdsWithLevelOf, requirePermission } from '@/modules/auth/permissions';
 import { meQueryOptions } from '@/modules/auth/queries';
 import { useMe } from '@/modules/auth/use-me';
 import { brandsQueryOptions, useSaveBrand } from '@/modules/brand/queries';
@@ -88,7 +88,7 @@ function EditItemPage() {
         key={item.updatedAt}
         brands={brands}
         businessUnits={mergeBusinessUnits(businessUnits, item.businessUnits)}
-        editableBusinessUnitIds={buIdsWithLevelFor(me, 'edit')}
+        editableBusinessUnitIds={liveBuIdsWithLevelOf(me, 'item', 'edit')}
         onCreateBrand={
           can(me, 'item', 'edit') ? (input) => saveBrand.mutateAsync(input) : undefined
         }

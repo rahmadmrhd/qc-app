@@ -84,6 +84,7 @@ describe('GET /api/v1/me', () => {
         name: 'Alfa',
         status: 'inactive',
         permissions: { item: 'edit', serial: 'none', serialservice: 'none' },
+        deleted: false,
       },
       {
         id: 'bu-z',
@@ -91,6 +92,7 @@ describe('GET /api/v1/me', () => {
         name: 'Zed',
         status: 'active',
         permissions: { item: 'view', serial: 'none', serialservice: 'none' },
+        deleted: false,
       },
     ]);
     expect(body.permissions.item).toBe('edit');
@@ -163,6 +165,7 @@ describe('GET /api/v1/me', () => {
           serial: 'manage',
           serialservice: 'edit',
         },
+        deleted: false,
       },
     ]);
   });
