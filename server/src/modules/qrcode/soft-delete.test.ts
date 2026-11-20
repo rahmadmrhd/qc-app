@@ -368,10 +368,13 @@ describe('preset QR', () => {
       await seedQrPreset(env, { id: 'p2', name: 'Lain', buId: 'bu-a' });
       const byBu = await call(MANAGE, 'qrcodes.restorePreset', { id: 'p1' });
       expect(byBu.error.code).toBe('CONFLICT');
+      // jam maju: kunci unik `_live` memuat `deleted_at`, jadi dua penghapusan BU sama pada milidetik sama bentrok
+      env.clock.advance(1000);
       await call(MANAGE, 'qrcodes.deletePreset', { id: 'p2' });
       await seedQrPreset(env, { id: 'p3', name: 'standar', buId: 'bu-b' });
       const byName = await call(MANAGE, 'qrcodes.restorePreset', { id: 'p1' });
       expect(byName.error.code).toBe('CONFLICT');
+      env.clock.advance(1000);
       await call(MANAGE, 'qrcodes.deletePreset', { id: 'p3' });
       const ok = await call(MANAGE, 'qrcodes.restorePreset', { id: 'p1' });
       expect(ok.ok).toBe(true);
