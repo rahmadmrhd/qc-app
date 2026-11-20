@@ -108,5 +108,13 @@ Contoh: halaman laporan rusak Serial Number (`/laporan/<token>`, 2026-11-14). Ke
 - PELAJARAN: token yang memuat titik (`v1.<id>.<exp>.<sig>`) dianggap "berkas" oleh `server/src/http/static.ts` (segmen terakhir bertitik = 404) dan oleh denylist service worker `web/src/app/pwa/server-paths.ts`, sehingga tautan 404 di produksi dan di PWA terpasang. Awalan rute kliennya harus dikecualikan di KEDUA tempat (kini `/laporan/`; tes `static.test.ts` dan `scripts/pwa-server-paths.test.ts` menjaga keduanya sejalan), atau pilih format token tanpa titik.
 - Halaman webnya route di luar layout `_app` (tanpa guard login); bila pengguna login dan berizin, DTO membawa penanda (mis. `viewerCanOpen`) agar klien mengalihkan ke halaman biasa. Token tidak pernah menambah izin.
 
+## Soft delete (model yang punya Hapus)
+Model baru yang punya Hapus/Pulihkan (spek `docs/superpowers/specs/2026-11-20-soft-delete-design.md`) wajib:
+1. Masuk `SOFT_DELETE_TABLES` (`server/src/core/soft-delete.ts`).
+2. Migrasi baru (expand-only, idempoten): kolom `deleted_at VARCHAR(30) NOT NULL DEFAULT ''` dan `deleted_by VARCHAR(254) NOT NULL DEFAULT ''`, serta indeks unik `<nama>_live` yang memuat `deleted_at` di samping indeks lama. Contoh: `server/migrations/0027_soft_delete.sql`. Jangan menyunting migrasi yang sudah diterapkan.
+3. Setiap `FROM`/`JOIN` ke tabel itu di repo memakai `liveWhere(alias)`. Tes penjaga `server/src/core/soft-delete-guard.test.ts` gagal bila ada yang tak disaring dan tak terdaftar di `SOFT_DELETE_PENDING`/`SOFT_DELETE_EXEMPT` (`soft-delete-pending.ts`).
+4. Pemetaan galat duplikat memakai `mapDuplicateError` (yang sudah sadar `_live`), dan pembanding `DbError.key` memakai `baseIndexName` (`server/src/core/index-names.ts`).
+5. Hapus dan pulihkan lewat `softDeleteStmt`/`restoreStmt` (anak ikut induk: `softDeleteWithChildren`/`restoreWithChildren`), bukan `DELETE`.
+
 ## Sumber daya sinkron
 Tidak ada lagi. Sinkron QC Desktop (`/api/v1/sync/*`) dihapus pada 2026-11-08; QC Desktop baru (Electron) dirancang di `docs/superpowers/plans/2026-11-06-qc-desktop-country-lock-fase-0-1.md`. Modul baru cukup mengikuti resep REST di atas.
