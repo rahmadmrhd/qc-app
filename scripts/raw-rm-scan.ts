@@ -112,7 +112,7 @@ function topLevelArgs(args: string): string[] {
 const CHEAP_HINT =
   /\b(?:rm|rmSync|rmdir|rmdirSync|rimraf)\b|['"]rm(?:Sync|dir|dirSync)['"]|Remove-Item/;
 
-const DIRECT_CALL = /(?<![.\w$])(?:rm|rmSync|rmdir|rmdirSync)\s*\(/;
+const RAW_CALL = /(?<![\w$])(?:rm|rmSync|rmdir|rmdirSync)\s*\(/g; // juga pemanggilan anggota (`fs.rmSync(`, `x.promises.rm(`)
 
 /**
  * Daftar pelanggaran (deskripsi pendek) di `source`. Aturan:
@@ -123,7 +123,7 @@ const DIRECT_CALL = /(?<![.\w$])(?:rm|rmSync|rmdir|rmdirSync)\s*\(/;
  *   larik perintah, termasuk `Bun.spawn`) atau templat Bun.$; string biasa (mis. muatan uji injeksi) bukan pelanggaran;
  * - gagal-aman: selain pemindaian kode (komentar dan isi string dibuang), tiap BARIS mentah yang memanggil `rm(...)` dengan
  *   `recursive` di baris yang sama dan bukan baris komentar juga dihitung, sehingga tokenizer yang keliru (apostrof di teks JSX,
- *   templat bersarang) tak dapat menyembunyikan pemanggilan. Akibatnya string satu baris yang menyerupai pemanggilan dihitung
+ *   templat bersarang) tak dapat menyembunyikan pemanggilan. Batas yang diketahui: larik argv yang dirakit lewat variabel tak ditangkap (tanpa heuristik rapuh). Akibatnya string satu baris yang menyerupai pemanggilan dihitung
  *   sebagai positif palsu dan harus dikecualikan eksplisit.
  */
 export function findRawRm(source: string): string[] {
@@ -174,11 +174,21 @@ export function findRawRm(source: string): string[] {
   if (found.length === 0) {
     for (const line of source.split('\n')) {
       if (/^\s*(?:\/\/|\/\*|\*)/.test(line)) continue;
-      if (DIRECT_CALL.test(line) && /\brecursive\b/.test(line)) {
+      if (rawLineRecursive(line)) {
         found.push('baris mentah memanggil rm(... recursive) (gagal-aman)');
         break;
       }
     }
   }
   return found;
+}
+
+/** Satu baris mentah: `recursive` harus di dalam kurung pemanggilan rm/rmdir itu sendiri (bukan `mkdir(..., { recursive })` di baris sama). */
+function rawLineRecursive(line: string): boolean {
+  RAW_CALL.lastIndex = 0;
+  for (const m of line.matchAll(RAW_CALL)) {
+    const open = (m.index ?? 0) + m[0].length - 1;
+    if (/\brecursive\b/.test(callText(line, open))) return true;
+  }
+  return false;
 }

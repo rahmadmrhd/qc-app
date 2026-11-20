@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findRawRm, stripSource } from './raw-rm-scan';
 
@@ -17,14 +17,32 @@ const EXEMPT = new Set([
   'scripts/no-raw-recursive-rm.test.ts',
 ]);
 
-/** Berkas TS/TSX terlacak atau baru (belum diabaikan git); jauh lebih cepat daripada menelusuri pohon folder. */
+/**
+ * Berkas TS/TSX terlacak atau baru (belum diabaikan git); jauh lebih cepat daripada menelusuri pohon folder. Berkas yang
+ * tercantum tetapi sudah dihapus dari disk dilewati. Tanpa `git` (atau di luar repositori) tes GAGAL dengan pesan jelas, bukan
+ * lolos diam-diam: penjaga yang tak memindai apa pun tak boleh tampak hijau.
+ */
 function listSources(): string[] {
-  const out = execFileSync(
-    'git',
-    ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*.ts', '*.tsx'],
-    { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
-  );
-  return out.split('\0').filter(Boolean);
+  let out: string;
+  try {
+    out = execFileSync(
+      'git',
+      ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*.ts', '*.tsx'],
+      {
+        cwd: ROOT,
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024 * 1024,
+      },
+    );
+  } catch (error) {
+    throw new Error(
+      `Penjaga rm rekursif butuh git untuk mendaftar berkas: ${(error as Error).message}`,
+    );
+  }
+  return out
+    .split('\0')
+    .filter(Boolean)
+    .filter((rel) => existsSync(join(ROOT, rel)));
 }
 
 function inScope(rel: string): boolean {
@@ -114,6 +132,26 @@ test('stripSource tidak memotong // di dalam string, template, atau regex', () =
   expect(findRawRm(re).length).toBe(1);
   expect(stripSource("a = '//'; // komentar\nb", false)).toBe("a = '//'; \nb");
   expect(stripSource("a = '//x'", true)).toBe("a = '   '");
+});
+
+test('gagal-aman: pemanggilan anggota di baris yang apostrofnya mengacaukan tokenizer tetap tertangkap', () => {
+  for (const source of [
+    "const t = <p>Don't</p>; fs.rmSync(d, { recursive: true });",
+    "const t = <p>Don't</p>; await fs.promises.rm(d, { recursive: true });",
+    "const t = <p>Don't</p>; x.rmdir(d, { recursive: true });",
+  ]) {
+    expect([source, findRawRm(source).length > 0]).toEqual([source, true]);
+  }
+});
+
+test('gagal-aman: recursive milik mkdir pada baris yang sama bukan pelanggaran', () => {
+  for (const source of [
+    'await mkdir(d, { recursive: true }); await rm(f, { force: true });',
+    'mkdirSync(d, { recursive: true }); rmSync(f);',
+    "const t = <p>Don't</p>; mkdirSync(d, { recursive: true }); fs.rmSync(f);",
+  ]) {
+    expect([source, findRawRm(source)]).toEqual([source, []]);
+  }
 });
 
 test('gagal-aman: string satu baris yang menyerupai pemanggilan dihitung (positif palsu terdokumentasi)', () => {
