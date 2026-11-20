@@ -355,7 +355,7 @@ export function applyLookup(
 
 /** Kunci "baris + serialnya": baris baru (id baru) atau serial yang diganti = pasangan baru yang perlu ditanyakan. */
 export function lookupKeyOf(row: StagingRow): string {
-  return `${row.clientId} ${normalizeSerial(row.serial)}`;
+  return `${row.clientId}\u0000${normalizeSerial(row.serial)}`;
 }
 
 /** Baris yang pasangan (id, serial)-nya belum ada di `done` (belum ditanyakan ke `serials.lookupMany`). */
