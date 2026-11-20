@@ -1,13 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useLayoutEffect, useState } from 'react';
+import { MAIN_MIN_WIDTH, WIDE_VIEWPORT_QUERY } from '@/lib/layout';
 
-const DESKTOP_QUERY = '(min-width: 768px)';
+export { MAIN_MIN_WIDTH };
 
-/**
- * Lebar `<main>` (px) minimum untuk tata letak lebar (tabel, kanban). Di 768-1023 px sidebar yang tersemat (256 px)
- * menyisakan `<main>` hanya 512-767 px, jadi ambang viewport 768 saja menampilkan kanban dan tabel yang tak muat
- * (temuan audit K2); yang menentukan adalah lebar ruang isi sebenarnya.
- */
-export const MAIN_MIN_WIDTH = 704;
+const DESKTOP_QUERY = WIDE_VIEWPORT_QUERY;
 
 function readMediaWide(): boolean {
   return typeof window.matchMedia === 'function' ? window.matchMedia(DESKTOP_QUERY).matches : true;
@@ -31,8 +27,14 @@ function read(): boolean {
  */
 export function useIsDesktop(): boolean {
   const [desktop, setDesktop] = useState(read);
-  useEffect(() => {
-    const update = () => setDesktop(read());
+  // Layout effect: koreksi ukuran sebelum cat pertama (tanpa kedip tabel -> kartu; review M4).
+  useLayoutEffect(() => {
+    const update = () => {
+      const next = read();
+      setDesktop(next);
+      // Satu sumber untuk CSS: varian `narrow:`/`wide:` membaca atribut ini (review I9).
+      document.documentElement.dataset.narrow = String(!next);
+    };
     update();
     const media = typeof window.matchMedia === 'function' ? window.matchMedia(DESKTOP_QUERY) : null;
     media?.addEventListener('change', update);

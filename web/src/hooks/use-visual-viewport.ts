@@ -1,3 +1,4 @@
+import { WIDE_VIEWPORT_QUERY } from '@/lib/layout';
 import { useEffect } from 'react';
 
 /** Variabel CSS di `<html>` yang mengikuti `window.visualViewport` (tinggi, geser atas, tinggi papan ketik). */
@@ -91,7 +92,7 @@ export function useFocusIntoView(): void {
     let timer: ReturnType<typeof setTimeout> | null = null;
     let target: HTMLElement | null = null;
     const phone = () =>
-      typeof window.matchMedia === 'function' && !window.matchMedia('(min-width: 768px)').matches;
+      typeof window.matchMedia === 'function' && !window.matchMedia(WIDE_VIEWPORT_QUERY).matches;
     const run = () => {
       timer = null;
       if (target && document.activeElement === target) {

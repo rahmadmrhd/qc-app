@@ -1,6 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { describeError } from '@/lib/api/describe-error';
 import { batchSummary, runChunkedBatch } from '@/lib/run-chunked-batch';
 import type { RowSelection } from './use-row-selection';
 

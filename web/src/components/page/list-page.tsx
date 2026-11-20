@@ -52,7 +52,7 @@ export function ListPage({
   const headerAction = desktop && createAction ? createAction : null;
   const hasActions = Boolean(actions) || headerAction !== null;
   return (
-    <HeadroomFrame pinned={pinned} className={fab ? 'gap-3 max-md:pb-20' : 'gap-3'}>
+    <HeadroomFrame pinned={pinned} className={fab ? 'gap-3 narrow:pb-20' : 'gap-3'}>
       <HeadroomBar tour={tour} className="space-y-3 pt-1 pb-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">

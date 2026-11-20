@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { DialogFooter, DialogHeader } from '@/components/ui/dialog';
+import { WIDE_VIEWPORT_QUERY } from '@/lib/layout';
 
 /**
  * Dialog untuk form: dibangun di atas AlertDialog Radix sehingga klik di luar (overlay) TIDAK menutupnya dan isian
@@ -78,7 +79,7 @@ function FormDialogContent({
         // Ponsel: jangan langsung memunculkan papan ketik layar (menutup separuh form); fokus ke dialog saja.
         if (
           typeof window.matchMedia === 'function' &&
-          !window.matchMedia('(min-width: 768px)').matches
+          !window.matchMedia(WIDE_VIEWPORT_QUERY).matches
         ) {
           contentRef.current?.focus();
           return;

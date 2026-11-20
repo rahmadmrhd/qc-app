@@ -112,7 +112,7 @@ export function ViewPage({
             {badge}
           </div>
           {actions || (desktop && visibleActions.length > 0) ? (
-            <div className="flex flex-wrap items-center gap-2 max-md:w-full">
+            <div className="flex flex-wrap items-center gap-2 narrow:w-full">
               {actions}
               {desktop
                 ? visibleActions.map((entry) => (

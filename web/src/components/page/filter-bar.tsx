@@ -21,7 +21,7 @@ export function FilterBar({
   children?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 max-md:flex-col max-md:flex-nowrap max-md:items-stretch">
+    <div className="flex flex-wrap items-center gap-2 narrow:flex-col narrow:flex-nowrap narrow:items-stretch">
       {search ? (
         <InputGroup className="w-full sm:w-64">
           <InputGroupAddon>
@@ -40,7 +40,7 @@ export function FilterBar({
       {children ? (
         <div
           data-slot="filter-chips"
-          className="flex items-center gap-2 max-md:min-w-0 max-md:overflow-x-auto max-md:pb-1 max-md:[scrollbar-width:none] max-md:[&::-webkit-scrollbar]:hidden md:contents"
+          className="flex items-center gap-2 narrow:min-w-0 narrow:overflow-x-auto narrow:pb-1 narrow:[scrollbar-width:none] narrow:[&::-webkit-scrollbar]:hidden wide:contents"
         >
           {children}
         </div>

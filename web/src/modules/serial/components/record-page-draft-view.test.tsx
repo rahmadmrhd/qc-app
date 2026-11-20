@@ -263,12 +263,12 @@ test('ruang untuk bar aksi ada di dasar halaman (pembungkus) hanya saat ada pili
   const { container } = renderPage();
   const wrapper = container.firstElementChild as HTMLElement;
   await screen.findByRole('button', { name: 'Ubah baris AAA111' });
-  expect(wrapper.className).not.toContain('max-md:pb-');
+  expect(wrapper.className).not.toContain('narrow:pb-');
   expect(wrapper).not.toHaveAttribute('data-selection-space');
 
   await longPress(screen.getAllByRole('listitem')[0] as HTMLElement);
   expect(screen.getAllByText('1 dipilih').length).toBeGreaterThan(0);
-  expect(wrapper.className).toContain('max-md:pb-');
+  expect(wrapper.className).toContain('narrow:pb-');
   expect(wrapper).toHaveAttribute('data-selection-space', 'on');
   // Tidak ada elemen kosong aria-hidden di antara notice/bar dan judul daftar draft.
   const heading = screen.getByRole('heading', { name: /^Draft \(/ });
@@ -281,7 +281,7 @@ test('ruang untuk bar aksi ada di dasar halaman (pembungkus) hanya saat ada pili
   expect(wrapper.querySelector('div[aria-hidden]:empty')).toBeNull();
 
   await userEvent.click(screen.getByRole('button', { name: 'Batalkan pilihan' }));
-  expect(wrapper.className).not.toContain('max-md:pb-');
+  expect(wrapper.className).not.toContain('narrow:pb-');
   expect(wrapper).not.toHaveAttribute('data-selection-space');
 });
 
