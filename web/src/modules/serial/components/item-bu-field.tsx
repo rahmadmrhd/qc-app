@@ -1,9 +1,12 @@
-import type { SerialItemOptionDto } from '@shared/contract';
+import type { ItemDto, SerialItemOptionDto } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
 import { proofMinimumOf } from '@shared/serials';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { LinkField, type LinkOption } from '@/components/link-field';
+import { serialItemCreateAccess } from '@/lib/link-access';
+import { meQueryOptions } from '@/modules/auth/queries';
+import { ItemFormDialog } from '@/modules/item/components/item-form-dialog';
 import { serialBuOptionsQueryOptions, serialItemOptionsQueryOptions } from '../queries';
 
 /** Item dan BU yang dipilih pada rombongan, baris, atau ubah massal. */
@@ -78,6 +81,10 @@ export function ItemBuField({
   const [term, setTerm] = useState('');
   const [buTerm, setBuTerm] = useState('');
   const [picked, setPicked] = useState<SerialItemOptionDto | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  // Tanpa suspense: data pengguna sudah dimuat cangkang; bila belum, baris Tambah item sekadar tak tampil.
+  const create = serialItemCreateAccess(useQuery(meQueryOptions()).data);
+  const queryClient = useQueryClient();
   const { data, isFetching } = useQuery(serialItemOptionsQueryOptions(term.trim()));
   const { data: buData, isPending: buPending } = useQuery(serialBuOptionsQueryOptions());
   const known = new Map<string, SerialItemOptionDto>();
@@ -87,6 +94,10 @@ export function ItemBuField({
     id: item.id,
     label: item.label,
   }));
+  // Item yang baru dibuat dari dialog tetap tampil di pilihan sebelum muat ulang daftar server.
+  if (picked && !options.some((option) => option.id === picked.id)) {
+    options.unshift({ id: picked.id, label: picked.label });
+  }
 
   // Daftar BU tulis belum ada (memuat atau gagal): pilihan sementara = BU item terpilih, supaya field tetap dapat dipakai.
   const allBus: { id: string; code: string }[] | null = buData
@@ -98,6 +109,23 @@ export function ItemBuField({
   const buLinkOptions: LinkOption[] = buChoices
     .map((bu) => ({ id: bu.id, label: bu.code }))
     .filter((option) => buKey === '' || normalizeKey(option.label).includes(buKey));
+
+  function pickCreated(created: ItemDto) {
+    const allowed = create.allowedBuIds;
+    const option: SerialItemOptionDto = {
+      id: created.id,
+      label: `${created.brand} ${created.model}`,
+      buIds: created.businessUnits.filter((bu) => allowed.includes(bu.id)).map((bu) => bu.id),
+      buOptions: created.businessUnits
+        .filter((bu) => allowed.includes(bu.id))
+        .map((bu) => ({ id: bu.id, code: bu.code })),
+      proofRequired: created.proofRequired,
+      proofMin: created.proofMin,
+    };
+    known.set(option.id, option);
+    void queryClient.invalidateQueries({ queryKey: ['serial', 'itemOptions'] });
+    pickItem(option.id);
+  }
 
   function pickItem(id: string | null) {
     if (id === null) {
@@ -135,10 +163,19 @@ export function ItemBuField({
           onSearchChange={setTerm}
           searchDebounceMs={200}
           onChange={pickItem}
+          onCreate={create.canCreate && !disabled ? () => setCreateOpen(true) : undefined}
           error={error}
           disabled={disabled ?? false}
         />
       </div>
+      {create.canCreate ? (
+        <ItemFormDialog
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          allowedBuIds={create.allowedBuIds}
+          onCreated={pickCreated}
+        />
+      ) : null}
       <div className="space-y-1.5">
         <LinkField
           id={`${idPrefix}-bu`}

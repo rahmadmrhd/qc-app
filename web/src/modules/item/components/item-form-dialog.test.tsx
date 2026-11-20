@@ -34,6 +34,7 @@ const brands: BrandDto[] = [
 
 const businessUnits: BusinessUnitOptionDto[] = [
   { id: 'bu-a', code: 'RTL', name: 'Retail', status: 'active' },
+  { id: 'bu-b', code: 'WHL', name: 'Wholesale', status: 'active' },
   { id: 'bu-x', code: 'XTR', name: 'Xtra', status: 'active' },
 ];
 
@@ -88,7 +89,11 @@ beforeEach(() => {
   });
 });
 
-async function mount(onCreated = vi.fn(), onOpenChange = vi.fn()) {
+async function mount(
+  onCreated = vi.fn(),
+  onOpenChange = vi.fn(),
+  allowedBuIds?: readonly string[],
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   // Hanya bu-a yang boleh diedit; bu-x tidak punya level item.
   client.setQueryData(
@@ -100,6 +105,13 @@ async function mount(onCreated = vi.fn(), onOpenChange = vi.fn()) {
           id: 'bu-a',
           code: 'RTL',
           name: 'Retail',
+          status: 'active',
+          permissions: { item: 'edit', serial: 'none', serialservice: 'none' },
+        },
+        {
+          id: 'bu-b',
+          code: 'WHL',
+          name: 'Wholesale',
           status: 'active',
           permissions: { item: 'edit', serial: 'none', serialservice: 'none' },
         },
@@ -117,7 +129,12 @@ async function mount(onCreated = vi.fn(), onOpenChange = vi.fn()) {
     render(
       <QueryClientProvider client={client}>
         <Suspense fallback={<p>memuat</p>}>
-          <ItemFormDialog open onOpenChange={onOpenChange} onCreated={onCreated} />
+          <ItemFormDialog
+            open
+            onOpenChange={onOpenChange}
+            onCreated={onCreated}
+            allowedBuIds={allowedBuIds}
+          />
         </Suspense>
       </QueryClientProvider>,
     );
@@ -131,7 +148,14 @@ test('field BU hanya menawarkan BU yang boleh diedit pengguna', async () => {
   await mount();
   await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
   const names = (await screen.findAllByRole('option')).map((option) => option.textContent);
-  expect(names).toEqual(['Retail (RTL)']);
+  expect(names).toEqual(['Retail (RTL)', 'Wholesale (WHL)']);
+});
+
+test('allowedBuIds membatasi pilihan BU ke irisan dengan BU yang boleh diedit', async () => {
+  await mount(vi.fn(), vi.fn(), ['bu-b', 'bu-x']);
+  await userEvent.click(screen.getByRole('combobox', { name: 'BU' }));
+  const names = (await screen.findAllByRole('option')).map((option) => option.textContent);
+  expect(names).toEqual(['Wholesale (WHL)']);
 });
 
 test('menyimpan memanggil items.save, lalu onCreated dengan item tersimpan dan dialog menutup', async () => {

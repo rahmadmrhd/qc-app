@@ -13,15 +13,18 @@ interface ItemFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated: (item: ItemDto) => void;
+  /** Membatasi BU dialog (mis. irisan hak modul lain, `serialItemCreateAccess`); kosong = semua BU yang boleh diedit. */
+  allowedBuIds?: readonly string[] | undefined;
 }
 
-function OpenItemFormDialog({ open, onOpenChange, onCreated }: ItemFormDialogProps) {
+function OpenItemFormDialog({ open, onOpenChange, onCreated, allowedBuIds }: ItemFormDialogProps) {
   const brands = useQuery(brandsQueryOptions());
   const businessUnits = useQuery(businessUnitOptionsQueryOptions());
   const stickers = useQuery(stickersQuery());
   const stickerTypes = useQuery(stickerTypesQuery());
   const ready = brands.data && businessUnits.data && stickers.data && stickerTypes.data;
   const { formProps, submitting } = useItemFormController({
+    allowedBusinessUnitIds: allowedBuIds,
     lists: {
       brands: brands.data ?? [],
       businessUnits: businessUnits.data ?? [],

@@ -58,11 +58,14 @@ export function useItemFormController({
   item,
   lists,
   onSaved,
+  allowedBusinessUnitIds,
 }: {
   /** Item yang diubah; kosong = item baru. */
   item?: ItemDto | undefined;
   lists: ItemFormLists;
   onSaved: (saved: ItemDto) => void | Promise<void>;
+  /** Membatasi BU yang boleh dipilih (irisan dengan BU `item: edit` user); kosong = semua BU yang boleh diedit. */
+  allowedBusinessUnitIds?: readonly string[] | undefined;
 }) {
   const me = useMe();
   const saveItem = useSaveItem();
@@ -95,7 +98,9 @@ export function useItemFormController({
     businessUnits: item
       ? mergeBusinessUnits(lists.businessUnits, item.businessUnits)
       : lists.businessUnits,
-    editableBusinessUnitIds: liveBuIdsWithLevelOf(me, 'item', 'edit'),
+    editableBusinessUnitIds: liveBuIdsWithLevelOf(me, 'item', 'edit').filter(
+      (id) => !allowedBusinessUnitIds || allowedBusinessUnitIds.includes(id),
+    ),
     onCreateBrand: can(me, 'item', 'edit') ? (input) => saveBrand.mutateAsync(input) : undefined,
     onCreateBusinessUnit: links.canCreateBusinessUnit
       ? (input) => saveBusinessUnit.mutateAsync(input)

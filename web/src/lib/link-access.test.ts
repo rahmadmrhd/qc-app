@@ -9,6 +9,7 @@ import {
   itemLinkAccess,
   manualBookLinkAccess,
   postelLinkAccess,
+  serialItemCreateAccess,
   stickerTypeLinkAccess,
 } from './link-access';
 
@@ -135,4 +136,40 @@ test('itemLinkAccess.canCreate: item edit pada BU aktif; view saja, BU nonaktif,
   ).toBe(false);
   expect(itemLinkAccess(null).canCreate).toBe(false);
   expect(itemLinkAccess(makeMe({ itemLevel: 'view' })).openItemHref?.('i 1')).toBe('/item/i%201');
+});
+
+function bu(
+  id: string,
+  item: Level,
+  serial: Level,
+  extra: { status?: 'active' | 'inactive'; deleted?: boolean } = {},
+) {
+  return {
+    id,
+    code: id.toUpperCase(),
+    name: id,
+    status: extra.status ?? 'active',
+    ...(extra.deleted ? { deleted: true } : {}),
+    permissions: { item, serial, serialservice: 'none' },
+  } as MeDto['businessUnits'][number];
+}
+
+test('serialItemCreateAccess: irisan BU aktif dengan item edit DAN serial edit; terhapus, nonaktif, atau salah satu saja tidak', () => {
+  const me = makeMe({
+    businessUnits: [
+      bu('a', 'edit', 'edit'),
+      bu('b', 'edit', 'view'),
+      bu('c', 'view', 'edit'),
+      bu('d', 'edit', 'edit', { deleted: true }),
+      bu('e', 'edit', 'edit', { status: 'inactive' }),
+      bu('f', 'manage', 'manage'),
+    ],
+  });
+  expect(serialItemCreateAccess(me)).toEqual({ canCreate: true, allowedBuIds: ['a', 'f'] });
+});
+
+test('serialItemCreateAccess: irisan kosong atau tanpa me = tanpa Tambah', () => {
+  const none = makeMe({ businessUnits: [bu('a', 'edit', 'view'), bu('b', 'view', 'edit')] });
+  expect(serialItemCreateAccess(none)).toEqual({ canCreate: false, allowedBuIds: [] });
+  expect(serialItemCreateAccess(null).canCreate).toBe(false);
 });
