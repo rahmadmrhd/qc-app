@@ -70,7 +70,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'manual_book_versions@8#6e617267',
     'manual_book_versions@9#6e617267',
   ],
-  'server/src/modules/sticker/service.ts': ['postels@1#27c4fac2'],
   'server/src/modules/sticker/stock-repo.ts': [
     'stickers@1#5b8116d4',
     'sticker_types@1#5b8116d4',
@@ -86,16 +85,8 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
   // Ekspor Sheets: `files` (pemilik stiker/pustaka fase 4a, QR/postel fase 4b) dan `qr_documents` belum disaring
   // (pemilik `item` sudah, fase 3). Setelah semuanya disaring, pindahkan kuncinya ke SOFT_DELETE_EXEMPT dengan alasan.
   'server/src/modules/jobs/sheets-export.ts': ['*dinamis@1#62151e07'],
-  'server/src/modules/postel/repo.ts': [
-    'postels@1#0eefd984',
-    'postels@2#b320a3de',
-    'postels@3#af56c3ec',
-    'postel_numbers@1#3c3bd5ee',
-    'postel_numbers@2#5b246666',
-  ],
   'server/src/modules/postel/stickers.ts': [
-    'stickers@1#72c37a09',
-    'stickers@2#a3e7cae4',
+    'stickers@1#1337aea8',
     'stickers@3#53d6d36d',
     'postels@1#53d6d36d',
   ],
@@ -422,4 +413,8 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Stiker versi dibaca menurut id konfigurasi yang dikunci dan sedang dihapus/dipulihkan dalam batch yang sama (harus melihat semua versi, juga untuk konfigurasi yang baru ditandai terhapus).',
   'server/src/modules/qrcode/soft-delete.ts#manual_book_versions@2#8762d12f':
     'Stiker versi dibaca menurut id konfigurasi yang dikunci dan sedang dihapus/dipulihkan dalam batch yang sama (harus melihat semua versi, juga untuk konfigurasi yang baru ditandai terhapus).',
+  'server/src/modules/postel/repo.ts#postels@3#ba7e9c63':
+    'Baca catatan menurut id (hidup atau terhapus); pemanggil menilai `deletedAt` (hak baca pemulih, simpan, hapus/pulihkan).',
+  'server/src/modules/postel/repo.ts#postel_numbers@3#fbcdf7ae':
+    'Nomor catatan TERHAPUS menurut id catatan yang sudah lolos pemeriksaan hak di pemanggil: nomor anak ikut `deleted_at` induknya, jadi tak disaring hidup.',
 };

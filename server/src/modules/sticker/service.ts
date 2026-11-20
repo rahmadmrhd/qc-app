@@ -6,6 +6,7 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import type { AppError } from '@server/core/errors';
 import { appError, staleError } from '@server/core/errors';
+import { liveWhere } from '@server/core/soft-delete';
 import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
 import type { BrandBuBrief } from '@server/modules/brand/repo';
 import { activeBuGuardStmt, listBuBriefs } from '@server/modules/brand/repo';
@@ -512,9 +513,12 @@ async function setStickerStatusOnce(
       status: DEPRECATED_ACTIVATE_MESSAGE,
     });
   }
-  // Stiker Postel milik catatan yang sudah dihapus tak berguna lagi: tidak dapat diaktifkan kembali.
+  // Stiker Postel milik catatan yang sudah dihapus (permanen atau hapus lunak) tak berguna lagi: tidak dapat diaktifkan
+  // kembali; Pulihkan catatannya mengembalikan stiker itu menjadi `inactive` yang dapat diaktifkan.
   if (input.status === 'active' && type !== undefined && type.systemKind === 'postel') {
-    const tied = await env.DB.prepare('SELECT 1 AS tied FROM postels WHERE sticker_id = ? LIMIT 1')
+    const tied = await env.DB.prepare(
+      `SELECT 1 AS tied FROM postels WHERE ${liveWhere()} AND sticker_id = ? LIMIT 1`,
+    )
       .bind(sticker.id)
       .first<{ tied: number }>();
     if (!tied) {

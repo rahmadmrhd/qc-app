@@ -369,7 +369,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     path: '/postels/item-options',
     query: { query: 'string', cursor: 'string', limit: 'number' },
   },
-  'postels.list': { verb: 'GET', path: '/postels' },
+  'postels.list': { verb: 'GET', path: '/postels', query: { status: 'string' } },
   // Serial Number: rute statis (`item-options`, `sticker-options`) didaftarkan SEBELUM `/serials/{id}` kelak.
   'serials.itemOptions': {
     verb: 'GET',
@@ -435,6 +435,10 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     etag: 'updatedAt',
   },
   'postels.remove': { verb: 'DELETE', path: '/postels/{id}' },
+  // `/postels/batch/delete` dan `/postels/batch/restore` SEBELUM `/postels/{id}/restore` (jalur statis lebih dulu).
+  'postels.removeBatch': { verb: 'POST', path: '/postels/batch/delete' },
+  'postels.restoreBatch': { verb: 'POST', path: '/postels/batch/restore' },
+  'postels.restore': { verb: 'POST', path: '/postels/{id}/restore', etag: 'updatedAt' },
   'serialSettings.get': { verb: 'GET', path: '/serial-settings', etag: 'updatedAt' },
   'serialSettings.save': {
     verb: 'PUT',

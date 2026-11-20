@@ -240,7 +240,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     reason: 'Logo diganti',
   },
   'qrcodes.file': { id: 'q1', kind: 'pdf' },
-  'postels.list': null,
+  'postels.list': { status: 'deleted' },
   'postels.get': { id: 'p1' },
   'postels.save': {
     id: 'p1',
@@ -254,6 +254,9 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     attachmentIds: [],
   },
   'postels.remove': { id: 'p1' },
+  'postels.removeBatch': { ids: ['p1', 'p2'] },
+  'postels.restore': { id: 'p1' },
+  'postels.restoreBatch': { ids: ['p1', 'p2'] },
   'postelSettings.get': null,
   'postelSettings.save': {
     expectedUpdatedAt: '2026-11-11T00:00:00.000Z',
@@ -434,6 +437,7 @@ describe('tabel rute', () => {
     const cases: [string, string, string][] = [
       ['qrcodes', 'restore', '/qrcodes'],
       ['qrcodes', 'restorePreset', '/qrcode-presets'],
+      ['postels', 'restore', '/postels'],
     ];
     for (const [group, single, base] of cases) {
       const batch = single === 'restorePreset' ? 'restorePresetBatch' : `${single}Batch`;
@@ -444,6 +448,7 @@ describe('tabel rute', () => {
     expect(API_ROUTES['qrcodes.removeBatch'].path).toBe('/qrcodes/batch/delete');
     expect(API_ROUTES['qrcodes.removePresetBatch'].path).toBe('/qrcode-presets/batch/delete');
     expect(API_ROUTES['qrcodes.getPreset'].path).toBe('/qrcode-presets/{id}');
+    expect(API_ROUTES['postels.removeBatch'].path).toBe('/postels/batch/delete');
   });
 
   test('tiap id punya jalur+verba unik (termasuk jalur create)', () => {

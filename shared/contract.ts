@@ -1328,10 +1328,15 @@ export interface ApiContract {
   'qrcodes.cloneFromDrive': { input: CloneQrPdfInput; output: QrDocumentDto };
   'qrcodes.export': { input: ExportQrDesignInput; output: ExportQrJobDto };
   'qrcodes.file': { input: QrFileInput; output: QrFileDto };
-  'postels.list': { input: null; output: PostelListDto };
+  /** Catatan terhapus hanya bagi `sticker: edit` (`status=deleted`; selain itu `FORBIDDEN`). */
+  'postels.list': { input: ListPostelsInput | null; output: PostelListDto };
   'postels.get': { input: GetPostelInput; output: PostelDto };
   'postels.save': { input: SavePostelInput; output: PostelDto };
+  /** Hapus lunak (id dan bentuk lama tetap; perilaku beralih dari hapus keras). */
   'postels.remove': { input: RemovePostelInput; output: null };
+  'postels.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'postels.restore': { input: GetPostelInput; output: PostelDto };
+  'postels.restoreBatch': { input: IdBatchInput; output: BatchResult<PostelDto> };
   'postels.history': { input: ListPostelHistoryInput; output: AuditCursorPageDto };
   'postelSettings.get': { input: null; output: PostelSettingsDto };
   'postelSettings.save': { input: SavePostelSettingsInput; output: PostelSettingsDto };

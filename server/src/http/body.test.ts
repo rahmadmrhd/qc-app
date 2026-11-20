@@ -66,6 +66,8 @@ const WORST: Inputs = {
   'qrcodes.restoreBatch': { ids: BATCH_IDS },
   'qrcodes.removePresetBatch': { ids: BATCH_IDS },
   'qrcodes.restorePresetBatch': { ids: BATCH_IDS },
+  'postels.removeBatch': { ids: BATCH_IDS },
+  'postels.restoreBatch': { ids: BATCH_IDS },
   'stickerSettings.save': {
     expectedUpdatedAt: STAMP,
     alert: {

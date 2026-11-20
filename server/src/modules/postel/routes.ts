@@ -1,4 +1,5 @@
 import type { RouteTable } from '@server/core/router';
+import { validateIdBatch } from '@server/core/soft-delete';
 import { expectNull } from '@server/core/validate';
 import { getPostelSettings, savePostelSettings } from './alert';
 import { readPostelFile, uploadPostelFile } from './attachments';
@@ -7,14 +8,15 @@ import {
   listPostels,
   postelHistory,
   queryPostelItemOptions,
-  removePostel,
   savePostel,
 } from './service';
+import { removePostel, removePostelBatch, restorePostel, restorePostelBatch } from './soft-delete';
 import {
   validateGetPostel,
   validateGetPostelFile,
   validateListPostelHistory,
   validateListPostelItemOptions,
+  validateListPostels,
   validateRemovePostel,
   validateSavePostel,
   validateSavePostelSettings,
@@ -26,6 +28,9 @@ type PostelMethod =
   | 'postels.get'
   | 'postels.save'
   | 'postels.remove'
+  | 'postels.removeBatch'
+  | 'postels.restore'
+  | 'postels.restoreBatch'
   | 'postels.history'
   | 'postelSettings.get'
   | 'postelSettings.save'
@@ -38,8 +43,8 @@ export function postelRoutes(): Pick<RouteTable, PostelMethod> {
   return {
     'postels.list': {
       permission: { module: 'sticker', level: 'view' },
-      validate: expectNull,
-      handler: (_input, ctx) => listPostels(ctx.env, ctx.user),
+      validate: validateListPostels,
+      handler: (input, ctx) => listPostels(ctx.env, ctx.user, input),
     },
     'postels.get': {
       permission: { module: 'sticker', level: 'view' },
@@ -54,12 +59,27 @@ export function postelRoutes(): Pick<RouteTable, PostelMethod> {
     'postels.remove': {
       permission: { module: 'sticker', level: 'edit' },
       validate: validateRemovePostel,
-      handler: (input, ctx) => removePostel(ctx.env, input.id, ctx.user),
+      handler: (input, ctx) => removePostel(ctx.env, input, ctx.user),
+    },
+    'postels.removeBatch': {
+      permission: { module: 'sticker', level: 'edit' },
+      validate: validateIdBatch,
+      handler: (input, ctx) => removePostelBatch(ctx.env, input, ctx.user),
+    },
+    'postels.restore': {
+      permission: { module: 'sticker', level: 'edit' },
+      validate: validateGetPostel,
+      handler: (input, ctx) => restorePostel(ctx.env, input, ctx.user),
+    },
+    'postels.restoreBatch': {
+      permission: { module: 'sticker', level: 'edit' },
+      validate: validateIdBatch,
+      handler: (input, ctx) => restorePostelBatch(ctx.env, input, ctx.user),
     },
     'postels.history': {
       permission: { module: 'sticker', level: 'view' },
       validate: validateListPostelHistory,
-      handler: (input, ctx) => postelHistory(ctx.env, input.id, input),
+      handler: (input, ctx) => postelHistory(ctx.env, input.id, input, ctx.user),
     },
     'postelSettings.get': {
       permission: { module: 'sticker', level: 'manage' },

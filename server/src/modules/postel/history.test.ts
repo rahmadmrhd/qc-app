@@ -228,16 +228,22 @@ describe('postels.history', () => {
     expect((await rest.get(path, { email: null })).status).toBe(401);
   });
 
-  test('catatan tak dikenal atau sudah dihapus = NOT_FOUND; riwayatnya tetap ada di access.audit.list', async () => {
+  test('catatan tak dikenal = NOT_FOUND; yang dihapus lunak hanya terbaca pemegang sticker edit; riwayatnya ada di access.audit.list', async () => {
     const missing = await call(ADMIN, 'postels.history', { id: 'tidak-ada' });
     expect(missing.ok).toBe(false);
     expect(missing.error?.code).toBe('NOT_FOUND');
 
     const postel = await create();
     expect((await call(ADMIN, 'postels.remove', { id: postel.id })).ok).toBe(true);
-    const gone = await call(ADMIN, 'postels.history', { id: postel.id });
+    const gone = await call(VIEWER, 'postels.history', { id: postel.id });
     expect(gone.ok).toBe(false);
     expect(gone.error?.code).toBe('NOT_FOUND');
+    const visible = await call(ADMIN, 'postels.history', { id: postel.id });
+    expect(visible.ok).toBe(true);
+    expect((visible.data as Json).entries.map((e: Json) => e.action)).toEqual([
+      'postel.delete',
+      'postel.create',
+    ]);
     const audit = await call(ADMIN, 'access.audit.list', {
       query: `postel:${postel.id as string}`,
     });
