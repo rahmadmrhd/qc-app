@@ -1,9 +1,14 @@
 import type { DesktopReleaseDto } from '@shared/contract';
 import { compareVersions, RELEASE_ARCHS } from '@shared/desktop-release';
+import { base64ToBytes } from '../../core/bytes';
 import type { ServedRelease } from './app-release';
 
 /** Awalan rute publik unduhan installer (`desktopApp.get('/app-file/*')`). */
 const APP_FILE_PATH = '/api/desktop/app-file';
+
+function hexOf(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
 
 /**
  * Manifest rilis -> DTO daftar unduhan. `sha512` manifest berbentuk base64 (konvensi `electron-updater`), sedangkan
@@ -18,7 +23,7 @@ export function toReleaseDto(release: ServedRelease): DesktopReleaseDto {
       arch: file.arch,
       name: file.name,
       size: file.size,
-      sha512: Buffer.from(file.sha512, 'base64').toString('hex'),
+      sha512: hexOf(base64ToBytes(file.sha512)),
       url: `${APP_FILE_PATH}/${encodeURIComponent(manifest.version)}/${encodeURIComponent(file.name)}`,
     }));
   return {
