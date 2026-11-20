@@ -37,6 +37,9 @@ import { readSidebarState, writeSidebarState } from './sidebar-state';
 const GUIDE_DOT_CLASS =
   'ml-auto size-2 shrink-0 rounded-full bg-primary group-data-[collapsible=icon]:hidden';
 
+/** Butir aktif di popover mode ikon: samakan dengan butir aktif sidebar terbuka (latar aksen + tebal). */
+const POPOVER_ACTIVE_CLASS = 'data-[active]:bg-accent data-[active]:font-medium';
+
 export function AppSidebar() {
   const me = useMe();
   const { selectedIds } = useActiveLocations();
@@ -59,10 +62,11 @@ export function AppSidebar() {
     });
   }
 
-  function itemLink(item: NavItem) {
+  function itemLink(item: NavItem, className?: string) {
     return (
       <Link
         to={item.to}
+        className={className}
         data-active={isActive(item) || undefined}
         onClick={
           item.opensDesktopApp && !isDesktop()
@@ -117,7 +121,7 @@ export function AppSidebar() {
               <DropdownMenuLabel>{parent.label}</DropdownMenuLabel>
               {parent.children.map((child) => (
                 <DropdownMenuItem key={child.to as string} asChild>
-                  {itemLink(child)}
+                  {itemLink(child, POPOVER_ACTIVE_CLASS)}
                 </DropdownMenuItem>
               ))}
             </DropdownMenuContent>

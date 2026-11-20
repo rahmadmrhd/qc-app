@@ -65,6 +65,8 @@ describe('GuideBanner', () => {
     expect(banner).toHaveAttribute('data-slot', 'alert');
     expect(banner).toHaveAttribute('data-color', 'info');
     expect(banner).toHaveAttribute('role', 'status');
+    // Teks kecil di atas tint alert memakai --foreground (lolos AA); muted-foreground hanya 4,49:1.
+    expect(banner.innerHTML).not.toContain('text-muted-foreground');
     expect(banner).toHaveTextContent('Ada panduan 4 langkah.');
     expect(screen.getByRole('button', { name: 'Mulai' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Nanti' })).toBeInTheDocument();

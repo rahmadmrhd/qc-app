@@ -40,6 +40,9 @@ interface CrumbMatch {
   search?: Record<string, unknown>;
 }
 
+/** Search param yang dibawa crumb butir menu bila rute aktif memilikinya (mis. filter Serah Terima). */
+const NAV_SEARCH_KEYS: Record<string, readonly string[]> = { '/handover': ['status', 'loc'] };
+
 /**
  * Susunan breadcrumb: label induk menu (tanpa tautan), butir menu aktif, lalu crumb tiap rute yang cocok
  * dari akar ke daun. Fungsi crumb yang mengembalikan `undefined` dilewati (data belum ada).
@@ -52,7 +55,18 @@ export function buildCrumbs(input: {
   const parts: CrumbPart[] = [];
   if (input.trail) {
     if (input.trail.parent) parts.push({ label: input.trail.parent.label });
-    parts.push({ label: input.trail.item.label, to: input.trail.item.to });
+    const keys = NAV_SEARCH_KEYS[input.trail.item.to];
+    const current = input.matches[input.matches.length - 1]?.search ?? {};
+    const search = keys
+      ? Object.fromEntries(
+          keys.flatMap((key) => (current[key] === undefined ? [] : [[key, current[key]]])),
+        )
+      : {};
+    parts.push({
+      label: input.trail.item.label,
+      to: input.trail.item.to,
+      ...(Object.keys(search).length > 0 ? { search } : {}),
+    });
   }
   for (const match of input.matches) {
     const spec = match.staticData?.crumb;

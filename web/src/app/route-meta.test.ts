@@ -61,6 +61,26 @@ test('Beranda tanpa crumb rute = tanpa breadcrumb; crumb rute di Beranda tetap t
   ).toEqual(['Beranda', 'Sesuatu']);
 });
 
+test('butir menu Serah Terima mempertahankan status dan loc dari rute aktif', () => {
+  const handover = { parent: null, item: { label: 'Serah Terima', to: '/handover' } };
+  const parts = buildCrumbs({
+    trail: handover,
+    matches: [
+      { staticData: { crumb: 'Ubah' }, params: {}, search: { status: 'open', loc: 'L1', x: 1 } },
+    ],
+    queryClient,
+  });
+  expect(parts[0]).toEqual({
+    label: 'Serah Terima',
+    to: '/handover',
+    search: { status: 'open', loc: 'L1' },
+  });
+  expect(buildCrumbs({ trail: handover, matches: [{ params: {} }], queryClient })[0]).toEqual({
+    label: 'Serah Terima',
+    to: '/handover',
+  });
+});
+
 test('crumb menerima search rute dan meneruskannya ke tautan', () => {
   const spec: CrumbSpec = ({ search }) => ({
     label: 'Detail',

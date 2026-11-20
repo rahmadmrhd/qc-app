@@ -107,7 +107,7 @@ export function GuideBanner() {
       <div className="flex flex-col gap-2 text-foreground sm:flex-row sm:items-center sm:gap-3">
         <p className="min-w-0 flex-1">
           <span className="font-medium">Pertama kali di {pageLabel(offer)}?</span>{' '}
-          <span className="text-muted-foreground">Ada panduan {stepCount} langkah.</span>
+          <span className="text-foreground">Ada panduan {stepCount} langkah.</span>
           {offer.updated ? (
             <Badge variant="secondary" className="ml-2 align-middle">
               Diperbarui

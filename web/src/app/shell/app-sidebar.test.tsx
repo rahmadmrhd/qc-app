@@ -150,7 +150,9 @@ describe('AppSidebar submenu', () => {
     parent.focus();
     await userEvent.keyboard('{Enter}');
     const active = await screen.findByRole('menuitem', { name: /Katalog/ });
-    expect(active.querySelector('[data-active]') ?? active).toHaveAttribute('data-active');
+    const link = active.querySelector('[data-active]') ?? active;
+    expect(link).toHaveAttribute('data-active');
+    expect(link.className).toContain('data-[active]:bg-accent');
   });
 
   test('titik panduan pada induk bila salah satu anak punya panduan', () => {
