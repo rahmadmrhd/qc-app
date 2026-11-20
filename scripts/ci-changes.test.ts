@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { removeTempDirSync } from '../server/test-support/safe-rm';
 import { ALL_CHANGES, type Changes, classify, formatOutputs, MAX_FILES } from './ci-changes';
 import { ROOT_DIR } from './paths';
 
@@ -197,7 +198,7 @@ describe('formatOutputs dan CLI', () => {
       expect(written).toContain('server_tests=false');
       expect(await new Response(proc.stdout).text()).toContain('web_tests=true');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     }
   });
 });

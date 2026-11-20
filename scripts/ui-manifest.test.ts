@@ -4,7 +4,6 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  rmSync,
   statSync,
   symlinkSync,
   writeFileSync,
@@ -18,6 +17,7 @@ import {
   UI_MIN_BRIDGE_VERSION,
   verifyUiManifest,
 } from '../countrylock/src/ui-manifest';
+import { removeTempDirSync } from '../server/test-support/safe-rm';
 import { buildUiManifest, writeUiManifest } from './build-ui-manifest';
 import { generateSigningKey } from './gen-ui-signing-key';
 import { signDistManifest } from './sign-ui-manifest';
@@ -58,7 +58,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true });
+  removeTempDirSync(root);
 });
 
 describe('buildUiManifest', () => {

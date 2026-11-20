@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { removeTempDir } from '../../../../test-support/safe-rm';
 import { createProofStore, isStagedName, newStagedName, type ProofStore } from './store';
 
 let root = '';
@@ -15,7 +16,9 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await rm(root, { recursive: true, force: true });
+  // Penjaga: `rm('')` menghapus isi direktori kerja bila `beforeEach` gagal sebelum `root` terisi.
+  if (root) await removeTempDir(root);
+  root = '';
 });
 
 describe('newStagedName', () => {

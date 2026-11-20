@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { removeTempDirSync } from '../server/test-support/safe-rm';
 import {
   ChangelogError,
   type CliDeps,
@@ -328,7 +329,7 @@ describe('realDeps.listDir', () => {
       expect(deps.listDir('desktop/changelog.d')).toEqual([]);
       expect(deps.listDir('server/changelog.d').sort()).toEqual(['20261117-a.md', 'sub/']);
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      removeTempDirSync(root);
     }
   });
 
@@ -339,7 +340,7 @@ describe('realDeps.listDir', () => {
       writeFileSync(join(root, 'server/changelog.d'), 'bukan folder');
       expect(() => realDeps(root).listDir('server/changelog.d')).toThrow();
     } finally {
-      rmSync(root, { recursive: true, force: true });
+      removeTempDirSync(root);
     }
   });
 
