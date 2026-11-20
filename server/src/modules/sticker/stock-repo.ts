@@ -70,6 +70,18 @@ export function stickerStatusStatement(db: Preparer, stickerId: string): DbState
     .bind(stickerId);
 }
 
+/**
+ * Status stiker HIDUP dan jenisnya untuk banyak id sekaligus (entri stok batch; satu kueri). Stiker terhapus atau tak
+ * dikenal tidak muncul di hasil. Dibaca sebelum menulis; penjaga CAS di batch tetap menjadi pagar.
+ */
+export function stickersStatusStatement(db: Preparer, ids: readonly string[]): DbStatement {
+  return db
+    .prepare(
+      `SELECT s.id AS id, s.status AS status, t.status AS type_status FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id IN (${ids.map(() => '?').join(',')}) AND ${liveWhere('s')}`,
+    )
+    .bind(...ids);
+}
+
 export function stockQtyStatement(
   db: Preparer,
   stickerId: string,

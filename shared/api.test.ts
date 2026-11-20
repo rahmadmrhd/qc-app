@@ -127,6 +127,21 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     reason: '',
   },
   'stickerStock.adjust': { locationId: 'l1', stickerId: 's1', delta: -2, reason: 'rusak' },
+  'stickerStock.recordBatch': {
+    kind: 'out',
+    reason: 'kirim',
+    rows: [
+      { stickerId: 's1', locationId: 'l1', quantity: 3 },
+      { stickerId: 's2', locationId: 'l1', count: { rows: [], loose: 4 } },
+    ],
+  },
+  'stickerStock.adjustBatch': {
+    reason: 'rusak',
+    rows: [
+      { stickerId: 's1', locationId: 'l1', delta: -2 },
+      { stickerId: 's2', locationId: 'l2', delta: 5 },
+    ],
+  },
   'stickerStock.opname': {
     rows: [{ stickerId: 's1', locationId: 'l1', expectedQty: 10, count: { rows: [], loose: 12 } }],
   },

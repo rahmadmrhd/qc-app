@@ -3,6 +3,8 @@ import type { ObjectReader } from '@server/core/validate';
 import { readObject } from '@server/core/validate';
 import { validateLocationIds } from '@server/modules/handover/validate';
 import type {
+  AdjustStockBatchInput,
+  AdjustStockBatchRow,
   AdjustStockInput,
   GetStickerInput,
   GetStickerTypeInput,
@@ -11,6 +13,8 @@ import type {
   ListStickerTypesInput,
   OpnameInput,
   OpnameRowInput,
+  RecordStockBatchInput,
+  RecordStockBatchRow,
   RecordStockInput,
   SaveStickerInput,
   SaveStickerSettingsInput,
@@ -478,4 +482,112 @@ export function validateSaveStickerSettings(raw: unknown): SaveStickerSettingsIn
   const defaults = readDefaults(reader.raw('defaults'), reader);
   reader.done();
   return { expectedUpdatedAt, alert, defaults };
+}
+
+/** Membaca `rows` entri batch: 1..`opnameRows` objek ber-stiker+lokasi, pasangan unik; `readRow` mengurai sisanya. */
+function readBatchRows<Row extends { stickerId: string; locationId: string }>(
+  reader: ObjectReader,
+  readRow: (source: Record<string, unknown>, label: string) => Row | string,
+): Row[] {
+  const value = reader.raw('rows');
+  const rows: Row[] = [];
+  if (!Array.isArray(value) || value.length < 1 || value.length > STICKER_LIMITS.opnameRows) {
+    reader.fail('rows', `Isi 1 sampai ${STICKER_LIMITS.opnameRows} baris`);
+    return rows;
+  }
+  const seen = new Set<string>();
+  for (const [index, entry] of (value as unknown[]).entries()) {
+    const label = `Baris ${index + 1}`;
+    const source = (typeof entry === 'object' && entry !== null ? entry : {}) as Record<
+      string,
+      unknown
+    >;
+    const stickerId = typeof source.stickerId === 'string' ? source.stickerId.trim() : '';
+    const locationId = typeof source.locationId === 'string' ? source.locationId.trim() : '';
+    if (
+      stickerId === '' ||
+      stickerId.length > 100 ||
+      locationId === '' ||
+      locationId.length > 100
+    ) {
+      reader.fail('rows', `${label}: stiker dan lokasi wajib diisi`);
+      break;
+    }
+    const key = pairKey(stickerId, locationId);
+    if (seen.has(key)) {
+      reader.fail('rows', `${label}: pasangan stiker dan lokasi kembar`);
+      break;
+    }
+    seen.add(key);
+    const parsed = readRow(source, label);
+    if (typeof parsed === 'string') {
+      reader.fail('rows', `${label}: ${parsed}`);
+      break;
+    }
+    rows.push(parsed);
+  }
+  return rows;
+}
+
+/** Lokasi semua baris (unik, urut kemunculan); dipakai router untuk memeriksa SETIAP lokasi. */
+const locationsOf = (rows: readonly { locationId: string }[]): string[] => [
+  ...new Set(rows.map((row) => row.locationId)),
+];
+
+/** Entri stok masuk/keluar batch: `kind`, `reason` (wajib untuk `out`), dan baris `quantity` atau `count`. */
+export function validateRecordStockBatch(raw: unknown): RecordStockBatchInput {
+  const reader = readObject(raw);
+  const kind = reader.oneOf('kind', RECORD_KINDS);
+  const reason = reader.str('reason', { max: STICKER_LIMITS.reasonMax });
+  if (kind === 'out' && reason === '') reader.fail('reason', 'Alasan wajib diisi');
+  const rows = readBatchRows<RecordStockBatchRow>(reader, (source) => {
+    const quantity = source.quantity;
+    const count = source.count;
+    const hasQuantity = quantity !== undefined && quantity !== null;
+    const hasCount = count !== undefined && count !== null;
+    if (hasQuantity === hasCount) return 'Isi tepat satu: jumlah butir atau hitungan lembar';
+    const base = {
+      stickerId: (source.stickerId as string).trim(),
+      locationId: (source.locationId as string).trim(),
+    };
+    if (hasQuantity) {
+      if (
+        typeof quantity !== 'number' ||
+        !Number.isInteger(quantity) ||
+        quantity < 1 ||
+        quantity > STICKER_LIMITS.qtyMax
+      ) {
+        return `Jumlah harus bilangan bulat 1 sampai ${STICKER_LIMITS.qtyMax}`;
+      }
+      return { ...base, quantity };
+    }
+    const parsed = parseCount(count, 1);
+    return typeof parsed === 'string' ? parsed : { ...base, count: parsed };
+  });
+  reader.done();
+  return { kind, reason, rows, locationIds: locationsOf(rows) };
+}
+
+/** Koreksi stok batch: `reason` wajib, baris `delta` bilangan bulat bukan 0. */
+export function validateAdjustStockBatch(raw: unknown): AdjustStockBatchInput {
+  const reader = readObject(raw);
+  const reason = reader.str('reason', { required: true, max: STICKER_LIMITS.reasonMax });
+  const rows = readBatchRows<AdjustStockBatchRow>(reader, (source) => {
+    const delta = source.delta;
+    if (
+      typeof delta !== 'number' ||
+      !Number.isInteger(delta) ||
+      delta === 0 ||
+      Math.abs(delta) > STICKER_LIMITS.qtyMax
+    ) {
+      return `Perubahan harus bilangan bulat bukan 0, maksimal ${STICKER_LIMITS.qtyMax}`;
+    }
+    return {
+      stickerId: (source.stickerId as string).trim(),
+      locationId: (source.locationId as string).trim(),
+      delta,
+    };
+  });
+  reader.done();
+  return { reason, rows, locationIds: locationsOf(rows) };
 }

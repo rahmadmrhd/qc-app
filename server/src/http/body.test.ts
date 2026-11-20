@@ -125,6 +125,29 @@ const WORST: Inputs = {
       },
     })),
   },
+  'stickerStock.recordBatch': {
+    kind: 'out',
+    reason: text(STICKER_LIMITS.reasonMax),
+    rows: Array.from({ length: STICKER_LIMITS.opnameRows }, () => ({
+      stickerId: UUID,
+      locationId: UUID,
+      count: {
+        rows: Array.from({ length: STICKER_LIMITS.countRows }, () => ({
+          sheets: STICKER_LIMITS.qtyMax,
+          perSheet: STICKER_LIMITS.qtyMax,
+        })),
+        loose: STICKER_LIMITS.qtyMax,
+      },
+    })),
+  },
+  'stickerStock.adjustBatch': {
+    reason: text(STICKER_LIMITS.reasonMax),
+    rows: Array.from({ length: STICKER_LIMITS.opnameRows }, () => ({
+      stickerId: UUID,
+      locationId: UUID,
+      delta: -STICKER_LIMITS.qtyMax,
+    })),
+  },
   'stickerStock.adjust': {
     locationId: UUID,
     stickerId: UUID,

@@ -226,6 +226,12 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'stickerStock.list': { verb: 'GET', path: '/sticker-stock', query: { locationIds: 'list' } },
   'stickerStock.record': { verb: 'POST', path: '/sticker-stock/entries', status: 201 },
   'stickerStock.adjust': { verb: 'POST', path: '/sticker-stock/adjustments', status: 201 },
+  'stickerStock.recordBatch': { verb: 'POST', path: '/sticker-stock/entries/batch', status: 201 },
+  'stickerStock.adjustBatch': {
+    verb: 'POST',
+    path: '/sticker-stock/adjustments/batch',
+    status: 201,
+  },
   'stickerStock.opname': { verb: 'POST', path: '/sticker-stock/opname' },
   'stickerStock.history': {
     verb: 'GET',

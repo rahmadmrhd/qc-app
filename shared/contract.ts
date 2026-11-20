@@ -623,6 +623,42 @@ export interface OpnameInput {
   locationIds?: string[];
 }
 
+/** Satu baris entri stok batch (masuk atau keluar): tepat satu dari `quantity` atau `count`. */
+export interface RecordStockBatchRow {
+  stickerId: string;
+  locationId: string;
+  quantity?: number;
+  count?: StockCount;
+}
+
+/**
+ * Entri stok masuk atau keluar untuk banyak stiker x lokasi sekaligus (1..100 baris, pasangan stiker x lokasi unik).
+ * Atomik: satu baris melanggar = seluruh permintaan ditolak, tak ada yang tertulis.
+ */
+export interface RecordStockBatchInput {
+  kind: 'in' | 'out';
+  /** Wajib untuk `out`; satu alasan disalin ke setiap entri. */
+  reason: string;
+  rows: RecordStockBatchRow[];
+  /** Diturunkan server dari `rows` agar router memeriksa SEMUA lokasi; isian klien diabaikan. */
+  locationIds?: string[];
+}
+
+export interface AdjustStockBatchRow {
+  stickerId: string;
+  locationId: string;
+  /** Bertanda, bukan 0. */
+  delta: number;
+}
+
+/** Koreksi stok untuk banyak stiker x lokasi sekaligus (atomik, 1..100 baris, pasangan unik, alasan wajib). */
+export interface AdjustStockBatchInput {
+  reason: string;
+  rows: AdjustStockBatchRow[];
+  /** Diturunkan server dari `rows` agar router memeriksa SEMUA lokasi; isian klien diabaikan. */
+  locationIds?: string[];
+}
+
 export interface StockEntryDto {
   id: string;
   stickerId: string;
@@ -1294,6 +1330,10 @@ export interface ApiContract {
   'stickerStock.list': { input: ListStickerStockInput; output: StickerStockDto[] };
   'stickerStock.record': { input: RecordStockInput; output: StockEntryDto };
   'stickerStock.adjust': { input: AdjustStockInput; output: StockEntryDto };
+  /** Atomik, 1..100 baris; hasil urut masukan (satu entri per baris). */
+  'stickerStock.recordBatch': { input: RecordStockBatchInput; output: StockEntryDto[] };
+  /** Atomik, 1..100 baris; hasil urut masukan (satu entri per baris). */
+  'stickerStock.adjustBatch': { input: AdjustStockBatchInput; output: StockEntryDto[] };
   'stickerStock.opname': { input: OpnameInput; output: StockEntryDto[] };
   'stickerStock.history': { input: StockHistoryInput; output: StockHistoryPageDto };
   'customers.list': { input: null; output: CustomerDto[] };

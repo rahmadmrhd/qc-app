@@ -25,13 +25,16 @@ import {
 import { getStickerSettings, saveStickerSettings } from './settings';
 import {
   adjustStock,
+  adjustStockBatch,
   listStickerStock,
   opnameStock,
   recordStock,
+  recordStockBatch,
   stockHistory,
 } from './stock-service';
 import {
   validateAdjustStock,
+  validateAdjustStockBatch,
   validateGetSticker,
   validateGetStickerType,
   validateListStickerStock,
@@ -39,6 +42,7 @@ import {
   validateListStickerTypes,
   validateOpname,
   validateRecordStock,
+  validateRecordStockBatch,
   validateSaveSticker,
   validateSaveStickerSettings,
   validateSaveStickerType,
@@ -71,6 +75,8 @@ type StickerMethod =
   | 'stickerStock.list'
   | 'stickerStock.record'
   | 'stickerStock.adjust'
+  | 'stickerStock.recordBatch'
+  | 'stickerStock.adjustBatch'
   | 'stickerStock.opname'
   | 'stickerStock.history';
 
@@ -217,6 +223,17 @@ export function stickerRoutes(): Pick<RouteTable, StickerMethod | GuideMethod> {
           { ...input, locationId: ctx.locationIds[0] ?? input.locationId },
           ctx.user,
         ),
+    },
+    'stickerStock.recordBatch': {
+      // `validateRecordStockBatch` menurunkan `locationIds` dari semua baris: router memeriksa SETIAP lokasi.
+      permission: { module: 'stickerstock', level: 'edit', scope: 'location' },
+      validate: validateRecordStockBatch,
+      handler: (input, ctx) => recordStockBatch(ctx.env, input, ctx.user),
+    },
+    'stickerStock.adjustBatch': {
+      permission: { module: 'stickerstock', level: 'manage', scope: 'location' },
+      validate: validateAdjustStockBatch,
+      handler: (input, ctx) => adjustStockBatch(ctx.env, input, ctx.user),
     },
     'stickerStock.opname': {
       // `validateOpname` menurunkan `locationIds` dari semua baris: router memeriksa SETIAP lokasi.

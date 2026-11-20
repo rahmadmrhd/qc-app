@@ -78,6 +78,8 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'stickerStock.list': true,
   'stickerStock.record': true,
   'stickerStock.adjust': true,
+  'stickerStock.recordBatch': true,
+  'stickerStock.adjustBatch': true,
   'stickerStock.opname': true,
   'stickerStock.history': true,
   'customers.list': true,

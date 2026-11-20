@@ -398,11 +398,13 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Penjaga/kunci TULIS atas baris yang baru dibaca penulis (SELECT ... LOCK IN SHARE MODE / FOR UPDATE); keadaan dinilai lewat kolom lain: stiker aktif tak pernah terhapus (hapus mensyaratkan bukan Aktif), jadi penjaga tetap menolak stiker terhapus.',
   'server/src/modules/sticker/stock-repo.ts#sticker_types@1#eb2fc28a':
     'Penampil rujukan: nama/status stiker tampil walau terhapus (penempatan lama di item, versi Manual Book, stiker serial); pemanggil menilai `deleted_at` atau memakai id yang sudah dikenal (soft delete T1, rujukan tersimpan tetap sah).',
-  'server/src/modules/sticker/stock-repo.ts#stickers@2#88064441':
+  'server/src/modules/sticker/stock-repo.ts#sticker_types@2#d6aa860e':
+    'Penampil rujukan: nama/status stiker tampil walau terhapus (penempatan lama di item, versi Manual Book, stiker serial); pemanggil menilai `deleted_at` atau memakai id yang sudah dikenal (soft delete T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/sticker/stock-repo.ts#stickers@3#88064441':
     'Penjaga/kunci TULIS atas baris yang baru dibaca penulis (SELECT ... LOCK IN SHARE MODE / FOR UPDATE); keadaan dinilai lewat kolom lain: stiker aktif tak pernah terhapus (hapus mensyaratkan bukan Aktif), jadi penjaga tetap menolak stiker terhapus.',
-  'server/src/modules/sticker/stock-repo.ts#sticker_types@2#88064441':
+  'server/src/modules/sticker/stock-repo.ts#sticker_types@3#88064441':
     'Penjaga/kunci TULIS atas baris yang baru dibaca penulis (SELECT ... LOCK IN SHARE MODE / FOR UPDATE); keadaan dinilai lewat kolom lain: stiker aktif tak pernah terhapus (hapus mensyaratkan bukan Aktif), jadi penjaga tetap menolak stiker terhapus.',
-  'server/src/modules/sticker/stock-repo.ts#stickers@3#a3e7cae4':
+  'server/src/modules/sticker/stock-repo.ts#stickers@4#a3e7cae4':
     'Penjaga/kunci TULIS atas baris yang baru dibaca penulis (SELECT ... LOCK IN SHARE MODE / FOR UPDATE); keadaan dinilai lewat kolom lain: stiker aktif tak pernah terhapus (hapus mensyaratkan bukan Aktif), jadi penjaga tetap menolak stiker terhapus.',
   'server/src/modules/postel/stickers.ts#stickers@1#72c37a09':
     'Nama stiker terhapus tetap menahan nama (indeks unik lama + spek soft delete butir 13: Postel baru bernama sama ditolak selama Postel lama ada di Terhapus); jalur tulis nama stiker Postel.',
