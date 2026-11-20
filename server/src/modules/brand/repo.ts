@@ -10,7 +10,7 @@ export interface BrandRecord {
   /** `normalizeKey(name)`; unik. */
   key: string;
   status: ItemStatus;
-  /** Jumlah item (aktif + nonaktif) pada merk ini; dijaga setiap penulisan item (migrasi 0009). */
+  /** Jumlah item HIDUP (aktif + nonaktif, tanpa yang terhapus) pada merk ini; dijaga setiap penulisan, hapus, dan pulihkan item (migrasi 0009, soft delete T6). */
   itemCount: number;
   createdAt: string;
   updatedAt: string;

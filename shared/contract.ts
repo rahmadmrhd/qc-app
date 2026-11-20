@@ -395,7 +395,7 @@ export interface BrandDto {
   id: string;
   name: string;
   status: ItemStatus;
-  /** Jumlah item (aktif maupun nonaktif) yang memakai merk ini. */
+  /** Jumlah item HIDUP (aktif maupun nonaktif, tanpa yang terhapus; semua BU) yang memakai merk ini. */
   itemCount: number;
   updatedAt: string;
   /** BU bawaan merk (terurut menurut kode BU); hanya mengisi otomatis form item, tidak memberi hak apa pun. */
@@ -1391,6 +1391,10 @@ export interface ListItemsPageInput {
   manualBook?: 'has' | 'missing';
   /** `has` = hanya item ber-Postel; `missing` = hanya yang belum (definisi sama dengan `hasPostel`). */
   postel?: 'has' | 'missing';
+  /** Hanya item bermerk ini (satu id). Merk terhapus tetap sah sebagai filter (tautan jumlah item dari View merk). */
+  brandId?: string;
+  /** Hanya item yang tergabung di BU ini (satu id); tetap dibatasi BU yang boleh dilihat pemanggil. */
+  buId?: string;
 }
 
 export interface ItemPageDto {

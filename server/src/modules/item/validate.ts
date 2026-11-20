@@ -485,10 +485,14 @@ export function validateListItems(raw: unknown): ListItemsPageInput {
   if (hasValue(reader.raw('postel'))) {
     postel = reader.oneOf('postel', POSTEL_FILTER_VALUES);
   }
+  const brandId = reader.str('brandId', { max: 100 });
+  const buId = reader.str('buId', { max: 100 });
   reader.done();
   return {
     limit: limit as number,
     ...(typeof cursor === 'string' ? { cursor } : {}),
+    ...(brandId !== '' ? { brandId } : {}),
+    ...(buId !== '' ? { buId } : {}),
     ...(query !== '' ? { query } : {}),
     ...(status ? { status } : {}),
     ...(instruction ? { instruction } : {}),

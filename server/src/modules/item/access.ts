@@ -33,6 +33,15 @@ export function assertCanActOnItem(
   }
 }
 
+/** Versi boolean `assertCanActOnItem`: `level` pada SEMUA BU item (BU terhapus diabaikan selama ada BU hidup). */
+export function canActOnItem(
+  user: UserContext,
+  itemBuIds: readonly string[],
+  level: Level,
+): boolean {
+  return canActOnAllBus(user.businessUnits, 'item', level, itemBuIds, user.deletedBuIds);
+}
+
 /**
  * Himpunan BU yang diminta untuk item yang disimpan. `current` = BU item saat ini (`null` = item baru).
  * - Item baru: sistem harus punya minimal satu BU aktif ("buat BU dulu" bila belum).

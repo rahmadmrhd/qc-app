@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import { isGuardFailure } from '@server/core/cas';
+import { isAppError } from '@server/core/errors';
 import { loadUserContext, type UserContext } from '@server/modules/access/context';
 import { getServedCatalog, resetDesktopCatalogCache } from '@server/modules/desktop/catalog';
 import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
@@ -8,9 +10,12 @@ import { jsonOf, restClient } from '@server-test/rest-client';
 import { withoutOldIndex } from '@server-test/soft-delete';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { SaveItemInput } from '@shared/contract';
+import { brandKeyGuardStmt } from './repo';
 import {
   getItemDto,
   listItemPage,
+  loadItemForAction,
+  planItemStatus,
   removeItem,
   removeItemBatch,
   restoreItem,
@@ -461,6 +466,9 @@ describe('konkurensi hapus dan ubah status', () => {
     ]);
     // setidaknya satu berhasil; kegagalan hanya berupa galat aplikasi (CONFLICT/NOT_FOUND), bukan galat basis data
     expect(outcomes.some((outcome) => outcome.status === 'fulfilled')).toBe(true);
+    for (const outcome of outcomes) {
+      if (outcome.status === 'rejected') expect(isAppError(outcome.reason)).toBe(true);
+    }
     const deletedB = (await deletedAtOf('iB')) !== '';
     const deletedA = (await deletedAtOf('iA')) !== '';
     // item terhapus tidak pernah Aktif; sisanya konsisten dengan turunan (nama lain, penghitung merk)
@@ -487,5 +495,152 @@ describe('hak pada item ber-BU campuran (T1)', () => {
     // pengguna hanya memegang manage di BU hidup (bu-b)
     const result = await removeItem(env, { id: 'i1' }, await ctxOf('mb@gmail.com'));
     expect(result).toEqual({ id: 'i1' });
+  });
+});
+
+describe('perbaikan putaran fase 3 (server)', () => {
+  test('S1: item terhapus ber-BU {A, B} tak terbaca pemegang manage hanya di A; terbaca pemegang manage di semua BU-nya', async () => {
+    await seedItem(env, {
+      id: 'i1',
+      brand: 'Sony',
+      model: 'Dua BU',
+      status: 'inactive',
+      businessUnitIds: ['bu-a', 'bu-b'],
+    });
+    await removeItem(env, { id: 'i1' }, await ctxOf('mab@gmail.com'));
+    const partial = await captureAppErrorAsync(async () =>
+      getItemDto(env, { id: 'i1' }, await ctxOf('ma@gmail.com')),
+    );
+    expect(partial.code).toBe('NOT_FOUND');
+    const full = await getItemDto(env, { id: 'i1' }, await ctxOf('mab@gmail.com'));
+    expect(full.deleted?.deletedBy).toBe('mab@gmail.com');
+  });
+
+  test('S2: hapus atau pulihkan item TERHAPUS tanpa hak Pulihkan = NOT_FOUND seragam; item hidup tetap FORBIDDEN', async () => {
+    await seedInactive('i1', 'A');
+    await seedInactive('i2', 'B');
+    await removeItem(env, { id: 'i1' }, await ctxOf('ma@gmail.com'));
+    for (const run of [
+      async () => removeItem(env, { id: 'i1' }, await ctxOf('ea@gmail.com')),
+      async () => restoreItem(env, { id: 'i1' }, await ctxOf('ea@gmail.com')),
+    ]) {
+      expect((await captureAppErrorAsync(run)).code).toBe('NOT_FOUND');
+    }
+    const live = await captureAppErrorAsync(async () =>
+      removeItem(env, { id: 'i2' }, await ctxOf('ea@gmail.com')),
+    );
+    expect(live.code).toBe('FORBIDDEN');
+  });
+
+  test('M2: penulis status yang sudah merencanakan gagal oleh penjaga hidup walau updated_at kebetulan sama', async () => {
+    await seedInactive('i1', 'A');
+    const user = await ctxOf('ma@gmail.com');
+    const loaded = await loadItemForAction(env, 'i1', user, 'live', 'ditolak');
+    const plan = planItemStatus(env, loaded, 'active', user);
+    expect('stmts' in plan).toBe(true);
+    await removeItem(env, { id: 'i1' }, user);
+    // meniru tabrakan jam: updated_at kembali sama dengan yang dibaca perencana
+    await env.DB.prepare('UPDATE items SET updated_at = ? WHERE id = ?')
+      .bind(loaded.found.item.updatedAt, 'i1')
+      .run();
+    const failure = await env.DB.batch('stmts' in plan ? plan.stmts : []).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(isGuardFailure(failure)).toBe(true);
+    expect(await statusOf('i1')).toBe('inactive');
+  });
+
+  test('M3: pulihkan batch menolak kunci silang antar item yang dipulihkan sekaligus (merk+tipe A = nama lain B)', async () => {
+    const user = await ctxOf('ma@gmail.com');
+    await seedInactive('iA', 'A');
+    await seedInactive('iB', 'B');
+    await removeItem(env, { id: 'iA' }, user);
+    // B memakai nama lain yang sama dengan merk+tipe A (A sedang terhapus, jadi diizinkan), lalu B dihapus
+    await saveItem(env, input({ id: 'iB', model: 'B', aliases: ['Sony A'] }), user);
+    await removeItem(env, { id: 'iB' }, user);
+    const error = await captureAppErrorAsync(() =>
+      restoreItemBatch(env, { ids: ['iA', 'iB'] }, user),
+    );
+    expect(error.code).toBe('CONFLICT');
+    expect(await deletedAtOf('iA')).not.toBe('');
+    expect(await deletedAtOf('iB')).not.toBe('');
+    // satu per satu tetap boleh (yang kedua baru bentrok dengan yang pertama sudah hidup)
+    await restoreItem(env, { id: 'iA' }, user);
+    const second = await captureAppErrorAsync(() => restoreItem(env, { id: 'iB' }, user));
+    expect(second.code).toBe('CONFLICT');
+  });
+
+  test('M4: penjaga merk untuk merk yang BARU dipilih menolak merk terhapus atau nonaktif; rujukan tersimpan tetap lolos', async () => {
+    const brandId = brandIdOf('Sony');
+    const run = (chosenNow: boolean) =>
+      env.DB.batch([brandKeyGuardStmt(env.DB, brandId, 'sony', chosenNow)]).then(
+        () => null,
+        (error: unknown) => error,
+      );
+    expect(await run(true)).toBeNull();
+    await env.DB.prepare(
+      "UPDATE brands SET status = 'inactive', deleted_at = '2026-11-19T00:00:00.000Z', deleted_by = 'seed' WHERE id = ?",
+    )
+      .bind(brandId)
+      .run();
+    expect(isGuardFailure(await run(true))).toBe(true);
+    expect(await run(false)).toBeNull();
+  });
+
+  test('M5: kegagalan konkurensi hapus lawan hapus selalu galat aplikasi atau berhasil', async () => {
+    await seedInactive('iA', 'A');
+    await seedInactive('iB', 'B');
+    const user = await ctxOf('ma@gmail.com');
+    const outcomes = await Promise.allSettled([
+      removeItemBatch(env, { ids: ['iA', 'iB'] }, user),
+      removeItemBatch(env, { ids: ['iB', 'iA'] }, user),
+    ]);
+    for (const outcome of outcomes) {
+      if (outcome.status === 'rejected') expect(isAppError(outcome.reason)).toBe(true);
+    }
+    expect(outcomes.some((outcome) => outcome.status === 'fulfilled')).toBe(true);
+    expect(await itemCountOf(brandIdOf('Sony'))).toBe(0);
+  });
+
+  test('M11: pemuat ringan tidak memuat instruksi, Manual Book, dan Postel', async () => {
+    await seedInactive('i1', 'A');
+    const light = await loadItemForAction(
+      env,
+      'i1',
+      await ctxOf('ma@gmail.com'),
+      'any',
+      'ditolak',
+      'ref',
+    );
+    expect(light.views).toEqual([]);
+    expect(light.manualBook).toBeNull();
+    expect(light.postel).toEqual({ has: false, detail: null });
+  });
+
+  test('I3: items.list menyaring brandId (merk terhapus tetap sah) dan buId dalam BU terlihat', async () => {
+    await seedBrand(env, 'LG');
+    await seedItem(env, { id: 'i1', brand: 'Sony', model: 'A', businessUnitIds: ['bu-a'] });
+    await seedItem(env, { id: 'i2', brand: 'LG', model: 'B', businessUnitIds: ['bu-a', 'bu-b'] });
+    await seedItem(env, { id: 'i3', brand: 'LG', model: 'C', businessUnitIds: ['bu-b'] });
+    const admin = await ctxOf('mab@gmail.com');
+    const byBrand = await listItemPage(env, { brandId: brandIdOf('LG') }, admin);
+    expect(byBrand.items.map((item) => item.id).sort()).toEqual(['i2', 'i3']);
+    const byBu = await listItemPage(env, { buId: 'bu-a' }, admin);
+    expect(byBu.items.map((item) => item.id).sort()).toEqual(['i1', 'i2']);
+    const both = await listItemPage(env, { brandId: brandIdOf('LG'), buId: 'bu-b' }, admin);
+    expect(both.items.map((item) => item.id).sort()).toEqual(['i2', 'i3']);
+    // pemanggil hanya di BU A: filter BU lain tak membuka item BU lain
+    const limited = await listItemPage(env, { buId: 'bu-b' }, await ctxOf('ma@gmail.com'));
+    expect(limited.items.map((item) => item.id)).toEqual(['i2']);
+    // merk terhapus tetap dapat menjadi filter
+    await env.DB.prepare(
+      "UPDATE brands SET status = 'inactive', deleted_at = '2026-11-19T00:00:00.000Z' WHERE id = ?",
+    )
+      .bind(brandIdOf('LG'))
+      .run();
+    const deletedBrand = await listItemPage(env, { brandId: brandIdOf('LG') }, admin);
+    expect(deletedBrand.items.length).toBe(2);
+    expect(deletedBrand.items[0]?.brandDeleted).toBe(true);
   });
 });

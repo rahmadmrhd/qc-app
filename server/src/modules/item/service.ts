@@ -66,6 +66,7 @@ import {
   assertCanActOnItem,
   assertItemVisible,
   assertRequestedBusinessUnits,
+  canActOnItem,
   visibleBuIds,
 } from './access';
 import type { ItemRecord } from './repo';
@@ -317,6 +318,16 @@ export async function listItemPage(
   const instructionFilter = instructionFilterSql(input);
   where.push(...instructionFilter.clauses);
   binds.push(...instructionFilter.binds);
+  if (input.brandId) {
+    where.push('i.brand_id = ?');
+    binds.push(input.brandId);
+  }
+  if (input.buId) {
+    where.push(
+      'EXISTS (SELECT 1 FROM item_business_units y WHERE y.item_id = i.id AND y.bu_id = ?)',
+    );
+    binds.push(input.buId);
+  }
   if (input.manualBook === 'has') where.push(HAS_MANUAL_BOOK_SQL);
   if (input.manualBook === 'missing') where.push(`NOT ${HAS_MANUAL_BOOK_SQL}`);
   if (input.postel === 'has') where.push(HAS_POSTEL_SQL);
@@ -387,10 +398,10 @@ export async function getItemDto(
   const view = await viewOf(env, found);
   const buIds = view.businessUnits.map((bu) => bu.id);
   assertItemVisible(user, buIds);
-  // Item terhapus hanya terlihat bagi pemegang `item: manage` pada salah satu BU-nya; selain itu seperti tak ada.
-  if (found.deletedAt !== '') {
-    const managed = new Set(buIdsWithLevel(user.businessUnits, 'item', 'manage'));
-    if (!buIds.some((id) => managed.has(id))) throw appError('NOT_FOUND', 'Item tidak ditemukan');
+  // Item terhapus hanya terlihat bagi yang berhak memulihkannya (`item: manage` pada SEMUA BU item); selain itu
+  // seperti tak ada (soft delete §4.2).
+  if (found.deletedAt !== '' && !canActOnItem(user, buIds, 'manage')) {
+    throw appError('NOT_FOUND', 'Item tidak ditemukan');
   }
   return toItemDto(
     view,
@@ -931,7 +942,9 @@ export async function planItemWrite(
     instructions: afterInstructions,
   });
   // Penjaga merk (ganti nama merk yang menyela membatalkan batch, I1) selalu PERTAMA: merk selalu sudah ada.
-  const statements: DbStatement[] = [brandKeyGuardStmt(env.DB, brand.id, brand.key)];
+  const statements: DbStatement[] = [
+    brandKeyGuardStmt(env.DB, brand.id, brand.key, existing?.brandId !== brand.id),
+  ];
 
   if (existing) {
     const merged: ItemRecord = { ...existing, ...fields, status };
@@ -1076,11 +1089,15 @@ export interface LoadedItem {
 
 const ITEM_BATCH = { conflicts: ITEM_CONFLICTS, stale: STALE_MESSAGE };
 const ITEM_NOT_FOUND = 'Item tidak ditemukan';
+const EMPTY_POSTEL: ItemPostelState = { has: false, detail: null };
 
 /**
  * Pemuat perencana: item menurut id beserta bahan DTO-nya, dengan pemeriksaan hak. Di luar BU terlihat = `NOT_FOUND`
- * (juga bagi item terhapus); butuh `manage` pada SEMUA BU item (`FORBIDDEN`). `state` `live` menolak item terhapus
- * (`NOT_FOUND`); `any` menerima keduanya (hapus ulang/pulihkan yang sudah hidup = sukses tanpa perubahan).
+ * (juga bagi item terhapus); butuh `manage` pada SEMUA BU item (`FORBIDDEN`), kecuali item TERHAPUS: tanpa hak itu
+ * dijawab `NOT_FOUND` seragam agar keberadaan item terhapus tak terungkap (soft delete §4.2). `state` `live` menolak
+ * item terhapus (`NOT_FOUND`); `any` menerima keduanya (hapus ulang/pulihkan yang sudah hidup = sukses tanpa
+ * perubahan). `detail` `ref` = pemuat ringan untuk aksi yang hanya mengembalikan `{ id }` (Hapus): tampilan instruksi,
+ * Manual Book, dan Postel tak dimuat (bukan bahan hasilnya) dan diganti nilai kosong.
  */
 export async function loadItemForAction(
   env: Env,
@@ -1088,6 +1105,7 @@ export async function loadItemForAction(
   actor: UserContext,
   state: 'live' | 'any',
   message: string,
+  detail: 'full' | 'ref' = 'full',
 ): Promise<LoadedItem> {
   // Item dan merknya dibaca dalam SATU snapshot (JOIN); penjaga memeriksa kunci merk tersimpan itu (N1).
   const found = await (state === 'live'
@@ -1099,8 +1117,21 @@ export async function loadItemForAction(
   const itemBuIds = businessUnits.map((bu) => bu.id);
   // NOT_FOUND bila tak beririsan BU terlihat; aksi pada item multi-BU butuh `manage` pada SEMUA BU item.
   assertItemVisible(actor, itemBuIds);
+  if (item.deletedAt !== '' && !canActOnItem(actor, itemBuIds, 'manage')) {
+    throw appError('NOT_FOUND', ITEM_NOT_FOUND);
+  }
   assertCanActOnItem(actor, itemBuIds, 'manage', message);
   const instructions = (await loadItemInstructions(env.DB, [item.id])).get(item.id) ?? [];
+  if (detail === 'ref') {
+    return {
+      found,
+      businessUnits,
+      instructions,
+      views: [],
+      manualBook: null,
+      postel: EMPTY_POSTEL,
+    };
+  }
   return {
     found,
     businessUnits,
@@ -1140,6 +1171,8 @@ export function planItemStatus(
     dto: dtoOfLoaded(loaded, updated),
     stmts: [
       brandKeyGuardStmt(env.DB, item.brandId, brandKey),
+      // Penghapus serentak yang sudah komit (apa pun jam dindingnya) menggagalkan batch ini: item terhapus tak boleh aktif.
+      versionGuardStmt(env.DB, 'items', item.id, item.updatedAt, 'live'),
       ...updateItemStmts(env.DB, updated, item),
       writeAudit(env.DB, {
         ts: now,
@@ -1163,7 +1196,7 @@ export function planItemRemove(
   loaded: LoadedItem,
   actor: UserContext,
 ): PlanOutcome<RemoveResult> {
-  const { item } = loaded.found;
+  const { item, brandKey } = loaded.found;
   if (item.deletedAt !== '') return { unchanged: { id: item.id } };
   if (item.status !== 'inactive') {
     throw appError('CONFLICT', 'Nonaktifkan item dulu sebelum dihapus');
@@ -1172,6 +1205,8 @@ export function planItemRemove(
   return {
     dto: { id: item.id },
     stmts: [
+      // Urutan kunci baris SERAGAM dengan perencana lain: merk lebih dulu, baru item (cegah deadlock bolak-balik).
+      brandKeyGuardStmt(env.DB, item.brandId, brandKey),
       versionGuardStmt(env.DB, 'items', item.id, item.updatedAt, 'live'),
       softDeleteStmt(env.DB, 'items', item.id, actor.email, now),
       stampStmt(env.DB, 'items', item.id, now, actor.email),
@@ -1255,7 +1290,33 @@ const statusPlanner =
 const removePlanner =
   (env: Env, actor: UserContext) =>
   async (id: string): Promise<PlanOutcome<RemoveResult>> =>
-    planItemRemove(env, await loadItemForAction(env, id, actor, 'any', REMOVE_DENIED), actor);
+    planItemRemove(
+      env,
+      await loadItemForAction(env, id, actor, 'any', REMOVE_DENIED, 'ref'),
+      actor,
+    );
+
+/**
+ * Pemeriksaan silang pulihkan batch (M3): tiap perencana hanya mencocokkan kunci dengan item HIDUP di basis data, jadi
+ * dua item terhapus yang dipulihkan SEKALIGUS dan saling berbenturan (merk+tipe A = nama lain B) lolos masing-masing.
+ * Di sini semua kunci (merk+tipe dan nama lain) dari item yang akan ditulis digabung: kunci yang sama pada dua item
+ * berbeda = `CONFLICT` generik (alias↔alias dan merk+tipe↔merk+tipe juga dijaga indeks/PK, ini menyamakan pesannya).
+ */
+function verifyRestoredNames(changed: ItemDto[]): void {
+  const owner = new Map<string, string>();
+  for (const dto of changed) {
+    const keys = new Set([itemKey(dto.brand, dto.model), ...aliasKeyList(dto.aliases)]);
+    for (const key of keys) {
+      const other = owner.get(key);
+      if (other !== undefined && other !== dto.id) {
+        throw appError('CONFLICT', RESTORE_COLLISION_MESSAGE);
+      }
+      owner.set(key, dto.id);
+    }
+  }
+}
+
+const RESTORE_BATCH = { ...ITEM_BATCH, verify: verifyRestoredNames };
 
 const restorePlanner =
   (env: Env, actor: UserContext) =>
@@ -1298,7 +1359,7 @@ export async function removeItemBatch(
 }
 
 export function restoreItem(env: Env, input: GetItemInput, actor: UserContext): Promise<ItemDto> {
-  return runSingleRecord(env, input.id, restorePlanner(env, actor), ITEM_BATCH);
+  return runSingleRecord(env, input.id, restorePlanner(env, actor), RESTORE_BATCH);
 }
 
 export function restoreItemBatch(
@@ -1306,5 +1367,5 @@ export function restoreItemBatch(
   input: IdBatchInput,
   actor: UserContext,
 ): Promise<BatchResult<ItemDto>> {
-  return runRecordBatch(env, input.ids, restorePlanner(env, actor), ITEM_BATCH);
+  return runRecordBatch(env, input.ids, restorePlanner(env, actor), RESTORE_BATCH);
 }

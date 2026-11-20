@@ -23,18 +23,28 @@ export interface RecordPlan<T> {
 /** Hasil perencana: rencana tulis, atau `{ unchanged }` bila keadaan sudah sama (bukan galat, tanpa audit). */
 export type PlanOutcome<T> = RecordPlan<T> | { unchanged: T };
 
-export interface RecordBatchOptions {
+export interface RecordBatchOptions<T = unknown> {
   /** Peta konflik nama indeks (lihat `mapDuplicateError`) untuk duplikat di dalam batch. */
   conflicts: Record<string, { message: string; field: string }>;
   /** Pesan `CONFLICT` basi bila penjaga gagal berulang kali. */
   stale: string;
+  /**
+   * Pemeriksaan LINTAS record atas hasil semua perencana yang akan menulis (DTO-nya, urut masukan), sebelum menulis:
+   * perencana hanya melihat basis data, bukan record lain dalam permintaan yang sama (mis. kunci nama yang saling
+   * bertabrakan antar record yang dipulihkan sekaligus). Melempar galat = seluruh permintaan batal.
+   */
+  verify?: (changed: T[]) => void;
 }
 
 /**
  * Menulis satu `batch()`. Kegagalan penjaga CAS/kunci dan deadlock dilempar apa adanya agar `runCas` memuat ulang dan
  * merencanakan ulang; duplikat indeks unik dipetakan ke `CONFLICT` lewat `conflicts`.
  */
-async function writeAll(db: Db, stmts: DbStatement[], options: RecordBatchOptions): Promise<void> {
+async function writeAll(
+  db: Db,
+  stmts: DbStatement[],
+  options: RecordBatchOptions<never>,
+): Promise<void> {
   try {
     await db.batch(stmts);
   } catch (error) {
@@ -53,7 +63,7 @@ export async function runRecordBatch<T>(
   env: { DB: Db },
   ids: readonly string[],
   plan: (id: string) => Promise<PlanOutcome<T>>,
-  options: RecordBatchOptions,
+  options: RecordBatchOptions<T>,
 ): Promise<BatchResult<T>> {
   const unique = [...new Set(ids)];
   return runCas(async () => {
@@ -64,7 +74,16 @@ export async function runRecordBatch<T>(
       if (entry.status === 'rejected') throw entry.reason;
       outcomes.push(entry.value);
     }
-    const stmts = outcomes.flatMap((outcome) => ('stmts' in outcome ? outcome.stmts : []));
+    options.verify?.(outcomes.flatMap((outcome) => ('stmts' in outcome ? [outcome.dto] : [])));
+    // Urutan tulis menurut id (bukan urutan masukan): dua permintaan atas himpunan record yang sama mengunci baris
+    // dalam urutan yang sama, jadi tak saling deadlock. Hasil tetap urut masukan.
+    const order = unique
+      .map((id, index) => ({ id, index }))
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    const stmts = order.flatMap(({ index }) => {
+      const outcome = outcomes[index] as PlanOutcome<T>;
+      return 'stmts' in outcome ? outcome.stmts : [];
+    });
     if (stmts.length > 0) await writeAll(env.DB, stmts, options);
     return {
       items: outcomes.map((outcome) => ('unchanged' in outcome ? outcome.unchanged : outcome.dto)),
@@ -77,7 +96,7 @@ export async function runSingleRecord<T>(
   env: { DB: Db },
   id: string,
   plan: (id: string) => Promise<PlanOutcome<T>>,
-  options: RecordBatchOptions,
+  options: RecordBatchOptions<T>,
 ): Promise<T> {
   const { items } = await runRecordBatch(env, [id], plan, options);
   return items[0] as T;

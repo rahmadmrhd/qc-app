@@ -463,13 +463,6 @@ export interface ItemWithBrand {
   item: ItemRecord;
   brandName: string;
   brandKey: string;
-}
-
-/** Item beserta nama dan kunci merk TERSIMPAN yang dibaca dalam satu snapshot (lihat `findItemWithBrand`). */
-export interface ItemWithBrand {
-  item: ItemRecord;
-  brandName: string;
-  brandKey: string;
   /** Merk terhapus (soft delete): item tetap tampil dengan nama merk + penanda "Terhapus". */
   brandDeleted: boolean;
 }
@@ -545,10 +538,19 @@ export function insertAliasKeyStmts(
  * `expectedKey`, yaitu kunci merk yang dipakai penulis untuk menghitung `items.key`. Pemanggil mengulang lewat `runCas`.
  * Tidak mengubah `items.updated_at` saat ganti nama (semantik CAS FE dan sinkron tetap).
  */
-export function brandKeyGuardStmt(db: Db, brandId: string, expectedKey: string): DbStatement {
+export function brandKeyGuardStmt(
+  db: Db,
+  brandId: string,
+  expectedKey: string,
+  chosenNow = false,
+): DbStatement {
+  // Merk yang BARU dipilih (item baru atau pindah merk) harus masih hidup dan aktif saat komit: merk yang dinonaktifkan
+  // lalu dihapus sesudah dibaca penulis menggagalkan batch (T1: id baru harus hidup). Rujukan tersimpan (`chosenNow`
+  // false) tetap diterima walau merknya terhapus.
+  const alive = chosenNow ? " AND deleted_at = '' AND status = 'active'" : '';
   return db
     .prepare(
-      `SELECT CASE WHEN \`key\` = ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM brands WHERE id = ? FOR UPDATE`,
+      `SELECT CASE WHEN \`key\` = ?${alive} THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM brands WHERE id = ? FOR UPDATE`,
     )
     .bind(expectedKey, brandId);
 }
