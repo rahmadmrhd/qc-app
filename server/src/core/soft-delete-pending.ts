@@ -350,39 +350,39 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
   'server/src/modules/brand/service.ts#items@1#759837a3':
     'Ganti nama merk: mengunci (FOR UPDATE) dan menurunkan ulang `items.key` SEMUA item merk itu, termasuk yang terhapus (T4: kunci item terhapus ikut berubah agar tetap konsisten saat dipulihkan).',
   'server/src/modules/serial/alert-job.ts#items@1#94659661':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
   'server/src/modules/serial/alert-job.ts#brands@1#94659661':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/serial/case-list.ts#items@1#d1858e02':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
   'server/src/modules/serial/case-list.ts#brands@1#d1858e02':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/serial/recheck-entry.ts#items@1#3ef659b5':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
   'server/src/modules/serial/recheck-entry.ts#brands@1#3ef659b5':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/serial/proof/attach.ts#items@1#b355d3af':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
   'server/src/modules/serial/proof/attach.ts#brands@1#b355d3af':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/serial/repo.ts#items@2#bbce0dc9':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
   'server/src/modules/serial/repo.ts#brands@1#bbce0dc9':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/serial/repo.ts#items@3#ab57a715':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
   'server/src/modules/serial/repo.ts#brands@2#ab57a715':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/serial/repo.ts#items@4#2afb7690':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
   'server/src/modules/serial/repo.ts#brands@3#2afb7690':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/serial/repo.ts#items@5#205e41f7':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
   'server/src/modules/serial/repo.ts#brands@4#205e41f7':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/serial/service.ts#items@2#122b7dd8':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `canRecordItemSql` menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
   'server/src/modules/item/repo.ts#brands@3#66854c46':
     'Penjaga TULIS (SELECT ... FOR UPDATE) atas baris merk yang baru dibaca penulis; menilai `deleted_at` lewat parameter `chosenNow` (merk baru wajib hidup, rujukan tersimpan tetap sah).',
   'server/src/modules/postel/items.ts#brands@1#fbdbcd86':
@@ -402,7 +402,7 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
   'server/src/modules/postel/items.ts#brands@5#02e2a2d0':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/postel/items.ts#items@6#abf12ed1':
-    'Penjaga TULIS klaim item: item terhapus selalu Nonaktif, jadi `status = active` sudah menolaknya; yang sudah terpasang tetap dipertahankan (T1).',
+    'Penjaga TULIS klaim item: UPDATE klaim mensyaratkan item aktif dan tidak terhapus (`status`, `deleted_at`) untuk pemasangan baru; yang sudah terpasang tetap dipertahankan (T1).',
   'server/src/modules/postel/items.ts#brands@6#e8d77043':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/qrcode/items.ts#brands@1#7196d9cd':
@@ -416,7 +416,7 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
   'server/src/modules/qrcode/items.ts#brands@3#adbf1807':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/qrcode/items.ts#items@4#8787746b':
-    'Penjaga TULIS klaim item: item terhapus selalu Nonaktif, jadi `status = active` sudah menolaknya; yang sudah terpasang tetap dipertahankan (T1).',
+    'Penjaga TULIS klaim item: UPDATE klaim mensyaratkan item aktif dan tidak terhapus (`status`, `deleted_at`) untuk pemasangan baru; yang sudah terpasang tetap dipertahankan (T1).',
   'server/src/modules/qrcode/items.ts#brands@4#b9169b9d':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/sticker/guide-service.ts#brands@1#45c3a46c':

@@ -15,7 +15,6 @@ import {
   restoreBrand,
   restoreBrandBatch,
   saveBrand,
-  setBrandStatus,
   setBrandStatusBatch,
 } from './service';
 

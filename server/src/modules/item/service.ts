@@ -15,7 +15,7 @@ import {
   versionGuardStmt,
 } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
-import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
+import { mapDuplicateError } from '@server/modules/access/repo';
 import type { BrandRecord } from '@server/modules/brand/repo';
 import {
   adjustItemCountStmt,
@@ -76,7 +76,6 @@ import {
   brandKeyGuardStmt,
   businessUnitBriefsFromResult,
   businessUnitBriefsStmt,
-  findItem,
   findItemAny,
   findItemStmt,
   findItemWithBrand,

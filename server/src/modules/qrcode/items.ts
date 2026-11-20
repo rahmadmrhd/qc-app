@@ -119,7 +119,7 @@ export async function visibleItemIds(
 /**
  * Memasang `ids` ke konfigurasi `designId` di dalam `batch()`: hanya item yang belum dimiliki konfigurasi lain
  * (`''` atau konfigurasi ini), lalu penjaga yang membatalkan batch (`CAS_FAIL_SQL`) bila ada yang tidak terpasang
- * (item direbut konfigurasi lain pada saat yang sama). Id diurutkan agar urutan kunci baris konsisten antar penyimpan.
+ * (item direbut konfigurasi lain, dinonaktifkan, atau dihapus pada saat yang sama; item baru wajib hidup dan aktif, item yang sudah terpasang boleh tetap). Id diurutkan agar urutan kunci baris konsisten antar penyimpan.
  */
 export function claimItemsStmts(db: Db, designId: string, ids: readonly string[]): DbStatement[] {
   if (ids.length === 0) return [];
@@ -128,9 +128,9 @@ export function claimItemsStmts(db: Db, designId: string, ids: readonly string[]
   return [
     db
       .prepare(
-        `UPDATE items SET manual_book_design_id = ? WHERE id IN (${marks}) AND manual_book_design_id IN ('', ?)`,
+        `UPDATE items SET manual_book_design_id = ? WHERE id IN (${marks}) AND manual_book_design_id IN ('', ?) AND (manual_book_design_id = ? OR (status = 'active' AND deleted_at = ''))`,
       )
-      .bind(designId, ...sorted, designId),
+      .bind(designId, ...sorted, designId, designId),
     db
       .prepare(
         `SELECT CASE WHEN (SELECT COUNT(*) FROM items WHERE id IN (${marks}) AND manual_book_design_id = ?) <> ? THEN ${CAS_FAIL_SQL} ELSE 0 END AS guard_ok`,

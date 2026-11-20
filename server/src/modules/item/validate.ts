@@ -4,7 +4,6 @@ import type { ListStatusFilter } from '@shared/batch';
 import type {
   GetItemInput,
   ItemAccessoryDto,
-  ItemStatus,
   ItemStickerMarkDto,
   ItemStickerPhotoInput,
   ListItemsPageInput,

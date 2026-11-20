@@ -11,6 +11,7 @@ import {
 import { seedManualBookVersion, seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { DEFAULT_QR_LAYOUT, qrContentHash } from '@shared/qrcode';
+import { claimItemsStmts } from './items';
 
 setDefaultTimeout(60_000);
 
@@ -479,5 +480,19 @@ describe('item terhapus pada konfigurasi (soft delete, penampil rujukan)', () =>
     );
     expect(out.error.code).toBe('VALIDATION');
     expect(out.error.fields.itemIds).toBeDefined();
+  });
+
+  test('klaim item (balapan: dihapus atau dinonaktifkan setelah dibaca) menggagalkan batch dan tidak memasang', async () => {
+    const made = await save({ itemIds: ['i1'] });
+    // i2 dihapus, i1 sudah terpasang boleh tetap; i4 sudah nonaktif
+    await softDelete('i2');
+    for (const id of ['i2', 'i4']) {
+      await expect(env.DB.batch(claimItemsStmts(env.DB, made.data.id, [id]))).rejects.toBeDefined();
+      expect(await ownerOf(id)).toBe('');
+    }
+    // item yang sudah terpasang tetap lolos walau kemudian terhapus (rujukan tersimpan, T1)
+    await softDelete('i1');
+    await env.DB.batch(claimItemsStmts(env.DB, made.data.id, ['i1']));
+    expect(await ownerOf('i1')).toBe(made.data.id);
   });
 });

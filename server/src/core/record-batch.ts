@@ -76,7 +76,8 @@ export async function runRecordBatch<T>(
     }
     options.verify?.(outcomes.flatMap((outcome) => ('stmts' in outcome ? [outcome.dto] : [])));
     // Urutan tulis menurut id (bukan urutan masukan): dua permintaan atas himpunan record yang sama mengunci baris
-    // dalam urutan yang sama, jadi tak saling deadlock. Hasil tetap urut masukan.
+    // dalam urutan yang sama, sehingga deadlock berkurang (himpunan berbeda yang berbagi merk masih dapat saling
+    // menunggu; deadlock itu diulang `runCas`). Hasil tetap urut masukan.
     const order = unique
       .map((id, index) => ({ id, index }))
       .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
