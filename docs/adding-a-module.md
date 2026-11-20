@@ -124,9 +124,18 @@ Kontrak API harus tetap kompatibel mundur (keputusan pemilik 2026-11-20; kebijak
 3. Tulis validator + handler v2 di `server/src/modules/<modul>/`, dengan layanan yang sama. Handler v1 menjadi adaptor tipis (ubah input v1 → panggil layanan → ubah hasil ke bentuk v1); jangan menambah logika baru ke handler v1.
 4. Tambah fixture permintaan/respons v1 di `<modul>/<rute>.v1.contract.test.ts` agar bentuk lama tetap teruji.
 5. Pada rute v2 PERTAMA: pasang pemanggilan `pickApi` di lapisan compat modul (`web/src/modules/<modul>/compat.ts`) sebelum `toRequestParts`; `api()` sendiri belum memanggilnya.
-6. Perbarui potret: `bun run api:snapshot`, lalu `bun run api:snapshot --check` harus lulus. Belum ada pemeriksaan otomatis di `release:prepare` (fase 3); potret harus ikut di-commit.
+6. Perbarui potret: `bun run api:snapshot`, lalu `bun run api:snapshot --check` harus lulus; potret harus ikut di-commit. `release:prepare server` membuat ulang potret itu sendiri saat merilis dan menjalankan pagar penghapusan (lihat di bawah).
 
-Larangan: menghapus id dari `API_ROUTES` tanpa melewati proses deprecated dan `RETIRED_ROUTES` (fase 3 spek 2026-11-20 belum dibangun; sampai itu, JANGAN menghapus rute yang sudah ada di potret).
+### Menghapus rute atau versi lama (fase 3, 2026-11-20)
+Menghapus id dari `API_ROUTES` tidak boleh sekali jalan. Urutannya:
+1. **Tandai deprecated.** Tambahkan nomor versi lama ke `deprecated` kelompoknya di `API_GROUP_VERSIONS` (`shared/api-versions.ts`), jalankan `bun run api:snapshot`, dan rilis. Sejak itu rute versi itu menjawab dengan header `Deprecation: true`, `/api/ping` mengumumkannya, dan klien web yang masih memakainya menampilkan spanduk "perlu diperbarui".
+2. **Tunggu >= 24 jam** sejak rilis yang menandai (antrean offline hidup 24 jam; ditegakkan `release:prepare server`; di mode `langsung` pemilik menjaganya manual).
+3. **Hapus.** Hapus id dari `ApiContract` dan `API_ROUTES`, tambahkan `{ id, verb, path, removedIn: 'server-vX.Y.Z' }` ke `RETIRED_ROUTES` (verb dan path disalin dari potret terakhir yang memuat rute itu). Server kemudian menjawab rute itu dengan 426 `CLIENT_OUTDATED` (sebelum `authorize`, tanpa sesi) dan klien lama memuat ulang (web) atau menampilkan layar penahan (desktop).
+4. **Naikkan `MIN_CLIENT.desktop`** (`shared/api-versions.ts`) HANYA bila installer desktop lama masih memakai versi yang dihapus dan installer yang cukup baru sudah terbit. Nilai yang terlalu tinggi mengunci pengguna dari seluruh bagian yang butuh API (layar "Perlu pembaruan") sampai diturunkan lewat PR; Country Lock tetap jalan. Nilai ini juga menentukan versi yang tampil di halaman `/desktop`.
+
+Rute yang dipakai antrean offline (`web/public/sync-sw.js` memakai `/api/v1` tetap) tak boleh dihapus atau dinaikkan sebelum skrip itu diajari versi.
+
+Larangan: menghapus id dari `API_ROUTES` tanpa urutan di atas. Tes `shared/api-snapshot.test.ts` (potret berkas = subset kontrak sekarang, bentuk `RETIRED_ROUTES`) dan `scripts/api-removal-check.ts` menolaknya.
 
 ## Sumber daya sinkron
 Tidak ada lagi. Sinkron QC Desktop (`/api/v1/sync/*`) dihapus pada 2026-11-08; QC Desktop baru (Electron) dirancang di `docs/superpowers/plans/2026-11-06-qc-desktop-country-lock-fase-0-1.md`. Modul baru cukup mengikuti resep REST di atas.

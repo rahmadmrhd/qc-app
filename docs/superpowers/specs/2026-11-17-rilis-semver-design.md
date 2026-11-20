@@ -122,7 +122,10 @@ commit, squash, rebase. Konsekuensi: semua pagar ada **di dalam workflow** (prov
    sudah masuk; bila tidak, berhenti, karena versi dan fragmen akan dihitung dari keadaan basi); dan **guard 5.4(a)** terhadap
    ujung `dev` (dijalankan sebagai uji awal supaya kegagalan terlihat SEBELUM PR dibuka).
 2. Memotong `release/server-vX.Y.Z` dari ujung `dev`; menaikkan `version`; `bun install --lockfile-only`; `changelog compile`;
-   satu commit (hanya berkas metadata: `server/package.json`, `bun.lock`, `server/CHANGELOG.md`, fragmen yang dihapus).
+   satu commit (hanya berkas metadata: `server/package.json`, `bun.lock`, `server/CHANGELOG.md`, fragmen yang dihapus, dan
+   **sejak 2026-11-20** `shared/api-contract.snapshot.json`: potret kontrak API dibuat ulang `release:prepare server` dan ikut commit
+   rilis server, setelah pagar penghapusan rute < 24 jam lulus; keputusan pemilik produk lewat pembukaan fase 3 versi API,
+   `2026-11-20-versi-api-fase3-design.md` butir 5 dan 5b butir 2; hanya metadata rilis server, bukan desktop).
 3. Mendorong cabang dan membuka PR ke `main` lewat `gh` (dibuat dengan kredensial pemilik, jadi `test.yml` berjalan normal;
    PR yang dibuat `GITHUB_TOKEN` tidak memicu workflow `pull_request`, sehingga workflow "Siapkan rilis" otomatis tidak dipilih).
    `test.yml` tetap menjalankan seluruh CI pada PR rilis (berkas PR memuat semua perubahan `dev` sejak `main`); itu diterima
@@ -141,7 +144,8 @@ merge**; **PR dimerge dengan merge commit** (`merge_commit_sha` punya tepat dua 
 `merge_commit_sha`. Grup `concurrency` = grup production di `deploy-server.yml` (satu pipeline production pada satu waktu).
 Jalur: `meta` -> `guard` -> `ci` (selektif, `ci.yml`) -> `image` -> `deploy` (production) -> `mark-deployed` -> `publish` -> `sync-dev`.
 - **guard (pengganti uji ulang)**: bandingkan **`refs/deployed/staging...<merge_commit_sha>`**: (a) status `ahead` dan SEMUA berkas
-  yang berubah ada di daftar metadata (`server/package.json`, `bun.lock`, `server/CHANGELOG.md`, `server/changelog.d/**`)
+  yang berubah ada di daftar metadata (`server/package.json`, `bun.lock`, `server/CHANGELOG.md`, `server/changelog.d/**`,
+  dan sejak 2026-11-20 `shared/api-contract.snapshot.json`, lihat 5.3)
   ATAU tidak masuk image server (dokumentasi, `desktop/**` selain `desktop/package.json`; klasifikasi `image` di `scripts/ci-changes.ts`;
   **diubah 2026-11-19, keputusan pemilik**: berkas jenis ini tak pernah men-deploy staging, sehingga menolaknya menggagalkan rilis tanpa
   alasan; jalur tak dikenal tetap ditolak;
