@@ -1,14 +1,14 @@
 import { expect, test } from 'bun:test';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
-import { join, relative } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { findRawRm, stripSource } from './raw-rm-scan';
 
 // Aturan project (CLAUDE.md, "Aturan server"): tes tidak boleh menghapus folder secara rekursif langsung. `rm('', { recursive })`
 // menghapus folder kerja pengembang; pakai `removeTempDir`/`removeTempDirSync` (`server/test-support/safe-rm.ts`).
-// Cakupan: tes dan pendukung tes di server/, scripts/, desktop/, dan web/src/.
+// Cakupan: tes dan pendukung tes di server/, scripts/, desktop/, web/src/, countrylock/, dan shared/.
 
 const ROOT = join(import.meta.dir, '..');
-const IGNORED_DIRS = new Set(['node_modules', 'dist', 'dist-app']);
 // helper dan salinannya + berkas ini (memuat contoh perintah shell dalam string uji)
 const EXEMPT = new Set([
   'server/test-support/safe-rm.ts',
@@ -17,14 +17,14 @@ const EXEMPT = new Set([
   'scripts/no-raw-recursive-rm.test.ts',
 ]);
 
-function walk(dir: string, found: string[] = []): string[] {
-  for (const entry of readdirSync(dir)) {
-    if (IGNORED_DIRS.has(entry)) continue;
-    const path = join(dir, entry);
-    if (statSync(path).isDirectory()) walk(path, found);
-    else if (path.endsWith('.ts') || path.endsWith('.tsx')) found.push(path);
-  }
-  return found;
+/** Berkas TS/TSX terlacak atau baru (belum diabaikan git); jauh lebih cepat daripada menelusuri pohon folder. */
+function listSources(): string[] {
+  const out = execFileSync(
+    'git',
+    ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', '*.ts', '*.tsx'],
+    { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 },
+  );
+  return out.split('\0').filter(Boolean);
 }
 
 function inScope(rel: string): boolean {
@@ -32,22 +32,34 @@ function inScope(rel: string): boolean {
   const isTest = /\.test\.tsx?$/.test(rel);
   if (rel.startsWith('server/test-support/') || rel.startsWith('desktop/test-support/'))
     return true;
-  if (rel.startsWith('server/') || rel.startsWith('scripts/') || rel.startsWith('desktop/'))
-    return isTest;
+  if (/^(server|scripts|desktop|countrylock|shared)\//.test(rel)) return isTest;
   return rel.startsWith('web/src/') && isTest;
 }
 
 test('tes dan pendukung tes tak menghapus folder rekursif langsung', () => {
   const violations: string[] = [];
-  for (const dir of ['server', 'scripts', 'desktop', 'web/src']) {
-    for (const file of walk(join(ROOT, dir))) {
-      const rel = relative(ROOT, file).split('\\').join('/');
-      if (!inScope(rel)) continue;
-      const found = findRawRm(readFileSync(file, 'utf8'));
-      if (found.length > 0) violations.push(`${rel}: ${found.join(', ')}`);
-    }
+  for (const rel of listSources()) {
+    if (!inScope(rel)) continue;
+    const found = findRawRm(readFileSync(join(ROOT, rel), 'utf8'));
+    if (found.length > 0) violations.push(`${rel}: ${found.join(', ')}`);
   }
   expect(violations).toEqual([]);
+}, 60_000);
+
+test('cakupan memuat semua paket yang dijaga', () => {
+  for (const rel of [
+    'server/src/a.test.ts',
+    'server/test-support/x.ts',
+    'scripts/a.test.ts',
+    'desktop/src/a.test.ts',
+    'desktop/test-support/x.ts',
+    'web/src/a.test.tsx',
+    'countrylock/src/a.test.ts',
+    'shared/a.test.ts',
+  ]) {
+    expect([rel, inScope(rel)]).toEqual([rel, true]);
+  }
+  expect(inScope('server/src/a.ts')).toBe(false);
 });
 
 test('pendeteksi menangkap setiap bentuk', () => {
@@ -64,6 +76,16 @@ test('pendeteksi menangkap setiap bentuk', () => {
     'await Bun.$`rm -rf some/dir`;',
     "spawnSync('powershell', ['-c', 'Remove-Item x -Recurse -Force']);",
     "import rimraf from 'rimraf';",
+    'rmSync(d, { ...OPTS });',
+    'rmSync(d, { force: true, ...o });',
+    "fs['rmSync'](d, { recursive: true });",
+    "fs['rmSync'](d, OPTS);",
+    "Bun.spawnSync(['rm', '-rf', d]);",
+    "spawn('rm', ['--recursive', d]);",
+    "execFileSync('rm', ['-fr', d]);",
+    "Bun.spawn(['powershell', 'Remove-Item', d, '-Recurse']);",
+    "const t = <p>Don't</p>; rmSync(d, { recursive: true });",
+    'const t = `a $' + '{`b`} c`; rm(d, { recursive: true });',
   ];
   for (const source of bad) expect([source, findRawRm(source).length > 0]).toEqual([source, true]);
 });
@@ -77,7 +99,6 @@ test('pendeteksi tidak memberi positif palsu pada pemakaian wajar', () => {
     '// rm(dir, { recursive: true })',
     '/* rmSync(dir, { recursive: true }) */',
     'const re = /rm \\(/;\nexpect(text).toMatch(re);',
-    "const label = 'rm(dir, { recursive: true })';",
     'obj.rmfoo(dir, { recursive: true });',
     'await removeTempDir(dir, { recursive: true });',
   ];
@@ -93,4 +114,20 @@ test('stripSource tidak memotong // di dalam string, template, atau regex', () =
   expect(findRawRm(re).length).toBe(1);
   expect(stripSource("a = '//'; // komentar\nb", false)).toBe("a = '//'; \nb");
   expect(stripSource("a = '//x'", true)).toBe("a = '   '");
+});
+
+test('gagal-aman: string satu baris yang menyerupai pemanggilan dihitung (positif palsu terdokumentasi)', () => {
+  expect(findRawRm("const label = 'rm(dir, { recursive: true })';").length).toBe(1);
+  expect(findRawRm('// rm(dir, { recursive: true })')).toEqual([]);
+});
+
+test('pemanggilan dan bacaan wajar tambahan lolos', () => {
+  for (const source of [
+    "fs['rmSync'](d, { force: true });",
+    "spawn('ls', ['-la', d]);",
+    "execFileSync('rm', [d]);",
+    'const format = 1; // tanpa rm',
+  ]) {
+    expect([source, findRawRm(source)]).toEqual([source, []]);
+  }
 });
