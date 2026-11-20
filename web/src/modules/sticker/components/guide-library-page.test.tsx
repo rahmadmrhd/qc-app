@@ -155,3 +155,36 @@ test('drop di kisi tidak menggandakan dialog (zona dalam tidak ikut menangani)',
   expect(screen.getAllByRole('dialog')).toHaveLength(1);
   expect(screen.getAllByRole('button', { name: 'Ubah nama baru' })).toHaveLength(1);
 });
+
+test('terkendali: query dari rute dipakai dan perubahan filter dilaporkan lewat onQueryChange', async () => {
+  const user = userEvent.setup();
+  fake.source = {
+    key: 'fake-guides',
+    mimeTypes: ['image/png'],
+    list: vi.fn(async () => ({ items: [item], nextCursor: null })),
+    upload: vi.fn(),
+    rename: vi.fn(),
+    remove: vi.fn(),
+  };
+  const onQueryChange = vi.fn();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <GuideLibraryPage
+        canUpload={false}
+        query={{ search: 'kar', sort: 'nameAsc', mine: false, unused: false }}
+        onQueryChange={onQueryChange}
+      />
+    </QueryClientProvider>,
+  );
+  await screen.findByText('Kardus');
+  expect(screen.getByRole('searchbox', { name: 'Cari gambar' })).toHaveValue('kar');
+  expect(screen.getByRole('button', { name: 'Urut: Nama A-Z' })).toBeInTheDocument();
+  await user.type(screen.getByRole('searchbox', { name: 'Cari gambar' }), 'd');
+  expect(onQueryChange).toHaveBeenLastCalledWith({
+    search: 'kard',
+    sort: 'nameAsc',
+    mine: false,
+    unused: false,
+  });
+});

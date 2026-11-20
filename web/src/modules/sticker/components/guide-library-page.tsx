@@ -42,17 +42,37 @@ const SORT_OPTIONS: ReadonlyArray<{ value: LibrarySort; label: string }> = [
  * Tanpa halaman View: pratinjau dan daftar pemakai tetap di dialog (keputusan pemilik 23). Tanpa izin
  * `item: edit` halaman hanya dapat dibaca.
  */
-export function GuideLibraryPage({ canUpload }: { canUpload: boolean }) {
+export const DEFAULT_LIBRARY_QUERY: LibraryQuery = {
+  search: '',
+  sort: 'newest',
+  mine: false,
+  unused: false,
+};
+
+/**
+ * `query`/`onQueryChange` opsional: rute memberi search params Router supaya cari/urut/filter bertahan saat Back atau
+ * muat ulang dan dapat dibagikan lewat URL (spek §6.5); tanpa keduanya halaman memakai state lokal.
+ */
+export function GuideLibraryPage({
+  canUpload,
+  query: controlled,
+  onQueryChange,
+}: {
+  canUpload: boolean;
+  query?: LibraryQuery;
+  onQueryChange?: (query: LibraryQuery) => void;
+}) {
   const queryClient = useQueryClient();
   const source = stickerGuideSource;
   const [upload, setUpload] = useState<UploadDialogState>(CLOSED);
   const [preview, setPreview] = useState<LibraryItem | null>(null);
-  const [query, setQuery] = useState<LibraryQuery>({
-    search: '',
-    sort: 'newest',
-    mine: false,
-    unused: false,
-  });
+  const [local, setLocal] = useState<LibraryQuery>(DEFAULT_LIBRARY_QUERY);
+  const query = controlled ?? local;
+  const setQuery = (update: (current: LibraryQuery) => LibraryQuery) => {
+    const next = update(query);
+    setLocal(next);
+    onQueryChange?.(next);
+  };
 
   function refresh() {
     return queryClient.invalidateQueries({ queryKey: [source.key] });
