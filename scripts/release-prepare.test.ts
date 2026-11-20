@@ -121,7 +121,8 @@ function fakeShell(overrides: Record<string, Result | Result[]> = {}): Shell & {
   };
 }
 
-const MUTATING = /^(git switch|git branch -D|git add|git commit|git push|gh pr create|bun install)/;
+const MUTATING =
+  /^(git switch|git branch -D|git add|git commit|git push|gh pr create|bun install|bun run api:snapshot)/;
 const mutating = (shell: { calls: string[] }) => shell.calls.filter((c) => MUTATING.test(c));
 
 function fakeFiles(initial: Record<string, string>): CliDeps & { files: Record<string, string> } {
@@ -288,8 +289,9 @@ describe('prepareRelease: jalur sukses', () => {
     });
     expect(mutating(shell)).toEqual([
       'git switch --no-track -c release/server-v1.0.0 origin/dev',
+      'bun run api:snapshot',
       'bun install --lockfile-only',
-      'git add server/package.json bun.lock server/CHANGELOG.md server/changelog.d',
+      'git add server/package.json bun.lock server/CHANGELOG.md server/changelog.d shared/api-contract.snapshot.json',
       expect.stringMatching(/^git commit -m chore\(rilis\): server v1\.0\.0/),
       'git push --set-upstream origin release/server-v1.0.0',
       'git switch feat/kerja',
@@ -446,8 +448,9 @@ describe('prepareRelease: rilis gabungan server + desktop (satu cabang, satu com
     });
     expect(mutating(shell)).toEqual([
       `git switch --no-track -c ${BOTH_BRANCH} origin/dev`,
+      'bun run api:snapshot',
       'bun install --lockfile-only',
-      'git add server/package.json desktop/package.json bun.lock server/CHANGELOG.md desktop/CHANGELOG.md server/changelog.d desktop/changelog.d',
+      'git add server/package.json desktop/package.json bun.lock server/CHANGELOG.md desktop/CHANGELOG.md server/changelog.d desktop/changelog.d shared/api-contract.snapshot.json',
       expect.stringMatching(/^git commit -m chore\(rilis\): server v1\.0\.0 \+ desktop v1\.0\.0/),
       `git push --set-upstream origin ${BOTH_BRANCH}`,
       'git switch feat/kerja',
@@ -634,5 +637,169 @@ describe('prepareRelease: --dry-run', () => {
       'git switch --no-track -c release/server-v1.0.0 origin/dev',
     );
     expect(printed.join('\n')).toContain('gh pr create');
+  });
+});
+
+describe('prepareRelease: potret kontrak API dan pagar umur 24 jam (rilis yang memuat server)', () => {
+  const SNAP = 'shared/api-contract.snapshot.json';
+  const OLD_SNAPSHOT = '[{"id":"a.old","verb":"GET","path":"/a","deprecated":true}]';
+  // Tag sebelumnya terbit tepat 24 jam sebelum NOW (2026-11-17T17:30Z).
+  const TAG_DATE = '2026-11-16T17:30:00+00:00';
+  const DAY_MS = '86400000';
+  const PREV_FILE = '/tmp/api-snapshot-server-v0.9.0.json';
+  const withTag = (extra: Record<string, Result> = {}): Record<string, Result> => ({
+    'git tag --list server-v*': { code: 0, out: 'server-v0.9.0\n' },
+    [`git show server-v0.9.0:${SNAP}`]: { code: 0, out: OLD_SNAPSHOT },
+    'git log -1 --format=%cI server-v0.9.0': { code: 0, out: `${TAG_DATE}\n` },
+    ...extra,
+  });
+
+  /** Tempat sementara palsu: merekam isi yang ditulis dan jalur yang dibuang (tak menyentuh disk). */
+  function fakeScratch() {
+    const written: Record<string, string> = {};
+    const removed: string[] = [];
+    return {
+      written,
+      removed,
+      scratch: {
+        write: (name: string, content: string) => {
+          written[name] = content;
+          return `/tmp/${name}`;
+        },
+        remove: (path: string) => {
+          removed.push(path);
+        },
+      },
+    };
+  }
+
+  const server = (
+    shell: Shell,
+    extra: Partial<Parameters<typeof prepareRelease>[0]> = {},
+    files = fakeFiles(baseFiles()),
+  ) => prepareRelease({ component: 'server', bump: '1.0.0', shell, files, now: NOW, ...extra });
+
+  test('rilis server dengan tag sebelumnya: potret tag dan umurnya dibaca sebelum cabang dibuat; pagar jalan SEBELUM versi diubah; potret dibuat ulang dan ikut commit', async () => {
+    const files = fakeFiles(baseFiles());
+    const base = fakeShell(withTag());
+    let versionAtCheck = '';
+    const shell: Shell & { calls: string[] } = {
+      calls: base.calls,
+      async run(cmd) {
+        if (cmd.join(' ').startsWith('bun run scripts/api-removal-check.ts')) {
+          versionAtCheck = files.files['server/package.json'] ?? '';
+        }
+        return base.run(cmd);
+      },
+    };
+    const { scratch, written, removed } = fakeScratch();
+    await server(shell, { scratch }, files);
+    const at = (needle: string) => shell.calls.findIndex((c) => c.startsWith(needle));
+    const switchAt = at('git switch --no-track -c');
+    expect(at(`git show server-v0.9.0:${SNAP}`)).toBeGreaterThan(-1);
+    expect(at(`git show server-v0.9.0:${SNAP}`)).toBeLessThan(switchAt);
+    expect(at('git log -1 --format=%cI server-v0.9.0')).toBeGreaterThan(-1);
+    expect(at('git log -1 --format=%cI server-v0.9.0')).toBeLessThan(switchAt);
+    const checkAt = at('bun run scripts/api-removal-check.ts');
+    expect(shell.calls[checkAt]).toBe(
+      `bun run scripts/api-removal-check.ts ${PREV_FILE} ${DAY_MS}`,
+    );
+    expect(checkAt).toBeGreaterThan(switchAt);
+    expect(checkAt).toBeLessThan(at('bun run api:snapshot'));
+    expect(checkAt).toBeLessThan(at('bun install --lockfile-only'));
+    // Pagar berjalan sebelum package.json disentuh.
+    expect(versionAtCheck).toContain('"version": "0.0.0"');
+    expect(written['api-snapshot-server-v0.9.0.json']).toBe(OLD_SNAPSHOT);
+    expect(removed).toEqual([PREV_FILE]);
+    const add = shell.calls.find((c) => c.startsWith('git add')) ?? '';
+    expect(add.split(' ')).toContain(SNAP);
+  });
+
+  test('pagar menolak (kode 1): rilis dibatalkan, cabang lokal dibuang, tanpa push, galat memuat keluarannya', async () => {
+    const shell = fakeShell(
+      withTag({
+        [`bun run scripts/api-removal-check.ts ${PREV_FILE} ${DAY_MS}`]: {
+          code: 1,
+          out: 'Rute a.old baru berstatus deprecated kurang dari 24 jam\n',
+        },
+      }),
+    );
+    const { scratch, removed } = fakeScratch();
+    await expect(server(shell, { scratch })).rejects.toThrow(/a\.old.*24 jam/s);
+    expect(shell.calls).toContain('git branch -D release/server-v1.0.0');
+    expect(shell.calls.some((c) => c.startsWith('git push'))).toBe(false);
+    expect(shell.calls.some((c) => c.startsWith('bun run api:snapshot'))).toBe(false);
+    // Berkas sementara dibuang walau pagar menolak.
+    expect(removed).toEqual([PREV_FILE]);
+  });
+
+  test('tanpa tag server sebelumnya: potret tag tak dibaca, pagar dijalankan dengan umur none dan potret kosong', async () => {
+    const shell = fakeShell();
+    const { scratch, written } = fakeScratch();
+    await server(shell, { scratch });
+    expect(shell.calls.some((c) => c.startsWith('git show server-v'))).toBe(false);
+    expect(shell.calls.some((c) => c.startsWith('git log -1 --format=%cI'))).toBe(false);
+    expect(shell.calls).toContain(
+      'bun run scripts/api-removal-check.ts /tmp/api-snapshot-none.json none',
+    );
+    expect(written['api-snapshot-none.json']).toBe('[]');
+  });
+
+  test('potret pada tag tak terbaca: berhenti sebelum membuat cabang apa pun', async () => {
+    const shell = fakeShell(
+      withTag({ [`git show server-v0.9.0:${SNAP}`]: { code: 128, out: 'tak ada' } }),
+    );
+    await expect(server(shell, { scratch: fakeScratch().scratch })).rejects.toThrow(/potret/i);
+    expect(mutating(shell)).toEqual([]);
+  });
+
+  test('umur tag tak terbaca (tanggal rusak, perintah gagal, atau di masa depan): berhenti sebelum membuat cabang apa pun', async () => {
+    for (const answer of [
+      { code: 0, out: 'bukan-tanggal\n' },
+      { code: 128, out: 'galat' },
+      { code: 0, out: '2026-11-18T00:00:00+00:00\n' },
+    ]) {
+      const shell = fakeShell(withTag({ 'git log -1 --format=%cI server-v0.9.0': answer }));
+      await expect(server(shell, { scratch: fakeScratch().scratch })).rejects.toThrow(
+        /umur|tanggal/i,
+      );
+      expect(mutating(shell)).toEqual([]);
+    }
+  });
+
+  test('rilis desktop saja tidak menyentuh potret kontrak sama sekali', async () => {
+    const shell = fakeShell({
+      'git diff --cached --name-only': {
+        code: 0,
+        out: 'desktop/package.json\nbun.lock\ndesktop/CHANGELOG.md\ndesktop/changelog.d/20261117-b.md\n',
+      },
+    });
+    await prepareRelease({
+      component: 'desktop',
+      bump: '1.0.0',
+      shell,
+      files: fakeFiles(bothFiles()),
+      now: NOW,
+    });
+    expect(shell.calls.some((c) => /api-removal-check|api:snapshot|api-contract/.test(c))).toBe(
+      false,
+    );
+  });
+
+  test('--dry-run: pembacaan tetap jalan, perintah pengubah tak dijalankan, langkah potret dan pagar dicetak', async () => {
+    const shell = fakeShell(withTag());
+    const printed: string[] = [];
+    const { scratch, written } = fakeScratch();
+    await server(shell, { scratch, dryRun: true, log: (line) => printed.push(line) });
+    expect(shell.calls).toContain(`git show server-v0.9.0:${SNAP}`);
+    expect(mutating(shell)).toEqual([]);
+    expect(shell.calls.some((c) => c.startsWith('bun run scripts/api-removal-check.ts'))).toBe(
+      false,
+    );
+    expect(Object.keys(written)).toEqual([]);
+    const text = printed.join('\n');
+    expect(text).toContain('api-removal-check');
+    expect(text).toContain('bun run api:snapshot');
+    expect(text).toContain(SNAP);
   });
 });

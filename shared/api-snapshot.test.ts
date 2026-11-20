@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
-import type { ApiRouteDef } from './api';
+import { API_ROUTES, type ApiRouteDef } from './api';
 import {
   compareContract,
   contractSnapshot,
@@ -189,5 +189,46 @@ describe('removalProblems', () => {
     expect(
       removalProblems(input({ current: old, retired: [], previousTagAgeMs: 1 * HOUR })),
     ).toEqual([]);
+  });
+});
+
+/** Pelanggaran daftar rute terhapus terhadap tabel rute (kosong = sehat). Dipakai data nyata dan kasus sintetis. */
+function retiredProblems(
+  retiredRoutes: readonly RetiredRoute[],
+  table: Record<string, ApiRouteDef>,
+): string[] {
+  const live = new Set(Object.values(table).map((def) => `${def.verb} ${def.path}`));
+  const problems: string[] = [];
+  for (const route of retiredRoutes) {
+    if (!/^server-v\d+\.\d+\.\d+$/.test(route.removedIn)) {
+      problems.push(`${route.id}: removedIn "${route.removedIn}" bukan server-vX.Y.Z`);
+    }
+    if (Object.hasOwn(table, route.id)) {
+      problems.push(`${route.id}: masih ada di API_ROUTES padahal dicatat terhapus`);
+    }
+    if (live.has(`${route.verb} ${route.path}`)) {
+      problems.push(`${route.id}: ${route.verb} ${route.path} sama dengan rute yang masih hidup`);
+    }
+  }
+  return problems;
+}
+
+describe('RETIRED_ROUTES (pagar data)', () => {
+  test('data nyata: removedIn sah, id tak ada di API_ROUTES, jalur tak menutupi rute hidup', () => {
+    expect(retiredProblems(RETIRED_ROUTES, API_ROUTES)).toEqual([]);
+  });
+  test('kasus sintetis: entri tak sah ditolak, entri sah lolos', () => {
+    const table: Record<string, ApiRouteDef> = { 'a.get': { verb: 'GET', path: '/a/{id}' } };
+    const route = (over: Partial<RetiredRoute>): RetiredRoute => ({
+      id: 'a.old',
+      verb: 'GET',
+      path: '/x',
+      removedIn: 'server-v1.2.0',
+      ...over,
+    });
+    expect(retiredProblems([route({ path: '/a/{id}' })], table)).toHaveLength(1);
+    expect(retiredProblems([route({ id: 'a.get' })], table)).toHaveLength(1);
+    expect(retiredProblems([route({ removedIn: 'v1.2.0' })], table)).toHaveLength(1);
+    expect(retiredProblems([route({})], table)).toEqual([]);
   });
 });

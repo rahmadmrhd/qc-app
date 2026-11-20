@@ -51,12 +51,16 @@ export function requiredComponents(files: string[]): Component[] {
   );
 }
 
+/** Potret kontrak API dibuat ulang `release:prepare server` dan ikut commit rilis server (fase 3 versi API). */
+const API_SNAPSHOT_PATH = 'shared/api-contract.snapshot.json';
+
 function isMetadataOf(path: string, component: Component): boolean {
   return (
     path === `${component}/package.json` ||
     path === 'bun.lock' ||
     path === `${component}/CHANGELOG.md` ||
-    path.startsWith(`${component}/changelog.d/`)
+    path.startsWith(`${component}/changelog.d/`) ||
+    (component === 'server' && path === API_SNAPSHOT_PATH)
   );
 }
 

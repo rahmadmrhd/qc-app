@@ -202,3 +202,22 @@ describe('checkChangelog', () => {
     ]);
   });
 });
+
+describe('potret kontrak API sebagai metadata rilis server', () => {
+  const SNAP = 'shared/api-contract.snapshot.json';
+  test('isReleaseChange: potret ikut commit rilis SERVER, bukan rilis desktop', () => {
+    expect(
+      isReleaseChange(['server/package.json', 'bun.lock', 'server/CHANGELOG.md', SNAP], 'server'),
+    ).toBe(true);
+    expect(
+      isReleaseChange(
+        ['desktop/package.json', 'bun.lock', 'desktop/CHANGELOG.md', SNAP],
+        'desktop',
+      ),
+    ).toBe(false);
+  });
+  test('isMetadataOnly: hanya komponen server yang menganggap potret sebagai metadata', () => {
+    expect(isMetadataOnly([SNAP], 'server')).toBe(true);
+    expect(isMetadataOnly([SNAP], 'desktop')).toBe(false);
+  });
+});
