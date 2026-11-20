@@ -1,13 +1,13 @@
 // Menjalankan hasil kemas dengan --smoke dan memastikan runtime yang dikirim benar:
 // Node 24.x, ssh2 termuat, node:sqlite tersedia, dan UI dasar ikut terbawa.
 // `--arch x64|arm64` (bawaan x64) memilih folder hasil `pack:all`. Hasil arm64 pada host x64 tak dapat dijalankan,
-// jadi hanya diperiksa statis (exe, app.asar, UI dasar ada); lihat verify-pack-args.ts `canRun`.
+// jadi hanya diperiksa statis (exe, app.asar, UI dasar beserta ui-manifest.json-nya ada); lihat verify-pack-args.ts `canRun`.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canRun, parseArch, unpackedDirName } from './verify-pack-args';
+import { baselineManifestProblem, canRun, parseArch, unpackedDirName } from './verify-pack-args';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -42,6 +42,8 @@ if (!canRun(arch, process.arch)) {
   for (const part of ['resources/app.asar', 'resources/ui-baseline/index.html']) {
     if (!existsSync(join(unpacked, ...part.split('/')))) fail(`${part} tidak ikut terkemas`);
   }
+  const manifestProblem = baselineManifestProblem(join(unpacked, 'resources', 'ui-baseline'));
+  if (manifestProblem !== null) fail(manifestProblem);
   console.log(
     `verify-pack ${arch}: hanya pemeriksaan statis (host ${process.arch} tak dapat menjalankan exe ${arch})`,
   );
@@ -86,6 +88,8 @@ if (report.updater !== true) fail('electron-updater tidak termuat dari hasil kem
 if (!existsSync(join(unpacked, 'resources', 'ui-baseline', 'index.html'))) {
   fail('UI dasar (resources/ui-baseline/index.html) tidak ikut terkemas');
 }
+const manifestProblem = baselineManifestProblem(join(unpacked, 'resources', 'ui-baseline'));
+if (manifestProblem !== null) fail(manifestProblem);
 
 const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
 console.log(`${dirName}: ${mb(dirSize(unpacked))}`);

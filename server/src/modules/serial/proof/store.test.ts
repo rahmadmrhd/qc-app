@@ -15,7 +15,9 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await rm(root, { recursive: true, force: true });
+  // Penjaga: `rm('')` menghapus isi direktori kerja bila `beforeEach` gagal sebelum `root` terisi.
+  if (root) await rm(root, { recursive: true, force: true });
+  root = '';
 });
 
 describe('newStagedName', () => {

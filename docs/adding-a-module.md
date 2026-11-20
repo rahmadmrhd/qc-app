@@ -108,5 +108,16 @@ Contoh: halaman laporan rusak Serial Number (`/laporan/<token>`, 2026-11-14). Ke
 - PELAJARAN: token yang memuat titik (`v1.<id>.<exp>.<sig>`) dianggap "berkas" oleh `server/src/http/static.ts` (segmen terakhir bertitik = 404) dan oleh denylist service worker `web/src/app/pwa/server-paths.ts`, sehingga tautan 404 di produksi dan di PWA terpasang. Awalan rute kliennya harus dikecualikan di KEDUA tempat (kini `/laporan/`; tes `static.test.ts` dan `scripts/pwa-server-paths.test.ts` menjaga keduanya sejalan), atau pilih format token tanpa titik.
 - Halaman webnya route di luar layout `_app` (tanpa guard login); bila pengguna login dan berizin, DTO membawa penanda (mis. `viewerCanOpen`) agar klien mengalihkan ke halaman biasa. Token tidak pernah menambah izin.
 
+## Mengubah kontrak yang merusak
+Kontrak API harus tetap kompatibel mundur (keputusan pemilik 2026-11-20; kebijakan lengkap di `CLAUDE.md`, bagian "Kebijakan versi API"). Bila bentuk input/output sebuah rute berubah secara merusak:
+1. Tambah id `<idDasar>@2` di `ApiContract` (`shared/contract.ts`, tipe input/output v2) dan entri `API_ROUTES` (`shared/api.ts`) dengan path yang sama. Id v1 TETAP ada dan tidak diubah.
+2. Naikkan `latest` kelompok itu di `API_GROUP_VERSIONS` (`shared/api-versions.ts`). Tes `api-versions` menjaga kelompok dan versinya tidak melebihi tabel rute.
+3. Tulis validator + handler v2 di `server/src/modules/<modul>/`, dengan layanan yang sama. Handler v1 menjadi adaptor tipis (ubah input v1 → panggil layanan → ubah hasil ke bentuk v1); jangan menambah logika baru ke handler v1.
+4. Tambah fixture permintaan/respons v1 di `<modul>/<rute>.v1.contract.test.ts` agar bentuk lama tetap teruji.
+5. Pada rute v2 PERTAMA: pasang pemanggilan `pickApi` di lapisan compat modul (`web/src/modules/<modul>/compat.ts`) sebelum `toRequestParts`; `api()` sendiri belum memanggilnya.
+6. Perbarui potret: `bun run api:snapshot`, lalu `bun run api:snapshot --check` harus lulus. Belum ada pemeriksaan otomatis di `release:prepare` (fase 3); potret harus ikut di-commit.
+
+Larangan: menghapus id dari `API_ROUTES` tanpa melewati proses deprecated dan `RETIRED_ROUTES` (fase 3 spek 2026-11-20 belum dibangun; sampai itu, JANGAN menghapus rute yang sudah ada di potret).
+
 ## Sumber daya sinkron
 Tidak ada lagi. Sinkron QC Desktop (`/api/v1/sync/*`) dihapus pada 2026-11-08; QC Desktop baru (Electron) dirancang di `docs/superpowers/plans/2026-11-06-qc-desktop-country-lock-fase-0-1.md`. Modul baru cukup mengikuti resep REST di atas.

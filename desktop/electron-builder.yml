@@ -14,7 +14,7 @@ asar: true
 publish: null
 # Tanpa modul native yang perlu dikompilasi ulang; node:sqlite dan ssh2 (JS murni) cukup.
 npmRebuild: false
-# UI dasar: build web (bun run build:web) dibawa apa adanya di samping asar.
+# UI dasar: hasil `bun run build` (web + ui-manifest.json) dibawa apa adanya di samping asar.
 extraResources:
   - from: ../server/dist
     to: ui-baseline

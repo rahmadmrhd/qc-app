@@ -1168,7 +1168,13 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
     expect(runs).toContain('bun run --cwd desktop pack:all');
     expect(runs).toContain('verify-pack --arch x64');
     expect(runs).toContain('verify-pack --arch arm64');
+    // Manifest UI dasar harus ikut tertulis (verify-pack memeriksanya). Build web hanya saat cache meleset
+    // (`bun run build:web`), sedangkan `verify-dist` dan `build-ui-manifest` selalu jalan: urutannya dijaga di
+    // describe "UI dasar dari cache server/dist" di bawah.
     expect(runs).toContain('bun run build:web');
+    expect(runs).toContain('bun run scripts/verify-dist.ts');
+    expect(runs).toContain('bun run scripts/build-ui-manifest.ts');
+    expect(runs).not.toMatch(/bun run build(\s|$)/);
     const steps = stepsOfJob('desktop');
     const crlf = steps.findIndex((step) => (step.run ?? '').includes('core.autocrlf false'));
     const checkout = steps.findIndex((step) => step.uses?.startsWith('actions/checkout'));

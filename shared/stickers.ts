@@ -72,15 +72,16 @@ export type StickerSystemKind = (typeof STICKER_SYSTEM_KINDS)[number];
 
 /**
  * Awalan nama stiker jenis sistem di katalog (keputusan pemilik 2026-11-12): agar stiker Manual Book dan Postel tak
- * tertukar dengan stiker lain. Nama TERSIMPAN berawalan ini (bukan hanya tampilan), jadi muncul sama di katalog, stok,
+ * tertukar dengan stiker lain. Awalan Manual Book dipersingkat dari `Manual Book - ` menjadi `MB - ` (keputusan pemilik
+ * 2026-11-20; stiker yang sudah ada tidak diganti namanya, hanya stiker baru yang memakai awalan ini). Nama TERSIMPAN berawalan ini (bukan hanya tampilan), jadi muncul sama di katalog, stok,
  * riwayat, instruksi item, dan email.
  */
 export const SYSTEM_STICKER_PREFIX = {
-  manual_book: 'Manual Book - ',
+  manual_book: 'MB - ',
   postel: 'Postel - ',
 } as const;
 
-/** Nama stiker Manual Book `Manual Book - <nama konfigurasi> v<versi>`, dipotong ke `nameMax`. */
+/** Nama stiker Manual Book `MB - <nama konfigurasi> v<versi>`, dipotong ke `nameMax`. */
 export function manualBookStickerName(designName: string, version: number): string {
   return `${SYSTEM_STICKER_PREFIX.manual_book}${designName} v${version}`.slice(
     0,

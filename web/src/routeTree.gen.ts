@@ -36,6 +36,7 @@ import { Route as AppSerialReportsRouteImport } from './routes/_app/serial/repor
 import { Route as AppSerialSettingsRouteImport } from './routes/_app/serial/settings'
 import { Route as AppStickerIndexRouteImport } from './routes/_app/sticker/index'
 import { Route as AppStickerLibraryRouteImport } from './routes/_app/sticker/library'
+import { Route as AppStickerOpnameRouteImport } from './routes/_app/sticker/opname'
 import { Route as AppStickerSettingsRouteImport } from './routes/_app/sticker/settings'
 import { Route as AppStickerStockRouteImport } from './routes/_app/sticker/stock'
 import { Route as AppStickerTypesRouteImport } from './routes/_app/sticker/types'
@@ -189,6 +190,11 @@ const AppStickerLibraryRoute = AppStickerLibraryRouteImport.update({
   path: '/sticker/library',
   getParentRoute: () => AppRoute,
 } as any)
+const AppStickerOpnameRoute = AppStickerOpnameRouteImport.update({
+  id: '/sticker/opname',
+  path: '/sticker/opname',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppStickerSettingsRoute = AppStickerSettingsRouteImport.update({
   id: '/sticker/settings',
   path: '/sticker/settings',
@@ -306,6 +312,7 @@ export interface FileRoutesByFullPath {
   '/serial/reports': typeof AppSerialReportsRoute
   '/serial/settings': typeof AppSerialSettingsRoute
   '/sticker/library': typeof AppStickerLibraryRoute
+  '/sticker/opname': typeof AppStickerOpnameRoute
   '/sticker/settings': typeof AppStickerSettingsRoute
   '/sticker/stock': typeof AppStickerStockRoute
   '/sticker/types': typeof AppStickerTypesRoute
@@ -352,6 +359,7 @@ export interface FileRoutesByTo {
   '/serial/reports': typeof AppSerialReportsRoute
   '/serial/settings': typeof AppSerialSettingsRoute
   '/sticker/library': typeof AppStickerLibraryRoute
+  '/sticker/opname': typeof AppStickerOpnameRoute
   '/sticker/settings': typeof AppStickerSettingsRoute
   '/sticker/stock': typeof AppStickerStockRoute
   '/sticker/types': typeof AppStickerTypesRoute
@@ -400,6 +408,7 @@ export interface FileRoutesById {
   '/_app/serial/reports': typeof AppSerialReportsRoute
   '/_app/serial/settings': typeof AppSerialSettingsRoute
   '/_app/sticker/library': typeof AppStickerLibraryRoute
+  '/_app/sticker/opname': typeof AppStickerOpnameRoute
   '/_app/sticker/settings': typeof AppStickerSettingsRoute
   '/_app/sticker/stock': typeof AppStickerStockRoute
   '/_app/sticker/types': typeof AppStickerTypesRoute
@@ -448,6 +457,7 @@ export interface FileRouteTypes {
     | '/serial/reports'
     | '/serial/settings'
     | '/sticker/library'
+    | '/sticker/opname'
     | '/sticker/settings'
     | '/sticker/stock'
     | '/sticker/types'
@@ -494,6 +504,7 @@ export interface FileRouteTypes {
     | '/serial/reports'
     | '/serial/settings'
     | '/sticker/library'
+    | '/sticker/opname'
     | '/sticker/settings'
     | '/sticker/stock'
     | '/sticker/types'
@@ -541,6 +552,7 @@ export interface FileRouteTypes {
     | '/_app/serial/reports'
     | '/_app/serial/settings'
     | '/_app/sticker/library'
+    | '/_app/sticker/opname'
     | '/_app/sticker/settings'
     | '/_app/sticker/stock'
     | '/_app/sticker/types'
@@ -765,6 +777,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppStickerLibraryRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/sticker/opname': {
+      id: '/_app/sticker/opname'
+      path: '/sticker/opname'
+      fullPath: '/sticker/opname'
+      preLoaderRoute: typeof AppStickerOpnameRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/sticker/settings': {
       id: '/_app/sticker/settings'
       path: '/sticker/settings'
@@ -912,6 +931,7 @@ interface AppRouteChildren {
   AppSerialReportsRoute: typeof AppSerialReportsRoute
   AppSerialSettingsRoute: typeof AppSerialSettingsRoute
   AppStickerLibraryRoute: typeof AppStickerLibraryRoute
+  AppStickerOpnameRoute: typeof AppStickerOpnameRoute
   AppStickerSettingsRoute: typeof AppStickerSettingsRoute
   AppStickerStockRoute: typeof AppStickerStockRoute
   AppStickerTypesRoute: typeof AppStickerTypesRoute
@@ -956,6 +976,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppSerialReportsRoute: AppSerialReportsRoute,
   AppSerialSettingsRoute: AppSerialSettingsRoute,
   AppStickerLibraryRoute: AppStickerLibraryRoute,
+  AppStickerOpnameRoute: AppStickerOpnameRoute,
   AppStickerSettingsRoute: AppStickerSettingsRoute,
   AppStickerStockRoute: AppStickerStockRoute,
   AppStickerTypesRoute: AppStickerTypesRoute,

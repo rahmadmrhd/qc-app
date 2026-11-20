@@ -6,6 +6,7 @@ import {
   type RequestParts,
   toRequestParts,
 } from '@shared/api';
+import { parseApiId, restBase } from '@shared/api-versions';
 import {
   type ApiId,
   type ApiInput,
@@ -16,8 +17,11 @@ import {
 import { beginBusy } from '@/app/pwa/busy';
 import { ApiError } from './api-error';
 
-/** Awalan jalur REST; jalur tabel (`/brands/{id}`) relatif terhadapnya. */
-export const API_BASE = '/api/v1';
+/**
+ * Awalan jalur REST v1; jalur tabel (`/brands/{id}`) relatif terhadap awalan versi id-nya (`restBase`). Nilainya tetap
+ * `/api/v1` (dipakai sumber gambar dan tes paritas); id berversi (`<id>@2`) memakai awalan versinya di `requestUrl`.
+ */
+export const API_BASE = restBase(1);
 /** Header wajib semua permintaan tulis (mitigasi CSRF di server). */
 export const CSRF_HEADERS = { 'X-Requested-With': 'qc' } as const;
 
@@ -100,9 +104,10 @@ function errorFromResponse(status: number, text: string): ApiError {
   return new ApiError('INTERNAL', 'Respons server tidak valid', '-', undefined, { status });
 }
 
-function urlOf(baseUrl: string, parts: RequestParts): string {
+/** URL permintaan: awalan versi diturunkan dari akhiran id (`qrcodes.save@2` -> `/api/v2`). */
+export function requestUrl(baseUrl: string, id: string, parts: RequestParts): string {
   const query = new URLSearchParams(parts.query).toString();
-  return `${baseUrl}${API_BASE}${parts.path}${query === '' ? '' : `?${query}`}`;
+  return `${baseUrl}${restBase(parseApiId(id).version)}${parts.path}${query === '' ? '' : `?${query}`}`;
 }
 
 function headersOf(verb: ApiVerb, parts: RequestParts, download: boolean): Record<string, string> {
@@ -163,7 +168,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiCall {
     let text = '';
     let bytes: Uint8Array | undefined;
     try {
-      response = await doFetch(urlOf(baseUrl, parts), {
+      response = await doFetch(requestUrl(baseUrl, id, parts), {
         method: parts.verb,
         credentials: 'same-origin',
         // JSON jangan pernah dilayani dari cache HTTP peramban (ETag updatedAt bukan validator isi); unduhan biner
