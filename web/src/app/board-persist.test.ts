@@ -499,6 +499,24 @@ describe('task terhapus tidak disimpan di perangkat (keputusan pemilik 2026-11-2
     expect(column?.data.pages[0]?.items.map((item) => item.id)).toEqual(['a1']);
   });
 
+  it('hapus yang datang saat tulis lama sedang berjalan tetap membuang task itu (tulis dan buang diserialkan)', async () => {
+    await fetchColumn();
+    await fetchTask('a0');
+    const actual = await vi.importActual<typeof import('@/lib/device-db')>('@/lib/device-db');
+    // Tulis kolom ditahan: tanpa serialisasi, pembuangan membaca toko kosong lalu tulis lama menimpanya.
+    vi.mocked(deviceDb.writeRecords).mockImplementationOnce(async (...args) => {
+      await sleep(60);
+      return actual.writeRecords(...args);
+    });
+    const flushing = persistence.flush();
+    forgetBoardTask('a0');
+    await flushing;
+    await sleep(200);
+    const [column] = (await readAllRecords('columns')) as unknown as { data: BoardColumnData }[];
+    expect(column?.data.pages[0]?.items.map((item) => item.id)).toEqual(['a1']);
+    expect((await readAllRecords('tasks')).map((r) => r.key)).toEqual([]);
+  });
+
   it('detail ditolak server (NOT_FOUND/FORBIDDEN) membuang rekamannya; galat lain tidak', async () => {
     await seedLive();
     await expect(

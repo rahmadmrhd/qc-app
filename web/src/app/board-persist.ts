@@ -49,6 +49,14 @@ interface Pending {
 // atau terjadwal milik sesi lama tidak pernah menulis sesudahnya. `pending` dibagi semua instance.
 let generation = 0;
 const pending = new Map<string, Pending>();
+// Semua baca-ubah-tulis toko papan (tulis tertunda dan pembuangan task) berjalan SATU PER SATU lewat rantai ini, agar
+// tulis yang membawa data lama tak menimpa pembuangan task yang baru dihapus (kondisi balapan review 4d, M1).
+let ioChain: Promise<void> = Promise.resolve();
+function serialIo(task: () => Promise<void>): Promise<void> {
+  const run = ioChain.then(task, task);
+  ioChain = run.catch(() => undefined);
+  return run;
+}
 
 const columnKey = (owner: string, locationIds: readonly string[], status: string) =>
   `${owner}|${[...locationIds].sort().join(',')}|${status}`;
@@ -224,7 +232,9 @@ async function forgetBoardTaskNow(id: string): Promise<void> {
   const owner = getSession().email;
   if (!owner) return;
   const mine = generation;
-  await forgetStoredTask(owner, id, () => generation === mine && getSession().email === owner);
+  await serialIo(() =>
+    forgetStoredTask(owner, id, () => generation === mine && getSession().email === owner),
+  );
 }
 
 async function flushPending(): Promise<void> {
@@ -267,13 +277,15 @@ async function flushPending(): Promise<void> {
     }
   }
   try {
-    for (const id of forgetIds) await forgetStoredTask(owner, id, guard);
-    if (columns.length > 0) {
-      await writeRecords('columns', columns, BOARD_STORE_LIMITS.columns, guard);
-    }
-    if (tasks.length > 0) {
-      await writeRecords('tasks', tasks, BOARD_STORE_LIMITS.detailTasks, guard);
-    }
+    await serialIo(async () => {
+      for (const id of forgetIds) await forgetStoredTask(owner, id, guard);
+      if (columns.length > 0) {
+        await writeRecords('columns', columns, BOARD_STORE_LIMITS.columns, guard);
+      }
+      if (tasks.length > 0) {
+        await writeRecords('tasks', tasks, BOARD_STORE_LIMITS.detailTasks, guard);
+      }
+    });
   } catch {
     // writeRecords tidak pernah menolak; jaga-jaga agar penyimpan tak pernah melempar.
   }
@@ -379,4 +391,5 @@ export async function clearBoardStoreWithin(timeoutMs = BOARD_CLEAR_TIMEOUT_MS):
 export function resetBoardPersistForTests(): void {
   generation = 0;
   pending.clear();
+  ioChain = Promise.resolve();
 }
