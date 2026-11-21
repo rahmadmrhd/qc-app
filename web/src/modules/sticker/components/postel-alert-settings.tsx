@@ -1,7 +1,7 @@
 import type { PostelSettingsDto, SavePostelSettingsInput, UserDto } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
 import { isPostelRecipient, POSTEL_LIMITS } from '@shared/postel';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
 import { Select } from '@/components/select';
@@ -18,11 +18,17 @@ const HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => ({
 }));
 
 export interface PostelAlertSettingsProps {
+  /** Id elemen `<form>`: tombol Simpan ada di bar judul `FormPage` (di luar form) dan memakai `form={formId}`. */
+  formId: string;
   settings: PostelSettingsDto;
   /** Daftar user untuk saran penerima; `null` bila pengguna tak boleh melihat Akses (email bebas tetap dapat diisi). */
   users: readonly UserDto[] | null;
   /** Mengembalikan pesan galat (tampil di bagian ini) atau `null` bila berhasil. */
   onSave: (input: SavePostelSettingsInput) => Promise<string | null>;
+  /** Proses simpan berjalan atau tidak (untuk tombol Simpan di bar judul). */
+  onBusyChange?: (busy: boolean) => void;
+  /** Ada isian bergalat (untuk titik galat pada tab). */
+  onHasErrorChange?: (hasError: boolean) => void;
 }
 
 function userLabel(user: Pick<UserDto, 'name' | 'email'>): string {
@@ -37,7 +43,14 @@ function parseInteger(raw: string, min: number, max: number): number | null {
   return Number.isInteger(value) && value >= min && value <= max ? value : null;
 }
 
-function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
+function Body({
+  formId,
+  settings,
+  users,
+  onSave,
+  onBusyChange,
+  onHasErrorChange,
+}: PostelAlertSettingsProps) {
   const { alert } = settings;
   const [enabled, setEnabled] = useState(alert.enabled);
   const [hour, setHour] = useState(String(alert.sendHour));
@@ -49,6 +62,10 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const hasError = Object.keys(errors).length > 0;
+  useEffect(() => {
+    onHasErrorChange?.(hasError);
+  }, [hasError, onHasErrorChange]);
   useUnsavedChanges(
     enabled !== alert.enabled ||
       hour !== String(alert.sendHour) ||
@@ -126,6 +143,7 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
     setErrors(next);
     if (Object.keys(next).length > 0 || repeatEveryDays === null) return;
     setBusy(true);
+    onBusyChange?.(true);
     setServerError(null);
     let message: string | null;
     try {
@@ -143,11 +161,13 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
       message = 'Gagal menyimpan pengaturan peringatan Postel';
     }
     setBusy(false);
+    onBusyChange?.(false);
     setServerError(message);
   }
 
   return (
     <form
+      id={formId}
       noValidate
       className="space-y-3 rounded-lg border p-4"
       onSubmit={(event) => {
@@ -369,16 +389,14 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
           {serverError}
         </p>
       ) : null}
-      <Button type="submit" disabled={busy}>
-        {busy ? 'Menyimpan…' : 'Simpan peringatan Postel'}
-      </Button>
     </form>
   );
 }
 
 /**
  * Peringatan masa berlaku Postel pada halaman Konfigurasi Stiker (`sticker: manage`): saklar, jam kirim, pengingat
- * hari-sebelum-habis, pengulangan, dan penerima. Disimpan sendiri (versi CAS terpisah dari pengaturan stok).
+ * hari-sebelum-habis, pengulangan, dan penerima. Disimpan sendiri (versi CAS terpisah dari pengaturan stok); tombol
+ * Simpan ada di bar judul halaman.
  */
 export function PostelAlertSettings(props: PostelAlertSettingsProps) {
   // `key` = versi tersimpan: setelah simpan (atau muat ulang) isian mulai dari data server terbaru.

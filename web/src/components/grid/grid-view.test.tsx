@@ -106,3 +106,21 @@ test('pilihan dipangkas ke butir yang masih dimuat', async () => {
   rerender(<Prune items={['a']} />);
   expect(await screen.findByText('1')).toBeInTheDocument();
 });
+
+test('isSelectable: kartu yang tak dapat dipilih tanpa checkbox', () => {
+  function Mixed() {
+    const selection = useRowSelection('x');
+    return (
+      <GridView
+        {...baseProps}
+        items={PICS}
+        selection={selection}
+        selectLabel={(pic) => pic.name}
+        isSelectable={(pic) => pic.name !== 'Satu'}
+      />
+    );
+  }
+  render(<Mixed />);
+  expect(screen.queryByRole('checkbox', { name: 'Pilih Satu' })).toBeNull();
+  expect(screen.getAllByRole('checkbox').length).toBe(PICS.length - 1);
+});

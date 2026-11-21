@@ -57,3 +57,10 @@ it('busy: tombol nonaktif dan dialog tak dapat ditutup', async () => {
   await userEvent.keyboard('{Escape}');
   expect(onOpenChange).not.toHaveBeenCalled();
 });
+
+it('permanent: kalimat tak dapat dikembalikan menggantikan kalimat dapat dipulihkan', () => {
+  setup({ permanent: true, count: 2, subject: 'gambar' });
+  expect(screen.getByText('Hapus 2 gambar?')).toBeInTheDocument();
+  expect(screen.getByText(/Dihapus permanen dan tidak dapat dikembalikan\./)).toBeInTheDocument();
+  expect(screen.queryByText(/dapat dipulihkan/)).toBeNull();
+});

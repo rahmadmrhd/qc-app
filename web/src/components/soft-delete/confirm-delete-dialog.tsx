@@ -12,7 +12,8 @@ import {
 /**
  * Konfirmasi hapus (soft delete): "Hapus {count} {subject}?", kalimat bahwa data dapat dipulihkan, dan `usage`
  * opsional (mis. "Dipakai 12 item"). `usage` HANYA diteruskan apa adanya dari pemanggil: ia dihitung dari record hidup
- * (rancangan soft delete §5 butir 16), bukan oleh dialog ini. Selama `busy` dialog tak dapat ditutup.
+ * (rancangan soft delete §5 butir 16), bukan oleh dialog ini. `permanent` = hapus permanen (mis. gambar Pustaka):
+ * kalimat dapat-dipulihkan diganti peringatan tak dapat dikembalikan. Selama `busy` dialog tak dapat ditutup.
  */
 export function ConfirmDeleteDialog({
   open,
@@ -20,6 +21,7 @@ export function ConfirmDeleteDialog({
   count,
   subject,
   usage,
+  permanent = false,
   onConfirm,
   busy = false,
 }: {
@@ -28,6 +30,7 @@ export function ConfirmDeleteDialog({
   count: number;
   subject: string;
   usage?: string;
+  permanent?: boolean;
   onConfirm: () => void;
   busy?: boolean;
 }) {
@@ -45,7 +48,9 @@ export function ConfirmDeleteDialog({
             Hapus {count} {subject}?
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Data dapat dipulihkan dari tampilan Terhapus.
+            {permanent
+              ? 'Dihapus permanen dan tidak dapat dikembalikan.'
+              : 'Data dapat dipulihkan dari tampilan Terhapus.'}
             {usage ? <span className="mt-1 block">{usage}</span> : null}
           </AlertDialogDescription>
         </AlertDialogHeader>
