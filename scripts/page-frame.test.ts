@@ -4,8 +4,9 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 
 // Aturan redesain (spek 2026-11-20 §6.4): setiap halaman memakai kerangka kit (`ListPage`, `ViewPage`, `FormPage`,
 // atau `KanbanBoard`), bukan kerangka sendiri. Tes ini memeriksa tiap berkas rute di `web/src/routes`: kerangka harus
-// terpakai di berkas rute itu atau di komponen yang diimpornya langsung (satu tingkat), atau rute itu tercantum di
-// `ROUTE_EXCEPTIONS` beserta alasannya. Entri pengecualian yang basi (berkasnya hilang atau kini memakai kerangka)
+// terpakai di berkas rute itu atau di komponen yang DIRENDERNYA (nama impor yang muncul sebagai tag JSX di rute, sampai
+// dua tingkat impor), atau rute itu tercantum di `ROUTE_EXCEPTIONS` beserta alasannya. Sekadar mengimpor modul yang
+// memuat kerangka (mis. helper, tipe, atau hook) tidak dihitung. Entri pengecualian yang basi (berkasnya hilang atau kini memakai kerangka)
 // menggagalkan tes, jadi daftar ini tak bisa membusuk. Halaman lama yang belum bermigrasi TIDAK boleh disembunyikan
 // di sini: migrasikan.
 
@@ -23,10 +24,6 @@ const ROUTE_EXCEPTIONS: Record<string, string> = {
   '_app/forbidden.tsx': 'Pesan status 403 (`StatusMessage`); tanpa data atau aksi.',
   '_app/sticker/stock.tsx':
     'Hanya pengalihan ke /sticker (Stok Stiker digabung ke halaman Stiker); tidak merender halaman.',
-  '_app/serial/new.tsx':
-    'Catat Serial Number: `RecordPage` memakai `HeadroomFrame` + `HeadroomBar` dari kit tetapi bar judulnya berisi bar Simpan/draft sendiri, dan isinya tabel draft (kartu di ponsel), bukan daftar server.',
-  '_app/serial/report.tsx':
-    'Lapor Rusak: `ReportPage` memakai `HeadroomFrame` + `HeadroomBar` dari kit; isinya pencarian satu serial lalu formulir laporan, bukan daftar, View, atau form simpan biasa.',
   'country-lock.tsx':
     'Country Lock (aplikasi desktop): di dalam `AppShell` bila pengguna masuk (breadcrumb + `PageContainer`); jalur belum masuk memakai pembungkus ringan sendiri. Isinya panel perangkat/inject (jembatan desktop), bukan CRUD.',
   'laporan.$token.tsx':
@@ -90,18 +87,78 @@ function stripComments(source: string): string {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
-/** Kerangka yang terpakai di berkas rute atau di komponen yang diimpornya langsung; `null` bila tidak ada. */
-function frameOf(file: string): string | null {
-  const source = stripComments(readFileSync(file, 'utf8'));
+/** Impor satu modul: spesifier dan nama lokal yang dibawanya (`{ A, B as C }`, bawaan, atau `* as ns`). */
+interface ImportRef {
+  spec: string;
+  names: string[];
+}
+
+/** Semua impor `import ... from '...'` di sumber (tanpa komentar), beserta nama lokalnya. */
+function importsOf(source: string): ImportRef[] {
+  const found: ImportRef[] = [];
+  for (const match of source.matchAll(/import\s+(?:type\s+)?([^;'"]*?)\s*from\s*'([^']+)'/g)) {
+    const clause = match[1] ?? '';
+    const names: string[] = [];
+    const named = /\{([^}]*)\}/.exec(clause);
+    for (const part of named?.[1]?.split(',') ?? []) {
+      const trimmed = part.trim().replace(/^type\s+/, '');
+      if (trimmed === '') continue;
+      const alias = / as ([A-Za-z0-9_$]+)$/.exec(trimmed);
+      names.push(alias?.[1] ?? trimmed);
+    }
+    const rest = clause
+      .replace(/\{[^}]*\}/, '')
+      .trim()
+      .replace(/,\s*$/, '');
+    const namespace = /\* as ([A-Za-z0-9_$]+)/.exec(rest);
+    if (namespace?.[1]) names.push(namespace[1]);
+    else if (/^[A-Za-z0-9_$]+$/.test(rest)) names.push(rest);
+    found.push({ spec: match[2] ?? '', names });
+  }
+  return found;
+}
+
+/** Benar bila `name` dirender sebagai tag JSX di `source` (`<Nama`, juga `<ns.Nama`). */
+function rendersJsx(source: string, name: string): boolean {
+  return new RegExp(`<${name.replace(/\$/g, '\\$')}\\b`).test(source);
+}
+
+/**
+ * Kerangka yang dirender: tag kerangka di sumber sendiri, atau di modul yang diimpor SEKALIGUS dirender sebagai JSX
+ * (rekursif sampai `depth` tingkat). `read` dan `resolve` disuntik agar dapat diuji tanpa berkas.
+ */
+function findFrame(
+  source: string,
+  file: string,
+  deps: {
+    read: (path: string) => string;
+    resolve: (from: string, spec: string) => string | null;
+  },
+  depth = 2,
+): string | null {
   const own = FRAME_TAG.exec(source);
-  if (own) return `${own[1]} (berkas rute)`;
-  for (const match of source.matchAll(/from '([^']+)'/g)) {
-    const target = resolveImport(file, match[1]);
+  if (own) return own[1] ?? null;
+  if (depth <= 0) return null;
+  for (const ref of importsOf(source)) {
+    if (!ref.names.some((name) => rendersJsx(source, name))) continue;
+    const target = deps.resolve(file, ref.spec);
     if (!target || target.includes(`${sep}components${sep}ui${sep}`)) continue;
-    const found = FRAME_TAG.exec(stripComments(readFileSync(target, 'utf8')));
-    if (found) return `${found[1]} (${posix(target, SRC)})`;
+    const found = findFrame(stripComments(deps.read(target)), target, deps, depth - 1);
+    if (found) return `${found} (${posix(target, SRC)})`;
   }
   return null;
+}
+
+const FILE_DEPS = {
+  read: (path: string) => readFileSync(path, 'utf8'),
+  resolve: resolveImport,
+};
+
+/** Kerangka yang dirender di berkas rute atau komponen yang dirender lewat impornya; `null` bila tidak ada. */
+function frameOf(file: string): string | null {
+  const source = stripComments(readFileSync(file, 'utf8'));
+  const found = findFrame(source, file, FILE_DEPS);
+  return found === null ? null : found.includes('(') ? found : `${found} (berkas rute)`;
 }
 
 test('setiap rute halaman memakai kerangka kit atau tercantum sebagai pengecualian beralasan', () => {
@@ -141,4 +198,56 @@ test('FormHeader (form lama) sudah dihapus dan tak ada pemakainya', () => {
     .filter((file) => /\b(?:FormHeader|form-header)\b/.test(readFileSync(file, 'utf8')))
     .map((file) => posix(file, SRC));
   expect(users).toEqual([]);
+});
+
+test('pendeteksi kerangka: hanya yang dirender dihitung, bukan sekadar diimpor', () => {
+  const files: Record<string, string> = {
+    '/x/framed.tsx': 'export const Framed = () => <FormPage formId="f" title="T">x</FormPage>;',
+    '/x/middle.tsx': "import { Framed } from './framed';\nexport const Middle = () => <Framed />;",
+    '/x/helper.tsx': 'export const helper = 1;\nexport const Other = () => <ListPage title="t" />;',
+  };
+  const deps = {
+    read: (path: string) => files[path] ?? '',
+    resolve: (_from: string, spec: string) => `/x/${spec.replace('./', '')}.tsx`,
+  };
+  // Kerangka di sumber sendiri.
+  expect(findFrame('const a = <ViewPage title="t" />;', '/x/route.tsx', deps)).toBe('ViewPage');
+  // Dirender lewat impor satu dan dua tingkat.
+  expect(
+    findFrame("import { Framed } from './framed';\nconst a = <Framed />;", '/x/route.tsx', deps),
+  ).toContain('FormPage');
+  expect(
+    findFrame("import { Middle } from './middle';\nconst a = <Middle />;", '/x/route.tsx', deps),
+  ).toContain('FormPage');
+  // Impor modul berkerangka yang tidak dirender (helper, tipe, nilai) tidak dihitung: rute dengan tata letak sendiri
+  // yang hanya memakai helper dari berkas berkerangka harus terdeteksi.
+  expect(
+    findFrame(
+      'import { helper } from \'./helper\';\nconst a = <div className="p-4">{helper}</div>;',
+      '/x/route.tsx',
+      deps,
+    ),
+  ).toBeNull();
+  // Impor beralias dan namespace dikenali sebagai nama yang dirender.
+  expect(
+    findFrame(
+      "import { Framed as Page } from './framed';\nconst a = <Page />;",
+      '/x/route.tsx',
+      deps,
+    ),
+  ).toContain('FormPage');
+  expect(
+    findFrame("import * as ui from './framed';\nconst a = <ui.Framed />;", '/x/route.tsx', deps),
+  ).toContain('FormPage');
+  // Batas kedalaman: rantai terlalu panjang dihentikan, bukan berputar.
+  expect(
+    findFrame("import { Middle } from './middle';\nconst a = <Middle />;", '/x/route.tsx', deps, 1),
+  ).toBeNull();
+});
+
+test('rute Catat dan Lapor Rusak Serial Number memakai FormPage (tanpa pengecualian)', () => {
+  for (const key of ['_app/serial/new.tsx', '_app/serial/report.tsx']) {
+    expect(key in ROUTE_EXCEPTIONS).toBe(false);
+    expect(frameOf(join(ROUTES, key))).toContain('FormPage');
+  }
 });
