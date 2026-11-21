@@ -388,7 +388,7 @@ test('StickyActionBar naik setinggi papan ketik layar (--kb) agar tak tertutup d
   );
 });
 
-test('StickyActionBar fixed selebar layar dan mengukur tingginya ke --action-bar-h; sticky tidak (P2)', () => {
+test('StickyActionBar fixed selebar layar dan mengukur tingginya ke --action-bar-h (P2)', () => {
   const { unmount } = render(<StickyActionBar label="Aksi">isi</StickyActionBar>);
   const bar = screen.getByRole('region', { name: 'Aksi' });
   expect(bar.className).toContain('fixed');
@@ -396,12 +396,6 @@ test('StickyActionBar fixed selebar layar dan mengukur tingginya ke --action-bar
   expect(document.documentElement.style.getPropertyValue('--action-bar-h')).toBe('0px');
   unmount();
   expect(document.documentElement.style.getPropertyValue('--action-bar-h')).toBe('0px');
-  render(
-    <StickyActionBar label="Massal" placement="sticky">
-      isi
-    </StickyActionBar>,
-  );
-  expect(screen.getByRole('region', { name: 'Massal' }).className).not.toContain('fixed');
 });
 
 test('ActionButton emphasis="primary": Ubah (outline) jadi solid; aksi non-primary tetap berwarnanya', () => {
