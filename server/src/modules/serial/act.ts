@@ -4,6 +4,7 @@ import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
 import { statementsFor } from '@server/core/events';
+import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { mapDuplicateError } from '@server/modules/access/repo';
 import { planAttachFiles } from '@server/modules/files/service';
@@ -190,7 +191,7 @@ async function resolveBuTarget(
   });
   if (allowed.length === 0) throw validationError('buId', BU_TARGET_MESSAGE);
   const target = await env.DB.prepare(
-    "SELECT code FROM business_units WHERE id = ? AND status = 'active'",
+    `SELECT code FROM business_units WHERE ${liveWhere()} AND id = ? AND status = 'active'`,
   )
     .bind(targetBuId)
     .first<{ code: string }>();

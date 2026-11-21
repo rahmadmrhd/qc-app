@@ -113,7 +113,9 @@ export async function saveServiceSettings(
   // Lokasi yang dipilih harus ada (status apa pun: lokasi nonaktif yang tercantum diabaikan saat dipakai).
   if (input.locationIds.length > 0) {
     const marks = input.locationIds.map(() => '?').join(', ');
-    const found = await env.DB.prepare(`SELECT id FROM locations WHERE id IN (${marks})`)
+    const found = await env.DB.prepare(
+      `SELECT id FROM locations WHERE ${liveWhere()} AND id IN (${marks})`,
+    )
       .bind(...input.locationIds)
       .all<{ id: string }>();
     if (found.results.length !== input.locationIds.length) {

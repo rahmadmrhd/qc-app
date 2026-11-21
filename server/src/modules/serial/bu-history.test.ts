@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { DbError } from '@server/core/db';
+import { baseIndexName } from '@server/core/index-names';
 import { seedSerial, seedSerialWorld } from '@server-test/serial-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
@@ -33,12 +34,21 @@ const rowsOf = (serialId: string) =>
     .all<{ bu_id: string; first_at: string; left_at: string }>()
     .then((r) => r.results);
 
-const hasIndex = () =>
+const hasNamedIndex = (name: string) =>
   env.DB.prepare(
-    "SELECT COUNT(*) AS n FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'serials' AND index_name = 'serials_serial'",
+    "SELECT COUNT(*) AS n FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'serials' AND index_name = ?",
   )
+    .bind(name)
     .first<{ n: number | string }>()
     .then((r) => Number(r?.n) > 0);
+
+const hasIndex = () => hasNamedIndex('serials_serial');
+
+/** Lepas kedua indeks unik serial (lama dan `_live`) agar serial ganda dapat disisipkan; `afterEach` memulihkannya. */
+const dropSerialIndexes = async () => {
+  await env.DB.prepare('DROP INDEX IF EXISTS serials_serial ON serials').run();
+  await env.DB.prepare('DROP INDEX IF EXISTS serials_serial_live ON serials').run();
+};
 
 /** Sisipkan serial TANPA baris penghubung (seperti image lama). */
 const rawSerial = (id: string, buId: string, serial: string) =>
@@ -83,13 +93,24 @@ describe('ensureSerialUniqueIndex', () => {
     expect(await ensureSerialUniqueIndex(env)).toBe('exists');
   });
 
+  test('tanpa serial ganda: kedua indeks (serials_serial dan serials_serial_live) dibuat; salah satunya hilang = dilengkapi', async () => {
+    await dropSerialIndexes();
+    expect(await ensureSerialUniqueIndex(env)).toBe('created');
+    expect(await hasNamedIndex('serials_serial')).toBe(true);
+    expect(await hasNamedIndex('serials_serial_live')).toBe(true);
+    await env.DB.prepare('DROP INDEX serials_serial_live ON serials').run();
+    expect(await ensureSerialUniqueIndex(env)).toBe('created');
+    expect(await hasNamedIndex('serials_serial_live')).toBe(true);
+  });
+
   test('serial ganda lintas BU: duplicates tanpa galat dan tanpa mengubah data; dibuat setelah gandanya hilang', async () => {
-    await env.DB.prepare('DROP INDEX serials_serial ON serials').run();
+    await dropSerialIndexes();
     await rawSerial('s1', 'bu-a', 'SN1');
     await rawSerial('s2', 'bu-b', 'SN1');
     await rawSerial('s3', 'bu-a', 'SN2');
     expect(await ensureSerialUniqueIndex(env)).toBe('duplicates');
     expect(await hasIndex()).toBe(false);
+    expect(await hasNamedIndex('serials_serial_live')).toBe(false);
     const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM serials').first<{
       n: number | string;
     }>();
@@ -103,7 +124,7 @@ describe('ensureSerialUniqueIndex', () => {
     const error = await rawSerial('s2', 'bu-b', 'SN1').catch((e) => e);
     expect(error).toBeInstanceOf(DbError);
     expect((error as DbError).kind).toBe('duplicate');
-    expect((error as DbError).key).toBe('serials_serial');
+    expect(baseIndexName((error as DbError).key ?? '')).toBe('serials_serial');
   });
 });
 

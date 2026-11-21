@@ -1,5 +1,6 @@
 import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
+import { liveWhere } from '@server/core/soft-delete';
 import { loadActiveUserContexts, type UserContext } from '@server/modules/access/context';
 import { canReadSerial } from '@server/modules/serial/access';
 import { isSerialNotificationKind, type NotificationSide } from '@shared/notifications';
@@ -37,7 +38,7 @@ export function hasReadAccess(user: Pick<UserContext, 'locations'>, locationId: 
 
 /**
  * Berhak membaca notifikasi Serial Number: BU serial entrinya (`serials.bu_id`) termasuk BU yang masih boleh dibaca
- * pengguna (`serial`/`serialservice: view`); entri yang sudah tak ada = tidak berhak. Tak bergantung pada lokasi atau
+ * pengguna (`serial`/`serialservice: view`); entri yang sudah tak ada atau terhapus = tidak berhak. Tak bergantung pada lokasi atau
  * izin Serah Terima.
  */
 export async function hasSerialReadAccess(
@@ -46,7 +47,7 @@ export async function hasSerialReadAccess(
   serialId: string,
 ): Promise<boolean> {
   if (serialId === '') return false;
-  const row = await env.DB.prepare('SELECT bu_id FROM serials WHERE id = ?')
+  const row = await env.DB.prepare(`SELECT bu_id FROM serials WHERE ${liveWhere()} AND id = ?`)
     .bind(serialId)
     .first<{ bu_id: string }>();
   // BU saat ini ATAU BU di riwayat serial (spek serial unik se-sistem §5.3).

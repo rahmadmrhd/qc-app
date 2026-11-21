@@ -27,6 +27,7 @@ beforeEach(async () => {
   await seedSerialWorld(env);
   // Keadaan sebelum penyatuan: indeks unik belum ada (ada serial ganda lintas BU).
   await env.DB.prepare('DROP INDEX IF EXISTS serials_serial ON serials').run();
+  await env.DB.prepare('DROP INDEX IF EXISTS serials_serial_live ON serials').run();
   await env.DB.prepare(
     "INSERT INTO sticker_stock (sticker_id, location_id, qty, updated_at) VALUES ('s1', 'loc-sby', 10, '')",
   ).run();
@@ -37,6 +38,9 @@ afterEach(async () => {
   await env.DB.prepare('DELETE FROM serials').run();
   await env.DB.prepare(
     'CREATE UNIQUE INDEX IF NOT EXISTS serials_serial ON serials (serial)',
+  ).run();
+  await env.DB.prepare(
+    'CREATE UNIQUE INDEX IF NOT EXISTS serials_serial_live ON serials (serial, deleted_at)',
   ).run();
 });
 

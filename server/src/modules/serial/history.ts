@@ -1,10 +1,9 @@
 import type { Env } from '@server/core/env';
-import { appError } from '@server/core/errors';
 import type { UserContext } from '@server/modules/access/context';
 import type { SerialHistoryInput, SerialHistoryOutput } from '@shared/contract';
 import { SERIAL_HISTORY_GROUPS, SERIAL_LIMITS } from '@shared/serials';
-import { canReadSerial } from './access';
-import { loadSerialRow, type SerialEventRow } from './repo';
+import { loadReadableSerialRow } from './readable';
+import type { SerialEventRow } from './repo';
 import { toEventsWithProofs } from './service';
 
 const placeholders = (count: number): string => Array.from({ length: count }, () => '?').join(', ');
@@ -26,11 +25,7 @@ export async function serialHistory(
   user: UserContext,
   input: SerialHistoryInput,
 ): Promise<SerialHistoryOutput> {
-  const row = await loadSerialRow(env.DB, input.id);
-  if (!row) throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
-  if (!(await canReadSerial(env.DB, user, row.id.trim(), row.bu_id.trim()))) {
-    throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
-  }
+  const row = await loadReadableSerialRow(env, user, input.id);
   const serialId = row.id.trim();
   const limit = input.limit ?? SERIAL_LIMITS.historyDefaultLimit;
 

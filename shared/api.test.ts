@@ -332,6 +332,10 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'serials.buOptions': null,
   'serials.serviceLocations': null,
   'serials.lookup': { serial: 'SN-1' },
+  'serials.remove': { id: 's1' },
+  'serials.removeBatch': { ids: ['s1', 's2'] },
+  'serials.restore': { id: 's1' },
+  'serials.restoreBatch': { ids: ['s1', 's2'] },
   'serials.reportNew': {
     serial: 'SN-1',
     itemId: 'i1',

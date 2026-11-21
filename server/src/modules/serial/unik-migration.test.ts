@@ -37,6 +37,15 @@ async function schemaBefore(): Promise<{ db: Db; sql: string }> {
   return { db, sql: all.find((m) => m.name === MIGRATION)?.sql ?? '' };
 }
 
+/** Migrasi SESUDAH 0026 (mis. kolom `deleted_at` yang dibutuhkan indeks `serials_serial_live`): diterapkan sebelum indeks dibuat. */
+async function applyLater(db: Db): Promise<void> {
+  const all = await loadMigrations();
+  await applyMigrations(
+    db,
+    all.filter((m) => m.name > MIGRATION),
+  );
+}
+
 const insertSerial = (db: Db, id: string, bu: string, serial: string, createdAt: string) =>
   db
     .prepare(
@@ -72,6 +81,7 @@ describe('migrasi 0026 serial unik se-sistem', () => {
       ]);
       // Migrasi sendiri tidak membuat indeks unik (pemeriksa dump pemulihan menolak PREPARE).
       expect(await hasUnique(db)).toBe(false);
+      await applyLater(db);
       expect(await ensureSerialUniqueIndex({ DB: db } as Env)).toBe('created');
       expect(await hasUnique(db)).toBe(true);
       expect(await ensureSerialUniqueIndex({ DB: db } as Env)).toBe('exists');
@@ -93,6 +103,7 @@ describe('migrasi 0026 serial unik se-sistem', () => {
       await insertSerial(db, 's1', 'bu1', 'SN1', '2026-11-01T00:00:00.000Z');
       await insertSerial(db, 's2', 'bu2', 'SN1', '2026-11-02T00:00:00.000Z');
       await db.exec(sql);
+      await applyLater(db);
       expect(await ensureSerialUniqueIndex({ DB: db } as Env)).toBe('duplicates');
       expect(await hasUnique(db)).toBe(false);
       const serials = await db.prepare('SELECT COUNT(*) AS n FROM serials').first<{

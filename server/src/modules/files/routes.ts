@@ -1,6 +1,6 @@
 import type { RouteTable } from '@server/core/router';
 import { visibleBuIds } from '@server/modules/item/access';
-import { readableBuIds } from '@server/modules/serial/access';
+import { canManageSerial, readableBuIds } from '@server/modules/serial/access';
 import { hasLevel } from '@shared/permissions';
 import { readFile, uploadFile } from './service';
 import { validateGetFile, validateUploadFile } from './validate';
@@ -42,6 +42,7 @@ export function filesRoutes(): Pick<RouteTable, 'files.upload' | 'files.get'> {
             hasLevel(ctx.user.permissions.sticker, 'view') ||
             hasLevel(ctx.user.permissions.item, 'view'),
           serialBuIds: readableBuIds(ctx.user),
+          serialManage: (involved) => canManageSerial(ctx.user, involved),
         }),
     },
   };

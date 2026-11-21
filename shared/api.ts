@@ -297,6 +297,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       cursor: 'string',
       limit: 'number',
       customerId: 'string',
+      deleted: 'boolean',
     },
   },
   'handovers.get': {
@@ -318,6 +319,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'handovers.setCheck': { verb: 'PUT', path: '/handovers/{id}/checks' },
   'handovers.setDone': { verb: 'POST', path: '/handovers/{id}/done' },
   'handovers.comment': { verb: 'POST', path: '/handovers/{id}/comments', status: 201 },
+  // Hapus lunak per task (fase 4d; tanpa rute batch, keputusan pemilik soft delete 8): lokasi task lewat `locationId`.
   'items.list': {
     verb: 'GET',
     path: '/items',
@@ -475,10 +477,16 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       from: 'string',
       to: 'string',
       createdBy: 'string',
+      deleted: 'boolean',
       cursor: 'string',
       limit: 'number',
     },
   },
+  // Hapus lunak (fase 4d). Rute statis `/serials/batch/...` SEBELUM `/serials/{id}/...` (urutan tabel = urutan pendaftaran).
+  'serials.removeBatch': { verb: 'POST', path: '/serials/batch/delete' },
+  'serials.restoreBatch': { verb: 'POST', path: '/serials/batch/restore' },
+  'serials.remove': { verb: 'DELETE', path: '/serials/{id}' },
+  'serials.restore': { verb: 'POST', path: '/serials/{id}/restore', etag: 'updatedAt' },
   'serials.history': {
     verb: 'GET',
     path: '/serials/{id}/history',

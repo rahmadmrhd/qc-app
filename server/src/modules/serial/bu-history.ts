@@ -12,6 +12,12 @@ import type { Env } from '@server/core/env';
 export const SERIAL_UNIQUE_INDEX = 'serials_serial';
 
 /**
+ * Padanan soft delete (`serial`, `deleted_at`): serial terhapus dan serial baru berkunci sama dapat hidup berdampingan.
+ * Dipetakan ke konflik yang sama lewat `baseIndexName`. Migrasi contract (Task 6) membuang `serials_serial` lama.
+ */
+export const SERIAL_LIVE_INDEX = 'serials_serial_live';
+
+/**
  * Pengisi idempoten: satu baris "BU saat ini" untuk setiap serial yang belum punya baris untuk `bu_id`-nya. Dijalankan
  * tiap start server agar image lama yang menulis serial tanpa baris penghubung (rollback) pulih saat maju lagi.
  */
@@ -21,10 +27,22 @@ export async function backfillSerialBusinessUnits(env: Env): Promise<void> {
   ).run();
 }
 
+async function hasIndex(env: Env, name: string): Promise<boolean> {
+  const present = await env.DB.prepare(
+    'SELECT COUNT(*) AS n FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?',
+  )
+    .bind('serials', name)
+    .first<{ n: number | string }>();
+  return Number(present?.n ?? 0) > 0;
+}
+
 /**
- * Membuat indeks unik `serials_serial` bila belum ada dan tidak ada serial ganda (idempoten, dipanggil tiap start
- * setelah migrasi). Ada serial ganda lintas BU = `'duplicates'`: dicatat sebagai peringatan (hanya jumlahnya, tanpa
- * nilai serial) dan start TIDAK digagalkan; keunikan dijaga aplikasi sampai skrip penyatuan dijalankan.
+ * Membuat indeks unik `serials_serial` dan padanan soft delete `serials_serial_live` bila belum ada dan tidak ada serial
+ * ganda (idempoten, dipanggil tiap start setelah migrasi). Salah satu yang sudah ada tidak menghalangi pembuatan yang
+ * lain. Ada serial ganda lintas BU = `'duplicates'`: dicatat sebagai SATU peringatan (hanya jumlahnya, tanpa nilai
+ * serial) dan start TIDAK digagalkan; keunikan dijaga aplikasi sampai skrip penyatuan dijalankan. Kedua indeks
+ * memakai syarat yang sama: serial ganda menurut `serial` saja (serial terhapus + serial baru berkunci sama hanya
+ * mungkin sesudah indeks lama dibuang di migrasi contract).
  *
  * Ini SATU-SATUNYA pembuat indeks (migrasi 0026 tidak membuatnya: pemeriksa dump pemulihan menolak PREPARE/SET @var).
  * Templat tes (`test-support/test-db.ts`) memanggilnya juga, supaya tes punya penjaga DB yang sama dengan produksi.
@@ -32,12 +50,14 @@ export async function backfillSerialBusinessUnits(env: Env): Promise<void> {
 export async function ensureSerialUniqueIndex(
   env: Env,
 ): Promise<'created' | 'exists' | 'duplicates'> {
-  const present = await env.DB.prepare(
-    'SELECT COUNT(*) AS n FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?',
-  )
-    .bind('serials', SERIAL_UNIQUE_INDEX)
-    .first<{ n: number | string }>();
-  if (Number(present?.n ?? 0) > 0) return 'exists';
+  const missing: [string, string][] = [];
+  if (!(await hasIndex(env, SERIAL_UNIQUE_INDEX))) {
+    missing.push([SERIAL_UNIQUE_INDEX, 'serial']);
+  }
+  if (!(await hasIndex(env, SERIAL_LIVE_INDEX))) {
+    missing.push([SERIAL_LIVE_INDEX, 'serial, deleted_at']);
+  }
+  if (missing.length === 0) return 'exists';
   const dups = await env.DB.prepare(
     'SELECT COUNT(*) AS n FROM (SELECT 1 FROM serials GROUP BY serial HAVING COUNT(*) > 1) AS d',
   ).first<{ n: number | string }>();
@@ -48,15 +68,17 @@ export async function ensureSerialUniqueIndex(
     );
     return 'duplicates';
   }
-  try {
-    await env.DB.prepare(`CREATE UNIQUE INDEX ${SERIAL_UNIQUE_INDEX} ON serials (serial)`).run();
-  } catch (error) {
-    // Serial ganda masuk di antara pemeriksaan dan pembuatan indeks: tetap tidak menggagalkan start.
-    if (error instanceof DbError && error.kind === 'duplicate') {
-      console.warn(`Indeks unik ${SERIAL_UNIQUE_INDEX} gagal dibuat: ada Serial Number ganda.`);
-      return 'duplicates';
+  for (const [name, columns] of missing) {
+    try {
+      await env.DB.prepare(`CREATE UNIQUE INDEX ${name} ON serials (${columns})`).run();
+    } catch (error) {
+      // Serial ganda masuk di antara pemeriksaan dan pembuatan indeks: tetap tidak menggagalkan start.
+      if (error instanceof DbError && error.kind === 'duplicate') {
+        console.warn(`Indeks unik ${SERIAL_UNIQUE_INDEX} gagal dibuat: ada Serial Number ganda.`);
+        return 'duplicates';
+      }
+      throw error;
     }
-    throw error;
   }
   return 'created';
 }

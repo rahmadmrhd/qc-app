@@ -74,115 +74,15 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'handover_comments@2#0dd06e23',
     'handover_comments@3#0dd06e23',
   ],
-  'server/src/modules/serial/act.ts': ['business_units@1#3b3c1ebc'],
-  'server/src/modules/serial/alert-job.ts': [
-    'serials@1#94659661',
-    'business_units@1#94659661',
-    'locations@1#94659661',
-    'serial_cases@1#94659661',
-    'serial_events@1#94659661',
-  ],
-  'server/src/modules/serial/bu-history.ts': [
-    'serials@1#9e00df83',
-    'serials@2#55c321bc',
-    'serials@3#4ac5b74b',
-    'serials@4#616ca633',
-  ],
-  'server/src/modules/serial/case-list.ts': [
-    'serial_events@1#d1858e02',
-    'serial_events@2#d1858e02',
-    'serial_cases@1#d1858e02',
-    'serials@1#d1858e02',
-    'locations@1#d1858e02',
-    'business_units@1#d1858e02',
-  ],
-  'server/src/modules/serial/case-repo.ts': [
-    'serial_cases@1#ce0211b9',
-    'serial_cases@2#d60cde70',
-    'serial_cases@3#66ada673',
-    'serials@1#7041f237',
-  ],
-  'server/src/modules/serial/history.ts': ['serial_events@1#c42b6fdb', 'serial_events@2#fc41b582'],
-  'server/src/modules/serial/proof/attach.ts': ['business_units@1#71a9e696'],
-  'server/src/modules/serial/proof/repo.ts': [
-    'serial_proof_photos@1#d2a2206f',
-    'serial_proof_photos@2#2516c7c7',
-    'serial_proof_photos@3#cdcf2b13',
-    'serial_proof_photos@4#11efcca7',
-    'serial_proof_photos@5#9dc707a0',
-    'serial_proof_photos@6#094cf888',
-    'serial_proof_photos@7#6b34f0b2',
-    'serial_proof_photos@8#851a9891',
-    'serial_proof_photos@9#b7ceab19',
-  ],
-  'server/src/modules/serial/proof/service.ts': ['serials@1#c9827557'],
-  'server/src/modules/serial/proof/sweep.ts': ['serial_proof_photos@1#ef7e9e83'],
-  'server/src/modules/serial/public-routes.ts': [
-    'business_units@1#fb777380',
-    'serial_events@1#ab0594cd',
-    'serial_events@2#dcf2fc40',
-  ],
-  'server/src/modules/serial/recheck-entry.ts': [
-    'business_units@1#3b3c1ebc',
-    'business_units@2#71a9e696',
-    'business_units@3#c7cf9826',
-    'serial_events@1#cb0debcf',
-    'serials@1#3ef659b5',
-    'business_units@4#3ef659b5',
-    'business_units@5#129328ee',
-  ],
-  'server/src/modules/serial/repo.ts': [
-    'serials@1#aa389142',
-    'locations@1#ff23409a',
-    'locations@2#f283f2e8',
-    'serial_proof_photos@1#bbce0dc9',
-    'serials@2#bbce0dc9',
-    'business_units@1#bbce0dc9',
-    'locations@3#bbce0dc9',
-    'locations@4#bbce0dc9',
-    'locations@5#bbce0dc9',
-    'serial_cases@1#bbce0dc9',
-    'business_units@2#029cb2ae',
-    'serial_proof_photos@2#ab57a715',
-    'serials@3#ab57a715',
-    'business_units@3#ab57a715',
-    'locations@6#ab57a715',
-    'locations@7#ab57a715',
-    'locations@8#ab57a715',
-    'serial_cases@2#ab57a715',
-    'serial_events@1#daa6e6f2',
-    'serial_proof_photos@3#2afb7690',
-    'serials@4#2afb7690',
-    'business_units@4#2afb7690',
-    'locations@9#2afb7690',
-    'locations@10#2afb7690',
-    'locations@11#2afb7690',
-    'serial_cases@3#2afb7690',
-    'serial_events@2#3b3831f0',
-    'serial_stickers@1#3f0e2215',
-  ],
-  'server/src/modules/serial/report.ts': ['business_units@1#71a9e696', 'serials@1#8f846d75'],
-  'server/src/modules/serial/service-locations.ts': ['locations@2#92c7c99c'],
-  'server/src/modules/serial/service.ts': [
-    'item_business_units@1#43393540',
-    'business_units@1#43393540',
-    'serials@1#be7ddb50',
-  ],
   // Lain-lain (modul yang membaca tabel milik fase lain: notification, desktop catalog, files, digest stok)
-  'server/src/modules/files/service.ts': ['serials@1#28642dd5', 'item_business_units@1#546f26ad'],
+  'server/src/modules/files/service.ts': ['item_business_units@1#546f26ad'],
   'server/src/modules/notification/flush.ts': ['handovers@1#f37698e5'],
   'server/src/modules/notification/push.ts': ['notifications@1#e392efab'],
-  'server/src/modules/notification/recipients.ts': ['serials@1#c9827557'],
   'server/src/modules/notification/repo.ts': [
-    'serials@1#9c8a0b2b',
     'notifications@1#f36d7108',
     'notifications@2#4770fffd',
     'notifications@3#aca741c4',
     'notifications@4#c088baf7',
-  ],
-  'server/src/modules/notification/serial-proof.ts': [
-    'serial_proof_photos@1#45516398',
-    'serials@1#45516398',
   ],
 };
 
@@ -229,40 +129,10 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/brand/service.ts#items@1#759837a3':
     'Ganti nama merk: mengunci (FOR UPDATE) dan menurunkan ulang `items.key` SEMUA item merk itu, termasuk yang terhapus (T4: kunci item terhapus ikut berubah agar tetap konsisten saat dipulihkan).',
-  'server/src/modules/serial/alert-job.ts#items@1#94659661':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
-  'server/src/modules/serial/alert-job.ts#brands@1#94659661':
-    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
-  'server/src/modules/serial/case-list.ts#items@1#d1858e02':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
-  'server/src/modules/serial/case-list.ts#brands@1#d1858e02':
-    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
-  'server/src/modules/serial/recheck-entry.ts#items@1#3ef659b5':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
-  'server/src/modules/serial/recheck-entry.ts#brands@1#3ef659b5':
-    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
   'server/src/modules/serial/proof/attach.ts#items@1#b355d3af':
     'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
   'server/src/modules/serial/proof/attach.ts#brands@1#b355d3af':
     'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
-  'server/src/modules/serial/repo.ts#items@2#bbce0dc9':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
-  'server/src/modules/serial/repo.ts#brands@1#bbce0dc9':
-    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
-  'server/src/modules/serial/repo.ts#items@3#ab57a715':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
-  'server/src/modules/serial/repo.ts#brands@2#ab57a715':
-    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
-  'server/src/modules/serial/repo.ts#items@4#2afb7690':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
-  'server/src/modules/serial/repo.ts#brands@3#2afb7690':
-    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
-  'server/src/modules/serial/repo.ts#items@5#205e41f7':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
-  'server/src/modules/serial/repo.ts#brands@4#205e41f7':
-    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
-  'server/src/modules/serial/service.ts#items@2#122b7dd8':
-    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
   'server/src/modules/item/repo.ts#brands@3#66854c46':
     'Penjaga TULIS (SELECT ... FOR UPDATE) atas baris merk yang baru dibaca penulis; menilai `deleted_at` lewat parameter `chosenNow` (merk baru wajib hidup, rujukan tersimpan tetap sah).',
   'server/src/modules/postel/items.ts#brands@1#fbdbcd86':
@@ -407,4 +277,170 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Pemeriksaan ada-tidaknya versi menurut id konfigurasi yang sudah dimuat/dikunci pemanggil.',
   'server/src/modules/qrcode/service.ts#manual_book_versions@1#97faa561':
     'Versi tertinggi menurut id konfigurasi yang sedang disimpan pemanggil (penentu nama stiker `<nama> v<n>`); keadaan konfigurasi sudah diperiksa.',
+  'server/src/modules/files/service.ts#serials@1#6205b838':
+    'Pembaca menilai `deleted_at` baris itu sendiri (kolomnya dibaca, bukan disaring): kiriman ulang `clientId`, hak baca berkas/foto bagi pemulih, keadaan foto; serial terhapus hanya terbaca pemegang hak Pulihkan.',
+  'server/src/modules/serial/alert-job.ts#business_units@1#b86989f3':
+    'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
+  'server/src/modules/serial/alert-job.ts#items@1#b86989f3':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/alert-job.ts#brands@1#b86989f3':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/alert-job.ts#locations@1#b86989f3':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/bu-history.ts#serials@1#9e00df83':
+    'Semua baris serial dihitung tanpa penyaring keadaan: indeks unik lama `serials_serial` menjangkau baris terhapus juga (jadi syarat pembuatannya menghitung semuanya), pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus agar tetap benar saat dipulihkan.',
+  'server/src/modules/serial/bu-history.ts#serials@2#55c321bc':
+    'Semua baris serial dihitung tanpa penyaring keadaan: indeks unik lama `serials_serial` menjangkau baris terhapus juga (jadi syarat pembuatannya menghitung semuanya), pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus agar tetap benar saat dipulihkan.',
+  'server/src/modules/serial/bu-history.ts#serials@3#4ac5b74b':
+    'Semua baris serial dihitung tanpa penyaring keadaan: indeks unik lama `serials_serial` menjangkau baris terhapus juga (jadi syarat pembuatannya menghitung semuanya), pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus agar tetap benar saat dipulihkan.',
+  'server/src/modules/serial/bu-history.ts#serials@4#616ca633':
+    'Semua baris serial dihitung tanpa penyaring keadaan: indeks unik lama `serials_serial` menjangkau baris terhapus juga (jadi syarat pembuatannya menghitung semuanya), pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus agar tetap benar saat dipulihkan.',
+  'server/src/modules/serial/case-list.ts#locations@1#9fc6c564':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/case-list.ts#business_units@1#9fc6c564':
+    'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
+  'server/src/modules/serial/case-list.ts#items@1#9fc6c564':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/case-list.ts#brands@1#9fc6c564':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/case-repo.ts#serial_cases@1#ce0211b9':
+    'Penghitung nomor laporan: MAX nomor SEMUA laporan, termasuk milik serial terhapus, agar nomor tak pernah dipakai ulang (nomor laporan tetap unik).',
+  'server/src/modules/serial/case-repo.ts#serial_cases@2#d60cde70':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/case-repo.ts#serial_cases@3#66ada673':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/case-repo.ts#serials@1#7041f237':
+    'Penjaga ketidakcocokan versi (`updated_at`) atas serial menurut id yang baru dibaca penulis; serial yang berubah atau terhapus sejak dibaca mengubah `updated_at`-nya.',
+  'server/src/modules/serial/history.ts#serial_events@1#c42b6fdb':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/history.ts#serial_events@2#fc41b582':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/proof/attach.ts#business_units@1#71a9e696':
+    'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
+  'server/src/modules/serial/proof/repo.ts#serial_proof_photos@1#d2a2206f':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/proof/repo.ts#serial_proof_photos@2#2516c7c7':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/proof/repo.ts#serial_proof_photos@3#cdcf2b13':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/proof/repo.ts#serial_proof_photos@4#11efcca7':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/proof/repo.ts#serial_proof_photos@5#9dc707a0':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/proof/repo.ts#serial_proof_photos@6#094cf888':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/proof/repo.ts#serial_proof_photos@7#6b34f0b2':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/proof/repo.ts#serial_proof_photos@9#b7ceab19':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/proof/service.ts#serials@1#59e484e0':
+    'Pembaca menilai `deleted_at` baris itu sendiri (kolomnya dibaca, bukan disaring): kiriman ulang `clientId`, hak baca berkas/foto bagi pemulih, keadaan foto; serial terhapus hanya terbaca pemegang hak Pulihkan.',
+  'server/src/modules/serial/proof/sweep.ts#serial_proof_photos@1#ef7e9e83':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/public-routes.ts#business_units@1#fb777380':
+    'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
+  'server/src/modules/serial/public-routes.ts#serial_events@1#ab0594cd':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/public-routes.ts#serial_events@2#dcf2fc40':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/recheck-entry.ts#business_units@2#71a9e696':
+    'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
+  'server/src/modules/serial/recheck-entry.ts#serial_events@1#cb0debcf':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/recheck-entry.ts#business_units@4#6f78ec3f':
+    'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
+  'server/src/modules/serial/recheck-entry.ts#items@1#6f78ec3f':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/recheck-entry.ts#brands@1#6f78ec3f':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/repo.ts#serials@1#ef199223':
+    'Pembaca menilai `deleted_at` baris itu sendiri (kolomnya dibaca, bukan disaring): kiriman ulang `clientId`, hak baca berkas/foto bagi pemulih, keadaan foto; serial terhapus hanya terbaca pemegang hak Pulihkan.',
+  'server/src/modules/serial/repo.ts#locations@1#ff23409a':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#business_units@1#dcdda19b':
+    'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
+  'server/src/modules/serial/repo.ts#items@2#dcdda19b':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/repo.ts#brands@1#dcdda19b':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/repo.ts#locations@3#dcdda19b':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#locations@4#dcdda19b':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#locations@5#dcdda19b':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#serial_proof_photos@2#bbce0dc9':
+    'Baca serial menurut id, hidup atau terhapus: pemanggil menilai `deleted_at` dan hak sendiri (`loadReadableSerialRow` bagi pemulih, perencana hapus/pulihkan); gabungan tampilan ikut.',
+  'server/src/modules/serial/repo.ts#serials@3#bbce0dc9':
+    'Baca serial menurut id, hidup atau terhapus: pemanggil menilai `deleted_at` dan hak sendiri (`loadReadableSerialRow` bagi pemulih, perencana hapus/pulihkan); gabungan tampilan ikut.',
+  'server/src/modules/serial/repo.ts#business_units@2#bbce0dc9':
+    'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
+  'server/src/modules/serial/repo.ts#items@3#bbce0dc9':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/repo.ts#brands@2#bbce0dc9':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/repo.ts#locations@6#bbce0dc9':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#locations@7#bbce0dc9':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#locations@8#bbce0dc9':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#serial_cases@2#bbce0dc9':
+    'Baca serial menurut id, hidup atau terhapus: pemanggil menilai `deleted_at` dan hak sendiri (`loadReadableSerialRow` bagi pemulih, perencana hapus/pulihkan); gabungan tampilan ikut.',
+  'server/src/modules/serial/repo.ts#business_units@3#029cb2ae':
+    'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
+  'server/src/modules/serial/repo.ts#business_units@4#4a07381f':
+    'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
+  'server/src/modules/serial/repo.ts#items@4#4a07381f':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/repo.ts#brands@3#4a07381f':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/repo.ts#locations@9#4a07381f':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#locations@10#4a07381f':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#locations@11#4a07381f':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#serial_stickers@1#3f0e2215':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/repo.ts#serial_events@1#daa6e6f2':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/repo.ts#business_units@5#6dc190c6':
+    'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
+  'server/src/modules/serial/repo.ts#items@5#6dc190c6':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/repo.ts#brands@4#6dc190c6':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/repo.ts#locations@12#6dc190c6':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#locations@13#6dc190c6':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#locations@14#6dc190c6':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#business_units@6#49829cbd':
+    'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
+  'server/src/modules/serial/repo.ts#items@6#49829cbd':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/repo.ts#brands@5#49829cbd':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/repo.ts#locations@15#49829cbd':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#locations@16#49829cbd':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#locations@17#49829cbd':
+    'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
+  'server/src/modules/serial/repo.ts#serial_events@2#3b3831f0':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/repo.ts#items@7#205e41f7':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/serial/repo.ts#brands@6#205e41f7':
+    'Nama merk untuk tampilan/rujukan: merk terhapus tetap memberi nama pada item yang memakainya (keputusan T1, rujukan tersimpan tetap sah).',
+  'server/src/modules/serial/report.ts#business_units@1#71a9e696':
+    'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
+  'server/src/modules/serial/service.ts#item_business_units@1#43393540':
+    'Anak serial (kejadian, laporan, foto, stiker) dimuat atau ditulis menurut id serial atau laporan yang sudah lolos pemeriksaan hidup dan hak di pemanggil (`loadReadableSerialRow`, `loadSerialRow`, token laporan publik yang memeriksa serial hidup); tidak ada daftar lintas serial yang tak tersaring.',
+  'server/src/modules/serial/service.ts#business_units@1#43393540':
+    'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
+  'server/src/modules/serial/service.ts#items@3#122b7dd8':
+    'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
 };

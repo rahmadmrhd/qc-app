@@ -371,6 +371,7 @@ describe('skema baseline', () => {
     await insert('e', 'ce', 'bu2', 'SN2');
     // Skema ini dipakai tes berikutnya (daftar indeks hasil migrasi saja): kembalikan keadaan tanpa indeks bentukan boot.
     await db.prepare('DROP INDEX serials_serial ON serials').run();
+    await db.prepare('DROP INDEX serials_serial_live ON serials').run();
   });
 
   test('serial_events.client_id: NULLABLE, banyak NULL boleh, nilai terisi unik', async () => {

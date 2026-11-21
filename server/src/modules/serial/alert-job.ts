@@ -1,6 +1,7 @@
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
+import { liveWhere } from '@server/core/soft-delete';
 import { insertJobStmt } from '@server/modules/jobs/repo';
 import { JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
 import { markdownToPlain } from '@shared/markdown-plain';
@@ -131,7 +132,7 @@ async function loadSnapshot(
   input: SerialAlertJobInput,
 ): Promise<SerialBrokenSnapshot | null> {
   const row = await env.DB.prepare(
-    'SELECT s.serial, bu.code AS bu_code, bu.name AS bu_name, b.name AS brand_name, i.model, l.name AS location_name, c.number AS case_number, c.opened_on, c.closed_on, e.occurred_on, e.actor_name, e.message FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id LEFT JOIN locations l ON l.id = s.location_id LEFT JOIN serial_cases c ON c.id = ? AND c.serial_id = s.id LEFT JOIN serial_events e ON e.id = ? AND e.serial_id = s.id WHERE s.id = ?',
+    `SELECT s.serial, bu.code AS bu_code, bu.name AS bu_name, b.name AS brand_name, i.model, l.name AS location_name, c.number AS case_number, c.opened_on, c.closed_on, e.occurred_on, e.actor_name, e.message FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id LEFT JOIN locations l ON l.id = s.location_id LEFT JOIN serial_cases c ON c.id = ? AND c.serial_id = s.id LEFT JOIN serial_events e ON e.id = ? AND e.serial_id = s.id WHERE ${liveWhere('s')} AND s.id = ?`,
   )
     .bind(input.caseId, input.eventId, input.serialId)
     .first<SnapshotRow>();

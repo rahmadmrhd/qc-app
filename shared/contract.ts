@@ -947,6 +947,8 @@ export interface HandoverDto {
   createdBy: string;
   updatedAt: string;
   updatedBy: string;
+  /** Ada hanya pada task terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
 }
 
 export interface ListHandoversInput {
@@ -1570,6 +1572,10 @@ export interface ApiContract {
   'serials.saveBatch': { input: SaveSerialBatchInput; output: SaveSerialBatchOutput };
   'serials.get': { input: GetSerialInput; output: GetSerialOutput };
   'serials.list': { input: SerialListInput; output: SerialListOutput };
+  'serials.remove': { input: GetSerialInput; output: RemoveResult };
+  'serials.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'serials.restore': { input: GetSerialInput; output: SerialDto };
+  'serials.restoreBatch': { input: IdBatchInput; output: BatchResult<SerialDto> };
   'serials.update': { input: UpdateSerialInput; output: SerialDto };
   'serials.updateBatch': { input: UpdateSerialBatchInput; output: UpdateSerialBatchOutput };
   'serials.act': { input: SerialActInput; output: SerialDto };
@@ -1624,6 +1630,11 @@ export interface BoardPageInput {
   limit?: number;
   /** Hanya task milik customer ini (keputusan pemilik 2026-11-21); hak lokasi pemanggil tetap berlaku. */
   customerId?: string;
+  /**
+   * `true` = kolom berisi task TERHAPUS (dikelompokkan menurut status kolomnya), hanya dari lokasi tempat pemanggil
+   * memegang `handover: manage`; selain itu `FORBIDDEN`. Bawaan: hanya task hidup.
+   */
+  deleted?: boolean;
 }
 
 export interface BoardPageDto {
@@ -1834,6 +1845,8 @@ export interface SerialSummaryDto {
   /** Jumlah foto bukti QC entri serial ini yang `failed` (0 = tak ada; bahan badge "Foto bermasalah"). */
   proofProblemCount: number;
   createdAt: string;
+  /** Ada hanya pada serial terhapus (soft delete), hanya bagi pemegang hak Pulihkan; jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
 }
 /** Laporan rusak (`serial_cases`): satu episode kegagalan. */
 export interface SerialCaseDto {
@@ -1926,6 +1939,12 @@ export interface SerialListInput {
   from?: string;
   to?: string;
   createdBy?: string;
+  /**
+   * `true` = hanya serial TERHAPUS (soft delete), terbatas pada serial yang boleh dipulihkan pemanggil (`serial: manage`
+   * pada semua BU dalam riwayatnya); tanpa BU ber-`manage` = `FORBIDDEN`. Bawaan: hanya serial hidup. Kunci terpisah
+   * dari `status` (status alur serial) agar kontrak lama tak berubah arti.
+   */
+  deleted?: boolean;
   cursor?: string;
   limit?: number;
 }
