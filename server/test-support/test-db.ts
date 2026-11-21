@@ -7,8 +7,8 @@ import { ensureSerialUniqueIndex } from '@server/modules/serial/bu-history';
 import mysql from 'mysql2/promise';
 import { newTestSchemaName, TEST_SCHEMA_PREFIX, testDbUrl } from './db-env';
 
-export const TEMPLATE_SCHEMA = process.env.QC_TEMP_TEMPLATE ?? 'qc_test_template';
-const TEMPLATE_LOCK = `${TEMPLATE_SCHEMA}_lock`;
+export const TEMPLATE_SCHEMA = 'qc_test_template';
+const TEMPLATE_LOCK = 'qc_test_template_lock';
 const ORPHAN_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 const ORPHAN_PATTERN = /^qc_test_(\d{9,})_[0-9a-f]+$/;
 
