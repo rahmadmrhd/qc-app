@@ -1,5 +1,5 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { requirePermission } from '@/modules/auth/permissions';
 import { PostelFormPage } from '@/modules/postel/components/postel-form-page';
@@ -17,8 +17,18 @@ export const Route = createFileRoute('/_app/postel/$postelId/edit')({
     pageWidth: 'narrow',
   },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'sticker', 'edit'),
-  loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(postelQueryOptions(params.postelId)),
+  // Catatan terhapus tak dapat diubah (pulihkan dulu): arahkan ke View yang memuat banner Terhapus, bukan buka form.
+  loader: async ({ context, params }) => {
+    const postel = await context.queryClient.ensureQueryData(postelQueryOptions(params.postelId));
+    if (postel.deleted) {
+      throw redirect({
+        to: '/postel/$postelId',
+        params: { postelId: params.postelId },
+        replace: true,
+      });
+    }
+    return postel;
+  },
   component: EditPostelRoute,
 });
 

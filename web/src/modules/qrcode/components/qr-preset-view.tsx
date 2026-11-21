@@ -1,4 +1,5 @@
 import type { BusinessUnitOptionDto, QrDesignDto, QrPresetDto } from '@shared/contract';
+import type { QrFrame } from '@shared/qrcode';
 import { LinkCell } from '@/components/data-table';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
@@ -12,6 +13,23 @@ export type QrPresetViewTab = (typeof QR_PRESET_VIEW_TABS)[number];
 
 /** Tautan contoh pada pratinjau: preset tidak punya sumber link, QR pada pratinjau hanya ilustrasi. */
 const PREVIEW_LINK = 'https://contoh.com';
+
+const FRAME_KIND_LABEL: Record<QrFrame['kind'], string> = {
+  none: 'Tanpa bingkai',
+  corners: 'Siku di sudut',
+  box: 'Kotak penuh',
+};
+const FRAME_LINE_LABEL: Record<QrFrame['line'], string> = {
+  solid: 'garis penuh',
+  dashed: 'garis putus-putus',
+  dotted: 'garis titik-titik',
+};
+
+/** Ringkasan bingkai preset untuk tab Detail (selain pratinjau). */
+function frameSummary(frame: QrFrame): string {
+  if (frame.kind === 'none') return FRAME_KIND_LABEL.none;
+  return `${FRAME_KIND_LABEL[frame.kind]}, ${FRAME_LINE_LABEL[frame.line]}, tebal ${frame.thickness} mm`;
+}
 
 export interface QrPresetViewProps {
   /** `undefined` = konfigurasi default tidak ada (id salah, atau terhapus bagi yang tak boleh melihatnya). */
@@ -112,6 +130,17 @@ export function QrPresetView({
             { label: 'Title', value: preset.title },
             { label: 'Subtitle', value: preset.subtitle },
             { label: 'Footer', value: preset.footer },
+            {
+              label: 'Logo awal',
+              value: preset.defaultLogoId === '' ? 'Tanpa logo' : 'Ada logo awal',
+            },
+            { label: 'Ukuran QR', value: `${preset.layout.qrSize} mm` },
+            {
+              label: 'Ukuran huruf',
+              value: `Title ${preset.layout.titleSize} pt, Subtitle ${preset.layout.subtitleSize} pt, Footer ${preset.layout.footerSize} pt`,
+            },
+            { label: 'Luas logo', value: `${preset.layout.logoArea}% luas QR` },
+            { label: 'Bingkai', value: frameSummary(preset.style.frame) },
           ]}
         />
       </ViewSection>

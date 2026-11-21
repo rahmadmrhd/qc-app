@@ -123,14 +123,69 @@ function sourceFiles(dir: string): string[] {
 }
 
 /**
- * Nilai `data-tour` literal dalam satu teks sumber: `data-tour="x"` atau `data-tour={'x'}`, juga prop kerangka
- * halaman yang meneruskannya ke `data-tour` (`tour`, `actionsTour`, `saveTour` pada `ListPage`/`FormPage`, dan
- * `tour: 'x'` pada `createAction`).
+ * Komponen yang MENERUSKAN prop `tour`/`actionsTour`/`saveTour` (atau `tour` di `createAction`) ke atribut `data-tour`.
+ * Prop dengan nama itu pada komponen lain tidak dihitung sebagai target (tak ada di DOM). Penjagaan di bawah memastikan
+ * komponen-komponen ini memang meneruskannya (`forwarderProblems`).
+ */
+const TOUR_FORWARDERS: Record<string, readonly string[]> = {
+  ListPage: ['components/page/list-page.tsx'],
+  FormPage: ['components/page/form-page.tsx'],
+  Fab: ['components/page/fab.tsx'],
+  HeadroomBar: ['components/page/headroom-bar.tsx'],
+  LinkCell: ['components/data-table/link-cell.tsx'],
+  SelectionBar: ['components/data-table/selection-bar.tsx'],
+};
+
+/** Teks pembuka tag JSX yang dimulai di `start` (`<Nama`): berhenti di `>` pertama di luar kurung kurawal dan kutip. */
+function openingTag(text: string, start: number): string {
+  let depth = 0;
+  let quote = '';
+  for (let index = start; index < text.length; index += 1) {
+    const char = text.charAt(index);
+    if (quote !== '') {
+      if (char === quote && text.charAt(index - 1) !== '\\') quote = '';
+    } else if (char === '"' || char === "'" || (depth > 0 && char === '`')) quote = char;
+    else if (char === '{') depth += 1;
+    else if (char === '}') depth -= 1;
+    else if (char === '>' && depth === 0) return text.slice(start, index + 1);
+  }
+  return text.slice(start);
+}
+
+const TOUR_PROP =
+  /\b(?:tour|actionsTour|saveTour)=(?:"([^"]+)"|\{\s*['"`]([^'"`$]+)['"`]\s*\})|\btour:\s*['"]([^'"`$]+)['"]/g;
+
+/**
+ * Nilai `data-tour` literal dalam satu teks sumber: `data-tour="x"` atau `data-tour={'x'}`, ditambah prop kerangka
+ * halaman yang meneruskannya ke `data-tour` (`tour`, `actionsTour`, `saveTour`; `tour: 'x'` pada `createAction`) HANYA
+ * bila dipasang pada komponen di `TOUR_FORWARDERS`.
  */
 function extractDataTour(text: string): string[] {
-  const pattern =
-    /(?:data-tour|\btour|actionsTour|saveTour)=(?:"([^"]+)"|\{\s*['"`]([^'"`$]+)['"`]\s*\})|\btour:\s*['"]([^'"`$]+)['"]/g;
-  return [...text.matchAll(pattern)].map((match) => match[1] ?? match[2] ?? match[3] ?? '');
+  const targets = [...text.matchAll(/data-tour=(?:"([^"]+)"|\{\s*['"`]([^'"`$]+)['"`]\s*\})/g)].map(
+    (match) => match[1] ?? match[2] ?? '',
+  );
+  const names = Object.keys(TOUR_FORWARDERS).join('|');
+  for (const open of text.matchAll(new RegExp(`<(?:${names})\\b`, 'g'))) {
+    const tag = openingTag(text, open.index ?? 0);
+    for (const match of tag.matchAll(TOUR_PROP)) {
+      targets.push(match[1] ?? match[2] ?? match[3] ?? '');
+    }
+  }
+  return targets;
+}
+
+/** Setiap komponen penerus benar-benar memasang `data-tour` dari prop `tour` (bukan sekadar menerimanya). */
+function forwarderProblems(root: string): string[] {
+  const problems: string[] = [];
+  for (const [name, files] of Object.entries(TOUR_FORWARDERS)) {
+    for (const file of files) {
+      const text = readFileSync(join(root, file), 'utf8');
+      if (!/data-tour=\{[A-Za-z]*[Tt]our\}|tour=\{[A-Za-z]*[Tt]our\}/.test(text)) {
+        problems.push(`${name} (${file}) tidak meneruskan prop tour ke data-tour`);
+      }
+    }
+  }
+  return problems;
 }
 
 /** Semua nilai `data-tour` yang dipasang di sumber web (bukan berkas tes). */
@@ -330,13 +385,18 @@ describe('pemeriksa menangkap pelanggaran (contoh salah)', () => {
     ).toEqual(['satu', 'dua']);
   });
 
-  test('pemindai juga membaca prop kerangka halaman yang meneruskan data-tour', () => {
+  test('pemindai membaca prop tour HANYA pada komponen yang meneruskannya ke data-tour', () => {
     expect(
       extractDataTour(
-        '<ListPage tour="qr-header" createAction={{ label: "x", tour: \'qr-new\' }} />' +
-          '<FormPage saveTour="qr-save" actionsTour={"aksi"} />',
+        '<ListPage tour="qr-header" createAction={{ label: "x", tour: "qr-new" }} />' +
+          '<FormPage saveTour="qr-save" actionsTour={"aksi"} />' +
+          '<Lain tour="bukan-target" /><ViewSection tour="juga-bukan" />',
       ),
     ).toEqual(['qr-header', 'qr-new', 'qr-save', 'aksi']);
+  });
+
+  test('komponen penerus tour benar-benar meneruskannya ke data-tour', () => {
+    expect(forwarderProblems(SRC_ROOT)).toEqual([]);
   });
 
   test('klip: berkas ada, tidak ada, dan tanpa berkas lolos', () => {

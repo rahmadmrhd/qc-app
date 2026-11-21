@@ -1,5 +1,5 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
@@ -10,6 +10,7 @@ import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import type { QrSubmitOptions } from '@/modules/qrcode/components/qr-design-form';
 import { QrDesignFormPage } from '@/modules/qrcode/components/qr-design-form-page';
+import { requestExportOnView } from '@/modules/qrcode/lib/export-request';
 import { useFrozen } from '@/modules/qrcode/lib/use-frozen';
 import {
   qrDefaultsQueryOptions,
@@ -39,11 +40,21 @@ export const Route = createFileRoute('/_app/qrcode/$designId/edit')({
     },
   },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'edit'),
-  loader: ({ context, params }) =>
-    Promise.all([
+  loader: async ({ context, params }) => {
+    const [design, defaults] = await Promise.all([
       context.queryClient.ensureQueryData(qrDesignQueryOptions(params.designId)),
       context.queryClient.ensureQueryData(qrDefaultsQueryOptions()),
-    ]),
+    ]);
+    // Konfigurasi terhapus tak dapat diubah (pulihkan dulu): arahkan ke View yang memuat banner Terhapus.
+    if (design.deleted) {
+      throw redirect({
+        to: '/qrcode/$designId',
+        params: { designId: params.designId },
+        replace: true,
+      });
+    }
+    return [design, defaults] as const;
+  },
   component: EditQrDesignPage,
 });
 
@@ -67,10 +78,10 @@ function EditQrDesignPage() {
     try {
       await save.mutateAsync(toSaveQrDesignInput(values, design.id, loadedAt, options.overflow));
       toast.success('Konfigurasi disimpan');
-      // Ubah = kembali ke View asal; "Simpan dan ekspor" membuka dialog ekspor di View (`?export=1`).
-      if (options.thenExport) {
-        stack.replace({ to: '/qrcode/$designId', params: { designId }, search: { export: '1' } });
-      } else stack.pop({ to: '/qrcode/$designId', params: { designId } });
+      // Ubah = kembali ke View asal (pop, riwayat tak berganda); "Simpan dan ekspor" menitipkan permintaan agar View
+      // membuka dialog ekspor setelah tampil.
+      if (options.thenExport) requestExportOnView(designId);
+      stack.pop({ to: '/qrcode/$designId', params: { designId } });
     } catch (error) {
       const picked = pickFieldErrors(error, QR_FIELD_KEYS);
       if (Object.keys(picked).length > 0) setFieldErrors(picked);

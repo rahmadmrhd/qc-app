@@ -265,3 +265,40 @@ test('ponsel (360 px): judul, tab, dan aksi tetap terjangkau lewat menu', async 
   expect(screen.getAllByRole('tab')).toHaveLength(3);
   expect(screen.getByRole('button', { name: /Aksi|Lainnya/ })).toBeInTheDocument();
 });
+
+test('tab Detail: BU konfigurasi tampil sebagai "Mengikuti preset" dari BU preset asal', async () => {
+  current = { ...base, presetId: 'p1' };
+  const fallback = apiMock.getMockImplementation() as (
+    id: string,
+    input: unknown,
+  ) => Promise<unknown>;
+  apiMock.mockImplementation(async (id: string, input: unknown) => {
+    if (id === 'qrcodes.getPreset') {
+      return { id: 'p1', name: 'Preset Retail', buId: 'bu1' };
+    }
+    if (id === 'businessUnits.options') {
+      return [{ id: 'bu1', code: 'RTL', name: 'Retail', status: 'active' }];
+    }
+    return fallback(id, input);
+  });
+  await mount();
+  expect(await screen.findByText('Mengikuti preset: Retail (RTL)')).toBeInTheDocument();
+});
+
+test('tab Detail: tanpa preset tidak ada baris Business Unit', async () => {
+  await mount();
+  expect(screen.queryByText('Business Unit')).toBeNull();
+});
+
+test('tautan sumber bukan http(s) tidak dijadikan href (pengaman data lama)', async () => {
+  current = { ...base, link: 'javascript:alert(1)' };
+  await mount();
+  expect(screen.getByText('javascript:alert(1)').closest('a')).toBeNull();
+});
+
+test('permintaan ekspor yang dititipkan form Ubah membuka dialog ekspor sekali saat View tampil', async () => {
+  const { requestExportOnView } = await import('@/modules/qrcode/lib/export-request');
+  requestExportOnView('d1');
+  await mount();
+  expect(await screen.findByText('Dialog ekspor')).toBeInTheDocument();
+});

@@ -136,3 +136,20 @@ test('dialog Tambah preset dirender di luar form QR, hanya menawarkan BU item ta
   await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
   expect(toast.success).toHaveBeenCalledWith('Konfigurasi default disimpan');
 });
+
+test('belum ada preset sama sekali: tetap ada pemilih dengan baris "Tambah preset" bila berhak', async () => {
+  renderForm({ presets: [] });
+  await pickLink(screen, 'Item', 'Nexus N1');
+  await openPresetOptions();
+  expect(await screen.findByRole('option', { name: /Tambah preset/ })).toBeInTheDocument();
+  expect(screen.getByRole('option', { name: /Tanpa preset/ })).toBeInTheDocument();
+});
+
+test('belum ada preset dan tanpa hak membuat: hanya keterangan nilai bawaan, tanpa pemilih', async () => {
+  renderForm({ presets: [], canCreatePreset: false });
+  await pickLink(screen, 'Item', 'Nexus N1');
+  expect(
+    await screen.findByText(/Belum ada konfigurasi default; QR dibuat dengan nilai bawaan/),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole('combobox', { name: 'Pilih konfigurasi default' })).toBeNull();
+});

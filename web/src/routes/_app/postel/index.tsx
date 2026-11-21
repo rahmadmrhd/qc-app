@@ -19,6 +19,7 @@ import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { PostelsTable } from '@/modules/postel/components/postels-table';
+import { postelDeleteUsage } from '@/modules/postel/lib/delete-usage';
 import {
   postelListQueryOptions,
   useRemovePostels,
@@ -267,7 +268,7 @@ function PostelListRoute() {
         }}
         count={deleteTarget?.kind === 'bulk' ? selection.count : 1}
         subject="catatan Postel"
-        {...(usedItems > 0 ? { usage: `Memuat ${usedItems} item (dilepas dari catatan ini)` } : {})}
+        {...(usedItems > 0 ? { usage: postelDeleteUsage(usedItems) } : {})}
         onConfirm={confirmDelete}
         busy={remove.busy || removePostels.isPending}
       />

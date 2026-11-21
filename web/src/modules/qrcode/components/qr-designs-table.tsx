@@ -5,6 +5,7 @@ import type { RowSelection } from '@/components/data-table/use-row-selection';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { Badge } from '@/components/ui/badge';
 import { formatStamp } from '@/lib/format-stamp';
+import { isWebUrl } from '@/lib/web-url';
 import { STICKER_STATUS_LABEL } from '@/modules/sticker/lib/status';
 
 export interface QrDesignsTableProps {
@@ -202,18 +203,21 @@ export function QrDesignsTable({
             header: 'Link',
             mobile: 'hide',
             className: 'max-w-[16rem] truncate',
-            cell: (design) => (
-              <a
-                href={design.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={design.link}
-                aria-label={`Buka link ${nameOf(design)}`}
-                className="text-sm underline-offset-2 hover:underline"
-              >
-                {design.link}
-              </a>
-            ),
+            cell: (design) =>
+              !isWebUrl(design.link) ? (
+                <span className="text-sm">{design.link}</span>
+              ) : (
+                <a
+                  href={design.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={design.link}
+                  aria-label={`Buka link ${nameOf(design)}`}
+                  className="text-sm underline-offset-2 hover:underline"
+                >
+                  {design.link}
+                </a>
+              ),
           },
           {
             id: 'updatedAt',

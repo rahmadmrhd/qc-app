@@ -8,9 +8,11 @@ import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dia
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
+import { itemLinkAccess } from '@/lib/link-access';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { POSTEL_VIEW_TABS, PostelView } from '@/modules/postel/components/postel-view';
+import { postelDeleteUsage } from '@/modules/postel/lib/delete-usage';
 import {
   postelQueryOptions,
   postelViewQueryOptions,
@@ -98,6 +100,8 @@ function PostelDetailRoute() {
         postel={postel}
         canEdit={canEdit}
         restorePending={restorePostels.isPending}
+        canOpenItem={itemLinkAccess(me).openItemHref !== undefined}
+        canOpenDeletedItem={itemLinkAccess(me).canOpenDeleted}
         tab={tab}
         onTabChange={(next) =>
           void navigate({ search: (prev) => ({ ...prev, tab: next }), replace: true })
@@ -113,9 +117,7 @@ function PostelDetailRoute() {
           onOpenChange={setConfirmDelete}
           count={1}
           subject="catatan Postel"
-          {...(postel.itemCount > 0
-            ? { usage: `Memuat ${postel.itemCount} item (dilepas dari catatan ini)` }
-            : {})}
+          {...(postel.itemCount > 0 ? { usage: postelDeleteUsage(postel.itemCount) } : {})}
           onConfirm={remove}
           busy={removePostels.isPending}
         />

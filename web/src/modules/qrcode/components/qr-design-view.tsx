@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatStamp } from '@/lib/format-stamp';
+import { isWebUrl } from '@/lib/web-url';
 import { useFileUrl } from '@/modules/files/queries';
 import { STICKER_STATUS_LABEL } from '@/modules/sticker/lib/status';
 import { LabelPreview } from './label-preview';
@@ -22,6 +23,11 @@ export interface QrDesignViewProps {
   presetName?: string | undefined;
   /** Nama konfigurasi default menaut ke View-nya hanya bila pengguna berhak (`qrPresetLinkAccess`). */
   canOpenPreset?: boolean;
+  /**
+   * BU konfigurasi default asal (dari data preset yang sudah dimuat): konfigurasi QR tidak menyimpan BU sendiri, jadi
+   * tampil sebagai "Mengikuti preset" (keputusan pemilik 2026-11-21).
+   */
+  presetBusinessUnit?: { name: string; code: string } | undefined;
   canEdit?: boolean;
   canManage?: boolean;
   /** Nama item menaut ke View item hanya bila pengguna berhak. */
@@ -75,6 +81,7 @@ export function QrDesignView({
   design,
   presetName,
   canOpenPreset = false,
+  presetBusinessUnit,
   canEdit = false,
   canManage = false,
   canOpenItem = true,
@@ -142,6 +149,13 @@ export function QrDesignView({
                 ),
             },
             {
+              label: 'Business Unit',
+              value: presetBusinessUnit
+                ? `Mengikuti preset: ${presetBusinessUnit.name} (${presetBusinessUnit.code})`
+                : null,
+              hidden: presetBusinessUnit === undefined,
+            },
+            {
               label: 'Versi stiker',
               value:
                 design.stickerVersion === 0 || design.stickerStatus === '' ? null : (
@@ -163,7 +177,7 @@ export function QrDesignView({
             { label: 'Nama berkas', value: design.linkSource === 'pdf' ? design.documentName : '' },
             {
               label: 'Link',
-              value: (
+              value: isWebUrl(design.link) ? (
                 <a
                   href={design.link}
                   target="_blank"
@@ -172,6 +186,8 @@ export function QrDesignView({
                 >
                   {design.link}
                 </a>
+              ) : (
+                <span className="break-all">{design.link}</span>
               ),
             },
             {

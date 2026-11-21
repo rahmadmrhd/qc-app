@@ -1,5 +1,5 @@
 import type { PostelDto, PostelNumberDto } from '@shared/contract';
-import { screen, within } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { mockMatchMedia } from '@/test/match-media';
@@ -286,4 +286,39 @@ test('ponsel (360 px): nomor sertifikat menjadi kartu, aksi lewat menu', async (
   expect(screen.getByText('AB-1')).toBeInTheDocument();
   expect(screen.getAllByRole('tab')).toHaveLength(4);
   expect(screen.getByRole('button', { name: /Aksi|Lainnya/ })).toBeInTheDocument();
+});
+
+test('tab Item: item menaut ke View item hanya bila pengguna berhak', async () => {
+  await renderView({ canOpenItem: true });
+  await openTab('Item');
+  expect(screen.getByRole('link', { name: 'PBE M5-400' })).toHaveAttribute('href', '/item/i1');
+  cleanup();
+  await renderView({ canOpenItem: false });
+  await openTab('Item');
+  expect(screen.queryByRole('link', { name: 'PBE M5-400' })).toBeNull();
+  expect(screen.getByText('PBE M5-400')).toBeInTheDocument();
+});
+
+test('tab Item: item terhapus menaut hanya bagi pemulih (canOpenDeletedItem)', async () => {
+  const deletedItem = {
+    id: 'i9',
+    brand: 'PBE',
+    model: 'Lama',
+    deleted: true as const,
+  };
+  await renderView({
+    postel: postel({ items: [deletedItem] }),
+    canOpenItem: true,
+    canOpenDeletedItem: false,
+  });
+  await openTab('Item');
+  expect(screen.queryByRole('link', { name: 'PBE Lama' })).toBeNull();
+  cleanup();
+  await renderView({
+    postel: postel({ items: [deletedItem] }),
+    canOpenItem: true,
+    canOpenDeletedItem: true,
+  });
+  await openTab('Item');
+  expect(screen.getByRole('link', { name: 'PBE Lama' })).toBeInTheDocument();
 });

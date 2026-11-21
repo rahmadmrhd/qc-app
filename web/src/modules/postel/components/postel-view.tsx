@@ -1,12 +1,13 @@
 import type { PostelAttachmentDto, PostelDto, PostelNumberDto } from '@shared/contract';
 import { toast } from 'sonner';
-import { type DataColumn, DataTable } from '@/components/data-table';
+import { type DataColumn, DataTable, LinkCell } from '@/components/data-table';
 import { type AttachmentItem, AttachmentView } from '@/components/file-dialog';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
 import { api } from '@/lib/api';
 import { describeError } from '@/lib/api/describe-error';
+import { isWebUrl } from '@/lib/web-url';
 import { saveFileDownload } from '@/modules/qrcode/lib/download';
 import { daysLeftLabel, formatPostelDate } from '../lib/condition';
 import { NumberStatus } from './number-status';
@@ -22,6 +23,10 @@ export interface PostelViewProps {
   /** `sticker: edit`: Ubah, Hapus, dan Pulihkan. */
   canEdit?: boolean;
   restorePending?: boolean;
+  /** Item pada tab Item menaut ke View item hanya bila pengguna berhak (`itemLinkAccess`); bawaan tanpa tautan. */
+  canOpenItem?: boolean;
+  /** Item TERHAPUS menaut hanya bagi pemulih (`item: manage`; soft delete §4.4). */
+  canOpenDeletedItem?: boolean;
   tab?: PostelViewTab | undefined;
   onTabChange?: (tab: PostelViewTab) => void;
   onBack: () => void;
@@ -29,9 +34,6 @@ export interface PostelViewProps {
   onDelete?: () => void;
   onRestore?: () => void;
 }
-
-/** Hanya URL http(s) yang dijadikan tautan (server sudah memvalidasi; ini pengaman tampilan). */
-const isWebUrl = (value: string) => /^https?:\/\//i.test(value);
 
 const NUMBER_COLUMNS: DataColumn<PostelNumberDto>[] = [
   { id: 'number', header: 'Nomor', mobile: 'title', cell: (entry) => entry.number },
@@ -94,6 +96,8 @@ export function PostelView({
   postel,
   canEdit = false,
   restorePending = false,
+  canOpenItem = false,
+  canOpenDeletedItem = false,
   tab,
   onTabChange,
   onBack,
@@ -152,12 +156,22 @@ export function PostelView({
         </p>
       ) : (
         <ul className="space-y-1 text-sm">
-          {postel.items.map((item) => (
-            <li key={item.id} className="flex flex-wrap items-center gap-1.5">
-              {`${item.brand} ${item.model}`}
-              {item.deleted ? <DeletedBadge /> : null}
-            </li>
-          ))}
+          {postel.items.map((item) => {
+            const label = `${item.brand} ${item.model}`;
+            const linked = canOpenItem && (!item.deleted || canOpenDeletedItem);
+            return (
+              <li key={item.id} className="flex flex-wrap items-center gap-1.5">
+                {linked ? (
+                  <LinkCell to="/item/$itemId" params={{ itemId: item.id }}>
+                    {label}
+                  </LinkCell>
+                ) : (
+                  <span>{label}</span>
+                )}
+                {item.deleted ? <DeletedBadge /> : null}
+              </li>
+            );
+          })}
         </ul>
       )}
       {postel.hiddenItemCount > 0 ? (

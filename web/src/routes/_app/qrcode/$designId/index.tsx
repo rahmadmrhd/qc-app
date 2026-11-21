@@ -9,9 +9,11 @@ import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
 import { itemLinkAccess, qrPresetLinkAccess } from '@/lib/link-access';
+import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { QR_VIEW_TABS, QrDesignView } from '@/modules/qrcode/components/qr-design-view';
+import { takeExportRequest } from '@/modules/qrcode/lib/export-request';
 import { useQrExport } from '@/modules/qrcode/lib/use-qr-export';
 import {
   qrDesignQueryOptions,
@@ -75,6 +77,13 @@ function QrDesignDetailPage() {
     ...qrPresetQueryOptions(queryClient, presetId),
     enabled: presetId !== '',
   });
+  // BU konfigurasi = BU preset asalnya (konfigurasi QR tidak menyimpan BU sendiri).
+  const presetBuId = preset.data?.buId ?? '';
+  const businessUnits = useQuery({
+    ...businessUnitOptionsQueryOptions(),
+    enabled: presetBuId !== '',
+  });
+  const presetBu = businessUnits.data?.find((unit) => unit.id === presetBuId);
 
   function restore() {
     // `mutateAsync` + toast di closure: aksi "Pulihkan" pada toast "Dihapus" dipanggil setelah navigasi, saat
@@ -101,6 +110,13 @@ function QrDesignDetailPage() {
       },
     );
   }, [exportFlag, design?.id]);
+
+  // Dari form Ubah ("Simpan dan ekspor", kembali lewat `pop`): permintaan satu kali yang dititipkan form itu.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hanya bereaksi pada data yang termuat
+  useEffect(() => {
+    if (!design || !takeExportRequest(designId)) return;
+    if (canEdit && !design.overflow && !design.deleted) exportAction(design);
+  }, [designId, design?.id]);
 
   if (query.isError && !isMissing(query.error)) throw query.error;
   if (query.isPending) return <p className="text-sm text-muted-foreground">Memuat…</p>;
@@ -130,6 +146,7 @@ function QrDesignDetailPage() {
       <QrDesignView
         design={design}
         presetName={preset.data?.name}
+        presetBusinessUnit={presetBu ? { name: presetBu.name, code: presetBu.code } : undefined}
         canOpenPreset={qrPresetLinkAccess(me).openPresetHref !== undefined}
         canEdit={canEdit}
         canManage={canManage}

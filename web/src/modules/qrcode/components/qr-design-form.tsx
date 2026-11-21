@@ -428,7 +428,7 @@ export function QrDesignForm({
               <span className="font-medium">{(candidates[0] as QrPresetDto).name}</span> (otomatis).
               Isian di bawah terisi darinya dan dapat diubah.
             </p>
-          ) : (presets ?? []).length === 0 ? (
+          ) : (presets ?? []).length === 0 && !canAddPreset ? (
             <p className="text-sm text-muted-foreground">
               Belum ada konfigurasi default; QR dibuat dengan nilai bawaan aplikasi.
             </p>
@@ -438,7 +438,13 @@ export function QrDesignForm({
                 id="qr-preset"
                 label="Pilih konfigurasi default"
                 placeholder="Pilih konfigurasi default…"
-                value={chosenPreset === '' ? null : chosenPreset}
+                value={
+                  chosenPreset === ''
+                    ? (presets ?? []).length === 0
+                      ? NO_PRESET
+                      : null
+                    : chosenPreset
+                }
                 labelOf={(id) =>
                   id === NO_PRESET
                     ? 'Tanpa preset'
@@ -473,8 +479,12 @@ export function QrDesignForm({
               <p className="text-xs text-muted-foreground">
                 {candidates.length > 1
                   ? 'Item berlainan BU: pilih satu konfigurasi default.'
-                  : 'BU item belum punya konfigurasi default: pilih salah satu atau tanpa preset.'}{' '}
-                Isian di bawah terisi darinya dan dapat diubah.
+                  : (presets ?? []).length === 0
+                    ? 'Belum ada konfigurasi default: QR dibuat dengan nilai bawaan aplikasi, atau tambahkan preset untuk BU item.'
+                    : 'BU item belum punya konfigurasi default: pilih salah satu atau tanpa preset.'}
+                {(presets ?? []).length === 0
+                  ? ''
+                  : ' Isian di bawah terisi darinya dan dapat diubah.'}
               </p>
             </div>
           )}
