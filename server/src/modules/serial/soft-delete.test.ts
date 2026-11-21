@@ -1,10 +1,18 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { app } from '@server/app';
 import type { MailMessage } from '@server/core/mail';
+import { signDesktopToken } from '@server/core/session';
 import { putSetting } from '@server/core/settings';
 import { runPendingJobs } from '@server/jobs/runner';
 import { loadUserContext, type UserContext } from '@server/modules/access/context';
+import { deliverPendingPushes } from '@server/modules/notification/push';
+import { endpointHash } from '@server/modules/notification/push-service';
+import {
+  closeAllNotificationStreams,
+  pumpNotificationStreams,
+} from '@server/modules/notification/stream-hub';
 import { seedRole, seedUser } from '@server-test/access-fixtures';
+import { createFakePush, type FakePush } from '@server-test/fake-push';
 import { restCall } from '@server-test/rest-call';
 import { SERIAL_USERS, seedSerial, seedSerialWorld } from '@server-test/serial-fixtures';
 import { withoutOldIndex } from '@server-test/soft-delete';
@@ -27,6 +35,7 @@ setDefaultTimeout(60_000);
 
 let env: TestEnv;
 let sent: MailMessage[];
+let push: FakePush;
 const realError = console.error;
 
 const WRITER = SERIAL_USERS.writer;
@@ -46,8 +55,11 @@ const call = async (email: string, id: string, input: unknown): Promise<CallOut>
 
 beforeEach(async () => {
   sent = [];
+  push = createFakePush();
   env = await createTestEnv({
     APP_ORIGIN: 'https://qc.test',
+    PUSH: push,
+    VAPID_PUBLIC_KEY: 'pub',
     MAILER: {
       async send(message) {
         sent.push(message);
@@ -88,6 +100,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   console.error = realError;
+  closeAllNotificationStreams();
 });
 
 async function rows(sql: string, ...binds: unknown[]): Promise<Json[]> {
@@ -373,6 +386,122 @@ describe('penyaringan serial terhapus di pembaca', () => {
     expect(await ids()).toEqual([]);
     expect((await restore('sn1')).ok).toBe(true);
     expect(await ids()).toEqual(['n1']);
+  });
+});
+
+describe('push dan aliran SSE untuk serial terhapus', () => {
+  const insertNotification = (id: string, serialId: string, photoId: string) =>
+    env.DB.prepare(
+      "INSERT INTO notifications (id, recipient, kind, handover_id, location_id, number, customer_name, actor_email, actor_name, `count`, preview, created_at, serial_id, proof_id) VALUES (?, ?, 'serialProofFailed', '', 'loc-sby', ?, '', '', '', 0, '', ?, ?, ?)",
+    )
+      .bind(id, WRITER, `NO-${id}`, NOW, serialId, photoId)
+      .run();
+
+  beforeEach(async () => {
+    await seedSerial(env, { id: 'sn1', serial: 'AB12' });
+    await seedSerial(env, { id: 'sn2', serial: 'CD34' });
+    await insertNotification('n1', 'sn1', 'ph-1');
+    await insertNotification('n2', 'sn2', 'ph-2');
+  });
+
+  test('push: notifikasi serial terhapus dilewati (skipped), serial hidup lain tetap terkirim', async () => {
+    const endpoint = 'https://fcm.googleapis.com/serial';
+    await env.DB.prepare(
+      'INSERT INTO push_subscriptions (endpoint_hash, recipient, endpoint, p256dh, auth, created_at, last_ok_at, fail_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+      .bind(endpointHash(endpoint), WRITER, endpoint, 'p', 'a', NOW, '', 0)
+      .run();
+    expect((await remove('sn1')).ok).toBe(true);
+    expect(await deliverPendingPushes(env)).toBe(1);
+    expect(push.sent).toHaveLength(1);
+    expect((JSON.parse(push.sent[0]?.payload ?? '{}') as { tag: string }).tag).toBe(
+      'serialProofFailed:ph-2',
+    );
+    const states = await rows('SELECT id, push_state FROM notifications ORDER BY id');
+    expect(states.map((r) => [r.id, r.push_state])).toEqual([
+      ['n1', 'skipped'],
+      ['n2', 'sent'],
+    ]);
+  });
+
+  test('aliran SSE: notifikasi serial terhapus tidak didorong; serial hidup lain tetap', async () => {
+    const token = await signDesktopToken(env, WRITER, env.clock.now());
+    const response = await app.request(
+      'https://qc.test/api/v1/notifications/stream',
+      { headers: { authorization: `Bearer ${token}` } },
+      env,
+    );
+    expect(response.status).toBe(200);
+    const reader = (response.body as ReadableStream<Uint8Array>).getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    const readUntil = async (needle: string, timeoutMs: number): Promise<boolean> => {
+      const deadline = Date.now() + timeoutMs;
+      while (!buffer.includes(needle)) {
+        const left = deadline - Date.now();
+        if (left <= 0) return false;
+        const chunk = await Promise.race([
+          reader.read(),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), left)),
+        ]);
+        if (chunk === null || chunk.done) return false;
+        buffer += decoder.decode(chunk.value, { stream: true });
+      }
+      return true;
+    };
+    expect(await readUntil('event: ready', 3000)).toBe(true);
+    expect((await remove('sn1')).ok).toBe(true);
+    await pumpNotificationStreams(env);
+    expect(await readUntil('serialProofFailed:ph-2', 3000)).toBe(true);
+    expect(buffer).not.toContain('ph-1');
+    await reader.cancel();
+  });
+});
+
+describe('konkurensi hapus vs tulis (Promise.all)', () => {
+  test('hapus serentak dengan aksi catatan: hapus selalu sukses, aksi sukses (sebelum hapus) atau ditolak; tak ada kejadian menyusul penghapusan', async () => {
+    for (let round = 0; round < 4; round += 1) {
+      const id = `sn-race-${round}`;
+      await seedSerial(env, { id, serial: `RACE-${round}` });
+      const at = String(
+        (await rows('SELECT updated_at FROM serials WHERE id = ?', id))[0]?.updated_at,
+      );
+      const [removed, acted] = await Promise.all([
+        remove(id),
+        call(WRITER, 'serials.act', {
+          id,
+          expectedUpdatedAt: at,
+          action: 'note',
+          occurredOn: '2026-11-12',
+          message: 'catatan serentak',
+        }),
+      ]);
+      expect(removed.ok).toBe(true);
+      expect((await stateOf(id)).deleted_at).not.toBe('');
+      if (!acted.ok) expect(['NOT_FOUND', 'CONFLICT']).toContain(acted.error?.code);
+      const notes = await rows(
+        "SELECT id FROM serial_events WHERE serial_id = ? AND message = 'catatan serentak'",
+        id,
+      );
+      expect(notes).toHaveLength(acted.ok ? 1 : 0);
+      // Sesudah penghapusan, tulis ulang apa pun ke serial itu = NOT_FOUND.
+      const after = await call(WRITER, 'serials.act', {
+        id,
+        expectedUpdatedAt: at,
+        action: 'note',
+        occurredOn: '2026-11-12',
+        message: 'sesudah hapus',
+      });
+      expect(after.error?.code).toBe('NOT_FOUND');
+    }
+  });
+
+  test('dua penghapusan serentak: keduanya sukses dan audit hanya sekali', async () => {
+    await seedSerial(env, { id: 'sn1', serial: 'AB12' });
+    const [a, b] = await Promise.all([remove('sn1'), remove('sn1', MGR_AB)]);
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    expect(await auditCount('serial.delete')).toBe(1);
   });
 });
 

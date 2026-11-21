@@ -319,9 +319,8 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'handovers.setCheck': { verb: 'PUT', path: '/handovers/{id}/checks' },
   'handovers.setDone': { verb: 'POST', path: '/handovers/{id}/done' },
   'handovers.comment': { verb: 'POST', path: '/handovers/{id}/comments', status: 201 },
-  // Hapus lunak per task (fase 4d; tanpa rute batch, keputusan pemilik soft delete 8): lokasi task lewat `locationId`.
-  // Hapus lunak task Serah Terima (fase 4d): tanpa penjaga versi dari klien (spek soft delete §8 butir 6); `restore`
-  // mengembalikan DTO sehingga `etag` = `updatedAt`.
+  // Hapus lunak per task (fase 4d; tanpa rute batch, keputusan pemilik soft delete 8): lokasi task lewat `locationId`,
+  // tanpa penjaga versi dari klien (spek soft delete §8 butir 6); `restore` mengembalikan DTO sehingga `etag` = `updatedAt`.
   'handovers.remove': { verb: 'DELETE', path: '/handovers/{id}', query: { locationId: 'string' } },
   'handovers.restore': { verb: 'POST', path: '/handovers/{id}/restore', etag: 'updatedAt' },
   'items.list': {

@@ -1077,6 +1077,9 @@ export async function addComment(
       if (raced) return raced;
     }
     if (isGuardFailure(error)) {
+      // Task dihapus lunak di sela baca dan tulis: penjaga INSERT (`deleted_at = ''`) ikut gagal. Muat ulang task
+      // hidup; bila sudah terhapus jawabannya `NOT_FOUND` seperti komentar ke task terhapus lainnya, bukan pesan batas.
+      await loadForWrite(env, input);
       throw appError(
         'VALIDATION',
         `Komentar tidak dapat ditambahkan: batas ${HANDOVER_LIMITS.comments} komentar atau 40.000 karakter tercapai, atau task sudah dibatalkan`,

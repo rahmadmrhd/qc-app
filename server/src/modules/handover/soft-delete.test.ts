@@ -291,6 +291,50 @@ describe('tulis pada task terhapus', () => {
   });
 });
 
+describe('konkurensi hapus vs tulis (Promise.all)', () => {
+  test('komentar dan centang serentak dengan hapus: tak pernah VALIDATION; hapus selalu sukses; komentar tersimpan hanya bila sukses', async () => {
+    for (let round = 0; round < 4; round += 1) {
+      const id = await create('- [ ] A = 1\n- [ ] B = 2', `PT Race ${round}`);
+      const [removed, commented, checked] = await Promise.all([
+        remove(id),
+        call(QC, 'handovers.comment', {
+          ...ref(id),
+          quote: '',
+          before: '',
+          after: '',
+          body: 'Komentar serentak',
+        }),
+        call(QC, 'handovers.setCheck', { ...ref(id), index: 0, text: 'A = 1', checked: true }),
+      ]);
+      expect(removed.ok).toBe(true);
+      expect((await stateOf(id)).deleted_at).not.toBe('');
+      // Komentar yang kalah balapan menjawab NOT_FOUND (task sudah tak ada), bukan pesan batas komentar/dibatalkan.
+      if (!commented.ok) expect(commented.error?.code).toBe('NOT_FOUND');
+      if (!checked.ok) expect(['NOT_FOUND', 'CONFLICT']).toContain(checked.error?.code);
+      expect(
+        await countOf('SELECT COUNT(*) AS n FROM handover_comments WHERE handover_id = ?', id),
+      ).toBe(commented.ok ? 1 : 0);
+      // Sesudah hapus tak ada lagi tulisan yang lolos.
+      const later = await call(QC, 'handovers.comment', {
+        ...ref(id),
+        quote: '',
+        before: '',
+        after: '',
+        body: 'Terlambat',
+      });
+      expect(later.error?.code).toBe('NOT_FOUND');
+    }
+  });
+
+  test('dua penghapusan serentak: keduanya sukses dan audit hanya sekali', async () => {
+    const id = await create();
+    const [a, b] = await Promise.all([remove(id), remove(id, MULTI)]);
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    expect(await auditCount('handover.delete')).toBe(1);
+  });
+});
+
 describe('handovers.restore (pulihkan)', () => {
   test('kembali ke kolom statusnya; tanda deleted hilang; audit sekali; pulihkan ulang sukses tanpa audit', async () => {
     const id = await create('- [ ] A');
