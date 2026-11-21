@@ -125,3 +125,29 @@ test('ponsel: hideMobileBar menyembunyikan bar bawah; di desktop tak berpengaruh
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeInTheDocument();
   media.restore();
 });
+
+test('ponsel: target panduan tetap ada (tour di bar judul; actionsTour dan saveTour di bar bawah fixed)', () => {
+  const media = mockMatchMedia(false);
+  const { container } = render(
+    <FormPage
+      formId="g"
+      title="X"
+      onCancel={() => undefined}
+      tour="judul"
+      actionsTour="aksi"
+      saveTour="simpan"
+    >
+      <form id="g" />
+    </FormPage>,
+  );
+  const bar = screen.getByRole('region', { name: 'Aksi form' });
+  expect(container.querySelector('[data-tour="judul"]')).not.toBeNull();
+  expect(bar.querySelector('[data-tour="aksi"]')).not.toBeNull();
+  expect(within(bar).getByRole('button', { name: 'Simpan' })).toHaveAttribute(
+    'data-tour',
+    'simpan',
+  );
+  // Satu pembungkus aksi saja yang dirender (bukan juga di bar judul): target panduan tak ganda.
+  expect(container.querySelectorAll('[data-tour="aksi"]')).toHaveLength(1);
+  media.restore();
+});
