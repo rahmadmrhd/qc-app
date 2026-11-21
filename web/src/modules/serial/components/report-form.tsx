@@ -2,7 +2,7 @@ import type { SerialLookupMatchDto } from '@shared/contract';
 import { extractFileRefs } from '@shared/items';
 import { SERIAL_LIMITS } from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
@@ -36,6 +36,16 @@ export const REPORT_FORM_ID = 'serial-report-form';
 export interface ReportFormState {
   pending: boolean;
   canSubmit: boolean;
+}
+
+/**
+ * Enter di kolom `input` (Item, BU, Lokasi: kolom pilihan) tidak boleh mengirim laporan: pengiriman implisit form
+ * terjadi karena tombol "Lapor rusak" milik `FormPage` adalah tombol kirim form ini lewat `form=`, dan laporan tak
+ * dapat dibatalkan (membuka laporan, menyurel/menotifikasi). Mengirim hanya lewat tombol. Editor catatan (bukan `input`)
+ * tetap memakai Enter untuk baris baru.
+ */
+function blockEnterSubmit(event: KeyboardEvent<HTMLFormElement>) {
+  if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault();
 }
 
 /** Melaporkan keadaan Simpan ke halaman, dan `null` saat form dilepas. */
@@ -106,6 +116,7 @@ export function ExistingReportForm({ match, onDone, onStateChange }: ExistingRep
       <form
         id={REPORT_FORM_ID}
         className="space-y-4"
+        onKeyDown={blockEnterSubmit}
         onSubmit={(event) => {
           event.preventDefault();
           void submit();
@@ -243,6 +254,7 @@ export function NewReportForm({ serial, onDone, onStateChange }: NewReportFormPr
       <form
         id={REPORT_FORM_ID}
         className="space-y-4"
+        onKeyDown={blockEnterSubmit}
         onSubmit={(event) => {
           event.preventDefault();
           void submit();

@@ -1,6 +1,6 @@
 import type { MeDto, SerialLookupMatchDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
@@ -229,6 +229,35 @@ test('belum tercatat: item, lokasi, dan catatan wajib; reportNew dikirim dan pin
   });
   expect(input.occurredOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   await waitFor(() => expect(onOpenSerial).toHaveBeenCalledWith('s9'));
+});
+
+test('belum tercatat: Enter di kolom Item/Lokasi (daftar tertutup) tidak mengirim laporan; hanya tombol yang mengirim', async () => {
+  matches = [];
+  renderPage();
+  await search('NEW-8');
+  await screen.findByRole('region', { name: 'Serial Number belum tercatat' });
+  await pickLink(screen, 'Item', 'Cisco C9200');
+  await pickLink(screen, 'Lokasi', 'Surabaya (SBY)');
+  await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'Unit mati');
+  const send = screen.getByRole('button', { name: 'Lapor rusak' });
+  expect(send).toBeEnabled();
+  for (const field of ['Item', 'Lokasi']) {
+    const box = screen.getByRole('combobox', { name: field });
+    box.focus();
+    await userEvent.keyboard('{Escape}');
+    // Enter ditahan (preventDefault) sehingga peramban tak mengirim form lewat pengiriman implisit; user-event tidak
+    // meniru pengiriman implisit untuk tombol di luar form, jadi yang diperiksa adalah peristiwanya.
+    expect(fireEvent.keyDown(box, { key: 'Enter' })).toBe(false);
+    await userEvent.keyboard('{Enter}');
+  }
+  // Enter di editor catatan (bukan `input`) tidak ditahan: tetap baris baru.
+  expect(
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Catatan' }), { key: 'Enter' }),
+  ).toBe(true);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  expect(calls('serials.reportNew')).toHaveLength(0);
+  await userEvent.click(send);
+  await waitFor(() => expect(calls('serials.reportNew')).toHaveLength(1));
 });
 
 test('belum tercatat: item di dua BU = memilih BU dulu', async () => {
