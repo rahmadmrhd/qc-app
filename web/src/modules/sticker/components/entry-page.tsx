@@ -299,7 +299,7 @@ export function EntryPage({
                         <span className="font-medium">{stock.name}</span>
                         <span className="ml-2 text-xs text-muted-foreground">{stock.typeName}</span>
                         {stock.status === 'active' ? null : (
-                          <Badge variant="secondary" className="ml-2">
+                          <Badge color="secondary" variant="soft" className="ml-2">
                             {STICKER_STATUS_LABEL[stock.status]}
                           </Badge>
                         )}

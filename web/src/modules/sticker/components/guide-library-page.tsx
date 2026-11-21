@@ -270,7 +270,11 @@ export function GuideLibraryPage({
         permanent
         busy={remove.busy}
         onConfirm={() => {
-          void remove.run().then(() => setConfirmDelete(false));
+          // Daftar dimuat ulang eksplisit setelah selesai: tidak bergantung pada invalidasi mutasi rute.
+          void remove.run().then(() => {
+            void refresh();
+            setConfirmDelete(false);
+          });
         }}
       />
       <PreviewDialog

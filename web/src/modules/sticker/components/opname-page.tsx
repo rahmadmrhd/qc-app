@@ -233,7 +233,7 @@ export function OpnamePage({
                         <span className="font-medium">{row.name}</span>
                         <span className="ml-2 text-xs text-muted-foreground">{row.typeName}</span>
                         {row.status === 'active' ? null : (
-                          <Badge variant="secondary" className="ml-2">
+                          <Badge color="secondary" variant="soft" className="ml-2">
                             {STICKER_STATUS_LABEL[row.status]}
                           </Badge>
                         )}

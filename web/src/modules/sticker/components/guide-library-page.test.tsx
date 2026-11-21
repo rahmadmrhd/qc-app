@@ -8,8 +8,9 @@ import { GuideLibraryPage } from './guide-library-page';
 
 const toastSuccess = vi.hoisted(() => vi.fn());
 const toastError = vi.hoisted(() => vi.fn());
+const toastWarning = vi.hoisted(() => vi.fn());
 vi.mock('sonner', () => ({
-  toast: { success: toastSuccess, error: toastError, warning: vi.fn() },
+  toast: { success: toastSuccess, error: toastError, warning: toastWarning },
 }));
 
 const item: LibraryItem = {
@@ -37,6 +38,7 @@ vi.mock('../lib/guide-source', () => ({
 beforeEach(() => {
   toastSuccess.mockClear();
   toastError.mockClear();
+  toastWarning.mockClear();
 });
 
 function setup(
@@ -313,6 +315,7 @@ test('pilih dua gambar lalu Hapus: konfirmasi permanen, satu permintaan, toast s
   await waitFor(() => expect(onRemoveBatch).toHaveBeenCalledTimes(1));
   expect(onRemoveBatch).toHaveBeenCalledWith(['g1', 'g4']);
   await waitFor(() => expect(toastSuccess).toHaveBeenCalledWith('2 gambar dihapus'));
+  await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ['fake-guides'] }));
   await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
   expect(screen.queryByText(/dipilih/)).toBeNull();
 });
@@ -377,3 +380,47 @@ test('memilih dan Hapus massal tidak membatalkan unggahan yang sedang berjalan',
   await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
   expect(screen.getAllByTestId('attachment-pending')).toHaveLength(1);
 });
+
+function manyItems(count: number): LibraryItem[] {
+  return Array.from({ length: count }, (_, index) => ({
+    ...item,
+    id: `m${index}`,
+    name: `Gambar ${index}`,
+  }));
+}
+
+/** Memilih semua kartu: satu kali mencari checkbox (mencari per nama pada 101 kartu terlalu lambat). */
+async function selectAllCards() {
+  await screen.findByText('Gambar 0');
+  for (const box of screen.getAllByRole('checkbox')) fireEvent.click(box);
+}
+
+test('pilih 101 gambar: dikirim bertahap 100 lalu 1', async () => {
+  const user = userEvent.setup();
+  const onRemoveBatch = vi.fn().mockResolvedValue([]);
+  setup(true, { items: manyItems(101), onRemoveBatch });
+  await selectAllCards();
+  await user.click(screen.getByRole('button', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog');
+  expect(within(dialog).getByText('Hapus 101 gambar?')).toBeInTheDocument();
+  await user.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(onRemoveBatch).toHaveBeenCalledTimes(2));
+  expect(onRemoveBatch.mock.calls[0]?.[0]).toHaveLength(100);
+  expect(onRemoveBatch.mock.calls[1]?.[0]).toHaveLength(1);
+}, 60_000);
+
+test('tahap kedua gagal: toast sebagian berhasil dan hanya yang gagal tetap terpilih', async () => {
+  const user = userEvent.setup();
+  const onRemoveBatch = vi
+    .fn()
+    .mockResolvedValueOnce([])
+    .mockRejectedValueOnce(new Error('Gambar masih dipakai'));
+  setup(true, { items: manyItems(101), onRemoveBatch });
+  await selectAllCards();
+  await user.click(screen.getByRole('button', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await user.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(toastWarning).toHaveBeenCalled());
+  expect(onRemoveBatch).toHaveBeenCalledTimes(2);
+  expect(screen.getByText('1 dipilih')).toBeInTheDocument();
+}, 60_000);
