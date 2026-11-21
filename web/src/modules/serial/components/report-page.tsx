@@ -1,6 +1,7 @@
 import { splitSerialInput } from '@shared/serials';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
+import { HeadroomBar, HeadroomFrame } from '@/components/page/headroom-bar';
 import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
 import { STATUS_LABEL } from '../lib/labels';
@@ -48,14 +49,15 @@ export function ReportPage({ onOpenSerial }: ReportPageProps) {
   const elsewhere = lookup.data?.elsewhere ?? null;
 
   return (
-    <div className="space-y-5">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">Lapor Rusak</h1>
+    // Kerangka judul (kit): bar headroom berisi judul; formulir pencarian dan hasilnya mengalir di bawahnya.
+    <HeadroomFrame className="gap-5">
+      <HeadroomBar className="space-y-1 pt-1 pb-3">
+        <h1 className="text-xl font-semibold">Lapor Rusak</h1>
         <p className="text-sm text-muted-foreground">
           Ketik atau scan Serial Number yang bermasalah. Kalau belum tercatat, Serial Number akan
           dicatat langsung sebagai Dilaporkan.
         </p>
-      </div>
+      </HeadroomBar>
       <div data-tour="report-serial">
         <SerialScanInput
           id="report-serial"
@@ -111,7 +113,7 @@ export function ReportPage({ onOpenSerial }: ReportPageProps) {
           )}
         </div>
       )}
-    </div>
+    </HeadroomFrame>
   );
 }
 

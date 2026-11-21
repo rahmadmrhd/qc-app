@@ -301,3 +301,10 @@ test('tempelan banyak baris memakai serial pertama dan memberi tahu', async () =
   await waitFor(() => expect(calls('serials.lookup')[0]?.[1]).toEqual({ serial: 'ABC123' }));
   expect(screen.getByText(/yang dipakai ABC123/)).toBeInTheDocument();
 });
+
+test('judul Lapor Rusak ada di kerangka judul (bar headroom) dengan target panduan di bawahnya', async () => {
+  renderPage();
+  const heading = await screen.findByRole('heading', { name: 'Lapor Rusak' });
+  expect(heading.closest('[data-headroom-frame]')).not.toBeNull();
+  expect(document.querySelector('[data-tour="report-serial"]')).not.toBeNull();
+});

@@ -58,10 +58,11 @@ vi.mock('@/modules/serial/components/record-page', () => ({
     onAllSaved?: () => void;
     onProofChange?: (hasProof: boolean) => void;
     handleRef?: { current: { save(): Promise<boolean> } | null };
+    hideTitle?: boolean;
   }) => {
     if (props.handleRef) props.handleRef.current = { save: () => state.save() };
     return (
-      <div>
+      <div data-hide-title={props.hideTitle ? 'ya' : 'tidak'}>
         <button type="button" onClick={() => props.onDirtyChange?.(true)}>
           isi
         </button>
@@ -112,6 +113,13 @@ afterEach(() => {
   vi.restoreAllMocks();
   resumeDraftWrites();
   localStorage.clear();
+});
+
+test('judul halaman ada di kerangka judul (bar headroom) dan RecordPage tidak mengulang judulnya', async () => {
+  const { container } = await mount();
+  const heading = screen.getByRole('heading', { name: 'Catat Serial Number' });
+  expect(heading.closest('[data-headroom-frame]')).not.toBeNull();
+  expect(container.querySelector('[data-hide-title="ya"]')).not.toBeNull();
 });
 
 test('draf berisi: keluar halaman meminta konfirmasi; ditolak = diblokir', async () => {

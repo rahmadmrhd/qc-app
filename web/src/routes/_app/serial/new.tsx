@@ -1,5 +1,6 @@
 import { createFileRoute, useBlocker } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
+import { HeadroomBar, HeadroomFrame } from '@/components/page/headroom-bar';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { leaveBlocker } from '@/lib/leave-blocker';
 import { requirePermission } from '@/modules/auth/permissions';
@@ -64,8 +65,13 @@ function NewSerialRoute() {
   }
 
   return (
-    <div>
+    // Kerangka judul (kit): bar headroom berisi judul; bar aksi Simpan, kamera, dan impor tetap milik RecordPage.
+    <HeadroomFrame className="gap-3">
+      <HeadroomBar className="pt-1 pb-3">
+        <h1 className="text-xl font-semibold">Catat Serial Number</h1>
+      </HeadroomBar>
       <RecordPage
+        hideTitle
         handleRef={page}
         onDirtyChange={(value) => {
           dirty.current = value;
@@ -86,6 +92,6 @@ function NewSerialRoute() {
         onLeave={() => blocker.status === 'blocked' && blocker.proceed()}
         onStay={() => blocker.status === 'blocked' && blocker.reset()}
       />
-    </div>
+    </HeadroomFrame>
   );
 }
