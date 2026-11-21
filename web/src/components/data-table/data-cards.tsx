@@ -35,6 +35,8 @@ interface DataCardsProps<T> {
   label: string;
   nameOf: (row: T) => string;
   selection?: RowSelection | undefined;
+  /** Kartu yang tidak boleh dipilih: tanpa tekan lama, checkbox, dan "Pilih" di menu (bawaan: semua boleh). */
+  isSelectable?: ((row: T) => boolean) | undefined;
   actions?: ((row: T) => readonly RowAction[]) | undefined;
   isLoading?: boolean | undefined;
 }
@@ -51,12 +53,13 @@ export function DataCards<T>({
   label,
   nameOf,
   selection,
+  isSelectable,
   actions,
   isLoading,
 }: DataCardsProps<T>) {
   const roles = resolveMobileRoles(columns);
   const { selecting, bind } = useLongPressSelect(selection, true);
-  const ids = rows.map(rowKey);
+  const ids = rows.filter((row) => isSelectable?.(row) ?? true).map(rowKey);
   const byRole = (role: MobileRole) =>
     columns
       .map((column, index) => ({ column, role: roles[index] }))
@@ -88,18 +91,20 @@ export function DataCards<T>({
           const id = rowKey(row);
           const isSelected = selection?.selected.has(id) ?? false;
           const baseActions = actions?.(row) ?? [];
+          const selectable = isSelectable?.(row) ?? true;
           // Jalur cadangan non-sentuh: "Pilih" di menu ⋯ masuk mode pilih dengan kartu ini terpilih.
-          const rowActions: readonly RowAction[] = selection
-            ? [
-                ...baseActions,
-                {
-                  id: 'select',
-                  action: 'select',
-                  label: `Pilih ${nameOf(row)}`,
-                  onSelect: () => selection.toggle(id),
-                },
-              ]
-            : baseActions;
+          const rowActions: readonly RowAction[] =
+            selection && selectable
+              ? [
+                  ...baseActions,
+                  {
+                    id: 'select',
+                    action: 'select',
+                    label: `Pilih ${nameOf(row)}`,
+                    onSelect: () => selection.toggle(id),
+                  },
+                ]
+              : baseActions;
           const metaEntries = metas
             .map(({ column }) => ({ column, content: column.cell(row) }))
             .filter((entry) => hasContent(entry.content));
@@ -111,13 +116,14 @@ export function DataCards<T>({
               key={id}
               selected={isSelected}
               rootProps={{
-                className: selection
-                  ? `${selecting ? 'select-none ' : ''}[-webkit-touch-callout:none] data-[pressing]:select-none`
-                  : undefined,
-                ...bind(id),
+                className:
+                  selection && selectable
+                    ? `${selecting ? 'select-none ' : ''}[-webkit-touch-callout:none] data-[pressing]:select-none`
+                    : undefined,
+                ...(selectable ? bind(id) : {}),
               }}
               leading={
-                selection && selecting ? (
+                selection && selecting && selectable ? (
                   <Checkbox
                     aria-label={`Pilih ${nameOf(row)}`}
                     checked={isSelected}

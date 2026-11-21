@@ -291,3 +291,37 @@ test('teks kartu dapat diseleksi di luar tekan lama: data-pressing hanya selama 
   fireEvent.pointerUp(first);
   expect(first.hasAttribute('data-pressing')).toBe(false);
 });
+
+test('rowSelectable: tekan lama pada kartu tak terpilih tidak masuk mode pilih dan menu tanpa "Pilih"', async () => {
+  vi.useFakeTimers();
+  function Mixed() {
+    const selection = useRowSelection('x');
+    return (
+      <TooltipProvider>
+        <DataTable
+          rows={ROWS}
+          rowKey={(row) => row.id}
+          columns={[{ id: 'name', header: 'Nama', cell: (row) => row.name }]}
+          label="Merk"
+          selectLabel={(row) => row.name}
+          selection={selection}
+          rowSelectable={(row) => row.id !== '1'}
+          actions={(row) => [
+            { id: 'edit', action: 'edit', label: `Ubah ${row.name}`, onSelect: () => undefined },
+          ]}
+        />
+      </TooltipProvider>
+    );
+  }
+  render(<Mixed />);
+  const first = screen.getAllByRole('listitem')[0] as HTMLElement;
+  pressCard(first);
+  act(() => {
+    vi.advanceTimersByTime(LONG_PRESS_MS);
+  });
+  expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
+  vi.useRealTimers();
+  await userEvent.click(screen.getByRole('button', { name: 'Aksi Asus' }));
+  expect(await screen.findByRole('menuitem', { name: 'Ubah Asus' })).toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: 'Pilih Asus' })).toBeNull();
+});

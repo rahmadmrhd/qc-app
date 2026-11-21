@@ -7,20 +7,13 @@ import type {
 } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
 import { STICKER_LIMITS } from '@shared/stickers';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
-import {
-  FormDialog,
-  FormDialogContent,
-  FormDialogDescription,
-  FormDialogFooter,
-  FormDialogHeader,
-  FormDialogTitle,
-} from '@/components/form-dialog';
+import { FormDialogShell } from '@/components/form-dialog-shell';
 import { LinkField, LinkMultiField, type LinkOption } from '@/components/link-field';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { describeError } from '@/lib/api/describe-error';
 import { BusinessUnitFormDialog } from '@/modules/access/components/business-unit-form-dialog';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
@@ -98,12 +91,28 @@ function FieldError({ id, message }: { id: string; message: string | undefined }
   ) : null;
 }
 
-interface BodyProps extends Omit<StickerFormDialogProps, 'open' | 'onOpenChange'> {
+export interface StickerFormProps extends Omit<StickerFormDialogProps, 'open' | 'onOpenChange'> {
+  /** Id elemen `<form>`: tombol Simpan ada di luar form (footer dialog) dan memakai `form={formId}`. */
+  formId: string;
+  /** Dipanggil setelah simpan berhasil. */
   onClose: () => void;
+  /** Proses simpan berjalan atau tidak (untuk tombol Simpan di luar form). */
+  onBusyChange?: (busy: boolean) => void;
+  /**
+   * Simpan harus nonaktif: jenis/nama belum terisi atau gambar contoh masih diunggah atau gagal. Dilaporkan ke
+   * pemilik tombol Simpan.
+   */
+  onBlockedChange?: (blocked: boolean) => void;
 }
 
-/** Terpasang hanya saat dialog terbuka, sehingga isian dan galat selalu mulai bersih. */
-function StickerFormBody({
+/**
+ * Field form stiker: hanya `<form id={formId}>`, tanpa tombol. Terpasang hanya saat dialog terbuka, sehingga isian dan
+ * galat selalu mulai bersih.
+ */
+export function StickerForm({
+  formId,
+  onBusyChange,
+  onBlockedChange,
   sticker,
   types,
   businessUnits,
@@ -112,7 +121,9 @@ function StickerFormBody({
   onCreateBusinessUnit,
   openBusinessUnitHref,
   onClose,
-}: BodyProps) {
+}: StickerFormProps) {
+  // Ponsel: tanpa fokus otomatis (papan ketik layar akan menutupi separuh form).
+  const desktop = useIsDesktop();
   const [typeId, setTypeId] = useState(sticker?.typeId ?? '');
   const [name, setName] = useState(sticker?.name ?? '');
   const [alias, setAlias] = useState(sticker?.alias ?? '');
@@ -142,6 +153,10 @@ function StickerFormBody({
   );
   // Versi saat form dibuka: tidak ikut berubah bila daftar dimuat ulang, agar versi usang tetap terdeteksi.
   const [expectedUpdatedAt] = useState(sticker?.updatedAt);
+
+  useEffect(() => {
+    onBlockedChange?.(imageBusy || name.trim() === '' || typeId === '');
+  }, [imageBusy, name, typeId, onBlockedChange]);
 
   const allTypes = [...types, ...createdTypes.filter((c) => !types.some((t) => t.id === c.id))];
   const allBus = [
@@ -239,6 +254,7 @@ function StickerFormBody({
       return;
     }
     setBusy(true);
+    onBusyChange?.(true);
     let failure: StickerSaveFailure | null;
     try {
       const data = parsed.data;
@@ -256,6 +272,7 @@ function StickerFormBody({
       failure = { message: 'Gagal menyimpan stiker' };
     }
     setBusy(false);
+    onBusyChange?.(false);
     if (failure === null) {
       onClose();
       return;
@@ -268,6 +285,7 @@ function StickerFormBody({
   return (
     <>
       <form
+        id={formId}
         noValidate
         className="space-y-4"
         onSubmit={(event) => {
@@ -308,7 +326,7 @@ function StickerFormBody({
           <Input
             id="sticker-form-name"
             aria-required="true"
-            autoFocus
+            autoFocus={desktop}
             maxLength={STICKER_LIMITS.nameMax}
             value={name}
             disabled={systemLocked}
@@ -418,14 +436,8 @@ function StickerFormBody({
             error={errors.businessUnitIds}
           />
         ) : null}
-        <FormDialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
-            Batal
-          </Button>
-          <Button type="submit" disabled={busy || imageBusy || name.trim() === '' || typeId === ''}>
-            {busy ? 'Menyimpan…' : 'Simpan'}
-          </Button>
-        </FormDialogFooter>
+        {/* Penerima Enter di kolom isian: tombol Simpan sebenarnya ada di footer dialog (di luar form). */}
+        <button type="submit" hidden tabIndex={-1} aria-hidden />
       </form>
       {/* Dialog turunan di luar <form>: event submit dari portalnya tidak menjalar ke form stiker. */}
       {onCreateType ? (
@@ -446,6 +458,8 @@ function StickerFormBody({
   );
 }
 
+export const STICKER_FORM_ID = 'sticker-form';
+
 /** Dialog tambah/ubah stiker; field BU hanya muncul untuk jenis berrule `bu`, jenis tak dapat diubah saat ubah. */
 export function StickerFormDialog({
   open,
@@ -458,30 +472,34 @@ export function StickerFormDialog({
   onCreateBusinessUnit,
   openBusinessUnitHref,
 }: StickerFormDialogProps) {
-  const title = sticker ? `Ubah stiker ${sticker.alias || sticker.name}` : 'Tambah stiker';
+  const [busy, setBusy] = useState(false);
+  const [blocked, setBlocked] = useState(true);
   return (
-    <FormDialog open={open} onOpenChange={onOpenChange}>
-      <FormDialogContent>
-        <FormDialogHeader>
-          <FormDialogTitle>{title}</FormDialogTitle>
-          <FormDialogDescription>
-            Stiker tidak dihapus, hanya dinonaktifkan. Gambar contoh membantu tim QC mengenalinya.
-          </FormDialogDescription>
-        </FormDialogHeader>
-        {open ? (
-          <StickerFormBody
-            key={sticker?.id ?? 'new'}
-            sticker={sticker}
-            types={types}
-            businessUnits={businessUnits}
-            onSave={onSave}
-            onCreateType={onCreateType}
-            onCreateBusinessUnit={onCreateBusinessUnit}
-            openBusinessUnitHref={openBusinessUnitHref}
-            onClose={() => onOpenChange(false)}
-          />
-        ) : null}
-      </FormDialogContent>
-    </FormDialog>
+    <FormDialogShell
+      open={open}
+      onOpenChange={onOpenChange}
+      formId={STICKER_FORM_ID}
+      title={sticker ? `Ubah stiker ${sticker.alias || sticker.name}` : 'Tambah stiker'}
+      description="Gambar contoh membantu tim QC mengenali stiker."
+      submitting={busy}
+      submitDisabled={blocked}
+    >
+      {open ? (
+        <StickerForm
+          key={sticker?.id ?? 'new'}
+          formId={STICKER_FORM_ID}
+          sticker={sticker}
+          types={types}
+          businessUnits={businessUnits}
+          onSave={onSave}
+          onCreateType={onCreateType}
+          onCreateBusinessUnit={onCreateBusinessUnit}
+          openBusinessUnitHref={openBusinessUnitHref}
+          onClose={() => onOpenChange(false)}
+          onBusyChange={setBusy}
+          onBlockedChange={setBlocked}
+        />
+      ) : null}
+    </FormDialogShell>
   );
 }

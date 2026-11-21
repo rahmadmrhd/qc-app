@@ -47,7 +47,7 @@ export const Route = createFileRoute('/_app/item/$itemId/')({
 function ItemDetailPage() {
   const { itemId } = Route.useParams();
   const { tab } = Route.useSearch();
-  const navigate = useNavigate();
+  const navigate = useNavigate({ from: Route.fullPath });
   const me = useMe();
   const { data: item } = useSuspenseQuery(itemQueryOptions(itemId));
   const setStatus = useSetItemStatus();
@@ -101,11 +101,7 @@ function ItemDetailPage() {
   }
 
   function changeTab(next: ItemTab) {
-    void navigate({
-      to: '.',
-      search: (prev: { tab?: ItemTab }) => ({ ...prev, tab: next }),
-      replace: true,
-    });
+    void navigate({ search: (prev) => ({ ...prev, tab: next }), replace: true });
   }
 
   return (

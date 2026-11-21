@@ -1,8 +1,9 @@
 import type { BusinessUnitOptionDto, StickerTypeDto } from '@shared/contract';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { pickLink } from '@/test/link-field';
+import { renderInRouter } from '@/test/render-in-router';
 
 const uploadMock = vi.hoisted(() => vi.fn());
 vi.mock('@/modules/files/file-source', () => ({
@@ -53,23 +54,34 @@ const item = (id: string) => ({
 });
 
 beforeEach(() => uploadMock.mockReset());
+afterEach(() => cleanup());
 
 /** Membuka dialog Tambah stiker dengan nama + jenis terisi (Simpan siap kecuali gambar menahan). */
 async function openForm() {
   const onSave = vi.fn().mockResolvedValue(null);
-  render(
+  await renderInRouter(
     <StickersPage
       stickers={[]}
       types={types}
       businessUnits={businessUnits}
       canEdit
       canManage
+      filter={{ q: '', typeId: '', status: 'all' }}
+      onFilterChange={vi.fn()}
       pendingStatusId={null}
       onSave={onSave}
       onToggleStatus={vi.fn()}
+      mutations={{
+        setStatus: vi.fn().mockResolvedValue([]),
+        remove: vi.fn().mockResolvedValue([]),
+        restore: vi.fn().mockResolvedValue([]),
+        reload: vi.fn(),
+      }}
+      onStartOpname={vi.fn()}
+      onStartEntry={vi.fn()}
     />,
   );
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  await userEvent.click(screen.getAllByRole('button', { name: 'Tambah stiker' })[0] as HTMLElement);
   const form = await screen.findByRole('alertdialog', { name: 'Tambah stiker' });
   await pickLink(within(form), 'Jenis', 'Segel');
   await userEvent.type(within(form).getByLabelText('Nama stiker'), 'Segel Baru');

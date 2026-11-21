@@ -1,11 +1,18 @@
 import type { StickerTypeDto } from '@shared/contract';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, test, vi } from 'vitest';
+import { useState } from 'react';
+import { afterEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import { pickSelect, selectOptionNames } from '@/test/link-field';
+import { mockMatchMedia } from '@/test/match-media';
+import { renderInRouter } from '@/test/render-in-router';
 import { stickerTypeSaveFailure } from './sticker-type-form-dialog';
-import { StickerTypesPage } from './sticker-types-page';
+import {
+  type StickerTypesFilter,
+  StickerTypesPage,
+  type StickerTypesPageProps,
+} from './sticker-types-page';
 
 const types: StickerTypeDto[] = [
   {
@@ -30,25 +37,56 @@ const types: StickerTypeDto[] = [
   },
 ];
 
-function renderPage(props: Partial<Parameters<typeof StickerTypesPage>[0]> = {}) {
+afterEach(() => {
+  cleanup();
+});
+
+function mutationsMock() {
+  return {
+    setStatus: vi.fn().mockResolvedValue([]),
+    remove: vi.fn().mockResolvedValue([]),
+    restore: vi.fn().mockResolvedValue([]),
+    reload: vi.fn(),
+  };
+}
+
+/** Pemegang state filter: search params Router digantikan state lokal. */
+function Harness(props: Omit<StickerTypesPageProps, 'filter' | 'onFilterChange'>) {
+  const [filter, setFilter] = useState<StickerTypesFilter>({ q: '', status: 'all' });
+  return (
+    <StickerTypesPage
+      {...props}
+      filter={filter}
+      onFilterChange={(patch) => setFilter((current) => ({ ...current, ...patch }))}
+    />
+  );
+}
+
+async function openChip(label: string) {
+  await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${label}(:|$)`) }));
+}
+
+async function renderPage(props: Partial<StickerTypesPageProps> = {}) {
   const onSave = vi.fn().mockResolvedValue(null);
   const onToggleStatus = vi.fn();
-  render(
-    <StickerTypesPage
+  const mutations = mutationsMock();
+  await renderInRouter(
+    <Harness
       types={types}
       canEdit
       canManage
       pendingStatusId={null}
       onSave={onSave}
       onToggleStatus={onToggleStatus}
+      mutations={mutations}
       {...props}
     />,
   );
-  return { onSave, onToggleStatus };
+  return { onSave, onToggleStatus, mutations };
 }
 
-test('menampilkan nama, aturan, jumlah stiker, dan status tiap jenis', () => {
-  renderPage();
+test('menampilkan nama, aturan, jumlah stiker, dan status tiap jenis', async () => {
+  await renderPage();
   const hijau = screen.getByRole('row', { name: /QC Hijau/ });
   expect(within(hijau).getByText('Menurut BU')).toBeInTheDocument();
   expect(within(hijau).getByText('3')).toBeInTheDocument();
@@ -58,65 +96,37 @@ test('menampilkan nama, aturan, jumlah stiker, dan status tiap jenis', () => {
   expect(within(segel).getByText('Nonaktif')).toBeInTheDocument();
 });
 
-test('menampilkan keterangan kosong bila belum ada jenis', () => {
-  renderPage({ types: [] });
+test('menampilkan keterangan kosong bila belum ada jenis', async () => {
+  await renderPage({ types: [] });
   expect(screen.getByText('Belum ada jenis stiker.')).toBeInTheDocument();
 });
 
-test('tombol Tambah, Ubah, dan Nonaktifkan mengikuti izin', () => {
-  const { rerender } = (() => {
-    const utils = render(
-      <StickerTypesPage
-        types={types}
-        canEdit={false}
-        canManage={false}
-        pendingStatusId={null}
-        onSave={vi.fn()}
-        onToggleStatus={vi.fn()}
-      />,
-    );
-    return utils;
-  })();
+test('tombol Tambah, Ubah, dan Nonaktifkan mengikuti izin', async () => {
+  await renderPage({ canEdit: false, canManage: false });
   expect(screen.queryByRole('button', { name: 'Tambah jenis' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Ubah QC Hijau' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Nonaktifkan QC Hijau' })).toBeNull();
+  cleanup();
 
-  rerender(
-    <StickerTypesPage
-      types={types}
-      canEdit
-      canManage={false}
-      pendingStatusId={null}
-      onSave={vi.fn()}
-      onToggleStatus={vi.fn()}
-    />,
-  );
+  await renderPage({ canEdit: true, canManage: false });
   expect(screen.getByRole('button', { name: 'Tambah jenis' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Ubah QC Hijau' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Nonaktifkan QC Hijau' })).toBeNull();
+  cleanup();
 
-  rerender(
-    <StickerTypesPage
-      types={types}
-      canEdit
-      canManage
-      pendingStatusId={null}
-      onSave={vi.fn()}
-      onToggleStatus={vi.fn()}
-    />,
-  );
+  await renderPage();
   expect(screen.getByRole('button', { name: 'Nonaktifkan QC Hijau' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Aktifkan Segel' })).toBeInTheDocument();
 });
 
 test('menonaktifkan memanggil onToggleStatus dengan jenisnya', async () => {
-  const { onToggleStatus } = renderPage();
+  const { onToggleStatus } = await renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Nonaktifkan QC Hijau' }));
   expect(onToggleStatus).toHaveBeenCalledWith(types[0]);
 });
 
 test('menambah jenis: aturan dapat dipilih, simpan mengirim nama dan aturan', async () => {
-  const { onSave } = renderPage();
+  const { onSave } = await renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Tambah jenis' }));
   const dialog = await screen.findByRole('alertdialog');
   await userEvent.type(within(dialog).getByLabelText('Nama jenis'), 'Postel');
@@ -128,7 +138,7 @@ test('menambah jenis: aturan dapat dipilih, simpan mengirim nama dan aturan', as
 });
 
 test('galat server tampil pada field nama dan dialog tetap terbuka', async () => {
-  const { onSave } = renderPage();
+  const { onSave } = await renderPage();
   onSave.mockResolvedValueOnce({
     message: 'Nama jenis sudah dipakai',
     name: 'Nama jenis sudah dipakai',
@@ -142,7 +152,7 @@ test('galat server tampil pada field nama dan dialog tetap terbuka', async () =>
 });
 
 test('ubah jenis bila stickerCount > 0: aturan terkunci dan tampil sebagai teks; nama tetap dapat diubah', async () => {
-  const { onSave } = renderPage();
+  const { onSave } = await renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Ubah QC Hijau' }));
   const dialog = await screen.findByRole('alertdialog');
   expect(within(dialog).queryByLabelText('Aturan')).toBeNull();
@@ -162,7 +172,7 @@ test('ubah jenis bila stickerCount > 0: aturan terkunci dan tampil sebagai teks;
 });
 
 test('ubah jenis tanpa stiker: aturan masih dapat dipilih', async () => {
-  const { onSave } = renderPage();
+  const { onSave } = await renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Ubah Segel' }));
   const dialog = await screen.findByRole('alertdialog');
   expect(within(dialog).getByRole('combobox', { name: 'Aturan' })).toHaveValue('Tanpa syarat');
@@ -177,7 +187,7 @@ test('ubah jenis tanpa stiker: aturan masih dapat dipilih', async () => {
 });
 
 test('versi usang (412) dijawab pesan jelas dan dialog tetap terbuka', async () => {
-  const { onSave } = renderPage();
+  const { onSave } = await renderPage();
   onSave.mockResolvedValueOnce(
     stickerTypeSaveFailure(new ApiError('CONFLICT', 'basi', 'r1', undefined, { status: 412 })),
   );
@@ -190,7 +200,7 @@ test('versi usang (412) dijawab pesan jelas dan dialog tetap terbuka', async () 
   expect(screen.getByRole('alertdialog')).toBeInTheDocument();
 });
 
-test('konflik nama (409) bukan versi usang: pesan servernya dipertahankan', () => {
+test('konflik nama (409) bukan versi usang: pesan servernya dipertahankan', async () => {
   const failure = stickerTypeSaveFailure(
     new ApiError(
       'CONFLICT',
@@ -205,7 +215,7 @@ test('konflik nama (409) bukan versi usang: pesan servernya dipertahankan', () =
 });
 
 test('nama kosong tidak dapat disimpan', async () => {
-  const { onSave } = renderPage();
+  const { onSave } = await renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Tambah jenis' }));
   const dialog = await screen.findByRole('alertdialog');
   expect(within(dialog).getByRole('button', { name: 'Simpan' })).toBeDisabled();
@@ -223,8 +233,8 @@ const systemType: StickerTypeDto = {
   updatedAt: '2026-11-09 10:00:00',
 };
 
-test('jenis sistem: aturan "Menurut kelompok item", badge Sistem, dan tanpa tombol Ubah', () => {
-  renderPage({ types: [...types, systemType] });
+test('jenis sistem: aturan "Menurut kelompok item", badge Sistem, dan tanpa tombol Ubah', async () => {
+  await renderPage({ types: [...types, systemType] });
   const row = screen.getByRole('row', { name: /Manual Book/ });
   expect(within(row).getByText('Menurut kelompok item')).toBeInTheDocument();
   expect(within(row).getByText('Sistem')).toBeInTheDocument();
@@ -238,8 +248,90 @@ test('jenis sistem: aturan "Menurut kelompok item", badge Sistem, dan tanpa tomb
 });
 
 test('form jenis hanya menawarkan aturan pengguna (tanpa Menurut kelompok item)', async () => {
-  renderPage();
+  await renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Tambah jenis' }));
   const dialog = await screen.findByRole('alertdialog');
   expect(await selectOptionNames(within(dialog), 'Aturan')).toEqual(['Menurut BU', 'Tanpa syarat']);
+});
+
+test('nama jenis menaut ke View; jumlah stiker menaut ke halaman Stiker terfilter; tanpa tombol Lihat', async () => {
+  await renderPage();
+  expect(screen.getByRole('link', { name: 'QC Hijau' })).toHaveAttribute(
+    'href',
+    '/sticker/types/t1',
+  );
+  expect(screen.getByRole('link', { name: '3' })).toHaveAttribute('href', '/sticker?typeId=t1');
+  expect(screen.queryByRole('button', { name: /^Lihat/ })).toBeNull();
+});
+
+test('jenis sistem: tanpa checkbox dan tanpa aksi apa pun; jenis biasa tetap punya checkbox', async () => {
+  await renderPage({ types: [...types, systemType] });
+  expect(screen.queryByRole('checkbox', { name: 'Pilih Manual Book' })).toBeNull();
+  expect(screen.getByRole('checkbox', { name: 'Pilih QC Hijau' })).toBeInTheDocument();
+});
+
+test('pilih dua jenis lalu Aktifkan memanggil setStatus dengan dua id', async () => {
+  const { mutations } = await renderPage();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih QC Hijau' }));
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel' }));
+  expect(screen.getByText('2 dipilih')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Aktifkan' }));
+  await waitFor(() => expect(mutations.setStatus).toHaveBeenCalledWith(['t1', 't2'], 'active'));
+});
+
+test('tanpa izin kelola: tanpa checkbox dan aksi massal', async () => {
+  await renderPage({ canManage: false });
+  expect(screen.queryByRole('checkbox', { name: 'Pilih QC Hijau' })).toBeNull();
+  expect(screen.queryByRole('checkbox', { name: 'Pilih semua' })).toBeNull();
+});
+
+test('Hapus: hanya untuk jenis Nonaktif; konfirmasi lalu memanggil remove', async () => {
+  const { mutations } = await renderPage();
+  expect(screen.queryByRole('button', { name: 'Hapus QC Hijau' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus Segel' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(mutations.remove).toHaveBeenCalledWith(['t2']));
+});
+
+test('Hapus massal ditolak selama terpilih ada jenis Aktif', async () => {
+  await renderPage();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih QC Hijau' }));
+  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
+});
+
+test('tampilan Terhapus: hanya Pulihkan, tanpa kolom Status dan tombol Tambah', async () => {
+  const { mutations } = await renderPage({
+    types: [
+      {
+        ...types[1],
+        id: 't9',
+        name: 'Jenis Lama',
+        deleted: { deletedAt: '2026-11-20T03:00:00.000Z', deletedBy: 'admin@x.com' },
+      } as StickerTypeDto,
+    ],
+  });
+  await openChip('Status');
+  await pickSelect(screen, 'Filter status', 'Terhapus');
+  expect(screen.queryByRole('button', { name: 'Tambah jenis' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Ubah Jenis Lama' })).toBeNull();
+  expect(screen.getByRole('columnheader', { name: 'Dihapus oleh' })).toBeInTheDocument();
+  expect(screen.queryByRole('columnheader', { name: 'Status' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Pulihkan Jenis Lama' }));
+  await waitFor(() => expect(mutations.restore).toHaveBeenCalledWith(['t9']));
+});
+
+test('ponsel (360 px): kartu memuat judul tertaut dan lencana status; aksi dalam satu menu', async () => {
+  const media = mockMatchMedia(false);
+  try {
+    await renderPage();
+    expect(screen.queryByRole('table')).toBeNull();
+    const list = screen.getByRole('list', { name: 'Daftar jenis stiker' });
+    const card = within(list).getAllByRole('listitem')[0] as HTMLElement;
+    expect(within(card).getByRole('link', { name: 'QC Hijau' })).toBeInTheDocument();
+    expect(within(card).getByText('Aktif')).toBeInTheDocument();
+    expect(within(card).getByRole('button', { name: 'Aksi QC Hijau' })).toBeInTheDocument();
+  } finally {
+    media.restore();
+  }
 });

@@ -26,14 +26,21 @@ export type OpnameSaveResult = string | OpnameFailure | null;
 export const OPNAME_STALE_MESSAGE = 'Stok berubah sejak dihitung; hitung ulang';
 
 export interface OpnamePageProps {
+  /** Id elemen `<form>`: tombol Simpan ada di bar judul `FormPage` (di luar form) dan memakai `form={formId}`. */
+  formId: string;
   /** Stok terbaru yang dilihat halaman; salinannya saat dibuka menjadi `expectedQty` tiap baris. */
   rows: readonly StickerStockDto[];
   onSave: (input: OpnameInput) => Promise<OpnameSaveResult>;
   /** Dipanggil setelah simpan berhasil (biasanya kembali ke halaman Stiker). */
   onDone: () => void;
-  onCancel: () => void;
   /** Ada hitungan yang belum disimpan? Dipakai rute untuk menahan navigasi keluar. */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Proses simpan berjalan atau tidak (untuk tombol Simpan di bar judul). */
+  onBusyChange?: (busy: boolean) => void;
+  /** Simpan boleh dipencet atau tidak (ada hitungan sah, tidak melebihi batas, tidak usang). */
+  onSubmittableChange?: (submittable: boolean) => void;
+  /** Kata kunci awal kolom cari (mis. nama stiker dari tombol "Stok opname" di View Stiker). */
+  initialSearch?: string;
 }
 
 function qtyAt(row: StickerStockDto, locationId: string): number {
@@ -51,7 +58,16 @@ function typeOptionsOf(rows: readonly StickerStockDto[]): LinkOption[] {
  * Daftar dapat dicari menurut nama dan disaring menurut jenis (banyak jenis); hitungan disimpan per stiker sehingga
  * stiker yang tersaring keluar dari tampilan tetap ikut tersimpan.
  */
-export function OpnamePage({ rows, onSave, onDone, onCancel, onDirtyChange }: OpnamePageProps) {
+export function OpnamePage({
+  formId,
+  rows,
+  onSave,
+  onDone,
+  onDirtyChange,
+  onBusyChange,
+  onSubmittableChange,
+  initialSearch = '',
+}: OpnamePageProps) {
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   const writable = locationsWith(me, 'stickerstock', 'manage', selectedIds);
@@ -64,7 +80,7 @@ export function OpnamePage({ rows, onSave, onDone, onCancel, onDirtyChange }: Op
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(initialSearch);
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
   const dirty = Object.keys(counts).length > 0;
   useUnsavedChanges(dirty);
@@ -109,9 +125,15 @@ export function OpnamePage({ rows, onSave, onDone, onCancel, onDirtyChange }: Op
     setError(null);
   }
 
+  const submittable = canSubmit && !stale;
+  useEffect(() => {
+    onSubmittableChange?.(submittable);
+  }, [submittable, onSubmittableChange]);
+
   async function submit() {
-    if (!canSubmit) return;
+    if (!submittable) return;
     setBusy(true);
+    onBusyChange?.(true);
     let failure: OpnameFailure | null;
     try {
       const result = await onSave({
@@ -127,6 +149,7 @@ export function OpnamePage({ rows, onSave, onDone, onCancel, onDirtyChange }: Op
       failure = { message: describeError(cause) };
     }
     setBusy(false);
+    onBusyChange?.(false);
     if (failure === null) {
       onDone();
       return;
@@ -144,21 +167,19 @@ export function OpnamePage({ rows, onSave, onDone, onCancel, onDirtyChange }: Op
 
   return (
     <form
+      id={formId}
       noValidate
-      className="max-w-3xl space-y-4"
+      className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
         event.stopPropagation();
         void submit();
       }}
     >
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">Stok opname</h1>
-        <p className="text-sm text-muted-foreground">
-          Hitung stok fisik di satu lokasi. Simpan menetapkan stok tiap stiker yang dihitung menjadi
-          hasil hitung.
-        </p>
-      </div>
+      <p className="text-sm text-muted-foreground">
+        Hitung stok fisik di satu lokasi. Simpan menetapkan stok tiap stiker yang dihitung menjadi
+        hasil hitung.
+      </p>
       <LocationField
         id="opname-location"
         highlightInitial
@@ -279,20 +300,13 @@ export function OpnamePage({ rows, onSave, onDone, onCancel, onDirtyChange }: Op
           {error}
         </p>
       ) : null}
-      <div className="sticky bottom-0 -mx-1 flex justify-end gap-2 border-t bg-background px-1 py-3">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Batal
+      {stale ? (
+        <Button type="button" onClick={recount}>
+          Hitung ulang
         </Button>
-        {stale ? (
-          <Button type="button" onClick={recount}>
-            Hitung ulang
-          </Button>
-        ) : (
-          <Button type="submit" disabled={!canSubmit}>
-            {busy ? 'Menyimpan…' : 'Simpan opname'}
-          </Button>
-        )}
-      </div>
+      ) : null}
+      {/* Penerima Enter di kolom isian: tombol Simpan sebenarnya ada di bar judul halaman (di luar form). */}
+      <button type="submit" hidden tabIndex={-1} aria-hidden />
     </form>
   );
 }

@@ -10,6 +10,7 @@ import {
   manualBookLinkAccess,
   postelLinkAccess,
   serialItemCreateAccess,
+  stickerLinkAccess,
   stickerTypeLinkAccess,
 } from './link-access';
 
@@ -68,11 +69,19 @@ test('Tambah stiker dan jenis hanya untuk sticker edit ke atas; tidak ada tautan
   }
   expect(itemFormLinkAccess(null).canCreateSticker).toBe(false);
   expect(itemFormLinkAccess(null).canCreateStickerType).toBe(false);
-  expect('openStickerHref' in itemFormLinkAccess(meWithSticker('manage'))).toBe(false);
-  expect('openStickerTypeHref' in itemFormLinkAccess(meWithSticker('manage'))).toBe(false);
 });
 
-test('jenis stiker: Tambah butuh sticker edit, tanpa tautan buka (tidak ada halaman lihat)', () => {
+test('stiker dan jenis stiker: tautan Buka ke View hanya bagi pembaca katalog (sticker view ke atas)', () => {
+  expect(stickerLinkAccess(meWithSticker('none')).openStickerHref).toBeUndefined();
+  expect(stickerLinkAccess(meWithSticker('view')).openStickerHref?.('s 1')).toBe('/sticker/s%201');
+  expect(stickerTypeLinkAccess(meWithSticker('none')).openStickerTypeHref).toBeUndefined();
+  expect(stickerTypeLinkAccess(meWithSticker('view')).openStickerTypeHref?.('t1')).toBe(
+    '/sticker/types/t1',
+  );
+  expect(stickerLinkAccess(null).openStickerHref).toBeUndefined();
+});
+
+test('jenis stiker: Tambah butuh sticker edit', () => {
   const withSticker = (level: Level) =>
     ({ ...meWith('none', 'none'), permissions: { sticker: level } }) as unknown as MeDto;
   expect(stickerTypeLinkAccess(withSticker('view')).canCreateStickerType).toBe(false);

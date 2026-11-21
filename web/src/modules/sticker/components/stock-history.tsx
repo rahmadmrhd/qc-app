@@ -132,7 +132,8 @@ export interface StockHistoryDialogProps {
   onClose: () => void;
 }
 
-function StockHistoryBody({
+/** Riwayat satu stiker yang memuat sendiri (kursor server); dipakai dialog dan tab Riwayat View Stiker. */
+export function StockHistoryPanel({
   stickerId,
   locationIds,
   locationNames,
@@ -179,7 +180,7 @@ export function StockHistoryDialog({
           </DialogDescription>
         </DialogHeader>
         {sticker ? (
-          <StockHistoryBody
+          <StockHistoryPanel
             key={sticker.stickerId}
             stickerId={sticker.stickerId}
             locationIds={locationIds}

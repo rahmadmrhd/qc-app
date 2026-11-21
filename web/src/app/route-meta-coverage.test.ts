@@ -54,6 +54,8 @@ const NARROW_WIDTH = [
   '/sticker/settings',
   '/serial/settings',
   '/serial/report',
+  '/sticker/entry',
+  '/sticker/opname',
 ];
 const FULL_WIDTH = ['/handover', '/serial/new'];
 /** Rute yang memakai bawaan `default` secara sengaja (semua View, daftar, QR/Preset, dan halaman lain). */
@@ -86,9 +88,10 @@ const DEFAULT_WIDTH = [
   '/serial/reports',
   '/sticker',
   '/sticker/library',
-  '/sticker/opname',
+  '/sticker/$stickerId',
   '/sticker/stock',
   '/sticker/types',
+  '/sticker/types/$typeId',
 ];
 
 const navTargets = new Set(flattenNavItems(NAV_GROUPS).map((item) => norm(item.to as string)));
@@ -133,6 +136,8 @@ const LOCATION_AWARE = [
   '/handover/new',
   '/serial/new',
   '/sticker',
+  '/sticker/$stickerId',
+  '/sticker/entry',
   '/sticker/opname',
 ];
 
