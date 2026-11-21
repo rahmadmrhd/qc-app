@@ -51,11 +51,11 @@ function tagEnd(source: string, from: number): number {
 /** Nilai prop `variant` (apa adanya, termasuk ekspresi `{...}`) atau `null` bila tak ada. */
 function variantValue(tag: string): string | null {
   const m = /(?:^|\s)variant=("[^"]*"|\{(?:[^{}]|\{[^{}]*\})*\})/.exec(tag);
-  return m ? m[1] : null;
+  return m ? (m[1] ?? null) : null;
 }
 
 function literalsIn(value: string): string[] {
-  return [...value.matchAll(/["']([a-z]+)["']/g)].map((m) => m[1]);
+  return [...value.matchAll(/["']([a-z]+)["']/g)].map((m) => m[1] as string);
 }
 
 function hasColorProp(tag: string): boolean {
@@ -65,7 +65,7 @@ function hasColorProp(tag: string): boolean {
 function violationsIn(source: string): string[] {
   const out: string[] = [];
   for (const m of source.matchAll(/<([A-Z][A-Za-z0-9]*)(?=[\s/>])/g)) {
-    if (!CHECKED.has(m[1])) continue;
+    if (!CHECKED.has(m[1] as string)) continue;
     const start = (m.index ?? 0) + m[0].length;
     const tag = source.slice(start, tagEnd(source, start));
     const value = variantValue(tag);
@@ -79,13 +79,14 @@ function violationsIn(source: string): string[] {
   }
   // Pemanggilan fungsi kelas: buttonVariants({ variant: 'ghost' }) / badgeVariants(...)
   for (const m of source.matchAll(/\b(?:button|badge)Variants\(\s*\{([^}]*)\}/g)) {
-    const body = m[1];
+    const body = m[1] ?? '';
     const v = /variant:\s*["']([a-z]+)["']/.exec(body);
-    if (!v) continue;
+    const vname = v?.[1];
+    if (!vname) continue;
     const line = source.slice(0, m.index).split('\n').length;
-    if (LEGACY.includes(v[1])) out.push(`variants() variant "${v[1]}" (baris ${line})`);
-    else if (NEED_COLOR.includes(v[1]) && !/\bcolor:/.test(body))
-      out.push(`variants() variant "${v[1]}" tanpa color (baris ${line})`);
+    if (LEGACY.includes(vname)) out.push(`variants() variant "${vname}" (baris ${line})`);
+    else if (NEED_COLOR.includes(vname) && !/\bcolor:/.test(body))
+      out.push(`variants() variant "${vname}" tanpa color (baris ${line})`);
   }
   return out;
 }
