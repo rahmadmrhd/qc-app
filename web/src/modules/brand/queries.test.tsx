@@ -1,8 +1,17 @@
+import type { BrandDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { brandsQueryOptions, useSaveBrand, useSetBrandStatus } from './queries';
+import {
+  brandQueryOptions,
+  brandsQueryOptions,
+  useRemoveBrands,
+  useRestoreBrands,
+  useSaveBrand,
+  useSetBrandStatus,
+  useSetBrandStatusBatch,
+} from './queries';
 
 const fetchMock = vi.fn(
   async (_url: string, _init?: RequestInit) =>
@@ -131,4 +140,56 @@ test('ganti nama dan ubah status merk ikut memuat ulang item (nama merk tampil d
   status.result.current.mutate({ id: 'b1', status: 'inactive' });
   await waitFor(() => expect(status.result.current.isSuccess).toBe(true));
   expect(keys2()).toContain('items');
+});
+
+test('daftar merk terhapus: GET /api/v1/brands?status=deleted dengan kunci cache terpisah', async () => {
+  const deleted = brandsQueryOptions('deleted');
+  expect(deleted.queryKey).not.toEqual(brandsQueryOptions().queryKey);
+  fetchMock.mockResolvedValueOnce(new Response('[]'));
+  await (deleted.queryFn as () => Promise<unknown>)();
+  expect(lastRequest().url).toBe('/api/v1/brands?status=deleted');
+  // "all" dan tanpa argumen = daftar hidup (kunci yang sama dengan form item).
+  expect(brandsQueryOptions('all').queryKey).toEqual(brandsQueryOptions().queryKey);
+});
+
+test('satu merk: GET /api/v1/brands/{id}; data awal dari daftar yang sudah termuat', async () => {
+  const client = new QueryClient();
+  const brand: BrandDto = {
+    id: 'b1',
+    name: 'Sony',
+    status: 'active',
+    itemCount: 1,
+    updatedAt: '',
+    businessUnitIds: [],
+  };
+  const withoutSeed = brandQueryOptions(client, 'b1');
+  expect('initialData' in withoutSeed).toBe(false);
+  fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(brand)));
+  await (withoutSeed.queryFn as () => Promise<unknown>)();
+  expect(lastRequest().url).toBe('/api/v1/brands/b1');
+  client.setQueryData(brandsQueryOptions().queryKey, [brand]);
+  expect(brandQueryOptions(client, 'b1')).toMatchObject({ initialData: brand });
+});
+
+test('aksi massal merk: POST /brands/batch/{status,delete,restore} dan memuat ulang merk, item, audit', async () => {
+  const client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+  const keys = invalidated(client);
+  const status = renderHook(() => useSetBrandStatusBatch(), { wrapper: clientWrapper(client) });
+  status.result.current.mutate({ ids: ['b1', 'b2'], status: 'inactive' });
+  await waitFor(() => expect(status.result.current.isSuccess).toBe(true));
+  expect(lastRequest().url).toBe('/api/v1/brands/batch/status');
+  expect(lastRequest().init.method).toBe('POST');
+  expect(JSON.parse(String(lastRequest().init.body))).toEqual({
+    ids: ['b1', 'b2'],
+    status: 'inactive',
+  });
+  const remove = renderHook(() => useRemoveBrands(), { wrapper: clientWrapper(client) });
+  remove.result.current.mutate({ ids: ['b1'] });
+  await waitFor(() => expect(remove.result.current.isSuccess).toBe(true));
+  expect(lastRequest().url).toBe('/api/v1/brands/batch/delete');
+  const restore = renderHook(() => useRestoreBrands(), { wrapper: clientWrapper(client) });
+  restore.result.current.mutate({ ids: ['b1'] });
+  await waitFor(() => expect(restore.result.current.isSuccess).toBe(true));
+  expect(lastRequest().url).toBe('/api/v1/brands/batch/restore');
+  expect(keys()).toEqual(expect.arrayContaining(['brands', 'items', 'access/audit']));
 });

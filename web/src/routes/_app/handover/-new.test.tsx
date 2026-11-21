@@ -17,6 +17,7 @@ vi.mock('@tanstack/react-router', async () => ({
   ...(await vi.importActual<object>('@tanstack/react-router')),
   createFileRoute: () => (options: { component: () => unknown }) => ({ options }),
   useNavigate: () => state.navigate,
+  useRouter: () => ({ navigate: state.navigate }),
 }));
 vi.mock('@/modules/auth/permissions', async () => ({
   requirePermission: vi.fn(),
@@ -107,7 +108,9 @@ test('offline: simpan mengantre task (clientId), toast info, kembali ke daftar',
   });
   await mount();
   await userEvent.click(await screen.findByRole('button', { name: 'simpan' }));
-  await waitFor(() => expect(state.navigate).toHaveBeenCalledWith({ to: '/handover' }));
+  await waitFor(() =>
+    expect(state.navigate).toHaveBeenCalledWith({ to: '/handover', replace: true }),
+  );
   const [entry] = readOutbox('wh@x.id');
   expect(entry).toMatchObject({ kind: 'create', locationId: 'loc-a' });
   expect(entry && entry.kind === 'create' ? entry.tasks[0] : null).toMatchObject({
@@ -125,7 +128,9 @@ test('online: simpan sukses memakai toast sukses, tanpa antrean', async () => {
   );
   await mount();
   await userEvent.click(await screen.findByRole('button', { name: 'simpan' }));
-  await waitFor(() => expect(state.navigate).toHaveBeenCalledWith({ to: '/handover' }));
+  await waitFor(() =>
+    expect(state.navigate).toHaveBeenCalledWith({ to: '/handover', replace: true }),
+  );
   expect(state.toastSuccess).toHaveBeenCalledWith('Task disimpan');
   expect(state.toastInfo).not.toHaveBeenCalled();
   expect(readOutbox('wh@x.id')).toEqual([]);

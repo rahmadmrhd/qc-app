@@ -99,7 +99,7 @@ export function PushStatusPage() {
       {rows ? (
         <PushStatusTable rows={sortPushStatuses(filterPushStatuses(rows, text))} />
       ) : query.isError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Status push gagal dimuat.
         </p>
       ) : (

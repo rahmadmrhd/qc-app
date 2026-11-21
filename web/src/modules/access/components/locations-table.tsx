@@ -1,5 +1,5 @@
 import type { LocationDto } from '@shared/contract';
-import { Badge } from '@/components/ui/badge';
+import { ActiveStatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -49,9 +49,7 @@ export function LocationsTable({
               <TableCell className="font-medium">{location.code}</TableCell>
               <TableCell>{location.name}</TableCell>
               <TableCell>
-                <Badge variant={location.status === 'active' ? 'default' : 'secondary'}>
-                  {location.status === 'active' ? 'Aktif' : 'Nonaktif'}
-                </Badge>
+                <ActiveStatusBadge status={location.status} />
               </TableCell>
               {canManage ? (
                 <TableCell className="space-x-2 text-right">

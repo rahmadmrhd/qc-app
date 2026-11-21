@@ -56,6 +56,7 @@ export function ApplyPresetDialog({
         <div className="space-y-3">
           <LinkField
             id="qr-apply-preset"
+            required
             label="Konfigurasi default"
             placeholder="Pilih konfigurasi default…"
             value={presetId === '' ? null : presetId}

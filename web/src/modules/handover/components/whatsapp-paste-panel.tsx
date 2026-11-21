@@ -85,7 +85,7 @@ export function WhatsappPastePanel({ remaining, onAdd }: WhatsappPastePanelProps
         }}
       />
       {tooLong ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {`Tempelan ${text.length.toLocaleString('id-ID')} karakter melebihi batas ${MAX_PASTE_CHARS.toLocaleString('id-ID')} karakter dan tidak dipecah; bagi tempelan menjadi beberapa bagian.`}
         </p>
       ) : null}
@@ -96,7 +96,7 @@ export function WhatsappPastePanel({ remaining, onAdd }: WhatsappPastePanelProps
         <p className="text-sm text-muted-foreground">Tidak ada task yang dikenali dari tempelan.</p>
       ) : null}
       {outcome?.kind === 'over' ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {`Hasil pecah ${outcome.count} task, melebihi sisa slot batch: ${remaining}. Tidak ada yang ditambahkan; kurangi tempelan atau hapus kartu yang tidak perlu.`}
         </p>
       ) : null}

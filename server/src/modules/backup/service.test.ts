@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
@@ -11,6 +11,7 @@ import { runPendingJobs } from '@server/jobs/runner';
 import { JOB_MAX_ATTEMPTS, runJobStep } from '@server/modules/jobs/consumer';
 import { findActiveJob, findJob } from '@server/modules/jobs/repo';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
+import { removeTempDir } from '../../../test-support/safe-rm';
 import { backupName } from './names';
 import { isBackupDue, SETTING_BACKUP_LAST_SUCCESS, scheduleBackupJob } from './service';
 import { ensureBackupFolder, listAllEntries } from './upload';
@@ -63,7 +64,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await removeTempDir(dir);
 });
 
 describe('isBackupDue (fungsi murni)', () => {

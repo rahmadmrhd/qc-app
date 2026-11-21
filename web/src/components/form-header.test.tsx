@@ -52,3 +52,19 @@ test('slot tambahan tampil di antara Batal dan Simpan; label dan klik Simpan dap
   await userEvent.click(screen.getByRole('button', { name: 'Simpan perubahan' }));
   expect(onSubmitClick).toHaveBeenCalledTimes(1);
 });
+
+test('tombol Batal dan Simpan memuat ikon (ActionButton)', () => {
+  const { container } = render(<FormHeader title="Judul" onCancel={vi.fn()} submitting={false} />);
+  for (const name of ['Batal', 'Simpan']) {
+    const button = screen.getByRole('button', { name });
+    expect(button.querySelector('svg'), name).not.toBeNull();
+  }
+  expect(container.querySelectorAll('button')).toHaveLength(2);
+});
+
+test('saat menyimpan: busyText tetap dipakai dan Simpan memuat ikon', () => {
+  render(<FormHeader title="Judul" onCancel={vi.fn()} submitting busyText="Menyimpan item…" />);
+  const submit = screen.getByRole('button', { name: 'Menyimpan item…' });
+  expect(submit).toBeDisabled();
+  expect(submit.querySelector('svg')).not.toBeNull();
+});

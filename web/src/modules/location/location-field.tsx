@@ -14,6 +14,12 @@ export interface LocationFieldProps {
   level: Level;
   value: string;
   onChange: (locationId: string) => void;
+  required?: boolean;
+  /**
+   * Form tulis baru (butir 42e): nilai awal yang terisi dari lokasi aktif disorot dengan keterangan agar diperiksa
+   * sebelum menyimpan; hilang begitu nilainya diubah. Jangan dipakai pada form ubah (nilai dari record).
+   */
+  highlightInitial?: boolean;
 }
 
 /**
@@ -21,7 +27,17 @@ export interface LocationFieldProps {
  * `LinkField` (spek BU keputusan 24); tanpa Tambah dan Buka karena lokasi tidak punya dialog tambah di form ini
  * maupun halaman lihat.
  */
-export function LocationField({ id, module, level, value, onChange }: LocationFieldProps) {
+export function LocationField({
+  id,
+  module,
+  level,
+  value,
+  onChange,
+  required,
+  highlightInitial,
+}: LocationFieldProps) {
+  // Sorotan hilang begitu pengguna mengubah nilai (dan tidak muncul lagi bila dikembalikan ke nilai awal).
+  const [touched, setTouched] = useState(false);
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   const [term, setTerm] = useState('');
@@ -33,24 +49,41 @@ export function LocationField({ id, module, level, value, onChange }: LocationFi
     const location = writable.find((item) => item.id === locationId) ?? known;
     return location ? `${location.name} (${location.code})` : '(lokasi tidak tersedia)';
   };
+  const fromActive =
+    highlightInitial === true &&
+    value !== '' &&
+    !touched &&
+    writable.some((location) => location.id === value);
   const key = normalizeKey(term);
   const options: LinkOption[] = writable
     .map((location) => ({ id: location.id, label: `${location.name} (${location.code})` }))
     .filter((option) => key === '' || normalizeKey(option.label).includes(key));
   return (
-    <div className="space-y-1.5">
+    <div
+      className={`space-y-1.5${fromActive ? ' rounded-md ring-2 ring-info-text/40 ring-offset-4 ring-offset-background' : ''}`}
+      data-from-active={fromActive || undefined}
+    >
       <LinkField
         id={id}
         label="Lokasi"
+        required={required}
         placeholder="Pilih lokasi…"
         value={value === '' ? null : value}
         labelOf={labelOf}
         options={options}
         onSearchChange={setTerm}
         searchDebounceMs={0}
-        onChange={(next) => onChange(next ?? '')}
+        onChange={(next) => {
+          setTouched(true);
+          onChange(next ?? '');
+        }}
         disabled={writable.length === 0}
       />
+      {fromActive ? (
+        <p className="text-xs text-info-text">
+          Nilai awal diambil dari lokasi aktif. Periksa sebelum menyimpan.
+        </p>
+      ) : null}
       {writable.length === 0 ? (
         <p className="text-xs text-muted-foreground">
           Tidak ada lokasi aktif yang boleh Anda ubah.

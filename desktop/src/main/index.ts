@@ -84,7 +84,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 function uiRoot(): string {
-  // Terkemas: UI dasar di samping asar. Pengembangan: hasil `bun run build:web`.
+  // Terkemas: UI dasar di samping asar. Pengembangan: hasil `bun run build:web` (atau `bun run build`).
   return app.isPackaged
     ? join(process.resourcesPath, 'ui-baseline')
     : resolve(app.getAppPath(), '..', 'server', 'dist');

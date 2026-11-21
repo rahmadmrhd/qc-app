@@ -1,12 +1,15 @@
 import type { MeDto } from '@shared/contract';
 import type { Level } from '@shared/permissions';
 import { expect, test } from 'vitest';
+import { makeMe } from '@/test/make-me';
 import {
   brandLinkAccess,
   businessUnitLinkAccess,
   itemFormLinkAccess,
+  itemLinkAccess,
   manualBookLinkAccess,
   postelLinkAccess,
+  serialItemCreateAccess,
   stickerTypeLinkAccess,
 } from './link-access';
 
@@ -109,4 +112,70 @@ test('tautan ke halaman Postel hanya dengan sticker view; selain itu null', () =
   expect(postelLinkAccess(withSticker('view')).openPostelHref('p1')).toBe('/postel/p1');
   expect(postelLinkAccess(withSticker('edit')).openPostelHref('p 1')).toBe('/postel/p%201');
   expect(postelLinkAccess(null).openPostelHref('p1')).toBeNull();
+});
+
+test('itemLinkAccess.canCreate: item edit pada BU aktif; view saja, BU nonaktif, atau tanpa me = tidak', () => {
+  expect(itemLinkAccess(makeMe({ itemLevel: 'edit' })).canCreate).toBe(true);
+  expect(itemLinkAccess(makeMe({ itemLevel: 'manage' })).canCreate).toBe(true);
+  expect(itemLinkAccess(makeMe({ itemLevel: 'view' })).canCreate).toBe(false);
+  expect(
+    itemLinkAccess(
+      makeMe({
+        itemLevel: 'edit',
+        businessUnits: [
+          {
+            id: 'bu-old',
+            code: 'OLD',
+            name: 'Lama',
+            status: 'inactive',
+            permissions: { item: 'edit', serial: 'none', serialservice: 'none' },
+          },
+        ],
+      }),
+    ).canCreate,
+  ).toBe(false);
+  expect(itemLinkAccess(null).canCreate).toBe(false);
+  expect(itemLinkAccess(makeMe({ itemLevel: 'view' })).openItemHref?.('i 1')).toBe('/item/i%201');
+});
+
+function bu(
+  id: string,
+  item: Level,
+  serial: Level,
+  extra: { status?: 'active' | 'inactive'; deleted?: boolean } = {},
+) {
+  return {
+    id,
+    code: id.toUpperCase(),
+    name: id,
+    status: extra.status ?? 'active',
+    ...(extra.deleted ? { deleted: true } : {}),
+    permissions: { item, serial, serialservice: 'none' },
+  } as MeDto['businessUnits'][number];
+}
+
+test('serialItemCreateAccess: irisan BU aktif dengan item edit DAN serial edit; terhapus, nonaktif, atau salah satu saja tidak', () => {
+  const me = makeMe({
+    businessUnits: [
+      bu('a', 'edit', 'edit'),
+      bu('b', 'edit', 'view'),
+      bu('c', 'view', 'edit'),
+      bu('d', 'edit', 'edit', { deleted: true }),
+      bu('e', 'edit', 'edit', { status: 'inactive' }),
+      bu('f', 'manage', 'manage'),
+    ],
+  });
+  expect(serialItemCreateAccess(me)).toEqual({ canCreate: true, allowedBuIds: ['a', 'f'] });
+});
+
+test('serialItemCreateAccess: irisan kosong atau tanpa me = tanpa Tambah', () => {
+  const none = makeMe({ businessUnits: [bu('a', 'edit', 'view'), bu('b', 'view', 'edit')] });
+  expect(serialItemCreateAccess(none)).toEqual({ canCreate: false, allowedBuIds: [] });
+  expect(serialItemCreateAccess(null).canCreate).toBe(false);
+});
+
+test('itemLinkAccess.canOpenDeleted: hanya pemegang manage (pemulih)', () => {
+  expect(itemLinkAccess(makeMe({ itemLevel: 'manage' })).canOpenDeleted).toBe(true);
+  expect(itemLinkAccess(makeMe({ itemLevel: 'edit' })).canOpenDeleted).toBe(false);
+  expect(itemLinkAccess(null).canOpenDeleted).toBe(false);
 });

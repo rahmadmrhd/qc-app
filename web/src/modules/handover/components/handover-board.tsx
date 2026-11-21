@@ -4,9 +4,9 @@ import type { ReactNode } from 'react';
 import { Component, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
+import { hasIntersectionObserver, ScrollRootProvider, useOnNear } from '@/lib/near-viewport';
 import { cn } from '@/lib/utils';
 import { BOARD_STATUSES, filterByStatus, groupBoard } from '../lib/group-board';
-import { hasIntersectionObserver, ScrollRootProvider, useOnNear } from '../lib/near-viewport';
 import { HANDOVER_STATUS_LABELS, HANDOVER_STATUS_STYLES } from '../lib/status';
 import type { BoardColumnState } from '../queries';
 import type { HandoverCardProps } from './handover-card';
@@ -41,7 +41,7 @@ class CardBoundary extends Component<{ number: string; children: ReactNode }, { 
       return (
         <p
           role="alert"
-          className="rounded-lg border border-destructive p-3 text-sm text-destructive"
+          className="rounded-lg border border-destructive p-3 text-sm text-destructive-text"
         >
           Task {this.props.number} tidak dapat ditampilkan (data rusak).
         </p>

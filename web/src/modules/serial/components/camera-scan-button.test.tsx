@@ -36,7 +36,7 @@ test('tombol kamera tampil primary (menonjol), bukan outline', () => {
   });
   render(<SerialScanInput id="scan" label="Pindai serial" onSubmit={() => 'added'} />);
   const button = screen.getByRole('button', { name: 'Scan dengan kamera' });
-  expect(button).toHaveAttribute('data-variant', 'default');
+  expect(button).toHaveAttribute('data-variant', 'solid');
   expect(button.className).toContain('bg-primary');
 });
 

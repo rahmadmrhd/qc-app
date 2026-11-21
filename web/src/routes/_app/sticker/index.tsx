@@ -39,6 +39,7 @@ import {
 } from '@/modules/sticker/queries';
 
 export const Route = createFileRoute('/_app/sticker/')({
+  staticData: { locationAware: true },
   // Katalog (`sticker: view`) ATAU stok (`stickerstock: view` di minimal satu lokasi): halaman menyesuaikan isinya.
   beforeLoad: ({ context }) =>
     requireAnyPermission(context.queryClient, [
@@ -136,7 +137,7 @@ function StickersRoute() {
   const failed = [stickers, types, businessUnits, stock].find((query) => query.isError);
   if (failed) {
     return (
-      <p role="alert" className="text-sm text-destructive">
+      <p role="alert" className="text-sm text-destructive-text">
         {describeError(failed.error)}
       </p>
     );

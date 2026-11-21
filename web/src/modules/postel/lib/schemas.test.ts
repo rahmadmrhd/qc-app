@@ -123,3 +123,28 @@ test('toPostelFormDefaults: mode tambah memberi satu baris kosong; mode ubah mem
   expect(loaded.attachments).toHaveLength(1);
   expect(loaded.note).toBe('n');
 });
+
+test('toPostelFormDefaults membawa penanda terhapus item hanya bila terhapus', () => {
+  const defaults = toPostelFormDefaults({
+    id: 'p1',
+    name: 'N',
+    note: '',
+    numbers: [],
+    items: [
+      { id: 'a', brand: 'B', model: 'M1' },
+      { id: 'b', brand: 'B', model: 'M2', deleted: true },
+    ],
+    itemCount: 1,
+    hiddenItemCount: 0,
+    attachments: [],
+    today: '2026-11-20',
+    soonDays: 90,
+    createdAt: '',
+    updatedAt: '',
+    updatedBy: '',
+  } as never);
+  expect(defaults.items).toEqual([
+    { id: 'a', brand: 'B', model: 'M1' },
+    { id: 'b', brand: 'B', model: 'M2', deleted: true },
+  ]);
+});

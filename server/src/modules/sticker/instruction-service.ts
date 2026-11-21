@@ -29,6 +29,7 @@ interface StickerRow {
   alias: string;
   file_id: string;
   status: string;
+  deleted_at: string;
 }
 
 interface TypeRow {
@@ -36,6 +37,7 @@ interface TypeRow {
   name: string;
   rule: string;
   system_kind: string;
+  deleted_at: string;
 }
 
 interface StickerBuRow {
@@ -114,7 +116,7 @@ export async function buildInstructionViews(
     slots.stickers = reads.length;
     reads.push(
       env.DB.prepare(
-        `SELECT s.id, s.type_id, s.name, s.alias, s.file_id, s.status FROM stickers s WHERE ${where} ORDER BY s.name_key, s.id`,
+        `SELECT s.id, s.type_id, s.name, s.alias, s.file_id, s.status, s.deleted_at FROM stickers s WHERE ${where} ORDER BY s.name_key, s.id`,
       ).bind(...binds),
     );
     slots.stickerBus = reads.length;
@@ -130,7 +132,7 @@ export async function buildInstructionViews(
     slots.types = reads.length;
     reads.push(
       env.DB.prepare(
-        `SELECT id, name, rule, system_kind FROM sticker_types WHERE id IN (${placeholders(typeIds.size)})`,
+        `SELECT id, name, rule, system_kind, deleted_at FROM sticker_types WHERE id IN (${placeholders(typeIds.size)})`,
       ).bind(...typeIds),
     );
   }
@@ -142,6 +144,8 @@ export async function buildInstructionViews(
   const stickers = new Map(rowsOf<StickerRow>(slots.stickers).map((row) => [row.id, row]));
   const stickersByType = new Map<string, StickerRow[]>();
   for (const row of stickers.values()) {
+    // Stiker terhapus bukan kandidat penerjemahan jenis; ia hanya tampil sebagai sasaran langsung (rujukan tersimpan).
+    if (row.deleted_at !== '') continue;
     const list = stickersByType.get(row.type_id) ?? [];
     list.push(row);
     stickersByType.set(row.type_id, list);
@@ -185,7 +189,8 @@ export async function buildInstructionViews(
       .map((buId) => buCode.get(buId) ?? '')
       .filter((code) => code !== '')
       .sort(),
-    inactive: row.status !== 'active',
+    inactive: row.status !== 'active' || row.deleted_at !== '',
+    ...(row.deleted_at === '' ? {} : { deleted: true as const }),
   });
 
   return photos.map((photo): ItemStickerPhotoDto => {
@@ -198,10 +203,21 @@ export async function buildInstructionViews(
           targetName: row ? row.alias || row.name : '',
           resolved: row ? [resolve(row)] : [],
           unresolved: row === undefined,
+          ...(row !== undefined && row.deleted_at !== '' ? { targetDeleted: true as const } : {}),
         };
       }
       const type = types.get(mark.target.typeId);
       if (!type) return { ...mark, targetName: '', resolved: [], unresolved: true };
+      // Jenis terhapus: namanya tetap tampil sebagai rujukan, tetapi tak menghasilkan stiker apa pun.
+      if (type.deleted_at !== '') {
+        return {
+          ...mark,
+          targetName: type.name,
+          resolved: [],
+          unresolved: true,
+          targetDeleted: true as const,
+        };
+      }
       const candidates: MatchSticker[] = (stickersByType.get(type.id) ?? []).map((row) => ({
         id: row.id,
         typeId: row.type_id,

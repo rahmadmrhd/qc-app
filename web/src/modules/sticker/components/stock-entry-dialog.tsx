@@ -68,7 +68,7 @@ export interface StockEntryDialogProps {
 
 function FieldError({ message }: { message: string | undefined }) {
   return message ? (
-    <p role="alert" className="text-sm text-destructive">
+    <p role="alert" className="text-sm text-destructive-text">
       {message}
     </p>
   ) : null;
@@ -228,6 +228,8 @@ function StockEntryBody({ mode, sticker, onSave, onClose }: BodyProps) {
       <div className="space-y-1.5">
         <LocationField
           id="stock-entry-location"
+          highlightInitial
+          required
           module="stickerstock"
           level={level}
           value={locationId}
@@ -243,9 +245,12 @@ function StockEntryBody({ mode, sticker, onSave, onClose }: BodyProps) {
       </div>
       {mode === 'adjust' ? (
         <div className="space-y-1.5">
-          <Label htmlFor="stock-entry-delta">Perubahan (butir)</Label>
+          <Label htmlFor="stock-entry-delta" required>
+            Perubahan (butir)
+          </Label>
           <Input
             id="stock-entry-delta"
+            aria-required="true"
             type="number"
             inputMode="numeric"
             step={1}
@@ -273,9 +278,12 @@ function StockEntryBody({ mode, sticker, onSave, onClose }: BodyProps) {
           />
           {method === 'quantity' ? (
             <div className="space-y-1.5">
-              <Label htmlFor="stock-entry-quantity">Jumlah butir</Label>
+              <Label htmlFor="stock-entry-quantity" required>
+                Jumlah butir
+              </Label>
               <Input
                 id="stock-entry-quantity"
+                aria-required="true"
                 type="number"
                 inputMode="numeric"
                 min={1}
@@ -305,11 +313,12 @@ function StockEntryBody({ mode, sticker, onSave, onClose }: BodyProps) {
         </>
       )}
       <div className="space-y-1.5">
-        <Label htmlFor="stock-entry-reason">
+        <Label htmlFor="stock-entry-reason" required={reasonRequired}>
           {reasonRequired ? 'Alasan' : 'Catatan (opsional)'}
         </Label>
         <Input
           id="stock-entry-reason"
+          aria-required={reasonRequired ? true : undefined}
           maxLength={STICKER_LIMITS.reasonMax}
           value={reason}
           aria-invalid={errors.reason ? true : undefined}
@@ -321,7 +330,7 @@ function StockEntryBody({ mode, sticker, onSave, onClose }: BodyProps) {
         <FieldError message={errors.reason} />
       </div>
       {generalError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {generalError}
         </p>
       ) : null}

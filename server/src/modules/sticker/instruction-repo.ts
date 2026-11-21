@@ -1,4 +1,5 @@
 import type { Db, DbStatement, Preparer } from '@server/core/db';
+import { liveWhere } from '@server/core/soft-delete';
 import type { ItemStickerMarkDto, ItemStickerPhotoInput } from '@shared/contract';
 
 /** Foto instruksi tersimpan: urutan (`position`), label BU (`null` = tanpa label), dan penanda berurutan. */
@@ -143,12 +144,24 @@ export async function loadItemInstructions(
   return result;
 }
 
-/** Item yang punya instruksi: minimal satu penanda (foto tanpa penanda tidak dihitung). */
+/**
+ * Penanda yang menghitung sebagai instruksi (alias tabel penanda `alias`): sasarannya, stiker atau jenis, masih HIDUP.
+ * Penanda ke stiker/jenis terhapus tetap tersimpan dan tampil (bertanda "Terhapus"), tetapi tak dihitung (soft delete
+ * spek §5 butir 9: turunan dihitung dari record hidup saja). Satu definisi untuk `hasInstructions` dan filter daftar.
+ */
+function liveMarkSql(alias: string): string {
+  return `NOT EXISTS (SELECT 1 FROM stickers ls WHERE ls.id = ${alias}.sticker_id AND ls.deleted_at <> '') AND NOT EXISTS (SELECT 1 FROM sticker_types lt WHERE lt.id = ${alias}.type_id AND lt.deleted_at <> '')`;
+}
+
+/**
+ * Item yang punya instruksi: minimal satu penanda dengan sasaran hidup (foto tanpa penanda dan penanda ke stiker/jenis
+ * terhapus tidak dihitung).
+ */
 export async function hasInstructionsOf(db: Db, itemIds: readonly string[]): Promise<Set<string>> {
   if (itemIds.length === 0) return new Set();
   const rows = await db
     .prepare(
-      `SELECT DISTINCT item_id FROM item_sticker_marks WHERE item_id IN (${placeholders(itemIds.length)})`,
+      `SELECT DISTINCT m.item_id FROM item_sticker_marks m WHERE m.item_id IN (${placeholders(itemIds.length)}) AND ${liveMarkSql('m')}`,
     )
     .bind(...itemIds)
     .all<{ item_id: string }>();
@@ -172,7 +185,8 @@ export interface InstructionFilter {
  * (`postels.sticker_id`, satu per catatan); jenis `group` tanpa jenis sistem tak pernah cocok; selain itu hanya yang tertaut
  * ke minimal satu BU item (`item_business_units`); status jenis tak berpengaruh.
  *
- * - `instruction: 'none'`: item tanpa satu pun penanda (foto tanpa penanda tidak dihitung).
+ * - `instruction: 'none'`: item tanpa satu pun penanda bersasaran hidup (foto tanpa penanda dan penanda ke stiker/jenis
+ *   terhapus tidak dihitung; sama dengan `hasInstructionsOf`).
  * - `stickerId`: "memakai" = penanda langsung ke stiker itu (apa pun statusnya/BU-nya), atau penanda jenis yang
  *   menurut aturan di atas menghasilkan stiker itu bagi item.
  * - `typeId`: "memakai" = penanda jenis itu, atau penanda langsung ke stiker berjenis itu.
@@ -185,17 +199,19 @@ export function instructionFilterSql(filter: InstructionFilter): {
   const clauses: string[] = [];
   const binds: unknown[] = [];
   if (filter.instruction === 'none') {
-    clauses.push('NOT EXISTS (SELECT 1 FROM item_sticker_marks m0 WHERE m0.item_id = i.id)');
+    clauses.push(
+      `NOT EXISTS (SELECT 1 FROM item_sticker_marks m0 WHERE m0.item_id = i.id AND ${liveMarkSql('m0')})`,
+    );
   }
   const negate = filter.stickerMode === 'missing' ? 'NOT ' : '';
   if (filter.stickerId !== undefined) {
     clauses.push(
-      `${negate}EXISTS (SELECT 1 FROM item_sticker_marks m WHERE m.item_id = i.id AND (m.sticker_id = ? OR (m.type_id <> '' AND EXISTS (SELECT 1 FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id = ? AND s.type_id = m.type_id AND s.status = 'active' AND (t.rule = 'none' OR (t.rule = 'group' AND ((t.system_kind = 'manual_book' AND s.id = (SELECT mv.sticker_id FROM manual_book_versions mv WHERE mv.design_id = i.manual_book_design_id ORDER BY mv.version DESC LIMIT 1)) OR (t.system_kind = 'postel' AND s.id = (SELECT pp.sticker_id FROM postels pp WHERE pp.id = i.postel_id)))) OR (t.rule NOT IN ('none', 'group') AND EXISTS (SELECT 1 FROM sticker_business_units sb JOIN item_business_units ib ON ib.bu_id = sb.bu_id WHERE sb.sticker_id = s.id AND ib.item_id = i.id)))))))`,
+      `${negate}EXISTS (SELECT 1 FROM item_sticker_marks m WHERE m.item_id = i.id AND (m.sticker_id = ? OR (m.type_id <> '' AND EXISTS (SELECT 1 FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id = ? AND s.type_id = m.type_id AND s.status = 'active' AND s.deleted_at = '' AND t.deleted_at = '' AND (t.rule = 'none' OR (t.rule = 'group' AND ((t.system_kind = 'manual_book' AND s.id = (SELECT mv.sticker_id FROM manual_book_versions mv JOIN qr_designs dd ON dd.id = mv.design_id AND ${liveWhere('dd')} WHERE mv.design_id = i.manual_book_design_id ORDER BY mv.version DESC LIMIT 1)) OR (t.system_kind = 'postel' AND s.id = (SELECT pp.sticker_id FROM postels pp WHERE pp.id = i.postel_id AND ${liveWhere('pp')})))) OR (t.rule NOT IN ('none', 'group') AND EXISTS (SELECT 1 FROM sticker_business_units sb JOIN item_business_units ib ON ib.bu_id = sb.bu_id WHERE sb.sticker_id = s.id AND ib.item_id = i.id)))))))`,
     );
     binds.push(filter.stickerId, filter.stickerId);
   } else if (filter.typeId !== undefined) {
     clauses.push(
-      `${negate}EXISTS (SELECT 1 FROM item_sticker_marks m WHERE m.item_id = i.id AND (m.type_id = ? OR (m.sticker_id <> '' AND EXISTS (SELECT 1 FROM stickers s2 WHERE s2.id = m.sticker_id AND s2.type_id = ?))))`,
+      `${negate}EXISTS (SELECT 1 FROM item_sticker_marks m WHERE m.item_id = i.id AND (m.type_id = ? OR (m.sticker_id <> '' AND EXISTS (SELECT 1 FROM stickers s2 WHERE s2.id = m.sticker_id AND s2.type_id = ? AND s2.deleted_at = ''))))`,
     );
     binds.push(filter.typeId, filter.typeId);
   }

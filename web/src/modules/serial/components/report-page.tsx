@@ -48,7 +48,7 @@ export function ReportPage({ onOpenSerial }: ReportPageProps) {
   const elsewhere = lookup.data?.elsewhere ?? null;
 
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="space-y-5">
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold">Lapor Rusak</h1>
         <p className="text-sm text-muted-foreground">
@@ -71,13 +71,13 @@ export function ReportPage({ onOpenSerial }: ReportPageProps) {
       {query === '' ? null : lookup.isPending ? (
         <p className="text-sm text-muted-foreground">Mencari {query}…</p>
       ) : lookup.isError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {describeError(lookup.error)}
         </p>
       ) : matches.length === 0 && elsewhere !== null ? (
         <section
           aria-label="Tidak bisa dilaporkan"
-          className="space-y-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4"
+          className="space-y-3 rounded-lg border border-warning-text/35 bg-warning-text/10 p-4"
           data-tour="report-result"
         >
           <p role="status" className="text-sm">
@@ -127,7 +127,7 @@ function Blocked({
   return (
     <section
       aria-label="Tidak bisa dilaporkan"
-      className="space-y-3 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4"
+      className="space-y-3 rounded-lg border border-warning-text/35 bg-warning-text/10 p-4"
       data-tour="report-result"
     >
       <UnitSummary match={match} />

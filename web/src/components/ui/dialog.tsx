@@ -3,12 +3,19 @@ import { cn } from "cn"
 import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
+import { useBackToCloseRoot } from "@/hooks/use-back-to-close"
 import { XIcon } from "lucide-react"
 
 function Dialog({
+  open,
+  defaultOpen,
+  onOpenChange,
+  backToClose,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+}: React.ComponentProps<typeof DialogPrimitive.Root> & { backToClose?: boolean }) {
+  // Ponsel: back menutup dialog (hook no-op di desktop).
+  const root = useBackToCloseRoot({ open, defaultOpen, onOpenChange, backToClose })
+  return <DialogPrimitive.Root data-slot="dialog" {...root} {...props} />
 }
 
 function DialogTrigger({
@@ -115,7 +122,7 @@ function DialogFooter({
     <div
       data-slot="dialog-footer"
       className={cn(
-        "sticky -bottom-4 z-10 -mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-popover bg-linear-to-b from-muted/50 to-muted/50 p-4 sm:flex-row sm:justify-end",
+        "sticky -bottom-4 z-10 -mx-4 -mb-4 mt-auto flex flex-col-reverse gap-2 rounded-b-xl border-t bg-popover bg-linear-to-b from-muted/50 to-muted/50 p-4 sm:flex-row sm:justify-end",
         className
       )}
       {...props}

@@ -122,7 +122,7 @@ function Body({ settings, users, onSave, serverError, onServerError }: BodyProps
       {settings.smtpConfigured ? null : (
         <p
           role="status"
-          className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm"
+          className="rounded-md border border-warning-text/35 bg-warning-text/10 p-3 text-sm"
         >
           SMTP belum diatur di server, jadi email tidak akan terkirim sampai SMTP diatur (lihat
           dokumen penyebaran).
@@ -180,13 +180,17 @@ function Body({ settings, users, onSave, serverError, onServerError }: BodyProps
           Maksimal {MAX} penerima; alamat di luar daftar user boleh ditambahkan.
         </p>
         {recipientsError ? (
-          <p id="serial-alert-recipients-error" role="alert" className="text-sm text-destructive">
+          <p
+            id="serial-alert-recipients-error"
+            role="alert"
+            className="text-sm text-destructive-text"
+          >
             {recipientsError}
           </p>
         ) : null}
       </fieldset>
       {serverError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {serverError}
         </p>
       ) : null}
@@ -204,7 +208,7 @@ function Body({ settings, users, onSave, serverError, onServerError }: BodyProps
 export function SerialSettingsPage({ children, ...props }: SerialSettingsPageProps) {
   const [serverError, setServerError] = useState<string | null>(null);
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <h1 className="text-2xl font-semibold">Pengaturan Serial Number</h1>
       <Body
         key={props.settings.updatedAt}

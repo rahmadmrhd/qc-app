@@ -144,6 +144,7 @@ export function HandoverBatchForm({
       <section data-tour="handover-location" className="space-y-1.5 rounded-lg border p-4">
         <LocationField
           id={`${baseId}-location`}
+          highlightInitial
           module="handover"
           level="edit"
           value={locationId}
@@ -216,7 +217,7 @@ export function HandoverBatchForm({
                 />
               </div>
               {error ? (
-                <p role="alert" className="text-sm text-destructive">
+                <p role="alert" className="text-sm text-destructive-text">
                   {error}
                 </p>
               ) : null}
@@ -242,7 +243,7 @@ export function HandoverBatchForm({
       ) : null}
 
       {formError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {formError}
         </p>
       ) : null}

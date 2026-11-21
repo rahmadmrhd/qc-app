@@ -1,5 +1,6 @@
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
+import { liveWhere } from '@server/core/soft-delete';
 import { wibHour } from '@server/modules/backup/names';
 import type { DigestOutcome } from '@server/modules/sticker/digest';
 import {
@@ -31,7 +32,7 @@ interface DueNumber {
 
 /**
  * Mengklaim state satu nomor: berhasil hanya bila tanggal habis DAN state di basis data masih sama dengan yang dibaca
- * (CAS NULL-aman pada ambang) DAN nomor itu masih nomor Aktif catatannya (seq tertinggi; `postels.save` yang menambah
+ * (CAS NULL-aman pada ambang) DAN nomor itu belum terhapus (catatannya dihapus lunak di antara pembacaan dan klaim) DAN nomor itu masih nomor Aktif catatannya (seq tertinggi; `postels.save` yang menambah
  * nomor baru di antara pembacaan dan klaim menjadikannya Lama, yang tak boleh dikirimi peringatan). Tanggal ikut dipin:
  * `postels.save` yang memperpanjang tanggal mengembalikan state ke NULL/'' (sama dengan nilai yang dibaca), jadi tanpa
  * pin klaim atas tanggal lama bisa lolos dan menahan peringatan tanggal baru. Hanya satu pemanggil serentak yang
@@ -39,7 +40,7 @@ interface DueNumber {
  */
 async function claimNumber(env: Env, due: DueNumber, today: string): Promise<boolean> {
   const result = await env.DB.prepare(
-    'UPDATE postel_numbers SET alert_sent_threshold = ?, alert_sent_on = ? WHERE id = ? AND expires_on = ? AND alert_sent_on = ? AND alert_sent_threshold <=> ? AND seq = (SELECT MAX(n2.seq) FROM postel_numbers n2 WHERE n2.postel_id = postel_numbers.postel_id)',
+    `UPDATE postel_numbers SET alert_sent_threshold = ?, alert_sent_on = ? WHERE id = ? AND expires_on = ? AND alert_sent_on = ? AND alert_sent_threshold <=> ? AND ${liveWhere()} AND seq = (SELECT MAX(n2.seq) FROM postel_numbers n2 WHERE n2.postel_id = postel_numbers.postel_id)`,
   )
     .bind(
       due.claimed,

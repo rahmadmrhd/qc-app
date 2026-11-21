@@ -1,6 +1,7 @@
 import { useRouterState } from '@tanstack/react-router';
 import { useState } from 'react';
-import { NAV_GROUPS } from '@/app/navigation';
+import { isNavParent, NAV_GROUPS } from '@/app/navigation';
+import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useMe } from '@/modules/auth/use-me';
@@ -35,14 +36,29 @@ function writeLater(email: string, ids: readonly string[]): void {
   }
 }
 
-/** Nama halaman untuk teks banner: label menu yang tujuannya `halaman`; selain itu judul panduan. */
-function pageLabel(offer: GuideOffer): string {
-  const { halaman, title } = offer.entry;
+/** Label anak menu yang tak bermakna tanpa induknya ("Daftar", "Laporan", "Pengaturan"): dipakai bersama label induk. */
+const GENERIC_CHILD_LABELS: ReadonlySet<string> = new Set(['Daftar', 'Laporan', 'Pengaturan']);
+
+/**
+ * Nama halaman untuk teks banner: label menu yang tujuannya `halaman` (label anak generik digabung dengan label
+ * induknya, mis. "Daftar Serial Number"); selain itu judul panduan.
+ */
+export function pageLabelFor(halaman: string | undefined, title: string): string {
   for (const group of NAV_GROUPS) {
-    const item = group.items.find((candidate) => candidate.to === halaman);
-    if (item) return item.label;
+    for (const entry of group.items) {
+      const children = isNavParent(entry) ? entry.children : [entry];
+      const item = children.find((candidate) => candidate.to === halaman);
+      if (!item) continue;
+      return isNavParent(entry) && GENERIC_CHILD_LABELS.has(item.label)
+        ? `${item.label} ${entry.label}`
+        : item.label;
+    }
   }
   return title;
+}
+
+function pageLabel(offer: GuideOffer): string {
+  return pageLabelFor(offer.entry.halaman, offer.entry.title);
 }
 
 /**
@@ -82,31 +98,35 @@ export function GuideBanner() {
   };
 
   return (
-    <div
+    <Alert
+      color="info"
       role="status"
       data-testid="guide-banner"
-      className="flex flex-col gap-2 border-b bg-muted/60 px-4 py-3 text-sm sm:flex-row sm:items-center sm:gap-3"
+      data-app-banner=""
+      className="rounded-none border-x-0 border-t-0 px-4 py-3"
     >
-      <p className="min-w-0 flex-1">
-        <span className="font-medium">Pertama kali di {pageLabel(offer)}?</span>{' '}
-        <span className="text-muted-foreground">Ada panduan {stepCount} langkah.</span>
-        {offer.updated ? (
-          <Badge variant="secondary" className="ml-2 align-middle">
-            Diperbarui
-          </Badge>
-        ) : null}
-      </p>
-      <div className="flex shrink-0 flex-wrap gap-2">
-        <Button type="button" size="sm" onClick={() => tour.start(entry)}>
-          Mulai
-        </Button>
-        <Button type="button" size="sm" variant="outline" onClick={hide}>
-          Nanti
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={understood}>
-          Sudah paham
-        </Button>
+      <div className="flex flex-col gap-2 text-foreground sm:flex-row sm:items-center sm:gap-3">
+        <p className="min-w-0 flex-1">
+          <span className="font-medium">Pertama kali di {pageLabel(offer)}?</span>{' '}
+          <span className="text-foreground">Ada panduan {stepCount} langkah.</span>
+          {offer.updated ? (
+            <Badge variant="secondary" className="ml-2 align-middle">
+              Diperbarui
+            </Badge>
+          ) : null}
+        </p>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <Button type="button" size="sm" onClick={() => tour.start(entry)}>
+            Mulai
+          </Button>
+          <Button type="button" size="sm" variant="outline" onClick={hide}>
+            Nanti
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={understood}>
+            Sudah paham
+          </Button>
+        </div>
       </div>
-    </div>
+    </Alert>
   );
 }

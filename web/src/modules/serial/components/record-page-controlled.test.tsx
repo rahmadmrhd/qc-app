@@ -1,6 +1,6 @@
 import type { MeDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -110,6 +110,17 @@ test('menambah serial lewat kolom scan memanggil replace dengan baris baru (tanp
   // Default dilengkapi lebih dulu (gerbang scan); baris contoh sudah punya item/BU/lokasi, tapi Default form kosong.
   // Cukup membuktikan jalur "Kosongkan draft": perubahan tabel selalu lewat replace.
   await userEvent.click(screen.getByRole('button', { name: 'Kosongkan draft' }));
+  // Konfirmasi dulu (menyebut jumlah baris): batal tak mengubah apa pun.
+  const dialog = await screen.findByRole('alertdialog', { name: 'Kosongkan draft?' });
+  expect(within(dialog).getByText(/1 baris dibuang dari draft/)).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
+  expect(replace).not.toHaveBeenCalled();
+  await userEvent.click(screen.getByRole('button', { name: 'Kosongkan draft' }));
+  await userEvent.click(
+    within(await screen.findByRole('alertdialog')).getByRole('button', {
+      name: 'Kosongkan 1 baris',
+    }),
+  );
   expect(replace).toHaveBeenCalledTimes(1);
   expect(replace).toHaveBeenLastCalledWith([]);
   expect(localStorage.length).toBe(0);

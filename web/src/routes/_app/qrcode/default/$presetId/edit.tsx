@@ -1,7 +1,8 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
@@ -17,6 +18,14 @@ import {
 } from '@/modules/qrcode/schemas';
 
 export const Route = createFileRoute('/_app/qrcode/default/$presetId/edit')({
+  staticData: {
+    crumb: ({ params, queryClient }) => {
+      const name = queryClient
+        .getQueryData(qrDefaultsQueryOptions().queryKey)
+        ?.presets.find((preset) => preset.id === params.presetId)?.name;
+      return name ? [{ label: name }, { label: 'Ubah' }] : { label: 'Ubah' };
+    },
+  },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'manage'),
   loader: ({ context }) =>
     Promise.all([
@@ -28,7 +37,7 @@ export const Route = createFileRoute('/_app/qrcode/default/$presetId/edit')({
 
 function EditQrPresetPage() {
   const { presetId } = Route.useParams();
-  const navigate = useNavigate();
+  const stack = useStackNavigation();
   const { data: defaults } = useSuspenseQuery(qrDefaultsQueryOptions());
   const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
   const preset = defaults.presets.find((item) => item.id === presetId);
@@ -46,7 +55,7 @@ function EditQrPresetPage() {
     try {
       await save.mutateAsync(toSaveQrPresetInput(values, presetId, loadedAt));
       toast.success('Konfigurasi default disimpan');
-      await navigate({ to: '/qrcode/default' });
+      stack.pop({ to: '/qrcode/default' });
     } catch (error) {
       const picked = pickFieldErrors(error, QR_PRESET_FIELD_KEYS);
       if (Object.keys(picked).length > 0) setFieldErrors(picked);
@@ -56,7 +65,7 @@ function EditQrPresetPage() {
 
   if (!preset || !loaded) {
     return (
-      <p role="alert" className="text-sm text-destructive">
+      <p role="alert" className="text-sm text-destructive-text">
         Konfigurasi default tidak ditemukan.{' '}
         <Link to="/qrcode/default" className="underline">
           Kembali ke daftar
@@ -66,7 +75,7 @@ function EditQrPresetPage() {
   }
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <QrDesignForm
         mode="defaults"
         title={`Ubah default: ${loaded.name}`}
@@ -80,7 +89,7 @@ function EditQrPresetPage() {
         submitError={submitError}
         fieldErrors={fieldErrors}
         onSubmit={handleSubmit}
-        onCancel={() => void navigate({ to: '/qrcode/default' })}
+        onCancel={() => stack.pop({ to: '/qrcode/default' })}
       />
     </div>
   );

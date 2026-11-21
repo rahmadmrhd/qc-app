@@ -1,6 +1,7 @@
 import { decodeText, encodeText } from '@server/core/base64url';
 import { CAS_FAIL_SQL } from '@server/core/cas';
 import type { DbStatement, Preparer } from '@server/core/db';
+import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import type { GuideSort } from '@shared/stickers';
 
 /** Baris daftar pustaka gambar: kolom pustaka + berkas (`files`) + nama tampilan pengunggah (`users`). */
@@ -26,12 +27,32 @@ export interface GuideCursor {
 
 /**
  * SATU tempat penghitungan "dipakai berapa kali" (ekspresi SQL skalar atas tabel pustaka berkode `g`): jumlah
- * penempatan gambar pada item (`item_sticker_photos`, 3b-2), apa pun status itemnya (kunci asing `RESTRICT` menahan
- * hapus tanpa memandang status, jadi hitungan dan galat hapus sejalan). Dipakai DTO, filter `unused`, urut
- * `usageDesc`, dan pemeriksaan hapus.
+ * penempatan gambar pada item HIDUP (`item_sticker_photos`, 3b-2), apa pun status aktif/nonaktifnya. Item terhapus
+ * tak dihitung (soft delete, spek §5): penempatannya dibuang saat gambar dihapus (`releaseDeletedPlacementsStmts`),
+ * jadi hitungan menentukan apa yang menahan hapus. Kunci asing `RESTRICT` tetap pagar atomik terakhir bila item
+ * dipulihkan serentak. Dipakai DTO, filter `unused`, urut `usageDesc`, dan pemeriksaan hapus.
  */
 export function guideUsageCountSql(): string {
-  return '(SELECT COUNT(*) FROM item_sticker_photos p WHERE p.guide_id = g.id)';
+  return `(SELECT COUNT(*) FROM item_sticker_photos p JOIN items i ON i.id = p.item_id WHERE p.guide_id = g.id AND ${liveWhere('i')})`;
+}
+
+/**
+ * Membuang penempatan gambar milik item TERHAPUS (penanda dulu, lalu foto; penanda juga ikut hilang lewat kunci asing
+ * `CASCADE`) agar kunci asing `RESTRICT` tak menahan hapus permanen gambar pustaka. Penempatan item hidup tak
+ * tersentuh. Dijalankan di dalam transaksi hapus yang sudah mengunci baris gambar.
+ */
+export function releaseDeletedPlacementsStmts(db: Preparer, guideId: string): DbStatement[] {
+  const deletedItems = `SELECT id FROM items WHERE ${deletedWhere()}`;
+  return [
+    db
+      .prepare(`DELETE FROM item_sticker_marks WHERE guide_id = ? AND item_id IN (${deletedItems})`)
+      .bind(guideId),
+    db
+      .prepare(
+        `DELETE FROM item_sticker_photos WHERE guide_id = ? AND item_id IN (${deletedItems})`,
+      )
+      .bind(guideId),
+  ];
 }
 
 const JOINS =

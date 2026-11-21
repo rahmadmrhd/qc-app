@@ -4,8 +4,10 @@ import { createFileRoute, useBlocker, useNavigate } from '@tanstack/react-router
 import { useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
+import { leaveBlocker } from '@/lib/leave-blocker';
 import { locationsWith, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
@@ -21,6 +23,7 @@ import { stickerStockQuery, useOpname } from '@/modules/sticker/queries';
 export const Route = createFileRoute('/_app/sticker/opname')({
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'stickerstock', 'manage'),
   component: StickerOpnameRoute,
+  staticData: { crumb: 'Opname stok', locationAware: true },
 });
 
 const LEAVE_MESSAGE = 'Hitungan opname belum disimpan dan akan hilang. Tetap keluar dari halaman?';
@@ -29,6 +32,7 @@ function StickerOpnameRoute() {
   const me = useMe();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const stack = useStackNavigation();
   const { selectedIds } = useActiveLocations();
   // Hanya lokasi terpilih yang boleh dilihat user yang diminta: satu lokasi terlarang menolak seluruh permintaan.
   const readable = locationsWith(me, 'stickerstock', 'view', selectedIds);
@@ -42,11 +46,11 @@ function StickerOpnameRoute() {
   }, []);
   // Hitungan hilang bila halaman ditinggalkan (tautan sidebar, tombol kembali): tanyakan dulu. Menutup tab juga.
   useBlocker({
-    shouldBlockFn: () => dirty.current && !window.confirm(LEAVE_MESSAGE),
+    shouldBlockFn: leaveBlocker(() => dirty.current && !window.confirm(LEAVE_MESSAGE)),
     enableBeforeUnload: () => dirty.current,
   });
 
-  const backToStock = () => void navigate({ to: '/sticker' });
+  const backToStock = () => stack.pop({ to: '/sticker' });
 
   async function handleOpname(input: OpnameInput): Promise<OpnameSaveResult> {
     try {
@@ -77,7 +81,7 @@ function StickerOpnameRoute() {
   if (stock.isPending) return <Skeleton className="h-64 w-full" />;
   if (stock.isError) {
     return (
-      <p role="alert" className="text-sm text-destructive">
+      <p role="alert" className="text-sm text-destructive-text">
         {describeError(stock.error)}
       </p>
     );

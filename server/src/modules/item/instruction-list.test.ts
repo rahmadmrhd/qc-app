@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
 import { brandIdOf, seedBrand } from '@server-test/item-fixtures';
 import { seedPostel } from '@server-test/postel-fixtures';
+import { seedQrDesign } from '@server-test/qrcode-env';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import {
   seedGuideImage,
@@ -355,6 +356,8 @@ describe('aturan group (Manual Book): tes kesepakatan items.get dan filter dafta
     await seedSticker(env, { id: 'q3-v1', typeId: 't-grp', status: 'deprecated' });
     // tertaut BU, tetapi bukan versi terbaru konfigurasi mana pun: aturan group tak memakai BU
     await seedSticker(env, { id: 'stray', typeId: 't-grp', buIds: ['bu-a'] });
+    // Aturan group hanya menghitung konfigurasi yang hidup (soft delete 4b): barisnya harus ada.
+    for (const designId of ['q1', 'q2', 'q3']) await seedQrDesign(env, { id: designId });
     for (const [stickerId, designId, version] of [
       ['q1-v1', 'q1', 1],
       ['q1-v2', 'q1', 2],

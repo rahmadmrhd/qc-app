@@ -42,6 +42,8 @@ export function ExistingReportForm({ match, onDone }: ExistingReportFormProps) {
   const queryClient = useQueryClient();
   const act = useActSerial();
   const [message, setMessage] = useState('');
+  // Gambar catatan yang masih diunggah: tombol lapor ditahan agar gambarnya tidak tertinggal.
+  const [messageBusy, setMessageBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [messageError, setMessageError] = useState<string | undefined>();
   const tooManyImages = extractFileRefs(message).length > SERIAL_LIMITS.messageImagesMax;
@@ -88,10 +90,11 @@ export function ExistingReportForm({ match, onDone }: ExistingReportFormProps) {
               : messageError
           }
           disabled={act.isPending}
+          onBusyChange={setMessageBusy}
         />
       </div>
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {error}
         </p>
       ) : null}
@@ -99,7 +102,7 @@ export function ExistingReportForm({ match, onDone }: ExistingReportFormProps) {
         type="button"
         variant="destructive"
         data-tour="report-submit"
-        disabled={act.isPending || message.trim() === '' || tooManyImages}
+        disabled={act.isPending || messageBusy || message.trim() === '' || tooManyImages}
         onClick={() => void submit()}
       >
         {act.isPending ? <BusyLabel>Menyimpan…</BusyLabel> : 'Lapor rusak'}
@@ -150,6 +153,7 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
   const [item, setItem] = useState<ItemBuValue>(EMPTY_ITEM_BU);
   const [location, setLocation] = useState({ id: '', label: '' });
   const [message, setMessage] = useState('');
+  const [messageBusy, setMessageBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fields, setFields] = useState<Record<string, string>>({});
   const tooManyImages = extractFileRefs(message).length > SERIAL_LIMITS.messageImagesMax;
@@ -214,6 +218,7 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
           idPrefix="report"
           label="Item"
           buFieldLabel="Business Unit"
+          required
           value={item}
           onChange={setItem}
           error={fields.itemId}
@@ -223,6 +228,7 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
         <div className="space-y-1.5">
           <SerialLocationField
             id="report-location"
+            required
             label="Lokasi"
             value={location.id}
             valueLabel={location.label}
@@ -244,10 +250,11 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
               : fields.message
           }
           disabled={report.isPending}
+          onBusyChange={setMessageBusy}
         />
       </div>
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {error}
         </p>
       ) : null}
@@ -255,7 +262,7 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
         type="button"
         variant="destructive"
         data-tour="report-submit"
-        disabled={report.isPending || !ready}
+        disabled={report.isPending || messageBusy || !ready}
         onClick={() => void submit()}
       >
         {report.isPending ? <BusyLabel>Menyimpan…</BusyLabel> : 'Lapor rusak'}

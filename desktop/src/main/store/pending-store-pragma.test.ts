@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { removeTempDirSync } from '../../../test-support/safe-rm';
 
 const executed: string[] = [];
 
@@ -24,7 +25,7 @@ beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'qc-pending-pragma-'));
 });
 afterEach(() => {
-  rmSync(dir, { recursive: true, force: true });
+  removeTempDirSync(dir);
 });
 
 describe('pragma pending-store', () => {

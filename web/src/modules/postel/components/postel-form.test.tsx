@@ -175,7 +175,7 @@ test('mode ubah: id nomor tersimpan dibawa, nomor baru tanpa id, lampiran urut, 
   await userEvent.type(screen.getByLabelText('Nomor sertifikat 3'), 'NEW-3');
   setDate('Tanggal habis 3', '2028-01-01');
   // hapus lampiran pertama lalu pastikan sisanya tetap berurutan
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus lampiran 1' }));
+  await userEvent.click(screen.getByRole('button', { name: /^Buang lampiran-aaaaaaaa\.pdf/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   await waitFor(() => expect(props.onSubmit).toHaveBeenCalledTimes(1));
   expect(vi.mocked(props.onSubmit).mock.calls[0]?.[0]).toEqual({
@@ -236,4 +236,13 @@ test('hanya satu baris Hapus lampiran memengaruhi lampiran, bukan nomor', async 
     .getByRole('heading', { name: 'Lampiran' })
     .closest('section') as HTMLElement;
   expect(within(section).getAllByRole('listitem')).toHaveLength(2);
+});
+
+test('Item dan nomor wajib (aria-required); Catatan opsional', () => {
+  renderForm();
+  expect(screen.getByLabelText('Item')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('Nomor sertifikat 1')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('Tanggal habis 1')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('Tautan 1')).not.toHaveAttribute('aria-required');
+  expect(screen.getByLabelText('Catatan')).not.toHaveAttribute('aria-required');
 });

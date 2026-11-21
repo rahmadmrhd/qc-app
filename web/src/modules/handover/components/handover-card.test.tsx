@@ -184,7 +184,7 @@ test('detail hanya dibuka lewat nomor task; badan kartu, centang, dan tombol tid
 test('task Dibatalkan tetap tampil dengan labelnya', () => {
   setup({}, makeHandover({ status: 'cancelled' }));
   expect(screen.getByText('Dibatalkan')).toBeInTheDocument();
-  expect(screen.getByText('Dibatalkan').className).toContain('text-red-800');
+  expect(screen.getByText('Dibatalkan').className).toContain('text-destructive-text');
 });
 
 test('antrean centang di perangkat: kartu papan menampilkan butir tercentang dengan penanda', async () => {

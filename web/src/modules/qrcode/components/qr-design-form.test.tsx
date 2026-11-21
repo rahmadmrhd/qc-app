@@ -61,7 +61,7 @@ test('sumber link: hanya PDF (unggah atau salin dari Drive); link lama non-Drive
   renderForm();
   expect(screen.queryByRole('radio', { name: 'Link manual' })).toBeNull();
   expect(screen.queryByLabelText('Link')).toBeNull();
-  expect(screen.getByLabelText('Pilih PDF')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Pilih PDF' })).toBeInTheDocument();
   expect(screen.getByLabelText('Atau salin dari Google Drive')).toBeInTheDocument();
   expect(screen.getByText(/bukan link Drive/)).toBeInTheDocument();
 });

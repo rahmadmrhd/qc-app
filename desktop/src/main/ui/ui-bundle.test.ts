@@ -14,7 +14,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { publicKeyPemOf, signUiManifest } from '@countrylock/ui-manifest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
-import { createUiBundleManager, type UiBundleDeps } from './ui-bundle';
+import { removeTempDirSync } from '../../../test-support/safe-rm';
+import { createUiBundleManager, readBaselineCreatedAt, type UiBundleDeps } from './ui-bundle';
 
 const sha = (data: Buffer | string): string => createHash('sha256').update(data).digest('hex');
 
@@ -138,7 +139,7 @@ beforeEach(() => {
   manifestEtag = '"etag-1"';
 });
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true });
+  removeTempDirSync(root);
 });
 
 const manager = (over: Partial<UiBundleDeps> = {}) =>
@@ -535,5 +536,244 @@ describe('identitas aplikasi (kunci publik dan versi jembatan) pada state.json (
     writeFileSync(file, JSON.stringify(state));
     expect(manager().activeRoot()).toBe(baseline);
     expect(existsSync(join(dir, 'versions', v))).toBe(false);
+  });
+});
+
+describe('UI dasar yang lebih baru menang (keputusan pemilik 2026-11-20)', () => {
+  const OLD = 1_000;
+  const BASELINE_AT = 2_000;
+  const NEW = 3_000;
+
+  /** Pengubah manifest untuk `build`: menetapkan `createdAt`. */
+  const at =
+    (createdAt: number) =>
+    (manifest: Record<string, unknown>): void => {
+      manifest.createdAt = createdAt;
+    };
+
+  /** Tulis `ui-manifest.json` UI dasar (isi sama dengan manifest bundel uji; `raw` menimpa isinya). */
+  function writeBaselineManifest(createdAt: number, raw?: string): void {
+    const built = build(BASE_FILES, { tweak: at(createdAt) });
+    writeFileSync(join(baseline, 'ui-manifest.json'), raw ?? JSON.stringify(built.manifest));
+  }
+
+  /** Unduh dan terapkan bundel ber-`createdAt` tertentu (saat UI dasar belum punya manifest). */
+  async function activate(html: string, createdAt: number): Promise<string> {
+    current = build({ ...BASE_FILES, 'index.html': html }, { tweak: at(createdAt) });
+    manifestEtag = `"e-${html}"`;
+    const m = manager();
+    expect((await m.checkForUpdate()).status).toBe('ready');
+    expect(m.applyReady()).toBe(true);
+    return current.uiVersion;
+  }
+
+  const readState = () =>
+    JSON.parse(readFileSync(join(dir, 'state.json'), 'utf8')) as {
+      active: string | null;
+      etag: string | null;
+      created: Record<string, number>;
+    };
+
+  function stripCreated(): void {
+    const file = join(dir, 'state.json');
+    const state = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    delete state.created;
+    writeFileSync(file, JSON.stringify(state));
+  }
+
+  test('readBaselineCreatedAt: manifest sah dibaca, hilang/rusak = null', () => {
+    expect(readBaselineCreatedAt(baseline)).toBeNull();
+    writeBaselineManifest(BASELINE_AT);
+    expect(readBaselineCreatedAt(baseline)).toBe(BASELINE_AT);
+    writeBaselineManifest(BASELINE_AT, 'sampah { bukan json');
+    expect(readBaselineCreatedAt(baseline)).toBeNull();
+  });
+
+  test('bundel aktif yang lebih lama dari UI dasar dibuang saat peluncuran (state dibersihkan)', async () => {
+    const v = await activate('<html>lama</html>', OLD);
+    expect(readState().created[v]).toBe(OLD);
+    writeBaselineManifest(BASELINE_AT);
+    const m = manager();
+    expect(m.activeRoot()).toBe(baseline);
+    expect(readState().active).toBeNull();
+    expect(readState().etag).toBeNull();
+    expect(versionsOnDisk()).toEqual([]);
+  });
+
+  test('bundel aktif yang lebih baru dari UI dasar tetap dipakai', async () => {
+    const v = await activate('<html>baru</html>', NEW);
+    writeBaselineManifest(BASELINE_AT);
+    expect(manager().activeRoot()).toBe(join(dir, 'versions', v));
+  });
+
+  test('state lama tanpa catatan created dibuang bila UI dasar punya manifest', async () => {
+    await activate('<html>lama</html>', NEW);
+    stripCreated();
+    writeBaselineManifest(BASELINE_AT);
+    expect(manager().activeRoot()).toBe(baseline);
+  });
+
+  test('UI dasar tanpa manifest atau berisi sampah: perilaku lama (bundel dipertahankan, termasuk tanpa created)', async () => {
+    const v = await activate('<html>lama</html>', OLD);
+    stripCreated();
+    expect(manager().activeRoot()).toBe(join(dir, 'versions', v)); // tanpa ui-manifest.json
+    writeBaselineManifest(BASELINE_AT, '{ rusak');
+    expect(manager().activeRoot()).toBe(join(dir, 'versions', v)); // manifest rusak
+  });
+
+  test('previous dan ready yang kalah ikut dibuang', async () => {
+    await activate('<html>satu</html>', OLD);
+    const keep = await activate('<html>dua</html>', NEW); // aktif = dua, previous = satu
+    current = build({ ...BASE_FILES, 'index.html': '<html>tiga</html>' }, { tweak: at(OLD + 1) });
+    manifestEtag = '"e-tiga"';
+    expect((await manager().checkForUpdate()).status).toBe('ready'); // ready = tiga
+    expect(versionsOnDisk()).toHaveLength(3);
+    writeBaselineManifest(BASELINE_AT);
+    const next = manager();
+    expect(next.readyVersion()).toBeNull();
+    expect(next.activeRoot()).toBe(join(dir, 'versions', keep));
+    expect(versionsOnDisk()).toEqual([keep]);
+  });
+
+  test('check: manifest server yang tak lebih baru dari UI dasar = none tanpa mengunduh berkas', async () => {
+    writeBaselineManifest(BASELINE_AT);
+    current = build(BASE_FILES, { tweak: at(BASELINE_AT) });
+    const m = manager();
+    const result = await m.checkForUpdate();
+    expect(result.status).toBe('none');
+    expect(result.reason).toMatch(/UI dasar lebih baru/);
+    expect(fileRequests()).toEqual([]);
+    expect(m.activeRoot()).toBe(baseline);
+    expect(versionsOnDisk()).toEqual([]);
+  });
+
+  test('check: manifest server yang lebih baru = ready dan createdAt tercatat di state', async () => {
+    writeBaselineManifest(BASELINE_AT);
+    current = build(BASE_FILES, { tweak: at(NEW) });
+    const m = manager();
+    expect((await m.checkForUpdate()).status).toBe('ready');
+    expect(readState().created[current.uiVersion]).toBe(NEW);
+  });
+
+  test('setelah bundel dibuang, server yang lebih baru diunduh ulang walau ETag-nya sama (tidak macet pada 304)', async () => {
+    await activate('<html>lama</html>', OLD); // manifestEtag = "e-<html>lama</html>"
+    writeBaselineManifest(BASELINE_AT);
+    // Server kini menyajikan bundel yang lebih baru dari UI dasar dengan ETag yang SAMA.
+    current = build({ ...BASE_FILES, 'index.html': '<html>baru</html>' }, { tweak: at(NEW) });
+    const m = manager();
+    expect(m.activeRoot()).toBe(baseline);
+    requests = [];
+    const result = await m.checkForUpdate();
+    expect(result.status).toBe('ready');
+    expect(requests.some((r) => r.includes('[inm]'))).toBe(false);
+    expect(fileRequests().length).toBeGreaterThan(0);
+  });
+
+  test('tanpa bundel dipegang, ETag lama tak dipakai pada peluncuran berikutnya (UI dasar diganti installer lebih lama)', async () => {
+    writeBaselineManifest(BASELINE_AT);
+    current = build(BASE_FILES, { tweak: at(BASELINE_AT) });
+    expect((await manager().checkForUpdate()).status).toBe('none'); // ETag tersimpan
+    expect(readState().etag).toBe('"etag-1"');
+    // UI dasar diganti installer yang lebih lama, server menyajikan bundel yang kini lebih baru dari UI dasar.
+    writeBaselineManifest(OLD);
+    requests = [];
+    const m = manager();
+    expect((await m.checkForUpdate()).status).toBe('ready');
+    expect(requests.some((r) => r.includes('[inm]'))).toBe(false);
+  });
+
+  describe('rollback server ke build yang tak lebih baru dari UI dasar (keputusan pemilik 2026-11-20)', () => {
+    /** Server menyajikan bundel lain (ETag baru) ber-`createdAt` tertentu. */
+    function serve(html: string, createdAt: number): void {
+      current = build({ ...BASE_FILES, 'index.html': html }, { tweak: at(createdAt) });
+      manifestEtag = `"s-${html}"`;
+    }
+    const readStateFull = () =>
+      JSON.parse(readFileSync(join(dir, 'state.json'), 'utf8')) as {
+        active: string | null;
+        previous: string | null;
+        ready: string | null;
+      };
+
+    test('bundel aktif dibuang dari state, tetapi sesi berjalan tetap memakai berkasnya', async () => {
+      const a = await activate('<html>a</html>', NEW);
+      writeBaselineManifest(BASELINE_AT);
+      const m = manager();
+      expect(m.activeRoot()).toBe(join(dir, 'versions', a));
+      serve('<html>rollback</html>', BASELINE_AT);
+      requests = [];
+      const result = await m.checkForUpdate();
+      expect(result.status).toBe('none');
+      expect(result.reason).toMatch(/UI dasar lebih baru.*dibuang/);
+      expect(fileRequests()).toEqual([]);
+      const state = readStateFull();
+      expect(state.active).toBeNull();
+      expect(state.previous).toBeNull();
+      expect(state.ready).toBeNull();
+      // Root sesi ini tak berganti di tengah jalan (potongan lazy masih dibaca dari sana).
+      expect(m.activeRoot()).toBe(join(dir, 'versions', a));
+      expect(existsSync(join(dir, 'versions', a, 'index.html'))).toBe(true);
+    });
+
+    test('peluncuran berikutnya memakai UI dasar dan direktori bundel dihapus', async () => {
+      const a = await activate('<html>a</html>', NEW);
+      writeBaselineManifest(BASELINE_AT);
+      const m = manager();
+      serve('<html>rollback</html>', BASELINE_AT);
+      await m.checkForUpdate();
+      const next = manager();
+      expect(next.activeRoot()).toBe(baseline);
+      expect(existsSync(join(dir, 'versions', a))).toBe(false);
+      expect(versionsOnDisk()).toEqual([]);
+    });
+
+    test('previous dan ready ikut dibuang', async () => {
+      await activate('<html>satu</html>', NEW);
+      await activate('<html>dua</html>', NEW + 1); // aktif = dua, previous = satu
+      writeBaselineManifest(BASELINE_AT);
+      const m = manager();
+      serve('<html>tiga</html>', NEW + 2);
+      expect((await m.checkForUpdate()).status).toBe('ready'); // ready = tiga
+      expect(readStateFull().ready).not.toBeNull();
+      serve('<html>rollback</html>', BASELINE_AT);
+      expect((await m.checkForUpdate()).reason).toMatch(/dibuang/);
+      const state = readStateFull();
+      expect([state.active, state.previous, state.ready]).toEqual([null, null, null]);
+      expect(manager().activeRoot()).toBe(baseline);
+      expect(versionsOnDisk()).toEqual([]);
+    });
+
+    test('unduhan berikutnya tidak menghapus berkas bundel yang sedang dipakai sesi', async () => {
+      const a = await activate('<html>a</html>', NEW);
+      writeBaselineManifest(BASELINE_AT);
+      const m = manager();
+      serve('<html>rollback</html>', BASELINE_AT);
+      await m.checkForUpdate();
+      serve('<html>baru</html>', NEW + 9);
+      expect((await m.checkForUpdate()).status).toBe('ready');
+      expect(existsSync(join(dir, 'versions', a, 'index.html'))).toBe(true);
+      expect(m.activeRoot()).toBe(join(dir, 'versions', a));
+    });
+
+    test('tanpa bundel dipegang: alasan lama, tak ada yang dibuang, tak melempar', async () => {
+      writeBaselineManifest(BASELINE_AT);
+      serve('<html>rollback</html>', BASELINE_AT);
+      const m = manager();
+      const result = await m.checkForUpdate();
+      expect(result.status).toBe('none');
+      expect(result.reason).toBe('UI dasar lebih baru dari bundel server');
+      expect(m.activeRoot()).toBe(baseline);
+    });
+
+    test('manifest server lebih baru dari UI dasar: alur unduh normal, bundel yang dipegang tak dibuang', async () => {
+      const a = await activate('<html>a</html>', NEW);
+      writeBaselineManifest(BASELINE_AT);
+      const m = manager();
+      serve('<html>lebih-baru</html>', NEW + 5);
+      const result = await m.checkForUpdate();
+      expect(result.status).toBe('ready');
+      expect(readStateFull().active).toBe(a);
+      expect(readStateFull().ready).toBe(current?.uiVersion ?? null);
+    });
   });
 });

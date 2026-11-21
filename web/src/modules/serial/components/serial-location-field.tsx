@@ -18,6 +18,7 @@ export interface SerialLocationFieldProps {
   className?: string;
   error?: string | undefined;
   disabled?: boolean;
+  required?: boolean;
   /** Daftar pilihan tertentu (mis. lokasi servis); tanpa ini = semua lokasi yang dapat dipilih di modul serial. */
   locations?: readonly SerialLocationOptionDto[];
 }
@@ -34,6 +35,7 @@ export function SerialLocationField({
   className,
   error,
   disabled,
+  required,
   locations: restrictTo,
 }: SerialLocationFieldProps) {
   const { locations: known, isPending } = useSerialLocations();
@@ -45,6 +47,7 @@ export function SerialLocationField({
   return (
     <LinkField
       id={id}
+      required={required}
       label={label}
       placeholder={placeholder}
       value={value === '' ? null : value}

@@ -200,7 +200,7 @@ describe('jenis stiker', () => {
       setStickerTypeStatus(env, { id: 'mb', status: 'inactive' }, admin),
     );
     expect(off.code).toBe('VALIDATION');
-    expect(off.message).toBe('Jenis sistem dikelola aplikasi dan tidak dapat diubah');
+    expect(off.message).toBe('Jenis stiker sistem tidak bisa diubah statusnya atau dihapus');
     const row = await env.DB.prepare('SELECT status FROM sticker_types WHERE id = ?')
       .bind('mb')
       .first<{ status: string }>();

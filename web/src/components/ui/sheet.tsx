@@ -5,10 +5,19 @@ import { cn } from "cn"
 import { Dialog as SheetPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
+import { useBackToCloseRoot } from "@/hooks/use-back-to-close"
 import { XIcon } from "lucide-react"
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+function Sheet({
+  open,
+  defaultOpen,
+  onOpenChange,
+  backToClose,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Root> & { backToClose?: boolean }) {
+  // Ponsel: back menutup panel (hook no-op di desktop).
+  const root = useBackToCloseRoot({ open, defaultOpen, onOpenChange, backToClose })
+  return <SheetPrimitive.Root data-slot="sheet" {...root} {...props} />
 }
 
 function SheetTrigger({

@@ -121,7 +121,7 @@ function BulkEditBody({
           onChange={setItem}
         />
         {itemIncomplete ? (
-          <p className="text-xs text-destructive">Pilih Business Unit untuk item ini.</p>
+          <p className="text-xs text-destructive-text">Pilih Business Unit untuk item ini.</p>
         ) : null}
         <div className="space-y-1.5">
           <Label htmlFor="bulk-date">Tanggal uji (ubah massal)</Label>

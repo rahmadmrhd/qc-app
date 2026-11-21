@@ -3,14 +3,51 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { meQueryOptions } from '@/modules/auth/queries';
 import { linkOptionNames, pickLink } from '@/test/link-field';
+import { makeMe } from '@/test/make-me';
 
 const apiMock = vi.hoisted(() => vi.fn());
+// Dialog item diganti stub: yang diuji hanya penyambungan baris Tambah, pembatas BU, dan item baru yang terpilih.
+const dialogProps = vi.hoisted(() => ({
+  last: null as { allowedBuIds?: readonly string[] } | null,
+}));
+vi.mock('@/modules/item/components/item-form-dialog', () => ({
+  ItemFormDialog: (props: {
+    open: boolean;
+    allowedBuIds?: readonly string[];
+    onCreated: (item: unknown) => void;
+  }) => {
+    dialogProps.last = props;
+    return props.open ? (
+      <button
+        type="button"
+        onClick={() =>
+          props.onCreated({
+            id: 'new',
+            brand: 'Baru',
+            model: 'X1',
+            proofRequired: false,
+            proofMin: 1,
+            businessUnits: [
+              { id: 'b1', code: 'BU1', name: 'BU 1' },
+              { id: 'b9', code: 'BU9', name: 'BU 9' },
+            ],
+          })
+        }
+      >
+        Simpan item stub
+      </button>
+    ) : null;
+  },
+}));
+
 vi.mock('@/lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api')>()),
   api: apiMock,
 }));
 
+import { ItemCreateHost } from '@/modules/item/components/item-create-host';
 import { defaultBuForItem, EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
 
 const BU1 = { id: 'b1', code: 'BU1' };
@@ -60,11 +97,16 @@ function Harness({ initial = EMPTY_ITEM_BU }: { initial?: ItemBuValue }) {
   );
 }
 
-function renderField(initial?: ItemBuValue) {
+function renderField(initial?: ItemBuValue, me?: ReturnType<typeof makeMe>) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  if (me) client.setQueryData(meQueryOptions().queryKey, me);
   return render(
     <QueryClientProvider client={client}>
-      <Harness {...(initial ? { initial } : {})} />
+      <ItemCreateHost>
+        <form data-testid="outer-form">
+          <Harness {...(initial ? { initial } : {})} />
+        </form>
+      </ItemCreateHost>
     </QueryClientProvider>,
   );
 }
@@ -159,4 +201,57 @@ test('defaultBuForItem: aturan bawaan BU dari item', () => {
   expect(defaultBuForItem([BU9], [BU1, BU2], BU2)).toEqual(BU2);
   // Daftar BU tulis belum diketahui: BU item dipakai apa adanya.
   expect(defaultBuForItem([BU9], null, none)).toEqual(BU9);
+});
+
+function meWithBus(...bus: [string, 'edit' | 'view', 'edit' | 'view'][]) {
+  return makeMe({
+    businessUnits: bus.map(([id, item, serial]) => ({
+      id,
+      code: id.toUpperCase(),
+      name: id,
+      status: 'active' as const,
+      permissions: { item, serial, serialservice: 'none' as const },
+    })),
+  });
+}
+
+test('tanpa irisan BU item edit dan serial edit: tidak ada baris Tambah item', async () => {
+  renderField(undefined, meWithBus(['b1', 'edit', 'view'], ['b2', 'view', 'edit']));
+  await userEvent.click(screen.getByRole('combobox', { name: 'Item' }));
+  await screen.findByRole('option', { name: 'Cisco C9200' });
+  expect(screen.queryByRole('option', { name: 'Tambah Item' })).toBeNull();
+});
+
+test('dengan irisan: baris Tambah item memberi dialog hanya BU irisan; item baru langsung terpilih dan muncul di pilihan', async () => {
+  renderField(undefined, meWithBus(['b1', 'edit', 'edit'], ['b2', 'edit', 'view']));
+  await userEvent.click(screen.getByRole('combobox', { name: 'Item' }));
+  await userEvent.click(await screen.findByRole('option', { name: 'Tambah Item' }));
+  expect(dialogProps.last?.allowedBuIds).toEqual(['b1']);
+  const stub = await screen.findByRole('button', { name: 'Simpan item stub' });
+  // Aturan proyek: dialog Tambah dirender di luar pohon <form> induk (bukan hanya di luar DOM-nya).
+  expect(stub.closest('form')).toBeNull();
+  await userEvent.click(stub);
+  await waitFor(() => expect(latest).toMatchObject({ itemId: 'new', itemLabel: 'Baru X1' }));
+  // BU yang tak berhak (b9) tak ikut; tersisa satu BU irisan = terisi otomatis.
+  await waitFor(() => expect(buField()).toHaveValue('BU1'));
+  await userEvent.click(screen.getByRole('combobox', { name: 'Item' }));
+  expect(await linkOptionNames(screen, 'Item')).toContain('Baru X1');
+});
+
+test('field item nonaktif (disabled) tidak menawarkan Tambah item', async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(meQueryOptions().queryKey, meWithBus(['b1', 'edit', 'edit']));
+  render(
+    <QueryClientProvider client={client}>
+      <ItemBuField
+        idPrefix="t"
+        label="Item"
+        buFieldLabel="Business Unit"
+        value={EMPTY_ITEM_BU}
+        onChange={() => {}}
+        disabled
+      />
+    </QueryClientProvider>,
+  );
+  expect(screen.getByRole('combobox', { name: 'Item' })).toBeDisabled();
 });

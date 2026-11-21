@@ -78,6 +78,7 @@ export function ClonePresetDialog({
         <div className="space-y-3">
           <LinkField
             id="qr-clone-bu"
+            required
             label="Business Unit tujuan"
             placeholder="Pilih Business Unit…"
             value={buId === '' ? null : buId}
@@ -88,9 +89,12 @@ export function ClonePresetDialog({
             onChange={(id) => setBuId(id ?? '')}
           />
           <div className="space-y-1.5">
-            <Label htmlFor="qr-clone-name">Nama preset baru</Label>
+            <Label htmlFor="qr-clone-name" required>
+              Nama preset baru
+            </Label>
             <Input
               id="qr-clone-name"
+              aria-required="true"
               value={name}
               maxLength={QR_LIMITS.presetName}
               onChange={(event) => setName(event.target.value)}

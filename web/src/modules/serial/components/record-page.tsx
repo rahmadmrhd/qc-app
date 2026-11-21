@@ -1,7 +1,16 @@
-import { isIsoDate, normalizeSerial, proofMinimumOf, SERIAL_LIMITS } from '@shared/serials';
+import {
+  isIsoDate,
+  normalizeSerial,
+  proofMinimumOf,
+  SERIAL_LIMITS,
+  SERIAL_PROOF_LIMITS,
+} from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
+import { Camera } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import type { OwnerUploads } from '@/components/file-dialog/use-background-uploads';
+import { StickyActionBar } from '@/components/page/sticky-action-bar';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -36,8 +45,8 @@ import { isReferenceError, type VerifyDeps, verifyImported } from '../lib/import
 import { hasProofPhotos } from '../lib/leave-guard';
 import { lockedLocationOf, todayWib, toLocationOptions } from '../lib/locations';
 import { applyProofMins, fetchProofMins, uniqueItemIds } from '../lib/proof-refresh';
-import type { ProofPhotoRef } from '../lib/proof-source';
 import type { QcsnImport } from '../lib/qcsn';
+import { type ProofSession, useProofSinks, useProofUploads } from '../lib/use-proof-uploads';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
   discardProofPhotos,
@@ -50,6 +59,7 @@ import {
 } from '../queries';
 import { BulkEditDialog } from './bulk-edit-dialog';
 import type { StrictScan } from './camera-scan-button';
+import { ConfirmClearDraftDialog } from './confirm-clear-draft-dialog';
 import { ConfirmRemoveDialog } from './confirm-remove-dialog';
 import { ImportExportBar } from './import-export-bar';
 import { EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
@@ -61,6 +71,7 @@ import { type ScanFeedback, SerialScanInput } from './serial-scan-input';
 import { StagingCards } from './staging-cards';
 import { rowStatus, StagingTable } from './staging-table';
 import { defaultStickerChoice, StickerChecklist, useApplicableStickers } from './sticker-checklist';
+import type { StrictScanResult } from './strict-scan-dialog';
 
 type NoticeTone = 'info' | 'warn' | 'error';
 interface Notice {
@@ -89,6 +100,11 @@ export interface RecordPageProps {
   /** Dipanggil saat ada/tidaknya baris draft berfoto bukti berubah (menentukan jenis penjaga keluar halaman). */
   onProofChange?: (hasProof: boolean) => void;
   /**
+   * Dipanggil saat ada/tidaknya unggahan foto bukti yang berjalan ATAU gagal berubah. Melepas halaman membatalkan unggahan
+   * itu, jadi pemanggil yang menutup halaman (dialog) perlu konfirmasi lebih dulu.
+   */
+  onUploadsPendingChange?: (pending: boolean) => void;
+  /**
    * Diisi pegangan untuk menjalankan Simpan dari luar (dialog penjaga keluar). `save()` sama dengan tombol Simpan tetapi
    * TIDAK memanggil `onAllSaved` (pemanggil sendiri yang melanjutkan navigasi); hasilnya `true` bila semua baris
    * tersimpan.
@@ -109,8 +125,8 @@ export interface RecordPageHandle {
 
 const NOTICE_CLASS: Record<NoticeTone, string> = {
   info: 'border-border bg-muted/40',
-  warn: 'border-amber-500/50 bg-amber-500/10',
-  error: 'border-destructive/50 bg-destructive/10 text-destructive',
+  warn: 'border-warning-text/35 bg-warning-text/10',
+  error: 'border-destructive/50 bg-destructive/10 text-destructive-text',
 };
 
 const AUTOSAVE_DELAY_MS = 500;
@@ -177,6 +193,7 @@ export function RecordPage({
   onDirtyChange,
   onAllSaved,
   onProofChange,
+  onUploadsPendingChange,
   handleRef,
   draft,
   hideTitle,
@@ -206,6 +223,52 @@ export function RecordPage({
     if (draftRef.current) draftRef.current.replace(next);
     else setOwnRows(next);
   }, []);
+
+  // Unggah latar foto bukti: dipegang halaman (bukan baris/sel) dan dikunci ke `clientId` baris, sehingga beralih
+  // tabel/kartu tidak menghentikannya. Draf hanya menyimpan foto yang sudah selesai (menempel pada `proofPhotos`).
+  // Pemilik yang belum menjadi baris (dialog scan wajib foto, Ubah baris) memasang penerima sendiri di sini.
+  const proofSinks = useProofSinks();
+  const proofUploads = useProofUploads({
+    onAdd: (owner, photo) => {
+      const target = rowsRef.current.find((row) => row.clientId === owner);
+      if (!target) return proofSinks.deliver(owner, photo) ?? false;
+      // Baris penuh: hasil dibuang di server oleh hook.
+      if (target.proofPhotos.length >= SERIAL_PROOF_LIMITS.perEntryMax) return false;
+      setAllRows(
+        rowsRef.current.map((row) =>
+          row.clientId === owner
+            ? { ...clearOutcome(row), proofPhotos: [...row.proofPhotos, photo] }
+            : row,
+        ),
+      );
+      return true;
+    },
+  });
+  const proofUploadsRef = useRef(proofUploads);
+  proofUploadsRef.current = proofUploads;
+  const uploadFiles = useCallback(
+    (owner: string, files: Parameters<OwnerUploads['add']>[0]) =>
+      proofUploadsRef.current.forOwner(owner).add(files),
+    [],
+  );
+  const retryUpload = useCallback(
+    (key: string) => proofUploadsRef.current.forOwner('').retry(key),
+    [],
+  );
+  const cancelUpload = useCallback(
+    (key: string) => proofUploadsRef.current.forOwner('').remove(key),
+    [],
+  );
+  const cancelRowUploads = useCallback((owners: Iterable<string>) => {
+    for (const owner of owners) proofUploadsRef.current.cancelOwner(owner);
+  }, []);
+  // Foto yang belum selesai (berjalan, menunggu, atau gagal) menahan Simpan; yang berjalan juga menahan keluar halaman.
+  const uploadsPending = proofUploads.entries.length;
+  const proofSession = useMemo<ProofSession>(
+    () => ({ uploads: proofUploads, attach: proofSinks.attach }),
+    [proofUploads, proofSinks],
+  );
+  const uploadsBlocked = proofUploads.busy || proofUploads.hasFailed;
 
   // Serial yang sudah tercatat (keunikan se-sistem): serial baru di draft ditanyakan ke server per kelompok; yang sudah
   // ada menjadi baris Cek ulang. Satu rantai janji agar permintaan tidak tumpang tindih dan Simpan bisa menunggunya.
@@ -328,6 +391,7 @@ export function RecordPage({
   const [detailId, setDetailId] = useState<string | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
   const desktop = useIsDesktop();
 
   // Halaman dibuka: penulisan draf diizinkan lagi (dihentikan oleh `clearAllDrafts` saat keluar).
@@ -349,7 +413,11 @@ export function RecordPage({
   useEffect(() => {
     onDirtyChange?.(rows.length > 0);
   }, [onDirtyChange, rows.length]);
-  const withProof = hasProofPhotos(rows);
+  const uploadsPendingNow = proofUploads.blocking;
+  useEffect(() => {
+    onUploadsPendingChange?.(uploadsPendingNow);
+  }, [onUploadsPendingChange, uploadsPendingNow]);
+  const withProof = hasProofPhotos(rows, proofUploads.blocking);
   useEffect(() => {
     onProofChange?.(withProof);
   }, [onProofChange, withProof]);
@@ -357,6 +425,7 @@ export function RecordPage({
   const selectedCount = rows.filter((row) => row.selected).length;
   // Bar aksi pilihan tampil (di ponsel `fixed`): halaman diberi ruang di dasarnya, bukan di atas daftar.
   const barVisible = selectedCount > 0 && !saving;
+  const draftPhotoCount = rows.reduce((total, row) => total + row.proofPhotos.length, 0);
   const selectedPhotoCount = rows.reduce(
     (total, row) => total + (row.selected ? row.proofPhotos.length : 0),
     0,
@@ -441,11 +510,9 @@ export function RecordPage({
   }
 
   // Item wajib foto: scan satu serial per kali lewat dialog dua langkah; baris masuk draft setelah Simpan di dialog.
-  const addStrictRowRef = useRef<(result: { serial: string; photos: ProofPhotoRef[] }) => void>(
-    () => undefined,
-  );
+  const addStrictRowRef = useRef<(result: StrictScanResult) => void>(() => undefined);
   const confirmStrict = useCallback(
-    (result: { serial: string; photos: ProofPhotoRef[] }) => addStrictRowRef.current(result),
+    (result: StrictScanResult) => addStrictRowRef.current(result),
     [],
   );
   const strict = useMemo<StrictScan | undefined>(
@@ -468,6 +535,8 @@ export function RecordPage({
             },
             isKnown: isKnownSerial,
             onConfirm: confirmStrict,
+            newOwnerId: newClientId,
+            proof: proofSession,
             capacity: draftCapacity,
           }
         : undefined,
@@ -481,20 +550,23 @@ export function RecordPage({
       isKnownSerial,
       confirmStrict,
       draftCapacity,
+      proofSession,
     ],
   );
 
   /** Menambah satu baris item wajib foto beserta fotonya; bila tak muat (batas draft/duplikat), foto dibuang. */
-  function addStrictRow(result: { serial: string; photos: ProofPhotoRef[] }) {
+  function addStrictRow(result: StrictScanResult) {
+    // clientId baris = kunci pemilik unggahan dialog: unggahan yang masih berjalan lanjut ke baris ini.
     const { rows: next, report } = addSerials(
       rowsRef.current,
       result.serial,
       defaults(),
-      newClientId,
+      () => result.clientId,
       nowIso,
     );
     const added = report.added === 1 ? next[next.length - 1] : undefined;
     if (!added) {
+      proofUploads.cancelOwner(result.clientId);
       void discardProofPhotos(result.photos.map((photo) => photo.id));
       announceAdd(describeAdd(report));
       return;
@@ -560,10 +632,11 @@ export function RecordPage({
   const dropRows = useCallback(
     (ids: ReadonlySet<string>) => {
       const dropped = rowsRef.current.filter((row) => ids.has(row.clientId));
+      cancelRowUploads(ids);
       void discardProofPhotos(proofIdsOf(dropped));
       setAllRows(removeRows(rowsRef.current, ids));
     },
-    [setAllRows],
+    [setAllRows, cancelRowUploads],
   );
   const removeOne = useCallback((clientId: string) => dropRows(new Set([clientId])), [dropRows]);
   const openDetail = useCallback((clientId: string) => setDetailId(clientId), []);
@@ -709,9 +782,21 @@ export function RecordPage({
 
   // Penjaga klik ganda selama menunggu pencarian serial yang sudah ada (sebelum `saving` menyala).
   const preparingRef = useRef(false);
+  /** Simpan ditolak selagi ada unggahan foto berjalan atau gagal (pesan ditampilkan); true bila ditolak. */
+  function rejectPendingUploads(): boolean {
+    const current = proofUploadsRef.current;
+    if (!current.busy && !current.hasFailed) return false;
+    setNotice({
+      tone: 'error',
+      text: 'Masih ada foto yang diunggah atau gagal diunggah. Tunggu selesai atau buang dulu, lalu simpan.',
+    });
+    return true;
+  }
   /** `external` = dipicu penjaga keluar halaman: pemanggil yang melanjutkan navigasi, jadi `onAllSaved` tak dipanggil. */
   async function handleSave(external = false): Promise<boolean> {
     if (saving || importing || preparingRef.current || rowsRef.current.length === 0) return false;
+    // Dipicu penjaga keluar halaman: unggahan yang belum beres tidak boleh terlewat.
+    if (rejectPendingUploads()) return false;
     preparingRef.current = true;
     let outcome: { failure: string | null; changed: number };
     try {
@@ -722,6 +807,8 @@ export function RecordPage({
     } finally {
       preparingRef.current = false;
     }
+    // Pencarian bisa memakan waktu dan tabel belum `saving` selama itu: foto yang baru mulai diunggah tak boleh terlewat.
+    if (rejectPendingUploads()) return false;
     if (outcome.failure !== null) {
       setNotice({
         tone: 'error',
@@ -882,7 +969,48 @@ export function RecordPage({
   }
   if (handleRef) handleRef.current = { save: () => handleSave(true) };
 
+  const importExportProps = {
+    rows,
+    disabled: saving || importing,
+    onImported: (result: QcsnImport, name: string) => void handleImported(result, name),
+    onImportFailed: (message: string) =>
+      setNotice({ tone: 'error', text: `Impor gagal: ${message}` }),
+    onExported: ({ exported, skipped }: { exported: number; skipped: number }) =>
+      setNotice({
+        tone: skipped > 0 ? 'warn' : 'info',
+        text:
+          skipped > 0
+            ? `${exported} baris diekspor; ${skipped} baris belum lengkap tidak diekspor`
+            : `${exported} baris diekspor`,
+      }),
+  };
+  function clearDraftRows() {
+    setClearOpen(false);
+    cancelRowUploads(rowsRef.current.map((row) => row.clientId));
+    void discardProofPhotos(proofIdsOf(rowsRef.current));
+    setAllRows([]);
+    if (!draftRef.current) clearDraft(ownerKey);
+    setNotice(null);
+    setSummary(null);
+  }
+  /** Ponsel: pindai lewat tombol kamera yang sudah ada di kolom scan (satu pemilik dialog kamera). */
+  function openCameraScan() {
+    document
+      .querySelector<HTMLButtonElement>(
+        '[data-tour="serial-scan"] button[aria-label="Scan dengan kamera"]',
+      )
+      ?.click();
+  }
+
   const hasFailed = rows.some((row) => row.result === 'error');
+
+  const saveLabel = saving ? (
+    <BusyLabel>Menyimpan…</BusyLabel>
+  ) : hasFailed ? (
+    'Coba lagi'
+  ) : (
+    `Simpan ${rows.length} serial`
+  );
   const blockedCount = rows.filter((row) => rowStatus(row).tone !== 'ok').length;
 
   return (
@@ -905,6 +1033,7 @@ export function RecordPage({
           <div className="space-y-1.5">
             <SerialLocationField
               id="default-location"
+              required
               label="Lokasi"
               value={location.id}
               valueLabel={location.label}
@@ -920,9 +1049,12 @@ export function RecordPage({
             ) : null}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="default-date">Tanggal uji</Label>
+            <Label htmlFor="default-date" required>
+              Tanggal uji
+            </Label>
             <Input
               id="default-date"
+              aria-required="true"
               type="date"
               value={testDate}
               onChange={(event) => setTestDate(event.target.value)}
@@ -932,6 +1064,7 @@ export function RecordPage({
             idPrefix="default"
             label="Item"
             buFieldLabel="Business Unit"
+            required
             value={item}
             onChange={(next) => {
               // Item/BU bawaan diganti: pilihan stiker lama tidak berlaku, kembali ke semua tercentang.
@@ -975,7 +1108,7 @@ export function RecordPage({
           autoFocus
         />
         {gated ? (
-          <p role="status" className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+          <p role="status" className="mt-1 text-xs text-warning-text">
             Isi Default dulu: {missing.join(', ')}.
           </p>
         ) : null}
@@ -992,7 +1125,7 @@ export function RecordPage({
       {(draft ? draft.saveFailed === true : draftFailed) ? (
         <p
           role="alert"
-          className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm"
+          className="rounded-md border border-warning-text/35 bg-warning-text/10 px-3 py-2 text-sm"
         >
           Draft tidak tersimpan otomatis (penyimpanan perangkat penuh atau diblokir). Simpan atau
           ekspor berkas .qcsn supaya hasil scan tidak hilang.
@@ -1010,23 +1143,7 @@ export function RecordPage({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">Draft ({rows.length} baris)</h2>
-        <ImportExportBar
-          rows={rows}
-          disabled={saving || importing}
-          onImported={(result, name) => void handleImported(result, name)}
-          onImportFailed={(message) =>
-            setNotice({ tone: 'error', text: `Impor gagal: ${message}` })
-          }
-          onExported={({ exported, skipped }) =>
-            setNotice({
-              tone: skipped > 0 ? 'warn' : 'info',
-              text:
-                skipped > 0
-                  ? `${exported} baris diekspor; ${skipped} baris belum lengkap tidak diekspor`
-                  : `${exported} baris diekspor`,
-            })
-          }
-        />
+        {desktop ? <ImportExportBar {...importExportProps} /> : null}
       </div>
 
       <div data-tour="serial-draft">
@@ -1045,6 +1162,10 @@ export function RecordPage({
             onOpenDetail={openDetail}
             onRemove={removeOne}
             actorName={me.name}
+            uploadEntries={proofUploads.entries}
+            onUploadFiles={uploadFiles}
+            onRetryUpload={retryUpload}
+            onCancelUpload={cancelUpload}
           />
         ) : (
           <StagingCards
@@ -1053,6 +1174,9 @@ export function RecordPage({
             onSelect={select}
             onSelectAll={selectAll}
             onOpenDetail={openDetail}
+            uploadEntries={proofUploads.entries}
+            onRetryUpload={retryUpload}
+            onCancelUpload={cancelUpload}
           />
         )}
       </div>
@@ -1069,43 +1193,84 @@ export function RecordPage({
         </p>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3" data-tour="serial-save">
-        <Button
-          type="button"
-          disabled={saving || importing || rows.length === 0}
-          onClick={() => void handleSave()}
-        >
-          {saving ? (
-            <BusyLabel>Menyimpan…</BusyLabel>
-          ) : hasFailed ? (
-            'Coba lagi'
-          ) : (
-            `Simpan ${rows.length} serial`
-          )}
-        </Button>
-        {blockedCount > 0 ? (
-          <span className="text-xs text-muted-foreground">
-            {blockedCount} baris perlu dilengkapi atau diperbaiki.
-          </span>
-        ) : null}
-        {rows.length > 0 ? (
+      {desktop ? (
+        <div className="flex flex-wrap items-center gap-3" data-tour="serial-save">
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
-            disabled={saving}
-            onClick={() => {
-              void discardProofPhotos(proofIdsOf(rowsRef.current));
-              setAllRows([]);
-              if (!draftRef.current) clearDraft(ownerKey);
-              setNotice(null);
-              setSummary(null);
-            }}
+            disabled={saving || importing || rows.length === 0 || uploadsBlocked}
+            onClick={() => void handleSave()}
           >
-            Kosongkan draft
+            {saveLabel}
           </Button>
-        ) : null}
-      </div>
+          {uploadsBlocked ? (
+            <span role="status" className="text-xs text-muted-foreground">
+              {uploadsPending} foto masih diunggah atau gagal; selesaikan, ulangi, atau buang dulu.
+            </span>
+          ) : null}
+          {blockedCount > 0 ? (
+            <span className="text-xs text-muted-foreground">
+              {blockedCount} baris perlu dilengkapi atau diperbaiki.
+            </span>
+          ) : null}
+          {rows.length > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={saving}
+              onClick={() => setClearOpen(true)}
+            >
+              Kosongkan draft
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        <>
+          {uploadsBlocked ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              {uploadsPending} foto masih diunggah atau gagal; selesaikan, ulangi, atau buang dulu.
+            </p>
+          ) : null}
+          {blockedCount > 0 ? (
+            <p className="text-xs text-muted-foreground">
+              {blockedCount} baris perlu dilengkapi atau diperbaiki.
+            </p>
+          ) : null}
+          {/* Ponsel: Simpan selalu terlihat tanpa gulir. Saat mode pilih, bar aksi pilihan mengambil alih tepi bawah. */}
+          {selectedCount === 0 ? (
+            <StickyActionBar
+              label="Aksi draft"
+              className="-mx-[var(--main-pad,1rem)] rounded-none border-x-0 border-b-0"
+            >
+              <div data-tour="serial-save" className="flex w-full items-center gap-2">
+                <Button
+                  type="button"
+                  className="flex-1"
+                  disabled={saving || importing || rows.length === 0 || uploadsBlocked}
+                  onClick={() => void handleSave()}
+                >
+                  {saveLabel}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Pindai dengan kamera"
+                  disabled={gated || saving}
+                  onClick={openCameraScan}
+                >
+                  <Camera aria-hidden />
+                </Button>
+                <ImportExportBar
+                  compact
+                  onClearDraft={() => setClearOpen(true)}
+                  {...importExportProps}
+                />
+              </div>
+            </StickyActionBar>
+          ) : null}
+        </>
+      )}
 
       {detailRow && !saving ? (
         <RowEditDialog
@@ -1113,6 +1278,7 @@ export function RecordPage({
           key={`${detailRow.clientId}|${detailRow.existing?.id ?? ''}`}
           row={detailRow}
           actorName={me.name}
+          proof={proofSession}
           commitSerial={(serial) => commitSerial(detailRow.clientId, serial)}
           onClose={() => setDetailId(null)}
           onApply={applyDetail}
@@ -1127,6 +1293,13 @@ export function RecordPage({
           onClose={() => setBulkOpen(false)}
         />
       ) : null}
+      <ConfirmClearDraftDialog
+        open={clearOpen && rows.length > 0 && !saving}
+        count={rows.length}
+        photoCount={draftPhotoCount}
+        onConfirm={clearDraftRows}
+        onCancel={() => setClearOpen(false)}
+      />
       <ConfirmRemoveDialog
         open={removeOpen && selectedCount > 0 && !saving}
         count={selectedCount}

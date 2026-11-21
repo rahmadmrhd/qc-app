@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { longPress } from '@/test/long-press';
 import { mockMatchMedia } from '@/test/match-media';
 import { addSerials, type StagingRow } from '../lib/draft';
 import { saveDraft } from '../lib/draft-store';
@@ -90,7 +91,8 @@ test('layar sempit: hanya kartu yang terender (tanpa elemen table)', async () =>
   renderPage();
   expect(await screen.findByRole('button', { name: 'Ubah baris AAA111' })).toBeInTheDocument();
   expect(document.querySelector('table')).toBeNull();
-  expect(screen.getAllByRole('checkbox', { name: 'Pilih baris AAA111' })).toHaveLength(1);
+  // Ponsel: tanpa kotak centang sampai mode pilih (tekan lama).
+  expect(screen.queryAllByRole('checkbox', { name: 'Pilih baris AAA111' })).toHaveLength(0);
 });
 
 test('200 baris: hanya satu tampilan yang terender pada tiap lebar', async () => {
@@ -102,7 +104,7 @@ test('200 baris: hanya satu tampilan yang terender pada tiap lebar', async () =>
   act(() => media.set(false));
   expect(await screen.findAllByRole('listitem')).toHaveLength(200);
   expect(screen.queryAllByRole('row')).toHaveLength(0);
-  expect(screen.getAllByRole('checkbox', { name: /^Pilih baris / })).toHaveLength(200);
+  expect(screen.queryAllByRole('checkbox', { name: /^Pilih baris / })).toHaveLength(0);
 });
 
 test('pilihan baris bertahan saat layar diputar (tabel menjadi kartu)', async () => {
@@ -114,7 +116,7 @@ test('pilihan baris bertahan saat layar diputar (tabel menjadi kartu)', async ()
   act(() => media.set(false));
   expect(await screen.findByRole('checkbox', { name: 'Pilih baris BBB222' })).toBeChecked();
   expect(screen.getByRole('checkbox', { name: 'Pilih baris AAA111' })).not.toBeChecked();
-  expect(screen.getByText('1 dipilih')).toBeInTheDocument();
+  expect(screen.getAllByText('1 dipilih').length).toBeGreaterThan(0);
 });
 
 test('bar aksi hanya muncul bila ada baris dicentang; Pilih semua dari header; Batalkan pilihan mengosongkan', async () => {
@@ -188,7 +190,8 @@ test('Hapus massal juga berlaku pada kartu di ponsel', async () => {
   media = mockMatchMedia(false);
   seedDraft([{ serial: 'AAA111', photos: ['p1'] }, { serial: 'BBB222' }]);
   renderPage();
-  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih baris AAA111' }));
+  await screen.findByRole('button', { name: 'Ubah baris AAA111' });
+  await longPress(screen.getAllByRole('listitem')[0] as HTMLElement);
   await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
   await userEvent.click(await screen.findByRole('button', { name: 'Hapus 1 baris' }));
   await waitFor(() => expect(removedIds()).toEqual(['p1']));
@@ -260,12 +263,12 @@ test('ruang untuk bar aksi ada di dasar halaman (pembungkus) hanya saat ada pili
   const { container } = renderPage();
   const wrapper = container.firstElementChild as HTMLElement;
   await screen.findByRole('button', { name: 'Ubah baris AAA111' });
-  expect(wrapper.className).not.toContain('max-md:pb-');
+  expect(wrapper.className).not.toContain('narrow:pb-');
   expect(wrapper).not.toHaveAttribute('data-selection-space');
 
-  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris AAA111' }));
-  expect(screen.getByText('1 dipilih')).toBeInTheDocument();
-  expect(wrapper.className).toContain('max-md:pb-');
+  await longPress(screen.getAllByRole('listitem')[0] as HTMLElement);
+  expect(screen.getAllByText('1 dipilih').length).toBeGreaterThan(0);
+  expect(wrapper.className).toContain('narrow:pb-');
   expect(wrapper).toHaveAttribute('data-selection-space', 'on');
   // Tidak ada elemen kosong aria-hidden di antara notice/bar dan judul daftar draft.
   const heading = screen.getByRole('heading', { name: /^Draft \(/ });
@@ -278,6 +281,26 @@ test('ruang untuk bar aksi ada di dasar halaman (pembungkus) hanya saat ada pili
   expect(wrapper.querySelector('div[aria-hidden]:empty')).toBeNull();
 
   await userEvent.click(screen.getByRole('button', { name: 'Batalkan pilihan' }));
-  expect(wrapper.className).not.toContain('max-md:pb-');
+  expect(wrapper.className).not.toContain('narrow:pb-');
   expect(wrapper).not.toHaveAttribute('data-selection-space');
+});
+
+test('ponsel: Simpan, pindai kamera, dan menu draft ada di bar bawah menempel; desktop memakai tombol biasa', async () => {
+  media = mockMatchMedia(false);
+  seedDraft([{ serial: 'AAA111' }]);
+  const { unmount } = renderPage();
+  await screen.findByRole('button', { name: 'Ubah baris AAA111' });
+  const bar = screen.getByRole('region', { name: 'Aksi draft' });
+  expect(within(bar).getByRole('button', { name: /^Simpan 1 serial/ })).toBeInTheDocument();
+  expect(within(bar).getByRole('button', { name: 'Pindai dengan kamera' })).toBeInTheDocument();
+  await userEvent.click(within(bar).getByRole('button', { name: 'Menu draft' }));
+  expect(await screen.findByRole('menuitem', { name: /Impor \.qcsn/ })).toBeInTheDocument();
+  expect(screen.getByRole('menuitem', { name: /Kosongkan draft/ })).toBeInTheDocument();
+  await userEvent.keyboard('{Escape}');
+  unmount();
+  media = mockMatchMedia(true);
+  renderPage();
+  await screen.findAllByRole('row');
+  expect(screen.queryByRole('region', { name: 'Aksi draft' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Kosongkan draft' })).toBeInTheDocument();
 });

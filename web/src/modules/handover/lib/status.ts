@@ -22,19 +22,18 @@ export const HANDOVER_STATUS_STYLES: Record<
     column: 'border-t-border bg-muted/40',
   },
   in_progress: {
-    badge: 'border-transparent bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-200',
-    accent: 'border-l-blue-500',
-    column: 'border-t-blue-500 bg-blue-500/5',
+    badge: 'border-transparent bg-info-text/15 text-info-text',
+    accent: 'border-l-info-text',
+    column: 'border-t-info-text bg-info-text/5',
   },
   done: {
-    badge:
-      'border-transparent bg-green-100 text-green-800 dark:bg-green-500/20 dark:text-green-200',
-    accent: 'border-l-green-500',
-    column: 'border-t-green-500 bg-green-500/5',
+    badge: 'border-transparent bg-success-text/15 text-success-text',
+    accent: 'border-l-success-text',
+    column: 'border-t-success-text bg-success-text/5',
   },
   cancelled: {
-    badge: 'border-transparent bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-200',
-    accent: 'border-l-red-500',
-    column: 'border-t-red-500 bg-red-500/5',
+    badge: 'border-transparent bg-destructive-text/15 text-destructive-text',
+    accent: 'border-l-destructive-text',
+    column: 'border-t-destructive-text bg-destructive-text/5',
   },
 };

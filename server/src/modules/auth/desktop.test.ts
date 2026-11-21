@@ -470,6 +470,16 @@ describe('POST /auth/desktop/token', () => {
     expect(await messageOf(response)).toBe(GENERIC);
   });
 
+  test('akun terhapus (soft delete) sebelum penukaran ditolak', async () => {
+    const { code, verifier } = await login();
+    await env.DB.prepare(
+      "UPDATE users SET deleted_at = '2026-02-02T00:00:00.000Z', deleted_by = 'x'",
+    ).run();
+    const response = await exchange({ code, verifier });
+    expect(response.status).toBe(401);
+    expect(await messageOf(response)).toBe(GENERIC);
+  });
+
   test('semua penolakan memakai pesan seragam tanpa membocorkan penyebab', async () => {
     const { code, verifier } = await login();
     const now = env.clock.now();

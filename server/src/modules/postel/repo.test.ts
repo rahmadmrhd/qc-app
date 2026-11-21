@@ -6,8 +6,6 @@ import { seedPostel } from '@server-test/postel-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
   deletePostelNumberStmt,
-  deletePostelNumbersOfStmt,
-  deletePostelStmt,
   findPostelRecord,
   insertPostelNumberStmt,
   insertPostelStmt,
@@ -38,6 +36,8 @@ function postel(overrides: Partial<PostelRecord> = {}): PostelRecord {
     createdAt: T0,
     updatedAt: T0,
     updatedBy: 'a@gmail.com',
+    deletedAt: '',
+    deletedBy: '',
     ...overrides,
   };
 }
@@ -104,10 +104,23 @@ describe('postels', () => {
     expect(found?.createdAt).toBe(T0);
   });
 
-  test('deletePostelStmt menghapus catatan', async () => {
+  test('catatan terhapus lunak: tak masuk daftar hidup, tetap terbaca menurut id, tak dapat diubah', async () => {
     await env.DB.batch([insertPostelStmt(env.DB, postel())]);
-    await deletePostelStmt(env.DB, 'p1').run();
-    expect(await findPostelRecord(env.DB, 'p1')).toBeNull();
+    await env.DB.prepare(
+      "UPDATE postels SET deleted_at = '2026-11-20T00:00:00.000Z', deleted_by = 'x@gmail.com' WHERE id = 'p1'",
+    ).run();
+    expect(await listPostelRecords(env.DB)).toEqual([]);
+    expect((await listPostelRecords(env.DB, 'deleted')).map((row) => row.id)).toEqual(['p1']);
+    expect(await findPostelRecord(env.DB, 'p1')).toMatchObject({
+      deletedAt: '2026-11-20T00:00:00.000Z',
+      deletedBy: 'x@gmail.com',
+    });
+    const result = await updatePostelStmt(
+      env.DB,
+      postel({ note: 'baru', updatedAt: T1 }),
+      T0,
+    ).run();
+    expect(result.meta.changes).toBe(0);
   });
 });
 
@@ -309,7 +322,7 @@ describe('postel_numbers', () => {
     expect(parked?.numberKey).toBe('#' + 'x'.repeat(99));
   });
 
-  test('deletePostelNumberStmt dan deletePostelNumbersOfStmt', async () => {
+  test('deletePostelNumberStmt hanya menghapus nomor milik catatannya', async () => {
     await env.DB.batch([
       insertPostelStmt(env.DB, postel()),
       insertPostelStmt(env.DB, postel({ id: 'p2' })),
@@ -321,8 +334,6 @@ describe('postel_numbers', () => {
     expect((await deletePostelNumberStmt(env.DB, 'n3', 'p1').run()).meta.changes).toBe(0);
     expect((await deletePostelNumberStmt(env.DB, 'n1', 'p1').run()).meta.changes).toBe(1);
     expect((await listPostelNumbers(env.DB, ['p1'])).map((row) => row.id)).toEqual(['n2']);
-    await deletePostelNumbersOfStmt(env.DB, 'p1').run();
-    expect(await listPostelNumbers(env.DB, ['p1'])).toEqual([]);
     expect((await listPostelNumbers(env.DB, ['p2'])).map((row) => row.id)).toEqual(['n3']);
   });
 });

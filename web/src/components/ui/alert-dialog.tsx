@@ -3,11 +3,18 @@ import { cn } from "cn"
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
+import { useBackToCloseRoot } from "@/hooks/use-back-to-close"
 
 function AlertDialog({
+  open,
+  defaultOpen,
+  onOpenChange,
+  backToClose,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
-  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
+}: React.ComponentProps<typeof AlertDialogPrimitive.Root> & { backToClose?: boolean }) {
+  // Ponsel: back menutup dialog (hook no-op di desktop).
+  const root = useBackToCloseRoot({ open, defaultOpen, onOpenChange, backToClose })
+  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...root} {...props} />
 }
 
 function AlertDialogTrigger({
@@ -106,7 +113,7 @@ function AlertDialogFooter({
     <div
       data-slot="alert-dialog-footer"
       className={cn(
-        "sticky -bottom-4 z-10 -mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-popover bg-linear-to-b from-muted/50 to-muted/50 p-4 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end",
+        "sticky -bottom-4 z-10 -mx-4 -mb-4 mt-auto flex flex-col-reverse gap-2 rounded-b-xl border-t bg-popover bg-linear-to-b from-muted/50 to-muted/50 p-4 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end",
         className
       )}
       {...props}
@@ -165,12 +172,13 @@ function AlertDialogDescription({
 function AlertDialogAction({
   className,
   variant = "default",
+  color,
   size = "default",
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Action> &
-  Pick<React.ComponentProps<typeof Button>, "variant" | "size">) {
+  Pick<React.ComponentProps<typeof Button>, "variant" | "size" | "color">) {
   return (
-    <Button variant={variant} size={size} asChild>
+    <Button variant={variant} color={color} size={size} asChild>
       <AlertDialogPrimitive.Action
         data-slot="alert-dialog-action"
         className={cn(className)}

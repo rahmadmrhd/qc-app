@@ -92,7 +92,7 @@ function buLabel(bu: BusinessUnitOptionDto): string {
 
 function FieldError({ id, message }: { id: string; message: string | undefined }) {
   return message ? (
-    <p id={id} role="alert" className="text-sm text-destructive">
+    <p id={id} role="alert" className="text-sm text-destructive-text">
       {message}
     </p>
   ) : null;
@@ -129,6 +129,8 @@ function StickerFormBody({
   const [errors, setErrors] = useState<FieldErrors>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Gambar contoh yang masih diunggah: Simpan ditahan agar gambarnya tidak tertinggal.
+  const [imageBusy, setImageBusy] = useState(false);
   useUnsavedChanges(
     typeId !== (sticker?.typeId ?? '') ||
       name !== (sticker?.name ?? '') ||
@@ -286,6 +288,7 @@ function StickerFormBody({
         ) : (
           <LinkField
             id="sticker-form-type"
+            required
             label="Jenis"
             placeholder="Pilih jenis"
             value={typeId === '' ? null : typeId}
@@ -299,9 +302,12 @@ function StickerFormBody({
           />
         )}
         <div className="space-y-1.5">
-          <Label htmlFor="sticker-form-name">Nama stiker</Label>
+          <Label htmlFor="sticker-form-name" required>
+            Nama stiker
+          </Label>
           <Input
             id="sticker-form-name"
+            aria-required="true"
             autoFocus
             maxLength={STICKER_LIMITS.nameMax}
             value={name}
@@ -357,6 +363,7 @@ function StickerFormBody({
             <ImagePicker
               value={fileId}
               label={name.trim() || 'stiker'}
+              onBusyChange={setImageBusy}
               onChange={(id) => {
                 setFileId(id);
                 clearError('fileId');
@@ -391,6 +398,7 @@ function StickerFormBody({
         {needsBusinessUnits ? (
           <LinkMultiField
             id="sticker-form-business-units"
+            required
             label="BU"
             placeholder="Pilih BU"
             value={businessUnitIds}
@@ -414,7 +422,7 @@ function StickerFormBody({
           <Button type="button" variant="outline" onClick={onClose}>
             Batal
           </Button>
-          <Button type="submit" disabled={busy || name.trim() === '' || typeId === ''}>
+          <Button type="submit" disabled={busy || imageBusy || name.trim() === '' || typeId === ''}>
             {busy ? 'Menyimpan…' : 'Simpan'}
           </Button>
         </FormDialogFooter>

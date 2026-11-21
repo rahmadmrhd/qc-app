@@ -122,8 +122,13 @@ describe('postels.save serentak', () => {
 
   test('simpan dan hapus serentak atas catatan yang sama: keadaan akhir konsisten (tanpa baris yatim)', async () => {
     for (let round = 0; round < 4; round++) {
-      const created = (await call('postels.save', body(['i1', 'i2'], [`R${round}-1`])))
-        .data as Json;
+      // Item per ronde: nama stiker catatan terhapus tetap dipegangnya (Postel baru bernama sama ditolak), jadi tiap
+      // ronde memakai model sendiri agar rondenya tidak saling bentrok.
+      const [a, b, c] = [`r${round}a`, `r${round}b`, `r${round}c`];
+      for (const id of [a, b, c]) {
+        await seedItem(env, { id, brand: 'PBE', model: `R${round}-${id}` });
+      }
+      const created = (await call('postels.save', body([a, b], [`R${round}-1`]))).data as Json;
       env.clock.advance(1000);
       const numbers = created.numbers as Json[];
       const [saved, removed] = await Promise.all([
@@ -131,7 +136,7 @@ describe('postels.save serentak', () => {
           id: created.id,
           expectedUpdatedAt: created.updatedAt,
           note: `ronde ${round}`,
-          itemIds: ['i1', 'i3'],
+          itemIds: [a, c],
           numbers: [
             {
               id: numbers[0].id,
@@ -145,16 +150,20 @@ describe('postels.save serentak', () => {
         }),
         call('postels.remove', { id: created.id }),
       ]);
-      // Hapus tidak memeriksa versi: selalu berhasil. Simpan boleh menang lebih dulu atau kalah (NOT_FOUND/basi).
+      // Hapus lunak selalu berhasil (versi yang menyela direncanakan ulang). Simpan boleh menang lebih dulu atau kalah.
       expect(removed.ok).toBe(true);
       if (!saved.ok) expect(['NOT_FOUND', 'CONFLICT']).toContain(saved.error?.code);
-      // Invarian basis data: tidak ada catatan, nomor, atau penunjuk item yang tersisa.
-      expect(await rows('SELECT id FROM postels WHERE id = ?', created.id)).toHaveLength(0);
+      // Invarian basis data: catatan terhapus lunak, tak ada nomor hidup yang tersisa (nomor yang baru dari simpanan
+      // yang menang lebih dulu ikut terhapus bersama induknya), dan tak ada nomor terhapus tanpa induk terhapus.
       expect(
-        await rows('SELECT id FROM postel_numbers WHERE postel_id = ?', created.id),
+        await rows("SELECT id FROM postels WHERE id = ? AND deleted_at <> ''", created.id),
+      ).toHaveLength(1);
+      expect(await rows("SELECT id FROM postel_numbers WHERE deleted_at = ''")).toHaveLength(0);
+      expect(
+        await rows(
+          'SELECT n.id FROM postel_numbers n JOIN postels p ON p.id = n.postel_id WHERE n.deleted_at <> p.deleted_at',
+        ),
       ).toHaveLength(0);
-      expect(await rows('SELECT id FROM postel_numbers')).toHaveLength(0);
-      expect(await rows("SELECT id FROM items WHERE postel_id <> ''")).toHaveLength(0);
       // Audit: catatan dihapus tepat sekali.
       expect(
         await rows(

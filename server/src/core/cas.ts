@@ -1,6 +1,7 @@
 import { batchWrite } from '@server/modules/access/repo';
 import { type Db, DbError, type DbResult, type DbStatement, type Preparer } from './db';
 import { staleError } from './errors';
+import { baseIndexName } from './index-names';
 
 /**
  * Ekspresi SQL yang melempar galat MariaDB `ER_DATA_OUT_OF_RANGE` (1690, "BIGINT value is out of range") bila
@@ -64,7 +65,7 @@ export async function batchGuarded(
  * menyebut tabel pada galat duplikat, jadi 'PRIMARY' dihitung; percobaan ulang dibatasi sehingga galat PK lain
  * berakhir CONFLICT).
  */
-const RETRYABLE_UNIQUE_KEYS = new Set([
+export const RETRYABLE_UNIQUE_KEYS = new Set([
   'customers_key',
   'handovers_number',
   'handovers_client_id',
@@ -81,7 +82,7 @@ export function isRetryableWriteError(error: unknown): boolean {
     error instanceof DbError &&
     error.kind === 'duplicate' &&
     error.key !== undefined &&
-    RETRYABLE_UNIQUE_KEYS.has(error.key)
+    RETRYABLE_UNIQUE_KEYS.has(baseIndexName(error.key))
   );
 }
 

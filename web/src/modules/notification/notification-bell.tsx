@@ -86,7 +86,7 @@ export function NotificationBell() {
               <Skeleton className="h-10 w-full" />
             </div>
           ) : query.isError ? (
-            <p role="alert" className="p-4 text-sm text-destructive">
+            <p role="alert" className="p-4 text-sm text-destructive-text">
               Gagal memuat notifikasi.
             </p>
           ) : items.length === 0 ? (

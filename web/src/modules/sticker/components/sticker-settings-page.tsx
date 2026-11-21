@@ -188,7 +188,7 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
                   }}
                 />
                 {errors[`default-${type.id}`] ? (
-                  <p role="alert" className="text-sm text-destructive">
+                  <p role="alert" className="text-sm text-destructive-text">
                     {errors[`default-${type.id}`]}
                   </p>
                 ) : null}
@@ -209,7 +209,7 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
         {settings.smtpConfigured ? null : (
           <p
             role="status"
-            className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm"
+            className="rounded-md border border-warning-text/35 bg-warning-text/10 p-3 text-sm"
           >
             SMTP belum dikonfigurasi di server: ringkasan tidak akan terkirim sampai SMTP diatur
             (lihat dokumen penyebaran).
@@ -226,9 +226,12 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
           </Label>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="sticker-alert-hour">Jam kirim (WIB)</Label>
+          <Label htmlFor="sticker-alert-hour" required>
+            Jam kirim (WIB)
+          </Label>
           <Input
             id="sticker-alert-hour"
+            aria-required="true"
             type="number"
             inputMode="numeric"
             min={0}
@@ -246,15 +249,18 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
             Ringkasan dikirim paling awal pada jam ini, hanya bila ada stok yang menipis atau habis.
           </p>
           {errors.digestHour ? (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive-text">
               {errors.digestHour}
             </p>
           ) : null}
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="sticker-alert-interval">Kirim setiap (hari)</Label>
+          <Label htmlFor="sticker-alert-interval" required>
+            Kirim setiap (hari)
+          </Label>
           <Input
             id="sticker-alert-interval"
+            aria-required="true"
             type="number"
             inputMode="numeric"
             min={1}
@@ -273,7 +279,7 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
             seminggu.
           </p>
           {errors.intervalDays ? (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive-text">
               {errors.intervalDays}
             </p>
           ) : null}
@@ -319,7 +325,7 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
             ditambahkan.
           </p>
           {errors.recipients ? (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive-text">
               {errors.recipients}
             </p>
           ) : null}
@@ -327,7 +333,7 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
       </section>
 
       {serverError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {serverError}
         </p>
       ) : null}
@@ -341,7 +347,7 @@ function Body({ settings, users, onSave }: StickerSettingsPageProps) {
 /** Konfigurasi Stiker: minimum bawaan per jenis dan email ringkasan harian stok menipis (`sticker: manage`). */
 export function StickerSettingsPage(props: StickerSettingsPageProps) {
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <h1 className="text-2xl font-semibold">Konfigurasi Stiker</h1>
       {/* `key` = versi tersimpan: setelah simpan (atau muat ulang) isian mulai dari data server terbaru. */}
       <Body key={props.settings.updatedAt} {...props} />

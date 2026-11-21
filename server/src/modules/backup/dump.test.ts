@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
+import { removeTempDir } from '../../../test-support/safe-rm';
 import {
   type DumpProcess,
   dumpArgs,
@@ -50,7 +51,7 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'qc-dump-test-'));
 });
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await removeTempDir(dir);
 });
 
 describe('parseDatabaseUrl dan dumpArgs', () => {

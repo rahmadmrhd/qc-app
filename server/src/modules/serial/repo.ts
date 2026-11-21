@@ -1,5 +1,6 @@
 import { CAS_UPDATED_AT_SET } from '@server/core/cas';
 import type { DbStatement, Preparer } from '@server/core/db';
+import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { canWriteBu, writableBuIds } from './access';
 
@@ -77,7 +78,7 @@ export async function activeItemWritableForBu(
   if (scope.length === 0) return false;
   const row = await db
     .prepare(
-      `SELECT 1 AS ok FROM items i WHERE i.id = ? AND i.status = 'active' AND EXISTS (SELECT 1 FROM item_business_units l WHERE l.item_id = i.id AND l.bu_id IN (${scope.map(() => '?').join(',')})) AND EXISTS (SELECT 1 FROM business_units b WHERE b.id = ? AND b.status = 'active')`,
+      `SELECT 1 AS ok FROM items i WHERE ${liveWhere('i')} AND i.id = ? AND i.status = 'active' AND EXISTS (SELECT 1 FROM item_business_units l WHERE l.item_id = i.id AND l.bu_id IN (${scope.map(() => '?').join(',')})) AND EXISTS (SELECT 1 FROM business_units b WHERE b.id = ? AND b.status = 'active')`,
     )
     .bind(itemId, ...scope, buId)
     .first<{ ok: number }>();
@@ -245,13 +246,17 @@ export interface SerialStickerRow {
   status: string | null;
 }
 
+/**
+ * Stiker serial dengan nama dan status; stiker TERHAPUS dibaca `inactive` (rujukan tetap tampil dengan namanya, tetapi
+ * tak dapat dicentang lagi pada cek ulang, seperti stiker nonaktif; spek soft delete T9).
+ */
 export async function loadSerialStickers(
   db: Preparer,
   serialId: string,
 ): Promise<SerialStickerRow[]> {
   const rows = await db
     .prepare(
-      'SELECT ss.sticker_id, st.name, st.alias, st.status, ss.qty FROM serial_stickers ss LEFT JOIN stickers st ON st.id = ss.sticker_id WHERE ss.serial_id = ? ORDER BY st.name, ss.sticker_id',
+      "SELECT ss.sticker_id, st.name, st.alias, CASE WHEN st.deleted_at <> '' THEN 'inactive' ELSE st.status END AS status, ss.qty FROM serial_stickers ss LEFT JOIN stickers st ON st.id = ss.sticker_id WHERE ss.serial_id = ? ORDER BY st.name, ss.sticker_id",
     )
     .bind(serialId)
     .all<SerialStickerRow>();

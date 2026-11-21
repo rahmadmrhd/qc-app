@@ -1,8 +1,15 @@
 import type { MeDto } from '@shared/contract';
 import { House, Users } from 'lucide-react';
 import { expect, test } from 'vitest';
-import type { NavGroup } from './navigation';
-import { isNavItemActive, NAV_GROUPS, visibleNavGroups } from './navigation';
+import type { NavGroup, NavItem } from './navigation';
+import {
+  findNavTrail,
+  flattenNavItems,
+  isNavItemActive,
+  isNavParent,
+  NAV_GROUPS,
+  visibleNavGroups,
+} from './navigation';
 
 const groups: NavGroup[] = [
   { label: 'Umum', items: [{ label: 'Beranda', to: '/', icon: House }] },
@@ -99,27 +106,6 @@ test('item berlingkup lokasi mengikuti lokasi aktif yang dipilih', () => {
   expect(visibleNavGroups(located, me).map((g) => g.label)).toEqual(['Modul']);
 });
 
-test('menu Merk ada di grup Data dan memakai izin item view', () => {
-  const data = NAV_GROUPS.find((group) => group.label === 'Data');
-  const merk = data?.items.find((entry) => entry.to === '/item/brands');
-  expect(merk).toMatchObject({ label: 'Merk', permission: { module: 'item', level: 'view' } });
-});
-
-test('Data Item tidak ikut aktif di halaman Merk; Merk dan Data Item aktif di halamannya sendiri', () => {
-  const items = NAV_GROUPS.find((group) => group.label === 'Data')?.items ?? [];
-  const dataItem = items.find((entry) => entry.to === '/item');
-  const merk = items.find((entry) => entry.to === '/item/brands');
-  if (!dataItem || !merk) throw new Error('menu hilang');
-  const at = (path: string) => (to: string, fuzzy: boolean) =>
-    fuzzy ? path.startsWith(to) : path === to;
-  expect(isNavItemActive(dataItem, at('/item/brands'))).toBe(false);
-  expect(isNavItemActive(merk, at('/item/brands'))).toBe(true);
-  for (const path of ['/item', '/item/new', '/item/abc', '/item/abc/edit']) {
-    expect(isNavItemActive(dataItem, at(path))).toBe(true);
-    expect(isNavItemActive(merk, at(path))).toBe(false);
-  }
-});
-
 test('item dengan daftar izin tampil bila salah satu terpenuhi; tidak bila tak satu pun', () => {
   const groups: NavGroup[] = [
     {
@@ -179,14 +165,110 @@ test('item dengan daftar izin tampil bila salah satu terpenuhi; tidak bila tak s
   expect(visibleNavGroups(groups, me({ qc: 'edit' }), [])).toHaveLength(0); // lokasi aktif kosong
 });
 
-test('menu Customer (grup Data, item view) dan Serah Terima (grup Operasional, salah satu dari handover view atau qc edit)', () => {
-  const data = NAV_GROUPS.find((group) => group.label === 'Data');
-  expect(data?.items.find((entry) => entry.to === '/customer')).toMatchObject({
+const flat = flattenNavItems(NAV_GROUPS);
+const itemTo = (to: string): NavItem => {
+  const found = flat.find((entry) => entry.to === to);
+  if (!found) throw new Error(`menu ${to} hilang`);
+  return found;
+};
+const at = (path: string) => (to: string, fuzzy: boolean) =>
+  fuzzy ? path.startsWith(to) : path === to;
+/** Label butir bertujuan yang terlihat bagi `me` (anak induk diratakan). */
+const visibleLabels = (me: MeDto, locationIds?: string[]) =>
+  flattenNavItems(visibleNavGroups(NAV_GROUPS, me, locationIds)).map((entry) => entry.label);
+
+test('NAV_GROUPS berbentuk pohon: Default QR ada, induk tidak ikut diratakan', () => {
+  expect(flat.map((entry) => entry.to)).toContain('/qrcode/default');
+  expect(flat.map((entry) => entry.label)).not.toContain('Akses');
+  expect(NAV_GROUPS.map((group) => group.label)).toEqual([
+    null,
+    'Operasional',
+    'Data Master',
+    'Stiker & Dokumen',
+    'Pengaturan',
+  ]);
+  expect(NAV_GROUPS.flatMap((group) => group.items.filter(isNavParent)).map((p) => p.id)).toEqual([
+    'serial',
+    'item',
+    'sticker',
+    'manual-book',
+    'access',
+    'system',
+  ]);
+});
+
+test('hanya item view: Data Master memuat induk Item (dua anak) dan Customer, tanpa grup Pengaturan', () => {
+  const groups = visibleNavGroups(NAV_GROUPS, stickerMe({ item: 'view' }));
+  const master = groups.find((group) => group.label === 'Data Master');
+  const parent = master?.items.find(isNavParent);
+  expect(parent?.id).toBe('item');
+  expect(parent?.children.map((child) => child.label)).toEqual(['Daftar Item', 'Merk']);
+  expect(master?.items.map((entry) => entry.label)).toEqual(['Item', 'Customer']);
+  expect(groups.map((group) => group.label)).not.toContain('Pengaturan');
+});
+
+test('induk tanpa anak terlihat dibuang', () => {
+  const groups = visibleNavGroups(NAV_GROUPS, stickerMe({ access: 'view' }));
+  const ids = groups.flatMap((group) => group.items.filter(isNavParent)).map((p) => p.id);
+  expect(ids).toEqual(['access', 'system']);
+  expect(visibleNavGroups(NAV_GROUPS, stickerMe({}), undefined).map((g) => g.label)).toEqual([
+    null,
+  ]);
+});
+
+test('findNavTrail memilih butir dengan to terpanjang beserta induknya', () => {
+  const trail = (path: string) => findNavTrail(NAV_GROUPS, at(path));
+  const brands = trail('/item/brands/abc');
+  expect(brands?.parent?.id).toBe('item');
+  expect(brands?.item.label).toBe('Merk');
+  const preset = trail('/qrcode/default/x/edit');
+  expect(preset?.item.label).toBe('Default QR');
+  expect(preset?.parent?.id).toBe('manual-book');
+  expect(trail('/qrcode/abc')?.item.label).toBe('QR Code');
+  const home = trail('/');
+  expect(home?.item.label).toBe('Beranda');
+  expect(home?.parent).toBeNull();
+  expect(trail('/serial/report')?.item.label).toBe('Laporan');
+  expect(trail('/tidak-ada')).toBeNull();
+});
+
+test('Default QR butuh qrcode manage dan QR Code tidak ikut aktif di sana', () => {
+  expect(itemTo('/qrcode/default').permission).toEqual({ module: 'qrcode', level: 'manage' });
+  expect(itemTo('/qrcode').excludes).toContain('/qrcode/default');
+  expect(visibleLabels(stickerMe({ qrcode: 'view' }))).toEqual(['Beranda', 'QR Code']);
+  expect(visibleLabels(stickerMe({ qrcode: 'manage' }))).toEqual([
+    'Beranda',
+    'QR Code',
+    'Default QR',
+  ]);
+  expect(isNavItemActive(itemTo('/qrcode'), at('/qrcode/default'))).toBe(false);
+  expect(isNavItemActive(itemTo('/qrcode'), at('/qrcode/abc'))).toBe(true);
+});
+
+test('menu Merk memakai izin item view', () => {
+  expect(itemTo('/item/brands')).toMatchObject({
+    label: 'Merk',
+    permission: { module: 'item', level: 'view' },
+  });
+});
+
+test('Daftar Item tidak ikut aktif di halaman Merk; Merk dan Daftar Item aktif di halamannya sendiri', () => {
+  const dataItem = itemTo('/item');
+  const merk = itemTo('/item/brands');
+  expect(isNavItemActive(dataItem, at('/item/brands'))).toBe(false);
+  expect(isNavItemActive(merk, at('/item/brands'))).toBe(true);
+  for (const path of ['/item', '/item/new', '/item/abc', '/item/abc/edit']) {
+    expect(isNavItemActive(dataItem, at(path))).toBe(true);
+    expect(isNavItemActive(merk, at(path))).toBe(false);
+  }
+});
+
+test('menu Customer (item view) dan Serah Terima (salah satu dari handover view atau qc edit)', () => {
+  expect(itemTo('/customer')).toMatchObject({
     label: 'Customer',
     permission: { module: 'item', level: 'view' },
   });
-  const ops = NAV_GROUPS.find((group) => group.label === 'Operasional');
-  expect(ops?.items.find((entry) => entry.to === '/handover')).toMatchObject({
+  expect(itemTo('/handover')).toMatchObject({
     label: 'Serah Terima',
     permission: [
       { module: 'handover', level: 'view', scope: 'location' },
@@ -221,48 +303,42 @@ function stickerMe(permissions: Partial<MeDto['permissions']>): MeDto {
   };
 }
 
-test('grup Stiker memuat Jenis Stiker (sticker view) dan hanya tampil bagi user ber-izin', () => {
-  const grup = NAV_GROUPS.find((group) => group.label === 'Stiker');
-  expect(grup?.items.find((entry) => entry.to === '/sticker/types')).toMatchObject({
-    label: 'Jenis Stiker',
+test('induk Stiker memuat Jenis (sticker view) dan hanya tampil bagi user ber-izin', () => {
+  expect(itemTo('/sticker/types')).toMatchObject({
+    label: 'Jenis',
     permission: { module: 'sticker', level: 'view' },
   });
-  expect(visibleNavGroups(NAV_GROUPS, stickerMe({})).map((g) => g.label)).not.toContain('Stiker');
-  const stiker = visibleNavGroups(NAV_GROUPS, stickerMe({ sticker: 'view' })).find(
-    (group) => group.label === 'Stiker',
-  );
-  expect(stiker?.items.map((entry) => entry.label)).toContain('Jenis Stiker');
+  expect(visibleLabels(stickerMe({}))).not.toContain('Jenis');
+  expect(visibleLabels(stickerMe({ sticker: 'view' }))).toContain('Jenis');
 });
 
-test('menu Stiker tidak ikut aktif di Jenis Stiker, Pustaka Gambar, dan Konfigurasi; tetap aktif di opname', () => {
-  const items = NAV_GROUPS.find((group) => group.label === 'Stiker')?.items ?? [];
-  const stiker = items.find((entry) => entry.to === '/sticker');
-  const jenis = items.find((entry) => entry.to === '/sticker/types');
-  if (!stiker || !jenis) throw new Error('menu hilang');
-  expect(stiker).toMatchObject({
-    label: 'Stiker',
+test('menu Katalog tidak ikut aktif di Jenis, Pustaka, Konfigurasi; tetap aktif di opname', () => {
+  const katalog = itemTo('/sticker');
+  expect(katalog).toMatchObject({
+    label: 'Katalog',
     permission: [
       { module: 'sticker', level: 'view' },
       { module: 'stickerstock', level: 'view', scope: 'location' },
     ],
     excludes: ['/sticker/types', '/sticker/library', '/sticker/settings'],
   });
-  const at = (path: string) => (to: string, fuzzy: boolean) =>
-    fuzzy ? path.startsWith(to) : path === to;
-  expect(isNavItemActive(stiker, at('/sticker'))).toBe(true);
-  expect(isNavItemActive(stiker, at('/sticker/opname'))).toBe(true);
-  expect(isNavItemActive(stiker, at('/sticker/types'))).toBe(false);
-  expect(isNavItemActive(stiker, at('/sticker/library'))).toBe(false);
-  expect(isNavItemActive(jenis, at('/sticker/types'))).toBe(true);
+  expect(isNavItemActive(katalog, at('/sticker'))).toBe(true);
+  expect(isNavItemActive(katalog, at('/sticker/opname'))).toBe(true);
+  expect(isNavItemActive(katalog, at('/sticker/types'))).toBe(false);
+  expect(isNavItemActive(katalog, at('/sticker/library'))).toBe(false);
+  expect(isNavItemActive(itemTo('/sticker/types'), at('/sticker/types'))).toBe(true);
 });
 
-test('Stok Stiker digabung ke menu Stiker: tidak ada menu Stok Stiker tersendiri', () => {
-  const items = NAV_GROUPS.find((group) => group.label === 'Stiker')?.items ?? [];
-  expect(items.some((entry) => entry.label === 'Stok Stiker')).toBe(false);
-  expect(items.some((entry) => entry.to === '/sticker/stock')).toBe(false);
+test('Stok digabung ke Katalog: tidak ada menu Stok tersendiri', () => {
+  const sticker = NAV_GROUPS.flatMap((group) => group.items).find(
+    (entry) => 'children' in entry && entry.id === 'sticker',
+  );
+  const children = sticker && 'children' in sticker ? sticker.children : [];
+  expect(children.some((entry) => entry.label === 'Stok')).toBe(false);
+  expect(children.some((entry) => entry.to === '/sticker/stock')).toBe(false);
 });
 
-test('menu Stiker tampil bagi pemegang sticker view ATAU stickerstock view di lokasi aktif', () => {
+test('menu Katalog tampil bagi pemegang sticker view ATAU stickerstock view di lokasi aktif', () => {
   const me: MeDto = {
     ...stickerMe({}),
     locations: [
@@ -280,158 +356,103 @@ test('menu Stiker tampil bagi pemegang sticker view ATAU stickerstock view di lo
       },
     ],
   };
-  const labels = (user: MeDto, ids: string[]) =>
-    (
-      visibleNavGroups(NAV_GROUPS, user, ids).find((group) => group.label === 'Stiker')?.items ?? []
-    ).map((entry) => entry.label);
   // Hanya izin stok: tampil di lokasi yang berizin, tidak di lokasi lain.
-  expect(labels(me, ['l-a'])).toContain('Stiker');
-  expect(labels(me, ['l-b'])).not.toContain('Stiker');
+  expect(visibleLabels(me, ['l-a'])).toContain('Katalog');
+  expect(visibleLabels(me, ['l-b'])).not.toContain('Katalog');
   // Hanya izin katalog: tampil di lokasi mana pun.
   expect(
-    labels({ ...me, ...stickerMe({ sticker: 'view' }), locations: me.locations }, ['l-b']),
-  ).toContain('Stiker');
+    visibleLabels({ ...me, ...stickerMe({ sticker: 'view' }), locations: me.locations }, ['l-b']),
+  ).toContain('Katalog');
 });
 
 test('menu Pustaka Gambar tampil bagi pemegang item view atau sticker view saja, dan aktif sendiri', () => {
-  const items = NAV_GROUPS.find((group) => group.label === 'Stiker')?.items ?? [];
-  const pustaka = items.find((entry) => entry.to === '/sticker/library');
-  if (!pustaka) throw new Error('menu hilang');
+  const pustaka = itemTo('/sticker/library');
   expect(pustaka.label).toBe('Pustaka Gambar');
   expect(pustaka.permission).toEqual([
     { module: 'item', level: 'view' },
     { module: 'sticker', level: 'view' },
   ]);
-  const labels = (me: MeDto) =>
-    visibleNavGroups(NAV_GROUPS, me)
-      .find((group) => group.label === 'Stiker')
-      ?.items.map((entry) => entry.label) ?? [];
-  expect(labels(stickerMe({}))).not.toContain('Pustaka Gambar');
-  expect(labels(stickerMe({ item: 'view' }))).toEqual(['Pustaka Gambar']);
-  expect(labels(stickerMe({ sticker: 'view' }))).toContain('Pustaka Gambar');
-  const at = (path: string) => (to: string, fuzzy: boolean) =>
-    fuzzy ? path.startsWith(to) : path === to;
+  expect(visibleLabels(stickerMe({}))).not.toContain('Pustaka Gambar');
+  expect(visibleLabels(stickerMe({ item: 'view' }))).toContain('Pustaka Gambar');
+  expect(visibleLabels(stickerMe({ sticker: 'view' }))).toContain('Pustaka Gambar');
   expect(isNavItemActive(pustaka, at('/sticker/library'))).toBe(true);
 });
 
-test('grup Manual Book memuat QR Code (qrcode view), dan QR Code tidak lagi di grup Data', () => {
-  const manual = NAV_GROUPS.find((group) => group.label === 'Manual Book');
-  expect(manual?.items.find((entry) => entry.to === '/qrcode')).toMatchObject({
+test('induk Manual Book memuat QR Code (qrcode view); QR Code tidak di Data Master', () => {
+  expect(itemTo('/qrcode')).toMatchObject({
     label: 'QR Code',
     permission: { module: 'qrcode', level: 'view' },
   });
-  const data = NAV_GROUPS.find((group) => group.label === 'Data');
-  expect(data?.items.map((entry) => entry.label)).not.toContain('QR Code');
+  const master = NAV_GROUPS.find((group) => group.label === 'Data Master');
+  expect(master?.items.map((entry) => entry.label)).not.toContain('QR Code');
   const visible = visibleNavGroups(NAV_GROUPS, stickerMe({ qrcode: 'view' }));
-  expect(visible.find((group) => group.label === 'Manual Book')?.items.map((i) => i.label)).toEqual(
-    ['QR Code'],
-  );
+  const parent = visible.flatMap((group) => group.items).find(isNavParent);
+  expect(parent?.id).toBe('manual-book');
+  expect(parent?.children.map((child) => child.label)).toEqual(['QR Code']);
 });
 
-test('Konfigurasi Stiker butuh sticker manage dan menu Stiker tidak ikut aktif di sana', () => {
-  const items = NAV_GROUPS.find((group) => group.label === 'Stiker')?.items ?? [];
-  const konfigurasi = items.find((entry) => entry.to === '/sticker/settings');
-  const stiker = items.find((entry) => entry.to === '/sticker');
-  if (!konfigurasi || !stiker) throw new Error('menu hilang');
+test('Konfigurasi butuh sticker manage dan Katalog tidak ikut aktif di sana', () => {
+  const konfigurasi = itemTo('/sticker/settings');
   expect(konfigurasi).toMatchObject({
-    label: 'Konfigurasi Stiker',
+    label: 'Konfigurasi',
     permission: { module: 'sticker', level: 'manage' },
   });
-  expect(stiker.excludes).toContain('/sticker/settings');
-  const labelsOf = (permissions: Partial<MeDto['permissions']>) =>
-    visibleNavGroups(NAV_GROUPS, stickerMe(permissions))
-      .find((group) => group.label === 'Stiker')
-      ?.items.map((entry) => entry.label) ?? [];
-  expect(labelsOf({ sticker: 'edit' })).not.toContain('Konfigurasi Stiker');
-  expect(labelsOf({ sticker: 'manage' })).toContain('Konfigurasi Stiker');
-  const at = (path: string) => (to: string, fuzzy: boolean) =>
-    fuzzy ? path.startsWith(to) : path === to;
-  expect(isNavItemActive(stiker, at('/sticker/settings'))).toBe(false);
+  expect(itemTo('/sticker').excludes).toContain('/sticker/settings');
+  expect(visibleLabels(stickerMe({ sticker: 'edit' }))).not.toContain('Konfigurasi');
+  expect(visibleLabels(stickerMe({ sticker: 'manage' }))).toContain('Konfigurasi');
+  expect(isNavItemActive(itemTo('/sticker'), at('/sticker/settings'))).toBe(false);
   expect(isNavItemActive(konfigurasi, at('/sticker/settings'))).toBe(true);
 });
 
-test('grup Postel berisi Daftar Postel (sticker view): tampil dengan izin, hilang tanpa izin', () => {
-  const postel = NAV_GROUPS.find((group) => group.label === 'Postel');
-  expect(postel?.items).toHaveLength(1);
-  expect(postel?.items[0]).toMatchObject({
-    label: 'Daftar Postel',
+test('Postel (sticker view): tampil dengan izin, hilang tanpa izin, aktif di semua rute /postel', () => {
+  const postel = itemTo('/postel');
+  expect(postel).toMatchObject({
+    label: 'Postel',
     to: '/postel',
     permission: { module: 'sticker', level: 'view' },
   });
-  const groupLabels = (permissions: Partial<MeDto['permissions']>) =>
-    visibleNavGroups(NAV_GROUPS, stickerMe(permissions)).map((group) => group.label);
-  expect(groupLabels({ sticker: 'view' })).toContain('Postel');
-  expect(groupLabels({ sticker: 'none' })).not.toContain('Postel');
-});
-
-test('Daftar Postel aktif di semua rute di bawah /postel', () => {
-  const item = NAV_GROUPS.find((group) => group.label === 'Postel')?.items[0];
-  if (!item) throw new Error('menu hilang');
-  const at = (path: string) => (to: string, fuzzy: boolean) =>
-    fuzzy ? path.startsWith(to) : path === to;
+  expect(visibleLabels(stickerMe({ sticker: 'view' }))).toContain('Postel');
+  expect(visibleLabels(stickerMe({ sticker: 'none' }))).not.toContain('Postel');
   for (const path of ['/postel', '/postel/new', '/postel/p1', '/postel/p1/edit'])
-    expect(isNavItemActive(item, at(path))).toBe(true);
+    expect(isNavItemActive(postel, at(path))).toBe(true);
 });
 
 function meWithSerial(
   serial: 'none' | 'view' | 'edit',
   serialservice: 'none' | 'view' = 'none',
 ): MeDto {
-  return {
-    email: 'a@gmail.com',
-    name: 'A',
-    isSuperAdmin: false,
-    sharedAccount: false,
-    canManageSerialSettings: false,
-    permissions: {
-      access: 'none',
-      item: 'none',
-      qrcode: 'none',
-      handover: 'none',
-      qc: 'none',
-      stock: 'none',
-      sticker: 'none',
-      stickerstock: 'none',
-      serial,
-      serialservice,
-      countrylock: 'none',
-    },
-    businessUnits: [],
-    locations: [],
-  };
+  return stickerMe({ serial, serialservice });
 }
 
+/** Anak induk Serial Number yang terlihat; undefined bila induknya tidak tampil. */
 const serialItems = (me: MeDto) =>
   visibleNavGroups(NAV_GROUPS, me)
-    .find((group) => group.label === 'Serial Number')
-    ?.items.map((entry) => entry.label);
+    .flatMap((group) => group.items)
+    .filter(isNavParent)
+    .find((parent) => parent.id === 'serial')
+    ?.children.map((child) => child.label);
 
-test('grup Serial Number hanya tampil bagi pengguna berizin', () => {
+test('induk Serial Number hanya tampil bagi pengguna berizin', () => {
   expect(serialItems(meWithSerial('none'))).toBeUndefined();
-  expect(serialItems(meWithSerial('view'))).toEqual(['Daftar Serial Number', 'Laporan']);
-  expect(serialItems(meWithSerial('none', 'view'))).toEqual(['Daftar Serial Number', 'Laporan']);
+  expect(serialItems(meWithSerial('view'))).toEqual(['Daftar', 'Laporan']);
+  expect(serialItems(meWithSerial('none', 'view'))).toEqual(['Daftar', 'Laporan']);
   // Mencatat dimulai dari tombol Tambah di daftar: tanpa menu "Catat Serial Number" (keputusan pemilik 2026-11-13).
   // Lapor Rusak bukan menu sidebar (keputusan pemilik 2026-11-15): tombolnya ada di halaman Laporan, bagi penulis.
-  expect(serialItems(meWithSerial('edit'))).toEqual(['Daftar Serial Number', 'Laporan']);
+  expect(serialItems(meWithSerial('edit'))).toEqual(['Daftar', 'Laporan']);
 });
 
 test('tanpa menu Catat Serial Number; Daftar tetap aktif di halaman catat dan detail', () => {
-  const items = NAV_GROUPS.find((group) => group.label === 'Serial Number')?.items ?? [];
-  expect(items.some((entry) => entry.to === '/serial/new')).toBe(false);
-  const list = items.find((entry) => entry.to === '/serial');
-  if (!list) throw new Error('menu hilang');
-  const at = (path: string) => (to: string, fuzzy: boolean) =>
-    fuzzy ? path.startsWith(to) : path === to;
+  expect(flat.some((entry) => entry.to === '/serial/new')).toBe(false);
+  const list = itemTo('/serial');
   expect(isNavItemActive(list, at('/serial/new'))).toBe(true);
   expect(isNavItemActive(list, at('/serial/abc'))).toBe(true);
   // Laporan punya menu sendiri: Daftar tidak ikut aktif di sana, juga di halaman Lapor Rusak.
   expect(isNavItemActive(list, at('/serial/report'))).toBe(false);
   expect(isNavItemActive(list, at('/serial/reports'))).toBe(false);
   // Tanpa menu "Lapor Rusak": halamannya dibuka dari tombol di Laporan, jadi menu Laporan yang menyala.
-  expect(items.some((entry) => entry.to === '/serial/report')).toBe(false);
-  expect(items.some((entry) => entry.label === 'Lapor Rusak')).toBe(false);
-  const reports = items.find((entry) => entry.to === '/serial/reports');
-  if (!reports) throw new Error('menu hilang');
+  expect(flat.some((entry) => entry.to === '/serial/report')).toBe(false);
+  expect(flat.some((entry) => entry.label === 'Lapor Rusak')).toBe(false);
+  const reports = itemTo('/serial/reports');
   expect(isNavItemActive(reports, at('/serial/reports'))).toBe(true);
   expect(isNavItemActive(reports, at('/serial/report'))).toBe(true);
 });
@@ -461,7 +482,7 @@ function meManagingSerial(
 }
 
 test('menu Pengaturan Serial Number mengikuti penanda server canManageSerialSettings; tidak ikut aktif di Daftar', () => {
-  const basic = ['Daftar Serial Number', 'Laporan'];
+  const basic = ['Daftar', 'Laporan'];
   expect(serialItems(meManagingSerial(['edit'], false))).toEqual(basic);
   // Pengelola sebagian BU: server menghitung penanda false (penerima bersifat global), jadi menu tidak muncul.
   expect(serialItems(meManagingSerial(['manage'], false))).toEqual(basic);
@@ -471,24 +492,26 @@ test('menu Pengaturan Serial Number mengikuti penanda server canManageSerialSett
     'Pengaturan',
   ]);
   expect(serialItems(meManagingSerial(['edit'], true, true))).toContain('Pengaturan');
-  const items = NAV_GROUPS.find((group) => group.label === 'Serial Number')?.items ?? [];
-  const list = items.find((entry) => entry.to === '/serial');
-  if (!list) throw new Error('menu hilang');
-  const at = (path: string) => (to: string, fuzzy: boolean) =>
-    fuzzy ? path.startsWith(to) : path === to;
-  expect(isNavItemActive(list, at('/serial/settings'))).toBe(false);
+  expect(isNavItemActive(itemTo('/serial'), at('/serial/settings'))).toBe(false);
 });
 
-test('grup Pengaturan Akses memuat Status Push (access view) dan hanya tampil bagi user ber-izin', () => {
-  const grup = NAV_GROUPS.find((group) => group.label === 'Pengaturan Akses');
-  expect(grup?.items.find((entry) => entry.to === '/access/push')).toMatchObject({
+test('Pengguna dan Role di induk Akses; Status Push dan Log Audit di Sistem (access view)', () => {
+  expect(itemTo('/access/push')).toMatchObject({
     label: 'Status Push',
     permission: { module: 'access', level: 'view' },
   });
-  const labels = (access: 'none' | 'view') =>
-    visibleNavGroups(NAV_GROUPS, stickerMe({ access }))
-      .flatMap((group) => group.items)
-      .map((entry) => entry.label);
-  expect(labels('view')).toContain('Status Push');
-  expect(labels('none')).not.toContain('Status Push');
+  expect(itemTo('/access/users').label).toBe('Pengguna');
+  expect(itemTo('/access/roles').label).toBe('Role');
+  const pengaturan = (access: 'none' | 'view') =>
+    visibleNavGroups(NAV_GROUPS, stickerMe({ access })).find((g) => g.label === 'Pengaturan');
+  const parents = pengaturan('view')?.items.filter(isNavParent);
+  expect(parents?.map((p) => p.label)).toEqual(['Akses', 'Sistem']);
+  expect(parents?.[0]?.children.map((c) => c.label)).toEqual([
+    'Pengguna',
+    'Role',
+    'Lokasi',
+    'Business Unit',
+  ]);
+  expect(parents?.[1]?.children.map((c) => c.label)).toEqual(['Status Push', 'Log Audit']);
+  expect(pengaturan('none')).toBeUndefined();
 });

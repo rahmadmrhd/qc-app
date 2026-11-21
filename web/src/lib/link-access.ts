@@ -1,5 +1,10 @@
 import type { MeDto } from '@shared/contract';
-import { can } from '@/modules/auth/permissions';
+import {
+  can,
+  canCreateItem,
+  canManageAnyItem,
+  liveBuIdsWithLevelOf,
+} from '@/modules/auth/permissions';
 
 /**
  * Tautan "buka record" dan izin "tambah" pada field relasi (`LinkField`/`LinkMultiField`). Semuanya hanya untuk UX
@@ -37,13 +42,36 @@ export function stickerLinkAccess(me: MeDto | null | undefined) {
   return { canCreateSticker: can(me, 'sticker', 'edit') };
 }
 
-/** Item pada form QR Manual Book: halaman lihat butuh `item: view`; tanpa Tambah (item dibuat di Data Item). */
+/**
+ * Item pada field relasi (mis. form QR Manual Book): halaman lihat butuh `item: view`; Tambah butuh `item: edit` pada
+ * minimal satu BU aktif (`canCreateItem`, sama dengan halaman Tambah item; keputusan pemilik 18). Dialog Tambah:
+ * `ItemFormDialog`. `canOpenDeleted`: tautan ke View item TERHAPUS hanya bagi pemegang `manage` (pemulih; soft delete
+ * §4.4), selain itu item terhapus tampil bertanda tanpa tautan.
+ */
 export function itemLinkAccess(me: MeDto | null | undefined) {
   return {
     openItemHref: can(me, 'item', 'view')
       ? (id: string) => `/item/${encodeURIComponent(id)}`
       : undefined,
+    canCreate: canCreateItem(me),
+    canOpenDeleted: canManageAnyItem(me),
   };
+}
+
+/**
+ * Tambah item dari pemilih Item modul Serial Number (keputusan pemilik 2026-11-20, spek redesain butir 29): BU dialog =
+ * IRISAN BU aktif tempat user memegang `item: edit` DAN `serial: edit` (BU terhapus tidak ditawarkan), karena
+ * `serials.itemOptions` hanya memuat BU `serial: edit`. Irisan kosong = `canCreate` false (baris Tambah tersembunyi).
+ */
+export function serialItemCreateAccess(me: MeDto | null | undefined) {
+  const serialEdit = new Set(liveBuIdsWithLevelOf(me, 'serial', 'edit'));
+  const active = new Set(
+    (me?.businessUnits ?? []).filter((bu) => bu.status === 'active').map((bu) => bu.id),
+  );
+  const allowedBuIds = liveBuIdsWithLevelOf(me, 'item', 'edit').filter(
+    (id) => serialEdit.has(id) && active.has(id),
+  );
+  return { canCreate: allowedBuIds.length > 0, allowedBuIds };
 }
 
 /**

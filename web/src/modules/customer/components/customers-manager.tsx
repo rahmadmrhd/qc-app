@@ -2,7 +2,7 @@ import type { CustomerDto } from '@shared/contract';
 import { HANDOVER_LIMITS } from '@shared/handover';
 import { useEffect, useRef, useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
-import { Badge } from '@/components/ui/badge';
+import { ActiveStatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -105,7 +105,11 @@ export function CustomersManager({
                       }}
                     />
                     {error?.id === customer.id ? (
-                      <p id="customer-edit-error" role="alert" className="text-sm text-destructive">
+                      <p
+                        id="customer-edit-error"
+                        role="alert"
+                        className="text-sm text-destructive-text"
+                      >
                         {error.message}
                       </p>
                     ) : null}
@@ -115,9 +119,7 @@ export function CustomersManager({
                 )}
               </TableCell>
               <TableCell>
-                <Badge variant={customer.status === 'active' ? 'default' : 'secondary'}>
-                  {customer.status === 'active' ? 'Aktif' : 'Nonaktif'}
-                </Badge>
+                <ActiveStatusBadge status={customer.status} />
               </TableCell>
               <TableCell className="space-x-2 text-right">
                 {editingId === customer.id ? (

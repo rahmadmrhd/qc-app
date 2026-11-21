@@ -54,7 +54,7 @@ function SyncControl({ bridge }: { bridge: QcBridge }) {
       disabled={refreshing}
       aria-label="Sinkronkan katalog"
       title={hint}
-      className={warn ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'}
+      className={warn ? 'text-warning-text' : 'text-muted-foreground'}
     >
       <RefreshCw className={refreshing ? 'animate-spin' : undefined} />
       <span className="hidden text-xs sm:inline">{text}</span>

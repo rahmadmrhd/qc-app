@@ -16,6 +16,7 @@ import {
 } from '@/modules/sticker/queries';
 
 export const Route = createFileRoute('/_app/sticker/settings')({
+  staticData: { pageWidth: 'narrow' },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'sticker', 'manage'),
   loader: ({ context }) =>
     Promise.all([
@@ -36,7 +37,7 @@ function StickerSettingsRoute() {
   const savePostel = useSavePostelSettings();
 
   return (
-    <div className="max-w-3xl space-y-8">
+    <div className="space-y-8">
       <StickerSettingsPage
         settings={settings}
         users={canReadUsers ? (users.data ?? null) : null}

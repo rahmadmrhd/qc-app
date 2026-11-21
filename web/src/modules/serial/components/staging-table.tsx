@@ -6,13 +6,14 @@ import {
   serialProblem,
 } from '@shared/serials';
 import { memo, useMemo, useState } from 'react';
+import type { UploadEntry } from '@/components/file-dialog/use-background-uploads';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { existingBuProblem, existingProblem, type StagingRow } from '../lib/draft';
 import { noteSummary } from '../lib/note-summary';
 import type { StampPreviewInput } from '../lib/stamp-preview';
-import { ProofPhotoField } from './proof-photo-field';
+import { type ProofFieldUploads, ProofPhotoField } from './proof-photo-field';
 
 export interface StagingTableProps {
   rows: readonly StagingRow[];
@@ -28,7 +29,15 @@ export interface StagingTableProps {
   disabled?: boolean;
   /** Nama pelaku untuk pratinjau cap di kamera foto (dari akun yang masuk); kosong = tanpa pratinjau cap. */
   actorName?: string;
+  /** Unggahan foto bukti yang berjalan/gagal (semua baris; dikelompokkan per `clientId` baris di sini). */
+  uploadEntries: readonly UploadEntry[];
+  /** Mengantrekan berkas foto bukti untuk satu baris (hook unggah dipegang halaman). */
+  onUploadFiles: (clientId: string, files: Parameters<ProofFieldUploads['add']>[0]) => void;
+  onRetryUpload: (key: string) => void;
+  onCancelUpload: (key: string) => void;
 }
+
+const NO_UPLOADS: readonly UploadEntry[] = [];
 
 /** Penanda sebuah baris: hasil dari server, rujukan yang harus dipilih ulang, atau kolom wajib yang kosong. */
 export function rowStatus(row: StagingRow): { tone: 'error' | 'warn' | 'ok'; text: string } {
@@ -59,8 +68,8 @@ export function rowStatus(row: StagingRow): { tone: 'error' | 'warn' | 'ok'; tex
 }
 
 export const TONE_CLASS = {
-  error: 'text-destructive',
-  warn: 'text-amber-600 dark:text-amber-400',
+  error: 'text-destructive-text',
+  warn: 'text-warning-text',
   ok: 'text-muted-foreground',
 } as const;
 
@@ -138,7 +147,7 @@ function SerialCell({ clientId, serial, onCommitSerial, disabled, locked }: Seri
         }}
       />
       {error ? (
-        <p role="alert" className="mt-0.5 text-xs text-destructive">
+        <p role="alert" className="mt-0.5 text-xs text-destructive-text">
           {error}
         </p>
       ) : null}
@@ -188,11 +197,16 @@ export function RowBadges({ row }: { row: StagingRow }) {
 }
 
 interface RowViewProps
-  extends Omit<StagingTableProps, 'rows' | 'onSelectAll' | 'disabled' | 'actorName'> {
+  extends Omit<
+    StagingTableProps,
+    'rows' | 'onSelectAll' | 'disabled' | 'actorName' | 'uploadEntries'
+  > {
   actorName: string;
   disabled: boolean;
   row: StagingRow;
   index: number;
+  /** Unggahan baris ini saja (identitas tetap bila tak berubah, agar `memo` tidak menggambar ulang baris lain). */
+  uploads: readonly UploadEntry[];
 }
 
 const RowView = memo(function RowView({
@@ -205,8 +219,22 @@ const RowView = memo(function RowView({
   onRemove,
   disabled,
   actorName,
+  uploads,
+  onUploadFiles,
+  onRetryUpload,
+  onCancelUpload,
 }: RowViewProps) {
   const status = rowStatus(row);
+  const clientId = row.clientId;
+  const rowUploads = useMemo<ProofFieldUploads>(
+    () => ({
+      entries: uploads,
+      add: (files) => onUploadFiles(clientId, files),
+      retry: onRetryUpload,
+      remove: onCancelUpload,
+    }),
+    [uploads, clientId, onUploadFiles, onRetryUpload, onCancelUpload],
+  );
   // Data cap dari kolom baris (primitif, jadi baris `memo` lain tak ikut dirender ulang).
   const stamp = useMemo<StampPreviewInput | undefined>(
     () =>
@@ -229,7 +257,7 @@ const RowView = memo(function RowView({
       className={cn(
         'border-b align-top',
         status.tone === 'error' && 'bg-destructive/5',
-        status.tone === 'warn' && 'bg-amber-500/5',
+        status.tone === 'warn' && 'bg-warning-text/5',
         row.selected && 'bg-muted/50',
       )}
     >
@@ -277,6 +305,7 @@ const RowView = memo(function RowView({
       <td className="min-w-24 px-2 py-1.5">
         <ProofPhotoField
           value={row.proofPhotos}
+          uploads={rowUploads}
           max={SERIAL_PROOF_LIMITS.perEntryMax}
           disabled={disabled}
           label={row.serial}
@@ -322,8 +351,21 @@ export function StagingTable({
   onRemove,
   disabled = false,
   actorName = '',
+  uploadEntries,
+  onUploadFiles,
+  onRetryUpload,
+  onCancelUpload,
 }: StagingTableProps) {
   const allSelected = rows.length > 0 && rows.every((row) => row.selected);
+  const uploadsByRow = useMemo(() => {
+    const grouped = new Map<string, UploadEntry[]>();
+    for (const entry of uploadEntries) {
+      const list = grouped.get(entry.owner);
+      if (list) list.push(entry);
+      else grouped.set(entry.owner, [entry]);
+    }
+    return grouped;
+  }, [uploadEntries]);
   return (
     <div className="relative overflow-x-auto rounded-md border">
       <table className="w-full text-left">
@@ -376,6 +418,10 @@ export function StagingTable({
               onRemove={onRemove}
               disabled={disabled}
               actorName={actorName}
+              uploads={uploadsByRow.get(row.clientId) ?? NO_UPLOADS}
+              onUploadFiles={onUploadFiles}
+              onRetryUpload={onRetryUpload}
+              onCancelUpload={onCancelUpload}
             />
           ))}
         </tbody>

@@ -7,7 +7,6 @@ import { linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
 import { stickerSaveFailure } from './sticker-form-dialog';
 import { StickersPage } from './stickers-page';
 
-vi.mock('@/modules/files/use-upload-image', () => ({ useUploadImage: () => vi.fn() }));
 vi.mock('@/modules/item/components/image-thumb', () => ({ ImageThumb: () => null }));
 
 const types: StickerTypeDto[] = [
@@ -595,4 +594,13 @@ test('Aktifkan stiker Postel nonaktif tidak tampil bagi non-pengelola', () => {
     canManage: false,
   });
   expect(screen.queryByRole('button', { name: 'Aktifkan Postel' })).toBeNull();
+});
+
+test('dialog tambah: Jenis dan Nama stiker wajib (aria-required); Alias opsional', async () => {
+  renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  const dialog = await screen.findByRole('alertdialog');
+  expect(within(dialog).getByLabelText('Jenis')).toHaveAttribute('aria-required', 'true');
+  expect(within(dialog).getByLabelText('Nama stiker')).toHaveAttribute('aria-required', 'true');
+  expect(within(dialog).getByLabelText('Alias')).not.toHaveAttribute('aria-required');
 });

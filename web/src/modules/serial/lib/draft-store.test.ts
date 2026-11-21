@@ -175,14 +175,7 @@ test('foto bukti: bolak-balik simpan-muat, draf lama tanpa field = tanpa foto, e
     JSON.stringify([
       {
         ...row,
-        proofPhotos: [
-          { id: 5 },
-          null,
-          'x',
-          { ...photo, size: 'besar' },
-          { ...photo, thumbUrl: 7 },
-          ...many,
-        ],
+        proofPhotos: [{ id: 5 }, null, 'x', { ...photo, size: 'besar' }, ...many],
       },
     ]),
   );
@@ -195,6 +188,24 @@ test('foto bukti: bolak-balik simpan-muat, draf lama tanpa field = tanpa foto, e
   ]);
   localStorage.setItem('qc.serial.draft:a@x.com', JSON.stringify([{ ...row, proofPhotos: 'x' }]));
   expect(loadDraft('a@x.com')[0]?.proofPhotos).toEqual([]);
+});
+
+test('thumbUrl tersimpan diabaikan: pratinjau selalu diturunkan dari id foto', () => {
+  const [row] = rows(1);
+  if (!row) throw new Error('seed');
+  const tampered = {
+    id: 'p9',
+    mime: 'image/webp',
+    size: 10,
+    thumbUrl: 'https://evil.example/x.png',
+  };
+  localStorage.setItem(
+    'qc.serial.draft:a@x.com',
+    JSON.stringify([{ ...row, proofPhotos: [tampered] }]),
+  );
+  expect(loadDraft('a@x.com')[0]?.proofPhotos).toEqual([
+    { id: 'p9', mime: 'image/webp', size: 10, thumbUrl: '/api/v1/serial-proofs/p9' },
+  ]);
 });
 
 test('proofMin baris dipulihkan; draft lama tanpa proofMin tetap dimuat tanpa nilai itu; nilai tak sah dibuang', () => {

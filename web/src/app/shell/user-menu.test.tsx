@@ -35,7 +35,11 @@ vi.mock('@/modules/guide/components/guide-menu-dialog', () => ({
   ),
 }));
 
+import { mockMatchMedia } from '@/test/match-media';
 import { UserMenu } from './user-menu';
+
+// UserMenu membaca useIsMobile (matchMedia tidak ada di jsdom).
+mockMatchMedia(false);
 
 async function openMenu() {
   await userEvent.click(screen.getByRole('button', { name: /Rina/ }));

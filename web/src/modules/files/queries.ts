@@ -1,5 +1,4 @@
-import type { UploadFileInput } from '@shared/contract';
-import { queryOptions, useMutation, useQuery } from '@tanstack/react-query';
+import { queryOptions, type UseQueryResult, useQuery } from '@tanstack/react-query';
 import { useLayoutEffect, useState } from 'react';
 import { api } from '@/lib/api';
 
@@ -23,7 +22,20 @@ export function useFileUrl(id: string): {
   isError: boolean;
 } {
   // Id kosong = tidak ada berkas (mis. konfigurasi tanpa logo): jangan memanggil server.
-  const query = useQuery({ ...fileQueryOptions(id), enabled: id !== '' });
+  return useBlobUrl(useQuery({ ...fileQueryOptions(id), enabled: id !== '' }));
+}
+
+/** URL objek (Blob) dari query yang hasilnya berisi `bytes` + `mime` (mis. `files.get`, `postelFiles.get`). */
+export function useBlobUrl(
+  query: Pick<
+    UseQueryResult<{ bytes: Uint8Array; mime: string }>,
+    'data' | 'isLoading' | 'isError'
+  >,
+): {
+  url: string | null;
+  isLoading: boolean;
+  isError: boolean;
+} {
   const data = query.data;
   // URL objek (Blob) dibuat di EFEK LAYOUT (bukan saat render; berjalan sebelum paint) dan di-revoke oleh cleanup efek
   // yang sama: render yang dibuang tidak membocorkan URL, dan siklus mount-cleanup-mount StrictMode membuat ulang
@@ -46,6 +58,3 @@ export function useFileUrl(id: string): {
     isError: query.isError,
   };
 }
-
-export const useUploadFile = () =>
-  useMutation({ mutationFn: (input: UploadFileInput) => api('files.upload', input) });

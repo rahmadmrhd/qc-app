@@ -253,6 +253,20 @@ describe('GET /auth/callback', () => {
     );
     expect(response.headers.get('location')).toBe('/?authError=NOT_WHITELISTED');
   });
+
+  test('pengguna terhapus (soft delete) diperlakukan sebagai tidak terdaftar', async () => {
+    await env.DB.prepare(
+      "UPDATE users SET deleted_at = '2026-02-02T00:00:00.000Z', deleted_by = 'x'",
+    ).run();
+    mockGoogle({ body: { id_token: idToken({}) } });
+    const { cookie, state } = await startLogin();
+    const response = await app.request(
+      `https://qc.test/auth/callback?code=x&state=${state}`,
+      { headers: { cookie } },
+      env,
+    );
+    expect(response.headers.get('location')).toBe('/?authError=NOT_WHITELISTED');
+  });
 });
 
 describe('CSRF dan logout', () => {

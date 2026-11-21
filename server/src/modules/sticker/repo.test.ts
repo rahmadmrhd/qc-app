@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { seedItem } from '@server-test/item-fixtures';
+import { seedQrDesign } from '@server-test/qrcode-env';
 import { seedManualBookVersion, seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { manualBookDesignIdsOf } from '../item/repo';
@@ -117,10 +118,17 @@ describe('versi Manual Book', () => {
 });
 
 describe('item: penunjuk Manual Book', () => {
-  test('manualBookDesignIdsOf hanya memuat item yang sudah tergabung', async () => {
+  test('manualBookDesignIdsOf hanya memuat item yang tergabung ke konfigurasi hidup', async () => {
+    await seedQrDesign(env, { id: 'q1' });
+    await seedQrDesign(env, {
+      id: 'q-gone',
+      deletedAt: '2026-11-20T00:00:00.000Z',
+      deletedBy: 'x',
+    });
     await seedItem(env, { id: 'i1', brand: 'Acme', model: 'A', manualBookDesignId: 'q1' });
     await seedItem(env, { id: 'i2', brand: 'Acme', model: 'B' });
-    const map = await manualBookDesignIdsOf(env.DB, ['i1', 'i2', 'i3']);
+    await seedItem(env, { id: 'i4', brand: 'Acme', model: 'D', manualBookDesignId: 'q-gone' });
+    const map = await manualBookDesignIdsOf(env.DB, ['i1', 'i2', 'i3', 'i4']);
     expect(Object.fromEntries(map)).toEqual({ i1: 'q1' });
   });
 });

@@ -57,7 +57,7 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
     ...buIdsWithLevelOf(me, 'serialservice', 'view'),
   ]);
   const buOptions: LinkOption[] = (me.businessUnits ?? [])
-    .filter((bu) => readableBuIds.has(bu.id))
+    .filter((bu) => !bu.deleted && readableBuIds.has(bu.id))
     .map((bu) => ({ id: bu.id, label: `${bu.code} · ${bu.name}` }));
   const [itemTerm, setItemTerm] = useState('');
   const { data, isFetching } = useQuery(serialItemOptionsQueryOptions(itemTerm.trim()));
@@ -149,7 +149,7 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
         />
         <p
           className={
-            normalized.capped ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'
+            normalized.capped ? 'text-xs text-destructive-text' : 'text-xs text-muted-foreground'
           }
           role={normalized.capped ? 'alert' : undefined}
         >

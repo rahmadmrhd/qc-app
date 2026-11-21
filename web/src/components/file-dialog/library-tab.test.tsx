@@ -300,7 +300,7 @@ test('keadaan kosong: Belum ada gambar, dan Tidak ada hasil saat memfilter', asy
   renderTab(source);
   expect(await screen.findByText('Belum ada gambar')).toBeInTheDocument();
   await user.click(screen.getByRole('button', { name: 'Belum dipakai' }));
-  expect(await screen.findByText('Tidak ada hasil')).toBeInTheDocument();
+  expect(await screen.findByText('Tidak ada hasil untuk filter ini.')).toBeInTheDocument();
 });
 
 test('galat memuat menampilkan Coba lagi', async () => {

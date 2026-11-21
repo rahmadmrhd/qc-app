@@ -109,7 +109,7 @@ function AuditPage() {
           <AuditTable entries={entries} onSelect={setSelected} />
         </div>
       ) : auditQuery.isError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Log audit gagal dimuat.
         </p>
       ) : (

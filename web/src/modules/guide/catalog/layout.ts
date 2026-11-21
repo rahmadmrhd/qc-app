@@ -28,7 +28,7 @@ export const DASAR_LAYOUT: GuideEntry = {
     {
       target: 'location-menu',
       buka: 'location-picker',
-      text: 'Ini pemilih lokasi aktif. Centang satu atau beberapa lokasi yang kamu pegang; daftar di halaman (papan, stok, dan lainnya) langsung ikut berubah mengikuti lokasi yang tercentang.',
+      text: 'Ini pemilih lokasi aktif. Centang satu atau beberapa lokasi yang kamu pegang; daftar di halaman (papan, stok, dan lainnya) langsung ikut berubah mengikuti lokasi yang tercentang. Di ponsel, lokasi aktif ada di baris di bawah judul pada halaman yang bergantung lokasi; ketuk untuk memilih.',
       advance: 'next',
     },
     {
@@ -46,7 +46,7 @@ export const DASAR_LAYOUT: GuideEntry = {
     {
       target: 'user-menu-content',
       buka: 'user-menu',
-      text: 'Ini menu akunmu. Paling atas ada nama dan email akun yang sedang dipakai (cek di sini kalau perangkatnya dipakai bergantian). Di bawahnya ada Pasang aplikasi (kalau perangkatmu bisa), Panduan untuk membuka tur seperti ini lagi, Notifikasi push, dan Keluar.',
+      text: 'Ini menu akunmu. Paling atas ada nama dan email akun yang sedang dipakai (cek di sini kalau perangkatnya dipakai bergantian). Di bawahnya ada Pasang aplikasi (kalau perangkatmu bisa), Panduan untuk membuka tur seperti ini lagi, Notifikasi push, dan Keluar. Di ponsel, menu ini berupa lembar dari bawah yang juga memuat Lokasi aktif, pilihan Tema, dan antrean yang belum terkirim.',
       advance: 'next',
     },
   ],

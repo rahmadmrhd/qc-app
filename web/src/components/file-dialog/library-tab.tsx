@@ -7,6 +7,7 @@ import {
 import { Eye, Search, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { GridView } from '@/components/grid/grid-view';
 import { Select } from '@/components/select';
 import { Spinner } from '@/components/spinner';
 import {
@@ -22,14 +23,18 @@ import {
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
 import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { errorText } from './error-text';
 import { FileDropZone } from './file-drop-zone';
 import { InlineName } from './inline-name';
-import type { FileLibrarySource, LibraryItem, LibraryPage, LibrarySort } from './types';
-import { useInfiniteSentinel } from './use-infinite-sentinel';
+import type {
+  FileLibrarySource,
+  LibraryItem,
+  LibraryPage,
+  LibraryQuery,
+  LibrarySort,
+} from './types';
 
 const SORT_OPTIONS: ReadonlyArray<{ value: LibrarySort; label: string }> = [
   { value: 'newest', label: 'Terbaru' },
@@ -57,6 +62,15 @@ export interface LibraryTabProps {
   /** Item diganti nama / dihapus di sini: pemilik pilihan menyelaraskan salinannya. */
   onRenamed?(item: LibraryItem): void;
   onRemoved?(id: string): void;
+  /**
+   * Kueri dari luar (halaman Pustaka: kontrol cari/urut/filter ada di `FilterBar`). Bila diberikan, kontrol
+   * internal tab tidak dirender dan pencarian tetap ditunda (debounce) di sini.
+   */
+  query?: LibraryQuery;
+  /** Tombol "Hapus filter" pada hasil kosong karena filter (halaman Pustaka: kontrol ada di luar tab). */
+  onClearFilters?(): void;
+  /** Jumlah gambar termuat (dan masih ada halaman berikutnya) untuk hitungan hasil di judul halaman. */
+  onCountChange?(count: number | null, hasMore: boolean): void;
 }
 
 type ListData = InfiniteData<LibraryPage, string | null>;
@@ -83,13 +97,20 @@ export function LibraryTab({
   dropZone = true,
   onRenamed,
   onRemoved,
+  query: externalQuery,
+  onClearFilters,
+  onCountChange,
 }: LibraryTabProps) {
   const queryClient = useQueryClient();
   const [searchText, setSearchText] = useState('');
-  const search = useDebounced(searchText, SEARCH_DELAY_MS);
-  const [sort, setSort] = useState<LibrarySort>('newest');
-  const [mine, setMine] = useState(false);
-  const [unused, setUnused] = useState(false);
+  const [sortState, setSort] = useState<LibrarySort>('newest');
+  const [mineState, setMine] = useState(false);
+  const [unusedState, setUnused] = useState(false);
+  const external = externalQuery !== undefined;
+  const search = useDebounced(externalQuery?.search ?? searchText, SEARCH_DELAY_MS);
+  const sort = externalQuery?.sort ?? sortState;
+  const mine = externalQuery?.mine ?? mineState;
+  const unused = externalQuery?.unused ?? unusedState;
   const [pendingDelete, setPendingDelete] = useState<LibraryItem | null>(null);
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
 
@@ -113,11 +134,6 @@ export function LibraryTab({
   }, [result.data]);
 
   const { fetchNextPage, hasNextPage, isFetchingNextPage, isFetchNextPageError } = result;
-  const { ref: sentinelRef, supported } = useInfiniteSentinel({
-    enabled: Boolean(hasNextPage) && !isFetchingNextPage && !isFetchNextPageError,
-    onVisible: () => void fetchNextPage(),
-    resetKey: items.length,
-  });
 
   function patchCaches(update: (items: LibraryItem[]) => LibraryItem[]) {
     queryClient.setQueriesData<ListData>({ queryKey: [source.key] }, (data) =>
@@ -172,6 +188,11 @@ export function LibraryTab({
   }
 
   const filtered = search !== '' || mine || unused;
+  const loadedCount = result.isSuccess ? items.length : null;
+  const more = Boolean(hasNextPage);
+  useEffect(() => {
+    onCountChange?.(loadedCount, more);
+  }, [onCountChange, loadedCount, more]);
   const showSkeleton = result.isPending;
   const showError = result.isError && items.length === 0 && !result.isFetching;
   const showEmpty = !showSkeleton && !result.isError && items.length === 0;
@@ -183,212 +204,175 @@ export function LibraryTab({
       disabled={!dropZone}
       className="flex min-h-0 flex-1 flex-col gap-3"
     >
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <div className="relative min-w-0 flex-1">
-          <Search
-            aria-hidden
-            className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            type="search"
-            aria-label="Cari gambar"
-            placeholder="Cari nama gambar"
-            className="pl-8"
-            value={searchText}
-            onChange={(event) => setSearchText(event.target.value)}
-          />
-        </div>
-        <Select
-          id="library-sort"
-          label="Urutkan"
-          hideLabel
-          className="sm:w-44"
-          options={SORT_OPTIONS}
-          value={sort}
-          onValueChange={(next) => setSort(next as LibrarySort)}
-        />
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant={mine ? 'default' : 'outline'}
-          aria-pressed={mine}
-          onClick={() => setMine((value) => !value)}
-        >
-          Diunggah oleh saya
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={unused ? 'default' : 'outline'}
-          aria-pressed={unused}
-          onClick={() => setUnused((value) => !value)}
-        >
-          Belum dipakai
-        </Button>
-      </div>
+      {external ? null : (
+        <>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 flex-1">
+              <Search
+                aria-hidden
+                className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                type="search"
+                aria-label="Cari gambar"
+                placeholder="Cari nama gambar"
+                className="pl-8"
+                value={searchText}
+                onChange={(event) => setSearchText(event.target.value)}
+              />
+            </div>
+            <Select
+              id="library-sort"
+              label="Urutkan"
+              hideLabel
+              className="sm:w-44"
+              options={SORT_OPTIONS}
+              value={sort}
+              onValueChange={(next) => setSort(next as LibrarySort)}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={mine ? 'default' : 'outline'}
+              aria-pressed={mine}
+              onClick={() => setMine((value) => !value)}
+            >
+              Diunggah oleh saya
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={unused ? 'default' : 'outline'}
+              aria-pressed={unused}
+              onClick={() => setUnused((value) => !value)}
+            >
+              Belum dipakai
+            </Button>
+          </div>
+        </>
+      )}
 
-      {showSkeleton ? (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {Array.from({ length: 10 }, (_, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: kerangka statis
-            <Skeleton key={index} className="aspect-square" />
-          ))}
-        </div>
-      ) : null}
-
-      {showError ? (
-        <div className="flex flex-col items-center gap-2 py-10 text-center text-sm">
-          <p className="text-destructive">Gagal memuat pustaka gambar</p>
-          <Button type="button" variant="outline" onClick={() => void result.refetch()}>
-            Coba lagi
-          </Button>
-        </div>
-      ) : null}
-
-      {showEmpty ? (
-        <p className="py-10 text-center text-sm text-muted-foreground">
-          {filtered ? 'Tidak ada hasil' : 'Belum ada gambar'}
-        </p>
-      ) : null}
-
-      {items.length > 0 ? (
-        <ul
-          role={mode === 'single' && selectable ? 'radiogroup' : undefined}
-          aria-label="Pustaka gambar"
-          className={cn(
-            'grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5',
-            result.isPlaceholderData && 'opacity-60',
-          )}
-        >
-          {items.map((item) => {
-            const selected = selection.has(item.id);
-            const busy = busyIds.has(item.id);
-            const inUse = item.usageCount > 0;
-            return (
-              <li
-                key={item.id}
-                className={cn(
-                  'flex flex-col overflow-hidden rounded-lg border bg-card',
-                  selected && 'ring-2 ring-primary',
-                )}
-              >
-                <div className="relative aspect-square bg-muted">
-                  <button
+      <GridView
+        items={items}
+        itemKey={(item) => item.id}
+        label="Pustaka gambar"
+        role={mode === 'single' && selectable ? 'radiogroup' : 'list'}
+        isLoading={showSkeleton}
+        isError={showError}
+        errorText="Gagal memuat pustaka gambar"
+        onRetry={() => void result.refetch()}
+        filtered={filtered}
+        onClearFilters={onClearFilters}
+        empty={showEmpty ? (filtered ? 'Tidak ada hasil' : 'Belum ada gambar') : undefined}
+        hasMore={Boolean(hasNextPage)}
+        loadingMore={isFetchingNextPage}
+        loadMoreError={isFetchNextPageError}
+        onLoadMore={() => void fetchNextPage()}
+        className={cn(result.isPlaceholderData && 'opacity-60')}
+        itemClassName={(item) =>
+          cn(
+            'flex flex-col overflow-hidden rounded-lg border bg-card',
+            selection.has(item.id) && 'ring-2 ring-primary',
+          )
+        }
+        renderItem={(item) => {
+          const selected = selection.has(item.id);
+          const busy = busyIds.has(item.id);
+          const inUse = item.usageCount > 0;
+          return (
+            <>
+              <div className="relative aspect-square bg-muted">
+                <button
+                  type="button"
+                  className="absolute inset-0 flex items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  tabIndex={selectable ? -1 : undefined}
+                  aria-label={selectable ? undefined : `Pratinjau ${item.name}`}
+                  onClick={() => (selectable ? onToggle(item) : onPreview(item))}
+                >
+                  <img
+                    src={item.thumbUrl}
+                    alt={item.name}
+                    loading="lazy"
+                    width={item.width}
+                    height={item.height}
+                    className="size-full object-contain"
+                  />
+                </button>
+                {selectable ? (
+                  <div className="absolute top-1.5 left-1.5 rounded bg-background/80 p-1">
+                    {mode === 'single' ? (
+                      <input
+                        type="radio"
+                        name={`pilihan-${source.key}`}
+                        checked={selected}
+                        aria-label={`Pilih ${item.name}`}
+                        className="size-4 accent-primary"
+                        onChange={() => undefined}
+                        onClick={() => onToggle(item)}
+                      />
+                    ) : (
+                      <Checkbox
+                        checked={selected}
+                        aria-label={`Pilih ${item.name}`}
+                        onCheckedChange={() => onToggle(item)}
+                      />
+                    )}
+                  </div>
+                ) : null}
+                {selectable ? (
+                  <Button
                     type="button"
-                    className="absolute inset-0 flex items-center justify-center outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    tabIndex={selectable ? -1 : undefined}
-                    aria-label={selectable ? undefined : `Pratinjau ${item.name}`}
-                    onClick={() => (selectable ? onToggle(item) : onPreview(item))}
+                    variant="secondary"
+                    size="icon-sm"
+                    className="absolute top-1.5 right-1.5"
+                    aria-label={`Pratinjau ${item.name}`}
+                    onClick={() => onPreview(item)}
                   >
-                    <img
-                      src={item.thumbUrl}
-                      alt={item.name}
-                      loading="lazy"
-                      width={item.width}
-                      height={item.height}
-                      className="size-full object-contain"
-                    />
-                  </button>
-                  {selectable ? (
-                    <div className="absolute top-1.5 left-1.5 rounded bg-background/80 p-1">
-                      {mode === 'single' ? (
-                        <input
-                          type="radio"
-                          name={`pilihan-${source.key}`}
-                          checked={selected}
-                          aria-label={`Pilih ${item.name}`}
-                          className="size-4 accent-primary"
-                          onChange={() => undefined}
-                          onClick={() => onToggle(item)}
-                        />
-                      ) : (
-                        <Checkbox
-                          checked={selected}
-                          aria-label={`Pilih ${item.name}`}
-                          onCheckedChange={() => onToggle(item)}
-                        />
-                      )}
-                    </div>
-                  ) : null}
-                  {selectable ? (
+                    <Eye />
+                  </Button>
+                ) : null}
+              </div>
+              {inUse ? (
+                <p className="px-2 pt-1.5 text-xs text-muted-foreground">
+                  Dipakai {item.usageCount} item
+                </p>
+              ) : null}
+              <div className="flex items-center gap-1 p-2 text-sm">
+                <InlineName
+                  value={item.name}
+                  maxLength={source.nameMax}
+                  readOnly={!item.canRename || busy}
+                  className="flex-1"
+                  onSave={(name) => void rename(item, name)}
+                />
+                {item.canRemove ? (
+                  <span
+                    title={
+                      inUse ? `Dipakai ${item.usageCount} item, tidak dapat dihapus` : undefined
+                    }
+                    className="shrink-0"
+                  >
                     <Button
                       type="button"
-                      variant="secondary"
+                      variant="ghost"
                       size="icon-sm"
-                      className="absolute top-1.5 right-1.5"
-                      aria-label={`Pratinjau ${item.name}`}
-                      onClick={() => onPreview(item)}
-                    >
-                      <Eye />
-                    </Button>
-                  ) : null}
-                </div>
-                {inUse ? (
-                  <p className="px-2 pt-1.5 text-xs text-muted-foreground">
-                    Dipakai {item.usageCount} item
-                  </p>
-                ) : null}
-                <div className="flex items-center gap-1 p-2 text-sm">
-                  <InlineName
-                    value={item.name}
-                    maxLength={source.nameMax}
-                    readOnly={!item.canRename || busy}
-                    className="flex-1"
-                    onSave={(name) => void rename(item, name)}
-                  />
-                  {item.canRemove ? (
-                    <span
-                      title={
-                        inUse ? `Dipakai ${item.usageCount} item, tidak dapat dihapus` : undefined
+                      disabled={inUse || busy}
+                      aria-label={
+                        inUse ? `Hapus ${item.name} (masih dipakai)` : `Hapus ${item.name}`
                       }
-                      className="shrink-0"
+                      onClick={() => setPendingDelete(item)}
                     >
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        disabled={inUse || busy}
-                        aria-label={
-                          inUse ? `Hapus ${item.name} (masih dipakai)` : `Hapus ${item.name}`
-                        }
-                        onClick={() => setPendingDelete(item)}
-                      >
-                        {busy ? <Spinner /> : <Trash2 />}
-                      </Button>
-                    </span>
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ul>
-      ) : null}
-
-      {items.length > 0 && hasNextPage ? (
-        <div ref={sentinelRef} className="flex min-h-8 items-center justify-center">
-          {isFetchingNextPage ? <Spinner /> : null}
-          {isFetchNextPageError ? (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-destructive">Gagal memuat halaman berikutnya</span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void fetchNextPage()}
-              >
-                Coba lagi
-              </Button>
-            </div>
-          ) : null}
-          {!supported && !isFetchingNextPage && !isFetchNextPageError ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => void fetchNextPage()}>
-              Muat lebih banyak
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
+                      {busy ? <Spinner /> : <Trash2 />}
+                    </Button>
+                  </span>
+                ) : null}
+              </div>
+            </>
+          );
+        }}
+      />
 
       <AlertDialog
         open={pendingDelete !== null}

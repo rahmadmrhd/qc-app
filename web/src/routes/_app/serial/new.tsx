@@ -1,5 +1,7 @@
-import { createFileRoute, useBlocker, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, useBlocker } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
+import { leaveBlocker } from '@/lib/leave-blocker';
 import { requirePermission } from '@/modules/auth/permissions';
 import { LeaveProofDialog } from '@/modules/serial/components/leave-proof-dialog';
 import { RecordPage, type RecordPageHandle } from '@/modules/serial/components/record-page';
@@ -10,6 +12,7 @@ import {
 } from '@/modules/serial/lib/leave-guard';
 
 export const Route = createFileRoute('/_app/serial/new')({
+  staticData: { crumb: 'Tambah', pageWidth: 'full', locationAware: true },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'serial', 'edit'),
   component: NewSerialRoute,
 });
@@ -22,17 +25,19 @@ function NewSerialRoute() {
   const hasProof = useRef(false);
   const page = useRef<RecordPageHandle | null>(null);
   const [saving, setSaving] = useState(false);
-  const navigate = useNavigate();
+  const stack = useStackNavigation();
   // Draft biasa: konfirmasi bawaan peramban seperti semula. Draft berfoto bukti ditangani penjaga kedua (dialog).
   useBlocker({
-    shouldBlockFn: () =>
-      leaveMode(dirty.current, hasProof.current) === 'confirm' &&
-      shouldBlockLeave(true, () => window.confirm(LEAVE_MESSAGE)),
+    shouldBlockFn: leaveBlocker(
+      () =>
+        leaveMode(dirty.current, hasProof.current) === 'confirm' &&
+        shouldBlockLeave(true, () => window.confirm(LEAVE_MESSAGE)),
+    ),
     // Menutup tab/memuat ulang tetap diperingatkan (juga saat ada foto).
     enableBeforeUnload: () => shouldWarnBeforeUnload(dirty.current),
   });
   const blocker = useBlocker({
-    shouldBlockFn: () => leaveMode(dirty.current, hasProof.current) === 'dialog',
+    shouldBlockFn: leaveBlocker(() => leaveMode(dirty.current, hasProof.current) === 'dialog'),
     withResolver: true,
   });
 
@@ -59,7 +64,7 @@ function NewSerialRoute() {
   }
 
   return (
-    <div className="max-w-7xl">
+    <div>
       <RecordPage
         handleRef={page}
         onDirtyChange={(value) => {
@@ -71,7 +76,7 @@ function NewSerialRoute() {
         // Semua baris tersimpan: kembali ke daftar tanpa konfirmasi keluar (draft sudah kosong).
         onAllSaved={() => {
           dirty.current = false;
-          void navigate({ to: '/serial' });
+          stack.replace({ to: '/serial' });
         }}
       />
       <LeaveProofDialog

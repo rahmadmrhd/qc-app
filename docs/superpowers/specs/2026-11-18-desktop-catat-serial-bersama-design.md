@@ -71,7 +71,7 @@ Saat pertama kali `useDraftRows` memuat (jembatan >= 8): entri `pending` yang ad
 
 ### Foto bukti dari desktop
 
-Memakai `ProofPhotoDialog`/`ProofCameraDialog`/`StrictScanDialog` apa adanya (kamera lewat `getUserMedia`). Unggahan multipart lewat proksi `app://qc/api/*` (proksi meneruskan body sebagai stream; harus dibuktikan di Electron nyata, lihat Risiko).
+Memakai `FileDialog` terpadu (semula `ProofPhotoDialog`/`ProofCameraDialog`, dilebur 2026-11-20 atas keputusan pemilik produk, spek induk Serial Number butir 67) dan `StrictScanDialog` apa adanya (kamera lewat `getUserMedia`). Unggahan multipart lewat proksi `app://qc/api/*` (proksi meneruskan body sebagai stream; harus dibuktikan di Electron nyata, lihat Risiko).
 
 ## Batasan dan risiko
 

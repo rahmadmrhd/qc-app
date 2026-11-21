@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import type { SheetsExportChunk } from '@server/core/bridge-client';
+import { isSoftDeleteTable } from '@server/core/soft-delete';
+import { seedHandover, seedHandoverEnv } from '@server-test/handover-env';
+import { seedItem } from '@server-test/item-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
   EXPORT_CELL_MAX_CHARS,
@@ -61,6 +64,55 @@ describe('exportTableChunks', () => {
     const chunks = await collect('brands');
     expect(chunks.map((chunk) => chunk.rows.length)).toEqual([500, 500]);
     expect(chunks.map((chunk) => chunk.mode)).toEqual(['replace', 'append']);
+  });
+
+  test('baris terhapus (soft delete) tidak diekspor, di halaman pertama maupun lanjutan', async () => {
+    await insertBrands(5);
+    await env.DB.prepare(
+      "UPDATE brands SET deleted_at = '2026-02-02T00:00:00.000Z' WHERE id IN ('b00001', 'b00003')",
+    ).run();
+    const chunks = await collect('brands', 2);
+    const ids = chunks.flatMap((chunk) =>
+      chunk.rows.map((row) => row[chunk.columns.indexOf('id')]),
+    );
+    expect(ids).toEqual(['b00000', 'b00002', 'b00004']);
+  });
+
+  test('komentar milik task terhapus tidak diekspor (anak ikut induk, N4)', async () => {
+    await seedHandoverEnv(env);
+    const comment = (id: string) => ({
+      id,
+      author: 'wh@gmail.com',
+      at: '2026-02-02T00:00:00.000Z',
+      quote: '',
+      before: '',
+      after: '',
+      body: 'halo',
+    });
+    await seedHandover(env, { id: 'h1', number: 'ST-1', locationId: 'loc-a' }, [comment('c1')]);
+    await seedHandover(env, { id: 'h2', number: 'ST-2', locationId: 'loc-a' }, [comment('c2')]);
+    await env.DB.prepare(
+      "UPDATE handovers SET deleted_at = '2026-02-02T00:00:00.000Z' WHERE id = 'h2'",
+    ).run();
+    const chunks = await collect('handover_comments');
+    expect(
+      chunks.flatMap((chunk) => chunk.rows.map((row) => row[chunk.columns.indexOf('id')])),
+    ).toEqual(['c1']);
+  });
+
+  test('berkas milik item terhapus tidak diekspor; pemilik lain tetap (files)', async () => {
+    await seedItem(env, { id: 'i1', brand: 'Sony', model: 'A' });
+    await seedItem(env, { id: 'i2', brand: 'Sony', model: 'B' });
+    await env.DB.prepare(
+      "INSERT INTO files (id, owner_type, owner_id) VALUES ('f1', 'item', 'i1'), ('f2', 'item', 'i2'), ('f3', 'sticker', 'i2')",
+    ).run();
+    await env.DB.prepare(
+      "UPDATE items SET deleted_at = '2026-02-02T00:00:00.000Z' WHERE id = 'i2'",
+    ).run();
+    const chunks = await collect('files');
+    expect(
+      chunks.flatMap((chunk) => chunk.rows.map((row) => row[chunk.columns.indexOf('id')])),
+    ).toEqual(['f1', 'f3']);
   });
 
   test('tabel kosong tetap menghasilkan satu potongan replace berisi header saja', async () => {
@@ -134,15 +186,19 @@ describe('exportTableChunks', () => {
     expect(new Set(sheets).size).toBe(sheets.length);
     // Kolom teknis MariaDB yang sengaja tidak diekspor: kolom turunan name_key (indeks UNIK ekspresi) dan
     // handover_comments.seq (pengganti rowid untuk urutan/kursor), qr_presets.bu_key (kolom virtual untuk indeks unik),
-    // dan handovers.client_id / handover_comments.client_id (kunci idempotensi antrean offline, Tahap C; tak bernilai ekspor).
+    // handovers.client_id / handover_comments.client_id (kunci idempotensi antrean offline, Tahap C; tak bernilai ekspor),
+    // dan audit_log.target_id (penaut ke halaman View untuk UI log audit, fase 4c; teks `target` sudah diekspor).
     const technical: Record<string, string[]> = {
       roles: ['name_key'],
       locations: ['name_key'],
       handovers: ['client_id'],
       handover_comments: ['seq', 'client_id'],
       qr_presets: ['bu_key'],
+      audit_log: ['target_id'],
     };
+    // `deleted_at`/`deleted_by` (soft delete) juga teknis: baris terhapus disaring dari ekspor, jadi isinya selalu kosong.
     for (const spec of EXPORT_TABLES) {
+      const softDeleteColumns = isSoftDeleteTable(spec.table) ? ['deleted_at', 'deleted_by'] : [];
       const info = await env.DB.prepare(
         'SELECT COLUMN_NAME AS name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?',
       )
@@ -150,7 +206,10 @@ describe('exportTableChunks', () => {
         .all<{ name: string }>();
       const actual = info.results
         .map((row) => row.name)
-        .filter((name) => !(technical[spec.table] ?? []).includes(name))
+        .filter(
+          (name) =>
+            !(technical[spec.table] ?? []).includes(name) && !softDeleteColumns.includes(name),
+        )
         .sort();
       expect({ table: spec.table, columns: [...spec.columns].sort() }).toEqual({
         table: spec.table,

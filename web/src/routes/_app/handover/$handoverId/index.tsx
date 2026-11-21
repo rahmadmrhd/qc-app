@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useMemo, useRef } from 'react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
 import { canAt, requireAnyPermission } from '@/modules/auth/permissions';
@@ -28,6 +29,15 @@ import {
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 
 export const Route = createFileRoute('/_app/handover/$handoverId/')({
+  staticData: {
+    locationAware: true,
+    crumb: ({ params, queryClient }) => {
+      const [hit] = queryClient.getQueriesData<{ number: string }>({
+        queryKey: ['handovers', 'one', params.handoverId ?? ''],
+      });
+      return { label: hit?.[1]?.number ?? 'Detail' };
+    },
+  },
   validateSearch: (search: Record<string, unknown>) => handoverSearchSchema.parse(search),
   beforeLoad: ({ context }) =>
     requireAnyPermission(context.queryClient, [
@@ -42,6 +52,7 @@ function HandoverDetailPage() {
   const search = Route.useSearch();
   const listSearch = searchFromStatus(statusFromSearch(search), search.loc);
   const navigate = useNavigate();
+  const stack = useStackNavigation();
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   // Hanya lokasi yang boleh dibaca user: satu lokasi terlarang menolak seluruh permintaan.
@@ -83,7 +94,7 @@ function HandoverDetailPage() {
   if (!task) {
     const notFound = !(query.error instanceof ApiError) || denied;
     return (
-      <p role="alert" className="text-sm text-destructive">
+      <p role="alert" className="text-sm text-destructive-text">
         {notFound ? 'Task tidak ditemukan di lokasi aktif.' : 'Gagal memuat task. Coba muat ulang.'}{' '}
         <Link to="/handover" search={listSearch} className="underline">
           Kembali ke daftar
@@ -109,7 +120,7 @@ function HandoverDetailPage() {
       canCancel={canAt(me, 'handover', 'manage', task.locationId)}
       canProgress={canAt(me, 'qc', 'edit', task.locationId)}
       pending={pending}
-      onBack={() => void navigate({ to: '/handover', search: listSearch })}
+      onBack={() => stack.pop({ to: '/handover', search: listSearch })}
       onEdit={() =>
         void navigate({
           to: '/handover/$handoverId/edit',

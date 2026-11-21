@@ -786,7 +786,7 @@ describe('postels.save: item tak terlihat (BU)', () => {
 });
 
 describe('postels.remove', () => {
-  test('melepas item, menghapus nomor, menulis audit; stiker catatan itu menjadi usang dan stoknya tetap', async () => {
+  test('hapus lunak: item tetap menunjuk, nomor ikut terhapus, audit; stiker catatan menjadi usang dan stoknya tetap', async () => {
     await seedLocation(env, { id: 'loc-1', code: 'WH' });
     const postel = await create({ note: 'akan dihapus' });
     const stickers = (await call(ADMIN, 'stickers.list', null)).data as Json[];
@@ -803,39 +803,49 @@ describe('postels.remove', () => {
     const response = await rest.del(`/postels/${postel.id as string}`, { email: EDITOR });
     expect(response.status).toBe(200);
     expect(await response.json()).toBeNull();
-    expect(await rows('SELECT id FROM postels')).toHaveLength(0);
-    expect(await rows('SELECT id FROM postel_numbers')).toHaveLength(0);
-    expect(await rows("SELECT id FROM items WHERE postel_id <> ''")).toHaveLength(0);
+    expect(await rows("SELECT id FROM postels WHERE deleted_at = ''")).toHaveLength(0);
+    expect(await rows("SELECT id FROM postels WHERE deleted_at <> ''")).toHaveLength(1);
+    expect(await rows("SELECT id FROM postel_numbers WHERE deleted_at = ''")).toHaveLength(0);
+    expect(await rows('SELECT id FROM postel_numbers')).toHaveLength(2);
+    // Penunjuk item tak diubah hapus lunak; item itu dihitung belum ber-Postel (soft delete §5 butir 1).
+    expect(await rows("SELECT id FROM items WHERE postel_id <> ''")).toHaveLength(2);
     const audit = await rows(
       "SELECT target, actor, `before`, `after` FROM audit_log WHERE action = 'postel.delete'",
     );
     expect(audit).toHaveLength(1);
     expect(audit[0]).toMatchObject({ target: `postel:${postel.id as string}`, actor: EDITOR });
     expect(JSON.parse(audit[0].before).note).toBe('akan dihapus');
-    expect(audit[0].after).toBe('null');
+    expect(JSON.parse(audit[0].after).deleted).toBe(true);
     // Stiker catatan itu tetap (stok 5 > 0): usang, bukan nonaktif; riwayat stok tetap.
     expect(await rows('SELECT id FROM stickers WHERE id = ?', sticker.id)).toHaveLength(1);
     expect((await rows('SELECT status FROM stickers WHERE id = ?', sticker.id))[0].status).toBe(
       'deprecated',
     );
     expect(await rows('SELECT id FROM sticker_stock_entries')).toHaveLength(1);
-    // Item bebas dipakai lagi.
-    expect(
-      (
-        await call(
-          ADMIN,
-          'postels.save',
-          body({ numbers: [{ number: 'BARU-1', expiresOn: '2027-05-05', link: '' }] }),
-        )
-      ).ok,
-    ).toBe(true);
+    // Item dihitung belum tertaut dan dapat dipasang ke catatan lain ; catatan baru
+    // bernama sama ditolak selama yang lama di Terhapus, jadi dipakai himpunan item yang berbeda.
+    const reused = await call(
+      ADMIN,
+      'postels.save',
+      body({
+        itemIds: ['i1', 'i2', 'i3'],
+        numbers: [{ number: 'BARU-1', expiresOn: '2027-05-05', link: '' }],
+      }),
+    );
+    expect(reused.ok).toBe(true);
+    expect(await rows('SELECT id FROM items WHERE postel_id = ?', reused.data.id)).toHaveLength(3);
   });
 
-  test('id tak dikenal = NOT_FOUND; hapus dua kali = NOT_FOUND', async () => {
+  test('hapus dua kali = sukses tanpa audit baru; id tak dikenal = NOT_FOUND', async () => {
     const postel = await create();
     expect((await call(ADMIN, 'postels.remove', { id: postel.id })).ok).toBe(true);
-    const again = await call(ADMIN, 'postels.remove', { id: postel.id });
-    expect(again.error?.code).toBe('NOT_FOUND');
+    const first = (await rows('SELECT deleted_at FROM postels WHERE id = ?', postel.id))[0];
+    env.clock.advance(60_000);
+    expect((await call(ADMIN, 'postels.remove', { id: postel.id })).ok).toBe(true);
+    expect((await rows('SELECT deleted_at FROM postels WHERE id = ?', postel.id))[0]).toEqual(
+      first,
+    );
+    expect(await rows("SELECT id FROM audit_log WHERE action = 'postel.delete'")).toHaveLength(1);
     expect((await call(ADMIN, 'postels.remove', { id: 'x' })).error?.code).toBe('NOT_FOUND');
   });
 });

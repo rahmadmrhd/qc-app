@@ -4,7 +4,6 @@ import {
   mkdtempSync,
   readdirSync,
   readFileSync,
-  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -12,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { GUIDE_COVERS, GUIDE_IDS, GUIDE_VERSIONS, type GuideId } from '@shared/guides';
 import { describe, expect, test } from 'vitest';
+import { removeTempDirSync } from '../../../test/safe-rm';
 import type { GuideEntry } from '../lib/types';
 import { GUIDE_CATALOG } from './index';
 
@@ -332,7 +332,7 @@ describe('pemeriksa menangkap pelanggaran (contoh salah)', () => {
     mkdirSync(join(temp, 'klip'));
     writeFileSync(join(temp, 'klip', 'ada.webm'), 'x');
     expect(klipProblems([withScenes([{ kind: 'klip', berkas: 'ada.webm' }])], temp)).toEqual([]);
-    rmSync(temp, { recursive: true, force: true });
+    removeTempDirSync(temp);
     expect(
       klipProblems([withScenes([{ kind: 'klip', berkas: 'tidak-ada-123.webm' }])], PUBLIC_ROOT),
     ).toHaveLength(1);

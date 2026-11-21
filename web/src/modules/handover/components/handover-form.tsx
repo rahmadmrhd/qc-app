@@ -77,6 +77,8 @@ export function HandoverForm({
               ) : (
                 <LocationField
                   id="handover-location"
+                  highlightInitial
+                  required
                   module="handover"
                   level="edit"
                   value={field.state.value}
@@ -106,9 +108,12 @@ export function HandoverForm({
         <form.Field name="note">
           {(field) => (
             <div className="space-y-1.5">
-              <Label id="handover-note-label">Catatan</Label>
+              <Label id="handover-note-label" required>
+                Catatan
+              </Label>
               <NoteEditor
                 id="handover-note"
+                required
                 labelledBy="handover-note-label"
                 value={field.state.value}
                 onChange={field.handleChange}
@@ -120,7 +125,7 @@ export function HandoverForm({
       </section>
 
       {submitError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {submitError}
         </p>
       ) : null}

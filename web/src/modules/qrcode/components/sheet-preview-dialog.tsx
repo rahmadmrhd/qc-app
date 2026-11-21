@@ -180,7 +180,7 @@ export function SheetPreviewDialog({
           <p className="text-sm text-muted-foreground">Menyiapkan pratinjau…</p>
         ) : null}
         {state === 'error' ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive-text">
             Pratinjau gagal dibuat.
           </p>
         ) : null}

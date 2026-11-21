@@ -4,6 +4,7 @@ import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, isAppError, staleError } from '@server/core/errors';
 import { statementsFor } from '@server/core/events';
+import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { mapDuplicateError } from '@server/modules/access/repo';
 // Impor efek-samping: mendaftarkan pendengar stok bus event (`core/events.ts`). Kode di berkas ini tidak memakai
@@ -142,7 +143,7 @@ export async function queryItemOptions(
   }
   const effectiveLimit = byIds ? (input.itemIds?.length ?? 0) : limit;
   const rows = await env.DB.prepare(
-    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.proof_required, i.proof_min FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
+    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.proof_required, i.proof_min FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('i')} AND ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
   )
     .bind(...binds, effectiveLimit + 1)
     .all<OptionRow>();
@@ -207,7 +208,7 @@ export async function buOptions(env: Env, user: UserContext): Promise<SerialBuOp
   const scope = writable.length > 0 ? writable : readableBuIds(user);
   if (scope.length === 0) return { businessUnits: [] };
   const rows = await env.DB.prepare(
-    `SELECT id, code, name FROM business_units WHERE status = 'active' AND id IN (${placeholders(scope.length)}) ORDER BY code, id`,
+    `SELECT id, code, name FROM business_units WHERE status = 'active' AND ${liveWhere()} AND id IN (${placeholders(scope.length)}) ORDER BY code, id`,
   )
     .bind(...scope)
     .all<{ id: string; code: string; name: string }>();
@@ -220,10 +221,13 @@ export async function buOptions(env: Env, user: UserContext): Promise<SerialBuOp
   };
 }
 
-/** Semua lokasi AKTIF (id, kode, nama), urut kode; pilihan lokasi saat mencatat serial tidak dibatasi penugasan lokasi. */
+/**
+ * Semua lokasi AKTIF dan hidup (id, kode, nama), urut kode; pilihan lokasi saat mencatat serial tidak dibatasi
+ * penugasan lokasi. Lokasi terhapus tidak ditawarkan (serial yang sudah di sana tetap menampilkan namanya).
+ */
 export async function locationOptions(env: Env): Promise<SerialLocationOptionsDto> {
   const rows = await env.DB.prepare(
-    "SELECT id, code, name FROM locations WHERE status = 'active' ORDER BY code, id",
+    `SELECT id, code, name FROM locations WHERE status = 'active' AND ${liveWhere()} ORDER BY code, id`,
   ).all<{ id: string; code: string; name: string }>();
   return {
     locations: rows.results.map((row) => ({

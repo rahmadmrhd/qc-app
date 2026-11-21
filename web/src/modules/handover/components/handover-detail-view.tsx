@@ -74,7 +74,7 @@ export function HandoverDetailView({
   const checked = handover.checklist.filter((item) => item.checked).length;
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="space-y-1">
           <Button type="button" variant="ghost" size="sm" onClick={onBack}>

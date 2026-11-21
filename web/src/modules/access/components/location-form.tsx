@@ -46,9 +46,12 @@ export function LocationForm({
       <form.Field name="code">
         {(field) => (
           <div className="space-y-1.5">
-            <Label htmlFor="location-code">Kode</Label>
+            <Label htmlFor="location-code" required>
+              Kode
+            </Label>
             <Input
               id="location-code"
+              aria-required="true"
               value={field.state.value}
               disabled={mode === 'edit'}
               placeholder="mis. JKT-01"
@@ -66,9 +69,12 @@ export function LocationForm({
       <form.Field name="name">
         {(field) => (
           <div className="space-y-1.5">
-            <Label htmlFor="location-name">Nama</Label>
+            <Label htmlFor="location-name" required>
+              Nama
+            </Label>
             <Input
               id="location-name"
+              aria-required="true"
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(event) => field.handleChange(event.target.value)}
@@ -78,7 +84,7 @@ export function LocationForm({
         )}
       </form.Field>
       {submitError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {submitError}
         </p>
       ) : null}

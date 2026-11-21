@@ -14,6 +14,8 @@ interface ActiveLocationsValue {
   /** Lokasi terpilih (selalu bagian dari `available`, tidak pernah kosong bila ada lokasi). */
   selectedIds: string[];
   toggle: (id: string) => void;
+  /** Menetapkan seluruh pilihan sekaligus (lembar pemilih ponsel); dinormalisasi, tak pernah kosong. */
+  select: (ids: readonly string[]) => void;
 }
 
 const ActiveLocationsContext = createContext<ActiveLocationsValue | null>(null);
@@ -53,9 +55,18 @@ export function ActiveLocationsProvider({ children }: { children: ReactNode }) {
     [selectedIds, availableIds],
   );
 
+  const select = useCallback(
+    (ids: readonly string[]) => {
+      const next = normalizeSelection(ids, availableIds);
+      setStored(next);
+      writeStored(next);
+    },
+    [availableIds],
+  );
+
   const value = useMemo(
-    () => ({ available, selectedIds, toggle }),
-    [available, selectedIds, toggle],
+    () => ({ available, selectedIds, toggle, select }),
+    [available, selectedIds, toggle, select],
   );
   return (
     <ActiveLocationsContext.Provider value={value}>{children}</ActiveLocationsContext.Provider>

@@ -56,7 +56,7 @@ export function CaseListPage({ search, onSearchChange, onOpen, onReport }: CaseL
     ...buIdsWithLevelOf(me, 'serialservice', 'view'),
   ]);
   const buOptions: LinkOption[] = (me.businessUnits ?? [])
-    .filter((bu) => readable.has(bu.id))
+    .filter((bu) => !bu.deleted && readable.has(bu.id))
     .map((bu) => ({ id: bu.id, label: `${bu.code} · ${bu.name}` }));
   const [text, setText] = useUrlSyncedText(search.q ?? '', (value) =>
     onSearchChange({ q: value.trim() === '' ? undefined : value.trim() }),
@@ -113,7 +113,7 @@ export function CaseListPage({ search, onSearchChange, onOpen, onReport }: CaseL
         />
       </div>
       {list.isError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Gagal memuat laporan: {describeError(list.error)}
         </p>
       ) : null}

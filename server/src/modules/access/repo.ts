@@ -3,6 +3,8 @@ import { DbError } from '@server/core/db';
 import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { baseIndexName } from '@server/core/index-names';
+import { liveWhere } from '@server/core/soft-delete';
 import type { Assignment } from '@shared/assignments';
 import { sanitizeAssignments } from '@shared/assignments';
 import type { BuAssignment } from '@shared/business-units';
@@ -33,6 +35,9 @@ export interface UserRecord {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** ISO UTC; `''` = hidup (soft delete). */
+  deletedAt: string;
+  deletedBy: string;
 }
 
 export interface RoleRecord {
@@ -43,6 +48,8 @@ export interface RoleRecord {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  deletedAt: string;
+  deletedBy: string;
 }
 
 export interface LocationRecord {
@@ -53,6 +60,8 @@ export interface LocationRecord {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  deletedAt: string;
+  deletedBy: string;
 }
 
 export interface BusinessUnitRecord {
@@ -63,6 +72,8 @@ export interface BusinessUnitRecord {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  deletedAt: string;
+  deletedBy: string;
 }
 
 interface UserRow {
@@ -78,6 +89,8 @@ interface UserRow {
   created_at: string;
   updated_at: string;
   updated_by: string;
+  deleted_at: string;
+  deleted_by: string;
 }
 interface RoleRow {
   id: string;
@@ -87,6 +100,8 @@ interface RoleRow {
   created_at: string;
   updated_at: string;
   updated_by: string;
+  deleted_at: string;
+  deleted_by: string;
 }
 interface BusinessUnitRow {
   id: string;
@@ -96,6 +111,8 @@ interface BusinessUnitRow {
   created_at: string;
   updated_at: string;
   updated_by: string;
+  deleted_at: string;
+  deleted_by: string;
 }
 interface LocationRow {
   id: string;
@@ -105,6 +122,8 @@ interface LocationRow {
   created_at: string;
   updated_at: string;
   updated_by: string;
+  deleted_at: string;
+  deleted_by: string;
 }
 
 function parseJson(text: string): unknown {
@@ -151,6 +170,8 @@ function toUser(row: UserRow): UserRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
+    deletedAt: row.deleted_at,
+    deletedBy: row.deleted_by,
   };
 }
 
@@ -163,6 +184,8 @@ function toRole(row: RoleRow): RoleRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
+    deletedAt: row.deleted_at,
+    deletedBy: row.deleted_by,
   };
 }
 
@@ -175,6 +198,8 @@ function toLocation(row: LocationRow): LocationRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
+    deletedAt: row.deleted_at,
+    deletedBy: row.deleted_by,
   };
 }
 
@@ -187,6 +212,8 @@ function toBusinessUnit(row: BusinessUnitRow): BusinessUnitRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
+    deletedAt: row.deleted_at,
+    deletedBy: row.deleted_by,
   };
 }
 
@@ -203,20 +230,24 @@ export async function listLocationBriefs(env: Env): Promise<LocationBrief[]> {
   return result.results.map(toLocationBrief);
 }
 
-/** Empat tabel akses (kecil) dalam SATU `batch()`. */
+/**
+ * Empat tabel akses (kecil) dalam SATU `batch()`. Memuat SEMUA baris, termasuk yang terhapus (soft delete): tiap record
+ * membawa `deletedAt`/`deletedBy` dan PEMANGGIL memilah (keunikan email dan rujukan tersimpan perlu melihat yang
+ * terhapus; daftar, hitungan pemakaian, dan pemilihan memakai yang hidup saja lewat `isLiveRecord`).
+ */
 export async function loadAccessTables(env: Env): Promise<AccessTables> {
   const [users, roles, locations, businessUnits] = await env.DB.batch([
     env.DB.prepare(
-      'SELECT id, email, name, status, role_ids, assignments, bu_assignments, shared_account, created_at, updated_at, updated_by FROM users',
+      'SELECT id, email, name, status, role_ids, assignments, bu_assignments, shared_account, created_at, updated_at, updated_by, deleted_at, deleted_by FROM users',
     ),
     env.DB.prepare(
-      'SELECT id, name, description, permissions, created_at, updated_at, updated_by FROM roles',
+      'SELECT id, name, description, permissions, created_at, updated_at, updated_by, deleted_at, deleted_by FROM roles',
     ),
     env.DB.prepare(
-      'SELECT id, code, name, status, created_at, updated_at, updated_by FROM locations',
+      'SELECT id, code, name, status, created_at, updated_at, updated_by, deleted_at, deleted_by FROM locations',
     ),
     env.DB.prepare(
-      'SELECT id, code, name, status, created_at, updated_at, updated_by FROM business_units',
+      'SELECT id, code, name, status, created_at, updated_at, updated_by, deleted_at, deleted_by FROM business_units',
     ),
   ]);
   return {
@@ -233,13 +264,40 @@ export async function loadAccessTables(env: Env): Promise<AccessTables> {
   };
 }
 
-/** Ringkasan semua BU (id, kode, nama, status) tanpa metadata; dibaca langsung dari MariaDB. */
+/**
+ * Muatan `loadAccessTables` yang dipakai bersama semua perencana satu percobaan `runRecordBatch` (satu pemuatan untuk
+ * N id, bukan N pemuatan); `reset` dipasang sebagai `prepare` agar percobaan ulang memuat keadaan terkini.
+ */
+export function createAccessTablesCache(env: Env): {
+  get: () => Promise<AccessTables>;
+  reset: () => void;
+} {
+  let loaded: Promise<AccessTables> | null = null;
+  return {
+    get: () => {
+      loaded ??= loadAccessTables(env);
+      return loaded;
+    },
+    reset: () => {
+      loaded = null;
+    },
+  };
+}
+
+/**
+ * Ringkasan SEMUA BU (id, kode, nama, status) tanpa metadata, termasuk BU terhapus (bertanda `deleted: true`): BU
+ * terhapus tetap memberi nama pada rujukan tersimpan dan tetap memberi hak (soft delete, keputusan pemilik 9), jadi
+ * pemakai sebagai PILIHAN/filter wajib menyaring entri `deleted`. Dibaca langsung dari MariaDB.
+ */
 export async function listBusinessUnitBriefs(env: Env): Promise<BusinessUnitOptionDto[]> {
-  const rows = await env.DB.prepare('SELECT id, code, name, status FROM business_units').all<{
+  const rows = await env.DB.prepare(
+    'SELECT id, code, name, status, deleted_at FROM business_units',
+  ).all<{
     id: string;
     code: string;
     name: string;
     status: string;
+    deleted_at: string;
   }>();
   return rows.results
     .map((row) => ({
@@ -247,14 +305,30 @@ export async function listBusinessUnitBriefs(env: Env): Promise<BusinessUnitOpti
       code: row.code.trim().toUpperCase(),
       name: row.name.trim(),
       status: (row.status.trim() === 'active' ? 'active' : 'inactive') as BusinessUnitStatus,
+      ...(row.deleted_at === '' ? {} : { deleted: true }),
     }))
     .filter((bu) => bu.id !== '' && bu.code !== '');
 }
 
-/** Jumlah item per BU (baris `item_business_units`); BU tanpa item tidak ada di peta. */
+/** True bila record tidak terhapus (soft delete). */
+export function isLiveRecord(record: { deletedAt: string }): boolean {
+  return record.deletedAt === '';
+}
+
+/** Jejak penghapusan untuk DTO; `undefined` bila record hidup. */
+export function deletedInfoOf(record: {
+  deletedAt: string;
+  deletedBy: string;
+}): { deletedAt: string; deletedBy: string } | undefined {
+  return record.deletedAt === ''
+    ? undefined
+    : { deletedAt: record.deletedAt, deletedBy: record.deletedBy };
+}
+
+/** Jumlah item HIDUP per BU (baris `item_business_units`); BU tanpa item tidak ada di peta. */
 export async function countItemsByBu(env: Env): Promise<Map<string, number>> {
   const rows = await env.DB.prepare(
-    'SELECT bu_id, COUNT(*) AS n FROM item_business_units GROUP BY bu_id',
+    `SELECT ibu.bu_id, COUNT(*) AS n FROM item_business_units ibu JOIN items i ON i.id = ibu.item_id WHERE ${liveWhere('i')} GROUP BY ibu.bu_id`,
   ).all<{ bu_id: string; n: number | string }>();
   return new Map(rows.results.map((row) => [row.bu_id, Number(row.n)]));
 }
@@ -324,10 +398,6 @@ export function updateRoleStmt(db: Db, role: RoleRecord): DbStatement {
       role.updatedBy,
       role.id,
     );
-}
-
-export function deleteRoleStmt(db: Db, id: string): DbStatement {
-  return db.prepare('DELETE FROM roles WHERE id = ?').bind(id);
 }
 
 export function insertLocationStmt(db: Db, location: LocationRecord): DbStatement {
@@ -405,7 +475,13 @@ export function mapDuplicateError(
   conflicts: Record<string, { message: string; field: string }>,
 ): unknown {
   if (error instanceof DbError && error.kind === 'duplicate') {
-    const conflict = error.key === undefined ? undefined : conflicts[error.key];
+    // Nama indeks `_live` (soft delete) dan nama lamanya dipetakan ke konflik yang sama (`baseIndexName`).
+    const conflict =
+      error.key === undefined
+        ? undefined
+        : (conflicts[error.key] ??
+          conflicts[baseIndexName(error.key)] ??
+          conflicts[`${error.key}_live`]);
     if (conflict) {
       return appError('CONFLICT', conflict.message, { [conflict.field]: conflict.message });
     }

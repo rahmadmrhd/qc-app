@@ -1,7 +1,8 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
 import { itemLinkAccess } from '@/lib/link-access';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
@@ -14,13 +15,14 @@ import type { QrFieldErrors, QrFormOutput } from '@/modules/qrcode/schemas';
 import { QR_FIELD_KEYS, toQrFormDefaults, toSaveQrDesignInput } from '@/modules/qrcode/schemas';
 
 export const Route = createFileRoute('/_app/qrcode/new')({
+  staticData: { crumb: 'Tambah' },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'edit'),
   loader: ({ context }) => context.queryClient.ensureQueryData(qrDefaultsQueryOptions()),
   component: NewQrDesignPage,
 });
 
 function NewQrDesignPage() {
-  const navigate = useNavigate();
+  const stack = useStackNavigation();
   const me = useMe();
   const { data: defaults } = useSuspenseQuery(qrDefaultsQueryOptions());
   const save = useSaveQrDesign();
@@ -36,7 +38,8 @@ function NewQrDesignPage() {
       );
       toast.success('Konfigurasi disimpan');
       // "Simpan dan ekspor": lanjut ke dialog konfirmasi ekspor di daftar.
-      await navigate(
+      // Tambah = replace (butir 41c): back dari daftar tidak kembali ke form yang sudah tersimpan.
+      stack.replace(
         options.thenExport ? { to: '/qrcode', search: { export: saved.id } } : { to: '/qrcode' },
       );
     } catch (error) {
@@ -47,7 +50,7 @@ function NewQrDesignPage() {
   }
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <QrDesignForm
         title="Konfigurasi QR baru"
         canExport={can(me, 'qrcode', 'edit')}
@@ -55,10 +58,12 @@ function NewQrDesignPage() {
         logoLibrary={defaults.logoFileIds}
         presets={defaults.presets}
         openItemHref={itemLinkAccess(me).openItemHref}
+        canCreateItem={itemLinkAccess(me).canCreate}
+        canOpenDeletedItem={itemLinkAccess(me).canOpenDeleted}
         submitError={submitError}
         fieldErrors={fieldErrors}
         onSubmit={handleSubmit}
-        onCancel={() => void navigate({ to: '/qrcode' })}
+        onCancel={() => stack.pop({ to: '/qrcode' })}
       />
     </div>
   );

@@ -53,8 +53,10 @@ function QrCodesPage() {
   useEffect(() => {
     if (!exportId) return;
     const target = designs.find((design) => design.id === exportId);
-    if (target && can(me, 'qrcode', 'edit') && !target.overflow) setExporting(target);
-    void navigate({ to: '/qrcode', search: {}, replace: true });
+    // Bersihkan parameter dulu, baru buka dialog: dialog ber-entri riwayat tak boleh tertimpa `replace` (review nav I2).
+    void navigate({ to: '/qrcode', search: {}, replace: true }).then(() => {
+      if (target && can(me, 'qrcode', 'edit') && !target.overflow) setExporting(target);
+    });
   }, [exportId]);
 
   async function confirmExport(

@@ -164,7 +164,7 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
       {settings.smtpConfigured ? null : (
         <p
           role="status"
-          className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm"
+          className="rounded-md border border-warning-text/35 bg-warning-text/10 p-3 text-sm"
         >
           SMTP belum dikonfigurasi di server: peringatan tidak akan terkirim sampai SMTP diatur
           (lihat dokumen penyebaran).
@@ -252,7 +252,7 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
               <p
                 id={`postel-alert-threshold-${index}-error`}
                 role="alert"
-                className="text-sm text-destructive"
+                className="text-sm text-destructive-text"
               >
                 {errors[`threshold-${index}`]}
               </p>
@@ -260,7 +260,11 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
           </div>
         ))}
         {errors.thresholds ? (
-          <p id="postel-alert-thresholds-error" role="alert" className="text-sm text-destructive">
+          <p
+            id="postel-alert-thresholds-error"
+            role="alert"
+            className="text-sm text-destructive-text"
+          >
             {errors.thresholds}
           </p>
         ) : null}
@@ -275,9 +279,12 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
         </Button>
       </fieldset>
       <div className="space-y-1.5">
-        <Label htmlFor="postel-alert-repeat">Ulangi setiap (hari)</Label>
+        <Label htmlFor="postel-alert-repeat" required>
+          Ulangi setiap (hari)
+        </Label>
         <Input
           id="postel-alert-repeat"
+          aria-required="true"
           type="number"
           inputMode="numeric"
           min={0}
@@ -297,7 +304,7 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
           pengulangan.
         </p>
         {errors.repeat ? (
-          <p id="postel-alert-repeat-error" role="alert" className="text-sm text-destructive">
+          <p id="postel-alert-repeat-error" role="alert" className="text-sm text-destructive-text">
             {errors.repeat}
           </p>
         ) : null}
@@ -348,13 +355,17 @@ function Body({ settings, users, onSave }: PostelAlertSettingsProps) {
           ditambahkan.
         </p>
         {errors.recipients ? (
-          <p id="postel-alert-recipients-error" role="alert" className="text-sm text-destructive">
+          <p
+            id="postel-alert-recipients-error"
+            role="alert"
+            className="text-sm text-destructive-text"
+          >
             {errors.recipients}
           </p>
         ) : null}
       </fieldset>
       {serverError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {serverError}
         </p>
       ) : null}

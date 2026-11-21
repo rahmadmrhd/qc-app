@@ -28,9 +28,18 @@ export function assertCanActOnItem(
   level: Level,
   message: string,
 ): void {
-  if (!canActOnAllBus(user.businessUnits, 'item', level, itemBuIds)) {
+  if (!canActOnAllBus(user.businessUnits, 'item', level, itemBuIds, user.deletedBuIds)) {
     throw appError('FORBIDDEN', message);
   }
+}
+
+/** Versi boolean `assertCanActOnItem`: `level` pada SEMUA BU item (BU terhapus diabaikan selama ada BU hidup). */
+export function canActOnItem(
+  user: UserContext,
+  itemBuIds: readonly string[],
+  level: Level,
+): boolean {
+  return canActOnAllBus(user.businessUnits, 'item', level, itemBuIds, user.deletedBuIds);
 }
 
 /**

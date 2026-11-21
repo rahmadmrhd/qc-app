@@ -27,6 +27,8 @@ export interface PostelFormProps {
   onCancel: () => void;
   /** Galat server per field (dari `ApiError.fields`); hilang begitu field-nya dikoreksi. */
   fieldErrors?: PostelFieldErrors | undefined;
+  /** Boleh menambah item dari pemilih item (`itemLinkAccess(...).canCreate`). */
+  canCreateItem?: boolean | undefined;
 }
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -46,6 +48,7 @@ export function PostelForm({
   onSubmit,
   onCancel,
   fieldErrors,
+  canCreateItem,
 }: PostelFormProps) {
   const hiddenCount = postel?.hiddenItemCount ?? 0;
   const schema = useMemo(() => postelFormSchema(hiddenCount), [hiddenCount]);
@@ -101,6 +104,7 @@ export function PostelForm({
               selected={field.state.value}
               ownedIds={ownedIds}
               hiddenCount={hiddenCount}
+              canCreateItem={canCreateItem}
               error={errorText([...field.state.meta.errors, serverError('itemIds')])}
               onChange={(items) => {
                 field.handleChange(items);
@@ -151,7 +155,7 @@ export function PostelForm({
                     clear('note');
                   }}
                 />
-                {error ? <p className="text-sm text-destructive">{error}</p> : null}
+                {error ? <p className="text-sm text-destructive-text">{error}</p> : null}
               </div>
             );
           }}
@@ -175,7 +179,7 @@ export function PostelForm({
       </Section>
 
       {submitError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {submitError}
         </p>
       ) : null}

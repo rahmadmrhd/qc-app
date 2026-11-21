@@ -82,6 +82,8 @@ export interface MessageFieldProps {
   onChange: (value: string) => void;
   error?: string | undefined;
   disabled?: boolean;
+  /** Ada gambar catatan yang masih diunggah (true) atau tidak (false); form induk menahan tombol kirim. */
+  onBusyChange?: ((busy: boolean) => void) | undefined;
 }
 
 /** Catatan Markdown dengan gambar (maks. `messageImagesMax`), dipakai dialog update dan halaman Lapor Rusak. */
@@ -93,19 +95,24 @@ export function MessageField({
   onChange,
   error,
   disabled,
+  onBusyChange,
 }: MessageFieldProps) {
   return (
     <div className="space-y-1.5">
-      <Label id={`${id}-label`}>{required ? label : `${label} (opsional)`}</Label>
+      <Label id={`${id}-label`} required={required}>
+        {required ? label : `${label} (opsional)`}
+      </Label>
       <WysiwygEditor
         id={id}
         labelledBy={`${id}-label`}
+        required={required}
         mode="message"
         value={value}
         onChange={onChange}
         maxLength={SERIAL_LIMITS.messageMax}
         maxImages={SERIAL_LIMITS.messageImagesMax}
         disabled={disabled ?? false}
+        onBusyChange={onBusyChange}
       />
       <FieldError errors={[error]} />
     </div>

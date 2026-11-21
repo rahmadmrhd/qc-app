@@ -32,7 +32,6 @@ vi.mock('@/modules/auth/use-me', () => ({ useMe: () => meMock.me }));
 vi.mock('@/modules/location/active-locations-context', () => ({
   useActiveLocations: () => ({ selectedIds: ['loc-a'] }),
 }));
-vi.mock('@/modules/files/use-upload-image', () => ({ useUploadImage: () => vi.fn() }));
 vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
 }));
@@ -130,4 +129,11 @@ test('mode ubah menampilkan nama lokasi sebagai teks', () => {
   renderForm({ mode: 'edit', locationName: 'Lokasi A' });
   expect(screen.getByText('Lokasi A')).toBeInTheDocument();
   expect(screen.queryByRole('combobox', { name: 'Lokasi' })).not.toBeInTheDocument();
+});
+
+test('Lokasi dan Catatan wajib (aria-required); Customer opsional', () => {
+  renderForm();
+  expect(screen.getByLabelText('Lokasi')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('Catatan')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('Customer')).not.toHaveAttribute('aria-required');
 });

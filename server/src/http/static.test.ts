@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { removeTempDirSync } from '../../test-support/safe-rm';
 import { serveStatic } from './static';
 
 // Pelayanan berkas PWA (FR-P10, FR-P8): `sw.js` dan manifest harus selalu divalidasi ulang, aset berhash boleh
@@ -25,7 +26,7 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-  rmSync(dir, { recursive: true, force: true });
+  removeTempDirSync(dir);
 });
 
 function serve(pathname: string, method = 'GET'): Response {
@@ -83,7 +84,7 @@ describe('berkas PWA', () => {
       expect(response?.status).toBe(404);
       expect(await response?.text()).not.toContain('<!doctype html>');
     } finally {
-      rmSync(empty, { recursive: true, force: true });
+      removeTempDirSync(empty);
     }
   });
 });

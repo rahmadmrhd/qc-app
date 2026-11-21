@@ -134,6 +134,7 @@ export function MultiForm({
       <div className="grid gap-4 sm:grid-cols-3">
         <Select
           id="multi-brand"
+          required
           label="Merk"
           value={MULTI_BRAND}
           options={[{ value: MULTI_BRAND, label: brandConfig?.label ?? 'Ubiquiti' }]}
@@ -142,6 +143,7 @@ export function MultiForm({
         />
         <LinkField
           id="multi-tipe"
+          required
           label="Tipe"
           placeholder={
             !catalogReady
@@ -161,6 +163,7 @@ export function MultiForm({
         />
         <Select
           id="multi-firmware"
+          required
           label="Firmware"
           placeholder="Pilih firmware"
           value={firmwareCode}
@@ -175,6 +178,7 @@ export function MultiForm({
       <div className="grid gap-4 sm:grid-cols-2">
         <LinkField
           id="multi-bu"
+          required
           label="Business Unit"
           placeholder={
             !catalogReady
@@ -191,6 +195,7 @@ export function MultiForm({
         />
         <LinkField
           id="multi-location"
+          required
           label="Lokasi"
           placeholder={
             !catalogReady
@@ -207,7 +212,7 @@ export function MultiForm({
         />
       </div>
       {tipe && application && !application.ok ? (
-        <p className="text-sm text-amber-600 dark:text-amber-400">{application.message}</p>
+        <p className="text-sm text-warning-text">{application.message}</p>
       ) : null}
 
       <div className="grid items-start gap-4 sm:grid-cols-3">
@@ -224,7 +229,7 @@ export function MultiForm({
             onChange={(event) => changeConcurrency(event.target.value)}
           />
           {concurrency === null ? (
-            <p className="text-xs text-destructive">
+            <p className="text-xs text-destructive-text">
               Concurrent harus {MULTI_CONCURRENCY_MIN} sampai {MULTI_CONCURRENCY_MAX}.
             </p>
           ) : null}
@@ -241,7 +246,9 @@ export function MultiForm({
             onChange={(event) => setExcludeIp(event.target.value)}
           />
           {!excludeIpValid ? (
-            <p className="text-xs text-destructive">Exclude IP harus alamat IPv4 atau kosong.</p>
+            <p className="text-xs text-destructive-text">
+              Exclude IP harus alamat IPv4 atau kosong.
+            </p>
           ) : null}
         </div>
         <div className="flex items-center gap-2 pt-6">

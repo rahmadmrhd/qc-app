@@ -10,6 +10,7 @@ import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { LinkField } from '@/components/link-field';
 import { Select } from '@/components/select';
+import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -267,9 +268,15 @@ export function StickersPage({
                   <TableCell>
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium">{label}</span>
-                      {row.low ? <Badge variant="destructive">Menipis</Badge> : null}
+                      {row.low ? (
+                        <Badge color="warning" variant="soft" dot>
+                          Menipis
+                        </Badge>
+                      ) : null}
                       {stockRow?.typeStatus === 'inactive' ? (
-                        <Badge variant="secondary">Jenis nonaktif</Badge>
+                        <Badge color="secondary" variant="soft" dot>
+                          Jenis nonaktif
+                        </Badge>
                       ) : null}
                     </div>
                     {row.fullName !== null ? (
@@ -297,7 +304,7 @@ export function StickersPage({
                   ) : null}
                   {stock ? (
                     <TableCell
-                      className={`text-right tabular-nums${stockRow && stockRow.total < 0 ? ' text-destructive' : ''}`}
+                      className={`text-right tabular-nums${stockRow && stockRow.total < 0 ? ' text-destructive-text' : ''}`}
                     >
                       {stockRow ? formatStockQty(stockRow.total) : '0'}
                     </TableCell>
@@ -317,9 +324,10 @@ export function StickersPage({
                     <TableCell className="text-right tabular-nums">{catalog?.minQty}</TableCell>
                   ) : null}
                   <TableCell>
-                    <Badge variant={row.status === 'active' ? 'default' : 'secondary'}>
-                      {STICKER_STATUS_LABEL[row.status]}
-                    </Badge>
+                    <ActiveStatusBadge
+                      status={row.status}
+                      label={STICKER_STATUS_LABEL[row.status]}
+                    />
                   </TableCell>
                   <TableCell className="space-x-2 text-right">
                     {catalog && canEdit ? (

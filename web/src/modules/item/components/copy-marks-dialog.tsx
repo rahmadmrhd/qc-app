@@ -122,13 +122,13 @@ export function CopyMarksDialog({
                 </li>
               ))}
             </ol>
-            <p role="status" className="text-sm text-amber-600 dark:text-amber-400">
+            <p role="status" className="text-sm text-warning-text">
               {inactiveCount} penanda bersasaran nonaktif. Simpan akan menolak sasaran nonaktif yang
               baru bagi item ini; ganti sasarannya setelah disalin.
             </p>
           </div>
         ) : usages.isError ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive-text">
             {describeError(usages.error)}
           </p>
         ) : usages.isPending ? (
@@ -161,7 +161,7 @@ export function CopyMarksDialog({
           </ul>
         )}
         {error ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive-text">
             {error}
           </p>
         ) : null}

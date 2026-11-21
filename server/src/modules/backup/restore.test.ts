@@ -1,10 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, stat, utimes } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import { createFakeBridge, type FakeBridge } from '@server-test/fake-bridge';
+import { removeTempDir } from '../../../test-support/safe-rm';
 import { clientArgs, parseMysqlUrl } from './dump';
 import {
   importArgs,
@@ -130,7 +131,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  await rm(dir, { recursive: true, force: true });
+  await removeTempDir(dir);
 });
 
 describe('restoreBackup', () => {

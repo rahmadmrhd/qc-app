@@ -7,6 +7,7 @@ import { getRoutes } from '@server/routes';
 import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
 import { bytesOfBase64 } from '@server-test/bytes';
 import { captureAppError, captureAppErrorAsync } from '@server-test/errors';
+import { seedQrDesign } from '@server-test/qrcode-env';
 import { restCall } from '@server-test/rest-call';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { seedManualBookVersion, seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
@@ -491,6 +492,8 @@ describe('stiker jenis sistem dan status deprecated', () => {
       rule: 'group',
       systemKind: 'manual_book',
     });
+    // Konfigurasi harus ada dan hidup: pembaca versi terbaru menyaring `qr_designs` (soft delete 4b).
+    await seedQrDesign(env, { id: 'q1' });
     await seedSticker(env, { id: 'mb-1', typeId: 'mb', name: 'PBE M5 v1', minQty: 10 });
     await seedManualBookVersion(env, { stickerId: 'mb-1', designId: 'q1', version: 1 });
   });
@@ -598,6 +601,9 @@ describe('penanda versi terbaru Manual Book pada StickerDto (latestManualBookVer
       rule: 'group',
       systemKind: 'manual_book',
     });
+    // Konfigurasi harus ada dan hidup: pembaca versi terbaru menyaring `qr_designs` (soft delete 4b).
+    await seedQrDesign(env, { id: 'q1' });
+    await seedQrDesign(env, { id: 'q2' });
     await seedSticker(env, { id: 'mb-1', typeId: 'mb', name: 'PBE M5 v1', status: 'deprecated' });
     await seedManualBookVersion(env, { stickerId: 'mb-1', designId: 'q1', version: 1 });
     await seedSticker(env, { id: 'mb-2', typeId: 'mb', name: 'PBE M5 v2', status: 'inactive' });

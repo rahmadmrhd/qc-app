@@ -136,7 +136,7 @@ describe('konfigurasi default dan pustaka logo', () => {
     expect((await audits()).filter((x) => x === 'qrcode.preset_update')).toHaveLength(1);
   });
 
-  test('hapus default: hanya kelola; hilang dari daftar', async () => {
+  test('hapus default (lunak): hanya kelola; hilang dari daftar, baris tetap ada', async () => {
     const made = await savePreset();
     expect(
       (await call('qredit@gmail.com', 'qrcodes.deletePreset', { id: made.data.id })).error.code,

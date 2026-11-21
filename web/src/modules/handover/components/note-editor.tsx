@@ -8,11 +8,22 @@ export interface NoteEditorProps {
   value: string;
   onChange: (markdown: string) => void;
   labelledBy?: string;
+  required?: boolean;
   disabled?: boolean;
+  /** Diteruskan ke editor (mode `note` tanpa gambar sehingga tidak pernah sibuk; ada agar kontraknya seragam). */
+  onBusyChange?: ((busy: boolean) => void) | undefined;
 }
 
 /** Editor Catatan Serah Terima: WYSIWYG tanpa gambar, dengan tempel WhatsApp, maksimal 5.000 karakter. */
-export function NoteEditor({ id, value, onChange, labelledBy, disabled }: NoteEditorProps) {
+export function NoteEditor({
+  id,
+  value,
+  onChange,
+  labelledBy,
+  required,
+  disabled,
+  onBusyChange,
+}: NoteEditorProps) {
   const [tooLong, setTooLong] = useState<number | null>(null);
   const extensions = useMemo(
     () => [
@@ -34,12 +45,14 @@ export function NoteEditor({ id, value, onChange, labelledBy, disabled }: NoteEd
           onChange(next);
         }}
         labelledBy={labelledBy}
+        required={required}
         disabled={disabled}
         maxLength={HANDOVER_LIMITS.note}
         extraExtensions={extensions}
+        onBusyChange={onBusyChange}
       />
       {tooLong !== null ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {`Tempelan ${tooLong.toLocaleString('id-ID')} karakter melebihi batas ${HANDOVER_LIMITS.note.toLocaleString('id-ID')} karakter dan tidak dimasukkan. Bagi menjadi beberapa task atau persingkat dulu; catatan Anda tidak berubah.`}
         </p>
       ) : null}

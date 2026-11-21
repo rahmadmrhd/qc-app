@@ -1,3 +1,4 @@
+import { MAX_FILE_BYTES } from './files';
 import { hashText } from './items';
 
 export const QR_LIMITS = {
@@ -6,7 +7,7 @@ export const QR_LIMITS = {
   footer: 80,
   link: 300,
   documentName: 150,
-  documentMaxBytes: 10 * 1024 * 1024,
+  documentMaxBytes: MAX_FILE_BYTES,
   /** Jumlah logo maksimal dalam pustaka logo konfigurasi default. */
   logoLibrary: 20,
   /** Jumlah konfigurasi default maksimal dan panjang namanya. */

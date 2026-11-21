@@ -42,11 +42,11 @@ const STATUS_CLASS: Record<DeviceStatus, string> = {
   waiting: 'bg-muted text-muted-foreground',
   pinging: 'bg-muted text-muted-foreground',
   fetching_info: 'bg-muted text-muted-foreground',
-  ready: 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-200',
-  queued: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200',
-  injecting: 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200',
-  success: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
-  failed: 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200',
+  ready: 'bg-info-text/15 text-info-text',
+  queued: 'bg-warning-text/15 text-warning-text',
+  injecting: 'bg-info-text/15 text-info-text',
+  success: 'bg-success-text/15 text-success-text',
+  failed: 'bg-destructive-text/15 text-destructive-text',
   disconnected: 'bg-muted text-muted-foreground line-through',
 };
 
@@ -98,7 +98,7 @@ function PingDot({ pingable }: { pingable: boolean }) {
       title={label}
       className={cn(
         'inline-block size-2.5 rounded-full',
-        pingable ? 'bg-emerald-500' : 'bg-muted-foreground/40',
+        pingable ? 'bg-success' : 'bg-muted-foreground/40',
       )}
     />
   );
@@ -121,7 +121,9 @@ function SessionNote({ device, unrecorded }: { device: MultiDeviceDto; unrecorde
   return (
     <>
       {unrecorded ? (
-        <span className="block text-xs font-medium text-destructive">Belum tercatat di draft</span>
+        <span className="block text-xs font-medium text-destructive-text">
+          Belum tercatat di draft
+        </span>
       ) : null}
       {device.injectedThisSession ? (
         <span className="block text-xs text-muted-foreground">Sudah di-inject di sesi ini</span>

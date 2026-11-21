@@ -1,10 +1,11 @@
 import { describe, expect, test } from 'bun:test';
 import { createHash, generateKeyPairSync } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { publicKeyFingerprint, verifyUiManifest } from '../countrylock/src/ui-manifest';
 import { createFakeBridge } from '../server/test-support/fake-bridge';
+import { removeTempDirSync } from '../server/test-support/safe-rm';
 import {
   installerName,
   manifestFileName,
@@ -69,7 +70,7 @@ describe('buildReleaseManifest', () => {
       });
       expect(manifest?.files.find((f) => f.arch === 'arm64')?.sha512).toBe(sha512b64('ISI-ARM'));
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     }
   });
 
@@ -86,7 +87,7 @@ describe('buildReleaseManifest', () => {
         }),
       ).rejects.toThrow('QC-App-Setup-1.2.3-arm64.exe');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     }
   });
 
@@ -111,7 +112,7 @@ describe('buildReleaseManifest', () => {
         }),
       ).rejects.toThrow();
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     }
   });
 });
@@ -126,7 +127,7 @@ describe('signRelease', () => {
       const signature = signRelease('{"a":1}', file, keys.publicPem);
       expect(verifyUiManifest('{"a":1}', signature, keys.publicPem)).toBe(true);
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     }
   });
 
@@ -147,7 +148,7 @@ describe('signRelease', () => {
       expect(message).toContain(publicKeyFingerprint(other.publicPem));
       expect(message).not.toContain('PRIVATE');
     } finally {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     }
   });
 
@@ -175,7 +176,7 @@ async function prepared(
   });
   return {
     release: { version, dir, manifestJson, signature: 'SIGNATURE-BASE64URL' },
-    cleanup: () => rmSync(dir, { recursive: true, force: true }),
+    cleanup: () => removeTempDirSync(dir),
   };
 }
 

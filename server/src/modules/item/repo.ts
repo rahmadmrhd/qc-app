@@ -1,6 +1,7 @@
 import { CAS_FAIL_SQL, CAS_UPDATED_AT_SET } from '@server/core/cas';
 import type { Db, DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
+import { liveWhere } from '@server/core/soft-delete';
 import { adjustItemCountStmt } from '@server/modules/brand/repo';
 import { listItemsOfPostels } from '@server/modules/postel/items';
 import { listPostelNumbers } from '@server/modules/postel/repo';
@@ -32,6 +33,9 @@ export interface ItemRecord {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** Soft delete: '' = hidup (ISO UTC bila terhapus) dan pelakunya (email). */
+  deletedAt: string;
+  deletedBy: string;
 }
 
 export interface ItemRow {
@@ -51,6 +55,8 @@ export interface ItemRow {
   created_at: string;
   updated_at: string;
   updated_by: string;
+  deleted_at: string;
+  deleted_by: string;
 }
 
 /** Kolom `items` yang dibaca `toItem` (satu sumber kebenaran; nama = kunci `ItemRow`). */
@@ -71,6 +77,8 @@ const ITEM_COLUMN_LIST = [
   'created_at',
   'updated_at',
   'updated_by',
+  'deleted_at',
+  'deleted_by',
 ] as const;
 
 export const ITEM_COLUMNS = ITEM_COLUMN_LIST.join(', ');
@@ -130,14 +138,28 @@ export function toItem(row: ItemRow): ItemRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
+    deletedAt: row.deleted_at ?? '',
+    deletedBy: row.deleted_by ?? '',
   };
 }
 
-/** Kueri satu item menurut id (untuk digabung ke `batch()` baca; hasilnya baris pertama lewat `toItem`). */
+/** Kueri satu item HIDUP menurut id (untuk digabung ke `batch()` baca; hasilnya baris pertama lewat `toItem`). */
 export function findItemStmt(db: Db, id: string): DbStatement {
-  return db.prepare(`SELECT ${ITEM_COLUMNS} FROM items WHERE id = ?`).bind(id);
+  return db.prepare(`SELECT ${ITEM_COLUMNS} FROM items WHERE id = ? AND ${liveWhere()}`).bind(id);
 }
 
+/**
+ * Item HIDUP MAUPUN TERHAPUS menurut id: tampilan "Terhapus" dan hapus/pulihkan bagi pemegang izin. Pemanggil menilai
+ * hak dan `deletedAt`; jalur baca/tulis biasa memakai `findItem` (hidup saja).
+ */
+export async function findItemAny(env: Env, id: string): Promise<ItemRecord | null> {
+  const row = await env.DB.prepare(`SELECT ${ITEM_COLUMNS} FROM items WHERE id = ?`)
+    .bind(id)
+    .first<ItemRow>();
+  return row ? toItem(row) : null;
+}
+
+/** Item HIDUP menurut id; item terhapus = `null` (seperti item tak ada). */
 export async function findItem(env: Env, id: string): Promise<ItemRecord | null> {
   const row = await findItemStmt(env.DB, id).first<ItemRow>();
   return row ? toItem(row) : null;
@@ -175,8 +197,10 @@ export async function itemBusinessUnitsOf(
 }
 
 /**
- * Konfigurasi QR (Manual Book) tiap item: peta id item -> `qr_designs.id` untuk item yang sudah tergabung. `ItemRecord`
- * tidak memuat kolom ini (penulisnya modul QR, bukan `items.save`); item tanpa Manual Book tidak ada di peta.
+ * Konfigurasi QR (Manual Book) tiap item: peta id item -> `qr_designs.id` untuk item yang sudah tergabung ke konfigurasi
+ * HIDUP. `ItemRecord` tidak memuat kolom ini (penulisnya modul QR, bukan `items.save`); item tanpa Manual Book, atau
+ * yang menunjuk konfigurasi terhapus (rujukan terhapus dihitung belum tergabung, soft delete §5 butir 1), tidak ada di
+ * peta. Sumber aturan `group` jenis Manual Book (tampilan instruksi dan katalog desktop).
  */
 export async function manualBookDesignIdsOf(
   db: Db,
@@ -188,7 +212,7 @@ export async function manualBookDesignIdsOf(
     const chunk = unique.slice(from, from + IN_CHUNK);
     const rows = await db
       .prepare(
-        `SELECT id, manual_book_design_id FROM items WHERE id IN (${chunk.map(() => '?').join(',')}) AND manual_book_design_id <> ''`,
+        `SELECT i.id, i.manual_book_design_id FROM items i JOIN qr_designs d ON d.id = i.manual_book_design_id AND ${liveWhere('d')} WHERE i.id IN (${chunk.map(() => '?').join(',')}) AND i.manual_book_design_id <> ''`,
       )
       .bind(...chunk)
       .all<{ id: string; manual_book_design_id: string }>();
@@ -198,8 +222,9 @@ export async function manualBookDesignIdsOf(
 }
 
 /**
- * Catatan Postel tiap item: peta id item -> `postels.id` untuk item yang sudah tertaut. `ItemRecord` tidak memuat kolom
- * ini (penulisnya modul Postel, bukan `items.save`); item tanpa Postel tidak ada di peta.
+ * Catatan Postel tiap item: peta id item -> `postels.id` untuk item yang sudah tertaut ke catatan HIDUP. `ItemRecord`
+ * tidak memuat kolom ini (penulisnya modul Postel, bukan `items.save`); item tanpa Postel, atau yang menunjuk catatan
+ * terhapus (rujukan terhapus dihitung belum tertaut), tidak ada di peta.
  */
 export async function postelIdsOf(
   db: Preparer,
@@ -211,7 +236,7 @@ export async function postelIdsOf(
     const chunk = unique.slice(from, from + IN_CHUNK);
     const rows = await db
       .prepare(
-        `SELECT id, postel_id FROM items WHERE id IN (${chunk.map(() => '?').join(',')}) AND postel_id IS NOT NULL`,
+        `SELECT i.id, i.postel_id FROM items i JOIN postels p ON p.id = i.postel_id AND ${liveWhere('p')} WHERE i.id IN (${chunk.map(() => '?').join(',')}) AND i.postel_id IS NOT NULL`,
       )
       .bind(...chunk)
       .all<{ id: string; postel_id: string }>();
@@ -221,11 +246,11 @@ export async function postelIdsOf(
 }
 
 /**
- * Definisi TUNGGAL "item ber-Manual Book" (alias tabel `i` = `items`): tergabung ke konfigurasi QR yang punya minimal satu
- * versi. Dipakai filter `items.list` (`manualBook`) dan pemuat `loadItemManualBooks` (sumber `hasManualBook`/`manualBook`).
+ * Definisi TUNGGAL "item ber-Manual Book" (alias tabel `i` = `items`): tergabung ke konfigurasi QR HIDUP yang punya minimal
+ * satu versi (item yang menunjuk konfigurasi terhapus dihitung belum ber-Manual Book, soft delete §5 butir 1). Dipakai
+ * filter `items.list` (`manualBook`) dan pemuat `loadItemManualBooks` (sumber `hasManualBook`/`manualBook`).
  */
-export const HAS_MANUAL_BOOK_SQL =
-  "(i.manual_book_design_id <> '' AND EXISTS (SELECT 1 FROM manual_book_versions mv WHERE mv.design_id = i.manual_book_design_id))";
+export const HAS_MANUAL_BOOK_SQL = `(i.manual_book_design_id <> '' AND EXISTS (SELECT 1 FROM qr_designs d0 WHERE d0.id = i.manual_book_design_id AND ${liveWhere('d0')}) AND EXISTS (SELECT 1 FROM manual_book_versions mv WHERE mv.design_id = i.manual_book_design_id))`;
 
 /**
  * Manual Book tiap item (peta id item -> versi terbaru). Item tanpa Manual Book berversi tidak ada di peta. Satu kueri
@@ -241,7 +266,7 @@ export async function loadItemManualBooks(
     const chunk = unique.slice(from, from + IN_CHUNK);
     const rows = await db
       .prepare(
-        `SELECT i.id, i.manual_book_design_id AS design_id, COALESCE((SELECT d.name FROM qr_designs d WHERE d.id = i.manual_book_design_id), '') AS design_name, (SELECT MAX(m.version) FROM manual_book_versions m WHERE m.design_id = i.manual_book_design_id) AS version, COALESCE((SELECT s.status FROM manual_book_versions m JOIN stickers s ON s.id = m.sticker_id WHERE m.design_id = i.manual_book_design_id ORDER BY m.version DESC LIMIT 1), 'inactive') AS sticker_status FROM items i WHERE i.id IN (${chunk.map(() => '?').join(',')}) AND ${HAS_MANUAL_BOOK_SQL}`,
+        `SELECT i.id, i.manual_book_design_id AS design_id, COALESCE((SELECT d.name FROM qr_designs d WHERE d.id = i.manual_book_design_id AND ${liveWhere('d')}), '') AS design_name, (SELECT MAX(m.version) FROM manual_book_versions m WHERE m.design_id = i.manual_book_design_id) AS version, COALESCE((SELECT s.status FROM manual_book_versions m JOIN stickers s ON s.id = m.sticker_id WHERE m.design_id = i.manual_book_design_id ORDER BY m.version DESC LIMIT 1), 'inactive') AS sticker_status FROM items i WHERE i.id IN (${chunk.map(() => '?').join(',')}) AND ${HAS_MANUAL_BOOK_SQL}`,
       )
       .bind(...chunk)
       .all<{
@@ -264,12 +289,13 @@ export async function loadItemManualBooks(
 }
 
 /**
- * Definisi TUNGGAL "item ber-Postel" (alias tabel `i` = `items`): `postel_id` terisi. Kunci asing `items_postel_fk`
- * (migrasi 0010, `ON DELETE SET NULL`) menjamin penunjuk terisi selalu menunjuk catatan yang ada, jadi tak perlu
- * `EXISTS` lagi (penunjuk yatim tak mungkin ada). Dipakai filter `items.list` (`postel`) dan `itemIdsWithPostel`
- * (sumber `hasPostel`); aturan `group` jenis Postel memakai stiker milik catatan (`postelStickerIdsOf`).
+ * Definisi TUNGGAL "item ber-Postel" (alias tabel `i` = `items`): `postel_id` terisi dan menunjuk catatan HIDUP. Kunci
+ * asing `items_postel_fk` (migrasi 0010) menjamin penunjuk terisi menunjuk catatan yang ada; catatan terhapus (soft
+ * delete) tetap ditunjuk, tetapi item itu dihitung belum ber-Postel (soft delete §5 butir 1). Dipakai filter
+ * `items.list` (`postel`) dan `itemIdsWithPostel` (sumber `hasPostel`); aturan `group` jenis Postel memakai stiker milik
+ * catatan hidup (`postelStickerIdsOf`).
  */
-export const HAS_POSTEL_SQL = '(i.postel_id IS NOT NULL)';
+export const HAS_POSTEL_SQL = `(i.postel_id IS NOT NULL AND EXISTS (SELECT 1 FROM postels p0 WHERE p0.id = i.postel_id AND ${liveWhere('p0')}))`;
 
 /** Dari `itemIds`, id item ber-Postel (`HAS_POSTEL_SQL`); satu kueri per 500 id. */
 export async function itemIdsWithPostel(db: Db, itemIds: readonly string[]): Promise<Set<string>> {
@@ -303,7 +329,7 @@ export async function postelStickerIdsOf(
     const chunk = unique.slice(from, from + IN_CHUNK);
     const rows = await db
       .prepare(
-        `SELECT i.id, p.sticker_id FROM items i JOIN postels p ON p.id = i.postel_id WHERE i.id IN (${chunk.map(() => '?').join(',')}) AND p.sticker_id IS NOT NULL`,
+        `SELECT i.id, p.sticker_id FROM items i JOIN postels p ON p.id = i.postel_id WHERE ${liveWhere('p')} AND i.id IN (${chunk.map(() => '?').join(',')}) AND p.sticker_id IS NOT NULL`,
       )
       .bind(...chunk)
       .all<{ id: string; sticker_id: string }>();
@@ -380,7 +406,10 @@ export function itemBusinessUnitIdsStmt(db: Db, itemId: string): DbStatement {
 
 /** Ringkasan semua BU (kecil) untuk validasi tulis; digabung ke `batch()` baca. */
 export function businessUnitBriefsStmt(db: Db): DbStatement {
-  return db.prepare('SELECT id, code, name, status FROM business_units');
+  // BU terhapus dibaca sebagai nonaktif: tak dapat dipilih baru, tetapi BU yang sudah tersimpan tetap dipertahankan.
+  return db.prepare(
+    "SELECT id, code, name, CASE WHEN deleted_at = '' THEN status ELSE 'inactive' END AS status FROM business_units",
+  );
 }
 
 export interface BusinessUnitBrief extends BusinessUnitRefDto {
@@ -438,22 +467,50 @@ export interface ItemWithBrand {
   item: ItemRecord;
   brandName: string;
   brandKey: string;
+  /** Merk terhapus (soft delete): item tetap tampil dengan nama merk + penanda "Terhapus". */
+  brandDeleted: boolean;
+}
+
+type ItemWithBrandRow = ItemRow & {
+  brand_name: string | null;
+  brand_key: string | null;
+  brand_deleted_at: string | null;
+};
+
+/** SELECT item + merknya (kolom merk memakai alias `brand_*`); pemakai menambahkan `WHERE`. */
+const ITEM_WITH_BRAND_SELECT = `SELECT ${itemColumnsOf('i')}, b.name AS brand_name, b.\`key\` AS brand_key, b.deleted_at AS brand_deleted_at FROM items i LEFT JOIN brands b ON b.id = i.brand_id`;
+
+function toItemWithBrand(row: ItemWithBrandRow): ItemWithBrand {
+  return {
+    item: toItem(row),
+    brandName: row.brand_name ?? '',
+    brandKey: row.brand_key ?? '',
+    brandDeleted: (row.brand_deleted_at ?? '') !== '',
+  };
 }
 
 /**
- * Item dan merknya dalam SATU kueri (JOIN): kunci item (`items.key`) dan kunci merk (`brands.key`) berasal dari
+ * Item HIDUP dan merknya dalam SATU kueri (JOIN): kunci item (`items.key`) dan kunci merk (`brands.key`) berasal dari
  * snapshot yang sama, sehingga `brandKeyGuardStmt(.., brandKey)` menjaga persis keadaan yang dibaca: ganti nama
  * merk yang commit sesudahnya membatalkan batch, yang commit sebelumnya sudah tercermin di `items.key` (N1).
+ * Item terhapus = `null`; merk dibaca apa adanya (penampil rujukan: merk terhapus tetap memberi nama).
  */
 export async function findItemWithBrand(env: Env, id: string): Promise<ItemWithBrand | null> {
-  const columns = itemColumnsOf('i');
-  const row = await env.DB.prepare(
-    `SELECT ${columns}, b.name AS brand_name, b.\`key\` AS brand_key FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE i.id = ?`,
-  )
+  const row = await env.DB.prepare(`${ITEM_WITH_BRAND_SELECT} WHERE i.id = ? AND ${liveWhere('i')}`)
     .bind(id)
-    .first<ItemRow & { brand_name: string | null; brand_key: string | null }>();
-  if (!row) return null;
-  return { item: toItem(row), brandName: row.brand_name ?? '', brandKey: row.brand_key ?? '' };
+    .first<ItemWithBrandRow>();
+  return row ? toItemWithBrand(row) : null;
+}
+
+/**
+ * Seperti `findItemWithBrand` tetapi item HIDUP MAUPUN TERHAPUS: untuk hapus/pulihkan dan tampilan "Terhapus" bagi
+ * pemegang izin Pulihkan. Pemanggil menilai `item.deletedAt` dan hak.
+ */
+export async function findItemWithBrandAny(env: Env, id: string): Promise<ItemWithBrand | null> {
+  const row = await env.DB.prepare(`${ITEM_WITH_BRAND_SELECT} WHERE i.id = ?`)
+    .bind(id)
+    .first<ItemWithBrandRow>();
+  return row ? toItemWithBrand(row) : null;
 }
 
 /** `|kunci1|kunci2|` dari nama lain (kosong bila tanpa nama lain); kolom `items.alias_keys`. */
@@ -468,7 +525,11 @@ export function aliasKeyList(aliases: readonly string[]): string[] {
 }
 
 /** Baris `item_alias_keys` baru: keunikan kunci nama lain dijaga PRIMARY KEY. */
-function insertAliasKeyStmts(db: Db, itemId: string, keys: readonly string[]): DbStatement[] {
+export function insertAliasKeyStmts(
+  db: Db,
+  itemId: string,
+  keys: readonly string[],
+): DbStatement[] {
   return keys.map((key) =>
     db.prepare('INSERT INTO item_alias_keys (`key`, item_id) VALUES (?, ?)').bind(key, itemId),
   );
@@ -481,10 +542,19 @@ function insertAliasKeyStmts(db: Db, itemId: string, keys: readonly string[]): D
  * `expectedKey`, yaitu kunci merk yang dipakai penulis untuk menghitung `items.key`. Pemanggil mengulang lewat `runCas`.
  * Tidak mengubah `items.updated_at` saat ganti nama (semantik CAS FE dan sinkron tetap).
  */
-export function brandKeyGuardStmt(db: Db, brandId: string, expectedKey: string): DbStatement {
+export function brandKeyGuardStmt(
+  db: Db,
+  brandId: string,
+  expectedKey: string,
+  chosenNow = false,
+): DbStatement {
+  // Merk yang BARU dipilih (item baru atau pindah merk) harus masih hidup dan aktif saat komit: merk yang dinonaktifkan
+  // lalu dihapus sesudah dibaca penulis menggagalkan batch (T1: id baru harus hidup). Rujukan tersimpan (`chosenNow`
+  // false) tetap diterima walau merknya terhapus.
+  const alive = chosenNow ? " AND deleted_at = '' AND status = 'active'" : '';
   return db
     .prepare(
-      `SELECT CASE WHEN \`key\` = ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM brands WHERE id = ? FOR UPDATE`,
+      `SELECT CASE WHEN \`key\` = ?${alive} THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM brands WHERE id = ? FOR UPDATE`,
     )
     .bind(expectedKey, brandId);
 }

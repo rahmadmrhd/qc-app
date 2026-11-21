@@ -48,9 +48,12 @@ export function BusinessUnitForm({
       <form.Field name="code">
         {(field) => (
           <div className="space-y-1.5">
-            <Label htmlFor="bu-code">Kode</Label>
+            <Label htmlFor="bu-code" required>
+              Kode
+            </Label>
             <Input
               id="bu-code"
+              aria-required="true"
               value={field.state.value}
               disabled={mode === 'edit'}
               placeholder="mis. RETAIL"
@@ -68,9 +71,12 @@ export function BusinessUnitForm({
       <form.Field name="name">
         {(field) => (
           <div className="space-y-1.5">
-            <Label htmlFor="bu-name">Nama</Label>
+            <Label htmlFor="bu-name" required>
+              Nama
+            </Label>
             <Input
               id="bu-name"
+              aria-required="true"
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(event) => field.handleChange(event.target.value)}
@@ -80,7 +86,7 @@ export function BusinessUnitForm({
         )}
       </form.Field>
       {submitError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {submitError}
         </p>
       ) : null}

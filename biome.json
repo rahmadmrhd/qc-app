@@ -8,7 +8,8 @@
       "!.claude/worktrees",
       "!**/routeTree.gen.ts",
       "!web/src/components/ui",
-      "!web/src/hooks"
+      "!web/src/hooks",
+      "!docs/superpowers/specs/assets"
     ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },

@@ -118,3 +118,12 @@ test('Catatan memakai editor Markdown (kotak teks kaya), bukan input teks biasa'
   // Batas karakter catatan serial ditampilkan oleh editor.
   expect(screen.getByText('0/1000')).toBeInTheDocument();
 });
+
+test('Default Catat Serial: Lokasi, Tanggal uji, Item, BU wajib; Catatan opsional', () => {
+  renderPage();
+  const region = defaults();
+  for (const name of ['Lokasi', 'Tanggal uji', 'Item', 'Business Unit']) {
+    expect(within(region).getByLabelText(name)).toHaveAttribute('aria-required', 'true');
+  }
+  expect(within(region).getByLabelText('Catatan')).not.toHaveAttribute('aria-required');
+});

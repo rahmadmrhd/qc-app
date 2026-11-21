@@ -161,6 +161,7 @@ export function OpnamePage({ rows, onSave, onDone, onCancel, onDirtyChange }: Op
       </div>
       <LocationField
         id="opname-location"
+        highlightInitial
         module="stickerstock"
         level="manage"
         value={locationId}
@@ -263,18 +264,18 @@ export function OpnamePage({ rows, onSave, onDone, onCancel, onDirtyChange }: Op
         {counted.length > 0 ? ` Sudah dihitung: ${counted.length} stiker.` : ''}
       </p>
       {tooMany ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {`Maksimal ${STICKER_LIMITS.opnameRows} stiker per opname.`}
         </p>
       ) : null}
       {/* Di luar daftar agar baris yang tersaring dari tampilan tetap terlihat masalahnya. */}
       {overLimitRows.map((row) => (
-        <p key={row.stickerId} role="alert" className="text-sm text-destructive">
+        <p key={row.stickerId} role="alert" className="text-sm text-destructive-text">
           {`${row.name}: jumlah butir maksimal ${STICKER_LIMITS.qtyMax}`}
         </p>
       ))}
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {error}
         </p>
       ) : null}

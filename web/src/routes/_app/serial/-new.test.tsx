@@ -16,19 +16,22 @@ const state = vi.hoisted(() => ({
   /** Memicu penjaga dialog seperti navigasi keluar: mengembalikan hasil `shouldBlockFn` dan memasang status. */
   triggerDialog: undefined as (() => boolean) | undefined,
 }));
+// Lokasi berbeda: simulasi meninggalkan halaman (lokasi sama tak pernah diblokir, lihat leaveBlocker).
+const LEAVE = { current: { pathname: '/serial/new' }, next: { pathname: '/serial' } };
 vi.mock('@tanstack/react-router', async () => ({
   ...(await vi.importActual<object>('@tanstack/react-router')),
   createFileRoute: () => (options: { component: () => unknown }) => ({ options }),
   useNavigate: () => state.navigate,
+  useRouter: () => ({ navigate: state.navigate }),
   useBlocker: (opts: { shouldBlockFn: () => boolean; withResolver?: boolean }) => {
     const [status, setStatus] = useState<'idle' | 'blocked'>('idle');
     if (!opts.withResolver) {
-      state.blockerFn = opts.shouldBlockFn;
+      state.blockerFn = () => (opts.shouldBlockFn as (a: unknown) => boolean)(LEAVE);
       return undefined;
     }
-    state.dialogFn = opts.shouldBlockFn;
+    state.dialogFn = () => (opts.shouldBlockFn as (a: unknown) => boolean)(LEAVE);
     state.triggerDialog = () => {
-      const blocked = opts.shouldBlockFn();
+      const blocked = (opts.shouldBlockFn as (a: unknown) => boolean)(LEAVE);
       if (blocked) setStatus('blocked');
       return blocked;
     };
@@ -127,7 +130,7 @@ test('semua baris tersimpan: berpindah ke daftar tanpa konfirmasi keluar', async
   await mount();
   await userEvent.click(screen.getByRole('button', { name: 'isi' }));
   await userEvent.click(screen.getByRole('button', { name: 'semua tersimpan' }));
-  expect(state.navigate).toHaveBeenCalledWith({ to: '/serial' });
+  expect(state.navigate).toHaveBeenCalledWith({ to: '/serial', replace: true });
   // Penjaga keluar sudah tidak menahan (draf kosong) dan tidak menampilkan konfirmasi.
   expect(state.blockerFn?.()).toBe(false);
   expect(confirm).not.toHaveBeenCalled();

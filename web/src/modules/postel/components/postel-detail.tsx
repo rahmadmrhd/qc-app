@@ -48,7 +48,7 @@ export function PostelDetail({ postelId, canEdit, onBack, onEdit }: PostelDetail
   }
 
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <PostelView
         postel={postel}
         canEdit={canEdit}

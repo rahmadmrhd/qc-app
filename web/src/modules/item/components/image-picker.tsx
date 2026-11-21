@@ -1,9 +1,16 @@
+import { MAX_IMAGE_BYTES } from '@shared/files';
 import { ImagePlus, Trash2 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type AttachmentItem,
+  AttachmentView,
+  FileDialog,
+  FileDropZone,
+  PreviewDialog,
+} from '@/components/file-dialog';
+import { useBackgroundUploads } from '@/components/file-dialog/use-background-uploads';
 import { Button } from '@/components/ui/button';
-import { isAcceptedImage } from '@/modules/files/image';
-import { uploadErrorMessage } from '@/modules/files/upload-error';
-import { useUploadImage } from '@/modules/files/use-upload-image';
+import { itemFileSource } from '@/modules/files/file-source';
 import { ImageThumb } from './image-thumb';
 
 export interface ImagePickerProps {
@@ -12,75 +19,139 @@ export interface ImagePickerProps {
   onChange: (id: string | null) => void;
   /** Dipakai untuk nama aksesibel, mis. "stiker 1". */
   label: string;
+  /** Dipanggil saat ada unggahan berjalan atau menunggu (true) dan saat selesai/dibuang (false); pemanggil menahan Simpan. */
+  onBusyChange?: ((busy: boolean) => void) | undefined;
 }
 
-/** Satu gambar opsional (mis. contoh stiker): pilih berkas → kecilkan → unggah. */
-export function ImagePicker({ value, onChange, label }: ImagePickerProps) {
-  const uploadImage = useUploadImage();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+const OWNER = 'picker';
 
-  async function pick(file: File | undefined) {
-    if (!file) return;
-    if (!isAcceptedImage(file)) {
-      setError('Hanya gambar JPEG, PNG, atau WebP');
-      return;
-    }
-    setError(null);
-    setBusy(true);
-    try {
-      onChange(await uploadImage(file));
-    } catch (failure) {
-      setError(uploadErrorMessage(failure));
-    } finally {
-      setBusy(false);
-    }
+interface DialogState {
+  open: boolean;
+  files: File[];
+  rejected: { name: string; reason: string }[];
+}
+
+const CLOSED: DialogState = { open: false, files: [], rejected: [] };
+
+/** Satu gambar opsional (mis. contoh stiker): dialog lampiran (Telusuri, seret-lepas, Kamera) lalu diunggah di latar. */
+export function ImagePicker({ value, onChange, label, onBusyChange }: ImagePickerProps) {
+  const [dialog, setDialog] = useState<DialogState>(CLOSED);
+  const [preview, setPreview] = useState<AttachmentItem | null>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  // Unggahan latar milik field ini; dibatalkan otomatis saat field dilepas. Hasil sukses langsung menjadi nilainya.
+  const uploads = useBackgroundUploads({
+    source: itemFileSource,
+    onUploaded: (_owner, item) => {
+      onChangeRef.current(item.id);
+      return true;
+    },
+  });
+  const own = uploads.forOwner(OWNER);
+  const busy = own.blocking;
+  const onBusyChangeRef = useRef(onBusyChange);
+  onBusyChangeRef.current = onBusyChange;
+  useEffect(() => {
+    onBusyChangeRef.current?.(busy);
+    return () => onBusyChangeRef.current?.(false);
+  }, [busy]);
+
+  const name = `Contoh ${label}`;
+  const current = useMemo<AttachmentItem | null>(
+    () =>
+      value
+        ? {
+            id: value,
+            name,
+            mime: 'image/*',
+            renderImage: (variant) => (
+              <ImageThumb
+                id={value}
+                alt={name}
+                className={variant === 'thumb' ? 'size-full' : 'max-h-[70dvh] max-w-full'}
+              />
+            ),
+          }
+        : null,
+    [value, name],
+  );
+
+  function openDialog(files: File[], rejected: { name: string; reason: string }[]) {
+    if (busy) return;
+    if (files.length > 0 || rejected.length > 0) setDialog({ open: true, files, rejected });
   }
 
   return (
-    <div className="flex items-center gap-2">
-      {value ? <ImageThumb id={value} alt={`Contoh ${label}`} className="size-12" /> : null}
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
+    <>
+      <FileDropZone
+        accept={itemFileSource.mimeTypes}
+        onFiles={openDialog}
         disabled={busy}
-        onClick={() => inputRef.current?.click()}
+        className="flex flex-wrap items-center gap-2"
       >
-        <ImagePlus aria-hidden="true" />
-        {busy ? 'Mengunggah…' : value ? 'Ganti gambar' : 'Pilih gambar'}
-      </Button>
-      {value ? (
+        {current ? (
+          <button
+            type="button"
+            aria-label={`Perbesar ${name}`}
+            className="block size-12 shrink-0 cursor-zoom-in overflow-hidden rounded-md border outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+            onClick={() => setPreview(current)}
+          >
+            {current.renderImage?.('thumb')}
+          </button>
+        ) : null}
         <Button
           type="button"
           size="sm"
-          variant="ghost"
-          aria-label={`Hapus gambar contoh ${label}`}
+          variant="outline"
           disabled={busy}
-          onClick={() => onChange(null)}
+          onClick={() => setDialog({ open: true, files: [], rejected: [] })}
         >
-          <Trash2 aria-hidden="true" />
+          <ImagePlus aria-hidden="true" />
+          {busy ? 'Mengunggah…' : value ? 'Ganti gambar' : 'Pilih gambar'}
         </Button>
+        {value ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            aria-label={`Hapus gambar contoh ${label}`}
+            disabled={busy}
+            onClick={() => onChange(null)}
+          >
+            <Trash2 aria-hidden="true" />
+          </Button>
+        ) : null}
+        <AttachmentView
+          items={[]}
+          pending={own.entries}
+          layout="grid"
+          label={`gambar contoh ${label}`}
+          onRetry={own.retry}
+          onCancel={own.remove}
+        />
+      </FileDropZone>
+      {dialog.open ? (
+        <FileDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setDialog(CLOSED);
+          }}
+          source={itemFileSource}
+          mode="single"
+          accept={['image']}
+          maxBytes={MAX_IMAGE_BYTES}
+          initialFiles={dialog.files.length > 0 ? dialog.files : undefined}
+          initialRejected={dialog.rejected.length > 0 ? dialog.rejected : undefined}
+          title="Pilih gambar contoh"
+          hideNames
+          onConfirm={(result) => {
+            // Percobaan baru menggantikan entri gagal sebelumnya.
+            uploads.cancelOwner(OWNER);
+            own.add(result.files);
+          }}
+        />
       ) : null}
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/jpeg,image/png,image/webp"
-        aria-label={`Gambar contoh ${label}`}
-        className="sr-only"
-        tabIndex={-1}
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          event.target.value = '';
-          void pick(file);
-        }}
-      />
-      {error ? (
-        <span role="alert" className="text-xs text-destructive">
-          {error}
-        </span>
-      ) : null}
-    </div>
+      <PreviewDialog item={preview} onClose={() => setPreview(null)} />
+    </>
   );
 }

@@ -1,7 +1,8 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
 import { itemLinkAccess } from '@/lib/link-access';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
@@ -25,6 +26,14 @@ import {
 } from '@/modules/qrcode/schemas';
 
 export const Route = createFileRoute('/_app/qrcode/$designId/edit')({
+  staticData: {
+    crumb: ({ params, queryClient }) => {
+      const name = queryClient.getQueryData(
+        qrDesignQueryOptions(params.designId ?? '').queryKey,
+      )?.name;
+      return name ? [{ label: name }, { label: 'Ubah' }] : { label: 'Ubah' };
+    },
+  },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'edit'),
   loader: ({ context, params }) =>
     Promise.all([
@@ -36,7 +45,7 @@ export const Route = createFileRoute('/_app/qrcode/$designId/edit')({
 
 function EditQrDesignPage() {
   const { designId } = Route.useParams();
-  const navigate = useNavigate();
+  const stack = useStackNavigation();
   const me = useMe();
   const { data: design } = useSuspenseQuery(qrDesignQueryOptions(designId));
   // Versi saat halaman dibuka: unggah PDF/refetch tidak me-reset form; bila orang lain sudah menyimpan,
@@ -54,9 +63,8 @@ function EditQrDesignPage() {
     try {
       await save.mutateAsync(toSaveQrDesignInput(values, design.id, loadedAt, options.overflow));
       toast.success('Konfigurasi disimpan');
-      await navigate(
-        options.thenExport ? { to: '/qrcode', search: { export: design.id } } : { to: '/qrcode' },
-      );
+      if (options.thenExport) stack.replace({ to: '/qrcode', search: { export: design.id } });
+      else stack.pop({ to: '/qrcode' });
     } catch (error) {
       const picked = pickFieldErrors(error, QR_FIELD_KEYS);
       if (Object.keys(picked).length > 0) setFieldErrors(picked);
@@ -65,7 +73,7 @@ function EditQrDesignPage() {
   }
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <QrDesignForm
         title={`Ubah konfigurasi: ${design.title}`}
         canExport={can(me, 'qrcode', 'edit')}
@@ -84,10 +92,12 @@ function EditQrDesignPage() {
         updatePresets={defaults.presets}
         edit={toEditContext(loaded)}
         openItemHref={itemLinkAccess(me).openItemHref}
+        canCreateItem={itemLinkAccess(me).canCreate}
+        canOpenDeletedItem={itemLinkAccess(me).canOpenDeleted}
         submitError={submitError}
         fieldErrors={fieldErrors}
         onSubmit={handleSubmit}
-        onCancel={() => void navigate({ to: '/qrcode' })}
+        onCancel={() => stack.pop({ to: '/qrcode' })}
       />
       <VersionHistory
         designId={design.id}

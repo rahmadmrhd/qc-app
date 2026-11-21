@@ -1,14 +1,15 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { removeTempDirSync } from '../../../test-support/safe-rm';
 import { QcUpdateProvider } from './app-update-provider';
 import type { AppUpdaterLike } from './app-updater';
 import { startAppUpdate } from './start-app-update';
 
 const dirs: string[] = [];
 afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of dirs.splice(0)) removeTempDirSync(dir);
   vi.useRealTimers();
 });
 
