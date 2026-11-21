@@ -224,6 +224,7 @@ const WORST: Inputs = {
   },
   'handovers.cancel': { id: UUID, locationId: UUID },
   'handovers.reopen': { id: UUID, locationId: UUID },
+  'handovers.restore': { id: UUID, locationId: UUID },
   'handovers.setDone': { id: UUID, locationId: UUID },
   'handovers.setCheck': { id: UUID, locationId: UUID, index: 299, text: text(5000), checked: true },
   'handovers.comment': {
@@ -412,6 +413,7 @@ const WORST: Inputs = {
   'customers.restore': { id: UUID },
   'brands.restore': { id: UUID },
   'items.restore': { id: UUID },
+  'serials.restore': { id: UUID },
   'qrcodes.restore': { id: UUID },
   'postels.restore': { id: UUID },
   'stickers.restore': { id: UUID },

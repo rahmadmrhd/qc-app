@@ -123,6 +123,8 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'handovers.setCheck': true,
   'handovers.setDone': true,
   'handovers.comment': true,
+  'handovers.remove': true,
+  'handovers.restore': true,
   'items.list': true,
   'items.get': true,
   'items.save': true,

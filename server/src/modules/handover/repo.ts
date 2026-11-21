@@ -1,6 +1,7 @@
 import { CAS_VERSION_BUMP_SET } from '@server/core/cas';
 import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
+import { liveWhere } from '@server/core/soft-delete';
 import type { HandoverCommentDto } from '@shared/contract';
 import type { HandoverStatus, HandoverStoredStatus } from '@shared/handover';
 import { deriveHandoverStatus } from '@shared/handover';
@@ -31,6 +32,9 @@ export interface HandoverRecord {
   version: number;
   /** Kunci idempoten klien (task baru dari antrean offline); hanya diisi saat disisipkan, tak dibaca balik. */
   clientId?: string;
+  /** Penanda hapus lunak (kosong = hidup); hanya terisi pada task terhapus yang dibaca pemulih. */
+  deletedAt?: string;
+  deletedBy?: string;
 }
 
 export interface HandoverRow {
@@ -49,12 +53,14 @@ export interface HandoverRow {
   updated_at: string;
   updated_by: string;
   version: number;
+  deleted_at: string;
+  deleted_by: string;
   /** Nama customer terkini (join), bila ada. */
   current_customer_name?: string | null;
 }
 
 export const HANDOVER_COLUMNS =
-  'h.id, h.number, h.location_id, h.customer_id, h.customer_name, h.note, h.status, h.checks, h.completed_at, h.completed_by, h.created_at, h.created_by, h.updated_at, h.updated_by, h.version, c.name AS current_customer_name';
+  'h.id, h.number, h.location_id, h.customer_id, h.customer_name, h.note, h.status, h.checks, h.completed_at, h.completed_by, h.created_at, h.created_by, h.updated_at, h.updated_by, h.version, h.deleted_at, h.deleted_by, c.name AS current_customer_name';
 export const HANDOVER_FROM = 'handovers h LEFT JOIN customers c ON c.id = h.customer_id';
 
 function parseJsonArray(text: string | undefined): unknown[] {
@@ -107,6 +113,8 @@ export function toHandover(row: HandoverRow): HandoverRecord {
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
     version: Number(row.version) || 1,
+    deletedAt: row.deleted_at ?? '',
+    deletedBy: row.deleted_by ?? '',
   };
 }
 
@@ -158,7 +166,18 @@ function loaded(row: HandoverRow): LoadedHandover {
   return { record, customerName: row.current_customer_name ?? record.customerName };
 }
 
+/** Task HIDUP menurut id (task terhapus = tak ada); pembaca yang melihat task terhapus memakai `findHandoverAny`. */
 export async function findHandover(env: Env, id: string): Promise<LoadedHandover | null> {
+  const row = await env.DB.prepare(
+    `SELECT ${HANDOVER_COLUMNS} FROM ${HANDOVER_FROM} WHERE ${liveWhere('h')} AND h.id = ?`,
+  )
+    .bind(id)
+    .first<HandoverRow>();
+  return row ? loaded(row) : null;
+}
+
+/** Task menurut id, hidup atau terhapus; pemanggil menilai `deletedAt` dan hak (hapus/pulihkan, detail pemulih). */
+export async function findHandoverAny(env: Env, id: string): Promise<LoadedHandover | null> {
   const row = await env.DB.prepare(
     `SELECT ${HANDOVER_COLUMNS} FROM ${HANDOVER_FROM} WHERE h.id = ?`,
   )
@@ -173,7 +192,7 @@ export async function findHandoversByIds(
 ): Promise<LoadedHandover[]> {
   if (ids.length === 0) return [];
   const rows = await env.DB.prepare(
-    `SELECT ${HANDOVER_COLUMNS} FROM ${HANDOVER_FROM} WHERE h.id IN (${ids.map(() => '?').join(',')})`,
+    `SELECT ${HANDOVER_COLUMNS} FROM ${HANDOVER_FROM} WHERE ${liveWhere('h')} AND h.id IN (${ids.map(() => '?').join(',')})`,
   )
     .bind(...ids)
     .all<HandoverRow>();
@@ -211,15 +230,21 @@ function toStoredComment(row: CommentRow): StoredComment {
 
 /**
  * Task beserta komentarnya dalam SATU `batch()`; `statsSql` (opsional) menambah statistik
- * komentar sebagai pernyataan ketiga. Null bila task tidak ada.
+ * komentar sebagai pernyataan ketiga. Null bila task tidak ada atau TERHAPUS; `includeDeleted` (hanya pembaca
+ * pemulih: `getHandoverDto`, perencana hapus/pulihkan) juga mengembalikan task terhapus.
  */
 export async function findHandoverWithComments(
   env: Env,
   id: string,
   statsSql?: string,
+  includeDeleted = false,
 ): Promise<{ loaded: LoadedHandover; stats: CommentStats | null } | null> {
   const statements = [
-    env.DB.prepare(`SELECT ${HANDOVER_COLUMNS} FROM ${HANDOVER_FROM} WHERE h.id = ?`).bind(id),
+    includeDeleted
+      ? env.DB.prepare(`SELECT ${HANDOVER_COLUMNS} FROM ${HANDOVER_FROM} WHERE h.id = ?`).bind(id)
+      : env.DB.prepare(
+          `SELECT ${HANDOVER_COLUMNS} FROM ${HANDOVER_FROM} WHERE ${liveWhere('h')} AND h.id = ?`,
+        ).bind(id),
     env.DB.prepare(
       `SELECT ${COMMENT_COLUMNS} FROM handover_comments WHERE handover_id = ? ORDER BY ${COMMENT_ORDER}`,
     ).bind(id),
@@ -249,24 +274,37 @@ export async function findCommentByClientId(
   return row ? { id: row.id, handoverId: row.handover_id, author: row.author } : null;
 }
 
-/** Task menurut kunci idempoten klien: `clientId` -> pemilik dan lokasinya (hanya yang sudah ada). */
+/**
+ * Task menurut kunci idempoten klien: `clientId` -> pemilik dan lokasinya (hanya yang sudah ada), TERMASUK task terhapus
+ * (`deleted`): kiriman ulang ke task yang sudah dihapus dijawab `NOT_FOUND`, bukan membuat task kedua.
+ */
 export async function findHandoversByClientIds(
   db: Db,
   clientIds: readonly string[],
-): Promise<Map<string, { id: string; locationId: string; createdBy: string }>> {
-  const out = new Map<string, { id: string; locationId: string; createdBy: string }>();
+): Promise<Map<string, { id: string; locationId: string; createdBy: string; deleted: boolean }>> {
+  const out = new Map<
+    string,
+    { id: string; locationId: string; createdBy: string; deleted: boolean }
+  >();
   if (clientIds.length === 0) return out;
   const rows = await db
     .prepare(
-      `SELECT client_id, id, location_id, created_by FROM handovers WHERE client_id IN (${clientIds.map(() => '?').join(',')})`,
+      `SELECT client_id, id, location_id, created_by, deleted_at FROM handovers WHERE client_id IN (${clientIds.map(() => '?').join(',')})`,
     )
     .bind(...clientIds)
-    .all<{ client_id: string; id: string; location_id: string; created_by: string }>();
+    .all<{
+      client_id: string;
+      id: string;
+      location_id: string;
+      created_by: string;
+      deleted_at: string;
+    }>();
   for (const row of rows.results) {
     out.set(row.client_id, {
       id: row.id.trim(),
       locationId: row.location_id.trim(),
       createdBy: row.created_by,
+      deleted: row.deleted_at !== '',
     });
   }
   return out;

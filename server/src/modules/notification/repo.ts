@@ -1,7 +1,7 @@
 import type { DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
-import { liveWhere } from '@server/core/soft-delete';
+import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import {
   NOTIFICATION_PREVIEW_MAX,
   NOTIFICATION_RETENTION_DAYS,
@@ -135,8 +135,9 @@ function scopeClause(scope: NotificationScope): { sql: string; params: string[] 
   const parts: string[] = [];
   const params: string[] = [];
   if (locationIds.length > 0) {
+    // Notifikasi task TERHAPUS tersembunyi bagi semua (pulihkan memunculkannya lagi); `handover_id` kosong = tanpa task.
     parts.push(
-      `(kind NOT IN (${kinds}) AND location_id IN (${locationIds.map(() => '?').join(', ')}))`,
+      `(kind NOT IN (${kinds}) AND location_id IN (${locationIds.map(() => '?').join(', ')}) AND NOT EXISTS (SELECT 1 FROM handovers h0 WHERE ${deletedWhere('h0')} AND h0.id = notifications.handover_id))`,
     );
     params.push(...SERIAL_NOTIFICATION_KINDS, ...locationIds);
   }

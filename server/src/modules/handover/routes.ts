@@ -11,6 +11,7 @@ import {
   setCheck,
   setDone,
 } from './service';
+import { removeHandover, restoreHandover } from './soft-delete';
 import {
   validateAddComment,
   validateBoardPage,
@@ -33,7 +34,9 @@ type HandoverMethod =
   | 'handovers.reopen'
   | 'handovers.setCheck'
   | 'handovers.setDone'
-  | 'handovers.comment';
+  | 'handovers.comment'
+  | 'handovers.remove'
+  | 'handovers.restore';
 
 /** WH (handover view ke atas) atau QC (qc edit) boleh membaca; izin diperiksa per lokasi yang diminta. */
 const READ_PERMISSION = {
@@ -53,12 +56,12 @@ export function handoverRoutes(): Pick<RouteTable, HandoverMethod> {
     'handovers.board': {
       permission: READ_PERMISSION,
       validate: validateBoardPage,
-      handler: (input, ctx) => handoverBoard(ctx.env, input, ctx.locationIds),
+      handler: (input, ctx) => handoverBoard(ctx.env, input, ctx.locationIds, ctx.user),
     },
     'handovers.get': {
       permission: READ_PERMISSION,
       validate: validateGetHandover,
-      handler: (input, ctx) => getHandoverDto(ctx.env, input, ctx.locationIds),
+      handler: (input, ctx) => getHandoverDto(ctx.env, input, ctx.locationIds, ctx.user),
     },
     'handovers.save': {
       permission: { module: 'handover', level: 'edit', scope: 'location' },
@@ -94,6 +97,16 @@ export function handoverRoutes(): Pick<RouteTable, HandoverMethod> {
       permission: READ_PERMISSION,
       validate: validateAddComment,
       handler: (input, ctx) => addComment(ctx.env, input, ctx.user),
+    },
+    'handovers.remove': {
+      permission: { module: 'handover', level: 'manage', scope: 'location' },
+      validate: validateHandoverRef,
+      handler: (input, ctx) => removeHandover(ctx.env, input, ctx.user),
+    },
+    'handovers.restore': {
+      permission: { module: 'handover', level: 'manage', scope: 'location' },
+      validate: validateHandoverRef,
+      handler: (input, ctx) => restoreHandover(ctx.env, input, ctx.user),
     },
   };
 }

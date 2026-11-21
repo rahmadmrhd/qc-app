@@ -52,38 +52,8 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
     'serials@4#a56e18ed',
     'business_units@2#a56e18ed',
   ],
-  'server/src/modules/handover/repo.ts': [
-    'handovers@1#5ad762be',
-    'customers@1#5ad762be',
-    'handovers@2#8db8ac17',
-    'customers@2#8db8ac17',
-    'handovers@3#5ad762be',
-    'customers@3#5ad762be',
-    'handover_comments@1#8a542173',
-    'handover_comments@2#c4789906',
-    'handovers@4#dd8c76b0',
-    'handover_comments@3#5d94ca77',
-  ],
-  'server/src/modules/handover/service.ts': [
-    'handovers@1#b4da9253',
-    'customers@1#b4da9253',
-    'handovers@2#e5c91c19',
-    'handovers@3#9f85b212',
-    'handover_comments@1#e41ffe5c',
-    'handovers@4#b2884254',
-    'handover_comments@2#0dd06e23',
-    'handover_comments@3#0dd06e23',
-  ],
   // Lain-lain (modul yang membaca tabel milik fase lain: notification, desktop catalog, files, digest stok)
   'server/src/modules/files/service.ts': ['item_business_units@1#546f26ad'],
-  'server/src/modules/notification/flush.ts': ['handovers@1#f37698e5'],
-  'server/src/modules/notification/push.ts': ['notifications@1#e392efab'],
-  'server/src/modules/notification/repo.ts': [
-    'notifications@1#f36d7108',
-    'notifications@2#4770fffd',
-    'notifications@3#aca741c4',
-    'notifications@4#c088baf7',
-  ],
 };
 
 /**
@@ -443,4 +413,50 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Penampil rujukan atau pembaca kode BU menurut id yang sudah divalidasi hidup oleh jalur tulis (`activeItemWritableForBu`, `liveWhere` pada BU target); BU terhapus tetap memberi nama dan hak (soft delete 9).',
   'server/src/modules/serial/service.ts#items@3#122b7dd8':
     'Penampil rujukan: serial menampilkan nama item (LEFT JOIN) walau item terhapus; item terhapus tak dihitung/dipilih di jalur tulis (jalur tulis lain: `activeItemWritableForBu` (serial/repo.ts) menyaring hidup). Penanda "Terhapus" pada tampilan serial = fase 4d.',
+  'server/src/modules/handover/repo.ts#customers@1#4f2b2d39':
+    'Nama customer untuk tampilan: customer terhapus tetap memberi nama pada task yang memakainya (rujukan tersimpan tetap sah, soft delete T1); task disaring `liveWhere` di kueri yang sama.',
+  'server/src/modules/handover/repo.ts#handovers@2#5ad762be':
+    'Baca task menurut id atau kunci idempoten, hidup atau terhapus: pemanggil menilai `deletedAt` dan hak sendiri (detail untuk pemulih, perencana hapus/pulihkan, kiriman ulang yang dijawab NOT_FOUND bila task terhapus).',
+  'server/src/modules/handover/repo.ts#customers@2#5ad762be':
+    'Nama customer untuk tampilan: customer terhapus tetap memberi nama pada task yang memakainya (rujukan tersimpan tetap sah, soft delete T1); task disaring `liveWhere` di kueri yang sama.',
+  'server/src/modules/handover/repo.ts#customers@3#75317ae6':
+    'Nama customer untuk tampilan: customer terhapus tetap memberi nama pada task yang memakainya (rujukan tersimpan tetap sah, soft delete T1); task disaring `liveWhere` di kueri yang sama.',
+  'server/src/modules/handover/repo.ts#handovers@4#5ad762be':
+    'Baca task menurut id atau kunci idempoten, hidup atau terhapus: pemanggil menilai `deletedAt` dan hak sendiri (detail untuk pemulih, perencana hapus/pulihkan, kiriman ulang yang dijawab NOT_FOUND bila task terhapus).',
+  'server/src/modules/handover/repo.ts#customers@4#5ad762be':
+    'Nama customer untuk tampilan: customer terhapus tetap memberi nama pada task yang memakainya (rujukan tersimpan tetap sah, soft delete T1); task disaring `liveWhere` di kueri yang sama.',
+  'server/src/modules/handover/repo.ts#customers@5#4f2b2d39':
+    'Nama customer untuk tampilan: customer terhapus tetap memberi nama pada task yang memakainya (rujukan tersimpan tetap sah, soft delete T1); task disaring `liveWhere` di kueri yang sama.',
+  'server/src/modules/handover/repo.ts#handover_comments@1#8a542173':
+    'Anak task (komentar) dimuat atau dihitung menurut id task yang sudah lolos pemuat hidup (`loadForWrite`, papan yang menyaring `liveWhere`) atau pembaca pemulih; tidak ada daftar komentar lintas task.',
+  'server/src/modules/handover/repo.ts#handover_comments@2#c4789906':
+    'Anak task (komentar) dimuat atau dihitung menurut id task yang sudah lolos pemuat hidup (`loadForWrite`, papan yang menyaring `liveWhere`) atau pembaca pemulih; tidak ada daftar komentar lintas task.',
+  'server/src/modules/handover/repo.ts#handovers@6#163599af':
+    'Baca task menurut id atau kunci idempoten, hidup atau terhapus: pemanggil menilai `deletedAt` dan hak sendiri (detail untuk pemulih, perencana hapus/pulihkan, kiriman ulang yang dijawab NOT_FOUND bila task terhapus).',
+  'server/src/modules/handover/repo.ts#handover_comments@3#5d94ca77':
+    'Anak task (komentar) dimuat atau dihitung menurut id task yang sudah lolos pemuat hidup (`loadForWrite`, papan yang menyaring `liveWhere`) atau pembaca pemulih; tidak ada daftar komentar lintas task.',
+  'server/src/modules/handover/service.ts#customers@1#26b11ba5':
+    'Nama customer untuk tampilan: customer terhapus tetap memberi nama pada task yang memakainya (rujukan tersimpan tetap sah, soft delete T1); task disaring `liveWhere` di kueri yang sama.',
+  'server/src/modules/handover/service.ts#customers@2#3e90a9f4':
+    'Nama customer untuk tampilan: customer terhapus tetap memberi nama pada task yang memakainya (rujukan tersimpan tetap sah, soft delete T1); task disaring `liveWhere` di kueri yang sama.',
+  'server/src/modules/handover/service.ts#handovers@5#9f85b212':
+    'Pencarian nomor `ST-…` terbesar menghitung task terhapus juga: nomor tak pernah dipakai ulang (nomor tetap unik).',
+  'server/src/modules/handover/service.ts#handover_comments@1#e41ffe5c':
+    'Anak task (komentar) dimuat atau dihitung menurut id task yang sudah lolos pemuat hidup (`loadForWrite`, papan yang menyaring `liveWhere`) atau pembaca pemulih; tidak ada daftar komentar lintas task.',
+  'server/src/modules/handover/service.ts#handovers@6#b2884254':
+    'Kunci baris task (`FOR UPDATE`) pada penulisan komentar yang task-nya baru dimuat hidup oleh `loadForWrite`; penjaga di INSERT komentar menilai `deleted_at` lagi.',
+  'server/src/modules/handover/service.ts#handover_comments@2#b1fb09e6':
+    'Anak task (komentar) dimuat atau dihitung menurut id task yang sudah lolos pemuat hidup (`loadForWrite`, papan yang menyaring `liveWhere`) atau pembaca pemulih; tidak ada daftar komentar lintas task.',
+  'server/src/modules/handover/service.ts#handover_comments@3#b1fb09e6':
+    'Anak task (komentar) dimuat atau dihitung menurut id task yang sudah lolos pemuat hidup (`loadForWrite`, papan yang menyaring `liveWhere`) atau pembaca pemulih; tidak ada daftar komentar lintas task.',
+  'server/src/modules/notification/push.ts#notifications@1#e392efab':
+    'Baris notifikasi dibaca menurut penerima; keberadaan task/serial HIDUP dan hak diperiksa lewat `scopeClause` (lonceng, hitungan) atau `canReadNotification` (push, aliran SSE) saat dibaca/dikirim.',
+  'server/src/modules/notification/repo.ts#notifications@1#f36d7108':
+    'Baris notifikasi dibaca menurut penerima; keberadaan task/serial HIDUP dan hak diperiksa lewat `scopeClause` (lonceng, hitungan) atau `canReadNotification` (push, aliran SSE) saat dibaca/dikirim.',
+  'server/src/modules/notification/repo.ts#notifications@2#4770fffd':
+    'Baris notifikasi dibaca menurut penerima; keberadaan task/serial HIDUP dan hak diperiksa lewat `scopeClause` (lonceng, hitungan) atau `canReadNotification` (push, aliran SSE) saat dibaca/dikirim.',
+  'server/src/modules/notification/repo.ts#notifications@3#aca741c4':
+    'Menandai/membaca satu notifikasi menurut id dan penerima: tanpa data task atau serial yang perlu disaring; lonceng menyaringnya lewat `scopeClause`.',
+  'server/src/modules/notification/repo.ts#notifications@4#c088baf7':
+    'Baris notifikasi dibaca menurut penerima; keberadaan task/serial HIDUP dan hak diperiksa lewat `scopeClause` (lonceng, hitungan) atau `canReadNotification` (push, aliran SSE) saat dibaca/dikirim.',
 };

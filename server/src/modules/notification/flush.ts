@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import type { DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
+import { liveWhere } from '@server/core/soft-delete';
 import { checklistOf } from '@server/modules/handover/checklist';
 import { handoverCanonicalText } from '@shared/handover-text';
 import { CHECK_WINDOW_MS, NOTIFICATION_SIDE } from '@shared/notifications';
@@ -150,7 +151,7 @@ export async function flushDueCheckSummaries(env: Env): Promise<number> {
         .bind(row.handover_id, row.actor_email)
         .all<{ item_key: string }>();
       const task = await tx
-        .prepare('SELECT note FROM handovers WHERE id = ?')
+        .prepare(`SELECT note FROM handovers WHERE ${liveWhere()} AND id = ?`)
         .bind(row.handover_id)
         .first<{ note: string }>();
       const alive = currentItemKeys(task?.note ?? '');

@@ -1510,6 +1510,8 @@ export interface ApiContract {
   'handovers.reopen': { input: HandoverRefInput; output: HandoverDto };
   'handovers.setCheck': { input: SetCheckInput; output: HandoverDto };
   'handovers.setDone': { input: SetDoneInput; output: HandoverDto };
+  'handovers.remove': { input: HandoverRefInput; output: RemoveResult };
+  'handovers.restore': { input: HandoverRefInput; output: HandoverDto };
   'handovers.comment': { input: AddCommentInput; output: HandoverDto };
   'items.list': { input: ListItemsPageInput; output: ItemPageDto };
   'items.get': { input: GetItemInput; output: ItemDto };

@@ -1,6 +1,6 @@
 import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
-import { liveWhere } from '@server/core/soft-delete';
+import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import { loadActiveUserContexts, type UserContext } from '@server/modules/access/context';
 import { canReadSerial } from '@server/modules/serial/access';
 import { isSerialNotificationKind, type NotificationSide } from '@shared/notifications';
@@ -54,15 +54,29 @@ export async function hasSerialReadAccess(
   return row !== null && (await canReadSerial(env.DB, user, serialId, row.bu_id.trim()));
 }
 
-/** Berhak membaca satu notifikasi (aturan sadar jenis): Serial = BU serial entri, selain itu lokasi Serah Terima. */
+/** Task Serah Terima sudah dihapus (soft delete): notifikasinya tersembunyi bagi semua sampai dipulihkan. */
+async function handoverIsDeleted(env: Env, handoverId: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT 1 AS ok FROM handovers WHERE ${deletedWhere()} AND id = ?`,
+  )
+    .bind(handoverId)
+    .first<{ ok: number }>();
+  return row !== null;
+}
+
+/**
+ * Berhak membaca satu notifikasi (aturan sadar jenis): Serial = BU serial entri (serial hidup), selain itu lokasi Serah
+ * Terima dan task yang belum dihapus (`handover_id` kosong = ringkasan batch tanpa task tunggal).
+ */
 export async function canReadNotification(
   env: Env,
   user: UserContext,
-  row: { kind: string; location_id: string; serial_id: string },
+  row: { kind: string; location_id: string; serial_id: string; handover_id?: string },
 ): Promise<boolean> {
-  return isSerialNotificationKind(row.kind)
-    ? hasSerialReadAccess(env, user, row.serial_id)
-    : hasReadAccess(user, row.location_id);
+  if (isSerialNotificationKind(row.kind)) return hasSerialReadAccess(env, user, row.serial_id);
+  if (!hasReadAccess(user, row.location_id)) return false;
+  if (row.handover_id === undefined || row.handover_id === '') return true;
+  return !(await handoverIsDeleted(env, row.handover_id));
 }
 
 function onSide(

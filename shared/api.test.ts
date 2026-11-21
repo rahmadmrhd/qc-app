@@ -189,6 +189,8 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   },
   'handovers.saveBatch': { locationId: 'l1', tasks: [{ customerName: 'A', note: 'x' }] },
   'handovers.cancel': { id: 'h1', locationId: 'l1' },
+  'handovers.remove': { id: 'h1', locationId: 'l1' },
+  'handovers.restore': { id: 'h1', locationId: 'l1' },
   'handovers.reopen': { id: 'h1', locationId: 'l1' },
   'handovers.setCheck': { id: 'h1', locationId: 'l1', index: 0, text: 'a', checked: true },
   'handovers.setDone': { id: 'h1', locationId: 'l1' },
