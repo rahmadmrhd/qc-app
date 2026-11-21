@@ -196,3 +196,14 @@ describe('GuideMenuDialog', () => {
     expect(screen.getByText(/1 dari 1 panduan belum kamu selesaikan/)).toBeInTheDocument();
   });
 });
+
+test('P6: dialog Panduan layar penuh di ponsel; lebar desktop tetap', () => {
+  render(<GuideMenuDialog onClose={() => undefined} />);
+  const dialog = screen.getByRole('dialog');
+  expect(dialog).toHaveAttribute('data-size', 'full-on-phone');
+  expect(dialog.className).toContain('max-md:data-[size=full-on-phone]:h-[var(--vvh,100dvh)]');
+  expect(dialog.className).toContain(
+    'max-md:data-[size=full-on-phone]:pt-[env(safe-area-inset-top)]',
+  );
+  expect(dialog.className).toContain('sm:max-w-5xl');
+});

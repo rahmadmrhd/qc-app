@@ -184,3 +184,14 @@ test('setelah unggahan selesai, dialog menutup biasa lagi', async () => {
   await waitFor(() => expect(screen.getByTestId('state')).toHaveTextContent('tertutup'));
   expect(confirmDialog()).toBeNull();
 });
+
+test('P6: dialog Catat Serial Country Lock layar penuh di ponsel; tinggi tetap desktop', async () => {
+  renderHost();
+  const dialog = await screen.findByRole('dialog', { name: 'Catat Serial Number' });
+  expect(dialog).toHaveAttribute('data-size', 'full-on-phone');
+  expect(dialog.className).toContain('max-md:data-[size=full-on-phone]:h-[var(--vvh,100dvh)]');
+  expect(dialog.className).toContain(
+    'max-md:data-[size=full-on-phone]:pt-[env(safe-area-inset-top)]',
+  );
+  expect(dialog.className).toContain('h-[calc(100dvh-2rem)]');
+});

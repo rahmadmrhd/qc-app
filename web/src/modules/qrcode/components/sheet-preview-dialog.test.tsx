@@ -71,3 +71,14 @@ test('kontrol zoom tetap tampil walau pratinjau gagal dibuat (canvas tak tersedi
   expect(await screen.findByRole('alert')).toHaveTextContent('Pratinjau gagal dibuat');
   expect(screen.getByRole('button', { name: 'Perbesar zoom' })).toBeInTheDocument();
 });
+
+test('P6: pratinjau lembar layar penuh di ponsel; lebar desktop tetap', () => {
+  open();
+  const dialog = screen.getByRole('dialog');
+  expect(dialog).toHaveAttribute('data-size', 'full-on-phone');
+  expect(dialog.className).toContain('max-md:data-[size=full-on-phone]:h-[var(--vvh,100dvh)]');
+  expect(dialog.className).toContain(
+    'max-md:data-[size=full-on-phone]:pt-[env(safe-area-inset-top)]',
+  );
+  expect(dialog.className).toContain('sm:max-w-5xl');
+});

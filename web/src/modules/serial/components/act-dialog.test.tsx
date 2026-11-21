@@ -867,3 +867,13 @@ test('gambar catatan yang masih diunggah menahan tombol kirim sampai selesai', a
   await userEvent.click(screen.getByRole('button', { name: 'Simulasi unggah selesai' }));
   expect(screen.getByRole('button', { name: 'Kirim catatan' })).toBeEnabled();
 });
+
+test('P6: dialog Update Serial layar penuh di ponsel', () => {
+  renderDialog(SERIAL, 'report');
+  const dialog = screen.getByRole('dialog');
+  expect(dialog).toHaveAttribute('data-size', 'full-on-phone');
+  expect(dialog.className).toContain('max-md:data-[size=full-on-phone]:h-[var(--vvh,100dvh)]');
+  expect(dialog.className).toContain(
+    'max-md:data-[size=full-on-phone]:pt-[env(safe-area-inset-top)]',
+  );
+});

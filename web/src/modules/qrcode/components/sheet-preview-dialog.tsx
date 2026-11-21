@@ -134,7 +134,10 @@ export function SheetPreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[95vh] w-[95vw] flex-col gap-3 sm:max-w-5xl">
+      <DialogContent
+        size="full-on-phone"
+        className="flex max-h-[95vh] w-[95vw] flex-col gap-3 sm:max-w-5xl"
+      >
         <DialogHeader>
           <DialogTitle>Pratinjau lembar 10 × 14</DialogTitle>
           <DialogDescription>

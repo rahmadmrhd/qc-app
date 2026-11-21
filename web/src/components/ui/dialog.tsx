@@ -52,21 +52,35 @@ function DialogOverlay({
   )
 }
 
+/**
+ * `size="full-on-phone"`: di < 768 px dialog menjadi layar penuh (tinggi `var(--vvh, 100dvh)` dan `top: var(--vv-top, 0)`
+ * agar footer menempel di atas papan ketik layar, tanpa sudut membulat, area aman notch/bilah gestur dihormati); >= 768 px
+ * ukuran dialog biasa tidak berubah. Selektor memakai atribut `data-size` agar lebih spesifik daripada kelas ukuran
+ * pemakai (mis. `max-h-[95vh]`, `h-[calc(100dvh-2rem)]`, `sm:max-w-5xl`) di antara 640 dan 767 px juga. Dipakai dialog
+ * yang tingginya lebih dari separuh layar ponsel (spek revisi tampilan lanjutan P6).
+ */
+const FULL_ON_PHONE =
+  'max-md:data-[size=full-on-phone]:top-[var(--vv-top,0px)] max-md:data-[size=full-on-phone]:left-0 max-md:data-[size=full-on-phone]:h-[var(--vvh,100dvh)] max-md:data-[size=full-on-phone]:max-h-none max-md:data-[size=full-on-phone]:w-screen max-md:data-[size=full-on-phone]:max-w-none max-md:data-[size=full-on-phone]:translate-x-0 max-md:data-[size=full-on-phone]:translate-y-0 max-md:data-[size=full-on-phone]:rounded-none max-md:data-[size=full-on-phone]:ring-0 max-md:data-[size=full-on-phone]:pt-[env(safe-area-inset-top)] max-md:data-[size=full-on-phone]:pb-[env(safe-area-inset-bottom)]'
+
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  size = "default",
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  size?: "default" | "full-on-phone"
 }) {
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
+        data-size={size}
         className={cn(
           "fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-popover text-sm text-popover-foreground [--tabs-surface:var(--popover)] ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          size === "full-on-phone" && FULL_ON_PHONE,
           className
         )}
         {...props}
@@ -83,7 +97,11 @@ function DialogContent({
           <DialogPrimitive.Close data-slot="dialog-close" asChild>
             <Button
               variant="ghost"
-              className="absolute top-2 right-2 z-20"
+              className={cn(
+                "absolute top-2 right-2 z-20",
+                size === "full-on-phone" &&
+                  "max-md:top-[calc(0.5rem+env(safe-area-inset-top))]"
+              )}
               size="icon-sm"
             >
               <XIcon

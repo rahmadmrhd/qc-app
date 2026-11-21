@@ -60,7 +60,7 @@ export function GuideMenuDialog({ onClose }: { onClose: () => void }) {
         if (!open) onClose();
       }}
     >
-      <DialogContent className="sm:max-w-5xl">
+      <DialogContent size="full-on-phone" className="sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>Panduan</DialogTitle>
           <DialogDescription>

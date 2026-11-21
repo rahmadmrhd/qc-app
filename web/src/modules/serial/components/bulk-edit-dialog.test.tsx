@@ -99,3 +99,14 @@ test('catatan memakai editor Markdown, dan Kosongkan catatan menonaktifkannya', 
     'true',
   );
 });
+
+test('P6: dialog Ubah massal layar penuh di ponsel; lebar desktop tetap', () => {
+  renderDialog();
+  const dialog = screen.getByRole('dialog');
+  expect(dialog).toHaveAttribute('data-size', 'full-on-phone');
+  expect(dialog.className).toContain('max-md:data-[size=full-on-phone]:h-[var(--vvh,100dvh)]');
+  expect(dialog.className).toContain(
+    'max-md:data-[size=full-on-phone]:pt-[env(safe-area-inset-top)]',
+  );
+  expect(dialog.className).toContain('sm:max-w-lg');
+});

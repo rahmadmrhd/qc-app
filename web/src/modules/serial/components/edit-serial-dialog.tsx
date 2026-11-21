@@ -207,7 +207,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
+      <DialogContent size="full-on-phone">
         <DialogHeader>
           <DialogTitle>Ubah data serial</DialogTitle>
           <DialogDescription>
