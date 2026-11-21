@@ -127,13 +127,32 @@ function sourceFiles(dir: string): string[] {
  * Prop dengan nama itu pada komponen lain tidak dihitung sebagai target (tak ada di DOM). Penjagaan di bawah memastikan
  * komponen-komponen ini memang meneruskannya (`forwarderProblems`).
  */
-const TOUR_FORWARDERS: Record<string, readonly string[]> = {
-  ListPage: ['components/page/list-page.tsx'],
-  FormPage: ['components/page/form-page.tsx'],
-  Fab: ['components/page/fab.tsx'],
-  HeadroomBar: ['components/page/headroom-bar.tsx'],
-  LinkCell: ['components/data-table/link-cell.tsx'],
-  SelectionBar: ['components/data-table/selection-bar.tsx'],
+const TOUR_FORWARDERS: Record<string, { file: string; props: Record<string, RegExp> }> = {
+  // Tiap prop diperiksa SENDIRI: komponen yang berhenti meneruskan salah satunya (mis. `saveTour`) harus membuat tes gagal.
+  ListPage: {
+    file: 'components/page/list-page.tsx',
+    props: {
+      tour: /\btour=\{tour\}/,
+      actionsTour: /data-tour=\{actionsTour\}/,
+      'createAction.tour': /data-tour=\{headerAction\.tour\}/,
+      'fab.tour': /tour: fab\.tour/,
+    },
+  },
+  FormPage: {
+    file: 'components/page/form-page.tsx',
+    props: {
+      tour: /\btour=\{tour\}/,
+      actionsTour: /data-tour=\{actionsTour\}/,
+      saveTour: /data-tour=\{saveTour\}/,
+    },
+  },
+  Fab: { file: 'components/page/fab.tsx', props: { tour: /data-tour=\{tour\}/ } },
+  HeadroomBar: { file: 'components/page/headroom-bar.tsx', props: { tour: /data-tour=\{tour\}/ } },
+  LinkCell: { file: 'components/data-table/link-cell.tsx', props: { tour: /data-tour=\{tour\}/ } },
+  SelectionBar: {
+    file: 'components/data-table/selection-bar.tsx',
+    props: { tour: /data-tour=\{tour\}/ },
+  },
 };
 
 /** Teks pembuka tag JSX yang dimulai di `start` (`<Nama`): berhenti di `>` pertama di luar kurung kurawal dan kutip. */
@@ -174,14 +193,14 @@ function extractDataTour(text: string): string[] {
   return targets;
 }
 
-/** Setiap komponen penerus benar-benar memasang `data-tour` dari prop `tour` (bukan sekadar menerimanya). */
-function forwarderProblems(root: string): string[] {
+/** Setiap prop tour yang dideklarasikan penerus benar-benar dipasang ke `data-tour` (diperiksa per prop). */
+function forwarderProblems(root: string, forwarders = TOUR_FORWARDERS): string[] {
   const problems: string[] = [];
-  for (const [name, files] of Object.entries(TOUR_FORWARDERS)) {
-    for (const file of files) {
-      const text = readFileSync(join(root, file), 'utf8');
-      if (!/data-tour=\{[A-Za-z]*[Tt]our\}|tour=\{[A-Za-z]*[Tt]our\}/.test(text)) {
-        problems.push(`${name} (${file}) tidak meneruskan prop tour ke data-tour`);
+  for (const [name, { file, props }] of Object.entries(forwarders)) {
+    const text = readFileSync(join(root, file), 'utf8');
+    for (const [prop, pattern] of Object.entries(props)) {
+      if (!pattern.test(text)) {
+        problems.push(`${name} (${file}) tidak meneruskan prop ${prop} ke data-tour`);
       }
     }
   }
@@ -395,8 +414,28 @@ describe('pemeriksa menangkap pelanggaran (contoh salah)', () => {
     ).toEqual(['qr-header', 'qr-new', 'qr-save', 'aksi']);
   });
 
-  test('komponen penerus tour benar-benar meneruskannya ke data-tour', () => {
+  test('komponen penerus tour benar-benar meneruskan SETIAP prop (tour, actionsTour, saveTour, ...) ke data-tour', () => {
     expect(forwarderProblems(SRC_ROOT)).toEqual([]);
+  });
+
+  test('penjaga per prop gagal bila FormPage berhenti meneruskan saveTour atau actionsTour', () => {
+    const temp = mkdtempSync(join(tmpdir(), 'fwd-'));
+    mkdirSync(join(temp, 'components', 'page'), { recursive: true });
+    const source = readFileSync(join(SRC_ROOT, 'components/page/form-page.tsx'), 'utf8');
+    const write = (text: string) =>
+      writeFileSync(join(temp, 'components/page/form-page.tsx'), text);
+    const only = { FormPage: TOUR_FORWARDERS.FormPage as (typeof TOUR_FORWARDERS)[string] };
+    write(source);
+    expect(forwarderProblems(temp, only)).toEqual([]);
+    write(source.replaceAll('data-tour={saveTour}', ''));
+    expect(forwarderProblems(temp, only)).toEqual([
+      'FormPage (components/page/form-page.tsx) tidak meneruskan prop saveTour ke data-tour',
+    ]);
+    write(source.replaceAll('data-tour={actionsTour}', ''));
+    expect(forwarderProblems(temp, only)).toEqual([
+      'FormPage (components/page/form-page.tsx) tidak meneruskan prop actionsTour ke data-tour',
+    ]);
+    removeTempDirSync(temp);
   });
 
   test('klip: berkas ada, tidak ada, dan tanpa berkas lolos', () => {
