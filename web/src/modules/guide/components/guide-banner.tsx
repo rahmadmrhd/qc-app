@@ -110,7 +110,7 @@ export function GuideBanner() {
           <span className="font-medium">Pertama kali di {pageLabel(offer)}?</span>{' '}
           <span className="text-foreground">Ada panduan {stepCount} langkah.</span>
           {offer.updated ? (
-            <Badge variant="secondary" className="ml-2 align-middle">
+            <Badge variant="soft" color="secondary" className="ml-2 align-middle">
               Diperbarui
             </Badge>
           ) : null}
@@ -119,10 +119,10 @@ export function GuideBanner() {
           <Button type="button" size="sm" onClick={() => tour.start(entry)}>
             Mulai
           </Button>
-          <Button type="button" size="sm" variant="outline" onClick={hide}>
+          <Button type="button" size="sm" variant="outline" color="primary" onClick={hide}>
             Nanti
           </Button>
-          <Button type="button" size="sm" variant="ghost" onClick={understood}>
+          <Button type="button" size="sm" variant="ghost" color="primary" onClick={understood}>
             Sudah paham
           </Button>
         </div>

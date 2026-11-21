@@ -97,6 +97,7 @@ function FormDialogContent({
       <AlertDialogPrimitive.Cancel asChild>
         <Button
           variant="ghost"
+          color="primary"
           className="absolute top-2 right-2 z-20 max-md:top-[calc(0.5rem+env(safe-area-inset-top))]"
           size="icon-sm"
         >

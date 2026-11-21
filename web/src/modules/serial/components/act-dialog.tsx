@@ -626,12 +626,19 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
           ) : null}
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={act.isPending} onClick={cancel}>
+          <Button
+            type="button"
+            variant="outline"
+            color="primary"
+            disabled={act.isPending}
+            onClick={cancel}
+          >
             Batal
           </Button>
           <Button
             type="button"
-            variant={declaring || kind === 'report' ? 'destructive' : 'default'}
+            variant={declaring || kind === 'report' ? 'soft' : 'solid'}
+            color={declaring || kind === 'report' ? 'destructive' : 'primary'}
             disabled={submitDisabled}
             onClick={() => (declaring ? setConfirming(true) : void submit())}
           >
@@ -651,7 +658,8 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
+              variant="soft"
+              color="destructive"
               onClick={() => {
                 setConfirming(false);
                 void submit();

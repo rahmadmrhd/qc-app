@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ActionButton } from '@/components/action-button';
 import {
   FormDialog,
   FormDialogContent,
@@ -91,9 +92,7 @@ function CredentialForm({
         </p>
       ) : null}
       <FormDialogFooter>
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Batal
-        </Button>
+        <ActionButton action="cancel" onClick={onCancel} />
         <Button type="submit">Gunakan</Button>
       </FormDialogFooter>
     </form>

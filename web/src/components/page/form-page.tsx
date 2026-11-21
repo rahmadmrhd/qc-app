@@ -68,6 +68,7 @@ export function FormPage({
               <Button
                 type="button"
                 variant="ghost"
+                color="primary"
                 size="icon"
                 aria-label="Kembali"
                 disabled={submitting}

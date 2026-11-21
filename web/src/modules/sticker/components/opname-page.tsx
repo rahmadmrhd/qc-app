@@ -254,6 +254,7 @@ export function OpnamePage({
                             type="button"
                             size="sm"
                             variant="ghost"
+                            color="primary"
                             aria-label={`Batal hitung ${row.name}`}
                             onClick={() => setCount(row.stickerId, undefined)}
                           >
@@ -266,6 +267,7 @@ export function OpnamePage({
                         type="button"
                         size="sm"
                         variant="outline"
+                        color="primary"
                         aria-label={`Hitung ${row.name}`}
                         onClick={() => setCount(row.stickerId, emptyCount())}
                       >

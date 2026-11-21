@@ -219,13 +219,19 @@ export function DataTable<T>({
       {loadMoreError ? (
         <Alert color="destructive" className="flex flex-wrap items-center gap-2">
           <span>Gagal memuat halaman berikutnya.</span>
-          <Button type="button" size="sm" variant="outline" onClick={onLoadMore}>
+          <Button type="button" size="sm" variant="outline" color="primary" onClick={onLoadMore}>
             Coba lagi
           </Button>
         </Alert>
       ) : hasMore ? (
         <div className="flex justify-center">
-          <Button type="button" variant="outline" disabled={loadingMore} onClick={onLoadMore}>
+          <Button
+            type="button"
+            variant="outline"
+            color="primary"
+            disabled={loadingMore}
+            onClick={onLoadMore}
+          >
             {loadingMore ? 'Memuat…' : 'Muat lebih banyak'}
           </Button>
         </div>

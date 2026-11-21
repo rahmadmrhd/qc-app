@@ -65,7 +65,13 @@ export function BulkBar({
           {rest.length > 0 ? (
             <Popover>
               <PopoverTrigger asChild>
-                <Button type="button" variant="outline" size="icon" aria-label="Aksi lainnya">
+                <Button
+                  type="button"
+                  variant="outline"
+                  color="primary"
+                  size="icon"
+                  aria-label="Aksi lainnya"
+                >
                   <Ellipsis aria-hidden />
                 </Button>
               </PopoverTrigger>

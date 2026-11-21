@@ -54,7 +54,7 @@ export function GuideGreeting() {
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={() => answer(false)}>
+          <Button variant="outline" color="primary" onClick={() => answer(false)}>
             Nanti
           </Button>
           <Button onClick={() => answer(true)}>Mulai</Button>

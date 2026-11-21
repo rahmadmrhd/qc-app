@@ -4,6 +4,7 @@ import { canInject } from '@countrylock/session-machine';
 import { ClipboardList, FolderOpen, KeyRound, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { LinkField } from '@/components/link-field';
+import { HeadroomBar, HeadroomFrame } from '@/components/page/headroom-bar';
 import { Select } from '@/components/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -141,51 +142,56 @@ export function CountryLockPage({
   const catalogReady = catalog.snapshot !== null;
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">Country Lock</h1>
-        <div className="flex items-center gap-2">
-          {/* Sinkron data offline hanya relevan di halaman ini (keputusan pemilik 2026-11-18). */}
-          <CatalogSyncButton bridge={bridge} />
-          {pkg && multiAvailable ? (
-            <fieldset className="m-0 flex min-w-0 items-center gap-1 border-0 p-0">
-              <legend className="sr-only">Mode</legend>
-              <Button
-                type="button"
-                size="sm"
-                variant={activeMode === 'single' ? 'default' : 'outline'}
-                aria-pressed={activeMode === 'single'}
-                disabled={multiRunning}
-                onClick={() => chooseMode('single')}
-              >
-                Tunggal
+    // Kerangka seragam (kit): lebar dan padding datang dari PageContainer (AppShell) atau pembungkus ringan rute.
+    <HeadroomFrame className="w-full gap-4">
+      <HeadroomBar className="pt-1 pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-xl font-semibold">Country Lock</h1>
+          <div className="flex items-center gap-2">
+            {/* Sinkron data offline hanya relevan di halaman ini (keputusan pemilik 2026-11-18). */}
+            <CatalogSyncButton bridge={bridge} />
+            {pkg && multiAvailable ? (
+              <fieldset className="m-0 flex min-w-0 items-center gap-1 border-0 p-0">
+                <legend className="sr-only">Mode</legend>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={activeMode === 'single' ? 'solid' : 'outline'}
+                  color="primary"
+                  aria-pressed={activeMode === 'single'}
+                  disabled={multiRunning}
+                  onClick={() => chooseMode('single')}
+                >
+                  Tunggal
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={activeMode === 'multi' ? 'solid' : 'outline'}
+                  color="primary"
+                  aria-pressed={activeMode === 'multi'}
+                  disabled={state.injecting}
+                  onClick={() => chooseMode('multi')}
+                >
+                  Multi-Device
+                </Button>
+                {multiRunning ? (
+                  <span className="text-xs text-muted-foreground">Hentikan Multi dulu</span>
+                ) : null}
+              </fieldset>
+            ) : null}
+            {pkg ? (
+              <Button type="button" variant="outline" color="primary" onClick={actions.chooseDir}>
+                <FolderOpen />
+                Ganti folder paket
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={activeMode === 'multi' ? 'default' : 'outline'}
-                aria-pressed={activeMode === 'multi'}
-                disabled={state.injecting}
-                onClick={() => chooseMode('multi')}
-              >
-                Multi-Device
-              </Button>
-              {multiRunning ? (
-                <span className="text-xs text-muted-foreground">Hentikan Multi dulu</span>
-              ) : null}
-            </fieldset>
-          ) : null}
-          {pkg ? (
-            <Button type="button" variant="outline" onClick={actions.chooseDir}>
-              <FolderOpen />
-              Ganti folder paket
-            </Button>
-          ) : null}
+            ) : null}
+          </div>
         </div>
-      </div>
+      </HeadroomBar>
 
       {loadError ? (
-        <Alert variant="destructive">
+        <Alert color="destructive" icon={false}>
           <TriangleAlert />
           <AlertTitle>Paket tidak dapat dimuat</AlertTitle>
           <AlertDescription>{loadError}</AlertDescription>
@@ -211,7 +217,7 @@ export function CountryLockPage({
       ) : (
         <>
           {pkg.missing.length > 0 ? (
-            <Alert variant="destructive">
+            <Alert color="destructive" icon={false}>
               <TriangleAlert />
               <AlertTitle>Berkas skrip tidak ditemukan</AlertTitle>
               <AlertDescription>{pkg.missing.join(', ')}</AlertDescription>
@@ -372,6 +378,7 @@ export function CountryLockPage({
                   <Button
                     type="button"
                     variant="outline"
+                    color="primary"
                     onClick={actions.openCredentials}
                     disabled={!brandConfig}
                   >
@@ -455,6 +462,6 @@ export function CountryLockPage({
         onCancel={actions.cancel}
         onClose={actions.closeProgress}
       />
-    </div>
+    </HeadroomFrame>
   );
 }

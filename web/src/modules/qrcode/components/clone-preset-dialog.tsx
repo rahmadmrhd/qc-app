@@ -103,7 +103,12 @@ export function ClonePresetDialog({
           <FieldError errors={error ? [error] : []} />
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            color="primary"
+            onClick={() => onOpenChange(false)}
+          >
             Batal
           </Button>
           <Button

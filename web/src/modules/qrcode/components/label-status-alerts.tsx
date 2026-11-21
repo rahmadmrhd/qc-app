@@ -20,7 +20,7 @@ export function LabelStatusAlerts({ status }: { status: LabelStatus | null }) {
   return (
     <div className="space-y-2">
       {status.overflow ? (
-        <Alert variant="destructive">
+        <Alert color="destructive" icon={false}>
           <CircleAlert />
           <AlertTitle>Isi melebihi kanvas 3 × 3 cm</AlertTitle>
           <AlertDescription>

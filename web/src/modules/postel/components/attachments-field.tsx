@@ -148,6 +148,7 @@ export function AttachmentsField({ value, onChange, error, onBusyChange }: Attac
             type="button"
             size="sm"
             variant="outline"
+            color="primary"
             disabled={remaining <= 0}
             onClick={() => {
               setFull(false);

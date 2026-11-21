@@ -27,21 +27,17 @@ const ALERT_ICONS: Record<Exclude<AlertColor, "neutral">, LucideIcon> = {
 
 function Alert({
   className,
-  variant,
   color,
   icon,
   children,
   ...props
 }: Omit<React.ComponentProps<"div">, "color"> & {
-  /** Varian lama: `destructive` dipetakan ke `color="destructive"`. */
-  variant?: "default" | "destructive"
+  /** Tanpa `color` = netral. */
   color?: AlertColor
   /** Ikon bawaan per warna; bawaan true bila `color` diberikan dan bukan neutral. */
   icon?: boolean
 }) {
-  const resolved: AlertColor =
-    color ?? (variant === "destructive" ? "destructive" : "neutral")
-  // Varian lama tidak menyisipkan ikon: pemakainya sudah menaruh ikon sendiri.
+  const resolved: AlertColor = color ?? "neutral"
   const showIcon = icon ?? (color !== undefined && resolved !== "neutral")
   const Icon = resolved === "neutral" ? null : ALERT_ICONS[resolved]
   return (

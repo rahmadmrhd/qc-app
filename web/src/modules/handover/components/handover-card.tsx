@@ -138,7 +138,13 @@ export function HandoverCard({
   const moreMenu = showMore ? (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" size="icon-sm" variant="ghost" aria-label={`Aksi ${handover.number}`}>
+        <Button
+          type="button"
+          size="icon-sm"
+          variant="ghost"
+          color="primary"
+          aria-label={`Aksi ${handover.number}`}
+        >
           <Ellipsis aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>

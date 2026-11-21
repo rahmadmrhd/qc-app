@@ -493,7 +493,12 @@ export function QrDesignForm({
       {ready && !isDefaults && updatePresets && updatePresets.length > 0 ? (
         <Section title="Konfigurasi default">
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="button" variant="outline" onClick={() => setApplyOpen(true)}>
+            <Button
+              type="button"
+              variant="outline"
+              color="primary"
+              onClick={() => setApplyOpen(true)}
+            >
               Perbarui sesuai konfigurasi default
             </Button>
             <p className="text-xs text-muted-foreground">
@@ -567,6 +572,7 @@ export function QrDesignForm({
                     <Button
                       type="button"
                       variant="outline"
+                      color="primary"
                       size="sm"
                       disabled={legacyCloning || pdfBusy}
                       onClick={() => void cloneLegacy(values.link)}
@@ -1204,7 +1210,12 @@ function PreviewPane({
         logoUrl={logo}
         onStatus={onStatus}
       />
-      <Button type="button" variant="outline" onClick={() => onSheetOpenChange(true)}>
+      <Button
+        type="button"
+        variant="outline"
+        color="primary"
+        onClick={() => onSheetOpenChange(true)}
+      >
         Pratinjau lembar
       </Button>
       <SheetPreviewDialog

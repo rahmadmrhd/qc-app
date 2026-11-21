@@ -4,8 +4,12 @@ import { Badge } from './badge'
 import { Button } from './button'
 
 describe('Button', () => {
-  it('varian lama destructive dipetakan ke soft destructive', () => {
-    render(<Button variant="destructive">Hapus</Button>)
+  it('soft destructive membawa data-variant dan data-color', () => {
+    render(
+      <Button variant="soft" color="destructive">
+        Hapus
+      </Button>,
+    )
     const b = screen.getByRole('button', { name: 'Hapus' })
     expect(b).toHaveAttribute('data-color', 'destructive')
     expect(b).toHaveAttribute('data-variant', 'soft')

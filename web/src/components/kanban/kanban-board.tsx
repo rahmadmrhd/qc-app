@@ -172,6 +172,7 @@ function ColumnLoadMore<T>({ column, auto }: { column: KanbanColumn<T>; auto: bo
     <Button
       type="button"
       variant="outline"
+      color="primary"
       size="sm"
       className="w-full"
       disabled={column.loadingMore}

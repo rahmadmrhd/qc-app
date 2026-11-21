@@ -435,6 +435,7 @@ export function RowEditDialog({
                   <Button
                     type="button"
                     variant="outline"
+                    color="primary"
                     size="sm"
                     disabled={room === 0}
                     onClick={() => setPhotoDialog({ open: true, files: [], rejected: [] })}
@@ -452,7 +453,7 @@ export function RowEditDialog({
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={close}>
+            <Button type="button" variant="outline" color="primary" onClick={close}>
               Batal
             </Button>
             {running > 0 ? (

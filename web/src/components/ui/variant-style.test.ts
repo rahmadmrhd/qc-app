@@ -1,27 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { colorVariantClasses, resolveStyle } from './variant-style'
-
-describe('resolveStyle', () => {
-  it('bawaan = solid primary', () => {
-    expect(resolveStyle()).toEqual({ variant: 'solid', color: 'primary' })
-    expect(resolveStyle('default')).toEqual({ variant: 'solid', color: 'primary' })
-  })
-
-  it('memetakan varian lama', () => {
-    expect(resolveStyle('secondary')).toEqual({ variant: 'soft', color: 'secondary' })
-    expect(resolveStyle('destructive')).toEqual({ variant: 'soft', color: 'destructive' })
-    expect(resolveStyle('link')).toEqual({ variant: 'link', color: 'info' })
-    expect(resolveStyle('outline')).toEqual({ variant: 'outline', color: 'primary' })
-    expect(resolveStyle('ghost')).toEqual({ variant: 'ghost', color: 'primary' })
-  })
-
-  it('warna eksplisit menang', () => {
-    expect(resolveStyle('soft', 'success')).toEqual({ variant: 'soft', color: 'success' })
-    expect(resolveStyle('destructive', 'warning')).toEqual({ variant: 'soft', color: 'warning' })
-  })
-})
+import { colorVariantClasses } from './variant-style'
 
 describe('colorVariantClasses', () => {
+  it('link berwarna teks warnanya', () => {
+    expect(colorVariantClasses('link', 'info')).toContain('text-info-text')
+  })
   it('solid', () => {
     const c = colorVariantClasses('solid', 'success')
     expect(c).toContain('bg-success')

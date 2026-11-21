@@ -171,7 +171,7 @@ function AlertDialogDescription({
 
 function AlertDialogAction({
   className,
-  variant = "default",
+  variant = "solid",
   color,
   size = "default",
   ...props

@@ -318,6 +318,7 @@ const RowView = memo(function RowView({
         <Button
           type="button"
           variant="ghost"
+          color="primary"
           size="sm"
           aria-label={`Detail ${row.serial}`}
           disabled={disabled}
@@ -328,6 +329,7 @@ const RowView = memo(function RowView({
         <Button
           type="button"
           variant="ghost"
+          color="primary"
           size="sm"
           aria-label={`Hapus ${row.serial}`}
           disabled={disabled}

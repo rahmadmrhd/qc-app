@@ -105,6 +105,7 @@ export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
                 <Button
                   type="button"
                   variant="outline"
+                  color="primary"
                   disabled={history.isFetchingNextPage}
                   onClick={() => void history.fetchNextPage()}
                 >

@@ -149,6 +149,7 @@ export function MarkRow({
         <Button
           type="button"
           variant="ghost"
+          color="primary"
           size="icon"
           className="ml-auto size-7 shrink-0"
           aria-label={`Hapus penanda ${number}`}

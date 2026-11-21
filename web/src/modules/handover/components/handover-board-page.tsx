@@ -215,7 +215,13 @@ export function HandoverBoardPage({
               <FilterChip label="Customer" display={customerLabel} onClear={onClearCustomer}>
                 <div className="space-y-2 text-sm">
                   <p>Menampilkan task milik customer ini saja.</p>
-                  <Button type="button" size="sm" variant="outline" onClick={onClearCustomer}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    color="primary"
+                    onClick={onClearCustomer}
+                  >
                     Hapus filter
                   </Button>
                 </div>

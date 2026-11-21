@@ -45,7 +45,7 @@ export function BrandDetailView({
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold">Merk tidak ditemukan</h1>
-        <Button variant="outline" onClick={onBack}>
+        <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar merk
         </Button>
       </div>
@@ -131,7 +131,7 @@ export function BrandDetailView({
                           {bu.code}
                         </Link>
                       ) : (
-                        <Badge key={bu.id} variant="outline" title={bu.name}>
+                        <Badge key={bu.id} variant="outline" color="primary" title={bu.name}>
                           {bu.code}
                         </Badge>
                       ),

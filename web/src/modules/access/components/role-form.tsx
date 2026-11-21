@@ -103,7 +103,8 @@ export function RoleForm({
                           key={level}
                           type="button"
                           size="sm"
-                          variant={active ? 'default' : 'ghost'}
+                          variant={active ? 'solid' : 'ghost'}
+                          color="primary"
                           aria-pressed={active}
                           className="h-8 px-1 text-xs"
                           onClick={() =>

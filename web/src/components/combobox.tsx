@@ -502,6 +502,7 @@ export function ComboboxBase({
               <Button
                 type="button"
                 variant="ghost"
+                color="primary"
                 size="icon"
                 tabIndex={-1}
                 className="size-6"
@@ -513,7 +514,7 @@ export function ComboboxBase({
               </Button>
             ) : null}
             {!multi && openLink ? (
-              <Button asChild variant="ghost" size="icon" className="size-6">
+              <Button asChild variant="ghost" color="primary" size="icon" className="size-6">
                 <a href={openLink} target="_blank" rel="noreferrer" aria-label={`Buka ${label}`}>
                   <ExternalLink />
                 </a>

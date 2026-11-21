@@ -52,7 +52,13 @@ export function OutboxChip() {
     <div role="status" aria-live="polite">
       <Popover>
         <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className="gap-1.5 px-2" aria-label={label}>
+          <Button
+            variant="outline"
+            color="primary"
+            size="sm"
+            className="gap-1.5 px-2"
+            aria-label={label}
+          >
             <Icon aria-hidden="true" className={sending > 0 ? 'size-4 animate-spin' : 'size-4'} />
             <span className="sm:hidden">
               <span aria-hidden="true">{total}</span>

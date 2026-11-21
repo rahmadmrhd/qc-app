@@ -103,6 +103,7 @@ export function ImagePicker({ value, onChange, label, onBusyChange }: ImagePicke
           type="button"
           size="sm"
           variant="outline"
+          color="primary"
           disabled={busy}
           onClick={() => setDialog({ open: true, files: [], rejected: [] })}
         >
@@ -114,6 +115,7 @@ export function ImagePicker({ value, onChange, label, onBusyChange }: ImagePicke
             type="button"
             size="sm"
             variant="ghost"
+            color="primary"
             aria-label={`Hapus gambar contoh ${label}`}
             disabled={busy}
             onClick={() => onChange(null)}

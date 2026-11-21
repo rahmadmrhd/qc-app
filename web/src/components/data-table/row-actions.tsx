@@ -54,7 +54,13 @@ export function RowActions({ name, actions }: { name: string; actions: readonly 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" variant="ghost" size="icon-sm" aria-label={`Aksi ${name}`}>
+        <Button
+          type="button"
+          variant="ghost"
+          color="primary"
+          size="icon-sm"
+          aria-label={`Aksi ${name}`}
+        >
           <Ellipsis aria-hidden />
         </Button>
       </DropdownMenuTrigger>

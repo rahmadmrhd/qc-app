@@ -176,6 +176,7 @@ export function PdfSourceField({
           <Button
             type="button"
             variant="outline"
+            color="primary"
             disabled={busy || driveSource.trim() === ''}
             onClick={() => {
               if (replacing) setPending({ drive: driveSource.trim() });
@@ -220,6 +221,7 @@ export function PdfSourceField({
             <Button
               type="button"
               variant="outline"
+              color="primary"
               onClick={() => {
                 void navigator.clipboard?.writeText(document.link);
                 setCopied(true);
@@ -227,7 +229,7 @@ export function PdfSourceField({
             >
               {copied ? 'Tersalin' : 'Salin'}
             </Button>
-            <Button asChild type="button" variant="outline">
+            <Button asChild type="button" variant="outline" color="primary">
               <a href={document.link} target="_blank" rel="noopener noreferrer">
                 Lihat PDF
               </a>
@@ -250,7 +252,12 @@ export function PdfSourceField({
           </DialogHeader>
           {progressEl}
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setPending(null)}>
+            <Button
+              type="button"
+              variant="outline"
+              color="primary"
+              onClick={() => setPending(null)}
+            >
               Batal
             </Button>
             <Button type="button" disabled={busy} onClick={() => void confirm()}>

@@ -10,9 +10,15 @@ describe('Alert', () => {
     expect(a.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
   });
 
-  it('varian lama destructive dipetakan ke color destructive', () => {
-    render(<Alert variant="destructive">x</Alert>);
-    expect(screen.getByRole('alert')).toHaveAttribute('data-color', 'destructive');
+  it('color destructive dan icon={false} menyembunyikan ikon sisipan', () => {
+    render(
+      <Alert color="destructive" icon={false}>
+        x
+      </Alert>,
+    );
+    const a = screen.getByRole('alert');
+    expect(a).toHaveAttribute('data-color', 'destructive');
+    expect(a.querySelector('svg')).toBeNull();
   });
 
   it('netral tanpa ikon sisipan', () => {

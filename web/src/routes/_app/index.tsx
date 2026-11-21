@@ -20,7 +20,11 @@ function ModuleCard({ module }: { module: ModuleKey }) {
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2 text-base">
           {MODULE_LABELS[module]}
-          {to ? null : <Badge variant="secondary">Segera hadir</Badge>}
+          {to ? null : (
+            <Badge variant="soft" color="secondary">
+              Segera hadir
+            </Badge>
+          )}
         </CardTitle>
       </CardHeader>
     </Card>

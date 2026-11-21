@@ -112,7 +112,13 @@ export function StockMenu({ row, label, panel, controller }: StockActionProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button type="button" size="sm" variant="outline" aria-label={`Stok ${label}`}>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          color="primary"
+          aria-label={`Stok ${label}`}
+        >
           Stok
           <MoreHorizontal aria-hidden="true" />
         </Button>
@@ -148,6 +154,7 @@ export function StockButtons({ row, label, panel, controller }: StockActionProps
         <Button
           type="button"
           variant="outline"
+          color="primary"
           aria-label={`Catat masuk ${label}`}
           onClick={() => controller.openEntry('in', row.stickerId)}
         >
@@ -158,6 +165,7 @@ export function StockButtons({ row, label, panel, controller }: StockActionProps
         <Button
           type="button"
           variant="outline"
+          color="primary"
           aria-label={`Catat keluar ${label}`}
           onClick={() => controller.openEntry('out', row.stickerId)}
         >
@@ -168,6 +176,7 @@ export function StockButtons({ row, label, panel, controller }: StockActionProps
         <Button
           type="button"
           variant="outline"
+          color="primary"
           aria-label={`Koreksi ${label}`}
           onClick={() => controller.openEntry('adjust', row.stickerId)}
         >

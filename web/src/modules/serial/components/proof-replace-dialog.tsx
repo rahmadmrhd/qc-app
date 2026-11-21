@@ -53,7 +53,7 @@ export function ProofReplaceStatus({ state, replacing, onCancel }: ProofReplaceS
       <div data-testid="proof-replacing" className="space-y-1">
         <p className="text-xs font-medium">Mengganti…</p>
         <UploadProgress phase={entry.phase} fraction={entry.fraction} />
-        <Button type="button" variant="ghost" size="xs" onClick={onCancel}>
+        <Button type="button" variant="ghost" color="primary" size="xs" onClick={onCancel}>
           Batalkan
         </Button>
       </div>

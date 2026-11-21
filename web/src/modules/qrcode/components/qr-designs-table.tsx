@@ -90,7 +90,9 @@ function VersionCell({ design }: { design: QrDesignDto }) {
     <div className="flex items-center gap-1">
       <span className="text-sm font-medium">v{design.stickerVersion}</span>
       {design.stickerStatus === 'active' ? null : (
-        <Badge variant="outline">{STICKER_STATUS_LABEL[design.stickerStatus]}</Badge>
+        <Badge variant="outline" color="primary">
+          {STICKER_STATUS_LABEL[design.stickerStatus]}
+        </Badge>
       )}
     </div>
   );
@@ -100,10 +102,12 @@ function ExportStatusCell({ design }: { design: QrDesignDto }) {
   return (
     <div className="space-y-1">
       {design.exportStatus === 'none' ? (
-        <Badge variant="secondary">Belum diekspor</Badge>
+        <Badge variant="soft" color="secondary">
+          Belum diekspor
+        </Badge>
       ) : (
         <div className="space-y-0.5">
-          <Badge variant={design.exportStatus === 'stale' ? 'outline' : 'default'}>
+          <Badge variant={design.exportStatus === 'stale' ? 'outline' : 'solid'} color="primary">
             {design.exportStatus === 'stale' ? 'Berubah sejak ekspor' : 'Sudah diekspor'}
           </Badge>
           <p className="text-xs text-muted-foreground">

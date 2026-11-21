@@ -119,6 +119,7 @@ export function ScanResultsTable({
                     <Button
                       type="button"
                       variant="ghost"
+                      color="primary"
                       size="icon"
                       className="size-11 text-muted-foreground hover:text-destructive-text"
                       aria-label="Hapus serial"

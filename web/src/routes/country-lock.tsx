@@ -61,7 +61,7 @@ function CountryLockRoute() {
   return (
     <div className="flex min-h-svh flex-col bg-muted/40">
       <UiUpdateBanner />
-      <header className="flex items-center justify-between gap-2 border-b bg-background px-4 py-2">
+      <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b bg-background px-4">
         <span className="font-semibold">Country Lock</span>
         <div className="flex items-center gap-2">
           {/* Sudah login tetapi tanpa cangkang (data pengguna belum termuat): kembali ke aplikasi; belum login: masuk. */}
@@ -77,7 +77,9 @@ function CountryLockRoute() {
           <ThemeToggle />
         </div>
       </header>
-      <main className="flex flex-1 items-start justify-center p-4">{content}</main>
+      <main className="flex flex-1 items-start justify-center p-4">
+        <div className="w-full max-w-7xl">{content}</div>
+      </main>
     </div>
   );
 }

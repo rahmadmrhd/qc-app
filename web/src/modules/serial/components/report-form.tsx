@@ -100,7 +100,8 @@ export function ExistingReportForm({ match, onDone }: ExistingReportFormProps) {
       ) : null}
       <Button
         type="button"
-        variant="destructive"
+        variant="soft"
+        color="destructive"
         data-tour="report-submit"
         disabled={act.isPending || messageBusy || message.trim() === '' || tooManyImages}
         onClick={() => void submit()}
@@ -260,7 +261,8 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
       ) : null}
       <Button
         type="button"
-        variant="destructive"
+        variant="soft"
+        color="destructive"
         data-tour="report-submit"
         disabled={report.isPending || messageBusy || !ready}
         onClick={() => void submit()}

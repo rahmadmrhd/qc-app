@@ -178,7 +178,13 @@ export function ViewPage({
           {menuActions.length > 0 ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button type="button" variant="outline" size="icon" aria-label="Aksi lainnya">
+                <Button
+                  type="button"
+                  variant="outline"
+                  color="primary"
+                  size="icon"
+                  aria-label="Aksi lainnya"
+                >
                   <Ellipsis aria-hidden />
                 </Button>
               </DropdownMenuTrigger>

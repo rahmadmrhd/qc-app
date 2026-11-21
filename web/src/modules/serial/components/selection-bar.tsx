@@ -30,10 +30,10 @@ export function SelectionBar({ count, onEdit, onRemove, onClear }: SelectionBarP
       <Button type="button" size="sm" onClick={onEdit}>
         Edit
       </Button>
-      <Button type="button" variant="destructive" size="sm" onClick={onRemove}>
+      <Button type="button" variant="soft" color="destructive" size="sm" onClick={onRemove}>
         Hapus
       </Button>
-      <Button type="button" variant="ghost" size="sm" onClick={onClear}>
+      <Button type="button" variant="ghost" color="primary" size="sm" onClick={onClear}>
         Batalkan pilihan
       </Button>
       {/* Sesudah tombol di DOM (urutan baca = urutan visual di layar lebar); di ponsel tampil paling depan. */}

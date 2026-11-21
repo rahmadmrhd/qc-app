@@ -102,11 +102,11 @@ export function InjectProgressDialog({
         </pre>
         <DialogFooter>
           {running ? (
-            <Button type="button" variant="destructive" onClick={onCancel}>
+            <Button type="button" variant="soft" color="destructive" onClick={onCancel}>
               Cancel
             </Button>
           ) : (
-            <Button type="button" variant="secondary" onClick={onClose}>
+            <Button type="button" variant="soft" color="secondary" onClick={onClose}>
               Close
             </Button>
           )}

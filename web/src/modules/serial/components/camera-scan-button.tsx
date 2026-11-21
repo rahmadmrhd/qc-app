@@ -72,7 +72,6 @@ export function CameraScanButton({
     <>
       <Button
         type="button"
-        variant="default"
         size="icon"
         className={className}
         disabled={disabled}

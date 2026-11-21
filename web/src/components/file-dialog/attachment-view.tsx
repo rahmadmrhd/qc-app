@@ -102,6 +102,7 @@ const PendingCell = memo(function PendingCell({
           <Button
             type="button"
             variant="outline"
+            color="primary"
             size="xs"
             aria-label={`Ulangi ${entry.name}`}
             disabled={disabled}
@@ -115,6 +116,7 @@ const PendingCell = memo(function PendingCell({
           <Button
             type="button"
             variant="ghost"
+            color="primary"
             size="xs"
             aria-label={`${failed ? 'Buang' : 'Batalkan'} ${entry.name}`}
             disabled={disabled}
@@ -216,6 +218,7 @@ export function AttachmentView({
                 <Button
                   type="button"
                   variant="outline"
+                  color="primary"
                   size="xs"
                   aria-label={`Unduh ${item.name}${suffix}`}
                   className={grid ? 'mt-1 w-14' : undefined}
@@ -228,7 +231,8 @@ export function AttachmentView({
               {onRemove ? (
                 <Button
                   type="button"
-                  variant="secondary"
+                  variant="soft"
+                  color="secondary"
                   size="icon-xs"
                   aria-label={`Buang ${item.name}${suffix}`}
                   disabled={disabled}

@@ -171,6 +171,7 @@ function QrCodesPage() {
             <Button
               type="button"
               variant="outline"
+              color="primary"
               onClick={() => stack.push({ to: '/qrcode/default' })}
             >
               Konfigurasi default

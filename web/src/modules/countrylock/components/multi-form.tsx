@@ -267,7 +267,12 @@ export function MultiForm({
 
       <div className="flex flex-wrap items-center gap-2">
         {running ? (
-          <Button type="button" variant="destructive" onClick={() => void multi.stop()}>
+          <Button
+            type="button"
+            variant="soft"
+            color="destructive"
+            onClick={() => void multi.stop()}
+          >
             Hentikan
           </Button>
         ) : (

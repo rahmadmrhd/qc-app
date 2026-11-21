@@ -89,7 +89,7 @@ export function DeniedBanner({
           {reenableSteps(platform)}
         </p>
       </div>
-      <Button size="sm" variant="ghost" onClick={onClose}>
+      <Button size="sm" variant="ghost" color="primary" onClick={onClose}>
         Tutup
       </Button>
     </div>
@@ -255,7 +255,7 @@ export function PushOnboarding() {
             dari menu profil. Lonceng di atas tetap jalan tanpa izin ini.
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={dismissAsk}>
+            <Button variant="outline" color="primary" onClick={dismissAsk}>
               Nanti
             </Button>
             <Button onClick={() => void enable()} disabled={busy}>

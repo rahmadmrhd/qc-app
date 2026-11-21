@@ -109,7 +109,9 @@ function Summary({ serial, events }: { serial: SerialDto; events: readonly Seria
             label: 'Business Unit',
             value: (
               <span className="inline-flex flex-wrap items-center gap-2">
-                <Badge variant="outline">{serial.buCode}</Badge>
+                <Badge variant="outline" color="primary">
+                  {serial.buCode}
+                </Badge>
                 {former.length > 0 ? (
                   <span className="text-xs text-muted-foreground">
                     Pernah di: {former.join(', ')}
@@ -218,7 +220,7 @@ export function SerialDetailPage({
         <p role="alert" className="text-sm text-destructive-text">
           {detail.error ? describeError(detail.error) : 'Serial tidak ditemukan.'}
         </p>
-        <Button variant="outline" onClick={onBack}>
+        <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar
         </Button>
       </div>
@@ -280,13 +282,16 @@ export function SerialDetailPage({
           <span className="flex flex-wrap items-center gap-2">
             {deleted ? <DeletedBadge /> : null}
             <SerialStatusBadge status={serial.status} />
-            <Badge variant="outline">
+            <Badge variant="outline" color="primary">
               {serial.custody === 'transit'
                 ? `${CUSTODY_LABEL.transit}${serial.transitToLocationName ? ` · ke ${serial.transitToLocationName}` : ''}`
                 : `${CUSTODY_LABEL[serial.custody]} · ${serial.locationName}`}
             </Badge>
             {serial.openCase ? (
-              <Badge variant="outline">{`${serial.openCase.number} (terbuka)`}</Badge>
+              <Badge
+                variant="outline"
+                color="primary"
+              >{`${serial.openCase.number} (terbuka)`}</Badge>
             ) : null}
             {serial.hasProofPhotos ? <ProofBadge /> : null}
             <ProofProblemBadge count={serial.proofProblemCount} />

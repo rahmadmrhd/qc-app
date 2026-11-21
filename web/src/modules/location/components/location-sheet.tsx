@@ -67,6 +67,7 @@ function SheetBody({ onDone }: { onDone: () => void }) {
             <Button
               type="button"
               variant="ghost"
+              color="primary"
               className="justify-start text-sm"
               onClick={() => setDraft(allChosen ? [] : available.map((location) => location.id))}
             >

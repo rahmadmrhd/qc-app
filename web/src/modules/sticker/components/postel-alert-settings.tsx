@@ -253,6 +253,7 @@ function Body({
               <Button
                 type="button"
                 variant="ghost"
+                color="primary"
                 size="sm"
                 aria-label={`Hapus pengingat ${index + 1}`}
                 onClick={() => {
@@ -291,6 +292,7 @@ function Body({
         <Button
           type="button"
           variant="outline"
+          color="primary"
           size="sm"
           disabled={thresholds.length >= POSTEL_LIMITS.thresholdsMax}
           onClick={() => setThresholds((current) => [...current, ''])}
@@ -366,7 +368,7 @@ function Body({
               }}
             />
           </div>
-          <Button type="button" variant="outline" onClick={addExtra}>
+          <Button type="button" variant="outline" color="primary" onClick={addExtra}>
             Tambah email
           </Button>
         </div>

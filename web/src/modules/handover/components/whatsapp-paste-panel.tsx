@@ -89,7 +89,14 @@ export function WhatsappPastePanel({ remaining, onAdd }: WhatsappPastePanelProps
           {`Tempelan ${text.length.toLocaleString('id-ID')} karakter melebihi batas ${MAX_PASTE_CHARS.toLocaleString('id-ID')} karakter dan tidak dipecah; bagi tempelan menjadi beberapa bagian.`}
         </p>
       ) : null}
-      <Button type="button" variant="secondary" size="sm" disabled={tooLong} onClick={split}>
+      <Button
+        type="button"
+        variant="soft"
+        color="secondary"
+        size="sm"
+        disabled={tooLong}
+        onClick={split}
+      >
         Pecah
       </Button>
       {outcome?.kind === 'empty' ? (

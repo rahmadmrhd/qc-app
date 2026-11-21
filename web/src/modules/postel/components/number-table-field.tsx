@@ -110,6 +110,7 @@ export function NumberTableField({
                       <Button
                         type="button"
                         variant="ghost"
+                        color="primary"
                         size="sm"
                         aria-label={`Hapus nomor ${index + 1}`}
                         onClick={() => onChange(value.filter((_, i) => i !== index))}
@@ -127,6 +128,7 @@ export function NumberTableField({
       <Button
         type="button"
         variant="outline"
+        color="primary"
         size="sm"
         disabled={value.length >= POSTEL_LIMITS.numbersMax}
         onClick={() => onChange([...value, blankNumberRow()])}

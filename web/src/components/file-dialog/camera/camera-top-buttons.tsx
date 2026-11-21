@@ -36,6 +36,7 @@ export function CameraTopButtons({
         <Button
           type="button"
           variant="ghost"
+          color="primary"
           size="icon"
           className={cn(
             FLOAT_BUTTON,
@@ -53,6 +54,7 @@ export function CameraTopButtons({
         <Button
           type="button"
           variant="ghost"
+          color="primary"
           size="icon"
           className={FLOAT_BUTTON}
           aria-label="Ganti kamera"
@@ -118,6 +120,7 @@ export function CameraZoomRail({ camera }: { camera: CameraStream }) {
       <Button
         type="button"
         variant="ghost"
+        color="primary"
         data-testid="zoom-value"
         className={cn(FLOAT_BUTTON, 'w-11 min-w-11 px-0 font-mono text-xs tabular-nums')}
         aria-label={`Zoom ${formatZoom(camera.zoom)}, ketuk untuk kembali ke 1x`}

@@ -250,7 +250,11 @@ function MinimumSection({ form }: { form: StickerSettingsForm }) {
               <Label htmlFor={`default-${type.id}`} className="font-medium">
                 {`Minimum bawaan ${type.name}`}
               </Label>
-              {type.systemKind !== '' ? <Badge variant="outline">Sistem</Badge> : null}
+              {type.systemKind !== '' ? (
+                <Badge variant="outline" color="primary">
+                  Sistem
+                </Badge>
+              ) : null}
             </div>
             <div className="space-y-1">
               <Input
@@ -395,7 +399,7 @@ function DigestSection({ form }: { form: StickerSettingsForm }) {
               }}
             />
           </div>
-          <Button type="button" variant="outline" onClick={form.addExtra}>
+          <Button type="button" variant="outline" color="primary" onClick={form.addExtra}>
             Tambah email
           </Button>
         </div>

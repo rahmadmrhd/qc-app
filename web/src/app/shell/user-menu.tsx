@@ -79,6 +79,7 @@ function PhoneAccount(props: PhoneAccountProps) {
     <>
       <Button
         variant="ghost"
+        color="primary"
         size="icon"
         className="relative"
         aria-label={pending > 0 ? `Akun, ${pending} belum terkirim` : 'Akun'}
@@ -170,7 +171,8 @@ function PhoneAccount(props: PhoneAccountProps) {
                     key={value}
                     type="button"
                     size="sm"
-                    variant={theme === value ? 'default' : 'outline'}
+                    variant={theme === value ? 'solid' : 'outline'}
+                    color="primary"
                     aria-pressed={theme === value}
                     onClick={() => setTheme(value)}
                   >
@@ -252,7 +254,7 @@ export function UserMenu() {
       ) : (
         <DropdownMenu {...tourMenu.rootProps}>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="gap-2 px-2" data-tour="user-menu">
+            <Button variant="ghost" color="primary" className="gap-2 px-2" data-tour="user-menu">
               <Avatar className="size-7">
                 <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>

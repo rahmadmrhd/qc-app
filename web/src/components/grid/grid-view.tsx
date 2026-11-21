@@ -179,13 +179,19 @@ export function GridView<T>({
           {loadMoreError ? (
             <div className="flex items-center gap-2 text-sm">
               <span className="text-destructive-text">Gagal memuat halaman berikutnya</span>
-              <Button type="button" variant="outline" size="sm" onClick={onLoadMore}>
+              <Button
+                type="button"
+                variant="outline"
+                color="primary"
+                size="sm"
+                onClick={onLoadMore}
+              >
                 Coba lagi
               </Button>
             </div>
           ) : null}
           {!supported && !loadingMore && !loadMoreError ? (
-            <Button type="button" variant="outline" size="sm" onClick={onLoadMore}>
+            <Button type="button" variant="outline" color="primary" size="sm" onClick={onLoadMore}>
               Muat lebih banyak
             </Button>
           ) : null}

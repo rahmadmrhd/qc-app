@@ -114,7 +114,7 @@ export function ItemDetailView({
                           {bu.code}
                         </a>
                       ) : (
-                        <Badge key={bu.id} variant="outline" title={bu.name}>
+                        <Badge key={bu.id} variant="outline" color="primary" title={bu.name}>
                           {bu.code}
                         </Badge>
                       );
@@ -192,7 +192,7 @@ export function ItemDetailView({
         ) : (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="font-medium">{item.manualBook.name}</span>
-            <Badge variant="outline">{`v${item.manualBook.version}`}</Badge>
+            <Badge variant="outline" color="primary">{`v${item.manualBook.version}`}</Badge>
             <ActiveStatusBadge
               status={item.manualBook.status}
               label={STICKER_STATUS_LABEL[item.manualBook.status]}
@@ -221,7 +221,9 @@ export function ItemDetailView({
           ) : (
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="font-medium">{postel.name}</span>
-              <Badge variant="outline">{postel.number}</Badge>
+              <Badge variant="outline" color="primary">
+                {postel.number}
+              </Badge>
               <span className="text-muted-foreground">
                 Berlaku sampai {formatPostelDate(postel.expiresOn)}
               </span>

@@ -33,6 +33,7 @@ export function FilePicker({
       <Button
         type="button"
         variant="outline"
+        color="primary"
         disabled={disabled}
         className={className}
         onClick={() => inputRef.current?.click()}

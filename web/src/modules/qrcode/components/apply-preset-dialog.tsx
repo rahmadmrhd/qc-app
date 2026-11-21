@@ -84,7 +84,12 @@ export function ApplyPresetDialog({
           </fieldset>
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            color="primary"
+            onClick={() => onOpenChange(false)}
+          >
             Batal
           </Button>
           <Button

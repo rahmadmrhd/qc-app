@@ -335,7 +335,7 @@ function StockEntryBody({ mode, sticker, onSave, onClose }: BodyProps) {
         </p>
       ) : null}
       <FormDialogFooter>
-        <Button type="button" variant="outline" onClick={onClose}>
+        <Button type="button" variant="outline" color="primary" onClick={onClose}>
           Batal
         </Button>
         <Button type="submit" disabled={busy}>

@@ -78,13 +78,20 @@ export function MultiPanel({
           <MultiForm pkg={pkg} catalog={catalog} multi={multi} />
 
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" disabled={!running} onClick={actions.scan}>
+            <Button
+              type="button"
+              variant="outline"
+              color="primary"
+              disabled={!running}
+              onClick={actions.scan}
+            >
               <Radar />
               Scan
             </Button>
             <Button
               type="button"
               variant="outline"
+              color="primary"
               disabled={injectBusy || preparing}
               title={
                 injectBusy ? 'Tidak dapat menyiapkan bridge saat inject sedang berjalan' : undefined
@@ -107,12 +114,19 @@ export function MultiPanel({
             <Button type="button" disabled={!running || preparing} onClick={actions.injectAll}>
               Inject All
             </Button>
-            <Button type="button" variant="outline" disabled={!running} onClick={actions.stopQueue}>
+            <Button
+              type="button"
+              variant="outline"
+              color="primary"
+              disabled={!running}
+              onClick={actions.stopQueue}
+            >
               Stop Antrean
             </Button>
             <Button
               type="button"
-              variant="destructive"
+              variant="soft"
+              color="destructive"
               disabled={!running}
               onClick={actions.cancelAll}
             >
@@ -136,7 +150,7 @@ export function MultiPanel({
             </p>
           ) : null}
           {multi.error ? (
-            <Alert variant="destructive">
+            <Alert color="destructive" icon={false}>
               <AlertDescription>{multi.error}</AlertDescription>
             </Alert>
           ) : null}
@@ -166,7 +180,8 @@ export function MultiPanel({
                 key={key}
                 type="button"
                 size="sm"
-                variant={active ? 'default' : 'outline'}
+                variant={active ? 'solid' : 'outline'}
+                color="primary"
                 aria-pressed={active}
                 className={cn(!active && tone)}
                 onClick={() => setFilter(active ? null : key)}

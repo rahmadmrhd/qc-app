@@ -85,7 +85,7 @@ export function ReportPage({ onOpenSerial }: ReportPageProps) {
           <p role="status" className="text-sm">
             {`Serial ini ada di BU ${elsewhere.buCode} dan Anda tidak punya akses untuk melaporkannya.`}
           </p>
-          <Button type="button" variant="destructive" disabled>
+          <Button type="button" variant="soft" color="destructive" disabled>
             Lapor rusak
           </Button>
         </section>
@@ -139,6 +139,7 @@ function Blocked({
       <Button
         type="button"
         variant="outline"
+        color="primary"
         size="sm"
         data-tour="report-blocked-open"
         onClick={() => (match.openCaseId ? onOpen(match.id, match.openCaseId) : onOpen(match.id))}

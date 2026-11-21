@@ -115,7 +115,7 @@ export function StockHistory({
       </div>
       {hasMore ? (
         <div className="flex justify-center">
-          <Button variant="outline" disabled={loadingMore} onClick={onLoadMore}>
+          <Button variant="outline" color="primary" disabled={loadingMore} onClick={onLoadMore}>
             {loadingMore ? 'Memuat…' : 'Muat lebih banyak'}
           </Button>
         </div>

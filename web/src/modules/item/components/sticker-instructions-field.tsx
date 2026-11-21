@@ -246,6 +246,7 @@ export function StickerInstructionsField({
           <Button
             type="button"
             variant="outline"
+            color="primary"
             size="sm"
             disabled={full}
             onClick={() => openDialog([], [])}
@@ -413,6 +414,7 @@ function PhotoCard({
         <Button
           type="button"
           variant="ghost"
+          color="primary"
           size="icon"
           className="size-7"
           aria-label={`Naikkan foto ${number}`}
@@ -424,6 +426,7 @@ function PhotoCard({
         <Button
           type="button"
           variant="ghost"
+          color="primary"
           size="icon"
           className="size-7"
           aria-label={`Turunkan foto ${number}`}
@@ -435,6 +438,7 @@ function PhotoCard({
         <Button
           type="button"
           variant="ghost"
+          color="primary"
           size="icon"
           className="size-7"
           aria-label={`Hapus foto ${number}`}
@@ -524,6 +528,7 @@ function PhotoCard({
       <Button
         type="button"
         variant="outline"
+        color="primary"
         size="sm"
         aria-label={`Tambah penanda pada foto ${number}`}
         disabled={markCount >= INSTRUCTION_LIMITS.marks}

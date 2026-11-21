@@ -154,6 +154,7 @@ function RowButtons({ device, actions }: { device: MultiDeviceDto; actions: Devi
           type="button"
           size="sm"
           variant="outline"
+          color="primary"
           aria-label={`Cancel ${device.mac}`}
           onClick={() => actions.onCancel(device.mac)}
         >
@@ -165,6 +166,7 @@ function RowButtons({ device, actions }: { device: MultiDeviceDto; actions: Devi
           type="button"
           size="sm"
           variant="ghost"
+          color="primary"
           aria-label={`Buka web ${device.mac}`}
           onClick={() => actions.onOpenWeb(device.mac)}
         >

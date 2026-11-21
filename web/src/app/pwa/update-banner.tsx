@@ -36,6 +36,7 @@ export function PwaUpdateBanner() {
         <Button
           size="sm"
           variant="outline"
+          color="primary"
           aria-disabled={pending}
           className="aria-disabled:opacity-50"
           onClick={() => {

@@ -226,7 +226,7 @@ export function PushSettingsDialog({ onClose }: { onClose: () => void }) {
           </div>
         )}
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="outline" color="primary" onClick={onClose}>
             Tutup
           </Button>
           {data?.userEnabled && canActivate && (

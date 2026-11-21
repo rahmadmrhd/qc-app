@@ -312,7 +312,7 @@ export function EditSerialDialog({ serial, onClose }: EditSerialDialogProps) {
           ) : null}
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
+          <Button type="button" variant="outline" color="primary" onClick={onClose}>
             Batal
           </Button>
           <Button

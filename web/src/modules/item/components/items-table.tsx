@@ -132,7 +132,7 @@ export function ItemsTable({
                 {bu.code}
               </LinkCell>
             ) : (
-              <Badge key={bu.id} variant="outline" title={bu.name}>
+              <Badge key={bu.id} variant="outline" color="primary" title={bu.name}>
                 {bu.code}
               </Badge>
             ),

@@ -91,7 +91,7 @@ export function BrandsManager({
                   {bu.code}
                 </LinkCell>
               ) : (
-                <Badge key={buId} variant="outline" title={bu.name}>
+                <Badge key={buId} variant="outline" color="primary" title={bu.name}>
                   {bu.code}
                 </Badge>
               );

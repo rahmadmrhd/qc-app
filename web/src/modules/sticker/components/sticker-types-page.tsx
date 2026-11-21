@@ -197,7 +197,11 @@ export function StickerTypesPage({
           <LinkCell to="/sticker/types/$typeId" params={{ typeId: type.id }}>
             {type.name}
           </LinkCell>
-          {type.systemKind !== '' ? <Badge variant="outline">Sistem</Badge> : null}
+          {type.systemKind !== '' ? (
+            <Badge variant="outline" color="primary">
+              Sistem
+            </Badge>
+          ) : null}
           {type.deleted ? <DeletedBadge /> : null}
         </span>
       ),

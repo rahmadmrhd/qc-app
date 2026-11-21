@@ -289,7 +289,8 @@ export function NoteView({
         <Button
           type="button"
           size="sm"
-          variant="secondary"
+          variant="soft"
+          color="secondary"
           tabIndex={0}
           className="absolute z-10 shadow-md"
           style={{ top: pending.top, left: pending.left }}
@@ -395,6 +396,7 @@ export function NoteView({
           type="button"
           size="sm"
           variant="outline"
+          color="primary"
           onClick={() => setComposer({ quote: '', before: '', after: '' })}
         >
           Tambah komentar

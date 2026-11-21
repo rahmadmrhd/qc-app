@@ -189,6 +189,7 @@ export function HandoverBatchForm({
                       type="button"
                       size="sm"
                       variant="ghost"
+                      color="primary"
                       disabled={full}
                       onClick={() =>
                         setCards((current) => {
@@ -205,6 +206,7 @@ export function HandoverBatchForm({
                       type="button"
                       size="sm"
                       variant="ghost"
+                      color="primary"
                       disabled={cards.length === 1}
                       onClick={() => {
                         setCards((current) => current.filter((c) => c.key !== card.key));
@@ -250,6 +252,7 @@ export function HandoverBatchForm({
         <Button
           type="button"
           variant="outline"
+          color="primary"
           data-tour="handover-add-task"
           disabled={full}
           onClick={() => setCards((current) => [...current, newCard()])}

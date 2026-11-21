@@ -150,6 +150,7 @@ export function CopyMarksDialog({
                   type="button"
                   size="sm"
                   variant="outline"
+                  color="primary"
                   disabled={busyId !== null}
                   aria-label={`Salin penanda dari ${usage.label}`}
                   onClick={() => void copyFrom(usage.itemId, usage.label)}
@@ -168,7 +169,12 @@ export function CopyMarksDialog({
         <DialogFooter>
           {pending ? (
             <>
-              <Button type="button" variant="outline" onClick={() => setPending(null)}>
+              <Button
+                type="button"
+                variant="outline"
+                color="primary"
+                onClick={() => setPending(null)}
+              >
                 Kembali
               </Button>
               <Button
@@ -177,7 +183,7 @@ export function CopyMarksDialog({
               >{`Tetap salin ${pending.marks.length} penanda`}</Button>
             </>
           ) : (
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" color="primary" onClick={onClose}>
               Lewati
             </Button>
           )}

@@ -140,6 +140,7 @@ export function ProofPhotoField({
           <Button
             type="button"
             variant="outline"
+            color="primary"
             size="sm"
             disabled={disabled || room === 0}
             aria-label={`Foto (${count})${suffix}`}

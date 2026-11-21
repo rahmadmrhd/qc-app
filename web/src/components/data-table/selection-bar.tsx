@@ -33,6 +33,7 @@ export function SelectionBar({
         ref={exitRef}
         type="button"
         variant="ghost"
+        color="primary"
         size="icon"
         aria-label="Keluar dari mode pilih"
         onClick={onExit ?? selection.clear}
@@ -93,6 +94,7 @@ export function StartSelectButton({
       <Button
         type="button"
         variant="outline"
+        color="primary"
         size="sm"
         aria-label={label}
         data-tour={tour}
@@ -117,6 +119,7 @@ export function LongPressHint() {
       <Button
         type="button"
         variant="ghost"
+        color="primary"
         size="icon"
         aria-label="Tutup petunjuk"
         onClick={() => {

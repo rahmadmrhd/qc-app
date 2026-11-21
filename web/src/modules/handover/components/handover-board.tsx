@@ -87,6 +87,7 @@ function LoadMore({ column }: { column: BoardColumnState | undefined }) {
       <Button
         type="button"
         variant="outline"
+        color="primary"
         size="sm"
         className="w-full"
         disabled={column.loadingMore}
@@ -179,7 +180,8 @@ export function HandoverBoard({
             key={value}
             type="button"
             size="sm"
-            variant={filter === value ? 'secondary' : 'outline'}
+            variant={filter === value ? 'soft' : 'outline'}
+            color={filter === value ? 'secondary' : 'primary'}
             aria-pressed={filter === value}
             onClick={() => onFilterChange(value)}
           >

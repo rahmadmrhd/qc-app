@@ -1,42 +1,5 @@
 export type UiColor = 'primary' | 'secondary' | 'success' | 'warning' | 'info' | 'destructive'
 export type UiVariant = 'solid' | 'soft' | 'outline' | 'ghost' | 'link'
-export type LegacyVariant = 'default' | 'secondary' | 'destructive'
-
-/**
- * Pemetaan varian lama shadcn ke (gaya, warna). Warna yang diberikan eksplisit selalu menang.
- * Sementara: dihapus di fase terakhir redesain setelah tak ada pemakai varian lama.
- */
-export function resolveStyle(
-  variant?: UiVariant | LegacyVariant,
-  color?: UiColor,
-): { variant: UiVariant; color: UiColor } {
-  let v: UiVariant
-  let c: UiColor
-  switch (variant) {
-    case undefined:
-    case 'default':
-    case 'solid':
-      v = 'solid'
-      c = 'primary'
-      break
-    case 'secondary':
-      v = 'soft'
-      c = 'secondary'
-      break
-    case 'destructive':
-      v = 'soft'
-      c = 'destructive'
-      break
-    case 'link':
-      v = 'link'
-      c = 'info'
-      break
-    default:
-      v = variant
-      c = 'primary'
-  }
-  return { variant: v, color: color ?? c }
-}
 
 const SOLID: Record<UiColor, string> = {
   primary: 'bg-primary text-primary-foreground hover:bg-primary/90',

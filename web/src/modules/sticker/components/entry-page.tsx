@@ -306,6 +306,7 @@ export function EntryPage({
               type="button"
               size="sm"
               variant="ghost"
+              color="primary"
               aria-label={`Batal catat ${stock.name}`}
               onClick={() =>
                 setAdded((current) =>
@@ -321,6 +322,7 @@ export function EntryPage({
             type="button"
             size="sm"
             variant="outline"
+            color="primary"
             aria-label={`Tambah ${stock.name}`}
             disabled={full}
             onClick={() =>

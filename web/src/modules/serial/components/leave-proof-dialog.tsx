@@ -39,10 +39,16 @@ export function LeaveProofDialog({ open, saving, onSave, onLeave, onStay }: Leav
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <Button type="button" variant="outline" disabled={saving} onClick={onStay}>
+          <Button
+            type="button"
+            variant="outline"
+            color="primary"
+            disabled={saving}
+            onClick={onStay}
+          >
             Tetap di sini
           </Button>
-          <Button type="button" variant="ghost" disabled={saving} onClick={onLeave}>
+          <Button type="button" variant="ghost" color="primary" disabled={saving} onClick={onLeave}>
             Keluar tanpa menyimpan
           </Button>
           <Button type="button" disabled={saving} onClick={onSave}>

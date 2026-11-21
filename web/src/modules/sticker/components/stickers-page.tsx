@@ -419,7 +419,7 @@ export function StickersPage({
                         {bu.code}
                       </LinkCell>
                     ) : (
-                      <Badge key={buId} variant="outline" title={bu.name}>
+                      <Badge key={buId} variant="outline" color="primary" title={bu.name}>
                         {bu.code}
                       </Badge>
                     );
@@ -454,7 +454,7 @@ export function StickersPage({
             cell: (row) => (
               <div className="flex flex-wrap gap-1">
                 {(row.stock?.byLocation ?? []).map((item) => (
-                  <Badge key={item.locationId} variant="outline">
+                  <Badge key={item.locationId} variant="outline" color="primary">
                     {`${codeById.get(item.locationId) ?? item.locationId} ${formatStockQty(item.qty)}`}
                   </Badge>
                 ))}
@@ -592,7 +592,7 @@ export function StickersPage({
         {canEntry ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button type="button" variant="outline">
+              <Button type="button" variant="outline" color="primary">
                 Entri stok
                 <ChevronDown aria-hidden />
               </Button>
@@ -613,7 +613,7 @@ export function StickersPage({
           </DropdownMenu>
         ) : null}
         {stock.canManage ? (
-          <Button type="button" variant="outline" onClick={onStartOpname}>
+          <Button type="button" variant="outline" color="primary" onClick={onStartOpname}>
             Stok opname
           </Button>
         ) : null}

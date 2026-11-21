@@ -53,7 +53,7 @@ export function RoleView({
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold">Role tidak ditemukan</h1>
-        <Button variant="outline" onClick={onBack}>
+        <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar role
         </Button>
       </div>

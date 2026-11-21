@@ -451,6 +451,7 @@ export function UserForm({
                       <Button
                         type="button"
                         variant="ghost"
+                        color="primary"
                         size="sm"
                         aria-label={`Hapus penugasan ${index + 1}`}
                         onClick={() => field.handleChange(rows.filter((_, i) => i !== index))}
@@ -477,6 +478,7 @@ export function UserForm({
                 <Button
                   type="button"
                   variant="outline"
+                  color="primary"
                   size="sm"
                   onClick={() => field.handleChange([...rows, { locationId: '', roleIds: [] }])}
                 >
@@ -571,6 +573,7 @@ export function UserForm({
                       <Button
                         type="button"
                         variant="ghost"
+                        color="primary"
                         size="sm"
                         aria-label={`Hapus penugasan BU ${index + 1}`}
                         onClick={() => field.handleChange(rows.filter((_, i) => i !== index))}
@@ -598,6 +601,7 @@ export function UserForm({
                 <Button
                   type="button"
                   variant="outline"
+                  color="primary"
                   size="sm"
                   onClick={() => field.handleChange([...rows, { buId: '', roleIds: [] }])}
                 >

@@ -51,7 +51,11 @@ export function AuditTable({
       id: 'action',
       header: 'Aksi',
       mobile: 'badge',
-      cell: (entry) => <Badge variant="outline">{auditActionLabel(entry.action)}</Badge>,
+      cell: (entry) => (
+        <Badge variant="outline" color="primary">
+          {auditActionLabel(entry.action)}
+        </Badge>
+      ),
     },
     {
       id: 'target',

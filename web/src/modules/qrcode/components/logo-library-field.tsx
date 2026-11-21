@@ -110,6 +110,7 @@ export function LogoLibraryField({
             <Button
               type="button"
               variant="outline"
+              color="primary"
               size="sm"
               aria-label={`Hapus logo ${index + 1} dari pustaka`}
               onClick={() => {

@@ -108,7 +108,12 @@ export function ExportDialog({ design, open, onOpenChange, onConfirm }: ExportDi
           </p>
         ) : null}
         <DialogFooter>
-          <Button variant="outline" disabled={busy} onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            color="primary"
+            disabled={busy}
+            onClick={() => onOpenChange(false)}
+          >
             Batal
           </Button>
           <Button disabled={busy || !reasonOk} onClick={() => void confirm()}>

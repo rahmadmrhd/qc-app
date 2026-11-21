@@ -1216,6 +1216,7 @@ export function RecordPage({
             <Button
               type="button"
               variant="ghost"
+              color="primary"
               size="sm"
               disabled={saving}
               onClick={() => setClearOpen(true)}
@@ -1254,6 +1255,7 @@ export function RecordPage({
                 <Button
                   type="button"
                   variant="outline"
+                  color="primary"
                   size="icon"
                   aria-label="Pindai dengan kamera"
                   disabled={gated || saving}

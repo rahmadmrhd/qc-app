@@ -292,7 +292,14 @@ function CameraScanBody({
       <AlertDialogFooter className="bottom-0 mx-0 mb-0 shrink-0 flex-row rounded-none p-0">
         {single ? (
           <div className="grid w-full grid-cols-1 p-4">
-            <Button type="button" variant="outline" size="lg" className="h-11" onClick={onClose}>
+            <Button
+              type="button"
+              variant="outline"
+              color="primary"
+              size="lg"
+              className="h-11"
+              onClick={onClose}
+            >
               Tutup
             </Button>
           </div>
@@ -301,6 +308,7 @@ function CameraScanBody({
             <Button
               type="button"
               variant="outline"
+              color="primary"
               size="lg"
               className="h-11"
               onClick={requestCancel}
@@ -323,7 +331,7 @@ function CameraScanBody({
           </AlertDialogDescription>
           <AlertDialogFooter>
             <AlertDialogCancel>Lanjut scan</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={onClose}>
+            <AlertDialogAction variant="soft" color="destructive" onClick={onClose}>
               Buang
             </AlertDialogAction>
           </AlertDialogFooter>

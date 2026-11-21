@@ -2,13 +2,7 @@ import * as React from "react"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "cn"
 import { Slot } from "radix-ui"
-import {
-  colorVariantClasses,
-  resolveStyle,
-  type LegacyVariant,
-  type UiColor,
-  type UiVariant,
-} from "./variant-style"
+import { colorVariantClasses, type UiColor, type UiVariant } from "./variant-style"
 
 const buttonBase = cva(
   "group/button inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
@@ -36,43 +30,41 @@ const buttonBase = cva(
 
 type ButtonSize = NonNullable<VariantProps<typeof buttonBase>["size"]>
 
-/** Kelas tombol lengkap (dasar + ukuran + warna x gaya); varian lama dipetakan lewat resolveStyle. */
+/** Kelas tombol lengkap: dasar + ukuran + warna x gaya (bawaan solid primary). */
 function buttonVariants({
-  variant,
-  color,
+  variant = "solid",
+  color = "primary",
   size,
   className,
 }: {
-  variant?: UiVariant | LegacyVariant
+  variant?: UiVariant
   color?: UiColor
   size?: ButtonSize
   className?: string
 } = {}) {
-  const r = resolveStyle(variant, color)
-  return cn(buttonBase({ size }), colorVariantClasses(r.variant, r.color), className)
+  return cn(buttonBase({ size }), colorVariantClasses(variant, color), className)
 }
 
 function Button({
   className,
-  variant,
-  color,
+  variant = "solid",
+  color = "primary",
   size = "default",
   asChild = false,
   ...props
 }: React.ComponentProps<"button"> & {
-  variant?: UiVariant | LegacyVariant
+  variant?: UiVariant
   color?: UiColor
   size?: ButtonSize
   asChild?: boolean
 }) {
   const Comp = asChild ? Slot.Root : "button"
-  const r = resolveStyle(variant, color)
 
   return (
     <Comp
       data-slot="button"
-      data-variant={r.variant}
-      data-color={r.color}
+      data-variant={variant}
+      data-color={color}
       data-size={size}
       className={buttonVariants({ variant, color, size, className })}
       {...props}

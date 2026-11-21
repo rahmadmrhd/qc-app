@@ -88,7 +88,7 @@ export function StickerView({
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold">Stiker tidak ditemukan</h1>
-        <Button variant="outline" onClick={onBack}>
+        <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar stiker
         </Button>
       </div>
@@ -186,7 +186,7 @@ export function StickerView({
                           {bu.code}
                         </Link>
                       ) : (
-                        <Badge key={bu.id} variant="outline" title={bu.name}>
+                        <Badge key={bu.id} variant="outline" color="primary" title={bu.name}>
                           {bu.code}
                         </Badge>
                       ),
@@ -261,12 +261,22 @@ export function StickerView({
                 />
               ) : null}
               {stock.canEdit || stock.canManage ? (
-                <Button type="button" variant="outline" onClick={() => onStartEntry?.(sticker.id)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  color="primary"
+                  onClick={() => onStartEntry?.(sticker.id)}
+                >
                   Entri stok
                 </Button>
               ) : null}
               {stock.canManage ? (
-                <Button type="button" variant="outline" onClick={() => onStartOpname?.(sticker.id)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  color="primary"
+                  onClick={() => onStartOpname?.(sticker.id)}
+                >
                   Stok opname
                 </Button>
               ) : null}

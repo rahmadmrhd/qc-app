@@ -23,6 +23,7 @@ export function LocationPicker() {
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
+          color="primary"
           size="sm"
           aria-label="Pilih lokasi aktif"
           data-tour="location-picker"

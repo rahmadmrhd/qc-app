@@ -23,6 +23,7 @@ export function ScrollToTop({ aboveFab = false }: { aboveFab?: boolean }) {
       type="button"
       size="icon"
       variant="outline"
+      color="primary"
       aria-label="Ke atas"
       data-slot="scroll-to-top"
       onClick={() => {

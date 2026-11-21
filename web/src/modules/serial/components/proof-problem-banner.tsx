@@ -70,6 +70,7 @@ function ProofProblemBannerBody({ count, photos }: ProofProblemBannerProps) {
                   <Button
                     type="button"
                     variant="outline"
+                    color="primary"
                     size="xs"
                     disabled={replacingIds.has(photo.id) || uploading}
                     onClick={() => {

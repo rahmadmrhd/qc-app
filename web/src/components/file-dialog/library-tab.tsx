@@ -248,7 +248,8 @@ export function LibraryTab({
             <Button
               type="button"
               size="sm"
-              variant={mine ? 'default' : 'outline'}
+              variant={mine ? 'solid' : 'outline'}
+              color="primary"
               aria-pressed={mine}
               onClick={() => setMine((value) => !value)}
             >
@@ -257,7 +258,8 @@ export function LibraryTab({
             <Button
               type="button"
               size="sm"
-              variant={unused ? 'default' : 'outline'}
+              variant={unused ? 'solid' : 'outline'}
+              color="primary"
               aria-pressed={unused}
               onClick={() => setUnused((value) => !value)}
             >
@@ -340,7 +342,8 @@ export function LibraryTab({
                 {selectable ? (
                   <Button
                     type="button"
-                    variant="secondary"
+                    variant="soft"
+                    color="secondary"
                     size="icon-sm"
                     className="absolute top-1.5 right-1.5"
                     aria-label={`Pratinjau ${item.name}`}
@@ -373,6 +376,7 @@ export function LibraryTab({
                     <Button
                       type="button"
                       variant="ghost"
+                      color="primary"
                       size="icon-sm"
                       disabled={inUse || busy}
                       aria-label={
@@ -406,7 +410,8 @@ export function LibraryTab({
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
+              variant="soft"
+              color="destructive"
               onClick={() => {
                 const target = pendingDelete;
                 setPendingDelete(null);

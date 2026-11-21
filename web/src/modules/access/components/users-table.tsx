@@ -75,7 +75,11 @@ export function UsersTable({
           <LinkCell to="/access/users/$userId" params={{ userId: user.id }}>
             {user.email}
           </LinkCell>
-          {user.sharedAccount ? <Badge variant="outline">Akun bersama</Badge> : null}
+          {user.sharedAccount ? (
+            <Badge variant="outline" color="primary">
+              Akun bersama
+            </Badge>
+          ) : null}
           {user.deleted ? <DeletedBadge /> : null}
         </span>
       ),

@@ -68,9 +68,14 @@ function ReadOnlyPreview({ design }: { design: QrDesignDto }) {
 }
 
 function ExportBadge({ design }: { design: QrDesignDto }) {
-  if (design.exportStatus === 'none') return <Badge variant="secondary">Belum diekspor</Badge>;
+  if (design.exportStatus === 'none')
+    return (
+      <Badge variant="soft" color="secondary">
+        Belum diekspor
+      </Badge>
+    );
   return (
-    <Badge variant={design.exportStatus === 'stale' ? 'outline' : 'default'}>
+    <Badge variant={design.exportStatus === 'stale' ? 'outline' : 'solid'} color="primary">
       {design.exportStatus === 'stale' ? 'Berubah sejak ekspor' : 'Sudah diekspor'}
     </Badge>
   );
@@ -102,7 +107,7 @@ export function QrDesignView({
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold">Konfigurasi tidak ditemukan</h1>
-        <Button variant="outline" onClick={onBack}>
+        <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar
         </Button>
       </div>
@@ -162,7 +167,9 @@ export function QrDesignView({
                   <span className="inline-flex items-center gap-1.5">
                     {`v${design.stickerVersion}`}
                     {design.stickerStatus === 'active' ? null : (
-                      <Badge variant="outline">{STICKER_STATUS_LABEL[design.stickerStatus]}</Badge>
+                      <Badge variant="outline" color="primary">
+                        {STICKER_STATUS_LABEL[design.stickerStatus]}
+                      </Badge>
                     )}
                   </span>
                 ),

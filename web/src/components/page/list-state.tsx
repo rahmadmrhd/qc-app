@@ -39,7 +39,7 @@ export function ListState({
       <Alert color="destructive" className="flex flex-wrap items-center gap-2">
         <span>{errorText}</span>
         {onRetry ? (
-          <Button type="button" size="sm" variant="outline" onClick={onRetry}>
+          <Button type="button" size="sm" variant="outline" color="primary" onClick={onRetry}>
             Coba lagi
           </Button>
         ) : null}
@@ -55,7 +55,13 @@ export function ListState({
       >
         <p>Tidak ada hasil untuk filter ini.</p>
         {onClearFilters ? (
-          <Button type="button" size="sm" variant="outline" onClick={onClearFilters}>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            color="primary"
+            onClick={onClearFilters}
+          >
             Hapus filter
           </Button>
         ) : null}

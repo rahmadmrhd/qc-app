@@ -49,6 +49,7 @@ function SyncControl({ bridge }: { bridge: QcBridge }) {
     <Button
       type="button"
       variant="ghost"
+      color="primary"
       size="sm"
       onClick={refresh}
       disabled={refreshing}

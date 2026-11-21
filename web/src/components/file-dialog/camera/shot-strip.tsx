@@ -61,7 +61,8 @@ export function ShotStrip({ shots, onRemove, onPreviewChange, label }: ShotStrip
             {onRemove ? (
               <Button
                 type="button"
-                variant="secondary"
+                variant="soft"
+                color="secondary"
                 size="icon-xs"
                 aria-label={`Buang foto ${index + 1}${suffix}`}
                 className="absolute -top-1.5 -right-1.5 rounded-full"

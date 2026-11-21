@@ -294,7 +294,12 @@ export function FileDialog({
             Telusuri
           </FilePicker>
           {canCamera ? (
-            <Button type="button" variant="outline" onClick={() => setCameraOpen(true)}>
+            <Button
+              type="button"
+              variant="outline"
+              color="primary"
+              onClick={() => setCameraOpen(true)}
+            >
               <Camera aria-hidden />
               Kamera
             </Button>
@@ -396,7 +401,7 @@ export function FileDialog({
             <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">{uploadTab}</div>
           )}
           <AlertDialogFooter>
-            <Button type="button" variant="outline" onClick={requestClose}>
+            <Button type="button" variant="outline" color="primary" onClick={requestClose}>
               Batal
             </Button>
             <Button type="button" disabled={total === 0} onClick={confirm}>
@@ -415,12 +420,18 @@ export function FileDialog({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <Button type="button" variant="outline" onClick={() => setConfirmDiscard(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              color="primary"
+              onClick={() => setConfirmDiscard(false)}
+            >
               Tidak
             </Button>
             <Button
               type="button"
-              variant="destructive"
+              variant="soft"
+              color="destructive"
               onClick={() => {
                 setConfirmDiscard(false);
                 onOpenChange(false);

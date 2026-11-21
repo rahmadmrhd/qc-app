@@ -78,7 +78,8 @@ export function ActButtons({ state, actor, onPick }: ActButtonsProps) {
           key={spec.kind}
           type="button"
           size="sm"
-          variant={spec.kind === 'report' ? 'destructive' : 'outline'}
+          variant={spec.kind === 'report' ? 'soft' : 'outline'}
+          color={spec.kind === 'report' ? 'destructive' : 'primary'}
           onClick={() => onPick(spec.kind)}
         >
           {spec.label}

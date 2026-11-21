@@ -167,7 +167,7 @@ function BulkEditBody({
         </div>
       </div>
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onClose}>
+        <Button type="button" variant="outline" color="primary" onClick={onClose}>
           Batal
         </Button>
         <Button type="button" disabled={!dirty || itemIncomplete} onClick={apply}>

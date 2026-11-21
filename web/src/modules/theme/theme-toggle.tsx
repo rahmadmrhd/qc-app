@@ -23,7 +23,13 @@ export function ThemeToggle() {
   return (
     <DropdownMenu {...tourMenu.rootProps}>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label="Ganti tema" data-tour="theme-toggle">
+        <Button
+          variant="ghost"
+          color="primary"
+          size="icon"
+          aria-label="Ganti tema"
+          data-tour="theme-toggle"
+        >
           <TriggerIcon />
         </Button>
       </DropdownMenuTrigger>

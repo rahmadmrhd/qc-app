@@ -110,7 +110,13 @@ export function ImportExportBar({
         {fileInput}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" variant="outline" size="icon" aria-label="Menu draft">
+            <Button
+              type="button"
+              variant="outline"
+              color="primary"
+              size="icon"
+              aria-label="Menu draft"
+            >
               <Ellipsis aria-hidden />
             </Button>
           </DropdownMenuTrigger>
@@ -148,6 +154,7 @@ export function ImportExportBar({
       <Button
         type="button"
         variant="outline"
+        color="primary"
         size="sm"
         disabled={disabled ?? false}
         onClick={() => inputRef.current?.click()}
@@ -157,6 +164,7 @@ export function ImportExportBar({
       <Button
         type="button"
         variant="outline"
+        color="primary"
         size="sm"
         disabled={(disabled ?? false) || rows.length === 0}
         onClick={() => void handleExport()}

@@ -124,7 +124,7 @@ export function StickerInstructionsView({
                   <p className="text-sm font-medium">{photo.caption}</p>
                 ) : null}
                 {buLabel ? (
-                  <Badge variant="outline" title="Label BU foto">
+                  <Badge variant="outline" color="primary" title="Label BU foto">
                     {buLabel}
                   </Badge>
                 ) : null}
@@ -225,7 +225,7 @@ export function StickerInstructionsView({
                                 ) : null}
                                 {multiBu
                                   ? sticker.buCodes.map((code) => (
-                                      <Badge key={code} variant="outline">
+                                      <Badge key={code} variant="outline" color="primary">
                                         {code}
                                       </Badge>
                                     ))

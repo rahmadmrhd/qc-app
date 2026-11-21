@@ -190,7 +190,7 @@ function Body({ settings, users, onSave, serverError, onServerError, onBusyChang
               }}
             />
           </div>
-          <Button type="button" variant="outline" onClick={addExtra}>
+          <Button type="button" variant="outline" color="primary" onClick={addExtra}>
             Tambah email
           </Button>
         </div>

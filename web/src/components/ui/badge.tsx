@@ -1,13 +1,7 @@
 import * as React from "react"
 import { cn } from "cn"
 import { Slot } from "radix-ui"
-import {
-  colorVariantClasses,
-  resolveStyle,
-  type LegacyVariant,
-  type UiColor,
-  type UiVariant,
-} from "./variant-style"
+import { colorVariantClasses, type UiColor, type UiVariant } from "./variant-style"
 
 const BADGE_BASE =
   "group/badge inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-4xl border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap transition-all focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 [&>svg]:pointer-events-none [&>svg]:size-3!"
@@ -21,42 +15,40 @@ function badgeColorClasses(variant: UiVariant, color: UiColor) {
 }
 
 function badgeVariants({
-  variant,
-  color,
+  variant = "solid",
+  color = "primary",
   className,
 }: {
-  variant?: UiVariant | LegacyVariant
+  variant?: UiVariant
   color?: UiColor
   className?: string
 } = {}) {
-  const r = resolveStyle(variant, color)
-  return cn(BADGE_BASE, badgeColorClasses(r.variant, r.color), className)
+  return cn(BADGE_BASE, badgeColorClasses(variant, color), className)
 }
 
 function Badge({
   className,
-  variant,
-  color,
+  variant = "solid",
+  color = "primary",
   dot = false,
   asChild = false,
   children,
   ...props
 }: React.ComponentProps<"span"> & {
-  variant?: UiVariant | LegacyVariant
+  variant?: UiVariant
   color?: UiColor
   /** Titik `currentColor` 6 px sebelum isi (badge status). */
   dot?: boolean
   asChild?: boolean
 }) {
   const Comp = asChild ? Slot.Root : "span"
-  const r = resolveStyle(variant, color)
 
   if (asChild) {
     return (
       <Comp
         data-slot="badge"
-        data-variant={r.variant}
-        data-color={r.color}
+        data-variant={variant}
+        data-color={color}
         className={badgeVariants({ variant, color, className })}
         {...props}
       >
@@ -68,8 +60,8 @@ function Badge({
   return (
     <Comp
       data-slot="badge"
-      data-variant={r.variant}
-      data-color={r.color}
+      data-variant={variant}
+      data-color={color}
       className={badgeVariants({ variant, color, className })}
       {...props}
     >

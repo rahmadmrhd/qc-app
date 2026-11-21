@@ -44,7 +44,7 @@ export function StickerTypeView({
     return (
       <div className="space-y-4">
         <h1 className="text-2xl font-semibold">Jenis stiker tidak ditemukan</h1>
-        <Button variant="outline" onClick={onBack}>
+        <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar jenis
         </Button>
       </div>
@@ -59,7 +59,11 @@ export function StickerTypeView({
       badge={
         <span className="flex flex-wrap items-center gap-2">
           {deleted ? <DeletedBadge /> : <ActiveStatusBadge status={type.status} />}
-          {system ? <Badge variant="outline">Sistem</Badge> : null}
+          {system ? (
+            <Badge variant="outline" color="primary">
+              Sistem
+            </Badge>
+          ) : null}
         </span>
       }
       actionItems={

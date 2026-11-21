@@ -393,6 +393,7 @@ function StrictBody({
                   <Button
                     type="button"
                     variant="outline"
+                    color="primary"
                     size="sm"
                     disabled={photos.length + running >= max}
                     onClick={() => setPhotoDialog({ open: true, files: [], rejected: [] })}
@@ -428,6 +429,7 @@ function StrictBody({
               <Button
                 type="button"
                 variant="outline"
+                color="primary"
                 size="lg"
                 className="h-11"
                 onClick={requestCancel}
@@ -437,6 +439,7 @@ function StrictBody({
               <Button
                 type="button"
                 variant="outline"
+                color="primary"
                 size="lg"
                 className="h-11"
                 onClick={requestRescan}
@@ -489,7 +492,8 @@ function StrictBody({
           <AlertDialogFooter>
             <AlertDialogCancel>Kembali</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
+              variant="soft"
+              color="destructive"
               onClick={() => (confirm === 'rescan' ? rescan() : onClose())}
             >
               {confirm === 'rescan' ? 'Scan ulang' : 'Buang'}
@@ -578,7 +582,14 @@ function ScanStep({
       </div>
       <AlertDialogFooter className="bottom-0 mx-0 mb-0 shrink-0 flex-row rounded-none p-0">
         <div className="grid w-full grid-cols-1 p-4">
-          <Button type="button" variant="outline" size="lg" className="h-11" onClick={onCancel}>
+          <Button
+            type="button"
+            variant="outline"
+            color="primary"
+            size="lg"
+            className="h-11"
+            onClick={onCancel}
+          >
             Batal
           </Button>
         </div>

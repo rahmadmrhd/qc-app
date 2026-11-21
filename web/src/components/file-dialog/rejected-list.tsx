@@ -20,6 +20,7 @@ export function RejectedList({
         <Button
           type="button"
           variant="ghost"
+          color="primary"
           size="icon-xs"
           aria-label="Tutup daftar berkas ditolak"
           onClick={onClear}

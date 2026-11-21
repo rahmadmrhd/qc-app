@@ -121,6 +121,7 @@ export function StickerChecklist({
                   <Button
                     type="button"
                     variant="outline"
+                    color="primary"
                     size="icon-xs"
                     aria-label={`Kurangi ${label}`}
                     disabled={!checked || (qty ?? 1) <= 1}
@@ -137,6 +138,7 @@ export function StickerChecklist({
                   <Button
                     type="button"
                     variant="outline"
+                    color="primary"
                     size="icon-xs"
                     aria-label={`Tambah ${label}`}
                     disabled={!checked || (qty ?? 1) >= SERIAL_LIMITS.stickerQtyMax}
