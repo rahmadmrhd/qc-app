@@ -51,7 +51,7 @@ export const Route = createFileRoute('/_app/handover/$handoverId/')({
 function HandoverDetailPage() {
   const { handoverId } = Route.useParams();
   const search = Route.useSearch();
-  const listSearch = searchFromStatus(statusFromSearch(search), search.loc);
+  const listSearch = searchFromStatus(statusFromSearch(search), search.loc, search.customer);
   const navigate = useNavigate();
   const stack = useStackNavigation();
   const me = useMe();

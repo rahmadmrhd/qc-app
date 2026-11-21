@@ -22,26 +22,34 @@ function HandoversPage() {
   const navigate = useNavigate();
   const search = Route.useSearch();
   const status = statusFromSearch(search);
-  const { loc } = search;
+  const { loc, customer } = search;
   return (
     <HandoverBoardPage
       status={status}
       locationId={loc}
+      customerId={customer}
+      onClearCustomer={() =>
+        void navigate({ to: '/handover', search: searchFromStatus(status, loc), replace: true })
+      }
       onStatusChange={(next) =>
-        void navigate({ to: '/handover', search: searchFromStatus(next, loc), replace: true })
+        void navigate({
+          to: '/handover',
+          search: searchFromStatus(next, loc, customer),
+          replace: true,
+        })
       }
       onOpen={(handoverId) =>
         void navigate({
           to: '/handover/$handoverId',
           params: { handoverId },
-          search: searchFromStatus(status, loc),
+          search: searchFromStatus(status, loc, customer),
         })
       }
       onEdit={(handoverId) =>
         void navigate({
           to: '/handover/$handoverId/edit',
           params: { handoverId },
-          search: searchFromStatus(status, loc),
+          search: searchFromStatus(status, loc, customer),
         })
       }
       onCreate={() => void navigate({ to: '/handover/new' })}

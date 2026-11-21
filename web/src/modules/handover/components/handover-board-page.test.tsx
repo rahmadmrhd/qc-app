@@ -435,3 +435,36 @@ test('task baru di antrean perangkat: kartu sementara hanya untuk lokasi terpili
   expect(screen.queryByText('Belum ada task serah terima di lokasi ini.')).not.toBeInTheDocument();
   expect(screen.getByText('Belum terkirim')).toBeInTheDocument();
 });
+
+test('customerId: permintaan tiap kolom membawa customerId, chip filter tampil dan dapat dihapus', async () => {
+  const list = [
+    makeHandover({ id: '1', number: 'ST-1', customerId: 'c9', customerName: 'PT Budi' }),
+  ];
+  state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf(list, input));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const onClearCustomer = vi.fn();
+  render(
+    <QueryClientProvider client={client}>
+      <HandoverBoardPage
+        status="all"
+        customerId="c9"
+        onClearCustomer={onClearCustomer}
+        onOpen={vi.fn()}
+        onEdit={vi.fn()}
+        onCreate={vi.fn()}
+        onStatusChange={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  await screen.findByText('ST-1');
+  for (const status of ['new', 'in_progress', 'done', 'cancelled']) {
+    expect(state.api).toHaveBeenCalledWith('handovers.board', {
+      locationIds: ['loc-a'],
+      status,
+      customerId: 'c9',
+    });
+  }
+  expect(screen.getByRole('button', { name: /Customer: PT Budi/ })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus filter Customer' }));
+  expect(onClearCustomer).toHaveBeenCalledTimes(1);
+});

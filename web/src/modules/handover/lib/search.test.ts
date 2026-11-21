@@ -22,3 +22,14 @@ test('loc dari notifikasi: dibawa di search, dan menggantikan pilihan lokasi hea
   expect(scopedLocationIds('loc-b', ['loc-a'])).toEqual(['loc-b']);
   expect(scopedLocationIds(undefined, ['loc-a'])).toEqual(['loc-a']);
 });
+
+test('customer: dibaca dari search, dibawa oleh searchFromStatus, nilai asing diabaikan', () => {
+  expect(handoverSearchSchema.parse({ customer: 'c1' })).toEqual({ customer: 'c1' });
+  expect(handoverSearchSchema.parse({ customer: 5 })).toEqual({});
+  expect(searchFromStatus('all', undefined, 'c1')).toEqual({ customer: 'c1' });
+  expect(searchFromStatus('done', 'loc-b', 'c1')).toEqual({
+    status: 'done',
+    loc: 'loc-b',
+    customer: 'c1',
+  });
+});

@@ -2,6 +2,7 @@ import type { HandoverDto } from '@shared/contract';
 import type { HandoverStatus } from '@shared/handover';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { FilterBar, FilterChip } from '@/components/page/filter-bar';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { describeError } from '@/lib/api/describe-error';
@@ -30,6 +31,10 @@ export interface HandoverBoardPageProps {
   status: HandoverStatus | 'all';
   /** Lokasi dari URL (notifikasi): papan memuat lokasi ini, bukan pilihan lokasi header. */
   locationId?: string;
+  /** Hanya task milik customer ini (search param `customer`; keputusan pemilik 2026-11-21). */
+  customerId?: string;
+  /** Menghapus filter customer (mengganti entri riwayat, bukan menambah). */
+  onClearCustomer?: () => void;
   onStatusChange: (status: HandoverStatus | 'all') => void;
   onOpen: (id: string) => void;
   onEdit: (id: string) => void;
@@ -40,6 +45,8 @@ export interface HandoverBoardPageProps {
 export function HandoverBoardPage({
   status,
   locationId,
+  customerId,
+  onClearCustomer,
   onStatusChange,
   onOpen,
   onEdit,
@@ -51,7 +58,12 @@ export function HandoverBoardPage({
   // Hanya lokasi terpilih yang boleh dibaca user (WH view ke atas atau QC edit); selebihnya tidak diminta.
   const readable = readableLocationIds(me, scopedLocationIds(locationId, selectedIds));
   const canCreate = locationsWith(me, 'handover', 'edit', selectedIds).length > 0;
-  const board = useHandoverBoard(readable);
+  const board = useHandoverBoard(readable, customerId);
+  // Nama customer pada chip: dari task yang termuat; tanpa task = label umum (tak ada pembacaan customer lain).
+  const customerLabel = customerId
+    ? (board.handovers.find((task) => task.customerId === customerId)?.customerName ??
+      'Customer terpilih')
+    : undefined;
   const setDone = useSetDone();
   const cancel = useCancelHandover();
   const reopen = useReopenHandover();
@@ -140,6 +152,18 @@ export function HandoverBoardPage({
           </Button>
         ) : null}
       </div>
+      {customerId ? (
+        <FilterBar>
+          <FilterChip label="Customer" display={customerLabel} onClear={onClearCustomer}>
+            <div className="space-y-2 text-sm">
+              <p>Menampilkan task milik customer ini saja.</p>
+              <Button type="button" size="sm" variant="outline" onClick={onClearCustomer}>
+                Hapus filter
+              </Button>
+            </div>
+          </FilterChip>
+        </FilterBar>
+      ) : null}
       <NoLocationNotice />
       {readable.length === 0 ? (
         <p className="text-sm text-muted-foreground">
@@ -152,7 +176,11 @@ export function HandoverBoardPage({
           Gagal memuat task. Coba muat ulang.
         </p>
       ) : board.total === 0 && pendingCreates.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Belum ada task serah terima di lokasi ini.</p>
+        <p className="text-sm text-muted-foreground">
+          {customerId
+            ? 'Belum ada task serah terima untuk customer ini di lokasi terpilih.'
+            : 'Belum ada task serah terima di lokasi ini.'}
+        </p>
       ) : (
         <HandoverBoard
           handovers={board.handovers}

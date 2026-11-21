@@ -5,6 +5,7 @@ import { makeMe } from '@/test/make-me';
 import {
   brandLinkAccess,
   businessUnitLinkAccess,
+  customerHandoversLinkAccess,
   itemFormLinkAccess,
   itemLinkAccess,
   manualBookLinkAccess,
@@ -200,4 +201,14 @@ test('itemLinkAccess.canOpenDeleted: hanya pemegang manage (pemulih)', () => {
   expect(itemLinkAccess(makeMe({ itemLevel: 'manage' })).canOpenDeleted).toBe(true);
   expect(itemLinkAccess(makeMe({ itemLevel: 'edit' })).canOpenDeleted).toBe(false);
   expect(itemLinkAccess(null).canOpenDeleted).toBe(false);
+});
+
+test('customerHandoversLinkAccess: hanya pemegang handover: view', () => {
+  expect(
+    customerHandoversLinkAccess(makeMe({ permissions: { handover: 'view' } })).canViewHandovers,
+  ).toBe(true);
+  expect(
+    customerHandoversLinkAccess(makeMe({ permissions: { qc: 'edit' } })).canViewHandovers,
+  ).toBe(false);
+  expect(customerHandoversLinkAccess(null).canViewHandovers).toBe(false);
 });

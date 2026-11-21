@@ -1622,6 +1622,8 @@ export interface BoardPageInput {
   cursor?: string;
   /** Bawaan 20, maksimum 50; klien memuat lanjutan lewat kursor. */
   limit?: number;
+  /** Hanya task milik customer ini (keputusan pemilik 2026-11-21); hak lokasi pemanggil tetap berlaku. */
+  customerId?: string;
 }
 
 export interface BoardPageDto {

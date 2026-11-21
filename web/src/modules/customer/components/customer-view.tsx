@@ -9,6 +9,8 @@ export interface CustomerViewProps {
   /** `undefined` = customer tidak ada (id salah, atau terhapus bagi yang tak boleh melihatnya). */
   customer: CustomerDto | undefined;
   canManage?: boolean;
+  /** Pemegang `handover: view`: tampilkan tautan ke papan Serah Terima yang disaring customer ini. */
+  canViewHandovers?: boolean;
   statusPending?: boolean;
   restorePending?: boolean;
   onBack: () => void;
@@ -22,6 +24,7 @@ export interface CustomerViewProps {
 export function CustomerView({
   customer,
   canManage = false,
+  canViewHandovers = false,
   statusPending = false,
   restorePending = false,
   onBack,
@@ -89,7 +92,22 @@ export function CustomerView({
           />
         ) : null
       }
-      aside={<ViewMeta updatedAt={customer.updatedAt} />}
+      aside={
+        <ViewMeta
+          updatedAt={customer.updatedAt}
+          links={
+            canViewHandovers
+              ? [
+                  {
+                    label: 'Lihat task Serah Terima customer ini',
+                    to: '/handover',
+                    search: { customer: customer.id },
+                  },
+                ]
+              : []
+          }
+        />
+      }
     >
       <ViewSection title="Identitas">
         <DetailList

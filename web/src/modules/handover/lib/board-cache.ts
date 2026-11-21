@@ -9,8 +9,17 @@ export type BoardColumnData = InfiniteData<BoardPageDto, string | undefined>;
 /** Awalan kunci semua kolom papan: ['handovers', 'board', lokasi-terurut, status]. */
 export const BOARD_KEY = ['handovers', 'board'] as const;
 
-export function boardColumnKey(locationIds: readonly string[], status: HandoverStatus) {
-  return [...BOARD_KEY, [...locationIds].sort(), status] as const;
+/**
+ * Kunci kolom papan. Papan yang disaring customer memakai kunci berpanjang 5 (elemen terakhir `{ customerId }`), sehingga
+ * tak pernah tertukar dengan papan penuh dan tak dikenali `parseBoardQueryKey` (tak disimpan ke perangkat).
+ */
+export function boardColumnKey(
+  locationIds: readonly string[],
+  status: HandoverStatus,
+  customerId?: string,
+) {
+  const base = [...BOARD_KEY, [...locationIds].sort(), status] as const;
+  return customerId ? ([...base, { customerId }] as const) : base;
 }
 
 /** Membentuk data cache kolom dari daftar (satu halaman); dipakai tes dan seed. */

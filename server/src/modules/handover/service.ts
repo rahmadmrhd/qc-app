@@ -171,8 +171,14 @@ export async function handoverBoard(
 ): Promise<BoardPageDto> {
   const limit = input.limit ?? BOARD_DEFAULT_LIMIT;
   const inList = locationIds.map(() => '?').join(',');
-  const base = `h.location_id IN (${inList}) AND h.board_status = ?`;
-  const baseBinds: unknown[] = [...locationIds, input.status];
+  // Filter customer (keputusan pemilik 2026-11-21) ikut `base`, jadi memengaruhi halaman DAN jumlah kolom; hak lokasi tetap.
+  const customerClause = input.customerId ? ' AND h.customer_id = ?' : '';
+  const base = `h.location_id IN (${inList}) AND h.board_status = ?${customerClause}`;
+  const baseBinds: unknown[] = [
+    ...locationIds,
+    input.status,
+    ...(input.customerId ? [input.customerId] : []),
+  ];
   const cursor = input.cursor ? parseBoardCursor(input.status, input.cursor) : null;
   const where: string[] = [base];
   const binds: unknown[] = [...baseBinds];

@@ -291,7 +291,13 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'handovers.board': {
     verb: 'GET',
     path: '/handovers',
-    query: { locationIds: 'list', status: 'string', cursor: 'string', limit: 'number' },
+    query: {
+      locationIds: 'list',
+      status: 'string',
+      cursor: 'string',
+      limit: 'number',
+      customerId: 'string',
+    },
   },
   'handovers.get': {
     verb: 'GET',

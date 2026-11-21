@@ -363,6 +363,7 @@
     "path": "/handovers",
     "query": {
       "cursor": "string",
+      "customerId": "string",
       "limit": "number",
       "locationIds": "list",
       "status": "string"

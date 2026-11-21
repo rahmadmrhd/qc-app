@@ -71,3 +71,14 @@ test('customer tidak ada: pesan dan tombol kembali', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Kembali ke daftar customer' }));
   expect(onBack).toHaveBeenCalled();
 });
+
+test('tautan "Lihat task Serah Terima customer ini" hanya bila canViewHandovers, menuju papan tersaring', async () => {
+  await renderView({ canViewHandovers: true });
+  const link = screen.getByRole('link', { name: 'Lihat task Serah Terima customer ini' });
+  expect(link).toHaveAttribute('href', '/handover?customer=c1');
+});
+
+test('tanpa canViewHandovers: tautan task Serah Terima tidak tampil', async () => {
+  await renderView();
+  expect(screen.queryByRole('link', { name: 'Lihat task Serah Terima customer ini' })).toBeNull();
+});

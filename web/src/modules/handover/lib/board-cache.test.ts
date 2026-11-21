@@ -2,6 +2,7 @@ import type { HandoverDto } from '@shared/contract';
 import { QueryClient } from '@tanstack/react-query';
 import { expect, test } from 'vitest';
 import { boardColumnData, boardColumnKey, findBoardSeed } from './board-cache';
+import { parseBoardQueryKey } from './board-snapshot';
 
 const task = (id: string): HandoverDto => ({ id, locationId: 'l1' }) as unknown as HandoverDto;
 
@@ -48,4 +49,14 @@ test('findBoardSeed: lokasi task di luar readable tidak di-seed', () => {
   const other = { ...task('h1'), locationId: 'l9' } as HandoverDto;
   client.setQueryData(boardColumnKey(['l1'], 'new'), boardColumnData([other]));
   expect(findBoardSeed(client, 'h1', ['l1'])).toBeUndefined();
+});
+
+test('boardColumnKey: papan tersaring customer berkunci terpisah dan tidak dikenali sebagai kolom tersimpan', () => {
+  const plain = boardColumnKey(['l1'], 'new');
+  const filtered = boardColumnKey(['l1'], 'new', 'c1');
+  expect(filtered).not.toEqual(plain);
+  expect(boardColumnKey(['l1'], 'new', 'c2')).not.toEqual(filtered);
+  expect(boardColumnKey(['l1'], 'new', undefined)).toEqual(plain);
+  expect(parseBoardQueryKey(plain)).not.toBeNull();
+  expect(parseBoardQueryKey(filtered)).toBeNull();
 });

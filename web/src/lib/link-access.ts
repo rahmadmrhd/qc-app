@@ -55,6 +55,15 @@ export function customerLinkAccess(me: MeDto | null | undefined) {
   };
 }
 
+/**
+ * Tautan "Lihat task Serah Terima customer ini" di View customer (keputusan pemilik 2026-11-21): ke papan Serah Terima
+ * yang disaring customer (`/handover?customer=<id>`). Hanya untuk pemegang `handover: view` (bukan sekadar `qc: edit`,
+ * yang membuka papan tetapi bukan pembaca Serah Terima).
+ */
+export function customerHandoversLinkAccess(me: MeDto | null | undefined) {
+  return { canViewHandovers: can(me, 'handover', 'view') };
+}
+
 /** Merk: halaman lihat butuh `item: view`. */
 export function brandLinkAccess(me: MeDto | null | undefined) {
   return {

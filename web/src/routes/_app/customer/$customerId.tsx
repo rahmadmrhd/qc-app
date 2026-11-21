@@ -7,6 +7,7 @@ import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dia
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
+import { customerHandoversLinkAccess } from '@/lib/link-access';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { CustomerFormDialog } from '@/modules/customer/components/customer-form-dialog';
@@ -109,6 +110,7 @@ function CustomerDetailPage() {
       <CustomerView
         customer={customer}
         canManage={canManage}
+        canViewHandovers={customerHandoversLinkAccess(me).canViewHandovers}
         statusPending={setStatus.isPending}
         restorePending={restoreCustomers.isPending}
         onBack={() => stack.pop({ to: '/customer' })}

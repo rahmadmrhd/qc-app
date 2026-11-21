@@ -42,7 +42,7 @@ export const Route = createFileRoute('/_app/handover/$handoverId/edit')({
           label: hit?.[1]?.number ?? 'Detail',
           to: '/handover/$handoverId',
           params,
-          search: { loc: search.loc, status: search.status },
+          search: { loc: search.loc, status: search.status, customer: search.customer },
         },
         { label: 'Ubah' },
       ];
@@ -57,7 +57,7 @@ export const Route = createFileRoute('/_app/handover/$handoverId/edit')({
 function EditHandoverPage() {
   const { handoverId } = Route.useParams();
   const search = Route.useSearch();
-  const listSearch = searchFromStatus(statusFromSearch(search), search.loc);
+  const listSearch = searchFromStatus(statusFromSearch(search), search.loc, search.customer);
   const stack = useStackNavigation();
   const me = useMe();
   const { selectedIds } = useActiveLocations();

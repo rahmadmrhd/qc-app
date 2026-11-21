@@ -36,13 +36,18 @@ export const handoverKeys = {
 };
 
 /** Satu kolom papan: halaman pertama 20 task (bawaan server), berikutnya lewat kursor server (`handovers.board`). */
-export function handoverColumnQueryOptions(locationIds: readonly string[], status: HandoverStatus) {
+export function handoverColumnQueryOptions(
+  locationIds: readonly string[],
+  status: HandoverStatus,
+  customerId?: string,
+) {
   return infiniteQueryOptions({
-    queryKey: handoverKeys.column(locationIds, status),
+    queryKey: handoverKeys.column(locationIds, status, customerId),
     queryFn: ({ pageParam }) =>
       api('handovers.board', {
         locationIds: [...locationIds],
         status,
+        ...(customerId ? { customerId } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
       }),
     initialPageParam: undefined as string | undefined,
@@ -62,12 +67,14 @@ export interface BoardColumnState {
 }
 
 /** Empat kolom papan sekaligus (empat permintaan paralel); `handovers` = semua task yang sudah dimuat. */
-export function useHandoverBoard(locationIds: readonly string[]) {
+export function useHandoverBoard(locationIds: readonly string[], customerId?: string) {
   const byStatus = {
-    new: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'new')),
-    in_progress: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'in_progress')),
-    done: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'done')),
-    cancelled: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'cancelled')),
+    new: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'new', customerId)),
+    in_progress: useInfiniteQuery(
+      handoverColumnQueryOptions(locationIds, 'in_progress', customerId),
+    ),
+    done: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'done', customerId)),
+    cancelled: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'cancelled', customerId)),
   };
   const all = BOARD_STATUSES.map((status) => byStatus[status]);
   const columns = Object.fromEntries(
