@@ -136,6 +136,7 @@ function StickerTypeViewRoute() {
             onOpenChange={setConfirmDelete}
             count={1}
             subject="jenis"
+            usage={type.stickerCount > 0 ? `Dipakai ${type.stickerCount} stiker.` : undefined}
             onConfirm={remove}
             busy={removeTypes.isPending}
           />

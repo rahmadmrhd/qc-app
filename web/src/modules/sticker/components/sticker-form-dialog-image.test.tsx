@@ -120,3 +120,17 @@ test('Simpan form stiker aktif lagi setelah unggahan gagal dibuang', async () =>
   await userEvent.click(await within(form).findByRole('button', { name: /^Buang / }));
   await waitFor(() => expect(within(form).getByRole('button', { name: 'Simpan' })).toBeEnabled());
 });
+
+test('Enter di kolom Nama saat gambar gagal diunggah tidak menyimpan (penahan sama dengan tombol Simpan)', async () => {
+  const { form, onSave } = await openForm();
+  uploadMock.mockRejectedValueOnce(new Error('putus'));
+  await pickImage(form, png('a.png'));
+  expect(await within(form).findByRole('button', { name: /^Ulangi / })).toBeInTheDocument();
+  await userEvent.type(within(form).getByLabelText('Nama stiker'), '{Enter}');
+  expect(onSave).not.toHaveBeenCalled();
+  // Setelah gambar dibuang, Enter kembali menyimpan.
+  await userEvent.click(within(form).getByRole('button', { name: /^Buang / }));
+  await waitFor(() => expect(within(form).getByRole('button', { name: 'Simpan' })).toBeEnabled());
+  await userEvent.type(within(form).getByLabelText('Nama stiker'), '{Enter}');
+  await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
+});

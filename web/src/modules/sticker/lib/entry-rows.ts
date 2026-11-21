@@ -15,6 +15,11 @@ export function emptyEntryRow(): EntryRow {
   return { count: emptyCount(), delta: '' };
 }
 
+/** Baris yang belum diisi sama sekali (hitungan kosong dan selisih kosong): bukan isian yang belum disimpan. */
+export function isEmptyRow(row: EntryRow): boolean {
+  return row.delta.trim() === '' && piecesOfCount(cleanCount(row.count)) === 0;
+}
+
 /** Jumlah butir baris masuk/keluar (hitungan lembar x isi + butir); koreksi = selisih bertanda, `null` bila belum sah. */
 export function rowPieces(mode: EntryMode, row: EntryRow): number | null {
   if (mode === 'adjust') {

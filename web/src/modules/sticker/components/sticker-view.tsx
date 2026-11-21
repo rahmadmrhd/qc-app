@@ -114,7 +114,8 @@ export function StickerView({
           id: 'restore',
           action: 'restore',
           busy: restorePending,
-          hidden: !(canManage && onRestore),
+          // Stiker jenis sistem dipulihkan lewat induknya (Desain QR/Postel), bukan di sini.
+          hidden: !(canManage && systemKind === '' && onRestore),
           onSelect: () => onRestore?.(),
         },
       ]
@@ -150,13 +151,18 @@ export function StickerView({
               label: 'Jenis',
               value: (
                 <span className="inline-flex flex-wrap items-center gap-1.5">
-                  <Link
-                    to="/sticker/types/$typeId"
-                    params={{ typeId: sticker.typeId }}
-                    className={textLink}
-                  >
-                    {sticker.typeName}
-                  </Link>
+                  {sticker.typeDeleted && !canManage ? (
+                    // Jenis terhapus hanya dapat dibuka pemulih; selain itu nama + penanda tanpa tautan.
+                    <span>{sticker.typeName}</span>
+                  ) : (
+                    <Link
+                      to="/sticker/types/$typeId"
+                      params={{ typeId: sticker.typeId }}
+                      className={textLink}
+                    >
+                      {sticker.typeName}
+                    </Link>
+                  )}
                   {sticker.typeDeleted ? <DeletedBadge /> : null}
                 </span>
               ),
@@ -308,7 +314,7 @@ export function StickerView({
           sticker.deleted ? (
             <DeletedBanner
               info={sticker.deleted}
-              canRestore={canManage}
+              canRestore={canManage && systemKind === ''}
               {...(onRestore ? { onRestore } : {})}
               restoring={restorePending}
             />

@@ -77,6 +77,8 @@ export interface StickerFormDialogProps {
   onCreateBusinessUnit?: (input: SaveBusinessUnitInput) => Promise<BusinessUnitDto>;
   /** Tautan ke halaman lihat BU (tab baru); tidak disediakan bila user tak berhak melihatnya. */
   openBusinessUnitHref?: (id: string) => string | null;
+  /** Tautan ke View jenis (tab baru) pada field Jenis; tidak disediakan bila user tak berhak melihatnya. */
+  openStickerTypeHref?: (id: string) => string | null;
 }
 
 function buLabel(bu: BusinessUnitOptionDto): string {
@@ -120,6 +122,7 @@ export function StickerForm({
   onCreateType,
   onCreateBusinessUnit,
   openBusinessUnitHref,
+  openStickerTypeHref,
   onClose,
 }: StickerFormProps) {
   // Ponsel: tanpa fokus otomatis (papan ketik layar akan menutupi separuh form).
@@ -170,6 +173,7 @@ export function StickerForm({
   const systemKind = selectedType?.systemKind ?? '';
   const systemLocked = sticker !== undefined && systemKind !== '';
   const imageLocked = sticker !== undefined && systemKind === 'manual_book';
+  const typeHref = sticker ? (openStickerTypeHref?.(sticker.typeId) ?? null) : null;
   const buById = new Map(allBus.map((bu) => [bu.id, bu]));
   const selected = new Set(businessUnitIds);
   const termKey = normalizeKey(buTerm);
@@ -231,7 +235,8 @@ export function StickerForm({
   }
 
   async function submit() {
-    if (busy) return;
+    // Enter di kolom isian melewati tombol Simpan footer: penahan yang sama (gambar masih diunggah/gagal) berlaku.
+    if (busy || imageBusy) return;
     const parsed = stickerFormSchema.safeParse({
       typeId,
       name,
@@ -297,7 +302,18 @@ export function StickerForm({
         {sticker ? (
           <div className="space-y-1.5">
             <p className="text-sm font-medium">Jenis</p>
-            <p className="text-sm">{sticker.typeName}</p>
+            {typeHref ? (
+              <a
+                href={typeHref}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm underline underline-offset-2"
+              >
+                {sticker.typeName}
+              </a>
+            ) : (
+              <p className="text-sm">{sticker.typeName}</p>
+            )}
             <p className="text-xs text-muted-foreground">
               Jenis tidak dapat diubah setelah stiker dibuat.
             </p>
@@ -311,6 +327,7 @@ export function StickerForm({
             placeholder="Pilih jenis"
             value={typeId === '' ? null : typeId}
             labelOf={(id) => allTypes.find((type) => type.id === id)?.name}
+            openHref={openStickerTypeHref}
             options={typeOptions}
             onSearchChange={setTypeTerm}
             searchDebounceMs={0}
@@ -471,6 +488,7 @@ export function StickerFormDialog({
   onCreateType,
   onCreateBusinessUnit,
   openBusinessUnitHref,
+  openStickerTypeHref,
 }: StickerFormDialogProps) {
   const [busy, setBusy] = useState(false);
   const [blocked, setBlocked] = useState(true);
@@ -495,6 +513,7 @@ export function StickerFormDialog({
           onCreateType={onCreateType}
           onCreateBusinessUnit={onCreateBusinessUnit}
           openBusinessUnitHref={openBusinessUnitHref}
+          openStickerTypeHref={openStickerTypeHref}
           onClose={() => onOpenChange(false)}
           onBusyChange={setBusy}
           onBlockedChange={setBlocked}

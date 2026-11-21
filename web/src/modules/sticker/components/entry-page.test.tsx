@@ -250,7 +250,9 @@ test('stiker yang sudah ditambah tetap terkirim walau tersaring dari tampilan', 
   await userEvent.click(screen.getByRole('button', { name: 'Tambah Hijau-B' }));
   await userEvent.type(screen.getByLabelText('Butir'), '7');
   await userEvent.type(screen.getByLabelText('Cari stiker'), 'segel');
-  expect(screen.queryByRole('button', { name: 'Batal catat Hijau-B' })).toBeNull();
+  // Tetap terlihat (bagian "tidak tampil di daftar") dan dapat dibatalkan, bukan terkirim diam-diam.
+  expect(screen.getByText('Sudah ditambah, tidak tampil di daftar')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Batal catat Hijau-B' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSave).toHaveBeenCalledWith(
     'in',
@@ -267,12 +269,46 @@ test('initialStickerId: kolom cari terisi dan stiker langsung masuk entri', asyn
   expect(screen.getByRole('button', { name: 'Batal catat Segel Polos' })).toBeInTheDocument();
 });
 
-test('onDirtyChange: bersih awalnya, kotor setelah ada stiker ditambah', async () => {
+test('onDirtyChange: bersih awalnya dan saat stiker baru ditambah tanpa isian; kotor setelah diisi', async () => {
   const { onDirtyChange } = await renderPage();
   expect(onDirtyChange).toHaveBeenLastCalledWith(false);
   await chooseJakarta();
   await userEvent.click(screen.getByRole('button', { name: 'Tambah Hijau-B' }));
+  expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+  await userEvent.type(screen.getByLabelText('Butir'), '2');
   expect(onDirtyChange).toHaveBeenLastCalledWith(true);
+});
+
+test('initialStickerId yang belum diisi bukan isian belum disimpan', async () => {
+  const { onDirtyChange } = await renderPage({ initialStickerId: 's3' });
+  await chooseJakarta();
+  expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+});
+
+test('entri yang tak memenuhi syarat mode tetap tampil bernomor, dan "Baris N" mengikuti urutan layar', async () => {
+  // Stiker Nonaktif (s4) bersaldo: awalnya entri Keluar, lalu mode Masuk menyembunyikannya dari daftar.
+  const { onSave } = await renderPage({ initialMode: 'out', initialStickerId: 's4' });
+  await chooseJakarta();
+  await userEvent.clear(screen.getByLabelText('Cari stiker'));
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah Hijau-B' }));
+  await pickSelect(screen, 'Jenis entri', 'Masuk');
+  expect(screen.getByText('Sudah ditambah, tidak tampil di daftar')).toBeInTheDocument();
+  // Hijau-B tampil di daftar (Baris 1); Segel Lawas di bagian tersembunyi (Baris 2): urutan layar = urutan kirim.
+  const labels = screen.getAllByText(/^Baris \d+$/).map((node) => node.textContent);
+  expect(labels).toEqual(['Baris 1', 'Baris 2']);
+  const inputs = screen.getAllByLabelText('Butir');
+  await userEvent.type(inputs[0] as HTMLElement, '1');
+  await userEvent.type(inputs[1] as HTMLElement, '2');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(onSave).toHaveBeenCalledWith(
+    'in',
+    expect.objectContaining({
+      rows: [
+        expect.objectContaining({ stickerId: 's1' }),
+        expect.objectContaining({ stickerId: 's4' }),
+      ],
+    }),
+  );
 });
 
 test('pencarian tanpa hasil menampilkan pesan kosong', async () => {

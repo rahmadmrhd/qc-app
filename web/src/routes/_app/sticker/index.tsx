@@ -184,6 +184,7 @@ function StickersRoute() {
         buLinks.canCreateBusinessUnit ? (input) => saveBusinessUnit.mutateAsync(input) : undefined
       }
       openBusinessUnitHref={buLinks.openBusinessUnitHref}
+      openStickerTypeHref={typeLinks.openStickerTypeHref}
       onToggleStatus={(sticker) => {
         const next = nextStickerStatus(sticker.status);
         setStatus.mutate(

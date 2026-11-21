@@ -333,3 +333,24 @@ test('ponsel (360 px): bar aksi menempel memuat aksi utama dan menu "Aksi lainny
     media.restore();
   }
 });
+
+test('stiker jenis sistem terhapus: tanpa Pulihkan (dipulihkan lewat induknya), di aksi maupun spanduk', async () => {
+  await renderView({
+    sticker: {
+      ...sticker,
+      status: 'inactive',
+      deleted: { deletedAt: '2026-11-20T03:00:00.000Z', deletedBy: 'admin@x.com' },
+    },
+    type: { ...type, systemKind: 'manual_book', rule: 'group' },
+  });
+  expect(screen.getByText(/Terhapus/)).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Pulihkan' })).toBeNull();
+});
+
+test('jenis terhapus: tautan ke View jenis hanya bagi pengelola; non-pengelola melihat teks biasa', async () => {
+  await renderView({ sticker: { ...sticker, typeDeleted: true }, canManage: false });
+  expect(screen.queryByRole('link', { name: 'QC Hijau' })).toBeNull();
+  cleanup();
+  await renderView({ sticker: { ...sticker, typeDeleted: true }, canManage: true });
+  expect(screen.getByRole('link', { name: 'QC Hijau' })).toBeInTheDocument();
+});

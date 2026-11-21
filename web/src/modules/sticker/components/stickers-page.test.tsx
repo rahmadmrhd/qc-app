@@ -782,3 +782,127 @@ test('ponsel (360 px): kartu memuat judul tertaut, lencana status, dan meta berl
     media.restore();
   }
 });
+
+const deletedAt = { deletedAt: '2026-11-20T03:00:00.000Z', deletedBy: 'admin@x.com' };
+
+async function openDeletedView(extra: Partial<StickersPageProps>) {
+  const rendered = await renderPage({
+    types: [...types, manualBookType],
+    stickers: [
+      sticker({
+        id: 'd1',
+        name: 'Stiker Biasa Hilang',
+        alias: '',
+        status: 'inactive',
+        deleted: deletedAt,
+      }),
+      sticker({
+        id: 'd2',
+        typeId: 'tp-mb',
+        typeName: 'Manual Book',
+        name: 'MB Hilang',
+        alias: '',
+        businessUnitIds: [],
+        status: 'inactive',
+        deleted: deletedAt,
+      }),
+    ],
+    ...extra,
+  });
+  await openChip('Status');
+  await pickSelect(screen, 'Filter status', 'Terhapus');
+  return rendered;
+}
+
+test('tampilan Terhapus: Pulihkan tidak ditawarkan untuk stiker jenis sistem (server selalu menolak)', async () => {
+  await openDeletedView({});
+  expect(screen.getByRole('button', { name: 'Pulihkan Stiker Biasa Hilang' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Pulihkan MB Hilang' })).toBeNull();
+});
+
+test('Pulihkan massal ditahan beralasan bila pilihan memuat stiker jenis sistem', async () => {
+  const { mutations } = await openDeletedView({});
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Stiker Biasa Hilang' }));
+  expect(screen.getByRole('button', { name: 'Pulihkan' })).toBeEnabled();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih MB Hilang' }));
+  expect(screen.getByRole('button', { name: 'Pulihkan' })).toBeDisabled();
+  expect(
+    screen.getByText(/dipulihkan lewat konfigurasi atau catatan induknya/),
+  ).toBeInTheDocument();
+  expect(mutations.restore).not.toHaveBeenCalled();
+});
+
+test('Aktifkan massal ditahan beralasan bila pilihan memuat stiker Usang atau Manual Book bukan versi terbaru', async () => {
+  const { mutations } = await renderPage({
+    types: [...types, manualBookType],
+    stickers: [
+      ...stickers,
+      sticker({
+        id: 'old',
+        name: 'Segel Usang',
+        alias: '',
+        typeId: 'tp-none',
+        typeName: 'Segel',
+        businessUnitIds: [],
+        status: 'deprecated',
+      }),
+      sticker({
+        id: 'mb3',
+        typeId: 'tp-mb',
+        typeName: 'Manual Book',
+        name: 'PBE v3',
+        alias: '',
+        businessUnitIds: [],
+        status: 'inactive',
+      }),
+    ],
+  });
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel Polos' }));
+  expect(screen.getByRole('button', { name: 'Aktifkan' })).toBeEnabled();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel Usang' }));
+  expect(screen.getByRole('button', { name: 'Aktifkan' })).toBeDisabled();
+  expect(screen.getByText('Stiker Usang tidak dapat diaktifkan kembali')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel Usang' }));
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih PBE v3' }));
+  expect(screen.getByRole('button', { name: 'Aktifkan' })).toBeDisabled();
+  expect(screen.getByText(/Hanya versi terbaru Manual Book/)).toBeInTheDocument();
+  expect(mutations.setStatus).not.toHaveBeenCalled();
+});
+
+test('jenis terhapus: nama + penanda tanpa tautan bagi non-pengelola, tautan bagi pengelola', async () => {
+  const row = sticker({ id: 's9', name: 'Stiker Jenis Hilang', alias: '', typeDeleted: true });
+  await renderPage({ stickers: [row], canManage: false });
+  expect(
+    within(screen.getByRole('row', { name: /Stiker Jenis Hilang/ })).queryByRole('link', {
+      name: 'QC Hijau',
+    }),
+  ).toBeNull();
+  cleanup();
+  await renderPage({ stickers: [row], canManage: true });
+  expect(
+    within(screen.getByRole('row', { name: /Stiker Jenis Hilang/ })).getByRole('link', {
+      name: 'QC Hijau',
+    }),
+  ).toBeInTheDocument();
+});
+
+test('field Jenis di form stiker memberi tautan Buka ke View jenis bila disediakan', async () => {
+  await renderPage({ openStickerTypeHref: (id) => `/sticker/types/${id}` });
+  await userEvent.click(screen.getAllByRole('button', { name: 'Tambah stiker' })[0] as HTMLElement);
+  const form = await screen.findByRole('alertdialog', { name: 'Tambah stiker' });
+  await pickLink(within(form), 'Jenis', 'Segel');
+  expect(within(form).getByRole('link', { name: 'Buka Jenis' })).toHaveAttribute(
+    'href',
+    '/sticker/types/tp-none',
+  );
+});
+
+test('ubah stiker: jenis menaut ke View jenis bila diizinkan, selain itu teks biasa', async () => {
+  await renderPage({ openStickerTypeHref: (id) => `/sticker/types/${id}` });
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah Hijau-B' }));
+  const form = await screen.findByRole('alertdialog', { name: /Ubah stiker/ });
+  expect(within(form).getByRole('link', { name: 'QC Hijau' })).toHaveAttribute(
+    'href',
+    '/sticker/types/tp-bu',
+  );
+});

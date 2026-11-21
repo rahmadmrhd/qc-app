@@ -94,6 +94,7 @@ export interface StickersPageProps {
   onCreateType?: StickerFormDialogProps['onCreateType'];
   onCreateBusinessUnit?: StickerFormDialogProps['onCreateBusinessUnit'];
   openBusinessUnitHref?: StickerFormDialogProps['openBusinessUnitHref'];
+  openStickerTypeHref?: StickerFormDialogProps['openStickerTypeHref'];
   onToggleStatus: (sticker: StickerDto) => void;
   mutations: StickerMutations;
   /** Membuka halaman stok opname. */
@@ -155,6 +156,11 @@ function buildRows(
 const NOT_ACTIVE_FIRST = 'Nonaktifkan stiker dulu sebelum dihapus';
 const SYSTEM_NO_DELETE =
   'Stiker Manual Book dan Postel mengikuti konfigurasinya, jadi tidak bisa dihapus di sini';
+const SYSTEM_NO_RESTORE =
+  'Stiker Manual Book dan Postel dipulihkan lewat konfigurasi atau catatan induknya, bukan di sini';
+const DEPRECATED_NO_ACTIVATE = 'Stiker Usang tidak dapat diaktifkan kembali';
+const OLD_VERSION_NO_ACTIVATE =
+  'Hanya versi terbaru Manual Book yang dapat diaktifkan kembali; keluarkan versi lama dari pilihan';
 
 /**
  * Halaman Stiker (kit CRUD): katalog dan stok dalam SATU tabel. Kolom Stok, Per lokasi, dan menu "Stok" hanya untuk
@@ -177,6 +183,7 @@ export function StickersPage({
   onCreateType,
   onCreateBusinessUnit,
   openBusinessUnitHref,
+  openStickerTypeHref,
   onToggleStatus,
   mutations,
   onStartOpname,
@@ -285,6 +292,19 @@ export function StickersPage({
     : hasActive
       ? NOT_ACTIVE_FIRST
       : undefined;
+  // Pulihkan: stiker jenis sistem selalu ditolak server (dipulihkan lewat induknya), jadi ditahan dengan alasan.
+  const restoreBlockedReason = hasSystem ? SYSTEM_NO_RESTORE : undefined;
+  // Aktifkan: aturan baris (`canToggle`) berlaku untuk seluruh pilihan, karena server menolak seluruh tahap.
+  const activateBlockedReason = selected.some((sticker) => sticker.status === 'deprecated')
+    ? DEPRECATED_NO_ACTIVATE
+    : selected.some(
+          (sticker) =>
+            sticker.status === 'inactive' &&
+            typeById.get(sticker.typeId)?.systemKind === 'manual_book' &&
+            !sticker.latestManualBookVersion,
+        )
+      ? OLD_VERSION_NO_ACTIVATE
+      : undefined;
 
   async function restoreRow(sticker: StickerDto) {
     setRowBusy(sticker.id);
@@ -361,9 +381,14 @@ export function StickersPage({
         const { catalog } = row;
         return catalog ? (
           <span className="inline-flex flex-wrap items-center gap-1.5">
-            <LinkCell to="/sticker/types/$typeId" params={{ typeId: catalog.typeId }}>
-              {row.typeName}
-            </LinkCell>
+            {catalog.typeDeleted && !canManage ? (
+              // Jenis terhapus hanya dapat dibuka pemulih (`sticker: manage`); selain itu nama + penanda tanpa tautan.
+              <span>{row.typeName}</span>
+            ) : (
+              <LinkCell to="/sticker/types/$typeId" params={{ typeId: catalog.typeId }}>
+                {row.typeName}
+              </LinkCell>
+            )}
             {catalog.typeDeleted ? <DeletedBadge /> : null}
           </span>
         ) : (
@@ -497,19 +522,20 @@ export function StickersPage({
     const { catalog } = row;
     if (!catalog) return [];
     const busy = pendingStatusId === catalog.id || rowBusy === catalog.id;
+    const systemKind = typeById.get(catalog.typeId)?.systemKind ?? '';
     if (catalog.deleted || deletedView) {
       return [
         {
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${row.label}`,
-          hidden: !canManage,
+          // Stiker jenis sistem dipulihkan lewat induknya (Desain QR/Postel): server selalu menolaknya di sini.
+          hidden: !canManage || systemKind !== '',
           busy,
           onSelect: () => void restoreRow(catalog),
         },
       ];
     }
-    const systemKind = typeById.get(catalog.typeId)?.systemKind ?? '';
     // Usang hanya dapat menjadi nonaktif (server menolak mengaktifkannya); stiker Manual Book yang nonaktif hanya dapat
     // diaktifkan kembali bila versi TERBARU konfigurasinya (spek 4a §3 butir 15, keputusan pemilik 2026-11-11); stiker
     // Postel tidak dibatasi (spek 4b §3 butir 5).
@@ -652,10 +678,22 @@ export function StickersPage({
           bulkSelection ? (
             <BulkBar count={selection.count} onClear={selection.clear} busy={bulkBusy}>
               {deletedView ? (
-                <ActionButton action="restore" onClick={() => void restore.run()} />
+                <DisabledReason reason={restoreBlockedReason}>
+                  <ActionButton
+                    action="restore"
+                    disabled={restoreBlockedReason !== undefined}
+                    onClick={() => void restore.run()}
+                  />
+                </DisabledReason>
               ) : (
                 <>
-                  <ActionButton action="activate" onClick={() => void activate.run()} />
+                  <DisabledReason reason={activateBlockedReason}>
+                    <ActionButton
+                      action="activate"
+                      disabled={activateBlockedReason !== undefined}
+                      onClick={() => void activate.run()}
+                    />
+                  </DisabledReason>
                   <ActionButton action="deactivate" onClick={() => void deactivate.run()} />
                   <DisabledReason reason={deleteBlockedReason}>
                     <ActionButton
@@ -712,6 +750,7 @@ export function StickersPage({
         onCreateType={onCreateType}
         onCreateBusinessUnit={onCreateBusinessUnit}
         openBusinessUnitHref={openBusinessUnitHref}
+        openStickerTypeHref={openStickerTypeHref}
       />
       <ConfirmDeleteDialog
         open={deleteTarget !== undefined}

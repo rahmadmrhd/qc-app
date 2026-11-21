@@ -204,6 +204,7 @@ function StickerViewRoute() {
                 : undefined
             }
             openBusinessUnitHref={buLinks.openBusinessUnitHref}
+            openStickerTypeHref={typeLinks.openStickerTypeHref}
           />
           <ConfirmDeleteDialog
             open={confirmDelete}

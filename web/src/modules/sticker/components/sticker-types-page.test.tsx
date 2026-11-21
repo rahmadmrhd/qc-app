@@ -335,3 +335,30 @@ test('ponsel (360 px): kartu memuat judul tertaut dan lencana status; aksi dalam
     media.restore();
   }
 });
+
+test('dialog hapus menyebut jumlah stiker pemakai (stiker hidup) bila jenis dipakai', async () => {
+  await renderPage({
+    types: [
+      ...types,
+      {
+        id: 't3',
+        name: 'Lama Dipakai',
+        rule: 'none',
+        status: 'inactive',
+        stickerCount: 4,
+        systemKind: '',
+        defaultMinQty: 0,
+        updatedAt: '2026-11-09 10:00:00',
+      },
+    ],
+  });
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus Lama Dipakai' }));
+  expect(await screen.findByText('Dipakai 4 stiker.')).toBeInTheDocument();
+});
+
+test('dialog hapus jenis tak dipakai tidak memuat keterangan pemakaian', async () => {
+  await renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus Segel' }));
+  const dialog = await screen.findByRole('alertdialog');
+  expect(within(dialog).queryByText(/^Dipakai/)).toBeNull();
+});

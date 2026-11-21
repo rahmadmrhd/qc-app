@@ -22,6 +22,7 @@ import {
   type EntryMode,
   type EntryRow,
   emptyEntryRow,
+  isEmptyRow,
   rowError,
   rowWarning,
   summarize,
@@ -119,7 +120,8 @@ export function EntryPage({
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const dirty = added.length > 0 || reason.trim() !== '';
+  // Baris awal dari tombol "Entri stok" (View) yang belum diisi bukan isian: keluar tak perlu konfirmasi.
+  const dirty = added.some((entry) => !isEmptyRow(entry.row)) || reason.trim() !== '';
   useUnsavedChanges(dirty);
   useEffect(() => {
     onDirtyChange?.(dirty);
@@ -146,10 +148,18 @@ export function EntryPage({
   }, [eligible, search, typeFilter]);
 
   // Yang sudah ditambah tetap ikut walau tersaring dari tampilan atau tak lagi memenuhi syarat mode (mis. ganti mode).
-  const entries = added.flatMap((entry) => {
+  // Urutan kirim = urutan layar (daftar yang tampil dari atas ke bawah, lalu bagian "tidak tampil"), sehingga "Baris N"
+  // dari server sama dengan nomor yang tampil di tiap baris isian.
+  const addedEntries = added.flatMap((entry) => {
     const row = rows.find((candidate) => candidate.stickerId === entry.stickerId);
     return row ? [{ ...entry, stock: row }] : [];
   });
+  const visibleIds = new Set(visible.map((row) => row.stickerId));
+  const entries = [
+    ...visible.flatMap((row) => addedEntries.filter((entry) => entry.stickerId === row.stickerId)),
+    ...addedEntries.filter((entry) => !visibleIds.has(entry.stickerId)),
+  ];
+  const hiddenEntries = entries.filter((entry) => !visibleIds.has(entry.stickerId));
   const rowErrors = entries.map((entry) => rowError(mode, entry.row));
   const summary = summarize(
     mode,
@@ -206,6 +216,107 @@ export function EntryPage({
       return;
     }
     setError(failure.message);
+  }
+
+  function renderRow(stock: StickerStockDto, hiddenFromList: boolean) {
+    const entry = added.find((candidate) => candidate.stickerId === stock.stickerId);
+    const recorded = qtyAt(stock, locationId);
+    const at = entry ? entries.findIndex((e) => e.stickerId === stock.stickerId) : -1;
+    const message = at >= 0 ? rowErrors[at] : null;
+    const warning = entry ? rowWarning(mode, entry.row, recorded) : null;
+    return (
+      <li key={stock.stickerId} className="space-y-2 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            {entry && at >= 0 ? (
+              <span className="mr-2 text-xs tabular-nums text-muted-foreground">{`Baris ${at + 1}`}</span>
+            ) : null}
+            <span className="font-medium">{stock.name}</span>
+            <span className="ml-2 text-xs text-muted-foreground">{stock.typeName}</span>
+            {stock.status === 'active' ? null : (
+              <Badge color="secondary" variant="soft" className="ml-2">
+                {STICKER_STATUS_LABEL[stock.status]}
+              </Badge>
+            )}
+          </div>
+          <span className="text-sm tabular-nums">{`Tercatat ${formatStockQty(recorded)}`}</span>
+        </div>
+        {entry ? (
+          <div className="space-y-2">
+            {mode === 'adjust' ? (
+              <div className="space-y-1.5">
+                <Label htmlFor={`entry-delta-${stock.stickerId}`}>
+                  {`Perubahan ${stock.name} (butir)`}
+                </Label>
+                <Input
+                  id={`entry-delta-${stock.stickerId}`}
+                  type="number"
+                  inputMode="numeric"
+                  step={1}
+                  placeholder="mis. -5 atau 10"
+                  value={entry.row.delta}
+                  aria-invalid={message ? true : undefined}
+                  onChange={(event) =>
+                    setRow(stock.stickerId, { ...entry.row, delta: event.target.value })
+                  }
+                />
+                {Number.isInteger(Number(entry.row.delta)) && entry.row.delta.trim() !== '' ? (
+                  <p className="text-xs text-muted-foreground tabular-nums">
+                    {`Hasil ${formatStockQty(recorded + Number(entry.row.delta))}`}
+                  </p>
+                ) : null}
+              </div>
+            ) : (
+              <CountInput
+                value={entry.row.count}
+                onChange={(count) => setRow(stock.stickerId, { ...entry.row, count })}
+              />
+            )}
+            {message ? (
+              <p role="alert" className="text-sm text-destructive-text">
+                {message}
+              </p>
+            ) : null}
+            {warning ? <p className="text-sm text-warning-text">{warning}</p> : null}
+            {hiddenFromList ? (
+              <p className="text-xs text-muted-foreground">
+                Tidak tampil di daftar mode atau penyaring ini, tetapi tetap ikut disimpan kecuali
+                dibatalkan.
+              </p>
+            ) : null}
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-label={`Batal catat ${stock.name}`}
+              onClick={() =>
+                setAdded((current) =>
+                  current.filter((candidate) => candidate.stickerId !== stock.stickerId),
+                )
+              }
+            >
+              Batal catat
+            </Button>
+          </div>
+        ) : (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            aria-label={`Tambah ${stock.name}`}
+            disabled={full}
+            onClick={() =>
+              setAdded((current) => [
+                ...current,
+                { stickerId: stock.stickerId, row: emptyEntryRow() },
+              ])
+            }
+          >
+            Tambah
+          </Button>
+        )}
+      </li>
+    );
   }
 
   const totalText =
@@ -286,102 +397,17 @@ export function EntryPage({
             </p>
           ) : (
             <ul className="divide-y rounded-md border">
-              {visible.map((stock) => {
-                const entry = added.find((candidate) => candidate.stickerId === stock.stickerId);
-                const recorded = qtyAt(stock, locationId);
-                const at = entry ? entries.findIndex((e) => e.stickerId === stock.stickerId) : -1;
-                const message = at >= 0 ? rowErrors[at] : null;
-                const warning = entry ? rowWarning(mode, entry.row, recorded) : null;
-                return (
-                  <li key={stock.stickerId} className="space-y-2 p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <span className="font-medium">{stock.name}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">{stock.typeName}</span>
-                        {stock.status === 'active' ? null : (
-                          <Badge color="secondary" variant="soft" className="ml-2">
-                            {STICKER_STATUS_LABEL[stock.status]}
-                          </Badge>
-                        )}
-                      </div>
-                      <span className="text-sm tabular-nums">{`Tercatat ${formatStockQty(recorded)}`}</span>
-                    </div>
-                    {entry ? (
-                      <div className="space-y-2">
-                        {mode === 'adjust' ? (
-                          <div className="space-y-1.5">
-                            <Label htmlFor={`entry-delta-${stock.stickerId}`}>
-                              {`Perubahan ${stock.name} (butir)`}
-                            </Label>
-                            <Input
-                              id={`entry-delta-${stock.stickerId}`}
-                              type="number"
-                              inputMode="numeric"
-                              step={1}
-                              placeholder="mis. -5 atau 10"
-                              value={entry.row.delta}
-                              aria-invalid={message ? true : undefined}
-                              onChange={(event) =>
-                                setRow(stock.stickerId, { ...entry.row, delta: event.target.value })
-                              }
-                            />
-                            {Number.isInteger(Number(entry.row.delta)) &&
-                            entry.row.delta.trim() !== '' ? (
-                              <p className="text-xs text-muted-foreground tabular-nums">
-                                {`Hasil ${formatStockQty(recorded + Number(entry.row.delta))}`}
-                              </p>
-                            ) : null}
-                          </div>
-                        ) : (
-                          <CountInput
-                            value={entry.row.count}
-                            onChange={(count) => setRow(stock.stickerId, { ...entry.row, count })}
-                          />
-                        )}
-                        {message ? (
-                          <p role="alert" className="text-sm text-destructive-text">
-                            {message}
-                          </p>
-                        ) : null}
-                        {warning ? <p className="text-sm text-warning-text">{warning}</p> : null}
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          aria-label={`Batal catat ${stock.name}`}
-                          onClick={() =>
-                            setAdded((current) =>
-                              current.filter(
-                                (candidate) => candidate.stickerId !== stock.stickerId,
-                              ),
-                            )
-                          }
-                        >
-                          Batal catat
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        aria-label={`Tambah ${stock.name}`}
-                        disabled={full}
-                        onClick={() =>
-                          setAdded((current) => [
-                            ...current,
-                            { stickerId: stock.stickerId, row: emptyEntryRow() },
-                          ])
-                        }
-                      >
-                        Tambah
-                      </Button>
-                    )}
-                  </li>
-                );
-              })}
+              {visible.map((stock) => renderRow(stock, false))}
             </ul>
           )}
+          {hiddenEntries.length > 0 ? (
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium">Sudah ditambah, tidak tampil di daftar</p>
+              <ul className="divide-y rounded-md border">
+                {hiddenEntries.map((entry) => renderRow(entry.stock, true))}
+              </ul>
+            </div>
+          ) : null}
           {full ? (
             <p className="text-sm text-muted-foreground">
               {`Sudah ${STICKER_LIMITS.opnameRows} stiker, batas satu kali entri. Simpan dulu, lalu lanjutkan entri berikutnya.`}

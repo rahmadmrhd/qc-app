@@ -66,6 +66,12 @@ export interface StickerTypesPageProps {
 
 const NOT_INACTIVE = 'Nonaktifkan jenis dulu sebelum dihapus';
 
+/** Pemakaian jenis (stiker HIDUP, dari `stickerCount`) untuk dialog konfirmasi hapus; kosong bila tak dipakai. */
+function usageText(types: readonly Pick<StickerTypeDto, 'stickerCount'>[]): string | undefined {
+  const total = types.reduce((sum, type) => sum + type.stickerCount, 0);
+  return total > 0 ? `Dipakai ${total} stiker.` : undefined;
+}
+
 /**
  * Daftar jenis stiker (kit CRUD): [checkbox][Aksi][Jenis → View][Aturan][Stiker → halaman Stiker terfilter][Status].
  * Jenis sistem tanpa checkbox dan tanpa aksi (dikelola aplikasi); tampilan Terhapus hanya bagi `sticker: manage`.
@@ -390,6 +396,11 @@ export function StickerTypesPage({
         }}
         count={deleteTarget?.kind === 'bulk' ? selection.count : 1}
         subject="jenis"
+        usage={usageText(
+          deleteTarget?.kind === 'bulk'
+            ? selected
+            : visible.filter((type) => deleteTarget?.kind === 'row' && type.id === deleteTarget.id),
+        )}
         onConfirm={() => void confirmDelete()}
         busy={remove.busy || rowBusy !== null}
       />
