@@ -9,10 +9,13 @@ export function Fab({
   label,
   onClick,
   kind = 'create',
+  tour,
 }: {
   label: string;
   onClick: () => void;
   kind?: ActionKind;
+  /** `data-tour` untuk panduan interaktif. */
+  tour?: string;
 }) {
   const Icon = ACTIONS[kind].icon;
   return (
@@ -21,6 +24,7 @@ export function Fab({
       size="icon"
       aria-label={label}
       data-slot="fab"
+      data-tour={tour}
       onClick={onClick}
       className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 size-12 touch:size-12 rounded-full shadow-lg"
     >

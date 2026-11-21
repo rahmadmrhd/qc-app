@@ -3,11 +3,12 @@ import { DEFAULT_QR_LAYOUT, DEFAULT_QR_STYLE, qrContentHash } from '@shared/qrco
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
 import type { QrEditContext } from '../schemas';
 import { toPresetFormValues, toQrFormDefaults } from '../schemas';
-import { QrDesignForm } from './qr-design-form';
+import { QrDesignForm, type QrDesignFormProps, type QrFormUiState } from './qr-design-form';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
@@ -25,21 +26,60 @@ beforeEach(() => {
   apiMock.mockResolvedValue({ items: ITEM_OPTIONS, nextCursor: null });
 });
 
-function renderForm(props: Partial<React.ComponentProps<typeof QrDesignForm>> = {}) {
+const FORM_ID = 'qr-design-form';
+
+/**
+ * Tombol Simpan berada di luar form (bar halaman/footer dialog) dan memakai `form={formId}`: harness meniru
+ * pembungkusnya, termasuk "Simpan dan ekspor" yang membawa `data-export` dan ditahan oleh keadaan form.
+ */
+function Harness({
+  canExport = false,
+  ...props
+}: Omit<QrDesignFormProps, 'formId'> & { canExport?: boolean }) {
+  const [ui, setUi] = useState<QrFormUiState>({
+    submitting: false,
+    blocked: false,
+    overflow: false,
+  });
+  const isDefaults = props.mode === 'defaults';
+  return (
+    <>
+      <QrDesignForm formId={FORM_ID} onUiState={setUi} {...props} />
+      <button type="submit" form={FORM_ID} disabled={ui.blocked || ui.submitting}>
+        {isDefaults ? 'Simpan default' : 'Simpan'}
+      </button>
+      {canExport && !isDefaults ? (
+        <button
+          type="submit"
+          form={FORM_ID}
+          data-export="true"
+          disabled={ui.blocked || ui.submitting || ui.overflow}
+        >
+          Simpan dan ekspor
+        </button>
+      ) : null}
+    </>
+  );
+}
+
+function renderForm(props: Partial<React.ComponentProps<typeof Harness>> = {}) {
   const onSubmit = vi.fn();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const view = render(
     <QueryClientProvider client={client}>
-      <QrDesignForm
-        title="Form QR"
+      <Harness
         defaultValues={{ ...toQrFormDefaults(), linkSource: 'url', link: 'https://contoh.com' }}
         onSubmit={onSubmit}
-        onCancel={vi.fn()}
         {...props}
       />
     </QueryClientProvider>,
   );
   return { onSubmit, unmount: view.unmount };
+}
+
+/** Membuka tab form (peran radio/tombol di tab lain tersembunyi sampai tabnya dibuka). */
+async function openTab(name: string) {
+  await userEvent.click(screen.getByRole('tab', { name: new RegExp(`^${name}`) }));
 }
 
 test('pratinjau 3×3 tampil di form; tombol Pratinjau lembar membuka dialog (bukan pratinjau lembar di form)', async () => {
@@ -52,6 +92,7 @@ test('pratinjau 3×3 tampil di form; tombol Pratinjau lembar membuka dialog (buk
 
 test('mengubah teks memperbarui pratinjau (peringatan overflow muncul untuk title sangat panjang)', async () => {
   renderForm();
+  await openTab('Isi label');
   await userEvent.click(screen.getByLabelText('Title'));
   await userEvent.paste('kata '.repeat(30));
   expect(await screen.findByRole('alert')).toHaveTextContent('melebihi kanvas');
@@ -68,6 +109,7 @@ test('sumber link: hanya PDF (unggah atau salin dari Drive); link lama non-Drive
 
 test('simpan: nilai valid dikirim', async () => {
   const { onSubmit } = renderForm();
+  await openTab('Isi label');
   await userEvent.type(screen.getByLabelText('Title'), 'Panduan');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -80,10 +122,12 @@ test('simpan: nilai valid dikirim', async () => {
 
 test('ukuran: isian per bagian dengan satuan; nilai di luar rentang menampilkan galat langsung dan memblokir simpan', async () => {
   const { onSubmit } = renderForm();
+  await openTab('Ukuran');
   expect(screen.getByLabelText('Ukuran QR (mm)')).toHaveValue(17);
   await userEvent.clear(screen.getByLabelText('Ukuran QR (mm)'));
   await userEvent.type(screen.getByLabelText('Ukuran QR (mm)'), '99');
   expect(await screen.findByText('Maksimal 26 mm')).toBeInTheDocument();
+  await openTab('Isi label');
   await userEvent.type(screen.getByLabelText('Title'), 'x');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSubmit).not.toHaveBeenCalled();
@@ -91,6 +135,7 @@ test('ukuran: isian per bagian dengan satuan; nilai di luar rentang menampilkan 
 
 test('gaya teks: tombol per bagian mengubah gaya yang dikirim saat simpan', async () => {
   const { onSubmit } = renderForm();
+  await openTab('Isi label');
   await userEvent.type(screen.getByLabelText('Title'), 'Panduan');
   await userEvent.click(screen.getByRole('button', { name: 'Miring Title' }));
   await userEvent.click(screen.getByRole('button', { name: 'Garis bawah Subtitle' }));
@@ -105,6 +150,7 @@ test('gaya teks: tombol per bagian mengubah gaya yang dikirim saat simpan', asyn
 
 test('bingkai QR: pilihan jenis; isian ukuran hanya tampil bila ada bingkai; terkirim saat simpan', async () => {
   const { onSubmit } = renderForm();
+  await openTab('Logo dan bingkai');
   expect(screen.getByRole('radio', { name: 'Tanpa bingkai' })).toBeChecked();
   expect(screen.queryByLabelText('Tebal bingkai (mm)')).toBeNull();
   await userEvent.click(screen.getByRole('radio', { name: 'Siku di sudut' }));
@@ -114,6 +160,7 @@ test('bingkai QR: pilihan jenis; isian ukuran hanya tampil bila ada bingkai; ter
   expect(await screen.findByText('Maksimal 1.5 mm')).toBeInTheDocument();
   await userEvent.clear(screen.getByLabelText('Tebal bingkai (mm)'));
   await userEvent.type(screen.getByLabelText('Tebal bingkai (mm)'), '0.8');
+  await openTab('Isi label');
   await userEvent.type(screen.getByLabelText('Title'), 'Panduan');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSubmit.mock.calls[0]?.[0].style.frame).toMatchObject({
@@ -124,6 +171,7 @@ test('bingkai QR: pilihan jenis; isian ukuran hanya tampil bila ada bingkai; ter
 
 test('ukuran font ada di tiap bagian teks (bukan di bagian Ukuran) dan terkirim saat simpan; di luar rentang menampilkan galat', async () => {
   const { onSubmit } = renderForm();
+  await openTab('Isi label');
   for (const part of ['Title', 'Subtitle', 'Footer']) {
     expect(screen.getByLabelText(`Ukuran ${part} (pt)`)).toBeInTheDocument();
   }
@@ -136,6 +184,7 @@ test('ukuran font ada di tiap bagian teks (bukan di bagian Ukuran) dan terkirim 
   await userEvent.type(screen.getByLabelText('Ukuran Title (pt)'), '8');
   await userEvent.clear(screen.getByLabelText('Ukuran Footer (pt)'));
   await userEvent.type(screen.getByLabelText('Ukuran Footer (pt)'), '5');
+  await openTab('Isi label');
   await userEvent.type(screen.getByLabelText('Title'), 'Panduan');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSubmit.mock.calls[0]?.[0].layout).toMatchObject({
@@ -147,6 +196,7 @@ test('ukuran font ada di tiap bagian teks (bukan di bagian Ukuran) dan terkirim 
 
 test('bingkai: sudut membulat dan gaya garis (solid, putus-putus, titik-titik) dapat diatur dan terkirim', async () => {
   const { onSubmit } = renderForm();
+  await openTab('Logo dan bingkai');
   await userEvent.click(screen.getByRole('radio', { name: 'Kotak penuh' }));
   expect(screen.getByLabelText('Sudut membulat (mm)')).toHaveValue(1.5);
   expect(screen.getByRole('radio', { name: 'Solid' })).toBeChecked();
@@ -154,6 +204,7 @@ test('bingkai: sudut membulat dan gaya garis (solid, putus-putus, titik-titik) d
   expect(screen.getByRole('radio', { name: 'Putus-putus' })).toBeChecked();
   await userEvent.clear(screen.getByLabelText('Sudut membulat (mm)'));
   await userEvent.type(screen.getByLabelText('Sudut membulat (mm)'), '3');
+  await openTab('Isi label');
   await userEvent.type(screen.getByLabelText('Title'), 'Panduan');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSubmit.mock.calls[0]?.[0].style.frame).toMatchObject({
@@ -165,6 +216,7 @@ test('bingkai: sudut membulat dan gaya garis (solid, putus-putus, titik-titik) d
 
 test('panjang siku hanya untuk bingkai siku di sudut; kotak penuh tidak menampilkannya', async () => {
   renderForm();
+  await openTab('Logo dan bingkai');
   await userEvent.click(screen.getByRole('radio', { name: 'Siku di sudut' }));
   expect(screen.getByLabelText('Panjang siku (%)')).toBeInTheDocument();
   await userEvent.click(screen.getByRole('radio', { name: 'Kotak penuh' }));
@@ -174,6 +226,7 @@ test('panjang siku hanya untuk bingkai siku di sudut; kotak penuh tidak menampil
 
 test('submit membawa opsi: overflow dari pratinjau dan thenExport=false untuk Simpan biasa', async () => {
   const { onSubmit } = renderForm();
+  await openTab('Isi label');
   await userEvent.type(screen.getByLabelText('Title'), 'Panduan');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSubmit.mock.calls[0]?.[1]).toEqual({ overflow: false, thenExport: false });
@@ -181,6 +234,7 @@ test('submit membawa opsi: overflow dari pratinjau dan thenExport=false untuk Si
 
 test('isi tidak muat: Simpan tetap boleh dan melaporkan overflow=true', async () => {
   const { onSubmit } = renderForm({ canExport: true });
+  await openTab('Isi label');
   await userEvent.click(screen.getByLabelText('Title'));
   await userEvent.paste('x'.repeat(60));
   await screen.findByRole('alert');
@@ -193,6 +247,7 @@ test('Simpan dan ekspor: hanya untuk pemegang izin ekspor; memanggil onSubmit de
   expect(screen.queryByRole('button', { name: 'Simpan dan ekspor' })).toBeNull();
   none.unmount();
   const { onSubmit } = renderForm({ canExport: true });
+  await openTab('Isi label');
   await userEvent.type(screen.getByLabelText('Title'), 'Panduan');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan dan ekspor' }));
   expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -201,6 +256,7 @@ test('Simpan dan ekspor: hanya untuk pemegang izin ekspor; memanggil onSubmit de
 
 test('Simpan dan ekspor dinonaktifkan selama isi tidak muat (ekspor pasti ditolak)', async () => {
   renderForm({ canExport: true });
+  await openTab('Isi label');
   await userEvent.click(screen.getByLabelText('Title'));
   await userEvent.paste('x'.repeat(60));
   await screen.findByRole('alert');
@@ -223,15 +279,19 @@ test('mode default: tanpa sumber link dan ekspor; nama, BU, dan penempatan nama 
   });
   expect(screen.queryByText('Sumber link')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Simpan dan ekspor' })).toBeNull();
+  expect(screen.queryByRole('tab', { name: /^Sumber link/ })).toBeNull();
+  await openTab('Logo dan bingkai');
   expect(screen.getByText('Logo awal')).toBeInTheDocument();
   expect(screen.getByRole('radio', { name: 'Logo 1' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Simpan default' }));
   expect(await screen.findByText('Pilih Business Unit')).toBeInTheDocument();
   expect(screen.getByText('Pilih bagian label untuk nama Manual Book')).toBeInTheDocument();
   expect(onSubmit).not.toHaveBeenCalled();
+  await openTab('Isi label');
   await userEvent.type(screen.getByLabelText('Nama konfigurasi default'), 'Standar');
   await pickLink(screen, 'Business Unit', 'Spectrum');
   await pickSelect(screen, 'Penempatan nama Manual Book', 'Subtitle');
+  await openTab('Logo dan bingkai');
   await userEvent.click(screen.getByRole('radio', { name: 'Logo 1' }));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan default' }));
   expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -314,14 +374,11 @@ test('QR baru: isian tersembunyi sampai item dipilih; satu BU menarik preset oto
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled();
 });
 
-test('QR baru: grup Sumber link tepat setelah grup Nama Manual Book, sebelum isi label', async () => {
+test('QR baru: tab Sumber link tepat setelah tab Item, sebelum Isi label', async () => {
   renderForm({ presets: [SPECTRUM], defaultValues: URL_DEFAULTS });
   await pickLink(screen, 'Item', 'PBE M5-400');
-  const titles = screen.getAllByRole('heading', { level: 2 }).map((heading) => heading.textContent);
-  const manualBook = titles.indexOf('Nama Manual Book');
-  expect(manualBook).toBeGreaterThanOrEqual(0);
-  expect(titles[manualBook + 1]).toBe('Sumber link');
-  expect(titles.indexOf('Isi label')).toBeGreaterThan(manualBook + 1);
+  const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent);
+  expect(tabs).toEqual(['Item', 'Sumber link', 'Isi label', 'Logo dan bingkai', 'Ukuran']);
 });
 
 test('bagian yang ditampung nama terkunci (disabled) dan selalu sama dengan nama; nama yang sudah diedit tidak ditimpa', async () => {
@@ -372,6 +429,7 @@ test('BU item tanpa preset: boleh memilih preset mana pun atau "Tanpa preset" (n
   expect(screen.getByLabelText('Nama Manual Book')).toHaveValue('M5-400');
   expect(screen.getByLabelText('Title')).toBeEnabled();
   expect(screen.getByLabelText('Subtitle')).toBeEnabled();
+  await openTab('Isi label');
   await userEvent.type(screen.getByLabelText('Title'), 'Panduan');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({ presetId: '', title: 'Panduan' });
@@ -396,6 +454,7 @@ test('banner penyimpangan muncul saat gaya diubah dari preset dan tidak membloki
   renderForm({ presets: [SPECTRUM], defaultValues: toQrFormDefaults() });
   await pickLink(screen, 'Item', 'PBE M5-400');
   expect(screen.queryByRole('status')).toBeNull();
+  await openTab('Isi label');
   await userEvent.click(screen.getByRole('button', { name: 'Miring Title' }));
   const banner = await screen.findByRole('status');
   expect(banner).toHaveTextContent('Standar Spectrum');
@@ -433,6 +492,7 @@ test('ubah: item tergabung tampil, nama tidak dibuat ulang, bagian terkunci meng
   expect(screen.getByLabelText('Subtitle')).toHaveValue('Nama Tersimpan');
   // item tak terlihat tetap terpasang: menghapus semua item yang terlihat diperbolehkan (spek 4a §3 butir 18)
   await userEvent.click(screen.getByRole('button', { name: 'Hapus PBE M5-400' }));
+  await openTab('Isi label');
   await userEvent.type(screen.getByLabelText('Title'), 'x');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSubmit).toHaveBeenCalledTimes(1);
@@ -451,6 +511,7 @@ test('ubah tanpa item tak terlihat: menghapus semua item ditolak', async () => {
     },
   });
   await userEvent.click(screen.getByRole('button', { name: 'Hapus PBE M5-400' }));
+  await openTab('Isi label');
   await userEvent.type(screen.getByLabelText('Title'), 'x');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(await screen.findByText('Pilih minimal satu item')).toBeInTheDocument();
@@ -535,6 +596,7 @@ test('peringatan perubahan label: muncul hanya pada konfigurasi yang pernah diek
   first.unmount();
   // label berubah: dialog, simpan baru berjalan setelah dikonfirmasi
   const second = renderForm({ edit, defaultValues: base });
+  await openTab('Isi label');
   await userEvent.type(screen.getByLabelText('Title'), '!');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   const dialog = await screen.findByRole('dialog');
@@ -567,6 +629,7 @@ test('peringatan untuk konfigurasi yang diekspor sebelum 4a (tanpa versi): tidak
     edit: { ...EDIT, namePlacement: '', presetId: '', exportedHash, stickerVersion: 0 },
     defaultValues: base,
   });
+  await openTab('Isi label');
   await userEvent.type(screen.getByLabelText('Title'), '!');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   const dialog = await screen.findByRole('dialog');
@@ -574,8 +637,9 @@ test('peringatan untuk konfigurasi yang diekspor sebelum 4a (tanpa versi): tidak
   expect(dialog).not.toHaveTextContent(/usang/i);
 });
 
-test('mode QR: logo dipilih dari pustaka (tanpa unggah)', () => {
+test('mode QR: logo dipilih dari pustaka (tanpa unggah)', async () => {
   renderForm({ logoLibrary: ['x'] });
+  await openTab('Logo dan bingkai');
   expect(screen.getByRole('radio', { name: 'Logo 1' })).toBeInTheDocument();
   expect(screen.queryByLabelText(/Unggah logo/i)).toBeNull();
 });

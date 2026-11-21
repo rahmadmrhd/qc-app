@@ -12,6 +12,8 @@ export interface ListCreateAction {
   onClick: () => void;
   /** Jenis aksi untuk ikon, warna, dan gaya (bawaan `create`). */
   kind?: ActionKind;
+  /** `data-tour` pada tombol (header di desktop, FAB di ponsel). */
+  tour?: string;
 }
 
 /**
@@ -70,6 +72,7 @@ export function ListPage({
                   action={headerAction.kind ?? 'create'}
                   label={headerAction.label}
                   onClick={headerAction.onClick}
+                  data-tour={headerAction.tour}
                 />
               ) : null}
               {actions}
@@ -82,7 +85,12 @@ export function ListPage({
       <BulkActiveContext.Provider value={setBulkActive}>{bulkBar}</BulkActiveContext.Provider>
       {!desktop && !bulkActive ? <ScrollToTop aboveFab={fab !== null} /> : null}
       {fab && !bulkActive ? (
-        <Fab label={fab.label} onClick={fab.onClick} kind={fab.kind ?? 'create'} />
+        <Fab
+          label={fab.label}
+          onClick={fab.onClick}
+          kind={fab.kind ?? 'create'}
+          {...(fab.tour ? { tour: fab.tour } : {})}
+        />
       ) : null}
     </HeadroomFrame>
   );

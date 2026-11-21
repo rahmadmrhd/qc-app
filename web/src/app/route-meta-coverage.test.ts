@@ -76,6 +76,7 @@ const DEFAULT_WIDTH = [
   '/postel',
   '/postel/$postelId',
   '/qrcode',
+  '/qrcode/$designId',
   '/qrcode/$designId/edit',
   '/qrcode/default',
   '/qrcode/default/$presetId/edit',

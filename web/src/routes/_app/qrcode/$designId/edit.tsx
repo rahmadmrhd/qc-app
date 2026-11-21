@@ -9,8 +9,7 @@ import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import type { QrSubmitOptions } from '@/modules/qrcode/components/qr-design-form';
-import { QrDesignForm } from '@/modules/qrcode/components/qr-design-form';
-import { VersionHistory } from '@/modules/qrcode/components/version-history';
+import { QrDesignFormPage } from '@/modules/qrcode/components/qr-design-form-page';
 import { useFrozen } from '@/modules/qrcode/lib/use-frozen';
 import {
   qrDefaultsQueryOptions,
@@ -31,7 +30,12 @@ export const Route = createFileRoute('/_app/qrcode/$designId/edit')({
       const name = queryClient.getQueryData(
         qrDesignQueryOptions(params.designId ?? '').queryKey,
       )?.name;
-      return name ? [{ label: name }, { label: 'Ubah' }] : { label: 'Ubah' };
+      return name
+        ? [
+            { label: name, to: '/qrcode/$designId', params: { designId: params.designId ?? '' } },
+            { label: 'Ubah' },
+          ]
+        : { label: 'Ubah' };
     },
   },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'edit'),
@@ -63,8 +67,10 @@ function EditQrDesignPage() {
     try {
       await save.mutateAsync(toSaveQrDesignInput(values, design.id, loadedAt, options.overflow));
       toast.success('Konfigurasi disimpan');
-      if (options.thenExport) stack.replace({ to: '/qrcode', search: { export: design.id } });
-      else stack.pop({ to: '/qrcode' });
+      // Ubah = kembali ke View asal; "Simpan dan ekspor" membuka dialog ekspor di View (`?export=1`).
+      if (options.thenExport) {
+        stack.replace({ to: '/qrcode/$designId', params: { designId }, search: { export: '1' } });
+      } else stack.pop({ to: '/qrcode/$designId', params: { designId } });
     } catch (error) {
       const picked = pickFieldErrors(error, QR_FIELD_KEYS);
       if (Object.keys(picked).length > 0) setFieldErrors(picked);
@@ -73,36 +79,30 @@ function EditQrDesignPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <QrDesignForm
-        title={`Ubah konfigurasi: ${design.title}`}
-        canExport={can(me, 'qrcode', 'edit')}
-        key={loadedAt}
-        defaultValues={toQrFormDefaults(loaded)}
-        initialDocument={
-          design.linkSource === 'pdf'
-            ? {
-                id: design.documentId,
-                name: design.documentName,
-                link: design.link,
-              }
-            : null
-        }
-        logoLibrary={defaults.logoFileIds}
-        updatePresets={defaults.presets}
-        edit={toEditContext(loaded)}
-        openItemHref={itemLinkAccess(me).openItemHref}
-        canCreateItem={itemLinkAccess(me).canCreate}
-        canOpenDeletedItem={itemLinkAccess(me).canOpenDeleted}
-        submitError={submitError}
-        fieldErrors={fieldErrors}
-        onSubmit={handleSubmit}
-        onCancel={() => stack.pop({ to: '/qrcode' })}
-      />
-      <VersionHistory
-        designId={design.id}
-        canViewImages={can(me, 'sticker', 'view') || can(me, 'item', 'view')}
-      />
-    </div>
+    <QrDesignFormPage
+      title={`Ubah konfigurasi: ${design.title}`}
+      canExport={can(me, 'qrcode', 'edit')}
+      key={loadedAt}
+      defaultValues={toQrFormDefaults(loaded)}
+      initialDocument={
+        design.linkSource === 'pdf'
+          ? {
+              id: design.documentId,
+              name: design.documentName,
+              link: design.link,
+            }
+          : null
+      }
+      logoLibrary={defaults.logoFileIds}
+      updatePresets={defaults.presets}
+      edit={toEditContext(loaded)}
+      openItemHref={itemLinkAccess(me).openItemHref}
+      canCreateItem={itemLinkAccess(me).canCreate}
+      canOpenDeletedItem={itemLinkAccess(me).canOpenDeleted}
+      submitError={submitError}
+      fieldErrors={fieldErrors}
+      onSubmit={handleSubmit}
+      onCancel={() => stack.pop({ to: '/qrcode/$designId', params: { designId } })}
+    />
   );
 }

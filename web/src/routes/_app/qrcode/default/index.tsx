@@ -30,7 +30,7 @@ import { LogoLibraryField } from '@/modules/qrcode/components/logo-library-field
 import {
   qrDefaultsQueryOptions,
   useClonePreset,
-  useDeleteQrPreset,
+  useRemoveQrPresets,
   useSaveQrLogoLibrary,
 } from '@/modules/qrcode/queries';
 
@@ -81,7 +81,7 @@ function QrPresetsPage() {
   const navigate = useNavigate();
   const { data: defaults } = useSuspenseQuery(qrDefaultsQueryOptions());
   const { data: businessUnits } = useSuspenseQuery(businessUnitOptionsQueryOptions());
-  const remove = useDeleteQrPreset();
+  const remove = useRemoveQrPresets();
   const clone = useClonePreset();
   const [deleting, setDeleting] = useState<QrPresetDto | null>(null);
   const [cloning, setCloning] = useState<QrPresetDto | null>(null);
@@ -216,7 +216,7 @@ function QrPresetsPage() {
               onClick={() => {
                 if (!deleting) return;
                 remove.mutate(
-                  { id: deleting.id },
+                  { ids: [deleting.id] },
                   {
                     onSuccess: () => toast.success('Konfigurasi default dihapus'),
                     onError: (error) => toast.error(describeError(error)),

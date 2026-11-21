@@ -75,14 +75,29 @@ export function serialItemCreateAccess(me: MeDto | null | undefined) {
 }
 
 /**
- * Konfigurasi QR Manual Book milik item (detail item): tautan ke halaman ubah konfigurasi, jadi butuh `qrcode: edit`
- * (sama dengan rute `/qrcode/$designId/edit`).
+ * Konfigurasi QR Manual Book milik item (detail item): tautan ke halaman LIHAT konfigurasi (`/qrcode/$designId`),
+ * jadi cukup `qrcode: view` (redesain fase 4b: setiap model punya View; sebelumnya ke halaman ubah, `qrcode: edit`).
  */
 export function manualBookLinkAccess(me: MeDto | null | undefined) {
   return {
-    openManualBookHref: can(me, 'qrcode', 'edit')
-      ? (designId: string) => `/qrcode/${encodeURIComponent(designId)}/edit`
+    openManualBookHref: can(me, 'qrcode', 'view')
+      ? (designId: string) => `/qrcode/${encodeURIComponent(designId)}`
       : undefined,
+  };
+}
+
+/**
+ * Preset QR ("Default QR") pada field relasi: menunya hanya untuk pengelola (`qrcode: manage`, seperti halaman
+ * `/qrcode/default`), jadi View preset dan baris "Tambah preset" juga `qrcode: manage` (rute `qrcodes.savePreset`).
+ * Dialog Tambah: `QrPresetFormDialog` (keputusan pemilik 18).
+ */
+export function qrPresetLinkAccess(me: MeDto | null | undefined) {
+  const manage = can(me, 'qrcode', 'manage');
+  return {
+    openPresetHref: manage
+      ? (presetId: string) => `/qrcode/default/${encodeURIComponent(presetId)}`
+      : undefined,
+    canCreate: manage,
   };
 }
 

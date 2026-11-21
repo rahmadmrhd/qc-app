@@ -269,7 +269,7 @@ const withManualBook: ItemDto = {
 test('tab Manual Book & Postel: nama, versi, status, dan tautan bila diberi', async () => {
   await renderView({
     item: withManualBook,
-    openManualBookHref: (id) => `/qrcode/${id}/edit`,
+    openManualBookHref: (id) => `/qrcode/${id}`,
   });
   await openTab('Manual Book & Postel');
   expect(screen.getByRole('heading', { name: 'Manual Book' })).toBeInTheDocument();
@@ -277,7 +277,7 @@ test('tab Manual Book & Postel: nama, versi, status, dan tautan bila diberi', as
   expect(screen.getByText('v2')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'Buka konfigurasi QR' })).toHaveAttribute(
     'href',
-    '/qrcode/d1/edit',
+    '/qrcode/d1',
   );
 });
 

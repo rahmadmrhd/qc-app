@@ -122,10 +122,15 @@ function sourceFiles(dir: string): string[] {
   return files;
 }
 
-/** Nilai `data-tour` literal dalam satu teks sumber: `data-tour="x"` atau `data-tour={'x'}`. */
+/**
+ * Nilai `data-tour` literal dalam satu teks sumber: `data-tour="x"` atau `data-tour={'x'}`, juga prop kerangka
+ * halaman yang meneruskannya ke `data-tour` (`tour`, `actionsTour`, `saveTour` pada `ListPage`/`FormPage`, dan
+ * `tour: 'x'` pada `createAction`).
+ */
 function extractDataTour(text: string): string[] {
-  const pattern = /data-tour=(?:"([^"]+)"|\{\s*['"`]([^'"`$]+)['"`]\s*\})/g;
-  return [...text.matchAll(pattern)].map((match) => match[1] ?? match[2] ?? '');
+  const pattern =
+    /(?:data-tour|\btour|actionsTour|saveTour)=(?:"([^"]+)"|\{\s*['"`]([^'"`$]+)['"`]\s*\})|\btour:\s*['"]([^'"`$]+)['"]/g;
+  return [...text.matchAll(pattern)].map((match) => match[1] ?? match[2] ?? match[3] ?? '');
 }
 
 /** Semua nilai `data-tour` yang dipasang di sumber web (bukan berkas tes). */
@@ -323,6 +328,15 @@ describe('pemeriksa menangkap pelanggaran (contoh salah)', () => {
     expect(
       extractDataTour('<a data-tour="satu" /><b data-tour={\'dua\'} /><c data-tour={x} />'),
     ).toEqual(['satu', 'dua']);
+  });
+
+  test('pemindai juga membaca prop kerangka halaman yang meneruskan data-tour', () => {
+    expect(
+      extractDataTour(
+        '<ListPage tour="qr-header" createAction={{ label: "x", tour: \'qr-new\' }} />' +
+          '<FormPage saveTour="qr-save" actionsTour={"aksi"} />',
+      ),
+    ).toEqual(['qr-header', 'qr-new', 'qr-save', 'aksi']);
   });
 
   test('klip: berkas ada, tidak ada, dan tanpa berkas lolos', () => {

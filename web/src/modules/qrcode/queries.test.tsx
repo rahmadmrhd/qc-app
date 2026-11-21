@@ -9,8 +9,11 @@ import {
   qrKeys,
   refreshQrDesign,
   useClonePreset,
-  useDeleteQrDesign,
   useExportQrDesign,
+  useRemoveQrDesigns,
+  useRemoveQrPresets,
+  useRestoreQrDesigns,
+  useRestoreQrPresets,
   useSaveQrDesign,
   useUploadQrPdf,
 } from './queries';
@@ -48,19 +51,74 @@ test('simpan QR: hasil dipasang ke daftar dan detail tanpa memuat ulang; mutasi 
   expect(client.getQueryData(qrKeys.one('b'))).toEqual(saved);
 });
 
-test('hapus QR: dibuang dari daftar dan detail tanpa memuat ulang', async () => {
+test('hapus QR (batch): keluar dari daftar hidup tanpa memuat ulang; detail ditandai basi, bukan dibuang', async () => {
   client.setQueryData(qrKeys.list, [design('a', 'A', 't'), design('b', 'B', 't')]);
   client.setQueryData(qrKeys.one('a'), design('a', 'A', 't'));
-  apiMock.mockResolvedValue({ id: 'a' });
-  const { result } = renderHook(() => useDeleteQrDesign(), { wrapper });
+  apiMock.mockResolvedValue({ ids: ['a'] });
+  const { result } = renderHook(() => useRemoveQrDesigns(), { wrapper });
   await act(async () => {
-    await result.current.mutateAsync({ id: 'a' });
+    await result.current.mutateAsync({ ids: ['a'] });
   });
   expect(apiMock).toHaveBeenCalledTimes(1);
+  expect(apiMock).toHaveBeenCalledWith('qrcodes.removeBatch', { ids: ['a'] });
   expect((client.getQueryData(qrKeys.list) as QrDesignDto[]).map((entry) => entry.id)).toEqual([
     'b',
   ]);
-  expect(client.getQueryData(qrKeys.one('a'))).toBeUndefined();
+  // Hapus lunak: rekamannya masih ada (View bagi pemulih), jadi detail tidak dibuang.
+  expect(client.getQueryData(qrKeys.one('a'))).toBeDefined();
+  expect(client.getQueryState(qrKeys.one('a'))?.isInvalidated).toBe(true);
+});
+
+test('pulihkan QR (batch): kembali ke daftar hidup, keluar dari daftar terhapus, detail diperbarui', async () => {
+  const restored = design('a', 'A', '2026-10-09T00:00:00.000Z');
+  client.setQueryData(qrKeys.list, [design('b', 'B', '2026-10-01T00:00:00.000Z')]);
+  client.setQueryData(qrKeys.listDeleted, [design('a', 'A', 't')]);
+  apiMock.mockResolvedValue({ items: [restored] });
+  const { result } = renderHook(() => useRestoreQrDesigns(), { wrapper });
+  await act(async () => {
+    await result.current.mutateAsync({ ids: ['a'] });
+  });
+  expect(apiMock).toHaveBeenCalledWith('qrcodes.restoreBatch', { ids: ['a'] });
+  expect((client.getQueryData(qrKeys.list) as QrDesignDto[]).map((entry) => entry.id)).toEqual([
+    'a',
+    'b',
+  ]);
+  expect(client.getQueryData(qrKeys.listDeleted)).toEqual([]);
+  expect(client.getQueryData(qrKeys.one('a'))).toEqual(restored);
+});
+
+test('hapus dan pulihkan preset (batch): cache defaults dan detail preset mengikuti hasil', async () => {
+  const preset = (id: string, name: string) => ({ id, name }) as never;
+  client.setQueryData(qrKeys.defaults, {
+    presets: [preset('a', 'Alfa'), preset('b', 'Bravo')],
+    logoFileIds: [],
+    logoUpdatedAt: '',
+  });
+  client.setQueryData(qrKeys.defaultsDeleted, {
+    presets: [preset('c', 'Charlie')],
+    logoFileIds: [],
+    logoUpdatedAt: '',
+  });
+  apiMock.mockResolvedValueOnce({ ids: ['a'] });
+  const remove = renderHook(() => useRemoveQrPresets(), { wrapper });
+  await act(async () => {
+    await remove.result.current.mutateAsync({ ids: ['a'] });
+  });
+  expect(apiMock).toHaveBeenCalledWith('qrcodes.removePresetBatch', { ids: ['a'] });
+  const afterRemove = client.getQueryData(qrKeys.defaults) as { presets: { id: string }[] };
+  expect(afterRemove.presets.map((entry) => entry.id)).toEqual(['b']);
+
+  apiMock.mockResolvedValueOnce({ items: [preset('c', 'Charlie')] });
+  const restore = renderHook(() => useRestoreQrPresets(), { wrapper });
+  await act(async () => {
+    await restore.result.current.mutateAsync({ ids: ['c'] });
+  });
+  expect(apiMock).toHaveBeenCalledWith('qrcodes.restorePresetBatch', { ids: ['c'] });
+  const live = client.getQueryData(qrKeys.defaults) as { presets: { id: string }[] };
+  expect(live.presets.map((entry) => entry.id)).toEqual(['b', 'c']);
+  const deleted = client.getQueryData(qrKeys.defaultsDeleted) as { presets: unknown[] };
+  expect(deleted.presets).toEqual([]);
+  expect(client.getQueryData(qrKeys.preset('c'))).toEqual(preset('c', 'Charlie'));
 });
 
 test('kloning preset: preset baru dipasang ke cache defaults urut nama tanpa memuat ulang', async () => {
@@ -125,10 +183,10 @@ test('simpan, ekspor, dan hapus QR menandai basi cache stiker dan item (tanpa me
       });
     },
     async () => {
-      apiMock.mockResolvedValue({ id: 'a' });
-      const { result } = renderHook(() => useDeleteQrDesign(), { wrapper });
+      apiMock.mockResolvedValue({ ids: ['a'] });
+      const { result } = renderHook(() => useRemoveQrDesigns(), { wrapper });
       await act(async () => {
-        await result.current.mutateAsync({ id: 'a' });
+        await result.current.mutateAsync({ ids: ['a'] });
       });
     },
   ]) {
