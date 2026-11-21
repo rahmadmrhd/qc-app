@@ -1,10 +1,11 @@
 import type { MeDto, SerialCaseRowDto } from '@shared/contract';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { pickLink, pickSelect } from '@/test/link-field';
+import { mockMatchMedia } from '@/test/match-media';
+import { renderInRouter } from '@/test/render-in-router';
 import { type CaseSearch, caseSearchSchema } from '../lib/case-filter';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -50,11 +51,9 @@ const PAGE_1 = [
 ];
 
 function Harness({
-  onOpen = () => undefined,
   initial = {},
   onReport,
 }: {
-  onOpen?: (serialId: string, caseId: string) => void;
   initial?: Record<string, unknown>;
   onReport?: () => void;
 }) {
@@ -63,27 +62,27 @@ function Harness({
     <CaseListPage
       search={search}
       onSearchChange={(patch) => setSearch((prev) => ({ ...prev, ...patch }))}
-      onOpen={onOpen}
       onReport={onReport}
     />
   );
 }
 
-function renderPage(
-  onOpen?: (serialId: string, caseId: string) => void,
-  initial?: Record<string, unknown>,
-  onReport?: () => void,
-) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <Harness
-        {...(onOpen ? { onOpen } : {})}
-        {...(initial ? { initial } : {})}
-        {...(onReport ? { onReport } : {})}
-      />
-    </QueryClientProvider>,
+function renderPage(initial?: Record<string, unknown>, onReport?: () => void) {
+  return renderInRouter(
+    <Harness {...(initial ? { initial } : {})} {...(onReport ? { onReport } : {})} />,
   );
+}
+
+let media: ReturnType<typeof mockMatchMedia> | undefined;
+afterEach(() => {
+  media?.restore();
+  media = undefined;
+  window.innerWidth = 1024;
+});
+
+/** Membuka popover chip filter (nama tombol = label chip, dengan atau tanpa nilai terisi). */
+async function openChip(label: string) {
+  await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${label}(:|$)`) }));
 }
 
 const listCalls = () => apiMock.mock.calls.filter((call) => call[0] === 'serialCases.list');
@@ -144,7 +143,7 @@ beforeEach(() => {
 });
 
 test('merender kolom laporan; filter bawaan = aktif (juga bagi tim servis murni)', async () => {
-  renderPage();
+  await renderPage();
   expect(await screen.findByText('LP/SBY/2611-0001')).toBeInTheDocument();
   expect(lastInput()).toEqual({ status: 'active' });
   const rows = screen.getAllByRole('row');
@@ -196,7 +195,7 @@ test('laporan tertutup menampilkan hasil, tanggal selesai, status sekarang, dan 
         })
       : Promise.reject(new Error(`api tak dikenal: ${id}`)),
   );
-  renderPage();
+  await renderPage();
   const line = (await screen.findByText('LP/SBY/2611-0009')).closest('tr') as HTMLElement;
   expect(within(line).getByText('Hasil: Rusak')).toBeInTheDocument();
   expect(within(line).getByText(/Selesai .* status sekarang Rusak/)).toBeInTheDocument();
@@ -205,20 +204,23 @@ test('laporan tertutup menampilkan hasil, tanggal selesai, status sekarang, dan 
 });
 
 test('filter status dan BU menjadi parameter; Semua laporan tanpa status', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('LP/SBY/2611-0001');
+  await openChip('Status');
   await pickSelect(screen, 'Filter status laporan', 'Laporan selesai');
   await waitFor(() => expect(lastInput()).toMatchObject({ status: 'closed' }));
   await pickSelect(screen, 'Filter status laporan', 'Semua laporan');
   await waitFor(() => expect(lastInput()).toEqual({}));
+  await openChip('BU');
   await pickLink(screen, 'Filter BU', 'BU2 · Dua');
   await waitFor(() => expect(lastInput()).toEqual({ buId: 'b2' }));
+  await openChip('Status');
   await pickSelect(screen, 'Filter status laporan', 'Laporan aktif');
   await waitFor(() => expect(lastInput()).toEqual({ status: 'active', buId: 'b2' }));
 });
 
 test('pencarian mengirim query awalan nomor LP atau serial setelah jeda', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('LP/SBY/2611-0001');
   fireEvent.change(screen.getByLabelText('Cari nomor LP atau Serial Number'), {
     target: { value: 'LP/SBY/2611' },
@@ -229,7 +231,7 @@ test('pencarian mengirim query awalan nomor LP atau serial setelah jeda', async 
 });
 
 test('muat berikutnya memakai kursor server', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('LP/SBY/2611-0001');
   await userEvent.click(screen.getByRole('button', { name: 'Muat lebih banyak' }));
   expect(await screen.findByText('LP/SBY/2611-0002')).toBeInTheDocument();
@@ -237,33 +239,65 @@ test('muat berikutnya memakai kursor server', async () => {
   expect(screen.queryByRole('button', { name: 'Muat lebih banyak' })).toBeNull();
 });
 
-test('klik nomor LP membuka detail serial pada tab laporan itu', async () => {
-  const onOpen = vi.fn();
-  renderPage(onOpen);
-  await userEvent.click(await screen.findByRole('button', { name: 'LP/SBY/2611-0004' }));
-  expect(onOpen).toHaveBeenCalledWith('s2', 'c2');
+test('nomor LP adalah tautan ke detail serial pada tab laporan itu', async () => {
+  await renderPage();
+  const link = await screen.findByRole('link', { name: 'LP/SBY/2611-0004' });
+  expect(link).toHaveAttribute('href', expect.stringContaining('/serial/s2'));
+  expect(link).toHaveAttribute('href', expect.stringContaining('case=c2'));
+  expect(link).toHaveAttribute('data-tour', 'case-open');
 });
 
 test('tombol Lapor Rusak ada di halaman Laporan bagi yang berhak menulis, dan menuju halaman lapor', async () => {
   const onReport = vi.fn();
-  const { unmount } = renderPage(undefined, undefined, onReport);
-  await userEvent.click(await screen.findByRole('button', { name: 'Lapor Rusak' }));
+  const { unmount } = await renderPage(undefined, onReport);
+  const button = await screen.findByRole('button', { name: 'Lapor Rusak' });
+  expect(button).toHaveAttribute('data-tour', 'case-report');
+  await userEvent.click(button);
   expect(onReport).toHaveBeenCalledTimes(1);
   unmount();
   // Tanpa hak menulis (hanya baca atau tim servis): tombol tidak tampil.
-  renderPage();
-  await screen.findByRole('button', { name: 'LP/SBY/2611-0004' });
+  await renderPage();
+  await screen.findByRole('link', { name: 'LP/SBY/2611-0004' });
   expect(screen.queryByRole('button', { name: 'Lapor Rusak' })).toBeNull();
+});
+
+test('tanpa pilihan massal: tidak ada checkbox; kolom cari tersedia', async () => {
+  await renderPage();
+  await screen.findByText('LP/SBY/2611-0001');
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(
+    screen.getByRole('searchbox', { name: 'Cari nomor LP atau Serial Number' }),
+  ).toBeInTheDocument();
+});
+
+test('ponsel (360 px): kartu dengan nomor LP sebagai judul, status sebagai badge, meta berlabel', async () => {
+  window.innerWidth = 360;
+  media = mockMatchMedia(false);
+  await renderPage();
+  await screen.findByRole('link', { name: 'LP/SBY/2611-0001' });
+  expect(screen.queryByRole('table')).toBeNull();
+  const card = screen.getAllByRole('listitem')[0] as HTMLElement;
+  expect(within(card).getByRole('link', { name: 'LP/SBY/2611-0001' })).toBeInTheDocument();
+  expect(within(card).getByText('Dilaporkan')).toBeInTheDocument();
+  expect(within(card).getByText('Cisco C9200')).toBeInTheDocument();
+  expect(within(card).getByText('Pelapor')).toBeInTheDocument();
+});
+
+test('target panduan: case-filters dan case-table ada', async () => {
+  await renderPage();
+  await screen.findByText('LP/SBY/2611-0001');
+  expect(document.querySelector('[data-tour="case-filters"]')).not.toBeNull();
+  expect(document.querySelector('[data-tour="case-table"]')).not.toBeNull();
 });
 
 test('daftar kosong menampilkan teks santai; galat memuat tampil sebagai pesan', async () => {
   apiMock.mockImplementation(() => Promise.resolve({ items: [], nextCursor: null }));
-  const { unmount } = renderPage();
+  const { unmount } = await renderPage();
   expect(await screen.findByText(/Belum ada laporan di sini/)).toBeInTheDocument();
   unmount();
   apiMock.mockImplementation(() => Promise.reject(new Error('putus')));
-  renderPage();
-  expect(await screen.findByRole('alert')).toHaveTextContent('Gagal memuat laporan');
+  await renderPage();
+  expect(await screen.findByRole('alert')).toHaveTextContent('Gagal memuat data');
 });
 
 test('search params tak sah dibuang; URL status=all dibaca', () => {
