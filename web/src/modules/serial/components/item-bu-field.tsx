@@ -4,7 +4,7 @@ import { proofMinimumOf } from '@shared/serials';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { LinkField, type LinkOption } from '@/components/link-field';
-import { serialItemCreateAccess } from '@/lib/link-access';
+import { businessUnitLinkAccess, itemLinkAccess, serialItemCreateAccess } from '@/lib/link-access';
 import { meQueryOptions } from '@/modules/auth/queries';
 import { useItemCreate } from '@/modules/item/components/item-create-host';
 import { serialBuOptionsQueryOptions, serialItemOptionsQueryOptions } from '../queries';
@@ -64,8 +64,9 @@ export function defaultBuForItem(
 /**
  * Item (`LinkField`, pencarian di server lewat `serials.itemOptions`) dan BU (`LinkField`, SELALU tampil dengan semua BU
  * yang boleh ditulis pengguna lewat `serials.buOptions`; BU serial tidak lagi dibatasi pada BU item). BU terisi dari item
- * sesuai `defaultBuForItem` dan boleh diganti ke BU mana pun. Tanpa Tambah/Buka: item dikelola di Data Item. Dirender
- * sebagai dua blok bersaudara (fragmen) agar pemanggil dapat menempatkannya dalam grid atau tumpukan form.
+ * sesuai `defaultBuForItem` dan boleh diganti ke BU mana pun. Tambah item hanya lewat `serialItemCreateAccess`; Buka ke
+ * View Item dan View BU hanya bila pengguna berhak (`itemLinkAccess`, `businessUnitLinkAccess`; aturan field relasi).
+ * Dirender sebagai dua blok bersaudara (fragmen) agar pemanggil dapat menempatkannya dalam grid atau tumpukan form.
  */
 export function ItemBuField({
   label,
@@ -84,7 +85,10 @@ export function ItemBuField({
   // Dialog Tambah item dirender tuan rumah di luar `<form>` pemanggil; field hanya meminta lewat `useItemCreate`.
   const itemCreate = useItemCreate();
   // Tanpa suspense: data pengguna sudah dimuat cangkang; bila belum, baris Tambah item sekadar tak tampil.
-  const create = serialItemCreateAccess(useQuery(meQueryOptions()).data);
+  const me = useQuery(meQueryOptions()).data;
+  const create = serialItemCreateAccess(me);
+  const openItemHref = itemLinkAccess(me).openItemHref;
+  const openBuHref = businessUnitLinkAccess(me).openBusinessUnitHref;
   const queryClient = useQueryClient();
   const { data, isFetching } = useQuery(serialItemOptionsQueryOptions(term.trim()));
   const { data: buData, isPending: buPending } = useQuery(serialBuOptionsQueryOptions());
@@ -176,6 +180,7 @@ export function ItemBuField({
                   })
               : undefined
           }
+          openHref={openItemHref}
           error={error}
           disabled={disabled ?? false}
         />
@@ -198,6 +203,7 @@ export function ItemBuField({
             const bu = buChoices.find((option) => option.id === id);
             onChange({ ...value, buId: bu?.id ?? '', buLabel: bu?.code ?? '' });
           }}
+          openHref={openBuHref}
           error={buError}
           disabled={disabled ?? false}
         />

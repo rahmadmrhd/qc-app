@@ -672,10 +672,7 @@ test('canManage dari server menentukan checkbox dan Hapus baris (serial yang per
   apiMock.mockImplementation((id: string) => {
     if (id === 'serials.list') {
       return Promise.resolve({
-        items: [
-          row({ canManage: true }),
-          row({ id: 's2', serial: 'XYZ789', canManage: false }),
-        ],
+        items: [row({ canManage: true }), row({ id: 's2', serial: 'XYZ789', canManage: false })],
         nextCursor: null,
       });
     }

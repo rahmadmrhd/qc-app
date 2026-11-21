@@ -255,3 +255,30 @@ test('field item nonaktif (disabled) tidak menawarkan Tambah item', async () => 
   );
   expect(screen.getByRole('combobox', { name: 'Item' })).toBeDisabled();
 });
+
+const FILLED: ItemBuValue = {
+  itemId: 'i1',
+  itemLabel: 'Cisco C9200',
+  buId: 'b1',
+  buLabel: 'BU1',
+  proofMin: 0,
+};
+
+test('Buka: Item ke View Item (item: view) dan BU ke View BU (access: view) hanya bila berhak', async () => {
+  renderField(FILLED, makeMe({ itemLevel: 'view', permissions: { access: 'view' } }));
+  expect(await screen.findByRole('link', { name: 'Buka Item' })).toHaveAttribute(
+    'href',
+    '/item/i1',
+  );
+  expect(screen.getByRole('link', { name: 'Buka Business Unit' })).toHaveAttribute(
+    'href',
+    '/access/business-units/b1',
+  );
+});
+
+test('tanpa hak lihat: tidak ada tautan Buka untuk Item maupun BU', async () => {
+  renderField(FILLED, makeMe({ itemLevel: 'none', permissions: { access: 'none' } }));
+  expect(await screen.findByRole('combobox', { name: 'Item' })).toBeInTheDocument();
+  expect(screen.queryByRole('link', { name: 'Buka Item' })).toBeNull();
+  expect(screen.queryByRole('link', { name: 'Buka Business Unit' })).toBeNull();
+});
