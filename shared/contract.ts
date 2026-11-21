@@ -1849,6 +1849,11 @@ export interface SerialSummaryDto {
   createdAt: string;
   /** Ada hanya pada serial terhapus (soft delete), hanya bagi pemegang hak Pulihkan; jejak penghapusan. */
   deleted?: SoftDeleteInfo;
+  /**
+   * Hanya pada daftar (`serials.list`): pemanggil boleh Hapus/Pulihkan serial ini (`serial: manage` pada SEMUA BU
+   * riwayatnya, dihitung server). Isyarat tampilan; server tetap berwenang.
+   */
+  canManage?: boolean;
 }
 /** Laporan rusak (`serial_cases`): satu episode kegagalan. */
 export interface SerialCaseDto {

@@ -94,6 +94,29 @@ export async function involvedBuIds(db: Preparer, serialId: string): Promise<str
   return rows.results.map((row) => row.bu_id.trim());
 }
 
+/** `involvedBuIds` untuk banyak serial sekaligus (satu kueri): id serial -> BU yang pernah memegangnya (BU saat ini ikut). */
+export async function involvedBuIdsMany(
+  db: Preparer,
+  serialIds: readonly string[],
+): Promise<Map<string, string[]>> {
+  const result = new Map<string, Set<string>>();
+  if (serialIds.length === 0) return new Map();
+  const marks = serialIds.map(() => '?').join(', ');
+  const rows = await db
+    .prepare(
+      `SELECT serial_id AS id, bu_id FROM serial_business_units WHERE serial_id IN (${marks}) UNION SELECT id, bu_id FROM serials WHERE id IN (${marks})`,
+    )
+    .bind(...serialIds, ...serialIds)
+    .all<{ id: string; bu_id: string }>();
+  for (const row of rows.results) {
+    const id = row.id.trim();
+    const set = result.get(id) ?? new Set<string>();
+    set.add(row.bu_id.trim());
+    result.set(id, set);
+  }
+  return new Map([...result].map(([id, set]) => [id, [...set]]));
+}
+
 /**
  * Pernyataan pemindahan BU untuk `batch()` yang sama dengan kejadian cek ulang:
  *  1. memastikan baris BU asal ada (serial tanpa baris penghubung karena image lama),

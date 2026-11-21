@@ -56,8 +56,15 @@ import {
   type SerialStatus,
   splitSerialInput,
 } from '@shared/serials';
-import { canWriteBu, readableBuIds, restorableSerialsSql, writableBuIds } from './access';
+import {
+  canManageSerial,
+  canWriteBu,
+  readableBuIds,
+  restorableSerialsSql,
+  writableBuIds,
+} from './access';
 import { applicableStickersOf } from './applicable';
+import { involvedBuIdsMany } from './bu-history';
 import { loadCases, type SerialCaseRow } from './case-repo';
 import { canManageProof } from './proof/access';
 import { loadStampItemInfo, planProofAttach } from './proof/attach';
@@ -854,8 +861,21 @@ export async function listSerials(
   const rows = await listSerialRows(env.DB, filter);
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
+  // `canManage` (hak Hapus/Pulihkan; aditif): `serial: manage` pada SEMUA BU riwayat tiap serial, jadi klien tak menebak
+  // dari BU saat ini saja. Tanpa BU ber-`manage` sama sekali, semuanya `false` tanpa kueri riwayat.
+  const mayManage = buIdsWithLevel(user.businessUnits, 'serial', 'manage').length > 0;
+  const involved = mayManage
+    ? await involvedBuIdsMany(
+        env.DB,
+        page.map((row) => row.id.trim()),
+      )
+    : new Map<string, string[]>();
   return {
-    items: page.map(toSummary),
+    items: page.map((row) => ({
+      ...toSummary(row),
+      canManage:
+        mayManage && canManageSerial(user, involved.get(row.id.trim()) ?? [row.bu_id.trim()]),
+    })),
     nextCursor: rows.length > limit && last ? encodeSerialCursor(last) : null,
   };
 }

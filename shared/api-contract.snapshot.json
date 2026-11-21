@@ -364,6 +364,7 @@
     "query": {
       "cursor": "string",
       "customerId": "string",
+      "deleted": "boolean",
       "limit": "number",
       "locationIds": "list",
       "status": "string"
@@ -396,9 +397,22 @@
     }
   },
   {
+    "id": "handovers.remove",
+    "verb": "DELETE",
+    "path": "/handovers/{id}",
+    "query": {
+      "locationId": "string"
+    }
+  },
+  {
     "id": "handovers.reopen",
     "verb": "POST",
     "path": "/handovers/{id}/reopen"
+  },
+  {
+    "id": "handovers.restore",
+    "verb": "POST",
+    "path": "/handovers/{id}/restore"
   },
   {
     "id": "handovers.save",
@@ -875,6 +889,7 @@
       "createdBy": "string",
       "cursor": "string",
       "custody": "string",
+      "deleted": "boolean",
       "from": "string",
       "itemId": "string",
       "limit": "number",
@@ -904,9 +919,29 @@
     "path": "/serials/lookup-many"
   },
   {
+    "id": "serials.remove",
+    "verb": "DELETE",
+    "path": "/serials/{id}"
+  },
+  {
+    "id": "serials.removeBatch",
+    "verb": "POST",
+    "path": "/serials/batch/delete"
+  },
+  {
     "id": "serials.reportNew",
     "verb": "POST",
     "path": "/serials/report"
+  },
+  {
+    "id": "serials.restore",
+    "verb": "POST",
+    "path": "/serials/{id}/restore"
+  },
+  {
+    "id": "serials.restoreBatch",
+    "verb": "POST",
+    "path": "/serials/batch/restore"
   },
   {
     "id": "serials.saveBatch",

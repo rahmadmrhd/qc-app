@@ -218,6 +218,26 @@ describe('serials.remove (hapus lunak)', () => {
     expect((await remove('sn1', MGR_AB)).ok).toBe(true);
     expect((await stateOf('sn1')).deleted_at).toBe(NOW);
   });
+
+  test('serials.list membawa canManage: manage pada SEMUA BU riwayat, bukan hanya BU saat ini', async () => {
+    await seedSerial(env, { id: 'sn-b', serial: 'SN-B', buId: 'bu-b', itemId: 'i-b' });
+    await seedSerial(env, { id: 'sn-hist', serial: 'SN-H', buId: 'bu-b', itemId: 'i-b' });
+    await env.DB.prepare(
+      "INSERT INTO serial_business_units (serial_id, bu_id, first_at, left_at) VALUES ('sn-hist', 'bu-a', '2026-11-01T00:00:00.000Z', '2026-11-10T00:00:00.000Z')",
+    ).run();
+    const flags = async (email: string): Promise<Record<string, boolean | undefined>> => {
+      const out = await call(email, 'serials.list', {});
+      expect(out.ok).toBe(true);
+      return Object.fromEntries(
+        (out.data.items as Json[]).map((item) => [item.id as string, item.canManage]),
+      );
+    };
+    // Manage hanya di BU B: SN-B ya; SN-H pernah di BU A, jadi tidak (cocok dengan NOT_FOUND server pada Hapus).
+    expect(await flags(MGR_B)).toEqual({ 'sn-b': true, 'sn-hist': false });
+    expect(await flags(MGR_AB)).toEqual({ 'sn-b': true, 'sn-hist': true });
+    // Pencatat tanpa manage: semuanya false (bukan hilang), jadi klien tak menebak.
+    expect(Object.values(await flags(WRITER)).every((value) => value === false)).toBe(true);
+  });
 });
 
 describe('penyaringan serial terhapus di pembaca', () => {
