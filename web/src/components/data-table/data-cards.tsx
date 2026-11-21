@@ -40,6 +40,8 @@ interface DataCardsProps<T> {
   isSelectable?: ((row: T) => boolean) | undefined;
   actions?: ((row: T) => readonly RowAction[]) | undefined;
   isLoading?: boolean | undefined;
+  /** Klik badan kartu membuka detail (B9); `undefined` untuk baris itu = kartu tak dapat diklik. Nonaktif saat mode pilih. */
+  openOf?: ((row: T) => (() => void) | undefined) | undefined;
 }
 
 /**
@@ -58,6 +60,7 @@ export function DataCards<T>({
   isSelectable,
   actions,
   isLoading,
+  openOf,
 }: DataCardsProps<T>) {
   const roles = resolveMobileRoles(columns);
   const { selecting, bind, exit } = useLongPressSelect(selection, true);
@@ -113,6 +116,7 @@ export function DataCards<T>({
                     id: 'select',
                     action: 'select',
                     label: `Pilih ${nameOf(row)}`,
+                    shortLabel: 'Pilih',
                     onSelect: () => selection.toggle(id),
                   },
                 ]
@@ -127,6 +131,7 @@ export function DataCards<T>({
             <MobileCard
               key={id}
               selected={isSelected}
+              {...(!selecting && openOf?.(row) ? { onOpen: openOf(row) } : {})}
               rootProps={{
                 className:
                   selection && selectable

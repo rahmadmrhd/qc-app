@@ -87,6 +87,6 @@ test('ponsel (360 px): kartu dengan nama sebagai judul; aksi lewat satu tombol m
   expect(screen.queryByRole('button', { name: 'Hapus M5-400' })).toBeNull();
   await userEvent.click(screen.getByRole('button', { name: /Aksi/ }));
   const menu = await screen.findByRole('menu');
-  await userEvent.click(within(menu).getByRole('menuitem', { name: /Hapus M5-400/ }));
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Hapus' }));
   expect(onDelete).toHaveBeenCalledTimes(1);
 });

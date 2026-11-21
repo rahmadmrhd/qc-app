@@ -144,6 +144,7 @@ export function BrandsManager({
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${brand.name}`,
+          shortLabel: 'Pulihkan',
           hidden: !canManage,
           busy,
           onSelect: () => onRestore(brand),
@@ -155,6 +156,7 @@ export function BrandsManager({
         id: 'edit',
         action: 'edit',
         label: `Ubah ${brand.name}`,
+        shortLabel: 'Ubah',
         hidden: !canEdit,
         onSelect: () => onEdit(brand),
       },
@@ -162,6 +164,7 @@ export function BrandsManager({
         id: 'status',
         action: brand.status === 'active' ? 'deactivate' : 'activate',
         label: `${brand.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'} ${brand.name}`,
+        shortLabel: brand.status === 'active' ? 'Nonaktifkan' : 'Aktifkan',
         hidden: !canManage,
         busy,
         onSelect: () => onToggleStatus(brand),
@@ -170,6 +173,7 @@ export function BrandsManager({
         id: 'delete',
         action: 'delete',
         label: `Hapus ${brand.name}`,
+        shortLabel: 'Hapus',
         // Hanya merk Nonaktif yang dapat dihapus (server: "Nonaktifkan merk dulu sebelum dihapus").
         hidden: !canManage || brand.status !== 'inactive',
         busy,
@@ -184,6 +188,7 @@ export function BrandsManager({
       rowKey={(brand) => brand.id}
       columns={columns}
       label="Daftar merk"
+      rowTo={(brand) => ({ to: '/item/brands/$brandId', params: { brandId: brand.id } })}
       selectLabel={(brand) => brand.name}
       selection={selection}
       actions={actions}

@@ -151,6 +151,7 @@ export function UsersTable({
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${user.email}`,
+          shortLabel: 'Pulihkan',
           hidden: !canManage,
           busy,
           onSelect: () => onRestore(user),
@@ -162,6 +163,7 @@ export function UsersTable({
         id: 'edit',
         action: 'edit',
         label: `Ubah ${user.email}`,
+        shortLabel: 'Ubah',
         hidden: !canManage,
         onSelect: () => onEdit(user),
       },
@@ -169,6 +171,7 @@ export function UsersTable({
         id: 'status',
         action: user.status === 'active' ? 'deactivate' : 'activate',
         label: `${user.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'} ${user.email}`,
+        shortLabel: user.status === 'active' ? 'Nonaktifkan' : 'Aktifkan',
         hidden: !canManage,
         busy,
         disabled: statusLock !== undefined && user.status === 'active',
@@ -179,6 +182,7 @@ export function UsersTable({
         id: 'delete',
         action: 'delete',
         label: `Hapus ${user.email}`,
+        shortLabel: 'Hapus',
         // Hanya pengguna Nonaktif yang dapat dihapus; akun sendiri dan super admin tetap tampil sebagai aksi
         // nonaktif beralasan.
         hidden: !canManage || (user.status !== 'inactive' && !protectedUser),
@@ -196,6 +200,7 @@ export function UsersTable({
       rowKey={(user) => user.id}
       columns={columns}
       label="Daftar pengguna"
+      rowTo={(user) => ({ to: '/access/users/$userId', params: { userId: user.id } })}
       selectLabel={(user) => user.email}
       selection={selection}
       actions={canManage ? actions : undefined}

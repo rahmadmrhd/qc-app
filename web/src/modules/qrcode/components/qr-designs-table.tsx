@@ -246,6 +246,7 @@ export function QrDesignsTable({
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${label}`,
+          shortLabel: 'Pulihkan',
           hidden: !canManage,
           busy,
           onSelect: () => onRestore(design),
@@ -258,6 +259,7 @@ export function QrDesignsTable({
         id: 'edit',
         action: 'edit',
         label: `Ubah ${label}`,
+        shortLabel: 'Ubah',
         hidden: !canEdit,
         disabled: busy,
         onSelect: () => onEdit(design),
@@ -266,6 +268,7 @@ export function QrDesignsTable({
         id: 'export',
         action: 'export',
         label: `${exported ? 'Ekspor ulang' : 'Ekspor'} ${label}`,
+        shortLabel: exported ? 'Ekspor ulang' : 'Ekspor',
         hidden: !canEdit,
         // Isi label yang tidak muat di kanvas 3 × 3 cm tak dapat diekspor sampai konfigurasinya diperbaiki.
         disabled: busy || design.overflow,
@@ -275,6 +278,7 @@ export function QrDesignsTable({
         id: 'download-pdf',
         action: 'download',
         label: `Unduh PDF ${label}`,
+        shortLabel: 'Unduh PDF',
         hidden: !exported,
         disabled: busy,
         onSelect: () => onDownload(design, 'pdf'),
@@ -283,6 +287,7 @@ export function QrDesignsTable({
         id: 'download-png',
         action: 'download',
         label: `Unduh PNG ${label}`,
+        shortLabel: 'Unduh PNG',
         hidden: !exported,
         disabled: busy,
         onSelect: () => onDownload(design, 'png'),
@@ -291,6 +296,7 @@ export function QrDesignsTable({
         id: 'delete',
         action: 'delete',
         label: `Hapus ${label}`,
+        shortLabel: 'Hapus',
         hidden: !canManage,
         busy,
         onSelect: () => onDelete(design),
@@ -304,6 +310,7 @@ export function QrDesignsTable({
       rowKey={(design) => design.id}
       columns={columns}
       label="Daftar konfigurasi QR"
+      rowTo={(design) => ({ to: '/qrcode/$designId', params: { designId: design.id } })}
       selectLabel={nameOf}
       selection={selection}
       actions={actions}

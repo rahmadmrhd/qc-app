@@ -124,6 +124,7 @@ export function QrPresetsPage({
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${preset.name}`,
+          shortLabel: 'Pulihkan',
           busy,
           onSelect: () => onRestore(preset),
         },
@@ -134,6 +135,7 @@ export function QrPresetsPage({
         id: 'edit',
         action: 'edit',
         label: `Ubah ${preset.name}`,
+        shortLabel: 'Ubah',
         disabled: busy,
         onSelect: () => onEdit(preset),
       },
@@ -141,6 +143,7 @@ export function QrPresetsPage({
         id: 'clone',
         action: 'copy',
         label: `Kloning ${preset.name}`,
+        shortLabel: 'Kloning',
         disabled: busy,
         onSelect: () => onClone(preset),
       },
@@ -148,6 +151,7 @@ export function QrPresetsPage({
         id: 'delete',
         action: 'delete',
         label: `Hapus ${preset.name}`,
+        shortLabel: 'Hapus',
         busy,
         onSelect: () => onDelete(preset),
       },
@@ -160,6 +164,7 @@ export function QrPresetsPage({
       rowKey={(preset) => preset.id}
       columns={columns}
       label="Daftar konfigurasi default QR"
+      rowTo={(preset) => ({ to: '/qrcode/default/$presetId', params: { presetId: preset.id } })}
       selectLabel={(preset) => preset.name}
       selection={selection}
       actions={actions}

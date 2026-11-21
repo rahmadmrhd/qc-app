@@ -823,8 +823,8 @@ test('ponsel (360 px): kartu dengan serial sebagai judul, status sebagai badge, 
   expect(screen.queryByRole('button', { name: 'Hapus ABC123' })).toBeNull();
   await userEvent.click(within(card).getByRole('button', { name: /Aksi ABC123/ }));
   const menu = await screen.findByRole('menu');
-  expect(within(menu).getByRole('menuitem', { name: /Hapus ABC123/ })).toBeInTheDocument();
-  expect(within(menu).getByRole('menuitem', { name: /Ubah ABC123/ })).toBeInTheDocument();
+  expect(within(menu).getByRole('menuitem', { name: 'Hapus' })).toBeInTheDocument();
+  expect(within(menu).getByRole('menuitem', { name: 'Ubah' })).toBeInTheDocument();
 });
 
 test('target panduan: serial-new pada tombol Tambah, serial-table dan serial-filters ada', async () => {

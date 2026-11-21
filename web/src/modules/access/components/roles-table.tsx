@@ -105,6 +105,7 @@ export function RolesTable({
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${role.name}`,
+          shortLabel: 'Pulihkan',
           hidden: !canManage,
           busy,
           onSelect: () => onRestore(role),
@@ -116,6 +117,7 @@ export function RolesTable({
         id: 'edit',
         action: 'edit',
         label: `Ubah ${role.name}`,
+        shortLabel: 'Ubah',
         hidden: !canManage,
         onSelect: () => onEdit(role),
       },
@@ -123,6 +125,7 @@ export function RolesTable({
         id: 'delete',
         action: 'delete',
         label: `Hapus ${role.name}`,
+        shortLabel: 'Hapus',
         hidden: !canManage,
         busy,
         disabled: role.userCount > 0,
@@ -138,6 +141,7 @@ export function RolesTable({
       rowKey={(role) => role.id}
       columns={columns}
       label="Daftar role"
+      rowTo={(role) => ({ to: '/access/roles/$roleId', params: { roleId: role.id } })}
       selectLabel={(role) => role.name}
       selection={selection}
       actions={canManage ? actions : undefined}

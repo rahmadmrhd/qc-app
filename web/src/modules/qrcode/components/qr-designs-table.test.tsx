@@ -231,6 +231,6 @@ test('ponsel (360 px): kartu dengan nama sebagai judul; aksi lewat satu tombol m
   expect(screen.queryByRole('button', { name: 'Ubah Panduan USW' })).toBeNull();
   await userEvent.click(screen.getByRole('button', { name: /Aksi/ }));
   const menu = await screen.findByRole('menu');
-  await userEvent.click(within(menu).getByRole('menuitem', { name: /Ubah Panduan USW/ }));
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Ubah' }));
   expect(onEdit).toHaveBeenCalledTimes(1);
 });

@@ -125,6 +125,7 @@ export function PostelsTable({
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${postel.name}`,
+          shortLabel: 'Pulihkan',
           hidden: !canEdit,
           busy,
           onSelect: () => onRestore(postel),
@@ -136,6 +137,7 @@ export function PostelsTable({
         id: 'edit',
         action: 'edit',
         label: `Ubah ${postel.name}`,
+        shortLabel: 'Ubah',
         hidden: !canEdit,
         disabled: busy,
         onSelect: () => onEdit(postel),
@@ -144,6 +146,7 @@ export function PostelsTable({
         id: 'delete',
         action: 'delete',
         label: `Hapus ${postel.name}`,
+        shortLabel: 'Hapus',
         hidden: !canEdit,
         busy,
         onSelect: () => onDelete(postel),
@@ -157,6 +160,7 @@ export function PostelsTable({
       rowKey={(postel) => postel.id}
       columns={columns}
       label="Daftar catatan Postel"
+      rowTo={(postel) => ({ to: '/postel/$postelId', params: { postelId: postel.id } })}
       selectLabel={(postel) => postel.name}
       selection={selection}
       actions={actions}

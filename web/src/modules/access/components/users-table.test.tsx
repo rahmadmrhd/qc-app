@@ -209,7 +209,7 @@ test('360 px: kartu berjudul email, badge status, meta Nama/Penugasan; aksi lewa
   expect(within(card).getByText('Jakarta')).toBeInTheDocument();
   expect(within(card).getByText('Akun bersama')).toBeInTheDocument();
   await userEvent.click(within(card).getByRole('button', { name: 'Aksi a@x.com' }));
-  await userEvent.click(await screen.findByRole('menuitem', { name: 'Ubah a@x.com' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Ubah' }));
   expect(onEdit).toHaveBeenCalled();
 });
 

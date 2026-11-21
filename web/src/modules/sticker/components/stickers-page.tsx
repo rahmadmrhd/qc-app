@@ -529,6 +529,7 @@ export function StickersPage({
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${row.label}`,
+          shortLabel: 'Pulihkan',
           // Stiker jenis sistem dipulihkan lewat induknya (Desain QR/Postel): server selalu menolaknya di sini.
           hidden: !canManage || systemKind !== '',
           busy,
@@ -548,6 +549,7 @@ export function StickersPage({
         id: 'edit',
         action: 'edit',
         label: `Ubah ${row.label}`,
+        shortLabel: 'Ubah',
         hidden: !canEdit,
         onSelect: () => setDialog(catalog),
       },
@@ -555,6 +557,7 @@ export function StickersPage({
         id: 'status',
         action: catalog.status === 'inactive' ? 'activate' : 'deactivate',
         label: `${catalog.status === 'inactive' ? 'Aktifkan' : 'Nonaktifkan'} ${row.label}`,
+        shortLabel: catalog.status === 'inactive' ? 'Aktifkan' : 'Nonaktifkan',
         hidden: !canManage || !canToggle,
         busy,
         onSelect: () => onToggleStatus(catalog),
@@ -563,6 +566,7 @@ export function StickersPage({
         id: 'delete',
         action: 'delete',
         label: `Hapus ${row.label}`,
+        shortLabel: 'Hapus',
         // Hanya stiker bukan Aktif yang dapat dihapus, dan bukan stiker jenis sistem (mengikuti konfigurasinya).
         hidden: !canManage || catalog.status === 'active' || systemKind !== '',
         busy,
@@ -719,6 +723,11 @@ export function StickersPage({
           rowKey={(row) => row.id}
           columns={columns}
           label="Daftar stiker"
+          rowTo={(row) =>
+            row.catalog
+              ? { to: '/sticker/$stickerId', params: { stickerId: row.catalog.id } }
+              : null
+          }
           selectLabel={(row) => row.label}
           selection={bulkSelection}
           actions={catalogMode ? actions : undefined}

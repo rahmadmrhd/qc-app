@@ -172,7 +172,7 @@ test('desktop: satu tombol ikon per aksi, tanpa menu', async () => {
   expect(screen.queryByRole('button', { name: 'Aksi Asus' })).toBeNull();
 });
 
-test('ponsel: kartu bertumpuk (tanpa tabel); satu tombol "Aksi <nama>" membuka menu berisi tiap aksi', async () => {
+test('ponsel: kartu bertumpuk (tanpa tabel); satu tombol "Aksi <nama>" membuka menu berlabel singkat tiap aksi', async () => {
   mockWidth(false);
   render(<Harness />);
   expect(screen.queryByRole('table')).toBeNull();
@@ -180,8 +180,8 @@ test('ponsel: kartu bertumpuk (tanpa tabel); satu tombol "Aksi <nama>" membuka m
   expect(screen.queryByRole('button', { name: 'Ubah Asus' })).toBeNull();
   await userEvent.click(screen.getByRole('button', { name: 'Aksi Asus' }));
   const menu = await screen.findByRole('menu');
-  expect(within(menu).getByRole('menuitem', { name: 'Ubah Asus' })).toBeInTheDocument();
-  expect(within(menu).getByRole('menuitem', { name: 'Hapus Asus' })).toBeInTheDocument();
+  expect(within(menu).getByRole('menuitem', { name: 'Ubah' })).toBeInTheDocument();
+  expect(within(menu).getByRole('menuitem', { name: 'Hapus' })).toBeInTheDocument();
   await userEvent.keyboard('{Escape}');
 });
 

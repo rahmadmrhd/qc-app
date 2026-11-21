@@ -258,6 +258,7 @@ export function StickerTypesPage({
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${type.name}`,
+          shortLabel: 'Pulihkan',
           hidden: !canManage,
           busy,
           onSelect: () => void restoreRow(type),
@@ -269,6 +270,7 @@ export function StickerTypesPage({
         id: 'edit',
         action: 'edit',
         label: `Ubah ${type.name}`,
+        shortLabel: 'Ubah',
         hidden: !canEdit,
         onSelect: () => setDialog(type),
       },
@@ -276,6 +278,7 @@ export function StickerTypesPage({
         id: 'status',
         action: type.status === 'active' ? 'deactivate' : 'activate',
         label: `${type.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'} ${type.name}`,
+        shortLabel: type.status === 'active' ? 'Nonaktifkan' : 'Aktifkan',
         hidden: !canManage,
         busy,
         onSelect: () => onToggleStatus(type),
@@ -284,6 +287,7 @@ export function StickerTypesPage({
         id: 'delete',
         action: 'delete',
         label: `Hapus ${type.name}`,
+        shortLabel: 'Hapus',
         // Hanya jenis Nonaktif yang dapat dihapus (server: "Nonaktifkan jenis stiker dulu sebelum dihapus").
         hidden: !canManage || type.status !== 'inactive',
         busy,
@@ -365,6 +369,7 @@ export function StickerTypesPage({
           rowKey={(type) => type.id}
           columns={columns}
           label="Daftar jenis stiker"
+          rowTo={(type) => ({ to: '/sticker/types/$typeId', params: { typeId: type.id } })}
           selectLabel={(type) => type.name}
           selection={bulkSelection}
           rowSelectable={(type) => type.systemKind === ''}

@@ -275,6 +275,7 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${name}`,
+          shortLabel: 'Pulihkan',
           hidden: !manageable(serial),
           busy,
           onSelect: () => restoreRow(serial),
@@ -286,6 +287,7 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
         id: 'edit',
         action: 'edit',
         label: `Ubah ${name}`,
+        shortLabel: 'Ubah',
         hidden: !editableBuIds.has(serial.buId),
         busy,
         onSelect: () => editRow(serial),
@@ -294,6 +296,7 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
         id: 'delete',
         action: 'delete',
         label: `Hapus ${name}`,
+        shortLabel: 'Hapus',
         hidden: !manageable(serial),
         busy,
         onSelect: () => setDeleteTarget({ kind: 'row', serial }),
@@ -350,6 +353,7 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
             rowKey={(serial) => serial.id}
             columns={columns}
             label="Daftar Serial Number"
+            rowTo={(serial) => ({ to: '/serial/$serialId', params: { serialId: serial.id } })}
             selectLabel={(serial) => serial.serial}
             selection={manageAny ? selection : undefined}
             rowSelectable={manageable}

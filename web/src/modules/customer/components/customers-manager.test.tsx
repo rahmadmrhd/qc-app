@@ -125,6 +125,6 @@ test('360 px: kartu berjudul nama customer dengan badge status; aksi lewat menu 
   expect(within(card).getByRole('link', { name: 'PT Maju' })).toBeInTheDocument();
   expect(within(card).getByText('Aktif')).toBeInTheDocument();
   await userEvent.click(within(card).getByRole('button', { name: 'Aksi PT Maju' }));
-  await userEvent.click(await screen.findByRole('menuitem', { name: 'Ubah PT Maju' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Ubah' }));
   expect(onEdit).toHaveBeenCalled();
 });

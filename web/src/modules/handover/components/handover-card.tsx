@@ -93,9 +93,10 @@ function LazyNote({ handover, children }: { handover: HandoverDto; children: Rea
 }
 
 /**
- * Kartu task (anatomi `MobileCard`): SELURUH catatan tampil (tanpa dipotong) dengan centang langsung. Detail hanya
- * dibuka lewat nomor task atau opsi Ubah (badan kartu tidak bisa diklik, agar tidak salah klik saat mencentang atau
- * memilih teks). Task terhapus (tampilan Terhapus) hanya-baca dengan satu aksi: Pulihkan.
+ * Kartu task (anatomi `MobileCard`): SELURUH catatan tampil (tanpa dipotong) dengan centang langsung. Detail dibuka
+ * lewat nomor task, opsi Ubah, atau klik badan kartu (keputusan pemilik 2026-11-22, spek B9; menggantikan "badan
+ * kartu tidak bisa diklik"). Klik pada centang, komposer komentar, tombol, tautan, ⋯, atau saat teks diseleksi TIDAK
+ * membuka detail (`isCardOpenClick`). Task terhapus (tampilan Terhapus) hanya-baca dengan satu aksi: Pulihkan.
  */
 export function HandoverCard({
   handover: serverHandover,
@@ -187,6 +188,7 @@ export function HandoverCard({
       <MobileCard
         as="div"
         rootProps={{ role: 'article', 'aria-label': `Task ${handover.number}` }}
+        onOpen={onOpen}
         className={cn(
           'space-y-3 text-card-foreground',
           framed
