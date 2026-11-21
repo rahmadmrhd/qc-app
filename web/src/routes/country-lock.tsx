@@ -59,7 +59,7 @@ function CountryLockRoute() {
     );
   }
   return (
-    <div className="flex min-h-svh flex-col bg-muted/40">
+    <div className="flex min-h-svh flex-col bg-background">
       <UiUpdateBanner />
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b bg-background px-4">
         <span className="font-semibold">Country Lock</span>
