@@ -10,10 +10,13 @@ const SERIAL_EDIT: GuidePermission = { module: 'serial', level: 'edit' };
  * mencentang sendiri. Daftar target `data-tour` ada di komentar tiap panduan.
  *
  * Banner per halaman (`halaman`, satu banner pada satu waktu, urutan katalog): `/serial` dan `/serial/new` ditangani
- * panduan masing-masing, sedangkan `/serial/report(s)` dan `/serial/settings` dikecualikan dari panduan `/serial`
- * (`SERIAL_LIST_EXCEPT`) agar banner daftar tidak muncul di halaman lain.
+ * panduan masing-masing, sedangkan `/serial/report(s)`, `/serial/settings`, dan halaman detail `/serial/$serialId`
+ * dikecualikan dari panduan `/serial` (`SERIAL_LIST_EXCEPT`) agar banner daftar tidak muncul di halaman lain. Detail
+ * serial adalah `ViewPage` bertab (Detail, Riwayat, Foto bukti): hanya tab aktif yang dirender, jadi langkah yang
+ * menyorot isi tab lain memakai `buka: { tab }` (mesin tur membuka tabnya lewat jalur pilih tab yang sama).
  */
 const SERIAL_LIST_EXCEPT = [
+  '/serial/$serialId',
   '/serial/new',
   '/serial/report',
   '/serial/reports',
@@ -54,8 +57,8 @@ export const SERIAL_DAFTAR: GuideEntry = {
 
 /**
  * Detail satu Serial Number, dibuka dari baris pertama daftar (langkah `click`). Target: `serial-open`
- * (`serial-list-page.tsx`); `serial-stepper`, `serial-actions`, `serial-timeline` (`serial-detail-page.tsx`,
- * `act-buttons.tsx`, `timeline-tabs.tsx`). Semua langkah detail bergantung data, jadi ber-`teksJikaKosong`.
+ * (`serial-list-page.tsx`); `serial-stepper` (tab Detail), `serial-actions`, `serial-timeline` (tab Riwayat)
+ * (`serial-detail-page.tsx`, `act-buttons.tsx`, `timeline-tabs.tsx`). Semua langkah detail bergantung data, jadi ber-`teksJikaKosong`.
  */
 export const SERIAL_DETAIL: GuideEntry = {
   id: 'serial-detail',
@@ -78,20 +81,23 @@ export const SERIAL_DETAIL: GuideEntry = {
     },
     {
       target: 'serial-stepper',
-      text: 'Baris tahap menunjukkan posisi unit dalam penanganan, dari Lolos sampai Lolos atau Rusak. Tahap yang menyala adalah status unit sekarang.',
+      buka: { tab: 'detail' },
+      text: 'Di tab Detail, baris tahap menunjukkan posisi unit dalam penanganan, dari Lolos sampai Lolos atau Rusak. Tahap yang menyala adalah status unit sekarang.',
       teksJikaKosong:
-        'Di detail serial ada baris tahap: Lolos, Dilaporkan, Di servis, Diagnosis, Sedang diperbaiki, Menunggu cek ulang, lalu Lolos atau Rusak. Tahap yang menyala adalah status unit sekarang.',
+        'Di tab Detail serial ada baris tahap: Lolos, Dilaporkan, Di servis, Diagnosis, Sedang diperbaiki, Menunggu cek ulang, lalu Lolos atau Rusak. Tahap yang menyala adalah status unit sekarang.',
       advance: 'next',
     },
     {
       target: 'serial-actions',
-      text: 'Tombol update di sebelah judul Riwayat berubah mengikuti status dan posisi unit, dan hanya menampilkan yang boleh kamu kerjakan: Lapor rusak, Kirim ke servis, Terima, Diagnosis, Cek ulang, atau Catatan.',
+      buka: { tab: 'riwayat' },
+      text: 'Di tab Riwayat, tombol update di atas linimasa berubah mengikuti status dan posisi unit, dan hanya menampilkan yang boleh kamu kerjakan: Lapor rusak, Kirim ke servis, Terima, Diagnosis, Cek ulang, atau Catatan.',
       teksJikaKosong:
-        'Di detail serial, tombol update ada di sebelah judul Riwayat. Isinya berubah mengikuti status dan posisi unit, dan hanya yang boleh kamu kerjakan; tanpa aksi yang cocok, tombolnya tidak tampil.',
+        'Di detail serial, tombol update ada di tab Riwayat, di atas linimasa. Isinya berubah mengikuti status dan posisi unit, dan hanya yang boleh kamu kerjakan; tanpa aksi yang cocok, tombolnya tidak tampil.',
       advance: 'next',
     },
     {
       target: 'serial-actions',
+      buka: { tab: 'riwayat' },
       text: 'Alurnya: QC melaporkan lalu Kirim ke servis. Tim servis Terima, Diagnosis, Sedang diperbaiki, lalu Selesai (kembali ke QC) atau Nyatakan rusak. QC Terima lalu Cek ulang: lolos menutup laporan, tidak lolos membuatnya tetap terbuka.',
       teksJikaKosong:
         'Alurnya: QC melaporkan lalu Kirim ke servis. Tim servis Terima, Diagnosis, Sedang diperbaiki, lalu Selesai (kembali ke QC) atau Nyatakan rusak. QC Terima lalu Cek ulang: lolos menutup laporan, tidak lolos membuatnya tetap terbuka.',
@@ -99,6 +105,7 @@ export const SERIAL_DETAIL: GuideEntry = {
     },
     {
       target: 'serial-timeline',
+      buka: { tab: 'riwayat' },
       text: 'Riwayat dibagi per tab: Semua, satu tab per laporan (mis. LP/SBY/2611-0001), Pengecekan, dan Perubahan data. Tiap kejadian jadi satu kartu di bawahnya dan yang terbaru ditandai.',
       teksJikaKosong:
         'Riwayat di detail serial dibagi per tab: Semua, satu tab per laporan (mis. LP/SBY/2611-0001), Pengecekan, dan Perubahan data. Tiap kejadian jadi satu kartu dan yang terbaru ditandai.',
