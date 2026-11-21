@@ -20,7 +20,7 @@ import { ProofReplaceProvider } from '../lib/proof-replace-context';
 import { hasPendingProof, PROOF_POLL_MS } from '../lib/proof-state';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import { serialDetailQueryOptions, useRemoveSerials, useRestoreSerials } from '../queries';
-import { ActButtons, type ActKind } from './act-buttons';
+import { ActButtons, type ActKind, canReportDamage } from './act-buttons';
 import { ActDialog } from './act-dialog';
 import { CustodyPanel } from './custody-panel';
 import { EditSerialDialog } from './edit-serial-dialog';
@@ -230,6 +230,10 @@ export function SerialDetailPage({
   const deleted = serial.deleted !== undefined;
   const canWrite = buIdsWithLevelOf(me, 'serial', 'edit').includes(serial.buId);
   const photos = allProofPhotos(events, problemPhotos);
+  const canReport = canReportDamage(
+    { status: serial.status, custody: serial.custody },
+    serialActorModules(me, serial.buId),
+  );
 
   const detailTab = (
     <div className="space-y-6">
@@ -299,9 +303,18 @@ export function SerialDetailPage({
         }
         actionItems={[
           {
+            // Lapor rusak di sebelah Ubah di semua ukuran layar (desktop: bar judul; ponsel: bar bawah) (P7).
+            id: 'report',
+            action: 'reportDamage',
+            primary: true,
+            hidden: !canReport || deleted,
+            onSelect: () => setActing('report'),
+          },
+          {
             id: 'edit',
             action: 'edit',
             label: 'Ubah data',
+            primary: true,
             hidden: !canWrite || deleted,
             onSelect: () => setEditing(true),
           },

@@ -57,15 +57,26 @@ export function actButtonSpecs(state: SerialFlowState, actor: ActorModules): Act
   });
 }
 
+/**
+ * Lapor rusak tersedia menurut tabel transisi. Tombolnya tidak ada di `ActButtons`: ia memakai `ACTIONS.reportDamage`
+ * dan ditaruh di sebelah Ubah pada bar judul View (bar bawah ponsel), di semua ukuran layar (P7).
+ */
+export function canReportDamage(state: SerialFlowState, actor: ActorModules): boolean {
+  return actButtonSpecs(state, actor).some((spec) => spec.kind === 'report');
+}
+
 export interface ActButtonsProps {
   state: SerialFlowState;
   actor: ActorModules;
   onPick: (kind: ActKind) => void;
 }
 
-/** Baris tombol update di sebelah judul "Riwayat": satu tombol per aksi yang tersedia. Tanpa aksi, tidak tampil. */
+/**
+ * Baris tombol update di sebelah judul "Riwayat": satu tombol per aksi yang tersedia, KECUALI Lapor rusak (ada di
+ * bar judul View, `canReportDamage`). Tanpa aksi, tidak tampil.
+ */
 export function ActButtons({ state, actor, onPick }: ActButtonsProps) {
-  const specs = actButtonSpecs(state, actor);
+  const specs = actButtonSpecs(state, actor).filter((spec) => spec.kind !== 'report');
   if (specs.length === 0) return null;
   return (
     <fieldset
@@ -78,8 +89,8 @@ export function ActButtons({ state, actor, onPick }: ActButtonsProps) {
           key={spec.kind}
           type="button"
           size="sm"
-          variant={spec.kind === 'report' ? 'soft' : 'outline'}
-          color={spec.kind === 'report' ? 'destructive' : 'primary'}
+          variant="outline"
+          color="primary"
           onClick={() => onPick(spec.kind)}
         >
           {spec.label}

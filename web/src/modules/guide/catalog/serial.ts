@@ -90,7 +90,7 @@ export const SERIAL_DETAIL: GuideEntry = {
     {
       target: 'serial-actions',
       buka: { tab: 'riwayat' },
-      text: 'Di tab Riwayat, tombol update di atas linimasa berubah mengikuti status dan posisi unit, dan hanya menampilkan yang boleh kamu kerjakan: Lapor rusak, Kirim ke servis, Terima, Diagnosis, Cek ulang, atau Catatan.',
+      text: 'Di tab Riwayat, tombol update di atas linimasa berubah mengikuti status dan posisi unit, dan hanya menampilkan yang boleh kamu kerjakan: Kirim ke servis, Terima, Diagnosis, Cek ulang, atau Catatan. Lapor rusak ada di bar judul (bar bawah di ponsel), di samping Ubah data.',
       teksJikaKosong:
         'Di detail serial, tombol update ada di tab Riwayat, di atas linimasa. Isinya berubah mengikuti status dan posisi unit, dan hanya yang boleh kamu kerjakan; tanpa aksi yang cocok, tombolnya tidak tampil.',
       advance: 'next',

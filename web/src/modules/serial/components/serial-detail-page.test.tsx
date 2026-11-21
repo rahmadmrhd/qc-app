@@ -363,7 +363,7 @@ test('tombol update di baris Riwayat sesuai status; Catatan membuka dialog dan m
     within(group)
       .getAllByRole('button')
       .map((button) => button.textContent),
-  ).toEqual(['Lapor rusak', 'Cek ulang', 'Catatan']);
+  ).toEqual(['Cek ulang', 'Catatan']);
   // Tombol berada di baris yang sama dengan judul Riwayat.
   const section = screen.getByRole('region', { name: 'Riwayat' });
   expect(section).toContainElement(group);
@@ -390,6 +390,35 @@ test('tombol update di baris Riwayat sesuai status; Catatan membuka dialog dan m
   await waitFor(() => expect(screen.getAllByText('Terbaru')).toHaveLength(1));
   const newest = document.querySelector('[data-seq="4"]') as HTMLElement;
   expect(within(newest).getByText('Terbaru')).toBeInTheDocument();
+});
+
+test('Lapor rusak = ActionButton di sebelah Ubah data (bar judul), bukan di baris Riwayat; membuka dialog laporan', async () => {
+  await renderPage();
+  const report = await screen.findByRole('button', { name: 'Lapor rusak' });
+  const edit = screen.getByRole('button', { name: 'Ubah data' });
+  // Sebelum Ubah data, di bar judul yang sama.
+  expect(report.parentElement).toBe(edit.parentElement);
+  expect(report.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  const group = screen.getByRole('group', { name: 'Update baru' });
+  expect(within(group).queryByRole('button', { name: 'Lapor rusak' })).toBeNull();
+  await userEvent.click(report);
+  expect(await screen.findByRole('dialog', { name: /Lapor rusak/ })).toBeInTheDocument();
+});
+
+test('Lapor rusak tidak ada bila aksi report_failure tak tersedia (sudah Dilaporkan) atau serial terhapus', async () => {
+  state = {
+    ...state,
+    serial: {
+      ...SERIAL,
+      status: 'reported',
+      openCaseId: 'c1',
+      openCaseNumber: 'LP/SBY/2611-0001',
+      openCase: CASE_DTO,
+    },
+  };
+  await renderPage();
+  expect(await screen.findByRole('button', { name: 'Ubah data' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Lapor rusak' })).toBeNull();
 });
 
 test('pengguna serial: view tidak melihat tombol update maupun tombol ubah', async () => {
