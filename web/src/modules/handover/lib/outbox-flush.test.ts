@@ -345,6 +345,8 @@ const failures: Array<[string, unknown, StoppedBy, 'tetap' | 'dibuang']> = [
   ['FORBIDDEN', err('FORBIDDEN', 'ditolak'), 'none', 'dibuang'],
   ['NOT_FOUND', err('NOT_FOUND', 'ditolak'), 'none', 'dibuang'],
   ['VALIDATION', err('VALIDATION', 'ditolak'), 'none', 'dibuang'],
+  // 426 dari badan problem+json (fase 3 versi API): klien ini tak pernah bisa mengirimnya, jadi dibuang dengan alasan jelas.
+  ['CLIENT_OUTDATED', err('CLIENT_OUTDATED', 'ditolak'), 'none', 'dibuang'],
 ];
 
 for (const kind of ['check', 'comment', 'create'] as const) {

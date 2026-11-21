@@ -26,7 +26,16 @@ import {
   pathParamNames,
   routeShape,
 } from '@shared/api';
-import { parseApiId, restBase } from '@shared/api-versions';
+import {
+  API_GROUP_VERSIONS,
+  apiGroup,
+  type GroupVersions,
+  matchRetiredRoute,
+  parseApiId,
+  RETIRED_ROUTES,
+  type RetiredRoute,
+  restBase,
+} from '@shared/api-versions';
 import type { ApiId } from '@shared/contract';
 import type { Context } from 'hono';
 import type { Hono } from 'hono/tiny';
@@ -167,7 +176,31 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
   });
 }
 
-function handlerFor(operation: Operation, routes: RouteTable) {
+/** Kebijakan versi yang dipakai pemasangan rute: versi tiap kelompok dan rute yang sudah dihapus. */
+export interface RestPolicy {
+  groups: Record<string, GroupVersions>;
+  retired: readonly RetiredRoute[];
+}
+
+const DEFAULT_POLICY: RestPolicy = { groups: API_GROUP_VERSIONS, retired: RETIRED_ROUTES };
+
+/** Versi id ini sudah ditandai deprecated oleh kelompoknya (`Deprecation: true` pada semua responsnya). */
+function isDeprecatedId(id: string, policy: RestPolicy): boolean {
+  const info = policy.groups[apiGroup(id)];
+  return info?.deprecated.includes(parseApiId(id).version) === true;
+}
+
+function handlerFor(operation: Operation, routes: RouteTable, policy: RestPolicy) {
+  const inner = innerHandlerFor(operation, routes);
+  if (!isDeprecatedId(operation.id, policy)) return inner;
+  return async (c: Context<AppBindings>): Promise<Response> => {
+    const response = await inner(c);
+    response.headers.set('deprecation', 'true');
+    return response;
+  };
+}
+
+function innerHandlerFor(operation: Operation, routes: RouteTable) {
   const { id, def, created, verb, status } = operation;
   return async (c: Context<AppBindings>): Promise<Response> => {
     const meta: RouteMeta = { requestId: newRequestId() };
@@ -286,9 +319,28 @@ export function registerRest(
   routes: RouteTable,
   version = 1,
   table: Record<string, ApiRouteDef> = API_ROUTES,
+  policy: RestPolicy = DEFAULT_POLICY,
 ): void {
   for (const operation of listOperations(version, table)) {
-    app.on(operation.verb, honoPath(operation.path), handlerFor(operation, routes));
+    app.on(operation.verb, honoPath(operation.path), handlerFor(operation, routes, policy));
   }
-  app.all('*', () => restNotFound());
+  // Rute yang sudah dihapus dijawab 426 di sini, SEBELUM authorize: rutenya tak terdaftar lagi, jadi tak ada sesi atau
+  // izin yang bisa diperiksa dan klien lama (tanpa sesi sekalipun) tetap tahu ia perlu diperbarui. `csrfGuard` di
+  // tingkat `/api/*` sudah berjalan lebih dulu, jadi tulis tanpa header CSRF tetap 403 seperti rute lain.
+  app.all('*', (c) => {
+    const base = restBase(version);
+    const path = c.req.path.startsWith(base) ? c.req.path.slice(base.length) : c.req.path;
+    if (matchRetiredRoute(policy.retired, c.req.method, version, path) !== null) {
+      return problemResponse(
+        toProblem(
+          appError(
+            'CLIENT_OUTDATED',
+            'Versi aplikasi ini sudah tidak didukung. Muat ulang atau perbarui aplikasi.',
+          ),
+          newRequestId(),
+        ),
+      );
+    }
+    return restNotFound();
+  });
 }

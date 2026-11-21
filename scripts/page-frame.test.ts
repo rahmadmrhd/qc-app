@@ -22,6 +22,8 @@ const ROUTE_EXCEPTIONS: Record<string, string> = {
   '_app/index.tsx':
     'Beranda: sapaan, info panduan, dan peluncur ponsel (`Launcher`); bukan halaman data CRUD.',
   '_app/forbidden.tsx': 'Pesan status 403 (`StatusMessage`); tanpa data atau aksi.',
+  '_app/desktop.tsx':
+    'Aplikasi Desktop (hanya peramban): halaman informasi daftar unduhan dari fase versi API; judul sendiri di dalam `PageContainer` cangkang, bukan halaman data CRUD.',
   '_app/sticker/stock.tsx':
     'Hanya pengalihan ke /sticker (Stok Stiker digabung ke halaman Stiker); tidak merender halaman.',
   'country-lock.tsx':

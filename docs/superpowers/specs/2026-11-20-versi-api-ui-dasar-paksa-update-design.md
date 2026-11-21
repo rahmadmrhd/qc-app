@@ -1,6 +1,6 @@
 # Versi API per kelompok, UI dasar yang lebih baru menang, dan paksa pembaruan klien
 
-Status: **Disetujui pemilik 2026-11-20 (desain); implementasi dipecah: rencana `2026-11-20-versi-api-ui-dasar.md` untuk fase 1, 2, 4 dan rencana terpisah untuk fase 3.** Keputusan pemilik ada di bagian 3; penyimpangan rencana dari spek dicatat di bagian 11. Fase 1, 2, dan 4 sudah dibangun (lihat bagian 11); fase 3 (deprecated dan paksa pembaruan) belum.
+Status: **Disetujui pemilik 2026-11-20 (desain); implementasi dipecah: rencana `2026-11-20-versi-api-ui-dasar.md` untuk fase 1, 2, 4 dan rencana terpisah untuk fase 3.** Keputusan pemilik ada di bagian 3; penyimpangan rencana dari spek dicatat di bagian 11. Fase 1, 2, dan 4 sudah dibangun (lihat bagian 11); fase 3 (deprecated dan paksa pembaruan) dibangun 2026-11-20 lewat `2026-11-20-versi-api-fase3-design.md` (rencana `docs/superpowers/plans/2026-11-20-versi-api-fase3.md`; lihat bagian 11).
 
 ## 1. Maksud dan alasan
 Server dan klien dirilis di waktu yang berbeda: desktop memuat UI dasar dari installer (dan UI terbaru dari server), tab web
@@ -159,11 +159,13 @@ berdampingan lewat `restClient`. Uji perangkat nyata: pembaruan paksa installer 
    keputusan 2-4 membuat UI lebih baru selalu aman, tetapi UI dasar bisa menang atas bundel server yang sebenarnya lebih baru secara kode.
    Akibat turunannya (rollback server ke build <= UI dasar menurunkan desktop ke UI dasar) sudah diputuskan pemilik: butir 8 bagian 3.
 2. **Jeda minimum deprecated → hapus:** "rilis berikutnya" bisa hanya beberapa jam setelah rilis sebelumnya (hotfix), padahal antrean
-   offline hidup 24 jam. Usulan perancang: `release:prepare server` menolak penghapusan bila potret yang menandai deprecated
-   berumur < 24 jam (nilai bisa diperpanjang oleh pemilik).
-3. **Sumber `minClient`:** konstanta di kode (usulan) atau variabel lingkungan; konstanta menjaga perubahan lewat PR yang bisa ditinjau.
-4. **Peta `apis` saat desktop offline:** salinan terakhir tersimpan (usulan, `localStorage`/IndexedDB); klien baru yang belum pernah
-   online memakai v1.
+   offline hidup 24 jam. **DITUTUP 2026-11-20 (keputusan pemilik produk, `2026-11-20-versi-api-fase3-design.md` bagian 3 dan 5b butir 2):**
+   `release:prepare server` menolak penghapusan bila rilis yang menandai deprecated berumur < 24 jam (`REMOVAL_MIN_AGE_MS`); ditegakkan
+   hanya di mode rilis `tag`, mode `langsung` dijaga manual oleh pemilik.
+3. **Sumber `minClient`:** **DITUTUP 2026-11-20 (keputusan pemilik produk):** konstanta di kode (`MIN_CLIENT` di `shared/api-versions.ts`,
+   nilai awal `0.0.0`), bukan variabel lingkungan, agar perubahan lewat PR yang bisa ditinjau.
+4. **Peta `apis` saat desktop offline:** **DITUTUP 2026-11-20 (keputusan pemilik produk):** salinan terakhir tersimpan di `localStorage`
+   (`qc.api.apis`, ditambah `qc.api.minClient`); klien baru yang belum pernah online memakai v1.
 5. Rute di luar `API_ROUTES` (`/api/desktop/*`, `/auth/*`, publik) belum punya mekanisme versi; tetap lewat aturan kompatibel mundur manual.
 
 ## 11. Catatan implementasi (2026-11-20)
@@ -186,8 +188,10 @@ Yang sudah dibangun:
   `PROXY_ALLOW`) mengizinkan `/api/v<n>/`.
 - Fase 4 (kebijakan kerja): `CLAUDE.md` dan `docs/adding-a-module.md` (bagian "Mengubah kontrak yang merusak").
 
-Yang belum dibangun: `deprecated` (header `Deprecation`, spanduk), `RETIRED_ROUTES` yang menjawab 426 `CLIENT_OUTDATED`,
-`minClient` di `/api/ping`, layar penahan desktop, pemuatan paksa web, dan integrasi potret ke `release:prepare` (semuanya fase 3).
+Fase 3 (dibangun 2026-11-20, dokumen `2026-11-20-versi-api-fase3-design.md`): `deprecated` (header `Deprecation`, spanduk web),
+`RETIRED_ROUTES` yang menjawab 426 `CLIENT_OUTDATED`, `minClient` di `/api/ping`, layar penahan desktop, pemuatan paksa web,
+penanganan 426 di antrean offline, dan integrasi potret ke `release:prepare` beserta pagar 24 jam. Yang belum dibangun: rute v2 pertama
+dan `FEATURE_REQUIRES`/`useFeature` (dibuat saat ada perubahan merusak nyata).
 
 Penyimpangan dari rancangan:
 1. Tidak ada field `version?` di `ApiRouteDef` (bagian 6.2). Versi diturunkan dari akhiran id `<idDasar>@<n>` (`parseApiId`),
@@ -202,8 +206,9 @@ Penyimpangan dari rancangan:
    `servers` `[{ url: '/api' }]` pada path item itu (`serversFor`); v1 tak berubah (server dokumen `/api/v1`). Menggantikan skema
    sementara akhiran `?v=N`, yang tidak sah menurut OAS 3.1 (kunci Paths Object tak boleh memuat query string); diputuskan
    setelah review akhir 2026-11-20.
-5. Integrasi potret kontrak ke `release:prepare` dipindah ke fase 3. Sementara potret diperbarui manual lewat
-   `bun run api:snapshot` (dan dicek lewat `bun run api:snapshot --check`).
+5. Integrasi potret kontrak ke `release:prepare` dipindah ke fase 3 (sudah dibangun 2026-11-20: `release:prepare server` membuat
+   ulang potret dan menjalankan pagar 24 jam; potret menjadi metadata rilis server). Untuk perubahan harian, potret tetap diperbarui
+   manual lewat `bun run api:snapshot` (dan dicek lewat `bun run api:snapshot --check`).
 6. Di luar rancangan, untuk konsistensi: `server/src/app.ts` memeriksa `isServerPath` SEBELUM `staticDir`, sehingga `/api/v2/*`
    yang tak dikenal menjawab 404 (bukan 500 saat tanpa `c.env`). `ui-bundle.ts` mengosongkan ETag saat peluncuran bila tak ada
    bundel yang dipegang, agar pemeriksaan pertama tidak menjawab 304 atas manifest yang bundelnya sudah dibuang.
@@ -218,5 +223,5 @@ Penyimpangan dari rancangan:
    berjalan; `current` ikut dijaga `prune()` dan `prune()` dipanggil di awal peluncuran agar direktori yatim terhapus. Pertanyaan
    terbuka terkait: tidak ada yang tersisa.
 
-Keputusan pemilik yang dicatat di sini: bagian 3 (2026-11-20). Pertanyaan terbuka bagian 10 belum diputuskan, kecuali yang
-tercakup oleh bagian 3.
+Keputusan pemilik yang dicatat di sini: bagian 3 (2026-11-20). Pertanyaan terbuka bagian 10 butir 2 sampai 4 ditutup pada
+2026-11-20 oleh pemilik produk lewat keputusan fase 3 (lihat butir-butirnya di atas); butir 1 dan 5 tetap sebagaimana tertulis.

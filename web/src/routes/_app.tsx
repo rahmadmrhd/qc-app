@@ -1,5 +1,5 @@
 import { createFileRoute, redirect } from '@tanstack/react-router';
-import { AppShell } from '@/app/shell/app-shell';
+import { AppLayout } from '@/app/shell/app-layout';
 import { ApiError } from '@/lib/api/api-error';
 import { meQueryOptions } from '@/modules/auth/queries';
 import { clearSession, isAuthenticated } from '@/modules/auth/session';
@@ -18,5 +18,5 @@ export const Route = createFileRoute('/_app')({
       throw error;
     }
   },
-  component: AppShell,
+  component: AppLayout,
 });

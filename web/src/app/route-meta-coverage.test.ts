@@ -73,6 +73,7 @@ const DEFAULT_WIDTH = [
   '/access/users/$userId',
   '/customer',
   '/customer/$customerId',
+  '/desktop',
   '/forbidden',
   '/handover/$handoverId',
   '/item',

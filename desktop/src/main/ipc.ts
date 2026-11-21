@@ -17,6 +17,7 @@ import {
   type PackageDto,
   type PingResult,
   type RouterInfoResult,
+  type UpdateNowResult,
 } from '@countrylock/bridge-contract';
 import type { ConnectTarget, PingKind } from '@countrylock/inject-plan';
 import type { AddResult, PendingEntry } from '@countrylock/pending';
@@ -75,6 +76,15 @@ export interface IpcDeps {
   };
   /** Menerapkan bundel UI siap dan memuat ulang jendela (proses utama yang memutuskan boleh/tidaknya). */
   ui: { reload(): Promise<void> };
+  /**
+   * Pembaruan aplikasi untuk layar penahan (jembatan v10). `update()` mengembalikan hasil terkontrol (tanpa dialog);
+   * `openDownloads()` membuka halaman unduhan di peramban sistem dengan alamat dari pengaturan (bukan dari renderer).
+   */
+  app: {
+    version(): string;
+    update(): Promise<UpdateNowResult>;
+    openDownloads(): Promise<void>;
+  };
   /** Kirim progres ke renderer (`webContents.send(INJECT_PROGRESS_EVENT, ...)`). */
   emitProgress(event: { id: string } & InjectProgressDto): void;
   /**
@@ -240,6 +250,26 @@ export function registerIpc(deps: IpcDeps): IpcHandle {
   handle(BRIDGE_CHANNELS.uiReload, async (_event, ...args) => {
     parseArgs(BRIDGE_ARGS.uiReload, args);
     await deps.ui.reload();
+  });
+
+  handle(BRIDGE_CHANNELS.appVersion, async (_event, ...args): Promise<string> => {
+    parseArgs(BRIDGE_ARGS.appVersion, args);
+    return deps.app.version();
+  });
+
+  handle(BRIDGE_CHANNELS.appUpdate, async (_event, ...args): Promise<UpdateNowResult> => {
+    parseArgs(BRIDGE_ARGS.appUpdate, args);
+    return deps.app.update();
+  });
+
+  handle(BRIDGE_CHANNELS.appOpenDownloads, async (_event, ...args): Promise<void> => {
+    parseArgs(BRIDGE_ARGS.appOpenDownloads, args);
+    try {
+      await deps.app.openDownloads();
+    } catch {
+      // Pesan asli dibuang: hanya pesan terkontrol yang sampai ke renderer.
+      throw new IpcError('Tidak dapat membuka peramban sistem');
+    }
   });
 
   handle(BRIDGE_CHANNELS.catalogGet, async (_event, ...args): Promise<CatalogSnapshot | null> => {

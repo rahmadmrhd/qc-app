@@ -210,6 +210,7 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'push.reportPermission': true,
   'push.status': true,
   'desktop.handoff': true,
+  'desktop.releases': true,
   'guides.list': true,
   'guides.mark': true,
   'guides.reset': true,

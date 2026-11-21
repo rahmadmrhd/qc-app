@@ -235,9 +235,14 @@ test('findNavTrail memilih butir dengan to terpanjang beserta induknya', () => {
 test('Default QR butuh qrcode manage dan QR Code tidak ikut aktif di sana', () => {
   expect(itemTo('/qrcode/default').permission).toEqual({ module: 'qrcode', level: 'manage' });
   expect(itemTo('/qrcode').excludes).toContain('/qrcode/default');
-  expect(visibleLabels(stickerMe({ qrcode: 'view' }))).toEqual(['Beranda', 'QR Code']);
+  expect(visibleLabels(stickerMe({ qrcode: 'view' }))).toEqual([
+    'Beranda',
+    'Aplikasi Desktop',
+    'QR Code',
+  ]);
   expect(visibleLabels(stickerMe({ qrcode: 'manage' }))).toEqual([
     'Beranda',
+    'Aplikasi Desktop',
     'QR Code',
     'Default QR',
   ]);

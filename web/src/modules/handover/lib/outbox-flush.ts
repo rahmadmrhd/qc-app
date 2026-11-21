@@ -98,8 +98,13 @@ export function sendOutboxEntry(entry: OutboxEntry): Promise<HandoverDto | Hando
   return request.finally(() => clearTimeout(timer));
 }
 
-/** Hanya penolakan nyata dari server yang membuang entri (FR-P18); selain itu entri dipertahankan. */
+/**
+ * Hanya penolakan nyata dari server yang membuang entri (FR-P18); selain itu entri dipertahankan. `CLIENT_OUTDATED`
+ * (426 dari badan problem+json, fase 3 versi API) ikut: rute yang dipakai entri sudah dihapus server, jadi mengulang
+ * tak akan pernah berhasil. Daftar yang sama ada di `sync-sw.js` (dijaga `outbox-parity.test.ts`: ubah keduanya).
+ */
 const REJECTION_CODES: ReadonlySet<string> = new Set([
+  'CLIENT_OUTDATED',
   'CONFLICT',
   'FORBIDDEN',
   'NOT_FOUND',

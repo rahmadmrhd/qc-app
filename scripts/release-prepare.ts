@@ -7,6 +7,10 @@
 //
 // Semua prasyarat diperiksa SEBELUM cabang dibuat; kegagalan sesudahnya membatalkan cabang lokal dan kembali ke cabang
 // asal. `--dry-run` hanya menjalankan pemeriksaan baca-saja dan mencetak perintah pengubah tanpa menjalankannya.
+import { randomUUID } from 'node:crypto';
+import { unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   type CliDeps,
   type Component,
@@ -103,6 +107,33 @@ export function parseArgs(args: string[]): ParsedArgs {
   return { component, bump, dryRun };
 }
 
+/** Tempat berkas sementara DI LUAR pohon kerja (potret kontrak tag untuk pagar API); disuntik agar tes tak menyentuh disk. */
+export interface Scratch {
+  /** Menulis `content` ke berkas sementara bernama berakhiran `name`; mengembalikan jalurnya. */
+  write(name: string, content: string): string;
+  remove(path: string): void;
+}
+
+function realScratch(): Scratch {
+  return {
+    write(name, content) {
+      const path = join(tmpdir(), `${randomUUID()}-${name}`);
+      writeFileSync(path, content, { flag: 'wx' });
+      return path;
+    },
+    remove(path) {
+      try {
+        unlinkSync(path);
+      } catch {
+        // Sudah hilang atau tak dapat dihapus: berkas sementara kecil di folder tmp, tak mengganggu rilis.
+      }
+    },
+  };
+}
+
+/** Potret kontrak API yang dibuat ulang rilis server dan ikut commit rilis (juga `isMetadataOf` server di `changelog-check.ts`). */
+const API_SNAPSHOT = 'shared/api-contract.snapshot.json';
+
 export interface PrepareInput {
   component: ReleaseTarget;
   /** Kenaikan komponen tunggal, atau kenaikan SERVER bila `component` = `both`. */
@@ -114,6 +145,8 @@ export interface PrepareInput {
   now: Date;
   dryRun?: boolean;
   log?: (line: string) => void;
+  /** Berkas sementara untuk pagar API (bawaan: folder tmp sistem). */
+  scratch?: Scratch;
 }
 
 export interface PrepareResult {
@@ -135,6 +168,7 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
     return picked;
   };
   const log = input.log ?? ((line: string) => console.log(line));
+  const scratch = input.scratch ?? realScratch();
   const sh = async (cmd: string[], message?: string): Promise<string> => {
     const result = await shell.run(cmd);
     if (result.code !== 0)
@@ -192,6 +226,7 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
     }
   }
   const versions: Partial<Record<Component, string>> = {};
+  let serverTag: string | null = null;
   for (const c of comps) {
     const fragments = (
       await sh(['git', 'ls-tree', '--name-only', 'origin/dev', '--', `${c}/changelog.d/`])
@@ -214,6 +249,30 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
       }
     ).version;
     versions[c] = nextVersion(current ?? '', bumpOf(c), tags.at(-1) ?? null);
+    if (c === 'server') serverTag = tags.at(-1) ?? null;
+  }
+  // Pagar API (fase 3): potret kontrak dan umur tag server terakhir dibaca SEKARANG (baca-saja), sebelum cabang dibuat;
+  // pagarnya sendiri berjalan di pohon cabang rilis (isi origin/dev) pada tahap perubahan, karena yang dibandingkan adalah
+  // kontrak dan RETIRED_ROUTES milik origin/dev, bukan milik cabang tempat perintah ini dipanggil (jadi --dry-run hanya
+  // membaca, tidak menghitung pelanggaran).
+  let previousSnapshot = '[]';
+  let previousAge: string = 'none';
+  if (includesServer && serverTag !== null) {
+    const snapshot = await shell.run(['git', 'show', `${serverTag}:${API_SNAPSHOT}`]);
+    if (snapshot.code !== 0) {
+      throw new Error(
+        `Potret kontrak API pada tag ${serverTag} tak terbaca (${API_SNAPSHOT}): rilis dibatalkan. ${snapshot.out.trim()}`,
+      );
+    }
+    previousSnapshot = snapshot.out;
+    const committed = await shell.run(['git', 'log', '-1', '--format=%cI', serverTag]);
+    const age = now.getTime() - Date.parse(committed.out.trim());
+    if (committed.code !== 0 || !Number.isFinite(age) || age < 0) {
+      throw new Error(
+        `Umur tag ${serverTag} tak terbaca (tanggal commit "${committed.out.trim()}" tidak sah atau di masa depan): rilis dibatalkan.`,
+      );
+    }
+    previousAge = String(age);
   }
   const versionOf = (c: Component): string => versions[c] as string;
   const branch =
@@ -244,9 +303,23 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
     'bun.lock',
     ...comps.map((c) => `${c}/CHANGELOG.md`),
     ...comps.map((c) => `${c}/changelog.d`),
+    ...(includesServer ? [API_SNAPSHOT] : []),
   ];
+  const apiSteps = includesServer
+    ? [
+        [
+          'bun',
+          'run',
+          'scripts/api-removal-check.ts',
+          `<potret ${serverTag ?? 'kosong'}>`,
+          previousAge,
+        ],
+        ['bun', 'run', 'api:snapshot'],
+      ]
+    : [];
   const planned = [
     ['git', 'switch', '--no-track', '-c', branch, 'origin/dev'],
+    ...apiSteps,
     ['(ubah version di package.json, susun CHANGELOG dari fragmen)'],
     ['bun', 'install', '--lockfile-only'],
     ['git', 'add', ...addPaths],
@@ -286,6 +359,29 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
   try {
     await sh(['git', 'switch', '--no-track', '-c', branch, 'origin/dev']);
     created = true;
+    if (includesServer) {
+      // Sebelum package.json disentuh: tolak penghapusan rute < 24 jam, lalu buat ulang potret dari kontrak origin/dev.
+      const previousFile = scratch.write(
+        `api-snapshot-${serverTag ?? 'none'}.json`,
+        previousSnapshot,
+      );
+      try {
+        const check = await shell.run([
+          'bun',
+          'run',
+          'scripts/api-removal-check.ts',
+          previousFile,
+          previousAge,
+        ]);
+        if (check.code !== 0) {
+          throw new Error(`Pagar kontrak API menolak rilis ini:
+${check.out.trim()}`);
+        }
+      } finally {
+        scratch.remove(previousFile);
+      }
+      await sh(['bun', 'run', 'api:snapshot']);
+    }
     for (const c of comps) {
       const packagePath = `${c}/package.json`;
       const text = files.readFile(packagePath);

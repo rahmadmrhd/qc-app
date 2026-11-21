@@ -5,6 +5,7 @@
 // ditawarkan lagi pada cek berikutnya, versi yang sudah terunduh tidak); pembaruan hanya naik
 // (provider yang menjamin); tidak pernah mengecek, meminta restart, atau memasang saat inject Country Lock berjalan (tawaran
 // restart ditunda dan dicoba lagi; pemasangan saat keluar tetap berlaku). Dialog bawaan OS, tanpa kanal jembatan baru.
+import type { UpdateNowResult } from '@countrylock/bridge-contract';
 import { normalizeServerUrl } from '../settings';
 
 export const START_DELAY_MS = 90 * 1000;
@@ -49,6 +50,11 @@ export interface AppUpdaterDeps {
 export interface AppUpdater {
   start(): void;
   checkNow(): Promise<void>;
+  /**
+   * Memperbarui sekarang TANPA dialog (dipanggil layar penahan saat versi aplikasi di bawah `minClient` server):
+   * periksa, unduh, lalu pasang dan mulai ulang. Tak pernah menjalankan dialog "Perbarui sekarang/Nanti".
+   */
+  updateNow(): Promise<UpdateNowResult>;
   stop(): void;
 }
 
@@ -150,6 +156,34 @@ export function createAppUpdater(deps: AppUpdaterDeps): AppUpdater {
     }
   }
 
+  async function updateNow(): Promise<UpdateNowResult> {
+    if (running) return { status: 'busy', message: 'Pembaruan sedang berjalan' };
+    if (isBusy()) {
+      return { status: 'busy', message: 'Inject sedang berjalan, tunggu selesai dulu' };
+    }
+    running = true;
+    try {
+      const result = await updater.checkForUpdates();
+      if (!result?.isUpdateAvailable) {
+        return { status: 'up-to-date', message: 'Aplikasi ini sudah versi terbaru' };
+      }
+      await updater.downloadUpdate();
+      downloaded.add(result.updateInfo.version);
+      updater.autoInstallOnAppQuit = true;
+      // Inject bisa mulai selama unduhan berjalan: jangan menutup aplikasinya, pasang saat keluar saja.
+      if (isBusy()) {
+        return { status: 'busy', message: 'Inject sedang berjalan, tunggu selesai dulu' };
+      }
+      updater.quitAndInstall(true, true);
+      return { status: 'restarting', message: 'Memasang pembaruan, aplikasi akan mulai ulang...' };
+    } catch (error) {
+      log(`Pembaruan aplikasi gagal: ${String(error).slice(0, 200)}`);
+      return { status: 'failed', message: 'Pembaruan gagal diunduh' };
+    } finally {
+      running = false;
+    }
+  }
+
   return {
     start() {
       updater.autoDownload = false;
@@ -159,6 +193,7 @@ export function createAppUpdater(deps: AppUpdaterDeps): AppUpdater {
       scheduleCheck(START_DELAY_MS);
     },
     checkNow,
+    updateNow,
     stop() {
       if (nextCheck !== null) clearTimer(nextCheck);
       if (retry !== null) clearTimer(retry);

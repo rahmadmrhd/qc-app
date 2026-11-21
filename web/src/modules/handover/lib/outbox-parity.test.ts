@@ -307,6 +307,28 @@ const SCENARIOS: Scenario[] = [
     swThrows: false,
   },
   {
+    name: '426 problem+json CLIENT_OUTDATED',
+    respond: problem(426, {
+      code: 'CLIENT_OUTDATED',
+      detail: 'Versi aplikasi ini sudah tidak didukung',
+    }),
+    kinds: ALL_KINDS,
+    expectEntry: 'rejected',
+    expectReason: 'Versi aplikasi ini sudah tidak didukung',
+    swThrows: false,
+  },
+  {
+    // 426 tanpa badan problem (mis. dari proksi) bukan CLIENT_OUTDATED: entri tetap menunggu, tidak dibuang.
+    name: '426 polos HTML',
+    respond: new Response('<html>Upgrade Required</html>', {
+      status: 426,
+      headers: { 'content-type': 'text/html' },
+    }),
+    kinds: ALL_KINDS,
+    expectEntry: 'unchanged',
+    swThrows: true,
+  },
+  {
     name: '429',
     respond: new Response('', { status: 429 }),
     kinds: ALL_KINDS,

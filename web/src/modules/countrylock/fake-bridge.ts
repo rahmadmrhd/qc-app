@@ -29,6 +29,7 @@ export type FakeOverrides = {
   catalog?: Partial<QcBridge['catalog']>;
   notifications?: Partial<QcBridge['notifications']>;
   multi?: Partial<QcBridge['multi']>;
+  app?: Partial<QcBridge['app']>;
 };
 
 /** Satu panggilan ke `bridge.multi.*` (nama metode + argumen), dipakai tes untuk memeriksa aksi dan urutannya. */
@@ -255,6 +256,16 @@ export function createFakeBridge(overrides: FakeOverrides = {}): FakeBridge {
     notifications: {
       onChange: () => () => undefined,
       ...overrides.notifications,
+    },
+    // Bawaan: pembaruan otomatis tak aktif; tes layar penahan menimpa.
+    app: {
+      version: async () => '0.0.0',
+      update: async () => ({
+        status: 'unavailable' as const,
+        message: 'Pembaruan otomatis tidak aktif di instalasi ini',
+      }),
+      openDownloads: async () => undefined,
+      ...overrides.app,
     },
     pending: {
       list: async () => [...pendingList],
