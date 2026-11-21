@@ -12,6 +12,25 @@ export interface GuidePermission {
 /** Satu izin, atau daftar (salah satu cukup; sama dengan `NavItem.permission`). */
 export type GuideAccess = GuidePermission | readonly GuidePermission[];
 
+/**
+ * Membuka tab form (`FormTabs`, tab ber-`data-form-tab="<id>"`) sebelum `target` disorot: murni UI, tak mengisi apa
+ * pun. Target di tab tersembunyi tidak disorot sebelum tabnya dibuka (mesin tur memeriksa keterlihatannya).
+ */
+export interface TourTabOpen {
+  tab: string;
+}
+
+/** Id menu yang diminta langkah (`buka` berupa id menu), atau `undefined`. */
+export function menuOfStep(step: Pick<GuideStep, 'buka'> | undefined): TourMenuId | undefined {
+  return typeof step?.buka === 'string' ? step.buka : undefined;
+}
+
+/** Id tab form yang diminta langkah (`buka: { tab }`), atau `undefined`. */
+export function tabOfStep(step: Pick<GuideStep, 'buka'> | undefined): string | undefined {
+  const buka = step?.buka;
+  return typeof buka === 'object' && buka !== null ? buka.tab : undefined;
+}
+
 export interface GuideStep {
   /** Nilai atribut `data-tour="..."` pada elemen yang disorot. */
   target: string;
@@ -43,7 +62,7 @@ export interface GuideStep {
    * berganti, tur berakhir, atau tur dibatalkan (kecuali yang memang sudah dibuka pengguna). Pemicu yang tak ada
    * di layar (mis. pemilih lokasi untuk satu lokasi) = langkah dilewati.
    */
-  buka?: TourMenuId;
+  buka?: TourMenuId | TourTabOpen;
   /**
    * Langkah yang targetnya bergantung data (mis. kartu task di papan): bila `target` tak muncul dalam batas
    * waktu, langkah TIDAK dilewati melainkan tampil sebagai kartu di tengah layar tanpa sorotan, dengan teks ini

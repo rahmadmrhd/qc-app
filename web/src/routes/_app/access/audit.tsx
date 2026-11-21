@@ -3,10 +3,9 @@ import { keepPreviousData, useInfiniteQuery, useSuspenseQuery } from '@tanstack/
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { z } from 'zod';
-import { PageLoading } from '@/components/page-loading';
+import { FilterBar, FilterChip } from '@/components/page/filter-bar';
+import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
   Sheet,
   SheetContent,
@@ -16,6 +15,7 @@ import {
 } from '@/components/ui/sheet';
 import { AuditDiffView } from '@/modules/access/components/audit-diff-view';
 import { AuditTable } from '@/modules/access/components/audit-table';
+import { useDeletedNames } from '@/modules/access/lib/assignment-labels';
 import {
   AUDIT_ACTION_LABELS,
   auditActionLabel,
@@ -27,7 +27,8 @@ import {
   locationsQueryOptions,
   rolesQueryOptions,
 } from '@/modules/access/queries';
-import { requirePermission } from '@/modules/auth/permissions';
+import { can, requirePermission } from '@/modules/auth/permissions';
+import { useMe } from '@/modules/auth/use-me';
 
 const auditSearchSchema = z.object({
   action: z.string().optional().catch(undefined),
@@ -53,16 +54,25 @@ export const Route = createFileRoute('/_app/access/audit')({
   component: AuditPage,
 });
 
+const ACTION_OPTIONS = [
+  { value: '', label: 'Semua aksi' },
+  ...Object.entries(AUDIT_ACTION_LABELS)
+    .map(([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'id')),
+];
+
 function AuditPage() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
+  const me = useMe();
+  const deletedNames = useDeletedNames(can(me, 'access', 'manage'));
   const { data: roles } = useSuspenseQuery(rolesQueryOptions());
   const { data: locations } = useSuspenseQuery(locationsQueryOptions());
   const auditQuery = useInfiniteQuery({
     ...auditInfiniteQueryOptions({ action: search.action, query: search.q }),
     placeholderData: keepPreviousData,
   });
-  const entries = auditQuery.data?.pages.flatMap((page) => page.entries);
+  const entries = auditQuery.data?.pages.flatMap((page) => page.entries) ?? [];
   const [selected, setSelected] = useState<AuditEntryDto | null>(null);
   // Kata kunci dikirim ke server; tunda agar tidak memanggil API pada setiap ketukan.
   const [text, setText] = useUrlSyncedText(search.q ?? '', (value) => {
@@ -72,65 +82,80 @@ function AuditPage() {
     });
   });
 
-  const roleNames = new Map(roles.map((role) => [role.id, role.name]));
-  const locationNames = new Map(locations.map((l) => [l.id, l.name]));
+  // Role/lokasi yang sudah dihapus tetap diberi nama pada diff (hanya pemegang `access: manage` yang memuat daftarnya).
+  const roleNames = new Map([
+    ...deletedNames.roles,
+    ...roles.map((role) => [role.id, role.name] as const),
+  ]);
+  const locationNames = new Map([
+    ...deletedNames.locations,
+    ...locations.map((l) => [l.id, l.name] as const),
+  ]);
+  const filtered = text.trim() !== '' || Boolean(search.action);
+  const actionLabel = search.action ? auditActionLabel(search.action) : null;
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Log Audit</h1>
-      <div className="flex flex-col gap-2 sm:flex-row">
-        <Input
-          placeholder="Cari target atau pelaku"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-        />
-        <Select
-          id="audit-filter-action"
-          label="Filter aksi"
-          hideLabel
-          className="sm:w-56"
-          options={[
-            { value: '', label: 'Semua aksi' },
-            ...Object.entries(AUDIT_ACTION_LABELS).map(([value, label]) => ({ value, label })),
-          ]}
-          value={search.action ?? ''}
-          onValueChange={(next) =>
-            void navigate({
-              search: (prev) => ({ ...prev, action: next || undefined }),
-              replace: true,
-            })
-          }
-        />
-      </div>
-      {entries ? (
-        <div
-          aria-busy={auditQuery.isFetching}
-          className={auditQuery.isFetching ? 'opacity-60 transition-opacity' : 'transition-opacity'}
-        >
-          <AuditTable entries={entries} onSelect={setSelected} />
-        </div>
-      ) : auditQuery.isError ? (
-        <p role="alert" className="text-sm text-destructive">
-          Log audit gagal dimuat.
-        </p>
-      ) : (
-        <PageLoading label="Memuat log audit…" />
-      )}
-      <div className="flex items-center justify-between gap-2 text-sm">
-        <span className="text-muted-foreground">
-          {entries ? `${entries.length} catatan dimuat` : ''}
-          {auditQuery.isFetching && entries ? ' · memuat…' : ''}
-        </span>
-        {auditQuery.hasNextPage ? (
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={auditQuery.isFetchingNextPage}
-            onClick={() => void auditQuery.fetchNextPage()}
+    <>
+      <ListPage
+        title="Log Audit"
+        count={
+          auditQuery.isSuccess && (entries.length > 0 || filtered)
+            ? `${entries.length} catatan dimuat`
+            : undefined
+        }
+        filters={
+          <FilterBar
+            search={{
+              value: text,
+              onChange: setText,
+              placeholder: 'Cari target atau pelaku',
+              label: 'Cari log audit',
+            }}
           >
-            {auditQuery.isFetchingNextPage ? 'Memuat…' : 'Muat lebih banyak'}
-          </Button>
-        ) : null}
-      </div>
+            <FilterChip
+              label="Aksi"
+              display={actionLabel}
+              onClear={() =>
+                void navigate({
+                  search: (prev) => ({ ...prev, action: undefined }),
+                  replace: true,
+                })
+              }
+            >
+              <Select
+                id="audit-filter-action"
+                label="Filter aksi"
+                hideLabel
+                options={ACTION_OPTIONS}
+                value={search.action ?? ''}
+                onValueChange={(next) =>
+                  void navigate({
+                    search: (prev) => ({ ...prev, action: next || undefined }),
+                    replace: true,
+                  })
+                }
+              />
+            </FilterChip>
+          </FilterBar>
+        }
+      >
+        <AuditTable
+          entries={entries}
+          me={me}
+          onSelect={setSelected}
+          hasMore={auditQuery.hasNextPage}
+          loadingMore={auditQuery.isFetchingNextPage}
+          loadMoreError={auditQuery.isFetchNextPageError}
+          onLoadMore={() => void auditQuery.fetchNextPage()}
+          filtered={filtered}
+          onClearFilters={() => {
+            setText('');
+            void navigate({ search: {}, replace: true });
+          }}
+          isLoading={auditQuery.isPending}
+          isError={auditQuery.isLoadingError}
+          onRetry={() => void auditQuery.refetch()}
+        />
+      </ListPage>
       <Sheet
         open={selected !== null}
         onOpenChange={(open) => (open ? undefined : setSelected(null))}
@@ -158,6 +183,6 @@ function AuditPage() {
           ) : null}
         </SheetContent>
       </Sheet>
-    </div>
+    </>
   );
 }

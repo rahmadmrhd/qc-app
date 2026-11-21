@@ -82,7 +82,7 @@ function PasteBox({ filled, highlightButton }: { filled: boolean; highlightButto
         className={`inline-flex rounded-md px-2.5 py-1 text-xs font-medium ${
           highlightButton
             ? 'bg-primary text-primary-foreground ring-2 ring-ring ring-offset-2 ring-offset-background'
-            : 'bg-secondary text-secondary-foreground'
+            : 'bg-muted text-foreground'
         }`}
       >
         Pecah

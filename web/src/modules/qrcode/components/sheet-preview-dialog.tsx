@@ -146,6 +146,7 @@ export function SheetPreviewDialog({
           <Button
             type="button"
             variant="outline"
+            color="primary"
             size="sm"
             aria-label="Perkecil zoom"
             disabled={zoomIndex === 0}
@@ -159,6 +160,7 @@ export function SheetPreviewDialog({
           <Button
             type="button"
             variant="outline"
+            color="primary"
             size="sm"
             aria-label="Perbesar zoom"
             disabled={zoomIndex === ZOOM_STEPS.length - 1}
@@ -169,6 +171,7 @@ export function SheetPreviewDialog({
           <Button
             type="button"
             variant="outline"
+            color="primary"
             size="sm"
             disabled={zoomIndex === FIT_INDEX}
             onClick={() => setZoomIndex(FIT_INDEX)}
@@ -180,7 +183,7 @@ export function SheetPreviewDialog({
           <p className="text-sm text-muted-foreground">Menyiapkan pratinjau…</p>
         ) : null}
         {state === 'error' ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive-text">
             Pratinjau gagal dibuat.
           </p>
         ) : null}

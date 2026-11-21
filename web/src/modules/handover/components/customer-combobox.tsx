@@ -136,7 +136,7 @@ export function CustomerCombobox({
         <p className="text-xs text-muted-foreground">Customer saat ini (tidak berubah).</p>
       ) : null}
       {inactive ? (
-        <p className="text-xs text-destructive">
+        <p className="text-xs text-destructive-text">
           Customer dinonaktifkan; aktifkan dulu di halaman Customer.
         </p>
       ) : null}

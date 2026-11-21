@@ -1,6 +1,7 @@
 import { CAS_FAIL_SQL } from '@server/core/cas';
 import type { Db, DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
+import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { visibleBuIds } from '@server/modules/item/access';
 import type {
@@ -28,6 +29,13 @@ export interface PostelItem {
   status: 'active' | 'inactive';
   /** Catatan Postel pemilik; `''` = belum tertaut (di basis data: `NULL`, kunci asing `items_postel_fk`). */
   postelId: string;
+  /**
+   * Penunjuk `postelId` menunjuk catatan HIDUP. Penunjuk ke catatan terhapus tetap tersimpan (hapus lunak tidak
+   * mengubah item), tetapi item itu dihitung belum tertaut dan boleh dipasang ke catatan lain (soft delete §5 butir 1).
+   */
+  postelLive: boolean;
+  /** Item terhapus (soft delete): hanya penampil rujukan yang membacanya; turunan dan hitungan memakai item hidup. */
+  deleted: boolean;
 }
 
 interface ItemRow {
@@ -36,6 +44,8 @@ interface ItemRow {
   model: string;
   status: string;
   postel_id: string | null;
+  deleted_at: string | null;
+  postel_live: number | string | null;
 }
 
 function toPostelItem(row: ItemRow): PostelItem {
@@ -45,21 +55,54 @@ function toPostelItem(row: ItemRow): PostelItem {
     model: row.model.trim(),
     status: row.status.trim() === 'inactive' ? 'inactive' : 'active',
     postelId: (row.postel_id ?? '').trim(),
+    postelLive: Number(row.postel_live) === 1,
+    deleted: (row.deleted_at ?? '') !== '',
   };
 }
 
-const ITEM_SELECT =
-  'SELECT i.id, b.name AS brand_name, i.model, i.status, i.postel_id FROM items i LEFT JOIN brands b ON b.id = i.brand_id';
+const ITEM_SELECT = `SELECT i.id, b.name AS brand_name, i.model, i.status, i.postel_id, i.deleted_at, EXISTS (SELECT 1 FROM postels p WHERE p.id = i.postel_id AND ${liveWhere('p')}) AS postel_live FROM items i LEFT JOIN brands b ON b.id = i.brand_id`;
 
 function byBrandThenModel(a: PostelItem, b: PostelItem): number {
   return a.brand.localeCompare(b.brand) || a.model.localeCompare(b.model);
 }
 
 /**
- * Item yang tertaut ke catatan Postel, dikelompokkan per catatan dan terurut merk lalu tipe. Tanpa `postelIds` = semua
- * item tertaut (satu kueri); dengan `postelIds` = hanya catatan itu (dipotong per 500 id).
+ * Item HIDUP yang tertaut ke catatan Postel, dikelompokkan per catatan dan terurut merk lalu tipe. Tanpa `postelIds`
+ * = semua item tertaut (satu kueri); dengan `postelIds` = hanya catatan itu (dipotong per 500 id). Dasar nama Postel
+ * turunan, hitungan, nama stiker, dan ringkasan surel: item terhapus tidak dihitung (soft delete §5 butir 1 dan 9).
  */
 export async function listItemsOfPostels(
+  db: Preparer,
+  postelIds?: readonly string[],
+): Promise<Map<string, PostelItem[]>> {
+  const rows: ItemRow[] = [];
+  if (postelIds === undefined) {
+    const result = await db
+      .prepare(`${ITEM_SELECT} WHERE ${liveWhere('i')} AND i.postel_id IS NOT NULL`)
+      .all<ItemRow>();
+    rows.push(...result.results);
+  } else {
+    const unique = [...new Set(postelIds)];
+    for (let from = 0; from < unique.length; from += IN_CHUNK) {
+      const chunk = unique.slice(from, from + IN_CHUNK);
+      const result = await db
+        .prepare(
+          `${ITEM_SELECT} WHERE ${liveWhere('i')} AND i.postel_id IN (${chunk.map(() => '?').join(',')})`,
+        )
+        .bind(...chunk)
+        .all<ItemRow>();
+      rows.push(...result.results);
+    }
+  }
+  return groupByPostel(rows);
+}
+
+/**
+ * Seperti `listItemsOfPostels` tetapi item HIDUP MAUPUN TERHAPUS (penampil rujukan): daftar anggota di View/form
+ * catatan memakai ini agar item terhapus tampil bertanda "Terhapus" dan tetap terpasang saat simpan (rujukan tersimpan,
+ * T1). Pemanggil wajib memisahkan `deleted` sebelum menghitung atau menurunkan apa pun.
+ */
+export async function listLinkedItemsOfPostels(
   db: Preparer,
   postelIds?: readonly string[],
 ): Promise<Map<string, PostelItem[]>> {
@@ -78,6 +121,10 @@ export async function listItemsOfPostels(
       rows.push(...result.results);
     }
   }
+  return groupByPostel(rows);
+}
+
+function groupByPostel(rows: readonly ItemRow[]): Map<string, PostelItem[]> {
   const byPostel = new Map<string, PostelItem[]>();
   for (const row of rows) {
     const item = toPostelItem(row);
@@ -89,7 +136,7 @@ export async function listItemsOfPostels(
   return byPostel;
 }
 
-/** Item menurut id (apa pun statusnya); id yang tak ada tidak muncul di peta. */
+/** Item menurut id (apa pun statusnya, termasuk terhapus: pemanggil menilai `deleted`); id yang tak ada tidak muncul di peta. */
 export async function findPostelItemsById(
   db: Preparer,
   ids: readonly string[],
@@ -111,9 +158,11 @@ export async function findPostelItemsById(
 }
 
 /**
- * Memasang `ids` ke catatan `postelId` di dalam `batch()`: hanya item yang belum dimiliki catatan lain (`NULL` atau
- * catatan ini) dan aktif (item nonaktif hanya boleh yang sudah miliknya), lalu penjaga yang membatalkan batch (`CAS_FAIL_SQL`) bila ada yang tidak terpasang (item direbut
- * catatan lain atau dinonaktifkan pada saat yang sama). Id diurutkan agar urutan kunci baris konsisten antar penyimpan.
+ * Memasang `ids` ke catatan `postelId` di dalam `batch()`: hanya item yang belum dimiliki catatan HIDUP lain (`NULL`,
+ * catatan ini, atau catatan terhapus: rujukan terhapus dihitung belum tertaut dan ditimpa) dan aktif (item nonaktif
+ * hanya boleh yang sudah miliknya), lalu penjaga yang membatalkan batch (`CAS_FAIL_SQL`) bila ada yang tidak terpasang
+ * (item direbut catatan lain atau dinonaktifkan pada saat yang sama). Id diurutkan agar urutan kunci baris konsisten
+ * antar penyimpan.
  */
 export function claimItemsForPostelStmts(
   db: Db,
@@ -126,7 +175,7 @@ export function claimItemsForPostelStmts(
   return [
     db
       .prepare(
-        `UPDATE items SET postel_id = ? WHERE id IN (${marks}) AND (postel_id IS NULL OR postel_id = ?) AND (status = 'active' OR postel_id = ?)`,
+        `UPDATE items SET postel_id = ? WHERE id IN (${marks}) AND (postel_id IS NULL OR postel_id = ? OR postel_id IN (SELECT p.id FROM postels p WHERE ${deletedWhere('p')})) AND (status = 'active' OR postel_id = ?)`,
       )
       .bind(postelId, ...sorted, postelId, postelId),
     db
@@ -152,14 +201,6 @@ export function releaseItemsFromPostelStmt(
       )
       .bind(postelId, ...sorted),
   ];
-}
-
-/**
- * Melepas SEMUA item sebuah catatan (hapus catatan). Kunci asing `items_postel_fk` (`ON DELETE SET NULL`) menjamin hal
- * yang sama di basis data; pernyataan ini tetap dikirim agar urutan dan hitungan baris batch tak berubah.
- */
-export function releaseAllItemsFromPostelStmt(db: Preparer, postelId: string): DbStatement {
-  return db.prepare('UPDATE items SET postel_id = NULL WHERE postel_id = ?').bind(postelId);
 }
 
 interface OptionRow {
@@ -197,7 +238,7 @@ export async function queryPostelItemOptions(
     binds.push(input.cursor);
   }
   const rows = await env.DB.prepare(
-    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.postel_id FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
+    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.postel_id FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('i')} AND ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
   )
     .bind(...binds, limit + 1)
     .all<OptionRow>();

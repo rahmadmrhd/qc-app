@@ -19,10 +19,11 @@ const QC_EDIT: GuidePermission = { module: 'qc', level: 'edit', scope: 'location
  * (formulir task, `/handover/new`, 7 langkah; satu halaman = satu panduan).
  * Izin `handover-dasar` = izin item sidebar Serah Terima (sisi WH `view` atau sisi QC `edit`); langkah sisi QC
  * (mencentang) dan sisi WH (tombol Tambah task) punya `izin` sendiri sehingga satu panduan melayani keduanya.
- * Panduan formulir seluruhnya sisi WH (`handover: edit`). `handover-dasar` mengecualikan `/handover/new`
- * (`halamanKecuali`) agar banner formulir tidak jatuh ke banner papan. Target `data-tour`: `handover-board`
- * (`handover-board-page.tsx`), `handover-checklist` (`handover-card.tsx`, `handover-detail-view.tsx`), `handover-new`
- * (tombol Tambah task), `handover-batch-form`, `handover-location`, `handover-task-card`, `handover-customer`,
+ * Panduan formulir seluruhnya sisi WH (`handover: edit`). `handover-dasar` mengecualikan `/handover/new` dan
+ * halaman View task `/handover/$handoverId` (termasuk `/edit`; `halamanKecuali`) agar banner formulir dan View tidak
+ * jatuh ke banner papan. Target `data-tour`: `handover-board`
+ * (`handover-board-page.tsx`), `handover-checklist` (`handover-card.tsx`, `handover-detail-view.tsx`, tab Catatan), `handover-new`
+ * (tombol Tambah task, `createAction.tour` di `ListPage`), `handover-batch-form`, `handover-location`, `handover-task-card`, `handover-customer`,
  * `handover-note`, `handover-card-actions`, `handover-add-task`, dan `handover-save` (semuanya di
  * `handover-batch-form.tsx`), serta `handover-paste-panel` (`whatsapp-paste-panel.tsx`). Target formulir selalu ada
  * (kartu pertama, kosong atau hasil Pecah), jadi tanpa gerbang `wait`. Komposer komentar baru ada saat teks dipilih,
@@ -40,7 +41,7 @@ export const HANDOVER_DASAR: GuideEntry = {
   grup: 'Serah Terima',
   izin: [WH_VIEW, QC_EDIT],
   halaman: '/handover',
-  halamanKecuali: ['/handover/new'],
+  halamanKecuali: ['/handover/new', '/handover/$handoverId'],
   steps: [
     {
       target: 'handover-board',

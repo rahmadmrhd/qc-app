@@ -7,7 +7,7 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 1 | Buka URL `/exec` di jendela privat | Halaman login dengan tombol "Masuk dengan Google" | FR-A1 |
 | 2 | Login dengan akun A | Kembali ke aplikasi, beranda tampil, URL tanpa `?code=`/`&state=` | FR-A1, FR-A6 |
 | 3 | Refresh halaman (F5) | Tetap login, tidak muncul "Login gagal" | FR-A3, FR-A6 |
-| 4 | Buka Pengaturan Akses → Users, refresh | Tetap di halaman Users (hash di URL) | FR-A6 |
+| 4 | Buka Akses → Pengguna, refresh | Tetap di halaman Pengguna (hash di URL) | FR-A6 |
 | 5 | Buat role "Pemantau" (access: Lihat) dan user B dengan role itu | Tersimpan, tercatat di sheet `audit_log` | FR-M2, FR-M5, FR-M7 |
 | 6 | Login sebagai B di browser lain | Melihat Users/Roles tanpa tombol Tambah/Ubah | FR-P5 |
 | 7 | Sebagai B, di console DevTools frame aplikasi jalankan `google.script.run.withSuccessHandler(console.log).api('access.users.save', JSON.stringify({email:'x@y.com',name:'X',status:'active',roleIds:[]}), localStorage.getItem('qc.session'))` | Respons `"code":"FORBIDDEN"` | FR-P4 |
@@ -19,11 +19,11 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 13 | Buka di ponsel | Sidebar menjadi menu geser, tabel bisa digulir | FR-S1, NFR-7 |
 | 14 | Isi nama user `=1+1`, buka sheet `users` | Sel berisi teks `=1+1`, bukan `2` | NFR-1 |
 | 15 | Ganti tema ke Gelap, refresh; lalu ganti ke Ikuti sistem | Tema bertahan setelah refresh tanpa kedipan putih; toast ikut tema | FR-S4 |
-| 16 | Buat dua lokasi (mis. JKT dan BDG) di Pengaturan Akses → Lokasi | Tersimpan, tercatat di `audit_log` (`location.create`) | FR-L1–L4 |
+| 16 | Buat dua lokasi (mis. JKT dan BDG) di Akses → Lokasi | Tersimpan, tercatat di `audit_log` (`location.create`) | FR-L1–L4 |
 | 17 | Edit user B: tambah penugasan JKT = role Manajer dan BDG = role Pemantau | Tersimpan; tabel Users merangkum penugasan per lokasi | FR-AS1, FR-AS4 |
 | 18 | Login sebagai B | Pemilih lokasi tampil di header ("Semua lokasi"); memilih satu lokasi mengubah label dan bertahan setelah refresh | FR-C1, FR-C2 |
 | 19 | Nonaktifkan lokasi BDG, muat ulang B | BDG hilang dari pemilih | FR-L3, FR-P8 |
-| 20 | Pasang role ber-Pengaturan Akses pada penugasan lokasi tertentu (bukan Semua lokasi) | Menu Pengaturan Akses tidak tampil untuk user itu | FR-P7 |
+| 20 | Pasang role ber-Akses pada penugasan lokasi tertentu (bukan Semua lokasi) | Menu Akses tidak tampil untuk user itu | FR-P7 |
 | 21 | Di console frame aplikasi, panggil `api` method berlokasi dengan `locationIds` berisi lokasi yang tidak diizinkan | `"code":"FORBIDDEN"`, tidak ada data | FR-E2 |
 | 22 | Admin non-super mengedit penugasannya sendiri hingga kehilangan Kelola global | Ditolak dengan pesan jelas | FR-AS5 |
 | 23 | Buka Log Audit, detail `user.update` yang mengubah penugasan | Diff menampilkan lokasi dan role yang ditambah, diubah, dihapus | FR-AU2, FR-AU3 |
@@ -75,7 +75,7 @@ Siapkan: akun A = `ADMIN_EMAIL`; akun B terdaftar dengan role ber-`access: view`
 | 69 | Buat item bertipe `0815`, `1/2`, atau `2026-10-15`, lalu buka daftar dan detail | Tipe tampil persis seperti diketik (bukan 815 atau tanggal); sel sheet berformat teks | Sel teks |
 | 70 | Tekan Mark done pada task tanpa butir checklist (catatan berupa paragraf saja); lalu buka Log Audit | Task Selesai; Mark done tidak lagi tampil untuk task Selesai; satu baris `handover.done` | FQ2, FAU1 |
 | 71 | Centang satu butir, lalu batal centang dari halaman detail; buka Log Audit | Dua baris audit `handover.check` dan `handover.uncheck`, masing-masing dengan pelaku dan waktu | FQ1, FQ4 |
-| 72 | Pengaturan Akses → Role: modul "QR Code Label" tampil dengan level Lihat/Ubah/Kelola | Level tersimpan dan menentukan tombol di halaman QR Code | FQR/izin |
+| 72 | Akses → Role: modul "QR Code Label" tampil dengan level Lihat/Ubah/Kelola | Level tersimpan dan menentukan tombol di halaman QR Code | FQR/izin |
 | 73 | Jalankan `setup` setelah deploy | Laporan memuat folder "QC App QR" dan "QC App QR Dokumen" siap; sheet `qr_designs` dan `qr_documents` ada | FS13 serupa |
 | 74 | Buat konfigurasi: title, subtitle, link, footer, ukuran diubah | Pratinjau 3 × 3 berubah seketika; overflow memunculkan peringatan merah | FQR2, FQR3 |
 | 75 | Tekan "Pratinjau lembar" | Dialog menampilkan lembar 10 × 14 dengan garis potong; menutupnya tanpa efek | FQR4 |
@@ -244,7 +244,7 @@ Spek: `docs/superpowers/specs/2026-11-12-notifikasi-serah-terima-design.md` (mat
 
 ## Panduan interaktif (2026-11-13)
 
-Spek: `docs/superpowers/specs/2026-11-13-panduan-interaktif-design.md` (bagian 4.2-4.7). Uji di staging dengan akun individu, akun bersama (sudah ditandai di Pengaturan Akses), akun WH (`handover: view`/`edit`), dan akun QC (`qc: edit`). Pengguna yang sudah menyelesaikan panduan `dasar` tidak ditawari panduan `baru`-nya.
+Spek: `docs/superpowers/specs/2026-11-13-panduan-interaktif-design.md` (bagian 4.2-4.7). Uji di staging dengan akun individu, akun bersama (sudah ditandai di Akses), akun WH (`handover: view`/`edit`), dan akun QC (`qc: edit`). Pengguna yang sudah menyelesaikan panduan `dasar` tidak ditawari panduan `baru`-nya.
 
 | # | Langkah | Hasil yang diharapkan | Spek |
 |---|---|---|---|
@@ -256,7 +256,7 @@ Spek: `docs/superpowers/specs/2026-11-13-panduan-interaktif-design.md` (bagian 4
 | G6 | Selesaikan tur dengan akun individu di peramban A, lalu login akun sama di peramban B | Panduan yang sudah selesai tidak ditawarkan lagi di peramban B; penanda dimuat dari server | 4.3 |
 | G7 | Selesaikan tur dengan akun bersama di peramban A, lalu login akun sama di peramban B | Panduan ditawarkan lagi di peramban B (disengaja); di peramban A tetap tidak ditawarkan | 4.3 |
 | G8 | Ulangi tur dari menu profil "Ulangi" pada panduan yang sudah selesai | Tur berjalan dari awal tanpa mengubah penanda selain yang ditulis saat tur selesai | 4.4 |
-| G9 | Ubah satu akun dari individu ke bersama lalu kembali ke individu di Pengaturan Akses | Setelah diubah ke bersama, panduan ditawarkan lagi di tiap perangkat; setelah kembali ke individu, ditawarkan sekali lagi bila belum pernah selesai di database | 4.3 Mengubah jenis akun |
+| G9 | Ubah satu akun dari individu ke bersama lalu kembali ke individu di Akses | Setelah diubah ke bersama, panduan ditawarkan lagi di tiap perangkat; setelah kembali ke individu, ditawarkan sekali lagi bila belum pernah selesai di database | 4.3 Mengubah jenis akun |
 | G10 | Buka `/handover` pertama kali (panduan belum selesai) | Banner "Pertama kali di ...? Ada panduan N langkah." tampil dengan Mulai, Nanti, dan Sudah paham; N hanya menghitung langkah yang lolos izin akun | 4.4 Banner |
 | G11 | Tekan "Nanti" lalu buka tab baru aplikasi | Banner tidak tampil di sesi tab itu; di sesi tab baru banner muncul lagi selama panduan belum selesai | 4.4 Banner |
 | G12 | Tekan "Sudah paham" pada banner panduan `dasar` | Banner hilang dan tidak muncul lagi; panduan `baru` yang tercakup ikut tertutup; panduan tetap ada di menu profil "Panduan" | 4.4, 4.2 |
@@ -413,4 +413,21 @@ Spek: `docs/superpowers/specs/2026-11-18-serial-unik-sistem-design.md`. Uji di s
 | S12 | Serial di BU tempat kamu tidak punya hak tulis: buka `/serial/report`, ketik serialnya | Muncul peringatan "Serial ini ada di BU <kode> dan Anda tidak punya akses untuk melaporkannya"; tidak ada pemilih BU dan tidak ada formulir lapor; serial yang belum tercatat tetap menampilkan formulir | 5.4 |
 | S13 | Di detail serial, jalankan aksi Cek ulang atau Cek ulang: lolos (laporan aktif) dan pilih BU lain di field BU; ulangi dengan hasil tidak lolos | Hasil lolos: field BU tampil (bawaan BU saat ini; hanya BU yang boleh menurut S5) dan serial pindah; laporan ditutup dengan BU laporan tetap BU saat dibuka. Hasil tidak lolos: field BU tidak ada | 5.2 |
 | S14 | Buat laporan baru lewat Lapor rusak pada serial di BU SBY (atau BU lain) pada bulan ini, lalu satu lagi di BU yang sama dan satu di BU lain | Nomor berformat `LP/<kode BU>/YYMM-iiii` (mis. `LP/SBY/2611-0001`); urutan per BU dan bulan; laporan lama (`LP-YYYYMMDD-NNN`) tetap tampil apa adanya; pencarian daftar Laporan dengan awalan `LP/SBY/2611` dan `LP-2026` sama-sama menemukan | 5.5 |
-| S15 | Setelah rilis, mulai ulang server dengan serial ganda lintas BU masih ada, lalu jalankan `merge-duplicate-serials` (dry-run, lalu `--apply`) dan mulai ulang lagi | Start pertama tidak gagal dan log memuat peringatan jumlah ganda; dry-run hanya mencetak rencana (CSV, jangan di-commit); sesudah `--apply` serial ganda hilang (pemenang menampung kejadian, stiker, stok, foto, laporan), dan start berikutnya membuat indeks unik `serials_serial` | 8 |
+| S15 | Setelah rilis, mulai ulang server dengan serial ganda lintas BU masih ada, lalu jalankan `merge-duplicate-serials` (dry-run, lalu `--apply`) dan mulai ulang lagi | Start pertama tidak gagal dan log memuat peringatan jumlah ganda; dry-run hanya mencetak rencana (CSV, jangan di-commit); sesudah `--apply` serial ganda hilang (pemenang menampung kejadian, stiker, stok, foto, laporan), dan start berikutnya membuat indeks unik `serials_serial_live` dan membuang indeks lama `serials_serial`/`serials_bu_serial` | 8 |
+
+## Hapus dan pulihkan Serial Number dan Serah Terima, migrasi contract (redesain fase 4d, 2026-11-21)
+
+Spek: `docs/superpowers/specs/2026-11-20-soft-delete-design.md`, rencana `docs/superpowers/plans/2026-11-20-redesain-fase-4d-serial-serah-terima.md`. Uji di staging SESUDAH deploy migrasi `0030_soft_delete_contract.sql` (akun `serial: manage` di semua BU, akun `serial: edit` saja, akun `handover: manage` dan `handover: edit`).
+
+| # | Langkah | Hasil yang diharapkan | Spek |
+|---|---|---|---|
+| H1 | Setelah deploy, cek `SHOW INDEX FROM serials` dan `SHOW INDEX FROM brands` di basis data staging | `serials` hanya punya `serials_serial_live` (bukan `serials_serial`/`serials_bu_serial`) bila tak ada serial ganda; `brands` hanya `brands_key_live`; `users_email` tetap ada | 5.7 |
+| H2 | Di `/serial` (akun `serial: manage` di semua BU), centang satu serial lalu Hapus | Dialog menyebut jumlah dan memperingatkan stok tidak dikembalikan; serial hilang dari daftar, muncul di tampilan Terhapus dengan lencana "Terhapus" | 12-13 |
+| H3 | Dengan akun `serial: edit` saja, buka daftar dan detail serial yang sama | Tidak ada checkbox/aksi Hapus; tidak ada "Ubah massal" di daftar | 13 |
+| H4 | Catat ulang serial yang sama (Tambah Serial Number) saat yang lama terhapus, lalu coba Pulihkan yang lama | Pencatatan membuat serial BARU; Pulihkan ditolak "Serial Number ini sudah dicatat ulang" | 7 |
+| H5 | Serial terhapus punya laporan rusak aktif: buka halaman Laporan, tautan surel/halaman publik laporan itu | Laporan tidak tampil di daftar Laporan; halaman publik 404 seragam; setelah Pulihkan laporan muncul lagi | 12 |
+| H6 | Di papan Serah Terima (akun `handover: manage`), hapus satu task lewat View; buka filter Terhapus; Pulihkan | Task hilang dari kolom, tampil di Terhapus; setelah Pulihkan kembali ke kolom statusnya; nomor ST tidak dipakai ulang | 14 |
+| H7 | Ulangi H6 dengan akun `handover: edit` | Tombol Hapus/Pulihkan tidak tersedia; komentar ke task terhapus lewat tab lain menjawab "tidak ditemukan" | 14 |
+| H8 | Matikan jaringan, centang butir dan beri komentar di task; dari akun lain hapus task itu; nyalakan jaringan | Antrean ditolak dengan toast "Task sudah dihapus" dan "Salin teks"; papan luring tidak lagi memuat task itu setelah dimuat ulang | 14 |
+| H9 | Buka `/serial/new` dan `/serial/report` di desktop dan di ponsel 375 px | Judul, Batal, dan Simpan/Lapor rusak di bar judul (desktop) atau bar bawah (ponsel, ditambah tombol kamera dan menu Impor/Ekspor); Simpan ditahan selama unggahan foto dengan alasan terlihat | 48 |
+| H10 | Di aplikasi desktop (dialog Catat Serial Number Country Lock), perhatikan field Item, BU, dan Lokasi | Tidak ada tautan "Buka" (jendela baru ditolak cangkang); di peramban tautan tetap ada bagi pemegang izin | 49 |

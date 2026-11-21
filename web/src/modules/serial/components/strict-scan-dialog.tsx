@@ -348,14 +348,17 @@ function StrictBody({
                   <dt>Tanggal uji</dt>
                   <dd className="text-foreground">{info.testDate}</dd>
                 </dl>
-                <p className="pt-1 font-medium text-amber-600 dark:text-amber-400">
+                <p className="pt-1 font-medium text-warning-text">
                   Wajib foto minimal {info.proofMin}
                 </p>
               </section>
               <div className="space-y-1.5">
-                <Label htmlFor="strict-serial">Serial Number</Label>
+                <Label htmlFor="strict-serial" required>
+                  Serial Number
+                </Label>
                 <Input
                   id="strict-serial"
+                  aria-required="true"
                   value={serialText}
                   autoComplete="off"
                   autoCapitalize="characters"
@@ -366,7 +369,11 @@ function StrictBody({
                   onChange={(event) => setSerialText(event.target.value.replace(/[\r\n]+/g, ' '))}
                 />
                 {serialError !== null ? (
-                  <p id="strict-serial-error" role="alert" className="text-xs text-destructive">
+                  <p
+                    id="strict-serial-error"
+                    role="alert"
+                    className="text-xs text-destructive-text"
+                  >
                     {serialError}
                   </p>
                 ) : null}
@@ -386,6 +393,7 @@ function StrictBody({
                   <Button
                     type="button"
                     variant="outline"
+                    color="primary"
                     size="sm"
                     disabled={photos.length + running >= max}
                     onClick={() => setPhotoDialog({ open: true, files: [], rejected: [] })}
@@ -413,7 +421,7 @@ function StrictBody({
           <AlertDialogFooter className="bottom-0 mx-0 mb-0 shrink-0 flex-col items-stretch rounded-none p-0 sm:flex-col">
             <p
               role="status"
-              className={`px-4 pt-3 text-xs ${canSave ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400'}`}
+              className={`px-4 pt-3 text-xs ${canSave ? 'text-muted-foreground' : 'text-warning-text'}`}
             >
               {hint}
             </p>
@@ -421,6 +429,7 @@ function StrictBody({
               <Button
                 type="button"
                 variant="outline"
+                color="primary"
                 size="lg"
                 className="h-11"
                 onClick={requestCancel}
@@ -430,6 +439,7 @@ function StrictBody({
               <Button
                 type="button"
                 variant="outline"
+                color="primary"
                 size="lg"
                 className="h-11"
                 onClick={requestRescan}
@@ -482,7 +492,8 @@ function StrictBody({
           <AlertDialogFooter>
             <AlertDialogCancel>Kembali</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
+              variant="soft"
+              color="destructive"
               onClick={() => (confirm === 'rescan' ? rescan() : onClose())}
             >
               {confirm === 'rescan' ? 'Scan ulang' : 'Buang'}
@@ -571,7 +582,14 @@ function ScanStep({
       </div>
       <AlertDialogFooter className="bottom-0 mx-0 mb-0 shrink-0 flex-row rounded-none p-0">
         <div className="grid w-full grid-cols-1 p-4">
-          <Button type="button" variant="outline" size="lg" className="h-11" onClick={onCancel}>
+          <Button
+            type="button"
+            variant="outline"
+            color="primary"
+            size="lg"
+            className="h-11"
+            onClick={onCancel}
+          >
             Batal
           </Button>
         </div>

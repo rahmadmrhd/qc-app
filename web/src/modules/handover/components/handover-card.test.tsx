@@ -93,7 +93,7 @@ test('Selesai: tanpa Mark done dan tanpa Buka kembali; More hanya Ubah', async (
   setup({}, makeHandover({ status: 'done' }));
   expect(screen.queryByRole('button', { name: 'Mark done' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Buka kembali' })).not.toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'More' }));
+  await userEvent.click(screen.getByRole('button', { name: /^Aksi ST-/ }));
   expect(screen.getByRole('menuitem', { name: 'Ubah' })).toBeInTheDocument();
   expect(screen.queryByRole('menuitem', { name: 'Batalkan' })).not.toBeInTheDocument();
 });
@@ -101,7 +101,7 @@ test('Selesai: tanpa Mark done dan tanpa Buka kembali; More hanya Ubah', async (
 test('Dibatalkan: Buka kembali (handover:manage) menggantikan Mark done; More tidak ada', async () => {
   const { onReopen } = setup({}, makeHandover({ status: 'cancelled' }));
   expect(screen.queryByRole('button', { name: 'Mark done' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Aksi ST-/ })).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Buka kembali' }));
   expect(onReopen).toHaveBeenCalledTimes(1);
 });
@@ -146,12 +146,12 @@ test('Mark done dan centang dinonaktifkan tanpa qc:edit', () => {
 
 test('More tidak dirender untuk pengguna yang hanya QC', () => {
   setup({ canEdit: false, canCancel: false });
-  expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Aksi ST-/ })).not.toBeInTheDocument();
 });
 
 test('More berisi Ubah dan Batalkan sesuai izin; Batalkan meminta konfirmasi', async () => {
   const { onEdit, onCancel } = setup();
-  await userEvent.click(screen.getByRole('button', { name: 'More' }));
+  await userEvent.click(screen.getByRole('button', { name: /^Aksi ST-/ }));
   expect(screen.getByRole('menuitem', { name: 'Ubah' })).toBeInTheDocument();
   expect(screen.queryByRole('menuitem', { name: /Hapus/ })).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole('menuitem', { name: 'Batalkan' }));
@@ -164,7 +164,7 @@ test('More berisi Ubah dan Batalkan sesuai izin; Batalkan meminta konfirmasi', a
 
 test('More hanya dengan Ubah bila tidak boleh membatalkan', async () => {
   const { onEdit } = setup({ canCancel: false });
-  await userEvent.click(screen.getByRole('button', { name: 'More' }));
+  await userEvent.click(screen.getByRole('button', { name: /^Aksi ST-/ }));
   expect(screen.queryByRole('menuitem', { name: 'Batalkan' })).not.toBeInTheDocument();
   await userEvent.click(screen.getByRole('menuitem', { name: 'Ubah' }));
   expect(onEdit).toHaveBeenCalled();
@@ -184,7 +184,7 @@ test('detail hanya dibuka lewat nomor task; badan kartu, centang, dan tombol tid
 test('task Dibatalkan tetap tampil dengan labelnya', () => {
   setup({}, makeHandover({ status: 'cancelled' }));
   expect(screen.getByText('Dibatalkan')).toBeInTheDocument();
-  expect(screen.getByText('Dibatalkan').className).toContain('text-red-800');
+  expect(screen.getByText('Dibatalkan').className).toContain('text-destructive-text');
 });
 
 test('antrean centang di perangkat: kartu papan menampilkan butir tercentang dengan penanda', async () => {
@@ -202,4 +202,60 @@ test('antrean centang di perangkat: kartu papan menampilkan butir tercentang den
   expect(screen.getByText('Belum terkirim')).toBeInTheDocument();
   expect(screen.getByText('1/2')).toBeInTheDocument();
   resetOutboxEnv();
+});
+
+test('Hapus (handover:manage): masuk menu More, berbeda dari Batalkan, dan meminta konfirmasi', async () => {
+  const onDelete = vi.fn();
+  const { onCancel } = setup({ canDelete: true, onDelete });
+  await userEvent.click(screen.getByRole('button', { name: /^Aksi ST-/ }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Hapus' }));
+  expect(onDelete).not.toHaveBeenCalled();
+  const dialog = await screen.findByRole('alertdialog');
+  expect(within(dialog).getByText(/Berbeda dari Batalkan/)).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  expect(onDelete).toHaveBeenCalledTimes(1);
+  expect(onCancel).not.toHaveBeenCalled();
+});
+
+test('Hapus tampil bagi pemegang manage walau task Selesai', async () => {
+  setup({ canDelete: true, onDelete: vi.fn() }, makeHandover({ status: 'done' }));
+  await userEvent.click(screen.getByRole('button', { name: /^Aksi ST-/ }));
+  expect(screen.getByRole('menuitem', { name: 'Hapus' })).toBeInTheDocument();
+});
+
+test('tanpa canDelete: task Selesai tidak punya Hapus (hanya Ubah)', async () => {
+  setup({ canDelete: false, onDelete: vi.fn() }, makeHandover({ status: 'done' }));
+  await userEvent.click(screen.getByRole('button', { name: /^Aksi ST-/ }));
+  expect(screen.queryByRole('menuitem', { name: 'Hapus' })).not.toBeInTheDocument();
+});
+
+test('task terhapus: badge Terhapus, hanya-baca, satu aksi Pulihkan (manage)', async () => {
+  const onRestore = vi.fn();
+  setup(
+    { canDelete: true, onRestore, onDelete: vi.fn() },
+    makeHandover({ deleted: { deletedAt: '2026-11-20T01:00:00.000Z', deletedBy: 'adm@qc.local' } }),
+  );
+  expect(screen.getByText('Terhapus')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Aksi ST-/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Mark done' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Tambah komentar' })).not.toBeInTheDocument();
+  for (const box of screen.getAllByRole('checkbox')) expect(box).toBeDisabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Pulihkan' }));
+  expect(onRestore).toHaveBeenCalledTimes(1);
+});
+
+test('task terhapus tanpa manage: tidak ada Pulihkan', () => {
+  setup(
+    { canDelete: false, onRestore: vi.fn() },
+    makeHandover({ deleted: { deletedAt: '2026-11-20T01:00:00.000Z', deletedBy: 'adm@qc.local' } }),
+  );
+  expect(screen.queryByRole('button', { name: 'Pulihkan' })).not.toBeInTheDocument();
+});
+
+test('anatomi MobileCard: judul nomor task menaut ke detail, subjudul customer, lencana status', () => {
+  setup({}, makeHandover({ status: 'in_progress' }));
+  const card = screen.getByRole('article', { name: 'Task ST-20261015-001' });
+  expect(card).toHaveAttribute('data-slot', 'mobile-card');
+  expect(within(card).getByRole('button', { name: 'ST-20261015-001' })).toBeInTheDocument();
+  expect(within(card).getByText('Dikerjakan')).toBeInTheDocument();
 });

@@ -4,11 +4,13 @@ import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, isAppError, staleError } from '@server/core/errors';
 import { statementsFor } from '@server/core/events';
+import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { mapDuplicateError } from '@server/modules/access/repo';
 // Impor efek-samping: mendaftarkan pendengar stok bus event (`core/events.ts`). Kode di berkas ini tidak memakai
 // apa pun dari modul stiker; pemotongan stok hanya datang lewat `statementsFor`.
 import '@server/modules/sticker/serial-listener';
+import { buIdsWithLevel } from '@shared/business-units';
 import type {
   GetSerialInput,
   GetSerialOutput,
@@ -54,12 +56,20 @@ import {
   type SerialStatus,
   splitSerialInput,
 } from '@shared/serials';
-import { canReadSerial, canWriteBu, readableBuIds, writableBuIds } from './access';
+import {
+  canManageSerial,
+  canWriteBu,
+  readableBuIds,
+  restorableSerialsSql,
+  writableBuIds,
+} from './access';
 import { applicableStickersOf } from './applicable';
+import { involvedBuIdsMany } from './bu-history';
 import { loadCases, type SerialCaseRow } from './case-repo';
 import { canManageProof } from './proof/access';
 import { loadStampItemInfo, planProofAttach } from './proof/attach';
 import { listFailedProofsBySerial, listProofsByEvents } from './proof/repo';
+import { loadReadableSerialRow } from './readable';
 import { recheckExistingSerial, recheckStickerTargetAllowed } from './recheck-entry';
 import {
   activeItemWritableForBu,
@@ -142,7 +152,7 @@ export async function queryItemOptions(
   }
   const effectiveLimit = byIds ? (input.itemIds?.length ?? 0) : limit;
   const rows = await env.DB.prepare(
-    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.proof_required, i.proof_min FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
+    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.proof_required, i.proof_min FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('i')} AND ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
   )
     .bind(...binds, effectiveLimit + 1)
     .all<OptionRow>();
@@ -207,7 +217,7 @@ export async function buOptions(env: Env, user: UserContext): Promise<SerialBuOp
   const scope = writable.length > 0 ? writable : readableBuIds(user);
   if (scope.length === 0) return { businessUnits: [] };
   const rows = await env.DB.prepare(
-    `SELECT id, code, name FROM business_units WHERE status = 'active' AND id IN (${placeholders(scope.length)}) ORDER BY code, id`,
+    `SELECT id, code, name FROM business_units WHERE status = 'active' AND ${liveWhere()} AND id IN (${placeholders(scope.length)}) ORDER BY code, id`,
   )
     .bind(...scope)
     .all<{ id: string; code: string; name: string }>();
@@ -220,10 +230,13 @@ export async function buOptions(env: Env, user: UserContext): Promise<SerialBuOp
   };
 }
 
-/** Semua lokasi AKTIF (id, kode, nama), urut kode; pilihan lokasi saat mencatat serial tidak dibatasi penugasan lokasi. */
+/**
+ * Semua lokasi AKTIF dan hidup (id, kode, nama), urut kode; pilihan lokasi saat mencatat serial tidak dibatasi
+ * penugasan lokasi. Lokasi terhapus tidak ditawarkan (serial yang sudah di sana tetap menampilkan namanya).
+ */
 export async function locationOptions(env: Env): Promise<SerialLocationOptionsDto> {
   const rows = await env.DB.prepare(
-    "SELECT id, code, name FROM locations WHERE status = 'active' ORDER BY code, id",
+    `SELECT id, code, name FROM locations WHERE status = 'active' AND ${liveWhere()} ORDER BY code, id`,
   ).all<{ id: string; code: string; name: string }>();
   return {
     locations: rows.results.map((row) => ({
@@ -242,12 +255,68 @@ const LOCATION_LOCKED_MESSAGE =
 const STICKER_MESSAGE = 'Stiker tidak berlaku bagi item ini';
 export const SERIAL_CONFLICTS = {
   serials_bu_serial: { message: DUPLICATE_MESSAGE, field: 'serial' },
-  // Keunikan se-sistem (migrasi 0026); `serials_bu_serial` dipertahankan sampai rilis contract.
+  // Keunikan se-sistem: `serials_serial_live` (nama dasar `serials_serial`) setelah migrasi contract 0030. `serials_serial`
+  // dan `serials_bu_serial` lama dibuang `ensureSerialUniqueIndex` saat start; entri keduanya dipertahankan selama data lama
+  // dengan serial ganda lintas BU masih memakai `serials_bu_serial` sebagai penjaga.
   serials_serial: { message: DUPLICATE_MESSAGE, field: 'serial' },
   // Kunci idempoten kejadian (cek ulang dari Catat).
   serial_events_client_id: { message: DUPLICATE_MESSAGE, field: 'clientId' },
   serials_client_id: { message: DUPLICATE_MESSAGE, field: 'clientId' },
 };
+
+const NOT_FOUND_MESSAGE = 'Serial Number tidak ditemukan';
+
+/** Rujukan baris yang sudah terhapus (keputusan T7): dinamai agar pengguna tahu mana yang harus diganti. */
+type DeletedRef = 'Item' | 'Lokasi' | 'BU';
+
+function deletedMessage(ref: DeletedRef, rowNumber: number | undefined): string {
+  return `${rowNumber === undefined ? '' : `Baris ${rowNumber}: `}${ref} sudah dihapus`;
+}
+
+/**
+ * Rujukan baris yang terhapus, bila ada (urut BU, Item untuk `item-bu`; Lokasi untuk `location`), atau `null`. Hanya
+ * mengungkap apa yang pengirim sudah pegang haknya: BU yang boleh ditulisnya (diperiksa pemanggil), item yang beririsan
+ * dengan BU tulisnya, dan lokasi menurut id yang ia kirim. Selain itu pesan generik tetap berlaku.
+ */
+async function deletedReferenceOf(
+  env: Env,
+  user: UserContext,
+  row: SerialRowInput,
+  step: 'item-bu' | 'location',
+): Promise<DeletedRef | null> {
+  if (step === 'location') {
+    const hit = await env.DB.prepare(
+      `SELECT 1 AS ok FROM locations WHERE ${deletedWhere()} AND id = ?`,
+    )
+      .bind(row.locationId)
+      .first<{ ok: number }>();
+    return hit ? 'Lokasi' : null;
+  }
+  const bu = await env.DB.prepare(
+    `SELECT 1 AS ok FROM business_units WHERE ${deletedWhere()} AND id = ?`,
+  )
+    .bind(row.buId)
+    .first<{ ok: number }>();
+  if (bu) return 'BU';
+  const scope = writableBuIds(user);
+  if (scope.length === 0) return null;
+  const item = await env.DB.prepare(
+    `SELECT 1 AS ok FROM items i WHERE ${deletedWhere('i')} AND i.id = ? AND EXISTS (SELECT 1 FROM item_business_units l WHERE l.item_id = i.id AND l.bu_id IN (${placeholders(scope.length)}))`,
+  )
+    .bind(row.itemId, ...scope)
+    .first<{ ok: number }>();
+  return item ? 'Item' : null;
+}
+
+/** Kejadian cek ulang berpengenal ini ada pada serial yang kini TERHAPUS (kiriman ulang ke serial terhapus). */
+async function recheckReplayOfDeleted(env: Env, clientId: string): Promise<boolean> {
+  const hit = await env.DB.prepare(
+    `SELECT 1 AS ok FROM serial_events e JOIN serials s ON s.id = e.serial_id WHERE ${deletedWhere('s')} AND e.client_id = ?`,
+  )
+    .bind(clientId)
+    .first<{ ok: number }>();
+  return hit !== null;
+}
 
 const failRow = (row: SerialRowInput, message: string): SerialRowResult => ({
   clientId: row.clientId,
@@ -339,6 +408,8 @@ export async function createSerialOnce(
   user: UserContext,
   today: string,
   memo: SerialLookupMemo = new SerialLookupMemo(env),
+  /** Nomor baris (1-based) dalam permintaan, untuk pesan "Baris N: ... sudah dihapus" (keputusan T7). */
+  rowNumber?: number,
 ): Promise<SerialRowResult> {
   const parsed = parseSerialRow(rawRow, today);
   if (!parsed.ok) {
@@ -349,16 +420,22 @@ export async function createSerialOnce(
   if (!canWriteBu(user, row.buId)) return failRow(row, ITEM_MESSAGE);
   const existing = await findSerialByClientId(env.DB, row.clientId);
   if (existing) {
-    return existing.buId === row.buId && existing.serial === row.serial
-      ? idempotent(row, existing.id)
-      : failRow(row, 'Baris tidak valid');
+    if (existing.buId !== row.buId || existing.serial !== row.serial) {
+      return failRow(row, 'Baris tidak valid');
+    }
+    // Kiriman ulang ke serial yang sudah terhapus = tak ditemukan (keputusan T8; antrean memperlakukannya ditolak).
+    return existing.deleted ? failRow(row, NOT_FOUND_MESSAGE) : idempotent(row, existing.id);
   }
   // Serial yang sudah ada (unik se-sistem) menjadi cek ulang lolos pada catatan itu (spek serial unik se-sistem §5.1);
   // syarat item aktif/terlihat di bawah TIDAK berlaku di jalur itu.
   const rechecked = await recheckExistingSerial(env, user, row, memo);
   if (rechecked) return rechecked;
+  // Kiriman ulang baris CEK ULANG ke serial yang kemudian terhapus: kejadiannya sudah ada (`client_id`), jadi bukan
+  // serial baru (T8).
+  if (await recheckReplayOfDeleted(env, row.clientId)) return failRow(row, NOT_FOUND_MESSAGE);
   if (!(await memo.activeItemWritableForBu(row.itemId, row.buId, user))) {
-    return failRow(row, ITEM_MESSAGE);
+    const deletedRef = await deletedReferenceOf(env, user, row, 'item-bu');
+    return failRow(row, deletedRef === null ? ITEM_MESSAGE : deletedMessage(deletedRef, rowNumber));
   }
   // Item wajib foto bukti: jumlah foto kurang dari minimum = baris `invalid` (mencakup draft lama dan impor `.qcsn`).
   // Pesan sengaja tidak diawali kalimat penolakan foto web (`isProofRejection`), supaya foto baris tak dikosongkan.
@@ -367,7 +444,13 @@ export async function createSerialOnce(
     return failRow(row, `Item ini wajib foto bukti minimal ${proofMin}`);
   }
   const locationName = await memo.activeLocationName(row.locationId);
-  if (locationName === null) return failRow(row, LOCATION_MESSAGE);
+  if (locationName === null) {
+    const deletedRef = await deletedReferenceOf(env, user, row, 'location');
+    return failRow(
+      row,
+      deletedRef === null ? LOCATION_MESSAGE : deletedMessage(deletedRef, rowNumber),
+    );
+  }
   // Stiker hanya dimuat bila perlu: `[]` eksplisit tak butuh daftar yang berlaku; tidak dikirim = semua yang berlaku.
   const applicable =
     row.stickers === undefined || row.stickers.length > 0
@@ -496,12 +579,12 @@ export async function createSerialOnce(
       };
     }
     if (error instanceof DbError && error.kind === 'duplicate') {
-      // Balapan retry: InnoDB dapat melaporkan indeks `serials_bu_serial` (bukan `serials_client_id`) untuk baris
+      // Balapan retry: InnoDB dapat melaporkan indeks unik serial (`serials_serial_live`, atau `serials_bu_serial` pada data lama dengan serial ganda) alih-alih `serials_client_id` untuk baris
       // yang sama, jadi pada galat duplikat APA PUN baca ulang `clientId` dulu. Pemenang sudah commit saat galat
       // ini terbit (penulis kedua menunggu kuncinya), sehingga bacaan ulang melihatnya.
       const again = await findSerialByClientId(env.DB, row.clientId);
       if (again && again.buId === row.buId && again.serial === row.serial) {
-        return idempotent(row, again.id);
+        return again.deleted ? failRow(row, NOT_FOUND_MESSAGE) : idempotent(row, again.id);
       }
       // Serial yang sama dicatat serentak dari tempat lain dan pemenangnya sudah komit: baris ini menjadi cek ulang.
       const fallback = await recheckExistingSerial(env, user, row, memo);
@@ -536,8 +619,8 @@ export async function saveSerialBatch(
   const today = wibDateIso(nowOf(env));
   const results: SerialRowResult[] = [];
   const memo = new SerialLookupMemo(env);
-  for (const row of input.rows) {
-    results.push(await createSerialOnce(env, row, user, today, memo));
+  for (const [index, row] of input.rows.entries()) {
+    results.push(await createSerialOnce(env, row, user, today, memo, index + 1));
   }
   return { results };
 }
@@ -586,6 +669,9 @@ export function toSummary(row: SerialRow): SerialSummaryDto {
     hasProofPhotos: Number(row.has_proof) === 1,
     proofProblemCount: Number(row.proof_problem),
     createdAt: row.created_at,
+    ...(row.deleted_at === ''
+      ? {}
+      : { deleted: { deletedAt: row.deleted_at, deletedBy: row.deleted_by } }),
   };
 }
 
@@ -612,7 +698,7 @@ function toBuHistory(row: SerialRow, history: SerialBuHistoryRow[]): SerialBuHis
   return entries;
 }
 
-function toDto(
+export function toDto(
   row: SerialRow,
   stickers: SerialStickerRow[],
   caseRows: SerialCaseRow[],
@@ -701,12 +787,8 @@ export async function toEventsWithProofs(
 
 /** Serial lengkap dengan stiker (nama) untuk DTO; BU di luar hak baca = `NOT_FOUND`. */
 export async function loadSerialDto(env: Env, user: UserContext, id: string): Promise<SerialDto> {
-  const row = await loadSerialRow(env.DB, id);
-  if (!row) throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
-  // Baca: BU saat ini ATAU BU di riwayat (spek serial unik se-sistem §5.3); BU lain = NOT_FOUND.
-  if (!(await canReadSerial(env.DB, user, row.id.trim(), row.bu_id.trim()))) {
-    throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
-  }
+  // Baca: BU saat ini ATAU BU di riwayat (spek serial unik se-sistem §5.3); serial terhapus hanya bagi pemulih.
+  const row = await loadReadableSerialRow(env, user, id);
   const [stickers, cases, buHistory] = await Promise.all([
     loadSerialStickers(env.DB, row.id.trim()),
     loadCases(env.DB, row.id.trim()),
@@ -747,9 +829,16 @@ export async function listSerials(
   input: SerialListInput,
 ): Promise<SerialListOutput> {
   const buIds = readableBuIds(user);
+  const restorable = input.deleted === true ? restorableSerialsSql(user) : null;
+  // Daftar "Terhapus" hanya bagi pemegang `serial: manage` pada minimal satu BU (selain itu `FORBIDDEN`) dan terbatas
+  // pada serial yang boleh dipulihkannya.
+  if (restorable !== null && buIdsWithLevel(user.businessUnits, 'serial', 'manage').length === 0) {
+    throw appError('FORBIDDEN', 'Anda tidak berhak melihat Serial Number terhapus');
+  }
   if (buIds.length === 0) return { items: [], nextCursor: null };
   const limit = input.limit ?? SERIAL_LIST_DEFAULT_LIMIT;
   const filter: SerialListFilter = { buIds, limit };
+  if (restorable !== null) filter.deleted = restorable;
   const query = normalizeSerial(input.query ?? '');
   if (query !== '') {
     const stripped = query.replace(/[:.-]/g, '');
@@ -774,8 +863,21 @@ export async function listSerials(
   const rows = await listSerialRows(env.DB, filter);
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
+  // `canManage` (hak Hapus/Pulihkan; aditif): `serial: manage` pada SEMUA BU riwayat tiap serial, jadi klien tak menebak
+  // dari BU saat ini saja. Tanpa BU ber-`manage` sama sekali, semuanya `false` tanpa kueri riwayat.
+  const mayManage = buIdsWithLevel(user.businessUnits, 'serial', 'manage').length > 0;
+  const involved = mayManage
+    ? await involvedBuIdsMany(
+        env.DB,
+        page.map((row) => row.id.trim()),
+      )
+    : new Map<string, string[]>();
   return {
-    items: page.map(toSummary),
+    items: page.map((row) => ({
+      ...toSummary(row),
+      canManage:
+        mayManage && canManageSerial(user, involved.get(row.id.trim()) ?? [row.bu_id.trim()]),
+    })),
     nextCursor: rows.length > limit && last ? encodeSerialCursor(last) : null,
   };
 }
@@ -837,7 +939,7 @@ async function updateOnce(
     // Serial Number unik se-sistem: bentrok dengan catatan di BU mana pun. Indeks unik (`serials_serial`) tetap penjaga
     // akhir; pemeriksaan ini menjaga juga selama indeks belum terpasang (ada serial ganda lama yang belum disatukan).
     const taken = await env.DB.prepare(
-      'SELECT 1 AS present FROM serials WHERE serial = ? AND id <> ?',
+      `SELECT 1 AS present FROM serials WHERE ${liveWhere()} AND serial = ? AND id <> ?`,
     )
       .bind(fields.serial, row.id.trim())
       .first<{ present: number }>();

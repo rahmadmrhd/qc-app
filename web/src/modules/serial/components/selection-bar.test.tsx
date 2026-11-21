@@ -51,8 +51,8 @@ test('urutan DOM: tombol dulu lalu "n dipilih" (urutan baca = visual di desktop)
   const bar = screen.getByRole('region', { name: 'Aksi baris terpilih' });
   expect(bar.lastElementChild).toBe(status);
   expect(bar.firstElementChild?.textContent).toBe('Edit');
-  expect(status.className).toContain('max-md:order-first');
-  expect(status.className).toContain('max-md:mr-auto');
+  expect(status.className).toContain('narrow:order-first');
+  expect(status.className).toContain('narrow:mr-auto');
   expect(status.className).not.toContain('md:order-last');
 });
 
@@ -60,5 +60,5 @@ test('bar fixed tanpa margin bawah di ponsel (tidak terangkat oleh space-y pembu
   render(<SelectionBar count={1} onEdit={vi.fn()} onRemove={vi.fn()} onClear={vi.fn()} />);
   const bar = screen.getByRole('region', { name: 'Aksi baris terpilih' });
   expect(bar.className).toContain('bottom-0');
-  expect(bar.className).toContain('max-md:m-0');
+  expect(bar.className).toContain('narrow:m-0');
 });

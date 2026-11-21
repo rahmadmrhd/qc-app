@@ -1037,6 +1037,28 @@ describe('baca: board per kolom, get, options', () => {
     ).toEqual(['t5']);
   });
 
+  test('customerId (keputusan 2026-11-21): hanya task customer itu; total ikut; hak lokasi tetap berlaku', async () => {
+    const mine = await board('in_progress', { customerId: 'cust-budi' });
+    expect(mine.data.items.map((t: { id: string }) => t.id)).toEqual(['t2']);
+    expect(mine.data.total).toBe(1);
+    const other = await board('new', { customerId: 'cust-budi' });
+    expect(other.data.items).toEqual([]);
+    expect(other.data.total).toBe(0);
+    expect((await board('in_progress', { customerId: 'cust-tak-ada' })).data.total).toBe(0);
+    // Tanpa filter, perilaku lama; dengan filter, lokasi terlarang tetap ditolak.
+    expect((await board('new')).data.total).toBe(1);
+    const denied = await board('in_progress', { customerId: 'cust-budi' }, 'wh@gmail.com', [
+      ENV.locA,
+      ENV.locB,
+    ]);
+    expect(denied.error.code).toBe('FORBIDDEN');
+    // Task customer di lokasi lain tak terlihat lewat lokasi yang diizinkan.
+    expect(
+      (await board('in_progress', { customerId: 'cust-budi' }, 'multi@gmail.com', [ENV.locB])).data
+        .total,
+    ).toBe(0);
+  });
+
   test('DTO board: checklist, status turunan, customer terkini, komentar dengan stale', async () => {
     const inProgress = (await board('in_progress', {}, 'qc@gmail.com')).data.items[0];
     expect(inProgress.status).toBe('in_progress');

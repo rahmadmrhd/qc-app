@@ -297,3 +297,12 @@ test('galat server: tidak ada yang tersimpan, draf utuh, tanpa pemberitahuan ter
   expect(cards()).toHaveLength(12);
   expect(onSubmit).toHaveBeenCalledTimes(1);
 }, 60_000);
+
+test('kerangka FormPage: Simpan semua di luar form men-submit lewat form=id dan membawa target tur handover-save', () => {
+  renderForm();
+  const save = screen.getByRole('button', { name: /^Simpan semua/ });
+  expect(save).toHaveAttribute('form', 'handover-batch-form');
+  expect(save).toHaveAttribute('data-tour', 'handover-save');
+  expect(document.getElementById('handover-batch-form')?.tagName).toBe('FORM');
+  expect(screen.getByRole('heading', { level: 1, name: 'Tambah task' })).toBeInTheDocument();
+});

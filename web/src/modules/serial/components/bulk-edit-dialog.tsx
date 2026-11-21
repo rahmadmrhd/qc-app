@@ -121,7 +121,7 @@ function BulkEditBody({
           onChange={setItem}
         />
         {itemIncomplete ? (
-          <p className="text-xs text-destructive">Pilih Business Unit untuk item ini.</p>
+          <p className="text-xs text-destructive-text">Pilih Business Unit untuk item ini.</p>
         ) : null}
         <div className="space-y-1.5">
           <Label htmlFor="bulk-date">Tanggal uji (ubah massal)</Label>
@@ -167,7 +167,7 @@ function BulkEditBody({
         </div>
       </div>
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onClose}>
+        <Button type="button" variant="outline" color="primary" onClick={onClose}>
           Batal
         </Button>
         <Button type="button" disabled={!dirty || itemIncomplete} onClick={apply}>

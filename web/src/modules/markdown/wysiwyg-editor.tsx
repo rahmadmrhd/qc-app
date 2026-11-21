@@ -47,6 +47,8 @@ export interface WysiwygEditorProps {
   onChange: (markdown: string) => void;
   maxLength?: number;
   disabled?: boolean;
+  /** Field wajib: `aria-required` pada kotak editor (bintang ada di label form induk). */
+  required?: boolean;
   /** Id elemen label dari form induk; bila ada dipakai sebagai nama field (menggantikan aria-label bawaan). */
   labelledBy?: string;
   /**
@@ -100,6 +102,7 @@ export function WysiwygEditor({
   onChange,
   maxLength = MARKDOWN_MAX_LENGTH,
   disabled = false,
+  required = false,
   labelledBy,
   mode = 'item',
   maxImages,
@@ -227,6 +230,7 @@ export function WysiwygEditor({
         role: 'textbox',
         'aria-multiline': 'true',
         ...(labelledBy ? { 'aria-labelledby': labelledBy } : { 'aria-label': 'Isi catatan' }),
+        ...(required ? { 'aria-required': 'true' } : {}),
         'aria-describedby': `${id}-count`,
         'aria-invalid': String(tooLong),
         'aria-disabled': String(disabled),
@@ -387,18 +391,18 @@ export function WysiwygEditor({
         </span>
         <span
           id={`${id}-count`}
-          className={cn(tooLong ? 'text-destructive' : 'text-muted-foreground')}
+          className={cn(tooLong ? 'text-destructive-text' : 'text-muted-foreground')}
         >
           {value.length}/{maxLength}
         </span>
       </div>
       {limitHit ? (
-        <p role="status" className="text-sm text-destructive">
+        <p role="status" className="text-sm text-destructive-text">
           Batas {maxLength} karakter tercapai; teks yang melebihi batas tidak dimasukkan.
         </p>
       ) : null}
       {maxMessage ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {maxMessage}
         </p>
       ) : null}

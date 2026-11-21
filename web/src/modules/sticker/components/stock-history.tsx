@@ -96,7 +96,7 @@ export function StockHistory({
                   ) : null}
                   <TableCell className="text-right tabular-nums">{signed(entry.delta)}</TableCell>
                   <TableCell
-                    className={`text-right tabular-nums${entry.qtyAfter < 0 ? ' text-destructive' : ''}`}
+                    className={`text-right tabular-nums${entry.qtyAfter < 0 ? ' text-destructive-text' : ''}`}
                   >
                     {formatStockQty(entry.qtyAfter)}
                   </TableCell>
@@ -115,7 +115,7 @@ export function StockHistory({
       </div>
       {hasMore ? (
         <div className="flex justify-center">
-          <Button variant="outline" disabled={loadingMore} onClick={onLoadMore}>
+          <Button variant="outline" color="primary" disabled={loadingMore} onClick={onLoadMore}>
             {loadingMore ? 'Memuat…' : 'Muat lebih banyak'}
           </Button>
         </div>
@@ -132,7 +132,8 @@ export interface StockHistoryDialogProps {
   onClose: () => void;
 }
 
-function StockHistoryBody({
+/** Riwayat satu stiker yang memuat sendiri (kursor server); dipakai dialog dan tab Riwayat View Stiker. */
+export function StockHistoryPanel({
   stickerId,
   locationIds,
   locationNames,
@@ -145,7 +146,7 @@ function StockHistoryBody({
   if (query.isPending) return <p className="text-sm text-muted-foreground">Memuat riwayat…</p>;
   if (query.isError) {
     return (
-      <p role="alert" className="text-sm text-destructive">
+      <p role="alert" className="text-sm text-destructive-text">
         {describeError(query.error)}
       </p>
     );
@@ -179,7 +180,7 @@ export function StockHistoryDialog({
           </DialogDescription>
         </DialogHeader>
         {sticker ? (
-          <StockHistoryBody
+          <StockHistoryPanel
             key={sticker.stickerId}
             stickerId={sticker.stickerId}
             locationIds={locationIds}

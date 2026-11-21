@@ -55,9 +55,12 @@ export async function ensurePostelType(env: Env, actor: ActorRef): Promise<Stick
           systemKind: 'postel',
           defaultMinQty: 0,
           stickerCount: 0,
+          liveStickerCount: 0,
           createdAt: now,
           updatedAt: now,
           updatedBy: actor.email,
+          deletedAt: '',
+          deletedBy: '',
         }),
       ]);
     }

@@ -52,6 +52,7 @@ export function AccessoryListField({ value, onChange, error }: AccessoryListFiel
           <Button
             type="button"
             variant="ghost"
+            color="primary"
             size="sm"
             aria-label={`Hapus kelengkapan ${index + 1}`}
             onClick={() => onChange(value.filter((_, i) => i !== index))}
@@ -63,6 +64,7 @@ export function AccessoryListField({ value, onChange, error }: AccessoryListFiel
       <Button
         type="button"
         variant="outline"
+        color="primary"
         size="sm"
         disabled={value.length >= ITEM_LIMITS.accessories}
         onClick={() => onChange([...value, { name: '', qty: 1 }])}

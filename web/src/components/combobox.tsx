@@ -1,9 +1,22 @@
 import { Check, ExternalLink, Plus, X } from 'lucide-react';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { useBackToClose } from '@/hooks/use-back-to-close';
+import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { cn } from '@/lib/utils';
+
+/** `true` di dalam popover chip filter: combobox mulai dengan daftar terbuka (K8). */
+export const ComboboxAutoOpenContext = createContext(false);
 
 export interface LinkOption {
   id: string;
@@ -27,10 +40,14 @@ export interface ComboboxCommon {
   searchDebounceMs?: number;
   /** Baris "Tambah {label}" di bawah daftar saran, hanya bila disediakan (mis. membuka dialog form master). */
   onCreate?: () => void;
+  /** Teks pada baris "Tambah …" bila label field tidak cocok dibaca di sana (bawaan: `label`). */
+  createLabel?: string;
   /** Tautan ke record (tab baru); `null` = tidak ada tautan. Mode banyak pilihan: label chip menjadi tautan. */
   openHref?: (id: string) => string | null;
   error?: string;
   disabled?: boolean;
+  /** Field wajib: bintang merah pada label dan `aria-required` pada input (validasi tetap lewat zod). */
+  required?: boolean;
   /** Label hanya untuk pembaca layar (filter di halaman daftar yang tak punya label tampak). */
   hideLabel?: boolean;
   /** Kelas tambahan untuk pembungkus terluar (mis. lebar kolom filter: `sm:w-56`). */
@@ -43,6 +60,8 @@ export interface ComboboxCommon {
   localFilter?: boolean;
   /** Tandai potongan label opsi yang cocok dengan yang diketik (`<mark>`). */
   highlight?: boolean;
+  /** Daftar pendek yang tak perlu diketik (enum kecil): papan ketik layar tidak dimunculkan saat field diketuk. */
+  keyboardless?: boolean;
 }
 
 const DEFAULT_DEBOUNCE_MS = 200;
@@ -56,6 +75,11 @@ const LIST_EDGE = 8;
 /** Ruang di bawah input yang masih dianggap cukup untuk membuka daftar ke bawah. */
 const LIST_MIN_BELOW = 160;
 
+/** Tinggi satu baris opsi di ponsel (target sentuh) dan jumlah baris minimum agar daftar dibuka di bawah field. */
+const PHONE_ROW = 44;
+const PHONE_MIN_ROWS = 3;
+const PHONE_MAX_HEIGHT = 320;
+
 /** Letak daftar saran di layar (`position: fixed`): di bawah input, atau di atasnya bila ruang bawah sempit. */
 export interface ListPlacement {
   left: number;
@@ -63,16 +87,52 @@ export interface ListPlacement {
   maxHeight: number;
   top?: number;
   bottom?: number;
+  /** Ponsel dengan ruang < 3 baris: daftar menjadi lembar bawah yang menempel tepat di atas papan ketik. */
+  sheet?: boolean;
+}
+
+export interface PlaceOptions {
+  /** Bagian layar yang terlihat (`visualViewport`); papan ketik layar mengecilkannya. Bawaan seluruh layar. */
+  visible?: { top: number; bottom: number };
+  /** Ponsel: selalu dibuka di bawah field pada ruang di atas papan ketik, atau lembar bawah bila < 3 baris. */
+  phone?: boolean;
+  viewportWidth?: number;
 }
 
 /**
  * Menghitung letak daftar dari kotak input (`rect`) dan tinggi layar. Daftar dirender di `document.body`, bukan di
  * dalam kontainer yang bisa di-scroll (dialog), agar tidak terpotong; karena itu letaknya dihitung sendiri.
  */
-export function placeList(rect: DOMRect, viewportHeight: number): ListPlacement {
-  const below = viewportHeight - rect.bottom - LIST_EDGE - LIST_GAP;
-  const above = rect.top - LIST_EDGE - LIST_GAP;
+export function placeList(
+  rect: DOMRect,
+  viewportHeight: number,
+  options: PlaceOptions = {},
+): ListPlacement {
+  const visibleBottom = options.visible?.bottom ?? viewportHeight;
+  const visibleTop = options.visible?.top ?? 0;
+  const below = visibleBottom - rect.bottom - LIST_EDGE - LIST_GAP;
+  const above = rect.top - visibleTop - LIST_EDGE - LIST_GAP;
   const base = { left: rect.left, width: rect.width };
+  if (options.phone) {
+    if (below >= PHONE_ROW * PHONE_MIN_ROWS) {
+      return {
+        ...base,
+        top: rect.bottom + LIST_GAP,
+        maxHeight: Math.min(PHONE_MAX_HEIGHT, below),
+      };
+    }
+    const visibleHeight = visibleBottom - visibleTop;
+    return {
+      left: LIST_EDGE,
+      width: (options.viewportWidth ?? rect.left * 2 + rect.width) - LIST_EDGE * 2,
+      bottom: viewportHeight - visibleBottom + LIST_EDGE,
+      maxHeight: Math.max(
+        PHONE_ROW * PHONE_MIN_ROWS,
+        Math.min(PHONE_MAX_HEIGHT, visibleHeight * 0.5),
+      ),
+      sheet: true,
+    };
+  }
   if (below >= LIST_MIN_BELOW || below >= above) {
     return {
       ...base,
@@ -117,7 +177,7 @@ function Highlighted({ text, term }: { text: string; term: string }) {
   return text.split(pattern).map((part, index) =>
     index % 2 === 1 ? (
       // biome-ignore lint/suspicious/noArrayIndexKey: potongan teks statis, urutannya tetap
-      <mark key={index} className="rounded-sm bg-yellow-500/40 text-inherit">
+      <mark key={index} className="rounded-sm bg-warning/40 text-inherit">
         {part}
       </mark>
     ) : (
@@ -162,6 +222,7 @@ export function ComboboxBase({
   onSearchChange,
   searchDebounceMs,
   onCreate,
+  createLabel,
   error,
   disabled,
   multi,
@@ -174,12 +235,16 @@ export function ComboboxBase({
   openLink,
   localFilter,
   highlight,
+  keyboardless,
   hideLabel,
+  required,
   className,
 }: ComboboxBaseProps) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [open, setOpen] = useState(false);
+  // Di dalam popover chip filter daftar langsung terbuka (satu ketukan lebih sedikit; K8).
+  const autoOpen = useContext(ComboboxAutoOpenContext);
+  const [open, setOpen] = useState(autoOpen);
   const [editing, setEditing] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [term, setTerm] = useSearchTerm(onSearchChange, searchDebounceMs ?? DEFAULT_DEBOUNCE_MS);
@@ -209,6 +274,9 @@ export function ComboboxBase({
   // ukuran berubah, atau jumlah chip (tinggi bingkai) berubah.
   const anchorRef = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<ListPlacement | null>(null);
+  const phone = !useIsDesktop();
+  // Lembar bawah (daftar terlalu sempit di atas/bawah): back menutupnya lebih dulu (butir 41b).
+  useBackToClose(showList && placement?.sheet === true, close);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `chips.length` hanya memicu ukur ulang saat bingkai membesar
   useLayoutEffect(() => {
     const anchor = anchorRef.current;
@@ -216,19 +284,47 @@ export function ComboboxBase({
       setPlacement(null);
       return;
     }
+    const viewport = window.visualViewport;
     const update = () =>
-      setPlacement(placeList(anchor.getBoundingClientRect(), window.innerHeight));
+      setPlacement(
+        placeList(anchor.getBoundingClientRect(), window.innerHeight, {
+          phone,
+          viewportWidth: window.innerWidth,
+          ...(viewport && phone
+            ? { visible: { top: viewport.offsetTop, bottom: viewport.offsetTop + viewport.height } }
+            : {}),
+        }),
+      );
     update();
     window.addEventListener('scroll', update, true);
     window.addEventListener('resize', update);
+    if (phone) {
+      viewport?.addEventListener('resize', update);
+      viewport?.addEventListener('scroll', update);
+    }
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update);
     observer?.observe(anchor);
     return () => {
       window.removeEventListener('scroll', update, true);
       window.removeEventListener('resize', update);
+      viewport?.removeEventListener('resize', update);
+      viewport?.removeEventListener('scroll', update);
       observer?.disconnect();
     };
-  }, [showList, chips.length]);
+  }, [showList, chips.length, phone]);
+
+  // Ponsel: saat daftar terbuka, gulirkan field ke bagian atas area terlihat (di bawah header menempel) agar
+  // daftar punya ruang di atas papan ketik layar. Hanya sekali per pembukaan.
+  const scrolledFor = useRef(false);
+  useEffect(() => {
+    if (!showList || !phone) {
+      scrolledFor.current = false;
+      return;
+    }
+    if (scrolledFor.current) return;
+    scrolledFor.current = true;
+    anchorRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+  }, [showList, phone]);
 
   function close() {
     setOpen(false);
@@ -291,16 +387,19 @@ export function ComboboxBase({
 
   return (
     <div className={cn('space-y-1.5', className)}>
-      <Label htmlFor={id} className={hideLabel ? 'sr-only' : undefined}>
+      <Label htmlFor={id} required={required} className={hideLabel ? 'sr-only' : undefined}>
         {label}
       </Label>
       <div className="flex items-start gap-1">
-        <div ref={anchorRef} className="min-w-0 flex-1">
+        <div
+          ref={anchorRef}
+          className="min-w-0 flex-1 max-md:scroll-mt-[calc(var(--dialog-header-height,var(--headroom-offset,3.5rem))+0.5rem)]"
+        >
           {/* biome-ignore lint/a11y/noStaticElementInteractions: bingkai hanya mengarahkan klik ke input di dalamnya */}
           <div
             data-slot="link-field-frame"
             className={cn(
-              'flex min-h-8 w-full flex-wrap items-center gap-1 rounded-lg border border-input bg-transparent px-1.5 py-0.5 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30',
+              'flex min-h-8 touch:min-h-11 w-full flex-wrap items-center gap-1 rounded-lg border border-input bg-transparent px-1.5 py-0.5 transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50 dark:bg-input/30',
               error &&
                 'border-destructive focus-within:border-destructive focus-within:ring-destructive/20',
               disabled && 'pointer-events-none cursor-not-allowed opacity-50',
@@ -335,7 +434,7 @@ export function ComboboxBase({
                     type="button"
                     tabIndex={-1}
                     aria-label={`Hapus ${chip.label}`}
-                    className="text-muted-foreground hover:text-foreground"
+                    className="text-muted-foreground hover:text-foreground touch:-m-[15px] touch:p-[15px]"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => onRemove(chip.id)}
                   >
@@ -349,6 +448,7 @@ export function ComboboxBase({
               id={id}
               type="text"
               role="combobox"
+              inputMode={keyboardless ? 'none' : undefined}
               autoComplete="off"
               aria-expanded={showList}
               aria-controls={showList ? listId : undefined}
@@ -357,11 +457,12 @@ export function ComboboxBase({
                 showList && activeKey !== undefined ? optionDomId(activeKey) : undefined
               }
               aria-invalid={error ? true : undefined}
+              aria-required={required ? true : undefined}
               aria-describedby={describedBy}
               disabled={disabled}
               placeholder={multi && chips.length > 0 ? undefined : placeholder}
               value={inputValue}
-              className="h-6 min-w-24 flex-1 bg-transparent px-1 text-sm outline-none placeholder:text-muted-foreground"
+              className="h-6 min-w-24 flex-1 bg-transparent px-1 text-base outline-none md:text-sm touch:h-9 placeholder:text-muted-foreground"
               onFocus={(event) => {
                 if (!multi) event.currentTarget.select();
               }}
@@ -401,6 +502,7 @@ export function ComboboxBase({
               <Button
                 type="button"
                 variant="ghost"
+                color="primary"
                 size="icon"
                 tabIndex={-1}
                 className="size-6"
@@ -412,7 +514,7 @@ export function ComboboxBase({
               </Button>
             ) : null}
             {!multi && openLink ? (
-              <Button asChild variant="ghost" size="icon" className="size-6">
+              <Button asChild variant="ghost" color="primary" size="icon" className="size-6">
                 <a href={openLink} target="_blank" rel="noreferrer" aria-label={`Buka ${label}`}>
                   <ExternalLink />
                 </a>
@@ -429,7 +531,8 @@ export function ComboboxBase({
                   aria-label={label}
                   aria-multiselectable={multi || undefined}
                   data-slot="link-field-list"
-                  className="fixed z-[60] overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10"
+                  data-sheet={placement.sheet || undefined}
+                  className="fixed z-[60] overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 data-[sheet]:rounded-b-none data-[sheet]:shadow-xl"
                   style={{
                     pointerEvents: 'auto',
                     left: placement.left,
@@ -452,7 +555,7 @@ export function ComboboxBase({
                       aria-selected={selected.has(option.id)}
                       aria-disabled={option.disabled || undefined}
                       className={cn(
-                        'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none',
+                        'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none touch:min-h-11',
                         option.id === activeKey && 'bg-muted text-foreground',
                         option.disabled && 'pointer-events-none opacity-50',
                       )}
@@ -503,7 +606,7 @@ export function ComboboxBase({
                         tabIndex={-1}
                         aria-selected={false}
                         className={cn(
-                          'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none',
+                          'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none touch:min-h-11',
                           activeKey === CREATE_ID && 'bg-muted text-foreground',
                         )}
                         onMouseDown={(event) => event.preventDefault()}
@@ -511,7 +614,7 @@ export function ComboboxBase({
                         onClick={create}
                       >
                         <Plus className="size-4" aria-hidden />
-                        Tambah {label}
+                        Tambah {createLabel ?? label}
                       </div>
                     </div>
                   ) : null}
@@ -522,9 +625,13 @@ export function ComboboxBase({
         </div>
       </div>
       {error ? (
-        <p id={`${id}-error`} role="alert" className="text-sm text-destructive">
+        <p id={`${id}-error`} role="alert" className="text-sm text-destructive-text">
           {error}
         </p>
+      ) : null}
+      {/* Ponsel: ruang gulir tambahan setinggi daftar agar field bisa naik ke atas area terlihat. */}
+      {showList && phone && placement ? (
+        <div aria-hidden data-slot="combobox-spacer" style={{ height: placement.maxHeight + 16 }} />
       ) : null}
     </div>
   );

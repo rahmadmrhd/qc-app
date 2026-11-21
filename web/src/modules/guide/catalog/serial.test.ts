@@ -100,6 +100,8 @@ describe('panduan Serial Number', () => {
     expect(idAt(all, '/serial/report')).toBe('serial-laporan');
     expect(idAt(all, '/serial/reports')).toBe('serial-laporan-daftar');
     expect(idAt(all, '/serial/settings')).toBeUndefined();
+    // Halaman detail (ViewPage bertab) tidak jatuh ke banner daftar maupun banner detail milik daftar.
+    expect(idAt(all, '/serial/s1')).toBeUndefined();
     // Panduan daftar selesai: detail jadi banner berikutnya di /serial.
     const without = (...ids: string[]) => all.filter((o) => !ids.includes(o.entry.id));
     expect(idAt(without('serial-daftar'), '/serial')).toBe('serial-detail');
@@ -176,5 +178,15 @@ describe('panduan Serial Number', () => {
       'serial-timeline',
     ]);
     for (const step of steps.slice(1)) expect(step.route).toBeUndefined();
+  });
+
+  test('detail: langkah menyorot isi tab ViewPage meminta tabnya dibuka (Detail untuk tahap, Riwayat untuk aksi dan linimasa)', () => {
+    const tabOf = (target: string) =>
+      SERIAL_DETAIL.steps
+        .filter((step) => step.target === target)
+        .map((step) => (typeof step.buka === 'object' ? step.buka.tab : undefined));
+    expect(tabOf('serial-stepper')).toEqual(['detail']);
+    expect(tabOf('serial-actions')).toEqual(['riwayat', 'riwayat']);
+    expect(tabOf('serial-timeline')).toEqual(['riwayat']);
   });
 });

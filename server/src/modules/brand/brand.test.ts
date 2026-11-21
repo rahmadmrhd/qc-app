@@ -209,7 +209,7 @@ describe('merk', () => {
     await seedBrand(env, 'Alfa');
     await seedItem(env, { id: 'i1', brand: 'Alfa', model: 'x' });
     await seedItem(env, { id: 'i2', brand: 'Alfa', model: 'y', status: 'inactive' });
-    expect((await listBrandDtos(env)).map((b) => [b.name, b.itemCount])).toEqual([
+    expect((await listBrandDtos(env, null, admin)).map((b) => [b.name, b.itemCount])).toEqual([
       ['Alfa', 2],
       ['Zebra', 0],
     ]);
@@ -444,7 +444,7 @@ describe('BU bawaan merk', () => {
     const saved = await saveBrand(env, { name: 'Sony', businessUnitIds: ['bu-b', 'bu-a'] }, admin);
     expect(saved.businessUnitIds).toEqual(['bu-a', 'bu-b']);
     expect(await defaultsOf(saved.id)).toEqual(['bu-a', 'bu-b']);
-    expect(await listBrandDtos(env)).toMatchObject([
+    expect(await listBrandDtos(env, null, admin)).toMatchObject([
       { name: 'Sony', businessUnitIds: ['bu-a', 'bu-b'] },
     ]);
     expect(await lastAudit()).toMatchObject({
@@ -457,7 +457,9 @@ describe('BU bawaan merk', () => {
     await saveBrand(env, { name: 'Sony', businessUnitIds: ['bu-a'] }, admin);
     await saveBrand(env, { name: 'LG', businessUnitIds: [] }, admin);
     await saveBrand(env, { name: 'Acer', businessUnitIds: ['bu-b', 'bu-a'] }, admin);
-    expect((await listBrandDtos(env)).map((brand) => [brand.name, brand.businessUnitIds])).toEqual([
+    expect(
+      (await listBrandDtos(env, null, admin)).map((brand) => [brand.name, brand.businessUnitIds]),
+    ).toEqual([
       ['Acer', ['bu-a', 'bu-b']],
       ['LG', []],
       ['Sony', ['bu-a']],

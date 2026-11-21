@@ -1,5 +1,5 @@
 import type { RouteTable } from '@server/core/router';
-import { expectNull } from '@server/core/validate';
+import { expectNull, validateIdBatch } from '@server/core/validate';
 import { actOnSerial } from './act';
 import { getSerialSettings, saveSerialSettings } from './alert';
 import { listSerialCases } from './case-list';
@@ -30,6 +30,7 @@ import {
   getServiceSettings,
   saveServiceSettings,
 } from './service-locations';
+import { removeSerial, removeSerialBatch, restoreSerial, restoreSerialBatch } from './soft-delete';
 import {
   validateGetSerial,
   validateListSerialItemOptions,
@@ -60,6 +61,10 @@ type SerialMethod =
   | 'serials.saveBatch'
   | 'serials.get'
   | 'serials.list'
+  | 'serials.remove'
+  | 'serials.removeBatch'
+  | 'serials.restore'
+  | 'serials.restoreBatch'
   | 'serials.update'
   | 'serials.updateBatch'
   | 'serials.act'
@@ -178,6 +183,28 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       permission: READ_PERMISSION,
       validate: validateSerialList,
       handler: (input, ctx) => listSerials(ctx.env, ctx.user, input),
+    },
+    // Hapus lunak dan pulihkan (fase 4d): gerbang kasar `serial: manage`; hak atas SEMUA BU riwayat tiap serial diperiksa
+    // handler (di luar hak = `NOT_FOUND` seragam).
+    'serials.remove': {
+      permission: { module: 'serial', level: 'manage' },
+      validate: validateGetSerial,
+      handler: (input, ctx) => removeSerial(ctx.env, input, ctx.user),
+    },
+    'serials.removeBatch': {
+      permission: { module: 'serial', level: 'manage' },
+      validate: validateIdBatch,
+      handler: (input, ctx) => removeSerialBatch(ctx.env, input, ctx.user),
+    },
+    'serials.restore': {
+      permission: { module: 'serial', level: 'manage' },
+      validate: validateGetSerial,
+      handler: (input, ctx) => restoreSerial(ctx.env, input, ctx.user),
+    },
+    'serials.restoreBatch': {
+      permission: { module: 'serial', level: 'manage' },
+      validate: validateIdBatch,
+      handler: (input, ctx) => restoreSerialBatch(ctx.env, input, ctx.user),
     },
     'serials.history': {
       permission: READ_PERMISSION,

@@ -309,6 +309,11 @@ export function validateBoardPage(raw: unknown): BoardPageInput {
   const locationIds = validateLocationIds(raw);
   const reader = readObject(raw);
   const status = reader.oneOf('status', BOARD_STATUSES);
+  const customerId = reader.optionalId('customerId')?.trim() || undefined;
+  const deleted = reader.raw('deleted');
+  if (deleted !== undefined && deleted !== null && typeof deleted !== 'boolean') {
+    reader.fail('deleted', 'Harus berupa true atau false');
+  }
   const cursor = reader.raw('cursor');
   if (cursor !== undefined && cursor !== null) {
     if (typeof cursor !== 'string' || parseBoardCursor(status, cursor) === null) {
@@ -330,5 +335,7 @@ export function validateBoardPage(raw: unknown): BoardPageInput {
     status,
     limit: limit as number,
     ...(typeof cursor === 'string' ? { cursor } : {}),
+    ...(customerId ? { customerId } : {}),
+    ...(deleted === true ? { deleted: true } : {}),
   };
 }

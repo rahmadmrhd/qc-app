@@ -125,6 +125,15 @@ describe('GET /auth/dev-login', () => {
     expect(JSON.stringify(await response.json())).toContain('db:seed');
   });
 
+  test('pengguna dev terhapus (soft delete): 404 tanpa cookie', async () => {
+    await env.DB.prepare(
+      "UPDATE users SET deleted_at = '2026-02-02T00:00:00.000Z', deleted_by = 'x'",
+    ).run();
+    const response = await app.request('http://localhost:8788/auth/dev-login', {}, devEnv());
+    expect(response.status).toBe(404);
+    expect(sessionCookie(response)).toBeUndefined();
+  });
+
   test('cookie dev-login dapat dipakai untuk GET /api/v1/me', async () => {
     const login = await app.request('http://localhost:8788/auth/dev-login', {}, devEnv());
     const cookie = (sessionCookie(login) as string).split(';')[0] as string;

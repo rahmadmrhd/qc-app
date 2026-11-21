@@ -22,6 +22,25 @@ export function limitColumnData(data: BoardColumnData, max: number): BoardColumn
   return { pages: data.pages.slice(0, kept), pageParams: data.pageParams.slice(0, kept) };
 }
 
+/** Kolom tanpa task `id` (total dikurangi satu bila ada); objek yang sama bila task tak ada di kolom itu. */
+export function withoutTask(data: BoardColumnData, id: string): BoardColumnData {
+  if (!data.pages.some((page) => page.items.some((item) => item.id === id))) return data;
+  const total = Math.max(0, (data.pages[0]?.total ?? 0) - 1);
+  return {
+    ...data,
+    pages: data.pages.map((page) => ({
+      ...page,
+      items: page.items.filter((item) => item.id !== id),
+      total,
+    })),
+  };
+}
+
+/** Task terhapus (soft delete) tak pernah disimpan ke perangkat (keputusan pemilik 2026-11-21, review 4d web M6). */
+export function hasDeletedTask(data: BoardColumnData): boolean {
+  return data.pages.some((page) => page.items.some((item) => item.deleted !== undefined));
+}
+
 export type BoardQueryRef =
   | { kind: 'column'; locationIds: string[]; status: HandoverStatus }
   | { kind: 'task'; id: string; locationIds: string[] };

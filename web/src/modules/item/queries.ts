@@ -1,3 +1,4 @@
+import type { ListStatusFilter, StatusBatchInput } from '@shared/batch';
 import type {
   ItemDto,
   ItemPageDto,
@@ -22,7 +23,8 @@ import { stickerKeys } from '@/modules/sticker/keys';
 
 export interface ItemListFilter {
   query: string;
-  status: 'all' | 'active' | 'inactive';
+  /** `deleted` hanya bagi pemegang `item: manage` (server menolak selain itu). */
+  status: ListStatusFilter;
   /** `none` = hanya item tanpa instruksi stiker. */
   instruction: 'all' | 'none';
   /** Pilihan stiker/jenis untuk filter penanda: `''` (tanpa filter), `s:<id stiker>`, atau `t:<id jenis>`. */
@@ -33,6 +35,10 @@ export interface ItemListFilter {
   manualBook: 'all' | 'missing';
   /** `missing` = hanya item aktif yang belum punya Postel (catatan nomor Postel). */
   postel: 'all' | 'missing';
+  /** Id merk ('' = semua merk); merk terhapus tetap sah (tautan dari View merk). */
+  brandId: string;
+  /** Id BU ('' = semua BU yang boleh dilihat). */
+  buId: string;
 }
 
 export const DEFAULT_ITEM_FILTER: ItemListFilter = {
@@ -43,6 +49,8 @@ export const DEFAULT_ITEM_FILTER: ItemListFilter = {
   stickerMode: 'has',
   manualBook: 'all',
   postel: 'all',
+  brandId: '',
+  buId: '',
 };
 
 /** `stickerKey` -> parameter `stickerId`/`typeId` + `stickerMode` untuk `items.list`; kosong/tak dikenal = tanpa filter. */
@@ -73,6 +81,8 @@ export const itemKeys = {
       filter.stickerMode,
       filter.manualBook,
       filter.postel,
+      filter.brandId,
+      filter.buId,
     ] as const,
   one: (id: string) => ['items', 'one', id] as const,
 };
@@ -95,6 +105,8 @@ export function itemsInfiniteQueryOptions(filter: ItemListFilter = DEFAULT_ITEM_
         ...stickerFilterInput(filter),
         ...(filter.manualBook === 'missing' ? { manualBook: 'missing' as const } : {}),
         ...(filter.postel === 'missing' ? { postel: 'missing' as const } : {}),
+        ...(filter.brandId !== '' ? { brandId: filter.brandId } : {}),
+        ...(filter.buId !== '' ? { buId: filter.buId } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
       }),
     initialPageParam: undefined as string | undefined,
@@ -131,6 +143,8 @@ export function toItemSummary(item: ItemDto): ItemSummaryDto {
     hasPostel: item.hasPostel,
     businessUnits: item.businessUnits,
     updatedAt: item.updatedAt,
+    ...(item.deleted ? { deleted: item.deleted } : {}),
+    ...(item.brandDeleted ? { brandDeleted: true } : {}),
   };
 }
 
@@ -171,3 +185,69 @@ export const useSaveItem = () =>
   useItemMutation((input: SaveItemInput) => api('items.save', input));
 export const useSetItemStatus = () =>
   useItemMutation((input: SetItemStatusInput) => api('items.setStatus', input));
+
+/** Membuang item dari semua halaman daftar yang sudah termuat (hapus/pulihkan: item pindah dari tampilan itu). */
+export function removeItemsFromLists(queryClient: QueryClient, ids: readonly string[]): void {
+  const gone = new Set(ids);
+  queryClient.setQueriesData<InfiniteData<ItemPageDto, string | undefined>>(
+    { queryKey: itemKeys.list },
+    (data) =>
+      data
+        ? {
+            ...data,
+            pages: data.pages.map((page) => ({
+              ...page,
+              items: page.items.filter((item) => !gone.has(item.id)),
+            })),
+          }
+        : data,
+  );
+}
+
+function applyBatchResult(queryClient: QueryClient, items: readonly ItemDto[]): void {
+  for (const saved of items) {
+    patchItemInLists(queryClient, toItemSummary(saved));
+    queryClient.setQueryData(itemKeys.one(saved.id), saved);
+  }
+  markStale(queryClient, brandKeys.all, accessKeys.audit, itemKeys.list, stickerKeys.guides);
+}
+
+/**
+ * Aksi massal: tiap tahap (maks. `BATCH_MAX` id, dikirim bertahap oleh `useBulkAction`/`runChunkedBatch`) langsung
+ * dipasang ke cache saat sukses, jadi tahap yang berhasil tetap terlihat walau tahap berikutnya gagal.
+ */
+export function useSetItemStatusBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: StatusBatchInput) => api('items.setStatusBatch', input),
+    onSuccess: (result) => applyBatchResult(queryClient, result.items),
+  });
+}
+
+/** Hapus (soft delete; hanya item Nonaktif). Hasil per tahap = id yang terhapus. */
+export function useRemoveItems() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { ids: string[] }) => api('items.removeBatch', input),
+    onSuccess: (result) => {
+      removeItemsFromLists(queryClient, result.ids);
+      for (const id of result.ids) queryClient.removeQueries({ queryKey: itemKeys.one(id) });
+      markStale(queryClient, brandKeys.all, accessKeys.audit, itemKeys.list, stickerKeys.guides);
+    },
+  });
+}
+
+/** Pulihkan: item kembali sebagai Nonaktif dan hilang dari tampilan Terhapus. */
+export function useRestoreItems() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { ids: string[] }) => api('items.restoreBatch', input),
+    onSuccess: (result) => {
+      removeItemsFromLists(
+        queryClient,
+        result.items.map((item) => item.id),
+      );
+      applyBatchResult(queryClient, result.items);
+    },
+  });
+}

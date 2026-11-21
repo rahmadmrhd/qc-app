@@ -219,3 +219,61 @@ describe('GET /items (kursor dan query)', () => {
     expect((await rest.get('/items?status=x')).status).toBe(422);
   });
 });
+
+describe('REST batch status, hapus, dan pulihkan item', () => {
+  async function inactiveItem(id: string, model: string): Promise<void> {
+    await seedItem(env, { id, brand: 'Ubiquiti', model, status: 'inactive' });
+  }
+
+  test('izin manage pada semua rute baru; rute statis batch lebih dulu dari {id}', async () => {
+    await inactiveItem('i1', 'A');
+    for (const [method, path, body] of [
+      ['POST', '/items/batch/status', { ids: ['i1'], status: 'active' }],
+      ['POST', '/items/batch/delete', { ids: ['i1'] }],
+      ['POST', '/items/batch/restore', { ids: ['i1'] }],
+      ['DELETE', '/items/i1', undefined],
+      ['POST', '/items/i1/restore', undefined],
+    ] as const) {
+      expect((await rest.send(method, path, { email: 'ubah@gmail.com', body })).status).toBe(403);
+    }
+    const status = await rest.post('/items/batch/status', {
+      email: 'kelola@gmail.com',
+      body: { ids: ['i1'], status: 'active' },
+    });
+    expect(status.status).toBe(200);
+    expect(((await jsonOf(status)).items as unknown[]).length).toBe(1);
+  });
+
+  test('hapus, daftar terhapus, dan pulihkan lewat REST', async () => {
+    await inactiveItem('i1', 'A');
+    const removed = await rest.post('/items/batch/delete', {
+      email: 'kelola@gmail.com',
+      body: { ids: ['i1'] },
+    });
+    expect(await jsonOf(removed)).toEqual({ ids: ['i1'] });
+    expect(
+      ((await jsonOf(await rest.get('/items', { email: 'kelola@gmail.com' }))).items as unknown[])
+        .length,
+    ).toBe(0);
+    const deleted = await rest.get('/items?status=deleted', { email: 'kelola@gmail.com' });
+    expect(((await jsonOf(deleted)).items as unknown[]).length).toBe(1);
+    expect((await rest.get('/items?status=deleted', { email: 'lihat@gmail.com' })).status).toBe(
+      403,
+    );
+    expect((await rest.get('/items/i1', { email: 'lihat@gmail.com' })).status).toBe(404);
+    const restored = await rest.post('/items/i1/restore', { email: 'kelola@gmail.com' });
+    expect(restored.status).toBe(200);
+    expect(await jsonOf(restored)).toMatchObject({ id: 'i1', status: 'inactive' });
+    expect((await rest.del('/items/i1', { email: 'kelola@gmail.com' })).status).toBe(200);
+  });
+
+  test('batch tidak valid ditolak 422', async () => {
+    for (const ids of [[], ['a', 'a'], Array.from({ length: 101 }, (_, i) => `x${i}`)]) {
+      const response = await rest.post('/items/batch/delete', {
+        email: 'kelola@gmail.com',
+        body: { ids },
+      });
+      expect(response.status).toBe(422);
+    }
+  });
+});

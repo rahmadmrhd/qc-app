@@ -99,10 +99,13 @@ export function MessageField({
 }: MessageFieldProps) {
   return (
     <div className="space-y-1.5">
-      <Label id={`${id}-label`}>{required ? label : `${label} (opsional)`}</Label>
+      <Label id={`${id}-label`} required={required}>
+        {required ? label : `${label} (opsional)`}
+      </Label>
       <WysiwygEditor
         id={id}
         labelledBy={`${id}-label`}
+        required={required}
         mode="message"
         value={value}
         onChange={onChange}

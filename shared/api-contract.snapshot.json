@@ -11,9 +11,37 @@
     }
   },
   {
+    "id": "access.businessUnits.get",
+    "verb": "GET",
+    "path": "/business-units/{id}"
+  },
+  {
     "id": "access.businessUnits.list",
     "verb": "GET",
-    "path": "/business-units"
+    "path": "/business-units",
+    "query": {
+      "status": "string"
+    }
+  },
+  {
+    "id": "access.businessUnits.remove",
+    "verb": "DELETE",
+    "path": "/business-units/{id}"
+  },
+  {
+    "id": "access.businessUnits.removeBatch",
+    "verb": "POST",
+    "path": "/business-units/batch/delete"
+  },
+  {
+    "id": "access.businessUnits.restore",
+    "verb": "POST",
+    "path": "/business-units/{id}/restore"
+  },
+  {
+    "id": "access.businessUnits.restoreBatch",
+    "verb": "POST",
+    "path": "/business-units/batch/restore"
   },
   {
     "id": "access.businessUnits.save",
@@ -30,9 +58,42 @@
     "path": "/business-units/{id}"
   },
   {
+    "id": "access.businessUnits.setStatusBatch",
+    "verb": "POST",
+    "path": "/business-units/batch/status"
+  },
+  {
+    "id": "access.locations.get",
+    "verb": "GET",
+    "path": "/locations/{id}"
+  },
+  {
     "id": "access.locations.list",
     "verb": "GET",
-    "path": "/locations"
+    "path": "/locations",
+    "query": {
+      "status": "string"
+    }
+  },
+  {
+    "id": "access.locations.remove",
+    "verb": "DELETE",
+    "path": "/locations/{id}"
+  },
+  {
+    "id": "access.locations.removeBatch",
+    "verb": "POST",
+    "path": "/locations/batch/delete"
+  },
+  {
+    "id": "access.locations.restore",
+    "verb": "POST",
+    "path": "/locations/{id}/restore"
+  },
+  {
+    "id": "access.locations.restoreBatch",
+    "verb": "POST",
+    "path": "/locations/batch/restore"
   },
   {
     "id": "access.locations.save",
@@ -49,14 +110,42 @@
     "path": "/locations/{id}"
   },
   {
+    "id": "access.locations.setStatusBatch",
+    "verb": "POST",
+    "path": "/locations/batch/status"
+  },
+  {
     "id": "access.roles.delete",
     "verb": "DELETE",
     "path": "/roles/{id}"
   },
   {
+    "id": "access.roles.get",
+    "verb": "GET",
+    "path": "/roles/{id}"
+  },
+  {
     "id": "access.roles.list",
     "verb": "GET",
-    "path": "/roles"
+    "path": "/roles",
+    "query": {
+      "status": "string"
+    }
+  },
+  {
+    "id": "access.roles.removeBatch",
+    "verb": "POST",
+    "path": "/roles/batch/delete"
+  },
+  {
+    "id": "access.roles.restore",
+    "verb": "POST",
+    "path": "/roles/{id}/restore"
+  },
+  {
+    "id": "access.roles.restoreBatch",
+    "verb": "POST",
+    "path": "/roles/batch/restore"
   },
   {
     "id": "access.roles.save",
@@ -68,9 +157,37 @@
     }
   },
   {
+    "id": "access.users.get",
+    "verb": "GET",
+    "path": "/users/{id}"
+  },
+  {
     "id": "access.users.list",
     "verb": "GET",
-    "path": "/users"
+    "path": "/users",
+    "query": {
+      "status": "string"
+    }
+  },
+  {
+    "id": "access.users.remove",
+    "verb": "DELETE",
+    "path": "/users/{id}"
+  },
+  {
+    "id": "access.users.removeBatch",
+    "verb": "POST",
+    "path": "/users/batch/delete"
+  },
+  {
+    "id": "access.users.restore",
+    "verb": "POST",
+    "path": "/users/{id}/restore"
+  },
+  {
+    "id": "access.users.restoreBatch",
+    "verb": "POST",
+    "path": "/users/batch/restore"
   },
   {
     "id": "access.users.save",
@@ -87,14 +204,47 @@
     "path": "/users/{id}"
   },
   {
+    "id": "access.users.setStatusBatch",
+    "verb": "POST",
+    "path": "/users/batch/status"
+  },
+  {
     "id": "auth.me",
     "verb": "GET",
     "path": "/me"
   },
   {
+    "id": "brands.get",
+    "verb": "GET",
+    "path": "/brands/{id}"
+  },
+  {
     "id": "brands.list",
     "verb": "GET",
-    "path": "/brands"
+    "path": "/brands",
+    "query": {
+      "status": "string"
+    }
+  },
+  {
+    "id": "brands.remove",
+    "verb": "DELETE",
+    "path": "/brands/{id}"
+  },
+  {
+    "id": "brands.removeBatch",
+    "verb": "POST",
+    "path": "/brands/batch/delete"
+  },
+  {
+    "id": "brands.restore",
+    "verb": "POST",
+    "path": "/brands/{id}/restore"
+  },
+  {
+    "id": "brands.restoreBatch",
+    "verb": "POST",
+    "path": "/brands/batch/restore"
   },
   {
     "id": "brands.save",
@@ -111,14 +261,37 @@
     "path": "/brands/{id}"
   },
   {
+    "id": "brands.setStatusBatch",
+    "verb": "POST",
+    "path": "/brands/batch/status"
+  },
+  {
     "id": "businessUnits.options",
     "verb": "GET",
     "path": "/business-units/options"
   },
   {
+    "id": "customers.get",
+    "verb": "GET",
+    "path": "/customers/{id}"
+  },
+  {
     "id": "customers.list",
     "verb": "GET",
-    "path": "/customers"
+    "path": "/customers",
+    "query": {
+      "status": "string"
+    }
+  },
+  {
+    "id": "customers.remove",
+    "verb": "DELETE",
+    "path": "/customers/{id}"
+  },
+  {
+    "id": "customers.removeBatch",
+    "verb": "POST",
+    "path": "/customers/batch/delete"
   },
   {
     "id": "customers.rename",
@@ -126,9 +299,24 @@
     "path": "/customers/{id}"
   },
   {
+    "id": "customers.restore",
+    "verb": "POST",
+    "path": "/customers/{id}/restore"
+  },
+  {
+    "id": "customers.restoreBatch",
+    "verb": "POST",
+    "path": "/customers/batch/restore"
+  },
+  {
     "id": "customers.setStatus",
     "verb": "PATCH",
     "path": "/customers/{id}"
+  },
+  {
+    "id": "customers.setStatusBatch",
+    "verb": "POST",
+    "path": "/customers/batch/status"
   },
   {
     "id": "desktop.handoff",
@@ -180,6 +368,8 @@
     "path": "/handovers",
     "query": {
       "cursor": "string",
+      "customerId": "string",
+      "deleted": "boolean",
       "limit": "number",
       "locationIds": "list",
       "status": "string"
@@ -212,9 +402,22 @@
     }
   },
   {
+    "id": "handovers.remove",
+    "verb": "DELETE",
+    "path": "/handovers/{id}",
+    "query": {
+      "locationId": "string"
+    }
+  },
+  {
     "id": "handovers.reopen",
     "verb": "POST",
     "path": "/handovers/{id}/reopen"
+  },
+  {
+    "id": "handovers.restore",
+    "verb": "POST",
+    "path": "/handovers/{id}/restore"
   },
   {
     "id": "handovers.save",
@@ -250,6 +453,8 @@
     "verb": "GET",
     "path": "/items",
     "query": {
+      "brandId": "string",
+      "buId": "string",
       "cursor": "string",
       "instruction": "string",
       "limit": "number",
@@ -261,6 +466,26 @@
       "stickerMode": "string",
       "typeId": "string"
     }
+  },
+  {
+    "id": "items.remove",
+    "verb": "DELETE",
+    "path": "/items/{id}"
+  },
+  {
+    "id": "items.removeBatch",
+    "verb": "POST",
+    "path": "/items/batch/delete"
+  },
+  {
+    "id": "items.restore",
+    "verb": "POST",
+    "path": "/items/{id}/restore"
+  },
+  {
+    "id": "items.restoreBatch",
+    "verb": "POST",
+    "path": "/items/batch/restore"
   },
   {
     "id": "items.save",
@@ -275,6 +500,11 @@
     "id": "items.setStatus",
     "verb": "PATCH",
     "path": "/items/{id}"
+  },
+  {
+    "id": "items.setStatusBatch",
+    "verb": "POST",
+    "path": "/items/batch/status"
   },
   {
     "id": "jobs.get",
@@ -347,12 +577,30 @@
   {
     "id": "postels.list",
     "verb": "GET",
-    "path": "/postels"
+    "path": "/postels",
+    "query": {
+      "status": "string"
+    }
   },
   {
     "id": "postels.remove",
     "verb": "DELETE",
     "path": "/postels/{id}"
+  },
+  {
+    "id": "postels.removeBatch",
+    "verb": "POST",
+    "path": "/postels/batch/delete"
+  },
+  {
+    "id": "postels.restore",
+    "verb": "POST",
+    "path": "/postels/{id}/restore"
+  },
+  {
+    "id": "postels.restoreBatch",
+    "verb": "POST",
+    "path": "/postels/batch/restore"
   },
   {
     "id": "postels.save",
@@ -444,7 +692,15 @@
   {
     "id": "qrcodes.getDefaults",
     "verb": "GET",
-    "path": "/qrcode-defaults"
+    "path": "/qrcode-defaults",
+    "query": {
+      "status": "string"
+    }
+  },
+  {
+    "id": "qrcodes.getPreset",
+    "verb": "GET",
+    "path": "/qrcode-presets/{id}"
   },
   {
     "id": "qrcodes.itemOptions",
@@ -459,7 +715,40 @@
   {
     "id": "qrcodes.list",
     "verb": "GET",
-    "path": "/qrcodes"
+    "path": "/qrcodes",
+    "query": {
+      "status": "string"
+    }
+  },
+  {
+    "id": "qrcodes.removeBatch",
+    "verb": "POST",
+    "path": "/qrcodes/batch/delete"
+  },
+  {
+    "id": "qrcodes.removePresetBatch",
+    "verb": "POST",
+    "path": "/qrcode-presets/batch/delete"
+  },
+  {
+    "id": "qrcodes.restore",
+    "verb": "POST",
+    "path": "/qrcodes/{id}/restore"
+  },
+  {
+    "id": "qrcodes.restoreBatch",
+    "verb": "POST",
+    "path": "/qrcodes/batch/restore"
+  },
+  {
+    "id": "qrcodes.restorePreset",
+    "verb": "POST",
+    "path": "/qrcode-presets/{id}/restore"
+  },
+  {
+    "id": "qrcodes.restorePresetBatch",
+    "verb": "POST",
+    "path": "/qrcode-presets/batch/restore"
   },
   {
     "id": "qrcodes.save",
@@ -605,6 +894,7 @@
       "createdBy": "string",
       "cursor": "string",
       "custody": "string",
+      "deleted": "boolean",
       "from": "string",
       "itemId": "string",
       "limit": "number",
@@ -634,9 +924,29 @@
     "path": "/serials/lookup-many"
   },
   {
+    "id": "serials.remove",
+    "verb": "DELETE",
+    "path": "/serials/{id}"
+  },
+  {
+    "id": "serials.removeBatch",
+    "verb": "POST",
+    "path": "/serials/batch/delete"
+  },
+  {
     "id": "serials.reportNew",
     "verb": "POST",
     "path": "/serials/report"
+  },
+  {
+    "id": "serials.restore",
+    "verb": "POST",
+    "path": "/serials/{id}/restore"
+  },
+  {
+    "id": "serials.restoreBatch",
+    "verb": "POST",
+    "path": "/serials/batch/restore"
   },
   {
     "id": "serials.saveBatch",
@@ -687,6 +997,11 @@
     "path": "/sticker-guides/{id}"
   },
   {
+    "id": "stickerGuides.removeBatch",
+    "verb": "POST",
+    "path": "/sticker-guides/batch/delete"
+  },
+  {
     "id": "stickerGuides.rename",
     "verb": "PATCH",
     "path": "/sticker-guides/{id}"
@@ -729,6 +1044,11 @@
     "path": "/sticker-stock/adjustments"
   },
   {
+    "id": "stickerStock.adjustBatch",
+    "verb": "POST",
+    "path": "/sticker-stock/adjustments/batch"
+  },
+  {
     "id": "stickerStock.history",
     "verb": "GET",
     "path": "/sticker-stock/entries",
@@ -758,9 +1078,42 @@
     "path": "/sticker-stock/entries"
   },
   {
+    "id": "stickerStock.recordBatch",
+    "verb": "POST",
+    "path": "/sticker-stock/entries/batch"
+  },
+  {
+    "id": "stickerTypes.get",
+    "verb": "GET",
+    "path": "/sticker-types/{id}"
+  },
+  {
     "id": "stickerTypes.list",
     "verb": "GET",
-    "path": "/sticker-types"
+    "path": "/sticker-types",
+    "query": {
+      "status": "string"
+    }
+  },
+  {
+    "id": "stickerTypes.remove",
+    "verb": "DELETE",
+    "path": "/sticker-types/{id}"
+  },
+  {
+    "id": "stickerTypes.removeBatch",
+    "verb": "POST",
+    "path": "/sticker-types/batch/delete"
+  },
+  {
+    "id": "stickerTypes.restore",
+    "verb": "POST",
+    "path": "/sticker-types/{id}/restore"
+  },
+  {
+    "id": "stickerTypes.restoreBatch",
+    "verb": "POST",
+    "path": "/sticker-types/batch/restore"
   },
   {
     "id": "stickerTypes.save",
@@ -777,9 +1130,42 @@
     "path": "/sticker-types/{id}"
   },
   {
+    "id": "stickerTypes.setStatusBatch",
+    "verb": "POST",
+    "path": "/sticker-types/batch/status"
+  },
+  {
+    "id": "stickers.get",
+    "verb": "GET",
+    "path": "/stickers/{id}"
+  },
+  {
     "id": "stickers.list",
     "verb": "GET",
-    "path": "/stickers"
+    "path": "/stickers",
+    "query": {
+      "status": "string"
+    }
+  },
+  {
+    "id": "stickers.remove",
+    "verb": "DELETE",
+    "path": "/stickers/{id}"
+  },
+  {
+    "id": "stickers.removeBatch",
+    "verb": "POST",
+    "path": "/stickers/batch/delete"
+  },
+  {
+    "id": "stickers.restore",
+    "verb": "POST",
+    "path": "/stickers/{id}/restore"
+  },
+  {
+    "id": "stickers.restoreBatch",
+    "verb": "POST",
+    "path": "/stickers/batch/restore"
   },
   {
     "id": "stickers.save",
@@ -794,5 +1180,10 @@
     "id": "stickers.setStatus",
     "verb": "PATCH",
     "path": "/stickers/{id}"
+  },
+  {
+    "id": "stickers.setStatusBatch",
+    "verb": "POST",
+    "path": "/stickers/batch/status"
   }
 ]

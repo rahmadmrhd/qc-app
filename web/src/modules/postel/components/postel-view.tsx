@@ -1,237 +1,259 @@
 import type { PostelAttachmentDto, PostelDto, PostelNumberDto } from '@shared/contract';
-import { type ReactNode, useState } from 'react';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Button } from '@/components/ui/button';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { toast } from 'sonner';
+import { type DataColumn, DataTable, LinkCell } from '@/components/data-table';
+import { type AttachmentItem, AttachmentView } from '@/components/file-dialog';
+import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
+import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
+import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
 import { api } from '@/lib/api';
 import { describeError } from '@/lib/api/describe-error';
+import { isWebUrl } from '@/lib/web-url';
 import { saveFileDownload } from '@/modules/qrcode/lib/download';
 import { daysLeftLabel, formatPostelDate } from '../lib/condition';
 import { NumberStatus } from './number-status';
+import { PostelHistory } from './postel-history';
+import { PostelImage } from './postel-image';
+
+export const POSTEL_VIEW_TABS = ['detail', 'item', 'lampiran', 'riwayat'] as const;
+export type PostelViewTab = (typeof POSTEL_VIEW_TABS)[number];
 
 export interface PostelViewProps {
-  postel: PostelDto;
-  canEdit: boolean;
-  onEdit: () => void;
-  /** Dipanggil setelah pengguna mengonfirmasi hapus di dialog; galat ditangani pemanggil. */
-  onRemove: () => void | Promise<void>;
-  onBack?: () => void;
-  /** Hapus sedang berjalan: Ubah, Hapus, dan aksi konfirmasi dinonaktifkan (mencegah klik ganda). */
-  busy?: boolean;
+  /** `undefined` = catatan tidak ada (id salah, atau terhapus bagi yang tak boleh melihatnya). */
+  postel: PostelDto | undefined;
+  /** `sticker: edit`: Ubah, Hapus, dan Pulihkan. */
+  canEdit?: boolean;
+  restorePending?: boolean;
+  /** Item pada tab Item menaut ke View item hanya bila pengguna berhak (`itemLinkAccess`); bawaan tanpa tautan. */
+  canOpenItem?: boolean;
+  /** Item TERHAPUS menaut hanya bagi pemulih (`item: manage`; soft delete §4.4). */
+  canOpenDeletedItem?: boolean;
+  tab?: PostelViewTab | undefined;
+  onTabChange?: (tab: PostelViewTab) => void;
+  onBack: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
+  onRestore?: () => void;
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="space-y-3 rounded-lg border p-4">
-      <h2 className="text-base font-semibold">{title}</h2>
-      {children}
-    </section>
-  );
-}
+const NUMBER_COLUMNS: DataColumn<PostelNumberDto>[] = [
+  { id: 'number', header: 'Nomor', mobile: 'title', cell: (entry) => entry.number },
+  { id: 'expires', header: 'Tanggal habis', cell: (entry) => formatPostelDate(entry.expiresOn) },
+  { id: 'daysLeft', header: 'Sisa hari', cell: (entry) => daysLeftLabel(entry.daysLeft) },
+  {
+    id: 'status',
+    header: 'Status',
+    cell: (entry) => <NumberStatus role={entry.role} condition={entry.condition} />,
+  },
+  {
+    id: 'link',
+    header: 'Tautan',
+    cell: (entry) =>
+      isWebUrl(entry.link) ? (
+        <a
+          href={entry.link}
+          target="_blank"
+          rel="noreferrer"
+          className="text-info-text underline-offset-4 hover:underline"
+        >
+          Buka sertifikat
+        </a>
+      ) : null,
+  },
+];
 
-/** Hanya URL http(s) yang dijadikan tautan (server sudah memvalidasi; ini pengaman tampilan). */
-const isWebUrl = (value: string) => /^https?:\/\//i.test(value);
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const format = (value: number) => value.toLocaleString('id-ID', { maximumFractionDigits: 1 });
-  if (bytes < 1_048_576) return `${format(bytes / 1024)} KB`;
-  return `${format(bytes / 1_048_576)} MB`;
-}
-
-function NumberRow({ entry }: { entry: PostelNumberDto }) {
-  return (
-    <TableRow>
-      <TableCell className="font-medium">{entry.number}</TableCell>
-      <TableCell>{formatPostelDate(entry.expiresOn)}</TableCell>
-      <TableCell>{daysLeftLabel(entry.daysLeft)}</TableCell>
-      <TableCell>
-        <NumberStatus role={entry.role} condition={entry.condition} />
-      </TableCell>
-      <TableCell>
-        {isWebUrl(entry.link) ? (
-          <a
-            href={entry.link}
-            target="_blank"
-            rel="noreferrer"
-            className="underline underline-offset-2"
-          >
-            Buka sertifikat
-          </a>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        )}
-      </TableCell>
-    </TableRow>
-  );
-}
-
-function AttachmentList({ attachments }: { attachments: readonly PostelAttachmentDto[] }) {
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function download(attachment: PostelAttachmentDto) {
-    setBusyId(attachment.id);
-    setError(null);
-    try {
-      const file = await api('postelFiles.get', { id: attachment.id });
-      saveFileDownload({ bytes: file.bytes, mime: file.mime, filename: attachment.filename });
-    } catch (failure) {
-      setError(describeError(failure));
-    } finally {
-      setBusyId(null);
-    }
+/** Unduh PDF lampiran (gambar hanya dipratinjau); galat tampil sebagai toast. */
+async function downloadAttachment(attachment: PostelAttachmentDto): Promise<void> {
+  try {
+    const file = await api('postelFiles.get', { id: attachment.id });
+    saveFileDownload({ bytes: file.bytes, mime: file.mime, filename: attachment.filename });
+  } catch (failure) {
+    toast.error(describeError(failure));
   }
-
-  if (attachments.length === 0)
-    return <p className="text-sm text-muted-foreground">Belum ada lampiran.</p>;
-  return (
-    <div className="space-y-2">
-      <ul className="space-y-2">
-        {attachments.map((attachment) => (
-          <li key={attachment.id} className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="min-w-0 break-all font-medium">{attachment.filename}</span>
-            <span className="text-muted-foreground">{formatSize(attachment.size)}</span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busyId === attachment.id}
-              onClick={() => void download(attachment)}
-            >
-              Unduh
-            </Button>
-          </li>
-        ))}
-      </ul>
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
-    </div>
-  );
 }
 
-/** Tampilan baca satu catatan Postel: nomor sertifikat, item (menurut BU pembaca), catatan, dan lampiran. */
+function toAttachmentItem(attachment: PostelAttachmentDto): AttachmentItem {
+  return {
+    id: attachment.id,
+    name: attachment.filename,
+    mime: attachment.mime,
+    size: attachment.size,
+    // Gambar hanya pratinjau (spek dialog unggah §5.4); hanya PDF yang diunduh.
+    ...(attachment.mime.startsWith('image/')
+      ? {
+          renderImage: (variant: 'thumb' | 'large') => (
+            <PostelImage id={attachment.id} alt={attachment.filename} variant={variant} />
+          ),
+        }
+      : { onDownload: () => void downloadAttachment(attachment) }),
+  };
+}
+
+/**
+ * Halaman baca satu catatan Postel (kit `ViewPage`): tab Detail (identitas, catatan, nomor sertifikat), Item (menurut
+ * BU pembaca), Lampiran, dan Riwayat (tidak untuk catatan terhapus: riwayatnya hanya di log audit umum).
+ */
 export function PostelView({
   postel,
-  canEdit,
-  onEdit,
-  onRemove,
+  canEdit = false,
+  restorePending = false,
+  canOpenItem = false,
+  canOpenDeletedItem = false,
+  tab,
+  onTabChange,
   onBack,
-  busy = false,
+  onEdit,
+  onDelete,
+  onRestore,
 }: PostelViewProps) {
-  const [confirmRemove, setConfirmRemove] = useState(false);
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{postel.name}</h1>
-        <div className="flex flex-wrap gap-2">
-          {onBack ? (
-            <Button variant="outline" onClick={onBack}>
-              Kembali ke daftar
-            </Button>
-          ) : null}
-          {canEdit ? (
-            <Button disabled={busy} onClick={onEdit}>
-              Ubah
-            </Button>
-          ) : null}
-          {canEdit ? (
-            <Button variant="ghost" disabled={busy} onClick={() => setConfirmRemove(true)}>
-              Hapus
-            </Button>
-          ) : null}
-        </div>
+  if (!postel) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-semibold">Catatan Postel tidak ditemukan</h1>
+        <button type="button" className="text-sm underline underline-offset-4" onClick={onBack}>
+          Kembali ke daftar
+        </button>
       </div>
+    );
+  }
+  const deleted = postel.deleted !== undefined;
 
-      <Section title="Nomor sertifikat">
-        <div className="rounded-md border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nomor</TableHead>
-                <TableHead>Tanggal habis</TableHead>
-                <TableHead>Sisa hari</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Tautan</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {postel.numbers.map((entry) => (
-                <NumberRow key={entry.id} entry={entry} />
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      </Section>
-
-      <Section title="Item">
-        {postel.items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Tidak ada item yang dapat Anda lihat.</p>
-        ) : (
-          <ul className="list-disc space-y-1 pl-5 text-sm">
-            {postel.items.map((item) => (
-              <li key={item.id}>{`${item.brand} ${item.model}`}</li>
-            ))}
-          </ul>
-        )}
-        {postel.hiddenItemCount > 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {`${postel.hiddenItemCount} item lain tergabung di sini tetapi tidak terlihat oleh Anda`}
-          </p>
-        ) : null}
-      </Section>
-
-      {postel.note.trim() !== '' ? (
-        <Section title="Catatan">
-          <p className="text-sm break-words whitespace-pre-wrap">{postel.note}</p>
-        </Section>
-      ) : null}
-
-      <Section title="Lampiran">
-        <AttachmentList attachments={postel.attachments} />
-      </Section>
-
-      <AlertDialog open={confirmRemove} onOpenChange={setConfirmRemove}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Hapus catatan Postel?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {`Catatan "${postel.name}" akan dihapus dan semua itemnya dilepas. Lampiran ikut dihapus dan tidak dapat dikembalikan.`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Batal</AlertDialogCancel>
-            <AlertDialogAction
-              variant="destructive"
-              disabled={busy}
-              onClick={() => {
-                setConfirmRemove(false);
-                void onRemove();
-              }}
-            >
-              Hapus
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+  const detail = (
+    <div className="space-y-6">
+      <ViewSection title="Identitas">
+        <DetailList
+          items={[
+            { label: 'Nama', value: postel.name },
+            { label: 'Jumlah item', value: String(postel.itemCount) },
+            {
+              label: 'Catatan',
+              value:
+                postel.note.trim() === '' ? null : (
+                  <span className="break-words whitespace-pre-wrap">{postel.note}</span>
+                ),
+            },
+          ]}
+        />
+      </ViewSection>
+      <ViewSection title="Nomor sertifikat">
+        <DataTable
+          rows={postel.numbers}
+          rowKey={(entry) => entry.id}
+          columns={NUMBER_COLUMNS}
+          label="Nomor sertifikat"
+          empty="Belum ada nomor sertifikat."
+        />
+      </ViewSection>
     </div>
+  );
+
+  const itemsTab = (
+    <ViewSection title="Item tergabung">
+      {postel.items.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {postel.hiddenItemCount === 0
+            ? 'Belum ada item yang tergabung.'
+            : 'Tidak ada item yang dapat Anda lihat.'}
+        </p>
+      ) : (
+        <ul className="space-y-1 text-sm">
+          {postel.items.map((item) => {
+            const label = `${item.brand} ${item.model}`;
+            const linked = canOpenItem && (!item.deleted || canOpenDeletedItem);
+            return (
+              <li key={item.id} className="flex flex-wrap items-center gap-1.5">
+                {linked ? (
+                  <LinkCell to="/item/$itemId" params={{ itemId: item.id }}>
+                    {label}
+                  </LinkCell>
+                ) : (
+                  <span>{label}</span>
+                )}
+                {item.deleted ? <DeletedBadge /> : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {postel.hiddenItemCount > 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {`${postel.hiddenItemCount} item lain tergabung di sini tetapi tidak terlihat oleh Anda`}
+        </p>
+      ) : null}
+    </ViewSection>
+  );
+
+  const attachmentsTab = (
+    <ViewSection title="Lampiran">
+      {postel.attachments.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Belum ada lampiran.</p>
+      ) : (
+        <AttachmentView
+          items={postel.attachments.map(toAttachmentItem)}
+          layout="list"
+          label="lampiran"
+        />
+      )}
+    </ViewSection>
+  );
+
+  return (
+    <ViewPage
+      title={postel.name}
+      badge={deleted ? <DeletedBadge /> : undefined}
+      tab={tab}
+      onTabChange={(id) => onTabChange?.(id as PostelViewTab)}
+      tabs={[
+        { id: 'detail', label: 'Detail', content: detail },
+        { id: 'item', label: 'Item', content: itemsTab },
+        { id: 'lampiran', label: 'Lampiran', content: attachmentsTab },
+        ...(deleted
+          ? []
+          : [{ id: 'riwayat', label: 'Riwayat', content: <PostelHistory id={postel.id} /> }]),
+      ]}
+      actionItems={
+        deleted
+          ? [
+              {
+                id: 'restore',
+                action: 'restore',
+                busy: restorePending,
+                hidden: !(canEdit && onRestore),
+                onSelect: () => onRestore?.(),
+              },
+            ]
+          : [
+              {
+                id: 'edit',
+                action: 'edit',
+                label: 'Ubah',
+                hidden: !(canEdit && onEdit),
+                onSelect: () => onEdit?.(),
+              },
+              {
+                id: 'delete',
+                action: 'delete',
+                hidden: !(canEdit && onDelete),
+                onSelect: () => onDelete?.(),
+              },
+            ]
+      }
+      banner={
+        postel.deleted ? (
+          <DeletedBanner
+            info={postel.deleted}
+            canRestore={canEdit}
+            {...(onRestore ? { onRestore } : {})}
+            restoring={restorePending}
+          />
+        ) : null
+      }
+      aside={
+        <ViewMeta
+          createdAt={postel.createdAt}
+          updatedBy={postel.updatedBy}
+          updatedAt={postel.updatedAt}
+        />
+      }
+    />
   );
 }

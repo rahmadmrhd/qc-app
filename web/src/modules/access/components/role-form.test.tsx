@@ -8,11 +8,12 @@ import { RoleForm } from './role-form';
 test('nama wajib diisi', async () => {
   const onSubmit = vi.fn(async () => undefined);
   render(
-    <RoleForm
-      defaultValues={toRoleFormDefaults()}
-      onSubmit={onSubmit}
-      onCancel={() => undefined}
-    />,
+    <>
+      <RoleForm formId="f" defaultValues={toRoleFormDefaults()} onSubmit={onSubmit} />
+      <button type="submit" form="f">
+        Simpan
+      </button>
+    </>,
   );
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(await screen.findByText('Wajib diisi')).toBeInTheDocument();
@@ -21,11 +22,7 @@ test('nama wajib diisi', async () => {
 
 test('menampilkan arti level yang dipilih di tiap modul', async () => {
   render(
-    <RoleForm
-      defaultValues={toRoleFormDefaults()}
-      onSubmit={async () => undefined}
-      onCancel={() => undefined}
-    />,
+    <RoleForm formId="f" defaultValues={toRoleFormDefaults()} onSubmit={async () => undefined} />,
   );
   expect(screen.getAllByText(LEVEL_HINTS.none)).toHaveLength(MODULES.length);
   const itemGroup = screen.getByRole('group', { name: 'Level Data Item' });
@@ -36,11 +33,7 @@ test('menampilkan arti level yang dipilih di tiap modul', async () => {
 
 test('tiap modul hanya menampilkan level yang bermakna baginya', () => {
   render(
-    <RoleForm
-      defaultValues={toRoleFormDefaults()}
-      onSubmit={async () => undefined}
-      onCancel={() => undefined}
-    />,
+    <RoleForm formId="f" defaultValues={toRoleFormDefaults()} onSubmit={async () => undefined} />,
   );
   const names = (module: string) =>
     within(screen.getByRole('group', { name: `Level ${module}` }))
@@ -54,11 +47,12 @@ test('tiap modul hanya menampilkan level yang bermakna baginya', () => {
 test('matriks level per modul dikirim lengkap', async () => {
   const onSubmit = vi.fn(async () => undefined);
   render(
-    <RoleForm
-      defaultValues={toRoleFormDefaults()}
-      onSubmit={onSubmit}
-      onCancel={() => undefined}
-    />,
+    <>
+      <RoleForm formId="f" defaultValues={toRoleFormDefaults()} onSubmit={onSubmit} />
+      <button type="submit" form="f">
+        Simpan
+      </button>
+    </>,
   );
   await userEvent.type(screen.getByLabelText('Nama role'), ' QC Staff ');
   const itemGroup = screen.getByRole('group', { name: 'Level Data Item' });

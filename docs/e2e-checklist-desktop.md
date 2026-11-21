@@ -46,7 +46,7 @@ Kata sandi perangkat tidak boleh muncul di layar progres, log, atau berkas mana 
 
 | # | Langkah | Hasil yang diharapkan | Hasil |
 |---|---|---|---|
-| C1 | Buka satu per satu semua menu (Item, Merk, Handover, QR Code, Stiker, Postel, Pengaturan Akses, dst.) | Setiap halaman terbuka dan datanya termuat | |
+| C1 | Buka satu per satu semua menu (Item, Merk, Handover, QR Code, Stiker, Postel, Akses, dst.) | Setiap halaman terbuka dan datanya termuat | |
 | C2 | Buat/ubah satu data (mis. merk uji) dan unggah satu gambar item ukuran ~5 MB | Tersimpan; gambar tampil kembali | |
 | C3 | Unduh satu berkas (mis. PDF QR atau lampiran Postel) | Berkas terunduh utuh | |
 | C4 | Dari DevTools (bila dapat dibuka) jalankan `fetch('/api/openapi.json')` dan `fetch('/auth/login')` | Ditolak 403 `application/problem+json`; hanya `/api/v1/*`, `/api/ping`, `/auth/logout` yang diteruskan | |

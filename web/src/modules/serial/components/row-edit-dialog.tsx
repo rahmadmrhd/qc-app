@@ -298,9 +298,12 @@ export function RowEditDialog({
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="edit-serial">Serial baris</Label>
+              <Label htmlFor="edit-serial" required>
+                Serial baris
+              </Label>
               <Input
                 id="edit-serial"
+                aria-required="true"
                 className="font-mono"
                 value={serial}
                 readOnly={existing !== undefined}
@@ -318,7 +321,7 @@ export function RowEditDialog({
                 </p>
               ) : null}
               {serialError ? (
-                <p role="alert" className="text-xs text-destructive">
+                <p role="alert" className="text-xs text-destructive-text">
                   {serialError}
                 </p>
               ) : null}
@@ -333,7 +336,7 @@ export function RowEditDialog({
                   kejadian cek ulang lolos pada catatan yang sama; item mengikuti catatan itu.
                 </p>
                 {blocked !== null ? (
-                  <p role="alert" className="text-sm text-destructive">
+                  <p role="alert" className="text-sm text-destructive-text">
                     {blocked}
                   </p>
                 ) : null}
@@ -343,6 +346,7 @@ export function RowEditDialog({
                 </div>
                 <RecheckBuField
                   id="detail-bu"
+                  required
                   label="Business Unit baris"
                   choices={buChoices}
                   value={{ buId: item.buId, buLabel: item.buLabel }}
@@ -360,21 +364,26 @@ export function RowEditDialog({
                 idPrefix="detail"
                 label="Item baris"
                 buFieldLabel="Business Unit baris"
+                required
                 value={item}
                 onChange={changeItem}
               />
             )}
             <SerialLocationField
               id="detail-location"
+              required
               label="Lokasi baris"
               value={location.id}
               valueLabel={location.label}
               onChange={(id, label) => setLocation({ id, label })}
             />
             <div className="space-y-1.5">
-              <Label htmlFor="edit-date">Tanggal uji baris</Label>
+              <Label htmlFor="edit-date" required>
+                Tanggal uji baris
+              </Label>
               <Input
                 id="edit-date"
+                aria-required="true"
                 type="date"
                 value={testDate}
                 onChange={(event) => setTestDate(event.target.value)}
@@ -426,6 +435,7 @@ export function RowEditDialog({
                   <Button
                     type="button"
                     variant="outline"
+                    color="primary"
                     size="sm"
                     disabled={room === 0}
                     onClick={() => setPhotoDialog({ open: true, files: [], rejected: [] })}
@@ -443,7 +453,7 @@ export function RowEditDialog({
             </div>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={close}>
+            <Button type="button" variant="outline" color="primary" onClick={close}>
               Batal
             </Button>
             {running > 0 ? (
@@ -451,7 +461,7 @@ export function RowEditDialog({
                 Menunggu {running} foto selesai diunggah
               </span>
             ) : uploadsHeld ? (
-              <span role="status" className="self-center text-xs text-destructive">
+              <span role="status" className="self-center text-xs text-destructive-text">
                 Ada foto yang gagal diunggah. Ulangi atau buang dulu.
               </span>
             ) : null}

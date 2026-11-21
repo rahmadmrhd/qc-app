@@ -90,7 +90,8 @@ export function RecordDialog({
             <AlertDialogCancel>Tetap di sini</AlertDialogCancel>
             <Button
               type="button"
-              variant="destructive"
+              variant="soft"
+              color="destructive"
               onClick={() => {
                 setConfirmClose(false);
                 onOpenChange(false);

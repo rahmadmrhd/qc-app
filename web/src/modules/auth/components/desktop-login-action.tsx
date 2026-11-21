@@ -114,7 +114,7 @@ export function DesktopLoginAction({
   return (
     <div className="space-y-3">
       {error ? (
-        <Alert variant="destructive">
+        <Alert color="destructive" icon={false}>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       ) : null}

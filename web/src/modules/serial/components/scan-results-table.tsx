@@ -83,7 +83,7 @@ export function ScanResultsTable({
                   data-highlight={highlightId === row.id ? 'true' : undefined}
                   className={cn(
                     'border-b align-top transition-colors duration-700',
-                    highlightId === row.id && 'bg-emerald-500/20',
+                    highlightId === row.id && 'bg-success-text/20',
                   )}
                 >
                   <td className="px-3 py-2 text-center text-muted-foreground tabular-nums">
@@ -96,7 +96,7 @@ export function ScanResultsTable({
                       aria-describedby={problem ? errorId : undefined}
                       className={cn(
                         'h-10 font-mono',
-                        problem && 'border-destructive text-destructive',
+                        problem && 'border-destructive text-destructive-text',
                       )}
                       value={row.text}
                       autoComplete="off"
@@ -110,7 +110,7 @@ export function ScanResultsTable({
                       }}
                     />
                     {problem ? (
-                      <p id={errorId} role="alert" className="mt-1 text-xs text-destructive">
+                      <p id={errorId} role="alert" className="mt-1 text-xs text-destructive-text">
                         {problem.message}
                       </p>
                     ) : null}
@@ -119,8 +119,9 @@ export function ScanResultsTable({
                     <Button
                       type="button"
                       variant="ghost"
+                      color="primary"
                       size="icon"
-                      className="size-11 text-muted-foreground hover:text-destructive"
+                      className="size-11 text-muted-foreground hover:text-destructive-text"
                       aria-label="Hapus serial"
                       title="Hapus serial"
                       onClick={() => onRemove(row.id)}

@@ -21,12 +21,12 @@ export function FieldError({ errors, stacked = false }: FieldErrorProps) {
     return (
       <div className="space-y-0.5">
         {messages.map((message) => (
-          <p key={message} className="text-sm text-destructive">
+          <p key={message} className="text-sm text-destructive-text">
             {message}
           </p>
         ))}
       </div>
     );
   }
-  return <p className="text-sm text-destructive">{messages.join(', ')}</p>;
+  return <p className="text-sm text-destructive-text">{messages.join(', ')}</p>;
 }

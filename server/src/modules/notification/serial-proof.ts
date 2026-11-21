@@ -1,4 +1,5 @@
 import type { DbStatement, Preparer } from '@server/core/db';
+import { liveWhere } from '@server/core/soft-delete';
 
 /**
  * Notifikasi "foto bukti QC bermasalah" (jenis `serialProofFailed`; spek 2026-11-16-serial-bukti-foto-qc-masalah-design.md
@@ -28,11 +29,8 @@ export function proofFailedNotificationStmt(
 ): DbStatement {
   return db
     .prepare(
-      `INSERT INTO notifications (id, recipient, kind, handover_id, location_id, number, customer_name, actor_email, actor_name, \`count\`, preview, created_at, serial_id, proof_id) ` +
-        `SELECT ?, p.created_by, 'serialProofFailed', '', s.location_id, LEFT(s.serial, ${NUMBER_MAX}), '', '', '', 0, '', ?, p.serial_id, p.id ` +
-        `FROM serial_proof_photos p JOIN serials s ON s.id = p.serial_id ` +
-        `WHERE p.id = ? AND p.state = 'failed' AND p.updated_at = ? AND p.created_by <> '' ` +
-        `AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.kind = 'serialProofFailed' AND n.proof_id = p.id AND n.created_at >= p.updated_at)`,
+      // Satu literal (bukan rangkaian) agar penyaring `liveWhere('s')` terlihat tes penjaga soft delete.
+      `INSERT INTO notifications (id, recipient, kind, handover_id, location_id, number, customer_name, actor_email, actor_name, \`count\`, preview, created_at, serial_id, proof_id) SELECT ?, p.created_by, 'serialProofFailed', '', s.location_id, LEFT(s.serial, ${NUMBER_MAX}), '', '', '', 0, '', ?, p.serial_id, p.id FROM serial_proof_photos p JOIN serials s ON s.id = p.serial_id WHERE ${liveWhere('s')} AND p.id = ? AND p.state = 'failed' AND p.updated_at = ? AND p.created_by <> '' AND NOT EXISTS (SELECT 1 FROM notifications n WHERE n.kind = 'serialProofFailed' AND n.proof_id = p.id AND n.created_at >= p.updated_at)`,
     )
     .bind(crypto.randomUUID(), now, photoId, now);
 }

@@ -122,13 +122,13 @@ export function CopyMarksDialog({
                 </li>
               ))}
             </ol>
-            <p role="status" className="text-sm text-amber-600 dark:text-amber-400">
+            <p role="status" className="text-sm text-warning-text">
               {inactiveCount} penanda bersasaran nonaktif. Simpan akan menolak sasaran nonaktif yang
               baru bagi item ini; ganti sasarannya setelah disalin.
             </p>
           </div>
         ) : usages.isError ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive-text">
             {describeError(usages.error)}
           </p>
         ) : usages.isPending ? (
@@ -150,6 +150,7 @@ export function CopyMarksDialog({
                   type="button"
                   size="sm"
                   variant="outline"
+                  color="primary"
                   disabled={busyId !== null}
                   aria-label={`Salin penanda dari ${usage.label}`}
                   onClick={() => void copyFrom(usage.itemId, usage.label)}
@@ -161,14 +162,19 @@ export function CopyMarksDialog({
           </ul>
         )}
         {error ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive-text">
             {error}
           </p>
         ) : null}
         <DialogFooter>
           {pending ? (
             <>
-              <Button type="button" variant="outline" onClick={() => setPending(null)}>
+              <Button
+                type="button"
+                variant="outline"
+                color="primary"
+                onClick={() => setPending(null)}
+              >
                 Kembali
               </Button>
               <Button
@@ -177,7 +183,7 @@ export function CopyMarksDialog({
               >{`Tetap salin ${pending.marks.length} penanda`}</Button>
             </>
           ) : (
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" color="primary" onClick={onClose}>
               Lewati
             </Button>
           )}

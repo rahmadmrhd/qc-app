@@ -10,7 +10,7 @@ export function DevLoginLink() {
       <p className="text-xs font-medium text-muted-foreground">
         Mode dev: server lokal harus berjalan (bun run dev).
       </p>
-      <Button asChild variant="outline" className="w-full">
+      <Button asChild variant="outline" color="primary" className="w-full">
         <a href="/auth/dev-login">Masuk sebagai pengguna dev</a>
       </Button>
     </div>

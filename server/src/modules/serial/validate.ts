@@ -288,6 +288,10 @@ export function validateSerialList(raw: unknown): SerialListInput {
   const to = reader.str('to', { max: 10 });
   if (to !== '' && !isIsoDate(to)) reader.fail('to', 'Tanggal tidak valid');
   const cursor = reader.str('cursor', { max: 200 });
+  const deleted = reader.raw('deleted');
+  if (deleted !== undefined && deleted !== null && typeof deleted !== 'boolean') {
+    reader.fail('deleted', 'Harus berupa true atau false');
+  }
   const serialsRaw = reader.raw('serials');
   let serials = '';
   if (serialsRaw !== undefined && serialsRaw !== null) {
@@ -327,6 +331,7 @@ export function validateSerialList(raw: unknown): SerialListInput {
     ...(from !== '' ? { from } : {}),
     ...(to !== '' ? { to } : {}),
     ...(createdBy !== '' ? { createdBy } : {}),
+    ...(deleted === true ? { deleted: true } : {}),
     ...(cursor !== '' ? { cursor } : {}),
     ...(typeof limit === 'number' ? { limit } : {}),
   };

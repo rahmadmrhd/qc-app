@@ -32,6 +32,11 @@ export const serialSearchSchema = z.object({
   /** Hanya yang dicatat oleh akun yang sedang masuk (`createdBy` = email akun). */
   mine: z.literal(true).optional().catch(undefined),
   status: z.enum(SERIAL_STATUSES).optional().catch(undefined),
+  /**
+   * Tampilan "Terhapus" (soft delete; hanya pemegang `serial: manage`). Kunci tersendiri karena `status` di sini adalah
+   * status alur serial, bukan status aktif/nonaktif.
+   */
+  deleted: z.literal(true).optional().catch(undefined),
   from: isoDate,
   to: isoDate,
 });
@@ -148,7 +153,12 @@ export function commitSearchLine(
  * lebih sebagai daftar persis (`serials`); keduanya dalam bentuk ternormalisasi. `userEmail` = akun yang masuk, dipakai
  * untuk sakelar "Dicatat oleh saya" (tidak ada rute opsi pengguna bagi pembaca; default perancang OQ-16).
  */
-export function filterOfSearch(search: SerialSearch, userEmail?: string): SerialListFilter {
+export function filterOfSearch(
+  search: SerialSearch,
+  userEmail?: string,
+  /** Pemegang `serial: manage`: tanpa hak itu `?deleted=true` tulisan tangan diabaikan (server akan menolaknya). */
+  canSeeDeleted = true,
+): SerialListFilter {
   const lines = normalizeSearchText(search.sn ?? '')
     .text.split('\n')
     .filter((line) => line !== '');
@@ -161,6 +171,7 @@ export function filterOfSearch(search: SerialSearch, userEmail?: string): Serial
     ...(search.custody ? { custody: search.custody } : {}),
     ...(search.mine && userEmail ? { createdBy: userEmail } : {}),
     ...(search.status ? { status: search.status } : {}),
+    ...(search.deleted && canSeeDeleted ? { deleted: true } : {}),
     ...(search.from ? { from: search.from } : {}),
     ...(search.to ? { to: search.to } : {}),
   };

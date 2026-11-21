@@ -412,7 +412,7 @@ test('penghitung melebihi batas ditandai; aksesibilitas memakai label form induk
       />
     </>,
   );
-  expect(screen.getByText('21/20')).toHaveClass('text-destructive');
+  expect(screen.getByText('21/20')).toHaveClass('text-destructive-text');
   const field = screen.getByRole('textbox', { name: 'Detail' });
   expect(field).toHaveAttribute('aria-invalid', 'true');
   expect(field).toHaveAccessibleDescription('21/20');

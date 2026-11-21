@@ -21,7 +21,7 @@ export function PresetDeviationBanner({
   return (
     <div
       role="status"
-      className="rounded-md border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200"
+      className="rounded-md border border-warning-text/35 bg-warning-text/10 p-3 text-sm text-warning-text"
     >
       Berbeda dari konfigurasi default "{presetName}":{' '}
       <span className="font-medium">{deviations.map((part) => PART_LABEL[part]).join(', ')}</span>.

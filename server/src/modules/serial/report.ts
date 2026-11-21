@@ -2,6 +2,7 @@ import { DbError, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { mapDuplicateError } from '@server/modules/access/repo';
 import { planAttachFiles } from '@server/modules/files/service';
@@ -115,7 +116,9 @@ export async function reportNewSerial(
   const period = caseNumberPeriod(today);
 
   const attempt = async (): Promise<void> => {
-    const exists = await env.DB.prepare('SELECT 1 AS present FROM serials WHERE serial = ?')
+    const exists = await env.DB.prepare(
+      `SELECT 1 AS present FROM serials WHERE ${liveWhere()} AND serial = ?`,
+    )
       .bind(input.serial)
       .first<{ present: number }>();
     if (exists) throw appError('CONFLICT', DUPLICATE_MESSAGE, { serial: DUPLICATE_MESSAGE });

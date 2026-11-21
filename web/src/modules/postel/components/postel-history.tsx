@@ -1,5 +1,6 @@
 import type { AuditEntryDto, AuditSnapshot } from '@shared/contract';
 import { useQuery } from '@tanstack/react-query';
+import { ViewSection } from '@/components/page/view-page';
 import { formatAuditTime } from '@/modules/access/lib/audit-actions';
 import { formatPostelDate } from '../lib/condition';
 import { postelHistoryQueryOptions } from '../queries';
@@ -108,12 +109,11 @@ function summarize(entry: AuditEntryDto): { title: string; details: string[] } {
 export function PostelHistory({ id }: { id: string }) {
   const { data, isLoading, isError } = useQuery(postelHistoryQueryOptions(id));
   return (
-    <section className="space-y-3 rounded-lg border p-4">
-      <h2 className="text-base font-semibold">Riwayat perubahan</h2>
+    <ViewSection title="Riwayat perubahan">
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Memuat riwayat…</p>
       ) : isError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Riwayat tidak dapat dimuat.
         </p>
       ) : !data || data.entries.length === 0 ? (
@@ -147,6 +147,6 @@ export function PostelHistory({ id }: { id: string }) {
           ) : null}
         </>
       )}
-    </section>
+    </ViewSection>
   );
 }

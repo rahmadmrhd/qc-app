@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import type { UploadEntry } from '@/components/file-dialog/use-background-uploads';
+import { longPress } from '@/test/long-press';
 import { makeRow, proofRef } from '../test-support';
 import { StagingCards } from './staging-cards';
 
@@ -33,24 +34,46 @@ test('merender kartu tanpa elemen table: serial, item dan BU, lokasi dan tanggal
   expect(within(first).queryByText('Siap')).toBeNull();
 });
 
-test('mengetuk kartu membuka dialog ubah baris; mencentang tidak', async () => {
+test('mengetuk kartu membuka dialog ubah baris; kotak centang baru muncul di mode pilih', async () => {
   const { onOpenDetail, onSelect } = renderCards();
-  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris AAA111' }));
-  expect(onSelect).toHaveBeenCalledWith('id-AAA111', true);
-  expect(onOpenDetail).not.toHaveBeenCalled();
+  expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
   await userEvent.click(screen.getByRole('button', { name: 'Ubah baris BBB222' }));
   expect(onOpenDetail).toHaveBeenCalledWith('id-BBB222');
+  expect(onSelect).not.toHaveBeenCalled();
 });
 
-test('Pilih semua di atas daftar', async () => {
-  const { onSelectAll } = renderCards();
-  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua baris' }));
+test('tekan lama kartu memilih barisnya tanpa membuka dialog', async () => {
+  const { onOpenDetail, onSelect } = renderCards();
+  await longPress(screen.getAllByRole('listitem')[0] as HTMLElement);
+  expect(onSelect).toHaveBeenCalledWith('id-AAA111', true);
+  expect(onOpenDetail).not.toHaveBeenCalled();
+});
+
+test('tombol "Pilih baris draft" masuk mode pilih tanpa gestur (review I6)', async () => {
+  const { onSelect } = renderCards();
+  await userEvent.click(screen.getByRole('button', { name: 'Pilih baris draft' }));
+  expect(screen.getByText('0 dipilih')).toBeInTheDocument();
+  expect(screen.getByRole('checkbox', { name: 'Pilih baris AAA111' })).not.toBeChecked();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih baris AAA111' }));
+  expect(onSelect).toHaveBeenCalledWith('id-AAA111', true);
+});
+
+test('mode pilih (ada baris terpilih): kotak centang tampil dan Pilih semua di header mode pilih', async () => {
+  const { onSelectAll, onSelect } = renderCards([
+    makeRow('AAA111', { selected: true }),
+    makeRow('BBB222'),
+  ]);
+  expect(screen.getByRole('checkbox', { name: 'Pilih baris AAA111' })).toBeChecked();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
   expect(onSelectAll).toHaveBeenCalledWith(true);
+  // Ketukan kartu di mode pilih mengubah pilihan, bukan membuka dialog.
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah baris BBB222' }));
+  expect(onSelect).toHaveBeenCalledWith('id-BBB222', true);
 });
 
-test('baris tercentang semua: Pilih semua tercentang', () => {
+test('semua baris terpilih: Pilih semua tercentang', () => {
   renderCards([makeRow('A1', { selected: true }), makeRow('B2', { selected: true })]);
-  expect(screen.getByRole('checkbox', { name: 'Pilih semua baris' })).toBeChecked();
+  expect(screen.getByRole('checkbox', { name: 'Pilih semua' })).toBeChecked();
 });
 
 test('lencana: status bermasalah, jumlah foto, Sample, stiker, catatan; atribut panduan ada', () => {
@@ -72,12 +95,12 @@ test('lencana: status bermasalah, jumlah foto, Sample, stiker, catatan; atribut 
   expect(within(card).getByText('Stiker A ×2')).toBeInTheDocument();
   expect(within(card).getByText('Catatan: periksa')).toBeInTheDocument();
   expect(card).toHaveAttribute('data-tour', 'serial-row');
-  expect(card.querySelector('[data-tour="serial-row-select"]')).not.toBeNull();
+  expect(card.querySelector('[data-tour="serial-row-select"]')).toBeNull();
 });
 
-test('saat disabled kartu dan centang terkunci', () => {
-  renderCards([makeRow('AAA111')], { disabled: true });
-  expect(screen.getByRole('checkbox', { name: 'Pilih baris AAA111' })).toBeDisabled();
+test('saat disabled kartu terkunci dan tanpa mode pilih', () => {
+  renderCards([makeRow('AAA111', { selected: true })], { disabled: true });
+  expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
   expect(screen.getByRole('button', { name: 'Ubah baris AAA111' })).toBeDisabled();
 });
 

@@ -15,7 +15,7 @@ import { saveFileDownload } from '@/modules/qrcode/lib/download';
 import { postelSource } from '../lib/postel-source';
 import type { AttachmentRow } from '../lib/schemas';
 import { postelUploadError } from '../lib/upload';
-import { usePostelFileUrl } from '../queries';
+import { PostelImage } from './postel-image';
 
 export type { AttachmentRow } from '../lib/schemas';
 
@@ -38,44 +38,6 @@ interface DialogState {
 }
 
 const CLOSED: DialogState = { open: false, files: [], rejected: [] };
-
-/** Gambar lampiran (thumbnail atau besar) dimuat lewat `postelFiles.get` (privat) sebagai URL objek. */
-function PostelImage({
-  id,
-  alt,
-  variant,
-}: {
-  id: string;
-  alt: string;
-  variant: 'thumb' | 'large';
-}) {
-  const { url, isLoading, isError } = usePostelFileUrl(id);
-  if (isLoading) {
-    return (
-      <div role="img" aria-label="Memuat gambar" className="size-full animate-pulse bg-muted" />
-    );
-  }
-  if (isError || !url) {
-    return (
-      <div
-        role="img"
-        aria-label="Gambar tidak tersedia"
-        className="flex size-full items-center justify-center bg-muted text-xs text-muted-foreground"
-      >
-        Tidak tersedia
-      </div>
-    );
-  }
-  return (
-    <img
-      src={url}
-      alt={alt}
-      className={
-        variant === 'thumb' ? 'size-full object-cover' : 'max-h-[70dvh] max-w-full object-contain'
-      }
-    />
-  );
-}
 
 /**
  * Lampiran catatan Postel: gambar atau PDF apa adanya (tanpa pengecilan; desain stiker perlu resolusi asli) lewat
@@ -186,6 +148,7 @@ export function AttachmentsField({ value, onChange, error, onBusyChange }: Attac
             type="button"
             size="sm"
             variant="outline"
+            color="primary"
             disabled={remaining <= 0}
             onClick={() => {
               setFull(false);
@@ -206,7 +169,7 @@ export function AttachmentsField({ value, onChange, error, onBusyChange }: Attac
           JPEG, PNG, WebP, atau PDF; maksimal 10 MB per berkas. Gambar tidak dikecilkan.
         </p>
         {messages.map((message) => (
-          <p key={message} role="alert" className="text-sm text-destructive">
+          <p key={message} role="alert" className="text-sm text-destructive-text">
             {message}
           </p>
         ))}

@@ -4,6 +4,7 @@ import type { LinkProps } from '@tanstack/react-router';
 import type { LucideIcon } from 'lucide-react';
 import {
   BellRing,
+  BookOpen,
   Building2,
   ClipboardList,
   Contact,
@@ -22,9 +23,12 @@ import {
   Settings2,
   Shapes,
   ShieldCheck,
+  SlidersHorizontal,
   Sticker,
   Tags,
+  UserCog,
   Users,
+  Wrench,
 } from 'lucide-react';
 import { canAnywhere, canManageSerialSettings } from '@/modules/auth/permissions';
 
@@ -58,71 +62,40 @@ export interface NavItem {
   visible?: (me: MeDto) => boolean;
 }
 
-export interface NavGroup {
+/** Induk menu: hanya mengelompokkan anak (tak punya halaman sendiri); sidebar menampilkannya sebagai submenu. */
+export interface NavParent {
+  id: string;
   label: string;
-  items: NavItem[];
+  icon: LucideIcon;
+  children: NavItem[];
+}
+
+export type NavEntry = NavItem | NavParent;
+
+export interface NavGroup {
+  /** `null` = grup tanpa judul (Beranda). */
+  label: string | null;
+  items: NavEntry[];
+}
+
+export function isNavParent(entry: NavEntry): entry is NavParent {
+  return 'children' in entry;
+}
+
+/** Semua butir bertujuan (anak induk ikut diratakan; induk sendiri tidak). */
+export function flattenNavItems(groups: readonly NavGroup[]): NavItem[] {
+  return groups.flatMap((group) =>
+    group.items.flatMap((entry) => (isNavParent(entry) ? entry.children : [entry])),
+  );
 }
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    label: 'Umum',
+    label: null,
     items: [
       { label: 'Beranda', to: '/', icon: House },
-      {
-        label: 'Country Lock',
-        to: '/country-lock',
-        icon: Lock,
-        permission: { module: 'countrylock', level: 'view' },
-        opensDesktopApp: true,
-      },
       // Daftar unduhan aplikasi desktop; di dalam aplikasi desktop tautan unduh tak berfungsi, jadi hanya di peramban.
       { label: 'Aplikasi Desktop', to: '/desktop', icon: Download, webOnly: true },
-    ],
-  },
-  {
-    label: 'Data',
-    items: [
-      {
-        label: 'Data Item',
-        to: '/item',
-        icon: Package,
-        excludes: ['/item/brands'],
-        permission: { module: 'item', level: 'view' },
-      },
-      {
-        label: 'Merk',
-        to: '/item/brands',
-        icon: Tags,
-        permission: { module: 'item', level: 'view' },
-      },
-      {
-        label: 'Customer',
-        to: '/customer',
-        icon: Contact,
-        permission: { module: 'item', level: 'view' },
-      },
-    ],
-  },
-  {
-    label: 'Manual Book',
-    items: [
-      {
-        label: 'QR Code',
-        to: '/qrcode',
-        icon: QrCode,
-        permission: { module: 'qrcode', level: 'view' },
-      },
-    ],
-  },
-  {
-    label: 'Postel',
-    items: [
-      {
-        label: 'Daftar Postel',
-        to: '/postel',
-        icon: FileBadge,
-        permission: { module: 'sticker', level: 'view' },
-      },
     ],
   },
   {
@@ -137,116 +110,204 @@ export const NAV_GROUPS: NavGroup[] = [
           { module: 'qc', level: 'edit', scope: 'location' },
         ],
       },
-    ],
-  },
-  {
-    label: 'Serial Number',
-    items: [
       {
-        label: 'Daftar Serial Number',
-        to: '/serial',
+        label: 'Country Lock',
+        to: '/country-lock',
+        icon: Lock,
+        permission: { module: 'countrylock', level: 'view' },
+        opensDesktopApp: true,
+      },
+      {
+        id: 'serial',
+        label: 'Serial Number',
         icon: ListChecks,
-        excludes: ['/serial/settings', '/serial/report', '/serial/reports'],
-        permission: [
-          { module: 'serial', level: 'view' },
-          { module: 'serialservice', level: 'view' },
+        children: [
+          {
+            label: 'Daftar',
+            to: '/serial',
+            icon: ListChecks,
+            excludes: ['/serial/settings', '/serial/report', '/serial/reports'],
+            permission: [
+              { module: 'serial', level: 'view' },
+              { module: 'serialservice', level: 'view' },
+            ],
+          },
+          {
+            label: 'Laporan',
+            to: '/serial/reports',
+            icon: FileText,
+            // Halaman Lapor Rusak dibuka dari tombol di daftar Laporan (bukan menu sendiri), jadi menu ini yang menyala.
+            alsoActiveOn: ['/serial/report'],
+            permission: [
+              { module: 'serial', level: 'view' },
+              { module: 'serialservice', level: 'view' },
+            ],
+          },
+          {
+            label: 'Pengaturan',
+            to: '/serial/settings',
+            icon: Settings,
+            permission: { module: 'serial', level: 'manage' },
+            visible: canManageSerialSettings,
+          },
         ],
-      },
-      {
-        label: 'Laporan',
-        to: '/serial/reports',
-        icon: FileText,
-        // Halaman Lapor Rusak dibuka dari tombol di daftar Laporan (bukan menu sendiri), jadi menu ini yang menyala.
-        alsoActiveOn: ['/serial/report'],
-        permission: [
-          { module: 'serial', level: 'view' },
-          { module: 'serialservice', level: 'view' },
-        ],
-      },
-      {
-        label: 'Pengaturan',
-        to: '/serial/settings',
-        icon: Settings,
-        permission: { module: 'serial', level: 'manage' },
-        visible: canManageSerialSettings,
       },
     ],
   },
   {
-    label: 'Stiker',
+    label: 'Data Master',
     items: [
       {
-        label: 'Stiker',
-        to: '/sticker',
-        icon: Sticker,
-        excludes: ['/sticker/types', '/sticker/library', '/sticker/settings'],
-        // Katalog dan stok digabung (2026-11-20): cukup salah satu izin.
-        permission: [
-          { module: 'sticker', level: 'view' },
-          { module: 'stickerstock', level: 'view', scope: 'location' },
+        id: 'item',
+        label: 'Item',
+        icon: Package,
+        children: [
+          {
+            label: 'Daftar Item',
+            to: '/item',
+            icon: Package,
+            excludes: ['/item/brands'],
+            permission: { module: 'item', level: 'view' },
+          },
+          {
+            label: 'Merk',
+            to: '/item/brands',
+            icon: Tags,
+            permission: { module: 'item', level: 'view' },
+          },
         ],
       },
       {
-        label: 'Jenis Stiker',
-        to: '/sticker/types',
-        icon: Shapes,
+        label: 'Customer',
+        to: '/customer',
+        icon: Contact,
+        permission: { module: 'item', level: 'view' },
+      },
+    ],
+  },
+  {
+    label: 'Stiker & Dokumen',
+    items: [
+      {
+        id: 'sticker',
+        label: 'Stiker',
+        icon: Sticker,
+        children: [
+          {
+            label: 'Katalog',
+            to: '/sticker',
+            icon: Sticker,
+            excludes: ['/sticker/types', '/sticker/library', '/sticker/settings'],
+            // Katalog dan stok digabung (2026-11-20): cukup salah satu izin.
+            permission: [
+              { module: 'sticker', level: 'view' },
+              { module: 'stickerstock', level: 'view', scope: 'location' },
+            ],
+          },
+          {
+            label: 'Jenis',
+            to: '/sticker/types',
+            icon: Shapes,
+            permission: { module: 'sticker', level: 'view' },
+          },
+          {
+            label: 'Pustaka Gambar',
+            to: '/sticker/library',
+            icon: Images,
+            permission: [
+              { module: 'item', level: 'view' },
+              { module: 'sticker', level: 'view' },
+            ],
+          },
+          {
+            label: 'Konfigurasi',
+            to: '/sticker/settings',
+            icon: Settings2,
+            permission: { module: 'sticker', level: 'manage' },
+          },
+        ],
+      },
+      {
+        id: 'manual-book',
+        label: 'Manual Book',
+        icon: BookOpen,
+        children: [
+          {
+            label: 'QR Code',
+            to: '/qrcode',
+            icon: QrCode,
+            excludes: ['/qrcode/default'],
+            permission: { module: 'qrcode', level: 'view' },
+          },
+          {
+            label: 'Default QR',
+            to: '/qrcode/default',
+            icon: SlidersHorizontal,
+            // Sama dengan `beforeLoad` rute /qrcode/default.
+            permission: { module: 'qrcode', level: 'manage' },
+          },
+        ],
+      },
+      {
+        label: 'Postel',
+        to: '/postel',
+        icon: FileBadge,
         permission: { module: 'sticker', level: 'view' },
       },
-      {
-        label: 'Pustaka Gambar',
-        to: '/sticker/library',
-        icon: Images,
-        permission: [
-          { module: 'item', level: 'view' },
-          { module: 'sticker', level: 'view' },
-        ],
-      },
-      {
-        label: 'Konfigurasi Stiker',
-        to: '/sticker/settings',
-        icon: Settings2,
-        permission: { module: 'sticker', level: 'manage' },
-      },
     ],
   },
   {
-    label: 'Pengaturan Akses',
+    label: 'Pengaturan',
     items: [
       {
-        label: 'Users',
-        to: '/access/users',
-        icon: Users,
-        permission: { module: 'access', level: 'view' },
+        id: 'access',
+        label: 'Akses',
+        icon: UserCog,
+        children: [
+          {
+            label: 'Pengguna',
+            to: '/access/users',
+            icon: Users,
+            permission: { module: 'access', level: 'view' },
+          },
+          {
+            label: 'Role',
+            to: '/access/roles',
+            icon: ShieldCheck,
+            permission: { module: 'access', level: 'view' },
+          },
+          {
+            label: 'Lokasi',
+            to: '/access/locations',
+            icon: MapPin,
+            permission: { module: 'access', level: 'view' },
+          },
+          {
+            label: 'Business Unit',
+            to: '/access/business-units',
+            icon: Building2,
+            permission: { module: 'access', level: 'view' },
+          },
+        ],
       },
       {
-        label: 'Roles',
-        to: '/access/roles',
-        icon: ShieldCheck,
-        permission: { module: 'access', level: 'view' },
-      },
-      {
-        label: 'Lokasi',
-        to: '/access/locations',
-        icon: MapPin,
-        permission: { module: 'access', level: 'view' },
-      },
-      {
-        label: 'Business Unit',
-        to: '/access/business-units',
-        icon: Building2,
-        permission: { module: 'access', level: 'view' },
-      },
-      {
-        label: 'Log Audit',
-        to: '/access/audit',
-        icon: History,
-        permission: { module: 'access', level: 'view' },
-      },
-      {
-        label: 'Status Push',
-        to: '/access/push',
-        icon: BellRing,
-        permission: { module: 'access', level: 'view' },
+        id: 'system',
+        label: 'Sistem',
+        icon: Wrench,
+        children: [
+          {
+            label: 'Status Push',
+            to: '/access/push',
+            icon: BellRing,
+            permission: { module: 'access', level: 'view' },
+          },
+          {
+            label: 'Log Audit',
+            to: '/access/audit',
+            icon: History,
+            permission: { module: 'access', level: 'view' },
+          },
+        ],
       },
     ],
   },
@@ -262,6 +323,51 @@ export function isNavItemActive(
   return !(item.excludes ?? []).some((to) => matches(to as string, true));
 }
 
+/** Butir aktif untuk rute saat ini beserta induknya; bila beberapa aktif, `to` terpanjang menang. */
+export function findNavTrail(
+  groups: readonly NavGroup[],
+  matches: (to: string, fuzzy: boolean) => boolean,
+): { parent: NavParent | null; item: NavItem } | null {
+  let best: { parent: NavParent | null; item: NavItem } | null = null;
+  const consider = (parent: NavParent | null, item: NavItem) => {
+    if (!isNavItemActive(item, matches)) return;
+    if (best === null || (item.to as string).length > (best.item.to as string).length) {
+      best = { parent, item };
+    }
+  };
+  for (const group of groups) {
+    for (const entry of group.items) {
+      if (isNavParent(entry)) for (const child of entry.children) consider(entry, child);
+      else consider(null, entry);
+    }
+  }
+  return best;
+}
+
+function isItemVisible(
+  item: NavItem,
+  me: MeDto,
+  activeLocationIds: readonly string[] | undefined,
+  desktop: boolean,
+): boolean {
+  if (item.desktopOnly && !desktop) return false;
+  if (item.webOnly && desktop) return false;
+  if (item.visible && !item.visible(me)) return false;
+  if (!item.permission) return true;
+  const alternatives: readonly NavPermission[] = Array.isArray(item.permission)
+    ? item.permission
+    : [item.permission as NavPermission];
+  return alternatives.some((permission) =>
+    canAnywhere(
+      me,
+      permission.module,
+      permission.level,
+      permission.scope === 'location' ? activeLocationIds : undefined,
+    ),
+  );
+}
+
+/** Menyaring butir menurut izin; induk tanpa anak terlihat dan grup kosong dibuang. */
 export function visibleNavGroups(
   groups: readonly NavGroup[],
   me: MeDto,
@@ -271,22 +377,14 @@ export function visibleNavGroups(
   return groups
     .map((group) => ({
       ...group,
-      items: group.items.filter((item) => {
-        if (item.desktopOnly && !desktop) return false;
-        if (item.webOnly && desktop) return false;
-        if (item.visible && !item.visible(me)) return false;
-        if (!item.permission) return true;
-        const alternatives: readonly NavPermission[] = Array.isArray(item.permission)
-          ? item.permission
-          : [item.permission as NavPermission];
-        return alternatives.some((permission) =>
-          canAnywhere(
-            me,
-            permission.module,
-            permission.level,
-            permission.scope === 'location' ? activeLocationIds : undefined,
-          ),
-        );
+      items: group.items.flatMap((entry): NavEntry[] => {
+        if (isNavParent(entry)) {
+          const children = entry.children.filter((child) =>
+            isItemVisible(child, me, activeLocationIds, desktop),
+          );
+          return children.length > 0 ? [{ ...entry, children }] : [];
+        }
+        return isItemVisible(entry, me, activeLocationIds, desktop) ? [entry] : [];
       }),
     }))
     .filter((group) => group.items.length > 0);

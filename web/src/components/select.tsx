@@ -34,6 +34,9 @@ export interface MultiSelectProps extends SelectCommon {
   onValueChange: (values: string[]) => void;
 }
 
+/** Pilihan tetap sependek ini tak perlu papan ketik layar (ketukan langsung memilih dari daftar). */
+const KEYBOARDLESS_MAX = 8;
+
 const toLinkOptions = (options: readonly SelectOption[]) =>
   options.map(({ value, ...rest }) => ({ id: value, ...rest }));
 
@@ -58,6 +61,7 @@ export function Select({
       multi={false}
       localFilter
       highlight
+      keyboardless={options.length <= KEYBOARDLESS_MAX}
       selectedIds={current ? [current.value] : []}
       displayText={current?.label ?? ''}
       chips={[]}

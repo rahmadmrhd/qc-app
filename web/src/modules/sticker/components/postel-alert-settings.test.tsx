@@ -1,9 +1,12 @@
 import type { PostelSettingsDto, UserDto } from '@shared/contract';
-import { render, screen, within } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { useState } from 'react';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { hasUnsavedChanges, resetUnsavedChangesForTests } from '@/app/pwa/unsaved-changes';
+import { FormPage } from '@/components/page/form-page';
 import { pickLink } from '@/test/link-field';
+import { renderInRouter } from '@/test/render-in-router';
 import { PostelAlertSettings, type PostelAlertSettingsProps } from './postel-alert-settings';
 
 const settings: PostelSettingsDto = {
@@ -35,9 +38,34 @@ function user(email: string, name: string, status: UserDto['status'] = 'active')
 
 const users = [user('budi@contoh.com', 'Budi'), user('lama@contoh.com', 'Lama', 'inactive')];
 
-function renderSettings(props: Partial<PostelAlertSettingsProps> = {}) {
+const FORM_ID = 'postel-test';
+
+/** Meniru halaman: FormPage memegang tombol Simpan; status busy dan galat datang dari komponen. */
+function Harness(props: Omit<PostelAlertSettingsProps, 'formId'>) {
+  const [busy, setBusy] = useState(false);
+  const [hasError, setHasError] = useState(false);
+  return (
+    <FormPage
+      formId={FORM_ID}
+      title="Konfigurasi Stiker"
+      onCancel={() => undefined}
+      submitting={busy}
+      submitLabel="Simpan peringatan Postel"
+    >
+      <PostelAlertSettings
+        formId={FORM_ID}
+        onBusyChange={setBusy}
+        onHasErrorChange={setHasError}
+        {...props}
+      />
+      <span data-testid="has-error">{String(hasError)}</span>
+    </FormPage>
+  );
+}
+
+async function renderSettings(props: Partial<PostelAlertSettingsProps> = {}) {
   const onSave = vi.fn().mockResolvedValue(null);
-  render(<PostelAlertSettings settings={settings} users={users} onSave={onSave} {...props} />);
+  await renderInRouter(<Harness settings={settings} users={users} onSave={onSave} {...props} />);
   return { onSave };
 }
 
@@ -48,8 +76,12 @@ beforeEach(() => {
   resetUnsavedChangesForTests();
 });
 
+afterEach(() => {
+  cleanup();
+});
+
 test('mengubah isian mendaftarkan perubahan belum disimpan; mengembalikannya ke nilai awal melepas', async () => {
-  renderSettings();
+  await renderSettings();
   expect(hasUnsavedChanges()).toBe(false);
   const repeat = screen.getByLabelText('Ulangi setiap (hari)');
   await userEvent.clear(repeat);
@@ -60,8 +92,8 @@ test('mengubah isian mendaftarkan perubahan belum disimpan; mengembalikannya ke 
   expect(hasUnsavedChanges()).toBe(false);
 });
 
-test('menampilkan nilai awal dari settings', () => {
-  renderSettings();
+test('menampilkan nilai awal dari settings', async () => {
+  await renderSettings();
   expect(
     screen.getByRole('heading', { name: 'Peringatan masa berlaku Postel' }),
   ).toBeInTheDocument();
@@ -75,13 +107,13 @@ test('menampilkan nilai awal dari settings', () => {
   expect(screen.queryByRole('status')).not.toBeInTheDocument();
 });
 
-test('peringatan SMTP (role=status) hanya bila smtpConfigured false', () => {
-  renderSettings({ settings: { ...settings, smtpConfigured: false } });
+test('peringatan SMTP (role=status) hanya bila smtpConfigured false', async () => {
+  await renderSettings({ settings: { ...settings, smtpConfigured: false } });
   expect(screen.getByRole('status')).toHaveTextContent('SMTP belum dikonfigurasi');
 });
 
 test('ambang ke-6 tak dapat ditambahkan (maksimal 5)', async () => {
-  renderSettings({
+  await renderSettings({
     settings: { ...settings, alert: { ...settings.alert, thresholds: [100, 90, 60, 30, 14] } },
   });
   expect(screen.getByRole('button', { name: 'Tambah pengingat' })).toBeDisabled();
@@ -89,7 +121,7 @@ test('ambang ke-6 tak dapat ditambahkan (maksimal 5)', async () => {
 });
 
 test('Tambah pengingat menambah baris kosong; Hapus pengingat menghapus', async () => {
-  renderSettings();
+  await renderSettings();
   await userEvent.click(screen.getByRole('button', { name: 'Tambah pengingat' }));
   expect(screen.getByLabelText('Pengingat 4 (hari sebelum habis)')).toHaveValue(null);
   await userEvent.click(screen.getByRole('button', { name: 'Hapus pengingat 4' }));
@@ -102,7 +134,7 @@ test.each([
   ['60', 'Pengingat tidak boleh kembar'],
   ['', 'Pengingat 3: bilangan bulat 1 sampai 730'],
 ])('pengingat bernilai "%s" menolak simpan', async (value, message) => {
-  const { onSave } = renderSettings();
+  const { onSave } = await renderSettings();
   const input = screen.getByLabelText('Pengingat 3 (hari sebelum habis)');
   await userEvent.clear(input);
   if (value !== '') await userEvent.type(input, value);
@@ -112,7 +144,7 @@ test.each([
 });
 
 test('tanpa pengingat sama sekali menolak simpan', async () => {
-  const { onSave } = renderSettings({
+  const { onSave } = await renderSettings({
     settings: { ...settings, alert: { ...settings.alert, thresholds: [30] } },
   });
   await userEvent.click(screen.getByRole('button', { name: 'Hapus pengingat 1' }));
@@ -122,7 +154,7 @@ test('tanpa pengingat sama sekali menolak simpan', async () => {
 });
 
 test('ulangi setiap di luar 0-365 menolak simpan', async () => {
-  const { onSave } = renderSettings();
+  const { onSave } = await renderSettings();
   const input = screen.getByLabelText('Ulangi setiap (hari)');
   await userEvent.clear(input);
   await userEvent.type(input, '366');
@@ -132,7 +164,7 @@ test('ulangi setiap di luar 0-365 menolak simpan', async () => {
 });
 
 test('simpan mengirim ambang menurun, jam, ulangi, dan penerima (user dan email lain)', async () => {
-  const { onSave } = renderSettings({
+  const { onSave } = await renderSettings({
     settings: { ...settings, alert: { ...settings.alert, thresholds: [30, 90, 60] } },
   });
   await pickSelect('Jam kirim (WIB)', '09:00 WIB');
@@ -161,14 +193,14 @@ async function pickSelect(name: string, option: string) {
 }
 
 test('saklar dapat dimatikan', async () => {
-  const { onSave } = renderSettings();
+  const { onSave } = await renderSettings();
   await userEvent.click(screen.getByLabelText('Kirim email peringatan masa berlaku Postel'));
   await save();
   expect(onSave.mock.calls[0]?.[0].alert.enabled).toBe(false);
 });
 
 test('email rusak atau ganda menolak penambahan', async () => {
-  renderSettings();
+  await renderSettings();
   await userEvent.type(screen.getByLabelText('Email lain'), 'bukan-email');
   await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
   expect(await screen.findByText('Format email tidak valid')).toBeInTheDocument();
@@ -181,7 +213,7 @@ test('email rusak atau ganda menolak penambahan', async () => {
 test.each(['x,a@b.co', 'a@b.co,c@d.co', 'a@b.co;c@d.co', 'Nama <a@b.co>', 'a@b.co c@d.co'])(
   '"Email lain" menolak entri yang bukan satu alamat polos: %s',
   async (entry) => {
-    renderSettings();
+    await renderSettings();
     await userEvent.type(screen.getByLabelText('Email lain'), entry);
     await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
     expect(await screen.findByText('Format email tidak valid')).toBeInTheDocument();
@@ -191,20 +223,22 @@ test.each(['x,a@b.co', 'a@b.co,c@d.co', 'a@b.co;c@d.co', 'Nama <a@b.co>', 'a@b.c
 
 test('maksimal 20 penerima', async () => {
   const many = Array.from({ length: 20 }, (_, i) => `u${i}@contoh.com`);
-  renderSettings({ settings: { ...settings, alert: { ...settings.alert, recipients: many } } });
+  await renderSettings({
+    settings: { ...settings, alert: { ...settings.alert, recipients: many } },
+  });
   await userEvent.type(screen.getByLabelText('Email lain'), 'baru@contoh.com');
   await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
   expect(await screen.findByText('Maksimal 20 penerima')).toBeInTheDocument();
 });
 
 test('onSave mengembalikan teks galat => tampil sebagai alert', async () => {
-  renderSettings({ onSave: vi.fn().mockResolvedValue('Data sudah diubah orang lain') });
+  await renderSettings({ onSave: vi.fn().mockResolvedValue('Data sudah diubah orang lain') });
   await save();
   expect(await screen.findByRole('alert')).toHaveTextContent('Data sudah diubah orang lain');
 });
 
 test('pesan galat dihubungkan ke inputnya lewat aria-describedby', async () => {
-  renderSettings();
+  await renderSettings();
   const threshold = screen.getByLabelText('Pengingat 3 (hari sebelum habis)');
   await userEvent.clear(threshold);
   await userEvent.type(threshold, '0');
@@ -227,7 +261,7 @@ test('pesan galat dihubungkan ke inputnya lewat aria-describedby', async () => {
 });
 
 test('pengingat kembar: kedua input yang bermasalah menunjuk pesan umum', async () => {
-  renderSettings();
+  await renderSettings();
   const third = screen.getByLabelText('Pengingat 3 (hari sebelum habis)');
   await userEvent.clear(third);
   await userEvent.type(third, '60');
@@ -237,10 +271,44 @@ test('pengingat kembar: kedua input yang bermasalah menunjuk pesan umum', async 
 });
 
 test('M-g: alamat di "Email lain" yang belum ditambahkan terdaftar sebagai belum disimpan', async () => {
-  renderSettings();
+  await renderSettings();
   expect(hasUnsavedChanges()).toBe(false);
   await userEvent.type(screen.getByLabelText('Email lain'), 'baru@contoh.com');
   expect(hasUnsavedChanges()).toBe(true);
   await userEvent.clear(screen.getByLabelText('Email lain'));
   expect(hasUnsavedChanges()).toBe(false);
+});
+
+test('galat validasi memberi tahu induk (titik galat tab) dan hilang setelah diperbaiki', async () => {
+  await renderSettings();
+  expect(screen.getByTestId('has-error')).toHaveTextContent('false');
+  const repeat = screen.getByLabelText('Ulangi setiap (hari)');
+  await userEvent.clear(repeat);
+  await userEvent.type(repeat, '999');
+  await save();
+  expect(await screen.findByText('Ulangi setiap: bilangan bulat 0 sampai 365')).toBeInTheDocument();
+  expect(screen.getByTestId('has-error')).toHaveTextContent('true');
+});
+
+test('tombol Simpan ada di bar halaman (di luar form) dan terkait lewat atribut form', async () => {
+  await renderSettings();
+  const button = screen.getByRole('button', { name: 'Simpan peringatan Postel' });
+  expect(button).toHaveAttribute('form', FORM_ID);
+  expect(button.closest('form')).toBeNull();
+  expect(document.getElementById(FORM_ID)?.tagName).toBe('FORM');
+});
+
+test('selama menyimpan, induk diberi tahu (busy) dan tombol Simpan terkunci', async () => {
+  let finish: (value: string | null) => void = () => undefined;
+  const onSave = vi.fn(
+    () =>
+      new Promise<string | null>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  await renderSettings({ onSave });
+  await save();
+  expect(screen.getByRole('button', { name: /Menyimpan/ })).toBeDisabled();
+  finish(null);
+  expect(await screen.findByRole('button', { name: 'Simpan peringatan Postel' })).toBeEnabled();
 });

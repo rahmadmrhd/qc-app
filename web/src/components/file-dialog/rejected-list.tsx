@@ -14,12 +14,13 @@ export function RejectedList({
   return (
     <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
       <div className="flex items-start justify-between gap-2">
-        <p className="font-medium text-destructive">
+        <p className="font-medium text-destructive-text">
           {items.length} berkas tidak dapat ditambahkan
         </p>
         <Button
           type="button"
           variant="ghost"
+          color="primary"
           size="icon-xs"
           aria-label="Tutup daftar berkas ditolak"
           onClick={onClear}

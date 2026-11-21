@@ -109,15 +109,17 @@ describe('desain QR', () => {
     expect(missing.status).toBe(422);
   });
 
-  test('DELETE mengembalikan { id } (200); desain hilang; tanpa izin edit 403; tidak ada 404', async () => {
+  test('DELETE (hapus lunak) mengembalikan { id } (200); hilang bagi pembaca biasa; tanpa izin manage 403; hapus ulang 200; id tak dikenal 404', async () => {
     const qr = await jsonOf(await rest.post('/qrcodes', { body: await design() }));
     const id = qr.id as string;
     expect((await rest.del(`/qrcodes/${id}`, { email: 'qrview@gmail.com' })).status).toBe(403);
     const removed = await rest.del(`/qrcodes/${id}`, { email: 'qrmanage@gmail.com' });
     expect(removed.status).toBe(200);
     expect(await removed.json()).toEqual({ id });
-    expect((await rest.get(`/qrcodes/${id}`)).status).toBe(404);
-    expect((await rest.del(`/qrcodes/${id}`)).status).toBe(404);
+    expect((await rest.get(`/qrcodes/${id}`, { email: 'qrview@gmail.com' })).status).toBe(404);
+    expect((await rest.get(`/qrcodes/${id}`, { email: 'qrmanage@gmail.com' })).status).toBe(200);
+    expect((await rest.del(`/qrcodes/${id}`)).status).toBe(200);
+    expect((await rest.del('/qrcodes/tidak-ada')).status).toBe(404);
   });
 });
 

@@ -9,15 +9,15 @@ export const FEEDBACK_TEXT: Record<ScanFeedback, string> = {
 };
 
 export const FEEDBACK_FLASH: Record<ScanFeedback, string> = {
-  added: 'border-emerald-500 bg-emerald-500/10',
-  duplicate: 'border-amber-500 bg-amber-500/10',
+  added: 'border-success-text/35 bg-success-text/10',
+  duplicate: 'border-warning-text/35 bg-warning-text/10',
   rejected: 'border-destructive bg-destructive/10',
 };
 
 export const FEEDBACK_TEXT_COLOR: Record<ScanFeedback, string> = {
-  added: 'text-emerald-600 dark:text-emerald-400',
-  duplicate: 'text-amber-600 dark:text-amber-400',
-  rejected: 'text-destructive',
+  added: 'text-success-text',
+  duplicate: 'text-warning-text',
+  rejected: 'text-destructive-text',
 };
 
 /**

@@ -1,9 +1,12 @@
-import type { SerialItemOptionDto } from '@shared/contract';
+import type { ItemDto, SerialItemOptionDto } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
 import { proofMinimumOf } from '@shared/serials';
-import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useRef, useState } from 'react';
 import { LinkField, type LinkOption } from '@/components/link-field';
+import { businessUnitLinkAccess, itemLinkAccess, serialItemCreateAccess } from '@/lib/link-access';
+import { meQueryOptions } from '@/modules/auth/queries';
+import { useItemCreate } from '@/modules/item/components/item-create-host';
 import { serialBuOptionsQueryOptions, serialItemOptionsQueryOptions } from '../queries';
 
 /** Item dan BU yang dipilih pada rombongan, baris, atau ubah massal. */
@@ -36,6 +39,8 @@ export interface ItemBuFieldProps {
   /** Galat pada field BU. */
   buError?: string | undefined;
   disabled?: boolean;
+  /** Item dan BU sama-sama wajib: bintang pada label dan `aria-required`. */
+  required?: boolean;
 }
 
 /**
@@ -59,8 +64,9 @@ export function defaultBuForItem(
 /**
  * Item (`LinkField`, pencarian di server lewat `serials.itemOptions`) dan BU (`LinkField`, SELALU tampil dengan semua BU
  * yang boleh ditulis pengguna lewat `serials.buOptions`; BU serial tidak lagi dibatasi pada BU item). BU terisi dari item
- * sesuai `defaultBuForItem` dan boleh diganti ke BU mana pun. Tanpa Tambah/Buka: item dikelola di Data Item. Dirender
- * sebagai dua blok bersaudara (fragmen) agar pemanggil dapat menempatkannya dalam grid atau tumpukan form.
+ * sesuai `defaultBuForItem` dan boleh diganti ke BU mana pun. Tambah item hanya lewat `serialItemCreateAccess`; Buka ke
+ * View Item dan View BU hanya bila pengguna berhak (`itemLinkAccess`, `businessUnitLinkAccess`; aturan field relasi).
+ * Dirender sebagai dua blok bersaudara (fragmen) agar pemanggil dapat menempatkannya dalam grid atau tumpukan form.
  */
 export function ItemBuField({
   label,
@@ -71,10 +77,19 @@ export function ItemBuField({
   error,
   buError,
   disabled,
+  required,
 }: ItemBuFieldProps) {
   const [term, setTerm] = useState('');
   const [buTerm, setBuTerm] = useState('');
   const [picked, setPicked] = useState<SerialItemOptionDto | null>(null);
+  // Dialog Tambah item dirender tuan rumah di luar `<form>` pemanggil; field hanya meminta lewat `useItemCreate`.
+  const itemCreate = useItemCreate();
+  // Tanpa suspense: data pengguna sudah dimuat cangkang; bila belum, baris Tambah item sekadar tak tampil.
+  const me = useQuery(meQueryOptions()).data;
+  const create = serialItemCreateAccess(me);
+  const openItemHref = itemLinkAccess(me).openItemHref;
+  const openBuHref = businessUnitLinkAccess(me).openBusinessUnitHref;
+  const queryClient = useQueryClient();
   const { data, isFetching } = useQuery(serialItemOptionsQueryOptions(term.trim()));
   const { data: buData, isPending: buPending } = useQuery(serialBuOptionsQueryOptions());
   const known = new Map<string, SerialItemOptionDto>();
@@ -84,6 +99,10 @@ export function ItemBuField({
     id: item.id,
     label: item.label,
   }));
+  // Item yang baru dibuat dari dialog tetap tampil di pilihan sebelum muat ulang daftar server.
+  if (picked && !options.some((option) => option.id === picked.id)) {
+    options.unshift({ id: picked.id, label: picked.label });
+  }
 
   // Daftar BU tulis belum ada (memuat atau gagal): pilihan sementara = BU item terpilih, supaya field tetap dapat dipakai.
   const allBus: { id: string; code: string }[] | null = buData
@@ -95,6 +114,26 @@ export function ItemBuField({
   const buLinkOptions: LinkOption[] = buChoices
     .map((bu) => ({ id: bu.id, label: bu.code }))
     .filter((option) => buKey === '' || normalizeKey(option.label).includes(buKey));
+
+  function pickCreated(created: ItemDto) {
+    const allowed = create.allowedBuIds;
+    const option: SerialItemOptionDto = {
+      id: created.id,
+      label: `${created.brand} ${created.model}`,
+      buIds: created.businessUnits.filter((bu) => allowed.includes(bu.id)).map((bu) => bu.id),
+      buOptions: created.businessUnits
+        .filter((bu) => allowed.includes(bu.id))
+        .map((bu) => ({ id: bu.id, code: bu.code })),
+      proofRequired: created.proofRequired,
+      proofMin: created.proofMin,
+    };
+    known.set(option.id, option);
+    void queryClient.invalidateQueries({ queryKey: ['serial', 'itemOptions'] });
+    pickItem(option.id);
+  }
+
+  const latestPick = useRef(pickCreated);
+  latestPick.current = pickCreated;
 
   function pickItem(id: string | null) {
     if (id === null) {
@@ -122,6 +161,7 @@ export function ItemBuField({
         <LinkField
           id={`${idPrefix}-item`}
           label={label}
+          required={required}
           placeholder="Cari merk atau tipe item…"
           value={value.itemId === '' ? null : value.itemId}
           labelOf={(id) => (id === value.itemId ? value.itemLabel : (known.get(id)?.label ?? id))}
@@ -131,6 +171,16 @@ export function ItemBuField({
           onSearchChange={setTerm}
           searchDebounceMs={200}
           onChange={pickItem}
+          onCreate={
+            create.canCreate && itemCreate.available && !disabled
+              ? () =>
+                  itemCreate.open({
+                    allowedBuIds: create.allowedBuIds,
+                    onCreated: (created) => latestPick.current(created),
+                  })
+              : undefined
+          }
+          openHref={openItemHref}
           error={error}
           disabled={disabled ?? false}
         />
@@ -139,6 +189,7 @@ export function ItemBuField({
         <LinkField
           id={`${idPrefix}-bu`}
           label={buFieldLabel}
+          required={required}
           placeholder="Pilih Business Unit…"
           value={value.buId === '' ? null : value.buId}
           labelOf={(id) =>
@@ -152,6 +203,7 @@ export function ItemBuField({
             const bu = buChoices.find((option) => option.id === id);
             onChange({ ...value, buId: bu?.id ?? '', buLabel: bu?.code ?? '' });
           }}
+          openHref={openBuHref}
           error={buError}
           disabled={disabled ?? false}
         />

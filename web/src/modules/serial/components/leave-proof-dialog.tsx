@@ -24,7 +24,12 @@ export interface LeaveProofDialogProps {
  */
 export function LeaveProofDialog({ open, saving, onSave, onLeave, onStay }: LeaveProofDialogProps) {
   return (
-    <AlertDialog open={open} onOpenChange={(next) => !next && !saving && onStay()}>
+    <AlertDialog
+      open={open}
+      // Dibuka oleh penjaga keluar halaman: tak boleh menyisipkan entri riwayat (riwayat sudah di tengah navigasi).
+      backToClose={false}
+      onOpenChange={(next) => !next && !saving && onStay()}
+    >
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>Simpan dulu sebelum pindah halaman?</AlertDialogTitle>
@@ -34,10 +39,16 @@ export function LeaveProofDialog({ open, saving, onSave, onLeave, onStay }: Leav
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <Button type="button" variant="outline" disabled={saving} onClick={onStay}>
+          <Button
+            type="button"
+            variant="outline"
+            color="primary"
+            disabled={saving}
+            onClick={onStay}
+          >
             Tetap di sini
           </Button>
-          <Button type="button" variant="ghost" disabled={saving} onClick={onLeave}>
+          <Button type="button" variant="ghost" color="primary" disabled={saving} onClick={onLeave}>
             Keluar tanpa menyimpan
           </Button>
           <Button type="button" disabled={saving} onClick={onSave}>

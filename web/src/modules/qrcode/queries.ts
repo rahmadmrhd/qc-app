@@ -1,3 +1,4 @@
+import type { IdBatchInput } from '@shared/batch';
 import type {
   ClonePresetInput,
   CloneQrPdfInput,
@@ -5,14 +6,13 @@ import type {
   JobDto,
   QrDefaultsDto,
   QrDesignDto,
-  QrDesignRefInput,
   QrPresetDto,
   SaveQrDesignInput,
   SaveQrLogoLibraryInput,
   SaveQrPresetInput,
   UploadQrPdfInput,
 } from '@shared/contract';
-import type { QueryClient } from '@tanstack/react-query';
+import type { QueryClient, UseQueryOptions } from '@tanstack/react-query';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import type { ApiCallOptions } from '@/lib/api/client';
@@ -25,19 +25,93 @@ import { stickerKeys } from '@/modules/sticker/keys';
 export const qrKeys = {
   all: ['qrcodes'] as const,
   list: ['qrcodes', 'list'] as const,
+  /** Daftar konfigurasi terhapus (hanya `qrcode: manage`): kunci sendiri agar tak bercampur dengan daftar hidup. */
+  listDeleted: ['qrcodes', 'list', 'deleted'] as const,
   defaults: ['qrcodes', 'defaults'] as const,
+  /** Preset terhapus: kunci sendiri (`getDefaults` dengan `status: 'deleted'`; pustaka logo ikut dikembalikan). */
+  defaultsDeleted: ['qrcodes', 'defaults', 'deleted'] as const,
   one: (id: string) => ['qrcodes', 'one', id] as const,
+  preset: (id: string) => ['qrcodes', 'preset', id] as const,
   versions: (id: string) => ['qrcodes', 'versions', id] as const,
 };
 
-export function qrDesignsQueryOptions() {
-  return queryOptions({ queryKey: qrKeys.list, queryFn: () => api('qrcodes.list', null) });
+/** Status tampilan daftar QR/preset: `live` (bawaan) atau `deleted` (hanya pemegang `qrcode: manage`). */
+export type QrListStatus = 'live' | 'deleted';
+
+const liveDesignsOptions = () =>
+  queryOptions({ queryKey: qrKeys.list, queryFn: () => api('qrcodes.list', null) });
+const deletedDesignsOptions = () =>
+  queryOptions({
+    queryKey: qrKeys.listDeleted,
+    queryFn: () => api('qrcodes.list', { status: 'deleted' }),
+  });
+const liveDefaultsOptions = () =>
+  queryOptions({ queryKey: qrKeys.defaults, queryFn: () => api('qrcodes.getDefaults', null) });
+const deletedDefaultsOptions = () =>
+  queryOptions({
+    queryKey: qrKeys.defaultsDeleted,
+    queryFn: () => api('qrcodes.getDefaults', { status: 'deleted' }),
+  });
+
+/** Daftar konfigurasi QR; `deleted` hanya bagi `qrcode: manage` (server menolak selain itu). */
+export function qrDesignsQueryOptions(status?: 'live'): ReturnType<typeof liveDesignsOptions>;
+export function qrDesignsQueryOptions(
+  status: QrListStatus,
+): UseQueryOptions<QrDesignDto[], Error, QrDesignDto[], readonly string[]>;
+export function qrDesignsQueryOptions(
+  status: QrListStatus = 'live',
+):
+  | ReturnType<typeof liveDesignsOptions>
+  | UseQueryOptions<QrDesignDto[], Error, QrDesignDto[], readonly string[]> {
+  // Varian terhapus berkunci lain; tipe kuncinya dilebarkan agar `useQuery(qrDesignsQueryOptions(status))` mengetik.
+  return status === 'deleted'
+    ? (deletedDesignsOptions() as unknown as UseQueryOptions<
+        QrDesignDto[],
+        Error,
+        QrDesignDto[],
+        readonly string[]
+      >)
+    : liveDesignsOptions();
 }
 
-export function qrDefaultsQueryOptions() {
+/** Konfigurasi default + pustaka logo; `deleted` = hanya preset terhapus (hanya `qrcode: manage`). */
+export function qrDefaultsQueryOptions(status?: 'live'): ReturnType<typeof liveDefaultsOptions>;
+export function qrDefaultsQueryOptions(
+  status: QrListStatus,
+): UseQueryOptions<QrDefaultsDto, Error, QrDefaultsDto, readonly string[]>;
+export function qrDefaultsQueryOptions(
+  status: QrListStatus = 'live',
+):
+  | ReturnType<typeof liveDefaultsOptions>
+  | UseQueryOptions<QrDefaultsDto, Error, QrDefaultsDto, readonly string[]> {
+  return status === 'deleted'
+    ? (deletedDefaultsOptions() as unknown as UseQueryOptions<
+        QrDefaultsDto,
+        Error,
+        QrDefaultsDto,
+        readonly string[]
+      >)
+    : liveDefaultsOptions();
+}
+
+/**
+ * Satu preset (halaman View; `qrcodes.getPreset`). Data awal dari daftar default yang sudah termuat bila ada, jadi
+ * View dari daftar terbuka seketika; preset terhapus (tak ada di daftar hidup) dimuat dari server.
+ */
+export function qrPresetQueryOptions(queryClient: QueryClient, id: string) {
+  const seed = queryClient
+    .getQueryData<QrDefaultsDto>(qrKeys.defaults)
+    ?.presets.find((preset) => preset.id === id);
   return queryOptions({
-    queryKey: qrKeys.defaults,
-    queryFn: () => api('qrcodes.getDefaults', null),
+    queryKey: qrKeys.preset(id),
+    queryFn: () => api('qrcodes.getPreset', { id }),
+    retry: false,
+    ...(seed
+      ? {
+          initialData: seed,
+          initialDataUpdatedAt: queryClient.getQueryState(qrKeys.defaults)?.dataUpdatedAt ?? 0,
+        }
+      : {}),
   });
 }
 
@@ -59,6 +133,14 @@ export function qrVersionsQueryOptions(id: string) {
 
 export function qrDesignQueryOptions(id: string) {
   return queryOptions({ queryKey: qrKeys.one(id), queryFn: () => api('qrcodes.get', { id }) });
+}
+
+/**
+ * Konfigurasi untuk halaman View: kunci yang sama dengan `qrDesignQueryOptions` tanpa percobaan ulang, agar
+ * `NOT_FOUND`/`FORBIDDEN` (konfigurasi terhapus bagi yang tak boleh melihatnya) langsung tampil sebagai "tidak ditemukan".
+ */
+export function qrDesignViewQueryOptions(id: string) {
+  return queryOptions({ ...qrDesignQueryOptions(id), retry: false });
 }
 
 const compareDesigns = (a: QrDesignDto, b: QrDesignDto) =>
@@ -138,15 +220,45 @@ export const useClonePreset = () =>
       );
     },
   );
-export const useDeleteQrPreset = () =>
+/** Hapus preset (batch, lunak): preset keluar dari daftar hidup; yang terhapus dimuat dari server saat dibuka. */
+export const useRemoveQrPresets = () =>
   useQrMutation(
-    (input: QrDesignRefInput) => api('qrcodes.deletePreset', input),
-    (queryClient, _saved, input) => {
-      queryClient.setQueryData<QrDefaultsDto>(qrKeys.defaults, (current) =>
-        current
-          ? { ...current, presets: current.presets.filter((preset) => preset.id !== input.id) }
-          : current,
-      );
+    (input: IdBatchInput) => api('qrcodes.removePresetBatch', input),
+    (queryClient, result) => {
+      for (const id of result.ids) {
+        queryClient.setQueryData<QrDefaultsDto>(qrKeys.defaults, (current) =>
+          current
+            ? { ...current, presets: current.presets.filter((preset) => preset.id !== id) }
+            : current,
+        );
+        markStale(queryClient, qrKeys.preset(id));
+      }
+    },
+  );
+/** Pulihkan preset (batch): preset kembali ke daftar hidup dan keluar dari daftar terhapus. */
+export const useRestoreQrPresets = () =>
+  useQrMutation(
+    (input: IdBatchInput) => api('qrcodes.restorePresetBatch', input),
+    (queryClient, result) => {
+      for (const preset of result.items) {
+        queryClient.setQueryData<QrDefaultsDto>(qrKeys.defaults, (current) =>
+          current
+            ? {
+                ...current,
+                presets: [
+                  ...current.presets.filter((entry) => entry.id !== preset.id),
+                  preset,
+                ].sort(comparePresets),
+              }
+            : current,
+        );
+        queryClient.setQueryData<QrDefaultsDto>(qrKeys.defaultsDeleted, (current) =>
+          current
+            ? { ...current, presets: current.presets.filter((entry) => entry.id !== preset.id) }
+            : current,
+        );
+        queryClient.setQueryData(qrKeys.preset(preset.id), preset);
+      }
     },
   );
 export const useSaveQrLogoLibrary = () => {
@@ -160,12 +272,27 @@ export const useSaveQrLogoLibrary = () => {
     },
   });
 };
-export const useDeleteQrDesign = () =>
+/** Hapus konfigurasi (batch, lunak): keluar dari daftar hidup; View-nya tetap ada bagi pemegang `qrcode: manage`. */
+export const useRemoveQrDesigns = () =>
   useQrMutation(
-    (input: QrDesignRefInput) => api('qrcodes.delete', input),
-    (queryClient, _saved, input) => {
-      removeFromList<QrDesignDto>(queryClient, qrKeys.list, input.id);
-      queryClient.removeQueries({ queryKey: qrKeys.one(input.id) });
+    (input: IdBatchInput) => api('qrcodes.removeBatch', input),
+    (queryClient, result) => {
+      for (const id of result.ids) {
+        removeFromList<QrDesignDto>(queryClient, qrKeys.list, id);
+        markStale(queryClient, qrKeys.one(id));
+      }
+    },
+    true,
+  );
+/** Pulihkan konfigurasi (batch): kembali ke daftar hidup dan keluar dari daftar terhapus. */
+export const useRestoreQrDesigns = () =>
+  useQrMutation(
+    (input: IdBatchInput) => api('qrcodes.restoreBatch', input),
+    (queryClient, result) => {
+      for (const design of result.items) {
+        applyDesign(queryClient, design);
+        removeFromList<QrDesignDto>(queryClient, qrKeys.listDeleted, design.id);
+      }
     },
     true,
   );

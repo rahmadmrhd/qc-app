@@ -97,6 +97,30 @@ export function buIdsWithLevelOf(
     .map((bu) => bu.id);
 }
 
+/** Seperti `buIdsWithLevelOf` tetapi tanpa BU terhapus: untuk PILIHAN dan filter (BU terhapus hanya memberi hak). */
+export function liveBuIdsWithLevelOf(
+  me: MeDto | null | undefined,
+  module: BuModule,
+  level: Level,
+): string[] {
+  return itemBusinessUnits(me)
+    .filter((bu) => !bu.deleted && hasLevel(bu.permissions[module], level))
+    .map((bu) => bu.id);
+}
+
+/**
+ * Id SEMUA BU yang terhapus (dari server, `me.deletedBusinessUnitIds`), ditambah penanda `deleted` pada BU berhak user.
+ * Diabaikan dari syarat "SEMUA BU" (keputusan soft delete 9), juga untuk BU yang bukan penugasan user.
+ */
+function deletedBuIdsOf(me: MeDto | null | undefined): Set<string> {
+  return new Set([
+    ...(me?.deletedBusinessUnitIds ?? []),
+    ...itemBusinessUnits(me)
+      .filter((bu) => bu.deleted)
+      .map((bu) => bu.id),
+  ]);
+}
+
 /** Id BU (aktif maupun nonaktif) tempat user punya minimal `level` pada modul `item`. */
 export function buIdsWithLevelFor(me: MeDto | null | undefined, level: Level): string[] {
   return buIdsWithLevelOf(me, 'item', level);
@@ -126,8 +150,16 @@ export function canManageSerialSettings(me: MeDto | null | undefined): boolean {
   return me?.canManageSerialSettings === true;
 }
 
-/** Mencatat serial: level `edit` pada minimal satu BU. */
-export function canWriteSerials(me: MeDto | null | undefined): boolean {
+/** Mencatat serial baru (Tambah, Country Lock): level `edit` pada minimal satu BU HIDUP (BU terhapus tak tampil di pilihan). */
+export function canRecordSerials(me: MeDto | null | undefined): boolean {
+  return liveBuIdsWithLevelOf(me, 'serial', 'edit').length > 0;
+}
+
+/**
+ * Lapor Rusak atas serial yang sudah ada: level `edit` pada BU apa pun yang memberi hak, termasuk BU terhapus
+ * (keputusan soft delete 9: serial BU terhapus tetap dapat ditindak). Tidak memilih BU, jadi tak perlu BU hidup.
+ */
+export function canReportSerials(me: MeDto | null | undefined): boolean {
   return buIdsWithLevelOf(me, 'serial', 'edit').length > 0;
 }
 
@@ -139,7 +171,10 @@ function hasLevelOnAllBus(
   const attached = item.businessUnits ?? [];
   if (attached.length === 0) return false;
   const allowed = new Set(buIdsWithLevelFor(me, level));
-  return attached.every((bu) => allowed.has(bu.id));
+  // Sama dengan `canActOnAllBus` server: BU terhapus diabaikan selama masih ada BU hidup pada item.
+  const deleted = deletedBuIdsOf(me);
+  const live = attached.filter((bu) => !deleted.has(bu.id));
+  return (live.length > 0 ? live : attached).every((bu) => allowed.has(bu.id));
 }
 
 /** Ubah item: `edit` pada SEMUA BU item (keputusan 13). Item tanpa BU tidak dapat diubah. */
@@ -158,9 +193,32 @@ export function canManageItem(
   return hasLevelOnAllBus(me, item, 'manage');
 }
 
+/** Memegang `manage` item pada minimal satu BU (menampilkan pilihan massal dan tampilan Terhapus; server tetap menegakkan). */
+export function canManageAnyItem(me: MeDto | null | undefined): boolean {
+  return buIdsWithLevelFor(me, 'manage').length > 0;
+}
+
+/**
+ * Hapus/Pulihkan Serial Number: `serial: manage` pada SEMUA BU dalam riwayat BU serial itu (BU saat ini ikut; keputusan
+ * pemilik soft delete 12), BU terhapus diabaikan selama masih ada BU hidup (keputusan 9). Hanya untuk UX: server
+ * menegakkan dan menjawab `NOT_FOUND` bagi yang tak berhak. `buIds` kosong = tidak berhak.
+ */
+export function canManageSerial(me: MeDto | null | undefined, buIds: readonly string[]): boolean {
+  if (buIds.length === 0) return false;
+  const allowed = new Set(buIdsWithLevelOf(me, 'serial', 'manage'));
+  const deleted = deletedBuIdsOf(me);
+  const live = buIds.filter((id) => !deleted.has(id));
+  return (live.length > 0 ? live : buIds).every((id) => allowed.has(id));
+}
+
+/** Memegang `serial: manage` pada minimal satu BU (menampilkan tampilan Terhapus dan pilihan massal; server menegakkan). */
+export function canManageAnySerial(me: MeDto | null | undefined): boolean {
+  return buIdsWithLevelOf(me, 'serial', 'manage').length > 0;
+}
+
 /** Buat item: ada minimal satu BU aktif ber-`edit`. */
 export function canCreateItem(me: MeDto | null | undefined): boolean {
   return itemBusinessUnits(me).some(
-    (bu) => bu.status === 'active' && hasLevel(bu.permissions.item, 'edit'),
+    (bu) => bu.status === 'active' && !bu.deleted && hasLevel(bu.permissions.item, 'edit'),
   );
 }

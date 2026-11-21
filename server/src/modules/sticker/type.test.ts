@@ -152,6 +152,30 @@ describe('jenis stiker', () => {
     expect(renamed).toMatchObject({ name: 'QC Baru', rule: 'none', stickerCount: 1 });
   });
 
+  test('hanya stiker hidup yang mengunci aturan: stiker terhapus tak menahan (keputusan pemilik 2026-11-21)', async () => {
+    const type = await saveStickerType(env, { name: 'QC', rule: 'bu' }, admin);
+    await insertSticker(type.id, 'Hijau');
+    await env.DB.prepare(
+      "UPDATE stickers SET deleted_at = '2026-11-21T00:00:00.000Z', deleted_by = 'seed' WHERE name = 'Hijau'",
+    ).run();
+    const changed = await saveStickerType(
+      env,
+      { id: type.id, expectedUpdatedAt: type.updatedAt, name: 'QC', rule: 'none' },
+      admin,
+    );
+    expect(changed.rule).toBe('none');
+    // Stiker hidup baru mengunci lagi.
+    await insertSticker(type.id, 'Biru');
+    const error = await captureAppErrorAsync(() =>
+      saveStickerType(
+        env,
+        { id: type.id, expectedUpdatedAt: changed.updatedAt, name: 'QC', rule: 'bu' },
+        admin,
+      ),
+    );
+    expect(error.code).toBe('VALIDATION');
+  });
+
   test('stickerCount menghitung stiker aktif maupun nonaktif milik jenis itu saja', async () => {
     const a = await saveStickerType(env, { name: 'A', rule: 'bu' }, admin);
     const b = await saveStickerType(env, { name: 'B', rule: 'bu' }, admin);
@@ -200,7 +224,7 @@ describe('jenis stiker', () => {
       setStickerTypeStatus(env, { id: 'mb', status: 'inactive' }, admin),
     );
     expect(off.code).toBe('VALIDATION');
-    expect(off.message).toBe('Jenis sistem dikelola aplikasi dan tidak dapat diubah');
+    expect(off.message).toBe('Jenis stiker sistem tidak bisa diubah statusnya atau dihapus');
     const row = await env.DB.prepare('SELECT status FROM sticker_types WHERE id = ?')
       .bind('mb')
       .first<{ status: string }>();

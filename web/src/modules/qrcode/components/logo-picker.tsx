@@ -21,7 +21,7 @@ export function LogoThumb({
     );
   }
   if (isError || !url) {
-    return <span className="text-xs text-destructive">Logo tidak dapat dimuat</span>;
+    return <span className="text-xs text-destructive-text">Logo tidak dapat dimuat</span>;
   }
   return (
     <img

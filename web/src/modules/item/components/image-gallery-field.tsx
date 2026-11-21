@@ -139,6 +139,7 @@ export function ImageGalleryField({
                       type="button"
                       size="sm"
                       variant="ghost"
+                      color="primary"
                       aria-label={`Geser gambar ${index + 1} ke kiri`}
                       disabled={index === 0}
                       onClick={() => move(index, -1)}
@@ -149,6 +150,7 @@ export function ImageGalleryField({
                       type="button"
                       size="sm"
                       variant="ghost"
+                      color="primary"
                       aria-label={`Hapus gambar ${index + 1}`}
                       onClick={() => commit(valueRef.current.filter((_, i) => i !== index))}
                     >
@@ -158,6 +160,7 @@ export function ImageGalleryField({
                       type="button"
                       size="sm"
                       variant="ghost"
+                      color="primary"
                       aria-label={`Geser gambar ${index + 1} ke kanan`}
                       disabled={index === value.length - 1}
                       onClick={() => move(index, 1)}
@@ -184,6 +187,7 @@ export function ImageGalleryField({
               type="button"
               size="sm"
               variant="outline"
+              color="primary"
               disabled={remaining <= 0}
               onClick={() => {
                 setFull(false);
@@ -201,7 +205,7 @@ export function ImageGalleryField({
             </span>
           </div>
           {full ? (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive-text">
               Maksimal {max} gambar
             </p>
           ) : null}

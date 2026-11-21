@@ -46,6 +46,7 @@ export function NotificationBell() {
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
+          color="primary"
           size="icon"
           className="relative"
           data-tour="notification-bell"
@@ -72,6 +73,7 @@ export function NotificationBell() {
           <h2 className="text-sm font-medium">Notifikasi</h2>
           <Button
             variant="ghost"
+            color="primary"
             size="sm"
             disabled={unread === 0 || markAll.isPending}
             onClick={() => markAll.mutate()}
@@ -86,7 +88,7 @@ export function NotificationBell() {
               <Skeleton className="h-10 w-full" />
             </div>
           ) : query.isError ? (
-            <p role="alert" className="p-4 text-sm text-destructive">
+            <p role="alert" className="p-4 text-sm text-destructive-text">
               Gagal memuat notifikasi.
             </p>
           ) : items.length === 0 ? (

@@ -109,7 +109,13 @@ export function PublicReportPage({ token, onOpenSerial }: PublicReportPageProps)
               : 'Koneksi bermasalah atau server sedang sibuk. Coba lagi sebentar lagi.'}
           </p>
           {invalid ? null : (
-            <Button type="button" variant="outline" size="sm" onClick={() => void report.refetch()}>
+            <Button
+              type="button"
+              variant="outline"
+              color="primary"
+              size="sm"
+              onClick={() => void report.refetch()}
+            >
               Coba lagi
             </Button>
           )}
@@ -135,10 +141,10 @@ export function PublicReportPage({ token, onOpenSerial }: PublicReportPageProps)
   };
   const outcome =
     data.outcome === 'broken'
-      ? { label: 'Rusak', variant: 'destructive' as const }
+      ? { label: 'Rusak', variant: 'soft' as const, color: 'destructive' as const }
       : data.outcome === 'good'
-        ? { label: 'Selesai: lolos', variant: 'secondary' as const }
-        : { label: 'Masih terbuka', variant: 'outline' as const };
+        ? { label: 'Selesai: lolos', variant: 'soft' as const, color: 'secondary' as const }
+        : { label: 'Masih terbuka', variant: 'outline' as const, color: 'primary' as const };
 
   return (
     <Shell>
@@ -146,7 +152,9 @@ export function PublicReportPage({ token, onOpenSerial }: PublicReportPageProps)
         <p className="text-xs text-muted-foreground">Laporan Serial Number rusak</p>
         <h1 className="font-mono text-2xl font-semibold">{data.number}</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <Badge variant={outcome.variant}>{outcome.label}</Badge>
+          <Badge variant={outcome.variant} color={outcome.color}>
+            {outcome.label}
+          </Badge>
           <span className="text-xs text-muted-foreground">
             Dibuka {formatDay(data.openedOn)}
             {data.closedOn ? ` · selesai ${formatDay(data.closedOn)}` : ''}

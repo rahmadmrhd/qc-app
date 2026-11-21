@@ -46,6 +46,8 @@
   const EXPIRED_REASON = 'Kedaluwarsa: lebih dari 24 jam sejak dibuat';
   /** Sama dengan `NO_TASK_REASON` di `outbox-flush.ts` (dijaga `outbox-parity.test.ts`). */
   const NO_TASK_REASON = 'Entri tidak memiliki task tujuan';
+  /** Sama dengan `NOT_FOUND_REASON` di `outbox-flush.ts` (task tujuan sudah dihapus; dijaga `outbox-parity.test.ts`). */
+  const NOT_FOUND_REASON = 'Task sudah dihapus';
   const OPEN_TIMEOUT_MS = 10000;
 
   // --- Bentuk entri (padanan `isOutboxEntry` di `outbox.ts`) ---------------------------------------------------
@@ -371,7 +373,10 @@
       if (error.code === 'UNAVAILABLE') return { kind: 'hold' };
       if (error.code === 'UNAUTHENTICATED') return { kind: 'unauth' };
       if (!REJECTION_CODES.includes(error.code)) return { kind: 'hold' };
-      return { kind: 'rejected', reason: describe(error) };
+      return {
+        kind: 'rejected',
+        reason: error.code === 'NOT_FOUND' ? NOT_FOUND_REASON : describe(error),
+      };
     }
     // Badan kosong = sukses tanpa isi; badan tak terbaca sebagai JSON = respons tak valid (bukan penolakan).
     if (text !== '' && parseJson(text) === undefined) return { kind: 'hold' };

@@ -6,9 +6,12 @@ import {
   SERIAL_PROOF_LIMITS,
 } from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Camera } from 'lucide-react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { OwnerUploads } from '@/components/file-dialog/use-background-uploads';
+import { FormPage } from '@/components/page/form-page';
+import { StickyActionBar } from '@/components/page/sticky-action-bar';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -57,6 +60,7 @@ import {
 } from '../queries';
 import { BulkEditDialog } from './bulk-edit-dialog';
 import type { StrictScan } from './camera-scan-button';
+import { ConfirmClearDraftDialog } from './confirm-clear-draft-dialog';
 import { ConfirmRemoveDialog } from './confirm-remove-dialog';
 import { ImportExportBar } from './import-export-bar';
 import { EMPTY_ITEM_BU, ItemBuField, type ItemBuValue } from './item-bu-field';
@@ -114,6 +118,20 @@ export interface RecordPageProps {
   draft?: DraftControl;
   /** Sembunyikan judul "Catat Serial Number" (pemanggil sudah punya judul halaman). */
   hideTitle?: boolean;
+  /**
+   * Halaman penuh di dalam `FormPage` (rute `/serial/new`; keputusan pemilik 2026-11-21): judul, Batal, dan Simpan berada
+   * di bar judul yang menempel (desktop); di ponsel bar bawah `FormPage` memuat Batal, Simpan, kamera, dan Impor/Ekspor.
+   * Tanpa ini (dialog Country Lock) `RecordPage` memakai bar Simpannya sendiri.
+   */
+  frame?: RecordPageFrame;
+}
+
+export interface RecordPageFrame {
+  title: ReactNode;
+  /** Id `<form>` kosong yang dikirimi tombol Simpan `FormPage`; harus unik di halaman. */
+  formId: string;
+  /** Batal / kembali: pemanggil menjalankan alur penjaga keluar halaman yang sama dengan navigasi lain. */
+  onCancel: () => void;
 }
 
 export interface RecordPageHandle {
@@ -122,8 +140,8 @@ export interface RecordPageHandle {
 
 const NOTICE_CLASS: Record<NoticeTone, string> = {
   info: 'border-border bg-muted/40',
-  warn: 'border-amber-500/50 bg-amber-500/10',
-  error: 'border-destructive/50 bg-destructive/10 text-destructive',
+  warn: 'border-warning-text/35 bg-warning-text/10',
+  error: 'border-destructive/50 bg-destructive/10 text-destructive-text',
 };
 
 const AUTOSAVE_DELAY_MS = 500;
@@ -194,6 +212,7 @@ export function RecordPage({
   handleRef,
   draft,
   hideTitle,
+  frame,
 }: RecordPageProps) {
   const me = useMe();
   const queryClient = useQueryClient();
@@ -388,6 +407,7 @@ export function RecordPage({
   const [detailId, setDetailId] = useState<string | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
+  const [clearOpen, setClearOpen] = useState(false);
   const desktop = useIsDesktop();
 
   // Halaman dibuka: penulisan draf diizinkan lagi (dihentikan oleh `clearAllDrafts` saat keluar).
@@ -421,6 +441,7 @@ export function RecordPage({
   const selectedCount = rows.filter((row) => row.selected).length;
   // Bar aksi pilihan tampil (di ponsel `fixed`): halaman diberi ruang di dasarnya, bukan di atas daftar.
   const barVisible = selectedCount > 0 && !saving;
+  const draftPhotoCount = rows.reduce((total, row) => total + row.proofPhotos.length, 0);
   const selectedPhotoCount = rows.reduce(
     (total, row) => total + (row.selected ? row.proofPhotos.length : 0),
     0,
@@ -964,15 +985,68 @@ export function RecordPage({
   }
   if (handleRef) handleRef.current = { save: () => handleSave(true) };
 
+  const importExportProps = {
+    rows,
+    disabled: saving || importing,
+    onImported: (result: QcsnImport, name: string) => void handleImported(result, name),
+    onImportFailed: (message: string) =>
+      setNotice({ tone: 'error', text: `Impor gagal: ${message}` }),
+    onExported: ({ exported, skipped }: { exported: number; skipped: number }) =>
+      setNotice({
+        tone: skipped > 0 ? 'warn' : 'info',
+        text:
+          skipped > 0
+            ? `${exported} baris diekspor; ${skipped} baris belum lengkap tidak diekspor`
+            : `${exported} baris diekspor`,
+      }),
+  };
+  function clearDraftRows() {
+    setClearOpen(false);
+    cancelRowUploads(rowsRef.current.map((row) => row.clientId));
+    void discardProofPhotos(proofIdsOf(rowsRef.current));
+    setAllRows([]);
+    if (!draftRef.current) clearDraft(ownerKey);
+    setNotice(null);
+    setSummary(null);
+  }
+  /** Ponsel: pindai lewat tombol kamera yang sudah ada di kolom scan (satu pemilik dialog kamera). */
+  function openCameraScan() {
+    document
+      .querySelector<HTMLButtonElement>(
+        '[data-tour="serial-scan"] button[aria-label="Scan dengan kamera"]',
+      )
+      ?.click();
+  }
+
   const hasFailed = rows.some((row) => row.result === 'error');
+
+  const saveLabel = saving ? (
+    <BusyLabel>Menyimpan…</BusyLabel>
+  ) : hasFailed ? (
+    'Coba lagi'
+  ) : (
+    `Simpan ${rows.length} serial`
+  );
   const blockedCount = rows.filter((row) => rowStatus(row).tone !== 'ok').length;
 
-  return (
+  const uploadsNote = uploadsBlocked ? (
+    <p role="status" className="text-xs text-muted-foreground">
+      {uploadsPending} foto masih diunggah atau gagal; selesaikan, ulangi, atau buang dulu.
+    </p>
+  ) : null;
+  const blockedNote =
+    blockedCount > 0 ? (
+      <p className="text-xs text-muted-foreground">
+        {blockedCount} baris perlu dilengkapi atau diperbaiki.
+      </p>
+    ) : null;
+
+  const body = (
     <div
       className={cn('space-y-5', barVisible && SELECTION_BAR_SPACE_CLASS)}
       data-selection-space={barVisible ? 'on' : undefined}
     >
-      {hideTitle ? null : <h1 className="text-xl font-semibold">Catat Serial Number</h1>}
+      {hideTitle || frame ? null : <h1 className="text-xl font-semibold">Catat Serial Number</h1>}
 
       <section
         aria-label="Default"
@@ -987,6 +1061,7 @@ export function RecordPage({
           <div className="space-y-1.5">
             <SerialLocationField
               id="default-location"
+              required
               label="Lokasi"
               value={location.id}
               valueLabel={location.label}
@@ -1002,9 +1077,12 @@ export function RecordPage({
             ) : null}
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="default-date">Tanggal uji</Label>
+            <Label htmlFor="default-date" required>
+              Tanggal uji
+            </Label>
             <Input
               id="default-date"
+              aria-required="true"
               type="date"
               value={testDate}
               onChange={(event) => setTestDate(event.target.value)}
@@ -1014,6 +1092,7 @@ export function RecordPage({
             idPrefix="default"
             label="Item"
             buFieldLabel="Business Unit"
+            required
             value={item}
             onChange={(next) => {
               // Item/BU bawaan diganti: pilihan stiker lama tidak berlaku, kembali ke semua tercentang.
@@ -1057,7 +1136,7 @@ export function RecordPage({
           autoFocus
         />
         {gated ? (
-          <p role="status" className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+          <p role="status" className="mt-1 text-xs text-warning-text">
             Isi Default dulu: {missing.join(', ')}.
           </p>
         ) : null}
@@ -1074,7 +1153,7 @@ export function RecordPage({
       {(draft ? draft.saveFailed === true : draftFailed) ? (
         <p
           role="alert"
-          className="rounded-md border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm"
+          className="rounded-md border border-warning-text/35 bg-warning-text/10 px-3 py-2 text-sm"
         >
           Draft tidak tersimpan otomatis (penyimpanan perangkat penuh atau diblokir). Simpan atau
           ekspor berkas .qcsn supaya hasil scan tidak hilang.
@@ -1092,23 +1171,23 @@ export function RecordPage({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">Draft ({rows.length} baris)</h2>
-        <ImportExportBar
-          rows={rows}
-          disabled={saving || importing}
-          onImported={(result, name) => void handleImported(result, name)}
-          onImportFailed={(message) =>
-            setNotice({ tone: 'error', text: `Impor gagal: ${message}` })
-          }
-          onExported={({ exported, skipped }) =>
-            setNotice({
-              tone: skipped > 0 ? 'warn' : 'info',
-              text:
-                skipped > 0
-                  ? `${exported} baris diekspor; ${skipped} baris belum lengkap tidak diekspor`
-                  : `${exported} baris diekspor`,
-            })
-          }
-        />
+        {desktop ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <ImportExportBar {...importExportProps} />
+            {frame && rows.length > 0 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                color="primary"
+                size="sm"
+                disabled={saving}
+                onClick={() => setClearOpen(true)}
+              >
+                Kosongkan draft
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div data-tour="serial-draft">
@@ -1158,49 +1237,84 @@ export function RecordPage({
         </p>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3" data-tour="serial-save">
-        <Button
-          type="button"
-          disabled={saving || importing || rows.length === 0 || uploadsBlocked}
-          onClick={() => void handleSave()}
-        >
-          {saving ? (
-            <BusyLabel>Menyimpan…</BusyLabel>
-          ) : hasFailed ? (
-            'Coba lagi'
-          ) : (
-            `Simpan ${rows.length} serial`
-          )}
-        </Button>
-        {uploadsBlocked ? (
-          <span role="status" className="text-xs text-muted-foreground">
-            {uploadsPending} foto masih diunggah atau gagal; selesaikan, ulangi, atau buang dulu.
-          </span>
-        ) : null}
-        {blockedCount > 0 ? (
-          <span className="text-xs text-muted-foreground">
-            {blockedCount} baris perlu dilengkapi atau diperbaiki.
-          </span>
-        ) : null}
-        {rows.length > 0 ? (
+      {frame ? (
+        // Simpan, Batal, kamera, dan Impor/Ekspor ada di bar `FormPage`; di sini hanya alasan Simpan ditahan.
+        <>
+          {uploadsNote}
+          {blockedNote}
+        </>
+      ) : desktop ? (
+        <div className="flex flex-wrap items-center gap-3" data-tour="serial-save">
           <Button
             type="button"
-            variant="ghost"
-            size="sm"
-            disabled={saving}
-            onClick={() => {
-              cancelRowUploads(rowsRef.current.map((row) => row.clientId));
-              void discardProofPhotos(proofIdsOf(rowsRef.current));
-              setAllRows([]);
-              if (!draftRef.current) clearDraft(ownerKey);
-              setNotice(null);
-              setSummary(null);
-            }}
+            disabled={saving || importing || rows.length === 0 || uploadsBlocked}
+            onClick={() => void handleSave()}
           >
-            Kosongkan draft
+            {saveLabel}
           </Button>
-        ) : null}
-      </div>
+          {uploadsBlocked ? (
+            <span role="status" className="text-xs text-muted-foreground">
+              {uploadsPending} foto masih diunggah atau gagal; selesaikan, ulangi, atau buang dulu.
+            </span>
+          ) : null}
+          {blockedCount > 0 ? (
+            <span className="text-xs text-muted-foreground">
+              {blockedCount} baris perlu dilengkapi atau diperbaiki.
+            </span>
+          ) : null}
+          {rows.length > 0 ? (
+            <Button
+              type="button"
+              variant="ghost"
+              color="primary"
+              size="sm"
+              disabled={saving}
+              onClick={() => setClearOpen(true)}
+            >
+              Kosongkan draft
+            </Button>
+          ) : null}
+        </div>
+      ) : (
+        <>
+          {uploadsNote}
+          {blockedNote}
+          {/* Ponsel: Simpan selalu terlihat tanpa gulir. Saat mode pilih, bar aksi pilihan mengambil alih tepi bawah. */}
+          {selectedCount === 0 ? (
+            <StickyActionBar
+              label="Aksi draft"
+              className="-mx-[var(--main-pad,1rem)] rounded-none border-x-0 border-b-0"
+            >
+              <div data-tour="serial-save" className="flex w-full items-center gap-2">
+                <Button
+                  type="button"
+                  className="flex-1"
+                  disabled={saving || importing || rows.length === 0 || uploadsBlocked}
+                  onClick={() => void handleSave()}
+                >
+                  {saveLabel}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  color="primary"
+                  size="icon"
+                  aria-label="Pindai dengan kamera"
+                  disabled={gated || saving}
+                  onClick={openCameraScan}
+                >
+                  <Camera aria-hidden />
+                </Button>
+                <ImportExportBar
+                  compact
+                  onClearDraft={() => setClearOpen(true)}
+                  {...importExportProps}
+                />
+              </div>
+            </StickyActionBar>
+          ) : null}
+        </>
+      )}
 
       {detailRow && !saving ? (
         <RowEditDialog
@@ -1223,6 +1337,13 @@ export function RecordPage({
           onClose={() => setBulkOpen(false)}
         />
       ) : null}
+      <ConfirmClearDraftDialog
+        open={clearOpen && rows.length > 0 && !saving}
+        count={rows.length}
+        photoCount={draftPhotoCount}
+        onConfirm={clearDraftRows}
+        onCancel={() => setClearOpen(false)}
+      />
       <ConfirmRemoveDialog
         open={removeOpen && selectedCount > 0 && !saving}
         count={selectedCount}
@@ -1231,5 +1352,50 @@ export function RecordPage({
         onCancel={() => setRemoveOpen(false)}
       />
     </div>
+  );
+
+  if (!frame) return body;
+  // Ponsel: bar bawah `FormPage` = Batal + (kamera, Impor/Ekspor) + Simpan; saat mode pilih bar itu diganti bar aksi pilihan.
+  const mobileExtra = (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        color="primary"
+        size="icon"
+        aria-label="Pindai dengan kamera"
+        disabled={gated || saving}
+        onClick={openCameraScan}
+      >
+        <Camera aria-hidden />
+      </Button>
+      <ImportExportBar compact onClearDraft={() => setClearOpen(true)} {...importExportProps} />
+    </>
+  );
+  return (
+    <FormPage
+      formId={frame.formId}
+      title={frame.title}
+      onCancel={frame.onCancel}
+      submitting={saving}
+      submitLabel={hasFailed ? 'Coba lagi' : `Simpan ${rows.length} serial`}
+      busyText="Menyimpan…"
+      submitDisabled={importing || rows.length === 0 || uploadsBlocked}
+      saveTour="serial-save"
+      extra={desktop ? undefined : mobileExtra}
+      hideMobileBar={selectedCount > 0}
+    >
+      {/* `<form>` kosong di luar isi: Enter pada kolom scan tidak mengirim form; hanya tombol Simpan yang mengirim. */}
+      <form
+        id={frame.formId}
+        aria-hidden="true"
+        hidden
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleSave();
+        }}
+      />
+      {body}
+    </FormPage>
   );
 }

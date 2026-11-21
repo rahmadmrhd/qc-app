@@ -1,9 +1,10 @@
 import type { HandoverOptionsDto } from '@shared/contract';
 import { useQuery } from '@tanstack/react-query';
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute } from '@tanstack/react-router';
 import { useRef } from 'react';
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { locationsWith, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
@@ -15,12 +16,13 @@ import { toSaveHandoverBatchInput } from '@/modules/handover/schemas';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 
 export const Route = createFileRoute('/_app/handover/new')({
+  staticData: { crumb: 'Tambah', pageWidth: 'narrow', locationAware: true },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'handover', 'edit'),
   component: NewHandoverPage,
 });
 
 function NewHandoverPage() {
-  const navigate = useNavigate();
+  const stack = useStackNavigation();
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   const writable = locationsWith(me, 'handover', 'edit', selectedIds);
@@ -36,7 +38,9 @@ function NewHandoverPage() {
     (options.error instanceof ApiError && options.error.code === 'UNAVAILABLE'
       ? { customers: [], inactiveCustomerNames: [] }
       : null);
-  const toList = () => void navigate({ to: '/handover' });
+  // Simpan = replace ke daftar; Batal = kembali ke asal (butir 41c).
+  const toList = () => stack.replace({ to: '/handover' });
+  const cancel = () => stack.pop({ to: '/handover' });
 
   async function handleBatch(values: HandoverBatchFormOutput) {
     // SATU permintaan atomik (<= 30 task). Galat dilempar ke form bulk: kartu bermasalah ditandai dan draf utuh;
@@ -54,7 +58,7 @@ function NewHandoverPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       {writable.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           Tidak ada lokasi aktif terpilih yang boleh Anda ubah. Pilih lokasi di header.
@@ -62,7 +66,7 @@ function NewHandoverPage() {
       ) : options.isPending ? (
         <Skeleton className="h-64 w-full" />
       ) : !formOptions ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Gagal memuat daftar customer.
         </p>
       ) : (
@@ -71,7 +75,7 @@ function NewHandoverPage() {
           defaultLocationId={defaultLocation}
           onSubmit={handleBatch}
           onSaved={handleBatchSaved}
-          onCancel={toList}
+          onCancel={cancel}
         />
       )}
     </div>

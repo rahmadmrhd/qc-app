@@ -8,6 +8,8 @@
 //   --report-dir <folder>        folder laporan CSV (bawaan ./merge-serials-report; berisi Serial Number, diabaikan git)
 //
 // Aturan penyatuan per Serial Number yang ada di lebih dari satu catatan:
+//   - SERIAL TERHAPUS (soft delete) DIABAIKAN SEPENUHNYA (keputusan pemilik 2026-11-21): hanya catatan HIDUP yang dihitung
+//     sebagai ganda dan yang dipilih jadi pemenang; catatan terhapus tak dipindahkan dan tak dihapus permanen.
 //   - PEMENANG: catatan yang punya laporan aktif; bila tak ada, yang berstatus Rusak; bila tak ada, yang terbaru
 //     (tanggal uji, lalu id terbesar). Lebih dari satu catatan dengan laporan aktif = tidak otomatis ("perlu-manual":
 //     dilewati dan dilaporkan; selesaikan salah satu laporannya dulu).
@@ -25,7 +27,7 @@
 // pelaku, pesan, data) tidak pernah diubah.
 //
 // Setelah selesai tanpa sisa serial ganda, mulai ulang server (atau jalankan `ensureSerialUniqueIndex`) agar indeks unik
-// `serials_serial` dibuat. Laporan CSV berisi Serial Number: JANGAN di-commit.
+// `serials_serial_live` dibuat (dan indeks lama `serials_serial`/`serials_bu_serial` dibuang). Laporan CSV berisi Serial Number: JANGAN di-commit.
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createDb, type Db, type DbTx } from '@server/core/db';
@@ -111,7 +113,7 @@ const toRow = (raw: RawRow): DupRow => ({
 export async function findDuplicateGroups(db: Db | DbTx): Promise<Map<string, DupRow[]>> {
   const rows = await db
     .prepare(
-      `SELECT ${COLUMNS} FROM serials s LEFT JOIN business_units bu ON bu.id = s.bu_id WHERE s.serial IN (SELECT serial FROM serials GROUP BY serial HAVING COUNT(*) > 1) ORDER BY s.serial, s.id`,
+      `SELECT ${COLUMNS} FROM serials s LEFT JOIN business_units bu ON bu.id = s.bu_id WHERE s.deleted_at = '' AND s.serial IN (SELECT serial FROM serials WHERE serials.deleted_at = '' GROUP BY serial HAVING COUNT(*) > 1) ORDER BY s.serial, s.id`,
     )
     .all<RawRow>();
   const groups = new Map<string, DupRow[]>();
@@ -284,7 +286,7 @@ export function mergeSerial(db: Db, serial: string, now: string): Promise<MergeO
   return db.transaction(async (tx): Promise<MergeOutcome> => {
     const locked = await tx
       .prepare(
-        `SELECT ${COLUMNS} FROM serials s LEFT JOIN business_units bu ON bu.id = s.bu_id WHERE s.serial = ? ORDER BY s.id FOR UPDATE`,
+        `SELECT ${COLUMNS} FROM serials s LEFT JOIN business_units bu ON bu.id = s.bu_id WHERE s.serial = ? AND s.deleted_at = '' ORDER BY s.id FOR UPDATE`,
       )
       .bind(serial)
       .all<RawRow>();
@@ -400,7 +402,9 @@ async function main(): Promise<void> {
         `Masih ada ${manual.length} serial yang perlu ditangani manual; indeks unik belum dapat dibuat.`,
       );
     } else {
-      console.log('Mulai ulang server agar indeks unik serials_serial dibuat.');
+      console.log(
+        'Mulai ulang server agar indeks unik serials_serial_live dibuat. Bila peringatan "belum dibuat" tetap muncul, periksa ganda yang sama-sama terhapus pada deleted_at yang sama (skrip ini mengabaikan serial terhapus): bedakan deleted_at salah satunya secara manual.',
+      );
     }
   } finally {
     await db.close();

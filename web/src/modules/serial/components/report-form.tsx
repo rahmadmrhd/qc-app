@@ -2,10 +2,8 @@ import type { SerialLookupMatchDto } from '@shared/contract';
 import { extractFileRefs } from '@shared/items';
 import { SERIAL_LIMITS } from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { BusyLabel } from '@/components/spinner';
-import { Button } from '@/components/ui/button';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
 import { serialKeys } from '../keys';
@@ -31,14 +29,46 @@ function generalMessage(caught: unknown, shown: readonly string[]): string | nul
   return describeError(caught);
 }
 
+/** Id `<form>` laporan: tombol "Lapor rusak" milik `FormPage` halaman Lapor Rusak mengirimnya lewat `form={...}`. */
+export const REPORT_FORM_ID = 'serial-report-form';
+
+/** Keadaan Simpan yang dilaporkan form ke halaman (bar judul `FormPage`); `null` = tak ada form aktif. */
+export interface ReportFormState {
+  pending: boolean;
+  canSubmit: boolean;
+}
+
+/**
+ * Enter di kolom `input` (Item, BU, Lokasi: kolom pilihan) tidak boleh mengirim laporan: pengiriman implisit form
+ * terjadi karena tombol "Lapor rusak" milik `FormPage` adalah tombol kirim form ini lewat `form=`, dan laporan tak
+ * dapat dibatalkan (membuka laporan, menyurel/menotifikasi). Mengirim hanya lewat tombol. Editor catatan (bukan `input`)
+ * tetap memakai Enter untuk baris baru.
+ */
+function blockEnterSubmit(event: KeyboardEvent<HTMLFormElement>) {
+  if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault();
+}
+
+/** Melaporkan keadaan Simpan ke halaman, dan `null` saat form dilepas. */
+function useReportFormState(
+  onStateChange: ((state: ReportFormState | null) => void) | undefined,
+  pending: boolean,
+  canSubmit: boolean,
+) {
+  useEffect(() => {
+    onStateChange?.({ pending, canSubmit });
+  }, [onStateChange, pending, canSubmit]);
+  useEffect(() => () => onStateChange?.(null), [onStateChange]);
+}
+
 export interface ExistingReportFormProps {
   match: SerialLookupMatchDto;
   /** Laporan terbuka: pindah ke detail serial itu. */
   onDone: (serialId: string) => void;
+  onStateChange?: (state: ReportFormState | null) => void;
 }
 
 /** Serial sudah tercatat dan Lolos: ringkasan unit + catatan wajib, lalu membuka laporan (`serials.act` `report_failure`). */
-export function ExistingReportForm({ match, onDone }: ExistingReportFormProps) {
+export function ExistingReportForm({ match, onDone, onStateChange }: ExistingReportFormProps) {
   const queryClient = useQueryClient();
   const act = useActSerial();
   const [message, setMessage] = useState('');
@@ -47,6 +77,11 @@ export function ExistingReportForm({ match, onDone }: ExistingReportFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [messageError, setMessageError] = useState<string | undefined>();
   const tooManyImages = extractFileRefs(message).length > SERIAL_LIMITS.messageImagesMax;
+  useReportFormState(
+    onStateChange,
+    act.isPending,
+    !messageBusy && message.trim() !== '' && !tooManyImages,
+  );
 
   async function submit() {
     setError(null);
@@ -78,35 +113,36 @@ export function ExistingReportForm({ match, onDone }: ExistingReportFormProps) {
       data-tour="report-result"
     >
       <UnitSummary match={match} />
-      <div data-tour="report-message">
-        <MessageField
-          id="report-message"
-          required
-          value={message}
-          onChange={setMessage}
-          error={
-            tooManyImages
-              ? `Maksimal ${SERIAL_LIMITS.messageImagesMax} gambar per catatan`
-              : messageError
-          }
-          disabled={act.isPending}
-          onBusyChange={setMessageBusy}
-        />
-      </div>
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
-      <Button
-        type="button"
-        variant="destructive"
-        data-tour="report-submit"
-        disabled={act.isPending || messageBusy || message.trim() === '' || tooManyImages}
-        onClick={() => void submit()}
+      <form
+        id={REPORT_FORM_ID}
+        className="space-y-4"
+        onKeyDown={blockEnterSubmit}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
       >
-        {act.isPending ? <BusyLabel>Menyimpan…</BusyLabel> : 'Lapor rusak'}
-      </Button>
+        <div data-tour="report-message">
+          <MessageField
+            id="report-message"
+            required
+            value={message}
+            onChange={setMessage}
+            error={
+              tooManyImages
+                ? `Maksimal ${SERIAL_LIMITS.messageImagesMax} gambar per catatan`
+                : messageError
+            }
+            disabled={act.isPending}
+            onBusyChange={setMessageBusy}
+          />
+        </div>
+        {error ? (
+          <p role="alert" className="text-sm text-destructive-text">
+            {error}
+          </p>
+        ) : null}
+      </form>
     </section>
   );
 }
@@ -141,13 +177,14 @@ export interface NewReportFormProps {
   /** Serial yang dicari dan belum tercatat (sudah ternormalisasi). */
   serial: string;
   onDone: (serialId: string) => void;
+  onStateChange?: (state: ReportFormState | null) => void;
 }
 
 /**
  * Serial belum tercatat: item, BU, lokasi, dan catatan wajib; serial dibuat langsung berstatus Dilaporkan
  * dan laporannya terbuka (`serials.reportNew`). Tanggal uji = hari ini (WIB).
  */
-export function NewReportForm({ serial, onDone }: NewReportFormProps) {
+export function NewReportForm({ serial, onDone, onStateChange }: NewReportFormProps) {
   const queryClient = useQueryClient();
   const report = useReportNewSerial();
   const [item, setItem] = useState<ItemBuValue>(EMPTY_ITEM_BU);
@@ -176,6 +213,7 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
     location.id !== '' &&
     message.trim() !== '' &&
     !tooManyImages;
+  useReportFormState(onStateChange, report.isPending, !messageBusy && ready);
 
   async function submit() {
     setError(null);
@@ -213,58 +251,61 @@ export function NewReportForm({ serial, onDone }: NewReportFormProps) {
         item, BU, dan lokasinya, lalu laporkan. Serial Number akan dicatat langsung sebagai
         Dilaporkan.
       </p>
-      <div className="grid gap-4 sm:grid-cols-2" data-tour="report-new-fields">
-        <ItemBuField
-          idPrefix="report"
-          label="Item"
-          buFieldLabel="Business Unit"
-          value={item}
-          onChange={setItem}
-          error={fields.itemId}
-          buError={fields.buId}
-          disabled={report.isPending}
-        />
-        <div className="space-y-1.5">
-          <SerialLocationField
-            id="report-location"
-            label="Lokasi"
-            value={location.id}
-            valueLabel={location.label}
-            onChange={(id, label) => setLocation({ id, label })}
-            error={fields.locationId}
+      <form
+        id={REPORT_FORM_ID}
+        className="space-y-4"
+        onKeyDown={blockEnterSubmit}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
+      >
+        <div className="grid gap-4 sm:grid-cols-2" data-tour="report-new-fields">
+          <ItemBuField
+            idPrefix="report"
+            label="Item"
+            buFieldLabel="Business Unit"
+            required
+            value={item}
+            onChange={setItem}
+            error={fields.itemId}
+            buError={fields.buId}
             disabled={report.isPending}
           />
+          <div className="space-y-1.5">
+            <SerialLocationField
+              id="report-location"
+              required
+              label="Lokasi"
+              value={location.id}
+              valueLabel={location.label}
+              onChange={(id, label) => setLocation({ id, label })}
+              error={fields.locationId}
+              disabled={report.isPending}
+            />
+          </div>
         </div>
-      </div>
-      <div data-tour="report-message">
-        <MessageField
-          id="report-message"
-          required
-          value={message}
-          onChange={setMessage}
-          error={
-            tooManyImages
-              ? `Maksimal ${SERIAL_LIMITS.messageImagesMax} gambar per catatan`
-              : fields.message
-          }
-          disabled={report.isPending}
-          onBusyChange={setMessageBusy}
-        />
-      </div>
-      {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      ) : null}
-      <Button
-        type="button"
-        variant="destructive"
-        data-tour="report-submit"
-        disabled={report.isPending || messageBusy || !ready}
-        onClick={() => void submit()}
-      >
-        {report.isPending ? <BusyLabel>Menyimpan…</BusyLabel> : 'Lapor rusak'}
-      </Button>
+        <div data-tour="report-message">
+          <MessageField
+            id="report-message"
+            required
+            value={message}
+            onChange={setMessage}
+            error={
+              tooManyImages
+                ? `Maksimal ${SERIAL_LIMITS.messageImagesMax} gambar per catatan`
+                : fields.message
+            }
+            disabled={report.isPending}
+            onBusyChange={setMessageBusy}
+          />
+        </div>
+        {error ? (
+          <p role="alert" className="text-sm text-destructive-text">
+            {error}
+          </p>
+        ) : null}
+      </form>
     </section>
   );
 }

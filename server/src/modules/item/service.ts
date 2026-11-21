@@ -4,10 +4,25 @@ import { type Db, DbError, type DbResult, type DbStatement } from '@server/core/
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
+import { baseIndexName } from '@server/core/index-names';
+import { type PlanOutcome, runRecordBatch, runSingleRecord } from '@server/core/record-batch';
+import {
+  deletedWhere,
+  liveWhere,
+  restoreStmt,
+  softDeleteStmt,
+  stampStmt,
+  versionGuardStmt,
+} from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
-import { batchWrite, mapDuplicateError } from '@server/modules/access/repo';
+import { mapDuplicateError } from '@server/modules/access/repo';
 import type { BrandRecord } from '@server/modules/brand/repo';
-import { brandByIdStatement, brandsFromResult, listBrands } from '@server/modules/brand/repo';
+import {
+  adjustItemCountStmt,
+  brandByIdStatement,
+  brandsFromResult,
+  listBrands,
+} from '@server/modules/brand/repo';
 import type { FileRecord } from '@server/modules/files/repo';
 import { activeFilesFromResults, activeFilesStatements } from '@server/modules/files/repo';
 import { planAttachFiles } from '@server/modules/files/service';
@@ -20,6 +35,14 @@ import {
   type StoredPhoto,
 } from '@server/modules/sticker/instruction-repo';
 import { buildInstructionViews } from '@server/modules/sticker/instruction-service';
+import type {
+  BatchResult,
+  IdBatchInput,
+  RemoveBatchResult,
+  RemoveResult,
+  StatusBatchInput,
+} from '@shared/batch';
+import { buIdsWithLevel } from '@shared/business-units';
 import type {
   BusinessUnitRefDto,
   GetItemInput,
@@ -43,20 +66,25 @@ import {
   assertCanActOnItem,
   assertItemVisible,
   assertRequestedBusinessUnits,
+  canActOnItem,
   visibleBuIds,
 } from './access';
 import type { ItemRecord } from './repo';
 import {
+  aliasKeyList,
   type BusinessUnitBrief,
   brandKeyGuardStmt,
   businessUnitBriefsFromResult,
   businessUnitBriefsStmt,
-  findItem,
+  findItemAny,
   findItemStmt,
   findItemWithBrand,
+  findItemWithBrandAny,
   HAS_MANUAL_BOOK_SQL,
   HAS_POSTEL_SQL,
   type ItemRow,
+  type ItemWithBrand,
+  insertAliasKeyStmts,
   insertItemStmts,
   itemBusinessUnitIdsStmt,
   itemBusinessUnitsOf,
@@ -74,6 +102,8 @@ import { ITEM_PAGE_DEFAULT_LIMIT } from './validate';
 /** Record item beserta nama merk (dari tabel merk), semua BU-nya, dan instruksi stiker tersimpan untuk DTO dan audit. */
 export type ItemView = ItemRecord & {
   brand: string;
+  /** Merk terhapus (soft delete); bawaan hidup. */
+  brandDeleted?: boolean;
   businessUnits: BusinessUnitRefDto[];
   instructions: StoredPhoto[];
 };
@@ -111,6 +141,10 @@ function toItemSummaryDto(
     hasPostel,
     businessUnits: item.businessUnits.map((bu) => ({ ...bu })),
     updatedAt: item.updatedAt,
+    ...(item.deletedAt === ''
+      ? {}
+      : { deleted: { deletedAt: item.deletedAt, deletedBy: item.deletedBy } }),
+    ...(item.brandDeleted ? { brandDeleted: true } : {}),
   };
 }
 
@@ -164,25 +198,29 @@ export function itemLabel(item: { brand: string; model: string }): string {
   return `${item.brand} ${item.model}`;
 }
 
-/** Nama merk dari daftar merk (cache memori proses, <= 15 dtk); bila tak ada di sana, langsung dari database. */
-async function brandNameOf(env: Env, brandId: string): Promise<string> {
+/**
+ * Nama merk dan penanda terhapusnya (rujukan penampil: merk terhapus tetap memberi nama). Daftar merk hidup lebih
+ * dulu; bila tak ada di sana (merk terhapus atau tak dikenal), langsung dari database menurut id.
+ */
+async function brandInfoOf(env: Env, brandId: string): Promise<{ name: string; deleted: boolean }> {
   const known = (await listBrands(env)).find((brand) => brand.id === brandId);
-  if (known) return known.name;
-  const row = await env.DB.prepare('SELECT name FROM brands WHERE id = ?')
+  if (known) return { name: known.name, deleted: false };
+  const row = await env.DB.prepare('SELECT name, deleted_at FROM brands WHERE id = ?')
     .bind(brandId)
-    .first<{ name: string }>();
-  return row?.name ?? '';
+    .first<{ name: string; deleted_at: string }>();
+  return { name: row?.name ?? '', deleted: (row?.deleted_at ?? '') !== '' };
 }
 
 async function viewOf(env: Env, item: ItemRecord): Promise<ItemView> {
   const [brand, businessUnits, instructions] = await Promise.all([
-    brandNameOf(env, item.brandId),
+    brandInfoOf(env, item.brandId),
     itemBusinessUnitsOf(env.DB, [item.id]),
     loadItemInstructions(env.DB, [item.id]),
   ]);
   return {
     ...item,
-    brand,
+    brand: brand.name,
+    brandDeleted: brand.deleted,
     businessUnits: businessUnits.get(item.id) ?? [],
     instructions: instructions.get(item.id) ?? [],
   };
@@ -226,6 +264,7 @@ interface ListRow {
   id: string;
   brand_id: string;
   brand_name: string | null;
+  brand_deleted_at: string | null;
   model: string;
   key: string;
   is_country_lock: string;
@@ -233,7 +272,13 @@ interface ListRow {
   image_count: number;
   status: string;
   updated_at: string;
+  deleted_at: string;
+  deleted_by: string;
 }
+
+/** SELECT daftar ringkas (jumlah gambar dihitung SQL); pemakai menambahkan `WHERE` menurut keadaan hapus. */
+const ITEM_LIST_SELECT =
+  "SELECT i.id, i.brand_id, b.name AS brand_name, b.deleted_at AS brand_deleted_at, i.model, i.`key`, i.is_country_lock, i.aliases, CASE WHEN JSON_VALID(i.attachments) THEN CASE WHEN JSON_TYPE(i.attachments) = 'ARRAY' THEN JSON_LENGTH(i.attachments) ELSE 0 END ELSE 0 END AS image_count, i.status, i.updated_at, i.deleted_at, i.deleted_by FROM items i LEFT JOIN brands b ON b.id = i.brand_id";
 
 /**
  * Daftar ringkas berkursor, urut menurut `key` (merk + tipe ternormalisasi; memakai indeks `items_key`).
@@ -242,6 +287,10 @@ interface ListRow {
  *
  * Hanya item yang beririsan dengan BU yang boleh dilihat `user` (filter di SQL, bukan di klien; pencarian ikut
  * terfilter). Tanpa BU terlihat = halaman kosong tanpa kueri. BU tiap item pada halaman dimuat dengan SATU kueri.
+ *
+ * Soft delete: bawaan hanya item HIDUP (`status` `all`/kosong = aktif + nonaktif). `status = 'deleted'` = hanya item
+ * terhapus, hanya bagi pemegang `item: manage` pada minimal satu BU (selain itu `FORBIDDEN`) dan terbatas pada
+ * item yang beririsan dengan BU ber-`manage` itu.
  */
 export async function listItemPage(
   env: Env,
@@ -249,19 +298,36 @@ export async function listItemPage(
   user: UserContext,
 ): Promise<ItemPageDto> {
   const limit = input.limit ?? ITEM_PAGE_DEFAULT_LIMIT;
+  const deletedOnly = input.status === 'deleted';
+  if (deletedOnly && buIdsWithLevel(user.businessUnits, 'item', 'manage').length === 0) {
+    throw appError('FORBIDDEN', 'Anda tidak berhak melihat item terhapus');
+  }
   const visible = visibleBuIds(user);
-  if (visible.length === 0) return { items: [], nextCursor: null };
+  if (!deletedOnly && visible.length === 0) return { items: [], nextCursor: null };
+  const restorable = deletedOnly ? restorableItemsSql(user) : null;
   const where: string[] = [
-    `EXISTS (SELECT 1 FROM item_business_units x WHERE x.item_id = i.id AND x.bu_id IN (${visible.map(() => '?').join(',')}))`,
+    restorable
+      ? restorable.sql
+      : `EXISTS (SELECT 1 FROM item_business_units x WHERE x.item_id = i.id AND x.bu_id IN (${visible.map(() => '?').join(',')}))`,
   ];
-  const binds: unknown[] = [...visible];
-  if (input.status) {
+  const binds: unknown[] = restorable ? [...restorable.binds] : [...visible];
+  if (input.status === 'active' || input.status === 'inactive') {
     where.push('i.status = ?');
     binds.push(input.status);
   }
   const instructionFilter = instructionFilterSql(input);
   where.push(...instructionFilter.clauses);
   binds.push(...instructionFilter.binds);
+  if (input.brandId) {
+    where.push('i.brand_id = ?');
+    binds.push(input.brandId);
+  }
+  if (input.buId) {
+    where.push(
+      'EXISTS (SELECT 1 FROM item_business_units y WHERE y.item_id = i.id AND y.bu_id = ?)',
+    );
+    binds.push(input.buId);
+  }
   if (input.manualBook === 'has') where.push(HAS_MANUAL_BOOK_SQL);
   if (input.manualBook === 'missing') where.push(`NOT ${HAS_MANUAL_BOOK_SQL}`);
   if (input.postel === 'has') where.push(HAS_POSTEL_SQL);
@@ -275,9 +341,10 @@ export async function listItemPage(
     where.push('i.`key` > ?');
     binds.push(input.cursor);
   }
-  const sql = `SELECT i.id, i.brand_id, b.name AS brand_name, i.model, i.\`key\`, i.is_country_lock, i.aliases, CASE WHEN JSON_VALID(i.attachments) THEN CASE WHEN JSON_TYPE(i.attachments) = 'ARRAY' THEN JSON_LENGTH(i.attachments) ELSE 0 END ELSE 0 END AS image_count, i.status, i.updated_at FROM items i LEFT JOIN brands b ON b.id = i.brand_id${
-    where.length > 0 ? ` WHERE ${where.join(' AND ')}` : ''
-  } ORDER BY i.\`key\` LIMIT ?`;
+  const rest = ` AND ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`;
+  const sql = deletedOnly
+    ? `${ITEM_LIST_SELECT} WHERE ${deletedWhere('i')}${rest}`
+    : `${ITEM_LIST_SELECT} WHERE ${liveWhere('i')}${rest}`;
   const result = await env.DB.prepare(sql)
     .bind(...binds, limit + 1)
     .all<ListRow>();
@@ -307,10 +374,37 @@ export async function listItemPage(
         hasPostel: withPostel.has(row.id.trim()),
         businessUnits: businessUnits.get(row.id.trim()) ?? [],
         updatedAt: row.updated_at,
+        ...((row.deleted_at ?? '') === ''
+          ? {}
+          : { deleted: { deletedAt: row.deleted_at, deletedBy: row.deleted_by ?? '' } }),
+        ...((row.brand_deleted_at ?? '') === '' ? {} : { brandDeleted: true }),
       }),
     ),
     nextCursor: rows.length > limit && last ? last.key : null,
   };
+}
+
+/**
+ * Penyaring SQL item terhapus yang boleh DIPULIHKAN pemanggil: `item: manage` pada SEMUA BU item, BU terhapus
+ * diabaikan selama masih ada BU hidup (keputusan 9). Cermin SQL `canActOnItem(user, buIds, 'manage')`, yang dipakai
+ * `items.get`, `items.restore`, dan `items.remove` (tes kesepakatan `soft-delete.test.ts` menjaganya sama). Item tanpa
+ * BU tak pernah lolos. Tanpa BU ber-`manage` sama sekali tak ada item yang lolos (`1 = 0`).
+ */
+export function restorableItemsSql(user: UserContext): { sql: string; binds: string[] } {
+  const managed = buIdsWithLevel(user.businessUnits, 'item', 'manage');
+  if (managed.length === 0) return { sql: '1 = 0', binds: [] };
+  const deleted = [...user.deletedBuIds];
+  const marks = (ids: readonly string[]) => ids.map(() => '?').join(',');
+  const notManaged = `r.bu_id NOT IN (${marks(managed)})`;
+  const live = deleted.length > 0 ? `r.bu_id NOT IN (${marks(deleted)})` : '1 = 1';
+  const exists = (condition: string) =>
+    `EXISTS (SELECT 1 FROM item_business_units r WHERE r.item_id = i.id AND ${condition})`;
+  const notExists = (condition: string) =>
+    `NOT EXISTS (SELECT 1 FROM item_business_units r WHERE r.item_id = i.id AND ${condition})`;
+  // (ada BU) AND (tak ada BU hidup tanpa manage) AND (ada BU hidup ATAU tak ada BU tanpa manage)
+  const sql = `(${exists('1 = 1')} AND ${notExists(`${live} AND ${notManaged}`)} AND (${exists(live)} OR ${notExists(notManaged)}))`;
+  const binds = [...deleted, ...managed, ...deleted, ...managed];
+  return { sql, binds: deleted.length > 0 ? binds : [...managed, ...managed] };
 }
 
 /**
@@ -322,13 +416,16 @@ export async function getItemDto(
   input: GetItemInput,
   user: UserContext,
 ): Promise<ItemDto> {
-  const found = await findItem(env, input.id);
+  const found = await findItemAny(env, input.id);
   if (!found) throw appError('NOT_FOUND', 'Item tidak ditemukan');
   const view = await viewOf(env, found);
-  assertItemVisible(
-    user,
-    view.businessUnits.map((bu) => bu.id),
-  );
+  const buIds = view.businessUnits.map((bu) => bu.id);
+  assertItemVisible(user, buIds);
+  // Item terhapus hanya terlihat bagi yang berhak memulihkannya (`item: manage` pada SEMUA BU item); selain itu
+  // seperti tak ada (soft delete §4.2).
+  if (found.deletedAt !== '' && !canActOnItem(user, buIds, 'manage')) {
+    throw appError('NOT_FOUND', 'Item tidak ditemukan');
+  }
   return toItemDto(
     view,
     await instructionViewsOf(env, view.id, view.businessUnits, view.instructions),
@@ -360,17 +457,13 @@ function nameKeysOf(input: SaveItemInput, key: string): { key: string; aliasKeys
  * Satu kueri keunikan nama (untuk `batch()` bersama kueri baca lain): pemilik kunci sebagai merk+tipe item
  * (indeks UNIK `items_key`, `src = 'k'`) digabung `UNION ALL` dengan pemegangnya sebagai nama lain
  * (PRIMARY KEY `item_alias_keys`, `src = 'a'`; bukan `instr` pada `items`). Satu pernyataan untuk SEMUA kunci.
+ * Item terhapus diabaikan (T4): kuncinya boleh dipakai ulang, dan pemulihan memeriksa tabrakan lewat kueri ini juga.
  */
-function nameCheckStatement(
-  env: Env,
-  input: SaveItemInput,
-  key: string,
-  selfId: string,
-): DbStatement {
-  const keys = [...new Set([key, ...nameKeysOf(input, key).aliasKeys])];
+function nameCheckStatement(env: Env, keyList: readonly string[], selfId: string): DbStatement {
+  const keys = [...new Set(keyList)];
   const marks = keys.map(() => '?').join(',');
   return env.DB.prepare(
-    `${OWNER_SELECT} WHERE i.id <> ? AND i.\`key\` IN (${marks}) UNION ALL ${ALIAS_OWNER_SELECT} WHERE a.\`key\` IN (${marks}) AND a.item_id <> ?`,
+    `${OWNER_SELECT} WHERE i.id <> ? AND i.\`key\` IN (${marks}) AND ${liveWhere('i')} UNION ALL ${ALIAS_OWNER_SELECT} WHERE a.\`key\` IN (${marks}) AND a.item_id <> ? AND ${liveWhere('i')}`,
   ).bind(selfId, ...keys, ...keys, selfId);
 }
 
@@ -598,7 +691,7 @@ export async function assertInstructionRefs(env: Env, input: SaveItemInput): Pro
     slots.stickers = reads.length;
     reads.push(
       env.DB.prepare(
-        `SELECT s.id, s.status, t.system_kind FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id IN (${placeholders(stickerIds.size)})`,
+        `SELECT s.id, s.status, s.deleted_at, t.system_kind FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id IN (${placeholders(stickerIds.size)})`,
       ).bind(...stickerIds),
     );
   }
@@ -606,7 +699,7 @@ export async function assertInstructionRefs(env: Env, input: SaveItemInput): Pro
     slots.types = reads.length;
     reads.push(
       env.DB.prepare(
-        `SELECT id, status FROM sticker_types WHERE id IN (${placeholders(typeIds.size)})`,
+        `SELECT id, status, deleted_at FROM sticker_types WHERE id IN (${placeholders(typeIds.size)})`,
       ).bind(...typeIds),
     );
   }
@@ -623,13 +716,15 @@ export async function assertInstructionRefs(env: Env, input: SaveItemInput): Pro
     slot < 0 ? [] : ((results[slot]?.results ?? []) as T[]);
   const knownGuides = new Set(rowsOf<{ id: string }>(0).map((row) => row.id));
   const stickerRows = new Map(
-    rowsOf<{ id: string; status: string; system_kind: string }>(slots.stickers).map((row) => [
+    rowsOf<{ id: string; status: string; deleted_at: string; system_kind: string }>(
+      slots.stickers,
+    ).map((row) => [row.id, row]),
+  );
+  const typeRows = new Map(
+    rowsOf<{ id: string; status: string; deleted_at: string }>(slots.types).map((row) => [
       row.id,
       row,
     ]),
-  );
-  const typeStatus = new Map(
-    rowsOf<{ id: string; status: string }>(slots.types).map((row) => [row.id, row.status]),
   );
   const stored = rowsOf<{ sticker_id: string; type_id: string }>(slots.stored);
   const storedStickers = new Set(stored.map((row) => row.sticker_id).filter((id) => id !== ''));
@@ -649,13 +744,23 @@ export async function assertInstructionRefs(env: Env, input: SaveItemInput): Pro
         if ((sticker?.system_kind ?? '').trim() !== '') {
           fail(`${label}: Stiker jenis sistem dipilih lewat jenisnya`);
         }
-        if (sticker?.status !== 'active' && !storedStickers.has(mark.target.stickerId)) {
+        // Rujukan tersimpan yang tidak berubah tetap sah walau stikernya kini terhapus atau nonaktif (T1); sasaran BARU
+        // harus stiker hidup dan aktif.
+        const stored = storedStickers.has(mark.target.stickerId);
+        if (sticker !== undefined && sticker.deleted_at !== '' && !stored) {
+          fail(`${label}: stiker sudah dihapus; pilih stiker yang aktif`);
+        }
+        if (sticker?.status !== 'active' && !stored) {
           fail(`${label}: stiker dinonaktifkan; pilih stiker yang aktif`);
         }
       } else {
-        const status = typeStatus.get(mark.target.typeId);
-        if (status === undefined) fail(`${label}: jenis tidak ditemukan`);
-        if (status !== 'active' && !storedTypes.has(mark.target.typeId)) {
+        const type = typeRows.get(mark.target.typeId);
+        if (type === undefined) fail(`${label}: jenis tidak ditemukan`);
+        const stored = storedTypes.has(mark.target.typeId);
+        if (type !== undefined && type.deleted_at !== '' && !stored) {
+          fail(`${label}: jenis sudah dihapus; pilih jenis yang aktif`);
+        }
+        if (type?.status !== 'active' && !stored) {
           fail(`${label}: jenis dinonaktifkan; pilih jenis yang aktif`);
         }
       }
@@ -690,7 +795,11 @@ export async function batchItemWrite(db: Db, statements: DbStatement[]): Promise
   try {
     return await db.batch(statements);
   } catch (error) {
-    if (error instanceof DbError && error.kind === 'duplicate' && error.key === 'brands_key') {
+    if (
+      error instanceof DbError &&
+      error.kind === 'duplicate' &&
+      baseIndexName(error.key ?? '') === 'brands_key'
+    ) {
       throw error;
     }
     // Gambar pustaka yang dihapus tepat di antara pemeriksaan rujukan dan penulisan: kunci asing menolak foto yatim.
@@ -782,6 +891,7 @@ export async function planItemWrite(
 ): Promise<{
   record: ItemRecord;
   brandName: string;
+  brandDeleted: boolean;
   businessUnits: BusinessUnitRefDto[];
   statements: DbStatement[];
 }> {
@@ -804,9 +914,12 @@ export async function planItemWrite(
     input.businessUnitIds,
   );
   const { brand } = context;
-  if (!brand) {
+  // Merk terhapus (soft delete) seperti merk tak dikenal bagi pemilihan BARU; item yang sudah bermerk itu dan tidak
+  // menggantinya tetap dapat disimpan (rujukan tersimpan dipertahankan, T1).
+  if (!brand || (brand.deletedAt !== '' && existing?.brandId !== brand.id)) {
     throw appError('VALIDATION', 'Merk tidak ditemukan', { brandId: 'Merk tidak ditemukan' });
   }
+  const brandDeleted = brand.deletedAt !== '';
   // Merk dinonaktifkan tidak boleh dipakai item baru (atau item yang pindah merk).
   if (brand.status === 'inactive' && existing?.brandId !== brand.id) {
     const message = 'Merk dinonaktifkan; aktifkan dulu di halaman Merk';
@@ -859,11 +972,14 @@ export async function planItemWrite(
   const afterView = (record: ItemRecord): ItemView => ({
     ...record,
     brand: brand.name,
+    brandDeleted,
     businessUnits,
     instructions: afterInstructions,
   });
   // Penjaga merk (ganti nama merk yang menyela membatalkan batch, I1) selalu PERTAMA: merk selalu sudah ada.
-  const statements: DbStatement[] = [brandKeyGuardStmt(env.DB, brand.id, brand.key)];
+  const statements: DbStatement[] = [
+    brandKeyGuardStmt(env.DB, brand.id, brand.key, existing?.brandId !== brand.id),
+  ];
 
   if (existing) {
     const merged: ItemRecord = { ...existing, ...fields, status };
@@ -894,17 +1010,20 @@ export async function planItemWrite(
             : 'item.deactivate'
           : 'item.update',
         target: itemLabel(afterView(merged)),
+        targetId: id,
         before: beforeSnapshot,
         after: afterSnapshot,
       }),
     );
-    return { record: merged, brandName: brand.name, businessUnits, statements };
+    return { record: merged, brandName: brand.name, brandDeleted, businessUnits, statements };
   }
 
   const created: ItemRecord = {
     id,
     status,
     createdAt: now,
+    deletedAt: '',
+    deletedBy: '',
     ...fields,
   };
   statements.push(
@@ -919,11 +1038,12 @@ export async function planItemWrite(
       actor: actor.email,
       action: 'item.create',
       target: itemLabel(afterView(created)),
+      targetId: created.id,
       before: null,
       after: itemSnapshot(afterView(created)),
     }),
   );
-  return { record: created, brandName: brand.name, businessUnits, statements };
+  return { record: created, brandName: brand.name, brandDeleted, businessUnits, statements };
 }
 
 /**
@@ -950,7 +1070,11 @@ async function loadNameOwners(
   existing?: ItemRecord,
 ): Promise<NameOwners> {
   if (claimsNoNewNames(existing, input, key)) return NO_OWNERS;
-  const result = await nameCheckStatement(env, input, key, selfId).all();
+  const result = await nameCheckStatement(
+    env,
+    [key, ...nameKeysOf(input, key).aliasKeys],
+    selfId,
+  ).all();
   return nameOwnersFrom(result);
 }
 
@@ -978,6 +1102,7 @@ async function saveItemOnce(
     {
       ...plan.record,
       brand: plan.brandName,
+      brandDeleted: plan.brandDeleted,
       businessUnits: plan.businessUnits,
       instructions: stored,
     },
@@ -987,62 +1112,300 @@ async function saveItemOnce(
   );
 }
 
-export async function setItemStatus(
-  env: Env,
-  input: SetItemStatusInput,
-  actor: UserContext,
-): Promise<ItemDto> {
-  // Ganti nama merk yang menyela (penjaga merk, I1) membatalkan batch: baca ulang item dan ulangi.
-  return runCas(() => setItemStatusOnce(env, input, actor), STALE_MESSAGE);
+// --- Status, hapus, dan pulihkan: perencana per item (pola `core/record-batch.ts`) ---------------------------------------
+
+/** Item (hidup atau terhapus) yang sudah dimuat untuk satu aksi, lengkap dengan bahan DTO-nya. */
+export interface LoadedItem {
+  found: ItemWithBrand;
+  businessUnits: BusinessUnitRefDto[];
+  instructions: StoredPhoto[];
+  views: ItemStickerPhotoDto[];
+  manualBook: ItemManualBookDto | null;
+  postel: ItemPostelState;
 }
 
-async function setItemStatusOnce(
+const ITEM_BATCH = { conflicts: ITEM_CONFLICTS, stale: STALE_MESSAGE };
+const ITEM_NOT_FOUND = 'Item tidak ditemukan';
+const EMPTY_POSTEL: ItemPostelState = { has: false, detail: null };
+
+/**
+ * Pemuat perencana: item menurut id beserta bahan DTO-nya, dengan pemeriksaan hak. Di luar BU terlihat = `NOT_FOUND`
+ * (juga bagi item terhapus); butuh `manage` pada SEMUA BU item (`FORBIDDEN`), kecuali item TERHAPUS: tanpa hak itu
+ * dijawab `NOT_FOUND` seragam agar keberadaan item terhapus tak terungkap (soft delete §4.2). `state` `live` menolak
+ * item terhapus (`NOT_FOUND`); `any` menerima keduanya (hapus ulang/pulihkan yang sudah hidup = sukses tanpa
+ * perubahan). `detail` `ref` = pemuat ringan untuk aksi yang hanya mengembalikan `{ id }` (Hapus): tampilan instruksi,
+ * Manual Book, dan Postel tak dimuat (bukan bahan hasilnya) dan diganti nilai kosong.
+ */
+export async function loadItemForAction(
   env: Env,
-  input: SetItemStatusInput,
+  id: string,
   actor: UserContext,
-): Promise<ItemDto> {
+  state: 'live' | 'any',
+  message: string,
+  detail: 'full' | 'ref' = 'full',
+): Promise<LoadedItem> {
   // Item dan merknya dibaca dalam SATU snapshot (JOIN); penjaga memeriksa kunci merk tersimpan itu (N1).
-  const found = await findItemWithBrand(env, input.id);
-  if (!found) throw appError('NOT_FOUND', 'Item tidak ditemukan');
-  const existing = found.item;
-  const businessUnits = (await itemBusinessUnitsOf(env.DB, [existing.id])).get(existing.id) ?? [];
+  const found = await (state === 'live'
+    ? findItemWithBrand(env, id)
+    : findItemWithBrandAny(env, id));
+  if (!found) throw appError('NOT_FOUND', ITEM_NOT_FOUND);
+  const { item } = found;
+  const businessUnits = (await itemBusinessUnitsOf(env.DB, [item.id])).get(item.id) ?? [];
   const itemBuIds = businessUnits.map((bu) => bu.id);
-  // NOT_FOUND bila tak beririsan BU terlihat; menonaktifkan item multi-BU butuh `manage` pada SEMUA BU item.
+  // NOT_FOUND bila tak beririsan BU terlihat; aksi pada item multi-BU butuh `manage` pada SEMUA BU item.
   assertItemVisible(actor, itemBuIds);
-  assertCanActOnItem(actor, itemBuIds, 'manage', 'Anda tidak berhak mengubah status item ini');
-  const instructions = (await loadItemInstructions(env.DB, [existing.id])).get(existing.id) ?? [];
-  const before: ItemView = { ...existing, brand: found.brandName, businessUnits, instructions };
-  const views = await instructionViewsOf(env, existing.id, businessUnits, instructions);
-  const manualBook = (await loadItemManualBooks(env.DB, [existing.id])).get(existing.id) ?? null;
-  const postel = await postelStateOf(env, actor, existing.id);
-  if (existing.status === input.status) return toItemDto(before, views, manualBook, postel);
-  const now = nowIso(env);
-  const updated: ItemRecord = {
-    ...existing,
-    status: input.status,
-    updatedAt: now,
-    updatedBy: actor.email,
+  if (item.deletedAt !== '' && !canActOnItem(actor, itemBuIds, 'manage')) {
+    throw appError('NOT_FOUND', ITEM_NOT_FOUND);
+  }
+  assertCanActOnItem(actor, itemBuIds, 'manage', message);
+  const instructions = (await loadItemInstructions(env.DB, [item.id])).get(item.id) ?? [];
+  if (detail === 'ref') {
+    return {
+      found,
+      businessUnits,
+      instructions,
+      views: [],
+      manualBook: null,
+      postel: EMPTY_POSTEL,
+    };
+  }
+  return {
+    found,
+    businessUnits,
+    instructions,
+    views: await instructionViewsOf(env, item.id, businessUnits, instructions),
+    manualBook: (await loadItemManualBooks(env.DB, [item.id])).get(item.id) ?? null,
+    postel: await postelStateOf(env, actor, item.id),
   };
-  await batchWrite(
-    env.DB,
-    [
-      brandKeyGuardStmt(env.DB, existing.brandId, found.brandKey),
-      ...updateItemStmts(env.DB, updated, existing),
+}
+
+function viewOfLoaded(loaded: LoadedItem, record: ItemRecord = loaded.found.item): ItemView {
+  return {
+    ...record,
+    brand: loaded.found.brandName,
+    brandDeleted: loaded.found.brandDeleted,
+    businessUnits: loaded.businessUnits,
+    instructions: loaded.instructions,
+  };
+}
+
+function dtoOfLoaded(loaded: LoadedItem, record: ItemRecord = loaded.found.item): ItemDto {
+  return toItemDto(viewOfLoaded(loaded, record), loaded.views, loaded.manualBook, loaded.postel);
+}
+
+/** Perencana ubah status (item HIDUP). Status sama = `unchanged`. */
+export function planItemStatus(
+  env: Env,
+  loaded: LoadedItem,
+  status: ItemStatus,
+  actor: UserContext,
+): PlanOutcome<ItemDto> {
+  const { item, brandKey } = loaded.found;
+  if (item.status === status) return { unchanged: dtoOfLoaded(loaded) };
+  const now = nowIso(env);
+  const updated: ItemRecord = { ...item, status, updatedAt: now, updatedBy: actor.email };
+  return {
+    dto: dtoOfLoaded(loaded, updated),
+    stmts: [
+      brandKeyGuardStmt(env.DB, item.brandId, brandKey),
+      // Penghapus serentak yang sudah komit (apa pun jam dindingnya) menggagalkan batch ini: item terhapus tak boleh aktif.
+      versionGuardStmt(env.DB, 'items', item.id, item.updatedAt, 'live'),
+      ...updateItemStmts(env.DB, updated, item),
       writeAudit(env.DB, {
         ts: now,
         actor: actor.email,
-        action: input.status === 'active' ? 'item.activate' : 'item.deactivate',
-        target: itemLabel(before),
-        before: itemSnapshot(before),
-        after: itemSnapshot({ ...updated, brand: before.brand, businessUnits, instructions }),
+        action: status === 'active' ? 'item.activate' : 'item.deactivate',
+        target: itemLabel(viewOfLoaded(loaded)),
+        targetId: item.id,
+        before: itemSnapshot(viewOfLoaded(loaded)),
+        after: itemSnapshot(viewOfLoaded(loaded, updated)),
       }),
     ],
-    ITEM_CONFLICTS,
-  );
-  return toItemDto(
-    { ...updated, brand: before.brand, businessUnits, instructions },
-    views,
-    manualBook,
-    postel,
-  );
+  };
+}
+
+/**
+ * Perencana hapus lunak: hanya item Nonaktif; sudah terhapus = `unchanged` (tanpa audit, `deleted_at` asli utuh). Dalam
+ * `batch()` yang sama: baris kunci nama lain dibuang (T4: nama boleh dipakai item lain) dan `brands.item_count` turun
+ * (T6). Penjaga versi menaikkan `updated_at`, sehingga penulis serentak dari versi lama gagal CAS-nya.
+ */
+export function planItemRemove(
+  env: Env,
+  loaded: LoadedItem,
+  actor: UserContext,
+): PlanOutcome<RemoveResult> {
+  const { item, brandKey } = loaded.found;
+  if (item.deletedAt !== '') return { unchanged: { id: item.id } };
+  if (item.status !== 'inactive') {
+    throw appError('CONFLICT', 'Nonaktifkan item dulu sebelum dihapus');
+  }
+  const now = nowIso(env);
+  return {
+    dto: { id: item.id },
+    stmts: [
+      // Urutan kunci baris SERAGAM dengan perencana lain: merk lebih dulu, baru item (cegah deadlock bolak-balik).
+      brandKeyGuardStmt(env.DB, item.brandId, brandKey),
+      versionGuardStmt(env.DB, 'items', item.id, item.updatedAt, 'live'),
+      softDeleteStmt(env.DB, 'items', item.id, actor.email, now),
+      stampStmt(env.DB, 'items', item.id, now, actor.email),
+      env.DB.prepare('DELETE FROM item_alias_keys WHERE item_id = ?').bind(item.id),
+      adjustItemCountStmt(env.DB, item.brandId, -1),
+      writeAudit(env.DB, {
+        ts: now,
+        actor: actor.email,
+        action: 'item.delete',
+        target: itemLabel(viewOfLoaded(loaded)),
+        targetId: item.id,
+        before: itemSnapshot(viewOfLoaded(loaded)),
+        after: { ...itemSnapshot(viewOfLoaded(loaded)), deleted: true },
+      }),
+    ],
+  };
+}
+
+const RESTORE_COLLISION_MESSAGE =
+  'Item tidak dapat dipulihkan: merk dan tipe atau nama lainnya kini dipakai item lain';
+
+/**
+ * Perencana pulihkan: kembali Nonaktif; belum terhapus = `unchanged`. Tabrakan merk+tipe atau nama lain dengan item
+ * HIDUP ditolak generik (`CONFLICT`, tanpa menyebut item lain); tanpa tabrakan, baris kunci nama lain dibangun ulang
+ * dan `brands.item_count` naik dalam `batch()` yang sama. Indeks unik `_live` dan PK `item_alias_keys` tetap pagar.
+ */
+export async function planItemRestore(
+  env: Env,
+  loaded: LoadedItem,
+  actor: UserContext,
+): Promise<PlanOutcome<ItemDto>> {
+  const { item, brandKey } = loaded.found;
+  if (item.deletedAt === '') return { unchanged: dtoOfLoaded(loaded) };
+  const aliasKeys = aliasKeyList(item.aliases);
+  const hit = await nameCheckStatement(env, [item.key, ...aliasKeys], item.id).first();
+  if (hit) throw appError('CONFLICT', RESTORE_COLLISION_MESSAGE);
+  const now = nowIso(env);
+  const restored: ItemRecord = {
+    ...item,
+    status: 'inactive',
+    updatedAt: now,
+    updatedBy: actor.email,
+    deletedAt: '',
+    deletedBy: '',
+  };
+  return {
+    dto: dtoOfLoaded(loaded, restored),
+    stmts: [
+      brandKeyGuardStmt(env.DB, item.brandId, brandKey),
+      versionGuardStmt(env.DB, 'items', item.id, item.updatedAt, 'deleted'),
+      restoreStmt(env.DB, 'items', item.id),
+      env.DB.prepare("UPDATE items SET status = 'inactive' WHERE id = ?").bind(item.id),
+      stampStmt(env.DB, 'items', item.id, now, actor.email),
+      ...insertAliasKeyStmts(env.DB, item.id, aliasKeys),
+      adjustItemCountStmt(env.DB, item.brandId, 1),
+      writeAudit(env.DB, {
+        ts: now,
+        actor: actor.email,
+        action: 'item.restore',
+        target: itemLabel(viewOfLoaded(loaded)),
+        targetId: item.id,
+        before: { ...itemSnapshot(viewOfLoaded(loaded)), deleted: true },
+        after: itemSnapshot(viewOfLoaded(loaded, restored)),
+      }),
+    ],
+  };
+}
+
+const STATUS_DENIED = 'Anda tidak berhak mengubah status item ini';
+const REMOVE_DENIED = 'Anda tidak berhak menghapus item ini';
+const RESTORE_DENIED = 'Anda tidak berhak memulihkan item ini';
+
+const statusPlanner =
+  (env: Env, status: ItemStatus, actor: UserContext) =>
+  async (id: string): Promise<PlanOutcome<ItemDto>> =>
+    planItemStatus(
+      env,
+      await loadItemForAction(env, id, actor, 'live', STATUS_DENIED),
+      status,
+      actor,
+    );
+
+const removePlanner =
+  (env: Env, actor: UserContext) =>
+  async (id: string): Promise<PlanOutcome<RemoveResult>> =>
+    planItemRemove(
+      env,
+      await loadItemForAction(env, id, actor, 'any', REMOVE_DENIED, 'ref'),
+      actor,
+    );
+
+/**
+ * Pemeriksaan silang pulihkan batch (M3): tiap perencana hanya mencocokkan kunci dengan item HIDUP di basis data, jadi
+ * dua item terhapus yang dipulihkan SEKALIGUS dan saling berbenturan (merk+tipe A = nama lain B) lolos masing-masing.
+ * Di sini semua kunci (merk+tipe dan nama lain) dari item yang akan ditulis digabung: kunci yang sama pada dua item
+ * berbeda = `CONFLICT` generik (alias↔alias dan merk+tipe↔merk+tipe juga dijaga indeks/PK, ini menyamakan pesannya).
+ */
+function verifyRestoredNames(changed: ItemDto[]): void {
+  const owner = new Map<string, string>();
+  for (const dto of changed) {
+    const keys = new Set([itemKey(dto.brand, dto.model), ...aliasKeyList(dto.aliases)]);
+    for (const key of keys) {
+      const other = owner.get(key);
+      if (other !== undefined && other !== dto.id) {
+        throw appError('CONFLICT', RESTORE_COLLISION_MESSAGE);
+      }
+      owner.set(key, dto.id);
+    }
+  }
+}
+
+const RESTORE_BATCH = { ...ITEM_BATCH, verify: verifyRestoredNames };
+
+const restorePlanner =
+  (env: Env, actor: UserContext) =>
+  async (id: string): Promise<PlanOutcome<ItemDto>> =>
+    planItemRestore(env, await loadItemForAction(env, id, actor, 'any', RESTORE_DENIED), actor);
+
+/** Ubah status satu item (rute tunggal = batch berisi satu id). */
+export function setItemStatus(
+  env: Env,
+  input: SetItemStatusInput,
+  actor: UserContext,
+): Promise<ItemDto> {
+  return runSingleRecord(env, input.id, statusPlanner(env, input.status, actor), ITEM_BATCH);
+}
+
+/** Ubah status banyak item, atomik: satu gagal/di luar hak = tidak ada yang berubah. */
+export function setItemStatusBatch(
+  env: Env,
+  input: StatusBatchInput,
+  actor: UserContext,
+): Promise<BatchResult<ItemDto>> {
+  return runRecordBatch(env, input.ids, statusPlanner(env, input.status, actor), ITEM_BATCH);
+}
+
+export function removeItem(
+  env: Env,
+  input: GetItemInput,
+  actor: UserContext,
+): Promise<RemoveResult> {
+  return runSingleRecord(env, input.id, removePlanner(env, actor), ITEM_BATCH);
+}
+
+export async function removeItemBatch(
+  env: Env,
+  input: IdBatchInput,
+  actor: UserContext,
+): Promise<RemoveBatchResult> {
+  const { items } = await runRecordBatch(env, input.ids, removePlanner(env, actor), ITEM_BATCH);
+  return { ids: items.map((item) => item.id) };
+}
+
+export function restoreItem(env: Env, input: GetItemInput, actor: UserContext): Promise<ItemDto> {
+  return runSingleRecord(env, input.id, restorePlanner(env, actor), RESTORE_BATCH);
+}
+
+export function restoreItemBatch(
+  env: Env,
+  input: IdBatchInput,
+  actor: UserContext,
+): Promise<BatchResult<ItemDto>> {
+  return runRecordBatch(env, input.ids, restorePlanner(env, actor), RESTORE_BATCH);
 }

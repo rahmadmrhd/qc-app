@@ -149,7 +149,7 @@ test('preset: dua preset dengan bu_id sama ditolak pada indeks qr_presets_bu_uni
   await seedQrPreset(env, { id: 'p1', buId: 'bu-a' });
   await expect(seedQrPreset(env, { id: 'p2', buId: 'bu-a' })).rejects.toMatchObject({
     kind: 'duplicate',
-    key: 'qr_presets_bu_unique',
+    key: 'qr_presets_bu_unique_live',
   });
   await seedQrPreset(env, { id: 'p3', buId: 'bu-b' });
   await seedQrPreset(env, { id: 'p4' });

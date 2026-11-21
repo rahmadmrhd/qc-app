@@ -1,6 +1,7 @@
 import type { DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
+import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import {
   NOTIFICATION_PREVIEW_MAX,
   NOTIFICATION_RETENTION_DAYS,
@@ -123,7 +124,8 @@ export interface NotificationScope {
 
 /**
  * Klausa WHERE cakupan baca (tanpa `recipient`): jenis Serah Terima disaring lokasi yang berhak dibaca, jenis Serial
- * disaring BU serial entrinya (`serial_id` -> `serials.bu_id`). Aturan keduanya tak pernah saling melonggarkan. `null`
+ * disaring BU serial entrinya (`serial_id` -> `serials.bu_id`); serial TERHAPUS menyembunyikan notifikasinya bagi semua
+ * (soft delete; pulihkan memunculkannya lagi). Aturan keduanya tak pernah saling melonggarkan. `null`
  * bila tak ada cakupan sama sekali (hasil kosong tanpa kueri).
  */
 function scopeClause(scope: NotificationScope): { sql: string; params: string[] } | null {
@@ -133,15 +135,16 @@ function scopeClause(scope: NotificationScope): { sql: string; params: string[] 
   const parts: string[] = [];
   const params: string[] = [];
   if (locationIds.length > 0) {
+    // Notifikasi task TERHAPUS tersembunyi bagi semua (pulihkan memunculkannya lagi); `handover_id` kosong = tanpa task.
     parts.push(
-      `(kind NOT IN (${kinds}) AND location_id IN (${locationIds.map(() => '?').join(', ')}))`,
+      `(kind NOT IN (${kinds}) AND location_id IN (${locationIds.map(() => '?').join(', ')}) AND NOT EXISTS (SELECT 1 FROM handovers h0 WHERE ${deletedWhere('h0')} AND h0.id = notifications.handover_id))`,
     );
     params.push(...SERIAL_NOTIFICATION_KINDS, ...locationIds);
   }
   if (buIds.length > 0) {
     const marks = buIds.map(() => '?').join(', ');
     parts.push(
-      `(kind IN (${kinds}) AND (serial_id IN (SELECT id FROM serials WHERE bu_id IN (${marks})) OR serial_id IN (SELECT serial_id FROM serial_business_units WHERE bu_id IN (${marks}) AND left_at > '')))`,
+      `(kind IN (${kinds}) AND (serial_id IN (SELECT s0.id FROM serials s0 WHERE ${liveWhere('s0')} AND s0.bu_id IN (${marks})) OR serial_id IN (SELECT sbu.serial_id FROM serial_business_units sbu JOIN serials s ON s.id = sbu.serial_id WHERE ${liveWhere('s')} AND sbu.bu_id IN (${marks}) AND sbu.left_at > '')))`,
     );
     // BU saat ini ATAU riwayat BU (spek serial unik se-sistem §5.3); daftar BU diikat dua kali.
     params.push(...SERIAL_NOTIFICATION_KINDS, ...buIds, ...buIds);

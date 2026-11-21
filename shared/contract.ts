@@ -1,4 +1,14 @@
 import type { Assignment, LocationPermissionMap } from './assignments';
+import type { AuditTargetKind } from './audit';
+import type {
+  BatchResult,
+  IdBatchInput,
+  ListStatusFilter,
+  RemoveBatchResult,
+  RemoveResult,
+  SoftDeleteInfo,
+  StatusBatchInput,
+} from './batch';
 import type { BuAssignment, BuPermissionMap } from './business-units';
 import type { GuideProgressDto } from './guides';
 import type { HandoverStatus } from './handover';
@@ -48,6 +58,11 @@ export interface LocationAccessDto {
 export interface BusinessUnitAccessDto extends BusinessUnitOptionDto {
   /** Izin efektif user di BU ini (gabungan "Semua BU" dan penugasan BU itu) untuk modul ber-BU. */
   permissions: BuPermissionMap;
+  /**
+   * BU sudah dihapus (soft delete). Entri TETAP ada karena BU terhapus tetap memberi hak (keputusan pemilik 9), tetapi
+   * tidak boleh ditawarkan di pilihan/filter. Tak ada pada `me` lama = false.
+   */
+  deleted?: boolean;
 }
 
 export interface MeDto {
@@ -66,6 +81,12 @@ export interface MeDto {
   /** BU yang user punya level apa pun atasnya (termasuk BU nonaktif), terurut menurut kode. */
   businessUnits: BusinessUnitAccessDto[];
   /**
+   * Id SEMUA BU yang terhapus (soft delete), bukan hanya yang ada di penugasan user: syarat tulis "SEMUA BU item"
+   * mengabaikan BU terhapus (keputusan pemilik 9), jadi web perlu mengenalinya juga untuk BU yang bukan miliknya
+   * (item ber-BU {hidup, terhapus}). Hanya id; tidak sensitif. Opsional: salinan `me` tersimpan lama tak memuatnya.
+   */
+  deletedBusinessUnitIds?: string[];
+  /**
    * Akun bersama (dipakai beberapa orang): panduan interaktif tetap ditawarkan, tetapi penandanya disimpan per
    * perangkat (bukan di server), jadi ditawarkan lagi di tiap perangkat.
    */
@@ -82,9 +103,21 @@ export interface UserDto {
   buAssignments: BuAssignment[];
   /** Akun bersama (dipakai beberapa orang); lihat `MeDto.sharedAccount`. */
   sharedAccount: boolean;
+  /**
+   * Akun super admin (alamat `ADMIN_EMAIL`): tak dapat dihapus dan tak dinonaktifkan dari antarmuka. Opsional (aditif):
+   * server yang lebih lama tak mengirimnya, dan klien menganggapnya bukan super admin. Penjaga tetap di server.
+   */
+  superAdmin?: boolean;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** Ada hanya pada pengguna terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+  /**
+   * Id role pada penugasan (lokasi dan BU) yang sudah dihapus: form menampilkan "Terhapus" dan izin role itu tidak
+   * berlaku. Selalu terisi dari server (kosong bila tak ada).
+   */
+  deletedRoleIds?: string[];
 }
 
 export interface RoleDto {
@@ -92,10 +125,31 @@ export interface RoleDto {
   name: string;
   description: string;
   permissions: PartialPermissionMap;
+  /** Jumlah pengguna HIDUP yang memakai role ini (pengguna terhapus tak dihitung). */
   userCount: number;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** Ada hanya pada role terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+}
+
+export interface ListUsersInput {
+  /** Bawaan = pengguna hidup (aktif + nonaktif). `deleted` hanya bagi `access: manage`; selain itu `FORBIDDEN`. */
+  status?: ListStatusFilter;
+}
+
+export interface GetUserInput {
+  id: string;
+}
+
+export interface ListRolesInput {
+  /** Bawaan = role hidup. `deleted` hanya bagi `access: manage`; selain itu `FORBIDDEN`. Role tak punya status aktif/nonaktif. */
+  status?: ListStatusFilter;
+}
+
+export interface GetRoleInput {
+  id: string;
 }
 
 export interface SaveUserInput {
@@ -145,6 +199,11 @@ export interface AuditEntryDto {
   target: string;
   before: AuditSnapshot;
   after: AuditSnapshot;
+  /**
+   * Entitas yang diubah entri ini (menaut ke View-nya). Hanya entri BARU yang memuatnya (kolom `audit_log.target_id`
+   * terisi); entri lama dan aksi tanpa entitas (pengaturan) tidak punya `targetRef`.
+   */
+  targetRef?: { kind: AuditTargetKind; id: string };
 }
 
 export interface ListAuditInput {
@@ -173,6 +232,17 @@ export interface LocationDto {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** Ada hanya pada lokasi terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+}
+
+export interface ListLocationsInput {
+  /** Bawaan = lokasi hidup. `deleted` hanya bagi `access: manage`; selain itu `FORBIDDEN`. */
+  status?: ListStatusFilter;
+}
+
+export interface GetLocationInput {
+  id: string;
 }
 
 export interface SaveLocationInput {
@@ -197,6 +267,11 @@ export interface BusinessUnitRefDto {
 /** Ringkasan BU untuk pemilih (Merk, form item): tanpa hitungan dan metadata. */
 export interface BusinessUnitOptionDto extends BusinessUnitRefDto {
   status: BusinessUnitStatus;
+  /**
+   * True bila BU sudah dihapus (soft delete). BU terhapus tetap dikembalikan agar rujukan tersimpan dapat menampilkan
+   * namanya, tetapi pemilih dan filter harus menyaringnya (tidak ditawarkan untuk pilihan baru).
+   */
+  deleted?: boolean;
 }
 
 export interface BusinessUnitDto extends BusinessUnitOptionDto {
@@ -207,6 +282,21 @@ export interface BusinessUnitDto extends BusinessUnitOptionDto {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /**
+   * Ada hanya pada BU terhapus (soft delete); jejak penghapusan. Berbeda dari DTO lain: `deleted` pada BU adalah
+   * penanda boolean (diwarisi `BusinessUnitOptionDto`, agar daftar BU tetap dapat dipakai sebagai pilihan), jadi jejaknya
+   * ada di `deletedInfo`.
+   */
+  deletedInfo?: SoftDeleteInfo;
+}
+
+export interface ListBusinessUnitsInput {
+  /** Bawaan = BU hidup. `deleted` hanya bagi `access: manage`; selain itu `FORBIDDEN`. */
+  status?: ListStatusFilter;
+}
+
+export interface GetBusinessUnitInput {
+  id: string;
 }
 
 export interface SaveBusinessUnitInput {
@@ -332,6 +422,8 @@ export interface ResolvedStickerDto {
   /** Kode BU stiker (terurut). */
   buCodes: string[];
   inactive: boolean;
+  /** Ada (true) hanya bila stiker ini terhapus (penempatan lama tetap menampilkannya, bertanda "Terhapus"). */
+  deleted?: true;
 }
 
 /** Penanda untuk tampilan: sasaran + nama + stiker yang cocok untuk BU item. */
@@ -341,6 +433,8 @@ export interface ItemStickerMarkView extends ItemStickerMarkDto {
   resolved: ResolvedStickerDto[];
   /** Jenis tanpa stiker aktif yang cocok untuk BU item (peringatan; simpan tidak diblokir). */
   unresolved: boolean;
+  /** Ada (true) hanya bila stiker atau jenis sasaran ini terhapus (rujukan tersimpan tetap tampil bertanda "Terhapus"). */
+  targetDeleted?: true;
 }
 
 export interface ItemStickerPhotoDto {
@@ -376,11 +470,22 @@ export interface BrandDto {
   id: string;
   name: string;
   status: ItemStatus;
-  /** Jumlah item (aktif maupun nonaktif) yang memakai merk ini. */
+  /** Jumlah item HIDUP (aktif maupun nonaktif, tanpa yang terhapus; semua BU) yang memakai merk ini. */
   itemCount: number;
   updatedAt: string;
   /** BU bawaan merk (terurut menurut kode BU); hanya mengisi otomatis form item, tidak memberi hak apa pun. */
   businessUnitIds: string[];
+  /** Ada hanya pada merk terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+}
+
+export interface ListBrandsInput {
+  /** Bawaan = merk hidup (aktif + nonaktif). `deleted` hanya bagi `item: manage`; selain itu `FORBIDDEN`. */
+  status?: ListStatusFilter;
+}
+
+export interface GetBrandInput {
+  id: string;
 }
 
 export interface SaveBrandInput {
@@ -405,9 +510,20 @@ export interface StickerTypeDto {
   systemKind: StickerSystemKind;
   /** Minimum stok bawaan bagi stiker versi pertama pada jenis ini (0 = tanpa peringatan). */
   defaultMinQty: number;
-  /** Jumlah stiker (aktif maupun nonaktif) pada jenis ini. */
+  /** Jumlah stiker HIDUP (aktif, nonaktif, dan digantikan; tanpa yang terhapus) pada jenis ini. */
   stickerCount: number;
   updatedAt: string;
+  /** Ada hanya pada jenis terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+}
+
+export interface ListStickerTypesInput {
+  /** Bawaan = jenis hidup (aktif + nonaktif). `deleted` hanya bagi `sticker: manage`; selain itu `FORBIDDEN`. */
+  status?: ListStatusFilter;
+}
+
+export interface GetStickerTypeInput {
+  id: string;
 }
 
 export interface SaveStickerTypeInput {
@@ -446,6 +562,22 @@ export interface StickerDto {
    */
   latestManualBookVersion: boolean;
   updatedAt: string;
+  /** Ada hanya pada stiker terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+  /** Ada (true) hanya bila jenis stiker ini terhapus; stiker tetap ada dan tampil dengan nama jenisnya. */
+  typeDeleted?: boolean;
+}
+
+export interface ListStickersInput {
+  /**
+   * Bawaan = stiker hidup (aktif, nonaktif, digantikan). `active` = status aktif; `inactive` = bukan aktif (nonaktif atau
+   * digantikan, sama dengan syarat Hapus). `deleted` hanya bagi `sticker: manage`; selain itu `FORBIDDEN`.
+   */
+  status?: ListStatusFilter;
+}
+
+export interface GetStickerInput {
+  id: string;
 }
 
 export interface SaveStickerInput {
@@ -562,6 +694,50 @@ export interface OpnameInput {
   locationIds?: string[];
 }
 
+/** Satu baris entri stok batch (masuk atau keluar): tepat satu dari `quantity` atau `count`. */
+export interface RecordStockBatchRow {
+  stickerId: string;
+  locationId: string;
+  quantity?: number;
+  count?: StockCount;
+  /**
+   * Kunci idempoten (UUID huruf kecil), dibuat klien sebelum kiriman pertama dan dipakai ulang bila Simpan ditekan lagi
+   * (redesain fase 4a, K1). Kiriman ulang oleh pelaku yang sama dijawab dengan entri yang sudah tersimpan tanpa menulis
+   * lagi; milik pelaku lain, sebagian baris saja, atau stiker/lokasi berbeda = `CONFLICT`. Opsional (aditif).
+   */
+  clientId?: string;
+}
+
+/**
+ * Entri stok masuk atau keluar untuk banyak stiker x lokasi sekaligus (1..100 baris, pasangan stiker x lokasi unik).
+ * Atomik: satu baris melanggar = seluruh permintaan ditolak, tak ada yang tertulis.
+ */
+export interface RecordStockBatchInput {
+  kind: 'in' | 'out';
+  /** Wajib untuk `out`; satu alasan disalin ke setiap entri. */
+  reason: string;
+  rows: RecordStockBatchRow[];
+  /** Diturunkan server dari `rows` agar router memeriksa SEMUA lokasi; isian klien diabaikan. */
+  locationIds?: string[];
+}
+
+export interface AdjustStockBatchRow {
+  stickerId: string;
+  locationId: string;
+  /** Bertanda, bukan 0. */
+  delta: number;
+  /** Kunci idempoten; lihat `RecordStockBatchRow.clientId`. */
+  clientId?: string;
+}
+
+/** Koreksi stok untuk banyak stiker x lokasi sekaligus (atomik, 1..100 baris, pasangan unik, alasan wajib). */
+export interface AdjustStockBatchInput {
+  reason: string;
+  rows: AdjustStockBatchRow[];
+  /** Diturunkan server dari `rows` agar router memeriksa SEMUA lokasi; isian klien diabaikan. */
+  locationIds?: string[];
+}
+
 export interface StockEntryDto {
   id: string;
   stickerId: string;
@@ -607,6 +783,10 @@ export interface ItemSummaryDto {
   /** Semua BU item (bukan hanya yang terlihat user), terurut menurut kode. */
   businessUnits: BusinessUnitRefDto[];
   updatedAt: string;
+  /** Ada hanya pada item terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+  /** True bila merk item ini terhapus (rujukan tampil dengan nama + "Terhapus"). */
+  brandDeleted?: boolean;
 }
 
 /** Manual Book sebuah item: konfigurasi QR yang menaunginya dan versi terbarunya. */
@@ -697,6 +877,17 @@ export interface CustomerDto {
   name: string;
   status: ItemStatus;
   updatedAt: string;
+  /** Ada hanya pada customer terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+}
+
+export interface ListCustomersInput {
+  /** Bawaan = customer hidup. `deleted` hanya bagi `item: manage`; selain itu `FORBIDDEN`. */
+  status?: ListStatusFilter;
+}
+
+export interface GetCustomerInput {
+  id: string;
 }
 
 export interface RenameCustomerInput {
@@ -757,6 +948,8 @@ export interface HandoverDto {
   createdBy: string;
   updatedAt: string;
   updatedBy: string;
+  /** Ada hanya pada task terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
 }
 
 export interface ListHandoversInput {
@@ -830,6 +1023,8 @@ export interface QrDesignItemDto {
   id: string;
   brand: string;
   model: string;
+  /** True bila item ini terhapus (soft delete): tampil bertanda "Terhapus", tak dihitung di `itemCount` mana pun. */
+  deleted?: boolean;
 }
 export interface QrDesignDto {
   id: string;
@@ -868,6 +1063,14 @@ export interface QrDesignDto {
   createdBy: string;
   updatedAt: string;
   updatedBy: string;
+  /** Ada hanya pada konfigurasi terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+  /** True bila preset asal (`presetId`) kini terhapus: tampil bertanda "Terhapus", tak memengaruhi perhitungan apa pun. */
+  presetDeleted?: boolean;
+}
+/** Daftar konfigurasi QR: bawaan konfigurasi hidup; `deleted` = hanya yang terhapus, hanya bagi `qrcode: manage`. */
+export interface ListQrDesignsInput {
+  status?: 'live' | 'deleted';
 }
 export interface SaveQrDesignInput {
   id?: string;
@@ -913,6 +1116,15 @@ export interface QrPresetDto {
   createdBy: string;
   updatedAt: string;
   updatedBy: string;
+  /** Ada hanya pada preset terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+}
+/**
+ * Masukan `qrcodes.getDefaults`: bawaan = preset hidup. `deleted` = hanya preset terhapus (pustaka logo tetap
+ * dikembalikan), hanya bagi `qrcode: manage`; selain itu `FORBIDDEN`.
+ */
+export interface GetQrDefaultsInput {
+  status?: 'live' | 'deleted';
 }
 /** Seluruh konfigurasi default dan pustaka logo bersama (dipilih user saat membuat/mengubah QR). */
 export interface QrDefaultsDto {
@@ -1054,6 +1266,8 @@ export interface PostelItemDto {
   id: string;
   brand: string;
   model: string;
+  /** True bila item ini terhapus (soft delete): tampil bertanda "Terhapus", tak dihitung di `itemCount`. */
+  deleted?: boolean;
 }
 /** Lampiran catatan Postel (gambar atau PDF). */
 export interface PostelAttachmentDto {
@@ -1080,6 +1294,8 @@ export interface PostelSummaryDto {
   /** Model item yang berbeda (tanpa merk) dari SEMUA item catatan, termasuk yang tak terlihat; bahan pencarian. */
   models: string[];
   updatedAt: string;
+  /** Ada hanya pada catatan terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
 }
 export interface PostelDto {
   id: string;
@@ -1101,6 +1317,12 @@ export interface PostelDto {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** Ada hanya pada catatan terhapus (soft delete); jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+}
+/** Daftar Postel: bawaan catatan hidup; `deleted` = hanya yang terhapus, hanya bagi `sticker: edit`. */
+export interface ListPostelsInput {
+  status?: 'live' | 'deleted';
 }
 export interface PostelListDto {
   postels: PostelSummaryDto[];
@@ -1165,20 +1387,56 @@ export interface PostelFileContentDto {
 
 export interface ApiContract {
   'auth.me': { input: null; output: MeDto };
-  'access.users.list': { input: null; output: UserDto[] };
+  'access.users.list': { input: ListUsersInput | null; output: UserDto[] };
+  /** Pengguna terhapus hanya bagi `access: manage`; selain itu `NOT_FOUND`. */
+  'access.users.get': { input: GetUserInput; output: UserDto };
   'access.users.save': { input: SaveUserInput; output: UserDto };
   'access.users.setStatus': { input: SetUserStatusInput; output: UserDto };
-  'access.roles.list': { input: null; output: RoleDto[] };
+  /** Batch atomik (maks. `BATCH_MAX` id): satu gagal = tidak ada yang berubah; akun pemanggil di dalamnya menolak seluruhnya. */
+  'access.users.setStatusBatch': { input: StatusBatchInput; output: BatchResult<UserDto> };
+  /** Hapus lunak: hanya pengguna Nonaktif, bukan akun sendiri/super admin; hapus ulang = sukses tanpa audit. */
+  'access.users.remove': { input: GetUserInput; output: RemoveResult };
+  'access.users.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  /** Pulihkan: kembali Nonaktif. */
+  'access.users.restore': { input: GetUserInput; output: UserDto };
+  'access.users.restoreBatch': { input: IdBatchInput; output: BatchResult<UserDto> };
+  'access.roles.list': { input: ListRolesInput | null; output: RoleDto[] };
+  /** Role terhapus hanya bagi `access: manage`; selain itu `NOT_FOUND`. */
+  'access.roles.get': { input: GetRoleInput; output: RoleDto };
   'access.roles.save': { input: SaveRoleInput; output: RoleDto };
+  /** Sejak soft delete: hapus LUNAK (bentuk keluaran tetap). Role hanya bila tak dipakai pengguna hidup. */
   'access.roles.delete': { input: DeleteRoleInput; output: { id: string } };
+  'access.roles.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'access.roles.restore': { input: GetRoleInput; output: RoleDto };
+  'access.roles.restoreBatch': { input: IdBatchInput; output: BatchResult<RoleDto> };
   'access.audit.list': { input: ListAuditPageInput; output: AuditCursorPageDto };
-  'access.locations.list': { input: null; output: LocationDto[] };
+  'access.locations.list': { input: ListLocationsInput | null; output: LocationDto[] };
+  /** Lokasi terhapus hanya bagi `access: manage`; selain itu `NOT_FOUND`. */
+  'access.locations.get': { input: GetLocationInput; output: LocationDto };
   'access.locations.save': { input: SaveLocationInput; output: LocationDto };
   'access.locations.setStatus': { input: SetLocationStatusInput; output: LocationDto };
-  'access.businessUnits.list': { input: null; output: BusinessUnitDto[] };
+  'access.locations.setStatusBatch': { input: StatusBatchInput; output: BatchResult<LocationDto> };
+  'access.locations.remove': { input: GetLocationInput; output: RemoveResult };
+  'access.locations.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'access.locations.restore': { input: GetLocationInput; output: LocationDto };
+  'access.locations.restoreBatch': { input: IdBatchInput; output: BatchResult<LocationDto> };
+  'access.businessUnits.list': { input: ListBusinessUnitsInput | null; output: BusinessUnitDto[] };
+  /** BU terhapus hanya bagi `access: manage`; selain itu `NOT_FOUND`. */
+  'access.businessUnits.get': { input: GetBusinessUnitInput; output: BusinessUnitDto };
   'access.businessUnits.save': { input: SaveBusinessUnitInput; output: BusinessUnitDto };
   'access.businessUnits.setStatus': { input: SetBusinessUnitStatusInput; output: BusinessUnitDto };
-  /** Daftar BU ringkas untuk pemilih; izin `item: view` (user tanpa `access: view`). */
+  'access.businessUnits.setStatusBatch': {
+    input: StatusBatchInput;
+    output: BatchResult<BusinessUnitDto>;
+  };
+  'access.businessUnits.remove': { input: GetBusinessUnitInput; output: RemoveResult };
+  'access.businessUnits.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'access.businessUnits.restore': { input: GetBusinessUnitInput; output: BusinessUnitDto };
+  'access.businessUnits.restoreBatch': {
+    input: IdBatchInput;
+    output: BatchResult<BusinessUnitDto>;
+  };
+  /** Daftar BU ringkas untuk pemilih; izin `item: view` (user tanpa `access: view`). BU terhapus ikut, bertanda `deleted`. */
   'businessUnits.options': { input: null; output: BusinessUnitOptionDto[] };
   'files.upload': { input: UploadFileInput; output: FileDto };
   'files.get': { input: GetFileInput; output: FileContentDto };
@@ -1186,27 +1444,63 @@ export interface ApiContract {
   'stickerGuides.upload': { input: UploadStickerGuideInput; output: StickerGuideDto };
   'stickerGuides.rename': { input: RenameStickerGuideInput; output: StickerGuideDto };
   'stickerGuides.remove': { input: RemoveStickerGuideInput; output: { id: string } };
+  'stickerGuides.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
   'stickerGuides.thumbnail': { input: GetStickerGuideThumbInput; output: FileContentDto };
   'stickerGuides.usages': { input: ListGuideUsagesInput; output: GuideUsageDto[] };
-  'brands.list': { input: null; output: BrandDto[] };
+  'brands.list': { input: ListBrandsInput | null; output: BrandDto[] };
+  /** Merk terhapus hanya bagi `item: manage`; selain itu `NOT_FOUND`. */
+  'brands.get': { input: GetBrandInput; output: BrandDto };
   'brands.save': { input: SaveBrandInput; output: BrandDto };
   'brands.setStatus': { input: SetBrandStatusInput; output: BrandDto };
-  'stickerTypes.list': { input: null; output: StickerTypeDto[] };
+  /** Batch atomik (maks. `BATCH_MAX` id): satu gagal = tidak ada yang berubah; status sama = bukan galat. */
+  'brands.setStatusBatch': { input: StatusBatchInput; output: BatchResult<BrandDto> };
+  /** Hapus lunak: hanya merk Nonaktif; hapus ulang = sukses tanpa audit. */
+  'brands.remove': { input: GetBrandInput; output: RemoveResult };
+  'brands.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  /** Pulihkan: kembali Nonaktif. */
+  'brands.restore': { input: GetBrandInput; output: BrandDto };
+  'brands.restoreBatch': { input: IdBatchInput; output: BatchResult<BrandDto> };
+  'stickerTypes.list': { input: ListStickerTypesInput | null; output: StickerTypeDto[] };
+  'stickerTypes.get': { input: GetStickerTypeInput; output: StickerTypeDto };
   'stickerTypes.save': { input: SaveStickerTypeInput; output: StickerTypeDto };
   'stickerTypes.setStatus': { input: SetStickerTypeStatusInput; output: StickerTypeDto };
+  'stickerTypes.setStatusBatch': { input: StatusBatchInput; output: BatchResult<StickerTypeDto> };
+  'stickerTypes.remove': { input: GetStickerTypeInput; output: RemoveResult };
+  'stickerTypes.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'stickerTypes.restoreBatch': { input: IdBatchInput; output: BatchResult<StickerTypeDto> };
+  'stickerTypes.restore': { input: GetStickerTypeInput; output: StickerTypeDto };
   'stickerSettings.get': { input: null; output: StickerSettingsDto };
   'stickerSettings.save': { input: SaveStickerSettingsInput; output: StickerSettingsDto };
-  'stickers.list': { input: null; output: StickerDto[] };
+  'stickers.list': { input: ListStickersInput | null; output: StickerDto[] };
+  'stickers.get': { input: GetStickerInput; output: StickerDto };
   'stickers.save': { input: SaveStickerInput; output: StickerDto };
   'stickers.setStatus': { input: SetStickerStatusInput; output: StickerDto };
+  'stickers.setStatusBatch': { input: StatusBatchInput; output: BatchResult<StickerDto> };
+  'stickers.remove': { input: GetStickerInput; output: RemoveResult };
+  'stickers.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'stickers.restoreBatch': { input: IdBatchInput; output: BatchResult<StickerDto> };
+  'stickers.restore': { input: GetStickerInput; output: StickerDto };
   'stickerStock.list': { input: ListStickerStockInput; output: StickerStockDto[] };
   'stickerStock.record': { input: RecordStockInput; output: StockEntryDto };
   'stickerStock.adjust': { input: AdjustStockInput; output: StockEntryDto };
+  /** Atomik, 1..100 baris; hasil urut masukan (satu entri per baris). */
+  'stickerStock.recordBatch': { input: RecordStockBatchInput; output: StockEntryDto[] };
+  /** Atomik, 1..100 baris; hasil urut masukan (satu entri per baris). */
+  'stickerStock.adjustBatch': { input: AdjustStockBatchInput; output: StockEntryDto[] };
   'stickerStock.opname': { input: OpnameInput; output: StockEntryDto[] };
   'stickerStock.history': { input: StockHistoryInput; output: StockHistoryPageDto };
-  'customers.list': { input: null; output: CustomerDto[] };
+  'customers.list': { input: ListCustomersInput | null; output: CustomerDto[] };
+  /** Customer terhapus hanya bagi `item: manage`; selain itu `NOT_FOUND`. */
+  'customers.get': { input: GetCustomerInput; output: CustomerDto };
   'customers.rename': { input: RenameCustomerInput; output: CustomerDto };
   'customers.setStatus': { input: SetCustomerStatusInput; output: CustomerDto };
+  'customers.setStatusBatch': { input: StatusBatchInput; output: BatchResult<CustomerDto> };
+  /** Hapus lunak: hanya customer Nonaktif; hapus ulang = sukses tanpa audit. */
+  'customers.remove': { input: GetCustomerInput; output: RemoveResult };
+  'customers.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  /** Pulihkan: kembali Nonaktif. */
+  'customers.restore': { input: GetCustomerInput; output: CustomerDto };
+  'customers.restoreBatch': { input: IdBatchInput; output: BatchResult<CustomerDto> };
   'handovers.options': { input: ListHandoversInput; output: HandoverOptionsDto };
   'handovers.board': { input: BoardPageInput; output: BoardPageDto };
   'handovers.get': { input: GetHandoverInput; output: HandoverDto };
@@ -1217,30 +1511,55 @@ export interface ApiContract {
   'handovers.reopen': { input: HandoverRefInput; output: HandoverDto };
   'handovers.setCheck': { input: SetCheckInput; output: HandoverDto };
   'handovers.setDone': { input: SetDoneInput; output: HandoverDto };
+  'handovers.remove': { input: HandoverRefInput; output: RemoveResult };
+  'handovers.restore': { input: HandoverRefInput; output: HandoverDto };
   'handovers.comment': { input: AddCommentInput; output: HandoverDto };
   'items.list': { input: ListItemsPageInput; output: ItemPageDto };
   'items.get': { input: GetItemInput; output: ItemDto };
   'items.save': { input: SaveItemInput; output: ItemDto };
   'items.setStatus': { input: SetItemStatusInput; output: ItemDto };
-  'qrcodes.list': { input: null; output: QrDesignDto[] };
+  /** Batch atomik (maks. `BATCH_MAX` id): `manage` pada SEMUA BU tiap item; di luar hak = seluruh permintaan `NOT_FOUND`. */
+  'items.setStatusBatch': { input: StatusBatchInput; output: BatchResult<ItemDto> };
+  /** Hapus lunak: hanya item Nonaktif; hapus ulang = sukses tanpa audit. */
+  'items.remove': { input: GetItemInput; output: RemoveResult };
+  'items.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  /** Pulihkan: kembali Nonaktif; ditolak generik bila merk+tipe/nama lainnya kini dipakai item hidup. */
+  'items.restore': { input: GetItemInput; output: ItemDto };
+  'items.restoreBatch': { input: IdBatchInput; output: BatchResult<ItemDto> };
+  /** Konfigurasi terhapus hanya bagi `qrcode: manage` (`status=deleted`; selain itu `FORBIDDEN`). */
+  'qrcodes.list': { input: ListQrDesignsInput | null; output: QrDesignDto[] };
   'qrcodes.get': { input: QrDesignRefInput; output: QrDesignDto };
   'qrcodes.versions': { input: QrDesignRefInput; output: QrVersionDto[] };
   'qrcodes.save': { input: SaveQrDesignInput; output: QrDesignDto };
+  /** Hapus lunak (id dan bentuk lama tetap; perilaku beralih dari hapus keras). */
   'qrcodes.delete': { input: QrDesignRefInput; output: QrDesignRefInput };
-  'qrcodes.getDefaults': { input: null; output: QrDefaultsDto };
+  'qrcodes.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'qrcodes.restore': { input: QrDesignRefInput; output: QrDesignDto };
+  'qrcodes.restoreBatch': { input: IdBatchInput; output: BatchResult<QrDesignDto> };
+  'qrcodes.getDefaults': { input: GetQrDefaultsInput | null; output: QrDefaultsDto };
+  /** Preset terhapus hanya bagi `qrcode: manage`; selain itu `NOT_FOUND`. */
+  'qrcodes.getPreset': { input: QrDesignRefInput; output: QrPresetDto };
   'qrcodes.itemOptions': { input: ListQrItemOptionsInput; output: QrItemOptionsPageDto };
   'qrcodes.savePreset': { input: SaveQrPresetInput; output: QrPresetDto };
   'qrcodes.clonePreset': { input: ClonePresetInput; output: QrPresetDto };
   'qrcodes.deletePreset': { input: QrDesignRefInput; output: QrDesignRefInput };
+  'qrcodes.removePresetBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'qrcodes.restorePreset': { input: QrDesignRefInput; output: QrPresetDto };
+  'qrcodes.restorePresetBatch': { input: IdBatchInput; output: BatchResult<QrPresetDto> };
   'qrcodes.saveLogoLibrary': { input: SaveQrLogoLibraryInput; output: QrLogoLibraryDto };
   'qrcodes.uploadPdf': { input: UploadQrPdfInput; output: QrDocumentDto };
   'qrcodes.cloneFromDrive': { input: CloneQrPdfInput; output: QrDocumentDto };
   'qrcodes.export': { input: ExportQrDesignInput; output: ExportQrJobDto };
   'qrcodes.file': { input: QrFileInput; output: QrFileDto };
-  'postels.list': { input: null; output: PostelListDto };
+  /** Catatan terhapus hanya bagi `sticker: edit` (`status=deleted`; selain itu `FORBIDDEN`). */
+  'postels.list': { input: ListPostelsInput | null; output: PostelListDto };
   'postels.get': { input: GetPostelInput; output: PostelDto };
   'postels.save': { input: SavePostelInput; output: PostelDto };
+  /** Hapus lunak (id dan bentuk lama tetap; perilaku beralih dari hapus keras). */
   'postels.remove': { input: RemovePostelInput; output: null };
+  'postels.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'postels.restore': { input: GetPostelInput; output: PostelDto };
+  'postels.restoreBatch': { input: IdBatchInput; output: BatchResult<PostelDto> };
   'postels.history': { input: ListPostelHistoryInput; output: AuditCursorPageDto };
   'postelSettings.get': { input: null; output: PostelSettingsDto };
   'postelSettings.save': { input: SavePostelSettingsInput; output: PostelSettingsDto };
@@ -1256,6 +1575,10 @@ export interface ApiContract {
   'serials.saveBatch': { input: SaveSerialBatchInput; output: SaveSerialBatchOutput };
   'serials.get': { input: GetSerialInput; output: GetSerialOutput };
   'serials.list': { input: SerialListInput; output: SerialListOutput };
+  'serials.remove': { input: GetSerialInput; output: RemoveResult };
+  'serials.removeBatch': { input: IdBatchInput; output: RemoveBatchResult };
+  'serials.restore': { input: GetSerialInput; output: SerialDto };
+  'serials.restoreBatch': { input: IdBatchInput; output: BatchResult<SerialDto> };
   'serials.update': { input: UpdateSerialInput; output: SerialDto };
   'serials.updateBatch': { input: UpdateSerialBatchInput; output: UpdateSerialBatchOutput };
   'serials.act': { input: SerialActInput; output: SerialDto };
@@ -1309,6 +1632,13 @@ export interface BoardPageInput {
   cursor?: string;
   /** Bawaan 20, maksimum 50; klien memuat lanjutan lewat kursor. */
   limit?: number;
+  /** Hanya task milik customer ini (keputusan pemilik 2026-11-21); hak lokasi pemanggil tetap berlaku. */
+  customerId?: string;
+  /**
+   * `true` = kolom berisi task TERHAPUS (dikelompokkan menurut status kolomnya), hanya dari lokasi tempat pemanggil
+   * memegang `handover: manage`; selain itu `FORBIDDEN`. Bawaan: hanya task hidup.
+   */
+  deleted?: boolean;
 }
 
 export interface BoardPageDto {
@@ -1324,7 +1654,11 @@ export interface ListItemsPageInput {
   limit?: number;
   /** Pencarian kunci (awalan/substring), opsional. */
   query?: string;
-  status?: ItemStatus;
+  /**
+   * Bawaan = item hidup (aktif + nonaktif; `all` sama). `deleted` = hanya item terhapus, hanya bagi pemegang
+   * `item: manage` pada minimal satu BU (selain itu `FORBIDDEN`) dan terbatas pada BU ber-`manage` itu.
+   */
+  status?: ListStatusFilter;
   /** `none` = hanya item tanpa instruksi stiker. */
   instruction?: 'none';
   /** Filter item menurut penanda ke stiker tertentu (bersama `stickerMode`). */
@@ -1336,6 +1670,10 @@ export interface ListItemsPageInput {
   manualBook?: 'has' | 'missing';
   /** `has` = hanya item ber-Postel; `missing` = hanya yang belum (definisi sama dengan `hasPostel`). */
   postel?: 'has' | 'missing';
+  /** Hanya item bermerk ini (satu id). Merk terhapus tetap sah sebagai filter (tautan jumlah item dari View merk). */
+  brandId?: string;
+  /** Hanya item yang tergabung di BU ini (satu id); tetap dibatasi BU yang boleh dilihat pemanggil. */
+  buId?: string;
 }
 
 export interface ItemPageDto {
@@ -1511,6 +1849,13 @@ export interface SerialSummaryDto {
   /** Jumlah foto bukti QC entri serial ini yang `failed` (0 = tak ada; bahan badge "Foto bermasalah"). */
   proofProblemCount: number;
   createdAt: string;
+  /** Ada hanya pada serial terhapus (soft delete), hanya bagi pemegang hak Pulihkan; jejak penghapusan. */
+  deleted?: SoftDeleteInfo;
+  /**
+   * Hanya pada daftar (`serials.list`): pemanggil boleh Hapus/Pulihkan serial ini (`serial: manage` pada SEMUA BU
+   * riwayatnya, dihitung server). Isyarat tampilan; server tetap berwenang.
+   */
+  canManage?: boolean;
 }
 /** Laporan rusak (`serial_cases`): satu episode kegagalan. */
 export interface SerialCaseDto {
@@ -1603,6 +1948,12 @@ export interface SerialListInput {
   from?: string;
   to?: string;
   createdBy?: string;
+  /**
+   * `true` = hanya serial TERHAPUS (soft delete), terbatas pada serial yang boleh dipulihkan pemanggil (`serial: manage`
+   * pada semua BU dalam riwayatnya); tanpa BU ber-`manage` = `FORBIDDEN`. Bawaan: hanya serial hidup. Kunci terpisah
+   * dari `status` (status alur serial) agar kontrak lama tak berubah arti.
+   */
+  deleted?: boolean;
   cursor?: string;
   limit?: number;
 }

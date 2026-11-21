@@ -39,7 +39,9 @@ export function InstallIosDialog({
         </ol>
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">Tutup</Button>
+            <Button variant="outline" color="primary">
+              Tutup
+            </Button>
           </DialogClose>
         </DialogFooter>
       </DialogContent>

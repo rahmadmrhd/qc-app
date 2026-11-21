@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { notificationTick, startNotificationLoop } from '@server/jobs/runner';
 import { createFakePush, type FakePush } from '@server-test/fake-push';
-import { callRest, ENV, seedHandoverEnv } from '@server-test/handover-env';
+import { callRest, ENV, seedHandover, seedHandoverEnv } from '@server-test/handover-env';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
   deliverPendingPushes,
@@ -112,6 +112,30 @@ describe('deliverPendingPushes', () => {
     // Sudah ditandai: putaran berikutnya tak mengirim ulang.
     expect(await deliverPendingPushes(env)).toBe(0);
     expect(push.sent).toHaveLength(2);
+  });
+
+  test('notifikasi task terhapus dilewati (skipped) tanpa kirim; task hidup lain tetap terkirim', async () => {
+    await seedHandover(env, { id: 'h1', number: 'ST-20261015-001', locationId: ENV.locA });
+    await seedHandover(env, { id: 'h2', number: 'ST-20261015-002', locationId: ENV.locA });
+    await subscribe(VIEWER, 'a');
+    await insert(
+      note(),
+      note({
+        handoverId: 'h2',
+        number: 'ST-20261015-002',
+        createdAt: new Date(NOW + 1).toISOString(),
+      }),
+    );
+    const removed = (await callRest(env, 'wh@gmail.com', 'handovers.remove', {
+      id: 'h1',
+      locationId: ENV.locA,
+    })) as { ok: boolean };
+    expect(removed.ok).toBe(true);
+    expect(await deliverPendingPushes(env)).toBe(1);
+    expect(push.sent).toHaveLength(1);
+    expect((JSON.parse(push.sent[0]?.payload ?? '{}') as { tag: string }).tag).toBe('commented:h2');
+    // Urut created_at: h1 (terhapus) dilewati, h2 terkirim.
+    expect(await states()).toEqual(['skipped', 'sent']);
   });
 
   test('muatan: judul, body (nomor - customer + cuplikan isi), url, tag; tanpa kolom lain', async () => {

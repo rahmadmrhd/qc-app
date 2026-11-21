@@ -191,11 +191,12 @@ const SCENARIOS: Scenario[] = [
     swThrows: false,
   },
   {
+    // Task tujuan sudah dihapus (fase 4d): alasan tetap, apa pun isi pesan server (halaman dan service worker sama).
     name: 'NOT_FOUND problem+json tanpa detail dan title',
     respond: problem(404, { code: 'NOT_FOUND' }),
     kinds: ALL_KINDS,
     expectEntry: 'rejected',
-    expectReason: 'Terjadi kesalahan pada server',
+    expectReason: 'Task sudah dihapus',
     swThrows: false,
   },
   {
@@ -232,11 +233,19 @@ const SCENARIOS: Scenario[] = [
     swThrows: false,
   },
   {
-    name: 'detail null dan title angka (jatuh ke teks bawaan)',
+    name: 'NOT_FOUND dengan detail server: tetap alasan tetap "Task sudah dihapus"',
+    respond: problem(404, { code: 'NOT_FOUND', detail: 'Task tidak ditemukan' }),
+    kinds: ALL_KINDS,
+    expectEntry: 'rejected',
+    expectReason: 'Task sudah dihapus',
+    swThrows: false,
+  },
+  {
+    name: 'NOT_FOUND dengan detail null dan title angka',
     respond: problem(404, { code: 'NOT_FOUND', detail: null, title: 7 }),
     kinds: ALL_KINDS,
     expectEntry: 'rejected',
-    expectReason: 'Terjadi kesalahan pada server',
+    expectReason: 'Task sudah dihapus',
     swThrows: false,
   },
   {

@@ -120,13 +120,4 @@ export function formatDay(value: string): string {
   return date.toLocaleDateString('id-ID', { dateStyle: 'medium', timeZone: 'UTC' });
 }
 
-/** Waktu server (ISO) dalam WIB, mis. "12 Nov 2026 14.05". */
-export function formatStamp(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso || '—';
-  return date.toLocaleString('id-ID', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Jakarta',
-  });
-}
+export { formatStamp } from '@/lib/format-stamp';

@@ -174,6 +174,8 @@ export function validateRemoveGuide(raw: unknown): RemoveStickerGuideInput {
   return { id };
 }
 
+export { validateIdBatch as validateRemoveGuideBatch } from '@server/core/soft-delete';
+
 export function validateListGuideUsages(raw: unknown): ListGuideUsagesInput {
   const reader = readObject(raw);
   const id = reader.str('id', { required: true, max: 100 });

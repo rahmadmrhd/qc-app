@@ -213,6 +213,24 @@ test('penolakan server: toast alasan unik digabung dan papan dimuat ulang', asyn
   expect(readOutbox(OWNER)).toEqual([]);
 });
 
+test('centang luring ke task yang kemudian dihapus (NOT_FOUND): satu toast "Task sudah dihapus", antrean bersih, papan dimuat ulang', async () => {
+  const invalidate = vi.spyOn(client, 'invalidateQueries');
+  mocks.api.mockRejectedValue(new ApiError('NOT_FOUND', 'Task tidak ditemukan', '-'));
+  await queue(0);
+  await queue(1);
+  stop = startOutboxSync(client);
+  await settle();
+  // Dua centang untuk task yang sama menjadi SATU toast; alasan tetap, bukan pesan mentah server.
+  const centangToasts = mocks.error.mock.calls.filter(([message]) =>
+    String(message).includes('perubahan centang'),
+  );
+  expect(centangToasts).toEqual([['2 perubahan centang tidak dapat dikirim: Task sudah dihapus']]);
+  expect(readOutbox(OWNER)).toEqual([]);
+  expect(await readOutboxRecords()).toEqual([]);
+  // Penolakan memuat ulang papan: task terhapus tak lagi tampil.
+  expect(invalidate).toHaveBeenCalledWith({ queryKey: handoverKeys.all });
+});
+
 test('entri kedaluwarsa: toast dan dibuang tanpa dikirim', async () => {
   await queue(0, { at: Date.now() - OUTBOX_MAX_AGE_MS - 1 });
   stop = startOutboxSync(client);

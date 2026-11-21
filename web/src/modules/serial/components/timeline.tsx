@@ -159,14 +159,16 @@ function EventCard({
               <span className="font-normal text-muted-foreground"> di {location}</span>
             ) : null}
             {showLatestBadge ? (
-              <Badge variant="secondary" className="ml-2 align-middle">
+              <Badge variant="soft" color="secondary" className="ml-2 align-middle">
                 Terbaru
               </Badge>
             ) : null}
           </p>
           <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>{event.actorName}</span>
-            <Badge variant="outline">{TEAM_LABEL[event.actorTeam]}</Badge>
+            <Badge variant="outline" color="primary">
+              {TEAM_LABEL[event.actorTeam]}
+            </Badge>
             {hasProof ? <ProofBadge /> : null}
             <ProofProblemBadge count={proofProblems} />
           </p>
@@ -200,7 +202,7 @@ function EventCard({
         <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Perubahan">
           {event.changes.map((change) => (
             <li key={`${change.field}|${change.from}|${change.to}`}>
-              <Badge variant="secondary" className="h-auto whitespace-normal py-0.5">
+              <Badge variant="soft" color="secondary" className="h-auto whitespace-normal py-0.5">
                 {`${FIELD_LABEL[change.field] ?? change.field}: ${show(shownChange(change.field, change.from))} → ${show(shownChange(change.field, change.to))}`}
               </Badge>
             </li>
@@ -232,6 +234,7 @@ function GroupToggle({
       <Button
         type="button"
         variant="ghost"
+        color="primary"
         size="sm"
         className="w-full justify-start gap-1.5 text-muted-foreground"
         aria-expanded={open}

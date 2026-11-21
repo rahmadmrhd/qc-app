@@ -56,13 +56,16 @@ function renderForm(over: Partial<Parameters<typeof PostelForm>[0]> = {}) {
     soonDays: 90,
     today: TODAY,
     onSubmit: vi.fn().mockResolvedValue(null),
-    onCancel: vi.fn(),
     ...over,
   };
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <PostelForm {...props} />
+      <PostelForm formId="postel-form" {...props} />
+      {/* Tombol Simpan sebenarnya ada di bar `FormPage`, di luar form dan men-submit lewat `form=`. */}
+      <button type="submit" form="postel-form">
+        Simpan
+      </button>
     </QueryClientProvider>,
   );
   return props;
@@ -71,7 +74,10 @@ function renderForm(over: Partial<Parameters<typeof PostelForm>[0]> = {}) {
 const setDate = (label: string, value: string) =>
   fireEvent.change(screen.getByLabelText(label), { target: { value } });
 
+const openTab = (name: string) => userEvent.click(screen.getByRole('tab', { name }));
+
 async function fillNewRow(number = 'AB-1', date = '2027-06-01') {
+  await openTab('Nomor sertifikat');
   await userEvent.type(screen.getByLabelText('Nomor sertifikat 1'), number);
   setDate('Tanggal habis 1', date);
 }
@@ -96,9 +102,15 @@ beforeEach(() => {
   );
 });
 
-test('mode tambah: satu baris nomor kosong dan judul Tambah Postel', () => {
+test('mode tambah: tiga tab (Item dibuka lebih dulu) dan satu baris nomor kosong', async () => {
   renderForm();
-  expect(screen.getByRole('heading', { level: 1, name: 'Tambah Postel' })).toBeInTheDocument();
+  expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+    'Item',
+    'Nomor sertifikat',
+    'Catatan dan lampiran',
+  ]);
+  expect(screen.getByRole('tab', { name: 'Item' })).toHaveAttribute('aria-selected', 'true');
+  await openTab('Nomor sertifikat');
   expect(screen.getAllByRole('row').slice(1)).toHaveLength(1);
 });
 
@@ -122,6 +134,7 @@ test('hiddenCount > 0 membolehkan daftar item kosong', async () => {
 test('nomor kosong menolak', async () => {
   const props = renderForm();
   await pickItem(/PBE M5-400/);
+  await openTab('Nomor sertifikat');
   setDate('Tanggal habis 1', '2027-06-01');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(await screen.findByText(/Nomor 1: nomor sertifikat wajib diisi/)).toBeInTheDocument();
@@ -157,6 +170,7 @@ test('kirim sah (tambah) menghasilkan SavePostelInput tepat', async () => {
   await pickItem(/PBE M5-400/);
   await fillNewRow('  AB-1 ', '2027-06-01');
   await userEvent.type(screen.getByLabelText('Tautan 1'), 'https://x.example');
+  await openTab('Catatan dan lampiran');
   await userEvent.type(screen.getByLabelText('Catatan'), ' simpan di laci ');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   await waitFor(() => expect(props.onSubmit).toHaveBeenCalledTimes(1));
@@ -170,11 +184,12 @@ test('kirim sah (tambah) menghasilkan SavePostelInput tepat', async () => {
 
 test('mode ubah: id nomor tersimpan dibawa, nomor baru tanpa id, lampiran urut, expectedUpdatedAt', async () => {
   const props = renderForm({ postel: existing });
-  expect(screen.getByRole('heading', { level: 1, name: /Ubah Postel/ })).toBeInTheDocument();
+  await openTab('Nomor sertifikat');
   await userEvent.click(screen.getByRole('button', { name: 'Tambah nomor' }));
   await userEvent.type(screen.getByLabelText('Nomor sertifikat 3'), 'NEW-3');
   setDate('Tanggal habis 3', '2028-01-01');
   // hapus lampiran pertama lalu pastikan sisanya tetap berurutan
+  await openTab('Catatan dan lampiran');
   await userEvent.click(screen.getByRole('button', { name: /^Buang lampiran-aaaaaaaa\.pdf/ }));
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   await waitFor(() => expect(props.onSubmit).toHaveBeenCalledTimes(1));
@@ -215,6 +230,7 @@ test('galat server per field tampil pada field terkait dan hilang saat field dik
   expect(screen.getByText('Nomor 2: nomor sertifikat kembar')).toBeInTheDocument();
   expect(screen.getByLabelText('Nomor sertifikat 2')).toHaveAttribute('aria-invalid', 'true');
   expect(screen.getByText('Lampiran tidak dikenal')).toBeInTheDocument();
+  await openTab('Nomor sertifikat');
   await userEvent.type(screen.getByLabelText('Nomor sertifikat 2'), 'x');
   expect(screen.queryByText('Nomor 2: nomor sertifikat kembar')).not.toBeInTheDocument();
 });
@@ -224,16 +240,62 @@ test('konflik nomor kembar server (field number) tampil di bawah tabel nomor', (
   expect(screen.getByText('Nomor sertifikat sudah dipakai')).toBeInTheDocument();
 });
 
-test('Batal memanggil onCancel', async () => {
-  const props = renderForm();
-  await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
-  expect(props.onCancel).toHaveBeenCalledTimes(1);
-});
-
 test('hanya satu baris Hapus lampiran memengaruhi lampiran, bukan nomor', async () => {
   renderForm({ postel: existing });
+  await openTab('Catatan dan lampiran');
   const section = screen
     .getByRole('heading', { name: 'Lampiran' })
     .closest('section') as HTMLElement;
   expect(within(section).getAllByRole('listitem')).toHaveLength(2);
+});
+
+test('Item dan nomor wajib (aria-required); Catatan opsional', () => {
+  renderForm();
+  expect(screen.getByRole('combobox', { name: 'Item' })).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('Nomor sertifikat 1')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('Tanggal habis 1')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('Tautan 1')).not.toHaveAttribute('aria-required');
+  expect(screen.getByLabelText('Catatan')).not.toHaveAttribute('aria-required');
+});
+
+const errorDot = (name: string) =>
+  screen.getByRole('tab', { name }).querySelector('[data-slot="tab-error-dot"]');
+
+test('simpan gagal validasi: tab bergalat pertama terbuka dan bertitik galat, tab lain bersih', async () => {
+  const props = renderForm();
+  await fillNewRow();
+  expect(screen.getByRole('tab', { name: 'Nomor sertifikat' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await waitFor(() =>
+    expect(screen.getByRole('tab', { name: 'Item' })).toHaveAttribute('aria-selected', 'true'),
+  );
+  expect(errorDot('Item')).not.toBeNull();
+  expect(errorDot('Nomor sertifikat')).toBeNull();
+  expect(errorDot('Catatan dan lampiran')).toBeNull();
+  expect(props.onSubmit).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['itemIds', 'Item'],
+  ['numbers', 'Nomor sertifikat'],
+  ['number', 'Nomor sertifikat'],
+  ['note', 'Catatan dan lampiran'],
+  ['attachmentIds', 'Catatan dan lampiran'],
+] as const)('galat server pada %s membuka dan menandai tab %s', async (key, tab) => {
+  renderForm({ postel: existing, fieldErrors: { [key]: 'Galat dari server' } });
+  await waitFor(() =>
+    expect(screen.getByRole('tab', { name: tab })).toHaveAttribute('aria-selected', 'true'),
+  );
+  expect(errorDot(tab)).not.toBeNull();
+});
+
+test('keadaan form dilaporkan lewat onUiState (tidak menyimpan, tidak terblokir)', async () => {
+  const onUiState = vi.fn();
+  renderForm({ onUiState });
+  await waitFor(() =>
+    expect(onUiState).toHaveBeenLastCalledWith({ submitting: false, blocked: false }),
+  );
 });

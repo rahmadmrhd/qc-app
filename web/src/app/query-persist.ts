@@ -13,7 +13,7 @@ const SAVE_DELAY_MS = 1500;
 
 /**
  * Hanya query berikut yang disimpan: data referensi non-sensitif yang sering dibuka. TIDAK termasuk Log Audit, daftar
- * user, atau isi berkas. Daftar item tidak ikut: berkursor per filter dan murah dimuat (20 per halaman). Kuncinya `root/sub` dari queryKey.
+ * user, atau isi berkas. Daftar item tidak ikut: berkursor per filter dan murah dimuat (20 per halaman). Kuncinya `root/sub` dari dua bagian pertama queryKey (varian filter ikut, kecuali status `deleted`).
  */
 const PERSISTED_KEYS: ReadonlySet<string> = new Set([
   'auth/me',
@@ -42,9 +42,35 @@ function keyId(key: readonly unknown[]): string {
   return key.map(String).join('/');
 }
 
+/** Apakah `value` (kunci, objek filter, atau larik, di kedalaman berapa pun) menyebut status `deleted`. */
+function mentionsDeleted(value: unknown, depth = 0): boolean {
+  if (value === 'deleted') return true;
+  if (depth > 4 || typeof value !== 'object' || value === null) return false;
+  const parts = Array.isArray(value) ? value : Object.values(value);
+  return parts.some((part) => mentionsDeleted(part, depth + 1));
+}
+
+/**
+ * Query daftar yang disaring ke record terhapus (soft delete, T21) tidak pernah disimpan: ia memuat data yang hanya
+ * boleh dilihat pemegang izin Pulihkan dan tak boleh muncul sebagai data referensi tersimpan. Dikenali dari nilai
+ * `'deleted'` di bagian kunci mana pun, termasuk di dalam objek filter atau larik bersarang.
+ */
+function filtersDeleted(key: readonly unknown[]): boolean {
+  return mentionsDeleted(key);
+}
+
+/**
+ * Whitelist dinilai dari dua bagian pertama kunci (`root/sub`): KEPUTUSAN IMPLEMENTASI (bukan keputusan pemilik; tidak bertentangan dengan spek, yang hanya melarang daftar Terhapus) agar daftar yang kelak berkunci
+ * `['brands', 'list', { status }]` tetap tersimpan untuk filter Aktif/Nonaktif/Semua; varian `deleted` selalu
+ * dikecualikan. Log Audit, user, dan isi berkas tetap di luar whitelist.
+ */
+function isPersistable(key: readonly unknown[]): boolean {
+  return !filtersDeleted(key) && PERSISTED_KEYS.has(keyId(key.slice(0, 2)));
+}
+
 /** Apakah query dengan kunci ini termasuk data referensi yang disimpan (dipakai spanduk status server, FR-P16). */
 export function isPersistedQueryKey(key: readonly unknown[]): boolean {
-  return PERSISTED_KEYS.has(keyId(key));
+  return isPersistable(key);
 }
 
 /** Memasang cache tersimpan (stale-while-revalidate: tampil instan, lalu dimuat ulang di latar belakang bila basi). */
@@ -66,7 +92,7 @@ export function restoreQueryCache(queryClient: QueryClient, owner: string | null
     }
     let restored = 0;
     for (const entry of saved.entries) {
-      if (!PERSISTED_KEYS.has(keyId(entry.key))) continue;
+      if (!isPersistable(entry.key)) continue;
       queryClient.setQueryData(entry.key, entry.data, { updatedAt: entry.updatedAt });
       restored++;
     }
@@ -81,7 +107,7 @@ export function savePersistedQueryCache(queryClient: QueryClient): void {
   if (!owner) return;
   const entries: PersistedEntry[] = [];
   for (const query of queryClient.getQueryCache().findAll()) {
-    if (query.state.status !== 'success' || !PERSISTED_KEYS.has(keyId(query.queryKey))) continue;
+    if (query.state.status !== 'success' || !isPersistable(query.queryKey)) continue;
     entries.push({
       key: [...query.queryKey],
       data: query.state.data,

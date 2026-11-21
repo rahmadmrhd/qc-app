@@ -32,6 +32,7 @@ vi.mock('@tanstack/react-router', async () => {
   }
   return {
     Outlet,
+    useMatches: () => [],
     useNavigate: () => vi.fn(),
     useRouterState: ({ select }: { select: (s: { location: { pathname: string } }) => unknown }) =>
       select({ location: { pathname: state.pathname } }),
@@ -57,7 +58,13 @@ vi.mock('@/modules/guide/lib/use-guide-store', () => ({
   useGuideStore: () => ({ ready: true, done: new Map(), mark: state.mark, reset: vi.fn() }),
 }));
 vi.mock('../prefetch', () => ({ usePrefetchOnIdle: () => undefined }));
-vi.mock('./app-sidebar', () => ({ AppSidebar: stubs.make('sidebar') }));
+vi.mock('./app-sidebar', async () => {
+  const { useSidebar } = await import('@/components/ui/sidebar');
+  return {
+    AppSidebar: () => <div data-testid="sidebar" data-state={useSidebar().state} />,
+  };
+});
+vi.mock('./app-breadcrumb', () => ({ AppBreadcrumb: stubs.make('breadcrumb') }));
 vi.mock('./user-menu', () => ({ UserMenu: stubs.make('user-menu') }));
 vi.mock('@/modules/location/location-picker', () => ({ LocationPicker: stubs.make('picker') }));
 vi.mock('@/modules/notification/notification-bell', () => ({
@@ -76,6 +83,7 @@ vi.mock('@/modules/guide/components/guide-greeting', () => ({
 
 import { registerDemoLoader } from '@/modules/guide/lib/demo-types';
 import { AppShell } from './app-shell';
+import { readSidebarState, SIDEBAR_STORAGE_KEY } from './sidebar-state';
 
 // Dimuat malas (belum pernah dimuat saat tur dimulai), seperti demo Serah Terima yang sebenarnya.
 registerDemoLoader('tip-shell-uji', async () => [
@@ -88,6 +96,7 @@ beforeAll(async () => {
 }, 30_000);
 
 beforeEach(() => {
+  localStorage.clear();
   state.pathname = '/';
   state.mark.mockReset().mockResolvedValue(undefined);
   // SidebarProvider (useIsMobile) membutuhkan matchMedia yang tidak ada di jsdom.
@@ -132,4 +141,41 @@ test('area utama boleh menyusut (min-w-0): tabel lebar menggulir di wadahnya, bu
   render(<AppShell />);
   const inset = document.querySelector('[data-slot="sidebar-inset"]');
   expect(inset?.classList.contains('min-w-0')).toBe(true);
+});
+
+test('sidebar tersimpan terlipat dirender collapsed; SidebarTrigger menyimpan keadaan terbuka', async () => {
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: false, expanded: ['item'] }));
+  render(<AppShell />);
+  expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'collapsed');
+  await userEvent.click(screen.getByRole('button', { name: /Toggle Sidebar/i }));
+  expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'expanded');
+  expect(readSidebarState()).toEqual({ open: true, expanded: ['item'] });
+});
+
+test('tanpa penyimpanan sidebar terbuka dan tidak menulis cookie sidebar_state', () => {
+  render(<AppShell />);
+  expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'expanded');
+  expect(document.cookie).not.toContain('sidebar_state');
+});
+
+test('isi halaman dibungkus PageContainer rata tengah berlebar bawaan', () => {
+  render(<AppShell />);
+  const main = screen.getAllByRole('main').at(-1) as HTMLElement;
+  const container = main.firstElementChild as HTMLElement;
+  expect(container.className).toContain('mx-auto');
+  expect(container.className).toContain('max-w-7xl');
+});
+
+test('butir 41: di ponsel judul ada di header di sebelah tombol menu, tanpa baris breadcrumb dan tanpa tombol tema', () => {
+  window.innerWidth = 360;
+  window.matchMedia = vi.fn(() => ({
+    matches: true,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  })) as unknown as typeof window.matchMedia;
+  const { container } = render(<AppShell />);
+  expect(container.querySelector('[data-slot="phone-breadcrumb"]')).toBeNull();
+  expect(container.querySelector('header [data-slot="sidebar-trigger"]')).not.toBeNull();
+  expect(container.querySelector('header [aria-label="Ganti tema"]')).toBeNull();
+  window.innerWidth = 1024;
 });

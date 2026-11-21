@@ -6,6 +6,7 @@ import { validateUploadFile } from '@server/modules/files/validate';
 import { bytesOfBase64 } from '@server-test/bytes';
 import { captureAppErrorAsync } from '@server-test/errors';
 import { seedPostel } from '@server-test/postel-fixtures';
+import { seedQrDesign } from '@server-test/qrcode-env';
 import { seedManualBookVersion, seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { ensurePostelType, POSTEL_TYPE_NAME } from './postel';
@@ -239,6 +240,8 @@ describe('stiker Manual Book tetap terkunci', () => {
       rule: 'group',
       systemKind: 'manual_book',
     });
+    // Konfigurasi harus ada dan hidup: pembaca versi terbaru menyaring `qr_designs` (soft delete 4b).
+    await seedQrDesign(env, { id: 'q1' });
     await seedSticker(env, { id: 'mb-1', typeId: 'mb', name: 'PBE v1', status: 'inactive' });
     await seedSticker(env, { id: 'mb-2', typeId: 'mb', name: 'PBE v2' });
     await seedManualBookVersion(env, { stickerId: 'mb-1', designId: 'q1', version: 1 });

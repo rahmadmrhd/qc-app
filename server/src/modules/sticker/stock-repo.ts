@@ -1,5 +1,6 @@
 import { CAS_FAIL_SQL } from '@server/core/cas';
 import type { DbStatement, Preparer } from '@server/core/db';
+import { liveWhere } from '@server/core/soft-delete';
 import type { StockEntryDto } from '@shared/contract';
 import type { StockCount, StockEntryKind } from '@shared/stickers';
 import { STOCK_ENTRY_KINDS } from '@shared/stickers';
@@ -58,14 +59,27 @@ export function parseStockCursor(value: string): { ts: string; id: number } | nu
 
 /**
  * Status stiker dan jenisnya (dibaca sebelum menulis; penjaga CAS di batch tetap menjadi pagar). Stok masuk butuh
- * keduanya aktif.
+ * keduanya aktif. Stiker terhapus tak ditemukan (`NOT_FOUND`); jenis dibaca apa adanya (jenis terhapus selalu
+ * nonaktif, jadi stok masuk ditolak, sedangkan keluar/koreksi stiker hidupnya tetap boleh).
  */
 export function stickerStatusStatement(db: Preparer, stickerId: string): DbStatement {
   return db
     .prepare(
-      'SELECT s.status AS status, t.status AS type_status FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id = ?',
+      `SELECT s.status AS status, t.status AS type_status FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id = ? AND ${liveWhere('s')}`,
     )
     .bind(stickerId);
+}
+
+/**
+ * Status stiker HIDUP dan jenisnya untuk banyak id sekaligus (entri stok batch; satu kueri). Stiker terhapus atau tak
+ * dikenal tidak muncul di hasil. Dibaca sebelum menulis; penjaga CAS di batch tetap menjadi pagar.
+ */
+export function stickersStatusStatement(db: Preparer, ids: readonly string[]): DbStatement {
+  return db
+    .prepare(
+      `SELECT s.id AS id, s.status AS status, t.status AS type_status FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id IN (${ids.map(() => '?').join(',')}) AND ${liveWhere('s')}`,
+    )
+    .bind(...ids);
 }
 
 export function stockQtyStatement(
@@ -108,7 +122,7 @@ export function lockStickerRowStmt(db: Preparer, stickerId: string): DbStatement
 export function stickerNotInactiveGuardStmt(db: Preparer, stickerId: string): DbStatement {
   return db
     .prepare(
-      `SELECT CASE WHEN status <> 'inactive' THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM stickers WHERE id = ?`,
+      `SELECT CASE WHEN status <> 'inactive' AND deleted_at = '' THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok FROM stickers WHERE id = ?`,
     )
     .bind(stickerId);
 }
@@ -177,6 +191,8 @@ export interface EntryInsert {
   /** Hanya untuk entri `serial`: serial dan kejadian yang memotong stok (kolom `serial_id`/`serial_event_id`). */
   serialId?: string;
   serialEventId?: string;
+  /** Kunci idempoten klien entri stok batch (`client_id`, unik); kosong = NULL. */
+  clientId?: string;
 }
 
 /**
@@ -186,7 +202,7 @@ export interface EntryInsert {
 export function insertEntryStmt(db: Preparer, entry: EntryInsert): DbStatement {
   return db
     .prepare(
-      `INSERT INTO sticker_stock_entries (sticker_id, location_id, kind, delta, qty_after, count_json, reason, actor, ts, serial_id, serial_event_id) SELECT ?, ?, ?, ?, qty, ?, ?, ?, ?, ?, ? FROM sticker_stock WHERE sticker_id = ? AND location_id = ?`,
+      `INSERT INTO sticker_stock_entries (sticker_id, location_id, kind, delta, qty_after, count_json, reason, actor, ts, serial_id, serial_event_id, client_id) SELECT ?, ?, ?, ?, qty, ?, ?, ?, ?, ?, ?, ? FROM sticker_stock WHERE sticker_id = ? AND location_id = ?`,
     )
     .bind(
       entry.stickerId,
@@ -199,9 +215,22 @@ export function insertEntryStmt(db: Preparer, entry: EntryInsert): DbStatement {
       entry.ts,
       entry.serialId ?? '',
       entry.serialEventId ?? '',
+      entry.clientId ?? null,
       entry.stickerId,
       entry.locationId,
     );
+}
+
+/** Entri yang sudah tersimpan untuk kumpulan `clientId` (kirim ulang entri stok batch). */
+export function entriesByClientIdsStatement(
+  db: Preparer,
+  clientIds: readonly string[],
+): DbStatement {
+  return db
+    .prepare(
+      `SELECT ${ENTRY_COLUMNS}, client_id FROM sticker_stock_entries WHERE client_id IN (${clientIds.map(() => '?').join(',')})`,
+    )
+    .bind(...clientIds);
 }
 
 export interface SerialDeduction {
@@ -281,10 +310,13 @@ export function stockRowsStatement(db: Preparer, locationIds: readonly string[])
     .bind(...locationIds);
 }
 
-/** Stiker beserta nama jenis (satu kueri bergabung) untuk halaman Stok. */
+/**
+ * Stiker beserta nama jenis (satu kueri bergabung) untuk baris stok pada halaman Stiker: hanya stiker HIDUP yang
+ * jenisnya juga hidup (stiker/jenis terhapus tak tampil di stok).
+ */
 export function stickersWithTypeStatement(db: Preparer): DbStatement {
   return db.prepare(
-    'SELECT s.id, s.name, s.alias, s.min_qty, s.status, t.name AS type_name, t.status AS type_status FROM stickers s JOIN sticker_types t ON t.id = s.type_id',
+    `SELECT s.id, s.name, s.alias, s.min_qty, s.status, t.name AS type_name, t.status AS type_status FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE ${liveWhere('s')} AND ${liveWhere('t')}`,
   );
 }
 
@@ -314,10 +346,12 @@ export function historyStatement(
     .bind(...binds, params.limit + 1);
 }
 
-/** Stiker yang ada menurut id (satu kueri) untuk memeriksa baris opname. */
+/** Stiker HIDUP yang ada menurut id (satu kueri) untuk memeriksa baris opname dan entri batch. */
 export function stickersExistStatement(db: Preparer, ids: readonly string[]): DbStatement {
   return db
-    .prepare(`SELECT id FROM stickers WHERE id IN (${ids.map(() => '?').join(',')})`)
+    .prepare(
+      `SELECT id FROM stickers WHERE id IN (${ids.map(() => '?').join(',')}) AND ${liveWhere()}`,
+    )
     .bind(...ids);
 }
 

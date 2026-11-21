@@ -1,11 +1,15 @@
 import type { OpnameInput } from '@shared/contract';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { createFileRoute, useBlocker, useNavigate } from '@tanstack/react-router';
-import { useCallback, useRef } from 'react';
+import { createFileRoute, useBlocker } from '@tanstack/react-router';
+import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { z } from 'zod';
+import { FormPage } from '@/components/page/form-page';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
+import { leaveBlocker } from '@/lib/leave-blocker';
 import { locationsWith, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
@@ -18,22 +22,34 @@ import {
 import { stickerKeys } from '@/modules/sticker/keys';
 import { stickerStockQuery, useOpname } from '@/modules/sticker/queries';
 
+const searchSchema = z.object({
+  /** Id stiker dari tombol "Stok opname" di View Stiker: hanya mengisi kolom cari awal (mempersempit tampilan). */
+  sticker: z.string().max(100).optional().catch(undefined),
+});
+
+const OPNAME_FORM_ID = 'sticker-opname';
+
 export const Route = createFileRoute('/_app/sticker/opname')({
+  validateSearch: (search: Record<string, unknown>) => searchSchema.parse(search),
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'stickerstock', 'manage'),
   component: StickerOpnameRoute,
+  staticData: { crumb: 'Opname stok', pageWidth: 'narrow', locationAware: true },
 });
 
 const LEAVE_MESSAGE = 'Hitungan opname belum disimpan dan akan hilang. Tetap keluar dari halaman?';
 
 function StickerOpnameRoute() {
   const me = useMe();
+  const { sticker: stickerId } = Route.useSearch();
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
+  const stack = useStackNavigation();
   const { selectedIds } = useActiveLocations();
   // Hanya lokasi terpilih yang boleh dilihat user yang diminta: satu lokasi terlarang menolak seluruh permintaan.
   const readable = locationsWith(me, 'stickerstock', 'view', selectedIds);
   const stock = useQuery(stickerStockQuery(readable.map((location) => location.id)));
   const opname = useOpname();
+  const [busy, setBusy] = useState(false);
+  const [submittable, setSubmittable] = useState(false);
   const dirty = useRef(false);
   // Stabil agar efek di halaman hanya jalan saat status kotor berubah (bukan tiap render, yang dapat menyalakan lagi
   // penanda setelah simpan berhasil dan memicu konfirmasi keluar yang keliru).
@@ -42,11 +58,11 @@ function StickerOpnameRoute() {
   }, []);
   // Hitungan hilang bila halaman ditinggalkan (tautan sidebar, tombol kembali): tanyakan dulu. Menutup tab juga.
   useBlocker({
-    shouldBlockFn: () => dirty.current && !window.confirm(LEAVE_MESSAGE),
+    shouldBlockFn: leaveBlocker(() => dirty.current && !window.confirm(LEAVE_MESSAGE)),
     enableBeforeUnload: () => dirty.current,
   });
 
-  const backToStock = () => void navigate({ to: '/sticker' });
+  const backToStock = () => stack.pop({ to: '/sticker' });
 
   async function handleOpname(input: OpnameInput): Promise<OpnameSaveResult> {
     try {
@@ -77,23 +93,38 @@ function StickerOpnameRoute() {
   if (stock.isPending) return <Skeleton className="h-64 w-full" />;
   if (stock.isError) {
     return (
-      <p role="alert" className="text-sm text-destructive">
+      <p role="alert" className="text-sm text-destructive-text">
         {describeError(stock.error)}
       </p>
     );
   }
 
+  const initialSearch = stickerId
+    ? (stock.data.find((row) => row.stickerId === stickerId)?.name ?? '')
+    : '';
+
   return (
-    <OpnamePage
-      rows={stock.data}
-      onSave={handleOpname}
-      onDirtyChange={setDirty}
-      onDone={() => {
-        // Sudah tersimpan: keluar tanpa konfirmasi.
-        dirty.current = false;
-        backToStock();
-      }}
+    <FormPage
+      formId={OPNAME_FORM_ID}
+      title="Stok opname"
       onCancel={backToStock}
-    />
+      submitting={busy}
+      submitDisabled={!submittable}
+    >
+      <OpnamePage
+        formId={OPNAME_FORM_ID}
+        rows={stock.data}
+        initialSearch={initialSearch}
+        onSave={handleOpname}
+        onDirtyChange={setDirty}
+        onBusyChange={setBusy}
+        onSubmittableChange={setSubmittable}
+        onDone={() => {
+          // Sudah tersimpan: keluar tanpa konfirmasi.
+          dirty.current = false;
+          backToStock();
+        }}
+      />
+    </FormPage>
   );
 }

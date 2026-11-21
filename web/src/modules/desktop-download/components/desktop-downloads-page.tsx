@@ -36,6 +36,7 @@ function ChecksumRow({
       <Button
         type="button"
         variant="outline"
+        color="primary"
         size="sm"
         aria-label={`Salin checksum ${file.arch}`}
         onClick={() => onCopy(key, file.sha512)}
@@ -43,7 +44,7 @@ function ChecksumRow({
         {mine === 'copied' ? 'Tersalin' : 'Salin'}
       </Button>
       {mine === 'failed' ? (
-        <span role="status" className="text-destructive">
+        <span role="status" className="text-destructive-text">
           Tidak bisa menyalin, salin manual
         </span>
       ) : null}

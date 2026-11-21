@@ -2,9 +2,11 @@ import type { ModuleKey } from '@shared/permissions';
 import { MODULE_LABELS, MODULES } from '@shared/permissions';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { MODULE_LINKS } from '@/app/module-links';
+import { Launcher } from '@/app/shell/launcher';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { canAnywhere } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { GuideNotice } from '@/modules/guide/components/guide-notice';
@@ -18,7 +20,11 @@ function ModuleCard({ module }: { module: ModuleKey }) {
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2 text-base">
           {MODULE_LABELS[module]}
-          {to ? null : <Badge variant="secondary">Segera hadir</Badge>}
+          {to ? null : (
+            <Badge variant="soft" color="secondary">
+              Segera hadir
+            </Badge>
+          )}
         </CardTitle>
       </CardHeader>
     </Card>
@@ -28,6 +34,7 @@ function ModuleCard({ module }: { module: ModuleKey }) {
 
 function HomePage() {
   const me = useMe();
+  const phone = useIsMobile();
   const modules = MODULES.filter((module) => canAnywhere(me, module, 'view'));
   return (
     <div className="space-y-6">
@@ -36,7 +43,9 @@ function HomePage() {
         <p className="text-muted-foreground">Pilih modul yang ingin dibuka.</p>
       </div>
       <GuideNotice />
-      {modules.length === 0 ? (
+      {phone && modules.length > 0 ? (
+        <Launcher />
+      ) : modules.length === 0 ? (
         <Alert>
           <AlertDescription>
             Anda belum memiliki akses ke modul apa pun. Hubungi admin.

@@ -3,7 +3,7 @@ import { nowOf } from '@server/core/env';
 import { loadUserContext, type UserContext } from '@server/modules/access/context';
 import { type NotificationDto, pushPayloadOf } from '@shared/notifications';
 import { PUSH_MAX_AGE_MS } from './push';
-import { hasReadAccess } from './recipients';
+import { canReadNotification } from './recipients';
 import { listNotificationsSince } from './repo';
 
 /**
@@ -272,7 +272,13 @@ async function pumpConnection(
     }
     for (const row of sendable) {
       if (now - Date.parse(row.createdAt) > PUSH_MAX_AGE_MS) continue;
-      if (!hasReadAccess(user, row.locationId)) continue;
+      const readable = await canReadNotification(env, user, {
+        kind: row.kind,
+        location_id: row.locationId,
+        serial_id: row.serialId,
+        handover_id: row.handoverId,
+      });
+      if (!readable) continue;
       conn.write(streamEventText(row));
     }
   } catch (error) {

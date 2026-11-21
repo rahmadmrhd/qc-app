@@ -1,5 +1,6 @@
 import { LEVEL_LABELS, levelHint, levelsFor, MODULE_LABELS, MODULES } from '@shared/permissions';
 import { useForm, useStore } from '@tanstack/react-form';
+import { useEffect } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
 import { Button } from '@/components/ui/button';
@@ -10,13 +11,22 @@ import type { RoleFormInput, RoleFormOutput } from '../schemas';
 import { roleFormSchema } from '../schemas';
 
 export interface RoleFormProps {
+  /** Id elemen `<form>`: tombol Simpan ada di luar form (footer dialog) dan memakai `form={formId}`. */
+  formId: string;
   defaultValues: RoleFormInput;
   submitError?: string | null;
   onSubmit: (values: RoleFormOutput) => Promise<unknown>;
-  onCancel: () => void;
+  /** Proses simpan berjalan atau tidak (untuk tombol Simpan di luar form). */
+  onBusyChange?: (busy: boolean) => void;
 }
 
-export function RoleForm({ defaultValues, submitError, onSubmit, onCancel }: RoleFormProps) {
+export function RoleForm({
+  formId,
+  defaultValues,
+  submitError,
+  onSubmit,
+  onBusyChange,
+}: RoleFormProps) {
   const form = useForm({
     defaultValues,
     validators: { onSubmit: roleFormSchema },
@@ -25,22 +35,30 @@ export function RoleForm({ defaultValues, submitError, onSubmit, onCancel }: Rol
     },
   });
   useUnsavedChanges(useStore(form.store, (state) => state.isDirty && !state.isSubmitSuccessful));
+  const submitting = useStore(form.store, (state) => state.isSubmitting);
+  useEffect(() => onBusyChange?.(submitting), [submitting, onBusyChange]);
 
   return (
     <form
+      id={formId}
       noValidate
       className="space-y-4"
       onSubmit={(event) => {
         event.preventDefault();
+        // Dialog ini dapat dibuka dari dalam form lain (Tambah role di form pengguna): submit tidak boleh menjalar.
+        event.stopPropagation();
         void form.handleSubmit();
       }}
     >
       <form.Field name="name">
         {(field) => (
           <div className="space-y-1.5">
-            <Label htmlFor="role-name">Nama role</Label>
+            <Label htmlFor="role-name" required>
+              Nama role
+            </Label>
             <Input
               id="role-name"
+              aria-required="true"
               value={field.state.value}
               onBlur={field.handleBlur}
               onChange={(event) => field.handleChange(event.target.value)}
@@ -85,7 +103,8 @@ export function RoleForm({ defaultValues, submitError, onSubmit, onCancel }: Rol
                           key={level}
                           type="button"
                           size="sm"
-                          variant={active ? 'default' : 'ghost'}
+                          variant={active ? 'solid' : 'ghost'}
+                          color="primary"
                           aria-pressed={active}
                           className="h-8 px-1 text-xs"
                           onClick={() =>
@@ -105,22 +124,12 @@ export function RoleForm({ defaultValues, submitError, onSubmit, onCancel }: Rol
         )}
       </form.Field>
       {submitError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {submitError}
         </p>
       ) : null}
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Batal
-        </Button>
-        <form.Subscribe selector={(state) => state.isSubmitting}>
-          {(isSubmitting) => (
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Menyimpan…' : 'Simpan'}
-            </Button>
-          )}
-        </form.Subscribe>
-      </div>
+      {/* Penerima Enter di kolom isian: tombol Simpan sebenarnya ada di footer dialog (di luar form). */}
+      <button type="submit" hidden tabIndex={-1} aria-hidden />
     </form>
   );
 }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import { API_ROUTES, toRequestParts } from '@shared/api';
+import { BATCH_MAX } from '@shared/batch';
 import type { ApiId, ApiInput } from '@shared/contract';
 import { MARKDOWN_MAX_LENGTH, MAX_IMAGE_BYTES } from '@shared/files';
 import { HANDOVER_LIMITS } from '@shared/handover';
@@ -17,6 +18,8 @@ const WORST_CHAR = String.fromCharCode(1);
 const text = (chars: number) => WORST_CHAR.repeat(chars);
 const UUID = '123e4567-e89b-12d3-a456-426614174000';
 const STAMP = '2026-11-06T00:00:00.000Z';
+/** Batch terbesar yang sah: `BATCH_MAX` id (panjang id maksimum 100). */
+const BATCH_IDS = Array.from({ length: BATCH_MAX }, (_, index) => `${'i'.repeat(90)}-${index}`);
 
 type Inputs = { [M in ApiId]?: ApiInput<M> };
 
@@ -56,6 +59,17 @@ const WORST: Inputs = {
     businessUnitIds: Array.from({ length: 50 }, () => UUID),
   },
   'brands.setStatus': { id: UUID, status: 'inactive' },
+  'brands.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
+  'brands.removeBatch': { ids: BATCH_IDS },
+  'brands.restoreBatch': { ids: BATCH_IDS },
+  'qrcodes.removeBatch': { ids: BATCH_IDS },
+  'qrcodes.restoreBatch': { ids: BATCH_IDS },
+  'qrcodes.removePresetBatch': { ids: BATCH_IDS },
+  'qrcodes.restorePresetBatch': { ids: BATCH_IDS },
+  'serials.removeBatch': { ids: BATCH_IDS },
+  'serials.restoreBatch': { ids: BATCH_IDS },
+  'postels.removeBatch': { ids: BATCH_IDS },
+  'postels.restoreBatch': { ids: BATCH_IDS },
   'stickerSettings.save': {
     expectedUpdatedAt: STAMP,
     alert: {
@@ -89,6 +103,9 @@ const WORST: Inputs = {
     businessUnitIds: Array.from({ length: 50 }, () => UUID),
   },
   'stickers.setStatus': { id: UUID, status: 'inactive' },
+  'stickers.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
+  'stickers.removeBatch': { ids: BATCH_IDS },
+  'stickers.restoreBatch': { ids: BATCH_IDS },
   'stickerStock.record': {
     locationId: UUID,
     stickerId: UUID,
@@ -116,6 +133,29 @@ const WORST: Inputs = {
       },
     })),
   },
+  'stickerStock.recordBatch': {
+    kind: 'out',
+    reason: text(STICKER_LIMITS.reasonMax),
+    rows: Array.from({ length: STICKER_LIMITS.opnameRows }, () => ({
+      stickerId: UUID,
+      locationId: UUID,
+      count: {
+        rows: Array.from({ length: STICKER_LIMITS.countRows }, () => ({
+          sheets: STICKER_LIMITS.qtyMax,
+          perSheet: STICKER_LIMITS.qtyMax,
+        })),
+        loose: STICKER_LIMITS.qtyMax,
+      },
+    })),
+  },
+  'stickerStock.adjustBatch': {
+    reason: text(STICKER_LIMITS.reasonMax),
+    rows: Array.from({ length: STICKER_LIMITS.opnameRows }, () => ({
+      stickerId: UUID,
+      locationId: UUID,
+      delta: -STICKER_LIMITS.qtyMax,
+    })),
+  },
   'stickerStock.adjust': {
     locationId: UUID,
     stickerId: UUID,
@@ -123,7 +163,11 @@ const WORST: Inputs = {
     reason: text(STICKER_LIMITS.reasonMax),
   },
   'stickerGuides.rename': { id: UUID, name: text(GUIDE_LIMITS.nameMax) },
+  'stickerGuides.removeBatch': { ids: BATCH_IDS },
   'stickerTypes.setStatus': { id: UUID, status: 'inactive' },
+  'stickerTypes.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
+  'stickerTypes.removeBatch': { ids: BATCH_IDS },
+  'stickerTypes.restoreBatch': { ids: BATCH_IDS },
   'customers.rename': { id: UUID, name: text(HANDOVER_LIMITS.customerName) },
   'customers.setStatus': { id: UUID, status: 'inactive' },
   'items.save': {
@@ -153,6 +197,9 @@ const WORST: Inputs = {
     businessUnitIds: Array.from({ length: 50 }, () => UUID),
   },
   'items.setStatus': { id: UUID, status: 'inactive' },
+  'items.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
+  'items.removeBatch': { ids: BATCH_IDS },
+  'items.restoreBatch': { ids: BATCH_IDS },
   'handovers.save': {
     id: UUID,
     locationId: UUID,
@@ -177,6 +224,7 @@ const WORST: Inputs = {
   },
   'handovers.cancel': { id: UUID, locationId: UUID },
   'handovers.reopen': { id: UUID, locationId: UUID },
+  'handovers.restore': { id: UUID, locationId: UUID },
   'handovers.setDone': { id: UUID, locationId: UUID },
   'handovers.setCheck': { id: UUID, locationId: UUID, index: 299, text: text(5000), checked: true },
   'handovers.comment': {
@@ -344,6 +392,33 @@ const WORST: Inputs = {
   'guides.mark': { id: text(100), version: 1 },
   'guides.reset': { id: text(100) },
   'exports.sheets': { tables: longList(50, () => text(100)) },
+  'access.users.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
+  'access.users.removeBatch': { ids: BATCH_IDS },
+  'access.users.restoreBatch': { ids: BATCH_IDS },
+  'access.users.restore': { id: UUID },
+  'access.roles.removeBatch': { ids: BATCH_IDS },
+  'access.roles.restoreBatch': { ids: BATCH_IDS },
+  'access.roles.restore': { id: UUID },
+  'access.locations.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
+  'access.locations.removeBatch': { ids: BATCH_IDS },
+  'access.locations.restoreBatch': { ids: BATCH_IDS },
+  'access.locations.restore': { id: UUID },
+  'access.businessUnits.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
+  'access.businessUnits.removeBatch': { ids: BATCH_IDS },
+  'access.businessUnits.restoreBatch': { ids: BATCH_IDS },
+  'access.businessUnits.restore': { id: UUID },
+  'customers.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
+  'customers.removeBatch': { ids: BATCH_IDS },
+  'customers.restoreBatch': { ids: BATCH_IDS },
+  'customers.restore': { id: UUID },
+  'brands.restore': { id: UUID },
+  'items.restore': { id: UUID },
+  'serials.restore': { id: UUID },
+  'qrcodes.restore': { id: UUID },
+  'postels.restore': { id: UUID },
+  'stickers.restore': { id: UUID },
+  'stickerTypes.restore': { id: UUID },
+  'qrcodes.restorePreset': { id: UUID },
 };
 
 const BODY_VERBS = new Set(['POST', 'PUT', 'PATCH']);

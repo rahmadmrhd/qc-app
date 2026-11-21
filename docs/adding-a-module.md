@@ -15,7 +15,7 @@ Tambahkan DTO, input, dan entri `ApiContract` (`shared/contract.ts`), mis. `'ite
 ## 3. Frontend — `web/src/modules/item/`
 - `queries.ts` — `queryOptions` + mutation (invalidate key modul).
 - `schemas.ts` — skema zod form.
-- `components/` — form & tabel.
+- `components/` — form & tabel. Pakai kit CRUD (`web/src/components/page/`, `data-table/`, `grid/`, `kanban/`; aturan lengkap di CLAUDE.md, bagian "Kit CRUD"): daftar `ListPage` + `FilterBar`, View `ViewPage`, form `FormPage` (halaman) atau `FormDialogShell` (dialog), tabel `DataTable`, aksi massal lewat `runChunkedBatch`. Jangan membuat kerangka halaman sendiri.
 - Route di `web/src/routes/_app/item/*.tsx` dengan `beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'view')`.
 - Tambahkan menu di `NAV_GROUPS` (`web/src/app/navigation.ts`) dan link di `MODULE_LINKS` (`web/src/app/module-links.ts`).
 - Data contoh untuk dev ada di seed (`server/scripts/seed-dev.ts`, `bun run db:seed`); klien memanggil rute lewat `api(id, input)` (`web/src/lib/api`).
@@ -116,6 +116,19 @@ Contoh: halaman laporan rusak Serial Number (`/laporan/<token>`, 2026-11-14). Ke
 - Batas laju kegagalan per IP lewat `rate_limits` + `limiterAddress`; `Cache-Control: no-store` dan `Referrer-Policy: no-referrer`; DTO publik daftar putih (tanpa surel, stok, atau data mentah); jangan mencatat token di log. Token tetap muncul di log akses nginx, jadi tautan harus hanya-baca.
 - PELAJARAN: token yang memuat titik (`v1.<id>.<exp>.<sig>`) dianggap "berkas" oleh `server/src/http/static.ts` (segmen terakhir bertitik = 404) dan oleh denylist service worker `web/src/app/pwa/server-paths.ts`, sehingga tautan 404 di produksi dan di PWA terpasang. Awalan rute kliennya harus dikecualikan di KEDUA tempat (kini `/laporan/`; tes `static.test.ts` dan `scripts/pwa-server-paths.test.ts` menjaga keduanya sejalan), atau pilih format token tanpa titik.
 - Halaman webnya route di luar layout `_app` (tanpa guard login); bila pengguna login dan berizin, DTO membawa penanda (mis. `viewerCanOpen`) agar klien mengalihkan ke halaman biasa. Token tidak pernah menambah izin.
+
+## Soft delete (model yang punya Hapus)
+Model baru yang punya Hapus/Pulihkan (spek `docs/superpowers/specs/2026-11-20-soft-delete-design.md`) wajib:
+1. Masuk `SOFT_DELETE_TABLES` (`server/src/core/soft-delete.ts`).
+2. Migrasi baru (expand-only, idempoten): kolom `deleted_at VARCHAR(30) NOT NULL DEFAULT ''` dan `deleted_by VARCHAR(254) NOT NULL DEFAULT ''`, serta indeks unik `<nama>_live` yang memuat `deleted_at` di samping indeks lama. Contoh: `server/migrations/0027_soft_delete.sql`. Jangan menyunting migrasi yang sudah diterapkan.
+3. Setiap `FROM`/`JOIN` ke tabel itu di repo memakai `liveWhere(alias)`. Tes penjaga `server/src/core/soft-delete-guard.test.ts` gagal bila ada yang tak disaring dan tak terdaftar di `SOFT_DELETE_PENDING`/`SOFT_DELETE_EXEMPT` (`soft-delete-pending.ts`).
+4. Pemetaan galat duplikat memakai `mapDuplicateError` (yang sudah sadar `_live`), dan pembanding `DbError.key` memakai `baseIndexName` (`server/src/core/index-names.ts`).
+5. Hapus dan pulihkan lewat `softDeleteStmt`/`restoreStmt` (anak ikut induk: `softDeleteWithChildren`/`restoreWithChildren`), bukan `DELETE`.
+6. Status, Hapus, dan Pulihkan (tunggal dan batch) memakai pola perencana `server/src/core/record-batch.ts` (contoh lengkap: `server/src/modules/item/service.ts` dan `brand/service.ts`):
+   - `load<X>ForAction(env, id, actor, state 'live'|'any', message)`: memuat record, menilai hak (di luar hak = `NOT_FOUND`; record terhapus tanpa hak Pulihkan juga `NOT_FOUND`, bukan `FORBIDDEN`), dan boleh menyediakan pemuat ringan untuk aksi yang hanya mengembalikan `{ id }`.
+   - `plan<X>Status|Remove|Restore(...)` mengembalikan `{ stmts, dto }` atau `{ unchanged }` (hapus ulang/pulihkan yang sudah hidup = sukses tanpa audit). Pernyataan pertama: penjaga kunci induk (mis. `brandKeyGuardStmt`), lalu `versionGuardStmt(db, tabel, id, updatedAt, 'live'|'deleted')` (FOR UPDATE + CAS), `softDeleteStmt`/`restoreStmt`, `stampStmt` (naikkan `updated_at`), penjaga turunan (kunci nama, penghitung), lalu audit. Urutan kunci baris harus seragam di semua perencana (induk dulu, lalu record).
+   - `runRecordBatch(env, ids, planner, { conflicts, stale, verify? })` menulis SEMUA id dalam satu `batch()` lewat `runCas` (atomik; galat perencana pertama menurut urutan masukan membatalkan seluruhnya; tulis diurut menurut id mengurangi deadlock; himpunan berbeda yang berbagi merk masih dapat saling menunggu, dan itu diulang `runCas`); `runSingleRecord` membungkus rute tunggal. `verify` memeriksa tabrakan LINTAS record dalam permintaan yang sama (mis. kunci nama pada pulihkan batch).
+   - Rute batch didaftarkan SEBELUM rute `/{id}/...` di `API_ROUTES` (jalur statis `/…/batch/*` lebih dulu).
 
 ## Mengubah kontrak yang merusak
 Kontrak API harus tetap kompatibel mundur (keputusan pemilik 2026-11-20; kebijakan lengkap di `CLAUDE.md`, bagian "Kebijakan versi API"). Bila bentuk input/output sebuah rute berubah secara merusak:

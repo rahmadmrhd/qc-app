@@ -104,7 +104,7 @@ function ProofGalleryBody({ photos }: ProofGalleryProps) {
               {pending ? <p className="text-xs text-muted-foreground">Menunggu cap</p> : null}
               {failed ? (
                 <div className="space-y-1">
-                  <p className="flex items-center gap-1 text-xs font-medium text-destructive">
+                  <p className="flex items-center gap-1 text-xs font-medium text-destructive-text">
                     <CircleAlert aria-hidden className="size-3.5" />
                     Gagal
                   </p>
@@ -122,6 +122,7 @@ function ProofGalleryBody({ photos }: ProofGalleryProps) {
                         <Button
                           type="button"
                           variant="outline"
+                          color="primary"
                           size="xs"
                           disabled={locked}
                           onClick={() => void runRetry(photo)}
@@ -137,6 +138,7 @@ function ProofGalleryBody({ photos }: ProofGalleryProps) {
                         <Button
                           type="button"
                           variant="outline"
+                          color="primary"
                           size="xs"
                           disabled={locked}
                           onClick={() => {
@@ -151,6 +153,7 @@ function ProofGalleryBody({ photos }: ProofGalleryProps) {
                         <Button
                           type="button"
                           variant="ghost"
+                          color="primary"
                           size="xs"
                           disabled={locked}
                           onClick={() => setDiscarding(photo)}
@@ -192,7 +195,7 @@ function ProofGalleryBody({ photos }: ProofGalleryProps) {
           ) : null}
           <DialogFooter>
             {open ? (
-              <Button asChild variant="outline">
+              <Button asChild variant="outline" color="primary">
                 <a href={proofThumbUrl(open.photo.id)} download={open.photo.filename}>
                   <Download aria-hidden />
                   Unduh
@@ -215,7 +218,8 @@ function ProofGalleryBody({ photos }: ProofGalleryProps) {
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
+              variant="soft"
+              color="destructive"
               onClick={() => {
                 const photo = discarding;
                 setDiscarding(null);

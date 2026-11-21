@@ -18,6 +18,8 @@ export interface PickedItem {
   id: string;
   brand: string;
   model: string;
+  /** Item terhapus (soft delete): tetap terpasang di catatan, tampil bertanda "Terhapus"; tak dapat dipilih baru. */
+  deleted?: boolean | undefined;
 }
 
 export interface PostelFormValues {
@@ -108,7 +110,12 @@ export function postelFormSchema(hiddenCount: number) {
 export function toPostelFormDefaults(postel: PostelDto | undefined): PostelFormValues {
   if (!postel) return { items: [], numbers: [blankNumberRow()], note: '', attachments: [] };
   return {
-    items: postel.items.map(({ id, brand, model }) => ({ id, brand, model })),
+    items: postel.items.map(({ id, brand, model, deleted }) => ({
+      id,
+      brand,
+      model,
+      ...(deleted ? { deleted: true } : {}),
+    })),
     numbers: postel.numbers.map((entry) => ({
       key: entry.id,
       id: entry.id,

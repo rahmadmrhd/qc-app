@@ -1,10 +1,12 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { createBrowserHistory, createRouter } from '@tanstack/react-router';
 import { PageLoading } from '@/components/page-loading';
+import { deferNavigateUnderOverlays } from '@/lib/overlay-navigate';
+import { recordLocation } from '@/lib/stack-nav';
 import { routeTree } from '@/routeTree.gen';
 
 export function createAppRouter(queryClient: QueryClient) {
-  return createRouter({
+  const router = createRouter({
     routeTree,
     history: createBrowserHistory(),
     context: { queryClient },
@@ -17,6 +19,10 @@ export function createAppRouter(queryClient: QueryClient) {
     defaultPendingMinMs: 300,
     scrollRestoration: true,
   });
+  // Jejak lokasi per entri riwayat: dasar `popTo` (kembali ke asal bila entri sebelumnya memang tujuannya).
+  router.subscribe('onResolved', ({ toLocation }) => recordLocation(toLocation.pathname));
+  deferNavigateUnderOverlays(router);
+  return router;
 }
 
 declare module '@tanstack/react-router' {

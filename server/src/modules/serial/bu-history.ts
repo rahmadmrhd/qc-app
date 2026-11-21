@@ -8,8 +8,17 @@ import type { Env } from '@server/core/env';
  * "BU yang sudah ditinggalkan tidak boleh dimasuki lagi".
  */
 
-/** Nama indeks unik serial se-sistem (dipetakan di `SERIAL_CONFLICTS`). */
+/** Nama dasar indeks unik serial se-sistem (dipetakan di `SERIAL_CONFLICTS`); indeks `serials_serial` LAMA dibuang `ensureSerialUniqueIndex`. */
 export const SERIAL_UNIQUE_INDEX = 'serials_serial';
+
+/** Indeks unik per BU peninggalan (bu_id, serial); dibuang `ensureSerialUniqueIndex` setelah `serials_serial_live` ada. */
+const LEGACY_BU_SERIAL_INDEX = 'serials_bu_serial';
+
+/**
+ * Padanan soft delete (`serial`, `deleted_at`): serial terhapus dan serial baru berkunci sama dapat hidup berdampingan.
+ * Dipetakan ke konflik yang sama lewat `baseIndexName`. Satu-satunya penjaga keunikan serial setelah contract.
+ */
+export const SERIAL_LIVE_INDEX = 'serials_serial_live';
 
 /**
  * Pengisi idempoten: satu baris "BU saat ini" untuk setiap serial yang belum punya baris untuk `bu_id`-nya. Dijalankan
@@ -21,44 +30,65 @@ export async function backfillSerialBusinessUnits(env: Env): Promise<void> {
   ).run();
 }
 
+async function hasIndex(env: Env, name: string): Promise<boolean> {
+  const present = await env.DB.prepare(
+    'SELECT COUNT(*) AS n FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?',
+  )
+    .bind('serials', name)
+    .first<{ n: number | string }>();
+  return Number(present?.n ?? 0) > 0;
+}
+
 /**
- * Membuat indeks unik `serials_serial` bila belum ada dan tidak ada serial ganda (idempoten, dipanggil tiap start
- * setelah migrasi). Ada serial ganda lintas BU = `'duplicates'`: dicatat sebagai peringatan (hanya jumlahnya, tanpa
- * nilai serial) dan start TIDAK digagalkan; keunikan dijaga aplikasi sampai skrip penyatuan dijalankan.
+ * Memasang penjaga keunikan serial se-sistem setelah migrasi contract soft delete (0030): indeks unik
+ * `serials_serial_live (serial, deleted_at)`, lalu membuang indeks lama `serials_serial` (se-sistem) dan
+ * `serials_bu_serial` (per BU) yang menjangkau baris terhapus juga. Idempoten, dipanggil tiap start setelah migrasi.
  *
- * Ini SATU-SATUNYA pembuat indeks (migrasi 0026 tidak membuatnya: pemeriksa dump pemulihan menolak PREPARE/SET @var).
- * Templat tes (`test-support/test-db.ts`) memanggilnya juga, supaya tes punya penjaga DB yang sama dengan produksi.
+ * - Indeks `_live` belum ada: serial ganda dihitung menurut (`serial`, `deleted_at`) (serial terhapus dan serial baru
+ *   berkunci sama BOLEH berdampingan). Ada ganda lintas BU = `'duplicates'`: dicatat sebagai SATU peringatan (hanya
+ *   jumlahnya, tanpa nilai serial), tak ada indeks yang dibuat atau dibuang, dan start TIDAK digagalkan; keunikan dijaga
+ *   aplikasi (dan `serials_bu_serial` yang masih ada) sampai skrip penyatuan dijalankan. Tanpa ganda = dibuat (`'created'`).
+ * - Indeks `_live` sudah ada: indeks lama yang masih tersisa dibuang SETELAH itu (bukan sebelumnya, agar serial tak pernah
+ *   tanpa penjaga indeks sama sekali), hasil `'exists'`.
+ *
+ * Ini SATU-SATUNYA pembuat indeks (migrasi 0026 dan 0030 tidak membuatnya: pemeriksa dump pemulihan menolak PREPARE/SET
+ * @var). Templat tes (`test-support/test-db.ts`) memanggilnya juga, supaya tes punya penjaga DB yang sama dengan produksi.
  */
 export async function ensureSerialUniqueIndex(
   env: Env,
 ): Promise<'created' | 'exists' | 'duplicates'> {
-  const present = await env.DB.prepare(
-    'SELECT COUNT(*) AS n FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ?',
-  )
-    .bind('serials', SERIAL_UNIQUE_INDEX)
-    .first<{ n: number | string }>();
-  if (Number(present?.n ?? 0) > 0) return 'exists';
-  const dups = await env.DB.prepare(
-    'SELECT COUNT(*) AS n FROM (SELECT 1 FROM serials GROUP BY serial HAVING COUNT(*) > 1) AS d',
-  ).first<{ n: number | string }>();
-  const duplicateCount = Number(dups?.n ?? 0);
-  if (duplicateCount > 0) {
-    console.warn(
-      `Indeks unik ${SERIAL_UNIQUE_INDEX} belum dibuat: ada ${duplicateCount} Serial Number ganda lintas BU. Jalankan skrip penyatuan.`,
-    );
-    return 'duplicates';
-  }
-  try {
-    await env.DB.prepare(`CREATE UNIQUE INDEX ${SERIAL_UNIQUE_INDEX} ON serials (serial)`).run();
-  } catch (error) {
-    // Serial ganda masuk di antara pemeriksaan dan pembuatan indeks: tetap tidak menggagalkan start.
-    if (error instanceof DbError && error.kind === 'duplicate') {
-      console.warn(`Indeks unik ${SERIAL_UNIQUE_INDEX} gagal dibuat: ada Serial Number ganda.`);
+  let result: 'created' | 'exists' = 'exists';
+  if (!(await hasIndex(env, SERIAL_LIVE_INDEX))) {
+    const dups = await env.DB.prepare(
+      'SELECT COUNT(*) AS n FROM (SELECT 1 FROM serials GROUP BY serial, deleted_at HAVING COUNT(*) > 1) AS d',
+    ).first<{ n: number | string }>();
+    const duplicateCount = Number(dups?.n ?? 0);
+    if (duplicateCount > 0) {
+      console.warn(
+        `Indeks unik ${SERIAL_LIVE_INDEX} belum dibuat: ada ${duplicateCount} kelompok Serial Number ganda (serial sama dengan deleted_at sama, lintas BU). Yang masih hidup disatukan dengan skrip penyatuan; ganda yang sama-sama TERHAPUS pada deleted_at yang sama juga menahan indeks dan tidak ditangani skrip (skrip mengabaikan serial terhapus): bedakan deleted_at salah satunya secara manual.`,
+      );
       return 'duplicates';
     }
-    throw error;
+    try {
+      await env.DB.prepare(
+        `CREATE UNIQUE INDEX ${SERIAL_LIVE_INDEX} ON serials (serial, deleted_at)`,
+      ).run();
+    } catch (error) {
+      // Serial ganda masuk di antara pemeriksaan dan pembuatan indeks: tetap tidak menggagalkan start.
+      if (error instanceof DbError && error.kind === 'duplicate') {
+        console.warn(`Indeks unik ${SERIAL_LIVE_INDEX} gagal dibuat: ada Serial Number ganda.`);
+        return 'duplicates';
+      }
+      throw error;
+    }
+    result = 'created';
   }
-  return 'created';
+  for (const legacy of [SERIAL_UNIQUE_INDEX, LEGACY_BU_SERIAL_INDEX]) {
+    if (await hasIndex(env, legacy)) {
+      await env.DB.prepare(`DROP INDEX ${legacy} ON serials`).run();
+    }
+  }
+  return result;
 }
 
 /** Semua BU yang pernah memegang serial (termasuk BU saat ini, juga bila baris penghubungnya belum terisi). */
@@ -70,6 +100,29 @@ export async function involvedBuIds(db: Preparer, serialId: string): Promise<str
     .bind(serialId, serialId)
     .all<{ bu_id: string }>();
   return rows.results.map((row) => row.bu_id.trim());
+}
+
+/** `involvedBuIds` untuk banyak serial sekaligus (satu kueri): id serial -> BU yang pernah memegangnya (BU saat ini ikut). */
+export async function involvedBuIdsMany(
+  db: Preparer,
+  serialIds: readonly string[],
+): Promise<Map<string, string[]>> {
+  const result = new Map<string, Set<string>>();
+  if (serialIds.length === 0) return new Map();
+  const marks = serialIds.map(() => '?').join(', ');
+  const rows = await db
+    .prepare(
+      `SELECT serial_id AS id, bu_id FROM serial_business_units WHERE serial_id IN (${marks}) UNION SELECT id, bu_id FROM serials WHERE id IN (${marks})`,
+    )
+    .bind(...serialIds, ...serialIds)
+    .all<{ id: string; bu_id: string }>();
+  for (const row of rows.results) {
+    const id = row.id.trim();
+    const set = result.get(id) ?? new Set<string>();
+    set.add(row.bu_id.trim());
+    result.set(id, set);
+  }
+  return new Map([...result].map(([id, set]) => [id, [...set]]));
 }
 
 /**

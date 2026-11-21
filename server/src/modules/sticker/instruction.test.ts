@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { DbError } from '@server/core/db';
 import { seedItem } from '@server-test/item-fixtures';
+import { seedQrDesign } from '@server-test/qrcode-env';
 import { seedManualBookVersion, seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { ItemStickerPhotoInput } from '@shared/contract';
@@ -218,6 +219,9 @@ describe('terjemahan penanda jenis Manual Book (aturan group, 4a)', () => {
       rule: 'group',
       systemKind: 'manual_book',
     });
+    // aturan `group` Manual Book hanya berlaku bagi konfigurasi HIDUP (soft delete §5 butir 1)
+    await seedQrDesign(env, { id: 'q1' });
+    await seedQrDesign(env, { id: 'q2' });
     // konfigurasi q1: v1 sudah digantikan (deprecated), v2 terbaru dan aktif
     await seedSticker(env, { id: 'q1-v1', typeId: 't-mb', status: 'deprecated' });
     await seedSticker(env, { id: 'q1-v2', typeId: 't-mb' });

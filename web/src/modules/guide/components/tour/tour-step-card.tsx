@@ -69,7 +69,7 @@ export function TourStepCard({
         )}
         <div className="flex gap-2">
           {step.advance === 'click' && !isLast ? (
-            <Button type="button" variant="ghost" size="sm" onClick={onNext}>
+            <Button type="button" variant="ghost" color="primary" size="sm" onClick={onNext}>
               Lewati
             </Button>
           ) : null}

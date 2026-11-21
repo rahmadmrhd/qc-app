@@ -1,14 +1,40 @@
-import type { SaveBrandInput, SetBrandStatusInput } from '@shared/contract';
-import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
+import type { ListStatusFilter, StatusBatchInput } from '@shared/batch';
+import type { BrandDto, SaveBrandInput, SetBrandStatusInput } from '@shared/contract';
+import { type QueryClient, queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { accessKeys } from '@/modules/access/queries';
 import { itemKeys } from '@/modules/item/queries';
 import { brandKeys } from './keys';
 
-export function brandsQueryOptions() {
+/**
+ * Daftar merk. Tanpa `status` = merk hidup (aktif + nonaktif; kunci yang dipakai form item dan pilihan merk);
+ * `deleted` (hanya `item: manage`) memakai kunci sendiri agar tak bercampur dengan daftar hidup.
+ */
+export function brandsQueryOptions(status?: ListStatusFilter) {
+  const filtered = status !== undefined && status !== 'all';
   return queryOptions({
-    queryKey: brandKeys.list,
-    queryFn: () => api('brands.list', null),
+    queryKey: filtered ? ([...brandKeys.list, status] as const) : brandKeys.list,
+    queryFn: () => api('brands.list', filtered ? { status } : null),
+  });
+}
+
+/**
+ * Satu merk (halaman View; `brands.get`). Data awal diambil dari daftar yang sudah termuat bila ada, jadi View dari
+ * daftar terbuka seketika; merk terhapus (tak ada di daftar hidup) dimuat dari server.
+ */
+export function brandQueryOptions(queryClient: QueryClient, id: string) {
+  const listKey = brandKeys.list;
+  const seed = queryClient.getQueryData<BrandDto[]>(listKey)?.find((brand) => brand.id === id);
+  return queryOptions({
+    queryKey: brandKeys.one(id),
+    queryFn: () => api('brands.get', { id }),
+    retry: false,
+    ...(seed
+      ? {
+          initialData: seed,
+          initialDataUpdatedAt: queryClient.getQueryState(listKey)?.dataUpdatedAt ?? 0,
+        }
+      : {}),
   });
 }
 
@@ -42,5 +68,22 @@ export const useSaveBrand = () =>
 export const useSetBrandStatus = () =>
   useBrandMutation(
     (input: SetBrandStatusInput) => api('brands.setStatus', input),
+    () => true,
+  );
+
+/** Aksi massal merk: dikirim bertahap oleh `useBulkAction`; tiap tahap memuat ulang daftar, item, dan Log Audit. */
+export const useSetBrandStatusBatch = () =>
+  useBrandMutation(
+    (input: StatusBatchInput) => api('brands.setStatusBatch', input),
+    () => true,
+  );
+export const useRemoveBrands = () =>
+  useBrandMutation(
+    (input: { ids: string[] }) => api('brands.removeBatch', input),
+    () => true,
+  );
+export const useRestoreBrands = () =>
+  useBrandMutation(
+    (input: { ids: string[] }) => api('brands.restoreBatch', input),
     () => true,
   );

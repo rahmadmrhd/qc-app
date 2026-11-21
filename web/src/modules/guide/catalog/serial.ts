@@ -10,10 +10,13 @@ const SERIAL_EDIT: GuidePermission = { module: 'serial', level: 'edit' };
  * mencentang sendiri. Daftar target `data-tour` ada di komentar tiap panduan.
  *
  * Banner per halaman (`halaman`, satu banner pada satu waktu, urutan katalog): `/serial` dan `/serial/new` ditangani
- * panduan masing-masing, sedangkan `/serial/report(s)` dan `/serial/settings` dikecualikan dari panduan `/serial`
- * (`SERIAL_LIST_EXCEPT`) agar banner daftar tidak muncul di halaman lain.
+ * panduan masing-masing, sedangkan `/serial/report(s)`, `/serial/settings`, dan halaman detail `/serial/$serialId`
+ * dikecualikan dari panduan `/serial` (`SERIAL_LIST_EXCEPT`) agar banner daftar tidak muncul di halaman lain. Detail
+ * serial adalah `ViewPage` bertab (Detail, Riwayat, Foto bukti): hanya tab aktif yang dirender, jadi langkah yang
+ * menyorot isi tab lain memakai `buka: { tab }` (mesin tur membuka tabnya lewat jalur pilih tab yang sama).
  */
 const SERIAL_LIST_EXCEPT = [
+  '/serial/$serialId',
   '/serial/new',
   '/serial/report',
   '/serial/reports',
@@ -54,8 +57,8 @@ export const SERIAL_DAFTAR: GuideEntry = {
 
 /**
  * Detail satu Serial Number, dibuka dari baris pertama daftar (langkah `click`). Target: `serial-open`
- * (`serial-list-page.tsx`); `serial-stepper`, `serial-actions`, `serial-timeline` (`serial-detail-page.tsx`,
- * `act-buttons.tsx`, `timeline-tabs.tsx`). Semua langkah detail bergantung data, jadi ber-`teksJikaKosong`.
+ * (`serial-list-page.tsx`); `serial-stepper` (tab Detail), `serial-actions`, `serial-timeline` (tab Riwayat)
+ * (`serial-detail-page.tsx`, `act-buttons.tsx`, `timeline-tabs.tsx`). Semua langkah detail bergantung data, jadi ber-`teksJikaKosong`.
  */
 export const SERIAL_DETAIL: GuideEntry = {
   id: 'serial-detail',
@@ -78,20 +81,23 @@ export const SERIAL_DETAIL: GuideEntry = {
     },
     {
       target: 'serial-stepper',
-      text: 'Baris tahap menunjukkan posisi unit dalam penanganan, dari Lolos sampai Lolos atau Rusak. Tahap yang menyala adalah status unit sekarang.',
+      buka: { tab: 'detail' },
+      text: 'Di tab Detail, baris tahap menunjukkan posisi unit dalam penanganan, dari Lolos sampai Lolos atau Rusak. Tahap yang menyala adalah status unit sekarang.',
       teksJikaKosong:
-        'Di detail serial ada baris tahap: Lolos, Dilaporkan, Di servis, Diagnosis, Sedang diperbaiki, Menunggu cek ulang, lalu Lolos atau Rusak. Tahap yang menyala adalah status unit sekarang.',
+        'Di tab Detail serial ada baris tahap: Lolos, Dilaporkan, Di servis, Diagnosis, Sedang diperbaiki, Menunggu cek ulang, lalu Lolos atau Rusak. Tahap yang menyala adalah status unit sekarang.',
       advance: 'next',
     },
     {
       target: 'serial-actions',
-      text: 'Tombol update di sebelah judul Riwayat berubah mengikuti status dan posisi unit, dan hanya menampilkan yang boleh kamu kerjakan: Lapor rusak, Kirim ke servis, Terima, Diagnosis, Cek ulang, atau Catatan.',
+      buka: { tab: 'riwayat' },
+      text: 'Di tab Riwayat, tombol update di atas linimasa berubah mengikuti status dan posisi unit, dan hanya menampilkan yang boleh kamu kerjakan: Lapor rusak, Kirim ke servis, Terima, Diagnosis, Cek ulang, atau Catatan.',
       teksJikaKosong:
-        'Di detail serial, tombol update ada di sebelah judul Riwayat. Isinya berubah mengikuti status dan posisi unit, dan hanya yang boleh kamu kerjakan; tanpa aksi yang cocok, tombolnya tidak tampil.',
+        'Di detail serial, tombol update ada di tab Riwayat, di atas linimasa. Isinya berubah mengikuti status dan posisi unit, dan hanya yang boleh kamu kerjakan; tanpa aksi yang cocok, tombolnya tidak tampil.',
       advance: 'next',
     },
     {
       target: 'serial-actions',
+      buka: { tab: 'riwayat' },
       text: 'Alurnya: QC melaporkan lalu Kirim ke servis. Tim servis Terima, Diagnosis, Sedang diperbaiki, lalu Selesai (kembali ke QC) atau Nyatakan rusak. QC Terima lalu Cek ulang: lolos menutup laporan, tidak lolos membuatnya tetap terbuka.',
       teksJikaKosong:
         'Alurnya: QC melaporkan lalu Kirim ke servis. Tim servis Terima, Diagnosis, Sedang diperbaiki, lalu Selesai (kembali ke QC) atau Nyatakan rusak. QC Terima lalu Cek ulang: lolos menutup laporan, tidak lolos membuatnya tetap terbuka.',
@@ -99,6 +105,7 @@ export const SERIAL_DETAIL: GuideEntry = {
     },
     {
       target: 'serial-timeline',
+      buka: { tab: 'riwayat' },
       text: 'Riwayat dibagi per tab: Semua, satu tab per laporan (mis. LP/SBY/2611-0001), Pengecekan, dan Perubahan data. Tiap kejadian jadi satu kartu di bawahnya dan yang terbaru ditandai.',
       teksJikaKosong:
         'Riwayat di detail serial dibagi per tab: Semua, satu tab per laporan (mis. LP/SBY/2611-0001), Pengecekan, dan Perubahan data. Tiap kejadian jadi satu kartu dan yang terbaru ditandai.',
@@ -111,7 +118,8 @@ export const SERIAL_DETAIL: GuideEntry = {
  * Catat Serial Number: bawaan, scan, draft, ubah massal, dan Simpan. Target: `serial-defaults`, `serial-scan`,
  * `serial-draft`, `serial-row-actions` (hanya tabel; di ponsel baris berupa kartu tanpa tombol aksi, jadi langkahnya
  * `langsung` dengan kartu pengganti), `serial-row-select` (ada di tabel dan kartu), `serial-bulk` (bar aksi pilihan),
- * `serial-save` (`record-page.tsx`, `staging-table.tsx`, `staging-cards.tsx`, `selection-bar.tsx`). Dua langkah
+ * `serial-save` (tombol Simpan `FormPage` lewat `saveTour` di `record-page.tsx`: bar judul di desktop, bar bawah di
+ * ponsel; `staging-table.tsx`, `staging-cards.tsx`, `selection-bar.tsx`). Dua langkah
  * `wait`: menunggu baris draft pertama (`serial-row`, ada di tabel dan kartu), lalu menunggu pengguna mencentang baris
  * sampai bar aksi pilihan muncul. Berhenti SEBELUM Simpan.
  */
@@ -146,23 +154,26 @@ export const SERIAL_CATAT: GuideEntry = {
       target: 'serial-row-actions',
       text: 'Detail membuka dialog Ubah baris: semua kolom baris ini bisa diubah di sana. Hapus membuang baris itu dari draft.',
       teksJikaKosong:
-        'Di layar sempit baris tampil sebagai kartu tanpa tombol aksi: ketuk kartunya untuk membuka dialog Ubah baris, tempat kamu mengubah semua kolom baris itu. Menghapus satu baris lewat centang lalu Hapus di bar aksi.',
+        'Di layar sempit baris tampil sebagai kartu tanpa tombol aksi: ketuk kartunya untuk membuka dialog Ubah baris, tempat kamu mengubah semua kolom baris itu. Menghapus satu baris: pilih dulu barisnya (tombol Pilih di atas daftar, atau tahan kartunya), lalu Hapus di bar aksi.',
       langsung: true,
       advance: 'next',
     },
     {
       target: 'serial-row-select',
-      text: 'Mau ubah atau hapus banyak baris sekaligus? Centang baris ini (atau kotak "Pilih semua" di judul tabel/daftar untuk semuanya). Begitu ada yang terpilih, bar aksi muncul dan Lanjut aktif.',
+      text: 'Mau ubah atau hapus banyak baris sekaligus? Di tabel, centang baris ini (atau kotak "Pilih semua" di judul tabel untuk semuanya). Di ponsel, ketuk tombol Pilih di atas daftar (atau tahan sebuah kartu beberapa saat) untuk masuk mode pilih, lalu ketuk kartu yang mau dipilih; "Pilih semua" ada di header mode pilih. Begitu ada yang terpilih, bar aksi muncul dan Lanjut aktif.',
       advance: 'wait',
       waitFor: 'serial-bulk',
     },
     {
       target: 'serial-bulk',
-      text: 'Bar aksi punya tiga tombol: Edit membuka dialog ubah massal (isi hanya kolom yang mau diubah untuk semua baris terpilih, kosong = tidak diubah, lalu Terapkan), Hapus membuang baris terpilih beserta foto buktinya setelah kamu konfirmasi, dan Batalkan pilihan menghapus semua centang. Panduan tidak menerapkan atau menghapus apa pun.',
+      text: 'Bar aksi punya tiga tombol: Edit membuka dialog ubah massal (isi hanya kolom yang mau diubah untuk semua baris terpilih, kosong = tidak diubah, lalu Terapkan), Hapus membuang baris terpilih beserta foto buktinya setelah kamu konfirmasi, dan Batalkan pilihan mengosongkan pilihan. Panduan tidak menerapkan atau menghapus apa pun.',
       advance: 'next',
     },
     {
       target: 'serial-save',
+      teksJikaKosong:
+        'Simpan ada di bar judul di atas halaman (di ponsel di bar bawah, yang tersembunyi selama ada baris terpilih: keluar dari mode pilih dulu). Simpan menyimpan semua baris sebagai Serial Number berstatus Lolos. Panduan berhenti di sini: belum ada yang tersimpan.',
+      langsung: true,
       text: 'Simpan menyimpan semua baris sebagai Serial Number berstatus Lolos. Baris yang belum lengkap (termasuk foto bukti kurang) menahan Simpan; baris Cek ulang dicatat sebagai cek ulang lolos pada serial yang sudah ada (bukan serial baru) dan baris yang gagal tetap di draft. Kalau semuanya berhasil kamu kembali ke daftar. Panduan berhenti di sini: belum ada yang tersimpan, dan baris contohmu bisa dibuang dengan Kosongkan draft.',
       advance: 'next',
     },
@@ -204,8 +215,9 @@ export const SERIAL_LAPORAN_DAFTAR: GuideEntry = {
  * Lapor Rusak. Langkahnya MENYESUAIKAN hasil pencarian (yang tampil tergantung serial yang diketik): sesudah langkah
  * `wait`, tiap langkah ber-`langsung` tanpa `teksJikaKosong` dilewati seketika bila bagiannya tak ada. Target:
  * `report-serial`, `report-result` (semua hasil), `report-blocked-open` (hanya serial yang tak bisa dilaporkan),
- * `report-new-fields` (hanya serial belum tercatat), `report-message` dan `report-submit` (hanya yang bisa dilaporkan)
- * di `report-page.tsx` dan `report-form.tsx`. Berhenti SEBELUM tombol "Lapor rusak".
+ * `report-new-fields` dan `report-message` (hanya yang bisa dilaporkan) di `report-form.tsx`, serta `report-submit`
+ * (tombol "Lapor rusak" milik `FormPage`, lewat `saveTour` di `report-page.tsx`: bar judul di desktop, bar bawah di
+ * ponsel; SELALU ada, nonaktif sampai ada form laporan dengan catatan terisi). Berhenti SEBELUM tombol "Lapor rusak".
  */
 export const SERIAL_LAPORAN: GuideEntry = {
   id: 'serial-laporan',
@@ -249,7 +261,7 @@ export const SERIAL_LAPORAN: GuideEntry = {
     },
     {
       target: 'report-submit',
-      text: 'Lapor rusak membuka laporan baru (mis. LP/SBY/2611-0001) berstatus Dilaporkan lalu membawamu ke detail serial. Aktif setelah catatan terisi. Panduan berhenti di sini: belum ada laporan yang dibuat.',
+      text: 'Lapor rusak membuka laporan baru (mis. LP/SBY/2611-0001) berstatus Dilaporkan lalu membawamu ke detail serial. Tombolnya ada di bar judul (di ponsel di bar bawah) dan baru aktif setelah ada serial yang bisa dilaporkan dengan catatan terisi. Panduan berhenti di sini: belum ada laporan yang dibuat.',
       langsung: true,
       advance: 'next',
     },

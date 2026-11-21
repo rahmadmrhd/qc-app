@@ -31,6 +31,15 @@ test('toUserFormDefaults membuang role basi dan penugasan yang menjadi kosong; S
   ]);
 });
 
+test('role TERHAPUS pada penugasan (deletedRoleIds) dipertahankan; role lain yang tak dikenal tetap dibuang (T1)', () => {
+  const withDeleted = { ...user, deletedRoleIds: ['basi'] };
+  expect(toUserFormDefaults(withDeleted, ['ada']).assignments).toEqual([
+    { locationId: '*', roleIds: ['ada', 'basi'] },
+    { locationId: 'l-a', roleIds: ['basi'] },
+    { locationId: 'l-b', roleIds: ['ada'] },
+  ]);
+});
+
 test('tanpa daftar role yang diketahui, penugasan disalin apa adanya', () => {
   expect(toUserFormDefaults(user).assignments).toEqual([
     { locationId: '*', roleIds: ['ada', 'basi'] },

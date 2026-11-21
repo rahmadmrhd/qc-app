@@ -79,12 +79,12 @@ function UpdateRequiredScreen() {
             Perbarui sekarang
           </Button>
           {phase.step === 'result' && (
-            <Button variant="link" size="sm" onClick={() => void openDownloads()}>
+            <Button variant="link" color="primary" size="sm" onClick={() => void openDownloads()}>
               Unduh manual
             </Button>
           )}
           {downloadError !== null && (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive-text">
               {downloadError}
             </p>
           )}

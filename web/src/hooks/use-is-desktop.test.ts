@@ -50,3 +50,36 @@ test('pendengar dilepas saat unmount', () => {
   unmount();
   expect(media.listenerCount()).toBe(0);
 });
+
+test('K2: lebar <main> menentukan (sidebar tersemat memperkecil ruang isi walau viewport >= 768)', () => {
+  mockMatchMedia(true); // viewport lebar
+  let width = 600;
+  const main = document.createElement('main');
+  Object.defineProperty(main, 'clientWidth', { get: () => width, configurable: true });
+  document.body.append(main);
+  let notify: () => void = () => undefined;
+  class FakeObserver {
+    constructor(callback: () => void) {
+      notify = callback;
+    }
+    observe() {}
+    disconnect() {}
+  }
+  vi.stubGlobal('ResizeObserver', FakeObserver);
+  const { result } = renderHook(() => useIsDesktop());
+  expect(result.current).toBe(false);
+  width = 800;
+  act(() => notify());
+  expect(result.current).toBe(true);
+  main.remove();
+  vi.unstubAllGlobals();
+});
+
+test('K2: <main> tanpa lebar terukur (jsdom) memakai lebar viewport', () => {
+  mockMatchMedia(false);
+  const main = document.createElement('main');
+  document.body.append(main);
+  const { result } = renderHook(() => useIsDesktop());
+  expect(result.current).toBe(false);
+  main.remove();
+});

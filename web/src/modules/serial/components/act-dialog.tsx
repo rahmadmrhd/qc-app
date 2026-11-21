@@ -450,9 +450,12 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="act-date">Tanggal</Label>
+            <Label htmlFor="act-date" required>
+              Tanggal
+            </Label>
             <Input
               id="act-date"
+              aria-required="true"
               type="date"
               max={today}
               {...(minDate !== undefined ? { min: minDate } : {})}
@@ -479,6 +482,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
             <div className="space-y-1.5">
               <SerialLocationField
                 id="act-to-location"
+                required
                 label={needsServiceChoice ? 'Lokasi servis' : 'Lokasi penerimaan'}
                 placeholder={needsServiceChoice ? 'Pilih lokasi servis…' : 'Pilih lokasi…'}
                 value={toLocation.id}
@@ -553,6 +557,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
                 <div className="space-y-1.5">
                   <RecheckBuField
                     id="act-bu"
+                    required
                     label="Business Unit"
                     choices={buChoices}
                     value={targetBu}
@@ -609,7 +614,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
             onBusyChange={setMessageBusy}
           />
           {error ? (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive-text">
               {error}
             </p>
           ) : null}
@@ -621,12 +626,19 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
           ) : null}
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={act.isPending} onClick={cancel}>
+          <Button
+            type="button"
+            variant="outline"
+            color="primary"
+            disabled={act.isPending}
+            onClick={cancel}
+          >
             Batal
           </Button>
           <Button
             type="button"
-            variant={declaring || kind === 'report' ? 'destructive' : 'default'}
+            variant={declaring || kind === 'report' ? 'soft' : 'solid'}
+            color={declaring || kind === 'report' ? 'destructive' : 'primary'}
             disabled={submitDisabled}
             onClick={() => (declaring ? setConfirming(true) : void submit())}
           >
@@ -646,7 +658,8 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
+              variant="soft"
+              color="destructive"
               onClick={() => {
                 setConfirming(false);
                 void submit();

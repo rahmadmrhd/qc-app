@@ -228,16 +228,22 @@ describe('postels.history', () => {
     expect((await rest.get(path, { email: null })).status).toBe(401);
   });
 
-  test('catatan tak dikenal atau sudah dihapus = NOT_FOUND; riwayatnya tetap ada di access.audit.list', async () => {
+  test('catatan tak dikenal = NOT_FOUND; yang dihapus lunak hanya terbaca pemegang sticker edit; riwayatnya ada di access.audit.list', async () => {
     const missing = await call(ADMIN, 'postels.history', { id: 'tidak-ada' });
     expect(missing.ok).toBe(false);
     expect(missing.error?.code).toBe('NOT_FOUND');
 
     const postel = await create();
     expect((await call(ADMIN, 'postels.remove', { id: postel.id })).ok).toBe(true);
-    const gone = await call(ADMIN, 'postels.history', { id: postel.id });
+    const gone = await call(VIEWER, 'postels.history', { id: postel.id });
     expect(gone.ok).toBe(false);
     expect(gone.error?.code).toBe('NOT_FOUND');
+    const visible = await call(ADMIN, 'postels.history', { id: postel.id });
+    expect(visible.ok).toBe(true);
+    expect((visible.data as Json).entries.map((e: Json) => e.action)).toEqual([
+      'postel.delete',
+      'postel.create',
+    ]);
     const audit = await call(ADMIN, 'access.audit.list', {
       query: `postel:${postel.id as string}`,
     });
@@ -245,5 +251,47 @@ describe('postels.history', () => {
       'postel.delete',
       'postel.create',
     ]);
+  });
+});
+
+describe('item terhapus pada catatan (soft delete, penampil rujukan)', () => {
+  const softDelete = (id: string) =>
+    env.DB.prepare(
+      "UPDATE items SET deleted_at = '2026-11-19T00:00:00.000Z', deleted_by = 'seed', status = 'inactive' WHERE id = ?",
+    )
+      .bind(id)
+      .run();
+
+  test('nama turunan, jumlah, dan model hanya dari item hidup; item terhapus tampil bertanda dan dipertahankan saat simpan', async () => {
+    const postel = await create({ itemIds: ['i1', 'i2'] });
+    expect(postel.itemCount).toBe(2);
+    await softDelete('i2');
+    const got = (await call(ADMIN, 'postels.get', { id: postel.id })).data as Json;
+    expect(got.itemCount).toBe(1);
+    expect(got.name).toContain('M5-400');
+    expect(got.name).not.toContain('M5-200');
+    expect(got.items.map((i: Json) => i.id)).toEqual(['i2', 'i1']);
+    expect(got.items.find((i: Json) => i.id === 'i2')).toMatchObject({ deleted: true });
+    const listed = (await call(ADMIN, 'postels.list', null)).data as Json;
+    expect(listed.postels[0].itemCount).toBe(1);
+    expect(listed.postels[0].models).toEqual(['M5-400']);
+    // simpan dengan kedua id (rujukan tersimpan) berhasil; item terhapus tetap terpasang
+    const saved = await call(ADMIN, 'postels.save', {
+      id: postel.id,
+      expectedUpdatedAt: got.updatedAt,
+      ...body({ itemIds: ['i1', 'i2'], note: 'ubah', numbers: got.numbers.map(keep) }),
+    });
+    expect(saved.ok).toBe(true);
+    const owner = await env.DB.prepare('SELECT postel_id FROM items WHERE id = ?')
+      .bind('i2')
+      .first<{ postel_id: string }>();
+    expect(owner?.postel_id).toBe(postel.id);
+    // item terhapus yang belum terpasang tidak dapat dipilih baru
+    await softDelete('i1');
+    await seedItem(env, { id: 'i9', brand: 'PBE', model: 'X9' });
+    await softDelete('i9');
+    const picked = await call(ADMIN, 'postels.save', body({ itemIds: ['i9'] }));
+    expect(picked.ok).toBe(false);
+    expect(picked.error.code).toBe('VALIDATION');
   });
 });

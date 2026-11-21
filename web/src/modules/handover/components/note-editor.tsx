@@ -8,6 +8,7 @@ export interface NoteEditorProps {
   value: string;
   onChange: (markdown: string) => void;
   labelledBy?: string;
+  required?: boolean;
   disabled?: boolean;
   /** Diteruskan ke editor (mode `note` tanpa gambar sehingga tidak pernah sibuk; ada agar kontraknya seragam). */
   onBusyChange?: ((busy: boolean) => void) | undefined;
@@ -19,6 +20,7 @@ export function NoteEditor({
   value,
   onChange,
   labelledBy,
+  required,
   disabled,
   onBusyChange,
 }: NoteEditorProps) {
@@ -43,13 +45,14 @@ export function NoteEditor({
           onChange(next);
         }}
         labelledBy={labelledBy}
+        required={required}
         disabled={disabled}
         maxLength={HANDOVER_LIMITS.note}
         extraExtensions={extensions}
         onBusyChange={onBusyChange}
       />
       {tooLong !== null ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {`Tempelan ${tooLong.toLocaleString('id-ID')} karakter melebihi batas ${HANDOVER_LIMITS.note.toLocaleString('id-ID')} karakter dan tidak dimasukkan. Bagi menjadi beberapa task atau persingkat dulu; catatan Anda tidak berubah.`}
         </p>
       ) : null}

@@ -28,12 +28,18 @@ export function CancelDialog({ open, number, onOpenChange, onConfirm }: CancelDi
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            color="primary"
+            onClick={() => onOpenChange(false)}
+          >
             Kembali
           </Button>
           <Button
             type="button"
-            variant="destructive"
+            variant="soft"
+            color="destructive"
             onClick={() => {
               onOpenChange(false);
               onConfirm();

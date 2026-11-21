@@ -1,6 +1,6 @@
 import type { MeDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { addSerials, type StagingRow } from '../lib/draft';
@@ -168,6 +168,11 @@ test('Kosongkan draft membuang foto semua baris', async () => {
   ]);
   renderPage();
   await userEvent.click(await screen.findByRole('button', { name: 'Kosongkan draft' }));
+  // Konfirmasi menyebut jumlah baris dan foto yang ikut dibuang.
+  const dialog = await screen.findByRole('alertdialog', { name: 'Kosongkan draft?' });
+  expect(dialog).toHaveTextContent('2 baris dibuang dari draft dan 3 foto buktinya ikut dibuang');
+  expect(removeCalls()).toEqual([]);
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Kosongkan 2 baris' }));
   await waitFor(() => expect(removeCalls()).toEqual(['p1', 'p2', 'p3']));
   expect(localStorage.getItem('qc.serial.draft:a@gmail.com')).toBeNull();
 });

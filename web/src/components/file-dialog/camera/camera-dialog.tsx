@@ -412,7 +412,13 @@ function CameraBody({
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 p-4 text-center text-sm text-white">
             <p role="alert">{CAMERA_ERROR_TEXT[state.kind]}</p>
             {state.kind !== 'insecure' && state.kind !== 'unsupported' ? (
-              <Button type="button" variant="secondary" size="sm" onClick={camera.retry}>
+              <Button
+                type="button"
+                variant="soft"
+                color="secondary"
+                size="sm"
+                onClick={camera.retry}
+              >
                 Coba lagi
               </Button>
             ) : null}
@@ -425,6 +431,7 @@ function CameraBody({
             <Button
               type="button"
               variant="ghost"
+              color="primary"
               size="icon"
               className={FLOAT_BUTTON}
               aria-label="Tutup kamera"

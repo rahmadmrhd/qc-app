@@ -83,7 +83,7 @@ export function InjectProgressDialog({
             className={cn(
               'h-full w-full',
               running && 'animate-pulse bg-primary',
-              outcome === 'success' && 'bg-green-600',
+              outcome === 'success' && 'bg-success',
               outcome === 'failed' && 'bg-destructive',
               outcome === 'cancelled' && 'bg-muted-foreground',
             )}
@@ -102,11 +102,11 @@ export function InjectProgressDialog({
         </pre>
         <DialogFooter>
           {running ? (
-            <Button type="button" variant="destructive" onClick={onCancel}>
+            <Button type="button" variant="soft" color="destructive" onClick={onCancel}>
               Cancel
             </Button>
           ) : (
-            <Button type="button" variant="secondary" onClick={onClose}>
+            <Button type="button" variant="soft" color="secondary" onClick={onClose}>
               Close
             </Button>
           )}

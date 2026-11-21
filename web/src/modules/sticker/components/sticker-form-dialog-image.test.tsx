@@ -1,8 +1,9 @@
 import type { BusinessUnitOptionDto, StickerTypeDto } from '@shared/contract';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { pickLink } from '@/test/link-field';
+import { renderInRouter } from '@/test/render-in-router';
 
 const uploadMock = vi.hoisted(() => vi.fn());
 vi.mock('@/modules/files/file-source', () => ({
@@ -53,23 +54,34 @@ const item = (id: string) => ({
 });
 
 beforeEach(() => uploadMock.mockReset());
+afterEach(() => cleanup());
 
 /** Membuka dialog Tambah stiker dengan nama + jenis terisi (Simpan siap kecuali gambar menahan). */
 async function openForm() {
   const onSave = vi.fn().mockResolvedValue(null);
-  render(
+  await renderInRouter(
     <StickersPage
       stickers={[]}
       types={types}
       businessUnits={businessUnits}
       canEdit
       canManage
+      filter={{ q: '', typeId: '', status: 'all' }}
+      onFilterChange={vi.fn()}
       pendingStatusId={null}
       onSave={onSave}
       onToggleStatus={vi.fn()}
+      mutations={{
+        setStatus: vi.fn().mockResolvedValue([]),
+        remove: vi.fn().mockResolvedValue([]),
+        restore: vi.fn().mockResolvedValue([]),
+        reload: vi.fn(),
+      }}
+      onStartOpname={vi.fn()}
+      onStartEntry={vi.fn()}
     />,
   );
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah stiker' }));
+  await userEvent.click(screen.getAllByRole('button', { name: 'Tambah stiker' })[0] as HTMLElement);
   const form = await screen.findByRole('alertdialog', { name: 'Tambah stiker' });
   await pickLink(within(form), 'Jenis', 'Segel');
   await userEvent.type(within(form).getByLabelText('Nama stiker'), 'Segel Baru');
@@ -107,4 +119,18 @@ test('Simpan form stiker aktif lagi setelah unggahan gagal dibuang', async () =>
   await pickImage(form, png('a.png'));
   await userEvent.click(await within(form).findByRole('button', { name: /^Buang / }));
   await waitFor(() => expect(within(form).getByRole('button', { name: 'Simpan' })).toBeEnabled());
+});
+
+test('Enter di kolom Nama saat gambar gagal diunggah tidak menyimpan (penahan sama dengan tombol Simpan)', async () => {
+  const { form, onSave } = await openForm();
+  uploadMock.mockRejectedValueOnce(new Error('putus'));
+  await pickImage(form, png('a.png'));
+  expect(await within(form).findByRole('button', { name: /^Ulangi / })).toBeInTheDocument();
+  await userEvent.type(within(form).getByLabelText('Nama stiker'), '{Enter}');
+  expect(onSave).not.toHaveBeenCalled();
+  // Setelah gambar dibuang, Enter kembali menyimpan.
+  await userEvent.click(within(form).getByRole('button', { name: /^Buang / }));
+  await waitFor(() => expect(within(form).getByRole('button', { name: 'Simpan' })).toBeEnabled());
+  await userEvent.type(within(form).getByLabelText('Nama stiker'), '{Enter}');
+  await waitFor(() => expect(onSave).toHaveBeenCalledTimes(1));
 });

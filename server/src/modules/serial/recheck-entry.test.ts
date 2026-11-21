@@ -461,13 +461,14 @@ describe('serials.lookupMany', () => {
 describe('serial ganda lama (indeks serials_serial belum terpasang): pilihan catatan deterministik', () => {
   beforeEach(async () => {
     await env.DB.prepare('DROP INDEX IF EXISTS serials_serial ON serials').run();
+    await env.DB.prepare('DROP INDEX IF EXISTS serials_serial_live ON serials').run();
     await seedBusinessUnit(env, { id: 'bu-c', code: 'C' });
   });
   afterEach(async () => {
     // Skema dipakai bersama tes lain dalam proses ini: kembalikan indeks unik.
     await env.DB.prepare('DELETE FROM serials').run();
     await env.DB.prepare(
-      'CREATE UNIQUE INDEX IF NOT EXISTS serials_serial ON serials (serial)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS serials_serial_live ON serials (serial, deleted_at)',
     ).run();
   });
 

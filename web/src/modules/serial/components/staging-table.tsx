@@ -68,8 +68,8 @@ export function rowStatus(row: StagingRow): { tone: 'error' | 'warn' | 'ok'; tex
 }
 
 export const TONE_CLASS = {
-  error: 'text-destructive',
-  warn: 'text-amber-600 dark:text-amber-400',
+  error: 'text-destructive-text',
+  warn: 'text-warning-text',
   ok: 'text-muted-foreground',
 } as const;
 
@@ -147,7 +147,7 @@ function SerialCell({ clientId, serial, onCommitSerial, disabled, locked }: Seri
         }}
       />
       {error ? (
-        <p role="alert" className="mt-0.5 text-xs text-destructive">
+        <p role="alert" className="mt-0.5 text-xs text-destructive-text">
           {error}
         </p>
       ) : null}
@@ -257,7 +257,7 @@ const RowView = memo(function RowView({
       className={cn(
         'border-b align-top',
         status.tone === 'error' && 'bg-destructive/5',
-        status.tone === 'warn' && 'bg-amber-500/5',
+        status.tone === 'warn' && 'bg-warning-text/5',
         row.selected && 'bg-muted/50',
       )}
     >
@@ -318,6 +318,7 @@ const RowView = memo(function RowView({
         <Button
           type="button"
           variant="ghost"
+          color="primary"
           size="sm"
           aria-label={`Detail ${row.serial}`}
           disabled={disabled}
@@ -328,6 +329,7 @@ const RowView = memo(function RowView({
         <Button
           type="button"
           variant="ghost"
+          color="primary"
           size="sm"
           aria-label={`Hapus ${row.serial}`}
           disabled={disabled}

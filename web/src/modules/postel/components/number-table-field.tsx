@@ -52,8 +52,12 @@ export function NumberTableField({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Nomor</TableHead>
-              <TableHead>Tanggal habis</TableHead>
+              <TableHead className="after:ml-0.5 after:text-destructive-text after:content-['*'_/_'']">
+                Nomor
+              </TableHead>
+              <TableHead className="after:ml-0.5 after:text-destructive-text after:content-['*'_/_'']">
+                Tanggal habis
+              </TableHead>
               <TableHead>Tautan</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
@@ -71,6 +75,7 @@ export function NumberTableField({
                   <TableCell>
                     <Input
                       aria-label={`Nomor sertifikat ${index + 1}`}
+                      aria-required="true"
                       aria-invalid={invalid}
                       placeholder="Nomor sertifikat"
                       value={row.number}
@@ -82,6 +87,7 @@ export function NumberTableField({
                       type="date"
                       className="w-40"
                       aria-label={`Tanggal habis ${index + 1}`}
+                      aria-required="true"
                       aria-invalid={invalid}
                       value={row.expiresOn}
                       onChange={(event) => update(index, { expiresOn: event.target.value })}
@@ -104,6 +110,7 @@ export function NumberTableField({
                       <Button
                         type="button"
                         variant="ghost"
+                        color="primary"
                         size="sm"
                         aria-label={`Hapus nomor ${index + 1}`}
                         onClick={() => onChange(value.filter((_, i) => i !== index))}
@@ -121,6 +128,7 @@ export function NumberTableField({
       <Button
         type="button"
         variant="outline"
+        color="primary"
         size="sm"
         disabled={value.length >= POSTEL_LIMITS.numbersMax}
         onClick={() => onChange([...value, blankNumberRow()])}
@@ -130,7 +138,7 @@ export function NumberTableField({
       {errors && errors.length > 0 ? (
         <div className="space-y-0.5">
           {errors.map((message) => (
-            <p key={message} className="text-sm text-destructive">
+            <p key={message} className="text-sm text-destructive-text">
               {message}
             </p>
           ))}

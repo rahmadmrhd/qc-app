@@ -4,6 +4,7 @@ import { canInject } from '@countrylock/session-machine';
 import { ClipboardList, FolderOpen, KeyRound, TriangleAlert } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { LinkField } from '@/components/link-field';
+import { HeadroomBar, HeadroomFrame } from '@/components/page/headroom-bar';
 import { Select } from '@/components/select';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -40,7 +41,7 @@ export { AUTO_INJECT_WARNING };
 
 function StatusBadge({ label, up }: { label: string; up: boolean }) {
   return (
-    <Badge variant={up ? 'default' : 'secondary'}>
+    <Badge color={up ? 'success' : 'destructive'} variant="soft" dot>
       {label}: {up ? 'terhubung' : 'tidak terjangkau'}
     </Badge>
   );
@@ -141,51 +142,56 @@ export function CountryLockPage({
   const catalogReady = catalog.snapshot !== null;
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-col gap-4 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">Country Lock</h1>
-        <div className="flex items-center gap-2">
-          {/* Sinkron data offline hanya relevan di halaman ini (keputusan pemilik 2026-11-18). */}
-          <CatalogSyncButton bridge={bridge} />
-          {pkg && multiAvailable ? (
-            <fieldset className="m-0 flex min-w-0 items-center gap-1 border-0 p-0">
-              <legend className="sr-only">Mode</legend>
-              <Button
-                type="button"
-                size="sm"
-                variant={activeMode === 'single' ? 'default' : 'outline'}
-                aria-pressed={activeMode === 'single'}
-                disabled={multiRunning}
-                onClick={() => chooseMode('single')}
-              >
-                Tunggal
+    // Kerangka seragam (kit): lebar dan padding datang dari PageContainer (AppShell) atau pembungkus ringan rute.
+    <HeadroomFrame className="w-full gap-4">
+      <HeadroomBar className="pt-1 pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-xl font-semibold">Country Lock</h1>
+          <div className="flex items-center gap-2">
+            {/* Sinkron data offline hanya relevan di halaman ini (keputusan pemilik 2026-11-18). */}
+            <CatalogSyncButton bridge={bridge} />
+            {pkg && multiAvailable ? (
+              <fieldset className="m-0 flex min-w-0 items-center gap-1 border-0 p-0">
+                <legend className="sr-only">Mode</legend>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={activeMode === 'single' ? 'solid' : 'outline'}
+                  color="primary"
+                  aria-pressed={activeMode === 'single'}
+                  disabled={multiRunning}
+                  onClick={() => chooseMode('single')}
+                >
+                  Tunggal
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={activeMode === 'multi' ? 'solid' : 'outline'}
+                  color="primary"
+                  aria-pressed={activeMode === 'multi'}
+                  disabled={state.injecting}
+                  onClick={() => chooseMode('multi')}
+                >
+                  Multi-Device
+                </Button>
+                {multiRunning ? (
+                  <span className="text-xs text-muted-foreground">Hentikan Multi dulu</span>
+                ) : null}
+              </fieldset>
+            ) : null}
+            {pkg ? (
+              <Button type="button" variant="outline" color="primary" onClick={actions.chooseDir}>
+                <FolderOpen />
+                Ganti folder paket
               </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={activeMode === 'multi' ? 'default' : 'outline'}
-                aria-pressed={activeMode === 'multi'}
-                disabled={state.injecting}
-                onClick={() => chooseMode('multi')}
-              >
-                Multi-Device
-              </Button>
-              {multiRunning ? (
-                <span className="text-xs text-muted-foreground">Hentikan Multi dulu</span>
-              ) : null}
-            </fieldset>
-          ) : null}
-          {pkg ? (
-            <Button type="button" variant="outline" onClick={actions.chooseDir}>
-              <FolderOpen />
-              Ganti folder paket
-            </Button>
-          ) : null}
+            ) : null}
+          </div>
         </div>
-      </div>
+      </HeadroomBar>
 
       {loadError ? (
-        <Alert variant="destructive">
+        <Alert color="destructive" icon={false}>
           <TriangleAlert />
           <AlertTitle>Paket tidak dapat dimuat</AlertTitle>
           <AlertDescription>{loadError}</AlertDescription>
@@ -211,7 +217,7 @@ export function CountryLockPage({
       ) : (
         <>
           {pkg.missing.length > 0 ? (
-            <Alert variant="destructive">
+            <Alert color="destructive" icon={false}>
               <TriangleAlert />
               <AlertTitle>Berkas skrip tidak ditemukan</AlertTitle>
               <AlertDescription>{pkg.missing.join(', ')}</AlertDescription>
@@ -243,6 +249,7 @@ export function CountryLockPage({
                 >
                   <Select
                     id="country-lock-brand"
+                    required
                     label="Merk"
                     placeholder="Pilih merk"
                     value={state.brand ?? ''}
@@ -256,6 +263,7 @@ export function CountryLockPage({
                   {showTipe ? (
                     <LinkField
                       id="country-lock-tipe"
+                      required
                       label="Tipe"
                       placeholder={
                         !brandConfig
@@ -275,6 +283,7 @@ export function CountryLockPage({
                   ) : null}
                   <Select
                     id="country-lock-firmware"
+                    required
                     label="Firmware"
                     placeholder={brandConfig ? 'Pilih firmware' : 'Pilih merk dulu'}
                     value={state.firmwareCode ?? ''}
@@ -290,6 +299,7 @@ export function CountryLockPage({
                   <div className="grid gap-4 sm:grid-cols-2">
                     <LinkField
                       id="country-lock-bu"
+                      required
                       label="Business Unit"
                       placeholder={
                         !catalogReady
@@ -306,6 +316,7 @@ export function CountryLockPage({
                     />
                     <LinkField
                       id="country-lock-location"
+                      required
                       label="Lokasi"
                       placeholder={
                         !catalogReady
@@ -323,13 +334,11 @@ export function CountryLockPage({
                   </div>
                 ) : null}
                 {tipe && !tipe.application.ok ? (
-                  <p className="text-sm text-amber-600 dark:text-amber-400">
-                    {tipe.application.message}
-                  </p>
+                  <p className="text-sm text-warning-text">{tipe.application.message}</p>
                 ) : null}
 
                 {missingDeviceIp ? (
-                  <p className="text-sm text-destructive">
+                  <p className="text-sm text-destructive-text">
                     IP perangkat mode tunggal belum diatur di config.QC untuk merk ini.
                   </p>
                 ) : null}
@@ -369,6 +378,7 @@ export function CountryLockPage({
                   <Button
                     type="button"
                     variant="outline"
+                    color="primary"
                     onClick={actions.openCredentials}
                     disabled={!brandConfig}
                   >
@@ -377,7 +387,7 @@ export function CountryLockPage({
                   </Button>
                 </div>
                 {injectBlocker !== null && draft.status !== 'loading' ? (
-                  <p role="status" className="text-sm text-amber-600 dark:text-amber-400">
+                  <p role="status" className="text-sm text-warning-text">
                     {injectBlocker}
                   </p>
                 ) : null}
@@ -452,6 +462,6 @@ export function CountryLockPage({
         onCancel={actions.cancel}
         onClose={actions.closeProgress}
       />
-    </div>
+    </HeadroomFrame>
   );
 }

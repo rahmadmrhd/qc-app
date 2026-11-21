@@ -7,6 +7,8 @@ import { DbError } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
+import { deletedWhere, liveWhere } from '@server/core/soft-delete';
+import type { UserContext } from '@server/modules/access/context';
 import { listLocationBriefs } from '@server/modules/access/repo';
 import type { CustomerRecord } from '@server/modules/customer/repo';
 import { insertCustomerStmts, listCustomers } from '@server/modules/customer/repo';
@@ -47,6 +49,7 @@ import {
 } from '@shared/handover-comments';
 import { handoverCanonicalText } from '@shared/handover-text';
 import type { HandoverAction } from '@shared/notifications';
+import { hasLevel } from '@shared/permissions';
 import { checklistOf, matchedChecks } from './checklist';
 import type {
   CommentStats,
@@ -69,7 +72,8 @@ import {
 } from './repo';
 import { BOARD_DEFAULT_LIMIT, handoverNoteError, parseBoardCursor } from './validate';
 
-const STALE_MESSAGE = 'Task sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
+export const STALE_MESSAGE =
+  'Task sudah diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
 
 export async function locationNameMap(env: Env): Promise<Map<string, string>> {
   const rows = await listLocationBriefs(env);
@@ -141,6 +145,9 @@ export function toHandoverDto(
     createdBy: handover.createdBy,
     updatedAt: handover.updatedAt,
     updatedBy: handover.updatedBy,
+    ...(handover.deletedAt
+      ? { deleted: { deletedAt: handover.deletedAt, deletedBy: handover.deletedBy ?? '' } }
+      : {}),
   };
 }
 
@@ -162,17 +169,34 @@ interface BoardRow extends HandoverRow {
 /**
  * Satu kolom kanban per panggilan (Spek 7.4): terbaru dahulu (`updated_at`, lalu nomor); pada Dikerjakan
  * progres lebih kecil di atas. Kursor keyset; `total` = jumlah task di kolom itu. Lokasi baris diperiksa
- * lewat `locationIds` yang sudah diizinkan router.
+ * lewat `locationIds` yang sudah diizinkan router. Task terhapus tak pernah ikut kolom (hitungan dan `hasMore`
+ * juga tak memuatnya); `deleted: true` (hanya `handover: manage`) menggantinya dengan task TERHAPUS, tetap
+ * dikelompokkan menurut kolom statusnya, terbatas pada lokasi tempat pemanggil memegang `manage` (tanpa satu pun =
+ * `FORBIDDEN`).
  */
 export async function handoverBoard(
   env: Env,
   input: BoardPageInput,
-  locationIds: readonly string[],
+  allowedLocationIds: readonly string[],
+  user?: Pick<UserContext, 'locations'>,
 ): Promise<BoardPageDto> {
   const limit = input.limit ?? BOARD_DEFAULT_LIMIT;
+  const deleted = input.deleted === true;
+  const locationIds = deleted
+    ? allowedLocationIds.filter((id) => canManageHandoverAt(user, id))
+    : allowedLocationIds;
+  if (deleted && locationIds.length === 0) {
+    throw appError('FORBIDDEN', 'Anda tidak berhak melihat task terhapus');
+  }
   const inList = locationIds.map(() => '?').join(',');
-  const base = `h.location_id IN (${inList}) AND h.board_status = ?`;
-  const baseBinds: unknown[] = [...locationIds, input.status];
+  // Filter customer (keputusan pemilik 2026-11-21) ikut `base`, jadi memengaruhi halaman DAN jumlah kolom; hak lokasi tetap.
+  const customerClause = input.customerId ? ' AND h.customer_id = ?' : '';
+  const base = `h.location_id IN (${inList}) AND h.board_status = ?${customerClause}`;
+  const baseBinds: unknown[] = [
+    ...locationIds,
+    input.status,
+    ...(input.customerId ? [input.customerId] : []),
+  ];
   const cursor = input.cursor ? parseBoardCursor(input.status, input.cursor) : null;
   const where: string[] = [base];
   const binds: unknown[] = [...baseBinds];
@@ -205,12 +229,23 @@ export async function handoverBoard(
   // Halaman (LIMIT) dan jumlah kolom berjalan paralel; komentar halaman diambil dengan satu kueri berikutnya
   // (id task halaman) dan disusun di aplikasi, jadi board = 2 round trip berurutan. COUNT hanya memindai indeks
   // kolom itu.
-  const pageStatement = env.DB.prepare(
-    `SELECT p.* FROM (SELECT ${HANDOVER_COLUMNS}, h.checked_count, h.total_count FROM ${HANDOVER_FROM} WHERE ${where.join(' AND ')} ORDER BY ${order} LIMIT ?) p ORDER BY ${outerOrder}`,
+  // Dua literal per kueri (hidup / terhapus) agar penyaring keadaan terlihat tes penjaga soft delete.
+  const pageStatement = (
+    deleted
+      ? env.DB.prepare(
+          `SELECT p.* FROM (SELECT ${HANDOVER_COLUMNS}, h.checked_count, h.total_count FROM ${HANDOVER_FROM} WHERE ${deletedWhere('h')} AND ${where.join(' AND ')} ORDER BY ${order} LIMIT ?) p ORDER BY ${outerOrder}`,
+        )
+      : env.DB.prepare(
+          `SELECT p.* FROM (SELECT ${HANDOVER_COLUMNS}, h.checked_count, h.total_count FROM ${HANDOVER_FROM} WHERE ${liveWhere('h')} AND ${where.join(' AND ')} ORDER BY ${order} LIMIT ?) p ORDER BY ${outerOrder}`,
+        )
   ).bind(...binds, limit + 1);
-  const countStatement = env.DB.prepare(`SELECT COUNT(*) AS n FROM handovers h WHERE ${base}`).bind(
-    ...baseBinds,
-  );
+  const countStatement = (
+    deleted
+      ? env.DB.prepare(
+          `SELECT COUNT(*) AS n FROM handovers h WHERE ${deletedWhere('h')} AND ${base}`,
+        )
+      : env.DB.prepare(`SELECT COUNT(*) AS n FROM handovers h WHERE ${liveWhere('h')} AND ${base}`)
+  ).bind(...baseBinds);
   const [pageAndComments, countResult] = await Promise.all([
     pageStatement.all<BoardRow>().then(async (result) => {
       const page = result.results.slice(0, limit);
@@ -252,18 +287,33 @@ export async function handoverBoard(
 
 /**
  * Detail satu task. Lokasi baris task HARUS salah satu lokasi yang diizinkan router (`locationIds` dari `ctx`);
- * bila tidak, `NOT_FOUND`.
+ * bila tidak, `NOT_FOUND`. Task TERHAPUS hanya terbaca pemegang `handover: manage` di lokasi task itu (selain itu
+ * `NOT_FOUND` seragam; soft delete §4.2).
  */
 export async function getHandoverDto(
   env: Env,
   input: GetHandoverInput,
   locationIds: readonly string[] = input.locationIds,
+  user?: Pick<UserContext, 'locations'>,
 ): Promise<HandoverDto> {
-  const found = await findHandoverWithComments(env, input.id);
+  const found = await findHandoverWithComments(env, input.id, undefined, true);
   if (!found || !locationIds.includes(found.loaded.record.locationId)) {
     throw appError('NOT_FOUND', 'Task tidak ditemukan');
   }
+  const record = found.loaded.record;
+  if (record.deletedAt && !canManageHandoverAt(user, record.locationId)) {
+    throw appError('NOT_FOUND', 'Task tidak ditemukan');
+  }
   return dtoOf(env, found.loaded);
+}
+
+/** `handover: manage` di lokasi itu (hak Hapus/Pulihkan dan melihat task terhapus). */
+export function canManageHandoverAt(
+  user: Pick<UserContext, 'locations'> | undefined,
+  locationId: string,
+): boolean {
+  const access = user?.locations[locationId];
+  return access !== undefined && hasLevel(access.handover, 'manage');
 }
 
 /** Customer aktif untuk saran di form task (diambil lewat izin serah terima, bukan izin customer). */
@@ -460,6 +510,11 @@ async function replayCreatedTasks(
   if (found.size !== tasks.length || !owned) {
     throw appError('CONFLICT', 'Task tidak dapat dikirim ulang');
   }
+  // Task yang sudah dihapus: kiriman ulang = tak ditemukan (keputusan T8), diperiksa SESUDAH kepemilikan agar yang
+  // bukan milik pelaku tak dapat memeriksa keadaan hapus.
+  if ([...found.values()].some((row) => row.deleted)) {
+    throw appError('NOT_FOUND', 'Task tidak ditemukan');
+  }
   const ids = tasks.map((task) => (found.get(task.clientId as string) as { id: string }).id);
   const [loadedRows, comments] = await Promise.all([
     findHandoversByIds(env, ids),
@@ -545,6 +600,7 @@ async function createTasks(
           actor: actor.email,
           action: 'handover.create',
           target: record.number,
+          targetId: record.id,
           before: null,
           after: audit.after,
         });
@@ -662,6 +718,7 @@ export async function saveHandover(
         actor: actor.email,
         action: 'handover.update',
         target: current.number,
+        targetId: current.id,
         before: audit.before,
         after: audit.after,
       }),
@@ -784,6 +841,7 @@ async function writeTaskChange(
       actor: actor.email,
       action,
       target: handover.number,
+      targetId: handover.id,
       before: audit.before,
       after: audit.after,
     }),
@@ -977,7 +1035,7 @@ export async function addComment(
       env.DB.prepare('SELECT id FROM handovers WHERE id = ? FOR UPDATE').bind(handover.id),
       // Penjaga digabung ke kolom `id` (nilai gagal = `CAS_FAIL_SQL`, galat di luar jangkauan): tanpa pernyataan penjaga terpisah.
       env.DB.prepare(
-        `INSERT INTO handover_comments (id, handover_id, author, created_at, quote, \`before\`, \`after\`, body, client_id) VALUES (CASE WHEN ((SELECT COUNT(*) FROM handover_comments WHERE handover_id = ?) < ? AND (SELECT COALESCE(SUM(${COMMENT_SIZE_SQL}), 0) FROM handover_comments WHERE handover_id = ?) + ? + 2 <= ? AND EXISTS (SELECT 1 FROM handovers WHERE id = ? AND status <> 'cancelled')) THEN ? ELSE ${CAS_FAIL_SQL} END, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO handover_comments (id, handover_id, author, created_at, quote, \`before\`, \`after\`, body, client_id) VALUES (CASE WHEN ((SELECT COUNT(*) FROM handover_comments WHERE handover_id = ?) < ? AND (SELECT COALESCE(SUM(${COMMENT_SIZE_SQL}), 0) FROM handover_comments WHERE handover_id = ?) + ? + 2 <= ? AND EXISTS (SELECT 1 FROM handovers WHERE id = ? AND status <> 'cancelled' AND deleted_at = '')) THEN ? ELSE ${CAS_FAIL_SQL} END, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).bind(
         handover.id,
         HANDOVER_LIMITS.comments,
@@ -1000,6 +1058,7 @@ export async function addComment(
         actor: actor.email,
         action: 'handover.comment',
         target: handover.number,
+        targetId: handover.id,
         before: null,
         after: audit.after,
       }),
@@ -1018,6 +1077,9 @@ export async function addComment(
       if (raced) return raced;
     }
     if (isGuardFailure(error)) {
+      // Task dihapus lunak di sela baca dan tulis: penjaga INSERT (`deleted_at = ''`) ikut gagal. Muat ulang task
+      // hidup; bila sudah terhapus jawabannya `NOT_FOUND` seperti komentar ke task terhapus lainnya, bukan pesan batas.
+      await loadForWrite(env, input);
       throw appError(
         'VALIDATION',
         `Komentar tidak dapat ditambahkan: batas ${HANDOVER_LIMITS.comments} komentar atau 40.000 karakter tercapai, atau task sudah dibatalkan`,
