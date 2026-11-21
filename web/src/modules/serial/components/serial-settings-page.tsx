@@ -2,9 +2,11 @@ import type { SaveSerialSettingsInput, SerialSettingsDto, UserDto } from '@share
 import { normalizeKey } from '@shared/items';
 import { isPostelRecipient } from '@shared/postel';
 import { SERIAL_LIMITS } from '@shared/serials';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
+import { FormPage } from '@/components/page/form-page';
+import { FormTabs } from '@/components/page/form-tabs';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -12,27 +14,40 @@ import { Label } from '@/components/ui/label';
 
 const MAX = SERIAL_LIMITS.alertRecipientsMax;
 
+/** Id `<form>` email Serial Number rusak (tombol Simpan ada di bar judul `FormPage`, di luar form). */
+export const SERIAL_ALERT_FORM_ID = 'serial-alert-settings';
+/** Id `<form>` lokasi tim servis (disimpan sendiri, versi CAS terpisah). */
+export const SERIAL_SERVICE_FORM_ID = 'serial-service-settings';
+
+export const SERIAL_SETTINGS_TABS = ['email', 'lokasi'] as const;
+export type SerialSettingsTab = (typeof SERIAL_SETTINGS_TABS)[number];
+
 export interface SerialSettingsPageProps {
   settings: SerialSettingsDto;
   /** Daftar user untuk saran penerima; `null` bila pengguna tak boleh melihat Akses (email bebas tetap dapat diisi). */
   users: readonly UserDto[] | null;
   /** Mengembalikan pesan galat (tampil di halaman ini) atau `null` bila berhasil. */
   onSave: (input: SaveSerialSettingsInput) => Promise<string | null>;
-  /** Bagian pengaturan lain yang tampil di bawah email (mis. lokasi tim servis). */
-  children?: React.ReactNode;
+  /** Tab aktif (search param di rute); tanpa ini halaman memegangnya sendiri. */
+  tab?: SerialSettingsTab | undefined;
+  onTabChange?: ((tab: SerialSettingsTab) => void) | undefined;
+  onCancel: () => void;
+  /** Isi tab "Lokasi tim servis": form sendiri yang memakai `formId` dan melaporkan proses simpan. */
+  renderServiceTab: (props: { formId: string; onBusyChange: (busy: boolean) => void }) => ReactNode;
 }
 
 function userLabel(user: Pick<UserDto, 'name' | 'email'>): string {
   return `${user.name} (${user.email})`;
 }
 
-interface BodyProps extends Omit<SerialSettingsPageProps, 'children'> {
+interface BodyProps extends Pick<SerialSettingsPageProps, 'settings' | 'users' | 'onSave'> {
+  onBusyChange: (busy: boolean) => void;
   /** Pesan galat simpan; disimpan di luar `Body` agar tetap tampil saat isian dimuat ulang (versi usang). */
   serverError: string | null;
   onServerError: (message: string | null) => void;
 }
 
-function Body({ settings, users, onSave, serverError, onServerError }: BodyProps) {
+function Body({ settings, users, onSave, serverError, onServerError, onBusyChange }: BodyProps) {
   const { alert } = settings;
   const [enabled, setEnabled] = useState(alert.enabled);
   const [recipients, setRecipients] = useState<string[]>(alert.recipients);
@@ -89,6 +104,7 @@ function Body({ settings, users, onSave, serverError, onServerError }: BodyProps
   async function submit() {
     if (busy) return;
     setBusy(true);
+    onBusyChange(true);
     onServerError(null);
     let message: string | null;
     try {
@@ -100,11 +116,13 @@ function Body({ settings, users, onSave, serverError, onServerError }: BodyProps
       message = 'Gagal menyimpan pengaturan Serial Number';
     }
     setBusy(false);
+    onBusyChange(false);
     onServerError(message);
   }
 
   return (
     <form
+      id={SERIAL_ALERT_FORM_ID}
       noValidate
       className="space-y-3 rounded-lg border p-4"
       onSubmit={(event) => {
@@ -194,29 +212,68 @@ function Body({ settings, users, onSave, serverError, onServerError }: BodyProps
           {serverError}
         </p>
       ) : null}
-      <Button type="submit" disabled={busy}>
-        {busy ? 'Menyimpan…' : 'Simpan pengaturan'}
-      </Button>
     </form>
   );
 }
 
 /**
- * Pengaturan email Serial Number rusak: saklar dan penerima (daftar global, hanya pengelola Serial Number di semua BU).
- * `key` = versi tersimpan: setelah simpan (atau muat ulang karena versi usang) isian mulai dari data server terbaru.
+ * Pengaturan Serial Number (`serial: manage` pada semua BU) di `FormPage` + `FormTabs`: tab "Email rusak" (saklar dan
+ * penerima, daftar global) dan "Lokasi tim servis" (form sendiri, ETag sendiri). Tombol Simpan di bar judul mengikuti tab
+ * aktif; isian kedua tab tetap hidup saat berpindah tab. `key` = versi tersimpan: setelah simpan (atau muat ulang karena
+ * versi usang) isian mulai dari data server terbaru.
  */
-export function SerialSettingsPage({ children, ...props }: SerialSettingsPageProps) {
+export function SerialSettingsPage({
+  tab,
+  onTabChange,
+  onCancel,
+  renderServiceTab,
+  ...props
+}: SerialSettingsPageProps) {
+  const [localTab, setLocalTab] = useState<SerialSettingsTab>('email');
+  const active = tab ?? localTab;
+  const changeTab = (next: SerialSettingsTab) => {
+    setLocalTab(next);
+    onTabChange?.(next);
+  };
   const [serverError, setServerError] = useState<string | null>(null);
+  const [alertBusy, setAlertBusy] = useState(false);
+  const [serviceBusy, setServiceBusy] = useState(false);
+  const onService = active === 'lokasi';
+
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-semibold">Pengaturan Serial Number</h1>
-      <Body
-        key={props.settings.updatedAt}
-        {...props}
-        serverError={serverError}
-        onServerError={setServerError}
+    <FormPage
+      formId={onService ? SERIAL_SERVICE_FORM_ID : SERIAL_ALERT_FORM_ID}
+      title="Pengaturan Serial Number"
+      onCancel={onCancel}
+      submitting={onService ? serviceBusy : alertBusy}
+    >
+      <FormTabs
+        value={active}
+        onValueChange={(id) => changeTab(id as SerialSettingsTab)}
+        tabs={[
+          {
+            id: 'email',
+            label: 'Email rusak',
+            content: (
+              <Body
+                key={props.settings.updatedAt}
+                {...props}
+                serverError={serverError}
+                onServerError={setServerError}
+                onBusyChange={setAlertBusy}
+              />
+            ),
+          },
+          {
+            id: 'lokasi',
+            label: 'Lokasi tim servis',
+            content: renderServiceTab({
+              formId: SERIAL_SERVICE_FORM_ID,
+              onBusyChange: setServiceBusy,
+            }),
+          },
+        ]}
       />
-      {children}
-    </div>
+    </FormPage>
   );
 }

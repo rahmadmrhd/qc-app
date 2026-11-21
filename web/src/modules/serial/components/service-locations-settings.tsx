@@ -5,7 +5,6 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
-import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
 import { isStaleSaveError, STALE_SAVE_MESSAGE } from '@/modules/sticker/lib/stale';
 import { serialKeys } from '../keys';
@@ -13,14 +12,23 @@ import { toLocationOptions } from '../lib/locations';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import { serialServiceSettingsQueryOptions, useSaveSerialServiceSettings } from '../queries';
 
+export interface ServiceLocationsSettingsProps {
+  /** Id elemen `<form>`: tombol Simpan ada di bar judul `FormPage` (di luar form) dan memakai `form={formId}`. */
+  formId: string;
+  /** Proses simpan berjalan atau tidak (untuk tombol Simpan di bar judul). */
+  onBusyChange?: ((busy: boolean) => void) | undefined;
+}
+
 interface BodyProps {
+  formId: string;
+  onBusyChange?: ((busy: boolean) => void) | undefined;
   settings: SerialServiceSettingsDto;
   serverError: string | null;
   onSave: (locationIds: string[]) => Promise<string | null>;
   onServerError: (message: string | null) => void;
 }
 
-function Body({ settings, serverError, onSave, onServerError }: BodyProps) {
+function Body({ formId, onBusyChange, settings, serverError, onSave, onServerError }: BodyProps) {
   const { locations, isPending } = useSerialLocations();
   const all = toLocationOptions(locations);
   const [ids, setIds] = useState<string[]>(settings.locationIds);
@@ -37,6 +45,7 @@ function Body({ settings, serverError, onSave, onServerError }: BodyProps) {
   async function submit() {
     if (busy) return;
     setBusy(true);
+    onBusyChange?.(true);
     onServerError(null);
     let message: string | null;
     try {
@@ -45,11 +54,13 @@ function Body({ settings, serverError, onSave, onServerError }: BodyProps) {
       message = 'Gagal menyimpan lokasi tim servis';
     }
     setBusy(false);
+    onBusyChange?.(false);
     onServerError(message);
   }
 
   return (
     <form
+      id={formId}
       noValidate
       aria-label="Lokasi tim servis"
       className="space-y-3 rounded-lg border p-4"
@@ -81,9 +92,6 @@ function Body({ settings, serverError, onSave, onServerError }: BodyProps) {
           {serverError}
         </p>
       ) : null}
-      <Button type="submit" disabled={busy}>
-        {busy ? 'Menyimpan…' : 'Simpan lokasi servis'}
-      </Button>
     </form>
   );
 }
@@ -92,7 +100,7 @@ function Body({ settings, serverError, onSave, onServerError }: BodyProps) {
  * Bagian "Lokasi tim servis" di Pengaturan Serial Number (hanya pengelola, `canManageSerialSettings`): daftar global,
  * ETag sendiri. `key` = versi tersimpan, jadi isian mulai dari data terbaru setelah simpan atau muat ulang (usang).
  */
-export function ServiceLocationsSettings() {
+export function ServiceLocationsSettings({ formId, onBusyChange }: ServiceLocationsSettingsProps) {
   const queryClient = useQueryClient();
   const settings = useQuery(serialServiceSettingsQueryOptions());
   const save = useSaveSerialServiceSettings();
@@ -110,6 +118,8 @@ export function ServiceLocationsSettings() {
   return (
     <Body
       key={current.updatedAt}
+      formId={formId}
+      onBusyChange={onBusyChange}
       settings={current}
       serverError={serverError}
       onServerError={setServerError}

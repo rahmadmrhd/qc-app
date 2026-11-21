@@ -7,14 +7,22 @@ import { useMe } from '@/modules/auth/use-me';
 import { isStaleSaveError, STALE_SAVE_MESSAGE } from '@/modules/sticker/lib/stale';
 import { serialKeys } from '../keys';
 import { serialSettingsQueryOptions, useSaveSerialSettings } from '../queries';
-import { SerialSettingsPage } from './serial-settings-page';
+import { SerialSettingsPage, type SerialSettingsTab } from './serial-settings-page';
 import { ServiceLocationsSettings } from './service-locations-settings';
 
 /**
  * Memuat pengaturan (hanya pengelola di semua BU; server menolak yang lain, pesannya tampil apa adanya) dan menyimpan.
  * Versi usang (412): pesan tampil dan pengaturan dimuat ulang, jadi isian berikutnya mulai dari data terbaru.
  */
-export function SerialSettingsView() {
+export function SerialSettingsView({
+  tab,
+  onTabChange,
+  onCancel,
+}: {
+  tab?: SerialSettingsTab | undefined;
+  onTabChange?: ((tab: SerialSettingsTab) => void) | undefined;
+  onCancel: () => void;
+}) {
   const me = useMe();
   const queryClient = useQueryClient();
   const settings = useQuery(serialSettingsQueryOptions());
@@ -34,6 +42,9 @@ export function SerialSettingsView() {
   return (
     <SerialSettingsPage
       settings={settings.data}
+      tab={tab}
+      onTabChange={onTabChange}
+      onCancel={onCancel}
       users={canReadUsers ? (users.data ?? null) : null}
       onSave={async (input) => {
         try {
@@ -48,8 +59,7 @@ export function SerialSettingsView() {
           return describeError(error);
         }
       }}
-    >
-      <ServiceLocationsSettings />
-    </SerialSettingsPage>
+      renderServiceTab={(props) => <ServiceLocationsSettings {...props} />}
+    />
   );
 }

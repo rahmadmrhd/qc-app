@@ -44,11 +44,14 @@ const meWith = (access: 'none' | 'view'): MeDto => ({
   locations: [],
 });
 
-function renderView() {
+const onCancel = vi.fn();
+const onTabChange = vi.fn();
+
+function renderView(tab?: 'email' | 'lokasi') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <SerialSettingsView />
+      <SerialSettingsView {...(tab ? { tab } : {})} onTabChange={onTabChange} onCancel={onCancel} />
     </QueryClientProvider>,
   );
 }
@@ -57,6 +60,8 @@ const calls = (id: string) => apiMock.mock.calls.filter((call) => call[0] === id
 
 beforeEach(() => {
   apiMock.mockReset();
+  onCancel.mockReset();
+  onTabChange.mockReset();
   me = meWith('none');
   state = {
     alert: { enabled: false, recipients: [] },
@@ -114,7 +119,7 @@ test('judul, saklar, dan simpan mengirim expectedUpdatedAt dengan penerima email
   );
   await userEvent.type(screen.getByLabelText('Email lain'), 'qc@x.com');
   await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan pengaturan' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   await waitFor(() => expect(calls('serialSettings.save')).toHaveLength(1));
   expect(calls('serialSettings.save')[0]?.[1]).toEqual({
     expectedUpdatedAt: 'v1',
@@ -169,7 +174,7 @@ test('versi usang (412): pesan tampil dan pengaturan dimuat ulang ke data terbar
   await userEvent.type(screen.getByLabelText('Email lain'), 'qc@x.com');
   await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
   const before = calls('serialSettings.get').length;
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan pengaturan' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Data sudah diubah orang lain');
   await waitFor(() => expect(calls('serialSettings.get').length).toBeGreaterThan(before));
   // Isian mengikuti data terbaru dan pesan tetap tampil.
@@ -208,11 +213,11 @@ test('tanpa izin Akses daftar user tidak dimuat dan placeholder meminta email ma
 });
 
 test('lokasi tim servis: dimuat kosong dengan keterangan, dipilih lalu disimpan dengan ETag', async () => {
-  renderView();
+  renderView('lokasi');
   const form = await screen.findByRole('form', { name: 'Lokasi tim servis' });
   expect(form).toHaveTextContent('Kosong berarti semua lokasi dianggap lokasi servis');
   await pickLink(screen, 'Lokasi tim servis', 'Surabaya (SBY)');
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan lokasi servis' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   await waitFor(() => expect(calls('serialServiceSettings.save')).toHaveLength(1));
   expect(calls('serialServiceSettings.save')[0]?.[1]).toEqual({
     expectedUpdatedAt: 's1',
@@ -224,14 +229,14 @@ test('lokasi tim servis: dimuat kosong dengan keterangan, dipilih lalu disimpan 
 
 test('lokasi tim servis: lokasi tersimpan yang sudah nonaktif tampil sebagai Lokasi tidak aktif dan bisa dihapus', async () => {
   serviceState = { locationIds: ['l1', 'l-lama'], updatedAt: 's1' };
-  renderView();
+  renderView('lokasi');
   await screen.findByRole('form', { name: 'Lokasi tim servis' });
   expect(await screen.findByText('Jakarta (JKT)')).toBeInTheDocument();
   expect(screen.getByText('Lokasi tidak aktif')).toBeInTheDocument();
 });
 
 test('lokasi tim servis: versi usang (412) menampilkan pesan dan memuat ulang', async () => {
-  renderView();
+  renderView('lokasi');
   await screen.findByRole('form', { name: 'Lokasi tim servis' });
   const original = apiMock.getMockImplementation();
   apiMock.mockImplementation((id: string, input: unknown) => {
@@ -243,8 +248,40 @@ test('lokasi tim servis: versi usang (412) menampilkan pesan dan memuat ulang', 
   });
   await pickLink(screen, 'Lokasi tim servis', 'Surabaya (SBY)');
   const before = calls('serialServiceSettings.get').length;
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan lokasi servis' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Data sudah diubah orang lain');
   await waitFor(() => expect(calls('serialServiceSettings.get').length).toBeGreaterThan(before));
   expect(await screen.findByText('Jakarta (JKT)')).toBeInTheDocument();
+});
+
+test('dua tab: Email rusak dan Lokasi tim servis; klik tab memberi tahu rute dan Batal kembali', async () => {
+  renderView();
+  await screen.findByRole('heading', { name: 'Pengaturan Serial Number' });
+  expect(screen.getByRole('tab', { name: 'Email rusak' })).toHaveAttribute('aria-selected', 'true');
+  await userEvent.click(screen.getByRole('tab', { name: 'Lokasi tim servis' }));
+  expect(onTabChange).toHaveBeenCalledWith('lokasi');
+  await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
+  expect(onCancel).toHaveBeenCalledTimes(1);
+});
+
+test('Simpan di bar judul mengikuti tab: tab Lokasi menyimpan lokasi, bukan email', async () => {
+  renderView('lokasi');
+  await screen.findByRole('form', { name: 'Lokasi tim servis' });
+  expect(screen.getByRole('button', { name: 'Simpan' })).toHaveAttribute(
+    'form',
+    'serial-service-settings',
+  );
+  await pickLink(screen, 'Lokasi tim servis', 'Jakarta (JKT)');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await waitFor(() => expect(calls('serialServiceSettings.save')).toHaveLength(1));
+  expect(calls('serialSettings.save')).toHaveLength(0);
+});
+
+test('Simpan pada tab Email menunjuk form email', async () => {
+  renderView('email');
+  await screen.findByRole('heading', { name: 'Pengaturan Serial Number' });
+  expect(screen.getByRole('button', { name: 'Simpan' })).toHaveAttribute(
+    'form',
+    'serial-alert-settings',
+  );
 });
