@@ -527,6 +527,7 @@ test('filter posisi masuk masukan serials.list lewat Select', async () => {
   await openChip('Posisi');
   await pickSelect(screen, 'Filter posisi', 'Dalam pengiriman');
   await waitFor(() => expect(lastListInput()).toMatchObject({ custody: 'transit' }));
+  await openChip('Posisi');
   await pickSelect(screen, 'Filter posisi', 'Semua posisi');
   await waitFor(() => expect(lastListInput()).not.toHaveProperty('custody'));
 });
@@ -549,6 +550,8 @@ test('filter BU hanya menawarkan BU yang terbaca (serial atau serialservice) dan
   expect(screen.queryByText(/pernah di BU ini/)).toBeNull();
   await userEvent.click(await screen.findByRole('option', { name: 'B2 · Unit b2' }));
   await waitFor(() => expect(lastListInput()).toMatchObject({ buId: 'b2' }));
+  // Memilih satu nilai menutup chip; buka lagi untuk melihat teks bantunya.
+  await openChip('BU');
   expect(await screen.findByText('Termasuk serial yang pernah di BU ini.')).toBeInTheDocument();
 });
 

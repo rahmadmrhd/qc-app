@@ -11,6 +11,7 @@ import { FilterBar, FilterChip } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
+import { liveStatusFilterOptions } from '@/components/soft-delete/status-filter';
 import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
 import { RoleFormDialog } from '@/modules/access/components/role-form-dialog';
@@ -45,13 +46,6 @@ export const Route = createFileRoute('/_app/access/roles/')({
 });
 
 type DeleteTarget = { kind: 'bulk' } | { kind: 'row'; role: RoleDto };
-
-/** Role tidak punya status aktif/nonaktif: filter hanya Semua dan (bagi pemegang manage) Terhapus. */
-function roleStatusOptions(canRestore: boolean) {
-  const options = [{ value: 'all', label: 'Semua role' }];
-  if (canRestore) options.push({ value: 'deleted', label: 'Terhapus' });
-  return options;
-}
 
 function RolesPage() {
   const search = Route.useSearch();
@@ -122,8 +116,8 @@ function RolesPage() {
     );
   }
 
-  const statusOptions = roleStatusOptions(canManage);
-  const statusLabel = statusOptions.find((option) => option.value === status)?.label;
+  // Role tidak punya status aktif/nonaktif: chip Status hanya Hidup/Terhapus (bagi pemegang manage).
+  const statusOptions = liveStatusFilterOptions(canManage);
   const pendingId =
     restoreRoles.isPending && restoreRoles.variables?.ids.length === 1
       ? (restoreRoles.variables.ids[0] ?? null)
@@ -151,8 +145,8 @@ function RolesPage() {
           >
             {canManage ? (
               <FilterChip
-                label="Tampilan"
-                display={status === 'all' ? null : statusLabel}
+                label="Status"
+                display={status === 'deleted' ? 'Terhapus' : null}
                 onClear={() =>
                   void navigate({
                     search: (prev) => ({ ...prev, status: undefined }),
@@ -162,13 +156,16 @@ function RolesPage() {
               >
                 <Select
                   id="roles-filter-status"
-                  label="Filter tampilan"
+                  label="Filter status"
                   hideLabel
                   options={statusOptions}
-                  value={status}
+                  value={status === 'deleted' ? 'deleted' : 'live'}
                   onValueChange={(next) =>
                     void navigate({
-                      search: (prev) => ({ ...prev, status: next as 'all' | 'deleted' }),
+                      search: (prev) => ({
+                        ...prev,
+                        status: next === 'deleted' ? ('deleted' as const) : undefined,
+                      }),
                       replace: true,
                     })
                   }

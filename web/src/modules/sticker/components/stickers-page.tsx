@@ -21,8 +21,8 @@ import {
   useRowSelection,
 } from '@/components/data-table';
 import { DisabledReason } from '@/components/disabled-reason';
-import { LinkField } from '@/components/link-field';
-import { FilterBar, FilterChip } from '@/components/page/filter-bar';
+import { LinkMultiField } from '@/components/link-field';
+import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
@@ -54,11 +54,11 @@ export type { StickerStockPanel, StockPageLocation } from './stock-actions';
 /** Status pada filter halaman: status daftar bersama (`all|active|inactive|deleted`) ditambah `deprecated` (Usang). */
 export type StickerStatusFilter = ListStatusFilter | 'deprecated';
 
-/** Filter halaman Stiker (search params Router). `typeId` kosong = semua jenis. */
+/** Filter halaman Stiker (search params Router). `typeIds` kosong = semua jenis. */
 export interface StickersFilter {
   q: string;
-  /** Id jenis (mode katalog); pada mode stok saja (tanpa daftar jenis) berisi NAMA jenis. */
-  typeId: string;
+  /** Id jenis (mode katalog; boleh lebih dari satu); pada mode stok saja (tanpa daftar jenis) berisi NAMA jenis. */
+  typeIds: string[];
   status: StickerStatusFilter;
 }
 
@@ -218,13 +218,11 @@ export function StickersPage({
     : [...new Set(rows.map((row) => row.typeName))]
         .sort((a, b) => a.localeCompare(b))
         .map((name) => ({ id: name, label: name }));
-  const typeFilterLabel = typeNames.find((option) => option.id === filter.typeId)?.label;
+  const typeLabelOf = (id: string) => typeNames.find((option) => option.id === id)?.label ?? id;
 
   const visible = rows.filter((row) => {
-    if (filter.typeId !== '') {
-      const matches = row.catalog
-        ? row.catalog.typeId === filter.typeId
-        : row.typeName === filter.typeId;
+    if (filter.typeIds.length > 0) {
+      const matches = filter.typeIds.includes(row.catalog ? row.catalog.typeId : row.typeName);
       if (!matches) return false;
     }
     if (filter.status !== 'all' && filter.status !== 'deleted' && row.status !== filter.status) {
@@ -583,7 +581,7 @@ export function StickersPage({
     ...(canManage && catalogMode ? [{ value: 'deleted', label: 'Terhapus' }] : []),
   ];
   const statusLabel = statusOptions.find((option) => option.value === filter.status)?.label;
-  const filtered = termKey !== '' || filter.typeId !== '' || filter.status !== 'all';
+  const filtered = termKey !== '' || filter.typeIds.length > 0 || filter.status !== 'all';
   const countLabel =
     !isLoading && !isError && (visible.length > 0 || filtered)
       ? `${visible.length} stiker`
@@ -646,10 +644,10 @@ export function StickersPage({
           >
             <FilterChip
               label="Jenis"
-              display={filter.typeId === '' ? null : (typeFilterLabel ?? filter.typeId)}
-              onClear={() => onFilterChange({ typeId: '' })}
+              display={multiFilterDisplay(filter.typeIds.map(typeLabelOf))}
+              onClear={() => onFilterChange({ typeIds: [] })}
             >
-              <LinkField
+              <LinkMultiField
                 id="sticker-filter-type"
                 label="Filter jenis"
                 hideLabel
@@ -657,9 +655,9 @@ export function StickersPage({
                 options={typeNames}
                 localFilter
                 highlight
-                value={filter.typeId === '' ? null : filter.typeId}
-                labelOf={(id) => typeNames.find((option) => option.id === id)?.label}
-                onChange={(next) => onFilterChange({ typeId: next ?? '' })}
+                value={filter.typeIds}
+                labelOf={typeLabelOf}
+                onChange={(next) => onFilterChange({ typeIds: next })}
               />
             </FilterChip>
             <FilterChip
@@ -735,7 +733,7 @@ export function StickersPage({
           filtered={filtered}
           onClearFilters={() => {
             setText('');
-            onFilterChange({ q: '', typeId: '', status: 'all' });
+            onFilterChange({ q: '', typeIds: [], status: 'all' });
           }}
           emptyAction={
             catalogMode && canEdit && !deletedView ? (

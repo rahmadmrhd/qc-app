@@ -88,7 +88,7 @@ test('Hapus massal memanggil access.roles.removeBatch; dinonaktifkan bila ada ro
   expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
 });
 
-test('filter tampilan hanya untuk manage; Terhapus memuat daftar terhapus dan bar hanya Pulihkan', async () => {
+test('filter Status hanya untuk manage; Terhapus memuat daftar terhapus dan bar hanya Pulihkan', async () => {
   deletedRows = [
     role('d1', { deleted: { deletedAt: '2026-11-20T00:00:00.000Z', deletedBy: 'a@x.com' } }),
   ];
@@ -103,10 +103,10 @@ test('filter tampilan hanya untuk manage; Terhapus memuat daftar terhapus dan ba
   );
 });
 
-test('tanpa manage: tanpa checkbox dan tanpa filter tampilan Terhapus', async () => {
+test('tanpa manage: tanpa checkbox dan tanpa filter Status Terhapus', async () => {
   await mount({ manage: false });
   expect(screen.queryByRole('checkbox')).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Tampilan' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Status' })).toBeNull();
 });
 
 test('Tambah role membuka dialog role', async () => {

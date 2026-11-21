@@ -66,7 +66,7 @@ async function openForm() {
       businessUnits={businessUnits}
       canEdit
       canManage
-      filter={{ q: '', typeId: '', status: 'all' }}
+      filter={{ q: '', typeIds: [], status: 'all' }}
       onFilterChange={vi.fn()}
       pendingStatusId={null}
       onSave={onSave}

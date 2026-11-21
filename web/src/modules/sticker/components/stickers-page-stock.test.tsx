@@ -176,7 +176,7 @@ function Harness({
   control: Control;
   initialStock: StockPanel | undefined;
 }): ReactNode {
-  const [filter, setFilter] = useState<StickersFilter>({ q: '', typeId: '', status: 'all' });
+  const [filter, setFilter] = useState<StickersFilter>({ q: '', typeIds: [], status: 'all' });
   const [stock, setStock] = useState(initialStock);
   control.setStock = setStock;
   return (

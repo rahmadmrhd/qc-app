@@ -524,18 +524,18 @@ test('Hapus (manage): handovers.remove, kartu hilang dan total kolom turun TANPA
   expect(boardCalls()).toBe(4);
 });
 
-test('chip Tampilan (Terhapus) hanya bagi handover:manage; non-manage tidak melihatnya', async () => {
+test('chip Status (Hidup/Terhapus) hanya bagi handover:manage; non-manage tidak melihatnya', async () => {
   const list = [makeHandover({ id: '1', number: 'ST-1' })];
   state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf(list, input));
   renderWith();
   await screen.findByText('ST-1');
-  expect(screen.getByRole('button', { name: /Tampilan/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Status/ })).toBeInTheDocument();
   document.body.innerHTML = '';
 
   state.me = me({ handover: 'edit', qc: 'edit' });
   renderWith();
   await screen.findByText('ST-1');
-  expect(screen.queryByRole('button', { name: /Tampilan/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Status/ })).not.toBeInTheDocument();
 });
 
 test('tampilan Terhapus: setiap kolom meminta deleted:true, kartu hanya-baca dengan Pulihkan', async () => {
@@ -559,7 +559,7 @@ test('tampilan Terhapus: setiap kolom meminta deleted:true, kartu hanya-baca den
   const card = screen.getByRole('article', { name: 'Task ST-1' });
   expect(within(card).getByText('Terhapus')).toBeInTheDocument();
   expect(within(card).queryByRole('button', { name: 'Mark done' })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: /Tampilan: Terhapus/ })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Status: Terhapus/ })).toBeInTheDocument();
   await userEvent.click(within(card).getByRole('button', { name: 'Pulihkan' }));
   await waitFor(() =>
     expect(state.api).toHaveBeenCalledWith('handovers.restore', { id: '1', locationId: 'loc-a' }),

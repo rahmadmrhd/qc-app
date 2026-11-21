@@ -229,13 +229,13 @@ export function HandoverBoardPage({
             ) : null}
             {viewOptions.length > 0 ? (
               <FilterChip
-                label="Tampilan"
+                label="Status"
                 display={deletedView ? 'Terhapus' : null}
                 onClear={() => onDeletedChange?.(false)}
               >
                 <Select
                   id="handover-filter-view"
-                  label="Filter tampilan"
+                  label="Filter status"
                   hideLabel
                   options={viewOptions}
                   value={deletedView ? 'deleted' : 'live'}

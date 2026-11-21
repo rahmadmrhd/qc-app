@@ -209,6 +209,7 @@ test('filter status dan BU menjadi parameter; Semua laporan tanpa status', async
   await openChip('Status');
   await pickSelect(screen, 'Filter status laporan', 'Laporan selesai');
   await waitFor(() => expect(lastInput()).toMatchObject({ status: 'closed' }));
+  await openChip('Status');
   await pickSelect(screen, 'Filter status laporan', 'Semua laporan');
   await waitFor(() => expect(lastInput()).toEqual({}));
   await openChip('BU');
