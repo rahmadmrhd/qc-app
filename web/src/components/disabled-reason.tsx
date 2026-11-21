@@ -19,8 +19,26 @@ export function DisabledReason({
   className?: string;
   children: ReactNode;
 }) {
-  const desktop = useIsDesktop();
+  // Tanpa alasan tak ada hook sama sekali: tabel besar merender banyak tombol aksi (kebanyakan tanpa alasan) dan tiap
+  // `useIsDesktop` memasang pendengar media + `ResizeObserver` (250 baris membuat tes dan halaman lambat).
   if (!reason) return <>{children}</>;
+  return (
+    <ReasonWrapper reason={reason} className={className}>
+      {children}
+    </ReasonWrapper>
+  );
+}
+
+function ReasonWrapper({
+  reason,
+  className,
+  children,
+}: {
+  reason: string;
+  className: string | undefined;
+  children: ReactNode;
+}) {
+  const desktop = useIsDesktop();
   if (!desktop) {
     return (
       <span className={cn('inline-flex min-w-0 flex-col items-stretch gap-0.5', className)}>
