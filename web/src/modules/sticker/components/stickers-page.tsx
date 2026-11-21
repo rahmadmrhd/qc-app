@@ -46,7 +46,7 @@ import {
   type StickerSaveInput,
   type StickerSaveResult,
 } from './sticker-form-dialog';
-import { type StickerStockPanel, StockMenu, useStockActions } from './stock-actions';
+import { type StickerStockPanel, stockAvailability, useStockActions } from './stock-actions';
 import type { StockEntryMode } from './stock-entry-dialog';
 
 export type { StickerStockPanel, StockPageLocation } from './stock-actions';
@@ -496,29 +496,57 @@ export function StickersPage({
             ),
           },
         ] satisfies DataColumn<Row>[])),
-    // Menu "Stok" bukan kosakata `ActionKind`, jadi tetap satu menu terpisah (nama aksesibel `Stok <nama>`).
-    ...(stock
-      ? ([
-          {
-            id: 'stockActions',
-            header: 'Aksi stok',
-            cell: (row) =>
-              row.stock ? (
-                <StockMenu
-                  row={row.stock}
-                  label={row.label}
-                  panel={stock}
-                  controller={stockActions}
-                />
-              ) : null,
-          },
-        ] satisfies DataColumn<Row>[])
-      : []),
   ];
+
+  // Aksi stok (B10): satu entri "Stok" bersubmenu di kolom Aksi (desktop: satu dropdown; ponsel: grup datar "Stok" di
+  // menu ⋯, tanpa submenu bersarang). Hanya bila baris punya stok yang boleh dilihat pengguna.
+  const stockEntry = (row: Row): RowAction | null => {
+    if (!stock || !row.stock) return null;
+    const stockRow = row.stock;
+    const { canIn, canOut, canAdjust } = stockAvailability(stock, stockRow);
+    return {
+      id: 'stock',
+      action: 'stock',
+      label: `Stok ${row.label}`,
+      shortLabel: 'Stok',
+      onSelect: () => undefined,
+      submenu: [
+        {
+          id: 'stock-in',
+          action: 'stockIn',
+          label: 'Catat masuk',
+          hidden: !canIn,
+          onSelect: () => stockActions.openEntry('in', stockRow.stickerId),
+        },
+        {
+          id: 'stock-out',
+          action: 'stockOut',
+          label: 'Catat keluar',
+          hidden: !canOut,
+          onSelect: () => stockActions.openEntry('out', stockRow.stickerId),
+        },
+        {
+          id: 'stock-adjust',
+          action: 'adjust',
+          label: 'Koreksi',
+          hidden: !canAdjust,
+          onSelect: () => stockActions.openEntry('adjust', stockRow.stickerId),
+        },
+        {
+          id: 'stock-history',
+          action: 'history',
+          label: 'Riwayat',
+          onSelect: () => stockActions.openHistory(stockRow),
+        },
+      ],
+    };
+  };
 
   const actions = (row: Row): RowAction[] => {
     const { catalog } = row;
-    if (!catalog) return [];
+    const stockAction = stockEntry(row);
+    // Pemegang stok tanpa katalog tetap mendapat kolom Aksi berisi entri Stok.
+    if (!catalog) return stockAction ? [stockAction] : [];
     const busy = pendingStatusId === catalog.id || rowBusy === catalog.id;
     const systemKind = typeById.get(catalog.typeId)?.systemKind ?? '';
     if (catalog.deleted || deletedView) {
@@ -551,6 +579,7 @@ export function StickersPage({
         hidden: !canEdit,
         onSelect: () => setDialog(catalog),
       },
+      ...(stockAction ? [stockAction] : []),
       {
         id: 'status',
         action: catalog.status === 'inactive' ? 'activate' : 'deactivate',
@@ -728,7 +757,7 @@ export function StickersPage({
           }
           selectLabel={(row) => row.label}
           selection={bulkSelection}
-          actions={catalogMode ? actions : undefined}
+          actions={catalogMode || stock ? actions : undefined}
           empty="Belum ada stiker."
           filtered={filtered}
           onClearFilters={() => {

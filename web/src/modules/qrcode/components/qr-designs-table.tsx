@@ -269,28 +269,40 @@ export function QrDesignsTable({
         action: 'export',
         label: `${exported ? 'Ekspor ulang' : 'Ekspor'} ${label}`,
         shortLabel: exported ? 'Ekspor ulang' : 'Ekspor',
+        // Ekspor (unggah ke Drive) berbeda dari Unduh: di desktop tombolnya ikon + teks, bukan ikon saja (B5b).
+        showLabel: true,
         hidden: !canEdit,
         // Isi label yang tidak muat di kanvas 3 × 3 cm tak dapat diekspor sampai konfigurasinya diperbaiki.
         disabled: busy || design.overflow,
         onSelect: () => onExport(design),
       },
       {
-        id: 'download-pdf',
+        // Unduh PDF dan PNG satu aksi bersubmenu: desktop satu dropdown, ponsel grup datar "Unduh" (B5b).
+        id: 'download',
         action: 'download',
-        label: `Unduh PDF ${label}`,
-        shortLabel: 'Unduh PDF',
+        label: `Unduh ${label}`,
+        shortLabel: 'Unduh',
         hidden: !exported,
         disabled: busy,
-        onSelect: () => onDownload(design, 'pdf'),
-      },
-      {
-        id: 'download-png',
-        action: 'download',
-        label: `Unduh PNG ${label}`,
-        shortLabel: 'Unduh PNG',
-        hidden: !exported,
-        disabled: busy,
-        onSelect: () => onDownload(design, 'png'),
+        onSelect: () => undefined,
+        submenu: [
+          {
+            id: 'download-pdf',
+            action: 'download',
+            label: `Unduh PDF ${label}`,
+            shortLabel: 'PDF',
+            disabled: busy,
+            onSelect: () => onDownload(design, 'pdf'),
+          },
+          {
+            id: 'download-png',
+            action: 'download',
+            label: `Unduh PNG ${label}`,
+            shortLabel: 'PNG',
+            disabled: busy,
+            onSelect: () => onDownload(design, 'png'),
+          },
+        ],
       },
       {
         id: 'delete',

@@ -1,12 +1,17 @@
 import {
   Ban,
+  Boxes,
   CheckCheck,
   CheckSquare,
+  CloudUpload,
   Copy,
   Download,
   Eye,
+  History,
   LoaderCircle,
   type LucideIcon,
+  PackageMinus,
+  PackagePlus,
   Pencil,
   Plus,
   Power,
@@ -15,7 +20,9 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  SlidersHorizontal,
   Trash2,
+  TriangleAlert,
   Upload,
   X,
 } from 'lucide-react';
@@ -44,7 +51,13 @@ export type ActionKind =
   | 'view'
   | 'done'
   | 'reopen'
-  | 'abort';
+  | 'abort'
+  | 'stock'
+  | 'stockIn'
+  | 'stockOut'
+  | 'adjust'
+  | 'history'
+  | 'reportDamage';
 
 type ActionSpec = {
   icon: LucideIcon;
@@ -119,8 +132,9 @@ export const ACTIONS: Record<ActionKind, ActionSpec> = {
     variant: 'soft',
     compactVariant: 'ghost',
   },
+  // Ekspor = unggah ke folder Drive (QR Code Manual Book), jadi ikonnya awan-unggah, beda dari Unduh (B5b).
   export: {
-    icon: Download,
+    icon: CloudUpload,
     label: 'Ekspor',
     color: 'secondary',
     variant: 'soft',
@@ -186,6 +200,50 @@ export const ACTIONS: Record<ActionKind, ActionSpec> = {
   abort: {
     icon: Ban,
     label: 'Batalkan task',
+    color: 'destructive',
+    variant: 'soft',
+    compactVariant: 'ghost',
+  },
+  // Stok stiker (B10): satu entri "Stok" bersubmenu di kolom Aksi; butirnya memakai empat aksi di bawahnya.
+  stock: {
+    icon: Boxes,
+    label: 'Stok',
+    color: 'primary',
+    variant: 'outline',
+    compactVariant: 'ghost',
+  },
+  stockIn: {
+    icon: PackagePlus,
+    label: 'Catat masuk',
+    color: 'primary',
+    variant: 'outline',
+    compactVariant: 'ghost',
+  },
+  stockOut: {
+    icon: PackageMinus,
+    label: 'Catat keluar',
+    color: 'primary',
+    variant: 'outline',
+    compactVariant: 'ghost',
+  },
+  adjust: {
+    icon: SlidersHorizontal,
+    label: 'Koreksi',
+    color: 'primary',
+    variant: 'outline',
+    compactVariant: 'ghost',
+  },
+  history: {
+    icon: History,
+    label: 'Riwayat',
+    color: 'primary',
+    variant: 'outline',
+    compactVariant: 'ghost',
+  },
+  // Serial Number (P7): melaporkan unit rusak; tampil di sebelah Ubah di View Serial di semua ukuran layar.
+  reportDamage: {
+    icon: TriangleAlert,
+    label: 'Lapor rusak',
     color: 'destructive',
     variant: 'soft',
     compactVariant: 'ghost',

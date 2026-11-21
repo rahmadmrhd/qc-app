@@ -289,20 +289,31 @@ export function QrDesignView({
                 onSelect: () => onExport?.(),
               },
               {
-                id: 'download-pdf',
+                // Unduh PDF dan PNG satu aksi bersubmenu: desktop satu dropdown, ponsel grup datar "Unduh" (B5b).
+                id: 'download',
                 action: 'download',
-                label: 'Unduh PDF',
+                label: 'Unduh',
                 hidden: !(exported && onDownload),
                 disabled: downloadBusy,
-                onSelect: () => onDownload?.('pdf'),
-              },
-              {
-                id: 'download-png',
-                action: 'download',
-                label: 'Unduh PNG',
-                hidden: !(exported && onDownload),
-                disabled: downloadBusy,
-                onSelect: () => onDownload?.('png'),
+                onSelect: () => undefined,
+                submenu: [
+                  {
+                    id: 'download-pdf',
+                    action: 'download',
+                    label: 'Unduh PDF',
+                    shortLabel: 'PDF',
+                    disabled: downloadBusy,
+                    onSelect: () => onDownload?.('pdf'),
+                  },
+                  {
+                    id: 'download-png',
+                    action: 'download',
+                    label: 'Unduh PNG',
+                    shortLabel: 'PNG',
+                    disabled: downloadBusy,
+                    onSelect: () => onDownload?.('png'),
+                  },
+                ],
               },
               {
                 id: 'delete',

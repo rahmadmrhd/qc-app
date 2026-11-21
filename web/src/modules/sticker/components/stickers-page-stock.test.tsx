@@ -11,6 +11,7 @@ import { type ReactNode, useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ActiveLocationsProvider } from '@/modules/location/active-locations-context';
 import { pickLink, pickSelect } from '@/test/link-field';
+import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
 import { type StickersFilter, StickersPage, type StickersPageProps } from './stickers-page';
 
@@ -554,4 +555,45 @@ test('filter jenis memakai nama jenis dan menyaring baris gabungan', async () =>
   expect(screen.queryByRole('row', { name: /Hijau-B/ })).toBeNull();
   expect(screen.getByRole('row', { name: /Segel Polos/ })).toBeInTheDocument();
   expect(screen.getByRole('row', { name: /Segel Lawas/ })).toBeInTheDocument();
+});
+
+test('aksi stok masuk ke kolom Aksi: tanpa kolom "Aksi stok" terpisah', async () => {
+  await renderPage();
+  expect(screen.queryByRole('columnheader', { name: 'Aksi stok' })).toBeNull();
+  const row = screen.getByRole('row', { name: /Hijau-B/ });
+  // Satu sel Aksi memuat Ubah dan menu Stok berdampingan.
+  const aksi = within(row).getByRole('button', { name: 'Ubah Hijau-B' }).closest('td');
+  expect(
+    within(aksi as HTMLElement).getByRole('button', { name: 'Stok Hijau-B' }),
+  ).toBeInTheDocument();
+});
+
+test('hanya izin stok (tanpa katalog): kolom Aksi tetap berisi entri Stok', async () => {
+  await renderPage({}, { stickers: undefined, types: [], businessUnits: [] });
+  expect(screen.getByRole('columnheader', { name: 'Aksi' })).toBeInTheDocument();
+  await openStockMenu('Hijau-B', 'Riwayat');
+  expect(await screen.findByRole('dialog', { name: 'Riwayat Hijau-B' })).toBeInTheDocument();
+});
+
+test('ponsel: aksi stok menjadi grup datar "Stok" di menu ⋯ (tanpa submenu bersarang)', async () => {
+  window.innerWidth = 360;
+  const media = mockMatchMedia(false);
+  try {
+    await renderPage();
+    const card = screen
+      .getAllByRole('listitem')
+      .find((node) => within(node).queryByText('Hijau-B'));
+    await userEvent.click(within(card as HTMLElement).getByRole('button', { name: /^Aksi/ }));
+    const menu = await screen.findByRole('menu');
+    expect(screen.getAllByRole('menu')).toHaveLength(1);
+    expect(within(menu).getByText('Stok')).toBeInTheDocument();
+    for (const name of ['Catat masuk', 'Catat keluar', 'Koreksi', 'Riwayat']) {
+      expect(within(menu).getByRole('menuitem', { name })).toBeInTheDocument();
+    }
+    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Riwayat' }));
+    expect(await screen.findByRole('dialog', { name: 'Riwayat Hijau-B' })).toBeInTheDocument();
+  } finally {
+    media.restore();
+    window.innerWidth = 1024;
+  }
 });

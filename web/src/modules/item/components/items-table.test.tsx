@@ -3,6 +3,7 @@ import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { useRowSelection } from '@/components/data-table';
+import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
 import { ItemsTable, type ItemsTableProps } from './items-table';
 
@@ -240,4 +241,23 @@ test('tampilan biasa tidak memuat kolom Dihapus', async () => {
   await renderTable();
   expect(screen.queryByRole('columnheader', { name: 'Dihapus oleh' })).toBeNull();
   expect(screen.getByRole('columnheader', { name: 'Status' })).toBeInTheDocument();
+});
+
+test('ponsel: judul kartu = Tipe, Merk menjadi meta berlabel', async () => {
+  const media = mockMatchMedia(false);
+  window.innerWidth = 360;
+  try {
+    await renderTable();
+    const card = (await screen.findAllByRole('listitem')).find((node) =>
+      within(node).queryByText('AF 5XHD'),
+    ) as HTMLElement;
+    const cardEl = card.querySelector('[data-slot="mobile-card"]') ?? card;
+    // Tautan pertama kartu (judul) adalah Tipe; Merk muncul sebagai meta berlabel "Merk".
+    expect(within(cardEl as HTMLElement).getAllByRole('link')[0]).toHaveTextContent('AF 5XHD');
+    expect(within(cardEl as HTMLElement).getByText('Merk')).toBeInTheDocument();
+    expect(within(cardEl as HTMLElement).getByText('Ubiquiti')).toBeInTheDocument();
+  } finally {
+    media.restore();
+    window.innerWidth = 1024;
+  }
 });

@@ -111,9 +111,10 @@ describe('panduan QR Code Manual Book', () => {
       const step = QRCODE_BUAT.steps.find((entry) => entry.target === target);
       return typeof step?.buka === 'object' ? step.buka.tab : undefined;
     };
-    expect(tabOf('qr-source')).toBe('sumber');
+    // Item, preset, nama, dan sumber link satu tab (Detail; B5 2026-11-22).
+    expect(tabOf('qr-source')).toBe('detail');
     expect(tabOf('qr-label')).toBe('label');
-    // Item, konfigurasi default, nama (tab Item), pratinjau, dan tombol simpan (bar halaman) tak bergantung tab.
+    // Item, konfigurasi default, nama (tab Detail), pratinjau, dan tombol simpan (bar halaman) tak bergantung tab.
     for (const target of ['qr-items', 'qr-preset', 'qr-name', 'qr-preview', 'qr-save']) {
       expect(tabOf(target)).toBeUndefined();
     }

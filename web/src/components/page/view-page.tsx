@@ -1,6 +1,6 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { Ellipsis } from 'lucide-react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import { ACTIONS, ActionButton, type ActionKind } from '@/components/action-button';
 import { DisabledReason } from '@/components/disabled-reason';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,8 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -34,8 +36,78 @@ export interface ViewAction {
   disabledReason?: string;
   busy?: boolean;
   hidden?: boolean;
-  /** Aksi utama di bar bawah ponsel (bawaan: aksi pertama yang terlihat). */
+  /**
+   * Aksi utama di bar bawah ponsel (boleh lebih dari satu: tiap aksi utama jadi satu tombol di bar; bawaan: aksi
+   * pertama yang terlihat dan tidak bersubmenu).
+   */
   primary?: boolean;
+  /** Label singkat di menu ponsel (bawaan: `label` lalu label bawaan jenis aksi). */
+  shortLabel?: string;
+  /**
+   * Kelompok aksi di bawah satu entri (mis. Unduh: PDF, PNG). Desktop: satu tombol yang membuka satu dropdown.
+   * Ponsel TANPA submenu bersarang: butirnya jadi grup datar di menu "Aksi lainnya" (label grup = nama entri).
+   */
+  submenu?: readonly ViewAction[];
+}
+
+function actionText(entry: ViewAction): string {
+  return entry.label ?? ACTIONS[entry.action].label;
+}
+
+/** Butir menu ponsel (menu "Aksi lainnya"): ikon + label; alasan nonaktif sebagai baris keterangan. */
+function PhoneMenuItem({ entry, short }: { entry: ViewAction; short?: boolean }) {
+  const Icon = ACTIONS[entry.action].icon;
+  const text = short ? (entry.shortLabel ?? actionText(entry)) : actionText(entry);
+  return (
+    <DropdownMenuItem
+      variant={entry.action === 'delete' ? 'destructive' : 'default'}
+      disabled={entry.disabled || entry.busy}
+      onSelect={entry.onSelect}
+    >
+      <Icon aria-hidden />
+      {entry.disabled && entry.disabledReason ? (
+        <span className="flex min-w-0 flex-col">
+          {text}
+          <span className="text-xs font-normal text-muted-foreground">{entry.disabledReason}</span>
+        </span>
+      ) : (
+        text
+      )}
+    </DropdownMenuItem>
+  );
+}
+
+/** Aksi bersubmenu di bar judul desktop: satu tombol dengan satu dropdown (tanpa menu bersarang). */
+function DesktopSubmenu({ entry }: { entry: ViewAction }) {
+  const group = (entry.submenu ?? []).filter((sub) => !sub.hidden);
+  if (group.length === 0) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <ActionButton
+          action={entry.action}
+          label={actionText(entry)}
+          busy={entry.busy}
+          disabled={entry.disabled}
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {group.map((sub) => {
+          const SubIcon = ACTIONS[sub.action].icon;
+          return (
+            <DropdownMenuItem
+              key={sub.id}
+              disabled={sub.disabled || sub.busy}
+              onSelect={sub.onSelect}
+            >
+              <SubIcon aria-hidden />
+              {actionText(sub)}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 /**
@@ -69,8 +141,11 @@ export function ViewPage({
 }) {
   const desktop = useIsDesktop();
   const visibleActions = (actionItems ?? []).filter((entry) => !entry.hidden);
-  const primaryAction = visibleActions.find((entry) => entry.primary) ?? visibleActions[0];
-  const menuActions = visibleActions.filter((entry) => entry !== primaryAction);
+  // Bar bawah ponsel: semua aksi bertanda `primary`; tanpa penanda, aksi pertama yang tidak bersubmenu.
+  const marked = visibleActions.filter((entry) => entry.primary && !entry.submenu);
+  const firstPlain = visibleActions.find((entry) => !entry.submenu);
+  const primaryActions = marked.length > 0 ? marked : firstPlain ? [firstPlain] : [];
+  const menuActions = visibleActions.filter((entry) => !primaryActions.includes(entry));
   const [localTab, setLocalTab] = useState(tabs?.[0]?.id);
   const requested = tab ?? localTab;
   // Id tak dikenal (mis. `?tab=` basi) jatuh ke tab pertama agar panel tak kosong.
@@ -133,20 +208,24 @@ export function ViewPage({
             <div className="flex flex-wrap items-center gap-2 narrow:w-full">
               {actions}
               {desktop
-                ? visibleActions.map((entry) => (
-                    <DisabledReason
-                      key={entry.id}
-                      reason={entry.disabled ? entry.disabledReason : undefined}
-                    >
-                      <ActionButton
-                        action={entry.action}
-                        label={entry.label}
-                        busy={entry.busy}
-                        disabled={entry.disabled}
-                        onClick={entry.onSelect}
-                      />
-                    </DisabledReason>
-                  ))
+                ? visibleActions.map((entry) =>
+                    entry.submenu ? (
+                      <DesktopSubmenu key={entry.id} entry={entry} />
+                    ) : (
+                      <DisabledReason
+                        key={entry.id}
+                        reason={entry.disabled ? entry.disabledReason : undefined}
+                      >
+                        <ActionButton
+                          action={entry.action}
+                          label={entry.label}
+                          busy={entry.busy}
+                          disabled={entry.disabled}
+                          onClick={entry.onSelect}
+                        />
+                      </DisabledReason>
+                    ),
+                  )
                 : null}
             </div>
           ) : null}
@@ -161,22 +240,25 @@ export function ViewPage({
           </aside>
         ) : null}
       </div>
-      {!desktop && primaryAction ? (
+      {!desktop && (primaryActions.length > 0 || menuActions.length > 0) ? (
         <StickyActionBar label="Aksi halaman" busy={visibleActions.some((entry) => entry.busy)}>
-          <DisabledReason
-            reason={primaryAction.disabled ? primaryAction.disabledReason : undefined}
-            className="flex-1"
-          >
-            <ActionButton
-              action={primaryAction.action}
-              label={primaryAction.label}
-              emphasis="primary"
-              busy={primaryAction.busy}
-              disabled={primaryAction.disabled}
-              onClick={primaryAction.onSelect}
+          {primaryActions.map((entry) => (
+            <DisabledReason
+              key={entry.id}
+              reason={entry.disabled ? entry.disabledReason : undefined}
               className="flex-1"
-            />
-          </DisabledReason>
+            >
+              <ActionButton
+                action={entry.action}
+                label={entry.label}
+                emphasis="primary"
+                busy={entry.busy}
+                disabled={entry.disabled}
+                onClick={entry.onSelect}
+                className="flex-1"
+              />
+            </DisabledReason>
+          ))}
           {menuActions.length > 0 ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -191,27 +273,19 @@ export function ViewPage({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" side="top">
-                {menuActions.map((entry) => {
-                  const Icon = ACTIONS[entry.action].icon;
+                {menuActions.map((entry, index) => {
+                  if (!entry.submenu) return <PhoneMenuItem key={entry.id} entry={entry} />;
+                  const group = entry.submenu.filter((sub) => !sub.hidden);
+                  if (group.length === 0) return null;
                   return (
-                    <DropdownMenuItem
-                      key={entry.id}
-                      variant={entry.action === 'delete' ? 'destructive' : 'default'}
-                      disabled={entry.disabled || entry.busy}
-                      onSelect={entry.onSelect}
-                    >
-                      <Icon aria-hidden />
-                      {entry.disabled && entry.disabledReason ? (
-                        <span className="flex min-w-0 flex-col">
-                          {entry.label ?? ACTIONS[entry.action].label}
-                          <span className="text-xs font-normal text-muted-foreground">
-                            {entry.disabledReason}
-                          </span>
-                        </span>
-                      ) : (
-                        (entry.label ?? ACTIONS[entry.action].label)
-                      )}
-                    </DropdownMenuItem>
+                    <Fragment key={entry.id}>
+                      {index > 0 ? <DropdownMenuSeparator /> : null}
+                      <DropdownMenuLabel>{entry.shortLabel ?? actionText(entry)}</DropdownMenuLabel>
+                      {group.map((sub) => (
+                        <PhoneMenuItem key={sub.id} entry={sub} short />
+                      ))}
+                      {index < menuActions.length - 1 ? <DropdownMenuSeparator /> : null}
+                    </Fragment>
                   );
                 })}
               </DropdownMenuContent>

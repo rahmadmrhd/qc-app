@@ -195,3 +195,78 @@ test('ponsel: aksi utama yang nonaktif beralasan tetap mengisi bar bawah (flex-1
   expect(button.parentElement).toHaveClass('flex-1');
   expect(within(bar).getByText('Tidak dapat menonaktifkan akun Anda sendiri')).toBeVisible();
 });
+
+const UNDUH = (onPdf: () => void, onPng: () => void) => ({
+  id: 'download',
+  action: 'download' as const,
+  label: 'Unduh',
+  onSelect: () => undefined,
+  submenu: [
+    {
+      id: 'pdf',
+      action: 'download' as const,
+      label: 'Unduh PDF',
+      shortLabel: 'PDF',
+      onSelect: onPdf,
+    },
+    {
+      id: 'png',
+      action: 'download' as const,
+      label: 'Unduh PNG',
+      shortLabel: 'PNG',
+      onSelect: onPng,
+    },
+  ],
+});
+
+test('desktop: aksi bersubmenu = satu tombol dengan satu dropdown berisi butirnya', async () => {
+  mockMatchMedia(true);
+  const onPdf = vi.fn();
+  const onPng = vi.fn();
+  render(
+    <ViewPage title="X" actionItems={[ITEMS(vi.fn(), vi.fn())[0] as never, UNDUH(onPdf, onPng)]} />,
+  );
+  expect(screen.queryByRole('button', { name: 'Unduh PDF' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Unduh' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Unduh PDF' }));
+  expect(onPdf).toHaveBeenCalledTimes(1);
+  expect(onPng).not.toHaveBeenCalled();
+});
+
+test('ponsel: aksi bersubmenu menjadi grup datar di menu "Aksi lainnya" (tanpa menu bersarang)', async () => {
+  mockMatchMedia(false);
+  const onPdf = vi.fn();
+  render(
+    <ViewPage
+      title="X"
+      actionItems={[ITEMS(vi.fn(), vi.fn())[0] as never, UNDUH(onPdf, vi.fn())]}
+    />,
+  );
+  const bar = screen.getByRole('region', { name: 'Aksi halaman' });
+  // Aksi bersubmenu tak pernah menjadi tombol utama di bar.
+  expect(within(bar).queryByRole('button', { name: 'Unduh' })).toBeNull();
+  await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
+  expect(await screen.findAllByRole('menu')).toHaveLength(1);
+  expect(screen.getByText('Unduh')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('menuitem', { name: 'PDF' }));
+  expect(onPdf).toHaveBeenCalledTimes(1);
+});
+
+test('ponsel: beberapa aksi `primary` mengisi bar bawah bersama (Lapor rusak + Ubah), sisanya di menu', () => {
+  mockMatchMedia(false);
+  render(
+    <ViewPage
+      title="X"
+      actionItems={[
+        { id: 'report', action: 'reportDamage', primary: true, onSelect: vi.fn() },
+        { id: 'edit', action: 'edit', primary: true, onSelect: vi.fn() },
+        { id: 'delete', action: 'delete', onSelect: vi.fn() },
+      ]}
+    />,
+  );
+  const bar = screen.getByRole('region', { name: 'Aksi halaman' });
+  const labels = within(bar)
+    .getAllByRole('button')
+    .map((button) => button.getAttribute('aria-label') ?? button.textContent);
+  expect(labels).toEqual(['Lapor rusak', 'Ubah', 'Aksi lainnya']);
+});

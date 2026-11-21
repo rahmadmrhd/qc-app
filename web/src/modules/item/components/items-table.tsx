@@ -91,6 +91,8 @@ export function ItemsTable({
     {
       id: 'model',
       header: 'Tipe',
+      // Ponsel: judul kartu = Tipe (Merk menjadi meta berlabel; P3).
+      mobile: 'title',
       cell: (item) => (
         <>
           <LinkCell to="/item/$itemId" params={{ itemId: item.id }}>
