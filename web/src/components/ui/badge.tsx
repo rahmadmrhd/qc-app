@@ -30,15 +30,12 @@ function Badge({
   className,
   variant = "solid",
   color = "primary",
-  dot = false,
   asChild = false,
   children,
   ...props
 }: React.ComponentProps<"span"> & {
   variant?: UiVariant
   color?: UiColor
-  /** Titik `currentColor` 6 px sebelum isi (badge status). */
-  dot?: boolean
   asChild?: boolean
 }) {
   const Comp = asChild ? Slot.Root : "span"
@@ -65,13 +62,6 @@ function Badge({
       className={badgeVariants({ variant, color, className })}
       {...props}
     >
-      {dot ? (
-        <span
-          aria-hidden="true"
-          data-slot="badge-dot"
-          className="size-1.5 shrink-0 rounded-full bg-current"
-        />
-      ) : null}
       {children}
     </Comp>
   )

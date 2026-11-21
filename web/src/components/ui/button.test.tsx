@@ -24,13 +24,9 @@ describe('Button', () => {
 })
 
 describe('Badge', () => {
-  it('dot menyisipkan titik aria-hidden', () => {
-    const { container } = render(
-      <Badge color="success" variant="soft" dot>
-        Aktif
-      </Badge>,
-    )
+  it('tidak menyisipkan titik penanda sebelum isi', () => {
+    const { container } = render(<Badge color="success" variant="soft">Aktif</Badge>)
     expect(screen.getByText('Aktif')).toBeInTheDocument()
-    expect(container.querySelector('[data-slot="badge-dot"]')).toHaveAttribute('aria-hidden', 'true')
+    expect(container.querySelector('[data-slot="badge-dot"]')).toBeNull()
   })
 })

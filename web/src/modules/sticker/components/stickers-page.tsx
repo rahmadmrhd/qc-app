@@ -357,12 +357,12 @@ export function StickersPage({
               )}
               {catalog?.deleted ? <DeletedBadge /> : null}
               {row.low && !catalog?.deleted ? (
-                <Badge color="warning" variant="soft" dot>
+                <Badge color="warning" variant="soft">
                   Menipis
                 </Badge>
               ) : null}
               {stockRow?.typeStatus === 'inactive' ? (
-                <Badge color="secondary" variant="soft" dot>
+                <Badge color="secondary" variant="soft">
                   Jenis nonaktif
                 </Badge>
               ) : null}

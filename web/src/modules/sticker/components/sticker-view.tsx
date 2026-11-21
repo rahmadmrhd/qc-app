@@ -313,7 +313,7 @@ export function StickerView({
               />
             )}
             {sticker.low && !deleted ? (
-              <Badge color="warning" variant="soft" dot>
+              <Badge color="warning" variant="soft">
                 Menipis
               </Badge>
             ) : null}

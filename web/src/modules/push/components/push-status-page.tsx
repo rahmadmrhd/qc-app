@@ -24,7 +24,7 @@ const BADGE_COLOR: Record<PushUserState, 'destructive' | 'secondary' | 'success'
 
 export function PushStateBadge({ state }: { state: PushUserState }) {
   return (
-    <Badge color={BADGE_COLOR[state]} variant="soft" dot>
+    <Badge color={BADGE_COLOR[state]} variant="soft">
       {PUSH_STATE_LABELS[state]}
     </Badge>
   );

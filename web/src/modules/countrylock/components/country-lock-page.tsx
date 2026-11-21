@@ -41,7 +41,7 @@ export { AUTO_INJECT_WARNING };
 
 function StatusBadge({ label, up }: { label: string; up: boolean }) {
   return (
-    <Badge color={up ? 'success' : 'destructive'} variant="soft" dot>
+    <Badge color={up ? 'success' : 'destructive'} variant="soft">
       {label}: {up ? 'terhubung' : 'tidak terjangkau'}
     </Badge>
   );
