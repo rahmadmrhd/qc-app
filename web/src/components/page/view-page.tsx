@@ -1,6 +1,6 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { Ellipsis } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { ACTIONS, ActionButton, type ActionKind } from '@/components/action-button';
 import { DisabledReason } from '@/components/disabled-reason';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
+import { onFormTabRequest } from '@/lib/form-tab-request';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
 import { StickyActionBar } from './sticky-action-bar';
 
@@ -78,6 +79,19 @@ export function ViewPage({
     setLocalTab(id);
     onTabChange?.(id);
   };
+  // Permintaan dari luar (panduan interaktif, langkah `buka: { tab }`): tab yang tak ter-mount dibuka lewat jalur pilih
+  // yang sama dengan klik pengguna, sehingga halaman yang mengendalikan tab (search param) ikut diberi tahu.
+  const latest = useRef({ tabs, select });
+  latest.current = { tabs, select };
+  useEffect(
+    () =>
+      onFormTabRequest((tabId) => {
+        if (!latest.current.tabs?.some((entry) => entry.id === tabId)) return false;
+        latest.current.select(tabId);
+        return true;
+      }),
+    [],
+  );
 
   const body = tabs ? (
     <Tabs value={active} onValueChange={select}>

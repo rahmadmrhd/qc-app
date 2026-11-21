@@ -36,6 +36,7 @@ vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => false }));
 
 import { resetUnsavedChangesForTests } from '@/app/pwa/unsaved-changes';
 import { FormTabs } from '@/components/page/form-tabs';
+import { ViewPage } from '@/components/page/view-page';
 import type { GuideEntry, GuideStep } from '../../lib/types';
 import { TourProvider, useTour } from './tour-provider';
 
@@ -144,5 +145,50 @@ describe('langkah buka: { tab }', () => {
     await waitFor(() =>
       expect(screen.getByRole('tab', { name: 'Ukuran' })).toHaveAttribute('aria-selected', 'true'),
     );
+  });
+});
+
+describe('langkah buka: { tab } pada ViewPage (hanya tab aktif ter-mount)', () => {
+  function ViewHost({ entry, onTab }: { entry: GuideEntry; onTab: (id: string) => void }) {
+    return (
+      <TourProvider targetWaitMs={80}>
+        <Starter entry={entry} />
+        <ViewPage
+          title="Serial"
+          onTabChange={onTab}
+          tabs={[
+            { id: 'detail', label: 'Detail', content: <div data-tour="serial-stepper">tahap</div> },
+            {
+              id: 'riwayat',
+              label: 'Riwayat',
+              content: <div data-tour="serial-timeline">linimasa</div>,
+            },
+          ]}
+        />
+      </TourProvider>
+    );
+  }
+
+  test('target di tab yang belum ter-mount: tabnya dibuka lewat jalur pilih yang sama, lalu disorot', async () => {
+    const onTab = vi.fn();
+    render(
+      <ViewHost
+        onTab={onTab}
+        entry={entryOf([
+          {
+            target: 'serial-timeline',
+            text: 'Ini linimasa',
+            advance: 'next',
+            buka: { tab: 'riwayat' },
+          },
+        ])}
+      />,
+    );
+    expect(document.querySelector('[data-tour="serial-timeline"]')).toBeNull();
+    await startTour();
+    expect(await screen.findByText('Ini linimasa')).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Riwayat' })).toHaveAttribute('aria-selected', 'true');
+    expect(onTab).toHaveBeenCalledWith('riwayat');
+    expect(screen.getByTestId('tour-highlight')).toBeInTheDocument();
   });
 });

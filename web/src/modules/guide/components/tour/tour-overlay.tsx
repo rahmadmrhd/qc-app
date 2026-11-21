@@ -441,6 +441,10 @@ export default function TourOverlay({
       // Target yang sudah terbukti kosong tak ditunggu lagi (langkah data-bergantung berturut-turut tak membeku 3 dtk).
       // `langsung`: halaman sudah settle (mis. sesudah langkah `wait`), jadi target yang tak ada tak perlu ditunggu:
       // dilewati seketika (tanpa `teksJikaKosong`) atau jatuh ke kartu pengganti (dengan `teksJikaKosong`).
+      // Target di tab `ViewPage` yang belum ter-mount (hanya tab aktif dirender): minta tabnya dibuka lebih dulu.
+      if (stepTab !== undefined && !document.querySelector(selectorOf(step.target))) {
+        requestFormTab(stepTab);
+      }
       const knownEmpty =
         step.langsung === true ||
         (step.teksJikaKosong !== undefined && emptyTargets.current.has(step.target));
