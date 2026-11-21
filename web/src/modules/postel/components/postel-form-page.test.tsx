@@ -57,6 +57,7 @@ function mount() {
 async function fillAndSubmit() {
   await userEvent.click(screen.getByRole('combobox', { name: 'Item' }));
   await userEvent.click(await screen.findByRole('option', { name: /PBE M5-400/ }));
+  await userEvent.click(screen.getByRole('tab', { name: 'Nomor sertifikat' }));
   await userEvent.type(screen.getByLabelText('Nomor sertifikat 1'), 'AB-1');
   fireEvent.change(screen.getByLabelText('Tanggal habis 1'), { target: { value: '2027-06-01' } });
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
@@ -123,4 +124,18 @@ test('galat lain tampil sebagai alert dengan pesan server', async () => {
   mount();
   await fillAndSubmit();
   expect(await screen.findByRole('alert')).toHaveTextContent('Tidak punya izin');
+});
+
+test('judul bar halaman dan Batal memanggil onCancel (di luar form)', async () => {
+  const props = mount();
+  expect(screen.getByRole('heading', { level: 1, name: 'Tambah Postel' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
+  expect(props.onCancel).toHaveBeenCalledTimes(1);
+});
+
+test('tombol Simpan berada di luar form dan men-submit lewat form=', () => {
+  mount();
+  const save = screen.getByRole('button', { name: 'Simpan' });
+  expect(save).toHaveAttribute('form', 'postel-form');
+  expect(save.closest('form')).toBeNull();
 });
