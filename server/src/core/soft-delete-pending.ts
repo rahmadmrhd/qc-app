@@ -67,6 +67,8 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Pemulihan cadangan: menghitung SEMUA baris tiap tabel di skema pemulihan untuk verifikasi; baris terhapus (soft delete) memang ikut dicadangkan dan harus terhitung.',
   'server/src/core/soft-delete.ts#*dinamis@1#fd86e8cd':
     'versionGuardStmt: penjaga TULIS (SELECT ... FOR UPDATE) atas baris yang baru dibaca perencana hapus/pulihkan; menilai keadaan terhapus lewat parameter `state`, bukan lewat penyaring. Tabel dinamis.',
+  'server/src/core/soft-delete.ts#*dinamis@2#29a084ed':
+    'restoreWithChildren: penguncian induk (SELECT id ... FOR UPDATE) agar urutan kunci sama dengan hapus (induk dulu, lalu anak); pulihkan memang bekerja pada induk TERHAPUS. Tabel dinamis.',
   'server/src/modules/brand/repo.ts#brands@3#7a248a06':
     'Baca/tulis merk menurut id oleh pemanggil yang menilai `deletedAt` sendiri (hapus, pulihkan, status; rujukan merk item tetap sah walau terhapus).',
   'server/src/modules/brand/repo.ts#brands@5#7a248a06':

@@ -221,7 +221,8 @@ describe('induk dengan anak', () => {
       // Hasil sah: semuanya hidup, atau semuanya terhapus; tak pernah induk terhapus dengan nomor hidup.
       expect(new Set([parent === '', ...children.map((c) => c === '')]).size).toBe(1);
     }
-  });
+    // Lima putaran, tiap putaran menyiapkan skema bersih: lewat terowongan ke VPS lebih dari 30 dtk bawaan.
+  }, 120_000);
 
   test('nomor terhapus membebaskan kunci nomor untuk catatan lain', async () => {
     const env = await createTestEnv();

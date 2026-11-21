@@ -173,7 +173,9 @@ export function softDeleteWithChildren(
 
 /**
  * Pulihkan induk beserta anaknya (anak lebih dulu, selagi `deleted_at` induk masih terisi sebagai penanda anak mana
- * yang ikut terhapus). Bentrok kunci `_live` anak atau induk membatalkan seluruh batch.
+ * yang ikut terhapus). Bentrok kunci `_live` anak atau induk membatalkan seluruh batch. Pernyataan pertama mengunci
+ * baris induk (`FOR UPDATE`), SAMA seperti `softDeleteWithChildren` yang memulai dari `UPDATE` induk: urutan kunci
+ * yang sama (induk dulu, lalu anak) mencegah deadlock saat hapus dan pulihkan berjalan serentak.
  */
 export function restoreWithChildren(
   db: Preparer,
@@ -183,6 +185,7 @@ export function restoreWithChildren(
 ): DbStatement[] {
   const parentName = checkedTable(parent);
   return [
+    db.prepare(`SELECT id FROM ${parentName} WHERE id = ? FOR UPDATE`).bind(id),
     ...children.map((child) =>
       db
         .prepare(
