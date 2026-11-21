@@ -191,13 +191,13 @@ export async function handoverBoard(
   }
   const inList = locationIds.map(() => '?').join(',');
   // Filter customer (keputusan pemilik 2026-11-21) ikut `base`, jadi memengaruhi halaman DAN jumlah kolom; hak lokasi tetap.
-  const customerClause = input.customerId ? ' AND h.customer_id = ?' : '';
+  // Filter jamak (`customerIds`) menang atas yang tunggal; hanya menyempit (hak lokasi tetap).
+  const customerFilter = input.customerIds ?? (input.customerId ? [input.customerId] : undefined);
+  const customerClause = customerFilter
+    ? ` AND h.customer_id IN (${customerFilter.map(() => '?').join(',')})`
+    : '';
   const base = `h.location_id IN (${inList}) AND h.board_status = ?${customerClause}`;
-  const baseBinds: unknown[] = [
-    ...locationIds,
-    input.status,
-    ...(input.customerId ? [input.customerId] : []),
-  ];
+  const baseBinds: unknown[] = [...locationIds, input.status, ...(customerFilter ?? [])];
   const cursor = input.cursor ? parseBoardCursor(input.status, input.cursor) : null;
   const where: string[] = [base];
   const binds: unknown[] = [...baseBinds];

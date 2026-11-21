@@ -155,3 +155,50 @@ export function validateVersionedBatch(raw: unknown): VersionedBatchInput {
     }),
   };
 }
+
+/** Batas nilai pada satu filter jamak (revisi tampilan lanjutan 2026-11-22, B2b). */
+export const FILTER_LIST_MAX = 20;
+
+/**
+ * Filter jamak OPSIONAL (berdampingan dengan filter tunggal lama): tiada (`undefined`/`null`) = tak dikirim; bila ada
+ * harus daftar teks TAK KOSONG, maks. `FILTER_LIST_MAX` nilai, tanpa duplikat (setelah dipangkas), tiap nilai tak kosong
+ * dan maks. `maxLength` karakter, dan bila `allowed` diberikan salah satu dari nilai itu. Pelanggaran = `VALIDATION`
+ * pada field itu. Filter hanya menyempit: hak baca pemanggil diterapkan terpisah oleh pemakainya.
+ */
+export function readFilterList(
+  reader: ObjectReader,
+  key: string,
+  options: { maxLength?: number; allowed?: readonly string[] } = {},
+): string[] | undefined {
+  const value = reader.raw(key);
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
+    reader.fail(key, 'Harus berupa daftar teks');
+    return undefined;
+  }
+  if (value.length === 0) {
+    reader.fail(key, 'Daftar tidak boleh kosong');
+    return undefined;
+  }
+  if (value.length > FILTER_LIST_MAX) {
+    reader.fail(key, `Maksimal ${FILTER_LIST_MAX} nilai`);
+    return undefined;
+  }
+  const maxLength = options.maxLength ?? 100;
+  const items = (value as string[]).map((item) => item.trim());
+  for (const item of items) {
+    if (item === '' || item.length > maxLength) {
+      reader.fail(key, 'Nilai tidak valid');
+      return undefined;
+    }
+    if (options.allowed !== undefined && !options.allowed.includes(item)) {
+      reader.fail(key, 'Nilai tidak valid');
+      return undefined;
+    }
+  }
+  if (new Set(items).size !== items.length) {
+    reader.fail(key, 'Tidak boleh ada nilai ganda');
+    return undefined;
+  }
+  return items;
+}

@@ -1,5 +1,5 @@
 import type { ObjectReader } from '@server/core/validate';
-import { readObject } from '@server/core/validate';
+import { readFilterList, readObject } from '@server/core/validate';
 import type { ListStatusFilter } from '@shared/batch';
 import type {
   GetItemInput,
@@ -466,13 +466,17 @@ export function validateListItems(raw: unknown): ListItemsPageInput {
   }
   const stickerId = reader.str('stickerId', { max: 100 });
   const typeId = reader.str('typeId', { max: 100 });
-  if (stickerId !== '' && typeId !== '') {
-    reader.fail('typeId', 'Pilih stiker atau jenis, bukan keduanya');
+  const typeIds = readFilterList(reader, 'typeIds');
+  if (stickerId !== '' && (typeId !== '' || typeIds !== undefined)) {
+    reader.fail(
+      typeIds !== undefined ? 'typeIds' : 'typeId',
+      'Pilih stiker atau jenis, bukan keduanya',
+    );
   }
   let stickerMode: 'has' | 'missing' | undefined;
   if (hasValue(reader.raw('stickerMode'))) {
     stickerMode = reader.oneOf('stickerMode', STICKER_MODE_VALUES);
-    if (stickerId === '' && typeId === '') {
+    if (stickerId === '' && typeId === '' && typeIds === undefined) {
       reader.fail('stickerMode', 'Mode hanya berlaku bersama stiker atau jenis');
     }
   }
@@ -486,18 +490,23 @@ export function validateListItems(raw: unknown): ListItemsPageInput {
   }
   const brandId = reader.str('brandId', { max: 100 });
   const buId = reader.str('buId', { max: 100 });
+  const brandIds = readFilterList(reader, 'brandIds');
+  const buIds = readFilterList(reader, 'buIds');
   reader.done();
   return {
     limit: limit as number,
     ...(typeof cursor === 'string' ? { cursor } : {}),
     ...(brandId !== '' ? { brandId } : {}),
     ...(buId !== '' ? { buId } : {}),
+    ...(brandIds ? { brandIds } : {}),
+    ...(buIds ? { buIds } : {}),
+    ...(typeIds ? { typeIds } : {}),
     ...(query !== '' ? { query } : {}),
     ...(status ? { status } : {}),
     ...(instruction ? { instruction } : {}),
     ...(stickerId !== '' ? { stickerId } : {}),
     ...(typeId !== '' ? { typeId } : {}),
-    ...(stickerId !== '' || typeId !== '' ? { stickerMode: stickerMode ?? 'has' } : {}),
+    ...(stickerId !== '' || typeId !== '' || typeIds ? { stickerMode: stickerMode ?? 'has' } : {}),
     ...(manualBook ? { manualBook } : {}),
     ...(postel ? { postel } : {}),
   };

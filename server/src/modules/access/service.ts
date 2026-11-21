@@ -126,6 +126,7 @@ export function listAuditPage(env: Env, params: ListAuditPageInput): Promise<Aud
     ...(cursor ? { cursor } : {}),
     limit: params.limit ?? PAGE_DEFAULT_LIMIT,
     action: params.action ?? '',
+    ...(params.actions ? { actions: params.actions } : {}),
     query: params.query ?? '',
   });
 }
@@ -221,8 +222,8 @@ export async function assertAccessRecordReadable(
   }
 }
 
-export async function getUserDto(
 /** Satu pengguna menurut id. Terhapus hanya bagi `access: manage`; selain itu `NOT_FOUND` (seperti id tak dikenal). */
+export async function getUserDto(
   env: Env,
   input: GetUserInput,
   actor: UserContext,

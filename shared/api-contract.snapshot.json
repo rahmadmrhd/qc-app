@@ -5,6 +5,7 @@
     "path": "/audit-logs",
     "query": {
       "action": "string",
+      "actions": "list",
       "cursor": "string",
       "limit": "number",
       "query": "string"
@@ -209,6 +210,17 @@
     "path": "/users/batch/status"
   },
   {
+    "id": "activity.list",
+    "verb": "GET",
+    "path": "/activity",
+    "query": {
+      "cursor": "string",
+      "id": "string",
+      "kind": "string",
+      "limit": "number"
+    }
+  },
+  {
     "id": "auth.me",
     "verb": "GET",
     "path": "/me"
@@ -369,6 +381,7 @@
     "query": {
       "cursor": "string",
       "customerId": "string",
+      "customerIds": "list",
       "deleted": "boolean",
       "limit": "number",
       "locationIds": "list",
@@ -454,7 +467,9 @@
     "path": "/items",
     "query": {
       "brandId": "string",
+      "brandIds": "list",
       "buId": "string",
+      "buIds": "list",
       "cursor": "string",
       "instruction": "string",
       "limit": "number",
@@ -464,7 +479,8 @@
       "status": "string",
       "stickerId": "string",
       "stickerMode": "string",
-      "typeId": "string"
+      "typeId": "string",
+      "typeIds": "list"
     }
   },
   {
@@ -788,11 +804,17 @@
     "path": "/qrcodes/{id}/versions"
   },
   {
+    "id": "serialCases.get",
+    "verb": "GET",
+    "path": "/serial-cases/{id}"
+  },
+  {
     "id": "serialCases.list",
     "verb": "GET",
     "path": "/serial-cases",
     "query": {
       "buId": "string",
+      "buIds": "list",
       "cursor": "string",
       "limit": "number",
       "query": "string",
@@ -891,17 +913,22 @@
     "path": "/serials",
     "query": {
       "buId": "string",
+      "buIds": "list",
       "createdBy": "string",
       "cursor": "string",
+      "custodies": "list",
       "custody": "string",
       "deleted": "boolean",
       "from": "string",
       "itemId": "string",
+      "itemIds": "list",
       "limit": "number",
       "locationId": "string",
+      "locationIds": "list",
       "query": "string",
       "serials": "string",
       "status": "string",
+      "statuses": "list",
       "to": "string"
     }
   },

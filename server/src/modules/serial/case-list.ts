@@ -115,9 +115,11 @@ export async function listSerialCases(
   const binds: unknown[] = [...buIds];
   if (input.status === 'active') where.push("c.closed_on = ''");
   if (input.status === 'closed') where.push("c.closed_on <> ''");
-  if (input.buId !== undefined) {
-    where.push('c.bu_id = ?');
-    binds.push(input.buId);
+  // Filter jamak menang atas yang tunggal; keduanya hanya menyempit (irisan dengan BU terbaca di atas tetap berlaku).
+  const buFilter = input.buIds ?? (input.buId !== undefined ? [input.buId] : undefined);
+  if (buFilter) {
+    where.push(`c.bu_id IN (${placeholders(buFilter.length)})`);
+    binds.push(...buFilter);
   }
   const query = normalizeSerial(input.query ?? '');
   if (query !== '') {

@@ -1638,6 +1638,8 @@ export interface BoardPageInput {
   limit?: number;
   /** Hanya task milik customer ini (keputusan pemilik 2026-11-21); hak lokasi pemanggil tetap berlaku. */
   customerId?: string;
+  /** Filter jamak OPSIONAL: bila dikirim bersama field tunggal di atas, yang jamak menang; daftar tak kosong, tanpa duplikat, maks. 20 nilai; hanya menyempit (hak baca pemanggil tetap berlaku). Pengganti `customerId`. */
+  customerIds?: string[];
   /**
    * `true` = kolom berisi task TERHAPUS (dikelompokkan menurut status kolomnya), hanya dari lokasi tempat pemanggil
    * memegang `handover: manage`; selain itu `FORBIDDEN`. Bawaan: hanya task hidup.
@@ -1678,6 +1680,12 @@ export interface ListItemsPageInput {
   brandId?: string;
   /** Hanya item yang tergabung di BU ini (satu id); tetap dibatasi BU yang boleh dilihat pemanggil. */
   buId?: string;
+  /** Filter jamak OPSIONAL: bila dikirim bersama field tunggal di atas, yang jamak menang; daftar tak kosong, tanpa duplikat, maks. 20 nilai; hanya menyempit (hak baca pemanggil tetap berlaku). Pengganti `brandId`. */
+  brandIds?: string[];
+  /** Pengganti `buId` (item tergabung di salah satu BU itu). */
+  buIds?: string[];
+  /** Pengganti `typeId` (bersama `stickerMode`; salah satu jenis cocok); tak boleh bersama `stickerId`. */
+  typeIds?: string[];
 }
 
 export interface ItemPageDto {
@@ -1728,6 +1736,8 @@ export interface ListAuditPageInput {
   action?: string;
   /** Kata kunci pada target atau pelaku. */
   query?: string;
+  /** Filter jamak OPSIONAL: bila dikirim bersama field tunggal di atas, yang jamak menang; daftar tak kosong, tanpa duplikat, maks. 20 nilai; hanya menyempit (hak baca pemanggil tetap berlaku). Pengganti `action` (salah satu aksi); tiap nilai maks. 40 karakter. */
+  actions?: string[];
 }
 
 export interface AuditCursorPageDto {
@@ -1981,6 +1991,16 @@ export interface SerialListInput {
   from?: string;
   to?: string;
   createdBy?: string;
+  /** Filter jamak OPSIONAL: bila dikirim bersama field tunggal di atas, yang jamak menang; daftar tak kosong, tanpa duplikat, maks. 20 nilai; hanya menyempit (hak baca pemanggil tetap berlaku). Pengganti `buId` (serial pernah/ada di salah satu BU itu). */
+  buIds?: string[];
+  /** Pengganti `itemId`. */
+  itemIds?: string[];
+  /** Pengganti `locationId`. */
+  locationIds?: string[];
+  /** Pengganti `status` (status alur serial). */
+  statuses?: SerialStatus[];
+  /** Pengganti `custody`. */
+  custodies?: SerialCustody[];
   /**
    * `true` = hanya serial TERHAPUS (soft delete), terbatas pada serial yang boleh dipulihkan pemanggil (`serial: manage`
    * pada semua BU dalam riwayatnya); tanpa BU ber-`manage` = `FORBIDDEN`. Bawaan: hanya serial hidup. Kunci terpisah
@@ -2188,6 +2208,8 @@ export interface SerialCaseListInput {
   /** `active` = laporan terbuka, `closed` = sudah selesai. */
   status?: 'active' | 'closed';
   buId?: string;
+  /** Filter jamak OPSIONAL: bila dikirim bersama field tunggal di atas, yang jamak menang; daftar tak kosong, tanpa duplikat, maks. 20 nilai; hanya menyempit (hak baca pemanggil tetap berlaku). Pengganti `buId`. */
+  buIds?: string[];
   /** Awalan nomor LP atau serial. */
   query?: string;
   cursor?: string;
@@ -2219,6 +2241,21 @@ export interface SerialCaseRowDto {
   /** Baris pertama catatan laporan sebagai teks polos, maks. `SERIAL_LIMITS.reportSummaryMax` karakter. */
   summary: string;
 }
+export interface GetSerialCaseInput {
+  id: string;
+}
+/**
+ * Detail satu laporan: baris daftar + penutup (kosong bila belum ditutup; turunan kejadian `declare_broken` atau
+ * `recheck_pass` pada laporan itu) + status Serial kini (sama dengan `status`).
+ */
+export interface SerialCaseDetailDto extends SerialCaseRowDto {
+  /** Nama pelaku kejadian penutup; tiada bila laporan belum ditutup. */
+  closedBy?: string;
+  /** Tim pelaku penutup (`qc` | `service` | `system`). */
+  closedByTeam?: string;
+  /** Status Serial sekarang. */
+  serialStatus: SerialStatus;
+}
 export interface SerialCaseListOutput {
   items: SerialCaseRowDto[];
   nextCursor: string | null;
@@ -2241,21 +2278,6 @@ export interface ListSerialItemOptionsInput {
   limit?: number;
   /**
    * Maks. 50 id item. Bila ada (juga kosong), hasilnya tepat item-item itu yang aktif dan beririsan dengan BU dalam
-export interface GetSerialCaseInput {
-  id: string;
-}
-/**
- * Detail satu laporan: baris daftar + penutup (kosong bila belum ditutup; turunan kejadian `declare_broken` atau
- * `recheck_pass` pada laporan itu) + status Serial kini (sama dengan `status`).
- */
-export interface SerialCaseDetailDto extends SerialCaseRowDto {
-  /** Nama pelaku kejadian penutup; tiada bila laporan belum ditutup. */
-  closedBy?: string;
-  /** Tim pelaku penutup (`qc` | `service` | `system`). */
-  closedByTeam?: string;
-  /** Status Serial sekarang. */
-  serialStatus: SerialStatus;
-}
    * cakupan pengguna: pencatat = BU ber-level `serial: edit`; pembaca saja = BU ber-level view atau lebih pada
    * `serial`/`serialservice` (id lain tidak dikembalikan, tanpa galat); `query`, `cursor`, dan `limit` diabaikan.
    */

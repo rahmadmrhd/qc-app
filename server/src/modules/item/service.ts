@@ -318,15 +318,18 @@ export async function listItemPage(
   const instructionFilter = instructionFilterSql(input);
   where.push(...instructionFilter.clauses);
   binds.push(...instructionFilter.binds);
-  if (input.brandId) {
-    where.push('i.brand_id = ?');
-    binds.push(input.brandId);
+  // Filter jamak menang atas yang tunggal; keduanya hanya MENYEMPITKAN (irisan dengan BU terlihat di atas tetap berlaku).
+  const brandIds = input.brandIds ?? (input.brandId ? [input.brandId] : undefined);
+  if (brandIds) {
+    where.push(`i.brand_id IN (${brandIds.map(() => '?').join(', ')})`);
+    binds.push(...brandIds);
   }
-  if (input.buId) {
+  const buFilter = input.buIds ?? (input.buId ? [input.buId] : undefined);
+  if (buFilter) {
     where.push(
-      'EXISTS (SELECT 1 FROM item_business_units y WHERE y.item_id = i.id AND y.bu_id = ?)',
+      `EXISTS (SELECT 1 FROM item_business_units y WHERE y.item_id = i.id AND y.bu_id IN (${buFilter.map(() => '?').join(', ')}))`,
     );
-    binds.push(input.buId);
+    binds.push(...buFilter);
   }
   if (input.manualBook === 'has') where.push(HAS_MANUAL_BOOK_SQL);
   if (input.manualBook === 'missing') where.push(`NOT ${HAS_MANUAL_BOOK_SQL}`);
@@ -431,12 +434,12 @@ export async function assertItemReadable(env: Env, id: string, user: UserContext
   assertItemRecordReadable(user, found, buIds);
 }
 
- */
-export async function getItemDto(
-  env: Env,
 /**
  * Detail item. Item yang tidak ada DAN item yang tidak beririsan dengan BU terlihat user sama-sama `NOT_FOUND`
  * (bukan `FORBIDDEN`), supaya keberadaan item di BU lain tidak bocor.
+ */
+export async function getItemDto(
+  env: Env,
   input: GetItemInput,
   user: UserContext,
 ): Promise<ItemDto> {
