@@ -85,7 +85,7 @@ test('FormSection menyusun kisi dua kolom atau satu', () => {
   expect(container.querySelector('.md\\:grid-cols-2')).toBeNull();
 });
 
-test('ponsel: Batal + Simpan pindah ke bar bawah menempel; bar judul tinggal tombol kembali dan judul', async () => {
+test('ponsel: Batal + Simpan pindah ke bar bawah fixed; tanpa tombol kembali dan judul h1 hanya untuk pembaca layar', async () => {
   const media = mockMatchMedia(false);
   const onCancel = vi.fn();
   const onSubmit = renderPage({ onCancel });
@@ -95,7 +95,10 @@ test('ponsel: Batal + Simpan pindah ke bar bawah menempel; bar judul tinggal tom
   expect(save.className).toContain('flex-[2]');
   await userEvent.click(save);
   expect(onSubmit).toHaveBeenCalledTimes(1);
-  await userEvent.click(screen.getByRole('button', { name: 'Kembali' }));
+  expect(bar.className).toContain('fixed');
+  expect(screen.queryByRole('button', { name: 'Kembali' })).toBeNull();
+  expect(screen.getByRole('heading', { level: 1 }).className).toContain('narrow:sr-only');
+  await userEvent.click(within(bar).getByRole('button', { name: 'Batal' }));
   expect(onCancel).toHaveBeenCalledTimes(1);
   media.restore();
 });

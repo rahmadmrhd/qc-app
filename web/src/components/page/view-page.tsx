@@ -125,7 +125,8 @@ export function ViewPage({
       <HeadroomBar className="pt-1 pb-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h1 className="min-w-0 text-xl font-semibold break-words">{title}</h1>
+            {/* Ponsel: judul tampak = judul navbar; h1 tetap ada bagi pembaca layar. */}
+            <h1 className="min-w-0 text-xl font-semibold break-words narrow:sr-only">{title}</h1>
             {badge}
           </div>
           {actions || (desktop && visibleActions.length > 0) ? (
@@ -169,6 +170,7 @@ export function ViewPage({
             <ActionButton
               action={primaryAction.action}
               label={primaryAction.label}
+              emphasis="primary"
               busy={primaryAction.busy}
               disabled={primaryAction.disabled}
               onClick={primaryAction.onSelect}

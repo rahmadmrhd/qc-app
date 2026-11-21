@@ -92,7 +92,12 @@ export function BulkBar({
   }
 
   return (
-    <StickyActionBar label="Aksi massal" busy={busy} className="mt-3 flex-wrap rounded-lg">
+    <StickyActionBar
+      label="Aksi massal"
+      busy={busy}
+      placement="sticky"
+      className="mt-3 flex-wrap rounded-lg"
+    >
       <span className="px-2 text-sm font-medium">{count} dipilih</span>
       <fieldset
         disabled={busy}

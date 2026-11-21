@@ -210,6 +210,11 @@ export type ActionButtonProps = {
   busy?: boolean;
   /** Teks saat `busy` (bawaan: "Menyimpan…" untuk simpan, lainnya "{label}…"). */
   busyLabel?: string;
+  /**
+   * `primary` = aksi utama halaman: warna primary SOLID menggantikan gaya bawaan aksi itu (mis. "Ubah" yang bawaannya
+   * outline). Hanya berlaku bagi aksi berwarna primary; aksi lain (Hapus, Pulihkan, …) mempertahankan warnanya.
+   */
+  emphasis?: 'primary';
 } & Omit<ComponentProps<typeof Button>, 'color' | 'variant' | 'children'>;
 
 function busyText(action: ActionKind, label: string): string {
@@ -224,6 +229,7 @@ export function ActionButton({
   busyLabel,
   disabled,
   size,
+  emphasis,
   onClick,
   ...rest
 }: ActionButtonProps) {
@@ -282,7 +288,7 @@ export function ActionButton({
       type="button"
       {...rest}
       color={spec.color}
-      variant={spec.variant}
+      variant={emphasis === 'primary' && spec.color === 'primary' ? 'solid' : spec.variant}
       size={size}
       disabled={disabled || busy}
       onClick={handleClick}

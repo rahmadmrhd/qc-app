@@ -58,7 +58,8 @@ export function ListPage({
       <HeadroomBar tour={tour} className="space-y-3 pt-1 pb-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
-            <h1 className="text-xl font-semibold">{title}</h1>
+            {/* Ponsel: judul tampak = judul navbar; h1 tetap ada bagi pembaca layar. */}
+            <h1 className="text-xl font-semibold narrow:sr-only">{title}</h1>
             {count ? (
               <span role="status" className="text-sm text-muted-foreground">
                 {count}

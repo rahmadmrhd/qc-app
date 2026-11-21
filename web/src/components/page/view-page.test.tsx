@@ -163,6 +163,10 @@ test('actionItems di ponsel: aksi utama di bar bawah, sisanya di menu "Aksi lain
   const bar = screen.getByRole('region', { name: 'Aksi halaman' });
   await userEvent.click(within(bar).getByRole('button', { name: 'Ubah' }));
   expect(onEdit).toHaveBeenCalledTimes(1);
+  expect(bar.className).toContain('fixed');
+  // Aksi utama (Ubah) berwarna primary solid, bukan outline.
+  expect(within(bar).getByRole('button', { name: 'Ubah' }).className).toContain('bg-primary');
+  expect(screen.getByRole('heading', { level: 1 }).className).toContain('narrow:sr-only');
   expect(within(bar).queryByRole('button', { name: 'Hapus' })).toBeNull();
   await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Hapus' }));

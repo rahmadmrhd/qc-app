@@ -1,7 +1,5 @@
-import { ArrowLeft } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { ActionButton } from '@/components/action-button';
-import { Button } from '@/components/ui/button';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
 import { StickyActionBar } from './sticky-action-bar';
@@ -69,25 +67,10 @@ export function FormPage({
     <HeadroomFrame className="gap-4">
       <HeadroomBar tour={tour} className="pt-1 pb-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            {desktop ? null : (
-              <Button
-                type="button"
-                variant="ghost"
-                color="primary"
-                size="icon"
-                aria-label="Kembali"
-                disabled={submitting}
-                onClick={onCancel}
-                className="-ml-2 shrink-0"
-              >
-                <ArrowLeft aria-hidden />
-              </Button>
-            )}
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h1 className="min-w-0 text-xl font-semibold break-words">{title}</h1>
-              {badge}
-            </div>
+          {/* Ponsel: tanpa tombol kembali dan tanpa judul tampak (judul navbar; kembali = tombol sistem). */}
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h1 className="min-w-0 text-xl font-semibold break-words narrow:sr-only">{title}</h1>
+            {badge}
           </div>
           {desktop ? (
             <div data-tour={actionsTour} className="flex flex-wrap items-center gap-2">
@@ -100,11 +83,8 @@ export function FormPage({
       </HeadroomBar>
       <div className="min-w-0">{children}</div>
       {desktop || hideMobileBar ? null : (
-        // Ponsel: Batal + Simpan pindah ke bar bawah yang menempel (Simpan lebih lebar).
-        <StickyActionBar
-          label="Aksi form"
-          className="-mx-[var(--main-pad,1rem)] rounded-none border-x-0 border-b-0"
-        >
+        // Ponsel: Batal + Simpan pindah ke bar bawah `fixed` (Simpan lebih lebar).
+        <StickyActionBar label="Aksi form">
           <div data-tour={actionsTour} className="flex w-full items-center gap-2">
             {cancel}
             {extra}

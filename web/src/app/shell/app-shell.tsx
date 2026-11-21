@@ -95,7 +95,7 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
                 <PushOnboarding />
                 <GuideGreeting />
                 <GuideBanner />
-                <main className="flex-1 p-[var(--main-pad)] [--main-pad:1rem] md:[--main-pad:1.5rem]">
+                <main className="flex-1 p-[var(--main-pad)] pb-[calc(var(--main-pad)+var(--action-bar-h,0px))] [--main-pad:1rem] md:[--main-pad:1.5rem]">
                   <PageContainer width={pageWidth}>{children ?? <Outlet />}</PageContainer>
                 </main>
               </SidebarInset>
