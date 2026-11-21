@@ -76,7 +76,7 @@ function renderPage() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <ReportPage onOpenSerial={onOpenSerial} />
+      <ReportPage onOpenSerial={onOpenSerial} onCancel={() => undefined} />
     </QueryClientProvider>,
   );
 }
@@ -175,7 +175,7 @@ test('serial Rusak ditolak: Unit ini sudah dinyatakan rusak', async () => {
   renderPage();
   await search('ABC123');
   expect(await screen.findByText(/Unit ini sudah dinyatakan rusak/)).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Lapor rusak' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Lapor rusak' })).toBeDisabled();
   await userEvent.click(screen.getByRole('button', { name: 'Buka Serial Number ini' }));
   expect(onOpenSerial).toHaveBeenCalledWith('s1');
 });
@@ -307,4 +307,18 @@ test('judul Lapor Rusak ada di kerangka judul (bar headroom) dengan target pandu
   const heading = await screen.findByRole('heading', { name: 'Lapor Rusak' });
   expect(heading.closest('[data-headroom-frame]')).not.toBeNull();
   expect(document.querySelector('[data-tour="report-serial"]')).not.toBeNull();
+});
+
+test('FormPage: judul Lapor Rusak, Batal memanggil onCancel, Lapor rusak nonaktif sebelum ada form', async () => {
+  const onCancel = vi.fn();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  render(
+    <QueryClientProvider client={client}>
+      <ReportPage onOpenSerial={onOpenSerial} onCancel={onCancel} />
+    </QueryClientProvider>,
+  );
+  expect(screen.getByRole('heading', { level: 1, name: 'Lapor Rusak' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Lapor rusak' })).toBeDisabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
+  expect(onCancel).toHaveBeenCalledTimes(1);
 });

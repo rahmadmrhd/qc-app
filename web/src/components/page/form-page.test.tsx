@@ -99,3 +99,26 @@ test('ponsel: Batal + Simpan pindah ke bar bawah menempel; bar judul tinggal tom
   expect(onCancel).toHaveBeenCalledTimes(1);
   media.restore();
 });
+
+test('ponsel: hideMobileBar menyembunyikan bar bawah; di desktop tak berpengaruh', () => {
+  const media = mockMatchMedia(false);
+  const { unmount } = render(
+    <TooltipProvider>
+      <FormPage formId="f" title="Tambah" onCancel={() => undefined} hideMobileBar>
+        <form id="f" />
+      </FormPage>
+    </TooltipProvider>,
+  );
+  expect(screen.queryByRole('region', { name: 'Aksi form' })).toBeNull();
+  unmount();
+  media.set(true);
+  render(
+    <TooltipProvider>
+      <FormPage formId="f" title="Tambah" onCancel={() => undefined} hideMobileBar>
+        <form id="f" />
+      </FormPage>
+    </TooltipProvider>,
+  );
+  expect(screen.getByRole('button', { name: 'Simpan' })).toBeInTheDocument();
+  media.restore();
+});

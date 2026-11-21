@@ -13,6 +13,7 @@ function ReportRoute() {
   const stack = useStackNavigation();
   return (
     <ReportPage
+      onCancel={() => stack.pop({ to: '/serial' })}
       onOpenSerial={(id, caseId) =>
         stack.replace({
           to: '/serial/$serialId',

@@ -25,6 +25,7 @@ export function FormPage({
   tour,
   actionsTour,
   saveTour,
+  hideMobileBar,
 }: {
   formId: string;
   title: ReactNode;
@@ -43,6 +44,11 @@ export function FormPage({
   actionsTour?: string;
   /** `data-tour` pada tombol Simpan. */
   saveTour?: string;
+  /**
+   * Ponsel: sembunyikan bar bawah (Batal + Simpan) sementara halaman menampilkan bar aksi lain di tepi bawah, mis. bar
+   * aksi pilihan pada tabel draft. Tak berpengaruh di desktop.
+   */
+  hideMobileBar?: boolean;
 }) {
   const desktop = useIsDesktop();
   const cancel = <ActionButton action="cancel" onClick={onCancel} disabled={submitting} />;
@@ -93,7 +99,7 @@ export function FormPage({
         </div>
       </HeadroomBar>
       <div className="min-w-0">{children}</div>
-      {desktop ? null : (
+      {desktop || hideMobileBar ? null : (
         // Ponsel: Batal + Simpan pindah ke bar bawah yang menempel (Simpan lebih lebar).
         <StickyActionBar
           label="Aksi form"

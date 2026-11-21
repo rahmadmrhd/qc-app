@@ -58,11 +58,15 @@ vi.mock('@/modules/serial/components/record-page', () => ({
     onAllSaved?: () => void;
     onProofChange?: (hasProof: boolean) => void;
     handleRef?: { current: { save(): Promise<boolean> } | null };
-    hideTitle?: boolean;
+    frame?: { title: string; formId: string; onCancel: () => void };
   }) => {
     if (props.handleRef) props.handleRef.current = { save: () => state.save() };
     return (
-      <div data-hide-title={props.hideTitle ? 'ya' : 'tidak'}>
+      <div data-form-id={props.frame?.formId}>
+        <h1>{props.frame?.title}</h1>
+        <button type="button" onClick={() => props.frame?.onCancel()}>
+          Batal
+        </button>
         <button type="button" onClick={() => props.onDirtyChange?.(true)}>
           isi
         </button>
@@ -115,11 +119,14 @@ afterEach(() => {
   localStorage.clear();
 });
 
-test('judul halaman ada di kerangka judul (bar headroom) dan RecordPage tidak mengulang judulnya', async () => {
+test('halaman memakai FormPage lewat frame RecordPage: judul, formId, dan Batal yang menavigasi ke daftar', async () => {
   const { container } = await mount();
-  const heading = screen.getByRole('heading', { name: 'Catat Serial Number' });
-  expect(heading.closest('[data-headroom-frame]')).not.toBeNull();
-  expect(container.querySelector('[data-hide-title="ya"]')).not.toBeNull();
+  expect(screen.getByRole('heading', { name: 'Catat Serial Number' })).toBeInTheDocument();
+  expect(container.querySelector('[data-form-id="serial-record-form"]')).not.toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
+  await waitFor(() =>
+    expect(state.navigate).toHaveBeenCalledWith(expect.objectContaining({ to: '/serial' })),
+  );
 });
 
 test('draf berisi: keluar halaman meminta konfirmasi; ditolak = diblokir', async () => {

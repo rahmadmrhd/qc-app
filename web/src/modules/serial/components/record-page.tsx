@@ -7,9 +7,10 @@ import {
 } from '@shared/serials';
 import { useQueryClient } from '@tanstack/react-query';
 import { Camera } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import type { OwnerUploads } from '@/components/file-dialog/use-background-uploads';
+import { FormPage } from '@/components/page/form-page';
 import { StickyActionBar } from '@/components/page/sticky-action-bar';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
@@ -117,6 +118,20 @@ export interface RecordPageProps {
   draft?: DraftControl;
   /** Sembunyikan judul "Catat Serial Number" (pemanggil sudah punya judul halaman). */
   hideTitle?: boolean;
+  /**
+   * Halaman penuh di dalam `FormPage` (rute `/serial/new`; keputusan pemilik 2026-11-21): judul, Batal, dan Simpan berada
+   * di bar judul yang menempel (desktop); di ponsel bar bawah `FormPage` memuat Batal, Simpan, kamera, dan Impor/Ekspor.
+   * Tanpa ini (dialog Country Lock) `RecordPage` memakai bar Simpannya sendiri.
+   */
+  frame?: RecordPageFrame;
+}
+
+export interface RecordPageFrame {
+  title: ReactNode;
+  /** Id `<form>` kosong yang dikirimi tombol Simpan `FormPage`; harus unik di halaman. */
+  formId: string;
+  /** Batal / kembali: pemanggil menjalankan alur penjaga keluar halaman yang sama dengan navigasi lain. */
+  onCancel: () => void;
 }
 
 export interface RecordPageHandle {
@@ -197,6 +212,7 @@ export function RecordPage({
   handleRef,
   draft,
   hideTitle,
+  frame,
 }: RecordPageProps) {
   const me = useMe();
   const queryClient = useQueryClient();
@@ -1013,12 +1029,24 @@ export function RecordPage({
   );
   const blockedCount = rows.filter((row) => rowStatus(row).tone !== 'ok').length;
 
-  return (
+  const uploadsNote = uploadsBlocked ? (
+    <p role="status" className="text-xs text-muted-foreground">
+      {uploadsPending} foto masih diunggah atau gagal; selesaikan, ulangi, atau buang dulu.
+    </p>
+  ) : null;
+  const blockedNote =
+    blockedCount > 0 ? (
+      <p className="text-xs text-muted-foreground">
+        {blockedCount} baris perlu dilengkapi atau diperbaiki.
+      </p>
+    ) : null;
+
+  const body = (
     <div
       className={cn('space-y-5', barVisible && SELECTION_BAR_SPACE_CLASS)}
       data-selection-space={barVisible ? 'on' : undefined}
     >
-      {hideTitle ? null : <h1 className="text-xl font-semibold">Catat Serial Number</h1>}
+      {hideTitle || frame ? null : <h1 className="text-xl font-semibold">Catat Serial Number</h1>}
 
       <section
         aria-label="Default"
@@ -1143,7 +1171,23 @@ export function RecordPage({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">Draft ({rows.length} baris)</h2>
-        {desktop ? <ImportExportBar {...importExportProps} /> : null}
+        {desktop ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <ImportExportBar {...importExportProps} />
+            {frame && rows.length > 0 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                color="primary"
+                size="sm"
+                disabled={saving}
+                onClick={() => setClearOpen(true)}
+              >
+                Kosongkan draft
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div data-tour="serial-draft">
@@ -1193,7 +1237,13 @@ export function RecordPage({
         </p>
       ) : null}
 
-      {desktop ? (
+      {frame ? (
+        // Simpan, Batal, kamera, dan Impor/Ekspor ada di bar `FormPage`; di sini hanya alasan Simpan ditahan.
+        <>
+          {uploadsNote}
+          {blockedNote}
+        </>
+      ) : desktop ? (
         <div className="flex flex-wrap items-center gap-3" data-tour="serial-save">
           <Button
             type="button"
@@ -1227,16 +1277,8 @@ export function RecordPage({
         </div>
       ) : (
         <>
-          {uploadsBlocked ? (
-            <p role="status" className="text-xs text-muted-foreground">
-              {uploadsPending} foto masih diunggah atau gagal; selesaikan, ulangi, atau buang dulu.
-            </p>
-          ) : null}
-          {blockedCount > 0 ? (
-            <p className="text-xs text-muted-foreground">
-              {blockedCount} baris perlu dilengkapi atau diperbaiki.
-            </p>
-          ) : null}
+          {uploadsNote}
+          {blockedNote}
           {/* Ponsel: Simpan selalu terlihat tanpa gulir. Saat mode pilih, bar aksi pilihan mengambil alih tepi bawah. */}
           {selectedCount === 0 ? (
             <StickyActionBar
@@ -1310,5 +1352,50 @@ export function RecordPage({
         onCancel={() => setRemoveOpen(false)}
       />
     </div>
+  );
+
+  if (!frame) return body;
+  // Ponsel: bar bawah `FormPage` = Batal + (kamera, Impor/Ekspor) + Simpan; saat mode pilih bar itu diganti bar aksi pilihan.
+  const mobileExtra = (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        color="primary"
+        size="icon"
+        aria-label="Pindai dengan kamera"
+        disabled={gated || saving}
+        onClick={openCameraScan}
+      >
+        <Camera aria-hidden />
+      </Button>
+      <ImportExportBar compact onClearDraft={() => setClearOpen(true)} {...importExportProps} />
+    </>
+  );
+  return (
+    <FormPage
+      formId={frame.formId}
+      title={frame.title}
+      onCancel={frame.onCancel}
+      submitting={saving}
+      submitLabel={hasFailed ? 'Coba lagi' : `Simpan ${rows.length} serial`}
+      busyText="Menyimpan…"
+      submitDisabled={importing || rows.length === 0 || uploadsBlocked}
+      saveTour="serial-save"
+      extra={desktop ? undefined : mobileExtra}
+      hideMobileBar={selectedCount > 0}
+    >
+      {/* `<form>` kosong di luar isi: Enter pada kolom scan tidak mengirim form; hanya tombol Simpan yang mengirim. */}
+      <form
+        id={frame.formId}
+        aria-hidden="true"
+        hidden
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleSave();
+        }}
+      />
+      {body}
+    </FormPage>
   );
 }

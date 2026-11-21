@@ -118,7 +118,8 @@ export const SERIAL_DETAIL: GuideEntry = {
  * Catat Serial Number: bawaan, scan, draft, ubah massal, dan Simpan. Target: `serial-defaults`, `serial-scan`,
  * `serial-draft`, `serial-row-actions` (hanya tabel; di ponsel baris berupa kartu tanpa tombol aksi, jadi langkahnya
  * `langsung` dengan kartu pengganti), `serial-row-select` (ada di tabel dan kartu), `serial-bulk` (bar aksi pilihan),
- * `serial-save` (`record-page.tsx`, `staging-table.tsx`, `staging-cards.tsx`, `selection-bar.tsx`). Dua langkah
+ * `serial-save` (tombol Simpan `FormPage` lewat `saveTour` di `record-page.tsx`: bar judul di desktop, bar bawah di
+ * ponsel; `staging-table.tsx`, `staging-cards.tsx`, `selection-bar.tsx`). Dua langkah
  * `wait`: menunggu baris draft pertama (`serial-row`, ada di tabel dan kartu), lalu menunggu pengguna mencentang baris
  * sampai bar aksi pilihan muncul. Berhenti SEBELUM Simpan.
  */
@@ -171,7 +172,7 @@ export const SERIAL_CATAT: GuideEntry = {
     {
       target: 'serial-save',
       teksJikaKosong:
-        'Simpan ada di bar bawah halaman (di ponsel bar itu tersembunyi selama ada baris terpilih: keluar dari mode pilih dulu). Simpan menyimpan semua baris sebagai Serial Number berstatus Lolos. Panduan berhenti di sini: belum ada yang tersimpan.',
+        'Simpan ada di bar judul di atas halaman (di ponsel di bar bawah, yang tersembunyi selama ada baris terpilih: keluar dari mode pilih dulu). Simpan menyimpan semua baris sebagai Serial Number berstatus Lolos. Panduan berhenti di sini: belum ada yang tersimpan.',
       langsung: true,
       text: 'Simpan menyimpan semua baris sebagai Serial Number berstatus Lolos. Baris yang belum lengkap (termasuk foto bukti kurang) menahan Simpan; baris Cek ulang dicatat sebagai cek ulang lolos pada serial yang sudah ada (bukan serial baru) dan baris yang gagal tetap di draft. Kalau semuanya berhasil kamu kembali ke daftar. Panduan berhenti di sini: belum ada yang tersimpan, dan baris contohmu bisa dibuang dengan Kosongkan draft.',
       advance: 'next',
@@ -214,8 +215,9 @@ export const SERIAL_LAPORAN_DAFTAR: GuideEntry = {
  * Lapor Rusak. Langkahnya MENYESUAIKAN hasil pencarian (yang tampil tergantung serial yang diketik): sesudah langkah
  * `wait`, tiap langkah ber-`langsung` tanpa `teksJikaKosong` dilewati seketika bila bagiannya tak ada. Target:
  * `report-serial`, `report-result` (semua hasil), `report-blocked-open` (hanya serial yang tak bisa dilaporkan),
- * `report-new-fields` (hanya serial belum tercatat), `report-message` dan `report-submit` (hanya yang bisa dilaporkan)
- * di `report-page.tsx` dan `report-form.tsx`. Berhenti SEBELUM tombol "Lapor rusak".
+ * `report-new-fields` dan `report-message` (hanya yang bisa dilaporkan) di `report-form.tsx`, serta `report-submit`
+ * (tombol "Lapor rusak" milik `FormPage`, lewat `saveTour` di `report-page.tsx`: bar judul di desktop, bar bawah di
+ * ponsel; SELALU ada, nonaktif sampai ada form laporan dengan catatan terisi). Berhenti SEBELUM tombol "Lapor rusak".
  */
 export const SERIAL_LAPORAN: GuideEntry = {
   id: 'serial-laporan',
@@ -259,7 +261,7 @@ export const SERIAL_LAPORAN: GuideEntry = {
     },
     {
       target: 'report-submit',
-      text: 'Lapor rusak membuka laporan baru (mis. LP/SBY/2611-0001) berstatus Dilaporkan lalu membawamu ke detail serial. Aktif setelah catatan terisi. Panduan berhenti di sini: belum ada laporan yang dibuat.',
+      text: 'Lapor rusak membuka laporan baru (mis. LP/SBY/2611-0001) berstatus Dilaporkan lalu membawamu ke detail serial. Tombolnya ada di bar judul (di ponsel di bar bawah) dan baru aktif setelah ada serial yang bisa dilaporkan dengan catatan terisi. Panduan berhenti di sini: belum ada laporan yang dibuat.',
       langsung: true,
       advance: 'next',
     },
