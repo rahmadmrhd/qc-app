@@ -123,7 +123,8 @@ export function findCachedHandover(queryClient: QueryClient, id: string): Handov
 /**
  * Memasang hasil server ke papan tanpa memuat ulang: task dibuang dari kolom lama (total berkurang), dipasang di
  * kolom statusnya (halaman pertama, urut papan; total bertambah), atau diganti di tempat bila kolomnya tidak
- * berubah. Hanya papan yang memuat lokasi task yang disentuh; kolom yang belum pernah dimuat dibiarkan.
+ * berubah. Hanya papan yang memuat lokasi task yang disentuh; kolom yang belum pernah dimuat dibiarkan. Kolom
+ * tersaring customer hanya menerima task customer itu (task yang customernya berubah keluar dari kolom itu).
  */
 export function upsertHandoverInBoards(queryClient: QueryClient, saved: HandoverDto): void {
   for (const [key, data] of columnQueries(queryClient)) {
@@ -132,7 +133,10 @@ export function upsertHandoverInBoards(queryClient: QueryClient, saved: Handover
     const status = key[3];
     if (!Array.isArray(ids) || !ids.includes(saved.locationId)) continue;
     const had = data.pages.some((page) => page.items.some((item) => item.id === saved.id));
-    const belongs = status === saved.status;
+    // Kolom tersaring customer (`key[4] = { customerId }`) hanya memuat task customer itu.
+    const filter = key[4] as { customerId?: string } | undefined;
+    const belongs =
+      status === saved.status && (!filter?.customerId || filter.customerId === saved.customerId);
     const total = data.pages[0]?.total ?? 0;
     let next: BoardColumnData;
     if (had && belongs) {
