@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { canRecordSerials, requireAnyPermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { SerialListPage } from '@/modules/serial/components/serial-list-page';
@@ -17,15 +18,16 @@ export const Route = createFileRoute('/_app/serial/')({
 function SerialListRoute() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
+  const stack = useStackNavigation();
   const me = useMe();
   return (
     <SerialListPage
       search={search}
+      // Filter dan pencarian mengganti isi halaman yang sama (replace), bukan langkah riwayat baru.
       onSearchChange={(patch) =>
         void navigate({ search: (prev) => ({ ...prev, ...patch }), replace: true })
       }
-      onOpen={(id) => void navigate({ to: '/serial/$serialId', params: { serialId: id } })}
-      onNew={canRecordSerials(me) ? () => void navigate({ to: '/serial/new' }) : undefined}
+      onNew={canRecordSerials(me) ? () => stack.push({ to: '/serial/new' }) : undefined}
     />
   );
 }

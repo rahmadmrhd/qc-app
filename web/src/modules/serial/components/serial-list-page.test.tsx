@@ -1,11 +1,12 @@
 import type { MeDto, SerialSummaryDto } from '@shared/contract';
 import { listSerialsTooLong } from '@shared/serials';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
+import { mockMatchMedia } from '@/test/match-media';
+import { renderInRouter } from '@/test/render-in-router';
 import { type SerialSearch, serialSearchSchema } from '../lib/list-filter';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -57,11 +58,9 @@ const row = (over: Partial<SerialSummaryDto>): SerialSummaryDto => ({
 const PAGE_1 = [row({}), row({ id: 's2', serial: 'XYZ789', sample: true, status: 'reported' })];
 
 function Harness({
-  onOpen = () => undefined,
   onNew,
   initial = {},
 }: {
-  onOpen?: (id: string) => void;
   onNew?: () => void;
   initial?: Record<string, unknown>;
 }) {
@@ -70,27 +69,20 @@ function Harness({
     <SerialListPage
       search={search}
       onSearchChange={(patch) => setSearch((prev) => ({ ...prev, ...patch }))}
-      onOpen={onOpen}
       onNew={onNew}
     />
   );
 }
 
-function renderPage(
-  onOpen?: (id: string) => void,
-  initial?: Record<string, unknown>,
-  onNew?: () => void,
-) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <Harness
-        {...(onOpen ? { onOpen } : {})}
-        {...(initial ? { initial } : {})}
-        {...(onNew ? { onNew } : {})}
-      />
-    </QueryClientProvider>,
+function renderPage(initial?: Record<string, unknown>, onNew?: () => void) {
+  return renderInRouter(
+    <Harness {...(initial ? { initial } : {})} {...(onNew ? { onNew } : {})} />,
   );
+}
+
+/** Membuka popover chip filter (nama tombol = label chip, dengan atau tanpa nilai terisi). */
+async function openChip(label: string) {
+  await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${label}(:|$)`) }));
 }
 
 const listCalls = () => apiMock.mock.calls.filter((call) => call[0] === 'serials.list');
@@ -156,7 +148,7 @@ beforeEach(() => {
 });
 
 test('merender baris dengan kolom Tanggal uji, status, posisi, dan sample; paginasi kursor', async () => {
-  renderPage();
+  await renderPage();
   expect(await screen.findByText('ABC123')).toBeInTheDocument();
   const rows = screen.getAllByRole('row');
   expect(within(rows[1] as HTMLElement).getByText('10 Nov 2026')).toBeInTheDocument();
@@ -170,15 +162,15 @@ test('merender baris dengan kolom Tanggal uji, status, posisi, dan sample; pagin
   expect(listCalls().at(-1)?.[1]).toMatchObject({ cursor: 'c1' });
 });
 
-test('klik serial membuka detail', async () => {
-  const onOpen = vi.fn();
-  renderPage(onOpen);
-  await userEvent.click(await screen.findByRole('button', { name: 'XYZ789' }));
-  expect(onOpen).toHaveBeenCalledWith('s2');
+test('serial menaut ke View-nya (LinkCell) dengan target panduan serial-open', async () => {
+  await renderPage();
+  const link = await screen.findByRole('link', { name: 'XYZ789' });
+  expect(link).toHaveAttribute('href', '/serial/s2');
+  expect(link).toHaveAttribute('data-tour', 'serial-open');
 });
 
 test('pencarian banyak serial mengirim bentuk ternormalisasi', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
   fireEvent.change(screen.getByLabelText('Cari serial (satu per baris)'), {
     target: { value: ' abc123 \n4c:5e:0c:1a:2b:3d\nABC123\n' },
@@ -190,7 +182,7 @@ test('pencarian banyak serial mengirim bentuk ternormalisasi', async () => {
 });
 
 test('satu serial dikirim sebagai awalan (query)', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
   fireEvent.change(screen.getByLabelText('Cari serial (satu per baris)'), {
     target: { value: 'abc' },
@@ -199,14 +191,14 @@ test('satu serial dikirim sebagai awalan (query)', async () => {
 });
 
 test('hanya ada satu field pencarian serial (tanpa field "Pindai untuk mencari")', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
   expect(screen.queryByLabelText('Pindai untuk mencari')).not.toBeInTheDocument();
   expect(screen.getAllByRole('textbox', { name: /serial/i })).toHaveLength(1);
 });
 
 test('Enter menetapkan baris yang ditulis: sah tetap dan pindah baris, duplikat dibuang dengan umpan balik', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
   const field = screen.getByLabelText('Cari serial (satu per baris)');
   await userEvent.type(field, 'aaa111{Enter}');
@@ -225,7 +217,7 @@ test('Enter menetapkan baris yang ditulis: sah tetap dan pindah baris, duplikat 
 });
 
 test('Enter pada baris tak sah menolak dan membuang barisnya; baris kosong diabaikan', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
   const field = screen.getByLabelText('Cari serial (satu per baris)');
   await userEvent.type(field, 'AAA111{Enter}');
@@ -237,7 +229,7 @@ test('Enter pada baris tak sah menolak dan membuang barisnya; baris kosong diaba
 });
 
 test('tombol kamera memakai jalur yang sama: banyak baris dipecah, duplikat dan tak sah ditangani', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
   const field = screen.getByLabelText('Cari serial (satu per baris)');
   await userEvent.type(field, 'aaa111{Enter}');
@@ -248,7 +240,7 @@ test('tombol kamera memakai jalur yang sama: banyak baris dipecah, duplikat dan 
 });
 
 test('Enter tidak membuang sisa teks yang melebihi batas, juga setelah gema URL', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
   const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
   const many = Array.from({ length: 80 }, (_, i) => `S${String(i).padStart(3, '0')}`).join('\n');
@@ -264,7 +256,7 @@ test('Enter tidak membuang sisa teks yang melebihi batas, juga setelah gema URL'
 });
 
 test('hasil kamera menambah baris di ujung tanpa mengubah awalan yang sedang diketik', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
   const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
   fireEvent.change(field, { target: { value: 'ab' } });
@@ -273,7 +265,7 @@ test('hasil kamera menambah baris di ujung tanpa mengubah awalan yang sedang dik
 });
 
 test('Enter di baris tengah menetapkan baris itu saja', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
   const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
   fireEvent.change(field, { target: { value: 'aaa\nbbb\nccc' } });
@@ -285,7 +277,7 @@ test('Enter di baris tengah menetapkan baris itu saja', async () => {
 });
 
 test('Enter berturut-turut di baris tengah yang sudah normal: kursor selalu pindah ke baris berikutnya', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
   const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
   fireEvent.change(field, { target: { value: 'AAA\nBBB\nCCC\nDDD' } });
@@ -303,7 +295,7 @@ test('Enter berturut-turut di baris tengah yang sudah normal: kursor selalu pind
 });
 
 test('Tab menjadi penutup bacaan hanya bila baris yang ditulis tidak kosong', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
   const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
   await userEvent.type(field, 'aaa111{Tab}');
@@ -321,7 +313,7 @@ test('Tab menjadi penutup bacaan hanya bila baris yang ditulis tidak kosong', as
 });
 
 test('Shift+Tab tidak diintersep dan Tab pada field kosong memindahkan fokus', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
   const field = screen.getByLabelText('Cari serial (satu per baris)') as HTMLTextAreaElement;
   field.focus();
@@ -335,14 +327,21 @@ test('Shift+Tab tidak diintersep dan Tab pada field kosong memindahkan fokus', a
 });
 
 test('filter status, lokasi, item, dan rentang tanggal menjadi parameter pencarian', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
+  await openChip('Status');
   await pickSelect(screen, 'Filter status', 'Dilaporkan');
   await waitFor(() => expect(lastListInput()).toMatchObject({ status: 'reported' }));
+  await userEvent.keyboard('{Escape}');
+  await openChip('Lokasi');
   await pickLink(screen, 'Filter lokasi', 'Jakarta (JKT)');
   await waitFor(() => expect(lastListInput()).toMatchObject({ locationId: 'l1' }));
+  await userEvent.keyboard('{Escape}');
+  await openChip('Item');
   await pickLink(screen, 'Filter item', 'Cisco C9200');
   await waitFor(() => expect(lastListInput()).toMatchObject({ itemId: 'i1' }));
+  await userEvent.keyboard('{Escape}');
+  await openChip('Tanggal uji');
   fireEvent.change(screen.getByLabelText('Tanggal uji dari'), { target: { value: '2026-11-01' } });
   fireEvent.change(screen.getByLabelText('Tanggal uji sampai'), {
     target: { value: '2026-11-30' },
@@ -364,12 +363,12 @@ test('tanpa hasil menampilkan pesan kosong', async () => {
       ? Promise.resolve({ items: [], nextCursor: null })
       : Promise.resolve({ items: [], nextCursor: null }),
   );
-  renderPage();
-  expect(await screen.findByText('Tidak ada serial yang cocok.')).toBeInTheDocument();
+  await renderPage();
+  expect(await screen.findByText('Belum ada Serial Number yang tercatat.')).toBeInTheDocument();
 });
 
 test('tempelan melebihi batas: pesan jelas, hanya serial pertama yang dicari', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
   const many = Array.from({ length: 57 }, (_, index) => `S${index}`).join(String.fromCharCode(10));
   fireEvent.change(screen.getByLabelText('Cari serial (satu per baris)'), {
@@ -386,8 +385,9 @@ test('tempelan melebihi batas: pesan jelas, hanya serial pertama yang dicari', a
 });
 
 test('pembaca tanpa serial: edit tidak memanggil serials.locationOptions; filter lokasi memakai lokasi miliknya', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
+  await openChip('Lokasi');
   const names = await linkOptionNames(screen, 'Filter lokasi');
   expect(names).toEqual(['Jakarta (JKT)']);
   expect(apiMock.mock.calls.some((call) => call[0] === 'serials.locationOptions')).toBe(false);
@@ -398,23 +398,25 @@ test('pembaca serialservice: view juga tidak memanggil serials.locationOptions',
     ...me,
     permissions: { ...me.permissions, serial: 'none', serialservice: 'view', countrylock: 'none' },
   };
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
+  await openChip('Lokasi');
   await linkOptionNames(screen, 'Filter lokasi');
   expect(apiMock.mock.calls.some((call) => call[0] === 'serials.locationOptions')).toBe(false);
 });
 
 test('editor (serial: edit) memuat semua lokasi aktif dari serials.locationOptions', async () => {
   me = { ...me, permissions: { ...me.permissions, serial: 'edit' } };
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
+  await openChip('Lokasi');
   const names = await linkOptionNames(screen, 'Filter lokasi');
   expect(names).toEqual(['Jakarta (JKT)', 'Surabaya (SBY)']);
   expect(apiMock.mock.calls.some((call) => call[0] === 'serials.locationOptions')).toBe(true);
 });
 
 test('tempelan serial lebar melebihi panjang URL: pesan khusus dan hanya awalan yang dikirim', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
   const nl = String.fromCharCode(10);
   const wide = Array.from(
@@ -439,14 +441,14 @@ test('tempelan serial lebar melebihi panjang URL: pesan khusus dan hanya awalan 
 
 test('pembaca tanpa penugasan lokasi: peringatan tampil di daftar serial; editor atau yang punya lokasi tidak melihatnya', async () => {
   me = { ...me, locations: [] };
-  const { unmount } = renderPage();
+  const { unmount } = await renderPage();
   await screen.findByText('ABC123');
   expect(screen.getByText(/belum ditugaskan ke lokasi mana pun/)).toBeInTheDocument();
   unmount();
 
   // Editor memakai serials.locationOptions: tidak bergantung penugasan, jadi tanpa peringatan.
   me = { ...me, permissions: { ...me.permissions, serial: 'edit' } };
-  renderPage();
+  await renderPage();
   await screen.findAllByText('ABC123');
   expect(screen.queryByText(/belum ditugaskan ke lokasi mana pun/)).toBeNull();
 });
@@ -456,8 +458,9 @@ test('filter item berfungsi bagi pembaca (serial: view): item dimuat dari serial
     ...me,
     permissions: { ...me.permissions, serial: 'none', serialservice: 'view', countrylock: 'none' },
   };
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
+  await openChip('Item');
   const names = await linkOptionNames(screen, 'Filter item');
   expect(names).toEqual(['Cisco C9200']);
   expect(apiMock.mock.calls.some((call) => call[0] === 'serials.itemOptions')).toBe(true);
@@ -503,7 +506,7 @@ test('kolom posisi: "Dalam pengiriman · 3 hari" dengan tujuan, dan nomor kasus 
           })
         : Promise.resolve({ locations: [], items: [], nextCursor: null }),
     );
-    renderPage();
+    await renderPage();
     expect(await screen.findByText('KIRIM1')).toBeInTheDocument();
     const rows = screen.getAllByRole('row');
     const sending = within(rows[1] as HTMLElement);
@@ -519,8 +522,9 @@ test('kolom posisi: "Dalam pengiriman · 3 hari" dengan tujuan, dan nomor kasus 
 });
 
 test('filter posisi masuk masukan serials.list lewat Select', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
+  await openChip('Posisi');
   await pickSelect(screen, 'Filter posisi', 'Dalam pengiriman');
   await waitFor(() => expect(lastListInput()).toMatchObject({ custody: 'transit' }));
   await pickSelect(screen, 'Filter posisi', 'Semua posisi');
@@ -536,8 +540,9 @@ test('filter BU hanya menawarkan BU yang terbaca (serial atau serialservice) dan
       ['b3', 'none', 'none'],
     ]),
   };
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
+  await openChip('BU');
   const names = await linkOptionNames(screen, 'Filter BU');
   expect(names).toEqual(['B1 · Unit b1', 'B2 · Unit b2']);
   // Teks bantu hanya selagi filter BU aktif: serial yang pernah di BU itu ikut tampil.
@@ -548,9 +553,10 @@ test('filter BU hanya menawarkan BU yang terbaca (serial atau serialservice) dan
 });
 
 test('sakelar "Dicatat oleh saya" mengisi createdBy dengan email akun', async () => {
-  renderPage();
+  await renderPage();
   await screen.findByText('ABC123');
   expect(lastListInput()).not.toHaveProperty('createdBy');
+  await openChip('Pencatat');
   await userEvent.click(screen.getByRole('checkbox', { name: 'Dicatat oleh saya' }));
   await waitFor(() => expect(lastListInput()).toMatchObject({ createdBy: 'a@gmail.com' }));
   await userEvent.click(screen.getByRole('checkbox', { name: 'Dicatat oleh saya' }));
@@ -558,20 +564,19 @@ test('sakelar "Dicatat oleh saya" mengisi createdBy dengan email akun', async ()
 });
 
 test('filter BU dari URL yang tidak dikenal tidak menampilkan id mentah', async () => {
-  renderPage(undefined, { bu: 'b-rahasia-123' });
+  await renderPage({ bu: 'b-rahasia-123' });
   await screen.findByText('ABC123');
-  expect(screen.queryByDisplayValue('b-rahasia-123')).toBeNull();
-  expect(screen.queryByText('b-rahasia-123')).toBeNull();
-  expect(screen.getByDisplayValue('BU tidak dikenal')).toBeInTheDocument();
+  expect(screen.queryByText(/b-rahasia-123/)).toBeNull();
+  expect(screen.getByRole('button', { name: /^BU: BU tidak dikenal/ })).toBeInTheDocument();
 });
 
 test('tombol "Tambah Serial Number" hanya tampil bila ada jalan masuk mencatat, dan memanggilnya', async () => {
-  const { unmount } = renderPage();
+  const { unmount } = await renderPage();
   await screen.findByText('ABC123');
   expect(screen.queryByRole('button', { name: 'Tambah Serial Number' })).toBeNull();
   unmount();
   const onNew = vi.fn();
-  renderPage(undefined, undefined, onNew);
+  await renderPage(undefined, onNew);
   await userEvent.click(await screen.findByRole('button', { name: 'Tambah Serial Number' }));
   expect(onNew).toHaveBeenCalledTimes(1);
 });
@@ -589,11 +594,11 @@ test('badge Bukti foto QC tampil hanya pada baris yang punya foto', async () => 
     }
     return Promise.resolve({ locations: [] });
   });
-  renderPage();
-  const withPhoto = (await screen.findByRole('button', { name: 'ADA1' })).closest(
+  await renderPage();
+  const withPhoto = (await screen.findByRole('link', { name: 'ADA1' })).closest(
     'tr',
   ) as HTMLElement;
-  const without = screen.getByRole('button', { name: 'TANPA2' }).closest('tr') as HTMLElement;
+  const without = screen.getByRole('link', { name: 'TANPA2' }).closest('tr') as HTMLElement;
   expect(within(withPhoto).getByText('Bukti foto QC')).toBeInTheDocument();
   expect(within(without).queryByText('Bukti foto QC')).not.toBeInTheDocument();
 });
@@ -611,13 +616,207 @@ test('badge Foto bermasalah tampil hanya pada baris dengan proofProblemCount > 0
     }
     return Promise.resolve({ locations: [] });
   });
-  renderPage();
-  const bad = (await screen.findByRole('button', { name: 'MASALAH1' })).closest(
-    'tr',
-  ) as HTMLElement;
-  const fine = screen.getByRole('button', { name: 'AMAN2' }).closest('tr') as HTMLElement;
+  await renderPage();
+  const bad = (await screen.findByRole('link', { name: 'MASALAH1' })).closest('tr') as HTMLElement;
+  const fine = screen.getByRole('link', { name: 'AMAN2' }).closest('tr') as HTMLElement;
   expect(within(bad).getByText('Foto bermasalah')).toBeInTheDocument();
   expect(within(bad).getByText('Bukti foto QC')).toBeInTheDocument();
   expect(within(fine).queryByText('Foto bermasalah')).not.toBeInTheDocument();
   expect(within(fine).getByText('Bukti foto QC')).toBeInTheDocument();
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Fase 4d: kit CRUD, hapus/pulihkan massal (serial: manage), tampilan Terhapus, dan kartu ponsel.
+
+let media: ReturnType<typeof mockMatchMedia> | undefined;
+afterEach(() => {
+  media?.restore();
+  media = undefined;
+  window.innerWidth = 1024;
+});
+
+/** Pemegang `serial: manage` pada BU "b1" (BU baris contoh). */
+function manageMe(level: 'edit' | 'manage' = 'manage'): MeDto {
+  return {
+    ...me,
+    permissions: { ...me.permissions, serial: level },
+    businessUnits: [
+      {
+        id: 'b1',
+        code: 'BU1',
+        name: 'Satu',
+        status: 'active',
+        permissions: { item: 'none', serial: level, serialservice: 'none' },
+      },
+    ],
+  };
+}
+
+const callsOf = (id: string) => apiMock.mock.calls.filter((call) => call[0] === id);
+
+test('kolom checkbox hanya bagi pemegang serial: manage; pembaca dan editor tanpa checkbox', async () => {
+  me = manageMe('edit');
+  const { unmount } = await renderPage();
+  await screen.findByText('ABC123');
+  expect(screen.queryByRole('checkbox', { name: 'Pilih semua' })).toBeNull();
+  unmount();
+
+  me = manageMe('manage');
+  await renderPage();
+  await screen.findByText('ABC123');
+  expect(screen.getByRole('checkbox', { name: 'Pilih semua' })).toBeInTheDocument();
+});
+
+test('tidak ada ubah massal: bar aksi hanya memuat Hapus', async () => {
+  me = manageMe();
+  await renderPage();
+  await screen.findByText('ABC123');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih ABC123' }));
+  expect(screen.getByRole('button', { name: 'Hapus' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Ubah massal|Edit/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /Nonaktifkan|Aktifkan/ })).toBeNull();
+});
+
+test('Hapus massal: konfirmasi lalu serials.removeBatch dengan id terpilih', async () => {
+  me = manageMe();
+  apiMock.mockImplementation((id: string, input: { ids?: string[] }) => {
+    if (id === 'serials.list') return Promise.resolve({ items: PAGE_1, nextCursor: null });
+    if (id === 'serials.removeBatch') return Promise.resolve({ ids: input.ids });
+    return Promise.resolve({ locations: [], items: [], nextCursor: null });
+  });
+  await renderPage();
+  await screen.findByText('ABC123');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog');
+  expect(within(dialog).getByText('Hapus 2 Serial Number?')).toBeInTheDocument();
+  expect(within(dialog).getByText(/Stok stiker yang sudah dipotong/)).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(callsOf('serials.removeBatch')).toHaveLength(1));
+  expect(callsOf('serials.removeBatch')[0]?.[1]).toEqual({ ids: ['s1', 's2'] });
+});
+
+test('250 serial terpilih: Hapus dikirim 100/100/50 dan berhenti di tahap yang gagal', async () => {
+  me = manageMe();
+  const many = Array.from({ length: 250 }, (_, index) =>
+    row({ id: `m${index}`, serial: `MASSAL${String(index).padStart(3, '0')}` }),
+  );
+  let removeCalls = 0;
+  apiMock.mockImplementation((id: string, input: { ids?: string[] }) => {
+    if (id === 'serials.list') return Promise.resolve({ items: many, nextCursor: null });
+    if (id === 'serials.removeBatch') {
+      removeCalls += 1;
+      // Tahap kedua gagal: tahap ketiga tidak boleh terkirim.
+      return removeCalls === 2
+        ? Promise.reject(new Error('Gagal di tahap dua'))
+        : Promise.resolve({ ids: input.ids });
+    }
+    return Promise.resolve({ locations: [], items: [], nextCursor: null });
+  });
+  await renderPage();
+  await screen.findByText('MASSAL000');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(callsOf('serials.removeBatch')).toHaveLength(2));
+  const sizes = callsOf('serials.removeBatch').map(
+    (call) => (call[1] as { ids: string[] }).ids.length,
+  );
+  expect(sizes).toEqual([100, 100]);
+  // Tidak ada tahap ketiga walau ditunggu.
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  expect(callsOf('serials.removeBatch')).toHaveLength(2);
+});
+
+test('rowSelectable: baris di BU yang tak dikelola tanpa checkbox', async () => {
+  me = manageMe();
+  apiMock.mockImplementation((id: string) =>
+    id === 'serials.list'
+      ? Promise.resolve({
+          items: [
+            row({ id: 's1', serial: 'MILIKKU1' }),
+            row({ id: 's9', serial: 'ORANGLAIN9', buId: 'b9' }),
+          ],
+          nextCursor: null,
+        })
+      : Promise.resolve({ locations: [], items: [], nextCursor: null }),
+  );
+  await renderPage();
+  await screen.findByText('MILIKKU1');
+  expect(screen.getByRole('checkbox', { name: 'Pilih MILIKKU1' })).toBeInTheDocument();
+  expect(screen.queryByRole('checkbox', { name: 'Pilih ORANGLAIN9' })).toBeNull();
+});
+
+test('chip Tampilan hanya bagi manage; deleted=true tulisan tangan bagi non-manage diabaikan', async () => {
+  await renderPage({ deleted: true });
+  await screen.findByText('ABC123');
+  expect(screen.queryByRole('button', { name: /^Tampilan/ })).toBeNull();
+  expect(lastListInput()).not.toHaveProperty('deleted');
+});
+
+test('tampilan Terhapus (manage): deleted:true ke server, kolom Dihapus oleh, aksi Pulihkan massal', async () => {
+  me = manageMe();
+  const gone = row({
+    id: 's5',
+    serial: 'HAPUS55',
+    deleted: { deletedAt: '2026-11-20T03:00:00.000Z', deletedBy: 'adm@x.com' },
+  });
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') return Promise.resolve({ items: [gone], nextCursor: null });
+    if (id === 'serials.restoreBatch') {
+      return Promise.resolve({ items: [row({ id: 's5', serial: 'HAPUS55' })] });
+    }
+    return Promise.resolve({ locations: [], items: [], nextCursor: null });
+  });
+  await renderPage({ deleted: true });
+  await screen.findByText('HAPUS55');
+  expect(lastListInput()).toMatchObject({ deleted: true });
+  expect(screen.getAllByText('Terhapus').length).toBeGreaterThanOrEqual(1);
+  expect(screen.getByText('adm@x.com')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih HAPUS55' }));
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Pulihkan' }));
+  await waitFor(() => expect(callsOf('serials.restoreBatch')).toHaveLength(1));
+  expect(callsOf('serials.restoreBatch')[0]?.[1]).toEqual({ ids: ['s5'] });
+});
+
+test('aksi baris di desktop: tombol ikon Ubah dan Hapus; Hapus membuka konfirmasi satu serial', async () => {
+  me = manageMe();
+  await renderPage();
+  await screen.findByText('ABC123');
+  expect(screen.getByRole('button', { name: 'Ubah ABC123' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus ABC123' }));
+  const dialog = await screen.findByRole('alertdialog');
+  expect(within(dialog).getByText('Hapus 1 Serial Number?')).toBeInTheDocument();
+});
+
+test('ponsel (360 px): kartu dengan serial sebagai judul, status sebagai badge, meta berlabel; aksi lewat menu ⋯', async () => {
+  window.innerWidth = 360;
+  media = mockMatchMedia(false);
+  me = manageMe();
+  await renderPage();
+  await screen.findByRole('link', { name: 'ABC123' });
+  expect(screen.queryByRole('table')).toBeNull();
+  const card = screen.getAllByRole('listitem')[0] as HTMLElement;
+  expect(within(card).getByRole('link', { name: 'ABC123' })).toBeInTheDocument();
+  expect(within(card).getByText('Lolos')).toBeInTheDocument();
+  expect(within(card).getByText('Cisco C9200')).toBeInTheDocument();
+  expect(within(card).getByText('Tanggal uji')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Hapus ABC123' })).toBeNull();
+  await userEvent.click(within(card).getByRole('button', { name: /Aksi ABC123/ }));
+  const menu = await screen.findByRole('menu');
+  expect(within(menu).getByRole('menuitem', { name: /Hapus ABC123/ })).toBeInTheDocument();
+  expect(within(menu).getByRole('menuitem', { name: /Ubah ABC123/ })).toBeInTheDocument();
+});
+
+test('target panduan: serial-new pada tombol Tambah, serial-table dan serial-filters ada', async () => {
+  await renderPage(undefined, () => undefined);
+  await screen.findByText('ABC123');
+  expect(screen.getByRole('button', { name: 'Tambah Serial Number' })).toHaveAttribute(
+    'data-tour',
+    'serial-new',
+  );
+  expect(document.querySelector('[data-tour="serial-table"]')).not.toBeNull();
+  expect(document.querySelector('[data-tour="serial-filters"]')).not.toBeNull();
 });

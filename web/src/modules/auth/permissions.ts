@@ -198,6 +198,24 @@ export function canManageAnyItem(me: MeDto | null | undefined): boolean {
   return buIdsWithLevelFor(me, 'manage').length > 0;
 }
 
+/**
+ * Hapus/Pulihkan Serial Number: `serial: manage` pada SEMUA BU dalam riwayat BU serial itu (BU saat ini ikut; keputusan
+ * pemilik soft delete 12), BU terhapus diabaikan selama masih ada BU hidup (keputusan 9). Hanya untuk UX: server
+ * menegakkan dan menjawab `NOT_FOUND` bagi yang tak berhak. `buIds` kosong = tidak berhak.
+ */
+export function canManageSerial(me: MeDto | null | undefined, buIds: readonly string[]): boolean {
+  if (buIds.length === 0) return false;
+  const allowed = new Set(buIdsWithLevelOf(me, 'serial', 'manage'));
+  const deleted = deletedBuIdsOf(me);
+  const live = buIds.filter((id) => !deleted.has(id));
+  return (live.length > 0 ? live : buIds).every((id) => allowed.has(id));
+}
+
+/** Memegang `serial: manage` pada minimal satu BU (menampilkan tampilan Terhapus dan pilihan massal; server menegakkan). */
+export function canManageAnySerial(me: MeDto | null | undefined): boolean {
+  return buIdsWithLevelOf(me, 'serial', 'manage').length > 0;
+}
+
 /** Buat item: ada minimal satu BU aktif ber-`edit`. */
 export function canCreateItem(me: MeDto | null | undefined): boolean {
   return itemBusinessUnits(me).some(

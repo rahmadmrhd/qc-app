@@ -18,7 +18,7 @@ export function ProofBadge() {
 export function ProofProblemBadge({ count }: { count: number }) {
   if (count <= 0) return null;
   return (
-    <Badge variant="destructive" className="gap-1">
+    <Badge color="destructive" variant="soft" className="gap-1">
       <CircleAlert aria-hidden className="size-3" />
       Foto bermasalah
       <span className="sr-only">{` (${count})`}</span>

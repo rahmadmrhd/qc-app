@@ -1,3 +1,4 @@
+import type { IdBatchInput } from '@shared/batch';
 import type {
   GetSerialOutput,
   ListSerialItemOptionsInput,
@@ -242,6 +243,53 @@ function applySaved(queryClient: QueryClient, saved: SerialDto): void {
   void queryClient.invalidateQueries({ queryKey: serialKeys.one(saved.id) });
   // Aksi/ubah data menambah entri riwayat: tab yang sedang terbuka dimuat ulang, tab lain ditandai basi.
   void queryClient.invalidateQueries({ queryKey: serialKeys.history(saved.id) });
+}
+
+/** Membuang id dari SEMUA halaman daftar serial yang sudah termuat (hapus/pulihkan: baris pindah tampilan). */
+function dropFromLists(queryClient: QueryClient, ids: readonly string[]): void {
+  const gone = new Set(ids);
+  queryClient.setQueriesData<InfiniteData<SerialListOutput, string | undefined>>(
+    { queryKey: serialKeys.list },
+    (current) =>
+      current
+        ? {
+            ...current,
+            pages: current.pages.map((page) => ({
+              ...page,
+              items: page.items.filter((entry) => !gone.has(entry.id)),
+            })),
+          }
+        : current,
+  );
+}
+
+/** Hapus/Pulihkan mengubah keberadaan serial: detail, riwayat, daftar (tampilan lain), laporan, dan audit ditandai basi. */
+function markSerialsChanged(queryClient: QueryClient, ids: readonly string[]): void {
+  dropFromLists(queryClient, ids);
+  markStale(queryClient, serialKeys.list, serialKeys.cases, accessKeys.audit);
+  for (const id of ids) markStale(queryClient, serialKeys.one(id), serialKeys.history(id));
+}
+
+/** Hapus serial (batch, lunak): keluar dari daftar hidup; View-nya tetap ada bagi pemegang `serial: manage`. */
+export function useRemoveSerials() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: IdBatchInput) => api('serials.removeBatch', input),
+    onSuccess: (result) => markSerialsChanged(queryClient, result.ids),
+  });
+}
+
+/** Pulihkan serial (batch): kembali ke daftar hidup dan keluar dari daftar terhapus. */
+export function useRestoreSerials() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: IdBatchInput) => api('serials.restoreBatch', input),
+    onSuccess: (result) =>
+      markSerialsChanged(
+        queryClient,
+        result.items.map((serial) => serial.id),
+      ),
+  });
 }
 
 export function useSaveSerialBatch() {
