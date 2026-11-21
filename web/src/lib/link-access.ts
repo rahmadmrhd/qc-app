@@ -64,14 +64,30 @@ export function brandLinkAccess(me: MeDto | null | undefined) {
   };
 }
 
-/** Jenis stiker: tidak ada halaman lihat; tambah butuh `sticker: edit` (sama dengan rute `stickerTypes.save`). */
+/**
+ * Jenis stiker: halaman lihat (`/sticker/types/$typeId`) butuh `sticker: view` (membaca katalog); tambah butuh
+ * `sticker: edit` (sama dengan rute `stickerTypes.save`).
+ */
 export function stickerTypeLinkAccess(me: MeDto | null | undefined) {
-  return { canCreateStickerType: can(me, 'sticker', 'edit') };
+  return {
+    openStickerTypeHref: can(me, 'sticker', 'view')
+      ? (id: string) => `/sticker/types/${encodeURIComponent(id)}`
+      : undefined,
+    canCreateStickerType: can(me, 'sticker', 'edit'),
+  };
 }
 
-/** Stiker: tidak ada halaman lihat; tambah butuh `sticker: edit` (sama dengan rute `stickers.save`). */
+/**
+ * Stiker: halaman lihat (`/sticker/$stickerId`) butuh `sticker: view`; tambah butuh `sticker: edit` (sama dengan
+ * rute `stickers.save`).
+ */
 export function stickerLinkAccess(me: MeDto | null | undefined) {
-  return { canCreateSticker: can(me, 'sticker', 'edit') };
+  return {
+    openStickerHref: can(me, 'sticker', 'view')
+      ? (id: string) => `/sticker/${encodeURIComponent(id)}`
+      : undefined,
+    canCreateSticker: can(me, 'sticker', 'edit'),
+  };
 }
 
 /**

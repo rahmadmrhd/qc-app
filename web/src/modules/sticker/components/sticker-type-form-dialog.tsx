@@ -1,19 +1,12 @@
 import type { StickerTypeDto } from '@shared/contract';
 import { STICKER_LIMITS, type StickerRule, USER_STICKER_RULES } from '@shared/stickers';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
-import {
-  FormDialog,
-  FormDialogContent,
-  FormDialogDescription,
-  FormDialogFooter,
-  FormDialogHeader,
-  FormDialogTitle,
-} from '@/components/form-dialog';
+import { FormDialogShell } from '@/components/form-dialog-shell';
 import { Select } from '@/components/select';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { isStaleSaveError, STALE_SAVE_MESSAGE } from '../lib/stale';
@@ -52,14 +45,33 @@ export interface StickerTypeFormDialogProps {
   onSave: (input: StickerTypeSaveInput) => Promise<StickerTypeSaveResult>;
 }
 
-interface StickerTypeFormBodyProps {
+export interface StickerTypeFormProps {
+  /** Id elemen `<form>`: tombol Simpan ada di luar form (footer dialog) dan memakai `form={formId}`. */
+  formId: string;
   type?: StickerTypeFormDialogProps['type'];
   onSave: StickerTypeFormDialogProps['onSave'];
+  /** Dipanggil setelah simpan berhasil. */
   onClose: () => void;
+  /** Proses simpan berjalan atau tidak (untuk tombol Simpan di luar form). */
+  onBusyChange?: (busy: boolean) => void;
+  /** Simpan harus nonaktif (nama masih kosong). */
+  onBlockedChange?: (blocked: boolean) => void;
 }
 
-/** Terpasang hanya saat dialog terbuka, sehingga isian dan galat selalu mulai bersih. */
-function StickerTypeFormBody({ type, onSave, onClose }: StickerTypeFormBodyProps) {
+/**
+ * Field form jenis stiker: hanya `<form id={formId}>`, tanpa tombol. Terpasang hanya saat dialog terbuka, sehingga
+ * isian dan galat selalu mulai bersih.
+ */
+export function StickerTypeForm({
+  formId,
+  type,
+  onSave,
+  onClose,
+  onBusyChange,
+  onBlockedChange,
+}: StickerTypeFormProps) {
+  // Ponsel: tanpa fokus otomatis (papan ketik layar akan menutupi separuh form).
+  const desktop = useIsDesktop();
   const [name, setName] = useState(type?.name ?? '');
   const [rule, setRule] = useState<StickerRule>(type?.rule ?? 'bu');
   const [nameError, setNameError] = useState<string | null>(null);
@@ -68,6 +80,9 @@ function StickerTypeFormBody({ type, onSave, onClose }: StickerTypeFormBodyProps
   useUnsavedChanges(name !== (type?.name ?? '') || rule !== (type?.rule ?? 'bu'));
   // Versi saat form dibuka: tidak ikut berubah bila daftar dimuat ulang, agar versi usang tetap terdeteksi.
   const [expectedUpdatedAt] = useState(type?.updatedAt);
+  useEffect(() => {
+    onBlockedChange?.(name.trim() === '');
+  }, [name, onBlockedChange]);
   /** Aturan terkunci sesudah jenis dipakai stiker (server menolak perubahannya). */
   const ruleLocked = type !== undefined && type.stickerCount > 0;
 
@@ -79,6 +94,7 @@ function StickerTypeFormBody({ type, onSave, onClose }: StickerTypeFormBodyProps
       return;
     }
     setBusy(true);
+    onBusyChange?.(true);
     let failure: StickerTypeSaveFailure | null;
     try {
       const input: StickerTypeSaveInput = type
@@ -96,6 +112,7 @@ function StickerTypeFormBody({ type, onSave, onClose }: StickerTypeFormBodyProps
       failure = { message: 'Gagal menyimpan jenis stiker' };
     }
     setBusy(false);
+    onBusyChange?.(false);
     setNameError(failure ? (failure.name ?? (failure.rule ? null : failure.message)) : null);
     setRuleError(failure?.rule ?? null);
     if (failure === null) onClose();
@@ -103,6 +120,7 @@ function StickerTypeFormBody({ type, onSave, onClose }: StickerTypeFormBodyProps
 
   return (
     <form
+      id={formId}
       noValidate
       className="space-y-4"
       onSubmit={(event) => {
@@ -118,7 +136,7 @@ function StickerTypeFormBody({ type, onSave, onClose }: StickerTypeFormBodyProps
         <Input
           id="sticker-type-name"
           aria-required="true"
-          autoFocus
+          autoFocus={desktop}
           maxLength={STICKER_LIMITS.nameMax}
           value={name}
           aria-invalid={nameError ? true : undefined}
@@ -163,17 +181,13 @@ function StickerTypeFormBody({ type, onSave, onClose }: StickerTypeFormBodyProps
           </>
         )}
       </div>
-      <FormDialogFooter>
-        <Button type="button" variant="outline" onClick={onClose}>
-          Batal
-        </Button>
-        <Button type="submit" disabled={busy || name.trim() === ''}>
-          {busy ? 'Menyimpan…' : 'Simpan'}
-        </Button>
-      </FormDialogFooter>
+      {/* Penerima Enter di kolom isian: tombol Simpan sebenarnya ada di footer dialog (di luar form). */}
+      <button type="submit" hidden tabIndex={-1} aria-hidden />
     </form>
   );
 }
+
+export const STICKER_TYPE_FORM_ID = 'sticker-type-form';
 
 /** Dialog tambah/ubah jenis stiker (nama dan aturan; aturan terkunci bila sudah ada stiker). */
 export function StickerTypeFormDialog({
@@ -182,26 +196,29 @@ export function StickerTypeFormDialog({
   type,
   onSave,
 }: StickerTypeFormDialogProps) {
+  const [busy, setBusy] = useState(false);
+  const [blocked, setBlocked] = useState(true);
   return (
-    <FormDialog open={open} onOpenChange={onOpenChange}>
-      <FormDialogContent>
-        <FormDialogHeader>
-          <FormDialogTitle>
-            {type ? `Ubah jenis ${type.name}` : 'Tambah jenis stiker'}
-          </FormDialogTitle>
-          <FormDialogDescription>
-            Aturan menentukan cara stiker pada jenis ini dikaitkan dengan item.
-          </FormDialogDescription>
-        </FormDialogHeader>
-        {open ? (
-          <StickerTypeFormBody
-            key={type?.id ?? 'new'}
-            type={type}
-            onSave={onSave}
-            onClose={() => onOpenChange(false)}
-          />
-        ) : null}
-      </FormDialogContent>
-    </FormDialog>
+    <FormDialogShell
+      open={open}
+      onOpenChange={onOpenChange}
+      formId={STICKER_TYPE_FORM_ID}
+      title={type ? `Ubah jenis ${type.name}` : 'Tambah jenis stiker'}
+      description="Aturan menentukan cara stiker pada jenis ini dikaitkan dengan item."
+      submitting={busy}
+      submitDisabled={blocked}
+    >
+      {open ? (
+        <StickerTypeForm
+          key={type?.id ?? 'new'}
+          formId={STICKER_TYPE_FORM_ID}
+          type={type}
+          onSave={onSave}
+          onClose={() => onOpenChange(false)}
+          onBusyChange={setBusy}
+          onBlockedChange={setBlocked}
+        />
+      ) : null}
+    </FormDialogShell>
   );
 }

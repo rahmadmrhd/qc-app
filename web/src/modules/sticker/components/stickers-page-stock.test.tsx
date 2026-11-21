@@ -5,12 +5,14 @@ import type {
   StickerStockDto,
   StickerTypeDto,
 } from '@shared/contract';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { type ReactNode, useState } from 'react';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ActiveLocationsProvider } from '@/modules/location/active-locations-context';
 import { pickLink, pickSelect } from '@/test/link-field';
-import { StickersPage, type StickersPageProps } from './stickers-page';
+import { renderInRouter } from '@/test/render-in-router';
+import { type StickersFilter, StickersPage, type StickersPageProps } from './stickers-page';
 
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
@@ -21,6 +23,10 @@ vi.mock('sonner', () => ({ toast: { info: toastInfo, success: vi.fn(), error: vi
 function located(permission: 'view' | 'edit' | 'manage') {
   return { handover: 'none', qc: 'none', stock: 'none', stickerstock: permission } as const;
 }
+
+afterEach(() => {
+  cleanup();
+});
 
 beforeEach(() => {
   localStorage.clear();
@@ -155,46 +161,90 @@ const bothLocations = [
   { id: 'l-b', code: 'BDG', name: 'Bandung' },
 ];
 
-function renderPage(
-  stockOverrides: Partial<NonNullable<StickersPageProps['stock']>> = {},
+type StockPanel = NonNullable<StickersPageProps['stock']>;
+
+interface Control {
+  setStock?: (update: (current: StockPanel | undefined) => StockPanel | undefined) => void;
+}
+
+/** Pemegang state: filter (pengganti search params Router) dan stok (agar tes dapat "memuat ulang" stok). */
+function Harness({
+  control,
+  initialStock,
+  ...props
+}: Omit<StickersPageProps, 'filter' | 'onFilterChange' | 'stock'> & {
+  control: Control;
+  initialStock: StockPanel | undefined;
+}): ReactNode {
+  const [filter, setFilter] = useState<StickersFilter>({ q: '', typeId: '', status: 'all' });
+  const [stock, setStock] = useState(initialStock);
+  control.setStock = setStock;
+  return (
+    <ActiveLocationsProvider>
+      <StickersPage
+        {...props}
+        stock={stock}
+        filter={filter}
+        onFilterChange={(patch) => setFilter((current) => ({ ...current, ...patch }))}
+      />
+    </ActiveLocationsProvider>
+  );
+}
+
+async function openChip(label: string) {
+  await userEvent.click(screen.getByRole('button', { name: new RegExp(`^${label}(:|$)`) }));
+}
+
+async function renderPage(
+  stockOverrides: Partial<StockPanel> = {},
   props: Partial<StickersPageProps> = {},
 ) {
   const onWrite = vi.fn().mockResolvedValue(null);
   const onStartOpname = vi.fn();
-  const onShowHistory = vi.fn();
-  const element = (stock: Partial<NonNullable<StickersPageProps['stock']>> = {}) => (
-    <ActiveLocationsProvider>
-      <StickersPage
-        stickers={catalog}
-        types={types}
-        businessUnits={businessUnits}
-        canEdit
-        canManage
-        pendingStatusId={null}
-        onSave={vi.fn().mockResolvedValue(null)}
-        onToggleStatus={vi.fn()}
-        stock={{
-          rows,
-          locations: bothLocations,
-          canEdit: true,
-          canManage: true,
-          onWrite,
-          onStartOpname,
-          onShowHistory,
-          ...stockOverrides,
-          ...stock,
-        }}
-        {...props}
-      />
-    </ActiveLocationsProvider>
+  const onStartEntry = vi.fn();
+  const control: Control = {};
+  const { stock: stockProp, ...rest } = props;
+  await renderInRouter(
+    <Harness
+      control={control}
+      initialStock={
+        'stock' in props
+          ? stockProp
+          : {
+              rows,
+              locations: bothLocations,
+              canEdit: true,
+              canManage: true,
+              onWrite,
+              ...stockOverrides,
+            }
+      }
+      stickers={catalog}
+      types={types}
+      businessUnits={businessUnits}
+      canEdit
+      canManage
+      pendingStatusId={null}
+      onSave={vi.fn().mockResolvedValue(null)}
+      onToggleStatus={vi.fn()}
+      mutations={{
+        setStatus: vi.fn().mockResolvedValue([]),
+        remove: vi.fn().mockResolvedValue([]),
+        restore: vi.fn().mockResolvedValue([]),
+        reload: vi.fn(),
+      }}
+      onStartOpname={onStartOpname}
+      onStartEntry={onStartEntry}
+      {...rest}
+    />,
   );
-  const { rerender } = render(element());
   return {
     onWrite,
     onStartOpname,
-    onShowHistory,
+    onStartEntry,
     /** Memuat ulang halaman dengan data stok baru (mis. setelah refetch). */
-    update: (stock: Partial<NonNullable<StickersPageProps['stock']>>) => rerender(element(stock)),
+    update: (stock: Partial<StockPanel>) =>
+      act(() => control.setStock?.((current) => (current ? { ...current, ...stock } : current))),
   };
 }
 
@@ -203,8 +253,8 @@ async function openStockMenu(label: string, item: string) {
   await userEvent.click(await screen.findByRole('menuitem', { name: item }));
 }
 
-test('katalog dan stok dalam satu tabel: total, penanda Menipis, dan rincian per lokasi', () => {
-  renderPage();
+test('katalog dan stok dalam satu tabel: total, penanda Menipis, dan rincian per lokasi', async () => {
+  await renderPage();
   const first = screen.getByRole('row', { name: /Hijau-B/ });
   expect(within(first).getByText('QC Hijau')).toBeInTheDocument();
   expect(within(first).getByText('150')).toBeInTheDocument();
@@ -218,21 +268,21 @@ test('katalog dan stok dalam satu tabel: total, penanda Menipis, dan rincian per
   expect(within(second).queryByText('Menipis')).toBeNull();
 });
 
-test('stiker katalog tanpa baris stok tampil stok 0 dan tanpa menu Stok', () => {
-  renderPage();
+test('stiker katalog tanpa baris stok tampil stok 0 dan tanpa menu Stok', async () => {
+  await renderPage();
   const lawas = screen.getByRole('row', { name: /Segel Lawas/ });
-  // Kolom: Stiker, Jenis, BU, Stok.
-  expect(within(lawas).getAllByRole('cell')[3]).toHaveTextContent(/^0$/);
+  // Kolom: checkbox, Aksi, Stiker, Jenis, BU, Stok.
+  expect(within(lawas).getAllByRole('cell')[5]).toHaveTextContent(/^0$/);
   expect(screen.queryByRole('button', { name: 'Stok Segel Lawas' })).toBeNull();
 });
 
-test('satu lokasi: tanpa kolom rincian per lokasi', () => {
-  renderPage({ locations: [bothLocations[0] as (typeof bothLocations)[number]] });
+test('satu lokasi: tanpa kolom rincian per lokasi', async () => {
+  await renderPage({ locations: [bothLocations[0] as (typeof bothLocations)[number]] });
   expect(screen.queryByRole('columnheader', { name: 'Per lokasi' })).toBeNull();
 });
 
-test('tanpa izin stok (stock tidak diberikan): tanpa kolom Stok, menu Stok, dan Stok opname', () => {
-  renderPage({}, { stock: undefined });
+test('tanpa izin stok (stock tidak diberikan): tanpa kolom Stok, menu Stok, dan Stok opname', async () => {
+  await renderPage({}, { stock: undefined });
   expect(screen.queryByRole('columnheader', { name: 'Stok' })).toBeNull();
   expect(screen.queryByRole('button', { name: /^Stok / })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Stok opname' })).toBeNull();
@@ -240,7 +290,7 @@ test('tanpa izin stok (stock tidak diberikan): tanpa kolom Stok, menu Stok, dan 
 });
 
 test('hanya izin stok (tanpa katalog): baris dari stok, tanpa kolom/aksi katalog, filter jenis dari data stok', async () => {
-  renderPage({}, { stickers: undefined, types: [], businessUnits: [] });
+  await renderPage({}, { stickers: undefined, types: [], businessUnits: [] });
   expect(screen.getByRole('row', { name: /Hijau-B/ })).toBeInTheDocument();
   expect(screen.queryByRole('columnheader', { name: 'BU' })).toBeNull();
   expect(screen.queryByRole('columnheader', { name: 'Batas minimum' })).toBeNull();
@@ -249,20 +299,21 @@ test('hanya izin stok (tanpa katalog): baris dari stok, tanpa kolom/aksi katalog
   expect(screen.queryByRole('button', { name: /^(Aktifkan|Nonaktifkan) / })).toBeNull();
   // Stok tetap bisa dilihat dan dicatat.
   expect(screen.getByRole('button', { name: 'Stok Hijau-B' })).toBeInTheDocument();
+  await openChip('Jenis');
   await pickLink(screen, 'Filter jenis', 'Segel');
   expect(screen.queryByRole('row', { name: /Hijau-B/ })).toBeNull();
   expect(screen.getByRole('row', { name: /Segel Polos/ })).toBeInTheDocument();
 });
 
 test('tombol Stok opname hanya bagi pemegang manage dan membuka halaman opname lewat callback', async () => {
-  const { onStartOpname } = renderPage();
+  const { onStartOpname } = await renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Stok opname' }));
   expect(onStartOpname).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole('alertdialog')).toBeNull();
 });
 
 test('Koreksi dan Stok opname tersembunyi bagi pemegang edit; Catat masuk/keluar tetap ada', async () => {
-  renderPage({ canManage: false });
+  await renderPage({ canManage: false });
   expect(screen.queryByRole('button', { name: 'Stok opname' })).toBeNull();
   await userEvent.click(screen.getByRole('button', { name: 'Stok Hijau-B' }));
   expect(await screen.findByRole('menuitem', { name: 'Catat masuk' })).toBeInTheDocument();
@@ -271,17 +322,71 @@ test('Koreksi dan Stok opname tersembunyi bagi pemegang edit; Catat masuk/keluar
 });
 
 test('pemegang view saja tidak melihat aksi tulis, tetapi tetap melihat Riwayat', async () => {
-  const { onShowHistory } = renderPage({ canEdit: false, canManage: false });
+  await renderPage({ canEdit: false, canManage: false });
   await userEvent.click(screen.getByRole('button', { name: 'Stok Hijau-B' }));
   expect(screen.queryByRole('menuitem', { name: /^Catat/ })).toBeNull();
   expect(screen.queryByRole('menuitem', { name: 'Koreksi' })).toBeNull();
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Riwayat' }));
-  expect(onShowHistory).toHaveBeenCalledWith(rows[0]);
+  expect(await screen.findByRole('dialog', { name: 'Riwayat Hijau-B' })).toBeInTheDocument();
+});
+
+test('tombol Entri stok membuka halaman entri pada mode yang dipilih; Koreksi hanya bagi manage', async () => {
+  const { onStartEntry } = await renderPage();
+  await userEvent.click(screen.getByRole('button', { name: 'Entri stok' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Catat keluar' }));
+  expect(onStartEntry).toHaveBeenCalledWith('out');
+  cleanup();
+  await renderPage({ canManage: false });
+  await userEvent.click(screen.getByRole('button', { name: 'Entri stok' }));
+  expect(await screen.findByRole('menuitem', { name: 'Catat masuk' })).toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: 'Koreksi' })).toBeNull();
+});
+
+test('pemegang stok saja: tanpa checkbox, kolom BU/minimum, aksi katalog, dan tautan nama', async () => {
+  await renderPage(
+    {},
+    { stickers: undefined, types: [], businessUnits: [], canEdit: false, canManage: false },
+  );
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(screen.queryByRole('columnheader', { name: 'BU' })).toBeNull();
+  expect(screen.queryByRole('link', { name: 'Hijau-B' })).toBeNull();
+  expect(screen.getByText('Hijau-B')).toBeInTheDocument();
+});
+
+test('pemegang katalog saja: tanpa kolom Stok, Per lokasi, menu Stok, Entri stok, dan Stok opname', async () => {
+  await renderPage({}, { stock: undefined });
+  expect(screen.queryByRole('columnheader', { name: 'Stok' })).toBeNull();
+  expect(screen.queryByRole('columnheader', { name: 'Per lokasi' })).toBeNull();
+  expect(screen.queryByRole('button', { name: /^Stok / })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Entri stok' })).toBeNull();
+  expect(screen.getByRole('link', { name: 'Hijau-B' })).toBeInTheDocument();
+});
+
+test('tampilan Terhapus: tanpa kolom Stok, menu Stok, Entri stok, dan Stok opname', async () => {
+  await renderPage(
+    {},
+    {
+      stickers: [
+        catalogSticker({
+          id: 'd1',
+          alias: '',
+          name: 'Stiker Dihapus',
+          status: 'inactive',
+          deleted: { deletedAt: '2026-11-20T03:00:00.000Z', deletedBy: 'admin@x.com' },
+        }),
+      ],
+    },
+  );
+  await openChip('Status');
+  await pickSelect(screen, 'Filter status', 'Terhapus');
+  expect(screen.queryByRole('columnheader', { name: 'Stok' })).toBeNull();
+  expect(screen.queryByRole('button', { name: /^Stok / })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Entri stok' })).toBeNull();
 });
 
 test('Masuk disembunyikan bila stiker ATAU jenisnya nonaktif; Keluar dan Koreksi tetap ada', async () => {
   const [first, second] = rows as [StickerStockDto, StickerStockDto];
-  renderPage({
+  await renderPage({
     rows: [
       { ...first, typeStatus: 'inactive' },
       { ...second, status: 'inactive' },
@@ -297,7 +402,7 @@ test('Masuk disembunyikan bila stiker ATAU jenisnya nonaktif; Keluar dan Koreksi
 });
 
 test('"Stok saat ini" di dialog ikut diperbarui saat stok dimuat ulang dengan dialog terbuka', async () => {
-  const { update } = renderPage();
+  const { update } = await renderPage();
   await openStockMenu('Hijau-B', 'Catat keluar');
   const dialog = await screen.findByRole('alertdialog');
   await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
@@ -321,7 +426,7 @@ test('"Stok saat ini" di dialog ikut diperbarui saat stok dimuat ulang dengan di
 
 test('baris hilang saat dialog terbuka: dialog menutup bersih dengan pemberitahuan dan tidak terbuka lagi sendiri', async () => {
   toastInfo.mockClear();
-  const { update } = renderPage();
+  const { update } = await renderPage();
   await openStockMenu('Hijau-B', 'Catat keluar');
   await screen.findByRole('alertdialog');
   const [first, second] = rows as [StickerStockDto, StickerStockDto];
@@ -335,7 +440,7 @@ test('baris hilang saat dialog terbuka: dialog menutup bersih dengan pemberitahu
 });
 
 test('dialog keluar mewajibkan alasan', async () => {
-  const { onWrite } = renderPage();
+  const { onWrite } = await renderPage();
   await openStockMenu('Hijau-B', 'Catat keluar');
   const dialog = await screen.findByRole('alertdialog');
   await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
@@ -359,7 +464,7 @@ test('dialog keluar mewajibkan alasan', async () => {
 });
 
 test('dialog masuk: alasan opsional dan hitungan lembar dikirim sebagai count', async () => {
-  const { onWrite } = renderPage();
+  const { onWrite } = await renderPage();
   await openStockMenu('Hijau-B', 'Catat masuk');
   const dialog = await screen.findByRole('alertdialog');
   await pickLink(within(dialog), 'Lokasi', 'Bandung (BDG)');
@@ -382,7 +487,7 @@ test('dialog masuk: alasan opsional dan hitungan lembar dikirim sebagai count', 
 });
 
 test('galat server tampil pada field jumlah dan dialog tetap terbuka', async () => {
-  const { onWrite } = renderPage();
+  const { onWrite } = await renderPage();
   onWrite.mockResolvedValueOnce({ message: 'Stok tidak cukup', quantity: 'Stok tidak cukup' });
   await openStockMenu('Segel Polos', 'Catat keluar');
   const dialog = await screen.findByRole('alertdialog');
@@ -395,7 +500,7 @@ test('galat server tampil pada field jumlah dan dialog tetap terbuka', async () 
 });
 
 test('koreksi: perubahan bertanda dan alasan wajib', async () => {
-  const { onWrite } = renderPage();
+  const { onWrite } = await renderPage();
   await openStockMenu('Hijau-B', 'Koreksi');
   const dialog = await screen.findByRole('alertdialog');
   await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
@@ -409,7 +514,7 @@ test('koreksi: perubahan bertanda dan alasan wajib', async () => {
 });
 
 test('koreksi tanpa perubahan atau tanpa alasan tidak dikirim', async () => {
-  const { onWrite } = renderPage();
+  const { onWrite } = await renderPage();
   await openStockMenu('Hijau-B', 'Koreksi');
   const dialog = await screen.findByRole('alertdialog');
   await pickLink(within(dialog), 'Lokasi', 'Jakarta (JKT)');
@@ -421,7 +526,7 @@ test('koreksi tanpa perubahan atau tanpa alasan tidak dikirim', async () => {
 
 test('stok negatif tampil "Kurang N" dengan warna peringatan di tabel dan di dialog stok keluar', async () => {
   const [first, ...rest] = rows as [StickerStockDto, ...StickerStockDto[]];
-  renderPage({
+  await renderPage({
     rows: [
       {
         ...first,
@@ -443,7 +548,8 @@ test('stok negatif tampil "Kurang N" dengan warna peringatan di tabel dan di dia
 });
 
 test('filter jenis memakai nama jenis dan menyaring baris gabungan', async () => {
-  renderPage();
+  await renderPage();
+  await openChip('Jenis');
   await pickLink(screen, 'Filter jenis', 'Segel');
   expect(screen.queryByRole('row', { name: /Hijau-B/ })).toBeNull();
   expect(screen.getByRole('row', { name: /Segel Polos/ })).toBeInTheDocument();

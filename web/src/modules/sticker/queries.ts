@@ -1,6 +1,9 @@
+import type { ListStatusFilter, StatusBatchInput } from '@shared/batch';
 import type {
+  AdjustStockBatchInput,
   AdjustStockInput,
   OpnameInput,
+  RecordStockBatchInput,
   RecordStockInput,
   SavePostelSettingsInput,
   SaveStickerInput,
@@ -8,9 +11,12 @@ import type {
   SaveStickerTypeInput,
   SetStickerStatusInput,
   SetStickerTypeStatusInput,
+  StickerDto,
+  StickerTypeDto,
 } from '@shared/contract';
 import {
   infiniteQueryOptions,
+  type QueryClient,
   queryOptions,
   useMutation,
   useQueryClient,
@@ -22,10 +28,33 @@ import { itemKeys } from '@/modules/item/queries';
 import { postelKeys } from '@/modules/postel/keys';
 import { stickerKeys } from './keys';
 
-export function stickerTypesQuery() {
+/**
+ * Daftar jenis. Tanpa `status` = jenis hidup (kunci yang dipakai form stiker dan filter); `deleted` (hanya
+ * `sticker: manage`) memakai kunci sendiri agar tak bercampur dengan daftar hidup.
+ */
+export function stickerTypesQuery(status?: ListStatusFilter) {
+  const filtered = status !== undefined && status !== 'all';
   return queryOptions({
-    queryKey: stickerKeys.types,
-    queryFn: () => api('stickerTypes.list', null),
+    queryKey: filtered ? ([...stickerKeys.types, status] as const) : stickerKeys.types,
+    queryFn: () => api('stickerTypes.list', filtered ? { status } : null),
+  });
+}
+
+/** Satu jenis (halaman View). Data awal dari daftar yang sudah termuat; jenis terhapus dimuat dari server. */
+export function stickerTypeQuery(queryClient: QueryClient, id: string) {
+  const seed = queryClient
+    .getQueryData<StickerTypeDto[]>(stickerKeys.types)
+    ?.find((type) => type.id === id);
+  return queryOptions({
+    queryKey: stickerKeys.typeOne(id),
+    queryFn: () => api('stickerTypes.get', { id }),
+    retry: false,
+    ...(seed
+      ? {
+          initialData: seed,
+          initialDataUpdatedAt: queryClient.getQueryState(stickerKeys.types)?.dataUpdatedAt ?? 0,
+        }
+      : {}),
   });
 }
 
@@ -102,10 +131,30 @@ export const useSavePostelSettings = () => {
   });
 };
 
-export function stickersQuery() {
+/** Daftar stiker. Tanpa `status` = stiker hidup; `deleted` (hanya `sticker: manage`) memakai kunci sendiri. */
+export function stickersQuery(status?: ListStatusFilter) {
+  const filtered = status !== undefined && status !== 'all';
   return queryOptions({
-    queryKey: stickerKeys.list,
-    queryFn: () => api('stickers.list', null),
+    queryKey: filtered ? ([...stickerKeys.list, status] as const) : stickerKeys.list,
+    queryFn: () => api('stickers.list', filtered ? { status } : null),
+  });
+}
+
+/** Satu stiker (halaman View). Data awal dari daftar yang sudah termuat; stiker terhapus dimuat dari server. */
+export function stickerQuery(queryClient: QueryClient, id: string) {
+  const seed = queryClient
+    .getQueryData<StickerDto[]>(stickerKeys.list)
+    ?.find((sticker) => sticker.id === id);
+  return queryOptions({
+    queryKey: stickerKeys.one(id),
+    queryFn: () => api('stickers.get', { id }),
+    retry: false,
+    ...(seed
+      ? {
+          initialData: seed,
+          initialDataUpdatedAt: queryClient.getQueryState(stickerKeys.list)?.dataUpdatedAt ?? 0,
+        }
+      : {}),
   });
 }
 
@@ -113,6 +162,29 @@ export const useSaveSticker = () =>
   useCatalogMutation((input: SaveStickerInput) => api('stickers.save', input));
 export const useSetStickerStatus = () =>
   useCatalogMutation((input: SetStickerStatusInput) => api('stickers.setStatus', input));
+
+/** Aksi massal stiker: dikirim bertahap oleh `useBulkAction`; tiap tahap memuat ulang data stiker dan Log Audit. */
+export const useSetStickerStatusBatch = () =>
+  useCatalogMutation((input: StatusBatchInput) => api('stickers.setStatusBatch', input));
+export const useRemoveStickers = () =>
+  useCatalogMutation((input: { ids: string[] }) => api('stickers.removeBatch', input));
+export const useRestoreStickers = () =>
+  useCatalogMutation((input: { ids: string[] }) => api('stickers.restoreBatch', input));
+export const useSetStickerTypeStatusBatch = () =>
+  useCatalogMutation((input: StatusBatchInput) => api('stickerTypes.setStatusBatch', input));
+export const useRemoveStickerTypes = () =>
+  useCatalogMutation((input: { ids: string[] }) => api('stickerTypes.removeBatch', input));
+export const useRestoreStickerTypes = () =>
+  useCatalogMutation((input: { ids: string[] }) => api('stickerTypes.restoreBatch', input));
+
+/** Hapus permanen gambar Pustaka (`stickerGuides.removeBatch`); memuat ulang Pustaka dan daftar pemakaian. */
+export function useRemoveGuides() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { ids: string[] }) => api('stickerGuides.removeBatch', input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: stickerKeys.guides }),
+  });
+}
 
 /** Stok per lokasi yang diminta (hanya lokasi yang boleh dilihat user; satu lokasi terlarang menolak permintaan). */
 export function stickerStockQuery(locationIds: readonly string[]) {
@@ -146,6 +218,11 @@ export const useAdjustStock = () =>
   useStockMutation((input: AdjustStockInput) => api('stickerStock.adjust', input));
 export const useOpname = () =>
   useStockMutation((input: OpnameInput) => api('stickerStock.opname', input));
+/** Entri stok batch (halaman "Entri stok"): atomik, hasil urut masukan. */
+export const useRecordStockBatch = () =>
+  useStockMutation((input: RecordStockBatchInput) => api('stickerStock.recordBatch', input));
+export const useAdjustStockBatch = () =>
+  useStockMutation((input: AdjustStockBatchInput) => api('stickerStock.adjustBatch', input));
 
 export const useSaveStickerType = () =>
   useCatalogMutation((input: SaveStickerTypeInput) => api('stickerTypes.save', input));

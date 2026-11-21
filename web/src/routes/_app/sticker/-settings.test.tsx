@@ -2,9 +2,25 @@ import type { PostelSettingsDto, StickerSettingsDto } from '@shared/contract';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { type ComponentType, Suspense } from 'react';
+import { type ComponentType, Suspense, useReducer } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 import { Route } from './settings';
+
+// Halaman memakai search param `tab` dan navigasi tumpukan: keduanya diganti keadaan lokal sederhana.
+const nav = vi.hoisted(() => ({
+  search: {} as { tab?: string | undefined },
+  bump: () => {},
+  pop: vi.fn(),
+}));
+vi.mock('@tanstack/react-router', async () => ({
+  ...(await vi.importActual<object>('@tanstack/react-router')),
+  useNavigate: () => (options: { search: (prev: { tab?: string }) => { tab?: string } }) => {
+    nav.search = options.search(nav.search);
+    nav.bump();
+  },
+}));
+vi.mock('@/hooks/use-stack-navigation', () => ({ useStackNavigation: () => ({ pop: nav.pop }) }));
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', async () => ({
@@ -35,6 +51,9 @@ let stickerState: StickerSettingsDto;
 let postelState: PostelSettingsDto;
 
 beforeEach(() => {
+  nav.search = { tab: undefined };
+  nav.pop.mockReset();
+  vi.spyOn(Route, 'useSearch').mockImplementation(() => nav.search as never);
   apiMock.mockReset();
   stickerState = {
     alert: { enabled: false, recipients: [], digestHour: 8, intervalDays: 1 },
@@ -82,14 +101,25 @@ async function mount() {
   const Component = Route.options.component as ComponentType & { preload?: () => Promise<void> };
   await Component.preload?.();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
-    <QueryClientProvider client={client}>
+  function Host() {
+    const [, force] = useReducer((count: number) => count + 1, 0);
+    nav.bump = force;
+    return (
       <Suspense fallback={<p>memuat</p>}>
         <Component />
       </Suspense>
+    );
+  }
+  render(
+    <QueryClientProvider client={client}>
+      <TooltipProvider>
+        <Host />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }
+
+const openTab = (name: string) => userEvent.click(screen.getByRole('tab', { name }));
 
 const calls = (id: string) => apiMock.mock.calls.filter(([name]) => name === id).length;
 
@@ -98,10 +128,11 @@ test('menyimpan peringatan Postel tidak mereset draf Konfigurasi Stiker', async 
   const min = await screen.findByLabelText('Minimum bawaan QC Hijau');
   await userEvent.clear(min);
   await userEvent.type(min, '25');
+  await openTab('Peringatan Postel');
   const repeat = screen.getByLabelText('Ulangi setiap (hari)');
   await userEvent.clear(repeat);
   await userEvent.type(repeat, '3');
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan peringatan Postel' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   await waitFor(() => expect(calls('postelSettings.save')).toBe(1));
   await waitFor(() =>
     expect(apiMock).toHaveBeenCalledWith(
@@ -117,12 +148,16 @@ test('menyimpan peringatan Postel tidak mereset draf Konfigurasi Stiker', async 
 
 test('menyimpan Konfigurasi Stiker tidak mereset draf peringatan Postel', async () => {
   await mount();
-  const repeat = await screen.findByLabelText('Ulangi setiap (hari)');
+  await screen.findByLabelText('Minimum bawaan QC Hijau');
+  await openTab('Peringatan Postel');
+  const repeat = screen.getByLabelText('Ulangi setiap (hari)');
   await userEvent.clear(repeat);
   await userEvent.type(repeat, '3');
   const first = screen.getByLabelText('Pengingat 1 (hari sebelum habis)');
   await userEvent.clear(first);
   await userEvent.type(first, '120');
+  // Simpan di tab pengaturan stok hanya menyimpan pengaturan stok.
+  await openTab('Ringkasan stok');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   await waitFor(() => expect(calls('stickerSettings.save')).toBe(1));
   // katalog stiker dimuat ulang (versi baru); pengaturan Postel tidak ikut dimuat ulang dan draf-nya tetap
@@ -131,4 +166,15 @@ test('menyimpan Konfigurasi Stiker tidak mereset draf peringatan Postel', async 
   expect(calls('postelSettings.save')).toBe(0);
   expect(screen.getByLabelText('Ulangi setiap (hari)')).toHaveValue(3);
   expect(screen.getByLabelText('Pengingat 1 (hari sebelum habis)')).toHaveValue(120);
+});
+
+test('berpindah tab menulis search param tab (replace) dan Batal kembali ke daftar Stiker', async () => {
+  await mount();
+  await screen.findByLabelText('Minimum bawaan QC Hijau');
+  await openTab('Peringatan Postel');
+  expect(nav.search.tab).toBe('postel');
+  await openTab('Minimum stok');
+  expect(nav.search.tab).toBeUndefined();
+  await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
+  expect(nav.pop).toHaveBeenCalledWith({ to: '/sticker' });
 });

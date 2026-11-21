@@ -52,6 +52,11 @@ interface DataTableBase<T> {
   onClearFilters?: () => void;
   /** Ajakan aksi pada keadaan kosong biasa (mis. tombol Tambah). */
   emptyAction?: ReactNode;
+  /**
+   * Baris yang boleh dipilih (bawaan: semua). Baris yang tidak boleh dipilih tanpa checkbox (tabel) dan tak ikut
+   * "Pilih semua", mis. jenis sistem yang tak dapat diubah massal. Hanya berarti bila ada `selection`.
+   */
+  rowSelectable?: (row: T) => boolean;
 }
 
 /** `selectLabel` (nama baris untuk checkbox dan menu aksi ponsel) wajib bila ada `selection` atau `actions`. */
@@ -91,14 +96,19 @@ export function DataTable<T>({
   filtered,
   onClearFilters,
   emptyAction,
+  rowSelectable,
 }: DataTableProps<T>) {
   const desktop = useIsDesktop();
   const nameOf = (row: T) => selectLabel?.(row) ?? rowKey(row);
+  const isSelectable = (row: T) => rowSelectable?.(row) ?? true;
   const ids = rows.map(rowKey);
+  const selectableIds = rows.filter(isSelectable).map(rowKey);
   usePruneSelection(selection, ids, !isLoading);
 
-  const selectedCount = selection ? ids.filter((id) => selection.selected.has(id)).length : 0;
-  const allSelected = ids.length > 0 && selectedCount === ids.length;
+  const selectedCount = selection
+    ? selectableIds.filter((id) => selection.selected.has(id)).length
+    : 0;
+  const allSelected = selectableIds.length > 0 && selectedCount === selectableIds.length;
   const someSelected = selectedCount > 0 && !allSelected;
 
   const table = (
@@ -110,7 +120,7 @@ export function DataTable<T>({
               <Checkbox
                 aria-label="Pilih semua"
                 checked={allSelected ? true : someSelected ? 'indeterminate' : false}
-                onCheckedChange={() => selection.setAll(ids, !allSelected)}
+                onCheckedChange={() => selection.setAll(selectableIds, !allSelected)}
               />
             </TableHead>
           ) : null}
@@ -150,11 +160,13 @@ export function DataTable<T>({
                 >
                   {selection ? (
                     <TableCell className="w-px">
-                      <Checkbox
-                        aria-label={`Pilih ${nameOf(row)}`}
-                        checked={isSelected}
-                        onCheckedChange={() => selection.toggle(id)}
-                      />
+                      {isSelectable(row) ? (
+                        <Checkbox
+                          aria-label={`Pilih ${nameOf(row)}`}
+                          checked={isSelected}
+                          onCheckedChange={() => selection.toggle(id)}
+                        />
+                      ) : null}
                     </TableCell>
                   ) : null}
                   {actions ? (
@@ -198,6 +210,7 @@ export function DataTable<T>({
             label={label}
             nameOf={nameOf}
             selection={selection}
+            isSelectable={isSelectable}
             actions={actions}
             isLoading={isLoading}
           />

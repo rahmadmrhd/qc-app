@@ -371,3 +371,30 @@ test('pilihan dipangkas ke baris yang masih dimuat', async () => {
   rerender(<Prune rows={ROWS.slice(0, 1)} />);
   expect(await screen.findByText('1 dipilih')).toBeInTheDocument();
 });
+
+test('rowSelectable: baris tak terpilih tanpa checkbox; Pilih semua hanya memilih yang dapat dipilih', async () => {
+  function Mixed() {
+    const selection = useRowSelection('x');
+    return (
+      <>
+        <DataTable
+          rows={ROWS}
+          rowKey={(row) => row.id}
+          columns={COLUMNS}
+          label="Merk"
+          selectLabel={(row) => row.name}
+          selection={selection}
+          rowSelectable={(row) => row.id !== '2'}
+        />
+        <BulkBar count={selection.count} onClear={selection.clear}>
+          <span>aksi</span>
+        </BulkBar>
+      </>
+    );
+  }
+  render(<Mixed />);
+  expect(screen.queryByRole('checkbox', { name: 'Pilih Tenda' })).toBeNull();
+  expect(screen.getByRole('checkbox', { name: 'Pilih Asus' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  expect(screen.getByText('2 dipilih')).toBeInTheDocument();
+});

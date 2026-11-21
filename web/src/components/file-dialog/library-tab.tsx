@@ -7,6 +7,7 @@ import {
 import { Eye, Search, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import type { RowSelection } from '@/components/data-table/use-row-selection';
 import { GridView } from '@/components/grid/grid-view';
 import { Select } from '@/components/select';
 import { Spinner } from '@/components/spinner';
@@ -71,6 +72,12 @@ export interface LibraryTabProps {
   onClearFilters?(): void;
   /** Jumlah gambar termuat (dan masih ada halaman berikutnya) untuk hitungan hasil di judul halaman. */
   onCountChange?(count: number | null, hasMore: boolean): void;
+  /**
+   * Pilihan untuk aksi massal (halaman Pustaka: hapus massal). Hanya berlaku pada tampilan halaman
+   * (`selectable` false; di dialog pilihan memakai `selection`/`onToggle`). Hanya gambar yang boleh dihapus pemakai
+   * dan belum dipakai item yang dapat dipilih; kartu lain tanpa checkbox.
+   */
+  bulk?: RowSelection;
 }
 
 type ListData = InfiniteData<LibraryPage, string | null>;
@@ -100,6 +107,7 @@ export function LibraryTab({
   query: externalQuery,
   onClearFilters,
   onCountChange,
+  bulk,
 }: LibraryTabProps) {
   const queryClient = useQueryClient();
   const [searchText, setSearchText] = useState('');
@@ -187,6 +195,11 @@ export function LibraryTab({
     }
   }
 
+  // Pilihan massal hanya di tampilan halaman; di dialog kartu memakai `selection`/`onToggle` sendiri.
+  const selectionProps =
+    !selectable && bulk
+      ? { selection: bulk, selectLabel: (item: LibraryItem) => item.name }
+      : { selection: undefined };
   const filtered = search !== '' || mine || unused;
   const loadedCount = result.isSuccess ? items.length : null;
   const more = Boolean(hasNextPage);
@@ -271,10 +284,13 @@ export function LibraryTab({
         loadMoreError={isFetchNextPageError}
         onLoadMore={() => void fetchNextPage()}
         className={cn(result.isPlaceholderData && 'opacity-60')}
+        isSelectable={(item) => item.canRemove && item.usageCount === 0}
+        {...selectionProps}
         itemClassName={(item) =>
           cn(
             'flex flex-col overflow-hidden rounded-lg border bg-card',
-            selection.has(item.id) && 'ring-2 ring-primary',
+            (selection.has(item.id) || (!selectable && bulk?.selected.has(item.id))) &&
+              'ring-2 ring-primary',
           )
         }
         renderItem={(item) => {

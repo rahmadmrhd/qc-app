@@ -45,6 +45,11 @@ interface GridViewBase<T> {
   itemClassName?: (item: T) => string | undefined;
   /** Peran daftar (bawaan `list`). */
   role?: 'list' | 'radiogroup';
+  /**
+   * Hanya bermakna bersama `selection`: kartu yang bukan `true` tanpa checkbox dan tanpa tekan-lama, dan "pilih
+   * semua" mengabaikannya (mis. gambar Pustaka yang masih dipakai tak dapat dihapus massal). Bawaan semua dapat dipilih.
+   */
+  isSelectable?: (item: T) => boolean;
 }
 
 /** `selectLabel` wajib bila ada `selection`: tiap kartu mendapat checkbox "Pilih <nama>". */
@@ -78,6 +83,7 @@ export function GridView<T>({
   className,
   itemClassName,
   role = 'list',
+  isSelectable,
   selection,
   selectLabel,
 }: GridViewProps<T>) {
@@ -124,7 +130,11 @@ export function GridView<T>({
   return (
     <>
       {selection && selecting ? (
-        <SelectionBar selection={selection} ids={items.map(itemKey)} onExit={exit} />
+        <SelectionBar
+          selection={selection}
+          ids={items.filter((item) => isSelectable?.(item) ?? true).map(itemKey)}
+          onExit={exit}
+        />
       ) : null}
       {selection && !desktop && !selecting ? (
         <>
@@ -135,19 +145,22 @@ export function GridView<T>({
       <ul role={role} aria-label={label} className={cn(GRID_CLASS, className)}>
         {items.map((item) => {
           const id = itemKey(item);
+          const selectable = selection !== undefined && (isSelectable?.(item) ?? true);
           return (
             <li
               key={id}
               className={cn(
                 'relative',
-                selection && !desktop && '[-webkit-touch-callout:none] data-[pressing]:select-none',
-                selection && selecting && 'select-none',
+                selectable &&
+                  !desktop &&
+                  '[-webkit-touch-callout:none] data-[pressing]:select-none',
+                selectable && selecting && 'select-none',
                 itemClassName?.(item),
               )}
-              {...bind(id)}
+              {...(selectable ? bind(id) : {})}
             >
               {renderItem(item)}
-              {selection && (desktop || selecting) ? (
+              {selection && selectable && (desktop || selecting) ? (
                 <div className="absolute top-1.5 left-1.5 rounded bg-background/80 p-1">
                   <Checkbox
                     aria-label={`Pilih ${selectLabel?.(item) ?? id}`}
