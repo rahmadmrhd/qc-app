@@ -3,7 +3,7 @@ import { app } from '@server/app';
 import type { MailMessage } from '@server/core/mail';
 import { putSetting } from '@server/core/settings';
 import { runPendingJobs } from '@server/jobs/runner';
-import { loadUserContext } from '@server/modules/access/context';
+import { loadUserContext, type UserContext } from '@server/modules/access/context';
 import { seedRole, seedUser } from '@server-test/access-fixtures';
 import { restCall } from '@server-test/rest-call';
 import { SERIAL_USERS, seedSerial, seedSerialWorld } from '@server-test/serial-fixtures';
@@ -13,7 +13,9 @@ import { reportLinkExpiresAt } from '@shared/serials';
 import { canManageSerial } from './access';
 import { SETTING_SERIAL_ALERT } from './alert';
 import { involvedBuIds } from './bu-history';
-import { listExpiredFailed } from './proof/repo';
+import { claimDraftStmts, insertDraftStmt, listExpiredFailed } from './proof/repo';
+import { getProof } from './proof/service';
+import { newStagedName } from './proof/store';
 import { signReportToken } from './public-link';
 import { loadSerialRow } from './repo';
 
@@ -113,6 +115,16 @@ const stock = async (stickerId: string): Promise<number> =>
         stickerId,
       )
     )[0]?.qty,
+  );
+
+/**
+ * Menjalankan `fn` tanpa indeks unik LAMA serial (`serials_serial` se-sistem dan `serials_bu_serial` per BU): sebelum
+ * migrasi contract (Task 6) keduanya masih menjangkau baris terhapus, jadi serial yang dicatat ulang sesudah dihapus
+ * hanya mungkin tanpa keduanya (`serials_serial_live` tetap berlaku dan membedakan lewat `deleted_at`).
+ */
+const withoutSerialUniques = (fn: () => Promise<void>) =>
+  withoutOldIndex(env, 'serials', 'serials_serial', 'serial', () =>
+    withoutOldIndex(env, 'serials', 'serials_bu_serial', 'bu_id, serial', fn),
   );
 
 const remove = (id: string, email = MGR_ALL) => call(email, 'serials.remove', { id });
@@ -283,16 +295,41 @@ describe('penyaringan serial terhapus di pembaca', () => {
   });
 
   test('foto bukti serial terhapus: hanya pemulih yang dapat membacanya', async () => {
-    await env.DB.prepare(
-      "INSERT INTO serial_proof_photos (id, serial_id, event_id, state, created_by, created_at, updated_at) VALUES ('ph-1', 'sn1', 'ev', 'queued', ?, ?, ?)",
-    )
-      .bind(WRITER, NOW, NOW)
-      .run();
-    expect((await call(WRITER, 'serialProofs.get', { id: 'ph-1' })).error?.code).not.toBe(
-      'NOT_FOUND',
+    const stagedName = newStagedName();
+    await env.PROOF_STORE?.write(stagedName, new Uint8Array([1, 2, 3]));
+    await insertDraftStmt(env.DB, {
+      id: 'ph-1',
+      createdBy: WRITER,
+      now: NOW,
+      mime: 'image/png',
+      width: 640,
+      height: 480,
+      size: 3,
+      stagedName,
+    }).run();
+    await env.DB.batch(
+      claimDraftStmts(env.DB, {
+        ids: ['ph-1'],
+        email: WRITER,
+        serialId: 'sn1',
+        eventId: 'ev-ph-1',
+        snapshotJson: '{}',
+        now: NOW,
+      }),
     );
+    const writer = (await loadUserContext(env, WRITER)) as UserContext;
+    const manager = (await loadUserContext(env, MGR_AB)) as UserContext;
+    const get = (user: UserContext) =>
+      getProof(env, { id: 'ph-1' }, user).then(
+        () => 'ok',
+        (error: { code?: string }) => error.code ?? 'galat',
+      );
+    expect(await get(writer)).toBe('ok');
     expect((await remove('sn1')).ok).toBe(true);
-    expect((await call(WRITER, 'serialProofs.get', { id: 'ph-1' })).error?.code).toBe('NOT_FOUND');
+    expect(await get(writer)).toBe('NOT_FOUND');
+    expect(await get(manager)).toBe('ok');
+    expect((await restore('sn1')).ok).toBe(true);
+    expect(await get(writer)).toBe('ok');
   });
 
   test('job serial_alert untuk serial terhapus dilewati tanpa surel', async () => {
@@ -363,7 +400,7 @@ describe('serials.restore (pulihkan)', () => {
   });
 
   test('pulihkan saat serial yang sama sudah hidup di catatan lain = CONFLICT, dan tetap terhapus', async () => {
-    await withoutOldIndex(env, 'serials', 'serials_serial', 'serial', async () => {
+    await withoutSerialUniques(async () => {
       await seedSerial(env, { id: 'sn1', serial: 'AB12' });
       expect((await remove('sn1')).ok).toBe(true);
       env.clock.advance(1000);
@@ -376,7 +413,7 @@ describe('serials.restore (pulihkan)', () => {
   });
 
   test('dua serial bernomor sama terhapus pada waktu berbeda tidak bentrok; memulihkan keduanya sekaligus ditolak', async () => {
-    await withoutOldIndex(env, 'serials', 'serials_serial', 'serial', async () => {
+    await withoutSerialUniques(async () => {
       await seedSerial(env, { id: 'sn1', serial: 'AB12' });
       expect((await remove('sn1')).ok).toBe(true);
       env.clock.advance(5000);
@@ -479,7 +516,7 @@ describe('penolakan rujukan terhapus dan kiriman ulang', () => {
   });
 
   test('mencatat ulang serial yang sudah dihapus: baris baru (bukan cek ulang) sesudah indeks lama tak menghalangi', async () => {
-    await withoutOldIndex(env, 'serials', 'serials_serial', 'serial', async () => {
+    await withoutSerialUniques(async () => {
       const first = resultsOf(await save([rowOf({ serial: 'SN-0009' })]));
       expect(first[0].result).toBe('created');
       expect((await remove(first[0].id)).ok).toBe(true);
