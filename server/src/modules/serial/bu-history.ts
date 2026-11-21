@@ -65,7 +65,7 @@ export async function ensureSerialUniqueIndex(
     const duplicateCount = Number(dups?.n ?? 0);
     if (duplicateCount > 0) {
       console.warn(
-        `Indeks unik ${SERIAL_LIVE_INDEX} belum dibuat: ada ${duplicateCount} Serial Number ganda lintas BU. Jalankan skrip penyatuan.`,
+        `Indeks unik ${SERIAL_LIVE_INDEX} belum dibuat: ada ${duplicateCount} kelompok Serial Number ganda (serial sama dengan deleted_at sama, lintas BU). Yang masih hidup disatukan dengan skrip penyatuan; ganda yang sama-sama TERHAPUS pada deleted_at yang sama juga menahan indeks dan tidak ditangani skrip (skrip mengabaikan serial terhapus): bedakan deleted_at salah satunya secara manual.`,
       );
       return 'duplicates';
     }

@@ -255,7 +255,9 @@ const LOCATION_LOCKED_MESSAGE =
 const STICKER_MESSAGE = 'Stiker tidak berlaku bagi item ini';
 export const SERIAL_CONFLICTS = {
   serials_bu_serial: { message: DUPLICATE_MESSAGE, field: 'serial' },
-  // Keunikan se-sistem (migrasi 0026); `serials_bu_serial` dipertahankan sampai rilis contract.
+  // Keunikan se-sistem: `serials_serial_live` (nama dasar `serials_serial`) setelah migrasi contract 0030. `serials_serial`
+  // dan `serials_bu_serial` lama dibuang `ensureSerialUniqueIndex` saat start; entri keduanya dipertahankan selama data lama
+  // dengan serial ganda lintas BU masih memakai `serials_bu_serial` sebagai penjaga.
   serials_serial: { message: DUPLICATE_MESSAGE, field: 'serial' },
   // Kunci idempoten kejadian (cek ulang dari Catat).
   serial_events_client_id: { message: DUPLICATE_MESSAGE, field: 'clientId' },
@@ -577,7 +579,7 @@ export async function createSerialOnce(
       };
     }
     if (error instanceof DbError && error.kind === 'duplicate') {
-      // Balapan retry: InnoDB dapat melaporkan indeks `serials_bu_serial` (bukan `serials_client_id`) untuk baris
+      // Balapan retry: InnoDB dapat melaporkan indeks unik serial (`serials_serial_live`, atau `serials_bu_serial` pada data lama dengan serial ganda) alih-alih `serials_client_id` untuk baris
       // yang sama, jadi pada galat duplikat APA PUN baca ulang `clientId` dulu. Pemenang sudah commit saat galat
       // ini terbit (penulis kedua menunggu kuncinya), sehingga bacaan ulang melihatnya.
       const again = await findSerialByClientId(env.DB, row.clientId);

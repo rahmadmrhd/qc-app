@@ -14,7 +14,7 @@
 --    berhasil dibuat (data lama dapat memuat serial ganda lintas BU; membuangnya tanpa syarat meninggalkan serial
 --    tanpa penjaga indeks apa pun).
 -- Semua pasangan `_live` diawali kolom yang sama dengan indeks lamanya, jadi kunci asing yang bersandar pada indeks
--- lama (mis. `stickers.type_id`, `postels.sticker_id`) tetap punya indeks pendukung.
+-- lama (mis. `postels.sticker_id` pada kunci asing `postels_sticker_fk`) tetap punya indeks pendukung.
 
 DROP INDEX IF EXISTS roles_name_unique ON roles;
 DROP INDEX IF EXISTS locations_code_unique ON locations;

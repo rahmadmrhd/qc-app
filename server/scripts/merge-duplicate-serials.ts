@@ -402,7 +402,9 @@ async function main(): Promise<void> {
         `Masih ada ${manual.length} serial yang perlu ditangani manual; indeks unik belum dapat dibuat.`,
       );
     } else {
-      console.log('Mulai ulang server agar indeks unik serials_serial_live dibuat.');
+      console.log(
+        'Mulai ulang server agar indeks unik serials_serial_live dibuat. Bila peringatan "belum dibuat" tetap muncul, periksa ganda yang sama-sama terhapus pada deleted_at yang sama (skrip ini mengabaikan serial terhapus): bedakan deleted_at salah satunya secara manual.',
+      );
     }
   } finally {
     await db.close();

@@ -5,6 +5,7 @@
 import { afterEach, expect, setDefaultTimeout, test } from 'bun:test';
 import { DbError } from '@server/core/db';
 import type { Env } from '@server/core/env';
+import { loadMigrations } from '@server/core/migrate';
 import { ensureSerialUniqueIndex } from '@server/modules/serial/bu-history';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { baseIndexName } from './index-names';
@@ -299,4 +300,24 @@ test('ensureSerialUniqueIndex: indeks _live sudah ada dan indeks lama tersisa = 
   expect(names.has('serials_serial')).toBe(false);
   expect(names.has('serials_bu_serial')).toBe(false);
   expect(names.has('serials_serial_live')).toBe(true);
+});
+
+test('SQL 0030 idempoten: dijalankan ulang pada keadaan setengah jalan (sebagian indeks lama sudah dibuang) tetap berhasil', async () => {
+  env = await createTestEnv();
+  const sql = (await loadMigrations()).find((m) => m.name === '0030_soft_delete_contract.sql')?.sql;
+  expect(sql).toBeDefined();
+  // Keadaan setengah jalan: sebagian indeks lama masih ada, sisanya sudah dibuang (tabel kosong, jadi pemasangan aman).
+  await env.DB.prepare('CREATE UNIQUE INDEX brands_key ON brands (`key`)').run();
+  await env.DB.prepare('CREATE UNIQUE INDEX items_key ON items (`key`)').run();
+  await env.DB.prepare('CREATE UNIQUE INDEX handovers_number ON handovers (number)').run();
+  await env.DB.prepare('CREATE UNIQUE INDEX postels_sticker ON postels (sticker_id)').run();
+  await env.DB.exec(sql as string);
+  // Dijalankan lagi pada keadaan yang sudah bersih: tidak melempar dan hasilnya sama.
+  await env.DB.exec(sql as string);
+  for (const [name, table] of DROPPED.filter(([n]) => !n.startsWith('serials_'))) {
+    expect((await indexNames(table)).has(name), `${table}.${name}`).toBe(false);
+  }
+  for (const c of CASES) {
+    expect((await indexNames(c.table)).has(c.index), c.index).toBe(true);
+  }
 });

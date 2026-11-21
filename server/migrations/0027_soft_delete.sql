@@ -7,8 +7,8 @@
 --
 -- `deleted_at` = ISO UTC, '' = hidup (sengaja bukan NULL: NULL dalam indeks unik MariaDB selalu dianggap berbeda).
 -- `deleted_by` = email pelaku. `sticker_guide_images` SENGAJA tidak termasuk (tetap hapus permanen, keputusan 6).
--- `users_email` TETAP unik penuh, tanpa padanan `_live` (keputusan 10). Indeks serial (`serials_serial_live`) AKAN dibuat
--- bersyarat oleh `ensureSerialUniqueIndex` pada fase 4d (belum diubah), bukan di sini (data lama dapat ganda; pemeriksa dump menolak PREPARE).
+-- `users_email` TETAP unik penuh, tanpa padanan `_live` (keputusan 10). Indeks serial (`serials_serial_live`) dibuat
+-- bersyarat oleh `ensureSerialUniqueIndex` (bukan di sini; lihat 0030; data lama dapat ganda; pemeriksa dump menolak PREPARE).
 
 ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at VARCHAR(30) NOT NULL DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_by VARCHAR(254) NOT NULL DEFAULT '';

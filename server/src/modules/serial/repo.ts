@@ -394,7 +394,7 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
     commonBinds.push(filter.createdBy);
   }
   if (filter.prefixes !== undefined && filter.prefixes.length > 0) {
-    // `LIKE 'awalan%'` (bukan `LEFT() = ?`) agar indeks `serials_serial` (unik se-sistem; `serials_bu_serial` lama dipertahankan sampai tahap contract) dapat dipakai; metakarakter di-escape.
+    // `LIKE 'awalan%'` (bukan `LEFT() = ?`) agar indeks `serials_serial_live (serial, deleted_at)` (unik se-sistem; kolom depannya `serial`, jadi pencarian awalan tetap memakainya) dapat dipakai; metakarakter di-escape.
     common.push(`(${filter.prefixes.map(() => "s.serial LIKE ? ESCAPE '!'").join(' OR ')})`);
     for (const prefix of filter.prefixes) commonBinds.push(`${escapeLike(prefix)}%`);
   }
