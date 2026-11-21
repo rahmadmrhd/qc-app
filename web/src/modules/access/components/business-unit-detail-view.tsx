@@ -1,25 +1,35 @@
 import type { BusinessUnitDto } from '@shared/contract';
-import type { ReactNode } from 'react';
-import { Badge } from '@/components/ui/badge';
+import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
+import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
+import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
+import { ActiveStatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
 
 export interface BusinessUnitDetailViewProps {
-  /** `undefined` = BU tidak ada (id salah). */
+  /** `undefined` = BU tidak ada (id salah, atau terhapus bagi yang tak boleh melihatnya). */
   businessUnit: BusinessUnitDto | undefined;
+  canManage?: boolean;
+  statusPending?: boolean;
+  restorePending?: boolean;
   onBack: () => void;
+  onEdit?: () => void;
+  onToggleStatus?: () => void;
+  onDelete?: () => void;
+  onRestore?: () => void;
 }
 
-function Row({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="grid gap-1 sm:grid-cols-[10rem_1fr]">
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="text-sm">{children}</dd>
-    </div>
-  );
-}
-
-/** Halaman baca-saja satu Business Unit: tujuan tautan "buka" dari field BU. */
-export function BusinessUnitDetailView({ businessUnit, onBack }: BusinessUnitDetailViewProps) {
+/** Halaman baca satu Business Unit: tujuan tautan kode dari daftar dan tautan "buka" dari field BU. */
+export function BusinessUnitDetailView({
+  businessUnit,
+  canManage = false,
+  statusPending = false,
+  restorePending = false,
+  onBack,
+  onEdit,
+  onToggleStatus,
+  onDelete,
+  onRestore,
+}: BusinessUnitDetailViewProps) {
   if (!businessUnit) {
     return (
       <div className="space-y-4">
@@ -30,35 +40,75 @@ export function BusinessUnitDetailView({ businessUnit, onBack }: BusinessUnitDet
       </div>
     );
   }
+  const deleted = businessUnit.deleted === true;
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold">{businessUnit.name}</h1>
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{businessUnit.code}</Badge>
-            {businessUnit.status === 'inactive' ? (
-              <Badge color="secondary" variant="soft" dot>
-                Nonaktif
-              </Badge>
-            ) : null}
-          </div>
-        </div>
-        <Button variant="outline" onClick={onBack}>
-          Kembali ke daftar BU
-        </Button>
-      </div>
-      <section className="space-y-3 rounded-lg border p-4">
-        <h2 className="text-base font-semibold">Informasi BU</h2>
-        <dl className="space-y-2">
-          <Row label="Jumlah item">{businessUnit.itemCount}</Row>
-          <Row label="User yang berhak">{businessUnit.userCount}</Row>
-          <Row label="Dibuat">{new Date(businessUnit.createdAt).toLocaleString('id-ID')}</Row>
-          <Row label="Terakhir diubah">
-            {new Date(businessUnit.updatedAt).toLocaleString('id-ID')} oleh {businessUnit.updatedBy}
-          </Row>
-        </dl>
-      </section>
-    </div>
+    <ViewPage
+      title={businessUnit.name}
+      badge={deleted ? <DeletedBadge /> : <ActiveStatusBadge status={businessUnit.status} />}
+      actionItems={
+        deleted
+          ? [
+              {
+                id: 'restore',
+                action: 'restore',
+                busy: restorePending,
+                hidden: !(canManage && onRestore),
+                onSelect: () => onRestore?.(),
+              },
+            ]
+          : [
+              {
+                id: 'edit',
+                action: 'edit',
+                label: 'Ubah',
+                hidden: !(canManage && onEdit),
+                onSelect: () => onEdit?.(),
+              },
+              {
+                id: 'status',
+                action: businessUnit.status === 'active' ? 'deactivate' : 'activate',
+                busy: statusPending,
+                hidden: !(canManage && onToggleStatus),
+                onSelect: () => onToggleStatus?.(),
+              },
+              {
+                id: 'delete',
+                action: 'delete',
+                hidden: !(canManage && onDelete && businessUnit.status === 'inactive'),
+                onSelect: () => onDelete?.(),
+              },
+            ]
+      }
+      banner={
+        deleted && businessUnit.deletedInfo ? (
+          <DeletedBanner
+            info={businessUnit.deletedInfo}
+            canRestore={canManage}
+            {...(onRestore ? { onRestore } : {})}
+            restoring={restorePending}
+          />
+        ) : null
+      }
+      aside={<ViewMeta updatedBy={businessUnit.updatedBy} updatedAt={businessUnit.updatedAt} />}
+    >
+      <ViewSection title="Informasi BU">
+        <DetailList
+          items={[
+            { label: 'Kode', value: businessUnit.code },
+            { label: 'Nama', value: businessUnit.name },
+            {
+              label: 'Status',
+              value: deleted ? (
+                <DeletedBadge />
+              ) : (
+                <ActiveStatusBadge status={businessUnit.status} />
+              ),
+            },
+            { label: 'Jumlah item', value: businessUnit.itemCount },
+            { label: 'User yang berhak', value: businessUnit.userCount },
+          ]}
+        />
+      </ViewSection>
+    </ViewPage>
   );
 }
