@@ -1,5 +1,6 @@
-import { type ReactNode, useId, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { onFormTabRequest } from '@/lib/form-tab-request';
 
 export interface FormTab {
   id: string;
@@ -35,14 +36,24 @@ export function FormTabs({
   const requested = value ?? local;
   // Id tak dikenal (mis. `?tab=` basi) jatuh ke tab pertama agar panel tak kosong.
   const active = tabs.some((tab) => tab.id === requested) ? requested : tabs[0]?.id;
+  const select = (id: string) => {
+    setLocal(id);
+    onValueChange?.(id);
+  };
+  // Permintaan dari luar (panduan interaktif): memakai jalur pilih yang sama dengan klik pengguna.
+  const latest = useRef({ tabs, select });
+  latest.current = { tabs, select };
+  useEffect(
+    () =>
+      onFormTabRequest((tabId) => {
+        if (!latest.current.tabs.some((tab) => tab.id === tabId)) return false;
+        latest.current.select(tabId);
+        return true;
+      }),
+    [],
+  );
   return (
-    <Tabs
-      value={active}
-      onValueChange={(id) => {
-        setLocal(id);
-        onValueChange?.(id);
-      }}
-    >
+    <Tabs value={active} onValueChange={select}>
       <span id={hintId} className="sr-only">
         ada isian yang belum benar
       </span>

@@ -4,12 +4,12 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
-import { itemLinkAccess } from '@/lib/link-access';
+import { itemLinkAccess, qrPresetLinkAccess } from '@/lib/link-access';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import type { QrSubmitOptions } from '@/modules/qrcode/components/qr-design-form';
-import { QrDesignForm } from '@/modules/qrcode/components/qr-design-form';
+import { QrDesignFormPage } from '@/modules/qrcode/components/qr-design-form-page';
 import { qrDefaultsQueryOptions, useSaveQrDesign } from '@/modules/qrcode/queries';
 import type { QrFieldErrors, QrFormOutput } from '@/modules/qrcode/schemas';
 import { QR_FIELD_KEYS, toQrFormDefaults, toSaveQrDesignInput } from '@/modules/qrcode/schemas';
@@ -37,10 +37,12 @@ function NewQrDesignPage() {
         toSaveQrDesignInput(values, undefined, undefined, options.overflow),
       );
       toast.success('Konfigurasi disimpan');
-      // "Simpan dan ekspor": lanjut ke dialog konfirmasi ekspor di daftar.
-      // Tambah = replace (butir 41c): back dari daftar tidak kembali ke form yang sudah tersimpan.
+      // Tambah = replace (butir 41c): back dari View tidak kembali ke form yang sudah tersimpan.
+      // Tambah = replace ke View konfigurasi baru; "Simpan dan ekspor" membuka dialog ekspor di sana (`?export=1`).
       stack.replace(
-        options.thenExport ? { to: '/qrcode', search: { export: saved.id } } : { to: '/qrcode' },
+        options.thenExport
+          ? { to: '/qrcode/$designId', params: { designId: saved.id }, search: { export: '1' } }
+          : { to: '/qrcode/$designId', params: { designId: saved.id } },
       );
     } catch (error) {
       const picked = pickFieldErrors(error, QR_FIELD_KEYS);
@@ -50,21 +52,21 @@ function NewQrDesignPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <QrDesignForm
-        title="Konfigurasi QR baru"
-        canExport={can(me, 'qrcode', 'edit')}
-        defaultValues={toQrFormDefaults()}
-        logoLibrary={defaults.logoFileIds}
-        presets={defaults.presets}
-        openItemHref={itemLinkAccess(me).openItemHref}
-        canCreateItem={itemLinkAccess(me).canCreate}
-        canOpenDeletedItem={itemLinkAccess(me).canOpenDeleted}
-        submitError={submitError}
-        fieldErrors={fieldErrors}
-        onSubmit={handleSubmit}
-        onCancel={() => stack.pop({ to: '/qrcode' })}
-      />
-    </div>
+    <QrDesignFormPage
+      title="Konfigurasi QR baru"
+      canExport={can(me, 'qrcode', 'edit')}
+      defaultValues={toQrFormDefaults()}
+      logoLibrary={defaults.logoFileIds}
+      presets={defaults.presets}
+      openItemHref={itemLinkAccess(me).openItemHref}
+      canCreateItem={itemLinkAccess(me).canCreate}
+      canCreatePreset={qrPresetLinkAccess(me).canCreate}
+      openPresetHref={qrPresetLinkAccess(me).openPresetHref}
+      canOpenDeletedItem={itemLinkAccess(me).canOpenDeleted}
+      submitError={submitError}
+      fieldErrors={fieldErrors}
+      onSubmit={handleSubmit}
+      onCancel={() => stack.pop({ to: '/qrcode' })}
+    />
   );
 }

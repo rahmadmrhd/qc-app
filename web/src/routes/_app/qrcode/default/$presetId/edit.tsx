@@ -7,7 +7,7 @@ import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
 import { requirePermission } from '@/modules/auth/permissions';
-import { QrDesignForm } from '@/modules/qrcode/components/qr-design-form';
+import { QrDesignFormPage } from '@/modules/qrcode/components/qr-design-form-page';
 import { useFrozen } from '@/modules/qrcode/lib/use-frozen';
 import { qrDefaultsQueryOptions, useSaveQrPreset } from '@/modules/qrcode/queries';
 import type { QrFormOutput, QrPresetFieldErrors } from '@/modules/qrcode/schemas';
@@ -23,7 +23,16 @@ export const Route = createFileRoute('/_app/qrcode/default/$presetId/edit')({
       const name = queryClient
         .getQueryData(qrDefaultsQueryOptions().queryKey)
         ?.presets.find((preset) => preset.id === params.presetId)?.name;
-      return name ? [{ label: name }, { label: 'Ubah' }] : { label: 'Ubah' };
+      return name
+        ? [
+            {
+              label: name,
+              to: '/qrcode/default/$presetId',
+              params: { presetId: params.presetId ?? '' },
+            },
+            { label: 'Ubah' },
+          ]
+        : { label: 'Ubah' };
     },
   },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'manage'),
@@ -55,7 +64,8 @@ function EditQrPresetPage() {
     try {
       await save.mutateAsync(toSaveQrPresetInput(values, presetId, loadedAt));
       toast.success('Konfigurasi default disimpan');
-      stack.pop({ to: '/qrcode/default' });
+      // Ubah = kembali ke View asal (butir 41c).
+      stack.pop({ to: '/qrcode/default/$presetId', params: { presetId } });
     } catch (error) {
       const picked = pickFieldErrors(error, QR_PRESET_FIELD_KEYS);
       if (Object.keys(picked).length > 0) setFieldErrors(picked);
@@ -75,22 +85,20 @@ function EditQrPresetPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <QrDesignForm
-        mode="defaults"
-        title={`Ubah default: ${loaded.name}`}
-        key={loadedAt}
-        defaultValues={toPresetFormValues(loaded)}
-        logoLibrary={defaults.logoFileIds}
-        businessUnits={businessUnits}
-        takenBuIds={
-          new Set(defaults.presets.filter((item) => item.id !== presetId).map((item) => item.buId))
-        }
-        submitError={submitError}
-        fieldErrors={fieldErrors}
-        onSubmit={handleSubmit}
-        onCancel={() => stack.pop({ to: '/qrcode/default' })}
-      />
-    </div>
+    <QrDesignFormPage
+      mode="defaults"
+      title={`Ubah default: ${loaded.name}`}
+      key={loadedAt}
+      defaultValues={toPresetFormValues(loaded)}
+      logoLibrary={defaults.logoFileIds}
+      businessUnits={businessUnits}
+      takenBuIds={
+        new Set(defaults.presets.filter((item) => item.id !== presetId).map((item) => item.buId))
+      }
+      submitError={submitError}
+      fieldErrors={fieldErrors}
+      onSubmit={handleSubmit}
+      onCancel={() => stack.pop({ to: '/qrcode/default/$presetId', params: { presetId } })}
+    />
   );
 }

@@ -89,8 +89,41 @@ describe('panduan QR Code Manual Book', () => {
     expect(label).toMatch(/ukuran/i);
   });
 
-  test('daftar mengecualikan formulir baru dari bannernya', () => {
+  test('daftar mengecualikan formulir baru, View, dan rute di bawahnya dari bannernya', () => {
     expect(QRCODE_DASAR.halaman).toBe('/qrcode');
-    expect(QRCODE_DASAR.halamanKecuali).toEqual(['/qrcode/new']);
+    expect(QRCODE_DASAR.halamanKecuali).toEqual(['/qrcode/$id']);
+    const dasar = offers(reader).filter((o) => o.entry.id === 'qrcode-dasar');
+    const idAt = (path: string) => guideForRoute(dasar, path)?.entry.id;
+    expect(idAt('/qrcode')).toBe('qrcode-dasar');
+    for (const path of [
+      '/qrcode/new',
+      '/qrcode/q1',
+      '/qrcode/q1/edit',
+      '/qrcode/default',
+      '/qrcode/default/p1',
+    ]) {
+      expect(idAt(path)).toBeUndefined();
+    }
+  });
+
+  test('langkah di tab lain membuka tabnya lewat buka: { tab }; target di luar tab tidak memintanya', () => {
+    const tabOf = (target: string) => {
+      const step = QRCODE_BUAT.steps.find((entry) => entry.target === target);
+      return typeof step?.buka === 'object' ? step.buka.tab : undefined;
+    };
+    expect(tabOf('qr-source')).toBe('sumber');
+    expect(tabOf('qr-label')).toBe('label');
+    // Item, konfigurasi default, nama (tab Item), pratinjau, dan tombol simpan (bar halaman) tak bergantung tab.
+    for (const target of ['qr-items', 'qr-preset', 'qr-name', 'qr-preview', 'qr-save']) {
+      expect(tabOf(target)).toBeUndefined();
+    }
+  });
+
+  test('daftar punya target qr-header, qr-new, dan qr-table', () => {
+    expect(QRCODE_DASAR.steps.map((step) => step.target)).toEqual([
+      'qr-header',
+      'qr-table',
+      'qr-new',
+    ]);
   });
 });

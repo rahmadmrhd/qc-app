@@ -10,11 +10,12 @@ import {
 } from 'react';
 import { hasUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { useSidebar } from '@/components/ui/sidebar';
+import { requestFormTab } from '@/lib/form-tab-request';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 import { stepsFor } from '../../lib/offer';
 import { useMarkTourActive, useSetTourMenu } from '../../lib/tour-menu';
-import type { GuideEntry, GuideStep } from '../../lib/types';
+import { type GuideEntry, type GuideStep, menuOfStep, tabOfStep } from '../../lib/types';
 import { useGuideStore } from '../../lib/use-guide-store';
 import { TourStepCard } from './tour-step-card';
 
@@ -90,13 +91,17 @@ function useOptionalSidebar(): ReturnType<typeof useSidebar> | null {
  */
 function withoutMissingMenus(steps: readonly GuideStep[]): GuideStep[] {
   const missing = new Set<string>();
+  // Hanya `buka` berupa id menu: `buka: { tab }` diselesaikan saat langkahnya berjalan (formulirnya belum tentu
+  // sudah terpasang saat tur dimulai).
   for (const step of steps) {
-    if (step.buka && !document.querySelector(selectorOf(step.buka))) missing.add(step.buka);
+    const menu = menuOfStep(step);
+    if (menu && !document.querySelector(selectorOf(menu))) missing.add(menu);
   }
   if (missing.size === 0) return [...steps];
-  return steps.filter(
-    (step) => !(step.buka && missing.has(step.buka)) && !missing.has(step.target),
-  );
+  return steps.filter((step) => {
+    const menu = menuOfStep(step);
+    return !(menu && missing.has(menu)) && !missing.has(step.target);
+  });
 }
 
 /** Lama (ms) kartu contoh terus mengamati targetnya yang bergantung data sebelum menyerah. */
@@ -144,7 +149,7 @@ const CENTERED_CARD: CSSProperties = {
  * disorot, supaya butir menu lain tetap terbaca). `null` bila langkah tak membuka menu atau target di luar menu.
  */
 function openMenuRect(target: Element | null, step: GuideStep | undefined): DOMRect | null {
-  if (!target || !step?.buka) return null;
+  if (!target || !menuOfStep(step)) return null;
   const menu = target.closest(
     '[role="menu"], [data-radix-popper-content-wrapper], [role="dialog"]',
   );
@@ -242,6 +247,20 @@ function sameRect(a: DOMRect | null, b: DOMRect): boolean {
 }
 
 /** Menunggu `count` bingkai animasi (menu Radix baru terposisi setelah terpasang); `setTimeout` bila tak ada rAF. */
+/** Elemen (atau leluhurnya) bertanda `hidden`: panel tab form yang belum aktif. Murni atribut: tanpa tata letak (jsdom). */
+function isHiddenByAttribute(element: Element): boolean {
+  return element.closest('[hidden]') !== null;
+}
+
+/** Menunggu beberapa bingkai sampai `element` tak lagi tersembunyi; false bila tetap tersembunyi. */
+async function waitUntilVisible(element: Element, frames = 4): Promise<boolean> {
+  for (let i = 0; i < frames; i += 1) {
+    if (!isHiddenByAttribute(element)) return true;
+    await nextFrames(1);
+  }
+  return !isHiddenByAttribute(element);
+}
+
 function nextFrames(count: number): Promise<void> {
   return new Promise((resolve) => {
     if (typeof requestAnimationFrame !== 'function') {
@@ -378,12 +397,14 @@ export default function TourOverlay({
     }
     // Menu yang diminta langkah ini dibuka sekarang (murni UI), menu langkah lama ditutup. Pemicu yang tak ada di
     // layar (mis. pemilih lokasi untuk satu lokasi) = langkah dilewati segera, tanpa menunggu batas waktu.
-    if (step.buka && !document.querySelector(selectorOf(step.buka))) {
+    const stepMenu = menuOfStep(step);
+    const stepTab = tabOfStep(step);
+    if (stepMenu && !document.querySelector(selectorOf(stepMenu))) {
       latest.current.setMenu(null);
       advance(index);
       return;
     }
-    latest.current.setMenu(step.buka ?? null);
+    latest.current.setMenu(stepMenu ?? null);
     setLocated(null);
     setRect(null);
     setFallback(null);
@@ -427,8 +448,18 @@ export default function TourOverlay({
         ? { promise: Promise.resolve(document.querySelector(selectorOf(step.target))), cancel() {} }
         : waitForTarget(step.target, targetWaitMs);
       cancelWait = wait.cancel;
-      const found = await wait.promise;
+      let found = await wait.promise;
       if (cancelled || aborted.current) return;
+      // Target di panel tab tersembunyi (`FormTabs` mempertahankan semua panel dengan `hidden`): buka tabnya lebih
+      // dulu bila langkah memintanya, lalu pastikan target benar-benar terlihat sebelum disorot.
+      if (found && stepTab !== undefined && isHiddenByAttribute(found)) {
+        requestFormTab(stepTab);
+        found = (await waitUntilVisible(found)) ? found : null;
+        if (cancelled || aborted.current) return;
+      } else if (found && isHiddenByAttribute(found)) {
+        found = (await waitUntilVisible(found)) ? found : null;
+        if (cancelled || aborted.current) return;
+      }
       if (!found) {
         if (step.teksJikaKosong === undefined) {
           advance(index);
@@ -452,7 +483,7 @@ export default function TourOverlay({
         block: 'center',
         behavior: prefersReducedMotion() ? 'auto' : 'smooth',
       });
-      if (step.buka) {
+      if (stepMenu) {
         // Isi menu Radix baru terposisi beberapa bingkai setelah terpasang: sorotan jangan diukur sebelum itu.
         await nextFrames(2);
         if (cancelled || aborted.current) return;
@@ -567,14 +598,14 @@ export default function TourOverlay({
   // Menu Radix masuk dengan animasi zoom: ukur sekali lagi sesudah animasinya selesai (pengukuran 2 bingkai pertama
   // bisa lebih kecil beberapa piksel dan atribut `style` tak berubah sehingga pengamat tak terpicu).
   useEffect(() => {
-    if (!target || !step?.buka) return;
+    if (!target || !menuOfStep(step)) return;
     const timer = setTimeout(() => {
       if (!target.isConnected) return;
       const next = target.getBoundingClientRect();
       setRect((current) => (sameRect(current, next) ? current : next));
     }, 300);
     return () => clearTimeout(timer);
-  }, [target, step?.buka]);
+  }, [target, step]);
 
   // Langkah `click`: maju begitu targetnya diklik (setelah penangan aplikasi sendiri selesai).
   useEffect(() => {

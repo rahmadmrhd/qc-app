@@ -8,12 +8,12 @@ import { itemKeys } from '@/modules/item/queries';
 import { stickerKeys } from '@/modules/sticker/keys';
 import { postelKeys } from './keys';
 import {
-  dropPostelDetail,
   postelHistoryQueryOptions,
   postelItemOptionsQueryOptions,
   postelListQueryOptions,
   postelQueryOptions,
-  useRemovePostel,
+  useRemovePostels,
+  useRestorePostels,
   useSavePostel,
 } from './queries';
 
@@ -109,29 +109,41 @@ test('simpan tidak membuat cache daftar bila belum pernah dimuat', async () => {
   expect(client.getQueryData(postelKeys.list)).toBeUndefined();
 });
 
-test('hapus mengeluarkan catatan dari daftar tetapi TIDAK membuang detail/riwayat (halaman detail masih ter-mount)', async () => {
+test('hapus (batch) mengeluarkan catatan dari daftar hidup dan menandai detailnya basi, bukan membuangnya', async () => {
   client.setQueryData(postelKeys.list, { ...LIST, postels: [OTHER, { ...OTHER, id: 'p1' }] });
   client.setQueryData(postelKeys.one('p1'), dto());
   client.setQueryData(postelKeys.history('p1'), { entries: [], nextCursor: null });
-  apiMock.mockResolvedValue(null);
-  const { result } = renderHook(() => useRemovePostel(), { wrapper });
-  await act(() => result.current.mutateAsync({ id: 'p1' }));
-  expect(apiMock).toHaveBeenCalledWith('postels.remove', { id: 'p1' });
+  apiMock.mockResolvedValue({ ids: ['p1'] });
+  const { result } = renderHook(() => useRemovePostels(), { wrapper });
+  await act(() => result.current.mutateAsync({ ids: ['p1'] }));
+  expect(apiMock).toHaveBeenCalledWith('postels.removeBatch', { ids: ['p1'] });
   expect(
     client.getQueryData<PostelListDto>(postelKeys.list)?.postels.map((entry) => entry.id),
   ).toEqual(['p2']);
+  // View catatan terhapus tetap terbaca bagi pengelola: detail hanya ditandai basi.
   expect(client.getQueryData(postelKeys.one('p1'))).toBeDefined();
-  expect(client.getQueryData(postelKeys.history('p1'))).toBeDefined();
+  expect(client.getQueryState(postelKeys.one('p1'))?.isInvalidated).toBe(true);
 });
 
-test('dropPostelDetail membuang detail dan riwayat satu catatan saja', () => {
-  client.setQueryData(postelKeys.one('p1'), dto());
-  client.setQueryData(postelKeys.history('p1'), { entries: [], nextCursor: null });
-  client.setQueryData(postelKeys.one('p2'), dto({ id: 'p2' }));
-  dropPostelDetail(client, 'p1');
-  expect(client.getQueryData(postelKeys.one('p1'))).toBeUndefined();
-  expect(client.getQueryData(postelKeys.history('p1'))).toBeUndefined();
-  expect(client.getQueryData(postelKeys.one('p2'))).toBeDefined();
+test('pulihkan (batch) memasang catatan ke daftar hidup dan mengeluarkannya dari daftar terhapus', async () => {
+  client.setQueryData(postelKeys.list, { ...LIST, postels: [OTHER] });
+  client.setQueryData(postelKeys.listDeleted, { ...LIST, postels: [{ ...OTHER, id: 'p1' }] });
+  apiMock.mockResolvedValue({ items: [dto()] });
+  const { result } = renderHook(() => useRestorePostels(), { wrapper });
+  await act(() => result.current.mutateAsync({ ids: ['p1'] }));
+  expect(apiMock).toHaveBeenCalledWith('postels.restoreBatch', { ids: ['p1'] });
+  expect(
+    client.getQueryData<PostelListDto>(postelKeys.list)?.postels.map((entry) => entry.id),
+  ).toEqual(['p1', 'p2']);
+  expect(client.getQueryData<PostelListDto>(postelKeys.listDeleted)?.postels).toEqual([]);
+});
+
+test('daftar terhapus memakai kunci dan masukan sendiri', async () => {
+  apiMock.mockResolvedValue(LIST);
+  const options = postelListQueryOptions('deleted');
+  expect(options.queryKey).toEqual(postelKeys.listDeleted);
+  await (options.queryFn as () => Promise<unknown>)();
+  expect(apiMock).toHaveBeenLastCalledWith('postels.list', { status: 'deleted' });
 });
 
 const STALE_KEYS = [
@@ -161,9 +173,9 @@ test('simpan menandai katalog stiker, item, dan log audit basi tanpa memuat ulan
 
 test('hapus menandai katalog stiker, item, dan log audit basi tanpa memuat ulang', async () => {
   seedStaleKeys();
-  apiMock.mockResolvedValue(null);
-  const { result } = renderHook(() => useRemovePostel(), { wrapper });
-  await act(() => result.current.mutateAsync({ id: 'p1' }));
+  apiMock.mockResolvedValue({ ids: ['p1'] });
+  const { result } = renderHook(() => useRemovePostels(), { wrapper });
+  await act(() => result.current.mutateAsync({ ids: ['p1'] }));
   expectMarkedStale();
 });
 
