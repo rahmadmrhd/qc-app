@@ -106,7 +106,7 @@ Sumber status `sending`: penguras antrean menandai entri sebelum permintaan dan 
 - **Tanpa kedaluwarsa waktu** (keputusan pemilik 2026-11-13): data dihapus hanya saat keluar eksplisit atau saat pemilik berbeda login. Konsekuensi: data bisa sangat lama, jadi tampilan dari penyimpanan diberi label "data terakhir hh:mm" (waktu simpan) lewat spanduk Fase 2 saat server gagal dihubungi; selama muat ulang normal sesudah boot tidak ada label (§9 butir e), dan data diganti hasil server begitu server terjangkau. Jumlah tetap dibatasi (maks. 50 task per kolom, 40 kolom, 100 detail task; pemotongan hanya pada halaman utuh, lihat §9).
 - Setiap rekaman membawa `v` (`BOARD_STORE_VERSION`) dan `owner`; rekaman dengan `v` lain dibuang saat pemulihan (§9 butir b).
 - Dibuang seluruhnya saat keluar eksplisit (`useLogout`, bersama `clearAllOutboxes`). Sesi kedaluwarsa (401) tidak membuangnya (konsisten dengan antrean Fase 2).
-- Tidak menyimpan: Log Audit, customer, item, merk, daftar user, berkas.
+- Tidak menyimpan: Log Audit, customer, item, merk, daftar user, berkas. **Task terhapus (soft delete) juga tidak disimpan** (keputusan pemilik 2026-11-21, soft delete §5 butir 24): detail task terhapus dan kolom yang memuatnya tak ditulis; saat task dihapus atau detailnya ditolak server (`NOT_FOUND`/`FORBIDDEN`) rekaman detail dan butirnya di rekaman kolom dibuang (`forgetBoardTask`), dan rekaman lama yang memuat task terhapus dibuang saat pemulihan.
 
 **Integrasi dengan TanStack Query** (memakai mesin Fase 2, bukan jalur baru):
 - Penyimpan kedua di samping `startQueryPersistence`: langganan cache untuk kunci `handovers/board/...` dan `handovers/one/...`, menulis ke IndexedDB (ditunda dan digabung), hanya query berstatus `success` yang bukan `manual`.
