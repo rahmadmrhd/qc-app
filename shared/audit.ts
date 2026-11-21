@@ -20,6 +20,28 @@ export type AuditTargetKind =
   | 'serial'
   | 'handover';
 
+/**
+ * Jenis entitas yang riwayatnya dibaca lewat `activity.list` (panel aktivitas View). Serial TIDAK termasuk: riwayatnya
+ * `serial_events` (`serials.history`).
+ */
+export type ActivityKind = Exclude<AuditTargetKind, 'serial'>;
+
+export const ACTIVITY_KINDS: readonly ActivityKind[] = [
+  'item',
+  'brand',
+  'customer',
+  'sticker',
+  'stickerType',
+  'qrDesign',
+  'qrPreset',
+  'postel',
+  'user',
+  'role',
+  'location',
+  'businessUnit',
+  'handover',
+];
+
 /** Awalan aksi (sebelum titik pertama) -> jenis entitas. Awalan BU memang `businessunit` (huruf kecil semua). */
 const PREFIX_KINDS: Readonly<Record<string, AuditTargetKind>> = {
   item: 'item',

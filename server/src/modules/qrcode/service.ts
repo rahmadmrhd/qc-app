@@ -387,11 +387,20 @@ export async function getQrPresetDto(
   input: QrDesignRefInput,
   user: UserContext,
 ): Promise<QrPresetDto> {
-  const preset = await findQrPreset(env, input.id);
+  return toQrPresetDto(await readableQrPreset(env, input.id, user));
+}
+
+/** Preset menurut id bagi pembaca: terhapus hanya untuk `qrcode: manage`, selain itu (dan id tak dikenal) `NOT_FOUND`. */
+export async function readableQrPreset(
+  env: Env,
+  id: string,
+  user: UserContext,
+): Promise<QrPresetRecord> {
+  const preset = await findQrPreset(env, id);
   if (!preset || (preset.deletedAt !== '' && !canSeeDeletedQr(user))) {
     throw appError('NOT_FOUND', 'Konfigurasi default tidak ditemukan');
   }
-  return toQrPresetDto(preset);
+  return preset;
 }
 
 export function qrPresetSnapshot(

@@ -60,6 +60,7 @@ import type {
 } from './repo';
 import {
   findCommentByClientId,
+  findHandoverAny,
   findHandoversByClientIds,
   findHandoversByIds,
   findHandoverWithComments,
@@ -305,6 +306,28 @@ export async function getHandoverDto(
     throw appError('NOT_FOUND', 'Task tidak ditemukan');
   }
   return dtoOf(env, found.loaded);
+}
+
+/**
+ * Gerbang baca untuk `activity.list`: aturan yang sama dengan `handovers.get`. Lokasi task harus salah satu lokasi
+ * (aktif) yang boleh dibaca pemanggil (`handover: view` atau `qc: edit`); task terhapus hanya bagi `handover: manage`
+ * di lokasi itu. Selain itu (dan id tak dikenal) `NOT_FOUND` seragam.
+ */
+export async function assertHandoverReadable(
+  env: Env,
+  id: string,
+  user: Pick<UserContext, 'locations'>,
+): Promise<void> {
+  const found = await findHandoverAny(env, id);
+  const access = found ? user.locations[found.record.locationId] : undefined;
+  if (
+    !found ||
+    !access ||
+    !(hasLevel(access.handover, 'view') || hasLevel(access.qc, 'edit')) ||
+    (found.record.deletedAt !== '' && !canManageHandoverAt(user, found.record.locationId))
+  ) {
+    throw appError('NOT_FOUND', 'Task tidak ditemukan');
+  }
 }
 
 /** `handover: manage` di lokasi itu (hak Hapus/Pulihkan dan melihat task terhapus). */

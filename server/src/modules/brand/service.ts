@@ -189,11 +189,22 @@ export async function getBrandDto(
   input: GetBrandInput,
   user: UserContext,
 ): Promise<BrandDto> {
-  const found = await loadBrandAny(env, input.id);
+  const found = await readableBrand(env, input.id, user);
+  return toBrandDto(found.brand, found.buIds);
+}
+
+/** Merk menurut id bagi pembaca: terhapus hanya untuk `item: manage`, selain itu (dan id tak dikenal) `NOT_FOUND`. */
+async function readableBrand(env: Env, id: string, user: UserContext): Promise<LoadedBrand> {
+  const found = await loadBrandAny(env, id);
   if (!found || (found.brand.deletedAt !== '' && !hasLevel(user.permissions.item, 'manage'))) {
     throw appError('NOT_FOUND', 'Merk tidak ditemukan');
   }
-  return toBrandDto(found.brand, found.buIds);
+  return found;
+}
+
+/** Gerbang baca untuk `activity.list`: aturan yang sama dengan `brands.get`. */
+export async function assertBrandReadable(env: Env, id: string, user: UserContext): Promise<void> {
+  await readableBrand(env, id, user);
 }
 
 /** Item per pernyataan `UPDATE` ganti nama (2 nilai terikat per item; driver tanpa batas parameter). */

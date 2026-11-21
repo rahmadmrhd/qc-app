@@ -408,24 +408,46 @@ export function restorableItemsSql(user: UserContext): { sql: string; binds: str
 }
 
 /**
- * Detail item. Item yang tidak ada DAN item yang tidak beririsan dengan BU terlihat user sama-sama `NOT_FOUND`
- * (bukan `FORBIDDEN`), supaya keberadaan item di BU lain tidak bocor.
+ * Syarat baca satu item (dipakai `items.get` dan `activity.list`): item yang tidak ada DAN yang tidak beririsan dengan
+ * BU terlihat user sama-sama `NOT_FOUND`. Item terhapus hanya terlihat bagi yang berhak memulihkannya (`item: manage`
+ * pada SEMUA BU item); selain itu seperti tak ada (soft delete §4.2).
+ */
+function assertItemRecordReadable(
+  user: UserContext,
+  found: ItemRecord,
+  buIds: readonly string[],
+): void {
+  assertItemVisible(user, buIds);
+  if (found.deletedAt !== '' && !canActOnItem(user, buIds, 'manage')) {
+    throw appError('NOT_FOUND', 'Item tidak ditemukan');
+  }
+}
+
+/** Gerbang baca ringan (tanpa membangun DTO) untuk `activity.list`: aturan yang sama dengan `items.get`. */
+export async function assertItemReadable(env: Env, id: string, user: UserContext): Promise<void> {
+  const found = await findItemAny(env, id);
+  if (!found) throw appError('NOT_FOUND', 'Item tidak ditemukan');
+  const buIds = ((await itemBusinessUnitsOf(env.DB, [id])).get(id) ?? []).map((bu) => bu.id);
+  assertItemRecordReadable(user, found, buIds);
+}
+
  */
 export async function getItemDto(
   env: Env,
+/**
+ * Detail item. Item yang tidak ada DAN item yang tidak beririsan dengan BU terlihat user sama-sama `NOT_FOUND`
+ * (bukan `FORBIDDEN`), supaya keberadaan item di BU lain tidak bocor.
   input: GetItemInput,
   user: UserContext,
 ): Promise<ItemDto> {
   const found = await findItemAny(env, input.id);
   if (!found) throw appError('NOT_FOUND', 'Item tidak ditemukan');
   const view = await viewOf(env, found);
-  const buIds = view.businessUnits.map((bu) => bu.id);
-  assertItemVisible(user, buIds);
-  // Item terhapus hanya terlihat bagi yang berhak memulihkannya (`item: manage` pada SEMUA BU item); selain itu
-  // seperti tak ada (soft delete §4.2).
-  if (found.deletedAt !== '' && !canActOnItem(user, buIds, 'manage')) {
-    throw appError('NOT_FOUND', 'Item tidak ditemukan');
-  }
+  assertItemRecordReadable(
+    user,
+    found,
+    view.businessUnits.map((bu) => bu.id),
+  );
   return toItemDto(
     view,
     await instructionViewsOf(env, view.id, view.businessUnits, view.instructions),

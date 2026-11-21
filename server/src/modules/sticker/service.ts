@@ -144,11 +144,29 @@ export async function getStickerTypeDto(
   input: GetStickerTypeInput,
   user: UserContext,
 ): Promise<StickerTypeDto> {
-  const found = await loadStickerTypeAny(env, input.id);
+  return toStickerTypeDto(await readableStickerType(env, input.id, user));
+}
+
+/** Jenis menurut id bagi pembaca: terhapus hanya untuk `sticker: manage`, selain itu (dan id tak dikenal) `NOT_FOUND`. */
+async function readableStickerType(
+  env: Env,
+  id: string,
+  user: UserContext,
+): Promise<StickerTypeRecord> {
+  const found = await loadStickerTypeAny(env, id);
   if (!found || (found.deletedAt !== '' && !canSeeDeleted(user))) {
     throw appError('NOT_FOUND', TYPE_NOT_FOUND);
   }
-  return toStickerTypeDto(found);
+  return found;
+}
+
+/** Gerbang baca untuk `activity.list`: aturan yang sama dengan `stickerTypes.get`. */
+export async function assertStickerTypeReadable(
+  env: Env,
+  id: string,
+  user: UserContext,
+): Promise<void> {
+  await readableStickerType(env, id, user);
 }
 
 const TYPE_NOT_FOUND = 'Jenis stiker tidak ditemukan';
@@ -670,11 +688,25 @@ export async function getStickerDto(
   input: GetStickerInput,
   user: UserContext,
 ): Promise<StickerDto> {
-  const found = await loadStickerAny(env, input.id);
+  return dtoOfLoaded(await readableSticker(env, input.id, user));
+}
+
+/** Stiker menurut id bagi pembaca: terhapus hanya untuk `sticker: manage`, selain itu (dan id tak dikenal) `NOT_FOUND`. */
+async function readableSticker(env: Env, id: string, user: UserContext): Promise<LoadedSticker> {
+  const found = await loadStickerAny(env, id);
   if (!found || (found.sticker.deletedAt !== '' && !canSeeDeleted(user))) {
     throw appError('NOT_FOUND', STICKER_NOT_FOUND);
   }
-  return dtoOfLoaded(found);
+  return found;
+}
+
+/** Gerbang baca untuk `activity.list`: aturan yang sama dengan `stickers.get`. */
+export async function assertStickerReadable(
+  env: Env,
+  id: string,
+  user: UserContext,
+): Promise<void> {
+  await readableSticker(env, id, user);
 }
 
 /** Kode BU terurut untuk audit; BU dibaca sekali per permintaan batch (kode BU praktis tak berubah di tengahnya). */

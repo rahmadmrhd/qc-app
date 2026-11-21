@@ -50,6 +50,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'access.roles.restore': { id: 'r1' },
   'access.roles.restoreBatch': { ids: ['r1', 'r2'] },
   'access.audit.list': { cursor: 'c1', limit: 20, action: 'user.update', query: 'a b' },
+  'activity.list': { kind: 'item', id: 'i1', cursor: 'c1', limit: 10 },
   'access.locations.list': { status: 'deleted' },
   'access.locations.get': { id: 'l1' },
   'access.locations.save': { id: 'l1', code: 'WH', name: 'Gudang' },

@@ -203,8 +203,26 @@ export async function listUserDtos(
     .sort((a, b) => a.email.localeCompare(b.email));
 }
 
-/** Satu pengguna menurut id. Terhapus hanya bagi `access: manage`; selain itu `NOT_FOUND` (seperti id tak dikenal). */
+/**
+ * Gerbang baca untuk `activity.list` atas pengguna, role, lokasi, dan BU: aturan yang sama dengan rute `get` keempatnya
+ * (`access: view`; record terhapus hanya bagi `access: manage`, selain itu dan id tak dikenal `NOT_FOUND` seragam).
+ */
+export async function assertAccessRecordReadable(
+  env: Env,
+  table: 'users' | 'roles' | 'locations' | 'businessUnits',
+  id: string,
+  actor: UserContext,
+): Promise<void> {
+  const tables = await loadAccessTables(env);
+  const records: readonly { id: string; deletedAt: string }[] = tables[table];
+  const record = records.find((item) => item.id === id);
+  if (!record || (!isLiveRecord(record) && !canSeeDeleted(actor))) {
+    throw appError('NOT_FOUND', 'Data tidak ditemukan');
+  }
+}
+
 export async function getUserDto(
+/** Satu pengguna menurut id. Terhapus hanya bagi `access: manage`; selain itu `NOT_FOUND` (seperti id tak dikenal). */
   env: Env,
   input: GetUserInput,
   actor: UserContext,

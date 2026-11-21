@@ -1,5 +1,5 @@
 import type { Assignment, LocationPermissionMap } from './assignments';
-import type { AuditTargetKind } from './audit';
+import type { ActivityKind, AuditTargetKind } from './audit';
 import type {
   BatchResult,
   IdBatchInput,
@@ -1410,6 +1410,8 @@ export interface ApiContract {
   'access.roles.restore': { input: GetRoleInput; output: RoleDto };
   'access.roles.restoreBatch': { input: IdBatchInput; output: BatchResult<RoleDto> };
   'access.audit.list': { input: ListAuditPageInput; output: AuditCursorPageDto };
+  /** Riwayat aktivitas satu record (nama field saja); tak terbaca = `NOT_FOUND` seragam. */
+  'activity.list': { input: ListActivityInput; output: ActivityPageDto };
   'access.locations.list': { input: ListLocationsInput | null; output: LocationDto[] };
   /** Lokasi terhapus hanya bagi `access: manage`; selain itu `NOT_FOUND`. */
   'access.locations.get': { input: GetLocationInput; output: LocationDto };
@@ -1729,6 +1731,35 @@ export interface ListAuditPageInput {
 export interface AuditCursorPageDto {
   entries: AuditEntryDto[];
   nextCursor: string | null;
+}
+
+/**
+ * Riwayat aktivitas satu record (panel kanan View). Bukan `access.audit.list`: hanya untuk record yang boleh dibaca
+ * pemanggil (izin dan batas BU/lokasi sama dengan rute `get` View record itu). Serial memakai `serials.history`.
+ */
+export interface ListActivityInput {
+  kind: ActivityKind;
+  id: string;
+  cursor?: string;
+  /** Bawaan 10, maksimum 50. */
+  limit?: number;
+}
+
+/** Satu entri aktivitas: TANPA nilai sebelum/sesudah (hanya NAMA field yang berubah). */
+export interface ActivityEntryDto {
+  id: string;
+  ts: string;
+  actor: string;
+  /** Aksi audit, mis. `item.update`, `handover.check`. */
+  action: string;
+  /** Nama field yang berubah (dari perbedaan snapshot sebelum/sesudah); kosong/tiada = tak diketahui. */
+  changedFields?: string[];
+}
+
+export interface ActivityPageDto {
+  entries: ActivityEntryDto[];
+  nextCursor: string | null;
+  hasMore: boolean;
 }
 
 // --- Serial Number (tahap 5a) ---

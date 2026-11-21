@@ -98,6 +98,11 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     path: '/audit-logs',
     query: { cursor: 'string', limit: 'number', action: 'string', query: 'string' },
   },
+  'activity.list': {
+    verb: 'GET',
+    path: '/activity',
+    query: { kind: 'string', id: 'string', cursor: 'string', limit: 'number' },
+  },
   'access.locations.list': { verb: 'GET', path: '/locations', query: { status: 'string' } },
   'access.locations.get': { verb: 'GET', path: '/locations/{id}', etag: 'updatedAt' },
   'access.locations.save': {
