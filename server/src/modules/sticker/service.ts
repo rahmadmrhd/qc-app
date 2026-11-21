@@ -222,7 +222,8 @@ async function updateStickerType(
     if (existing.name === input.name && existing.rule === input.rule) {
       return toStickerTypeDto(existing);
     }
-    if (existing.rule !== input.rule && existing.stickerCount > 0) {
+    // Hanya stiker HIDUP yang mengunci aturan (keputusan pemilik 2026-11-21; soft delete §9): stiker terhapus tak menahan.
+    if (existing.rule !== input.rule && existing.liveStickerCount > 0) {
       throw appError('VALIDATION', RULE_LOCKED_MESSAGE, { rule: RULE_LOCKED_MESSAGE });
     }
     const now = nowIso(env);
