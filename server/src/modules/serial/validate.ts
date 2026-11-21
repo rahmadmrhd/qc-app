@@ -2,6 +2,7 @@ import { normalizeEmail } from '@server/core/email';
 import { appError } from '@server/core/errors';
 import { readObject } from '@server/core/validate';
 import type {
+  GetSerialCaseInput,
   GetSerialInput,
   ListSerialItemOptionsInput,
   SaveSerialBatchInput,
@@ -261,6 +262,14 @@ export function validateSerialHistory(raw: unknown): SerialHistoryInput {
 }
 
 export function validateGetSerial(raw: unknown): GetSerialInput {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true, max: 100 });
+  reader.done();
+  return { id };
+}
+
+/** Detail laporan: `id` laporan wajib. */
+export function validateGetSerialCase(raw: unknown): GetSerialCaseInput {
   const reader = readObject(raw);
   const id = reader.str('id', { required: true, max: 100 });
   reader.done();

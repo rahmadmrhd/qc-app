@@ -2,7 +2,7 @@ import type { RouteTable } from '@server/core/router';
 import { expectNull, validateIdBatch } from '@server/core/validate';
 import { actOnSerial } from './act';
 import { getSerialSettings, saveSerialSettings } from './alert';
-import { listSerialCases } from './case-list';
+import { getSerialCase, listSerialCases } from './case-list';
 import { serialHistory } from './history';
 import { getProof, removeProof, replaceProof, retryProof, uploadProof } from './proof/service';
 import {
@@ -33,6 +33,7 @@ import {
 import { removeSerial, removeSerialBatch, restoreSerial, restoreSerialBatch } from './soft-delete';
 import {
   validateGetSerial,
+  validateGetSerialCase,
   validateListSerialItemOptions,
   validateSaveSerialBatch,
   validateSaveSerialServiceSettings,
@@ -74,6 +75,7 @@ type SerialMethod =
   | 'serialServiceSettings.get'
   | 'serialServiceSettings.save'
   | 'serialCases.list'
+  | 'serialCases.get'
   | 'serialProofs.upload'
   | 'serialProofs.get'
   | 'serialProofs.remove'
@@ -148,6 +150,12 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       permission: READ_PERMISSION,
       validate: validateSerialCaseList,
       handler: (input, ctx) => listSerialCases(ctx.env, ctx.user, input),
+    },
+    // Detail laporan: izin yang sama dengan daftar; akses = hak baca serial induk (handler; serial terhapus = NOT_FOUND).
+    'serialCases.get': {
+      permission: READ_PERMISSION,
+      validate: validateGetSerialCase,
+      handler: (input, ctx) => getSerialCase(ctx.env, ctx.user, input),
     },
     // Bukti foto QC: unggah, buang, dan coba lagi butuh `serial: edit` (global; BU diperiksa saat foto ditautkan pada
     // Simpan dan pada buang/coba lagi foto yang sudah punya serial). Ambil: pembaca serial atau serialservice; draft hanya

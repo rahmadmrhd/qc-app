@@ -1593,6 +1593,8 @@ export interface ApiContract {
     output: SerialServiceSettingsDto;
   };
   'serialCases.list': { input: SerialCaseListInput; output: SerialCaseListOutput };
+  /** Detail satu laporan; serial induk tak terbaca/terhapus atau id tak ada = `NOT_FOUND` seragam. */
+  'serialCases.get': { input: GetSerialCaseInput; output: SerialCaseDetailDto };
   'serialProofs.upload': { input: UploadSerialProofInput; output: SerialProofPhotoDto };
   'serialProofs.get': { input: GetSerialProofInput; output: SerialProofContentDto };
   'serialProofs.remove': { input: RemoveSerialProofInput; output: { id: string } };
@@ -2239,6 +2241,21 @@ export interface ListSerialItemOptionsInput {
   limit?: number;
   /**
    * Maks. 50 id item. Bila ada (juga kosong), hasilnya tepat item-item itu yang aktif dan beririsan dengan BU dalam
+export interface GetSerialCaseInput {
+  id: string;
+}
+/**
+ * Detail satu laporan: baris daftar + penutup (kosong bila belum ditutup; turunan kejadian `declare_broken` atau
+ * `recheck_pass` pada laporan itu) + status Serial kini (sama dengan `status`).
+ */
+export interface SerialCaseDetailDto extends SerialCaseRowDto {
+  /** Nama pelaku kejadian penutup; tiada bila laporan belum ditutup. */
+  closedBy?: string;
+  /** Tim pelaku penutup (`qc` | `service` | `system`). */
+  closedByTeam?: string;
+  /** Status Serial sekarang. */
+  serialStatus: SerialStatus;
+}
    * cakupan pengguna: pencatat = BU ber-level `serial: edit`; pembaca saja = BU ber-level view atau lebih pada
    * `serial`/`serialservice` (id lain tidak dikembalikan, tanpa galat); `query`, `cursor`, dan `limit` diabaikan.
    */

@@ -352,6 +352,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     expectedUpdatedAt: '2026-11-14T00:00:00.000Z',
     locationIds: ['l1'],
   },
+  'serialCases.get': { id: 'c1' },
   'serialCases.list': { status: 'active', buId: 'b1', query: 'LP-2026', cursor: 'c', limit: 20 },
   'serials.get': { id: 's1' },
   'serialSettings.get': null,

@@ -193,6 +193,7 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'serialServiceSettings.get': true,
   'serialServiceSettings.save': true,
   'serialCases.list': true,
+  'serialCases.get': true,
   'serialProofs.upload': true,
   'serialProofs.get': true,
   'serialProofs.remove': true,
