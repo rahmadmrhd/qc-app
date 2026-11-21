@@ -144,12 +144,12 @@ test('area utama boleh menyusut (min-w-0): tabel lebar menggulir di wadahnya, bu
 });
 
 test('sidebar tersimpan terlipat dirender collapsed; SidebarTrigger menyimpan keadaan terbuka', async () => {
-  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: false, expanded: ['item'] }));
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: false }));
   render(<AppShell />);
   expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'collapsed');
   await userEvent.click(screen.getByRole('button', { name: /Toggle Sidebar/i }));
   expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'expanded');
-  expect(readSidebarState()).toEqual({ open: true, expanded: ['item'] });
+  expect(readSidebarState()).toEqual({ open: true });
 });
 
 test('tanpa penyimpanan sidebar terbuka dan tidak menulis cookie sidebar_state', () => {
@@ -177,5 +177,19 @@ test('butir 41: di ponsel judul ada di header di sebelah tombol menu, tanpa bari
   expect(container.querySelector('[data-slot="phone-breadcrumb"]')).toBeNull();
   expect(container.querySelector('header [data-slot="sidebar-trigger"]')).not.toBeNull();
   expect(container.querySelector('header [aria-label="Ganti tema"]')).toBeNull();
+  window.innerWidth = 1024;
+});
+
+test('B12: pada rentang overlay (768-959 px) sidebar mulai tertutup dan buka/tutup tak mengubah pilihan tersimpan', async () => {
+  window.innerWidth = 800;
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: true }));
+  render(<AppShell />);
+  expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'collapsed');
+  await userEvent.click(screen.getByRole('button', { name: /Toggle Sidebar/i }));
+  expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'expanded');
+  // Pilihan tersimpan (untuk layar lebar) tak berubah.
+  expect(readSidebarState()).toEqual({ open: true });
+  await userEvent.click(screen.getByRole('button', { name: /Toggle Sidebar/i }));
+  expect(readSidebarState()).toEqual({ open: true });
   window.innerWidth = 1024;
 });

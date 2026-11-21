@@ -1,4 +1,4 @@
-import { Link, useMatchRoute } from '@tanstack/react-router';
+import { Link, useMatchRoute, useRouterState } from '@tanstack/react-router';
 import { ChevronRight, Search } from 'lucide-react';
 import { useState } from 'react';
 import { filterNavGroups } from '@/app/nav-search';
@@ -29,14 +29,13 @@ import {
   useSidebar,
 } from '@/components/ui/sidebar';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
-import { isPhoneViewport } from '@/lib/layout';
+import { isSidebarOverlayViewport } from '@/lib/layout';
 import { isDesktop } from '@/lib/platform';
 import { useMe } from '@/modules/auth/use-me';
 import { openInDesktop } from '@/modules/countrylock/lib/handoff';
 import { hasPendingGuide } from '@/modules/guide/lib/guide-for-route';
 import { useOfferedGuides } from '@/modules/guide/lib/use-offered-guides';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
-import { readSidebarState, writeSidebarState } from './sidebar-state';
 
 /** Penanda akordeon ponsel: pengguna menutup semua induk (induk aktif tak boleh membuka diri lagi). */
 const CLOSED_ALL = '__none__';
@@ -52,11 +51,15 @@ export function AppSidebar() {
   const { selectedIds } = useActiveLocations();
   const matchRoute = useMatchRoute();
   const { offers } = useOfferedGuides();
-  const { state, isMobile } = useSidebar();
-  // Ponsel: akordeon, mulai tanpa pilihan tersimpan (induk yang memuat halaman aktif terbuka sendiri).
-  const [expanded, setExpanded] = useState<string[]>(() =>
-    isPhoneViewport() ? [] : readSidebarState().expanded,
-  );
+  const { state, isMobile, setOpen } = useSidebar();
+  // Induk yang dibuka pengguna (selain induk aktif): sementara, tidak disimpan, dan dikosongkan setiap rute berubah
+  // (spek B11). Ponsel: akordeon.
+  const pathname = useRouterState({ select: (router) => router.location.pathname });
+  const [picked, setPicked] = useState<{ path: string; ids: string[] }>({
+    path: pathname,
+    ids: [],
+  });
+  const expanded = picked.path === pathname ? picked.ids : [];
   const iconMode = state === 'collapsed' && !isMobile;
   const stack = useStackNavigation();
   const [query, setQuery] = useState('');
@@ -66,17 +69,17 @@ export function AppSidebar() {
     isNavItemActive(item, (to, fuzzy) => Boolean(matchRoute({ to: to as NavItem['to'], fuzzy })));
 
   function toggleParent(id: string, open: boolean) {
-    setExpanded((current) => {
+    setPicked((current) => {
+      const ids = current.path === pathname ? current.ids : [];
       // Ponsel: akordeon (satu induk terbuka pada satu waktu).
       const next = open
         ? isMobile
           ? [id]
-          : [...current.filter((v) => v !== id), id]
+          : [...ids.filter((v) => v !== id), id]
         : isMobile
           ? [CLOSED_ALL]
-          : current.filter((v) => v !== id);
-      if (!isMobile) writeSidebarState({ ...readSidebarState(), expanded: next });
-      return next;
+          : ids.filter((v) => v !== id);
+      return { path: pathname, ids: next };
     });
   }
 
@@ -104,6 +107,9 @@ export function AppSidebar() {
             event.preventDefault();
             setQuery('');
             stack.replace({ to: item.to });
+          } else if (isSidebarOverlayViewport()) {
+            // Rentang overlay (768-959 px): sidebar yang melayang menutup sendiri setelah memilih butir.
+            setOpen(false);
           }
         }}
       >
@@ -159,7 +165,7 @@ export function AppSidebar() {
       );
     }
 
-    // Induk yang memuat rute aktif selalu terbuka; keadaan pilihan pengguna tetap tersimpan terpisah.
+    // Hanya induk yang memuat rute aktif yang terbuka sendiri; induk lain yang diketuk terbuka sementara.
     // Ponsel (akordeon ketat): setelah pengguna memilih, hanya induk pilihannya yang terbuka; sebelumnya induk aktif.
     const open =
       searching ||
@@ -224,7 +230,7 @@ export function AppSidebar() {
           </div>
         ) : null}
         {filterNavGroups(
-          visibleNavGroups(NAV_GROUPS, me, selectedIds, isDesktop()),
+          visibleNavGroups(NAV_GROUPS, me, selectedIds, isDesktop(), isMobile),
           isMobile ? query : '',
         ).map((group) => (
           <SidebarGroup key={group.label ?? 'tanpa-judul'}>
@@ -247,7 +253,7 @@ export function AppSidebar() {
           </SidebarGroup>
         ))}
         {searching &&
-        filterNavGroups(visibleNavGroups(NAV_GROUPS, me, selectedIds, isDesktop()), query)
+        filterNavGroups(visibleNavGroups(NAV_GROUPS, me, selectedIds, isDesktop(), isMobile), query)
           .length === 0 ? (
           <p className="px-4 py-2 text-sm text-muted-foreground">Tidak ada menu yang cocok.</p>
         ) : null}

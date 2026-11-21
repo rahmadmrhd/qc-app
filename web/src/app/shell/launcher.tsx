@@ -18,7 +18,8 @@ export function Launcher() {
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   const [query, setQuery] = useState('');
-  const groups = visibleNavGroups(NAV_GROUPS, me, selectedIds, isDesktop());
+  // Peluncur hanya tampil di ponsel: butir `hideOnPhone` tak ikut.
+  const groups = visibleNavGroups(NAV_GROUPS, me, selectedIds, isDesktop(), true);
   const tiles = launcherTiles(groups, query);
   return (
     <div className="space-y-4" data-slot="launcher">

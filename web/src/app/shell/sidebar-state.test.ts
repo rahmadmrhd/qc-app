@@ -4,18 +4,18 @@ import { readSidebarState, SIDEBAR_STORAGE_KEY, writeSidebarState } from './side
 beforeEach(() => localStorage.clear());
 afterEach(() => vi.restoreAllMocks());
 
-test('kosong = bawaan terbuka tanpa submenu', () => {
-  expect(readSidebarState()).toEqual({ open: true, expanded: [] });
+test('kosong = bawaan terbuka', () => {
+  expect(readSidebarState()).toEqual({ open: true });
 });
 
 test('JSON rusak = bawaan', () => {
   localStorage.setItem(SIDEBAR_STORAGE_KEY, '{bad');
-  expect(readSidebarState()).toEqual({ open: true, expanded: [] });
+  expect(readSidebarState()).toEqual({ open: true });
 });
 
-test('nilai tersimpan dibaca', () => {
+test('nilai tersimpan dibaca; submenu tersimpan lama (expanded) diabaikan', () => {
   localStorage.setItem(SIDEBAR_STORAGE_KEY, '{"open":false,"expanded":["item"]}');
-  expect(readSidebarState()).toEqual({ open: false, expanded: ['item'] });
+  expect(readSidebarState()).toEqual({ open: false });
 });
 
 test('galat penyimpanan = bawaan, tulis tak melempar', () => {
@@ -25,11 +25,12 @@ test('galat penyimpanan = bawaan, tulis tak melempar', () => {
   vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
     throw new Error('blocked');
   });
-  expect(readSidebarState()).toEqual({ open: true, expanded: [] });
-  expect(() => writeSidebarState({ open: false, expanded: [] })).not.toThrow();
+  expect(readSidebarState()).toEqual({ open: true });
+  expect(() => writeSidebarState({ open: false })).not.toThrow();
 });
 
-test('tulis lalu baca = sama', () => {
-  writeSidebarState({ open: false, expanded: ['item', 'sticker'] });
-  expect(readSidebarState()).toEqual({ open: false, expanded: ['item', 'sticker'] });
+test('tulis lalu baca = sama, tanpa menyimpan submenu', () => {
+  writeSidebarState({ open: false });
+  expect(readSidebarState()).toEqual({ open: false });
+  expect(localStorage.getItem(SIDEBAR_STORAGE_KEY)).toBe('{"open":false}');
 });

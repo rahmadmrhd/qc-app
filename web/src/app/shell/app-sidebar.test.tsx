@@ -17,6 +17,8 @@ vi.mock('@tanstack/react-router', () => ({
     </a>
   ),
   useRouter: () => ({ navigate: () => Promise.resolve() }),
+  useRouterState: ({ select }: { select: (s: { location: { pathname: string } }) => unknown }) =>
+    select({ location: { pathname: state.path } }),
   useMatchRoute:
     () =>
     ({ to, fuzzy }: { to: string; fuzzy?: boolean }) =>
@@ -81,7 +83,8 @@ beforeEach(() => {
 
 describe('AppSidebar titik panduan', () => {
   beforeEach(() => {
-    localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: true, expanded: ['item'] }));
+    // Submenu Item terbuka karena rute aktif berada di bawahnya (pilihan submenu tak lagi disimpan).
+    state.path = '/item';
   });
 
   test('titik muncul pada item yang punya panduan belum selesai, tidak pada item lain', () => {
@@ -111,20 +114,31 @@ describe('AppSidebar titik panduan', () => {
 });
 
 describe('AppSidebar submenu', () => {
-  test('klik induk membuka submenu dan menyimpan id ke qc.sidebar', async () => {
+  test('klik induk membuka submenu sementara dan TIDAK menyimpannya ke qc.sidebar', async () => {
     renderSidebar();
     expect(screen.queryByRole('link', { name: 'Merk' })).toBeNull();
     await userEvent.click(screen.getByRole('button', { name: 'Item' }));
     expect(await screen.findByRole('link', { name: 'Daftar Item' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Merk' })).toBeInTheDocument();
-    expect(readSidebarState().expanded).toContain('item');
+    expect(localStorage.getItem(SIDEBAR_STORAGE_KEY)).toBeNull();
   });
 
   test('rute aktif di bawah induk membuatnya terbuka walau tak tersimpan', () => {
     state.path = '/item/brands';
     renderSidebar();
     expect(screen.getByRole('link', { name: 'Merk' })).toBeInTheDocument();
-    expect(readSidebarState().expanded).toEqual([]);
+    expect(localStorage.getItem(SIDEBAR_STORAGE_KEY)).toBeNull();
+  });
+
+  test('induk yang dibuka pengguna menutup lagi saat rute berubah; hanya induk aktif yang terbuka', async () => {
+    state.path = '/';
+    const view = renderSidebar();
+    await userEvent.click(screen.getByRole('button', { name: 'Item' }));
+    expect(await screen.findByRole('link', { name: 'Merk' })).toBeInTheDocument();
+    // Pindah ke rute yang BUKAN di bawah Item: submenu Item yang dibuka sementara menutup lagi.
+    state.path = '/serial';
+    view.rerender(<Tree />);
+    expect(screen.queryByRole('link', { name: 'Merk' })).toBeNull();
   });
 
   test('butir induk bukan tautan (tanpa href)', () => {

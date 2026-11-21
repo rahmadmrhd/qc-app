@@ -6,6 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { useEdgeSwipe } from '@/hooks/use-edge-swipe';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useFocusIntoView, useVisualViewport } from '@/hooks/use-visual-viewport';
+import { isSidebarOverlayViewport } from '@/lib/layout';
 import { useMe } from '@/modules/auth/use-me';
 import { GuideBanner } from '@/modules/guide/components/guide-banner';
 import { GuideGreeting } from '@/modules/guide/components/guide-greeting';
@@ -52,10 +53,14 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
   const pageWidth = pageWidthOf(matches);
   const locationAware = locationAwareOf(matches);
   // Terkendali (bukan defaultOpen): terbuka/terlipat diingat di localStorage lewat `qc.sidebar`.
-  const [sidebarOpen, setSidebarOpen] = useState(() => readSidebarState().open);
+  // Rentang overlay (768-959 px): sidebar melayang di atas isi, jadi mulai tertutup dan membuka/menutupnya tak
+  // mengubah pilihan tersimpan (yang berlaku untuk layar lebar).
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => readSidebarState().open && !isSidebarOverlayViewport(),
+  );
   const onSidebarOpenChange = useCallback((open: boolean) => {
     setSidebarOpen(open);
-    writeSidebarState({ ...readSidebarState(), open });
+    if (!isSidebarOverlayViewport()) writeSidebarState({ open });
   }, []);
   return (
     <TooltipProvider>

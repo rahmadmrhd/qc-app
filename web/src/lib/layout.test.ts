@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { expect, test } from 'vitest';
-import { MAIN_MIN_WIDTH, VIEWPORT_MD } from './layout';
+import { MAIN_MIN_WIDTH, SIDEBAR_OVERLAY_BELOW, VIEWPORT_MD } from './layout';
 
 const SRC = path.resolve(__dirname, '..');
 
@@ -19,6 +19,18 @@ test('varian CSS touch: memakai ambang viewport dari lib/layout (cermin yang dij
   // Selektor varian harus menunjuk `html` (bukan sembarang leluhur): `:where(:not([data-narrow]))` cocok dengan <body> dan membuat wide: selalu aktif.
   expect(css).toContain('@custom-variant narrow (:where(html[data-narrow="true"]) &);');
   expect(css).toContain('@custom-variant wide (:where(html:not([data-narrow="true"])) &);');
+});
+
+test('varian CSS sidebar-overlay mencerminkan rentang VIEWPORT_MD..SIDEBAR_OVERLAY_BELOW (rem, tanpa literal 768)', () => {
+  const css = readFileSync(path.join(SRC, 'styles.css'), 'utf8');
+  expect(css).toContain(
+    `@media (width >= ${VIEWPORT_MD / 16}rem) and (width < ${SIDEBAR_OVERLAY_BELOW / 16}rem)`,
+  );
+});
+
+test('rentang overlay: spacer = rel ikon (3 rem) membuat <main> >= MAIN_MIN_WIDTH pada viewport terkecil', () => {
+  const iconRail = 3 * 16;
+  expect(VIEWPORT_MD - iconRail).toBeGreaterThanOrEqual(MAIN_MIN_WIDTH);
 });
 
 test('angka ambang 768/704 hanya didefinisikan di lib/layout (tak ada literal lain di sumber)', () => {
