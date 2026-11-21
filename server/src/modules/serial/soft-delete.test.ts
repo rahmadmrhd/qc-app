@@ -478,7 +478,52 @@ describe('push dan aliran SSE untuk serial terhapus', () => {
   });
 });
 
-describe('konkurensi hapus vs tulis (Promise.all)', () => {
+/**
+ * Menyisipkan `action` TEPAT sebelum `batch()` pertama yang memuat pernyataan berisi `marker` (mis. INSERT kejadian):
+ * membuat balapan "dihapus di sela baca dan tulis" deterministik, tanpa bergantung pada waktu `Promise.all`.
+ */
+function beforeBatchWith(marker: string, action: () => Promise<unknown>): void {
+  const original = env.DB.batch.bind(env.DB);
+  env.DB.batch = (async (statements: unknown[]) => {
+    const hit = statements.some((s) => (s as { sql?: string }).sql?.includes(marker));
+    if (!hit) return original(statements as never);
+    env.DB.batch = original as typeof env.DB.batch;
+    await action();
+    return original(statements as never);
+  }) as typeof env.DB.batch;
+}
+
+describe('konkurensi hapus vs tulis (deterministik, tanpa Promise.all)', () => {
+  test('serial dihapus tepat di sela baca dan tulis catatan: aksi ditolak (NOT_FOUND atau CONFLICT), tak ada kejadian tersimpan', async () => {
+    await seedSerial(env, { id: 'sn-gap', serial: 'GAP-1' });
+    const at = String(
+      (await rows('SELECT updated_at FROM serials WHERE id = ?', 'sn-gap'))[0]?.updated_at,
+    );
+    let removed: CallOut | undefined;
+    beforeBatchWith('INSERT INTO serial_events', async () => {
+      removed = await remove('sn-gap');
+    });
+    const acted = await call(WRITER, 'serials.act', {
+      id: 'sn-gap',
+      expectedUpdatedAt: at,
+      action: 'note',
+      occurredOn: '2026-11-12',
+      message: 'catatan sela',
+    });
+    expect(removed?.ok).toBe(true);
+    expect(acted.ok).toBe(false);
+    expect(['NOT_FOUND', 'CONFLICT']).toContain(acted.error?.code);
+    expect(
+      await rows(
+        "SELECT id FROM serial_events WHERE serial_id = ? AND message = 'catatan sela'",
+        'sn-gap',
+      ),
+    ).toHaveLength(0);
+    expect(await auditCount('serial.delete')).toBe(1);
+  });
+});
+
+describe('konkurensi hapus vs tulis (Promise.all; asersi pada invarian, bukan urutan)', () => {
   test('hapus serentak dengan aksi catatan: hapus selalu sukses, aksi sukses (sebelum hapus) atau ditolak; tak ada kejadian menyusul penghapusan', async () => {
     for (let round = 0; round < 4; round += 1) {
       const id = `sn-race-${round}`;

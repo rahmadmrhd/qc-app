@@ -291,7 +291,46 @@ describe('tulis pada task terhapus', () => {
   });
 });
 
-describe('konkurensi hapus vs tulis (Promise.all)', () => {
+/**
+ * Menyisipkan `action` TEPAT sebelum `batch()` pertama yang memuat pernyataan berisi `marker` (mis. INSERT komentar):
+ * membuat balapan "dihapus di sela baca dan tulis" deterministik, tanpa bergantung pada waktu `Promise.all`.
+ */
+function beforeBatchWith(marker: string, action: () => Promise<unknown>): void {
+  const original = env.DB.batch.bind(env.DB);
+  env.DB.batch = (async (statements: unknown[]) => {
+    const hit = statements.some((s) => (s as { sql?: string }).sql?.includes(marker));
+    if (!hit) return original(statements as never);
+    env.DB.batch = original as typeof env.DB.batch;
+    await action();
+    return original(statements as never);
+  }) as typeof env.DB.batch;
+}
+
+describe('konkurensi hapus vs tulis (deterministik, tanpa Promise.all)', () => {
+  test('task dihapus tepat di sela baca dan tulis komentar: NOT_FOUND (bukan VALIDATION), tak ada komentar tersimpan', async () => {
+    const id = await create('- [ ] A = 1');
+    let removed: Result | undefined;
+    beforeBatchWith('INSERT INTO handover_comments', async () => {
+      removed = await remove(id);
+    });
+    const commented = await call(QC, 'handovers.comment', {
+      ...ref(id),
+      quote: '',
+      before: '',
+      after: '',
+      body: 'Komentar sela',
+    });
+    expect(removed?.ok).toBe(true);
+    expect(commented.ok).toBe(false);
+    expect(commented.error?.code).toBe('NOT_FOUND');
+    expect(
+      await countOf('SELECT COUNT(*) AS n FROM handover_comments WHERE handover_id = ?', id),
+    ).toBe(0);
+    expect(await auditCount('handover.delete')).toBe(1);
+  });
+});
+
+describe('konkurensi hapus vs tulis (Promise.all; asersi pada invarian, bukan urutan)', () => {
   test('komentar dan centang serentak dengan hapus: tak pernah VALIDATION; hapus selalu sukses; komentar tersimpan hanya bila sukses', async () => {
     for (let round = 0; round < 4; round += 1) {
       const id = await create('- [ ] A = 1\n- [ ] B = 2', `PT Race ${round}`);
