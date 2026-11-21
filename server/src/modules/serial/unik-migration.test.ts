@@ -1,5 +1,6 @@
 // Tes migrasi 0026 (serial unik se-sistem): backfill riwayat BU, kolom `client_id`, dan indeks unik `serials_serial`
 // yang dibuat BERSYARAT oleh `ensureSerialUniqueIndex` (bukan migrasi) terhadap MariaDB nyata (butuh `bun run db:tunnel`).
+// Sejak migrasi contract 0030 penjaganya `serials_serial_live (serial, deleted_at)`; `serials_serial` lama tak lagi dibuat.
 import { afterAll, beforeAll, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { createDb, type Db } from '@server/core/db';
 import type { Env } from '@server/core/env';
@@ -7,7 +8,8 @@ import { applyMigrations, loadMigrations } from '@server/core/migrate';
 import { newTestSchemaName, testDbUrl } from '@server-test/db-env';
 import { ensureSerialUniqueIndex } from './bu-history';
 
-setDefaultTimeout(60_000);
+// Tiap tes menerapkan puluhan migrasi lewat terowongan SSH (latensi tinggi, terukur 8-60 dtk): batas longgar.
+setDefaultTimeout(120_000);
 
 const URL_NO_DB = testDbUrl();
 const MIGRATION = '0026_serial_unik_sistem.sql';
@@ -21,7 +23,7 @@ beforeAll(() => {
 afterAll(async () => {
   for (const name of created) await admin.exec(`DROP DATABASE IF EXISTS \`${name}\``);
   await admin.close();
-}, 60_000);
+}, 120_000);
 
 /** Skema baru dengan semua migrasi SEBELUM 0026; mengembalikan `Db` dan SQL 0026. */
 async function schemaBefore(): Promise<{ db: Db; sql: string }> {
@@ -57,7 +59,7 @@ const insertSerial = (db: Db, id: string, bu: string, serial: string, createdAt:
 const hasUnique = async (db: Db): Promise<boolean> => {
   const row = await db
     .prepare(
-      "SELECT COUNT(*) AS n FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'serials' AND index_name = 'serials_serial' AND non_unique = 0",
+      "SELECT COUNT(*) AS n FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'serials' AND index_name = 'serials_serial_live' AND non_unique = 0",
     )
     .first<{ n: number | string }>();
   return Number(row?.n) > 0;

@@ -9,8 +9,12 @@ import { baseIndexName } from './index-names';
 
 const SRC = join(import.meta.dir, '..');
 
-/** Indeks yang tidak dibuat migrasi (dibuat server saat start oleh `ensureSerialUniqueIndex`; bersyarat). */
-const CREATED_AT_BOOT = new Set(['serials_serial']);
+/**
+ * Indeks yang dikelola server saat start oleh `ensureSerialUniqueIndex`, bukan migrasi: `serials_serial_live` dibuat
+ * bersyarat (nama dasar `serials_serial`), sedangkan `serials_serial` dan `serials_bu_serial` lama dibuang setelah itu
+ * tetapi peta konflik tetap menyebutnya selama data lama mungkin masih ber-indeks itu (ada serial ganda lintas BU).
+ */
+const CREATED_AT_BOOT = new Set(['serials_serial', 'serials_bu_serial']);
 
 function sourceFiles(dir: string): string[] {
   const out: string[] = [];

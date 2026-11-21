@@ -160,24 +160,4 @@ describe('customer terhapus dan Serah Terima', () => {
       expect((await listCustomerDtos(env, null, admin)).map((c) => c.name)).toEqual(['PT Ulang']);
     });
   });
-
-  // Selama indeks unik lama `customers_key` belum dibuang (migrasi contract di fase 4d), nama customer terhapus belum
-  // dapat dipakai ulang di basis data: simpan task harus berakhir sebagai galat terkendali (percobaan CAS terbatas),
-  // bukan menggantung atau 500, dan tidak meninggalkan task/customer setengah jadi.
-  test('skema saat ini (indeks lama masih ada): nama customer terhapus berakhir CONFLICT terkendali, tanpa sisa', async () => {
-    await seedCustomer(env, { id: 'c-lama', name: 'PT Tertahan', status: 'inactive' });
-    await removeCustomer(env, { id: 'c-lama' }, admin);
-    const created = await call('wh@gmail.com', 'handovers.save', {
-      locationId: ENV.locA,
-      customerName: 'PT Tertahan',
-      note: 'x',
-    });
-    expect(created.ok).toBe(false);
-    expect(created.error.code).toBe('CONFLICT');
-    const tasks = await env.DB.prepare('SELECT COUNT(*) AS n FROM handovers').first<{
-      n: number;
-    }>();
-    expect(Number(tasks?.n)).toBe(0);
-    expect((await listCustomerDtos(env, null, admin)).length).toBe(0);
-  });
 });

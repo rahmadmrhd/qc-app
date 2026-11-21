@@ -42,7 +42,7 @@ const hasNamedIndex = (name: string) =>
     .first<{ n: number | string }>()
     .then((r) => Number(r?.n) > 0);
 
-const hasIndex = () => hasNamedIndex('serials_serial');
+const hasIndex = () => hasNamedIndex('serials_serial_live');
 
 /** Lepas kedua indeks unik serial (lama dan `_live`) agar serial ganda dapat disisipkan; `afterEach` memulihkannya. */
 const dropSerialIndexes = async () => {
@@ -84,23 +84,26 @@ describe('backfillSerialBusinessUnits', () => {
 });
 
 describe('ensureSerialUniqueIndex', () => {
-  test('tanpa serial ganda: sudah ada (dari migrasi) lalu dibuat ulang setelah dihapus, idempoten', async () => {
+  test('tanpa serial ganda: sudah ada (dari templat) lalu dibuat ulang setelah dihapus, idempoten', async () => {
     expect(await ensureSerialUniqueIndex(env)).toBe('exists');
-    await env.DB.prepare('DROP INDEX serials_serial ON serials').run();
+    await env.DB.prepare('DROP INDEX serials_serial_live ON serials').run();
     expect(await hasIndex()).toBe(false);
     expect(await ensureSerialUniqueIndex(env)).toBe('created');
     expect(await hasIndex()).toBe(true);
     expect(await ensureSerialUniqueIndex(env)).toBe('exists');
   });
 
-  test('tanpa serial ganda: kedua indeks (serials_serial dan serials_serial_live) dibuat; salah satunya hilang = dilengkapi', async () => {
+  test('setelah contract hanya serials_serial_live yang ada; indeks lama (serials_serial, serials_bu_serial) tak dibuat dan dibuang bila tersisa', async () => {
+    expect(await hasNamedIndex('serials_serial_live')).toBe(true);
+    expect(await hasNamedIndex('serials_serial')).toBe(false);
+    expect(await hasNamedIndex('serials_bu_serial')).toBe(false);
+    await env.DB.prepare('CREATE UNIQUE INDEX serials_serial ON serials (serial)').run();
+    expect(await ensureSerialUniqueIndex(env)).toBe('exists');
+    expect(await hasNamedIndex('serials_serial')).toBe(false);
     await dropSerialIndexes();
     expect(await ensureSerialUniqueIndex(env)).toBe('created');
-    expect(await hasNamedIndex('serials_serial')).toBe(true);
     expect(await hasNamedIndex('serials_serial_live')).toBe(true);
-    await env.DB.prepare('DROP INDEX serials_serial_live ON serials').run();
-    expect(await ensureSerialUniqueIndex(env)).toBe('created');
-    expect(await hasNamedIndex('serials_serial_live')).toBe(true);
+    expect(await hasNamedIndex('serials_serial')).toBe(false);
   });
 
   test('serial ganda lintas BU: duplicates tanpa galat dan tanpa mengubah data; dibuat setelah gandanya hilang', async () => {

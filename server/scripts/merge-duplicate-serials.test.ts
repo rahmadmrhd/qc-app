@@ -37,9 +37,6 @@ afterEach(async () => {
   // Skema dipakai bersama tes lain dalam proses ini: kembalikan indeks unik.
   await env.DB.prepare('DELETE FROM serials').run();
   await env.DB.prepare(
-    'CREATE UNIQUE INDEX IF NOT EXISTS serials_serial ON serials (serial)',
-  ).run();
-  await env.DB.prepare(
     'CREATE UNIQUE INDEX IF NOT EXISTS serials_serial_live ON serials (serial, deleted_at)',
   ).run();
 });

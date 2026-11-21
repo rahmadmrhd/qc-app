@@ -45,7 +45,7 @@ describe('jenis stiker: kolom 4a', () => {
     await seedStickerType(env, { id: 'mb1', name: 'MB 1', systemKind: 'manual_book' });
     await expect(
       seedStickerType(env, { id: 'mb2', name: 'MB 2', systemKind: 'manual_book' }),
-    ).rejects.toMatchObject({ kind: 'duplicate', key: 'sticker_types_kind_unique' });
+    ).rejects.toMatchObject({ kind: 'duplicate', key: 'sticker_types_kind_unique_live' });
     await seedStickerType(env, { id: 'k1', name: 'K 1' });
     await seedStickerType(env, { id: 'k2', name: 'K 2' });
     await seedStickerType(env, { id: 'pt', name: 'Postel', systemKind: 'postel' });

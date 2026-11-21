@@ -27,7 +27,7 @@
 // pelaku, pesan, data) tidak pernah diubah.
 //
 // Setelah selesai tanpa sisa serial ganda, mulai ulang server (atau jalankan `ensureSerialUniqueIndex`) agar indeks unik
-// `serials_serial` dibuat. Laporan CSV berisi Serial Number: JANGAN di-commit.
+// `serials_serial_live` dibuat (dan indeks lama `serials_serial`/`serials_bu_serial` dibuang). Laporan CSV berisi Serial Number: JANGAN di-commit.
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createDb, type Db, type DbTx } from '@server/core/db';
@@ -402,7 +402,7 @@ async function main(): Promise<void> {
         `Masih ada ${manual.length} serial yang perlu ditangani manual; indeks unik belum dapat dibuat.`,
       );
     } else {
-      console.log('Mulai ulang server agar indeks unik serials_serial dibuat.');
+      console.log('Mulai ulang server agar indeks unik serials_serial_live dibuat.');
     }
   } finally {
     await db.close();

@@ -1,4 +1,5 @@
-// Migrasi 0027 (soft delete, tahap expand): kolom deleted_at/deleted_by dan indeks unik `_live` di samping indeks lama.
+// Migrasi 0027 (soft delete, tahap expand): kolom deleted_at/deleted_by dan indeks unik `_live`; indeks lama dibuang oleh
+// migrasi contract 0030 (soft-delete-contract.test.ts).
 import { expect, test } from 'bun:test';
 import { DbError } from '@server/core/db';
 import { createTestEnv } from '@server-test/test-env';
@@ -104,7 +105,7 @@ test('users_email tetap unik penuh tanpa padanan _live', async () => {
   expect(full[0]?.Column_name).toBe('email');
 });
 
-test('expand-only: indeks lama brands_key masih menolak kunci sama walau deleted_at berbeda', async () => {
+test('contract (0030): indeks lama brands_key sudah dibuang; kunci sama dengan deleted_at berbeda boleh berdampingan', async () => {
   const env = await createTestEnv();
   const insert = (id: string, deletedAt: string) =>
     env.DB.prepare(
@@ -113,9 +114,11 @@ test('expand-only: indeks lama brands_key masih menolak kunci sama walau deleted
       .bind(id, deletedAt)
       .run();
   await insert('b1', '2026-01-01T00:00:00.000Z');
+  await insert('b2', '');
+  // Hanya dua baris hidup berkunci sama yang ditolak (rincian lengkap per indeks: soft-delete-contract.test.ts).
   let error: unknown;
   try {
-    await insert('b2', '');
+    await insert('b3', '');
   } catch (e) {
     error = e;
   }

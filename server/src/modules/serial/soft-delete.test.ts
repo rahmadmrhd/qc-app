@@ -265,7 +265,7 @@ describe('penyaringan serial terhapus di pembaca', () => {
     expect((await call(WRITER, 'serials.history', { id: 'sn1' })).error?.code).toBe('NOT_FOUND');
     const seen = await call(MGR_AB, 'serials.get', { id: 'sn1' });
     expect(seen.ok).toBe(true);
-    expect(seen.data.deleted).toEqual({ deletedAt: NOW, deletedBy: MGR_ALL });
+    expect(seen.data.serial.deleted).toEqual({ deletedAt: NOW, deletedBy: MGR_ALL });
     const deletedList = await call(MGR_AB, 'serials.list', { deleted: true });
     expect(deletedList.data.items.map((item: Json) => item.id)).toEqual(['sn1']);
     expect(deletedList.data.items[0].deleted).toEqual({ deletedAt: NOW, deletedBy: MGR_ALL });
@@ -301,7 +301,9 @@ describe('penyaringan serial terhapus di pembaca', () => {
       {},
       { ...env, clientIp: '203.0.113.10' },
     );
-    expect(await gone.json()).toEqual(await unknown.json());
+    // Isi sama persis kecuali `requestId` (nomor acak per respons).
+    const withoutRequestId = ({ requestId: _ignored, ...rest }: Json) => rest;
+    expect(withoutRequestId(await gone.json())).toEqual(withoutRequestId(await unknown.json()));
     expect((await restore('sn1')).ok).toBe(true);
     expect((await fetchReport()).status).toBe(200);
   });

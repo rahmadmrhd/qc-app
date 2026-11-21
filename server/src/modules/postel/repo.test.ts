@@ -135,12 +135,12 @@ describe('postel_numbers', () => {
       insertPostelNumberStmt(env.DB, numberRecord({ id: 'n2', seq: 2 })).run(),
     );
     expect(same.kind).toBe('duplicate');
-    expect(same.key).toBe('postel_numbers_key');
+    expect(same.key).toBe('postel_numbers_key_live');
     const cross = await failureOf(
       insertPostelNumberStmt(env.DB, numberRecord({ id: 'n3', postelId: 'p2', seq: 1 })).run(),
     );
     expect(cross.kind).toBe('duplicate');
-    expect(cross.key).toBe('postel_numbers_key');
+    expect(cross.key).toBe('postel_numbers_key_live');
   });
 
   test('(postel_id, seq) ganda gagal pada postel_numbers_seq', async () => {

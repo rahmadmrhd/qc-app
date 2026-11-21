@@ -260,15 +260,15 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
   'server/src/modules/serial/alert-job.ts#locations@1#b86989f3':
     'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
   'server/src/modules/serial/bu-history.ts#serials@1#9e00df83':
-    'Semua baris serial dihitung tanpa penyaring keadaan: indeks unik lama `serials_serial` menjangkau baris terhapus juga (jadi syarat pembuatannya menghitung semuanya), pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus agar tetap benar saat dipulihkan.',
-  'server/src/modules/serial/bu-history.ts#serials@2#55c321bc':
-    'Semua baris serial dihitung tanpa penyaring keadaan: indeks unik lama `serials_serial` menjangkau baris terhapus juga (jadi syarat pembuatannya menghitung semuanya), pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus agar tetap benar saat dipulihkan.',
+    'Semua baris serial dihitung tanpa penyaring keadaan: pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus juga agar tetap benar saat dipulihkan.',
+  'server/src/modules/serial/bu-history.ts#serials@2#235821af':
+    'Semua baris serial dihitung tanpa penyaring keadaan: indeks unik `serials_serial_live (serial, deleted_at)` menjangkau baris terhapus juga, jadi syarat pembuatannya mengelompokkan SEMUA baris menurut (`serial`, `deleted_at`); serial terhapus dan hidup berkunci sama bukan ganda.',
   'server/src/modules/serial/bu-history.ts#serials@3#4ac5b74b':
-    'Semua baris serial dihitung tanpa penyaring keadaan: indeks unik lama `serials_serial` menjangkau baris terhapus juga (jadi syarat pembuatannya menghitung semuanya), pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus agar tetap benar saat dipulihkan.',
+    'Semua baris serial dihitung tanpa penyaring keadaan: pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus juga agar tetap benar saat dipulihkan.',
   'server/src/modules/serial/bu-history.ts#serials@4#7bbf50f9':
-    'Semua baris serial dihitung tanpa penyaring keadaan: indeks unik lama `serials_serial` menjangkau baris terhapus juga (jadi syarat pembuatannya menghitung semuanya), pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus agar tetap benar saat dipulihkan.',
+    'Semua baris serial dihitung tanpa penyaring keadaan: pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus juga agar tetap benar saat dipulihkan.',
   'server/src/modules/serial/bu-history.ts#serials@5#616ca633':
-    'Semua baris serial dihitung tanpa penyaring keadaan: indeks unik lama `serials_serial` menjangkau baris terhapus juga (jadi syarat pembuatannya menghitung semuanya), pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus agar tetap benar saat dipulihkan.',
+    'Semua baris serial dihitung tanpa penyaring keadaan: pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus juga agar tetap benar saat dipulihkan.',
   'server/src/modules/serial/case-list.ts#locations@1#9fc6c564':
     'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
   'server/src/modules/serial/case-list.ts#business_units@1#9fc6c564':
