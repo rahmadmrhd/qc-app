@@ -1,128 +1,204 @@
-import { assignmentKey } from '@shared/assignments';
-import { ALL_BU_KEY } from '@shared/business-units';
 import type { UserDto } from '@shared/contract';
+import type { ReactNode } from 'react';
+import { type DataColumn, DataTable, LinkCell, type RowAction } from '@/components/data-table';
+import type { RowSelection } from '@/components/data-table/use-row-selection';
+import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { formatStamp } from '@/lib/format-stamp';
+import type { AssignmentLabels } from '../lib/assignment-labels';
+import { AssignmentChips } from './assignment-chips';
+
+export const SELF_STATUS_REASON = 'Tidak dapat menonaktifkan akun Anda sendiri';
+export const SELF_DELETE_REASON = 'Tidak dapat menghapus akun Anda sendiri';
 
 export interface UsersTableProps {
   users: readonly UserDto[];
-  roleNames: ReadonlyMap<string, string>;
-  locationNames: ReadonlyMap<string, string>;
-  businessUnitNames: ReadonlyMap<string, string>;
+  labels: AssignmentLabels;
+  /** Tampilan "Terhapus": satu-satunya aksi baris dan massal adalah Pulihkan. */
+  deletedView?: boolean;
   canManage: boolean;
+  /** Tautan lokasi/BU/role pada penugasan hanya bila pengguna berhak membuka View-nya. */
+  canOpenLocation?: boolean;
+  canOpenBusinessUnit?: boolean;
+  canOpenRole?: boolean;
   currentEmail: string;
-  pendingStatusId: string | null;
+  /** Ada = kolom checkbox (hanya bagi pemegang `access: manage`). */
+  selection?: RowSelection;
+  pendingId?: string | null;
   onEdit: (user: UserDto) => void;
   onToggleStatus: (user: UserDto) => void;
+  onDelete: (user: UserDto) => void;
+  onRestore: (user: UserDto) => void;
+  filtered?: boolean;
+  onClearFilters?: () => void;
+  emptyAction?: ReactNode;
+  isLoading?: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
+/**
+ * Tabel pengguna (kit CRUD): [checkbox][Aksi][Email -> View + Akun bersama][Nama][Penugasan][Penugasan BU][Status].
+ * Di ponsel menjadi kartu: email = judul, status = badge, sisanya meta. Halaman (`routes/_app/access/users/index.tsx`)
+ * memegang dialog, filter, dan bar aksi massal.
+ */
 export function UsersTable({
   users,
-  roleNames,
-  locationNames,
-  businessUnitNames,
+  labels,
+  deletedView = false,
   canManage,
+  canOpenLocation = false,
+  canOpenBusinessUnit = false,
+  canOpenRole = false,
   currentEmail,
-  pendingStatusId,
+  selection,
+  pendingId = null,
   onEdit,
   onToggleStatus,
+  onDelete,
+  onRestore,
+  filtered,
+  onClearFilters,
+  emptyAction,
+  isLoading,
+  isError,
+  onRetry,
 }: UsersTableProps) {
+  const columns: DataColumn<UserDto>[] = [
+    {
+      id: 'email',
+      header: 'Email',
+      mobile: 'title',
+      cell: (user) => (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <LinkCell to="/access/users/$userId" params={{ userId: user.id }}>
+            {user.email}
+          </LinkCell>
+          {user.sharedAccount ? <Badge variant="outline">Akun bersama</Badge> : null}
+          {user.deleted ? <DeletedBadge /> : null}
+        </span>
+      ),
+    },
+    { id: 'name', header: 'Nama', cell: (user) => user.name },
+    {
+      id: 'assignments',
+      header: 'Penugasan',
+      cell: (user) => (
+        <AssignmentChips
+          kind="location"
+          entries={user.assignments.map((entry) => ({
+            scopeId: entry.locationId,
+            roleIds: entry.roleIds,
+          }))}
+          labels={labels}
+          canOpenScope={canOpenLocation}
+          canOpenRole={canOpenRole}
+        />
+      ),
+    },
+    {
+      id: 'buAssignments',
+      header: 'Penugasan BU',
+      cell: (user) => (
+        <AssignmentChips
+          kind="businessUnit"
+          entries={user.buAssignments.map((entry) => ({
+            scopeId: entry.buId,
+            roleIds: entry.roleIds,
+          }))}
+          labels={labels}
+          canOpenScope={canOpenBusinessUnit}
+          canOpenRole={canOpenRole}
+        />
+      ),
+    },
+    // Tampilan Terhapus (soft delete 4.5): "Dihapus oleh" dan "Dihapus pada" menggantikan Status (selalu Nonaktif).
+    ...(deletedView
+      ? ([
+          {
+            id: 'deletedBy',
+            header: 'Dihapus oleh',
+            cell: (user) => user.deleted?.deletedBy ?? '—',
+          },
+          {
+            id: 'deletedAt',
+            header: 'Dihapus pada',
+            cell: (user) => (user.deleted ? formatStamp(user.deleted.deletedAt) : '—'),
+          },
+        ] satisfies DataColumn<UserDto>[])
+      : ([
+          {
+            id: 'status',
+            header: 'Status',
+            cell: (user) => <ActiveStatusBadge status={user.status} />,
+          },
+        ] satisfies DataColumn<UserDto>[])),
+  ];
+
+  const actions = (user: UserDto): RowAction[] => {
+    const busy = pendingId === user.id;
+    const isSelf = user.email === currentEmail;
+    if (user.deleted || deletedView) {
+      return [
+        {
+          id: 'restore',
+          action: 'restore',
+          label: `Pulihkan ${user.email}`,
+          hidden: !canManage,
+          busy,
+          onSelect: () => onRestore(user),
+        },
+      ];
+    }
+    return [
+      {
+        id: 'edit',
+        action: 'edit',
+        label: `Ubah ${user.email}`,
+        hidden: !canManage,
+        onSelect: () => onEdit(user),
+      },
+      {
+        id: 'status',
+        action: user.status === 'active' ? 'deactivate' : 'activate',
+        label: `${user.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'} ${user.email}`,
+        hidden: !canManage,
+        busy,
+        disabled: isSelf && user.status === 'active',
+        disabledReason: SELF_STATUS_REASON,
+        onSelect: () => onToggleStatus(user),
+      },
+      {
+        id: 'delete',
+        action: 'delete',
+        label: `Hapus ${user.email}`,
+        // Hanya pengguna Nonaktif yang dapat dihapus; akun sendiri tetap tampil sebagai aksi nonaktif beralasan.
+        hidden: !canManage || (user.status !== 'inactive' && !isSelf),
+        busy,
+        disabled: isSelf,
+        disabledReason: SELF_DELETE_REASON,
+        onSelect: () => onDelete(user),
+      },
+    ];
+  };
+
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Email</TableHead>
-            <TableHead>Nama</TableHead>
-            <TableHead>Penugasan</TableHead>
-            <TableHead>Penugasan BU</TableHead>
-            <TableHead>Status</TableHead>
-            {canManage ? <TableHead className="text-right">Aksi</TableHead> : null}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {users.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={canManage ? 6 : 5} className="text-center text-muted-foreground">
-                Tidak ada user yang cocok.
-              </TableCell>
-            </TableRow>
-          ) : null}
-          {users.map((user) => {
-            const isSelf = user.email === currentEmail;
-            return (
-              <TableRow key={user.id}>
-                <TableCell className="font-medium">{user.email}</TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <span>{user.name}</span>
-                    {user.sharedAccount ? <Badge variant="outline">Akun bersama</Badge> : null}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {user.assignments.length === 0 ? (
-                      <span className="text-muted-foreground">—</span>
-                    ) : null}
-                    {user.assignments.map((entry) => (
-                      <Badge key={assignmentKey(entry.locationId)} variant="outline">
-                        {`${
-                          entry.locationId === null
-                            ? 'Semua lokasi'
-                            : (locationNames.get(entry.locationId) ?? '(lokasi tidak dikenal)')
-                        }: ${entry.roleIds.map((id) => roleNames.get(id) ?? '(role dihapus)').join(', ')}`}
-                      </Badge>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-wrap gap-1">
-                    {user.buAssignments.length === 0 ? (
-                      <span className="text-muted-foreground">—</span>
-                    ) : null}
-                    {user.buAssignments.map((entry) => (
-                      <Badge key={entry.buId ?? ALL_BU_KEY} variant="outline">
-                        {`${
-                          entry.buId === null
-                            ? 'Semua BU'
-                            : (businessUnitNames.get(entry.buId) ?? '(BU tidak dikenal)')
-                        }: ${entry.roleIds.map((id) => roleNames.get(id) ?? '(role dihapus)').join(', ')}`}
-                      </Badge>
-                    ))}
-                  </div>
-                </TableCell>
-                <TableCell>
-                  <ActiveStatusBadge status={user.status} />
-                </TableCell>
-                {canManage ? (
-                  <TableCell className="space-x-2 text-right">
-                    <Button size="sm" variant="outline" onClick={() => onEdit(user)}>
-                      Ubah
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      disabled={pendingStatusId === user.id || (isSelf && user.status === 'active')}
-                      onClick={() => onToggleStatus(user)}
-                    >
-                      {user.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
-                    </Button>
-                  </TableCell>
-                ) : null}
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </div>
+    <DataTable
+      rows={users}
+      rowKey={(user) => user.id}
+      columns={columns}
+      label="Daftar pengguna"
+      selectLabel={(user) => user.email}
+      selection={selection}
+      actions={canManage ? actions : undefined}
+      empty="Belum ada pengguna."
+      filtered={filtered}
+      onClearFilters={onClearFilters}
+      emptyAction={emptyAction}
+      isLoading={isLoading}
+      isError={isError}
+      onRetry={onRetry}
+    />
   );
 }

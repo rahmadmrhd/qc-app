@@ -1,5 +1,7 @@
 import type { HandoverDto } from '@shared/contract';
+import type { ReactNode } from 'react';
 import { useState } from 'react';
+import { LinkCell } from '@/components/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatAuditTime } from '@/modules/access/lib/audit-actions';
@@ -14,6 +16,8 @@ export interface HandoverDetailViewProps {
   /** Pemilik antrean centang di perangkat (email akun); kosong = tanpa penempelan centang tertunda. */
   owner?: string;
   locationName: string;
+  /** Nama customer menaut ke View customer (`/customer/$customerId`); hanya bagi pengguna dengan `item: view`. */
+  canOpenCustomer?: boolean;
   /** WH: `handover: edit` di lokasi task. */
   canEdit: boolean;
   /** WH: `handover: manage` di lokasi task (Batalkan dan Buka kembali task Dibatalkan). */
@@ -35,7 +39,7 @@ export interface HandoverDetailViewProps {
   }) => Promise<void> | void;
 }
 
-function Meta({ label, value }: { label: string; value: string }) {
+function Meta({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
       <dt className="text-xs text-muted-foreground">{label}</dt>
@@ -48,6 +52,7 @@ export function HandoverDetailView({
   handover: serverHandover,
   owner = '',
   locationName,
+  canOpenCustomer = false,
   canEdit,
   canCancel,
   canProgress,
@@ -117,7 +122,18 @@ export function HandoverDetailView({
 
       <dl className="grid gap-3 rounded-lg border p-4 sm:grid-cols-3">
         <Meta label="Lokasi" value={locationName} />
-        <Meta label="Customer" value={handover.customerName || 'Tanpa customer'} />
+        <Meta
+          label="Customer"
+          value={
+            canOpenCustomer && handover.customerId && handover.customerName ? (
+              <LinkCell to="/customer/$customerId" params={{ customerId: handover.customerId }}>
+                {handover.customerName}
+              </LinkCell>
+            ) : (
+              handover.customerName || 'Tanpa customer'
+            )
+          }
+        />
         <Meta label="Progres" value={total > 0 ? `${checked}/${total}` : 'Tanpa checklist'} />
       </dl>
 

@@ -7,13 +7,18 @@ import { BusinessUnitForm } from './business-unit-form';
 function renderForm(props: Partial<Parameters<typeof BusinessUnitForm>[0]> = {}) {
   const onSubmit = vi.fn(async () => undefined);
   render(
-    <BusinessUnitForm
-      mode="create"
-      defaultValues={toBusinessUnitFormDefaults()}
-      onSubmit={onSubmit}
-      onCancel={() => undefined}
-      {...props}
-    />,
+    <>
+      <BusinessUnitForm
+        formId="f"
+        mode="create"
+        defaultValues={toBusinessUnitFormDefaults()}
+        onSubmit={onSubmit}
+        {...props}
+      />
+      <button type="submit" form="f">
+        Simpan
+      </button>
+    </>,
   );
   return { onSubmit };
 }

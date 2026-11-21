@@ -101,9 +101,12 @@ function ItemDetailPage() {
   }
 
   function changeTab(next: ItemTab) {
+    // `from` mengunci tipe search ke rute ini (tanpa itu `to: '.'` memakai gabungan search semua rute, dan param `tab`
+    // halaman View lain yang bernilai berbeda membuat tipenya bentrok).
     void navigate({
+      from: Route.fullPath,
       to: '.',
-      search: (prev: { tab?: ItemTab }) => ({ ...prev, tab: next }),
+      search: (prev) => ({ ...prev, tab: next }),
       replace: true,
     });
   }

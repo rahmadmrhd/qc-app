@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { describeError } from '@/lib/api/describe-error';
+import { customerLinkAccess } from '@/lib/link-access';
 import { canAt, locationsWith } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
@@ -88,6 +89,7 @@ export function HandoverBoardPage({
       canCancel: canAt(me, 'handover', 'manage', handover.locationId),
       pending: isPending(handover.id),
       locationName: readable.length > 1 ? locationNames.get(handover.locationId) : undefined,
+      canOpenCustomer: customerLinkAccess(me).openCustomerHref !== undefined,
       onOpen: () => onOpen(handover.id),
       onCheck: (item: { index: number; text: string }, checked: boolean) =>
         checks.toggle(ref, item, checked),

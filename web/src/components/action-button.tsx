@@ -2,6 +2,7 @@ import {
   CheckSquare,
   Copy,
   Download,
+  Eye,
   LoaderCircle,
   type LucideIcon,
   Pencil,
@@ -37,7 +38,8 @@ export type ActionKind =
   | 'print'
   | 'copy'
   | 'refresh'
-  | 'select';
+  | 'select'
+  | 'view';
 
 type ActionSpec = {
   icon: LucideIcon;
@@ -152,6 +154,13 @@ export const ACTIONS: Record<ActionKind, ActionSpec> = {
     label: 'Pilih',
     color: 'secondary',
     variant: 'ghost',
+    compactVariant: 'ghost',
+  },
+  view: {
+    icon: Eye,
+    label: 'Lihat',
+    color: 'secondary',
+    variant: 'soft',
     compactVariant: 'ghost',
   },
 };

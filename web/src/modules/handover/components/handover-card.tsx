@@ -2,6 +2,7 @@ import type { HandoverDto } from '@shared/contract';
 import { MoreHorizontal } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useState } from 'react';
+import { LinkCell } from '@/components/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -33,6 +34,8 @@ export interface HandoverCardProps {
   /** Ada centang task INI yang sedang disimpan ke server (tampilan sudah berubah; penanda halus). */
   saving?: boolean;
   locationName?: string;
+  /** Nama customer menaut ke View customer (`/customer/$customerId`); hanya bagi pengguna dengan `item: view`. */
+  canOpenCustomer?: boolean;
   /**
    * Memasang `data-tour="handover-checklist"` (bawaan true). Kartu contoh di demo tooltip (`guide/`) mematikannya
    * agar tur tak pernah menyorot kartu contoh sebagai ganti kartu sungguhan.
@@ -84,6 +87,7 @@ export function HandoverCard({
   pending,
   saving = false,
   locationName,
+  canOpenCustomer = false,
   tourTarget = true,
   onOpen,
   onCheck,
@@ -125,6 +129,10 @@ export function HandoverCard({
             <p className="break-words text-sm">
               {handover.customerName === '' ? (
                 <span className="text-muted-foreground">Tanpa customer</span>
+              ) : canOpenCustomer && handover.customerId ? (
+                <LinkCell to="/customer/$customerId" params={{ customerId: handover.customerId }}>
+                  {handover.customerName}
+                </LinkCell>
               ) : (
                 handover.customerName
               )}

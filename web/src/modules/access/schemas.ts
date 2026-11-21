@@ -87,11 +87,18 @@ export const roleFormSchema = z.object({
 export type RoleFormInput = z.input<typeof roleFormSchema>;
 export type RoleFormOutput = z.output<typeof roleFormSchema>;
 
-/** `knownRoleIds`: role yang masih ada — role basi dibuang, dan penugasan yang jadi kosong ikut dibuang. */
+/**
+ * `knownRoleIds`: role HIDUP: role lain yang tak dikenal dibuang, dan penugasan yang jadi kosong ikut dibuang. Role
+ * TERHAPUS yang masih tertaut pada pengguna (`user.deletedRoleIds`) DIPERTAHANKAN: rujukan tersimpan tak boleh hilang
+ * diam-diam saat simpan (keputusan T1; form menandainya "Terhapus" dan server menerimanya selama tak berubah).
+ */
 export function toUserFormDefaults(
   user?: UserDto,
   knownRoleIds?: readonly string[],
 ): UserFormInput {
+  const deletedRoleIds = user?.deletedRoleIds ?? [];
+  const keepRole = (id: string) =>
+    !knownRoleIds || knownRoleIds.includes(id) || deletedRoleIds.includes(id);
   return user
     ? {
         email: user.email,
@@ -101,13 +108,13 @@ export function toUserFormDefaults(
         assignments: user.assignments
           .map((entry) => ({
             locationId: assignmentKey(entry.locationId),
-            roleIds: entry.roleIds.filter((id) => !knownRoleIds || knownRoleIds.includes(id)),
+            roleIds: entry.roleIds.filter(keepRole),
           }))
           .filter((entry) => entry.roleIds.length > 0),
         buAssignments: user.buAssignments
           .map((entry) => ({
             buId: entry.buId ?? ALL_BU_KEY,
-            roleIds: entry.roleIds.filter((id) => !knownRoleIds || knownRoleIds.includes(id)),
+            roleIds: entry.roleIds.filter(keepRole),
           }))
           .filter((entry) => entry.roleIds.length > 0),
       }
@@ -153,7 +160,9 @@ export function toBusinessUnitFormDefaults(
   return { code: businessUnit?.code ?? '', name: businessUnit?.name ?? '' };
 }
 
-export function toLocationFormDefaults(location?: LocationDto): LocationFormInput {
+export function toLocationFormDefaults(
+  location?: Pick<LocationDto, 'code' | 'name'>,
+): LocationFormInput {
   return { code: location?.code ?? '', name: location?.name ?? '' };
 }
 
