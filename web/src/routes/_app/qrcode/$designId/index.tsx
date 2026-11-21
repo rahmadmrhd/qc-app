@@ -8,7 +8,7 @@ import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dia
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
-import { itemLinkAccess } from '@/lib/link-access';
+import { itemLinkAccess, qrPresetLinkAccess } from '@/lib/link-access';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { QR_VIEW_TABS, QrDesignView } from '@/modules/qrcode/components/qr-design-view';
@@ -130,6 +130,7 @@ function QrDesignDetailPage() {
       <QrDesignView
         design={design}
         presetName={preset.data?.name}
+        canOpenPreset={qrPresetLinkAccess(me).openPresetHref !== undefined}
         canEdit={canEdit}
         canManage={canManage}
         canOpenItem={itemAccess.openItemHref !== undefined}

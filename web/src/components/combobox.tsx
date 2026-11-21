@@ -40,6 +40,8 @@ export interface ComboboxCommon {
   searchDebounceMs?: number;
   /** Baris "Tambah {label}" di bawah daftar saran, hanya bila disediakan (mis. membuka dialog form master). */
   onCreate?: () => void;
+  /** Teks pada baris "Tambah …" bila label field tidak cocok dibaca di sana (bawaan: `label`). */
+  createLabel?: string;
   /** Tautan ke record (tab baru); `null` = tidak ada tautan. Mode banyak pilihan: label chip menjadi tautan. */
   openHref?: (id: string) => string | null;
   error?: string;
@@ -220,6 +222,7 @@ export function ComboboxBase({
   onSearchChange,
   searchDebounceMs,
   onCreate,
+  createLabel,
   error,
   disabled,
   multi,
@@ -610,7 +613,7 @@ export function ComboboxBase({
                         onClick={create}
                       >
                         <Plus className="size-4" aria-hidden />
-                        Tambah {label}
+                        Tambah {createLabel ?? label}
                       </div>
                     </div>
                   ) : null}

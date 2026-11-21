@@ -11,6 +11,7 @@ import {
   qrPresetDeviations,
 } from '@shared/qrcode';
 import { useForm, useStore } from '@tanstack/react-form';
+import { useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
@@ -21,6 +22,7 @@ import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
 import { useFileUrl } from '@/modules/files/queries';
 import { ItemFormDialog } from '@/modules/item/components/item-form-dialog';
 import { limitDocumentName } from '../lib/document-name';
@@ -44,6 +46,7 @@ import { LabelStatusAlerts } from './label-status-alerts';
 import { LogoPicker } from './logo-picker';
 import { PdfSourceField } from './pdf-source-field';
 import { PresetDeviationBanner } from './preset-deviation-banner';
+import { QrPresetFormDialog } from './qr-preset-form-dialog';
 import { SheetPreviewDialog } from './sheet-preview-dialog';
 import { TextStyleToolbar } from './text-style-toolbar';
 
@@ -125,6 +128,10 @@ export interface QrDesignFormProps {
   openItemHref?: (id: string) => string | null;
   /** Boleh membuka View item terhapus (`itemLinkAccess(...).canOpenDeleted`); selain itu item terhapus tanpa tautan. */
   canOpenDeletedItem?: boolean;
+  /** Tautan buka konfigurasi default pada pemilih preset (`qrPresetLinkAccess`); tanpa hak = tanpa tautan. */
+  openPresetHref?: ((id: string) => string) | undefined;
+  /** Boleh menambah konfigurasi default dari pemilih preset (`qrPresetLinkAccess(...).canCreate`): baris "Tambah preset". */
+  canCreatePreset?: boolean;
   /** Boleh menambah item dari pemilih item (`itemLinkAccess(...).canCreate`): memunculkan baris "Tambah Item". */
   canCreateItem?: boolean;
   /** Ubah/duplikat: konfigurasi default yang dapat diterapkan ulang (tombol "Perbarui sesuai konfigurasi default"). */
@@ -206,6 +213,8 @@ export function QrDesignForm({
   openItemHref,
   canOpenDeletedItem,
   canCreateItem = false,
+  canCreatePreset = false,
+  openPresetHref,
   businessUnits = [],
   takenBuIds,
   submitError,
@@ -320,6 +329,19 @@ export function QrDesignForm({
   }, [lockedPart, nameValue, form]);
 
   const [itemDialogOpen, setItemDialogOpen] = useState(false);
+  const [presetDialogOpen, setPresetDialogOpen] = useState(false);
+  // "Tambah preset": hanya untuk BU item yang belum punya preset (satu preset per BU); tanpa BU seperti itu = tanpa baris.
+  const businessUnitsQuery = useQuery({
+    ...businessUnitOptionsQueryOptions(),
+    enabled: newFlow && canCreatePreset,
+  });
+  const presetlessBus = (businessUnitsQuery.data ?? []).filter(
+    (unit) =>
+      unit.status === 'active' &&
+      itemBuIds.has(unit.id) &&
+      !(presets ?? []).some((preset) => preset.buId === unit.id),
+  );
+  const canAddPreset = newFlow && canCreatePreset && presetlessBus.length > 0;
 
   function changeItems(next: PickedItem[]) {
     setSelected(next);
@@ -440,6 +462,13 @@ export function QrDesignForm({
                 onSearchChange={setPresetTerm}
                 searchDebounceMs={0}
                 onChange={(id) => setChosenPreset(id ?? '')}
+                onCreate={canAddPreset ? () => setPresetDialogOpen(true) : undefined}
+                createLabel="preset"
+                openHref={
+                  openPresetHref
+                    ? (id) => (id === NO_PRESET ? null : openPresetHref(id))
+                    : undefined
+                }
               />
               <p className="text-xs text-muted-foreground">
                 {candidates.length > 1
@@ -1105,6 +1134,16 @@ export function QrDesignForm({
           if (pending) void onSubmit(pending.values, pending.options);
         }}
       />
+      {presetDialogOpen ? (
+        // Dirender di luar `<form>` (seperti dialog item): submit dialog lewat portal React tak boleh naik ke form QR.
+        <QrPresetFormDialog
+          open
+          onOpenChange={setPresetDialogOpen}
+          businessUnits={presetlessBus}
+          logoLibrary={logoLibrary}
+          onCreated={(preset) => setChosenPreset(preset.id)}
+        />
+      ) : null}
       {canCreateItem ? (
         // Dirender di luar `<form>`: submit dialog lewat portal React tidak boleh naik ke form QR.
         <ItemFormDialog

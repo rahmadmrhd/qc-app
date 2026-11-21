@@ -39,9 +39,10 @@ function NewQrPresetPage() {
     setSubmitError(null);
     setFieldErrors({});
     try {
-      await save.mutateAsync(toSaveQrPresetInput(values));
+      const saved = await save.mutateAsync(toSaveQrPresetInput(values));
       toast.success('Konfigurasi default disimpan');
-      stack.replace({ to: '/qrcode/default' });
+      // Tambah = replace ke View record baru (butir 41c).
+      stack.replace({ to: '/qrcode/default/$presetId', params: { presetId: saved.id } });
     } catch (error) {
       const picked = pickFieldErrors(error, QR_PRESET_FIELD_KEYS);
       if (Object.keys(picked).length > 0) setFieldErrors(picked);

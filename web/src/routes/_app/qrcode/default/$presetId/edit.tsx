@@ -23,7 +23,16 @@ export const Route = createFileRoute('/_app/qrcode/default/$presetId/edit')({
       const name = queryClient
         .getQueryData(qrDefaultsQueryOptions().queryKey)
         ?.presets.find((preset) => preset.id === params.presetId)?.name;
-      return name ? [{ label: name }, { label: 'Ubah' }] : { label: 'Ubah' };
+      return name
+        ? [
+            {
+              label: name,
+              to: '/qrcode/default/$presetId',
+              params: { presetId: params.presetId ?? '' },
+            },
+            { label: 'Ubah' },
+          ]
+        : { label: 'Ubah' };
     },
   },
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'qrcode', 'manage'),
@@ -55,7 +64,8 @@ function EditQrPresetPage() {
     try {
       await save.mutateAsync(toSaveQrPresetInput(values, presetId, loadedAt));
       toast.success('Konfigurasi default disimpan');
-      stack.pop({ to: '/qrcode/default' });
+      // Ubah = kembali ke View asal (butir 41c).
+      stack.pop({ to: '/qrcode/default/$presetId', params: { presetId } });
     } catch (error) {
       const picked = pickFieldErrors(error, QR_PRESET_FIELD_KEYS);
       if (Object.keys(picked).length > 0) setFieldErrors(picked);
@@ -88,7 +98,7 @@ function EditQrPresetPage() {
       submitError={submitError}
       fieldErrors={fieldErrors}
       onSubmit={handleSubmit}
-      onCancel={() => stack.pop({ to: '/qrcode/default' })}
+      onCancel={() => stack.pop({ to: '/qrcode/default/$presetId', params: { presetId } })}
     />
   );
 }

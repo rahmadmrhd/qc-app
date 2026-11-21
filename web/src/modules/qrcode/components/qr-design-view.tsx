@@ -20,6 +20,8 @@ export interface QrDesignViewProps {
   design: QrDesignDto | undefined;
   /** Nama konfigurasi default asal (dari `qrcodes.getPreset`); kosong = tak diketahui/tanpa preset. */
   presetName?: string | undefined;
+  /** Nama konfigurasi default menaut ke View-nya hanya bila pengguna berhak (`qrPresetLinkAccess`). */
+  canOpenPreset?: boolean;
   canEdit?: boolean;
   canManage?: boolean;
   /** Nama item menaut ke View item hanya bila pengguna berhak. */
@@ -72,6 +74,7 @@ function ExportBadge({ design }: { design: QrDesignDto }) {
 export function QrDesignView({
   design,
   presetName,
+  canOpenPreset = false,
   canEdit = false,
   canManage = false,
   canOpenItem = true,
@@ -124,7 +127,16 @@ export function QrDesignView({
               value:
                 design.presetId === '' ? null : (
                   <span className="inline-flex flex-wrap items-center gap-1.5">
-                    {presetName ?? 'Konfigurasi default'}
+                    {canOpenPreset ? (
+                      <LinkCell
+                        to="/qrcode/default/$presetId"
+                        params={{ presetId: design.presetId }}
+                      >
+                        {presetName ?? 'Konfigurasi default'}
+                      </LinkCell>
+                    ) : (
+                      (presetName ?? 'Konfigurasi default')
+                    )}
                     {design.presetDeleted ? <DeletedBadge /> : null}
                   </span>
                 ),

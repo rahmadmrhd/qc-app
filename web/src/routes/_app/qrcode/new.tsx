@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
-import { itemLinkAccess } from '@/lib/link-access';
+import { itemLinkAccess, qrPresetLinkAccess } from '@/lib/link-access';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
@@ -60,6 +60,8 @@ function NewQrDesignPage() {
       presets={defaults.presets}
       openItemHref={itemLinkAccess(me).openItemHref}
       canCreateItem={itemLinkAccess(me).canCreate}
+      canCreatePreset={qrPresetLinkAccess(me).canCreate}
+      openPresetHref={qrPresetLinkAccess(me).openPresetHref}
       canOpenDeletedItem={itemLinkAccess(me).canOpenDeleted}
       submitError={submitError}
       fieldErrors={fieldErrors}

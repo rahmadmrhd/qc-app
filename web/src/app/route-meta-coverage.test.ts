@@ -79,6 +79,7 @@ const DEFAULT_WIDTH = [
   '/qrcode/$designId',
   '/qrcode/$designId/edit',
   '/qrcode/default',
+  '/qrcode/default/$presetId',
   '/qrcode/default/$presetId/edit',
   '/qrcode/default/new',
   '/qrcode/new',

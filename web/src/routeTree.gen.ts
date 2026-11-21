@@ -55,6 +55,7 @@ import { Route as AppQrcodeDesignIdEditRouteImport } from './routes/_app/qrcode/
 import { Route as AppQrcodeDefaultIndexRouteImport } from './routes/_app/qrcode/default/index'
 import { Route as AppQrcodeDefaultNewRouteImport } from './routes/_app/qrcode/default/new'
 import { Route as AppSerialSerialIdIndexRouteImport } from './routes/_app/serial/$serialId/index'
+import { Route as AppQrcodeDefaultPresetIdIndexRouteImport } from './routes/_app/qrcode/default/$presetId/index'
 import { Route as AppQrcodeDefaultPresetIdEditRouteImport } from './routes/_app/qrcode/default/$presetId/edit'
 
 const AppRoute = AppRouteImport.update({
@@ -290,6 +291,12 @@ const AppSerialSerialIdIndexRoute = AppSerialSerialIdIndexRouteImport.update({
   path: '/serial/$serialId/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppQrcodeDefaultPresetIdIndexRoute =
+  AppQrcodeDefaultPresetIdIndexRouteImport.update({
+    id: '/qrcode/default/$presetId/',
+    path: '/qrcode/default/$presetId/',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppQrcodeDefaultPresetIdEditRoute =
   AppQrcodeDefaultPresetIdEditRouteImport.update({
     id: '/qrcode/default/$presetId/edit',
@@ -344,6 +351,7 @@ export interface FileRoutesByFullPath {
   '/qrcode/default/': typeof AppQrcodeDefaultIndexRoute
   '/serial/$serialId/': typeof AppSerialSerialIdIndexRoute
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
+  '/qrcode/default/$presetId/': typeof AppQrcodeDefaultPresetIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/country-lock': typeof CountryLockRoute
@@ -392,6 +400,7 @@ export interface FileRoutesByTo {
   '/qrcode/default': typeof AppQrcodeDefaultIndexRoute
   '/serial/$serialId': typeof AppSerialSerialIdIndexRoute
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
+  '/qrcode/default/$presetId': typeof AppQrcodeDefaultPresetIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -442,6 +451,7 @@ export interface FileRoutesById {
   '/_app/qrcode/default/': typeof AppQrcodeDefaultIndexRoute
   '/_app/serial/$serialId/': typeof AppSerialSerialIdIndexRoute
   '/_app/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
+  '/_app/qrcode/default/$presetId/': typeof AppQrcodeDefaultPresetIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -492,6 +502,7 @@ export interface FileRouteTypes {
     | '/qrcode/default/'
     | '/serial/$serialId/'
     | '/qrcode/default/$presetId/edit'
+    | '/qrcode/default/$presetId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/country-lock'
@@ -540,6 +551,7 @@ export interface FileRouteTypes {
     | '/qrcode/default'
     | '/serial/$serialId'
     | '/qrcode/default/$presetId/edit'
+    | '/qrcode/default/$presetId'
   id:
     | '__root__'
     | '/_app'
@@ -589,6 +601,7 @@ export interface FileRouteTypes {
     | '/_app/qrcode/default/'
     | '/_app/serial/$serialId/'
     | '/_app/qrcode/default/$presetId/edit'
+    | '/_app/qrcode/default/$presetId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -922,6 +935,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppSerialSerialIdIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/qrcode/default/$presetId/': {
+      id: '/_app/qrcode/default/$presetId/'
+      path: '/qrcode/default/$presetId'
+      fullPath: '/qrcode/default/$presetId/'
+      preLoaderRoute: typeof AppQrcodeDefaultPresetIdIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/qrcode/default/$presetId/edit': {
       id: '/_app/qrcode/default/$presetId/edit'
       path: '/qrcode/default/$presetId/edit'
@@ -976,6 +996,7 @@ interface AppRouteChildren {
   AppQrcodeDefaultIndexRoute: typeof AppQrcodeDefaultIndexRoute
   AppSerialSerialIdIndexRoute: typeof AppSerialSerialIdIndexRoute
   AppQrcodeDefaultPresetIdEditRoute: typeof AppQrcodeDefaultPresetIdEditRoute
+  AppQrcodeDefaultPresetIdIndexRoute: typeof AppQrcodeDefaultPresetIdIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -1023,6 +1044,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppQrcodeDefaultIndexRoute: AppQrcodeDefaultIndexRoute,
   AppSerialSerialIdIndexRoute: AppSerialSerialIdIndexRoute,
   AppQrcodeDefaultPresetIdEditRoute: AppQrcodeDefaultPresetIdEditRoute,
+  AppQrcodeDefaultPresetIdIndexRoute: AppQrcodeDefaultPresetIdIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
