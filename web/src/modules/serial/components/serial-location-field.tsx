@@ -1,7 +1,10 @@
-import type { SerialLocationOptionDto } from '@shared/contract';
+import type { MeDto, SerialLocationOptionDto } from '@shared/contract';
 import { normalizeKey } from '@shared/items';
+import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { LinkField } from '@/components/link-field';
+import { locationLinkAccess } from '@/lib/link-access';
+import { meQueryKey } from '@/modules/auth/queries';
 import { toLocationOptions } from '../lib/locations';
 import { useSerialLocations } from '../lib/use-serial-locations';
 
@@ -23,7 +26,10 @@ export interface SerialLocationFieldProps {
   locations?: readonly SerialLocationOptionDto[];
 }
 
-/** Pilih lokasi serial (`LinkField`, tanpa Tambah dan Buka). */
+/**
+ * Pilih lokasi serial (`LinkField`, tanpa Tambah). Buka ke View lokasi hanya bila pemakai berhak (`access: view`,
+ * `locationLinkAccess`; keputusan pemilik 18); `me` dibaca dari cache (selalu termuat saat boot), tanpa suspend.
+ */
 export function SerialLocationField({
   id,
   label,
@@ -39,6 +45,8 @@ export function SerialLocationField({
   locations: restrictTo,
 }: SerialLocationFieldProps) {
   const { locations: known, isPending } = useSerialLocations();
+  const me = useQueryClient().getQueryData<MeDto>(meQueryKey);
+  const openHref = locationLinkAccess(me).openLocationHref;
   const locations = restrictTo ?? known;
   const [term, setTerm] = useState('');
   const all = toLocationOptions(locations);
@@ -62,6 +70,7 @@ export function SerialLocationField({
       onChange={(next) =>
         onChange(next ?? '', all.find((option) => option.id === next)?.label ?? '')
       }
+      openHref={openHref}
       {...(hideLabel !== undefined ? { hideLabel } : {})}
       {...(className !== undefined ? { className } : {})}
       {...(error !== undefined ? { error } : {})}

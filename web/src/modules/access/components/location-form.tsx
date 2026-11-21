@@ -1,29 +1,33 @@
 import { useForm, useStore } from '@tanstack/react-form';
+import { useEffect } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { LocationFormInput, LocationFormOutput } from '../schemas';
 import { locationFormSchema } from '../schemas';
 
 export interface LocationFormProps {
+  /** Id elemen `<form>`: tombol Simpan ada di luar form (footer dialog) dan memakai `form={formId}`. */
+  formId: string;
   mode: 'create' | 'edit';
   defaultValues: LocationFormInput;
   submitError?: string | null;
   /** Galat per field dari server (mis. kode sudah dipakai). */
   fieldErrors?: { code?: string; name?: string };
   onSubmit: (values: LocationFormOutput) => Promise<unknown>;
-  onCancel: () => void;
+  /** Proses simpan berjalan atau tidak (untuk tombol Simpan di luar form). */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 export function LocationForm({
+  formId,
   mode,
   defaultValues,
   submitError,
   fieldErrors,
   onSubmit,
-  onCancel,
+  onBusyChange,
 }: LocationFormProps) {
   const form = useForm({
     defaultValues,
@@ -33,9 +37,12 @@ export function LocationForm({
     },
   });
   useUnsavedChanges(useStore(form.store, (state) => state.isDirty && !state.isSubmitSuccessful));
+  const submitting = useStore(form.store, (state) => state.isSubmitting);
+  useEffect(() => onBusyChange?.(submitting), [submitting, onBusyChange]);
 
   return (
     <form
+      id={formId}
       noValidate
       className="space-y-4"
       onSubmit={(event) => {
@@ -88,18 +95,8 @@ export function LocationForm({
           {submitError}
         </p>
       ) : null}
-      <div className="flex justify-end gap-2">
-        <Button type="button" variant="outline" onClick={onCancel}>
-          Batal
-        </Button>
-        <form.Subscribe selector={(state) => state.isSubmitting}>
-          {(isSubmitting) => (
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Menyimpan…' : 'Simpan'}
-            </Button>
-          )}
-        </form.Subscribe>
-      </div>
+      {/* Penerima Enter di kolom isian: tombol Simpan sebenarnya ada di footer dialog (di luar form). */}
+      <button type="submit" hidden tabIndex={-1} aria-hidden />
     </form>
   );
 }

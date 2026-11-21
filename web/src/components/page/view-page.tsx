@@ -2,6 +2,7 @@ import { Link, type LinkProps } from '@tanstack/react-router';
 import { Ellipsis } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { ACTIONS, ActionButton, type ActionKind } from '@/components/action-button';
+import { DisabledReason } from '@/components/disabled-reason';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -28,6 +29,8 @@ export interface ViewAction {
   label?: string;
   onSelect: () => void;
   disabled?: boolean;
+  /** Alasan aksi nonaktif: tooltip + teks pembaca layar (desktop, bar bawah) dan keterangan di menu overflow. */
+  disabledReason?: string;
   busy?: boolean;
   hidden?: boolean;
   /** Aksi utama di bar bawah ponsel (bawaan: aksi pertama yang terlihat). */
@@ -116,14 +119,18 @@ export function ViewPage({
               {actions}
               {desktop
                 ? visibleActions.map((entry) => (
-                    <ActionButton
+                    <DisabledReason
                       key={entry.id}
-                      action={entry.action}
-                      label={entry.label}
-                      busy={entry.busy}
-                      disabled={entry.disabled}
-                      onClick={entry.onSelect}
-                    />
+                      reason={entry.disabled ? entry.disabledReason : undefined}
+                    >
+                      <ActionButton
+                        action={entry.action}
+                        label={entry.label}
+                        busy={entry.busy}
+                        disabled={entry.disabled}
+                        onClick={entry.onSelect}
+                      />
+                    </DisabledReason>
                   ))
                 : null}
             </div>
@@ -141,14 +148,18 @@ export function ViewPage({
       </div>
       {!desktop && primaryAction ? (
         <StickyActionBar label="Aksi halaman" busy={visibleActions.some((entry) => entry.busy)}>
-          <ActionButton
-            action={primaryAction.action}
-            label={primaryAction.label}
-            busy={primaryAction.busy}
-            disabled={primaryAction.disabled}
-            onClick={primaryAction.onSelect}
-            className="flex-1"
-          />
+          <DisabledReason
+            reason={primaryAction.disabled ? primaryAction.disabledReason : undefined}
+          >
+            <ActionButton
+              action={primaryAction.action}
+              label={primaryAction.label}
+              busy={primaryAction.busy}
+              disabled={primaryAction.disabled}
+              onClick={primaryAction.onSelect}
+              className="flex-1"
+            />
+          </DisabledReason>
           {menuActions.length > 0 ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -167,7 +178,16 @@ export function ViewPage({
                       onSelect={entry.onSelect}
                     >
                       <Icon aria-hidden />
-                      {entry.label ?? ACTIONS[entry.action].label}
+                      {entry.disabled && entry.disabledReason ? (
+                        <span className="flex min-w-0 flex-col">
+                          {entry.label ?? ACTIONS[entry.action].label}
+                          <span className="text-xs font-normal text-muted-foreground">
+                            {entry.disabledReason}
+                          </span>
+                        </span>
+                      ) : (
+                        (entry.label ?? ACTIONS[entry.action].label)
+                      )}
                     </DropdownMenuItem>
                   );
                 })}

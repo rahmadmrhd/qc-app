@@ -9,7 +9,7 @@ import {
 /**
  * Tautan "buka record" dan izin "tambah" pada field relasi (`LinkField`/`LinkMultiField`). Semuanya hanya untuk UX
  * (penegakan ada di server): tombol/baris hanya muncul bila user berhak, dan "buka" mengarah ke halaman LIHAT record
- * (bukan daftar). Model tanpa halaman lihat (jenis stiker, preset QR, lokasi, role) tidak punya tautan buka.
+ * (bukan daftar). Model tanpa halaman lihat (jenis stiker, preset QR) tidak punya tautan buka.
  * Satu tempat untuk semua form agar aturan Tambah/Buka sama di mana pun field relasi itu muncul.
  */
 
@@ -20,6 +20,38 @@ export function businessUnitLinkAccess(me: MeDto | null | undefined) {
       ? (id: string) => `/access/business-units/${encodeURIComponent(id)}`
       : undefined,
     canCreateBusinessUnit: can(me, 'access', 'manage'),
+  };
+}
+
+/**
+ * Lokasi: halaman lihat (`/access/locations/$locationId`) butuh `access: view`; tambah butuh `access: manage` (sama
+ * dengan halaman Lokasi; keputusan pemilik 18). `LocationField` (form tulis modul berlokasi) tetap tanpa Tambah/Buka.
+ */
+export function locationLinkAccess(me: MeDto | null | undefined) {
+  return {
+    openLocationHref: can(me, 'access', 'view')
+      ? (id: string) => `/access/locations/${encodeURIComponent(id)}`
+      : undefined,
+    canCreateLocation: can(me, 'access', 'manage'),
+  };
+}
+
+/** Role: halaman lihat (`/access/roles/$roleId`) butuh `access: view`; tambah butuh `access: manage`. */
+export function roleLinkAccess(me: MeDto | null | undefined) {
+  return {
+    openRoleHref: can(me, 'access', 'view')
+      ? (id: string) => `/access/roles/${encodeURIComponent(id)}`
+      : undefined,
+    canCreateRole: can(me, 'access', 'manage'),
+  };
+}
+
+/** Customer: halaman lihat (`/customer/$customerId`) butuh `item: view` (izin tak diubah; keputusan pemilik 15c). */
+export function customerLinkAccess(me: MeDto | null | undefined) {
+  return {
+    openCustomerHref: can(me, 'item', 'view')
+      ? (id: string) => `/customer/${encodeURIComponent(id)}`
+      : undefined,
   };
 }
 

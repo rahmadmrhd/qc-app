@@ -1,5 +1,6 @@
 import { Ellipsis } from 'lucide-react';
 import { ACTIONS, ActionButton, type ActionKind } from '@/components/action-button';
+import { DisabledReason } from '@/components/disabled-reason';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -16,6 +17,8 @@ export interface RowAction {
   label: string;
   onSelect: () => void;
   disabled?: boolean;
+  /** Alasan aksi nonaktif: tooltip + teks pembaca layar (desktop) dan baris keterangan di menu ponsel. */
+  disabledReason?: string;
   busy?: boolean;
   hidden?: boolean;
 }
@@ -33,15 +36,16 @@ export function RowActions({ name, actions }: { name: string; actions: readonly 
     return (
       <div className="flex items-center gap-0.5">
         {visible.map((entry) => (
-          <ActionButton
-            key={entry.id}
-            action={entry.action}
-            label={entry.label}
-            compact
-            busy={entry.busy}
-            disabled={entry.disabled}
-            onClick={entry.onSelect}
-          />
+          <DisabledReason key={entry.id} reason={entry.disabled ? entry.disabledReason : undefined}>
+            <ActionButton
+              action={entry.action}
+              label={entry.label}
+              compact
+              busy={entry.busy}
+              disabled={entry.disabled}
+              onClick={entry.onSelect}
+            />
+          </DisabledReason>
         ))}
       </div>
     );
@@ -65,7 +69,16 @@ export function RowActions({ name, actions }: { name: string; actions: readonly 
               onSelect={entry.onSelect}
             >
               <Icon aria-hidden />
-              {entry.label}
+              {entry.disabled && entry.disabledReason ? (
+                <span className="flex min-w-0 flex-col">
+                  {entry.label}
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {entry.disabledReason}
+                  </span>
+                </span>
+              ) : (
+                entry.label
+              )}
             </DropdownMenuItem>
           );
         })}
