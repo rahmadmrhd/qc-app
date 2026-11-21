@@ -2,6 +2,8 @@ import type { StickerStockDto, StockEntryDto } from '@shared/contract';
 import type { StockCount, StockEntryKind } from '@shared/stickers';
 import { formatStockQty } from '@shared/stickers';
 import { useInfiniteQuery } from '@tanstack/react-query';
+import { MobileCard } from '@/components/mobile/mobile-card';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -18,6 +20,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { describeError } from '@/lib/api/describe-error';
 import { formatAuditTime } from '@/modules/access/lib/audit-actions';
 import { stockHistoryQuery } from '../queries';
@@ -50,7 +53,75 @@ export interface StockHistoryProps {
   onLoadMore: () => void;
 }
 
-/** Riwayat stok satu stiker (terbaru lebih dulu), berhalaman kursor server. */
+/**
+ * Satu entri riwayat sebagai kartu ponsel (`MobileCard`): jenis entri sebagai judul dan waktu sebagai subjudul, lalu
+ * meta berlabel (perubahan, stok sesudah, lokasi, oleh, alasan). Stok sesudah negatif diberi lencana "Kurang".
+ */
+function StockHistoryCard({
+  entry,
+  locationName,
+  showLocation,
+}: {
+  entry: StockEntryDto;
+  locationName: string;
+  showLocation: boolean;
+}) {
+  const counted = describeCount(entry.count);
+  return (
+    <MobileCard
+      title={KIND_LABEL[entry.kind]}
+      subtitle={formatAuditTime(entry.ts)}
+      badges={
+        entry.qtyAfter < 0
+          ? [
+              <Badge key="short" variant="soft" color="destructive">
+                Stok kurang
+              </Badge>,
+            ]
+          : []
+      }
+      meta={[
+        {
+          id: 'delta',
+          label: 'Perubahan',
+          value: <span className="tabular-nums">{signed(entry.delta)}</span>,
+        },
+        {
+          id: 'after',
+          label: 'Stok sesudah',
+          value: (
+            <span className={`tabular-nums${entry.qtyAfter < 0 ? ' text-destructive-text' : ''}`}>
+              {formatStockQty(entry.qtyAfter)}
+            </span>
+          ),
+        },
+        ...(showLocation ? [{ id: 'location', label: 'Lokasi', value: locationName }] : []),
+        { id: 'actor', label: 'Oleh', value: entry.actor },
+        ...(entry.reason !== '' || counted !== ''
+          ? [
+              {
+                id: 'reason',
+                label: 'Alasan',
+                value: (
+                  <>
+                    {entry.reason !== '' ? <div>{entry.reason}</div> : null}
+                    {counted !== '' ? (
+                      <div className="text-xs text-muted-foreground">{counted}</div>
+                    ) : null}
+                  </>
+                ),
+              },
+            ]
+          : []),
+      ]}
+    />
+  );
+}
+
+/**
+ * Riwayat stok satu stiker (terbaru lebih dulu), berhalaman kursor server. Di < 768 px berbentuk daftar kartu
+ * (konsisten dengan daftar lain di ponsel); >= 768 px tabel.
+ */
 export function StockHistory({
   entries,
   locationNames,
@@ -59,60 +130,80 @@ export function StockHistory({
   loadingMore,
   onLoadMore,
 }: StockHistoryProps) {
+  const isMobile = useIsMobile();
   return (
     <div className="space-y-3">
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Waktu</TableHead>
-              <TableHead>Jenis</TableHead>
-              {showLocation ? <TableHead>Lokasi</TableHead> : null}
-              <TableHead className="text-right">Perubahan</TableHead>
-              <TableHead className="text-right">Stok sesudah</TableHead>
-              <TableHead>Alasan</TableHead>
-              <TableHead>Oleh</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {entries.length === 0 ? (
+      {isMobile ? (
+        entries.length === 0 ? (
+          <p className="text-center text-sm text-muted-foreground">Belum ada riwayat.</p>
+        ) : (
+          <ul className="space-y-2" data-slot="stock-history-cards">
+            {entries.map((entry) => (
+              <StockHistoryCard
+                key={entry.id}
+                entry={entry}
+                locationName={locationNames.get(entry.locationId) ?? entry.locationId}
+                showLocation={showLocation}
+              />
+            ))}
+          </ul>
+        )
+      ) : (
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
               <TableRow>
-                <TableCell
-                  colSpan={showLocation ? 7 : 6}
-                  className="text-center text-muted-foreground"
-                >
-                  Belum ada riwayat.
-                </TableCell>
+                <TableHead>Waktu</TableHead>
+                <TableHead>Jenis</TableHead>
+                {showLocation ? <TableHead>Lokasi</TableHead> : null}
+                <TableHead className="text-right">Perubahan</TableHead>
+                <TableHead className="text-right">Stok sesudah</TableHead>
+                <TableHead>Alasan</TableHead>
+                <TableHead>Oleh</TableHead>
               </TableRow>
-            ) : null}
-            {entries.map((entry) => {
-              const counted = describeCount(entry.count);
-              return (
-                <TableRow key={entry.id}>
-                  <TableCell className="whitespace-nowrap">{formatAuditTime(entry.ts)}</TableCell>
-                  <TableCell>{KIND_LABEL[entry.kind]}</TableCell>
-                  {showLocation ? (
-                    <TableCell>{locationNames.get(entry.locationId) ?? entry.locationId}</TableCell>
-                  ) : null}
-                  <TableCell className="text-right tabular-nums">{signed(entry.delta)}</TableCell>
+            </TableHeader>
+            <TableBody>
+              {entries.length === 0 ? (
+                <TableRow>
                   <TableCell
-                    className={`text-right tabular-nums${entry.qtyAfter < 0 ? ' text-destructive-text' : ''}`}
+                    colSpan={showLocation ? 7 : 6}
+                    className="text-center text-muted-foreground"
                   >
-                    {formatStockQty(entry.qtyAfter)}
+                    Belum ada riwayat.
                   </TableCell>
-                  <TableCell>
-                    {entry.reason !== '' ? <div>{entry.reason}</div> : null}
-                    {counted !== '' ? (
-                      <div className="text-xs text-muted-foreground">{counted}</div>
-                    ) : null}
-                  </TableCell>
-                  <TableCell>{entry.actor}</TableCell>
                 </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
+              ) : null}
+              {entries.map((entry) => {
+                const counted = describeCount(entry.count);
+                return (
+                  <TableRow key={entry.id}>
+                    <TableCell className="whitespace-nowrap">{formatAuditTime(entry.ts)}</TableCell>
+                    <TableCell>{KIND_LABEL[entry.kind]}</TableCell>
+                    {showLocation ? (
+                      <TableCell>
+                        {locationNames.get(entry.locationId) ?? entry.locationId}
+                      </TableCell>
+                    ) : null}
+                    <TableCell className="text-right tabular-nums">{signed(entry.delta)}</TableCell>
+                    <TableCell
+                      className={`text-right tabular-nums${entry.qtyAfter < 0 ? ' text-destructive-text' : ''}`}
+                    >
+                      {formatStockQty(entry.qtyAfter)}
+                    </TableCell>
+                    <TableCell>
+                      {entry.reason !== '' ? <div>{entry.reason}</div> : null}
+                      {counted !== '' ? (
+                        <div className="text-xs text-muted-foreground">{counted}</div>
+                      ) : null}
+                    </TableCell>
+                    <TableCell>{entry.actor}</TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+      )}
       {hasMore ? (
         <div className="flex justify-center">
           <Button variant="outline" color="primary" disabled={loadingMore} onClick={onLoadMore}>
@@ -172,7 +263,7 @@ export function StockHistoryDialog({
 }: StockHistoryDialogProps) {
   return (
     <Dialog open={sticker !== null} onOpenChange={(open) => (open ? undefined : onClose())}>
-      <DialogContent className="sm:max-w-4xl">
+      <DialogContent size="full-on-phone" className="sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>{sticker ? `Riwayat ${sticker.name}` : 'Riwayat stok'}</DialogTitle>
           <DialogDescription>
