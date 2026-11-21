@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
+import { customerLinkAccess } from '@/lib/link-access';
 import { canAt, requireAnyPermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { HandoverDetailView } from '@/modules/handover/components/handover-detail-view';
@@ -116,6 +117,7 @@ function HandoverDetailPage() {
       handover={task}
       owner={me.email}
       locationName={locationName}
+      canOpenCustomer={customerLinkAccess(me).openCustomerHref !== undefined}
       canEdit={canAt(me, 'handover', 'edit', task.locationId)}
       canCancel={canAt(me, 'handover', 'manage', task.locationId)}
       canProgress={canAt(me, 'qc', 'edit', task.locationId)}
