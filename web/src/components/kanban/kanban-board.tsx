@@ -198,7 +198,7 @@ function ScrollingCards({ children }: { children: ReactNode }) {
 }
 
 /**
- * Papan kanban berwarna (spek redesain 6.5): kolom selebar minimum ±290 px dan gulir horizontal bila tak muat.
+ * Papan kanban berwarna (spek redesain 6.5): kolom selebar minimum ±340 px dan gulir horizontal bila tak muat.
  * `height="viewport"`: wadah setinggi sisa viewport (dikurangi header, bar headroom, spanduk aplikasi yang
  * tampil, padding atas dan bawah `main` (`--main-pad`), dan celah bar-isi) dan tiap kolom menggulir sendiri.
  */
@@ -257,7 +257,7 @@ export function KanbanBoard<T>({
             key={column.key}
             aria-label={column.label}
             className={cn(
-              'm-0 flex min-w-[290px] flex-1 flex-col rounded-lg border border-t-[3px] p-2',
+              'm-0 flex min-w-[340px] flex-1 flex-col rounded-lg border border-t-[3px] p-2',
               tone.column,
               viewport && 'min-h-0',
             )}

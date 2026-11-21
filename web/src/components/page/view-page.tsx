@@ -97,7 +97,7 @@ export function ViewPage({
     <Tabs value={active} onValueChange={select}>
       <TabsList
         variant="line"
-        className="sticky top-[var(--headroom-offset,3.5rem)] z-10 h-auto w-full justify-start overflow-x-auto overflow-y-hidden rounded-none border-b bg-background pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="sticky top-[var(--headroom-offset,3.5rem)] z-10 h-auto w-full justify-start overflow-x-auto overflow-y-hidden rounded-none border-b bg-[var(--tabs-surface,var(--background))] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((entry) => (
           <TabsTrigger
@@ -110,7 +110,7 @@ export function ViewPage({
         ))}
       </TabsList>
       {tabs.map((entry) => (
-        <TabsContent key={entry.id} value={entry.id} className="pt-4">
+        <TabsContent key={entry.id} value={entry.id} className="pt-3">
           {entry.content}
         </TabsContent>
       ))}
@@ -122,7 +122,7 @@ export function ViewPage({
 
   return (
     <HeadroomFrame className="gap-3">
-      <HeadroomBar className="pt-1 pb-3">
+      <HeadroomBar className="pt-1 pb-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             <h1 className="min-w-0 text-xl font-semibold break-words">{title}</h1>

@@ -46,7 +46,7 @@ test('dua kolom group bernama, jumlah di kepala, lebar minimum, badge berwarna',
   const board = screen.getByRole('region', { name: 'Papan' });
   const baru = within(board).getByRole('group', { name: 'Baru' });
   const selesai = within(board).getByRole('group', { name: 'Selesai' });
-  expect(baru.className).toContain('min-w-[290px]');
+  expect(baru.className).toContain('min-w-[340px]');
   expect(within(baru).getByText('7')).toBeInTheDocument();
   expect(within(selesai).getByText('0')).toBeInTheDocument();
   expect(within(baru).getByText('Baru')).toHaveAttribute('data-color', 'secondary');

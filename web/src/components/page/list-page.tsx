@@ -6,7 +6,7 @@ import { Fab } from './fab';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
 import { ScrollToTop } from './scroll-to-top';
 
-/** Aksi utama halaman daftar (mis. Tambah): tombol di header >= 768 px, tombol mengambang (FAB 48 px) di ponsel. */
+/** Aksi utama halaman daftar (mis. Tambah): tombol di header >= 768 px, tombol mengambang (FAB 56 px) di ponsel. */
 export interface ListCreateAction {
   label: string;
   onClick: () => void;
@@ -54,8 +54,8 @@ export function ListPage({
   const headerAction = desktop && createAction ? createAction : null;
   const hasActions = Boolean(actions) || headerAction !== null;
   return (
-    <HeadroomFrame pinned={pinned} className={fab ? 'gap-3 narrow:pb-20' : 'gap-3'}>
-      <HeadroomBar tour={tour} className="space-y-3 pt-1 pb-3">
+    <HeadroomFrame pinned={pinned} className={fab ? 'gap-3 narrow:pb-24' : 'gap-3'}>
+      <HeadroomBar tour={tour} className="space-y-3 pt-1 pb-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
             <h1 className="text-xl font-semibold">{title}</h1>

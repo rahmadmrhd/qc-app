@@ -147,7 +147,7 @@ test('Fab: tombol ikon 48 px dengan aria-label label aksi', async () => {
   const onClick = vi.fn();
   render(<Fab label="Tambah merk" onClick={onClick} />);
   const fab = screen.getByRole('button', { name: 'Tambah merk' });
-  expect(fab.className).toContain('size-12');
+  expect(fab.className).toContain('size-14');
   expect(fab.className).toContain('fixed');
   await userEvent.click(fab);
   expect(onClick).toHaveBeenCalled();
@@ -187,7 +187,7 @@ test('ListPage ponsel: hitungan hasil di samping judul, FAB Tambah, dan tombol k
   );
   expect(screen.getByRole('status')).toHaveTextContent('12 merk');
   expect(screen.getByRole('button', { name: 'Tambah merk' }).className).toContain('fixed');
-  expect(screen.getByRole('button', { name: 'Ke atas' }).className).toContain('bottom-[calc(5rem');
+  expect(screen.getByRole('button', { name: 'Ke atas' }).className).toContain('bottom-[calc(5.5rem');
 });
 
 test('idempoten: ActionButton dengan onClick async hanya memicu satu kiriman walau diketuk dua kali', async () => {

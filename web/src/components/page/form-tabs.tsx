@@ -60,7 +60,7 @@ export function FormTabs({
       <TabsList
         variant="line"
         style={{ top: stickyTop }}
-        className="sticky z-10 h-auto w-full justify-start overflow-x-auto overflow-y-hidden rounded-none border-b bg-background pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="sticky z-10 h-auto w-full justify-start overflow-x-auto overflow-y-hidden rounded-none border-b bg-[var(--tabs-surface,var(--background))] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((tab) => (
           <TabsTrigger
@@ -89,7 +89,7 @@ export function FormTabs({
           forceMount
           // Radix tidak menyembunyikan panel ber-forceMount; tanpa `hidden` semua panel tampil sekaligus.
           hidden={tab.id !== active}
-          className="pt-4"
+          className="pt-3"
         >
           {tab.content}
         </TabsContent>

@@ -67,7 +67,7 @@ export function FormPage({
   );
   return (
     <HeadroomFrame className="gap-4">
-      <HeadroomBar tour={tour} className="pt-1 pb-3">
+      <HeadroomBar tour={tour} className="pt-1 pb-1">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-2">
             {desktop ? null : (
