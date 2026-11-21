@@ -1,6 +1,7 @@
 import type { HandoverDto } from '@shared/contract';
 import type { HandoverStatus } from '@shared/handover';
 import type { QueryClient } from '@tanstack/react-query';
+import { ApiError } from '@/lib/api';
 import {
   clearBoardStores,
   type DeviceRecord,
@@ -10,11 +11,14 @@ import {
 } from '@/lib/device-db';
 import { getSession } from '@/modules/auth/session';
 import type { BoardColumnData } from '@/modules/handover/lib/board-cache';
+import { setBoardTaskForgetter } from '@/modules/handover/lib/board-forget';
 import {
   BOARD_STORE_LIMITS,
+  hasDeletedTask,
   isBoardQueryKey,
   limitColumnData,
   parseBoardQueryKey,
+  withoutTask,
 } from '@/modules/handover/lib/board-snapshot';
 import { handoverKeys } from '@/modules/handover/queries';
 
@@ -114,7 +118,7 @@ function planRestore(owner: string, columns: DeviceRecord[], tasks: DeviceRecord
             rest.slice(cut + 1),
           ])
         : null;
-    if (ref?.kind === 'column' && isColumnData(record.data)) {
+    if (ref?.kind === 'column' && isColumnData(record.data) && !hasDeletedTask(record.data)) {
       plan.columns.push({ ref: { locationIds: ref.locationIds, status: ref.status }, record });
     } else {
       junkColumns.push(record.key);
@@ -126,7 +130,8 @@ function planRestore(owner: string, columns: DeviceRecord[], tasks: DeviceRecord
       id &&
       Array.isArray(record.locationIds) &&
       record.locationIds.every((l) => typeof l === 'string') &&
-      isTaskDto(record.dto, id)
+      isTaskDto(record.dto, id) &&
+      record.dto.deleted === undefined
     ) {
       plan.tasks.push({ id, record });
     } else {
@@ -182,6 +187,46 @@ export async function restoreBoardCache(
   }
 }
 
+/**
+ * Membuang task `id` dari toko perangkat milik `owner`: rekaman detailnya dihapus dan butirnya dicabut dari setiap
+ * rekaman kolom yang memuatnya (total berkurang satu). Dipakai saat task dihapus (soft delete) atau ditolak server;
+ * menulis hanya bila `guard` masih berlaku (keluar atau ganti akun di sela-sela membatalkannya).
+ */
+async function forgetStoredTask(owner: string, id: string, guard: () => boolean): Promise<void> {
+  if (!guard()) return;
+  await deleteRecords('tasks', [taskKey(owner, id)]);
+  const stored = (await readAllRecords('columns')) as ColumnRecord[];
+  const changed: ColumnRecord[] = [];
+  for (const record of stored) {
+    if (!isOwnedAndCurrent(record, owner) || !isColumnData(record.data)) continue;
+    const next = withoutTask(record.data, id);
+    if (next !== record.data) changed.push({ ...record, data: next });
+  }
+  if (changed.length > 0) {
+    await writeRecords('columns', changed, BOARD_STORE_LIMITS.columns, guard);
+  }
+}
+
+/** Tulis tertunda yang masih memuat task `id` dibersihkan agar tak menulis ulang task yang sudah dihapus. */
+function dropFromPending(id: string): void {
+  for (const [key, entry] of pending) {
+    const ref = parseBoardQueryKey(entry.queryKey);
+    if (ref?.kind === 'task' && ref.id === id) {
+      pending.delete(key);
+    } else if (ref?.kind === 'column' && entry.data !== undefined) {
+      entry.data = withoutTask(entry.data as BoardColumnData, id);
+    }
+  }
+}
+
+async function forgetBoardTaskNow(id: string): Promise<void> {
+  dropFromPending(id);
+  const owner = getSession().email;
+  if (!owner) return;
+  const mine = generation;
+  await forgetStoredTask(owner, id, () => generation === mine && getSession().email === owner);
+}
+
 async function flushPending(): Promise<void> {
   const batch = [...pending.values()];
   pending.clear();
@@ -192,10 +237,17 @@ async function flushPending(): Promise<void> {
 
   const columns: ColumnRecord[] = [];
   const tasks: TaskRecord[] = [];
+  const forgetIds = new Set<string>();
   for (const entry of batch) {
     const ref = parseBoardQueryKey(entry.queryKey);
     if (!ref || entry.data === undefined) continue;
+    if (ref.kind === 'task' && (entry.data as HandoverDto).deleted !== undefined) {
+      // Task terhapus (dibuka pemegang hak Pulihkan) tak pernah disimpan; rekaman lamanya ikut dibuang.
+      forgetIds.add(ref.id);
+      continue;
+    }
     if (ref.kind === 'column') {
+      if (hasDeletedTask(entry.data as BoardColumnData)) continue;
       columns.push({
         key: columnKey(owner, ref.locationIds, ref.status),
         owner,
@@ -215,6 +267,7 @@ async function flushPending(): Promise<void> {
     }
   }
   try {
+    for (const id of forgetIds) await forgetStoredTask(owner, id, guard);
     if (columns.length > 0) {
       await writeRecords('columns', columns, BOARD_STORE_LIMITS.columns, guard);
     }
@@ -243,9 +296,23 @@ export function startBoardPersistence(queryClient: QueryClient): {
     clearTimer();
     return flushPending();
   };
+  setBoardTaskForgetter(forgetBoardTaskNow);
   const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
     if (event.type !== 'updated') return;
     const { action, query } = event;
+    if (action.type === 'error') {
+      // Penolakan server atas detail (task tak ada, sudah dihapus, atau akses dicabut) otoritatif: buang dari perangkat.
+      const ref = parseBoardQueryKey(query.queryKey);
+      const error = action.error;
+      if (
+        ref?.kind === 'task' &&
+        error instanceof ApiError &&
+        (error.code === 'NOT_FOUND' || error.code === 'FORBIDDEN')
+      ) {
+        void forgetBoardTaskNow(ref.id).catch(() => undefined);
+      }
+      return;
+    }
     if (action.type !== 'success' || action.manual) return;
     if (!isBoardQueryKey(query.queryKey)) return;
     pending.set(JSON.stringify(query.queryKey), {
@@ -265,6 +332,7 @@ export function startBoardPersistence(queryClient: QueryClient): {
     flush,
     stop() {
       unsubscribe();
+      setBoardTaskForgetter(null);
       document.removeEventListener('visibilitychange', onHide);
       window.removeEventListener('pagehide', onPageHide);
       clearTimer();

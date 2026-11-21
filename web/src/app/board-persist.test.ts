@@ -3,10 +3,12 @@ import type { BoardPageDto, HandoverDto } from '@shared/contract';
 import { QueryClient } from '@tanstack/react-query';
 import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ApiError } from '@/lib/api';
 import * as deviceDb from '@/lib/device-db';
 import { type DeviceRecord, readAllRecords, resetDeviceDbForTests } from '@/lib/device-db';
 import { ANONYMOUS_SESSION, clearSession, initSession } from '@/modules/auth/session';
 import type { BoardColumnData } from '@/modules/handover/lib/board-cache';
+import { forgetBoardTask } from '@/modules/handover/lib/board-forget';
 import { handoverKeys } from '@/modules/handover/queries';
 import {
   BOARD_STORE_VERSION,
@@ -431,5 +433,117 @@ describe('restoreBoardCache', () => {
     await expect(clearBoardStore()).resolves.toBeUndefined();
     await fetchColumn();
     await expect(persistence.flush()).resolves.toBeUndefined();
+  });
+});
+
+describe('task terhapus tidak disimpan di perangkat (keputusan pemilik 2026-11-21)', () => {
+  const DELETED = { deletedAt: '2026-11-21T01:00:00.000Z', deletedBy: 'wh@x.id' };
+  const deletedDto = (id: string): HandoverDto => ({ ...dto(id), deleted: DELETED });
+
+  async function seedLive() {
+    await deviceDb.writeRecords('columns', [record(OWNER, 'l1|new', { data: columnData(3) })], 40);
+    await deviceDb.writeRecords(
+      'tasks',
+      [
+        record(OWNER, 'a0', { locationIds: ['l1'], dto: dto('a0') }),
+        record(OWNER, 'a1', { locationIds: ['l1'], dto: dto('a1') }),
+      ],
+      100,
+    );
+  }
+
+  it('detail task terhapus tidak ditulis dan rekaman lamanya (juga butir di kolom) dibuang', async () => {
+    await seedLive();
+    client.setQueryData(handoverKeys.one('a0', ['l1']), dto('a0'));
+    await client.fetchQuery({
+      queryKey: handoverKeys.one('a0', ['l1']),
+      queryFn: () => Promise.resolve(deletedDto('a0')),
+      staleTime: 0,
+    });
+    await settle();
+    await persistence.flush();
+    expect((await readAllRecords('tasks')).map((r) => r.key)).toEqual([`${OWNER}|a1`]);
+    const [column] = (await readAllRecords('columns')) as unknown as { data: BoardColumnData }[];
+    expect(column?.data.pages[0]?.items.map((item) => item.id)).toEqual(['a1', 'a2']);
+    expect(column?.data.pages[0]?.total).toBe(98);
+  });
+
+  it('kolom yang memuat task terhapus tidak ditulis', async () => {
+    await client.fetchQuery({
+      queryKey: handoverKeys.column(['l1'], 'new'),
+      queryFn: () =>
+        Promise.resolve({
+          pages: [{ items: [deletedDto('a0')], nextCursor: null, total: 1 }],
+          pageParams: [undefined],
+        } satisfies BoardColumnData),
+    });
+    await settle();
+    await persistence.flush();
+    expect(await readAllRecords('columns')).toEqual([]);
+  });
+
+  it('forgetBoardTask (setelah hapus): rekaman detail dan butir kolom dibuang; task lain utuh', async () => {
+    await seedLive();
+    forgetBoardTask('a0');
+    await sleep(60);
+    expect((await readAllRecords('tasks')).map((r) => r.key)).toEqual([`${OWNER}|a1`]);
+    const [column] = (await readAllRecords('columns')) as unknown as { data: BoardColumnData }[];
+    expect(column?.data.pages[0]?.items.map((item) => item.id)).toEqual(['a1', 'a2']);
+  });
+
+  it('tulis tertunda yang memuat task itu dibersihkan sebelum ditulis', async () => {
+    await fetchColumn();
+    forgetBoardTask('a0');
+    await persistence.flush();
+    const [column] = (await readAllRecords('columns')) as unknown as { data: BoardColumnData }[];
+    expect(column?.data.pages[0]?.items.map((item) => item.id)).toEqual(['a1']);
+  });
+
+  it('detail ditolak server (NOT_FOUND/FORBIDDEN) membuang rekamannya; galat lain tidak', async () => {
+    await seedLive();
+    await expect(
+      client.fetchQuery({
+        queryKey: handoverKeys.one('a1', ['l1']),
+        queryFn: () => Promise.reject(new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-')),
+      }),
+    ).rejects.toBeInstanceOf(ApiError);
+    await sleep(60);
+    expect((await readAllRecords('tasks')).map((r) => r.key).sort()).toEqual([
+      `${OWNER}|a0`,
+      `${OWNER}|a1`,
+    ]);
+    await expect(
+      client.fetchQuery({
+        queryKey: handoverKeys.one('a1', ['l1']),
+        queryFn: () => Promise.reject(new ApiError('NOT_FOUND', 'Task tidak ditemukan', '-')),
+      }),
+    ).rejects.toBeInstanceOf(ApiError);
+    await sleep(60);
+    expect((await readAllRecords('tasks')).map((r) => r.key)).toEqual([`${OWNER}|a0`]);
+  });
+
+  it('pemulihan membuang rekaman lama yang memuat task terhapus dan tidak memasangnya', async () => {
+    await deviceDb.writeRecords(
+      'columns',
+      [
+        record(OWNER, 'l1|new', {
+          data: {
+            pages: [{ items: [deletedDto('a0')], nextCursor: null, total: 1 }],
+            pageParams: [undefined],
+          },
+        }),
+      ],
+      40,
+    );
+    await deviceDb.writeRecords(
+      'tasks',
+      [record(OWNER, 'a0', { locationIds: ['l1'], dto: deletedDto('a0') })],
+      100,
+    );
+    expect(await restoreBoardCache(client, OWNER)).toBe(0);
+    expect(client.getQueryCache().findAll()).toHaveLength(0);
+    await sleep(40);
+    expect(await readAllRecords('columns')).toEqual([]);
+    expect(await readAllRecords('tasks')).toEqual([]);
   });
 });

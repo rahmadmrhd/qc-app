@@ -28,6 +28,7 @@ import {
   removeHandoverFromBoards,
   upsertHandoverInBoards,
 } from './lib/board-cache';
+import { forgetBoardTask } from './lib/board-forget';
 import { BOARD_STATUSES } from './lib/group-board';
 
 const sorted = (ids: readonly string[]) => [...ids].sort();
@@ -206,6 +207,8 @@ export function useRemoveHandover() {
     onSuccess: (_result, input) => {
       removeHandoverFromBoards(queryClient, input.id);
       queryClient.removeQueries({ queryKey: ['handovers', 'one', input.id] });
+      // Snapshot perangkat (IndexedDB) tak boleh menyimpan task yang baru dihapus (tampil lagi saat luring).
+      forgetBoardTask(input.id);
       void queryClient.invalidateQueries({
         queryKey: BOARD_KEY,
         predicate: (query) =>
