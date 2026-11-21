@@ -6,11 +6,14 @@ import {
   brandLinkAccess,
   businessUnitLinkAccess,
   customerHandoversLinkAccess,
+  customerLinkAccess,
   itemFormLinkAccess,
   itemLinkAccess,
+  locationLinkAccess,
   manualBookLinkAccess,
   postelLinkAccess,
   qrPresetLinkAccess,
+  roleLinkAccess,
   serialItemCreateAccess,
   stickerLinkAccess,
   stickerTypeLinkAccess,
@@ -211,4 +214,39 @@ test('customerHandoversLinkAccess: hanya pemegang handover: view', () => {
     customerHandoversLinkAccess(makeMe({ permissions: { qc: 'edit' } })).canViewHandovers,
   ).toBe(false);
   expect(customerHandoversLinkAccess(null).canViewHandovers).toBe(false);
+});
+
+test('di aplikasi desktop semua tautan Buka tidak tersedia (jendela baru ditolak cangkang); Tambah tak terpengaruh; peramban tetap', () => {
+  const me = makeMe({
+    itemLevel: 'manage',
+    permissions: { access: 'manage', sticker: 'manage', qrcode: 'manage' },
+  });
+  const links = () => ({
+    ...itemFormLinkAccess(me),
+    ...itemLinkAccess(me),
+    ...manualBookLinkAccess(me),
+    ...qrPresetLinkAccess(me),
+    ...postelLinkAccess(me),
+    ...locationLinkAccess(me),
+    ...roleLinkAccess(me),
+    ...customerLinkAccess(me),
+  });
+  // Peramban: tautan ada.
+  expect(links().openItemHref?.('i1')).toBe('/item/i1');
+  expect(links().openLocationHref?.('l1')).toBe('/access/locations/l1');
+  expect(links().openPostelHref('p1')).toBe('/postel/p1');
+  window.qcBridge = { version: 9 } as unknown as typeof window.qcBridge;
+  try {
+    const desktop = links();
+    const openers = Object.entries(desktop).filter(([key]) => /^open\w+Href$/.test(key));
+    expect(openers.length).toBeGreaterThanOrEqual(10);
+    for (const [key, value] of openers) {
+      if (key === 'openPostelHref')
+        expect((value as (id: string) => string | null)('p1')).toBeNull();
+      else expect(value, key).toBeUndefined();
+    }
+    expect(desktop.canCreateBusinessUnit).toBe(true);
+  } finally {
+    window.qcBridge = undefined;
+  }
 });

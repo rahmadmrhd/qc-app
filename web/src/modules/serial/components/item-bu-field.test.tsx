@@ -282,3 +282,15 @@ test('tanpa hak lihat: tidak ada tautan Buka untuk Item maupun BU', async () => 
   expect(screen.queryByRole('link', { name: 'Buka Item' })).toBeNull();
   expect(screen.queryByRole('link', { name: 'Buka Business Unit' })).toBeNull();
 });
+
+test('di aplikasi desktop (jendela baru ditolak cangkang): tautan Buka disembunyikan walau berhak; peramban tetap menampilkannya', async () => {
+  window.qcBridge = { version: 9 } as unknown as typeof window.qcBridge;
+  try {
+    renderField(FILLED, makeMe({ itemLevel: 'view', permissions: { access: 'view' } }));
+    expect(await screen.findByRole('combobox', { name: 'Item' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Buka Item' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Buka Business Unit' })).toBeNull();
+  } finally {
+    window.qcBridge = undefined;
+  }
+});

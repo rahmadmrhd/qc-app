@@ -1,4 +1,5 @@
 import type { MeDto } from '@shared/contract';
+import { isDesktop } from '@/lib/platform';
 import {
   can,
   canCreateItem,
@@ -13,12 +14,23 @@ import {
  * Satu tempat untuk semua form agar aturan Tambah/Buka sama di mana pun field relasi itu muncul.
  */
 
+/**
+ * Tautan "Buka" pada field relasi hanya ada di peramban (keputusan pemilik 2026-11-21, review 4d M4): di aplikasi desktop
+ * (Electron) jendela baru ditolak cangkang (`window.ts`), jadi `<a target="_blank">` tidak berbuat apa pun. Satu tempat
+ * untuk semua `open*Href` di bawah; tanpa tautan, field relasi tidak menampilkan ikon Buka.
+ */
+function openable<F>(href: F | undefined): F | undefined {
+  return isDesktop() ? undefined : href;
+}
+
 /** BU: halaman lihat ada di Pengaturan Akses (`access: view`), tambah butuh `access: manage` (sama dengan halaman BU). */
 export function businessUnitLinkAccess(me: MeDto | null | undefined) {
   return {
-    openBusinessUnitHref: can(me, 'access', 'view')
-      ? (id: string) => `/access/business-units/${encodeURIComponent(id)}`
-      : undefined,
+    openBusinessUnitHref: openable(
+      can(me, 'access', 'view')
+        ? (id: string) => `/access/business-units/${encodeURIComponent(id)}`
+        : undefined,
+    ),
     canCreateBusinessUnit: can(me, 'access', 'manage'),
   };
 }
@@ -29,9 +41,11 @@ export function businessUnitLinkAccess(me: MeDto | null | undefined) {
  */
 export function locationLinkAccess(me: MeDto | null | undefined) {
   return {
-    openLocationHref: can(me, 'access', 'view')
-      ? (id: string) => `/access/locations/${encodeURIComponent(id)}`
-      : undefined,
+    openLocationHref: openable(
+      can(me, 'access', 'view')
+        ? (id: string) => `/access/locations/${encodeURIComponent(id)}`
+        : undefined,
+    ),
     canCreateLocation: can(me, 'access', 'manage'),
   };
 }
@@ -39,9 +53,11 @@ export function locationLinkAccess(me: MeDto | null | undefined) {
 /** Role: halaman lihat (`/access/roles/$roleId`) butuh `access: view`; tambah butuh `access: manage`. */
 export function roleLinkAccess(me: MeDto | null | undefined) {
   return {
-    openRoleHref: can(me, 'access', 'view')
-      ? (id: string) => `/access/roles/${encodeURIComponent(id)}`
-      : undefined,
+    openRoleHref: openable(
+      can(me, 'access', 'view')
+        ? (id: string) => `/access/roles/${encodeURIComponent(id)}`
+        : undefined,
+    ),
     canCreateRole: can(me, 'access', 'manage'),
   };
 }
@@ -49,9 +65,9 @@ export function roleLinkAccess(me: MeDto | null | undefined) {
 /** Customer: halaman lihat (`/customer/$customerId`) butuh `item: view` (izin tak diubah; keputusan pemilik 15c). */
 export function customerLinkAccess(me: MeDto | null | undefined) {
   return {
-    openCustomerHref: can(me, 'item', 'view')
-      ? (id: string) => `/customer/${encodeURIComponent(id)}`
-      : undefined,
+    openCustomerHref: openable(
+      can(me, 'item', 'view') ? (id: string) => `/customer/${encodeURIComponent(id)}` : undefined,
+    ),
   };
 }
 
@@ -67,9 +83,11 @@ export function customerHandoversLinkAccess(me: MeDto | null | undefined) {
 /** Merk: halaman lihat butuh `item: view`. */
 export function brandLinkAccess(me: MeDto | null | undefined) {
   return {
-    openBrandHref: can(me, 'item', 'view')
-      ? (id: string) => `/item/brands/${encodeURIComponent(id)}`
-      : undefined,
+    openBrandHref: openable(
+      can(me, 'item', 'view')
+        ? (id: string) => `/item/brands/${encodeURIComponent(id)}`
+        : undefined,
+    ),
   };
 }
 
@@ -79,9 +97,11 @@ export function brandLinkAccess(me: MeDto | null | undefined) {
  */
 export function stickerTypeLinkAccess(me: MeDto | null | undefined) {
   return {
-    openStickerTypeHref: can(me, 'sticker', 'view')
-      ? (id: string) => `/sticker/types/${encodeURIComponent(id)}`
-      : undefined,
+    openStickerTypeHref: openable(
+      can(me, 'sticker', 'view')
+        ? (id: string) => `/sticker/types/${encodeURIComponent(id)}`
+        : undefined,
+    ),
     canCreateStickerType: can(me, 'sticker', 'edit'),
   };
 }
@@ -92,9 +112,9 @@ export function stickerTypeLinkAccess(me: MeDto | null | undefined) {
  */
 export function stickerLinkAccess(me: MeDto | null | undefined) {
   return {
-    openStickerHref: can(me, 'sticker', 'view')
-      ? (id: string) => `/sticker/${encodeURIComponent(id)}`
-      : undefined,
+    openStickerHref: openable(
+      can(me, 'sticker', 'view') ? (id: string) => `/sticker/${encodeURIComponent(id)}` : undefined,
+    ),
     canCreateSticker: can(me, 'sticker', 'edit'),
   };
 }
@@ -107,9 +127,9 @@ export function stickerLinkAccess(me: MeDto | null | undefined) {
  */
 export function itemLinkAccess(me: MeDto | null | undefined) {
   return {
-    openItemHref: can(me, 'item', 'view')
-      ? (id: string) => `/item/${encodeURIComponent(id)}`
-      : undefined,
+    openItemHref: openable(
+      can(me, 'item', 'view') ? (id: string) => `/item/${encodeURIComponent(id)}` : undefined,
+    ),
     canCreate: canCreateItem(me),
     canOpenDeleted: canManageAnyItem(me),
   };
@@ -137,9 +157,11 @@ export function serialItemCreateAccess(me: MeDto | null | undefined) {
  */
 export function manualBookLinkAccess(me: MeDto | null | undefined) {
   return {
-    openManualBookHref: can(me, 'qrcode', 'view')
-      ? (designId: string) => `/qrcode/${encodeURIComponent(designId)}`
-      : undefined,
+    openManualBookHref: openable(
+      can(me, 'qrcode', 'view')
+        ? (designId: string) => `/qrcode/${encodeURIComponent(designId)}`
+        : undefined,
+    ),
   };
 }
 
@@ -151,9 +173,9 @@ export function manualBookLinkAccess(me: MeDto | null | undefined) {
 export function qrPresetLinkAccess(me: MeDto | null | undefined) {
   const manage = can(me, 'qrcode', 'manage');
   return {
-    openPresetHref: manage
-      ? (presetId: string) => `/qrcode/default/${encodeURIComponent(presetId)}`
-      : undefined,
+    openPresetHref: openable(
+      manage ? (presetId: string) => `/qrcode/default/${encodeURIComponent(presetId)}` : undefined,
+    ),
     canCreate: manage,
   };
 }
@@ -163,7 +185,7 @@ export function postelLinkAccess(me: MeDto | null | undefined) {
   const allowed = can(me, 'sticker', 'view');
   return {
     openPostelHref: (id: string): string | null =>
-      allowed ? `/postel/${encodeURIComponent(id)}` : null,
+      allowed && !isDesktop() ? `/postel/${encodeURIComponent(id)}` : null,
   };
 }
 
