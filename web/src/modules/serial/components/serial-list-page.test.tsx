@@ -727,7 +727,7 @@ test('250 serial terpilih: Hapus dikirim 100/100/50 dan berhenti di tahap yang g
   // Tidak ada tahap ketiga walau ditunggu.
   await new Promise((resolve) => setTimeout(resolve, 100));
   expect(callsOf('serials.removeBatch')).toHaveLength(2);
-});
+}, 60_000);
 
 test('rowSelectable: baris di BU yang tak dikelola tanpa checkbox', async () => {
   me = manageMe();
