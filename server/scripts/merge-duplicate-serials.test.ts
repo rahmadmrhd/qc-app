@@ -345,4 +345,82 @@ describe('penyatuan ke MariaDB', () => {
     ).toBe(1);
     expect(await count('serial_business_units')).toBe(2);
   });
+
+  test('serial terhapus diabaikan: bukan ganda, bukan pemenang, tak disentuh (keputusan pemilik 2026-11-21)', async () => {
+    await seedSerial(env, {
+      id: 'live-a',
+      serial: 'DEL-1',
+      createdAt: '2026-11-01T00:00:00.000Z',
+      testDate: '2026-11-01',
+    });
+    await seedSerial(env, {
+      id: 'dead-b',
+      serial: 'DEL-1',
+      buId: 'bu-b',
+      itemId: 'i-b',
+      createdAt: '2026-11-05T00:00:00.000Z',
+      testDate: '2026-11-05',
+      status: 'reported',
+      openCase: { id: 'case-dead', number: 'LP/B/2611-0001', openedOn: '2026-11-06' },
+    });
+    await env.DB.prepare(
+      "UPDATE serials SET deleted_at = '2026-11-10T00:00:00.000Z', deleted_by = 'admin@x' WHERE id = 'dead-b'",
+    ).run();
+    const eventsBefore = await count('serial_events');
+    // Satu hidup + satu terhapus bukan serial ganda.
+    expect((await findDuplicateGroups(env.DB)).size).toBe(0);
+    expect((await mergeSerial(env.DB, 'DEL-1', NOW)).kind).toBe('gone');
+    expect((await all<Json>('SELECT id FROM serials ORDER BY id')).map((r) => r.id)).toEqual([
+      'dead-b',
+      'live-a',
+    ]);
+    expect(await count('serial_events')).toBe(eventsBefore);
+    expect(
+      (await one<Json>("SELECT COUNT(*) AS n FROM serial_cases WHERE serial_id = 'dead-b'"))?.n,
+    ).toBe(1);
+  });
+
+  test('dua hidup dan satu terhapus yang lebih baru: pemenang dari yang hidup, yang terhapus utuh', async () => {
+    await seedSerial(env, {
+      id: 'live-1',
+      serial: 'DEL-2',
+      createdAt: '2026-10-01T00:00:00.000Z',
+      testDate: '2026-10-01',
+    });
+    await seedSerial(env, {
+      id: 'live-2',
+      serial: 'DEL-2',
+      buId: 'bu-b',
+      itemId: 'i-b',
+      createdAt: '2026-10-05T00:00:00.000Z',
+      testDate: '2026-10-05',
+    });
+    await seedBusinessUnit(env, { id: 'bu-c', code: 'C' });
+    await seedSerial(env, {
+      id: 'dead-3',
+      serial: 'DEL-2',
+      buId: 'bu-c',
+      testDate: '2026-11-20',
+      createdAt: '2026-11-20T00:00:00.000Z',
+      status: 'broken',
+    });
+    await env.DB.prepare(
+      "UPDATE serials SET deleted_at = '2026-11-21T00:00:00.000Z', deleted_by = 'admin@x' WHERE id = 'dead-3'",
+    ).run();
+    const groups = await findDuplicateGroups(env.DB);
+    expect((groups.get('DEL-2') ?? []).map((r) => r.id).sort()).toEqual(['live-1', 'live-2']);
+    const plan = planAll(groups)[0];
+    expect(plan?.kind === 'merge' && plan.winner.id).toBe('live-2');
+    expect((await mergeSerial(env.DB, 'DEL-2', NOW)).kind).toBe('merged');
+    expect((await all<Json>('SELECT id FROM serials ORDER BY id')).map((r) => r.id)).toEqual([
+      'dead-3',
+      'live-2',
+    ]);
+    const dead = await one<Json>("SELECT deleted_at, deleted_by FROM serials WHERE id = 'dead-3'");
+    expect(dead).toEqual({ deleted_at: '2026-11-21T00:00:00.000Z', deleted_by: 'admin@x' });
+    expect(
+      (await one<Json>("SELECT COUNT(*) AS n FROM serial_business_units WHERE serial_id = 'dead-3'"))
+        ?.n,
+    ).toBe(1);
+  });
 });

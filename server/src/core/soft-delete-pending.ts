@@ -42,16 +42,6 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
   'server/src/modules/qrcode/repo.ts': [],
   // Fase 4c (access, customer)
   // Fase 4d (serial, handover)
-  'server/scripts/merge-duplicate-serials.ts': [
-    'serials@1#5be5daeb',
-    'business_units@1#5be5daeb',
-    'serials@2#5be5daeb',
-    'serial_events@1#f505f433',
-    'serial_stickers@1#762daad2',
-    'serials@3#7bf06089',
-    'serials@4#a56e18ed',
-    'business_units@2#a56e18ed',
-  ],
   // Lain-lain (modul yang membaca tabel milik fase lain: notification, desktop catalog, files, digest stok)
   'server/src/modules/files/service.ts': ['item_business_units@1#546f26ad'],
 };
@@ -61,6 +51,16 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
  * `"<berkas>#<kunci pemindai>"`, nilai = alasan.
  */
 export const SOFT_DELETE_EXEMPT: Record<string, string> = {
+  'server/scripts/merge-duplicate-serials.ts#business_units@1#e09896a1':
+    'Penampil kode BU pada laporan operator: BU terhapus tetap memberi kode (soft delete 9); skrip hanya membaca untuk tampilan.',
+  'server/scripts/merge-duplicate-serials.ts#serial_events@1#f505f433':
+    'Skrip operator: anak serial dipindahkan menurut id serial yang baru dipilih HIDUP dan dikunci `FOR UPDATE` di transaksi yang sama (kueri pemilih menyaring `deleted_at`; serial terhapus diabaikan penuh, keputusan pemilik 2026-11-21).',
+  'server/scripts/merge-duplicate-serials.ts#serial_stickers@1#762daad2':
+    'Skrip operator: anak serial dipindahkan menurut id serial yang baru dipilih HIDUP dan dikunci `FOR UPDATE` di transaksi yang sama (kueri pemilih menyaring `deleted_at`; serial terhapus diabaikan penuh, keputusan pemilik 2026-11-21).',
+  'server/scripts/merge-duplicate-serials.ts#serials@3#7bf06089':
+    'Skrip operator: anak serial dipindahkan menurut id serial yang baru dipilih HIDUP dan dikunci `FOR UPDATE` di transaksi yang sama (kueri pemilih menyaring `deleted_at`; serial terhapus diabaikan penuh, keputusan pemilik 2026-11-21).',
+  'server/scripts/merge-duplicate-serials.ts#business_units@2#71a20bd9':
+    'Penampil kode BU pada laporan operator: BU terhapus tetap memberi kode (soft delete 9); skrip hanya membaca untuk tampilan.',
   'server/src/core/cas.ts#*dinamis@1#2d23e851':
     'nameGuardStmt: penjaga TULIS (SELECT ... FOR UPDATE) atas baris merk/customer yang baru dibaca penulis; hapus/pulihkan memakai soft-delete.ts. Tabel dinamis (brands|customers).',
   'server/src/modules/backup/restore.ts#*dinamis@1#4b20ad1c':
