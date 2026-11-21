@@ -419,8 +419,11 @@ describe('penyatuan ke MariaDB', () => {
     const dead = await one<Json>("SELECT deleted_at, deleted_by FROM serials WHERE id = 'dead-3'");
     expect(dead).toEqual({ deleted_at: '2026-11-21T00:00:00.000Z', deleted_by: 'admin@x' });
     expect(
-      (await one<Json>("SELECT COUNT(*) AS n FROM serial_business_units WHERE serial_id = 'dead-3'"))
-        ?.n,
+      (
+        await one<Json>(
+          "SELECT COUNT(*) AS n FROM serial_business_units WHERE serial_id = 'dead-3'",
+        )
+      )?.n,
     ).toBe(1);
   });
 });

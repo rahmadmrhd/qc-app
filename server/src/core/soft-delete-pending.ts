@@ -263,7 +263,9 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Semua baris serial dihitung tanpa penyaring keadaan: indeks unik lama `serials_serial` menjangkau baris terhapus juga (jadi syarat pembuatannya menghitung semuanya), pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus agar tetap benar saat dipulihkan.',
   'server/src/modules/serial/bu-history.ts#serials@3#4ac5b74b':
     'Semua baris serial dihitung tanpa penyaring keadaan: indeks unik lama `serials_serial` menjangkau baris terhapus juga (jadi syarat pembuatannya menghitung semuanya), pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus agar tetap benar saat dipulihkan.',
-  'server/src/modules/serial/bu-history.ts#serials@4#616ca633':
+  'server/src/modules/serial/bu-history.ts#serials@4#7bbf50f9':
+    'Semua baris serial dihitung tanpa penyaring keadaan: indeks unik lama `serials_serial` menjangkau baris terhapus juga (jadi syarat pembuatannya menghitung semuanya), pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus agar tetap benar saat dipulihkan.',
+  'server/src/modules/serial/bu-history.ts#serials@5#616ca633':
     'Semua baris serial dihitung tanpa penyaring keadaan: indeks unik lama `serials_serial` menjangkau baris terhapus juga (jadi syarat pembuatannya menghitung semuanya), pengisi riwayat BU dan kumpulan BU terlibat berlaku untuk serial terhapus agar tetap benar saat dipulihkan.',
   'server/src/modules/serial/case-list.ts#locations@1#9fc6c564':
     'Penampil rujukan: nama lokasi tampil walau lokasi terhapus (lokasi terhapus dibaca nonaktif, soft delete); jalur tulis memeriksa lokasi hidup (`activeLocationName` memakai `liveWhere`).',
