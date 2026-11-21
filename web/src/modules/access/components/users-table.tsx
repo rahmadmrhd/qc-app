@@ -7,10 +7,10 @@ import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { formatStamp } from '@/lib/format-stamp';
 import type { AssignmentLabels } from '../lib/assignment-labels';
+import { deleteLockReason, isProtectedUser, statusLockReason } from '../lib/protected-user';
 import { AssignmentChips } from './assignment-chips';
 
-export const SELF_STATUS_REASON = 'Tidak dapat menonaktifkan akun Anda sendiri';
-export const SELF_DELETE_REASON = 'Tidak dapat menghapus akun Anda sendiri';
+export { SELF_DELETE_REASON, SELF_STATUS_REASON } from '../lib/protected-user';
 
 export interface UsersTableProps {
   users: readonly UserDto[];
@@ -138,7 +138,9 @@ export function UsersTable({
 
   const actions = (user: UserDto): RowAction[] => {
     const busy = pendingId === user.id;
-    const isSelf = user.email === currentEmail;
+    const protectedUser = isProtectedUser(user, currentEmail);
+    const statusLock = statusLockReason(user, currentEmail);
+    const deleteLock = deleteLockReason(user, currentEmail);
     if (user.deleted || deletedView) {
       return [
         {
@@ -165,19 +167,20 @@ export function UsersTable({
         label: `${user.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'} ${user.email}`,
         hidden: !canManage,
         busy,
-        disabled: isSelf && user.status === 'active',
-        disabledReason: SELF_STATUS_REASON,
+        disabled: statusLock !== undefined && user.status === 'active',
+        ...(statusLock === undefined ? {} : { disabledReason: statusLock }),
         onSelect: () => onToggleStatus(user),
       },
       {
         id: 'delete',
         action: 'delete',
         label: `Hapus ${user.email}`,
-        // Hanya pengguna Nonaktif yang dapat dihapus; akun sendiri tetap tampil sebagai aksi nonaktif beralasan.
-        hidden: !canManage || (user.status !== 'inactive' && !isSelf),
+        // Hanya pengguna Nonaktif yang dapat dihapus; akun sendiri dan super admin tetap tampil sebagai aksi
+        // nonaktif beralasan.
+        hidden: !canManage || (user.status !== 'inactive' && !protectedUser),
         busy,
-        disabled: isSelf,
-        disabledReason: SELF_DELETE_REASON,
+        disabled: deleteLock !== undefined,
+        ...(deleteLock === undefined ? {} : { disabledReason: deleteLock }),
         onSelect: () => onDelete(user),
       },
     ];

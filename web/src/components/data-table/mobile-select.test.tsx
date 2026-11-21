@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { DisabledReason } from '@/components/disabled-reason';
 import { GridView } from '@/components/grid/grid-view';
 import { ListPage } from '@/components/page/list-page';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -324,4 +325,20 @@ test('rowSelectable: tekan lama pada kartu tak terpilih tidak masuk mode pilih d
   await userEvent.click(screen.getByRole('button', { name: 'Aksi Asus' }));
   expect(await screen.findByRole('menuitem', { name: 'Ubah Asus' })).toBeInTheDocument();
   expect(screen.queryByRole('menuitem', { name: 'Pilih Asus' })).toBeNull();
+});
+
+test('BulkBar ponsel: alasan tombol nonaktif tampil sebagai teks (tanpa hover)', () => {
+  render(
+    <TooltipProvider>
+      <BulkBar count={1} onClear={() => undefined}>
+        <DisabledReason reason="Pilihan memuat akun Anda sendiri">
+          <button type="button" disabled>
+            Nonaktifkan
+          </button>
+        </DisabledReason>
+      </BulkBar>
+    </TooltipProvider>,
+  );
+  expect(screen.getByRole('button', { name: 'Nonaktifkan' })).toBeDisabled();
+  expect(screen.getByText('Pilihan memuat akun Anda sendiri')).toBeVisible();
 });

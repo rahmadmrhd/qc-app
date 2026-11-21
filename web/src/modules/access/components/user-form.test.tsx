@@ -473,3 +473,26 @@ test('Akun bersama terpasang dari defaultValues saat edit', () => {
   });
   expect(screen.getByRole('checkbox', { name: 'Akun bersama' })).toBeChecked();
 });
+
+test('akun sendiri: opsi Status "Nonaktif" tak dapat dipilih dan alasannya tampil', async () => {
+  renderForm({
+    mode: 'edit',
+    defaultValues: editDefaults({}),
+    statusLockReason: 'Tidak dapat menonaktifkan akun Anda sendiri',
+  });
+  expect(screen.getByText('Tidak dapat menonaktifkan akun Anda sendiri')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('combobox', { name: 'Status' }));
+  expect(await screen.findByRole('option', { name: 'Nonaktif' })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
+});
+
+test('tanpa kunci status: opsi "Nonaktif" tersedia dan tanpa alasan', async () => {
+  renderForm({ mode: 'edit', defaultValues: editDefaults({}) });
+  await userEvent.click(screen.getByRole('combobox', { name: 'Status' }));
+  expect(await screen.findByRole('option', { name: 'Nonaktif' })).not.toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
+});

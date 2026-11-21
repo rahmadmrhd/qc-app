@@ -100,6 +100,16 @@ test('akun sendiri: Nonaktifkan dan Hapus nonaktif dengan alasan', async () => {
   expect(screen.getByText('Tidak dapat menghapus akun Anda sendiri')).toBeInTheDocument();
 });
 
+test('super admin: Nonaktifkan dan Hapus nonaktif dengan alasan', async () => {
+  await renderView({
+    user: { ...user, email: 'root@x.com', status: 'active', superAdmin: true },
+  });
+  expect(screen.getByRole('button', { name: 'Nonaktifkan' })).toBeDisabled();
+  expect(screen.getByText('Akun super admin tidak dapat dinonaktifkan')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
+  expect(screen.getByText('Akun super admin tidak dapat dihapus')).toBeInTheDocument();
+});
+
 test('pengguna terhapus: banner dan hanya aksi Pulihkan', async () => {
   const { onRestore } = await renderView({
     user: { ...user, deleted: { deletedAt: '2026-11-20T00:00:00.000Z', deletedBy: 'admin@x.com' } },

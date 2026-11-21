@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { FormDialogShell } from '@/components/form-dialog-shell';
 import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '../lib/field-errors';
+import { statusLockReason } from '../lib/protected-user';
 import { toUserFormDefaults, type UserFormOutput } from '../schemas';
 import { UserForm, type UserFormProps } from './user-form';
 
@@ -28,18 +29,22 @@ export interface UserFormDialogProps extends UserFormReferenceProps {
   onOpenChange: (open: boolean) => void;
   /** Pengguna yang diubah; kosong = pengguna baru. */
   user?: UserDto | undefined;
+  /** Email akun yang sedang masuk: akun sendiri tak dapat dinonaktifkan lewat form. */
+  currentEmail?: string | undefined;
   /** Menyimpan; melempar galat bila gagal (pesannya tampil di dialog). Dialog menutup sendiri saat berhasil. */
   onSave: (input: SaveUserInput) => Promise<unknown>;
 }
 
 function UserDialogBody({
   user,
+  currentEmail,
   onSave,
   onClose,
   onBusyChange,
   ...references
 }: UserFormReferenceProps & {
   user: UserDto | undefined;
+  currentEmail?: string | undefined;
   onSave: UserFormDialogProps['onSave'];
   onClose: () => void;
   onBusyChange: (busy: boolean) => void;
@@ -65,6 +70,9 @@ function UserDialogBody({
       {...references}
       formId={USER_FORM_ID}
       mode={user ? 'edit' : 'create'}
+      statusLockReason={
+        user && currentEmail !== undefined ? statusLockReason(user, currentEmail) : undefined
+      }
       defaultValues={toUserFormDefaults(
         user,
         references.roles.map((role) => role.id),

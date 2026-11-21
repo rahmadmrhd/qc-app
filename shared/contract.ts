@@ -102,6 +102,11 @@ export interface UserDto {
   buAssignments: BuAssignment[];
   /** Akun bersama (dipakai beberapa orang); lihat `MeDto.sharedAccount`. */
   sharedAccount: boolean;
+  /**
+   * Akun super admin (alamat `ADMIN_EMAIL`): tak dapat dihapus dan tak dinonaktifkan dari antarmuka. Opsional (aditif):
+   * server yang lebih lama tak mengirimnya, dan klien menganggapnya bukan super admin. Penjaga tetap di server.
+   */
+  superAdmin?: boolean;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;

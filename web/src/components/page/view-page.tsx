@@ -150,6 +150,7 @@ export function ViewPage({
         <StickyActionBar label="Aksi halaman" busy={visibleActions.some((entry) => entry.busy)}>
           <DisabledReason
             reason={primaryAction.disabled ? primaryAction.disabledReason : undefined}
+            className="flex-1"
           >
             <ActionButton
               action={primaryAction.action}

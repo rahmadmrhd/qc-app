@@ -6,8 +6,8 @@ import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { AssignmentLabels } from '../lib/assignment-labels';
+import { deleteLockReason, isProtectedUser, statusLockReason } from '../lib/protected-user';
 import { AssignmentChips } from './assignment-chips';
-import { SELF_DELETE_REASON, SELF_STATUS_REASON } from './users-table';
 
 export const USER_TABS = ['detail', 'locations', 'businessUnits'] as const;
 export type UserTab = (typeof USER_TABS)[number];
@@ -62,7 +62,9 @@ export function UserView({
     );
   }
   const deleted = user.deleted !== undefined;
-  const isSelf = user.email === currentEmail;
+  const protectedUser = isProtectedUser(user, currentEmail);
+  const statusLock = statusLockReason(user, currentEmail);
+  const deleteLock = deleteLockReason(user, currentEmail);
   return (
     <ViewPage
       title={user.email}
@@ -93,16 +95,16 @@ export function UserView({
                 action: user.status === 'active' ? 'deactivate' : 'activate',
                 busy: statusPending,
                 hidden: !(canManage && onToggleStatus),
-                disabled: isSelf && user.status === 'active',
-                disabledReason: SELF_STATUS_REASON,
+                disabled: statusLock !== undefined && user.status === 'active',
+                ...(statusLock === undefined ? {} : { disabledReason: statusLock }),
                 onSelect: () => onToggleStatus?.(),
               },
               {
                 id: 'delete',
                 action: 'delete',
-                hidden: !(canManage && onDelete && (user.status === 'inactive' || isSelf)),
-                disabled: isSelf,
-                disabledReason: SELF_DELETE_REASON,
+                hidden: !(canManage && onDelete && (user.status === 'inactive' || protectedUser)),
+                disabled: deleteLock !== undefined,
+                ...(deleteLock === undefined ? {} : { disabledReason: deleteLock }),
                 onSelect: () => onDelete?.(),
               },
             ]

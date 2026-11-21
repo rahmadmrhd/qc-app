@@ -40,6 +40,11 @@ export interface UserFormProps {
   /** Id elemen `<form>`: tombol Simpan ada di luar form (footer dialog) dan memakai `form={formId}`. */
   formId: string;
   mode: 'create' | 'edit';
+  /**
+   * Alasan status "Nonaktif" tak dapat dipilih (akun sendiri atau super admin); kosong = bebas. Hanya untuk UX:
+   * server menolak penonaktifan akun sendiri.
+   */
+  statusLockReason?: string | undefined;
   defaultValues: UserFormInput;
   /** Role, lokasi, dan BU HIDUP (pilihan); yang terhapus hanya tampil bila sudah melekat pada penugasan. */
   roles: readonly RoleDto[];
@@ -180,6 +185,7 @@ function tabErrorKey(state: { fieldMeta: Record<string, { errors: unknown[] } | 
 export function UserForm({
   formId,
   mode,
+  statusLockReason,
   defaultValues,
   roles,
   locations,
@@ -319,16 +325,25 @@ export function UserForm({
           </form.Field>
           <form.Field name="status">
             {(field) => (
-              <Select
-                id="user-status"
-                label="Status"
-                options={[
-                  { value: 'active', label: 'Aktif' },
-                  { value: 'inactive', label: 'Nonaktif' },
-                ]}
-                value={field.state.value}
-                onValueChange={(next) => field.handleChange(next as UserFormInput['status'])}
-              />
+              <div className="space-y-1">
+                <Select
+                  id="user-status"
+                  label="Status"
+                  options={[
+                    { value: 'active', label: 'Aktif' },
+                    {
+                      value: 'inactive',
+                      label: 'Nonaktif',
+                      disabled: statusLockReason !== undefined && field.state.value === 'active',
+                    },
+                  ]}
+                  value={field.state.value}
+                  onValueChange={(next) => field.handleChange(next as UserFormInput['status'])}
+                />
+                {statusLockReason !== undefined && field.state.value === 'active' ? (
+                  <p className="text-xs text-muted-foreground">{statusLockReason}</p>
+                ) : null}
+              </div>
             )}
           </form.Field>
           <form.Field name="sharedAccount">

@@ -17,6 +17,7 @@ import { describeError } from '@/lib/api/describe-error';
 import { UserFormDialog } from '@/modules/access/components/user-form-dialog';
 import { UsersTable } from '@/modules/access/components/users-table';
 import { filterUsers } from '@/modules/access/lib/filter-users';
+import { bulkLockReason } from '@/modules/access/lib/protected-user';
 import { useRecordBulk } from '@/modules/access/lib/use-record-bulk';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { useUserReferences } from '@/modules/access/lib/use-user-references';
@@ -59,8 +60,6 @@ export const Route = createFileRoute('/_app/access/users/')({
 
 type DeleteTarget = { kind: 'bulk' } | { kind: 'row'; user: UserDto };
 
-const SELF_BULK_REASON = 'Pilihan memuat akun Anda sendiri';
-
 function UsersPage() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
@@ -102,7 +101,8 @@ function UsersPage() {
   });
 
   const selected = visible.filter((user) => selection.selected.has(user.id));
-  const selectionHasSelf = selected.some((user) => user.email === me.email);
+  // Akun sendiri dan super admin tak dapat dinonaktifkan/dihapus (penjaga sebenarnya di server).
+  const bulkLock = bulkLockReason(selected, me.email);
   const allInactive = selected.every((user) => user.status === 'inactive');
 
   function toggleStatus(user: UserDto) {
@@ -206,25 +206,22 @@ function UsersPage() {
               ) : (
                 <>
                   <ActionButton action="activate" onClick={() => void bulk.activate.run()} />
-                  <DisabledReason reason={selectionHasSelf ? SELF_BULK_REASON : undefined}>
+                  <DisabledReason reason={bulkLock}>
                     <ActionButton
                       action="deactivate"
-                      disabled={selectionHasSelf}
+                      disabled={bulkLock !== undefined}
                       onClick={() => void bulk.deactivate.run()}
                     />
                   </DisabledReason>
                   <DisabledReason
                     reason={
-                      selectionHasSelf
-                        ? SELF_BULK_REASON
-                        : allInactive
-                          ? undefined
-                          : 'Nonaktifkan pengguna dulu sebelum dihapus'
+                      bulkLock ??
+                      (allInactive ? undefined : 'Nonaktifkan pengguna dulu sebelum dihapus')
                     }
                   >
                     <ActionButton
                       action="delete"
-                      disabled={selectionHasSelf || !allInactive}
+                      disabled={bulkLock !== undefined || !allInactive}
                       onClick={() => setDeleteTarget({ kind: 'bulk' })}
                     />
                   </DisabledReason>
@@ -268,6 +265,7 @@ function UsersPage() {
       </ListPage>
       <UserFormDialog
         {...references.formProps}
+        currentEmail={me.email}
         open={dialog !== null}
         onOpenChange={(open) => (open ? undefined : setDialog(null))}
         user={dialog === null || dialog === 'new' ? undefined : dialog}

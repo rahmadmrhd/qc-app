@@ -126,6 +126,20 @@ describe('pengguna: hapus dan pulihkan', () => {
     expect(error.message).toBe('Akun super admin tidak dapat dihapus');
   });
 
+  test('UserDto.superAdmin: true hanya untuk alamat ADMIN_EMAIL (daftar, get, dan hasil ubah status)', async () => {
+    await seedUser(env, { id: 'u-super', email: 'admin@gmail.com', roleIds: ['r-view'] });
+    const mgr = await ctxOf('mgr@gmail.com');
+    const list = await listUserDtos(env, undefined, mgr);
+    expect(list.find((user) => user.email === 'admin@gmail.com')?.superAdmin).toBe(true);
+    expect(list.filter((user) => user.superAdmin !== true).length).toBe(list.length - 1);
+    expect(list.find((user) => user.email === 'a@gmail.com')?.superAdmin).toBe(false);
+    expect((await getUserDto(env, { id: 'u-super' }, mgr)).superAdmin).toBe(true);
+    expect((await getUserDto(env, { id: 'u-a' }, mgr)).superAdmin).toBe(false);
+    expect((await setUserStatus(env, { id: 'u-a', status: 'inactive' }, mgr)).superAdmin).toBe(
+      false,
+    );
+  });
+
   test('hapus ulang = sukses tanpa audit baru dan deleted_at asli utuh', async () => {
     await setUserStatus(env, { id: 'u-a', status: 'inactive' }, admin);
     await removeUser(env, { id: 'u-a' }, admin);

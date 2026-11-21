@@ -168,3 +168,26 @@ test('actionItems di ponsel: aksi utama di bar bawah, sisanya di menu "Aksi lain
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Hapus' }));
   expect(onDelete).toHaveBeenCalledTimes(1);
 });
+
+test('ponsel: aksi utama yang nonaktif beralasan tetap mengisi bar bawah (flex-1) dan alasannya terlihat', () => {
+  mockMatchMedia(false);
+  render(
+    <ViewPage
+      title="X"
+      actionItems={[
+        {
+          id: 'status',
+          action: 'deactivate' as const,
+          disabled: true,
+          disabledReason: 'Tidak dapat menonaktifkan akun Anda sendiri',
+          onSelect: vi.fn(),
+        },
+      ]}
+    />,
+  );
+  const bar = screen.getByRole('region', { name: 'Aksi halaman' });
+  const button = within(bar).getByRole('button', { name: 'Nonaktifkan' });
+  expect(button).toBeDisabled();
+  expect(button.parentElement).toHaveClass('flex-1');
+  expect(within(bar).getByText('Tidak dapat menonaktifkan akun Anda sendiri')).toBeVisible();
+});

@@ -67,7 +67,7 @@ function deletedRoleIdsOf(user: UserRecord, roles: readonly RoleRecord[]): strin
   return [...used].filter((id) => deleted.has(id)).sort();
 }
 
-function toUserDto(user: UserRecord, roles: readonly RoleRecord[]): UserDto {
+function toUserDto(env: Env, user: UserRecord, roles: readonly RoleRecord[]): UserDto {
   const deleted = deletedInfoOf(user);
   return {
     id: user.id,
@@ -83,6 +83,7 @@ function toUserDto(user: UserRecord, roles: readonly RoleRecord[]): UserDto {
       roleIds: [...entry.roleIds],
     })),
     sharedAccount: user.sharedAccount,
+    superAdmin: isSuperAdminEmail(env, user.email),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
     updatedBy: user.updatedBy,
@@ -198,7 +199,7 @@ export async function listUserDtos(
     .filter((user) => (filter === 'deleted' ? !isLiveRecord(user) : isLiveRecord(user)))
     .filter((user) => filter !== 'active' || user.status === 'active')
     .filter((user) => filter !== 'inactive' || user.status === 'inactive')
-    .map((user) => toUserDto(user, roles))
+    .map((user) => toUserDto(env, user, roles))
     .sort((a, b) => a.email.localeCompare(b.email));
 }
 
@@ -213,7 +214,7 @@ export async function getUserDto(
   if (!user || (!isLiveRecord(user) && !canSeeDeleted(actor))) {
     throw appError('NOT_FOUND', 'User tidak ditemukan');
   }
-  return toUserDto(user, roles);
+  return toUserDto(env, user, roles);
 }
 
 /** Daftar role: bawaan hidup; `deleted` hanya bagi `access: manage`. Role tak punya status aktif/nonaktif. */
@@ -452,7 +453,7 @@ export async function saveUser(
       ],
       USER_CONFLICTS,
     );
-    return toUserDto(updated, roles);
+    return toUserDto(env, updated, roles);
   }
 
   const created: UserRecord = {
@@ -485,20 +486,20 @@ export async function saveUser(
     ],
     USER_CONFLICTS,
   );
-  return toUserDto(created, roles);
+  return toUserDto(env, created, roles);
 }
 
 const USER_STALE = 'Pengguna diubah orang lain; muat ulang halaman lalu ulangi perubahan Anda';
 const USER_NOT_FOUND = 'User tidak ditemukan';
 
-function userSpec(tables: AccessTables): LifecycleSpec<UserRecord, UserDto> {
+function userSpec(env: Env, tables: AccessTables): LifecycleSpec<UserRecord, UserDto> {
   return {
     table: 'users',
     audit: 'user',
     noun: 'pengguna',
     auditTarget: (user) => user.email,
     snapshot: (user) => userSnapshot(user, tables.businessUnits),
-    toDto: (user) => toUserDto(user, tables.roles),
+    toDto: (user) => toUserDto(env, user, tables.roles),
   };
 }
 
@@ -528,7 +529,7 @@ function userPlanners(env: Env, actor: UserContext) {
         if (user.email === actor.email && status === 'inactive') {
           throw appError('CONFLICT', 'Anda tidak bisa menonaktifkan akun sendiri');
         }
-        return planStatusChange(env, userSpec(tables), user, status, actor);
+        return planStatusChange(env, userSpec(env, tables), user, status, actor);
       },
     remove: async (id: string): Promise<PlanOutcome<RemoveResult>> => {
       const tables = await cache.get();
@@ -541,11 +542,11 @@ function userPlanners(env: Env, actor: UserContext) {
           throw appError('CONFLICT', 'Akun super admin tidak dapat dihapus');
         }
       }
-      return planSoftDelete(env, userSpec(tables), user, actor);
+      return planSoftDelete(env, userSpec(env, tables), user, actor);
     },
     restore: async (id: string): Promise<PlanOutcome<UserDto>> => {
       const tables = await cache.get();
-      return planRestore(env, userSpec(tables), findUser(tables, id), actor);
+      return planRestore(env, userSpec(env, tables), findUser(tables, id), actor);
     },
   };
 }

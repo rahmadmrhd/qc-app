@@ -154,6 +154,16 @@ test('Hapus dan Nonaktifkan massal dinonaktifkan dengan alasan bila pilihan memu
   expect(within(bar).getAllByText('Pilihan memuat akun Anda sendiri').length).toBeGreaterThan(0);
 });
 
+test('Hapus dan Nonaktifkan massal dinonaktifkan dengan alasan bila pilihan memuat super admin', async () => {
+  live = [user('u1', { status: 'active', superAdmin: true }), user('u2')];
+  await mount();
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).getByRole('button', { name: 'Nonaktifkan' })).toBeDisabled();
+  expect(within(bar).getByRole('button', { name: 'Hapus' })).toBeDisabled();
+  expect(within(bar).getAllByText('Pilihan memuat akun super admin').length).toBeGreaterThan(0);
+});
+
 test('Hapus massal nonaktif bila ada pengguna Aktif yang terpilih', async () => {
   live = [user('u1', { status: 'active' }), user('u2')];
   await mount();

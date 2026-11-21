@@ -147,6 +147,7 @@ function UserDetailPage() {
         <>
           <UserFormDialog
             {...references.formProps}
+            currentEmail={me.email}
             open={editing}
             onOpenChange={setEditing}
             user={user}

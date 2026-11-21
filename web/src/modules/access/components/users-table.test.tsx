@@ -223,3 +223,16 @@ test('360 px: alasan aksi nonaktif tampil di menu "⋯"', async () => {
     await screen.findByText('Tidak dapat menonaktifkan akun Anda sendiri'),
   ).toBeInTheDocument();
 });
+
+test('super admin: Nonaktifkan dan Hapus nonaktif dengan alasan (sama seperti akun sendiri)', async () => {
+  const { onToggleStatus } = await renderTable({
+    users: [user({ email: 'root@x.com', superAdmin: true })],
+  });
+  const deactivate = screen.getByRole('button', { name: 'Nonaktifkan root@x.com' });
+  expect(deactivate).toBeDisabled();
+  expect(screen.getByText('Akun super admin tidak dapat dinonaktifkan')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus root@x.com' })).toBeDisabled();
+  expect(screen.getByText('Akun super admin tidak dapat dihapus')).toBeInTheDocument();
+  await userEvent.click(deactivate);
+  expect(onToggleStatus).not.toHaveBeenCalled();
+});
