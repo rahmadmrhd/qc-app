@@ -611,3 +611,121 @@ describe('perilaku lama tak berubah', () => {
     expect(error.fields).toEqual({ stickerId: error.message });
   });
 });
+
+describe('stickerStock.recordBatch/adjustBatch: idempoten (clientId, K1)', () => {
+  const ID1 = '11111111-1111-4111-8111-111111111111';
+  const ID2 = '22222222-2222-4222-8222-222222222222';
+
+  test('kiriman ulang oleh pelaku yang sama mengembalikan entri yang sama tanpa menulis ulang', async () => {
+    const s1 = await newSticker();
+    const s2 = await newSticker();
+    const input = recordBatch('in', 'kiriman gudang', [
+      { stickerId: s1.id, locationId: A, quantity: 5, clientId: ID1 },
+      { stickerId: s2.id, locationId: A, quantity: 3, clientId: ID2 },
+    ]);
+    const first = await recordStockBatch(env, input, admin);
+    const again = await recordStockBatch(env, input, admin);
+    expect(again.map((entry) => entry.id)).toEqual(first.map((entry) => entry.id));
+    expect(await qtyAt(s1.id, A)).toBe(5);
+    expect(await qtyAt(s2.id, A)).toBe(3);
+    expect(await entryCount()).toBe(2);
+  });
+
+  test('kiriman ulang batch keluar tidak memotong stok dua kali', async () => {
+    const sticker = await newSticker();
+    await seedQty(sticker.id, A, 10);
+    const input = recordBatch('out', 'rusak', [
+      { stickerId: sticker.id, locationId: A, quantity: 4, clientId: ID1 },
+    ]);
+    await recordStockBatch(env, input, admin);
+    await recordStockBatch(env, input, admin);
+    expect(await qtyAt(sticker.id, A)).toBe(6);
+  });
+
+  test('koreksi: kiriman ulang idempoten', async () => {
+    const sticker = await newSticker();
+    await seedQty(sticker.id, A, 10);
+    const input = validateAdjustStockBatch({
+      reason: 'opname',
+      rows: [{ stickerId: sticker.id, locationId: A, delta: -3, clientId: ID1 }],
+    });
+    const first = await adjustStockBatch(env, input, admin);
+    const again = await adjustStockBatch(env, input, admin);
+    expect(again[0]?.id).toBe(first[0]?.id);
+    expect(await qtyAt(sticker.id, A)).toBe(7);
+  });
+
+  test('clientId milik pelaku lain = CONFLICT generik; tak menulis apa pun', async () => {
+    const sticker = await newSticker();
+    const input = recordBatch('in', '', [
+      { stickerId: sticker.id, locationId: A, quantity: 5, clientId: ID1 },
+    ]);
+    await recordStockBatch(env, input, admin);
+    const other = await loadUserContext(env, 'manage-ab@gmail.com');
+    if (!other) throw new Error('manage hilang');
+    const error = await captureAppErrorAsync(() => recordStockBatch(env, input, other));
+    expect(error.code).toBe('CONFLICT');
+    expect(await qtyAt(sticker.id, A)).toBe(5);
+    expect(await entryCount()).toBe(1);
+  });
+
+  test('sebagian clientId sudah ada = CONFLICT; tak menulis baris baru', async () => {
+    const s1 = await newSticker();
+    const s2 = await newSticker();
+    await recordStockBatch(
+      env,
+      recordBatch('in', '', [{ stickerId: s1.id, locationId: A, quantity: 5, clientId: ID1 }]),
+      admin,
+    );
+    const error = await captureAppErrorAsync(() =>
+      recordStockBatch(
+        env,
+        recordBatch('in', '', [
+          { stickerId: s1.id, locationId: A, quantity: 5, clientId: ID1 },
+          { stickerId: s2.id, locationId: A, quantity: 2, clientId: ID2 },
+        ]),
+        admin,
+      ),
+    );
+    expect(error.code).toBe('CONFLICT');
+    expect(await qtyAt(s2.id, A)).toBeNull();
+    expect(await entryCount()).toBe(1);
+  });
+
+  test('tanpa clientId perilaku lama: kiriman ulang menambah lagi', async () => {
+    const sticker = await newSticker();
+    const input = recordBatch('in', '', [{ stickerId: sticker.id, locationId: A, quantity: 5 }]);
+    await recordStockBatch(env, input, admin);
+    await recordStockBatch(env, input, admin);
+    expect(await qtyAt(sticker.id, A)).toBe(10);
+  });
+
+  test('validator: clientId harus UUID huruf kecil dan tak boleh kembar dalam satu permintaan', () => {
+    const base = { stickerId: 's1', locationId: A, quantity: 1 };
+    expect(
+      captureAppError(() =>
+        validateRecordStockBatch({
+          kind: 'in',
+          reason: '',
+          rows: [{ ...base, clientId: 'bukan-uuid' }],
+        }),
+      ).code,
+    ).toBe('VALIDATION');
+    expect(
+      captureAppError(() =>
+        validateRecordStockBatch({
+          kind: 'in',
+          reason: '',
+          rows: [
+            { ...base, clientId: ID1 },
+            { ...base, stickerId: 's2', clientId: ID1 },
+          ],
+        }),
+      ).code,
+    ).toBe('VALIDATION');
+    expect(
+      validateRecordStockBatch({ kind: 'in', reason: '', rows: [{ ...base, clientId: ID1 }] })
+        .rows[0]?.clientId,
+    ).toBe(ID1);
+  });
+});

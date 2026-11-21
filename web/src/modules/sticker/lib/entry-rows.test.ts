@@ -3,6 +3,7 @@ import {
   buildBatchInput,
   type EntryRow,
   emptyEntryRow,
+  newEntryClientId,
   rowError,
   rowPieces,
   rowWarning,
@@ -96,4 +97,19 @@ test('buildBatchInput koreksi: tanpa kind, delta menjadi angka', () => {
     ],
   });
   expect('kind' in input).toBe(false);
+});
+
+test('buildBatchInput menyertakan clientId per baris bila ada (K1) dan tidak menambah kunci bila tak ada', () => {
+  const withId = buildBatchInput('adjust', 'l-a', 'opname', [
+    { stickerId: 's1', row: { ...emptyEntryRow(), delta: '2' }, clientId: 'c-1' },
+    { stickerId: 's2', row: { ...emptyEntryRow(), delta: '-1' } },
+  ]);
+  expect(withId.rows[0]).toMatchObject({ clientId: 'c-1' });
+  expect('clientId' in (withId.rows[1] ?? {})).toBe(false);
+});
+
+test('newEntryClientId: UUID v4 huruf kecil, unik', () => {
+  const a = newEntryClientId();
+  expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  expect(newEntryClientId()).not.toBe(a);
 });

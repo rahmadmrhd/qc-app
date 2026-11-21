@@ -15,6 +15,30 @@ export function emptyEntryRow(): EntryRow {
   return { count: emptyCount(), delta: '' };
 }
 
+/**
+ * Kunci idempoten satu entri (K1, `clientId`): UUID v4 huruf kecil. Dibuat saat baris ditambah dan dibuat ulang tiap
+ * isian berubah, sehingga menekan Simpan lagi pada isian yang sama (mis. setelah respons hilang) tidak menggandakan stok.
+ */
+export function newEntryClientId(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID().toLowerCase();
+    }
+  } catch {
+    // Konteks tak aman: pakai cadangan.
+  }
+  const bytes = new Uint8Array(16);
+  try {
+    crypto.getRandomValues(bytes);
+  } catch {
+    for (let i = 0; i < 16; i++) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x40;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0'));
+  return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
+}
+
 /** Baris yang belum diisi sama sekali (hitungan kosong dan selisih kosong): bukan isian yang belum disimpan. */
 export function isEmptyRow(row: EntryRow): boolean {
   return row.delta.trim() === '' && piecesOfCount(cleanCount(row.count)) === 0;
@@ -70,26 +94,28 @@ export function buildBatchInput(
   mode: EntryMode,
   locationId: string,
   reason: string,
-  entries: readonly { stickerId: string; row: EntryRow }[],
+  entries: readonly { stickerId: string; row: EntryRow; clientId?: string }[],
 ): RecordStockBatchInput | AdjustStockBatchInput {
   const trimmed = reason.trim();
   if (mode === 'adjust') {
     return {
       reason: trimmed,
-      rows: entries.map(({ stickerId, row }) => ({
+      rows: entries.map(({ stickerId, row, clientId }) => ({
         stickerId,
         locationId,
         delta: Number(row.delta.trim()),
+        ...(clientId ? { clientId } : {}),
       })),
     };
   }
   return {
     kind: mode,
     reason: trimmed,
-    rows: entries.map(({ stickerId, row }) => ({
+    rows: entries.map(({ stickerId, row, clientId }) => ({
       stickerId,
       locationId,
       count: cleanCount(row.count),
+      ...(clientId ? { clientId } : {}),
     })),
   };
 }

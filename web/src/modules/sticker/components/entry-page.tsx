@@ -23,6 +23,7 @@ import {
   type EntryRow,
   emptyEntryRow,
   isEmptyRow,
+  newEntryClientId,
   rowError,
   rowWarning,
   summarize,
@@ -42,6 +43,13 @@ export const ENTRY_MODE_LABEL: Record<EntryMode, string> = {
   out: 'Keluar',
   adjust: 'Koreksi',
 };
+
+/** Entri yang sudah ditambah: isian + kunci idempoten (K1). */
+interface AddedEntry {
+  stickerId: string;
+  row: EntryRow;
+  clientId: string;
+}
 
 export interface EntryPageProps {
   /** Id elemen `<form>`: tombol Simpan ada di bar judul `FormPage` (di luar form) dan memakai `form={formId}`. */
@@ -114,8 +122,10 @@ export function EntryPage({
     : undefined;
   const [search, setSearch] = useState(initialRow?.name ?? '');
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
-  const [added, setAdded] = useState<{ stickerId: string; row: EntryRow }[]>(() =>
-    initialRow ? [{ stickerId: initialRow.stickerId, row: emptyEntryRow() }] : [],
+  const [added, setAdded] = useState<AddedEntry[]>(() =>
+    initialRow
+      ? [{ stickerId: initialRow.stickerId, row: emptyEntryRow(), clientId: newEntryClientId() }]
+      : [],
   );
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -178,14 +188,23 @@ export function EntryPage({
     onSubmittableChange?.(submittable);
   }, [submittable, onSubmittableChange]);
 
+  // K1: kunci idempoten dibuat ulang tiap isian yang menentukan isi kiriman berubah (mode, lokasi, alasan, isian baris);
+  // selama isian sama, Simpan yang diulang memakai kunci yang sama sehingga server tak menggandakan entri.
+  function renewClientIds() {
+    setAdded((current) => current.map((entry) => ({ ...entry, clientId: newEntryClientId() })));
+  }
+
   function changeMode(next: EntryMode) {
     onModeChange(next);
+    renewClientIds();
     setError(null);
   }
 
   function setRow(stickerId: string, row: EntryRow) {
     setAdded((current) =>
-      current.map((entry) => (entry.stickerId === stickerId ? { stickerId, row } : entry)),
+      current.map((entry) =>
+        entry.stickerId === stickerId ? { stickerId, row, clientId: newEntryClientId() } : entry,
+      ),
     );
     setError(null);
   }
@@ -202,7 +221,11 @@ export function EntryPage({
           mode,
           locationId,
           reason,
-          entries.map((entry) => ({ stickerId: entry.stickerId, row: entry.row })),
+          entries.map((entry) => ({
+            stickerId: entry.stickerId,
+            row: entry.row,
+            clientId: entry.clientId,
+          })),
         ),
       );
       failure = typeof result === 'string' ? { message: result } : result;
@@ -308,7 +331,7 @@ export function EntryPage({
             onClick={() =>
               setAdded((current) => [
                 ...current,
-                { stickerId: stock.stickerId, row: emptyEntryRow() },
+                { stickerId: stock.stickerId, row: emptyEntryRow(), clientId: newEntryClientId() },
               ])
             }
           >
@@ -360,6 +383,7 @@ export function EntryPage({
           value={locationId}
           onChange={(id) => {
             setLocationId(id);
+            renewClientIds();
             setError(null);
           }}
         />
@@ -424,6 +448,7 @@ export function EntryPage({
               value={reason}
               onChange={(event) => {
                 setReason(event.target.value);
+                renewClientIds();
                 setError(null);
               }}
             />

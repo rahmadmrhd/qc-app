@@ -22,6 +22,7 @@ import type { StockEntryRow } from './stock-repo';
 import {
   addStockStmt,
   encodeStockCursor,
+  entriesByClientIdsStatement,
   historyStatement,
   inactivateDeprecatedIfEmptyStmt,
   insertEntryStmt,
@@ -57,6 +58,8 @@ interface StockChange {
   requireActive: boolean;
   /** Field untuk pesan galat stok tidak cukup. */
   amountField: 'quantity' | 'delta';
+  /** Kunci idempoten klien (entri batch); lihat `replayEntries`. */
+  clientId?: string;
 }
 
 /** Alasan stiker tak dapat menerima stok masuk (`null` = boleh): digantikan, nonaktif, atau jenisnya nonaktif. */
@@ -113,6 +116,7 @@ function changeStatements(
         reason: change.reason,
         actor,
         ts: now,
+        ...(change.clientId ? { clientId: change.clientId } : {}),
       }),
     ],
     inactivate:
@@ -395,6 +399,42 @@ export async function opnameStock(
   return runCas(() => opnameOnce(env, input, actor), OPNAME_STALE_MESSAGE);
 }
 
+const REPLAY_CONFLICT_MESSAGE = 'Entri stok tidak dapat dikirim ulang';
+
+/**
+ * Kirim ulang entri stok batch ber-`clientId` (K1): bila SEMUA baris permintaan sudah tersimpan oleh pelaku yang sama
+ * untuk stiker dan lokasi yang sama, kembalikan entri-entrinya (urut masukan) tanpa menulis apa pun. `null` = tidak
+ * satu pun ada (tulis seperti biasa). Sebagian ada, milik pelaku lain, atau stiker/lokasi berbeda = `CONFLICT` generik
+ * (tanpa email atau id). Balapan dua kiriman serentak: yang kalah gagal di indeks unik `sticker_stock_entries_client_id`
+ * (batch dibatalkan), `runCas` mengulang, dan pemeriksaan ini menemukan baris pemenang.
+ */
+async function replayEntries(
+  env: Env,
+  changes: readonly StockChange[],
+  actor: ActorRef,
+): Promise<StockEntryDto[] | null> {
+  const clientIds = changes.flatMap((change) => (change.clientId ? [change.clientId] : []));
+  if (clientIds.length === 0) return null;
+  const result = await entriesByClientIdsStatement(env.DB, clientIds).all<
+    StockEntryRow & { client_id: string }
+  >();
+  if (result.results.length === 0) return null;
+  const found = new Map(result.results.map((row) => [row.client_id, row]));
+  if (found.size !== changes.length) throw appError('CONFLICT', REPLAY_CONFLICT_MESSAGE);
+  return changes.map((change) => {
+    const row = change.clientId ? found.get(change.clientId) : undefined;
+    if (
+      !row ||
+      row.actor !== actor.email ||
+      row.sticker_id.trim() !== change.stickerId ||
+      row.location_id.trim() !== change.locationId
+    ) {
+      throw appError('CONFLICT', REPLAY_CONFLICT_MESSAGE);
+    }
+    return toStockEntry(row);
+  });
+}
+
 const byText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
 /**
@@ -409,6 +449,9 @@ async function applyBatchOnce(
   changes: readonly StockChange[],
   actor: ActorRef,
 ): Promise<StockEntryDto[]> {
+  // Kirim ulang (K1): diperiksa SEBELUM validasi stok, sebab stok kini sudah berubah oleh kiriman pertama.
+  const replay = await replayEntries(env, changes, actor);
+  if (replay) return replay;
   const stickerIds = [...new Set(changes.map((change) => change.stickerId))];
   const [statusResult, qtyResult] = await env.DB.batch([
     stickersStatusStatement(env.DB, stickerIds),
@@ -513,6 +556,7 @@ export async function recordStockBatch(
       reason: input.reason,
       requireActive: input.kind === 'in',
       amountField: 'quantity',
+      ...(row.clientId ? { clientId: row.clientId } : {}),
     };
   });
   return runCas(() => applyBatchOnce(env, changes, actor), STALE_MESSAGE);
@@ -534,6 +578,7 @@ export async function adjustStockBatch(
       reason: input.reason,
       requireActive: false,
       amountField: 'delta',
+      ...(row.clientId ? { clientId: row.clientId } : {}),
     }),
   );
   return runCas(() => applyBatchOnce(env, changes, actor), STALE_MESSAGE);

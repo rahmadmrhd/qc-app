@@ -191,6 +191,8 @@ export interface EntryInsert {
   /** Hanya untuk entri `serial`: serial dan kejadian yang memotong stok (kolom `serial_id`/`serial_event_id`). */
   serialId?: string;
   serialEventId?: string;
+  /** Kunci idempoten klien entri stok batch (`client_id`, unik); kosong = NULL. */
+  clientId?: string;
 }
 
 /**
@@ -200,7 +202,7 @@ export interface EntryInsert {
 export function insertEntryStmt(db: Preparer, entry: EntryInsert): DbStatement {
   return db
     .prepare(
-      `INSERT INTO sticker_stock_entries (sticker_id, location_id, kind, delta, qty_after, count_json, reason, actor, ts, serial_id, serial_event_id) SELECT ?, ?, ?, ?, qty, ?, ?, ?, ?, ?, ? FROM sticker_stock WHERE sticker_id = ? AND location_id = ?`,
+      `INSERT INTO sticker_stock_entries (sticker_id, location_id, kind, delta, qty_after, count_json, reason, actor, ts, serial_id, serial_event_id, client_id) SELECT ?, ?, ?, ?, qty, ?, ?, ?, ?, ?, ?, ? FROM sticker_stock WHERE sticker_id = ? AND location_id = ?`,
     )
     .bind(
       entry.stickerId,
@@ -213,9 +215,22 @@ export function insertEntryStmt(db: Preparer, entry: EntryInsert): DbStatement {
       entry.ts,
       entry.serialId ?? '',
       entry.serialEventId ?? '',
+      entry.clientId ?? null,
       entry.stickerId,
       entry.locationId,
     );
+}
+
+/** Entri yang sudah tersimpan untuk kumpulan `clientId` (kirim ulang entri stok batch). */
+export function entriesByClientIdsStatement(
+  db: Preparer,
+  clientIds: readonly string[],
+): DbStatement {
+  return db
+    .prepare(
+      `SELECT ${ENTRY_COLUMNS}, client_id FROM sticker_stock_entries WHERE client_id IN (${clientIds.map(() => '?').join(',')})`,
+    )
+    .bind(...clientIds);
 }
 
 export interface SerialDeduction {

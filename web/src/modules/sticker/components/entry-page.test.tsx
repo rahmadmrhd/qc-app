@@ -175,7 +175,14 @@ test('masuk: tambah stiker, isi hitungan, alasan boleh kosong; kirim batch lalu 
   expect(onSave).toHaveBeenCalledWith('in', {
     kind: 'in',
     reason: '',
-    rows: [{ stickerId: 's1', locationId: 'l-a', count: { rows: [], loose: 7 } }],
+    rows: [
+      {
+        stickerId: 's1',
+        locationId: 'l-a',
+        count: { rows: [], loose: 7 },
+        clientId: expect.any(String),
+      },
+    ],
   });
   expect(onDone).toHaveBeenCalledTimes(1);
 });
@@ -211,7 +218,7 @@ test('koreksi: selisih bertanda, pratinjau hasil, galat untuk 0, dan alasan waji
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   expect(onSave).toHaveBeenCalledWith('adjust', {
     reason: 'Hitung fisik',
-    rows: [{ stickerId: 's2', locationId: 'l-a', delta: -4 }],
+    rows: [{ stickerId: 's2', locationId: 'l-a', delta: -4, clientId: expect.any(String) }],
   });
 });
 
@@ -257,7 +264,14 @@ test('stiker yang sudah ditambah tetap terkirim walau tersaring dari tampilan', 
   expect(onSave).toHaveBeenCalledWith(
     'in',
     expect.objectContaining({
-      rows: [{ stickerId: 's1', locationId: 'l-a', count: { rows: [], loose: 7 } }],
+      rows: [
+        {
+          stickerId: 's1',
+          locationId: 'l-a',
+          count: { rows: [], loose: 7 },
+          clientId: expect.any(String),
+        },
+      ],
     }),
   );
 });
@@ -323,4 +337,24 @@ test('Batal pada FormPage memanggil onCancel dan tidak menyimpan', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
   expect(onCancel).toHaveBeenCalledTimes(1);
   expect(onSave).not.toHaveBeenCalled();
+});
+
+test('K1: kiriman ulang pada isian yang sama memakai clientId yang sama; isian berubah membuat clientId baru', async () => {
+  const { onSave } = await renderPage();
+  onSave.mockResolvedValueOnce({ message: 'Jaringan putus', stale: false });
+  await chooseJakarta();
+  await userEvent.click(screen.getByRole('button', { name: 'Tambah Hijau-B' }));
+  await userEvent.type(screen.getByLabelText('Butir'), '3');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await screen.findByRole('alert');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  await userEvent.type(screen.getByLabelText('Butir'), '4');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  const ids = onSave.mock.calls.map(
+    (call) => (call[1] as { rows: { clientId: string }[] }).rows[0]?.clientId,
+  );
+  expect(ids).toHaveLength(3);
+  expect(ids[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  expect(ids[1]).toBe(ids[0]);
+  expect(ids[2]).not.toBe(ids[0]);
 });

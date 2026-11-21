@@ -332,6 +332,7 @@ describe('skema baseline', () => {
       { name: '0026_serial_unik_sistem.sql' },
       { name: '0027_soft_delete.sql' },
       { name: '0028_audit_target_id.sql' },
+      { name: '0029_klien_id_entri_stok.sql' },
     ]);
   });
 
@@ -543,6 +544,7 @@ describe('skema baseline', () => {
         'serials.serials_status',
         'sticker_business_units.sticker_business_units_bu',
         'sticker_guide_images.sticker_guide_images_name',
+        'sticker_stock_entries.sticker_stock_entries_client_id',
         'sticker_stock_entries.sticker_stock_entries_location_ts',
         'sticker_stock_entries.sticker_stock_entries_sticker_ts',
         'sticker_types.sticker_types_kind_unique',

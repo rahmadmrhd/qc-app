@@ -699,6 +699,12 @@ export interface RecordStockBatchRow {
   locationId: string;
   quantity?: number;
   count?: StockCount;
+  /**
+   * Kunci idempoten (UUID huruf kecil), dibuat klien sebelum kiriman pertama dan dipakai ulang bila Simpan ditekan lagi
+   * (redesain fase 4a, K1). Kiriman ulang oleh pelaku yang sama dijawab dengan entri yang sudah tersimpan tanpa menulis
+   * lagi; milik pelaku lain, sebagian baris saja, atau stiker/lokasi berbeda = `CONFLICT`. Opsional (aditif).
+   */
+  clientId?: string;
 }
 
 /**
@@ -719,6 +725,8 @@ export interface AdjustStockBatchRow {
   locationId: string;
   /** Bertanda, bukan 0. */
   delta: number;
+  /** Kunci idempoten; lihat `RecordStockBatchRow.clientId`. */
+  clientId?: string;
 }
 
 /** Koreksi stok untuk banyak stiker x lokasi sekaligus (atomik, 1..100 baris, pasangan unik, alasan wajib). */

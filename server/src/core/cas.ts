@@ -70,6 +70,7 @@ export const RETRYABLE_UNIQUE_KEYS = new Set([
   'handovers_number',
   'handovers_client_id',
   'handover_comments_client_id',
+  'sticker_stock_entries_client_id',
   'brands_key',
   'PRIMARY',
 ]);

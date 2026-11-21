@@ -24,7 +24,12 @@ import type {
   StockHistoryInput,
 } from '@shared/contract';
 import type { StockCount } from '@shared/stickers';
-import { piecesOfCount, STICKER_LIMITS, USER_STICKER_RULES } from '@shared/stickers';
+import {
+  isStockClientId,
+  piecesOfCount,
+  STICKER_LIMITS,
+  USER_STICKER_RULES,
+} from '@shared/stickers';
 import { parseStockCursor } from './stock-repo';
 
 const STATUS_VALUES = ['active', 'inactive'] as const;
@@ -485,7 +490,7 @@ export function validateSaveStickerSettings(raw: unknown): SaveStickerSettingsIn
 }
 
 /** Membaca `rows` entri batch: 1..`opnameRows` objek ber-stiker+lokasi, pasangan unik; `readRow` mengurai sisanya. */
-function readBatchRows<Row extends { stickerId: string; locationId: string }>(
+function readBatchRows<Row extends { stickerId: string; locationId: string; clientId?: string }>(
   reader: ObjectReader,
   readRow: (source: Record<string, unknown>, label: string) => Row | string,
 ): Row[] {
@@ -496,6 +501,7 @@ function readBatchRows<Row extends { stickerId: string; locationId: string }>(
     return rows;
   }
   const seen = new Set<string>();
+  const seenClientIds = new Set<string>();
   for (const [index, entry] of (value as unknown[]).entries()) {
     const label = `Baris ${index + 1}`;
     const source = (typeof entry === 'object' && entry !== null ? entry : {}) as Record<
@@ -519,12 +525,27 @@ function readBatchRows<Row extends { stickerId: string; locationId: string }>(
       break;
     }
     seen.add(key);
+    // `clientId` opsional (kunci idempoten K1): kosong = tanpa; ada tetapi bukan UUID huruf kecil atau kembar = galat.
+    const rawClientId = source.clientId;
+    let clientId: string | undefined;
+    if (rawClientId !== undefined && rawClientId !== null && rawClientId !== '') {
+      if (typeof rawClientId !== 'string' || !isStockClientId(rawClientId)) {
+        reader.fail('rows', `${label}: clientId tidak valid`);
+        break;
+      }
+      if (seenClientIds.has(rawClientId)) {
+        reader.fail('rows', `${label}: clientId kembar dalam satu permintaan`);
+        break;
+      }
+      seenClientIds.add(rawClientId);
+      clientId = rawClientId;
+    }
     const parsed = readRow(source, label);
     if (typeof parsed === 'string') {
       reader.fail('rows', `${label}: ${parsed}`);
       break;
     }
-    rows.push(parsed);
+    rows.push(clientId === undefined ? parsed : { ...parsed, clientId });
   }
   return rows;
 }
