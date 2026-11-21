@@ -692,6 +692,47 @@ describe('stickerStock.recordBatch/adjustBatch: idempoten (clientId, K1)', () =>
     expect(await entryCount()).toBe(1);
   });
 
+  test('clientId sama dengan isi berbeda (jumlah, jenis, alasan, rute) = CONFLICT; entri dan stok tak berubah; pesan tak memuat isi lama', async () => {
+    const sticker = await newSticker();
+    await seedQty(sticker.id, A, 20);
+    await recordStockBatch(
+      env,
+      recordBatch('out', 'rusak', [
+        { stickerId: sticker.id, locationId: A, quantity: 4, clientId: ID1 },
+      ]),
+      admin,
+    );
+    const variants = [
+      recordBatch('out', 'rusak', [
+        { stickerId: sticker.id, locationId: A, quantity: 9, clientId: ID1 },
+      ]),
+      recordBatch('in', 'rusak', [
+        { stickerId: sticker.id, locationId: A, quantity: 4, clientId: ID1 },
+      ]),
+      recordBatch('out', 'alasan lain', [
+        { stickerId: sticker.id, locationId: A, quantity: 4, clientId: ID1 },
+      ]),
+    ];
+    for (const input of variants) {
+      const error = await captureAppErrorAsync(() => recordStockBatch(env, input, admin));
+      expect(error.code).toBe('CONFLICT');
+      expect(error.message).not.toContain('rusak');
+    }
+    const asAdjust = await captureAppErrorAsync(() =>
+      adjustStockBatch(
+        env,
+        validateAdjustStockBatch({
+          reason: 'rusak',
+          rows: [{ stickerId: sticker.id, locationId: A, delta: -4, clientId: ID1 }],
+        }),
+        admin,
+      ),
+    );
+    expect(asAdjust.code).toBe('CONFLICT');
+    expect(await qtyAt(sticker.id, A)).toBe(16);
+    expect(await entryCount()).toBe(2);
+  });
+
   test('tanpa clientId perilaku lama: kiriman ulang menambah lagi', async () => {
     const sticker = await newSticker();
     const input = recordBatch('in', '', [{ stickerId: sticker.id, locationId: A, quantity: 5 }]);

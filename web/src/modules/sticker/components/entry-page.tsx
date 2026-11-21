@@ -188,23 +188,18 @@ export function EntryPage({
     onSubmittableChange?.(submittable);
   }, [submittable, onSubmittableChange]);
 
-  // K1: kunci idempoten dibuat ulang tiap isian yang menentukan isi kiriman berubah (mode, lokasi, alasan, isian baris);
-  // selama isian sama, Simpan yang diulang memakai kunci yang sama sehingga server tak menggandakan entri.
-  function renewClientIds() {
-    setAdded((current) => current.map((entry) => ({ ...entry, clientId: newEntryClientId() })));
-  }
-
+  // K1: kunci idempoten dibuat SATU kali saat baris ditambah dan TIDAK diperbarui saat isian diubah. Server
+  // membandingkan isi dengan entri tersimpan: kiriman ulang yang sama = hasil lama, isi berbeda dengan kunci yang
+  // sudah tersimpan = CONFLICT (aman, tak menggandakan stok), kunci yang belum pernah tersimpan = ditulis biasa.
+  // Memperbarui kunci diam-diam setelah kiriman yang responsnya hilang dapat menggandakan stok.
   function changeMode(next: EntryMode) {
     onModeChange(next);
-    renewClientIds();
     setError(null);
   }
 
   function setRow(stickerId: string, row: EntryRow) {
     setAdded((current) =>
-      current.map((entry) =>
-        entry.stickerId === stickerId ? { stickerId, row, clientId: newEntryClientId() } : entry,
-      ),
+      current.map((entry) => (entry.stickerId === stickerId ? { ...entry, row } : entry)),
     );
     setError(null);
   }
@@ -383,7 +378,6 @@ export function EntryPage({
           value={locationId}
           onChange={(id) => {
             setLocationId(id);
-            renewClientIds();
             setError(null);
           }}
         />
@@ -448,7 +442,6 @@ export function EntryPage({
               value={reason}
               onChange={(event) => {
                 setReason(event.target.value);
-                renewClientIds();
                 setError(null);
               }}
             />

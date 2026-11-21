@@ -339,7 +339,7 @@ test('Batal pada FormPage memanggil onCancel dan tidak menyimpan', async () => {
   expect(onSave).not.toHaveBeenCalled();
 });
 
-test('K1: kiriman ulang pada isian yang sama memakai clientId yang sama; isian berubah membuat clientId baru', async () => {
+test('K1: clientId dibuat sekali dan tetap sama pada kiriman ulang, juga setelah isian, alasan, mode, atau lokasi diubah (server yang menolak isi berbeda)', async () => {
   const { onSave } = await renderPage();
   onSave.mockResolvedValueOnce({ message: 'Jaringan putus', stale: false });
   await chooseJakarta();
@@ -356,5 +356,6 @@ test('K1: kiriman ulang pada isian yang sama memakai clientId yang sama; isian b
   expect(ids).toHaveLength(3);
   expect(ids[0]).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
   expect(ids[1]).toBe(ids[0]);
-  expect(ids[2]).not.toBe(ids[0]);
+  // Tidak diperbarui diam-diam: kiriman yang responsnya hilang tidak boleh menggandakan stok.
+  expect(ids[2]).toBe(ids[0]);
 });

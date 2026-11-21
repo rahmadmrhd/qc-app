@@ -399,13 +399,14 @@ export async function opnameStock(
   return runCas(() => opnameOnce(env, input, actor), OPNAME_STALE_MESSAGE);
 }
 
-const REPLAY_CONFLICT_MESSAGE = 'Entri stok tidak dapat dikirim ulang';
+const REPLAY_CONFLICT_MESSAGE =
+  'Entri stok tidak dapat dikirim ulang. Kiriman sebelumnya mungkin sudah tersimpan: periksa riwayat stok dulu. Bila belum, batalkan catat lalu tambahkan stiker itu lagi.';
 
 /**
  * Kirim ulang entri stok batch ber-`clientId` (K1): bila SEMUA baris permintaan sudah tersimpan oleh pelaku yang sama
- * untuk stiker dan lokasi yang sama, kembalikan entri-entrinya (urut masukan) tanpa menulis apa pun. `null` = tidak
- * satu pun ada (tulis seperti biasa). Sebagian ada, milik pelaku lain, atau stiker/lokasi berbeda = `CONFLICT` generik
- * (tanpa email atau id). Balapan dua kiriman serentak: yang kalah gagal di indeks unik `sticker_stock_entries_client_id`
+ * dengan isi yang sama (stiker, lokasi, jenis catatan, selisih butir, alasan), kembalikan entri-entrinya (urut
+ * masukan) tanpa menulis apa pun. `null` = tidak satu pun ada (tulis seperti biasa). Sebagian ada, milik pelaku lain,
+ * atau isi berbeda = `CONFLICT` generik (tanpa email, id, atau isi entri tersimpan; keputusan pemilik 2026-11-21). Balapan dua kiriman serentak: yang kalah gagal di indeks unik `sticker_stock_entries_client_id`
  * (batch dibatalkan), `runCas` mengulang, dan pemeriksaan ini menemukan baris pemenang.
  */
 async function replayEntries(
@@ -427,7 +428,10 @@ async function replayEntries(
       !row ||
       row.actor !== actor.email ||
       row.sticker_id.trim() !== change.stickerId ||
-      row.location_id.trim() !== change.locationId
+      row.location_id.trim() !== change.locationId ||
+      row.kind.trim() !== change.kind ||
+      Number(row.delta) !== change.delta ||
+      row.reason !== change.reason
     ) {
       throw appError('CONFLICT', REPLAY_CONFLICT_MESSAGE);
     }
