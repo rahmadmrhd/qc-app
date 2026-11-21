@@ -100,9 +100,11 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
   const canOpenBu = businessUnitLinkAccess(me).openBusinessUnitHref !== undefined;
   const canOpenLocation = locationLinkAccess(me).openLocationHref !== undefined;
   const editableBuIds = new Set(buIdsWithLevelOf(me, 'serial', 'edit'));
-  // Hanya baris yang BU saat ininya dikelola pemanggil yang dapat dipilih: satu id di luar hak membuat seluruh tahap
-  // `NOT_FOUND` di server (hak penuh = semua BU riwayat; server tetap yang berwenang).
-  const manageable = (serial: SerialSummaryDto) => canManageSerial(me, [serial.buId]);
+  // Hanya baris yang boleh dikelola pemanggil yang dapat dipilih: satu id di luar hak membuat seluruh tahap
+  // `NOT_FOUND` di server. Hak penuh = `serial: manage` pada SEMUA BU riwayat, dihitung server (`canManage`); tanpa
+  // field itu (balasan pulihkan, server lama) jatuh ke BU saat ini saja. Server tetap yang berwenang.
+  const manageable = (serial: SerialSummaryDto) =>
+    serial.canManage ?? canManageSerial(me, [serial.buId]);
 
   const reload = () => void list.refetch();
   const remove = useBulkAction({

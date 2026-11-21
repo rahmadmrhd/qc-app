@@ -667,6 +667,26 @@ test('kolom checkbox hanya bagi pemegang serial: manage; pembaca dan editor tanp
   expect(screen.getByRole('checkbox', { name: 'Pilih semua' })).toBeInTheDocument();
 });
 
+test('canManage dari server menentukan checkbox dan Hapus baris (serial yang pernah di BU lain tak dapat dipilih)', async () => {
+  me = manageMe();
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') {
+      return Promise.resolve({
+        items: [
+          row({ canManage: true }),
+          row({ id: 's2', serial: 'XYZ789', canManage: false }),
+        ],
+        nextCursor: null,
+      });
+    }
+    return Promise.resolve({ locations: [], items: [], nextCursor: null });
+  });
+  await renderPage();
+  await screen.findByText('ABC123');
+  expect(screen.getByRole('checkbox', { name: 'Pilih ABC123' })).toBeInTheDocument();
+  expect(screen.queryByRole('checkbox', { name: 'Pilih XYZ789' })).toBeNull();
+});
+
 test('tidak ada ubah massal: bar aksi hanya memuat Hapus', async () => {
   me = manageMe();
   await renderPage();
