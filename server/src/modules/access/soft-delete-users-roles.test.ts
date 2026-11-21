@@ -89,6 +89,42 @@ describe('pengguna: ubah status massal', () => {
     expect((await userRow('u-a'))?.status).toBe('active');
   });
 
+  test('super admin tidak dapat dinonaktifkan: batch ditolak seluruhnya, tunggal dan users.save juga; mengaktifkan tetap boleh', async () => {
+    await seedUser(env, { id: 'u-super', email: 'admin@gmail.com', roleIds: ['r-view'] });
+    const mgr = await ctxOf('mgr@gmail.com');
+    const batch = await captureAppErrorAsync(() =>
+      setUserStatusBatch(env, { ids: ['u-a', 'u-super'], status: 'inactive' }, mgr),
+    );
+    expect(batch.code).toBe('CONFLICT');
+    expect(batch.message).toBe('Akun super admin tidak dapat dinonaktifkan');
+    expect((await userRow('u-a'))?.status).toBe('active');
+    expect((await userRow('u-super'))?.status).toBe('active');
+    const single = await captureAppErrorAsync(() =>
+      setUserStatus(env, { id: 'u-super', status: 'inactive' }, mgr),
+    );
+    expect(single.message).toBe('Akun super admin tidak dapat dinonaktifkan');
+    const saved = await captureAppErrorAsync(() =>
+      saveUser(
+        env,
+        {
+          id: 'u-super',
+          email: 'admin@gmail.com',
+          name: 'Admin',
+          status: 'inactive',
+          assignments: [],
+          buAssignments: [],
+        },
+        mgr,
+      ),
+    );
+    expect(saved.code).toBe('CONFLICT');
+    expect(saved.fields).toEqual({ status: 'Akun super admin tidak dapat dinonaktifkan' });
+    expect((await userRow('u-super'))?.status).toBe('active');
+    // Mengaktifkan (status sudah aktif) tidak ditolak.
+    const ok = await setUserStatus(env, { id: 'u-super', status: 'active' }, mgr);
+    expect(ok.status).toBe('active');
+  });
+
   test('id asing membatalkan seluruh permintaan (NOT_FOUND)', async () => {
     const error = await captureAppErrorAsync(() =>
       setUserStatusBatch(env, { ids: ['u-a', 'tidak-ada'], status: 'inactive' }, admin),

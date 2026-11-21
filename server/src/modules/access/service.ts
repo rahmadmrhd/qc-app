@@ -406,6 +406,12 @@ export async function saveUser(
   if (users.some((user) => user.email === email && user.id !== input.id)) {
     throw appError('CONFLICT', 'Email sudah terdaftar', { email: 'Email sudah terdaftar' });
   }
+  // Super admin (ADMIN_EMAIL) tidak dapat dinonaktifkan, sama pola dengan larangan hapus (keputusan pemilik 2026-11-21).
+  if (input.status === 'inactive' && isSuperAdminEmail(env, email)) {
+    throw appError('CONFLICT', SUPER_ADMIN_INACTIVE_MESSAGE, {
+      status: SUPER_ADMIN_INACTIVE_MESSAGE,
+    });
+  }
   const now = nowIso(env);
   const assignments = input.assignments.map((entry) => ({
     ...entry,
@@ -509,7 +515,9 @@ function findUser(tables: AccessTables, id: string): UserRecord {
   return user;
 }
 
-/** Super admin = alamat `ADMIN_EMAIL` (identitasnya dari env, bukan dari baris pengguna): tak boleh dihapus. */
+const SUPER_ADMIN_INACTIVE_MESSAGE = 'Akun super admin tidak dapat dinonaktifkan';
+
+/** Super admin = alamat `ADMIN_EMAIL` (identitasnya dari env, bukan dari baris pengguna): tak boleh dihapus maupun dinonaktifkan. */
 function isSuperAdminEmail(env: Env, email: string): boolean {
   const admin = normalizeEmail(env.ADMIN_EMAIL ?? '');
   return admin !== '' && email === admin;
@@ -528,6 +536,9 @@ function userPlanners(env: Env, actor: UserContext) {
         if (!isLiveRecord(user)) throw appError('NOT_FOUND', USER_NOT_FOUND);
         if (user.email === actor.email && status === 'inactive') {
           throw appError('CONFLICT', 'Anda tidak bisa menonaktifkan akun sendiri');
+        }
+        if (status === 'inactive' && isSuperAdminEmail(env, user.email)) {
+          throw appError('CONFLICT', SUPER_ADMIN_INACTIVE_MESSAGE);
         }
         return planStatusChange(env, userSpec(env, tables), user, status, actor);
       },
