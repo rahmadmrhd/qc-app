@@ -118,13 +118,11 @@ test('mencentang memindahkan kartu ke kolom yang sesuai tanpa memuat ulang', asy
   );
   renderPage();
   await screen.findByText('ST-1');
-  expect(
-    within(screen.getByRole('region', { name: 'Kolom Baru' })).getByText('ST-1'),
-  ).toBeInTheDocument();
+  expect(within(screen.getByRole('group', { name: 'Baru' })).getByText('ST-1')).toBeInTheDocument();
   await userEvent.click(screen.getByRole('checkbox', { name: /A = 1/ }));
   await waitFor(() =>
     expect(
-      within(screen.getByRole('region', { name: 'Kolom Dikerjakan' })).getByText('ST-1'),
+      within(screen.getByRole('group', { name: 'Dikerjakan' })).getByText('ST-1'),
     ).toBeInTheDocument(),
   );
   expect(state.api).toHaveBeenCalledWith('handovers.setCheck', {
@@ -148,7 +146,7 @@ test('Mark done mengirim setDone dan memindahkan kartu ke Selesai', async () => 
   await userEvent.click(screen.getByRole('button', { name: 'Mark done' }));
   await waitFor(() =>
     expect(
-      within(screen.getByRole('region', { name: 'Kolom Selesai' })).getByText('ST-1'),
+      within(screen.getByRole('group', { name: 'Selesai' })).getByText('ST-1'),
     ).toBeInTheDocument(),
   );
   expect(state.api).toHaveBeenCalledWith('handovers.setDone', {
@@ -180,9 +178,7 @@ test('centang instan: langsung tercentang dengan penanda Menyimpan; checkbox lai
   );
   // kartu tetap di kolom sampai server menjawab (tidak melompat di tengah rentetan klik)
   const cardOne = screen.getByRole('article', { name: 'Task ST-1' });
-  expect(
-    within(screen.getByRole('region', { name: 'Kolom Baru' })).getByText('ST-1'),
-  ).toBeInTheDocument();
+  expect(within(screen.getByRole('group', { name: 'Baru' })).getByText('ST-1')).toBeInTheDocument();
   // respons server belum datang, tetapi tampilan sudah berubah dan checkbox tidak dinonaktifkan
   expect(within(cardOne).getAllByRole('checkbox')[0]).toBeChecked();
   expect(within(cardOne).getAllByRole('checkbox')[1]).toBeEnabled();
@@ -268,7 +264,7 @@ test('pengguna yang hanya QC tidak melihat More dan tombol Tambah task', async (
   state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf(only, input));
   renderPage();
   await screen.findByText('ST-1');
-  expect(screen.queryByRole('button', { name: 'More' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Aksi ST-/ })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Tambah task' })).not.toBeInTheDocument();
 });
 
@@ -302,8 +298,9 @@ test('judul kolom memakai total server; "Muat lebih banyak" memuat halaman berik
   });
   renderPage();
   await screen.findByText('ST-1');
-  const column = screen.getByRole('region', { name: 'Kolom Baru' });
-  expect(within(column).getByRole('heading')).toHaveTextContent('Baru (2)');
+  const column = screen.getByRole('group', { name: 'Baru' });
+  // Hitungan judul kolom = total di server (2), bukan jumlah yang termuat (1).
+  expect(within(column).getByText('2')).toBeInTheDocument();
   expect(within(column).queryByText('ST-2')).not.toBeInTheDocument();
   await userEvent.click(within(column).getByRole('button', { name: 'Muat lebih banyak' }));
   await within(column).findByText('ST-2');
@@ -467,4 +464,136 @@ test('customerId: permintaan tiap kolom membawa customerId, chip filter tampil d
   expect(screen.getByRole('button', { name: /Customer: PT Budi/ })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Hapus filter Customer' }));
   expect(onClearCustomer).toHaveBeenCalledTimes(1);
+});
+
+function renderWith(props: Partial<Parameters<typeof HandoverBoardPage>[0]> = {}) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const handlers = {
+    onOpen: vi.fn(),
+    onEdit: vi.fn(),
+    onCreate: vi.fn(),
+    onStatusChange: vi.fn(),
+    onDeletedChange: vi.fn(),
+    onClearCustomer: vi.fn(),
+  };
+  render(
+    <QueryClientProvider client={client}>
+      <HandoverBoardPage status="all" {...handlers} {...props} />
+    </QueryClientProvider>,
+  );
+  return { ...handlers, client };
+}
+
+test('kit ListPage: judul, tombol Tambah task (target tur), dan pembungkus papan bertarget tur', async () => {
+  const list = [makeHandover({ id: '1', number: 'ST-1' })];
+  state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf(list, input));
+  const handlers = renderWith();
+  await screen.findByText('ST-1');
+  expect(screen.getByRole('heading', { level: 1, name: 'Serah Terima' })).toBeInTheDocument();
+  const add = screen.getByRole('button', { name: 'Tambah task' });
+  expect(add).toHaveAttribute('data-tour', 'handover-new');
+  await userEvent.click(add);
+  expect(handlers.onCreate).toHaveBeenCalledTimes(1);
+  expect(document.querySelector('[data-tour="handover-board"]')).not.toBeNull();
+  // Kanban setinggi viewport di dalam kerangka headroom.
+  expect(screen.getByLabelText('Papan Serah Terima')).toHaveAttribute('data-height', 'viewport');
+});
+
+test('Hapus (manage): handovers.remove, kartu hilang dan total kolom turun TANPA memuat ulang papan', async () => {
+  const list = [
+    makeHandover({ id: '1', number: 'ST-1' }),
+    makeHandover({ id: '2', number: 'ST-2' }),
+  ];
+  state.api.mockImplementation(async (method: string, input: BoardInput) =>
+    method === 'handovers.board' ? pageOf(list, input) : { id: input.id },
+  );
+  renderWith();
+  await screen.findByText('ST-1');
+  const boardCalls = () => state.api.mock.calls.filter(([m]) => m === 'handovers.board').length;
+  expect(boardCalls()).toBe(4);
+  const column = screen.getByRole('group', { name: 'Baru' });
+  expect(within(column).getByText('2')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Aksi ST-1' }));
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(screen.queryByText('ST-1')).not.toBeInTheDocument());
+  expect(state.api).toHaveBeenCalledWith('handovers.remove', { id: '1', locationId: 'loc-a' });
+  expect(screen.getByText('ST-2')).toBeInTheDocument();
+  expect(within(screen.getByRole('group', { name: 'Baru' })).getByText('1')).toBeInTheDocument();
+  expect(boardCalls()).toBe(4);
+});
+
+test('chip Tampilan (Terhapus) hanya bagi handover:manage; non-manage tidak melihatnya', async () => {
+  const list = [makeHandover({ id: '1', number: 'ST-1' })];
+  state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf(list, input));
+  renderWith();
+  await screen.findByText('ST-1');
+  expect(screen.getByRole('button', { name: /Tampilan/ })).toBeInTheDocument();
+  document.body.innerHTML = '';
+
+  state.me = me({ handover: 'edit', qc: 'edit' });
+  renderWith();
+  await screen.findByText('ST-1');
+  expect(screen.queryByRole('button', { name: /Tampilan/ })).not.toBeInTheDocument();
+});
+
+test('tampilan Terhapus: setiap kolom meminta deleted:true, kartu hanya-baca dengan Pulihkan', async () => {
+  const gone = makeHandover({
+    id: '1',
+    number: 'ST-1',
+    deleted: { deletedAt: '2026-11-20T01:00:00.000Z', deletedBy: 'adm@qc.local' },
+  });
+  state.api.mockImplementation(async (method: string, input: BoardInput) =>
+    method === 'handovers.board' ? pageOf([gone], input) : { ...gone, deleted: undefined },
+  );
+  renderWith({ deleted: true });
+  await screen.findByText('ST-1');
+  for (const status of ['new', 'in_progress', 'done', 'cancelled']) {
+    expect(state.api).toHaveBeenCalledWith('handovers.board', {
+      locationIds: ['loc-a'],
+      status,
+      deleted: true,
+    });
+  }
+  const card = screen.getByRole('article', { name: 'Task ST-1' });
+  expect(within(card).getByText('Terhapus')).toBeInTheDocument();
+  expect(within(card).queryByRole('button', { name: 'Mark done' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Tampilan: Terhapus/ })).toBeInTheDocument();
+  await userEvent.click(within(card).getByRole('button', { name: 'Pulihkan' }));
+  await waitFor(() =>
+    expect(state.api).toHaveBeenCalledWith('handovers.restore', { id: '1', locationId: 'loc-a' }),
+  );
+  // Memulihkan membuang kartu dari kolom Terhapus (tak ada lagi yang terhapus di papan ini).
+  await waitFor(() => expect(screen.queryByText('ST-1')).not.toBeInTheDocument());
+});
+
+test('?deleted tanpa hak manage diabaikan: papan hidup dimuat, tanpa permintaan deleted', async () => {
+  state.me = me({ handover: 'view', qc: 'edit' });
+  const list = [makeHandover({ id: '1', number: 'ST-1' })];
+  state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf(list, input));
+  renderWith({ deleted: true });
+  await screen.findByText('ST-1');
+  expect(state.api).not.toHaveBeenCalledWith(
+    'handovers.board',
+    expect.objectContaining({ deleted: true }),
+  );
+});
+
+test('tampilan Terhapus kosong: ListState "filter" dengan Hapus filter yang mengembalikan ke Hidup', async () => {
+  state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf([], input));
+  const handlers = renderWith({ deleted: true });
+  expect(await screen.findByText('Tidak ada hasil untuk filter ini.')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus filter' }));
+  expect(handlers.onDeletedChange).toHaveBeenCalledWith(false);
+});
+
+test('galat muat: ListState dengan Coba lagi yang memuat ulang papan', async () => {
+  state.api.mockRejectedValue(new Error('x'));
+  renderWith();
+  expect(await screen.findByRole('alert')).toHaveTextContent('Gagal memuat task');
+  const before = state.api.mock.calls.length;
+  state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf([], input));
+  await userEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
+  await waitFor(() => expect(state.api.mock.calls.length).toBeGreaterThan(before));
 });

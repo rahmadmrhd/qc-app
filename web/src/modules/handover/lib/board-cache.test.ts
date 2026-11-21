@@ -5,6 +5,7 @@ import {
   boardColumnData,
   boardColumnKey,
   findBoardSeed,
+  removeHandoverFromBoards,
   upsertHandoverInBoards,
 } from './board-cache';
 import { parseBoardQueryKey } from './board-snapshot';
@@ -104,4 +105,59 @@ test('upsertHandoverInBoards: task yang customernya diganti keluar dari kolom te
   const data = client.getQueryData<ReturnType<typeof boardColumnData>>(forA);
   expect(data?.pages[0]?.items).toEqual([]);
   expect(data?.pages[0]?.total).toBe(0);
+});
+
+type Column = ReturnType<typeof boardColumnData>;
+const DELETED = { deletedAt: '2026-11-21T01:00:00.000Z', deletedBy: 'adm@qc.local' };
+
+test('boardColumnKey: kolom Terhapus berkunci terpisah, tak dikenali sebagai kolom tersimpan, dan digabung dengan customer', () => {
+  const plain = boardColumnKey(['l1'], 'new');
+  const deleted = boardColumnKey(['l1'], 'new', undefined, true);
+  expect(deleted).not.toEqual(plain);
+  expect(deleted).toHaveLength(5);
+  expect(deleted[4]).toEqual({ deleted: true });
+  expect(boardColumnKey(['l1'], 'new', 'c1', true)[4]).toEqual({ customerId: 'c1', deleted: true });
+  expect(boardColumnKey(['l1'], 'new', undefined, false)).toEqual(plain);
+  expect(parseBoardQueryKey(deleted)).toBeNull();
+});
+
+test('upsertHandoverInBoards: kolom Terhapus hanya menerima task terhapus; memulihkan memindahkannya ke kolom hidup', () => {
+  const client = new QueryClient();
+  const live = boardColumnKey(['l1'], 'new');
+  const gone = boardColumnKey(['l1'], 'new', undefined, true);
+  const removed = { ...filledTask('t1', 'A'), deleted: DELETED } as HandoverDto;
+  client.setQueryData(live, boardColumnData([], { total: 0 }));
+  client.setQueryData(gone, boardColumnData([removed], { total: 1 }));
+  // Memulihkan: DTO hidup dibuang dari kolom Terhapus dan masuk kolom hidup.
+  upsertHandoverInBoards(client, filledTask('t1', 'A'));
+  expect(client.getQueryData<Column>(gone)?.pages[0]?.items).toEqual([]);
+  expect(client.getQueryData<Column>(gone)?.pages[0]?.total).toBe(0);
+  expect(client.getQueryData<Column>(live)?.pages[0]?.items).toHaveLength(1);
+  expect(client.getQueryData<Column>(live)?.pages[0]?.total).toBe(1);
+  // Task terhapus tidak pernah masuk kolom hidup.
+  upsertHandoverInBoards(client, { ...filledTask('t2', 'A'), deleted: DELETED } as HandoverDto);
+  expect(client.getQueryData<Column>(live)?.pages[0]?.items).toHaveLength(1);
+});
+
+test('removeHandoverFromBoards: membuang task dari kolom hidup (total turun, kursor tetap) dan tak menyentuh kolom Terhapus', () => {
+  const client = new QueryClient();
+  const live = boardColumnKey(['l1'], 'new');
+  const other = boardColumnKey(['l1'], 'done');
+  const gone = boardColumnKey(['l1'], 'new', undefined, true);
+  client.setQueryData(
+    live,
+    boardColumnData([filledTask('t1', 'A'), filledTask('t2', 'A')], { total: 5, nextCursor: 'c1' }),
+  );
+  client.setQueryData(other, boardColumnData([], { total: 0 }));
+  client.setQueryData(gone, boardColumnData([filledTask('t1', 'A')], { total: 1 }));
+  removeHandoverFromBoards(client, 't1');
+  const data = client.getQueryData<Column>(live);
+  expect(data?.pages[0]?.items.map((item) => item.id)).toEqual(['t2']);
+  expect(data?.pages[0]?.total).toBe(4);
+  expect(data?.pages[0]?.nextCursor).toBe('c1');
+  expect(client.getQueryData<Column>(other)?.pages[0]?.total).toBe(0);
+  expect(client.getQueryData<Column>(gone)?.pages[0]?.items).toHaveLength(1);
+  // Tak ada di kolom mana pun = tak ada yang berubah.
+  removeHandoverFromBoards(client, 'tak-ada');
+  expect(client.getQueryData<Column>(live)?.pages[0]?.total).toBe(4);
 });

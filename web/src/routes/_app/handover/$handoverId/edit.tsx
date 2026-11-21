@@ -42,7 +42,12 @@ export const Route = createFileRoute('/_app/handover/$handoverId/edit')({
           label: hit?.[1]?.number ?? 'Detail',
           to: '/handover/$handoverId',
           params,
-          search: { loc: search.loc, status: search.status, customer: search.customer },
+          search: {
+            loc: search.loc,
+            status: search.status,
+            customer: search.customer,
+            deleted: search.deleted,
+          },
         },
         { label: 'Ubah' },
       ];
@@ -57,7 +62,12 @@ export const Route = createFileRoute('/_app/handover/$handoverId/edit')({
 function EditHandoverPage() {
   const { handoverId } = Route.useParams();
   const search = Route.useSearch();
-  const listSearch = searchFromStatus(statusFromSearch(search), search.loc, search.customer);
+  const listSearch = searchFromStatus(
+    statusFromSearch(search),
+    search.loc,
+    search.customer,
+    search.deleted,
+  );
   const stack = useStackNavigation();
   const me = useMe();
   const { selectedIds } = useActiveLocations();
@@ -110,6 +120,7 @@ function EditHandoverPage() {
   const editable =
     task !== undefined &&
     task.status !== 'cancelled' &&
+    task.deleted === undefined &&
     canAt(me, 'handover', 'edit', task.locationId);
   return (
     <div className="space-y-4">
@@ -124,7 +135,8 @@ function EditHandoverPage() {
         </p>
       ) : !editable ? (
         <p role="alert" className="text-sm text-destructive-text">
-          Task ini tidak dapat diubah (sudah dibatalkan atau Anda tidak punya izin ubah).{' '}
+          Task ini tidak dapat diubah (sudah dibatalkan atau dihapus, atau Anda tidak punya izin
+          ubah).{' '}
           <Link
             to="/handover/$handoverId"
             params={{ handoverId }}

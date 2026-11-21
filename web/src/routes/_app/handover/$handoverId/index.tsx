@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useMemo, useRef } from 'react';
 import { toast } from 'sonner';
+import { useAfterDelete } from '@/components/page/use-after-delete';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
@@ -9,7 +10,10 @@ import { describeError } from '@/lib/api/describe-error';
 import { customerLinkAccess } from '@/lib/link-access';
 import { canAt, requireAnyPermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
-import { HandoverDetailView } from '@/modules/handover/components/handover-detail-view';
+import {
+  HandoverDetailView,
+  type HandoverTab,
+} from '@/modules/handover/components/handover-detail-view';
 import { findBoardSeed } from '@/modules/handover/lib/board-cache';
 import { readableLocationIds } from '@/modules/handover/lib/readable-locations';
 import {
@@ -24,7 +28,9 @@ import {
   handoverKeys,
   handoverQueryOptions,
   useCancelHandover,
+  useRemoveHandover,
   useReopenHandover,
+  useRestoreHandover,
   useSetDone,
 } from '@/modules/handover/queries';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
@@ -51,7 +57,12 @@ export const Route = createFileRoute('/_app/handover/$handoverId/')({
 function HandoverDetailPage() {
   const { handoverId } = Route.useParams();
   const search = Route.useSearch();
-  const listSearch = searchFromStatus(statusFromSearch(search), search.loc, search.customer);
+  const listSearch = searchFromStatus(
+    statusFromSearch(search),
+    search.loc,
+    search.customer,
+    search.deleted,
+  );
   const navigate = useNavigate();
   const stack = useStackNavigation();
   const me = useMe();
@@ -67,13 +78,43 @@ function HandoverDetailPage() {
     () => findBoardSeed(queryClient, handoverId, readable),
     [queryClient, handoverId, readableKey],
   );
-  const query = useQuery(handoverQueryOptions(handoverId, readable, seed));
+  const remove = useRemoveHandover();
+  // Setelah dihapus, cache detail dibuang oleh mutasi: query dimatikan agar tak dimuat ulang selagi navigasi keluar berjalan.
+  const detailOptions = handoverQueryOptions(
+    handoverId,
+    readable,
+    remove.isSuccess ? undefined : seed,
+  );
+  const query = useQuery({
+    ...detailOptions,
+    enabled: detailOptions.enabled && !remove.isSuccess,
+  });
   const setDone = useSetDone();
   const sendComment = useSendComment(me.email);
   const checks = useCheckQueue(me.email);
   const cancel = useCancelHandover();
   const reopen = useReopenHandover();
+  const restoreMutation = useRestoreHandover();
   const pending = setDone.isPending || cancel.isPending || reopen.isPending;
+  const loadedTask = query.data;
+  const canManage = loadedTask ? canAt(me, 'handover', 'manage', loadedTask.locationId) : false;
+  const loadedRef = loadedTask ? { id: loadedTask.id, locationId: loadedTask.locationId } : null;
+
+  function restore() {
+    if (!loadedRef) return;
+    // `mutateAsync` + toast di closure: aksi "Pulihkan" pada toast "Dihapus" dipanggil setelah navigasi, saat komponen
+    // ini sudah dilepas (callback per-`mutate` tidak berjalan lagi).
+    restoreMutation
+      .mutateAsync(loadedRef)
+      .then(() => toast.success('Task dipulihkan'))
+      .catch((error: unknown) => toast.error(describeError(error)));
+  }
+
+  const afterDelete = useAfterDelete({
+    indexTo: '/handover',
+    canRestore: canManage,
+    onRestore: restore,
+  });
 
   // Penolakan server (task tak ada/bukan di lokasi ini/akses dicabut) otoritatif: data awal dari papan atau data
   // lama tidak boleh menutupinya. `UNAVAILABLE` tetap mempertahankan data (spanduk "data terakhir").
@@ -91,7 +132,9 @@ function HandoverDetailPage() {
   }
   const denied = deniedScope.current === scope;
   const task = denied ? undefined : query.data;
-  if (query.isPending && readable.length > 0) return <Skeleton className="h-64 w-full" />;
+  if ((query.isPending && readable.length > 0) || remove.isSuccess) {
+    return <Skeleton className="h-64 w-full" />;
+  }
   if (!task) {
     const notFound = !(query.error instanceof ApiError) || denied;
     return (
@@ -120,16 +163,34 @@ function HandoverDetailPage() {
       canOpenCustomer={customerLinkAccess(me).openCustomerHref !== undefined}
       canEdit={canAt(me, 'handover', 'edit', task.locationId)}
       canCancel={canAt(me, 'handover', 'manage', task.locationId)}
+      canDelete={canAt(me, 'handover', 'manage', task.locationId)}
       canProgress={canAt(me, 'qc', 'edit', task.locationId)}
       pending={pending}
-      onBack={() => stack.pop({ to: '/handover', search: listSearch })}
-      onEdit={() =>
+      deleting={remove.isPending}
+      restoring={restoreMutation.isPending}
+      tab={search.tab}
+      onTabChange={(next: HandoverTab) =>
         void navigate({
+          to: '/handover/$handoverId',
+          params: { handoverId },
+          search: { ...search, tab: next === 'catatan' ? undefined : next },
+          replace: true,
+        })
+      }
+      onEdit={() =>
+        stack.push({
           to: '/handover/$handoverId/edit',
           params: { handoverId },
           search: listSearch,
         })
       }
+      onDelete={() =>
+        void checks
+          .whenIdle(task.id)
+          .then(() => remove.mutateAsync(ref))
+          .then(() => afterDelete(), onError)
+      }
+      onRestore={restore}
       // Aksi lain menunggu antrean centang task ini kosong.
       onCancel={() =>
         void checks

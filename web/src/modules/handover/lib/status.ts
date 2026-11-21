@@ -1,4 +1,5 @@
 import type { HandoverStatus } from '@shared/handover';
+import type { UiColor } from '@/components/ui/variant-style';
 
 export const HANDOVER_STATUS_LABELS: Record<HandoverStatus, string> = {
   new: 'Baru',
@@ -8,32 +9,26 @@ export const HANDOVER_STATUS_LABELS: Record<HandoverStatus, string> = {
 };
 
 /**
- * Warna status: Selesai hijau, Dikerjakan biru, Baru netral, Dibatalkan merah (terang dan gelap).
- * Status tidak hanya dibedakan lewat warna: label teks selalu tampil.
- *  - `badge`: label status; `accent`: garis aksen kartu/kolom; `column`: latar kolom kanban.
+ * Warna status satu-satunya (badge task, kolom kanban, aksen kartu ponsel): Baru netral, Dikerjakan biru, Selesai
+ * hijau, Dibatalkan merah. Status tidak hanya dibedakan lewat warna: label teks selalu tampil.
  */
-export const HANDOVER_STATUS_STYLES: Record<
-  HandoverStatus,
-  { badge: string; accent: string; column: string }
-> = {
-  new: {
-    badge: 'border-border bg-background text-foreground',
-    accent: 'border-l-border',
-    column: 'border-t-border bg-muted/40',
-  },
-  in_progress: {
-    badge: 'border-transparent bg-info-text/15 text-info-text',
-    accent: 'border-l-info-text',
-    column: 'border-t-info-text bg-info-text/5',
-  },
-  done: {
-    badge: 'border-transparent bg-success-text/15 text-success-text',
-    accent: 'border-l-success-text',
-    column: 'border-t-success-text bg-success-text/5',
-  },
-  cancelled: {
-    badge: 'border-transparent bg-destructive-text/15 text-destructive-text',
-    accent: 'border-l-destructive-text',
-    column: 'border-t-destructive-text bg-destructive-text/5',
-  },
+export function badgeColorOf(status: HandoverStatus): UiColor {
+  switch (status) {
+    case 'in_progress':
+      return 'info';
+    case 'done':
+      return 'success';
+    case 'cancelled':
+      return 'destructive';
+    default:
+      return 'secondary';
+  }
+}
+
+/** Garis kiri aksen kartu ponsel menurut warna status (kelas statis agar dikenali Tailwind). */
+export const HANDOVER_STATUS_ACCENT: Record<HandoverStatus, string> = {
+  new: 'border-l-secondary-text',
+  in_progress: 'border-l-info-text',
+  done: 'border-l-success-text',
+  cancelled: 'border-l-destructive-text',
 };

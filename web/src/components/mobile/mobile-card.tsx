@@ -36,6 +36,7 @@ export function MobileCard({
   tone,
   className,
   rootProps,
+  as = 'li',
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
@@ -51,10 +52,14 @@ export function MobileCard({
   className?: string;
   /** Atribut `<li>` akar (pengikat tekan lama, `data-*`). */
   rootProps?: HTMLAttributes<HTMLLIElement> & Record<`data-${string}`, string | undefined>;
+  /** Elemen akar: `li` (bawaan, di dalam `ul`) atau `div` untuk kartu yang berdiri sendiri di luar daftar. */
+  as?: 'li' | 'div';
 }) {
+  // Hanya nama tag yang berbeda (`li` atau `div`); jenis `li` dipertahankan agar `rootProps` tetap satu bentuk.
+  const Root = as as 'li';
   const visibleBadges = badges?.filter((badge) => badge !== null && badge !== false) ?? [];
   return (
-    <li
+    <Root
       data-slot="mobile-card"
       data-state={selected ? 'selected' : undefined}
       {...rootProps}
@@ -96,6 +101,6 @@ export function MobileCard({
         </dl>
       ) : null}
       {footer ? <div className="mt-2">{footer}</div> : null}
-    </li>
+    </Root>
   );
 }

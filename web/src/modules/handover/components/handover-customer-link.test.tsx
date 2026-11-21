@@ -42,7 +42,6 @@ async function renderDetail(canOpenCustomer: boolean | undefined, handover = mak
       canCancel
       canProgress
       pending={false}
-      onBack={noop}
       onEdit={noop}
       onCancel={noop}
       onMarkDone={noop}

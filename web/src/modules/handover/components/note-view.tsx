@@ -219,7 +219,13 @@ export function NoteView({
           return (
             <li className="list-none">
               <span className="flex items-start gap-2">
-                <input type="checkbox" checked={checked} disabled readOnly className="mt-1" />
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  disabled
+                  readOnly
+                  className="mt-0.5 size-5 shrink-0"
+                />
                 <span>{content}</span>
               </span>
               {lists}
@@ -228,10 +234,10 @@ export function NoteView({
         }
         return (
           <li className="list-none">
-            <label className="flex items-start gap-2">
+            <label className="flex items-start gap-2 py-0.5 touch:min-h-11 touch:py-2">
               <input
                 type="checkbox"
-                className="mt-1"
+                className="mt-0.5 size-5 shrink-0"
                 checked={item.checked}
                 disabled={!canCheck}
                 onChange={(event) =>
@@ -241,7 +247,10 @@ export function NoteView({
               <span>{content}</span>
             </label>
             {itemStates?.get(item.index) === 'sending' ? (
-              <span data-note-meta="" className="ml-6 block text-xs italic text-muted-foreground">
+              <span
+                data-note-meta=""
+                className="ml-7 touch:ml-8 block text-xs italic text-muted-foreground"
+              >
                 <LoaderCircle
                   aria-hidden="true"
                   className="mr-1 inline size-3 animate-spin align-[-2px]"
@@ -249,12 +258,18 @@ export function NoteView({
                 Mengirim…
               </span>
             ) : itemStates?.get(item.index) === 'waiting' ? (
-              <span data-note-meta="" className="ml-6 block text-xs italic text-muted-foreground">
+              <span
+                data-note-meta=""
+                className="ml-7 touch:ml-8 block text-xs italic text-muted-foreground"
+              >
                 <Clock aria-hidden="true" className="mr-1 inline size-3 align-[-2px]" />
                 Belum terkirim
               </span>
             ) : item.checked && item.by !== '' ? (
-              <span data-note-meta="" className="ml-6 block text-xs text-muted-foreground">
+              <span
+                data-note-meta=""
+                className="ml-7 touch:ml-8 block text-xs text-muted-foreground"
+              >
                 oleh {item.by} · {formatTime(item.at)}
               </span>
             ) : null}

@@ -33,3 +33,17 @@ test('customer: dibaca dari search, dibawa oleh searchFromStatus, nilai asing di
     customer: 'c1',
   });
 });
+
+test('deleted dan tab: hanya nilai sah yang diterima; deleted ikut dibawa searchFromStatus', () => {
+  expect(handoverSearchSchema.parse({ deleted: true })).toEqual({ deleted: true });
+  expect(handoverSearchSchema.parse({ deleted: false })).toEqual({});
+  expect(handoverSearchSchema.parse({ deleted: 'ya' })).toEqual({});
+  expect(handoverSearchSchema.parse({ tab: 'riwayat' })).toEqual({ tab: 'riwayat' });
+  expect(handoverSearchSchema.parse({ tab: 'foto' })).toEqual({});
+  expect(searchFromStatus('all', undefined, undefined, true)).toEqual({ deleted: true });
+  expect(searchFromStatus('done', 'loc-b', 'c1', false)).toEqual({
+    status: 'done',
+    loc: 'loc-b',
+    customer: 'c1',
+  });
+});

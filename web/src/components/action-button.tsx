@@ -1,4 +1,6 @@
 import {
+  Ban,
+  CheckCheck,
   CheckSquare,
   Copy,
   Download,
@@ -39,7 +41,10 @@ export type ActionKind =
   | 'copy'
   | 'refresh'
   | 'select'
-  | 'view';
+  | 'view'
+  | 'done'
+  | 'reopen'
+  | 'abort';
 
 type ActionSpec = {
   icon: LucideIcon;
@@ -160,6 +165,28 @@ export const ACTIONS: Record<ActionKind, ActionSpec> = {
     icon: Eye,
     label: 'Lihat',
     color: 'secondary',
+    variant: 'soft',
+    compactVariant: 'ghost',
+  },
+  // Serah Terima (fase 4d): menandai task selesai, membuka kembali task Dibatalkan, dan membatalkan task (bukan Hapus).
+  done: {
+    icon: CheckCheck,
+    label: 'Mark done',
+    color: 'success',
+    variant: 'solid',
+    compactVariant: 'ghost',
+  },
+  reopen: {
+    icon: RotateCcw,
+    label: 'Buka kembali',
+    color: 'info',
+    variant: 'outline',
+    compactVariant: 'ghost',
+  },
+  abort: {
+    icon: Ban,
+    label: 'Batalkan task',
+    color: 'destructive',
     variant: 'soft',
     compactVariant: 'ghost',
   },

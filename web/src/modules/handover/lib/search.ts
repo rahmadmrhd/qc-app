@@ -8,6 +8,10 @@ export const handoverSearchSchema = z.object({
   loc: z.string().optional().catch(undefined),
   /** Hanya task milik customer ini (tautan dari View customer; keputusan pemilik 2026-11-21). */
   customer: z.string().optional().catch(undefined),
+  /** Tampilan Terhapus (hanya bagi `handover: manage`; fase 4d). */
+  deleted: z.literal(true).optional().catch(undefined),
+  /** Tab View task (`catatan` bawaan). */
+  tab: z.enum(['catatan', 'riwayat']).optional().catch(undefined),
 });
 
 export type HandoverSearch = z.infer<typeof handoverSearchSchema>;
@@ -20,10 +24,12 @@ export const searchFromStatus = (
   status: HandoverStatus | 'all',
   loc?: string,
   customer?: string,
+  deleted?: boolean,
 ): HandoverSearch => ({
   ...(status === 'all' ? {} : { status }),
   ...(loc ? { loc } : {}),
   ...(customer ? { customer } : {}),
+  ...(deleted ? { deleted: true as const } : {}),
 });
 
 /** Lokasi yang dimuat halaman: `loc` dari URL (notifikasi) bila ada, selain itu pilihan lokasi header. */

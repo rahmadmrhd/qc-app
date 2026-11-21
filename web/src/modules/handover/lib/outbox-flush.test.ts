@@ -365,7 +365,10 @@ for (const kind of ['check', 'comment', 'create'] as const) {
         expect(await readOutboxRecords()).toEqual([]);
         expect(result.rejected).toHaveLength(1);
         expect(result.rejected[0]?.entry.kind).toBe(kind);
-        expect(result.rejected[0]?.reason).toBe('ditolak');
+        // NOT_FOUND selalu "Task sudah dihapus" (task tujuan dihapus; fase 4d), selain itu pesan server.
+        expect(result.rejected[0]?.reason).toBe(
+          label === 'NOT_FOUND' ? 'Task sudah dihapus' : 'ditolak',
+        );
       }
       // Penanda "mengirim" bersih pada semua jalur.
       expect(isEntrySending(seeded?.id ?? 'x')).toBe(false);

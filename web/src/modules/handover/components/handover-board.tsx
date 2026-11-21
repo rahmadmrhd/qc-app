@@ -1,13 +1,14 @@
 import type { HandoverDto } from '@shared/contract';
 import type { HandoverStatus } from '@shared/handover';
 import type { ReactNode } from 'react';
-import { Component, useState } from 'react';
+import { Component } from 'react';
+import { KanbanBoard, type KanbanColumn } from '@/components/kanban/kanban-board';
+import { ListState } from '@/components/page/list-state';
 import { Button } from '@/components/ui/button';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
-import { hasIntersectionObserver, ScrollRootProvider, useOnNear } from '@/lib/near-viewport';
-import { cn } from '@/lib/utils';
+import { hasIntersectionObserver, useOnNear } from '@/lib/near-viewport';
 import { BOARD_STATUSES, filterByStatus, groupBoard } from '../lib/group-board';
-import { HANDOVER_STATUS_LABELS, HANDOVER_STATUS_STYLES } from '../lib/status';
+import { badgeColorOf, HANDOVER_STATUS_LABELS } from '../lib/status';
 import type { BoardColumnState } from '../queries';
 import type { HandoverCardProps } from './handover-card';
 import { HandoverCard } from './handover-card';
@@ -51,10 +52,18 @@ class CardBoundary extends Component<{ number: string; children: ReactNode }, { 
   }
 }
 
-function SafeCard({ handover, bindings }: { handover: HandoverDto; bindings: CardBindings }) {
+function SafeCard({
+  handover,
+  bindings,
+  framed,
+}: {
+  handover: HandoverDto;
+  bindings: CardBindings;
+  framed: boolean;
+}) {
   return (
     <CardBoundary number={String(handover.number ?? handover.id ?? '?')}>
-      <HandoverCard handover={handover} {...bindings} />
+      <HandoverCard handover={handover} {...bindings} framed={framed} />
     </CardBoundary>
   );
 }
@@ -65,8 +74,8 @@ const FILTERS: ReadonlyArray<{ value: HandoverStatus | 'all'; label: string }> =
 ];
 
 /**
- * Halaman berikutnya dimuat OTOMATIS saat akhir daftar mendekati layar (infinite scroll); karena sentinel diamati
- * ulang tiap jumlah task termuat berubah, kolom yang belum penuh layar terisi sendiri. Tanpa
+ * Halaman berikutnya dimuat OTOMATIS saat akhir daftar mendekati layar (infinite scroll, daftar kartu ponsel); karena
+ * sentinel diamati ulang tiap jumlah task termuat berubah, daftar yang belum penuh layar terisi sendiri. Tanpa
  * `IntersectionObserver` (mis. jsdom) tersedia tombol "Muat lebih banyak".
  */
 function LoadMore({ column }: { column: BoardColumnState | undefined }) {
@@ -98,20 +107,19 @@ function LoadMore({ column }: { column: BoardColumnState | undefined }) {
   );
 }
 
-/** Daftar kartu satu kolom kanban; elemen gulirnya menjadi akar pengamat (lazy kartu dan muat otomatis). */
-function ColumnCards({ children }: { children: ReactNode }) {
-  const [root, setRoot] = useState<HTMLDivElement | null>(null);
-  return (
-    <div
-      ref={setRoot}
-      className="min-h-0 flex-1 space-y-3 overflow-y-auto"
-      data-slot="column-cards"
-    >
-      <ScrollRootProvider root={root}>{children}</ScrollRootProvider>
-    </div>
-  );
-}
+/** Isi satu kolom kanban: kartu sementara (antrean perangkat) di kolom Baru, lalu task sungguhan. */
+type KanbanItem =
+  | { kind: 'pending'; view: PendingCreateView }
+  | { kind: 'task'; handover: HandoverDto };
 
+const kanbanKey = (item: KanbanItem): string =>
+  item.kind === 'pending' ? `pending:${item.view.key}` : item.handover.id;
+
+/**
+ * Papan Serah Terima. Layar lebar: `KanbanBoard` kit (empat kolom berwarna sesuai status, setinggi sisa viewport,
+ * tiap kolom menggulir sendiri dan memuat halaman berikutnya otomatis). Layar sempit: daftar kartu dengan chip
+ * status, memakai `ListState` untuk keadaan kosong.
+ */
 export function HandoverBoard({
   handovers,
   filter,
@@ -123,43 +131,46 @@ export function HandoverBoard({
   const desktop = useIsDesktop();
 
   if (desktop) {
-    const columns = groupBoard(handovers);
-    // Tinggi papan = sisa tinggi viewport: judul dan hitungan kolom tetap di atas, hanya daftar kartu yang bergulir.
+    const grouped = groupBoard(handovers);
+    const columns: KanbanColumn<KanbanItem>[] = BOARD_STATUSES.map((status) => {
+      const state = columnState?.[status];
+      const tasks = grouped[status].map((handover): KanbanItem => ({ kind: 'task', handover }));
+      const pendings = (status === 'new' ? pendingCreates : NO_PENDING).map(
+        (view): KanbanItem => ({ kind: 'pending', view }),
+      );
+      return {
+        key: status,
+        label: HANDOVER_STATUS_LABELS[status],
+        color: badgeColorOf(status),
+        items: [...pendings, ...tasks],
+        // Judul kolom = jumlah di server (tanpa kartu sementara yang belum ada di server).
+        total: state?.total ?? tasks.length,
+        hasMore: state?.hasMore ?? false,
+        loadingMore: state?.loadingMore ?? false,
+        ...(state ? { onLoadMore: state.loadMore } : {}),
+      };
+    });
     return (
-      <div className="grid min-h-0 flex-1 grid-cols-4 gap-3" data-layout="kanban">
-        {BOARD_STATUSES.map((status) => (
-          <section
-            key={status}
-            aria-label={`Kolom ${HANDOVER_STATUS_LABELS[status]}`}
-            className={cn(
-              'flex min-h-0 flex-col rounded-lg border-t-4 p-2',
-              HANDOVER_STATUS_STYLES[status].column,
-            )}
-          >
-            <h2 className="shrink-0 px-1 pb-2 text-sm font-semibold">
-              {HANDOVER_STATUS_LABELS[status]} (
-              {columnState?.[status].total ?? columns[status].length})
-            </h2>
-            <ColumnCards>
-              {status === 'new'
-                ? pendingCreates.map((task) => <PendingCreateCard key={task.key} task={task} />)
-                : null}
-              {columns[status].length === 0 && !(status === 'new' && pendingCreates.length > 0) ? (
-                <p className="px-1 text-xs text-muted-foreground">Tidak ada task.</p>
-              ) : (
-                columns[status].map((handover) => (
-                  <SafeCard key={handover.id} handover={handover} bindings={bindings(handover)} />
-                ))
-              )}
-              <LoadMore column={columnState?.[status]} />
-            </ColumnCards>
-          </section>
-        ))}
-      </div>
+      <KanbanBoard
+        label="Papan Serah Terima"
+        height="viewport"
+        columns={columns}
+        itemKey={kanbanKey}
+        emptyText="Tidak ada task."
+        renderCard={(item) =>
+          item.kind === 'pending' ? (
+            <PendingCreateCard task={item.view} />
+          ) : (
+            <SafeCard handover={item.handover} bindings={bindings(item.handover)} framed={false} />
+          )
+        }
+      />
     );
   }
 
   const visible = filterByStatus(handovers, filter);
+  const showPending = filter === 'all' || filter === 'new';
+  const pendingShown = showPending ? pendingCreates : NO_PENDING;
   return (
     <div className="space-y-3" data-layout="list">
       <fieldset aria-label="Filter status" className="flex flex-wrap gap-1 border-0 p-0">
@@ -176,17 +187,21 @@ export function HandoverBoard({
           </Button>
         ))}
       </fieldset>
-      {filter === 'all' || filter === 'new'
-        ? pendingCreates.map((task) => <PendingCreateCard key={task.key} task={task} />)
-        : null}
-      {visible.length === 0 &&
-      !(pendingCreates.length > 0 && (filter === 'all' || filter === 'new')) ? (
-        <p className="text-sm text-muted-foreground">Tidak ada task.</p>
-      ) : (
-        visible.map((handover) => (
-          <SafeCard key={handover.id} handover={handover} bindings={bindings(handover)} />
-        ))
-      )}
+      <ListState
+        isEmpty={visible.length === 0 && pendingShown.length === 0}
+        filtered={filter !== 'all'}
+        onClearFilters={() => onFilterChange('all')}
+        empty="Tidak ada task."
+      >
+        <div className="space-y-3">
+          {pendingShown.map((task) => (
+            <PendingCreateCard key={task.key} task={task} />
+          ))}
+          {visible.map((handover) => (
+            <SafeCard key={handover.id} handover={handover} bindings={bindings(handover)} framed />
+          ))}
+        </div>
+      </ListState>
       {filter === 'all' ? (
         BOARD_STATUSES.map((status) => <LoadMore key={status} column={columnState?.[status]} />)
       ) : (

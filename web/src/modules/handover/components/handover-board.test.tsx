@@ -8,6 +8,7 @@ vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
 }));
 
+import { badgeColorOf } from '../lib/status';
 import type { CardBindings } from './handover-board';
 import { HandoverBoard } from './handover-board';
 import { makeHandover } from './test-handover';
@@ -73,14 +74,16 @@ test('layar lebar memakai empat kolom; layar sempit memakai daftar kartu dengan 
   mockMedia(true);
   const { unmount } = render(<Board />);
   for (const name of ['Baru', 'Dikerjakan', 'Selesai', 'Dibatalkan']) {
-    expect(screen.getByRole('region', { name: `Kolom ${name}` })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name })).toBeInTheDocument();
   }
   expect(screen.queryByRole('button', { name: 'Semua' })).not.toBeInTheDocument();
   unmount();
 
   mockMedia(false);
   render(<Board />);
-  expect(screen.queryByRole('region', { name: /^Kolom/ })).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('group', { name: /^(Baru|Dikerjakan|Selesai|Dibatalkan)$/ }),
+  ).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Semua' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getAllByRole('article')).toHaveLength(4);
   await userEvent.click(screen.getByRole('button', { name: 'Selesai' }));
@@ -92,10 +95,10 @@ test('task Dibatalkan dan Selesai ikut tampil di kolomnya', () => {
   mockMedia(true);
   render(<Board />);
   expect(
-    within(screen.getByRole('region', { name: 'Kolom Selesai' })).getByText('ST-3'),
+    within(screen.getByRole('group', { name: 'Selesai' })).getByText('ST-3'),
   ).toBeInTheDocument();
   expect(
-    within(screen.getByRole('region', { name: 'Kolom Dibatalkan' })).getByText('ST-4'),
+    within(screen.getByRole('group', { name: 'Dibatalkan' })).getByText('ST-4'),
   ).toBeInTheDocument();
   expect(screen.getAllByRole('article')).toHaveLength(4);
 });
@@ -112,7 +115,7 @@ test('kolom kosong menampilkan petunjuk; semua task tetap tampil tanpa batas', (
   render(<Board handovers={many} />);
   expect(screen.getAllByRole('article')).toHaveLength(60);
   expect(
-    within(screen.getByRole('region', { name: 'Kolom Selesai' })).getByText('Tidak ada task.'),
+    within(screen.getByRole('group', { name: 'Selesai' })).getByText('Tidak ada task.'),
   ).toBeInTheDocument();
 });
 
@@ -130,14 +133,35 @@ test('data satu task rusak tidak menghilangkan kartu lain', () => {
   errors.mockRestore();
 });
 
-test('kanban: judul kolom tetap, hanya daftar kartu tiap kolom yang bergulir', () => {
+test('kanban kit: setinggi viewport, judul kolom tetap, hanya daftar kartu tiap kolom yang bergulir', () => {
   mockMedia(true);
   render(<Board />);
-  const column = screen.getByRole('region', { name: 'Kolom Baru' });
+  expect(screen.getByLabelText('Papan Serah Terima')).toHaveAttribute('data-height', 'viewport');
+  const column = screen.getByRole('group', { name: 'Baru' });
   expect(column.className).toContain('flex-col');
+  expect(column.className).toContain('min-w-[290px]');
   const scroller = column.querySelector('[data-slot="column-cards"]');
   expect(scroller?.className).toContain('overflow-y-auto');
-  expect(column.querySelector('h2')?.className).toContain('shrink-0');
+});
+
+test('kolom kanban memakai warna badge statusnya (badgeColorOf) dan hitungan kolom tampil', () => {
+  mockMedia(true);
+  render(<Board />);
+  const expected = {
+    Baru: 'secondary',
+    Dikerjakan: 'info',
+    Selesai: 'success',
+    Dibatalkan: 'destructive',
+  } as const;
+  for (const [name, color] of Object.entries(expected)) {
+    const column = screen.getByRole('group', { name });
+    const badge = column.querySelector('[data-slot="badge"]');
+    expect(badge?.getAttribute('data-color')).toBe(color);
+    // Badge status pada kartu memakai warna yang sama dengan kolomnya.
+    const cardBadge = column.querySelector('[data-slot="mobile-card"] [data-slot="badge"]');
+    expect(cardBadge?.getAttribute('data-color')).toBe(color);
+  }
+  expect(badgeColorOf('new')).toBe('secondary');
 });
 
 test('filter ponsel dikendalikan dari luar (bertahan lewat props)', () => {
@@ -169,11 +193,11 @@ function PendingBoard({ handovers = tasks }: { handovers?: typeof tasks }) {
 test('kanban: kartu sementara task baru tampil di kolom Baru saja', () => {
   mockMedia(true);
   render(<PendingBoard />);
-  const baru = screen.getByRole('region', { name: 'Kolom Baru' });
+  const baru = screen.getByRole('group', { name: 'Baru' });
   expect(within(baru).getByText('PT Offline')).toBeInTheDocument();
   expect(within(baru).getByText('—')).toBeInTheDocument();
   for (const name of ['Dikerjakan', 'Selesai', 'Dibatalkan']) {
-    const column = screen.getByRole('region', { name: `Kolom ${name}` });
+    const column = screen.getByRole('group', { name });
     expect(within(column).queryByText('PT Offline')).not.toBeInTheDocument();
   }
 });
@@ -181,7 +205,7 @@ test('kanban: kartu sementara task baru tampil di kolom Baru saja', () => {
 test('kanban: kolom Baru kosong tidak menampilkan "Tidak ada task" bila ada kartu sementara', () => {
   mockMedia(true);
   render(<PendingBoard handovers={[]} />);
-  const baru = screen.getByRole('region', { name: 'Kolom Baru' });
+  const baru = screen.getByRole('group', { name: 'Baru' });
   expect(within(baru).getByText('PT Offline')).toBeInTheDocument();
   expect(within(baru).queryByText('Tidak ada task.')).not.toBeInTheDocument();
 });

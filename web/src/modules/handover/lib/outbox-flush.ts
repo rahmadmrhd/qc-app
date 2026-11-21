@@ -112,6 +112,17 @@ const REJECTION_CODES: ReadonlySet<string> = new Set([
  */
 const NO_TASK_REASON = 'Entri tidak memiliki task tujuan';
 
+/**
+ * Alasan penolakan `NOT_FOUND` (task yang dituju sudah dihapus; fase 4d). Server menjawab `NOT_FOUND` seragam juga bagi
+ * task yang aksesnya sudah dicabut, jadi teksnya penyederhanaan. Teks yang sama dipakai `sync-sw.js` (dijaga
+ * `outbox-parity.test.ts`).
+ */
+const NOT_FOUND_REASON = 'Task sudah dihapus';
+
+/** Alasan penolakan server yang ditampilkan: `NOT_FOUND` memakai teks tetap, selain itu pesan galatnya. */
+const rejectionReason = (error: ApiError): string =>
+  error.code === 'NOT_FOUND' ? NOT_FOUND_REASON : describeError(error);
+
 /** Penanda "mengirim": centang per butir (per tab), komentar dan task baru per entri (disiarkan ke tab lain). */
 function markSending(entry: OutboxEntry): () => void {
   return entry.kind === 'check'
@@ -221,7 +232,7 @@ async function run(deps: FlushDeps): Promise<FlushResult> {
           break;
         }
         await removeOutboxEntries(owner, [next.id]);
-        result.rejected.push({ entry: next, reason: describeError(error) });
+        result.rejected.push({ entry: next, reason: rejectionReason(error) });
       }
     } finally {
       end();

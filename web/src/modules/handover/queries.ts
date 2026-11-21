@@ -20,7 +20,14 @@ import { api } from '@/lib/api';
 import { markStale } from '@/lib/query-cache';
 import { accessKeys } from '@/modules/access/queries';
 import { customerKeys } from '@/modules/customer/queries';
-import { type BoardSeed, boardColumnKey, upsertHandoverInBoards } from './lib/board-cache';
+import {
+  BOARD_KEY,
+  type BoardColumnFilter,
+  type BoardSeed,
+  boardColumnKey,
+  removeHandoverFromBoards,
+  upsertHandoverInBoards,
+} from './lib/board-cache';
 import { BOARD_STATUSES } from './lib/group-board';
 
 const sorted = (ids: readonly string[]) => [...ids].sort();
@@ -40,14 +47,16 @@ export function handoverColumnQueryOptions(
   locationIds: readonly string[],
   status: HandoverStatus,
   customerId?: string,
+  deleted?: boolean,
 ) {
   return infiniteQueryOptions({
-    queryKey: handoverKeys.column(locationIds, status, customerId),
+    queryKey: handoverKeys.column(locationIds, status, customerId, deleted),
     queryFn: ({ pageParam }) =>
       api('handovers.board', {
         locationIds: [...locationIds],
         status,
         ...(customerId ? { customerId } : {}),
+        ...(deleted ? { deleted: true } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
       }),
     initialPageParam: undefined as string | undefined,
@@ -67,14 +76,20 @@ export interface BoardColumnState {
 }
 
 /** Empat kolom papan sekaligus (empat permintaan paralel); `handovers` = semua task yang sudah dimuat. */
-export function useHandoverBoard(locationIds: readonly string[], customerId?: string) {
+export function useHandoverBoard(
+  locationIds: readonly string[],
+  customerId?: string,
+  deleted?: boolean,
+) {
   const byStatus = {
-    new: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'new', customerId)),
+    new: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'new', customerId, deleted)),
     in_progress: useInfiniteQuery(
-      handoverColumnQueryOptions(locationIds, 'in_progress', customerId),
+      handoverColumnQueryOptions(locationIds, 'in_progress', customerId, deleted),
     ),
-    done: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'done', customerId)),
-    cancelled: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'cancelled', customerId)),
+    done: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'done', customerId, deleted)),
+    cancelled: useInfiniteQuery(
+      handoverColumnQueryOptions(locationIds, 'cancelled', customerId, deleted),
+    ),
   };
   const all = BOARD_STATUSES.map((status) => byStatus[status]);
   const columns = Object.fromEntries(
@@ -96,6 +111,10 @@ export function useHandoverBoard(locationIds: readonly string[], customerId?: st
     handovers: all.flatMap((query) => query.data?.pages.flatMap((page) => page.items) ?? []),
     total: BOARD_STATUSES.reduce((sum, status) => sum + columns[status].total, 0),
     columns,
+    /** Memuat ulang keempat kolom (tombol "Coba lagi" pada galat muat awal). */
+    refetch: () => {
+      for (const query of all) void query.refetch();
+    },
   };
 }
 
@@ -176,6 +195,32 @@ export const useSetCheck = () =>
   useHandoverMutation((input: SetCheckInput) => api('handovers.setCheck', input));
 export const useSetDone = () =>
   useHandoverMutation((input: SetDoneInput) => api('handovers.setDone', input));
+/**
+ * Hapus lunak satu task (`handover: manage`). Hasilnya hanya `{ id }`: task dibuang dari kolom papan hidup (total
+ * berkurang tanpa memuat ulang kolom lain) dan dari cache detail; kolom Terhapus hanya ditandai basi.
+ */
+export function useRemoveHandover() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: HandoverRefInput) => api('handovers.remove', input),
+    onSuccess: (_result, input) => {
+      removeHandoverFromBoards(queryClient, input.id);
+      queryClient.removeQueries({ queryKey: ['handovers', 'one', input.id] });
+      void queryClient.invalidateQueries({
+        queryKey: BOARD_KEY,
+        predicate: (query) =>
+          (query.queryKey[4] as BoardColumnFilter | undefined)?.deleted === true,
+        refetchType: 'none',
+      });
+      markStale(queryClient, accessKeys.audit, ['handovers', 'options']);
+    },
+  });
+}
+
+/** Memulihkan task terhapus: DTO hidup dipasang ke kolom statusnya dan dibuang dari kolom Terhapus. */
+export const useRestoreHandover = () =>
+  useHandoverMutation((input: HandoverRefInput) => api('handovers.restore', input));
+
 export const useAddComment = () =>
   useHandoverMutation((input: AddCommentInput) => api('handovers.comment', input), {
     networkMode: 'always',
