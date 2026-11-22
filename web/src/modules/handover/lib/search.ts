@@ -6,7 +6,12 @@ export const handoverSearchSchema = z.object({
   status: z.enum(['all', 'new', 'in_progress', 'done', 'cancelled']).optional().catch(undefined),
   /** Lokasi yang dibuka dari notifikasi: memuat task/papan lokasi itu tanpa mengubah pilihan lokasi header. */
   loc: z.string().optional().catch(undefined),
-  /** Hanya task milik customer ini (tautan dari View customer; keputusan pemilik 2026-11-21). */
+  /** Hanya task milik customer ini (banyak nilai = salah satu dari; chip Customer papan). */
+  customers: z.array(z.string().max(100)).max(20).optional().catch(undefined),
+  /**
+   * Id satu customer: tautan dari View customer (keputusan pemilik 2026-11-21) yang masih diterima; dibaca sebagai
+   * `customers` lewat `customersOfSearch`.
+   */
   customer: z.string().optional().catch(undefined),
   /** Tampilan Terhapus (hanya bagi `handover: manage`; fase 4d). */
   deleted: z.literal(true).optional().catch(undefined),
@@ -16,6 +21,10 @@ export const handoverSearchSchema = z.object({
 
 export type HandoverSearch = z.infer<typeof handoverSearchSchema>;
 
+/** Customer yang disaring: param jamak, atau param tunggal lama (tautan) sebagai daftar satu nilai. */
+export const customersOfSearch = (search: HandoverSearch): string[] =>
+  search.customers ?? (search.customer ? [search.customer] : []);
+
 export const statusFromSearch = (search: HandoverSearch): HandoverStatus | 'all' =>
   search.status ?? 'all';
 
@@ -23,12 +32,12 @@ export const statusFromSearch = (search: HandoverSearch): HandoverStatus | 'all'
 export const searchFromStatus = (
   status: HandoverStatus | 'all',
   loc?: string,
-  customer?: string,
+  customers?: readonly string[],
   deleted?: boolean,
 ): HandoverSearch => ({
   ...(status === 'all' ? {} : { status }),
   ...(loc ? { loc } : {}),
-  ...(customer ? { customer } : {}),
+  ...(customers && customers.length > 0 ? { customers: [...customers] } : {}),
   ...(deleted ? { deleted: true as const } : {}),
 });
 

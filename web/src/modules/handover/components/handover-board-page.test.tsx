@@ -20,6 +20,7 @@ vi.mock('@/modules/files/queries', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 import { ApiError } from '@/lib/api/api-error';
+import { pickLink } from '@/test/link-field';
 import { resetOutboxEnv } from '@/test/outbox-env';
 import { enqueueOutbox } from '../lib/outbox';
 import { HandoverBoardPage } from './handover-board-page';
@@ -433,19 +434,19 @@ test('task baru di antrean perangkat: kartu sementara hanya untuk lokasi terpili
   expect(screen.getByText('Belum terkirim')).toBeInTheDocument();
 });
 
-test('customerId: permintaan tiap kolom membawa customerId, chip filter tampil dan dapat dihapus', async () => {
+test('customerIds: permintaan tiap kolom membawa customerIds, chip filter tampil dan dapat dihapus', async () => {
   const list = [
     makeHandover({ id: '1', number: 'ST-1', customerId: 'c9', customerName: 'PT Budi' }),
   ];
   state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf(list, input));
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const onClearCustomer = vi.fn();
+  const onCustomersChange = vi.fn();
   render(
     <QueryClientProvider client={client}>
       <HandoverBoardPage
         status="all"
-        customerId="c9"
-        onClearCustomer={onClearCustomer}
+        customerIds={['c9']}
+        onCustomersChange={onCustomersChange}
         onOpen={vi.fn()}
         onEdit={vi.fn()}
         onCreate={vi.fn()}
@@ -458,12 +459,12 @@ test('customerId: permintaan tiap kolom membawa customerId, chip filter tampil d
     expect(state.api).toHaveBeenCalledWith('handovers.board', {
       locationIds: ['loc-a'],
       status,
-      customerId: 'c9',
+      customerIds: ['c9'],
     });
   }
   expect(screen.getByRole('button', { name: /Customer: PT Budi/ })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Hapus filter Customer' }));
-  expect(onClearCustomer).toHaveBeenCalledTimes(1);
+  expect(onCustomersChange).toHaveBeenCalledWith([]);
 });
 
 function renderWith(props: Partial<Parameters<typeof HandoverBoardPage>[0]> = {}) {
@@ -474,7 +475,7 @@ function renderWith(props: Partial<Parameters<typeof HandoverBoardPage>[0]> = {}
     onCreate: vi.fn(),
     onStatusChange: vi.fn(),
     onDeletedChange: vi.fn(),
-    onClearCustomer: vi.fn(),
+    onCustomersChange: vi.fn(),
   };
   render(
     <QueryClientProvider client={client}>
@@ -596,4 +597,49 @@ test('galat muat: ListState dengan Coba lagi yang memuat ulang papan', async () 
   state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf([], input));
   await userEvent.click(screen.getByRole('button', { name: 'Coba lagi' }));
   await waitFor(() => expect(state.api.mock.calls.length).toBeGreaterThan(before));
+});
+
+test('chip Customer multi-value: daftar customer lokasi dimuat saat dibuka; memilih dua customer memanggil onCustomersChange dengan larik', async () => {
+  const list = [makeHandover({ id: '1', number: 'ST-1', customerId: 'c1', customerName: 'PT A' })];
+  state.api.mockImplementation(async (method: string, input: BoardInput) =>
+    method === 'handovers.options'
+      ? {
+          customers: [
+            { id: 'c1', name: 'PT A' },
+            { id: 'c2', name: 'PT B' },
+          ],
+          inactiveCustomerNames: [],
+        }
+      : pageOf(list, input),
+  );
+  const { onCustomersChange } = renderWith();
+  await screen.findByText('ST-1');
+  // Tanpa filter, daftar customer belum dimuat (hanya saat chip dibuka).
+  expect(state.api).not.toHaveBeenCalledWith('handovers.options', expect.anything());
+  await userEvent.click(screen.getByRole('button', { name: /^Customer(:|$)/ }));
+  await pickLink(screen, 'Filter customer', 'PT B');
+  expect(onCustomersChange).toHaveBeenLastCalledWith(['c2']);
+});
+
+test('chip Customer terisi dua nilai menampilkan nama digabung; permintaan kolom membawa kedua id', async () => {
+  const list = [makeHandover({ id: '1', number: 'ST-1', customerId: 'c1', customerName: 'PT A' })];
+  state.api.mockImplementation(async (method: string, input: BoardInput) =>
+    method === 'handovers.options'
+      ? {
+          customers: [
+            { id: 'c1', name: 'PT A' },
+            { id: 'c2', name: 'PT B' },
+          ],
+          inactiveCustomerNames: [],
+        }
+      : pageOf(list, input),
+  );
+  renderWith({ customerIds: ['c1', 'c2'] });
+  await screen.findByText('ST-1');
+  expect(state.api).toHaveBeenCalledWith('handovers.board', {
+    locationIds: ['loc-a'],
+    status: 'new',
+    customerIds: ['c1', 'c2'],
+  });
+  expect(await screen.findByRole('button', { name: 'Customer: PT A, PT B' })).toBeInTheDocument();
 });

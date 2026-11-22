@@ -47,16 +47,16 @@ export const handoverKeys = {
 export function handoverColumnQueryOptions(
   locationIds: readonly string[],
   status: HandoverStatus,
-  customerId?: string,
+  customerIds?: readonly string[],
   deleted?: boolean,
 ) {
   return infiniteQueryOptions({
-    queryKey: handoverKeys.column(locationIds, status, customerId, deleted),
+    queryKey: handoverKeys.column(locationIds, status, customerIds, deleted),
     queryFn: ({ pageParam }) =>
       api('handovers.board', {
         locationIds: [...locationIds],
         status,
-        ...(customerId ? { customerId } : {}),
+        ...(customerIds && customerIds.length > 0 ? { customerIds: [...customerIds] } : {}),
         ...(deleted ? { deleted: true } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
       }),
@@ -79,17 +79,17 @@ export interface BoardColumnState {
 /** Empat kolom papan sekaligus (empat permintaan paralel); `handovers` = semua task yang sudah dimuat. */
 export function useHandoverBoard(
   locationIds: readonly string[],
-  customerId?: string,
+  customerIds?: readonly string[],
   deleted?: boolean,
 ) {
   const byStatus = {
-    new: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'new', customerId, deleted)),
+    new: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'new', customerIds, deleted)),
     in_progress: useInfiniteQuery(
-      handoverColumnQueryOptions(locationIds, 'in_progress', customerId, deleted),
+      handoverColumnQueryOptions(locationIds, 'in_progress', customerIds, deleted),
     ),
-    done: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'done', customerId, deleted)),
+    done: useInfiniteQuery(handoverColumnQueryOptions(locationIds, 'done', customerIds, deleted)),
     cancelled: useInfiniteQuery(
-      handoverColumnQueryOptions(locationIds, 'cancelled', customerId, deleted),
+      handoverColumnQueryOptions(locationIds, 'cancelled', customerIds, deleted),
     ),
   };
   const all = BOARD_STATUSES.map((status) => byStatus[status]);

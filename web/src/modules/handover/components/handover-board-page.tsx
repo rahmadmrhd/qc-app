@@ -1,13 +1,13 @@
 import type { HandoverDto } from '@shared/contract';
 import type { HandoverStatus } from '@shared/handover';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { FilterBar, FilterChip } from '@/components/page/filter-bar';
+import { LinkMultiField } from '@/components/link-field';
+import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
 import { ListState } from '@/components/page/list-state';
 import { Select } from '@/components/select';
 import { liveStatusFilterOptions } from '@/components/soft-delete/status-filter';
-import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { describeError } from '@/lib/api/describe-error';
@@ -24,6 +24,7 @@ import { usePendingCreates } from '../lib/use-pending-creates';
 import { usePendingIds } from '../lib/use-pending-ids';
 import {
   handoverKeys,
+  handoverOptionsQueryOptions,
   useCancelHandover,
   useHandoverBoard,
   useRemoveHandover,
@@ -38,12 +39,12 @@ export interface HandoverBoardPageProps {
   status: HandoverStatus | 'all';
   /** Lokasi dari URL (notifikasi): papan memuat lokasi ini, bukan pilihan lokasi header. */
   locationId?: string;
-  /** Hanya task milik customer ini (search param `customer`; keputusan pemilik 2026-11-21). */
-  customerId?: string;
+  /** Hanya task milik salah satu customer ini (search param `customers`; kosong = semua customer). */
+  customerIds?: readonly string[];
   /** Tampilan Terhapus (search param `deleted`): hanya berlaku bagi pemegang `handover: manage`. */
   deleted?: boolean;
-  /** Menghapus filter customer (mengganti entri riwayat, bukan menambah). */
-  onClearCustomer?: () => void;
+  /** Mengganti daftar customer yang disaring (mengganti entri riwayat, bukan menambah); kosong = hapus filter. */
+  onCustomersChange?: (customerIds: string[]) => void;
   /** Mengubah tampilan Hidup/Terhapus (mengganti entri riwayat). */
   onDeletedChange?: (deleted: boolean) => void;
   onStatusChange: (status: HandoverStatus | 'all') => void;
@@ -60,9 +61,9 @@ export interface HandoverBoardPageProps {
 export function HandoverBoardPage({
   status,
   locationId,
-  customerId,
+  customerIds = [],
   deleted = false,
-  onClearCustomer,
+  onCustomersChange,
   onDeletedChange,
   onStatusChange,
   onOpen,
@@ -83,12 +84,17 @@ export function HandoverBoardPage({
   const canSeeDeleted = manageIds.length > 0;
   const deletedView = deleted && canSeeDeleted;
   const boardLocations = deletedView ? manageIds : readable;
-  const board = useHandoverBoard(boardLocations, customerId, deletedView);
-  // Nama customer pada chip: dari task yang termuat; tanpa task = label umum (tak ada pembacaan customer lain).
-  const customerLabel = customerId
-    ? (board.handovers.find((task) => task.customerId === customerId)?.customerName ??
-      'Customer terpilih')
-    : undefined;
+  const board = useHandoverBoard(boardLocations, customerIds, deletedView);
+  // Nama customer pada chip: dari task yang termuat, lalu daftar customer lokasi (dimuat hanya bila ada filter customer
+  // atau chip dibuka), selain itu label umum.
+  const options = useQuery({
+    ...handoverOptionsQueryOptions(readable),
+    enabled: readable.length > 0 && customerIds.length > 0,
+  });
+  const customerLabel = (id: string) =>
+    board.handovers.find((task) => task.customerId === id)?.customerName ??
+    options.data?.customers?.find((customer) => customer.id === id)?.name ??
+    'Customer terpilih';
   const setDone = useSetDone();
   const cancel = useCancelHandover();
   const reopen = useReopenHandover();
@@ -194,9 +200,9 @@ export function HandoverBoardPage({
     };
   };
 
-  const filtered = Boolean(customerId) || deletedView;
+  const filtered = customerIds.length > 0 || deletedView;
   const clearFilters = () => {
-    if (customerId) onClearCustomer?.();
+    if (customerIds.length > 0) onCustomersChange?.([]);
     if (deletedView) onDeletedChange?.(false);
   };
   const viewOptions = liveStatusFilterOptions(canSeeDeleted);
@@ -209,22 +215,20 @@ export function HandoverBoardPage({
         ? { createAction: { label: 'Tambah task', onClick: onCreate, tour: 'handover-new' } }
         : {})}
       filters={
-        customerId || viewOptions.length > 0 ? (
+        customerIds.length > 0 || onCustomersChange || viewOptions.length > 0 ? (
           <FilterBar>
-            {customerId ? (
-              <FilterChip label="Customer" display={customerLabel} onClear={onClearCustomer}>
-                <div className="space-y-2 text-sm">
-                  <p>Menampilkan task milik customer ini saja.</p>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    color="primary"
-                    onClick={onClearCustomer}
-                  >
-                    Hapus filter
-                  </Button>
-                </div>
+            {onCustomersChange || customerIds.length > 0 ? (
+              <FilterChip
+                label="Customer"
+                display={multiFilterDisplay(customerIds.map(customerLabel))}
+                onClear={() => onCustomersChange?.([])}
+              >
+                <CustomerFilterField
+                  locationIds={readable}
+                  value={customerIds}
+                  labelOf={customerLabel}
+                  onChange={(next) => onCustomersChange?.(next)}
+                />
               </FilterChip>
             ) : null}
             {viewOptions.length > 0 ? (
@@ -282,5 +286,46 @@ export function HandoverBoardPage({
         )}
       </div>
     </ListPage>
+  );
+}
+
+/**
+ * Pilih customer untuk menyaring papan (banyak nilai = salah satu dari). Daftar customer lokasi yang terbaca dimuat
+ * saat chip dibuka (`handovers.options`, disaring di klien); tanpa daftar (ditolak/gagal) isinya hanya chip terpilih.
+ */
+function CustomerFilterField({
+  locationIds,
+  value,
+  labelOf,
+  onChange,
+}: {
+  locationIds: readonly string[];
+  value: readonly string[];
+  labelOf: (id: string) => string;
+  onChange: (ids: string[]) => void;
+}) {
+  const options = useQuery({
+    ...handoverOptionsQueryOptions(locationIds),
+    enabled: locationIds.length > 0,
+    retry: false,
+  });
+  const list = (options.data?.customers ?? []).map((customer) => ({
+    id: customer.id,
+    label: customer.name,
+  }));
+  return (
+    <LinkMultiField
+      id="handover-filter-customer"
+      label="Filter customer"
+      hideLabel
+      placeholder="Semua customer"
+      localFilter
+      highlight
+      loading={options.isPending && locationIds.length > 0}
+      value={value}
+      labelOf={labelOf}
+      options={list}
+      onChange={onChange}
+    />
   );
 }

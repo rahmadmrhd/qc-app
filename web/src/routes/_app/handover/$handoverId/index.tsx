@@ -17,6 +17,7 @@ import {
 import { findBoardSeed } from '@/modules/handover/lib/board-cache';
 import { readableLocationIds } from '@/modules/handover/lib/readable-locations';
 import {
+  customersOfSearch,
   handoverSearchSchema,
   scopedLocationIds,
   searchFromStatus,
@@ -60,7 +61,7 @@ function HandoverDetailPage() {
   const listSearch = searchFromStatus(
     statusFromSearch(search),
     search.loc,
-    search.customer,
+    customersOfSearch(search),
     search.deleted,
   );
   const navigate = useNavigate();
