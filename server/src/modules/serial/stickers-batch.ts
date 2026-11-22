@@ -119,8 +119,16 @@ export async function applyStickersBatch(
   let attempts = 0;
   /** Stiker yang disentuh perencana percobaan ini (dikosongkan tiap percobaan); diselesaikan sekali di akhir batch. */
   const touched = new Set<string>();
+  /** Pemeriksaan kiriman ulang percobaan ini (satu per percobaan, dibagi semua perencana; dikosongkan di `prepare`). */
+  let consistency: Promise<void> | null = null;
+  /** Jumlah perencana percobaan ini yang menjawab `unchanged` (kejadiannya sudah ada). */
+  let replayed = 0;
 
   const plan = async (id: string): Promise<PlanOutcome<string>> => {
+    // Diulang di AWAL tiap percobaan CAS (bukan hanya sekali sebelum `runRecordBatch`): permintaan lain ber-clientId sama
+    // dapat berkomit di antara percobaan, dan percobaan ulang harus melihatnya.
+    consistency ??= assertReplayConsistent(env, input, user);
+    await consistency;
     const row = await loadSerialRow(env.DB, id);
     if (!row) throw appError('NOT_FOUND', NOT_FOUND);
     const buId = row.bu_id.trim();
@@ -136,6 +144,7 @@ export async function applyStickersBatch(
         if (done.actor_id.trim() !== (user.userId ?? '')) {
           throw appError('CONFLICT', REPLAY_CONFLICT);
         }
+        replayed++;
         return { unchanged: serialId };
       }
       const resolved = resolveAction(
@@ -203,7 +212,6 @@ export async function applyStickersBatch(
   for (let replay = 0; ; replay++) {
     attempts = 0;
     try {
-      await assertReplayConsistent(env, input, user);
       const { items } = await runRecordBatch(
         env,
         input.rows.map((row) => row.id),
@@ -214,6 +222,13 @@ export async function applyStickersBatch(
           prepare: () => {
             attempts++;
             touched.clear();
+            consistency = null;
+            replayed = 0;
+          },
+          // Permintaan asli atomik: sebagian baris sudah ada sementara yang lain ditulis baru berarti isinya berbeda
+          // (mis. permintaan ber-clientId sama berkomit di antara pemeriksaan dan penulisan) = CONFLICT generik.
+          verify: (changed) => {
+            if (changed.length > 0 && replayed > 0) throw appError('CONFLICT', REPLAY_CONFLICT);
           },
           trailing: () =>
             statementsFor(env, 'serial.stickers_settled', {

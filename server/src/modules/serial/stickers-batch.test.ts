@@ -551,6 +551,44 @@ describe('serials.applyStickersBatch: konkurensi (Promise.all)', () => {
     for (const row of rows) expect(await stickerQty(row.id, 's1')).toBe(3);
   });
 
+  test('clientId sama, isi berbeda, R1 berkomit di antara pemeriksaan dan penulisan R2: R2 = CONFLICT, R1 sah tetap bisa dikirim ulang', async () => {
+    await many(2);
+    const r1 = [{ id: 'sn0', stickerIds: ['s1'] }];
+    const r2 = [
+      { id: 'sn0', stickerIds: ['s1'] },
+      { id: 'sn1', stickerIds: ['s1'] },
+    ];
+    // Menyuntik R1 tepat sebelum `batch()` pertama R2 (sesudah pemeriksaan awal dan perencanaan R2): CAS sn0 milik R2
+    // gagal, `runCas` merencanakan ulang dan perencana sn0 melihat kejadian R1 sementara sn1 masih baru.
+    // biome-ignore lint/suspicious/noExplicitAny: menggantikan metode adaptor hanya untuk tes
+    const db = env.DB as any;
+    const original = db.batch.bind(db);
+    let injected = false;
+    db.batch = async (statements: unknown) => {
+      if (!injected) {
+        injected = true;
+        expect((await batch(r1)).ok).toBe(true);
+      }
+      return original(statements);
+    };
+    let out: CallOut;
+    try {
+      out = await batch(r2);
+    } finally {
+      db.batch = original;
+    }
+    expect(injected).toBe(true);
+    expect(out.ok).toBe(false);
+    expect(out.error?.code).toBe('CONFLICT');
+    expect(out.error?.message).toBe('Permintaan ini sudah dipakai');
+    expect(await appliedEvents()).toHaveLength(1);
+    expect(await stickerQty('sn1', 's1')).toBe(1);
+    expect(await stock('s1', 'loc-sby')).toBe(9);
+    const again = await batch(r1);
+    expect(again.ok).toBe(true);
+    expect(await appliedEvents()).toHaveLength(1);
+  });
+
   test('penempelan serentak dengan penonaktifan stiker: tidak ada hasil setengah jadi', async () => {
     const rows = await many(4);
     const [applied] = await Promise.all([
