@@ -17,8 +17,8 @@ function publishHeight() {
  * ponsel: dipakai `BulkBar`, `ViewPage` dan `FormPage` di ponsel, serta halaman lain yang butuh aksi selalu terlihat.
  *
  * `placement="inline"` untuk bar DI DALAM dialog (penggulir dialog; dialog bertransform sehingga `fixed` akan menempel di
- * dasar kotak dialog dan menutupi isi terakhir): bar `sticky bottom-0` di alur isi, selebar penggulir (`-mx-4 -mb-4`
- * mengimbangi padding penggulir), tidak ikut `--action-bar-h` (yang hanya milik `<main>`) dan tidak memakai `--kb`
+ * dasar kotak dialog dan menutupi isi terakhir): bar `sticky -bottom-4` di alur isi (offset -1rem mengimbangi padding penggulir `p-4`, seperti `DialogFooter`:
+ * area sticky terinset sebesar padding itu, jadi `bottom-0` menyisakan 16 px isi di bawah bar), selebar penggulir (`-mx-4 -mb-4`), tidak ikut `--action-bar-h` (yang hanya milik `<main>`) dan tidak memakai `--kb`
  * (dialog layar penuh sudah mengecil mengikuti papan ketik lewat `--vvh`).
  */
 export function StickyActionBar({
@@ -62,7 +62,7 @@ export function StickyActionBar({
       className={cn(
         'z-20 flex items-center gap-2 border-t bg-background p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-lg',
         placement === 'inline'
-          ? 'sticky bottom-0 -mx-4 -mb-4'
+          ? 'sticky -bottom-4 -mx-4 -mb-4'
           : 'fixed inset-x-0 bottom-[var(--kb,0px)]',
         className,
       )}

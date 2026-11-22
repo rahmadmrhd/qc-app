@@ -6,7 +6,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { useEdgeSwipe } from '@/hooks/use-edge-swipe';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useFocusIntoView, useVisualViewport } from '@/hooks/use-visual-viewport';
-import { isSidebarOverlayViewport, SIDEBAR_OVERLAY_BELOW } from '@/lib/layout';
+import { isSidebarOverlayViewport, sidebarRange } from '@/lib/layout';
 import { useMe } from '@/modules/auth/use-me';
 import { GuideBanner } from '@/modules/guide/components/guide-banner';
 import { GuideGreeting } from '@/modules/guide/components/guide-greeting';
@@ -58,17 +58,19 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
   const [sidebarOpen, setSidebarOpen] = useState(
     () => readSidebarState().open && !isSidebarOverlayViewport(),
   );
-  // Lebar jendela berubah (putar tablet, ubah ukuran jendela) lintas rentang overlay: sinkronkan keadaan terbuka.
-  const wasOverlay = useRef(isSidebarOverlayViewport());
+  // Lebar jendela berubah (putar tablet, ubah ukuran jendela): keadaan terbuka disinkronkan menurut RENTANG, bukan
+  // sekadar overlay/bukan overlay, agar jalur overlay -> ponsel -> lebar pun memulihkan pilihan tersimpan.
+  const range = useRef(sidebarRange());
   useEffect(() => {
     const onResize = () => {
-      const overlay = isSidebarOverlayViewport();
-      if (overlay === wasOverlay.current) return;
-      wasOverlay.current = overlay;
-      // Masuk rentang overlay: tutup (jangan menutupi isi dengan latar gelap); pilihan tersimpan tak ditulis.
-      if (overlay) setSidebarOpen(false);
-      // Keluar ke layar lebar tersemat: pulihkan pilihan tersimpan. Ke ponsel tak perlu (panel ponsel terpisah).
-      else if (window.innerWidth >= SIDEBAR_OVERLAY_BELOW) setSidebarOpen(readSidebarState().open);
+      const next = sidebarRange();
+      if (next === range.current) return;
+      range.current = next;
+      // Masuk rentang overlay (dari ponsel maupun lebar): tutup, jangan menutupi isi dengan latar gelap; pilihan
+      // tersimpan tak ditulis. Masuk layar lebar tersemat (dari rentang mana pun): pulihkan pilihan tersimpan.
+      // Ke ponsel tak perlu: panel ponsel terpisah (`openMobile`).
+      if (next === 'overlay') setSidebarOpen(false);
+      else if (next === 'wide') setSidebarOpen(readSidebarState().open);
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);

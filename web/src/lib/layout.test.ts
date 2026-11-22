@@ -6,6 +6,7 @@ import {
   MAIN_MIN_WIDTH,
   pageScrollbarWidth,
   SIDEBAR_OVERLAY_BELOW,
+  sidebarRange,
   VIEWPORT_MD,
 } from './layout';
 
@@ -102,4 +103,16 @@ test('mode kit yang harus sama dengan JS memakai varian narrow:/wide:, bukan max
     );
     expect(text, file).not.toMatch(/(?<![-\w])(max-md|md):/);
   }
+});
+
+test('sidebarRange: tiga rentang menurut VIEWPORT_MD dan SIDEBAR_OVERLAY_BELOW', () => {
+  const at = (width: number) => {
+    window.innerWidth = width;
+    return sidebarRange();
+  };
+  expect(at(VIEWPORT_MD - 1)).toBe('phone');
+  expect(at(VIEWPORT_MD)).toBe('overlay');
+  expect(at(SIDEBAR_OVERLAY_BELOW - 1)).toBe('overlay');
+  expect(at(SIDEBAR_OVERLAY_BELOW)).toBe('wide');
+  window.innerWidth = 1024;
 });

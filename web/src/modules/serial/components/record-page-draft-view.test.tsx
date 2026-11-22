@@ -348,4 +348,8 @@ test('tanpa frame (dialog Country Lock): bar Simpan sticky di alur isi, bukan fi
   expect(bar.className).not.toContain('fixed');
   expect(bar.className).not.toContain('--kb');
   expect(document.documentElement.style.getPropertyValue('--action-bar-h')).toBe('');
+  // C16: offset sticky mengimbangi padding penggulir dialog (-bottom-4, seperti DialogFooter): tanpa celah 16 px
+  // di bawah bar tempat baris draft terlihat menggulir.
+  expect(bar.className).toContain('-bottom-4');
+  expect(bar.className.split(' ')).not.toContain('bottom-0');
 });

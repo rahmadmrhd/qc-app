@@ -27,6 +27,16 @@ export function isSidebarOverlayViewport(): boolean {
   );
 }
 
+/** Tiga rentang viewport untuk sidebar: panel ponsel (< `VIEWPORT_MD`), melayang (overlay), dan tersemat (lebar). */
+export type SidebarRange = 'phone' | 'overlay' | 'wide';
+
+/** Rentang sidebar viewport saat ini; satu fungsi untuk semua transisi lintas 768 dan 960 px. */
+export function sidebarRange(): SidebarRange {
+  if (typeof window === 'undefined') return 'wide';
+  if (window.innerWidth < VIEWPORT_MD) return 'phone';
+  return window.innerWidth < SIDEBAR_OVERLAY_BELOW ? 'overlay' : 'wide';
+}
+
 /**
  * Gerbang "ponsel" tunggal untuk perilaku navigasi (riwayat sebagai tumpukan, panel menu, header ponsel, rantai induk):
  * viewport < `VIEWPORT_MD`. Sama dengan `useIsMobile` dan `touch:`; jangan memakai pengukuran lain untuk perilaku ini

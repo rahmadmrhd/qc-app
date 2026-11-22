@@ -225,3 +225,38 @@ test('B12/D2: ukuran jendela berubah lintas rentang overlay menyinkronkan keadaa
   expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'collapsed');
   window.innerWidth = 1024;
 });
+
+test('C15: transisi lengkap lintas 768/960 px (termasuk overlay -> ponsel -> lebar) memulihkan pilihan tersimpan', async () => {
+  const resizeTo = async (width: number) => {
+    window.innerWidth = width;
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'));
+    });
+  };
+  const state = () => screen.getByTestId('sidebar').getAttribute('data-state');
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: true }));
+  window.innerWidth = 800;
+  render(<AppShell />);
+  // Dimuat di rentang overlay: mulai tertutup.
+  expect(state()).toBe('collapsed');
+  // overlay -> ponsel -> lebar: pilihan tersimpan (terbuka) dipulihkan (dulu terlewat).
+  await resizeTo(700);
+  await resizeTo(1200);
+  expect(state()).toBe('expanded');
+  // lebar -> ponsel -> overlay: menutup (tak menutupi isi), pilihan tersimpan tak berubah.
+  await resizeTo(600);
+  expect(readSidebarState()).toEqual({ open: true });
+  await resizeTo(850);
+  expect(state()).toBe('collapsed');
+  expect(readSidebarState()).toEqual({ open: true });
+  // overlay -> lebar langsung masih bekerja, dan pilihan tersimpan tertutup tetap tertutup.
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: false }));
+  await resizeTo(1100);
+  expect(state()).toBe('collapsed');
+  // ponsel -> lebar langsung (mis. jendela diperbesar sekali jalan) juga memulihkan.
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: true }));
+  await resizeTo(500);
+  await resizeTo(1300);
+  expect(state()).toBe('expanded');
+  window.innerWidth = 1024;
+});
