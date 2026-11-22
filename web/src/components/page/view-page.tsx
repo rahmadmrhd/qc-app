@@ -45,11 +45,6 @@ export interface ViewAction {
    * pertama yang terlihat dan tidak bersubmenu).
    */
   primary?: boolean;
-  /**
-   * Hanya di menu "Aksi lainnya" ponsel; tak tampil sebagai tombol di bar judul desktop (aksinya sudah tersedia di
-   * tempat lain pada desktop, mis. tombol di tab Riwayat View Serial).
-   */
-  phoneOnly?: boolean;
   /** Label singkat di menu ponsel (bawaan: `label` lalu label bawaan jenis aksi). */
   shortLabel?: string;
   /**
@@ -172,8 +167,7 @@ export function ViewPage({
   const primaryActions = marked.length > 0 ? marked : firstPlain ? [firstPlain] : [];
   const menuActions = visibleActions.filter((entry) => !primaryActions.includes(entry));
   // Bar atas memuat aksi bila ada `actions` atau (desktop) aksi terstruktur; selain itu, di ponsel tanpa lencana, kosong.
-  const desktopActions = visibleActions.filter((entry) => !entry.phoneOnly);
-  const topActions = Boolean(actions) || (desktop && desktopActions.length > 0);
+  const topActions = Boolean(actions) || (desktop && visibleActions.length > 0);
   const emptyTop = phone && !badge && !topActions;
   const [localTab, setLocalTab] = useState(tabs?.[0]?.id);
   const requested = tab ?? localTab;
@@ -281,7 +275,7 @@ export function ViewPage({
                     >
                       {actions}
                       {desktop
-                        ? desktopActions.map((entry) =>
+                        ? visibleActions.map((entry) =>
                             entry.submenu ? (
                               <DesktopSubmenu key={entry.id} entry={entry} />
                             ) : (

@@ -143,7 +143,10 @@ describe('panduan Serial Number', () => {
     // Target yang ada di tabel dan kartu tidak boleh `langsung`/berkartu pengganti.
     expect(select?.langsung).toBeUndefined();
     expect(select?.waitFor).toBe('serial-bulk');
-    for (const text of ['Edit', 'Hapus', 'Batalkan pilihan']) expect(bulk?.text).toContain(text);
+    // Tabel (layar lebar) punya Batalkan pilihan; bar ponsel satu baris dengan kotak centang, tanpa tombol itu.
+    for (const text of ['Edit', 'Hapus', 'Batalkan pilihan', 'kotak centang', 'ponsel']) {
+      expect(bulk?.text).toContain(text);
+    }
     expect(save?.text).toContain('foto bukti kurang');
   });
 
@@ -182,13 +185,32 @@ describe('panduan Serial Number', () => {
     for (const step of steps.slice(1)) expect(step.route).toBeUndefined();
   });
 
-  test('detail: langkah menyorot isi tab ViewPage meminta tabnya dibuka (Detail untuk tahap, Riwayat untuk aksi dan linimasa)', () => {
+  test('detail: langkah menyorot isi tab ViewPage meminta tabnya dibuka (Detail untuk tahap, Riwayat untuk linimasa); aksi ada di header sehingga tanpa tab', () => {
     const tabOf = (target: string) =>
       SERIAL_DETAIL.steps
         .filter((step) => step.target === target)
         .map((step) => (typeof step.buka === 'object' ? step.buka.tab : undefined));
     expect(tabOf('serial-stepper')).toEqual(['detail']);
-    expect(tabOf('serial-actions')).toEqual(['riwayat', 'riwayat']);
+    // Aksi di bar judul tampak di semua tab: tidak perlu membuka tab Riwayat.
+    expect(tabOf('serial-actions')).toEqual([undefined, undefined]);
     expect(tabOf('serial-timeline')).toEqual(['riwayat']);
+  });
+
+  test('detail: teks aksi menyebut Tempel stiker dan Update di bar judul; teks linimasa menyebut filter, bukan tab', () => {
+    const actions = SERIAL_DETAIL.steps.find((step) => step.target === 'serial-actions');
+    const timeline = SERIAL_DETAIL.steps.find((step) => step.target === 'serial-timeline');
+    for (const text of [actions?.text, actions?.teksJikaKosong]) {
+      expect(text).toContain('bar judul');
+      expect(text).toContain('Tempel stiker');
+      expect(text).toContain('Update');
+      expect(text).not.toContain('tab Riwayat');
+    }
+    for (const text of [timeline?.text, timeline?.teksJikaKosong]) {
+      expect(text).toContain('Riwayat Pengecekan');
+      expect(text).toContain('Riwayat Perubahan Data');
+      expect(text).not.toContain('per tab');
+    }
+    // Versi panduan tidak naik: alurnya sama, hanya letak tombol yang berubah (checklist rilis panduan).
+    expect(SERIAL_DETAIL.version).toBe(1);
   });
 });

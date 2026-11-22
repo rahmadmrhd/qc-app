@@ -357,18 +357,35 @@ test('merender kepala, ringkasan, dan linimasa lama di atas, terbaru terbuka den
   expect(screen.getByText('dicek')).toBeInTheDocument();
 });
 
-test('tombol update di baris Riwayat sesuai status; Catatan membuka dialog dan mengirim serials.act', async () => {
-  await renderPage();
-  const group = await screen.findByRole('group', { name: 'Update baru' });
+test('header: urutan aksi Lapor rusak, Ubah data, Tempel stiker, Update (R3); tak ada lagi tombol update di Riwayat', async () => {
+  const { container } = await renderPage();
+  const report = await screen.findByRole('button', { name: 'Lapor rusak' });
+  const edit = screen.getByRole('button', { name: 'Ubah data' });
+  const stickers = screen.getByRole('button', { name: 'Tempel stiker' });
+  const update = screen.getByRole('button', { name: 'Update' });
+  // Satu pembungkus aksi (bar judul) dengan target panduan; urutan sesuai spek.
+  const wrapper = container.querySelector('[data-tour="serial-actions"]') as HTMLElement;
+  expect(wrapper).not.toBeNull();
   expect(
-    within(group)
-      .getAllByRole('button')
-      .map((button) => button.textContent),
-  ).toEqual(['Cek ulang', 'Tempel stiker', 'Catatan']);
-  // Tombol berada di baris yang sama dengan judul Riwayat.
+    [...wrapper.querySelectorAll('button')].map((button) => button.textContent?.trim()),
+  ).toEqual(['Lapor rusak', 'Ubah data', 'Tempel stiker', 'Update']);
+  for (const button of [report, edit, stickers, update]) expect(wrapper).toContainElement(button);
+  // Tab Riwayat hanya memuat linimasa: tidak ada kelompok "Update baru".
   const section = screen.getByRole('region', { name: 'Riwayat' });
-  expect(section).toContainElement(group);
-  await userEvent.click(within(group).getByRole('button', { name: 'Catatan' }));
+  expect(screen.queryByRole('group', { name: 'Update baru' })).toBeNull();
+  expect(within(section).queryByRole('button', { name: 'Catatan' })).toBeNull();
+});
+
+test('Update membuka dropdown sesuai status (tanpa Tempel stiker dan Lapor rusak); Catatan membuka dialog dan mengirim serials.act', async () => {
+  await renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: 'Update' }));
+  const menu = await screen.findByRole('menu');
+  expect(
+    within(menu)
+      .getAllByRole('menuitem')
+      .map((item) => item.textContent),
+  ).toEqual(['Cek ulang', 'Catatan']);
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Catatan' }));
   const dialog = await screen.findByRole('dialog', { name: 'Tambah catatan' });
   await userEvent.type(within(dialog).getByRole('textbox', { name: 'Catatan' }), 'Cek kabel');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Kirim catatan' }));
@@ -393,15 +410,30 @@ test('tombol update di baris Riwayat sesuai status; Catatan membuka dialog dan m
   expect(within(newest).getByText('Terbaru')).toBeInTheDocument();
 });
 
-test('Lapor rusak = ActionButton di sebelah Ubah data (bar judul), bukan di baris Riwayat; membuka dialog laporan', async () => {
+test('Tempel stiker di header membuka dialog dan mengirim serials.act apply_stickers', async () => {
+  await renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: 'Tempel stiker' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Tempel stiker' });
+  const send = within(dialog).getByRole('button', { name: 'Tempel stiker' });
+  expect(send).toBeDisabled();
+  await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker B' }));
+  expect(send).toBeEnabled();
+  await userEvent.click(send);
+  await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
+  expect(calls('serials.act')[0]?.[1]).toMatchObject({
+    id: 's1',
+    action: 'apply_stickers',
+    stickerIds: ['st2'],
+  });
+});
+
+test('Lapor rusak = ActionButton di sebelah Ubah data (bar judul); membuka dialog laporan', async () => {
   await renderPage();
   const report = await screen.findByRole('button', { name: 'Lapor rusak' });
   const edit = screen.getByRole('button', { name: 'Ubah data' });
   // Sebelum Ubah data, di bar judul yang sama.
   expect(report.parentElement).toBe(edit.parentElement);
   expect(report.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  const group = screen.getByRole('group', { name: 'Update baru' });
-  expect(within(group).queryByRole('button', { name: 'Lapor rusak' })).toBeNull();
   await userEvent.click(report);
   expect(await screen.findByRole('dialog', { name: /Lapor rusak/ })).toBeInTheDocument();
 });
@@ -426,7 +458,8 @@ test('pengguna serial: view tidak melihat tombol update maupun tombol ubah', asy
   me = meWith('view');
   await renderPage();
   expect(await screen.findByRole('heading', { name: 'ABC123' })).toBeInTheDocument();
-  expect(screen.queryByRole('group', { name: 'Update baru' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Tempel stiker' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Ubah data' })).not.toBeInTheDocument();
 });
 
@@ -634,7 +667,7 @@ const CASE_C1 = {
   outcome: null,
 };
 
-test('tab linimasa: jumlah dari counts; Pengecekan mengirim group; tanpa tab per laporan', async () => {
+test('filter Riwayat: tombol dropdown, jumlah dari counts di butir menu; Riwayat Pengecekan mengirim group; tanpa tab per laporan', async () => {
   state = {
     ...state,
     serial: { ...SERIAL, cases: [CASE_C1] },
@@ -650,21 +683,36 @@ test('tab linimasa: jumlah dari counts; Pengecekan mengirim group; tanpa tab per
     ],
   };
   await renderPage();
-  expect(await screen.findByRole('tab', { name: 'Semua (4)' })).toBeInTheDocument();
-  expect(screen.getByRole('tab', { name: 'Pengecekan (2)' })).toBeInTheDocument();
-  expect(screen.getByRole('tab', { name: 'Perubahan data (1)' })).toBeInTheDocument();
-  // Laporan tidak lagi punya tab sendiri: ia menjadi satu kartu di tab Semua.
+  const trigger = await screen.findByRole('button', { name: 'Filter riwayat: Semua Riwayat' });
+  expect(trigger).toHaveTextContent('Semua Riwayat');
+  expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
+  // Laporan tidak punya tab sendiri: ia menjadi satu kartu di pilihan Semua.
   expect(screen.queryByRole('tab', { name: /LP\/SBY\/2611-0001/ })).toBeNull();
+  await userEvent.click(trigger);
+  const menu = await screen.findByRole('menu');
+  const options = within(menu).getAllByRole('menuitemradio');
+  expect(options.map((option) => option.textContent)).toEqual([
+    'Semua Riwayat4',
+    'Riwayat Pengecekan2',
+    'Riwayat Perubahan Data1',
+  ]);
+  expect(within(menu).getByRole('menuitemradio', { name: /^Semua Riwayat/ })).toBeChecked();
 
-  await userEvent.click(screen.getByRole('tab', { name: 'Pengecekan (2)' }));
+  await userEvent.click(within(menu).getByRole('menuitemradio', { name: /^Riwayat Pengecekan/ }));
   await waitFor(() =>
     expect(calls('serials.history').some((call) => call[1].group === 'checks')).toBe(true),
   );
-  // Tab Pengecekan tetap per kejadian (penyaring jenis kejadian), tanpa kartu laporan.
+  // Label tombol mengikuti pilihan; pilihan Pengecekan tetap per kejadian, tanpa kartu laporan.
+  expect(
+    await screen.findByRole('button', { name: 'Filter riwayat: Riwayat Pengecekan' }),
+  ).toHaveTextContent('Riwayat Pengecekan');
   const list = await screen.findByRole('list', { name: 'Linimasa' });
   expect(list.querySelector('[data-case-id]')).toBeNull();
-  // Jumlah tab tetap terlihat setelah berpindah tab.
-  expect(screen.getByRole('tab', { name: 'Semua (4)' })).toBeInTheDocument();
+  // Jumlah di menu tetap terlihat setelah berpindah pilihan.
+  await userEvent.click(screen.getByRole('button', { name: /^Filter riwayat/ }));
+  expect(
+    within(await screen.findByRole('menu')).getByRole('menuitemradio', { name: /^Semua Riwayat/ }),
+  ).toHaveTextContent('4');
 });
 
 test('tab Semua: kejadian satu laporan diringkas jadi SATU kartu yang membuka detail laporan', async () => {
@@ -739,13 +787,32 @@ test('kartu laporan yang sudah selesai menampilkan hasil serta kapan dan oleh si
   expect(card).not.toHaveTextContent('Masih terbuka');
 });
 
-test('baris tab linimasa bisa digeser mendatar dan tidak dibungkus saat tab banyak', async () => {
+test('filter Riwayat bukan tab: tombol ghost + chevron di baris bertarget panduan, tanpa tablist di dalam Riwayat', async () => {
+  const { container } = await renderPage();
+  const trigger = await screen.findByRole('button', { name: /^Filter riwayat/ });
+  const row = container.querySelector('[data-tour="serial-timeline"]') as HTMLElement;
+  expect(row).not.toBeNull();
+  expect(row).toContainElement(trigger);
+  expect(trigger.querySelector('svg')).not.toBeNull();
+  const section = screen.getByRole('region', { name: 'Riwayat' });
+  expect(within(section).queryByRole('tablist')).toBeNull();
+  expect(within(section).queryByRole('tab')).toBeNull();
+});
+
+test('filter Riwayat: kartu laporan dan lencana Terbaru hanya di pilihan Semua', async () => {
+  state = { ...state, serial: { ...SERIAL, cases: [CASE_C1] } };
   await renderPage();
-  const semua = await screen.findByRole('tab', { name: /^Semua/ });
-  const tablist = semua.closest('[role="tablist"]') as HTMLElement;
-  expect(tablist).toHaveClass('overflow-x-auto');
-  expect(tablist).not.toHaveClass('flex-wrap');
-  expect(screen.getByRole('tab', { name: /^Semua/ })).toHaveClass('flex-none');
+  await userEvent.click(await screen.findByRole('button', { name: /^Filter riwayat/ }));
+  await userEvent.click(
+    within(await screen.findByRole('menu')).getByRole('menuitemradio', {
+      name: /^Riwayat Perubahan Data/,
+    }),
+  );
+  await waitFor(() =>
+    expect(calls('serials.history').some((call) => call[1].group === 'changes')).toBe(true),
+  );
+  await screen.findByRole('list', { name: 'Linimasa' });
+  await waitFor(() => expect(screen.queryByText('Terbaru')).toBeNull());
 });
 
 test('kartu declare_broken, kirim, dan terima menampilkan rincian kasus dan pengiriman', async () => {
@@ -1276,8 +1343,9 @@ test('serial terhapus: spanduk Terhapus dan Pulihkan (manage), tanpa Ubah data d
   expect(screen.getAllByText('Terhapus').length).toBeGreaterThanOrEqual(1);
   expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Ubah data' })).toBeNull();
-  // Serial terhapus tidak menawarkan update baru.
-  expect(screen.queryByRole('group', { name: 'Update baru' })).toBeNull();
+  // Serial terhapus tidak menawarkan aksi alur.
+  expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Tempel stiker' })).toBeNull();
   const restoreButtons = screen.getAllByRole('button', { name: 'Pulihkan' });
   await userEvent.click(restoreButtons[0] as HTMLElement);
   await waitFor(() => expect(calls('serials.restoreBatch')).toHaveLength(1));
@@ -1294,7 +1362,10 @@ test('ponsel (P7): menu "Aksi lainnya" memuat aksi alur sisanya sebelum Hapus; m
   expect(within(bar).getByRole('button', { name: 'Ubah data' })).toBeInTheDocument();
   await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
   const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent);
-  expect(items).toEqual(['Cek ulang', 'Tempel stiker', 'Catatan', 'Hapus']);
+  expect(items).toEqual(['Tempel stiker', 'Cek ulang', 'Catatan', 'Hapus']);
+  // Aksi alur dikelompokkan di bawah label "Update" (grup datar, tanpa menu bersarang).
+  expect(screen.getByText('Update')).toBeInTheDocument();
+  expect(document.querySelector('[data-tour="serial-actions"]')).not.toBeNull();
   await userEvent.click(screen.getByRole('menuitem', { name: 'Catatan' }));
   expect(await screen.findByRole('dialog', { name: 'Tambah catatan' })).toBeInTheDocument();
   media.restore();
@@ -1309,21 +1380,29 @@ test('ponsel (P7): pengguna tanpa manage tetap punya menu "Aksi lainnya" berisi 
   const bar = await screen.findByRole('region', { name: 'Aksi halaman' });
   await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
   expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
-    'Cek ulang',
     'Tempel stiker',
+    'Cek ulang',
     'Catatan',
   ]);
   media.restore();
   window.innerWidth = 1024;
 });
 
-test('desktop: aksi alur tidak menjadi tombol di bar judul (tetap hanya di tab Riwayat)', async () => {
+test('desktop: bar judul memuat Lapor rusak, Ubah data, Tempel stiker, Update, Hapus; aksi alur lain hanya di dropdown Update', async () => {
   const media = mockMatchMedia(true);
   me = manageMe();
   await renderPage({ tab: 'detail' });
   await screen.findByRole('heading', { name: 'ABC123' });
-  expect(screen.getByRole('button', { name: 'Lapor rusak' })).toBeInTheDocument();
+  const wrapper = document.querySelector('[data-tour="serial-actions"]') as HTMLElement;
+  expect(
+    [...wrapper.querySelectorAll('button')].map((button) => button.textContent?.trim()),
+  ).toEqual(['Lapor rusak', 'Ubah data', 'Tempel stiker', 'Update', 'Hapus']);
   expect(screen.queryByRole('button', { name: 'Catatan' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Cek ulang' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Update' }));
+  expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
+    'Cek ulang',
+    'Catatan',
+  ]);
   media.restore();
 });

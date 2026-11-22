@@ -52,7 +52,7 @@ vi.mock('@/modules/markdown/wysiwyg-editor', () => ({
   ),
 }));
 
-import { ActButtons, type ActKind, actButtonSpecs, canReportDamage } from './act-buttons';
+import { type ActKind, actButtonSpecs, canReportDamage } from './act-buttons';
 import { ActDialog } from './act-dialog';
 
 type Level = 'none' | 'view' | 'edit' | 'manage';
@@ -263,30 +263,6 @@ test('tombol sesuai status dan peran: satu per aksi', () => {
   // Servis tidak melihat aksi QC dan sebaliknya.
   expect(labelsOf(SERIAL, meWith('none', 'edit'))).toEqual([]);
   expect(labelsOf(AT_SERVICE_TRANSIT, meWith('edit'))).toEqual(['Catatan']);
-});
-
-test('ActButtons: tanpa aksi tidak tampil; tombol memanggil onPick dengan jenis dialog', async () => {
-  const onPick = vi.fn();
-  const { container, rerender } = render(
-    <ActButtons
-      state={{ status: 'good', custody: 'qc' }}
-      actor={{ serial: false, serialservice: false }}
-      onPick={onPick}
-    />,
-  );
-  expect(container).toBeEmptyDOMElement();
-  rerender(
-    <ActButtons
-      state={{ status: 'good', custody: 'qc' }}
-      actor={{ serial: true, serialservice: false }}
-      onPick={onPick}
-    />,
-  );
-  // Lapor rusak tidak ada di baris update: ia ActionButton di bar judul View (`canReportDamage`).
-  expect(screen.queryByRole('button', { name: 'Lapor rusak' })).toBeNull();
-  await userEvent.click(screen.getByRole('button', { name: 'Catatan' }));
-  expect(onPick).toHaveBeenCalledWith('note');
-  expect(container.querySelector('select, option')).toBeNull();
 });
 
 test('canReportDamage mengikuti tabel transisi: hanya QC pada serial lolos di QC', () => {

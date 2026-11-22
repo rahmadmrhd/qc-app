@@ -7,9 +7,17 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
-import { CUSTODY_LABEL, formatDay, TEAM_LABEL } from '../lib/labels';
+import { serialActorModules } from '@/modules/auth/permissions';
+import { useMe } from '@/modules/auth/use-me';
+import { CUSTODY_LABEL, daysSpan, formatDay, TEAM_LABEL } from '../lib/labels';
 import { PROOF_POLL_MS, pagesHavePendingProof } from '../lib/proof-state';
-import { serialCaseDetailQueryOptions, serialHistoryInfiniteQueryOptions } from '../queries';
+import { useSerialActions } from '../lib/use-serial-actions';
+import {
+  serialCaseDetailQueryOptions,
+  serialDetailQueryOptions,
+  serialHistoryInfiniteQueryOptions,
+} from '../queries';
+import { actButtonSpecs } from './act-buttons';
 import { SerialStatusBadge } from './serial-status-badge';
 import { Timeline } from './timeline';
 
@@ -18,10 +26,6 @@ const OUTCOME_LABEL = { good: 'Lolos', broken: 'Rusak' } as const;
 /** Laporan tak ada, terhapus, atau di luar hak baca: server menjawab `NOT_FOUND` seragam (`FORBIDDEN` bagi tanpa modul). */
 function isMissing(error: unknown): boolean {
   return error instanceof ApiError && (error.code === 'NOT_FOUND' || error.code === 'FORBIDDEN');
-}
-
-function agoLabel(days: number): string {
-  return days <= 0 ? 'Hari ini' : `${days} hari`;
 }
 
 /** "Nama (Tim)" untuk penutup laporan; tim yang tak dikenal tidak ditampilkan. */
@@ -97,10 +101,10 @@ function Summary({ report }: { report: SerialCaseDetailDto }) {
               : CUSTODY_LABEL[report.custody],
           },
           {
-            label: 'Lama',
+            label: 'Durasi penanganan',
             value: closed
-              ? `Selesai dalam ${agoLabel(report.durationDays)}`
-              : `Terbuka ${agoLabel(report.durationDays)}; di status ini ${agoLabel(report.daysInStatus)}`,
+              ? `Selesai dalam ${daysSpan(report.durationDays)}`
+              : `Berjalan ${daysSpan(report.durationDays)} · di status ini ${daysSpan(report.daysInStatus)}`,
           },
         ]}
       />
@@ -148,13 +152,36 @@ function CaseTimeline({ report }: { report: SerialCaseDetailDto }) {
 
 /**
  * View laporan rusak (kit CRUD, `ViewPage` tanpa tab): ringkasan (nomor, Serial Number bertautan, item, BU, pelapor,
- * dibuka, ditutup beserta penutup, hasil, status Serial kini, posisi, lama) dan linimasa kejadian laporan itu. Tanpa
- * aksi alur: aksinya tetap di detail Serial (tautan di panel kanan). Laporan tak terbaca/terhapus = "tidak ditemukan".
+ * dibuka, ditutup beserta penutup, hasil, status Serial kini, posisi, durasi penanganan) dan linimasa kejadian laporan
+ * itu. Laporan TERBUKA punya aksi di header (`useSerialActions`: Tempel stiker dan Update ▾; tanpa Lapor rusak dan Ubah
+ * data, yang tetap di detail Serial); laporan selesai tanpa aksi. `SerialDto` induk dimuat hanya bila ada aksi yang
+ * boleh dikerjakan pengguna. Laporan tak terbaca/terhapus = "tidak ditemukan".
  */
 export function CaseDetailPage({ caseId, onBack }: CaseDetailPageProps) {
+  const me = useMe();
   const detail = useQuery(serialCaseDetailQueryOptions(caseId));
-  if (detail.isPending) return <p className="text-sm text-muted-foreground">Memuat…</p>;
   const report = detail.data;
+  const open = report !== undefined && report.closedOn === null;
+  const subject = open
+    ? { status: report.status, custody: report.custody, buId: report.buId }
+    : undefined;
+  // Aksi hanya bagi laporan terbuka dan bila pengguna punya aksi yang cocok; selain itu `serials.get` tak dipanggil.
+  const actionable =
+    subject !== undefined &&
+    actButtonSpecs(subject, serialActorModules(me, subject.buId)).some(
+      (spec) => spec.kind !== 'report',
+    );
+  const serialQuery = useQuery({
+    ...serialDetailQueryOptions(report?.serialId ?? ''),
+    enabled: actionable,
+  });
+  const actions = useSerialActions({
+    me,
+    subject: actionable && !serialQuery.isError ? subject : undefined,
+    serial: serialQuery.data?.serial,
+    pending: serialQuery.isPending,
+  });
+  if (detail.isPending) return <p className="text-sm text-muted-foreground">Memuat…</p>;
   if (detail.isError || !report) {
     const missing = isMissing(detail.error);
     return (
@@ -174,39 +201,32 @@ export function CaseDetailPage({ caseId, onBack }: CaseDetailPageProps) {
     );
   }
   return (
-    <ViewPage
-      title={<span className="font-mono">{report.number}</span>}
-      badge={
-        report.closedOn && report.outcome ? (
-          <Badge variant="soft" color={report.outcome === 'good' ? 'success' : 'destructive'}>
-            Selesai: {OUTCOME_LABEL[report.outcome]}
-          </Badge>
-        ) : (
-          <Badge variant="soft" color="warning">
-            Laporan aktif
-          </Badge>
-        )
-      }
-      aside={
-        <ViewMeta
-          createdBy={report.reporter}
-          links={[
-            {
-              label: 'Buka Serial Number',
-              to: '/serial/$serialId',
-              params: { serialId: report.serialId },
-            },
-            { label: 'Lihat semua laporan', to: '/serial/reports' },
-          ]}
-        />
-      }
-    >
-      <ViewSection title="Ringkasan">
-        <Summary report={report} />
-      </ViewSection>
-      <ViewSection title="Linimasa laporan">
-        <CaseTimeline report={report} />
-      </ViewSection>
-    </ViewPage>
+    <>
+      <ViewPage
+        title={<span className="font-mono">{report.number}</span>}
+        badge={
+          report.closedOn && report.outcome ? (
+            <Badge variant="soft" color={report.outcome === 'good' ? 'success' : 'destructive'}>
+              Selesai: {OUTCOME_LABEL[report.outcome]}
+            </Badge>
+          ) : (
+            <Badge variant="soft" color="warning">
+              Laporan aktif
+            </Badge>
+          )
+        }
+        actionsTour="serial-actions"
+        actionItems={actions.items}
+        aside={<ViewMeta createdBy={report.reporter} />}
+      >
+        <ViewSection title="Ringkasan">
+          <Summary report={report} />
+        </ViewSection>
+        <ViewSection title="Linimasa laporan">
+          <CaseTimeline report={report} />
+        </ViewSection>
+      </ViewPage>
+      {actions.dialog}
+    </>
   );
 }
