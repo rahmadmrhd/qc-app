@@ -202,7 +202,7 @@ describe('postelFiles.upload', () => {
     expect(response.status).toBe(201);
     const dto = await jsonOf(response);
     expect(dto).toMatchObject({ mime: 'image/png', size: bytes.length });
-    expect(dto.filename).toBe(`lampiran-${(dto.id as string).slice(0, 8)}.png`);
+    expect(dto.filename).toBe(`lampiran-${(dto.id as string).slice(-8)}.png`);
     expect(response.headers.get('location')).toBe(`/api/v1/postel-files/${dto.id as string}`);
     const row = (await rows('SELECT * FROM files WHERE id = ?', dto.id))[0];
     expect(row).toMatchObject({
@@ -220,7 +220,7 @@ describe('postelFiles.upload', () => {
   test('PDF: ok, nama berakhiran .pdf, lebar dan tinggi 0', async () => {
     const dto = await upload(pdf(), 'application/pdf');
     expect(dto.mime).toBe('application/pdf');
-    expect(dto.filename).toMatch(/^lampiran-[0-9a-f]{8}\.pdf$/);
+    expect(dto.filename).toMatch(/^lampiran-[0-9a-hjkmnp-tv-z]{8}\.pdf$/);
     const row = (await rows('SELECT width, height FROM files WHERE id = ?', dto.id))[0];
     expect([Number(row.width), Number(row.height)]).toEqual([0, 0]);
     const stored = [...env.BRIDGE.state.files.values()][0];
@@ -304,7 +304,7 @@ describe('postelFiles.get', () => {
     expect(response.headers.get('content-type')).toBe('application/pdf');
     const disposition = response.headers.get('content-disposition') ?? '';
     expect(disposition).toContain('attachment');
-    expect(disposition).toContain(`lampiran-${(file.id as string).slice(0, 8)}.pdf`);
+    expect(disposition).toContain(`lampiran-${(file.id as string).slice(-8)}.pdf`);
     expect(response.headers.get('x-content-type-options')).toBe('nosniff');
     expect(Buffer.compare(Buffer.from(await response.arrayBuffer()), Buffer.from(bytes))).toBe(0);
     // pengguna tanpa sticker view tidak
@@ -380,7 +380,7 @@ describe('postels.save: lampiran', () => {
       id: b.id,
       mime: 'image/png',
       size: 80,
-      filename: `lampiran-${(b.id as string).slice(0, 8)}.png`,
+      filename: `lampiran-${(b.id as string).slice(-8)}.png`,
     });
     const files = await rows('SELECT id, owner_type, owner_id, status FROM files ORDER BY id');
     for (const file of files) {

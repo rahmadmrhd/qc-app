@@ -86,9 +86,12 @@ const EXTENSION_OF_MIME: Record<string, string> = {
   'image/webp': 'webp',
 };
 
-/** Nama unduhan yang disarankan: `bukti-<8 awal id>.<ekstensi menurut MIME saat ini>`. */
+/**
+ * Nama unduhan yang disarankan: `bukti-<8 karakter akhir id>.<ekstensi menurut MIME saat ini>`. Karakter AKHIR (bagian
+ * acak ULID) dipakai karena 8 karakter awal hanya bit waktu teratas yang sama untuk foto yang diunggah serentak.
+ */
 export function proofFilename(id: string, mime: string): string {
-  return `bukti-${id.trim().slice(0, 8)}.${EXTENSION_OF_MIME[mime] ?? 'webp'}`;
+  return `bukti-${id.trim().slice(-8)}.${EXTENSION_OF_MIME[mime] ?? 'webp'}`;
 }
 
 const DAY_MS = 86_400_000;
