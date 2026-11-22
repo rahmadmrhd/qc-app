@@ -300,6 +300,40 @@ test('terhapus saat gilirannya tiba: dilewati dengan alasan, tanpa menyiapkan be
   );
 });
 
+test('NOT_FOUND saat memuat ulang (terhapus, pengguna tanpa manage): dilewati, bukan gagal, tanpa job; yang lain lanjut', async () => {
+  const list = register(design('a'), design('b'));
+  mocks.refresh.mockImplementation(async (_client: unknown, id: string) => {
+    if (id === 'a') throw new ApiError('NOT_FOUND', 'Tidak ditemukan', 'r9');
+    return designs.get(id);
+  });
+  const { result } = renderHook(() => useBulkQrExport(), { wrapper });
+  await act(async () => {
+    await result.current.start(list, '');
+  });
+  expect(idsOfCalls()).toEqual(['b']);
+  expect(mocks.prepare).toHaveBeenCalledTimes(1);
+  expect(result.current.outcome).toMatchObject({
+    skippedIds: ['a'],
+    failedIds: [],
+    doneIds: ['b'],
+  });
+  expect(result.current.rows.find((row) => row.id === 'a')).toMatchObject({
+    status: 'skipped',
+    message: 'Konfigurasi sudah dihapus',
+  });
+});
+
+test('galat selain NOT_FOUND saat memuat ulang tetap gagal per baris', async () => {
+  const list = register(design('a'));
+  mocks.refresh.mockRejectedValue(new ApiError('FORBIDDEN', 'Tidak boleh', 'r9'));
+  const { result } = renderHook(() => useBulkQrExport(), { wrapper });
+  await act(async () => {
+    await result.current.start(list, '');
+  });
+  expect(mocks.mutate).not.toHaveBeenCalled();
+  expect(result.current.outcome).toMatchObject({ failedIds: ['a'], skippedIds: [] });
+});
+
 test('label berubah menjadi butuh alasan padahal tak ada alasan: baris gagal, tidak mengirim', async () => {
   const list = register(design('a'));
   mocks.refresh.mockResolvedValue(newVersion('a'));

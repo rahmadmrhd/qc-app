@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { ApiError } from '@/lib/api/api-error';
 import { itemKeys } from '@/modules/item/queries';
 import { stickerKeys } from '@/modules/sticker/keys';
 import {
@@ -222,6 +223,28 @@ test('refreshQrDesign: konfigurasi yang ternyata terhapus keluar dari daftar hid
     'b',
   ]);
   expect(client.getQueryData(qrKeys.one('a'))).toEqual(gone);
+});
+
+test('refreshQrDesign: NOT_FOUND (terhapus bagi non-manage) mengeluarkan konfigurasi dari daftar hidup dan menandai detail/terhapus basi, galat tetap dilempar', async () => {
+  client.setQueryData(qrKeys.list, [design('a', 'A', 't'), design('b', 'B', 't')]);
+  client.setQueryData(qrKeys.one('a'), design('a', 'A', 't'));
+  client.setQueryData(qrKeys.listDeleted, []);
+  apiMock.mockRejectedValue(new ApiError('NOT_FOUND', 'Tidak ditemukan', 'r1'));
+  await expect(refreshQrDesign(client, 'a')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  expect((client.getQueryData(qrKeys.list) as QrDesignDto[]).map((entry) => entry.id)).toEqual([
+    'b',
+  ]);
+  expect(client.getQueryState(qrKeys.one('a'))?.isInvalidated).toBe(true);
+  expect(client.getQueryState(qrKeys.listDeleted)?.isInvalidated).toBe(true);
+});
+
+test('refreshQrDesign: galat lain tidak menyentuh daftar hidup', async () => {
+  client.setQueryData(qrKeys.list, [design('a', 'A', 't')]);
+  apiMock.mockRejectedValue(new ApiError('FORBIDDEN', 'Tidak boleh', 'r1'));
+  await expect(refreshQrDesign(client, 'a')).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  expect((client.getQueryData(qrKeys.list) as QrDesignDto[]).map((entry) => entry.id)).toEqual([
+    'a',
+  ]);
 });
 
 test('unggah PDF: onUploadProgress diteruskan ke api sebagai opsi panggilan, bukan sebagai input', async () => {

@@ -154,6 +154,11 @@ export function useBulkQrExport(): BulkQrExport {
         }
       }
     } catch (error) {
+      // Terhapus sebelum gilirannya (bagi non-manage server menjawab NOT_FOUND; `refreshQrDesign` sudah mengeluarkannya
+      // dari daftar hidup): dilewati, bukan gagal.
+      if (error instanceof ApiError && error.code === 'NOT_FOUND') {
+        return { status: 'skipped', message: 'Konfigurasi sudah dihapus' };
+      }
       // Gagal basi di langkah komit (job server) tidak diulang, tetapi cache memegang DTO lama: muat ulang agar daftar,
       // detail, dan ringkasan benar. Pemuatan ulang yang gagal tak boleh menimpa galat aslinya.
       if (shouldRefreshAfterExportError(error)) {

@@ -15,6 +15,7 @@ import type {
 import type { QueryClient, UseQueryOptions } from '@tanstack/react-query';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { ApiError } from '@/lib/api/api-error';
 import type { ApiCallOptions } from '@/lib/api/client';
 import { markStale, removeFromList, upsertInList } from '@/lib/query-cache';
 import { accessKeys } from '@/modules/access/queries';
@@ -156,9 +157,22 @@ function applyDesign(queryClient: QueryClient, saved: QrDesignDto): void {
 
 /** Memuat ulang satu konfigurasi dari server dan memasangnya ke daftar dan detail (DTO basi setelah galat 412/422). */
 export async function refreshQrDesign(queryClient: QueryClient, id: string): Promise<QrDesignDto> {
-  const fresh = await api('qrcodes.get', { id });
+  let fresh: QrDesignDto;
+  try {
+    fresh = await api('qrcodes.get', { id });
+  } catch (error) {
+    // Pengguna tanpa `manage` mendapat NOT_FOUND untuk konfigurasi terhapus: jangan biarkan barisnya tersisa di daftar hidup.
+    if (error instanceof ApiError && error.code === 'NOT_FOUND') forgetQrDesign(queryClient, id);
+    throw error;
+  }
   applyDesign(queryClient, fresh);
   return fresh;
+}
+
+/** Konfigurasi sudah tak terbaca: keluar dari daftar hidup, detailnya dan daftar terhapus ditandai basi. */
+export function forgetQrDesign(queryClient: QueryClient, id: string): void {
+  removeFromList<QrDesignDto>(queryClient, qrKeys.list, id);
+  markStale(queryClient, qrKeys.one(id), qrKeys.listDeleted);
 }
 
 /**
