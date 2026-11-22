@@ -91,18 +91,20 @@ Seluruh butir sudah diimplementasikan dan dikomit di cabang `claude/revisi-tampi
 
 | Butir | Status |
 |---|---|
-| B1, B2, B2c, B2d | Diimplementasikan |
+| B1, B2, B2c | Diimplementasikan |
+| B2d | Diimplementasikan; sejak putaran perbaikan review akhir mode `sheet` combobox juga berpegangan dan dapat diseret (satu `SheetHandle` bersama `ui/sheet.tsx`), dan pegangan aktif lewat Enter/Spasi |
 | B2b | Sebagian diimplementasikan: server menyediakan semua field jamak (items `brandIds`/`buIds`/`typeIds`, serials, serialCases, handovers.board, audit); UI memakainya di Item (merk, BU), Serial, Laporan (BU), papan Serah Terima (customer), Log Audit (aksi), Jenis stiker, dan Postel (kondisi). Filter Stiker/Jenis pada daftar Item TETAP satu pilihan (diputuskan pemilik 2026-11-22, lihat butir 6). Filter klien-saja pada halaman yang belum punya chip jamak belum dikerjakan |
 | B2e | Diimplementasikan (Serial menggabungkan Terhapus ke chip Status atas keputusan pemilik 2026-11-22) |
 | B3 | Diimplementasikan |
 | B4, B5, B5b, B6, B8, B9, B10, B11, B12 | Diimplementasikan |
 | B7 | Diimplementasikan |
-| P1 sampai P9, D1, D2 | Diimplementasikan |
+| P1 sampai P6, P8, P9, D1, D2 | Diimplementasikan |
+| P7 | Diimplementasikan; menu "Lainnya" ponsel View Serial memuat aksi alur sisanya sebelum Hapus/Pulihkan (putaran perbaikan review akhir) |
 
 Tafsiran implementer yang perlu ditinjau pemilik (tidak mengubah keputusan pemilik di bagian 1 dan 2):
 
 1. **B5**: "satu section Detail" diimplementasikan sebagai satu TAB "Detail" yang tetap memuat section-section lama (judul section dipertahankan karena menjadi target `data-tour`).
-2. **B2**: memilih satu nilai pada chip combobox kini menutup chip (sebelumnya popover tetap terbuka); mode jamak tetap terbuka. Mode `sheet` combobox (daftar `fixed` dekat papan ketik) bukan `ui/sheet`, jadi tidak punya pegangan seret.
+2. **B2**: memilih satu nilai pada chip combobox kini menutup chip (sebelumnya popover tetap terbuka); mode jamak tetap terbuka. Mode `sheet` combobox (daftar `fixed` dekat papan ketik) awalnya bukan `ui/sheet` dan tanpa pegangan; sejak putaran perbaikan review akhir ia berpegangan (butir 12).
 3. **B3**: log tanpa nilai; catatan "Riwayat sebelum 20 Nov 2026 tidak lengkap" tampil kecuali `createdAt` record >= 20 Nov 2026 WIB (DTO tanpa `createdAt` selalu menampilkannya); tab Riwayat Postel (selisih nilai) dipertahankan; log Serial = 10 entri terbaru `serials.history` dengan tautan ke tab Riwayat.
 4. **B7**: tab Pengecekan dan Perubahan data di detail Serial tetap per kejadian (hanya tab Semua meringkas kartu laporan); pelapor dan penutup pada kartu diturunkan dari kejadian yang sudah termuat (kartu menulis "Pelapor ada di riwayat yang lebih lama" bila halaman lama belum dimuat) agar tak ada N+1 `serialCases.get`; `?case=` dialihkan ke halaman detail laporan.
 5. **P2/D1**: `FormPage` ponsel tanpa `badge` tidak lagi memuat bar atas kosong (judul `sr-only` dan target tur dipertahankan); bar aksi massal desktop menahan headroom selama ada pilihan; mode pilih 0 butir (lewat tombol "Pilih") menampilkan bar bawah penuh.
@@ -111,3 +113,17 @@ Tafsiran implementer yang perlu ditinjau pemilik (tidak mengubah keputusan pemil
 8. **P8**: `hideOnPhone` tidak berlaku di aplikasi desktop (Electron) berjendela sempit.
 9. **P6**: gerbang layar penuh dialog memakai CSS `max-md:` (bukan JS), sama dengan `FormDialogContent`; hasil ukur 393x852 dari survei; dialog tak terukur dan `AlertDialog` tidak diubah.
 10. **B2b server**: field jamak dikirim sebagai daftar dipisah koma, maks. 20 nilai, jamak menang atas tunggal, hanya menyempitkan hak baca; `typeIds` ditolak bersama `stickerId`.
+11. **P7**: aksi alur selain Lapor rusak (Cek ulang, Catatan, Kirim ke servis, dst. menurut tabel transisi) di menu "Lainnya" ponsel View Serial ditaruh SEBELUM Hapus/Pulihkan lewat `ViewAction.phoneOnly` (tidak menjadi tombol bar judul desktop; desktop tetap memakai `ActButtons` di tab Riwayat).
+12. **B2d**: lembar combobox yang dilebarkan (seret ke atas = 100dvh) menutupi kolom input di belakangnya; input tetap fokus, ketuk atau seret ke bawah menurunkannya lagi. Pegangan berupa tombol (Enter/Spasi membalik, panah atas/bawah tetap).
+13. **B2b batas 20**: UI menegakkan batas 20 nilai (`FILTER_LIST_MAX` web, opsi dinonaktifkan dan pesan "Maksimal 20 pilihan") agar larik ke-21 tak dibuang diam-diam; angka itu adalah SALINAN angka server (`web/src/lib/filter-limits.ts`, paritas dijaga tes yang membaca berkas server). Bila pemilik ingin satu sumber, konstanta dapat dipindah ke `shared/`.
+14. **Perbaikan 704-767 px**: pada lebar `<main>` 704-767 px `useIsMobile` dan `useIsDesktop` sama-sama true, jadi `FormPage` menaruh Batal/Simpan di bar atas (bar bawah tidak dirender) dan `ViewPage` mempertahankan bar atas bila ada lencana atau aksi; tepat satu set aksi di semua lebar.
+
+## 6. Putaran perbaikan review akhir (tahap 4, dicatat 2026-11-22)
+
+Review independen akhir menemukan 16 temuan (C1-C16); semuanya sudah diperbaiki di komit `b0e0b892`, `081cc179`, `e52957a1`, `c9c242b2`, `d7010bfe`, `6d9b4c1e`, `0139c721`, tanpa mengubah keputusan pemilik:
+- **Kritis**: `FormPage` pada 704-767 px kehilangan seluruh Batal/Simpan karena dua gerbang berbeda (bar atas dibuang oleh gerbang viewport sedangkan bar bawah disembunyikan oleh gerbang lebar `<main>`). Kini satu gerbang untuk letak aksi; judul `sr-only` tetap mengikuti gerbang viewport. Penyelidikan komponen kit lain pada rentang itu (`ListPage`, `ViewPage`, `BulkBar`, `DataTable`, `GridView`, `FilterBar`, combobox) tidak menemukan celah serupa.
+- `ViewPage` ponsel tanpa lencana/aksi tidak lagi merender bar headroom kosong; menu "Lainnya" View Serial ponsel memuat aksi alur (P7).
+- Mode `sheet` combobox berpegangan dan dapat diseret; pegangan aktif lewat keyboard (Enter/Spasi); satu implementasi gestur bersama.
+- Batas 20 nilai filter jamak ditegakkan di UI; daftar Laporan membuka View laporan dari badan kartu (`rowTo`); log aktivitas dimuat ulang setelah mutasi sukses (satu titik di `MutationCache.onSuccess`).
+- Sidebar menyinkronkan keadaan menurut tiga rentang (overlay, ponsel, lebar memulihkan pilihan tersimpan); bar inline di dalam dialog tanpa celah 16 px.
+- Kalimat CLAUDE.md tentang `StickyActionBar` `placement="inline"` diperbaiki (S4). Filter Stiker/Jenis di daftar Item tetap satu pilihan (keputusan pemilik, butir B2b).
