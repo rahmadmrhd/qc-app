@@ -65,6 +65,31 @@ test('sudah terbaru dilewati dan dibedakan dari yang tak lengkap', () => {
   ).toEqual({ kind: 'skip', skipCause: 'current', skipReason: 'Sudah terbaru', overwrites: false });
 });
 
+test('current dengan stickerVersion 0 (diekspor sebelum 4a) diekspor ulang sebagai versi pertama dan menimpa berkas lama', () => {
+  expect(
+    classifyForExport(design('a', { exportStatus: 'current', stickerVersion: 0, exportedAt: 'x' })),
+  ).toEqual({ kind: 'export-new', overwrites: true, backfill: true });
+});
+
+test.each([
+  ['tanpa nama', { name: '' }, 'Belum bernama'],
+  ['tanpa item', { items: [], hiddenItemCount: 0 }, 'Belum punya item'],
+  ['terhapus', { deleted: { deletedAt: 't', deletedBy: 'a' } }, 'Konfigurasi sudah dihapus'],
+] as const)(
+  'current + stickerVersion 0 tetapi %s: dilewati sebagai tak lengkap',
+  (_label, patch, reason) => {
+    const plan = classifyForExport(
+      design('a', {
+        exportStatus: 'current',
+        stickerVersion: 0,
+        exportedAt: 'x',
+        ...(patch as Partial<QrDesignDto>),
+      }),
+    );
+    expect(plan).toMatchObject({ kind: 'skip', skipCause: 'incomplete', skipReason: reason });
+  },
+);
+
 test.each([
   ['terhapus', { deleted: { deletedAt: 't', deletedBy: 'a' } }, 'Konfigurasi sudah dihapus'],
   ['isi tak muat', { overflow: true }, 'Isi label tidak muat di kanvas 3 × 3 cm'],
@@ -96,8 +121,27 @@ test('ringkasan menghitung per jenis dan memisahkan sudah terbaru dari tak lengk
     exportable: 2,
     newVersions: 1,
     firstTime: 1,
+    backfill: 0,
     overwrites: 1,
     current: 1,
     skipped: [{ id: 'over', name: 'Besar', reason: 'Isi label tidak muat di kanvas 3 × 3 cm' }],
+  });
+});
+
+test('ringkasan: backfill dihitung terpisah, bukan pertama kali dan bukan sudah terbaru', () => {
+  const summary = summarizeBulkExport([
+    design('first'),
+    design('old', { exportStatus: 'current', stickerVersion: 0, exportedAt: 'x' }),
+    design('old2', { exportStatus: 'current', stickerVersion: 0, exportedAt: 'x' }),
+    design('cur', { exportStatus: 'current', stickerVersion: 2, exportedAt: 'x' }),
+  ]);
+  expect(summary).toEqual({
+    exportable: 3,
+    newVersions: 0,
+    firstTime: 1,
+    backfill: 2,
+    overwrites: 2,
+    current: 1,
+    skipped: [],
   });
 });

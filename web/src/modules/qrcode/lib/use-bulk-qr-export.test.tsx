@@ -275,6 +275,19 @@ test('alasan hanya dikirim untuk konfigurasi yang melahirkan versi baru', async 
   expect(byId.ver).toMatchObject({ reason: 'Logo diganti' });
 });
 
+test('diekspor sebelum 4a (current, stickerVersion 0): sungguh diekspor tanpa reason walau alasan bersama diisi', async () => {
+  const list = register(
+    design('old', { exportStatus: 'current', stickerVersion: 0, exportedAt: 'x' }),
+  );
+  const { result } = renderHook(() => useBulkQrExport(), { wrapper });
+  await act(async () => {
+    await result.current.start(list, '  Alasan bersama  ');
+  });
+  expect(mocks.mutate).toHaveBeenCalledTimes(1);
+  expect(mocks.mutate.mock.calls[0]?.[0]).toMatchObject({ id: 'old', reason: '' });
+  expect(result.current.outcome).toMatchObject({ doneIds: ['old'], skippedIds: [] });
+});
+
 test('klasifikasi ulang setelah memuat ulang: sudah terbaru dilewati tanpa mengekspor', async () => {
   const list = register(design('a'));
   mocks.refresh.mockResolvedValue(

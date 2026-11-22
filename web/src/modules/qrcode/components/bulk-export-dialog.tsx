@@ -149,6 +149,12 @@ export function BulkExportDialog({
                 </li>
               ) : null}
               {summary.firstTime > 0 ? <li>{summary.firstTime} diekspor pertama kali</li> : null}
+              {summary.backfill > 0 ? (
+                <li>
+                  {summary.backfill} konfigurasi diekspor ulang untuk membuat stiker Manual Book
+                  pertamanya (berkas di Drive ditimpa dengan isi yang sama)
+                </li>
+              ) : null}
               {summary.current > 0 ? (
                 <li className="text-muted-foreground">
                   {summary.current} sudah terbaru (dilewati)
@@ -179,10 +185,11 @@ export function BulkExportDialog({
                 {summary.exportable}). Kurangi pilihan, lalu ulangi.
               </p>
             ) : null}
-            {summary.overwrites > 0 ? (
+            {summary.overwrites - summary.backfill > 0 ? (
               <p className={WARNING_BOX}>
-                {summary.overwrites} konfigurasi sudah pernah diekspor: berkas lama ditimpa,
-                dipindah ke tempat sampah Drive, dan tidak dapat dipakai lagi dari aplikasi.
+                {summary.overwrites - summary.backfill} konfigurasi sudah pernah diekspor: berkas
+                lama ditimpa, dipindah ke tempat sampah Drive, dan tidak dapat dipakai lagi dari
+                aplikasi.
               </p>
             ) : null}
             {needsReason ? (

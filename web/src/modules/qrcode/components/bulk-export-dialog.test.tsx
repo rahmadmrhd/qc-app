@@ -132,6 +132,30 @@ test('ringkasan memisahkan sudah terbaru dari yang dilewati dan menampilkan alas
   expect(within(dialog).getByText(/tidak muat di kanvas/)).toBeInTheDocument();
 });
 
+test('ringkasan: yang diekspor sebelum 4a diekspor ulang demi stiker pertamanya, bukan sudah terbaru, tanpa alasan', () => {
+  mount(
+    [
+      design('old', { exportStatus: 'current', stickerVersion: 0, exportedAt: 'x' }),
+      design('cur', { exportStatus: 'current', stickerVersion: 1, exportedAt: 'x' }),
+    ],
+    exporter(),
+  );
+  const dialog = screen.getByRole('dialog');
+  expect(
+    within(dialog).getByText(
+      /1 konfigurasi diekspor ulang untuk membuat stiker Manual Book pertamanya \(berkas di Drive ditimpa dengan isi yang sama\)/,
+    ),
+  ).toBeInTheDocument();
+  expect(within(dialog).getByText(/1 sudah terbaru \(dilewati\)/)).toBeInTheDocument();
+  expect(within(dialog).getByRole('list', { name: 'Ringkasan ekspor' })).toHaveTextContent(
+    /1 konfigurasi akan diekspor/,
+  );
+  // Versi pertama: tanpa kotak alasan dan tanpa peringatan "dipindah ke sampah" (isinya identik).
+  expect(within(dialog).queryByLabelText(/Alasan perubahan label/)).not.toBeInTheDocument();
+  expect(within(dialog).queryByText(/berkas lama ditimpa/)).not.toBeInTheDocument();
+  expect(within(dialog).getByRole('button', { name: 'Ekspor 1 konfigurasi' })).toBeEnabled();
+});
+
 test('peringatan timpa bila ada yang sudah pernah diekspor', () => {
   mount([newVersion('a')], exporter());
   expect(screen.getByText(/berkas lama ditimpa/)).toBeInTheDocument();
