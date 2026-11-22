@@ -65,6 +65,11 @@ produksi dan dibahas terpisah.
    SATU MINGGU selesai tanpa masalah (pemilik memilih satu minggu, bukan dua minggu yang direkomendasikan), dan tak ada
    kode yang masih mengharapkan ID berbentuk UUID.
 
+9. **Verifikasi jumlah baris per tabel sumber dilonggarkan menjadi "tidak lebih banyak dari peta"** (diusulkan perancang,
+   disetujui pemilik produk 2026-11-22, menutup bagian 6e butir 2). Alasan: tanpa pelonggaran, `--revert` setelah aplikasi
+   menghapus permanen satu baris (mis. `files`) selalu gagal verifikasi walau datanya utuh; penghapusan selama jendela
+   tetap tertangkap pemeriksaan terhadap garis dasar. Bagian 4 butir 6 sudah diselaraskan.
+
 ## 2. Yang TIDAK diubah (sengaja)
 
 | Hal | Alasan |
@@ -118,9 +123,10 @@ Skrip operator lokal (di luar repo, bagian 1 butir 7); rinci di header skripnya.
    persis maupun token; jumlah baris, yatim FK, dan baris yang merujuk entitas sama dengan garis dasar; hitungan status QR
    (desain `current`/`stale`/tanpa ekspor, versi konsisten/tak konsisten, dan desain yang hash versi TERBARUNYA sama dengan hash isi sekarang, yaitu syarat "tak perlu versi baru" pada ekspor) sama dengan garis dasar (bidang opsional
    garis dasar; dihitung dari bentuk ID mana pun, jadi harus sama sebelum dan sesudah); jumlah baris per
-   tabel sumber sama dengan jumlah baris peta untuk tabel itu. (Kode saat ini melonggarkan bagian terakhir menjadi "tidak
-   lebih banyak dari peta"; selisih kurang dilaporkan sebagai `terhapusSejakMigrasi`. Pelonggaran ini **menunggu
-   konfirmasi pemilik, bagian 6e butir 2**.)
+   tabel sumber TIDAK LEBIH BANYAK dari jumlah baris peta untuk tabel itu; selisih kurang (baris yang dihapus permanen
+   aplikasi setelah migrasi) dilaporkan sebagai `terhapusSejakMigrasi`, bukan kegagalan. Penghapusan SAAT jendela migrasi
+   tetap tertangkap pemeriksaan jumlah baris terhadap garis dasar. (Aturan lama "sama dengan" diganti; disetujui pemilik
+   2026-11-22, bagian 1 butir 9.)
 
 Batch kecil (`--batch`, bawaan 2000, tiap batch satu transaksi), idempoten, dapat dilanjutkan (baris yang sudah ditulis
 ulang tak lagi cocok), dan punya jalan pulang `--revert` memakai peta yang sama. Dry-run adalah bawaan (hanya `SELECT`);
@@ -201,8 +207,8 @@ verifikasi jumlah rujukan per kolom adalah jaring pengaman utama.
 
 ## 6. Menunggu keputusan pemilik
 
-Dari bagian ini yang masih PERTANYAAN TERBUKA hanya 6e butir 2 (6a, 6b sampai 6d, dan 6e butir 1 sudah ditutup
-2026-11-22, lihat di bawah dan bagian 1 butir 8); di luar bagian ini masih terbuka penanganan state klien (bagian 5 butir 1). Rekomendasi perancang hanyalah usulan; belum diputuskan dan tidak
+Semua butir bagian ini (6a sampai 6e) sudah ditutup 2026-11-22 (lihat masing-masing dan bagian 1 butir 6, 8, dan 9). Di luar
+bagian ini masih terbuka penanganan state klien (bagian 5 butir 1). Rekomendasi perancang hanyalah usulan; belum diputuskan dan tidak
 boleh dikerjakan sebagai keputusan sebelum pemilik produk menjawab.
 Setelah dijawab, keputusan dicatat di bagian 1 (dengan tanggal absolut dan penyetujunya) dan butir yang bersangkutan di
 sini ditutup.
@@ -276,7 +282,7 @@ staging `qc-dev.rhd.my.id` sebagai gladi nyata pada data staging, (3) produksi. 
 SEMUA lingkungan yang dimigrasikan sudah lolos verifikasi, masa pantau di produksi selesai, dan tak ada kode yang masih
 mengharapkan ID berbentuk UUID. Lamanya masa pantau: satu minggu (diputuskan).
 
-### 6e. Dua perilaku yang ditambahkan perancang di luar teks keputusan (butir 1 DITUTUP, butir 2 TERBUKA)
+### 6e. Dua perilaku yang ditambahkan perancang di luar teks keputusan (DITUTUP 2026-11-22)
 
 1. **Nama unduhan memakai 8 karakter akhir ID** (bagian 1 butir 5). Teknisnya benar dan murah, tetapi menambah perilaku
    di luar keputusan pemilik "ganti ke ULID". Rekomendasi perancang: setujui. Alternatif: tetap 8 karakter awal dan
@@ -286,10 +292,10 @@ mengharapkan ID berbentuk UUID. Lamanya masa pantau: satu minggu (diputuskan).
    Tanpa pelonggaran, `--revert` setelah aplikasi menghapus permanen satu baris (mis. `files`) selalu gagal verifikasi
    walau datanya utuh; dengan pelonggaran, selisih kurang dilaporkan di `terhapusSejakMigrasi` dan penghapusan SAAT
    jendela migrasi tetap tertangkap pemeriksaan jumlah baris terhadap garis dasar. Rekomendasi perancang: setujui
-   pelonggaran. Alternatif: pertahankan "sama dengan" dan tangani selisih secara manual. **Belum diputuskan.**
+   pelonggaran. Alternatif: pertahankan "sama dengan" dan tangani selisih secara manual. **Disetujui pemilik produk 2026-11-22**
+   (bagian 1 butir 9).
 
-Setelah dijawab, keputusan dicatat di bagian 1 (tanggal absolut dan penyetuju) dan teks bagian 1 butir 5 serta bagian 4
-butir 6 diselaraskan.
+Keputusan sudah dicatat di bagian 1 (butir 5 dan 9) dan bagian 4 butir 6 diselaraskan.
 
 ### Butir yang sudah ditutup oleh pemeriksaan kode
 
