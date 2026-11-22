@@ -1,0 +1,1 @@
+change(ui): Tempel stiker Serial Number dan ekspor massal QR Code ikut UI web terbaru lewat pembaruan UI; kontrak shared bertambah tanpa perubahan perilaku desktop

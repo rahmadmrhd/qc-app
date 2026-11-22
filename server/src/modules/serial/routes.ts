@@ -31,7 +31,9 @@ import {
   saveServiceSettings,
 } from './service-locations';
 import { removeSerial, removeSerialBatch, restoreSerial, restoreSerialBatch } from './soft-delete';
+import { applyStickersBatch } from './stickers-batch';
 import {
+  validateApplyStickersBatch,
   validateGetSerial,
   validateGetSerialCase,
   validateListSerialItemOptions,
@@ -66,6 +68,7 @@ type SerialMethod =
   | 'serials.removeBatch'
   | 'serials.restore'
   | 'serials.restoreBatch'
+  | 'serials.applyStickersBatch'
   | 'serials.update'
   | 'serials.updateBatch'
   | 'serials.act'
@@ -213,6 +216,13 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       permission: { module: 'serial', level: 'manage' },
       validate: validateIdBatch,
       handler: (input, ctx) => restoreSerialBatch(ctx.env, input, ctx.user),
+    },
+    // Tempel stiker massal (keputusan pemilik 2026-11-22 K2): atomik; hak per baris (BU, status, posisi) dinilai handler
+    // lewat tabel transisi yang sama dengan `serials.act`.
+    'serials.applyStickersBatch': {
+      permission: { module: 'serial', level: 'edit' },
+      validate: validateApplyStickersBatch,
+      handler: (input, ctx) => applyStickersBatch(ctx.env, input, ctx.user),
     },
     'serials.history': {
       permission: READ_PERMISSION,

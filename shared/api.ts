@@ -508,6 +508,8 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   // Hapus lunak (fase 4d). Rute statis `/serials/batch/...` SEBELUM `/serials/{id}/...` (urutan tabel = urutan pendaftaran).
   'serials.removeBatch': { verb: 'POST', path: '/serials/batch/delete' },
   'serials.restoreBatch': { verb: 'POST', path: '/serials/batch/restore' },
+  // Tempel stiker massal (R1): statis, SEBELUM `/serials/{id}`.
+  'serials.applyStickersBatch': { verb: 'POST', path: '/serials/batch/stickers', status: 200 },
   'serials.remove': { verb: 'DELETE', path: '/serials/{id}' },
   'serials.restore': { verb: 'POST', path: '/serials/{id}/restore', etag: 'updatedAt' },
   'serials.history': {

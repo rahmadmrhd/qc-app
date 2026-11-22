@@ -397,6 +397,12 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'serials.updateBatch': {
     rows: [{ id: 's1', expectedUpdatedAt: '2026-11-12T00:00:00.000Z', fields: { note: 'x' } }],
   },
+  'serials.applyStickersBatch': {
+    clientId: '0b9f6d3e-3c5a-4f4e-9d0e-5a1b2c3d4e5f',
+    occurredOn: '2026-11-22',
+    message: '',
+    rows: [{ id: 's1', stickerIds: ['k1'] }],
+  },
   'serials.act': {
     id: 's1',
     expectedUpdatedAt: '2026-11-12T00:00:00.000Z',

@@ -876,6 +876,11 @@
     "path": "/serials/{id}/act"
   },
   {
+    "id": "serials.applyStickersBatch",
+    "verb": "POST",
+    "path": "/serials/batch/stickers"
+  },
+  {
     "id": "serials.buOptions",
     "verb": "GET",
     "path": "/serials/bu-options"

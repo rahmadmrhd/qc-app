@@ -1,7 +1,9 @@
 import { normalizeEmail } from '@server/core/email';
 import { appError } from '@server/core/errors';
 import { readFilterList, readObject } from '@server/core/validate';
+import { BATCH_MAX } from '@shared/batch';
 import type {
+  ApplyStickersBatchInput,
   GetSerialCaseInput,
   GetSerialInput,
   ListSerialItemOptionsInput,
@@ -25,6 +27,7 @@ import type {
 import { extractFileRefs } from '@shared/items';
 import { hasBidiControls, hasControlChars, isPostelRecipient } from '@shared/postel';
 import {
+  isApplyStickersClientId,
   isIsoDate,
   listSerialsTooLong,
   normalizeSerial,
@@ -458,6 +461,7 @@ const ACT_EXTRA_KEYS: Record<SerialAction, readonly string[]> = {
   recheck: ['result', 'buId', 'stickerIds', 'proofPhotoIds'],
   recheck_pass: ['buId', 'stickerIds', 'proofPhotoIds'],
   recheck_fail: ['stickerIds', 'proofPhotoIds'],
+  apply_stickers: ['stickerIds'],
 };
 const ACT_ALL_EXTRA_KEYS = [
   'toLocationId',
@@ -470,7 +474,7 @@ const ACT_ALL_EXTRA_KEYS = [
 ] as const;
 
 const ACT_EXTRA_MESSAGES: Record<string, string> = {
-  stickerIds: 'Stiker hanya untuk cek ulang',
+  stickerIds: 'Stiker hanya untuk cek ulang atau tempel stiker',
   proofPhotoIds: 'Foto bukti hanya untuk cek ulang',
   stage: 'Tahap hanya untuk diagnosis',
   toLocationId: 'Lokasi hanya untuk kirim atau terima',
@@ -606,6 +610,10 @@ export function validateSerialAct(raw: unknown): SerialActInput {
       if (stickerIds.length > 0) out.stickerIds = stickerIds;
     }
   }
+  // Tempel stiker: minimal satu stiker (tanpa stiker = tidak ada yang ditempel).
+  if (action === 'apply_stickers' && out.stickerIds === undefined) {
+    reader.fail('stickerIds', 'Pilih minimal satu stiker');
+  }
   const proofRaw = source.proofPhotoIds;
   if (allowed.includes('proofPhotoIds') && proofRaw !== undefined && proofRaw !== null) {
     const proofPhotoIds = readProofPhotoIds(proofRaw);
@@ -614,6 +622,61 @@ export function validateSerialAct(raw: unknown): SerialActInput {
   }
   reader.done();
   return out as unknown as SerialActInput;
+}
+
+/** Panjang id serial maks. pada Tempel stiker massal: `client_id` kejadian = `<clientId 36>:<id>` harus muat di VARCHAR(100). */
+const APPLY_STICKERS_ID_MAX = 60;
+
+/**
+ * `POST /serials/batch/stickers` (keputusan pemilik 2026-11-22, K2): `clientId` UUID huruf kecil, tanggal kejadian,
+ * catatan opsional TANPA gambar (satu catatan dipakai semua baris; klaim berkas per serial tak berlaku), dan 1..`BATCH_MAX`
+ * baris `{ id, stickerIds }` dengan id unik dan tiap baris minimal satu stiker unik (maks. `SERIAL_PICKS_MAX`).
+ */
+export function validateApplyStickersBatch(raw: unknown): ApplyStickersBatchInput {
+  const reader = readObject(raw);
+  const clientId = reader.str('clientId', { required: true, max: 36 });
+  if (clientId !== '' && !isApplyStickersClientId(clientId)) {
+    reader.fail('clientId', 'Pengenal permintaan tidak valid');
+  }
+  const occurredOn = reader.str('occurredOn', { required: true, max: 10 });
+  if (occurredOn !== '' && !isIsoDate(occurredOn)) reader.fail('occurredOn', 'Tanggal tidak valid');
+  const message = readMessage(reader);
+  if (message !== '' && extractFileRefs(message).length > 0) {
+    reader.fail('message', 'Catatan massal tidak boleh memuat gambar');
+  }
+  const rowsRaw = reader.raw('rows');
+  const rows: ApplyStickersBatchInput['rows'] = [];
+  if (!Array.isArray(rowsRaw) || rowsRaw.length === 0) {
+    reader.fail('rows', 'Minimal satu baris');
+  } else if (rowsRaw.length > BATCH_MAX) {
+    reader.fail('rows', `Maksimal ${BATCH_MAX} baris per permintaan`);
+  } else {
+    const seen = new Set<string>();
+    for (const entry of rowsRaw) {
+      const source =
+        typeof entry === 'object' && entry !== null ? (entry as Record<string, unknown>) : {};
+      const id = source.id;
+      const stickers = source.stickerIds;
+      if (
+        typeof id !== 'string' ||
+        id === '' ||
+        id.length > APPLY_STICKERS_ID_MAX ||
+        seen.has(id) ||
+        !Array.isArray(stickers) ||
+        stickers.length === 0 ||
+        stickers.length > SERIAL_PICKS_MAX ||
+        !stickers.every((stickerId) => isText(stickerId, 100)) ||
+        new Set(stickers).size !== stickers.length
+      ) {
+        reader.fail('rows', 'Baris tidak valid');
+        break;
+      }
+      seen.add(id);
+      rows.push({ id, stickerIds: stickers as string[] });
+    }
+  }
+  reader.done();
+  return { clientId, occurredOn, message, rows };
 }
 
 /**

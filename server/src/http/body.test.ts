@@ -306,6 +306,15 @@ const WORST: Inputs = {
     stickerIds: longList(SERIAL_LIMITS.picksMax, () => UUID),
     proofPhotoIds: longList(SERIAL_PROOF_LIMITS.perEntryMax, () => UUID),
   },
+  'serials.applyStickersBatch': {
+    clientId: UUID,
+    occurredOn: '2026-11-12',
+    message: '\u{1F600}'.repeat(SERIAL_LIMITS.messageMax),
+    rows: longList(BATCH_MAX, (index) => ({
+      id: `${'i'.repeat(50)}-${index}`,
+      stickerIds: longList(SERIAL_LIMITS.picksMax, () => UUID),
+    })),
+  },
   'serials.lookupMany': {
     serials: longList(SERIAL_LIMITS.batchRows, () => 'S'.repeat(SERIAL_LIMITS.serialMax)),
   },

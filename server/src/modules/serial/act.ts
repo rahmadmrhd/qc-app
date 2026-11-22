@@ -171,6 +171,39 @@ export async function stickerRaise(
   return { statements, changes, raised };
 }
 
+export interface StickersAppliedEffect {
+  /** `serial_stickers` upsert dan pendengar stok, dipasang SETELAH kejadian di batch pemanggil. */
+  tail: DbStatement[];
+  changes: SerialChangeDto[];
+  data: Record<string, unknown>;
+}
+
+/**
+ * Efek aksi Tempel stiker (`apply_stickers`, keputusan pemilik 2026-11-22 K1): `stickerRaise` yang sama dengan cek ulang
+ * (+1 per centang, potong stok 1 di `locationId` = lokasi unit, stiker `inactive` ditolak, stiker baru wajib berlaku bagi
+ * item), tanpa hasil cek dan tanpa mengubah status/posisi/laporan. Dipakai `applyAct` (satu serial) dan perencana batch
+ * (`stickers-batch.ts`) agar tidak ada logika ganda; pemanggil menyusun kejadian `stickers_applied` dari `changes`/`data`.
+ */
+export async function stickersAppliedEffect(
+  env: Env,
+  row: SerialRow,
+  eventId: string,
+  locationId: string,
+  locationName: string,
+  stickerIds: readonly string[],
+  user: UserContext,
+  now: string,
+  retried: boolean,
+): Promise<StickersAppliedEffect> {
+  if (stickerIds.length === 0) throw validationError('stickerIds', 'Pilih minimal satu stiker');
+  const raise = await stickerRaise(env, row, eventId, locationId, stickerIds, user, now, retried);
+  return {
+    tail: raise.statements,
+    changes: raise.changes,
+    data: { locationId, locationName, stickers: raise.raised },
+  };
+}
+
 const BU_TARGET_MESSAGE = 'BU ini tidak bisa dipilih untuk cek ulang ini';
 
 /**
@@ -589,6 +622,24 @@ async function applyAct(
           main.data = { ...checkData, caseNumber: found.number, result: 'fail' };
         }
       }
+      break;
+    }
+    case 'apply_stickers': {
+      const effect = await stickersAppliedEffect(
+        env,
+        row,
+        eventId,
+        currentLocationId,
+        currentLocationName,
+        input.stickerIds,
+        user,
+        now,
+        retried,
+      );
+      tail.push(...effect.tail);
+      main.type = 'stickers_applied';
+      main.changes.push(...effect.changes);
+      main.data = effect.data;
       break;
     }
     default:

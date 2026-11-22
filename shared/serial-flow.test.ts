@@ -281,11 +281,25 @@ const POSITIVES: Positive[] = [
     caseEffect: null,
     team: 'service',
   },
+  // Baris 15: Tempel stiker, hanya di QC pada good/reported/recheck; tak mengubah status/posisi/laporan.
+  ...(['good', 'reported', 'recheck'] as const).map(
+    (status): Positive => ({
+      n: 15,
+      action: 'apply_stickers',
+      status,
+      custody: 'qc',
+      actor: QC,
+      toStatus: 'same',
+      toCustody: 'same',
+      caseEffect: null,
+      team: 'qc',
+    }),
+  ),
 ];
 
 describe('SERIAL_FLOW', () => {
-  test('tepat 14 baris', () => {
-    expect(SERIAL_FLOW).toHaveLength(14);
+  test('tepat 15 baris', () => {
+    expect(SERIAL_FLOW).toHaveLength(15);
   });
 
   test('semua baris punya jalur dari status asal: setiap baris punya kasus positif yang menghasilkannya', () => {
@@ -324,7 +338,8 @@ describe('SERIAL_FLOW', () => {
     const withStickers = SERIAL_FLOW.map((row, i) => (row.allowStickers ? i + 1 : 0)).filter(
       Boolean,
     );
-    expect(withStickers).toEqual([9, 10, 11, 12]);
+    expect(withStickers).toEqual([9, 10, 11, 12, 15]);
+    expect(requiredOf(15)).toEqual([]);
   });
 
   test('SERVICE_STATUSES memuat diagnosis', () => {
@@ -357,6 +372,9 @@ describe('resolveAction: keadaan di luar tabel = state', () => {
     'recheck_fail|-|recheck|transit',
     'recheck|pass|good|qc',
     'recheck|fail|good|qc',
+    'apply_stickers|-|good|qc',
+    'apply_stickers|-|reported|qc',
+    'apply_stickers|-|recheck|qc',
     ...SERVICE_STATE.flatMap(([status, custody]) => [
       `service_diagnosis|-|${status}|${custody}`,
       `declare_broken|-|${status}|${custody}`,
@@ -508,6 +526,7 @@ describe('availableActions', () => {
       'note',
       'recheck',
       'report_failure',
+      'apply_stickers',
     ]);
   });
 
@@ -517,6 +536,7 @@ describe('availableActions', () => {
       'send',
       'recheck_pass',
       'recheck_fail',
+      'apply_stickers',
     ]);
   });
 
@@ -540,6 +560,27 @@ describe('availableActions', () => {
       'recheck_pass',
       'recheck_fail',
     ]);
+  });
+
+  test('apply_stickers: hanya di QC; broken, pengiriman, servis, dan pelaku servis ditolak', () => {
+    for (const [status, custody] of [
+      ['good', 'transit'],
+      ['reported', 'transit'],
+      ['recheck', 'transit'],
+      ['at_service', 'service'],
+      ['broken', 'qc'],
+      ['broken', 'service'],
+    ] as const) {
+      expect(resolveAction('apply_stickers', { status, custody }, BOTH)).toEqual({
+        error: 'state',
+      });
+    }
+    expect(resolveAction('apply_stickers', { status: 'good', custody: 'qc' }, SERVICE)).toEqual({
+      error: 'permission',
+    });
+    expect(resolveAction('apply_stickers', { status: 'good', custody: 'qc' }, NONE)).toEqual({
+      error: 'permission',
+    });
   });
 
   test('broken hanya note; tanpa duplikat aksi', () => {

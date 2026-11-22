@@ -186,6 +186,7 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'serials.restoreBatch': true,
   'serials.update': true,
   'serials.updateBatch': true,
+  'serials.applyStickersBatch': true,
   'serials.act': true,
   'serials.history': true,
   'serialSettings.get': true,
