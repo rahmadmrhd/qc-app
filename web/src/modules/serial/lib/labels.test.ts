@@ -1,5 +1,5 @@
 import { SERIAL_FLOW } from '@shared/serial-flow';
-import { SERIAL_ACTIONS, SERIAL_EVENT_TYPES } from '@shared/serials';
+import { SERIAL_ACTIONS, SERIAL_EVENT_TYPES, SERIAL_HISTORY_GROUPS } from '@shared/serials';
 import { expect, test } from 'vitest';
 import {
   ACTION_LABEL,
@@ -15,6 +15,14 @@ test('label lengkap untuk semua aksi dan jenis riwayat', () => {
   expect(Object.keys(ACTION_LABEL).sort()).toEqual([...SERIAL_ACTIONS].sort());
   for (const type of SERIAL_EVENT_TYPES) expect(EVENT_LABEL[type]).toBeTruthy();
   expect(Object.values(HISTORY_GROUP_LABEL)).toEqual(['Semua', 'Pengecekan', 'Perubahan data']);
+});
+
+test('Tempel stiker: label aksi dan kejadian, kejadian masuk kelompok Perubahan data', () => {
+  expect(ACTION_LABEL.apply_stickers).toBe('Tempel stiker');
+  expect(flowRowLabel({ action: 'apply_stickers' })).toBe('Tempel stiker');
+  expect(EVENT_LABEL.stickers_applied).toBe('Stiker ditempel');
+  expect([...SERIAL_HISTORY_GROUPS.changes]).toContain('stickers_applied');
+  expect([...SERIAL_HISTORY_GROUPS.checks]).not.toContain('stickers_applied');
 });
 
 test('label kirim/terima mengikuti leg; baris lain memakai label aksi', () => {

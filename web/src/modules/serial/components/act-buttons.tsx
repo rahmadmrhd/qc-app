@@ -6,7 +6,7 @@ import { flowRowLabel } from '../lib/labels';
  * Jenis dialog update. Beberapa aksi tabel transisi digabung jadi satu dialog: Diagnosis memuat tahap diagnosis,
  * diperbaiki, selesai, dan Rusak; Cek ulang memuat hasil lolos atau tidak lolos (rancangan laporan rusak §4.4).
  */
-export type ActKind = 'report' | 'send' | 'receive' | 'diagnosis' | 'recheck' | 'note';
+export type ActKind = 'report' | 'send' | 'receive' | 'diagnosis' | 'recheck' | 'stickers' | 'note';
 
 export interface ActButtonSpec {
   kind: ActKind;
@@ -22,16 +22,18 @@ const KIND_OF = {
   recheck: 'recheck',
   recheck_pass: 'recheck',
   recheck_fail: 'recheck',
+  apply_stickers: 'stickers',
   note: 'note',
 } as const;
 
-/** Urutan tombol: aksi alur dulu, Catatan terakhir. */
+/** Urutan tombol: aksi alur dulu, Tempel stiker sesudah Cek ulang, Catatan terakhir. */
 const KIND_ORDER: readonly ActKind[] = [
   'report',
   'send',
   'receive',
   'diagnosis',
   'recheck',
+  'stickers',
   'note',
 ];
 
@@ -41,6 +43,7 @@ const KIND_LABEL: Record<ActKind, string> = {
   receive: 'Terima',
   diagnosis: 'Diagnosis',
   recheck: 'Cek ulang',
+  stickers: 'Tempel stiker',
   note: 'Catatan',
 };
 

@@ -53,6 +53,7 @@ const FLOW_MENU_ICON: Record<Exclude<ActKind, 'report'>, ActionKind> = {
   receive: 'download',
   diagnosis: 'view',
   recheck: 'refresh',
+  stickers: 'stickers',
   note: 'edit',
 };
 

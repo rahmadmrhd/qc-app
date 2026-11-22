@@ -21,11 +21,20 @@ export interface RecheckStickerListProps {
   onToggle: (stickerId: string, on: boolean) => void;
   error?: string | undefined;
   disabled?: boolean;
+  /** Judul daftar; bawaan teks cek ulang. Tempel stiker memakai teks yang tak menyebut "ulang". */
+  legend?: string;
+  /** Penjelasan di bawah judul; bawaan teks cek ulang. */
+  description?: string;
 }
+
+const DEFAULT_LEGEND = 'Stiker yang ditempel ulang';
+const DEFAULT_DESCRIPTION =
+  'Centang stiker yang baru ditempel. Tiap centang menambah satu stiker dan memotong stok satu di lokasi unit ini.';
 
 /**
  * Daftar centang stiker pada cek ulang (rancangan laporan rusak §4.2): tiap stiker yang dicentang menambah 1 pada
- * jumlah tempel dan memotong stok 1 di lokasi unit, termasuk stiker yang belum pernah ditempel.
+ * jumlah tempel dan memotong stok 1 di lokasi unit, termasuk stiker yang belum pernah ditempel. Dipakai juga oleh aksi
+ * Tempel stiker (`legend`/`description` menyesuaikan teks).
  */
 export function RecheckStickerList({
   rows,
@@ -33,15 +42,14 @@ export function RecheckStickerList({
   onToggle,
   error,
   disabled,
+  legend = DEFAULT_LEGEND,
+  description = DEFAULT_DESCRIPTION,
 }: RecheckStickerListProps) {
   if (rows.length === 0) return null;
   return (
     <fieldset className="space-y-2">
-      <legend className="text-sm font-medium">Stiker yang ditempel ulang</legend>
-      <p className="text-xs text-muted-foreground">
-        Centang stiker yang baru ditempel. Tiap centang menambah satu stiker dan memotong stok satu
-        di lokasi unit ini.
-      </p>
+      <legend className="text-sm font-medium">{legend}</legend>
+      <p className="text-xs text-muted-foreground">{description}</p>
       <ul className="space-y-2">
         {rows.map((row) => {
           const id = `act-sticker-${row.stickerId}`;

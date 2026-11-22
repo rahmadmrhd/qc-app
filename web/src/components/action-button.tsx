@@ -21,6 +21,7 @@ import {
   RotateCcw,
   Save,
   SlidersHorizontal,
+  Sticker,
   Trash2,
   TriangleAlert,
   Upload,
@@ -57,7 +58,8 @@ export type ActionKind =
   | 'stockOut'
   | 'adjust'
   | 'history'
-  | 'reportDamage';
+  | 'reportDamage'
+  | 'stickers';
 
 type ActionSpec = {
   icon: LucideIcon;
@@ -246,6 +248,14 @@ export const ACTIONS: Record<ActionKind, ActionSpec> = {
     label: 'Lapor rusak',
     color: 'destructive',
     variant: 'soft',
+    compactVariant: 'ghost',
+  },
+  // Serial Number (R1): mencatat stiker yang baru ditempel pada unit (satu serial lewat dialog, banyak lewat bulk).
+  stickers: {
+    icon: Sticker,
+    label: 'Tempel stiker',
+    color: 'primary',
+    variant: 'outline',
     compactVariant: 'ghost',
   },
 };

@@ -364,7 +364,7 @@ test('tombol update di baris Riwayat sesuai status; Catatan membuka dialog dan m
     within(group)
       .getAllByRole('button')
       .map((button) => button.textContent),
-  ).toEqual(['Cek ulang', 'Catatan']);
+  ).toEqual(['Cek ulang', 'Tempel stiker', 'Catatan']);
   // Tombol berada di baris yang sama dengan judul Riwayat.
   const section = screen.getByRole('region', { name: 'Riwayat' });
   expect(section).toContainElement(group);
@@ -1294,7 +1294,7 @@ test('ponsel (P7): menu "Aksi lainnya" memuat aksi alur sisanya sebelum Hapus; m
   expect(within(bar).getByRole('button', { name: 'Ubah data' })).toBeInTheDocument();
   await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
   const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent);
-  expect(items).toEqual(['Cek ulang', 'Catatan', 'Hapus']);
+  expect(items).toEqual(['Cek ulang', 'Tempel stiker', 'Catatan', 'Hapus']);
   await userEvent.click(screen.getByRole('menuitem', { name: 'Catatan' }));
   expect(await screen.findByRole('dialog', { name: 'Tambah catatan' })).toBeInTheDocument();
   media.restore();
@@ -1310,6 +1310,7 @@ test('ponsel (P7): pengguna tanpa manage tetap punya menu "Aksi lainnya" berisi 
   await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
   expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
     'Cek ulang',
+    'Tempel stiker',
     'Catatan',
   ]);
   media.restore();

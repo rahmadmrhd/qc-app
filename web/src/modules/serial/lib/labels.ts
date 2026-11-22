@@ -31,6 +31,7 @@ export const EVENT_LABEL: Record<SerialEventType, string> = {
   declare_broken: 'Dinyatakan rusak',
   recheck_pass: 'Cek ulang lolos',
   recheck_fail: 'Cek ulang tidak lolos',
+  stickers_applied: 'Stiker ditempel',
 };
 
 /** Nama field pada chip perubahan (`SerialChangeDto.field`). */
@@ -58,6 +59,7 @@ export const ACTION_LABEL: Record<SerialAction, string> = {
   declare_broken: 'Nyatakan rusak',
   recheck_pass: 'Cek ulang: lolos',
   recheck_fail: 'Cek ulang: tidak lolos',
+  apply_stickers: 'Tempel stiker',
 };
 
 /**
