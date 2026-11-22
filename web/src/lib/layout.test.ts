@@ -40,6 +40,15 @@ test('rentang overlay: spacer = rel ikon (3 rem) membuat <main> >= MAIN_MIN_WIDT
   expect(VIEWPORT_MD - iconRail).toBeGreaterThanOrEqual(MAIN_MIN_WIDTH);
 });
 
+test('rentang overlay: kelas spacer sidebar (gap) tetap selebar rel ikon di KEDUA keadaan, bukan 16 rem saat terbuka', () => {
+  // Penjaga regresi R13/K3: satu-satunya yang menahan ruang samping tetap 3 rem saat sidebar DIBUKA di 768-959 px
+  // adalah `sidebar-overlay:w-(--sidebar-width-icon)`; tanpa itu `<main>` terdorong ke ~512 px dan `useIsDesktop` berbalik.
+  const source = readFileSync(path.join(SRC, 'components/ui/sidebar.tsx'), 'utf8');
+  expect(source).toContain('"sidebar-overlay:w-(--sidebar-width-icon)"');
+  // Kontainer yang melayang tidak ikut menggeser tata letak: lebar penuhnya hanya saat terbuka.
+  expect(source).toContain('sidebar-overlay:group-data-[state=expanded]:w-(--sidebar-width)');
+});
+
 test('rentang overlay dengan scrollbar klasik 17 px: lebar <main> terukur + scrollbar tetap >= MAIN_MIN_WIDTH', () => {
   const iconRail = 3 * 16;
   const scrollbar = 17;

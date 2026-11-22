@@ -15,6 +15,7 @@ import type {
 import type { QueryClient, UseQueryOptions } from '@tanstack/react-query';
 import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
+import { ApiError } from '@/lib/api/api-error';
 import type { ApiCallOptions } from '@/lib/api/client';
 import { markStale, removeFromList, upsertInList } from '@/lib/query-cache';
 import { accessKeys } from '@/modules/access/queries';
@@ -148,15 +149,46 @@ const compareDesigns = (a: QrDesignDto, b: QrDesignDto) =>
 
 /** Hasil simpan/ekspor dipasang langsung ke cache daftar dan detail (tanpa memuat ulang dari server). */
 function applyDesign(queryClient: QueryClient, saved: QrDesignDto): void {
-  upsertInList(queryClient, qrKeys.list, saved, compareDesigns);
+  // Konfigurasi yang ternyata sudah terhapus tak boleh masuk daftar hidup (barisnya akan tampil dan dapat dipilih).
+  if (saved.deleted) removeFromList<QrDesignDto>(queryClient, qrKeys.list, saved.id);
+  else upsertInList(queryClient, qrKeys.list, saved, compareDesigns);
   queryClient.setQueryData(qrKeys.one(saved.id), saved);
 }
 
 /** Memuat ulang satu konfigurasi dari server dan memasangnya ke daftar dan detail (DTO basi setelah galat 412/422). */
 export async function refreshQrDesign(queryClient: QueryClient, id: string): Promise<QrDesignDto> {
-  const fresh = await api('qrcodes.get', { id });
+  let fresh: QrDesignDto;
+  try {
+    fresh = await api('qrcodes.get', { id });
+  } catch (error) {
+    // Pengguna tanpa `manage` mendapat NOT_FOUND untuk konfigurasi terhapus: jangan biarkan barisnya tersisa di daftar hidup.
+    if (error instanceof ApiError && error.code === 'NOT_FOUND') {
+      markQrDesignGone(error);
+      forgetQrDesign(queryClient, id);
+    }
+    throw error;
+  }
   applyDesign(queryClient, fresh);
   return fresh;
+}
+
+/**
+ * Galat NOT_FOUND yang artinya KONFIGURASI-nya sudah tak terbaca (pemuatan ulang `qrcodes.get`, permintaan
+ * `qrcodes.export`), dibedakan dari NOT_FOUND lain (isi logo di Drive, dsb.). Galat aslinya dilempar apa adanya;
+ * penandaan lewat identitas objek supaya pemanggil lain tak melihat perubahan apa pun.
+ */
+const goneErrors = new WeakSet<object>();
+function markQrDesignGone(error: ApiError): void {
+  goneErrors.add(error);
+}
+export function isQrDesignGone(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && goneErrors.has(error);
+}
+
+/** Konfigurasi sudah tak terbaca: keluar dari daftar hidup, detailnya dan daftar terhapus ditandai basi. */
+export function forgetQrDesign(queryClient: QueryClient, id: string): void {
+  removeFromList<QrDesignDto>(queryClient, qrKeys.list, id);
+  markStale(queryClient, qrKeys.one(id), qrKeys.listDeleted);
 }
 
 /**
@@ -317,7 +349,14 @@ export const useExportQrDesign = () =>
       onProgress,
       ...input
     }: ExportQrDesignInput & { onProgress?: (job: JobDto) => void }) => {
-      const { jobId } = await api('qrcodes.export', input);
+      let jobId: string;
+      try {
+        ({ jobId } = await api('qrcodes.export', input));
+      } catch (error) {
+        // Server menjawab NOT_FOUND untuk konfigurasi terhapus; hanya ditandai (ekspor tunggal tak berubah perilaku).
+        if (error instanceof ApiError && error.code === 'NOT_FOUND') markQrDesignGone(error);
+        throw error;
+      }
       await awaitJob(jobId, { onProgress });
       return api('qrcodes.get', { id: input.id });
     },

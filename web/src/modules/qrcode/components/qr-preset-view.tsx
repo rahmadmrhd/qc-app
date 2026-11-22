@@ -1,6 +1,7 @@
 import type { BusinessUnitOptionDto, QrDesignDto, QrPresetDto } from '@shared/contract';
 import type { QrFrame } from '@shared/qrcode';
 import { LinkCell } from '@/components/data-table';
+import { PageContent } from '@/components/page/page-container';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
@@ -87,12 +88,12 @@ export function QrPresetView({
 }: QrPresetViewProps) {
   if (!preset) {
     return (
-      <div className="space-y-4">
+      <PageContent className="space-y-4">
         <h1 className="text-2xl font-semibold">Konfigurasi default tidak ditemukan</h1>
         <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar
         </Button>
-      </div>
+      </PageContent>
     );
   }
   const deleted = preset.deleted !== undefined;
@@ -193,6 +194,7 @@ export function QrPresetView({
               {
                 id: 'restore',
                 action: 'restore',
+                primary: true,
                 busy: restorePending,
                 hidden: !onRestore,
                 onSelect: () => onRestore?.(),
@@ -203,6 +205,7 @@ export function QrPresetView({
                 id: 'edit',
                 action: 'edit',
                 label: 'Ubah',
+                primary: true,
                 hidden: !onEdit,
                 onSelect: () => onEdit?.(),
               },

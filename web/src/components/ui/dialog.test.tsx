@@ -180,6 +180,94 @@ test('Dialog size="full-on-phone": kelas layar penuh khusus ponsel (max-md, dvh,
   );
 });
 
+// R11: ruang gulir daftar saran (`--list-room`) tidak boleh menjadi padding penggulir bila ada footer sticky, sebab
+// kotak penampung sticky = kotak isi: footer ikut terangkat dengan celah di bawahnya. Ruangnya elemen pengikut tepat
+// sebelum footer di alur isi; dialog tanpa footer tetap memakai padding bawah sebagai cadangan.
+test('Dialog: ruang gulir daftar saran dipasang sebagai elemen sebelum footer, padding bawah hanya cadangan tanpa footer', () => {
+  render(
+    <Dialog open>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Judul</DialogTitle>
+          <DialogDescription>Deskripsi</DialogDescription>
+        </DialogHeader>
+        <p>Isi</p>
+        <DialogFooter>
+          <button type="button">Simpan</button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>,
+  );
+  const scroller = screen.getByRole('dialog').querySelector('[data-slot="dialog-scroll"]');
+  const room = scroller?.querySelector('[data-slot="dialog-list-room"]');
+  const footer = scroller?.querySelector('[data-slot="dialog-footer"]');
+  expect(room).not.toBeNull();
+  expect(room?.className).toContain('h-[var(--list-room,0px)]');
+  // Menetralkan jarak antaranak penggulir agar tanpa ruang tak ada celah tambahan di atas footer.
+  expect(room?.className).toContain('-mb-[var(--dialog-gap,1rem)]');
+  // Tepat sebelum footer, di dalam alur penggulir yang sama.
+  expect(room?.nextElementSibling).toBe(footer);
+  // Dengan footer, padding bawah penggulir tetap 1rem (cadangan hanya untuk dialog tanpa footer sticky).
+  expect(scroller?.className).toContain('has-[[data-slot=dialog-footer]');
+  expect(scroller?.className).toContain(':pb-4');
+  expect(scroller?.className).toContain('[--dialog-gap:1rem]');
+  expect(screen.queryByText('Isi')?.parentElement).toBe(scroller);
+});
+
+test('Dialog tanpa footer: padding bawah memuat --list-room agar field dapat digulir ke atas', () => {
+  render(
+    <Dialog open>
+      <DialogContent>
+        <DialogTitle>Judul</DialogTitle>
+        <DialogDescription>Deskripsi</DialogDescription>
+      </DialogContent>
+    </Dialog>,
+  );
+  const scroller = screen.getByRole('dialog').querySelector('[data-slot="dialog-scroll"]');
+  expect(scroller?.className).toContain('pb-[calc(1rem+var(--list-room,0px))]');
+  expect(scroller?.querySelector('[data-slot="dialog-list-room"]')).toBeNull();
+});
+
+test('AlertDialog: elemen ruang gulir sebelum footer; layar penuh tanpa ruang gulir (tanpa padding)', () => {
+  const { unmount } = render(
+    <AlertDialog open>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Judul</AlertDialogTitle>
+          <AlertDialogDescription>Deskripsi</AlertDialogDescription>
+        </AlertDialogHeader>
+        <p>Isi</p>
+        <AlertDialogFooter>
+          <button type="button">Ya</button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>,
+  );
+  const shell = screen.getByRole('alertdialog');
+  const scroller = shell.querySelector('[data-slot="alert-dialog-scroll"]');
+  const room = scroller?.querySelector('[data-slot="alert-dialog-list-room"]');
+  expect(room?.className).toContain('h-[var(--list-room,0px)]');
+  expect(room?.nextElementSibling).toBe(shell.querySelector('[data-slot="alert-dialog-footer"]'));
+  expect(scroller?.className).toContain('has-[[data-slot=dialog-footer],[data-slot=alert-dialog-footer]');
+  unmount();
+
+  render(
+    <AlertDialog open>
+      <AlertDialogContent size="full">
+        <AlertDialogTitle>Judul</AlertDialogTitle>
+        <AlertDialogDescription>Deskripsi</AlertDialogDescription>
+        <AlertDialogFooter>
+          <button type="button">Ya</button>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>,
+  );
+  const fullScroller = screen.getByRole('alertdialog').querySelector('[data-slot="alert-dialog-scroll"]');
+  expect(fullScroller?.className).toContain('p-0');
+  expect(fullScroller?.className).toContain('[--dialog-gap:0px]');
+  expect(fullScroller?.className).not.toContain('list-room');
+});
+
 test('Dialog bawaan tidak berubah: tanpa kelas layar penuh ponsel', () => {
   render(
     <Dialog open>

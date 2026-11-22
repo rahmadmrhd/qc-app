@@ -32,3 +32,13 @@ export const selectOptionNames = linkOptionNames;
 export async function expectLinkValue(scope: Scope, field: string, value: string) {
   await waitFor(() => expect(scope.getByRole('combobox', { name: field })).toHaveValue(value));
 }
+
+/**
+ * Menutup chip filter yang terbuka (Escape: popover desktop atau lembar bawah ponsel) lalu menunggu dialognya hilang.
+ * Kontrol banyak pilihan, tanggal, dan centang di dalam chip menahan perubahan sebagai draf dan baru menerapkannya
+ * ke halaman saat chip menutup, jadi tes yang menegaskan efek pilihan jamak harus memanggil ini dulu.
+ */
+export async function closeFilterChip() {
+  await userEvent.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+}

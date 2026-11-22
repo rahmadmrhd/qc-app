@@ -2,6 +2,7 @@ import type { BusinessUnitDto } from '@shared/contract';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+import { clickMoreAction, moreActionNames } from '@/test/more-actions';
 import { renderInRouter } from '@/test/render-in-router';
 import {
   BusinessUnitDetailView,
@@ -46,7 +47,10 @@ test('aksi: Ubah, Aktifkan, dan Hapus (BU Nonaktif)', async () => {
   const { onEdit, onToggleStatus, onDelete } = await renderView();
   await userEvent.click(screen.getByRole('button', { name: 'Ubah' }));
   await userEvent.click(screen.getByRole('button', { name: 'Aktifkan' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  // Ubah dan Aktifkan = aksi utama (tombol); Hapus jarang dipakai, hanya di menu "Aksi lainnya".
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(await moreActionNames()).toEqual(['Hapus']);
+  await clickMoreAction('Hapus');
   expect(onEdit).toHaveBeenCalled();
   expect(onToggleStatus).toHaveBeenCalled();
   expect(onDelete).toHaveBeenCalled();
@@ -79,7 +83,10 @@ test('BU terhapus: banner dan hanya aksi Pulihkan', async () => {
 
 test('BU tidak ada: pesan dan tombol kembali', async () => {
   const { onBack } = await renderView({ businessUnit: undefined });
-  expect(screen.getByRole('heading', { name: 'BU tidak ditemukan' })).toBeInTheDocument();
+  const heading = screen.getByRole('heading', { name: 'BU tidak ditemukan' });
+  expect(heading).toBeInTheDocument();
+  // Cabang status dibungkus PageContent (terpusat, berbatas lebar) seperti isi View, bukan melebar ke tepi `<main>`.
+  expect(heading.parentElement?.className).toContain('mx-auto');
   await userEvent.click(screen.getByRole('button', { name: 'Kembali ke daftar BU' }));
   expect(onBack).toHaveBeenCalledTimes(1);
 });

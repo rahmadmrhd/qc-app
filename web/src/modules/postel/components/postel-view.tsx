@@ -2,6 +2,7 @@ import type { PostelAttachmentDto, PostelDto, PostelNumberDto } from '@shared/co
 import { toast } from 'sonner';
 import { type DataColumn, DataTable, LinkCell } from '@/components/data-table';
 import { type AttachmentItem, AttachmentView } from '@/components/file-dialog';
+import { PageContent } from '@/components/page/page-container';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
@@ -108,12 +109,12 @@ export function PostelView({
 }: PostelViewProps) {
   if (!postel) {
     return (
-      <div className="space-y-4">
+      <PageContent className="space-y-4">
         <h1 className="text-2xl font-semibold">Catatan Postel tidak ditemukan</h1>
         <button type="button" className="text-sm underline underline-offset-4" onClick={onBack}>
           Kembali ke daftar
         </button>
-      </div>
+      </PageContent>
     );
   }
   const deleted = postel.deleted !== undefined;
@@ -141,6 +142,7 @@ export function PostelView({
           rowKey={(entry) => entry.id}
           columns={NUMBER_COLUMNS}
           label="Nomor sertifikat"
+          fit="content"
           empty="Belum ada nomor sertifikat."
         />
       </ViewSection>
@@ -217,6 +219,7 @@ export function PostelView({
               {
                 id: 'restore',
                 action: 'restore',
+                primary: true,
                 busy: restorePending,
                 hidden: !(canEdit && onRestore),
                 onSelect: () => onRestore?.(),
@@ -227,6 +230,7 @@ export function PostelView({
                 id: 'edit',
                 action: 'edit',
                 label: 'Ubah',
+                primary: true,
                 hidden: !(canEdit && onEdit),
                 onSelect: () => onEdit?.(),
               },

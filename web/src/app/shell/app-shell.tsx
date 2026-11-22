@@ -89,7 +89,8 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
               <AppSidebar />
               <EdgeSwipeOpener />
               <LocationReconfirm />
-              <SidebarInset className="min-w-0">
+              {/* `overflow-x-clip` (bukan hidden: header sticky tetap bekerja) = jaring pengaman agar isi lebar tak melebarkan halaman (R14). */}
+              <SidebarInset className="min-w-0 overflow-x-clip">
                 <UiUpdateBanner />
                 <ApiDeprecatedBanner />
                 <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/95 px-4 backdrop-blur">
@@ -117,7 +118,7 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
                 <PushOnboarding />
                 <GuideGreeting />
                 <GuideBanner />
-                <main className="flex-1 p-[var(--main-pad)] pb-[calc(var(--main-pad)+var(--action-bar-h,0px))] [--main-pad:1rem] md:[--main-pad:1.5rem]">
+                <main className="flex-1 p-[var(--main-pad)] pb-[calc(var(--main-pad)+var(--action-bar-h,0px)+var(--list-room,0px))] [--main-pad:1rem] md:[--main-pad:1.5rem]">
                   <PageContainer width={pageWidth}>{children ?? <Outlet />}</PageContainer>
                 </main>
               </SidebarInset>

@@ -40,6 +40,11 @@ export interface RecordBatchOptions<T = unknown> {
    * agar percobaan ulang merencanakan dari keadaan terkini.
    */
   prepare?: () => void;
+  /**
+   * Pernyataan penutup yang dipasang SEKALI di akhir `batch()` (setelah pernyataan semua record), hanya bila ada yang
+   * ditulis. Dipanggil setelah semua perencana selesai pada percobaan itu, jadi boleh membaca keadaan yang mereka kumpulkan.
+   */
+  trailing?: () => DbStatement[] | Promise<DbStatement[]>;
 }
 
 /**
@@ -92,7 +97,10 @@ export async function runRecordBatch<T>(
       const outcome = outcomes[index] as PlanOutcome<T>;
       return 'stmts' in outcome ? outcome.stmts : [];
     });
-    if (stmts.length > 0) await writeAll(env.DB, stmts, options);
+    if (stmts.length > 0) {
+      const closing = (await options.trailing?.()) ?? [];
+      await writeAll(env.DB, [...stmts, ...closing], options);
+    }
     return {
       items: outcomes.map((outcome) => ('unchanged' in outcome ? outcome.unchanged : outcome.dto)),
     };

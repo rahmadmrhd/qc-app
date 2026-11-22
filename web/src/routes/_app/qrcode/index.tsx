@@ -19,7 +19,9 @@ import { itemLinkAccess } from '@/lib/link-access';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
+import { BulkExportDialog } from '@/modules/qrcode/components/bulk-export-dialog';
 import { QrDesignsTable } from '@/modules/qrcode/components/qr-designs-table';
+import { useBulkQrExport } from '@/modules/qrcode/lib/use-bulk-qr-export';
 import { useQrExport } from '@/modules/qrcode/lib/use-qr-export';
 import {
   qrDesignsQueryOptions,
@@ -75,6 +77,8 @@ function QrCodesPage() {
   const { busyId, exportAction, download, exportDialog } = useQrExport();
   const selection = useRowSelection(JSON.stringify({ status, q: search.q ?? '' }));
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [bulkExportOpen, setBulkExportOpen] = useState(false);
+  const bulkExport = useBulkQrExport();
   const [text, setText] = useUrlSyncedText(
     search.q ?? '',
     (value) =>
@@ -105,7 +109,8 @@ function QrCodesPage() {
     send: (ids) => restoreDesigns.mutateAsync({ ids }).then((result) => result.items),
     reload,
   });
-  const bulkBusy = remove.busy || restore.busy;
+  const bulkBusy = remove.busy || restore.busy || bulkExport.running;
+  const selectedDesigns = visible.filter((design) => selection.selected.has(design.id));
 
   function restoreRow(design: QrDesignDto) {
     restoreDesigns.mutate(
@@ -139,9 +144,7 @@ function QrCodesPage() {
   const usedItems =
     deleteTarget?.kind === 'row'
       ? liveItemCount(deleteTarget.design)
-      : visible
-          .filter((design) => selection.selected.has(design.id))
-          .reduce((sum, design) => sum + liveItemCount(design), 0);
+      : selectedDesigns.reduce((sum, design) => sum + liveItemCount(design), 0);
   const statusOptions = liveStatusFilterOptions(canManage);
   const statusLabel = statusOptions.find((option) => option.value === status)?.label;
   const pendingId =
@@ -216,12 +219,25 @@ function QrCodesPage() {
           </FilterBar>
         }
         bulkBar={
-          canManage ? (
+          // Ekspor massal bagi `qrcode: edit`; Hapus/Pulihkan tetap `manage` (tampilan Terhapus hanya untuk manage).
+          canEdit || canManage ? (
             <BulkBar count={selection.count} onClear={selection.clear} busy={bulkBusy}>
               {deletedView ? (
-                <ActionButton action="restore" onClick={() => void restore.run()} />
+                canManage ? (
+                  <ActionButton action="restore" onClick={() => void restore.run()} />
+                ) : null
               ) : (
-                <ActionButton action="delete" onClick={() => setDeleteTarget({ kind: 'bulk' })} />
+                <>
+                  {canEdit ? (
+                    <ActionButton action="export" onClick={() => setBulkExportOpen(true)} />
+                  ) : null}
+                  {canManage ? (
+                    <ActionButton
+                      action="delete"
+                      onClick={() => setDeleteTarget({ kind: 'bulk' })}
+                    />
+                  ) : null}
+                </>
               )}
             </BulkBar>
           ) : null
@@ -239,7 +255,7 @@ function QrCodesPage() {
             canManage={canManage}
             canOpenItem={itemAccess.openItemHref !== undefined}
             canOpenDeletedItem={itemAccess.canOpenDeleted}
-            selection={canManage ? selection : undefined}
+            selection={canEdit || canManage ? selection : undefined}
             busyId={busyId ?? pendingId}
             onEdit={(design) =>
               stack.push({ to: '/qrcode/$designId/edit', params: { designId: design.id } })
@@ -267,6 +283,13 @@ function QrCodesPage() {
         </div>
       </ListPage>
       {exportDialog}
+      <BulkExportDialog
+        open={bulkExportOpen}
+        onOpenChange={setBulkExportOpen}
+        designs={selectedDesigns}
+        exporter={bulkExport}
+        onExported={(doneIds) => selection.remove(doneIds)}
+      />
       <ConfirmDeleteDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {

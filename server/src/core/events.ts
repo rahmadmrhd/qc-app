@@ -18,6 +18,11 @@ export interface SerialStockPayload {
   picks: readonly { stickerId: string; qty: number }[];
   actor: string;
   now: string;
+  /**
+   * Hanya `serial.stickers_added`: penerbit yang merangkai banyak serial dalam satu `batch()` menunda penonaktifan
+   * otomatis stiker `deprecated` ke akhir batch dan memasangnya sendiri (lihat `serialDeductStmts`).
+   */
+  deferInactivate?: boolean;
 }
 
 /** Serial dinyatakan rusak (5b): pendengar antrean memasang job surel ke `batch()` aksi, atomik dengan aksinya. */
@@ -28,9 +33,17 @@ export interface SerialBrokenPayload {
   now: string;
 }
 
+/** Akhir batch tempel stiker banyak serial: stiker yang tersentuh diselesaikan sekali (mis. penonaktifan otomatis). */
+export interface SerialStickersSettledPayload {
+  stickerIds: readonly string[];
+  actor: string;
+  now: string;
+}
+
 export interface EventPayloads {
   'serial.recorded': SerialStockPayload;
   'serial.stickers_added': SerialStockPayload;
+  'serial.stickers_settled': SerialStickersSettledPayload;
   'serial.declared_broken': SerialBrokenPayload;
 }
 

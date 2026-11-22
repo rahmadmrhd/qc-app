@@ -3,6 +3,7 @@ import { MODULE_LABELS, MODULES } from '@shared/permissions';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { MODULE_LINKS } from '@/app/module-links';
 import { Launcher } from '@/app/shell/launcher';
+import { PageContent } from '@/components/page/page-container';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
@@ -37,7 +38,7 @@ function HomePage() {
   const phone = useIsMobile();
   const modules = MODULES.filter((module) => canAnywhere(me, module, 'view'));
   return (
-    <div className="space-y-6">
+    <PageContent className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Selamat datang, {me.name}</h1>
         <p className="text-muted-foreground">Pilih modul yang ingin dibuka.</p>
@@ -58,6 +59,6 @@ function HomePage() {
           ))}
         </div>
       )}
-    </div>
+    </PageContent>
   );
 }

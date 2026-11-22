@@ -2,6 +2,7 @@ import type { BrandDto, BusinessUnitOptionDto } from '@shared/contract';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+import { clickMoreAction, moreActionNames } from '@/test/more-actions';
 import { renderInRouter } from '@/test/render-in-router';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -67,7 +68,10 @@ test('aksi: Ubah, Aktifkan, dan Hapus (merk Nonaktif); mengikuti izin', async ()
   const { onEdit, onToggleStatus, onDelete, ...rest } = await renderView();
   await userEvent.click(screen.getByRole('button', { name: 'Ubah' }));
   await userEvent.click(screen.getByRole('button', { name: 'Aktifkan' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  // Ubah dan Aktifkan = aksi utama (tombol); Hapus jarang dipakai, hanya di menu "Aksi lainnya".
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(await moreActionNames()).toEqual(['Hapus']);
+  await clickMoreAction('Hapus');
   expect(onEdit).toHaveBeenCalledTimes(1);
   expect(onToggleStatus).toHaveBeenCalledTimes(1);
   expect(onDelete).toHaveBeenCalledTimes(1);

@@ -5,6 +5,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { mockMatchMedia } from '@/test/match-media';
 import { FormPage } from './form-page';
 import { FormSection } from './form-section';
+import { PageContainer } from './page-container';
 
 afterEach(() => {
   window.innerWidth = 1024;
@@ -264,4 +265,35 @@ test('704-767 px tanpa lencana: bar atas membawa aksi, h1 sr-only, target tour t
   expect(screen.getByRole('heading', { level: 1 }).className).toContain('sr-only');
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeVisible();
   media.restore();
+});
+
+test('R15: tampilan lebar bleed ke tepi main; bar judul penuh dan isi dipusatkan berbatas pageWidth', () => {
+  mockMatchMedia(true);
+  const { container } = render(
+    <TooltipProvider>
+      <PageContainer width="narrow">
+        <FormPage formId="f" title="Tambah merk" onCancel={() => undefined}>
+          <form id="f">
+            <input aria-label="Nama" />
+          </form>
+        </FormPage>
+      </PageContainer>
+    </TooltipProvider>,
+  );
+  const frame = container.querySelector('[data-headroom-frame]') as HTMLElement;
+  for (const token of [
+    'wide:-mx-[var(--main-pad)]',
+    'wide:-mt-[var(--main-pad)]',
+    'wide:-mb-[var(--main-pad)]',
+  ]) {
+    expect(frame.className).toContain(token);
+  }
+  // Bukan wadah kueri/containment: bar aksi `fixed` halaman turunan harus tetap menempel ke viewport.
+  expect(frame.className).not.toContain('@container');
+  const content = screen.getByLabelText('Nama').closest('.mx-auto') as HTMLElement;
+  expect(content.className).toContain('max-w-4xl');
+  const bar = screen
+    .getByRole('heading', { level: 1 })
+    .closest('[data-slot], .sticky') as HTMLElement;
+  expect(bar.className).toContain('wide:border-b');
 });

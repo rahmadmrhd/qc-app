@@ -29,7 +29,7 @@ export function CustodyPanel({ serial, today }: CustodyPanelProps) {
           <dd>{serial.transitOn ? formatDay(serial.transitOn) : '—'}</dd>
         </div>
         <div>
-          <dt className="text-xs text-muted-foreground">Lama</dt>
+          <dt className="text-xs text-muted-foreground">Lama di perjalanan</dt>
           <dd>
             {days === null
               ? '—'

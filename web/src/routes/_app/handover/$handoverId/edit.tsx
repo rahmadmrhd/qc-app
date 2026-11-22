@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { PageContent } from '@/components/page/page-container';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
@@ -127,29 +128,37 @@ function EditHandoverPage() {
   return (
     <div className="space-y-4">
       {detail.isPending ? (
-        <Skeleton className="h-64 w-full" />
+        <PageContent>
+          <Skeleton className="h-64 w-full" />
+        </PageContent>
       ) : !task ? (
-        <p role="alert" className="text-sm text-destructive-text">
-          Task tidak ditemukan di lokasi aktif.{' '}
-          <Link to="/handover" search={listSearch} className="underline">
-            Kembali ke daftar
-          </Link>
-        </p>
+        <PageContent>
+          <p role="alert" className="text-sm text-destructive-text">
+            Task tidak ditemukan di lokasi aktif.{' '}
+            <Link to="/handover" search={listSearch} className="underline">
+              Kembali ke daftar
+            </Link>
+          </p>
+        </PageContent>
       ) : !editable ? (
-        <p role="alert" className="text-sm text-destructive-text">
-          Task ini tidak dapat diubah (sudah dibatalkan atau dihapus, atau Anda tidak punya izin
-          ubah).{' '}
-          <Link
-            to="/handover/$handoverId"
-            params={{ handoverId }}
-            search={listSearch}
-            className="underline"
-          >
-            Kembali
-          </Link>
-        </p>
+        <PageContent>
+          <p role="alert" className="text-sm text-destructive-text">
+            Task ini tidak dapat diubah (sudah dibatalkan atau dihapus, atau Anda tidak punya izin
+            ubah).{' '}
+            <Link
+              to="/handover/$handoverId"
+              params={{ handoverId }}
+              search={listSearch}
+              className="underline"
+            >
+              Kembali
+            </Link>
+          </p>
+        </PageContent>
       ) : options.isPending || !options.data ? (
-        <Skeleton className="h-64 w-full" />
+        <PageContent>
+          <Skeleton className="h-64 w-full" />
+        </PageContent>
       ) : (
         <HandoverForm
           key={task.id}

@@ -57,8 +57,9 @@ export const SERIAL_DAFTAR: GuideEntry = {
 
 /**
  * Detail satu Serial Number, dibuka dari baris pertama daftar (langkah `click`). Target: `serial-open`
- * (`serial-list-page.tsx`); `serial-stepper` (tab Detail), `serial-actions`, `serial-timeline` (tab Riwayat)
- * (`serial-detail-page.tsx`, `act-buttons.tsx`, `timeline-tabs.tsx`). Semua langkah detail bergantung data, jadi ber-`teksJikaKosong`.
+ * (`serial-list-page.tsx`); `serial-stepper` (tab Detail); `serial-actions` (bar judul header di SEMUA tab, `actionsTour`
+ * di `serial-detail-page.tsx`, juga dipakai `case-detail-page.tsx`; bar bawah di ponsel); `serial-timeline` (tab Riwayat,
+ * baris tombol filter di `timeline-section.tsx`). Semua langkah detail bergantung data, jadi ber-`teksJikaKosong`.
  */
 export const SERIAL_DETAIL: GuideEntry = {
   id: 'serial-detail',
@@ -89,15 +90,13 @@ export const SERIAL_DETAIL: GuideEntry = {
     },
     {
       target: 'serial-actions',
-      buka: { tab: 'riwayat' },
-      text: 'Di tab Riwayat, tombol update di atas linimasa berubah mengikuti status dan posisi unit, dan hanya menampilkan yang boleh kamu kerjakan: Kirim ke servis, Terima, Diagnosis, Cek ulang, atau Catatan. Lapor rusak ada di bar judul (bar bawah di ponsel), di samping Ubah data.',
+      text: 'Semua aksi ada di bar judul di atas halaman (bar bawah di ponsel), apa pun tabnya, dan berubah mengikuti status dan posisi unit; hanya yang boleh kamu kerjakan yang tampil. Dua atau tiga aksi yang paling sering dipakai di tahap itu jadi tombol, misalnya Lapor rusak dan Ubah data saat unit Lolos, atau Cek ulang dan Kirim ke servis saat Dilaporkan. Sisanya (Tempel stiker, Catatan, dan aksi lain) ada di tombol titik tiga Aksi lainnya. Tempel stiker mencatat stiker yang baru ditempel (tiap centang menambah satu dan memotong stok satu).',
       teksJikaKosong:
-        'Di detail serial, tombol update ada di tab Riwayat, di atas linimasa. Isinya berubah mengikuti status dan posisi unit, dan hanya yang boleh kamu kerjakan; tanpa aksi yang cocok, tombolnya tidak tampil.',
+        'Di detail serial, semua aksi ada di bar judul di atas halaman (bar bawah di ponsel), apa pun tabnya. Dua atau tiga aksi yang paling sering dipakai di tahap itu jadi tombol (misalnya Lapor rusak dan Ubah data, atau Cek ulang dan Kirim ke servis), sisanya seperti Tempel stiker dan Catatan ada di tombol titik tiga Aksi lainnya. Isinya berubah mengikuti status dan posisi unit, dan hanya yang boleh kamu kerjakan; tanpa aksi yang cocok, tombolnya tidak tampil.',
       advance: 'next',
     },
     {
       target: 'serial-actions',
-      buka: { tab: 'riwayat' },
       text: 'Alurnya: QC melaporkan lalu Kirim ke servis. Tim servis Terima, Diagnosis, Sedang diperbaiki, lalu Selesai (kembali ke QC) atau Nyatakan rusak. QC Terima lalu Cek ulang: lolos menutup laporan, tidak lolos membuatnya tetap terbuka.',
       teksJikaKosong:
         'Alurnya: QC melaporkan lalu Kirim ke servis. Tim servis Terima, Diagnosis, Sedang diperbaiki, lalu Selesai (kembali ke QC) atau Nyatakan rusak. QC Terima lalu Cek ulang: lolos menutup laporan, tidak lolos membuatnya tetap terbuka.',
@@ -106,9 +105,9 @@ export const SERIAL_DETAIL: GuideEntry = {
     {
       target: 'serial-timeline',
       buka: { tab: 'riwayat' },
-      text: 'Riwayat dibagi per tab: Semua, Pengecekan, dan Perubahan data. Di tab Semua, semua kejadian satu laporan (mis. LP/SBY/2611-0001) diringkas jadi satu kartu yang membuka halaman detail laporan; kejadian lain jadi satu kartu masing-masing dan yang terbaru ditandai.',
+      text: 'Di tab Riwayat, tombol di atas linimasa (awalnya Semua Riwayat) membuka pilihan filter: Semua Riwayat, Riwayat Pengecekan, dan Riwayat Perubahan Data; angka di tiap pilihan = jumlah kejadiannya. Di Semua Riwayat, semua kejadian satu laporan (mis. LP/SBY/2611-0001) diringkas jadi satu kartu yang membuka halaman detail laporan; kejadian lain jadi satu kartu masing-masing dan yang terbaru ditandai.',
       teksJikaKosong:
-        'Riwayat di detail serial dibagi per tab: Semua, Pengecekan, dan Perubahan data. Di tab Semua, semua kejadian satu laporan (mis. LP/SBY/2611-0001) diringkas jadi satu kartu yang membuka halaman detail laporan; kejadian lain jadi satu kartu masing-masing dan yang terbaru ditandai.',
+        'Riwayat di detail serial punya tombol filter di atas linimasa: Semua Riwayat, Riwayat Pengecekan, dan Riwayat Perubahan Data, dengan jumlah kejadian di tiap pilihan. Di Semua Riwayat, semua kejadian satu laporan (mis. LP/SBY/2611-0001) diringkas jadi satu kartu yang membuka halaman detail laporan; kejadian lain jadi satu kartu masing-masing dan yang terbaru ditandai.',
       advance: 'next',
     },
   ],
@@ -160,13 +159,13 @@ export const SERIAL_CATAT: GuideEntry = {
     },
     {
       target: 'serial-row-select',
-      text: 'Mau ubah atau hapus banyak baris sekaligus? Di tabel, centang baris ini (atau kotak "Pilih semua" di judul tabel untuk semuanya). Di ponsel, ketuk tombol Pilih di atas daftar (atau tahan sebuah kartu beberapa saat) untuk masuk mode pilih, lalu ketuk kartu yang mau dipilih; "Pilih semua" ada di header mode pilih. Begitu ada yang terpilih, bar aksi muncul dan Lanjut aktif.',
+      text: 'Mau ubah atau hapus banyak baris sekaligus? Di tabel, centang baris ini (atau kotak "Pilih semua" di judul tabel untuk semuanya). Di ponsel, ketuk tombol Pilih di atas daftar (atau tahan sebuah kartu beberapa saat) untuk masuk mode pilih, lalu ketuk kartu yang mau dipilih; kotak centang di kiri bar bawah memilih semua baris. Bar aksi muncul begitu ada yang terpilih (di ponsel, begitu kamu masuk mode pilih) dan Lanjut aktif.',
       advance: 'wait',
       waitFor: 'serial-bulk',
     },
     {
       target: 'serial-bulk',
-      text: 'Bar aksi punya tiga tombol: Edit membuka dialog ubah massal (isi hanya kolom yang mau diubah untuk semua baris terpilih, kosong = tidak diubah, lalu Terapkan), Hapus membuang baris terpilih beserta foto buktinya setelah kamu konfirmasi, dan Batalkan pilihan mengosongkan pilihan. Panduan tidak menerapkan atau menghapus apa pun.',
+      text: 'Bar aksi punya Edit, yang membuka dialog ubah massal (isi hanya kolom yang mau diubah untuk semua baris terpilih, kosong = tidak diubah, lalu Terapkan), dan Hapus, yang membuang baris terpilih beserta foto buktinya setelah kamu konfirmasi. Di tabel (layar lebar) ada juga tombol Batalkan pilihan. Di ponsel bar itu satu baris: kotak centang di kirinya memilih semua (atau mengosongkan pilihan bila semua sudah terpilih) dan tombol atau gestur kembali juga keluar dari mode pilih. Panduan tidak menerapkan atau menghapus apa pun.',
       advance: 'next',
     },
     {
@@ -196,7 +195,7 @@ export const SERIAL_LAPORAN_DAFTAR: GuideEntry = {
     {
       target: 'case-table',
       route: '/serial/reports',
-      text: 'Halaman Laporan memuat laporan unit bermasalah: nomor LP, serial, item, status, lokasi, lama, pelapor. Satu serial paling banyak punya satu laporan aktif. Klik nomor LP untuk membuka halaman detail laporannya.',
+      text: 'Halaman Laporan memuat laporan unit bermasalah: nomor LP, serial, item, status, lokasi, durasi, pelapor. Satu serial paling banyak punya satu laporan aktif. Klik nomor LP untuk membuka halaman detail laporannya.',
       advance: 'next',
     },
     {

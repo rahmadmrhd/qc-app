@@ -1,5 +1,6 @@
 import type { BrandDto, BusinessUnitOptionDto } from '@shared/contract';
 import { Link } from '@tanstack/react-router';
+import { PageContent } from '@/components/page/page-container';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
@@ -44,12 +45,12 @@ export function BrandDetailView({
 }: BrandDetailViewProps) {
   if (!brand) {
     return (
-      <div className="space-y-4">
+      <PageContent className="space-y-4">
         <h1 className="text-2xl font-semibold">Merk tidak ditemukan</h1>
         <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar merk
         </Button>
-      </div>
+      </PageContent>
     );
   }
   const deleted = brand.deleted !== undefined;
@@ -65,6 +66,7 @@ export function BrandDetailView({
           ? [
               {
                 id: 'restore',
+                primary: true,
                 action: 'restore',
                 busy: restorePending,
                 hidden: !(canManage && onRestore),
@@ -74,6 +76,7 @@ export function BrandDetailView({
           : [
               {
                 id: 'edit',
+                primary: true,
                 action: 'edit',
                 label: 'Ubah',
                 hidden: !(canEdit && onEdit),
@@ -81,6 +84,7 @@ export function BrandDetailView({
               },
               {
                 id: 'status',
+                primary: true,
                 action: brand.status === 'active' ? 'deactivate' : 'activate',
                 busy: statusPending,
                 hidden: !(canManage && onToggleStatus),

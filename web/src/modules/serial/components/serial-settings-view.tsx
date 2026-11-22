@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { PageContent } from '@/components/page/page-container';
 import { describeError } from '@/lib/api/describe-error';
 import { usersQueryOptions } from '@/modules/access/queries';
 import { can } from '@/modules/auth/permissions';
@@ -31,12 +32,20 @@ export function SerialSettingsView({
   const users = useQuery({ ...usersQueryOptions(), enabled: canReadUsers, retry: false });
   const save = useSaveSerialSettings();
 
-  if (settings.isPending) return <p className="text-sm text-muted-foreground">Memuat…</p>;
+  if (settings.isPending) {
+    return (
+      <PageContent>
+        <p className="text-sm text-muted-foreground">Memuat…</p>
+      </PageContent>
+    );
+  }
   if (settings.isError || !settings.data) {
     return (
-      <p role="alert" className="text-sm text-destructive-text">
-        {settings.error ? describeError(settings.error) : 'Pengaturan tidak bisa dimuat.'}
-      </p>
+      <PageContent>
+        <p role="alert" className="text-sm text-destructive-text">
+          {settings.error ? describeError(settings.error) : 'Pengaturan tidak bisa dimuat.'}
+        </p>
+      </PageContent>
     );
   }
   return (

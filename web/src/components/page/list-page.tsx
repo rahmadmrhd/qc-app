@@ -6,6 +6,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { BulkActiveContext } from './bulk-active';
 import { Fab } from './fab';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
+import { ListFrameContext } from './list-frame';
 import { ScrollToTop } from './scroll-to-top';
 import { SelectModeProvider, useSelectMode } from './select-mode';
 
@@ -108,7 +109,9 @@ function ListPageInner({
         {filters}
         {desktop ? bulkNode : null}
       </HeadroomBar>
-      <div className="min-w-0">{children}</div>
+      <div className="min-w-0">
+        <ListFrameContext.Provider value>{children}</ListFrameContext.Provider>
+      </div>
       {desktop ? null : bulkNode}
       {!desktop && !selectActive ? <ScrollToTop aboveFab={fab !== null} /> : null}
       {fab && !selectActive ? (

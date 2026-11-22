@@ -20,7 +20,7 @@ vi.mock('@/modules/files/queries', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 import { ApiError } from '@/lib/api/api-error';
-import { pickLink } from '@/test/link-field';
+import { closeFilterChip, pickLink } from '@/test/link-field';
 import { resetOutboxEnv } from '@/test/outbox-env';
 import { enqueueOutbox } from '../lib/outbox';
 import { HandoverBoardPage } from './handover-board-page';
@@ -618,6 +618,9 @@ test('chip Customer multi-value: daftar customer lokasi dimuat saat dibuka; memi
   expect(state.api).not.toHaveBeenCalledWith('handovers.options', expect.anything());
   await userEvent.click(screen.getByRole('button', { name: /^Customer(:|$)/ }));
   await pickLink(screen, 'Filter customer', 'PT B');
+  expect(onCustomersChange).not.toHaveBeenCalled();
+  await closeFilterChip();
+  expect(onCustomersChange).toHaveBeenCalledTimes(1);
   expect(onCustomersChange).toHaveBeenLastCalledWith(['c2']);
 });
 

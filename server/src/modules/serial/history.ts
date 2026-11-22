@@ -19,6 +19,10 @@ interface CountRow {
  * Riwayat per serial (tab linimasa): terbaru di atas (`seq` menurun), berkursor `seq` (kejadian dengan `seq` < kursor),
  * dapat disaring per kelompok jenis dan per kasus. `counts` dihitung dari SATU kueri agregat atas seluruh kejadian
  * serial (tidak terpengaruh filter) agar badge tab tetap utuh. Kasus milik serial lain = hasil kosong, bukan galat.
+ *
+ * `counts.all` = jumlah ENTRI yang tampil pada pilihan "Semua Riwayat": kejadian tanpa laporan dihitung satu per kejadian,
+ * sedangkan seluruh kejadian satu laporan diringkas menjadi SATU kartu laporan sehingga dihitung satu. `checks` dan
+ * `changes` tetap per kejadian (kedua pilihan itu menampilkan tiap kejadian), dan `byCase` = jumlah seluruh kejadian per laporan.
  */
 export async function serialHistory(
   env: Env,
@@ -62,10 +66,11 @@ export async function serialHistory(
   const counts: SerialHistoryOutput['counts'] = { all: 0, checks: 0, changes: 0, byCase: {} };
   for (const entry of counted.results) {
     const total = Number(entry.total);
-    counts.all += total;
+    const caseId = entry.case_id.trim();
+    // Kejadian lepas dihitung satu per kejadian; satu laporan (minimal satu kejadian) = satu kartu.
+    counts.all += caseId === '' ? total : 1;
     counts.checks += Number(entry.checks ?? 0);
     counts.changes += Number(entry.changes ?? 0);
-    const caseId = entry.case_id.trim();
     if (caseId !== '') counts.byCase[caseId] = total;
   }
   return {

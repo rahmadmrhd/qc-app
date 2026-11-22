@@ -1584,6 +1584,10 @@ export interface ApiContract {
   'serials.update': { input: UpdateSerialInput; output: SerialDto };
   'serials.updateBatch': { input: UpdateSerialBatchInput; output: UpdateSerialBatchOutput };
   'serials.act': { input: SerialActInput; output: SerialDto };
+  'serials.applyStickersBatch': {
+    input: ApplyStickersBatchInput;
+    output: ApplyStickersBatchOutput;
+  };
   'serials.history': { input: SerialHistoryInput; output: SerialHistoryOutput };
   'serialSettings.get': { input: null; output: SerialSettingsDto };
   'serialSettings.save': { input: SaveSerialSettingsInput; output: SerialSettingsDto };
@@ -2093,8 +2097,34 @@ export type SerialActInput =
       buId?: string;
       stickerIds?: string[];
       proofPhotoIds?: string[];
+    })
+  | (SerialActBase & {
+      action: 'apply_stickers';
+      /**
+       * Tempel stiker (keputusan pemilik 2026-11-22, K1): tiap id menambah 1 pada jumlah tempel dan memotong stok 1 di
+       * lokasi unit, tanpa hasil cek dan tanpa mengubah status/posisi/laporan. Minimal 1, maks. `SERIAL_LIMITS.picksMax`.
+       */
+      stickerIds: string[];
     });
 export type SerialActAction = SerialActInput['action'];
+/**
+ * Tempel stiker massal (`serials.applyStickersBatch`, keputusan pemilik 2026-11-22, K2): ATOMIK (satu baris gagal = semua
+ * batal; galat menyebut nomor serialnya) dan idempoten lewat `clientId` (UUID huruf kecil, dibuat SEKALI per permintaan
+ * dan dipakai ulang saat kirim ulang): server menulis `serial_events.client_id = <clientId>:<serialId>`.
+ */
+export interface ApplyStickersBatchInput {
+  clientId: string;
+  /** Tanggal kejadian `YYYY-MM-DD`, tidak di masa depan (sama untuk semua baris). */
+  occurredOn: string;
+  /** Catatan opsional (Markdown, maks. `SERIAL_LIMITS.messageMax`), sama untuk semua baris. */
+  message: string;
+  /** 1..`BATCH_MAX` baris, id serial unik; tiap baris minimal satu stiker (maks. `SERIAL_LIMITS.picksMax`). */
+  rows: { id: string; stickerIds: string[] }[];
+}
+/** Id serial yang ditempeli (urut masukan), juga pada kiriman ulang yang sudah tersimpan. */
+export interface ApplyStickersBatchOutput {
+  ids: string[];
+}
 /** Riwayat per serial (tab linimasa): kursor = `seq` terakhir. */
 export interface SerialHistoryInput {
   id: string;
@@ -2107,6 +2137,10 @@ export interface SerialHistoryInput {
 export interface SerialHistoryOutput {
   events: SerialEventDto[];
   nextCursor: string | null;
+  /**
+   * `all` = jumlah ENTRI pada "Semua Riwayat" (kejadian lepas satu per kejadian, tiap laporan = SATU kartu laporan);
+   * `checks`/`changes` per kejadian; `byCase` = jumlah seluruh kejadian per laporan.
+   */
   counts: { all: number; checks: number; changes: number; byCase: Record<string, number> };
 }
 export interface SerialAlertSettings {

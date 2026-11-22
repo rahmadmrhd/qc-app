@@ -425,7 +425,7 @@ Semuanya 2026-11-13, disetujui pemilik produk:
     digabung, butir N):
     - `serial-daftar` (`/serial`, `serial: view`, 3 langkah): tabel, pencarian/filter, tombol Tambah (`edit`).
     - `serial-detail` (`/serial`, `view`, 5 langkah): klik serial di daftar (langkah `click`), baris tahap, tombol
-      update, alur status (QC melapor, servis, cek ulang), linimasa bertab. Semuanya ber-`teksJikaKosong`.
+      update, alur status (QC melapor, servis, cek ulang), linimasa (bertab; sejak 2026-11-22 filter dropdown, aksi di header). Semuanya ber-`teksJikaKosong`.
     - `serial-catat` (`/serial/new`, `edit`, 7 langkah sesudah digabung dengan `serial-massal`): bawaan, kolom scan (`wait`
       sampai ada baris draft), isi draft (foto bukti, hasil, draf tersimpan di perangkat, impor/ekspor `.qcsn`), Detail/Hapus
       baris, centang baris (`wait` sampai bilah Ubah massal muncul), bilah Ubah massal, Simpan.

@@ -14,6 +14,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { meQueryKey } from '@/modules/auth/queries';
 import { makeMe } from '@/test/make-me';
+import { clickMoreAction } from '@/test/more-actions';
 import { Route } from './index';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -133,7 +134,7 @@ test('?tab= di URL memilih tab; nilai tak dikenal jatuh ke tab pertama', async (
 
 test('Hapus dari View: konfirmasi, items.removeBatch, kembali ke /item, toast "Dihapus" dengan Pulihkan', async () => {
   const { router } = await mount();
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  await clickMoreAction('Hapus');
   const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 item?' });
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
   await waitFor(() => expect(router.state.location.pathname).toBe('/item'));
@@ -166,7 +167,7 @@ test('item terhapus: banner Pulihkan memanggil items.restoreBatch', async () => 
 
 test('Pulihkan dari toast "Dihapus" setelah navigasi tetap memberi toast sukses atau galat', async () => {
   const { router } = await mount();
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  await clickMoreAction('Hapus');
   const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 item?' });
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
   await waitFor(() => expect(router.state.location.pathname).toBe('/item'));

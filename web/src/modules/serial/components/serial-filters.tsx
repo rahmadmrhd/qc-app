@@ -3,6 +3,7 @@ import { useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
 import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
+import { useChipDraft } from '@/components/page/filter-draft';
 import { MultiSelect } from '@/components/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -46,6 +47,16 @@ const normalizeSearchTextValue = (value: string) => normalizeSearchText(value).t
 
 /** Nilai khusus pada chip Status: tampilan Terhapus (param `deleted`), eksklusif terhadap status alur. */
 const DELETED_VIEW = 'deleted';
+
+/**
+ * "Terhapus" eksklusif terhadap status alur: dipilih belakangan = hanya Terhapus; status alur dipilih belakangan =
+ * tanpa Terhapus. Berlaku pada draf chip, jadi pilihan yang tampil selalu sama dengan yang akan diterapkan.
+ */
+function exclusiveDeleted(next: string[], previous: readonly string[]): string[] {
+  if (!next.includes(DELETED_VIEW)) return next;
+  if (!previous.includes(DELETED_VIEW)) return [DELETED_VIEW];
+  return next.filter((value) => value !== DELETED_VIEW);
+}
 
 const CUSTODY_FILTER_OPTIONS = (Object.keys(CUSTODY_LABEL) as (keyof typeof CUSTODY_LABEL)[]).map(
   (value) => ({ value, label: CUSTODY_LABEL[value] }),
@@ -292,6 +303,7 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
             placeholder="Semua status"
             options={statusOptions}
             value={statusValue}
+            reconcile={exclusiveDeleted}
             onValueChange={(next) => {
               // "Terhapus" eksklusif: dipilih belakangan = hanya Terhapus; status alur dipilih belakangan = tanpa Terhapus.
               const deletedNow = next.includes(DELETED_VIEW);
@@ -335,48 +347,92 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
           display={dateDisplay}
           onClear={() => onChange({ from: undefined, to: undefined })}
         >
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="serial-filter-from" className="text-xs text-muted-foreground">
-                Tanggal uji dari
-              </Label>
-              <Input
-                id="serial-filter-from"
-                type="date"
-                value={search.from ?? ''}
-                onChange={(event) => onChange({ from: event.target.value || undefined })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="serial-filter-to" className="text-xs text-muted-foreground">
-                Tanggal uji sampai
-              </Label>
-              <Input
-                id="serial-filter-to"
-                type="date"
-                value={search.to ?? ''}
-                onChange={(event) => onChange({ to: event.target.value || undefined })}
-              />
-            </div>
-          </div>
+          <DateRangeFields
+            from={search.from}
+            to={search.to}
+            onCommit={(range) => onChange({ from: range.from, to: range.to })}
+          />
         </FilterChip>
         <FilterChip
           label="Pencatat"
           display={search.mine === true ? 'Saya' : null}
           onClear={() => onChange({ mine: undefined })}
         >
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="serial-filter-mine"
-              checked={search.mine === true}
-              onCheckedChange={(on) => onChange({ mine: on === true ? true : undefined })}
-            />
-            <Label htmlFor="serial-filter-mine" className="font-normal">
-              Dicatat oleh saya
-            </Label>
-          </div>
+          <MineCheckbox mine={search.mine === true} onCommit={(mine) => onChange({ mine })} />
         </FilterChip>
       </FilterBar>
+    </div>
+  );
+}
+
+interface DateRange {
+  from: string | undefined;
+  to: string | undefined;
+}
+
+/** Dua kolom tanggal uji; di dalam chip ditahan sebagai SATU draf dan diterapkan sekali saat chip menutup. */
+function DateRangeFields({
+  from,
+  to,
+  onCommit,
+}: {
+  from: string | undefined;
+  to: string | undefined;
+  onCommit: (range: DateRange) => void;
+}) {
+  const [range, setRange] = useChipDraft<DateRange>(
+    { from: from || undefined, to: to || undefined },
+    onCommit,
+  );
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label htmlFor="serial-filter-from" className="text-xs text-muted-foreground">
+          Tanggal uji dari
+        </Label>
+        <Input
+          id="serial-filter-from"
+          type="date"
+          value={range.from ?? ''}
+          onChange={(event) => setRange({ ...range, from: event.target.value || undefined })}
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="serial-filter-to" className="text-xs text-muted-foreground">
+          Tanggal uji sampai
+        </Label>
+        <Input
+          id="serial-filter-to"
+          type="date"
+          value={range.to ?? ''}
+          onChange={(event) => setRange({ ...range, to: event.target.value || undefined })}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Centang "Dicatat oleh saya"; di dalam chip ditahan sebagai draf dan diterapkan saat chip menutup. */
+function MineCheckbox({
+  mine,
+  onCommit,
+}: {
+  mine: boolean;
+  onCommit: (mine: true | undefined) => void;
+}) {
+  const [checked, setChecked] = useChipDraft<boolean>(mine, (next) =>
+    onCommit(next ? true : undefined),
+  );
+  return (
+    <div className="flex items-center gap-2">
+      <Checkbox
+        id="serial-filter-mine"
+        checked={checked}
+        onCheckedChange={(on) => setChecked(on === true)}
+      />
+      <Label htmlFor="serial-filter-mine" className="font-normal">
+        Dicatat oleh saya
+      </Label>
     </div>
   );
 }

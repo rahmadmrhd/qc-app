@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
+import { PageContent } from '@/components/page/page-container';
 import { DesktopDownloadsPage } from '@/modules/desktop-download/components/desktop-downloads-page';
 import {
   type DetectedPlatform,
@@ -25,5 +26,9 @@ function DesktopPage() {
       active = false;
     };
   }, []);
-  return <DesktopDownloadsPage platform={platform} />;
+  return (
+    <PageContent>
+      <DesktopDownloadsPage platform={platform} />
+    </PageContent>
+  );
 }

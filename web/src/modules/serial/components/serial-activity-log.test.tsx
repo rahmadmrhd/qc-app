@@ -43,7 +43,7 @@ test('menampilkan paling banyak 10 kejadian terbaru dengan input yang sama denga
   await renderInRouter(<SerialActivityLog serialId="s1" />);
   const panel = await screen.findByRole('region', { name: 'Aktivitas' });
   expect(await within(panel).findAllByText(/Budi \(QC\)/)).toHaveLength(SERIAL_ACTIVITY_LIMIT);
-  // Kunci query = kunci TimelineTabs tab Semua: input tanpa `limit` agar data dipakai bersama.
+  // Kunci query = kunci TimelineSection pilihan Semua: input tanpa `limit` agar data dipakai bersama.
   expect(apiMock).toHaveBeenCalledWith('serials.history', { id: 's1', group: 'all' });
 });
 

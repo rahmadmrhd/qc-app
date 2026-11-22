@@ -4,9 +4,11 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
+import { ApiError } from '@/lib/api/api-error';
+import { closeFilterChip, linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
 import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
+import { resetPendingApplyStickersForTest } from '../lib/apply-stickers-intent';
 import { type SerialSearch, serialSearchSchema } from '../lib/list-filter';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -14,6 +16,23 @@ vi.mock('@/lib/api', () => ({ api: apiMock }));
 
 let me: MeDto;
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
+
+// Editor Tiptap tidak dapat diketik di jsdom: diganti kolom teks (dialog Lapor rusak dari aksi baris).
+vi.mock('@/modules/markdown/wysiwyg-editor', () => ({
+  WysiwygEditor: (props: {
+    id: string;
+    value: string;
+    onChange: (value: string) => void;
+    labelledBy?: string;
+  }) => (
+    <textarea
+      id={props.id}
+      aria-labelledby={props.labelledBy}
+      value={props.value}
+      onChange={(event) => props.onChange(event.target.value)}
+    />
+  ),
+}));
 
 vi.mock('./camera-scan-button', () => ({
   CameraScanButton: ({ onScan }: { onScan: (text: string) => unknown }) => (
@@ -89,6 +108,7 @@ const listCalls = () => apiMock.mock.calls.filter((call) => call[0] === 'serials
 const lastListInput = () => listCalls().at(-1)?.[1] as Record<string, unknown>;
 
 beforeEach(() => {
+  resetPendingApplyStickersForTest();
   apiMock.mockReset();
   me = {
     email: 'a@gmail.com',
@@ -331,21 +351,25 @@ test('filter status, lokasi, item, dan rentang tanggal menjadi parameter pencari
   await screen.findByText('ABC123');
   await openChip('Status');
   await pickSelect(screen, 'Filter status', 'Dilaporkan');
+  // Draf: daftar baru diminta saat chip menutup.
+  expect(lastListInput()).not.toHaveProperty('statuses');
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ statuses: ['reported'] }));
-  await userEvent.keyboard('{Escape}');
   await openChip('Lokasi');
   await pickLink(screen, 'Filter lokasi', 'Jakarta (JKT)');
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ locationIds: ['l1'] }));
-  await userEvent.keyboard('{Escape}');
   await openChip('Item');
   await pickLink(screen, 'Filter item', 'Cisco C9200');
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ itemIds: ['i1'] }));
-  await userEvent.keyboard('{Escape}');
   await openChip('Tanggal uji');
   fireEvent.change(screen.getByLabelText('Tanggal uji dari'), { target: { value: '2026-11-01' } });
   fireEvent.change(screen.getByLabelText('Tanggal uji sampai'), {
     target: { value: '2026-11-30' },
   });
+  expect(lastListInput()).not.toHaveProperty('from');
+  await closeFilterChip();
   await waitFor(() =>
     expect(lastListInput()).toMatchObject({
       statuses: ['reported'],
@@ -526,8 +550,10 @@ test('filter posisi multi-value masuk masukan serials.list lewat MultiSelect; ha
   await screen.findByText('ABC123');
   await openChip('Posisi');
   await pickSelect(screen, 'Filter posisi', 'Dalam pengiriman');
-  await waitFor(() => expect(lastListInput()).toMatchObject({ custodies: ['transit'] }));
   await pickSelect(screen, 'Filter posisi', 'Di servis');
+  // Dua pilihan berturut-turut = SATU permintaan, setelah chip menutup.
+  expect(lastListInput()).not.toHaveProperty('custodies');
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ custodies: ['transit', 'service'] }));
   expect(
     screen.getByRole('button', { name: /^Posisi: Dalam pengiriman, Di servis/ }),
@@ -554,11 +580,14 @@ test('filter BU hanya menawarkan BU yang terbaca (serial atau serialservice) dan
   // Teks bantu hanya selagi filter BU aktif: serial yang pernah di BU itu ikut tampil.
   expect(screen.queryByText(/pernah di BU ini/)).toBeNull();
   await userEvent.click(await screen.findByRole('option', { name: 'B2 · Unit b2' }));
-  await waitFor(() => expect(lastListInput()).toMatchObject({ buIds: ['b2'] }));
-  // Mode banyak pilihan tetap terbuka: teks bantu muncul seketika, dan pilihan kedua menambah daftar.
-  expect(await screen.findByText('Termasuk serial yang pernah di BU ini.')).toBeInTheDocument();
+  // Mode banyak pilihan tetap terbuka: pilihan kedua menambah draf dan daftar baru diminta saat chip menutup.
   await userEvent.click(await screen.findByRole('option', { name: 'B1 · Unit b1' }));
+  expect(lastListInput()).not.toHaveProperty('buIds');
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ buIds: ['b2', 'b1'] }));
+  // Teks bantu hanya selagi filter BU aktif (tampil di isi chip setelah diterapkan).
+  await openChip('BU');
+  expect(await screen.findByText('Termasuk serial yang pernah di BU ini.')).toBeInTheDocument();
 });
 
 test('sakelar "Dicatat oleh saya" mengisi createdBy dengan email akun', async () => {
@@ -567,8 +596,12 @@ test('sakelar "Dicatat oleh saya" mengisi createdBy dengan email akun', async ()
   expect(lastListInput()).not.toHaveProperty('createdBy');
   await openChip('Pencatat');
   await userEvent.click(screen.getByRole('checkbox', { name: 'Dicatat oleh saya' }));
+  expect(lastListInput()).not.toHaveProperty('createdBy');
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ createdBy: 'a@gmail.com' }));
+  await openChip('Pencatat');
   await userEvent.click(screen.getByRole('checkbox', { name: 'Dicatat oleh saya' }));
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).not.toHaveProperty('createdBy'));
 });
 
@@ -663,11 +696,16 @@ function manageMe(level: 'edit' | 'manage' = 'manage'): MeDto {
 
 const callsOf = (id: string) => apiMock.mock.calls.filter((call) => call[0] === id);
 
-test('kolom checkbox hanya bagi pemegang serial: manage; pembaca dan editor tanpa checkbox', async () => {
+test('kolom checkbox bagi pemegang serial: edit (Tempel stiker) atau manage; pembaca tanpa checkbox', async () => {
+  const { unmount: unmountReader } = await renderPage();
+  await screen.findByText('ABC123');
+  expect(screen.queryByRole('checkbox', { name: 'Pilih semua' })).toBeNull();
+  unmountReader();
+
   me = manageMe('edit');
   const { unmount } = await renderPage();
   await screen.findByText('ABC123');
-  expect(screen.queryByRole('checkbox', { name: 'Pilih semua' })).toBeNull();
+  expect(screen.getByRole('checkbox', { name: 'Pilih semua' })).toBeInTheDocument();
   unmount();
 
   me = manageMe('manage');
@@ -676,7 +714,7 @@ test('kolom checkbox hanya bagi pemegang serial: manage; pembaca dan editor tanp
   expect(screen.getByRole('checkbox', { name: 'Pilih semua' })).toBeInTheDocument();
 });
 
-test('canManage dari server menentukan checkbox dan Hapus baris (serial yang pernah di BU lain tak dapat dipilih)', async () => {
+test('canManage dari server menentukan Hapus (serial yang pernah di BU lain tak dapat dihapus, tetapi tetap dapat ditempeli stiker)', async () => {
   me = manageMe();
   apiMock.mockImplementation((id: string) => {
     if (id === 'serials.list') {
@@ -689,15 +727,21 @@ test('canManage dari server menentukan checkbox dan Hapus baris (serial yang per
   });
   await renderPage();
   await screen.findByText('ABC123');
-  expect(screen.getByRole('checkbox', { name: 'Pilih ABC123' })).toBeInTheDocument();
-  expect(screen.queryByRole('checkbox', { name: 'Pilih XYZ789' })).toBeNull();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih ABC123' }));
+  expect(screen.getByRole('button', { name: 'Hapus' })).toBeInTheDocument();
+  // XYZ789: Lolos di QC pada BU yang boleh diedit, jadi dapat dipilih (Tempel stiker) walau tak dapat dihapus.
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih XYZ789' }));
+  expect(screen.getByRole('button', { name: 'Tempel stiker' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Hapus XYZ789' })).toBeNull();
 });
 
-test('tidak ada ubah massal: bar aksi hanya memuat Hapus', async () => {
+test('tidak ada ubah massal: bar aksi memuat Tempel stiker dan Hapus saja', async () => {
   me = manageMe();
   await renderPage();
   await screen.findByText('ABC123');
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih ABC123' }));
+  expect(screen.getByRole('button', { name: 'Tempel stiker' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Hapus' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: /Ubah massal|Edit/ })).toBeNull();
   expect(screen.queryByRole('button', { name: /Nonaktifkan|Aktifkan/ })).toBeNull();
@@ -792,11 +836,15 @@ test('manage: chip Status memuat Terhapus; memilihnya mengosongkan status alur d
   await openChip('Status');
   expect(await linkOptionNames(screen, 'Filter status')).toContain('Terhapus');
   await pickSelect(screen, 'Filter status', 'Terhapus');
+  // Eksklusif sudah berlaku pada draf: status alur terlepas seketika, permintaan baru setelah chip menutup.
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ deleted: true }));
   expect(lastListInput()).not.toHaveProperty('statuses');
   expect(screen.getByRole('button', { name: /^Status: Terhapus/ })).toBeInTheDocument();
   // Memilih status alur sesudahnya mengeluarkan tampilan Terhapus.
+  await openChip('Status');
   await pickSelect(screen, 'Filter status', 'Dilaporkan');
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ statuses: ['reported'] }));
   expect(lastListInput()).not.toHaveProperty('deleted');
 });
@@ -865,4 +913,310 @@ test('target panduan: serial-new pada tombol Tambah, serial-table dan serial-fil
   );
   expect(document.querySelector('[data-tour="serial-table"]')).not.toBeNull();
   expect(document.querySelector('[data-tour="serial-filters"]')).not.toBeNull();
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Revisi lanjutan 2: aksi baris Lapor rusak (R2) dan Tempel stiker massal (R1).
+
+const SERIAL_DETAIL = {
+  buHistory: [],
+  id: 's1',
+  buId: 'b1',
+  buCode: 'BU1',
+  serial: 'ABC123',
+  itemId: 'i1',
+  itemLabel: 'Cisco C9200',
+  testDate: '2026-11-10',
+  sample: false,
+  locationId: 'l1',
+  locationName: 'Jakarta',
+  status: 'good',
+  custody: 'qc',
+  transitToLocationId: null,
+  transitToLocationName: null,
+  transitOn: null,
+  openCaseNumber: null,
+  createdAt: '2026-11-10T03:00:00.000Z',
+  note: '',
+  recordedLocationId: 'l1',
+  stickers: [],
+  hasProofPhotos: false,
+  proofProblemCount: 0,
+  openCaseId: null,
+  transitFromLocationId: null,
+  transitFromLocationName: null,
+  openCase: null,
+  cases: [],
+  createdBy: 'a@gmail.com',
+  updatedAt: '2026-11-11T03:00:00.000Z',
+  updatedBy: 'a@gmail.com',
+};
+
+test('aksi baris Lapor rusak: hanya pada serial Lolos di QC bagi pemegang edit, sebelum Ubah; membuka dialog setelah detail dimuat', async () => {
+  me = manageMe('edit');
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') return Promise.resolve({ items: PAGE_1, nextCursor: null });
+    if (id === 'serials.get') {
+      return Promise.resolve({
+        serial: SERIAL_DETAIL,
+        events: [],
+        eventsTruncated: false,
+        problemPhotos: [],
+      });
+    }
+    return Promise.resolve({ locations: [], items: [], stickers: [], nextCursor: null });
+  });
+  await renderPage();
+  await screen.findByText('ABC123');
+  const report = screen.getByRole('button', { name: 'Lapor rusak ABC123' });
+  const edit = screen.getByRole('button', { name: 'Ubah ABC123' });
+  expect(report.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  // XYZ789 berstatus Dilaporkan: aksi `report_failure` tak tersedia.
+  expect(screen.queryByRole('button', { name: 'Lapor rusak XYZ789' })).toBeNull();
+  await userEvent.click(report);
+  expect(await screen.findByRole('dialog', { name: 'Lapor rusak' })).toBeInTheDocument();
+  expect(callsOf('serials.get')).toHaveLength(1);
+  expect(callsOf('serials.get')[0]?.[1]).toEqual({ id: 's1' });
+});
+
+test('aksi baris Lapor rusak tidak ada bagi pembaca (serial: view)', async () => {
+  await renderPage();
+  await screen.findByText('ABC123');
+  expect(screen.queryByRole('button', { name: /^Lapor rusak/ })).toBeNull();
+});
+
+test('Lapor rusak: kegagalan memuat detail menjadi toast dan dialog tidak terbuka', async () => {
+  me = manageMe('edit');
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') return Promise.resolve({ items: PAGE_1, nextCursor: null });
+    if (id === 'serials.get') return Promise.reject(new Error('Gagal memuat'));
+    return Promise.resolve({ locations: [], items: [], stickers: [], nextCursor: null });
+  });
+  await renderPage();
+  await screen.findByText('ABC123');
+  await userEvent.click(screen.getByRole('button', { name: 'Lapor rusak ABC123' }));
+  await waitFor(() => expect(callsOf('serials.get')).toHaveLength(1));
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+test('Tempel stiker massal: pemegang edit melihat Tempel stiker tanpa Hapus; tanpa aksi per baris Tempel stiker', async () => {
+  me = manageMe('edit');
+  await renderPage();
+  await screen.findByText('ABC123');
+  expect(screen.queryByRole('button', { name: /^Tempel stiker/ })).toBeNull();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih ABC123' }));
+  expect(screen.getByRole('button', { name: 'Tempel stiker' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+});
+
+test('Tempel stiker hanya bila SEMUA terpilih dapat ditempeli; Hapus hanya bila semua dapat dikelola', async () => {
+  me = manageMe();
+  apiMock.mockImplementation((id: string) =>
+    id === 'serials.list'
+      ? Promise.resolve({
+          items: [
+            row({ id: 's1', serial: 'LOLOS1' }),
+            // Rusak: aksi apply_stickers tak tersedia, tetapi pemegang manage masih dapat menghapusnya.
+            row({ id: 's5', serial: 'RUSAK5', status: 'broken' }),
+          ],
+          nextCursor: null,
+        })
+      : Promise.resolve({ locations: [], items: [], stickers: [], nextCursor: null }),
+  );
+  await renderPage();
+  await screen.findByText('LOLOS1');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih LOLOS1' }));
+  expect(screen.getByRole('button', { name: 'Tempel stiker' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih RUSAK5' }));
+  expect(screen.queryByRole('button', { name: 'Tempel stiker' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Hapus' })).toBeInTheDocument();
+});
+
+test('baris yang tak dapat ditempeli maupun dikelola (editor, status Rusak) tanpa checkbox', async () => {
+  me = manageMe('edit');
+  apiMock.mockImplementation((id: string) =>
+    id === 'serials.list'
+      ? Promise.resolve({
+          items: [row({ id: 's5', serial: 'RUSAK5', status: 'broken' })],
+          nextCursor: null,
+        })
+      : Promise.resolve({ locations: [], items: [], stickers: [], nextCursor: null }),
+  );
+  await renderPage();
+  await screen.findByText('RUSAK5');
+  expect(screen.queryByRole('checkbox', { name: 'Pilih RUSAK5' })).toBeNull();
+});
+
+test('lebih dari 10 kombinasi Item dan BU: Tempel stiker nonaktif dengan alasan', async () => {
+  me = manageMe('edit');
+  const many = Array.from({ length: 11 }, (_, index) =>
+    row({
+      id: `g${index}`,
+      serial: `GRUP${String(index).padStart(2, '0')}`,
+      itemId: `item${index}`,
+    }),
+  );
+  apiMock.mockImplementation((id: string) =>
+    id === 'serials.list'
+      ? Promise.resolve({ items: many, nextCursor: null })
+      : Promise.resolve({ locations: [], items: [], stickers: [], nextCursor: null }),
+  );
+  await renderPage();
+  await screen.findByText('GRUP00');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  expect(screen.getByRole('button', { name: 'Tempel stiker' })).toBeDisabled();
+  expect(screen.getByText(/paling banyak 10 kombinasi Item dan BU/)).toBeInTheDocument();
+  // Sepuluh kelompok masih boleh.
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih GRUP10' }));
+  expect(screen.getByRole('button', { name: 'Tempel stiker' })).toBeEnabled();
+});
+
+test('Tempel stiker membuka dialog untuk serial terpilih; sukses membuang pilihan', async () => {
+  me = manageMe('edit');
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') return Promise.resolve({ items: PAGE_1, nextCursor: null });
+    if (id === 'serials.stickerOptions') {
+      return Promise.resolve({
+        stickers: [{ id: 'st1', name: 'Stiker A', alias: '', typeName: 'J', defaultQty: 1 }],
+      });
+    }
+    if (id === 'serials.applyStickersBatch') return Promise.resolve({ ids: ['s1', 's2'] });
+    return Promise.resolve({ locations: [], items: [], nextCursor: null });
+  });
+  await renderPage();
+  await screen.findByText('ABC123');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Tempel stiker' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Tempel stiker' });
+  await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker A' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
+  await waitFor(() => expect(callsOf('serials.applyStickersBatch')).toHaveLength(1));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  // Pilihan dibuang setelah sukses: bar aksi massal hilang.
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Tempel stiker' })).toBeNull());
+});
+
+test('Tempel stiker gagal tak jelas lalu dialog ditutup: halaman menampilkan Kirim ulang dengan clientId yang sama; sukses membuang niat dan pilihan', async () => {
+  me = manageMe('edit');
+  let attempt = 0;
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') return Promise.resolve({ items: PAGE_1, nextCursor: null });
+    if (id === 'serials.stickerOptions') {
+      return Promise.resolve({
+        stickers: [{ id: 'st1', name: 'Stiker A', alias: '', typeName: 'J', defaultQty: 1 }],
+      });
+    }
+    if (id === 'serials.applyStickersBatch') {
+      attempt += 1;
+      return attempt === 1
+        ? Promise.reject(new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-'))
+        : Promise.resolve({ ids: ['s1', 's2'] });
+    }
+    return Promise.resolve({ locations: [], items: [], nextCursor: null });
+  });
+  await renderPage();
+  await screen.findByText('ABC123');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Tempel stiker' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Tempel stiker' });
+  await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker A' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
+  await within(dialog).findByRole('button', { name: 'Kirim ulang' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+  // Niat tetap hidup di halaman: pemberitahuan dengan Kirim ulang.
+  const notice = await screen.findByText(/belum jelas hasilnya/);
+  expect(notice).toHaveTextContent('Kiriman Tempel stiker sebelumnya (2 Serial Number');
+  expect(notice).toHaveTextContent('bukan pilihan saat ini');
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim ulang' }));
+  const reopened = await screen.findByRole('dialog', { name: 'Tempel stiker' });
+  await userEvent.click(within(reopened).getByRole('button', { name: 'Kirim ulang' }));
+  await waitFor(() => expect(callsOf('serials.applyStickersBatch')).toHaveLength(2));
+  const [first, second] = callsOf('serials.applyStickersBatch').map((call) => call[1]);
+  expect(second).toEqual(first);
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(screen.queryByText(/belum jelas hasilnya/)).toBeNull();
+});
+
+test('niat Tempel stiker tertunda bertahan saat halaman di-unmount lalu dibuka lagi (id sama); akun lain tidak melihatnya', async () => {
+  me = manageMe('edit');
+  let attempt = 0;
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') return Promise.resolve({ items: PAGE_1, nextCursor: null });
+    if (id === 'serials.stickerOptions') {
+      return Promise.resolve({
+        stickers: [{ id: 'st1', name: 'Stiker A', alias: '', typeName: 'J', defaultQty: 1 }],
+      });
+    }
+    if (id === 'serials.applyStickersBatch') {
+      attempt += 1;
+      return attempt === 1
+        ? Promise.reject(new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-'))
+        : Promise.resolve({ ids: ['s1', 's2'] });
+    }
+    return Promise.resolve({ locations: [], items: [], nextCursor: null });
+  });
+  const first = await renderPage();
+  await screen.findByText('ABC123');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Tempel stiker' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Tempel stiker' });
+  await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker A' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
+  await within(dialog).findByRole('button', { name: 'Kirim ulang' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
+  await screen.findByText(/belum jelas hasilnya/);
+  first.unmount();
+
+  // Akun lain: tidak ada pemberitahuan.
+  const otherMe = me;
+  me = { ...manageMe('edit'), email: 'lain@gmail.com' };
+  const other = await renderPage();
+  await screen.findByText('ABC123');
+  expect(screen.queryByText(/belum jelas hasilnya/)).toBeNull();
+  other.unmount();
+
+  // Akun yang sama membuka daftar lagi: pemberitahuan muncul, kirim ulang memakai id dan isi yang sama.
+  me = otherMe;
+  await renderPage();
+  await screen.findByText('ABC123');
+  await screen.findByText(/belum jelas hasilnya/);
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim ulang' }));
+  const reopened = await screen.findByRole('dialog', { name: 'Tempel stiker' });
+  expect(within(reopened).getByText(/Kiriman sebelumnya/)).toBeInTheDocument();
+  await userEvent.click(within(reopened).getByRole('button', { name: 'Kirim ulang' }));
+  await waitFor(() => expect(callsOf('serials.applyStickersBatch')).toHaveLength(2));
+  const [firstCall, secondCall] = callsOf('serials.applyStickersBatch').map((call) => call[1]);
+  expect(secondCall).toEqual(firstCall);
+  await waitFor(() => expect(screen.queryByText(/belum jelas hasilnya/)).toBeNull());
+});
+
+test('ponsel: bar aksi massal satu baris memuat Tempel stiker; lebih dari 10 kombinasi = nonaktif dengan alasan terlihat', async () => {
+  window.innerWidth = 360;
+  media = mockMatchMedia(false);
+  me = manageMe('edit');
+  const many = Array.from({ length: 11 }, (_, index) =>
+    row({
+      id: `g${index}`,
+      serial: `GRUP${String(index).padStart(2, '0')}`,
+      itemId: `item${index}`,
+    }),
+  );
+  apiMock.mockImplementation((id: string) =>
+    id === 'serials.list'
+      ? Promise.resolve({ items: many, nextCursor: null })
+      : Promise.resolve({ locations: [], items: [], stickers: [], nextCursor: null }),
+  );
+  await renderPage();
+  await screen.findByRole('link', { name: 'GRUP00' });
+  await userEvent.click(screen.getByRole('button', { name: /Aksi GRUP00/ }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Pilih' }));
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).getByRole('button', { name: 'Tempel stiker' })).toBeDisabled();
+  expect(within(bar).getByText(/paling banyak 10 kombinasi Item dan BU/)).toBeInTheDocument();
+  // Sepuluh kelompok: aktif.
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih GRUP10' }));
+  expect(within(bar).getByRole('button', { name: 'Tempel stiker' })).toBeEnabled();
 });

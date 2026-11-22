@@ -16,7 +16,7 @@ import {
   effectiveBuIds,
   effectiveCaseStatus,
 } from '../lib/case-filter';
-import { CUSTODY_LABEL, formatDay, STATUS_LABEL } from '../lib/labels';
+import { CUSTODY_LABEL, daysSpan, formatDay, STATUS_LABEL } from '../lib/labels';
 import { serialCaseListQueryOptions } from '../queries';
 import { SerialStatusBadge } from './serial-status-badge';
 
@@ -33,15 +33,11 @@ const STATUS_OPTIONS = [
   { value: 'all', label: 'Semua laporan' },
 ];
 
-function agoLabel(days: number): string {
-  return days <= 0 ? 'Hari ini' : `${days} hari`;
-}
-
 const OUTCOME_LABEL = { good: 'Lolos', broken: 'Rusak' } as const;
 
 /**
  * Daftar laporan rusak (kit CRUD; bukan daftar serial): nomor LP (tautan ke halaman detail laporan),
- * serial, item, BU, status, lokasi, lama di status, pelapor, dan ringkasan. Filter status (bawaan aktif) dan BU serta
+ * serial, item, BU, status, lokasi, durasi (aktif: hari di status ini; selesai: lama penanganan), pelapor, dan ringkasan. Filter status (bawaan aktif) dan BU serta
  * pencarian awalan nomor LP atau serial berada di URL. Tanpa pilihan massal (laporan tidak dihapus). Tim servis (hanya
  * `serialservice`) melihat semua laporan di BU-nya. Di ponsel baris menjadi kartu.
  */
@@ -118,11 +114,11 @@ export function CaseListPage({ search, onSearchChange, onReport }: CaseListPageP
     },
     {
       id: 'duration',
-      header: 'Lama',
+      header: 'Durasi',
       cell: (entry) =>
         entry.closedOn
-          ? `Selesai dalam ${agoLabel(entry.durationDays)}`
-          : agoLabel(entry.daysInStatus),
+          ? `Selesai dalam ${daysSpan(entry.durationDays)}`
+          : `${daysSpan(entry.daysInStatus)} di status ini`,
     },
     {
       id: 'reporter',

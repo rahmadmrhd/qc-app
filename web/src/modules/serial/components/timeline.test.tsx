@@ -234,3 +234,36 @@ test('recheck_pass dengan data.bu menampilkan rincian Pindah BU di samping penut
   expect(screen.getByText('Pindah BU: BU1 → BU2')).toBeInTheDocument();
   expect(screen.getByText('Laporan LP/BU1/2611-0001 ditutup: lolos')).toBeInTheDocument();
 });
+
+test('foldPrevious={false}: semua entri terbuka urut lama di atas, tanpa pelipat dan tanpa judul "Riwayat saat ini"', () => {
+  render(<Timeline events={[event(3), event(1), event(2)]} markLatest foldPrevious={false} />);
+  expect(seqsShown()).toEqual(['1', '2', '3']);
+  expect(screen.getByText('Catatan nomor 1')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /riwayat sebelumnya/i })).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Riwayat saat ini' })).toBeNull();
+  // Badge Terbaru hanya pada entri paling bawah (terbaru).
+  expect(screen.getAllByText('Terbaru')).toHaveLength(1);
+  expect(
+    within(document.querySelector('[data-seq="3"]') as HTMLElement).getByText('Terbaru'),
+  ).toBeInTheDocument();
+});
+
+test('foldPrevious={false}: satu entri saja tetap tampil; loadOlder berada di ATAS daftar dan langsung terlihat', () => {
+  const { rerender } = render(<Timeline events={[event(5)]} foldPrevious={false} />);
+  expect(seqsShown()).toEqual(['5']);
+  rerender(
+    <Timeline
+      events={[event(4), event(5)]}
+      foldPrevious={false}
+      loadOlder={<button type="button">Muat yang lebih lama</button>}
+    />,
+  );
+  const load = screen.getByRole('button', { name: 'Muat yang lebih lama' });
+  const first = document.querySelector('[data-seq="4"]') as HTMLElement;
+  expect(load.compareDocumentPosition(first) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+test('badge Terbaru berwarna primary (kartu kejadian)', () => {
+  render(<Timeline events={[event(1), event(2)]} markLatest foldPrevious={false} />);
+  expect(screen.getByText('Terbaru')).toHaveAttribute('data-color', 'primary');
+});

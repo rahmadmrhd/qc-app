@@ -29,6 +29,13 @@ vi.mock('sonner', () => ({ toast }));
 vi.mock('@/modules/qrcode/components/export-dialog', () => ({
   ExportDialog: () => <p>Dialog ekspor</p>,
 }));
+vi.mock('@/modules/qrcode/lib/prepare-export', () => ({
+  prepareExportFiles: async () => ({
+    pdf: new Uint8Array(1),
+    png: new Uint8Array(1),
+    preview: new Uint8Array(1),
+  }),
+}));
 
 const design = (id: string, patch: Partial<QrDesignDto> = {}): QrDesignDto => ({
   id,
@@ -63,6 +70,8 @@ const design = (id: string, patch: Partial<QrDesignDto> = {}): QrDesignDto => ({
 let rows: QrDesignDto[] = [];
 let deletedRows: QrDesignDto[] = [];
 let calls: { id: string; input: unknown }[] = [];
+/** Konfigurasi yang sudah diekspor selama tes (membuat `qrcodes.get` mengembalikan status "current"). */
+let exportedIds = new Set<string>();
 let media: ReturnType<typeof mockMatchMedia> | undefined;
 
 beforeEach(() => {
@@ -70,6 +79,7 @@ beforeEach(() => {
   toast.success.mockReset();
   toast.error.mockReset();
   calls = [];
+  exportedIds = new Set();
   rows = [design('q1'), design('q2')];
   deletedRows = [
     design('q9', { deleted: { deletedAt: '2026-11-20T00:00:00.000Z', deletedBy: 'a@x.com' } }),
@@ -83,6 +93,18 @@ beforeEach(() => {
         return { ids: input.ids };
       case 'qrcodes.restoreBatch':
         return { items: (input.ids ?? []).map((designId) => design(designId)) };
+      case 'qrcodes.get': {
+        const found = rows.find((row) => row.id === (input as { id: string }).id);
+        if (!found) throw new Error('tak ditemukan');
+        return exportedIds.has(found.id)
+          ? { ...found, exportStatus: 'current', exportedAt: 'x', exportedBy: 'a@x.com' }
+          : found;
+      }
+      case 'qrcodes.export':
+        exportedIds.add((input as { id: string }).id);
+        return { jobId: `job-${(input as { id: string }).id}` };
+      case 'jobs.get':
+        return { id: (input as { id: string }).id, status: 'done', progress: 100 };
       default:
         throw new Error(`api tak terduga: ${id}`);
     }
@@ -198,6 +220,42 @@ test('pilih semua lalu Hapus: konfirmasi menyebut jumlah item, qrcodes.removeBat
   );
 });
 
+test('pemegang edit tanpa kelola: checkbox dan Ekspor di bar massal, tanpa Hapus', async () => {
+  await mount({ level: 'edit' });
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).getByRole('button', { name: 'Ekspor' })).toBeInTheDocument();
+  expect(within(bar).queryByRole('button', { name: 'Hapus' })).toBeNull();
+});
+
+test('pemegang kelola melihat Ekspor dan Hapus di bar massal', async () => {
+  await mount();
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).getByRole('button', { name: 'Ekspor' })).toBeInTheDocument();
+  expect(within(bar).getByRole('button', { name: 'Hapus' })).toBeInTheDocument();
+});
+
+test('Ekspor massal: konfirmasi, diekspor berurutan lewat qrcodes.export, yang sukses dibuang dari pilihan', async () => {
+  await mount({ level: 'edit' });
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
+  await userEvent.click(
+    within(screen.getByRole('region', { name: 'Aksi massal' })).getByRole('button', {
+      name: 'Ekspor',
+    }),
+  );
+  const dialog = await screen.findByRole('dialog');
+  expect(dialog).toHaveTextContent('Ekspor 2 konfigurasi ke Drive?');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Ekspor 2 konfigurasi' }));
+  await within(dialog).findByText('Ekspor selesai', undefined, { timeout: 5000 });
+  const exports = callsOf('qrcodes.export');
+  expect(exports.map((call) => (call.input as { id: string }).id)).toEqual(['q1', 'q2']);
+  expect(exports.every((call) => (call.input as { reason: string }).reason === '')).toBe(true);
+  expect(toast.success).toHaveBeenCalledWith('2 konfigurasi diekspor');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tutup' }));
+  await waitFor(() => expect(screen.queryByText(/dipilih/)).toBeNull());
+});
+
 test('mengubah filter mengosongkan pilihan', async () => {
   await mount();
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
@@ -211,6 +269,7 @@ test('tampilan Terhapus: bar massal hanya Pulihkan dan memanggil qrcodes.restore
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih MB q9' }));
   const bar = screen.getByRole('region', { name: 'Aksi massal' });
   expect(within(bar).queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(within(bar).queryByRole('button', { name: 'Ekspor' })).toBeNull();
   await userEvent.click(within(bar).getByRole('button', { name: 'Pulihkan' }));
   await waitFor(() => expect(callsOf('qrcodes.restoreBatch')).toHaveLength(1));
   expect(callsOf('qrcodes.restoreBatch')[0]?.input).toEqual({ ids: ['q9'] });

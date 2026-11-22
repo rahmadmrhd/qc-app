@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ActiveLocationsProvider } from '@/modules/location/active-locations-context';
 import { mockMatchMedia } from '@/test/match-media';
+import { clickMoreAction, hasNoMoreActions, moreActionNames } from '@/test/more-actions';
 import { renderInRouter } from '@/test/render-in-router';
 import { StickerView, type StickerViewProps } from './sticker-view';
 import { type StickerStockPanel, useStockActions } from './stock-actions';
@@ -254,6 +255,7 @@ test('berpindah ke tab Riwayat memanggil onTabChange dan merender panel riwayat'
 test('aksi halaman: Ubah, Nonaktifkan; Hapus tidak ada selama stiker Aktif', async () => {
   const { onEdit, onToggleStatus } = await renderView();
   expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(hasNoMoreActions()).toBe(true);
   await userEvent.click(screen.getByRole('button', { name: 'Ubah' }));
   expect(onEdit).toHaveBeenCalledTimes(1);
   await userEvent.click(screen.getByRole('button', { name: 'Nonaktifkan' }));
@@ -262,7 +264,12 @@ test('aksi halaman: Ubah, Nonaktifkan; Hapus tidak ada selama stiker Aktif', asy
 
 test('stiker nonaktif biasa dapat dihapus; stiker jenis sistem tidak', async () => {
   const { onDelete } = await renderView({ sticker: { ...sticker, status: 'inactive' } });
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  // Hapus bukan aksi utama: tak tampil sebagai tombol, hanya di menu "Aksi lainnya".
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Ubah' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Aktifkan' })).toBeInTheDocument();
+  expect(await moreActionNames()).toEqual(['Hapus']);
+  await clickMoreAction('Hapus');
   expect(onDelete).toHaveBeenCalledTimes(1);
   cleanup();
   await renderView({
@@ -270,6 +277,7 @@ test('stiker nonaktif biasa dapat dihapus; stiker jenis sistem tidak', async () 
     type: { ...type, systemKind: 'postel', rule: 'group' },
   });
   expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(hasNoMoreActions()).toBe(true);
   expect(screen.getByText(/Stiker Postel: satu untuk tiap catatan Postel/)).toBeInTheDocument();
 });
 

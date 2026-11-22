@@ -2,6 +2,7 @@ import type { UserDto } from '@shared/contract';
 import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+import { clickMoreAction, moreActionNames } from '@/test/more-actions';
 import { renderInRouter } from '@/test/render-in-router';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -83,7 +84,10 @@ test('aksi: Ubah, Aktifkan, dan Hapus (pengguna Nonaktif)', async () => {
   const { onEdit, onToggleStatus, onDelete } = await renderView();
   await userEvent.click(screen.getByRole('button', { name: 'Ubah' }));
   await userEvent.click(screen.getByRole('button', { name: 'Aktifkan' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  // Ubah dan Aktifkan = aksi utama (tombol); Hapus jarang dipakai, hanya di menu "Aksi lainnya".
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(await moreActionNames()).toEqual(['Hapus']);
+  await clickMoreAction('Hapus');
   expect(onEdit).toHaveBeenCalled();
   expect(onToggleStatus).toHaveBeenCalled();
   expect(onDelete).toHaveBeenCalled();
@@ -94,14 +98,23 @@ test('tanpa manage: tidak ada aksi', async () => {
   expect(screen.queryByRole('button', { name: /Ubah|Aktifkan|Hapus/ })).toBeNull();
 });
 
+/** Hapus tidak tampil sebagai tombol; di menu "Aksi lainnya" ia nonaktif dan memuat alasannya. */
+async function expectDeleteLocked(reason: string) {
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Aksi lainnya' }));
+  const item = await screen.findByRole('menuitem', { name: /^Hapus/ });
+  expect(item).toHaveAttribute('aria-disabled', 'true');
+  expect(within(item).getByText(reason)).toBeInTheDocument();
+  await userEvent.keyboard('{Escape}');
+}
+
 test('akun sendiri: Nonaktifkan dan Hapus nonaktif dengan alasan', async () => {
   await renderView({
     user: { ...user, email: 'saya@x.com', status: 'active' },
   });
   expect(screen.getByRole('button', { name: 'Nonaktifkan' })).toBeDisabled();
   expect(screen.getByText('Tidak dapat menonaktifkan akun Anda sendiri')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
-  expect(screen.getByText('Tidak dapat menghapus akun Anda sendiri')).toBeInTheDocument();
+  await expectDeleteLocked('Tidak dapat menghapus akun Anda sendiri');
 });
 
 test('super admin: Nonaktifkan dan Hapus nonaktif dengan alasan', async () => {
@@ -110,8 +123,7 @@ test('super admin: Nonaktifkan dan Hapus nonaktif dengan alasan', async () => {
   });
   expect(screen.getByRole('button', { name: 'Nonaktifkan' })).toBeDisabled();
   expect(screen.getByText('Akun super admin tidak dapat dinonaktifkan')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
-  expect(screen.getByText('Akun super admin tidak dapat dihapus')).toBeInTheDocument();
+  await expectDeleteLocked('Akun super admin tidak dapat dihapus');
 });
 
 test('pengguna terhapus: banner dan hanya aksi Pulihkan', async () => {

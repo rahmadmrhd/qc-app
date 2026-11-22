@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useBackToClose } from '@/hooks/use-back-to-close';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
+import { currentListRoom, measureListRoom, setListRoom } from '@/lib/list-room';
 import { cn } from '@/lib/utils';
 
 /**
@@ -339,17 +340,27 @@ export function ComboboxBase({
   }, [showList, chips.length, phone, inline]);
 
   // Ponsel: saat daftar terbuka, gulirkan field ke bagian atas area terlihat (di bawah header menempel) agar
-  // daftar punya ruang di atas papan ketik layar. Hanya sekali per pembukaan.
+  // daftar punya ruang di atas papan ketik layar. Hanya sekali per pembukaan. Ruang gulir yang dibutuhkan agar
+  // field dapat naik dipasang di UJUNG kontainer gulir (`--list-room`, lihat `lib/list-room.ts`), bukan sebagai
+  // pengganjal di bawah field; ia dilepas saat daftar menutup.
   const scrolledFor = useRef(false);
+  const roomKey = useRef(Symbol('list-room'));
   useEffect(() => {
     if (!showList || !phone || inline) {
       scrolledFor.current = false;
+      setListRoom(roomKey.current, 0);
       return;
     }
     if (scrolledFor.current) return;
     scrolledFor.current = true;
-    anchorRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    const anchor = anchorRef.current;
+    if (anchor) setListRoom(roomKey.current, measureListRoom(anchor, currentListRoom()));
+    anchor?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
   }, [showList, phone, inline]);
+  useEffect(() => {
+    const key = roomKey.current;
+    return () => setListRoom(key, 0);
+  }, []);
 
   function close() {
     setOpen(false);
@@ -688,10 +699,6 @@ export function ComboboxBase({
         <p id={`${id}-error`} role="alert" className="text-sm text-destructive-text">
           {error}
         </p>
-      ) : null}
-      {/* Ponsel: ruang gulir tambahan setinggi daftar agar field bisa naik ke atas area terlihat. */}
-      {showList && phone && placement ? (
-        <div aria-hidden data-slot="combobox-spacer" style={{ height: placement.maxHeight + 16 }} />
       ) : null}
     </div>
   );

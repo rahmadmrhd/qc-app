@@ -3,6 +3,7 @@ import { cn } from "cn"
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
+import { DIALOG_SCROLL_ROOM, DialogListRoom } from "@/components/ui/dialog"
 import { useBackToCloseRoot } from "@/hooks/use-back-to-close"
 
 function AlertDialog({
@@ -78,8 +79,11 @@ function AlertDialogContent({
         <div
           data-slot="alert-dialog-scroll"
           className={cn(
-            "flex min-h-0 flex-1 scroll-py-20 flex-col gap-4 overflow-x-hidden overflow-y-auto p-4",
-            size === "full" && "gap-0 p-0"
+            "flex min-h-0 flex-1 scroll-py-20 flex-col overflow-x-hidden overflow-y-auto",
+            // Layar penuh: tanpa padding dan tanpa jarak, jadi tanpa ruang gulir daftar saran juga (seperti sebelumnya).
+            size === "full"
+              ? "gap-0 p-0 [--dialog-gap:0px]"
+              : cn("gap-4 p-4 [--dialog-gap:1rem]", DIALOG_SCROLL_ROOM)
           )}
         >
           {children}
@@ -110,14 +114,17 @@ function AlertDialogFooter({
   ...props
 }: React.ComponentProps<"div">) {
   return (
-    <div
-      data-slot="alert-dialog-footer"
-      className={cn(
-        "sticky -bottom-4 z-10 -mx-4 -mb-4 mt-auto flex flex-col-reverse gap-2 rounded-b-xl border-t bg-popover bg-linear-to-b from-muted/50 to-muted/50 p-4 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end",
-        className
-      )}
-      {...props}
-    />
+    <>
+      <DialogListRoom slot="alert-dialog-list-room" />
+      <div
+        data-slot="alert-dialog-footer"
+        className={cn(
+          "sticky -bottom-4 z-10 -mx-4 -mb-4 mt-auto flex flex-col-reverse gap-2 rounded-b-xl border-t bg-popover bg-linear-to-b from-muted/50 to-muted/50 p-4 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end",
+          className
+        )}
+        {...props}
+      />
+    </>
   )
 }
 

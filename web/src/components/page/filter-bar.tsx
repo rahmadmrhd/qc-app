@@ -1,6 +1,7 @@
 import { ListFilter, Search, X } from 'lucide-react';
-import { type ReactNode, useCallback, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
 import { ComboboxInlineContext } from '@/components/combobox';
+import { FilterDraftContext } from '@/components/page/filter-draft';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
@@ -73,7 +74,9 @@ export function multiFilterDisplay(labels: readonly string[]): string | null {
  * dengan tombol hapus. Menekan chip membuka kontrol filter (`children`: `LinkField`, `Select`, dst.): di ponsel
  * (< 768 px) SELALU lembar bawah, di desktop popover. Combobox di dalamnya (`ComboboxInlineContext`) merender
  * daftarnya di tempat, jadi hanya ada SATU lapisan terbuka (tanpa popover/dropdown bersarang; B2, B2c). Memilih satu
- * nilai menutup chip; mode banyak pilihan tetap terbuka.
+ * nilai menutup chip dan langsung diterapkan; kontrol banyak pilihan, tanggal, dan centang menahan perubahannya sebagai
+ * draf (`useChipDraft`) dan menerapkannya SEKALI saat chip menutup, lewat jalan apa pun (Esc, klik luar, tombol
+ * kembali, seret turun, X; R8, R9). Tombol chip menampilkan nilai lama sampai draf diterapkan.
  */
 export function FilterChip({
   label,
@@ -89,8 +92,32 @@ export function FilterChip({
   const filled = display !== undefined && display !== null && display !== '';
   const phone = useIsMobile();
   const [open, setOpen] = useState(false);
-  const inline = useMemo(() => ({ onPicked: () => setOpen(false) }), []);
-  const onOpenChange = useCallback((next: boolean) => setOpen(next), []);
+  const drafts = useRef(new Set<() => void>());
+  // Menutup = tutup dulu, lalu terapkan semua draf (tiap penguras mengosongkan drafnya sebelum memanggil komit, jadi
+  // penutupan ulang oleh navigasi ponsel lewat `runAfterOverlays` tidak mengomit dua kali).
+  const close = useCallback(() => {
+    setOpen(false);
+    for (const flush of [...drafts.current]) flush();
+  }, []);
+  const inline = useMemo(() => ({ onPicked: close }), [close]);
+  const draftApi = useMemo(
+    () => ({
+      register: (flush: () => void) => {
+        drafts.current.add(flush);
+        return () => {
+          drafts.current.delete(flush);
+        };
+      },
+    }),
+    [],
+  );
+  const onOpenChange = useCallback(
+    (next: boolean) => {
+      if (next) setOpen(true);
+      else close();
+    },
+    [close],
+  );
   const trigger = (
     <button
       type="button"
@@ -109,7 +136,9 @@ export function FilterChip({
     </button>
   );
   const body = (
-    <ComboboxInlineContext.Provider value={inline}>{children}</ComboboxInlineContext.Provider>
+    <FilterDraftContext.Provider value={draftApi}>
+      <ComboboxInlineContext.Provider value={inline}>{children}</ComboboxInlineContext.Provider>
+    </FilterDraftContext.Provider>
   );
   return (
     <div

@@ -31,6 +31,7 @@ export const EVENT_LABEL: Record<SerialEventType, string> = {
   declare_broken: 'Dinyatakan rusak',
   recheck_pass: 'Cek ulang lolos',
   recheck_fail: 'Cek ulang tidak lolos',
+  stickers_applied: 'Stiker ditempel',
 };
 
 /** Nama field pada chip perubahan (`SerialChangeDto.field`). */
@@ -58,6 +59,7 @@ export const ACTION_LABEL: Record<SerialAction, string> = {
   declare_broken: 'Nyatakan rusak',
   recheck_pass: 'Cek ulang: lolos',
   recheck_fail: 'Cek ulang: tidak lolos',
+  apply_stickers: 'Tempel stiker',
 };
 
 /**
@@ -87,12 +89,20 @@ export function legEventLabel(type: 'send' | 'receive', leg: unknown): string {
   return phrase ? `${base} ${phrase}` : base;
 }
 
-/** Tab "Pengecekan"/"Perubahan data" pada linimasa (`serials.history` `group`). */
+/**
+ * Nama pilihan filter Riwayat (`serials.history` `group`): sumber tunggal untuk label tombol dan butir menu
+ * (`TimelineSection`); label tombol mengikuti pilihan aktif.
+ */
 export const HISTORY_GROUP_LABEL = {
-  all: 'Semua',
-  checks: 'Pengecekan',
-  changes: 'Perubahan data',
+  all: 'Semua Riwayat',
+  checks: 'Riwayat Pengecekan',
+  changes: 'Riwayat Perubahan Data',
 } as const;
+
+/** "N hari" untuk durasi laporan (angka negatif dari selisih tanggal dibulatkan ke 0). */
+export function daysSpan(days: number): string {
+  return `${Math.max(0, days)} hari`;
+}
 
 /** Tahap pada baris tahap di kepala detail; tahap terakhir (Lolos/Rusak) memakai label menurut status. */
 export const STEP_ORDER = [

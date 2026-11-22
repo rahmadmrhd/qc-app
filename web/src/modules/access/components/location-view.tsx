@@ -1,4 +1,5 @@
 import type { LocationDto } from '@shared/contract';
+import { PageContent } from '@/components/page/page-container';
 import type { ViewMetaLink } from '@/components/page/view-page';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
@@ -39,12 +40,12 @@ export function LocationView({
 }: LocationViewProps) {
   if (!location) {
     return (
-      <div className="space-y-4">
+      <PageContent className="space-y-4">
         <h1 className="text-2xl font-semibold">Lokasi tidak ditemukan</h1>
         <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar lokasi
         </Button>
-      </div>
+      </PageContent>
     );
   }
   const deleted = location.deleted !== undefined;
@@ -66,6 +67,7 @@ export function LocationView({
           ? [
               {
                 id: 'restore',
+                primary: true,
                 action: 'restore',
                 busy: restorePending,
                 hidden: !(canManage && onRestore),
@@ -75,6 +77,7 @@ export function LocationView({
           : [
               {
                 id: 'edit',
+                primary: true,
                 action: 'edit',
                 label: 'Ubah',
                 hidden: !(canManage && onEdit),
@@ -82,6 +85,7 @@ export function LocationView({
               },
               {
                 id: 'status',
+                primary: true,
                 action: location.status === 'active' ? 'deactivate' : 'activate',
                 busy: statusPending,
                 hidden: !(canManage && onToggleStatus),

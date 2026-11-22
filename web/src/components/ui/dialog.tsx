@@ -62,6 +62,27 @@ function DialogOverlay({
 const FULL_ON_PHONE =
   'max-md:data-[size=full-on-phone]:top-[var(--vv-top,0px)] max-md:data-[size=full-on-phone]:left-0 max-md:data-[size=full-on-phone]:h-[var(--vvh,100dvh)] max-md:data-[size=full-on-phone]:max-h-none max-md:data-[size=full-on-phone]:w-screen max-md:data-[size=full-on-phone]:max-w-none max-md:data-[size=full-on-phone]:translate-x-0 max-md:data-[size=full-on-phone]:translate-y-0 max-md:data-[size=full-on-phone]:rounded-none max-md:data-[size=full-on-phone]:ring-0 max-md:data-[size=full-on-phone]:pt-[env(safe-area-inset-top)] max-md:data-[size=full-on-phone]:pb-[env(safe-area-inset-bottom)] max-md:data-[size=full-on-phone]:[--kb:0px]'
 
+/**
+ * Ruang gulir daftar saran combobox ponsel (`--list-room`, `lib/list-room.ts`). Sebagai padding penggulir ruang itu
+ * berada DI LUAR kotak isi, jadi footer/bar sticky (kotak penampungnya = kotak isi) ikut terangkat setinggi ruang itu
+ * dengan celah kosong di bawahnya. Maka ruangnya dipasang di dalam alur isi, tepat SEBELUM footer/bar sticky
+ * (`DialogListRoom`, dan margin atas pada bar inline): footer tetap menempel di dasar penggulir sementara field
+ * dapat digulir ke atas. Hanya dialog TANPA footer/bar sticky memakai padding bawah sebagai cadangan.
+ */
+export const DIALOG_SCROLL_ROOM =
+  'pb-[calc(1rem+var(--list-room,0px))] has-[[data-slot=dialog-footer],[data-slot=alert-dialog-footer],[data-slot=sticky-action-bar].sticky]:pb-4 [&_[data-slot=sticky-action-bar].sticky]:mt-[var(--list-room,0px)]'
+
+/** Elemen pengikut setinggi `--list-room` yang ditaruh tepat sebelum footer; nol tinggi dan tanpa jarak saat daftar tertutup. */
+function DialogListRoom({ slot = "dialog-list-room" }: { slot?: string }) {
+  return (
+    <div
+      aria-hidden
+      data-slot={slot}
+      className="pointer-events-none h-[var(--list-room,0px)] shrink-0 [[data-slot$=scroll]>&]:-mb-[var(--dialog-gap,1rem)]"
+    />
+  )
+}
+
 function DialogContent({
   className,
   children,
@@ -89,7 +110,10 @@ function DialogContent({
             (sticky) di tepi atas/bawahnya, sehingga tetap terlihat tanpa pembungkus tambahan di pemakai. */}
         <div
           data-slot="dialog-scroll"
-          className="flex min-h-0 flex-1 scroll-py-20 flex-col gap-4 overflow-x-hidden overflow-y-auto p-4"
+          className={cn(
+            "flex min-h-0 flex-1 scroll-py-20 flex-col gap-4 overflow-x-hidden overflow-y-auto p-4 [--dialog-gap:1rem]",
+            DIALOG_SCROLL_ROOM
+          )}
         >
           {children}
         </div>
@@ -137,21 +161,24 @@ function DialogFooter({
   showCloseButton?: boolean
 }) {
   return (
-    <div
-      data-slot="dialog-footer"
-      className={cn(
-        "sticky -bottom-4 z-10 -mx-4 -mb-4 mt-auto flex flex-col-reverse gap-2 rounded-b-xl border-t bg-popover bg-linear-to-b from-muted/50 to-muted/50 p-4 sm:flex-row sm:justify-end",
-        className
-      )}
-      {...props}
-    >
-      {children}
-      {showCloseButton && (
-        <DialogPrimitive.Close asChild>
-          <Button variant="outline">Close</Button>
-        </DialogPrimitive.Close>
-      )}
-    </div>
+    <>
+      <DialogListRoom />
+      <div
+        data-slot="dialog-footer"
+        className={cn(
+          "sticky -bottom-4 z-10 -mx-4 -mb-4 mt-auto flex flex-col-reverse gap-2 rounded-b-xl border-t bg-popover bg-linear-to-b from-muted/50 to-muted/50 p-4 sm:flex-row sm:justify-end",
+          className
+        )}
+        {...props}
+      >
+        {children}
+        {showCloseButton && (
+          <DialogPrimitive.Close asChild>
+            <Button variant="outline">Close</Button>
+          </DialogPrimitive.Close>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -194,6 +221,7 @@ export {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogListRoom,
   DialogOverlay,
   DialogPortal,
   DialogTitle,

@@ -10,7 +10,7 @@ import userEvent from '@testing-library/user-event';
 import { type ReactNode, useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ActiveLocationsProvider } from '@/modules/location/active-locations-context';
-import { pickLink, pickSelect } from '@/test/link-field';
+import { closeFilterChip, pickLink, pickSelect } from '@/test/link-field';
 import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
 import { type StickersFilter, StickersPage, type StickersPageProps } from './stickers-page';
@@ -302,6 +302,7 @@ test('hanya izin stok (tanpa katalog): baris dari stok, tanpa kolom/aksi katalog
   expect(screen.getByRole('button', { name: 'Stok Hijau-B' })).toBeInTheDocument();
   await openChip('Jenis');
   await pickLink(screen, 'Filter jenis', 'Segel');
+  await closeFilterChip();
   expect(screen.queryByRole('row', { name: /Hijau-B/ })).toBeNull();
   expect(screen.getByRole('row', { name: /Segel Polos/ })).toBeInTheDocument();
 });
@@ -552,6 +553,7 @@ test('filter jenis memakai nama jenis dan menyaring baris gabungan', async () =>
   await renderPage();
   await openChip('Jenis');
   await pickLink(screen, 'Filter jenis', 'Segel');
+  await closeFilterChip();
   expect(screen.queryByRole('row', { name: /Hijau-B/ })).toBeNull();
   expect(screen.getByRole('row', { name: /Segel Polos/ })).toBeInTheDocument();
   expect(screen.getByRole('row', { name: /Segel Lawas/ })).toBeInTheDocument();

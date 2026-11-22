@@ -164,6 +164,8 @@ export function QrPresetsPage({
       rowKey={(preset) => preset.id}
       columns={columns}
       label="Daftar konfigurasi default QR"
+      // Pustaka logo ada di bawah tabel pada halaman yang sama: tanpa batas tinggi viewport agar tak ada gulir bersarang.
+      fit="content"
       rowTo={(preset) => ({ to: '/qrcode/default/$presetId', params: { presetId: preset.id } })}
       selectLabel={(preset) => preset.name}
       selection={selection}

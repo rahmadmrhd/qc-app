@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { pickLink, pickSelect } from '@/test/link-field';
+import { closeFilterChip, pickLink, pickSelect } from '@/test/link-field';
 import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
 import { type CaseSearch, caseFilterOfSearch, caseSearchSchema } from '../lib/case-filter';
@@ -152,14 +152,14 @@ test('merender kolom laporan; filter bawaan = aktif (juga bagi tim servis murni)
   expect(within(first).getByText('Cisco C9200')).toBeInTheDocument();
   expect(within(first).getByText('BU1')).toBeInTheDocument();
   expect(within(first).getByText('Dilaporkan')).toBeInTheDocument();
-  expect(within(first).getByText('3 hari')).toBeInTheDocument();
+  expect(within(first).getByText('3 hari di status ini')).toBeInTheDocument();
   expect(within(first).getByText('Gudang A')).toBeInTheDocument();
   expect(within(first).getByText('Di QC')).toBeInTheDocument();
   expect(within(first).getByText('budi@x.com')).toBeInTheDocument();
   expect(within(first).getByText('Port 3 mati')).toBeInTheDocument();
   const second = rows[2] as HTMLElement;
   expect(within(second).getByText('Di servis')).toBeInTheDocument();
-  expect(within(second).getByText('Hari ini')).toBeInTheDocument();
+  expect(within(second).getByText('0 hari di status ini')).toBeInTheDocument();
   expect(within(second).getByText('—')).toBeInTheDocument();
   for (const header of [
     'Nomor LP',
@@ -168,7 +168,7 @@ test('merender kolom laporan; filter bawaan = aktif (juga bagi tim servis murni)
     'BU',
     'Status',
     'Lokasi saat ini',
-    'Lama',
+    'Durasi',
     'Pelapor',
     'Ringkasan',
   ]) {
@@ -214,11 +214,11 @@ test('filter status dan BU menjadi parameter; Semua laporan tanpa status', async
   await waitFor(() => expect(lastInput()).toEqual({}));
   await openChip('BU');
   await pickLink(screen, 'Filter BU', 'BU2 · Dua');
-  await waitFor(() => expect(lastInput()).toEqual({ buIds: ['b2'] }));
-  // Mode banyak pilihan: pilihan kedua menambah daftar.
+  // Mode banyak pilihan: pilihan kedua menambah draf; daftar baru diminta SEKALI saat chip menutup.
   await pickLink(screen, 'Filter BU', 'BU1 · Satu');
+  expect(lastInput()).toEqual({});
+  await closeFilterChip();
   await waitFor(() => expect(lastInput()).toEqual({ buIds: ['b2', 'b1'] }));
-  await userEvent.keyboard('{Escape}');
   await openChip('Status');
   await pickSelect(screen, 'Filter status laporan', 'Laporan aktif');
   await waitFor(() => expect(lastInput()).toEqual({ status: 'active', buIds: ['b2', 'b1'] }));

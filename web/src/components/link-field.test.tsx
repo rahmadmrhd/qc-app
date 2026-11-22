@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -454,7 +454,7 @@ test('placeList ponsel: offsetTop viewport (iOS) menggeser batas atas dan bawah 
   expect(place.maxHeight).toBe(Math.min(320, 560 - 332 - 12));
 });
 
-test('ponsel: membuka daftar menggulirkan field ke atas area terlihat dan menyediakan ruang gulir', async () => {
+test('ponsel: membuka daftar menggulirkan field ke atas area terlihat dan memasang ruang gulir di ujung (--list-room), bukan pengganjal', async () => {
   const media = mockMatchMedia(false);
   const listeners: Array<() => void> = [];
   const viewport = {
@@ -467,12 +467,34 @@ test('ponsel: membuka daftar menggulirkan field ke atas area terlihat dan menyed
   Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
   const scroll = vi.fn();
   window.HTMLElement.prototype.scrollIntoView = scroll;
-  render(<Single />);
+  const root = document.documentElement;
+  expect(root.style.getPropertyValue('--list-room')).toBe('');
+  const { unmount } = render(<Single />);
   await userEvent.click(screen.getByLabelText('Merk'));
   expect(await screen.findByRole('listbox')).toBeInTheDocument();
   expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' });
-  expect(document.querySelector('[data-slot="combobox-spacer"]')).not.toBeNull();
+  // R11: tak ada pengganjal di antara field; ruang gulir dipublikasikan untuk kontainer gulir.
+  expect(document.querySelector('[data-slot="combobox-spacer"]')).toBeNull();
+  expect(root.style.getPropertyValue('--list-room')).toMatch(/^\d+px$/);
+  // Daftar menutup (pilih opsi): ruang gulir dilepas.
+  await userEvent.click(screen.getByRole('option', { name: 'Alfa' }));
+  await waitFor(() => expect(root.style.getPropertyValue('--list-room')).toBe(''));
+  // Unmount saat daftar terbuka juga melepasnya.
+  await userEvent.click(screen.getByLabelText('Merk'));
+  expect(root.style.getPropertyValue('--list-room')).toMatch(/^\d+px$/);
+  unmount();
+  expect(root.style.getPropertyValue('--list-room')).toBe('');
   Reflect.deleteProperty(window, 'visualViewport');
+  media.restore();
+});
+
+test('desktop: tanpa ruang gulir (--list-room) dan tanpa pengganjal', async () => {
+  const media = mockMatchMedia(true);
+  render(<Single />);
+  await userEvent.click(screen.getByLabelText('Merk'));
+  expect(await screen.findByRole('listbox')).toBeInTheDocument();
+  expect(document.querySelector('[data-slot="combobox-spacer"]')).toBeNull();
+  expect(document.documentElement.style.getPropertyValue('--list-room')).toBe('');
   media.restore();
 });
 

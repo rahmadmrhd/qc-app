@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import { makeMe } from '@/test/make-me';
+import { clickMoreAction } from '@/test/more-actions';
 import { mountRoute } from '@/test/mount-route';
 import { Route } from './$userId';
 
@@ -128,7 +129,8 @@ test('tanpa hak manage: tanpa aksi Ubah/Hapus, dan daftar Terhapus tidak diminta
 
 test('Hapus dari View: konfirmasi, kembali ke daftar pengguna, toast "Dihapus" dengan Pulihkan', async () => {
   const { router } = await mount();
-  await userEvent.click(await screen.findByRole('button', { name: 'Hapus' }));
+  await screen.findByRole('button', { name: 'Aksi lainnya' });
+  await clickMoreAction('Hapus');
   const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 pengguna?' });
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
   await waitFor(() => expect(router.state.location.pathname).toBe('/access/users'));

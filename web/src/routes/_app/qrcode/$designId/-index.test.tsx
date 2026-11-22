@@ -16,6 +16,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { meQueryKey } from '@/modules/auth/queries';
 import { makeMe } from '@/test/make-me';
 import { mockMatchMedia } from '@/test/match-media';
+import { clickMoreAction, moreActionNames } from '@/test/more-actions';
 import { Route } from './index';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -165,7 +166,7 @@ test('?tab= di URL memilih tab; nilai tak dikenal jatuh ke Detail', async () => 
 
 test('Hapus dari View: konfirmasi, qrcodes.removeBatch, kembali ke /qrcode, toast "Dihapus" dengan Pulihkan', async () => {
   const { router } = await mount();
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  await clickMoreAction('Hapus');
   const dialog = await screen.findByRole('alertdialog');
   expect(dialog).toHaveTextContent('Memuat 1 item');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
@@ -215,6 +216,14 @@ test('Ekspor dari View membuka dialog ekspor', async () => {
   await mount();
   await userEvent.click(screen.getByRole('button', { name: 'Ekspor' }));
   expect(await screen.findByText('Dialog ekspor')).toBeInTheDocument();
+});
+
+test('aksi utama Ubah dan Ekspor tampil sebagai tombol; Hapus hanya di menu "Aksi lainnya"', async () => {
+  await mount();
+  expect(screen.getByRole('button', { name: 'Ubah' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Ekspor' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(await moreActionNames()).toEqual(['Hapus']);
 });
 
 test('?export=1 membuka dialog ekspor sekali lalu parameter dibuang', async () => {

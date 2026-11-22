@@ -155,7 +155,8 @@ test('ponsel: mode pilih mengganti bar bawah dengan bar aksi pilihan; keluar dar
   await longPress(screen.getAllByRole('listitem')[0] as HTMLElement);
   expect(screen.queryByRole('region', { name: 'Aksi form' })).toBeNull();
   expect(screen.getAllByText('1 dipilih').length).toBeGreaterThan(0);
-  await userEvent.click(screen.getByRole('button', { name: 'Batalkan pilihan' }));
+  expect(screen.queryByRole('button', { name: 'Batalkan pilihan' })).toBeNull();
+  await userEvent.keyboard('{Escape}');
   expect(await screen.findByRole('region', { name: 'Aksi form' })).toBeInTheDocument();
 });
 

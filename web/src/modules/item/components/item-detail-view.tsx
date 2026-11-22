@@ -251,16 +251,25 @@ export function ItemDetailView({
               {
                 id: 'restore',
                 action: 'restore',
+                primary: true,
                 busy: restorePending,
                 hidden: !(canRestore && onRestore),
                 onSelect: () => onRestore?.(),
               },
             ]
           : [
-              { id: 'edit', action: 'edit', label: 'Ubah', hidden: !canEdit, onSelect: onEdit },
+              {
+                id: 'edit',
+                action: 'edit',
+                label: 'Ubah',
+                primary: true,
+                hidden: !canEdit,
+                onSelect: onEdit,
+              },
               {
                 id: 'status',
                 action: item.status === 'active' ? 'deactivate' : 'activate',
+                primary: true,
                 busy: statusPending,
                 hidden: !canManage,
                 onSelect: onToggleStatus,

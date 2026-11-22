@@ -1,37 +1,9 @@
-import { Ellipsis } from 'lucide-react';
-import {
-  Children,
-  Fragment,
-  isValidElement,
-  type ReactNode,
-  useContext,
-  useEffect,
-  useRef,
-} from 'react';
+import { type ReactNode, useContext, useEffect } from 'react';
 import { ActionButton } from '@/components/action-button';
 import { BulkActiveContext } from '@/components/page/bulk-active';
 import { useSelectMode } from '@/components/page/select-mode';
-import { StickyActionBar } from '@/components/page/sticky-action-bar';
-import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { SelectModeBar } from '@/components/page/select-mode-bar';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
-
-/** Aksi utama yang ditampilkan langsung di ponsel; sisanya masuk menu "⋯". */
-const MOBILE_PRIMARY = 2;
-
-/** Meratakan anak (termasuk Fragment) menjadi daftar elemen. */
-function flatten(children: ReactNode): ReactNode[] {
-  const out: ReactNode[] = [];
-  for (const child of Children.toArray(children)) {
-    if (isValidElement(child) && child.type === Fragment) {
-      out.push(...flatten((child.props as { children?: ReactNode }).children));
-    } else {
-      out.push(child);
-    }
-  }
-  return out;
-}
 
 /**
  * Bar aksi massal; tak dirender bila belum ada baris terpilih (ponsel: juga bila belum dalam mode pilih). `busy` (dari
@@ -39,8 +11,9 @@ function flatten(children: ReactNode): ReactNode[] {
  *
  * Desktop (>= 768 px): bar di ATAS tabel (`ListPage` menaruhnya di bawah bar judul, sebelum header tabel dan ikut
  * terukur dalam `--headroom-offset`) dengan urutan Batalkan pilihan, jumlah dipilih, spacer, lalu tombol aksi.
- * Ponsel: SATU bar `fixed` di bawah layar (mode pilih tidak punya bar atas): baris pertama Batalkan pilihan, "N dipilih",
- * dan Pilih semua; baris kedua dua aksi pertama + menu "⋯" bila ada butir terpilih.
+ * Ponsel: SATU baris `fixed` di bawah layar (mode pilih tidak punya bar atas): kotak centang tri-state (semua,
+ * sebagian, kosong), "N dipilih", lalu aksi; lebih dari dua aksi = aksi pertama langsung + menu "⋯". Tanpa tombol
+ * "Batalkan pilihan": keluar lewat kosongkan kotak centang, tombol/gestur kembali, atau Escape (`SelectModeBar`).
  */
 export function BulkBar({
   count,
@@ -107,77 +80,18 @@ function PhoneBar({
   children: ReactNode;
 }) {
   const mode = useSelectMode();
-  // Pemicu mode pilih ("Pilih" di menu, tombol, tekan lama) hilang dari layar: fokus pindah ke tombol batal (M7).
-  const cancelRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    cancelRef.current?.focus({ preventScroll: true });
-  }, []);
-  const items = flatten(children);
-  const primary = items.slice(0, MOBILE_PRIMARY);
-  const rest = items.slice(MOBILE_PRIMARY);
+  // Tanpa penampung mode pilih (BulkBar di luar `ListPage`) hanya jumlah terpilih yang diketahui: kotak centang
+  // menampilkan "sebagian" dan mengklik-nya mengosongkan pilihan.
   return (
-    <StickyActionBar
-      label="Aksi massal"
+    <SelectModeBar
+      count={count}
+      allSelected={mode ? mode.allSelected : false}
+      onToggleAll={mode ? mode.toggleAll : onClear}
+      onExit={mode ? mode.exit : onClear}
       busy={busy}
-      className="flex-col items-stretch rounded-t-lg"
+      checkboxLabel={mode ? 'Pilih semua' : 'Kosongkan pilihan'}
     >
-      <div className="flex items-center gap-2">
-        <Button
-          ref={cancelRef}
-          type="button"
-          variant="ghost"
-          color="primary"
-          size="sm"
-          disabled={busy}
-          onClick={mode ? mode.exit : onClear}
-        >
-          Batalkan pilihan
-        </Button>
-        <span role="status" className="flex-1 px-1 text-sm font-medium">
-          {count} dipilih
-        </span>
-        {mode ? (
-          // biome-ignore lint/a11y/noLabelWithoutControl: Checkbox Radix adalah kontrolnya
-          <label className="flex min-h-11 items-center gap-2 pr-1 text-sm">
-            <Checkbox
-              aria-label="Pilih semua"
-              checked={mode.allSelected}
-              disabled={busy}
-              onCheckedChange={mode.toggleAll}
-            />
-            <span aria-hidden>Pilih semua</span>
-          </label>
-        ) : null}
-      </div>
-      {count > 0 ? (
-        <fieldset disabled={busy} className="m-0 flex min-w-0 items-center gap-2 border-0 p-0">
-          {primary}
-          {rest.length > 0 ? (
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  color="primary"
-                  size="icon"
-                  aria-label="Aksi lainnya"
-                >
-                  <Ellipsis aria-hidden />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="flex w-auto flex-col items-stretch gap-2 p-2">
-                {/* Portal: di luar fieldset induk, jadi dinonaktifkan sendiri selama aksi berjalan (review M1). */}
-                <fieldset
-                  disabled={busy}
-                  className="m-0 flex flex-col items-stretch gap-2 border-0 p-0"
-                >
-                  {rest}
-                </fieldset>
-              </PopoverContent>
-            </Popover>
-          ) : null}
-        </fieldset>
-      ) : null}
-    </StickyActionBar>
+      {children}
+    </SelectModeBar>
   );
 }

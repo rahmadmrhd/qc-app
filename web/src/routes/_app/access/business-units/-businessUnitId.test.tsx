@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import { makeMe } from '@/test/make-me';
+import { clickMoreAction } from '@/test/more-actions';
 import { mountRoute } from '@/test/mount-route';
 import { Route } from './$businessUnitId';
 
@@ -74,7 +75,8 @@ test('BU dimuat lewat access.businessUnits.get dan menampilkan nama', async () =
 
 test('Hapus dari View: konfirmasi menyebut pemakaian, kembali ke daftar BU dengan toast "Dihapus"', async () => {
   const { router } = await mount();
-  await userEvent.click(await screen.findByRole('button', { name: 'Hapus' }));
+  await screen.findByRole('button', { name: 'Aksi lainnya' });
+  await clickMoreAction('Hapus');
   const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 BU?' });
   expect(dialog).toHaveTextContent('Dipakai 12 item, 3 pengguna');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));

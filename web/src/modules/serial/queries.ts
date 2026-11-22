@@ -1,5 +1,6 @@
 import type { IdBatchInput } from '@shared/batch';
 import type {
+  ApplyStickersBatchInput,
   GetSerialOutput,
   ListSerialItemOptionsInput,
   ReplaceSerialProofInput,
@@ -299,6 +300,24 @@ export function useRestoreSerials() {
         queryClient,
         result.items.map((serial) => serial.id),
       ),
+  });
+}
+
+/**
+ * Tempel stiker massal (`serials.applyStickersBatch`, atomik): stok stiker terpotong dan kejadian baru muncul di tiap
+ * serial, jadi daftar, detail, riwayat, stok stiker, laporan, dan audit ditandai basi. `clientId` dibuat PEMANGGIL sekali
+ * per niat kirim dan dipakai ulang saat mengirim ulang (kunci idempoten server); jangan membuat id baru saat mengulang.
+ */
+export function useApplyStickersBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ApplyStickersBatchInput) => api('serials.applyStickersBatch', input),
+    onSuccess: (result) => {
+      markStale(queryClient, serialKeys.list, serialKeys.cases, stickerKeys.all, accessKeys.audit);
+      for (const id of result.ids) {
+        markStale(queryClient, serialKeys.one(id), serialKeys.history(id));
+      }
+    },
   });
 }
 

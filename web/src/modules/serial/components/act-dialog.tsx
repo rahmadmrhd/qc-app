@@ -99,6 +99,7 @@ const TITLE: Record<ActKind, string> = {
   receive: 'Terima unit',
   diagnosis: 'Diagnosis',
   recheck: 'Cek ulang',
+  stickers: 'Tempel stiker',
   note: 'Tambah catatan',
 };
 
@@ -145,13 +146,15 @@ function descriptionOf(kind: ActKind, receivingAtQc: boolean, noOpenReport: bool
       return noOpenReport
         ? 'Cek ulang unit ini. Kalau tidak lolos, laporan baru dibuka.'
         : 'Cek ulang unit ini. Kalau lolos, laporan ditutup; kalau tidak, laporan tetap terbuka.';
+    case 'stickers':
+      return 'Catat stiker yang baru ditempel pada unit ini. Status dan laporan tidak berubah.';
     default:
       return 'Tambahkan catatan ke riwayat Serial Number ini.';
   }
 }
 
 /**
- * Dialog update di baris Riwayat: catatan Markdown (gambar maks. `messageImagesMax`), tanggal kejadian, dan isian khas
+ * Dialog aksi alur (dibuka dari header detail Serial/Laporan atau aksi baris daftar): catatan Markdown (gambar maks. `messageImagesMax`), tanggal kejadian, dan isian khas
  * tiap aksi (tujuan servis, tahap diagnosis, hasil cek ulang + stiker yang dicentang). Aksi yang dikirim mengikuti
  * tabel transisi (`resolveAction`, sumber yang sama dengan server), jadi dialog tidak menyimpan aturan sendiri.
  */
@@ -202,9 +205,10 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
   const { locations: activeLocations } = useSerialLocations();
   // Stiker yang berlaku mengikuti BU tujuan (hasil lolos boleh memindahkan BU).
   const stickerBuId = kind === 'recheck' && result === 'pass' ? targetBu.buId : serial.buId;
+  const withStickers = kind === 'recheck' || kind === 'stickers';
   const stickerOptions = useQuery({
     ...serialStickerOptionsQueryOptions(serial.itemId, stickerBuId, serial.id),
-    enabled: kind === 'recheck' && stickerBuId !== '',
+    enabled: withStickers && stickerBuId !== '',
   });
   const { bus, loading: busLoading } = useWritableBus(kind === 'recheck');
 
@@ -224,7 +228,9 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
             : result === 'pass'
               ? 'recheck_pass'
               : 'recheck_fail'
-          : kind;
+          : kind === 'stickers'
+            ? 'apply_stickers'
+            : kind;
   const resolved = resolveAction(
     action,
     state,
@@ -293,6 +299,8 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
     (messageRequired && message.trim() === '') ||
     // Diagnosis: status wajib dipilih (tidak ada nilai bawaan).
     (kind === 'diagnosis' && stage === '') ||
+    // Tempel stiker: minimal satu stiker dicentang.
+    (kind === 'stickers' && checked.size === 0) ||
     occurredOn === '' ||
     (locationRequired && toLocation.id === '') ||
     (showBuField && targetBu.buId === '') ||
@@ -316,25 +324,24 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
     [serial.serial, serial.itemLabel, serial.buCode, stampLocation, me.name],
   );
 
-  const stickerRows: RecheckStickerRow[] =
-    kind === 'recheck'
-      ? [
-          ...serial.stickers.map((sticker) => ({
-            stickerId: sticker.stickerId,
+  const stickerRows: RecheckStickerRow[] = withStickers
+    ? [
+        ...serial.stickers.map((sticker) => ({
+          stickerId: sticker.stickerId,
+          name: sticker.name,
+          qty: sticker.qty,
+          inactive: sticker.stickerStatus === 'inactive',
+        })),
+        ...(stickerOptions.data?.stickers ?? [])
+          .filter((sticker) => !serial.stickers.some((entry) => entry.stickerId === sticker.id))
+          .map((sticker) => ({
+            stickerId: sticker.id,
             name: sticker.name,
-            qty: sticker.qty,
-            inactive: sticker.stickerStatus === 'inactive',
+            qty: 0,
+            inactive: false,
           })),
-          ...(stickerOptions.data?.stickers ?? [])
-            .filter((sticker) => !serial.stickers.some((entry) => entry.stickerId === sticker.id))
-            .map((sticker) => ({
-              stickerId: sticker.id,
-              name: sticker.name,
-              qty: 0,
-              inactive: false,
-            })),
-        ]
-      : [];
+      ]
+    : [];
 
   function buildInput(): SerialActInput {
     const common = {
@@ -380,6 +387,9 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
         return { ...common, action, ...stickerPart, ...proofPart, ...buPart };
       case 'recheck_fail':
         return { ...common, action, ...stickerPart, ...proofPart };
+      case 'apply_stickers':
+        // Tombol kirim nonaktif tanpa centang; `stickerIds` wajib di tipe, jadi daftar kosong tak pernah terkirim.
+        return { ...common, action, stickerIds };
       case 'declare_broken':
       case 'report_failure':
         return { ...common, action };
@@ -393,7 +403,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
     setFieldErrors({});
     try {
       await act.mutateAsync(buildInput());
-      toast.success('Update disimpan');
+      toast.success(kind === 'stickers' ? 'Stiker ditempel' : 'Update disimpan');
       // Foto sudah tertaut ke entri: tidak dibuang.
       onClose();
     } catch (caught) {
@@ -408,6 +418,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
       if (kind === 'send' || kind === 'receive') visible.push('toLocationId');
       if (kind === 'send') visible.push('shipmentNote');
       if (kind === 'recheck') visible.push('stickerIds', 'proofPhotoIds', 'buId');
+      if (kind === 'stickers') visible.push('stickerIds');
       const split = splitError(caught, visible);
       setFieldErrors(split.fields);
       setError(split.general);
@@ -438,7 +449,9 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
               : 'Simpan diagnosis'
             : kind === 'recheck'
               ? 'Simpan cek ulang'
-              : 'Kirim catatan';
+              : kind === 'stickers'
+                ? 'Tempel stiker'
+                : 'Kirim catatan';
   const receiveTarget = serial.transitToLocationName ?? serial.locationName;
 
   return (
@@ -585,6 +598,34 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
                 disabled={act.isPending}
               />
             </>
+          ) : null}
+          {kind === 'stickers' ? (
+            stickerOptions.isPending ? (
+              <p className="text-sm text-muted-foreground">Memuat stiker…</p>
+            ) : stickerOptions.isError ? (
+              <p role="alert" className="text-sm text-destructive-text">
+                {describeError(stickerOptions.error)}
+              </p>
+            ) : stickerRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Tidak ada stiker yang berlaku bagi item ini.
+              </p>
+            ) : (
+              <RecheckStickerList
+                rows={stickerRows}
+                checked={checked}
+                legend="Stiker yang ditempel"
+                description="Centang stiker yang baru ditempel pada unit ini. Tiap centang menambah satu stiker dan memotong stok satu di lokasi unit ini."
+                onToggle={(stickerId, on) => {
+                  const next = new Set(checked);
+                  if (on) next.add(stickerId);
+                  else next.delete(stickerId);
+                  setChecked(next);
+                }}
+                error={errorOf('stickerIds')}
+                disabled={act.isPending}
+              />
+            )
           ) : null}
           {kind === 'recheck' ? (
             <div className="space-y-1.5">

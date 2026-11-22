@@ -833,3 +833,151 @@ describe('atomisitas', () => {
     expect(Object.keys(again.error?.fields ?? {})).toContain('stickerIds');
   });
 });
+
+describe('apply_stickers: Tempel stiker (baris 15, keputusan pemilik 2026-11-22 K1)', () => {
+  test('+1 per stiker tercentang dan potong stok 1 di lokasi unit, tanpa mengubah status/posisi/laporan', async () => {
+    await seedOne();
+    const out = await act('apply_stickers', { stickerIds: ['s1'], message: 'Tempel ulang' });
+    expect(out.ok).toBe(true);
+    expect(out.data).toMatchObject({ status: 'good', custody: 'qc', locationId: 'loc-sby' });
+    expect(out.data.updatedAt).not.toBe(AT);
+    expect(await stickerQty('s1')).toBe(2);
+    expect(await stickerQty('s2')).toBe(1);
+    expect(await stock('s1', 'loc-sby')).toBe(9);
+    expect(await stock('s2', 'loc-sby')).toBe(10);
+    expect(await stock('s1', 'loc-jkt')).toBe(10);
+    const event = (await eventsOf()).at(-1);
+    expect(event).toMatchObject({ type: 'stickers_applied', message: 'Tempel ulang', case_id: '' });
+    expect(JSON.parse(event?.changes_json ?? '[]')).toEqual([
+      { field: 'stickers', from: 'Segel A ×1', to: 'Segel A ×2' },
+    ]);
+    expect(JSON.parse(event?.data_json ?? '{}')).toMatchObject({
+      locationId: 'loc-sby',
+      stickers: [{ stickerId: 's1', qtyFrom: 1, qtyTo: 2 }],
+    });
+    const entry = await env.DB.prepare(
+      "SELECT serial_event_id, delta FROM sticker_stock_entries WHERE serial_id = 'sn1'",
+    ).first<{ serial_event_id: string; delta: number | string }>();
+    expect(entry?.serial_event_id).toBe(event?.id);
+    expect(Number(entry?.delta)).toBe(-1);
+  });
+
+  test('stiker yang belum pernah ditempel tetapi berlaku bisa dicentang (qty 0 -> 1); stok boleh negatif', async () => {
+    await seedOne({ stickers: [{ stickerId: 's1', qty: 1 }] });
+    await env.DB.prepare("UPDATE sticker_stock SET qty = 0 WHERE sticker_id = 's2'").run();
+    expect((await act('apply_stickers', { stickerIds: ['s2'] })).ok).toBe(true);
+    expect(await stickerQty('s2')).toBe(1);
+    expect(await stock('s2', 'loc-sby')).toBe(-1);
+  });
+
+  test('serial Dilaporkan: kejadian ikut laporan terbuka dan laporan tetap terbuka', async () => {
+    await seedReported();
+    const out = await act('apply_stickers', { stickerIds: ['s1'] });
+    expect(out.ok).toBe(true);
+    expect(out.data).toMatchObject({ status: 'reported', openCaseId: 'case-1' });
+    expect((await eventsOf()).at(-1)).toMatchObject({
+      type: 'stickers_applied',
+      case_id: 'case-1',
+    });
+    expect((await casesOf())[0]).toMatchObject({ closed_on: '', outcome: '' });
+  });
+
+  test('tanpa stiker, atau stiker kembar/di luar daftar: VALIDATION pada stickerIds', async () => {
+    await seedOne();
+    for (const extra of [
+      {},
+      { stickerIds: [] },
+      { stickerIds: ['s1', 's1'] },
+      { stickerIds: [1] },
+    ]) {
+      const out = await act('apply_stickers', extra);
+      expect(out.error?.code).toBe('VALIDATION');
+      expect(Object.keys(out.error?.fields ?? {})).toContain('stickerIds');
+    }
+    const many = Array.from({ length: 21 }, (_, i) => `x${i}`);
+    expect((await act('apply_stickers', { stickerIds: many })).error?.code).toBe('VALIDATION');
+    expect(await stock('s1', 'loc-sby')).toBe(10);
+  });
+
+  test('field aksi lain ditolak: hasil, BU, foto bukti', async () => {
+    await seedOne();
+    for (const extra of [{ result: 'pass' }, { buId: 'bu-b' }, { proofPhotoIds: ['p1'] }]) {
+      const out = await act('apply_stickers', { stickerIds: ['s1'], ...extra });
+      expect(out.error?.code).toBe('VALIDATION');
+    }
+  });
+
+  test('stiker tidak berlaku bagi item ditolak; nonaktif ditolak, deprecated boleh; tanpa efek saat ditolak', async () => {
+    await seedSticker(env, { id: 's9', typeId: 't1', name: 'Segel Z' });
+    await seedOne();
+    const unknown = await act('apply_stickers', { stickerIds: ['s1', 's9'] });
+    expect(unknown.error?.code).toBe('VALIDATION');
+    expect(await stickerQty('s1')).toBe(1);
+    expect(await stock('s1', 'loc-sby')).toBe(10);
+    await env.DB.prepare("UPDATE stickers SET status = 'inactive' WHERE id = 's1'").run();
+    const inactive = await act('apply_stickers', { stickerIds: ['s1'] });
+    expect(inactive.error?.code).toBe('VALIDATION');
+    expect(Object.keys(inactive.error?.fields ?? {})).toContain('stickerIds');
+    await env.DB.prepare("UPDATE stickers SET status = 'deprecated' WHERE id = 's1'").run();
+    expect((await act('apply_stickers', { stickerIds: ['s1'] })).ok).toBe(true);
+    expect(await stickerQty('s1')).toBe(2);
+  });
+
+  test('status/posisi salah = CONFLICT: Rusak, dalam pengiriman', async () => {
+    await seedOne({ status: 'broken' });
+    expect((await act('apply_stickers', { stickerIds: ['s1'] })).error?.code).toBe('CONFLICT');
+    await env.DB.prepare("UPDATE serials SET status = 'recheck', custody = 'transit'").run();
+    const row = await env.DB.prepare('SELECT updated_at FROM serials WHERE id = ?')
+      .bind('sn1')
+      .first<{ updated_at: string }>();
+    expect(
+      (await act('apply_stickers', { stickerIds: ['s1'] }, { at: row?.updated_at })).error?.code,
+    ).toBe('CONFLICT');
+    expect(await stock('s1', 'loc-sby')).toBe(10);
+  });
+
+  test('pelaku tim servis atau hanya pembaca ditolak; BU di luar hak = NOT_FOUND', async () => {
+    await seedOne();
+    const svc = await act(
+      'apply_stickers',
+      { stickerIds: ['s1'] },
+      { email: SERIAL_USERS.svcEdit },
+    );
+    expect(svc.error?.code).toBe('FORBIDDEN');
+    const view = await act(
+      'apply_stickers',
+      { stickerIds: ['s1'] },
+      { email: SERIAL_USERS.viewer },
+    );
+    expect(view.ok).toBe(false);
+    await seedSerial(env, { id: 'sn-b', serial: 'BB12', buId: 'bu-b', itemId: 'i-b' });
+    const other = await act(
+      'apply_stickers',
+      { stickerIds: ['s1'] },
+      { id: 'sn-b', email: SERIAL_USERS.writer },
+    );
+    expect(other.error?.code).toBe('NOT_FOUND');
+  });
+
+  test('updated_at usang = CONFLICT basi; kirim ulang dengan stempel lama tidak memotong stok dua kali', async () => {
+    await seedOne();
+    expect((await act('apply_stickers', { stickerIds: ['s1'] })).ok).toBe(true);
+    const stale = await act('apply_stickers', { stickerIds: ['s1'] });
+    expect(stale.error?.code).toBe('CONFLICT');
+    expect(await stickerQty('s1')).toBe(2);
+    expect(await stock('s1', 'loc-sby')).toBe(9);
+  });
+
+  test('dua permintaan serentak dari stempel sama: tepat satu menang, stok terpotong sekali', async () => {
+    await seedOne();
+    const results = await Promise.all([
+      act('apply_stickers', { stickerIds: ['s1'] }),
+      act('apply_stickers', { stickerIds: ['s1'] }),
+    ]);
+    expect(results.filter((r) => r.ok)).toHaveLength(1);
+    expect(results.filter((r) => !r.ok)[0]?.error?.code).toBe('CONFLICT');
+    expect(await stickerQty('s1')).toBe(2);
+    expect(await stock('s1', 'loc-sby')).toBe(9);
+    expect((await eventsOf()).filter((e) => e.type === 'stickers_applied')).toHaveLength(1);
+  });
+});

@@ -1,4 +1,5 @@
 import type { BusinessUnitDto } from '@shared/contract';
+import { PageContent } from '@/components/page/page-container';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
@@ -33,12 +34,12 @@ export function BusinessUnitDetailView({
 }: BusinessUnitDetailViewProps) {
   if (!businessUnit) {
     return (
-      <div className="space-y-4">
+      <PageContent className="space-y-4">
         <h1 className="text-2xl font-semibold">BU tidak ditemukan</h1>
         <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar BU
         </Button>
-      </div>
+      </PageContent>
     );
   }
   const deleted = businessUnit.deleted === true;
@@ -51,6 +52,7 @@ export function BusinessUnitDetailView({
           ? [
               {
                 id: 'restore',
+                primary: true,
                 action: 'restore',
                 busy: restorePending,
                 hidden: !(canManage && onRestore),
@@ -60,6 +62,7 @@ export function BusinessUnitDetailView({
           : [
               {
                 id: 'edit',
+                primary: true,
                 action: 'edit',
                 label: 'Ubah',
                 hidden: !(canManage && onEdit),
@@ -67,6 +70,7 @@ export function BusinessUnitDetailView({
               },
               {
                 id: 'status',
+                primary: true,
                 action: businessUnit.status === 'active' ? 'deactivate' : 'activate',
                 busy: statusPending,
                 hidden: !(canManage && onToggleStatus),

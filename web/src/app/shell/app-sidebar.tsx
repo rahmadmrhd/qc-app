@@ -40,6 +40,14 @@ import { useActiveLocations } from '@/modules/location/active-locations-context'
 /** Penanda akordeon ponsel: pengguna menutup semua induk (induk aktif tak boleh membuka diri lagi). */
 const CLOSED_ALL = '__none__';
 
+/**
+ * Daftar anak induk di rentang overlay: tinggi beranimasi (grid 1fr <-> 0fr) dan `invisible` setelah tertutup, mengikuti
+ * `data-state` sidebar. Transisinya (200 ms linear) sama dengan lebar kontainer sidebar, jadi anak induk aktif lenyap
+ * serentak dengan rel menyempit, tanpa melompat dan tanpa butir yang bisa difokus di luar layar.
+ */
+const OVERLAY_SUB_CLASS =
+  'sidebar-overlay:grid sidebar-overlay:grid-rows-[1fr] sidebar-overlay:transition-[grid-template-rows,visibility] sidebar-overlay:duration-200 sidebar-overlay:ease-linear sidebar-overlay:group-data-[state=collapsed]:invisible sidebar-overlay:group-data-[state=collapsed]:grid-rows-[0fr]';
+
 const GUIDE_DOT_CLASS =
   'ml-auto size-2 shrink-0 rounded-full bg-primary group-data-[collapsible=icon]:hidden';
 
@@ -51,7 +59,7 @@ export function AppSidebar() {
   const { selectedIds } = useActiveLocations();
   const matchRoute = useMatchRoute();
   const { offers } = useOfferedGuides();
-  const { state, isMobile, setOpen } = useSidebar();
+  const { state, isMobile, overlay, setOpen } = useSidebar();
   // Induk yang dibuka pengguna (selain induk aktif): sementara, tidak disimpan, dan dikosongkan setiap rute berubah
   // (spek B11). Ponsel: akordeon.
   const pathname = useRouterState({ select: (router) => router.location.pathname });
@@ -60,7 +68,10 @@ export function AppSidebar() {
     ids: [],
   });
   const expanded = picked.path === pathname ? picked.ids : [];
-  const iconMode = state === 'collapsed' && !isMobile;
+  // Mode ikon (dropdown anak) hanya di layar lebar. Rentang overlay memakai rel yang dipotong: pohon menu TETAP sama
+  // (Collapsible) agar tak ada yang berganti seketika saat membuka/menutup; anak induk disembunyikan lewat transisi.
+  const iconMode = state === 'collapsed' && !isMobile && !overlay;
+  const rail = overlay && state === 'collapsed';
   const stack = useStackNavigation();
   const [query, setQuery] = useState('');
   const searching = isMobile && query.trim() !== '';
@@ -179,17 +190,25 @@ export function AppSidebar() {
         key={parent.id}
         asChild
         open={open}
-        onOpenChange={(next) => toggleParent(parent.id, next)}
+        onOpenChange={(next) => {
+          // Rel tertutup (rentang overlay): mengetuk induk membuka sidebar dengan induk itu terbuka; anaknya tak
+          // terlihat di rel.
+          if (rail) setOpen(true);
+          toggleParent(parent.id, rail ? true : next);
+        }}
         className="group/collapsible"
       >
         <SidebarMenuItem>
           <CollapsibleTrigger asChild>
-            <SidebarMenuButton isActive={containsActive && !open}>
+            <SidebarMenuButton
+              isActive={containsActive && (!open || rail)}
+              tooltip={overlay ? parent.label : undefined}
+            >
               {parentButtonContent}
             </SidebarMenuButton>
           </CollapsibleTrigger>
-          <CollapsibleContent>
-            <SidebarMenuSub>
+          <CollapsibleContent className={OVERLAY_SUB_CLASS}>
+            <SidebarMenuSub className="sidebar-overlay:min-h-0 sidebar-overlay:overflow-hidden">
               {parent.children.map((child) => (
                 <SidebarMenuSubItem key={child.to as string}>
                   <SidebarMenuSubButton asChild isActive={isActive(child)}>
@@ -208,8 +227,12 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader>
         <div className="truncate px-2 py-1 text-lg font-semibold group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:text-center">
-          <span className="group-data-[collapsible=icon]:hidden">QC App</span>
-          <span className="hidden group-data-[collapsible=icon]:inline">QC</span>
+          QC
+          {/* " App" memudar (rentang overlay) atau tersembunyi (mode ikon); satu elemen, tak ada teks yang bertukar. */}
+          <span className="transition-opacity duration-200 ease-linear group-data-[collapsible=icon]:hidden sidebar-overlay:group-data-[state=collapsed]:opacity-0">
+            {' '}
+            App
+          </span>
         </div>
       </SidebarHeader>
       <SidebarContent data-tour="sidebar-menu">

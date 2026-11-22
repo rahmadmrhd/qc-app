@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { AppShell } from '@/app/shell/app-shell';
 import { UiUpdateBanner } from '@/app/shell/ui-update-banner';
+import { PageContent } from '@/components/page/page-container';
 import { ApiError } from '@/lib/api/api-error';
 import { getBridge } from '@/lib/platform';
 import { canRecordSerials } from '@/modules/auth/permissions';
@@ -54,7 +55,10 @@ function CountryLockRoute() {
   if (withShell) {
     return (
       <AppShell>
-        <div className="flex justify-center">{content}</div>
+        {/* AppShell memberi lebar penuh; batas lebar konten (`pageWidth: 'default'`) dipasang di sini. */}
+        <PageContent>
+          <div className="flex justify-center">{content}</div>
+        </PageContent>
       </AppShell>
     );
   }

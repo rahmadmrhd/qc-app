@@ -146,6 +146,11 @@ const TOUR_FORWARDERS: Record<string, { file: string; props: Record<string, RegE
       saveTour: /data-tour=\{saveTour\}/,
     },
   },
+  // Aksi View di bar judul (desktop) dan bar bawah (ponsel); target panduan `serial-actions` memakainya.
+  ViewPage: {
+    file: 'components/page/view-page.tsx',
+    props: { actionsTour: /data-tour=\{actionsTour\}/ },
+  },
   Fab: { file: 'components/page/fab.tsx', props: { tour: /data-tour=\{tour\}/ } },
   HeadroomBar: { file: 'components/page/headroom-bar.tsx', props: { tour: /data-tour=\{tour\}/ } },
   LinkCell: { file: 'components/data-table/link-cell.tsx', props: { tour: /data-tour=\{tour\}/ } },

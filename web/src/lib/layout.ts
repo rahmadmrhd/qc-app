@@ -12,7 +12,10 @@ export const MAIN_MIN_WIDTH = 704;
  * Batas atas (eksklusif) rentang "sidebar overlay": pada viewport `VIEWPORT_MD` sampai di bawah angka ini sidebar yang
  * dibuka MELAYANG di atas isi (tidak mendorong) dan ruang sampingnya tetap selebar rel ikon (3 rem), sehingga lebar
  * `<main>` >= `MAIN_MIN_WIDTH` dan `useIsDesktop` tak berbalik saat sidebar dibuka/ditutup (spek B12, disetujui pemilik
- * 2026-11-22). Cermin CSS-nya = varian `sidebar-overlay` di `styles.css`, dijaga `layout.test.ts`.
+ * 2026-11-22; rel ikon dipertahankan, keputusan K3 putaran 2). Keadaan tertutupnya = rel 3 rem yang MEMOTONG isi
+ * selebar penuh (bukan mode ikon `data-collapsible="icon"`): hanya lebar kontainer, bayangan, dan opacity backdrop yang
+ * beranimasi, jadi ikon, label, dan lebar berubah serentak (R13). Cermin CSS-nya = varian `sidebar-overlay` di
+ * `styles.css`, dijaga `layout.test.ts`.
  */
 export const SIDEBAR_OVERLAY_BELOW = 960;
 /** Query media viewport lebar (>= `VIEWPORT_MD`). */

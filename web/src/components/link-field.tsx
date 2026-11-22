@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { ComboboxBase, type ComboboxCommon } from '@/components/combobox';
+import { useChipDraft } from '@/components/page/filter-draft';
 
 export type { LinkOption, ListPlacement } from '@/components/combobox';
 export { placeList } from '@/components/combobox';
@@ -38,14 +39,18 @@ export function LinkField({ value, onChange, labelOf, openHref, ...common }: Lin
   );
 }
 
-/** Pilih BANYAK record; nilai terpilih tampil sebagai chip di dalam bingkai input. */
+/**
+ * Pilih BANYAK record; nilai terpilih tampil sebagai chip di dalam bingkai input. Di dalam `FilterChip` perubahan
+ * ditahan sebagai draf dan `onChange` dipanggil sekali saat chip menutup; di luar chip seketika.
+ */
 export function LinkMultiField({
-  value,
+  value: applied,
   onChange,
   labelOf,
   openHref,
   ...common
 }: LinkMultiFieldProps): ReactNode {
+  const [value, setValue] = useChipDraft<readonly string[]>(applied, (next) => onChange([...next]));
   return (
     <ComboboxBase
       {...common}
@@ -57,8 +62,8 @@ export function LinkMultiField({
         label: labelOf(chipId),
         href: openHref?.(chipId) ?? null,
       }))}
-      onPick={(picked) => onChange([...value, picked])}
-      onRemove={(removed) => onChange(value.filter((existing) => existing !== removed))}
+      onPick={(picked) => setValue([...value, picked])}
+      onRemove={(removed) => setValue(value.filter((existing) => existing !== removed))}
     />
   );
 }

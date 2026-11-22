@@ -44,6 +44,7 @@ export const SERIAL_EVENT_TYPES = [
   'declare_broken',
   'recheck_pass',
   'recheck_fail',
+  'stickers_applied',
 ] as const;
 export type SerialEventType = (typeof SERIAL_EVENT_TYPES)[number];
 
@@ -108,8 +109,16 @@ export const SERIAL_ACTIONS = [
   'declare_broken',
   'recheck_pass',
   'recheck_fail',
+  'apply_stickers',
 ] as const;
 export type SerialAction = (typeof SERIAL_ACTIONS)[number];
+
+const APPLY_STICKERS_CLIENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** `clientId` Tempel stiker massal: UUID huruf kecil 36 karakter (`crypto.randomUUID()`), dibuat sekali per permintaan. */
+export function isApplyStickersClientId(value: string): boolean {
+  return APPLY_STICKERS_CLIENT_ID.test(value);
+}
 
 /** Tahap pada aksi `service_diagnosis`: pilihan status dialog Diagnosis (Rusak memakai aksi `declare_broken`). */
 export const SERVICE_DIAGNOSIS_STAGES = ['diagnosis', 'repairing', 'done'] as const;
@@ -160,7 +169,7 @@ export const SERIAL_HISTORY_GROUPS: {
   changes: readonly SerialEventType[];
 } = {
   checks: ['recorded', 'recheck', 'recheck_pass', 'recheck_fail'],
-  changes: ['data_changed'],
+  changes: ['data_changed', 'stickers_applied'],
 };
 
 /**

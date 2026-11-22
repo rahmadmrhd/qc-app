@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import {
   caseNumberPeriod,
+  isApplyStickersClientId,
   isIsoDate,
   listSerialsTooLong,
   normalizeSerial,
@@ -159,10 +160,17 @@ describe('serialCaseNumber dan kelompok riwayat (5b)', () => {
       'recheck_pass',
       'recheck_fail',
     ]);
-    expect([...SERIAL_HISTORY_GROUPS.changes]).toEqual(['data_changed']);
+    expect([...SERIAL_HISTORY_GROUPS.changes]).toEqual(['data_changed', 'stickers_applied']);
     for (const type of [...SERIAL_HISTORY_GROUPS.checks, ...SERIAL_HISTORY_GROUPS.changes]) {
       expect(SERIAL_EVENT_TYPES).toContain(type);
     }
+  });
+
+  test('clientId Tempel stiker massal: UUID huruf kecil', () => {
+    expect(isApplyStickersClientId('0b9f6d3e-3c5a-4f4e-9d0e-5a1b2c3d4e5f')).toBe(true);
+    expect(isApplyStickersClientId('0B9F6D3E-3C5A-4F4E-9D0E-5A1B2C3D4E5F')).toBe(false);
+    expect(isApplyStickersClientId('abc')).toBe(false);
+    expect(isApplyStickersClientId('0b9f6d3e-3c5a-4f4e-9d0e-5a1b2c3d4e5f ')).toBe(false);
   });
 
   test('batas 5b', () => {

@@ -3,6 +3,7 @@ import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, expect, test, vi } from 'vitest';
 import { mockMatchMedia } from '@/test/match-media';
+import { clickMoreAction, moreActionNames } from '@/test/more-actions';
 import { renderInRouter } from '@/test/render-in-router';
 import { StickerTypeView, type StickerTypeViewProps } from './sticker-type-view';
 
@@ -100,7 +101,10 @@ test('aksi: Ubah dan Nonaktifkan; Hapus tidak ada selama jenis Aktif', async () 
 test('jenis nonaktif: Aktifkan dan Hapus tersedia', async () => {
   const { onDelete } = await renderView({ type: { ...type, status: 'inactive' } });
   expect(screen.getByRole('button', { name: 'Aktifkan' })).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  // Hapus jarang dipakai: bukan tombol di bar, hanya di menu "Aksi lainnya".
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(await moreActionNames()).toEqual(['Hapus']);
+  await clickMoreAction('Hapus');
   expect(onDelete).toHaveBeenCalledTimes(1);
 });
 
@@ -142,7 +146,10 @@ test('ponsel (360 px): bar aksi menempel memuat aksi utama dan menu "Aksi lainny
     await renderView({ type: { ...type, status: 'inactive' } });
     const bar = screen.getByRole('region', { name: 'Aksi halaman' });
     expect(within(bar).getByRole('button', { name: 'Ubah' })).toBeInTheDocument();
+    expect(within(bar).getByRole('button', { name: 'Aktifkan' })).toBeInTheDocument();
+    expect(within(bar).queryByRole('button', { name: 'Hapus' })).toBeNull();
     expect(within(bar).getByRole('button', { name: 'Aksi lainnya' })).toBeInTheDocument();
+    expect(await moreActionNames()).toEqual(['Hapus']);
   } finally {
     media.restore();
   }

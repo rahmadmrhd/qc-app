@@ -17,6 +17,7 @@ import {
 } from '@/components/file-dialog';
 import { useBackgroundUploads } from '@/components/file-dialog/use-background-uploads';
 import { FilterBar, FilterChip } from '@/components/page/filter-bar';
+import { useChipDraft } from '@/components/page/filter-draft';
 import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
@@ -287,7 +288,7 @@ export function GuideLibraryPage({
 
 function ToggleFilter({
   label,
-  checked,
+  checked: applied,
   onChange,
 }: {
   label: string;
@@ -295,9 +296,11 @@ function ToggleFilter({
   onChange: (checked: boolean) => void;
 }) {
   const id = useId();
+  // Di dalam chip centang ditahan sebagai draf dan diterapkan saat chip menutup (R8).
+  const [checked, setChecked] = useChipDraft<boolean>(applied, onChange);
   return (
     <div className="flex items-center gap-2">
-      <Checkbox id={id} checked={checked} onCheckedChange={(value) => onChange(value === true)} />
+      <Checkbox id={id} checked={checked} onCheckedChange={(value) => setChecked(value === true)} />
       <Label htmlFor={id} className="text-sm font-normal">
         {label}
       </Label>

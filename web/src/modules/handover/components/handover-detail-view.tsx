@@ -189,6 +189,7 @@ export function HandoverDetailView({
           {
             id: 'reopen',
             action: 'reopen',
+            primary: true,
             hidden: !actions.reopen || deleted,
             busy: pending,
             onSelect: onReopen,
@@ -197,6 +198,7 @@ export function HandoverDetailView({
             id: 'edit',
             action: 'edit',
             label: 'Ubah',
+            primary: true,
             hidden: !actions.edit || deleted,
             onSelect: onEdit,
           },
@@ -216,6 +218,7 @@ export function HandoverDetailView({
           {
             id: 'restore',
             action: 'restore',
+            primary: true,
             busy: restoring,
             hidden: !canDelete || !deleted || onRestore === undefined,
             onSelect: () => onRestore?.(),

@@ -16,6 +16,7 @@ import { ApiError } from '@/lib/api/api-error';
 import { meQueryKey } from '@/modules/auth/queries';
 import { brandKeys } from '@/modules/brand/keys';
 import { makeMe } from '@/test/make-me';
+import { clickMoreAction } from '@/test/more-actions';
 import { Route } from './$brandId';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -136,7 +137,8 @@ test('merk terhapus: banner dan Pulihkan memanggil brands.restoreBatch', async (
 
 test('Hapus dari View: konfirmasi, kembali ke daftar merk, toast "Dihapus" dengan Pulihkan', async () => {
   const { router } = await mount();
-  await userEvent.click(await screen.findByRole('button', { name: 'Hapus' }));
+  await screen.findByRole('button', { name: 'Aksi lainnya' });
+  await clickMoreAction('Hapus');
   const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 merk?' });
   expect(within(dialog).getByText('Dipakai 3 item')).toBeInTheDocument();
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
@@ -164,7 +166,8 @@ test('merk tidak ditemukan (NOT_FOUND): pesan dan tombol kembali', async () => {
 
 test('Pulihkan dari toast "Dihapus" setelah navigasi tetap memberi toast sukses atau galat', async () => {
   const { router } = await mount();
-  await userEvent.click(await screen.findByRole('button', { name: 'Hapus' }));
+  await screen.findByRole('button', { name: 'Aksi lainnya' });
+  await clickMoreAction('Hapus');
   const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 merk?' });
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
   await waitFor(() => expect(router.state.location.pathname).toBe('/item/brands'));

@@ -2,6 +2,7 @@ import type { ItemDto } from '@shared/contract';
 import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+import { clickMoreAction, hasNoMoreActions, moreActionNames } from '@/test/more-actions';
 import { renderInRouter } from '@/test/render-in-router';
 
 vi.mock('@/modules/files/queries', () => ({
@@ -187,9 +188,15 @@ test('tombol aksi mengikuti izin dan memanggil handler; Hapus hanya untuk item N
   expect(onEdit).toHaveBeenCalledTimes(1);
   expect(onToggleStatus).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(hasNoMoreActions()).toBe(true);
   unmount();
   const second = await renderView({ item: { ...item, status: 'inactive' } });
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  // Hapus bukan aksi utama: tidak tampil sebagai tombol, hanya ada di menu "Aksi lainnya".
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Ubah' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Aktifkan' })).toBeInTheDocument();
+  expect(await moreActionNames()).toEqual(['Hapus']);
+  await clickMoreAction('Hapus');
   expect(second.onDelete).toHaveBeenCalledTimes(1);
 });
 

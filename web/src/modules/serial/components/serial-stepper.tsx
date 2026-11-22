@@ -1,4 +1,6 @@
+import type { SerialCaseDetailDto } from '@shared/contract';
 import type { SerialStatus } from '@shared/serials';
+import { ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { STEP_ORDER } from '../lib/labels';
 
@@ -28,6 +30,23 @@ export function stepIndexOf(status: SerialStatus, hasCases: boolean): number {
   }
 }
 
+/**
+ * Status dan penanda "pernah punya laporan" untuk `SerialStepper` dari data satu laporan: laporan terbuka = status Serial
+ * kini; laporan selesai rusak = Rusak; selesai lolos = Lolos (tahap akhir). Laporan selesai tanpa hasil (tak semestinya
+ * ada) jatuh ke status Serial kini.
+ */
+export function caseStepperState(
+  report: Pick<SerialCaseDetailDto, 'status' | 'closedOn' | 'outcome'>,
+): SerialStepperProps {
+  if (report.closedOn !== null && report.outcome === 'broken') {
+    return { status: 'broken', hasCases: true };
+  }
+  if (report.closedOn !== null && report.outcome === 'good') {
+    return { status: 'good', hasCases: true };
+  }
+  return { status: report.status, hasCases: true };
+}
+
 /** Baris tahap: Lolos → Dilaporkan → Di servis → Diagnosis → Sedang diperbaiki → Menunggu cek ulang → Lolos / Rusak. */
 export function SerialStepper({ status, hasCases }: SerialStepperProps) {
   const current = stepIndexOf(status, hasCases);
@@ -43,11 +62,6 @@ export function SerialStepper({ status, hasCases }: SerialStepperProps) {
             aria-current={active ? 'step' : undefined}
             className="flex items-center gap-1"
           >
-            {index > 0 ? (
-              <span aria-hidden className="text-muted-foreground">
-                →
-              </span>
-            ) : null}
             <span
               className={cn(
                 'rounded-full border px-2 py-0.5',
@@ -61,6 +75,9 @@ export function SerialStepper({ status, hasCases }: SerialStepperProps) {
             >
               {label}
             </span>
+            {index < STEP_ORDER.length - 1 ? (
+              <ArrowRight aria-hidden className="size-3 shrink-0 text-muted-foreground" />
+            ) : null}
           </li>
         );
       })}

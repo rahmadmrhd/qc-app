@@ -3,9 +3,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { ApiError } from '@/lib/api/api-error';
 import { itemKeys } from '@/modules/item/queries';
 import { stickerKeys } from '@/modules/sticker/keys';
 import {
+  isQrDesignGone,
   qrKeys,
   refreshQrDesign,
   useClonePreset,
@@ -208,6 +210,62 @@ test('refreshQrDesign memuat konfigurasi terbaru dan memasangnya ke daftar dan d
   expect(apiMock).toHaveBeenCalledWith('qrcodes.get', { id: 'a' });
   expect((client.getQueryData(qrKeys.list) as QrDesignDto[])[0]?.title).toBe('Baru');
   expect(client.getQueryData(qrKeys.one('a'))).toEqual(fresh);
+});
+
+test('refreshQrDesign: konfigurasi yang ternyata terhapus keluar dari daftar hidup (DTO tetap dikembalikan dan dipasang ke detail)', async () => {
+  client.setQueryData(qrKeys.list, [design('a', 'A', 't'), design('b', 'B', 't')]);
+  const gone = {
+    ...design('a', 'A', 't'),
+    deleted: { deletedAt: '2026-11-22T00:00:00.000Z', deletedBy: 'x@y.com' },
+  } as unknown as QrDesignDto;
+  apiMock.mockResolvedValue(gone);
+  expect(await refreshQrDesign(client, 'a')).toEqual(gone);
+  expect((client.getQueryData(qrKeys.list) as QrDesignDto[]).map((entry) => entry.id)).toEqual([
+    'b',
+  ]);
+  expect(client.getQueryData(qrKeys.one('a'))).toEqual(gone);
+});
+
+test('refreshQrDesign: NOT_FOUND (terhapus bagi non-manage) mengeluarkan konfigurasi dari daftar hidup dan menandai detail/terhapus basi, galat tetap dilempar', async () => {
+  client.setQueryData(qrKeys.list, [design('a', 'A', 't'), design('b', 'B', 't')]);
+  client.setQueryData(qrKeys.one('a'), design('a', 'A', 't'));
+  client.setQueryData(qrKeys.listDeleted, []);
+  apiMock.mockRejectedValue(new ApiError('NOT_FOUND', 'Tidak ditemukan', 'r1'));
+  const error = await refreshQrDesign(client, 'a').catch((caught: unknown) => caught);
+  expect(error).toMatchObject({ code: 'NOT_FOUND' });
+  expect(isQrDesignGone(error)).toBe(true);
+  expect((client.getQueryData(qrKeys.list) as QrDesignDto[]).map((entry) => entry.id)).toEqual([
+    'b',
+  ]);
+  expect(client.getQueryState(qrKeys.one('a'))?.isInvalidated).toBe(true);
+  expect(client.getQueryState(qrKeys.listDeleted)?.isInvalidated).toBe(true);
+});
+
+test('refreshQrDesign: galat lain tidak menyentuh daftar hidup', async () => {
+  client.setQueryData(qrKeys.list, [design('a', 'A', 't')]);
+  apiMock.mockRejectedValue(new ApiError('FORBIDDEN', 'Tidak boleh', 'r1'));
+  await expect(refreshQrDesign(client, 'a')).rejects.toMatchObject({ code: 'FORBIDDEN' });
+  expect((client.getQueryData(qrKeys.list) as QrDesignDto[]).map((entry) => entry.id)).toEqual([
+    'a',
+  ]);
+});
+
+test('ekspor: NOT_FOUND dari qrcodes.export ditandai konfigurasi hilang; NOT_FOUND dari qrcodes.get setelah job TIDAK', async () => {
+  const { result } = renderHook(() => useExportQrDesign(), { wrapper });
+  apiMock.mockRejectedValueOnce(new ApiError('NOT_FOUND', 'Tidak ditemukan', 'r1'));
+  const first = await result.current
+    .mutateAsync({ id: 'a' } as never)
+    .catch((caught: unknown) => caught);
+  expect(first).toMatchObject({ code: 'NOT_FOUND' });
+  expect(isQrDesignGone(first)).toBe(true);
+
+  apiMock.mockResolvedValueOnce({ jobId: 'j1' });
+  apiMock.mockRejectedValueOnce(new ApiError('NOT_FOUND', 'Tidak ditemukan', 'r2'));
+  const second = await result.current
+    .mutateAsync({ id: 'a' } as never)
+    .catch((caught: unknown) => caught);
+  expect(second).toMatchObject({ code: 'NOT_FOUND' });
+  expect(isQrDesignGone(second)).toBe(false);
 });
 
 test('unggah PDF: onUploadProgress diteruskan ke api sebagai opsi panggilan, bukan sebagai input', async () => {

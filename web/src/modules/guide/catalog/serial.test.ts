@@ -143,7 +143,13 @@ describe('panduan Serial Number', () => {
     // Target yang ada di tabel dan kartu tidak boleh `langsung`/berkartu pengganti.
     expect(select?.langsung).toBeUndefined();
     expect(select?.waitFor).toBe('serial-bulk');
-    for (const text of ['Edit', 'Hapus', 'Batalkan pilihan']) expect(bulk?.text).toContain(text);
+    // "Pilih semua" di ponsel = kotak centang bar bawah (bukan header mode pilih, yang hanya cadangan).
+    expect(select?.text).toContain('kotak centang di kiri bar bawah');
+    expect(select?.text).not.toContain('header mode pilih');
+    // Tabel (layar lebar) punya Batalkan pilihan; bar ponsel satu baris dengan kotak centang, tanpa tombol itu.
+    for (const text of ['Edit', 'Hapus', 'Batalkan pilihan', 'kotak centang', 'ponsel']) {
+      expect(bulk?.text).toContain(text);
+    }
     expect(save?.text).toContain('foto bukti kurang');
   });
 
@@ -182,13 +188,40 @@ describe('panduan Serial Number', () => {
     for (const step of steps.slice(1)) expect(step.route).toBeUndefined();
   });
 
-  test('detail: langkah menyorot isi tab ViewPage meminta tabnya dibuka (Detail untuk tahap, Riwayat untuk aksi dan linimasa)', () => {
+  test('detail: langkah menyorot isi tab ViewPage meminta tabnya dibuka (Detail untuk tahap, Riwayat untuk linimasa); aksi ada di header sehingga tanpa tab', () => {
     const tabOf = (target: string) =>
       SERIAL_DETAIL.steps
         .filter((step) => step.target === target)
         .map((step) => (typeof step.buka === 'object' ? step.buka.tab : undefined));
     expect(tabOf('serial-stepper')).toEqual(['detail']);
-    expect(tabOf('serial-actions')).toEqual(['riwayat', 'riwayat']);
+    // Aksi di bar judul tampak di semua tab: tidak perlu membuka tab Riwayat.
+    expect(tabOf('serial-actions')).toEqual([undefined, undefined]);
     expect(tabOf('serial-timeline')).toEqual(['riwayat']);
+  });
+
+  test('detail: teks aksi menyebut aksi utama di bar judul dan sisanya di Aksi lainnya (tanpa tombol Update); teks linimasa menyebut filter, bukan tab', () => {
+    const actions = SERIAL_DETAIL.steps.find((step) => step.target === 'serial-actions');
+    const timeline = SERIAL_DETAIL.steps.find((step) => step.target === 'serial-timeline');
+    for (const text of [actions?.text, actions?.teksJikaKosong]) {
+      expect(text).toContain('bar judul');
+      expect(text).toContain('Tempel stiker');
+      expect(text).toContain('Aksi lainnya');
+      expect(text).not.toContain('tombol Update');
+      expect(text).not.toContain('tab Riwayat');
+    }
+    for (const text of [timeline?.text, timeline?.teksJikaKosong]) {
+      expect(text).toContain('Riwayat Pengecekan');
+      expect(text).toContain('Riwayat Perubahan Data');
+      expect(text).not.toContain('per tab');
+    }
+    // Versi panduan tidak naik: alurnya sama, hanya letak tombol yang berubah (checklist rilis panduan).
+    expect(SERIAL_DETAIL.version).toBe(1);
+  });
+
+  test('daftar Laporan: teks tur menyebut kolom "durasi", bukan "lama"; versi panduan tidak naik', () => {
+    const text = SERIAL_LAPORAN_DAFTAR.steps.map((step) => step.text).join(' ');
+    expect(text).toContain('durasi');
+    expect(text).not.toContain('lokasi, lama');
+    expect(SERIAL_LAPORAN_DAFTAR.version).toBe(1);
   });
 });
