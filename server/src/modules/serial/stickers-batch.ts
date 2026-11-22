@@ -1,6 +1,7 @@
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { type AppError, appError, isAppError } from '@server/core/errors';
+import { statementsFor } from '@server/core/events';
 import { newId } from '@server/core/id';
 import { type PlanOutcome, runRecordBatch } from '@server/core/record-batch';
 import type { UserContext } from '@server/modules/access/context';
@@ -45,12 +46,64 @@ function withSerial(error: unknown, serial: string): unknown {
   if (error.code !== 'VALIDATION' && error.code !== 'CONFLICT' && error.code !== 'FORBIDDEN') {
     return error;
   }
-  const wrapped: AppError = appError(
-    error.code,
-    `${serial}: ${error.message}`,
-    error.fields ? { ...error.fields } : undefined,
-  );
+  // `fields` sengaja dibuang: namanya (mis. `stickerIds`) bukan field masukan batch tingkat atas, dan menyalin nilainya
+  // membuat pesan yang sama tampil dua kali di UI ("AB02: X: X").
+  const wrapped: AppError = appError(error.code, `${serial}: ${error.message}`);
   return wrapped;
+}
+
+const REPLAY_CONFLICT = 'Permintaan ini sudah dipakai';
+
+function storedStickerIds(dataJson: string): Set<string> {
+  try {
+    const data = JSON.parse(dataJson) as { stickers?: { stickerId?: unknown }[] };
+    return new Set(
+      (data.stickers ?? []).flatMap((sticker) =>
+        typeof sticker.stickerId === 'string' ? [sticker.stickerId] : [],
+      ),
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Kiriman ulang dengan `clientId` yang sudah ada harus IDENTIK (pola idempotensi batch proyek, seperti entri stok
+ * batch): kejadian tersimpan harus tepat satu per baris permintaan, milik pelaku yang sama, dengan himpunan stiker,
+ * tanggal, dan catatan yang sama. Selain itu (milik orang lain, isi berbeda, atau hanya sebagian ada) = `CONFLICT`
+ * generik. Belum ada kejadian = permintaan baru.
+ */
+async function assertReplayConsistent(
+  env: Env,
+  input: ApplyStickersBatchInput,
+  user: UserContext,
+): Promise<void> {
+  const { results } = await env.DB.prepare(
+    'SELECT serial_id, actor_id, occurred_on, message, data_json FROM serial_events WHERE client_id LIKE ?',
+  )
+    .bind(`${input.clientId}:%`)
+    .all<{
+      serial_id: string;
+      actor_id: string;
+      occurred_on: string;
+      message: string;
+      data_json: string;
+    }>();
+  if (results.length === 0) return;
+  const wanted = new Map(input.rows.map((row) => [row.id, new Set(row.stickerIds)]));
+  if (results.length !== wanted.size) throw appError('CONFLICT', REPLAY_CONFLICT);
+  for (const event of results) {
+    const stickers = wanted.get(event.serial_id.trim());
+    const stored = storedStickerIds(event.data_json);
+    const same =
+      stickers !== undefined &&
+      event.actor_id.trim() === (user.userId ?? '') &&
+      event.occurred_on.trim() === input.occurredOn &&
+      event.message === input.message &&
+      stored.size === stickers.size &&
+      [...stickers].every((stickerId) => stored.has(stickerId));
+    if (!same) throw appError('CONFLICT', REPLAY_CONFLICT);
+  }
 }
 
 export async function applyStickersBatch(
@@ -64,6 +117,8 @@ export async function applyStickersBatch(
   }
   const stickersOf = new Map(input.rows.map((row) => [row.id, row.stickerIds]));
   let attempts = 0;
+  /** Stiker yang disentuh perencana percobaan ini (dikosongkan tiap percobaan); diselesaikan sekali di akhir batch. */
+  const touched = new Set<string>();
 
   const plan = async (id: string): Promise<PlanOutcome<string>> => {
     const row = await loadSerialRow(env.DB, id);
@@ -79,7 +134,7 @@ export async function applyStickersBatch(
         .first<{ actor_id: string }>();
       if (done) {
         if (done.actor_id.trim() !== (user.userId ?? '')) {
-          throw appError('CONFLICT', 'Permintaan ini sudah dipakai');
+          throw appError('CONFLICT', REPLAY_CONFLICT);
         }
         return { unchanged: serialId };
       }
@@ -108,7 +163,10 @@ export async function applyStickersBatch(
         user,
         now,
         attempts > 1,
+        // Stiker `deprecated` dipakai sampai habis lintas serial: penonaktifannya ditunda ke akhir batch (`trailing`).
+        true,
       );
+      for (const stickerId of stickersOf.get(id) ?? []) touched.add(stickerId);
       return {
         dto: serialId,
         stmts: [
@@ -145,6 +203,7 @@ export async function applyStickersBatch(
   for (let replay = 0; ; replay++) {
     attempts = 0;
     try {
+      await assertReplayConsistent(env, input, user);
       const { items } = await runRecordBatch(
         env,
         input.rows.map((row) => row.id),
@@ -154,7 +213,14 @@ export async function applyStickersBatch(
           stale: STALE_MESSAGE,
           prepare: () => {
             attempts++;
+            touched.clear();
           },
+          trailing: () =>
+            statementsFor(env, 'serial.stickers_settled', {
+              stickerIds: [...touched],
+              actor: user.email,
+              now: nowIso(env),
+            }),
         },
       );
       return { ids: items };

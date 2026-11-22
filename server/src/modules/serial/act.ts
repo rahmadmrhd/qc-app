@@ -106,6 +106,8 @@ export async function stickerRaise(
   retried: boolean,
   /** BU yang menentukan stiker yang berlaku (bawaan BU serial; cek ulang yang memindahkan BU memakai BU tujuan). */
   buId: string = row.bu_id.trim(),
+  /** Tunda penonaktifan stiker `deprecated` ke akhir batch pemanggil (jalur batch banyak serial; pemanggil memasangnya). */
+  deferInactivate = false,
 ): Promise<StickerRaise> {
   const serialId = row.id.trim();
   const current = new Map(
@@ -165,6 +167,7 @@ export async function stickerRaise(
         picks,
         actor: user.email,
         now,
+        deferInactivate,
       })),
     );
   }
@@ -194,9 +197,22 @@ export async function stickersAppliedEffect(
   user: UserContext,
   now: string,
   retried: boolean,
+  /** Jalur batch: penonaktifan stiker `deprecated` ditunda ke akhir batch dan dipasang pemanggil (`stickers-batch.ts`). */
+  deferInactivate = false,
 ): Promise<StickersAppliedEffect> {
   if (stickerIds.length === 0) throw validationError('stickerIds', 'Pilih minimal satu stiker');
-  const raise = await stickerRaise(env, row, eventId, locationId, stickerIds, user, now, retried);
+  const raise = await stickerRaise(
+    env,
+    row,
+    eventId,
+    locationId,
+    stickerIds,
+    user,
+    now,
+    retried,
+    undefined,
+    deferInactivate,
+  );
   return {
     tail: raise.statements,
     changes: raise.changes,

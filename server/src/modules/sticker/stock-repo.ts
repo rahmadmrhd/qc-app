@@ -259,6 +259,13 @@ export function serialDeductStmts(
      * pada cek ulang (keputusan pemilik 2026-11-13: stiker nonaktif tak dapat ditambah); stiker `deprecated` lolos.
      */
     rejectInactive?: boolean;
+    /**
+     * Tunda penonaktifan otomatis stiker `deprecated` (jangan memasang `inactivateDeprecatedIfEmptyStmt`). Dipakai jalur
+     * batch yang merangkai banyak serial dalam SATU transaksi: tanpa ini, serial pertama yang menghabiskan stok stiker
+     * `deprecated` menonaktifkannya sebelum penjaga `rejectInactive` serial berikutnya, sehingga batch selalu gagal.
+     * Pemanggil WAJIB memasang `inactivateDeprecatedIfEmptyStmt` sekali per stiker di akhir batch.
+     */
+    deferInactivate?: boolean;
   },
 ): DbStatement[] {
   const merged = new Map<string, number>();
@@ -288,8 +295,10 @@ export function serialDeductStmts(
       }),
     );
   }
-  for (const [stickerId] of ordered) {
-    statements.push(inactivateDeprecatedIfEmptyStmt(db, stickerId, args.now, args.actor));
+  if (!args.deferInactivate) {
+    for (const [stickerId] of ordered) {
+      statements.push(inactivateDeprecatedIfEmptyStmt(db, stickerId, args.now, args.actor));
+    }
   }
   return statements;
 }
