@@ -45,8 +45,8 @@ const COMPONENT_EXCEPTIONS: Record<string, string> = {
     'Kartu draft Catat Serial di ponsel (< 768 px): padanan tabel draft di atas.',
   'modules/serial/components/timeline.tsx':
     'Riwayat/linimasa Serial dalam tab View: kartu kejadian, bukan daftar CRUD.',
-  'modules/serial/components/timeline-tabs.tsx':
-    'Tab linimasa dalam View Serial: tab bagian, bukan halaman.',
+  'modules/serial/components/timeline-section.tsx':
+    'Bagian linimasa dalam View Serial (dropdown jenis riwayat): bagian halaman, bukan halaman.',
   'modules/qrcode/components/logo-library-field.tsx':
     'Pustaka logo di halaman Default QR: field pilih/unggah gambar (`FilePicker`, `FileDropZone`), bukan daftar CRUD.',
 };
