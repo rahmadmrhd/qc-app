@@ -63,7 +63,7 @@ produksi dan dibahas terpisah.
    `restore.ts`.
    (c) **6d, urutan dan masa pantau:** urutan `qc_dev` (gladi pertama), staging (gladi nyata), lalu produksi. Tahap 2
    (`BINARY(16)`) hanya dimulai bila SEMUA lingkungan yang dimigrasikan lolos verifikasi, masa pantau di produksi
-   SATU MINGGU selesai tanpa masalah (pemilik memilih satu minggu, bukan dua minggu yang direkomendasikan), dan tak ada
+   DUA HARI selesai tanpa masalah (2026-11-23 sampai 2026-11-25; semula satu minggu, diperpendek pemilik produk 2026-11-23, butir 11), dan tak ada
    kode yang masih mengharapkan ID berbentuk UUID.
 
 9. **Verifikasi jumlah baris per tabel sumber dilonggarkan menjadi "tidak lebih banyak dari peta"** (diusulkan perancang,
@@ -77,9 +77,12 @@ produksi dan dibahas terpisah.
     bookmark, tab yang terbuka) membawa ID lama; pemilik tidak mau bergantung pada disiplin 9 pengguna mengosongkan state
     sebelum jendela. Lapisan menerjemahkan ID lama yang dikirim klien ke ID baru lewat tabel peta `id_ulid_map` sebelum
     validasi dan izin, sehingga semua state klien tetap berfungsi. Rancangan dan batasnya di bagian 4a. Lapisan bersifat
-    SEMENTARA: dicabut lewat PR setelah masa pantau satu minggu dan sapu akhir (bagian 4a, "Pencabutan"). Yang tetap di luar
+    SEMENTARA: dicabut lewat PR setelah masa pantau dua hari (butir 11) dan sapu akhir (bagian 4a, "Pencabutan"). Yang tetap di luar
     repo: skrip migrasi, pembuatan dan pengisian tabel `id_ulid_map`, serta penulisan ulang data. Prosedur jendela butir 3
     (pengosongan antrean dan draf) kini disarankan, bukan wajib.
+
+11. **Masa pantau produksi diperpendek dari satu minggu menjadi DUA HARI** (keputusan pemilik produk 2026-11-23, mengubah butir 8c dan bagian 6d). Masa pantau berjalan 2026-11-23 sampai 2026-11-25 (migrasi produksi selesai 2026-11-23 04:28 WIB, verifikasi lolos tanpa masalah). Pemilik tidak menyebut alasan tertulis; konteks: migrasi produksi lolos verifikasi penuh tanpa insiden dan log aplikasi bersih. Dampak yang dicatat perancang: (a) lapisan terjemahan (bagian 4a) dan tabel `id_ulid_map` dicabut lebih cepat, jadi state klien ber-ID lama yang bertahan lebih dari dua hari (draf lokal desktop, antrean offline, berkas `.qcsn`, bookmark) akan ditolak setelah pencabutan; (b) sapu akhir skrip tetap dijalankan sebelum `DROP TABLE id_ulid_map`; (c) syarat lain tahap 2 tidak berubah (semua lingkungan lolos verifikasi, tak ada kode yang mengharapkan UUID). Butir yang bertentangan (8c, bagian 4 prosedur butir 6, bagian 4a "Pencabutan", bagian 6d) sudah diubah menjadi dua hari.
+12. **Jalur migrasi skema tahap 2 dan ringkas migrasi saat pindah server** (keputusan pemilik produk 2026-11-23). Perubahan skema tahap 2 (bila dikerjakan) memakai file migrasi BARU berpenanda `-- qc:contract` seperti aturan umum, bukan menyunting migrasi lama dan bukan DDL langsung. Saat pindah ke server kantor, atas permintaan pemilik, seluruh migrasi diringkas menjadi satu migrasi dasar `CREATE`-saja yang sudah memuat skema akhir (termasuk tahap 2 bila sudah dilakukan). Rincian dan syarat: spek migrasi VPS §19 butir 25 dan `docs/deploy-vps.md` bagian 14.
 
 ## 2. Yang TIDAK diubah (sengaja)
 
@@ -190,7 +193,7 @@ proksi desktop, dan impor `.qcsn`, tanpa mengubah modul mana pun.
   terjemahan seperti permintaan biasa; peta tak pernah dikirim ke klien; paling banyak 2.000 kandidat unik per permintaan
   (dicari per 500; sisanya dibiarkan, jadi akan "tidak ditemukan" seperti ID asing); galat basis data TIDAK ditelan
   (`UNAVAILABLE` seperti rute lain), kecuali "tabel tak ada" yang berarti tak ada pekerjaan.
-- **Pencabutan:** setelah masa pantau satu minggu dan sebelum tahap 2: (1) jalankan ulang skrip migrasi sekali sebagai sapu akhir
+- **Pencabutan:** setelah masa pantau dua hari (butir 11 bagian 1) dan sebelum tahap 2: (1) jalankan ulang skrip migrasi sekali sebagai sapu akhir
   (menulis ulang sisa ID lama yang masuk lewat teks bebas), (2) `DROP TABLE id_ulid_map` (lapisan otomatis tanpa pekerjaan),
   (3) PR yang menghapus `legacy-ids.ts`, pemasangannya, dan butir 10 ini menjadi catatan sejarah.
 
@@ -217,8 +220,8 @@ proksi desktop, dan impor `.qcsn`, tanpa mengubah modul mana pun.
    cadangan ke skema baru (kriteria memilih: bagian 1 butir 8b).
 6. Setelah masa pantau: lanjut tahap 2; tabel `id_ulid_map` dibuang manual (`DROP TABLE id_ulid_map`) setelah tahap 2 selesai
    (`--revert` bergantung padanya, jadi jangan dibuang lebih awal).
-   Tahap 2 hanya dimulai bila SEMUA lingkungan yang akan dimigrasikan sudah lolos verifikasi dan masa pantau produksi satu
-   minggu selesai (bagian 1 butir 8c).
+   Tahap 2 hanya dimulai bila SEMUA lingkungan yang akan dimigrasikan sudah lolos verifikasi dan masa pantau produksi dua
+   hari selesai (bagian 1 butir 8c dan butir 11).
 
 ## 5. Risiko dan pertanyaan terbuka (menunggu keputusan pemilik)
 
@@ -330,12 +333,12 @@ Rekomendasi perancang: dump baru wajib (butir 1), jalur (i) untuk butir 2, krite
 
 ### 6d. Urutan lingkungan dan syarat tahap 2 (DITUTUP 2026-11-22)
 
-**Keputusan pemilik produk 2026-11-22: urutan dev, staging, produksi; masa pantau produksi SATU MINGGU sebelum tahap 2** (bagian 1 butir 8c).
+**Keputusan pemilik produk 2026-11-22: urutan dev, staging, produksi; masa pantau produksi SATU MINGGU sebelum tahap 2** (bagian 1 butir 8c). **DIUBAH 2026-11-23: masa pantau menjadi DUA HARI** (bagian 1 butir 11).
 
 Usulan urutan: (1) `qc_dev` lewat `bun run db:seed` (gladi pertama; tes skrip sudah berjalan di skema sementara), (2)
 staging `qc-dev.rhd.my.id` sebagai gladi nyata pada data staging, (3) produksi. Syarat memulai tahap 2 (`BINARY(16)`):
 SEMUA lingkungan yang dimigrasikan sudah lolos verifikasi, masa pantau di produksi selesai, dan tak ada kode yang masih
-mengharapkan ID berbentuk UUID. Lamanya masa pantau: satu minggu (diputuskan).
+mengharapkan ID berbentuk UUID. Lamanya masa pantau: dua hari (diputuskan 2026-11-23, semula satu minggu).
 
 ### 6e. Dua perilaku yang ditambahkan perancang di luar teks keputusan (DITUTUP 2026-11-22)
 
