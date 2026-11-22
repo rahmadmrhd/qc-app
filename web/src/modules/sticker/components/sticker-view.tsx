@@ -1,6 +1,7 @@
 import type { BusinessUnitOptionDto, StickerDto, StickerTypeDto } from '@shared/contract';
 import { formatStockQty } from '@shared/stickers';
 import { Link } from '@tanstack/react-router';
+import { PageContent } from '@/components/page/page-container';
 import {
   DetailList,
   type ViewAction,
@@ -87,12 +88,12 @@ export function StickerView({
 }: StickerViewProps) {
   if (!sticker) {
     return (
-      <div className="space-y-4">
+      <PageContent className="space-y-4">
         <h1 className="text-2xl font-semibold">Stiker tidak ditemukan</h1>
         <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar stiker
         </Button>
-      </div>
+      </PageContent>
     );
   }
   const deleted = sticker.deleted !== undefined;

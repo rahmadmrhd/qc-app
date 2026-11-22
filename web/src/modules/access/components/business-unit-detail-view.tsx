@@ -1,4 +1,5 @@
 import type { BusinessUnitDto } from '@shared/contract';
+import { PageContent } from '@/components/page/page-container';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
@@ -33,12 +34,12 @@ export function BusinessUnitDetailView({
 }: BusinessUnitDetailViewProps) {
   if (!businessUnit) {
     return (
-      <div className="space-y-4">
+      <PageContent className="space-y-4">
         <h1 className="text-2xl font-semibold">BU tidak ditemukan</h1>
         <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar BU
         </Button>
-      </div>
+      </PageContent>
     );
   }
   const deleted = businessUnit.deleted === true;

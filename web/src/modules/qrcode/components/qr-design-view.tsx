@@ -1,5 +1,6 @@
 import type { QrDesignDto, QrFileKind } from '@shared/contract';
 import { LinkCell } from '@/components/data-table';
+import { PageContent } from '@/components/page/page-container';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
@@ -106,12 +107,12 @@ export function QrDesignView({
 }: QrDesignViewProps) {
   if (!design) {
     return (
-      <div className="space-y-4">
+      <PageContent className="space-y-4">
         <h1 className="text-2xl font-semibold">Konfigurasi tidak ditemukan</h1>
         <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar
         </Button>
-      </div>
+      </PageContent>
     );
   }
   const deleted = design.deleted !== undefined;

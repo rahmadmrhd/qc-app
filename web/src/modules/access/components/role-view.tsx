@@ -1,6 +1,7 @@
 import type { RoleDto, UserDto } from '@shared/contract';
 import { LEVEL_LABELS, levelHint, MODULE_LABELS, MODULES } from '@shared/permissions';
 import { LinkCell } from '@/components/data-table';
+import { PageContent } from '@/components/page/page-container';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
@@ -52,12 +53,12 @@ export function RoleView({
 }: RoleViewProps) {
   if (!role) {
     return (
-      <div className="space-y-4">
+      <PageContent className="space-y-4">
         <h1 className="text-2xl font-semibold">Role tidak ditemukan</h1>
         <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar role
         </Button>
-      </div>
+      </PageContent>
     );
   }
   const deleted = role.deleted !== undefined;

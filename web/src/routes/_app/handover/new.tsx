@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useRef } from 'react';
 import { toast } from 'sonner';
+import { PageContent } from '@/components/page/page-container';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
@@ -60,15 +61,21 @@ function NewHandoverPage() {
   return (
     <div className="space-y-4">
       {writable.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Tidak ada lokasi aktif terpilih yang boleh Anda ubah. Pilih lokasi di header.
-        </p>
+        <PageContent>
+          <p className="text-sm text-muted-foreground">
+            Tidak ada lokasi aktif terpilih yang boleh Anda ubah. Pilih lokasi di header.
+          </p>
+        </PageContent>
       ) : options.isPending ? (
-        <Skeleton className="h-64 w-full" />
+        <PageContent>
+          <Skeleton className="h-64 w-full" />
+        </PageContent>
       ) : !formOptions ? (
-        <p role="alert" className="text-sm text-destructive-text">
-          Gagal memuat daftar customer.
-        </p>
+        <PageContent>
+          <p role="alert" className="text-sm text-destructive-text">
+            Gagal memuat daftar customer.
+          </p>
+        </PageContent>
       ) : (
         <HandoverBatchForm
           options={formOptions}

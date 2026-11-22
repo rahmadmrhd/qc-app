@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useMemo, useRef } from 'react';
 import { toast } from 'sonner';
+import { PageContent } from '@/components/page/page-container';
 import { useAfterDelete } from '@/components/page/use-after-delete';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
@@ -134,17 +135,25 @@ function HandoverDetailPage() {
   const denied = deniedScope.current === scope;
   const task = denied ? undefined : query.data;
   if ((query.isPending && readable.length > 0) || remove.isSuccess) {
-    return <Skeleton className="h-64 w-full" />;
+    return (
+      <PageContent>
+        <Skeleton className="h-64 w-full" />
+      </PageContent>
+    );
   }
   if (!task) {
     const notFound = !(query.error instanceof ApiError) || denied;
     return (
-      <p role="alert" className="text-sm text-destructive-text">
-        {notFound ? 'Task tidak ditemukan di lokasi aktif.' : 'Gagal memuat task. Coba muat ulang.'}{' '}
-        <Link to="/handover" search={listSearch} className="underline">
-          Kembali ke daftar
-        </Link>
-      </p>
+      <PageContent>
+        <p role="alert" className="text-sm text-destructive-text">
+          {notFound
+            ? 'Task tidak ditemukan di lokasi aktif.'
+            : 'Gagal memuat task. Coba muat ulang.'}{' '}
+          <Link to="/handover" search={listSearch} className="underline">
+            Kembali ke daftar
+          </Link>
+        </p>
+      </PageContent>
     );
   }
 

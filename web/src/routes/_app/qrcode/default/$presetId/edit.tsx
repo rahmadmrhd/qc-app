@@ -2,6 +2,7 @@ import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { PageContent } from '@/components/page/page-container';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
@@ -75,12 +76,14 @@ function EditQrPresetPage() {
 
   if (!preset || !loaded) {
     return (
-      <p role="alert" className="text-sm text-destructive-text">
-        Konfigurasi default tidak ditemukan.{' '}
-        <Link to="/qrcode/default" className="underline">
-          Kembali ke daftar
-        </Link>
-      </p>
+      <PageContent>
+        <p role="alert" className="text-sm text-destructive-text">
+          Konfigurasi default tidak ditemukan.{' '}
+          <Link to="/qrcode/default" className="underline">
+            Kembali ke daftar
+          </Link>
+        </p>
+      </PageContent>
     );
   }
 

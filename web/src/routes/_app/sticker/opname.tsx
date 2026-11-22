@@ -5,6 +5,7 @@ import { useCallback, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { FormPage } from '@/components/page/form-page';
+import { PageContent } from '@/components/page/page-container';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
@@ -81,21 +82,29 @@ function StickerOpnameRoute() {
 
   if (locationsWith(me, 'stickerstock', 'manage', selectedIds).length === 0) {
     return (
-      <div className="space-y-2">
+      <PageContent className="space-y-2">
         <h1 className="text-2xl font-semibold">Stok opname</h1>
         <NoLocationNotice />
         <p className="text-sm text-muted-foreground">
           Tidak ada lokasi terpilih yang dapat Anda kelola stoknya. Pilih lokasi lain di header.
         </p>
-      </div>
+      </PageContent>
     );
   }
-  if (stock.isPending) return <Skeleton className="h-64 w-full" />;
+  if (stock.isPending) {
+    return (
+      <PageContent>
+        <Skeleton className="h-64 w-full" />
+      </PageContent>
+    );
+  }
   if (stock.isError) {
     return (
-      <p role="alert" className="text-sm text-destructive-text">
-        {describeError(stock.error)}
-      </p>
+      <PageContent>
+        <p role="alert" className="text-sm text-destructive-text">
+          {describeError(stock.error)}
+        </p>
+      </PageContent>
     );
   }
 

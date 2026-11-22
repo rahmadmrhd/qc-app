@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { PageContent } from '@/components/page/page-container';
 import { useAfterDelete } from '@/components/page/use-after-delete';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
@@ -77,7 +78,13 @@ function StickerTypeViewRoute() {
   });
 
   if (query.isError && !isMissing(query.error)) throw query.error;
-  if (query.isPending) return <p className="text-sm text-muted-foreground">Memuat…</p>;
+  if (query.isPending) {
+    return (
+      <PageContent>
+        <p className="text-sm text-muted-foreground">Memuat…</p>
+      </PageContent>
+    );
+  }
 
   function toggleStatus() {
     if (!type) return;

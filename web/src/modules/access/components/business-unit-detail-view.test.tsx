@@ -79,7 +79,10 @@ test('BU terhapus: banner dan hanya aksi Pulihkan', async () => {
 
 test('BU tidak ada: pesan dan tombol kembali', async () => {
   const { onBack } = await renderView({ businessUnit: undefined });
-  expect(screen.getByRole('heading', { name: 'BU tidak ditemukan' })).toBeInTheDocument();
+  const heading = screen.getByRole('heading', { name: 'BU tidak ditemukan' });
+  expect(heading).toBeInTheDocument();
+  // Cabang status dibungkus PageContent (terpusat, berbatas lebar) seperti isi View, bukan melebar ke tepi `<main>`.
+  expect(heading.parentElement?.className).toContain('mx-auto');
   await userEvent.click(screen.getByRole('button', { name: 'Kembali ke daftar BU' }));
   expect(onBack).toHaveBeenCalledTimes(1);
 });
