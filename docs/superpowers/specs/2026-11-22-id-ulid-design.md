@@ -161,13 +161,22 @@ Kode: `server/src/core/legacy-ids.ts` (tes `legacy-ids.test.ts`), dipasang SATU 
 (validasi, izin berlokasi, handler). Satu titik pasang menutup semua rute, juga yang dipakai antrean offline, `sync-sw.js`,
 proksi desktop, dan impor `.qcsn`, tanpa mengubah modul mana pun.
 
-- **Apa yang diterjemahkan:** setiap nilai STRING (rekursif pada objek dan larik biasa, kedalaman paling banyak 20; byte dan
-  Blob dilewati) yang PERSIS berpola UUID huruf kecil (`LEGACY_UUID_PATTERN`) dan ada di `id_ulid_map.old_id` diganti
-  `new_id`. Kunci bernama `clientId` dilewati (kunci idempoten klien, bukan ID baris). ID yang tak ada di peta dibiarkan.
+- **Apa yang diterjemahkan:** nilai STRING (rekursif pada objek dan larik biasa, kedalaman paling banyak 20; byte dan Blob
+  dilewati) yang PERSIS berpola UUID huruf kecil (`LEGACY_UUID_PATTERN`), ada di `id_ulid_map.old_id`, DAN berada di bawah
+  kunci pembawa ID: `id`, `ids`, `*Id`, `*Ids` (pola `^(id|ids)$|Ids?$`; elemen larik mengikuti kunci larik itu; semua
+  parameter jalur dan properti ber-ID di `shared/contract.ts` memenuhinya). Diganti `new_id`. ID yang tak ada di peta
+  dibiarkan. **Teks bebas tidak pernah disentuh** (nomor serial, komentar, nama, Markdown), walau kebetulan persis berbentuk
+  UUID: tanpa batas ini nilai itu berubah dan lapisan menjadi oracle pemetaan UUID lama ke ULID (temuan review keamanan
+  2026-11-23; UUID v5 data lama dapat dihitung dari namespace di riwayat repo). Kunci bernama `clientId` dilewati (kunci
+  idempoten klien, bukan ID baris). Kegagalan aman: ID lama di kunci bernama lain tidak diterjemahkan (sama seperti tanpa
+  lapisan), tidak membocorkan apa pun.
 - **Yang tidak diterjemahkan (batas yang diterima):** token UUID di dalam teks bebas (mis. Markdown); ID yang sudah ditulis
   klien ke teks bebas sebelum pencabutan disapu oleh skrip yang sama (idempoten) pada sapu akhir. Token tautan laporan publik
   bertanda tangan (`serial_cases` kosong di produksi, jadi tak ada tautan beredar; bagian 5 butir 2). `Last-Event-ID` aliran
-  notifikasi desktop (kosmetik, bagian 5 butir 1 baris 5).
+  notifikasi desktop (kosmetik, bagian 5 butir 1 baris 5). Kursor halaman gabungan (`created_at~id` pada daftar Serial dan
+  papan Serah Terima): bukan UUID persis; tab yang terbuka melewati jendela dan meminta halaman berikutnya dengan kursor
+  lama dapat melewatkan atau menggandakan satu baris di batas halaman (hanya bila `created_at` sama; daftar dimuat ulang
+  otomatis). Nilai UUID di dalam ID ber-kunci bernama lain (tak ada di kontrak saat ini).
 - **Keadaan peta:** tabel dibuat dan diisi skrip operator, bukan migrasi. Lapisan mendeteksinya sendiri: tabel tak ada =
   tanpa pekerjaan; status dicek ulang paling sering tiap 30 detik. Tanpa variabel `.env` baru.
 - **Arah:** lapisan hanya aktif bila data berada di keadaan SESUDAH migrasi (ID baru). Setelah `--revert` data kembali ke UUID

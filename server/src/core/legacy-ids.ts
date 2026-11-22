@@ -7,8 +7,11 @@
 // server; lapisan ini menggantinya dengan ID baru SEBELUM validasi dan izin berlokasi, jadi state klien tetap berfungsi.
 //
 // Aturan (rinci di spek bagian 4a):
-//   - Hanya nilai STRING yang PERSIS berpola UUID dan ada di `id_ulid_map.old_id` yang diganti. Teks bebas (Markdown) dan
-//     token di dalam string tidak disentuh. Kunci `clientId` dilewati (kunci idempoten klien, bukan ID baris).
+//   - Hanya nilai STRING yang PERSIS berpola UUID, ada di `id_ulid_map.old_id`, DAN berada di bawah kunci pembawa ID
+//     (`id`, `ids`, `*Id`, `*Ids`; elemen larik mengikuti kunci larik itu) yang diganti. Teks bebas (nomor serial, komentar,
+//     nama, Markdown) tidak disentuh walau kebetulan berbentuk UUID: kalau tidak, nilai itu akan berubah dan lapisan menjadi
+//     oracle pemetaan UUID lama ke ULID (review 2026-11-23). Kunci `clientId` dilewati (kunci idempoten klien, bukan ID baris).
+//     Gagal-aman: ID lama di kunci bernama lain tak diterjemahkan (sama seperti tanpa lapisan), bukan membocorkan data.
 //   - Tabel peta tak ada = tanpa pekerjaan (keadaan sebelum migrasi). Status dicek ulang paling sering tiap 30 detik.
 //   - Hanya aktif bila data berada di keadaan SESUDAH migrasi: setelah `--revert` data kembali ke UUID tetapi peta masih
 //     ada, dan menerjemahkan UUID ke ULID yang sudah tak ada akan merusak semuanya. Arah diuji dari sampel baris peta pada
@@ -32,6 +35,11 @@ const LOOKUP_CHUNK = 500;
 const MAX_DEPTH = 20;
 /** Kunci yang nilainya BUKAN ID baris (UUID kunci idempoten klien). */
 const SKIP_KEYS: ReadonlySet<string> = new Set(['clientId']);
+/**
+ * Kunci pembawa ID baris di kontrak API: `id`, `ids`, `jobId`, `itemId`, `locationIds`, `businessUnitIds`, `proofPhotoIds`, ...
+ * (semua parameter jalur dan properti ber-ID di `shared/contract.ts` berakhiran `Id`/`Ids` atau bernama `id`/`ids`).
+ */
+const ID_KEY = /^(?:id|ids)$|Ids?$/;
 /** Batas cache hasil terjemahan per proses; peta tak berubah selama aktif, jadi cukup dikosongkan bila penuh. */
 const HIT_CACHE_MAX = 50_000;
 
@@ -65,29 +73,41 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return proto === Object.prototype || proto === null;
 }
 
-/** Kumpulkan string berpola UUID (unik, paling banyak `MAX_LEGACY_CANDIDATES`). Murni, tanpa I/O. */
-export function collectLegacyIds(value: unknown, into: Set<string>, depth = 0): void {
+/**
+ * Kumpulkan string berpola UUID yang berada di bawah kunci pembawa ID (unik, paling banyak `MAX_LEGACY_CANDIDATES`).
+ * `idKey` = apakah nilai ini (atau larik yang memuatnya) berada di bawah kunci ber-ID. Murni, tanpa I/O.
+ */
+export function collectLegacyIds(
+  value: unknown,
+  into: Set<string>,
+  depth = 0,
+  idKey = false,
+): void {
   if (into.size >= MAX_LEGACY_CANDIDATES || depth > MAX_DEPTH) return;
   if (typeof value === 'string') {
-    if (LEGACY_UUID_PATTERN.test(value)) into.add(value);
+    if (idKey && LEGACY_UUID_PATTERN.test(value)) into.add(value);
     return;
   }
   if (Array.isArray(value)) {
-    for (const item of value) collectLegacyIds(item, into, depth + 1);
+    for (const item of value) collectLegacyIds(item, into, depth + 1, idKey);
     return;
   }
   if (!isPlainRecord(value)) return;
   for (const key of Object.keys(value)) {
     if (SKIP_KEYS.has(key)) continue;
-    collectLegacyIds(value[key], into, depth + 1);
+    collectLegacyIds(value[key], into, depth + 1, ID_KEY.test(key));
   }
 }
 
-/** Ganti nilai string yang ada di `map` DI TEMPAT (struktur input milik kernel REST); mengembalikan jumlah penggantian. */
+/**
+ * Ganti nilai string ber-ID yang ada di `map` DI TEMPAT (struktur input milik kernel REST), dengan aturan kunci yang sama
+ * seperti `collectLegacyIds`; mengembalikan jumlah penggantian.
+ */
 export function replaceLegacyIds(
   value: unknown,
   map: ReadonlyMap<string, string>,
   depth = 0,
+  idKey = false,
 ): number {
   if (depth > MAX_DEPTH) return 0;
   let replaced = 0;
@@ -95,13 +115,13 @@ export function replaceLegacyIds(
     for (let i = 0; i < value.length; i++) {
       const item = value[i];
       if (typeof item === 'string') {
-        const next = map.get(item);
+        const next = idKey ? map.get(item) : undefined;
         if (next !== undefined) {
           value[i] = next;
           replaced++;
         }
       } else {
-        replaced += replaceLegacyIds(item, map, depth + 1);
+        replaced += replaceLegacyIds(item, map, depth + 1, idKey);
       }
     }
     return replaced;
@@ -110,14 +130,15 @@ export function replaceLegacyIds(
   for (const key of Object.keys(value)) {
     if (SKIP_KEYS.has(key)) continue;
     const item = value[key];
+    const isId = ID_KEY.test(key);
     if (typeof item === 'string') {
-      const next = map.get(item);
+      const next = isId ? map.get(item) : undefined;
       if (next !== undefined) {
         value[key] = next;
         replaced++;
       }
     } else {
-      replaced += replaceLegacyIds(item, map, depth + 1);
+      replaced += replaceLegacyIds(item, map, depth + 1, isId);
     }
   }
   return replaced;
