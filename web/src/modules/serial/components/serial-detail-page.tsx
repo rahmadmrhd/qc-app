@@ -2,8 +2,15 @@ import type { SerialDto, SerialEventDto, SerialProofPhotoDto } from '@shared/con
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import type { ActionKind } from '@/components/action-button';
 import { useAfterDelete } from '@/components/page/use-after-delete';
-import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
+import {
+  DetailList,
+  type ViewAction,
+  ViewMeta,
+  ViewPage,
+  ViewSection,
+} from '@/components/page/view-page';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
@@ -20,7 +27,7 @@ import { ProofReplaceProvider } from '../lib/proof-replace-context';
 import { hasPendingProof, PROOF_POLL_MS } from '../lib/proof-state';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import { serialDetailQueryOptions, useRemoveSerials, useRestoreSerials } from '../queries';
-import { ActButtons, type ActKind, canReportDamage } from './act-buttons';
+import { ActButtons, type ActKind, actButtonSpecs, canReportDamage } from './act-buttons';
 import { ActDialog } from './act-dialog';
 import { CustodyPanel } from './custody-panel';
 import { EditSerialDialog } from './edit-serial-dialog';
@@ -39,6 +46,15 @@ export interface SerialDetailPageProps {
   tab?: SerialTab | undefined;
   onTabChange?: ((tab: SerialTab) => void) | undefined;
 }
+
+/** Ikon menu ponsel per aksi alur (labelnya dari `actButtonSpecs`, jadi hanya ikon yang dipilih di sini). */
+const FLOW_MENU_ICON: Record<Exclude<ActKind, 'report'>, ActionKind> = {
+  send: 'upload',
+  receive: 'download',
+  diagnosis: 'view',
+  recheck: 'refresh',
+  note: 'edit',
+};
 
 /** Kejadian yang berarti "lolos": pencatatan awal dan cek ulang yang lolos. */
 const PASS_TYPES = new Set(['recorded', 'recheck', 'recheck_pass']);
@@ -228,6 +244,23 @@ export function SerialDetailPage({ serialId, onBack, tab, onTabChange }: SerialD
     serialActorModules(me, serial.buId),
   );
 
+  // P7: aksi alur sisanya (Kirim ke servis, Terima, Diagnosis, Cek ulang, Catatan) masuk menu "Aksi lainnya" ponsel,
+  // sebelum Hapus/Pulihkan. Desktop tak berubah: tombolnya tetap di tab Riwayat (`ActButtons`), jadi `phoneOnly`.
+  const flowItems: ViewAction[] = deleted
+    ? []
+    : actButtonSpecs(
+        { status: serial.status, custody: serial.custody },
+        serialActorModules(me, serial.buId),
+      )
+        .filter((spec) => spec.kind !== 'report')
+        .map((spec) => ({
+          id: `flow-${spec.kind}`,
+          action: FLOW_MENU_ICON[spec.kind as Exclude<ActKind, 'report'>],
+          label: spec.label,
+          phoneOnly: true,
+          onSelect: () => setActing(spec.kind),
+        }));
+
   const detailTab = (
     <div className="space-y-6">
       <div data-tour="serial-stepper">
@@ -311,6 +344,7 @@ export function SerialDetailPage({ serialId, onBack, tab, onTabChange }: SerialD
             hidden: !canWrite || deleted,
             onSelect: () => setEditing(true),
           },
+          ...flowItems,
           {
             id: 'delete',
             action: 'delete',

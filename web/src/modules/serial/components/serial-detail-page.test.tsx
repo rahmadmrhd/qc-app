@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import { linkOptionNames, pickLink } from '@/test/link-field';
+import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
 import { formatDay } from '../lib/labels';
 
@@ -1281,4 +1282,47 @@ test('serial terhapus: spanduk Terhapus dan Pulihkan (manage), tanpa Ubah data d
   await userEvent.click(restoreButtons[0] as HTMLElement);
   await waitFor(() => expect(calls('serials.restoreBatch')).toHaveLength(1));
   expect(calls('serials.restoreBatch')[0]?.[1]).toEqual({ ids: ['s1'] });
+});
+
+test('ponsel (P7): menu "Aksi lainnya" memuat aksi alur sisanya sebelum Hapus; memilih Catatan membuka dialog yang sama', async () => {
+  const media = mockMatchMedia(false);
+  window.innerWidth = 360;
+  me = manageMe();
+  await renderPage({ tab: 'detail' });
+  const bar = await screen.findByRole('region', { name: 'Aksi halaman' });
+  expect(within(bar).getByRole('button', { name: 'Lapor rusak' })).toBeInTheDocument();
+  expect(within(bar).getByRole('button', { name: 'Ubah data' })).toBeInTheDocument();
+  await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
+  const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent);
+  expect(items).toEqual(['Cek ulang', 'Catatan', 'Hapus']);
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Catatan' }));
+  expect(await screen.findByRole('dialog', { name: 'Tambah catatan' })).toBeInTheDocument();
+  media.restore();
+  window.innerWidth = 1024;
+});
+
+test('ponsel (P7): pengguna tanpa manage tetap punya menu "Aksi lainnya" berisi aksi alur (tanpa Hapus)', async () => {
+  const media = mockMatchMedia(false);
+  window.innerWidth = 360;
+  me = meWith('edit');
+  await renderPage({ tab: 'detail' });
+  const bar = await screen.findByRole('region', { name: 'Aksi halaman' });
+  await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
+  expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
+    'Cek ulang',
+    'Catatan',
+  ]);
+  media.restore();
+  window.innerWidth = 1024;
+});
+
+test('desktop: aksi alur tidak menjadi tombol di bar judul (tetap hanya di tab Riwayat)', async () => {
+  const media = mockMatchMedia(true);
+  me = manageMe();
+  await renderPage({ tab: 'detail' });
+  await screen.findByRole('heading', { name: 'ABC123' });
+  expect(screen.getByRole('button', { name: 'Lapor rusak' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Catatan' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Cek ulang' })).toBeNull();
+  media.restore();
 });
