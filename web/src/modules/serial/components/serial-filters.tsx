@@ -1,10 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { LinkField, type LinkOption } from '@/components/link-field';
-import { FilterBar, FilterChip } from '@/components/page/filter-bar';
-import { Select } from '@/components/select';
-import { liveStatusFilterOptions } from '@/components/soft-delete/status-filter';
+import { LinkMultiField, type LinkOption } from '@/components/link-field';
+import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
+import { MultiSelect } from '@/components/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -20,7 +19,9 @@ import {
   normalizeSearchText,
   SERIAL_SEARCH_MAX,
   type SerialSearch,
+  searchLists,
 } from '../lib/list-filter';
+import { toLocationOptions } from '../lib/locations';
 import {
   FEEDBACK_FLASH,
   FEEDBACK_TEXT,
@@ -29,34 +30,31 @@ import {
   useScanFeedback,
 } from '../lib/scan-feedback';
 import { useSerialLocations } from '../lib/use-serial-locations';
-import { serialItemOptionsQueryOptions } from '../queries';
+import { serialItemOptionsQueryOptions, serialItemsByIdQueryOptions } from '../queries';
 import { CameraScanButton } from './camera-scan-button';
-import { SerialLocationField } from './serial-location-field';
 
 export interface SerialFiltersProps {
   search: SerialSearch;
   onChange: (patch: Partial<SerialSearch>) => void;
-  /** Pemegang `serial: manage`: chip "Tampilan" (Hidup/Terhapus) tampil. */
+  /** Pemegang `serial: manage`: pilihan "Terhapus" tampil pada chip Status. */
   canSeeDeleted?: boolean;
 }
 
 /** Bentuk teks pencarian yang dikirim ke URL (gema URL yang sama tidak menimpa teks mentah yang sedang diedit). */
 const normalizeSearchTextValue = (value: string) => normalizeSearchText(value).text;
 
-const STATUS_FILTER_OPTIONS = [{ value: '', label: 'Semua status' }, ...STATUS_OPTIONS];
+/** Nilai khusus pada chip Status: tampilan Terhapus (param `deleted`), eksklusif terhadap status alur. */
+const DELETED_VIEW = 'deleted';
 
-const CUSTODY_FILTER_OPTIONS = [
-  { value: '', label: 'Semua posisi' },
-  ...(Object.keys(CUSTODY_LABEL) as (keyof typeof CUSTODY_LABEL)[]).map((value) => ({
-    value,
-    label: CUSTODY_LABEL[value],
-  })),
-];
+const CUSTODY_FILTER_OPTIONS = (Object.keys(CUSTODY_LABEL) as (keyof typeof CUSTODY_LABEL)[]).map(
+  (value) => ({ value, label: CUSTODY_LABEL[value] }),
+);
 
 /**
  * Filter daftar serial: pencarian banyak serial (tempel atau pindai; kolom sendiri karena `FilterBar.search` satu baris)
- * dan chip untuk BU, item, lokasi, status, posisi, tanggal uji, "Dicatat oleh saya", dan (bagi pemegang `serial: manage`)
- * tampilan Hidup/Terhapus.
+ * dan chip untuk BU, item, lokasi, status, posisi, tanggal uji, dan "Dicatat oleh saya". BU, item, lokasi, status, dan
+ * posisi multi-value (salah satu dari). Chip Status juga memuat "Terhapus" bagi pemegang `serial: manage` (menggantikan
+ * chip Tampilan; keputusan pemilik 2026-11-22): memilihnya mengosongkan status alur dan sebaliknya.
  */
 export function SerialFilters({ search, onChange, canSeeDeleted = false }: SerialFiltersProps) {
   const me = useMe();
@@ -68,12 +66,25 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
   const buOptions: LinkOption[] = (me.businessUnits ?? [])
     .filter((bu) => !bu.deleted && readableBuIds.has(bu.id))
     .map((bu) => ({ id: bu.id, label: `${bu.code} · ${bu.name}` }));
+  const lists = searchLists(search);
   const [itemTerm, setItemTerm] = useState('');
   const { data, isFetching } = useQuery(serialItemOptionsQueryOptions(itemTerm.trim()));
   const itemOptions: LinkOption[] = (data?.items ?? []).map((item) => ({
     id: item.id,
     label: item.label,
   }));
+  // Label item terpilih: dari opsi yang pernah dimuat (diingat selama halaman terbuka), label tautan lama, atau dimuat
+  // menurut id (setelah muat ulang halaman). Tanpa label tersimpan di URL.
+  const itemLabels = useRef(new Map<string, string>());
+  for (const option of itemOptions) itemLabels.current.set(option.id, option.label);
+  if (search.item && search.itemLabel) itemLabels.current.set(search.item, search.itemLabel);
+  const unlabeled = lists.itemIds.filter((id) => !itemLabels.current.has(id));
+  const byId = useQuery({
+    ...serialItemsByIdQueryOptions(unlabeled.slice(0, 50)),
+    enabled: unlabeled.length > 0,
+  });
+  for (const item of byId.data?.items ?? []) itemLabels.current.set(item.id, item.label);
+  const itemLabel = (id: string) => itemLabels.current.get(id) ?? 'Item tidak dikenal';
   const [text, setText] = useUrlSyncedText(
     search.sn ?? '',
     (value) => onChange({ sn: normalizeSearchText(value).text || undefined }),
@@ -118,9 +129,14 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
   const { locations: knownLocations } = useSerialLocations();
   const buLabel = (id: string) =>
     buOptions.find((option) => option.id === id)?.label ?? 'BU tidak dikenal';
+  const locationOptions = toLocationOptions(knownLocations);
   const locationName = (id: string) =>
-    knownLocations.find((location) => location.id === id)?.name ?? 'Lokasi tidak dikenal';
-  const viewOptions = liveStatusFilterOptions(canSeeDeleted);
+    locationOptions.find((option) => option.id === id)?.label ?? 'Lokasi tidak dikenal';
+  const statusOptions = [
+    ...STATUS_OPTIONS,
+    ...(canSeeDeleted ? [{ value: DELETED_VIEW, label: 'Terhapus' }] : []),
+  ];
+  const statusValue = search.deleted && canSeeDeleted ? [DELETED_VIEW] : lists.statuses;
   const dateDisplay =
     search.from || search.to
       ? `${search.from ? formatDay(search.from) : '…'} – ${search.to ? formatDay(search.to) : '…'}`
@@ -186,21 +202,24 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
       <FilterBar>
         <FilterChip
           label="BU"
-          display={search.bu ? buLabel(search.bu) : null}
-          onClear={() => onChange({ bu: undefined })}
+          display={multiFilterDisplay(lists.buIds.map(buLabel))}
+          onClear={() => onChange({ buIds: undefined, bu: undefined })}
         >
-          <LinkField
+          <LinkMultiField
             id="serial-filter-bu"
             label="Filter BU"
             hideLabel
             placeholder="Semua BU"
             localFilter
-            value={search.bu ?? null}
+            highlight
+            value={lists.buIds}
             labelOf={buLabel}
             options={buOptions}
-            onChange={(id) => onChange({ bu: id ?? undefined })}
+            onChange={(next) =>
+              onChange({ buIds: next.length > 0 ? next : undefined, bu: undefined })
+            }
           />
-          {search.bu ? (
+          {lists.buIds.length > 0 ? (
             <p className="mt-1 text-xs text-muted-foreground">
               Termasuk serial yang pernah di BU ini.
             </p>
@@ -208,72 +227,100 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
         </FilterChip>
         <FilterChip
           label="Item"
-          display={search.item ? (search.itemLabel ?? search.item) : null}
-          onClear={() => onChange({ item: undefined, itemLabel: undefined })}
+          display={multiFilterDisplay(lists.itemIds.map(itemLabel))}
+          onClear={() => onChange({ itemIds: undefined, item: undefined, itemLabel: undefined })}
         >
-          <LinkField
+          <LinkMultiField
             id="serial-filter-item"
             label="Filter item"
             hideLabel
             placeholder="Semua item"
-            value={search.item ?? null}
-            labelOf={(id) => (id === search.item ? (search.itemLabel ?? id) : id)}
+            value={lists.itemIds}
+            labelOf={itemLabel}
             options={itemOptions}
             loading={isFetching && data === undefined}
             hasMore={data?.nextCursor != null}
             onSearchChange={setItemTerm}
             searchDebounceMs={200}
-            onChange={(id) =>
+            onChange={(next) =>
               onChange({
-                item: id ?? undefined,
-                itemLabel: id === null ? undefined : itemOptions.find((o) => o.id === id)?.label,
+                itemIds: next.length > 0 ? next : undefined,
+                item: undefined,
+                itemLabel: undefined,
               })
             }
           />
         </FilterChip>
         <FilterChip
           label="Lokasi"
-          display={search.loc ? locationName(search.loc) : null}
-          onClear={() => onChange({ loc: undefined })}
+          display={multiFilterDisplay(lists.locationIds.map(locationName))}
+          onClear={() => onChange({ locationIds: undefined, loc: undefined })}
         >
-          <SerialLocationField
+          <LinkMultiField
             id="serial-filter-location"
             label="Filter lokasi"
             hideLabel
             placeholder="Semua lokasi"
-            value={search.loc ?? ''}
-            onChange={(id) => onChange({ loc: id === '' ? undefined : id })}
-          />
-        </FilterChip>
-        <FilterChip
-          label="Status"
-          display={search.status ? STATUS_LABEL[search.status] : null}
-          onClear={() => onChange({ status: undefined })}
-        >
-          <Select
-            id="serial-filter-status"
-            label="Filter status"
-            hideLabel
-            options={STATUS_FILTER_OPTIONS}
-            value={search.status ?? ''}
-            onValueChange={(next) =>
-              onChange({ status: next === '' ? undefined : (next as SerialSearch['status']) })
+            localFilter
+            highlight
+            value={lists.locationIds}
+            labelOf={locationName}
+            options={locationOptions}
+            onChange={(next) =>
+              onChange({ locationIds: next.length > 0 ? next : undefined, loc: undefined })
             }
           />
         </FilterChip>
         <FilterChip
-          label="Posisi"
-          display={search.custody ? CUSTODY_LABEL[search.custody] : null}
-          onClear={() => onChange({ custody: undefined })}
+          label="Status"
+          display={
+            search.deleted && canSeeDeleted
+              ? 'Terhapus'
+              : multiFilterDisplay(lists.statuses.map((status) => STATUS_LABEL[status]))
+          }
+          onClear={() => onChange({ statuses: undefined, status: undefined, deleted: undefined })}
         >
-          <Select
+          <MultiSelect
+            id="serial-filter-status"
+            label="Filter status"
+            hideLabel
+            placeholder="Semua status"
+            options={statusOptions}
+            value={statusValue}
+            onValueChange={(next) => {
+              // "Terhapus" eksklusif: dipilih belakangan = hanya Terhapus; status alur dipilih belakangan = tanpa Terhapus.
+              const deletedNow = next.includes(DELETED_VIEW);
+              const wasDeleted = search.deleted === true;
+              if (deletedNow && !wasDeleted) {
+                onChange({ deleted: true, statuses: undefined, status: undefined });
+                return;
+              }
+              const statuses = next.filter((value) => value !== DELETED_VIEW);
+              onChange({
+                deleted: undefined,
+                statuses: statuses.length > 0 ? (statuses as SerialSearch['statuses']) : undefined,
+                status: undefined,
+              });
+            }}
+          />
+        </FilterChip>
+        <FilterChip
+          label="Posisi"
+          display={multiFilterDisplay(lists.custodies.map((custody) => CUSTODY_LABEL[custody]))}
+          onClear={() => onChange({ custodies: undefined, custody: undefined })}
+        >
+          <MultiSelect
             id="serial-filter-custody"
             label="Filter posisi"
             hideLabel
+            placeholder="Semua posisi"
             options={CUSTODY_FILTER_OPTIONS}
-            value={search.custody ?? ''}
+            value={lists.custodies}
             onValueChange={(next) =>
-              onChange({ custody: next === '' ? undefined : (next as SerialSearch['custody']) })
+              onChange({
+                custodies: next.length > 0 ? (next as SerialSearch['custodies']) : undefined,
+                custody: undefined,
+              })
             }
           />
         </FilterChip>
@@ -323,22 +370,6 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
             </Label>
           </div>
         </FilterChip>
-        {viewOptions.length > 0 ? (
-          <FilterChip
-            label="Tampilan"
-            display={search.deleted ? 'Terhapus' : null}
-            onClear={() => onChange({ deleted: undefined })}
-          >
-            <Select
-              id="serial-filter-view"
-              label="Filter tampilan"
-              hideLabel
-              options={viewOptions}
-              value={search.deleted ? 'deleted' : 'live'}
-              onValueChange={(next) => onChange({ deleted: next === 'deleted' ? true : undefined })}
-            />
-          </FilterChip>
-        ) : null}
       </FilterBar>
     </div>
   );

@@ -36,15 +36,51 @@ test('filterOfSearch: satu serial = query, banyak = serials, filter lain diterus
   expect(filterOfSearch({})).toEqual({});
   expect(filterOfSearch({ sn: 'abc' })).toEqual({ query: 'ABC' });
   expect(filterOfSearch({ sn: 'a1\nb2' })).toEqual({ serials: 'A1\nB2' });
+  // Param tunggal lama (tautan View item/lokasi) dibaca sebagai daftar berisi satu nilai.
   expect(
     filterOfSearch({ item: 'i1', loc: 'l1', status: 'good', from: '2026-11-01', to: '2026-11-30' }),
   ).toEqual({
-    itemId: 'i1',
-    locationId: 'l1',
-    status: 'good',
+    itemIds: ['i1'],
+    locationIds: ['l1'],
+    statuses: ['good'],
     from: '2026-11-01',
     to: '2026-11-30',
   });
+});
+
+test('filterOfSearch: param jamak diteruskan sebagai daftar dan menang atas param tunggal lama', () => {
+  expect(
+    filterOfSearch({
+      buIds: ['b1', 'b2'],
+      itemIds: ['i1', 'i2'],
+      locationIds: ['l1'],
+      statuses: ['good', 'reported'],
+      custodies: ['qc', 'transit'],
+      bu: 'b9',
+      item: 'i9',
+      status: 'broken',
+    }),
+  ).toEqual({
+    buIds: ['b1', 'b2'],
+    itemIds: ['i1', 'i2'],
+    locationIds: ['l1'],
+    statuses: ['good', 'reported'],
+    custodies: ['qc', 'transit'],
+  });
+});
+
+test('serialSearchSchema: larik jamak sah dibaca, nilai enum tak sah membuang seluruh larik (bukan galat)', () => {
+  expect(
+    serialSearchSchema.parse({ statuses: ['good', 'reported'], buIds: ['b1'], custodies: ['qc'] }),
+  ).toEqual({ statuses: ['good', 'reported'], buIds: ['b1'], custodies: ['qc'] });
+  expect(
+    serialSearchSchema.parse({ statuses: ['good', 'ngawur'], itemIds: 'bukan-larik' }),
+  ).toEqual({});
+});
+
+test('filterOfSearch: deleted hanya berlaku bagi pemegang manage; daftar status ikut apa adanya', () => {
+  expect(filterOfSearch({ deleted: true }, undefined, true)).toEqual({ deleted: true });
+  expect(filterOfSearch({ deleted: true }, undefined, false)).toEqual({});
 });
 
 test('normalizeSearchText: serial panjang non-ASCII dipotong menurut listSerialsTooLong (fungsi bersama dengan server)', () => {
@@ -176,8 +212,8 @@ describe('commitSearchLine', () => {
 
 test('filter BU, posisi, dan "Dicatat oleh saya" masuk masukan serials.list; schema membuang nilai tak sah', () => {
   expect(filterOfSearch({ bu: 'b1', custody: 'transit' })).toEqual({
-    buId: 'b1',
-    custody: 'transit',
+    buIds: ['b1'],
+    custodies: ['transit'],
   });
   // Sakelar mine hanya bermakna bersama email akun.
   expect(filterOfSearch({ mine: true }, 'a@x.com')).toEqual({ createdBy: 'a@x.com' });

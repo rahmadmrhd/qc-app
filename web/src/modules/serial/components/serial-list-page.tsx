@@ -78,7 +78,7 @@ const DELETE_USAGE =
 /**
  * Daftar serial (kit CRUD): kolom [checkbox][Aksi][Serial → View][Item][BU][Lokasi][Tanggal uji][Status][Posisi][Sample].
  * Checkbox dan Hapus/Pulihkan massal hanya bagi pemegang `serial: manage` (tanpa ubah massal, keputusan 13); tampilan
- * Terhapus lewat chip "Tampilan". Filter ada di URL; di ponsel baris menjadi kartu.
+ * Terhapus lewat pilihan "Terhapus" pada chip Status. Filter ada di URL; di ponsel baris menjadi kartu.
  */
 export function SerialListPage({ search, onSearchChange, onNew }: SerialListPageProps) {
   const me = useMe();
@@ -307,12 +307,12 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
   const filtered =
     filter.query !== undefined ||
     filter.serials !== undefined ||
-    filter.itemId !== undefined ||
-    filter.locationId !== undefined ||
-    filter.buId !== undefined ||
-    filter.custody !== undefined ||
+    filter.itemIds !== undefined ||
+    filter.locationIds !== undefined ||
+    filter.buIds !== undefined ||
+    filter.custodies !== undefined ||
     filter.createdBy !== undefined ||
-    filter.status !== undefined ||
+    filter.statuses !== undefined ||
     filter.from !== undefined ||
     filter.to !== undefined ||
     deletedView;
@@ -390,13 +390,19 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
 /** Menghapus semua filter dan pencarian (tampilan Terhapus ikut kembali ke Hidup). */
 const CLEAR_FILTERS: Partial<SerialSearch> = {
   sn: undefined,
+  itemIds: undefined,
+  locationIds: undefined,
+  buIds: undefined,
+  custodies: undefined,
+  statuses: undefined,
+  // Param tunggal lama (tautan) ikut dibuang.
   item: undefined,
   itemLabel: undefined,
   loc: undefined,
   bu: undefined,
   custody: undefined,
-  mine: undefined,
   status: undefined,
+  mine: undefined,
   deleted: undefined,
   from: undefined,
   to: undefined,
