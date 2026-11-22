@@ -1,8 +1,12 @@
 import type { UserDto } from '@shared/contract';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { renderInRouter } from '@/test/render-in-router';
+
+const apiMock = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/api', () => ({ api: apiMock }));
+
 import { makeAssignmentLabels } from '../lib/assignment-labels';
 import { UserView, type UserViewProps } from './user-view';
 
@@ -125,4 +129,25 @@ test('pengguna tidak ada: pesan dan tombol kembali', async () => {
   expect(screen.getByRole('heading', { name: 'Pengguna tidak ditemukan' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Kembali ke daftar pengguna' }));
   expect(onBack).toHaveBeenCalled();
+});
+
+test('panel kanan memuat log aktivitas pengguna (kind user)', async () => {
+  apiMock.mockResolvedValue({
+    entries: [
+      {
+        id: '9',
+        ts: '2026-11-21T03:00:00.000Z',
+        actor: 'admin@x.com',
+        action: 'user.update',
+        changedFields: ['roleIds'],
+      },
+    ],
+    nextCursor: null,
+    hasMore: false,
+  });
+  await renderView();
+  const panel = await screen.findByRole('region', { name: 'Aktivitas' });
+  expect(await within(panel).findByText('User diubah')).toBeInTheDocument();
+  expect(within(panel).getByText('Yang berubah: Role')).toBeInTheDocument();
+  expect(apiMock).toHaveBeenCalledWith('activity.list', { kind: 'user', id: user.id, limit: 10 });
 });

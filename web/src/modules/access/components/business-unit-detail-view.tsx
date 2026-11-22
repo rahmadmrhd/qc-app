@@ -4,6 +4,7 @@ import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
 import { ActiveStatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 
 export interface BusinessUnitDetailViewProps {
   /** `undefined` = BU tidak ada (id salah, atau terhapus bagi yang tak boleh melihatnya). */
@@ -89,7 +90,12 @@ export function BusinessUnitDetailView({
           />
         ) : null
       }
-      aside={<ViewMeta updatedBy={businessUnit.updatedBy} updatedAt={businessUnit.updatedAt} />}
+      aside={
+        <>
+          <ViewMeta updatedBy={businessUnit.updatedBy} updatedAt={businessUnit.updatedAt} />
+          <ActivityLog kind="businessUnit" id={businessUnit.id} />
+        </>
+      }
     >
       <ViewSection title="Informasi BU">
         <DetailList

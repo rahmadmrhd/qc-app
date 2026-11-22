@@ -27,6 +27,7 @@ import { EditSerialDialog } from './edit-serial-dialog';
 import { ProofBadge, ProofProblemBadge } from './proof-badge';
 import { ProofGallery } from './proof-gallery';
 import { ProofProblemBanner } from './proof-problem-banner';
+import { SerialActivityLog } from './serial-activity-log';
 import { SerialStatusBadge } from './serial-status-badge';
 import { SerialStepper } from './serial-stepper';
 import { TimelineTabs } from './timeline-tabs';
@@ -353,12 +354,15 @@ export function SerialDetailPage({
         {...(tab ? { tab } : {})}
         onTabChange={(id) => onTabChange?.(id as SerialTab)}
         aside={
-          <ViewMeta
-            createdBy={serial.createdBy}
-            createdAt={serial.createdAt}
-            updatedBy={serial.updatedBy}
-            updatedAt={serial.updatedAt}
-          />
+          <>
+            <ViewMeta
+              createdBy={serial.createdBy}
+              createdAt={serial.createdAt}
+              updatedBy={serial.updatedBy}
+              updatedAt={serial.updatedAt}
+            />
+            <SerialActivityLog serialId={serial.id} />
+          </>
         }
       />
       {acting ? <ActDialog serial={serial} kind={acting} onClose={() => setActing(null)} /> : null}

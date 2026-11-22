@@ -81,6 +81,7 @@ beforeEach(() => {
   toastMock.error.mockReset();
   apiMock.mockImplementation(async (id: string) => {
     if (id === 'postels.history') return { entries: [], nextCursor: null };
+    if (id === 'activity.list') return { entries: [], nextCursor: null, hasMore: false };
     throw new Error(`api tak terduga: ${id}`);
   });
 });
@@ -241,6 +242,28 @@ test('tab Riwayat memuat riwayat perubahan', async () => {
   await openTab('Riwayat');
   expect(await screen.findByText('Belum ada riwayat.')).toBeInTheDocument();
   expect(apiMock).toHaveBeenCalledWith('postels.history', { id: 'p1', limit: 20 });
+});
+
+test('panel kanan memuat log aktivitas (kind postel); tab Riwayat nilai tetap ada', async () => {
+  await renderView();
+  const panel = await screen.findByRole('region', { name: 'Aktivitas' });
+  expect(await within(panel).findByText('Belum ada aktivitas tercatat.')).toBeInTheDocument();
+  expect(apiMock).toHaveBeenCalledWith('activity.list', { kind: 'postel', id: 'p1', limit: 10 });
+  expect(screen.getByRole('tab', { name: 'Riwayat' })).toBeInTheDocument();
+});
+
+test('log aktivitas tetap tampil pada catatan terhapus', async () => {
+  await renderView({
+    postel: postel({ deleted: { deletedAt: '2026-11-20T00:00:00.000Z', deletedBy: 'a@x.com' } }),
+  });
+  expect(await screen.findByRole('region', { name: 'Aktivitas' })).toBeInTheDocument();
+  expect(apiMock).toHaveBeenCalledWith('activity.list', { kind: 'postel', id: 'p1', limit: 10 });
+});
+
+test('catatan tidak ada: tanpa panel aktivitas dan tanpa permintaan log', async () => {
+  await renderView({ postel: undefined });
+  expect(screen.queryByRole('region', { name: 'Aktivitas' })).toBeNull();
+  expect(apiMock).not.toHaveBeenCalledWith('activity.list', expect.anything());
 });
 
 test('Ubah dan Hapus memanggil handlernya; tanpa canEdit keduanya tersembunyi', async () => {

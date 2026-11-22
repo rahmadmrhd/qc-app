@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatStamp } from '@/lib/format-stamp';
 import { isWebUrl } from '@/lib/web-url';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 import { useFileUrl } from '@/modules/files/queries';
 import { STICKER_STATUS_LABEL } from '@/modules/sticker/lib/status';
 import { LabelPreview } from './label-preview';
@@ -334,12 +335,15 @@ export function QrDesignView({
         ) : null
       }
       aside={
-        <ViewMeta
-          createdBy={design.createdBy}
-          createdAt={design.createdAt}
-          updatedBy={design.updatedBy}
-          updatedAt={design.updatedAt}
-        />
+        <>
+          <ViewMeta
+            createdBy={design.createdBy}
+            createdAt={design.createdAt}
+            updatedBy={design.updatedBy}
+            updatedAt={design.updatedAt}
+          />
+          <ActivityLog kind="qrDesign" id={design.id} createdAt={design.createdAt} />
+        </>
       }
     />
   );

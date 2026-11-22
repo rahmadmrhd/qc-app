@@ -5,6 +5,7 @@ import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
 import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
 import { PostelConditionBadge } from '@/modules/postel/components/postel-condition-badge';
 import { formatPostelDate } from '@/modules/postel/lib/condition';
@@ -291,22 +292,25 @@ export function ItemDetailView({
       {...(tab ? { tab } : {})}
       onTabChange={(id) => onTabChange?.(id as ItemTab)}
       aside={
-        <ViewMeta
-          createdAt={item.createdAt}
-          updatedBy={item.updatedBy}
-          updatedAt={item.updatedAt}
-          links={
-            canViewSerial
-              ? [
-                  {
-                    label: 'Lihat Serial Number item ini',
-                    to: '/serial',
-                    search: { item: item.id, itemLabel: `${item.brand} ${item.model}` },
-                  },
-                ]
-              : []
-          }
-        />
+        <>
+          <ViewMeta
+            createdAt={item.createdAt}
+            updatedBy={item.updatedBy}
+            updatedAt={item.updatedAt}
+            links={
+              canViewSerial
+                ? [
+                    {
+                      label: 'Lihat Serial Number item ini',
+                      to: '/serial',
+                      search: { item: item.id, itemLabel: `${item.brand} ${item.model}` },
+                    },
+                  ]
+                : []
+            }
+          />
+          <ActivityLog kind="item" id={item.id} createdAt={item.createdAt} />
+        </>
       }
     />
   );

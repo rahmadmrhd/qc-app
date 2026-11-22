@@ -1,8 +1,12 @@
 import type { BrandDto, BusinessUnitOptionDto } from '@shared/contract';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 import { renderInRouter } from '@/test/render-in-router';
+
+const apiMock = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/api', () => ({ api: apiMock }));
+
 import { BrandDetailView, type BrandDetailViewProps } from './brand-detail-view';
 
 const brand: BrandDto = {
@@ -106,4 +110,19 @@ test('merk tidak ada: pesan dan tombol kembali', async () => {
   expect(screen.getByRole('heading', { name: 'Merk tidak ditemukan' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Kembali ke daftar merk' }));
   expect(onBack).toHaveBeenCalledTimes(1);
+});
+
+test('merk terhapus tetap menampilkan log aktivitas (kind brand); merk tidak ada tanpa log', async () => {
+  apiMock.mockResolvedValue({ entries: [], nextCursor: null, hasMore: false });
+  const view = await renderView({
+    brand: { ...brand, deleted: { deletedAt: '2026-11-20T00:00:00.000Z', deletedBy: 'a@x.com' } },
+  });
+  const panel = await screen.findByRole('region', { name: 'Aktivitas' });
+  expect(await within(panel).findByText('Belum ada aktivitas tercatat.')).toBeInTheDocument();
+  expect(apiMock).toHaveBeenCalledWith('activity.list', { kind: 'brand', id: 'b1', limit: 10 });
+  view.unmount();
+  apiMock.mockClear();
+  await renderView({ brand: undefined });
+  expect(screen.queryByRole('region', { name: 'Aktivitas' })).toBeNull();
+  expect(apiMock).not.toHaveBeenCalled();
 });

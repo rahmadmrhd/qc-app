@@ -6,6 +6,7 @@ import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
 import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 import { STICKER_RULE_LABEL } from '../schemas';
 
 export interface StickerTypeViewProps {
@@ -111,10 +112,15 @@ export function StickerTypeView({
         ) : null
       }
       aside={
-        <ViewMeta
-          updatedAt={type.updatedAt}
-          links={[{ label: 'Lihat stiker jenis ini', to: '/sticker', search: { typeId: type.id } }]}
-        />
+        <>
+          <ViewMeta
+            updatedAt={type.updatedAt}
+            links={[
+              { label: 'Lihat stiker jenis ini', to: '/sticker', search: { typeId: type.id } },
+            ]}
+          />
+          <ActivityLog kind="stickerType" id={type.id} />
+        </>
       }
     >
       <ViewSection title="Identitas">
