@@ -15,23 +15,30 @@ function publishHeight() {
  * lewat `--kb` (iOS tak mengecilkan viewport tata letak; review I8), dan mengukur tingginya ke `--action-bar-h` di
  * `<html>`; `<main>` memakai tinggi itu sebagai padding bawah, jadi isi terakhir halaman tak pernah tertutup. Hanya untuk
  * ponsel: dipakai `BulkBar`, `ViewPage` dan `FormPage` di ponsel, serta halaman lain yang butuh aksi selalu terlihat.
+ *
+ * `placement="inline"` untuk bar DI DALAM dialog (penggulir dialog; dialog bertransform sehingga `fixed` akan menempel di
+ * dasar kotak dialog dan menutupi isi terakhir): bar `sticky bottom-0` di alur isi, selebar penggulir (`-mx-4 -mb-4`
+ * mengimbangi padding penggulir), tidak ikut `--action-bar-h` (yang hanya milik `<main>`) dan tidak memakai `--kb`
+ * (dialog layar penuh sudah mengecil mengikuti papan ketik lewat `--vvh`).
  */
 export function StickyActionBar({
   label,
   busy,
   className,
+  placement = 'viewport',
   children,
 }: {
   /** Nama aksesibel bar. */
   label: string;
   busy?: boolean;
   className?: string;
+  placement?: 'viewport' | 'inline';
   children: ReactNode;
 }) {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     const node = ref.current;
-    if (!node) return;
+    if (!node || placement === 'inline') return;
     const key = Symbol('action-bar');
     const measure = () => {
       heights.set(key, node.offsetHeight);
@@ -45,7 +52,7 @@ export function StickyActionBar({
       heights.delete(key);
       publishHeight();
     };
-  }, []);
+  }, [placement]);
   return (
     <section
       ref={ref}
@@ -53,7 +60,10 @@ export function StickyActionBar({
       aria-busy={busy || undefined}
       data-slot="sticky-action-bar"
       className={cn(
-        'fixed inset-x-0 bottom-[var(--kb,0px)] z-20 flex items-center gap-2 border-t bg-background p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-lg',
+        'z-20 flex items-center gap-2 border-t bg-background p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] shadow-lg',
+        placement === 'inline'
+          ? 'sticky bottom-0 -mx-4 -mb-4'
+          : 'fixed inset-x-0 bottom-[var(--kb,0px)]',
         className,
       )}
     >

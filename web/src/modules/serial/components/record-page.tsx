@@ -1293,7 +1293,7 @@ function RecordPageInner({
           {blockedNote}
           {/* Ponsel: Simpan selalu terlihat tanpa gulir. Saat mode pilih, bar aksi pilihan mengambil alih tepi bawah. */}
           {selectedCount === 0 && selectMode === null ? (
-            <StickyActionBar label="Aksi draft">
+            <StickyActionBar label="Aksi draft" placement="inline">
               <div data-tour="serial-save" className="flex w-full items-center gap-2">
                 <Button
                   type="button"

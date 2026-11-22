@@ -163,6 +163,8 @@ test('Dialog size="full-on-phone": kelas layar penuh khusus ponsel (max-md, dvh,
     'rounded-none',
     'pt-[env(safe-area-inset-top)]',
     'pb-[env(safe-area-inset-bottom)]',
+    // Bar fixed di dalamnya jangan menaikkan dua kali: dialog sudah mengecil mengikuti papan ketik lewat --vvh.
+    '[--kb:0px]',
   ]) {
     expect(shell.className).toContain(`max-md:data-[size=full-on-phone]:${token}`);
   }

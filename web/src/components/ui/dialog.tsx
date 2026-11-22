@@ -60,7 +60,7 @@ function DialogOverlay({
  * yang tingginya lebih dari separuh layar ponsel (spek revisi tampilan lanjutan P6).
  */
 const FULL_ON_PHONE =
-  'max-md:data-[size=full-on-phone]:top-[var(--vv-top,0px)] max-md:data-[size=full-on-phone]:left-0 max-md:data-[size=full-on-phone]:h-[var(--vvh,100dvh)] max-md:data-[size=full-on-phone]:max-h-none max-md:data-[size=full-on-phone]:w-screen max-md:data-[size=full-on-phone]:max-w-none max-md:data-[size=full-on-phone]:translate-x-0 max-md:data-[size=full-on-phone]:translate-y-0 max-md:data-[size=full-on-phone]:rounded-none max-md:data-[size=full-on-phone]:ring-0 max-md:data-[size=full-on-phone]:pt-[env(safe-area-inset-top)] max-md:data-[size=full-on-phone]:pb-[env(safe-area-inset-bottom)]'
+  'max-md:data-[size=full-on-phone]:top-[var(--vv-top,0px)] max-md:data-[size=full-on-phone]:left-0 max-md:data-[size=full-on-phone]:h-[var(--vvh,100dvh)] max-md:data-[size=full-on-phone]:max-h-none max-md:data-[size=full-on-phone]:w-screen max-md:data-[size=full-on-phone]:max-w-none max-md:data-[size=full-on-phone]:translate-x-0 max-md:data-[size=full-on-phone]:translate-y-0 max-md:data-[size=full-on-phone]:rounded-none max-md:data-[size=full-on-phone]:ring-0 max-md:data-[size=full-on-phone]:pt-[env(safe-area-inset-top)] max-md:data-[size=full-on-phone]:pb-[env(safe-area-inset-bottom)] max-md:data-[size=full-on-phone]:[--kb:0px]'
 
 function DialogContent({
   className,

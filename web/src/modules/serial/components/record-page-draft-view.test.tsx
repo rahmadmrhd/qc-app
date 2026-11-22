@@ -335,3 +335,17 @@ test('ponsel: mode pilih lewat tombol "Pilih baris draft" (0 butir) tetap menamp
   await userEvent.click(within(bar).getByRole('button', { name: 'Batalkan pilihan' }));
   expect(screen.queryByRole('region', { name: 'Aksi baris terpilih' })).toBeNull();
 });
+
+test('tanpa frame (dialog Country Lock): bar Simpan sticky di alur isi, bukan fixed, dan tak mengisi --action-bar-h', async () => {
+  media = mockMatchMedia(false);
+  seedDraft([{ serial: 'AAA111' }]);
+  document.documentElement.style.removeProperty('--action-bar-h');
+  renderPage();
+  await screen.findByRole('button', { name: 'Ubah baris AAA111' });
+  const bar = screen.getByRole('region', { name: 'Aksi draft' });
+  // Dialog bertransform: `fixed` akan menempel di dasar kotak dialog dan menutupi isi terakhir.
+  expect(bar.className).toContain('sticky');
+  expect(bar.className).not.toContain('fixed');
+  expect(bar.className).not.toContain('--kb');
+  expect(document.documentElement.style.getPropertyValue('--action-bar-h')).toBe('');
+});
