@@ -4,7 +4,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
+import { closeFilterChip, linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
 import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
 import { type SerialSearch, serialSearchSchema } from '../lib/list-filter';
@@ -331,21 +331,25 @@ test('filter status, lokasi, item, dan rentang tanggal menjadi parameter pencari
   await screen.findByText('ABC123');
   await openChip('Status');
   await pickSelect(screen, 'Filter status', 'Dilaporkan');
+  // Draf: daftar baru diminta saat chip menutup.
+  expect(lastListInput()).not.toHaveProperty('statuses');
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ statuses: ['reported'] }));
-  await userEvent.keyboard('{Escape}');
   await openChip('Lokasi');
   await pickLink(screen, 'Filter lokasi', 'Jakarta (JKT)');
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ locationIds: ['l1'] }));
-  await userEvent.keyboard('{Escape}');
   await openChip('Item');
   await pickLink(screen, 'Filter item', 'Cisco C9200');
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ itemIds: ['i1'] }));
-  await userEvent.keyboard('{Escape}');
   await openChip('Tanggal uji');
   fireEvent.change(screen.getByLabelText('Tanggal uji dari'), { target: { value: '2026-11-01' } });
   fireEvent.change(screen.getByLabelText('Tanggal uji sampai'), {
     target: { value: '2026-11-30' },
   });
+  expect(lastListInput()).not.toHaveProperty('from');
+  await closeFilterChip();
   await waitFor(() =>
     expect(lastListInput()).toMatchObject({
       statuses: ['reported'],
@@ -526,8 +530,10 @@ test('filter posisi multi-value masuk masukan serials.list lewat MultiSelect; ha
   await screen.findByText('ABC123');
   await openChip('Posisi');
   await pickSelect(screen, 'Filter posisi', 'Dalam pengiriman');
-  await waitFor(() => expect(lastListInput()).toMatchObject({ custodies: ['transit'] }));
   await pickSelect(screen, 'Filter posisi', 'Di servis');
+  // Dua pilihan berturut-turut = SATU permintaan, setelah chip menutup.
+  expect(lastListInput()).not.toHaveProperty('custodies');
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ custodies: ['transit', 'service'] }));
   expect(
     screen.getByRole('button', { name: /^Posisi: Dalam pengiriman, Di servis/ }),
@@ -554,11 +560,14 @@ test('filter BU hanya menawarkan BU yang terbaca (serial atau serialservice) dan
   // Teks bantu hanya selagi filter BU aktif: serial yang pernah di BU itu ikut tampil.
   expect(screen.queryByText(/pernah di BU ini/)).toBeNull();
   await userEvent.click(await screen.findByRole('option', { name: 'B2 · Unit b2' }));
-  await waitFor(() => expect(lastListInput()).toMatchObject({ buIds: ['b2'] }));
-  // Mode banyak pilihan tetap terbuka: teks bantu muncul seketika, dan pilihan kedua menambah daftar.
-  expect(await screen.findByText('Termasuk serial yang pernah di BU ini.')).toBeInTheDocument();
+  // Mode banyak pilihan tetap terbuka: pilihan kedua menambah draf dan daftar baru diminta saat chip menutup.
   await userEvent.click(await screen.findByRole('option', { name: 'B1 · Unit b1' }));
+  expect(lastListInput()).not.toHaveProperty('buIds');
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ buIds: ['b2', 'b1'] }));
+  // Teks bantu hanya selagi filter BU aktif (tampil di isi chip setelah diterapkan).
+  await openChip('BU');
+  expect(await screen.findByText('Termasuk serial yang pernah di BU ini.')).toBeInTheDocument();
 });
 
 test('sakelar "Dicatat oleh saya" mengisi createdBy dengan email akun', async () => {
@@ -567,8 +576,12 @@ test('sakelar "Dicatat oleh saya" mengisi createdBy dengan email akun', async ()
   expect(lastListInput()).not.toHaveProperty('createdBy');
   await openChip('Pencatat');
   await userEvent.click(screen.getByRole('checkbox', { name: 'Dicatat oleh saya' }));
+  expect(lastListInput()).not.toHaveProperty('createdBy');
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ createdBy: 'a@gmail.com' }));
+  await openChip('Pencatat');
   await userEvent.click(screen.getByRole('checkbox', { name: 'Dicatat oleh saya' }));
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).not.toHaveProperty('createdBy'));
 });
 
@@ -792,11 +805,15 @@ test('manage: chip Status memuat Terhapus; memilihnya mengosongkan status alur d
   await openChip('Status');
   expect(await linkOptionNames(screen, 'Filter status')).toContain('Terhapus');
   await pickSelect(screen, 'Filter status', 'Terhapus');
+  // Eksklusif sudah berlaku pada draf: status alur terlepas seketika, permintaan baru setelah chip menutup.
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ deleted: true }));
   expect(lastListInput()).not.toHaveProperty('statuses');
   expect(screen.getByRole('button', { name: /^Status: Terhapus/ })).toBeInTheDocument();
   // Memilih status alur sesudahnya mengeluarkan tampilan Terhapus.
+  await openChip('Status');
   await pickSelect(screen, 'Filter status', 'Dilaporkan');
+  await closeFilterChip();
   await waitFor(() => expect(lastListInput()).toMatchObject({ statuses: ['reported'] }));
   expect(lastListInput()).not.toHaveProperty('deleted');
 });

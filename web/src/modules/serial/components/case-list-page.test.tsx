@@ -3,7 +3,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { pickLink, pickSelect } from '@/test/link-field';
+import { closeFilterChip, pickLink, pickSelect } from '@/test/link-field';
 import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
 import { type CaseSearch, caseFilterOfSearch, caseSearchSchema } from '../lib/case-filter';
@@ -214,11 +214,11 @@ test('filter status dan BU menjadi parameter; Semua laporan tanpa status', async
   await waitFor(() => expect(lastInput()).toEqual({}));
   await openChip('BU');
   await pickLink(screen, 'Filter BU', 'BU2 · Dua');
-  await waitFor(() => expect(lastInput()).toEqual({ buIds: ['b2'] }));
-  // Mode banyak pilihan: pilihan kedua menambah daftar.
+  // Mode banyak pilihan: pilihan kedua menambah draf; daftar baru diminta SEKALI saat chip menutup.
   await pickLink(screen, 'Filter BU', 'BU1 · Satu');
+  expect(lastInput()).toEqual({});
+  await closeFilterChip();
   await waitFor(() => expect(lastInput()).toEqual({ buIds: ['b2', 'b1'] }));
-  await userEvent.keyboard('{Escape}');
   await openChip('Status');
   await pickSelect(screen, 'Filter status laporan', 'Laporan aktif');
   await waitFor(() => expect(lastInput()).toEqual({ status: 'active', buIds: ['b2', 'b1'] }));

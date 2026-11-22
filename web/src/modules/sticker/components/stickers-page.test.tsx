@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
-import { linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
+import { closeFilterChip, linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
 import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
 import { stickerSaveFailure } from './sticker-form-dialog';
@@ -173,6 +173,7 @@ test('filter jenis dan status menyaring baris', async () => {
   await renderPage();
   await openChip('Jenis');
   await pickLink(screen, 'Filter jenis', 'Segel');
+  await closeFilterChip();
   expect(screen.queryByRole('row', { name: /Hijau-B/ })).toBeNull();
   expect(screen.getByRole('row', { name: /Segel Polos/ })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Hapus filter Jenis' }));
@@ -186,8 +187,10 @@ test('filter jenis boleh lebih dari satu: baris dari kedua jenis tampil, chip me
   await renderPage();
   await openChip('Jenis');
   await pickLink(screen, 'Filter jenis', 'Segel');
-  expect(screen.queryByRole('row', { name: /Hijau-B/ })).toBeNull();
+  // Draf: baris belum disaring selagi chip terbuka.
+  expect(screen.getByRole('row', { name: /Hijau-B/ })).toBeInTheDocument();
   await pickLink(screen, 'Filter jenis', 'QC Hijau');
+  await closeFilterChip();
   expect(screen.getByRole('row', { name: /Hijau-B/ })).toBeInTheDocument();
   expect(screen.getByRole('row', { name: /Segel Polos/ })).toBeInTheDocument();
   expect(

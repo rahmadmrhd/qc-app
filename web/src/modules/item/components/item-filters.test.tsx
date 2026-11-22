@@ -2,7 +2,13 @@ import type { BrandDto, StickerDto, StickerTypeDto } from '@shared/contract';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
-import { linkOptionNames, pickLink, pickSelect, selectOptionNames } from '@/test/link-field';
+import {
+  closeFilterChip,
+  linkOptionNames,
+  pickLink,
+  pickSelect,
+  selectOptionNames,
+} from '@/test/link-field';
 import { DEFAULT_ITEM_FILTER, type ItemListFilter } from '../queries';
 import { ItemFilters } from './item-filters';
 
@@ -233,6 +239,10 @@ test('chip Merk: LinkMultiField berisi merk (nonaktif bertanda); memilih memangg
   await openChip('Merk');
   expect(await linkOptionNames(screen, 'Filter merk')).toEqual(['Ubiquiti', 'Lama — nonaktif']);
   await pickLink(screen, 'Filter merk', 'Ubiquiti');
+  // Draf: halaman baru diberi tahu saat chip menutup, sekali.
+  expect(onChange).not.toHaveBeenCalled();
+  await closeFilterChip();
+  expect(onChange).toHaveBeenCalledTimes(1);
   expect(onChange).toHaveBeenCalledWith({ brandIds: ['b1'] });
 });
 
@@ -244,6 +254,9 @@ test('chip Business Unit: memilih memanggil onChange dengan id BU', async () => 
     'Wholesale (WHL)',
   ]);
   await pickLink(screen, 'Filter business unit', 'Wholesale (WHL)');
+  expect(onChange).not.toHaveBeenCalled();
+  await closeFilterChip();
+  expect(onChange).toHaveBeenCalledTimes(1);
   expect(onChange).toHaveBeenCalledWith({ buIds: ['bu-b'] });
 });
 
@@ -284,6 +297,9 @@ test('chip Merk jamak: pilihan kedua menambah daftar; tampilan "A, B" lalu "A +N
   const { onChange } = setup({ brandIds: ['b1'] }, { brands: BRANDS, businessUnits: BUS });
   await openChip('Merk');
   await pickLink(screen, 'Filter merk', 'Lama — nonaktif');
+  expect(onChange).not.toHaveBeenCalled();
+  await closeFilterChip();
+  expect(onChange).toHaveBeenCalledTimes(1);
   expect(onChange).toHaveBeenLastCalledWith({ brandIds: ['b1', 'b2'] });
   cleanup();
   setup({ brandIds: ['b1', 'b2'] }, { brands: BRANDS, businessUnits: BUS });

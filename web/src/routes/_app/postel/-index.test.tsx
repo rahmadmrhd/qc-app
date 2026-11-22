@@ -14,6 +14,7 @@ import { type ComponentType, Suspense } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { meQueryKey } from '@/modules/auth/queries';
+import { closeFilterChip } from '@/test/link-field';
 import { makeMe } from '@/test/make-me';
 import { mockMatchMedia } from '@/test/match-media';
 import { Route } from './index';
@@ -182,11 +183,11 @@ test('filter Kondisi multi-value menyaring di klien dan memakai replace', async 
   await userEvent.click(screen.getByRole('button', { name: 'Kondisi' }));
   await userEvent.click(await screen.findByRole('combobox', { name: 'Filter kondisi' }));
   await userEvent.click(await screen.findByRole('option', { name: 'Segera habis' }));
-  await waitFor(() => expect(screen.queryByRole('link', { name: 'Postel p2' })).toBeNull());
-  expect(screen.getByRole('link', { name: 'Postel p1' })).toBeInTheDocument();
-  await waitFor(() => expect(router.state.location.search).toEqual({ conditions: ['soon'] }));
-  // Pilihan kedua menambah daftar (salah satu dari): chip menampilkan keduanya.
+  // Pilihan kedua menambah draf (salah satu dari): URL dan daftar baru berubah SEKALI saat chip menutup.
   await userEvent.click(await screen.findByRole('option', { name: 'Kedaluwarsa' }));
+  expect(router.state.location.search).toEqual({});
+  expect(screen.getByRole('link', { name: 'Postel p2' })).toBeInTheDocument();
+  await closeFilterChip();
   await waitFor(() =>
     expect(router.state.location.search).toEqual({ conditions: ['soon', 'expired'] }),
   );
