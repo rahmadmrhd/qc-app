@@ -141,6 +141,7 @@ export function PostelView({
           rowKey={(entry) => entry.id}
           columns={NUMBER_COLUMNS}
           label="Nomor sertifikat"
+          fit="content"
           empty="Belum ada nomor sertifikat."
         />
       </ViewSection>
