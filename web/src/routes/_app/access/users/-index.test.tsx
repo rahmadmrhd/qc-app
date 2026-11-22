@@ -144,31 +144,66 @@ test('Hapus massal: konfirmasi lalu access.users.removeBatch', async () => {
   expect(callsOf('access.users.removeBatch')[0]?.input).toEqual({ ids: ['u1', 'u2'] });
 });
 
-test('Hapus dan Nonaktifkan massal dinonaktifkan dengan alasan bila pilihan memuat akun sendiri', async () => {
-  live = [user('a', { email: 'a@x.com', status: 'active' }), user('u2')];
-  await mount();
-  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
-  const bar = screen.getByRole('region', { name: 'Aksi massal' });
-  expect(within(bar).getByRole('button', { name: 'Nonaktifkan' })).toBeDisabled();
-  expect(within(bar).getByRole('button', { name: 'Hapus' })).toBeDisabled();
-  expect(within(bar).getAllByText('Pilihan memuat akun Anda sendiri').length).toBeGreaterThan(0);
-});
-
-test('Hapus dan Nonaktifkan massal dinonaktifkan dengan alasan bila pilihan memuat super admin', async () => {
-  live = [user('u1', { status: 'active', superAdmin: true }), user('u2')];
-  await mount();
-  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
-  const bar = screen.getByRole('region', { name: 'Aksi massal' });
-  expect(within(bar).getByRole('button', { name: 'Nonaktifkan' })).toBeDisabled();
-  expect(within(bar).getByRole('button', { name: 'Hapus' })).toBeDisabled();
-  expect(within(bar).getAllByText('Pilihan memuat akun super admin').length).toBeGreaterThan(0);
-});
-
-test('Hapus massal nonaktif bila ada pengguna Aktif yang terpilih', async () => {
+test('pilihan campuran Aktif + Nonaktif menampilkan Aktifkan dan Nonaktifkan; yang dikirim hanya baris yang memenuhi syarat', async () => {
   live = [user('u1', { status: 'active' }), user('u2')];
   await mount();
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
-  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).getByRole('button', { name: 'Aktifkan' })).toBeInTheDocument();
+  await userEvent.click(within(bar).getByRole('button', { name: 'Nonaktifkan' }));
+  await waitFor(() => expect(callsOf('access.users.setStatusBatch')).toHaveLength(1));
+  expect(callsOf('access.users.setStatusBatch')[0]?.input).toEqual({
+    ids: ['u1'],
+    status: 'inactive',
+  });
+});
+
+test('akun sendiri tidak ikut Nonaktifkan massal: hanya baris lain yang dikirim', async () => {
+  live = [user('a', { email: 'a@x.com', status: 'active' }), user('u2', { status: 'active' })];
+  await mount();
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  await userEvent.click(within(bar).getByRole('button', { name: 'Nonaktifkan' }));
+  await waitFor(() => expect(callsOf('access.users.setStatusBatch')).toHaveLength(1));
+  expect(callsOf('access.users.setStatusBatch')[0]?.input).toEqual({
+    ids: ['u2'],
+    status: 'inactive',
+  });
+});
+
+test('akun sendiri tidak ikut Hapus massal: hanya pengguna Nonaktif lain yang dikirim', async () => {
+  live = [user('a', { email: 'a@x.com' }), user('u2'), user('u3', { status: 'active' })];
+  await mount();
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 pengguna?' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(callsOf('access.users.removeBatch')).toHaveLength(1));
+  expect(callsOf('access.users.removeBatch')[0]?.input).toEqual({ ids: ['u2'] });
+});
+
+test('hanya akun sendiri atau super admin terpilih: tanpa Nonaktifkan dan Hapus', async () => {
+  live = [
+    user('a', { email: 'a@x.com', status: 'active' }),
+    user('u1', { status: 'active', superAdmin: true }),
+  ];
+  await mount();
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).queryByRole('button', { name: 'Nonaktifkan' })).toBeNull();
+  expect(within(bar).queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(within(bar).queryByRole('button', { name: 'Aktifkan' })).toBeNull();
+});
+
+test('Hapus massal tampil bila ada pengguna Nonaktif terpilih dan hanya itu yang dikirim', async () => {
+  live = [user('u1', { status: 'active' }), user('u2')];
+  await mount();
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 pengguna?' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(callsOf('access.users.removeBatch')).toHaveLength(1));
+  expect(callsOf('access.users.removeBatch')[0]?.input).toEqual({ ids: ['u2'] });
 });
 
 test('tanpa hak manage: tidak ada checkbox maupun opsi Terhapus', async () => {

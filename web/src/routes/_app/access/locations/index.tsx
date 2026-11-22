@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { ActionButton } from '@/components/action-button';
 import { BulkBar, useRowSelection } from '@/components/data-table';
-import { DisabledReason } from '@/components/disabled-reason';
 import { FilterBar, FilterChip } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
@@ -88,9 +87,6 @@ function LocationsPage() {
     restoreBatch: (input) => restoreLocations.mutateAsync(input),
     reload,
   });
-
-  const selected = visible.filter((location) => selection.selected.has(location.id));
-  const allInactive = selected.every((location) => location.status === 'inactive');
 
   function toggleStatus(location: LocationDto) {
     const next = location.status === 'active' ? 'inactive' : 'active';
@@ -192,12 +188,18 @@ function LocationsPage() {
                 <ActionButton action="restore" onClick={() => void bulk.restore.run()} />
               ) : (
                 <>
-                  <ActionButton action="activate" onClick={() => void bulk.activate.run()} />
-                  <ActionButton action="deactivate" onClick={() => void bulk.deactivate.run()} />
-                  <DisabledDeleteAction
-                    disabled={!allInactive}
-                    onClick={() => setDeleteTarget({ kind: 'bulk' })}
-                  />
+                  {bulk.activate.eligibleCount > 0 ? (
+                    <ActionButton action="activate" onClick={() => void bulk.activate.run()} />
+                  ) : null}
+                  {bulk.deactivate.eligibleCount > 0 ? (
+                    <ActionButton action="deactivate" onClick={() => void bulk.deactivate.run()} />
+                  ) : null}
+                  {bulk.remove.eligibleCount > 0 ? (
+                    <ActionButton
+                      action="delete"
+                      onClick={() => setDeleteTarget({ kind: 'bulk' })}
+                    />
+                  ) : null}
                 </>
               )}
             </BulkBar>
@@ -245,20 +247,11 @@ function LocationsPage() {
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
-        count={deleteTarget?.kind === 'bulk' ? selection.count : 1}
+        count={deleteTarget?.kind === 'bulk' ? bulk.remove.eligibleCount : 1}
         subject="lokasi"
         onConfirm={confirmDelete}
         busy={bulk.remove.busy || removeLocations.isPending}
       />
     </>
-  );
-}
-
-/** Hapus massal: hanya lokasi Nonaktif yang dapat dihapus, jadi aksi dinonaktifkan dengan alasan bila ada yang Aktif. */
-function DisabledDeleteAction({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
-  return (
-    <DisabledReason reason={disabled ? 'Nonaktifkan lokasi dulu sebelum dihapus' : undefined}>
-      <ActionButton action="delete" disabled={disabled} onClick={onClick} />
-    </DisabledReason>
   );
 }

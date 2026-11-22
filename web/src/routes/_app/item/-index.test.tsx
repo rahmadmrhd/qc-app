@@ -187,11 +187,28 @@ test('Hapus massal membuka konfirmasi "Hapus 2 item?" lalu memanggil items.remov
   );
 });
 
-test('Hapus massal nonaktif bila ada item Aktif yang terpilih', async () => {
+test('pilihan campuran Aktif + Nonaktif: Aktifkan dan Nonaktifkan tampil, Hapus hanya mengirim yang Nonaktif', async () => {
   rows = [summary('i1', { status: 'active' }), summary('i2')];
   await mount();
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
-  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).getByRole('button', { name: 'Aktifkan' })).toBeInTheDocument();
+  expect(within(bar).getByRole('button', { name: 'Nonaktifkan' })).toBeInTheDocument();
+  await userEvent.click(within(bar).getByRole('button', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 item?' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(callsOf('items.removeBatch')).toHaveLength(1));
+  expect(callsOf('items.removeBatch')[0]?.input).toEqual({ ids: ['i2'] });
+});
+
+test('Aktifkan massal mengirim hanya item Nonaktif; item Aktif tetap terpilih', async () => {
+  rows = [summary('i1', { status: 'active' }), summary('i2')];
+  await mount();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Aktifkan' }));
+  await waitFor(() => expect(callsOf('items.setStatusBatch')).toHaveLength(1));
+  expect(callsOf('items.setStatusBatch')[0]?.input).toEqual({ ids: ['i2'], status: 'active' });
+  await waitFor(() => expect(screen.getByText('1 dipilih')).toBeInTheDocument());
 });
 
 test('mengubah filter mengosongkan pilihan', async () => {
@@ -238,6 +255,7 @@ test('"Pilih semua" 250 id dikirim bertahap 100, 100, 50', async () => {
 }, 60_000);
 
 test('UNAVAILABLE menjadi toast galat tanpa antrean dan pilihan tetap', async () => {
+  rows = [summary('i1', { status: 'active' }), summary('i2', { status: 'active' })];
   await mount();
   const original = apiMock.getMockImplementation();
   apiMock.mockImplementation(async (id: string, input: unknown) => {
@@ -273,28 +291,28 @@ test('tombol Tambah item tampil bagi yang boleh membuat, tanpa "Kelola merk"', a
   expect(screen.queryByRole('button', { name: 'Kelola merk' })).toBeNull();
 });
 
-test('pilihan yang tak dapat dikelola: bar tetap tampil, aksi nonaktif dengan alasan, Batalkan pilihan jalan', async () => {
+test('pilihan yang tak dapat dikelola: bar tetap tampil tanpa aksi, Batalkan pilihan jalan', async () => {
   rows = [summary('i1', { businessUnits: [{ id: 'bu-z', code: 'ZZZ', name: 'Lain' }] })];
   await mount();
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Asus M-i1' }));
   const bar = screen.getByRole('region', { name: 'Aksi massal' });
   expect(within(bar).getByText('1 dipilih')).toBeInTheDocument();
-  expect(within(bar).getByRole('button', { name: 'Aktifkan' })).toBeDisabled();
-  expect(within(bar).getByRole('button', { name: 'Hapus' })).toBeDisabled();
-  expect(
-    within(bar).getAllByText('Anda tidak berhak mengelola sebagian item yang dipilih').length,
-  ).toBeGreaterThan(0);
+  expect(within(bar).queryByRole('button', { name: 'Aktifkan' })).toBeNull();
+  expect(within(bar).queryByRole('button', { name: 'Hapus' })).toBeNull();
   await userEvent.click(within(bar).getByRole('button', { name: 'Batalkan pilihan' }));
   expect(screen.queryByText(/dipilih/)).toBeNull();
 });
 
-test('alasan Hapus massal nonaktif dapat dijangkau (bukan atribut title)', async () => {
-  rows = [summary('i1', { status: 'active' })];
+test('pilihan campuran dapat dikelola + tak dapat dikelola: hanya yang dapat dikelola dikirim', async () => {
+  rows = [
+    summary('i1'),
+    summary('i2', { businessUnits: [{ id: 'bu-z', code: 'ZZZ', name: 'Lain' }] }),
+  ];
   await mount();
-  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Asus M-i1' }));
-  const bar = screen.getByRole('region', { name: 'Aksi massal' });
-  expect(within(bar).getByRole('button', { name: 'Hapus' })).not.toHaveAttribute('title');
-  expect(within(bar).getByText('Nonaktifkan item dulu sebelum dihapus')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Aktifkan' }));
+  await waitFor(() => expect(callsOf('items.setStatusBatch')).toHaveLength(1));
+  expect(callsOf('items.setStatusBatch')[0]?.input).toEqual({ ids: ['i1'], status: 'active' });
 });
 
 test('?brandId= (tautan lama dari Merk) dibaca sebagai brandIds, diteruskan ke items.list dan chip Merk menampilkan namanya', async () => {

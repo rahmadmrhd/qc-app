@@ -270,13 +270,14 @@ test('jenis sistem: tanpa checkbox dan tanpa aksi apa pun; jenis biasa tetap pun
   expect(screen.getByRole('checkbox', { name: 'Pilih QC Hijau' })).toBeInTheDocument();
 });
 
-test('pilih dua jenis lalu Aktifkan memanggil setStatus dengan dua id', async () => {
+test('pilihan campuran Aktif + Nonaktif: Aktifkan dan Nonaktifkan tampil dan masing-masing hanya mengirim yang memenuhi syarat', async () => {
   const { mutations } = await renderPage();
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih QC Hijau' }));
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel' }));
   expect(screen.getByText('2 dipilih')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Nonaktifkan' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Aktifkan' }));
-  await waitFor(() => expect(mutations.setStatus).toHaveBeenCalledWith(['t1', 't2'], 'active'));
+  await waitFor(() => expect(mutations.setStatus).toHaveBeenCalledWith(['t2'], 'active'));
 });
 
 test('tanpa izin kelola: tanpa checkbox dan aksi massal', async () => {
@@ -294,10 +295,15 @@ test('Hapus: hanya untuk jenis Nonaktif; konfirmasi lalu memanggil remove', asyn
   await waitFor(() => expect(mutations.remove).toHaveBeenCalledWith(['t2']));
 });
 
-test('Hapus massal ditolak selama terpilih ada jenis Aktif', async () => {
-  await renderPage();
+test('Hapus massal: tak tampil bila hanya jenis Aktif terpilih; pada pilihan campuran hanya yang Nonaktif dikirim', async () => {
+  const { mutations } = await renderPage();
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih QC Hijau' }));
-  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 jenis?' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(mutations.remove).toHaveBeenCalledWith(['t2']));
 });
 
 test('tampilan Terhapus: hanya Pulihkan, tanpa kolom Status dan tombol Tambah', async () => {

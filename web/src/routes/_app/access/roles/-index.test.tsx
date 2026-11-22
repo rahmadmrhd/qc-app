@@ -74,7 +74,7 @@ test('nama role menaut ke View; daftar role tanpa kolom status', async () => {
   expect(screen.queryByRole('columnheader', { name: 'Status' })).toBeNull();
 });
 
-test('Hapus massal memanggil access.roles.removeBatch; dinonaktifkan bila ada role yang dipakai', async () => {
+test('Hapus massal memanggil access.roles.removeBatch; role yang dipakai tidak ikut dikirim', async () => {
   live = [role('a'), role('b', { userCount: 2 })];
   await mount();
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih Role a' }));
@@ -84,8 +84,21 @@ test('Hapus massal memanggil access.roles.removeBatch; dinonaktifkan bila ada ro
   await waitFor(() =>
     expect(callsOf('access.roles.removeBatch')[0]?.input).toEqual({ ids: ['a'] }),
   );
+  // Hanya role yang dipakai pengguna terpilih: tak ada role yang dapat dihapus, aksinya tidak tampil.
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Role b' }));
-  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+});
+
+test('pilihan campuran role bebas + dipakai: Hapus tampil dan hanya role bebas yang dikirim', async () => {
+  live = [role('a'), role('b', { userCount: 2 })];
+  await mount();
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 role?' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() =>
+    expect(callsOf('access.roles.removeBatch')[0]?.input).toEqual({ ids: ['a'] }),
+  );
 });
 
 test('filter Status hanya untuk manage; Terhapus memuat daftar terhapus dan bar hanya Pulihkan', async () => {

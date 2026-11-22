@@ -74,6 +74,11 @@ export interface EntryPageProps {
   onSubmittableChange?: (submittable: boolean) => void;
   /** Stiker awal (dari tombol "Entri stok" di View Stiker): mengisi kolom cari dan masuk entri. */
   initialStickerId?: string;
+  /**
+   * Banyak stiker awal (dari aksi stok massal di katalog Stiker): semuanya langsung masuk entri (maks. `opnameRows`).
+   * Satu stiker saja berperilaku seperti `initialStickerId` (kolom cari terisi namanya).
+   */
+  initialStickerIds?: readonly string[];
 }
 
 function qtyAt(row: StickerStockDto, locationId: string): number {
@@ -103,6 +108,7 @@ export function EntryPage({
   onBusyChange,
   onSubmittableChange,
   initialStickerId,
+  initialStickerIds,
 }: EntryPageProps) {
   const me = useMe();
   const { selectedIds } = useActiveLocations();
@@ -117,15 +123,25 @@ export function EntryPage({
     : writable.length === 1
       ? (writable[0]?.id ?? '')
       : '';
-  const initialRow = initialStickerId
-    ? rows.find((row) => row.stickerId === initialStickerId)
-    : undefined;
-  const [search, setSearch] = useState(initialRow?.name ?? '');
+  // Stiker awal (satu dari View, banyak dari aksi massal): yang tak ada di data stok dilewati; mode Masuk hanya menerima
+  // stiker dan jenis aktif (sama dengan daftar pilihan), dan jumlahnya dibatasi `opnameRows`.
+  const initialRows = (initialStickerIds ?? (initialStickerId ? [initialStickerId] : []))
+    .flatMap((id) => {
+      const found = rows.find((row) => row.stickerId === id);
+      return found ? [found] : [];
+    })
+    .filter((row) => mode !== 'in' || (row.status === 'active' && row.typeStatus === 'active'))
+    .slice(0, STICKER_LIMITS.opnameRows);
+  const [search, setSearch] = useState(
+    initialRows.length === 1 ? (initialRows[0]?.name ?? '') : '',
+  );
   const [typeFilter, setTypeFilter] = useState<string[]>([]);
   const [added, setAdded] = useState<AddedEntry[]>(() =>
-    initialRow
-      ? [{ stickerId: initialRow.stickerId, row: emptyEntryRow(), clientId: newEntryClientId() }]
-      : [],
+    initialRows.map((row) => ({
+      stickerId: row.stickerId,
+      row: emptyEntryRow(),
+      clientId: newEntryClientId(),
+    })),
   );
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);

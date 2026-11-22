@@ -283,6 +283,25 @@ test('initialStickerId: kolom cari terisi dan stiker langsung masuk entri', asyn
   expect(screen.getByRole('button', { name: 'Batal catat Segel Polos' })).toBeInTheDocument();
 });
 
+test('initialStickerIds (aksi massal): semua stiker masuk entri tanpa mengisi kolom cari; tak dikenal dilewati', async () => {
+  const { onDirtyChange } = await renderPage({ initialStickerIds: ['s3', 'tidak-ada', 's1'] });
+  await chooseJakarta();
+  expect(screen.getByLabelText('Cari stiker')).toHaveValue('');
+  expect(screen.getByRole('button', { name: 'Batal catat Segel Polos' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Batal catat Hijau-B' })).toBeInTheDocument();
+  expect(screen.getAllByText(/^Baris \d+$/)).toHaveLength(2);
+  // Entri awal yang belum diisi bukan isian belum disimpan.
+  expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+});
+
+test('initialStickerIds pada mode Masuk melewati stiker nonaktif (tak dapat dicatat masuk)', async () => {
+  // s4 (Segel Lawas) nonaktif: hanya s3 yang masuk entri pada mode Masuk.
+  await renderPage({ initialStickerIds: ['s3', 's4'] });
+  await chooseJakarta();
+  expect(screen.getByRole('button', { name: 'Batal catat Segel Polos' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Batal catat Segel Lawas' })).toBeNull();
+});
+
 test('onDirtyChange: bersih awalnya dan saat stiker baru ditambah tanpa isian; kotor setelah diisi', async () => {
   const { onDirtyChange } = await renderPage();
   expect(onDirtyChange).toHaveBeenLastCalledWith(false);

@@ -21,6 +21,7 @@ import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { BulkExportDialog } from '@/modules/qrcode/components/bulk-export-dialog';
 import { QrDesignsTable } from '@/modules/qrcode/components/qr-designs-table';
+import { classifyForExport } from '@/modules/qrcode/lib/bulk-export-plan';
 import { useBulkQrExport } from '@/modules/qrcode/lib/use-bulk-qr-export';
 import { useQrExport } from '@/modules/qrcode/lib/use-qr-export';
 import {
@@ -91,10 +92,13 @@ function QrCodesPage() {
   );
 
   const reload = () => void list.refetch();
+  /** Tak ada syarat status pada konfigurasi: Hapus/Pulihkan berlaku bagi baris yang sedang tampil (keputusan pemilik 2026-11-23). */
+  const isVisible = (id: string) => visible.some((design) => design.id === id);
   const remove = useBulkAction({
     selection,
     subject: 'konfigurasi',
     verb: 'dihapus',
+    eligible: isVisible,
     send: (ids) => removeDesigns.mutateAsync({ ids }).then((result) => result.ids),
     undo: {
       label: 'Pulihkan',
@@ -106,11 +110,14 @@ function QrCodesPage() {
     selection,
     subject: 'konfigurasi',
     verb: 'dipulihkan',
+    eligible: isVisible,
     send: (ids) => restoreDesigns.mutateAsync({ ids }).then((result) => result.items),
     reload,
   });
   const bulkBusy = remove.busy || restore.busy || bulkExport.running;
   const selectedDesigns = visible.filter((design) => selection.selected.has(design.id));
+  // Ekspor tampil bila minimal satu konfigurasi terpilih dapat diekspor; yang dilewati dilaporkan di dialog.
+  const hasExportable = selectedDesigns.some((design) => classifyForExport(design).kind !== 'skip');
 
   function restoreRow(design: QrDesignDto) {
     restoreDesigns.mutate(
@@ -223,15 +230,15 @@ function QrCodesPage() {
           canEdit || canManage ? (
             <BulkBar count={selection.count} onClear={selection.clear} busy={bulkBusy}>
               {deletedView ? (
-                canManage ? (
+                canManage && restore.eligibleCount > 0 ? (
                   <ActionButton action="restore" onClick={() => void restore.run()} />
                 ) : null
               ) : (
                 <>
-                  {canEdit ? (
+                  {canEdit && hasExportable ? (
                     <ActionButton action="export" onClick={() => setBulkExportOpen(true)} />
                   ) : null}
-                  {canManage ? (
+                  {canManage && remove.eligibleCount > 0 ? (
                     <ActionButton
                       action="delete"
                       onClick={() => setDeleteTarget({ kind: 'bulk' })}
@@ -295,7 +302,7 @@ function QrCodesPage() {
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
-        count={deleteTarget?.kind === 'bulk' ? selection.count : 1}
+        count={deleteTarget?.kind === 'bulk' ? remove.eligibleCount : 1}
         subject="konfigurasi"
         {...(usedItems > 0 ? { usage: `Memuat ${usedItems} item` } : {})}
         onConfirm={confirmDelete}

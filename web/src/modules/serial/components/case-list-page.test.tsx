@@ -314,7 +314,7 @@ test('search params tak sah dibuang; URL status=all dibaca; bu tunggal lama diba
   expect(caseSearchSchema.parse({ status: 'all' })).toEqual({ status: 'all' });
 });
 
-test('ponsel: mengetuk badan kartu laporan membuka View laporan itu; desktop tanpa klik badan baris (C5/C13)', async () => {
+test('ponsel: mengetuk badan kartu laporan membuka View laporan itu; desktop: klik baris juga membuka View (C5/C13; K9 2026-11-23)', async () => {
   window.innerWidth = 360;
   media = mockMatchMedia(false);
   const { router, unmount } = await renderPage();
@@ -328,5 +328,5 @@ test('ponsel: mengetuk badan kartu laporan membuka View laporan itu; desktop tan
   const desktop = await renderPage();
   await screen.findByRole('table', { name: 'Daftar laporan rusak' });
   await userEvent.click(screen.getAllByText('Gudang A')[0] as HTMLElement);
-  expect(desktop.router.state.location.pathname).toBe('/');
+  expect(desktop.router.state.location.pathname).toBe('/serial/reports/c1');
 });

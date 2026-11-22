@@ -524,3 +524,28 @@ test('banner tampil di atas isi, di dalam kolom kiri', () => {
   expect(banner.compareDocumentPosition(isi) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(banner.closest('aside')).toBeNull();
 });
+
+test('K9: bar judul selebar penuh dan ber-border, daftar tab setinggi 40 px, panel samping melebar di atas 1920 px', () => {
+  mockMatchMedia(true);
+  const { container } = render(
+    <ViewPage
+      title="Item"
+      aside={<p>samping</p>}
+      tabs={[
+        { id: 'a', label: 'A', content: <p>isi a</p> },
+        { id: 'b', label: 'B', content: <p>isi b</p> },
+      ]}
+    />,
+  );
+  const frame = container.querySelector('[data-headroom-frame]') as HTMLElement;
+  expect(frame.className).toContain('min-[1921px]:[--aside-w:24rem]');
+  const bar = screen
+    .getByRole('heading', { level: 1, name: 'Item' })
+    .closest('.sticky') as HTMLElement;
+  expect(bar.className).toContain('border-b');
+  expect(bar.className).not.toContain('wide:border-b');
+  expect(bar.querySelector('[class*="max-w-"]')).toBeNull();
+  const list = screen.getByRole('tablist');
+  expect(list.className).toContain('group-data-horizontal/tabs:h-10');
+  expect(list.className).not.toContain('h-auto');
+});

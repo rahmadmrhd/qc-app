@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { ActionButton } from '@/components/action-button';
 import { BulkBar, useRowSelection } from '@/components/data-table';
-import { DisabledReason } from '@/components/disabled-reason';
 import { FilterBar, FilterChip } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
@@ -84,10 +83,9 @@ function RolesPage() {
     removeBatch: (input) => removeRoles.mutateAsync(input),
     restoreBatch: (input) => restoreRoles.mutateAsync(input),
     reload,
+    // Role yang masih dipakai pengguna tak dapat dihapus (server): tak ikut dikirim.
+    canDelete: (role) => role.userCount === 0,
   });
-
-  const selected = visible.filter((role) => selection.selected.has(role.id));
-  const inUse = selected.filter((role) => role.userCount > 0);
 
   function restoreRow(role: RoleDto) {
     restoreRoles.mutate(
@@ -179,19 +177,9 @@ function RolesPage() {
             <BulkBar count={selection.count} onClear={selection.clear} busy={bulk.busy}>
               {deletedView ? (
                 <ActionButton action="restore" onClick={() => void bulk.restore.run()} />
-              ) : (
-                <DisabledReason
-                  reason={
-                    inUse.length > 0 ? 'Ada role terpilih yang masih dipakai pengguna' : undefined
-                  }
-                >
-                  <ActionButton
-                    action="delete"
-                    disabled={inUse.length > 0}
-                    onClick={() => setDeleteTarget({ kind: 'bulk' })}
-                  />
-                </DisabledReason>
-              )}
+              ) : bulk.remove.eligibleCount > 0 ? (
+                <ActionButton action="delete" onClick={() => setDeleteTarget({ kind: 'bulk' })} />
+              ) : null}
             </BulkBar>
           ) : null
         }
@@ -236,7 +224,7 @@ function RolesPage() {
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
-        count={deleteTarget?.kind === 'bulk' ? selection.count : 1}
+        count={deleteTarget?.kind === 'bulk' ? bulk.remove.eligibleCount : 1}
         subject="role"
         {...(deleteTarget?.kind === 'row' && deleteTarget.role.userCount > 0
           ? { usage: `Dipakai ${deleteTarget.role.userCount} pengguna` }

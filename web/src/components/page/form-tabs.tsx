@@ -1,6 +1,8 @@
+import { cn } from 'cn';
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { onFormTabRequest } from '@/lib/form-tab-request';
+import { LINE_TAB_LIST_CLASS, LINE_TAB_TRIGGER_CLASS } from './tab-styles';
 
 export interface FormTab {
   id: string;
@@ -57,18 +59,14 @@ export function FormTabs({
       <span id={hintId} className="sr-only">
         ada isian yang belum benar
       </span>
-      <TabsList
-        variant="line"
-        style={{ top: stickyTop }}
-        className="sticky z-10 h-auto w-full justify-start overflow-x-auto overflow-y-hidden rounded-none border-b bg-[var(--tabs-surface,var(--background))] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
+      <TabsList variant="line" style={{ top: stickyTop }} className={LINE_TAB_LIST_CLASS}>
         {tabs.map((tab) => (
           <TabsTrigger
             key={tab.id}
             value={tab.id}
             data-form-tab={tab.id}
             aria-describedby={tab.hasError ? hintId : undefined}
-            className="flex-none px-3 py-2 touch:min-h-11"
+            className={cn(LINE_TAB_TRIGGER_CLASS)}
           >
             {tab.label}
             {tab.hasError ? (

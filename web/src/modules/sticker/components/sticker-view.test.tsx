@@ -191,32 +191,49 @@ test('tanpa panel stok: hanya tab Detail (tab Stok dan Riwayat tidak ada)', asyn
   expect(screen.queryByRole('tab', { name: 'Riwayat' })).toBeNull();
 });
 
-test('dengan panel stok: tab Stok memuat total, rincian per lokasi, dan aksi stok', async () => {
-  const onWrite = vi.fn().mockResolvedValue(null);
-  await renderView({ stock: panel({ onWrite }), tab: 'stok' });
+/** Membuka dropdown "Stok" di header View dan mengembalikan nama semua butirnya. */
+async function openStockMenu(): Promise<string[]> {
+  await userEvent.click(screen.getByRole('button', { name: 'Stok' }));
+  const menu = await screen.findByRole('menu');
+  return within(menu)
+    .getAllByRole('menuitem')
+    .map((item) => item.textContent ?? '');
+}
+
+test('dengan panel stok: tab Stok hanya memuat angka; aksi stok ada di header', async () => {
+  await renderView({ stock: panel(), tab: 'stok' });
   expect(screen.getByRole('tab', { name: 'Stok', selected: true })).toBeInTheDocument();
   expect(screen.getByText('Total')).toBeInTheDocument();
   expect(screen.getByText('150')).toBeInTheDocument();
   expect(screen.getByText('Jakarta')).toBeInTheDocument();
   expect(screen.getByText('120')).toBeInTheDocument();
   expect(screen.getByText('Bandung')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Catat masuk Hijau-B' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Catat keluar Hijau-B' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Koreksi Hijau-B' })).toBeInTheDocument();
+  // Tombol aksi tak lagi ada di isi tab: hanya satu entri "Stok" bersubmenu di bar judul.
+  expect(screen.queryByRole('button', { name: 'Catat masuk Hijau-B' })).toBeNull();
+  expect(await openStockMenu()).toEqual([
+    'Catat masuk',
+    'Catat keluar',
+    'Koreksi',
+    'Entri stok',
+    'Stok opname',
+  ]);
 });
 
-test('tombol Catat masuk membuka dialog stok bersama (dirender View)', async () => {
-  await renderView({ stock: panel(), tab: 'stok' });
-  await userEvent.click(screen.getByRole('button', { name: 'Catat masuk Hijau-B' }));
+test('aksi Catat masuk dari header membuka dialog stok bersama (dirender View)', async () => {
+  await renderView({ stock: panel() });
+  await openStockMenu();
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Catat masuk' }));
   expect(await screen.findByRole('alertdialog')).toBeInTheDocument();
 });
 
-test('aksi stok mengikuti izin: view saja tanpa Catat dan Koreksi, tanpa Entri stok dan Stok opname', async () => {
-  await renderView({ stock: panel({ canEdit: false, canManage: false }), tab: 'stok' });
-  expect(screen.queryByRole('button', { name: /^Catat/ })).toBeNull();
-  expect(screen.queryByRole('button', { name: /^Koreksi/ })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Entri stok' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Stok opname' })).toBeNull();
+test('aksi stok mengikuti izin: view saja tanpa entri Stok sama sekali', async () => {
+  await renderView({ stock: panel({ canEdit: false, canManage: false }) });
+  expect(screen.queryByRole('button', { name: 'Stok' })).toBeNull();
+});
+
+test('hanya hak catat (tanpa manage): tanpa Koreksi dan Stok opname', async () => {
+  await renderView({ stock: panel({ canManage: false }) });
+  expect(await openStockMenu()).toEqual(['Catat masuk', 'Catat keluar', 'Entri stok']);
 });
 
 test('stiker nonaktif: Catat masuk hilang, Catat keluar tetap ada', async () => {
@@ -224,10 +241,10 @@ test('stiker nonaktif: Catat masuk hilang, Catat keluar tetap ada', async () => 
   await renderView({
     sticker: { ...sticker, status: 'inactive' },
     stock: panel({ rows: [inactiveRow] }),
-    tab: 'stok',
   });
-  expect(screen.queryByRole('button', { name: 'Catat masuk Hijau-B' })).toBeNull();
-  expect(screen.getByRole('button', { name: 'Catat keluar Hijau-B' })).toBeInTheDocument();
+  const names = await openStockMenu();
+  expect(names).not.toContain('Catat masuk');
+  expect(names).toContain('Catat keluar');
 });
 
 test('total stok negatif tampil sebagai "Kurang N"', async () => {
@@ -239,10 +256,12 @@ test('total stok negatif tampil sebagai "Kurang N"', async () => {
 });
 
 test('Entri stok dan Stok opname memanggil handler dengan id stiker', async () => {
-  const { onStartEntry, onStartOpname } = await renderView({ stock: panel(), tab: 'stok' });
-  await userEvent.click(screen.getByRole('button', { name: 'Entri stok' }));
+  const { onStartEntry, onStartOpname } = await renderView({ stock: panel() });
+  await openStockMenu();
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Entri stok' }));
   expect(onStartEntry).toHaveBeenCalledWith('s1');
-  await userEvent.click(screen.getByRole('button', { name: 'Stok opname' }));
+  await openStockMenu();
+  await userEvent.click(screen.getByRole('menuitem', { name: 'Stok opname' }));
   expect(onStartOpname).toHaveBeenCalledWith('s1');
 });
 

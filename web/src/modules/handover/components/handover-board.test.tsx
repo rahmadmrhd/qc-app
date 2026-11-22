@@ -1,6 +1,5 @@
 import type { HandoverStatus } from '@shared/handover';
 import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 
@@ -70,13 +69,12 @@ afterEach(() => {
   delete (window as any).matchMedia;
 });
 
-test('layar lebar memakai empat kolom; layar sempit memakai daftar kartu dengan filter', async () => {
+test('layar lebar memakai empat kolom; layar sempit memakai daftar kartu (filter lewat chip halaman)', () => {
   mockMedia(true);
   const { unmount } = render(<Board />);
   for (const name of ['Baru', 'Dikerjakan', 'Selesai', 'Dibatalkan']) {
     expect(screen.getByRole('group', { name })).toBeInTheDocument();
   }
-  expect(screen.queryByRole('button', { name: 'Semua' })).not.toBeInTheDocument();
   unmount();
 
   mockMedia(false);
@@ -84,11 +82,10 @@ test('layar lebar memakai empat kolom; layar sempit memakai daftar kartu dengan 
   expect(
     screen.queryByRole('group', { name: /^(Baru|Dikerjakan|Selesai|Dibatalkan)$/ }),
   ).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Semua' })).toHaveAttribute('aria-pressed', 'true');
+  // Pilihan status ada di chip "Status" bar filter halaman, bukan deretan tombol di papan.
+  expect(screen.queryByRole('button', { name: 'Semua' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('group', { name: 'Filter status' })).not.toBeInTheDocument();
   expect(screen.getAllByRole('article')).toHaveLength(4);
-  await userEvent.click(screen.getByRole('button', { name: 'Selesai' }));
-  expect(screen.getAllByRole('article')).toHaveLength(1);
-  expect(screen.getByText('ST-3')).toBeInTheDocument();
 });
 
 test('task Dibatalkan dan Selesai ikut tampil di kolomnya', () => {
@@ -169,8 +166,8 @@ test('filter ponsel dikendalikan dari luar (bertahan lewat props)', () => {
   render(
     <HandoverBoard handovers={tasks} filter="done" onFilterChange={vi.fn()} bindings={bindings} />,
   );
-  expect(screen.getByRole('button', { name: 'Selesai' })).toHaveAttribute('aria-pressed', 'true');
   expect(screen.getAllByRole('article')).toHaveLength(1);
+  expect(screen.getByText('ST-3')).toBeInTheDocument();
 });
 
 const pending = [
@@ -210,12 +207,21 @@ test('kanban: kolom Baru kosong tidak menampilkan "Tidak ada task" bila ada kart
   expect(within(baru).queryByText('Tidak ada task.')).not.toBeInTheDocument();
 });
 
-test('ponsel: kartu sementara tampil pada filter Semua dan Baru, tidak pada filter lain', async () => {
+test('ponsel: kartu sementara tampil pada filter Semua dan Baru, tidak pada filter lain', () => {
   mockMedia(false);
-  render(<PendingBoard />);
+  const view = (filter: HandoverStatus | 'all') => (
+    <HandoverBoard
+      handovers={tasks}
+      filter={filter}
+      onFilterChange={vi.fn()}
+      bindings={bindings}
+      pendingCreates={pending}
+    />
+  );
+  const { rerender } = render(view('all'));
   expect(screen.getByText('PT Offline')).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Baru' }));
+  rerender(view('new'));
   expect(screen.getByText('PT Offline')).toBeInTheDocument();
-  await userEvent.click(screen.getByRole('button', { name: 'Selesai' }));
+  rerender(view('done'));
   expect(screen.queryByText('PT Offline')).not.toBeInTheDocument();
 });

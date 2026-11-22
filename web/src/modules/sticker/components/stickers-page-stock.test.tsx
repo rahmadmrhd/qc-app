@@ -599,3 +599,37 @@ test('ponsel: aksi stok menjadi grup datar "Stok" di menu ⋯ (tanpa submenu ber
     window.innerWidth = 1024;
   }
 });
+
+test('aksi stok massal: pilihan katalog membuka Entri stok dengan stiker yang boleh dicatat saja', async () => {
+  const { onStartEntry } = await renderPage();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Hijau-B' }));
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel Polos' }));
+  // s3 (Segel Lawas) tak punya baris stok: tak ikut dikirim walau ikut dipilih.
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel Lawas' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Catat masuk' }));
+  expect(onStartEntry).toHaveBeenLastCalledWith('in', ['s1', 's2']);
+  await userEvent.click(screen.getByRole('button', { name: 'Catat keluar' }));
+  expect(onStartEntry).toHaveBeenLastCalledWith('out', ['s1', 's2']);
+  await userEvent.click(screen.getByRole('button', { name: 'Koreksi' }));
+  expect(onStartEntry).toHaveBeenLastCalledWith('adjust', ['s1', 's2']);
+});
+
+test('aksi stok massal mengikuti izin: hanya hak catat tanpa Koreksi; baris nonaktif tak dapat Catat masuk', async () => {
+  const inactive = { ...rows[1], status: 'inactive' as const } as StickerStockDto;
+  await renderPage({ canManage: false, rows: [rows[0] as StickerStockDto, inactive] });
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel Polos' }));
+  // Segel Polos nonaktif: Catat keluar berlaku, Catat masuk tidak.
+  expect(screen.queryByRole('button', { name: 'Catat masuk' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Catat keluar' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Koreksi' })).toBeNull();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Hijau-B' }));
+  expect(screen.getByRole('button', { name: 'Catat masuk' })).toBeInTheDocument();
+});
+
+test('pemegang stok tanpa kelola katalog tetap dapat memilih baris untuk aksi stok, tanpa aksi katalog', async () => {
+  await renderPage({}, { canManage: false });
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Hijau-B' }));
+  expect(screen.getByRole('button', { name: 'Catat masuk' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Nonaktifkan' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+});

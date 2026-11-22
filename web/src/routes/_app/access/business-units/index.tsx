@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { ActionButton } from '@/components/action-button';
 import { BulkBar, useRowSelection } from '@/components/data-table';
-import { DisabledReason } from '@/components/disabled-reason';
 import { FilterBar, FilterChip } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
@@ -99,7 +98,6 @@ function BusinessUnitsPage() {
   });
 
   const selected = visible.filter((bu) => selection.selected.has(bu.id));
-  const allInactive = selected.every((bu) => bu.status === 'inactive');
 
   function applyStatus(bu: BusinessUnitDto, next: 'active' | 'inactive') {
     setStatus.mutate(
@@ -120,7 +118,10 @@ function BusinessUnitsPage() {
   }
 
   function deactivateSelected() {
-    const inUse = selected.filter(needsDeactivateConfirmation);
+    // Hanya BU yang memenuhi syarat Nonaktifkan (Aktif) yang dikirim dan dihitung pada konfirmasi.
+    const inUse = selected.filter(
+      (bu) => bulk.isEligible.deactivate(bu.id) && needsDeactivateConfirmation(bu),
+    );
     if (inUse.length > 0) setDeactivating({ rows: inUse, bulk: true });
     else void bulk.deactivate.run();
   }
@@ -168,8 +169,9 @@ function BusinessUnitsPage() {
         : undefined;
     }
     if (deleteTarget?.kind === 'bulk') {
-      const items = selected.reduce((sum, bu) => sum + bu.itemCount, 0);
-      const users = selected.reduce((sum, bu) => sum + bu.userCount, 0);
+      const doomed = selected.filter((bu) => bulk.isEligible.remove(bu.id));
+      const items = doomed.reduce((sum, bu) => sum + bu.itemCount, 0);
+      const users = doomed.reduce((sum, bu) => sum + bu.userCount, 0);
       return items > 0 || users > 0 ? `Dipakai ${items} item, ${users} pengguna` : undefined;
     }
     return undefined;
@@ -236,17 +238,18 @@ function BusinessUnitsPage() {
                 <ActionButton action="restore" onClick={() => void bulk.restore.run()} />
               ) : (
                 <>
-                  <ActionButton action="activate" onClick={() => void bulk.activate.run()} />
-                  <ActionButton action="deactivate" onClick={deactivateSelected} />
-                  <DisabledReason
-                    reason={allInactive ? undefined : 'Nonaktifkan BU dulu sebelum dihapus'}
-                  >
+                  {bulk.activate.eligibleCount > 0 ? (
+                    <ActionButton action="activate" onClick={() => void bulk.activate.run()} />
+                  ) : null}
+                  {bulk.deactivate.eligibleCount > 0 ? (
+                    <ActionButton action="deactivate" onClick={deactivateSelected} />
+                  ) : null}
+                  {bulk.remove.eligibleCount > 0 ? (
                     <ActionButton
                       action="delete"
-                      disabled={!allInactive}
                       onClick={() => setDeleteTarget({ kind: 'bulk' })}
                     />
-                  </DisabledReason>
+                  ) : null}
                 </>
               )}
             </BulkBar>
@@ -299,7 +302,7 @@ function BusinessUnitsPage() {
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
-        count={deleteTarget?.kind === 'bulk' ? selection.count : 1}
+        count={deleteTarget?.kind === 'bulk' ? bulk.remove.eligibleCount : 1}
         subject="BU"
         {...(deleteUsage ? { usage: deleteUsage } : {})}
         onConfirm={confirmDelete}

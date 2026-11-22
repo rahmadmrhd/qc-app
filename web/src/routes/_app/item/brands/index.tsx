@@ -7,7 +7,6 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { ActionButton } from '@/components/action-button';
 import { BulkBar, useBulkAction, useRowSelection } from '@/components/data-table';
-import { DisabledReason } from '@/components/disabled-reason';
 import { FilterBar, FilterChip } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
@@ -96,11 +95,15 @@ function BrandsPage() {
       const brand = visible.find((entry) => entry.id === id);
       return brand === undefined || changes(brand);
     });
+  /** Syarat aksi per baris (keputusan pemilik 2026-11-23): hanya baris yang memenuhi yang dikirim. */
+  const statusIs = (id: string, wanted: BrandDto['status']) =>
+    visible.find((entry) => entry.id === id)?.status === wanted;
   const activate = useBulkAction({
     selection,
     subject: 'merk',
     verb: 'diaktifkan',
     send: (ids) => statusBatch.mutateAsync({ ids, status: 'active' }).then((r) => r.items),
+    eligible: (id) => statusIs(id, 'inactive'),
     undo: {
       changed: (ids) => changedIds(ids, (brand) => brand.status !== 'active'),
       run: (ids) => statusBatch.mutateAsync({ ids, status: 'inactive' }).then((r) => r.items),
@@ -112,6 +115,7 @@ function BrandsPage() {
     subject: 'merk',
     verb: 'dinonaktifkan',
     send: (ids) => statusBatch.mutateAsync({ ids, status: 'inactive' }).then((r) => r.items),
+    eligible: (id) => statusIs(id, 'active'),
     undo: {
       changed: (ids) => changedIds(ids, (brand) => brand.status !== 'inactive'),
       run: (ids) => statusBatch.mutateAsync({ ids, status: 'active' }).then((r) => r.items),
@@ -123,6 +127,7 @@ function BrandsPage() {
     subject: 'merk',
     verb: 'dihapus',
     send: (ids) => removeBrands.mutateAsync({ ids }).then((r) => r.ids),
+    eligible: (id) => statusIs(id, 'inactive'),
     undo: {
       label: 'Pulihkan',
       run: (ids) => restoreBrands.mutateAsync({ ids }).then((r) => r.items),
@@ -134,12 +139,12 @@ function BrandsPage() {
     subject: 'merk',
     verb: 'dipulihkan',
     send: (ids) => restoreBrands.mutateAsync({ ids }).then((r) => r.items),
+    eligible: (id) => visible.some((entry) => entry.id === id),
     reload,
   });
   const bulkBusy = activate.busy || deactivate.busy || remove.busy || restore.busy;
 
   const selected = visible.filter((brand) => selection.selected.has(brand.id));
-  const allInactive = selected.every((brand) => brand.status === 'inactive');
 
   function toggleStatus(brand: BrandDto) {
     const next = brand.status === 'active' ? 'inactive' : 'active';
@@ -183,7 +188,9 @@ function BrandsPage() {
   const usedItems =
     deleteTarget?.kind === 'row'
       ? deleteTarget.brand.itemCount
-      : selected.reduce((sum, brand) => sum + brand.itemCount, 0);
+      : selected
+          .filter((brand) => brand.status === 'inactive')
+          .reduce((sum, brand) => sum + brand.itemCount, 0);
   const statusOptions = statusFilterOptions(canManage);
   const statusLabel = statusOptions.find((option) => option.value === status)?.label;
   const pendingId = setStatus.isPending
@@ -246,17 +253,18 @@ function BrandsPage() {
                 <ActionButton action="restore" onClick={() => void restore.run()} />
               ) : (
                 <>
-                  <ActionButton action="activate" onClick={() => void activate.run()} />
-                  <ActionButton action="deactivate" onClick={() => void deactivate.run()} />
-                  <DisabledReason
-                    reason={allInactive ? undefined : 'Nonaktifkan merk dulu sebelum dihapus'}
-                  >
+                  {activate.eligibleCount > 0 ? (
+                    <ActionButton action="activate" onClick={() => void activate.run()} />
+                  ) : null}
+                  {deactivate.eligibleCount > 0 ? (
+                    <ActionButton action="deactivate" onClick={() => void deactivate.run()} />
+                  ) : null}
+                  {remove.eligibleCount > 0 ? (
                     <ActionButton
                       action="delete"
-                      disabled={!allInactive}
                       onClick={() => setDeleteTarget({ kind: 'bulk' })}
                     />
-                  </DisabledReason>
+                  ) : null}
                 </>
               )}
             </BulkBar>
@@ -309,7 +317,7 @@ function BrandsPage() {
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
-        count={deleteTarget?.kind === 'bulk' ? selection.count : 1}
+        count={deleteTarget?.kind === 'bulk' ? remove.eligibleCount : 1}
         subject="merk"
         {...(usedItems > 0 ? { usage: `Dipakai ${usedItems} item` } : {})}
         onConfirm={confirmDelete}
