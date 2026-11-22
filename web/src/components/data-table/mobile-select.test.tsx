@@ -172,15 +172,16 @@ test('petunjuk tahan kartu bisa ditutup dan tidak muncul lagi', async () => {
   expect(screen.queryByRole('note')).toBeNull();
 });
 
-test('BulkBar ponsel: dua aksi utama, sisanya di menu tambahan', async () => {
+test('BulkBar ponsel: lebih dari dua aksi = aksi pertama langsung, sisanya di menu tambahan (R12)', async () => {
   render(<Harness />);
   await userEvent.click(screen.getByRole('button', { name: 'Aksi Asus' }));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Pilih' }));
   const bar = screen.getByRole('region', { name: 'Aksi massal' });
   expect(within(bar).getByRole('button', { name: 'Satu' })).toBeInTheDocument();
-  expect(within(bar).getByRole('button', { name: 'Dua' })).toBeInTheDocument();
+  expect(within(bar).queryByRole('button', { name: 'Dua' })).toBeNull();
   expect(within(bar).queryByRole('button', { name: 'Tiga' })).toBeNull();
   await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
+  expect(await screen.findByRole('button', { name: 'Dua' })).toBeInTheDocument();
   expect(await screen.findByRole('button', { name: 'Tiga' })).toBeInTheDocument();
 });
 

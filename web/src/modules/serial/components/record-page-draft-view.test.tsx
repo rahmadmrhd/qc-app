@@ -280,7 +280,9 @@ test('ruang untuk bar aksi ada di dasar halaman (pembungkus) hanya saat ada pili
   }
   expect(wrapper.querySelector('div[aria-hidden]:empty')).toBeNull();
 
-  await userEvent.click(screen.getByRole('button', { name: 'Batalkan pilihan' }));
+  // Tanpa tombol "Batalkan pilihan" (R12): keluar lewat Escape (atau kosongkan kotak centang / tombol kembali).
+  expect(screen.queryByRole('button', { name: 'Batalkan pilihan' })).toBeNull();
+  await userEvent.keyboard('{Escape}');
   expect(wrapper.className).not.toContain('narrow:pb-');
   expect(wrapper).not.toHaveAttribute('data-selection-space');
 });
@@ -315,11 +317,17 @@ test('ponsel: mode pilih kartu draft hanya punya SATU bar (bawah), tanpa header 
   expect(container.querySelector('[data-slot="selection-bar"]')).toBeNull();
   expect(screen.getAllByText('1 dipilih')).toHaveLength(1);
   const bar = screen.getByRole('region', { name: 'Aksi baris terpilih' });
-  expect(within(bar).getByRole('button', { name: 'Batalkan pilihan' })).toBeInTheDocument();
-  expect(within(bar).getByRole('checkbox', { name: 'Pilih semua' })).toBeInTheDocument();
-  await userEvent.click(within(bar).getByRole('checkbox', { name: 'Pilih semua' }));
+  // Satu baris (R12): kotak centang tri-state + jumlah + Edit/Hapus; tanpa tombol "Batalkan pilihan".
+  expect(within(bar).queryByRole('button', { name: 'Batalkan pilihan' })).toBeNull();
+  const all = within(bar).getByRole('checkbox', { name: 'Pilih semua' });
+  expect(all).toHaveAttribute('aria-checked', 'mixed');
+  expect(within(bar).getByRole('button', { name: 'Edit' })).toBeInTheDocument();
+  expect(within(bar).getByRole('button', { name: 'Hapus' })).toBeInTheDocument();
+  await userEvent.click(all);
   expect(screen.getByText('2 dipilih')).toBeInTheDocument();
-  await userEvent.click(within(bar).getByRole('button', { name: 'Batalkan pilihan' }));
+  expect(all).toHaveAttribute('aria-checked', 'true');
+  // Semua terpilih: klik mengosongkan dan mode pilih berakhir.
+  await userEvent.click(all);
   expect(screen.queryByRole('region', { name: 'Aksi baris terpilih' })).toBeNull();
 });
 
@@ -330,9 +338,10 @@ test('ponsel: mode pilih lewat tombol "Pilih baris draft" (0 butir) tetap menamp
   await userEvent.click(await screen.findByRole('button', { name: 'Pilih baris draft' }));
   expect(container.querySelector('[data-slot="selection-bar"]')).toBeNull();
   const bar = screen.getByRole('region', { name: 'Aksi baris terpilih' });
-  expect(within(bar).getByText('0 dipilih')).toBeInTheDocument();
+  expect(within(bar).getByText('Pilih item')).toBeInTheDocument();
+  expect(within(bar).queryByRole('button', { name: 'Edit' })).toBeNull();
   expect(screen.queryByRole('region', { name: 'Aksi draft' })).toBeNull();
-  await userEvent.click(within(bar).getByRole('button', { name: 'Batalkan pilihan' }));
+  await userEvent.keyboard('{Escape}');
   expect(screen.queryByRole('region', { name: 'Aksi baris terpilih' })).toBeNull();
 });
 

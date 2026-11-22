@@ -54,7 +54,7 @@ function Page() {
   );
 }
 
-test('ponsel: mode pilih punya SATU bar bawah (batal, jumlah, pilih semua, aksi) tanpa header pilihan di atas', async () => {
+test('ponsel: mode pilih punya SATU baris bawah (kotak centang tri-state, jumlah, aksi) tanpa header pilihan di atas', async () => {
   media = mockMatchMedia(false);
   vi.useFakeTimers();
   render(<Page />);
@@ -68,14 +68,18 @@ test('ponsel: mode pilih punya SATU bar bawah (batal, jumlah, pilih semua, aksi)
   const bar = screen.getByRole('region', { name: 'Aksi massal' });
   expect(bar.className).toContain('fixed');
   expect(document.querySelector('[data-slot="selection-bar"]')).toBeNull();
-  expect(within(bar).getByRole('button', { name: 'Batalkan pilihan' })).toBeInTheDocument();
+  // R12: tanpa tombol "Batalkan pilihan"; satu baris (kotak centang, jumlah, aksi).
+  expect(within(bar).queryByRole('button', { name: 'Batalkan pilihan' })).toBeNull();
   expect(within(bar).getByRole('status')).toHaveTextContent('1 dipilih');
   expect(within(bar).getByRole('button', { name: 'Aktifkan' })).toBeInTheDocument();
-  // Pilih semua dari bar yang sama.
-  await userEvent.click(within(bar).getByRole('checkbox', { name: 'Pilih semua' }));
+  // Sebagian terpilih = campuran; klik = pilih semua.
+  const all = within(bar).getByRole('checkbox', { name: 'Pilih semua' });
+  expect(all).toHaveAttribute('aria-checked', 'mixed');
+  await userEvent.click(all);
   expect(within(bar).getByRole('status')).toHaveTextContent('2 dipilih');
-  // Batalkan pilihan keluar dari mode pilih: bar hilang.
-  await userEvent.click(within(bar).getByRole('button', { name: 'Batalkan pilihan' }));
+  expect(all).toHaveAttribute('aria-checked', 'true');
+  // Semua terpilih: klik mengosongkan pilihan dan mode pilih berakhir (bar hilang).
+  await userEvent.click(all);
   expect(screen.queryByRole('region', { name: 'Aksi massal' })).toBeNull();
 });
 
@@ -102,14 +106,20 @@ function GridPage() {
   );
 }
 
-test('ponsel: mode pilih dari tombol "Pilih" (0 butir) tetap menampilkan bar bawah tanpa aksi', async () => {
+test('ponsel: mode pilih dari tombol "Pilih" (0 butir) tetap menampilkan bar bawah tanpa aksi; Escape keluar', async () => {
   media = mockMatchMedia(false);
   render(<GridPage />);
   await userEvent.click(screen.getByRole('button', { name: 'Pilih Gambar' }));
   const bar = screen.getByRole('region', { name: 'Aksi massal' });
-  expect(within(bar).getByRole('status')).toHaveTextContent('0 dipilih');
+  expect(within(bar).getByRole('status')).toHaveTextContent('Pilih item');
+  expect(within(bar).getByRole('checkbox', { name: 'Pilih semua' })).toHaveAttribute(
+    'aria-checked',
+    'false',
+  );
   expect(within(bar).queryByRole('button', { name: 'Hapus' })).toBeNull();
   expect(document.querySelector('[data-slot="selection-bar"]')).toBeNull();
+  await userEvent.keyboard('{Escape}');
+  expect(screen.queryByRole('region', { name: 'Aksi massal' })).toBeNull();
 });
 
 test('desktop: bar aksi massal di ATAS tabel dengan urutan Batalkan pilihan, jumlah, aksi', async () => {
