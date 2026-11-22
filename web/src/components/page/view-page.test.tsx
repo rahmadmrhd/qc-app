@@ -270,3 +270,34 @@ test('ponsel: beberapa aksi `primary` mengisi bar bawah bersama (Lapor rusak + U
     .map((button) => button.getAttribute('aria-label') ?? button.textContent);
   expect(labels).toEqual(['Lapor rusak', 'Ubah', 'Aksi lainnya']);
 });
+
+test('ponsel: dua aksi bersubmenu berurutan dipisah satu garis dan induk nonaktif menonaktifkan butirnya', async () => {
+  mockMatchMedia(false);
+  render(
+    <ViewPage
+      title="X"
+      actionItems={[
+        {
+          ...UNDUH(vi.fn(), vi.fn()),
+          id: 'dl1',
+          label: 'Unduh A',
+          disabled: true,
+          disabledReason: 'Belum siap',
+        },
+        { ...UNDUH(vi.fn(), vi.fn()), id: 'dl2', label: 'Unduh B' },
+        { id: 'delete', action: 'delete', onSelect: vi.fn() },
+      ]}
+    />,
+  );
+  const bar = screen.getByRole('region', { name: 'Aksi halaman' });
+  await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
+  const menu = await screen.findByRole('menu');
+  const separators = within(menu).getAllByRole('separator');
+  expect(separators).toHaveLength(1); // grup A | grup B (Hapus jadi tombol utama di bar)
+  for (const separator of separators) {
+    expect(separator.nextElementSibling?.getAttribute('role')).not.toBe('separator');
+  }
+  const [pdfA] = within(menu).getAllByRole('menuitem', { name: /PDF/ });
+  expect(pdfA).toHaveAttribute('aria-disabled', 'true');
+  expect(within(menu).getAllByText('Belum siap').length).toBeGreaterThan(0);
+});

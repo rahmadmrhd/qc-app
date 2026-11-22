@@ -15,6 +15,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { onFormTabRequest } from '@/lib/form-tab-request';
+import { separatorBefore } from '@/lib/menu-separators';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
 import { StickyActionBar } from './sticky-action-bar';
 
@@ -54,21 +55,39 @@ function actionText(entry: ViewAction): string {
   return entry.label ?? ACTIONS[entry.action].label;
 }
 
-/** Butir menu ponsel (menu "Aksi lainnya"): ikon + label; alasan nonaktif sebagai baris keterangan. */
-function PhoneMenuItem({ entry, short }: { entry: ViewAction; short?: boolean }) {
+/**
+ * Butir menu ponsel (menu "Aksi lainnya") dan dropdown grup desktop: ikon + label; alasan nonaktif sebagai baris
+ * keterangan. `parent` = entri induk grup: bila induk nonaktif/sibuk, butirnya ikut nonaktif (alasan induk dipakai
+ * bila butir tak punya alasan sendiri).
+ */
+function PhoneMenuItem({
+  entry,
+  short,
+  parent,
+}: {
+  entry: ViewAction;
+  short?: boolean;
+  parent?: ViewAction;
+}) {
   const Icon = ACTIONS[entry.action].icon;
   const text = short ? (entry.shortLabel ?? actionText(entry)) : actionText(entry);
+  const disabled = Boolean(entry.disabled || entry.busy || parent?.disabled || parent?.busy);
+  const reason = entry.disabled
+    ? entry.disabledReason
+    : parent?.disabled
+      ? (entry.disabledReason ?? parent.disabledReason)
+      : undefined;
   return (
     <DropdownMenuItem
       variant={entry.action === 'delete' ? 'destructive' : 'default'}
-      disabled={entry.disabled || entry.busy}
+      disabled={disabled}
       onSelect={entry.onSelect}
     >
       <Icon aria-hidden />
-      {entry.disabled && entry.disabledReason ? (
+      {disabled && reason ? (
         <span className="flex min-w-0 flex-col">
           {text}
-          <span className="text-xs font-normal text-muted-foreground">{entry.disabledReason}</span>
+          <span className="text-xs font-normal text-muted-foreground">{reason}</span>
         </span>
       ) : (
         text
@@ -92,19 +111,9 @@ function DesktopSubmenu({ entry }: { entry: ViewAction }) {
         />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        {group.map((sub) => {
-          const SubIcon = ACTIONS[sub.action].icon;
-          return (
-            <DropdownMenuItem
-              key={sub.id}
-              disabled={sub.disabled || sub.busy}
-              onSelect={sub.onSelect}
-            >
-              <SubIcon aria-hidden />
-              {actionText(sub)}
-            </DropdownMenuItem>
-          );
-        })}
+        {group.map((sub) => (
+          <PhoneMenuItem key={sub.id} entry={sub} parent={entry} />
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -274,17 +283,26 @@ export function ViewPage({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" side="top">
                 {menuActions.map((entry, index) => {
-                  if (!entry.submenu) return <PhoneMenuItem key={entry.id} entry={entry} />;
+                  const separator = separatorBefore(menuActions, index) ? (
+                    <DropdownMenuSeparator />
+                  ) : null;
+                  if (!entry.submenu) {
+                    return (
+                      <Fragment key={entry.id}>
+                        {separator}
+                        <PhoneMenuItem entry={entry} />
+                      </Fragment>
+                    );
+                  }
                   const group = entry.submenu.filter((sub) => !sub.hidden);
                   if (group.length === 0) return null;
                   return (
                     <Fragment key={entry.id}>
-                      {index > 0 ? <DropdownMenuSeparator /> : null}
+                      {separator}
                       <DropdownMenuLabel>{entry.shortLabel ?? actionText(entry)}</DropdownMenuLabel>
                       {group.map((sub) => (
-                        <PhoneMenuItem key={sub.id} entry={sub} short />
+                        <PhoneMenuItem key={sub.id} entry={sub} parent={entry} short />
                       ))}
-                      {index < menuActions.length - 1 ? <DropdownMenuSeparator /> : null}
                     </Fragment>
                   );
                 })}

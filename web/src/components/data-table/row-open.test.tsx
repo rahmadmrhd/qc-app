@@ -221,3 +221,95 @@ test('desktop: showLabel menampilkan ikon + teks (nama aksesibel tetap label pan
   expect(withText).toHaveTextContent('Ekspor');
   expect(screen.getByRole('button', { name: 'Ubah Asus' })).toHaveTextContent('');
 });
+
+function twoGroups(overrides: Partial<RowAction> = {}): RowAction[] {
+  const sub = (id: string, action: RowAction['action'], label: string): RowAction => ({
+    id,
+    action,
+    label,
+    shortLabel: label,
+    onSelect: () => undefined,
+  });
+  return [
+    { id: 'edit', action: 'edit', label: 'Ubah Asus', onSelect: () => undefined },
+    {
+      id: 'stock',
+      action: 'download',
+      label: 'Stok Asus',
+      shortLabel: 'Stok',
+      onSelect: () => undefined,
+      submenu: [sub('in', 'create', 'Masuk'), sub('out', 'delete', 'Keluar')],
+      ...overrides,
+    },
+    {
+      id: 'dl',
+      action: 'download',
+      label: 'Unduh Asus',
+      shortLabel: 'Unduh',
+      onSelect: () => undefined,
+      submenu: [sub('pdf', 'download', 'PDF')],
+    },
+    { id: 'del', action: 'delete', label: 'Hapus Asus', onSelect: () => undefined },
+  ];
+}
+
+test('ponsel: dua grup submenu berurutan dipisah SATU garis (bukan dua), butir di sekitarnya satu garis tiap batas', async () => {
+  media = mockMatchMedia(false);
+  render(
+    <TooltipProvider>
+      <RowActionsHarness actions={twoGroups()} />
+    </TooltipProvider>,
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Aksi Asus' }));
+  const menu = await screen.findByRole('menu');
+  // Ubah | Stok(2) | Unduh(1) | Hapus: tiga batas segmen = tiga garis, tak ada garis berurutan.
+  const separators = within(menu).getAllByRole('separator');
+  expect(separators).toHaveLength(3);
+  for (const separator of separators) {
+    expect(separator.previousElementSibling?.getAttribute('role')).not.toBe('separator');
+    expect(separator.nextElementSibling?.getAttribute('role')).not.toBe('separator');
+  }
+});
+
+test('ponsel: entri induk grup nonaktif membuat butirnya nonaktif dan alasannya tampil', async () => {
+  media = mockMatchMedia(false);
+  render(
+    <TooltipProvider>
+      <RowActionsHarness
+        actions={twoGroups({ disabled: true, disabledReason: 'Sedang diproses' })}
+      />
+    </TooltipProvider>,
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Aksi Asus' }));
+  const menu = await screen.findByRole('menu');
+  expect(within(menu).getByRole('menuitem', { name: /Masuk/ })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
+  expect(within(menu).getByRole('menuitem', { name: /Keluar/ })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
+  expect(within(menu).getAllByText('Sedang diproses')).toHaveLength(2);
+  // Grup lain tak terpengaruh.
+  expect(within(menu).getByRole('menuitem', { name: 'PDF' })).not.toHaveAttribute('aria-disabled');
+});
+
+test('desktop: dropdown grup menampilkan alasan nonaktif butir dan varian merah untuk Hapus', async () => {
+  media = mockMatchMedia(true);
+  const actions = twoGroups();
+  const stock = actions[1] as RowAction;
+  const submenu = [
+    { ...(stock.submenu?.[0] as RowAction), disabled: true, disabledReason: 'Stok kosong' },
+    stock.submenu?.[1] as RowAction,
+  ];
+  render(
+    <TooltipProvider>
+      <RowActionsHarness actions={[{ ...stock, submenu }]} />
+    </TooltipProvider>,
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Stok Asus' }));
+  const menu = await screen.findByRole('menu');
+  expect(within(menu).getByText('Stok kosong')).toBeInTheDocument();
+  expect(menu.querySelector('[data-variant="destructive"]')).not.toBeNull();
+});
