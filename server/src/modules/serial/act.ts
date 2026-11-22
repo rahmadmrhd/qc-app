@@ -4,6 +4,7 @@ import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
 import { statementsFor } from '@server/core/events';
+import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { mapDuplicateError } from '@server/modules/access/repo';
 import { planAttachFiles } from '@server/modules/files/service';
@@ -26,6 +27,7 @@ import { assertSerialVisible, canWriteBu, modulesOn } from './access';
 import { involvedBuIds, moveBuStatements } from './bu-history';
 import { planProofAttach } from './proof/attach';
 import './alert-listener';
+import { newId } from '@server/core/id';
 import { applicableStickersOf } from './applicable';
 import {
   closeCaseStmt,
@@ -104,6 +106,8 @@ export async function stickerRaise(
   retried: boolean,
   /** BU yang menentukan stiker yang berlaku (bawaan BU serial; cek ulang yang memindahkan BU memakai BU tujuan). */
   buId: string = row.bu_id.trim(),
+  /** Tunda penonaktifan stiker `deprecated` ke akhir batch pemanggil (jalur batch banyak serial; pemanggil memasangnya). */
+  deferInactivate = false,
 ): Promise<StickerRaise> {
   const serialId = row.id.trim();
   const current = new Map(
@@ -163,10 +167,57 @@ export async function stickerRaise(
         picks,
         actor: user.email,
         now,
+        deferInactivate,
       })),
     );
   }
   return { statements, changes, raised };
+}
+
+export interface StickersAppliedEffect {
+  /** `serial_stickers` upsert dan pendengar stok, dipasang SETELAH kejadian di batch pemanggil. */
+  tail: DbStatement[];
+  changes: SerialChangeDto[];
+  data: Record<string, unknown>;
+}
+
+/**
+ * Efek aksi Tempel stiker (`apply_stickers`, keputusan pemilik 2026-11-22 K1): `stickerRaise` yang sama dengan cek ulang
+ * (+1 per centang, potong stok 1 di `locationId` = lokasi unit, stiker `inactive` ditolak, stiker baru wajib berlaku bagi
+ * item), tanpa hasil cek dan tanpa mengubah status/posisi/laporan. Dipakai `applyAct` (satu serial) dan perencana batch
+ * (`stickers-batch.ts`) agar tidak ada logika ganda; pemanggil menyusun kejadian `stickers_applied` dari `changes`/`data`.
+ */
+export async function stickersAppliedEffect(
+  env: Env,
+  row: SerialRow,
+  eventId: string,
+  locationId: string,
+  locationName: string,
+  stickerIds: readonly string[],
+  user: UserContext,
+  now: string,
+  retried: boolean,
+  /** Jalur batch: penonaktifan stiker `deprecated` ditunda ke akhir batch dan dipasang pemanggil (`stickers-batch.ts`). */
+  deferInactivate = false,
+): Promise<StickersAppliedEffect> {
+  if (stickerIds.length === 0) throw validationError('stickerIds', 'Pilih minimal satu stiker');
+  const raise = await stickerRaise(
+    env,
+    row,
+    eventId,
+    locationId,
+    stickerIds,
+    user,
+    now,
+    retried,
+    undefined,
+    deferInactivate,
+  );
+  return {
+    tail: raise.statements,
+    changes: raise.changes,
+    data: { locationId, locationName, stickers: raise.raised },
+  };
 }
 
 const BU_TARGET_MESSAGE = 'BU ini tidak bisa dipilih untuk cek ulang ini';
@@ -190,7 +241,7 @@ async function resolveBuTarget(
   });
   if (allowed.length === 0) throw validationError('buId', BU_TARGET_MESSAGE);
   const target = await env.DB.prepare(
-    "SELECT code FROM business_units WHERE id = ? AND status = 'active'",
+    `SELECT code FROM business_units WHERE ${liveWhere()} AND id = ? AND status = 'active'`,
   )
     .bind(targetBuId)
     .first<{ code: string }>();
@@ -289,8 +340,8 @@ async function applyAct(
   const extraEvents: EventDraft[] = [];
 
   const openCaseId = row.open_case_id.trim();
-  const eventId = crypto.randomUUID();
-  const newCaseId = crypto.randomUUID();
+  const eventId = newId();
+  const newCaseId = newId();
   let currentLocationId = row.location_id.trim();
   let currentLocationName = row.location_name ?? '';
   // Perpindahan BU (hanya cek ulang lolos yang membawa `buId`; validator menolaknya pada aksi lain): diisi di bawah.
@@ -354,7 +405,7 @@ async function applyAct(
     set.transit_to_location_id = '';
     set.transit_on = '';
     preEvents.push({
-      id: crypto.randomUUID(),
+      id: newId(),
       caseId: openCaseId,
       type: 'receive',
       message: '',
@@ -565,7 +616,7 @@ async function applyAct(
           main.changes = [...raise.changes];
           main.data = { ...checkData, caseNumber: number };
           extraEvents.push({
-            id: crypto.randomUUID(),
+            id: newId(),
             caseId: newCaseId,
             type: 'report_failure',
             message: input.message,
@@ -587,6 +638,24 @@ async function applyAct(
           main.data = { ...checkData, caseNumber: found.number, result: 'fail' };
         }
       }
+      break;
+    }
+    case 'apply_stickers': {
+      const effect = await stickersAppliedEffect(
+        env,
+        row,
+        eventId,
+        currentLocationId,
+        currentLocationName,
+        input.stickerIds,
+        user,
+        now,
+        retried,
+      );
+      tail.push(...effect.tail);
+      main.type = 'stickers_applied';
+      main.changes.push(...effect.changes);
+      main.data = effect.data;
       break;
     }
     default:

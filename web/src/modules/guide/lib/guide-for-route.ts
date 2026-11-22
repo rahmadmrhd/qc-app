@@ -1,9 +1,20 @@
 import type { GuideOffer } from './offer';
 
-/** `pathname` sama dengan `prefix` atau berada di bawahnya (`/handover` cocok `/handover/new`, bukan `/handovers-lain`). */
+/**
+ * `pathname` sama dengan `prefix` atau berada di bawahnya (`/handover` cocok `/handover/new`, bukan `/handovers-lain`).
+ * Segmen awalan yang diawali `$` (mis. `/qrcode/$id`) cocok dengan SATU segmen apa pun yang tidak kosong, jadi rute
+ * ber-parameter dapat dikecualikan tanpa mendaftar tiap nilainya.
+ */
 function underPrefix(prefix: string, pathname: string): boolean {
   if (prefix === '/') return pathname === '/';
-  return pathname === prefix || pathname.startsWith(`${prefix}/`);
+  if (!prefix.includes('/$')) return pathname === prefix || pathname.startsWith(`${prefix}/`);
+  const want = prefix.split('/');
+  const have = pathname.split('/');
+  if (have.length < want.length) return false;
+  return want.every((segment, index) => {
+    const actual = have[index] ?? '';
+    return segment.startsWith('$') ? actual !== '' : segment === actual;
+  });
 }
 
 /**

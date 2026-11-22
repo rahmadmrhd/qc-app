@@ -43,7 +43,7 @@ export function BulkEditDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       {/* Isi dimuat hanya selama dialog terbuka: tiap pembukaan mulai dari form kosong. */}
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent size="full-on-phone" className="sm:max-w-lg">
         <BulkEditBody
           count={count}
           recheckCount={recheckCount}
@@ -121,7 +121,7 @@ function BulkEditBody({
           onChange={setItem}
         />
         {itemIncomplete ? (
-          <p className="text-xs text-destructive">Pilih Business Unit untuk item ini.</p>
+          <p className="text-xs text-destructive-text">Pilih Business Unit untuk item ini.</p>
         ) : null}
         <div className="space-y-1.5">
           <Label htmlFor="bulk-date">Tanggal uji (ubah massal)</Label>
@@ -167,7 +167,7 @@ function BulkEditBody({
         </div>
       </div>
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onClose}>
+        <Button type="button" variant="outline" color="primary" onClick={onClose}>
           Batal
         </Button>
         <Button type="button" disabled={!dirty || itemIncomplete} onClick={apply}>

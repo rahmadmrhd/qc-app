@@ -87,7 +87,7 @@ export function StickerChecklist({
           Pilih item dan Business Unit untuk melihat stiker yang berlaku.
         </p>
       ) : state === 'error' ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Stiker yang berlaku gagal dimuat.
         </p>
       ) : state === 'loading' ? (
@@ -121,6 +121,7 @@ export function StickerChecklist({
                   <Button
                     type="button"
                     variant="outline"
+                    color="primary"
                     size="icon-xs"
                     aria-label={`Kurangi ${label}`}
                     disabled={!checked || (qty ?? 1) <= 1}
@@ -137,6 +138,7 @@ export function StickerChecklist({
                   <Button
                     type="button"
                     variant="outline"
+                    color="primary"
                     size="icon-xs"
                     aria-label={`Tambah ${label}`}
                     disabled={!checked || (qty ?? 1) >= SERIAL_LIMITS.stickerQtyMax}

@@ -8,6 +8,7 @@ import { CSRF_HEADERS } from '@/lib/api/client';
 import { getBridge } from '@/lib/platform';
 import { clearAllOutboxesWithin, suspendOutboxWrites } from '@/modules/handover/lib/outbox';
 import { clearSending } from '@/modules/handover/lib/outbox-status';
+import { clearLastActive } from '@/modules/location/last-active';
 import { clearAllDrafts } from '@/modules/serial/lib/draft-store';
 import { clearSession, getSession } from './session';
 
@@ -50,6 +51,7 @@ export function useLogout(): () => void {
       if (bridge) await logoutDesktop(bridge);
       else if (!import.meta.env.DEV) await postLogout();
       clearSession();
+      clearLastActive(owner);
       // Draf tabel sementara Serial Number (localStorage) dibuang saat keluar; sesi yang kedaluwarsa tidak membuangnya.
       clearAllDrafts();
       // Antrean tulis di perangkat (IndexedDB + kunci lama) dan papan/detail task (Fase 3 Tahap B) dibuang saat keluar

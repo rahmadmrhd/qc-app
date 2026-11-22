@@ -168,7 +168,7 @@ test('Lapor Rusak: pemindai kamera memakai mode satu-serial (tanpa tabel dan tan
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={client}>
-      <ReportPage onOpenSerial={() => undefined} />
+      <ReportPage onOpenSerial={() => undefined} onCancel={() => undefined} />
     </QueryClientProvider>,
   );
   expect(captured.props?.single).toBe(true);

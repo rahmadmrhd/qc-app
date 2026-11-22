@@ -1,4 +1,5 @@
 import { ComboboxBase, type ComboboxCommon } from '@/components/combobox';
+import { useChipDraft } from '@/components/page/filter-draft';
 
 /** Satu pilihan tetap (enum/daftar kecil di kode). `value` boleh string kosong, mis. untuk "Semua …". */
 export interface SelectOption {
@@ -32,7 +33,15 @@ export interface SelectProps extends SelectCommon {
 export interface MultiSelectProps extends SelectCommon {
   value: readonly string[];
   onValueChange: (values: string[]) => void;
+  /**
+   * Menyesuaikan nilai setiap kali pengguna memilih/melepas satu opsi (mis. dua opsi yang saling meniadakan):
+   * `(nilai baru, nilai sebelumnya) => nilai yang dipakai`. Berlaku pada draf di dalam chip maupun di luarnya.
+   */
+  reconcile?: (next: string[], previous: readonly string[]) => string[];
 }
+
+/** Pilihan tetap sependek ini tak perlu papan ketik layar (ketukan langsung memilih dari daftar). */
+const KEYBOARDLESS_MAX = 8;
 
 const toLinkOptions = (options: readonly SelectOption[]) =>
   options.map(({ value, ...rest }) => ({ id: value, ...rest }));
@@ -58,6 +67,7 @@ export function Select({
       multi={false}
       localFilter
       highlight
+      keyboardless={options.length <= KEYBOARDLESS_MAX}
       selectedIds={current ? [current.value] : []}
       displayText={current?.label ?? ''}
       chips={[]}
@@ -69,8 +79,21 @@ export function Select({
   );
 }
 
-/** Pilihan BANYAK dari daftar tetap; nilai terpilih menjadi chip di dalam bingkai input. */
-export function MultiSelect({ value, onValueChange, options, ...common }: MultiSelectProps) {
+/**
+ * Pilihan BANYAK dari daftar tetap; nilai terpilih menjadi chip di dalam bingkai input. Di dalam `FilterChip`
+ * perubahan ditahan sebagai draf dan `onValueChange` dipanggil sekali saat chip menutup; di luar chip seketika.
+ */
+export function MultiSelect({
+  value: applied,
+  onValueChange,
+  reconcile,
+  options,
+  ...common
+}: MultiSelectProps) {
+  const [value, setValue] = useChipDraft<readonly string[]>(applied, (next) =>
+    onValueChange([...next]),
+  );
+  const change = (next: string[]) => setValue(reconcile ? reconcile(next, value) : next);
   const labelOf = (id: string) => options.find((option) => option.value === id)?.label ?? id;
   return (
     <ComboboxBase
@@ -82,8 +105,8 @@ export function MultiSelect({ value, onValueChange, options, ...common }: MultiS
       selectedIds={value}
       displayText={null}
       chips={value.map((id) => ({ id, label: labelOf(id), href: null }))}
-      onPick={(picked) => onValueChange([...value, picked])}
-      onRemove={(removed) => onValueChange(value.filter((existing) => existing !== removed))}
+      onPick={(picked) => change([...value, picked])}
+      onRemove={(removed) => change(value.filter((existing) => existing !== removed))}
     />
   );
 }

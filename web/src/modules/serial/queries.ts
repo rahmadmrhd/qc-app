@@ -1,4 +1,6 @@
+import type { IdBatchInput } from '@shared/batch';
 import type {
+  ApplyStickersBatchInput,
   GetSerialOutput,
   ListSerialItemOptionsInput,
   ReplaceSerialProofInput,
@@ -129,6 +131,14 @@ export function serialCaseListQueryOptions(filter: SerialCaseFilter = {}) {
   });
 }
 
+/** Detail satu laporan (View `/serial/reports/$caseId`); tak terbaca/terhapus/tak ada = `NOT_FOUND`. */
+export function serialCaseDetailQueryOptions(id: string) {
+  return queryOptions({
+    queryKey: serialKeys.caseOne(id),
+    queryFn: () => api('serialCases.get', { id }),
+  });
+}
+
 export function serialDetailQueryOptions(id: string) {
   return queryOptions({
     queryKey: serialKeys.one(id),
@@ -242,6 +252,73 @@ function applySaved(queryClient: QueryClient, saved: SerialDto): void {
   void queryClient.invalidateQueries({ queryKey: serialKeys.one(saved.id) });
   // Aksi/ubah data menambah entri riwayat: tab yang sedang terbuka dimuat ulang, tab lain ditandai basi.
   void queryClient.invalidateQueries({ queryKey: serialKeys.history(saved.id) });
+  // Status Serial kini, penutup, dan hasil laporan ikut berubah: detail laporan dan daftar Laporan dimuat ulang.
+  void queryClient.invalidateQueries({ queryKey: serialKeys.cases });
+}
+
+/** Membuang id dari SEMUA halaman daftar serial yang sudah termuat (hapus/pulihkan: baris pindah tampilan). */
+function dropFromLists(queryClient: QueryClient, ids: readonly string[]): void {
+  const gone = new Set(ids);
+  queryClient.setQueriesData<InfiniteData<SerialListOutput, string | undefined>>(
+    { queryKey: serialKeys.list },
+    (current) =>
+      current
+        ? {
+            ...current,
+            pages: current.pages.map((page) => ({
+              ...page,
+              items: page.items.filter((entry) => !gone.has(entry.id)),
+            })),
+          }
+        : current,
+  );
+}
+
+/** Hapus/Pulihkan mengubah keberadaan serial: detail, riwayat, daftar (tampilan lain), laporan, dan audit ditandai basi. */
+function markSerialsChanged(queryClient: QueryClient, ids: readonly string[]): void {
+  dropFromLists(queryClient, ids);
+  markStale(queryClient, serialKeys.list, serialKeys.cases, accessKeys.audit);
+  for (const id of ids) markStale(queryClient, serialKeys.one(id), serialKeys.history(id));
+}
+
+/** Hapus serial (batch, lunak): keluar dari daftar hidup; View-nya tetap ada bagi pemegang `serial: manage`. */
+export function useRemoveSerials() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: IdBatchInput) => api('serials.removeBatch', input),
+    onSuccess: (result) => markSerialsChanged(queryClient, result.ids),
+  });
+}
+
+/** Pulihkan serial (batch): kembali ke daftar hidup dan keluar dari daftar terhapus. */
+export function useRestoreSerials() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: IdBatchInput) => api('serials.restoreBatch', input),
+    onSuccess: (result) =>
+      markSerialsChanged(
+        queryClient,
+        result.items.map((serial) => serial.id),
+      ),
+  });
+}
+
+/**
+ * Tempel stiker massal (`serials.applyStickersBatch`, atomik): stok stiker terpotong dan kejadian baru muncul di tiap
+ * serial, jadi daftar, detail, riwayat, stok stiker, laporan, dan audit ditandai basi. `clientId` dibuat PEMANGGIL sekali
+ * per niat kirim dan dipakai ulang saat mengirim ulang (kunci idempoten server); jangan membuat id baru saat mengulang.
+ */
+export function useApplyStickersBatch() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ApplyStickersBatchInput) => api('serials.applyStickersBatch', input),
+    onSuccess: (result) => {
+      markStale(queryClient, serialKeys.list, serialKeys.cases, stickerKeys.all, accessKeys.audit);
+      for (const id of result.ids) {
+        markStale(queryClient, serialKeys.one(id), serialKeys.history(id));
+      }
+    },
+  });
 }
 
 export function useSaveSerialBatch() {

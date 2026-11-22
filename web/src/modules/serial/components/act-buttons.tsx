@@ -1,12 +1,11 @@
 import { type ActorModules, availableActions, type SerialFlowState } from '@shared/serial-flow';
-import { Button } from '@/components/ui/button';
 import { flowRowLabel } from '../lib/labels';
 
 /**
- * Jenis dialog update. Beberapa aksi tabel transisi digabung jadi satu dialog: Diagnosis memuat tahap diagnosis,
+ * Jenis dialog aksi alur. Beberapa aksi tabel transisi digabung jadi satu dialog: Diagnosis memuat tahap diagnosis,
  * diperbaiki, selesai, dan Rusak; Cek ulang memuat hasil lolos atau tidak lolos (rancangan laporan rusak §4.4).
  */
-export type ActKind = 'report' | 'send' | 'receive' | 'diagnosis' | 'recheck' | 'note';
+export type ActKind = 'report' | 'send' | 'receive' | 'diagnosis' | 'recheck' | 'stickers' | 'note';
 
 export interface ActButtonSpec {
   kind: ActKind;
@@ -22,16 +21,18 @@ const KIND_OF = {
   recheck: 'recheck',
   recheck_pass: 'recheck',
   recheck_fail: 'recheck',
+  apply_stickers: 'stickers',
   note: 'note',
 } as const;
 
-/** Urutan tombol: aksi alur dulu, Catatan terakhir. */
+/** Urutan baku jenis aksi (`actButtonSpecs`) dan dialog; bobot dan urutan di header diatur `useSerialActions`. */
 const KIND_ORDER: readonly ActKind[] = [
   'report',
   'send',
   'receive',
   'diagnosis',
   'recheck',
+  'stickers',
   'note',
 ];
 
@@ -41,6 +42,7 @@ const KIND_LABEL: Record<ActKind, string> = {
   receive: 'Terima',
   diagnosis: 'Diagnosis',
   recheck: 'Cek ulang',
+  stickers: 'Tempel stiker',
   note: 'Catatan',
 };
 
@@ -57,33 +59,10 @@ export function actButtonSpecs(state: SerialFlowState, actor: ActorModules): Act
   });
 }
 
-export interface ActButtonsProps {
-  state: SerialFlowState;
-  actor: ActorModules;
-  onPick: (kind: ActKind) => void;
-}
-
-/** Baris tombol update di sebelah judul "Riwayat": satu tombol per aksi yang tersedia. Tanpa aksi, tidak tampil. */
-export function ActButtons({ state, actor, onPick }: ActButtonsProps) {
-  const specs = actButtonSpecs(state, actor);
-  if (specs.length === 0) return null;
-  return (
-    <fieldset
-      aria-label="Update baru"
-      data-tour="serial-actions"
-      className="m-0 flex min-w-0 flex-wrap items-center gap-2 border-0 p-0"
-    >
-      {specs.map((spec) => (
-        <Button
-          key={spec.kind}
-          type="button"
-          size="sm"
-          variant={spec.kind === 'report' ? 'destructive' : 'outline'}
-          onClick={() => onPick(spec.kind)}
-        >
-          {spec.label}
-        </Button>
-      ))}
-    </fieldset>
-  );
+/**
+ * Lapor rusak tersedia menurut tabel transisi. Tombolnya memakai `ACTIONS.reportDamage` dan ada di header View Serial
+ * di sebelah Ubah data (`useSerialActions`), serta sebagai aksi baris di daftar.
+ */
+export function canReportDamage(state: SerialFlowState, actor: ActorModules): boolean {
+  return actButtonSpecs(state, actor).some((spec) => spec.kind === 'report');
 }

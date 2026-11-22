@@ -4,6 +4,7 @@ import { isGuardFailure } from '@server/core/cas';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { newId } from '@server/core/id';
 import type { UserContext } from '@server/modules/access/context';
 import { findActiveFile } from '@server/modules/files/repo';
 import { readFile } from '@server/modules/files/service';
@@ -18,7 +19,8 @@ import type {
 } from '@shared/contract';
 import { type ImageMime, readImageDimensions } from '@shared/files';
 import { SERIAL_PROOF_LIMITS } from '@shared/serials';
-import { canReadSerial, readableBuIds } from '../access';
+import { canManageSerial, canReadSerial, readableBuIds } from '../access';
+import { involvedBuIds } from '../bu-history';
 import { canManageProof } from './access';
 import { serialProofJobStmt } from './job';
 import {
@@ -60,13 +62,23 @@ function storeOf(env: Env): ProofStore {
   return env.PROOF_STORE;
 }
 
+/** BU serial pemilik foto (kosong bila tak ada barisnya) dan apakah serial itu terhapus. */
+async function serialStateOf(
+  env: Env,
+  serialId: string,
+): Promise<{ buId: string; deleted: boolean }> {
+  if (serialId === '') return { buId: '', deleted: false };
+  const row = await env.DB.prepare('SELECT bu_id, deleted_at FROM serials WHERE id = ?')
+    .bind(serialId)
+    .first<{ bu_id: string; deleted_at: string }>();
+  return row
+    ? { buId: row.bu_id.trim(), deleted: row.deleted_at !== '' }
+    : { buId: '', deleted: false };
+}
+
 /** BU serial pemilik foto (kosong bila tak ada barisnya). */
 async function serialBuOf(env: Env, serialId: string): Promise<string> {
-  if (serialId === '') return '';
-  const row = await env.DB.prepare('SELECT bu_id FROM serials WHERE id = ?')
-    .bind(serialId)
-    .first<{ bu_id: string }>();
-  return row ? row.bu_id.trim() : '';
+  return (await serialStateOf(env, serialId)).buId;
 }
 
 /** Foto yang boleh dilihat `user`: draft = pembuatnya saja; selain itu BU serial harus terbaca. Selain itu `NOT_FOUND`. */
@@ -77,8 +89,12 @@ async function visibleProof(env: Env, id: string, user: UserContext): Promise<Pr
     if (proof.createdBy !== user.email) throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
     return proof;
   }
-  const buId = await serialBuOf(env, proof.serialId);
+  const { buId, deleted } = await serialStateOf(env, proof.serialId);
   if (buId === '' || !(await canReadSerial(env.DB, user, proof.serialId, buId))) {
+    throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
+  }
+  // Foto serial terhapus hanya terbaca pemegang hak Pulihkan serial itu (soft delete §4.2).
+  if (deleted && !canManageSerial(user, await involvedBuIds(env.DB, proof.serialId))) {
     throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
   }
   return proof;
@@ -119,7 +135,7 @@ export async function uploadProof(
       'Penyimpanan sementara foto bukti penuh. Coba lagi nanti atau hubungi admin.',
     );
   }
-  const id = crypto.randomUUID();
+  const id = newId();
   const stagedName = newStagedName();
   await store.write(stagedName, input.bytes);
   try {
@@ -169,6 +185,7 @@ export async function getProof(
         itemBuIds: null,
         canReadStickerFiles: false,
         serialBuIds: readableBuIds(user),
+        serialManage: (involved) => canManageSerial(user, involved),
       },
       file,
     );
@@ -217,6 +234,7 @@ export async function removeProof(
           actor: user.email,
           action: 'serial.proof_remove',
           target: `serial:${proof.serialId}`,
+          targetId: proof.serialId,
           before: {
             id: proof.id,
             eventId: proof.eventId,
@@ -370,6 +388,7 @@ export async function replaceProof(
         actor: user.email,
         action: 'serial.proof_reupload',
         target: `serial:${old.serialId}`,
+        targetId: old.serialId,
         before: { id: old.id, eventId: old.eventId, state: old.state, error: old.lastError },
         after: { id: draft.id },
       }),

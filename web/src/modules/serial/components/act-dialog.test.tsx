@@ -7,7 +7,10 @@ import { ApiError } from '@/lib/api/api-error';
 import { linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
 
 const apiMock = vi.hoisted(() => vi.fn());
-vi.mock('@/lib/api', () => ({ api: apiMock }));
+vi.mock('@/lib/api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api')>()),
+  api: apiMock,
+}));
 vi.mock('@/modules/files/image', () => ({
   prepareImage: vi.fn(async () => ({
     mime: 'image/webp',
@@ -28,19 +31,28 @@ vi.mock('@/modules/markdown/wysiwyg-editor', () => ({
     labelledBy?: string;
     mode?: string;
     maxImages?: number;
+    onBusyChange?: (busy: boolean) => void;
   }) => (
-    <textarea
-      id={props.id}
-      aria-labelledby={props.labelledBy}
-      data-mode={props.mode}
-      data-max-images={props.maxImages}
-      value={props.value}
-      onChange={(event) => props.onChange(event.target.value)}
-    />
+    <>
+      <textarea
+        id={props.id}
+        aria-labelledby={props.labelledBy}
+        data-mode={props.mode}
+        data-max-images={props.maxImages}
+        value={props.value}
+        onChange={(event) => props.onChange(event.target.value)}
+      />
+      <button type="button" onClick={() => props.onBusyChange?.(true)}>
+        Simulasi gambar diunggah
+      </button>
+      <button type="button" onClick={() => props.onBusyChange?.(false)}>
+        Simulasi unggah selesai
+      </button>
+    </>
   ),
 }));
 
-import { ActButtons, type ActKind, actButtonSpecs } from './act-buttons';
+import { type ActKind, actButtonSpecs, canReportDamage } from './act-buttons';
 import { ActDialog } from './act-dialog';
 
 type Level = 'none' | 'view' | 'edit' | 'manage';
@@ -219,8 +231,18 @@ const labelsOf = (serial: SerialDto, actor: MeDto) =>
   ).map((spec) => spec.label);
 
 test('tombol sesuai status dan peran: satu per aksi', () => {
-  expect(labelsOf(SERIAL, meWith('edit'))).toEqual(['Lapor rusak', 'Cek ulang', 'Catatan']);
-  expect(labelsOf(REPORTED, meWith('edit'))).toEqual(['Kirim ke servis', 'Cek ulang', 'Catatan']);
+  expect(labelsOf(SERIAL, meWith('edit'))).toEqual([
+    'Lapor rusak',
+    'Cek ulang',
+    'Tempel stiker',
+    'Catatan',
+  ]);
+  expect(labelsOf(REPORTED, meWith('edit'))).toEqual([
+    'Kirim ke servis',
+    'Cek ulang',
+    'Tempel stiker',
+    'Catatan',
+  ]);
   expect(labelsOf(AT_SERVICE_TRANSIT, meWith('none', 'edit'))).toEqual([
     'Terima di servis',
     'Diagnosis',
@@ -243,26 +265,13 @@ test('tombol sesuai status dan peran: satu per aksi', () => {
   expect(labelsOf(AT_SERVICE_TRANSIT, meWith('edit'))).toEqual(['Catatan']);
 });
 
-test('ActButtons: tanpa aksi tidak tampil; tombol memanggil onPick dengan jenis dialog', async () => {
-  const onPick = vi.fn();
-  const { container, rerender } = render(
-    <ActButtons
-      state={{ status: 'good', custody: 'qc' }}
-      actor={{ serial: false, serialservice: false }}
-      onPick={onPick}
-    />,
-  );
-  expect(container).toBeEmptyDOMElement();
-  rerender(
-    <ActButtons
-      state={{ status: 'good', custody: 'qc' }}
-      actor={{ serial: true, serialservice: false }}
-      onPick={onPick}
-    />,
-  );
-  await userEvent.click(screen.getByRole('button', { name: 'Lapor rusak' }));
-  expect(onPick).toHaveBeenCalledWith('report');
-  expect(container.querySelector('select, option')).toBeNull();
+test('canReportDamage mengikuti tabel transisi: hanya QC pada serial lolos di QC', () => {
+  const qc = { serial: true, serialservice: false };
+  expect(canReportDamage({ status: 'good', custody: 'qc' }, qc)).toBe(true);
+  expect(canReportDamage({ status: 'reported', custody: 'qc' }, qc)).toBe(false);
+  expect(
+    canReportDamage({ status: 'good', custody: 'qc' }, { serial: false, serialservice: true }),
+  ).toBe(false);
 });
 
 test('Lapor rusak: catatan wajib; payload hanya catatan dan tanggal', async () => {
@@ -490,6 +499,110 @@ test('Cek ulang pada Lolos: centang awalnya kosong; stiker dicentang masuk stick
   expect(lastAct()).toMatchObject({ action: 'recheck', result: 'pass', stickerIds: ['st2'] });
   expect(lastAct()).not.toHaveProperty('locationId');
   expect(lastAct()).not.toHaveProperty('stickers');
+});
+
+test('Tempel stiker: daftar centang tanpa kata "ulang"; kirim nonaktif tanpa centang; payload apply_stickers', async () => {
+  renderDialog(SERIAL, 'stickers');
+  expect(screen.getByRole('heading', { name: 'Tempel stiker' })).toBeInTheDocument();
+  const stickerA = await screen.findByRole('checkbox', { name: 'Stiker A' });
+  const stickerB = await screen.findByRole('checkbox', { name: 'Stiker B' });
+  expect(screen.getByText('Stiker yang ditempel')).toBeInTheDocument();
+  expect(screen.queryByText('Stiker yang ditempel ulang')).not.toBeInTheDocument();
+  expect(screen.getByText('Sudah ditempel 2×')).toBeInTheDocument();
+  expect(screen.getByText('Belum pernah ditempel')).toBeInTheDocument();
+  // Tidak ada hasil cek, BU, foto bukti, maupun catatan wajib: hanya tanggal, stiker, dan catatan opsional.
+  expect(screen.queryByText('Hasil cek ulang')).not.toBeInTheDocument();
+  expect(screen.queryByText('Bukti foto (opsional)')).not.toBeInTheDocument();
+  expect(screen.getByText('Catatan (opsional)')).toBeInTheDocument();
+  const send = screen.getByRole('button', { name: 'Tempel stiker' });
+  expect(send).toBeDisabled();
+  await userEvent.click(stickerA);
+  await userEvent.click(stickerB);
+  await userEvent.click(stickerA);
+  expect(send).toBeEnabled();
+  await userEvent.click(send);
+  await waitFor(() => expect(calls('serials.act')).toHaveLength(1));
+  expect(lastAct()).toMatchObject({
+    id: 's1',
+    action: 'apply_stickers',
+    stickerIds: ['st2'],
+    message: '',
+  });
+  expect(lastAct()).not.toHaveProperty('result');
+  expect(lastAct()).not.toHaveProperty('proofPhotoIds');
+  expect(onClose).toHaveBeenCalled();
+});
+
+test('Tempel stiker: stiker nonaktif tidak bisa dicentang; galat stickerIds server tampil di bawah daftar', async () => {
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.act') {
+      return Promise.reject(
+        new ApiError('VALIDATION', 'Data tidak valid', '-', {
+          stickerIds: 'Stiker tidak berlaku bagi item ini',
+        }),
+      );
+    }
+    if (id === 'serials.stickerOptions') return Promise.resolve({ stickers: [] });
+    return Promise.reject(new Error(`api tak dikenal: ${id}`));
+  });
+  renderDialog(
+    {
+      ...SERIAL,
+      stickers: [
+        { stickerId: 'st1', name: 'Stiker A', alias: '', qty: 2, stickerStatus: 'inactive' },
+        { stickerId: 'st3', name: 'Stiker C', alias: '', qty: 1, stickerStatus: 'deprecated' },
+      ],
+    },
+    'stickers',
+  );
+  expect(await screen.findByRole('checkbox', { name: 'Stiker A' })).toBeDisabled();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Stiker C' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Tempel stiker' }));
+  expect(await screen.findByText('Stiker tidak berlaku bagi item ini')).toBeInTheDocument();
+  expect(onClose).not.toHaveBeenCalled();
+});
+
+test('Tempel stiker: "Memuat stiker…" selama daftar dimuat, lalu daftar centang', async () => {
+  let release: (value: unknown) => void = () => undefined;
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.stickerOptions') {
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    }
+    return Promise.reject(new Error(`api tak dikenal: ${id}`));
+  });
+  renderDialog({ ...SERIAL, stickers: [] }, 'stickers');
+  expect(await screen.findByText('Memuat stiker…')).toBeInTheDocument();
+  expect(screen.queryByText('Tidak ada stiker yang berlaku bagi item ini.')).toBeNull();
+  release({ stickers: [{ id: 'st1', name: 'Stiker A', alias: '', typeName: 'J', defaultQty: 1 }] });
+  expect(await screen.findByRole('checkbox', { name: 'Stiker A' })).toBeInTheDocument();
+  expect(screen.queryByText('Memuat stiker…')).toBeNull();
+});
+
+test('Tempel stiker: galat memuat stiker tampil lewat describeError, tanpa daftar centang', async () => {
+  apiMock.mockImplementation((id: string) =>
+    id === 'serials.stickerOptions'
+      ? Promise.reject(new ApiError('FORBIDDEN', 'Tidak punya akses ke stiker', '-'))
+      : Promise.reject(new Error(`api tak dikenal: ${id}`)),
+  );
+  renderDialog({ ...SERIAL, stickers: [] }, 'stickers');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Tidak punya akses ke stiker');
+  expect(screen.queryByRole('checkbox')).toBeNull();
+});
+
+test('Tempel stiker: tanpa stiker yang berlaku, ada keterangan dan tombol kirim tetap nonaktif', async () => {
+  apiMock.mockImplementation((id: string) =>
+    id === 'serials.stickerOptions'
+      ? Promise.resolve({ stickers: [] })
+      : Promise.reject(new Error(`api tak dikenal: ${id}`)),
+  );
+  renderDialog({ ...SERIAL, stickers: [] }, 'stickers');
+  expect(
+    await screen.findByText('Tidak ada stiker yang berlaku bagi item ini.'),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Tempel stiker' })).toBeDisabled();
 });
 
 test('Cek ulang tanpa centang tidak mengirim stickerIds', async () => {
@@ -733,6 +846,83 @@ test('Batal dengan foto yang belum tersimpan membuang foto itu di server', async
   expect(onClose).toHaveBeenCalled();
 });
 
+/** Unggahan foto menggantung (dengan AbortSignal) sampai dilepas atau digagalkan; id lain mengikuti mock bawaan. */
+function holdProofUpload() {
+  const base = apiMock.getMockImplementation() as (
+    id: string,
+    input?: unknown,
+    options?: unknown,
+  ) => unknown;
+  const state = { release: [] as Array<() => void>, fail: [] as Array<() => void>, aborted: 0 };
+  apiMock.mockImplementation((id: string, input?: unknown, options?: { signal?: AbortSignal }) => {
+    if (id !== 'serialProofs.upload') return base(id, input, options);
+    return new Promise((resolve, reject) => {
+      options?.signal?.addEventListener('abort', () => {
+        state.aborted += 1;
+        reject(new DOMException('Dibatalkan', 'AbortError'));
+      });
+      state.release.push(() =>
+        resolve({
+          id: 'p1',
+          state: 'draft',
+          mime: 'image/webp',
+          size: 10,
+          width: 10,
+          height: 10,
+          filename: 'bukti-p1.webp',
+          error: null,
+        }),
+      );
+      state.fail.push(() => reject(new Error('Jaringan putus')));
+    });
+  });
+  return state;
+}
+
+async function pickOnePhotoWithoutWaiting() {
+  await userEvent.click(screen.getByRole('button', { name: /^Foto \(/ }));
+  const input = document.body.querySelector('input[type="file"]') as HTMLInputElement;
+  fireEvent.change(input, {
+    target: { files: [new File([new Uint8Array(4)], 'f0.png', { type: 'image/png' })] },
+  });
+  await userEvent.click(await screen.findByRole('button', { name: 'Tambahkan (1)' }));
+}
+
+test('foto masih diunggah: Simpan cek ulang ditahan dengan pesan, lalu aktif setelah unggahan selesai', async () => {
+  const held = holdProofUpload();
+  renderDialog(SERIAL, 'recheck');
+  await pickOnePhotoWithoutWaiting();
+  await waitFor(() => expect(held.release).toHaveLength(1));
+  expect(screen.getByRole('button', { name: 'Simpan cek ulang' })).toBeDisabled();
+  expect(screen.getByRole('status')).toHaveTextContent('1 foto masih diunggah atau gagal');
+  held.release[0]?.();
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'Simpan cek ulang' })).toBeEnabled(),
+  );
+  expect(screen.queryByText(/masih diunggah atau gagal/)).not.toBeInTheDocument();
+});
+
+test('unggahan foto gagal: Simpan tetap ditahan sampai dibuang atau diulang', async () => {
+  const held = holdProofUpload();
+  renderDialog(SERIAL, 'recheck');
+  await pickOnePhotoWithoutWaiting();
+  await waitFor(() => expect(held.fail).toHaveLength(1));
+  held.fail[0]?.();
+  await screen.findByText('Jaringan putus');
+  expect(screen.getByRole('button', { name: 'Simpan cek ulang' })).toBeDisabled();
+});
+
+test('Batal saat foto masih diunggah membatalkan unggahannya dan tidak mengirim apa pun', async () => {
+  const held = holdProofUpload();
+  renderDialog(SERIAL, 'recheck');
+  await pickOnePhotoWithoutWaiting();
+  await waitFor(() => expect(held.release).toHaveLength(1));
+  await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
+  expect(held.aborted).toBe(1);
+  expect(calls('serials.act')).toHaveLength(0);
+  expect(onClose).toHaveBeenCalled();
+});
+
 test('Cek ulang: pratinjau cap di kamera foto memuat serial, item, BU, lokasi cek ulang, dan pelaku (QC)', async () => {
   const track = {
     stop: vi.fn(),
@@ -756,4 +946,24 @@ test('Cek ulang: pratinjau cap di kamera foto memuat serial, item, BU, lokasi ce
   expect(note).toHaveTextContent('BU1 · Jakarta');
   expect(note).toHaveTextContent('Disimpan saat Simpan · A (QC)');
   Reflect.deleteProperty(navigator, 'mediaDevices');
+});
+
+test('gambar catatan yang masih diunggah menahan tombol kirim sampai selesai', async () => {
+  renderDialog({ ...SERIAL, status: 'broken', custody: 'service' }, 'note');
+  await userEvent.type(screen.getByRole('textbox', { name: 'Catatan' }), 'Klaim vendor dibuka');
+  expect(screen.getByRole('button', { name: 'Kirim catatan' })).toBeEnabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Simulasi gambar diunggah' }));
+  expect(screen.getByRole('button', { name: 'Kirim catatan' })).toBeDisabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Simulasi unggah selesai' }));
+  expect(screen.getByRole('button', { name: 'Kirim catatan' })).toBeEnabled();
+});
+
+test('P6: dialog Update Serial layar penuh di ponsel', () => {
+  renderDialog(SERIAL, 'report');
+  const dialog = screen.getByRole('dialog');
+  expect(dialog).toHaveAttribute('data-size', 'full-on-phone');
+  expect(dialog.className).toContain('max-md:data-[size=full-on-phone]:h-[var(--vvh,100dvh)]');
+  expect(dialog.className).toContain(
+    'max-md:data-[size=full-on-phone]:pt-[env(safe-area-inset-top)]',
+  );
 });

@@ -9,7 +9,7 @@ import {
   type ServiceDiagnosisStage,
 } from '@shared/serials';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { FieldError } from '@/components/field-error';
 import { Select } from '@/components/select';
@@ -45,6 +45,7 @@ import { isProofRejection } from '../lib/draft';
 import { todayWib } from '../lib/locations';
 import type { ProofPhotoRef } from '../lib/proof-source';
 import type { StampPreviewInput } from '../lib/stamp-preview';
+import { useProofUploads } from '../lib/use-proof-uploads';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import {
   discardProofPhotos,
@@ -65,6 +66,7 @@ export interface ActDialogProps {
 }
 
 const STALE_RELOAD_MESSAGE = `${STALE_SAVE_MESSAGE}. Halaman sudah dimuat ulang. Catatan Anda tetap ada; cek lagi lalu kirim ulang.`;
+const PROOF_OWNER = 'recheck';
 
 /** Field yang galat servernya tampil di bawah field-nya sendiri. */
 type FieldKey =
@@ -97,6 +99,7 @@ const TITLE: Record<ActKind, string> = {
   receive: 'Terima unit',
   diagnosis: 'Diagnosis',
   recheck: 'Cek ulang',
+  stickers: 'Tempel stiker',
   note: 'Tambah catatan',
 };
 
@@ -143,13 +146,15 @@ function descriptionOf(kind: ActKind, receivingAtQc: boolean, noOpenReport: bool
       return noOpenReport
         ? 'Cek ulang unit ini. Kalau tidak lolos, laporan baru dibuka.'
         : 'Cek ulang unit ini. Kalau lolos, laporan ditutup; kalau tidak, laporan tetap terbuka.';
+    case 'stickers':
+      return 'Catat stiker yang baru ditempel pada unit ini. Status dan laporan tidak berubah.';
     default:
       return 'Tambahkan catatan ke riwayat Serial Number ini.';
   }
 }
 
 /**
- * Dialog update di baris Riwayat: catatan Markdown (gambar maks. `messageImagesMax`), tanggal kejadian, dan isian khas
+ * Dialog aksi alur (dibuka dari header detail Serial/Laporan atau aksi baris daftar): catatan Markdown (gambar maks. `messageImagesMax`), tanggal kejadian, dan isian khas
  * tiap aksi (tujuan servis, tahap diagnosis, hasil cek ulang + stiker yang dicentang). Aksi yang dikirim mengikuti
  * tabel transisi (`resolveAction`, sumber yang sama dengan server), jadi dialog tidak menyimpan aturan sendiri.
  */
@@ -171,6 +176,22 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
   const [checked, setChecked] = useState<ReadonlySet<string>>(new Set());
   // Foto bukti QC (hanya Cek ulang): `draft` di server sampai Simpan menautkannya ke entri.
   const [proofPhotos, setProofPhotos] = useState<ProofPhotoRef[]>([]);
+  // Unggah latar foto bukti milik dialog ini (pemilik form): menahan tombol kirim selama berjalan/gagal, dan ditutup
+  // bersama dialog (unggahan dibatalkan, foto selesai yang belum terkirim dibuang).
+  const proofCountRef = useRef(0);
+  proofCountRef.current = proofPhotos.length;
+  const proofUploads = useProofUploads({
+    onAdd: (_owner, photo) => {
+      if (proofCountRef.current >= SERIAL_PROOF_LIMITS.perEntryMax) return false;
+      proofCountRef.current += 1;
+      setProofPhotos((current) => [...current, photo]);
+      return true;
+    },
+  });
+  const ownProofUploads = proofUploads.forOwner(PROOF_OWNER);
+  const proofUploadsBlocked = proofUploads.busy || proofUploads.hasFailed;
+  // Gambar catatan yang masih diunggah: tombol kirim ditahan agar gambarnya tidak tertinggal.
+  const [messageBusy, setMessageBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [confirming, setConfirming] = useState(false);
@@ -184,9 +205,10 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
   const { locations: activeLocations } = useSerialLocations();
   // Stiker yang berlaku mengikuti BU tujuan (hasil lolos boleh memindahkan BU).
   const stickerBuId = kind === 'recheck' && result === 'pass' ? targetBu.buId : serial.buId;
+  const withStickers = kind === 'recheck' || kind === 'stickers';
   const stickerOptions = useQuery({
     ...serialStickerOptionsQueryOptions(serial.itemId, stickerBuId, serial.id),
-    enabled: kind === 'recheck' && stickerBuId !== '',
+    enabled: withStickers && stickerBuId !== '',
   });
   const { bus, loading: busLoading } = useWritableBus(kind === 'recheck');
 
@@ -206,7 +228,9 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
             : result === 'pass'
               ? 'recheck_pass'
               : 'recheck_fail'
-          : kind;
+          : kind === 'stickers'
+            ? 'apply_stickers'
+            : kind;
   const resolved = resolveAction(
     action,
     state,
@@ -267,11 +291,16 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
 
   const submitDisabled =
     act.isPending ||
+    // Foto bukti belum beres: masih diunggah atau gagal (diulang atau dibuang dulu).
+    proofUploadsBlocked ||
+    messageBusy ||
     // Kirim: pilihan lokasi servis belum dimuat (field-nya baru tampil bila ada lebih dari satu).
     (kind === 'send' && serviceLocations.isPending) ||
     (messageRequired && message.trim() === '') ||
     // Diagnosis: status wajib dipilih (tidak ada nilai bawaan).
     (kind === 'diagnosis' && stage === '') ||
+    // Tempel stiker: minimal satu stiker dicentang.
+    (kind === 'stickers' && checked.size === 0) ||
     occurredOn === '' ||
     (locationRequired && toLocation.id === '') ||
     (showBuField && targetBu.buId === '') ||
@@ -295,25 +324,24 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
     [serial.serial, serial.itemLabel, serial.buCode, stampLocation, me.name],
   );
 
-  const stickerRows: RecheckStickerRow[] =
-    kind === 'recheck'
-      ? [
-          ...serial.stickers.map((sticker) => ({
-            stickerId: sticker.stickerId,
+  const stickerRows: RecheckStickerRow[] = withStickers
+    ? [
+        ...serial.stickers.map((sticker) => ({
+          stickerId: sticker.stickerId,
+          name: sticker.name,
+          qty: sticker.qty,
+          inactive: sticker.stickerStatus === 'inactive',
+        })),
+        ...(stickerOptions.data?.stickers ?? [])
+          .filter((sticker) => !serial.stickers.some((entry) => entry.stickerId === sticker.id))
+          .map((sticker) => ({
+            stickerId: sticker.id,
             name: sticker.name,
-            qty: sticker.qty,
-            inactive: sticker.stickerStatus === 'inactive',
+            qty: 0,
+            inactive: false,
           })),
-          ...(stickerOptions.data?.stickers ?? [])
-            .filter((sticker) => !serial.stickers.some((entry) => entry.stickerId === sticker.id))
-            .map((sticker) => ({
-              stickerId: sticker.id,
-              name: sticker.name,
-              qty: 0,
-              inactive: false,
-            })),
-        ]
-      : [];
+      ]
+    : [];
 
   function buildInput(): SerialActInput {
     const common = {
@@ -359,6 +387,9 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
         return { ...common, action, ...stickerPart, ...proofPart, ...buPart };
       case 'recheck_fail':
         return { ...common, action, ...stickerPart, ...proofPart };
+      case 'apply_stickers':
+        // Tombol kirim nonaktif tanpa centang; `stickerIds` wajib di tipe, jadi daftar kosong tak pernah terkirim.
+        return { ...common, action, stickerIds };
       case 'declare_broken':
       case 'report_failure':
         return { ...common, action };
@@ -372,7 +403,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
     setFieldErrors({});
     try {
       await act.mutateAsync(buildInput());
-      toast.success('Update disimpan');
+      toast.success(kind === 'stickers' ? 'Stiker ditempel' : 'Update disimpan');
       // Foto sudah tertaut ke entri: tidak dibuang.
       onClose();
     } catch (caught) {
@@ -387,6 +418,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
       if (kind === 'send' || kind === 'receive') visible.push('toLocationId');
       if (kind === 'send') visible.push('shipmentNote');
       if (kind === 'recheck') visible.push('stickerIds', 'proofPhotoIds', 'buId');
+      if (kind === 'stickers') visible.push('stickerIds');
       const split = splitError(caught, visible);
       setFieldErrors(split.fields);
       setError(split.general);
@@ -398,6 +430,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
   // Menutup tanpa menyimpan: foto draft yang sudah diunggah dibuang (upaya terbaik; sisanya disapu penjadwal).
   function cancel() {
     if (act.isPending) return;
+    proofUploads.cancelOwner(PROOF_OWNER);
     void discardProofPhotos(proofPhotos.map((photo) => photo.id));
     onClose();
   }
@@ -416,21 +449,26 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
               : 'Simpan diagnosis'
             : kind === 'recheck'
               ? 'Simpan cek ulang'
-              : 'Kirim catatan';
+              : kind === 'stickers'
+                ? 'Tempel stiker'
+                : 'Kirim catatan';
   const receiveTarget = serial.transitToLocationName ?? serial.locationName;
 
   return (
     <Dialog open onOpenChange={(open) => !open && cancel()}>
-      <DialogContent>
+      <DialogContent size="full-on-phone">
         <DialogHeader>
           <DialogTitle>{TITLE[kind]}</DialogTitle>
           <DialogDescription>{descriptionOf(kind, isReceiveAtQc, hasRecheckRow)}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="act-date">Tanggal</Label>
+            <Label htmlFor="act-date" required>
+              Tanggal
+            </Label>
             <Input
               id="act-date"
+              aria-required="true"
               type="date"
               max={today}
               {...(minDate !== undefined ? { min: minDate } : {})}
@@ -457,6 +495,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
             <div className="space-y-1.5">
               <SerialLocationField
                 id="act-to-location"
+                required
                 label={needsServiceChoice ? 'Lokasi servis' : 'Lokasi penerimaan'}
                 placeholder={needsServiceChoice ? 'Pilih lokasi servis…' : 'Pilih lokasi…'}
                 value={toLocation.id}
@@ -531,6 +570,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
                 <div className="space-y-1.5">
                   <RecheckBuField
                     id="act-bu"
+                    required
                     label="Business Unit"
                     choices={buChoices}
                     value={targetBu}
@@ -559,11 +599,40 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
               />
             </>
           ) : null}
+          {kind === 'stickers' ? (
+            stickerOptions.isPending ? (
+              <p className="text-sm text-muted-foreground">Memuat stiker…</p>
+            ) : stickerOptions.isError ? (
+              <p role="alert" className="text-sm text-destructive-text">
+                {describeError(stickerOptions.error)}
+              </p>
+            ) : stickerRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Tidak ada stiker yang berlaku bagi item ini.
+              </p>
+            ) : (
+              <RecheckStickerList
+                rows={stickerRows}
+                checked={checked}
+                legend="Stiker yang ditempel"
+                description="Centang stiker yang baru ditempel pada unit ini. Tiap centang menambah satu stiker dan memotong stok satu di lokasi unit ini."
+                onToggle={(stickerId, on) => {
+                  const next = new Set(checked);
+                  if (on) next.add(stickerId);
+                  else next.delete(stickerId);
+                  setChecked(next);
+                }}
+                error={errorOf('stickerIds')}
+                disabled={act.isPending}
+              />
+            )
+          ) : null}
           {kind === 'recheck' ? (
             <div className="space-y-1.5">
               <Label id="act-proof-label">Bukti foto (opsional)</Label>
               <ProofPhotoField
                 value={proofPhotos}
+                uploads={ownProofUploads}
                 max={SERIAL_PROOF_LIMITS.perEntryMax}
                 disabled={act.isPending}
                 stamp={recheckStamp}
@@ -583,20 +652,34 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
             onChange={setMessage}
             error={errorOf('message')}
             disabled={act.isPending}
+            onBusyChange={setMessageBusy}
           />
           {error ? (
-            <p role="alert" className="text-sm text-destructive">
+            <p role="alert" className="text-sm text-destructive-text">
               {error}
+            </p>
+          ) : null}
+          {proofUploadsBlocked ? (
+            <p role="status" className="text-xs text-muted-foreground">
+              {ownProofUploads.entries.length} foto masih diunggah atau gagal; selesaikan, ulangi,
+              atau buang dulu sebelum menyimpan.
             </p>
           ) : null}
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={act.isPending} onClick={cancel}>
+          <Button
+            type="button"
+            variant="outline"
+            color="primary"
+            disabled={act.isPending}
+            onClick={cancel}
+          >
             Batal
           </Button>
           <Button
             type="button"
-            variant={declaring || kind === 'report' ? 'destructive' : 'default'}
+            variant={declaring || kind === 'report' ? 'soft' : 'solid'}
+            color={declaring || kind === 'report' ? 'destructive' : 'primary'}
             disabled={submitDisabled}
             onClick={() => (declaring ? setConfirming(true) : void submit())}
           >
@@ -616,7 +699,8 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
           <AlertDialogFooter>
             <AlertDialogCancel>Batal</AlertDialogCancel>
             <AlertDialogAction
-              variant="destructive"
+              variant="soft"
+              color="destructive"
               onClick={() => {
                 setConfirming(false);
                 void submit();

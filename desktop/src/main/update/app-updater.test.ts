@@ -241,3 +241,86 @@ describe('createAppUpdater', () => {
     expect(h.timers.every((t) => t.cleared)).toBe(true);
   });
 });
+
+describe('updateNow (layar penahan, tanpa dialog)', () => {
+  it('tanpa pembaruan: up-to-date, tanpa dialog dan tanpa quitAndInstall', async () => {
+    const h = harness([], none());
+    const result = await h.api.updateNow();
+    expect(result.status).toBe('up-to-date');
+    expect(result.message).not.toBe('');
+    expect(h.showMessageBox).not.toHaveBeenCalled();
+    expect(h.updater.quitAndInstall).not.toHaveBeenCalled();
+  });
+
+  it('ada pembaruan: unduh, lalu quitAndInstall(true, true) setelah unduhan, tanpa dialog sama sekali', async () => {
+    const h = harness([], available('1.1.0'));
+    const order: string[] = [];
+    h.updater.downloadUpdate.mockImplementation(async () => {
+      order.push('download');
+      return [];
+    });
+    h.updater.quitAndInstall.mockImplementation(() => order.push('install'));
+    const result = await h.api.updateNow();
+    expect(result.status).toBe('restarting');
+    expect(order).toEqual(['download', 'install']);
+    expect(h.updater.quitAndInstall).toHaveBeenCalledWith(true, true);
+    expect(h.updater.autoInstallOnAppQuit).toBe(true);
+    expect(h.showMessageBox).not.toHaveBeenCalled();
+  });
+
+  it('inject berjalan: busy tanpa memeriksa pembaruan', async () => {
+    const h = harness([], available('1.1.0'));
+    h.busy.value = true;
+    const result = await h.api.updateNow();
+    expect(result.status).toBe('busy');
+    expect(h.updater.checkForUpdates).not.toHaveBeenCalled();
+  });
+
+  it('checkForUpdates melempar: failed dan pesan tak memuat isi galat mentah', async () => {
+    const h = harness([], available('1.1.0'));
+    h.updater.checkForUpdates.mockRejectedValue(new Error('rahasia-xyz'));
+    const result = await h.api.updateNow();
+    expect(result.status).toBe('failed');
+    expect(result.message).not.toContain('rahasia-xyz');
+    expect(h.logs.join(' | ')).toContain('rahasia-xyz');
+    expect(h.updater.quitAndInstall).not.toHaveBeenCalled();
+  });
+
+  it('downloadUpdate melempar: failed dan quitAndInstall tak dipanggil', async () => {
+    const h = harness([], available('1.1.0'));
+    h.updater.downloadUpdate.mockRejectedValue(new Error('rahasia-xyz'));
+    const result = await h.api.updateNow();
+    expect(result.status).toBe('failed');
+    expect(result.message).not.toContain('rahasia-xyz');
+    expect(h.updater.quitAndInstall).not.toHaveBeenCalled();
+  });
+
+  it('log galat dipotong 200 karakter seperti checkNow', async () => {
+    const h = harness([], available('1.1.0'));
+    h.updater.checkForUpdates.mockRejectedValue(new Error('x'.repeat(500)));
+    await h.api.updateNow();
+    expect(h.logs[0]?.length ?? 0).toBeLessThan(300);
+  });
+
+  it('saat checkNow sedang berjalan: busy; panggilan kedua saat updateNow berjalan juga busy', async () => {
+    const h = harness([], available('1.1.0'));
+    let release: (value: unknown) => void = () => undefined;
+    h.updater.checkForUpdates.mockImplementation(
+      () => new Promise((resolve) => (release = resolve)),
+    );
+    const first = h.api.checkNow();
+    const second = await h.api.updateNow();
+    expect(second.status).toBe('busy');
+    release(none());
+    await first;
+    // updateNow yang sedang menunggu juga menahan panggilan berikutnya.
+    h.updater.checkForUpdates.mockImplementation(
+      () => new Promise((resolve) => (release = resolve)),
+    );
+    const running = h.api.updateNow();
+    const again = await h.api.updateNow();
+    expect(again.status).toBe('busy');
+    release(none());
+    await running;
+  });
+});

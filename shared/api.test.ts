@@ -26,7 +26,7 @@ const IDS = Object.keys(API_ROUTES) as ApiId[];
 /** Contoh input tiap id; `Record<ApiId, …>` memaksa kelengkapan lewat kompilator. */
 const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'auth.me': null,
-  'access.users.list': null,
+  'access.users.list': { status: 'deleted' },
   'access.users.save': {
     id: 'u1',
     email: 'a@b.co',
@@ -35,17 +35,46 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     assignments: [],
     buAssignments: [{ buId: 'b1', roleIds: ['r1'] }],
   },
+  'access.users.get': { id: 'u1' },
   'access.users.setStatus': { id: 'u1', status: 'inactive' },
-  'access.roles.list': null,
+  'access.users.setStatusBatch': { ids: ['u1', 'u2'], status: 'inactive' },
+  'access.users.remove': { id: 'u1' },
+  'access.users.removeBatch': { ids: ['u1', 'u2'] },
+  'access.users.restore': { id: 'u1' },
+  'access.users.restoreBatch': { ids: ['u1', 'u2'] },
+  'access.roles.list': { status: 'deleted' },
+  'access.roles.get': { id: 'r1' },
   'access.roles.save': { id: 'r1', name: 'R', description: '', permissions: {} },
   'access.roles.delete': { id: 'r1' },
-  'access.audit.list': { cursor: 'c1', limit: 20, action: 'user.update', query: 'a b' },
-  'access.locations.list': null,
+  'access.roles.removeBatch': { ids: ['r1', 'r2'] },
+  'access.roles.restore': { id: 'r1' },
+  'access.roles.restoreBatch': { ids: ['r1', 'r2'] },
+  'access.audit.list': {
+    cursor: 'c1',
+    limit: 20,
+    action: 'user.update',
+    query: 'a b',
+    actions: ['user.update', 'user.create'],
+  },
+  'activity.list': { kind: 'item', id: 'i1', cursor: 'c1', limit: 10 },
+  'access.locations.list': { status: 'deleted' },
+  'access.locations.get': { id: 'l1' },
   'access.locations.save': { id: 'l1', code: 'WH', name: 'Gudang' },
   'access.locations.setStatus': { id: 'l1', status: 'inactive' },
-  'access.businessUnits.list': null,
+  'access.locations.setStatusBatch': { ids: ['l1', 'l2'], status: 'inactive' },
+  'access.locations.remove': { id: 'l1' },
+  'access.locations.removeBatch': { ids: ['l1', 'l2'] },
+  'access.locations.restore': { id: 'l1' },
+  'access.locations.restoreBatch': { ids: ['l1', 'l2'] },
+  'access.businessUnits.list': { status: 'deleted' },
+  'access.businessUnits.get': { id: 'b1' },
   'access.businessUnits.save': { id: 'b1', code: 'UM', name: 'Umum' },
   'access.businessUnits.setStatus': { id: 'b1', status: 'inactive' },
+  'access.businessUnits.setStatusBatch': { ids: ['b1', 'b2'], status: 'inactive' },
+  'access.businessUnits.remove': { id: 'b1' },
+  'access.businessUnits.removeBatch': { ids: ['b1', 'b2'] },
+  'access.businessUnits.restore': { id: 'b1' },
+  'access.businessUnits.restoreBatch': { ids: ['b1', 'b2'] },
   'businessUnits.options': null,
   'files.upload': { mime: 'image/png', bytes: new Uint8Array([1, 2, 3]), width: 10, height: 20 },
   'files.get': { id: 'f1' },
@@ -68,18 +97,26 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   },
   'stickerGuides.rename': { id: 'g1', name: 'Kardus Baru' },
   'stickerGuides.remove': { id: 'g1' },
+  'stickerGuides.removeBatch': { ids: ['g1', 'g2'] },
   'stickerGuides.thumbnail': { id: 'g1' },
   'stickerGuides.usages': { id: 'g1' },
-  'brands.list': null,
+  'brands.list': { status: 'deleted' },
   'brands.save': { id: 'b1', name: 'Sony', businessUnitIds: ['bu1'] },
+  'brands.get': { id: 'b1' },
   'brands.setStatus': { id: 'b1', status: 'inactive' },
+  'brands.setStatusBatch': { ids: ['b1', 'b2'], status: 'inactive' },
+  'brands.remove': { id: 'b1' },
+  'brands.removeBatch': { ids: ['b1', 'b2'] },
+  'brands.restore': { id: 'b1' },
+  'brands.restoreBatch': { ids: ['b1', 'b2'] },
   'stickerSettings.get': null,
   'stickerSettings.save': {
     expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
     alert: { enabled: true, recipients: ['a@contoh.com'], digestHour: 8, intervalDays: 1 },
     defaults: [{ typeId: 'st1', defaultMinQty: 5 }],
   },
-  'stickerTypes.list': null,
+  'stickerTypes.list': { status: 'deleted' },
+  'stickerTypes.get': { id: 'st1' },
   'stickerTypes.save': {
     id: 'st1',
     expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
@@ -87,7 +124,13 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     rule: 'bu',
   },
   'stickerTypes.setStatus': { id: 'st1', status: 'inactive' },
-  'stickers.list': null,
+  'stickerTypes.setStatusBatch': { ids: ['st1', 'st2'], status: 'inactive' },
+  'stickerTypes.remove': { id: 'st1' },
+  'stickerTypes.removeBatch': { ids: ['st1', 'st2'] },
+  'stickerTypes.restore': { id: 'st1' },
+  'stickerTypes.restoreBatch': { ids: ['st1', 'st2'] },
+  'stickers.list': { status: 'deleted' },
+  'stickers.get': { id: 's1' },
   'stickers.save': {
     id: 's1',
     expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
@@ -99,6 +142,11 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     businessUnitIds: ['bu1'],
   },
   'stickers.setStatus': { id: 's1', status: 'inactive' },
+  'stickers.setStatusBatch': { ids: ['s1', 's2'], status: 'inactive' },
+  'stickers.remove': { id: 's1' },
+  'stickers.removeBatch': { ids: ['s1', 's2'] },
+  'stickers.restore': { id: 's1' },
+  'stickers.restoreBatch': { ids: ['s1', 's2'] },
   'stickerStock.list': { locationIds: ['l1', 'l2'] },
   'stickerStock.record': {
     locationId: 'l1',
@@ -108,15 +156,43 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     reason: '',
   },
   'stickerStock.adjust': { locationId: 'l1', stickerId: 's1', delta: -2, reason: 'rusak' },
+  'stickerStock.recordBatch': {
+    kind: 'out',
+    reason: 'kirim',
+    rows: [
+      { stickerId: 's1', locationId: 'l1', quantity: 3 },
+      { stickerId: 's2', locationId: 'l1', count: { rows: [], loose: 4 } },
+    ],
+  },
+  'stickerStock.adjustBatch': {
+    reason: 'rusak',
+    rows: [
+      { stickerId: 's1', locationId: 'l1', delta: -2 },
+      { stickerId: 's2', locationId: 'l2', delta: 5 },
+    ],
+  },
   'stickerStock.opname': {
     rows: [{ stickerId: 's1', locationId: 'l1', expectedQty: 10, count: { rows: [], loose: 12 } }],
   },
   'stickerStock.history': { locationIds: ['l1'], stickerId: 's1', cursor: 'c', limit: 20 },
-  'customers.list': null,
+  'customers.list': { status: 'deleted' },
+  'customers.get': { id: 'c1' },
   'customers.rename': { id: 'c1', name: 'PT Maju' },
   'customers.setStatus': { id: 'c1', status: 'inactive' },
+  'customers.setStatusBatch': { ids: ['c1', 'c2'], status: 'inactive' },
+  'customers.remove': { id: 'c1' },
+  'customers.removeBatch': { ids: ['c1', 'c2'] },
+  'customers.restore': { id: 'c1' },
+  'customers.restoreBatch': { ids: ['c1', 'c2'] },
   'handovers.options': { locationIds: ['l1', 'l2'] },
-  'handovers.board': { locationIds: ['l1'], status: 'in_progress', cursor: 'x', limit: 3 },
+  'handovers.board': {
+    locationIds: ['l1'],
+    status: 'in_progress',
+    cursor: 'x',
+    limit: 3,
+    customerId: 'c1',
+    customerIds: ['c1', 'c2'],
+  },
   'handovers.get': { id: 'h1', locationIds: ['l1'] },
   'handovers.save': {
     id: 'h1',
@@ -127,6 +203,8 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   },
   'handovers.saveBatch': { locationId: 'l1', tasks: [{ customerName: 'A', note: 'x' }] },
   'handovers.cancel': { id: 'h1', locationId: 'l1' },
+  'handovers.remove': { id: 'h1', locationId: 'l1' },
+  'handovers.restore': { id: 'h1', locationId: 'l1' },
   'handovers.reopen': { id: 'h1', locationId: 'l1' },
   'handovers.setCheck': { id: 'h1', locationId: 'l1', index: 0, text: 'a', checked: true },
   'handovers.setDone': { id: 'h1', locationId: 'l1' },
@@ -149,6 +227,11 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     stickerMode: 'missing',
     manualBook: 'has',
     postel: 'missing',
+    brandId: 'b1',
+    buId: 'u1',
+    brandIds: ['b1', 'b2'],
+    buIds: ['u1', 'u2'],
+    typeIds: ['t1', 't2'],
   },
   'items.get': { id: 'i1' },
   'items.save': {
@@ -165,7 +248,12 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     businessUnitIds: ['bu1'],
   },
   'items.setStatus': { id: 'i1', status: 'inactive' },
-  'qrcodes.list': null,
+  'items.setStatusBatch': { ids: ['i1', 'i2'], status: 'inactive' },
+  'items.remove': { id: 'i1' },
+  'items.removeBatch': { ids: ['i1', 'i2'] },
+  'items.restore': { id: 'i1' },
+  'items.restoreBatch': { ids: ['i1', 'i2'] },
+  'qrcodes.list': { status: 'deleted' },
   'qrcodes.get': { id: 'q1' },
   'qrcodes.versions': { id: 'q1' },
   'qrcodes.save': {
@@ -184,7 +272,11 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     layout: 'a' as never,
   },
   'qrcodes.delete': { id: 'q1' },
-  'qrcodes.getDefaults': null,
+  'qrcodes.removeBatch': { ids: ['q1', 'q2'] },
+  'qrcodes.restore': { id: 'q1' },
+  'qrcodes.restoreBatch': { ids: ['q1', 'q2'] },
+  'qrcodes.getDefaults': { status: 'deleted' },
+  'qrcodes.getPreset': { id: 'p1' },
   'qrcodes.itemOptions': { query: 'a7', cursor: 'k', limit: 20 },
   'qrcodes.savePreset': {
     id: 'p1',
@@ -201,6 +293,9 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   },
   'qrcodes.clonePreset': { id: 'p1', buId: 'bu2', name: 'Salinan' },
   'qrcodes.deletePreset': { id: 'p1' },
+  'qrcodes.removePresetBatch': { ids: ['p1', 'p2'] },
+  'qrcodes.restorePreset': { id: 'p1' },
+  'qrcodes.restorePresetBatch': { ids: ['p1', 'p2'] },
   'qrcodes.saveLogoLibrary': {
     expectedUpdatedAt: '2026-10-09T00:00:00.000Z',
     logoFileIds: ['f1'],
@@ -220,7 +315,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     reason: 'Logo diganti',
   },
   'qrcodes.file': { id: 'q1', kind: 'pdf' },
-  'postels.list': null,
+  'postels.list': { status: 'deleted' },
   'postels.get': { id: 'p1' },
   'postels.save': {
     id: 'p1',
@@ -234,6 +329,9 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     attachmentIds: [],
   },
   'postels.remove': { id: 'p1' },
+  'postels.removeBatch': { ids: ['p1', 'p2'] },
+  'postels.restore': { id: 'p1' },
+  'postels.restoreBatch': { ids: ['p1', 'p2'] },
   'postelSettings.get': null,
   'postelSettings.save': {
     expectedUpdatedAt: '2026-11-11T00:00:00.000Z',
@@ -253,6 +351,10 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'serials.buOptions': null,
   'serials.serviceLocations': null,
   'serials.lookup': { serial: 'SN-1' },
+  'serials.remove': { id: 's1' },
+  'serials.removeBatch': { ids: ['s1', 's2'] },
+  'serials.restore': { id: 's1' },
+  'serials.restoreBatch': { ids: ['s1', 's2'] },
   'serials.reportNew': {
     serial: 'SN-1',
     itemId: 'i1',
@@ -266,7 +368,15 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     expectedUpdatedAt: '2026-11-14T00:00:00.000Z',
     locationIds: ['l1'],
   },
-  'serialCases.list': { status: 'active', buId: 'b1', query: 'LP-2026', cursor: 'c', limit: 20 },
+  'serialCases.get': { id: 'c1' },
+  'serialCases.list': {
+    status: 'active',
+    buId: 'b1',
+    buIds: ['b1', 'b2'],
+    query: 'LP-2026',
+    cursor: 'c',
+    limit: 20,
+  },
   'serials.get': { id: 's1' },
   'serialSettings.get': null,
   'serialSettings.save': {
@@ -287,6 +397,12 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'serials.updateBatch': {
     rows: [{ id: 's1', expectedUpdatedAt: '2026-11-12T00:00:00.000Z', fields: { note: 'x' } }],
   },
+  'serials.applyStickersBatch': {
+    clientId: '0b9f6d3e-3c5a-4f4e-9d0e-5a1b2c3d4e5f',
+    occurredOn: '2026-11-22',
+    message: '',
+    rows: [{ id: 's1', stickerIds: ['k1'] }],
+  },
   'serials.act': {
     id: 's1',
     expectedUpdatedAt: '2026-11-12T00:00:00.000Z',
@@ -303,6 +419,11 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     locationId: 'l1',
     status: 'good',
     custody: 'transit',
+    buIds: ['b1', 'b2'],
+    itemIds: ['i1', 'i2'],
+    locationIds: ['l1', 'l2'],
+    statuses: ['good', 'reported'],
+    custodies: ['qc', 'transit'],
     from: '2026-11-01',
     to: '2026-11-12',
     createdBy: 'a@x.com',
@@ -341,6 +462,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'notifications.markRead': { id: 'n1' },
   'notifications.markAllRead': {},
   'desktop.handoff': {},
+  'desktop.releases': null,
   'push.config': null,
   'push.subscribe': { endpoint: 'https://push.example.test/abc', p256dh: 'BP', auth: 'au' },
   'push.unsubscribe': { endpoint: 'https://push.example.test/abc' },
@@ -397,6 +519,37 @@ function pathParams(id: ApiId, filled: string, created: boolean) {
 }
 
 describe('tabel rute', () => {
+  test('jalur statis batch didaftarkan sebelum jalur {id}/restore dan {id} berverba sama', () => {
+    const order = Object.keys(API_ROUTES);
+    for (const model of ['items', 'brands']) {
+      const at = (id: string) => order.indexOf(`${model}.${id}`);
+      expect(at('restoreBatch')).toBeLessThan(at('restore'));
+      expect(API_ROUTES[`${model}.restoreBatch` as ApiId].path).toBe(`/${model}/batch/restore`);
+      expect(API_ROUTES[`${model}.restore` as ApiId].path).toBe(`/${model}/{id}/restore`);
+      expect(API_ROUTES[`${model}.setStatusBatch` as ApiId].verb).toBe('POST');
+      expect(API_ROUTES[`${model}.removeBatch` as ApiId].path).toBe(`/${model}/batch/delete`);
+    }
+  });
+
+  test('fase 4b: jalur batch hapus/pulihkan QR, preset QR, dan Postel sebelum {id}/restore', () => {
+    const order = Object.keys(API_ROUTES);
+    const cases: [string, string, string][] = [
+      ['qrcodes', 'restore', '/qrcodes'],
+      ['qrcodes', 'restorePreset', '/qrcode-presets'],
+      ['postels', 'restore', '/postels'],
+    ];
+    for (const [group, single, base] of cases) {
+      const batch = single === 'restorePreset' ? 'restorePresetBatch' : `${single}Batch`;
+      expect(order.indexOf(`${group}.${batch}`)).toBeLessThan(order.indexOf(`${group}.${single}`));
+      expect(API_ROUTES[`${group}.${batch}` as ApiId].path).toBe(`${base}/batch/restore`);
+      expect(API_ROUTES[`${group}.${single}` as ApiId].path).toBe(`${base}/{id}/restore`);
+    }
+    expect(API_ROUTES['qrcodes.removeBatch'].path).toBe('/qrcodes/batch/delete');
+    expect(API_ROUTES['qrcodes.removePresetBatch'].path).toBe('/qrcode-presets/batch/delete');
+    expect(API_ROUTES['qrcodes.getPreset'].path).toBe('/qrcode-presets/{id}');
+    expect(API_ROUTES['postels.removeBatch'].path).toBe('/postels/batch/delete');
+  });
+
   test('tiap id punya jalur+verba unik (termasuk jalur create)', () => {
     const seen = new Map<string, string>();
     for (const id of IDS) {
@@ -496,11 +649,16 @@ describe('toRequestParts <-> fromRequestParts', () => {
 
   test('id tanpa input (lists) menjadi null', () => {
     expect(
-      fromRequestParts('brands.list', { params: {}, query: {}, body: undefined, created: false }),
+      fromRequestParts('guides.list', {
+        params: {},
+        query: {},
+        body: undefined,
+        created: false,
+      }),
     ).toBeNull();
-    expect(toRequestParts('brands.list', null)).toEqual({
+    expect(toRequestParts('guides.list', null)).toEqual({
       verb: 'GET',
-      path: '/brands',
+      path: '/guides',
       query: {},
       ifMatch: undefined,
     });

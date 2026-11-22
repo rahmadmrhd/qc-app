@@ -494,7 +494,9 @@ describe('serialProofs.replace: keserempakan dan atomik', () => {
       if (replaced.ok) {
         expect(row?.state).toBe('queued');
       } else {
-        expect(replaced.error?.code).toBe('CONFLICT');
+        // Yang kalah menerima CONFLICT (klaim gagal di tengah balapan) atau NOT_FOUND (Buang sudah selesai sebelum
+        // replace membaca foto lama); keduanya sah, dan yang terpenting draft pengganti tetap utuh tanpa job.
+        expect(['CONFLICT', 'NOT_FOUND']).toContain(replaced.error?.code);
         expect(row?.state).toBe('draft');
       }
       const jobs = (await proofJobs()).filter((job) => job.input.includes(newId));

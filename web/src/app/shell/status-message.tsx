@@ -15,7 +15,7 @@ export function StatusMessage({
       <p className="text-5xl font-bold text-muted-foreground">{code}</p>
       <h1 className="text-xl font-semibold">{title}</h1>
       <p className="text-muted-foreground">{description}</p>
-      <Button asChild variant="outline">
+      <Button asChild variant="outline" color="primary">
         <Link to="/">Kembali ke beranda</Link>
       </Button>
     </div>

@@ -46,7 +46,8 @@ export function LogoutConfirmDialog({
         <AlertDialogFooter>
           <AlertDialogCancel>Batal</AlertDialogCancel>
           <AlertDialogAction
-            variant="destructive"
+            variant="soft"
+            color="destructive"
             onClick={() => {
               confirmed.current = true;
               onConfirm();

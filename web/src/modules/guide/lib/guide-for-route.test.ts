@@ -56,6 +56,22 @@ describe('guideForRoute', () => {
     expect(guideForRoute([catat], '/serial/reportsx')).toBe(catat);
   });
 
+  test('halamanKecuali dengan segmen `$id` mengecualikan semua rute di bawah /qrcode/<apa pun>', () => {
+    const base = offer('qrcode-dasar', '/qrcode');
+    const dasar: GuideOffer = {
+      ...base,
+      entry: { ...base.entry, halamanKecuali: ['/qrcode/$id'] },
+    };
+    expect(guideForRoute([dasar], '/qrcode')).toBe(dasar);
+    expect(guideForRoute([dasar], '/qrcode/abc')).toBeNull();
+    expect(guideForRoute([dasar], '/qrcode/abc/edit')).toBeNull();
+    expect(guideForRoute([dasar], '/qrcode/default')).toBeNull();
+    expect(guideForRoute([dasar], '/qrcode/default/p1')).toBeNull();
+    expect(guideForRoute([dasar], '/qrcode/new')).toBeNull();
+    // Awalan lain yang sekadar mirip tetap tidak ikut.
+    expect(guideForRoute([dasar], '/qrcodes')).toBeNull();
+  });
+
   test('panduan tanpa halaman (mis. dasar-layout) tidak pernah cocok', () => {
     const layout = offer('dasar-layout');
     expect(guideForRoute([layout], '/')).toBeNull();

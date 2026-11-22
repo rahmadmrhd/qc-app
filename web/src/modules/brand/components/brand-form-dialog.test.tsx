@@ -138,10 +138,12 @@ test('onSave yang melempar galat menampilkan pesan dan tidak membuat tombol mace
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled();
 });
 
-test('Simpan nonaktif selama nama kosong; Batal menutup tanpa menyimpan', async () => {
+test('nama kosong: Simpan menampilkan galat tanpa menyimpan; Batal menutup tanpa menyimpan', async () => {
   const onSave = vi.fn();
   render(<Harness onSave={onSave} />);
-  expect(screen.getByRole('button', { name: 'Simpan' })).toBeDisabled();
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(await screen.findByText('Nama merk wajib diisi')).toBeInTheDocument();
+  expect(onSave).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
   expect(onSave).not.toHaveBeenCalled();
   await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
@@ -221,4 +223,10 @@ test('klik di luar dialog tidak menutupnya dan isian tetap; Escape menutup', asy
   expect(screen.getByLabelText('Nama merk')).toHaveValue('Draf');
   await user.keyboard('{Escape}');
   await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+});
+
+test('Nama merk wajib (aria-required); BU bawaan opsional', () => {
+  render(<Harness onSave={vi.fn()} />);
+  expect(screen.getByLabelText('Nama merk')).toHaveAttribute('aria-required', 'true');
+  expect(screen.getByLabelText('BU bawaan')).not.toHaveAttribute('aria-required');
 });

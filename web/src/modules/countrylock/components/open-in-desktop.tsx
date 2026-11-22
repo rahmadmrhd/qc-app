@@ -48,13 +48,13 @@ export function OpenInDesktop() {
         </p>
       )}
       {state === 'forbidden' && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Akun Anda belum punya izin Country Lock, jadi tidak dapat dibawa ke aplikasi desktop.
           Minta admin untuk memberi izinnya.
         </p>
       )}
       {state === 'error' && (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           Gagal menyiapkan tautan ke aplikasi desktop. Coba lagi sebentar.
         </p>
       )}

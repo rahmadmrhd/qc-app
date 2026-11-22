@@ -156,6 +156,7 @@ export async function sweepExpiredFailedProofs(env: Env): Promise<number> {
             actor: JOB_SYSTEM_ACTOR,
             action: 'serial.proof_retention',
             target: `serial:${photo.serialId}`,
+            targetId: photo.serialId,
             before: {
               id: photo.id,
               eventId: photo.eventId,

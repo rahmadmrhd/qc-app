@@ -1,6 +1,7 @@
 import { nowOf } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { SESSION_COOKIE, verifySessionToken } from '@server/core/session';
+import { liveWhere } from '@server/core/soft-delete';
 import { problemResponse, toProblem } from '@server/http/problem';
 import { limiterAddress } from '@server/http/proxy';
 import { type AppBindings, newRequestId } from '@server/http/security';
@@ -92,7 +93,15 @@ async function recordFailure(c: PublicContext): Promise<void> {
 async function resolveToken(c: PublicContext, token: string) {
   const verified = await verifyReportToken(c.env.SESSION_SECRET, token, nowOf(c.env));
   if (!verified) return null;
-  return loadCase(c.env.DB, verified.caseId);
+  const found = await loadCase(c.env.DB, verified.caseId);
+  if (!found) return null;
+  // Laporan milik serial TERHAPUS tak terbaca publik (404 seragam; soft delete): berlaku untuk halaman dan berkasnya.
+  const live = await c.env.DB.prepare(
+    `SELECT 1 AS ok FROM serials s WHERE ${liveWhere('s')} AND s.id = ?`,
+  )
+    .bind(found.serial_id)
+    .first<{ ok: number }>();
+  return live ? found : null;
 }
 
 /** Jalur kegagalan token: 429 bila IP sudah melewati batas, selain itu catat kegagalan dan jawab 404 seragam. */

@@ -80,6 +80,10 @@ test('/country-lock di aplikasi desktop (jembatan ada): menampilkan halaman Coun
   ).toBeInTheDocument();
   expect(screen.queryByText(/unduhan tersedia setelah rilis/i)).not.toBeInTheDocument();
   expect(window.location.pathname).toBe('/country-lock');
+  // Pembungkus ringan memakai latar yang sama dengan bar judul (bg-background), bukan pita bg-muted di belakangnya.
+  const wrapper = screen.getByRole('main').parentElement as HTMLElement;
+  expect(wrapper).toHaveClass('bg-background');
+  expect(wrapper).not.toHaveClass('bg-muted/40');
 });
 
 test('/country-lock bagi pengguna login yang data penggunanya belum termuat: pembungkus ringan dengan tautan kembali ke aplikasi, bukan Masuk', async () => {

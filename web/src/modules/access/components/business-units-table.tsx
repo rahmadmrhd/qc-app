@@ -1,133 +1,168 @@
 import type { BusinessUnitDto } from '@shared/contract';
-import { useState } from 'react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import type { ReactNode } from 'react';
+import { type DataColumn, DataTable, LinkCell, type RowAction } from '@/components/data-table';
+import type { RowSelection } from '@/components/data-table/use-row-selection';
+import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
+import { ActiveStatusBadge } from '@/components/status-badge';
+import { formatStamp } from '@/lib/format-stamp';
 
 export interface BusinessUnitsTableProps {
   businessUnits: readonly BusinessUnitDto[];
+  /** Tampilan "Terhapus": satu-satunya aksi baris dan massal adalah Pulihkan. */
+  deletedView?: boolean;
   canManage: boolean;
-  pendingStatusId: string | null;
+  /** Ada = kolom checkbox (hanya bagi pemegang `access: manage`). */
+  selection?: RowSelection;
+  pendingId?: string | null;
   onEdit: (businessUnit: BusinessUnitDto) => void;
   onToggleStatus: (businessUnit: BusinessUnitDto) => void;
+  onDelete: (businessUnit: BusinessUnitDto) => void;
+  onRestore: (businessUnit: BusinessUnitDto) => void;
+  filtered?: boolean;
+  onClearFilters?: () => void;
+  emptyAction?: ReactNode;
+  isLoading?: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
-/** BU yang masih dipakai tetap boleh dinonaktifkan, tetapi pemegang akses diberi tahu dampaknya lebih dulu. */
-function needsConfirmation(businessUnit: BusinessUnitDto): boolean {
-  return (
-    businessUnit.status === 'active' && (businessUnit.itemCount > 0 || businessUnit.userCount > 0)
-  );
-}
-
+/**
+ * Tabel Business Unit (kit CRUD): [checkbox][Aksi][Kode -> View][Nama][Status][Item][User]. Di ponsel menjadi kartu:
+ * kode = judul, status = badge, sisanya meta.
+ */
 export function BusinessUnitsTable({
   businessUnits,
+  deletedView = false,
   canManage,
-  pendingStatusId,
+  selection,
+  pendingId = null,
   onEdit,
   onToggleStatus,
+  onDelete,
+  onRestore,
+  filtered,
+  onClearFilters,
+  emptyAction,
+  isLoading,
+  isError,
+  onRetry,
 }: BusinessUnitsTableProps) {
-  const [confirming, setConfirming] = useState<BusinessUnitDto | null>(null);
+  const columns: DataColumn<BusinessUnitDto>[] = [
+    {
+      id: 'code',
+      header: 'Kode',
+      mobile: 'title',
+      cell: (bu) => (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <LinkCell to="/access/business-units/$businessUnitId" params={{ businessUnitId: bu.id }}>
+            {bu.code}
+          </LinkCell>
+          {bu.deleted ? <DeletedBadge /> : null}
+        </span>
+      ),
+    },
+    { id: 'name', header: 'Nama', cell: (bu) => bu.name },
+    ...(deletedView
+      ? ([
+          {
+            id: 'deletedBy',
+            header: 'Dihapus oleh',
+            cell: (bu) => bu.deletedInfo?.deletedBy ?? '—',
+          },
+          {
+            id: 'deletedAt',
+            header: 'Dihapus pada',
+            cell: (bu) => (bu.deletedInfo ? formatStamp(bu.deletedInfo.deletedAt) : '—'),
+          },
+        ] satisfies DataColumn<BusinessUnitDto>[])
+      : ([
+          {
+            id: 'status',
+            header: 'Status',
+            cell: (bu) => <ActiveStatusBadge status={bu.status} />,
+          },
+          {
+            id: 'items',
+            header: 'Item',
+            align: 'right',
+            className: 'tabular-nums',
+            cell: (bu) => bu.itemCount,
+          },
+          {
+            id: 'users',
+            header: 'User',
+            align: 'right',
+            className: 'tabular-nums',
+            cell: (bu) => bu.userCount,
+          },
+        ] satisfies DataColumn<BusinessUnitDto>[])),
+  ];
 
-  function handleToggle(businessUnit: BusinessUnitDto) {
-    if (needsConfirmation(businessUnit)) setConfirming(businessUnit);
-    else onToggleStatus(businessUnit);
-  }
+  const actions = (bu: BusinessUnitDto): RowAction[] => {
+    const busy = pendingId === bu.id;
+    if (bu.deleted || deletedView) {
+      return [
+        {
+          id: 'restore',
+          action: 'restore',
+          label: `Pulihkan ${bu.name}`,
+          shortLabel: 'Pulihkan',
+          hidden: !canManage,
+          busy,
+          onSelect: () => onRestore(bu),
+        },
+      ];
+    }
+    return [
+      {
+        id: 'edit',
+        action: 'edit',
+        label: `Ubah ${bu.name}`,
+        shortLabel: 'Ubah',
+        hidden: !canManage,
+        onSelect: () => onEdit(bu),
+      },
+      {
+        id: 'status',
+        action: bu.status === 'active' ? 'deactivate' : 'activate',
+        label: `${bu.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'} ${bu.name}`,
+        shortLabel: bu.status === 'active' ? 'Nonaktifkan' : 'Aktifkan',
+        hidden: !canManage,
+        busy,
+        onSelect: () => onToggleStatus(bu),
+      },
+      {
+        id: 'delete',
+        action: 'delete',
+        label: `Hapus ${bu.name}`,
+        shortLabel: 'Hapus',
+        hidden: !canManage || bu.status !== 'inactive',
+        busy,
+        onSelect: () => onDelete(bu),
+      },
+    ];
+  };
 
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Kode</TableHead>
-            <TableHead>Nama</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Item</TableHead>
-            <TableHead className="text-right">User</TableHead>
-            {canManage ? <TableHead className="text-right">Aksi</TableHead> : null}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {businessUnits.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={canManage ? 6 : 5} className="text-center text-muted-foreground">
-                Belum ada Business Unit.
-              </TableCell>
-            </TableRow>
-          ) : null}
-          {businessUnits.map((businessUnit) => (
-            <TableRow key={businessUnit.id}>
-              <TableCell className="font-medium">{businessUnit.code}</TableCell>
-              <TableCell>{businessUnit.name}</TableCell>
-              <TableCell>
-                <Badge variant={businessUnit.status === 'active' ? 'default' : 'secondary'}>
-                  {businessUnit.status === 'active' ? 'Aktif' : 'Nonaktif'}
-                </Badge>
-              </TableCell>
-              <TableCell className="text-right tabular-nums">{businessUnit.itemCount}</TableCell>
-              <TableCell className="text-right tabular-nums">{businessUnit.userCount}</TableCell>
-              {canManage ? (
-                <TableCell className="space-x-2 text-right">
-                  <Button size="sm" variant="outline" onClick={() => onEdit(businessUnit)}>
-                    Ubah
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    disabled={pendingStatusId === businessUnit.id}
-                    onClick={() => handleToggle(businessUnit)}
-                  >
-                    {businessUnit.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
-                  </Button>
-                </TableCell>
-              ) : null}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-      <Dialog
-        open={confirming !== null}
-        onOpenChange={(open) => (open ? undefined : setConfirming(null))}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Nonaktifkan BU {confirming?.name}?</DialogTitle>
-            <DialogDescription>
-              BU ini masih dipakai oleh {confirming?.itemCount ?? 0} item dan{' '}
-              {confirming?.userCount ?? 0} user aktif. Item dan hak yang sudah ada tetap berlaku,
-              tetapi BU ini tidak dapat ditambahkan ke data baru selama nonaktif.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setConfirming(null)}>
-              Batal
-            </Button>
-            <Button
-              type="button"
-              onClick={() => {
-                if (confirming) onToggleStatus(confirming);
-                setConfirming(null);
-              }}
-            >
-              Nonaktifkan
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+    <DataTable
+      rows={businessUnits}
+      rowKey={(bu) => bu.id}
+      columns={columns}
+      label="Daftar Business Unit"
+      rowTo={(bu) => ({
+        to: '/access/business-units/$businessUnitId',
+        params: { businessUnitId: bu.id },
+      })}
+      selectLabel={(bu) => bu.name}
+      selection={selection}
+      actions={canManage ? actions : undefined}
+      empty="Belum ada Business Unit."
+      filtered={filtered}
+      onClearFilters={onClearFilters}
+      emptyAction={emptyAction}
+      isLoading={isLoading}
+      isError={isError}
+      onRetry={onRetry}
+    />
   );
 }

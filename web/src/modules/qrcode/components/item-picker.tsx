@@ -10,9 +10,12 @@ export interface PickedItem {
   brand: string;
   model: string;
   businessUnitIds: string[];
+  /** Item terhapus (soft delete): tetap terpasang di konfigurasi, tampil bertanda "Terhapus"; tak dapat dipilih baru. */
+  deleted?: boolean | undefined;
 }
 
-const labelOf = (item: Pick<PickedItem, 'brand' | 'model'>) => `${item.brand} ${item.model}`;
+const labelOf = (item: Pick<PickedItem, 'brand' | 'model'> & { deleted?: boolean | undefined }) =>
+  `${item.brand} ${item.model}${item.deleted ? ' — Terhapus' : ''}`;
 
 export interface ItemPickerProps {
   selected: readonly PickedItem[];
@@ -21,8 +24,13 @@ export interface ItemPickerProps {
   ownedIds?: ReadonlySet<string>;
   /** Tautan ke halaman lihat item (`itemLinkAccess` di `lib/link-access.ts`); kosong = tanpa tautan. */
   openHref?: (id: string) => string | null;
+  /** Boleh membuka View item terhapus (pemulih); bila tidak, item terhapus tanpa tautan Buka. */
+  canOpenDeleted?: boolean | undefined;
+  /** Membuka dialog Tambah item (baris "Tambah Item" di dasar daftar); tanpa ini baris tidak ada. */
+  onCreate?: () => void;
   error?: string;
   disabled?: boolean;
+  required?: boolean;
 }
 
 /**
@@ -34,8 +42,11 @@ export function ItemPicker({
   onChange,
   ownedIds,
   openHref,
+  canOpenDeleted = false,
+  onCreate,
   error,
   disabled,
+  required,
 }: ItemPickerProps) {
   const [term, setTerm] = useState('');
   const { data, isFetching } = useQuery(qrItemOptionsQueryOptions(term.trim()));
@@ -55,6 +66,7 @@ export function ItemPicker({
   return (
     <LinkMultiField
       id="qr-items"
+      required={required}
       label="Item"
       placeholder="Cari merk atau tipe item…"
       value={selected.map((item) => item.id)}
@@ -67,7 +79,16 @@ export function ItemPicker({
       hasMore={data?.nextCursor != null}
       onSearchChange={setTerm}
       searchDebounceMs={200}
-      openHref={openHref}
+      openHref={
+        openHref
+          ? (id) => {
+              const item = known.get(id);
+              const gone = item !== undefined && 'deleted' in item && item.deleted === true;
+              return gone && !canOpenDeleted ? null : openHref(id);
+            }
+          : undefined
+      }
+      onCreate={onCreate}
       error={error}
       disabled={disabled}
       onChange={(ids) =>
@@ -81,6 +102,7 @@ export function ItemPicker({
                 brand: item.brand,
                 model: item.model,
                 businessUnitIds: 'businessUnitIds' in item ? [...item.businessUnitIds] : [],
+                ...('deleted' in item && item.deleted ? { deleted: true } : {}),
               },
             ];
           }),

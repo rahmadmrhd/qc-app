@@ -1,5 +1,5 @@
 import { appError } from '@server/core/errors';
-import { readObject } from '@server/core/validate';
+import { readFilterList, readObject } from '@server/core/validate';
 import type {
   AddCommentInput,
   BoardPageInput,
@@ -309,6 +309,12 @@ export function validateBoardPage(raw: unknown): BoardPageInput {
   const locationIds = validateLocationIds(raw);
   const reader = readObject(raw);
   const status = reader.oneOf('status', BOARD_STATUSES);
+  const customerId = reader.optionalId('customerId')?.trim() || undefined;
+  const customerIds = readFilterList(reader, 'customerIds');
+  const deleted = reader.raw('deleted');
+  if (deleted !== undefined && deleted !== null && typeof deleted !== 'boolean') {
+    reader.fail('deleted', 'Harus berupa true atau false');
+  }
   const cursor = reader.raw('cursor');
   if (cursor !== undefined && cursor !== null) {
     if (typeof cursor !== 'string' || parseBoardCursor(status, cursor) === null) {
@@ -330,5 +336,8 @@ export function validateBoardPage(raw: unknown): BoardPageInput {
     status,
     limit: limit as number,
     ...(typeof cursor === 'string' ? { cursor } : {}),
+    ...(customerId ? { customerId } : {}),
+    ...(customerIds ? { customerIds } : {}),
+    ...(deleted === true ? { deleted: true } : {}),
   };
 }

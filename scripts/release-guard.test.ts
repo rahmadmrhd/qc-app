@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { evaluateGuard } from './release-guard';
+import { evaluateGuard, unverifiedFiles } from './release-guard';
 
 const META = [
   'server/package.json',
@@ -146,9 +146,15 @@ describe('evaluateGuard: berkas di luar image server tak membuat guard menolak',
     }
   });
 
-  test('jalur tak dikenal (infra, workflow) ditolak: gagal tertutup', () => {
-    for (const path of ['.github/workflows/deploy-server.yml', 'brand-baru/x.ts', 'catatan.txt']) {
+  test('jalur tak dikenal (aksi lokal, folder baru, berkas akar baru) ditolak: gagal tertutup', () => {
+    for (const path of ['.github/actions/setup/action.yml', 'brand-baru/x.ts', 'catatan.txt']) {
       expect(withExtra([path]).ok, path).toBe(false);
+    }
+  });
+
+  test('perubahan .github/workflows/ diloloskan: tak masuk image (keputusan pemilik 2026-11-20)', () => {
+    for (const path of ['.github/workflows/deploy-server.yml', '.github/workflows/release.yml']) {
+      expect(withExtra([path]).ok, path).toBe(true);
     }
   });
 
@@ -204,5 +210,19 @@ describe('evaluateGuard: rilis gabungan (komponen server + desktop)', () => {
     expect(
       evaluateGuard(input([...BOTH_META, 'server/src/app.ts'], ['server', 'desktop'])).ok,
     ).toBe(false);
+  });
+});
+
+describe('unverifiedFiles: potret kontrak API', () => {
+  const SNAP = 'shared/api-contract.snapshot.json';
+  test('potret = metadata rilis server: tak dianggap belum terverifikasi saat server dirilis', () => {
+    expect(unverifiedFiles([SNAP], ['server'])).toEqual([]);
+    expect(unverifiedFiles([SNAP], ['server', 'desktop'])).toEqual([]);
+  });
+  test('rilis desktop saja tidak melonggarkan potret', () => {
+    expect(unverifiedFiles([SNAP], ['desktop'])).toEqual([SNAP]);
+  });
+  test('berkas kontrak lain tetap tak terverifikasi (tak ikut melonggar)', () => {
+    expect(unverifiedFiles(['shared/contract.ts'], ['server'])).toEqual(['shared/contract.ts']);
   });
 });

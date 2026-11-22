@@ -1,11 +1,11 @@
 import { type MouseEvent, useEffect, useState } from 'react';
+import { nextDevice, ScanCameraControls } from '@/components/camera/camera-controls';
+import { usePinchZoom } from '@/components/camera/use-pinch-zoom';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { FEEDBACK_FLASH, FEEDBACK_TEXT, type ScanFeedback } from '../lib/scan-feedback';
 import { SCAN_FRAME } from '../lib/scan-region';
 import { CAMERA_ERROR_TEXT, type UseCameraScanner } from '../lib/use-camera-scanner';
-import { usePinchZoom } from '../lib/use-pinch-zoom';
-import { nextDevice, ScanCameraControls } from './scan-camera-controls';
 
 /** Lama cincin umpan balik ketuk-untuk-fokus tampil. */
 const FOCUS_RING_MS = 900;
@@ -174,7 +174,7 @@ export function ScanCameraPane({
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80 p-4 text-center text-sm text-white">
           <p role="alert">{CAMERA_ERROR_TEXT[state.kind]}</p>
           {state.kind !== 'insecure' && state.kind !== 'unsupported' ? (
-            <Button type="button" variant="secondary" size="sm" onClick={camera.retry}>
+            <Button type="button" variant="soft" color="secondary" size="sm" onClick={camera.retry}>
               Coba lagi
             </Button>
           ) : null}

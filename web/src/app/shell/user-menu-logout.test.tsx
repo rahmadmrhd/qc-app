@@ -17,8 +17,12 @@ vi.mock('@/modules/push/components/push-settings-dialog', () => ({
 
 import { enqueueCheck } from '@/modules/handover/lib/check-outbox';
 import { readOutbox, removeOutboxEntries } from '@/modules/handover/lib/outbox';
+import { mockMatchMedia } from '@/test/match-media';
 import { resetOutboxEnv } from '@/test/outbox-env';
 import { UserMenu } from './user-menu';
+
+// UserMenu membaca useIsMobile (matchMedia tidak ada di jsdom).
+mockMatchMedia(false);
 
 const queue = (owner: string, index: number) =>
   enqueueCheck(owner, {

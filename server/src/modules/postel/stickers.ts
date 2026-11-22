@@ -2,6 +2,9 @@ import type { DbStatement, Preparer } from '@server/core/db';
 import { DbError } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
+import { appError } from '@server/core/errors';
+import { newId } from '@server/core/id';
+import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import { ensurePostelType } from '@server/modules/sticker/postel';
 import {
   insertStickerStmt,
@@ -26,10 +29,22 @@ export function postelStickerBase(items: readonly PostelItem[]): string {
   return postelName(items.map((item) => item.model));
 }
 
+const DELETED_HOLDER_RESTORABLE =
+  'Nama stiker Postel ini masih dipegang Postel yang dihapus; pulihkan Postel itu dari daftar Terhapus, atau ubah pilihan item';
+const DELETED_HOLDER_GENERIC = 'Nama stiker Postel bentrok dengan catatan lain';
+
+/** Perlakuan nama yang dipegang stiker milik Postel TERHAPUS saat memilih nama (keputusan pemilik soft delete 13). */
+export interface DeletedHolderPolicy {
+  /** Penyimpan berhak memulihkan: pesan menyarankan memulihkan Postel lama; selain itu pesan generik. */
+  canRestore: boolean;
+}
+
 /**
  * Nama stiker yang belum dipakai stiker Postel lain (tanpa beda huruf besar, setara `name_key`). Bentrok (mis. model
  * yang sama pada merk berbeda) dibedakan dengan nomor sertifikat Aktif, lalu dengan angka urut bila masih bentrok.
- * `exceptStickerId` = stiker catatan ini sendiri (tak dihitung sebagai pemakai).
+ * `exceptStickerId` = stiker catatan ini sendiri (tak dihitung sebagai pemakai). Dengan `onDeletedHolder`, nama yang
+ * dipegang stiker Postel TERHAPUS tidak dibedakan melainkan ditolak (`CONFLICT` pada `itemIds`: Postel baru bernama
+ * sama tak boleh lahir selama yang lama masih di Terhapus); tanpa itu (pengisi saat start) nama itu dilewati.
  */
 export async function pickPostelStickerName(
   db: Preparer,
@@ -37,13 +52,26 @@ export async function pickPostelStickerName(
   base: string,
   activeNumber: string,
   exceptStickerId: string,
+  onDeletedHolder?: DeletedHolderPolicy,
 ): Promise<string> {
   const rows = await db
-    .prepare('SELECT LOWER(name) AS name_key FROM stickers WHERE type_id = ? AND id <> ?')
+    .prepare(
+      `SELECT LOWER(name) AS name_key, EXISTS (SELECT 1 FROM postels p WHERE p.sticker_id = stickers.id AND ${deletedWhere('p')}) AS of_deleted FROM stickers WHERE type_id = ? AND id <> ?`,
+    )
     .bind(typeId, exceptStickerId)
-    .all<{ name_key: string }>();
-  const taken = new Set(rows.results.map((row) => row.name_key));
-  const free = (name: string): boolean => !taken.has(name.toLowerCase());
+    .all<{ name_key: string; of_deleted: number | string }>();
+  const taken = new Map(rows.results.map((row) => [row.name_key, Number(row.of_deleted) === 1]));
+  const free = (name: string): boolean => {
+    const heldByDeleted = taken.get(name.toLowerCase());
+    if (heldByDeleted === undefined) return true;
+    if (heldByDeleted && onDeletedHolder) {
+      const message = onDeletedHolder.canRestore
+        ? DELETED_HOLDER_RESTORABLE
+        : DELETED_HOLDER_GENERIC;
+      throw appError('CONFLICT', message, { itemIds: message });
+    }
+    return false;
+  };
   const plain = postelStickerName(base);
   if (free(plain)) return plain;
   const numbered = activeNumber === '' ? plain : postelStickerName(base, ` (${activeNumber})`);
@@ -66,7 +94,7 @@ export function newPostelStickerStmt(
   now: string,
 ): { stickerId: string; statement: DbStatement } {
   const sticker: StickerRecord = {
-    id: crypto.randomUUID(),
+    id: newId(),
     typeId: type.id,
     name,
     alias: '',
@@ -76,6 +104,8 @@ export function newPostelStickerStmt(
     createdAt: now,
     updatedAt: now,
     updatedBy: actor,
+    deletedAt: '',
+    deletedBy: '',
   };
   return { stickerId: sticker.id, statement: insertStickerStmt(db, sticker) };
 }
@@ -96,28 +126,51 @@ export function renameStickerStmt(
 }
 
 /**
- * Stiker catatan yang dihapus: `inactive` bila stok semua lokasinya 0, selain itu `deprecated` (tak menerima stok masuk,
- * tak dihitung menipis, hanya dapat menjadi `inactive`; pola Manual Book versi lama). Dijalankan dalam transaksi hapus
- * dengan urutan kunci sama seperti penulis stok: baris stiker dulu, lalu baris stok (kunci bersama).
+ * Stiker catatan yang dihapus lunak: `inactive` bila total stok semua lokasinya <= 0 (stok dapat negatif akibat serial),
+ * selain itu `deprecated` (tak menerima stok masuk, tak dihitung menipis, hanya dapat menjadi `inactive`; pola Manual
+ * Book versi lama). Pernyataan untuk `batch()` hapus, dengan urutan kunci sama seperti penulis stok: baris catatan
+ * (dikunci pernyataan sebelumnya), baris stiker, lalu baris stok (kunci bersama); jumlah dihitung SQL sesudah kunci.
  */
-export async function retirePostelSticker(
-  tx: Preparer,
+export function retirePostelStickerStmts(
+  db: Preparer,
   stickerId: string,
-  actor: string,
   now: string,
-): Promise<void> {
-  if (stickerId === '') return;
-  await tx.prepare('SELECT id FROM stickers WHERE id = ? FOR UPDATE').bind(stickerId).first();
-  await tx
-    .prepare('SELECT 1 AS locked FROM sticker_stock WHERE sticker_id = ? LOCK IN SHARE MODE')
-    .bind(stickerId)
-    .all();
-  await tx
-    .prepare(
-      "UPDATE stickers SET status = CASE WHEN (SELECT COALESCE(SUM(qty), 0) FROM sticker_stock WHERE sticker_id = ?) = 0 THEN 'inactive' ELSE 'deprecated' END, updated_at = ?, updated_by = ? WHERE id = ? AND status = 'active'",
-    )
-    .bind(stickerId, now, actor, stickerId)
-    .run();
+  actor: string,
+): DbStatement[] {
+  if (stickerId === '') return [];
+  return [
+    db
+      .prepare(`SELECT s.id FROM stickers s WHERE ${liveWhere('s')} AND s.id = ? FOR UPDATE`)
+      .bind(stickerId),
+    db
+      .prepare('SELECT 1 AS locked FROM sticker_stock WHERE sticker_id = ? LOCK IN SHARE MODE')
+      .bind(stickerId),
+    db
+      .prepare(
+        "UPDATE stickers SET status = CASE WHEN (SELECT COALESCE(SUM(qty), 0) FROM sticker_stock WHERE sticker_id = stickers.id) <= 0 THEN 'inactive' ELSE 'deprecated' END, updated_at = ?, updated_by = ? WHERE id = ? AND status = 'active'",
+      )
+      .bind(now, actor, stickerId),
+  ];
+}
+
+/**
+ * Pulihkan catatan: stikernya yang `deprecated` karena penghapusan kembali `inactive` (dapat diaktifkan lagi lewat
+ * katalog; Pulihkan sendiri tidak mengaktifkan apa pun; keputusan pemilik soft delete 13).
+ */
+export function restorePostelStickerStmts(
+  db: Preparer,
+  stickerId: string,
+  now: string,
+  actor: string,
+): DbStatement[] {
+  if (stickerId === '') return [];
+  return [
+    db
+      .prepare(
+        "UPDATE stickers SET status = 'inactive', updated_at = ?, updated_by = ? WHERE id = ? AND status = 'deprecated'",
+      )
+      .bind(now, actor, stickerId),
+  ];
 }
 
 /**

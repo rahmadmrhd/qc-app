@@ -1,3 +1,10 @@
+const STOCK_CLIENT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** `clientId` baris entri stok batch: UUID huruf kecil 36 karakter (`crypto.randomUUID()`), tanpa dipangkas. */
+export function isStockClientId(value: string): boolean {
+  return STOCK_CLIENT_ID.test(value);
+}
+
 /** Batas katalog dan stok stiker (rencana 2026-11-09, Global Constraints). */
 export const STICKER_LIMITS = {
   /** Panjang maksimum nama stiker (karakter). */

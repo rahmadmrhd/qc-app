@@ -78,6 +78,7 @@ export function DeniedBanner({
     <div
       role="status"
       data-testid="push-denied-banner"
+      data-app-banner=""
       className="flex items-start gap-3 border-b bg-muted/60 px-4 py-3 text-sm"
     >
       <BellOff className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -88,7 +89,7 @@ export function DeniedBanner({
           {reenableSteps(platform)}
         </p>
       </div>
-      <Button size="sm" variant="ghost" onClick={onClose}>
+      <Button size="sm" variant="ghost" color="primary" onClick={onClose}>
         Tutup
       </Button>
     </div>
@@ -254,7 +255,7 @@ export function PushOnboarding() {
             dari menu profil. Lonceng di atas tetap jalan tanpa izin ini.
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={dismissAsk}>
+            <Button variant="outline" color="primary" onClick={dismissAsk}>
               Nanti
             </Button>
             <Button onClick={() => void enable()} disabled={busy}>

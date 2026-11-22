@@ -40,7 +40,7 @@ export function LoginPanel({
       </CardHeader>
       <CardContent className="space-y-4">
         {authError === 'NOT_WHITELISTED' ? (
-          <Alert variant="destructive">
+          <Alert color="destructive" icon={false}>
             <AlertTitle>Email belum terdaftar</AlertTitle>
             <AlertDescription>
               {authErrorEmail
@@ -51,13 +51,13 @@ export function LoginPanel({
           </Alert>
         ) : null}
         {authError === 'LOGIN_FAILED' ? (
-          <Alert variant="destructive">
+          <Alert color="destructive" icon={false}>
             <AlertTitle>Login gagal</AlertTitle>
             <AlertDescription>Silakan coba lagi.</AlertDescription>
           </Alert>
         ) : null}
         {bridge && serverUnreachable ? (
-          <Alert variant="destructive">
+          <Alert color="destructive" icon={false}>
             <AlertTitle>Tidak dapat terhubung ke server</AlertTitle>
             <AlertDescription>
               Periksa koneksi internet Anda. Country Lock tetap dapat dipakai tanpa server.
@@ -76,7 +76,7 @@ export function LoginPanel({
           </Button>
         )}
         {bridge ? (
-          <Button asChild variant="outline" className="w-full">
+          <Button asChild variant="outline" color="primary" className="w-full">
             <Link to="/country-lock">Buka Country Lock</Link>
           </Button>
         ) : null}

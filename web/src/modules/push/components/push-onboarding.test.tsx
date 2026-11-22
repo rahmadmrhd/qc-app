@@ -124,7 +124,7 @@ describe('laporan izin ke server', () => {
     first.unmount();
     device({ permission: 'denied', standalone: false });
     mount();
-    expect(await screen.findByTestId('push-denied-banner')).toBeInTheDocument();
+    expect(await screen.findByTestId('push-denied-banner')).toHaveAttribute('data-app-banner');
     expect(reportCalls()).toHaveLength(0);
   });
 });

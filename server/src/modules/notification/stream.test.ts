@@ -416,6 +416,33 @@ describe('aliran notifikasi untuk lonceng web (cookie sesi, hub yang sama)', () 
       await sse.cancel();
     });
 
+    test('notifikasi task terhapus tidak didorong ke aliran; task hidup lain tetap terkirim', async () => {
+      await seedTask('- [ ] A = 1');
+      await seedHandover(env, {
+        id: 't2',
+        number: 'ST-20261015-002',
+        locationId: ENV.locA,
+        customerId: 'cust-pt-maju',
+        customerName: 'PT Maju',
+      });
+      const sse = frames(await open(VIEWER));
+      expect((await sse.next())?.event).toBe('ready');
+      expect(((await callRest(env, WH, 'handovers.remove', ref)) as { ok: boolean }).ok).toBe(true);
+      await insert(
+        row(0, { handoverId: 't1', number: 'ST-20261015-001' }),
+        row(1, { handoverId: 't2', number: 'ST-20261015-002' }),
+      );
+      await pumpNotificationStreams(env);
+      const frame = await sse.next();
+      expect(frame?.event).toBe('notification');
+      const data = JSON.parse(frame?.data ?? '{}') as StreamEvent;
+      expect(`${data.title} ${data.body}`).toContain('ST-20261015-002');
+      expect(`${data.title} ${data.body}`).not.toContain('ST-20261015-001');
+      // Tak ada bingkai kedua: notifikasi task terhapus dilewati (bukan ditunda).
+      expect(await sse.next(400)).toBeNull();
+      await sse.cancel();
+    });
+
     test('centang biasa: tidak ada bingkai sampai jendela 1 menit habis; setelahnya satu ringkasan', async () => {
       await seedTask('- [ ] A = 1\n- [ ] B = 2');
       const sse = frames(await openWeb(WH));

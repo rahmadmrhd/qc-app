@@ -3,12 +3,19 @@ import { cn } from "cn"
 import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
+import { useBackToCloseRoot } from "@/hooks/use-back-to-close"
 import { XIcon } from "lucide-react"
 
 function Dialog({
+  open,
+  defaultOpen,
+  onOpenChange,
+  backToClose,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Root>) {
-  return <DialogPrimitive.Root data-slot="dialog" {...props} />
+}: React.ComponentProps<typeof DialogPrimitive.Root> & { backToClose?: boolean }) {
+  // Ponsel: back menutup dialog (hook no-op di desktop).
+  const root = useBackToCloseRoot({ open, defaultOpen, onOpenChange, backToClose })
+  return <DialogPrimitive.Root data-slot="dialog" {...root} {...props} />
 }
 
 function DialogTrigger({
@@ -45,21 +52,56 @@ function DialogOverlay({
   )
 }
 
+/**
+ * `size="full-on-phone"`: di < 768 px dialog menjadi layar penuh (tinggi `var(--vvh, 100dvh)` dan `top: var(--vv-top, 0)`
+ * agar footer menempel di atas papan ketik layar, tanpa sudut membulat, area aman notch/bilah gestur dihormati); >= 768 px
+ * ukuran dialog biasa tidak berubah. Selektor memakai atribut `data-size` agar lebih spesifik daripada kelas ukuran
+ * pemakai (mis. `max-h-[95vh]`, `h-[calc(100dvh-2rem)]`, `sm:max-w-5xl`) di antara 640 dan 767 px juga. Dipakai dialog
+ * yang tingginya lebih dari separuh layar ponsel (spek revisi tampilan lanjutan P6).
+ */
+const FULL_ON_PHONE =
+  'max-md:data-[size=full-on-phone]:top-[var(--vv-top,0px)] max-md:data-[size=full-on-phone]:left-0 max-md:data-[size=full-on-phone]:h-[var(--vvh,100dvh)] max-md:data-[size=full-on-phone]:max-h-none max-md:data-[size=full-on-phone]:w-screen max-md:data-[size=full-on-phone]:max-w-none max-md:data-[size=full-on-phone]:translate-x-0 max-md:data-[size=full-on-phone]:translate-y-0 max-md:data-[size=full-on-phone]:rounded-none max-md:data-[size=full-on-phone]:ring-0 max-md:data-[size=full-on-phone]:pt-[env(safe-area-inset-top)] max-md:data-[size=full-on-phone]:pb-[env(safe-area-inset-bottom)] max-md:data-[size=full-on-phone]:[--kb:0px]'
+
+/**
+ * Ruang gulir daftar saran combobox ponsel (`--list-room`, `lib/list-room.ts`). Sebagai padding penggulir ruang itu
+ * berada DI LUAR kotak isi, jadi footer/bar sticky (kotak penampungnya = kotak isi) ikut terangkat setinggi ruang itu
+ * dengan celah kosong di bawahnya. Maka ruangnya dipasang di dalam alur isi, tepat SEBELUM footer/bar sticky
+ * (`DialogListRoom`, dan margin atas pada bar inline): footer tetap menempel di dasar penggulir sementara field
+ * dapat digulir ke atas. Hanya dialog TANPA footer/bar sticky memakai padding bawah sebagai cadangan.
+ */
+export const DIALOG_SCROLL_ROOM =
+  'pb-[calc(1rem+var(--list-room,0px))] has-[[data-slot=dialog-footer],[data-slot=alert-dialog-footer],[data-slot=sticky-action-bar].sticky]:pb-4 [&_[data-slot=sticky-action-bar].sticky]:mt-[var(--list-room,0px)]'
+
+/** Elemen pengikut setinggi `--list-room` yang ditaruh tepat sebelum footer; nol tinggi dan tanpa jarak saat daftar tertutup. */
+function DialogListRoom({ slot = "dialog-list-room" }: { slot?: string }) {
+  return (
+    <div
+      aria-hidden
+      data-slot={slot}
+      className="pointer-events-none h-[var(--list-room,0px)] shrink-0 [[data-slot$=scroll]>&]:-mb-[var(--dialog-gap,1rem)]"
+    />
+  )
+}
+
 function DialogContent({
   className,
   children,
   showCloseButton = true,
+  size = "default",
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  size?: "default" | "full-on-phone"
 }) {
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Content
         data-slot="dialog-content"
+        data-size={size}
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-popover text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          "fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-popover text-sm text-popover-foreground [--tabs-surface:var(--popover)] ring-1 ring-foreground/10 duration-100 outline-none sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+          size === "full-on-phone" && FULL_ON_PHONE,
           className
         )}
         {...props}
@@ -68,7 +110,10 @@ function DialogContent({
             (sticky) di tepi atas/bawahnya, sehingga tetap terlihat tanpa pembungkus tambahan di pemakai. */}
         <div
           data-slot="dialog-scroll"
-          className="flex min-h-0 flex-1 scroll-py-20 flex-col gap-4 overflow-x-hidden overflow-y-auto p-4"
+          className={cn(
+            "flex min-h-0 flex-1 scroll-py-20 flex-col gap-4 overflow-x-hidden overflow-y-auto p-4 [--dialog-gap:1rem]",
+            DIALOG_SCROLL_ROOM
+          )}
         >
           {children}
         </div>
@@ -76,7 +121,11 @@ function DialogContent({
           <DialogPrimitive.Close data-slot="dialog-close" asChild>
             <Button
               variant="ghost"
-              className="absolute top-2 right-2 z-20"
+              className={cn(
+                "absolute top-2 right-2 z-20",
+                size === "full-on-phone" &&
+                  "max-md:top-[calc(0.5rem+env(safe-area-inset-top))]"
+              )}
               size="icon-sm"
             >
               <XIcon
@@ -112,21 +161,24 @@ function DialogFooter({
   showCloseButton?: boolean
 }) {
   return (
-    <div
-      data-slot="dialog-footer"
-      className={cn(
-        "sticky -bottom-4 z-10 -mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-popover bg-linear-to-b from-muted/50 to-muted/50 p-4 sm:flex-row sm:justify-end",
-        className
-      )}
-      {...props}
-    >
-      {children}
-      {showCloseButton && (
-        <DialogPrimitive.Close asChild>
-          <Button variant="outline">Close</Button>
-        </DialogPrimitive.Close>
-      )}
-    </div>
+    <>
+      <DialogListRoom />
+      <div
+        data-slot="dialog-footer"
+        className={cn(
+          "sticky -bottom-4 z-10 -mx-4 -mb-4 mt-auto flex flex-col-reverse gap-2 rounded-b-xl border-t bg-popover bg-linear-to-b from-muted/50 to-muted/50 p-4 sm:flex-row sm:justify-end",
+          className
+        )}
+        {...props}
+      >
+        {children}
+        {showCloseButton && (
+          <DialogPrimitive.Close asChild>
+            <Button variant="outline">Close</Button>
+          </DialogPrimitive.Close>
+        )}
+      </div>
+    </>
   )
 }
 
@@ -169,6 +221,7 @@ export {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogListRoom,
   DialogOverlay,
   DialogPortal,
   DialogTitle,

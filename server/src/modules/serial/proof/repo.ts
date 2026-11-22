@@ -1,5 +1,6 @@
 import { CAS_FAIL_SQL } from '@server/core/cas';
 import type { DbStatement, Preparer } from '@server/core/db';
+import { liveWhere } from '@server/core/soft-delete';
 import type { SerialProofPhotoDto } from '@shared/contract';
 import { SERIAL_PROOF_LIMITS, SERIAL_PROOF_STATES, type SerialProofState } from '@shared/serials';
 import { proofSizeError, stampLineCountOf } from './stamp';
@@ -85,9 +86,12 @@ const EXTENSION_OF_MIME: Record<string, string> = {
   'image/webp': 'webp',
 };
 
-/** Nama unduhan yang disarankan: `bukti-<8 awal id>.<ekstensi menurut MIME saat ini>`. */
+/**
+ * Nama unduhan yang disarankan: `bukti-<8 karakter akhir id>.<ekstensi menurut MIME saat ini>`. Karakter AKHIR (bagian
+ * acak ULID) dipakai karena 8 karakter awal hanya bit waktu teratas yang sama untuk foto yang diunggah serentak.
+ */
 export function proofFilename(id: string, mime: string): string {
-  return `bukti-${id.trim().slice(0, 8)}.${EXTENSION_OF_MIME[mime] ?? 'webp'}`;
+  return `bukti-${id.trim().slice(-8)}.${EXTENSION_OF_MIME[mime] ?? 'webp'}`;
 }
 
 const DAY_MS = 86_400_000;
@@ -321,7 +325,10 @@ export async function sumDraftBytesOf(db: Preparer, email: string): Promise<numb
   return Number(row?.total ?? 0);
 }
 
-/** Foto `failed` yang gagal (`updated_at`) pada atau sebelum `cutoffIso` (bahan retensi). */
+/**
+ * Foto `failed` yang gagal (`updated_at`) pada atau sebelum `cutoffIso` (bahan retensi). Foto milik serial TERHAPUS
+ * tak disapu (serial dapat dipulihkan; masa retensi berlanjut sesudahnya).
+ */
 export async function listExpiredFailed(
   db: Preparer,
   cutoffIso: string,
@@ -331,7 +338,7 @@ export async function listExpiredFailed(
 > {
   const rows = await db
     .prepare(
-      "SELECT id, staged_name, serial_id, event_id, last_error FROM serial_proof_photos WHERE state = 'failed' AND updated_at <= ? ORDER BY updated_at ASC LIMIT ?",
+      `SELECT p.id, p.staged_name, p.serial_id, p.event_id, p.last_error FROM serial_proof_photos p JOIN serials s ON s.id = p.serial_id WHERE ${liveWhere('s')} AND p.state = 'failed' AND p.updated_at <= ? ORDER BY p.updated_at ASC LIMIT ?`,
     )
     .bind(cutoffIso, limit)
     .all<{

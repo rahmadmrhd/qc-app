@@ -51,12 +51,12 @@ export function CommentComposer({ quote, onSubmit, onCancel }: CommentComposerPr
         onChange={(event) => setBody(event.target.value)}
       />
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {error}
         </p>
       ) : null}
       <div className="flex justify-end gap-2">
-        <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
+        <Button type="button" variant="ghost" color="primary" size="sm" onClick={onCancel}>
           Batal
         </Button>
         <Button type="submit" size="sm" disabled={busy || body.trim() === ''}>

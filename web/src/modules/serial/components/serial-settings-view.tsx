@@ -1,5 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { PageContent } from '@/components/page/page-container';
 import { describeError } from '@/lib/api/describe-error';
 import { usersQueryOptions } from '@/modules/access/queries';
 import { can } from '@/modules/auth/permissions';
@@ -7,14 +8,22 @@ import { useMe } from '@/modules/auth/use-me';
 import { isStaleSaveError, STALE_SAVE_MESSAGE } from '@/modules/sticker/lib/stale';
 import { serialKeys } from '../keys';
 import { serialSettingsQueryOptions, useSaveSerialSettings } from '../queries';
-import { SerialSettingsPage } from './serial-settings-page';
+import { SerialSettingsPage, type SerialSettingsTab } from './serial-settings-page';
 import { ServiceLocationsSettings } from './service-locations-settings';
 
 /**
  * Memuat pengaturan (hanya pengelola di semua BU; server menolak yang lain, pesannya tampil apa adanya) dan menyimpan.
  * Versi usang (412): pesan tampil dan pengaturan dimuat ulang, jadi isian berikutnya mulai dari data terbaru.
  */
-export function SerialSettingsView() {
+export function SerialSettingsView({
+  tab,
+  onTabChange,
+  onCancel,
+}: {
+  tab?: SerialSettingsTab | undefined;
+  onTabChange?: ((tab: SerialSettingsTab) => void) | undefined;
+  onCancel: () => void;
+}) {
   const me = useMe();
   const queryClient = useQueryClient();
   const settings = useQuery(serialSettingsQueryOptions());
@@ -23,17 +32,28 @@ export function SerialSettingsView() {
   const users = useQuery({ ...usersQueryOptions(), enabled: canReadUsers, retry: false });
   const save = useSaveSerialSettings();
 
-  if (settings.isPending) return <p className="text-sm text-muted-foreground">Memuat…</p>;
+  if (settings.isPending) {
+    return (
+      <PageContent>
+        <p className="text-sm text-muted-foreground">Memuat…</p>
+      </PageContent>
+    );
+  }
   if (settings.isError || !settings.data) {
     return (
-      <p role="alert" className="text-sm text-destructive">
-        {settings.error ? describeError(settings.error) : 'Pengaturan tidak bisa dimuat.'}
-      </p>
+      <PageContent>
+        <p role="alert" className="text-sm text-destructive-text">
+          {settings.error ? describeError(settings.error) : 'Pengaturan tidak bisa dimuat.'}
+        </p>
+      </PageContent>
     );
   }
   return (
     <SerialSettingsPage
       settings={settings.data}
+      tab={tab}
+      onTabChange={onTabChange}
+      onCancel={onCancel}
       users={canReadUsers ? (users.data ?? null) : null}
       onSave={async (input) => {
         try {
@@ -48,8 +68,7 @@ export function SerialSettingsView() {
           return describeError(error);
         }
       }}
-    >
-      <ServiceLocationsSettings />
-    </SerialSettingsPage>
+      renderServiceTab={(props) => <ServiceLocationsSettings {...props} />}
+    />
   );
 }

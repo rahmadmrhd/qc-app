@@ -1,5 +1,16 @@
 import type { RouteTable } from '@server/core/router';
-import { getItemDto, listItemPage, saveItem, setItemStatus } from './service';
+import { validateIdBatch, validateStatusBatch } from '@server/core/soft-delete';
+import {
+  getItemDto,
+  listItemPage,
+  removeItem,
+  removeItemBatch,
+  restoreItem,
+  restoreItemBatch,
+  saveItem,
+  setItemStatus,
+  setItemStatusBatch,
+} from './service';
 import {
   validateGetItem,
   validateListItems,
@@ -7,7 +18,16 @@ import {
   validateSetItemStatus,
 } from './validate';
 
-type ItemMethod = 'items.list' | 'items.get' | 'items.save' | 'items.setStatus';
+type ItemMethod =
+  | 'items.list'
+  | 'items.get'
+  | 'items.save'
+  | 'items.setStatus'
+  | 'items.setStatusBatch'
+  | 'items.remove'
+  | 'items.removeBatch'
+  | 'items.restore'
+  | 'items.restoreBatch';
 
 export function itemRoutes(): Pick<RouteTable, ItemMethod> {
   return {
@@ -30,6 +50,31 @@ export function itemRoutes(): Pick<RouteTable, ItemMethod> {
       permission: { module: 'item', level: 'manage' },
       validate: validateSetItemStatus,
       handler: (input, ctx) => setItemStatus(ctx.env, input, ctx.user),
+    },
+    'items.setStatusBatch': {
+      permission: { module: 'item', level: 'manage' },
+      validate: validateStatusBatch,
+      handler: (input, ctx) => setItemStatusBatch(ctx.env, input, ctx.user),
+    },
+    'items.remove': {
+      permission: { module: 'item', level: 'manage' },
+      validate: validateGetItem,
+      handler: (input, ctx) => removeItem(ctx.env, input, ctx.user),
+    },
+    'items.removeBatch': {
+      permission: { module: 'item', level: 'manage' },
+      validate: validateIdBatch,
+      handler: (input, ctx) => removeItemBatch(ctx.env, input, ctx.user),
+    },
+    'items.restore': {
+      permission: { module: 'item', level: 'manage' },
+      validate: validateGetItem,
+      handler: (input, ctx) => restoreItem(ctx.env, input, ctx.user),
+    },
+    'items.restoreBatch': {
+      permission: { module: 'item', level: 'manage' },
+      validate: validateIdBatch,
+      handler: (input, ctx) => restoreItemBatch(ctx.env, input, ctx.user),
     },
   };
 }

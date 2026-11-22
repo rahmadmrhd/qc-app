@@ -26,12 +26,22 @@ import {
   pathParamNames,
   routeShape,
 } from '@shared/api';
+import {
+  API_GROUP_VERSIONS,
+  apiGroup,
+  type GroupVersions,
+  matchRetiredRoute,
+  parseApiId,
+  RETIRED_ROUTES,
+  type RetiredRoute,
+  restBase,
+} from '@shared/api-versions';
 import type { ApiId } from '@shared/contract';
 import type { Context } from 'hono';
 import type { Hono } from 'hono/tiny';
 
-/** Awalan jalur REST; jalur di tabel (`/brands/{id}`) relatif terhadapnya. */
-export const REST_BASE = '/api/v1';
+/** Awalan jalur REST v1; jalur di tabel (`/brands/{id}`) relatif terhadap awalan versinya (`restBase(n)`). */
+export const REST_BASE = restBase(1);
 
 const BODY_VERBS: ReadonlySet<ApiVerb> = new Set<ApiVerb>(['POST', 'PUT', 'PATCH']);
 
@@ -50,16 +60,22 @@ export function honoPath(path: string): string {
 }
 
 /**
- * Daftar operasi yang didaftarkan: tiap id tabel `API_ROUTES` (termasuk rute biner) dengan jalur ubah
- * dan, bila ada, jalur `create`. Rute statis didahulukan atas berparameter (router Hono mencocokkan menurut urutan
- * pendaftaran): `/handovers/options` dan `/handovers/batch` tidak boleh tertelan `/handovers/{id}`.
+ * Daftar operasi yang didaftarkan untuk satu versi API (bawaan 1): tiap id tabel `API_ROUTES` yang versinya
+ * (akhiran `@n`, lihat `parseApiId`) sama, termasuk rute biner, dengan jalur ubah dan, bila ada, jalur `create`.
+ * Rute statis didahulukan atas berparameter (router Hono mencocokkan menurut urutan pendaftaran):
+ * `/handovers/options` dan `/handovers/batch` tidak boleh tertelan `/handovers/{id}`.
  */
-export function listOperations(): Operation[] {
+export function listOperations(
+  version = 1,
+  table: Record<string, ApiRouteDef> = API_ROUTES,
+): Operation[] {
   const operations: Operation[] = [];
-  for (const id of Object.keys(API_ROUTES) as ApiId[]) {
-    const def = API_ROUTES[id];
-    operations.push({ id, def, created: false, ...routeShape(def, false) });
-    if (def.create) operations.push({ id, def, created: true, ...routeShape(def, true) });
+  for (const id of Object.keys(table)) {
+    if (parseApiId(id).version !== version) continue;
+    const def = table[id] as ApiRouteDef;
+    operations.push({ id: id as ApiId, def, created: false, ...routeShape(def, false) });
+    if (def.create)
+      operations.push({ id: id as ApiId, def, created: true, ...routeShape(def, true) });
   }
   return operations
     .map((operation, index) => ({
@@ -160,7 +176,31 @@ function jsonResponse(status: number, body: unknown, headers: Record<string, str
   });
 }
 
-function handlerFor(operation: Operation, routes: RouteTable) {
+/** Kebijakan versi yang dipakai pemasangan rute: versi tiap kelompok dan rute yang sudah dihapus. */
+export interface RestPolicy {
+  groups: Record<string, GroupVersions>;
+  retired: readonly RetiredRoute[];
+}
+
+const DEFAULT_POLICY: RestPolicy = { groups: API_GROUP_VERSIONS, retired: RETIRED_ROUTES };
+
+/** Versi id ini sudah ditandai deprecated oleh kelompoknya (`Deprecation: true` pada semua responsnya). */
+function isDeprecatedId(id: string, policy: RestPolicy): boolean {
+  const info = policy.groups[apiGroup(id)];
+  return info?.deprecated.includes(parseApiId(id).version) === true;
+}
+
+function handlerFor(operation: Operation, routes: RouteTable, policy: RestPolicy) {
+  const inner = innerHandlerFor(operation, routes);
+  if (!isDeprecatedId(operation.id, policy)) return inner;
+  return async (c: Context<AppBindings>): Promise<Response> => {
+    const response = await inner(c);
+    response.headers.set('deprecation', 'true');
+    return response;
+  };
+}
+
+function innerHandlerFor(operation: Operation, routes: RouteTable) {
   const { id, def, created, verb, status } = operation;
   return async (c: Context<AppBindings>): Promise<Response> => {
     const meta: RouteMeta = { requestId: newRequestId() };
@@ -216,10 +256,10 @@ function handlerFor(operation: Operation, routes: RouteTable) {
       const etag = etagOf(id, output as never);
       if (etag !== undefined) headers.etag = formatEtag(etag);
       if (created && output && typeof (output as { id?: unknown }).id === 'string') {
-        headers.location = `${REST_BASE}${fillPath(def.path, { id: (output as { id: string }).id })}`;
+        headers.location = `${restBase(parseApiId(id).version)}${fillPath(def.path, { id: (output as { id: string }).id })}`;
       }
       if (def.location !== undefined) {
-        const location = locationOf(def.location, output);
+        const location = locationOf(def.location, output, parseApiId(id).version);
         if (location !== undefined) headers.location = location;
       }
       const notModified =
@@ -252,7 +292,7 @@ function handlerFor(operation: Operation, routes: RouteTable) {
 }
 
 /** `Location` dari templat `def.location` dan field keluaran; `undefined` bila ada parameter yang tidak terisi. */
-function locationOf(template: string, output: unknown): string | undefined {
+export function locationOf(template: string, output: unknown, version: number): string | undefined {
   const source =
     typeof output === 'object' && output !== null ? (output as Record<string, unknown>) : {};
   const params: Record<string, string> = {};
@@ -261,22 +301,46 @@ function locationOf(template: string, output: unknown): string | undefined {
     if (typeof value !== 'string' || value === '') return undefined;
     params[name] = value;
   }
-  return `${REST_BASE}${fillPath(template, params)}`;
+  return `${restBase(version)}${fillPath(template, params)}`;
 }
 
-/** Jawaban untuk rute `/api/v1/*` yang tidak dikenal: 404 problem+json (bukan fallback SPA). */
+/** Jawaban untuk rute `/api/v<n>/*` yang tidak dikenal: 404 problem+json (bukan fallback SPA). */
 export function restNotFound(): Response {
   return problemResponse(toProblem(appError('NOT_FOUND', 'Rute tidak ditemukan'), newRequestId()));
 }
 
 /**
- * Mendaftarkan rute REST pada `app` (disambung ke `/api/v1`): satu handler per operasi tabel `API_ROUTES`
- * untuk SEMUA id, lalu 404 problem+json untuk sisanya. Handler memakai `authorize` + `execute`
+ * Mendaftarkan rute REST satu versi pada `app` (disambung ke `/api/v<version>`): satu handler per operasi tabel
+ * `API_ROUTES` untuk SEMUA id versi itu, lalu 404 problem+json untuk sisanya. Handler memakai `authorize` + `execute`
  * (= `runRoute`: sesi, izin, validasi, lokasi), jadi logika modul tidak berubah.
  */
-export function registerRest(app: Hono<AppBindings>, routes: RouteTable): void {
-  for (const operation of listOperations()) {
-    app.on(operation.verb, honoPath(operation.path), handlerFor(operation, routes));
+export function registerRest(
+  app: Hono<AppBindings>,
+  routes: RouteTable,
+  version = 1,
+  table: Record<string, ApiRouteDef> = API_ROUTES,
+  policy: RestPolicy = DEFAULT_POLICY,
+): void {
+  for (const operation of listOperations(version, table)) {
+    app.on(operation.verb, honoPath(operation.path), handlerFor(operation, routes, policy));
   }
-  app.all('*', () => restNotFound());
+  // Rute yang sudah dihapus dijawab 426 di sini, SEBELUM authorize: rutenya tak terdaftar lagi, jadi tak ada sesi atau
+  // izin yang bisa diperiksa dan klien lama (tanpa sesi sekalipun) tetap tahu ia perlu diperbarui. `csrfGuard` di
+  // tingkat `/api/*` sudah berjalan lebih dulu, jadi tulis tanpa header CSRF tetap 403 seperti rute lain.
+  app.all('*', (c) => {
+    const base = restBase(version);
+    const path = c.req.path.startsWith(base) ? c.req.path.slice(base.length) : c.req.path;
+    if (matchRetiredRoute(policy.retired, c.req.method, version, path) !== null) {
+      return problemResponse(
+        toProblem(
+          appError(
+            'CLIENT_OUTDATED',
+            'Versi aplikasi ini sudah tidak didukung. Muat ulang atau perbarui aplikasi.',
+          ),
+          newRequestId(),
+        ),
+      );
+    }
+    return restNotFound();
+  });
 }

@@ -1,4 +1,5 @@
 import type { DbStatement, Preparer } from '@server/core/db';
+import { auditTargetKind } from '@shared/audit';
 import type { AuditCursorPageDto, AuditEntryDto } from '@shared/contract';
 import type { Env } from './env';
 
@@ -8,6 +9,11 @@ export interface AuditInput {
   actor: string;
   action: string;
   target: string;
+  /**
+   * Id entitas yang diubah (menaut Log Audit ke View-nya, `AuditEntryDto.targetRef`); WAJIB untuk aksi berawalan
+   * entitas ber-View (`auditTargetKind(action)`), dijaga `core/audit-target.test.ts`. Kosong untuk aksi tanpa entitas.
+   */
+  targetId?: string;
   /** Snapshot sebelum perubahan; null/tiada untuk aksi create. */
   before?: unknown;
   /** Snapshot sesudah perubahan; null/tiada untuk aksi delete. */
@@ -21,19 +27,20 @@ export interface AuditInput {
 export function writeAudit(db: Preparer, entry: AuditInput): DbStatement {
   return db
     .prepare(
-      'INSERT INTO audit_log (ts, actor, action, target, `before`, `after`) VALUES (?, ?, ?, ?, ?, ?)',
+      'INSERT INTO audit_log (ts, actor, action, target, target_id, `before`, `after`) VALUES (?, ?, ?, ?, ?, ?, ?)',
     )
     .bind(
       entry.ts ?? new Date().toISOString(),
       entry.actor,
       entry.action,
       entry.target,
+      entry.targetId ?? '',
       JSON.stringify(entry.before ?? null),
       JSON.stringify(entry.after ?? null),
     );
 }
 
-/** Baris audit per pernyataan `INSERT` banyak-baris: 6 parameter per baris (16 baris = 96 parameter). */
+/** Baris audit per pernyataan `INSERT` banyak-baris: 7 parameter per baris (16 baris = 112 parameter). */
 const AUDIT_ROWS_PER_STATEMENT = 16;
 
 /**
@@ -45,7 +52,7 @@ export function writeAuditRows(db: Preparer, entries: readonly AuditInput[]): Db
   const statements: DbStatement[] = [];
   for (let from = 0; from < entries.length; from += AUDIT_ROWS_PER_STATEMENT) {
     const chunk = entries.slice(from, from + AUDIT_ROWS_PER_STATEMENT);
-    const values = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
+    const values = chunk.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ');
     const binds: unknown[] = [];
     for (const entry of chunk) {
       binds.push(
@@ -53,6 +60,7 @@ export function writeAuditRows(db: Preparer, entries: readonly AuditInput[]): Db
         entry.actor,
         entry.action,
         entry.target,
+        entry.targetId ?? '',
         JSON.stringify(entry.before ?? null),
         JSON.stringify(entry.after ?? null),
       );
@@ -60,7 +68,7 @@ export function writeAuditRows(db: Preparer, entries: readonly AuditInput[]): Db
     statements.push(
       db
         .prepare(
-          `INSERT INTO audit_log (ts, actor, action, target, \`before\`, \`after\`) VALUES ${values}`,
+          `INSERT INTO audit_log (ts, actor, action, target, target_id, \`before\`, \`after\`) VALUES ${values}`,
         )
         .bind(...binds),
     );
@@ -74,6 +82,7 @@ interface AuditRow {
   actor: string;
   action: string;
   target: string;
+  target_id: string;
   before: string;
   after: string;
 }
@@ -99,6 +108,8 @@ export interface ListAuditParams {
   limit: number;
   /** Aksi persis; '' = semua. */
   action: string;
+  /** Salah satu dari aksi ini; menang atas `action` bila ada. */
+  actions?: readonly string[];
   /** Kata kunci pada target atau pelaku (tanpa beda huruf besar); '' = semua. */
   query: string;
 }
@@ -110,7 +121,10 @@ export interface ListAuditParams {
 export async function listAudit(env: Env, params: ListAuditParams): Promise<AuditCursorPageDto> {
   const where: string[] = [];
   const binds: unknown[] = [];
-  if (params.action !== '') {
+  if (params.actions !== undefined) {
+    where.push(`action IN (${params.actions.map(() => '?').join(', ')})`);
+    binds.push(...params.actions);
+  } else if (params.action !== '') {
     where.push('action = ?');
     binds.push(params.action);
   }
@@ -123,7 +137,7 @@ export async function listAudit(env: Env, params: ListAuditParams): Promise<Audi
     where.push('(ts < ? OR (ts = ? AND id < ?))');
     binds.push(params.cursor.ts, params.cursor.ts, params.cursor.id);
   }
-  const sql = `SELECT id, ts, actor, action, target, \`before\`, \`after\` FROM audit_log${
+  const sql = `SELECT id, ts, actor, action, target, target_id, \`before\`, \`after\` FROM audit_log${
     where.length > 0 ? ` WHERE ${where.join(' AND ')}` : ''
   } ORDER BY ts DESC, id DESC LIMIT ?`;
   const result = await env.DB.prepare(sql)
@@ -136,8 +150,9 @@ function toCursorPage(rows: readonly AuditRow[], limit: number): AuditCursorPage
   const page = rows.slice(0, limit);
   const last = page[page.length - 1];
   return {
-    entries: page.map(
-      (row): AuditEntryDto => ({
+    entries: page.map((row): AuditEntryDto => {
+      const kind = row.target_id === '' ? undefined : auditTargetKind(row.action);
+      return {
         id: String(row.id),
         ts: row.ts,
         actor: row.actor,
@@ -145,8 +160,9 @@ function toCursorPage(rows: readonly AuditRow[], limit: number): AuditCursorPage
         target: row.target,
         before: parseSnapshot(row.before),
         after: parseSnapshot(row.after),
-      }),
-    ),
+        ...(kind ? { targetRef: { kind, id: row.target_id } } : {}),
+      };
+    }),
     nextCursor: rows.length > limit && last ? encodeAuditCursor(last) : null,
   };
 }
@@ -173,7 +189,7 @@ export async function listAuditByTarget(
     binds.push(params.cursor.ts, params.cursor.ts, params.cursor.id);
   }
   const result = await env.DB.prepare(
-    `SELECT id, ts, actor, action, target, \`before\`, \`after\` FROM audit_log WHERE target = ?${cursorSql} ORDER BY ts DESC, id DESC LIMIT ?`,
+    `SELECT id, ts, actor, action, target, target_id, \`before\`, \`after\` FROM audit_log WHERE target = ?${cursorSql} ORDER BY ts DESC, id DESC LIMIT ?`,
   )
     .bind(...binds, params.limit + 1)
     .all<AuditRow>();

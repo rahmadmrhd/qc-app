@@ -1,4 +1,5 @@
-import type { SerialEventDto } from '@shared/contract';
+import type { SerialCaseDto, SerialEventDto } from '@shared/contract';
+import type { SerialStatus } from '@shared/serials';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import type { Components } from 'react-markdown';
@@ -14,6 +15,7 @@ import {
   TEAM_LABEL,
 } from '../lib/labels';
 import { noteSummary } from '../lib/note-summary';
+import { CaseCard } from './case-card';
 import { ProofBadge, ProofProblemBadge } from './proof-badge';
 import { ProofGallery } from './proof-gallery';
 
@@ -159,14 +161,16 @@ function EventCard({
               <span className="font-normal text-muted-foreground"> di {location}</span>
             ) : null}
             {showLatestBadge ? (
-              <Badge variant="secondary" className="ml-2 align-middle">
+              <Badge variant="solid" color="primary" className="ml-2 align-middle">
                 Terbaru
               </Badge>
             ) : null}
           </p>
           <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span>{event.actorName}</span>
-            <Badge variant="outline">{TEAM_LABEL[event.actorTeam]}</Badge>
+            <Badge variant="outline" color="primary">
+              {TEAM_LABEL[event.actorTeam]}
+            </Badge>
             {hasProof ? <ProofBadge /> : null}
             <ProofProblemBadge count={proofProblems} />
           </p>
@@ -200,7 +204,7 @@ function EventCard({
         <ul className="mt-3 flex flex-wrap gap-1.5" aria-label="Perubahan">
           {event.changes.map((change) => (
             <li key={`${change.field}|${change.from}|${change.to}`}>
-              <Badge variant="secondary" className="h-auto whitespace-normal py-0.5">
+              <Badge variant="soft" color="secondary" className="h-auto whitespace-normal py-0.5">
                 {`${FIELD_LABEL[change.field] ?? change.field}: ${show(shownChange(change.field, change.from))} → ${show(shownChange(change.field, change.to))}`}
               </Badge>
             </li>
@@ -232,6 +236,7 @@ function GroupToggle({
       <Button
         type="button"
         variant="ghost"
+        color="primary"
         size="sm"
         className="w-full justify-start gap-1.5 text-muted-foreground"
         aria-expanded={open}
@@ -244,40 +249,103 @@ function GroupToggle({
   );
 }
 
+/** Opt-in: kejadian yang punya laporan diringkas menjadi SATU `CaseCard` per laporan (hanya tab Semua Riwayat Serial). */
+export interface CaseGrouping {
+  cases: readonly SerialCaseDto[];
+  /** Status Serial sekarang (untuk kartu laporan yang masih terbuka). */
+  serialStatus: SerialStatus;
+  /** `counts.byCase` server: jumlah seluruh kejadian per laporan. */
+  counts?: Readonly<Record<string, number>> | undefined;
+}
+
+/** Satu baris linimasa: kartu kejadian atau kartu laporan; `seq` = kejadian terbarunya (menentukan urutan). */
+interface Row {
+  key: string;
+  seq: number;
+  render: (latestBadge: boolean) => ReactNode;
+}
+
 /**
- * Daftar kartu riwayat serial, URUT LAMA DI ATAS (seq naik), urutan yang sama di aplikasi dan halaman publik. Riwayat
- * lama dilipat bersama (keputusan pemilik 2026-11-15, menggantikan lipatan per kartu): "Tampilkan riwayat sebelumnya"
- * (semua riwayat lama, tertutup sejak awal) lalu judul "Riwayat saat ini" (riwayat terbaru, selalu tampil dan tidak
- * dapat dilipat). Kartu selalu tampil lengkap. `markLatest` memberi badge "Terbaru" pada entri terbaru (tab Semua). `loadOlder`
- * (mis. tombol "Muat yang lebih lama") tampil di dalam kelompok riwayat sebelumnya, di atas kartu tertua.
+ * Daftar kartu riwayat serial, URUT LAMA DI ATAS (seq naik), urutan yang sama di aplikasi dan halaman publik. Bawaannya
+ * (`foldPrevious`, halaman publik dan linimasa detail Laporan) riwayat lama dilipat bersama (keputusan pemilik 2026-11-15):
+ * "Tampilkan riwayat sebelumnya" (semua riwayat lama, tertutup sejak awal) lalu judul "Riwayat saat ini" (riwayat terbaru,
+ * selalu tampil dan tidak dapat dilipat). Dengan `foldPrevious={false}` (detail Serial, keputusan pemilik 2026-11-22) tidak
+ * ada pelipat dan tanpa judul: SEMUA entri tampil terbuka dan `loadOlder` (mis. tombol "Muat yang lebih lama") berada di
+ * ATAS daftar. Kartu selalu tampil lengkap. `markLatest` memberi badge "Terbaru" pada entri terbaru (paling bawah).
+ * `caseGroups` (opt-in, hanya tab Semua di detail Serial) meringkas kejadian tiap laporan menjadi satu `CaseCard`
+ * yang membuka detail laporan; tanpa itu (halaman publik, linimasa laporan) perilakunya tak berubah.
  */
 export function Timeline({
   events,
   markLatest = false,
   markdownComponents,
   loadOlder,
+  caseGroups,
+  foldPrevious = true,
 }: {
   events: readonly SerialEventDto[];
   markLatest?: boolean;
   /** Penimpa render Markdown (halaman publik: gambar lewat rute berkas bertoken). */
   markdownComponents?: Components;
   loadOlder?: ReactNode;
+  caseGroups?: CaseGrouping;
+  /** Bawaan true: riwayat lama dilipat dan ada judul "Riwayat saat ini". False: semua entri terbuka tanpa pelipat. */
+  foldPrevious?: boolean;
 }) {
   const [previousOpen, setPreviousOpen] = useState(false);
   if (events.length === 0) {
     return <p className="text-sm text-muted-foreground">Belum ada riwayat.</p>;
   }
-  const ordered = [...events].sort((a, b) => a.seq - b.seq);
-  const current = ordered[ordered.length - 1] as SerialEventDto;
+  const known = new Map((caseGroups?.cases ?? []).map((entry) => [entry.id, entry] as const));
+  const inCase = new Map<string, SerialEventDto[]>();
+  const rows: Row[] = [];
+  for (const event of events) {
+    const owner = event.caseId ? known.get(event.caseId) : undefined;
+    if (owner) {
+      inCase.set(owner.id, [...(inCase.get(owner.id) ?? []), event]);
+      continue;
+    }
+    rows.push({
+      key: event.id,
+      seq: event.seq,
+      render: (badge) => (
+        <EventCard
+          key={event.id}
+          event={event}
+          showLatestBadge={badge}
+          markdownComponents={markdownComponents}
+        />
+      ),
+    });
+  }
+  for (const [caseId, group] of inCase) {
+    const caseInfo = known.get(caseId) as SerialCaseDto;
+    rows.push({
+      key: `case:${caseId}`,
+      seq: Math.max(...group.map((event) => event.seq)),
+      render: (badge) => (
+        <CaseCard
+          key={`case:${caseId}`}
+          caseInfo={caseInfo}
+          events={group}
+          serialStatus={(caseGroups as CaseGrouping).serialStatus}
+          eventCount={caseGroups?.counts?.[caseId]}
+          showLatestBadge={badge}
+        />
+      ),
+    });
+  }
+  const ordered = [...rows].sort((a, b) => a.seq - b.seq);
+  const current = ordered[ordered.length - 1] as Row;
+  if (!foldPrevious) {
+    return (
+      <ol aria-label="Linimasa" className="space-y-3">
+        {loadOlder ? <li className="list-none">{loadOlder}</li> : null}
+        {ordered.map((row) => row.render(markLatest && row === current))}
+      </ol>
+    );
+  }
   const previous = ordered.slice(0, -1);
-  const card = (event: SerialEventDto, badge: boolean) => (
-    <EventCard
-      key={event.id}
-      event={event}
-      showLatestBadge={badge}
-      markdownComponents={markdownComponents}
-    />
-  );
   return (
     <ol aria-label="Linimasa" className="space-y-3">
       {previous.length > 0 || loadOlder ? (
@@ -290,7 +358,7 @@ export function Timeline({
           {previousOpen ? (
             <>
               {loadOlder ? <li className="list-none">{loadOlder}</li> : null}
-              {previous.map((event) => card(event, false))}
+              {previous.map((row) => row.render(false))}
             </>
           ) : null}
         </>
@@ -298,7 +366,7 @@ export function Timeline({
       <li className="list-none">
         <h3 className="px-2 py-1.5 text-sm font-medium text-muted-foreground">Riwayat saat ini</h3>
       </li>
-      {card(current, markLatest)}
+      {current.render(markLatest)}
     </ol>
   );
 }

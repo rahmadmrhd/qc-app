@@ -1,77 +1,130 @@
 import type { CustomerDto } from '@shared/contract';
-import { render, screen, waitFor } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, test, vi } from 'vitest';
-import { CustomersManager } from './customers-manager';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { useRowSelection } from '@/components/data-table';
+import { mockMatchMedia } from '@/test/match-media';
+import { renderInRouter } from '@/test/render-in-router';
+import { CustomersManager, type CustomersManagerProps } from './customers-manager';
 
-const customers: CustomerDto[] = [
-  { id: 'c1', name: 'PT Maju', status: 'active', updatedAt: '' },
-  { id: 'c2', name: 'Lama', status: 'inactive', updatedAt: '' },
-];
+const customer = (patch: Partial<CustomerDto> = {}): CustomerDto => ({
+  id: 'c1',
+  name: 'PT Maju',
+  status: 'active',
+  updatedAt: '',
+  ...patch,
+});
 
-function renderManager(props: Partial<Parameters<typeof CustomersManager>[0]> = {}) {
-  const onRename = vi.fn().mockResolvedValue(null);
-  const onToggleStatus = vi.fn();
-  render(
-    <CustomersManager
-      customers={customers}
-      canManage
-      pendingStatusId={null}
-      onRename={onRename}
-      onToggleStatus={onToggleStatus}
-      {...props}
-    />,
+async function renderTable(props: Partial<CustomersManagerProps> = {}) {
+  const fns = { onEdit: vi.fn(), onToggleStatus: vi.fn(), onDelete: vi.fn(), onRestore: vi.fn() };
+  const view = await renderInRouter(
+    <CustomersManager customers={[customer()]} canManage {...fns} {...props} />,
   );
-  return { onRename, onToggleStatus };
+  return { ...fns, unmount: view.unmount };
 }
 
-test('menampilkan customer dan status; tanpa izin manage tidak ada tombol ubah', () => {
-  renderManager({ canManage: false });
-  expect(screen.getByText('PT Maju')).toBeInTheDocument();
-  expect(screen.getByText('Aktif')).toBeInTheDocument();
-  expect(screen.getByText('Nonaktif')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /Ubah|Nonaktifkan|Aktifkan/ })).toBeNull();
+test('nama menaut ke View customer; status tampil; tanpa tombol "Lihat" dan tanpa ubah nama inline', async () => {
+  await renderTable({
+    customers: [customer(), customer({ id: 'c2', name: 'CV Lama', status: 'inactive' })],
+  });
+  expect(screen.getByRole('link', { name: 'PT Maju' })).toHaveAttribute('href', '/customer/c1');
+  expect(
+    within(screen.getByRole('row', { name: /PT Maju/ })).getByText('Aktif'),
+  ).toBeInTheDocument();
+  expect(
+    within(screen.getByRole('row', { name: /CV Lama/ })).getByText('Nonaktif'),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /^Lihat/ })).toBeNull();
+  expect(screen.queryByRole('textbox')).toBeNull();
 });
 
-test('ganti nama: isian terisi nama lama, simpan mengirim id dan nama; galat server tampil di bawah isian', async () => {
-  const { onRename } = renderManager();
-  await userEvent.click(screen.getByRole('button', { name: 'Ubah PT Maju' }));
-  const input = screen.getByLabelText('Nama baru untuk PT Maju');
-  expect(input).toHaveValue('PT Maju');
-  await userEvent.clear(input);
-  await userEvent.type(input, 'PT Maju Jaya');
-  onRename.mockResolvedValueOnce('Nama customer sudah dipakai');
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan nama PT Maju' }));
-  expect(onRename).toHaveBeenCalledWith({ id: 'c1', name: 'PT Maju Jaya' });
-  expect(await screen.findByRole('alert')).toHaveTextContent('Nama customer sudah dipakai');
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan nama PT Maju' }));
-  await waitFor(() => expect(screen.queryByLabelText('Nama baru untuk PT Maju')).toBeNull());
+test('tanpa izin manage: tanpa kolom Aksi, checkbox, maupun tombol aksi', async () => {
+  await renderTable({ canManage: false });
+  expect(screen.queryByRole('columnheader', { name: 'Aksi' })).toBeNull();
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(screen.queryByRole('button', { name: /Ubah|Nonaktifkan|Aktifkan|Hapus/ })).toBeNull();
 });
 
-test('onRename yang melempar tidak membuat tombol macet; nonaktifkan/aktifkan memanggil callback', async () => {
-  const { onToggleStatus, onRename } = renderManager();
-  onRename.mockRejectedValueOnce(new Error('putus'));
+test('aksi baris: Ubah memanggil onEdit (dialog dibuka halaman); status; Hapus hanya untuk Nonaktif', async () => {
+  const active = customer();
+  const inactive = customer({ id: 'c2', name: 'CV Lama', status: 'inactive' });
+  const { onEdit, onToggleStatus, onDelete } = await renderTable({ customers: [active, inactive] });
   await userEvent.click(screen.getByRole('button', { name: 'Ubah PT Maju' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Simpan nama PT Maju' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent('Gagal menyimpan customer');
-  expect(screen.getByRole('button', { name: 'Simpan nama PT Maju' })).toBeEnabled();
-  await userEvent.click(screen.getByRole('button', { name: 'Batal ubah PT Maju' }));
   await userEvent.click(screen.getByRole('button', { name: 'Nonaktifkan PT Maju' }));
-  expect(onToggleStatus).toHaveBeenCalledWith(customers[0]);
-  await userEvent.click(screen.getByRole('button', { name: 'Aktifkan Lama' }));
-  expect(onToggleStatus).toHaveBeenCalledWith(customers[1]);
+  await userEvent.click(screen.getByRole('button', { name: 'Aktifkan CV Lama' }));
+  expect(onEdit).toHaveBeenCalledWith(active);
+  expect(onToggleStatus).toHaveBeenNthCalledWith(1, active);
+  expect(onToggleStatus).toHaveBeenNthCalledWith(2, inactive);
+  expect(screen.queryByRole('button', { name: 'Hapus PT Maju' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus CV Lama' }));
+  expect(onDelete).toHaveBeenCalledWith(inactive);
 });
 
-test('ganti nama: isian terfokus, Enter menyimpan, Escape membatalkan, galat terhubung (aria)', async () => {
-  const { onRename } = renderManager();
-  await userEvent.click(screen.getByRole('button', { name: 'Ubah PT Maju' }));
-  const input = screen.getByLabelText('Nama baru untuk PT Maju');
-  expect(input).toHaveFocus();
-  onRename.mockResolvedValueOnce('Nama customer sudah dipakai');
-  await userEvent.type(input, ' Jaya{Enter}');
-  const alert = await screen.findByRole('alert');
-  expect(input).toHaveAttribute('aria-invalid', 'true');
-  expect(input).toHaveAttribute('aria-describedby', alert.id);
-  await userEvent.keyboard('{Escape}');
-  expect(screen.queryByLabelText('Nama baru untuk PT Maju')).toBeNull();
+test('tampilan Terhapus: hanya Pulihkan, penanda Terhapus, kolom Dihapus oleh/pada menggantikan Status', async () => {
+  const deleted = customer({
+    status: 'inactive',
+    deleted: { deletedAt: '2026-11-20T03:04:00.000Z', deletedBy: 'admin@x.com' },
+  });
+  const { onRestore } = await renderTable({ customers: [deleted], deletedView: true });
+  expect(screen.queryByRole('button', { name: /^Ubah/ })).toBeNull();
+  expect(screen.getByText('Terhapus')).toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: 'Dihapus oleh' })).toBeInTheDocument();
+  expect(screen.queryByRole('columnheader', { name: 'Status' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Pulihkan PT Maju' }));
+  expect(onRestore).toHaveBeenCalledWith(deleted);
+});
+
+function WithSelection() {
+  const selection = useRowSelection('x');
+  return (
+    <CustomersManager
+      customers={[customer()]}
+      canManage
+      selection={selection}
+      onEdit={vi.fn()}
+      onToggleStatus={vi.fn()}
+      onDelete={vi.fn()}
+      onRestore={vi.fn()}
+    />
+  );
+}
+
+test('checkbox baris berlabel nama customer hanya bila selection diberikan', async () => {
+  const { unmount } = await renderInRouter(<WithSelection />);
+  expect(screen.getByRole('checkbox', { name: 'Pilih PT Maju' })).toBeInTheDocument();
+  unmount();
+  await renderTable();
+  expect(screen.queryByRole('checkbox')).toBeNull();
+});
+
+test('daftar kosong menjelaskan customer dibuat otomatis (tanpa tombol Tambah)', async () => {
+  await renderTable({ customers: [] });
+  expect(
+    screen.getByText(
+      'Belum ada customer. Customer dibuat otomatis saat task serah terima disimpan.',
+    ),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Tambah/ })).toBeNull();
+});
+
+let media: ReturnType<typeof mockMatchMedia>;
+beforeEach(() => {
+  window.innerWidth = 1024;
+});
+afterEach(() => {
+  media?.restore();
+  window.innerWidth = 1024;
+});
+
+test('360 px: kartu berjudul nama customer dengan badge status; aksi lewat menu "⋯"', async () => {
+  window.innerWidth = 360;
+  media = mockMatchMedia(false);
+  const { onEdit } = await renderTable();
+  expect(screen.queryByRole('table')).toBeNull();
+  const card = screen.getByRole('listitem');
+  expect(within(card).getByRole('link', { name: 'PT Maju' })).toBeInTheDocument();
+  expect(within(card).getByText('Aktif')).toBeInTheDocument();
+  await userEvent.click(within(card).getByRole('button', { name: 'Aksi PT Maju' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Ubah' }));
+  expect(onEdit).toHaveBeenCalled();
 });

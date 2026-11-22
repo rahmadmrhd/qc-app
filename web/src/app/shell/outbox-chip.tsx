@@ -10,7 +10,7 @@ import { useOutboxSummary } from '@/modules/handover/lib/use-outbox-summary';
 import { formatClock } from '../server-status';
 
 /** Daftar entri. Komponen terpisah: nomor task dibaca dari cache saat popover dibuka (bukan saat chip dirender). */
-function OutboxList({ entries }: { entries: readonly OutboxEntry[] }) {
+export function OutboxList({ entries }: { entries: readonly OutboxEntry[] }) {
   const queryClient = useQueryClient();
   return (
     <ul className="max-h-64 space-y-2 overflow-y-auto">
@@ -52,7 +52,13 @@ export function OutboxChip() {
     <div role="status" aria-live="polite">
       <Popover>
         <PopoverTrigger asChild>
-          <Button variant="outline" size="sm" className="gap-1.5 px-2" aria-label={label}>
+          <Button
+            variant="outline"
+            color="primary"
+            size="sm"
+            className="gap-1.5 px-2"
+            aria-label={label}
+          >
             <Icon aria-hidden="true" className={sending > 0 ? 'size-4 animate-spin' : 'size-4'} />
             <span className="sm:hidden">
               <span aria-hidden="true">{total}</span>

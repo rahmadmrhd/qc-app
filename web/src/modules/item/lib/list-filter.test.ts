@@ -22,6 +22,8 @@ test('search params memetakan pencarian, status, instruksi, stiker/jenis, dan mo
     stickerMode: 'missing',
     manualBook: 'all',
     postel: 'all',
+    brandIds: [],
+    buIds: [],
   });
   expect(filterOfSearch(itemsSearchSchema.parse({ sticker: 't:ty1' })).stickerKey).toBe('t:ty1');
 });
@@ -70,4 +72,29 @@ test('postel=missing dipetakan ke filter; nilai lain dibuang dan bawaan tidak di
   expect(DEFAULT_ITEM_FILTER.postel).toBe('all');
   expect(searchPatchOf({ postel: 'missing' })).toEqual({ postel: 'missing' });
   expect(searchPatchOf({ postel: 'all' })).toEqual({ postel: undefined });
+});
+
+test('brandIds dan buIds (jamak) dari URL masuk filter; patch kosong menghapusnya dari URL dan membuang param tunggal lama', () => {
+  const filter = filterOfSearch(
+    itemsSearchSchema.parse({ brandIds: ['b1', 'b2'], buIds: ['bu-a', 'bu-b'] }),
+  );
+  expect(filter).toMatchObject({ brandIds: ['b1', 'b2'], buIds: ['bu-a', 'bu-b'] });
+  expect(searchPatchOf({ brandIds: ['b2'], buIds: [] })).toEqual({
+    brandIds: ['b2'],
+    brandId: undefined,
+    buIds: undefined,
+    buId: undefined,
+  });
+});
+
+test('param tunggal lama brandId/buId (tautan View merk dan BU) dibaca sebagai daftar berisi satu nilai; jamak menang', () => {
+  expect(filterOfSearch(itemsSearchSchema.parse({ brandId: 'b1', buId: 'bu-a' }))).toMatchObject({
+    brandIds: ['b1'],
+    buIds: ['bu-a'],
+  });
+  expect(
+    filterOfSearch(itemsSearchSchema.parse({ brandId: 'b1', brandIds: ['b2', 'b3'] })).brandIds,
+  ).toEqual(['b2', 'b3']);
+  // Nilai jamak tak sah dibuang (bukan galat).
+  expect(filterOfSearch(itemsSearchSchema.parse({ brandIds: 'bukan-larik' })).brandIds).toEqual([]);
 });

@@ -1,8 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { type BarcodeEngine, createBarcodeEngine } from './barcode-engine';
-import { createScanCapturer } from './scan-capture';
-import { createScanConfirmer } from './scan-confirm';
-import { pickNearestCenterCode } from './scan-region';
 import {
   type CameraErrorKind,
   type CameraState,
@@ -10,7 +6,11 @@ import {
   cameraSupported,
   classifyCameraError,
   useCameraStream,
-} from './use-camera-stream';
+} from '@/components/camera/use-camera-stream';
+import { type BarcodeEngine, createBarcodeEngine } from './barcode-engine';
+import { createScanCapturer } from './scan-capture';
+import { createScanConfirmer } from './scan-confirm';
+import { pickNearestCenterCode } from './scan-region';
 
 // Aliran kamera (izin, senter, zoom, fokus, daftar kamera) tinggal di `use-camera-stream.ts`; berkas ini hanya
 // menambahkan mesin pembaca dan loop baca. Ekspor lama tetap tersedia dari sini.
@@ -22,7 +22,7 @@ export {
   cameraSupported,
   classifyCameraError,
   TAP_FOCUS_RESTORE_MS,
-} from './use-camera-stream';
+} from '@/components/camera/use-camera-stream';
 
 /** Jeda antar pembacaan bingkai (~8 fps); cukup untuk label dan hemat baterai. */
 export const SCAN_INTERVAL_MS = 120;

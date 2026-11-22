@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
@@ -8,6 +8,7 @@ import {
 } from '@countrylock/bridge-contract';
 import { secretForms } from '@countrylock/script-template';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { removeTempDirSync } from '../../test-support/safe-rm';
 import { type IpcDeps, type IpcEventLike, registerIpc } from './ipc';
 import { IpcError } from './ipc-support';
 import type { MultiHost } from './multi/host';
@@ -36,7 +37,7 @@ beforeEach(async () => {
   };
 });
 afterEach(() => {
-  rmSync(tmp, { recursive: true, force: true });
+  removeTempDirSync(tmp);
 });
 
 function setup(overrides: Partial<IpcDeps> = {}, packageDir: string | null = 'D:\\Paket') {
@@ -92,6 +93,11 @@ function setup(overrides: Partial<IpcDeps> = {}, packageDir: string | null = 'D:
       })),
     },
     ui: { reload: vi.fn(async () => undefined) },
+    app: {
+      version: vi.fn(() => '1.2.3'),
+      update: vi.fn(async () => ({ status: 'restarting' as const, message: 'Memasang pembaruan' })),
+      openDownloads: vi.fn(async () => undefined),
+    },
     multi,
     emitProgress: (e) => progress.push(e),
     ...overrides,
@@ -358,6 +364,57 @@ describe('registerIpc', () => {
         /tidak dipercaya/,
       );
       expect(untrusted.deps.catalog.refresh).not.toHaveBeenCalled();
+      untrusted.store.close();
+    });
+  });
+
+  describe('app (layar penahan, jembatan v10)', () => {
+    test('version/update/openDownloads meneruskan ke dependensi', async () => {
+      const { deps, call, store } = setup();
+      expect(await call(BRIDGE_CHANNELS.appVersion)).toBe('1.2.3');
+      expect(await call(BRIDGE_CHANNELS.appUpdate)).toEqual({
+        status: 'restarting',
+        message: 'Memasang pembaruan',
+      });
+      await call(BRIDGE_CHANNELS.appOpenDownloads);
+      expect(deps.app.update).toHaveBeenCalledOnce();
+      expect(deps.app.openDownloads).toHaveBeenCalledOnce();
+      store.close();
+    });
+
+    test('argumen apa pun ditolak (tak ada kanal yang menerima jalur atau alamat dari renderer)', async () => {
+      const { deps, call, store } = setup();
+      for (const channel of [
+        BRIDGE_CHANNELS.appVersion,
+        BRIDGE_CHANNELS.appUpdate,
+        BRIDGE_CHANNELS.appOpenDownloads,
+      ]) {
+        await expect(call(channel, 'https://jahat.example')).rejects.toThrow(/Argumen tidak valid/);
+      }
+      expect(deps.app.update).not.toHaveBeenCalled();
+      expect(deps.app.openDownloads).not.toHaveBeenCalled();
+      store.close();
+    });
+
+    test('openDownloads gagal: pesan terkontrol, isi galat asli tak sampai ke renderer', async () => {
+      const { call, deps, store } = setup();
+      vi.mocked(deps.app.openDownloads).mockRejectedValue(new Error('C:\rahasiajalur'));
+      const error = await call(BRIDGE_CHANNELS.appOpenDownloads).catch((e: unknown) => e);
+      expect(String((error as Error).message)).toContain('Tidak dapat membuka peramban sistem');
+      expect(String((error as Error).message)).not.toContain('rahasia');
+      store.close();
+    });
+
+    test('pengirim tak dipercaya ditolak di ketiga kanal', async () => {
+      const untrusted = setup({ isTrustedSender: () => false });
+      for (const channel of [
+        BRIDGE_CHANNELS.appVersion,
+        BRIDGE_CHANNELS.appUpdate,
+        BRIDGE_CHANNELS.appOpenDownloads,
+      ]) {
+        await expect(untrusted.call(channel)).rejects.toThrow(/tidak dipercaya/);
+      }
+      expect(untrusted.deps.app.update).not.toHaveBeenCalled();
       untrusted.store.close();
     });
   });

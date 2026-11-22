@@ -4,6 +4,21 @@
 @import "@fontsource-variable/geist";
 
 @custom-variant dark (&:is(.dark *));
+/* Mode sempit/lebar menurut lebar <main> (ambang di lib/layout.ts; atribut ditulis useIsDesktop): sama dengan JS. */
+@custom-variant narrow (:where(html[data-narrow="true"]) &);
+@custom-variant wide (:where(html:not([data-narrow="true"])) &);
+/* Rentang sidebar overlay (lib/layout.ts SIDEBAR_OVERLAY_BELOW; dijaga layout.test.ts): 48rem <= lebar < 60rem. */
+@custom-variant sidebar-overlay {
+  @media (width >= 48rem) and (width < 60rem) {
+    @slot;
+  }
+}
+/* Layar sentuh: ponsel (< 768 px) ATAU penunjuk utama kasar (tablet); dipakai untuk target sentuh 44 px dan ukuran isian. */
+@custom-variant touch {
+  @media (max-width: 767px), (pointer: coarse) {
+    @slot;
+  }
+}
 
 * {
   box-sizing: border-box;
@@ -38,6 +53,18 @@ body {
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
+  --color-success-text: var(--success-text);
+  --color-success-foreground: var(--success-foreground);
+  --color-success: var(--success);
+  --color-warning-text: var(--warning-text);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-warning: var(--warning);
+  --color-info-text: var(--info-text);
+  --color-info-foreground: var(--info-foreground);
+  --color-info: var(--info);
+  --color-destructive-text: var(--destructive-text);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-secondary-text: var(--secondary-text);
   --color-destructive: var(--destructive);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
@@ -69,15 +96,27 @@ body {
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
+  --primary: #18181b;
+  --primary-foreground: #fafafa;
+  --secondary: #71717a;
+  --secondary-foreground: #ffffff;
+  --secondary-text: #52525b;
+  --success: #15803d;
+  --success-foreground: #ffffff;
+  --success-text: #166534;
+  --warning: #f59e0b;
+  --warning-foreground: #1c1917;
+  --warning-text: #92400e;
+  --info: #2563eb;
+  --info-foreground: #ffffff;
+  --info-text: #1d4ed8;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --destructive-text: #b91c1c;
   --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
+  --muted-foreground: oklch(0.53 0 0);
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -104,15 +143,27 @@ body {
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
+  --primary: #fafafa;
+  --primary-foreground: #18181b;
+  --secondary: #52525b;
+  --secondary-foreground: #fafafa;
+  --secondary-text: #a1a1aa;
+  --success: #15803d;
+  --success-foreground: #ffffff;
+  --success-text: #22c55e;
+  --warning: #b45309;
+  --warning-foreground: #ffffff;
+  --warning-text: #f59e0b;
+  --info: #2563eb;
+  --info-foreground: #ffffff;
+  --info-text: #60a5fa;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --destructive-text: #f87171;
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
   --accent: oklch(0.269 0 0);
   --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
@@ -151,4 +202,23 @@ body {
 
 .dark ::highlight(qc-comment) {
   background-color: rgb(251 191 36 / 0.28);
+}
+
+/* Ponsel: field yang digulirkan ke area terlihat (papan ketik layar) tidak tertutup header atau bar bawah yang menempel. */
+@media (max-width: 767px) {
+  input,
+  textarea,
+  [role="combobox"] {
+    scroll-margin-top: calc(var(--headroom-offset, 3.5rem) + 4.5rem);
+    scroll-margin-bottom: 6rem;
+  }
+}
+
+/* Layar sentuh: kotak centang dan radio bawaan peramban (di luar komponen kit) cukup besar untuk disentuh. */
+@media (max-width: 767px), (pointer: coarse) {
+  input[type="checkbox"],
+  input[type="radio"] {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
 }

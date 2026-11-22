@@ -47,6 +47,52 @@ export async function canReadSerial(
   return row !== null;
 }
 
+/**
+ * Hak Hapus/Pulihkan serial (keputusan pemilik soft delete 12): `serial: manage` pada SEMUA BU dalam riwayat BU serial
+ * itu (BU saat ini ikut), bukan hanya BU saat ini. BU terhapus diabaikan dari syarat selama masih ada BU hidup di riwayat
+ * (keputusan 9, diterapkan serupa `canActOnItem`). `involvedBuIds` = hasil `involvedBuIds()` (riwayat + BU saat ini).
+ */
+export function canManageSerial(user: UserContext, involvedBuIds: readonly string[]): boolean {
+  return canActOnAllBus(user.businessUnits, 'serial', 'manage', involvedBuIds, user.deletedBuIds);
+}
+
+/**
+ * Penyaring SQL serial yang boleh DIPULIHKAN pemanggil (alias tabel `serials` = `alias`): cermin SQL `canManageSerial`
+ * (daftar "Terhapus" memakainya; tes kesepakatan `soft-delete.test.ts` menjaganya sama). Himpunan BU terlibat = baris
+ * `serial_business_units` serial itu ditambah `bu_id` saat ini (menoleransi baris penghubung yang belum terisi). Tanpa
+ * BU ber-`manage` sama sekali tak ada serial yang lolos (`1 = 0`).
+ */
+export function restorableSerialsSql(
+  user: UserContext,
+  alias = 's',
+): { sql: string; binds: string[] } {
+  const managed = buIdsWithLevel(user.businessUnits, 'serial', 'manage');
+  if (managed.length === 0) return { sql: '1 = 0', binds: [] };
+  const deleted = [...user.deletedBuIds];
+  const marks = (ids: readonly string[]) => ids.map(() => '?').join(',');
+  const hist = (condition: string) =>
+    `EXISTS (SELECT 1 FROM serial_business_units r WHERE r.serial_id = ${alias}.id AND ${condition})`;
+  const binds: string[] = [];
+  // Kondisi atas satu BU (`col`): hidup = bukan BU terhapus; tak dikelola = di luar BU ber-`manage`.
+  const live = (col: string): string => {
+    if (deleted.length === 0) return '1 = 1';
+    binds.push(...deleted);
+    return `${col} NOT IN (${marks(deleted)})`;
+  };
+  const notManaged = (col: string): string => {
+    binds.push(...managed);
+    return `${col} NOT IN (${marks(managed)})`;
+  };
+  // (tak ada BU hidup tanpa manage) AND (ada BU hidup ATAU tak ada BU tanpa manage); BU saat ini = `${alias}.bu_id`.
+  const liveViolation = `(${hist(`${live('r.bu_id')} AND ${notManaged('r.bu_id')}`)} OR (${live(`${alias}.bu_id`)} AND ${notManaged(`${alias}.bu_id`)}))`;
+  const liveAny = `(${hist(live('r.bu_id'))} OR ${live(`${alias}.bu_id`)})`;
+  const anyViolation = `(${hist(notManaged('r.bu_id'))} OR ${notManaged(`${alias}.bu_id`)})`;
+  return {
+    sql: `(NOT ${liveViolation} AND (${liveAny} OR NOT ${anyViolation}))`,
+    binds,
+  };
+}
+
 export function canWriteBu(user: UserContext, buId: string): boolean {
   return canActOnAllBus(user.businessUnits, 'serial', 'edit', [buId]);
 }

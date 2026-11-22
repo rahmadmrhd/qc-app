@@ -8,10 +8,13 @@ import {
   canAt,
   canCreateItem,
   canEditItem,
+  canManageAnyItem,
   canManageItem,
   canManageSerialSettings,
+  canRecordSerials,
+  canReportSerials,
   canUseSerialLocationOptions,
-  canWriteSerials,
+  liveBuIdsWithLevelOf,
   locationsWith,
   serialActorModules,
 } from './permissions';
@@ -168,11 +171,11 @@ test('buIdsWithLevelOf: per modul ber-BU, campuran level', () => {
   expect(buIdsWithLevelOf(user, 'serialservice', 'view')).toEqual([]);
 });
 
-test('canWriteSerials: butuh edit pada minimal satu BU', () => {
-  expect(canWriteSerials(meWithBus([serialBu('a', 'view')]))).toBe(false);
-  expect(canWriteSerials(meWithBus([serialBu('a', 'view'), serialBu('b', 'edit')]))).toBe(true);
-  expect(canWriteSerials(meWithBus([bu('a', 'manage')]))).toBe(false);
-  expect(canWriteSerials(null)).toBe(false);
+test('canRecordSerials: butuh edit pada minimal satu BU', () => {
+  expect(canRecordSerials(meWithBus([serialBu('a', 'view')]))).toBe(false);
+  expect(canRecordSerials(meWithBus([serialBu('a', 'view'), serialBu('b', 'edit')]))).toBe(true);
+  expect(canRecordSerials(meWithBus([bu('a', 'manage')]))).toBe(false);
+  expect(canRecordSerials(null)).toBe(false);
 });
 
 test('canUseSerialLocationOptions: hanya serial: edit global (gerbang serials.locationOptions; tim servis tidak memilih lokasi lagi)', () => {
@@ -221,4 +224,63 @@ test('canManageSerialSettings membaca penanda dari server (auth.me), bukan mengh
   const { canManageSerialSettings: _omit, ...legacy } = base;
   expect(canManageSerialSettings(legacy as typeof base)).toBe(false);
   expect(canManageSerialSettings(null)).toBe(false);
+});
+
+const deletedBu = (id: string, level: 'view' | 'edit' | 'manage') => ({
+  ...bu(id, level),
+  deleted: true,
+});
+
+test('BU terhapus tetap memberi hak: item hanya ber-BU terhapus tetap dapat diubah/dikelola dari web', () => {
+  const user = meWithBus([deletedBu('b', 'manage')]);
+  expect(canEditItem(user, { businessUnits: [ref('b')] })).toBe(true);
+  expect(canManageItem(user, { businessUnits: [ref('b')] })).toBe(true);
+});
+
+test('BU terhapus diabaikan pada syarat SEMUA BU selama ada BU hidup (sama dengan server)', () => {
+  const user = meWithBus([bu('a', 'manage'), deletedBu('b', 'view')]);
+  expect(canManageItem(user, { businessUnits: [ref('a'), ref('b')] })).toBe(true);
+  // BU nonaktif (bukan terhapus) tetap dihitung
+  const inactive = meWithBus([bu('a', 'manage'), bu('b', 'view', 'inactive')]);
+  expect(canManageItem(inactive, { businessUnits: [ref('a'), ref('b')] })).toBe(false);
+});
+
+test('BU terhapus tidak ditawarkan sebagai pilihan: liveBuIdsWithLevelOf dan canCreateItem', () => {
+  const user = meWithBus([bu('a', 'edit'), deletedBu('b', 'edit')]);
+  expect(buIdsWithLevelFor(user, 'edit')).toEqual(['a', 'b']);
+  expect(liveBuIdsWithLevelOf(user, 'item', 'edit')).toEqual(['a']);
+  expect(canCreateItem(meWithBus([deletedBu('b', 'edit')]))).toBe(false);
+});
+
+test('serialActorModules dan canReportSerials: BU serial terhapus tetap memberi hak; canRecordSerials hanya BU hidup (N5, N6)', () => {
+  const user = meWithBus([
+    {
+      ...deletedBu('s', 'view'),
+      permissions: { item: 'none', serial: 'edit', serialservice: 'none' },
+    },
+  ]);
+  expect(serialActorModules(user, 's').serial).toBe(true);
+  expect(canRecordSerials(user)).toBe(false);
+  expect(canReportSerials(user)).toBe(true);
+  expect(canReportSerials(meWithBus([serialBu('a', 'view')]))).toBe(false);
+  expect(canRecordSerials(meWithBus([serialBu('a', 'edit'), ...user.businessUnits]))).toBe(true);
+});
+
+test('item ber-BU {A hidup, B terhapus}: pengguna hanya berhak di A tetap dapat mengubah (B bukan penugasannya, N1)', () => {
+  // Server menandai B terhapus lewat `deletedBusinessUnitIds` walau B tak ada di `businessUnits` pengguna.
+  const user = { ...meWithBus([bu('a', 'manage')]), deletedBusinessUnitIds: ['b'] };
+  expect(canEditItem(user, { businessUnits: [ref('a'), ref('b')] })).toBe(true);
+  expect(canManageItem(user, { businessUnits: [ref('a'), ref('b')] })).toBe(true);
+  // tanpa penanda dari server (B hidup) tetap ditolak
+  const live = meWithBus([bu('a', 'manage')]);
+  expect(canManageItem(live, { businessUnits: [ref('a'), ref('b')] })).toBe(false);
+  // BU lain yang hidup dan bukan penugasan tetap menolak
+  expect(canManageItem(user, { businessUnits: [ref('a'), ref('c')] })).toBe(false);
+});
+
+test('canManageAnyItem: manage pada minimal satu BU (juga nonaktif)', () => {
+  expect(canManageAnyItem(meWithBus([bu('a', 'edit')]))).toBe(false);
+  expect(canManageAnyItem(meWithBus([bu('a', 'view'), bu('b', 'manage')]))).toBe(true);
+  expect(canManageAnyItem(meWithBus([]))).toBe(false);
+  expect(canManageAnyItem(null)).toBe(false);
 });

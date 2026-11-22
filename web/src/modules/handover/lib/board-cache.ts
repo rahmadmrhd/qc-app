@@ -9,8 +9,32 @@ export type BoardColumnData = InfiniteData<BoardPageDto, string | undefined>;
 /** Awalan kunci semua kolom papan: ['handovers', 'board', lokasi-terurut, status]. */
 export const BOARD_KEY = ['handovers', 'board'] as const;
 
-export function boardColumnKey(locationIds: readonly string[], status: HandoverStatus) {
-  return [...BOARD_KEY, [...locationIds].sort(), status] as const;
+/**
+ * Saringan kolom papan pada elemen kelima kunci: customer (banyak nilai = salah satu dari) dan/atau tampilan Terhapus
+ * (fase 4d). Nilai customer ikut kunci agar tiap kombinasi punya cache sendiri.
+ */
+export interface BoardColumnFilter {
+  customerIds?: string[];
+  deleted?: true;
+}
+
+/**
+ * Kunci kolom papan. Papan tersaring (customer dan/atau Terhapus) memakai kunci berpanjang 5 (elemen terakhir
+ * `{ customerIds?, deleted? }`, kolom tak terdefinisi dibuang), sehingga tak pernah tertukar dengan papan penuh dan
+ * tak dikenali `parseBoardQueryKey` (tak disimpan ke perangkat).
+ */
+export function boardColumnKey(
+  locationIds: readonly string[],
+  status: HandoverStatus,
+  customerIds?: readonly string[],
+  deleted?: boolean,
+) {
+  const base = [...BOARD_KEY, [...locationIds].sort(), status] as const;
+  const filter: BoardColumnFilter = {
+    ...(customerIds && customerIds.length > 0 ? { customerIds: [...customerIds].sort() } : {}),
+    ...(deleted ? { deleted: true as const } : {}),
+  };
+  return Object.keys(filter).length > 0 ? ([...base, filter] as const) : base;
 }
 
 /** Membentuk data cache kolom dari daftar (satu halaman); dipakai tes dan seed. */
@@ -112,9 +136,39 @@ export function findCachedHandover(queryClient: QueryClient, id: string): Handov
 }
 
 /**
+ * Membuang task `id` dari setiap kolom papan HIDUP yang memuatnya (total berkurang satu, kursor tak berubah) setelah
+ * dihapus. Kolom Terhapus tak disentuh (task tak punya DTO terhapus di sini); pemanggil menandainya basi. Hanya papan
+ * yang memuat lokasi task yang diubah dan tak ada kolom yang dimuat ulang.
+ */
+export function removeHandoverFromBoards(queryClient: QueryClient, id: string): void {
+  for (const [key, data] of columnQueries(queryClient)) {
+    if (!data) continue;
+    const filter = key[4] as BoardColumnFilter | undefined;
+    if (filter?.deleted) continue;
+    const had = data.pages.some((page) => page.items.some((item) => item.id === id));
+    if (!had) continue;
+    const total = data.pages[0]?.total ?? 0;
+    queryClient.setQueryData(
+      key,
+      withTotal(
+        {
+          ...data,
+          pages: data.pages.map((page) => ({
+            ...page,
+            items: page.items.filter((item) => item.id !== id),
+          })),
+        },
+        Math.max(0, total - 1),
+      ),
+    );
+  }
+}
+
+/**
  * Memasang hasil server ke papan tanpa memuat ulang: task dibuang dari kolom lama (total berkurang), dipasang di
  * kolom statusnya (halaman pertama, urut papan; total bertambah), atau diganti di tempat bila kolomnya tidak
- * berubah. Hanya papan yang memuat lokasi task yang disentuh; kolom yang belum pernah dimuat dibiarkan.
+ * berubah. Hanya papan yang memuat lokasi task yang disentuh; kolom yang belum pernah dimuat dibiarkan. Kolom
+ * tersaring customer hanya menerima task customer itu (task yang customernya berubah keluar dari kolom itu).
  */
 export function upsertHandoverInBoards(queryClient: QueryClient, saved: HandoverDto): void {
   for (const [key, data] of columnQueries(queryClient)) {
@@ -123,7 +177,13 @@ export function upsertHandoverInBoards(queryClient: QueryClient, saved: Handover
     const status = key[3];
     if (!Array.isArray(ids) || !ids.includes(saved.locationId)) continue;
     const had = data.pages.some((page) => page.items.some((item) => item.id === saved.id));
-    const belongs = status === saved.status;
+    // Kolom tersaring (`key[4] = { customerIds?, deleted? }`): hanya task salah satu customer itu; kolom Terhapus hanya memuat task
+    // terhapus dan kolom biasa hanya task hidup (memulihkan memindahkan task dari kolom Terhapus ke kolom statusnya).
+    const filter = key[4] as BoardColumnFilter | undefined;
+    const belongs =
+      status === saved.status &&
+      (!filter?.customerIds || filter.customerIds.includes(saved.customerId)) &&
+      Boolean(filter?.deleted) === Boolean(saved.deleted);
     const total = data.pages[0]?.total ?? 0;
     let next: BoardColumnData;
     if (had && belongs) {

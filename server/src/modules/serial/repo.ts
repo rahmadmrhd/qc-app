@@ -1,5 +1,6 @@
 import { CAS_UPDATED_AT_SET } from '@server/core/cas';
 import type { DbStatement, Preparer } from '@server/core/db';
+import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { canWriteBu, writableBuIds } from './access';
 
@@ -40,16 +41,27 @@ export interface NewEvent {
   clientId?: string;
 }
 
-/** Catatan serial yang sudah memakai `clientId` ini (kunci idempoten per baris). */
+/**
+ * Catatan serial yang sudah memakai `clientId` ini (kunci idempoten per baris), hidup MAUPUN terhapus: kiriman ulang
+ * ke serial terhapus harus dikenali (`deleted`), bukan dianggap baris baru (keputusan T8). Indeks unik `client_id`
+ * tetap menahan baris baru berpengenal sama.
+ */
 export async function findSerialByClientId(
   db: Preparer,
   clientId: string,
-): Promise<{ id: string; buId: string; serial: string } | null> {
+): Promise<{ id: string; buId: string; serial: string; deleted: boolean } | null> {
   const row = await db
-    .prepare('SELECT id, bu_id, serial FROM serials WHERE client_id = ?')
+    .prepare('SELECT id, bu_id, serial, deleted_at FROM serials WHERE client_id = ?')
     .bind(clientId)
-    .first<{ id: string; bu_id: string; serial: string }>();
-  return row ? { id: row.id.trim(), buId: row.bu_id.trim(), serial: row.serial } : null;
+    .first<{ id: string; bu_id: string; serial: string; deleted_at: string }>();
+  return row
+    ? {
+        id: row.id.trim(),
+        buId: row.bu_id.trim(),
+        serial: row.serial,
+        deleted: row.deleted_at !== '',
+      }
+    : null;
 }
 
 /** Nama lokasi dengan status apa pun (nonaktif tetap dikenali di riwayat), atau `null` bila tidak ada. */
@@ -77,17 +89,17 @@ export async function activeItemWritableForBu(
   if (scope.length === 0) return false;
   const row = await db
     .prepare(
-      `SELECT 1 AS ok FROM items i WHERE i.id = ? AND i.status = 'active' AND EXISTS (SELECT 1 FROM item_business_units l WHERE l.item_id = i.id AND l.bu_id IN (${scope.map(() => '?').join(',')})) AND EXISTS (SELECT 1 FROM business_units b WHERE b.id = ? AND b.status = 'active')`,
+      `SELECT 1 AS ok FROM items i WHERE ${liveWhere('i')} AND i.id = ? AND i.status = 'active' AND EXISTS (SELECT 1 FROM item_business_units l WHERE l.item_id = i.id AND l.bu_id IN (${scope.map(() => '?').join(',')})) AND EXISTS (SELECT 1 FROM business_units b WHERE ${liveWhere('b')} AND b.id = ? AND b.status = 'active')`,
     )
     .bind(itemId, ...scope, buId)
     .first<{ ok: number }>();
   return row !== null;
 }
 
-/** Nama lokasi aktif, atau `null` bila tidak ada atau nonaktif. */
+/** Nama lokasi aktif dan hidup, atau `null` bila tidak ada, nonaktif, atau terhapus. */
 export async function activeLocationName(db: Preparer, locationId: string): Promise<string | null> {
   const row = await db
-    .prepare("SELECT name FROM locations WHERE id = ? AND status = 'active'")
+    .prepare(`SELECT name FROM locations WHERE ${liveWhere()} AND id = ? AND status = 'active'`)
     .bind(locationId)
     .first<{ name: string }>();
   return row ? row.name : null;
@@ -183,15 +195,30 @@ export interface SerialRow {
   created_by: string;
   updated_at: string;
   updated_by: string;
+  /** `''` = hidup (soft delete). */
+  deleted_at: string;
+  deleted_by: string;
 }
 
 const SERIAL_COLUMNS =
-  "s.id, s.client_id, s.bu_id, bu.code AS bu_code, s.serial, s.item_id, b.name AS brand_name, i.model, s.test_date, s.sample, s.note, s.location_id, l.name AS location_name, s.recorded_location_id, s.status, s.custody, s.open_case_id, s.transit_from_location_id, s.transit_to_location_id, s.transit_on, lf.name AS transit_from_name, lt.name AS transit_to_name, c.number AS open_case_number, EXISTS(SELECT 1 FROM serial_proof_photos pp WHERE pp.serial_id = s.id) AS has_proof, (SELECT COUNT(*) FROM serial_proof_photos pf WHERE pf.serial_id = s.id AND pf.state = 'failed') AS proof_problem, s.created_at, s.created_by, s.updated_at, s.updated_by";
+  "s.id, s.client_id, s.bu_id, bu.code AS bu_code, s.serial, s.item_id, b.name AS brand_name, i.model, s.test_date, s.sample, s.note, s.location_id, l.name AS location_name, s.recorded_location_id, s.status, s.custody, s.open_case_id, s.transit_from_location_id, s.transit_to_location_id, s.transit_on, lf.name AS transit_from_name, lt.name AS transit_to_name, c.number AS open_case_number, EXISTS(SELECT 1 FROM serial_proof_photos pp WHERE pp.serial_id = s.id) AS has_proof, (SELECT COUNT(*) FROM serial_proof_photos pf WHERE pf.serial_id = s.id AND pf.state = 'failed') AS proof_problem, s.created_at, s.created_by, s.updated_at, s.updated_by, s.deleted_at, s.deleted_by";
 
 const SERIAL_FROM =
   'FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id LEFT JOIN locations l ON l.id = s.location_id LEFT JOIN locations lf ON lf.id = s.transit_from_location_id LEFT JOIN locations lt ON lt.id = s.transit_to_location_id LEFT JOIN serial_cases c ON c.id = s.open_case_id';
 
+/**
+ * Serial HIDUP menurut id (bawaan semua jalur tulis dan baca: serial terhapus = tak ada). Pembaca yang harus melihat
+ * serial terhapus (detail untuk pemulih, perencana hapus/pulihkan) memakai `loadSerialRowAny`.
+ */
 export async function loadSerialRow(db: Preparer, id: string): Promise<SerialRow | null> {
+  return db
+    .prepare(`SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE ${liveWhere('s')} AND s.id = ?`)
+    .bind(id)
+    .first<SerialRow>();
+}
+
+/** Serial menurut id, hidup atau terhapus; pemanggil menilai `deleted_at` dan hak (hapus/pulihkan, detail pemulih). */
+export async function loadSerialRowAny(db: Preparer, id: string): Promise<SerialRow | null> {
   return db
     .prepare(`SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE s.id = ?`)
     .bind(id)
@@ -224,14 +251,14 @@ export async function loadBuHistory(db: Preparer, serialId: string): Promise<Ser
 export const SERIAL_PICK_ORDER_SQL =
   "(s.open_case_id <> '') DESC, (s.status = 'broken') DESC, s.test_date DESC, s.id DESC";
 
-/** Catatan serial menurut nomor serial ternormalisasi (unik se-sistem), atau `null` bila belum ada. */
+/** Catatan serial HIDUP menurut nomor serial ternormalisasi (unik se-sistem), atau `null` bila belum ada. */
 export async function loadSerialRowBySerial(
   db: Preparer,
   serial: string,
 ): Promise<SerialRow | null> {
   return db
     .prepare(
-      `SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE s.serial = ? ORDER BY ${SERIAL_PICK_ORDER_SQL} LIMIT 1`,
+      `SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE ${liveWhere('s')} AND s.serial = ? ORDER BY ${SERIAL_PICK_ORDER_SQL} LIMIT 1`,
     )
     .bind(serial)
     .first<SerialRow>();
@@ -245,13 +272,17 @@ export interface SerialStickerRow {
   status: string | null;
 }
 
+/**
+ * Stiker serial dengan nama dan status; stiker TERHAPUS dibaca `inactive` (rujukan tetap tampil dengan namanya, tetapi
+ * tak dapat dicentang lagi pada cek ulang, seperti stiker nonaktif; spek soft delete T9).
+ */
 export async function loadSerialStickers(
   db: Preparer,
   serialId: string,
 ): Promise<SerialStickerRow[]> {
   const rows = await db
     .prepare(
-      'SELECT ss.sticker_id, st.name, st.alias, st.status, ss.qty FROM serial_stickers ss LEFT JOIN stickers st ON st.id = ss.sticker_id WHERE ss.serial_id = ? ORDER BY st.name, ss.sticker_id',
+      "SELECT ss.sticker_id, st.name, st.alias, CASE WHEN st.deleted_at <> '' THEN 'inactive' ELSE st.status END AS status, ss.qty FROM serial_stickers ss LEFT JOIN stickers st ON st.id = ss.sticker_id WHERE ss.serial_id = ? ORDER BY st.name, ss.sticker_id",
     )
     .bind(serialId)
     .all<SerialStickerRow>();
@@ -301,14 +332,20 @@ export interface SerialListFilter {
   prefixes?: readonly string[];
   /** Serial persis (ternormalisasi). */
   serials?: readonly string[];
-  buId?: string;
-  itemId?: string;
-  locationId?: string;
-  status?: string;
-  custody?: string;
+  /** Serial pernah/ada di salah satu BU ini (tetap dibatasi `buIds` yang boleh dibaca). */
+  filterBuIds?: readonly string[];
+  itemIds?: readonly string[];
+  locationIds?: readonly string[];
+  statuses?: readonly string[];
+  custodies?: readonly string[];
   from?: string;
   to?: string;
   createdBy?: string;
+  /**
+   * Hanya serial TERHAPUS yang boleh dipulihkan pemanggil (`restorable` = `restorableSerialsSql`); bawaan hanya yang
+   * hidup. Pemanggil memastikan hak (`FORBIDDEN` bila tanpa BU ber-`manage`).
+   */
+  deleted?: { sql: string; binds: readonly string[] };
   cursor?: { createdAt: string; id: string };
   limit: number;
 }
@@ -329,21 +366,16 @@ const placeholders = (count: number): string => Array.from({ length: count }, ()
 export async function listSerialRows(db: Preparer, filter: SerialListFilter): Promise<SerialRow[]> {
   const common: string[] = [];
   const commonBinds: unknown[] = [];
-  if (filter.itemId !== undefined) {
-    common.push('s.item_id = ?');
-    commonBinds.push(filter.itemId);
-  }
-  if (filter.locationId !== undefined) {
-    common.push('s.location_id = ?');
-    commonBinds.push(filter.locationId);
-  }
-  if (filter.status !== undefined) {
-    common.push('s.status = ?');
-    commonBinds.push(filter.status);
-  }
-  if (filter.custody !== undefined) {
-    common.push('s.custody = ?');
-    commonBinds.push(filter.custody);
+  const inFilters: [string, readonly string[] | undefined][] = [
+    ['s.item_id', filter.itemIds],
+    ['s.location_id', filter.locationIds],
+    ['s.status', filter.statuses],
+    ['s.custody', filter.custodies],
+  ];
+  for (const [column, values] of inFilters) {
+    if (values === undefined) continue;
+    common.push(`${column} IN (${placeholders(values.length)})`);
+    commonBinds.push(...values);
   }
   if (filter.from !== undefined) {
     common.push('s.test_date >= ?');
@@ -358,7 +390,7 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
     commonBinds.push(filter.createdBy);
   }
   if (filter.prefixes !== undefined && filter.prefixes.length > 0) {
-    // `LIKE 'awalan%'` (bukan `LEFT() = ?`) agar indeks `serials_serial` (unik se-sistem; `serials_bu_serial` lama dipertahankan sampai tahap contract) dapat dipakai; metakarakter di-escape.
+    // `LIKE 'awalan%'` (bukan `LEFT() = ?`) agar indeks `serials_serial_live (serial, deleted_at)` (unik se-sistem; kolom depannya `serial`, jadi pencarian awalan tetap memakainya) dapat dipakai; metakarakter di-escape.
     common.push(`(${filter.prefixes.map(() => "s.serial LIKE ? ESCAPE '!'").join(' OR ')})`);
     for (const prefix of filter.prefixes) commonBinds.push(`${escapeLike(prefix)}%`);
   }
@@ -366,6 +398,10 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
     if (filter.serials.length === 0) return [];
     common.push(`s.serial IN (${placeholders(filter.serials.length)})`);
     commonBinds.push(...filter.serials);
+  }
+  if (filter.deleted !== undefined) {
+    common.push(filter.deleted.sql);
+    commonBinds.push(...filter.deleted.binds);
   }
   if (filter.cursor) {
     common.push('(s.created_at < ? OR (s.created_at = ? AND s.id < ?))');
@@ -384,15 +420,18 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
       binds: [...filter.buIds, ...filter.buIds],
     },
   ];
-  const buId = filter.buId;
+  const filterBus = filter.filterBuIds;
   const buParts: Part[] =
-    buId === undefined
+    filterBus === undefined
       ? [{ sql: '', binds: [] }]
       : [
-          { sql: 's.bu_id = ?', binds: [buId] },
           {
-            sql: "s.bu_id <> ? AND s.id IN (SELECT serial_id FROM serial_business_units WHERE bu_id = ? AND left_at > '')",
-            binds: [buId, buId],
+            sql: `s.bu_id IN (${placeholders(filterBus.length)})`,
+            binds: [...filterBus],
+          },
+          {
+            sql: `s.bu_id NOT IN (${placeholders(filterBus.length)}) AND s.id IN (SELECT serial_id FROM serial_business_units WHERE bu_id IN (${placeholders(filterBus.length)}) AND left_at > '')`,
+            binds: [...filterBus, ...filterBus],
           },
         ];
 
@@ -402,7 +441,11 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
     for (const buPart of buParts) {
       const where = [readablePart.sql, ...(buPart.sql === '' ? [] : [buPart.sql]), ...common];
       arms.push({
-        sql: `SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE ${where.join(' AND ')} ORDER BY s.created_at DESC, s.id DESC LIMIT ?`,
+        // Dua literal (bukan satu dengan penyaring dirakit) agar penyaring keadaan terlihat tes penjaga soft delete.
+        sql:
+          filter.deleted === undefined
+            ? `SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE ${liveWhere('s')} AND ${where.join(' AND ')} ORDER BY s.created_at DESC, s.id DESC LIMIT ?`
+            : `SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE ${deletedWhere('s')} AND ${where.join(' AND ')} ORDER BY s.created_at DESC, s.id DESC LIMIT ?`,
         binds: [...readablePart.binds, ...buPart.binds, ...commonBinds, limit],
       });
     }

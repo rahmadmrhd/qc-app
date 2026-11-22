@@ -108,15 +108,19 @@ test('upload: prepareImage lalu prepareThumbnail, lalu mengirim metadata dan bag
   const item = await stickerGuideSource.upload(file, 'Kardus');
   expect(prepareImageMock).toHaveBeenCalledWith(file);
   expect(prepareThumbnailMock).toHaveBeenCalledWith(file);
-  expect(apiMock).toHaveBeenCalledWith('stickerGuides.upload', {
-    name: 'Kardus',
-    mime: 'image/webp',
-    thumbMime: 'image/jpeg',
-    width: 800,
-    height: 600,
-    image,
-    thumbnail,
-  });
+  expect(apiMock).toHaveBeenCalledWith(
+    'stickerGuides.upload',
+    {
+      name: 'Kardus',
+      mime: 'image/webp',
+      thumbMime: 'image/jpeg',
+      width: 800,
+      height: 600,
+      image,
+      thumbnail,
+    },
+    {},
+  );
   expect(item.id).toBe('g1');
 });
 

@@ -6,9 +6,10 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { cachedFileContent, dropCachedFile } from '@server/core/file-cache';
+import { newId } from '@server/core/id';
 import { folderIdOf, SETTING_DRIVE_FOLDER_ID, setSettingIfAbsent } from '@server/core/settings';
 import type { UserContext } from '@server/modules/access/context';
-import { readableSerialSql } from '@server/modules/serial/bu-history';
+import { involvedBuIds, readableSerialSql } from '@server/modules/serial/bu-history';
 import type { FileContentDto, FileDto, GetFileInput, UploadFileInput } from '@shared/contract';
 import type { FileOwnerType } from '@shared/files';
 import { isImageMime, MAX_UNATTACHED_UPLOADS } from '@shared/files';
@@ -85,7 +86,7 @@ export async function uploadFile(
   }
   const folderId =
     (await folderIdOf(env, SETTING_DRIVE_FOLDER_ID)) || (await ensureDriveFolder(env));
-  const id = crypto.randomUUID();
+  const id = newId();
   const name = `${id}.${EXTENSIONS[input.mime] ?? 'bin'}`;
   const bridge = getBridge(env);
   const driveId = await viaBridge(() =>
@@ -139,6 +140,11 @@ export interface FileViewer {
    * `qrcode` tidak pernah membukanya. Kosong/tak diisi = tak terbaca.
    */
   serialBuIds?: readonly string[];
+  /**
+   * Hak Pulihkan serial atas himpunan BU riwayatnya (`canManageSerial`): berkas milik serial TERHAPUS hanya terbaca
+   * bila fungsi ini ada dan menyetujui (soft delete §4.2); tanpa itu serial terhapus tak terbaca.
+   */
+  serialManage?: (involvedBuIds: readonly string[]) => boolean;
 }
 
 /** Serial pemilik berkas terlihat bagi viewer (BU serial ada di himpunan)? SATU kueri; himpunan kosong tanpa kueri. */
@@ -146,15 +152,19 @@ async function serialFileVisible(
   env: Env,
   serialId: string,
   serialBuIds: readonly string[],
+  serialManage?: (involvedBuIds: readonly string[]) => boolean,
 ): Promise<boolean> {
   if (serialBuIds.length === 0) return false;
   // BU saat ini ATAU BU di riwayat serial (baca; spek serial unik se-sistem §5.3).
   const row = await env.DB.prepare(
-    `SELECT 1 AS ok FROM serials s WHERE s.id = ? AND ${readableSerialSql('s', serialBuIds.length)}`,
+    `SELECT s.deleted_at FROM serials s WHERE s.id = ? AND ${readableSerialSql('s', serialBuIds.length)}`,
   )
     .bind(serialId, ...serialBuIds, ...serialBuIds)
-    .first<{ ok: number }>();
-  return row !== null;
+    .first<{ deleted_at: string }>();
+  if (row === null) return false;
+  if (row.deleted_at === '') return true;
+  // Serial terhapus: hanya pemegang hak Pulihkan (soft delete §4.2).
+  return serialManage?.(await involvedBuIds(env.DB, serialId)) ?? false;
 }
 
 /** Item pemilik berkas terlihat bagi viewer? SATU kueri (`LIMIT 1`); himpunan kosong tanpa kueri. */
@@ -199,7 +209,10 @@ export async function readFile(
   // Gambar pesan serial dan foto bukti QC (`serialproof`): SEBELUM cabang `itemBuIds` (yang membiarkan pemilik lain
   // lolos); hanya lewat BU serial pemiliknya (`owner_id` = id serial).
   const isSerial = record.ownerType === 'serial' || record.ownerType === 'serialproof';
-  if (isSerial && !(await serialFileVisible(env, record.ownerId, viewer.serialBuIds ?? []))) {
+  if (
+    isSerial &&
+    !(await serialFileVisible(env, record.ownerId, viewer.serialBuIds ?? [], viewer.serialManage))
+  ) {
     throw appError('NOT_FOUND', 'Berkas tidak ditemukan');
   }
   if (viewer.itemBuIds === null) {

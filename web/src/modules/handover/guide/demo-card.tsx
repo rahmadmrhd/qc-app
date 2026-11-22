@@ -81,7 +81,7 @@ export function DemoHandoverCard({
 }) {
   return (
     <div className="relative p-3 pt-5" data-slot="demo-card">
-      <Badge variant="secondary" className="absolute top-1.5 right-3">
+      <Badge variant="soft" color="secondary" className="absolute top-1.5 right-3">
         Contoh
       </Badge>
       <HandoverCard

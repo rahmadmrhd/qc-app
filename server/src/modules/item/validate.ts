@@ -1,9 +1,9 @@
 import type { ObjectReader } from '@server/core/validate';
-import { readObject } from '@server/core/validate';
+import { readFilterList, readObject } from '@server/core/validate';
+import type { ListStatusFilter } from '@shared/batch';
 import type {
   GetItemInput,
   ItemAccessoryDto,
-  ItemStatus,
   ItemStickerMarkDto,
   ItemStickerPhotoInput,
   ListItemsPageInput,
@@ -436,6 +436,8 @@ export const ITEM_PAGE_DEFAULT_LIMIT = 20;
 export const ITEM_PAGE_MAX_LIMIT = 50;
 
 /** Daftar item berhalaman: input boleh kosong; `cursor` buram (kunci item terakhir), `query` memakai kunci ternormalisasi. */
+const ITEM_LIST_STATUS_VALUES = ['active', 'inactive', 'deleted', 'all'] as const;
+
 export function validateListItems(raw: unknown): ListItemsPageInput {
   const reader = readObject(raw ?? {});
   const cursor = reader.raw('cursor');
@@ -453,9 +455,9 @@ export function validateListItems(raw: unknown): ListItemsPageInput {
   }
   const query = reader.str('query', { max: 100 });
   const statusRaw = reader.raw('status');
-  let status: ItemStatus | undefined;
+  let status: ListStatusFilter | undefined;
   if (statusRaw !== undefined && statusRaw !== null && statusRaw !== '') {
-    status = reader.oneOf('status', ITEM_STATUS_VALUES);
+    status = reader.oneOf('status', ITEM_LIST_STATUS_VALUES);
   }
   const hasValue = (raw: unknown): boolean => raw !== undefined && raw !== null && raw !== '';
   let instruction: 'none' | undefined;
@@ -464,13 +466,17 @@ export function validateListItems(raw: unknown): ListItemsPageInput {
   }
   const stickerId = reader.str('stickerId', { max: 100 });
   const typeId = reader.str('typeId', { max: 100 });
-  if (stickerId !== '' && typeId !== '') {
-    reader.fail('typeId', 'Pilih stiker atau jenis, bukan keduanya');
+  const typeIds = readFilterList(reader, 'typeIds');
+  if (stickerId !== '' && (typeId !== '' || typeIds !== undefined)) {
+    reader.fail(
+      typeIds !== undefined ? 'typeIds' : 'typeId',
+      'Pilih stiker atau jenis, bukan keduanya',
+    );
   }
   let stickerMode: 'has' | 'missing' | undefined;
   if (hasValue(reader.raw('stickerMode'))) {
     stickerMode = reader.oneOf('stickerMode', STICKER_MODE_VALUES);
-    if (stickerId === '' && typeId === '') {
+    if (stickerId === '' && typeId === '' && typeIds === undefined) {
       reader.fail('stickerMode', 'Mode hanya berlaku bersama stiker atau jenis');
     }
   }
@@ -482,16 +488,25 @@ export function validateListItems(raw: unknown): ListItemsPageInput {
   if (hasValue(reader.raw('postel'))) {
     postel = reader.oneOf('postel', POSTEL_FILTER_VALUES);
   }
+  const brandId = reader.str('brandId', { max: 100 });
+  const buId = reader.str('buId', { max: 100 });
+  const brandIds = readFilterList(reader, 'brandIds');
+  const buIds = readFilterList(reader, 'buIds');
   reader.done();
   return {
     limit: limit as number,
     ...(typeof cursor === 'string' ? { cursor } : {}),
+    ...(brandId !== '' ? { brandId } : {}),
+    ...(buId !== '' ? { buId } : {}),
+    ...(brandIds ? { brandIds } : {}),
+    ...(buIds ? { buIds } : {}),
+    ...(typeIds ? { typeIds } : {}),
     ...(query !== '' ? { query } : {}),
     ...(status ? { status } : {}),
     ...(instruction ? { instruction } : {}),
     ...(stickerId !== '' ? { stickerId } : {}),
     ...(typeId !== '' ? { typeId } : {}),
-    ...(stickerId !== '' || typeId !== '' ? { stickerMode: stickerMode ?? 'has' } : {}),
+    ...(stickerId !== '' || typeId !== '' || typeIds ? { stickerMode: stickerMode ?? 'has' } : {}),
     ...(manualBook ? { manualBook } : {}),
     ...(postel ? { postel } : {}),
   };

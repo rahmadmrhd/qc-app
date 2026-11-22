@@ -4,6 +4,7 @@ import {
   listGuideUsages,
   readGuideThumb,
   removeGuide,
+  removeGuideBatch,
   renameGuide,
   uploadGuide,
 } from './guide-service';
@@ -12,6 +13,7 @@ import {
   validateListGuides,
   validateListGuideUsages,
   validateRemoveGuide,
+  validateRemoveGuideBatch,
   validateRenameGuide,
   validateUploadGuide,
 } from './guide-validate';
@@ -22,6 +24,7 @@ export type GuideMethod =
   | 'stickerGuides.upload'
   | 'stickerGuides.rename'
   | 'stickerGuides.remove'
+  | 'stickerGuides.removeBatch'
   | 'stickerGuides.usages';
 
 /** Baca pustaka gambar: pemegang `item: view` ATAU `sticker: view` (tanpa batas BU). */
@@ -56,6 +59,13 @@ export function guideRoutes(): Pick<RouteTable, GuideMethod> {
       permission: { module: 'item', level: 'edit' },
       validate: validateRemoveGuide,
       handler: (input, ctx) => removeGuide(ctx.env, input, ctx.user),
+    },
+    // Hapus massal (maks. 100, atomik): izin rute `item: edit`; servis menolak seluruh batch bila ada gambar yang
+    // dipakai item hidup atau tak boleh dikelola pemanggil.
+    'stickerGuides.removeBatch': {
+      permission: { module: 'item', level: 'edit' },
+      validate: validateRemoveGuideBatch,
+      handler: (input, ctx) => removeGuideBatch(ctx.env, input, ctx.user),
     },
     // Item pemakai gambar (bahan "salin penanda"): `item: view`, difilter BU pemanggil di servis.
     'stickerGuides.usages': {

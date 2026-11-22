@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { hasUnsavedChanges, resetUnsavedChangesForTests } from '@/app/pwa/unsaved-changes';
@@ -14,13 +14,15 @@ const doc = {
   link: 'https://drive.google.com/file/d/f1/view',
 };
 const pdf = new File(['%PDF-1.4'], 'baru.pdf', { type: 'application/pdf' });
+const picker = () => screen.getByTestId('file-picker-input');
+const choose = (file: File) => userEvent.upload(picker(), file, { applyAccept: false });
 
 test('unggah baru: dialog konfirmasi menyebut akses publik; batal tidak mengunggah', async () => {
   const onUpload = vi.fn().mockResolvedValue(doc);
   render(
     <PdfSourceField document={null} onDocument={vi.fn()} onUpload={onUpload} onClone={vi.fn()} />,
   );
-  await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
+  await choose(pdf);
   const dialog = await screen.findByRole('dialog');
   expect(within(dialog).getByText(/siapa saja yang punya link/i)).toBeInTheDocument();
   await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
@@ -38,11 +40,11 @@ test('konfirmasi mengunggah; hasil diteruskan dan URL berbagi tampil hanya-baca'
       onClone={vi.fn()}
     />,
   );
-  await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
+  await choose(pdf);
   await userEvent.click(
     within(await screen.findByRole('dialog')).getByRole('button', { name: 'Bagikan dan unggah' }),
   );
-  expect(onUpload).toHaveBeenCalledWith(pdf, undefined);
+  expect(onUpload).toHaveBeenCalledWith(pdf, undefined, expect.anything());
   expect(onDocument).toHaveBeenCalledWith(doc);
 });
 
@@ -54,12 +56,12 @@ test('PDF sudah terpasang: tanpa pilihan PDF baru; unggah selalu mengganti isi (
   expect(screen.getByDisplayValue(doc.link)).toHaveAttribute('readonly');
   expect(screen.queryByRole('radio')).toBeNull();
   expect(screen.queryByText(/dipakai \d+ konfigurasi/)).toBeNull();
-  await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
+  await choose(pdf);
   const dialog = await screen.findByRole('dialog');
   expect(within(dialog).getByText(/URL tetap sama/i)).toBeInTheDocument();
   expect(within(dialog).queryByText(/konfigurasi yang memakai/)).toBeNull();
   await userEvent.click(within(dialog).getByRole('button', { name: 'Ganti PDF' }));
-  expect(onUpload).toHaveBeenCalledWith(pdf, 'd1');
+  expect(onUpload).toHaveBeenCalledWith(pdf, 'd1', expect.anything());
 });
 
 test('tanpa PDF terpasang tidak ada pilihan mode (hanya unggah)', () => {
@@ -73,25 +75,74 @@ test('PDF dengan tipe kosong (beberapa OS) diterima bila namanya berakhiran .pdf
   render(
     <PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} onClone={vi.fn()} />,
   );
-  await userEvent.upload(
-    screen.getByLabelText('Pilih PDF'),
-    new File(['%PDF-1.4'], 'manual.PDF', { type: '' }),
-    { applyAccept: false },
-  );
+  await choose(new File(['%PDF-1.4'], 'manual.PDF', { type: '' }));
   expect(await screen.findByRole('dialog')).toBeInTheDocument();
 });
 
-test('berkas bukan PDF atau > 10 MB ditolak di klien tanpa dialog', async () => {
+test('berkas bukan PDF ditolak dengan pesan seragam tanpa dialog', async () => {
   render(
     <PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} onClone={vi.fn()} />,
   );
-  await userEvent.upload(
-    screen.getByLabelText('Pilih PDF'),
-    new File(['x'], 'a.txt', { type: 'text/plain' }),
-    { applyAccept: false },
-  );
-  expect(await screen.findByText(/hanya berkas PDF/i)).toBeInTheDocument();
+  await choose(new File(['x'], 'a.txt', { type: 'text/plain' }));
+  expect(await screen.findByText(/Format tidak didukung \(hanya PDF\)/)).toBeInTheDocument();
+  expect(screen.getByText('a.txt')).toBeInTheDocument();
+  expect(screen.queryByText(/hanya berkas PDF yang dapat diunggah/i)).toBeNull();
   expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+test('PDF 10 MB + 1 byte ditolak dengan kalimat seragam; tepat 10 MB diterima', async () => {
+  render(
+    <PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} onClone={vi.fn()} />,
+  );
+  await choose(new File([new Uint8Array(10_485_761)], 'besar.pdf', { type: 'application/pdf' }));
+  expect(await screen.findByText(/Ukuran melebihi 10 MB/)).toBeInTheDocument();
+  expect(screen.queryByText(/Ukuran PDF maksimal 10 MB/)).toBeNull();
+  expect(screen.queryByRole('dialog')).toBeNull();
+  await choose(new File([new Uint8Array(10_485_760)], 'pas.pdf', { type: 'application/pdf' }));
+  expect(await screen.findByRole('dialog')).toBeInTheDocument();
+});
+
+test('seret-lepas PDF memicu dialog konfirmasi yang sama; yang bukan PDF ditolak seragam', async () => {
+  render(
+    <PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} onClone={vi.fn()} />,
+  );
+  const zone = document.querySelector('[data-file-drop-zone]') as HTMLElement;
+  fireEvent.drop(zone, {
+    dataTransfer: { files: [new File(['x'], 'a.png', { type: 'image/png' })], types: ['Files'] },
+  });
+  expect(await screen.findByText(/Format tidak didukung \(hanya PDF\)/)).toBeInTheDocument();
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.drop(zone, { dataTransfer: { files: [pdf], types: ['Files'] } });
+  const dialog = await screen.findByRole('dialog');
+  expect(within(dialog).getByText(/siapa saja yang punya link/i)).toBeInTheDocument();
+});
+
+test('progres unggah tampil selama proses dan berganti Memproses setelah byte penuh', async () => {
+  let report: (fraction: number | null) => void = () => undefined;
+  let finish: (value: typeof doc) => void = () => undefined;
+  const onUpload = vi.fn(
+    (_file: File, _id?: string, ctx?: { onProgress(fraction: number | null): void }) => {
+      report = (fraction) => ctx?.onProgress(fraction);
+      return new Promise<typeof doc>((resolve) => {
+        finish = resolve;
+      });
+    },
+  );
+  render(
+    <PdfSourceField document={null} onDocument={vi.fn()} onUpload={onUpload} onClone={vi.fn()} />,
+  );
+  await choose(pdf);
+  await userEvent.click(
+    within(await screen.findByRole('dialog')).getByRole('button', { name: 'Bagikan dan unggah' }),
+  );
+  const bar = await screen.findByRole('progressbar');
+  expect(bar).toHaveAttribute('aria-valuetext', 'Mengunggah');
+  act(() => report(0.4));
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '40');
+  act(() => report(1));
+  expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuetext', 'Memproses');
+  await act(async () => finish(doc));
+  expect(screen.queryByRole('progressbar')).toBeNull();
 });
 
 test('"Lihat PDF" membuka berkas di Drive pada tab baru; tidak ada tombol itu sebelum ada PDF', () => {
@@ -112,7 +163,7 @@ test('dialog konfirmasi menyebut berbagi dicabut otomatis bila PDF tidak dipakai
   render(
     <PdfSourceField document={null} onDocument={vi.fn()} onUpload={vi.fn()} onClone={vi.fn()} />,
   );
-  await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
+  await choose(pdf);
   expect(
     await within(await screen.findByRole('dialog')).findByText(/dicabut otomatis/i),
   ).toBeInTheDocument();
@@ -178,7 +229,7 @@ test('M-g: tautan Drive yang sudah ditempel atau PDF yang menunggu konfirmasi te
     />,
   );
   expect(hasUnsavedChanges()).toBe(false);
-  await userEvent.upload(screen.getByLabelText('Pilih PDF'), pdf);
+  await choose(pdf);
   const dialog = await screen.findByRole('dialog');
   expect(hasUnsavedChanges()).toBe(true);
   await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));

@@ -65,6 +65,11 @@ const bridge: QcBridge = {
     },
     reload: () => invoke(BRIDGE_CHANNELS.uiReload),
   },
+  app: {
+    version: () => invoke(BRIDGE_CHANNELS.appVersion),
+    update: () => invoke(BRIDGE_CHANNELS.appUpdate),
+    openDownloads: () => invoke(BRIDGE_CHANNELS.appOpenDownloads),
+  },
   catalog: {
     get: () => invoke(BRIDGE_CHANNELS.catalogGet),
     refresh: () => invoke(BRIDGE_CHANNELS.catalogRefresh),

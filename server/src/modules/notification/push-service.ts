@@ -3,6 +3,7 @@ import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import type {
   PushConfigDto,
@@ -181,7 +182,7 @@ export async function reportPushPermission(
 export async function pushStatus(env: Env): Promise<PushUserStatusDto[]> {
   const [users, prefs, subs] = await Promise.all([
     env.DB.prepare(
-      "SELECT email, name FROM users WHERE status = 'active' ORDER BY name, email",
+      `SELECT email, name FROM users WHERE status = 'active' AND ${liveWhere()} ORDER BY name, email`,
     ).all<{
       email: string;
       name: string;

@@ -1,6 +1,6 @@
 import type { MeDto } from '@shared/contract';
 import { expect, test } from 'vitest';
-import { NAV_GROUPS, visibleNavGroups } from './navigation';
+import { flattenNavItems, NAV_GROUPS, visibleNavGroups } from './navigation';
 
 const me: MeDto = {
   email: 'a@gmail.com',
@@ -37,9 +37,7 @@ const noPermissions = (isSuperAdmin: boolean, countrylock: 'none' | 'view'): MeD
 });
 
 const namesFor = (user: MeDto, desktop: boolean) =>
-  visibleNavGroups(NAV_GROUPS, user, undefined, desktop).flatMap((g) =>
-    g.items.map((i) => i.label),
-  );
+  flattenNavItems(visibleNavGroups(NAV_GROUPS, user, undefined, desktop)).map((i) => i.label);
 
 test('menu Country Lock tampil di peramban dan desktop hanya bagi yang berizin countrylock', () => {
   const allowed = noPermissions(false, 'view');
@@ -51,7 +49,36 @@ test('menu Country Lock tampil di peramban dan desktop hanya bagi yang berizin c
 });
 
 test('di peramban butir Country Lock membuka aplikasi desktop; di desktop rute biasa', () => {
-  const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.label === 'Country Lock');
+  const item = flattenNavItems(NAV_GROUPS).find((i) => i.label === 'Country Lock');
   expect(item?.opensDesktopApp).toBe(true);
   expect(item?.to).toBe('/country-lock');
+});
+
+test('butir Aplikasi Desktop tampil di peramban tanpa izin apa pun dan tersembunyi di aplikasi desktop', () => {
+  const nobody = noPermissions(false, 'none');
+  expect(namesFor(nobody, false)).toContain('Aplikasi Desktop');
+  expect(namesFor(nobody, true)).not.toContain('Aplikasi Desktop');
+  const item = flattenNavItems(NAV_GROUPS).find((i) => i.label === 'Aplikasi Desktop');
+  expect(item?.to).toBe('/desktop');
+  expect(item?.webOnly).toBe(true);
+});
+
+test('P8: Aplikasi Desktop dan Country Lock disembunyikan di ponsel (hideOnPhone); butir lain tak terpengaruh', () => {
+  const allowed = noPermissions(false, 'view');
+  const names = (desktop: boolean, phone: boolean) =>
+    flattenNavItems(visibleNavGroups(NAV_GROUPS, allowed, undefined, desktop, phone)).map(
+      (i) => i.label,
+    );
+  expect(names(false, true)).not.toContain('Aplikasi Desktop');
+  expect(names(false, true)).not.toContain('Country Lock');
+  // Aplikasi desktop (Electron) dengan jendela sempit: Country Lock tetap tampil (hideOnPhone hanya untuk ponsel).
+  expect(names(true, true)).toContain('Country Lock');
+  expect(names(false, false)).toContain('Aplikasi Desktop');
+  expect(names(false, false)).toContain('Country Lock');
+  // Butir yang tidak bertanda hideOnPhone tetap ada di ponsel.
+  expect(names(false, true)).toContain('Beranda');
+  const flagged = flattenNavItems(NAV_GROUPS)
+    .filter((i) => i.hideOnPhone)
+    .map((i) => i.label);
+  expect(flagged.sort()).toEqual(['Aplikasi Desktop', 'Country Lock']);
 });

@@ -13,7 +13,7 @@ export function PermissionBadges({ permissions }: { permissions: PartialPermissi
   return (
     <div className="flex flex-wrap gap-1">
       {entries.map(({ module, level }) => (
-        <Badge key={module} variant="secondary">
+        <Badge key={module} variant="soft" color="secondary">
           {MODULE_LABELS[module]}: {LEVEL_LABELS[level]}
         </Badge>
       ))}

@@ -20,6 +20,7 @@ import type {
 } from '@shared/contract';
 import { isImageMime, readImageDimensions } from '@shared/files';
 import { hasLevel } from '@shared/permissions';
+import { findPostelRecord } from './repo';
 
 /**
  * Lampiran catatan Postel (gambar dan PDF): berkas biasa di tabel `files` dengan pemilik `postel` (`owner_id` =
@@ -31,9 +32,13 @@ import { hasLevel } from '@shared/permissions';
 const UNKNOWN_ATTACHMENT_MESSAGE = 'Ada lampiran yang tidak dikenal';
 const NOT_FOUND_MESSAGE = 'Berkas tidak ditemukan';
 
-/** Nama unduhan turunan: `lampiran-<8 karakter id>.<ekstensi>` (tanpa nama asli klien, jadi tak perlu disanitasi). */
+/**
+ * Nama unduhan turunan: `lampiran-<8 karakter akhir id>.<ekstensi>` (tanpa nama asli klien, jadi tak perlu disanitasi).
+ * Yang dipakai karakter AKHIR (bagian acak ULID): 8 karakter awal ULID hanyalah bit waktu teratas yang sama untuk berkas
+ * yang diunggah serentak, sehingga nama-namanya akan kembar.
+ */
 export function postelAttachmentFilename(id: string, mime: string): string {
-  return `lampiran-${id.slice(0, 8)}.${EXTENSIONS[mime] ?? 'bin'}`;
+  return `lampiran-${id.slice(-8)}.${EXTENSIONS[mime] ?? 'bin'}`;
 }
 
 export function toAttachmentDto(
@@ -99,6 +104,14 @@ export async function readPostelFile(
   const own = record !== null && record.ownerType === '' && record.createdBy === user.email;
   if (!record || (record.ownerType !== 'postel' && !own)) {
     throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
+  }
+  // Lampiran catatan terhapus tetap utuh (berkas tidak dibuang), tetapi hanya terbaca pemegang izin Pulihkan
+  // (`sticker: edit`); pembaca lain dijawab `NOT_FOUND` SEBELUM isi berkas dibaca.
+  if (record.ownerType === 'postel') {
+    const owner = await findPostelRecord(env.DB, record.ownerId);
+    if (owner && owner.deletedAt !== '' && !hasLevel(user.permissions.sticker, 'edit')) {
+      throw appError('NOT_FOUND', NOT_FOUND_MESSAGE);
+    }
   }
   const content = await readFile(
     env,

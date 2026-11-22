@@ -2,7 +2,7 @@
 // `bridge-contract.ts` (yang memuat zod) agar bundel preload tetap kecil.
 
 /** Versi kontrak jembatan; renderer menolak jembatan di bawah `MIN_BRIDGE_VERSION`. */
-export const BRIDGE_VERSION = 9;
+export const BRIDGE_VERSION = 10;
 export const MIN_BRIDGE_VERSION = 2;
 
 /** Kanal `ipcMain.handle` (permintaan-jawaban): `qc:<grup>:<aksi>`. */
@@ -45,6 +45,10 @@ export const BRIDGE_CHANNELS = {
   multiPendingEvents: 'qc:multi:pendingEvents',
   multiAckInjected: 'qc:multi:ackInjected',
   multiOpenWeb: 'qc:multi:openWeb',
+  // Pembaruan aplikasi dari layar penahan (jembatan v10, `APP_BRIDGE_VERSION`).
+  appVersion: 'qc:app:version',
+  appUpdate: 'qc:app:update',
+  appOpenDownloads: 'qc:app:openDownloads',
 } as const satisfies Record<string, string>;
 
 /** Kanal peristiwa satu arah proses utama -> renderer (`webContents.send`); bukan `handle`. */
@@ -70,7 +74,12 @@ export const MULTI_CHANGE_EVENT = 'qc:multi:changed';
  * jembatannya lebih rendah; `UI_MIN_BRIDGE_VERSION` TIDAK dinaikkan (mode tunggal tetap jalan di jembatan lama).
  */
 export const MULTI_BRIDGE_VERSION = 9;
+/**
+ * Jembatan paling rendah yang punya `app` (versi terpasang, "Perbarui sekarang" tanpa dialog, buka halaman unduhan):
+ * dipakai layar penahan saat versi aplikasi di bawah `minClient` server. Renderer memeriksa versinya sebelum memakai;
+ * `UI_MIN_BRIDGE_VERSION` TIDAK dinaikkan (UI yang lebih baru tetap jalan di aplikasi lama, hanya tanpa layar itu).
 /** Maks. id peristiwa `injected` per panggilan `multi.ackInjected` (renderer meng-ack per potongan sebesar ini). */
+export const APP_BRIDGE_VERSION = 10;
 export const MULTI_ACK_MAX = 500;
 /** Jembatan paling rendah yang punya `catalog` (katalog Tipe offline); UI yang lebih baru memeriksa versinya sebelum memakai. */
 export const CATALOG_BRIDGE_VERSION = 5;

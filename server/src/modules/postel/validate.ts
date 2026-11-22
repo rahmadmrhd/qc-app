@@ -7,6 +7,7 @@ import type {
   GetPostelInput,
   ListPostelHistoryInput,
   ListPostelItemOptionsInput,
+  ListPostelsInput,
   PostelAlertSettings,
   RemovePostelInput,
   SavePostelInput,
@@ -147,6 +148,22 @@ export function validateGetPostel(raw: unknown): GetPostelInput {
   const id = reader.str('id', { required: true, max: MAX_ID_LENGTH });
   reader.done();
   return { id };
+}
+
+const LIST_STATUS_VALUES = ['live', 'deleted'] as const;
+
+/** `postels.list`: masukan boleh kosong; `status` opsional (`deleted` hanya bagi `sticker: edit`, dicek di layanan). */
+export function validateListPostels(raw: unknown): ListPostelsInput | null {
+  if (raw === null || raw === undefined) return null;
+  const reader = readObject(raw);
+  const value = reader.raw('status');
+  if (value === undefined || value === null || value === '') {
+    reader.done();
+    return {};
+  }
+  const status = reader.oneOf('status', LIST_STATUS_VALUES);
+  reader.done();
+  return { status };
 }
 
 export function validateRemovePostel(raw: unknown): RemovePostelInput {

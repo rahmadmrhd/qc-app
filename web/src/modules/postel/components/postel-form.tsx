@@ -1,8 +1,9 @@
 import type { PostelDto, SavePostelInput } from '@shared/contract';
 import { useForm, useStore } from '@tanstack/react-form';
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
-import { FormHeader } from '@/components/form-header';
+import { FormSection } from '@/components/page/form-section';
+import { type FormTab, FormTabs } from '@/components/page/form-tabs';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { errorText, errorTexts } from '@/modules/item/lib/row-error';
@@ -16,7 +17,33 @@ import { AttachmentsField } from './attachments-field';
 import { NumberTableField } from './number-table-field';
 import { PostelItemPicker } from './postel-item-picker';
 
+export const POSTEL_FORM_TABS = ['item', 'nomor', 'catatan'] as const;
+export type PostelFormTab = (typeof POSTEL_FORM_TABS)[number];
+
+const TAB_LABEL: Record<PostelFormTab, string> = {
+  item: 'Item',
+  nomor: 'Nomor sertifikat',
+  catatan: 'Catatan dan lampiran',
+};
+
+/** Tab pemilik sebuah field (nama field form atau kunci galat server). */
+function tabOfField(key: string): PostelFormTab | undefined {
+  if (key === 'items' || key === 'itemIds') return 'item';
+  if (key === 'numbers' || key === 'number') return 'nomor';
+  if (key === 'note' || key === 'attachments' || key === 'attachmentIds') return 'catatan';
+  return undefined;
+}
+
+/** Keadaan form untuk tombol di luar form (bar halaman): proses simpan, dan unggahan lampiran yang menahan Simpan. */
+export interface PostelFormUiState {
+  submitting: boolean;
+  blocked: boolean;
+}
+
 export interface PostelFormProps {
+  /** Id elemen `<form>`; tombol Simpan di bar halaman men-submit lewat `form={formId}`. */
+  formId: string;
+  onUiState?: ((state: PostelFormUiState) => void) | undefined;
   /** Catatan yang diubah; kosong = mode tambah. */
   postel?: PostelDto | undefined;
   /** Ambang "segera habis" dan tanggal WIB server (dasar lencana kondisi pada tabel nomor). */
@@ -24,28 +51,26 @@ export interface PostelFormProps {
   today: string;
   /** Mengirim payload; mengembalikan teks galat (tampil sebagai alert) atau `null` bila berhasil/ditangani. */
   onSubmit: (input: SavePostelInput) => Promise<string | null>;
-  onCancel: () => void;
   /** Galat server per field (dari `ApiError.fields`); hilang begitu field-nya dikoreksi. */
   fieldErrors?: PostelFieldErrors | undefined;
+  /** Boleh menambah item dari pemilih item (`itemLinkAccess(...).canCreate`). */
+  canCreateItem?: boolean | undefined;
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="space-y-3 rounded-lg border p-4">
-      <h2 className="text-base font-semibold">{title}</h2>
-      {children}
-    </section>
-  );
-}
-
-/** Form tambah/ubah catatan Postel: item, tabel nomor sertifikat, catatan, dan lampiran. */
+/**
+ * Form tambah/ubah catatan Postel dalam tiga tab (kit `FormTabs`): Item, Nomor sertifikat, serta Catatan dan lampiran.
+ * Komponen ini hanya merender `<form id={formId}>` berisi field; tombol Simpan ada di `FormPage` (di luar form).
+ * Saat simpan gagal, tab bergalat pertama dibuka dan diberi titik merah.
+ */
 export function PostelForm({
+  formId,
+  onUiState,
   postel,
   soonDays,
   today,
   onSubmit,
-  onCancel,
   fieldErrors,
+  canCreateItem,
 }: PostelFormProps) {
   const hiddenCount = postel?.hiddenItemCount ?? 0;
   const schema = useMemo(() => postelFormSchema(hiddenCount), [hiddenCount]);
@@ -54,6 +79,7 @@ export function PostelForm({
   const [defaults] = useState(() => toPostelFormDefaults(postel));
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [tab, setTab] = useState<PostelFormTab>('item');
   // Galat server pada sebuah field hilang begitu user mengoreksi field itu (dan kembali saat ada galat baru).
   const [cleared, setCleared] = useState<ReadonlySet<string>>(new Set());
   // biome-ignore lint/correctness/useExhaustiveDependencies: reset setiap kali galat server yang baru datang
@@ -73,34 +99,52 @@ export function PostelForm({
   });
   useUnsavedChanges(useStore(form.store, (state) => state.isDirty && !state.isSubmitSuccessful));
 
-  return (
-    <form
-      noValidate
-      className="space-y-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void form.handleSubmit();
-      }}
-    >
-      <form.Subscribe selector={(state) => state.isSubmitting}>
-        {(isSubmitting) => (
-          <FormHeader
-            title={postel ? `Ubah Postel: ${postel.name}` : 'Tambah Postel'}
-            onCancel={onCancel}
-            submitting={isSubmitting}
-            submitDisabled={uploading}
-            busyText="Menyimpan Postel…"
-          />
-        )}
-      </form.Subscribe>
+  // Titik galat per tab: galat validasi field (setelah submit) atau galat server.
+  const fieldMeta = useStore(form.store, (state) => state.fieldMeta);
+  const attempts = useStore(form.store, (state) => state.submissionAttempts);
+  const submitting = useStore(form.store, (state) => state.isSubmitting);
+  const fieldHasError = (key: string) =>
+    ((fieldMeta as Record<string, { errors?: unknown[] } | undefined>)[key]?.errors?.length ?? 0) >
+      0 || Boolean(serverError(key as keyof PostelFieldErrors));
+  const errorKeys = [...Object.keys(fieldMeta), ...Object.keys(fieldErrors ?? {})].filter(
+    (key, index, all) => all.indexOf(key) === index && fieldHasError(key),
+  );
+  const tabHasError = (id: PostelFormTab) => errorKeys.some((key) => tabOfField(key) === id);
+  const firstErrorTab = POSTEL_FORM_TABS.find((id) => tabHasError(id));
+  // Simpan gagal validasi: buka tab bergalat pertama (sekali per percobaan simpan).
+  const handledAttempt = useRef(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dijalankan saat percobaan simpan selesai
+  useEffect(() => {
+    if (attempts === 0 || submitting || handledAttempt.current === attempts) return;
+    handledAttempt.current = attempts;
+    if (firstErrorTab) setTab(firstErrorTab);
+  }, [attempts, submitting]);
+  // Galat dari server: buka tab pertama yang memuatnya.
+  useEffect(() => {
+    const first = POSTEL_FORM_TABS.find((id) =>
+      Object.keys(fieldErrors ?? {}).some(
+        (key) => fieldErrors?.[key as keyof PostelFieldErrors] && tabOfField(key) === id,
+      ),
+    );
+    if (first) setTab(first);
+  }, [fieldErrors]);
 
-      <Section title="Item">
+  // Keadaan untuk tombol di luar form (bar halaman): unggahan lampiran menahan Simpan.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dilaporkan hanya saat salah satu nilainya berubah
+  useEffect(() => {
+    onUiState?.({ submitting, blocked: uploading });
+  }, [submitting, uploading]);
+
+  const content: Record<PostelFormTab, ReactNode> = {
+    item: (
+      <FormSection title="Item" columns={1}>
         <form.Field name="items">
           {(field) => (
             <PostelItemPicker
               selected={field.state.value}
               ownedIds={ownedIds}
               hiddenCount={hiddenCount}
+              canCreateItem={canCreateItem}
               error={errorText([...field.state.meta.errors, serverError('itemIds')])}
               onChange={(items) => {
                 field.handleChange(items);
@@ -109,9 +153,10 @@ export function PostelForm({
             />
           )}
         </form.Field>
-      </Section>
-
-      <Section title="Nomor sertifikat">
+      </FormSection>
+    ),
+    nomor: (
+      <FormSection title="Nomor sertifikat" columns={1}>
         <form.Field name="numbers">
           {(field) => (
             <NumberTableField
@@ -130,52 +175,76 @@ export function PostelForm({
             />
           )}
         </form.Field>
-      </Section>
+      </FormSection>
+    ),
+    catatan: (
+      <div className="space-y-6">
+        <FormSection title="Catatan" columns={1}>
+          <form.Field name="note">
+            {(field) => {
+              const error = errorText([...field.state.meta.errors, serverError('note')]);
+              return (
+                <div className="space-y-1.5">
+                  <Label htmlFor="postel-note" className="sr-only">
+                    Catatan
+                  </Label>
+                  <Textarea
+                    id="postel-note"
+                    aria-invalid={error ? true : undefined}
+                    placeholder="Catatan (opsional)"
+                    value={field.state.value}
+                    onChange={(event) => {
+                      field.handleChange(event.target.value);
+                      clear('note');
+                    }}
+                  />
+                  {error ? <p className="text-sm text-destructive-text">{error}</p> : null}
+                </div>
+              );
+            }}
+          </form.Field>
+        </FormSection>
+        <FormSection title="Lampiran" columns={1}>
+          <form.Field name="attachments">
+            {(field) => (
+              <AttachmentsField
+                value={field.state.value}
+                error={errorText([...field.state.meta.errors, serverError('attachmentIds')])}
+                onBusyChange={setUploading}
+                onChange={(rows) => {
+                  field.handleChange(rows);
+                  clear('attachmentIds');
+                }}
+              />
+            )}
+          </form.Field>
+        </FormSection>
+      </div>
+    ),
+  };
 
-      <Section title="Catatan">
-        <form.Field name="note">
-          {(field) => {
-            const error = errorText([...field.state.meta.errors, serverError('note')]);
-            return (
-              <div className="space-y-1.5">
-                <Label htmlFor="postel-note" className="sr-only">
-                  Catatan
-                </Label>
-                <Textarea
-                  id="postel-note"
-                  aria-invalid={error ? true : undefined}
-                  placeholder="Catatan (opsional)"
-                  value={field.state.value}
-                  onChange={(event) => {
-                    field.handleChange(event.target.value);
-                    clear('note');
-                  }}
-                />
-                {error ? <p className="text-sm text-destructive">{error}</p> : null}
-              </div>
-            );
-          }}
-        </form.Field>
-      </Section>
+  const tabs: FormTab[] = POSTEL_FORM_TABS.map((id) => ({
+    id,
+    label: TAB_LABEL[id],
+    hasError: tabHasError(id),
+    content: content[id],
+  }));
 
-      <Section title="Lampiran">
-        <form.Field name="attachments">
-          {(field) => (
-            <AttachmentsField
-              value={field.state.value}
-              error={errorText([...field.state.meta.errors, serverError('attachmentIds')])}
-              onBusyChange={setUploading}
-              onChange={(rows) => {
-                field.handleChange(rows);
-                clear('attachmentIds');
-              }}
-            />
-          )}
-        </form.Field>
-      </Section>
-
+  return (
+    <form
+      id={formId}
+      noValidate
+      className="space-y-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        // Dialog turunan (Tambah item) dirender lewat portal React: submitnya tak boleh naik ke form ini.
+        event.stopPropagation();
+        void form.handleSubmit();
+      }}
+    >
+      <FormTabs tabs={tabs} value={tab} onValueChange={(id) => setTab(id as PostelFormTab)} />
       {submitError ? (
-        <p role="alert" className="text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive-text">
           {submitError}
         </p>
       ) : null}

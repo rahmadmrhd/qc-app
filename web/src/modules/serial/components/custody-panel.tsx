@@ -15,7 +15,7 @@ export function CustodyPanel({ serial, today }: CustodyPanelProps) {
   return (
     <section
       aria-label="Pengiriman"
-      className="space-y-2 rounded-lg border border-amber-500/50 bg-amber-500/10 p-4"
+      className="space-y-2 rounded-lg border border-warning-text/35 bg-warning-text/10 p-4"
     >
       <h2 className="text-sm font-semibold">Dalam pengiriman</h2>
       <p className="text-sm">
@@ -29,7 +29,7 @@ export function CustodyPanel({ serial, today }: CustodyPanelProps) {
           <dd>{serial.transitOn ? formatDay(serial.transitOn) : '—'}</dd>
         </div>
         <div>
-          <dt className="text-xs text-muted-foreground">Lama</dt>
+          <dt className="text-xs text-muted-foreground">Lama di perjalanan</dt>
           <dd>
             {days === null
               ? '—'

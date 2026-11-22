@@ -1,8 +1,11 @@
 import type { ItemSummaryDto } from '@shared/contract';
-import { render, screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
-import { ItemsTable } from './items-table';
+import { useRowSelection } from '@/components/data-table';
+import { mockMatchMedia } from '@/test/match-media';
+import { renderInRouter } from '@/test/render-in-router';
+import { ItemsTable, type ItemsTableProps } from './items-table';
 
 const items: ItemSummaryDto[] = [
   {
@@ -25,7 +28,7 @@ const items: ItemSummaryDto[] = [
   },
   {
     id: 'i2',
-    brandId: 'b1',
+    brandId: 'b2',
     brand: 'Mikrotik',
     model: 'hAP ac2',
     isCountryLock: false,
@@ -40,23 +43,27 @@ const items: ItemSummaryDto[] = [
   },
 ];
 
-function renderTable(props: Partial<Parameters<typeof ItemsTable>[0]> = {}) {
-  const handlers = { onOpen: vi.fn(), onEdit: vi.fn(), onToggleStatus: vi.fn() };
-  render(
-    <ItemsTable
-      items={items}
-      canEdit={() => true}
-      canManage={() => true}
-      pendingStatusId={null}
-      {...handlers}
-      {...props}
-    />,
-  );
-  return handlers;
+type Props = Partial<ItemsTableProps>;
+
+function handlers() {
+  return {
+    onEdit: vi.fn(),
+    onToggleStatus: vi.fn(),
+    onDelete: vi.fn(),
+    onRestore: vi.fn(),
+  };
 }
 
-test('menampilkan merk, tipe, nama lain, country lock, jumlah gambar, dan status', () => {
-  renderTable();
+async function renderTable(props: Props = {}) {
+  const fns = handlers();
+  await renderInRouter(
+    <ItemsTable items={items} canEdit={() => true} canManage={() => true} {...fns} {...props} />,
+  );
+  return fns;
+}
+
+test('menampilkan merk, tipe, nama lain, country lock, jumlah gambar, dan status', async () => {
+  await renderTable();
   expect(screen.getByText('AF 5XHD')).toBeInTheDocument();
   expect(screen.getByText('AirFiber 5XHD')).toBeInTheDocument();
   expect(screen.getByText('Country lock')).toBeInTheDocument();
@@ -65,60 +72,102 @@ test('menampilkan merk, tipe, nama lain, country lock, jumlah gambar, dan status
   expect(screen.getByText('2')).toBeInTheDocument();
 });
 
-test('tombol aksi mengikuti izin: view hanya Lihat; edit menambah Ubah; manage menambah Nonaktifkan/Aktifkan', () => {
-  const { unmount } = render(
-    <ItemsTable
-      items={items}
-      canEdit={() => false}
-      canManage={() => false}
-      pendingStatusId={null}
-      onOpen={() => undefined}
-      onEdit={() => undefined}
-      onToggleStatus={() => undefined}
-    />,
-  );
-  expect(screen.getAllByRole('button', { name: /^Lihat/ })).toHaveLength(2);
-  expect(screen.queryByRole('button', { name: /^Ubah/ })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: /Nonaktifkan|Aktifkan/ })).not.toBeInTheDocument();
-  unmount();
-  renderTable({ canManage: () => false });
-  expect(screen.getAllByRole('button', { name: /^Ubah/ })).toHaveLength(2);
-  expect(screen.queryByRole('button', { name: /Nonaktifkan|Aktifkan/ })).not.toBeInTheDocument();
+test('merk dan tipe berupa tautan ke View; tidak ada tombol "Lihat"', async () => {
+  await renderTable();
+  expect(screen.getByRole('link', { name: 'Ubiquiti' })).toHaveAttribute('href', '/item/brands/b1');
+  expect(screen.getByRole('link', { name: 'AF 5XHD' })).toHaveAttribute('href', '/item/i1');
+  expect(screen.queryByRole('button', { name: /^Lihat/ })).toBeNull();
 });
 
-test('memanggil handler untuk item yang dipilih', async () => {
-  const { onOpen, onEdit, onToggleStatus } = renderTable();
-  await userEvent.click(screen.getByRole('button', { name: 'Lihat Ubiquiti AF 5XHD' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Ubah Mikrotik hAP ac2' }));
+test('tanpa hak buka merk, nama merk tampil sebagai teks biasa', async () => {
+  await renderTable({ canOpenBrand: false });
+  expect(screen.queryByRole('link', { name: 'Ubiquiti' })).toBeNull();
+  expect(screen.getByText('Ubiquiti')).toBeInTheDocument();
+});
+
+test('kode BU menaut ke halaman BU bila berhak', async () => {
+  await renderTable();
+  const link = screen.getByRole('link', { name: 'RTL' });
+  expect(link).toHaveAttribute('href', '/access/business-units/bu-a');
+  expect(link).toHaveAttribute('title', 'Retail');
+});
+
+test('kode BU tanpa hak buka tampil sebagai lencana tanpa tautan', async () => {
+  await renderTable({ canOpenBusinessUnit: false });
+  expect(screen.queryByRole('link', { name: 'RTL' })).toBeNull();
+  expect(screen.getByText('RTL')).toHaveAttribute('title', 'Retail');
+});
+
+test('merk terhapus diberi penanda Terhapus', async () => {
+  await renderTable({ items: [{ ...(items[0] as ItemSummaryDto), brandDeleted: true }] });
+  expect(screen.getByText('Terhapus')).toBeInTheDocument();
+});
+
+test('aksi baris berupa tombol ikon bernama; Hapus hanya untuk item Nonaktif', async () => {
+  const { onEdit, onToggleStatus, onDelete } = await renderTable();
+  await userEvent.click(screen.getByRole('button', { name: 'Ubah Ubiquiti AF 5XHD' }));
   await userEvent.click(screen.getByRole('button', { name: 'Nonaktifkan Ubiquiti AF 5XHD' }));
   await userEvent.click(screen.getByRole('button', { name: 'Aktifkan Mikrotik hAP ac2' }));
-  expect(onOpen).toHaveBeenCalledWith(items[0]);
-  expect(onEdit).toHaveBeenCalledWith(items[1]);
+  expect(onEdit).toHaveBeenCalledWith(items[0]);
   expect(onToggleStatus).toHaveBeenNthCalledWith(1, items[0]);
   expect(onToggleStatus).toHaveBeenNthCalledWith(2, items[1]);
+  expect(screen.queryByRole('button', { name: 'Hapus Ubiquiti AF 5XHD' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus Mikrotik hAP ac2' }));
+  expect(onDelete).toHaveBeenCalledWith(items[1]);
 });
 
-test('daftar kosong menampilkan pesan', () => {
-  renderTable({ items: [] });
-  expect(screen.getByText('Tidak ada item yang cocok.')).toBeInTheDocument();
-});
-
-test('menampilkan chip BU (kode) per item', () => {
-  renderTable();
-  expect(screen.getByText('RTL')).toHaveAttribute('title', 'Retail');
-  expect(screen.getByText('WHL')).toBeInTheDocument();
-});
-
-test('hak ubah dan nonaktifkan dinilai per item', () => {
-  renderTable({ canEdit: (item) => item.id === 'i1', canManage: (item) => item.id === 'i2' });
+test('hak ubah dan nonaktifkan dinilai per item', async () => {
+  await renderTable({
+    canEdit: (item) => item.id === 'i1',
+    canManage: (item) => item.id === 'i2',
+  });
   expect(screen.getByRole('button', { name: 'Ubah Ubiquiti AF 5XHD' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Ubah Mikrotik hAP ac2' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Ubah Mikrotik hAP ac2' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Nonaktifkan Ubiquiti AF 5XHD' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Aktifkan Mikrotik hAP ac2' })).toBeInTheDocument();
 });
 
-test('tanda "Belum ada instruksi stiker" hanya pada baris tanpa instruksi', () => {
-  renderTable();
+test('tampilan Terhapus: hanya aksi Pulihkan', async () => {
+  const deleted = items.map((item) => ({
+    ...item,
+    status: 'inactive' as const,
+    deleted: { deletedAt: '2026-11-20T00:00:00.000Z', deletedBy: 'a@x.com' },
+  }));
+  const { onRestore } = await renderTable({ items: deleted, deletedView: true });
+  expect(screen.queryByRole('button', { name: /^Ubah/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /^Hapus/ })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Pulihkan Mikrotik hAP ac2' }));
+  expect(onRestore).toHaveBeenCalledWith(deleted[1]);
+});
+
+test('daftar kosong menampilkan pesan', async () => {
+  await renderTable({ items: [] });
+  expect(screen.getByText('Belum ada item.')).toBeInTheDocument();
+});
+
+function WithSelection() {
+  const selection = useRowSelection('x');
+  return (
+    <ItemsTable
+      items={items}
+      canEdit={() => true}
+      canManage={() => true}
+      selection={selection}
+      {...handlers()}
+    />
+  );
+}
+
+test('checkbox baris berlabel "Pilih <merk> <tipe>" hanya bila selection diberikan', async () => {
+  const { unmount } = await renderInRouter(<WithSelection />);
+  expect(screen.getByRole('checkbox', { name: 'Pilih Ubiquiti AF 5XHD' })).toBeInTheDocument();
+  unmount();
+  await renderTable();
+  expect(screen.queryByRole('checkbox')).toBeNull();
+});
+
+test('tanda "Belum ada instruksi stiker" hanya pada baris tanpa instruksi', async () => {
+  await renderTable();
   const marks = screen.getAllByText('Belum ada instruksi stiker');
   expect(marks).toHaveLength(1);
   expect(screen.getByRole('row', { name: /Mikrotik/ })).toContainElement(marks[0] as HTMLElement);
@@ -126,7 +175,7 @@ test('tanda "Belum ada instruksi stiker" hanya pada baris tanpa instruksi', () =
 
 const withManualBook: ItemSummaryDto = {
   id: 'i3',
-  brandId: 'b1',
+  brandId: 'b3',
   brand: 'Cisco',
   model: 'C9200',
   isCountryLock: false,
@@ -140,36 +189,75 @@ const withManualBook: ItemSummaryDto = {
   updatedAt: '',
 };
 
-test('tanda "Belum ada QR Manual Book" hanya untuk item aktif tanpa Manual Book, berdampingan dengan tanda instruksi', () => {
-  renderTable({ items: [...items, withManualBook] });
+test('tanda "Belum ada QR Manual Book" hanya untuk item aktif tanpa Manual Book', async () => {
+  await renderTable({ items: [...items, withManualBook] });
   const marks = screen.getAllByText('Belum ada QR Manual Book');
   expect(marks).toHaveLength(1);
-  // i1 aktif tanpa Manual Book; i2 nonaktif (tanpa tanda); i3 sudah punya Manual Book
   expect(screen.getByRole('row', { name: /Ubiquiti/ })).toContainElement(marks[0] as HTMLElement);
   expect(screen.getByRole('row', { name: /Mikrotik/ })).not.toHaveTextContent('QR Manual Book');
   expect(screen.getByRole('row', { name: /Cisco/ })).not.toHaveTextContent('QR Manual Book');
-  expect(screen.getByRole('row', { name: /Mikrotik/ })).toHaveTextContent(
-    'Belum ada instruksi stiker',
-  );
 });
 
-test('tanda "Belum ada Postel" hanya untuk item aktif tanpa Postel', () => {
+test('tanda "Belum ada Postel" hanya untuk item aktif tanpa Postel, tanpa syarat izin sticker', async () => {
   const withPostel: ItemSummaryDto = {
     ...withManualBook,
     id: 'i4',
     brand: 'Juniper',
     hasPostel: true,
   };
-  renderTable({ items: [...items, withPostel] });
+  await renderTable({ items: [...items, withPostel] });
   const marks = screen.getAllByText('Belum ada Postel');
-  // i1 aktif tanpa Postel; i2 nonaktif (tanpa tanda); i4 sudah punya Postel
   expect(marks).toHaveLength(1);
   expect(screen.getByRole('row', { name: /Ubiquiti/ })).toContainElement(marks[0] as HTMLElement);
-  expect(screen.getByRole('row', { name: /Mikrotik/ })).not.toHaveTextContent('Belum ada Postel');
-  expect(screen.getByRole('row', { name: /Juniper/ })).not.toHaveTextContent('Belum ada Postel');
+  const juniper = screen.getByRole('row', { name: /Juniper/ });
+  expect(within(juniper).queryByText('Belum ada Postel')).toBeNull();
 });
 
-test('tanda "Belum ada Postel" tampil tanpa syarat izin sticker (parity Manual Book)', () => {
-  renderTable();
-  expect(screen.getAllByText('Belum ada Postel')).toHaveLength(1);
+test('merk terhapus tanpa hak Pulihkan: teks + Terhapus tanpa tautan', async () => {
+  await renderTable({
+    items: [{ ...(items[0] as ItemSummaryDto), brandDeleted: true }],
+    canOpenDeletedBrand: false,
+  });
+  expect(screen.queryByRole('link', { name: 'Ubiquiti' })).toBeNull();
+  expect(screen.getByText('Ubiquiti')).toBeInTheDocument();
+  expect(screen.getByText('Terhapus')).toBeInTheDocument();
+});
+
+test('tampilan Terhapus: kolom Dihapus oleh dan Dihapus pada menggantikan Lock/Gambar/Status', async () => {
+  const deleted = items.map((item) => ({
+    ...item,
+    status: 'inactive' as const,
+    deleted: { deletedAt: '2026-11-20T03:04:00.000Z', deletedBy: 'admin@x.com' },
+  }));
+  await renderTable({ items: deleted, deletedView: true });
+  expect(screen.getByRole('columnheader', { name: 'Dihapus oleh' })).toBeInTheDocument();
+  expect(screen.getByRole('columnheader', { name: 'Dihapus pada' })).toBeInTheDocument();
+  expect(screen.queryByRole('columnheader', { name: 'Gambar' })).toBeNull();
+  expect(screen.getAllByText('admin@x.com')).toHaveLength(2);
+  expect(screen.getAllByText(/20 Nov 2026/)).toHaveLength(2);
+});
+
+test('tampilan biasa tidak memuat kolom Dihapus', async () => {
+  await renderTable();
+  expect(screen.queryByRole('columnheader', { name: 'Dihapus oleh' })).toBeNull();
+  expect(screen.getByRole('columnheader', { name: 'Status' })).toBeInTheDocument();
+});
+
+test('ponsel: judul kartu = Tipe, Merk menjadi meta berlabel', async () => {
+  const media = mockMatchMedia(false);
+  window.innerWidth = 360;
+  try {
+    await renderTable();
+    const card = (await screen.findAllByRole('listitem')).find((node) =>
+      within(node).queryByText('AF 5XHD'),
+    ) as HTMLElement;
+    const cardEl = card.querySelector('[data-slot="mobile-card"]') ?? card;
+    // Tautan pertama kartu (judul) adalah Tipe; Merk muncul sebagai meta berlabel "Merk".
+    expect(within(cardEl as HTMLElement).getAllByRole('link')[0]).toHaveTextContent('AF 5XHD');
+    expect(within(cardEl as HTMLElement).getByText('Merk')).toBeInTheDocument();
+    expect(within(cardEl as HTMLElement).getByText('Ubiquiti')).toBeInTheDocument();
+  } finally {
+    media.restore();
+    window.innerWidth = 1024;
+  }
 });

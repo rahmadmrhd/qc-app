@@ -1,11 +1,14 @@
 import type { PostelCondition } from '@shared/postel';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import type { UiColor } from '@/components/ui/variant-style';
 import { CONDITION_LABEL } from '../lib/condition';
 
-/** "Segera habis" memakai warna peringatan (tema ini belum punya varian warning pada `Badge`). */
-const SOON_CLASS =
-  'border-transparent bg-amber-100 text-amber-900 dark:bg-amber-900/30 dark:text-amber-200';
+/** Berlaku = success, Segera habis = warning, Kedaluwarsa = destructive (badge status soft + titik). */
+const CONDITION_COLOR: Record<PostelCondition, UiColor> = {
+  valid: 'success',
+  soon: 'warning',
+  expired: 'destructive',
+};
 
 export function PostelConditionBadge({
   condition,
@@ -18,12 +21,7 @@ export function PostelConditionBadge({
   className?: string;
 }) {
   return (
-    <Badge
-      variant={
-        condition === 'expired' ? 'destructive' : condition === 'soon' ? 'outline' : 'secondary'
-      }
-      className={cn(condition === 'soon' && SOON_CLASS, className)}
-    >
+    <Badge color={CONDITION_COLOR[condition]} variant="soft" className={className}>
       {label ?? CONDITION_LABEL[condition]}
     </Badge>
   );

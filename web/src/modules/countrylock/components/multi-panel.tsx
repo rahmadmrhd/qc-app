@@ -24,10 +24,10 @@ import { MULTI_BRAND, MultiForm } from './multi-form';
 
 const BADGES: { filter: DeviceFilter; label: string; tone: string }[] = [
   { filter: 'waiting', label: 'Menunggu', tone: 'border-border' },
-  { filter: 'queued', label: 'Antri', tone: 'border-amber-500/60' },
-  { filter: 'injecting', label: 'Inject', tone: 'border-blue-500/60' },
-  { filter: 'success', label: 'Selesai', tone: 'border-emerald-500/60' },
-  { filter: 'failed', label: 'Gagal', tone: 'border-red-500/60' },
+  { filter: 'queued', label: 'Antri', tone: 'border-warning-text/35' },
+  { filter: 'injecting', label: 'Inject', tone: 'border-info-text/35' },
+  { filter: 'success', label: 'Selesai', tone: 'border-success-text/35' },
+  { filter: 'failed', label: 'Gagal', tone: 'border-destructive-text/35' },
 ];
 
 /**
@@ -78,13 +78,20 @@ export function MultiPanel({
           <MultiForm pkg={pkg} catalog={catalog} multi={multi} />
 
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" disabled={!running} onClick={actions.scan}>
+            <Button
+              type="button"
+              variant="outline"
+              color="primary"
+              disabled={!running}
+              onClick={actions.scan}
+            >
               <Radar />
               Scan
             </Button>
             <Button
               type="button"
               variant="outline"
+              color="primary"
               disabled={injectBusy || preparing}
               title={
                 injectBusy ? 'Tidak dapat menyiapkan bridge saat inject sedang berjalan' : undefined
@@ -107,12 +114,19 @@ export function MultiPanel({
             <Button type="button" disabled={!running || preparing} onClick={actions.injectAll}>
               Inject All
             </Button>
-            <Button type="button" variant="outline" disabled={!running} onClick={actions.stopQueue}>
+            <Button
+              type="button"
+              variant="outline"
+              color="primary"
+              disabled={!running}
+              onClick={actions.stopQueue}
+            >
               Stop Antrean
             </Button>
             <Button
               type="button"
-              variant="destructive"
+              variant="soft"
+              color="destructive"
               disabled={!running}
               onClick={actions.cancelAll}
             >
@@ -126,17 +140,17 @@ export function MultiPanel({
             </p>
           ) : null}
           {heldReason !== null ? (
-            <p role="status" className="text-sm text-amber-600 dark:text-amber-400">
+            <p role="status" className="text-sm text-warning-text">
               Draft menahan inject: {heldReason}
             </p>
           ) : null}
           {running && snapshot?.queueStopped ? (
-            <p role="status" className="text-sm text-amber-600 dark:text-amber-400">
+            <p role="status" className="text-sm text-warning-text">
               Antrean sedang berhenti: tekan Inject All atau nyalakan Auto Inject untuk melanjutkan.
             </p>
           ) : null}
           {multi.error ? (
-            <Alert variant="destructive">
+            <Alert color="destructive" icon={false}>
               <AlertDescription>{multi.error}</AlertDescription>
             </Alert>
           ) : null}
@@ -166,7 +180,8 @@ export function MultiPanel({
                 key={key}
                 type="button"
                 size="sm"
-                variant={active ? 'default' : 'outline'}
+                variant={active ? 'solid' : 'outline'}
+                color="primary"
                 aria-pressed={active}
                 className={cn(!active && tone)}
                 onClick={() => setFilter(active ? null : key)}

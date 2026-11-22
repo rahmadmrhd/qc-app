@@ -11,10 +11,13 @@ const QR_EDIT: GuidePermission = { module: 'qrcode', level: 'edit' };
  * bingkai, dan ukuran dijelaskan dalam satu langkah). Izin `qrcode-dasar` = `qrcode: view` (modul global, tanpa
  * lokasi); tombol Buat konfigurasi dan panduan formulir berizin `qrcode: edit`, jadi pembaca saja hanya melihat dua
  * langkah daftar. `qrcode-dasar` mengecualikan `/qrcode/new` (`halamanKecuali`) agar banner formulir tidak jatuh ke
- * banner daftar. Target `data-tour`: `qr-header`, `qr-table`, `qr-new` di `routes/_app/qrcode/index.tsx`; `qr-items`,
- * `qr-preset`, `qr-name`, `qr-source`, `qr-label`, `qr-preview`, `qr-save` di
- * `modules/qrcode/components/qr-design-form.tsx` (`qr-logo`, `qr-frame`, `qr-size` tetap ada di kode tetapi tak lagi
- * disorot sendiri).
+ * banner daftar; begitu pula `/qrcode/<id>` (View, `$id` = segmen berparameter) dan rute di bawahnya. Target `data-tour`:
+ * `qr-header` (`ListPage tour`), `qr-new` (`createAction.tour`), `qr-table` di `routes/_app/qrcode/index.tsx`;
+ * `qr-items`, `qr-preset`, `qr-name`, `qr-source`, `qr-label`, `qr-preview` di
+ * `modules/qrcode/components/qr-design-form.tsx` dan `qr-save` (`FormPage saveTour`) di `qr-design-form-page.tsx`
+ * (`qr-logo`, `qr-frame`, `qr-size` tetap ada di kode tetapi tak lagi disorot sendiri). Formulirnya bertab (Item,
+ * Sumber link, Isi label, Logo dan bingkai, Ukuran): langkah yang targetnya berada di tab lain memakai
+ * `buka: { tab }` agar mesin tur membuka tab itu lebih dulu (tanpa mengisi apa pun).
  *
  * Form QR baru hanya menampilkan bagian "Item Manual Book" sampai pengguna memilih item (dan konfigurasi default
  * bila diminta), padahal tur tidak mengisi field apa pun. Dua langkah awal `qrcode-buat` memakai `advance: 'wait'`:
@@ -30,7 +33,8 @@ export const QRCODE_DASAR: GuideEntry = {
   grup: 'QR Code Manual Book',
   izin: QR_VIEW,
   halaman: '/qrcode',
-  halamanKecuali: ['/qrcode/new'],
+  // Semua rute di bawah `/qrcode/<apa pun>` (formulir baru, View, ubah, dan `/qrcode/default*`) punya halaman sendiri.
+  halamanKecuali: ['/qrcode/$id'],
   steps: [
     {
       target: 'qr-header',
@@ -83,11 +87,14 @@ export const QRCODE_BUAT: GuideEntry = {
     },
     {
       target: 'qr-source',
+      // Formulir bertab: Sumber link satu tab dengan item dan nama (tab Detail); tur membukanya (hanya memilih tab, tak mengisi apa pun).
+      buka: { tab: 'detail' },
       text: 'Sumber link: unggah PDF manualnya (maksimal 10 MB) atau salin dari Google Drive. QR akan mengarah ke PDF ini, dan PDF-nya bisa dibuka siapa saja yang punya link, jadi pastikan isinya memang boleh dibagikan.',
       advance: 'next',
     },
     {
       target: 'qr-label',
+      buka: { tab: 'label' },
       text: 'Isi label: Title, Subtitle, dan Footer, lengkap dengan ukuran huruf dan gaya teks; bagian yang terkunci otomatis mengikuti Nama Manual Book. Di bawahnya ada logo di tengah QR (dari pustaka logo bersama, maksimal 15% luas QR), bingkai (tanpa bingkai, siku di sudut, atau kotak penuh), dan ukuran serta jarak tiap bagian di label 3 × 3 cm.',
       advance: 'next',
     },

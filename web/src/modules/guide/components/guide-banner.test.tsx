@@ -30,7 +30,7 @@ vi.mock('@/modules/push/components/push-onboarding', () => ({
   useBlockingOnboardingActive: () => state.blocking,
 }));
 
-import { GuideBanner } from './guide-banner';
+import { GuideBanner, pageLabelFor } from './guide-banner';
 
 function entry(overrides: Partial<GuideEntry> = {}): GuideEntry {
   return {
@@ -62,6 +62,11 @@ describe('GuideBanner', () => {
     render(<GuideBanner />);
     const banner = screen.getByTestId('guide-banner');
     expect(banner).toHaveTextContent('Pertama kali di Serah Terima?');
+    expect(banner).toHaveAttribute('data-slot', 'alert');
+    expect(banner).toHaveAttribute('data-color', 'info');
+    expect(banner).toHaveAttribute('role', 'status');
+    // Teks kecil di atas tint alert memakai --foreground (lolos AA); muted-foreground hanya 4,49:1.
+    expect(banner.innerHTML).not.toContain('text-muted-foreground');
     expect(banner).toHaveTextContent('Ada panduan 4 langkah.');
     expect(screen.getByRole('button', { name: 'Mulai' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Nanti' })).toBeInTheDocument();
@@ -164,5 +169,20 @@ describe('GuideBanner', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Nanti' }));
     expect(screen.queryByTestId('guide-banner')).toBeNull();
     vi.restoreAllMocks();
+  });
+});
+
+describe('pageLabelFor', () => {
+  test('label anak generik digabung dengan label induknya', () => {
+    expect(pageLabelFor('/serial', 'Judul')).toBe('Daftar Serial Number');
+    expect(pageLabelFor('/serial/reports', 'Judul')).toBe('Laporan Serial Number');
+    expect(pageLabelFor('/serial/settings', 'Judul')).toBe('Pengaturan Serial Number');
+  });
+
+  test('label anak spesifik dan butir tingkat atas tetap apa adanya; tak dikenal = judul', () => {
+    expect(pageLabelFor('/item/brands', 'Judul')).toBe('Merk');
+    expect(pageLabelFor('/handover', 'Judul')).toBe('Serah Terima');
+    expect(pageLabelFor('/tidak-ada', 'Judul')).toBe('Judul');
+    expect(pageLabelFor(undefined, 'Judul')).toBe('Judul');
   });
 });

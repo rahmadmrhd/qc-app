@@ -1,5 +1,6 @@
 import type { DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
+import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import type { ItemStatus } from '@shared/contract';
 
 export interface CustomerRecord {
@@ -11,6 +12,9 @@ export interface CustomerRecord {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** ISO UTC; `''` = hidup (soft delete). */
+  deletedAt: string;
+  deletedBy: string;
 }
 
 interface CustomerRow {
@@ -21,9 +25,14 @@ interface CustomerRow {
   created_at: string;
   updated_at: string;
   updated_by: string;
+  deleted_at: string;
+  deleted_by: string;
 }
 
+/** Kolom yang ditulis saat menyisipkan customer baru (kolom `deleted_*` memakai bawaan = hidup). */
 const CUSTOMER_COLUMNS = 'id, name, `key`, status, created_at, updated_at, updated_by';
+/** Kolom yang dibaca: kolom tulis + jejak penghapusan. */
+const CUSTOMER_READ_COLUMNS = `${CUSTOMER_COLUMNS}, deleted_at, deleted_by`;
 
 function toCustomer(row: CustomerRow): CustomerRecord {
   return {
@@ -34,12 +43,26 @@ function toCustomer(row: CustomerRow): CustomerRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
+    deletedAt: row.deleted_at,
+    deletedBy: row.deleted_by,
   };
 }
 
-/** Kueri seluruh customer untuk digabung ke `batch()` pemanggil (langsung dari MariaDB, tanpa cache); lihat `customersFromResult`. */
+/**
+ * Kueri customer HIDUP untuk digabung ke `batch()` pemanggil (langsung dari MariaDB, tanpa cache); lihat
+ * `customersFromResult`. Customer terhapus tidak ikut: saran, keunikan, dan penulisan task memperlakukannya tak ada.
+ */
 export function customersStatement(env: Env): DbStatement {
-  return env.DB.prepare(`SELECT ${CUSTOMER_COLUMNS} FROM customers`);
+  return env.DB.prepare(`SELECT ${CUSTOMER_READ_COLUMNS} FROM customers WHERE ${liveWhere()}`);
+}
+
+/** Customer TERHAPUS (halaman Customer, tampilan "Terhapus"). */
+export async function listDeletedCustomers(env: Env): Promise<CustomerRecord[]> {
+  return customersFromResult(
+    await env.DB.prepare(
+      `SELECT ${CUSTOMER_READ_COLUMNS} FROM customers WHERE ${deletedWhere()}`,
+    ).all<CustomerRow>(),
+  );
 }
 
 /** Hasil `customersStatement` sebagai rekaman customer. */
@@ -50,7 +73,7 @@ export function customersFromResult(result: { results: unknown[] }): CustomerRec
 }
 
 /**
- * Seluruh customer, dibaca langsung dari MariaDB (tanpa cache). `options.fresh` diabaikan (tersisa agar pemanggil
+ * Seluruh customer HIDUP, dibaca langsung dari MariaDB (tanpa cache). `options.fresh` diabaikan (tersisa agar pemanggil
  * di modul yang belum dipindah tetap terkompilasi; dibuang bersama cache di T13).
  */
 export async function listCustomers(
@@ -60,8 +83,11 @@ export async function listCustomers(
   return customersFromResult(await customersStatement(env).all<CustomerRow>());
 }
 
+/** Customer HIDUP menurut kunci; customer terhapus diabaikan (nama yang sama membuat customer baru). */
 export async function findCustomerByKey(env: Env, key: string): Promise<CustomerRecord | null> {
-  const row = await env.DB.prepare(`SELECT ${CUSTOMER_COLUMNS} FROM customers WHERE \`key\` = ?`)
+  const row = await env.DB.prepare(
+    `SELECT ${CUSTOMER_READ_COLUMNS} FROM customers WHERE \`key\` = ? AND ${liveWhere()}`,
+  )
     .bind(key)
     .first<CustomerRow>();
   return row ? toCustomer(row) : null;
@@ -133,9 +159,9 @@ export function setCustomerStatusStmt(
     .bind(customer.status, customer.updatedAt, customer.updatedBy, customer.id);
 }
 
-/** Baris customer terkini menurut id (dibaca di akhir batch untuk DTO). */
+/** Baris customer (hidup atau terhapus) menurut id: pemanggil menilai `deletedAt` sendiri. */
 export function customerByIdStmt(db: Preparer, id: string): DbStatement {
-  return db.prepare(`SELECT ${CUSTOMER_COLUMNS} FROM customers WHERE id = ?`).bind(id);
+  return db.prepare(`SELECT ${CUSTOMER_READ_COLUMNS} FROM customers WHERE id = ?`).bind(id);
 }
 
 export function updateCustomerStmt(db: Preparer, customer: CustomerRecord): DbStatement {

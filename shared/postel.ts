@@ -2,6 +2,7 @@
  * Fungsi murni Postel (stiker 4b; spek 2026-11-11): tanggal WIB, kondisi masa berlaku, peran nomor, tahap
  * peringatan email, dan nama otomatis. Murni: tanpa API runtime/DOM.
  */
+import { MAX_FILE_BYTES } from './files';
 import { normalizeKey } from './items';
 import { manualBookNameFromTypes } from './manual-book';
 
@@ -12,7 +13,7 @@ export const POSTEL_LIMITS = {
   numbersMax: 50,
   itemsMax: 200,
   attachmentsMax: 10,
-  attachmentMaxBytes: 10_485_760,
+  attachmentMaxBytes: MAX_FILE_BYTES,
   thresholdsMax: 5,
   thresholdDaysMax: 730,
   repeatDaysMax: 365,
@@ -185,17 +186,28 @@ export function comparePostels(
 
 /**
  * Penyaringan daftar di klien: `query` (tak peka huruf, `normalizeKey`) dicari pada nama, SEMUA nomor (Aktif dan Lama),
- * dan model item; `condition` `soon`/`expired` hanya menyisakan catatan berkondisi itu (`all` = semua). Urutan masukan
- * dipertahankan.
+ * dan model item. Kondisi: `conditions` (banyak nilai = salah satu dari; kosong atau tak ada = semua; keputusan
+ * pemilik 2026-11-22) atau, bila `conditions` tak diberikan, `condition` tunggal `soon`/`expired` (`all` = semua).
+ * Urutan masukan dipertahankan.
  */
 export function filterPostels<T extends PostelListable>(
   postels: readonly T[],
-  filter: { query: string; condition: PostelConditionFilter },
+  filter: {
+    query: string;
+    condition?: PostelConditionFilter;
+    conditions?: readonly PostelCondition[];
+  },
 ): T[] {
   const term = normalizeKey(filter.query);
+  const conditions = filter.conditions ?? [];
+  const single = filter.condition ?? 'all';
+  const matchesCondition = (condition: PostelCondition) =>
+    conditions.length > 0
+      ? conditions.includes(condition)
+      : single === 'all' || condition === single;
   return postels.filter(
     (postel) =>
-      (filter.condition === 'all' || postel.condition === filter.condition) &&
+      matchesCondition(postel.condition) &&
       (term === '' ||
         normalizeKey(postel.name).includes(term) ||
         postel.numbers.some((number) => normalizeKey(number).includes(term)) ||

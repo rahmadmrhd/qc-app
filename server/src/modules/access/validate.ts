@@ -1,7 +1,8 @@
 import type { ObjectReader } from '@server/core/validate';
-import { readObject } from '@server/core/validate';
+import { readFilterList, readObject } from '@server/core/validate';
 import type { Assignment } from '@shared/assignments';
 import { assignmentKey } from '@shared/assignments';
+import type { ListStatusFilter } from '@shared/batch';
 import type { BuAssignment } from '@shared/business-units';
 import { ALL_BU_KEY } from '@shared/business-units';
 import type {
@@ -170,6 +171,7 @@ export function parseAuditCursor(cursor: string): { ts: string; id: number } | n
 export function validateListAudit(raw: unknown): ListAuditPageInput {
   const reader = readObject(raw ?? {});
   const action = reader.str('action', { max: 40 });
+  const actions = readFilterList(reader, 'actions', { maxLength: 40 });
   const query = reader.str('query', { max: 100 });
   const cursor = reader.raw('cursor');
   if (
@@ -193,6 +195,7 @@ export function validateListAudit(raw: unknown): ListAuditPageInput {
     limit: limit as number,
     action,
     query,
+    ...(actions ? { actions } : {}),
     ...(typeof cursor === 'string' ? { cursor } : {}),
   };
 }
@@ -244,6 +247,33 @@ export function validateSetBusinessUnitStatus(raw: unknown): SetBusinessUnitStat
 export function validateDeleteRole(raw: unknown): DeleteRoleInput {
   const reader = readObject(raw);
   const id = reader.str('id', { required: true });
+  reader.done();
+  return { id };
+}
+
+const LIST_STATUS_VALUES = ['active', 'inactive', 'deleted', 'all'] as const;
+
+/**
+ * Daftar pengguna/role/lokasi/BU: input boleh kosong; `status` opsional (`deleted` hanya bagi `access: manage`, dicek di
+ * service). Satu validator untuk keempat model (bentuk masukannya sama).
+ */
+export function validateListWithStatus(raw: unknown): { status?: ListStatusFilter } | null {
+  if (raw === null || raw === undefined) return null;
+  const reader = readObject(raw);
+  const value = reader.raw('status');
+  if (value === undefined || value === null || value === '') {
+    reader.done();
+    return {};
+  }
+  const status = reader.oneOf('status', LIST_STATUS_VALUES);
+  reader.done();
+  return { status };
+}
+
+/** `id` saja (get, remove, restore) untuk pengguna, role, lokasi, dan BU. */
+export function validateIdInput(raw: unknown): { id: string } {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true, max: 100 });
   reader.done();
   return { id };
 }

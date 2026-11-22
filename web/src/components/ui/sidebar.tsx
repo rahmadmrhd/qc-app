@@ -4,6 +4,8 @@ import { cn } from "cn"
 import { Slot } from "radix-ui"
 
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useSidebarRange } from "@/hooks/use-sidebar-range"
+import { isSidebarOverlayViewport } from "@/lib/layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
@@ -22,8 +24,6 @@ import {
 } from "@/components/ui/tooltip"
 import { PanelLeftIcon } from "lucide-react"
 
-const SIDEBAR_COOKIE_NAME = "sidebar_state"
-const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
@@ -36,6 +36,11 @@ type SidebarContextProps = {
   openMobile: boolean
   setOpenMobile: (open: boolean) => void
   isMobile: boolean
+  /**
+   * Rentang overlay (768-959 px): sidebar yang terbuka melayang di atas isi dan keadaan tertutupnya = rel ikon yang
+   * DIPOTONG (lebar kontainer 3 rem, isi tetap selebar penuh), bukan mode ikon `data-collapsible="icon"`.
+   */
+  overlay: boolean
   toggleSidebar: () => void
 }
 
@@ -64,6 +69,7 @@ function SidebarProvider({
   onOpenChange?: (open: boolean) => void
 }) {
   const isMobile = useIsMobile()
+  const overlay = useSidebarRange() === "overlay"
   const [openMobile, setOpenMobile] = React.useState(false)
 
   // This is the internal state of the sidebar.
@@ -78,9 +84,6 @@ function SidebarProvider({
       } else {
         _setOpen(openState)
       }
-
-      // This sets the cookie to keep the sidebar state.
-      document.cookie = `${SIDEBAR_COOKIE_NAME}=${openState}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
     },
     [setOpenProp, open]
   )
@@ -116,11 +119,12 @@ function SidebarProvider({
       open,
       setOpen,
       isMobile,
+      overlay,
       openMobile,
       setOpenMobile,
       toggleSidebar,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+    [state, open, setOpen, isMobile, overlay, openMobile, setOpenMobile, toggleSidebar]
   )
 
   return (
@@ -159,7 +163,7 @@ function Sidebar({
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const { isMobile, state, overlay, openMobile, setOpenMobile, setOpen } = useSidebar()
 
   if (collapsible === "none") {
     return (
@@ -184,6 +188,8 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
+          // Tanpa fokus otomatis ke kolom cari: papan ketik tak boleh muncul sendiri saat panel dibuka.
+          onOpenAutoFocus={(event) => event.preventDefault()}
           className="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
           style={
             {
@@ -206,17 +212,48 @@ function Sidebar({
     <div
       className="group peer hidden text-sidebar-foreground md:block"
       data-state={state}
-      data-collapsible={state === "collapsed" ? collapsible : ""}
+      // Rentang overlay: tak ada mode ikon. Menutup hanya menggeser lebar kontainer (isi tetap selebar penuh dan
+      // terpotong), jadi tak ada kelas `group-data-[collapsible=icon]` yang berganti seketika di tengah transisi.
+      data-collapsible={state === "collapsed" && !overlay ? collapsible : ""}
       data-variant={variant}
       data-side={side}
       data-slot="sidebar"
+      onKeyDown={(event) => {
+        // Rentang overlay: Escape menutup dan fokus kembali ke pemicu. Menu bertumpuk (Radix) yang sudah menangani
+        // Escape menandai `defaultPrevented`, jadi Escape untuk menutup menu tak ikut menutup sidebar.
+        if (event.key !== "Escape" || event.defaultPrevented) return
+        if (state !== "expanded" || !isSidebarOverlayViewport()) return
+        event.preventDefault()
+        setOpen(false)
+        document.querySelector<HTMLElement>('[data-sidebar="trigger"]')?.focus()
+      }}
+      onBlur={(event) => {
+        // Rentang overlay: fokus keluar dari sidebar (Tab ke isi) menutupnya, agar overlay tak tertinggal terbuka.
+        const next = event.relatedTarget as Node | null
+        if (state !== "expanded" || !isSidebarOverlayViewport()) return
+        if (!next || event.currentTarget.contains(next)) return
+        // Pemicu sendiri mengurus buka/tutupnya (klik = toggle): jangan menutup lalu dibuka lagi.
+        if ((next as HTMLElement).closest?.('[data-sidebar="trigger"]')) return
+        setOpen(false)
+      }}
     >
+      {/* Rentang overlay: klik di luar sidebar yang terbuka menutupnya. Selalu ada di rentang itu dan memudar lewat
+          opacity (bukan hidden <-> block yang tak dapat bertransisi), tak menangkap klik saat sidebar tertutup. */}
+      <div
+        data-slot="sidebar-backdrop"
+        aria-hidden
+        onClick={() => setOpen(false)}
+        className="pointer-events-none fixed inset-0 z-[35] hidden bg-black/20 opacity-0 transition-opacity duration-200 ease-linear sidebar-overlay:block sidebar-overlay:group-data-[state=expanded]:pointer-events-auto sidebar-overlay:group-data-[state=expanded]:opacity-100"
+      />
       {/* This is what handles the sidebar gap on desktop */}
       <div
         data-slot="sidebar-gap"
         className={cn(
           "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
           "group-data-[collapsible=offcanvas]:w-0",
+          // Rentang overlay: ruang samping tetap selebar rel ikon walau sidebar terbuka (sidebar melayang di atas isi),
+          // sehingga `<main>` >= 704 px dan `useIsDesktop` tak berbalik saat sidebar dibuka/ditutup (spek B12/K3).
+          "sidebar-overlay:w-(--sidebar-width-icon)",
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
             ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4)))]"
@@ -227,7 +264,10 @@ function Sidebar({
         data-slot="sidebar-container"
         data-side={side}
         className={cn(
-          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
+          // Rentang overlay: z-40 tetap (rel tertutup hanya menempati ruang samping 3 rem, tak menimpa header), lebar
+          // kontainer 3 rem (rel) <-> 16 rem (terbuka) = satu-satunya properti yang beranimasi bersama bayangan
+          // (hanya saat terbuka, memudar saat menutup agar tak bocor di sebelah rel).
+          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) sidebar-overlay:z-40 sidebar-overlay:w-(--sidebar-width-icon) sidebar-overlay:overflow-hidden sidebar-overlay:group-data-[state=expanded]:w-(--sidebar-width) sidebar-overlay:group-data-[state=expanded]:shadow-xl transition-[left,right,width,box-shadow] duration-200 ease-linear data-[side=left]:left-0 data-[side=left]:group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)] data-[side=right]:right-0 data-[side=right]:group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)] md:flex",
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+(--spacing(4))+2px)]"
@@ -239,7 +279,7 @@ function Sidebar({
         <div
           data-sidebar="sidebar"
           data-slot="sidebar-inner"
-          className="flex size-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
+          className="flex size-full flex-col bg-sidebar sidebar-overlay:w-(--sidebar-width) sidebar-overlay:shrink-0 group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:shadow-sm group-data-[variant=floating]:ring-1 group-data-[variant=floating]:ring-sidebar-border"
         >
           {children}
         </div>
@@ -320,7 +360,7 @@ function SidebarInput({
     <Input
       data-slot="sidebar-input"
       data-sidebar="input"
-      className={cn("h-8 w-full bg-background shadow-none", className)}
+      className={cn("h-8 touch:h-11 w-full bg-background shadow-none", className)}
       {...props}
     />
   )
@@ -399,7 +439,7 @@ function SidebarGroupLabel({
       data-slot="sidebar-group-label"
       data-sidebar="group-label"
       className={cn(
-        "flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
+        "flex h-8 shrink-0 items-center rounded-md px-2 text-xs font-medium text-sidebar-foreground/70 ring-sidebar-ring outline-hidden transition-[margin,opacity] duration-200 ease-linear group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0 sidebar-overlay:group-data-[state=collapsed]:-mt-8 sidebar-overlay:group-data-[state=collapsed]:opacity-0 focus-visible:ring-2 [&>svg]:size-4 [&>svg]:shrink-0",
         className
       )}
       {...props}
@@ -464,7 +504,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
 }
 
 const sidebarMenuButtonVariants = cva(
-  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
+  "peer/menu-button group/menu-button flex w-full items-center gap-2 overflow-hidden rounded-md p-2 text-left text-sm ring-sidebar-ring outline-hidden transition-[width,height,padding] group-has-data-[sidebar=menu-action]/menu-item:pr-8 group-data-[collapsible=icon]:size-8! group-data-[collapsible=icon]:p-2! sidebar-overlay:group-data-[state=collapsed]:w-8 sidebar-overlay:duration-200 sidebar-overlay:ease-linear hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-open:hover:bg-sidebar-accent data-open:hover:text-sidebar-accent-foreground data-active:bg-sidebar-accent data-active:font-medium data-active:text-sidebar-accent-foreground [&_svg]:size-4 [&_svg]:shrink-0 [&>span:last-child]:truncate",
   {
     variants: {
       variant: {
@@ -473,8 +513,8 @@ const sidebarMenuButtonVariants = cva(
           "bg-background shadow-[0_0_0_1px_var(--sidebar-border)] hover:bg-sidebar-accent hover:text-sidebar-accent-foreground hover:shadow-[0_0_0_1px_var(--sidebar-accent)]",
       },
       size: {
-        default: "h-8 text-sm",
-        sm: "h-7 text-xs",
+        default: "h-8 touch:h-11 text-sm",
+        sm: "h-7 touch:h-11 text-xs",
         lg: "h-12 text-sm group-data-[collapsible=icon]:p-0!",
       },
     },
@@ -664,7 +704,7 @@ function SidebarMenuSubButton({
       data-size={size}
       data-active={isActive}
       className={cn(
-        "flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground ring-sidebar-ring outline-hidden group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[size=md]:text-sm data-[size=sm]:text-xs data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground",
+        "flex h-7 touch:h-11 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground ring-sidebar-ring outline-hidden group-data-[collapsible=icon]:hidden hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 data-[size=md]:text-sm data-[size=sm]:text-xs data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground",
         className
       )}
       {...props}

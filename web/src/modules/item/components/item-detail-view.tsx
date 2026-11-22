@@ -1,8 +1,11 @@
 import type { ItemDto, ItemPostelDto } from '@shared/contract';
 import { firmwareOptionsFor } from '@shared/firmware';
-import type { ReactNode } from 'react';
+import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
+import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
+import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
+import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
 import { PostelConditionBadge } from '@/modules/postel/components/postel-condition-badge';
 import { formatPostelDate } from '@/modules/postel/lib/condition';
@@ -12,11 +15,22 @@ import { NoManualBookNote } from './manual-book-note';
 import { NoPostelNote } from './no-postel-note';
 import { StickerInstructionsView } from './sticker-instructions-view';
 
+export const ITEM_TABS = ['detail', 'gambar', 'stiker', 'manual-postel'] as const;
+export type ItemTab = (typeof ITEM_TABS)[number];
+
 export interface ItemDetailViewProps {
   item: ItemDto;
   canEdit: boolean;
   canManage: boolean;
+  /** Boleh memulihkan item terhapus (pemegang `manage`). */
+  canRestore?: boolean;
+  /** Boleh membuka daftar Serial Number (`serial: view`): tautan "Lihat Serial Number item ini". */
+  canViewSerial?: boolean;
   statusPending: boolean;
+  restorePending?: boolean;
+  /** Tautan ke View merk / BU; tidak diberikan bila user tak berhak membukanya. */
+  openBrandHref?: ((brandId: string) => string) | undefined;
+  openBusinessUnitHref?: ((buId: string) => string) | undefined;
   /** Tautan ke konfigurasi QR Manual Book item ini; tidak diberikan bila user tak berhak membukanya. */
   openManualBookHref?: ((designId: string) => string | null) | undefined;
   /**
@@ -26,158 +40,101 @@ export interface ItemDetailViewProps {
   postel?: ItemPostelDto | null | undefined;
   /** Tautan ke halaman Postel; tidak diberikan/`null` bila user tak berhak membukanya. */
   openPostelHref?: ((postelId: string) => string | null) | undefined;
-  onBack: () => void;
+  /** Tab aktif terkendali (search param `tab`). */
+  tab?: ItemTab | undefined;
+  onTabChange?: ((tab: ItemTab) => void) | undefined;
   onEdit: () => void;
   onToggleStatus: () => void;
+  onDelete?: (() => void) | undefined;
+  onRestore?: (() => void) | undefined;
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="space-y-3 rounded-lg border p-4">
-      <h2 className="text-base font-semibold">{title}</h2>
-      {children}
-    </section>
-  );
-}
+const textLink = 'text-info-text underline-offset-4 hover:underline';
 
-/** Halaman baca-saja item; QC memakainya sebagai acuan kerja (instruksi stiker, kelengkapan, spesifikasi). */
+/** Halaman baca-saja item; QC memakai tab Instruksi Stiker sebagai acuan kerja. */
 export function ItemDetailView({
   item,
   canEdit,
   canManage,
+  canRestore = false,
+  canViewSerial = false,
   statusPending,
+  restorePending = false,
+  openBrandHref,
+  openBusinessUnitHref,
   openManualBookHref,
   postel,
   openPostelHref,
-  onBack,
+  tab,
+  onTabChange,
   onEdit,
   onToggleStatus,
+  onDelete,
+  onRestore,
 }: ItemDetailViewProps) {
+  const deleted = item.deleted !== undefined;
   const postelHref = postel ? (openPostelHref?.(postel.id) ?? null) : null;
-  return (
-    <div className="max-w-4xl space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-semibold">
-            {item.brand} {item.model}
-          </h1>
-          <div className="flex flex-wrap items-center gap-2">
-            {item.isCountryLock ? <Badge variant="outline">Country lock</Badge> : null}
-            {item.firmware !== '' ? (
-              <Badge variant="outline">
-                Firmware:{' '}
-                {firmwareOptionsFor(item.brand).find((o) => o.code === item.firmware)?.label ??
-                  item.firmware}
-              </Badge>
-            ) : null}
-            {item.proofRequired ? (
-              <Badge variant="outline">Wajib foto (min {item.proofMin})</Badge>
-            ) : null}
-            {item.status === 'inactive' ? <Badge variant="secondary">Nonaktif</Badge> : null}
-            {item.businessUnits.map((bu) => (
-              <Badge key={bu.id} variant="outline" title={bu.name}>
-                {bu.code}
-              </Badge>
-            ))}
-          </div>
-          {item.aliases.length > 0 ? (
-            <p className="text-sm text-muted-foreground">
-              <span className="sr-only">Nama lain: </span>
-              {item.aliases.join(', ')}
-            </p>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={onBack}>
-            Kembali ke daftar
-          </Button>
-          {canEdit ? <Button onClick={onEdit}>Ubah</Button> : null}
-          {canManage ? (
-            <Button variant="ghost" disabled={statusPending} onClick={onToggleStatus}>
-              {item.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
-            </Button>
-          ) : null}
-        </div>
-      </div>
+  // Merk terhapus: View-nya hanya terbuka bagi pemegang izin Pulihkan (soft delete 4.4).
+  const brandHref = item.brandDeleted && !canRestore ? undefined : openBrandHref?.(item.brandId);
+  const firmwareLabel =
+    item.firmware === ''
+      ? ''
+      : (firmwareOptionsFor(item.brand).find((o) => o.code === item.firmware)?.label ??
+        item.firmware);
 
-      <Section title="Gambar lampiran">
-        {item.attachments.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Belum ada gambar.</p>
-        ) : (
-          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
-            {item.attachments.map((id, index) => (
-              <li key={id}>
-                <ImageThumb id={id} alt={`Gambar ${index + 1}`} className="aspect-square w-full" />
-              </li>
-            ))}
-          </ul>
-        )}
-      </Section>
-
-      <Section title="Manual Book">
-        {item.manualBook === null ? (
-          <NoManualBookNote className="text-sm" />
-        ) : (
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="font-medium">{item.manualBook.name}</span>
-            <Badge variant="outline">{`v${item.manualBook.version}`}</Badge>
-            <Badge variant={item.manualBook.status === 'active' ? 'default' : 'secondary'}>
-              {STICKER_STATUS_LABEL[item.manualBook.status]}
-            </Badge>
-            {openManualBookHref?.(item.manualBook.designId) ? (
-              <a
-                href={openManualBookHref(item.manualBook.designId) ?? undefined}
-                className="underline underline-offset-2"
-              >
-                Buka konfigurasi QR
-              </a>
-            ) : null}
-          </div>
-        )}
-      </Section>
-
-      {postel === undefined ? (
-        // Tanpa `sticker: view` ringkasan Postel disembunyikan (spek 4b butir 10), tetapi keterangan "Belum ada
-        // Postel" tampil bagi semua pembaca item seperti Manual Book (keputusan pemilik 2026-11-12).
-        item.hasPostel ? null : (
-          <Section title="Postel">
-            <NoPostelNote className="text-sm" />
-          </Section>
-        )
-      ) : (
-        <Section title="Postel">
-          {postel === null ? (
-            <NoPostelNote className="text-sm" />
-          ) : (
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-medium">{postel.name}</span>
-              <Badge variant="outline">{postel.number}</Badge>
-              <span className="text-muted-foreground">
-                Berlaku sampai {formatPostelDate(postel.expiresOn)}
-              </span>
-              <PostelConditionBadge condition={postel.condition} />
-              {postelHref ? (
-                <a href={postelHref} className="underline underline-offset-2">
-                  Buka Postel
-                </a>
-              ) : null}
-            </div>
-          )}
-        </Section>
-      )}
-
-      <Section title="Instruksi stiker">
-        <StickerInstructionsView
-          photos={item.stickerPhotos}
-          canEdit={canEdit}
-          editHref={`/item/${encodeURIComponent(item.id)}/edit`}
-          onEdit={onEdit}
-          buLabels={Object.fromEntries(item.businessUnits.map((bu) => [bu.id, bu.code]))}
-          multiBu={item.businessUnits.length > 1}
+  const detailTab = (
+    <div className="space-y-6">
+      <ViewSection title="Identitas">
+        <DetailList
+          items={[
+            {
+              label: 'Merk',
+              value: (
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  {brandHref ? (
+                    <a href={brandHref} className={textLink}>
+                      {item.brand}
+                    </a>
+                  ) : (
+                    item.brand
+                  )}
+                  {item.brandDeleted ? <DeletedBadge /> : null}
+                </span>
+              ),
+            },
+            { label: 'Tipe', value: item.model },
+            {
+              label: 'Business Unit',
+              value:
+                item.businessUnits.length === 0 ? null : (
+                  <span className="inline-flex flex-wrap gap-2">
+                    {item.businessUnits.map((bu) => {
+                      const href = openBusinessUnitHref?.(bu.id);
+                      return href ? (
+                        <a key={bu.id} href={href} title={bu.name} className={textLink}>
+                          {bu.code}
+                        </a>
+                      ) : (
+                        <Badge key={bu.id} variant="outline" color="primary" title={bu.name}>
+                          {bu.code}
+                        </Badge>
+                      );
+                    })}
+                  </span>
+                ),
+            },
+            { label: 'Nama lain', value: item.aliases.join(', ') },
+            { label: 'Country lock', value: item.isCountryLock ? 'Ya' : 'Tidak' },
+            { label: 'Firmware', value: firmwareLabel, hidden: !item.isCountryLock },
+            {
+              label: 'Wajib foto bukti',
+              value: item.proofRequired ? `Ya (min ${item.proofMin})` : 'Tidak',
+            },
+          ]}
         />
-      </Section>
+      </ViewSection>
 
-      <Section title="Kelengkapan aksesoris">
+      <ViewSection title="Kelengkapan aksesoris">
         {item.accessories.length === 0 ? (
           <p className="text-sm text-muted-foreground">Belum ada kelengkapan.</p>
         ) : (
@@ -188,15 +145,182 @@ export function ItemDetailView({
             ))}
           </ul>
         )}
-      </Section>
+      </ViewSection>
 
-      <Section title="Detail dan spesifikasi">
+      <ViewSection title="Detail dan spesifikasi">
         {item.detail.trim() === '' ? (
           <p className="text-sm text-muted-foreground">Belum ada detail.</p>
         ) : (
           <MarkdownView source={item.detail} />
         )}
-      </Section>
+      </ViewSection>
     </div>
+  );
+
+  const imagesTab = (
+    <ViewSection title="Gambar lampiran">
+      {item.attachments.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Belum ada gambar.</p>
+      ) : (
+        <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-5">
+          {item.attachments.map((id, index) => (
+            <li key={id}>
+              <ImageThumb id={id} alt={`Gambar ${index + 1}`} className="aspect-square w-full" />
+            </li>
+          ))}
+        </ul>
+      )}
+    </ViewSection>
+  );
+
+  const stickerTab = (
+    <StickerInstructionsView
+      photos={item.stickerPhotos}
+      canEdit={canEdit && !deleted}
+      editHref={`/item/${encodeURIComponent(item.id)}/edit`}
+      onEdit={onEdit}
+      buLabels={Object.fromEntries(item.businessUnits.map((bu) => [bu.id, bu.code]))}
+      multiBu={item.businessUnits.length > 1}
+    />
+  );
+
+  const manualHref = item.manualBook ? openManualBookHref?.(item.manualBook.designId) : null;
+  const manualPostelTab = (
+    <div className="space-y-6">
+      <ViewSection title="Manual Book">
+        {item.manualBook === null ? (
+          <NoManualBookNote className="text-sm" />
+        ) : (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-medium">{item.manualBook.name}</span>
+            <Badge variant="outline" color="primary">{`v${item.manualBook.version}`}</Badge>
+            <ActiveStatusBadge
+              status={item.manualBook.status}
+              label={STICKER_STATUS_LABEL[item.manualBook.status]}
+            />
+            {manualHref ? (
+              <a href={manualHref} className={textLink}>
+                Buka konfigurasi QR
+              </a>
+            ) : null}
+          </div>
+        )}
+      </ViewSection>
+
+      {postel === undefined ? (
+        // Tanpa `sticker: view` ringkasan Postel disembunyikan (spek 4b butir 10), tetapi keterangan "Belum ada
+        // Postel" tampil bagi semua pembaca item seperti Manual Book (keputusan pemilik 2026-11-12).
+        item.hasPostel ? null : (
+          <ViewSection title="Postel">
+            <NoPostelNote className="text-sm" />
+          </ViewSection>
+        )
+      ) : (
+        <ViewSection title="Postel">
+          {postel === null ? (
+            <NoPostelNote className="text-sm" />
+          ) : (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-medium">{postel.name}</span>
+              <Badge variant="outline" color="primary">
+                {postel.number}
+              </Badge>
+              <span className="text-muted-foreground">
+                Berlaku sampai {formatPostelDate(postel.expiresOn)}
+              </span>
+              <PostelConditionBadge condition={postel.condition} />
+              {postelHref ? (
+                <a href={postelHref} className={textLink}>
+                  Buka Postel
+                </a>
+              ) : null}
+            </div>
+          )}
+        </ViewSection>
+      )}
+    </div>
+  );
+
+  return (
+    <ViewPage
+      title={`${item.brand} ${item.model}`}
+      badge={deleted ? <DeletedBadge /> : <ActiveStatusBadge status={item.status} />}
+      actionItems={
+        deleted
+          ? [
+              {
+                id: 'restore',
+                action: 'restore',
+                primary: true,
+                busy: restorePending,
+                hidden: !(canRestore && onRestore),
+                onSelect: () => onRestore?.(),
+              },
+            ]
+          : [
+              {
+                id: 'edit',
+                action: 'edit',
+                label: 'Ubah',
+                primary: true,
+                hidden: !canEdit,
+                onSelect: onEdit,
+              },
+              {
+                id: 'status',
+                action: item.status === 'active' ? 'deactivate' : 'activate',
+                primary: true,
+                busy: statusPending,
+                hidden: !canManage,
+                onSelect: onToggleStatus,
+              },
+              {
+                id: 'delete',
+                action: 'delete',
+                hidden: !(canManage && item.status === 'inactive' && onDelete),
+                onSelect: () => onDelete?.(),
+              },
+            ]
+      }
+      banner={
+        item.deleted ? (
+          <DeletedBanner
+            info={item.deleted}
+            canRestore={canRestore}
+            {...(onRestore ? { onRestore } : {})}
+            restoring={restorePending}
+          />
+        ) : null
+      }
+      tabs={[
+        { id: 'detail', label: 'Detail', content: detailTab },
+        { id: 'gambar', label: 'Gambar', content: imagesTab },
+        { id: 'stiker', label: 'Instruksi Stiker', content: stickerTab },
+        { id: 'manual-postel', label: 'Manual Book & Postel', content: manualPostelTab },
+      ]}
+      {...(tab ? { tab } : {})}
+      onTabChange={(id) => onTabChange?.(id as ItemTab)}
+      aside={
+        <>
+          <ViewMeta
+            createdAt={item.createdAt}
+            updatedBy={item.updatedBy}
+            updatedAt={item.updatedAt}
+            links={
+              canViewSerial
+                ? [
+                    {
+                      label: 'Lihat Serial Number item ini',
+                      to: '/serial',
+                      search: { item: item.id, itemLabel: `${item.brand} ${item.model}` },
+                    },
+                  ]
+                : []
+            }
+          />
+          <ActivityLog kind="item" id={item.id} createdAt={item.createdAt} />
+        </>
+      }
+    />
   );
 }

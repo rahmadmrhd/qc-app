@@ -1,29 +1,47 @@
 import type { HandoverDto } from '@shared/contract';
 import { useState } from 'react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { formatAuditTime } from '@/modules/access/lib/audit-actions';
+import { LinkCell } from '@/components/data-table';
+import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
+import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
+import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
+import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
+import { formatStamp } from '@/lib/format-stamp';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 import { handoverActions } from '../lib/actions';
-import { HANDOVER_STATUS_LABELS, HANDOVER_STATUS_STYLES } from '../lib/status';
 import { useOutboxOverlay } from '../lib/use-pending-checks';
 import { CancelDialog } from './cancel-dialog';
+import { HandoverStatusBadge } from './handover-status-badge';
 import { NoteView } from './note-view';
+
+export type HandoverTab = 'catatan' | 'riwayat';
 
 export interface HandoverDetailViewProps {
   handover: HandoverDto;
   /** Pemilik antrean centang di perangkat (email akun); kosong = tanpa penempelan centang tertunda. */
   owner?: string;
   locationName: string;
+  /** Nama customer menaut ke View customer (`/customer/$customerId`); hanya bagi pengguna dengan `item: view`. */
+  canOpenCustomer?: boolean;
   /** WH: `handover: edit` di lokasi task. */
   canEdit: boolean;
   /** WH: `handover: manage` di lokasi task (Batalkan dan Buka kembali task Dibatalkan). */
   canCancel: boolean;
+  /** `handover: manage` di lokasi task: Hapus dan Pulihkan (bawaan `false`). */
+  canDelete?: boolean;
   /** QC: `qc: edit` di lokasi task (centang dan Mark done). */
   canProgress: boolean;
   pending: boolean;
-  onBack: () => void;
+  /** Hapus sedang berjalan (dialog konfirmasi tak dapat ditutup). */
+  deleting?: boolean;
+  /** Pulihkan sedang berjalan. */
+  restoring?: boolean;
+  /** Tab aktif terkendali (search param `tab`); tanpa ini halaman memegangnya sendiri. */
+  tab?: HandoverTab | undefined;
+  onTabChange?: ((tab: HandoverTab) => void) | undefined;
   onEdit: () => void;
   onCancel: () => void;
+  onDelete?: () => void;
+  onRestore?: () => void;
   onMarkDone: () => void;
   onReopen: () => void;
   onCheck: (item: { index: number; text: string }, checked: boolean) => void;
@@ -35,139 +53,225 @@ export interface HandoverDetailViewProps {
   }) => Promise<void> | void;
 }
 
-function Meta({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="text-sm">{value}</dd>
-    </div>
-  );
-}
-
+/**
+ * View task Serah Terima (kit CRUD): tab Catatan (ringkasan + checklist dan komentar) dan Riwayat. Aksi: Mark done,
+ * Buka kembali, Ubah, Batalkan task, Hapus, dan Pulihkan (task terhapus), sesuai izin di lokasi task. Hapus berbeda
+ * dari Batalkan: task terhapus hilang dari papan dan hanya terlihat di tampilan Terhapus.
+ */
 export function HandoverDetailView({
   handover: serverHandover,
   owner = '',
   locationName,
+  canOpenCustomer = false,
   canEdit,
   canCancel,
+  canDelete = false,
   canProgress,
   pending,
-  onBack,
+  deleting = false,
+  restoring = false,
+  tab,
+  onTabChange,
   onEdit,
   onCancel,
+  onDelete,
+  onRestore,
   onMarkDone,
   onReopen,
   onCheck,
   onComment,
 }: HandoverDetailViewProps) {
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   // Centang yang menunggu terkirim tetap tampak tercentang walau refetch tiba lebih dulu dari pengiriman.
   const { dto: handover, itemStates, pendingComments } = useOutboxOverlay(serverHandover, owner);
   const cancelled = handover.status === 'cancelled';
+  const deleted = handover.deleted !== undefined;
   const actions = handoverActions(handover.status, {
     canMarkDone: canProgress,
     canEdit,
     canManage: canCancel,
   });
-  const styles = HANDOVER_STATUS_STYLES[handover.status];
   const total = handover.checklist.length;
   const checked = handover.checklist.filter((item) => item.checked).length;
 
-  return (
-    <div className="max-w-3xl space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="space-y-1">
-          <Button type="button" variant="ghost" size="sm" onClick={onBack}>
-            Kembali
-          </Button>
-          <h1 className="flex flex-wrap items-center gap-2 text-2xl font-semibold">
-            {handover.number}
-            <Badge variant="outline" className={styles.badge}>
-              {HANDOVER_STATUS_LABELS[handover.status]}
-            </Badge>
-          </h1>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {actions.markDone ? (
-            <Button
-              type="button"
-              disabled={!actions.markDoneEnabled || pending}
-              onClick={onMarkDone}
-            >
-              Mark done
-            </Button>
-          ) : null}
-          {actions.reopen ? (
-            <Button type="button" variant="outline" disabled={pending} onClick={onReopen}>
-              Buka kembali
-            </Button>
-          ) : null}
-          {actions.edit ? (
-            <Button type="button" variant="outline" onClick={onEdit}>
-              Ubah
-            </Button>
-          ) : null}
-          {actions.cancel ? (
-            <Button type="button" variant="destructive" onClick={() => setConfirmCancel(true)}>
-              Batalkan task
-            </Button>
-          ) : null}
-        </div>
-      </div>
-
-      <dl className="grid gap-3 rounded-lg border p-4 sm:grid-cols-3">
-        <Meta label="Lokasi" value={locationName} />
-        <Meta label="Customer" value={handover.customerName || 'Tanpa customer'} />
-        <Meta label="Progres" value={total > 0 ? `${checked}/${total}` : 'Tanpa checklist'} />
-      </dl>
-
-      <section data-tour="handover-checklist" className="space-y-2 rounded-lg border p-4">
-        <h2 className="text-base font-semibold">Catatan</h2>
+  const catatanTab = (
+    <div className="space-y-6">
+      <ViewSection title="Ringkasan">
+        <DetailList
+          items={[
+            { label: 'Lokasi', value: locationName },
+            {
+              label: 'Customer',
+              value:
+                canOpenCustomer && handover.customerId && handover.customerName ? (
+                  <LinkCell to="/customer/$customerId" params={{ customerId: handover.customerId }}>
+                    {handover.customerName}
+                  </LinkCell>
+                ) : (
+                  handover.customerName || 'Tanpa customer'
+                ),
+            },
+            { label: 'Progres', value: total > 0 ? `${checked}/${total}` : 'Tanpa checklist' },
+          ]}
+        />
+      </ViewSection>
+      <section data-tour="handover-checklist" className="space-y-2">
+        <h2 className="text-sm font-semibold text-muted-foreground">Catatan</h2>
         <NoteView
           note={handover.note}
           checklist={handover.checklist}
           comments={handover.comments}
-          canCheck={canProgress && !cancelled && !pending}
-          canComment={!cancelled}
+          canCheck={canProgress && !cancelled && !deleted && !pending}
+          canComment={!cancelled && !deleted}
           itemStates={itemStates}
           pendingComments={pendingComments}
           onCheck={onCheck}
           onComment={onComment}
         />
-        {!cancelled ? (
+        {!cancelled && !deleted ? (
           <p className="text-xs text-muted-foreground">
             Pilih teks pada catatan lalu tekan Balas, atau tekan Tambah komentar untuk komentar
             umum.
           </p>
         ) : null}
       </section>
+    </div>
+  );
 
-      <section className="space-y-1 rounded-lg border p-4">
-        <h2 className="text-base font-semibold">Riwayat</h2>
-        <dl className="grid gap-3 sm:grid-cols-2">
-          <Meta
-            label="Dibuat"
-            value={`${handover.createdBy} · ${formatAuditTime(handover.createdAt)}`}
-          />
-          <Meta
-            label="Terakhir diubah"
-            value={`${handover.updatedBy} · ${formatAuditTime(handover.updatedAt)}`}
-          />
-          {handover.completedAt !== '' ? (
-            <Meta
-              label="Ditandai selesai"
-              value={`${handover.completedBy} · ${formatAuditTime(handover.completedAt)}`}
+  const riwayatTab = (
+    <ViewSection title="Riwayat">
+      <DetailList
+        items={[
+          { label: 'Dibuat', value: `${handover.createdBy} · ${formatStamp(handover.createdAt)}` },
+          {
+            label: 'Terakhir diubah',
+            value: `${handover.updatedBy} · ${formatStamp(handover.updatedAt)}`,
+          },
+          {
+            label: 'Ditandai selesai',
+            value: `${handover.completedBy} · ${formatStamp(handover.completedAt)}`,
+            hidden: handover.completedAt === '',
+          },
+          {
+            label: 'Dihapus',
+            value: handover.deleted
+              ? `${handover.deleted.deletedBy} · ${formatStamp(handover.deleted.deletedAt)}`
+              : null,
+            hidden: !handover.deleted,
+          },
+        ]}
+      />
+    </ViewSection>
+  );
+
+  return (
+    <>
+      <ViewPage
+        title={handover.number}
+        badge={
+          <span className="flex flex-wrap items-center gap-2">
+            <HandoverStatusBadge status={handover.status} />
+            {deleted ? <DeletedBadge /> : null}
+          </span>
+        }
+        actionItems={[
+          {
+            id: 'done',
+            action: 'done',
+            primary: true,
+            hidden: !actions.markDone || deleted,
+            disabled: !actions.markDoneEnabled,
+            disabledReason: 'Hanya QC yang dapat menandai task selesai',
+            busy: pending,
+            onSelect: onMarkDone,
+          },
+          {
+            id: 'reopen',
+            action: 'reopen',
+            primary: true,
+            hidden: !actions.reopen || deleted,
+            busy: pending,
+            onSelect: onReopen,
+          },
+          {
+            id: 'edit',
+            action: 'edit',
+            label: 'Ubah',
+            primary: true,
+            hidden: !actions.edit || deleted,
+            onSelect: onEdit,
+          },
+          {
+            id: 'abort',
+            action: 'abort',
+            hidden: !actions.cancel || deleted,
+            onSelect: () => setConfirmCancel(true),
+          },
+          {
+            id: 'delete',
+            action: 'delete',
+            busy: deleting,
+            hidden: !canDelete || deleted || onDelete === undefined,
+            onSelect: () => setConfirmDelete(true),
+          },
+          {
+            id: 'restore',
+            action: 'restore',
+            primary: true,
+            busy: restoring,
+            hidden: !canDelete || !deleted || onRestore === undefined,
+            onSelect: () => onRestore?.(),
+          },
+        ]}
+        banner={
+          handover.deleted ? (
+            <DeletedBanner
+              info={handover.deleted}
+              canRestore={canDelete && onRestore !== undefined}
+              {...(onRestore ? { onRestore } : {})}
+              restoring={restoring}
             />
-          ) : null}
-        </dl>
-      </section>
-
+          ) : null
+        }
+        tabs={[
+          { id: 'catatan', label: 'Catatan', content: catatanTab },
+          { id: 'riwayat', label: 'Riwayat', content: riwayatTab },
+        ]}
+        {...(tab ? { tab } : {})}
+        onTabChange={(id) => onTabChange?.(id as HandoverTab)}
+        aside={
+          <>
+            <ViewMeta
+              createdBy={handover.createdBy}
+              createdAt={handover.createdAt}
+              updatedBy={handover.updatedBy}
+              updatedAt={handover.updatedAt}
+            />
+            <ActivityLog kind="handover" id={handover.id} createdAt={handover.createdAt} />
+          </>
+        }
+      />
       <CancelDialog
         open={confirmCancel}
         number={handover.number}
         onOpenChange={setConfirmCancel}
         onConfirm={onCancel}
       />
-    </div>
+      {onDelete ? (
+        <ConfirmDeleteDialog
+          open={confirmDelete}
+          onOpenChange={setConfirmDelete}
+          count={1}
+          subject={`task ${handover.number}`}
+          usage="Berbeda dari Batalkan: task yang dihapus hilang dari papan dan hanya terlihat di tampilan Terhapus."
+          busy={deleting}
+          onConfirm={() => {
+            setConfirmDelete(false);
+            onDelete();
+          }}
+        />
+      ) : null}
+    </>
   );
 }

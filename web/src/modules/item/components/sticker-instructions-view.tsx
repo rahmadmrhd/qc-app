@@ -124,7 +124,7 @@ export function StickerInstructionsView({
                   <p className="text-sm font-medium">{photo.caption}</p>
                 ) : null}
                 {buLabel ? (
-                  <Badge variant="outline" title="Label BU foto">
+                  <Badge variant="outline" color="primary" title="Label BU foto">
                     {buLabel}
                   </Badge>
                 ) : null}
@@ -191,7 +191,7 @@ export function StickerInstructionsView({
                       </span>
                       <div className="min-w-0 flex-1 space-y-2">
                         {mark.unresolved ? (
-                          <p className="text-sm text-amber-600 dark:text-amber-400">
+                          <p className="text-sm text-warning-text">
                             Belum ada stiker {mark.targetName} untuk BU ini
                           </p>
                         ) : null}
@@ -219,11 +219,13 @@ export function StickerInstructionsView({
                                   </span>
                                 ) : null}
                                 {sticker.inactive ? (
-                                  <Badge variant="secondary">nonaktif</Badge>
+                                  <Badge color="secondary" variant="soft">
+                                    nonaktif
+                                  </Badge>
                                 ) : null}
                                 {multiBu
                                   ? sticker.buCodes.map((code) => (
-                                      <Badge key={code} variant="outline">
+                                      <Badge key={code} variant="outline" color="primary">
                                         {code}
                                       </Badge>
                                     ))

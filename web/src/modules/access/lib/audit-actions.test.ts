@@ -62,6 +62,29 @@ test('aksi audit preset QR, katalog stiker, dan pengaturan stiker berlabel Indon
   expect(auditActionLabel('sticker.settings')).toBe('Konfigurasi stiker diubah');
 });
 
+test('aksi hapus/pulihkan (soft delete) dan Business Unit berlabel Indonesia', () => {
+  for (const kind of [
+    'user',
+    'role',
+    'location',
+    'businessunit',
+    'brand',
+    'customer',
+    'item',
+    'sticker',
+    'stickerType',
+    'postel',
+    'qrcode',
+  ]) {
+    expect(auditActionLabel(`${kind}.restore`), `${kind}.restore`).not.toBe(`${kind}.restore`);
+  }
+  for (const kind of ['user', 'location', 'businessunit', 'brand', 'customer', 'item', 'sticker']) {
+    expect(auditActionLabel(`${kind}.delete`), `${kind}.delete`).not.toBe(`${kind}.delete`);
+  }
+  expect(auditActionLabel('businessunit.deactivate')).toBe('Business Unit dinonaktifkan');
+  expect(auditActionLabel('user.restore')).toBe('User dipulihkan');
+});
+
 test('aksi audit postel.* berlabel Indonesia', () => {
   expect(auditActionLabel('postel.create')).toBe('Postel dibuat');
   expect(auditActionLabel('postel.update')).toBe('Postel diubah');

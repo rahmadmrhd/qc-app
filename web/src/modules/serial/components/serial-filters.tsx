@@ -1,24 +1,29 @@
 import { useQuery } from '@tanstack/react-query';
 import { useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
-import { LinkField, type LinkOption } from '@/components/link-field';
-import { Select } from '@/components/select';
+import { LinkMultiField, type LinkOption } from '@/components/link-field';
+import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
+import { useChipDraft } from '@/components/page/filter-draft';
+import { MultiSelect } from '@/components/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 import { cn } from '@/lib/utils';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { buIdsWithLevelOf } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
-import { CUSTODY_LABEL, STATUS_OPTIONS } from '../lib/labels';
+import { CUSTODY_LABEL, formatDay, STATUS_LABEL, STATUS_OPTIONS } from '../lib/labels';
 import {
   commitSearchLine,
   mergeScanned,
   normalizeSearchText,
   SERIAL_SEARCH_MAX,
   type SerialSearch,
+  searchLists,
 } from '../lib/list-filter';
+import { toLocationOptions } from '../lib/locations';
 import {
   FEEDBACK_FLASH,
   FEEDBACK_TEXT,
@@ -26,30 +31,44 @@ import {
   type ScanFeedback,
   useScanFeedback,
 } from '../lib/scan-feedback';
-import { serialItemOptionsQueryOptions } from '../queries';
+import { useSerialLocations } from '../lib/use-serial-locations';
+import { serialItemOptionsQueryOptions, serialItemsByIdQueryOptions } from '../queries';
 import { CameraScanButton } from './camera-scan-button';
-import { SerialLocationField } from './serial-location-field';
 
 export interface SerialFiltersProps {
   search: SerialSearch;
   onChange: (patch: Partial<SerialSearch>) => void;
+  /** Pemegang `serial: manage`: pilihan "Terhapus" tampil pada chip Status. */
+  canSeeDeleted?: boolean;
 }
 
 /** Bentuk teks pencarian yang dikirim ke URL (gema URL yang sama tidak menimpa teks mentah yang sedang diedit). */
 const normalizeSearchTextValue = (value: string) => normalizeSearchText(value).text;
 
-const STATUS_FILTER_OPTIONS = [{ value: '', label: 'Semua status' }, ...STATUS_OPTIONS];
+/** Nilai khusus pada chip Status: tampilan Terhapus (param `deleted`), eksklusif terhadap status alur. */
+const DELETED_VIEW = 'deleted';
 
-const CUSTODY_FILTER_OPTIONS = [
-  { value: '', label: 'Semua posisi' },
-  ...(Object.keys(CUSTODY_LABEL) as (keyof typeof CUSTODY_LABEL)[]).map((value) => ({
-    value,
-    label: CUSTODY_LABEL[value],
-  })),
-];
+/**
+ * "Terhapus" eksklusif terhadap status alur: dipilih belakangan = hanya Terhapus; status alur dipilih belakangan =
+ * tanpa Terhapus. Berlaku pada draf chip, jadi pilihan yang tampil selalu sama dengan yang akan diterapkan.
+ */
+function exclusiveDeleted(next: string[], previous: readonly string[]): string[] {
+  if (!next.includes(DELETED_VIEW)) return next;
+  if (!previous.includes(DELETED_VIEW)) return [DELETED_VIEW];
+  return next.filter((value) => value !== DELETED_VIEW);
+}
 
-/** Filter daftar serial: pencarian banyak serial (tempel atau pindai), item, lokasi, status, dan rentang tanggal uji. */
-export function SerialFilters({ search, onChange }: SerialFiltersProps) {
+const CUSTODY_FILTER_OPTIONS = (Object.keys(CUSTODY_LABEL) as (keyof typeof CUSTODY_LABEL)[]).map(
+  (value) => ({ value, label: CUSTODY_LABEL[value] }),
+);
+
+/**
+ * Filter daftar serial: pencarian banyak serial (tempel atau pindai; kolom sendiri karena `FilterBar.search` satu baris)
+ * dan chip untuk BU, item, lokasi, status, posisi, tanggal uji, dan "Dicatat oleh saya". BU, item, lokasi, status, dan
+ * posisi multi-value (salah satu dari). Chip Status juga memuat "Terhapus" bagi pemegang `serial: manage` (menggantikan
+ * chip Tampilan; keputusan pemilik 2026-11-22): memilihnya mengosongkan status alur dan sebaliknya.
+ */
+export function SerialFilters({ search, onChange, canSeeDeleted = false }: SerialFiltersProps) {
   const me = useMe();
   // BU yang boleh dibaca akun (serial atau serialservice, level view ke atas), disaring di klien.
   const readableBuIds = new Set([
@@ -57,14 +76,27 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
     ...buIdsWithLevelOf(me, 'serialservice', 'view'),
   ]);
   const buOptions: LinkOption[] = (me.businessUnits ?? [])
-    .filter((bu) => readableBuIds.has(bu.id))
+    .filter((bu) => !bu.deleted && readableBuIds.has(bu.id))
     .map((bu) => ({ id: bu.id, label: `${bu.code} · ${bu.name}` }));
+  const lists = searchLists(search);
   const [itemTerm, setItemTerm] = useState('');
   const { data, isFetching } = useQuery(serialItemOptionsQueryOptions(itemTerm.trim()));
   const itemOptions: LinkOption[] = (data?.items ?? []).map((item) => ({
     id: item.id,
     label: item.label,
   }));
+  // Label item terpilih: dari opsi yang pernah dimuat (diingat selama halaman terbuka), label tautan lama, atau dimuat
+  // menurut id (setelah muat ulang halaman). Tanpa label tersimpan di URL.
+  const itemLabels = useRef(new Map<string, string>());
+  for (const option of itemOptions) itemLabels.current.set(option.id, option.label);
+  if (search.item && search.itemLabel) itemLabels.current.set(search.item, search.itemLabel);
+  const unlabeled = lists.itemIds.filter((id) => !itemLabels.current.has(id));
+  const byId = useQuery({
+    ...serialItemsByIdQueryOptions(unlabeled.slice(0, 50)),
+    enabled: unlabeled.length > 0,
+  });
+  for (const item of byId.data?.items ?? []) itemLabels.current.set(item.id, item.label);
+  const itemLabel = (id: string) => itemLabels.current.get(id) ?? 'Item tidak dikenal';
   const [text, setText] = useUrlSyncedText(
     search.sn ?? '',
     (value) => onChange({ sn: normalizeSearchText(value).text || undefined }),
@@ -106,9 +138,25 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
     return true;
   }
 
+  const { locations: knownLocations } = useSerialLocations();
+  const buLabel = (id: string) =>
+    buOptions.find((option) => option.id === id)?.label ?? 'BU tidak dikenal';
+  const locationOptions = toLocationOptions(knownLocations);
+  const locationName = (id: string) =>
+    locationOptions.find((option) => option.id === id)?.label ?? 'Lokasi tidak dikenal';
+  const statusOptions = [
+    ...STATUS_OPTIONS,
+    ...(canSeeDeleted ? [{ value: DELETED_VIEW, label: 'Terhapus' }] : []),
+  ];
+  const statusValue = search.deleted && canSeeDeleted ? [DELETED_VIEW] : lists.statuses;
+  const dateDisplay =
+    search.from || search.to
+      ? `${search.from ? formatDay(search.from) : '…'} – ${search.to ? formatDay(search.to) : '…'}`
+      : null;
+
   return (
-    <div className="space-y-3">
-      <div className="space-y-1.5">
+    <div className="space-y-2">
+      <div className="space-y-1">
         <div className="flex items-center justify-between gap-2">
           <Label htmlFor="serial-search">Cari serial (satu per baris)</Label>
           <div className="flex items-center gap-2">
@@ -123,9 +171,10 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
         </div>
         <Textarea
           id="serial-search"
-          rows={3}
+          rows={1}
+          // Satu baris saat kosong (bar judul tetap pendek); tumbuh mengikuti isi sampai ±4 baris, lalu menggulir.
           className={cn(
-            'font-mono transition-colors',
+            'max-h-28 min-h-9 touch:min-h-11 overflow-y-auto font-mono transition-colors',
             feedback !== null && FEEDBACK_FLASH[feedback],
           )}
           spellCheck={false}
@@ -147,120 +196,243 @@ export function SerialFilters({ search, onChange }: SerialFiltersProps) {
             }
           }}
         />
-        <p
-          className={
-            normalized.capped ? 'text-xs text-destructive' : 'text-xs text-muted-foreground'
-          }
-          role={normalized.capped ? 'alert' : undefined}
-        >
-          {normalized.capped
-            ? normalized.tooLong
-              ? `Daftar terlalu panjang untuk satu pencarian: hanya ${normalized.count} serial pertama yang dicari, ${normalized.dropped} serial lain diabaikan. Bagi pencarian menjadi beberapa kali.`
-              : `Terlalu banyak serial: hanya ${SERIAL_SEARCH_MAX} serial pertama yang dicari, ${normalized.dropped} serial lain diabaikan. Bagi pencarian menjadi beberapa kali.`
-            : normalized.count > 0
-              ? `${normalized.count} serial dicari (maks. ${SERIAL_SEARCH_MAX})`
-              : 'Ketik, tempel, scan (Enter), atau pakai kamera.'}
-        </p>
+        {normalized.capped || normalized.count > 0 ? (
+          <p
+            className={
+              normalized.capped ? 'text-xs text-destructive-text' : 'text-xs text-muted-foreground'
+            }
+            role={normalized.capped ? 'alert' : undefined}
+          >
+            {normalized.capped
+              ? normalized.tooLong
+                ? `Daftar terlalu panjang untuk satu pencarian: hanya ${normalized.count} serial pertama yang dicari, ${normalized.dropped} serial lain diabaikan. Bagi pencarian menjadi beberapa kali.`
+                : `Terlalu banyak serial: hanya ${SERIAL_SEARCH_MAX} serial pertama yang dicari, ${normalized.dropped} serial lain diabaikan. Bagi pencarian menjadi beberapa kali.`
+              : `${normalized.count} serial dicari (maks. ${SERIAL_SEARCH_MAX})`}
+          </p>
+        ) : null}
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="space-y-1">
-          <LinkField
+      <FilterBar>
+        <FilterChip
+          label="BU"
+          display={multiFilterDisplay(lists.buIds.map(buLabel))}
+          onClear={() => onChange({ buIds: undefined, bu: undefined })}
+        >
+          <LinkMultiField
+            maxSelected={FILTER_LIST_MAX}
             id="serial-filter-bu"
             label="Filter BU"
             hideLabel
             placeholder="Semua BU"
             localFilter
-            value={search.bu ?? null}
-            labelOf={(id) =>
-              buOptions.find((option) => option.id === id)?.label ?? 'BU tidak dikenal'
-            }
+            highlight
+            value={lists.buIds}
+            labelOf={buLabel}
             options={buOptions}
-            onChange={(id) => onChange({ bu: id ?? undefined })}
+            onChange={(next) =>
+              onChange({ buIds: next.length > 0 ? next : undefined, bu: undefined })
+            }
           />
-          {search.bu ? (
-            <p className="text-xs text-muted-foreground">Termasuk serial yang pernah di BU ini.</p>
+          {lists.buIds.length > 0 ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Termasuk serial yang pernah di BU ini.
+            </p>
           ) : null}
-        </div>
-        <LinkField
-          id="serial-filter-item"
-          label="Filter item"
-          hideLabel
-          placeholder="Semua item"
-          value={search.item ?? null}
-          labelOf={(id) => (id === search.item ? (search.itemLabel ?? id) : id)}
-          options={itemOptions}
-          loading={isFetching && data === undefined}
-          hasMore={data?.nextCursor != null}
-          onSearchChange={setItemTerm}
-          searchDebounceMs={200}
-          onChange={(id) =>
-            onChange({
-              item: id ?? undefined,
-              itemLabel: id === null ? undefined : itemOptions.find((o) => o.id === id)?.label,
-            })
-          }
-        />
-        <SerialLocationField
-          id="serial-filter-location"
-          label="Filter lokasi"
-          hideLabel
-          placeholder="Semua lokasi"
-          value={search.loc ?? ''}
-          onChange={(id) => onChange({ loc: id === '' ? undefined : id })}
-        />
-        <Select
-          id="serial-filter-status"
-          label="Filter status"
-          hideLabel
-          options={STATUS_FILTER_OPTIONS}
-          value={search.status ?? ''}
-          onValueChange={(next) =>
-            onChange({ status: next === '' ? undefined : (next as SerialSearch['status']) })
-          }
-        />
-        <Select
-          id="serial-filter-custody"
-          label="Filter posisi"
-          hideLabel
-          options={CUSTODY_FILTER_OPTIONS}
-          value={search.custody ?? ''}
-          onValueChange={(next) =>
-            onChange({ custody: next === '' ? undefined : (next as SerialSearch['custody']) })
-          }
-        />
-        <div className="space-y-1.5">
-          <Label htmlFor="serial-filter-from" className="text-xs text-muted-foreground">
-            Tanggal uji dari
-          </Label>
-          <Input
-            id="serial-filter-from"
-            type="date"
-            value={search.from ?? ''}
-            onChange={(event) => onChange({ from: event.target.value || undefined })}
+        </FilterChip>
+        <FilterChip
+          label="Item"
+          display={multiFilterDisplay(lists.itemIds.map(itemLabel))}
+          onClear={() => onChange({ itemIds: undefined, item: undefined, itemLabel: undefined })}
+        >
+          <LinkMultiField
+            maxSelected={FILTER_LIST_MAX}
+            id="serial-filter-item"
+            label="Filter item"
+            hideLabel
+            placeholder="Semua item"
+            value={lists.itemIds}
+            labelOf={itemLabel}
+            options={itemOptions}
+            loading={isFetching && data === undefined}
+            hasMore={data?.nextCursor != null}
+            onSearchChange={setItemTerm}
+            searchDebounceMs={200}
+            onChange={(next) =>
+              onChange({
+                itemIds: next.length > 0 ? next : undefined,
+                item: undefined,
+                itemLabel: undefined,
+              })
+            }
           />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="serial-filter-to" className="text-xs text-muted-foreground">
-            Tanggal uji sampai
-          </Label>
-          <Input
-            id="serial-filter-to"
-            type="date"
-            value={search.to ?? ''}
-            onChange={(event) => onChange({ to: event.target.value || undefined })}
+        </FilterChip>
+        <FilterChip
+          label="Lokasi"
+          display={multiFilterDisplay(lists.locationIds.map(locationName))}
+          onClear={() => onChange({ locationIds: undefined, loc: undefined })}
+        >
+          <LinkMultiField
+            maxSelected={FILTER_LIST_MAX}
+            id="serial-filter-location"
+            label="Filter lokasi"
+            hideLabel
+            placeholder="Semua lokasi"
+            localFilter
+            highlight
+            value={lists.locationIds}
+            labelOf={locationName}
+            options={locationOptions}
+            onChange={(next) =>
+              onChange({ locationIds: next.length > 0 ? next : undefined, loc: undefined })
+            }
           />
-        </div>
-        <div className="flex items-end gap-2 pb-2">
-          <Checkbox
-            id="serial-filter-mine"
-            checked={search.mine === true}
-            onCheckedChange={(on) => onChange({ mine: on === true ? true : undefined })}
+        </FilterChip>
+        <FilterChip
+          label="Status"
+          display={
+            search.deleted && canSeeDeleted
+              ? 'Terhapus'
+              : multiFilterDisplay(lists.statuses.map((status) => STATUS_LABEL[status]))
+          }
+          onClear={() => onChange({ statuses: undefined, status: undefined, deleted: undefined })}
+        >
+          <MultiSelect
+            maxSelected={FILTER_LIST_MAX}
+            id="serial-filter-status"
+            label="Filter status"
+            hideLabel
+            placeholder="Semua status"
+            options={statusOptions}
+            value={statusValue}
+            reconcile={exclusiveDeleted}
+            onValueChange={(next) => {
+              // "Terhapus" eksklusif: dipilih belakangan = hanya Terhapus; status alur dipilih belakangan = tanpa Terhapus.
+              const deletedNow = next.includes(DELETED_VIEW);
+              const wasDeleted = search.deleted === true;
+              if (deletedNow && !wasDeleted) {
+                onChange({ deleted: true, statuses: undefined, status: undefined });
+                return;
+              }
+              const statuses = next.filter((value) => value !== DELETED_VIEW);
+              onChange({
+                deleted: undefined,
+                statuses: statuses.length > 0 ? (statuses as SerialSearch['statuses']) : undefined,
+                status: undefined,
+              });
+            }}
           />
-          <Label htmlFor="serial-filter-mine" className="font-normal">
-            Dicatat oleh saya
-          </Label>
-        </div>
+        </FilterChip>
+        <FilterChip
+          label="Posisi"
+          display={multiFilterDisplay(lists.custodies.map((custody) => CUSTODY_LABEL[custody]))}
+          onClear={() => onChange({ custodies: undefined, custody: undefined })}
+        >
+          <MultiSelect
+            maxSelected={FILTER_LIST_MAX}
+            id="serial-filter-custody"
+            label="Filter posisi"
+            hideLabel
+            placeholder="Semua posisi"
+            options={CUSTODY_FILTER_OPTIONS}
+            value={lists.custodies}
+            onValueChange={(next) =>
+              onChange({
+                custodies: next.length > 0 ? (next as SerialSearch['custodies']) : undefined,
+                custody: undefined,
+              })
+            }
+          />
+        </FilterChip>
+        <FilterChip
+          label="Tanggal uji"
+          display={dateDisplay}
+          onClear={() => onChange({ from: undefined, to: undefined })}
+        >
+          <DateRangeFields
+            from={search.from}
+            to={search.to}
+            onCommit={(range) => onChange({ from: range.from, to: range.to })}
+          />
+        </FilterChip>
+        <FilterChip
+          label="Pencatat"
+          display={search.mine === true ? 'Saya' : null}
+          onClear={() => onChange({ mine: undefined })}
+        >
+          <MineCheckbox mine={search.mine === true} onCommit={(mine) => onChange({ mine })} />
+        </FilterChip>
+      </FilterBar>
+    </div>
+  );
+}
+
+interface DateRange {
+  from: string | undefined;
+  to: string | undefined;
+}
+
+/** Dua kolom tanggal uji; di dalam chip ditahan sebagai SATU draf dan diterapkan sekali saat chip menutup. */
+function DateRangeFields({
+  from,
+  to,
+  onCommit,
+}: {
+  from: string | undefined;
+  to: string | undefined;
+  onCommit: (range: DateRange) => void;
+}) {
+  const [range, setRange] = useChipDraft<DateRange>(
+    { from: from || undefined, to: to || undefined },
+    onCommit,
+  );
+  return (
+    <div className="space-y-3">
+      <div className="space-y-1.5">
+        <Label htmlFor="serial-filter-from" className="text-xs text-muted-foreground">
+          Tanggal uji dari
+        </Label>
+        <Input
+          id="serial-filter-from"
+          type="date"
+          value={range.from ?? ''}
+          onChange={(event) => setRange({ ...range, from: event.target.value || undefined })}
+        />
       </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="serial-filter-to" className="text-xs text-muted-foreground">
+          Tanggal uji sampai
+        </Label>
+        <Input
+          id="serial-filter-to"
+          type="date"
+          value={range.to ?? ''}
+          onChange={(event) => setRange({ ...range, to: event.target.value || undefined })}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Centang "Dicatat oleh saya"; di dalam chip ditahan sebagai draf dan diterapkan saat chip menutup. */
+function MineCheckbox({
+  mine,
+  onCommit,
+}: {
+  mine: boolean;
+  onCommit: (mine: true | undefined) => void;
+}) {
+  const [checked, setChecked] = useChipDraft<boolean>(mine, (next) =>
+    onCommit(next ? true : undefined),
+  );
+  return (
+    <div className="flex items-center gap-2">
+      <Checkbox
+        id="serial-filter-mine"
+        checked={checked}
+        onCheckedChange={(on) => setChecked(on === true)}
+      />
+      <Label htmlFor="serial-filter-mine" className="font-normal">
+        Dicatat oleh saya
+      </Label>
     </div>
   );
 }

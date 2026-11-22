@@ -119,7 +119,8 @@ export function WysiwygToolbar({ editor, mode, disabled, onPickImage }: WysiwygT
             key={label}
             type="button"
             size="sm"
-            variant={active.has(label) ? 'secondary' : 'ghost'}
+            variant={active.has(label) ? 'soft' : 'ghost'}
+            color={active.has(label) ? 'secondary' : 'primary'}
             aria-label={label}
             aria-pressed={active.has(label)}
             title={label}
@@ -136,6 +137,7 @@ export function WysiwygToolbar({ editor, mode, disabled, onPickImage }: WysiwygT
           type="button"
           size="sm"
           variant="ghost"
+          color="primary"
           aria-label="Gambar"
           title="Sisipkan gambar"
           disabled={disabled}

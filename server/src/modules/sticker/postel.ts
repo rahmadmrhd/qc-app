@@ -3,6 +3,7 @@ import { DbError } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { newId } from '@server/core/id';
 import { insertStickerTypeStmt, listStickerTypeRecords, type StickerTypeRecord } from './repo';
 
 /**
@@ -48,16 +49,19 @@ export async function ensurePostelType(env: Env, actor: ActorRef): Promise<Stick
     } else {
       await env.DB.batch([
         insertStickerTypeStmt(env.DB, {
-          id: crypto.randomUUID(),
+          id: newId(),
           name: POSTEL_TYPE_NAME,
           rule: 'group',
           status: 'active',
           systemKind: 'postel',
           defaultMinQty: 0,
           stickerCount: 0,
+          liveStickerCount: 0,
           createdAt: now,
           updatedAt: now,
           updatedBy: actor.email,
+          deletedAt: '',
+          deletedBy: '',
         }),
       ]);
     }

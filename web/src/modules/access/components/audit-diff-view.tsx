@@ -5,41 +5,9 @@ import { LEVEL_LABELS, MODULE_LABELS } from '@shared/permissions';
 import type { LucideIcon } from 'lucide-react';
 import { Minus, Pencil, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { auditFieldLabel } from '../lib/audit-actions';
 import type { ChangeKind, ChildDiff, FieldDiff } from '../lib/audit-diff';
 import { diffList, diffSnapshots } from '../lib/audit-diff';
-
-const FIELD_LABELS: Record<string, string> = {
-  email: 'Email',
-  name: 'Nama',
-  status: 'Status',
-  roleIds: 'Role',
-  description: 'Deskripsi',
-  permissions: 'Akses per modul',
-  code: 'Kode',
-  assignments: 'Penugasan',
-  brand: 'Merk',
-  model: 'Tipe',
-  isCountryLock: 'Country lock',
-  firmware: 'Firmware',
-  proofRequired: 'Wajib foto',
-  proofMin: 'Minimum foto',
-  aliases: 'Nama lain',
-  stickers: 'Stiker',
-  stickerPhotos: 'Instruksi stiker',
-  accessories: 'Kelengkapan',
-  attachments: 'Gambar lampiran',
-  detailLength: 'Panjang detail (karakter)',
-  detailHash: 'Isi detail',
-  number: 'Nomor',
-  location: 'Lokasi',
-  customer: 'Customer',
-  note: 'Catatan',
-  item: 'Tipe',
-  checked: 'Butir tercentang',
-  resets: 'Centang direset',
-  quote: 'Kutipan',
-  comment: 'Komentar',
-};
 
 const STATUS_LABELS: Record<string, string> = {
   active: 'Aktif',
@@ -61,20 +29,20 @@ const KIND_STYLES: Record<Exclude<ChangeKind, 'unchanged'>, KindStyle> = {
   added: {
     label: 'Ditambah',
     icon: Plus,
-    box: 'border-emerald-500/60 bg-emerald-500/10',
-    tag: 'bg-emerald-500/20 text-emerald-800 dark:text-emerald-200',
+    box: 'border-success-text/35 bg-success-text/10',
+    tag: 'bg-success-text/20 text-success-text',
   },
   changed: {
     label: 'Diubah',
     icon: Pencil,
-    box: 'border-amber-500/60 bg-amber-500/10',
-    tag: 'bg-amber-500/20 text-amber-900 dark:text-amber-200',
+    box: 'border-warning-text/35 bg-warning-text/10',
+    tag: 'bg-warning-text/20 text-warning-text',
   },
   removed: {
     label: 'Dihapus',
     icon: Minus,
-    box: 'border-red-500/60 bg-red-500/10',
-    tag: 'bg-red-500/20 text-red-800 dark:text-red-200',
+    box: 'border-destructive-text/35 bg-destructive-text/10',
+    tag: 'bg-destructive-text/20 text-destructive-text',
   },
 };
 
@@ -227,7 +195,7 @@ function FieldRow({
       className={cn('space-y-1.5 rounded-lg border p-3', style ? style.box : 'border-border')}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium">{FIELD_LABELS[field.key] ?? field.key}</span>
+        <span className="text-sm font-medium">{auditFieldLabel(field.key)}</span>
         <KindTag kind={field.kind} />
       </div>
       {field.children ? (

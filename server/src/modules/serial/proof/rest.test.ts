@@ -171,7 +171,7 @@ describe('serialProofs.upload', () => {
       height: 600,
       error: null,
     });
-    expect(dto.filename).toBe(`bukti-${(dto.id as string).slice(0, 8)}.png`);
+    expect(dto.filename).toBe(`bukti-${(dto.id as string).slice(-8)}.png`);
     expect(response.headers.get('location')).toBe(`/api/v1/serial-proofs/${dto.id as string}`);
     const row = await findProof(env.DB, dto.id as string);
     expect(row).toMatchObject({ state: 'draft', createdBy: WRITER, serialId: '', eventId: '' });
@@ -318,7 +318,7 @@ describe('serialProofs.get', () => {
     expect(response.headers.get('etag')).toBeNull();
     expect(response.headers.get('cache-control')).toBe('private, no-cache');
     expect(response.headers.get('content-disposition')).toContain(
-      `bukti-${(dto.id as string).slice(0, 8)}.png`,
+      `bukti-${(dto.id as string).slice(-8)}.png`,
     );
     expect((await response.arrayBuffer()).byteLength).toBe(png().length);
   });

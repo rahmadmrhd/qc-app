@@ -1,8 +1,8 @@
 import type { RouteTable } from '@server/core/router';
-import { expectNull } from '@server/core/validate';
+import { expectNull, validateIdBatch } from '@server/core/validate';
 import { actOnSerial } from './act';
 import { getSerialSettings, saveSerialSettings } from './alert';
-import { listSerialCases } from './case-list';
+import { getSerialCase, listSerialCases } from './case-list';
 import { serialHistory } from './history';
 import { getProof, removeProof, replaceProof, retryProof, uploadProof } from './proof/service';
 import {
@@ -30,8 +30,12 @@ import {
   getServiceSettings,
   saveServiceSettings,
 } from './service-locations';
+import { removeSerial, removeSerialBatch, restoreSerial, restoreSerialBatch } from './soft-delete';
+import { applyStickersBatch } from './stickers-batch';
 import {
+  validateApplyStickersBatch,
   validateGetSerial,
+  validateGetSerialCase,
   validateListSerialItemOptions,
   validateSaveSerialBatch,
   validateSaveSerialServiceSettings,
@@ -60,6 +64,11 @@ type SerialMethod =
   | 'serials.saveBatch'
   | 'serials.get'
   | 'serials.list'
+  | 'serials.remove'
+  | 'serials.removeBatch'
+  | 'serials.restore'
+  | 'serials.restoreBatch'
+  | 'serials.applyStickersBatch'
   | 'serials.update'
   | 'serials.updateBatch'
   | 'serials.act'
@@ -69,6 +78,7 @@ type SerialMethod =
   | 'serialServiceSettings.get'
   | 'serialServiceSettings.save'
   | 'serialCases.list'
+  | 'serialCases.get'
   | 'serialProofs.upload'
   | 'serialProofs.get'
   | 'serialProofs.remove'
@@ -144,6 +154,12 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       validate: validateSerialCaseList,
       handler: (input, ctx) => listSerialCases(ctx.env, ctx.user, input),
     },
+    // Detail laporan: izin yang sama dengan daftar; akses = hak baca serial induk (handler; serial terhapus = NOT_FOUND).
+    'serialCases.get': {
+      permission: READ_PERMISSION,
+      validate: validateGetSerialCase,
+      handler: (input, ctx) => getSerialCase(ctx.env, ctx.user, input),
+    },
     // Bukti foto QC: unggah, buang, dan coba lagi butuh `serial: edit` (global; BU diperiksa saat foto ditautkan pada
     // Simpan dan pada buang/coba lagi foto yang sudah punya serial). Ambil: pembaca serial atau serialservice; draft hanya
     // terbaca pengunggahnya dan selebihnya dibatasi BU serial (handler).
@@ -178,6 +194,35 @@ export function serialRoutes(): Pick<RouteTable, SerialMethod> {
       permission: READ_PERMISSION,
       validate: validateSerialList,
       handler: (input, ctx) => listSerials(ctx.env, ctx.user, input),
+    },
+    // Hapus lunak dan pulihkan (fase 4d): gerbang kasar `serial: manage`; hak atas SEMUA BU riwayat tiap serial diperiksa
+    // handler (di luar hak = `NOT_FOUND` seragam).
+    'serials.remove': {
+      permission: { module: 'serial', level: 'manage' },
+      validate: validateGetSerial,
+      handler: (input, ctx) => removeSerial(ctx.env, input, ctx.user),
+    },
+    'serials.removeBatch': {
+      permission: { module: 'serial', level: 'manage' },
+      validate: validateIdBatch,
+      handler: (input, ctx) => removeSerialBatch(ctx.env, input, ctx.user),
+    },
+    'serials.restore': {
+      permission: { module: 'serial', level: 'manage' },
+      validate: validateGetSerial,
+      handler: (input, ctx) => restoreSerial(ctx.env, input, ctx.user),
+    },
+    'serials.restoreBatch': {
+      permission: { module: 'serial', level: 'manage' },
+      validate: validateIdBatch,
+      handler: (input, ctx) => restoreSerialBatch(ctx.env, input, ctx.user),
+    },
+    // Tempel stiker massal (keputusan pemilik 2026-11-22 K2): atomik; hak per baris (BU, status, posisi) dinilai handler
+    // lewat tabel transisi yang sama dengan `serials.act`.
+    'serials.applyStickersBatch': {
+      permission: { module: 'serial', level: 'edit' },
+      validate: validateApplyStickersBatch,
+      handler: (input, ctx) => applyStickersBatch(ctx.env, input, ctx.user),
     },
     'serials.history': {
       permission: READ_PERMISSION,

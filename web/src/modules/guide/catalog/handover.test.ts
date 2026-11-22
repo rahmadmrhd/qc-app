@@ -4,6 +4,7 @@ import type { LocationAccessDto, MeDto } from '@shared/contract';
 import { GUIDE_IDS, GUIDE_VERSIONS } from '@shared/guides';
 import { describe, expect, test } from 'vitest';
 import { getDemoScenes, loadDemoScenes } from '../lib/demo-types';
+import { guideForRoute } from '../lib/guide-for-route';
 import { offeredGuides } from '../lib/offer';
 import { HANDOVER_BUAT, HANDOVER_DASAR, HANDOVER_TIP_WA } from './handover';
 import { GUIDE_CATALOG } from './index';
@@ -105,8 +106,19 @@ describe('panduan Serah Terima', () => {
 
   test('banner: papan di /handover (tanpa formulir), formulir di /handover/new', () => {
     expect(HANDOVER_DASAR.halaman).toBe('/handover');
-    expect(HANDOVER_DASAR.halamanKecuali).toEqual(['/handover/new']);
+    expect(HANDOVER_DASAR.halamanKecuali).toEqual(['/handover/new', '/handover/$handoverId']);
     expect(HANDOVER_BUAT.halaman).toBe('/handover/new');
+  });
+
+  test('banner papan tidak muncul di View task (/handover/<id>) maupun halaman ubahnya', () => {
+    const offers = [offerFor(both, 'handover-dasar'), offerFor(both, 'handover-buat')].filter(
+      (offer): offer is NonNullable<typeof offer> => offer !== undefined,
+    );
+    const idAt = (path: string) => guideForRoute(offers, path)?.entry.id;
+    expect(idAt('/handover')).toBe('handover-dasar');
+    expect(idAt('/handover/new')).toBe('handover-buat');
+    expect(idAt('/handover/h1')).toBeUndefined();
+    expect(idAt('/handover/h1/edit')).toBeUndefined();
   });
 
   test('formulir: satu panduan dari lokasi sampai tepat sebelum Simpan semua', () => {

@@ -17,6 +17,7 @@ function user(businessUnits: Record<string, BuPermissionMap>, isSuperAdmin = fal
     locations: {},
     businessUnits,
     sharedAccount: false,
+    deletedBuIds: [],
   };
 }
 

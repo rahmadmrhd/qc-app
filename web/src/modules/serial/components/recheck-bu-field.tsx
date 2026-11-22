@@ -44,6 +44,7 @@ export interface RecheckBuFieldProps {
   disabled?: boolean;
   loading?: boolean;
   placeholder?: string;
+  required?: boolean;
 }
 
 /**
@@ -60,11 +61,13 @@ export function RecheckBuField({
   disabled,
   loading,
   placeholder = 'Pilih Business Unit…',
+  required,
 }: RecheckBuFieldProps) {
   const options: LinkOption[] = choices.map((bu) => ({ id: bu.id, label: bu.code }));
   return (
     <LinkField
       id={id}
+      required={required}
       label={label}
       placeholder={placeholder}
       value={value.buId === '' ? null : value.buId}

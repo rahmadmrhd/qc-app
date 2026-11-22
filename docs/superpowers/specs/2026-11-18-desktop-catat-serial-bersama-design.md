@@ -71,7 +71,7 @@ Saat pertama kali `useDraftRows` memuat (jembatan >= 8): entri `pending` yang ad
 
 ### Foto bukti dari desktop
 
-Memakai `ProofPhotoDialog`/`ProofCameraDialog`/`StrictScanDialog` apa adanya (kamera lewat `getUserMedia`). Unggahan multipart lewat proksi `app://qc/api/*` (proksi meneruskan body sebagai stream; harus dibuktikan di Electron nyata, lihat Risiko).
+Memakai `FileDialog` terpadu (semula `ProofPhotoDialog`/`ProofCameraDialog`, dilebur 2026-11-20 atas keputusan pemilik produk, spek induk Serial Number butir 67) dan `StrictScanDialog` apa adanya (kamera lewat `getUserMedia`). Unggahan multipart lewat proksi `app://qc/api/*` (proksi meneruskan body sebagai stream; harus dibuktikan di Electron nyata, lihat Risiko).
 
 ## Batasan dan risiko
 
@@ -93,6 +93,7 @@ Memakai `ProofPhotoDialog`/`ProofCameraDialog`/`StrictScanDialog` apa adanya (ka
 8. **Catat dirender setelah draft termuat**; selama memuat tampil keterangan "Memuat draft...". Bila `draft.load` gagal (berkas rusak), tampil galat dan inject diblokir (draft tak boleh ditimpa snapshot kosong); pengguna diberi tahu lokasi berkas.
 9. **Baris inject tidak melewati verifikasi impor**: BU/Lokasi dari katalog (BU milik Tipe) dipakai apa adanya; bila akun tak punya `serial: edit` pada BU itu, server menolak saat Simpan dan pesannya tampil per baris di kolom Hasil (perilaku tabel yang ada).
 10. **Migrasi entri pending tanpa Item** menjadi baris dengan `unresolved: ['item']` (satu pilihan Item+BU di dialog); tanpa Lokasi saja: `['location']`. Baris dengan BU kosong tertahan oleh pemeriksaan kelengkapan Simpan yang ada.
+11. **Tautan Buka disembunyikan di dialog Catat desktop** (keputusan pemilik produk 2026-11-21, review 4d M4): form Catat di aplikasi desktop tidak menampilkan tautan Buka (Item, BU, Lokasi, dan field relasi lain) karena `window.ts` menolak semua jendela baru dan tautannya mati; di peramban tetap tampil bila berhak. Satu titik: `openable()` di `web/src/lib/link-access.ts` (`isDesktop()`). Spek redesain butir 49.
 
 ## Pengujian
 

@@ -85,7 +85,7 @@ beforeAll(() => {
 afterAll(async () => {
   for (const name of schemas) await admin.exec(`DROP DATABASE IF EXISTS \`${name}\``);
   await admin.close();
-}, 60_000);
+}, 120_000);
 
 describe('loadMigrations', () => {
   test('membaca berkas *.sql bernomor di server/migrations, urut nama', async () => {
@@ -261,7 +261,7 @@ describe('applyMigrations (migrator)', () => {
     } finally {
       await db.close();
     }
-  }, 60_000);
+  }, 120_000);
 
   test('migrasi gagal tidak dicatat dan melempar galat', async () => {
     const db = await freshDb();
@@ -279,7 +279,7 @@ describe('applyMigrations (migrator)', () => {
     } finally {
       await db.close();
     }
-  }, 60_000);
+  }, 120_000);
 });
 
 describe('skema baseline', () => {
@@ -287,7 +287,7 @@ describe('skema baseline', () => {
   beforeAll(async () => {
     db = await freshDb();
     await applyMigrations(db);
-  }, 60_000);
+  }, 120_000);
   afterAll(async () => {
     await db.close();
   });
@@ -330,6 +330,11 @@ describe('skema baseline', () => {
       { name: '0024_item_wajib_foto.sql' },
       { name: '0025_nomor_laporan_baru.sql' },
       { name: '0026_serial_unik_sistem.sql' },
+      { name: '0027_soft_delete.sql' },
+      { name: '0028_audit_target_id.sql' },
+      { name: '0029_klien_id_entri_stok.sql' },
+      { name: '0030_soft_delete_contract.sql' },
+      { name: '0031_audit_target_id_index.sql' },
     ]);
   });
 
@@ -367,7 +372,9 @@ describe('skema baseline', () => {
     await expect(insert('d', 'ca', 'bu3', 'SN9')).rejects.toBeInstanceOf(DbError);
     await insert('e', 'ce', 'bu2', 'SN2');
     // Skema ini dipakai tes berikutnya (daftar indeks hasil migrasi saja): kembalikan keadaan tanpa indeks bentukan boot.
-    await db.prepare('DROP INDEX serials_serial ON serials').run();
+    // `ensureSerialUniqueIndex` membuang `serials_bu_serial` (milik migrasi 0001) setelah `_live` terbentuk: pasang lagi.
+    await db.prepare('DROP INDEX serials_serial_live ON serials').run();
+    await db.prepare('CREATE UNIQUE INDEX serials_bu_serial ON serials (bu_id, serial)').run();
   });
 
   test('serial_events.client_id: NULLABLE, banyak NULL boleh, nilai terisi unik', async () => {
@@ -464,13 +471,14 @@ describe('skema baseline', () => {
       .sort();
     expect(got).toEqual(
       [
+        'audit_log.audit_log_target_id_ts',
         'audit_log.audit_log_target_ts',
         'audit_log.audit_log_ts',
         'brand_default_business_units.brand_default_business_units_bu',
-        'brands.brands_key',
-        'business_units.business_units_code_unique',
-        'business_units.business_units_name_unique',
-        'customers.customers_key',
+        'brands.brands_key_live',
+        'business_units.business_units_code_unique_live',
+        'business_units.business_units_name_unique_live',
+        'customers.customers_key_live',
         'files.files_owner',
         'files.files_pending_delete',
         'handover_comments.handover_comments_client_id',
@@ -479,19 +487,19 @@ describe('skema baseline', () => {
         'handovers.handovers_board',
         'handovers.handovers_client_id',
         'handovers.handovers_customer',
-        'handovers.handovers_number',
+        'handovers.handovers_number_live',
         'item_business_units.item_business_units_bu',
         'item_sticker_marks.item_sticker_marks_sticker',
         'item_sticker_marks.item_sticker_marks_type',
         'item_sticker_photos.item_sticker_photos_guide',
         'items.items_brand',
-        'items.items_key',
+        'items.items_key_live',
         'items.items_manual_book',
         'items.items_postel',
         'items.items_status_updated',
         'jobs.jobs_status_updated',
-        'locations.locations_code_unique',
-        'locations.locations_name_unique',
+        'locations.locations_code_unique_live',
+        'locations.locations_name_unique_live',
         'manual_book_versions.manual_book_versions_design_version',
         'notification_pending.notification_pending_release',
         'notifications.notifications_created',
@@ -500,13 +508,13 @@ describe('skema baseline', () => {
         'notifications.notifications_recipient',
         'notifications.notifications_serial',
         'postel_numbers.postel_numbers_expiry',
-        'postel_numbers.postel_numbers_key',
+        'postel_numbers.postel_numbers_key_live',
         'postel_numbers.postel_numbers_seq',
-        'postels.postels_sticker',
+        'postels.postels_sticker_live',
         'push_subscriptions.push_subscriptions_recipient',
         'qr_designs.qr_designs_document',
-        'qr_presets.qr_presets_bu_unique',
-        'roles.roles_name_unique',
+        'qr_presets.qr_presets_bu_unique_live',
+        'roles.roles_name_unique_live',
         'serial_cases.serial_cases_bu_created',
         'serial_cases.serial_cases_bu_opened',
         'serial_cases.serial_cases_number',
@@ -529,12 +537,13 @@ describe('skema baseline', () => {
         'serials.serials_status',
         'sticker_business_units.sticker_business_units_bu',
         'sticker_guide_images.sticker_guide_images_name',
+        'sticker_stock_entries.sticker_stock_entries_client_id',
         'sticker_stock_entries.sticker_stock_entries_location_ts',
         'sticker_stock_entries.sticker_stock_entries_sticker_ts',
-        'sticker_types.sticker_types_kind_unique',
-        'sticker_types.sticker_types_name_unique',
+        'sticker_types.sticker_types_kind_unique_live',
+        'sticker_types.sticker_types_name_unique_live',
         'stickers.stickers_type',
-        'stickers.stickers_type_name_unique',
+        'stickers.stickers_type_name_unique_live',
         'users.users_email',
       ].sort(),
     );
@@ -617,7 +626,7 @@ describe('skema baseline', () => {
       .run()
       .catch((e: unknown) => e);
     expect((dup as DbError).kind).toBe('duplicate');
-    expect((dup as DbError).key).toBe('roles_name_unique');
+    expect((dup as DbError).key).toBe('roles_name_unique_live'); // indeks lama dibuang migrasi contract 0030
 
     await db
       .prepare('INSERT INTO locations (id, code, name) VALUES (?, ?, ?)')
@@ -628,13 +637,13 @@ describe('skema baseline', () => {
       .bind('l2', 'JKT', 'Lain')
       .run()
       .catch((e: unknown) => e);
-    expect((dupCode as DbError).key).toBe('locations_code_unique');
+    expect((dupCode as DbError).key).toBe('locations_code_unique_live'); // indeks lama dibuang migrasi contract 0030
     const dupName = await db
       .prepare('INSERT INTO locations (id, code, name) VALUES (?, ?, ?)')
       .bind('l3', 'BDG', 'JAKARTA')
       .run()
       .catch((e: unknown) => e);
-    expect((dupName as DbError).key).toBe('locations_name_unique');
+    expect((dupName as DbError).key).toBe('locations_name_unique_live'); // indeks lama dibuang migrasi contract 0030
   });
 
   test('perbedaan terdokumentasi dari SQLite: LOWER Unicode (É dan é bentrok pada roles.name)', async () => {

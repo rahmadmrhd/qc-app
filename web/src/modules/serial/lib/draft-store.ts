@@ -5,7 +5,7 @@ import {
   type SerialStatus,
 } from '@shared/serials';
 import type { StagingExisting, StagingRow, StagingSticker } from './draft';
-import type { ProofPhotoRef } from './proof-source';
+import { type ProofPhotoRef, proofThumbUrl } from './proof-source';
 
 const PREFIX = 'qc.serial.draft:';
 
@@ -66,11 +66,11 @@ function readProofPhotos(value: unknown): ProofPhotoRef[] {
     if (!isRecord(entry)) continue;
     const id = text(entry, 'id');
     const mime = text(entry, 'mime');
-    const thumbUrl = text(entry, 'thumbUrl');
     const size = Object.hasOwn(entry, 'size') ? entry.size : undefined;
-    if (id === null || id === '' || mime === null || thumbUrl === null) continue;
+    if (id === null || id === '' || mime === null) continue;
     if (typeof size !== 'number' || !Number.isFinite(size)) continue;
-    photos.push({ id, mime, size, thumbUrl });
+    // `thumbUrl` tersimpan diabaikan: selalu diturunkan dari id (draf yang diubah tak boleh menunjuk ke URL lain).
+    photos.push({ id, mime, size, thumbUrl: proofThumbUrl(id) });
   }
   return photos;
 }

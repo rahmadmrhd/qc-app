@@ -1,10 +1,9 @@
 import type { Env } from '@server/core/env';
-import { appError } from '@server/core/errors';
 import type { UserContext } from '@server/modules/access/context';
 import type { SerialHistoryInput, SerialHistoryOutput } from '@shared/contract';
 import { SERIAL_HISTORY_GROUPS, SERIAL_LIMITS } from '@shared/serials';
-import { canReadSerial } from './access';
-import { loadSerialRow, type SerialEventRow } from './repo';
+import { loadReadableSerialRow } from './readable';
+import type { SerialEventRow } from './repo';
 import { toEventsWithProofs } from './service';
 
 const placeholders = (count: number): string => Array.from({ length: count }, () => '?').join(', ');
@@ -20,17 +19,17 @@ interface CountRow {
  * Riwayat per serial (tab linimasa): terbaru di atas (`seq` menurun), berkursor `seq` (kejadian dengan `seq` < kursor),
  * dapat disaring per kelompok jenis dan per kasus. `counts` dihitung dari SATU kueri agregat atas seluruh kejadian
  * serial (tidak terpengaruh filter) agar badge tab tetap utuh. Kasus milik serial lain = hasil kosong, bukan galat.
+ *
+ * `counts.all` = jumlah ENTRI yang tampil pada pilihan "Semua Riwayat": kejadian tanpa laporan dihitung satu per kejadian,
+ * sedangkan seluruh kejadian satu laporan diringkas menjadi SATU kartu laporan sehingga dihitung satu. `checks` dan
+ * `changes` tetap per kejadian (kedua pilihan itu menampilkan tiap kejadian), dan `byCase` = jumlah seluruh kejadian per laporan.
  */
 export async function serialHistory(
   env: Env,
   user: UserContext,
   input: SerialHistoryInput,
 ): Promise<SerialHistoryOutput> {
-  const row = await loadSerialRow(env.DB, input.id);
-  if (!row) throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
-  if (!(await canReadSerial(env.DB, user, row.id.trim(), row.bu_id.trim()))) {
-    throw appError('NOT_FOUND', 'Serial Number tidak ditemukan');
-  }
+  const row = await loadReadableSerialRow(env, user, input.id);
   const serialId = row.id.trim();
   const limit = input.limit ?? SERIAL_LIMITS.historyDefaultLimit;
 
@@ -67,10 +66,11 @@ export async function serialHistory(
   const counts: SerialHistoryOutput['counts'] = { all: 0, checks: 0, changes: 0, byCase: {} };
   for (const entry of counted.results) {
     const total = Number(entry.total);
-    counts.all += total;
+    const caseId = entry.case_id.trim();
+    // Kejadian lepas dihitung satu per kejadian; satu laporan (minimal satu kejadian) = satu kartu.
+    counts.all += caseId === '' ? total : 1;
     counts.checks += Number(entry.checks ?? 0);
     counts.changes += Number(entry.changes ?? 0);
-    const caseId = entry.case_id.trim();
     if (caseId !== '') counts.byCase[caseId] = total;
   }
   return {

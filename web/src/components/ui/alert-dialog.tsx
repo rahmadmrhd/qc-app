@@ -3,11 +3,19 @@ import { cn } from "cn"
 import { AlertDialog as AlertDialogPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
+import { DIALOG_SCROLL_ROOM, DialogListRoom } from "@/components/ui/dialog"
+import { useBackToCloseRoot } from "@/hooks/use-back-to-close"
 
 function AlertDialog({
+  open,
+  defaultOpen,
+  onOpenChange,
+  backToClose,
   ...props
-}: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
-  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />
+}: React.ComponentProps<typeof AlertDialogPrimitive.Root> & { backToClose?: boolean }) {
+  // Ponsel: back menutup dialog (hook no-op di desktop).
+  const root = useBackToCloseRoot({ open, defaultOpen, onOpenChange, backToClose })
+  return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...root} {...props} />
 }
 
 function AlertDialogTrigger({
@@ -62,7 +70,7 @@ function AlertDialogContent({
         data-slot="alert-dialog-content"
         data-size={size}
         className={cn(
-          "group/alert-dialog-content fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-[size=full]:inset-0 data-[size=full]:h-dvh data-[size=full]:max-h-none data-[size=full]:w-screen data-[size=full]:max-w-none data-[size=full]:translate-x-0 data-[size=full]:translate-y-0 data-[size=full]:rounded-none data-[size=full]:pt-[env(safe-area-inset-top)] data-[size=full]:pb-[env(safe-area-inset-bottom)] data-[size=full]:ring-0",
+          "group/alert-dialog-content fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-full -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl bg-popover text-popover-foreground [--tabs-surface:var(--popover)] ring-1 ring-foreground/10 duration-100 outline-none data-[size=default]:max-w-xs data-[size=sm]:max-w-xs data-[size=default]:sm:max-w-sm data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-[size=full]:inset-0 data-[size=full]:h-dvh data-[size=full]:max-h-none data-[size=full]:w-screen data-[size=full]:max-w-none data-[size=full]:translate-x-0 data-[size=full]:translate-y-0 data-[size=full]:rounded-none data-[size=full]:pt-[env(safe-area-inset-top)] data-[size=full]:pb-[env(safe-area-inset-bottom)] data-[size=full]:ring-0",
           className
         )}
         {...props}
@@ -71,8 +79,11 @@ function AlertDialogContent({
         <div
           data-slot="alert-dialog-scroll"
           className={cn(
-            "flex min-h-0 flex-1 scroll-py-20 flex-col gap-4 overflow-x-hidden overflow-y-auto p-4",
-            size === "full" && "gap-0 p-0"
+            "flex min-h-0 flex-1 scroll-py-20 flex-col overflow-x-hidden overflow-y-auto",
+            // Layar penuh: tanpa padding dan tanpa jarak, jadi tanpa ruang gulir daftar saran juga (seperti sebelumnya).
+            size === "full"
+              ? "gap-0 p-0 [--dialog-gap:0px]"
+              : cn("gap-4 p-4 [--dialog-gap:1rem]", DIALOG_SCROLL_ROOM)
           )}
         >
           {children}
@@ -103,14 +114,17 @@ function AlertDialogFooter({
   ...props
 }: React.ComponentProps<"div">) {
   return (
-    <div
-      data-slot="alert-dialog-footer"
-      className={cn(
-        "sticky -bottom-4 z-10 -mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-popover bg-linear-to-b from-muted/50 to-muted/50 p-4 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end",
-        className
-      )}
-      {...props}
-    />
+    <>
+      <DialogListRoom slot="alert-dialog-list-room" />
+      <div
+        data-slot="alert-dialog-footer"
+        className={cn(
+          "sticky -bottom-4 z-10 -mx-4 -mb-4 mt-auto flex flex-col-reverse gap-2 rounded-b-xl border-t bg-popover bg-linear-to-b from-muted/50 to-muted/50 p-4 group-data-[size=sm]/alert-dialog-content:grid group-data-[size=sm]/alert-dialog-content:grid-cols-2 sm:flex-row sm:justify-end",
+          className
+        )}
+        {...props}
+      />
+    </>
   )
 }
 
@@ -164,13 +178,14 @@ function AlertDialogDescription({
 
 function AlertDialogAction({
   className,
-  variant = "default",
+  variant = "solid",
+  color,
   size = "default",
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Action> &
-  Pick<React.ComponentProps<typeof Button>, "variant" | "size">) {
+  Pick<React.ComponentProps<typeof Button>, "variant" | "size" | "color">) {
   return (
-    <Button variant={variant} size={size} asChild>
+    <Button variant={variant} color={color} size={size} asChild>
       <AlertDialogPrimitive.Action
         data-slot="alert-dialog-action"
         className={cn(className)}

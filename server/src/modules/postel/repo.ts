@@ -1,4 +1,5 @@
 import type { Db, DbStatement, Preparer } from '@server/core/db';
+import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 
 /**
  * Akses database modul Postel (`postels`, `postel_numbers`). Penulisan memakai pernyataan siap-`batch()` (bersama
@@ -16,6 +17,9 @@ export interface PostelRecord {
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
+  /** Penanda hapus lunak: `''` = hidup (ISO UTC bila terhapus); dibaca saja, ditulis lewat helper hapus/pulihkan. */
+  deletedAt: string;
+  deletedBy: string;
 }
 
 export interface PostelNumberRecord {
@@ -57,7 +61,10 @@ function parseIdList(value: string): string[] {
   }
 }
 
+/** Kolom tulis (insert); penanda hapus HANYA dibaca (`POSTEL_READ_COLUMNS`). */
 const POSTEL_COLUMNS = 'id, note, attachments, sticker_id, created_at, updated_at, updated_by';
+
+const POSTEL_READ_COLUMNS = `${POSTEL_COLUMNS}, deleted_at, deleted_by`;
 
 function toPostel(row: Row): PostelRecord {
   return {
@@ -68,17 +75,27 @@ function toPostel(row: Row): PostelRecord {
     createdAt: text(row.created_at),
     updatedAt: text(row.updated_at),
     updatedBy: text(row.updated_by),
+    deletedAt: text(row.deleted_at),
+    deletedBy: text(row.deleted_by),
   };
 }
 
-export async function listPostelRecords(db: Db): Promise<PostelRecord[]> {
-  const result = await db.prepare(`SELECT ${POSTEL_COLUMNS} FROM postels`).all<Row>();
+/** Catatan hidup (bawaan) atau yang terhapus lunak (`deleted`, hanya bagi pemegang izin Pulihkan). */
+export async function listPostelRecords(
+  db: Db,
+  state: 'live' | 'deleted' = 'live',
+): Promise<PostelRecord[]> {
+  const result = await (state === 'live'
+    ? db.prepare(`SELECT ${POSTEL_READ_COLUMNS} FROM postels WHERE ${liveWhere()}`)
+    : db.prepare(`SELECT ${POSTEL_READ_COLUMNS} FROM postels WHERE ${deletedWhere()}`)
+  ).all<Row>();
   return result.results.map(toPostel).filter((postel) => postel.id !== '');
 }
 
+/** Catatan menurut id, hidup atau terhapus: pemanggil menilai `deletedAt` (hak baca, hapus/pulihkan, simpan). */
 export async function findPostelRecord(db: Preparer, id: string): Promise<PostelRecord | null> {
   const row = await db
-    .prepare(`SELECT ${POSTEL_COLUMNS} FROM postels WHERE id = ?`)
+    .prepare(`SELECT ${POSTEL_READ_COLUMNS} FROM postels WHERE id = ?`)
     .bind(id)
     .first<Row>();
   return row === null ? null : toPostel(row);
@@ -106,7 +123,7 @@ export function updatePostelStmt(
 ): DbStatement {
   return db
     .prepare(
-      'UPDATE postels SET note = ?, attachments = ?, updated_at = ?, updated_by = ? WHERE id = ? AND updated_at = ?',
+      `UPDATE postels SET note = ?, attachments = ?, updated_at = ?, updated_by = ? WHERE id = ? AND updated_at = ? AND ${liveWhere()}`,
     )
     .bind(
       record.note,
@@ -123,15 +140,6 @@ export function linkPostelStickerStmt(db: Preparer, id: string, stickerId: strin
   return db
     .prepare('UPDATE postels SET sticker_id = ? WHERE id = ? AND sticker_id IS NULL')
     .bind(stickerId, id);
-}
-
-/** Mengunci baris catatan (`FOR UPDATE`) di awal batch hapus agar penulis serentak menunggu lalu melihat hasilnya. */
-export function lockPostelRowStmt(db: Preparer, id: string): DbStatement {
-  return db.prepare('SELECT id FROM postels WHERE id = ? FOR UPDATE').bind(id);
-}
-
-export function deletePostelStmt(db: Preparer, id: string): DbStatement {
-  return db.prepare('DELETE FROM postels WHERE id = ?').bind(id);
 }
 
 const NUMBER_COLUMNS =
@@ -155,18 +163,30 @@ function toNumber(row: Row): PostelNumberRecord {
   };
 }
 
+const NUMBER_ORDER = 'ORDER BY postel_id, seq';
+
+function sortNumbers(rows: PostelNumberRecord[], chunked: boolean): PostelNumberRecord[] {
+  // Potongan dibaca terpisah: urutkan ulang agar urutan global tetap `postel_id`, `seq`.
+  if (chunked) {
+    rows.sort((a, b) =>
+      a.postelId === b.postelId ? a.seq - b.seq : a.postelId < b.postelId ? -1 : 1,
+    );
+  }
+  return rows;
+}
+
 /**
- * Nomor sertifikat terurut `postel_id`, `seq` menaik. Tanpa `postelIds` = semua; dengan `postelIds` = hanya catatan itu
- * (dipotong per 500 id; daftar kosong = hasil kosong).
+ * Nomor sertifikat HIDUP terurut `postel_id`, `seq` menaik (nomor catatan terhapus ikut terhapus bersama induknya dan
+ * tidak muncul). Tanpa `postelIds` = semua; dengan `postelIds` = hanya catatan itu (dipotong per 500 id; daftar kosong
+ * = hasil kosong).
  */
 export async function listPostelNumbers(
   db: Preparer,
   postelIds?: readonly string[],
 ): Promise<PostelNumberRecord[]> {
-  const order = 'ORDER BY postel_id, seq';
   if (postelIds === undefined) {
     const result = await db
-      .prepare(`SELECT ${NUMBER_COLUMNS} FROM postel_numbers ${order}`)
+      .prepare(`SELECT ${NUMBER_COLUMNS} FROM postel_numbers WHERE ${liveWhere()} ${NUMBER_ORDER}`)
       .all<Row>();
     return result.results.map(toNumber);
   }
@@ -176,19 +196,36 @@ export async function listPostelNumbers(
     const chunk = unique.slice(from, from + IN_CHUNK);
     const result = await db
       .prepare(
-        `SELECT ${NUMBER_COLUMNS} FROM postel_numbers WHERE postel_id IN (${chunk.map(() => '?').join(',')}) ${order}`,
+        `SELECT ${NUMBER_COLUMNS} FROM postel_numbers WHERE ${liveWhere()} AND postel_id IN (${chunk.map(() => '?').join(',')}) ${NUMBER_ORDER}`,
       )
       .bind(...chunk)
       .all<Row>();
     rows.push(...result.results.map(toNumber));
   }
-  // Potongan dibaca terpisah: urutkan ulang agar urutan global tetap `postel_id`, `seq`.
-  if (unique.length > IN_CHUNK) {
-    rows.sort((a, b) =>
-      a.postelId === b.postelId ? a.seq - b.seq : a.postelId < b.postelId ? -1 : 1,
-    );
+  return sortNumbers(rows, unique.length > IN_CHUNK);
+}
+
+/**
+ * Nomor sertifikat catatan TERHAPUS beserta induknya (penampil View/pulihkan): `deleted_at` anak sama dengan induknya.
+ * Hanya dibaca menurut id catatan yang sudah lolos pemeriksaan hak di pemanggil.
+ */
+export async function listPostelNumbersOfDeleted(
+  db: Preparer,
+  postelIds: readonly string[],
+): Promise<PostelNumberRecord[]> {
+  const unique = [...new Set(postelIds)];
+  const rows: PostelNumberRecord[] = [];
+  for (let from = 0; from < unique.length; from += IN_CHUNK) {
+    const chunk = unique.slice(from, from + IN_CHUNK);
+    const result = await db
+      .prepare(
+        `SELECT ${NUMBER_COLUMNS} FROM postel_numbers WHERE postel_id IN (${chunk.map(() => '?').join(',')}) ${NUMBER_ORDER}`,
+      )
+      .bind(...chunk)
+      .all<Row>();
+    rows.push(...result.results.map(toNumber));
   }
-  return rows;
+  return sortNumbers(rows, unique.length > IN_CHUNK);
 }
 
 function numberValues(record: PostelNumberRecord): Array<string | number | null> {
@@ -282,8 +319,4 @@ export function parkPostelNumberKeyStmt(db: Preparer, id: string, postelId: stri
 
 export function deletePostelNumberStmt(db: Preparer, id: string, postelId: string): DbStatement {
   return db.prepare('DELETE FROM postel_numbers WHERE id = ? AND postel_id = ?').bind(id, postelId);
-}
-
-export function deletePostelNumbersOfStmt(db: Preparer, postelId: string): DbStatement {
-  return db.prepare('DELETE FROM postel_numbers WHERE postel_id = ?').bind(postelId);
 }

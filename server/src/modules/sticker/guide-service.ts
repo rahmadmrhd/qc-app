@@ -2,16 +2,20 @@ import { writeAudit } from '@server/core/audit';
 import { getBridge, viaBridge } from '@server/core/bridge-client';
 import { bytesToBase64 } from '@server/core/bytes';
 import { isGuardFailure } from '@server/core/cas';
+import type { Preparer } from '@server/core/db';
 import { DbError } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError, isAppError } from '@server/core/errors';
 import { dropCachedFile } from '@server/core/file-cache';
+import { newId } from '@server/core/id';
 import { folderIdOf, SETTING_DRIVE_FOLDER_ID } from '@server/core/settings';
+import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { insertFileStmt } from '@server/modules/files/repo';
 import { EXTENSIONS, ensureDriveFolder, purgePendingFiles } from '@server/modules/files/service';
 import { visibleBuIds } from '@server/modules/item/access';
+import type { IdBatchInput, RemoveBatchResult } from '@shared/batch';
 import type {
   FileContentDto,
   GetStickerGuideThumbInput,
@@ -40,6 +44,7 @@ import {
   lockGuideStatement,
   markGuideFilePendingDeleteStmt,
   parseGuideCursor,
+  releaseDeletedPlacementsStmts,
   renameGuideStmt,
 } from './guide-repo';
 
@@ -133,7 +138,7 @@ export async function listGuideUsages(
   const visible = visibleBuIds(user);
   if (visible.length === 0) return [];
   const result = await env.DB.prepare(
-    `SELECT i.id, i.model, i.status, b.name AS brand_name FROM item_sticker_photos p JOIN items i ON i.id = p.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE p.guide_id = ? AND EXISTS (SELECT 1 FROM item_business_units x WHERE x.item_id = i.id AND x.bu_id IN (${visible.map(() => '?').join(', ')})) ORDER BY i.\`key\`, i.id LIMIT ?`,
+    `SELECT i.id, i.model, i.status, b.name AS brand_name FROM item_sticker_photos p JOIN items i ON i.id = p.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('i')} AND p.guide_id = ? AND EXISTS (SELECT 1 FROM item_business_units x WHERE x.item_id = i.id AND x.bu_id IN (${visible.map(() => '?').join(', ')})) ORDER BY i.\`key\`, i.id LIMIT ?`,
   )
     .bind(input.id, ...visible, USAGES_MAX)
     .all<{ id: string; model: string; status: string; brand_name: string | null }>();
@@ -181,36 +186,70 @@ export async function renameGuide(
 }
 
 /**
- * Hapus gambar pustaka: bila masih dipakai (`usageCount > 0`) CONFLICT; selain itu, dalam SATU transaksi dengan
- * baris terkunci: berkas ditandai `pending_delete`, baris pustaka dihapus, audit ditulis; lalu berkas Drive dibuang
- * lewat `purgePendingFiles` (kegagalan Drive membiarkannya `pending_delete` untuk diulang cron; gambar sudah tak
- * terbaca). Kunci asing penempatan (3b-2, `ON DELETE RESTRICT`) menjadi pagar atomik tambahan: galat 1451 dipetakan
- * ke pesan yang sama.
+ * Perencana hapus gambar pustaka (SATU definisi untuk rute tunggal dan batch). Dijalankan di dalam transaksi pemanggil:
+ * mengunci SEMUA baris gambar berurutan menurut id (dua batch serentak dengan himpunan beririsan tak saling
+ * deadlock), lalu memeriksa semuanya sebelum menulis apa pun, sehingga satu pelanggaran menolak seluruh permintaan:
+ *  - gambar tak ada = `NOT_FOUND`;
+ *  - bukan pengunggah dan bukan `item: manage` = `FORBIDDEN` (tunggal) atau `NOT_FOUND` seragam (batch: keberadaan
+ *    gambar milik orang lain tak boleh bocor lewat jenis galatnya);
+ *  - masih ditempatkan pada item HIDUP = `CONFLICT` generik (tanpa menyebut item).
+ * Lalu menulis: penempatan milik item TERHAPUS dibuang, berkas ditandai `pending_delete`, baris pustaka dihapus, audit.
  */
-export async function removeGuide(
+async function planGuideRemoval(
   env: Env,
-  input: RemoveStickerGuideInput,
+  tx: Preparer,
+  ids: readonly string[],
   actor: UserContext,
-): Promise<{ id: string }> {
+  forbidden: 'forbidden' | 'notFound',
+): Promise<void> {
+  const locked = new Map<string, LockedGuideRow>();
+  for (const id of [...ids].sort()) {
+    const row = await lockGuideStatement(tx, id).first<LockedGuideRow>();
+    if (!row) throw appError('NOT_FOUND', GUIDE_GONE_MESSAGE);
+    locked.set(id, row);
+  }
+  for (const id of ids) {
+    const row = locked.get(id) as LockedGuideRow;
+    if (!canManageGuide(actor, row.created_by)) {
+      if (forbidden === 'notFound') throw appError('NOT_FOUND', GUIDE_GONE_MESSAGE);
+      throw appError('FORBIDDEN', GUIDE_FORBIDDEN_MESSAGE);
+    }
+  }
+  for (const id of ids) {
+    const row = locked.get(id) as LockedGuideRow;
+    if (Number(row.usage_count) > 0) throw appError('CONFLICT', GUIDE_IN_USE_MESSAGE);
+  }
+  const now = nowIso(env);
+  for (const id of ids) {
+    const row = locked.get(id) as LockedGuideRow;
+    for (const statement of releaseDeletedPlacementsStmts(tx, id)) await statement.run();
+    await markGuideFilePendingDeleteStmt(tx, id).run();
+    await deleteGuideStmt(tx, id).run();
+    await writeAudit(tx, {
+      ts: now,
+      actor: actor.email,
+      action: 'stickerGuide.remove',
+      target: row.name,
+      before: { id, name: row.name, mime: row.mime.trim(), size: Number(row.size) },
+      after: null,
+    }).run();
+  }
+}
+
+/**
+ * Menjalankan perencana dalam SATU transaksi (semua gambar atau tidak sama sekali), memetakan galat 1451 (penempatan
+ * item hidup muncul serentak; kunci asing `RESTRICT`) ke pesan yang sama, lalu membuang berkas Drive setelah commit
+ * lewat `purgePendingFiles` (kegagalan Drive membiarkannya `pending_delete` untuk diulang cron; gambar sudah tak
+ * terbaca).
+ */
+async function removeGuides(
+  env: Env,
+  ids: readonly string[],
+  actor: UserContext,
+  forbidden: 'forbidden' | 'notFound',
+): Promise<void> {
   try {
-    await env.DB.transaction(async (tx) => {
-      const row = await lockGuideStatement(tx, input.id).first<LockedGuideRow>();
-      if (!row) throw appError('NOT_FOUND', GUIDE_GONE_MESSAGE);
-      if (!canManageGuide(actor, row.created_by)) {
-        throw appError('FORBIDDEN', GUIDE_FORBIDDEN_MESSAGE);
-      }
-      if (Number(row.usage_count) > 0) throw appError('CONFLICT', GUIDE_IN_USE_MESSAGE);
-      await markGuideFilePendingDeleteStmt(tx, input.id).run();
-      await deleteGuideStmt(tx, input.id).run();
-      await writeAudit(tx, {
-        ts: nowIso(env),
-        actor: actor.email,
-        action: 'stickerGuide.remove',
-        target: row.name,
-        before: { id: input.id, name: row.name, mime: row.mime.trim(), size: Number(row.size) },
-        after: null,
-      }).run();
-    });
+    await env.DB.transaction((tx) => planGuideRemoval(env, tx, ids, actor, forbidden));
   } catch (error) {
     if (error instanceof DbError && error.errno === ER_ROW_IS_REFERENCED) {
       throw appError('CONFLICT', GUIDE_IN_USE_MESSAGE);
@@ -218,11 +257,36 @@ export async function removeGuide(
     throw error;
   }
   try {
-    await purgePendingFiles(env, 5);
+    await purgePendingFiles(env, Math.max(5, ids.length));
   } catch (error) {
     console.error(`Pembuangan berkas Drive gambar pustaka tertunda: ${String(error)}`);
   }
+}
+
+/**
+ * Hapus gambar pustaka: bila masih dipakai item hidup CONFLICT; penempatan milik item terhapus ikut dibuang (lihat
+ * `planGuideRemoval`). Kunci asing penempatan (3b-2, `ON DELETE RESTRICT`) menjadi pagar atomik tambahan.
+ */
+export async function removeGuide(
+  env: Env,
+  input: RemoveStickerGuideInput,
+  actor: UserContext,
+): Promise<{ id: string }> {
+  await removeGuides(env, [input.id], actor, 'forbidden');
   return { id: input.id };
+}
+
+/**
+ * Hapus massal gambar pustaka (maks. `BATCH_MAX`, atomik): satu gambar dipakai item hidup atau tak boleh dikelola
+ * pemanggil menolak seluruh permintaan; tak ada yang terhapus. Hasil mengikuti urutan masukan.
+ */
+export async function removeGuideBatch(
+  env: Env,
+  input: IdBatchInput,
+  actor: UserContext,
+): Promise<RemoveBatchResult> {
+  await removeGuides(env, input.ids, actor, 'notFound');
+  return { ids: [...input.ids] };
 }
 
 /** `2000` -> `2.000` (pesan pustaka penuh; satu sumber angka: `GUIDE_LIMITS.libraryMax`). */
@@ -255,7 +319,7 @@ export async function uploadGuide(
   }
   const folderId =
     (await folderIdOf(env, SETTING_DRIVE_FOLDER_ID)) || (await ensureDriveFolder(env));
-  const id = crypto.randomUUID();
+  const id = newId();
   const bridge = getBridge(env);
   const driveId = await viaBridge(() =>
     bridge.createFile(

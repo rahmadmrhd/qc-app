@@ -1,9 +1,12 @@
 import type { MeDto, StickerStockDto } from '@shared/contract';
-import { render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { useState } from 'react';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { FormPage } from '@/components/page/form-page';
 import { ActiveLocationsProvider } from '@/modules/location/active-locations-context';
 import { linkOptionNames, pickLink } from '@/test/link-field';
+import { renderInRouter } from '@/test/render-in-router';
 import { OpnamePage, type OpnamePageProps } from './opname-page';
 
 let me: MeDto;
@@ -12,6 +15,10 @@ vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
 function located(permission: 'view' | 'edit' | 'manage') {
   return { handover: 'none', qc: 'none', stock: 'none', stickerstock: permission } as const;
 }
+
+afterEach(() => {
+  cleanup();
+});
 
 beforeEach(() => {
   localStorage.clear();
@@ -72,22 +79,52 @@ const rows: StickerStockDto[] = [
   stock('s4', 'Garansi Void', 'Garansi', 5),
 ];
 
-function renderPage(props: Partial<OpnamePageProps> = {}) {
+const FORM_ID = 'opname-test';
+
+/** Meniru rute: FormPage memegang tombol Simpan/Batal; status busy dan submittable datang dari halaman. */
+function Harness({
+  onCancel,
+  ...props
+}: Omit<OpnamePageProps, 'formId' | 'onBusyChange' | 'onSubmittableChange'> & {
+  onCancel: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [submittable, setSubmittable] = useState(false);
+  return (
+    <ActiveLocationsProvider>
+      <FormPage
+        formId={FORM_ID}
+        title="Stok opname"
+        onCancel={onCancel}
+        submitting={busy}
+        submitLabel="Simpan opname"
+        submitDisabled={!submittable}
+      >
+        <OpnamePage
+          formId={FORM_ID}
+          onBusyChange={setBusy}
+          onSubmittableChange={setSubmittable}
+          {...props}
+        />
+      </FormPage>
+    </ActiveLocationsProvider>
+  );
+}
+
+async function renderPage(props: Partial<OpnamePageProps> = {}) {
   const onSave = vi.fn().mockResolvedValue(null);
   const onDone = vi.fn();
   const onCancel = vi.fn();
   const onDirtyChange = vi.fn();
-  render(
-    <ActiveLocationsProvider>
-      <OpnamePage
-        rows={rows}
-        onSave={onSave}
-        onDone={onDone}
-        onCancel={onCancel}
-        onDirtyChange={onDirtyChange}
-        {...props}
-      />
-    </ActiveLocationsProvider>,
+  await renderInRouter(
+    <Harness
+      rows={rows}
+      onSave={onSave}
+      onDone={onDone}
+      onCancel={onCancel}
+      onDirtyChange={onDirtyChange}
+      {...props}
+    />,
   );
   return { onSave, onDone, onCancel, onDirtyChange };
 }
@@ -96,15 +133,15 @@ async function chooseJakarta() {
   await pickLink(screen, 'Lokasi', 'Jakarta (JKT)');
 }
 
-test('halaman memuat judul dan petunjuk memilih lokasi; tanpa daftar sebelum lokasi dipilih', () => {
-  renderPage();
+test('halaman memuat judul dan petunjuk memilih lokasi; tanpa daftar sebelum lokasi dipilih', async () => {
+  await renderPage();
   expect(screen.getByRole('heading', { name: 'Stok opname' })).toBeInTheDocument();
   expect(screen.getByText('Pilih lokasi untuk mulai menghitung.')).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Hitung Hijau-B' })).toBeNull();
 });
 
 test('total butir baris melebihi batas ditandai dan Simpan nonaktif', async () => {
-  renderPage();
+  await renderPage();
   await chooseJakarta();
   await userEvent.click(screen.getByRole('button', { name: 'Hitung Hijau-B' }));
   await userEvent.type(screen.getByLabelText('Lembar baris 1'), '1000');
@@ -117,7 +154,7 @@ test('total butir baris melebihi batas ditandai dan Simpan nonaktif', async () =
 
 test('menampilkan stok tercatat negatif sebagai "Kurang N"', async () => {
   const [first, ...rest] = rows as [StickerStockDto, ...StickerStockDto[]];
-  renderPage({
+  await renderPage({
     rows: [{ ...first, total: -2, byLocation: [{ locationId: 'l-a', qty: -2 }] }, ...rest],
   });
   await chooseJakarta();
@@ -125,7 +162,7 @@ test('menampilkan stok tercatat negatif sebagai "Kurang N"', async () => {
 });
 
 test('mengirim expectedQty yang dilihat halaman dan hanya baris yang dihitung, lalu onDone', async () => {
-  const { onSave, onDone } = renderPage();
+  const { onSave, onDone } = await renderPage();
   await chooseJakarta();
   expect(screen.getByText('Tercatat 120')).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Hitung Hijau-B' }));
@@ -139,7 +176,7 @@ test('mengirim expectedQty yang dilihat halaman dan hanya baris yang dihitung, l
 });
 
 test('ditolak usang: pesan hitung ulang, lalu Hitung ulang memakai stok terbaru', async () => {
-  const { onSave, onDone } = renderPage();
+  const { onSave, onDone } = await renderPage();
   onSave.mockResolvedValueOnce({
     message: 'Stok berubah sejak dihitung; hitung ulang',
     stale: true,
@@ -151,7 +188,8 @@ test('ditolak usang: pesan hitung ulang, lalu Hitung ulang memakai stok terbaru'
   expect(await screen.findByRole('alert')).toHaveTextContent(
     'Stok berubah sejak dihitung; hitung ulang',
   );
-  expect(screen.queryByRole('button', { name: 'Simpan opname' })).toBeNull();
+  // Usang: Simpan terkunci sampai "Hitung ulang" (tombol inline di dalam form).
+  expect(screen.getByRole('button', { name: 'Simpan opname' })).toBeDisabled();
   expect(onDone).not.toHaveBeenCalled();
   await userEvent.click(screen.getByRole('button', { name: 'Hitung ulang' }));
   expect(screen.queryByRole('alert')).toBeNull();
@@ -159,21 +197,21 @@ test('ditolak usang: pesan hitung ulang, lalu Hitung ulang memakai stok terbaru'
 });
 
 test('tanpa baris yang dihitung tidak dapat dikirim', async () => {
-  const { onSave } = renderPage();
+  const { onSave } = await renderPage();
   await chooseJakarta();
   expect(screen.getByRole('button', { name: 'Simpan opname' })).toBeDisabled();
   expect(onSave).not.toHaveBeenCalled();
 });
 
 test('Batal memanggil onCancel dan tidak menyimpan', async () => {
-  const { onSave, onCancel } = renderPage();
+  const { onSave, onCancel } = await renderPage();
   await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
   expect(onCancel).toHaveBeenCalledTimes(1);
   expect(onSave).not.toHaveBeenCalled();
 });
 
 test('onDirtyChange mengabarkan ada hitungan belum disimpan, lalu bersih setelah dibatalkan', async () => {
-  const { onDirtyChange } = renderPage();
+  const { onDirtyChange } = await renderPage();
   await chooseJakarta();
   expect(onDirtyChange).toHaveBeenLastCalledWith(false);
   await userEvent.click(screen.getByRole('button', { name: 'Hitung Hijau-B' }));
@@ -183,7 +221,7 @@ test('onDirtyChange mengabarkan ada hitungan belum disimpan, lalu bersih setelah
 });
 
 test('pencarian menyaring stiker menurut nama tanpa membedakan huruf besar/kecil', async () => {
-  renderPage();
+  await renderPage();
   await chooseJakarta();
   await userEvent.type(screen.getByLabelText('Cari stiker'), 'hijau');
   expect(screen.getByRole('button', { name: 'Hitung Hijau-B' })).toBeInTheDocument();
@@ -194,14 +232,14 @@ test('pencarian menyaring stiker menurut nama tanpa membedakan huruf besar/kecil
 });
 
 test('pencarian tanpa hasil menampilkan pesan kosong', async () => {
-  renderPage();
+  await renderPage();
   await chooseJakarta();
   await userEvent.type(screen.getByLabelText('Cari stiker'), 'tidak-ada');
   expect(screen.getByText('Tidak ada stiker yang cocok.')).toBeInTheDocument();
 });
 
 test('filter jenis menawarkan jenis yang ada dan menerima banyak jenis sekaligus', async () => {
-  renderPage();
+  await renderPage();
   await chooseJakarta();
   expect(await linkOptionNames(screen, 'Jenis stiker')).toEqual(['Garansi', 'QC Hijau', 'Segel']);
   await userEvent.click(await screen.findByRole('option', { name: 'Segel' }));
@@ -215,7 +253,7 @@ test('filter jenis menawarkan jenis yang ada dan menerima banyak jenis sekaligus
 });
 
 test('pencarian dan filter jenis bekerja bersamaan', async () => {
-  renderPage();
+  await renderPage();
   await chooseJakarta();
   await pickLink(screen, 'Jenis stiker', 'QC Hijau');
   await userEvent.type(screen.getByLabelText('Cari stiker'), '-c');
@@ -224,7 +262,7 @@ test('pencarian dan filter jenis bekerja bersamaan', async () => {
 });
 
 test('stiker yang sudah dihitung tetap terkirim walau tersaring dari tampilan', async () => {
-  const { onSave } = renderPage();
+  const { onSave } = await renderPage();
   await chooseJakarta();
   await userEvent.click(screen.getByRole('button', { name: 'Hitung Hijau-B' }));
   await userEvent.type(screen.getByLabelText('Butir'), '7');
@@ -239,7 +277,7 @@ test('stiker yang sudah dihitung tetap terkirim walau tersaring dari tampilan', 
 });
 
 test('baris melebihi batas yang tersaring dari tampilan tetap memunculkan peringatan dan memblokir Simpan', async () => {
-  renderPage();
+  await renderPage();
   await chooseJakarta();
   await userEvent.click(screen.getByRole('button', { name: 'Hitung Hijau-B' }));
   await userEvent.type(screen.getByLabelText('Lembar baris 1'), '1000');
@@ -250,11 +288,26 @@ test('baris melebihi batas yang tersaring dari tampilan tetap memunculkan pering
 });
 
 test('mengganti lokasi membuang hitungan tetapi mempertahankan pencarian dan filter', async () => {
-  renderPage();
+  await renderPage();
   await chooseJakarta();
   await userEvent.type(screen.getByLabelText('Cari stiker'), 'hijau');
   await userEvent.click(screen.getByRole('button', { name: 'Hitung Hijau-B' }));
   await pickLink(screen, 'Lokasi', 'Bandung (BDG)');
   expect(screen.getByRole('button', { name: 'Hitung Hijau-B' })).toBeInTheDocument();
   expect(screen.getByLabelText('Cari stiker')).toHaveValue('hijau');
+});
+
+test('Enter di kolom cari tidak mengirim form bila belum ada hitungan', async () => {
+  const { onSave } = await renderPage();
+  await chooseJakarta();
+  await userEvent.type(screen.getByLabelText('Cari stiker'), 'hijau{Enter}');
+  expect(onSave).not.toHaveBeenCalled();
+});
+
+test('"Stok opname" dari View Stiker: kolom cari terisi nama stiker (initialSearch)', async () => {
+  await renderPage({ initialSearch: 'Segel' });
+  await chooseJakarta();
+  expect(screen.getByLabelText('Cari stiker')).toHaveValue('Segel');
+  expect(screen.queryByRole('button', { name: 'Hitung Hijau-B' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Hitung Segel Polos' })).toBeInTheDocument();
 });

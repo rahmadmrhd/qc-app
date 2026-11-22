@@ -61,7 +61,7 @@ function ComposerFrame() {
             value={DEMO_COMMENT_BODY}
           />
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" tabIndex={-1}>
+            <Button type="button" variant="ghost" color="primary" size="sm" tabIndex={-1}>
               Batal
             </Button>
             <Button type="button" size="sm" tabIndex={-1}>

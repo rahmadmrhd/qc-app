@@ -17,6 +17,8 @@ import { desktopApp } from '@server/modules/desktop/routes';
 import { notificationStreamApp } from '@server/modules/notification/stream-routes';
 import { publicSerialApp } from '@server/modules/serial/public-routes';
 import { getRoutes } from '@server/routes';
+import { API_ROUTES } from '@shared/api';
+import { announcedApis, apiVersionsInUse, MIN_CLIENT, restBase } from '@shared/api-versions';
 import { Hono } from 'hono/tiny';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 
@@ -31,15 +33,21 @@ export function createApp(routes: RouteTable): Hono<AppBindings> {
   app.use('/api/*', csrfGuard);
   app.use('/auth/*', csrfGuard);
 
-  // `version`/`build` ditambahkan (rilis semver): pemeriksa kesehatan hanya memakai status 2xx, jadi aman.
-  app.get('/api/ping', (c) => c.json({ ok: true, ...buildInfo(c.env) }));
-  // REST (`/api/v1`): satu tabel `shared/api.ts` untuk klien, server, dan OpenAPI; semua id terdaftar.
-  const rest = new Hono<AppBindings>();
-  registerRest(rest, routes);
+  // `version`/`build` ditambahkan (rilis semver) dan `apis` (versi API per kelompok, dibaca klien untuk memilih id berversi):
+  // pemeriksa kesehatan hanya memakai status 2xx, jadi penambahan field aman.
+  app.get('/api/ping', (c) =>
+    c.json({ ok: true, ...buildInfo(c.env), apis: announcedApis(), minClient: { ...MIN_CLIENT } }),
+  );
+  // REST (`/api/v<n>`): satu tabel `shared/api.ts` untuk klien, server, dan OpenAPI; semua id terdaftar, satu sub-aplikasi
+  // per versi yang dipakai id tabel (hari ini hanya v1; id berversi `<id>@<n>` dipasang di `/api/v<n>`).
   // Aliran SSE notifikasi desktop: satu-satunya rute `/api/v1` di luar `API_ROUTES` (respons berumur panjang, bukan
-  // JSON tunggal); dipasang SEBELUM `rest` agar tak tertelan kernel.
+  // JSON tunggal); dipasang SEBELUM `rest` v1 agar tak tertelan kernel.
   app.route('/api/v1/notifications/stream', notificationStreamApp);
-  app.route('/api/v1', rest);
+  for (const version of apiVersionsInUse(Object.keys(API_ROUTES))) {
+    const rest = new Hono<AppBindings>();
+    registerRest(rest, routes, version);
+    app.route(restBase(version), rest);
+  }
   app.get('/api/openapi.json', (c) => openApiResponse(c.env, c.req.raw, routes));
   // Halaman publik laporan rusak (tautan bertanda tangan, tanpa sesi): di luar `API_ROUTES` dan OpenAPI; dipasang SEBELUM
   // catch-all statis di bawah.
@@ -56,11 +64,9 @@ export function createApp(routes: RouteTable): Hono<AppBindings> {
   // Berkas statis web (`bun run build` -> `server/dist`) dengan fallback SPA; rute server yang tak dikenal = 404.
   app.get('*', (c) => {
     const path = new URL(c.req.url).pathname;
-    const staticDir = c.env.staticDir;
-    const response =
-      staticDir === undefined || isServerPath(path)
-        ? null
-        : serveStatic(staticDir, c.req.method, path);
+    // Jalur server dicek lebih dulu: `/api/*` yang tak dikenal (mis. `/api/v2/x`) tak perlu menyentuh `c.env`.
+    const staticDir = isServerPath(path) ? undefined : c.env.staticDir;
+    const response = staticDir === undefined ? null : serveStatic(staticDir, c.req.method, path);
     return response ?? c.notFound();
   });
   // Galat tak tertangani di rute (mis. konfigurasi kurang): jalur non-REST memakai amplop `{ ok:false, error }`, galat internal disamarkan.

@@ -69,3 +69,13 @@ test('membuka lalu menyimpan tanpa menyentuh catatan: catatan dikirim persis sep
   await waitFor(() => expect(updates()).toHaveLength(1));
   expect(updates()[0]?.[1]).toMatchObject({ sample: true, note: OLD_NOTE });
 });
+
+test('P6: dialog Ubah data serial layar penuh di ponsel', async () => {
+  renderDialog();
+  const dialog = await screen.findByRole('dialog');
+  expect(dialog).toHaveAttribute('data-size', 'full-on-phone');
+  expect(dialog.className).toContain('max-md:data-[size=full-on-phone]:h-[var(--vvh,100dvh)]');
+  expect(dialog.className).toContain(
+    'max-md:data-[size=full-on-phone]:pt-[env(safe-area-inset-top)]',
+  );
+});

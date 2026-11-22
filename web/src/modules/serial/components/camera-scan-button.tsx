@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { type ScanFeedback, unlockScanAudio } from '../lib/scan-feedback';
 import type { IsKnown } from '../lib/scan-table';
 import { cameraSupported } from '../lib/use-camera-scanner';
+import type { ProofSession } from '../lib/use-proof-uploads';
 import type { CameraScanDialogProps } from './camera-scan-dialog';
 import type { StrictInfo, StrictScanDialogProps } from './strict-scan-dialog';
 
@@ -21,6 +22,10 @@ export interface StrictScan {
   info: StrictInfo;
   isKnown: IsKnown;
   onConfirm: StrictScanDialogProps['onConfirm'];
+  /** Kunci pemilik unggahan baru untuk satu sesi dialog (kelak `clientId` baris). */
+  newOwnerId: () => string;
+  /** Antrean unggah bersama milik halaman. */
+  proof: ProofSession;
   /** Sisa kapasitas draft; habis = dialog hanya memberi tahu batas (lihat `StrictScanDialogProps.capacity`). */
   capacity?: () => number;
 }
@@ -60,12 +65,13 @@ export function CameraScanButton({
   className,
 }: CameraScanButtonProps) {
   const [open, setOpen] = useState(false);
+  // Satu kunci per pembukaan dialog wajib foto (dibuat sebelum foto pertama).
+  const [ownerId, setOwnerId] = useState('');
   if (!cameraSupported()) return null;
   return (
     <>
       <Button
         type="button"
-        variant="default"
         size="icon"
         className={className}
         disabled={disabled}
@@ -74,6 +80,7 @@ export function CameraScanButton({
         onClick={() => {
           // Gerak pengguna yang membuka dialog: saatnya menyiapkan Web Audio (iOS menolaknya dari pembacaan kamera).
           unlockScanAudio();
+          if (strict) setOwnerId(strict.newOwnerId());
           setOpen(true);
         }}
       >
@@ -85,6 +92,8 @@ export function CameraScanButton({
             open={open}
             onOpenChange={setOpen}
             info={strict.info}
+            ownerId={ownerId}
+            proof={strict.proof}
             isKnown={strict.isKnown}
             onConfirm={strict.onConfirm}
             capacity={strict.capacity}

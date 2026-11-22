@@ -1,3 +1,9 @@
+import {
+  BATCH_MAX,
+  type IdBatchInput,
+  type StatusBatchInput,
+  type VersionedBatchInput,
+} from '@shared/batch';
 import { isValidEmail, normalizeEmail } from './email';
 import { appError } from './errors';
 
@@ -87,4 +93,112 @@ export function expectNull(input: unknown): null {
     throw appError('VALIDATION', 'Method ini tidak menerima input');
   }
   return null;
+}
+
+function batchIds(raw: unknown, label: string): string[] {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    throw appError('VALIDATION', `${label} wajib berisi minimal 1 id`, { ids: 'Wajib diisi' });
+  }
+  if (raw.length > BATCH_MAX) {
+    throw appError('VALIDATION', `Maksimal ${BATCH_MAX} data per permintaan`, {
+      ids: `Maksimal ${BATCH_MAX}`,
+    });
+  }
+  const seen = new Set<string>();
+  for (const id of raw) {
+    if (typeof id !== 'string' || id === '' || id.length > 100) {
+      throw appError('VALIDATION', 'ID tidak valid', { ids: 'ID tidak valid' });
+    }
+    if (seen.has(id)) throw appError('VALIDATION', 'ID ganda', { ids: 'ID tidak boleh ganda' });
+    seen.add(id);
+  }
+  return raw as string[];
+}
+
+/** Masukan batch id: 1..`BATCH_MAX` id unik, tiap id string tak kosong. Pelanggaran = `VALIDATION`. */
+export function validateIdBatch(raw: unknown): IdBatchInput {
+  const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  return { ids: batchIds(source.ids, 'Daftar id') };
+}
+
+/** Masukan batch status: `ids` seperti `validateIdBatch` ditambah `status` (`active` | `inactive`). */
+export function validateStatusBatch(raw: unknown): StatusBatchInput {
+  const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const ids = batchIds(source.ids, 'Daftar id');
+  const status = source.status;
+  if (status !== 'active' && status !== 'inactive') {
+    throw appError('VALIDATION', 'Status tidak valid', { status: 'Status tidak valid' });
+  }
+  return { ids, status };
+}
+
+/** Masukan batch berversi: 1..`BATCH_MAX` entri `{ id, updatedAt }` dengan id unik. */
+export function validateVersionedBatch(raw: unknown): VersionedBatchInput {
+  const source = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const list = source.items;
+  if (!Array.isArray(list)) {
+    throw appError('VALIDATION', 'Daftar wajib berisi minimal 1 data', { items: 'Wajib diisi' });
+  }
+  const entries = list.map((entry) =>
+    entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {},
+  );
+  const ids = batchIds(
+    entries.map((entry) => entry.id),
+    'Daftar',
+  );
+  return {
+    items: entries.map((entry, index) => {
+      if (typeof entry.updatedAt !== 'string' || entry.updatedAt === '') {
+        throw appError('VALIDATION', 'updatedAt wajib diisi', { items: 'updatedAt wajib diisi' });
+      }
+      return { id: ids[index] as string, updatedAt: entry.updatedAt };
+    }),
+  };
+}
+
+/** Batas nilai pada satu filter jamak (revisi tampilan lanjutan 2026-11-22, B2b). */
+export const FILTER_LIST_MAX = 20;
+
+/**
+ * Filter jamak OPSIONAL (berdampingan dengan filter tunggal lama): tiada (`undefined`/`null`) = tak dikirim; bila ada
+ * harus daftar teks TAK KOSONG, maks. `FILTER_LIST_MAX` nilai, tanpa duplikat (setelah dipangkas), tiap nilai tak kosong
+ * dan maks. `maxLength` karakter, dan bila `allowed` diberikan salah satu dari nilai itu. Pelanggaran = `VALIDATION`
+ * pada field itu. Filter hanya menyempit: hak baca pemanggil diterapkan terpisah oleh pemakainya.
+ */
+export function readFilterList(
+  reader: ObjectReader,
+  key: string,
+  options: { maxLength?: number; allowed?: readonly string[] } = {},
+): string[] | undefined {
+  const value = reader.raw(key);
+  if (value === undefined || value === null) return undefined;
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
+    reader.fail(key, 'Harus berupa daftar teks');
+    return undefined;
+  }
+  if (value.length === 0) {
+    reader.fail(key, 'Daftar tidak boleh kosong');
+    return undefined;
+  }
+  if (value.length > FILTER_LIST_MAX) {
+    reader.fail(key, `Maksimal ${FILTER_LIST_MAX} nilai`);
+    return undefined;
+  }
+  const maxLength = options.maxLength ?? 100;
+  const items = (value as string[]).map((item) => item.trim());
+  for (const item of items) {
+    if (item === '' || item.length > maxLength) {
+      reader.fail(key, 'Nilai tidak valid');
+      return undefined;
+    }
+    if (options.allowed !== undefined && !options.allowed.includes(item)) {
+      reader.fail(key, 'Nilai tidak valid');
+      return undefined;
+    }
+  }
+  if (new Set(items).size !== items.length) {
+    reader.fail(key, 'Tidak boleh ada nilai ganda');
+    return undefined;
+  }
+  return items;
 }

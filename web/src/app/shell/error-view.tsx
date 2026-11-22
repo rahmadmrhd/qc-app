@@ -17,7 +17,7 @@ export function ErrorView({ error, reset }: ErrorComponentProps) {
   }, [error]);
   return (
     <div className="flex min-h-[50vh] items-center justify-center p-4">
-      <Alert variant="destructive" className="max-w-md">
+      <Alert color="destructive" icon={false} className="max-w-md">
         <AlertTitle>Terjadi kesalahan</AlertTitle>
         <AlertDescription className="space-y-3">
           <p>{describeError(error)}</p>
@@ -48,6 +48,7 @@ export function ErrorView({ error, reset }: ErrorComponentProps) {
             <Button
               size="sm"
               variant="outline"
+              color="primary"
               onClick={() => {
                 reset();
                 void router.invalidate();

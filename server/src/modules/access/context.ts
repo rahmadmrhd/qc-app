@@ -22,6 +22,11 @@ export interface UserContext {
   businessUnits: Record<string, BuPermissionMap>;
   /** Akun bersama (`users.shared_account`); super admin tanpa baris user = false. */
   sharedAccount: boolean;
+  /**
+   * Id BU yang sudah dihapus (soft delete). BU terhapus TETAP memberi hak seperti BU nonaktif (ada di `businessUnits`);
+   * id-nya hanya dipakai syarat tulis "level pada SEMUA BU" yang mengabaikannya (`canActOnAllBus`, keputusan pemilik 9).
+   */
+  deletedBuIds: readonly string[];
 }
 
 interface UserRow {
@@ -36,11 +41,21 @@ interface UserRow {
 }
 
 /**
+ * Soft delete (rancangan `docs/superpowers/specs/2026-11-20-soft-delete-design.md` §4.2): pengguna dan role terhapus
+ * tidak memberi hak apa pun (disaring dari kueri); lokasi terhapus dibaca sebagai `inactive` (sama dengan lokasi
+ * nonaktif hari ini); BU terhapus TETAP ikut (hak tetap seperti BU nonaktif) dan hanya ditandai di kolom `c`
+ * (`'deleted'`) agar syarat tulis "SEMUA BU" dapat mengabaikannya.
+ */
+const USER_ACCESS_SELECT = `SELECT 'u' AS k, u.id AS a, u.name AS b, u.status AS c, u.role_ids AS d, u.assignments AS e, u.bu_assignments AS f, u.shared_account AS g FROM users u WHERE u.email = ? AND u.deleted_at = ''`;
+const ROLE_ACCESS_PART = `FROM roles r WHERE r.deleted_at = ''`;
+const LOCATION_BU_ACCESS_PARTS = `SELECT 'l', l.id, l.code, l.name, CASE WHEN l.deleted_at = '' THEN l.status ELSE 'inactive' END, NULL, NULL, NULL FROM locations l UNION ALL SELECT 'b', b.id, NULL, CASE WHEN b.deleted_at = '' THEN '' ELSE 'deleted' END, NULL, NULL, NULL, NULL FROM business_units b`;
+
+/**
  * Satu kueri untuk empat tabel akses (kecil): baris `u` = user menurut email (indeks unik: maks. 1), `r` = peran, `l` = lokasi
  * (seluruhnya, bukan hanya yang aktif: daftar yang sama mengisi cache `access:locations`), `b` = id seluruh BU. Kolom
  * generik a..f agar `UNION ALL` sah; satu pernyataan, bukan empat.
  */
-const ACCESS_SQL = `SELECT 'u' AS k, id AS a, name AS b, status AS c, role_ids AS d, assignments AS e, bu_assignments AS f, shared_account AS g FROM users WHERE email = ? UNION ALL SELECT 'r', id, permissions, NULL, NULL, NULL, NULL, NULL FROM roles UNION ALL SELECT 'l', id, code, name, status, NULL, NULL, NULL FROM locations UNION ALL SELECT 'b', id, NULL, NULL, NULL, NULL, NULL, NULL FROM business_units`;
+const ACCESS_SQL = `${USER_ACCESS_SELECT} UNION ALL SELECT 'r', r.id, r.permissions, NULL, NULL, NULL, NULL, NULL ${ROLE_ACCESS_PART} UNION ALL ${LOCATION_BU_ACCESS_PARTS}`;
 
 interface AccessRow {
   k: 'u' | 'r' | 'l' | 'b';
@@ -80,6 +95,8 @@ interface SharedAccess {
   roleRows: { id: string; permissions: string }[];
   briefRows: LocationBriefRow[];
   buIds: string[];
+  /** BU yang terhapus (subset `buIds`). */
+  deletedBuIds: string[];
 }
 
 function userRowOf(row: AccessRow): UserRow {
@@ -100,12 +117,15 @@ function partitionAccessRows(rows: readonly AccessRow[]): {
   shared: SharedAccess;
 } {
   let record: UserRow | null = null;
-  const shared: SharedAccess = { roleRows: [], briefRows: [], buIds: [] };
+  const shared: SharedAccess = { roleRows: [], briefRows: [], buIds: [], deletedBuIds: [] };
   for (const row of rows) {
     if (row.k === 'u') record = userRowOf(row);
     else if (row.k === 'r') shared.roleRows.push({ id: row.a, permissions: row.b });
-    else if (row.k === 'b') shared.buIds.push(row.a);
-    else shared.briefRows.push({ id: row.a, code: row.b, name: row.c ?? '', status: row.d ?? '' });
+    else if (row.k === 'b') {
+      shared.buIds.push(row.a);
+      if (row.c === 'deleted') shared.deletedBuIds.push(row.a);
+    } else
+      shared.briefRows.push({ id: row.a, code: row.b, name: row.c ?? '', status: row.d ?? '' });
   }
   return { record, shared };
 }
@@ -120,7 +140,7 @@ function buildUserContext(
   record: UserRow | null,
   shared: SharedAccess,
 ): UserContext | null {
-  const { roleRows, briefRows, buIds } = shared;
+  const { roleRows, briefRows, buIds, deletedBuIds } = shared;
   const briefs = briefRows.map(toLocationBrief);
   const activeLocationIds = briefs.filter((brief) => brief.active).map((brief) => brief.id);
   const admin = normalizeEmail(env.ADMIN_EMAIL ?? '');
@@ -138,6 +158,7 @@ function buildUserContext(
       locations: byLocation,
       businessUnits: byBu,
       sharedAccount: record !== null && Number(record.shared_account) === 1,
+      deletedBuIds,
     };
   }
   if (record?.status.trim() !== 'active') return null;
@@ -157,6 +178,7 @@ function buildUserContext(
     locations: access.byLocation,
     businessUnits: access.byBu,
     sharedAccount: Number(record.shared_account) === 1,
+    deletedBuIds,
   };
 }
 
@@ -174,7 +196,7 @@ export async function loadUserContext(env: Env, rawEmail: string): Promise<UserC
 }
 
 /** Tabel bersama saja (tanpa baris user): bentuk `UNION` sama dengan `ACCESS_SQL` agar dipartisi oleh kode yang sama. */
-const SHARED_ACCESS_SQL = `SELECT 'r' AS k, id AS a, permissions AS b, NULL AS c, NULL AS d, NULL AS e, NULL AS f, NULL AS g FROM roles UNION ALL SELECT 'l', id, code, name, status, NULL, NULL, NULL FROM locations UNION ALL SELECT 'b', id, NULL, NULL, NULL, NULL, NULL, NULL FROM business_units`;
+const SHARED_ACCESS_SQL = `SELECT 'r' AS k, r.id AS a, r.permissions AS b, NULL AS c, NULL AS d, NULL AS e, NULL AS f, NULL AS g ${ROLE_ACCESS_PART} UNION ALL ${LOCATION_BU_ACCESS_PARTS}`;
 
 /**
  * Konteks akses SEMUA user berstatus `active` dengan hanya dua kueri (user + tabel bersama), bukan satu kueri
@@ -184,7 +206,7 @@ const SHARED_ACCESS_SQL = `SELECT 'r' AS k, id AS a, permissions AS b, NULL AS c
 export async function loadActiveUserContexts(env: Env): Promise<UserContext[]> {
   const [users, shared] = await Promise.all([
     env.DB.prepare(
-      "SELECT id, email, name, status, role_ids, assignments, bu_assignments, shared_account FROM users WHERE status = 'active'",
+      "SELECT id, email, name, status, role_ids, assignments, bu_assignments, shared_account FROM users WHERE status = 'active' AND deleted_at = ''",
     ).all<UserRow & { email: string }>(),
     env.DB.prepare(SHARED_ACCESS_SQL).all<AccessRow>(),
   ]);

@@ -75,6 +75,7 @@ export function CountInput({ value, onChange }: CountInputProps) {
             type="button"
             size="icon-sm"
             variant="ghost"
+            color="primary"
             aria-label={`Hapus baris ${index + 1}`}
             onClick={() => onChange({ ...value, rows: value.rows.filter((_, at) => at !== index) })}
           >
@@ -86,6 +87,7 @@ export function CountInput({ value, onChange }: CountInputProps) {
         type="button"
         size="sm"
         variant="outline"
+        color="primary"
         disabled={value.rows.length >= STICKER_LIMITS.countRows}
         onClick={() => onChange({ ...value, rows: [...value.rows, { sheets: 0, perSheet: 0 }] })}
       >

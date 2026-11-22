@@ -15,6 +15,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
+import { removeTempDirSync } from '../server/test-support/safe-rm';
 import { ROOT_DIR } from './paths';
 
 interface Step {
@@ -249,7 +250,7 @@ describe('deploy-server.yml: keamanan', () => {
     });
 
     test('bersihkan', () => {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     });
   });
 
@@ -347,7 +348,7 @@ describe('deploy-server.yml: keamanan', () => {
     });
 
     test('bersihkan', () => {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     });
   });
 
@@ -760,7 +761,7 @@ describe('deploy-server.yml: pemilihan environment (menjalankan skrip job `meta`
   });
 
   test('bersihkan', () => {
-    rmSync(dir, { recursive: true, force: true });
+    removeTempDirSync(dir);
   });
 });
 
@@ -912,7 +913,7 @@ describe('deploy-server.yml: kunci tanda tangan manifest UI desktop', () => {
     });
 
     test('bersihkan', () => {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     });
   });
 });
@@ -1168,12 +1169,93 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
     expect(runs).toContain('bun run --cwd desktop pack:all');
     expect(runs).toContain('verify-pack --arch x64');
     expect(runs).toContain('verify-pack --arch arm64');
+    // Manifest UI dasar harus ikut tertulis (verify-pack memeriksanya). Build web hanya saat cache meleset
+    // (`bun run build:web`), sedangkan `verify-dist` dan `build-ui-manifest` selalu jalan: urutannya dijaga di
+    // describe "UI dasar dari cache server/dist" di bawah.
     expect(runs).toContain('bun run build:web');
+    expect(runs).toContain('bun run scripts/verify-dist.ts');
+    expect(runs).toContain('bun run scripts/build-ui-manifest.ts');
+    expect(runs).not.toMatch(/bun run build(\s|$)/);
     const steps = stepsOfJob('desktop');
     const crlf = steps.findIndex((step) => (step.run ?? '').includes('core.autocrlf false'));
     const checkout = steps.findIndex((step) => step.uses?.startsWith('actions/checkout'));
     expect(crlf).toBeGreaterThanOrEqual(0);
     expect(crlf).toBeLessThan(checkout);
+  });
+
+  describe('job desktop: UI dasar dari cache server/dist, bukan build web tiap kali (keputusan pemilik 2026-11-20)', () => {
+    const steps = () => stepsOfJob('desktop');
+    const cacheStep = () => steps().find((step) => step.uses?.startsWith('actions/cache@'));
+    const buildStep = () => steps().find((step) => step.run?.includes('bun run build:web'));
+
+    test('cache server/dist memakai aksi dipatok SHA, id tetap, dan hanya jalan bila kemas dibutuhkan', () => {
+      const cache = cacheStep();
+      expect(cache?.uses).toMatch(/^actions\/cache@[0-9a-f]{40}$/);
+      expect(cache?.id).toBe('web-dist');
+      expect(cache?.if).toBe("needs.changes.outputs.desktop_pack == 'true'");
+      expect(cache?.with?.path).toBe('server/dist');
+    });
+
+    test('kunci persis (tanpa restore-keys): hash masukan build web saja, tanpa node_modules dan tanpa seluruh scripts/', () => {
+      const cache = cacheStep();
+      expect(cache?.with?.['restore-keys']).toBeUndefined();
+      const key = String(cache?.with?.key);
+      expect(key.startsWith('web-dist-${{ runner.os }}-${{ hashFiles(')).toBe(true);
+      for (const input of [
+        'web/**',
+        'shared/**',
+        'countrylock/**',
+        'package.json',
+        'bun.lock',
+        'tsconfig.base.json',
+        '!**/node_modules/**',
+      ]) {
+        expect(key, input).toContain(`'${input}'`);
+      }
+      // `bun run build:web` = vite build di web/ dan tak membaca scripts/: jangan menghash seluruhnya
+      expect(key).not.toContain('scripts/');
+      expect(key).not.toContain('desktop/');
+    });
+
+    test('build web hanya bila kemas dibutuhkan DAN cache meleset; cache dipasang sebelum build, setelah setup', () => {
+      const build = buildStep();
+      expect(build?.if).toBe(
+        "needs.changes.outputs.desktop_pack == 'true' && steps.web-dist.outputs.cache-hit != 'true'",
+      );
+      const order = (predicate: (step: Step) => boolean) => steps().findIndex(predicate);
+      const setup = order((step) => step.uses === './.github/actions/setup');
+      const cache = order((step) => step.id === 'web-dist');
+      const buildAt = order((step) => (step.run ?? '').includes('bun run build:web'));
+      const pack = order((step) => (step.run ?? '').includes('pack:all'));
+      expect(setup).toBeGreaterThanOrEqual(0);
+      expect(cache).toBeGreaterThan(setup);
+      expect(buildAt).toBeGreaterThan(cache);
+      expect(pack).toBeGreaterThan(buildAt);
+    });
+
+    test('verify-dist dan manifest UI dasar selalu jalan (juga saat cache kena), sesudah build web dan sebelum kemas', () => {
+      const order = (predicate: (step: Step) => boolean) => steps().findIndex(predicate);
+      const buildAt = order((step) => (step.run ?? '').includes('bun run build:web'));
+      const verify = order((step) => step.run === 'bun run scripts/verify-dist.ts');
+      const manifest = order((step) => step.run === 'bun run scripts/build-ui-manifest.ts');
+      const pack = order((step) => (step.run ?? '').includes('pack:all'));
+      expect(verify).toBeGreaterThan(buildAt);
+      expect(manifest).toBeGreaterThan(verify);
+      expect(pack).toBeGreaterThan(manifest);
+      for (const at of [verify, manifest]) {
+        expect(steps()[at]?.if).toBe("needs.changes.outputs.desktop_pack == 'true'");
+      }
+    });
+
+    test('masukan hash sama dengan yang dibaca build web: skrip build:web tidak menyentuh scripts/', () => {
+      const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string> };
+      expect(pkg.scripts['build:web']).toBe('bun run --cwd web build');
+      expect(read('web/package.json')).toContain('"build": "vite build"');
+    });
+
+    test('tanpa pemicu atau workflow baru untuk memanaskan cache; pemicu tetap workflow_call', () => {
+      expect(Object.keys(ci.on ?? {})).toEqual(['workflow_call']);
+    });
   });
 
   test('aksi setup: setup-bun, cache bun per bun.lock, filter lewat env (bukan ${{ }} di run)', () => {
@@ -1396,7 +1478,7 @@ describe('ci.yml dan aksi setup (workflow yang dapat dipanggil)', () => {
     });
 
     test('bersihkan', () => {
-      rmSync(dir, { recursive: true, force: true });
+      removeTempDirSync(dir);
     });
   });
 });

@@ -474,9 +474,8 @@ describe('role', () => {
     expect(await removeRole(env, { id: 'r-kosong' }, admin)).toEqual({ id: 'r-kosong' });
     expect((await listRoleDtos(env)).map((r) => r.id)).not.toContain('r-kosong');
     expect((await lastAudit()).action).toBe('role.delete');
-    expect(
-      (await captureAppErrorAsync(() => removeRole(env, { id: 'r-kosong' }, admin))).code,
-    ).toBe('NOT_FOUND');
+    // Hapus lunak bersifat idempoten: mengulang menghapus role yang sudah terhapus tetap sukses.
+    expect(await removeRole(env, { id: 'r-kosong' }, admin)).toEqual({ id: 'r-kosong' });
   });
 
   test('listRoleDtos menyertakan jumlah user per role, terurut nama', async () => {
@@ -647,7 +646,7 @@ describe('audit atomik dan snapshot', () => {
       action: 'role.delete',
       target: 'Kosong',
       before: { name: 'Kosong', description: '', permissions: {} },
-      after: null,
+      after: { name: 'Kosong', description: '', permissions: {}, deleted: true },
     });
   });
 });

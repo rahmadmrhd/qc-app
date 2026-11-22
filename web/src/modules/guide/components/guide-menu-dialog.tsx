@@ -60,7 +60,7 @@ export function GuideMenuDialog({ onClose }: { onClose: () => void }) {
         if (!open) onClose();
       }}
     >
-      <DialogContent className="sm:max-w-5xl">
+      <DialogContent size="full-on-phone" className="sm:max-w-5xl">
         <DialogHeader>
           <DialogTitle>Panduan</DialogTitle>
           <DialogDescription>
@@ -108,13 +108,18 @@ export function GuideMenuDialog({ onClose }: { onClose: () => void }) {
                             <p className="text-sm font-medium">{entry.title}</p>
                             <p className="flex items-center gap-2 text-xs text-muted-foreground">
                               {stepCount} langkah
-                              {finished ? <Badge variant="secondary">Selesai</Badge> : null}
+                              {finished ? (
+                                <Badge variant="soft" color="secondary">
+                                  Selesai
+                                </Badge>
+                              ) : null}
                             </p>
                           </div>
                           <Button
                             type="button"
                             size="sm"
-                            variant={finished || derived ? 'outline' : 'default'}
+                            variant={finished || derived ? 'outline' : 'solid'}
+                            color="primary"
                             onClick={() => void run(offer, finished)}
                           >
                             {derived ? 'Lihat lagi' : finished ? 'Ulangi' : 'Mulai'}

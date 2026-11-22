@@ -4,7 +4,6 @@ import { join, resolve, sep } from 'node:path';
 import { type DriveDownload, getBridge } from '@server/core/bridge-client';
 import { nowOf } from '@server/core/env';
 import { appError, isAppError } from '@server/core/errors';
-import { isDriveId } from '@server/core/google/settings';
 import { problemResponse, toProblem } from '@server/http/problem';
 import { limiterAddress } from '@server/http/proxy';
 import { type AppBindings, newRequestId } from '@server/http/security';
@@ -13,8 +12,9 @@ import { readFile as readAppFile } from '@server/modules/files/service';
 import { etagMatches, formatEtag } from '@shared/api';
 import { CATALOG_FILE_ID } from '@shared/desktop-catalog';
 import { Hono } from 'hono/tiny';
-import { createReleaseReader, type ReleaseReader, type ServedRelease } from './app-release';
+import type { ServedRelease } from './app-release';
 import { getServedCatalog } from './catalog';
+import { releaseReaderOf } from './release-reader';
 
 /** Rute publik untuk aplikasi desktop (dipasang di `app.route('/api/desktop', desktopApp)`). */
 export const desktopApp = new Hono<AppBindings>();
@@ -308,19 +308,6 @@ desktopApp.get('/catalog/files/:id', async (c) => {
  */
 const releaseNotFound = (): Response =>
   problemResponse(toProblem(appError('NOT_FOUND', 'Pembaruan belum tersedia'), newRequestId()));
-
-const releaseReaders = new WeakMap<object, { folderId: string; reader: ReleaseReader }>();
-function releaseReaderOf(env: AppBindings['Bindings']): ReleaseReader | null {
-  const folderId = env.DESKTOP_RELEASES_FOLDER_ID ?? '';
-  if (!isDriveId(folderId)) return null;
-  // Satu pembaca per klien Google (per proses di produksi; per env di tes) agar memo tak bocor antar tes.
-  const client = getBridge(env);
-  const known = releaseReaders.get(client);
-  if (known?.folderId === folderId) return known.reader;
-  const reader = createReleaseReader({ client, folderId, now: () => nowOf(env) });
-  releaseReaders.set(client, { folderId, reader });
-  return reader;
-}
 
 desktopApp.get('/app-manifest', async (c) => {
   const arch = c.req.query('arch');

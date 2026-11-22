@@ -7,13 +7,18 @@ import { LocationForm } from './location-form';
 function renderForm(props: Partial<Parameters<typeof LocationForm>[0]> = {}) {
   const onSubmit = vi.fn(async () => undefined);
   render(
-    <LocationForm
-      mode="create"
-      defaultValues={toLocationFormDefaults()}
-      onSubmit={onSubmit}
-      onCancel={() => undefined}
-      {...props}
-    />,
+    <>
+      <LocationForm
+        formId="f"
+        mode="create"
+        defaultValues={toLocationFormDefaults()}
+        onSubmit={onSubmit}
+        {...props}
+      />
+      <button type="submit" form="f">
+        Simpan
+      </button>
+    </>,
   );
   return { onSubmit };
 }

@@ -3,6 +3,8 @@ import { DbError, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { isAppError } from '@server/core/errors';
+import { newId } from '@server/core/id';
+import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import type {
   SerialChangeDto,
@@ -98,7 +100,7 @@ export async function planRecheckFromRow(
   const moves = row.buId !== currentBuId;
   if (moves) {
     const target = await env.DB.prepare(
-      "SELECT code FROM business_units WHERE id = ? AND status = 'active'",
+      `SELECT code FROM business_units WHERE ${liveWhere()} AND id = ? AND status = 'active'`,
     )
       .bind(row.buId)
       .first<{ code: string }>();
@@ -113,7 +115,7 @@ export async function planRecheckFromRow(
   if (locationName === null) return fail(LOCATION_MESSAGE);
 
   const now = nextStamp(nowIso(env), existing.updated_at);
-  const eventId = crypto.randomUUID();
+  const eventId = newId();
   const stickerIds = (row.stickers ?? []).map((pick) => pick.stickerId);
   try {
     // Stiker yang berlaku mengikuti BU target; tiap stiker tercentang +1 dan memotong stok 1 di lokasi cek ulang.
@@ -232,7 +234,7 @@ export async function recheckStickerTargetAllowed(
   if (!candidates.includes(buId)) return false;
   if (buId === currentBuId) return true;
   const target = await env.DB.prepare(
-    "SELECT 1 AS ok FROM business_units WHERE id = ? AND status = 'active'",
+    `SELECT 1 AS ok FROM business_units WHERE ${liveWhere()} AND id = ? AND status = 'active'`,
   )
     .bind(buId)
     .first<{ ok: number }>();
@@ -353,7 +355,7 @@ export async function lookupSerialsMany(
   if (serials.length === 0) return { found: [] };
   const marks = serials.map(() => '?').join(', ');
   const rows = await env.DB.prepare(
-    `SELECT s.id, s.serial, s.item_id, s.bu_id, bu.code AS bu_code, s.status, s.open_case_id, b.name AS brand_name, i.model, i.proof_required, i.proof_min FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE s.serial IN (${marks}) ORDER BY ${SERIAL_PICK_ORDER_SQL}`,
+    `SELECT s.id, s.serial, s.item_id, s.bu_id, bu.code AS bu_code, s.status, s.open_case_id, b.name AS brand_name, i.model, i.proof_required, i.proof_min FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('s')} AND s.serial IN (${marks}) ORDER BY ${SERIAL_PICK_ORDER_SQL}`,
   )
     .bind(...serials)
     .all<ExistingRow>();
@@ -381,7 +383,7 @@ export async function lookupSerialsMany(
       ? []
       : (
           await env.DB.prepare(
-            `SELECT id FROM business_units WHERE status = 'active' AND id IN (${writableAll.map(() => '?').join(', ')})`,
+            `SELECT id FROM business_units WHERE ${liveWhere()} AND status = 'active' AND id IN (${writableAll.map(() => '?').join(', ')})`,
           )
             .bind(...writableAll)
             .all<{ id: string }>()

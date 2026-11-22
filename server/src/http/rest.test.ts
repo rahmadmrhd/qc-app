@@ -571,6 +571,7 @@ describe('OpenAPI', () => {
       'limit',
       'action',
       'query',
+      'actions',
     ]);
   });
 });

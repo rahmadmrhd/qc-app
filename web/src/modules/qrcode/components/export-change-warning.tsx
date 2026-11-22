@@ -36,7 +36,7 @@ export function ExportChangeWarning({
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={onCancel}>
+          <Button type="button" variant="outline" color="primary" onClick={onCancel}>
             Batal
           </Button>
           <Button type="button" onClick={onConfirm}>

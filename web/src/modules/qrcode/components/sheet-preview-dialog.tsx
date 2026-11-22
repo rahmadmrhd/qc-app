@@ -134,7 +134,10 @@ export function SheetPreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="flex max-h-[95vh] w-[95vw] flex-col gap-3 sm:max-w-5xl">
+      <DialogContent
+        size="full-on-phone"
+        className="flex max-h-[95vh] w-[95vw] flex-col gap-3 sm:max-w-5xl"
+      >
         <DialogHeader>
           <DialogTitle>Pratinjau lembar 10 × 14</DialogTitle>
           <DialogDescription>
@@ -146,6 +149,7 @@ export function SheetPreviewDialog({
           <Button
             type="button"
             variant="outline"
+            color="primary"
             size="sm"
             aria-label="Perkecil zoom"
             disabled={zoomIndex === 0}
@@ -159,6 +163,7 @@ export function SheetPreviewDialog({
           <Button
             type="button"
             variant="outline"
+            color="primary"
             size="sm"
             aria-label="Perbesar zoom"
             disabled={zoomIndex === ZOOM_STEPS.length - 1}
@@ -169,6 +174,7 @@ export function SheetPreviewDialog({
           <Button
             type="button"
             variant="outline"
+            color="primary"
             size="sm"
             disabled={zoomIndex === FIT_INDEX}
             onClick={() => setZoomIndex(FIT_INDEX)}
@@ -180,7 +186,7 @@ export function SheetPreviewDialog({
           <p className="text-sm text-muted-foreground">Menyiapkan pratinjau…</p>
         ) : null}
         {state === 'error' ? (
-          <p role="alert" className="text-sm text-destructive">
+          <p role="alert" className="text-sm text-destructive-text">
             Pratinjau gagal dibuat.
           </p>
         ) : null}

@@ -28,7 +28,8 @@ export function TextStyleToolbar({ part, value, onChange }: TextStyleToolbarProp
           key={key}
           type="button"
           size="icon-sm"
-          variant={value[key] ? 'default' : 'outline'}
+          variant={value[key] ? 'solid' : 'outline'}
+          color="primary"
           aria-label={`${label} ${part}`}
           aria-pressed={value[key]}
           title={label}

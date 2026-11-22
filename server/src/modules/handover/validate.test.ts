@@ -198,6 +198,16 @@ describe('validateBoardPage', () => {
     ).toBe('500|2026-01-01T00:00:00.000Z|ST-1');
     expect(validateBoardPage({ locationIds: ['a'], status: 'new', limit: 50 }).limit).toBe(50);
     expect(
+      validateBoardPage({ locationIds: ['a'], status: 'new', customerId: ' c1 ' }).customerId,
+    ).toBe('c1');
+    expect(
+      'customerId' in validateBoardPage({ locationIds: ['a'], status: 'new', customerId: '' }),
+    ).toBe(false);
+    expect(
+      captureAppError(() => validateBoardPage({ locationIds: ['a'], status: 'new', customerId: 5 }))
+        .fields?.customerId,
+    ).toBeDefined();
+    expect(
       captureAppError(() => validateBoardPage({ locationIds: ['a'], status: 'x' })).fields?.status,
     ).toBeDefined();
     for (const bad of [

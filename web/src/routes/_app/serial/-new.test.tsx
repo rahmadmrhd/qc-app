@@ -16,19 +16,22 @@ const state = vi.hoisted(() => ({
   /** Memicu penjaga dialog seperti navigasi keluar: mengembalikan hasil `shouldBlockFn` dan memasang status. */
   triggerDialog: undefined as (() => boolean) | undefined,
 }));
+// Lokasi berbeda: simulasi meninggalkan halaman (lokasi sama tak pernah diblokir, lihat leaveBlocker).
+const LEAVE = { current: { pathname: '/serial/new' }, next: { pathname: '/serial' } };
 vi.mock('@tanstack/react-router', async () => ({
   ...(await vi.importActual<object>('@tanstack/react-router')),
   createFileRoute: () => (options: { component: () => unknown }) => ({ options }),
   useNavigate: () => state.navigate,
+  useRouter: () => ({ navigate: state.navigate }),
   useBlocker: (opts: { shouldBlockFn: () => boolean; withResolver?: boolean }) => {
     const [status, setStatus] = useState<'idle' | 'blocked'>('idle');
     if (!opts.withResolver) {
-      state.blockerFn = opts.shouldBlockFn;
+      state.blockerFn = () => (opts.shouldBlockFn as (a: unknown) => boolean)(LEAVE);
       return undefined;
     }
-    state.dialogFn = opts.shouldBlockFn;
+    state.dialogFn = () => (opts.shouldBlockFn as (a: unknown) => boolean)(LEAVE);
     state.triggerDialog = () => {
-      const blocked = opts.shouldBlockFn();
+      const blocked = (opts.shouldBlockFn as (a: unknown) => boolean)(LEAVE);
       if (blocked) setStatus('blocked');
       return blocked;
     };
@@ -55,10 +58,15 @@ vi.mock('@/modules/serial/components/record-page', () => ({
     onAllSaved?: () => void;
     onProofChange?: (hasProof: boolean) => void;
     handleRef?: { current: { save(): Promise<boolean> } | null };
+    frame?: { title: string; formId: string; onCancel: () => void };
   }) => {
     if (props.handleRef) props.handleRef.current = { save: () => state.save() };
     return (
-      <div>
+      <div data-form-id={props.frame?.formId}>
+        <h1>{props.frame?.title}</h1>
+        <button type="button" onClick={() => props.frame?.onCancel()}>
+          Batal
+        </button>
         <button type="button" onClick={() => props.onDirtyChange?.(true)}>
           isi
         </button>
@@ -111,6 +119,16 @@ afterEach(() => {
   localStorage.clear();
 });
 
+test('halaman memakai FormPage lewat frame RecordPage: judul, formId, dan Batal yang menavigasi ke daftar', async () => {
+  const { container } = await mount();
+  expect(screen.getByRole('heading', { name: 'Catat Serial Number' })).toBeInTheDocument();
+  expect(container.querySelector('[data-form-id="serial-record-form"]')).not.toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
+  await waitFor(() =>
+    expect(state.navigate).toHaveBeenCalledWith(expect.objectContaining({ to: '/serial' })),
+  );
+});
+
 test('draf berisi: keluar halaman meminta konfirmasi; ditolak = diblokir', async () => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
   await mount();
@@ -127,7 +145,7 @@ test('semua baris tersimpan: berpindah ke daftar tanpa konfirmasi keluar', async
   await mount();
   await userEvent.click(screen.getByRole('button', { name: 'isi' }));
   await userEvent.click(screen.getByRole('button', { name: 'semua tersimpan' }));
-  expect(state.navigate).toHaveBeenCalledWith({ to: '/serial' });
+  expect(state.navigate).toHaveBeenCalledWith({ to: '/serial', replace: true });
   // Penjaga keluar sudah tidak menahan (draf kosong) dan tidak menampilkan konfirmasi.
   expect(state.blockerFn?.()).toBe(false);
   expect(confirm).not.toHaveBeenCalled();

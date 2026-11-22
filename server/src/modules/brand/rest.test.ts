@@ -237,11 +237,11 @@ describe('PATCH /brands/{id} (status)', () => {
   });
 });
 
-test('merk yang dipakai item tidak dapat dihapus: tidak ada rute DELETE /brands/{id} (404 problem+json)', async () => {
+test('merk Aktif yang dipakai item tidak dapat dihapus: DELETE /brands/{id} = 409 problem+json', async () => {
   const id = await seedBrand(env, 'Sony');
   await seedItem(env, { id: 'i1', brand: 'Sony', model: 'A1' });
   const response = await send('DELETE', `/brands/${id}`);
-  expect(response.status).toBe(404);
+  expect(response.status).toBe(409);
   expect(response.headers.get('content-type')).toContain('application/problem+json');
   expect(
     (
@@ -332,5 +332,44 @@ describe('BU bawaan merk (REST)', () => {
       .bind(created.id as string)
       .all<{ bu_id: string }>();
     expect(rows.results.map((row) => row.bu_id.trim())).toEqual(['bu-b']);
+  });
+});
+
+describe('REST batch status, hapus, dan pulihkan merk', () => {
+  test('rute statis batch tidak tertangkap parameter id; izin manage; alur hapus lalu pulihkan', async () => {
+    await seedBrand(env, 'Lg', { status: 'inactive' });
+    const id = 'brand-lg';
+    // tanpa manage = 403 untuk semua rute baru
+    for (const [method, path, body] of [
+      ['POST', '/brands/batch/status', { ids: [id], status: 'active' }],
+      ['POST', '/brands/batch/delete', { ids: [id] }],
+      ['POST', '/brands/batch/restore', { ids: [id] }],
+      ['DELETE', `/brands/${id}`, undefined],
+      ['POST', `/brands/${id}/restore`, undefined],
+    ] as const) {
+      expect((await send(method, path, { email: 'lihat@gmail.com', body })).status).toBe(403);
+    }
+    const removed = await send('POST', '/brands/batch/delete', { body: { ids: [id] } });
+    expect(removed.status).toBe(200);
+    expect(await json(removed)).toEqual({ ids: [id] });
+    const hiddenDefault = await (await send('GET', '/brands')).json();
+    expect(hiddenDefault).toEqual([]);
+    const deletedList = (await (await send('GET', '/brands?status=deleted')).json()) as unknown[];
+    expect(deletedList).toHaveLength(1);
+    expect((await send('GET', `/brands/${id}`, { email: 'lihat@gmail.com' })).status).toBe(404);
+    const restored = await send('POST', '/brands/batch/restore', { body: { ids: [id] } });
+    expect(restored.status).toBe(200);
+    expect((await json(restored)).items).toHaveLength(1);
+    expect((await send('DELETE', `/brands/${id}`)).status).toBe(200);
+    expect((await send('POST', `/brands/${id}/restore`)).status).toBe(200);
+  });
+
+  test('batch tidak valid: ids kosong, terlalu banyak, atau ganda ditolak 422', async () => {
+    for (const ids of [[], Array.from({ length: 101 }, (_, i) => `b${i}`), ['a', 'a']]) {
+      expect((await send('POST', '/brands/batch/delete', { body: { ids } })).status).toBe(422);
+    }
+    expect(
+      (await send('POST', '/brands/batch/status', { body: { ids: ['a'], status: 'x' } })).status,
+    ).toBe(422);
   });
 });

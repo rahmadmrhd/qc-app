@@ -1,6 +1,7 @@
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { newId } from '@server/core/id';
 import type { UserContext } from '@server/modules/access/context';
 import type { GetJobInput, JobDto, JobKind } from '@shared/contract';
 import { hasLevel } from '@shared/permissions';
@@ -27,7 +28,7 @@ export async function enqueueJob(
 ): Promise<string> {
   const now = nowIso(env);
   const job: JobRecord = {
-    id: crypto.randomUUID(),
+    id: newId(),
     kind,
     status: 'queued',
     progress: 0,

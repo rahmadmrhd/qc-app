@@ -197,6 +197,8 @@ describe('master BU', () => {
       createdAt: '2026-11-08T00:00:00.000Z',
       updatedAt: '2026-11-08T00:00:00.000Z',
       updatedBy: 'x@gmail.com',
+      deletedAt: '',
+      deletedBy: '',
     };
     await renameBusinessUnitStmt(env.DB, stale).run();
     expect(await rowOf('bu-a')).toEqual({ name: 'Nama Baru', status: 'inactive' });

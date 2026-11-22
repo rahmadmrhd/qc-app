@@ -33,7 +33,7 @@ export interface FlowRow {
   caseEffect: CaseEffect;
   /** Field yang wajib berisi; yang lain opsional. */
   required: readonly FlowField[];
-  /** Penambahan stiker diizinkan (hanya cek ulang, rancangan §4.2). */
+  /** Penambahan stiker diizinkan (cek ulang, rancangan §4.2, dan tempel stiker). */
   allowStickers: boolean;
   module: 'serial' | 'serialservice';
   team: SerialTeam;
@@ -248,6 +248,20 @@ export const SERIAL_FLOW: readonly FlowRow[] = [
     allowStickers: false,
     module: 'serialservice',
     team: 'service',
+  },
+  // 15: Tempel stiker (keputusan pemilik 2026-11-22, K1): +1 per stiker tercentang, tanpa mengubah status/posisi/laporan.
+  // Hanya saat unit di QC (stok dipotong di lokasi unit); `broken` final dan unit servis/pengiriman tidak.
+  {
+    action: 'apply_stickers',
+    from: ['good', 'reported', 'recheck'],
+    custody: ['qc'],
+    toStatus: 'same',
+    toCustody: 'same',
+    caseEffect: null,
+    required: [],
+    allowStickers: true,
+    module: 'serial',
+    team: 'qc',
   },
 ];
 

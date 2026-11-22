@@ -9,6 +9,7 @@ import {
   splitSerialInput,
 } from '@shared/serials';
 import { z } from 'zod';
+import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 import type { SerialListFilter } from '../queries';
 import type { ScanFeedback } from './scan-feedback';
 
@@ -18,24 +19,71 @@ export const SERIAL_SEARCH_MAX = SERIAL_LIMITS.listSerialsMax;
 const isoDate = z.string().refine(isIsoDate).optional().catch(undefined);
 
 /** Search params halaman daftar serial; nilai tak sah dibuang (bukan galat) agar URL lama atau rusak tetap terbuka. */
+/** Larik param filter jamak (maks. `FILTER_LIST_MAX` di server = 20); nilai tak sah membuat seluruh larik dibuang. */
+const idList = z.array(z.string().max(100)).max(FILTER_LIST_MAX).optional().catch(undefined);
+
 export const serialSearchSchema = z.object({
   /** Serial yang dicari, satu per baris (bentuk ternormalisasi). */
   sn: z.string().max(20_000).optional().catch(undefined),
+  /** Item (banyak nilai = salah satu dari). */
+  itemIds: idList,
+  /** Lokasi (banyak nilai = salah satu dari). */
+  locationIds: idList,
+  /** Business Unit (banyak nilai = salah satu dari). */
+  buIds: idList,
+  /** Posisi: di QC, dalam pengiriman, atau di servis (banyak nilai = salah satu dari). */
+  custodies: z.array(z.enum(SERIAL_CUSTODIES)).max(FILTER_LIST_MAX).optional().catch(undefined),
+  /** Status alur serial (banyak nilai = salah satu dari). */
+  statuses: z.array(z.enum(SERIAL_STATUSES)).max(FILTER_LIST_MAX).optional().catch(undefined),
+  /** Param tunggal lama (tautan dari View item/lokasi/BU): dibaca sebagai daftar berisi satu nilai. */
   item: z.string().max(100).optional().catch(undefined),
-  /** Label item terpilih (agar tampil setelah muat ulang tanpa memuat opsi). */
+  /** Label item dari tautan lama `item` (agar tampil tanpa memuat opsi). */
   itemLabel: z.string().max(255).optional().catch(undefined),
   loc: z.string().max(100).optional().catch(undefined),
-  /** Business Unit. */
   bu: z.string().max(100).optional().catch(undefined),
-  /** Posisi: di QC, dalam pengiriman, atau di servis. */
   custody: z.enum(SERIAL_CUSTODIES).optional().catch(undefined),
+  status: z.enum(SERIAL_STATUSES).optional().catch(undefined),
   /** Hanya yang dicatat oleh akun yang sedang masuk (`createdBy` = email akun). */
   mine: z.literal(true).optional().catch(undefined),
-  status: z.enum(SERIAL_STATUSES).optional().catch(undefined),
+  /**
+   * Tampilan "Terhapus" (soft delete; hanya pemegang `serial: manage`). Kunci tersendiri karena `status` di sini adalah
+   * status alur serial, bukan status aktif/nonaktif; di antarmuka ia pilihan "Terhapus" pada chip Status (eksklusif
+   * terhadap status alur).
+   */
+  deleted: z.literal(true).optional().catch(undefined),
   from: isoDate,
   to: isoDate,
 });
 export type SerialSearch = z.infer<typeof serialSearchSchema>;
+
+/** Daftar nilai filter: param jamak, atau param tunggal lama (tautan) sebagai daftar satu nilai. */
+export function filterList<T extends string>(plural: T[] | undefined, single: T | undefined): T[] {
+  return plural ?? (single ? [single] : []);
+}
+
+/** Nilai filter jamak yang berlaku dari search params (param tunggal lama ikut). */
+export function searchLists(search: SerialSearch) {
+  return {
+    buIds: filterList(search.buIds, search.bu),
+    itemIds: filterList(search.itemIds, search.item),
+    locationIds: filterList(search.locationIds, search.loc),
+    statuses: filterList(search.statuses, search.status),
+    custodies: filterList(search.custodies, search.custody),
+  };
+}
+
+/** Tambalan search params yang mengganti satu filter jamak dan membuang param tunggal lamanya. */
+export const CLEAR_LEGACY_SINGLE: Pick<
+  SerialSearch,
+  'bu' | 'item' | 'itemLabel' | 'loc' | 'status' | 'custody'
+> = {
+  bu: undefined,
+  item: undefined,
+  itemLabel: undefined,
+  loc: undefined,
+  status: undefined,
+  custody: undefined,
+};
 
 /**
  * Teks pencarian -> serial ternormalisasi satu per baris. Yang dipertahankan adalah awalan daftar: berhenti di serial
@@ -148,19 +196,27 @@ export function commitSearchLine(
  * lebih sebagai daftar persis (`serials`); keduanya dalam bentuk ternormalisasi. `userEmail` = akun yang masuk, dipakai
  * untuk sakelar "Dicatat oleh saya" (tidak ada rute opsi pengguna bagi pembaca; default perancang OQ-16).
  */
-export function filterOfSearch(search: SerialSearch, userEmail?: string): SerialListFilter {
+export function filterOfSearch(
+  search: SerialSearch,
+  userEmail?: string,
+  /** Pemegang `serial: manage`: tanpa hak itu `?deleted=true` tulisan tangan diabaikan (server akan menolaknya). */
+  canSeeDeleted = true,
+): SerialListFilter {
   const lines = normalizeSearchText(search.sn ?? '')
     .text.split('\n')
     .filter((line) => line !== '');
+  const lists = searchLists(search);
+  const deletedView = search.deleted === true && canSeeDeleted;
   return {
     ...(lines.length === 1 ? { query: normalizeSerial(lines[0] ?? '') } : {}),
     ...(lines.length > 1 ? { serials: lines.join('\n') } : {}),
-    ...(search.item ? { itemId: search.item } : {}),
-    ...(search.loc ? { locationId: search.loc } : {}),
-    ...(search.bu ? { buId: search.bu } : {}),
-    ...(search.custody ? { custody: search.custody } : {}),
+    ...(lists.itemIds.length > 0 ? { itemIds: lists.itemIds } : {}),
+    ...(lists.locationIds.length > 0 ? { locationIds: lists.locationIds } : {}),
+    ...(lists.buIds.length > 0 ? { buIds: lists.buIds } : {}),
+    ...(lists.custodies.length > 0 ? { custodies: lists.custodies } : {}),
     ...(search.mine && userEmail ? { createdBy: userEmail } : {}),
-    ...(search.status ? { status: search.status } : {}),
+    ...(lists.statuses.length > 0 ? { statuses: lists.statuses } : {}),
+    ...(deletedView ? { deleted: true } : {}),
     ...(search.from ? { from: search.from } : {}),
     ...(search.to ? { to: search.to } : {}),
   };

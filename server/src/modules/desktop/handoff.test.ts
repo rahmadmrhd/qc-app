@@ -112,6 +112,17 @@ describe('POST /auth/desktop/handoff (penukaran tiket)', () => {
     expect((await exchange({ ticket: second.data.ticket })).status).toBe(401);
   });
 
+  test('akun terhapus (soft delete) setelah tiket terbit: ditolak', async () => {
+    const { ticket } = ((await mint(CL)) as { data: { ticket: string } }).data;
+    await env.DB.prepare(
+      "UPDATE users SET deleted_at = '2026-02-02T00:00:00.000Z', deleted_by = 'x' WHERE email = ?",
+    )
+      .bind(CL)
+      .run();
+    expect((await exchange({ ticket })).status).toBe(401);
+    expect((await mint(CL)).ok).toBe(false);
+  });
+
   test('bukan tiket serah-terima: token sesi web, token desktop, dan kode login ditolak', async () => {
     const session = await signSessionToken(env, CL, env.clock.now());
     const desktop = await signDesktopToken(env, CL, env.clock.now());

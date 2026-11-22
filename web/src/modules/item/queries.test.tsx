@@ -8,7 +8,10 @@ import {
   itemKeys,
   itemsInfiniteQueryOptions,
   toItemSummary,
+  useRemoveItems,
+  useRestoreItems,
   useSaveItem,
+  useSetItemStatusBatch,
 } from './queries';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -216,4 +219,96 @@ test('kunci daftar item membedakan filter instruksi dan stiker', () => {
   expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, instruction: 'none' })).not.toEqual(base);
   expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, stickerKey: 's:a' })).not.toEqual(base);
   expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, stickerMode: 'missing' })).not.toEqual(base);
+});
+
+test('toItemSummary membawa jejak hapus dan penanda merk terhapus bila ada', () => {
+  const deleted = { deletedAt: 't', deletedBy: 'a@x.com' };
+  const summary = toItemSummary({ ...full, deleted, brandDeleted: true } as unknown as ItemDto);
+  expect(summary.deleted).toEqual(deleted);
+  expect(summary.brandDeleted).toBe(true);
+  expect('deleted' in toItemSummary(full)).toBe(false);
+});
+
+test('daftar item: status Terhapus dikirim apa adanya ke server', async () => {
+  apiMock.mockResolvedValue({ items: [], nextCursor: null });
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, status: 'deleted' }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', { status: 'deleted' });
+});
+
+test('status batch: hasil tiap tahap dipasang ke daftar dan detail, daftar ditandai basi', async () => {
+  client.setQueryData(itemKeys.page(DEFAULT_ITEM_FILTER), listData([toItemSummary(full)]));
+  const inactive = { ...full, status: 'inactive' } as unknown as ItemDto;
+  apiMock.mockResolvedValue({ items: [inactive] });
+  const { result } = renderHook(() => useSetItemStatusBatch(), { wrapper });
+  await act(async () => {
+    await result.current.mutateAsync({ ids: ['i1'], status: 'inactive' });
+  });
+  expect(apiMock).toHaveBeenCalledWith('items.setStatusBatch', { ids: ['i1'], status: 'inactive' });
+  const data = client.getQueryData(itemKeys.page(DEFAULT_ITEM_FILTER)) as ReturnType<
+    typeof listData
+  >;
+  expect(data.pages[0]?.items[0]?.status).toBe('inactive');
+  expect(client.getQueryData(itemKeys.one('i1'))).toEqual(inactive);
+  expect(client.getQueryState(itemKeys.page(DEFAULT_ITEM_FILTER))?.isInvalidated).toBe(true);
+});
+
+test('hapus batch: id dibuang dari semua daftar dan detailnya dihapus dari cache', async () => {
+  const other = { ...toItemSummary(full), id: 'i2' };
+  client.setQueryData(itemKeys.page(DEFAULT_ITEM_FILTER), listData([toItemSummary(full), other]));
+  client.setQueryData(itemKeys.one('i1'), full);
+  apiMock.mockResolvedValue({ ids: ['i1'] });
+  const { result } = renderHook(() => useRemoveItems(), { wrapper });
+  await act(async () => {
+    await result.current.mutateAsync({ ids: ['i1'] });
+  });
+  expect(apiMock).toHaveBeenCalledWith('items.removeBatch', { ids: ['i1'] });
+  const data = client.getQueryData(itemKeys.page(DEFAULT_ITEM_FILTER)) as ReturnType<
+    typeof listData
+  >;
+  expect(data.pages[0]?.items.map((item) => item.id)).toEqual(['i2']);
+  expect(client.getQueryData(itemKeys.one('i1'))).toBeUndefined();
+});
+
+test('pulihkan batch: item hilang dari tampilan Terhapus dan detail diperbarui', async () => {
+  const deletedFilter = { ...DEFAULT_ITEM_FILTER, status: 'deleted' as const };
+  const gone = {
+    ...toItemSummary(full),
+    deleted: { deletedAt: 't', deletedBy: 'a@x.com' },
+    status: 'inactive' as const,
+  };
+  client.setQueryData(itemKeys.page(deletedFilter), listData([gone]));
+  const restored = { ...full, status: 'inactive' } as unknown as ItemDto;
+  apiMock.mockResolvedValue({ items: [restored] });
+  const { result } = renderHook(() => useRestoreItems(), { wrapper });
+  await act(async () => {
+    await result.current.mutateAsync({ ids: ['i1'] });
+  });
+  expect(apiMock).toHaveBeenCalledWith('items.restoreBatch', { ids: ['i1'] });
+  const data = client.getQueryData(itemKeys.page(deletedFilter)) as ReturnType<typeof listData>;
+  expect(data.pages[0]?.items).toEqual([]);
+  expect(client.getQueryData(itemKeys.one('i1'))).toEqual(restored);
+});
+
+test('daftar item: brandIds dan buIds (jamak) dikirim hanya bila terisi dan membedakan kunci cache', async () => {
+  apiMock.mockResolvedValue({ items: [], nextCursor: null });
+  await client.fetchInfiniteQuery(
+    itemsInfiniteQueryOptions({
+      ...DEFAULT_ITEM_FILTER,
+      brandIds: ['b1', 'b2'],
+      buIds: ['bu-a'],
+    }),
+  );
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', {
+    brandIds: ['b1', 'b2'],
+    buIds: ['bu-a'],
+  });
+  expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, brandIds: ['b1'] })).not.toEqual(
+    itemKeys.page(DEFAULT_ITEM_FILTER),
+  );
+  // Kombinasi nilai berbeda = kunci berbeda.
+  expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, brandIds: ['b1'] })).not.toEqual(
+    itemKeys.page({ ...DEFAULT_ITEM_FILTER, brandIds: ['b1', 'b2'] }),
+  );
 });

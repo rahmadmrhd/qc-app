@@ -15,7 +15,7 @@ Tambahkan DTO, input, dan entri `ApiContract` (`shared/contract.ts`), mis. `'ite
 ## 3. Frontend — `web/src/modules/item/`
 - `queries.ts` — `queryOptions` + mutation (invalidate key modul).
 - `schemas.ts` — skema zod form.
-- `components/` — form & tabel.
+- `components/` — form & tabel. Pakai kit CRUD (`web/src/components/page/`, `data-table/`, `grid/`, `kanban/`; aturan lengkap di CLAUDE.md, bagian "Kit CRUD"): daftar `ListPage` + `FilterBar`, View `ViewPage`, form `FormPage` (halaman) atau `FormDialogShell` (dialog), tabel `DataTable`, aksi massal lewat `runChunkedBatch`. Jangan membuat kerangka halaman sendiri.
 - Route di `web/src/routes/_app/item/*.tsx` dengan `beforeLoad: ({ context }) => requirePermission(context.queryClient, 'item', 'view')`.
 - Tambahkan menu di `NAV_GROUPS` (`web/src/app/navigation.ts`) dan link di `MODULE_LINKS` (`web/src/app/module-links.ts`).
 - Data contoh untuk dev ada di seed (`server/scripts/seed-dev.ts`, `bun run db:seed`); klien memanggil rute lewat `api(id, input)` (`web/src/lib/api`).
@@ -58,11 +58,20 @@ Satu fitur boleh memakai dua modul: katalog `sticker` (global, `SHARED_MODULES`,
 
 ## Gambar dan Markdown
 
-- **Unggah**: frontend memakai `useUploadImage()` (`web/src/modules/files/use-upload-image.ts`): gambar dikecilkan (maks. 1600 px, ≤ 1 MB, JPEG/PNG/WebP), diunggah lewat rute REST `files.upload`, dan mengembalikan id berkas. Berkas lahir **tanpa pemilik**; tiap user dibatasi 50 berkas belum terpakai (`MAX_UNATTACHED_UPLOADS`), jadi tautkan lewat `planAttachFiles` saat entitas disimpan.
+- **Unggah**: frontend memakai `FileDialog` + `useBackgroundUploads` (`web/src/components/file-dialog/`; lihat "Lampiran berkas" di bawah) dengan sumber `itemFileSource` (`web/src/modules/files/file-source.ts`): gambar dikecilkan (maks. 1600 px, ≤ 1 MB, JPEG/PNG/WebP), diunggah lewat rute REST `files.upload`, dan menghasilkan id berkas. Berkas lahir **tanpa pemilik**; tiap user dibatasi 50 berkas belum terpakai (`MAX_UNATTACHED_UPLOADS`), jadi tautkan lewat `planAttachFiles` saat entitas disimpan.
 - **Memiliki berkas**: saat entitas (mis. item) disimpan, panggil `planAttachFiles(env, ids, 'item', itemId)` (`server/src/modules/files/service.ts`) dan gabungkan pernyataan yang dikembalikannya ke `batch()` penyimpanan entitas (satu transaksi atomik; `attachFiles` hanya untuk pemakaian terpisah). Berkas yang sudah dimiliki entitas lain ditolak `CONFLICT`. Jenis pemilik baru ditambahkan ke `FileOwnerType` di `shared/files.ts`.
 - **Tampil**: `useFileUrl(id)` (`web/src/modules/files/queries.ts`) memuat byte lewat `files.get` (di-cache lama di TanStack Query) dan membuat URL objek Blob di `useEffect` (di-revoke saat komponen lepas atau data berganti; aman StrictMode). Server hanya membaca berkas yang tercatat di tabel `files`; klien tidak pernah mengirim Drive id.
-- **Markdown**: tampilkan dengan `MarkdownView` dan edit dengan `MarkdownEditor` (`web/src/modules/markdown/`). Gambar ditulis `![alt](qcfile:<id>)`. HTML mentah tidak dirender dan hanya tautan `http`/`https`/`mailto` yang aktif. Validasi panjang (`MARKDOWN_MAX_LENGTH` = 20.000) tetap dilakukan di skema form dan di validator server.
+- **Markdown**: tampilkan dengan `MarkdownView` dan edit dengan `MarkdownEditor` (`web/src/modules/markdown/`). Gambar ditulis `![alt](qcfile:<id>)`. HTML mentah tidak dirender dan hanya tautan `http`/`https`/`mailto` yang aktif. Validasi panjang (`MARKDOWN_MAX_LENGTH` = 20.000) tetap dilakukan di skema form dan di validator server. Gambar di editor: tombol toolbar membuka `FileDialog`, drop/tempel langsung diunggah di latar; teruskan `onBusyChange` editor ke penahan Simpan form.
 - **Drive/Sheets** hanya diakses lewat klien Google (`getBridge(env)` = `env.BRIDGE`, antarmuka `BridgeClient` di `server/src/core/bridge-client.ts`; implementasi service account di `server/src/core/google/`, lihat `docs/setup-google.md`); jangan memanggil API Google langsung dari modul. Isi berkas dibaca lewat `cachedFileContent` (izin diperiksa SEBELUM cache).
+
+### Lampiran berkas (`FileDialog`)
+
+Modul yang butuh lampiran (gambar atau PDF) memakai satu dialog dan satu hook unggah; jangan membuat dialog atau `<input type="file">` sendiri (dijaga `scripts/no-native-file-input.test.ts`; keputusan pemilik 2026-11-20, `docs/superpowers/specs/2026-11-20-dialog-unggah-seragam-design.md`):
+1. **Sumber unggah**: adaptor `FileSource` (`key`, `mimeTypes`, `upload(file, name, ctx)` dengan `ctx.onProgress`/`signal`, `onDiscard` opsional); contoh `modules/files/file-source.ts`, `modules/postel/lib/postel-source.ts`. Sumber berpustaka (`FileLibrarySource`) menambah `list`/`rename`/`remove` dan tab Pustaka.
+2. **Dialog**: `FileDialog` (`accept`: `'image'`/`'pdf'`, `mode`, `maxFiles` = sisa kuota, `camera`, `hideNames`, `confirmLabel`). Dialog TIDAK mengunggah: `onConfirm({ library, files })` menyerahkan berkas, lalu pemanggil menyerahkannya ke `useBackgroundUploads`.
+3. **Unggah latar**: `useBackgroundUploads({ source, onUploaded })` di komponen pemegang nilai; `onUploaded` mengembalikan `false` untuk menolak (mis. melewati batas). Tampilkan progres dengan `AttachmentView` (`pending`, `onRetry`, `onCancel`) dan seret-lepas dengan `FileDropZone`; validasi masuk lewat `intakeFiles`/`checkFile` (pesan seragam, batas 10 MB). Komponen dilepas = unggahan dibatalkan.
+4. **Simpan ditahan**: sediakan `onBusyChange(busy)` dan gabungkan (OR) dengan penahan lain di form.
+5. **Inline tanpa dialog** hanya untuk `PdfSourceField` dan `LogoLibraryField` (modul QR), tetap memakai `FilePicker`, `FileDropZone`, `intakeFiles`, dan `UploadProgress`.
 
 ## Field relasi di form (`LinkField`)
 
@@ -107,6 +116,39 @@ Contoh: halaman laporan rusak Serial Number (`/laporan/<token>`, 2026-11-14). Ke
 - Batas laju kegagalan per IP lewat `rate_limits` + `limiterAddress`; `Cache-Control: no-store` dan `Referrer-Policy: no-referrer`; DTO publik daftar putih (tanpa surel, stok, atau data mentah); jangan mencatat token di log. Token tetap muncul di log akses nginx, jadi tautan harus hanya-baca.
 - PELAJARAN: token yang memuat titik (`v1.<id>.<exp>.<sig>`) dianggap "berkas" oleh `server/src/http/static.ts` (segmen terakhir bertitik = 404) dan oleh denylist service worker `web/src/app/pwa/server-paths.ts`, sehingga tautan 404 di produksi dan di PWA terpasang. Awalan rute kliennya harus dikecualikan di KEDUA tempat (kini `/laporan/`; tes `static.test.ts` dan `scripts/pwa-server-paths.test.ts` menjaga keduanya sejalan), atau pilih format token tanpa titik.
 - Halaman webnya route di luar layout `_app` (tanpa guard login); bila pengguna login dan berizin, DTO membawa penanda (mis. `viewerCanOpen`) agar klien mengalihkan ke halaman biasa. Token tidak pernah menambah izin.
+
+## Soft delete (model yang punya Hapus)
+Model baru yang punya Hapus/Pulihkan (spek `docs/superpowers/specs/2026-11-20-soft-delete-design.md`) wajib:
+1. Masuk `SOFT_DELETE_TABLES` (`server/src/core/soft-delete.ts`).
+2. Migrasi baru (expand-only, idempoten): kolom `deleted_at VARCHAR(30) NOT NULL DEFAULT ''` dan `deleted_by VARCHAR(254) NOT NULL DEFAULT ''`, serta indeks unik `<nama>_live` yang memuat `deleted_at` di samping indeks lama. Contoh: `server/migrations/0027_soft_delete.sql`. Jangan menyunting migrasi yang sudah diterapkan.
+3. Setiap `FROM`/`JOIN` ke tabel itu di repo memakai `liveWhere(alias)`. Tes penjaga `server/src/core/soft-delete-guard.test.ts` gagal bila ada yang tak disaring dan tak terdaftar di `SOFT_DELETE_PENDING`/`SOFT_DELETE_EXEMPT` (`soft-delete-pending.ts`).
+4. Pemetaan galat duplikat memakai `mapDuplicateError` (yang sudah sadar `_live`), dan pembanding `DbError.key` memakai `baseIndexName` (`server/src/core/index-names.ts`).
+5. Hapus dan pulihkan lewat `softDeleteStmt`/`restoreStmt` (anak ikut induk: `softDeleteWithChildren`/`restoreWithChildren`), bukan `DELETE`.
+6. Status, Hapus, dan Pulihkan (tunggal dan batch) memakai pola perencana `server/src/core/record-batch.ts` (contoh lengkap: `server/src/modules/item/service.ts` dan `brand/service.ts`):
+   - `load<X>ForAction(env, id, actor, state 'live'|'any', message)`: memuat record, menilai hak (di luar hak = `NOT_FOUND`; record terhapus tanpa hak Pulihkan juga `NOT_FOUND`, bukan `FORBIDDEN`), dan boleh menyediakan pemuat ringan untuk aksi yang hanya mengembalikan `{ id }`.
+   - `plan<X>Status|Remove|Restore(...)` mengembalikan `{ stmts, dto }` atau `{ unchanged }` (hapus ulang/pulihkan yang sudah hidup = sukses tanpa audit). Pernyataan pertama: penjaga kunci induk (mis. `brandKeyGuardStmt`), lalu `versionGuardStmt(db, tabel, id, updatedAt, 'live'|'deleted')` (FOR UPDATE + CAS), `softDeleteStmt`/`restoreStmt`, `stampStmt` (naikkan `updated_at`), penjaga turunan (kunci nama, penghitung), lalu audit. Urutan kunci baris harus seragam di semua perencana (induk dulu, lalu record).
+   - `runRecordBatch(env, ids, planner, { conflicts, stale, verify? })` menulis SEMUA id dalam satu `batch()` lewat `runCas` (atomik; galat perencana pertama menurut urutan masukan membatalkan seluruhnya; tulis diurut menurut id mengurangi deadlock; himpunan berbeda yang berbagi merk masih dapat saling menunggu, dan itu diulang `runCas`); `runSingleRecord` membungkus rute tunggal. `verify` memeriksa tabrakan LINTAS record dalam permintaan yang sama (mis. kunci nama pada pulihkan batch).
+   - Rute batch didaftarkan SEBELUM rute `/{id}/...` di `API_ROUTES` (jalur statis `/…/batch/*` lebih dulu).
+
+## Mengubah kontrak yang merusak
+Kontrak API harus tetap kompatibel mundur (keputusan pemilik 2026-11-20; kebijakan lengkap di `CLAUDE.md`, bagian "Kebijakan versi API"). Bila bentuk input/output sebuah rute berubah secara merusak:
+1. Tambah id `<idDasar>@2` di `ApiContract` (`shared/contract.ts`, tipe input/output v2) dan entri `API_ROUTES` (`shared/api.ts`) dengan path yang sama. Id v1 TETAP ada dan tidak diubah.
+2. Naikkan `latest` kelompok itu di `API_GROUP_VERSIONS` (`shared/api-versions.ts`). Tes `api-versions` menjaga kelompok dan versinya tidak melebihi tabel rute.
+3. Tulis validator + handler v2 di `server/src/modules/<modul>/`, dengan layanan yang sama. Handler v1 menjadi adaptor tipis (ubah input v1 → panggil layanan → ubah hasil ke bentuk v1); jangan menambah logika baru ke handler v1.
+4. Tambah fixture permintaan/respons v1 di `<modul>/<rute>.v1.contract.test.ts` agar bentuk lama tetap teruji.
+5. Pada rute v2 PERTAMA: pasang pemanggilan `pickApi` di lapisan compat modul (`web/src/modules/<modul>/compat.ts`) sebelum `toRequestParts`; `api()` sendiri belum memanggilnya.
+6. Perbarui potret: `bun run api:snapshot`, lalu `bun run api:snapshot --check` harus lulus; potret harus ikut di-commit. `release:prepare server` membuat ulang potret itu sendiri saat merilis dan menjalankan pagar penghapusan (lihat di bawah).
+
+### Menghapus rute atau versi lama (fase 3, 2026-11-20)
+Menghapus id dari `API_ROUTES` tidak boleh sekali jalan. Urutannya:
+1. **Tandai deprecated.** Tambahkan nomor versi lama ke `deprecated` kelompoknya di `API_GROUP_VERSIONS` (`shared/api-versions.ts`), jalankan `bun run api:snapshot`, dan rilis. Sejak itu rute versi itu menjawab dengan header `Deprecation: true`, `/api/ping` mengumumkannya, dan klien web yang masih memakainya menampilkan spanduk "perlu diperbarui".
+2. **Tunggu >= 24 jam** sejak rilis yang menandai (antrean offline hidup 24 jam; ditegakkan `release:prepare server`; di mode `langsung` pemilik menjaganya manual).
+3. **Hapus.** Hapus id dari `ApiContract` dan `API_ROUTES`, tambahkan `{ id, verb, path, removedIn: 'server-vX.Y.Z' }` ke `RETIRED_ROUTES` (verb dan path disalin dari potret terakhir yang memuat rute itu). Server kemudian menjawab rute itu dengan 426 `CLIENT_OUTDATED` (sebelum `authorize`, tanpa sesi) dan klien lama memuat ulang (web) atau menampilkan layar penahan (desktop).
+4. **Naikkan `MIN_CLIENT.desktop`** (`shared/api-versions.ts`) HANYA bila installer desktop lama masih memakai versi yang dihapus dan installer yang cukup baru sudah terbit. Nilai yang terlalu tinggi mengunci pengguna dari seluruh bagian yang butuh API (layar "Perlu pembaruan") sampai diturunkan lewat PR; Country Lock tetap jalan. Nilai ini juga menentukan versi yang tampil di halaman `/desktop`.
+
+Rute yang dipakai antrean offline (`web/public/sync-sw.js` memakai `/api/v1` tetap) tak boleh dihapus atau dinaikkan sebelum skrip itu diajari versi.
+
+Larangan: menghapus id dari `API_ROUTES` tanpa urutan di atas. Tes `shared/api-snapshot.test.ts` (potret berkas = subset kontrak sekarang, bentuk `RETIRED_ROUTES`) dan `scripts/api-removal-check.ts` menolaknya.
 
 ## Sumber daya sinkron
 Tidak ada lagi. Sinkron QC Desktop (`/api/v1/sync/*`) dihapus pada 2026-11-08; QC Desktop baru (Electron) dirancang di `docs/superpowers/plans/2026-11-06-qc-desktop-country-lock-fase-0-1.md`. Modul baru cukup mengikuti resep REST di atas.

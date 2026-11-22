@@ -5,7 +5,7 @@ Dijalankan pemilik pada perangkat nyata sebelum Fase 2 ditulis (rencana `docs/su
 ## Prasyarat
 
 - Laptop Windows 10/11 x64 **bersih** (tanpa Node, Bun, atau Git) dan satu laptop/PC lain sebagai pembanding berisi **aplikasi WPF Country Lock lama**.
-- Installer: `desktop/dist-app/QC-App-Setup-<versi>-<arch>.exe` (`<arch>` = `x64` atau `arm64`; dibuat `bun run build:desktop`, atau diunduh dari Drive hasil `release.yml`; pasang per pengguna, tanpa hak admin). Untuk uji tanpa installer: `bun run build:web && bun run --cwd desktop pack`, lalu `desktop/dist-app/win-unpacked/QC App.exe`.
+- Installer: `desktop/dist-app/QC-App-Setup-<versi>-<arch>.exe` (`<arch>` = `x64` atau `arm64`; dibuat `bun run build:desktop`, atau diunduh dari Drive hasil `release.yml`; pasang per pengguna, tanpa hak admin). Untuk uji tanpa installer: `bun run build && bun run --cwd desktop pack`, lalu `desktop/dist-app/win-unpacked/QC App.exe`.
 - Paket skrip: folder `Country Lock2` (berisi `config.QC`, `MIKROTIK\`, `UBIQUITI\`).
 - Router jump Mikrotik (alamat sesuai `server.ip` di `config.QC`) dan perangkat uji: satu Ubiquiti dan satu Mikrotik, keduanya **bukan** perangkat produksi.
 - Akun QC terdaftar di server (staging `https://qc-dev.rhd.my.id` atau production `https://qc.rhd.my.id`) dan peramban sistem yang dapat login Google.
@@ -46,7 +46,7 @@ Kata sandi perangkat tidak boleh muncul di layar progres, log, atau berkas mana 
 
 | # | Langkah | Hasil yang diharapkan | Hasil |
 |---|---|---|---|
-| C1 | Buka satu per satu semua menu (Item, Merk, Handover, QR Code, Stiker, Postel, Pengaturan Akses, dst.) | Setiap halaman terbuka dan datanya termuat | |
+| C1 | Buka satu per satu semua menu (Item, Merk, Handover, QR Code, Stiker, Postel, Akses, dst.) | Setiap halaman terbuka dan datanya termuat | |
 | C2 | Buat/ubah satu data (mis. merk uji) dan unggah satu gambar item ukuran ~5 MB | Tersimpan; gambar tampil kembali | |
 | C3 | Unduh satu berkas (mis. PDF QR atau lampiran Postel) | Berkas terunduh utuh | |
 | C4 | Dari DevTools (bila dapat dibuka) jalankan `fetch('/api/openapi.json')` dan `fetch('/auth/login')` | Ditolak 403 `application/problem+json`; hanya `/api/v1/*`, `/api/ping`, `/auth/logout` yang diteruskan | |
@@ -201,6 +201,30 @@ Prasyarat: environment `desktop-release`, folder Drive, dan `DESKTOP_RELEASES_FO
 | K10 | Ganti `DESKTOP_RELEASE_PUBLIC_KEY_PEM` di build uji dengan kunci lain, pasang, terbitkan rilis dari kunci asli | Aplikasi menolak manifest (tanda tangan tak sah): tidak ada tawaran pembaruan, log aplikasi menyebut penolakan | |
 | K11 | Ubah repositori menjadi **privat** dan/atau cabut token GitHub apa pun, ulangi K2-K5 | Pembaruan tetap berfungsi penuh (tak ada permintaan ke GitHub dari aplikasi atau server) | |
 | K12 | Unduh `app-file` dengan nama di luar manifest atau versi tanpa `.sig` (curl) | 404 seragam; lebih dari 60 unduhan installer per jam dari satu IP = 429 | |
+
+Halaman unduh di web (spek `2026-11-17-changelog-dan-unduh-desktop-web-design.md` 5.3, dibangun 2026-11-20), diuji di PERAMBAN (bukan di dalam aplikasi desktop):
+
+| # | Langkah | Hasil yang diharapkan | Hasil |
+|---|---|---|---|
+| K13 | Masuk di peramban Windows (x64 lalu ARM bila ada), buka menu "Aplikasi Desktop" (`/desktop`) | Kartu "Versi terbaru" menampilkan tombol "Unduh untuk Windows x64" (atau ARM) yang sesuai; daftar "Versi yang didukung" memuat versi terbit beserta ukuran | |
+| K14 | Unduh installer dari tombol, jalankan `Get-FileHash -Algorithm SHA512 <berkas>` di PowerShell | Hash sama dengan checksum yang tampil di halaman (tombol "Salin" menyalin nilainya) | |
+| K15 | Buka `/desktop` dari macOS/Linux/ponsel | Kalimat "Aplikasi desktop baru tersedia untuk Windows" tanpa tombol utama; tautan di daftar tetap ada | |
+| K16 | Tarik rilis terbaru (hapus `.sig`), muat ulang halaman setelah memo 5 menit | Versi yang ditarik tidak tampil lagi; folder rilis kosong = "Belum ada versi yang tersedia untuk diunduh", `DESKTOP_RELEASES_FOLDER_ID` kosong = "Unduhan belum tersedia" | |
+| K17 | Buka aplikasi desktop terpasang | Butir "Aplikasi Desktop" tidak ada di sidebar | |
+
+Pembaruan paksa dan layar penahan (fase 3 versi API, 2026-11-20; spek `2026-11-20-versi-api-fase3-design.md` bagian 6). Tidak dapat dipastikan mesin; diuji di staging dengan build uji. Prasyarat: aplikasi desktop terpasang versi N (jembatan v10 atau lebih baru) dan rilis N+1 sudah terbit; `minClient` sengaja dinaikkan HANYA di staging (jangan di production):
+
+| # | Langkah | Hasil yang diharapkan | Hasil |
+|---|---|---|---|
+| K18 | Di staging naikkan `MIN_CLIENT.desktop` di atas versi N (build server uji), buka aplikasi N yang sudah login | Seluruh isi layout (sidebar, header, halaman) diganti layar "Perlu pembaruan" dengan tombol "Perbarui sekarang" dan tautan "Buka Country Lock"; tidak ada tombol "Nanti" | |
+| K19 | Tekan "Perbarui sekarang" | Tombol nonaktif selama berjalan, lalu teks "Memasang pembaruan, aplikasi akan mulai ulang..."; aplikasi tertutup, terpasang senyap, dan terbuka lagi sebagai N+1 tanpa layar penahan | |
+| K20 | Ulangi K18, putuskan jaringan atau pakai build uji yang unduhannya gagal, tekan "Perbarui sekarang" | Teks galat tampil ("Pembaruan gagal diunduh" atau pesan sejenis) dan muncul tautan "Unduh manual"; tombol utama dapat ditekan lagi | |
+| K21 | Tekan "Unduh manual" | Peramban sistem membuka `<alamat server>/desktop` (halaman daftar unduhan, hanya versi yang didukung) | |
+| K22 | Saat layar penahan tampil, tekan "Buka Country Lock" lalu jalankan inject uji | Halaman Country Lock terbuka normal, draf lokal utuh, inject berjalan; kembali ke halaman lain memunculkan layar penahan lagi | |
+| K23 | Mulai inject Country Lock, lalu tekan "Perbarui sekarang" dari layar penahan di jendela lain/tab lain bila memungkinkan, atau pantau saat inject berjalan | Hasil `busy` ("Inject sedang berjalan, tunggu selesai dulu"); aplikasi TIDAK dimulai ulang selama inject | |
+| K24 | Di staging jadikan sebuah versi API klien `deprecated` (build server uji), buka tab web lama | Spanduk "Aplikasi ini perlu diperbarui biar tetap bisa dipakai." dengan tombol "Muat ulang"; tidak memuat ulang sendiri. Di aplikasi desktop spanduk ini tidak tampil | |
+| K25 | Hapus rute yang dipakai tab web lama (catat di `RETIRED_ROUTES`, build server uji), lakukan aksi yang memanggilnya di tab itu | Server menjawab 426 `CLIENT_OUTDATED`; tab memuat ulang sendiri bila tak ada ketikan belum tersimpan, selain itu menunggu sampai tersimpan atau dibuang | |
+| K26 | Matikan koneksi, isi centang/komentar di PWA hingga masuk antrean offline, hapus rute yang dipakai entri itu di server uji, sambungkan kembali | Entri ditolak 426 dibuang ke jalur "ditolak" dengan alasan jelas (diumumkan sekali), tidak dicoba ulang tanpa henti dan tidak hilang tanpa jejak; berlaku untuk pengirim halaman DAN Background Sync (Chrome/Edge) | |
 
 ## Pengisian hasil
 

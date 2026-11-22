@@ -6,6 +6,7 @@ import {
   type RequestParts,
   toRequestParts,
 } from '@shared/api';
+import { parseApiId, restBase } from '@shared/api-versions';
 import {
   type ApiId,
   type ApiInput,
@@ -14,10 +15,16 @@ import {
   type ErrorCode,
 } from '@shared/contract';
 import { beginBusy } from '@/app/pwa/busy';
+import { raiseOutdatedLevel } from '@/app/pwa/client-outdated';
+import { isDesktop } from '@/lib/platform';
 import { ApiError } from './api-error';
+import { XHR_PROGRESS_ON_DESKTOP, xhrSend } from './xhr-upload';
 
-/** Awalan jalur REST; jalur tabel (`/brands/{id}`) relatif terhadapnya. */
-export const API_BASE = '/api/v1';
+/**
+ * Awalan jalur REST v1; jalur tabel (`/brands/{id}`) relatif terhadap awalan versi id-nya (`restBase`). Nilainya tetap
+ * `/api/v1` (dipakai sumber gambar dan tes paritas); id berversi (`<id>@2`) memakai awalan versinya di `requestUrl`.
+ */
+export const API_BASE = restBase(1);
 /** Header wajib semua permintaan tulis (mitigasi CSRF di server). */
 export const CSRF_HEADERS = { 'X-Requested-With': 'qc' } as const;
 
@@ -32,6 +39,12 @@ export interface ApiClientOptions {
 export interface ApiCallOptions {
   /** Pembatal permintaan (mis. batas waktu pengurasan antrean). Abort dipetakan ke `UNAVAILABLE` seperti galat jaringan. */
   signal?: AbortSignal;
+  /**
+   * Progres unggah (byte terkirim dari total). Bila diberikan pada rute non-unduhan, permintaan dikirim lewat
+   * `XMLHttpRequest` (`fetch` tak punya progres unggah), kecuali di desktop selama `XHR_PROGRESS_ON_DESKTOP` false.
+   * Persen dapat 100% sebelum server selesai menjawab.
+   */
+  onUploadProgress?(loaded: number, total: number): void;
 }
 
 export type ApiCall = <M extends ApiId>(
@@ -100,9 +113,10 @@ function errorFromResponse(status: number, text: string): ApiError {
   return new ApiError('INTERNAL', 'Respons server tidak valid', '-', undefined, { status });
 }
 
-function urlOf(baseUrl: string, parts: RequestParts): string {
+/** URL permintaan: awalan versi diturunkan dari akhiran id (`qrcodes.save@2` -> `/api/v2`). */
+export function requestUrl(baseUrl: string, id: string, parts: RequestParts): string {
   const query = new URLSearchParams(parts.query).toString();
-  return `${baseUrl}${API_BASE}${parts.path}${query === '' ? '' : `?${query}`}`;
+  return `${baseUrl}${restBase(parseApiId(id).version)}${parts.path}${query === '' ? '' : `?${query}`}`;
 }
 
 function headersOf(verb: ApiVerb, parts: RequestParts, download: boolean): Record<string, string> {
@@ -128,6 +142,27 @@ function bodyOf(parts: RequestParts): string | Blob | FormData | undefined {
     return form;
   }
   return parts.body === undefined ? undefined : JSON.stringify(parts.body);
+}
+
+/** Bagian setelah respons (fetch atau XHR): galat non-2xx, unduhan biner, atau JSON. */
+function finishResponse<M extends ApiId>(
+  id: M,
+  input: ApiInput<M>,
+  response: { ok: boolean; status: number; headers: Headers },
+  text: string,
+  bytes: Uint8Array | undefined,
+): ApiOutput<M> {
+  if (!response.ok) {
+    const error = errorFromResponse(response.status, text);
+    // Hanya kode dari badan problem+json sah yang dihitung: 426 polos (mis. dari proksi) jatuh ke INTERNAL.
+    if (error.code === 'CLIENT_OUTDATED') raiseOutdatedLevel('outdated');
+    throw error;
+  }
+  if (bytes !== undefined) return downloadOutput(id, input, response.headers, bytes);
+  if (text === '') return undefined as unknown as ApiOutput<M>;
+  const data = parseJson(text);
+  if (data === undefined) throw new ApiError('INTERNAL', 'Respons server tidak valid', '-');
+  return data as ApiOutput<M>;
 }
 
 /**
@@ -158,34 +193,61 @@ export function createApiClient(options: ApiClientOptions = {}): ApiCall {
     callOptions?: ApiCallOptions,
   ): Promise<ApiOutput<M>> {
     const isDownload = API_ROUTES[id].download !== undefined;
-    const doFetch = options.fetchImpl ?? fetch;
-    let response: Response;
+    const url = requestUrl(baseUrl, id, parts);
+    const headers = headersOf(parts.verb, parts, isDownload);
+    const body = bodyOf(parts);
+    const useXhr =
+      callOptions?.onUploadProgress !== undefined &&
+      !isDownload &&
+      (!isDesktop() || XHR_PROGRESS_ON_DESKTOP);
+    let status: number;
+    let responseHeaders: Headers;
     let text = '';
     let bytes: Uint8Array | undefined;
     try {
-      response = await doFetch(urlOf(baseUrl, parts), {
-        method: parts.verb,
-        credentials: 'same-origin',
-        // JSON jangan pernah dilayani dari cache HTTP peramban (ETag updatedAt bukan validator isi); unduhan biner
-        // mengikuti kebijakan Cache-Control server (immutable/revalidate).
-        ...(isDownload ? {} : { cache: 'no-store' as const }),
-        headers: headersOf(parts.verb, parts, isDownload),
-        body: bodyOf(parts),
-        ...(callOptions?.signal ? { signal: callOptions.signal } : {}),
-      });
-      // Unduhan sukses = byte mentah; selain itu teks (JSON atau problem+json).
-      if (isDownload && response.ok) bytes = new Uint8Array(await response.arrayBuffer());
-      else text = await response.text();
+      if (useXhr) {
+        const result = await xhrSend(url, {
+          method: parts.verb,
+          headers,
+          body,
+          ...(callOptions?.signal ? { signal: callOptions.signal } : {}),
+          ...(callOptions?.onUploadProgress
+            ? { onUploadProgress: callOptions.onUploadProgress }
+            : {}),
+        });
+        status = result.status;
+        responseHeaders = result.headers;
+        text = result.text;
+      } else {
+        const doFetch = options.fetchImpl ?? fetch;
+        const response = await doFetch(url, {
+          method: parts.verb,
+          credentials: 'same-origin',
+          // JSON jangan pernah dilayani dari cache HTTP peramban (ETag updatedAt bukan validator isi); unduhan biner
+          // mengikuti kebijakan Cache-Control server (immutable/revalidate).
+          ...(isDownload ? {} : { cache: 'no-store' as const }),
+          headers,
+          body,
+          ...(callOptions?.signal ? { signal: callOptions.signal } : {}),
+        });
+        status = response.status;
+        responseHeaders = response.headers;
+        // Unduhan sukses = byte mentah; selain itu teks (JSON atau problem+json).
+        if (isDownload && response.ok) bytes = new Uint8Array(await response.arrayBuffer());
+        else text = await response.text();
+      }
     } catch (error) {
       // Offline, DNS gagal, atau badan terputus: server tidak terjangkau (FR-P15); UI menampilkan data terakhir/antrean.
+      if (error instanceof ApiError) throw error;
       throw new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-', undefined, { cause: error });
     }
-    if (!response.ok) throw errorFromResponse(response.status, text);
-    if (bytes !== undefined) return downloadOutput(id, input, response.headers, bytes);
-    if (text === '') return undefined as unknown as ApiOutput<M>;
-    const data = parseJson(text);
-    if (data === undefined) throw new ApiError('INTERNAL', 'Respons server tidak valid', '-');
-    return data as ApiOutput<M>;
+    return finishResponse(
+      id,
+      input,
+      { ok: status >= 200 && status < 300, status, headers: responseHeaders },
+      text,
+      bytes,
+    );
   }
   return call;
 }

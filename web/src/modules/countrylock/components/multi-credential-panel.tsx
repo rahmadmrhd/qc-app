@@ -73,6 +73,7 @@ export function MultiCredentialPanel({
           type="submit"
           size="icon"
           variant="outline"
+          color="primary"
           aria-label="Tambah kredensial"
           disabled={!valid}
         >

@@ -1,9 +1,11 @@
 import type { HandoverDto } from '@shared/contract';
 import { useQuery } from '@tanstack/react-query';
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { PageContent } from '@/components/page/page-container';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { canAt, requirePermission } from '@/modules/auth/permissions';
@@ -11,6 +13,7 @@ import { useMe } from '@/modules/auth/use-me';
 import { HandoverForm } from '@/modules/handover/components/handover-form';
 import { readableLocationIds } from '@/modules/handover/lib/readable-locations';
 import {
+  customersOfSearch,
   handoverSearchSchema,
   scopedLocationIds,
   searchFromStatus,
@@ -30,6 +33,30 @@ import {
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 
 export const Route = createFileRoute('/_app/handover/$handoverId/edit')({
+  staticData: {
+    locationAware: true,
+    crumb: ({ params, search, queryClient }) => {
+      const [hit] = queryClient.getQueriesData<{ number: string }>({
+        queryKey: ['handovers', 'one', params.handoverId ?? ''],
+      });
+      return [
+        {
+          label: hit?.[1]?.number ?? 'Detail',
+          to: '/handover/$handoverId',
+          params,
+          search: {
+            loc: search.loc,
+            status: search.status,
+            customers: search.customers,
+            customer: search.customer,
+            deleted: search.deleted,
+          },
+        },
+        { label: 'Ubah' },
+      ];
+    },
+    pageWidth: 'narrow',
+  },
   validateSearch: (search: Record<string, unknown>) => handoverSearchSchema.parse(search),
   beforeLoad: ({ context }) => requirePermission(context.queryClient, 'handover', 'edit'),
   component: EditHandoverPage,
@@ -38,8 +65,13 @@ export const Route = createFileRoute('/_app/handover/$handoverId/edit')({
 function EditHandoverPage() {
   const { handoverId } = Route.useParams();
   const search = Route.useSearch();
-  const listSearch = searchFromStatus(statusFromSearch(search), search.loc);
-  const navigate = useNavigate();
+  const listSearch = searchFromStatus(
+    statusFromSearch(search),
+    search.loc,
+    customersOfSearch(search),
+    search.deleted,
+  );
+  const stack = useStackNavigation();
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   const detail = useQuery(
@@ -55,7 +87,7 @@ function EditHandoverPage() {
   const [fieldErrors, setFieldErrors] = useState<HandoverFieldErrors>({});
 
   const back = () =>
-    void navigate({ to: '/handover/$handoverId', params: { handoverId }, search: listSearch });
+    stack.pop({ to: '/handover/$handoverId', params: { handoverId }, search: listSearch });
 
   // Keadaan task saat form dibuka: dasar `expectedUpdatedAt` dan nilai awal. Muat ulang latar (mis. QC
   // mencentang, atau sambung ulang jaringan) TIDAK me-mount ulang form dan tidak mengganti draf; bentrokan
@@ -91,32 +123,42 @@ function EditHandoverPage() {
   const editable =
     task !== undefined &&
     task.status !== 'cancelled' &&
+    task.deleted === undefined &&
     canAt(me, 'handover', 'edit', task.locationId);
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       {detail.isPending ? (
-        <Skeleton className="h-64 w-full" />
+        <PageContent>
+          <Skeleton className="h-64 w-full" />
+        </PageContent>
       ) : !task ? (
-        <p role="alert" className="text-sm text-destructive">
-          Task tidak ditemukan di lokasi aktif.{' '}
-          <Link to="/handover" search={listSearch} className="underline">
-            Kembali ke daftar
-          </Link>
-        </p>
+        <PageContent>
+          <p role="alert" className="text-sm text-destructive-text">
+            Task tidak ditemukan di lokasi aktif.{' '}
+            <Link to="/handover" search={listSearch} className="underline">
+              Kembali ke daftar
+            </Link>
+          </p>
+        </PageContent>
       ) : !editable ? (
-        <p role="alert" className="text-sm text-destructive">
-          Task ini tidak dapat diubah (sudah dibatalkan atau Anda tidak punya izin ubah).{' '}
-          <Link
-            to="/handover/$handoverId"
-            params={{ handoverId }}
-            search={listSearch}
-            className="underline"
-          >
-            Kembali
-          </Link>
-        </p>
+        <PageContent>
+          <p role="alert" className="text-sm text-destructive-text">
+            Task ini tidak dapat diubah (sudah dibatalkan atau dihapus, atau Anda tidak punya izin
+            ubah).{' '}
+            <Link
+              to="/handover/$handoverId"
+              params={{ handoverId }}
+              search={listSearch}
+              className="underline"
+            >
+              Kembali
+            </Link>
+          </p>
+        </PageContent>
       ) : options.isPending || !options.data ? (
-        <Skeleton className="h-64 w-full" />
+        <PageContent>
+          <Skeleton className="h-64 w-full" />
+        </PageContent>
       ) : (
         <HandoverForm
           key={task.id}

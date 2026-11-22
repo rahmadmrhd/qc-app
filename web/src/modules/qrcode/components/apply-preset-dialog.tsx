@@ -56,6 +56,7 @@ export function ApplyPresetDialog({
         <div className="space-y-3">
           <LinkField
             id="qr-apply-preset"
+            required
             label="Konfigurasi default"
             placeholder="Pilih konfigurasi default…"
             value={presetId === '' ? null : presetId}
@@ -83,7 +84,12 @@ export function ApplyPresetDialog({
           </fieldset>
         </div>
         <DialogFooter>
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+          <Button
+            type="button"
+            variant="outline"
+            color="primary"
+            onClick={() => onOpenChange(false)}
+          >
             Batal
           </Button>
           <Button

@@ -38,10 +38,10 @@ export function ConfirmRemoveDialog({
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <Button type="button" variant="outline" onClick={onCancel}>
+          <Button type="button" variant="outline" color="primary" onClick={onCancel}>
             Batal
           </Button>
-          <Button type="button" variant="destructive" onClick={onConfirm}>
+          <Button type="button" variant="soft" color="destructive" onClick={onConfirm}>
             Hapus {count} baris
           </Button>
         </AlertDialogFooter>

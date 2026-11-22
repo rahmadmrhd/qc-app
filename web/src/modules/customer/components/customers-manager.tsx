@@ -1,174 +1,151 @@
 import type { CustomerDto } from '@shared/contract';
-import { HANDOVER_LIMITS } from '@shared/handover';
-import { useEffect, useRef, useState } from 'react';
-import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import type { ReactNode } from 'react';
+import { type DataColumn, DataTable, LinkCell, type RowAction } from '@/components/data-table';
+import type { RowSelection } from '@/components/data-table/use-row-selection';
+import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
+import { ActiveStatusBadge } from '@/components/status-badge';
+import { formatStamp } from '@/lib/format-stamp';
 
 export interface CustomersManagerProps {
   customers: readonly CustomerDto[];
+  /** Tampilan "Terhapus": satu-satunya aksi baris dan massal adalah Pulihkan. */
+  deletedView?: boolean;
   canManage: boolean;
-  pendingStatusId: string | null;
-  /** Mengembalikan pesan galat (tampil di bawah isian) atau `null` bila berhasil. */
-  onRename: (input: { id: string; name: string }) => Promise<string | null>;
+  /** Ada = kolom checkbox (hanya bagi pemegang `item: manage`). */
+  selection?: RowSelection;
+  pendingId?: string | null;
+  onEdit: (customer: CustomerDto) => void;
   onToggleStatus: (customer: CustomerDto) => void;
+  onDelete: (customer: CustomerDto) => void;
+  onRestore: (customer: CustomerDto) => void;
+  filtered?: boolean;
+  onClearFilters?: () => void;
+  emptyAction?: ReactNode;
+  isLoading?: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }
 
-/** Daftar customer: ganti nama dan nonaktifkan/aktifkan. Customer baru dibuat langsung dari form task. */
+/**
+ * Daftar customer (kit CRUD): [checkbox][Aksi][Customer -> View][Status]. Customer baru dibuat otomatis saat task serah
+ * terima disimpan, jadi tidak ada tombol Tambah; nama diganti lewat dialog Ubah. Di ponsel menjadi kartu: customer =
+ * judul, status = badge.
+ */
 export function CustomersManager({
   customers,
+  deletedView = false,
   canManage,
-  pendingStatusId,
-  onRename,
+  selection,
+  pendingId = null,
+  onEdit,
   onToggleStatus,
+  onDelete,
+  onRestore,
+  filtered,
+  onClearFilters,
+  emptyAction,
+  isLoading,
+  isError,
+  onRetry,
 }: CustomersManagerProps) {
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  // Galat milik satu baris (id), supaya tidak tampil di baris lain.
-  const [error, setError] = useState<{ id: string; message: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-  // Sedang mengubah nama dan isiannya berbeda dari nama tersimpan.
-  useUnsavedChanges(
-    editingId !== null &&
-      name !== (customers.find((customer) => customer.id === editingId)?.name ?? name),
-  );
-  const editRef = useRef<HTMLInputElement>(null);
-  // Mengubah: fokus langsung ke isian agar pengguna keyboard tidak harus mencarinya.
-  useEffect(() => {
-    if (editingId !== null) editRef.current?.focus();
-  }, [editingId]);
+  const columns: DataColumn<CustomerDto>[] = [
+    {
+      id: 'name',
+      header: 'Customer',
+      mobile: 'title',
+      cell: (customer) => (
+        <span className="inline-flex flex-wrap items-center gap-1.5">
+          <LinkCell to="/customer/$customerId" params={{ customerId: customer.id }}>
+            {customer.name}
+          </LinkCell>
+          {customer.deleted ? <DeletedBadge /> : null}
+        </span>
+      ),
+    },
+    ...(deletedView
+      ? ([
+          {
+            id: 'deletedBy',
+            header: 'Dihapus oleh',
+            cell: (customer) => customer.deleted?.deletedBy ?? '—',
+          },
+          {
+            id: 'deletedAt',
+            header: 'Dihapus pada',
+            cell: (customer) => (customer.deleted ? formatStamp(customer.deleted.deletedAt) : '—'),
+          },
+        ] satisfies DataColumn<CustomerDto>[])
+      : ([
+          {
+            id: 'status',
+            header: 'Status',
+            cell: (customer) => <ActiveStatusBadge status={customer.status} />,
+          },
+        ] satisfies DataColumn<CustomerDto>[])),
+  ];
 
-  async function save(id: string) {
-    setBusy(true);
-    let message: string | null;
-    try {
-      message = await onRename({ id, name });
-    } catch {
-      message = 'Gagal menyimpan customer';
+  const actions = (customer: CustomerDto): RowAction[] => {
+    const busy = pendingId === customer.id;
+    if (customer.deleted || deletedView) {
+      return [
+        {
+          id: 'restore',
+          action: 'restore',
+          label: `Pulihkan ${customer.name}`,
+          shortLabel: 'Pulihkan',
+          hidden: !canManage,
+          busy,
+          onSelect: () => onRestore(customer),
+        },
+      ];
     }
-    setBusy(false);
-    setError(message === null ? null : { id, message });
-    if (message === null) setEditingId(null);
-  }
+    return [
+      {
+        id: 'edit',
+        action: 'edit',
+        label: `Ubah ${customer.name}`,
+        shortLabel: 'Ubah',
+        hidden: !canManage,
+        onSelect: () => onEdit(customer),
+      },
+      {
+        id: 'status',
+        action: customer.status === 'active' ? 'deactivate' : 'activate',
+        label: `${customer.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'} ${customer.name}`,
+        shortLabel: customer.status === 'active' ? 'Nonaktifkan' : 'Aktifkan',
+        hidden: !canManage,
+        busy,
+        onSelect: () => onToggleStatus(customer),
+      },
+      {
+        id: 'delete',
+        action: 'delete',
+        label: `Hapus ${customer.name}`,
+        shortLabel: 'Hapus',
+        hidden: !canManage || customer.status !== 'inactive',
+        busy,
+        onSelect: () => onDelete(customer),
+      },
+    ];
+  };
 
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Customer</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="text-right">Aksi</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {customers.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={3} className="text-center text-muted-foreground">
-                Belum ada customer. Customer dibuat otomatis saat task serah terima disimpan.
-              </TableCell>
-            </TableRow>
-          ) : null}
-          {customers.map((customer) => (
-            <TableRow key={customer.id}>
-              <TableCell className="font-medium">
-                {editingId === customer.id ? (
-                  <form
-                    noValidate
-                    className="space-y-1"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      if (!busy && name.trim() !== '') void save(customer.id);
-                    }}
-                  >
-                    <Input
-                      ref={editRef}
-                      aria-label={`Nama baru untuk ${customer.name}`}
-                      aria-invalid={error?.id === customer.id ? true : undefined}
-                      aria-describedby={
-                        error?.id === customer.id ? 'customer-edit-error' : undefined
-                      }
-                      maxLength={HANDOVER_LIMITS.customerName}
-                      value={name}
-                      onChange={(event) => setName(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === 'Escape') setEditingId(null);
-                      }}
-                    />
-                    {error?.id === customer.id ? (
-                      <p id="customer-edit-error" role="alert" className="text-sm text-destructive">
-                        {error.message}
-                      </p>
-                    ) : null}
-                  </form>
-                ) : (
-                  customer.name
-                )}
-              </TableCell>
-              <TableCell>
-                <Badge variant={customer.status === 'active' ? 'default' : 'secondary'}>
-                  {customer.status === 'active' ? 'Aktif' : 'Nonaktif'}
-                </Badge>
-              </TableCell>
-              <TableCell className="space-x-2 text-right">
-                {editingId === customer.id ? (
-                  <>
-                    <Button
-                      size="sm"
-                      aria-label={`Simpan nama ${customer.name}`}
-                      disabled={busy || name.trim() === ''}
-                      onClick={() => void save(customer.id)}
-                    >
-                      Simpan
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      aria-label={`Batal ubah ${customer.name}`}
-                      onClick={() => setEditingId(null)}
-                    >
-                      Batal
-                    </Button>
-                  </>
-                ) : canManage ? (
-                  <>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      aria-label={`Ubah ${customer.name}`}
-                      onClick={() => {
-                        setEditingId(customer.id);
-                        setName(customer.name);
-                        setError(null);
-                      }}
-                    >
-                      Ubah
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      aria-label={`${customer.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'} ${customer.name}`}
-                      disabled={pendingStatusId === customer.id}
-                      onClick={() => onToggleStatus(customer)}
-                    >
-                      {customer.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'}
-                    </Button>
-                  </>
-                ) : null}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <DataTable
+      rows={customers}
+      rowKey={(customer) => customer.id}
+      columns={columns}
+      label="Daftar customer"
+      rowTo={(customer) => ({ to: '/customer/$customerId', params: { customerId: customer.id } })}
+      selectLabel={(customer) => customer.name}
+      selection={selection}
+      actions={canManage ? actions : undefined}
+      empty="Belum ada customer. Customer dibuat otomatis saat task serah terima disimpan."
+      filtered={filtered}
+      onClearFilters={onClearFilters}
+      emptyAction={emptyAction}
+      isLoading={isLoading}
+      isError={isError}
+      onRetry={onRetry}
+    />
   );
 }

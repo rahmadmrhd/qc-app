@@ -1,5 +1,6 @@
 import type { SheetsExportChunk } from '@server/core/bridge-client';
 import type { Db } from '@server/core/db';
+import { deletedWhere, isSoftDeleteTable, liveWhere } from '@server/core/soft-delete';
 
 /**
  * Pembaca potongan baris database untuk ekspor Spreadsheet (Spek 8.3, Task 3.4). Fungsi murni terhadap `Db`:
@@ -228,6 +229,40 @@ function quote(identifier: string): string {
 }
 
 /**
+ * Tabel ANAK yang diekspor dan induk yang menentukan "hidup"-nya (rancangan soft delete §5 butir 15): baris anak milik
+ * induk terhapus tidak diekspor.
+ */
+export const EXPORT_CHILD_PARENTS: Readonly<Record<string, { parent: string; fk: string }>> = {
+  handover_comments: { parent: 'handovers', fk: 'handover_id' },
+};
+
+/**
+ * `files` milik pemilik terhapus: pemiliknya beragam (`owner_type`), jadi tiap jenis pemilik ber-soft-delete didaftarkan
+ * di sini begitu fase modulnya menyaringnya. Sekarang: `item` (fase 3). Menyusul: stiker/pustaka (fase 4a) dan
+ * `qrdesign`/`qrlogo`/`postel` (fase 4b), bersama `qr_documents` (tak punya kolom induk). Selama belum lengkap, entri
+ * `*dinamis` ekspor ini berada di `SOFT_DELETE_PENDING` (fase 4b) di `soft-delete-pending.ts`, bukan `SOFT_DELETE_EXEMPT`;
+ * pindahkan ke EXEMPT setelah `files` dan `qr_documents` seluruhnya disaring.
+ */
+export const EXPORT_FILE_OWNERS: Readonly<Record<string, string>> = { item: 'items' };
+
+function childLive(table: string): string {
+  const link = EXPORT_CHILD_PARENTS[table];
+  if (link && isSoftDeleteTable(link.parent)) {
+    return `EXISTS (SELECT 1 FROM ${quote(link.parent)} p WHERE p.id = ${quote(table)}.${quote(link.fk)} AND ${liveWhere('p')})`;
+  }
+  if (table === 'files') {
+    const parts = Object.entries(EXPORT_FILE_OWNERS)
+      .filter(([, owner]) => isSoftDeleteTable(owner))
+      .map(
+        ([type, owner]) =>
+          `NOT (\`owner_type\` = '${type}' AND EXISTS (SELECT 1 FROM ${quote(owner)} p WHERE p.id = \`owner_id\` AND ${deletedWhere('p')}))`,
+      );
+    return parts.join(' AND ');
+  }
+  return '';
+}
+
+/**
  * Membaca SATU halaman (satu kueri database, berindeks kunci) setelah `afterKey` dan memecahnya menjadi potongan
  * bila melebihi anggaran karakter. `first` = halaman pertama tabel: potongan pertamanya `replace`
  * (menimpa sheet, juga untuk tabel kosong sehingga sheet lama dibersihkan) dan membawa header.
@@ -243,16 +278,15 @@ export async function readExportPage(
   const key = quote(table.key);
   const after =
     afterKey === null ? null : table.keyType === 'integer' ? Number(afterKey) : afterKey;
-  const statement =
-    after === null
-      ? db
-          .prepare(`SELECT ${columnList} FROM ${quote(table.table)} ORDER BY ${key} LIMIT ?`)
-          .bind(pageRows)
-      : db
-          .prepare(
-            `SELECT ${columnList} FROM ${quote(table.table)} WHERE ${key} > ? ORDER BY ${key} LIMIT ?`,
-          )
-          .bind(after, pageRows);
+  // Record terhapus (soft delete) tidak diekspor (rancangan soft delete §4.2); tabel di luar daftar tak punya kolomnya.
+  const live = isSoftDeleteTable(table.table) ? liveWhere() : '';
+  const conditions = [live, childLive(table.table), after === null ? '' : `${key} > ?`].filter(
+    (part) => part !== '',
+  );
+  const where = conditions.length > 0 ? ` WHERE ${conditions.join(' AND ')}` : '';
+  const statement = db
+    .prepare(`SELECT ${columnList} FROM ${quote(table.table)}${where} ORDER BY ${key} LIMIT ?`)
+    .bind(...(after === null ? [pageRows] : [after, pageRows]));
   const result = await statement.all<Record<string, unknown>>();
   const rows = result.results.map((row) => table.columns.map((column) => cellText(row[column])));
 

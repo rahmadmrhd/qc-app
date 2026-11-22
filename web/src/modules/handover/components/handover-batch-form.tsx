@@ -4,7 +4,7 @@ import { Copy, Plus, Trash2 } from 'lucide-react';
 import { useId, useRef, useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
-import { FormHeader } from '@/components/form-header';
+import { FormPage } from '@/components/page/form-page';
 import { Button } from '@/components/ui/button';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
@@ -64,6 +64,19 @@ export function HandoverBatchForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Kartu yang editor catatannya sedang mengunggah gambar atau punya unggahan gagal (menurut `key` kartu): Simpan semua
+  // ditahan selama ada satu pun (aturan lampiran berkas, spek dialog unggah seragam 5.11 butir 3). Mode `note` tanpa
+  // gambar tak pernah sibuk, tetapi kontraknya sama dengan editor lain.
+  const [busyKeys, setBusyKeys] = useState<ReadonlySet<number>>(new Set());
+  const editorBusy = busyKeys.size > 0;
+  const setCardBusy = (key: number, busy: boolean) =>
+    setBusyKeys((current) => {
+      if (current.has(key) === busy) return current;
+      const next = new Set(current);
+      if (busy) next.add(key);
+      else next.delete(key);
+      return next;
+    });
   const baseId = useId();
   const full = cards.length >= HANDOVER_BATCH_MAX;
   // Satu kartu kosong awal akan diganti oleh hasil tempel, jadi tidak memakai slot.
@@ -87,6 +100,7 @@ export function HandoverBatchForm({
   }
 
   async function submit() {
+    if (editorBusy) return;
     setFormError(null);
     setLocationError(null);
     setCardErrors({});
@@ -124,128 +138,145 @@ export function HandoverBatchForm({
   }
 
   return (
-    <form
-      noValidate
-      data-tour="handover-batch-form"
-      className="space-y-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
+    <FormPage
+      formId="handover-batch-form"
+      title="Tambah task"
+      onCancel={onCancel}
+      submitting={submitting}
+      submitDisabled={editorBusy}
+      submitLabel={`Simpan semua (${cards.length})`}
+      busyText="Menyimpan semua task…"
+      saveTour="handover-save"
     >
-      <FormHeader
-        title="Tambah task"
-        onCancel={onCancel}
-        submitting={submitting}
-        submitLabel={`Simpan semua (${cards.length})`}
-        busyText="Menyimpan semua task…"
-        data-tour="handover-save"
-      />
-      <section data-tour="handover-location" className="space-y-1.5 rounded-lg border p-4">
-        <LocationField
-          id={`${baseId}-location`}
-          module="handover"
-          level="edit"
-          value={locationId}
-          onChange={setLocationId}
-        />
-        <FieldError errors={[locationError ?? undefined]} />
-      </section>
-
-      <WhatsappPastePanel remaining={remaining} onAdd={addPasted} />
-
-      <div className="space-y-3">
-        {cards.map((card, index) => {
-          const error = cardErrors[card.key];
-          return (
-            <fieldset
-              key={card.key}
-              data-tour="handover-task-card"
-              aria-label={`Task ${index + 1}`}
-              className={`space-y-3 rounded-lg border p-4 ${error ? 'border-destructive' : ''}`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-base font-semibold">{`Task ${index + 1}`}</h2>
-                <div data-tour="handover-card-actions" className="flex gap-1">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    disabled={full}
-                    onClick={() =>
-                      setCards((current) => {
-                        const at = current.findIndex((entry) => entry.key === card.key);
-                        const copy = newCard({ note: card.note });
-                        return [...current.slice(0, at + 1), copy, ...current.slice(at + 1)];
-                      })
-                    }
-                  >
-                    <Copy aria-hidden="true" />
-                    Gandakan
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    disabled={cards.length === 1}
-                    onClick={() => setCards((current) => current.filter((c) => c.key !== card.key))}
-                  >
-                    <Trash2 aria-hidden="true" />
-                    Hapus
-                  </Button>
-                </div>
-              </div>
-              <div data-tour="handover-customer">
-                <CustomerCombobox
-                  id={`${baseId}-customer-${card.key}`}
-                  value={card.customerName}
-                  onChange={(customerName) => patch(card.key, { customerName })}
-                  customers={options.customers}
-                  inactiveNames={options.inactiveCustomerNames}
-                />
-              </div>
-              <div data-tour="handover-note" className="space-y-1.5">
-                <span id={`${baseId}-note-${card.key}`} className="text-sm font-medium">
-                  {`Catatan task ${index + 1}`}
-                </span>
-                <NoteEditor
-                  id={`${baseId}-note-field-${card.key}`}
-                  labelledBy={`${baseId}-note-${card.key}`}
-                  value={card.note}
-                  onChange={(note) => patch(card.key, { note })}
-                />
-              </div>
-              {error ? (
-                <p role="alert" className="text-sm text-destructive">
-                  {error}
-                </p>
-              ) : null}
-            </fieldset>
-          );
-        })}
-      </div>
-
-      <Button
-        type="button"
-        variant="outline"
-        data-tour="handover-add-task"
-        disabled={full}
-        onClick={() => setCards((current) => [...current, newCard()])}
+      <form
+        id="handover-batch-form"
+        noValidate
+        data-tour="handover-batch-form"
+        className="space-y-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void submit();
+        }}
       >
-        <Plus aria-hidden="true" />
-        Tambah task
-      </Button>
-      {full ? (
-        <p className="text-xs text-muted-foreground">
-          Maksimal {HANDOVER_BATCH_MAX} task per batch.
-        </p>
-      ) : null}
+        <section data-tour="handover-location" className="space-y-1.5 rounded-lg border p-4">
+          <LocationField
+            id={`${baseId}-location`}
+            highlightInitial
+            module="handover"
+            level="edit"
+            value={locationId}
+            onChange={setLocationId}
+          />
+          <FieldError errors={[locationError ?? undefined]} />
+        </section>
 
-      {formError ? (
-        <p role="alert" className="text-sm text-destructive">
-          {formError}
-        </p>
-      ) : null}
-    </form>
+        <WhatsappPastePanel remaining={remaining} onAdd={addPasted} />
+
+        <div className="space-y-3">
+          {cards.map((card, index) => {
+            const error = cardErrors[card.key];
+            return (
+              <fieldset
+                key={card.key}
+                data-tour="handover-task-card"
+                aria-label={`Task ${index + 1}`}
+                className={`space-y-3 rounded-lg border p-4 ${error ? 'border-destructive' : ''}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-base font-semibold">{`Task ${index + 1}`}</h2>
+                  <div data-tour="handover-card-actions" className="flex gap-1">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      color="primary"
+                      disabled={full}
+                      onClick={() =>
+                        setCards((current) => {
+                          const at = current.findIndex((entry) => entry.key === card.key);
+                          const copy = newCard({ note: card.note });
+                          return [...current.slice(0, at + 1), copy, ...current.slice(at + 1)];
+                        })
+                      }
+                    >
+                      <Copy aria-hidden="true" />
+                      Gandakan
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      color="primary"
+                      disabled={cards.length === 1}
+                      onClick={() => {
+                        setCards((current) => current.filter((c) => c.key !== card.key));
+                        setCardBusy(card.key, false);
+                      }}
+                    >
+                      <Trash2 aria-hidden="true" />
+                      Hapus
+                    </Button>
+                  </div>
+                </div>
+                <div data-tour="handover-customer">
+                  <CustomerCombobox
+                    id={`${baseId}-customer-${card.key}`}
+                    value={card.customerName}
+                    onChange={(customerName) => patch(card.key, { customerName })}
+                    customers={options.customers}
+                    inactiveNames={options.inactiveCustomerNames}
+                  />
+                </div>
+                <div data-tour="handover-note" className="space-y-1.5">
+                  <span id={`${baseId}-note-${card.key}`} className="text-sm font-medium">
+                    {`Catatan task ${index + 1}`}
+                  </span>
+                  <NoteEditor
+                    id={`${baseId}-note-field-${card.key}`}
+                    labelledBy={`${baseId}-note-${card.key}`}
+                    value={card.note}
+                    onChange={(note) => patch(card.key, { note })}
+                    onBusyChange={(busy) => setCardBusy(card.key, busy)}
+                  />
+                </div>
+                {error ? (
+                  <p role="alert" className="text-sm text-destructive-text">
+                    {error}
+                  </p>
+                ) : null}
+              </fieldset>
+            );
+          })}
+        </div>
+
+        <Button
+          type="button"
+          variant="outline"
+          color="primary"
+          data-tour="handover-add-task"
+          disabled={full}
+          onClick={() => setCards((current) => [...current, newCard()])}
+        >
+          <Plus aria-hidden="true" />
+          Tambah task
+        </Button>
+        {full ? (
+          <p className="text-xs text-muted-foreground">
+            Maksimal {HANDOVER_BATCH_MAX} task per batch.
+          </p>
+        ) : null}
+
+        {formError ? (
+          <p role="alert" className="text-sm text-destructive-text">
+            {formError}
+          </p>
+        ) : null}
+        {editorBusy ? (
+          <p role="status" className="text-xs text-muted-foreground">
+            Menunggu unggahan gambar selesai sebelum menyimpan.
+          </p>
+        ) : null}
+      </form>
+    </FormPage>
   );
 }

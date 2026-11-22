@@ -1,6 +1,7 @@
 import { CAS_FAIL_SQL } from '@server/core/cas';
 import type { Db, DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
+import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { visibleBuIds } from '@server/modules/item/access';
 import { itemBusinessUnitsOf, itemIdsVisibleIn } from '@server/modules/item/repo';
@@ -21,6 +22,13 @@ export interface AttachedItem {
   model: string;
   status: 'active' | 'inactive';
   designId: string;
+  /** Item terhapus (soft delete): hanya penampil rujukan yang membacanya; turunan dan hitungan memakai item hidup. */
+  deleted: boolean;
+  /**
+   * Konfigurasi yang ditunjuk (`designId`) sudah terhapus: item dihitung "belum ada QR Manual Book" dan boleh dipasang
+   * ke konfigurasi lain (soft delete §5 butir 1); `false` juga bila `designId` kosong.
+   */
+  designDeleted: boolean;
 }
 
 interface AttachedRow {
@@ -29,6 +37,8 @@ interface AttachedRow {
   model: string;
   status: string;
   manual_book_design_id: string;
+  deleted_at: string;
+  design_live: number | string;
 }
 
 function toAttached(row: AttachedRow): AttachedItem {
@@ -38,19 +48,41 @@ function toAttached(row: AttachedRow): AttachedItem {
     model: row.model.trim(),
     status: row.status.trim() === 'inactive' ? 'inactive' : 'active',
     designId: row.manual_book_design_id.trim(),
+    deleted: (row.deleted_at ?? '') !== '',
+    designDeleted: row.manual_book_design_id.trim() !== '' && Number(row.design_live) === 0,
   };
 }
 
-const ATTACHED_SELECT =
-  'SELECT i.id, b.name AS brand_name, i.model, i.status, i.manual_book_design_id FROM items i LEFT JOIN brands b ON b.id = i.brand_id';
+const ATTACHED_SELECT = `SELECT i.id, b.name AS brand_name, i.model, i.status, i.manual_book_design_id, i.deleted_at, EXISTS (SELECT 1 FROM qr_designs d WHERE d.id = i.manual_book_design_id AND ${liveWhere('d')}) AS design_live FROM items i LEFT JOIN brands b ON b.id = i.brand_id`;
 
-/** Semua item yang tergabung ke konfigurasi mana pun, dikelompokkan per konfigurasi (satu kueri). */
+/**
+ * Item HIDUP yang tergabung ke konfigurasi mana pun, dikelompokkan per konfigurasi (satu kueri). Dasar hitungan dan
+ * turunan (jumlah item, ekspor, penghapusan): item terhapus tidak dihitung (soft delete §5). Item yang menunjuk
+ * konfigurasi TERHAPUS ikut terbaca di sini (dikelompokkan di bawah id konfigurasi terhapus itu); pembacanya hanya
+ * menanyakan konfigurasi hidup, sehingga mereka tak terhitung di mana pun.
+ */
 export async function listAttachedItems(db: Db): Promise<Map<string, AttachedItem[]>> {
+  const rows = await db
+    .prepare(`${ATTACHED_SELECT} WHERE ${liveWhere('i')} AND i.manual_book_design_id <> ''`)
+    .all<AttachedRow>();
+  return groupByDesign(rows.results);
+}
+
+/**
+ * Semua item yang tergabung, HIDUP MAUPUN TERHAPUS (penampil rujukan): daftar anggota di View/form konfigurasi memakai
+ * ini agar item terhapus tampil bertanda "Terhapus" dan tetap terpasang saat simpan (rujukan tersimpan, T1). Pemanggil
+ * wajib memisahkan `deleted` sebelum menghitung atau menurunkan apa pun.
+ */
+export async function listLinkedItems(db: Db): Promise<Map<string, AttachedItem[]>> {
   const rows = await db
     .prepare(`${ATTACHED_SELECT} WHERE i.manual_book_design_id <> ''`)
     .all<AttachedRow>();
+  return groupByDesign(rows.results);
+}
+
+function groupByDesign(results: readonly AttachedRow[]): Map<string, AttachedItem[]> {
   const byDesign = new Map<string, AttachedItem[]>();
-  for (const row of rows.results) {
+  for (const row of results) {
     const item = toAttached(row);
     const list = byDesign.get(item.designId) ?? [];
     list.push(item);
@@ -62,7 +94,7 @@ export async function listAttachedItems(db: Db): Promise<Map<string, AttachedIte
   return byDesign;
 }
 
-/** Item menurut id (apa pun statusnya); id yang tak ada tidak muncul di peta. */
+/** Item menurut id (apa pun statusnya, termasuk terhapus: pemanggil menilai `deleted`); id yang tak ada tidak muncul di peta. */
 export async function findItemsById(
   db: Db,
   ids: readonly string[],
@@ -94,8 +126,8 @@ export async function visibleItemIds(
 
 /**
  * Memasang `ids` ke konfigurasi `designId` di dalam `batch()`: hanya item yang belum dimiliki konfigurasi lain
- * (`''` atau konfigurasi ini), lalu penjaga yang membatalkan batch (`CAS_FAIL_SQL`) bila ada yang tidak terpasang
- * (item direbut konfigurasi lain pada saat yang sama). Id diurutkan agar urutan kunci baris konsisten antar penyimpan.
+ * (`''`, konfigurasi ini, atau konfigurasi TERHAPUS: rujukan terhapus dianggap bebas dan ditimpa), lalu penjaga yang membatalkan batch (`CAS_FAIL_SQL`) bila ada yang tidak terpasang
+ * (item direbut konfigurasi lain, dinonaktifkan, atau dihapus pada saat yang sama; item baru wajib hidup dan aktif, item yang sudah terpasang boleh tetap). Id diurutkan agar urutan kunci baris konsisten antar penyimpan.
  */
 export function claimItemsStmts(db: Db, designId: string, ids: readonly string[]): DbStatement[] {
   if (ids.length === 0) return [];
@@ -104,9 +136,9 @@ export function claimItemsStmts(db: Db, designId: string, ids: readonly string[]
   return [
     db
       .prepare(
-        `UPDATE items SET manual_book_design_id = ? WHERE id IN (${marks}) AND manual_book_design_id IN ('', ?)`,
+        `UPDATE items SET manual_book_design_id = ? WHERE id IN (${marks}) AND (manual_book_design_id IN ('', ?) OR manual_book_design_id NOT IN (SELECT d.id FROM qr_designs d WHERE ${liveWhere('d')})) AND (manual_book_design_id = ? OR (status = 'active' AND deleted_at = ''))`,
       )
-      .bind(designId, ...sorted, designId),
+      .bind(designId, ...sorted, designId, designId),
     db
       .prepare(
         `SELECT CASE WHEN (SELECT COUNT(*) FROM items WHERE id IN (${marks}) AND manual_book_design_id = ?) <> ? THEN ${CAS_FAIL_SQL} ELSE 0 END AS guard_ok`,
@@ -130,13 +162,6 @@ export function releaseItemsStmt(db: Db, designId: string, ids: readonly string[
   ];
 }
 
-/** Melepas SEMUA item sebuah konfigurasi (hapus konfigurasi). */
-export function releaseAllItemsStmt(db: Db, designId: string): DbStatement {
-  return db
-    .prepare("UPDATE items SET manual_book_design_id = '' WHERE manual_book_design_id = ?")
-    .bind(designId);
-}
-
 export const QR_ITEM_OPTIONS_DEFAULT_LIMIT = 20;
 export const QR_ITEM_OPTIONS_MAX_LIMIT = 50;
 
@@ -148,7 +173,10 @@ interface OptionRow {
   manual_book_design_id: string;
 }
 
-/** Nama Manual Book (atau judul bila nama kosong) per id konfigurasi. */
+/**
+ * Nama Manual Book (atau judul bila nama kosong) per id konfigurasi HIDUP (konfigurasi terhapus tak punya nama di sini:
+ * item yang menunjuknya dihitung belum tergabung).
+ */
 export async function designNamesOf(
   db: Db,
   designIds: readonly string[],
@@ -159,7 +187,7 @@ export async function designNamesOf(
     const chunk = unique.slice(from, from + IN_CHUNK);
     const rows = await db
       .prepare(
-        `SELECT id, name, title FROM qr_designs WHERE id IN (${chunk.map(() => '?').join(',')})`,
+        `SELECT id, name, title FROM qr_designs WHERE ${liveWhere()} AND id IN (${chunk.map(() => '?').join(',')})`,
       )
       .bind(...chunk)
       .all<{ id: string; name: string; title: string }>();
@@ -196,7 +224,7 @@ export async function queryItemOptions(
     binds.push(input.cursor);
   }
   const rows = await env.DB.prepare(
-    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.manual_book_design_id FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
+    `SELECT i.id, b.name AS brand_name, i.model, i.\`key\`, i.manual_book_design_id FROM items i LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('i')} AND ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`,
   )
     .bind(...binds, limit + 1)
     .all<OptionRow>();
@@ -253,6 +281,28 @@ export async function designHasVersions(db: Db, designId: string): Promise<boole
     .bind(designId)
     .first<{ one: number }>();
   return row !== null;
+}
+
+/** Nomor versi Manual Book terbaru sebuah konfigurasi (0 = belum pernah berversi). */
+export async function maxVersionOf(db: Db, designId: string): Promise<number> {
+  const row = await db
+    .prepare('SELECT COALESCE(MAX(version), 0) AS v FROM manual_book_versions WHERE design_id = ?')
+    .bind(designId)
+    .first<{ v: number | string }>();
+  return Number(row?.v) || 0;
+}
+
+/**
+ * Penjaga di dalam `batch()` hapus: membatalkan batch (`CAS_FAIL_SQL`) bila versi Manual Book terbaru konfigurasi bukan
+ * `version` yang dibaca perencana. Komit ekspor tidak menaikkan `updated_at` konfigurasi, jadi `versionGuardStmt` saja
+ * tidak melihat versi yang lahir di antara perencanaan dan penulisan; letakkan SESUDAH kunci baris konfigurasi.
+ */
+export function versionUnchangedGuardStmt(db: Db, designId: string, version: number): DbStatement {
+  return db
+    .prepare(
+      `SELECT CASE WHEN COALESCE((SELECT MAX(version) FROM manual_book_versions WHERE design_id = ?), 0) = ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok`,
+    )
+    .bind(designId, version);
 }
 
 /** Penjaga di dalam `batch()`: membatalkan batch bila konfigurasi sudah punya versi (stiker lahir serentak). */
