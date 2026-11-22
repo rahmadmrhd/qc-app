@@ -3,6 +3,7 @@ import { SERIAL_ACTIONS, SERIAL_EVENT_TYPES, SERIAL_HISTORY_GROUPS } from '@shar
 import { expect, test } from 'vitest';
 import {
   ACTION_LABEL,
+  daysSpan,
   EVENT_LABEL,
   flowRowLabel,
   HISTORY_GROUP_LABEL,
@@ -14,7 +15,11 @@ import {
 test('label lengkap untuk semua aksi dan jenis riwayat', () => {
   expect(Object.keys(ACTION_LABEL).sort()).toEqual([...SERIAL_ACTIONS].sort());
   for (const type of SERIAL_EVENT_TYPES) expect(EVENT_LABEL[type]).toBeTruthy();
-  expect(Object.values(HISTORY_GROUP_LABEL)).toEqual(['Semua', 'Pengecekan', 'Perubahan data']);
+  expect(Object.values(HISTORY_GROUP_LABEL)).toEqual([
+    'Semua Riwayat',
+    'Riwayat Pengecekan',
+    'Riwayat Perubahan Data',
+  ]);
 });
 
 test('Tempel stiker: label aksi dan kejadian, kejadian masuk kelompok Perubahan data', () => {
@@ -56,4 +61,10 @@ test('urutan tahap: tujuh tahap, tahap terakhir Lolos / Rusak', () => {
     'Menunggu cek ulang',
     'Lolos / Rusak',
   ]);
+});
+
+test('daysSpan: angka hari apa adanya, selisih negatif jadi 0', () => {
+  expect(daysSpan(9)).toBe('9 hari');
+  expect(daysSpan(0)).toBe('0 hari');
+  expect(daysSpan(-2)).toBe('0 hari');
 });

@@ -152,14 +152,14 @@ test('merender kolom laporan; filter bawaan = aktif (juga bagi tim servis murni)
   expect(within(first).getByText('Cisco C9200')).toBeInTheDocument();
   expect(within(first).getByText('BU1')).toBeInTheDocument();
   expect(within(first).getByText('Dilaporkan')).toBeInTheDocument();
-  expect(within(first).getByText('3 hari')).toBeInTheDocument();
+  expect(within(first).getByText('3 hari di status ini')).toBeInTheDocument();
   expect(within(first).getByText('Gudang A')).toBeInTheDocument();
   expect(within(first).getByText('Di QC')).toBeInTheDocument();
   expect(within(first).getByText('budi@x.com')).toBeInTheDocument();
   expect(within(first).getByText('Port 3 mati')).toBeInTheDocument();
   const second = rows[2] as HTMLElement;
   expect(within(second).getByText('Di servis')).toBeInTheDocument();
-  expect(within(second).getByText('Hari ini')).toBeInTheDocument();
+  expect(within(second).getByText('0 hari di status ini')).toBeInTheDocument();
   expect(within(second).getByText('—')).toBeInTheDocument();
   for (const header of [
     'Nomor LP',
@@ -168,7 +168,7 @@ test('merender kolom laporan; filter bawaan = aktif (juga bagi tim servis murni)
     'BU',
     'Status',
     'Lokasi saat ini',
-    'Lama',
+    'Durasi',
     'Pelapor',
     'Ringkasan',
   ]) {
