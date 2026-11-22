@@ -1,6 +1,7 @@
 import type { DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
+import { newId } from '@server/core/id';
 import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import {
   NOTIFICATION_PREVIEW_MAX,
@@ -73,7 +74,7 @@ export function insertNotificationStmts(
         )
         .bind(
           ...chunk.flatMap((row) => [
-            crypto.randomUUID(),
+            newId(),
             row.recipient,
             row.kind,
             row.handoverId,

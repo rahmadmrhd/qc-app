@@ -31,6 +31,7 @@
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createDb, type Db, type DbTx } from '@server/core/db';
+import { newId } from '@server/core/id';
 import { csvCell } from './csv-cell';
 
 export interface DupRow {
@@ -172,7 +173,7 @@ async function foldEvents(tx: DbTx, plan: Extract<GroupPlan, { kind: 'merge' }>,
       // Penanda penyatuan di titik awal riwayat catatan yang kalah.
       const first = events.results[0];
       entries.push({
-        id: crypto.randomUUID(),
+        id: newId(),
         createdAt: first?.created_at ?? source.createdAt,
         tie: 0,
         source: index,

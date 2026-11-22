@@ -7,6 +7,7 @@ import { DbError } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
+import { newId } from '@server/core/id';
 import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { listLocationBriefs } from '@server/modules/access/repo';
@@ -570,7 +571,7 @@ async function createTasks(
           }
         }
         const record: HandoverRecord = {
-          id: crypto.randomUUID(),
+          id: newId(),
           number: reservation.numbers[index] as string,
           locationId,
           customerId: customer?.id ?? '',
@@ -995,7 +996,7 @@ export async function addComment(
     throw appError('VALIDATION', message, { quote: message });
   }
   const now = nowIso(env);
-  const id = crypto.randomUUID();
+  const id = newId();
   const newSize =
     id.length +
     anchor.quote.length +

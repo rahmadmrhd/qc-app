@@ -3,6 +3,7 @@ import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { newId } from '@server/core/id';
 import { type PlanOutcome, runRecordBatch, runSingleRecord } from '@server/core/record-batch';
 import {
   type LifecycleSpec,
@@ -463,7 +464,7 @@ export async function saveUser(
   }
 
   const created: UserRecord = {
-    id: crypto.randomUUID(),
+    id: newId(),
     email,
     name: input.name,
     status: input.status,
@@ -665,7 +666,7 @@ export async function saveRole(
   }
 
   const created: RoleRecord = {
-    id: crypto.randomUUID(),
+    id: newId(),
     name: input.name,
     description: input.description,
     permissions,

@@ -1,6 +1,7 @@
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
+import { newId } from '@server/core/id';
 import { liveWhere } from '@server/core/soft-delete';
 import { insertJobStmt } from '@server/modules/jobs/repo';
 import { JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
@@ -27,7 +28,7 @@ export interface SerialAlertJobInput {
 export function serialAlertJobStmt(env: Env, input: SerialAlertJobInput): DbStatement {
   const now = nowIso(env);
   return insertJobStmt(env.DB, {
-    id: crypto.randomUUID(),
+    id: newId(),
     kind: 'serial_alert',
     status: 'queued',
     progress: 0,

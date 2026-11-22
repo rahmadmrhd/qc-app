@@ -3,6 +3,7 @@ import { DbError, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError as coreStaleError } from '@server/core/errors';
+import { newId } from '@server/core/id';
 import { baseIndexName } from '@server/core/index-names';
 import type { UserContext } from '@server/modules/access/context';
 import { mapDuplicateError } from '@server/modules/access/repo';
@@ -427,7 +428,7 @@ export async function savePostel(
       throw fieldFail('numbers', 'Nomor tidak ditemukan pada catatan ini');
     }
   }
-  const postelId = existing?.id ?? crypto.randomUUID();
+  const postelId = existing?.id ?? newId();
   const updatedAt = nextUpdatedAt(env, existing?.updatedAt ?? '');
   let lastSeq = stored.reduce((max, entry) => Math.max(max, entry.seq), 0);
   const finalNumbers: PostelNumberRecord[] = [];
@@ -463,7 +464,7 @@ export async function savePostel(
     }
     lastSeq += 1;
     const created: PostelNumberRecord = {
-      id: crypto.randomUUID(),
+      id: newId(),
       postelId,
       number: row.number,
       numberKey: normalizeKey(row.number),

@@ -4,6 +4,7 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError, isAppError } from '@server/core/errors';
 import { dropCachedFile } from '@server/core/file-cache';
+import { newId } from '@server/core/id';
 import { folderIdOf, SETTING_DRIVE_FOLDER_ID } from '@server/core/settings';
 import { insertFileStmt } from '@server/modules/files/repo';
 import { ensureDriveFolder } from '@server/modules/files/service';
@@ -20,7 +21,7 @@ import { newStagedName, type ProofStore } from './store';
 export function serialProofJobStmt(env: Env, photoId: string): DbStatement {
   const now = nowIso(env);
   return insertJobStmt(env.DB, {
-    id: crypto.randomUUID(),
+    id: newId(),
     kind: 'serial_proof',
     status: 'queued',
     progress: 0,
@@ -213,7 +214,7 @@ async function finishStep(
     throw appError('INTERNAL', 'Hasil unggah foto tidak lengkap');
   }
   const now = nowIso(env);
-  const fileId = crypto.randomUUID();
+  const fileId = newId();
   await env.DB.batch([
     insertFileStmt(env.DB, {
       id: fileId,

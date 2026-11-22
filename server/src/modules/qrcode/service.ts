@@ -7,6 +7,7 @@ import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError as coreStaleError } from '@server/core/errors';
 import { cachedFileContent, dropCachedFile } from '@server/core/file-cache';
+import { newId } from '@server/core/id';
 import { folderIdOf } from '@server/core/settings';
 import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
@@ -535,7 +536,7 @@ export async function saveQrPreset(
   }
   const now = nowIso(env);
   const next: NewQrPresetRecord = {
-    id: existing?.id ?? crypto.randomUUID(),
+    id: existing?.id ?? newId(),
     name: input.name,
     title: input.title,
     subtitle: input.subtitle,
@@ -616,7 +617,7 @@ export async function cloneQrPreset(
   const now = nowIso(env);
   const next: NewQrPresetRecord = {
     ...source,
-    id: crypto.randomUUID(),
+    id: newId(),
     name: input.name,
     buId: input.buId,
     createdAt: now,
@@ -906,7 +907,7 @@ async function saveQrDesignNow(
 
   const now = nowIso(env);
   const next: NewQrDesignRecord = {
-    id: existing?.id ?? crypto.randomUUID(),
+    id: existing?.id ?? newId(),
     title: namePlacement === 'title' ? input.name : input.title,
     linkSource: input.linkSource,
     link: input.linkSource === 'url' ? input.link : '',
@@ -1220,7 +1221,7 @@ export async function cloneQrPdfFromDrive(
     await viaBridge(() => bridge.shareAnyoneWithLink(driveId));
     const now = nowIso(env);
     const record: QrDocumentRecord = {
-      id: crypto.randomUUID(),
+      id: newId(),
       driveId,
       name,
       size: info.size,
@@ -1308,7 +1309,7 @@ async function uploadQrPdfNow(
     await viaBridge(() => bridge.shareAnyoneWithLink(driveId));
     const now = nowIso(env);
     const record: QrDocumentRecord = {
-      id: crypto.randomUUID(),
+      id: newId(),
       driveId,
       name: input.name,
       size,

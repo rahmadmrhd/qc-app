@@ -5,6 +5,7 @@ import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { newId } from '@server/core/id';
 import { type PlanOutcome, runRecordBatch, runSingleRecord } from '@server/core/record-batch';
 import {
   type LifecycleSpec,
@@ -142,7 +143,7 @@ export async function lookupCustomerForWrite(
   }
   const now = nowIso(env);
   const customer: CustomerRecord = {
-    id: crypto.randomUUID(),
+    id: newId(),
     name,
     key,
     status: 'active',

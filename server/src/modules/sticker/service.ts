@@ -6,6 +6,7 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import type { AppError } from '@server/core/errors';
 import { appError, staleError } from '@server/core/errors';
+import { newId } from '@server/core/id';
 import { type PlanOutcome, runRecordBatch, runSingleRecord } from '@server/core/record-batch';
 import {
   liveWhere,
@@ -166,7 +167,7 @@ async function createStickerType(
 ): Promise<StickerTypeDto> {
   const now = nowIso(env);
   const created: StickerTypeRecord = {
-    id: crypto.randomUUID(),
+    id: newId(),
     name: input.name,
     rule: input.rule,
     status: 'active',
@@ -492,7 +493,7 @@ async function saveStickerOnce(
   }
 
   const fileId = input.fileId ?? '';
-  const id = existing?.id ?? crypto.randomUUID();
+  const id = existing?.id ?? newId();
   const attach = fileId === '' ? [] : await planStickerFile(env, fileId, id, actor);
 
   if (

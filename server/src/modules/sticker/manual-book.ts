@@ -3,6 +3,7 @@ import { DbError } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { newId } from '@server/core/id';
 import { insertFileStmt } from '@server/modules/files/repo';
 import type { QrDesignRecord } from '@server/modules/qrcode/repo';
 import type { QrVersionDto } from '@shared/contract';
@@ -57,7 +58,7 @@ export async function ensureManualBookType(env: Env, actor: string): Promise<Sti
     } else {
       await env.DB.batch([
         insertStickerTypeStmt(env.DB, {
-          id: crypto.randomUUID(),
+          id: newId(),
           name: MANUAL_BOOK_TYPE_NAME,
           rule: 'group',
           status: 'active',
@@ -133,7 +134,7 @@ export async function manualBookCommitStatements(
       .first<{ min_qty: number | string }>();
     if (previous) minQty = Number(previous.min_qty) || 0;
   }
-  const stickerId = crypto.randomUUID();
+  const stickerId = newId();
   const sticker: StickerRecord = {
     id: stickerId,
     typeId: type.id,

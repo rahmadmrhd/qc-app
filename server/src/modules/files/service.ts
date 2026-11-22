@@ -6,6 +6,7 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { cachedFileContent, dropCachedFile } from '@server/core/file-cache';
+import { newId } from '@server/core/id';
 import { folderIdOf, SETTING_DRIVE_FOLDER_ID, setSettingIfAbsent } from '@server/core/settings';
 import type { UserContext } from '@server/modules/access/context';
 import { involvedBuIds, readableSerialSql } from '@server/modules/serial/bu-history';
@@ -85,7 +86,7 @@ export async function uploadFile(
   }
   const folderId =
     (await folderIdOf(env, SETTING_DRIVE_FOLDER_ID)) || (await ensureDriveFolder(env));
-  const id = crypto.randomUUID();
+  const id = newId();
   const name = `${id}.${EXTENSIONS[input.mime] ?? 'bin'}`;
   const bridge = getBridge(env);
   const driveId = await viaBridge(() =>

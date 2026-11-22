@@ -3,6 +3,7 @@ import { DbError, type DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { isAppError } from '@server/core/errors';
+import { newId } from '@server/core/id';
 import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import type {
@@ -114,7 +115,7 @@ export async function planRecheckFromRow(
   if (locationName === null) return fail(LOCATION_MESSAGE);
 
   const now = nextStamp(nowIso(env), existing.updated_at);
-  const eventId = crypto.randomUUID();
+  const eventId = newId();
   const stickerIds = (row.stickers ?? []).map((pick) => pick.stickerId);
   try {
     // Stiker yang berlaku mengikuti BU target; tiap stiker tercentang +1 dan memotong stok 1 di lokasi cek ulang.
