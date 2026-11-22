@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { mockMatchMedia } from '@/test/match-media';
+import { PageContainer } from './page-container';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from './view-page';
 
 afterEach(() => {
@@ -341,4 +342,108 @@ test('ponsel dengan lencana atau `actions`: bar atas tetap tampil; 704-767 px de
   expect(screen.getByRole('button', { name: 'Ubah' })).toBeVisible();
   expect(screen.queryByRole('region', { name: 'Aksi halaman' })).toBeNull();
   media.restore();
+});
+
+test('actionsTour: data-tour pada pembungkus aksi bar judul (desktop)', () => {
+  mockMatchMedia(true);
+  render(<ViewPage title="X" actionsTour="serial-actions" actionItems={ITEMS(vi.fn(), vi.fn())} />);
+  const wrapper = document.querySelector('[data-tour="serial-actions"]') as HTMLElement;
+  expect(wrapper).not.toBeNull();
+  expect(within(wrapper).getByRole('button', { name: 'Ubah' })).toBeInTheDocument();
+  expect(within(wrapper).getByRole('button', { name: 'Hapus' })).toBeInTheDocument();
+});
+
+test('actionsTour: data-tour juga ada di bar bawah ponsel dan membungkus tombol utama dan menu', () => {
+  window.innerWidth = 360;
+  mockMatchMedia(false);
+  render(<ViewPage title="X" actionsTour="serial-actions" actionItems={ITEMS(vi.fn(), vi.fn())} />);
+  const bar = screen.getByRole('region', { name: 'Aksi halaman' });
+  const wrapper = bar.querySelector('[data-tour="serial-actions"]') as HTMLElement;
+  expect(wrapper).not.toBeNull();
+  expect(within(wrapper).getByRole('button', { name: 'Ubah' })).toBeInTheDocument();
+  expect(within(wrapper).getByRole('button', { name: 'Aksi lainnya' })).toBeInTheDocument();
+});
+
+test('tanpa actionsTour tak ada atribut data-tour pada pembungkus aksi', () => {
+  mockMatchMedia(true);
+  render(<ViewPage title="X" actionItems={ITEMS(vi.fn(), vi.fn())} />);
+  expect(document.querySelector('[data-tour]')).toBeNull();
+});
+
+test('R15: kerangka bleed ke tepi main (wide:), isi dan bar dipusatkan dengan PageContent, panel samping di tepi kanan', () => {
+  mockMatchMedia(true);
+  const { container } = render(
+    <ViewPage title="Item" aside={<p>samping</p>} actionItems={ITEMS(vi.fn(), vi.fn())}>
+      <p>isi</p>
+    </ViewPage>,
+  );
+  const frame = container.querySelector('[data-headroom-frame]') as HTMLElement;
+  for (const token of [
+    'wide:-mx-[var(--main-pad)]',
+    'wide:-mt-[var(--main-pad)]',
+    'wide:-mb-[var(--main-pad)]',
+  ]) {
+    expect(frame.className).toContain(token);
+  }
+  // Isi terpusat berbatas lebar halaman (default = 7xl, bukan 5xl: keputusan pemilik K4).
+  const isi = screen.getByText('isi').closest('.mx-auto') as HTMLElement;
+  expect(isi.className).toContain('max-w-7xl');
+  // Panel samping: garis kiri dan menempel, dua kolom lewat kueri wadah pada pembungkus badan (bukan pada frame/main).
+  const aside = screen.getByText('samping').closest('aside') as HTMLElement;
+  expect(aside.className).toContain('@3xl/view:border-l');
+  expect((aside.firstElementChild as HTMLElement).className).toContain('@3xl/view:sticky');
+  const body = aside.parentElement as HTMLElement;
+  expect(body.className).toContain('@3xl/view:grid-cols-[minmax(0,1fr)_var(--aside-w)]');
+  expect(body.parentElement?.className).toContain('@container/view');
+  expect(frame.className).not.toContain('@container');
+});
+
+test('R15: bar tab mengisi lebar kolom kiri, tab pertama sejajar dengan isi terpusat', () => {
+  mockMatchMedia(true);
+  render(
+    <ViewPage
+      title="Item"
+      aside={<p>samping</p>}
+      tabs={[
+        { id: 'detail', label: 'Detail', content: <p>isi detail</p> },
+        { id: 'riwayat', label: 'Riwayat', content: <p>isi riwayat</p> },
+      ]}
+    />,
+  );
+  const list = screen.getByRole('tablist');
+  expect(list.className).toContain('sticky');
+  expect(list.className).toContain('w-full');
+  expect(list.className).toContain('border-b');
+  const trigger = screen.getByRole('tab', { name: 'Detail' });
+  expect(trigger.parentElement?.className).toContain('mx-auto');
+  expect(trigger.parentElement?.className).toContain('max-w-7xl');
+  // Panel samping tidak berada di dalam kolom tab.
+  expect(list.closest('aside')).toBeNull();
+});
+
+test('R15: lebar bergantung pageWidth: konten View memakai batas rute (narrow = 4xl)', () => {
+  mockMatchMedia(true);
+  render(
+    <PageContainer width="narrow">
+      <ViewPage title="Item">
+        <p>isi sempit</p>
+      </ViewPage>
+    </PageContainer>,
+  );
+  expect((screen.getByText('isi sempit').closest('.mx-auto') as HTMLElement).className).toContain(
+    'max-w-4xl',
+  );
+});
+
+test('banner tampil di atas isi, di dalam kolom kiri', () => {
+  mockMatchMedia(true);
+  render(
+    <ViewPage title="Item" banner={<div>Dihapus</div>} aside={<p>samping</p>}>
+      <p>isi</p>
+    </ViewPage>,
+  );
+  const banner = screen.getByText('Dihapus');
+  const isi = screen.getByText('isi');
+  expect(banner.compareDocumentPosition(isi) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(banner.closest('aside')).toBeNull();
 });

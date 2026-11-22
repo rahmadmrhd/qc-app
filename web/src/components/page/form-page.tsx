@@ -4,12 +4,14 @@ import { ActionButton } from '@/components/action-button';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
+import { PageContent } from './page-container';
 import { StickyActionBar } from './sticky-action-bar';
 
 /**
  * Kerangka halaman form (spek redesain 6.7): bar headroom berisi judul (+ badge) dan aksi (Batal, tambahan, Simpan).
  * Komponen form model merender `<form id={formId}>` berisi field saja; tombol Simpan di sini berada di luar form
- * dan men-submit lewat `form={formId}`.
+ * dan men-submit lewat `form={formId}`. Di tampilan lebar kerangka bleed ke tepi `<main>`: bar judul selebar penuh
+ * dan isi (batas lebar menurut `pageWidth`) terpusat di tengah, tanpa panel samping (revisi lanjutan 2 R15).
  */
 export function FormPage({
   formId,
@@ -72,7 +74,9 @@ export function FormPage({
     />
   );
   return (
-    <HeadroomFrame className="gap-4">
+    // `wide:` meniadakan padding `<main>` (bleed); ponsel tak berubah. TANPA `container-type` di sini: bar aksi ponsel
+    // dan bar aksi pilihan halaman turunan ber-`fixed`.
+    <HeadroomFrame className="gap-4 wide:-mx-[var(--main-pad)] wide:-mt-[var(--main-pad)] wide:-mb-[var(--main-pad)]">
       {compactTop ? (
         // Ponsel tanpa lencana DAN aksi di bar bawah: tak ada isi tampak untuk bar atas (judul = navbar), jadi tanpa bar
         // ber-border/bayang yang kosong; judul tetap ada bagi pembaca layar dan target panduan `tour` tetap terpasang.
@@ -80,26 +84,30 @@ export function FormPage({
           <h1>{title}</h1>
         </div>
       ) : (
-        <HeadroomBar tour={tour} className="pt-1 pb-1">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            {/* Ponsel: tanpa tombol kembali dan tanpa judul tampak (judul navbar; kembali = tombol sistem). */}
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h1 className={cn('min-w-0 text-xl font-semibold break-words', phone && 'sr-only')}>
-                {title}
-              </h1>
-              {badge}
-            </div>
-            {desktop ? (
-              <div data-tour={actionsTour} className="flex flex-wrap items-center gap-2">
-                {cancel}
-                {extra}
-                {save}
+        <HeadroomBar tour={tour} className="pt-1 pb-1 wide:border-b wide:pt-3 wide:pb-3">
+          <div className="wide:px-[var(--main-pad)]">
+            <PageContent className="flex flex-wrap items-center justify-between gap-2">
+              {/* Ponsel: tanpa tombol kembali dan tanpa judul tampak (judul navbar; kembali = tombol sistem). */}
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h1 className={cn('min-w-0 text-xl font-semibold break-words', phone && 'sr-only')}>
+                  {title}
+                </h1>
+                {badge}
               </div>
-            ) : null}
+              {desktop ? (
+                <div data-tour={actionsTour} className="flex flex-wrap items-center gap-2">
+                  {cancel}
+                  {extra}
+                  {save}
+                </div>
+              ) : null}
+            </PageContent>
           </div>
         </HeadroomBar>
       )}
-      <div className="min-w-0">{children}</div>
+      <div className="min-w-0 wide:px-[var(--main-pad)] wide:pb-[var(--main-pad)]">
+        <PageContent>{children}</PageContent>
+      </div>
       {desktop || hideMobileBar ? null : (
         // Ponsel: Batal + Simpan pindah ke bar bawah `fixed` (Simpan lebih lebar).
         <StickyActionBar label="Aksi form">

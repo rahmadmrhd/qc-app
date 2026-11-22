@@ -19,6 +19,7 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { onFormTabRequest } from '@/lib/form-tab-request';
 import { separatorBefore } from '@/lib/menu-separators';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
+import { PageContent } from './page-container';
 import { StickyActionBar } from './sticky-action-bar';
 
 export interface ViewTab {
@@ -127,8 +128,11 @@ function DesktopSubmenu({ entry }: { entry: ViewAction }) {
 }
 
 /**
- * Kerangka halaman View (spek redesain 6.6): bar headroom (judul + badge + aksi), `banner` di bawahnya,
- * tab bila isi panjang, isi, dan panel samping `aside` (di bawah isi pada layar sempit).
+ * Kerangka halaman View (spek redesain 6.6; tata letak ERPNext v16, revisi lanjutan 2 R15): di tampilan lebar kerangka
+ * bleed ke tepi `<main>`: bar headroom (judul + badge + aksi) dan bar tab selebar penuh, isi (batas lebar menurut
+ * `pageWidth`) terpusat di tengah, dan panel samping `aside` (18 rem, garis kiri, tinggi penuh, menempel) di tepi
+ * kanan. Dua kolom aktif bila lebar `<main>` >= 48 rem (kueri wadah); di bawahnya `aside` di bawah isi. `banner`
+ * tampil di atas isi.
  */
 export function ViewPage({
   title,
@@ -141,6 +145,7 @@ export function ViewPage({
   children,
   tab,
   onTabChange,
+  actionsTour,
 }: {
   title: ReactNode;
   badge?: ReactNode;
@@ -154,6 +159,8 @@ export function ViewPage({
   /** Tab aktif terkendali (mis. dari search param `tab`); tanpa ini state lokal. */
   tab?: string;
   onTabChange?: (id: string) => void;
+  /** `data-tour` pada pembungkus aksi: bar judul (desktop) dan bar bawah (ponsel). */
+  actionsTour?: string;
 }) {
   const desktop = useIsDesktop();
   // SATU gerbang ponsel (viewport < 768, sama dengan judul navbar): judul tak tampil ganda pada 704-767 px.
@@ -190,35 +197,54 @@ export function ViewPage({
     [],
   );
 
-  const body = tabs ? (
+  // Gutter horizontal hanya di tampilan lebar: kerangka bleed ke tepi `<main>` (di sempit `<main>` sendiri berpadding).
+  const gutterX = 'wide:px-[var(--main-pad)]';
+  // Spasi atas/bawah isi (banner atau bar tab sudah memberi jarak atas bila ada).
+  const contentPadding = banner || tabs ? 'wide:pb-[var(--main-pad)]' : 'wide:py-[var(--main-pad)]';
+
+  const tabsBody = tabs ? (
     <Tabs value={active} onValueChange={select}>
+      {/* Bar tab selebar kolom kiri (sampai garis panel samping); tab pertama sejajar dengan isi yang terpusat. */}
       <TabsList
         variant="line"
-        className="sticky top-[var(--headroom-offset,3.5rem)] z-10 h-auto w-full justify-start overflow-x-auto overflow-y-hidden rounded-none border-b bg-[var(--tabs-surface,var(--background))] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className={cn(
+          'sticky top-[var(--headroom-offset,3.5rem)] z-10 h-auto w-full justify-start overflow-x-auto overflow-y-hidden rounded-none border-b bg-[var(--tabs-surface,var(--background))] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+          gutterX,
+        )}
       >
-        {tabs.map((entry) => (
-          <TabsTrigger
-            key={entry.id}
-            value={entry.id}
-            className="flex-none px-3 py-2 touch:min-h-11"
-          >
-            {entry.label}
-          </TabsTrigger>
-        ))}
+        <PageContent className="flex items-center justify-start gap-1">
+          {tabs.map((entry) => (
+            <TabsTrigger
+              key={entry.id}
+              value={entry.id}
+              className="flex-none px-3 py-2 touch:min-h-11"
+            >
+              {entry.label}
+            </TabsTrigger>
+          ))}
+        </PageContent>
       </TabsList>
-      {tabs.map((entry) => (
-        <TabsContent key={entry.id} value={entry.id} className="pt-3">
-          {entry.content}
-        </TabsContent>
-      ))}
-      {children}
+      <div className={cn(gutterX, contentPadding)}>
+        <PageContent>
+          {tabs.map((entry) => (
+            <TabsContent key={entry.id} value={entry.id} className="pt-3">
+              {entry.content}
+            </TabsContent>
+          ))}
+          {children}
+        </PageContent>
+      </div>
     </Tabs>
   ) : (
-    <div className="space-y-6">{children}</div>
+    <div className={cn(gutterX, contentPadding)}>
+      <PageContent className="space-y-6">{children}</PageContent>
+    </div>
   );
 
   return (
-    <HeadroomFrame className="gap-3">
+    // Tampilan lebar: kerangka bleed ke tepi `<main>` (bar judul, tab, dan panel samping selebar penuh; isi terpusat).
+    // Hanya `wide:` yang meniadakan padding `<main>`, sehingga ponsel tak berubah (`--action-bar-h` tetap berlaku).
+    <HeadroomFrame className="gap-3 [--aside-w:18rem] wide:-mx-[var(--main-pad)] wide:-mt-[var(--main-pad)] wide:-mb-[var(--main-pad)] wide:gap-0">
       {emptyTop ? (
         // Ponsel tanpa lencana dan tanpa aksi di bar atas: tanpa bar ber-border/bayang yang kosong (dan tak menambah
         // `--headroom-offset`); judul tetap ada bagi pembaca layar.
@@ -226,112 +252,156 @@ export function ViewPage({
           <h1>{title}</h1>
         </div>
       ) : (
-        <HeadroomBar className="pt-1 pb-1">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex min-w-0 flex-wrap items-center gap-2">
-              {/* Ponsel: judul tampak = judul navbar; h1 tetap ada bagi pembaca layar. */}
-              <h1 className={cn('min-w-0 text-xl font-semibold break-words', phone && 'sr-only')}>
-                {title}
-              </h1>
-              {badge}
-            </div>
-            {topActions ? (
-              <div className="flex flex-wrap items-center gap-2 narrow:w-full">
-                {actions}
-                {desktop
-                  ? desktopActions.map((entry) =>
-                      entry.submenu ? (
-                        <DesktopSubmenu key={entry.id} entry={entry} />
-                      ) : (
-                        <DisabledReason
-                          key={entry.id}
-                          reason={entry.disabled ? entry.disabledReason : undefined}
-                        >
-                          <ActionButton
-                            action={entry.action}
-                            label={entry.label}
-                            busy={entry.busy}
-                            disabled={entry.disabled}
-                            onClick={entry.onSelect}
-                          />
-                        </DisabledReason>
-                      ),
-                    )
-                  : null}
+        <HeadroomBar className={cn('pt-1 pb-1 wide:pt-3 wide:pb-3', !tabs && 'wide:border-b')}>
+          {/* Wadah kueri sendiri (selebar bar) dengan ambang yang sama dengan badan: judul dan aksi sejajar dengan isi. */}
+          <div className="@container/viewbar min-w-0">
+            <div
+              className={cn(
+                aside && '@3xl/viewbar:grid @3xl/viewbar:grid-cols-[minmax(0,1fr)_var(--aside-w)]',
+              )}
+            >
+              <div className={cn('min-w-0', gutterX)}>
+                <PageContent className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    {/* Ponsel: judul tampak = judul navbar; h1 tetap ada bagi pembaca layar. */}
+                    <h1
+                      className={cn(
+                        'min-w-0 text-xl font-semibold break-words',
+                        phone && 'sr-only',
+                      )}
+                    >
+                      {title}
+                    </h1>
+                    {badge}
+                  </div>
+                  {topActions ? (
+                    <div
+                      data-tour={actionsTour}
+                      className="flex flex-wrap items-center gap-2 narrow:w-full"
+                    >
+                      {actions}
+                      {desktop
+                        ? desktopActions.map((entry) =>
+                            entry.submenu ? (
+                              <DesktopSubmenu key={entry.id} entry={entry} />
+                            ) : (
+                              <DisabledReason
+                                key={entry.id}
+                                reason={entry.disabled ? entry.disabledReason : undefined}
+                              >
+                                <ActionButton
+                                  action={entry.action}
+                                  label={entry.label}
+                                  busy={entry.busy}
+                                  disabled={entry.disabled}
+                                  onClick={entry.onSelect}
+                                />
+                              </DisabledReason>
+                            ),
+                          )
+                        : null}
+                    </div>
+                  ) : null}
+                </PageContent>
               </div>
-            ) : null}
+            </div>
           </div>
         </HeadroomBar>
       )}
-      {banner}
-      <div className="grid gap-6 lg:grid-cols-[1fr_16rem]">
-        <div className="min-w-0">{body}</div>
-        {aside ? (
-          <aside className="space-y-4 border-t pt-4 text-sm lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6">
-            {aside}
-          </aside>
-        ) : null}
+      {/* Wadah kueri badan: dua kolom (isi | panel samping) menurut lebar `<main>`, bukan viewport. TIDAK dipasang di
+          `<main>` atau kerangka: `container-type` menjadikan elemen ini containing block bagi turunan `fixed`
+          (bar aksi ponsel ada di luarnya, di bawah). */}
+      <div className="@container/view min-w-0">
+        <div className="grid gap-6 wide:min-h-[calc(100dvh_-_var(--headroom-offset,3.5rem)_-_2px)] wide:gap-0 @3xl/view:grid-cols-[minmax(0,1fr)_var(--aside-w)]">
+          <div className="min-w-0">
+            {banner ? (
+              <div
+                className={cn('pb-3 wide:pt-[var(--main-pad)] wide:pb-[var(--main-pad)]', gutterX)}
+              >
+                <PageContent>{banner}</PageContent>
+              </div>
+            ) : null}
+            {tabsBody}
+          </div>
+          {aside ? (
+            <aside className="border-t text-sm @3xl/view:border-t-0 @3xl/view:border-l">
+              <div
+                className={cn(
+                  'space-y-4 pt-4 wide:pt-[var(--main-pad)] wide:pb-[var(--main-pad)]',
+                  gutterX,
+                  '@3xl/view:sticky @3xl/view:top-[var(--headroom-offset,3.5rem)] @3xl/view:max-h-[calc(100dvh_-_var(--headroom-offset,3.5rem))] @3xl/view:overflow-y-auto',
+                )}
+              >
+                {aside}
+              </div>
+            </aside>
+          ) : null}
+        </div>
       </div>
       {!desktop && (primaryActions.length > 0 || menuActions.length > 0) ? (
         <StickyActionBar label="Aksi halaman" busy={visibleActions.some((entry) => entry.busy)}>
-          {primaryActions.map((entry) => (
-            <DisabledReason
-              key={entry.id}
-              reason={entry.disabled ? entry.disabledReason : undefined}
-              className="flex-1"
-            >
-              <ActionButton
-                action={entry.action}
-                label={entry.label}
-                emphasis="primary"
-                busy={entry.busy}
-                disabled={entry.disabled}
-                onClick={entry.onSelect}
+          <div data-tour={actionsTour} className="flex w-full items-center gap-2">
+            {primaryActions.map((entry) => (
+              <DisabledReason
+                key={entry.id}
+                reason={entry.disabled ? entry.disabledReason : undefined}
                 className="flex-1"
-              />
-            </DisabledReason>
-          ))}
-          {menuActions.length > 0 ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  type="button"
-                  variant="outline"
-                  color="primary"
-                  size="icon"
-                  aria-label="Aksi lainnya"
-                >
-                  <Ellipsis aria-hidden />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" side="top">
-                {menuActions.map((entry, index) => {
-                  const separator = separatorBefore(menuActions, index) ? (
-                    <DropdownMenuSeparator />
-                  ) : null;
-                  if (!entry.submenu) {
+              >
+                <ActionButton
+                  action={entry.action}
+                  label={entry.label}
+                  emphasis="primary"
+                  busy={entry.busy}
+                  disabled={entry.disabled}
+                  onClick={entry.onSelect}
+                  className="flex-1"
+                />
+              </DisabledReason>
+            ))}
+            {menuActions.length > 0 ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    color="primary"
+                    size="icon"
+                    aria-label="Aksi lainnya"
+                  >
+                    <Ellipsis aria-hidden />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" side="top">
+                  {menuActions.map((entry, index) => {
+                    const separator = separatorBefore(menuActions, index) ? (
+                      <DropdownMenuSeparator />
+                    ) : null;
+                    if (!entry.submenu) {
+                      return (
+                        <Fragment key={entry.id}>
+                          {separator}
+                          <PhoneMenuItem entry={entry} />
+                        </Fragment>
+                      );
+                    }
+                    const group = entry.submenu.filter((sub) => !sub.hidden);
+                    if (group.length === 0) return null;
                     return (
                       <Fragment key={entry.id}>
                         {separator}
-                        <PhoneMenuItem entry={entry} />
+                        <DropdownMenuLabel>
+                          {entry.shortLabel ?? actionText(entry)}
+                        </DropdownMenuLabel>
+                        {group.map((sub) => (
+                          <PhoneMenuItem key={sub.id} entry={sub} parent={entry} short />
+                        ))}
                       </Fragment>
                     );
-                  }
-                  const group = entry.submenu.filter((sub) => !sub.hidden);
-                  if (group.length === 0) return null;
-                  return (
-                    <Fragment key={entry.id}>
-                      {separator}
-                      <DropdownMenuLabel>{entry.shortLabel ?? actionText(entry)}</DropdownMenuLabel>
-                      {group.map((sub) => (
-                        <PhoneMenuItem key={sub.id} entry={sub} parent={entry} short />
-                      ))}
-                    </Fragment>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : null}
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </div>
         </StickyActionBar>
       ) : null}
     </HeadroomFrame>
