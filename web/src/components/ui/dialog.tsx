@@ -89,7 +89,7 @@ function DialogContent({
             (sticky) di tepi atas/bawahnya, sehingga tetap terlihat tanpa pembungkus tambahan di pemakai. */}
         <div
           data-slot="dialog-scroll"
-          className="flex min-h-0 flex-1 scroll-py-20 flex-col gap-4 overflow-x-hidden overflow-y-auto p-4"
+          className="flex min-h-0 flex-1 scroll-py-20 flex-col gap-4 overflow-x-hidden overflow-y-auto p-4 pb-[calc(1rem+var(--list-room,0px))]"
         >
           {children}
         </div>

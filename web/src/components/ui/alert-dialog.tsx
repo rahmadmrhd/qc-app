@@ -78,7 +78,7 @@ function AlertDialogContent({
         <div
           data-slot="alert-dialog-scroll"
           className={cn(
-            "flex min-h-0 flex-1 scroll-py-20 flex-col gap-4 overflow-x-hidden overflow-y-auto p-4",
+            "flex min-h-0 flex-1 scroll-py-20 flex-col gap-4 overflow-x-hidden overflow-y-auto p-4 pb-[calc(1rem+var(--list-room,0px))]",
             size === "full" && "gap-0 p-0"
           )}
         >
