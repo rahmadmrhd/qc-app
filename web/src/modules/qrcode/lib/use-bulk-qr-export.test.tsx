@@ -12,9 +12,15 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn(),
   mutate: vi.fn(),
   prepare: vi.fn(),
+  forget: vi.fn(),
+  gone: new WeakSet<object>(),
 }));
 vi.mock('../queries', () => ({
   refreshQrDesign: (...args: unknown[]) => mocks.refresh(...args),
+  forgetQrDesign: (...args: unknown[]) => mocks.forget(...args),
+  // `queries.ts` menandai NOT_FOUND milik konfigurasi (muat ulang, permintaan ekspor); tiruan memakai penanda yang sama.
+  isQrDesignGone: (error: unknown) =>
+    typeof error === 'object' && error !== null && mocks.gone.has(error),
   useExportQrDesign: () => ({ mutateAsync: (input: unknown) => mocks.mutate(input) }),
 }));
 vi.mock('./prepare-export', () => ({
@@ -83,6 +89,7 @@ beforeEach(() => {
   mocks.refresh.mockReset();
   mocks.mutate.mockReset();
   mocks.prepare.mockReset();
+  mocks.forget.mockReset();
   // Bawaan: memuat ulang mengembalikan konfigurasi terdaftar (disetel per tes bila perlu).
   mocks.refresh.mockImplementation(async (_client: unknown, id: string) => designs.get(id));
   mocks.prepare.mockResolvedValue(files);
@@ -300,10 +307,16 @@ test('terhapus saat gilirannya tiba: dilewati dengan alasan, tanpa menyiapkan be
   );
 });
 
-test('NOT_FOUND saat memuat ulang (terhapus, pengguna tanpa manage): dilewati, bukan gagal, tanpa job; yang lain lanjut', async () => {
+const goneError = () => {
+  const error = new ApiError('NOT_FOUND', 'Tidak ditemukan', 'r9');
+  mocks.gone.add(error);
+  return error;
+};
+
+test('NOT_FOUND konfigurasi saat memuat ulang (terhapus, pengguna tanpa manage): dilewati, bukan gagal, tanpa job; yang lain lanjut', async () => {
   const list = register(design('a'), design('b'));
   mocks.refresh.mockImplementation(async (_client: unknown, id: string) => {
-    if (id === 'a') throw new ApiError('NOT_FOUND', 'Tidak ditemukan', 'r9');
+    if (id === 'a') throw goneError();
     return designs.get(id);
   });
   const { result } = renderHook(() => useBulkQrExport(), { wrapper });
@@ -321,6 +334,48 @@ test('NOT_FOUND saat memuat ulang (terhapus, pengguna tanpa manage): dilewati, b
     status: 'skipped',
     message: 'Konfigurasi sudah dihapus',
   });
+});
+
+test('NOT_FOUND dari permintaan qrcodes.export (konfigurasi terhapus): dilewati dan dikeluarkan dari daftar hidup', async () => {
+  const list = register(design('a'));
+  mocks.mutate.mockRejectedValue(goneError());
+  const { result } = renderHook(() => useBulkQrExport(), { wrapper });
+  await act(async () => {
+    await result.current.start(list, '');
+  });
+  expect(mocks.mutate).toHaveBeenCalledTimes(1);
+  expect(mocks.forget).toHaveBeenCalledWith(expect.anything(), 'a');
+  expect(result.current.outcome).toMatchObject({ skippedIds: ['a'], failedIds: [], doneIds: [] });
+  expect(result.current.rows[0]).toMatchObject({
+    status: 'skipped',
+    message: 'Konfigurasi sudah dihapus',
+  });
+});
+
+test('NOT_FOUND dari langkah lain (logo di prepare, atau akhir job): tetap gagal dengan pesan aslinya', async () => {
+  const list = register(design('a'), design('b'));
+  mocks.prepare.mockImplementationOnce(async () => {
+    throw new ApiError('NOT_FOUND', 'Isi berkas tidak ditemukan di Drive', 'r8');
+  });
+  mocks.mutate.mockRejectedValueOnce(
+    new ApiError('NOT_FOUND', 'Tidak ditemukan setelah job', 'r7'),
+  );
+  const { result } = renderHook(() => useBulkQrExport(), { wrapper });
+  await act(async () => {
+    await result.current.start(list, '');
+  });
+  expect(result.current.outcome).toMatchObject({
+    failedIds: ['a', 'b'],
+    skippedIds: [],
+    doneIds: [],
+  });
+  expect(result.current.rows.find((row) => row.id === 'a')?.message).toContain(
+    'Isi berkas tidak ditemukan di Drive',
+  );
+  expect(result.current.rows.find((row) => row.id === 'b')?.message).toContain(
+    'Tidak ditemukan setelah job',
+  );
+  expect(mocks.forget).not.toHaveBeenCalled();
 });
 
 test('galat selain NOT_FOUND saat memuat ulang tetap gagal per baris', async () => {

@@ -5,7 +5,7 @@ import { beginBusy } from '@/app/pwa/busy';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
-import { refreshQrDesign, useExportQrDesign } from '../queries';
+import { forgetQrDesign, isQrDesignGone, refreshQrDesign, useExportQrDesign } from '../queries';
 import { classifyForExport } from './bulk-export-plan';
 import { isStaleExportError, shouldRefreshAfterExportError } from './export-error';
 import { prepareExportFiles } from './prepare-export';
@@ -154,9 +154,11 @@ export function useBulkQrExport(): BulkQrExport {
         }
       }
     } catch (error) {
-      // Terhapus sebelum gilirannya (bagi non-manage server menjawab NOT_FOUND; `refreshQrDesign` sudah mengeluarkannya
-      // dari daftar hidup): dilewati, bukan gagal.
-      if (error instanceof ApiError && error.code === 'NOT_FOUND') {
+      // Terhapus sebelum atau selama gilirannya: hanya NOT_FOUND dari pemuatan ulang konfigurasi atau permintaan
+      // `qrcodes.export` (ditandai di queries.ts) yang berarti itu; NOT_FOUND lain (mis. isi logo di Drive) tetap gagal
+      // dengan pesan aslinya. `forgetQrDesign` idempoten bila pemuatan ulang sudah mengeluarkannya dari daftar hidup.
+      if (isQrDesignGone(error)) {
+        forgetQrDesign(queryClient, id);
         return { status: 'skipped', message: 'Konfigurasi sudah dihapus' };
       }
       // Gagal basi di langkah komit (job server) tidak diulang, tetapi cache memegang DTO lama: muat ulang agar daftar,

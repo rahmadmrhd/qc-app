@@ -7,6 +7,7 @@ import { ApiError } from '@/lib/api/api-error';
 import { itemKeys } from '@/modules/item/queries';
 import { stickerKeys } from '@/modules/sticker/keys';
 import {
+  isQrDesignGone,
   qrKeys,
   refreshQrDesign,
   useClonePreset,
@@ -230,7 +231,9 @@ test('refreshQrDesign: NOT_FOUND (terhapus bagi non-manage) mengeluarkan konfigu
   client.setQueryData(qrKeys.one('a'), design('a', 'A', 't'));
   client.setQueryData(qrKeys.listDeleted, []);
   apiMock.mockRejectedValue(new ApiError('NOT_FOUND', 'Tidak ditemukan', 'r1'));
-  await expect(refreshQrDesign(client, 'a')).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  const error = await refreshQrDesign(client, 'a').catch((caught: unknown) => caught);
+  expect(error).toMatchObject({ code: 'NOT_FOUND' });
+  expect(isQrDesignGone(error)).toBe(true);
   expect((client.getQueryData(qrKeys.list) as QrDesignDto[]).map((entry) => entry.id)).toEqual([
     'b',
   ]);
@@ -245,6 +248,24 @@ test('refreshQrDesign: galat lain tidak menyentuh daftar hidup', async () => {
   expect((client.getQueryData(qrKeys.list) as QrDesignDto[]).map((entry) => entry.id)).toEqual([
     'a',
   ]);
+});
+
+test('ekspor: NOT_FOUND dari qrcodes.export ditandai konfigurasi hilang; NOT_FOUND dari qrcodes.get setelah job TIDAK', async () => {
+  const { result } = renderHook(() => useExportQrDesign(), { wrapper });
+  apiMock.mockRejectedValueOnce(new ApiError('NOT_FOUND', 'Tidak ditemukan', 'r1'));
+  const first = await result.current
+    .mutateAsync({ id: 'a' } as never)
+    .catch((caught: unknown) => caught);
+  expect(first).toMatchObject({ code: 'NOT_FOUND' });
+  expect(isQrDesignGone(first)).toBe(true);
+
+  apiMock.mockResolvedValueOnce({ jobId: 'j1' });
+  apiMock.mockRejectedValueOnce(new ApiError('NOT_FOUND', 'Tidak ditemukan', 'r2'));
+  const second = await result.current
+    .mutateAsync({ id: 'a' } as never)
+    .catch((caught: unknown) => caught);
+  expect(second).toMatchObject({ code: 'NOT_FOUND' });
+  expect(isQrDesignGone(second)).toBe(false);
 });
 
 test('unggah PDF: onUploadProgress diteruskan ke api sebagai opsi panggilan, bukan sebagai input', async () => {
