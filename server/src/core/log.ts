@@ -30,6 +30,14 @@ const EXPECTED_CODES = new Set([
   'UNAVAILABLE',
 ]);
 
+/**
+ * Terjemahan ID lama oleh `core/legacy-ids.ts` (sementara; spek ID ULID bagian 4a). Dicatat agar masa pantau dapat
+ * mengukur seberapa sering klien masih membawa ID lama sebelum lapisan dicabut. Hanya jumlah, tanpa ID.
+ */
+export function logLegacyIds(entry: { requestId: string; method: string; count: number }): void {
+  console.log({ evt: 'legacy-id', ...entry });
+}
+
 export function logRequest(entry: RequestLog): void {
   const line: Record<string, unknown> = { ...entry };
   if (entry.ok) console.log(line);

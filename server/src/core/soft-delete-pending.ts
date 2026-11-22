@@ -469,6 +469,12 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Baris notifikasi dibaca menurut penerima; keberadaan task/serial HIDUP dan hak diperiksa lewat `scopeClause` (lonceng, hitungan) atau `canReadNotification` (push, aliran SSE) saat dibaca/dikirim.',
   'server/src/modules/notification/repo.ts#notifications@3#aca741c4':
     'Menandai/membaca satu notifikasi menurut id dan penerima: tanpa data task atau serial yang perlu disaring; lonceng menyaringnya lewat `scopeClause`.',
+  'server/src/core/legacy-ids.ts#users@1#293aea1e':
+    'Probe arah lapisan terjemahan ID lama (sementara): hanya menguji keberadaan sebuah ID baris, termasuk yang terhapus lunak (baris tak dihapus permanen; keadaan terhapus tak relevan bagi arah migrasi).',
+  'server/src/core/legacy-ids.ts#locations@1#ff48e33a':
+    'Probe arah lapisan terjemahan ID lama (sementara): hanya menguji keberadaan sebuah ID baris, termasuk yang terhapus lunak (baris tak dihapus permanen; keadaan terhapus tak relevan bagi arah migrasi).',
+  'server/src/core/legacy-ids.ts#business_units@1#cd800310':
+    'Probe arah lapisan terjemahan ID lama (sementara): hanya menguji keberadaan sebuah ID baris, termasuk yang terhapus lunak (baris tak dihapus permanen; keadaan terhapus tak relevan bagi arah migrasi).',
   'server/src/modules/notification/repo.ts#notifications@4#c088baf7':
     'Baris notifikasi dibaca menurut penerima; keberadaan task/serial HIDUP dan hak diperiksa lewat `scopeClause` (lonceng, hitungan) atau `canReadNotification` (push, aliran SSE) saat dibaca/dikirim.',
 };

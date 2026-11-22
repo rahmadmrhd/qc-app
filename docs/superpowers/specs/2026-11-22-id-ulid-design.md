@@ -45,7 +45,8 @@ produksi dan dibahas terpisah.
    kode di repo. Alasan: operasi sekali pakai yang tak perlu dipelihara, diuji CI, atau dibawa ke produksi; permukaan repo
    lebih kecil. Risiko yang diterima pemilik: skrip tak ikut tinjauan dan riwayat repo, dan hilang bila folder lokal hilang
    (cadangkan sendiri); salinan penurun isi QR dapat basi bila aplikasi mengubah isi label sebelum skrip dijalankan (tes
-   lokal menangkapnya).
+   lokal menangkapnya). **Satu-satunya pengecualian: lapisan terjemahan ID lama di server (butir 10, 2026-11-23)**; skrip,
+   pembuatan tabel peta, dan penulisan ulang data tetap di luar repo.
 
 8. **Keputusan pemilik produk 2026-11-22 atas bagian 6b, 6c, dan 6d** (semua mengikuti rekomendasi perancang kecuali masa
    pantau):
@@ -69,6 +70,16 @@ produksi dan dibahas terpisah.
    disetujui pemilik produk 2026-11-22, menutup bagian 6e butir 2). Alasan: tanpa pelonggaran, `--revert` setelah aplikasi
    menghapus permanen satu baris (mis. `files`) selalu gagal verifikasi walau datanya utuh; penghapusan selama jendela
    tetap tertangkap pemeriksaan terhadap garis dasar. Bagian 4 butir 6 sudah diselaraskan.
+
+10. **Lapisan terjemahan ID lama sementara di server MASUK repo** (keputusan pemilik produk 2026-11-23, menutup bagian 5
+    butir 1 dengan pilihan (b); membalik sebagian butir 7: "kode lain yang hanya melayani migrasi itu tidak masuk repo").
+    Alasan pemilik: klien (antrean offline Serah Terima, draf Serial Number web dan desktop, `pending.db`, berkas `.qcsn`,
+    bookmark, tab yang terbuka) membawa ID lama; pemilik tidak mau bergantung pada disiplin 9 pengguna mengosongkan state
+    sebelum jendela. Lapisan menerjemahkan ID lama yang dikirim klien ke ID baru lewat tabel peta `id_ulid_map` sebelum
+    validasi dan izin, sehingga semua state klien tetap berfungsi. Rancangan dan batasnya di bagian 4a. Lapisan bersifat
+    SEMENTARA: dicabut lewat PR setelah masa pantau satu minggu dan sapu akhir (bagian 4a, "Pencabutan"). Yang tetap di luar
+    repo: skrip migrasi, pembuatan dan pengisian tabel `id_ulid_map`, serta penulisan ulang data. Prosedur jendela butir 3
+    (pengosongan antrean dan draf) kini disarankan, bukan wajib.
 
 ## 2. Yang TIDAK diubah (sengaja)
 
@@ -143,12 +154,41 @@ Fakta produksi (diukur read-only 2026-11-22, `qc_production`, MariaDB 11.8.9): `
 Hanya 6 kunci asing nyata; sekitar 77 kolom `*_id` lain tidak dijaga kunci asing, sebab itu penulisan ulang berbasis nilai dan
 verifikasi jumlah rujukan per kolom adalah jaring pengaman utama.
 
+### 4a. Lapisan terjemahan ID lama di server (keputusan 2026-11-23, bagian 1 butir 10)
+
+Kode: `server/src/core/legacy-ids.ts` (tes `legacy-ids.test.ts`), dipasang SATU kali di kernel REST (`server/src/http/rest.ts`,
+`innerHandlerFor`) tepat setelah `fromRequestParts` merakit input (parameter jalur, query, dan badan) dan sebelum `execute`
+(validasi, izin berlokasi, handler). Satu titik pasang menutup semua rute, juga yang dipakai antrean offline, `sync-sw.js`,
+proksi desktop, dan impor `.qcsn`, tanpa mengubah modul mana pun.
+
+- **Apa yang diterjemahkan:** setiap nilai STRING (rekursif pada objek dan larik biasa, kedalaman paling banyak 20; byte dan
+  Blob dilewati) yang PERSIS berpola UUID huruf kecil (`LEGACY_UUID_PATTERN`) dan ada di `id_ulid_map.old_id` diganti
+  `new_id`. Kunci bernama `clientId` dilewati (kunci idempoten klien, bukan ID baris). ID yang tak ada di peta dibiarkan.
+- **Yang tidak diterjemahkan (batas yang diterima):** token UUID di dalam teks bebas (mis. Markdown); ID yang sudah ditulis
+  klien ke teks bebas sebelum pencabutan disapu oleh skrip yang sama (idempoten) pada sapu akhir. Token tautan laporan publik
+  bertanda tangan (`serial_cases` kosong di produksi, jadi tak ada tautan beredar; bagian 5 butir 2). `Last-Event-ID` aliran
+  notifikasi desktop (kosmetik, bagian 5 butir 1 baris 5).
+- **Keadaan peta:** tabel dibuat dan diisi skrip operator, bukan migrasi. Lapisan mendeteksinya sendiri: tabel tak ada =
+  tanpa pekerjaan; status dicek ulang paling sering tiap 30 detik. Tanpa variabel `.env` baru.
+- **Arah:** lapisan hanya aktif bila data berada di keadaan SESUDAH migrasi (ID baru). Setelah `--revert` data kembali ke UUID
+  tetapi peta masih ada, dan menerjemahkan UUID ke ULID yang sudah tak ada akan merusak semuanya. Karena itu lapisan menguji
+  arah sebelum bekerja: sampel baris peta pada tabel stabil (`users`, `locations`, `business_units`, `roles`, `brands`,
+  `sticker_types`) diperiksa; aktif hanya bila `new_id` ditemukan dan `old_id` tidak; selain itu mati.
+- **Keamanan dan keandalan:** terjemahan terjadi SEBELUM validasi dan izin berlokasi, jadi hak akses dinilai atas record hasil
+  terjemahan seperti permintaan biasa; peta tak pernah dikirim ke klien; paling banyak 2.000 kandidat unik per permintaan
+  (dicari per 500; sisanya dibiarkan, jadi akan "tidak ditemukan" seperti ID asing); galat basis data TIDAK ditelan
+  (`UNAVAILABLE` seperti rute lain), kecuali "tabel tak ada" yang berarti tak ada pekerjaan.
+- **Pencabutan:** setelah masa pantau satu minggu dan sebelum tahap 2: (1) jalankan ulang skrip migrasi sekali sebagai sapu akhir
+  (menulis ulang sisa ID lama yang masuk lewat teks bebas), (2) `DROP TABLE id_ulid_map` (lapisan otomatis tanpa pekerjaan),
+  (3) PR yang menghapus `legacy-ids.ts`, pemasangannya, dan butir 10 ini menjadi catatan sejarah.
+
 ### Prosedur jendela pemeliharaan (rencana; belum dijalankan di mana pun)
 
 1. Deploy image yang memuat `newId()` (tanpa migrasi baru; aplikasi tetap hidup; ID baru sudah ULID, ID lama masih UUID).
 2. Pastikan cadangan harian terbaru ada (`BACKUP_FOLDER_ID`) dan periksa ruang disk VPS (`OPTIMIZE` butuh sekitar 2x tabel).
-3. Umumkan jendela pemeliharaan dan minta pengguna melakukan tindakan pra-migrasi berikut (rincian state dan akibatnya di
-   risiko 1; yang `tidak pulih sendiri` HARUS dibereskan sebelum jendela):
+3. Umumkan jendela pemeliharaan dan minta pengguna melakukan tindakan pra-migrasi berikut. Sejak keputusan 2026-11-23
+   (lapisan terjemahan, bagian 4a) ini DISARANKAN, bukan wajib: state klien ber-ID lama diterjemahkan server. Tetap baik
+   dilakukan bila mudah, sebagai jaring pengaman (rincian state di risiko 1):
    - Web (Serah Terima): buka aplikasi dalam keadaan online dan tunggu antrean offline terkirim (chip antrean kosong);
      entri yang masih tersisa di antrean hilang saat dikirim ke server yang ID-nya sudah berubah.
    - Web (Serial Number): simpan semua draf tabel; draf BERFOTO bukti sebaiknya disimpan dulu (foto draf di server ikut
@@ -174,7 +214,10 @@ verifikasi jumlah rujukan per kolom adalah jaring pengaman utama.
    ke kodenya (2026-11-22); kolom "Pulih sendiri?" memisahkan yang aman dari yang menimbulkan kehilangan atau galat.
    Pilihan penanganan: (a) prosedur pemeliharaan (kosongkan antrean dan draf dulu, langkah 3 prosedur di atas) atau
    (b) lapisan terjemahan sementara di server yang memakai `id_ulid_map`. Rekomendasi perancang: (a) untuk tahap ini;
-   (b) hanya bila ada draf desktop yang tak bisa dikosongkan. **Belum diputuskan.**
+   (b) hanya bila ada draf desktop yang tak bisa dikosongkan. **DITUTUP 2026-11-23: pemilik produk memilih (b), lapisan
+   terjemahan ID sementara di server** (bagian 1 butir 10; rancangan di bagian 4a). Kolom "Pulih sendiri?" di bawah menggambarkan
+   keadaan TANPA lapisan; dengan lapisan, butir 4 sampai 10 diterjemahkan di server saat dikirim, dengan batas yang
+   tercantum di bagian 4a.
 
    | # | State klien (kode) | Pulih sendiri? | Akibat bila tak dibereskan |
    |---|---|---|---|
