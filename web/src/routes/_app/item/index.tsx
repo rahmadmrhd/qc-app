@@ -80,11 +80,13 @@ function ItemsPage() {
   // Merk terhapus dari tautan "Lihat item merk ini" tak ada di daftar hidup: nama untuk chip dimuat lewat `brands.get`
   // (hanya bila `brandId` di URL dan belum ada di daftar; galat/ditolak = chip "Merk tidak dikenal").
   const queryClient = useQueryClient();
-  const brandIdInUrl = filter.brandId;
-  const brandInList = brands.data?.some((brand) => brand.id === brandIdInUrl) ?? false;
+  // Satu merk di URL yang tak ada di daftar hidup (mis. merk terhapus dari tautan View merk).
+  const brandIdInUrl = brands.isSuccess
+    ? (filter.brandIds.find((id) => !brands.data?.some((brand) => brand.id === id)) ?? '')
+    : '';
   const knownBrand = useQuery({
     ...brandQueryOptions(queryClient, brandIdInUrl),
-    enabled: brandIdInUrl !== '' && brands.isSuccess && !brandInList,
+    enabled: brandIdInUrl !== '',
   });
   const filterBus = liveBuIdsWithLevelOf(me, 'item', 'view').flatMap((id) => {
     const bu = me.businessUnits.find((entry) => entry.id === id);
@@ -211,8 +213,8 @@ function ItemsPage() {
     filter.stickerKey !== '' ||
     filter.manualBook !== 'all' ||
     filter.postel !== 'all' ||
-    filter.brandId !== '' ||
-    filter.buId !== '';
+    filter.brandIds.length > 0 ||
+    filter.buIds.length > 0;
   const countLabel =
     list.isSuccess && (visible.length > 0 || filtered)
       ? `${visible.length}${list.hasNextPage ? '+' : ''} item`

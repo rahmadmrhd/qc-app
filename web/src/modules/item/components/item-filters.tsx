@@ -1,23 +1,23 @@
 import type { BrandDto, StickerDto, StickerTypeDto } from '@shared/contract';
-import { LinkField, type LinkOption } from '@/components/link-field';
-import { FilterChip } from '@/components/page/filter-bar';
+import { LinkField, LinkMultiField, type LinkOption } from '@/components/link-field';
+import { FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { Select } from '@/components/select';
 import type { ItemListFilter } from '../queries';
 
 type FilterPatch = Partial<
   Pick<
     ItemListFilter,
-    'instruction' | 'stickerKey' | 'stickerMode' | 'manualBook' | 'postel' | 'brandId' | 'buId'
+    'instruction' | 'stickerKey' | 'stickerMode' | 'manualBook' | 'postel' | 'brandIds' | 'buIds'
   >
 >;
 
 export interface ItemFiltersProps {
   filter: Pick<ItemListFilter, 'instruction' | 'stickerKey' | 'stickerMode' | 'manualBook'> &
-    Partial<Pick<ItemListFilter, 'postel' | 'brandId' | 'buId'>>;
+    Partial<Pick<ItemListFilter, 'postel' | 'brandIds' | 'buIds'>>;
   /** Pilihan chip Merk (merk hidup); chip tak tampil bila tidak diberikan. */
   brands?: readonly BrandDto[] | undefined;
   /**
-   * Merk dari `filter.brandId` yang tak ada di `brands` (mis. merk terhapus dari tautan View merk), dimuat lewat
+   * Satu merk dari `filter.brandIds` yang tak ada di `brands` (mis. merk terhapus dari tautan View merk), dimuat lewat
    * `brands.get`; dipakai hanya untuk nama chip (terhapus = penanda "Terhapus"). Kosong = "Merk tidak dikenal".
    */
   knownBrand?: BrandDto | undefined;
@@ -98,8 +98,8 @@ export function ItemFilters({
     return stickerOptions.find((option) => option.id === key)?.label;
   };
   const postel = filter.postel ?? 'all';
-  const brandId = filter.brandId ?? '';
-  const buId = filter.buId ?? '';
+  const brandIds = filter.brandIds ?? [];
+  const buIds = filter.buIds ?? [];
   const brandOptions: LinkOption[] = (brands ?? []).map((brand) => ({
     id: brand.id,
     label: brand.status === 'active' ? brand.name : `${brand.name}${INACTIVE}`,
@@ -122,10 +122,10 @@ export function ItemFilters({
       {brands ? (
         <FilterChip
           label="Merk"
-          display={brandId === '' ? null : (brandName(brandId) ?? 'Merk tidak dikenal')}
-          onClear={() => onChange({ brandId: '' })}
+          display={multiFilterDisplay(brandIds.map((id) => brandName(id) ?? 'Merk tidak dikenal'))}
+          onClear={() => onChange({ brandIds: [] })}
         >
-          <LinkField
+          <LinkMultiField
             id="item-filter-brand"
             label="Filter merk"
             hideLabel
@@ -133,19 +133,19 @@ export function ItemFilters({
             options={brandOptions}
             localFilter
             highlight
-            value={brandId === '' ? null : brandId}
+            value={brandIds}
             labelOf={(id) => brandName(id) ?? 'Merk tidak dikenal'}
-            onChange={(next) => onChange({ brandId: next ?? '' })}
+            onChange={(next) => onChange({ brandIds: next })}
           />
         </FilterChip>
       ) : null}
       {businessUnits ? (
         <FilterChip
           label="Business Unit"
-          display={buId === '' ? null : (buName(buId) ?? 'BU tidak dikenal')}
-          onClear={() => onChange({ buId: '' })}
+          display={multiFilterDisplay(buIds.map((id) => buName(id) ?? 'BU tidak dikenal'))}
+          onClear={() => onChange({ buIds: [] })}
         >
-          <LinkField
+          <LinkMultiField
             id="item-filter-bu"
             label="Filter business unit"
             hideLabel
@@ -153,9 +153,9 @@ export function ItemFilters({
             options={buOptions}
             localFilter
             highlight
-            value={buId === '' ? null : buId}
+            value={buIds}
             labelOf={(id) => buName(id) ?? 'BU tidak dikenal'}
-            onChange={(next) => onChange({ buId: next ?? '' })}
+            onChange={(next) => onChange({ buIds: next })}
           />
         </FilterChip>
       ) : null}

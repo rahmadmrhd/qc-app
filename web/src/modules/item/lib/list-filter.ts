@@ -20,9 +20,13 @@ export const itemsSearchSchema = z.object({
   manualBook: z.literal('missing').optional().catch(undefined),
   /** Hanya `missing` ("Belum ada Postel") ditulis ke URL. */
   postel: z.literal('missing').optional().catch(undefined),
-  /** Id merk (tautan jumlah item dari Merk, atau chip Merk). */
+  /** Id merk (chip Merk; banyak nilai = salah satu dari). */
+  brandIds: z.array(z.string().max(100)).max(20).optional().catch(undefined),
+  /** Id BU (chip Business Unit; banyak nilai = salah satu dari). */
+  buIds: z.array(z.string().max(100)).max(20).optional().catch(undefined),
+  /** Id satu merk: tautan lama (jumlah item di View merk) yang masih diterima; dibaca sebagai `brandIds`. */
   brandId: z.string().max(100).optional().catch(undefined),
-  /** Id BU (chip Business Unit). */
+  /** Id satu BU: tautan lama yang masih diterima; dibaca sebagai `buIds`. */
   buId: z.string().max(100).optional().catch(undefined),
 });
 export type ItemsSearch = z.infer<typeof itemsSearchSchema>;
@@ -39,15 +43,15 @@ export function filterOfSearch(search: ItemsSearch): ItemListFilter {
     stickerMode: stickerKey !== '' ? (search.mode ?? 'has') : 'has',
     manualBook: search.manualBook ?? 'all',
     postel: search.postel ?? 'all',
-    brandId: search.brandId ?? '',
-    buId: search.buId ?? '',
+    brandIds: search.brandIds ?? (search.brandId ? [search.brandId] : []),
+    buIds: search.buIds ?? (search.buId ? [search.buId] : []),
   };
 }
 
 type StickerFilterPatch = Partial<
   Pick<
     ItemListFilter,
-    'instruction' | 'stickerKey' | 'stickerMode' | 'manualBook' | 'postel' | 'brandId' | 'buId'
+    'instruction' | 'stickerKey' | 'stickerMode' | 'manualBook' | 'postel' | 'brandIds' | 'buIds'
   >
 >;
 
@@ -71,8 +75,14 @@ export function searchPatchOf(patch: StickerFilterPatch): Partial<ItemsSearch> {
   if (patch.postel !== undefined) {
     result.postel = patch.postel === 'missing' ? 'missing' : undefined;
   }
-  if (patch.brandId !== undefined)
-    result.brandId = patch.brandId === '' ? undefined : patch.brandId;
-  if (patch.buId !== undefined) result.buId = patch.buId === '' ? undefined : patch.buId;
+  // Filter jamak menggantikan param tunggal lama: param lama ikut dibuang agar tak hidup lagi.
+  if (patch.brandIds !== undefined) {
+    result.brandIds = patch.brandIds.length > 0 ? patch.brandIds : undefined;
+    result.brandId = undefined;
+  }
+  if (patch.buIds !== undefined) {
+    result.buIds = patch.buIds.length > 0 ? patch.buIds : undefined;
+    result.buId = undefined;
+  }
   return result;
 }

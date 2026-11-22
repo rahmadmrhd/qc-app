@@ -297,11 +297,13 @@ test('alasan Hapus massal nonaktif dapat dijangkau (bukan atribut title)', async
   expect(within(bar).getByText('Nonaktifkan item dulu sebelum dihapus')).toBeInTheDocument();
 });
 
-test('?brandId= dari tautan Merk diteruskan ke items.list dan chip Merk menampilkan namanya', async () => {
+test('?brandId= (tautan lama dari Merk) dibaca sebagai brandIds, diteruskan ke items.list dan chip Merk menampilkan namanya', async () => {
   await mount({ path: '/_app/item/?brandId=b1' });
   await waitFor(() =>
     expect(
-      callsOf('items.list').some((call) => (call.input as { brandId?: string }).brandId === 'b1'),
+      callsOf('items.list').some(
+        (call) => (call.input as { brandIds?: string[] }).brandIds?.[0] === 'b1',
+      ),
     ).toBe(true),
   );
   expect(await screen.findByRole('button', { name: 'Merk: Asus' })).toBeInTheDocument();
