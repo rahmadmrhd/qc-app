@@ -29,6 +29,15 @@ describe('isUlid', () => {
     expect(isUlid(123)).toBe(false);
   });
 
+  test('tiap huruf terlarang (i, l, o, u; kecil dan besar) ditolak di posisi mana pun', () => {
+    const base = '01arz3ndektsv4rrffq69g5fav';
+    for (const letter of ['i', 'l', 'o', 'u', 'I', 'L', 'O', 'U']) {
+      expect(isUlid(letter + base.slice(1))).toBe(false);
+      expect(isUlid(base.slice(0, 12) + letter + base.slice(13))).toBe(false);
+      expect(isUlid(base.slice(0, 25) + letter)).toBe(false);
+    }
+  });
+
   test('UUID lama dikenali pola UUID, bukan ULID', () => {
     expect(LEGACY_UUID_PATTERN.test('fa8af035-9bb2-59fb-a104-c89f8cfef4ca')).toBe(true);
     expect(LEGACY_UUID_PATTERN.test('01arz3ndektsv4rrffq69g5fav')).toBe(false);
@@ -38,7 +47,32 @@ describe('isUlid', () => {
 describe('formatUlid dan ulidTime', () => {
   test('waktu 0 dan acak 0 menjadi 26 nol; maksimum menjadi 7 diikuti z', () => {
     expect(formatUlid({ time: 0, random: 0n })).toBe('0'.repeat(26));
-    expect(formatUlid({ time: ULID_TIME_MAX, random: (1n << 80n) - 1n })).toBe(`7${'z'.repeat(25)}`);
+    expect(formatUlid({ time: ULID_TIME_MAX, random: (1n << 80n) - 1n })).toBe(
+      `7${'z'.repeat(25)}`,
+    );
+  });
+
+  test('vektor ULID kanonik: waktu dan bagian acak ditulis persis dan terbaca kembali', () => {
+    // Vektor spesifikasi ULID (`01ARZ3NDEKTSV4RRFFQ69G5FAV`) dalam huruf kecil.
+    const time = 1469922850259; // 2016-07-30T23:54:10.259Z (hasil dekode independen "01arz3ndek")
+    const randomText = 'tsv4rrffq69g5fav';
+    // Dekode base32 Crockford dibuat sendiri di sini (bukan memakai kode yang diuji), big-endian ke 10 byte.
+    const crockford = '0123456789abcdefghjkmnpqrstvwxyz';
+    let value = 0n;
+    for (const ch of randomText) value = value * 32n + BigInt(crockford.indexOf(ch));
+    const random = new Uint8Array(10);
+    for (let i = 9; i >= 0; i--) {
+      random[i] = Number(value & 0xffn);
+      value >>= 8n;
+    }
+    expect(value).toBe(0n);
+    // Byte tidak boleh seragam supaya urutan byte (endianness) ikut teruji.
+    expect(new Set(random).size).toBeGreaterThan(1);
+
+    const state = nextUlidState(null, time, random);
+    expect(state.time).toBe(time);
+    expect(formatUlid(state)).toBe('01arz3ndektsv4rrffq69g5fav');
+    expect(ulidTime('01arz3ndektsv4rrffq69g5fav')).toBe(time);
   });
 
   test('waktu yang ditulis dapat dibaca kembali dan hasilnya selalu ULID sah', () => {
@@ -100,5 +134,24 @@ describe('nextUlidState (monotonik)', () => {
     expect(() => nextUlidState(null, 1.5, bytes(1))).toThrow(RangeError);
     expect(() => nextUlidState(null, ULID_TIME_MAX + 1, bytes(1))).toThrow(RangeError);
     expect(() => nextUlidState(null, 1, new Uint8Array(3))).toThrow(RangeError);
+  });
+
+  test('waktu NaN dan Infinity ditolak', () => {
+    expect(() => nextUlidState(null, Number.NaN, bytes(1))).toThrow(RangeError);
+    expect(() => nextUlidState(null, Number.POSITIVE_INFINITY, bytes(1))).toThrow(RangeError);
+    expect(() => nextUlidState(null, Number.NEGATIVE_INFINITY, bytes(1))).toThrow(RangeError);
+  });
+
+  test('waktu maksimum 48 bit diterima dan terbaca kembali sama', () => {
+    const state = nextUlidState(null, ULID_TIME_MAX, bytes(0x5a));
+    expect(state.time).toBe(ULID_TIME_MAX);
+    const id = formatUlid(state);
+    expect(isUlid(id)).toBe(true);
+    expect(ulidTime(id)).toBe(ULID_TIME_MAX);
+  });
+
+  test('keadaan penuh pada waktu maksimum dan waktu sama melempar RangeError', () => {
+    const full = { time: ULID_TIME_MAX, random: (1n << 80n) - 1n };
+    expect(() => nextUlidState(full, ULID_TIME_MAX, bytes(1))).toThrow(RangeError);
   });
 });

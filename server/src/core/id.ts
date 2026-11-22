@@ -1,8 +1,25 @@
 import { formatUlid, nextUlidState, type UlidState } from '@shared/ids';
 
-// Satu keadaan per proses: ID yang dibuat dalam milidetik yang sama tetap menaik (monotonik). Antar proses hanya urutan
-// per milidetik yang tak terjamin, dan itu tidak dipakai di mana pun (urutan tampilan memakai `created_at`/`seq`).
-let state: UlidState | null = null;
+/** Sumber waktu (ms) dan 10 byte acak; disuntik hanya oleh tes. */
+export interface IdGeneratorDeps {
+  now?: () => number;
+  random?: () => Uint8Array;
+}
+
+/**
+ * Pembuat ID dengan keadaan monotonik SENDIRI: ID yang dibuat dalam milidetik yang sama (atau saat jam mundur) tetap menaik.
+ * Antar pembuat/proses hanya urutan per milidetik yang tak terjamin, dan itu tidak dipakai di mana pun (urutan tampilan
+ * memakai `created_at`/`seq`).
+ */
+export function createIdGenerator(deps: IdGeneratorDeps = {}): () => string {
+  const now = deps.now ?? Date.now;
+  const random = deps.random ?? (() => crypto.getRandomValues(new Uint8Array(10)));
+  let state: UlidState | null = null;
+  return () => {
+    state = nextUlidState(state, now(), random());
+    return formatUlid(state);
+  };
+}
 
 /**
  * ID baris basis data baru: ULID huruf kecil 26 karakter (`shared/ids.ts`). Pengganti `crypto.randomUUID()` untuk kolom
@@ -10,7 +27,4 @@ let state: UlidState | null = null;
  * tertebak (token, nama berkas sementara, kunci sesi): bagian acaknya hanya 80 bit dan awalannya membuka waktu pembuatan;
  * untuk itu tetap `crypto.randomUUID()`.
  */
-export function newId(): string {
-  state = nextUlidState(state, Date.now(), crypto.getRandomValues(new Uint8Array(10)));
-  return formatUlid(state);
-}
+export const newId: () => string = createIdGenerator();

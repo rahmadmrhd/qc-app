@@ -21,7 +21,10 @@ const RANDOM_MAX = (1n << 80n) - 1n;
 /** Karakter pertama paling banyak `7` karena 26 x 5 = 130 bit sedangkan ID hanya 128 bit. */
 export const ULID_PATTERN = /^[0-7][0-9a-hjkmnp-tv-z]{25}$/;
 
-/** UUID lama (v4 buatan aplikasi dan v5 hasil migrasi data lama): hanya dipakai skrip migrasi dan pemeriksaan sisa. */
+/**
+ * UUID lama (v4 buatan aplikasi dan v5 hasil migrasi data lama): dipakai tes dan pemeriksaan sisa. Skrip migrasi
+ * (`server/scripts/migrate-ids-to-ulid.ts`) sengaja memakai pola SQL/token sendiri; pola itu harus dijaga sama dengan ini.
+ */
 export const LEGACY_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** True bila `value` ULID huruf kecil yang sah (huruf besar ditolak). */
