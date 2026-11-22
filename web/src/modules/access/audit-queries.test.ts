@@ -16,15 +16,15 @@ test('log audit berkursor: filter aksi/kata kunci dan kursor dikirim ke server; 
   });
   const client = new QueryClient();
   const data = await client.fetchInfiniteQuery({
-    ...auditInfiniteQueryOptions({ action: 'user.update', query: 'budi' }),
+    ...auditInfiniteQueryOptions({ actions: ['user.update', 'user.create'], query: 'budi' }),
     pages: 3,
   });
   expect(apiMock).toHaveBeenNthCalledWith(1, 'access.audit.list', {
-    action: 'user.update',
+    actions: ['user.update', 'user.create'],
     query: 'budi',
   });
   expect(apiMock).toHaveBeenNthCalledWith(2, 'access.audit.list', {
-    action: 'user.update',
+    actions: ['user.update', 'user.create'],
     query: 'budi',
     cursor: 'k1',
   });
@@ -32,6 +32,13 @@ test('log audit berkursor: filter aksi/kata kunci dan kursor dikirim ke server; 
   apiMock.mockClear();
   await client.fetchInfiniteQuery(auditInfiniteQueryOptions({}));
   expect(apiMock).toHaveBeenCalledWith('access.audit.list', {});
+});
+
+test('log audit: daftar aksi jamak ikut kunci cache; daftar kosong sama dengan tanpa filter', () => {
+  const key = (filter: Parameters<typeof auditInfiniteQueryOptions>[0]) =>
+    auditInfiniteQueryOptions(filter).queryKey;
+  expect(key({ actions: ['a'] })).not.toEqual(key({ actions: ['a', 'b'] }));
+  expect(key({ actions: [] })).toEqual(key({}));
 });
 
 test('kabel REST: GET /api/v1/audit-logs dengan filter dan kursor di query string', async () => {
@@ -43,8 +50,12 @@ test('kabel REST: GET /api/v1/audit-logs dengan filter dan kursor di query strin
       }),
   );
   const client = actual.createApiClient({ fetchImpl: fetchMock as unknown as typeof fetch });
-  await client('access.audit.list', { action: 'user.update', query: 'budi', cursor: 'k 1' });
+  await client('access.audit.list', {
+    actions: ['user.update', 'user.create'],
+    query: 'budi',
+    cursor: 'k 1',
+  });
   expect(fetchMock.mock.calls[0]?.[0]).toBe(
-    '/api/v1/audit-logs?action=user.update&query=budi&cursor=k+1',
+    '/api/v1/audit-logs?actions=user.update%2Cuser.create&query=budi&cursor=k+1',
   );
 });

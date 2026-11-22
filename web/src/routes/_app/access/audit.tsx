@@ -3,9 +3,9 @@ import { keepPreviousData, useInfiniteQuery, useSuspenseQuery } from '@tanstack/
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { z } from 'zod';
-import { FilterBar, FilterChip } from '@/components/page/filter-bar';
+import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
-import { Select } from '@/components/select';
+import { MultiSelect } from '@/components/select';
 import {
   Sheet,
   SheetContent,
@@ -31,9 +31,16 @@ import { can, requirePermission } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 
 const auditSearchSchema = z.object({
+  /** Aksi yang disaring (banyak nilai = salah satu dari). */
+  actions: z.array(z.string().max(100)).max(20).optional().catch(undefined),
+  /** Satu aksi: param tunggal lama yang masih diterima; dibaca sebagai `actions`. */
   action: z.string().optional().catch(undefined),
   q: z.string().optional().catch(undefined),
 });
+
+/** Aksi yang berlaku: param jamak, atau param tunggal lama sebagai daftar satu nilai. */
+const actionsOf = (search: z.infer<typeof auditSearchSchema>): string[] =>
+  search.actions ?? (search.action ? [search.action] : []);
 
 export const Route = createFileRoute('/_app/access/audit')({
   validateSearch: (search: Record<string, unknown>) => auditSearchSchema.parse(search),
@@ -44,7 +51,7 @@ export const Route = createFileRoute('/_app/access/audit')({
   loader: async ({ context, location }) => {
     const search = auditSearchSchema.parse(location.search);
     void context.queryClient.prefetchInfiniteQuery(
-      auditInfiniteQueryOptions({ action: search.action, query: search.q }),
+      auditInfiniteQueryOptions({ actions: actionsOf(search), query: search.q }),
     );
     await Promise.all([
       context.queryClient.ensureQueryData(rolesQueryOptions()),
@@ -54,22 +61,20 @@ export const Route = createFileRoute('/_app/access/audit')({
   component: AuditPage,
 });
 
-const ACTION_OPTIONS = [
-  { value: '', label: 'Semua aksi' },
-  ...Object.entries(AUDIT_ACTION_LABELS)
-    .map(([value, label]) => ({ value, label }))
-    .sort((a, b) => a.label.localeCompare(b.label, 'id')),
-];
+const ACTION_OPTIONS = Object.entries(AUDIT_ACTION_LABELS)
+  .map(([value, label]) => ({ value, label }))
+  .sort((a, b) => a.label.localeCompare(b.label, 'id'));
 
 function AuditPage() {
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const me = useMe();
+  const actions = actionsOf(search);
   const deletedNames = useDeletedNames(can(me, 'access', 'manage'));
   const { data: roles } = useSuspenseQuery(rolesQueryOptions());
   const { data: locations } = useSuspenseQuery(locationsQueryOptions());
   const auditQuery = useInfiniteQuery({
-    ...auditInfiniteQueryOptions({ action: search.action, query: search.q }),
+    ...auditInfiniteQueryOptions({ actions, query: search.q }),
     placeholderData: keepPreviousData,
   });
   const entries = auditQuery.data?.pages.flatMap((page) => page.entries) ?? [];
@@ -91,8 +96,7 @@ function AuditPage() {
     ...deletedNames.locations,
     ...locations.map((l) => [l.id, l.name] as const),
   ]);
-  const filtered = text.trim() !== '' || Boolean(search.action);
-  const actionLabel = search.action ? auditActionLabel(search.action) : null;
+  const filtered = text.trim() !== '' || actions.length > 0;
   return (
     <>
       <ListPage
@@ -113,23 +117,28 @@ function AuditPage() {
           >
             <FilterChip
               label="Aksi"
-              display={actionLabel}
+              display={multiFilterDisplay(actions.map(auditActionLabel))}
               onClear={() =>
                 void navigate({
-                  search: (prev) => ({ ...prev, action: undefined }),
+                  search: (prev) => ({ ...prev, actions: undefined, action: undefined }),
                   replace: true,
                 })
               }
             >
-              <Select
+              <MultiSelect
                 id="audit-filter-action"
                 label="Filter aksi"
                 hideLabel
+                placeholder="Semua aksi"
                 options={ACTION_OPTIONS}
-                value={search.action ?? ''}
+                value={actions}
                 onValueChange={(next) =>
                   void navigate({
-                    search: (prev) => ({ ...prev, action: next || undefined }),
+                    search: (prev) => ({
+                      ...prev,
+                      actions: next.length > 0 ? next : undefined,
+                      action: undefined,
+                    }),
                     replace: true,
                   })
                 }
