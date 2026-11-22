@@ -19,6 +19,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   Reflect.deleteProperty(window, 'scrollY');
+  window.innerWidth = 1024;
 });
 
 function renderPage(props: { pinned?: boolean } = {}) {
@@ -79,4 +80,14 @@ test('pinned tak pernah tersembunyi', () => {
   const bar = container.querySelector('[data-headroom-frame] > div') as HTMLElement;
   scrollTo(300);
   expect(bar).not.toHaveAttribute('data-hidden');
+});
+
+test('satu gerbang ponsel: h1 sr-only pada viewport < 768 px, tampil pada >= 768 px', () => {
+  window.innerWidth = 740;
+  const { unmount } = renderPage();
+  expect(screen.getByRole('heading', { level: 1 }).className).toContain('sr-only');
+  unmount();
+  window.innerWidth = 1024;
+  renderPage();
+  expect(screen.getByRole('heading', { level: 1 }).className).not.toContain('sr-only');
 });

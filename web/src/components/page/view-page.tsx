@@ -1,4 +1,5 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
+import { cn } from 'cn';
 import { Ellipsis } from 'lucide-react';
 import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import { ACTIONS, ActionButton, type ActionKind } from '@/components/action-button';
@@ -14,6 +15,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { onFormTabRequest } from '@/lib/form-tab-request';
 import { separatorBefore } from '@/lib/menu-separators';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
@@ -149,6 +151,8 @@ export function ViewPage({
   onTabChange?: (id: string) => void;
 }) {
   const desktop = useIsDesktop();
+  // SATU gerbang ponsel (viewport < 768, sama dengan judul navbar): judul tak tampil ganda pada 704-767 px.
+  const phone = useIsMobile();
   const visibleActions = (actionItems ?? []).filter((entry) => !entry.hidden);
   // Bar bawah ponsel: semua aksi bertanda `primary`; tanpa penanda, aksi pertama yang tidak bersubmenu.
   const marked = visibleActions.filter((entry) => entry.primary && !entry.submenu);
@@ -210,7 +214,9 @@ export function ViewPage({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             {/* Ponsel: judul tampak = judul navbar; h1 tetap ada bagi pembaca layar. */}
-            <h1 className="min-w-0 text-xl font-semibold break-words narrow:sr-only">{title}</h1>
+            <h1 className={cn('min-w-0 text-xl font-semibold break-words', phone && 'sr-only')}>
+              {title}
+            </h1>
             {badge}
           </div>
           {actions || (desktop && visibleActions.length > 0) ? (

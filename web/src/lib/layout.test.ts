@@ -62,6 +62,16 @@ test('rentang overlay dengan scrollbar klasik 17 px: lebar <main> terukur + scro
   expect(pageScrollbarWidth()).toBe(0);
 });
 
+test('D1: pada viewport >= VIEWPORT_MD <main> tak pernah < MAIN_MIN_WIDTH, jadi bar fixed ponsel tak pernah menimpa sidebar tersemat', () => {
+  const iconRail = 3 * 16;
+  const fullSidebar = 16 * 16;
+  // Rentang overlay: ruang samping = rel ikon. Mulai SIDEBAR_OVERLAY_BELOW sidebar tersemat memakan lebar penuh.
+  for (let viewport = VIEWPORT_MD; viewport < 2560; viewport++) {
+    const reserved = viewport < SIDEBAR_OVERLAY_BELOW ? iconRail : fullSidebar;
+    expect(viewport - reserved).toBeGreaterThanOrEqual(MAIN_MIN_WIDTH);
+  }
+});
+
 test('angka ambang 768/704 hanya didefinisikan di lib/layout (tak ada literal lain di sumber)', () => {
   const offenders = sources(SRC)
     .filter((file) => !file.endsWith(path.join('lib', 'layout.ts')))

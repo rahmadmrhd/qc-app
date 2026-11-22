@@ -1,6 +1,8 @@
+import { cn } from 'cn';
 import type { ReactNode } from 'react';
 import { ActionButton } from '@/components/action-button';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
 import { StickyActionBar } from './sticky-action-bar';
 
@@ -49,6 +51,8 @@ export function FormPage({
   hideMobileBar?: boolean;
 }) {
   const desktop = useIsDesktop();
+  // SATU gerbang ponsel (viewport < 768, sama dengan judul navbar): judul tak tampil ganda pada 704-767 px.
+  const phone = useIsMobile();
   const cancel = <ActionButton action="cancel" onClick={onCancel} disabled={submitting} />;
   const save = (
     <ActionButton
@@ -65,22 +69,32 @@ export function FormPage({
   );
   return (
     <HeadroomFrame className="gap-4">
-      <HeadroomBar tour={tour} className="pt-1 pb-1">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          {/* Ponsel: tanpa tombol kembali dan tanpa judul tampak (judul navbar; kembali = tombol sistem). */}
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h1 className="min-w-0 text-xl font-semibold break-words narrow:sr-only">{title}</h1>
-            {badge}
-          </div>
-          {desktop ? (
-            <div data-tour={actionsTour} className="flex flex-wrap items-center gap-2">
-              {cancel}
-              {extra}
-              {save}
-            </div>
-          ) : null}
+      {phone && !badge ? (
+        // Ponsel tanpa lencana: tak ada isi tampak untuk bar atas (judul = navbar, aksi di bar bawah), jadi tanpa bar
+        // ber-border/bayang yang kosong; judul tetap ada bagi pembaca layar dan target panduan `tour` tetap terpasang.
+        <div data-tour={tour} className="sr-only">
+          <h1>{title}</h1>
         </div>
-      </HeadroomBar>
+      ) : (
+        <HeadroomBar tour={tour} className="pt-1 pb-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {/* Ponsel: tanpa tombol kembali dan tanpa judul tampak (judul navbar; kembali = tombol sistem). */}
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h1 className={cn('min-w-0 text-xl font-semibold break-words', phone && 'sr-only')}>
+                {title}
+              </h1>
+              {badge}
+            </div>
+            {desktop ? (
+              <div data-tour={actionsTour} className="flex flex-wrap items-center gap-2">
+                {cancel}
+                {extra}
+                {save}
+              </div>
+            ) : null}
+          </div>
+        </HeadroomBar>
+      )}
       <div className="min-w-0">{children}</div>
       {desktop || hideMobileBar ? null : (
         // Ponsel: Batal + Simpan pindah ke bar bawah `fixed` (Simpan lebih lebar).

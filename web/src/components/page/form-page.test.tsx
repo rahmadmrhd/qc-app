@@ -1,10 +1,14 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, test, vi } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { mockMatchMedia } from '@/test/match-media';
 import { FormPage } from './form-page';
 import { FormSection } from './form-section';
+
+afterEach(() => {
+  window.innerWidth = 1024;
+});
 
 function renderPage(props: Partial<Parameters<typeof FormPage>[0]> = {}, onSubmit = vi.fn()) {
   render(
@@ -86,6 +90,7 @@ test('FormSection menyusun kisi dua kolom atau satu', () => {
 });
 
 test('ponsel: Batal + Simpan pindah ke bar bawah fixed; tanpa tombol kembali dan judul h1 hanya untuk pembaca layar', async () => {
+  window.innerWidth = 360;
   const media = mockMatchMedia(false);
   const onCancel = vi.fn();
   const onSubmit = renderPage({ onCancel });
@@ -97,7 +102,7 @@ test('ponsel: Batal + Simpan pindah ke bar bawah fixed; tanpa tombol kembali dan
   expect(onSubmit).toHaveBeenCalledTimes(1);
   expect(bar.className).toContain('fixed');
   expect(screen.queryByRole('button', { name: 'Kembali' })).toBeNull();
-  expect(screen.getByRole('heading', { level: 1 }).className).toContain('narrow:sr-only');
+  expect(screen.getByRole('heading', { level: 1 }).closest('.sr-only')).not.toBeNull();
   await userEvent.click(within(bar).getByRole('button', { name: 'Batal' }));
   expect(onCancel).toHaveBeenCalledTimes(1);
   media.restore();
@@ -149,5 +154,69 @@ test('ponsel: target panduan tetap ada (tour di bar judul; actionsTour dan saveT
   );
   // Satu pembungkus aksi saja yang dirender (bukan juga di bar judul): target panduan tak ganda.
   expect(container.querySelectorAll('[data-tour="aksi"]')).toHaveLength(1);
+  media.restore();
+});
+
+test('ponsel tanpa lencana: tanpa bar headroom kosong ber-border/bayang; target tour tetap terpasang', () => {
+  window.innerWidth = 360;
+  const media = mockMatchMedia(false);
+  const { container } = render(
+    <TooltipProvider>
+      <FormPage formId="f" title="Tambah" tour="judul" onCancel={() => undefined}>
+        <form id="f" />
+      </FormPage>
+    </TooltipProvider>,
+  );
+  // Tak ada bar yang menempel (sticky) di bawah header aplikasi.
+  expect(container.querySelector('[data-headroom-frame] .sticky')).toBeNull();
+  const target = container.querySelector('[data-tour="judul"]');
+  expect(target).not.toBeNull();
+  expect(target?.className).toContain('sr-only');
+  expect(screen.getByRole('heading', { level: 1, name: 'Tambah' })).toBeInTheDocument();
+  media.restore();
+});
+
+test('ponsel dengan lencana: bar atas tetap tampil memuat lencana', () => {
+  window.innerWidth = 360;
+  const media = mockMatchMedia(false);
+  const { container } = render(
+    <TooltipProvider>
+      <FormPage
+        formId="f"
+        title="Ubah"
+        badge={<span>Nonaktif</span>}
+        tour="judul"
+        onCancel={() => undefined}
+      >
+        <form id="f" />
+      </FormPage>
+    </TooltipProvider>,
+  );
+  expect(container.querySelector('[data-headroom-frame] .sticky')).not.toBeNull();
+  expect(screen.getByText('Nonaktif')).toBeVisible();
+  media.restore();
+});
+
+test('satu gerbang ponsel: pada 704-767 px (main lebar, viewport ponsel) h1 sr-only; di >= 768 px h1 tampil', () => {
+  const media = mockMatchMedia(true); // lebar <main> cukup untuk tata letak lebar
+  window.innerWidth = 740;
+  const { unmount } = render(
+    <TooltipProvider>
+      <FormPage formId="f" title="Tambah" badge={<span>b</span>} onCancel={() => undefined}>
+        <form id="f" />
+      </FormPage>
+    </TooltipProvider>,
+  );
+  expect(screen.getByRole('heading', { level: 1 }).className).toContain('sr-only');
+  unmount();
+  window.innerWidth = 1024;
+  render(
+    <TooltipProvider>
+      <FormPage formId="f" title="Tambah" badge={<span>b</span>} onCancel={() => undefined}>
+        <form id="f" />
+      </FormPage>
+    </TooltipProvider>,
+  );
+  expect(screen.getByRole('heading', { level: 1 }).className).not.toContain('sr-only');
   media.restore();
 });

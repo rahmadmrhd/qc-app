@@ -1,6 +1,8 @@
+import { cn } from 'cn';
 import { type ReactNode, useState } from 'react';
 import { ActionButton, type ActionKind } from '@/components/action-button';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { BulkActiveContext } from './bulk-active';
 import { Fab } from './fab';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
@@ -62,6 +64,8 @@ function ListPageInner({
   pinned,
 }: ListPageProps) {
   const desktop = useIsDesktop();
+  // SATU gerbang ponsel (viewport < 768, sama dengan judul navbar): judul tak tampil ganda pada 704-767 px.
+  const phone = useIsMobile();
   const [bulkActive, setBulkActive] = useState(false);
   const selectMode = useSelectMode();
   const selectActive = bulkActive || selectMode !== null;
@@ -80,7 +84,7 @@ function ListPageInner({
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
             {/* Ponsel: judul tampak = judul navbar; h1 tetap ada bagi pembaca layar. */}
-            <h1 className="text-xl font-semibold narrow:sr-only">{title}</h1>
+            <h1 className={cn('text-xl font-semibold', phone && 'sr-only')}>{title}</h1>
             {count ? (
               <span role="status" className="text-sm text-muted-foreground">
                 {count}

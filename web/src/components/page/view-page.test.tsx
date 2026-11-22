@@ -14,6 +14,7 @@ import { DetailList, ViewMeta, ViewPage, ViewSection } from './view-page';
 
 afterEach(() => {
   Reflect.deleteProperty(window, 'matchMedia');
+  window.innerWidth = 1024;
 });
 
 async function renderInRouter(element: ReactNode) {
@@ -156,6 +157,7 @@ test('actionItems di desktop: semua aksi jadi tombol di bar judul, tanpa bar baw
 });
 
 test('actionItems di ponsel: aksi utama di bar bawah, sisanya di menu "Aksi lainnya"', async () => {
+  window.innerWidth = 360;
   mockMatchMedia(false);
   const onEdit = vi.fn();
   const onDelete = vi.fn();
@@ -166,7 +168,7 @@ test('actionItems di ponsel: aksi utama di bar bawah, sisanya di menu "Aksi lain
   expect(bar.className).toContain('fixed');
   // Aksi utama (Ubah) berwarna primary solid, bukan outline.
   expect(within(bar).getByRole('button', { name: 'Ubah' }).className).toContain('bg-primary');
-  expect(screen.getByRole('heading', { level: 1 }).className).toContain('narrow:sr-only');
+  expect(screen.getByRole('heading', { level: 1 }).className).toContain('sr-only');
   expect(within(bar).queryByRole('button', { name: 'Hapus' })).toBeNull();
   await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Hapus' }));
@@ -300,4 +302,15 @@ test('ponsel: dua aksi bersubmenu berurutan dipisah satu garis dan induk nonakti
   const [pdfA] = within(menu).getAllByRole('menuitem', { name: /PDF/ });
   expect(pdfA).toHaveAttribute('aria-disabled', 'true');
   expect(within(menu).getAllByText('Belum siap').length).toBeGreaterThan(0);
+});
+
+test('satu gerbang ponsel: h1 sr-only pada viewport < 768 walau lebar <main> cukup (704-767 px); tampil di >= 768 px', () => {
+  mockMatchMedia(true);
+  window.innerWidth = 740;
+  const { unmount } = render(<ViewPage title="X" />);
+  expect(screen.getByRole('heading', { level: 1 }).className).toContain('sr-only');
+  unmount();
+  window.innerWidth = 1024;
+  render(<ViewPage title="X" />);
+  expect(screen.getByRole('heading', { level: 1 }).className).not.toContain('sr-only');
 });
