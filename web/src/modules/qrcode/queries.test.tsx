@@ -210,6 +210,20 @@ test('refreshQrDesign memuat konfigurasi terbaru dan memasangnya ke daftar dan d
   expect(client.getQueryData(qrKeys.one('a'))).toEqual(fresh);
 });
 
+test('refreshQrDesign: konfigurasi yang ternyata terhapus keluar dari daftar hidup (DTO tetap dikembalikan dan dipasang ke detail)', async () => {
+  client.setQueryData(qrKeys.list, [design('a', 'A', 't'), design('b', 'B', 't')]);
+  const gone = {
+    ...design('a', 'A', 't'),
+    deleted: { deletedAt: '2026-11-22T00:00:00.000Z', deletedBy: 'x@y.com' },
+  } as unknown as QrDesignDto;
+  apiMock.mockResolvedValue(gone);
+  expect(await refreshQrDesign(client, 'a')).toEqual(gone);
+  expect((client.getQueryData(qrKeys.list) as QrDesignDto[]).map((entry) => entry.id)).toEqual([
+    'b',
+  ]);
+  expect(client.getQueryData(qrKeys.one('a'))).toEqual(gone);
+});
+
 test('unggah PDF: onUploadProgress diteruskan ke api sebagai opsi panggilan, bukan sebagai input', async () => {
   apiMock.mockResolvedValue({ id: 'd1' });
   const onUploadProgress = vi.fn();

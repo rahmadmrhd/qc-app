@@ -206,6 +206,55 @@ test('galat basi: muat ulang lalu ulang SEKALI dengan updatedAt baru; basi lagi 
   expect(result.current.outcome).toMatchObject({ doneIds: ['a'], failedIds: ['b'] });
 });
 
+test('job gagal basi di langkah komit: DTO dimuat ulang tanpa mengulang job, lanjut ke berikutnya', async () => {
+  const list = register(design('a'), design('b'));
+  mocks.mutate.mockImplementation(async (input: { id: string }) => {
+    // `awaitJob` melempar kegagalan job sebagai INTERNAL tanpa respons HTTP (requestId '-').
+    if (input.id === 'a') throw new ApiError('INTERNAL', 'Konfigurasi diubah selama ekspor', '-');
+  });
+  const { result } = renderHook(() => useBulkQrExport(), { wrapper });
+  await act(async () => {
+    await result.current.start(list, '');
+  });
+  // Job a tidak diulang (satu kiriman); cache dimuat ulang sekali sebelum kiriman dan sekali setelah gagal.
+  expect(
+    mocks.mutate.mock.calls.filter((args) => (args[0] as { id: string }).id === 'a'),
+  ).toHaveLength(1);
+  expect(mocks.refresh.mock.calls.filter((args) => args[1] === 'a')).toHaveLength(2);
+  expect(result.current.outcome).toMatchObject({ doneIds: ['b'], failedIds: ['a'] });
+  expect(result.current.rows.find((row) => row.id === 'a')?.message).toContain(
+    'Konfigurasi diubah selama ekspor',
+  );
+});
+
+test('galat non-basi (mis. Drive): tidak memuat ulang lagi dan tidak mengulang job', async () => {
+  const list = register(design('a'));
+  mocks.mutate.mockRejectedValue(new ApiError('VALIDATION', 'Nama sudah dipakai', 'r2'));
+  const { result } = renderHook(() => useBulkQrExport(), { wrapper });
+  await act(async () => {
+    await result.current.start(list, '');
+  });
+  expect(mocks.mutate).toHaveBeenCalledTimes(1);
+  expect(mocks.refresh).toHaveBeenCalledTimes(1);
+});
+
+test('pemuatan ulang pasca-gagal yang juga gagal tidak menimpa galat asli', async () => {
+  const list = register(design('a'));
+  let refreshCalls = 0;
+  mocks.refresh.mockImplementation(async (_client: unknown, id: string) => {
+    refreshCalls += 1;
+    if (refreshCalls > 1) throw new Error('jaringan putus');
+    return designs.get(id);
+  });
+  mocks.mutate.mockRejectedValue(new ApiError('INTERNAL', 'job gagal', '-'));
+  const { result } = renderHook(() => useBulkQrExport(), { wrapper });
+  await act(async () => {
+    await result.current.start(list, '');
+  });
+  expect(result.current.rows[0]?.message).toContain('job gagal');
+  expect(result.current.outcome).toMatchObject({ failedIds: ['a'] });
+});
+
 test('alasan hanya dikirim untuk konfigurasi yang melahirkan versi baru', async () => {
   const list = register(design('first'), newVersion('ver'));
   const { result } = renderHook(() => useBulkQrExport(), { wrapper });
@@ -231,6 +280,24 @@ test('klasifikasi ulang setelah memuat ulang: sudah terbaru dilewati tanpa menge
   expect(mocks.mutate).not.toHaveBeenCalled();
   expect(mocks.prepare).not.toHaveBeenCalled();
   expect(result.current.outcome).toMatchObject({ skippedIds: ['a'], doneIds: [] });
+});
+
+test('terhapus saat gilirannya tiba: dilewati dengan alasan, tanpa menyiapkan berkas atau mengirim', async () => {
+  const list = register(design('a'), design('b'));
+  mocks.refresh.mockImplementation(async (_client: unknown, id: string) =>
+    id === 'a'
+      ? design('a', { deleted: { deletedAt: '2026-11-22T00:00:00.000Z', deletedBy: 'x@y.com' } })
+      : designs.get(id),
+  );
+  const { result } = renderHook(() => useBulkQrExport(), { wrapper });
+  await act(async () => {
+    await result.current.start(list, '');
+  });
+  expect(idsOfCalls()).toEqual(['b']);
+  expect(result.current.outcome).toMatchObject({ skippedIds: ['a'], doneIds: ['b'] });
+  expect(result.current.rows.find((row) => row.id === 'a')?.message).toBe(
+    'Konfigurasi sudah dihapus',
+  );
 });
 
 test('label berubah menjadi butuh alasan padahal tak ada alasan: baris gagal, tidak mengirim', async () => {

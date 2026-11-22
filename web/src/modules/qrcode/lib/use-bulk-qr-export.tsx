@@ -7,7 +7,7 @@ import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
 import { refreshQrDesign, useExportQrDesign } from '../queries';
 import { classifyForExport } from './bulk-export-plan';
-import { isStaleExportError } from './export-error';
+import { isStaleExportError, shouldRefreshAfterExportError } from './export-error';
 import { prepareExportFiles } from './prepare-export';
 
 /** Maks. konfigurasi yang diekspor dalam satu putaran (keputusan pemilik 2026-11-22, spek revisi lanjutan 2 R7). */
@@ -154,6 +154,11 @@ export function useBulkQrExport(): BulkQrExport {
         }
       }
     } catch (error) {
+      // Gagal basi di langkah komit (job server) tidak diulang, tetapi cache memegang DTO lama: muat ulang agar daftar,
+      // detail, dan ringkasan benar. Pemuatan ulang yang gagal tak boleh menimpa galat aslinya.
+      if (shouldRefreshAfterExportError(error)) {
+        await refreshQrDesign(queryClient, id).catch(() => undefined);
+      }
       const message = describeError(error);
       return isUnavailable(error)
         ? { status: 'unavailable', message }

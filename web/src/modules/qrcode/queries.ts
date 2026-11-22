@@ -148,7 +148,9 @@ const compareDesigns = (a: QrDesignDto, b: QrDesignDto) =>
 
 /** Hasil simpan/ekspor dipasang langsung ke cache daftar dan detail (tanpa memuat ulang dari server). */
 function applyDesign(queryClient: QueryClient, saved: QrDesignDto): void {
-  upsertInList(queryClient, qrKeys.list, saved, compareDesigns);
+  // Konfigurasi yang ternyata sudah terhapus tak boleh masuk daftar hidup (barisnya akan tampil dan dapat dipilih).
+  if (saved.deleted) removeFromList<QrDesignDto>(queryClient, qrKeys.list, saved.id);
+  else upsertInList(queryClient, qrKeys.list, saved, compareDesigns);
   queryClient.setQueryData(qrKeys.one(saved.id), saved);
 }
 

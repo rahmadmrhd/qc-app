@@ -35,12 +35,23 @@ export function useChipDraft<T>(
   const flush = useCallback(() => {
     const pending = draftRef.current;
     if (!pending) return;
+    // Hanya penampung draf yang dikosongkan; draf yang TAMPIL tetap sampai `value` menyusul (efek di bawah), supaya
+    // pilihan tidak sekilas kembali ke nilai lama selama lembar/popover beranimasi menutup dan navigasi tertunda.
     draftRef.current = null;
-    setDraft(null);
-    if (!sameValue(pending.v, valueRef.current)) commitRef.current(pending.v);
+    if (sameValue(pending.v, valueRef.current)) setDraft(null);
+    else commitRef.current(pending.v);
   }, []);
 
   useEffect(() => chip?.register(flush), [chip, flush]);
+
+  // Draf yang tampil dibuang begitu `value` berubah: sama dengan draf = komit sudah sampai; beda = berubah dari luar
+  // (draf basi tak boleh menutupi nilai baru).
+  const lastValue = useRef(value);
+  useEffect(() => {
+    if (sameValue(lastValue.current, value)) return;
+    lastValue.current = value;
+    if (draftRef.current === null) setDraft(null);
+  }, [value]);
 
   const change = useCallback((next: T) => {
     draftRef.current = { v: next };
