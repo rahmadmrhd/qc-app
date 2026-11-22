@@ -8,6 +8,7 @@ import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
+import { ListFrameContext } from '@/components/page/list-frame';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { BulkBar } from './bulk-bar';
 import { type DataColumn, DataTable } from './data-table';
@@ -250,12 +251,97 @@ test('ponsel: memuat menampilkan kartu kerangka; galat awal tetap alert', () => 
   expect(screen.getByRole('alert')).toBeInTheDocument();
 });
 
-test('desktop: tabel tanpa pembungkus overflow-x-auto agar sticky bekerja', () => {
+test('desktop: tabel di dalam pembungkus gulir dua sumbu yang dapat difokus dan bernama', () => {
   mockWidth(true);
   render(<Harness />);
-  expect(screen.getByRole('table', { name: 'Merk' }).parentElement?.className).not.toContain(
-    'overflow-x-auto',
+  const scroller = screen.getByRole('table', { name: 'Merk' }).parentElement as HTMLElement;
+  expect(scroller.dataset.slot).toBe('table-scroller');
+  expect(scroller.className).toContain('overflow-auto');
+  expect(scroller).toHaveAttribute('tabindex', '0');
+  expect(scroller).toBe(screen.getByRole('region', { name: 'Merk (dapat digulir)' }));
+});
+
+test('desktop: header menempel di atas pembungkus gulir (top-0), bukan di viewport', () => {
+  mockWidth(true);
+  render(<Harness />);
+  const headers = within(screen.getByRole('table', { name: 'Merk' })).getAllByRole('columnheader');
+  for (const header of headers) {
+    expect(header.className).toContain('top-0');
+    expect(header.className).not.toContain('headroom-offset');
+  }
+});
+
+test('desktop: kolom checkbox dan Aksi menempel di kiri; Aksi bergeser selebar checkbox', () => {
+  mockWidth(true);
+  render(<Harness />);
+  const table = screen.getByRole('table', { name: 'Merk' });
+  const headers = within(table).getAllByRole('columnheader');
+  expect(headers[0]?.className).toContain('left-0');
+  expect(headers[1]?.className).toContain('left-10');
+  expect(headers[2]?.className).not.toContain('left-');
+  const cells = within(screen.getAllByRole('row')[1] as HTMLElement).getAllByRole('cell');
+  expect(cells[0]?.className).toContain('sticky');
+  expect(cells[0]?.className).toContain('left-0');
+  expect(cells[1]?.className).toContain('left-10');
+  expect(cells[2]?.className).not.toContain('sticky');
+  // Latar sel menempel opak (bukan bg-muted/50 beralfa), kolom lain tak tembus saat tergulir.
+  expect(cells[0]?.className).toContain('bg-background');
+});
+
+test('desktop tanpa checkbox: Aksi menempel di left-0', () => {
+  mockWidth(true);
+  function ActionsOnly() {
+    return (
+      <TooltipProvider>
+        <DataTable
+          rows={ROWS}
+          rowKey={(row) => row.id}
+          columns={COLUMNS}
+          label="Merk"
+          selectLabel={(row) => row.name}
+          actions={() => [{ id: 'edit', action: 'edit', label: 'Ubah', onSelect: () => undefined }]}
+        />
+      </TooltipProvider>
+    );
+  }
+  render(<ActionsOnly />);
+  const headers = within(screen.getByRole('table', { name: 'Merk' })).getAllByRole('columnheader');
+  expect(headers[0]).toHaveTextContent('Aksi');
+  expect(headers[0]?.className).toContain('left-0');
+});
+
+test('fit: di luar ListPage bawaannya content (tanpa batas tinggi); fit="viewport" memberi max-height', () => {
+  mockWidth(true);
+  const { unmount } = render(<Harness />);
+  const content = screen.getByRole('table', { name: 'Merk' }).parentElement as HTMLElement;
+  expect(content.dataset.fit).toBe('content');
+  expect(content.style.maxHeight).toBe('');
+  unmount();
+  render(
+    <DataTable
+      rows={ROWS}
+      rowKey={(row) => row.id}
+      columns={COLUMNS}
+      label="Merk"
+      fit="viewport"
+      hasMore
+    />,
   );
+  const viewport = screen.getByRole('table', { name: 'Merk' }).parentElement as HTMLElement;
+  expect(viewport.dataset.fit).toBe('viewport');
+  expect(viewport.style.maxHeight).toContain('100dvh');
+  // Tombol "Muat lebih banyak" di bawah pembungkus ikut dikurangkan.
+  expect(viewport.style.maxHeight).toContain('- 48px -');
+});
+
+test('di dalam ListPage tabel mengisi viewport tanpa menyebut fit', () => {
+  mockWidth(true);
+  render(
+    <ListFrameContext.Provider value>
+      <DataTable rows={ROWS} rowKey={(row) => row.id} columns={COLUMNS} label="Merk" />
+    </ListFrameContext.Provider>,
+  );
+  expect(screen.getByRole('table', { name: 'Merk' }).parentElement?.dataset.fit).toBe('viewport');
 });
 
 test('selection.remove membuang hanya id itu', async () => {
