@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { mockMatchMedia } from '@/test/match-media';
+import { clickMoreAction, hasNoMoreActions, moreActionNames } from '@/test/more-actions';
 import { PageContainer } from './page-container';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from './view-page';
 
@@ -149,12 +150,50 @@ const ITEMS = (onEdit: () => void, onDelete: () => void) => [
   { id: 'delete', action: 'delete' as const, onSelect: onDelete },
 ];
 
-test('actionItems di desktop: semua aksi jadi tombol di bar judul, tanpa bar bawah', () => {
+test('actionItems di desktop: aksi utama jadi tombol di bar judul, sisanya di menu "Aksi lainnya", tanpa bar bawah', async () => {
   mockMatchMedia(true);
-  render(<ViewPage title="X" actionItems={ITEMS(vi.fn(), vi.fn())} />);
+  const onDelete = vi.fn();
+  render(<ViewPage title="X" actionItems={ITEMS(vi.fn(), onDelete)} />);
   expect(screen.getByRole('button', { name: 'Ubah' })).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Hapus' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
   expect(screen.queryByRole('region', { name: 'Aksi halaman' })).toBeNull();
+  await clickMoreAction('Hapus');
+  expect(onDelete).toHaveBeenCalledTimes(1);
+});
+
+test('aksi utama dibatasi tiga: yang bertanda primary lebih dari tiga sisanya masuk menu (desktop)', async () => {
+  mockMatchMedia(true);
+  const entry = (id: string, label: string) => ({
+    id,
+    action: 'edit' as const,
+    label,
+    primary: true,
+    onSelect: vi.fn(),
+  });
+  render(
+    <ViewPage
+      title="X"
+      actionItems={[entry('a', 'Satu'), entry('b', 'Dua'), entry('c', 'Tiga'), entry('d', 'Empat')]}
+    />,
+  );
+  for (const name of ['Satu', 'Dua', 'Tiga']) {
+    expect(screen.getByRole('button', { name })).toBeInTheDocument();
+  }
+  expect(screen.queryByRole('button', { name: 'Empat' })).toBeNull();
+  expect(await moreActionNames()).toEqual(['Empat']);
+});
+
+test('tanpa sisa aksi tidak ada tombol "Aksi lainnya"', () => {
+  mockMatchMedia(true);
+  render(
+    <ViewPage
+      title="X"
+      actionItems={[
+        { id: 'edit', action: 'edit', label: 'Ubah', primary: true, onSelect: vi.fn() },
+      ]}
+    />,
+  );
+  expect(hasNoMoreActions()).toBe(true);
 });
 
 test('actionItems di ponsel: aksi utama di bar bawah, sisanya di menu "Aksi lainnya"', async () => {
@@ -227,9 +266,13 @@ test('desktop: aksi bersubmenu = satu tombol dengan satu dropdown berisi butirny
   const onPdf = vi.fn();
   const onPng = vi.fn();
   render(
-    <ViewPage title="X" actionItems={[ITEMS(vi.fn(), vi.fn())[0] as never, UNDUH(onPdf, onPng)]} />,
+    <ViewPage
+      title="X"
+      actionItems={[ITEMS(vi.fn(), vi.fn())[0] as never, { ...UNDUH(onPdf, onPng), primary: true }]}
+    />,
   );
   expect(screen.queryByRole('button', { name: 'Unduh PDF' })).toBeNull();
+  // Entri bersubmenu bertanda `primary` tampil sebagai satu tombol dengan satu dropdown (hanya desktop).
   await userEvent.click(screen.getByRole('button', { name: 'Unduh' }));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Unduh PDF' }));
   expect(onPdf).toHaveBeenCalledTimes(1);
@@ -350,7 +393,7 @@ test('actionsTour: data-tour pada pembungkus aksi bar judul (desktop)', () => {
   const wrapper = document.querySelector('[data-tour="serial-actions"]') as HTMLElement;
   expect(wrapper).not.toBeNull();
   expect(within(wrapper).getByRole('button', { name: 'Ubah' })).toBeInTheDocument();
-  expect(within(wrapper).getByRole('button', { name: 'Hapus' })).toBeInTheDocument();
+  expect(within(wrapper).getByRole('button', { name: 'Aksi lainnya' })).toBeInTheDocument();
 });
 
 test('actionsTour: data-tour juga ada di bar bawah ponsel dan membungkus tombol utama dan menu', () => {

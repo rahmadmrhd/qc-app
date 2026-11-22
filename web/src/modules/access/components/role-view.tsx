@@ -74,6 +74,7 @@ export function RoleView({
           ? [
               {
                 id: 'restore',
+                primary: true,
                 action: 'restore',
                 busy: restorePending,
                 hidden: !(canManage && onRestore),
@@ -83,6 +84,7 @@ export function RoleView({
           : [
               {
                 id: 'edit',
+                primary: true,
                 action: 'edit',
                 label: 'Ubah',
                 hidden: !(canManage && onEdit),

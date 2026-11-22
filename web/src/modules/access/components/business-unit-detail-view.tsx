@@ -52,6 +52,7 @@ export function BusinessUnitDetailView({
           ? [
               {
                 id: 'restore',
+                primary: true,
                 action: 'restore',
                 busy: restorePending,
                 hidden: !(canManage && onRestore),
@@ -61,6 +62,7 @@ export function BusinessUnitDetailView({
           : [
               {
                 id: 'edit',
+                primary: true,
                 action: 'edit',
                 label: 'Ubah',
                 hidden: !(canManage && onEdit),
@@ -68,6 +70,7 @@ export function BusinessUnitDetailView({
               },
               {
                 id: 'status',
+                primary: true,
                 action: businessUnit.status === 'active' ? 'deactivate' : 'activate',
                 busy: statusPending,
                 hidden: !(canManage && onToggleStatus),

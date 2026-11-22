@@ -219,6 +219,7 @@ export function PostelView({
               {
                 id: 'restore',
                 action: 'restore',
+                primary: true,
                 busy: restorePending,
                 hidden: !(canEdit && onRestore),
                 onSelect: () => onRestore?.(),
@@ -229,6 +230,7 @@ export function PostelView({
                 id: 'edit',
                 action: 'edit',
                 label: 'Ubah',
+                primary: true,
                 hidden: !(canEdit && onEdit),
                 onSelect: () => onEdit?.(),
               },

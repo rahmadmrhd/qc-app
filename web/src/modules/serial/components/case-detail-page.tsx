@@ -20,6 +20,7 @@ import {
 } from '../queries';
 import { actButtonSpecs } from './act-buttons';
 import { SerialStatusBadge } from './serial-status-badge';
+import { caseStepperState, SerialStepper } from './serial-stepper';
 import { Timeline } from './timeline';
 
 const OUTCOME_LABEL = { good: 'Lolos', broken: 'Rusak' } as const;
@@ -154,8 +155,8 @@ function CaseTimeline({ report }: { report: SerialCaseDetailDto }) {
 /**
  * View laporan rusak (kit CRUD, `ViewPage` tanpa tab): ringkasan (nomor, Serial Number bertautan, item, BU, pelapor,
  * dibuka, ditutup beserta penutup, hasil, status Serial kini, posisi, durasi penanganan) dan linimasa kejadian laporan
- * itu. Laporan TERBUKA punya aksi di header (`useSerialActions`: Tempel stiker dan Update ▾; tanpa Lapor rusak dan Ubah
- * data, yang tetap di detail Serial); laporan selesai tanpa aksi. `SerialDto` induk dimuat hanya bila ada aksi yang
+ * itu. Laporan TERBUKA punya aksi di header (`useSerialActions`: aksi utama menurut status, mis. Cek ulang dan Kirim ke
+ * servis, sisanya di menu "Aksi lainnya"; tanpa Lapor rusak dan Ubah data, yang tetap di detail Serial); laporan selesai tanpa aksi. `SerialDto` induk dimuat hanya bila ada aksi yang
  * boleh dikerjakan pengguna. Laporan tak terbaca/terhapus = "tidak ditemukan".
  */
 export function CaseDetailPage({ caseId, onBack }: CaseDetailPageProps) {
@@ -178,6 +179,7 @@ export function CaseDetailPage({ caseId, onBack }: CaseDetailPageProps) {
   });
   const actions = useSerialActions({
     me,
+    context: 'case',
     subject: actionable && !serialQuery.isError ? subject : undefined,
     serial: serialQuery.data?.serial,
     pending: serialQuery.isPending,
@@ -226,6 +228,7 @@ export function CaseDetailPage({ caseId, onBack }: CaseDetailPageProps) {
         actionItems={actions.items}
         aside={<ViewMeta createdBy={report.reporter} />}
       >
+        <SerialStepper {...caseStepperState(report)} />
         <ViewSection title="Ringkasan">
           <Summary report={report} />
         </ViewSection>

@@ -11,6 +11,7 @@ vi.mock('@/modules/files/queries', () => ({
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
 
+import { clickMoreAction, hasNoMoreActions, moreActionNames } from '@/test/more-actions';
 import { resetOutboxEnv } from '@/test/outbox-env';
 import { enqueueCheck } from '../lib/check-outbox';
 import { enqueueOutbox } from '../lib/outbox';
@@ -78,7 +79,11 @@ test('Ubah dan Batalkan sesuai izin; Batalkan meminta konfirmasi', async () => {
   const h = setup();
   await userEvent.click(screen.getByRole('button', { name: 'Ubah' }));
   expect(h.onEdit).toHaveBeenCalled();
-  await userEvent.click(screen.getByRole('button', { name: 'Batalkan task' }));
+  // Batalkan task bukan aksi utama: tak tampil sebagai tombol, hanya di menu "Aksi lainnya".
+  expect(screen.queryByRole('button', { name: 'Batalkan task' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Mark done' })).toBeInTheDocument();
+  expect(await moreActionNames()).toEqual(['Batalkan task']);
+  await clickMoreAction('Batalkan task');
   expect(h.onCancel).not.toHaveBeenCalled();
   const dialog = await screen.findByRole('dialog');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Batalkan task' }));
@@ -102,6 +107,7 @@ test('Dibatalkan: Buka kembali memanggil onReopen (hanya dengan handover:manage)
   const h = setup({}, makeHandover({ status: 'cancelled' }));
   await userEvent.click(screen.getByRole('button', { name: 'Buka kembali' }));
   expect(h.onReopen).toHaveBeenCalledTimes(1);
+  expect(hasNoMoreActions()).toBe(true);
   document.body.innerHTML = '';
   setup({ canCancel: false }, makeHandover({ status: 'cancelled' }));
   expect(screen.queryByRole('button', { name: 'Buka kembali' })).not.toBeInTheDocument();
@@ -185,7 +191,10 @@ const DELETED = { deletedAt: '2026-11-20T01:00:00.000Z', deletedBy: 'adm@qc.loca
 test('Hapus (handover:manage): konfirmasi lalu onDelete; berbeda dari Batalkan task', async () => {
   const onDelete = vi.fn();
   const h = setup({ canDelete: true, onDelete }, makeHandover({ status: 'done' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  expect(screen.queryByRole('button', { name: 'Hapus' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Ubah' })).toBeInTheDocument();
+  expect(await moreActionNames()).toEqual(['Hapus']);
+  await clickMoreAction('Hapus');
   expect(onDelete).not.toHaveBeenCalled();
   const dialog = await screen.findByRole('alertdialog');
   expect(within(dialog).getByText(/Berbeda dari Batalkan/)).toBeInTheDocument();
@@ -194,10 +203,11 @@ test('Hapus (handover:manage): konfirmasi lalu onDelete; berbeda dari Batalkan t
   expect(h.onCancel).not.toHaveBeenCalled();
 });
 
-test('tanpa canDelete tidak ada Hapus walau boleh Batalkan', () => {
+test('tanpa canDelete tidak ada Hapus walau boleh Batalkan', async () => {
   setup({ canDelete: false, onDelete: vi.fn() });
   expect(screen.queryByRole('button', { name: 'Hapus' })).not.toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Batalkan task' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Batalkan task' })).not.toBeInTheDocument();
+  expect(await moreActionNames()).toEqual(['Batalkan task']);
 });
 
 test('task terhapus: badge Terhapus, banner dengan pelaku, hanya Pulihkan, centang dan komentar mati', async () => {

@@ -2137,6 +2137,10 @@ export interface SerialHistoryInput {
 export interface SerialHistoryOutput {
   events: SerialEventDto[];
   nextCursor: string | null;
+  /**
+   * `all` = jumlah ENTRI pada "Semua Riwayat" (kejadian lepas satu per kejadian, tiap laporan = SATU kartu laporan);
+   * `checks`/`changes` per kejadian; `byCase` = jumlah seluruh kejadian per laporan.
+   */
   counts: { all: number; checks: number; changes: number; byCase: Record<string, number> };
 }
 export interface SerialAlertSettings {

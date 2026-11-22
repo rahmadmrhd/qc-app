@@ -39,7 +39,9 @@ const GROUPS = Object.keys(HISTORY_GROUP_LABEL) as HistoryGroup[];
  * utuh) ada di butir menu. Pilihan bersifat lokal (bukan search param). Tiap pilihan memuat `serials.history` berkursor
  * (server mengirim terbaru dulu) dengan tombol "Muat yang lebih lama". Hanya di pilihan Semua, kejadian milik satu
  * laporan diringkas menjadi SATU kartu laporan yang membuka halaman detail laporan (`/serial/reports/$caseId`);
- * Pengecekan dan Perubahan Data menampilkan tiap kejadian apa adanya (penyaring jenis kejadian, bukan ringkasan).
+ * Pengecekan dan Perubahan Data menampilkan tiap kejadian apa adanya (penyaring jenis kejadian, bukan ringkasan). Semua
+ * entri tampil terbuka tanpa pelipat riwayat lama (keputusan pemilik 2026-11-22); "Muat yang lebih lama" di atas daftar.
+ * Jumlah `all` di menu = jumlah entri yang tampil pada pilihan Semua (kartu laporan dihitung satu).
  */
 export function TimelineSection({ serial }: TimelineSectionProps) {
   const [group, setGroup] = useState<HistoryGroup>('all');
@@ -103,6 +105,7 @@ export function TimelineSection({ serial }: TimelineSectionProps) {
             key={group}
             events={events}
             markLatest={group === 'all'}
+            foldPrevious={false}
             {...(group === 'all'
               ? {
                   caseGroups: {

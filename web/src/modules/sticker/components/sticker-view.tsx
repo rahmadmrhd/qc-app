@@ -115,6 +115,7 @@ export function StickerView({
         {
           id: 'restore',
           action: 'restore',
+          primary: true,
           busy: restorePending,
           // Stiker jenis sistem dipulihkan lewat induknya (Desain QR/Postel), bukan di sini.
           hidden: !(canManage && systemKind === '' && onRestore),
@@ -126,12 +127,14 @@ export function StickerView({
           id: 'edit',
           action: 'edit',
           label: 'Ubah',
+          primary: true,
           hidden: !(canEdit && onEdit),
           onSelect: () => onEdit?.(),
         },
         {
           id: 'status',
           action: sticker.status === 'inactive' ? 'activate' : 'deactivate',
+          primary: true,
           busy: statusPending,
           hidden: !(canManage && canToggle && onToggleStatus),
           onSelect: () => onToggleStatus?.(),

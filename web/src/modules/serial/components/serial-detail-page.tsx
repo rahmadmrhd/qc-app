@@ -147,8 +147,9 @@ function Summary({ serial, events }: { serial: SerialDto; events: readonly Seria
 
 /**
  * View Serial Number (kit CRUD): tab Detail (tahap, pengiriman, ringkasan), Riwayat (linimasa dengan filter dropdown),
- * dan Foto bukti QC. Semua aksi ada di header (`useSerialActions`): Lapor rusak, Ubah data, Tempel stiker, Update ▾
- * (Kirim ke servis, Terima, Diagnosis, Cek ulang, Catatan), dan Hapus/Pulihkan (`serial: manage` pada semua BU riwayat).
+ * dan Foto bukti QC. Semua aksi ada di header (`useSerialActions`): 2-3 aksi utama menurut status (Lolos = Lapor rusak
+ * + Ubah data; Dilaporkan = Cek ulang + Kirim ke servis; selain itu Ubah data), sisanya (Tempel stiker, aksi alur,
+ * Catatan, Hapus/Pulihkan bagi `serial: manage` pada semua BU riwayat) di menu "Aksi lainnya".
  * `ProofReplaceProvider`
  * membungkus `ViewPage` supaya unggah ulang foto bermasalah (banner di luar tab, galeri di tab Foto) berbagi satu pemilik
  * dan berpindah tab tidak membatalkan penggantian yang berjalan.
@@ -169,6 +170,7 @@ export function SerialDetailPage({ serialId, onBack, tab, onTabChange }: SerialD
   const serial = detail.data?.serial;
   const actions = useSerialActions({
     me,
+    context: 'serial',
     subject: serial,
     serial,
     hidden: serial?.deleted !== undefined,

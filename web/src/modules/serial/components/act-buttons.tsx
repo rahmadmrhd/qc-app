@@ -25,7 +25,7 @@ const KIND_OF = {
   note: 'note',
 } as const;
 
-/** Urutan entri aksi di header (grup Update: aksi alur dulu, Catatan terakhir) dan dialog; Tempel stiker sesudah Cek ulang. */
+/** Urutan baku jenis aksi (`actButtonSpecs`) dan dialog; bobot dan urutan di header diatur `useSerialActions`. */
 const KIND_ORDER: readonly ActKind[] = [
   'report',
   'send',

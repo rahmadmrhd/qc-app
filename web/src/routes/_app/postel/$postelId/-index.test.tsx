@@ -17,6 +17,7 @@ import { ApiError } from '@/lib/api/api-error';
 import { meQueryKey } from '@/modules/auth/queries';
 import { makeMe } from '@/test/make-me';
 import { mockMatchMedia } from '@/test/match-media';
+import { clickMoreAction } from '@/test/more-actions';
 import { Route } from './index';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -166,7 +167,7 @@ test('?tab=riwayat membuka tab Riwayat dan memuat riwayat', async () => {
 
 test('Hapus dari View: konfirmasi menyebut jumlah item, removeBatch, kembali ke daftar, toast Dihapus + Pulihkan', async () => {
   const { router } = await mount();
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  await clickMoreAction('Hapus');
   const dialog = await screen.findByRole('alertdialog');
   expect(dialog).toHaveTextContent('Memuat 1 item');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));

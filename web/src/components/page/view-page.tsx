@@ -29,7 +29,10 @@ export interface ViewTab {
   content: ReactNode;
 }
 
-/** Aksi halaman View: tombol di bar judul (>= 768 px); di ponsel yang utama ke bar bawah, sisanya ke menu overflow. */
+/**
+ * Aksi halaman View: aksi utama (bertanda `primary`, maks. `PRIMARY_ACTIONS_MAX`) jadi tombol (desktop: bar judul;
+ * ponsel: bar bawah), sisanya masuk menu "Aksi lainnya" (⋯) di keduanya.
+ */
 export interface ViewAction {
   id: string;
   action: ActionKind;
@@ -42,8 +45,10 @@ export interface ViewAction {
   busy?: boolean;
   hidden?: boolean;
   /**
-   * Aksi utama di bar bawah ponsel (boleh lebih dari satu: tiap aksi utama jadi satu tombol di bar; bawaan: aksi
-   * pertama yang terlihat dan tidak bersubmenu).
+   * Aksi utama: tombol di bar judul (desktop) dan bar bawah (ponsel), maksimal `PRIMARY_ACTIONS_MAX` (3) menurut urutan
+   * kemunculan; yang lebih dari itu masuk menu. Tanpa penanda sama sekali: aksi pertama yang terlihat dan tidak
+   * bersubmenu. Entri bersubmenu yang bertanda `primary` hanya jadi tombol di desktop (ponsel tanpa popover bersarang:
+   * ia jadi grup datar di menu).
    */
   primary?: boolean;
   /** Label singkat di menu ponsel (bawaan: `label` lalu label bawaan jenis aksi). */
@@ -123,6 +128,74 @@ function DesktopSubmenu({ entry }: { entry: ViewAction }) {
   );
 }
 
+/** Batas aksi utama yang tampil sebagai tombol (desktop: bar judul; ponsel: bar bawah); sisanya masuk menu "Aksi lainnya". */
+export const PRIMARY_ACTIONS_MAX = 3;
+
+/**
+ * Aksi utama dari kandidat yang terlihat: yang bertanda `primary` (urut kemunculan, maksimal `PRIMARY_ACTIONS_MAX`);
+ * tanpa penanda, aksi pertama yang tidak bersubmenu. Aksi sering pakai dan berhak bagi pengguna itu diberi `primary`
+ * oleh halaman; sisanya (hapus, batalkan, kloning, dst.) sengaja di menu (keputusan pemilik 2026-11-22, K7).
+ */
+export function pickPrimaryActions(candidates: readonly ViewAction[]): ViewAction[] {
+  const marked = candidates.filter((entry) => entry.primary).slice(0, PRIMARY_ACTIONS_MAX);
+  if (marked.length > 0) return marked;
+  const first = candidates.find((entry) => !entry.submenu);
+  return first ? [first] : [];
+}
+
+/**
+ * Menu "Aksi lainnya" (tombol ⋯): aksi di luar yang utama, dipakai desktop (bar judul, menu turun) dan ponsel (bar
+ * bawah, menu naik). Tanpa submenu bersarang: entri bersubmenu menjadi grup datar (label grup, butir berlabel singkat).
+ */
+function MoreActionsMenu({
+  entries,
+  side,
+}: {
+  entries: readonly ViewAction[];
+  side: 'top' | 'bottom';
+}) {
+  if (entries.length === 0) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          color="primary"
+          size="icon"
+          aria-label="Aksi lainnya"
+        >
+          <Ellipsis aria-hidden />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" side={side}>
+        {entries.map((entry, index) => {
+          const separator = separatorBefore(entries, index) ? <DropdownMenuSeparator /> : null;
+          if (!entry.submenu) {
+            return (
+              <Fragment key={entry.id}>
+                {separator}
+                <PhoneMenuItem entry={entry} />
+              </Fragment>
+            );
+          }
+          const group = entry.submenu.filter((sub) => !sub.hidden);
+          if (group.length === 0) return null;
+          return (
+            <Fragment key={entry.id}>
+              {separator}
+              <DropdownMenuLabel>{entry.shortLabel ?? actionText(entry)}</DropdownMenuLabel>
+              {group.map((sub) => (
+                <PhoneMenuItem key={sub.id} entry={sub} parent={entry} short />
+              ))}
+            </Fragment>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /**
  * Kerangka halaman View (spek redesain 6.6; tata letak ERPNext v16, revisi lanjutan 2 R15): di tampilan lebar kerangka
  * bleed ke tepi `<main>`: bar headroom (judul + badge + aksi) dan bar tab selebar penuh, isi (batas lebar menurut
@@ -163,10 +236,11 @@ export function ViewPage({
   const phone = useIsMobile();
   const bannerHeight = useAppBannerHeight(desktop);
   const visibleActions = (actionItems ?? []).filter((entry) => !entry.hidden);
-  // Bar bawah ponsel: semua aksi bertanda `primary`; tanpa penanda, aksi pertama yang tidak bersubmenu.
-  const marked = visibleActions.filter((entry) => entry.primary && !entry.submenu);
-  const firstPlain = visibleActions.find((entry) => !entry.submenu);
-  const primaryActions = marked.length > 0 ? marked : firstPlain ? [firstPlain] : [];
+  // Aksi utama (maks. 3) jadi tombol; sisanya di menu "Aksi lainnya", di desktop maupun ponsel. Entri bersubmenu boleh
+  // menjadi aksi utama hanya di desktop (satu dropdown); ponsel tanpa popover bersarang, jadi ia masuk menu sebagai grup.
+  const primaryActions = pickPrimaryActions(
+    desktop ? visibleActions : visibleActions.filter((entry) => !entry.submenu),
+  );
   const menuActions = visibleActions.filter((entry) => !primaryActions.includes(entry));
   // Bar atas memuat aksi bila ada `actions` atau (desktop) aksi terstruktur; selain itu, di ponsel tanpa lencana, kosong.
   const topActions = Boolean(actions) || (desktop && visibleActions.length > 0);
@@ -277,7 +351,7 @@ export function ViewPage({
                     >
                       {actions}
                       {desktop
-                        ? visibleActions.map((entry) =>
+                        ? primaryActions.map((entry) =>
                             entry.submenu ? (
                               <DesktopSubmenu key={entry.id} entry={entry} />
                             ) : (
@@ -296,6 +370,7 @@ export function ViewPage({
                             ),
                           )
                         : null}
+                      {desktop ? <MoreActionsMenu entries={menuActions} side="bottom" /> : null}
                     </div>
                   ) : null}
                 </PageContent>
@@ -341,7 +416,13 @@ export function ViewPage({
       </div>
       {!desktop && (primaryActions.length > 0 || menuActions.length > 0) ? (
         <StickyActionBar label="Aksi halaman" busy={visibleActions.some((entry) => entry.busy)}>
-          <div data-tour={actionsTour} className="flex w-full items-center gap-2">
+          <div
+            data-tour={actionsTour}
+            className={cn(
+              'flex w-full items-center gap-2',
+              primaryActions.length === 0 && 'justify-end',
+            )}
+          >
             {primaryActions.map((entry) => (
               <DisabledReason
                 key={entry.id}
@@ -359,49 +440,7 @@ export function ViewPage({
                 />
               </DisabledReason>
             ))}
-            {menuActions.length > 0 ? (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    color="primary"
-                    size="icon"
-                    aria-label="Aksi lainnya"
-                  >
-                    <Ellipsis aria-hidden />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" side="top">
-                  {menuActions.map((entry, index) => {
-                    const separator = separatorBefore(menuActions, index) ? (
-                      <DropdownMenuSeparator />
-                    ) : null;
-                    if (!entry.submenu) {
-                      return (
-                        <Fragment key={entry.id}>
-                          {separator}
-                          <PhoneMenuItem entry={entry} />
-                        </Fragment>
-                      );
-                    }
-                    const group = entry.submenu.filter((sub) => !sub.hidden);
-                    if (group.length === 0) return null;
-                    return (
-                      <Fragment key={entry.id}>
-                        {separator}
-                        <DropdownMenuLabel>
-                          {entry.shortLabel ?? actionText(entry)}
-                        </DropdownMenuLabel>
-                        {group.map((sub) => (
-                          <PhoneMenuItem key={sub.id} entry={sub} parent={entry} short />
-                        ))}
-                      </Fragment>
-                    );
-                  })}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
+            <MoreActionsMenu entries={menuActions} side="top" />
           </div>
         </StickyActionBar>
       ) : null}

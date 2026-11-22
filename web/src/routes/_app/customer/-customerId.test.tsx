@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import { makeMe } from '@/test/make-me';
+import { clickMoreAction } from '@/test/more-actions';
 import { mountRoute } from '@/test/mount-route';
 import { Route } from './$customerId';
 
@@ -83,7 +84,8 @@ test('Ubah membuka dialog satu field Nama dan memanggil customers.rename', async
 
 test('Hapus dari View: kembali ke daftar customer dengan toast "Dihapus" dan Pulihkan', async () => {
   const { router } = await mount();
-  await userEvent.click(await screen.findByRole('button', { name: 'Hapus' }));
+  await screen.findByRole('button', { name: 'Aksi lainnya' });
+  await clickMoreAction('Hapus');
   const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 customer?' });
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
   await waitFor(() => expect(router.state.location.pathname).toBe('/customer'));

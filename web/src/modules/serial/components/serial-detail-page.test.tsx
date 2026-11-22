@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import { linkOptionNames, pickLink } from '@/test/link-field';
 import { mockMatchMedia } from '@/test/match-media';
+import { clickMoreAction, hasNoMoreActions, moreActionNames } from '@/test/more-actions';
 import { renderInRouter } from '@/test/render-in-router';
 import { formatDay } from '../lib/labels';
 
@@ -126,7 +127,10 @@ let state: GetSerialOutput;
 const CHECK_TYPES = ['recorded', 'recheck', 'recheck_pass', 'recheck_fail'];
 let historyLimit = 50;
 
-/** Meniru `serials.history`: terbaru di atas, kursor = seq terakhir, jumlah dihitung atas semua kejadian. */
+/**
+ * Meniru `serials.history`: terbaru di atas, kursor = seq terakhir, jumlah dihitung atas semua kejadian; `all` = jumlah
+ * ENTRI pada "Semua Riwayat" (kejadian lepas satu per kejadian, tiap laporan satu kartu).
+ */
 function historyOf(input: Record<string, unknown>) {
   const {
     group = 'all',
@@ -152,7 +156,7 @@ function historyOf(input: Record<string, unknown>) {
     events: page,
     nextCursor: list.length > limit ? String(page.at(-1)?.seq) : null,
     counts: {
-      all: state.events.length,
+      all: state.events.filter((entry) => !entry.caseId).length + Object.keys(byCase).length,
       checks: state.events.filter((entry) => CHECK_TYPES.includes(entry.type)).length,
       changes: state.events.filter((entry) => entry.type === 'data_changed').length,
       byCase,
@@ -320,13 +324,6 @@ beforeEach(() => {
   });
 });
 
-/** Buka kelompok "riwayat sebelumnya" (tertutup sejak awal; hanya riwayat saat ini yang terbuka). */
-async function expandAll() {
-  for (const button of screen.queryAllByRole('button', { name: /^Tampilkan riwayat sebelumnya/ })) {
-    await userEvent.click(button);
-  }
-}
-
 test('merender kepala, ringkasan, dan linimasa lama di atas, terbaru terbuka dengan chip perubahan', async () => {
   // Tanpa `tab`: View membuka tab Detail lebih dulu; linimasa ada di tab Riwayat.
   await renderPage({ tab: undefined });
@@ -345,9 +342,10 @@ test('merender kepala, ringkasan, dan linimasa lama di atas, terbaru terbuka den
     { name: '' },
   );
   const top = cards.filter((card) => card.hasAttribute('data-seq'));
-  // Sejak awal hanya riwayat saat ini (seq 3); riwayat sebelumnya (1, 2) dilipat jadi satu kelompok.
-  expect(top.map((card) => card.getAttribute('data-seq'))).toEqual(['3']);
-  await expandAll();
+  // Keputusan pemilik 2026-11-22: tanpa pelipat riwayat lama, semua entri (1, 2, 3) terbuka sejak awal.
+  expect(top.map((card) => card.getAttribute('data-seq'))).toEqual(['1', '2', '3']);
+  expect(screen.queryByRole('button', { name: /riwayat sebelumnya/i })).toBeNull();
+  expect(screen.queryByRole('heading', { name: 'Riwayat saat ini' })).toBeNull();
   const opened = within(screen.getByRole('list', { name: 'Linimasa' }))
     .getAllByRole('listitem')
     .filter((card) => card.hasAttribute('data-seq'));
@@ -357,35 +355,36 @@ test('merender kepala, ringkasan, dan linimasa lama di atas, terbaru terbuka den
   expect(screen.getByText('dicek')).toBeInTheDocument();
 });
 
-test('header: urutan aksi Lapor rusak, Ubah data, Tempel stiker, Update (R3); tak ada lagi tombol update di Riwayat', async () => {
+/** Teks tombol di pembungkus aksi: label tombol bergambar+teks, atau aria-label bagi tombol ikon (⋯). */
+function actionLabels(wrapper: HTMLElement): (string | null)[] {
+  return [...wrapper.querySelectorAll('button')].map(
+    (button) => button.textContent?.trim() || button.getAttribute('aria-label'),
+  );
+}
+
+test('header (Lolos): aksi utama Lapor rusak + Ubah data; Tempel stiker, Cek ulang, Catatan di menu "Aksi lainnya"; tak ada tombol Update atau aksi di Riwayat', async () => {
   const { container } = await renderPage();
   const report = await screen.findByRole('button', { name: 'Lapor rusak' });
   const edit = screen.getByRole('button', { name: 'Ubah data' });
-  const stickers = screen.getByRole('button', { name: 'Tempel stiker' });
-  const update = screen.getByRole('button', { name: 'Update' });
-  // Satu pembungkus aksi (bar judul) dengan target panduan; urutan sesuai spek.
+  // Satu pembungkus aksi (bar judul) dengan target panduan; urutan sesuai bobot.
   const wrapper = container.querySelector('[data-tour="serial-actions"]') as HTMLElement;
   expect(wrapper).not.toBeNull();
-  expect(
-    [...wrapper.querySelectorAll('button')].map((button) => button.textContent?.trim()),
-  ).toEqual(['Lapor rusak', 'Ubah data', 'Tempel stiker', 'Update']);
-  for (const button of [report, edit, stickers, update]) expect(wrapper).toContainElement(button);
+  expect(actionLabels(wrapper)).toEqual(['Lapor rusak', 'Ubah data', 'Aksi lainnya']);
+  for (const button of [report, edit]) expect(wrapper).toContainElement(button);
+  expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Tempel stiker' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Cek ulang' })).toBeNull();
+  expect(await moreActionNames()).toEqual(['Tempel stiker', 'Cek ulang', 'Catatan']);
   // Tab Riwayat hanya memuat linimasa: tidak ada kelompok "Update baru".
   const section = screen.getByRole('region', { name: 'Riwayat' });
   expect(screen.queryByRole('group', { name: 'Update baru' })).toBeNull();
   expect(within(section).queryByRole('button', { name: 'Catatan' })).toBeNull();
 });
 
-test('Update membuka dropdown sesuai status (tanpa Tempel stiker dan Lapor rusak); Catatan membuka dialog dan mengirim serials.act', async () => {
+test('Catatan dari menu "Aksi lainnya" membuka dialog dan mengirim serials.act', async () => {
   await renderPage();
-  await userEvent.click(await screen.findByRole('button', { name: 'Update' }));
-  const menu = await screen.findByRole('menu');
-  expect(
-    within(menu)
-      .getAllByRole('menuitem')
-      .map((item) => item.textContent),
-  ).toEqual(['Cek ulang', 'Catatan']);
-  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Catatan' }));
+  await screen.findByRole('button', { name: 'Lapor rusak' });
+  await clickMoreAction('Catatan');
   const dialog = await screen.findByRole('dialog', { name: 'Tambah catatan' });
   await userEvent.type(within(dialog).getByRole('textbox', { name: 'Catatan' }), 'Cek kabel');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Kirim catatan' }));
@@ -410,9 +409,10 @@ test('Update membuka dropdown sesuai status (tanpa Tempel stiker dan Lapor rusak
   expect(within(newest).getByText('Terbaru')).toBeInTheDocument();
 });
 
-test('Tempel stiker di header membuka dialog dan mengirim serials.act apply_stickers', async () => {
+test('Tempel stiker dari menu membuka dialog dan mengirim serials.act apply_stickers', async () => {
   await renderPage();
-  await userEvent.click(await screen.findByRole('button', { name: 'Tempel stiker' }));
+  await screen.findByRole('button', { name: 'Lapor rusak' });
+  await clickMoreAction('Tempel stiker');
   const dialog = await screen.findByRole('dialog', { name: 'Tempel stiker' });
   const send = within(dialog).getByRole('button', { name: 'Tempel stiker' });
   expect(send).toBeDisabled();
@@ -438,7 +438,7 @@ test('Lapor rusak = ActionButton di sebelah Ubah data (bar judul); membuka dialo
   expect(await screen.findByRole('dialog', { name: /Lapor rusak/ })).toBeInTheDocument();
 });
 
-test('Lapor rusak tidak ada bila aksi report_failure tak tersedia (sudah Dilaporkan) atau serial terhapus', async () => {
+test('Dilaporkan: Cek ulang + Kirim ke servis jadi aksi utama; Lapor rusak tak ada; Ubah data pindah ke menu', async () => {
   state = {
     ...state,
     serial: {
@@ -449,18 +449,44 @@ test('Lapor rusak tidak ada bila aksi report_failure tak tersedia (sudah Dilapor
       openCase: CASE_DTO,
     },
   };
-  await renderPage();
-  expect(await screen.findByRole('button', { name: 'Ubah data' })).toBeInTheDocument();
+  const { container } = await renderPage();
+  await screen.findByRole('button', { name: 'Cek ulang' });
+  const wrapper = container.querySelector('[data-tour="serial-actions"]') as HTMLElement;
+  expect(actionLabels(wrapper)).toEqual(['Cek ulang', 'Kirim ke servis', 'Aksi lainnya']);
   expect(screen.queryByRole('button', { name: 'Lapor rusak' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Ubah data' })).toBeNull();
+  expect(await moreActionNames()).toEqual(['Ubah data', 'Tempel stiker', 'Catatan']);
+  // Ubah data dari menu tetap membuka dialog ubah data.
+  await clickMoreAction('Ubah data');
+  expect(await screen.findByRole('dialog')).toBeInTheDocument();
 });
 
-test('pengguna serial: view tidak melihat tombol update maupun tombol ubah', async () => {
+test.each([
+  ['at_service', 'transit', ['Terima di servis', 'Diagnosis', 'Catatan']],
+  ['at_service', 'service', ['Diagnosis', 'Catatan']],
+  ['diagnosis', 'service', ['Diagnosis', 'Catatan']],
+  ['service_repair', 'service', ['Diagnosis', 'Catatan']],
+  ['recheck', 'transit', ['Terima di QC', 'Cek ulang', 'Catatan']],
+] as const)(
+  'status %s (%s): hanya Ubah data yang jadi tombol, aksi alur semua di menu',
+  async (status, custody, menu) => {
+    me = adminMe();
+    state = { ...state, serial: { ...SERIAL, status, custody } as SerialDto };
+    const { container } = await renderPage();
+    await screen.findByRole('button', { name: 'Ubah data' });
+    const wrapper = container.querySelector('[data-tour="serial-actions"]') as HTMLElement;
+    expect(actionLabels(wrapper)).toEqual(['Ubah data', 'Aksi lainnya']);
+    expect(await moreActionNames()).toEqual(menu);
+  },
+);
+
+test('pengguna serial: view tidak melihat aksi alur maupun tombol ubah', async () => {
   me = meWith('view');
   await renderPage();
   expect(await screen.findByRole('heading', { name: 'ABC123' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Update' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Tempel stiker' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Ubah data' })).not.toBeInTheDocument();
+  expect(hasNoMoreActions()).toBe(true);
 });
 
 test('lencana Terbaru hanya di tab Semua dan tepat satu', async () => {
@@ -648,11 +674,13 @@ test('linimasa memuat berkursor: tombol "Muat yang lebih lama" mengirim cursor d
       .getAllByRole('listitem')
       .map((li) => li.getAttribute('data-seq'))
       .filter(Boolean);
-  // Tombol muat berada di dalam kelompok riwayat sebelumnya: baru terlihat setelah kelompok itu dibuka.
-  expect(seqs()).toEqual(['3']);
-  expect(screen.queryByRole('button', { name: 'Muat yang lebih lama' })).toBeNull();
-  await userEvent.click(screen.getByRole('button', { name: 'Tampilkan riwayat sebelumnya' }));
+  // Tanpa pelipat: halaman pertama langsung terbuka dan tombol muat berada di ATAS daftar.
   expect(seqs()).toEqual(['2', '3']);
+  const loadOlder = screen.getByRole('button', { name: 'Muat yang lebih lama' });
+  const firstCard = document.querySelector('[data-seq="2"]') as HTMLElement;
+  expect(
+    loadOlder.compareDocumentPosition(firstCard) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
   await userEvent.click(screen.getByRole('button', { name: 'Muat yang lebih lama' }));
   await waitFor(() => expect(seqs()).toEqual(['1', '2', '3']));
   expect(calls('serials.history')[1]?.[1]).toMatchObject({ id: 's1', cursor: '2' });
@@ -715,6 +743,37 @@ test('filter Riwayat: tombol dropdown, jumlah dari counts di butir menu; Riwayat
   ).toHaveTextContent('4');
 });
 
+test('jumlah Semua Riwayat = entri yang tampil: laporan berisi banyak kejadian dihitung satu, badge Terbaru berwarna primary', async () => {
+  const caseEvents = Array.from({ length: 10 }, (_, index) =>
+    event({
+      id: `c${index}`,
+      seq: 10 + index,
+      type: 'note',
+      caseId: 'c1',
+      data: { caseNumber: 'LP/SBY/2611-0001' },
+    }),
+  );
+  state = {
+    ...state,
+    serial: { ...SERIAL, status: 'reported', cases: [CASE_C1] },
+    events: [...caseEvents, ...state.events],
+  };
+  await renderPage();
+  const trigger = await screen.findByRole('button', { name: 'Filter riwayat: Semua Riwayat' });
+  const list = await screen.findByRole('list', { name: 'Linimasa' });
+  // 3 kejadian lepas + 1 kartu laporan (10 kejadian) = 4 entri tampil, bukan 13.
+  expect(list.querySelectorAll('[data-seq], [data-case-id]')).toHaveLength(4);
+  await userEvent.click(trigger);
+  expect(
+    within(await screen.findByRole('menuitemradio', { name: /^Semua Riwayat/ })).getByText('4'),
+  ).toBeInTheDocument();
+  // Badge "Terbaru" hanya satu (kartu laporan, entri terbaru) dan berwarna primary.
+  await userEvent.keyboard('{Escape}');
+  const latest = screen.getAllByText('Terbaru');
+  expect(latest).toHaveLength(1);
+  expect(latest[0]).toHaveAttribute('data-color', 'primary');
+});
+
 test('tab Semua: kejadian satu laporan diringkas jadi SATU kartu yang membuka detail laporan', async () => {
   state = {
     ...state,
@@ -750,8 +809,7 @@ test('tab Semua: kejadian satu laporan diringkas jadi SATU kartu yang membuka de
   // Kejadian laporan tidak tampil sebagai kartu terpisah; kartu laporan (terbaru) ditandai.
   expect(within(list).queryByText('Laporan LP/SBY/2611-0001 dibuka: Port mati')).toBeNull();
   expect(within(card).getByText('Terbaru')).toBeInTheDocument();
-  // Kejadian di luar laporan tetap per kartu di riwayat sebelumnya.
-  await userEvent.click(screen.getByRole('button', { name: 'Tampilkan riwayat sebelumnya' }));
+  // Kejadian di luar laporan tetap per kartu, semuanya terbuka tanpa pelipat.
   expect(list.querySelectorAll('[data-seq]')).toHaveLength(3);
 });
 
@@ -854,7 +912,6 @@ test('kartu declare_broken, kirim, dan terima menampilkan rincian kasus dan peng
   };
   await renderPage();
   const list = await screen.findByRole('list', { name: 'Linimasa' });
-  await expandAll();
   expect(within(list).getByText('Laporan LP/SBY/2611-0001 ditutup: rusak')).toBeInTheDocument();
   expect(within(list).getByText('Diterima di servis')).toBeInTheDocument();
   expect(within(list).getByText('Dikirim ke servis')).toBeInTheDocument();
@@ -1298,10 +1355,11 @@ test('tab Detail, Riwayat, dan Foto bukti tampil; mengklik tab memanggil onTabCh
   expect(onTabChange).toHaveBeenCalledWith('foto');
 });
 
-test('pengguna tanpa serial: manage tidak melihat tombol Hapus', async () => {
+test('pengguna tanpa serial: manage tidak melihat Hapus (tombol maupun menu)', async () => {
   await renderPage({ tab: 'detail' });
   await screen.findByRole('heading', { name: 'ABC123' });
   expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(await moreActionNames()).not.toContain('Hapus');
 });
 
 test('Hapus dari View: konfirmasi, serials.removeBatch, lalu kembali ke daftar dengan toast', async () => {
@@ -1314,7 +1372,7 @@ test('Hapus dari View: konfirmasi, serials.removeBatch, lalu kembali ke daftar d
   });
   await renderPage({ tab: 'detail' });
   await screen.findByRole('heading', { name: 'ABC123' });
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  await clickMoreAction('Hapus');
   const dialog = await screen.findByRole('alertdialog');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
   await waitFor(() => expect(calls('serials.removeBatch')).toHaveLength(1));
@@ -1344,15 +1402,15 @@ test('serial terhapus: spanduk Terhapus dan Pulihkan (manage), tanpa Ubah data d
   expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Ubah data' })).toBeNull();
   // Serial terhapus tidak menawarkan aksi alur.
-  expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Tempel stiker' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Lapor rusak' })).toBeNull();
+  expect(hasNoMoreActions()).toBe(true);
   const restoreButtons = screen.getAllByRole('button', { name: 'Pulihkan' });
   await userEvent.click(restoreButtons[0] as HTMLElement);
   await waitFor(() => expect(calls('serials.restoreBatch')).toHaveLength(1));
   expect(calls('serials.restoreBatch')[0]?.[1]).toEqual({ ids: ['s1'] });
 });
 
-test('ponsel (P7): menu "Aksi lainnya" memuat aksi alur sisanya sebelum Hapus; memilih Catatan membuka dialog yang sama', async () => {
+test('ponsel (P7): menu "Aksi lainnya" memuat aksi sisanya sebelum Hapus; memilih Catatan membuka dialog yang sama', async () => {
   const media = mockMatchMedia(false);
   window.innerWidth = 360;
   me = manageMe();
@@ -1363,8 +1421,8 @@ test('ponsel (P7): menu "Aksi lainnya" memuat aksi alur sisanya sebelum Hapus; m
   await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
   const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent);
   expect(items).toEqual(['Tempel stiker', 'Cek ulang', 'Catatan', 'Hapus']);
-  // Aksi alur dikelompokkan di bawah label "Update" (grup datar, tanpa menu bersarang).
-  expect(screen.getByText('Update')).toBeInTheDocument();
+  // Entri datar (tanpa grup "Update" dan tanpa menu bersarang).
+  expect(screen.queryByText('Update')).toBeNull();
   expect(document.querySelector('[data-tour="serial-actions"]')).not.toBeNull();
   await userEvent.click(screen.getByRole('menuitem', { name: 'Catatan' }));
   expect(await screen.findByRole('dialog', { name: 'Tambah catatan' })).toBeInTheDocument();
@@ -1388,24 +1446,32 @@ test('ponsel (P7): pengguna tanpa manage tetap punya menu "Aksi lainnya" berisi 
   window.innerWidth = 1024;
 });
 
-test('desktop: bar judul memuat Lapor rusak, Ubah data, Tempel stiker, Update, Hapus; aksi alur lain hanya di dropdown Update', async () => {
+test('desktop: bar judul memuat Lapor rusak dan Ubah data; Tempel stiker, Cek ulang, Catatan, Hapus hanya di menu "Aksi lainnya"', async () => {
   const media = mockMatchMedia(true);
   me = manageMe();
   await renderPage({ tab: 'detail' });
   await screen.findByRole('heading', { name: 'ABC123' });
   const wrapper = document.querySelector('[data-tour="serial-actions"]') as HTMLElement;
-  expect(
-    [...wrapper.querySelectorAll('button')].map((button) => button.textContent?.trim()),
-  ).toEqual(['Lapor rusak', 'Ubah data', 'Tempel stiker', 'Update', 'Hapus']);
+  expect(actionLabels(wrapper)).toEqual(['Lapor rusak', 'Ubah data', 'Aksi lainnya']);
   expect(screen.queryByRole('button', { name: 'Catatan' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Cek ulang' })).toBeNull();
-  await userEvent.click(screen.getByRole('button', { name: 'Update' }));
-  expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
-    'Cek ulang',
-    'Catatan',
-  ]);
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(await moreActionNames()).toEqual(['Tempel stiker', 'Cek ulang', 'Catatan', 'Hapus']);
   media.restore();
 });
+
+/** Admin: `serial: edit` dan `serialservice: edit` pada BU serial (QC sekaligus tim servis). */
+function adminMe(): MeDto {
+  const base = meWith('edit');
+  return {
+    ...base,
+    permissions: { ...base.permissions, serialservice: 'edit' },
+    businessUnits: base.businessUnits.map((bu) => ({
+      ...bu,
+      permissions: { ...bu.permissions, serialservice: 'edit' },
+    })),
+  };
+}
 
 /** Tim servis: `serialservice: edit` pada BU serial, tanpa hak `serial` (hanya baca). */
 function serviceMe(): MeDto {
@@ -1422,42 +1488,27 @@ function serviceMe(): MeDto {
 
 const AT_SERVICE = { ...SERIAL, status: 'at_service', custody: 'transit' } as SerialDto;
 
-test('tim servis desktop: bar judul hanya memuat Update (tanpa Lapor rusak, Ubah data, Tempel stiker, Hapus)', async () => {
+test('tim servis desktop: Terima di servis + Diagnosis jadi tombol (tanpa Lapor rusak, Ubah data, Tempel stiker, Hapus); Catatan di menu', async () => {
   const media = mockMatchMedia(true);
   me = serviceMe();
   state = { ...state, serial: AT_SERVICE };
   await renderPage({ tab: 'detail' });
   await screen.findByRole('heading', { name: 'ABC123' });
   const wrapper = document.querySelector('[data-tour="serial-actions"]') as HTMLElement;
-  expect(
-    [...wrapper.querySelectorAll('button')].map((button) => button.textContent?.trim()),
-  ).toEqual(['Update']);
-  await userEvent.click(within(wrapper).getByRole('button', { name: 'Update' }));
-  expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
-    'Terima di servis',
-    'Diagnosis',
-    'Catatan',
-  ]);
+  expect(actionLabels(wrapper)).toEqual(['Terima di servis', 'Diagnosis', 'Aksi lainnya']);
+  expect(await moreActionNames()).toEqual(['Catatan']);
   media.restore();
 });
 
-test('tim servis ponsel: tanpa aksi utama, bar bawah hanya berisi tombol ⋯ (aksi servis satu ketuk lebih dalam)', async () => {
+test('tim servis ponsel: bar bawah memuat Terima di servis + Diagnosis dan ⋯ (Catatan di menu)', async () => {
   const media = mockMatchMedia(false);
   window.innerWidth = 360;
   me = serviceMe();
   state = { ...state, serial: AT_SERVICE };
   await renderPage({ tab: 'detail' });
   const bar = await screen.findByRole('region', { name: 'Aksi halaman' });
-  expect(
-    [...bar.querySelectorAll('button')].map((button) => button.getAttribute('aria-label')),
-  ).toEqual(['Aksi lainnya']);
-  await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
-  expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
-    'Terima di servis',
-    'Diagnosis',
-    'Catatan',
-  ]);
-  expect(screen.getByText('Update')).toBeInTheDocument();
+  expect(actionLabels(bar)).toEqual(['Terima di servis', 'Diagnosis', 'Aksi lainnya']);
+  expect(await moreActionNames()).toEqual(['Catatan']);
   media.restore();
   window.innerWidth = 1024;
 });

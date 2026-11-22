@@ -161,7 +161,7 @@ function EventCard({
               <span className="font-normal text-muted-foreground"> di {location}</span>
             ) : null}
             {showLatestBadge ? (
-              <Badge variant="soft" color="secondary" className="ml-2 align-middle">
+              <Badge variant="solid" color="primary" className="ml-2 align-middle">
                 Terbaru
               </Badge>
             ) : null}
@@ -266,11 +266,12 @@ interface Row {
 }
 
 /**
- * Daftar kartu riwayat serial, URUT LAMA DI ATAS (seq naik), urutan yang sama di aplikasi dan halaman publik. Riwayat
- * lama dilipat bersama (keputusan pemilik 2026-11-15, menggantikan lipatan per kartu): "Tampilkan riwayat sebelumnya"
- * (semua riwayat lama, tertutup sejak awal) lalu judul "Riwayat saat ini" (riwayat terbaru, selalu tampil dan tidak
- * dapat dilipat). Kartu selalu tampil lengkap. `markLatest` memberi badge "Terbaru" pada entri terbaru (tab Semua). `loadOlder`
- * (mis. tombol "Muat yang lebih lama") tampil di dalam kelompok riwayat sebelumnya, di atas kartu tertua.
+ * Daftar kartu riwayat serial, URUT LAMA DI ATAS (seq naik), urutan yang sama di aplikasi dan halaman publik. Bawaannya
+ * (`foldPrevious`, halaman publik dan linimasa detail Laporan) riwayat lama dilipat bersama (keputusan pemilik 2026-11-15):
+ * "Tampilkan riwayat sebelumnya" (semua riwayat lama, tertutup sejak awal) lalu judul "Riwayat saat ini" (riwayat terbaru,
+ * selalu tampil dan tidak dapat dilipat). Dengan `foldPrevious={false}` (detail Serial, keputusan pemilik 2026-11-22) tidak
+ * ada pelipat dan tanpa judul: SEMUA entri tampil terbuka dan `loadOlder` (mis. tombol "Muat yang lebih lama") berada di
+ * ATAS daftar. Kartu selalu tampil lengkap. `markLatest` memberi badge "Terbaru" pada entri terbaru (paling bawah).
  * `caseGroups` (opt-in, hanya tab Semua di detail Serial) meringkas kejadian tiap laporan menjadi satu `CaseCard`
  * yang membuka detail laporan; tanpa itu (halaman publik, linimasa laporan) perilakunya tak berubah.
  */
@@ -280,6 +281,7 @@ export function Timeline({
   markdownComponents,
   loadOlder,
   caseGroups,
+  foldPrevious = true,
 }: {
   events: readonly SerialEventDto[];
   markLatest?: boolean;
@@ -287,6 +289,8 @@ export function Timeline({
   markdownComponents?: Components;
   loadOlder?: ReactNode;
   caseGroups?: CaseGrouping;
+  /** Bawaan true: riwayat lama dilipat dan ada judul "Riwayat saat ini". False: semua entri terbuka tanpa pelipat. */
+  foldPrevious?: boolean;
 }) {
   const [previousOpen, setPreviousOpen] = useState(false);
   if (events.length === 0) {
@@ -333,6 +337,14 @@ export function Timeline({
   }
   const ordered = [...rows].sort((a, b) => a.seq - b.seq);
   const current = ordered[ordered.length - 1] as Row;
+  if (!foldPrevious) {
+    return (
+      <ol aria-label="Linimasa" className="space-y-3">
+        {loadOlder ? <li className="list-none">{loadOlder}</li> : null}
+        {ordered.map((row) => row.render(markLatest && row === current))}
+      </ol>
+    );
+  }
   const previous = ordered.slice(0, -1);
   return (
     <ol aria-label="Linimasa" className="space-y-3">

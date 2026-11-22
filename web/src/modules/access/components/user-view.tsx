@@ -78,6 +78,7 @@ export function UserView({
           ? [
               {
                 id: 'restore',
+                primary: true,
                 action: 'restore',
                 busy: restorePending,
                 hidden: !(canManage && onRestore),
@@ -87,6 +88,7 @@ export function UserView({
           : [
               {
                 id: 'edit',
+                primary: true,
                 action: 'edit',
                 label: 'Ubah',
                 hidden: !(canManage && onEdit),
@@ -94,6 +96,7 @@ export function UserView({
               },
               {
                 id: 'status',
+                primary: true,
                 action: user.status === 'active' ? 'deactivate' : 'activate',
                 busy: statusPending,
                 hidden: !(canManage && onToggleStatus),

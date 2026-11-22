@@ -55,6 +55,7 @@ export function CustomerView({
           ? [
               {
                 id: 'restore',
+                primary: true,
                 action: 'restore',
                 busy: restorePending,
                 hidden: !(canManage && onRestore),
@@ -64,6 +65,7 @@ export function CustomerView({
           : [
               {
                 id: 'edit',
+                primary: true,
                 action: 'edit',
                 label: 'Ubah',
                 hidden: !(canManage && onEdit),
@@ -71,6 +73,7 @@ export function CustomerView({
               },
               {
                 id: 'status',
+                primary: true,
                 action: customer.status === 'active' ? 'deactivate' : 'activate',
                 busy: statusPending,
                 hidden: !(canManage && onToggleStatus),

@@ -116,10 +116,40 @@ describe('serials.history', () => {
     ).toEqual([]);
   });
 
-  test('counts tidak terpengaruh filter: semua, tab pemeriksaan, tab perubahan, per kasus', async () => {
+  test('counts tidak terpengaruh filter: semua (entri yang tampil), tab pemeriksaan, tab perubahan, per kasus', async () => {
     await seedHistory();
     const out = await call(W, 'serials.history', { id: 'sn1', group: 'changes', limit: 1 });
-    expect(out.data.counts).toEqual({ all: 7, checks: 3, changes: 1, byCase: { c1: 3 } });
+    // `all` = entri pada "Semua Riwayat": 4 kejadian lepas (1, 2, 5, 7) + satu kartu untuk laporan c1 (3 kejadian).
+    expect(out.data.counts).toEqual({ all: 5, checks: 3, changes: 1, byCase: { c1: 3 } });
+  });
+
+  test('counts.all: satu laporan berisi banyak kejadian dihitung SATU (1 kejadian lepas + 1 laporan 10 kejadian = 2)', async () => {
+    await seedSerial(env, {
+      id: 'sn1',
+      serial: 'AB12',
+      status: 'reported',
+      openCase: { id: 'c1', number: 'LP/A/2611-0001' },
+    });
+    await addEvents(
+      'sn1',
+      Array.from({ length: 10 }, (_, index): [number, string, string] => [index + 2, 'note', 'c1']),
+    );
+    const out = await call(W, 'serials.history', { id: 'sn1' });
+    expect(out.data.counts).toEqual({ all: 2, checks: 1, changes: 0, byCase: { c1: 10 } });
+  });
+
+  test('counts.all: dua laporan dan kejadian lepas dihitung per entri; byCase tetap seluruh kejadian per laporan', async () => {
+    await seedHistory();
+    await env.DB.prepare(
+      "INSERT INTO serial_cases (id, number, serial_id, bu_id, opened_on, closed_on, outcome, created_at, created_by, updated_at) VALUES ('c0', 'LP/A/2610-0001', 'sn1', 'bu-a', '2026-10-01', '2026-10-03', 'good', '2026-10-01T00:00:00.000Z', 's', 't')",
+    ).run();
+    await addEvents('sn1', [
+      [8, 'report_failure', 'c0'],
+      [9, 'recheck_pass', 'c0'],
+    ]);
+    const out = await call(W, 'serials.history', { id: 'sn1' });
+    expect(out.data.counts.all).toBe(6);
+    expect(out.data.counts.byCase).toEqual({ c1: 3, c0: 2 });
   });
 
   test('BU lain atau tanpa penugasan: NOT_FOUND; serial tak ada: NOT_FOUND', async () => {

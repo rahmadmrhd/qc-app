@@ -61,7 +61,7 @@ export function CaseCard({
             </Link>
             <span className="font-normal text-muted-foreground"> · laporan rusak</span>
             {showLatestBadge ? (
-              <Badge variant="soft" color="secondary" className="ml-2 align-middle">
+              <Badge variant="solid" color="primary" className="ml-2 align-middle">
                 Terbaru
               </Badge>
             ) : null}

@@ -90,9 +90,9 @@ export const SERIAL_DETAIL: GuideEntry = {
     },
     {
       target: 'serial-actions',
-      text: 'Semua aksi ada di bar judul di atas halaman (bar bawah di ponsel), apa pun tabnya, dan berubah mengikuti status dan posisi unit; hanya yang boleh kamu kerjakan yang tampil. Lapor rusak dan Ubah data adalah tombol utama. Tempel stiker mencatat stiker yang baru ditempel (tiap centang menambah satu dan memotong stok satu). Tombol Update membuka pilihan Kirim ke servis, Terima, Diagnosis, Cek ulang, atau Catatan. Di ponsel, Tempel stiker dan Update ada di menu Aksi lainnya.',
+      text: 'Semua aksi ada di bar judul di atas halaman (bar bawah di ponsel), apa pun tabnya, dan berubah mengikuti status dan posisi unit; hanya yang boleh kamu kerjakan yang tampil. Dua atau tiga aksi yang paling sering dipakai di tahap itu jadi tombol, misalnya Lapor rusak dan Ubah data saat unit Lolos, atau Cek ulang dan Kirim ke servis saat Dilaporkan. Sisanya (Tempel stiker, Catatan, dan aksi lain) ada di tombol titik tiga Aksi lainnya. Tempel stiker mencatat stiker yang baru ditempel (tiap centang menambah satu dan memotong stok satu).',
       teksJikaKosong:
-        'Di detail serial, semua aksi ada di bar judul di atas halaman (bar bawah di ponsel), apa pun tabnya: Lapor rusak, Ubah data, Tempel stiker, dan tombol Update (Kirim ke servis, Terima, Diagnosis, Cek ulang, Catatan). Isinya berubah mengikuti status dan posisi unit, dan hanya yang boleh kamu kerjakan; tanpa aksi yang cocok, tombolnya tidak tampil.',
+        'Di detail serial, semua aksi ada di bar judul di atas halaman (bar bawah di ponsel), apa pun tabnya. Dua atau tiga aksi yang paling sering dipakai di tahap itu jadi tombol (misalnya Lapor rusak dan Ubah data, atau Cek ulang dan Kirim ke servis), sisanya seperti Tempel stiker dan Catatan ada di tombol titik tiga Aksi lainnya. Isinya berubah mengikuti status dan posisi unit, dan hanya yang boleh kamu kerjakan; tanpa aksi yang cocok, tombolnya tidak tampil.',
       advance: 'next',
     },
     {

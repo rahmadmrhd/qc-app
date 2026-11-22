@@ -3,6 +3,7 @@ import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { mockMatchMedia } from '@/test/match-media';
+import { clickMoreAction, moreActionNames } from '@/test/more-actions';
 import { renderInRouter } from '@/test/render-in-router';
 import { PostelView, type PostelViewProps } from './postel-view';
 
@@ -270,7 +271,10 @@ test('Ubah dan Hapus memanggil handlernya; tanpa canEdit keduanya tersembunyi', 
   const props = await renderView();
   await userEvent.click(screen.getByRole('button', { name: 'Ubah' }));
   expect(props.onEdit).toHaveBeenCalledTimes(1);
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  // Hapus bukan aksi utama: tak tampil sebagai tombol, hanya di menu "Aksi lainnya".
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(await moreActionNames()).toEqual(['Hapus']);
+  await clickMoreAction('Hapus');
   expect(props.onDelete).toHaveBeenCalledTimes(1);
 });
 

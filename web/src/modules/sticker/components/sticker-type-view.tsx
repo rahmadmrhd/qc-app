@@ -73,6 +73,7 @@ export function StickerTypeView({
           ? [
               {
                 id: 'restore',
+                primary: true,
                 action: 'restore',
                 busy: restorePending,
                 hidden: !(canManage && onRestore),
@@ -82,6 +83,7 @@ export function StickerTypeView({
           : [
               {
                 id: 'edit',
+                primary: true,
                 action: 'edit',
                 label: 'Ubah',
                 hidden: !(canEdit && !system && onEdit),
@@ -89,6 +91,7 @@ export function StickerTypeView({
               },
               {
                 id: 'status',
+                primary: true,
                 action: type.status === 'active' ? 'deactivate' : 'activate',
                 busy: statusPending,
                 hidden: !(canManage && !system && onToggleStatus),

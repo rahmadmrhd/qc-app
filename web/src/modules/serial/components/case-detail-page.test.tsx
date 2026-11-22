@@ -9,6 +9,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
+import { clickMoreAction, hasNoMoreActions, moreActionNames } from '@/test/more-actions';
 import { renderInRouter } from '@/test/render-in-router';
 import { formatDay } from '../lib/labels';
 
@@ -120,6 +121,19 @@ function meWith(serial: 'none' | 'view' | 'edit'): MeDto {
       },
     ],
     locations: [],
+  };
+}
+
+/** Tim servis: `serialservice: edit` pada BU laporan, serial hanya baca. */
+function serviceMe(): MeDto {
+  const base = meWith('view');
+  return {
+    ...base,
+    permissions: { ...base.permissions, serialservice: 'edit' },
+    businessUnits: base.businessUnits.map((bu) => ({
+      ...bu,
+      permissions: { ...bu.permissions, serialservice: 'edit' },
+    })),
   };
 }
 
@@ -261,47 +275,75 @@ test('galat lain (server tak terjangkau): pesan galat, bukan "tidak ditemukan"',
   expect(screen.getByRole('alert')).toHaveTextContent('Tidak ada koneksi');
 });
 
-describe('aksi di header (R3)', () => {
-  test('laporan terbuka: Tempel stiker dan Update, tanpa Lapor rusak dan Ubah data; Serial induk dimuat', async () => {
+describe('aksi di header (bobot aksi, K7)', () => {
+  test('laporan terbuka (Dilaporkan): Cek ulang + Kirim ke servis sebagai tombol; Tempel stiker dan Catatan hanya di menu; tanpa Lapor rusak, Ubah data, Hapus; Serial induk dimuat', async () => {
     mockApi(REPORT);
     const { container } = await renderInRouter(<CaseDetailPage caseId="c1" onBack={vi.fn()} />);
-    expect(await screen.findByRole('button', { name: 'Tempel stiker' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Update' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Cek ulang' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Kirim ke servis' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Tempel stiker' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Catatan' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Lapor rusak' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Ubah data' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
-    // Target panduan `serial-actions` ada di header (bar atas desktop).
-    expect(container.querySelector('[data-tour="serial-actions"]')).not.toBeNull();
+    // Target panduan `serial-actions` ada di header (bar atas desktop); tombol utama berurut Cek ulang, Kirim ke servis.
+    const wrapper = container.querySelector('[data-tour="serial-actions"]') as HTMLElement;
+    expect(wrapper).not.toBeNull();
+    expect(
+      [...wrapper.querySelectorAll('button')].map(
+        (button) => button.textContent?.trim() || button.getAttribute('aria-label'),
+      ),
+    ).toEqual(['Cek ulang', 'Kirim ke servis', 'Aksi lainnya']);
+    expect(await moreActionNames()).toEqual(['Tempel stiker', 'Catatan']);
     await waitFor(() => expect(calls('serials.get')).toHaveLength(1));
     expect(calls('serials.get')[0]?.[1]).toEqual({ id: 's1' });
   });
 
-  test('Update membuka dropdown; Catatan membuka dialog catatan untuk Serial induk', async () => {
+  test('Catatan dari menu membuka dialog catatan untuk Serial induk', async () => {
     mockApi(REPORT);
     await renderInRouter(<CaseDetailPage caseId="c1" onBack={vi.fn()} />);
     // Tombol aktif setelah Serial induk selesai dimuat.
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Update' })).toBeEnabled());
-    await userEvent.click(screen.getByRole('button', { name: 'Update' }));
-    const menu = await screen.findByRole('menu');
-    expect(
-      within(menu)
-        .getAllByRole('menuitem')
-        .map((item) => item.textContent),
-    ).toEqual(expect.arrayContaining(['Kirim ke servis', 'Catatan']));
-    // Tempel stiker bukan bagian Update.
-    expect(within(menu).queryByRole('menuitem', { name: 'Tempel stiker' })).toBeNull();
-    await userEvent.click(within(menu).getByRole('menuitem', { name: 'Catatan' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cek ulang' })).toBeEnabled());
+    await clickMoreAction('Catatan');
     expect(await screen.findByRole('dialog', { name: 'Tambah catatan' })).toBeInTheDocument();
   });
 
-  test('Tempel stiker membuka dialog Tempel stiker', async () => {
+  test('Tempel stiker dari menu membuka dialog Tempel stiker', async () => {
     mockApi(REPORT);
     await renderInRouter(<CaseDetailPage caseId="c1" onBack={vi.fn()} />);
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Tempel stiker' })).toBeEnabled(),
-    );
-    await userEvent.click(screen.getByRole('button', { name: 'Tempel stiker' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Cek ulang' })).toBeEnabled());
+    await clickMoreAction('Tempel stiker');
     expect(await screen.findByRole('dialog', { name: 'Tempel stiker' })).toBeInTheDocument();
+  });
+
+  test('dikirim ke servis (tim servis): Terima di servis + Diagnosis sebagai tombol; Catatan di menu', async () => {
+    me = serviceMe();
+    mockApi({ ...REPORT, status: 'at_service', custody: 'transit', serialStatus: 'at_service' });
+    await renderInRouter(<CaseDetailPage caseId="c1" onBack={vi.fn()} />);
+    expect(await screen.findByRole('button', { name: 'Terima di servis' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Diagnosis' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Catatan' })).toBeNull();
+    expect(await moreActionNames()).toEqual(['Catatan']);
+  });
+
+  test('diagnosis: hanya Diagnosis sebagai tombol; Catatan di menu', async () => {
+    me = serviceMe();
+    mockApi({ ...REPORT, status: 'diagnosis', custody: 'service', serialStatus: 'diagnosis' });
+    await renderInRouter(<CaseDetailPage caseId="c1" onBack={vi.fn()} />);
+    expect(await screen.findByRole('button', { name: 'Diagnosis' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Terima di servis' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Catatan' })).toBeNull();
+    expect(await moreActionNames()).toEqual(['Catatan']);
+  });
+
+  test('dikembalikan ke QC: Terima di QC + Cek ulang sebagai tombol; Catatan di menu', async () => {
+    mockApi({ ...REPORT, status: 'recheck', custody: 'transit', serialStatus: 'recheck' });
+    await renderInRouter(<CaseDetailPage caseId="c1" onBack={vi.fn()} />);
+    expect(await screen.findByRole('button', { name: 'Terima di QC' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Cek ulang' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Catatan' })).toBeNull();
+    expect(await moreActionNames()).toEqual(['Catatan']);
   });
 
   test('laporan selesai: tanpa aksi dan serials.get tidak dipanggil', async () => {
@@ -314,8 +356,8 @@ describe('aksi di header (R3)', () => {
     });
     const { container } = await renderInRouter(<CaseDetailPage caseId="c1" onBack={vi.fn()} />);
     expect(await screen.findByText('Selesai: Lolos')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Tempel stiker' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cek ulang' })).toBeNull();
+    expect(hasNoMoreActions()).toBe(true);
     expect(container.querySelector('[data-tour="serial-actions"]')).toBeNull();
     expect(calls('serials.get')).toHaveLength(0);
   });
@@ -325,13 +367,13 @@ describe('aksi di header (R3)', () => {
     mockApi(REPORT);
     await renderInRouter(<CaseDetailPage caseId="c1" onBack={vi.fn()} />);
     expect(await screen.findByText('Laporan aktif')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Tempel stiker' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Cek ulang' })).toBeNull();
+    expect(hasNoMoreActions()).toBe(true);
     expect(calls('serials.get')).toHaveLength(0);
   });
 });
 
-test('serials.get induk gagal: tanpa tombol Tempel stiker dan Update, tidak ada tombol yang terus sibuk', async () => {
+test('serials.get induk gagal: tanpa aksi (tombol maupun menu), tidak ada tombol yang terus sibuk', async () => {
   apiMock.mockImplementation(async (id: string) => {
     if (id === 'serialCases.get') return REPORT;
     if (id === 'serials.history') return historyOf([]);
@@ -341,7 +383,60 @@ test('serials.get induk gagal: tanpa tombol Tempel stiker dan Update, tidak ada 
   await renderInRouter(<CaseDetailPage caseId="c1" onBack={vi.fn()} />);
   expect(await screen.findByText('Laporan aktif')).toBeInTheDocument();
   await waitFor(() => expect(calls('serials.get')).toHaveLength(1));
-  await waitFor(() => expect(screen.queryByRole('button', { name: 'Update' })).toBeNull());
-  expect(screen.queryByRole('button', { name: /^Tempel stiker/ })).toBeNull();
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Cek ulang' })).toBeNull());
+  expect(hasNoMoreActions()).toBe(true);
   expect(screen.queryByRole('button', { name: /…$/ })).toBeNull();
+});
+
+describe('diagram alur (stepper) di atas Ringkasan', () => {
+  const activeStep = () =>
+    within(screen.getByRole('list', { name: 'Tahap' }))
+      .getAllByRole('listitem')
+      .filter((li) => li.getAttribute('aria-current') === 'step');
+
+  test('laporan terbuka: tahap sekarang = status Serial kini, tepat di atas bagian Ringkasan', async () => {
+    mockApi({ ...REPORT, status: 'at_service', serialStatus: 'at_service', custody: 'service' });
+    const { container } = await renderInRouter(<CaseDetailPage caseId="c1" onBack={vi.fn()} />);
+    await screen.findByRole('heading', { level: 1, name: REPORT.number });
+    expect(activeStep()).toHaveLength(1);
+    expect(activeStep()[0]).toHaveTextContent('Di servis');
+    // Urutan DOM: diagram sebelum bagian Ringkasan.
+    const steps = screen.getByRole('list', { name: 'Tahap' });
+    const summary = screen.getByRole('region', { name: 'Ringkasan laporan' });
+    expect(steps.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // Tidak menambah target panduan baru.
+    expect(container.querySelector('[data-tour="serial-stepper"]')).toBeNull();
+  });
+
+  test('laporan selesai rusak: tahap akhir "Rusak"', async () => {
+    mockApi({
+      ...REPORT,
+      closedOn: '2026-11-15',
+      outcome: 'broken',
+      status: 'broken',
+      serialStatus: 'broken',
+    });
+    await renderInRouter(<CaseDetailPage caseId="c1" onBack={vi.fn()} />);
+    await screen.findByText('Selesai: Rusak');
+    expect(activeStep()).toHaveLength(1);
+    expect(activeStep()[0]).toHaveTextContent('Rusak');
+  });
+
+  test('laporan selesai lolos: tahap akhir "Lolos"', async () => {
+    mockApi({
+      ...REPORT,
+      closedOn: '2026-11-15',
+      outcome: 'good',
+      status: 'good',
+      serialStatus: 'good',
+    });
+    await renderInRouter(<CaseDetailPage caseId="c1" onBack={vi.fn()} />);
+    await screen.findByText('Selesai: Lolos');
+    expect(activeStep()).toHaveLength(1);
+    expect(activeStep()[0]).toHaveTextContent('Lolos');
+    // Tahap awal "Lolos" bukan tahap aktif (hasCases = true => tahap akhir).
+    expect(
+      within(screen.getByRole('list', { name: 'Tahap' })).getAllByRole('listitem')[0],
+    ).not.toHaveAttribute('aria-current');
+  });
 });

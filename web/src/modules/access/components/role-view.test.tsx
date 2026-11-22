@@ -1,7 +1,8 @@
 import type { RoleDto, UserDto } from '@shared/contract';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
+import { clickMoreAction, moreActionNames } from '@/test/more-actions';
 import { renderInRouter } from '@/test/render-in-router';
 import { RoleView, type RoleViewProps, usersOfRole } from './role-view';
 
@@ -62,14 +63,20 @@ test('tab Pengguna menampilkan pengguna pemakai role, bertaut ke View pengguna',
 
 test('Hapus nonaktif dengan alasan selama role masih dipakai pengguna', async () => {
   await renderView();
-  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
-  expect(screen.getByText('Role masih dipakai oleh 2 user')).toBeInTheDocument();
+  // Hapus = aksi jarang: bukan tombol, ada di menu "Aksi lainnya" dalam keadaan nonaktif beserta alasannya.
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Aksi lainnya' }));
+  const item = await screen.findByRole('menuitem', { name: /^Hapus/ });
+  expect(item).toHaveAttribute('aria-disabled', 'true');
+  expect(within(item).getByText('Role masih dipakai oleh 2 user')).toBeInTheDocument();
 });
 
 test('role tak dipakai: Hapus aktif memanggil onDelete; Ubah memanggil onEdit', async () => {
   const { onDelete, onEdit } = await renderView({ role: { ...role, userCount: 0 } });
   await userEvent.click(screen.getByRole('button', { name: 'Ubah' }));
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(await moreActionNames()).toEqual(['Hapus']);
+  await clickMoreAction('Hapus');
   expect(onEdit).toHaveBeenCalled();
   expect(onDelete).toHaveBeenCalled();
 });

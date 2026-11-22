@@ -194,6 +194,7 @@ export function QrPresetView({
               {
                 id: 'restore',
                 action: 'restore',
+                primary: true,
                 busy: restorePending,
                 hidden: !onRestore,
                 onSelect: () => onRestore?.(),
@@ -204,6 +205,7 @@ export function QrPresetView({
                 id: 'edit',
                 action: 'edit',
                 label: 'Ubah',
+                primary: true,
                 hidden: !onEdit,
                 onSelect: () => onEdit?.(),
               },

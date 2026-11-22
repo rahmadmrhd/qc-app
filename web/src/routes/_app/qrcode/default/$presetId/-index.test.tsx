@@ -18,6 +18,7 @@ import { ApiError } from '@/lib/api/api-error';
 import { meQueryKey } from '@/modules/auth/queries';
 import { makeMe } from '@/test/make-me';
 import { mockMatchMedia } from '@/test/match-media';
+import { clickMoreAction, moreActionNames } from '@/test/more-actions';
 import { Route } from './index';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -174,7 +175,7 @@ test('"Dipakai oleh" mendaftar hanya konfigurasi QR dengan presetId ini, menaut 
 
 test('Hapus dari View: konfirmasi menyebut pemakai, removePresetBatch, kembali ke daftar, toast "Dihapus"', async () => {
   const { router } = await mount();
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  await clickMoreAction('Hapus');
   const dialog = await screen.findByRole('alertdialog');
   await waitFor(() => expect(dialog).toHaveTextContent('Dipakai oleh 2 konfigurasi QR'));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
@@ -196,7 +197,12 @@ test('Ubah membuka form dengan push', async () => {
 
 test('Kloning ke BU lain membuka dialog kloning', async () => {
   await mount();
-  await userEvent.click(screen.getByRole('button', { name: 'Kloning ke BU lain' }));
+  // Kloning dan Hapus bukan aksi utama: tak tampil sebagai tombol, hanya di menu "Aksi lainnya".
+  expect(screen.getByRole('button', { name: 'Ubah' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Kloning ke BU lain' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(await moreActionNames()).toEqual(['Kloning ke BU lain', 'Hapus']);
+  await clickMoreAction('Kloning ke BU lain');
   expect(await screen.findByRole('dialog')).toHaveTextContent('Kloning ke BU lain');
 });
 

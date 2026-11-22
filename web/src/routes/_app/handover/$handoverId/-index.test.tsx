@@ -7,6 +7,7 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import { makeHandover } from '@/modules/handover/components/test-handover';
 import { boardColumnData, boardColumnKey } from '@/modules/handover/lib/board-cache';
+import { clickMoreAction } from '@/test/more-actions';
 
 const state = vi.hoisted(() => ({
   me: null as unknown as MeDto,
@@ -234,7 +235,7 @@ test('Hapus dari View: handovers.remove, task keluar dari papan dan cache detail
     ),
   );
   await screen.findByText('ST-B');
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  await clickMoreAction('Hapus');
   const dialog = await screen.findByRole('alertdialog');
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
   await waitFor(() =>
@@ -266,7 +267,7 @@ test('toast Dihapus: aksi Pulihkan memanggil handovers.restore dengan lokasi tas
   });
   await mount({});
   await screen.findByText('ST-B');
-  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  await clickMoreAction('Hapus');
   await userEvent.click(
     within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Hapus' }),
   );

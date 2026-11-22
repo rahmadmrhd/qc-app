@@ -199,13 +199,14 @@ describe('panduan Serial Number', () => {
     expect(tabOf('serial-timeline')).toEqual(['riwayat']);
   });
 
-  test('detail: teks aksi menyebut Tempel stiker dan Update di bar judul; teks linimasa menyebut filter, bukan tab', () => {
+  test('detail: teks aksi menyebut aksi utama di bar judul dan sisanya di Aksi lainnya (tanpa tombol Update); teks linimasa menyebut filter, bukan tab', () => {
     const actions = SERIAL_DETAIL.steps.find((step) => step.target === 'serial-actions');
     const timeline = SERIAL_DETAIL.steps.find((step) => step.target === 'serial-timeline');
     for (const text of [actions?.text, actions?.teksJikaKosong]) {
       expect(text).toContain('bar judul');
       expect(text).toContain('Tempel stiker');
-      expect(text).toContain('Update');
+      expect(text).toContain('Aksi lainnya');
+      expect(text).not.toContain('tombol Update');
       expect(text).not.toContain('tab Riwayat');
     }
     for (const text of [timeline?.text, timeline?.teksJikaKosong]) {

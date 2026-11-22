@@ -66,6 +66,7 @@ export function BrandDetailView({
           ? [
               {
                 id: 'restore',
+                primary: true,
                 action: 'restore',
                 busy: restorePending,
                 hidden: !(canManage && onRestore),
@@ -75,6 +76,7 @@ export function BrandDetailView({
           : [
               {
                 id: 'edit',
+                primary: true,
                 action: 'edit',
                 label: 'Ubah',
                 hidden: !(canEdit && onEdit),
@@ -82,6 +84,7 @@ export function BrandDetailView({
               },
               {
                 id: 'status',
+                primary: true,
                 action: brand.status === 'active' ? 'deactivate' : 'activate',
                 busy: statusPending,
                 hidden: !(canManage && onToggleStatus),
