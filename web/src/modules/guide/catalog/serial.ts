@@ -106,9 +106,9 @@ export const SERIAL_DETAIL: GuideEntry = {
     {
       target: 'serial-timeline',
       buka: { tab: 'riwayat' },
-      text: 'Riwayat dibagi per tab: Semua, satu tab per laporan (mis. LP/SBY/2611-0001), Pengecekan, dan Perubahan data. Tiap kejadian jadi satu kartu di bawahnya dan yang terbaru ditandai.',
+      text: 'Riwayat dibagi per tab: Semua, Pengecekan, dan Perubahan data. Di tab Semua, semua kejadian satu laporan (mis. LP/SBY/2611-0001) diringkas jadi satu kartu yang membuka halaman detail laporan; kejadian lain jadi satu kartu masing-masing dan yang terbaru ditandai.',
       teksJikaKosong:
-        'Riwayat di detail serial dibagi per tab: Semua, satu tab per laporan (mis. LP/SBY/2611-0001), Pengecekan, dan Perubahan data. Tiap kejadian jadi satu kartu dan yang terbaru ditandai.',
+        'Riwayat di detail serial dibagi per tab: Semua, Pengecekan, dan Perubahan data. Di tab Semua, semua kejadian satu laporan (mis. LP/SBY/2611-0001) diringkas jadi satu kartu yang membuka halaman detail laporan; kejadian lain jadi satu kartu masing-masing dan yang terbaru ditandai.',
       advance: 'next',
     },
   ],
@@ -190,11 +190,13 @@ export const SERIAL_LAPORAN_DAFTAR: GuideEntry = {
   grup: 'Serial Number',
   izin: SERIAL_VIEW,
   halaman: '/serial/reports',
+  // Detail laporan (`/serial/reports/$caseId`) bukan halaman daftar: tanpa banner panduan daftar.
+  halamanKecuali: ['/serial/reports/$caseId'],
   steps: [
     {
       target: 'case-table',
       route: '/serial/reports',
-      text: 'Halaman Laporan memuat laporan unit bermasalah: nomor LP, serial, item, status, lokasi, lama, pelapor. Satu serial paling banyak punya satu laporan aktif. Klik nomor LP untuk membuka detail serialnya.',
+      text: 'Halaman Laporan memuat laporan unit bermasalah: nomor LP, serial, item, status, lokasi, lama, pelapor. Satu serial paling banyak punya satu laporan aktif. Klik nomor LP untuk membuka halaman detail laporannya.',
       advance: 'next',
     },
     {

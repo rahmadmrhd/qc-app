@@ -244,11 +244,10 @@ test('muat berikutnya memakai kursor server', async () => {
   expect(screen.queryByRole('button', { name: 'Muat lebih banyak' })).toBeNull();
 });
 
-test('nomor LP adalah tautan ke detail serial pada tab laporan itu', async () => {
+test('nomor LP adalah tautan ke halaman detail laporan itu', async () => {
   await renderPage();
   const link = await screen.findByRole('link', { name: 'LP/SBY/2611-0004' });
-  expect(link).toHaveAttribute('href', expect.stringContaining('/serial/s2'));
-  expect(link).toHaveAttribute('href', expect.stringContaining('case=c2'));
+  expect(link).toHaveAttribute('href', '/serial/reports/c2');
   expect(link).toHaveAttribute('data-tour', 'case-open');
 });
 

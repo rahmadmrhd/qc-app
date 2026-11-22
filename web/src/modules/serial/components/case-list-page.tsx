@@ -39,7 +39,7 @@ function agoLabel(days: number): string {
 const OUTCOME_LABEL = { good: 'Lolos', broken: 'Rusak' } as const;
 
 /**
- * Daftar laporan rusak (kit CRUD; bukan daftar serial): nomor LP (tautan ke detail serial pada tab Riwayat laporan itu),
+ * Daftar laporan rusak (kit CRUD; bukan daftar serial): nomor LP (tautan ke halaman detail laporan),
  * serial, item, BU, status, lokasi, lama di status, pelapor, dan ringkasan. Filter status (bawaan aktif) dan BU serta
  * pencarian awalan nomor LP atau serial berada di URL. Tanpa pilihan massal (laporan tidak dihapus). Tim servis (hanya
  * `serialservice`) melihat semua laporan di BU-nya. Di ponsel baris menjadi kartu.
@@ -72,12 +72,7 @@ export function CaseListPage({ search, onSearchChange, onReport }: CaseListPageP
       cell: (entry) => (
         <>
           <span className="font-mono">
-            <LinkCell
-              to="/serial/$serialId"
-              params={{ serialId: entry.serialId }}
-              search={{ case: entry.id }}
-              tour="case-open"
-            >
+            <LinkCell to="/serial/reports/$caseId" params={{ caseId: entry.id }} tour="case-open">
               {entry.number}
             </LinkCell>
           </span>

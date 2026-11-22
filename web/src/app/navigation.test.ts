@@ -460,6 +460,9 @@ test('tanpa menu Catat Serial Number; Daftar tetap aktif di halaman catat dan de
   const reports = itemTo('/serial/reports');
   expect(isNavItemActive(reports, at('/serial/reports'))).toBe(true);
   expect(isNavItemActive(reports, at('/serial/report'))).toBe(true);
+  // Detail laporan (`/serial/reports/<id>`): menu Laporan yang menyala, bukan Daftar.
+  expect(isNavItemActive(reports, at('/serial/reports/c1'))).toBe(true);
+  expect(isNavItemActive(list, at('/serial/reports/c1'))).toBe(false);
 });
 
 function meManagingSerial(

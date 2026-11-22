@@ -130,6 +130,14 @@ export function serialCaseListQueryOptions(filter: SerialCaseFilter = {}) {
   });
 }
 
+/** Detail satu laporan (View `/serial/reports/$caseId`); tak terbaca/terhapus/tak ada = `NOT_FOUND`. */
+export function serialCaseDetailQueryOptions(id: string) {
+  return queryOptions({
+    queryKey: serialKeys.caseOne(id),
+    queryFn: () => api('serialCases.get', { id }),
+  });
+}
+
 export function serialDetailQueryOptions(id: string) {
   return queryOptions({
     queryKey: serialKeys.one(id),
@@ -243,6 +251,8 @@ function applySaved(queryClient: QueryClient, saved: SerialDto): void {
   void queryClient.invalidateQueries({ queryKey: serialKeys.one(saved.id) });
   // Aksi/ubah data menambah entri riwayat: tab yang sedang terbuka dimuat ulang, tab lain ditandai basi.
   void queryClient.invalidateQueries({ queryKey: serialKeys.history(saved.id) });
+  // Status Serial kini, penutup, dan hasil laporan ikut berubah: detail laporan dan daftar Laporan dimuat ulang.
+  void queryClient.invalidateQueries({ queryKey: serialKeys.cases });
 }
 
 /** Membuang id dari SEMUA halaman daftar serial yang sudah termuat (hapus/pulihkan: baris pindah tampilan). */

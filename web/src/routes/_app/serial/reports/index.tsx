@@ -5,7 +5,7 @@ import { useMe } from '@/modules/auth/use-me';
 import { CaseListPage } from '@/modules/serial/components/case-list-page';
 import { caseSearchSchema } from '@/modules/serial/lib/case-filter';
 
-export const Route = createFileRoute('/_app/serial/reports')({
+export const Route = createFileRoute('/_app/serial/reports/')({
   validateSearch: (search: Record<string, unknown>) => caseSearchSchema.parse(search),
   beforeLoad: ({ context }) =>
     requireAnyPermission(context.queryClient, [

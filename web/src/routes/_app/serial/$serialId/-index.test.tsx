@@ -1,3 +1,4 @@
+import { isRedirect } from '@tanstack/react-router';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ComponentType, Suspense, useState } from 'react';
@@ -65,17 +66,35 @@ test('berpindah ke serial lain memasang ulang halaman: state komposer tidak terb
   expect(screen.getByLabelText('Pesan')).toHaveValue('');
 });
 
-test('?case tanpa tab membuka tab Riwayat; ?tab eksplisit menang; tanpa keduanya tab bawaan', async () => {
+test('?tab eksplisit menentukan tab; tanpa tab memakai bawaan', async () => {
   await Component.preload?.();
-  state.search = { case: 'c1' };
+  state.search = { tab: 'foto' };
   const first = render(tree());
-  expect(screen.getByText('tab riwayat')).toBeInTheDocument();
-  first.unmount();
-  state.search = { case: 'c1', tab: 'foto' };
-  const second = render(tree());
   expect(screen.getByText('tab foto')).toBeInTheDocument();
-  second.unmount();
+  first.unmount();
   state.search = {};
   render(tree());
   expect(screen.getByText('tab bawaan')).toBeInTheDocument();
+});
+
+test('?case (tautan lama) dialihkan ke halaman detail laporan; tanpa ?case tidak ada pengalihan', async () => {
+  const { beforeLoad } = (
+    Route as unknown as {
+      options: {
+        beforeLoad: (args: { context: unknown; search: { case?: string } }) => Promise<void>;
+      };
+    }
+  ).options;
+  const context = { queryClient: {} };
+  const thrown = await beforeLoad({ context, search: { case: 'c1' } }).then(
+    () => null,
+    (error: unknown) => error,
+  );
+  expect(isRedirect(thrown)).toBe(true);
+  expect((thrown as { options: unknown }).options).toMatchObject({
+    to: '/serial/reports/$caseId',
+    params: { caseId: 'c1' },
+    replace: true,
+  });
+  await expect(beforeLoad({ context, search: {} })).resolves.toBeUndefined();
 });

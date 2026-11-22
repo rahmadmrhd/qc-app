@@ -102,6 +102,8 @@ describe('panduan Serial Number', () => {
     expect(idAt(all, '/serial/settings')).toBeUndefined();
     // Halaman detail (ViewPage bertab) tidak jatuh ke banner daftar maupun banner detail milik daftar.
     expect(idAt(all, '/serial/s1')).toBeUndefined();
+    // Detail laporan (View tanpa tab) tidak memunculkan banner daftar Laporan maupun daftar Serial.
+    expect(idAt(all, '/serial/reports/c1')).toBeUndefined();
     // Panduan daftar selesai: detail jadi banner berikutnya di /serial.
     const without = (...ids: string[]) => all.filter((o) => !ids.includes(o.entry.id));
     expect(idAt(without('serial-daftar'), '/serial')).toBe('serial-detail');

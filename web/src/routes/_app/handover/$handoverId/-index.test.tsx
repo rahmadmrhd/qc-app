@@ -25,6 +25,8 @@ vi.mock('@/lib/api', async () => ({
   ...(await vi.importActual<object>('@/lib/api')),
   api: (...args: unknown[]) => state.api(...args),
 }));
+// Panel aktivitas di luar cakupan tes ini (seed papan dan galat muat); ia punya tesnya sendiri.
+vi.mock('@/modules/activity/components/activity-log', () => ({ ActivityLog: () => null }));
 vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
 }));

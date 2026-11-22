@@ -206,7 +206,7 @@ function meWith(serial: 'view' | 'edit'): MeDto {
 }
 
 /** Bawaan: tab Riwayat (kebanyakan tes memeriksa linimasa dan tombol update); tes ringkasan memakai `tab: 'detail'`. */
-function renderPage(props: { tab?: 'detail' | 'riwayat' | 'foto'; caseId?: string } = {}) {
+function renderPage(props: { tab?: 'detail' | 'riwayat' | 'foto' } = {}) {
   return renderInRouter(
     <SerialDetailPage serialId="s1" onBack={() => undefined} tab="riwayat" {...props} />,
   );
@@ -625,21 +625,18 @@ test('linimasa memuat berkursor: tombol "Muat yang lebih lama" mengirim cursor d
   expect(screen.queryByRole('button', { name: 'Muat yang lebih lama' })).toBeNull();
 });
 
-test('tab linimasa: jumlah dari counts, Pengecekan dan tab kasus mengirim group dan caseId', async () => {
+const CASE_C1 = {
+  id: 'c1',
+  number: 'LP/SBY/2611-0001',
+  openedOn: '2026-11-13',
+  closedOn: null,
+  outcome: null,
+};
+
+test('tab linimasa: jumlah dari counts; Pengecekan mengirim group; tanpa tab per laporan', async () => {
   state = {
     ...state,
-    serial: {
-      ...SERIAL,
-      cases: [
-        {
-          id: 'c1',
-          number: 'LP/SBY/2611-0001',
-          openedOn: '2026-11-13',
-          closedOn: null,
-          outcome: null,
-        },
-      ],
-    },
+    serial: { ...SERIAL, cases: [CASE_C1] },
     events: [
       event({
         id: 'e4',
@@ -655,25 +652,90 @@ test('tab linimasa: jumlah dari counts, Pengecekan dan tab kasus mengirim group 
   expect(await screen.findByRole('tab', { name: 'Semua (4)' })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: 'Pengecekan (2)' })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: 'Perubahan data (1)' })).toBeInTheDocument();
-  expect(screen.getByRole('tab', { name: 'LP/SBY/2611-0001 (1)' })).toBeInTheDocument();
+  // Laporan tidak lagi punya tab sendiri: ia menjadi satu kartu di tab Semua.
+  expect(screen.queryByRole('tab', { name: /LP\/SBY\/2611-0001/ })).toBeNull();
 
   await userEvent.click(screen.getByRole('tab', { name: 'Pengecekan (2)' }));
   await waitFor(() =>
     expect(calls('serials.history').some((call) => call[1].group === 'checks')).toBe(true),
   );
-  await userEvent.click(screen.getByRole('tab', { name: 'LP/SBY/2611-0001 (1)' }));
-  await waitFor(() =>
-    expect(calls('serials.history').some((call) => call[1].caseId === 'c1')).toBe(true),
-  );
+  // Tab Pengecekan tetap per kejadian (penyaring jenis kejadian), tanpa kartu laporan.
   const list = await screen.findByRole('list', { name: 'Linimasa' });
-  expect(
-    within(list)
-      .getAllByRole('listitem')
-      .filter((li) => li.hasAttribute('data-seq')),
-  ).toHaveLength(1);
-  expect(within(list).getByText('Laporan LP/SBY/2611-0001 dibuka: Port mati')).toBeInTheDocument();
+  expect(list.querySelector('[data-case-id]')).toBeNull();
   // Jumlah tab tetap terlihat setelah berpindah tab.
   expect(screen.getByRole('tab', { name: 'Semua (4)' })).toBeInTheDocument();
+});
+
+test('tab Semua: kejadian satu laporan diringkas jadi SATU kartu yang membuka detail laporan', async () => {
+  state = {
+    ...state,
+    serial: { ...SERIAL, status: 'reported', cases: [CASE_C1] },
+    events: [
+      event({
+        id: 'e5',
+        seq: 5,
+        type: 'send',
+        caseId: 'c1',
+        actorName: 'Dewi',
+        data: { leg: 'to_service' },
+      }),
+      event({
+        id: 'e4',
+        seq: 4,
+        type: 'report_failure',
+        caseId: 'c1',
+        actorName: 'Budi',
+        data: { caseNumber: 'LP/SBY/2611-0001', damage: 'Port mati' },
+      }),
+      ...state.events,
+    ],
+  };
+  await renderPage();
+  const link = await screen.findByRole('link', { name: 'Buka laporan LP/SBY/2611-0001' });
+  expect(link).toHaveAttribute('href', '/serial/reports/c1');
+  const list = screen.getByRole('list', { name: 'Linimasa' });
+  const card = list.querySelector('[data-case-id="c1"]') as HTMLElement;
+  expect(card).toHaveTextContent('Dilaporkan oleh Budi (QC)');
+  expect(card).toHaveTextContent('Masih terbuka · status Serial kini: Dilaporkan');
+  expect(card).toHaveTextContent('2 kejadian');
+  // Kejadian laporan tidak tampil sebagai kartu terpisah; kartu laporan (terbaru) ditandai.
+  expect(within(list).queryByText('Laporan LP/SBY/2611-0001 dibuka: Port mati')).toBeNull();
+  expect(within(card).getByText('Terbaru')).toBeInTheDocument();
+  // Kejadian di luar laporan tetap per kartu di riwayat sebelumnya.
+  await userEvent.click(screen.getByRole('button', { name: 'Tampilkan riwayat sebelumnya' }));
+  expect(list.querySelectorAll('[data-seq]')).toHaveLength(3);
+});
+
+test('kartu laporan yang sudah selesai menampilkan hasil serta kapan dan oleh siapa diselesaikan', async () => {
+  state = {
+    ...state,
+    serial: {
+      ...SERIAL,
+      status: 'broken',
+      cases: [{ ...CASE_C1, closedOn: '2026-11-15', outcome: 'broken' }],
+    },
+    events: [
+      event({
+        id: 'e5',
+        seq: 5,
+        type: 'declare_broken',
+        caseId: 'c1',
+        actorName: 'Citra',
+        actorTeam: 'service',
+        data: { caseNumber: 'LP/SBY/2611-0001' },
+      }),
+      event({ id: 'e4', seq: 4, type: 'report_failure', caseId: 'c1', actorName: 'Budi' }),
+      ...state.events,
+    ],
+  };
+  await renderPage();
+  await screen.findByRole('link', { name: 'Buka laporan LP/SBY/2611-0001' });
+  const card = screen
+    .getByRole('list', { name: 'Linimasa' })
+    .querySelector('[data-case-id="c1"]') as HTMLElement;
+  expect(card).toHaveTextContent('Hasil: Rusak');
+  expect(card).toHaveTextContent(`Selesai ${formatDay('2026-11-15')} oleh Citra (Servis)`);
+  expect(card).not.toHaveTextContent('Masih terbuka');
 });
 
 test('baris tab linimasa bisa digeser mendatar dan tidak dibungkus saat tab banyak', async () => {
@@ -904,37 +966,6 @@ test('lencana posisi saat dalam pengiriman menyebut tujuan, bukan lokasi asal', 
   await renderPage();
   expect(await screen.findByText('Dalam pengiriman · ke Surabaya')).toBeInTheDocument();
   expect(screen.queryByText('Dalam pengiriman · Jakarta')).toBeNull();
-});
-
-test('caseId dari URL membuka tab laporan itu; id yang bukan laporan serial ini diabaikan', async () => {
-  const withCase = {
-    ...SERIAL,
-    cases: [
-      {
-        id: 'c1',
-        number: 'LP/SBY/2611-0001',
-        openedOn: '2026-11-13',
-        closedOn: null,
-        outcome: null,
-      },
-    ],
-  } as SerialDto;
-  state = { ...state, serial: withCase };
-  const { unmount } = await renderPage({ caseId: 'c1' });
-  await waitFor(() =>
-    expect(calls('serials.history').some((call) => call[1].caseId === 'c1')).toBe(true),
-  );
-  expect(await screen.findByRole('tab', { name: /^LP\/SBY\/2611-0001/ })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  unmount();
-  apiMock.mockClear();
-  await renderPage({ caseId: 'tak-ada' });
-  expect(await screen.findByRole('tab', { name: /^Semua/ })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
 });
 
 const PHOTO = {

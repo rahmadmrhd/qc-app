@@ -35,8 +35,6 @@ import { TimelineTabs } from './timeline-tabs';
 export interface SerialDetailPageProps {
   serialId: string;
   onBack: () => void;
-  /** Laporan yang langsung dibuka di tab linimasa (dari daftar Laporan). */
-  caseId?: string;
   /** Tab aktif terkendali (search param `tab`); tanpa ini halaman memegangnya sendiri. */
   tab?: SerialTab | undefined;
   onTabChange?: ((tab: SerialTab) => void) | undefined;
@@ -153,13 +151,7 @@ function Summary({ serial, events }: { serial: SerialDto; events: readonly Seria
  * membungkus `ViewPage` supaya unggah ulang foto bermasalah (banner di luar tab, galeri di tab Foto) berbagi satu pemilik
  * dan berpindah tab tidak membatalkan penggantian yang berjalan.
  */
-export function SerialDetailPage({
-  serialId,
-  onBack,
-  caseId,
-  tab,
-  onTabChange,
-}: SerialDetailPageProps) {
+export function SerialDetailPage({ serialId, onBack, tab, onTabChange }: SerialDetailPageProps) {
   const me = useMe();
   const detail = useQuery({
     ...serialDetailQueryOptions(serialId),
@@ -257,7 +249,7 @@ export function SerialDetailPage({
           onPick={setActing}
         />
       )}
-      <TimelineTabs serial={serial} {...(caseId ? { initialCaseId: caseId } : {})} />
+      <TimelineTabs serial={serial} />
     </section>
   );
 
