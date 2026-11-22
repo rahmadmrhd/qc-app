@@ -504,10 +504,10 @@ test('Cek ulang pada Lolos: centang awalnya kosong; stiker dicentang masuk stick
 test('Tempel stiker: daftar centang tanpa kata "ulang"; kirim nonaktif tanpa centang; payload apply_stickers', async () => {
   renderDialog(SERIAL, 'stickers');
   expect(screen.getByRole('heading', { name: 'Tempel stiker' })).toBeInTheDocument();
-  expect(screen.getByText('Stiker yang ditempel')).toBeInTheDocument();
-  expect(screen.queryByText('Stiker yang ditempel ulang')).not.toBeInTheDocument();
   const stickerA = await screen.findByRole('checkbox', { name: 'Stiker A' });
   const stickerB = await screen.findByRole('checkbox', { name: 'Stiker B' });
+  expect(screen.getByText('Stiker yang ditempel')).toBeInTheDocument();
+  expect(screen.queryByText('Stiker yang ditempel ulang')).not.toBeInTheDocument();
   expect(screen.getByText('Sudah ditempel 2×')).toBeInTheDocument();
   expect(screen.getByText('Belum pernah ditempel')).toBeInTheDocument();
   // Tidak ada hasil cek, BU, foto bukti, maupun catatan wajib: hanya tanggal, stiker, dan catatan opsional.
@@ -560,6 +560,49 @@ test('Tempel stiker: stiker nonaktif tidak bisa dicentang; galat stickerIds serv
   await userEvent.click(screen.getByRole('button', { name: 'Tempel stiker' }));
   expect(await screen.findByText('Stiker tidak berlaku bagi item ini')).toBeInTheDocument();
   expect(onClose).not.toHaveBeenCalled();
+});
+
+test('Tempel stiker: "Memuat stiker…" selama daftar dimuat, lalu daftar centang', async () => {
+  let release: (value: unknown) => void = () => undefined;
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.stickerOptions') {
+      return new Promise((resolve) => {
+        release = resolve;
+      });
+    }
+    return Promise.reject(new Error(`api tak dikenal: ${id}`));
+  });
+  renderDialog({ ...SERIAL, stickers: [] }, 'stickers');
+  expect(await screen.findByText('Memuat stiker…')).toBeInTheDocument();
+  expect(screen.queryByText('Tidak ada stiker yang berlaku bagi item ini.')).toBeNull();
+  release({ stickers: [{ id: 'st1', name: 'Stiker A', alias: '', typeName: 'J', defaultQty: 1 }] });
+  expect(await screen.findByRole('checkbox', { name: 'Stiker A' })).toBeInTheDocument();
+  expect(screen.queryByText('Memuat stiker…')).toBeNull();
+});
+
+test('Tempel stiker: galat memuat stiker tampil lewat describeError, tanpa daftar centang', async () => {
+  apiMock.mockImplementation((id: string) =>
+    id === 'serials.stickerOptions'
+      ? Promise.reject(new ApiError('FORBIDDEN', 'Tidak punya akses ke stiker', '-'))
+      : Promise.reject(new Error(`api tak dikenal: ${id}`)),
+  );
+  renderDialog({ ...SERIAL, stickers: [] }, 'stickers');
+  expect(await screen.findByRole('alert')).toHaveTextContent('Tidak punya akses ke stiker');
+  expect(screen.queryByRole('checkbox')).toBeNull();
+});
+
+test('Tempel stiker: tanpa stiker yang berlaku, ada keterangan dan tombol kirim tetap nonaktif', async () => {
+  apiMock.mockImplementation((id: string) =>
+    id === 'serials.stickerOptions'
+      ? Promise.resolve({ stickers: [] })
+      : Promise.reject(new Error(`api tak dikenal: ${id}`)),
+  );
+  renderDialog({ ...SERIAL, stickers: [] }, 'stickers');
+  expect(
+    await screen.findByText('Tidak ada stiker yang berlaku bagi item ini.'),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(screen.getByRole('button', { name: 'Tempel stiker' })).toBeDisabled();
 });
 
 test('Cek ulang tanpa centang tidak mengirim stickerIds', async () => {

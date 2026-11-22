@@ -1,6 +1,7 @@
 import type { SerialSummaryDto } from '@shared/contract';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import { renderInRouter } from '@/test/render-in-router';
@@ -10,6 +11,7 @@ vi.mock('@/lib/api', () => ({ api: apiMock }));
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast: toastMock, Toaster: () => null }));
 
+import type { PendingApplyStickers } from '../lib/apply-stickers-intent';
 import { ApplyStickersDialog } from './apply-stickers-dialog';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -75,16 +77,51 @@ beforeEach(() => {
 
 const calls = (id: string) => apiMock.mock.calls.filter((call) => call[0] === id);
 
+/**
+ * Meniru halaman daftar: niat kirim (`pending`) dipegang di luar dialog sehingga tutup-buka dialog tidak menghapusnya.
+ * Tombol "Buka lagi" muncul saat dialog tertutup.
+ */
+function Host({
+  rows,
+  onClose,
+  onDone,
+}: {
+  rows: SerialSummaryDto[];
+  onClose: () => void;
+  onDone: (ids: string[]) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const [pending, setPending] = useState<PendingApplyStickers | null>(null);
+  return open ? (
+    <ApplyStickersDialog
+      rows={rows}
+      pending={pending}
+      onPendingChange={setPending}
+      onClose={() => {
+        setOpen(false);
+        onClose();
+      }}
+      onDone={onDone}
+    />
+  ) : (
+    <button type="button" onClick={() => setOpen(true)}>
+      Buka lagi
+    </button>
+  );
+}
+
 async function renderDialog(
   rows: SerialSummaryDto[] = ROWS,
   handlers: { onClose?: () => void; onDone?: (ids: string[]) => void } = {},
 ) {
   const onClose = handlers.onClose ?? vi.fn();
   const onDone = handlers.onDone ?? vi.fn();
-  await renderInRouter(<ApplyStickersDialog rows={rows} onClose={onClose} onDone={onDone} />);
+  await renderInRouter(<Host rows={rows} onClose={onClose} onDone={onDone} />);
   const dialog = await screen.findByRole('dialog', { name: 'Tempel stiker' });
   return { dialog, onClose, onDone };
 }
+
+const sentInputs = () => calls('serials.applyStickersBatch').map((call) => call[1]);
 
 test('satu bagian per kelompok (Item, BU); daftar stiker dimuat dengan salah satu serial kelompok', async () => {
   const { dialog } = await renderDialog();
@@ -146,7 +183,50 @@ test('catatan opsional ikut terkirim', async () => {
   });
 });
 
-test('gagal kirim: dialog tetap terbuka dengan galat; kirim ulang memakai clientId yang sama, isi berubah memakai id baru', async () => {
+test('gagal tak jelas (UNAVAILABLE): dialog beralih ke Kirim ulang yang mengirim PERSIS isi dan clientId yang sama', async () => {
+  let attempt = 0;
+  applyResult = () => {
+    attempt += 1;
+    return attempt === 1
+      ? Promise.reject(new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-'))
+      : Promise.resolve({ ids: ['s1'] });
+  };
+  const onClose = vi.fn();
+  const onDone = vi.fn();
+  const { dialog } = await renderDialog([row({ id: 's1' })], { onClose, onDone });
+  await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker A' }));
+  await userEvent.type(within(dialog).getByLabelText('Catatan (opsional)'), 'Batch Nov');
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
+  // Formulir terkunci: hanya mode Kirim ulang (tanpa kolom isian), galat dan keterangan tampil.
+  expect(await within(dialog).findByRole('button', { name: 'Kirim ulang' })).toBeEnabled();
+  expect(within(dialog).queryByLabelText('Catatan (opsional)')).toBeNull();
+  expect(within(dialog).getByRole('alert')).toHaveTextContent('Hasil pengiriman belum jelas');
+  expect(onClose).not.toHaveBeenCalled();
+
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Kirim ulang' }));
+  await waitFor(() => expect(sentInputs()).toHaveLength(2));
+  const [first, second] = sentInputs();
+  expect(second).toEqual(first);
+  await waitFor(() => expect(onDone).toHaveBeenCalledWith(['s1']));
+  expect(onClose).toHaveBeenCalled();
+});
+
+test('galat bukan ApiError (mis. galat tak terduga) diperlakukan tak jelas: id dipertahankan', async () => {
+  let attempt = 0;
+  applyResult = () => {
+    attempt += 1;
+    return attempt === 1 ? Promise.reject(new Error('Gagal')) : Promise.resolve({ ids: ['s1'] });
+  };
+  const { dialog } = await renderDialog([row({ id: 's1' })]);
+  await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker A' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Kirim ulang' }));
+  await waitFor(() => expect(sentInputs()).toHaveLength(2));
+  const ids = sentInputs().map((input) => (input as { clientId: string }).clientId);
+  expect(ids[1]).toBe(ids[0]);
+});
+
+test('penolakan pasti (VALIDATION): formulir tetap, galat tampil, dan kiriman berikutnya memakai clientId BARU', async () => {
   let attempt = 0;
   applyResult = () => {
     attempt += 1;
@@ -161,35 +241,76 @@ test('gagal kirim: dialog tetap terbuka dengan galat; kirim ulang memakai client
   await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker A' }));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
   expect(await within(dialog).findByRole('alert')).toHaveTextContent('AAA111');
+  expect(within(dialog).queryByRole('button', { name: 'Kirim ulang' })).toBeNull();
   expect(onClose).not.toHaveBeenCalled();
 
-  // Mengulang kiriman yang sama: id sama (kunci idempoten server).
+  // Isi sama pun kini niat baru: server menolak tanpa menulis, jadi id lama sudah tidak berarti.
   await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
-  await waitFor(() => expect(calls('serials.applyStickersBatch')).toHaveLength(2));
-  const [first, second] = calls('serials.applyStickersBatch').map(
-    (call) => (call[1] as { clientId: string }).clientId,
-  );
-  expect(second).toBe(first);
+  await waitFor(() => expect(sentInputs()).toHaveLength(2));
+  const ids = sentInputs().map((input) => (input as { clientId: string }).clientId);
+  expect(ids[1]).not.toBe(ids[0]);
   await waitFor(() => expect(onClose).toHaveBeenCalled());
 });
 
-test('isi kiriman berubah sesudah gagal: niat kirim baru dengan clientId baru', async () => {
+test('tutup lalu buka lagi setelah gagal tak jelas: tetap mode Kirim ulang dengan clientId yang sama', async () => {
   let attempt = 0;
   applyResult = () => {
     attempt += 1;
-    return attempt === 1 ? Promise.reject(new Error('Gagal')) : Promise.resolve({ ids: ['s1'] });
+    return attempt === 1
+      ? Promise.reject(new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-'))
+      : Promise.resolve({ ids: ['s1'] });
   };
   const { dialog } = await renderDialog([row({ id: 's1' })]);
   await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker A' }));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
-  await within(dialog).findByRole('alert');
-  await userEvent.click(within(dialog).getByRole('checkbox', { name: 'Stiker B' }));
+  await within(dialog).findByRole('button', { name: 'Kirim ulang' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
+
+  await userEvent.click(await screen.findByRole('button', { name: 'Buka lagi' }));
+  const reopened = await screen.findByRole('dialog', { name: 'Tempel stiker' });
+  expect(within(reopened).queryByLabelText('Catatan (opsional)')).toBeNull();
+  await userEvent.click(within(reopened).getByRole('button', { name: 'Kirim ulang' }));
+  await waitFor(() => expect(sentInputs()).toHaveLength(2));
+  const [first, second] = sentInputs();
+  expect(second).toEqual(first);
+});
+
+test('Buang pengiriman sebelumnya: kembali ke formulir dan kiriman berikutnya memakai clientId baru', async () => {
+  let attempt = 0;
+  applyResult = () => {
+    attempt += 1;
+    return attempt === 1
+      ? Promise.reject(new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-'))
+      : Promise.resolve({ ids: ['s1'] });
+  };
+  const { dialog } = await renderDialog([row({ id: 's1' })]);
+  await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker A' }));
   await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
-  await waitFor(() => expect(calls('serials.applyStickersBatch')).toHaveLength(2));
-  const ids = calls('serials.applyStickersBatch').map(
-    (call) => (call[1] as { clientId: string }).clientId,
+  await userEvent.click(
+    await within(dialog).findByRole('button', { name: 'Buang pengiriman sebelumnya' }),
   );
+  // Isian formulir tetap (centang masih ada); mengirim lagi = niat baru.
+  expect(await within(dialog).findByRole('checkbox', { name: 'Stiker A' })).toBeChecked();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
+  await waitFor(() => expect(sentInputs()).toHaveLength(2));
+  const ids = sentInputs().map((input) => (input as { clientId: string }).clientId);
   expect(ids[1]).not.toBe(ids[0]);
+});
+
+test('Kirim ulang ditolak pasti (CONFLICT): niat dibuang, kembali ke formulir dengan galat', async () => {
+  let attempt = 0;
+  applyResult = () => {
+    attempt += 1;
+    return attempt === 1
+      ? Promise.reject(new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-'))
+      : Promise.reject(new ApiError('CONFLICT', 'AAA111: sudah berubah', 'req-2'));
+  };
+  const { dialog } = await renderDialog([row({ id: 's1' })]);
+  await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker A' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
+  await userEvent.click(await within(dialog).findByRole('button', { name: 'Kirim ulang' }));
+  expect(await within(dialog).findByLabelText('Catatan (opsional)')).toBeInTheDocument();
+  expect(within(dialog).getByRole('alert')).toHaveTextContent('AAA111');
 });
 
 test('lebih dari 100 serial yang dicentang: peringatan dan tombol nonaktif; kelompok tanpa centang tak dihitung', async () => {

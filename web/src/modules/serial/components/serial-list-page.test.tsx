@@ -4,6 +4,7 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { ApiError } from '@/lib/api/api-error';
 import { closeFilterChip, linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
 import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
@@ -1091,6 +1092,48 @@ test('Tempel stiker membuka dialog untuk serial terpilih; sukses membuang piliha
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   // Pilihan dibuang setelah sukses: bar aksi massal hilang.
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Tempel stiker' })).toBeNull());
+});
+
+test('Tempel stiker gagal tak jelas lalu dialog ditutup: halaman menampilkan Kirim ulang dengan clientId yang sama; sukses membuang niat dan pilihan', async () => {
+  me = manageMe('edit');
+  let attempt = 0;
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') return Promise.resolve({ items: PAGE_1, nextCursor: null });
+    if (id === 'serials.stickerOptions') {
+      return Promise.resolve({
+        stickers: [{ id: 'st1', name: 'Stiker A', alias: '', typeName: 'J', defaultQty: 1 }],
+      });
+    }
+    if (id === 'serials.applyStickersBatch') {
+      attempt += 1;
+      return attempt === 1
+        ? Promise.reject(new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-'))
+        : Promise.resolve({ ids: ['s1', 's2'] });
+    }
+    return Promise.resolve({ locations: [], items: [], nextCursor: null });
+  });
+  await renderPage();
+  await screen.findByText('ABC123');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Tempel stiker' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Tempel stiker' });
+  await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker A' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
+  await within(dialog).findByRole('button', { name: 'Kirim ulang' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+
+  // Niat tetap hidup di halaman: pemberitahuan dengan Kirim ulang.
+  const notice = await screen.findByText(/belum jelas hasilnya/);
+  expect(notice).toHaveTextContent('Tempel stiker untuk 2 Serial Number');
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim ulang' }));
+  const reopened = await screen.findByRole('dialog', { name: 'Tempel stiker' });
+  await userEvent.click(within(reopened).getByRole('button', { name: 'Kirim ulang' }));
+  await waitFor(() => expect(callsOf('serials.applyStickersBatch')).toHaveLength(2));
+  const [first, second] = callsOf('serials.applyStickersBatch').map((call) => call[1]);
+  expect(second).toEqual(first);
+  await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  expect(screen.queryByText(/belum jelas hasilnya/)).toBeNull();
 });
 
 test('ponsel: bar aksi massal satu baris memuat Tempel stiker; lebih dari 10 kombinasi = nonaktif dengan alasan terlihat', async () => {

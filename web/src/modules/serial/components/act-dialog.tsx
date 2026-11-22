@@ -600,20 +600,32 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
             </>
           ) : null}
           {kind === 'stickers' ? (
-            <RecheckStickerList
-              rows={stickerRows}
-              checked={checked}
-              legend="Stiker yang ditempel"
-              description="Centang stiker yang baru ditempel pada unit ini. Tiap centang menambah satu stiker dan memotong stok satu di lokasi unit ini."
-              onToggle={(stickerId, on) => {
-                const next = new Set(checked);
-                if (on) next.add(stickerId);
-                else next.delete(stickerId);
-                setChecked(next);
-              }}
-              error={errorOf('stickerIds')}
-              disabled={act.isPending}
-            />
+            stickerOptions.isPending ? (
+              <p className="text-sm text-muted-foreground">Memuat stiker…</p>
+            ) : stickerOptions.isError ? (
+              <p role="alert" className="text-sm text-destructive-text">
+                {describeError(stickerOptions.error)}
+              </p>
+            ) : stickerRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Tidak ada stiker yang berlaku bagi item ini.
+              </p>
+            ) : (
+              <RecheckStickerList
+                rows={stickerRows}
+                checked={checked}
+                legend="Stiker yang ditempel"
+                description="Centang stiker yang baru ditempel pada unit ini. Tiap centang menambah satu stiker dan memotong stok satu di lokasi unit ini."
+                onToggle={(stickerId, on) => {
+                  const next = new Set(checked);
+                  if (on) next.add(stickerId);
+                  else next.delete(stickerId);
+                  setChecked(next);
+                }}
+                error={errorOf('stickerIds')}
+                disabled={act.isPending}
+              />
+            )
           ) : null}
           {kind === 'recheck' ? (
             <div className="space-y-1.5">

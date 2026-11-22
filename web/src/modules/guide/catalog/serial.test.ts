@@ -216,4 +216,11 @@ describe('panduan Serial Number', () => {
     // Versi panduan tidak naik: alurnya sama, hanya letak tombol yang berubah (checklist rilis panduan).
     expect(SERIAL_DETAIL.version).toBe(1);
   });
+
+  test('daftar Laporan: teks tur menyebut kolom "durasi", bukan "lama"; versi panduan tidak naik', () => {
+    const text = SERIAL_LAPORAN_DAFTAR.steps.map((step) => step.text).join(' ');
+    expect(text).toContain('durasi');
+    expect(text).not.toContain('lokasi, lama');
+    expect(SERIAL_LAPORAN_DAFTAR.version).toBe(1);
+  });
 });

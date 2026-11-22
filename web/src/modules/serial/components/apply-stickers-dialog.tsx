@@ -1,7 +1,7 @@
 import type { SerialSummaryDto } from '@shared/contract';
 import { SERIAL_LIMITS } from '@shared/serials';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { FieldError } from '@/components/field-error';
 import { BusyLabel } from '@/components/spinner';
@@ -18,6 +18,11 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { describeError } from '@/lib/api/describe-error';
+import {
+  isDefiniteRejection,
+  newPendingApplyStickers,
+  type PendingApplyStickers,
+} from '../lib/apply-stickers-intent';
 import { todayWib } from '../lib/locations';
 import { groupSerialsByItemBu, STICKER_ROWS_MAX, type StickerGroup } from '../lib/sticker-groups';
 import { serialStickerOptionsQueryOptions, useApplyStickersBatch } from '../queries';
@@ -27,6 +32,12 @@ export interface ApplyStickersDialogProps {
   /** Serial terpilih (potret saat dialog dibuka). */
   rows: readonly SerialSummaryDto[];
   onClose: () => void;
+  /**
+   * Niat kirim yang hasilnya belum jelas, dipegang halaman daftar (di luar umur dialog). Ada = dialog hanya menawarkan
+   * "Kirim ulang" persis sama (id dan isi sama), bukan formulir baru.
+   */
+  pending: PendingApplyStickers | null;
+  onPendingChange: (pending: PendingApplyStickers | null) => void;
   /** Id serial yang berhasil ditempeli, untuk membuang pilihan di daftar. */
   onDone: (ids: string[]) => void;
 }
@@ -103,10 +114,19 @@ function GroupSection({
  * menurut (Item, BU) dan tiap kelompok punya daftar centang sendiri (stiker yang berlaku bagi item itu pada BU itu);
  * kelompok tanpa centang dilewati. Tiap centang = +1 stiker dan potong stok 1 di lokasi masing-masing serial. Satu
  * pengiriman atomik (`serials.applyStickersBatch`: satu serial ditolak = semuanya batal, pesan menyebut nomornya).
- * `clientId` dibuat SEKALI per isi kiriman dan dipakai ulang saat mengulang kiriman yang sama (kunci idempoten server);
- * isi berubah = id baru. Tanpa Urungkan (stok yang sudah terpotong tak dapat dibalik).
+ * Idempotensi (review akhir 2026-11-22): `clientId` hidup per NIAT KIRIM, di luar dialog. Niat dicatat ke halaman daftar
+ * (`onPendingChange`) SEBELUM dikirim; sukses atau penolakan pasti (VALIDATION/CONFLICT/FORBIDDEN/NOT_FOUND) menghapusnya,
+ * sedangkan kegagalan yang tak jelas (jaringan putus, 5xx) menyimpannya dan dialog beralih ke mode "Kirim ulang" yang
+ * mengirim PERSIS isi dan id yang sama (formulir terkunci), sehingga komit yang jawabannya hilang tak memotong stok dua
+ * kali. Tanpa Urungkan (stok yang sudah terpotong tak dapat dibalik).
  */
-export function ApplyStickersDialog({ rows, onClose, onDone }: ApplyStickersDialogProps) {
+export function ApplyStickersDialog({
+  rows,
+  onClose,
+  pending,
+  onPendingChange,
+  onDone,
+}: ApplyStickersDialogProps) {
   const apply = useApplyStickersBatch();
   const groups = useMemo(() => groupSerialsByItemBu(rows), [rows]);
   const today = todayWib();
@@ -114,7 +134,6 @@ export function ApplyStickersDialog({ rows, onClose, onDone }: ApplyStickersDial
   const [message, setMessage] = useState('');
   const [checks, setChecks] = useState<Record<string, ReadonlySet<string>>>({});
   const [error, setError] = useState<string | null>(null);
-  const clientIdRef = useRef<{ signature: string; id: string } | null>(null);
 
   const payloadRows = groups.flatMap((group) => {
     const stickerIds = [...(checks[group.key] ?? [])];
@@ -140,26 +159,98 @@ export function ApplyStickersDialog({ rows, onClose, onDone }: ApplyStickersDial
     });
   }
 
-  async function submit() {
+  async function send(intent: PendingApplyStickers) {
     setError(null);
-    const signature = JSON.stringify({ occurredOn, message, rows: payloadRows });
-    // Isi kiriman sama dengan percobaan sebelumnya = kirim ulang (id yang sama); isi berubah = niat kirim baru.
-    if (clientIdRef.current?.signature !== signature) {
-      clientIdRef.current = { signature, id: crypto.randomUUID() };
-    }
     try {
-      const result = await apply.mutateAsync({
-        clientId: clientIdRef.current.id,
-        occurredOn,
-        message,
-        rows: payloadRows,
-      });
+      const result = await apply.mutateAsync(intent.input);
+      onPendingChange(null);
       toast.success(`${result.ids.length} Serial Number ditempeli stiker`);
       onDone(result.ids);
       onClose();
     } catch (caught) {
-      setError(describeError(caught));
+      if (isDefiniteRejection(caught)) {
+        // Server menolak tanpa menulis apa pun: niat ini selesai, kiriman berikutnya boleh memakai id baru.
+        onPendingChange(null);
+        setError(describeError(caught));
+      } else {
+        // Hasil tak jelas: pertahankan id dan isi; dialog beralih ke mode "Kirim ulang".
+        setError(
+          `${describeError(caught)} Hasil pengiriman belum jelas; kirim ulang tanpa mengubah isinya.`,
+        );
+      }
     }
+  }
+
+  function submit() {
+    const intent = newPendingApplyStickers({ occurredOn, message, rows: payloadRows });
+    // Dicatat SEBELUM dikirim: bila dialog tertutup atau jawabannya hilang, id dan isi yang sama tetap tersedia.
+    onPendingChange(intent);
+    return send(intent);
+  }
+
+  if (pending) {
+    const { input } = pending;
+    return (
+      <Dialog open onOpenChange={(open) => !open && !apply.isPending && onClose()}>
+        <DialogContent size="full-on-phone">
+          <DialogHeader>
+            <DialogTitle>Tempel stiker</DialogTitle>
+            <DialogDescription>
+              Pengiriman sebelumnya belum jelas hasilnya (koneksi terputus atau server tidak
+              menjawab), jadi stok mungkin sudah terpotong. Kirim ulang persis sama: server
+              memastikan stok tidak terpotong dua kali.
+            </DialogDescription>
+          </DialogHeader>
+          <dl className="space-y-1 text-sm">
+            <div className="flex gap-2">
+              <dt className="text-muted-foreground">Tanggal</dt>
+              <dd>{input.occurredOn}</dd>
+            </div>
+            <div className="flex gap-2">
+              <dt className="text-muted-foreground">Serial Number</dt>
+              <dd>{input.rows.length}</dd>
+            </div>
+            {input.message ? (
+              <div className="flex gap-2">
+                <dt className="text-muted-foreground">Catatan</dt>
+                <dd className="whitespace-pre-wrap">{input.message}</dd>
+              </div>
+            ) : null}
+          </dl>
+          {error ? (
+            <p role="alert" className="text-sm text-destructive-text">
+              {error}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              color="primary"
+              disabled={apply.isPending}
+              onClick={onClose}
+            >
+              Batal
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              color="destructive"
+              disabled={apply.isPending}
+              onClick={() => {
+                onPendingChange(null);
+                setError(null);
+              }}
+            >
+              Buang pengiriman sebelumnya
+            </Button>
+            <Button type="button" disabled={apply.isPending} onClick={() => void send(pending)}>
+              {apply.isPending ? <BusyLabel>Menyimpan…</BusyLabel> : 'Kirim ulang'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
   }
 
   return (

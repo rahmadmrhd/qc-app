@@ -195,7 +195,7 @@ export const SERIAL_LAPORAN_DAFTAR: GuideEntry = {
     {
       target: 'case-table',
       route: '/serial/reports',
-      text: 'Halaman Laporan memuat laporan unit bermasalah: nomor LP, serial, item, status, lokasi, lama, pelapor. Satu serial paling banyak punya satu laporan aktif. Klik nomor LP untuk membuka halaman detail laporannya.',
+      text: 'Halaman Laporan memuat laporan unit bermasalah: nomor LP, serial, item, status, lokasi, durasi, pelapor. Satu serial paling banyak punya satu laporan aktif. Klik nomor LP untuk membuka halaman detail laporannya.',
       advance: 'next',
     },
     {

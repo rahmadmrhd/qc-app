@@ -59,7 +59,8 @@ export type ActionKind =
   | 'adjust'
   | 'history'
   | 'reportDamage'
-  | 'stickers';
+  | 'stickers'
+  | 'update';
 
 type ActionSpec = {
   icon: LucideIcon;
@@ -254,6 +255,14 @@ export const ACTIONS: Record<ActionKind, ActionSpec> = {
   stickers: {
     icon: Sticker,
     label: 'Tempel stiker',
+    color: 'primary',
+    variant: 'outline',
+    compactVariant: 'ghost',
+  },
+  // Serial Number (R3): "Update" status alur (bersubmenu aksi alur); bukan "Muat ulang" (`refresh`).
+  update: {
+    icon: RefreshCw,
+    label: 'Update',
     color: 'primary',
     variant: 'outline',
     compactVariant: 'ghost',

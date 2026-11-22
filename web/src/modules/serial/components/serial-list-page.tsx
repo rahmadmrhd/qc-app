@@ -17,6 +17,8 @@ import { DisabledReason } from '@/components/disabled-reason';
 import { ListPage } from '@/components/page/list-page';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
 import { formatStamp } from '@/lib/format-stamp';
 import { businessUnitLinkAccess, itemLinkAccess, locationLinkAccess } from '@/lib/link-access';
@@ -30,6 +32,7 @@ import {
 } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { NoLocationNotice } from '@/modules/location/components/no-location-notice';
+import type { PendingApplyStickers } from '../lib/apply-stickers-intent';
 import { CUSTODY_LABEL, formatDay } from '../lib/labels';
 import { filterOfSearch, type SerialSearch } from '../lib/list-filter';
 import { todayWib } from '../lib/locations';
@@ -101,6 +104,8 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
   const [editing, setEditing] = useState<SerialDto | null>(null);
   const [acting, setActing] = useState<{ serial: SerialDto; kind: ActKind } | null>(null);
   const [stickering, setStickering] = useState<SerialSummaryDto[] | null>(null);
+  // Niat Tempel stiker yang hasilnya belum jelas: hidup di halaman (bukan di dialog) agar id idempoten selamat dari tutup-buka.
+  const [pendingStickers, setPendingStickers] = useState<PendingApplyStickers | null>(null);
   const detailLoader = useLoadSerialDetail();
 
   const itemAccess = itemLinkAccess(me);
@@ -403,6 +408,25 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
       >
         <div className="space-y-3" data-tour="serial-table">
           <NoLocationNotice relevant={!canUseSerialLocationOptions(me)} />
+          {pendingStickers && !stickering ? (
+            <Alert color="warning">
+              <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  Pengiriman Tempel stiker untuk {pendingStickers.input.rows.length} Serial Number
+                  belum jelas hasilnya. Kirim ulang persis sama agar stok tidak terpotong dua kali.
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  color="warning"
+                  onClick={() => setStickering(selectedRows)}
+                >
+                  Kirim ulang
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : null}
           <DataTable
             rows={items}
             rowKey={(serial) => serial.id}
@@ -444,6 +468,8 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
       {stickering ? (
         <ApplyStickersDialog
           rows={stickering}
+          pending={pendingStickers}
+          onPendingChange={setPendingStickers}
           onClose={() => setStickering(null)}
           onDone={(ids) => selection.remove(ids)}
         />

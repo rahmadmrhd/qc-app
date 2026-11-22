@@ -95,9 +95,8 @@ export function useSerialActions({
       onSelect: () => setActing('stickers'),
     },
     {
-      // Belum ada jenis aksi "update": ikon dan gaya `refresh` dipakai dengan label sendiri.
       id: 'update',
-      action: 'refresh',
+      action: 'update',
       label: 'Update',
       shortLabel: 'Update',
       busy: pending,
