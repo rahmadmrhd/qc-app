@@ -45,7 +45,7 @@ describe('token warna semantik', () => {
   it('nilai terang sesuai spek', () => {
     expect(light).toContain('--success: #15803d;');
     expect(light).toContain('--warning-text: #92400e;');
-    expect(light).toContain('--secondary: #71717a;');
+    expect(light).toContain('--secondary: #787882;');
     expect(light).toContain('--destructive-text: #b91c1c;');
   });
 

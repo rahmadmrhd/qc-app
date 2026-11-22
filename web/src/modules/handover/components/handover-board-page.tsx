@@ -17,9 +17,11 @@ import { canAt, locationsWith } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 import { NoLocationNotice } from '@/modules/location/components/no-location-notice';
+import { BOARD_STATUSES } from '../lib/group-board';
 import { readableLocationIds } from '../lib/readable-locations';
 import { scopedLocationIds } from '../lib/search';
 import { useSendComment } from '../lib/send-comment';
+import { HANDOVER_STATUS_LABELS } from '../lib/status';
 import { useCheckQueue } from '../lib/use-check-queue';
 import { usePendingCreates } from '../lib/use-pending-creates';
 import { usePendingIds } from '../lib/use-pending-ids';
@@ -201,12 +203,38 @@ export function HandoverBoardPage({
     };
   };
 
-  const filtered = customerIds.length > 0 || deletedView;
+  // Ponsel menampilkan daftar kartu yang disaring menurut status alur; di desktop kolom kanban sudah per status.
+  const statusFiltered = !desktop && status !== 'all' && !deletedView;
+  const filtered = customerIds.length > 0 || deletedView || statusFiltered;
   const clearFilters = () => {
     if (customerIds.length > 0) onCustomersChange?.([]);
     if (deletedView) onDeletedChange?.(false);
+    if (statusFiltered) onStatusChange('all');
   };
-  const viewOptions = liveStatusFilterOptions(canSeeDeleted);
+  // Satu chip "Status": di ponsel memuat status alur + "Terhapus" (eksklusif: Terhapus menampilkan task terhapus apa
+  // pun statusnya), di desktop hanya Hidup/Terhapus.
+  const statusOptions = desktop
+    ? liveStatusFilterOptions(canSeeDeleted)
+    : [
+        { value: 'all', label: 'Semua' },
+        ...BOARD_STATUSES.map((value) => ({ value, label: HANDOVER_STATUS_LABELS[value] })),
+        ...(canSeeDeleted ? [{ value: 'deleted', label: 'Terhapus' }] : []),
+      ];
+  const statusValue = deletedView ? 'deleted' : desktop ? 'live' : status;
+  const statusDisplay = deletedView
+    ? 'Terhapus'
+    : statusFiltered
+      ? HANDOVER_STATUS_LABELS[status as HandoverStatus]
+      : null;
+  const changeStatus = (next: string) => {
+    if (next === 'deleted') {
+      onDeletedChange?.(true);
+      if (!desktop) onStatusChange('all');
+      return;
+    }
+    if (deletedView) onDeletedChange?.(false);
+    if (!desktop && next !== 'live') onStatusChange(next as HandoverStatus | 'all');
+  };
 
   return (
     <ListPage
@@ -216,7 +244,7 @@ export function HandoverBoardPage({
         ? { createAction: { label: 'Tambah task', onClick: onCreate, tour: 'handover-new' } }
         : {})}
       filters={
-        customerIds.length > 0 || onCustomersChange || viewOptions.length > 0 ? (
+        customerIds.length > 0 || onCustomersChange || statusOptions.length > 0 ? (
           <FilterBar>
             {onCustomersChange || customerIds.length > 0 ? (
               <FilterChip
@@ -232,19 +260,22 @@ export function HandoverBoardPage({
                 />
               </FilterChip>
             ) : null}
-            {viewOptions.length > 0 ? (
+            {statusOptions.length > 0 ? (
               <FilterChip
                 label="Status"
-                display={deletedView ? 'Terhapus' : null}
-                onClear={() => onDeletedChange?.(false)}
+                display={statusDisplay}
+                onClear={() => {
+                  if (deletedView) onDeletedChange?.(false);
+                  if (!desktop) onStatusChange('all');
+                }}
               >
                 <Select
                   id="handover-filter-view"
                   label="Filter status"
                   hideLabel
-                  options={viewOptions}
-                  value={deletedView ? 'deleted' : 'live'}
-                  onValueChange={(next) => onDeletedChange?.(next === 'deleted')}
+                  options={statusOptions}
+                  value={statusValue}
+                  onValueChange={changeStatus}
                 />
               </FilterChip>
             ) : null}

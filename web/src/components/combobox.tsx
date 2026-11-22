@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label';
 import { useBackToClose } from '@/hooks/use-back-to-close';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { currentListRoom, measureListRoom, setListRoom } from '@/lib/list-room';
+import { useOpenLinkProps } from '@/lib/open-link';
 import { cn } from '@/lib/utils';
 
 /**
@@ -260,6 +261,7 @@ export function ComboboxBase({
   // Di dalam chip filter daftar dirender di tempat dan selalu terbuka (B2: tanpa lapisan melayang bersarang).
   const inlineContext = useContext(ComboboxInlineContext);
   const inline = inlineContext !== null;
+  const openLinkProps = useOpenLinkProps();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -590,8 +592,7 @@ export function ComboboxBase({
                 {chip.href ? (
                   <a
                     href={chip.href}
-                    target="_blank"
-                    rel="noreferrer"
+                    {...openLinkProps(chip.href)}
                     aria-label={`Buka ${chip.label}`}
                     className="truncate hover:underline"
                   >
@@ -686,7 +687,7 @@ export function ComboboxBase({
             ) : null}
             {!multi && openLink ? (
               <Button asChild variant="ghost" color="primary" size="icon" className="size-6">
-                <a href={openLink} target="_blank" rel="noreferrer" aria-label={`Buka ${label}`}>
+                <a href={openLink} {...openLinkProps(openLink)} aria-label={`Buka ${label}`}>
                   <ExternalLink />
                 </a>
               </Button>

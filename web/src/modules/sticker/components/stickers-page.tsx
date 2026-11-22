@@ -20,7 +20,6 @@ import {
   useBulkAction,
   useRowSelection,
 } from '@/components/data-table';
-import { DisabledReason } from '@/components/disabled-reason';
 import { LinkMultiField } from '@/components/link-field';
 import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
@@ -100,8 +99,11 @@ export interface StickersPageProps {
   mutations: StickerMutations;
   /** Membuka halaman stok opname. */
   onStartOpname: () => void;
-  /** Membuka halaman "Entri stok" batch pada mode itu. */
-  onStartEntry: (mode: StockEntryMode) => void;
+  /**
+   * Membuka halaman "Entri stok" batch pada mode itu; `stickerIds` (dari aksi stok massal di bar pilihan) mengisi
+   * entri awal dengan stiker-stiker itu.
+   */
+  onStartEntry: (mode: StockEntryMode, stickerIds?: string[]) => void;
   isLoading?: boolean;
   isError?: boolean;
   onRetry?: () => void;
@@ -153,15 +155,6 @@ function buildRows(
     stock: row,
   }));
 }
-
-const NOT_ACTIVE_FIRST = 'Nonaktifkan stiker dulu sebelum dihapus';
-const SYSTEM_NO_DELETE =
-  'Stiker Manual Book dan Postel mengikuti konfigurasinya, jadi tidak bisa dihapus di sini';
-const SYSTEM_NO_RESTORE =
-  'Stiker Manual Book dan Postel dipulihkan lewat konfigurasi atau catatan induknya, bukan di sini';
-const DEPRECATED_NO_ACTIVATE = 'Stiker Usang tidak dapat diaktifkan kembali';
-const OLD_VERSION_NO_ACTIVATE =
-  'Hanya versi terbaru Manual Book yang dapat diaktifkan kembali; keluarkan versi lama dari pilihan';
 
 /**
  * Halaman Stiker (kit CRUD): katalog dan stok dalam SATU tabel. Kolom Stok, Per lokasi, dan menu "Stok" hanya untuk
@@ -237,7 +230,35 @@ export function StickersPage({
   const visibleCatalog = visible.flatMap((row) => (row.catalog ? [row.catalog] : []));
 
   const reload = mutations.reload;
-  const bulkSelection = canManage && catalogMode ? selection : undefined;
+  // Pilihan massal: katalog (`sticker: manage`) dan/atau aksi stok (`stickerstock`) pada baris yang punya stok.
+  const canStockBulk = Boolean(stock) && (stock?.canEdit === true || stock?.canManage === true);
+  const bulkSelection = (canManage || canStockBulk) && catalogMode ? selection : undefined;
+  const systemKindOf = (sticker: StickerDto) => typeById.get(sticker.typeId)?.systemKind ?? '';
+  const stickerOf = (id: string) => visibleCatalog.find((entry) => entry.id === id);
+  // Syarat per aksi massal (keputusan pemilik 2026-11-23): tombol tampil bila minimal satu baris terpilih memenuhinya
+  // dan hanya baris itu yang dikirim. Aturan sama dengan aksi per baris di bawah.
+  // Aktifkan: Usang tak dapat diaktifkan; Manual Book nonaktif hanya bila versi TERBARU konfigurasinya.
+  const canActivate = (id: string) => {
+    const sticker = stickerOf(id);
+    return (
+      sticker !== undefined &&
+      sticker.status === 'inactive' &&
+      (systemKindOf(sticker) !== 'manual_book' || sticker.latestManualBookVersion)
+    );
+  };
+  const canDeactivate = (id: string) => {
+    const sticker = stickerOf(id);
+    return sticker !== undefined && sticker.status !== 'inactive';
+  };
+  // Hapus: hanya yang bukan Aktif dan bukan jenis sistem. Pulihkan: stiker jenis sistem dipulihkan lewat induknya.
+  const canRemove = (id: string) => {
+    const sticker = stickerOf(id);
+    return sticker !== undefined && sticker.status !== 'active' && systemKindOf(sticker) === '';
+  };
+  const canRestore = (id: string) => {
+    const sticker = stickerOf(id);
+    return sticker !== undefined && systemKindOf(sticker) === '';
+  };
   const changedIds = (ids: string[], changes: (sticker: StickerDto) => boolean) =>
     ids.filter((id) => {
       const sticker = visibleCatalog.find((entry) => entry.id === id);
@@ -247,6 +268,7 @@ export function StickersPage({
     selection,
     subject: 'stiker',
     verb: 'diaktifkan',
+    eligible: canActivate,
     send: (ids) => mutations.setStatus(ids, 'active'),
     undo: {
       changed: (ids) => changedIds(ids, (sticker) => sticker.status !== 'active'),
@@ -258,6 +280,7 @@ export function StickersPage({
     selection,
     subject: 'stiker',
     verb: 'dinonaktifkan',
+    eligible: canDeactivate,
     send: (ids) => mutations.setStatus(ids, 'inactive'),
     undo: {
       changed: (ids) => changedIds(ids, (sticker) => sticker.status === 'active'),
@@ -269,6 +292,7 @@ export function StickersPage({
     selection,
     subject: 'stiker',
     verb: 'dihapus',
+    eligible: canRemove,
     send: (ids) => mutations.remove(ids),
     undo: { label: 'Pulihkan', run: (ids) => mutations.restore(ids) },
     reload,
@@ -277,33 +301,23 @@ export function StickersPage({
     selection,
     subject: 'stiker',
     verb: 'dipulihkan',
+    eligible: canRestore,
     send: (ids) => mutations.restore(ids),
     reload,
   });
   const bulkBusy = activate.busy || deactivate.busy || remove.busy || restore.busy;
   const [rowBusy, setRowBusy] = useState<string | null>(null);
 
-  const selected = visibleCatalog.filter((sticker) => selection.selected.has(sticker.id));
-  const hasActive = selected.some((sticker) => sticker.status === 'active');
-  const hasSystem = selected.some((sticker) => typeById.get(sticker.typeId)?.systemKind);
-  const deleteBlockedReason = hasSystem
-    ? SYSTEM_NO_DELETE
-    : hasActive
-      ? NOT_ACTIVE_FIRST
-      : undefined;
-  // Pulihkan: stiker jenis sistem selalu ditolak server (dipulihkan lewat induknya), jadi ditahan dengan alasan.
-  const restoreBlockedReason = hasSystem ? SYSTEM_NO_RESTORE : undefined;
-  // Aktifkan: aturan baris (`canToggle`) berlaku untuk seluruh pilihan, karena server menolak seluruh tahap.
-  const activateBlockedReason = selected.some((sticker) => sticker.status === 'deprecated')
-    ? DEPRECATED_NO_ACTIVATE
-    : selected.some(
-          (sticker) =>
-            sticker.status === 'inactive' &&
-            typeById.get(sticker.typeId)?.systemKind === 'manual_book' &&
-            !sticker.latestManualBookVersion,
-        )
-      ? OLD_VERSION_NO_ACTIVATE
-      : undefined;
+  // Aksi stok massal: stiker terpilih yang boleh dicatat pada mode itu (aturan sama dengan menu Stok per baris).
+  const stockTargets = (mode: StockEntryMode): string[] => {
+    if (!stock) return [];
+    return [...selection.selected].filter((id) => {
+      const stockRow = rows.find((row) => row.id === id)?.stock;
+      if (!stockRow) return false;
+      const { canIn, canOut, canAdjust } = stockAvailability(stock, stockRow);
+      return mode === 'in' ? canIn : mode === 'out' ? canOut : canAdjust;
+    });
+  };
 
   async function restoreRow(sticker: StickerDto) {
     setRowBusy(sticker.id);
@@ -711,30 +725,32 @@ export function StickersPage({
           bulkSelection ? (
             <BulkBar count={selection.count} onClear={selection.clear} busy={bulkBusy}>
               {deletedView ? (
-                <DisabledReason reason={restoreBlockedReason}>
-                  <ActionButton
-                    action="restore"
-                    disabled={restoreBlockedReason !== undefined}
-                    onClick={() => void restore.run()}
-                  />
-                </DisabledReason>
+                canManage && restore.eligibleCount > 0 ? (
+                  <ActionButton action="restore" onClick={() => void restore.run()} />
+                ) : null
               ) : (
                 <>
-                  <DisabledReason reason={activateBlockedReason}>
-                    <ActionButton
-                      action="activate"
-                      disabled={activateBlockedReason !== undefined}
-                      onClick={() => void activate.run()}
-                    />
-                  </DisabledReason>
-                  <ActionButton action="deactivate" onClick={() => void deactivate.run()} />
-                  <DisabledReason reason={deleteBlockedReason}>
+                  {(['in', 'out', 'adjust'] as const).map((mode) =>
+                    stockTargets(mode).length > 0 ? (
+                      <ActionButton
+                        key={mode}
+                        action={mode === 'in' ? 'stockIn' : mode === 'out' ? 'stockOut' : 'adjust'}
+                        onClick={() => onStartEntry(mode, stockTargets(mode))}
+                      />
+                    ) : null,
+                  )}
+                  {canManage && activate.eligibleCount > 0 ? (
+                    <ActionButton action="activate" onClick={() => void activate.run()} />
+                  ) : null}
+                  {canManage && deactivate.eligibleCount > 0 ? (
+                    <ActionButton action="deactivate" onClick={() => void deactivate.run()} />
+                  ) : null}
+                  {canManage && remove.eligibleCount > 0 ? (
                     <ActionButton
                       action="delete"
-                      disabled={deleteBlockedReason !== undefined}
                       onClick={() => setDeleteTarget({ kind: 'bulk' })}
                     />
-                  </DisabledReason>
+                  ) : null}
                 </>
               )}
             </BulkBar>
@@ -795,7 +811,7 @@ export function StickersPage({
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(undefined);
         }}
-        count={deleteTarget?.kind === 'bulk' ? selection.count : 1}
+        count={deleteTarget?.kind === 'bulk' ? remove.eligibleCount : 1}
         subject="stiker"
         onConfirm={() => void confirmDelete()}
         busy={remove.busy || rowBusy !== null}

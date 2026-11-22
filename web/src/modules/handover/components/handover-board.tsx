@@ -18,8 +18,12 @@ export type CardBindings = Omit<HandoverCardProps, 'handover'>;
 
 export interface HandoverBoardProps {
   handovers: readonly HandoverDto[];
-  /** Filter daftar kartu (ponsel); disimpan pemanggil (search param) agar bertahan saat kembali dari detail. */
+  /**
+   * Filter daftar kartu (ponsel); disimpan pemanggil (search param) agar bertahan saat kembali dari detail. Pilihannya
+   * ada di chip "Status" bar filter halaman (`HandoverBoardPage`), bukan di papan ini.
+   */
   filter: HandoverStatus | 'all';
+  /** Dipakai tombol "hapus filter" saat daftar kosong karena filter. */
   onFilterChange: (filter: HandoverStatus | 'all') => void;
   /** Total dan pemuatan halaman berikutnya per kolom (papan berkursor); tanpa ini hanya yang diberikan yang tampil. */
   columns?: Record<HandoverStatus, BoardColumnState>;
@@ -68,11 +72,6 @@ function SafeCard({
   );
 }
 
-const FILTERS: ReadonlyArray<{ value: HandoverStatus | 'all'; label: string }> = [
-  { value: 'all', label: 'Semua' },
-  ...BOARD_STATUSES.map((status) => ({ value: status, label: HANDOVER_STATUS_LABELS[status] })),
-];
-
 /**
  * Halaman berikutnya dimuat OTOMATIS saat akhir daftar mendekati layar (infinite scroll, daftar kartu ponsel); karena
  * sentinel diamati ulang tiap jumlah task termuat berubah, daftar yang belum penuh layar terisi sendiri. Tanpa
@@ -118,8 +117,8 @@ const kanbanKey = (item: KanbanItem): string =>
 
 /**
  * Papan Serah Terima. Layar lebar: `KanbanBoard` kit (empat kolom berwarna sesuai status, setinggi sisa viewport,
- * tiap kolom menggulir sendiri dan memuat halaman berikutnya otomatis). Layar sempit: daftar kartu dengan chip
- * status, memakai `ListState` untuk keadaan kosong.
+ * tiap kolom menggulir sendiri dan memuat halaman berikutnya otomatis). Layar sempit: daftar kartu yang disaring
+ * menurut `filter` (dipilih lewat chip Status di bar filter halaman), memakai `ListState` untuk keadaan kosong.
  */
 export function HandoverBoard({
   handovers,
@@ -174,21 +173,6 @@ export function HandoverBoard({
   const pendingShown = showPending ? pendingCreates : NO_PENDING;
   return (
     <div className="space-y-3" data-layout="list">
-      <fieldset aria-label="Filter status" className="flex flex-wrap gap-1 border-0 p-0">
-        {FILTERS.map(({ value, label }) => (
-          <Button
-            key={value}
-            type="button"
-            size="sm"
-            variant={filter === value ? 'soft' : 'outline'}
-            color={filter === value ? 'secondary' : 'primary'}
-            aria-pressed={filter === value}
-            onClick={() => onFilterChange(value)}
-          >
-            {label}
-          </Button>
-        ))}
-      </fieldset>
       <ListState
         isEmpty={visible.length === 0 && pendingShown.length === 0}
         filtered={filter !== 'all'}

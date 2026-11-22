@@ -13,7 +13,6 @@ import {
   useBulkAction,
   useRowSelection,
 } from '@/components/data-table';
-import { DisabledReason } from '@/components/disabled-reason';
 import { FilterBar, FilterChip } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
@@ -64,8 +63,6 @@ export interface StickerTypesPageProps {
   onRetry?: () => void;
 }
 
-const NOT_INACTIVE = 'Nonaktifkan jenis dulu sebelum dihapus';
-
 /** Pemakaian jenis (stiker HIDUP, dari `stickerCount`) untuk dialog konfirmasi hapus; kosong bila tak dipakai. */
 function usageText(types: readonly Pick<StickerTypeDto, 'stickerCount'>[]): string | undefined {
   const total = types.reduce((sum, type) => sum + type.stickerCount, 0);
@@ -114,10 +111,20 @@ export function StickerTypesPage({
       const type = visible.find((entry) => entry.id === id);
       return type === undefined || changes(type);
     });
+  /** Syarat aksi per baris (keputusan pemilik 2026-11-23): hanya baris yang memenuhi yang dikirim. Jenis sistem tak ikut. */
+  const eligibleWith = (id: string, wanted?: StickerTypeDto['status']) => {
+    const type = visible.find((entry) => entry.id === id);
+    return (
+      type !== undefined &&
+      type.systemKind === '' &&
+      (wanted === undefined || type.status === wanted)
+    );
+  };
   const activate = useBulkAction({
     selection,
     subject: 'jenis',
     verb: 'diaktifkan',
+    eligible: (id) => eligibleWith(id, 'inactive'),
     send: (ids) => mutations.setStatus(ids, 'active'),
     undo: {
       changed: (ids) => changedIds(ids, (type) => type.status !== 'active'),
@@ -129,6 +136,7 @@ export function StickerTypesPage({
     selection,
     subject: 'jenis',
     verb: 'dinonaktifkan',
+    eligible: (id) => eligibleWith(id, 'active'),
     send: (ids) => mutations.setStatus(ids, 'inactive'),
     undo: {
       changed: (ids) => changedIds(ids, (type) => type.status !== 'inactive'),
@@ -140,6 +148,7 @@ export function StickerTypesPage({
     selection,
     subject: 'jenis',
     verb: 'dihapus',
+    eligible: (id) => eligibleWith(id, 'inactive'),
     send: (ids) => mutations.remove(ids),
     undo: { label: 'Pulihkan', run: (ids) => mutations.restore(ids) },
     reload,
@@ -148,12 +157,14 @@ export function StickerTypesPage({
     selection,
     subject: 'jenis',
     verb: 'dipulihkan',
+    eligible: (id) => eligibleWith(id),
     send: (ids) => mutations.restore(ids),
     reload,
   });
   const bulkBusy = activate.busy || deactivate.busy || remove.busy || restore.busy;
-  const selected = visible.filter((type) => selection.selected.has(type.id));
-  const allInactive = selected.every((type) => type.status === 'inactive');
+  const deletable = visible.filter(
+    (type) => selection.selected.has(type.id) && eligibleWith(type.id, 'inactive'),
+  );
 
   async function restoreRow(type: StickerTypeDto) {
     setRowBusy(type.id);
@@ -343,18 +354,23 @@ export function StickerTypesPage({
           bulkSelection ? (
             <BulkBar count={selection.count} onClear={selection.clear} busy={bulkBusy}>
               {deletedView ? (
-                <ActionButton action="restore" onClick={() => void restore.run()} />
+                restore.eligibleCount > 0 ? (
+                  <ActionButton action="restore" onClick={() => void restore.run()} />
+                ) : null
               ) : (
                 <>
-                  <ActionButton action="activate" onClick={() => void activate.run()} />
-                  <ActionButton action="deactivate" onClick={() => void deactivate.run()} />
-                  <DisabledReason reason={allInactive ? undefined : NOT_INACTIVE}>
+                  {activate.eligibleCount > 0 ? (
+                    <ActionButton action="activate" onClick={() => void activate.run()} />
+                  ) : null}
+                  {deactivate.eligibleCount > 0 ? (
+                    <ActionButton action="deactivate" onClick={() => void deactivate.run()} />
+                  ) : null}
+                  {remove.eligibleCount > 0 ? (
                     <ActionButton
                       action="delete"
-                      disabled={!allInactive}
                       onClick={() => setDeleteTarget({ kind: 'bulk' })}
                     />
-                  </DisabledReason>
+                  ) : null}
                 </>
               )}
             </BulkBar>
@@ -403,11 +419,11 @@ export function StickerTypesPage({
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(undefined);
         }}
-        count={deleteTarget?.kind === 'bulk' ? selection.count : 1}
+        count={deleteTarget?.kind === 'bulk' ? remove.eligibleCount : 1}
         subject="jenis"
         usage={usageText(
           deleteTarget?.kind === 'bulk'
-            ? selected
+            ? deletable
             : visible.filter((type) => deleteTarget?.kind === 'row' && type.id === deleteTarget.id),
         )}
         onConfirm={() => void confirmDelete()}

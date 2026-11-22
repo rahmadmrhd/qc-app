@@ -16,6 +16,13 @@ export interface BulkActionOptions<T> {
   /** Memuat ulang data; dipanggil bila ada tahap gagal atau id hilang (`NOT_FOUND`). */
   reload?: () => void;
   /**
+   * Apakah aksi ini berlaku bagi baris `id` (mis. Aktifkan hanya bagi yang Nonaktif, Hapus hanya bagi yang dapat
+   * dihapus). Hanya id yang lolos yang dikirim (id lain tetap terpilih, tak disentuh), dan `eligibleCount` dipakai bar
+   * massal: tombol aksi tampil bila minimal satu baris terpilih memenuhi syaratnya (keputusan pemilik 2026-11-23).
+   * Tanpa ini semua id terpilih dianggap berlaku.
+   */
+  eligible?: (id: string) => boolean;
+  /**
    * Jalan kembali (mis. aktifkan lagi / pulihkan): toast sukses memuat tombol `undo.label` (bawaan "Urungkan").
    * - `changed(ids)` dipanggil SEBELUM aksi berjalan dengan id terpilih dan mengembalikan id yang benar-benar akan
    *   berubah (mis. yang belum Aktif); hanya itu yang dibalik. Tanpa `changed`, semua id yang berhasil dibalik.
@@ -39,6 +46,8 @@ export interface BulkActionOptions<T> {
 export function useBulkAction<T>(options: BulkActionOptions<T>): {
   run: () => Promise<void>;
   busy: boolean;
+  /** Jumlah baris terpilih yang memenuhi `eligible`; 0 = sembunyikan tombol aksinya di bar massal. */
+  eligibleCount: number;
 } {
   const [busy, setBusy] = useState(false);
   const running = useRef(false);
@@ -47,8 +56,8 @@ export function useBulkAction<T>(options: BulkActionOptions<T>): {
 
   const run = useCallback(async () => {
     if (running.current) return;
-    const { selection, send, verb, subject, onResults, reload, undo } = latest.current;
-    const ids = [...selection.selected];
+    const { selection, send, verb, subject, onResults, reload, undo, eligible } = latest.current;
+    const ids = [...selection.selected].filter((id) => eligible?.(id) ?? true);
     if (ids.length === 0) return;
     const undoable = undo ? new Set(undo.changed ? undo.changed(ids) : ids) : null;
     running.current = true;
@@ -96,5 +105,9 @@ export function useBulkAction<T>(options: BulkActionOptions<T>): {
     }
   }, []);
 
-  return { run, busy };
+  const eligibleCount = options.eligible
+    ? [...options.selection.selected].filter((id) => options.eligible?.(id)).length
+    : options.selection.count;
+
+  return { run, busy, eligibleCount };
 }

@@ -204,7 +204,15 @@ function StickersRoute() {
       }}
       mutations={mutations}
       onStartOpname={() => stack.push({ to: '/sticker/opname' })}
-      onStartEntry={(mode) => stack.push({ to: '/sticker/entry', search: { mode } })}
+      onStartEntry={(mode, stickerIds) =>
+        stack.push({
+          to: '/sticker/entry',
+          search: {
+            mode,
+            ...(stickerIds && stickerIds.length > 0 ? { stickers: stickerIds } : {}),
+          },
+        })
+      }
       isLoading={canCatalog && stickers.isPending}
       isError={canCatalog && stickers.isLoadingError}
       onRetry={() => void stickers.refetch()}

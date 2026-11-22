@@ -134,11 +134,51 @@ test('ponsel: di mode pilih ketukan kartu mengubah pilihan dan tidak membuka det
   expect(router.state.location.pathname).toBe('/');
 });
 
-test('desktop: baris tabel tidak punya klik badan (perilaku lama)', async () => {
+test('desktop: klik sel baris membuka View, baris diberi penanda dapat diklik', async () => {
   media = mockMatchMedia(true);
   const router = await renderInRouter(<Table />);
-  await userEvent.click(screen.getAllByText('Catatan biasa')[0] as HTMLElement);
+  const row = screen.getAllByRole('row')[1] as HTMLElement;
+  expect(row.className).toContain('cursor-pointer');
+  await userEvent.click(within(row).getByText('Catatan biasa'));
+  expect(router.state.location.pathname).toBe('/merk/1');
+});
+
+test('desktop: checkbox (juga selnya), tombol aksi, dan seleksi teks tidak ikut membuka View', async () => {
+  media = mockMatchMedia(true);
+  const actions = (row: Row): RowAction[] => [
+    { id: 'edit', action: 'edit', label: `Ubah ${row.name}`, onSelect: () => undefined },
+  ];
+  const router = await renderInRouter(<Table withSelection actions={actions} />);
+  const second = screen.getAllByRole('row')[2] as HTMLElement;
+  await userEvent.click(within(second).getByRole('checkbox', { name: 'Pilih Tenda' }));
+  expect(screen.getByRole('checkbox', { name: 'Pilih Tenda' })).toBeChecked();
+  // Sel pembungkus checkbox dan sel Aksi (di luar kontrolnya) juga dikecualikan.
+  const cells = within(second).getAllByRole('cell');
+  fireEvent.click(cells[0] as HTMLElement);
+  fireEvent.click(cells[1] as HTMLElement);
+  await userEvent.click(within(second).getByRole('button', { name: 'Ubah Tenda' }));
   expect(router.state.location.pathname).toBe('/');
+  const note = within(second).getByText('Catatan biasa');
+  const range = document.createRange();
+  range.selectNodeContents(note);
+  window.getSelection()?.removeAllRanges();
+  window.getSelection()?.addRange(range);
+  fireEvent.click(note);
+  expect(router.state.location.pathname).toBe('/');
+  window.getSelection()?.removeAllRanges();
+});
+
+test('desktop: tanpa rowTo/onOpen baris tidak dapat diklik', async () => {
+  media = mockMatchMedia(true);
+  render(
+    <DataTable
+      rows={ROWS}
+      rowKey={(row) => row.id}
+      columns={[{ id: 'name', header: 'Nama', cell: (row) => row.name }]}
+      label="Merk"
+    />,
+  );
+  expect((screen.getAllByRole('row')[1] as HTMLElement).className).not.toContain('cursor-pointer');
 });
 
 function RowActionsHarness({ actions }: { actions: RowAction[] }) {

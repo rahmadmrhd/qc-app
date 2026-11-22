@@ -683,14 +683,33 @@ test('jenis terhapus tampil dengan penanda Terhapus', async () => {
   ).toBeInTheDocument();
 });
 
-test('pilih dua stiker lalu Aktifkan memanggil setStatus dengan dua id', async () => {
+test('pilihan campuran Aktif+Nonaktif: Aktifkan dan Nonaktifkan tampil, masing-masing hanya mengirim baris yang sesuai', async () => {
   const { mutations } = await renderPage();
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Hijau-B' }));
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel Polos' }));
   expect(screen.getByText('2 dipilih')).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Aktifkan' }));
   await waitFor(() => expect(mutations.setStatus).toHaveBeenCalledTimes(1));
-  expect(mutations.setStatus).toHaveBeenCalledWith(['s1', 's2'], 'active');
+  // Hijau-B (s1) sudah Aktif: tak dikirim.
+  expect(mutations.setStatus).toHaveBeenCalledWith(['s2'], 'active');
+  // s2 selesai dan keluar dari pilihan; s1 (Aktif) masih terpilih.
+  await userEvent.click(screen.getByRole('button', { name: 'Nonaktifkan' }));
+  await waitFor(() => expect(mutations.setStatus).toHaveBeenCalledTimes(2));
+  expect(mutations.setStatus).toHaveBeenLastCalledWith(['s1'], 'inactive');
+});
+
+test('aksi massal tampil hanya bila minimal satu baris terpilih memenuhi syaratnya', async () => {
+  await renderPage();
+  // Hanya Hijau-B (Aktif): Aktifkan dan Hapus tak berlaku, Nonaktifkan berlaku.
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Hijau-B' }));
+  expect(screen.queryByRole('button', { name: 'Aktifkan' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Nonaktifkan' })).toBeInTheDocument();
+  // Tambah Segel Polos (Nonaktif): kini ketiganya berlaku bagi minimal satu baris.
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel Polos' }));
+  expect(screen.getByRole('button', { name: 'Aktifkan' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Nonaktifkan' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus' })).toBeInTheDocument();
 });
 
 test('tanpa izin kelola: tanpa checkbox dan aksi massal', async () => {
@@ -728,7 +747,7 @@ test('Hapus satu stiker: konfirmasi lalu memanggil remove dengan id-nya', async 
   await waitFor(() => expect(mutations.remove).toHaveBeenCalledWith(['s2']));
 });
 
-test('Hapus massal ditolak selama terpilih ada stiker Aktif; dua nonaktif dapat dihapus', async () => {
+test('Hapus massal: hanya baris yang boleh dihapus (bukan Aktif) yang dikirim, jumlahnya tampil di konfirmasi', async () => {
   const { mutations } = await renderPage({
     stickers: [
       ...stickers,
@@ -743,11 +762,11 @@ test('Hapus massal ditolak selama terpilih ada stiker Aktif; dua nonaktif dapat 
   });
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Hijau-B' }));
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel Polos' }));
-  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
-  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Hijau-B' }));
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel Lawas' }));
   await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
   const dialog = await screen.findByRole('alertdialog');
+  // Hijau-B (Aktif) tak ikut: dua stiker yang dihapus.
+  expect(within(dialog).getByText('Hapus 2 stiker?')).toBeInTheDocument();
   await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
   await waitFor(() => expect(mutations.remove).toHaveBeenCalledWith(['s2', 's3']));
 });
@@ -836,19 +855,18 @@ test('tampilan Terhapus: Pulihkan tidak ditawarkan untuk stiker jenis sistem (se
   expect(screen.queryByRole('button', { name: 'Pulihkan MB Hilang' })).toBeNull();
 });
 
-test('Pulihkan massal ditahan beralasan bila pilihan memuat stiker jenis sistem', async () => {
+test('Pulihkan massal: stiker jenis sistem tak ikut dikirim (dipulihkan lewat induknya)', async () => {
   const { mutations } = await openDeletedView({});
-  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Stiker Biasa Hilang' }));
-  expect(screen.getByRole('button', { name: 'Pulihkan' })).toBeEnabled();
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih MB Hilang' }));
-  expect(screen.getByRole('button', { name: 'Pulihkan' })).toBeDisabled();
-  expect(
-    screen.getByText(/dipulihkan lewat konfigurasi atau catatan induknya/),
-  ).toBeInTheDocument();
-  expect(mutations.restore).not.toHaveBeenCalled();
+  // Hanya stiker jenis sistem terpilih: tak ada baris yang dapat dipulihkan di sini.
+  expect(screen.queryByRole('button', { name: 'Pulihkan' })).toBeNull();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Stiker Biasa Hilang' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Pulihkan' }));
+  await waitFor(() => expect(mutations.restore).toHaveBeenCalledTimes(1));
+  expect(mutations.restore).toHaveBeenCalledWith(['d1']);
 });
 
-test('Aktifkan massal ditahan beralasan bila pilihan memuat stiker Usang atau Manual Book bukan versi terbaru', async () => {
+test('Aktifkan massal: Usang dan Manual Book bukan versi terbaru tak berlaku dan tak dikirim', async () => {
   const { mutations } = await renderPage({
     types: [...types, manualBookType],
     stickers: [
@@ -873,16 +891,17 @@ test('Aktifkan massal ditahan beralasan bila pilihan memuat stiker Usang atau Ma
       }),
     ],
   });
-  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel Polos' }));
-  expect(screen.getByRole('button', { name: 'Aktifkan' })).toBeEnabled();
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel Usang' }));
-  expect(screen.getByRole('button', { name: 'Aktifkan' })).toBeDisabled();
-  expect(screen.getByText('Stiker Usang tidak dapat diaktifkan kembali')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Aktifkan' })).toBeNull();
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel Usang' }));
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih PBE v3' }));
-  expect(screen.getByRole('button', { name: 'Aktifkan' })).toBeDisabled();
-  expect(screen.getByText(/Hanya versi terbaru Manual Book/)).toBeInTheDocument();
-  expect(mutations.setStatus).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', { name: 'Aktifkan' })).toBeNull();
+  // Segel Polos (Nonaktif biasa) ditambahkan: Aktifkan tampil dan hanya mengirimnya.
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel Polos' }));
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Segel Usang' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Aktifkan' }));
+  await waitFor(() => expect(mutations.setStatus).toHaveBeenCalledTimes(1));
+  expect(mutations.setStatus).toHaveBeenCalledWith(['s2'], 'active');
 });
 
 test('jenis terhapus: nama + penanda tanpa tautan bagi non-pengelola, tautan bagi pengelola', async () => {

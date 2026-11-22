@@ -236,6 +236,20 @@ test('pemegang kelola melihat Ekspor dan Hapus di bar massal', async () => {
   expect(within(bar).getByRole('button', { name: 'Hapus' })).toBeInTheDocument();
 });
 
+test('Ekspor di bar massal tampil bila minimal satu terpilih dapat diekspor, dan hilang bila tak ada', async () => {
+  // q1 sudah terbaru (tak perlu diekspor), q2 belum pernah diekspor.
+  rows = [
+    design('q1', { exportStatus: 'current', exportedAt: 'x', stickerVersion: 1 }),
+    design('q2'),
+  ];
+  await mount({ level: 'edit' });
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih MB q1' }));
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).queryByRole('button', { name: 'Ekspor' })).toBeNull();
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih MB q2' }));
+  expect(within(bar).getByRole('button', { name: 'Ekspor' })).toBeInTheDocument();
+});
+
 test('Ekspor massal: konfirmasi, diekspor berurutan lewat qrcodes.export, yang sukses dibuang dari pilihan', async () => {
   await mount({ level: 'edit' });
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));

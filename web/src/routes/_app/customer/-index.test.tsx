@@ -117,12 +117,18 @@ test('Hapus massal: konfirmasi lalu customers.removeBatch', async () => {
   expect(callsOf('customers.removeBatch')[0]?.input).toEqual({ ids: ['a', 'b'] });
 });
 
-test('Hapus massal nonaktif dengan alasan bila ada customer Aktif yang terpilih', async () => {
+test('pilihan campuran Aktif + Nonaktif: Aktifkan dan Nonaktifkan tampil; Hapus hanya mengirim yang Nonaktif', async () => {
   live = [customer('a', { status: 'active' }), customer('b')];
   await mount();
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
-  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
-  expect(screen.getByText('Nonaktifkan customer dulu sebelum dihapus')).toBeInTheDocument();
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).getByRole('button', { name: 'Aktifkan' })).toBeInTheDocument();
+  expect(within(bar).getByRole('button', { name: 'Nonaktifkan' })).toBeInTheDocument();
+  await userEvent.click(within(bar).getByRole('button', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 customer?' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(callsOf('customers.removeBatch')).toHaveLength(1));
+  expect(callsOf('customers.removeBatch')[0]?.input).toEqual({ ids: ['b'] });
 });
 
 test('tanpa item: manage: tanpa checkbox dan tanpa opsi Terhapus', async () => {

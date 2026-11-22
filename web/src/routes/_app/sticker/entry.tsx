@@ -1,4 +1,5 @@
 import type { AdjustStockBatchInput, RecordStockBatchInput } from '@shared/contract';
+import { STICKER_LIMITS } from '@shared/stickers';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createFileRoute, useBlocker, useNavigate } from '@tanstack/react-router';
 import { useCallback, useRef, useState } from 'react';
@@ -27,6 +28,8 @@ const searchSchema = z.object({
   mode: z.enum(['in', 'out', 'adjust']).optional().catch(undefined),
   /** Id stiker dari tombol "Entri stok" di View Stiker: mengisi kolom cari dan masuk entri awal. */
   sticker: z.string().max(100).optional().catch(undefined),
+  /** Id stiker dari aksi stok massal di katalog Stiker: semuanya masuk entri awal. */
+  stickers: z.array(z.string().max(100)).max(STICKER_LIMITS.opnameRows).optional().catch(undefined),
 });
 
 export const Route = createFileRoute('/_app/sticker/entry')({
@@ -130,6 +133,7 @@ function StickerEntryRoute() {
         rows={stock.data}
         canAdjust={canAdjust}
         initialStickerId={search.sticker}
+        {...(search.stickers ? { initialStickerIds: search.stickers } : {})}
         onSave={handleSave}
         onDirtyChange={setDirty}
         onBusyChange={setBusy}

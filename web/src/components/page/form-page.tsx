@@ -84,9 +84,10 @@ export function FormPage({
           <h1>{title}</h1>
         </div>
       ) : (
-        <HeadroomBar tour={tour} className="pt-1 pb-1 wide:border-b wide:pt-3 wide:pb-3">
+        <HeadroomBar tour={tour} className="border-b pt-1 pb-1 wide:pt-3 wide:pb-3">
           <div className="wide:px-[var(--main-pad)]">
-            <PageContent className="flex flex-wrap items-center justify-between gap-2">
+            {/* Bar judul selebar penuh (tanpa batas `pageWidth`; keputusan pemilik 2026-11-23, K9). */}
+            <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2">
               {/* Ponsel: tanpa tombol kembali dan tanpa judul tampak (judul navbar; kembali = tombol sistem). */}
               <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <h1 className={cn('min-w-0 text-xl font-semibold break-words', phone && 'sr-only')}>
@@ -101,7 +102,7 @@ export function FormPage({
                   {save}
                 </div>
               ) : null}
-            </PageContent>
+            </div>
           </div>
         </HeadroomBar>
       )}

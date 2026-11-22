@@ -714,9 +714,10 @@ test('kolom checkbox bagi pemegang serial: edit (Tempel stiker) atau manage; pem
   expect(screen.getByRole('checkbox', { name: 'Pilih semua' })).toBeInTheDocument();
 });
 
-test('canManage dari server menentukan Hapus (serial yang pernah di BU lain tak dapat dihapus, tetapi tetap dapat ditempeli stiker)', async () => {
+test('canManage dari server menentukan Hapus (serial yang pernah di BU lain tak dapat dihapus, tetapi tetap dapat ditempeli stiker); hanya yang dapat dikelola dikirim', async () => {
   me = manageMe();
-  apiMock.mockImplementation((id: string) => {
+  apiMock.mockImplementation((id: string, input?: { ids?: string[] }) => {
+    if (id === 'serials.removeBatch') return Promise.resolve({ ids: input?.ids ?? [] });
     if (id === 'serials.list') {
       return Promise.resolve({
         items: [row({ canManage: true }), row({ id: 's2', serial: 'XYZ789', canManage: false })],
@@ -732,8 +733,14 @@ test('canManage dari server menentukan Hapus (serial yang pernah di BU lain tak 
   // XYZ789: Lolos di QC pada BU yang boleh diedit, jadi dapat dipilih (Tempel stiker) walau tak dapat dihapus.
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih XYZ789' }));
   expect(screen.getByRole('button', { name: 'Tempel stiker' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
+  // Hapus tampil karena ABC123 dapat dikelola; XYZ789 (canManage false) tidak ikut dikirim.
+  expect(screen.getByRole('button', { name: 'Hapus' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Hapus XYZ789' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog');
+  expect(within(dialog).getByText('Hapus 1 Serial Number?')).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(apiMock).toHaveBeenCalledWith('serials.removeBatch', { ids: ['s1'] }));
 });
 
 test('tidak ada ubah massal: bar aksi memuat Tempel stiker dan Hapus saja', async () => {
@@ -1009,7 +1016,7 @@ test('Tempel stiker massal: pemegang edit melihat Tempel stiker tanpa Hapus; tan
   expect(screen.queryByRole('button', { name: 'Hapus' })).toBeNull();
 });
 
-test('Tempel stiker hanya bila SEMUA terpilih dapat ditempeli; Hapus hanya bila semua dapat dikelola', async () => {
+test('Tempel stiker tampil bila minimal satu terpilih dapat ditempeli; Hapus bila minimal satu dapat dikelola', async () => {
   me = manageMe();
   apiMock.mockImplementation((id: string) =>
     id === 'serials.list'
@@ -1028,6 +1035,11 @@ test('Tempel stiker hanya bila SEMUA terpilih dapat ditempeli; Hapus hanya bila 
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih LOLOS1' }));
   expect(screen.getByRole('button', { name: 'Tempel stiker' })).toBeInTheDocument();
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih RUSAK5' }));
+  // Pilihan campuran: LOLOS1 dapat ditempeli, RUSAK5 tidak (hanya dapat dihapus): kedua aksi tetap tampil.
+  expect(screen.getByRole('button', { name: 'Tempel stiker' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Hapus' })).toBeInTheDocument();
+  // Hanya RUSAK5 terpilih: Tempel stiker tak tampil, Hapus tetap.
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih LOLOS1' }));
   expect(screen.queryByRole('button', { name: 'Tempel stiker' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Hapus' })).toBeInTheDocument();
 });
@@ -1094,6 +1106,38 @@ test('Tempel stiker membuka dialog untuk serial terpilih; sukses membuang piliha
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   // Pilihan dibuang setelah sukses: bar aksi massal hilang.
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Tempel stiker' })).toBeNull());
+});
+
+test('Tempel stiker pada pilihan campuran hanya mengirim serial yang dapat ditempeli', async () => {
+  me = manageMe();
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') {
+      return Promise.resolve({
+        items: [
+          row({ id: 's1', serial: 'LOLOS1' }),
+          row({ id: 's5', serial: 'RUSAK5', status: 'broken' }),
+        ],
+        nextCursor: null,
+      });
+    }
+    if (id === 'serials.stickerOptions') {
+      return Promise.resolve({
+        stickers: [{ id: 'st1', name: 'Stiker A', alias: '', typeName: 'J', defaultQty: 1 }],
+      });
+    }
+    if (id === 'serials.applyStickersBatch') return Promise.resolve({ ids: ['s1'] });
+    return Promise.resolve({ locations: [], items: [], nextCursor: null });
+  });
+  await renderPage();
+  await screen.findByText('LOLOS1');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Tempel stiker' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Tempel stiker' });
+  await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker A' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
+  await waitFor(() => expect(callsOf('serials.applyStickersBatch')).toHaveLength(1));
+  const body = callsOf('serials.applyStickersBatch')[0]?.[1] as { rows: { id: string }[] };
+  expect(body.rows.map((entry) => entry.id)).toEqual(['s1']);
 });
 
 test('Tempel stiker gagal tak jelas lalu dialog ditutup: halaman menampilkan Kirim ulang dengan clientId yang sama; sukses membuang niat dan pilihan', async () => {

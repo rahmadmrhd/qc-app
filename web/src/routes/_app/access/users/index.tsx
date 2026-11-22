@@ -6,7 +6,6 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { ActionButton } from '@/components/action-button';
 import { BulkBar, useRowSelection } from '@/components/data-table';
-import { DisabledReason } from '@/components/disabled-reason';
 import { FilterBar, FilterChip } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
@@ -17,7 +16,7 @@ import { describeError } from '@/lib/api/describe-error';
 import { UserFormDialog } from '@/modules/access/components/user-form-dialog';
 import { UsersTable } from '@/modules/access/components/users-table';
 import { filterUsers } from '@/modules/access/lib/filter-users';
-import { bulkLockReason } from '@/modules/access/lib/protected-user';
+import { isProtectedUser } from '@/modules/access/lib/protected-user';
 import { useRecordBulk } from '@/modules/access/lib/use-record-bulk';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { useUserReferences } from '@/modules/access/lib/use-user-references';
@@ -98,12 +97,10 @@ function UsersPage() {
     removeBatch: (input) => removeUsers.mutateAsync(input),
     restoreBatch: (input) => restoreUsers.mutateAsync(input),
     reload,
+    // Akun sendiri dan super admin tak dapat dinonaktifkan/dihapus (penjaga sebenarnya di server): tak ikut dikirim.
+    canDeactivate: (user) => !isProtectedUser(user, me.email),
+    canDelete: (user) => !isProtectedUser(user, me.email),
   });
-
-  const selected = visible.filter((user) => selection.selected.has(user.id));
-  // Akun sendiri dan super admin tak dapat dinonaktifkan/dihapus (penjaga sebenarnya di server).
-  const bulkLock = bulkLockReason(selected, me.email);
-  const allInactive = selected.every((user) => user.status === 'inactive');
 
   function toggleStatus(user: UserDto) {
     const next = user.status === 'active' ? 'inactive' : 'active';
@@ -205,26 +202,18 @@ function UsersPage() {
                 <ActionButton action="restore" onClick={() => void bulk.restore.run()} />
               ) : (
                 <>
-                  <ActionButton action="activate" onClick={() => void bulk.activate.run()} />
-                  <DisabledReason reason={bulkLock}>
-                    <ActionButton
-                      action="deactivate"
-                      disabled={bulkLock !== undefined}
-                      onClick={() => void bulk.deactivate.run()}
-                    />
-                  </DisabledReason>
-                  <DisabledReason
-                    reason={
-                      bulkLock ??
-                      (allInactive ? undefined : 'Nonaktifkan pengguna dulu sebelum dihapus')
-                    }
-                  >
+                  {bulk.activate.eligibleCount > 0 ? (
+                    <ActionButton action="activate" onClick={() => void bulk.activate.run()} />
+                  ) : null}
+                  {bulk.deactivate.eligibleCount > 0 ? (
+                    <ActionButton action="deactivate" onClick={() => void bulk.deactivate.run()} />
+                  ) : null}
+                  {bulk.remove.eligibleCount > 0 ? (
                     <ActionButton
                       action="delete"
-                      disabled={bulkLock !== undefined || !allInactive}
                       onClick={() => setDeleteTarget({ kind: 'bulk' })}
                     />
-                  </DisabledReason>
+                  ) : null}
                 </>
               )}
             </BulkBar>
@@ -279,7 +268,7 @@ function UsersPage() {
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
-        count={deleteTarget?.kind === 'bulk' ? selection.count : 1}
+        count={deleteTarget?.kind === 'bulk' ? bulk.remove.eligibleCount : 1}
         subject="pengguna"
         onConfirm={confirmDelete}
         busy={bulk.remove.busy || removeUsers.isPending}
