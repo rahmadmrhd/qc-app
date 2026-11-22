@@ -4,6 +4,7 @@ import { cn } from "cn"
 import { Slot } from "radix-ui"
 
 import { useIsMobile } from "@/hooks/use-mobile"
+import { isSidebarOverlayViewport } from "@/lib/layout"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
@@ -207,6 +208,24 @@ function Sidebar({
       data-variant={variant}
       data-side={side}
       data-slot="sidebar"
+      onKeyDown={(event) => {
+        // Rentang overlay: Escape menutup dan fokus kembali ke pemicu. Menu bertumpuk (Radix) yang sudah menangani
+        // Escape menandai `defaultPrevented`, jadi Escape untuk menutup menu tak ikut menutup sidebar.
+        if (event.key !== "Escape" || event.defaultPrevented) return
+        if (state !== "expanded" || !isSidebarOverlayViewport()) return
+        event.preventDefault()
+        setOpen(false)
+        document.querySelector<HTMLElement>('[data-sidebar="trigger"]')?.focus()
+      }}
+      onBlur={(event) => {
+        // Rentang overlay: fokus keluar dari sidebar (Tab ke isi) menutupnya, agar overlay tak tertinggal terbuka.
+        const next = event.relatedTarget as Node | null
+        if (state !== "expanded" || !isSidebarOverlayViewport()) return
+        if (!next || event.currentTarget.contains(next)) return
+        // Pemicu sendiri mengurus buka/tutupnya (klik = toggle): jangan menutup lalu dibuka lagi.
+        if ((next as HTMLElement).closest?.('[data-sidebar="trigger"]')) return
+        setOpen(false)
+      }}
     >
       {/* Rentang overlay: klik di luar sidebar yang terbuka menutupnya. */}
       <div

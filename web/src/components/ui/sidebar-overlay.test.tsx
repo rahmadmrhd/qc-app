@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { Sidebar, SidebarProvider } from './sidebar';
 
@@ -25,4 +26,50 @@ test('rentang overlay (768-959 px): ruang samping = rel ikon, sidebar terbuka me
   await userEvent.click(backdrop);
   expect(onOpenChange).toHaveBeenCalledWith(false);
   expect(screen.getByText('isi')).toBeInTheDocument();
+});
+
+function Harness({ initial = true }: { initial?: boolean }) {
+  const [open, setOpen] = useState(initial);
+  return (
+    <SidebarProvider open={open} onOpenChange={setOpen}>
+      <button type="button" data-sidebar="trigger">
+        pemicu
+      </button>
+      <Sidebar collapsible="icon">
+        <button type="button">dalam</button>
+      </Sidebar>
+      <button type="button">isi halaman</button>
+    </SidebarProvider>
+  );
+}
+
+test('rentang overlay: Escape menutup sidebar dan fokus kembali ke pemicu', async () => {
+  window.innerWidth = 800;
+  const { container } = render(<Harness />);
+  const sidebar = container.querySelector('[data-slot="sidebar"]') as HTMLElement;
+  expect(sidebar).toHaveAttribute('data-state', 'expanded');
+  screen.getByRole('button', { name: 'dalam' }).focus();
+  await userEvent.keyboard('{Escape}');
+  expect(sidebar).toHaveAttribute('data-state', 'collapsed');
+  expect(screen.getByRole('button', { name: 'pemicu' })).toHaveFocus();
+});
+
+test('rentang overlay: fokus keluar dari sidebar (Tab ke isi) menutupnya', async () => {
+  window.innerWidth = 800;
+  const { container } = render(<Harness />);
+  const sidebar = container.querySelector('[data-slot="sidebar"]') as HTMLElement;
+  screen.getByRole('button', { name: 'dalam' }).focus();
+  await userEvent.tab();
+  expect(screen.getByRole('button', { name: 'isi halaman' })).toHaveFocus();
+  expect(sidebar).toHaveAttribute('data-state', 'collapsed');
+});
+
+test('layar lebar tersemat (>= 960 px): Escape dan fokus keluar tidak menutup sidebar', async () => {
+  window.innerWidth = 1200;
+  const { container } = render(<Harness />);
+  const sidebar = container.querySelector('[data-slot="sidebar"]') as HTMLElement;
+  screen.getByRole('button', { name: 'dalam' }).focus();
+  await userEvent.keyboard('{Escape}');
+  await userEvent.tab();
+  expect(sidebar).toHaveAttribute('data-state', 'expanded');
 });

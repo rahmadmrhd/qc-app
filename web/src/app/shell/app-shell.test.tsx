@@ -1,5 +1,5 @@
 import type { MeDto } from '@shared/contract';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
 import type { GuideEntry } from '@/modules/guide/lib/types';
@@ -191,5 +191,37 @@ test('B12: pada rentang overlay (768-959 px) sidebar mulai tertutup dan buka/tut
   expect(readSidebarState()).toEqual({ open: true });
   await userEvent.click(screen.getByRole('button', { name: /Toggle Sidebar/i }));
   expect(readSidebarState()).toEqual({ open: true });
+  window.innerWidth = 1024;
+});
+
+test('B12/D2: ukuran jendela berubah lintas rentang overlay menyinkronkan keadaan terbuka (tanpa menulis pilihan tersimpan)', async () => {
+  window.innerWidth = 1024;
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: true }));
+  render(<AppShell />);
+  expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'expanded');
+  // Tablet diputar ke 800 px: masuk rentang overlay, sidebar menutup sendiri (tak menutupi isi dengan latar gelap).
+  window.innerWidth = 800;
+  await act(async () => {
+    window.dispatchEvent(new Event('resize'));
+  });
+  expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'collapsed');
+  expect(readSidebarState()).toEqual({ open: true });
+  // Kembali lebar: pilihan tersimpan (terbuka) dipulihkan.
+  window.innerWidth = 1200;
+  await act(async () => {
+    window.dispatchEvent(new Event('resize'));
+  });
+  expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'expanded');
+  // Pilihan tersimpan tertutup: tetap tertutup saat kembali lebar.
+  window.innerWidth = 800;
+  await act(async () => {
+    window.dispatchEvent(new Event('resize'));
+  });
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: false }));
+  window.innerWidth = 1200;
+  await act(async () => {
+    window.dispatchEvent(new Event('resize'));
+  });
+  expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'collapsed');
   window.innerWidth = 1024;
 });

@@ -1,12 +1,12 @@
 import { Outlet, useMatches } from '@tanstack/react-router';
-import { type ReactNode, useCallback, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { PageContainer } from '@/components/page/page-container';
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useEdgeSwipe } from '@/hooks/use-edge-swipe';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useFocusIntoView, useVisualViewport } from '@/hooks/use-visual-viewport';
-import { isSidebarOverlayViewport } from '@/lib/layout';
+import { isSidebarOverlayViewport, SIDEBAR_OVERLAY_BELOW } from '@/lib/layout';
 import { useMe } from '@/modules/auth/use-me';
 import { GuideBanner } from '@/modules/guide/components/guide-banner';
 import { GuideGreeting } from '@/modules/guide/components/guide-greeting';
@@ -58,6 +58,21 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
   const [sidebarOpen, setSidebarOpen] = useState(
     () => readSidebarState().open && !isSidebarOverlayViewport(),
   );
+  // Lebar jendela berubah (putar tablet, ubah ukuran jendela) lintas rentang overlay: sinkronkan keadaan terbuka.
+  const wasOverlay = useRef(isSidebarOverlayViewport());
+  useEffect(() => {
+    const onResize = () => {
+      const overlay = isSidebarOverlayViewport();
+      if (overlay === wasOverlay.current) return;
+      wasOverlay.current = overlay;
+      // Masuk rentang overlay: tutup (jangan menutupi isi dengan latar gelap); pilihan tersimpan tak ditulis.
+      if (overlay) setSidebarOpen(false);
+      // Keluar ke layar lebar tersemat: pulihkan pilihan tersimpan. Ke ponsel tak perlu (panel ponsel terpisah).
+      else if (window.innerWidth >= SIDEBAR_OVERLAY_BELOW) setSidebarOpen(readSidebarState().open);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   const onSidebarOpenChange = useCallback((open: boolean) => {
     setSidebarOpen(open);
     if (!isSidebarOverlayViewport()) writeSidebarState({ open });
