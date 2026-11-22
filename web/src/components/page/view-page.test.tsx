@@ -168,7 +168,7 @@ test('actionItems di ponsel: aksi utama di bar bawah, sisanya di menu "Aksi lain
   expect(bar.className).toContain('fixed');
   // Aksi utama (Ubah) berwarna primary solid, bukan outline.
   expect(within(bar).getByRole('button', { name: 'Ubah' }).className).toContain('bg-primary');
-  expect(screen.getByRole('heading', { level: 1 }).className).toContain('sr-only');
+  expect(screen.getByRole('heading', { level: 1 }).closest('.sr-only')).not.toBeNull();
   expect(within(bar).queryByRole('button', { name: 'Hapus' })).toBeNull();
   await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Hapus' }));
@@ -308,9 +308,37 @@ test('satu gerbang ponsel: h1 sr-only pada viewport < 768 walau lebar <main> cuk
   mockMatchMedia(true);
   window.innerWidth = 740;
   const { unmount } = render(<ViewPage title="X" />);
-  expect(screen.getByRole('heading', { level: 1 }).className).toContain('sr-only');
+  expect(screen.getByRole('heading', { level: 1 }).closest('.sr-only')).not.toBeNull();
   unmount();
   window.innerWidth = 1024;
   render(<ViewPage title="X" />);
-  expect(screen.getByRole('heading', { level: 1 }).className).not.toContain('sr-only');
+  expect(screen.getByRole('heading', { level: 1 }).closest('.sr-only')).toBeNull();
+});
+
+test('ponsel tanpa lencana dan tanpa aksi di bar atas: tanpa bar headroom kosong; judul tetap untuk pembaca layar', () => {
+  window.innerWidth = 360;
+  mockMatchMedia(false);
+  const { container } = render(<ViewPage title="Merk A">isi</ViewPage>);
+  expect(container.querySelector('[data-headroom-frame] .sticky')).toBeNull();
+  expect(
+    screen.getByRole('heading', { level: 1, name: 'Merk A' }).closest('.sr-only'),
+  ).not.toBeNull();
+});
+
+test('ponsel dengan lencana atau `actions`: bar atas tetap tampil; 704-767 px dengan aksi terstruktur memakai bar atas', () => {
+  window.innerWidth = 360;
+  const media = mockMatchMedia(false);
+  const { container, unmount } = render(
+    <ViewPage title="X" badge={<span>Nonaktif</span>}>
+      isi
+    </ViewPage>,
+  );
+  expect(container.querySelector('[data-headroom-frame] .sticky')).not.toBeNull();
+  unmount();
+  window.innerWidth = 744;
+  media.set(true);
+  render(<ViewPage title="X" actionItems={ITEMS(vi.fn(), vi.fn())} />);
+  expect(screen.getByRole('button', { name: 'Ubah' })).toBeVisible();
+  expect(screen.queryByRole('region', { name: 'Aksi halaman' })).toBeNull();
+  media.restore();
 });

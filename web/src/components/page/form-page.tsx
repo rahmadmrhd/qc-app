@@ -53,6 +53,10 @@ export function FormPage({
   const desktop = useIsDesktop();
   // SATU gerbang ponsel (viewport < 768, sama dengan judul navbar): judul tak tampil ganda pada 704-767 px.
   const phone = useIsMobile();
+  // Tepat SATU set Batal/Simpan di semua lebar: `desktop` (lebar <main> >= 704) menaruhnya di bar atas, selain itu di
+  // bar bawah. Bar atas hanya boleh dibuang bila aksi memang di bar bawah; pada 704-767 px `phone` dan `desktop`
+  // sama-sama true dan bar atas membawa aksinya.
+  const compactTop = phone && !badge && !desktop;
   const cancel = <ActionButton action="cancel" onClick={onCancel} disabled={submitting} />;
   const save = (
     <ActionButton
@@ -69,8 +73,8 @@ export function FormPage({
   );
   return (
     <HeadroomFrame className="gap-4">
-      {phone && !badge ? (
-        // Ponsel tanpa lencana: tak ada isi tampak untuk bar atas (judul = navbar, aksi di bar bawah), jadi tanpa bar
+      {compactTop ? (
+        // Ponsel tanpa lencana DAN aksi di bar bawah: tak ada isi tampak untuk bar atas (judul = navbar), jadi tanpa bar
         // ber-border/bayang yang kosong; judul tetap ada bagi pembaca layar dan target panduan `tour` tetap terpasang.
         <div data-tour={tour} className="sr-only">
           <h1>{title}</h1>

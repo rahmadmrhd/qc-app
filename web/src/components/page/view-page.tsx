@@ -159,6 +159,9 @@ export function ViewPage({
   const firstPlain = visibleActions.find((entry) => !entry.submenu);
   const primaryActions = marked.length > 0 ? marked : firstPlain ? [firstPlain] : [];
   const menuActions = visibleActions.filter((entry) => !primaryActions.includes(entry));
+  // Bar atas memuat aksi bila ada `actions` atau (desktop) aksi terstruktur; selain itu, di ponsel tanpa lencana, kosong.
+  const topActions = Boolean(actions) || (desktop && visibleActions.length > 0);
+  const emptyTop = phone && !badge && !topActions;
   const [localTab, setLocalTab] = useState(tabs?.[0]?.id);
   const requested = tab ?? localTab;
   // Id tak dikenal (mis. `?tab=` basi) jatuh ke tab pertama agar panel tak kosong.
@@ -210,42 +213,50 @@ export function ViewPage({
 
   return (
     <HeadroomFrame className="gap-3">
-      <HeadroomBar className="pt-1 pb-1">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            {/* Ponsel: judul tampak = judul navbar; h1 tetap ada bagi pembaca layar. */}
-            <h1 className={cn('min-w-0 text-xl font-semibold break-words', phone && 'sr-only')}>
-              {title}
-            </h1>
-            {badge}
-          </div>
-          {actions || (desktop && visibleActions.length > 0) ? (
-            <div className="flex flex-wrap items-center gap-2 narrow:w-full">
-              {actions}
-              {desktop
-                ? visibleActions.map((entry) =>
-                    entry.submenu ? (
-                      <DesktopSubmenu key={entry.id} entry={entry} />
-                    ) : (
-                      <DisabledReason
-                        key={entry.id}
-                        reason={entry.disabled ? entry.disabledReason : undefined}
-                      >
-                        <ActionButton
-                          action={entry.action}
-                          label={entry.label}
-                          busy={entry.busy}
-                          disabled={entry.disabled}
-                          onClick={entry.onSelect}
-                        />
-                      </DisabledReason>
-                    ),
-                  )
-                : null}
-            </div>
-          ) : null}
+      {emptyTop ? (
+        // Ponsel tanpa lencana dan tanpa aksi di bar atas: tanpa bar ber-border/bayang yang kosong (dan tak menambah
+        // `--headroom-offset`); judul tetap ada bagi pembaca layar.
+        <div className="sr-only">
+          <h1>{title}</h1>
         </div>
-      </HeadroomBar>
+      ) : (
+        <HeadroomBar className="pt-1 pb-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              {/* Ponsel: judul tampak = judul navbar; h1 tetap ada bagi pembaca layar. */}
+              <h1 className={cn('min-w-0 text-xl font-semibold break-words', phone && 'sr-only')}>
+                {title}
+              </h1>
+              {badge}
+            </div>
+            {topActions ? (
+              <div className="flex flex-wrap items-center gap-2 narrow:w-full">
+                {actions}
+                {desktop
+                  ? visibleActions.map((entry) =>
+                      entry.submenu ? (
+                        <DesktopSubmenu key={entry.id} entry={entry} />
+                      ) : (
+                        <DisabledReason
+                          key={entry.id}
+                          reason={entry.disabled ? entry.disabledReason : undefined}
+                        >
+                          <ActionButton
+                            action={entry.action}
+                            label={entry.label}
+                            busy={entry.busy}
+                            disabled={entry.disabled}
+                            onClick={entry.onSelect}
+                          />
+                        </DisabledReason>
+                      ),
+                    )
+                  : null}
+              </div>
+            ) : null}
+          </div>
+        </HeadroomBar>
+      )}
       {banner}
       <div className="grid gap-6 lg:grid-cols-[1fr_16rem]">
         <div className="min-w-0">{body}</div>
