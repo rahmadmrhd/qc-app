@@ -304,3 +304,34 @@ test('ponsel: Simpan, pindai kamera, dan menu draft ada di bar bawah menempel; d
   expect(screen.queryByRole('region', { name: 'Aksi draft' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Kosongkan draft' })).toBeInTheDocument();
 });
+
+test('ponsel: mode pilih kartu draft hanya punya SATU bar (bawah), tanpa header kit di atas daftar', async () => {
+  media = mockMatchMedia(false);
+  seedDraft([{ serial: 'AAA111' }, { serial: 'BBB222' }]);
+  const { container } = renderPage();
+  await screen.findByRole('button', { name: 'Ubah baris AAA111' });
+  await longPress(screen.getAllByRole('listitem')[0] as HTMLElement);
+  // Bar bawah (aria-label "Aksi baris terpilih") satu-satunya: "1 dipilih" hanya sekali, tanpa header kit.
+  expect(container.querySelector('[data-slot="selection-bar"]')).toBeNull();
+  expect(screen.getAllByText('1 dipilih')).toHaveLength(1);
+  const bar = screen.getByRole('region', { name: 'Aksi baris terpilih' });
+  expect(within(bar).getByRole('button', { name: 'Batalkan pilihan' })).toBeInTheDocument();
+  expect(within(bar).getByRole('checkbox', { name: 'Pilih semua' })).toBeInTheDocument();
+  await userEvent.click(within(bar).getByRole('checkbox', { name: 'Pilih semua' }));
+  expect(screen.getByText('2 dipilih')).toBeInTheDocument();
+  await userEvent.click(within(bar).getByRole('button', { name: 'Batalkan pilihan' }));
+  expect(screen.queryByRole('region', { name: 'Aksi baris terpilih' })).toBeNull();
+});
+
+test('ponsel: mode pilih lewat tombol "Pilih baris draft" (0 butir) tetap menampilkan bar bawah tunggal dan menyembunyikan bar Simpan', async () => {
+  media = mockMatchMedia(false);
+  seedDraft([{ serial: 'AAA111' }, { serial: 'BBB222' }]);
+  const { container } = renderPage();
+  await userEvent.click(await screen.findByRole('button', { name: 'Pilih baris draft' }));
+  expect(container.querySelector('[data-slot="selection-bar"]')).toBeNull();
+  const bar = screen.getByRole('region', { name: 'Aksi baris terpilih' });
+  expect(within(bar).getByText('0 dipilih')).toBeInTheDocument();
+  expect(screen.queryByRole('region', { name: 'Aksi draft' })).toBeNull();
+  await userEvent.click(within(bar).getByRole('button', { name: 'Batalkan pilihan' }));
+  expect(screen.queryByRole('region', { name: 'Aksi baris terpilih' })).toBeNull();
+});
