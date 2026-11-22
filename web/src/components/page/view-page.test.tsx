@@ -435,6 +435,40 @@ test('R15: lebar bergantung pageWidth: konten View memakai batas rute (narrow = 
   );
 });
 
+test('tinggi minimum badan dikurangi tinggi spanduk aplikasi (--banner-h), bukan hanya bar headroom', () => {
+  mockMatchMedia(true);
+  const bannerEl = document.createElement('div');
+  bannerEl.setAttribute('data-app-banner', '');
+  document.body.append(bannerEl);
+  const spy = vi
+    .spyOn(Element.prototype, 'getBoundingClientRect')
+    .mockReturnValue({ height: 36 } as DOMRect);
+  try {
+    const { container } = render(
+      <ViewPage title="Item" aside={<p>samping</p>}>
+        <p>isi</p>
+      </ViewPage>,
+    );
+    const body = (container.querySelector('aside') as HTMLElement).parentElement as HTMLElement;
+    expect(body.className).toContain('var(--banner-h,0px)');
+    expect(body.style.getPropertyValue('--banner-h')).toBe('36px');
+  } finally {
+    spy.mockRestore();
+    bannerEl.remove();
+  }
+});
+
+test('tanpa spanduk --banner-h = 0px', () => {
+  mockMatchMedia(true);
+  const { container } = render(
+    <ViewPage title="Item" aside={<p>samping</p>}>
+      <p>isi</p>
+    </ViewPage>,
+  );
+  const body = (container.querySelector('aside') as HTMLElement).parentElement as HTMLElement;
+  expect(body.style.getPropertyValue('--banner-h')).toBe('0px');
+});
+
 test('banner tampil di atas isi, di dalam kolom kiri', () => {
   mockMatchMedia(true);
   render(

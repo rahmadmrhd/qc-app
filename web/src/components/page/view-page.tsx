@@ -1,7 +1,7 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
 import { cn } from 'cn';
 import { Ellipsis } from 'lucide-react';
-import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
+import { type CSSProperties, Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import { ACTIONS, ActionButton, type ActionKind } from '@/components/action-button';
 import { DisabledReason } from '@/components/disabled-reason';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { onFormTabRequest } from '@/lib/form-tab-request';
 import { separatorBefore } from '@/lib/menu-separators';
+import { useAppBannerHeight } from '@/lib/viewport-fit';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
 import { PageContent } from './page-container';
 import { StickyActionBar } from './sticky-action-bar';
@@ -160,6 +161,7 @@ export function ViewPage({
   const desktop = useIsDesktop();
   // SATU gerbang ponsel (viewport < 768, sama dengan judul navbar): judul tak tampil ganda pada 704-767 px.
   const phone = useIsMobile();
+  const bannerHeight = useAppBannerHeight(desktop);
   const visibleActions = (actionItems ?? []).filter((entry) => !entry.hidden);
   // Bar bawah ponsel: semua aksi bertanda `primary`; tanpa penanda, aksi pertama yang tidak bersubmenu.
   const marked = visibleActions.filter((entry) => entry.primary && !entry.submenu);
@@ -306,7 +308,12 @@ export function ViewPage({
           `<main>` atau kerangka: `container-type` menjadikan elemen ini containing block bagi turunan `fixed`
           (bar aksi ponsel ada di luarnya, di bawah). */}
       <div className="@container/view min-w-0">
-        <div className="grid gap-6 wide:min-h-[calc(100dvh_-_var(--headroom-offset,3.5rem)_-_2px)] wide:gap-0 @3xl/view:grid-cols-[minmax(0,1fr)_var(--aside-w)]">
+        {/* `min-h` memenuhi layar di bawah bar (garis panel samping sampai dasar); spanduk aplikasi di atas halaman ikut
+            dikurangkan lewat `--banner-h` agar halaman tak dipaksa menggulir sejauh tinggi spanduk. */}
+        <div
+          style={{ '--banner-h': `${bannerHeight}px` } as CSSProperties}
+          className="grid gap-6 wide:min-h-[calc(100dvh_-_var(--headroom-offset,3.5rem)_-_var(--banner-h,0px)_-_2px)] wide:gap-0 @3xl/view:grid-cols-[minmax(0,1fr)_var(--aside-w)]"
+        >
           <div className="min-w-0">
             {banner ? (
               <div

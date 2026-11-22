@@ -1,6 +1,6 @@
 import { type LinkProps, useNavigate } from '@tanstack/react-router';
 import { cn } from 'cn';
-import { type ReactNode, useContext, useState } from 'react';
+import { type ReactNode, useContext, useLayoutEffect, useState } from 'react';
 import { ListFrameContext } from '@/components/page/list-frame';
 import { ListState } from '@/components/page/list-state';
 import { Alert } from '@/components/ui/alert';
@@ -97,10 +97,13 @@ const HEAD_STICKY = 'sticky top-0 z-20 bg-muted';
 const CHECK_COL = 'w-10 min-w-10 max-w-10 px-0';
 /** Latar sel yang menempel harus opak agar kolom lain tak tembus; keadaan hover/terpilih dikomposit ke `--background`. */
 const STICKY_CELL_BG =
-  'bg-background group-hover/row:bg-[color-mix(in_oklab,var(--muted)_50%,var(--background))] group-data-[state=selected]/row:bg-[color-mix(in_oklab,var(--info-text)_8%,var(--background))]';
-/** Garis dan bayangan tepi kolom menempel terakhir; bayangan hanya tampil saat tabel tergulir ke kanan. */
+  'bg-background group-hover/row:bg-[color-mix(in_oklab,var(--muted)_50%,var(--background))] group-has-aria-expanded/row:bg-[color-mix(in_oklab,var(--muted)_50%,var(--background))] group-data-[state=selected]/row:bg-[color-mix(in_oklab,var(--info-text)_8%,var(--background))]';
+/**
+ * Garis dan bayangan tepi kolom menempel terakhir; bayangan hanya tampil saat tabel tergulir ke kanan. Warna bayangan
+ * hitam (bukan `foreground`, yang terang di mode gelap sehingga tampak seperti pita cahaya), lebih pekat di mode gelap.
+ */
 const STICKY_EDGE =
-  "border-r after:pointer-events-none after:absolute after:inset-y-0 after:-right-3 after:w-3 after:bg-linear-to-r after:from-foreground/10 after:to-transparent after:opacity-0 after:content-[''] group-data-[scrolled]/scroller:after:opacity-100";
+  "border-r after:pointer-events-none after:absolute after:inset-y-0 after:-right-3 after:w-3 after:bg-linear-to-r after:from-black/10 dark:after:from-black/40 after:to-transparent after:opacity-0 after:content-[''] group-data-[scrolled]/scroller:after:opacity-100";
 
 /**
  * Daftar data kit CRUD. Di >= 768 px tabel di dalam pembungkus gulir (`data-slot="table-scroller"`): gulir horizontal
@@ -163,6 +166,27 @@ function DataTableImpl<T>({
     desktop && fit === 'viewport',
     loadMoreError ? 64 : hasMore ? 48 : 0,
   );
+  // Lebar nyata kolom menempel (checkbox + Aksi) dipakai `scroll-padding-left` agar fokus keyboard tak tertutup kolom itu;
+  // Aksi bisa lebih lebar dari perkiraan tetap karena jumlah tombol ikon berbeda per tabel.
+  const hasStickyCols = Boolean(selection) || Boolean(actions);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `hasStickyCols` memicu pengukuran ulang saat kolom menempel muncul/hilang
+  useLayoutEffect(() => {
+    if (!scroller) return;
+    const cells = Array.from(scroller.querySelectorAll<HTMLElement>('thead [data-sticky-col]'));
+    if (cells.length === 0) {
+      scroller.style.removeProperty('--sticky-w');
+      return;
+    }
+    const apply = () => {
+      const width = cells.reduce((sum, cell) => sum + cell.offsetWidth, 0);
+      scroller.style.setProperty('--sticky-w', `${width}px`);
+    };
+    apply();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(apply);
+    for (const cell of cells) observer.observe(cell);
+    return () => observer.disconnect();
+  }, [scroller, hasStickyCols]);
   const nameOf = (row: T) => selectLabel?.(row) ?? rowKey(row);
   const isSelectable = (row: T) => rowSelectable?.(row) ?? true;
   const ids = rows.map(rowKey);
@@ -189,6 +213,7 @@ function DataTableImpl<T>({
         <TableRow className="hover:bg-muted">
           {selection ? (
             <TableHead
+              data-sticky-col
               className={cn(
                 HEAD_STICKY,
                 CHECK_COL,
@@ -206,7 +231,10 @@ function DataTableImpl<T>({
             </TableHead>
           ) : null}
           {actions ? (
-            <TableHead className={cn(HEAD_STICKY, 'z-30 w-px', actionsLeft, STICKY_EDGE)}>
+            <TableHead
+              data-sticky-col
+              className={cn(HEAD_STICKY, 'z-30 w-px', actionsLeft, STICKY_EDGE)}
+            >
               Aksi
             </TableHead>
           ) : null}
@@ -310,7 +338,7 @@ function DataTableImpl<T>({
               const next = event.currentTarget.scrollLeft > 0;
               if (next !== scrolled) setScrolled(next);
             }}
-            className="group/scroller relative isolate max-w-full scroll-pl-28 overflow-auto rounded-lg border focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+            className="group/scroller relative isolate max-w-full scroll-pl-[calc(var(--sticky-w,7rem)+0.5rem)] overflow-auto rounded-lg border focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
           >
             {table}
           </section>

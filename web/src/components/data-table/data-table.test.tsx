@@ -288,6 +288,39 @@ test('desktop: kolom checkbox dan Aksi menempel di kiri; Aksi bergeser selebar c
   expect(cells[0]?.className).toContain('bg-background');
 });
 
+test('desktop: lebar nyata kolom menempel (checkbox + Aksi) menjadi --sticky-w untuk scroll-padding', () => {
+  mockWidth(true);
+  const original = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
+  Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+    configurable: true,
+    get: () => 40,
+  });
+  try {
+    render(<Harness />);
+    const scroller = screen.getByRole('region', { name: 'Merk (dapat digulir)' });
+    expect(scroller.style.getPropertyValue('--sticky-w')).toBe('80px');
+    expect(scroller.className).toContain('scroll-pl-[calc(var(--sticky-w,7rem)+0.5rem)]');
+  } finally {
+    if (original) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', original);
+    else Reflect.deleteProperty(HTMLElement.prototype, 'offsetWidth');
+  }
+});
+
+test('desktop: sel menempel mengikuti sorotan baris saat menu aksi terbuka; bayangan tepi hitam netral', () => {
+  mockWidth(true);
+  render(<Harness />);
+  const headers = within(screen.getByRole('table', { name: 'Merk' })).getAllByRole('columnheader');
+  const cells = within(screen.getAllByRole('row')[1] as HTMLElement).getAllByRole('cell');
+  // Baris memakai `has-aria-expanded:bg-muted/50`; sel menempel opak harus mengikutinya agar tak tampak bolong.
+  expect(cells[0]?.className).toContain('group-has-aria-expanded/row:bg-[color-mix');
+  expect(cells[1]?.className).toContain('group-has-aria-expanded/row:bg-[color-mix');
+  // Bayangan tepi: hitam (bukan `foreground`, yang terang di mode gelap sehingga tampak seperti pita cahaya).
+  const edge = headers[1]?.className ?? '';
+  expect(edge).toContain('after:from-black/10');
+  expect(edge).toContain('dark:after:from-black/40');
+  expect(edge).not.toContain('from-foreground');
+});
+
 test('desktop tanpa checkbox: Aksi menempel di left-0', () => {
   mockWidth(true);
   function ActionsOnly() {
