@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -473,5 +473,87 @@ test('ponsel: membuka daftar menggulirkan field ke atas area terlihat dan menyed
   expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' });
   expect(document.querySelector('[data-slot="combobox-spacer"]')).not.toBeNull();
   Reflect.deleteProperty(window, 'visualViewport');
+  media.restore();
+});
+
+/** Ponsel dengan field di dekat papan ketik: ruang bawah < 3 baris, jadi daftar berbentuk lembar bawah. */
+function setupSheetMode() {
+  const media = mockMatchMedia(false);
+  Object.defineProperty(window, 'visualViewport', {
+    value: {
+      height: 500,
+      offsetTop: 0,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    },
+    configurable: true,
+  });
+  Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+  window.HTMLElement.prototype.scrollIntoView = vi.fn();
+  const rect = vi.spyOn(window.HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+    top: 420,
+    bottom: 452,
+    left: 0,
+    right: 300,
+    width: 300,
+    height: 32,
+    x: 0,
+    y: 420,
+    toJSON: () => ({}),
+  });
+  return () => {
+    rect.mockRestore();
+    Reflect.deleteProperty(window, 'visualViewport');
+    media.restore();
+  };
+}
+
+test('mode lembar (data-sheet) punya pegangan seret yang sama dengan lembar bawah: ke atas = layar penuh, ke bawah = tutup', async () => {
+  const restore = setupSheetMode();
+  let now = 1000;
+  vi.spyOn(performance, 'now').mockImplementation(() => now);
+  render(<Single />);
+  const input = screen.getByLabelText('Merk');
+  await userEvent.click(input);
+  const list = await screen.findByRole('listbox');
+  expect(list).toHaveAttribute('data-sheet');
+  const handle = list.querySelector('[data-slot="sheet-handle"]') as HTMLElement;
+  expect(handle).not.toBeNull();
+  // Pegangan tak merebut fokus dari input (bila tidak, daftar menutup saat blur) dan tak masuk struktur listbox.
+  expect(handle).toHaveAttribute('aria-hidden', 'true');
+  expect(handle).toHaveAttribute('tabindex', '-1');
+  expect(fireEvent.mouseDown(handle)).toBe(false);
+  // Seret ke atas melebarkan.
+  now = 1000;
+  fireEvent.pointerDown(handle, { pointerId: 1, clientY: 400, button: 0, pointerType: 'touch' });
+  fireEvent.pointerMove(handle, { pointerId: 1, clientY: 300, pointerType: 'touch' });
+  now = 1400;
+  fireEvent.pointerUp(handle, { pointerId: 1, clientY: 300, pointerType: 'touch' });
+  expect(list).toHaveAttribute('data-expanded', 'true');
+  expect(list.style.top).toBe('0px');
+  expect(list.style.maxHeight).toBe('none');
+  // Ketukan (setelah `click` susulan seretan lewat) membalik ke tinggi awal; daftar tetap terbuka.
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 70));
+  });
+  fireEvent.click(handle);
+  expect(list).not.toHaveAttribute('data-expanded');
+  expect(screen.getByRole('listbox')).toBeInTheDocument();
+  // Seret ke bawah dari tinggi awal menutup daftar.
+  now = 2000;
+  fireEvent.pointerDown(handle, { pointerId: 1, clientY: 300, button: 0, pointerType: 'touch' });
+  fireEvent.pointerMove(handle, { pointerId: 1, clientY: 420, pointerType: 'touch' });
+  now = 2400;
+  fireEvent.pointerUp(handle, { pointerId: 1, clientY: 420, pointerType: 'touch' });
+  expect(screen.queryByRole('listbox')).toBeNull();
+  restore();
+});
+
+test('daftar yang bukan lembar tak punya pegangan', async () => {
+  const media = mockMatchMedia(true);
+  render(<Single />);
+  await userEvent.click(screen.getByLabelText('Merk'));
+  const list = await screen.findByRole('listbox');
+  expect(list.querySelector('[data-slot="sheet-handle"]')).toBeNull();
   media.restore();
 });

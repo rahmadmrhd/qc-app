@@ -5,6 +5,7 @@ import { cn } from "cn"
 import { Dialog as SheetPrimitive } from "radix-ui"
 
 import { Button } from "@/components/ui/button"
+import { SheetHandle } from "@/components/sheet-handle"
 import { useBackToCloseRoot } from "@/hooks/use-back-to-close"
 import { XIcon } from "lucide-react"
 
@@ -63,19 +64,11 @@ function SheetOverlay({
   )
 }
 
-/** Seretan dihitung sebagai gestur bila melewati jarak ini (px), atau cukup cepat (px/ms) dan melewati jarak minimum. */
-const DRAG_DISTANCE = 48
-const DRAG_MIN_FOR_VELOCITY = 16
-const DRAG_VELOCITY = 0.5
-/** Di bawah jarak ini pelepasan dianggap ketukan (membalik collapsed/expanded). */
-const TAP_DISTANCE = 6
-
 /**
- * Pegangan lembar bawah (B2d): seret ke atas = layar penuh (expanded), seret ke bawah dari layar penuh = tinggi awal
- * (collapsed), seret ke bawah dari tinggi awal = tutup; ketukan membalik collapsed/expanded. Ditangani dengan pointer
- * events; selama menyeret lembar mengikuti jari lewat `transform` (tanpa render ulang).
+ * Pegangan lembar bawah: gestur dan keyboard ada di `SheetHandle` bersama (`@/components/sheet-handle`); di sini hanya
+ * menyambungkan "tutup" ke akar `Sheet`.
  */
-function SheetHandle({
+function SheetBottomHandle({
   expanded,
   onExpandedChange,
   contentRef,
@@ -85,86 +78,13 @@ function SheetHandle({
   contentRef: React.RefObject<HTMLDivElement | null>
 }) {
   const requestClose = React.useContext(SheetCloseContext)
-  const start = React.useRef<{ y: number; at: number; id: number } | null>(null)
-  // Seretan baru saja selesai: `click` yang menyusul pelepasan jari tidak boleh dihitung sebagai ketukan.
-  const dragged = React.useRef(false)
-
-  const setOffset = (value: number | null) => {
-    const node = contentRef.current
-    if (!node) return
-    node.style.transition = value === null ? "" : "none"
-    node.style.transform = value === null ? "" : `translateY(${value}px)`
-  }
-
-  const finish = (clientY: number, cancelled: boolean) => {
-    const origin = start.current
-    start.current = null
-    setOffset(null)
-    if (!origin || cancelled) return
-    const dy = clientY - origin.y
-    if (Math.abs(dy) >= TAP_DISTANCE) {
-      dragged.current = true
-      setTimeout(() => {
-        dragged.current = false
-      }, 50)
-    }
-    const elapsed = Math.max(1, performance.now() - origin.at)
-    const velocity = Math.abs(dy) / elapsed
-    const passed =
-      Math.abs(dy) >= DRAG_DISTANCE ||
-      (Math.abs(dy) >= DRAG_MIN_FOR_VELOCITY && velocity >= DRAG_VELOCITY)
-    if (!passed) return
-    if (dy < 0) {
-      if (!expanded) onExpandedChange(true)
-    } else if (expanded) {
-      onExpandedChange(false)
-    } else {
-      requestClose?.()
-    }
-  }
-
   return (
-    // biome-ignore lint/a11y/useSemanticElements: pegangan seret berbentuk strip; butuh pointer events pada elemen non-tombol
-    <div
-      role="button"
-      tabIndex={0}
-      aria-label={expanded ? "Kecilkan lembar" : "Lebarkan lembar"}
-      data-slot="sheet-handle"
-      className="-mb-3 flex shrink-0 cursor-grab items-center justify-center py-2.5 outline-none focus-visible:ring-2 focus-visible:ring-ring/50 active:cursor-grabbing"
-      style={{ touchAction: "none" }}
-      onPointerDown={(event) => {
-        if (event.pointerType === "mouse" && event.button !== 0) return
-        start.current = { y: event.clientY, at: performance.now(), id: event.pointerId }
-        event.currentTarget.setPointerCapture?.(event.pointerId)
-      }}
-      onPointerMove={(event) => {
-        const origin = start.current
-        if (!origin || origin.id !== event.pointerId) return
-        const dy = event.clientY - origin.y
-        // Ke atas hanya diikuti saat belum expanded (lembar tak melewati batas atas layar).
-        setOffset(expanded ? Math.max(dy, 0) : Math.max(dy, -DRAG_DISTANCE * 2))
-      }}
-      onPointerUp={(event) => finish(event.clientY, false)}
-      onPointerCancel={(event) => finish(event.clientY, true)}
-      onClick={() => {
-        if (dragged.current) {
-          dragged.current = false
-          return
-        }
-        onExpandedChange(!expanded)
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "ArrowUp" && !expanded) {
-          event.preventDefault()
-          onExpandedChange(true)
-        } else if (event.key === "ArrowDown" && expanded) {
-          event.preventDefault()
-          onExpandedChange(false)
-        }
-      }}
-    >
-      <span aria-hidden className="h-1.5 w-10 rounded-full bg-muted-foreground/30" />
-    </div>
+    <SheetHandle
+      expanded={expanded}
+      onExpandedChange={onExpandedChange}
+      onClose={requestClose}
+      targetRef={contentRef}
+    />
   )
 }
 
@@ -200,7 +120,11 @@ function SheetContent({
         {...props}
       >
         {bottom ? (
-          <SheetHandle expanded={expanded} onExpandedChange={setExpanded} contentRef={contentRef} />
+          <SheetBottomHandle
+            expanded={expanded}
+            onExpandedChange={setExpanded}
+            contentRef={contentRef}
+          />
         ) : null}
         {children}
         {showCloseButton && (

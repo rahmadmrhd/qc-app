@@ -12,6 +12,7 @@ import {
   type WheelEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { SheetHandle } from '@/components/sheet-handle';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useBackToClose } from '@/hooks/use-back-to-close';
@@ -285,6 +286,14 @@ export function ComboboxBase({
   const phone = !useIsDesktop();
   // Lembar bawah (daftar terlalu sempit di atas/bawah): back menutupnya lebih dulu (butir 41b).
   useBackToClose(showList && placement?.sheet === true, close);
+  // Lembar bawah daftar: pegangan seret yang sama dengan `ui/sheet.tsx` (B2d). Expanded = layar penuh; keadaannya
+  // kembali collapsed setiap lembar tertutup atau daftar tak lagi berbentuk lembar.
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const isSheet = showList && placement?.sheet === true;
+  useEffect(() => {
+    if (!isSheet) setSheetExpanded(false);
+  }, [isSheet]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `chips.length` hanya memicu ukur ulang saat bingkai membesar
   useLayoutEffect(() => {
     const anchor = anchorRef.current;
@@ -399,12 +408,14 @@ export function ComboboxBase({
   const listNode =
     showList && (inline || placement) ? (
       <div
+        ref={sheetRef}
         id={listId}
         role="listbox"
         aria-label={label}
         aria-multiselectable={multi || undefined}
         data-slot="link-field-list"
         data-sheet={placement?.sheet || undefined}
+        data-expanded={placement?.sheet && sheetExpanded ? 'true' : undefined}
         data-inline={inline || undefined}
         className={
           placement
@@ -420,6 +431,18 @@ export function ComboboxBase({
                 maxHeight: placement.maxHeight,
                 ...(placement.top === undefined ? {} : { top: placement.top }),
                 ...(placement.bottom === undefined ? {} : { bottom: placement.bottom }),
+                // Lembar yang dilebarkan memenuhi layar (seperti `ui/sheet.tsx` expanded).
+                ...(placement.sheet && sheetExpanded
+                  ? {
+                      top: 0,
+                      bottom: 0,
+                      left: 0,
+                      width: '100%',
+                      maxHeight: 'none',
+                      borderRadius: 0,
+                      paddingTop: 'env(safe-area-inset-top)',
+                    }
+                  : {}),
               },
               onPointerDown: (event: PointerEvent<HTMLDivElement>) => event.stopPropagation(),
               onWheel: (event: WheelEvent<HTMLDivElement>) => event.stopPropagation(),
@@ -427,6 +450,17 @@ export function ComboboxBase({
             }
           : {})}
       >
+        {placement?.sheet ? (
+          <SheetHandle
+            keepFocus
+            decorative
+            expanded={sheetExpanded}
+            onExpandedChange={setSheetExpanded}
+            onClose={close}
+            targetRef={sheetRef}
+            className="sticky top-0 z-10 -mx-1 -mt-1 mb-0 w-[calc(100%+0.5rem)] bg-popover"
+          />
+        ) : null}
         {visible.map((option) => (
           // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard ditangani input (ArrowUp/Down/Enter), opsi tidak menerima fokus
           <div

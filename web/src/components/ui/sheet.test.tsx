@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { resetOverlayManager } from '@/lib/nav-stack';
@@ -119,4 +120,26 @@ test('lembar bawah memakai useBackToClose: entri riwayat disisipkan saat terbuka
   const push = vi.spyOn(window.history, 'pushState');
   render(<Harness />);
   expect(push).toHaveBeenCalled();
+});
+
+test('keyboard (C10): Enter dan Spasi pada pegangan membalik collapsed/expanded, nama aksesibel mengikuti keadaan', async () => {
+  render(<Harness />);
+  handle().focus();
+  expect(handle()).toHaveAccessibleName('Lebarkan lembar');
+  await userEvent.keyboard('{Enter}');
+  expect(sheet().dataset.expanded).toBe('true');
+  expect(handle()).toHaveAccessibleName('Kecilkan lembar');
+  await userEvent.keyboard(' ');
+  expect(sheet().dataset.expanded).toBeUndefined();
+  await userEvent.keyboard('{ArrowUp}');
+  expect(sheet().dataset.expanded).toBe('true');
+  await userEvent.keyboard('{ArrowDown}');
+  expect(sheet().dataset.expanded).toBeUndefined();
+});
+
+test('keyboard (C10): Escape pada pegangan menutup lembar', async () => {
+  render(<Harness />);
+  handle().focus();
+  await userEvent.keyboard('{Escape}');
+  expect(screen.getByTestId('state')).toHaveTextContent('tutup');
 });
