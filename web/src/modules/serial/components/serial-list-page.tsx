@@ -32,7 +32,7 @@ import {
 } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { NoLocationNotice } from '@/modules/location/components/no-location-notice';
-import type { PendingApplyStickers } from '../lib/apply-stickers-intent';
+import { pendingSummary, usePendingApplyStickers } from '../lib/apply-stickers-intent';
 import { CUSTODY_LABEL, formatDay } from '../lib/labels';
 import { filterOfSearch, type SerialSearch } from '../lib/list-filter';
 import { todayWib } from '../lib/locations';
@@ -104,8 +104,8 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
   const [editing, setEditing] = useState<SerialDto | null>(null);
   const [acting, setActing] = useState<{ serial: SerialDto; kind: ActKind } | null>(null);
   const [stickering, setStickering] = useState<SerialSummaryDto[] | null>(null);
-  // Niat Tempel stiker yang hasilnya belum jelas: hidup di halaman (bukan di dialog) agar id idempoten selamat dari tutup-buka.
-  const [pendingStickers, setPendingStickers] = useState<PendingApplyStickers | null>(null);
+  // Niat Tempel stiker yang hasilnya belum jelas: store tingkat modul per email (bukan state dialog atau halaman), jadi id idempoten selamat dari tutup-buka dan pindah halaman.
+  const [pendingStickers, setPendingStickers] = usePendingApplyStickers(me.email);
   const detailLoader = useLoadSerialDetail();
 
   const itemAccess = itemLinkAccess(me);
@@ -412,8 +412,9 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
             <Alert color="warning">
               <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
                 <span>
-                  Pengiriman Tempel stiker untuk {pendingStickers.input.rows.length} Serial Number
-                  belum jelas hasilnya. Kirim ulang persis sama agar stok tidak terpotong dua kali.
+                  Kiriman Tempel stiker sebelumnya ({pendingSummary(pendingStickers)}; bukan pilihan
+                  saat ini) belum jelas hasilnya. Kirim ulang persis sama agar stok tidak terpotong
+                  dua kali.
                 </span>
                 <Button
                   type="button"

@@ -8,6 +8,7 @@ import { ApiError } from '@/lib/api/api-error';
 import { closeFilterChip, linkOptionNames, pickLink, pickSelect } from '@/test/link-field';
 import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
+import { resetPendingApplyStickersForTest } from '../lib/apply-stickers-intent';
 import { type SerialSearch, serialSearchSchema } from '../lib/list-filter';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -107,6 +108,7 @@ const listCalls = () => apiMock.mock.calls.filter((call) => call[0] === 'serials
 const lastListInput = () => listCalls().at(-1)?.[1] as Record<string, unknown>;
 
 beforeEach(() => {
+  resetPendingApplyStickersForTest();
   apiMock.mockReset();
   me = {
     email: 'a@gmail.com',
@@ -1125,7 +1127,8 @@ test('Tempel stiker gagal tak jelas lalu dialog ditutup: halaman menampilkan Kir
 
   // Niat tetap hidup di halaman: pemberitahuan dengan Kirim ulang.
   const notice = await screen.findByText(/belum jelas hasilnya/);
-  expect(notice).toHaveTextContent('Tempel stiker untuk 2 Serial Number');
+  expect(notice).toHaveTextContent('Kiriman Tempel stiker sebelumnya (2 Serial Number');
+  expect(notice).toHaveTextContent('bukan pilihan saat ini');
   await userEvent.click(screen.getByRole('button', { name: 'Kirim ulang' }));
   const reopened = await screen.findByRole('dialog', { name: 'Tempel stiker' });
   await userEvent.click(within(reopened).getByRole('button', { name: 'Kirim ulang' }));
@@ -1134,6 +1137,59 @@ test('Tempel stiker gagal tak jelas lalu dialog ditutup: halaman menampilkan Kir
   expect(second).toEqual(first);
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(screen.queryByText(/belum jelas hasilnya/)).toBeNull();
+});
+
+test('niat Tempel stiker tertunda bertahan saat halaman di-unmount lalu dibuka lagi (id sama); akun lain tidak melihatnya', async () => {
+  me = manageMe('edit');
+  let attempt = 0;
+  apiMock.mockImplementation((id: string) => {
+    if (id === 'serials.list') return Promise.resolve({ items: PAGE_1, nextCursor: null });
+    if (id === 'serials.stickerOptions') {
+      return Promise.resolve({
+        stickers: [{ id: 'st1', name: 'Stiker A', alias: '', typeName: 'J', defaultQty: 1 }],
+      });
+    }
+    if (id === 'serials.applyStickersBatch') {
+      attempt += 1;
+      return attempt === 1
+        ? Promise.reject(new ApiError('UNAVAILABLE', 'Tidak ada koneksi', '-'))
+        : Promise.resolve({ ids: ['s1', 's2'] });
+    }
+    return Promise.resolve({ locations: [], items: [], nextCursor: null });
+  });
+  const first = await renderPage();
+  await screen.findByText('ABC123');
+  await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Tempel stiker' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Tempel stiker' });
+  await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker A' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
+  await within(dialog).findByRole('button', { name: 'Kirim ulang' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Batal' }));
+  await screen.findByText(/belum jelas hasilnya/);
+  first.unmount();
+
+  // Akun lain: tidak ada pemberitahuan.
+  const otherMe = me;
+  me = { ...manageMe('edit'), email: 'lain@gmail.com' };
+  const other = await renderPage();
+  await screen.findByText('ABC123');
+  expect(screen.queryByText(/belum jelas hasilnya/)).toBeNull();
+  other.unmount();
+
+  // Akun yang sama membuka daftar lagi: pemberitahuan muncul, kirim ulang memakai id dan isi yang sama.
+  me = otherMe;
+  await renderPage();
+  await screen.findByText('ABC123');
+  await screen.findByText(/belum jelas hasilnya/);
+  await userEvent.click(screen.getByRole('button', { name: 'Kirim ulang' }));
+  const reopened = await screen.findByRole('dialog', { name: 'Tempel stiker' });
+  expect(within(reopened).getByText(/Kiriman sebelumnya/)).toBeInTheDocument();
+  await userEvent.click(within(reopened).getByRole('button', { name: 'Kirim ulang' }));
+  await waitFor(() => expect(callsOf('serials.applyStickersBatch')).toHaveLength(2));
+  const [firstCall, secondCall] = callsOf('serials.applyStickersBatch').map((call) => call[1]);
+  expect(secondCall).toEqual(firstCall);
+  await waitFor(() => expect(screen.queryByText(/belum jelas hasilnya/)).toBeNull());
 });
 
 test('ponsel: bar aksi massal satu baris memuat Tempel stiker; lebih dari 10 kombinasi = nonaktif dengan alasan terlihat', async () => {

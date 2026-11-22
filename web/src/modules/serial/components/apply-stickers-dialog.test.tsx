@@ -11,7 +11,11 @@ vi.mock('@/lib/api', () => ({ api: apiMock }));
 const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast: toastMock, Toaster: () => null }));
 
-import type { PendingApplyStickers } from '../lib/apply-stickers-intent';
+import {
+  newPendingApplyStickers,
+  type PendingApplyStickers,
+  resetPendingApplyStickersForTest,
+} from '../lib/apply-stickers-intent';
 import { ApplyStickersDialog } from './apply-stickers-dialog';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -56,6 +60,7 @@ const OPTIONS: Record<string, { id: string; name: string }[]> = {
 let applyResult: () => Promise<{ ids: string[] }>;
 
 beforeEach(() => {
+  resetPendingApplyStickersForTest();
   apiMock.mockReset();
   toastMock.success.mockReset();
   applyResult = () => Promise.resolve({ ids: ['s1', 's2'] });
@@ -85,13 +90,15 @@ function Host({
   rows,
   onClose,
   onDone,
+  initialPending = null,
 }: {
   rows: SerialSummaryDto[];
   onClose: () => void;
   onDone: (ids: string[]) => void;
+  initialPending?: PendingApplyStickers | null;
 }) {
   const [open, setOpen] = useState(true);
-  const [pending, setPending] = useState<PendingApplyStickers | null>(null);
+  const [pending, setPending] = useState<PendingApplyStickers | null>(initialPending);
   return open ? (
     <ApplyStickersDialog
       rows={rows}
@@ -112,11 +119,22 @@ function Host({
 
 async function renderDialog(
   rows: SerialSummaryDto[] = ROWS,
-  handlers: { onClose?: () => void; onDone?: (ids: string[]) => void } = {},
+  handlers: {
+    onClose?: () => void;
+    onDone?: (ids: string[]) => void;
+    initialPending?: PendingApplyStickers | null;
+  } = {},
 ) {
   const onClose = handlers.onClose ?? vi.fn();
   const onDone = handlers.onDone ?? vi.fn();
-  await renderInRouter(<Host rows={rows} onClose={onClose} onDone={onDone} />);
+  await renderInRouter(
+    <Host
+      rows={rows}
+      onClose={onClose}
+      onDone={onDone}
+      initialPending={handlers.initialPending ?? null}
+    />,
+  );
   const dialog = await screen.findByRole('dialog', { name: 'Tempel stiker' });
   return { dialog, onClose, onDone };
 }
@@ -311,6 +329,82 @@ test('Kirim ulang ditolak pasti (CONFLICT): niat dibuang, kembali ke formulir de
   await userEvent.click(await within(dialog).findByRole('button', { name: 'Kirim ulang' }));
   expect(await within(dialog).findByLabelText('Catatan (opsional)')).toBeInTheDocument();
   expect(within(dialog).getByRole('alert')).toHaveTextContent('AAA111');
+});
+
+test('kiriman pertama masih berjalan: formulir tetap tampil (nonaktif), tanpa peringatan "belum jelas"; sukses tak pernah menampilkan mode Kirim ulang', async () => {
+  let release: (value: { ids: string[] }) => void = () => undefined;
+  applyResult = () =>
+    new Promise((resolve) => {
+      release = resolve;
+    });
+  const onClose = vi.fn();
+  const { dialog } = await renderDialog([row({ id: 's1' })], { onClose });
+  await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker A' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
+  await waitFor(() => expect(sentInputs()).toHaveLength(1));
+  // Permintaan tertahan: niat sudah dicatat ke induk, tetapi dialog tetap formulir yang terkunci.
+  expect(within(dialog).getByRole('button', { name: 'Menyimpan…' })).toBeDisabled();
+  expect(within(dialog).getByLabelText('Catatan (opsional)')).toBeDisabled();
+  expect(within(dialog).getByRole('checkbox', { name: 'Stiker A' })).toBeDisabled();
+  expect(screen.queryByText(/belum jelas/)).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Kirim ulang' })).toBeNull();
+  release({ ids: ['s1'] });
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  expect(screen.queryByText(/belum jelas/)).toBeNull();
+});
+
+test('dialog dibuka dengan niat lama: langsung mode Kirim ulang dengan cuplikan serial kiriman sebelumnya', async () => {
+  const old = newPendingApplyStickers(
+    {
+      occurredOn: '2026-11-20',
+      message: 'Catatan lama',
+      rows: [{ id: 'x1', stickerIds: ['st1'] }],
+    },
+    ['OLD001'],
+  );
+  const { dialog } = await renderDialog([], { initialPending: old });
+  expect(within(dialog).getByText(/belum jelas hasilnya/)).toBeInTheDocument();
+  expect(within(dialog).getByText('1 Serial Number: OLD001')).toBeInTheDocument();
+  expect(within(dialog).getByText('Catatan lama')).toBeInTheDocument();
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Kirim ulang' }));
+  await waitFor(() => expect(sentInputs()).toHaveLength(1));
+  expect(sentInputs()[0]).toEqual(old.input);
+});
+
+test('Buang pada niat lama tanpa pilihan serial: dialog ditutup, bukan formulir 0 serial', async () => {
+  const old = newPendingApplyStickers(
+    { occurredOn: '2026-11-20', message: '', rows: [{ id: 'x1', stickerIds: ['st1'] }] },
+    ['OLD001'],
+  );
+  const onClose = vi.fn();
+  const { dialog } = await renderDialog([], { initialPending: old, onClose });
+  await userEvent.click(
+    within(dialog).getByRole('button', { name: 'Buang pengiriman sebelumnya' }),
+  );
+  expect(onClose).toHaveBeenCalled();
+});
+
+test('Buang pada niat lama dengan pilihan serial: formulir untuk pilihan saat ini, kiriman berikutnya tak lagi masuk mode Kirim ulang saat berjalan', async () => {
+  const old = newPendingApplyStickers(
+    { occurredOn: '2026-11-20', message: '', rows: [{ id: 'x1', stickerIds: ['st1'] }] },
+    ['OLD001'],
+  );
+  let release: (value: { ids: string[] }) => void = () => undefined;
+  applyResult = () =>
+    new Promise((resolve) => {
+      release = resolve;
+    });
+  const { dialog } = await renderDialog([row({ id: 's1' })], { initialPending: old });
+  await userEvent.click(
+    within(dialog).getByRole('button', { name: 'Buang pengiriman sebelumnya' }),
+  );
+  await userEvent.click(await within(dialog).findByRole('checkbox', { name: 'Stiker A' }));
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Tempel stiker' }));
+  await waitFor(() => expect(sentInputs()).toHaveLength(1));
+  expect((sentInputs()[0] as { clientId: string }).clientId).not.toBe(old.clientId);
+  expect(within(dialog).getByRole('button', { name: 'Menyimpan…' })).toBeDisabled();
+  expect(screen.queryByText(/belum jelas/)).toBeNull();
+  release({ ids: ['s1'] });
 });
 
 test('lebih dari 100 serial yang dicentang: peringatan dan tombol nonaktif; kelompok tanpa centang tak dihitung', async () => {

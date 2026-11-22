@@ -22,6 +22,7 @@ import {
   isDefiniteRejection,
   newPendingApplyStickers,
   type PendingApplyStickers,
+  pendingSummary,
 } from '../lib/apply-stickers-intent';
 import { todayWib } from '../lib/locations';
 import { groupSerialsByItemBu, STICKER_ROWS_MAX, type StickerGroup } from '../lib/sticker-groups';
@@ -114,11 +115,12 @@ function GroupSection({
  * menurut (Item, BU) dan tiap kelompok punya daftar centang sendiri (stiker yang berlaku bagi item itu pada BU itu);
  * kelompok tanpa centang dilewati. Tiap centang = +1 stiker dan potong stok 1 di lokasi masing-masing serial. Satu
  * pengiriman atomik (`serials.applyStickersBatch`: satu serial ditolak = semuanya batal, pesan menyebut nomornya).
- * Idempotensi (review akhir 2026-11-22): `clientId` hidup per NIAT KIRIM, di luar dialog. Niat dicatat ke halaman daftar
- * (`onPendingChange`) SEBELUM dikirim; sukses atau penolakan pasti (VALIDATION/CONFLICT/FORBIDDEN/NOT_FOUND) menghapusnya,
- * sedangkan kegagalan yang tak jelas (jaringan putus, 5xx) menyimpannya dan dialog beralih ke mode "Kirim ulang" yang
- * mengirim PERSIS isi dan id yang sama (formulir terkunci), sehingga komit yang jawabannya hilang tak memotong stok dua
- * kali. Tanpa Urungkan (stok yang sudah terpotong tak dapat dibalik).
+ * Idempotensi (review akhir 2026-11-22): `clientId` hidup per NIAT KIRIM, di luar dialog dan halaman (store modul per
+ * email, lewat `onPendingChange`). Niat dicatat SEBELUM dikirim; sukses atau penolakan pasti (VALIDATION/CONFLICT/
+ * FORBIDDEN/NOT_FOUND) menghapusnya, sedangkan kegagalan yang tak jelas (jaringan putus, 5xx) menyimpannya. Mode
+ * "Kirim ulang" (kirim PERSIS isi dan id yang sama, formulir diganti ringkasan) HANYA aktif bila niat sudah ada saat dialog
+ * dibuka atau kiriman dialog ini baru saja berakhir tak jelas; selama kiriman pertama berjalan formulir tetap tampil
+ * (nonaktif). Tanpa Urungkan (stok yang sudah terpotong tak dapat dibalik).
  */
 export function ApplyStickersDialog({
   rows,
@@ -134,6 +136,10 @@ export function ApplyStickersDialog({
   const [message, setMessage] = useState('');
   const [checks, setChecks] = useState<Record<string, ReadonlySet<string>>>({});
   const [error, setError] = useState<string | null>(null);
+  // Mode "Kirim ulang": niat sudah ada saat dialog dibuka (`resumed`) atau kiriman dialog ini berakhir tak jelas.
+  const [resumed, setResumed] = useState(pending !== null);
+  const [ambiguous, setAmbiguous] = useState(false);
+  const resend = pending !== null && (resumed || ambiguous);
 
   const payloadRows = groups.flatMap((group) => {
     const stickerIds = [...(checks[group.key] ?? [])];
@@ -171,9 +177,12 @@ export function ApplyStickersDialog({
       if (isDefiniteRejection(caught)) {
         // Server menolak tanpa menulis apa pun: niat ini selesai, kiriman berikutnya boleh memakai id baru.
         onPendingChange(null);
+        setResumed(false);
+        setAmbiguous(false);
         setError(describeError(caught));
       } else {
         // Hasil tak jelas: pertahankan id dan isi; dialog beralih ke mode "Kirim ulang".
+        setAmbiguous(true);
         setError(
           `${describeError(caught)} Hasil pengiriman belum jelas; kirim ulang tanpa mengubah isinya.`,
         );
@@ -182,13 +191,28 @@ export function ApplyStickersDialog({
   }
 
   function submit() {
-    const intent = newPendingApplyStickers({ occurredOn, message, rows: payloadRows });
+    const serialNumbers = groups.flatMap((group) =>
+      (checks[group.key]?.size ?? 0) > 0 ? group.serials : [],
+    );
+    const intent = newPendingApplyStickers(
+      { occurredOn, message, rows: payloadRows },
+      serialNumbers,
+    );
     // Dicatat SEBELUM dikirim: bila dialog tertutup atau jawabannya hilang, id dan isi yang sama tetap tersedia.
     onPendingChange(intent);
     return send(intent);
   }
 
-  if (pending) {
+  function discardPending() {
+    onPendingChange(null);
+    setResumed(false);
+    setAmbiguous(false);
+    setError(null);
+    // Dibuka dari pemberitahuan tanpa pilihan serial: tak ada yang bisa dicatat, jadi tutup (bukan formulir 0 serial).
+    if (rows.length === 0) onClose();
+  }
+
+  if (pending && resend) {
     const { input } = pending;
     return (
       <Dialog open onOpenChange={(open) => !open && !apply.isPending && onClose()}>
@@ -196,9 +220,9 @@ export function ApplyStickersDialog({
           <DialogHeader>
             <DialogTitle>Tempel stiker</DialogTitle>
             <DialogDescription>
-              Pengiriman sebelumnya belum jelas hasilnya (koneksi terputus atau server tidak
-              menjawab), jadi stok mungkin sudah terpotong. Kirim ulang persis sama: server
-              memastikan stok tidak terpotong dua kali.
+              Kiriman sebelumnya (bukan pilihan saat ini) belum jelas hasilnya (koneksi terputus
+              atau server tidak menjawab), jadi stok mungkin sudah terpotong. Kirim ulang persis
+              sama: server memastikan stok tidak terpotong dua kali.
             </DialogDescription>
           </DialogHeader>
           <dl className="space-y-1 text-sm">
@@ -208,7 +232,7 @@ export function ApplyStickersDialog({
             </div>
             <div className="flex gap-2">
               <dt className="text-muted-foreground">Serial Number</dt>
-              <dd>{input.rows.length}</dd>
+              <dd>{pendingSummary(pending)}</dd>
             </div>
             {input.message ? (
               <div className="flex gap-2">
@@ -237,10 +261,7 @@ export function ApplyStickersDialog({
               variant="outline"
               color="destructive"
               disabled={apply.isPending}
-              onClick={() => {
-                onPendingChange(null);
-                setError(null);
-              }}
+              onClick={discardPending}
             >
               Buang pengiriman sebelumnya
             </Button>
