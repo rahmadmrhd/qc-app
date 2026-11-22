@@ -1,9 +1,10 @@
 import { cn } from 'cn';
-import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import type { UiColor } from '@/components/ui/variant-style';
 import { hasIntersectionObserver, ScrollRootProvider, useOnNear } from '@/lib/near-viewport';
+import { useViewportFit } from '@/lib/viewport-fit';
 
 export interface KanbanColumn<T> {
   key: string;
@@ -44,113 +45,6 @@ const TONE: Record<UiColor, { column: string; card: string }> = {
     card: 'border-l-destructive-text',
   },
 };
-
-const BANNER_SELECTOR = '[data-app-banner]';
-
-function touchesBanner(nodes: NodeList): boolean {
-  for (const node of nodes) {
-    if (
-      node instanceof Element &&
-      (node.matches(BANNER_SELECTOR) || node.querySelector(BANNER_SELECTOR))
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Jumlah tinggi (px) semua spanduk aplikasi yang sedang tampil (`data-app-banner`). Hanya mengukur ulang saat
- * spanduk ditambah/dibuang dari DOM (MutationObserver menyaring catatan yang tak menyentuh spanduk) atau saat ukuran
- * spanduk berubah (ResizeObserver), digabung per frame, jadi perubahan DOM lain (kartu, toast) tak memicu layout paksa.
- */
-function useAppBannerHeight(enabled: boolean): number {
-  const [height, setHeight] = useState(0);
-  useEffect(() => {
-    if (!enabled) return;
-    let frame = 0;
-    const resize =
-      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => schedule());
-    const observed = new Set<Element>();
-    const measure = () => {
-      frame = 0;
-      let sum = 0;
-      const banners = document.querySelectorAll(BANNER_SELECTOR);
-      for (const element of banners) sum += element.getBoundingClientRect().height;
-      setHeight(Math.round(sum));
-      if (resize) {
-        const current = new Set<Element>(banners);
-        for (const element of observed) {
-          if (!current.has(element)) {
-            resize.unobserve(element);
-            observed.delete(element);
-          }
-        }
-        for (const element of current) {
-          if (!observed.has(element)) {
-            resize.observe(element);
-            observed.add(element);
-          }
-        }
-      }
-    };
-    function schedule() {
-      if (frame === 0) frame = requestAnimationFrame(measure);
-    }
-    measure();
-    const mutation = new MutationObserver((records) => {
-      if (records.some((r) => touchesBanner(r.addedNodes) || touchesBanner(r.removedNodes))) {
-        schedule();
-      }
-    });
-    mutation.observe(document.body, { childList: true, subtree: true });
-    window.addEventListener('resize', schedule);
-    return () => {
-      mutation.disconnect();
-      resize?.disconnect();
-      window.removeEventListener('resize', schedule);
-      if (frame !== 0) cancelAnimationFrame(frame);
-    };
-  }, [enabled]);
-  return height;
-}
-
-/** Celah vertikal antara bar halaman dan isi (`gap-3` pada `ListPage`/`ViewPage`), dalam px. */
-const FRAME_GAP_PX = 12;
-
-/**
- * Tinggi (px) konten yang berada di antara bar halaman dan papan di dalam kerangka headroom yang sama (Alert,
- * keterangan, dan sejenisnya), supaya papan tidak meluap bila tidak tepat di bawah bar. Diukur dari posisi dokumen
- * papan (tak berubah oleh bar yang menempel): jarak atas papan dari awal kerangka dikurangi tinggi bar dan celah.
- */
-function useContentAboveBoard(board: RefObject<HTMLElement | null>, enabled: boolean): number {
-  const [extra, setExtra] = useState(0);
-  useEffect(() => {
-    const node = board.current;
-    const frame = node?.closest<HTMLElement>('[data-headroom-frame]');
-    const bar = frame?.firstElementChild as HTMLElement | null | undefined;
-    if (!enabled || !node || !frame || !bar) return;
-    let raf = 0;
-    const measure = () => {
-      raf = 0;
-      const above = node.getBoundingClientRect().top - frame.getBoundingClientRect().top;
-      setExtra(Math.max(0, Math.round(above - bar.offsetHeight - FRAME_GAP_PX)));
-    };
-    const schedule = () => {
-      if (raf === 0) raf = requestAnimationFrame(measure);
-    };
-    measure();
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(schedule);
-    observer?.observe(frame);
-    window.addEventListener('resize', schedule);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', schedule);
-      if (raf !== 0) cancelAnimationFrame(raf);
-    };
-  }, [board, enabled]);
-  return extra;
-}
 
 /** Tombol/penanda "Muat lebih banyak" satu kolom (otomatis di mode viewport bila `IntersectionObserver` ada). */
 function ColumnLoadMore<T>({ column, auto }: { column: KanbanColumn<T>; auto: boolean }) {
@@ -218,23 +112,16 @@ export function KanbanBoard<T>({
   emptyText?: string;
 }) {
   const viewport = height === 'viewport';
-  const bannerHeight = useAppBannerHeight(viewport);
-  const boardRef = useRef<HTMLElement>(null);
-  const aboveBoard = useContentAboveBoard(boardRef, viewport);
+  const [board, setBoard] = useState<HTMLElement | null>(null);
+  const fitHeight = useViewportFit(board, viewport);
 
   return (
     <section
-      ref={boardRef}
+      ref={setBoard}
       aria-label={label}
       data-height={height}
       className={cn('flex gap-3 overflow-x-auto', viewport && 'items-stretch')}
-      style={
-        viewport
-          ? {
-              height: `calc(100dvh - var(--headroom-offset, 3.5rem) - ${bannerHeight + aboveBoard}px - 2 * var(--main-pad, 1.5rem) - ${FRAME_GAP_PX}px)`,
-            }
-          : undefined
-      }
+      style={fitHeight ? { height: fitHeight } : undefined}
     >
       {columns.map((column) => {
         const tone = TONE[column.color];
