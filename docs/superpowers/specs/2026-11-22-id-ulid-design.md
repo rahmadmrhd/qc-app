@@ -17,8 +17,8 @@ produksi dan dibahas terpisah.
    Karena seluruh ID sudah ULID, bentuk teks (base32) tunggal dan dapat dibentuk ulang dari 16 byte tanpa ambiguitas.
 4. Catatan perancang: UUIDv7 akan membuat tahap 2 lebih mulus tanpa menulis ulang ID lama, tetapi pemilik memilih ULID dan
    menulis ulang seluruh data. Keputusan ini sah; konsekuensinya ada di bagian 4.
-5. Catatan perancang (**menunggu konfirmasi pemilik, bagian 6e; bukan keputusan pemilik**): nama unduhan turunan memakai
-   8 karakter AKHIR ID (bagian acak), bukan 8 karakter awal. Delapan karakter awal ULID seluruhnya waktu (10 karakter
+5. **Nama unduhan turunan memakai 8 karakter AKHIR ID** (bagian acak), bukan 8 karakter awal (diusulkan perancang,
+   disetujui pemilik produk 2026-11-22, menutup bagian 6e butir 1). Delapan karakter awal ULID seluruhnya waktu (10 karakter
    pertama = 48 bit waktu), sehingga berkas yang dibuat dalam selang sekitar satu detik akan bernama sama; ini regresi
    yang timbul dari pergantian ke ULID, jadi diperbaiki di kode bersama perubahan ini. Berlaku untuk lampiran Postel
    (`lampiran-<8 akhir id>.<ekstensi>`, `server/src/modules/postel/attachments.ts`) dan foto bukti QC
@@ -46,6 +46,29 @@ produksi dan dibahas terpisah.
    lebih kecil. Risiko yang diterima pemilik: skrip tak ikut tinjauan dan riwayat repo, dan hilang bila folder lokal hilang
    (cadangkan sendiri); salinan penurun isi QR dapat basi bila aplikasi mengubah isi label sebelum skrip dijalankan (tes
    lokal menangkapnya).
+
+8. **Keputusan pemilik produk 2026-11-22 atas bagian 6b, 6c, dan 6d** (semua mengikuti rekomendasi perancang kecuali masa
+   pantau):
+   (a) **6b, tempat dan gladi:** skrip dijalankan dari mesin pemilik (checkout lokal) lewat terowongan SSH, tanpa perubahan
+   infrastruktur; SATU gladi di staging WAJIB sebelum jendela produksi, dan durasi nyatanya dipakai menentukan panjang
+   jendela (pindah ke VPS hanya bila durasi terukur terlalu panjang). Alasan: tanpa perubahan infrastruktur dan
+   memberi angka nyata, bukan tebakan.
+   (b) **6c, cadangan dan jalan pulang:** dump baru WAJIB tepat setelah `qc-app` berhenti dan sebelum `--apply`. Prosedur
+   "pulihkan cadangan" = pulihkan dump ke skema BARU lewat `backup/restore.ts`, lalu arahkan `DATABASE_URL` aplikasi ke
+   skema itu (restore.ts tidak dapat dan tidak diubah untuk menimpa `qc_production`). Kriteria: `--revert` bila skrip
+   berjalan sampai verifikasi dan hanya verifikasi yang gagal (peta utuh); pulihkan cadangan bila skrip mati di tengah
+   dan tak dapat dilanjutkan, `--revert` sendiri gagal verifikasi, atau aplikasi sempat menulis ke DB di antara `--apply`
+   dan pemulihan. Prosedur pulih ini dicoba pada gladi staging. Alasan: jalur pulih nyata tanpa melonggarkan pagar
+   `restore.ts`.
+   (c) **6d, urutan dan masa pantau:** urutan `qc_dev` (gladi pertama), staging (gladi nyata), lalu produksi. Tahap 2
+   (`BINARY(16)`) hanya dimulai bila SEMUA lingkungan yang dimigrasikan lolos verifikasi, masa pantau di produksi
+   SATU MINGGU selesai tanpa masalah (pemilik memilih satu minggu, bukan dua minggu yang direkomendasikan), dan tak ada
+   kode yang masih mengharapkan ID berbentuk UUID.
+
+9. **Verifikasi jumlah baris per tabel sumber dilonggarkan menjadi "tidak lebih banyak dari peta"** (diusulkan perancang,
+   disetujui pemilik produk 2026-11-22, menutup bagian 6e butir 2). Alasan: tanpa pelonggaran, `--revert` setelah aplikasi
+   menghapus permanen satu baris (mis. `files`) selalu gagal verifikasi walau datanya utuh; penghapusan selama jendela
+   tetap tertangkap pemeriksaan terhadap garis dasar. Bagian 4 butir 6 sudah diselaraskan.
 
 ## 2. Yang TIDAK diubah (sengaja)
 
@@ -100,9 +123,10 @@ Skrip operator lokal (di luar repo, bagian 1 butir 7); rinci di header skripnya.
    persis maupun token; jumlah baris, yatim FK, dan baris yang merujuk entitas sama dengan garis dasar; hitungan status QR
    (desain `current`/`stale`/tanpa ekspor, versi konsisten/tak konsisten, dan desain yang hash versi TERBARUNYA sama dengan hash isi sekarang, yaitu syarat "tak perlu versi baru" pada ekspor) sama dengan garis dasar (bidang opsional
    garis dasar; dihitung dari bentuk ID mana pun, jadi harus sama sebelum dan sesudah); jumlah baris per
-   tabel sumber sama dengan jumlah baris peta untuk tabel itu. (Kode saat ini melonggarkan bagian terakhir menjadi "tidak
-   lebih banyak dari peta"; selisih kurang dilaporkan sebagai `terhapusSejakMigrasi`. Pelonggaran ini **menunggu
-   konfirmasi pemilik, bagian 6e**.)
+   tabel sumber TIDAK LEBIH BANYAK dari jumlah baris peta untuk tabel itu; selisih kurang (baris yang dihapus permanen
+   aplikasi setelah migrasi) dilaporkan sebagai `terhapusSejakMigrasi`, bukan kegagalan. Penghapusan SAAT jendela migrasi
+   tetap tertangkap pemeriksaan jumlah baris terhadap garis dasar. (Aturan lama "sama dengan" diganti; disetujui pemilik
+   2026-11-22, bagian 1 butir 9.)
 
 Batch kecil (`--batch`, bawaan 2000, tiap batch satu transaksi), idempoten, dapat dilanjutkan (baris yang sudah ditulis
 ulang tak lagi cocok), dan punya jalan pulang `--revert` memakai peta yang sama. Dry-run adalah bawaan (hanya `SELECT`);
@@ -111,7 +135,7 @@ dipakai tes untuk menyela di tengah jalan (menguji kelanjutan); tidak ada flag C
 
 **Skrip TIDAK ada di repo maupun image Docker** (bagian 1 butir 7). Ia disimpan lokal di checkout milik pemilik dan dijalankan
 dari mesin yang punya akses ke DB target, dengan `DATABASE_URL` yang ditetapkan untuk sesi itu (mis. lewat terowongan SSH);
-bukan di dalam kontainer `qc-app`. Tempat menjalankan yang sebenarnya belum diputuskan (lihat bagian 6b).
+bukan di dalam kontainer `qc-app`. Tempat menjalankan: mesin pemilik lewat terowongan SSH (bagian 1 butir 8a).
 
 Fakta produksi (diukur read-only 2026-11-22, `qc_production`, MariaDB 11.8.9): `serials` sekitar 208 ribu baris,
 `serial_events` 220 ribu, `serial_business_units` 208 ribu; database sekitar 538 MB (data 236 MB, indeks 301 MB) sedangkan
@@ -135,14 +159,14 @@ verifikasi jumlah rujukan per kolom adalah jaring pengaman utama.
    - Jangan mengimpor berkas `.qcsn` yang diekspor sebelum jendela (membawa ID item/BU/lokasi/stiker lama); ekspor ulang
      setelah jendela.
 4. Hentikan `qc-app`. Jalankan dry-run, lalu `--apply --confirm-database qc_production --aplikasi-berhenti` (dari checkout,
-   bukan dari dalam kontainer; lihat bagian 4). Langkah cadangan segar tepat sebelum `--apply` dan prosedur pulih
-   cadangan yang benar-benar mengganti DB produksi masih terbuka (bagian 6c).
+   bukan dari dalam kontainer; lihat bagian 4). Dump baru wajib tepat sebelum `--apply` (bagian 1 butir 8b).
 5. Verifikasi lolos → nyalakan aplikasi, periksa `/api/ping` dan beberapa halaman, serta pastikan tak ada konfigurasi QR
    berlogo yang berstatus `stale` palsu dan tak ada ekspor ulang yang perlu dilakukan (hash dihitung ulang oleh skrip, bagian 4 butir 5). Gagal → `--revert` atau pulihkan
-   cadangan (kriteria memilih: bagian 6c).
+   cadangan ke skema baru (kriteria memilih: bagian 1 butir 8b).
 6. Setelah masa pantau: lanjut tahap 2; tabel `id_ulid_map` dibuang manual (`DROP TABLE id_ulid_map`) setelah tahap 2 selesai
    (`--revert` bergantung padanya, jadi jangan dibuang lebih awal).
-   Tahap 2 hanya dimulai bila SEMUA lingkungan yang akan dimigrasikan sudah lolos verifikasi (bagian 6d).
+   Tahap 2 hanya dimulai bila SEMUA lingkungan yang akan dimigrasikan sudah lolos verifikasi dan masa pantau produksi satu
+   minggu selesai (bagian 1 butir 8c).
 
 ## 5. Risiko dan pertanyaan terbuka (menunggu keputusan pemilik)
 
@@ -183,8 +207,9 @@ verifikasi jumlah rujukan per kolom adalah jaring pengaman utama.
 
 ## 6. Menunggu keputusan pemilik
 
-Butir 6b sampai 6e di bawah adalah PERTANYAAN TERBUKA (6a sudah ditutup, lihat di bawah). Rekomendasi perancang hanyalah
-usulan; belum ada yang diputuskan dan tidak ada yang boleh dikerjakan sebagai keputusan sebelum pemilik produk menjawab.
+Semua butir bagian ini (6a sampai 6e) sudah ditutup 2026-11-22 (lihat masing-masing dan bagian 1 butir 6, 8, dan 9). Di luar
+bagian ini masih terbuka penanganan state klien (bagian 5 butir 1). Rekomendasi perancang hanyalah usulan; belum diputuskan dan tidak
+boleh dikerjakan sebagai keputusan sebelum pemilik produk menjawab.
 Setelah dijawab, keputusan dicatat di bagian 1 (dengan tanggal absolut dan penyetujunya) dan butir yang bersangkutan di
 sini ditutup.
 
@@ -212,7 +237,9 @@ diedit setelah ekspor tetap `stale` dengan pembanding yang cocok versi; hash yan
 disentuh; `--revert` mengembalikan semua hash dan kolom lain persis; dijalankan ulang tak mengubah apa pun; kolom lain dan
 jumlah baris tabel stiker, stok, tugas, dan berkas tak berubah; verifikasi gagal bila hitungan status berbeda.
 
-### 6b. Tempat menjalankan skrip dan kewajiban gladi
+### 6b. Tempat menjalankan skrip dan kewajiban gladi (DITUTUP 2026-11-22)
+
+**Keputusan pemilik produk 2026-11-22: opsi 1 (mesin pemilik lewat terowongan SSH) dengan satu gladi wajib di staging** (bagian 1 butir 8a).
 
 Skrip tidak ada di repo maupun image (bagian 1 butir 7), jadi tempat menjalankannya harus dipilih.
 
@@ -225,9 +252,11 @@ Skrip tidak ada di repo maupun image (bagian 1 butir 7), jadi tempat menjalankan
 Gladi: apakah rehearsal pada salinan produksi (cadangan dipulihkan ke skema baru lewat `backup/restore.ts`) WAJIB sebelum
 hari-H. Perlu persetujuan karena memuat data produksi. Rekomendasi perancang: opsi 1 untuk tahap ini (paling kecil
 perubahannya), dengan satu gladi wajib yang juga mengukur durasi nyata untuk menentukan panjang jendela; pindah ke
-opsi 2 bila durasi terukur terlalu panjang. **Belum diputuskan.**
+opsi 2 bila durasi terukur terlalu panjang. (Keputusan: sesuai rekomendasi.)
 
-### 6c. Cadangan segar, pemulihan produksi, dan kriteria pulang
+### 6c. Cadangan segar, pemulihan produksi, dan kriteria pulang (DITUTUP 2026-11-22)
+
+**Keputusan pemilik produk 2026-11-22: dump baru wajib, pulih ke skema baru lalu arahkan aplikasi, kriteria `--revert`/pulihkan seperti usulan** (bagian 1 butir 8b).
 
 1. **Dump baru** tepat setelah aplikasi berhenti dan sebelum `--apply` (cadangan harian bisa berumur hampir sehari dan
    tak memuat penulisan terakhir). Opsi: `mariadb-dump` manual dari kontainer `qc-db` ke `qc-backups`, atau
@@ -242,29 +271,31 @@ opsi 2 bila durasi terukur terlalu panjang. **Belum diputuskan.**
    `--revert` sendiri gagal verifikasi, atau aplikasi sempat menulis ke DB di antara `--apply` dan pemulihan.
 
 Rekomendasi perancang: dump baru wajib (butir 1), jalur (i) untuk butir 2, kriteria butir 3 seperti usulan.
-**Belum diputuskan.**
+(Keputusan: sesuai rekomendasi.)
 
-### 6d. Urutan lingkungan dan syarat tahap 2
+### 6d. Urutan lingkungan dan syarat tahap 2 (DITUTUP 2026-11-22)
+
+**Keputusan pemilik produk 2026-11-22: urutan dev, staging, produksi; masa pantau produksi SATU MINGGU sebelum tahap 2** (bagian 1 butir 8c).
 
 Usulan urutan: (1) `qc_dev` lewat `bun run db:seed` (gladi pertama; tes skrip sudah berjalan di skema sementara), (2)
 staging `qc-dev.rhd.my.id` sebagai gladi nyata pada data staging, (3) produksi. Syarat memulai tahap 2 (`BINARY(16)`):
 SEMUA lingkungan yang dimigrasikan sudah lolos verifikasi, masa pantau di produksi selesai, dan tak ada kode yang masih
-mengharapkan ID berbentuk UUID. Lamanya masa pantau belum ditentukan. **Belum diputuskan.**
+mengharapkan ID berbentuk UUID. Lamanya masa pantau: satu minggu (diputuskan).
 
-### 6e. Dua perilaku yang ditambahkan perancang di luar teks keputusan
+### 6e. Dua perilaku yang ditambahkan perancang di luar teks keputusan (DITUTUP 2026-11-22)
 
 1. **Nama unduhan memakai 8 karakter akhir ID** (bagian 1 butir 5). Teknisnya benar dan murah, tetapi menambah perilaku
    di luar keputusan pemilik "ganti ke ULID". Rekomendasi perancang: setujui. Alternatif: tetap 8 karakter awal dan
    menerima nama kembar untuk unggahan dalam selang sekitar satu detik (nama hanya kosmetik karena berkas dipetakan lewat
-   ID, bukan nama). **Belum diputuskan.**
+   ID, bukan nama). **Disetujui pemilik produk 2026-11-22** (bagian 1 butir 5).
 2. **Verifikasi `jumlah baris sumber = peta` dilonggarkan menjadi `tidak lebih banyak dari peta`** (bagian 4 butir 6).
    Tanpa pelonggaran, `--revert` setelah aplikasi menghapus permanen satu baris (mis. `files`) selalu gagal verifikasi
    walau datanya utuh; dengan pelonggaran, selisih kurang dilaporkan di `terhapusSejakMigrasi` dan penghapusan SAAT
    jendela migrasi tetap tertangkap pemeriksaan jumlah baris terhadap garis dasar. Rekomendasi perancang: setujui
-   pelonggaran. Alternatif: pertahankan "sama dengan" dan tangani selisih secara manual. **Belum diputuskan.**
+   pelonggaran. Alternatif: pertahankan "sama dengan" dan tangani selisih secara manual. **Disetujui pemilik produk 2026-11-22**
+   (bagian 1 butir 9).
 
-Setelah dijawab, keputusan dicatat di bagian 1 (tanggal absolut dan penyetuju) dan teks bagian 1 butir 5 serta bagian 4
-butir 6 diselaraskan.
+Keputusan sudah dicatat di bagian 1 (butir 5 dan 9) dan bagian 4 butir 6 diselaraskan.
 
 ### Butir yang sudah ditutup oleh pemeriksaan kode
 
