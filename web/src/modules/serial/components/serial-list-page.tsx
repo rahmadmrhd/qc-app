@@ -86,8 +86,8 @@ const DELETE_USAGE =
  * Daftar serial (kit CRUD): kolom [checkbox][Aksi][Serial → View][Item][BU][Lokasi][Tanggal uji][Status][Posisi][Sample].
  * Aksi baris: Lapor rusak (bila serial Lolos di QC dan pengguna `serial: edit`), Ubah, Hapus/Pulihkan. Checkbox tersedia
  * bagi pemegang `serial: edit` (Tempel stiker massal) atau `manage` (Hapus/Pulihkan massal; tanpa ubah massal, keputusan
- * 13): "Tempel stiker" tampil hanya bila SEMUA serial terpilih dapat ditempeli dan "Hapus" hanya bila semuanya dapat
- * dikelola. Tampilan Terhapus lewat pilihan "Terhapus" pada chip Status. Filter ada di URL; di ponsel baris menjadi kartu.
+ * 13): tiap aksi massal tampil bila MINIMAL SATU serial terpilih memenuhi syaratnya ("Tempel stiker" = dapat
+ * ditempeli, Hapus/Pulihkan = dapat dikelola) dan hanya serial itu yang dikirim (keputusan pemilik 2026-11-23). Tampilan Terhapus lewat pilihan "Terhapus" pada chip Status. Filter ada di URL; di ponsel baris menjadi kartu.
  */
 export function SerialListPage({ search, onSearchChange, onNew }: SerialListPageProps) {
   const me = useMe();
@@ -130,15 +130,19 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
   // Pilihan baris: pemegang edit (Tempel stiker) atau manage (Hapus/Pulihkan).
   const canSelect = manageAny || canReportSerials(me);
   const selectedRows = items.filter((serial) => selection.selected.has(serial.id));
-  const allStickable = selectedRows.length > 0 && selectedRows.every(stickable);
-  const allManageable = selectedRows.length > 0 && selectedRows.every(manageable);
-  const stickerBlocker = stickerGroupsBlocker(groupSerialsByItemBu(selectedRows).length);
+  const stickableRows = selectedRows.filter(stickable);
+  const stickerBlocker = stickerGroupsBlocker(groupSerialsByItemBu(stickableRows).length);
 
   const reload = () => void list.refetch();
+  const isManageableId = (id: string) => {
+    const serial = items.find((entry) => entry.id === id);
+    return serial !== undefined && manageable(serial);
+  };
   const remove = useBulkAction({
     selection,
     subject: 'Serial Number',
     verb: 'dihapus',
+    eligible: isManageableId,
     send: (ids) => removeSerials.mutateAsync({ ids }).then((result) => result.ids),
     undo: {
       label: 'Pulihkan',
@@ -150,6 +154,7 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
     selection,
     subject: 'Serial Number',
     verb: 'dipulihkan',
+    eligible: isManageableId,
     send: (ids) => restoreSerials.mutateAsync({ ids }).then((result) => result.items),
     reload,
   });
@@ -380,21 +385,21 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
           canSelect ? (
             <BulkBar count={selection.count} onClear={selection.clear} busy={bulkBusy}>
               {deletedView ? (
-                allManageable ? (
+                restore.eligibleCount > 0 ? (
                   <ActionButton action="restore" onClick={() => void restore.run()} />
                 ) : null
               ) : (
                 <>
-                  {allStickable ? (
+                  {stickableRows.length > 0 ? (
                     <DisabledReason reason={stickerBlocker}>
                       <ActionButton
                         action="stickers"
                         disabled={stickerBlocker !== undefined}
-                        onClick={() => setStickering(selectedRows)}
+                        onClick={() => setStickering(stickableRows)}
                       />
                     </DisabledReason>
                   ) : null}
-                  {allManageable ? (
+                  {remove.eligibleCount > 0 ? (
                     <ActionButton
                       action="delete"
                       onClick={() => setDeleteTarget({ kind: 'bulk' })}
@@ -421,7 +426,7 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
                   size="sm"
                   variant="outline"
                   color="warning"
-                  onClick={() => setStickering(selectedRows)}
+                  onClick={() => setStickering(stickableRows)}
                 >
                   Kirim ulang
                 </Button>
@@ -456,7 +461,7 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
-        count={deleteTarget?.kind === 'bulk' ? selection.count : 1}
+        count={deleteTarget?.kind === 'bulk' ? remove.eligibleCount : 1}
         subject="Serial Number"
         usage={DELETE_USAGE}
         onConfirm={confirmDelete}

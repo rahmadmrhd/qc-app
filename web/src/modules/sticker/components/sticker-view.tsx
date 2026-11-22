@@ -18,7 +18,11 @@ import { Button } from '@/components/ui/button';
 import { ActivityLog } from '@/modules/activity/components/activity-log';
 import { ImageThumb } from '@/modules/item/components/image-thumb';
 import { STICKER_STATUS_LABEL } from '../lib/status';
-import { type StickerStockPanel, type StockActionsController, StockButtons } from './stock-actions';
+import {
+  type StickerStockPanel,
+  type StockActionsController,
+  stockAvailability,
+} from './stock-actions';
 import { StockHistoryPanel } from './stock-history';
 
 export const STICKER_TABS = ['detail', 'stok', 'riwayat'] as const;
@@ -110,6 +114,58 @@ export function StickerView({
   const stockRow = stock?.rows.find((row) => row.stickerId === sticker.id);
   const showStock = stock !== undefined && !deleted;
 
+  // Aksi stok ada di header (satu entri "Stok" bersubmenu, seperti kolom Aksi daftar): desktop satu dropdown, ponsel grup
+  // datar di menu "Aksi lainnya". Tab Stok tinggal menampilkan angkanya.
+  const stockEntry = ((): ViewAction | null => {
+    if (!showStock || !stock) return null;
+    const { canIn, canOut, canAdjust } = stockRow
+      ? stockAvailability(stock, stockRow)
+      : { canIn: false, canOut: false, canAdjust: false };
+    const open = (mode: 'in' | 'out' | 'adjust') => () => stockActions?.openEntry(mode, sticker.id);
+    const submenu: ViewAction[] = [
+      {
+        id: 'stock-in',
+        action: 'stockIn',
+        hidden: !(canIn && stockRow && stockActions),
+        onSelect: open('in'),
+      },
+      {
+        id: 'stock-out',
+        action: 'stockOut',
+        hidden: !(canOut && stockRow && stockActions),
+        onSelect: open('out'),
+      },
+      {
+        id: 'stock-adjust',
+        action: 'adjust',
+        hidden: !(canAdjust && stockRow && stockActions),
+        onSelect: open('adjust'),
+      },
+      {
+        id: 'stock-entry',
+        action: 'stock',
+        label: 'Entri stok',
+        hidden: !((stock.canEdit || stock.canManage) && onStartEntry),
+        onSelect: () => onStartEntry?.(sticker.id),
+      },
+      {
+        id: 'stock-opname',
+        action: 'adjust',
+        label: 'Stok opname',
+        hidden: !(stock.canManage && onStartOpname),
+        onSelect: () => onStartOpname?.(sticker.id),
+      },
+    ];
+    return {
+      id: 'stock',
+      action: 'stock',
+      primary: true,
+      hidden: submenu.every((entry) => entry.hidden),
+      onSelect: () => undefined,
+      submenu,
+    };
+  })();
+
   const actionItems: ViewAction[] = deleted
     ? [
         {
@@ -131,6 +187,7 @@ export function StickerView({
           hidden: !(canEdit && onEdit),
           onSelect: () => onEdit?.(),
         },
+        ...(stockEntry ? [stockEntry] : []),
         {
           id: 'status',
           action: sticker.status === 'inactive' ? 'activate' : 'deactivate',
@@ -256,36 +313,6 @@ export function StickerView({
                 ]}
               />
             </ViewSection>
-            <div className="flex flex-wrap items-center gap-2">
-              {stockRow && stockActions ? (
-                <StockButtons
-                  row={stockRow}
-                  label={label}
-                  panel={stock}
-                  controller={stockActions}
-                />
-              ) : null}
-              {stock.canEdit || stock.canManage ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  color="primary"
-                  onClick={() => onStartEntry?.(sticker.id)}
-                >
-                  Entri stok
-                </Button>
-              ) : null}
-              {stock.canManage ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  color="primary"
-                  onClick={() => onStartOpname?.(sticker.id)}
-                >
-                  Stok opname
-                </Button>
-              ) : null}
-            </div>
           </div>
         ),
       },

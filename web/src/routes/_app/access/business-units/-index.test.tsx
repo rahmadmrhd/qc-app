@@ -142,6 +142,23 @@ test('Nonaktifkan massal atas BU yang dipakai meminta konfirmasi lalu memanggil 
   });
 });
 
+test('pilihan campuran Aktif + Nonaktif: Aktifkan dan Nonaktifkan tampil; konfirmasi dan kiriman hanya untuk BU Aktif yang dipakai', async () => {
+  live = [unit('a', { status: 'active', itemCount: 2 }), unit('b', { itemCount: 5 })];
+  await mount();
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).getByRole('button', { name: 'Aktifkan' })).toBeInTheDocument();
+  await userEvent.click(within(bar).getByRole('button', { name: 'Nonaktifkan' }));
+  // Satu BU saja (yang Aktif): judul tunggal, bukan "Nonaktifkan 2 BU?".
+  const dialog = await screen.findByRole('alertdialog', { name: /^Nonaktifkan BU / });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Nonaktifkan' }));
+  await waitFor(() => expect(callsOf('access.businessUnits.setStatusBatch')).toHaveLength(1));
+  expect(callsOf('access.businessUnits.setStatusBatch')[0]?.input).toEqual({
+    ids: ['a'],
+    status: 'inactive',
+  });
+});
+
 test('tanpa hak manage: tanpa checkbox maupun opsi Terhapus', async () => {
   await mount({ manage: false });
   expect(screen.queryByRole('checkbox')).toBeNull();

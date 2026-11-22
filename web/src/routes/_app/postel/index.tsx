@@ -87,10 +87,13 @@ function PostelListRoute() {
   });
 
   const reload = () => void list.refetch();
+  /** Tak ada syarat status pada Postel: aksi berlaku bagi baris yang sedang tampil (keputusan pemilik 2026-11-23). */
+  const isVisible = (id: string) => visible.some((postel) => postel.id === id);
   const remove = useBulkAction({
     selection,
     subject: 'catatan Postel',
     verb: 'dihapus',
+    eligible: isVisible,
     send: (ids) => removePostels.mutateAsync({ ids }).then((result) => result.ids),
     undo: {
       label: 'Pulihkan',
@@ -102,6 +105,7 @@ function PostelListRoute() {
     selection,
     subject: 'catatan Postel',
     verb: 'dipulihkan',
+    eligible: isVisible,
     send: (ids) => restorePostels.mutateAsync({ ids }).then((result) => result.items),
     reload,
   });
@@ -234,10 +238,12 @@ function PostelListRoute() {
           canEdit ? (
             <BulkBar count={selection.count} onClear={selection.clear} busy={bulkBusy}>
               {deletedView ? (
-                <ActionButton action="restore" onClick={() => void restore.run()} />
-              ) : (
+                restore.eligibleCount > 0 ? (
+                  <ActionButton action="restore" onClick={() => void restore.run()} />
+                ) : null
+              ) : remove.eligibleCount > 0 ? (
                 <ActionButton action="delete" onClick={() => setDeleteTarget({ kind: 'bulk' })} />
-              )}
+              ) : null}
             </BulkBar>
           ) : null
         }
@@ -279,7 +285,7 @@ function PostelListRoute() {
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
-        count={deleteTarget?.kind === 'bulk' ? selection.count : 1}
+        count={deleteTarget?.kind === 'bulk' ? remove.eligibleCount : 1}
         subject="catatan Postel"
         {...(usedItems > 0 ? { usage: postelDeleteUsage(usedItems) } : {})}
         onConfirm={confirmDelete}

@@ -11,7 +11,7 @@ import { openInDesktop } from '@/modules/countrylock/lib/handoff';
 import { useActiveLocations } from '@/modules/location/active-locations-context';
 
 /**
- * Beranda ponsel sebagai peluncur (butir 41): kolom cari menu + ubin ikon modul yang boleh dibuka (sumber sama dengan
+ * Beranda (ponsel dan desktop; desktop 2026-11-23, permintaan pemilik) sebagai peluncur (butir 41): kolom cari menu + ubin ikon modul yang boleh dibuka (sumber sama dengan
  * sidebar: `visibleNavGroups`, sudah disaring izin). Tanpa "terbaru", favorit, atau riwayat apa pun (keputusan pemilik).
  * Memilih ubin = maju ke modul (push), jadi back kembali ke peluncur.
  */
@@ -42,7 +42,7 @@ export function Launcher() {
       {tiles.length === 0 ? (
         <p className="text-sm text-muted-foreground">Tidak ada menu yang cocok.</p>
       ) : (
-        <ul className="grid grid-cols-3 gap-3">
+        <ul className="grid grid-cols-3 gap-3 min-[560px]:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
           {tiles.map(({ item, parent }) => (
             <li key={item.to as string}>
               <Link

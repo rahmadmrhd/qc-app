@@ -22,6 +22,7 @@ import { useAppBannerHeight } from '@/lib/viewport-fit';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
 import { PageContent } from './page-container';
 import { StickyActionBar } from './sticky-action-bar';
+import { LINE_TAB_LIST_CLASS, LINE_TAB_TRIGGER_CLASS } from './tab-styles';
 
 export interface ViewTab {
   id: string;
@@ -199,7 +200,7 @@ function MoreActionsMenu({
 /**
  * Kerangka halaman View (spek redesain 6.6; tata letak ERPNext v16, revisi lanjutan 2 R15): di tampilan lebar kerangka
  * bleed ke tepi `<main>`: bar headroom (judul + badge + aksi) dan bar tab selebar penuh, isi (batas lebar menurut
- * `pageWidth`) terpusat di tengah, dan panel samping `aside` (18 rem, garis kiri, tinggi penuh, menempel) di tepi
+ * `pageWidth`) terpusat di tengah, dan panel samping `aside` (18 rem; 24 rem di layar > 1920 px, garis kiri, tinggi penuh, menempel) di tepi
  * kanan. Dua kolom aktif bila lebar `<main>` >= 48 rem (kueri wadah); di bawahnya `aside` di bawah isi. `banner`
  * tampil di atas isi.
  */
@@ -277,18 +278,11 @@ export function ViewPage({
       {/* Bar tab selebar kolom kiri (sampai garis panel samping); tab pertama sejajar dengan isi yang terpusat. */}
       <TabsList
         variant="line"
-        className={cn(
-          'sticky top-[var(--headroom-offset,3.5rem)] z-10 h-auto w-full justify-start overflow-x-auto overflow-y-hidden rounded-none border-b bg-[var(--tabs-surface,var(--background))] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
-          gutterX,
-        )}
+        className={cn(LINE_TAB_LIST_CLASS, 'top-[var(--headroom-offset,3.5rem)]', gutterX)}
       >
-        <PageContent className="flex items-center justify-start gap-1">
+        <PageContent className="flex h-full items-stretch justify-start gap-1">
           {tabs.map((entry) => (
-            <TabsTrigger
-              key={entry.id}
-              value={entry.id}
-              className="flex-none px-3 py-2 touch:min-h-11"
-            >
+            <TabsTrigger key={entry.id} value={entry.id} className={LINE_TAB_TRIGGER_CLASS}>
               {entry.label}
             </TabsTrigger>
           ))}
@@ -314,7 +308,7 @@ export function ViewPage({
   return (
     // Tampilan lebar: kerangka bleed ke tepi `<main>` (bar judul, tab, dan panel samping selebar penuh; isi terpusat).
     // Hanya `wide:` yang meniadakan padding `<main>`, sehingga ponsel tak berubah (`--action-bar-h` tetap berlaku).
-    <HeadroomFrame className="gap-3 [--aside-w:18rem] wide:-mx-[var(--main-pad)] wide:-mt-[var(--main-pad)] wide:-mb-[var(--main-pad)] wide:gap-0">
+    <HeadroomFrame className="gap-3 [--aside-w:18rem] min-[1921px]:[--aside-w:24rem] wide:-mx-[var(--main-pad)] wide:-mt-[var(--main-pad)] wide:-mb-[var(--main-pad)] wide:gap-0">
       {emptyTop ? (
         // Ponsel tanpa lencana dan tanpa aksi di bar atas: tanpa bar ber-border/bayang yang kosong (dan tak menambah
         // `--headroom-offset`); judul tetap ada bagi pembaca layar.
@@ -322,59 +316,46 @@ export function ViewPage({
           <h1>{title}</h1>
         </div>
       ) : (
-        <HeadroomBar className={cn('pt-1 pb-1 wide:pt-3 wide:pb-3', !tabs && 'wide:border-b')}>
-          {/* Wadah kueri sendiri (selebar bar) dengan ambang yang sama dengan badan: judul dan aksi sejajar dengan isi. */}
-          <div className="@container/viewbar min-w-0">
-            <div
-              className={cn(
-                aside && '@3xl/viewbar:grid @3xl/viewbar:grid-cols-[minmax(0,1fr)_var(--aside-w)]',
-              )}
-            >
-              <div className={cn('min-w-0', gutterX)}>
-                <PageContent className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    {/* Ponsel: judul tampak = judul navbar; h1 tetap ada bagi pembaca layar. */}
-                    <h1
-                      className={cn(
-                        'min-w-0 text-xl font-semibold break-words',
-                        phone && 'sr-only',
-                      )}
-                    >
-                      {title}
-                    </h1>
-                    {badge}
-                  </div>
-                  {topActions ? (
-                    <div
-                      data-tour={actionsTour}
-                      className="flex flex-wrap items-center gap-2 narrow:w-full"
-                    >
-                      {actions}
-                      {desktop
-                        ? primaryActions.map((entry) =>
-                            entry.submenu ? (
-                              <DesktopSubmenu key={entry.id} entry={entry} />
-                            ) : (
-                              <DisabledReason
-                                key={entry.id}
-                                reason={entry.disabled ? entry.disabledReason : undefined}
-                              >
-                                <ActionButton
-                                  action={entry.action}
-                                  label={entry.label}
-                                  busy={entry.busy}
-                                  disabled={entry.disabled}
-                                  onClick={entry.onSelect}
-                                />
-                              </DisabledReason>
-                            ),
-                          )
-                        : null}
-                      {desktop ? <MoreActionsMenu entries={menuActions} side="bottom" /> : null}
-                    </div>
-                  ) : null}
-                </PageContent>
+        <HeadroomBar className="border-b pt-1 pb-1 wide:pt-3 wide:pb-3">
+          {/* Bar judul selebar penuh (tanpa batas `pageWidth`; keputusan pemilik 2026-11-23, K9): judul di kiri, aksi di kanan. */}
+          <div className={cn('@container/viewbar min-w-0', gutterX)}>
+            <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                {/* Ponsel: judul tampak = judul navbar; h1 tetap ada bagi pembaca layar. */}
+                <h1 className={cn('min-w-0 text-xl font-semibold break-words', phone && 'sr-only')}>
+                  {title}
+                </h1>
+                {badge}
               </div>
+              {topActions ? (
+                <div
+                  data-tour={actionsTour}
+                  className="flex flex-wrap items-center gap-2 narrow:w-full"
+                >
+                  {actions}
+                  {desktop
+                    ? primaryActions.map((entry) =>
+                        entry.submenu ? (
+                          <DesktopSubmenu key={entry.id} entry={entry} />
+                        ) : (
+                          <DisabledReason
+                            key={entry.id}
+                            reason={entry.disabled ? entry.disabledReason : undefined}
+                          >
+                            <ActionButton
+                              action={entry.action}
+                              label={entry.label}
+                              busy={entry.busy}
+                              disabled={entry.disabled}
+                              onClick={entry.onSelect}
+                            />
+                          </DisabledReason>
+                        ),
+                      )
+                    : null}
+                  {desktop ? <MoreActionsMenu entries={menuActions} side="bottom" /> : null}
+                </div>
+              ) : null}
             </div>
           </div>
         </HeadroomBar>
@@ -391,10 +372,20 @@ export function ViewPage({
         >
           <div className="min-w-0">
             {banner ? (
+              // Pembungkus baru tampil bila `banner` benar-benar merender sesuatu: `<>{null}</>` (mis. Serial tanpa
+              // spanduk hapus/foto bermasalah) bernilai truthy, tetapi padding atas+bawahnya (2 x main-pad) tak boleh
+              // menjadi celah kosong di antara judul dan tab.
               <div
-                className={cn('pb-3 wide:pt-[var(--main-pad)] wide:pb-[var(--main-pad)]', gutterX)}
+                className={cn(
+                  'hidden has-[[data-view-banner]>*]:block pb-3 wide:pt-[var(--main-pad)] wide:pb-[var(--main-pad)]',
+                  gutterX,
+                )}
               >
-                <PageContent>{banner}</PageContent>
+                <PageContent>
+                  <div data-view-banner="" className="contents">
+                    {banner}
+                  </div>
+                </PageContent>
               </div>
             ) : null}
             {tabsBody}

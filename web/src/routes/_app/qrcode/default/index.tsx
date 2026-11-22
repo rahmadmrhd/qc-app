@@ -120,10 +120,13 @@ function QrPresetsRoute() {
   const livePresets = deletedView ? (liveDefaults.data?.presets ?? []) : presets;
 
   const reload = () => void defaults.refetch();
+  /** Tak ada syarat status pada preset: aksi berlaku bagi baris yang sedang tampil (keputusan pemilik 2026-11-23). */
+  const isVisible = (id: string) => visible.some((preset) => preset.id === id);
   const remove = useBulkAction({
     selection,
     subject: 'konfigurasi default',
     verb: 'dihapus',
+    eligible: isVisible,
     send: (ids) => removePresets.mutateAsync({ ids }).then((result) => result.ids),
     undo: {
       label: 'Pulihkan',
@@ -135,6 +138,7 @@ function QrPresetsRoute() {
     selection,
     subject: 'konfigurasi default',
     verb: 'dipulihkan',
+    eligible: isVisible,
     send: (ids) => restorePresets.mutateAsync({ ids }).then((result) => result.items),
     reload,
   });
@@ -234,10 +238,12 @@ function QrPresetsRoute() {
         bulkBar={
           <BulkBar count={selection.count} onClear={selection.clear} busy={bulkBusy}>
             {deletedView ? (
-              <ActionButton action="restore" onClick={() => void restore.run()} />
-            ) : (
+              restore.eligibleCount > 0 ? (
+                <ActionButton action="restore" onClick={() => void restore.run()} />
+              ) : null
+            ) : remove.eligibleCount > 0 ? (
               <ActionButton action="delete" onClick={() => setDeleteTarget({ kind: 'bulk' })} />
-            )}
+            ) : null}
           </BulkBar>
         }
       >
@@ -298,7 +304,7 @@ function QrPresetsRoute() {
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
-        count={deleteTarget?.kind === 'bulk' ? selection.count : 1}
+        count={deleteTarget?.kind === 'bulk' ? remove.eligibleCount : 1}
         subject="konfigurasi default"
         {...(usedCount > 0
           ? { usage: `Dipakai oleh ${usedCount} konfigurasi QR (QR itu tidak berubah)` }

@@ -1,7 +1,6 @@
 import type { StickerStockDto } from '@shared/contract';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Button } from '@/components/ui/button';
 import {
   StockEntryDialog,
   type StockEntryMode,
@@ -90,53 +89,3 @@ export function useStockActions(panel: StickerStockPanel | undefined) {
 }
 
 export type StockActionsController = ReturnType<typeof useStockActions>;
-
-interface StockActionProps {
-  row: StickerStockDto;
-  /** Nama yang tampil untuk stiker (alias bila ada): dipakai nama aksesibel. */
-  label: string;
-  panel: StickerStockPanel;
-  controller: StockActionsController;
-}
-
-/** Tombol aksi stok untuk View Stiker (aturan sama dengan `StockMenu`); riwayat ada di tab Riwayat View. */
-export function StockButtons({ row, label, panel, controller }: StockActionProps) {
-  const { canIn, canOut, canAdjust } = stockAvailability(panel, row);
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      {canIn ? (
-        <Button
-          type="button"
-          variant="outline"
-          color="primary"
-          aria-label={`Catat masuk ${label}`}
-          onClick={() => controller.openEntry('in', row.stickerId)}
-        >
-          Catat masuk
-        </Button>
-      ) : null}
-      {canOut ? (
-        <Button
-          type="button"
-          variant="outline"
-          color="primary"
-          aria-label={`Catat keluar ${label}`}
-          onClick={() => controller.openEntry('out', row.stickerId)}
-        >
-          Catat keluar
-        </Button>
-      ) : null}
-      {canAdjust ? (
-        <Button
-          type="button"
-          variant="outline"
-          color="primary"
-          aria-label={`Koreksi ${label}`}
-          onClick={() => controller.openEntry('adjust', row.stickerId)}
-        >
-          Koreksi
-        </Button>
-      ) : null}
-    </div>
-  );
-}

@@ -141,12 +141,19 @@ test('Hapus massal: konfirmasi memuat jumlah item terpakai, lalu brands.removeBa
   expect(callsOf('brands.removeBatch')[0]?.input).toEqual({ ids: ['b1', 'b2'] });
 });
 
-test('Hapus massal nonaktif bila ada merk Aktif yang terpilih', async () => {
+test('pilihan campuran Aktif + Nonaktif: Aktifkan, Nonaktifkan, dan Hapus tampil; Hapus hanya mengirim yang Nonaktif', async () => {
   live = [brand('b1', { status: 'active' }), brand('b2')];
   await mount();
   await screen.findByText('Merk b1');
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
-  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).getByRole('button', { name: 'Aktifkan' })).toBeInTheDocument();
+  expect(within(bar).getByRole('button', { name: 'Nonaktifkan' })).toBeInTheDocument();
+  await userEvent.click(within(bar).getByRole('button', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 merk?' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(callsOf('brands.removeBatch')).toHaveLength(1));
+  expect(callsOf('brands.removeBatch')[0]?.input).toEqual({ ids: ['b2'] });
 });
 
 test('tanpa hak manage: tidak ada checkbox maupun opsi Terhapus', async () => {
@@ -204,12 +211,13 @@ test('Tambah merk membuka dialog dengan form merk', async () => {
   expect(within(dialog).getByLabelText('Nama merk')).toBeInTheDocument();
 });
 
-test('alasan Hapus massal nonaktif dapat dijangkau (bukan atribut title)', async () => {
+test('hanya merk Aktif terpilih: Hapus tidak tampil', async () => {
   live = [brand('b1', { status: 'active' })];
   await mount();
   await screen.findByText('Merk b1');
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih Merk b1' }));
   const bar = screen.getByRole('region', { name: 'Aksi massal' });
-  expect(within(bar).getByRole('button', { name: 'Hapus' })).not.toHaveAttribute('title');
-  expect(within(bar).getByText('Nonaktifkan merk dulu sebelum dihapus')).toBeInTheDocument();
+  expect(within(bar).queryByRole('button', { name: 'Hapus' })).toBeNull();
+  expect(within(bar).queryByRole('button', { name: 'Aktifkan' })).toBeNull();
+  expect(within(bar).getByRole('button', { name: 'Nonaktifkan' })).toBeInTheDocument();
 });

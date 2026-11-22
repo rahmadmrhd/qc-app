@@ -98,8 +98,8 @@ body {
   --popover-foreground: oklch(0.145 0 0);
   --primary: #18181b;
   --primary-foreground: #fafafa;
-  --secondary: #71717a;
-  --secondary-foreground: #ffffff;
+  --secondary: #787882;
+  --secondary-foreground: #000000;
   --secondary-text: #52525b;
   --success: #15803d;
   --success-foreground: #ffffff;
@@ -146,7 +146,7 @@ body {
   --primary: #fafafa;
   --primary-foreground: #18181b;
   --secondary: #52525b;
-  --secondary-foreground: #fafafa;
+  --secondary-foreground: #ffffff;
   --secondary-text: #a1a1aa;
   --success: #15803d;
   --success-foreground: #ffffff;

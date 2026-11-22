@@ -101,12 +101,23 @@ test('Hapus massal: konfirmasi lalu access.locations.removeBatch; nonaktif bila 
   expect(callsOf('access.locations.removeBatch')[0]?.input).toEqual({ ids: ['a', 'b'] });
 });
 
-test('Hapus massal nonaktif dengan alasan bila ada lokasi Aktif yang terpilih', async () => {
+test('pilihan campuran Aktif + Nonaktif: Aktifkan, Nonaktifkan, dan Hapus tampil; hanya baris yang memenuhi syarat dikirim', async () => {
   live = [location('a', { status: 'active' }), location('b')];
   await mount();
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Pilih semua' }));
-  expect(screen.getByRole('button', { name: 'Hapus' })).toBeDisabled();
-  expect(screen.getByText('Nonaktifkan lokasi dulu sebelum dihapus')).toBeInTheDocument();
+  const bar = screen.getByRole('region', { name: 'Aksi massal' });
+  expect(within(bar).getByRole('button', { name: 'Aktifkan' })).toBeInTheDocument();
+  await userEvent.click(within(bar).getByRole('button', { name: 'Nonaktifkan' }));
+  await waitFor(() => expect(callsOf('access.locations.setStatusBatch')).toHaveLength(1));
+  expect(callsOf('access.locations.setStatusBatch')[0]?.input).toEqual({
+    ids: ['a'],
+    status: 'inactive',
+  });
+  await userEvent.click(within(bar).getByRole('button', { name: 'Hapus' }));
+  const dialog = await screen.findByRole('alertdialog', { name: 'Hapus 1 lokasi?' });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Hapus' }));
+  await waitFor(() => expect(callsOf('access.locations.removeBatch')).toHaveLength(1));
+  expect(callsOf('access.locations.removeBatch')[0]?.input).toEqual({ ids: ['b'] });
 });
 
 test('tanpa hak manage: tanpa checkbox dan tanpa opsi Terhapus', async () => {

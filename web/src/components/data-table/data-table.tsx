@@ -1,6 +1,7 @@
 import { type LinkProps, useNavigate } from '@tanstack/react-router';
 import { cn } from 'cn';
-import { type ReactNode, useContext, useLayoutEffect, useState } from 'react';
+import { type MouseEvent, type ReactNode, useContext, useLayoutEffect, useState } from 'react';
+import { isCardOpenClick } from '@/components/mobile/card-open';
 import { ListFrameContext } from '@/components/page/list-frame';
 import { ListState } from '@/components/page/list-state';
 import { Alert } from '@/components/ui/alert';
@@ -61,8 +62,9 @@ interface DataTableBase<T> {
    */
   rowSelectable?: (row: T) => boolean;
   /**
-   * Tujuan View baris (B9): di ponsel (kartu) klik badan kartu menavigasi ke sini (tautan judul tetap jalan keyboard).
-   * `null` = baris tanpa halaman View. Desktop tak berubah (nilai kolom tetap `LinkCell`).
+   * Tujuan View baris (B9): klik badan kartu (ponsel) atau baris (desktop) menavigasi ke sini; tautan, tombol, checkbox,
+   * dan menu di dalamnya tak ikut membuka (`isCardOpenClick`), dan tautan judul tetap jalan keyboard. `null` = baris
+   * tanpa halaman View.
    */
   rowTo?: (row: T) => RowTarget | null;
   /** Aksi klik badan kartu selain navigasi (mis. buka dialog); `rowTo` menang bila keduanya ada. */
@@ -187,6 +189,8 @@ function DataTableImpl<T>({
     for (const cell of cells) observer.observe(cell);
     return () => observer.disconnect();
   }, [scroller, hasStickyCols]);
+  // Aksi klik badan baris/kartu: navigasi `rowTo` (atau `onOpen`); baris tanpa halaman View (`rowTo` null) tak membuka.
+  const openOf = (row: T) => (onOpen && (!rowTo || rowTo(row)) ? () => onOpen(row) : undefined);
   const nameOf = (row: T) => selectLabel?.(row) ?? rowKey(row);
   const isSelectable = (row: T) => rowSelectable?.(row) ?? true;
   const ids = rows.map(rowKey);
@@ -265,14 +269,28 @@ function DataTableImpl<T>({
           : rows.map((row) => {
               const id = rowKey(row);
               const isSelected = selection?.selected.has(id) ?? false;
+              // Klik baris membuka halaman detail (seperti kartu di ponsel); tautan, tombol, checkbox, dan menu di dalam
+              // baris menangani kliknya sendiri (`isCardOpenClick`), jadi tak ikut membuka.
+              const openRow = openOf(row);
               return (
                 <TableRow
                   key={id}
                   data-state={isSelected ? 'selected' : undefined}
-                  className="group/row data-[state=selected]:bg-info-text/8"
+                  className={cn(
+                    'group/row data-[state=selected]:bg-info-text/8',
+                    openRow && 'cursor-pointer',
+                  )}
+                  {...(openRow
+                    ? {
+                        onClick: (event: MouseEvent<HTMLTableRowElement>) => {
+                          if (isCardOpenClick(event)) openRow();
+                        },
+                      }
+                    : {})}
                 >
                   {selection ? (
                     <TableCell
+                      data-no-open=""
                       className={cn(
                         'sticky left-0 z-10',
                         CHECK_COL,
@@ -293,6 +311,7 @@ function DataTableImpl<T>({
                   ) : null}
                   {actions ? (
                     <TableCell
+                      data-no-open=""
                       className={cn('sticky z-10 w-px', actionsLeft, STICKY_CELL_BG, STICKY_EDGE)}
                     >
                       <RowActions name={nameOf(row)} actions={actions(row)} />
@@ -353,7 +372,7 @@ function DataTableImpl<T>({
             isSelectable={isSelectable}
             actions={actions}
             isLoading={isLoading}
-            openOf={(row) => (onOpen && (!rowTo || rowTo(row)) ? () => onOpen(row) : undefined)}
+            openOf={openOf}
           />
         )}
       </ListState>

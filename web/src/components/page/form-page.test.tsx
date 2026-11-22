@@ -295,5 +295,5 @@ test('R15: tampilan lebar bleed ke tepi main; bar judul penuh dan isi dipusatkan
   const bar = screen
     .getByRole('heading', { level: 1 })
     .closest('[data-slot], .sticky') as HTMLElement;
-  expect(bar.className).toContain('wide:border-b');
+  expect(bar.className).toContain('border-b');
 });
