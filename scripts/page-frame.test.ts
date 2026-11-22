@@ -20,14 +20,15 @@ const LAYOUT_FILES = new Set(['__root.tsx', '_app.tsx']);
 /** Rute (relatif terhadap `web/src/routes`, pemisah `/`) yang sah tanpa kerangka kit, beserta alasannya. */
 const ROUTE_EXCEPTIONS: Record<string, string> = {
   '_app/index.tsx':
-    'Beranda: sapaan, info panduan, dan peluncur ponsel (`Launcher`); bukan halaman data CRUD.',
-  '_app/forbidden.tsx': 'Pesan status 403 (`StatusMessage`); tanpa data atau aksi.',
+    'Beranda: sapaan, info panduan, dan peluncur ponsel (`Launcher`) di dalam `PageContent`; bukan halaman data CRUD.',
+  '_app/forbidden.tsx':
+    'Pesan status 403 (`StatusMessage`) di dalam `PageContent`; tanpa data atau aksi.',
   '_app/desktop.tsx':
-    'Aplikasi Desktop (hanya peramban): halaman informasi daftar unduhan dari fase versi API; judul sendiri di dalam `PageContainer` cangkang, bukan halaman data CRUD.',
+    'Aplikasi Desktop (hanya peramban): halaman informasi daftar unduhan dari fase versi API; judul sendiri di dalam `PageContent` (konten terpusat berbatas lebar), bukan halaman data CRUD.',
   '_app/sticker/stock.tsx':
     'Hanya pengalihan ke /sticker (Stok Stiker digabung ke halaman Stiker); tidak merender halaman.',
   'country-lock.tsx':
-    'Country Lock (aplikasi desktop): di dalam `AppShell` bila pengguna masuk (breadcrumb + `PageContainer`); jalur belum masuk memakai pembungkus ringan sendiri. Isinya panel perangkat/inject (jembatan desktop), bukan CRUD.',
+    'Country Lock (aplikasi desktop): di dalam `AppShell` bila pengguna masuk (breadcrumb + `PageContent`); jalur belum masuk memakai pembungkus ringan sendiri. Isinya panel perangkat/inject (jembatan desktop), bukan CRUD.',
   'laporan.$token.tsx':
     'Halaman publik laporan rusak Serial Number: di luar layout `_app` dan cangkang, tanpa sesi.',
   'login.tsx': 'Halaman masuk: di luar layout `_app` dan cangkang, tanpa sesi.',

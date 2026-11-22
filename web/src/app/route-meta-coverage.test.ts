@@ -43,8 +43,51 @@ const needsCrumb = (path: string) => {
   return last === 'new' || last === 'edit' || last.startsWith('$');
 };
 
-/** Lebar khusus; rute lain memakai bawaan (`default`) dan harus tercantum di `DEFAULT_WIDTH`. */
-const NARROW_WIDTH = [
+/**
+ * Rute daun dikelompokkan menurut JENIS halaman. `pageWidth` hanya batas lebar konten View dan form yang dipusatkan
+ * (`PageContent`): halaman index (daftar, grid, kanban) selalu selebar `<main>` dan TIDAK menyatakan `pageWidth`.
+ */
+/** Halaman index: `ListPage` (+ `KanbanBoard` di /handover), selalu selebar `<main>`. */
+const INDEX = [
+  '/access/audit',
+  '/access/business-units',
+  '/access/locations',
+  '/access/push',
+  '/access/roles',
+  '/access/users',
+  '/customer',
+  '/handover',
+  '/item',
+  '/item/brands',
+  '/postel',
+  '/qrcode',
+  '/qrcode/default',
+  '/serial',
+  '/serial/reports',
+  '/sticker',
+  '/sticker/library',
+  '/sticker/types',
+];
+/** Halaman View (`ViewPage`): konten terpusat selebar bawaan, panel samping di tepi kanan. */
+const VIEW = [
+  '/access/business-units/$businessUnitId',
+  '/access/locations/$locationId',
+  '/access/roles/$roleId',
+  '/access/users/$userId',
+  '/customer/$customerId',
+  '/handover/$handoverId',
+  '/item/$itemId',
+  '/item/brands/$brandId',
+  '/postel/$postelId',
+  '/qrcode/$designId',
+  '/qrcode/default/$presetId',
+  '/serial/$serialId',
+  '/serial/reports/$caseId',
+  '/sticker/$stickerId',
+  '/sticker/types/$typeId',
+];
+/** Form sempit (`FormPage`): konten terpusat `narrow`. */
+const FORM_NARROW = [
   '/handover/new',
   '/handover/$handoverId/edit',
   '/item/new',
@@ -57,66 +100,42 @@ const NARROW_WIDTH = [
   '/sticker/entry',
   '/sticker/opname',
 ];
-const FULL_WIDTH = ['/handover', '/serial/new'];
-/** Rute yang memakai bawaan `default` secara sengaja (semua View, daftar, QR/Preset, dan halaman lain). */
-const DEFAULT_WIDTH = [
-  '/',
-  '/access/audit',
-  '/access/business-units',
-  '/access/business-units/$businessUnitId',
-  '/access/locations',
-  '/access/locations/$locationId',
-  '/access/push',
-  '/access/roles',
-  '/access/roles/$roleId',
-  '/access/users',
-  '/access/users/$userId',
-  '/customer',
-  '/customer/$customerId',
-  '/desktop',
-  '/forbidden',
-  '/handover/$handoverId',
-  '/item',
-  '/item/$itemId',
-  '/item/brands',
-  '/item/brands/$brandId',
-  '/postel',
-  '/postel/$postelId',
-  '/qrcode',
-  '/qrcode/$designId',
-  '/qrcode/$designId/edit',
-  '/qrcode/default',
-  '/qrcode/default/$presetId',
-  '/qrcode/default/$presetId/edit',
-  '/qrcode/default/new',
+/** Form lebar bawaan (form QR dan preset QR). */
+const FORM_DEFAULT = [
   '/qrcode/new',
-  '/serial',
-  '/serial/$serialId',
-  '/serial/reports',
-  '/serial/reports/$caseId',
-  '/sticker',
-  '/sticker/library',
-  '/sticker/$stickerId',
-  '/sticker/stock',
-  '/sticker/types',
-  '/sticker/types/$typeId',
+  '/qrcode/$designId/edit',
+  '/qrcode/default/new',
+  '/qrcode/default/$presetId/edit',
 ];
+/** Form dengan tabel draft: konten selebar `<main>` (`full`). */
+const FORM_FULL = ['/serial/new'];
+/** Halaman lain (Beranda, informasi, pesan status, alihan): konten terpusat selebar bawaan. */
+const OTHER = ['/', '/desktop', '/forbidden', '/sticker/stock'];
 
 const navTargets = new Set(flattenNavItems(NAV_GROUPS).map((item) => norm(item.to as string)));
 
-test('setiap rute daun di /_app tercantum di salah satu himpunan lebar', () => {
+test('setiap rute daun di /_app tercantum di tepat satu himpunan jenis halaman', () => {
   const paths = appLeaves().map((leaf) => pathOf(leaf));
   expect(new Set(paths).size).toBe(paths.length);
-  expect([...paths].sort()).toEqual([...NARROW_WIDTH, ...FULL_WIDTH, ...DEFAULT_WIDTH].sort());
+  const listed = [...INDEX, ...VIEW, ...FORM_NARROW, ...FORM_DEFAULT, ...FORM_FULL, ...OTHER];
+  expect(new Set(listed).size).toBe(listed.length);
+  expect([...paths].sort()).toEqual([...listed].sort());
 });
 
-test('pageWidth sesuai himpunan (narrow/full eksplisit, bawaan tanpa pageWidth)', () => {
+test('pageWidth: hanya form yang menyatakannya (narrow/full); index, View, dan lainnya memakai bawaan', () => {
   for (const leaf of appLeaves()) {
     const path = pathOf(leaf);
     const width = leaf.options.staticData?.pageWidth;
-    if (NARROW_WIDTH.includes(path)) expect(width, path).toBe('narrow');
-    else if (FULL_WIDTH.includes(path)) expect(width, path).toBe('full');
+    if (FORM_NARROW.includes(path)) expect(width, path).toBe('narrow');
+    else if (FORM_FULL.includes(path)) expect(width, path).toBe('full');
     else expect(width, path).toBeUndefined();
+  }
+});
+
+test('halaman index tidak menyatakan pageWidth (selalu selebar <main>)', () => {
+  const leaves = new Map(appLeaves().map((leaf) => [pathOf(leaf), leaf]));
+  for (const path of INDEX) {
+    expect(leaves.get(path)?.options.staticData?.pageWidth, path).toBeUndefined();
   }
 });
 

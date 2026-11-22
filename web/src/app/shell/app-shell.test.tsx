@@ -158,12 +158,13 @@ test('tanpa penyimpanan sidebar terbuka dan tidak menulis cookie sidebar_state',
   expect(document.cookie).not.toContain('sidebar_state');
 });
 
-test('isi halaman dibungkus PageContainer rata tengah berlebar bawaan', () => {
+test('isi halaman dibungkus PageContainer selebar <main> (batas lebar ada di PageContent, bukan di sini)', () => {
   render(<AppShell />);
   const main = screen.getAllByRole('main').at(-1) as HTMLElement;
   const container = main.firstElementChild as HTMLElement;
-  expect(container.className).toContain('mx-auto');
-  expect(container.className).toContain('max-w-7xl');
+  expect(container.className).toContain('w-full');
+  expect(container.className).not.toContain('mx-auto');
+  expect(container.className).not.toMatch(/max-w-/);
 });
 
 test('butir 41: di ponsel judul ada di header di sebelah tombol menu, tanpa baris breadcrumb dan tanpa tombol tema', () => {
