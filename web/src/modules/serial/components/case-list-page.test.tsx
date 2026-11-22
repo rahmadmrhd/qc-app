@@ -313,3 +313,20 @@ test('search params tak sah dibuang; URL status=all dibaca; bu tunggal lama diba
   });
   expect(caseSearchSchema.parse({ status: 'all' })).toEqual({ status: 'all' });
 });
+
+test('ponsel: mengetuk badan kartu laporan membuka View laporan itu; desktop tanpa klik badan baris (C5/C13)', async () => {
+  window.innerWidth = 360;
+  media = mockMatchMedia(false);
+  const { router, unmount } = await renderPage();
+  await screen.findByRole('link', { name: 'LP/SBY/2611-0004' });
+  const card = screen.getAllByRole('listitem')[1] as HTMLElement;
+  await userEvent.click(within(card).getByText('Pelapor'));
+  expect(router.state.location.pathname).toBe('/serial/reports/c2');
+  unmount();
+  media.set(true);
+  window.innerWidth = 1024;
+  const desktop = await renderPage();
+  await screen.findByRole('table', { name: 'Daftar laporan rusak' });
+  await userEvent.click(screen.getAllByText('Gudang A')[0] as HTMLElement);
+  expect(desktop.router.state.location.pathname).toBe('/');
+});
