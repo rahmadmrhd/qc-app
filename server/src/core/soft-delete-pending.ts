@@ -61,6 +61,10 @@ export const SOFT_DELETE_EXEMPT: Record<string, string> = {
     'Skrip operator: anak serial dipindahkan menurut id serial yang baru dipilih HIDUP dan dikunci `FOR UPDATE` di transaksi yang sama (kueri pemilih menyaring `deleted_at`; serial terhapus diabaikan penuh, keputusan pemilik 2026-11-21).',
   'server/scripts/merge-duplicate-serials.ts#business_units@2#71a20bd9':
     'Penampil kode BU pada laporan operator: BU terhapus tetap memberi kode (soft delete 9); skrip hanya membaca untuk tampilan.',
+  'server/src/modules/serial/stickers-batch.ts#serial_events@1#1252900d':
+    'Pemeriksaan kiriman ulang Tempel stiker massal: kejadian dibaca menurut kunci idempoten `client_id` (`<clientId>:%`), serial hidup atau terhapus; keputusannya (identik = tanpa efek, berbeda atau sebagian = CONFLICT) tak boleh bergantung pada keadaan serialnya, dan serial terhapus tetap dijawab NOT_FOUND oleh pemuat baris serial setelahnya.',
+  'server/src/modules/serial/stickers-batch.ts#serial_events@2#7b494a16':
+    'Penanda balapan kiriman ulang Tempel stiker massal: ada tidaknya kejadian berkunci `client_id` tertentu (`SELECT 1`), serial hidup atau terhapus; hanya mendeteksi permintaan lain ber-clientId sama yang berkomit di antara pemeriksaan dan penulisan.',
   'server/src/core/cas.ts#*dinamis@1#2d23e851':
     'nameGuardStmt: penjaga TULIS (SELECT ... FOR UPDATE) atas baris merk/customer yang baru dibaca penulis; hapus/pulihkan memakai soft-delete.ts. Tabel dinamis (brands|customers).',
   'server/src/modules/backup/restore.ts#*dinamis@1#4b20ad1c':
