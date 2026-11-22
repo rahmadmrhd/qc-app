@@ -165,7 +165,7 @@ export function ApplyStickersDialog({
     });
   }
 
-  async function send(intent: PendingApplyStickers) {
+  async function send(intent: PendingApplyStickers, previous = false) {
     setError(null);
     try {
       const result = await apply.mutateAsync(intent.input);
@@ -179,7 +179,14 @@ export function ApplyStickersDialog({
         onPendingChange(null);
         setResumed(false);
         setAmbiguous(false);
-        setError(describeError(caught));
+        const message = describeError(caught);
+        if (previous && rows.length === 0) {
+          // Tanpa pilihan serial tak ada formulir untuk dicatat: sampaikan penolakannya lalu tutup.
+          toast.error(`Kiriman sebelumnya ditolak: ${message}`);
+          onClose();
+          return;
+        }
+        setError(previous ? `Kiriman sebelumnya ditolak: ${message}` : message);
       } else {
         // Hasil tak jelas: pertahankan id dan isi; dialog beralih ke mode "Kirim ulang".
         setAmbiguous(true);
@@ -265,7 +272,11 @@ export function ApplyStickersDialog({
             >
               Buang pengiriman sebelumnya
             </Button>
-            <Button type="button" disabled={apply.isPending} onClick={() => void send(pending)}>
+            <Button
+              type="button"
+              disabled={apply.isPending}
+              onClick={() => void send(pending, true)}
+            >
               {apply.isPending ? <BusyLabel>Menyimpan…</BusyLabel> : 'Kirim ulang'}
             </Button>
           </DialogFooter>
@@ -296,6 +307,7 @@ export function ApplyStickersDialog({
               max={today}
               value={occurredOn}
               aria-invalid={dateError ? true : undefined}
+              disabled={apply.isPending}
               onChange={(event) => setOccurredOn(event.target.value)}
             />
             <FieldError errors={[dateError]} />

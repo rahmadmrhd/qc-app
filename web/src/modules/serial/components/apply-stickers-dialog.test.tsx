@@ -63,6 +63,7 @@ beforeEach(() => {
   resetPendingApplyStickersForTest();
   apiMock.mockReset();
   toastMock.success.mockReset();
+  toastMock.error.mockReset();
   applyResult = () => Promise.resolve({ ids: ['s1', 's2'] });
   apiMock.mockImplementation((id: string, input: { itemId?: string }) => {
     if (id === 'serials.stickerOptions') {
@@ -345,6 +346,7 @@ test('kiriman pertama masih berjalan: formulir tetap tampil (nonaktif), tanpa pe
   // Permintaan tertahan: niat sudah dicatat ke induk, tetapi dialog tetap formulir yang terkunci.
   expect(within(dialog).getByRole('button', { name: 'Menyimpan…' })).toBeDisabled();
   expect(within(dialog).getByLabelText('Catatan (opsional)')).toBeDisabled();
+  expect(within(dialog).getByLabelText(/Tanggal/)).toBeDisabled();
   expect(within(dialog).getByRole('checkbox', { name: 'Stiker A' })).toBeDisabled();
   expect(screen.queryByText(/belum jelas/)).toBeNull();
   expect(screen.queryByRole('button', { name: 'Kirim ulang' })).toBeNull();
@@ -405,6 +407,38 @@ test('Buang pada niat lama dengan pilihan serial: formulir untuk pilihan saat in
   expect(within(dialog).getByRole('button', { name: 'Menyimpan…' })).toBeDisabled();
   expect(screen.queryByText(/belum jelas/)).toBeNull();
   release({ ids: ['s1'] });
+});
+
+test('kirim ulang niat lama tanpa pilihan serial ditolak pasti (CONFLICT): galat sebagai toast, dialog menutup, niat terbuang', async () => {
+  applyResult = () => Promise.reject(new ApiError('CONFLICT', 'OLD001: sudah berubah', 'req-3'));
+  const old = newPendingApplyStickers(
+    { occurredOn: '2026-11-20', message: '', rows: [{ id: 'x1', stickerIds: ['st1'] }] },
+    ['OLD001'],
+  );
+  const onClose = vi.fn();
+  const { dialog } = await renderDialog([], { initialPending: old, onClose });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Kirim ulang' }));
+  await waitFor(() => expect(onClose).toHaveBeenCalled());
+  expect(toastMock.error).toHaveBeenCalledWith(
+    expect.stringContaining('Kiriman sebelumnya ditolak: '),
+  );
+  expect(toastMock.error).toHaveBeenCalledWith(expect.stringContaining('OLD001'));
+});
+
+test('kirim ulang niat lama ditolak pasti dengan pilihan serial: formulir pilihan saat ini dengan galat berawalan', async () => {
+  applyResult = () => Promise.reject(new ApiError('CONFLICT', 'OLD001: sudah berubah', 'req-3'));
+  const old = newPendingApplyStickers(
+    { occurredOn: '2026-11-20', message: '', rows: [{ id: 'x1', stickerIds: ['st1'] }] },
+    ['OLD001'],
+  );
+  const onClose = vi.fn();
+  const { dialog } = await renderDialog([row({ id: 's1' })], { initialPending: old, onClose });
+  await userEvent.click(within(dialog).getByRole('button', { name: 'Kirim ulang' }));
+  expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+    'Kiriman sebelumnya ditolak: ',
+  );
+  expect(within(dialog).getByLabelText('Catatan (opsional)')).toBeInTheDocument();
+  expect(onClose).not.toHaveBeenCalled();
 });
 
 test('lebih dari 100 serial yang dicentang: peringatan dan tombol nonaktif; kelompok tanpa centang tak dihitung', async () => {
