@@ -84,3 +84,30 @@ Keputusan yang ditandai **(konfirmasi)** adalah tafsiran yang diambil agar peker
 - Web: tes kit/halaman yang terdampak diperbarui (peta kode memuat daftarnya); penjaga `scripts/*` hijau.
 - Fragmen changelog `server/changelog.d/20261122-revisi-tampilan-lanjutan.md` (dan desktop bila tersentuh).
 - Review independen + `security-audit` terfokus pada `activity.list`, `serialCases.get`, dan filter jamak.
+
+## 5. Status implementasi dan tafsiran implementer (dicatat 2026-11-22)
+
+Seluruh butir sudah diimplementasikan dan dikomit di cabang `claude/revisi-tampilan-lanjutan` (belum di-push/merge): tahap 1 `e867085e`..`aa9beade` (B4, B6, B8, B9, B11, B12, D1, D2, P1, P2, P4, P5, P8, B10 kit), tahap 2 `2ab3ac60`..`363bca9a` (B1, B2, B2c, B2d, B2e, B5, B5b, P3, P7, P9, B10), tahap 3 `f053c630`..`3623507d` (perbaikan temuan review tahap 1 dan filter jamak di UI), server `48c94215`, `a2be1b22`, `0b1320ef` (B3, B7, B2b server), dialog `39600e33`, `dc7fe13d` (P6), tampilan `af7cfe18`, `ac21c28c` (B3, B7 web). Belum ada uji di perangkat/peramban nyata (gestur sentuh, seret lembar, dialog layar penuh, overlay sidebar hanya diuji jsdom).
+
+| Butir | Status |
+|---|---|
+| B1, B2, B2c, B2d | Diimplementasikan |
+| B2b | Sebagian diimplementasikan: server menyediakan semua field jamak (items `brandIds`/`buIds`/`typeIds`, serials, serialCases, handovers.board, audit); UI memakainya di Item (merk, BU), Serial, Laporan (BU), papan Serah Terima (customer), Log Audit (aksi), Jenis stiker, dan Postel (kondisi). DITUNDA: filter Stiker/Jenis pada daftar Item (lihat tafsiran 6) dan filter klien-saja pada halaman yang belum punya chip jamak |
+| B2e | Diimplementasikan (Serial menggabungkan Terhapus ke chip Status atas keputusan pemilik 2026-11-22) |
+| B3 | Diimplementasikan |
+| B4, B5, B5b, B6, B8, B9, B10, B11, B12 | Diimplementasikan |
+| B7 | Diimplementasikan |
+| P1 sampai P9, D1, D2 | Diimplementasikan |
+
+Tafsiran implementer yang perlu ditinjau pemilik (tidak mengubah keputusan pemilik di bagian 1 dan 2):
+
+1. **B5**: "satu section Detail" diimplementasikan sebagai satu TAB "Detail" yang tetap memuat section-section lama (judul section dipertahankan karena menjadi target `data-tour`).
+2. **B2**: memilih satu nilai pada chip combobox kini menutup chip (sebelumnya popover tetap terbuka); mode jamak tetap terbuka. Mode `sheet` combobox (daftar `fixed` dekat papan ketik) bukan `ui/sheet`, jadi tidak punya pegangan seret.
+3. **B3**: log tanpa nilai; catatan "Riwayat sebelum 20 Nov 2026 tidak lengkap" tampil kecuali `createdAt` record >= 20 Nov 2026 WIB (DTO tanpa `createdAt` selalu menampilkannya); tab Riwayat Postel (selisih nilai) dipertahankan; log Serial = 10 entri terbaru `serials.history` dengan tautan ke tab Riwayat.
+4. **B7**: tab Pengecekan dan Perubahan data di detail Serial tetap per kejadian (hanya tab Semua meringkas kartu laporan); pelapor dan penutup pada kartu diturunkan dari kejadian yang sudah termuat (kartu menulis "Pelapor ada di riwayat yang lebih lama" bila halaman lama belum dimuat) agar tak ada N+1 `serialCases.get`; `?case=` dialihkan ke halaman detail laporan.
+5. **P2/D1**: `FormPage` ponsel tanpa `badge` tidak lagi memuat bar atas kosong (judul `sr-only` dan target tur dipertahankan); bar aksi massal desktop menahan headroom selama ada pilihan; mode pilih 0 butir (lewat tombol "Pilih") menampilkan bar bawah penuh.
+6. **B2b item**: filter Stiker/Jenis pada daftar Item belum dijadikan jamak karena pilihannya mencampur stiker tunggal (`stickerId`, tak boleh bersama `typeIds`) dan jenis. Rekomendasi: jamak hanya untuk jenis (`t:`) dan memilih stiker (`s:`) menggantikan seluruh pilihan. Menunggu keputusan pemilik.
+7. **B12**: di rentang 768-959 px sidebar mulai tertutup dan buka/tutupnya tidak menulis pilihan tersimpan layar lebar; `useIsDesktop` menambahkan lebar scrollbar halaman klasik ke lebar `<main>` agar invarian >= 704 pada viewport 768 terjaga.
+8. **P8**: `hideOnPhone` tidak berlaku di aplikasi desktop (Electron) berjendela sempit.
+9. **P6**: gerbang layar penuh dialog memakai CSS `max-md:` (bukan JS), sama dengan `FormDialogContent`; hasil ukur 393x852 dari survei; dialog tak terukur dan `AlertDialog` tidak diubah.
+10. **B2b server**: field jamak dikirim sebagai daftar dipisah koma, maks. 20 nilai, jamak menang atas tunggal, hanya menyempitkan hak baca; `typeIds` ditolak bersama `stickerId`.
