@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { pickLink, pickSelect } from '@/test/link-field';
 import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
-import { type CaseSearch, caseSearchSchema } from '../lib/case-filter';
+import { type CaseSearch, caseFilterOfSearch, caseSearchSchema } from '../lib/case-filter';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
@@ -214,10 +214,14 @@ test('filter status dan BU menjadi parameter; Semua laporan tanpa status', async
   await waitFor(() => expect(lastInput()).toEqual({}));
   await openChip('BU');
   await pickLink(screen, 'Filter BU', 'BU2 · Dua');
-  await waitFor(() => expect(lastInput()).toEqual({ buId: 'b2' }));
+  await waitFor(() => expect(lastInput()).toEqual({ buIds: ['b2'] }));
+  // Mode banyak pilihan: pilihan kedua menambah daftar.
+  await pickLink(screen, 'Filter BU', 'BU1 · Satu');
+  await waitFor(() => expect(lastInput()).toEqual({ buIds: ['b2', 'b1'] }));
+  await userEvent.keyboard('{Escape}');
   await openChip('Status');
   await pickSelect(screen, 'Filter status laporan', 'Laporan aktif');
-  await waitFor(() => expect(lastInput()).toEqual({ status: 'active', buId: 'b2' }));
+  await waitFor(() => expect(lastInput()).toEqual({ status: 'active', buIds: ['b2', 'b1'] }));
 });
 
 test('pencarian mengirim query awalan nomor LP atau serial setelah jeda', async () => {
@@ -301,7 +305,12 @@ test('daftar kosong menampilkan teks santai; galat memuat tampil sebagai pesan',
   expect(await screen.findByRole('alert')).toHaveTextContent('Gagal memuat data');
 });
 
-test('search params tak sah dibuang; URL status=all dibaca', () => {
-  expect(caseSearchSchema.parse({ status: 'zzz', bu: 5 })).toEqual({});
+test('search params tak sah dibuang; URL status=all dibaca; bu tunggal lama dibaca sebagai buIds', () => {
+  expect(caseSearchSchema.parse({ status: 'zzz', bu: 5, buIds: 'x' })).toEqual({});
+  expect(caseFilterOfSearch({ bu: 'b1' })).toEqual({ status: 'active', buIds: ['b1'] });
+  expect(caseFilterOfSearch({ bu: 'b1', buIds: ['b2', 'b3'] })).toEqual({
+    status: 'active',
+    buIds: ['b2', 'b3'],
+  });
   expect(caseSearchSchema.parse({ status: 'all' })).toEqual({ status: 'all' });
 });

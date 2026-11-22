@@ -1,15 +1,20 @@
 import type { SerialCaseRowDto } from '@shared/contract';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { type DataColumn, DataTable, LinkCell } from '@/components/data-table';
-import { LinkField, type LinkOption } from '@/components/link-field';
-import { FilterBar, FilterChip } from '@/components/page/filter-bar';
+import { LinkMultiField, type LinkOption } from '@/components/link-field';
+import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
 import { Badge } from '@/components/ui/badge';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { buIdsWithLevelOf } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
-import { type CaseSearch, caseFilterOfSearch, effectiveCaseStatus } from '../lib/case-filter';
+import {
+  type CaseSearch,
+  caseFilterOfSearch,
+  effectiveBuIds,
+  effectiveCaseStatus,
+} from '../lib/case-filter';
 import { CUSTODY_LABEL, formatDay, STATUS_LABEL } from '../lib/labels';
 import { serialCaseListQueryOptions } from '../queries';
 import { SerialStatusBadge } from './serial-status-badge';
@@ -56,7 +61,8 @@ export function CaseListPage({ search, onSearchChange, onReport }: CaseListPageP
     onSearchChange({ q: value.trim() === '' ? undefined : value.trim() }),
   );
   const status = effectiveCaseStatus(search);
-  const filtered = search.q !== undefined || search.bu !== undefined || status !== 'active';
+  const buIds = effectiveBuIds(search);
+  const filtered = search.q !== undefined || buIds.length > 0 || status !== 'active';
 
   const columns: DataColumn<SerialCaseRowDto>[] = [
     {
@@ -179,19 +185,22 @@ export function CaseListPage({ search, onSearchChange, onReport }: CaseListPageP
             </FilterChip>
             <FilterChip
               label="BU"
-              display={search.bu ? buLabel(search.bu) : null}
-              onClear={() => onSearchChange({ bu: undefined })}
+              display={multiFilterDisplay(buIds.map(buLabel))}
+              onClear={() => onSearchChange({ buIds: undefined, bu: undefined })}
             >
-              <LinkField
+              <LinkMultiField
                 id="case-filter-bu"
                 label="Filter BU"
                 hideLabel
                 placeholder="Semua BU"
                 localFilter
-                value={search.bu ?? null}
+                highlight
+                value={buIds}
                 labelOf={buLabel}
                 options={buOptions}
-                onChange={(id) => onSearchChange({ bu: id ?? undefined })}
+                onChange={(next) =>
+                  onSearchChange({ buIds: next.length > 0 ? next : undefined, bu: undefined })
+                }
               />
             </FilterChip>
           </FilterBar>
@@ -210,7 +219,9 @@ export function CaseListPage({ search, onSearchChange, onReport }: CaseListPageP
               : 'Belum ada laporan di sini.'
           }
           filtered={filtered}
-          onClearFilters={() => onSearchChange({ q: undefined, bu: undefined, status: undefined })}
+          onClearFilters={() =>
+            onSearchChange({ q: undefined, buIds: undefined, bu: undefined, status: undefined })
+          }
           isLoading={list.isPending}
           isError={list.isLoadingError}
           onRetry={() => void list.refetch()}
