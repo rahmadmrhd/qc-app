@@ -154,7 +154,7 @@ test('menu konteks dicegah untuk sentuhan tetapi klik kanan tetikus tidak diblok
 test('jalur cadangan: Pilih di menu aksi; Pilih semua; keluar dengan tombol silang', async () => {
   render(<Harness />);
   await userEvent.click(screen.getByRole('button', { name: 'Aksi Asus' }));
-  await userEvent.click(await screen.findByRole('menuitem', { name: 'Pilih Asus' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Pilih' }));
   expect(screen.getByRole('checkbox', { name: 'Pilih Asus' })).toBeChecked();
   await userEvent.click(screen.getByRole('checkbox', { name: 'Pilih semua' }));
   expect(screen.getByRole('checkbox', { name: 'Pilih Tenda' })).toBeChecked();
@@ -175,7 +175,7 @@ test('petunjuk tahan kartu bisa ditutup dan tidak muncul lagi', async () => {
 test('BulkBar ponsel: dua aksi utama, sisanya di menu tambahan', async () => {
   render(<Harness />);
   await userEvent.click(screen.getByRole('button', { name: 'Aksi Asus' }));
-  await userEvent.click(await screen.findByRole('menuitem', { name: 'Pilih Asus' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Pilih' }));
   const bar = screen.getByRole('region', { name: 'Aksi massal' });
   expect(within(bar).getByRole('button', { name: 'Satu' })).toBeInTheDocument();
   expect(within(bar).getByRole('button', { name: 'Dua' })).toBeInTheDocument();
@@ -323,8 +323,8 @@ test('rowSelectable: tekan lama pada kartu tak terpilih tidak masuk mode pilih d
   expect(screen.queryAllByRole('checkbox')).toHaveLength(0);
   vi.useRealTimers();
   await userEvent.click(screen.getByRole('button', { name: 'Aksi Asus' }));
-  expect(await screen.findByRole('menuitem', { name: 'Ubah Asus' })).toBeInTheDocument();
-  expect(screen.queryByRole('menuitem', { name: 'Pilih Asus' })).toBeNull();
+  expect(await screen.findByRole('menuitem', { name: 'Ubah' })).toBeInTheDocument();
+  expect(screen.queryByRole('menuitem', { name: 'Pilih' })).toBeNull();
 });
 
 test('BulkBar ponsel: alasan tombol nonaktif tampil sebagai teks (tanpa hover)', () => {

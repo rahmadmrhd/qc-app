@@ -38,6 +38,7 @@ export interface GroupVersions {
 /** Versi tiap kelompok yang diumumkan server. Tes menjaga seluruh kelompok `API_ROUTES` terdaftar di sini. */
 export const API_GROUP_VERSIONS: Record<string, GroupVersions> = {
   access: { latest: 1, deprecated: [] },
+  activity: { latest: 1, deprecated: [] },
   auth: { latest: 1, deprecated: [] },
   brands: { latest: 1, deprecated: [] },
   businessUnits: { latest: 1, deprecated: [] },

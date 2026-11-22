@@ -6,6 +6,7 @@ import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
 import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 
 export interface BrandDetailViewProps {
   /** `undefined` = merk tidak ada (id salah, sudah dihapus, atau tak boleh dilihat). */
@@ -104,10 +105,13 @@ export function BrandDetailView({
         ) : null
       }
       aside={
-        <ViewMeta
-          updatedAt={brand.updatedAt}
-          links={[{ label: 'Lihat item merk ini', to: '/item', search: { brandId: brand.id } }]}
-        />
+        <>
+          <ViewMeta
+            updatedAt={brand.updatedAt}
+            links={[{ label: 'Lihat item merk ini', to: '/item', search: { brandId: brand.id } }]}
+          />
+          <ActivityLog kind="brand" id={brand.id} />
+        </>
       }
     >
       <ViewSection title="Identitas">

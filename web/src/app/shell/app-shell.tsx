@@ -1,11 +1,12 @@
 import { Outlet, useMatches } from '@tanstack/react-router';
-import { type ReactNode, useCallback, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { PageContainer } from '@/components/page/page-container';
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { useEdgeSwipe } from '@/hooks/use-edge-swipe';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useFocusIntoView, useVisualViewport } from '@/hooks/use-visual-viewport';
+import { isSidebarOverlayViewport, sidebarRange } from '@/lib/layout';
 import { useMe } from '@/modules/auth/use-me';
 import { GuideBanner } from '@/modules/guide/components/guide-banner';
 import { GuideGreeting } from '@/modules/guide/components/guide-greeting';
@@ -52,10 +53,31 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
   const pageWidth = pageWidthOf(matches);
   const locationAware = locationAwareOf(matches);
   // Terkendali (bukan defaultOpen): terbuka/terlipat diingat di localStorage lewat `qc.sidebar`.
-  const [sidebarOpen, setSidebarOpen] = useState(() => readSidebarState().open);
+  // Rentang overlay (768-959 px): sidebar melayang di atas isi, jadi mulai tertutup dan membuka/menutupnya tak
+  // mengubah pilihan tersimpan (yang berlaku untuk layar lebar).
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => readSidebarState().open && !isSidebarOverlayViewport(),
+  );
+  // Lebar jendela berubah (putar tablet, ubah ukuran jendela): keadaan terbuka disinkronkan menurut RENTANG, bukan
+  // sekadar overlay/bukan overlay, agar jalur overlay -> ponsel -> lebar pun memulihkan pilihan tersimpan.
+  const range = useRef(sidebarRange());
+  useEffect(() => {
+    const onResize = () => {
+      const next = sidebarRange();
+      if (next === range.current) return;
+      range.current = next;
+      // Masuk rentang overlay (dari ponsel maupun lebar): tutup, jangan menutupi isi dengan latar gelap; pilihan
+      // tersimpan tak ditulis. Masuk layar lebar tersemat (dari rentang mana pun): pulihkan pilihan tersimpan.
+      // Ke ponsel tak perlu: panel ponsel terpisah (`openMobile`).
+      if (next === 'overlay') setSidebarOpen(false);
+      else if (next === 'wide') setSidebarOpen(readSidebarState().open);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   const onSidebarOpenChange = useCallback((open: boolean) => {
     setSidebarOpen(open);
-    writeSidebarState({ ...readSidebarState(), open });
+    if (!isSidebarOverlayViewport()) writeSidebarState({ open });
   }, []);
   return (
     <TooltipProvider>
@@ -95,7 +117,7 @@ export function AppShell({ children }: { children?: ReactNode } = {}) {
                 <PushOnboarding />
                 <GuideGreeting />
                 <GuideBanner />
-                <main className="flex-1 p-[var(--main-pad)] [--main-pad:1rem] md:[--main-pad:1.5rem]">
+                <main className="flex-1 p-[var(--main-pad)] pb-[calc(var(--main-pad)+var(--action-bar-h,0px))] [--main-pad:1rem] md:[--main-pad:1.5rem]">
                   <PageContainer width={pageWidth}>{children ?? <Outlet />}</PageContainer>
                 </main>
               </SidebarInset>

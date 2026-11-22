@@ -4,6 +4,7 @@ import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
 import { ActiveStatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 
 export interface CustomerViewProps {
   /** `undefined` = customer tidak ada (id salah, atau terhapus bagi yang tak boleh melihatnya). */
@@ -93,20 +94,23 @@ export function CustomerView({
         ) : null
       }
       aside={
-        <ViewMeta
-          updatedAt={customer.updatedAt}
-          links={
-            canViewHandovers
-              ? [
-                  {
-                    label: 'Lihat task Serah Terima customer ini',
-                    to: '/handover',
-                    search: { customer: customer.id },
-                  },
-                ]
-              : []
-          }
-        />
+        <>
+          <ViewMeta
+            updatedAt={customer.updatedAt}
+            links={
+              canViewHandovers
+                ? [
+                    {
+                      label: 'Lihat task Serah Terima customer ini',
+                      to: '/handover',
+                      search: { customer: customer.id },
+                    },
+                  ]
+                : []
+            }
+          />
+          <ActivityLog kind="customer" id={customer.id} />
+        </>
       }
     >
       <ViewSection title="Identitas">

@@ -92,6 +92,7 @@ export function LocationsTable({
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${location.name}`,
+          shortLabel: 'Pulihkan',
           hidden: !canManage,
           busy,
           onSelect: () => onRestore(location),
@@ -103,6 +104,7 @@ export function LocationsTable({
         id: 'edit',
         action: 'edit',
         label: `Ubah ${location.name}`,
+        shortLabel: 'Ubah',
         hidden: !canManage,
         onSelect: () => onEdit(location),
       },
@@ -110,6 +112,7 @@ export function LocationsTable({
         id: 'status',
         action: location.status === 'active' ? 'deactivate' : 'activate',
         label: `${location.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'} ${location.name}`,
+        shortLabel: location.status === 'active' ? 'Nonaktifkan' : 'Aktifkan',
         hidden: !canManage,
         busy,
         onSelect: () => onToggleStatus(location),
@@ -118,6 +121,7 @@ export function LocationsTable({
         id: 'delete',
         action: 'delete',
         label: `Hapus ${location.name}`,
+        shortLabel: 'Hapus',
         hidden: !canManage || location.status !== 'inactive',
         busy,
         onSelect: () => onDelete(location),
@@ -131,6 +135,10 @@ export function LocationsTable({
       rowKey={(location) => location.id}
       columns={columns}
       label="Daftar lokasi"
+      rowTo={(location) => ({
+        to: '/access/locations/$locationId',
+        params: { locationId: location.id },
+      })}
       selectLabel={(location) => location.name}
       selection={selection}
       actions={canManage ? actions : undefined}

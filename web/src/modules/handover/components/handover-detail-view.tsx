@@ -6,6 +6,7 @@ import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dia
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
 import { formatStamp } from '@/lib/format-stamp';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 import { handoverActions } from '../lib/actions';
 import { useOutboxOverlay } from '../lib/use-pending-checks';
 import { CancelDialog } from './cancel-dialog';
@@ -237,12 +238,15 @@ export function HandoverDetailView({
         {...(tab ? { tab } : {})}
         onTabChange={(id) => onTabChange?.(id as HandoverTab)}
         aside={
-          <ViewMeta
-            createdBy={handover.createdBy}
-            createdAt={handover.createdAt}
-            updatedBy={handover.updatedBy}
-            updatedAt={handover.updatedAt}
-          />
+          <>
+            <ViewMeta
+              createdBy={handover.createdBy}
+              createdAt={handover.createdAt}
+              updatedBy={handover.updatedBy}
+              updatedAt={handover.updatedAt}
+            />
+            <ActivityLog kind="handover" id={handover.id} createdAt={handover.createdAt} />
+          </>
         }
       />
       <CancelDialog

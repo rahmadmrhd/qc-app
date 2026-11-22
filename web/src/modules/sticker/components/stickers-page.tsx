@@ -21,8 +21,8 @@ import {
   useRowSelection,
 } from '@/components/data-table';
 import { DisabledReason } from '@/components/disabled-reason';
-import { LinkField } from '@/components/link-field';
-import { FilterBar, FilterChip } from '@/components/page/filter-bar';
+import { LinkMultiField } from '@/components/link-field';
+import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
@@ -37,6 +37,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { describeError } from '@/lib/api/describe-error';
+import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 import { formatStamp } from '@/lib/format-stamp';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { STICKER_STATUS_LABEL } from '../lib/status';
@@ -46,7 +47,7 @@ import {
   type StickerSaveInput,
   type StickerSaveResult,
 } from './sticker-form-dialog';
-import { type StickerStockPanel, StockMenu, useStockActions } from './stock-actions';
+import { type StickerStockPanel, stockAvailability, useStockActions } from './stock-actions';
 import type { StockEntryMode } from './stock-entry-dialog';
 
 export type { StickerStockPanel, StockPageLocation } from './stock-actions';
@@ -54,11 +55,11 @@ export type { StickerStockPanel, StockPageLocation } from './stock-actions';
 /** Status pada filter halaman: status daftar bersama (`all|active|inactive|deleted`) ditambah `deprecated` (Usang). */
 export type StickerStatusFilter = ListStatusFilter | 'deprecated';
 
-/** Filter halaman Stiker (search params Router). `typeId` kosong = semua jenis. */
+/** Filter halaman Stiker (search params Router). `typeIds` kosong = semua jenis. */
 export interface StickersFilter {
   q: string;
-  /** Id jenis (mode katalog); pada mode stok saja (tanpa daftar jenis) berisi NAMA jenis. */
-  typeId: string;
+  /** Id jenis (mode katalog; boleh lebih dari satu); pada mode stok saja (tanpa daftar jenis) berisi NAMA jenis. */
+  typeIds: string[];
   status: StickerStatusFilter;
 }
 
@@ -218,13 +219,11 @@ export function StickersPage({
     : [...new Set(rows.map((row) => row.typeName))]
         .sort((a, b) => a.localeCompare(b))
         .map((name) => ({ id: name, label: name }));
-  const typeFilterLabel = typeNames.find((option) => option.id === filter.typeId)?.label;
+  const typeLabelOf = (id: string) => typeNames.find((option) => option.id === id)?.label ?? id;
 
   const visible = rows.filter((row) => {
-    if (filter.typeId !== '') {
-      const matches = row.catalog
-        ? row.catalog.typeId === filter.typeId
-        : row.typeName === filter.typeId;
+    if (filter.typeIds.length > 0) {
+      const matches = filter.typeIds.includes(row.catalog ? row.catalog.typeId : row.typeName);
       if (!matches) return false;
     }
     if (filter.status !== 'all' && filter.status !== 'deleted' && row.status !== filter.status) {
@@ -357,12 +356,12 @@ export function StickersPage({
               )}
               {catalog?.deleted ? <DeletedBadge /> : null}
               {row.low && !catalog?.deleted ? (
-                <Badge color="warning" variant="soft" dot>
+                <Badge color="warning" variant="soft">
                   Menipis
                 </Badge>
               ) : null}
               {stockRow?.typeStatus === 'inactive' ? (
-                <Badge color="secondary" variant="soft" dot>
+                <Badge color="secondary" variant="soft">
                   Jenis nonaktif
                 </Badge>
               ) : null}
@@ -498,29 +497,57 @@ export function StickersPage({
             ),
           },
         ] satisfies DataColumn<Row>[])),
-    // Menu "Stok" bukan kosakata `ActionKind`, jadi tetap satu menu terpisah (nama aksesibel `Stok <nama>`).
-    ...(stock
-      ? ([
-          {
-            id: 'stockActions',
-            header: 'Aksi stok',
-            cell: (row) =>
-              row.stock ? (
-                <StockMenu
-                  row={row.stock}
-                  label={row.label}
-                  panel={stock}
-                  controller={stockActions}
-                />
-              ) : null,
-          },
-        ] satisfies DataColumn<Row>[])
-      : []),
   ];
+
+  // Aksi stok (B10): satu entri "Stok" bersubmenu di kolom Aksi (desktop: satu dropdown; ponsel: grup datar "Stok" di
+  // menu ⋯, tanpa submenu bersarang). Hanya bila baris punya stok yang boleh dilihat pengguna.
+  const stockEntry = (row: Row): RowAction | null => {
+    if (!stock || !row.stock) return null;
+    const stockRow = row.stock;
+    const { canIn, canOut, canAdjust } = stockAvailability(stock, stockRow);
+    return {
+      id: 'stock',
+      action: 'stock',
+      label: `Stok ${row.label}`,
+      shortLabel: 'Stok',
+      onSelect: () => undefined,
+      submenu: [
+        {
+          id: 'stock-in',
+          action: 'stockIn',
+          label: 'Catat masuk',
+          hidden: !canIn,
+          onSelect: () => stockActions.openEntry('in', stockRow.stickerId),
+        },
+        {
+          id: 'stock-out',
+          action: 'stockOut',
+          label: 'Catat keluar',
+          hidden: !canOut,
+          onSelect: () => stockActions.openEntry('out', stockRow.stickerId),
+        },
+        {
+          id: 'stock-adjust',
+          action: 'adjust',
+          label: 'Koreksi',
+          hidden: !canAdjust,
+          onSelect: () => stockActions.openEntry('adjust', stockRow.stickerId),
+        },
+        {
+          id: 'stock-history',
+          action: 'history',
+          label: 'Riwayat',
+          onSelect: () => stockActions.openHistory(stockRow),
+        },
+      ],
+    };
+  };
 
   const actions = (row: Row): RowAction[] => {
     const { catalog } = row;
-    if (!catalog) return [];
+    const stockAction = stockEntry(row);
+    // Pemegang stok tanpa katalog tetap mendapat kolom Aksi berisi entri Stok.
+    if (!catalog) return stockAction ? [stockAction] : [];
     const busy = pendingStatusId === catalog.id || rowBusy === catalog.id;
     const systemKind = typeById.get(catalog.typeId)?.systemKind ?? '';
     if (catalog.deleted || deletedView) {
@@ -529,6 +556,7 @@ export function StickersPage({
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${row.label}`,
+          shortLabel: 'Pulihkan',
           // Stiker jenis sistem dipulihkan lewat induknya (Desain QR/Postel): server selalu menolaknya di sini.
           hidden: !canManage || systemKind !== '',
           busy,
@@ -548,13 +576,16 @@ export function StickersPage({
         id: 'edit',
         action: 'edit',
         label: `Ubah ${row.label}`,
+        shortLabel: 'Ubah',
         hidden: !canEdit,
         onSelect: () => setDialog(catalog),
       },
+      ...(stockAction ? [stockAction] : []),
       {
         id: 'status',
         action: catalog.status === 'inactive' ? 'activate' : 'deactivate',
         label: `${catalog.status === 'inactive' ? 'Aktifkan' : 'Nonaktifkan'} ${row.label}`,
+        shortLabel: catalog.status === 'inactive' ? 'Aktifkan' : 'Nonaktifkan',
         hidden: !canManage || !canToggle,
         busy,
         onSelect: () => onToggleStatus(catalog),
@@ -563,6 +594,7 @@ export function StickersPage({
         id: 'delete',
         action: 'delete',
         label: `Hapus ${row.label}`,
+        shortLabel: 'Hapus',
         // Hanya stiker bukan Aktif yang dapat dihapus, dan bukan stiker jenis sistem (mengikuti konfigurasinya).
         hidden: !canManage || catalog.status === 'active' || systemKind !== '',
         busy,
@@ -579,7 +611,7 @@ export function StickersPage({
     ...(canManage && catalogMode ? [{ value: 'deleted', label: 'Terhapus' }] : []),
   ];
   const statusLabel = statusOptions.find((option) => option.value === filter.status)?.label;
-  const filtered = termKey !== '' || filter.typeId !== '' || filter.status !== 'all';
+  const filtered = termKey !== '' || filter.typeIds.length > 0 || filter.status !== 'all';
   const countLabel =
     !isLoading && !isError && (visible.length > 0 || filtered)
       ? `${visible.length} stiker`
@@ -642,10 +674,11 @@ export function StickersPage({
           >
             <FilterChip
               label="Jenis"
-              display={filter.typeId === '' ? null : (typeFilterLabel ?? filter.typeId)}
-              onClear={() => onFilterChange({ typeId: '' })}
+              display={multiFilterDisplay(filter.typeIds.map(typeLabelOf))}
+              onClear={() => onFilterChange({ typeIds: [] })}
             >
-              <LinkField
+              <LinkMultiField
+                maxSelected={FILTER_LIST_MAX}
                 id="sticker-filter-type"
                 label="Filter jenis"
                 hideLabel
@@ -653,9 +686,9 @@ export function StickersPage({
                 options={typeNames}
                 localFilter
                 highlight
-                value={filter.typeId === '' ? null : filter.typeId}
-                labelOf={(id) => typeNames.find((option) => option.id === id)?.label}
-                onChange={(next) => onFilterChange({ typeId: next ?? '' })}
+                value={filter.typeIds}
+                labelOf={typeLabelOf}
+                onChange={(next) => onFilterChange({ typeIds: next })}
               />
             </FilterChip>
             <FilterChip
@@ -719,14 +752,19 @@ export function StickersPage({
           rowKey={(row) => row.id}
           columns={columns}
           label="Daftar stiker"
+          rowTo={(row) =>
+            row.catalog
+              ? { to: '/sticker/$stickerId', params: { stickerId: row.catalog.id } }
+              : null
+          }
           selectLabel={(row) => row.label}
           selection={bulkSelection}
-          actions={catalogMode ? actions : undefined}
+          actions={catalogMode || stock ? actions : undefined}
           empty="Belum ada stiker."
           filtered={filtered}
           onClearFilters={() => {
             setText('');
-            onFilterChange({ q: '', typeId: '', status: 'all' });
+            onFilterChange({ q: '', typeIds: [], status: 'all' });
           }}
           emptyAction={
             catalogMode && canEdit && !deletedView ? (

@@ -50,29 +50,31 @@ import { QrPresetFormDialog } from './qr-preset-form-dialog';
 import { SheetPreviewDialog } from './sheet-preview-dialog';
 import { TextStyleToolbar } from './text-style-toolbar';
 
-/** Tab form QR: `item` (Item Manual Book), `sumber` (Sumber link), `label`, `logo` (Logo dan Bingkai), `ukuran`. */
-export const QR_FORM_TABS = ['item', 'sumber', 'label', 'logo', 'ukuran'] as const;
+/**
+ * Tab form QR: `detail` (Item Manual Book, konfigurasi default, nama, dan Sumber link; B5 2026-11-22 menggabungkan tab
+ * `item` dan `sumber`), `label`, `logo` (Logo dan Bingkai), `ukuran`.
+ */
+export const QR_FORM_TABS = ['detail', 'label', 'logo', 'ukuran'] as const;
 export type QrFormTab = (typeof QR_FORM_TABS)[number];
 
 const TAB_LABEL: Record<QrFormTab, string> = {
-  item: 'Item',
-  sumber: 'Sumber link',
+  detail: 'Detail',
   label: 'Isi label',
   logo: 'Logo dan bingkai',
   ukuran: 'Ukuran',
 };
 
 /**
- * Field form milik tiap tab (dasar titik galat dan pembukaan tab bergalat). Mode `defaults` tak punya tab `item` dan
- * `sumber`: nama konfigurasi default, BU, dan penempatan nama berada di tab `label`.
+ * Field form milik tiap tab (dasar titik galat dan pembukaan tab bergalat). Mode `defaults` tak punya tab `detail`:
+ * nama konfigurasi default, BU, dan penempatan nama berada di tab `label`.
  */
 function tabOfField(field: string, isDefaults: boolean): QrFormTab {
   switch (field) {
     case 'itemIds':
     case 'presetId':
-      return 'item';
+      return 'detail';
     case 'name':
-      return isDefaults ? 'label' : 'item';
+      return isDefaults ? 'label' : 'detail';
     case 'buId':
     case 'namePlacement':
     case 'title':
@@ -81,7 +83,7 @@ function tabOfField(field: string, isDefaults: boolean): QrFormTab {
       return 'label';
     case 'documentId':
     case 'link':
-      return 'sumber';
+      return 'detail';
     case 'logoFileId':
     case 'defaultLogoId':
     case 'style':
@@ -1018,28 +1020,27 @@ export function QrDesignForm({
     </div>
   );
 
+  // Satu tab "Detail": item, konfigurasi default, nama, lalu sumber link (sumber hanya setelah form siap, seperti tab lama).
+  const detailTab = (
+    <div className="space-y-4">
+      {itemTab}
+      {ready ? sumberTab : null}
+    </div>
+  );
   const tabContent: Record<QrFormTab, React.ReactNode> = {
-    item: itemTab,
-    sumber: sumberTab,
+    detail: detailTab,
     label: labelTab,
     logo: logoTab,
     ukuran: ukuranTab,
   };
-  // Sebelum siap (QR baru belum memilih item) hanya tab Item; sisanya muncul setelah itu.
-  const hasApplyPreset = !isDefaults && (updatePresets?.length ?? 0) > 0;
+  // Sebelum siap (QR baru belum memilih item) hanya tab Detail; sisanya muncul setelah itu. Mode default tak punya Detail.
   const visibleTabs = QR_FORM_TABS.filter((id) =>
-    !ready
-      ? id === 'item'
-      : id === 'item'
-        ? manualBookFlow || hasApplyPreset
-        : id === 'sumber'
-          ? !isDefaults
-          : true,
+    !ready ? id === 'detail' : id === 'detail' ? !isDefaults : true,
   );
 
   // Tab aktif: terkendali bila pembungkus memberi `activeTab`, selain itu lokal.
   const [localTab, setLocalTab] = useState<QrFormTab>(
-    isDefaults ? 'label' : (visibleTabs[0] ?? 'item'),
+    isDefaults ? 'label' : (visibleTabs[0] ?? 'detail'),
   );
   const tab = activeTab ?? localTab;
   const selectTab = (next: QrFormTab) => {

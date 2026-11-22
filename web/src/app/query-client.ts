@@ -1,6 +1,7 @@
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { ApiError } from '@/lib/api/api-error';
+import { refreshActivityLogs } from '@/modules/activity/refresh';
 
 export function shouldRetry(failureCount: number, error: unknown): boolean {
   return error instanceof ApiError && error.code === 'INTERNAL' && failureCount < 1;
@@ -53,9 +54,13 @@ export const defaultQueryOptions = {
   refetchIntervalInBackground: false,
 } as const;
 
-export const queryClient = new QueryClient({
+export const queryClient: QueryClient = new QueryClient({
   queryCache: new QueryCache({ onError: (error) => handleGlobalError(error, globalDeps) }),
-  mutationCache: new MutationCache({ onError: (error) => handleGlobalError(error, globalDeps) }),
+  mutationCache: new MutationCache({
+    onError: (error) => handleGlobalError(error, globalDeps),
+    // Log aktivitas di View mengikuti mutasi sukses apa pun (satu titik, tanpa menyentuh tiap mutasi model).
+    onSuccess: () => refreshActivityLogs(queryClient),
+  }),
   defaultOptions: {
     queries: defaultQueryOptions,
     mutations: { retry: false },

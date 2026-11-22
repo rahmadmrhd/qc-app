@@ -1,5 +1,5 @@
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { headroomOffset, useHeadroom } from './use-headroom';
 
 function scrollTo(y: number) {
@@ -60,4 +60,14 @@ test('disabled (pinned) tak pernah menyembunyikan', () => {
 test('headroomOffset menambah tinggi bar hanya saat terlihat', () => {
   expect(headroomOffset(false, 96)).toBe('calc(3.5rem + 96px)');
   expect(headroomOffset(true, 96)).toBe('calc(3.5rem + 0px)');
+});
+
+test('bar yang dilepas mengembalikan tinggi terukur ke 0 (tak ada sisa di --headroom-offset)', () => {
+  const { result } = renderHook(() => useHeadroom());
+  const bar = document.createElement('div');
+  vi.spyOn(bar, 'getBoundingClientRect').mockReturnValue({ height: 36 } as DOMRect);
+  act(() => result.current.ref(bar));
+  expect(result.current.height).toBe(36);
+  act(() => result.current.ref(null));
+  expect(result.current.height).toBe(0);
 });

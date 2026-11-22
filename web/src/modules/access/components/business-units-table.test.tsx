@@ -139,6 +139,6 @@ test('360 px: kartu berjudul kode, badge status, meta Nama/Item/User; aksi lewat
   expect(within(card).getByText('Retail')).toBeInTheDocument();
   expect(within(card).getByText('Item')).toBeInTheDocument();
   await userEvent.click(within(card).getByRole('button', { name: 'Aksi Retail' }));
-  await userEvent.click(await screen.findByRole('menuitem', { name: 'Ubah Retail' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Ubah' }));
   expect(onEdit).toHaveBeenCalled();
 });

@@ -1,22 +1,30 @@
 import { Check, ExternalLink, Plus, X } from 'lucide-react';
 import {
   createContext,
+  type PointerEvent,
+  type TouchEvent,
   useContext,
   useEffect,
   useId,
   useLayoutEffect,
   useRef,
   useState,
+  type WheelEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { SheetHandle } from '@/components/sheet-handle';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useBackToClose } from '@/hooks/use-back-to-close';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { cn } from '@/lib/utils';
 
-/** `true` di dalam popover chip filter: combobox mulai dengan daftar terbuka (K8). */
-export const ComboboxAutoOpenContext = createContext(false);
+/**
+ * Ada di dalam chip filter (popover desktop atau lembar bawah ponsel): combobox merender daftar opsinya DI TEMPAT
+ * (satu lapisan, bukan lapisan melayang kedua), selalu terbuka, dan memanggil `onPicked` setelah memilih satu nilai
+ * (mode satu pilihan) agar chip menutup. Mode banyak pilihan tetap terbuka sampai chip ditutup.
+ */
+export const ComboboxInlineContext = createContext<{ onPicked?: () => void } | null>(null);
 
 export interface LinkOption {
   id: string;
@@ -60,6 +68,11 @@ export interface ComboboxCommon {
   localFilter?: boolean;
   /** Tandai potongan label opsi yang cocok dengan yang diketik (`<mark>`). */
   highlight?: boolean;
+  /**
+   * Mode banyak pilihan: batas jumlah nilai terpilih. Setelah penuh, opsi lain dinonaktifkan dan daftar memuat pesan
+   * "Maksimal N pilihan" (mis. filter jamak yang dibatasi server; lihat `FILTER_LIST_MAX`).
+   */
+  maxSelected?: number;
   /** Daftar pendek yang tak perlu diketik (enum kecil): papan ketik layar tidak dimunculkan saat field diketuk. */
   keyboardless?: boolean;
 }
@@ -236,15 +249,17 @@ export function ComboboxBase({
   localFilter,
   highlight,
   keyboardless,
+  maxSelected,
   hideLabel,
   required,
   className,
 }: ComboboxBaseProps) {
   const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
-  // Di dalam popover chip filter daftar langsung terbuka (satu ketukan lebih sedikit; K8).
-  const autoOpen = useContext(ComboboxAutoOpenContext);
-  const [open, setOpen] = useState(autoOpen);
+  // Di dalam chip filter daftar dirender di tempat dan selalu terbuka (B2: tanpa lapisan melayang bersarang).
+  const inlineContext = useContext(ComboboxInlineContext);
+  const inline = inlineContext !== null;
+  const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [term, setTerm] = useSearchTerm(onSearchChange, searchDebounceMs ?? DEFAULT_DEBOUNCE_MS);
@@ -259,14 +274,16 @@ export function ComboboxBase({
             option.description?.toLowerCase().includes(needle),
         )
       : options;
-  const visible = multi ? matching.filter((option) => !selected.has(option.id)) : matching;
+  const unselected = multi ? matching.filter((option) => !selected.has(option.id)) : matching;
+  const full = multi && maxSelected !== undefined && selectedIds.length >= maxSelected;
+  const visible = full ? unselected.map((option) => ({ ...option, disabled: true })) : unselected;
   const enabled = visible.filter((option) => !option.disabled);
   const canCreate = Boolean(onCreate) && !disabled;
   // Urutan sorotan keyboard: opsi aktif lalu baris aksi "Tambah" (seperti LinkModel erp).
   const navigable = [...enabled.map((option) => option.id), ...(canCreate ? [CREATE_ID] : [])];
   const activeKey = activeId !== null && navigable.includes(activeId) ? activeId : enabled[0]?.id;
   const active = enabled.find((option) => option.id === activeKey);
-  const showList = open && !disabled;
+  const showList = (inline || open) && !disabled;
   const optionDomId = (optionId: string) => `${listId}-${optionId}`;
 
   // Daftar dirender di `document.body` (portal) dengan posisi `fixed` agar tidak terpotong kontainer yang bisa
@@ -277,10 +294,18 @@ export function ComboboxBase({
   const phone = !useIsDesktop();
   // Lembar bawah (daftar terlalu sempit di atas/bawah): back menutupnya lebih dulu (butir 41b).
   useBackToClose(showList && placement?.sheet === true, close);
+  // Lembar bawah daftar: pegangan seret yang sama dengan `ui/sheet.tsx` (B2d). Expanded = layar penuh; keadaannya
+  // kembali collapsed setiap lembar tertutup atau daftar tak lagi berbentuk lembar.
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const [sheetExpanded, setSheetExpanded] = useState(false);
+  const isSheet = showList && placement?.sheet === true;
+  useEffect(() => {
+    if (!isSheet) setSheetExpanded(false);
+  }, [isSheet]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `chips.length` hanya memicu ukur ulang saat bingkai membesar
   useLayoutEffect(() => {
     const anchor = anchorRef.current;
-    if (!showList || !anchor) {
+    if (!showList || !anchor || inline) {
       setPlacement(null);
       return;
     }
@@ -311,20 +336,20 @@ export function ComboboxBase({
       viewport?.removeEventListener('scroll', update);
       observer?.disconnect();
     };
-  }, [showList, chips.length, phone]);
+  }, [showList, chips.length, phone, inline]);
 
   // Ponsel: saat daftar terbuka, gulirkan field ke bagian atas area terlihat (di bawah header menempel) agar
   // daftar punya ruang di atas papan ketik layar. Hanya sekali per pembukaan.
   const scrolledFor = useRef(false);
   useEffect(() => {
-    if (!showList || !phone) {
+    if (!showList || !phone || inline) {
       scrolledFor.current = false;
       return;
     }
     if (scrolledFor.current) return;
     scrolledFor.current = true;
     anchorRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
-  }, [showList, phone]);
+  }, [showList, phone, inline]);
 
   function close() {
     setOpen(false);
@@ -337,7 +362,8 @@ export function ComboboxBase({
   // jadi `stopPropagation` pada handler React terlambat: pegangan di `window` (capture) lebih dulu.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `close` hanya memakai setter yang stabil
   useEffect(() => {
-    if (!showList) return;
+    // Di dalam chip filter Escape menutup popover chip (Radix), bukan sekadar daftar.
+    if (!showList || inline) return;
     const onEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.stopPropagation();
@@ -346,7 +372,7 @@ export function ComboboxBase({
     };
     window.addEventListener('keydown', onEscape, true);
     return () => window.removeEventListener('keydown', onEscape, true);
-  }, [showList]);
+  }, [showList, inline]);
 
   // Opsi yang disorot keyboard selalu terlihat di dalam daftar yang bisa di-scroll.
   const scrollKey = showList ? activeKey : undefined;
@@ -357,12 +383,15 @@ export function ComboboxBase({
   }, [scrollKey]);
 
   function pick(option: LinkOption) {
-    if (option.disabled) return;
+    if (option.disabled || full) return;
     onPick(option.id);
     setEditing(false);
     setActiveId(null);
     setTerm('');
-    if (!multi) setOpen(false);
+    if (!multi) {
+      setOpen(false);
+      inlineContext?.onPicked?.();
+    }
     inputRef.current?.focus();
   }
 
@@ -383,6 +412,137 @@ export function ComboboxBase({
   }
 
   const inputValue = multi || editing ? term : (displayText ?? '');
+  // Mode di tempat (chip filter) tak punya `placement`: daftar mengalir di bawah input; selain itu lewat portal.
+  const listNode =
+    showList && (inline || placement) ? (
+      <div
+        ref={sheetRef}
+        id={listId}
+        role="listbox"
+        aria-label={label}
+        aria-multiselectable={multi || undefined}
+        data-slot="link-field-list"
+        data-sheet={placement?.sheet || undefined}
+        data-expanded={placement?.sheet && sheetExpanded ? 'true' : undefined}
+        data-inline={inline || undefined}
+        className={
+          placement
+            ? 'fixed z-[60] overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 data-[sheet]:rounded-b-none data-[sheet]:shadow-xl'
+            : 'mt-1 max-h-60 overflow-y-auto overscroll-contain rounded-lg border bg-popover p-1 text-sm text-popover-foreground'
+        }
+        {...(placement
+          ? {
+              style: {
+                pointerEvents: 'auto' as const,
+                left: placement.left,
+                width: placement.width,
+                maxHeight: placement.maxHeight,
+                ...(placement.top === undefined ? {} : { top: placement.top }),
+                ...(placement.bottom === undefined ? {} : { bottom: placement.bottom }),
+                // Lembar yang dilebarkan memenuhi layar (seperti `ui/sheet.tsx` expanded).
+                ...(placement.sheet && sheetExpanded
+                  ? {
+                      // Mengikuti area terlihat (papan ketik iOS tidak mengecilkan layout viewport), seperti dialog layar penuh.
+                      top: 'var(--vv-top, 0px)',
+                      bottom: 'auto',
+                      height: 'var(--vvh, 100dvh)',
+                      left: 0,
+                      width: '100%',
+                      maxHeight: 'none',
+                      borderRadius: 0,
+                    }
+                  : {}),
+              },
+              onPointerDown: (event: PointerEvent<HTMLDivElement>) => event.stopPropagation(),
+              onWheel: (event: WheelEvent<HTMLDivElement>) => event.stopPropagation(),
+              onTouchMove: (event: TouchEvent<HTMLDivElement>) => event.stopPropagation(),
+            }
+          : {})}
+      >
+        {placement?.sheet ? (
+          <SheetHandle
+            keepFocus
+            decorative
+            expanded={sheetExpanded}
+            onExpandedChange={setSheetExpanded}
+            onClose={close}
+            targetRef={sheetRef}
+            className={cn(
+              'sticky top-0 z-10 -mx-1 -mt-1 mb-0 w-[calc(100%+0.5rem)] bg-popover',
+              sheetExpanded && 'pt-[env(safe-area-inset-top)]',
+            )}
+          />
+        ) : null}
+        {visible.map((option) => (
+          // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard ditangani input (ArrowUp/Down/Enter), opsi tidak menerima fokus
+          <div
+            key={option.id}
+            id={optionDomId(option.id)}
+            role="option"
+            tabIndex={-1}
+            aria-selected={selected.has(option.id)}
+            aria-disabled={option.disabled || undefined}
+            className={cn(
+              'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none touch:min-h-11',
+              option.id === activeKey && 'bg-muted text-foreground',
+              option.disabled && 'pointer-events-none opacity-50',
+            )}
+            // Jangan memindah fokus dari input: blur akan menutup daftar sebelum klik sempat dipilih.
+            onMouseDown={(event) => event.preventDefault()}
+            onMouseEnter={() => {
+              if (!option.disabled) setActiveId(option.id);
+            }}
+            onClick={() => pick(option)}
+          >
+            <span className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate">
+                {highlight ? <Highlighted text={option.label} term={term} /> : option.label}
+              </span>
+              {option.description ? (
+                <span className="truncate text-xs text-muted-foreground">{option.description}</span>
+              ) : null}
+            </span>
+            {selected.has(option.id) ? <Check className="size-4 shrink-0" aria-hidden /> : null}
+          </div>
+        ))}
+        {loading ? (
+          <div className="px-2 py-3 text-center text-muted-foreground">Memuat…</div>
+        ) : visible.length === 0 ? (
+          <div className="px-2 py-3 text-center text-muted-foreground">Tidak ada hasil.</div>
+        ) : null}
+        {full ? (
+          <p className="border-t px-2 pt-2 pb-1 text-xs text-muted-foreground">
+            Maksimal {maxSelected} pilihan
+          </p>
+        ) : null}
+        {hasMore ? (
+          <p className="border-t px-2 pt-2 pb-1 text-xs text-muted-foreground">
+            Ada hasil lain, persempit pencarian
+          </p>
+        ) : null}
+        {canCreate ? (
+          <div className="sticky bottom-0 -mx-1 -mb-1 border-t bg-popover p-1">
+            {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard ditangani input (ArrowUp/Down/Enter), baris tidak menerima fokus */}
+            <div
+              id={optionDomId(CREATE_ID)}
+              role="option"
+              tabIndex={-1}
+              aria-selected={false}
+              className={cn(
+                'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none touch:min-h-11',
+                activeKey === CREATE_ID && 'bg-muted text-foreground',
+              )}
+              onMouseDown={(event) => event.preventDefault()}
+              onMouseEnter={() => setActiveId(CREATE_ID)}
+              onClick={create}
+            >
+              <Plus className="size-4" aria-hidden />
+              Tambah {createLabel ?? label}
+            </div>
+          </div>
+        ) : null}
+      </div>
+    ) : null;
   const describedBy = error ? `${id}-error` : undefined;
 
   return (
@@ -521,107 +681,7 @@ export function ComboboxBase({
               </Button>
             ) : null}
           </div>
-          {showList && placement
-            ? createPortal(
-                // Di luar dialog Radix: `pointerEvents: auto` (dialog mematikan klik di luar kontennya), dan
-                // pointerdown/wheel/touch tidak diteruskan ke `document` supaya dialog tidak menutup atau memblokir gulir.
-                <div
-                  id={listId}
-                  role="listbox"
-                  aria-label={label}
-                  aria-multiselectable={multi || undefined}
-                  data-slot="link-field-list"
-                  data-sheet={placement.sheet || undefined}
-                  className="fixed z-[60] overflow-y-auto overscroll-contain rounded-lg bg-popover p-1 text-sm text-popover-foreground shadow-md ring-1 ring-foreground/10 data-[sheet]:rounded-b-none data-[sheet]:shadow-xl"
-                  style={{
-                    pointerEvents: 'auto',
-                    left: placement.left,
-                    width: placement.width,
-                    maxHeight: placement.maxHeight,
-                    ...(placement.top === undefined ? {} : { top: placement.top }),
-                    ...(placement.bottom === undefined ? {} : { bottom: placement.bottom }),
-                  }}
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onWheel={(event) => event.stopPropagation()}
-                  onTouchMove={(event) => event.stopPropagation()}
-                >
-                  {visible.map((option) => (
-                    // biome-ignore lint/a11y/useKeyWithClickEvents: keyboard ditangani input (ArrowUp/Down/Enter), opsi tidak menerima fokus
-                    <div
-                      key={option.id}
-                      id={optionDomId(option.id)}
-                      role="option"
-                      tabIndex={-1}
-                      aria-selected={selected.has(option.id)}
-                      aria-disabled={option.disabled || undefined}
-                      className={cn(
-                        'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none touch:min-h-11',
-                        option.id === activeKey && 'bg-muted text-foreground',
-                        option.disabled && 'pointer-events-none opacity-50',
-                      )}
-                      // Jangan memindah fokus dari input: blur akan menutup daftar sebelum klik sempat dipilih.
-                      onMouseDown={(event) => event.preventDefault()}
-                      onMouseEnter={() => {
-                        if (!option.disabled) setActiveId(option.id);
-                      }}
-                      onClick={() => pick(option)}
-                    >
-                      <span className="flex min-w-0 flex-1 flex-col">
-                        <span className="truncate">
-                          {highlight ? (
-                            <Highlighted text={option.label} term={term} />
-                          ) : (
-                            option.label
-                          )}
-                        </span>
-                        {option.description ? (
-                          <span className="truncate text-xs text-muted-foreground">
-                            {option.description}
-                          </span>
-                        ) : null}
-                      </span>
-                      {selected.has(option.id) ? (
-                        <Check className="size-4 shrink-0" aria-hidden />
-                      ) : null}
-                    </div>
-                  ))}
-                  {loading ? (
-                    <div className="px-2 py-3 text-center text-muted-foreground">Memuat…</div>
-                  ) : visible.length === 0 ? (
-                    <div className="px-2 py-3 text-center text-muted-foreground">
-                      Tidak ada hasil.
-                    </div>
-                  ) : null}
-                  {hasMore ? (
-                    <p className="border-t px-2 pt-2 pb-1 text-xs text-muted-foreground">
-                      Ada hasil lain, persempit pencarian
-                    </p>
-                  ) : null}
-                  {canCreate ? (
-                    <div className="sticky bottom-0 -mx-1 -mb-1 border-t bg-popover p-1">
-                      {/* biome-ignore lint/a11y/useKeyWithClickEvents: keyboard ditangani input (ArrowUp/Down/Enter), baris tidak menerima fokus */}
-                      <div
-                        id={optionDomId(CREATE_ID)}
-                        role="option"
-                        tabIndex={-1}
-                        aria-selected={false}
-                        className={cn(
-                          'flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 select-none touch:min-h-11',
-                          activeKey === CREATE_ID && 'bg-muted text-foreground',
-                        )}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onMouseEnter={() => setActiveId(CREATE_ID)}
-                        onClick={create}
-                      >
-                        <Plus className="size-4" aria-hidden />
-                        Tambah {createLabel ?? label}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>,
-                document.body,
-              )
-            : null}
+          {listNode && (placement ? createPortal(listNode, document.body) : listNode)}
         </div>
       </div>
       {error ? (

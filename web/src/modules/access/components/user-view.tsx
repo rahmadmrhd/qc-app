@@ -5,6 +5,7 @@ import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
 import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 import type { AssignmentLabels } from '../lib/assignment-labels';
 import { deleteLockReason, isProtectedUser, statusLockReason } from '../lib/protected-user';
 import { AssignmentChips } from './assignment-chips';
@@ -119,7 +120,12 @@ export function UserView({
           />
         ) : null
       }
-      aside={<ViewMeta updatedBy={user.updatedBy} updatedAt={user.updatedAt} />}
+      aside={
+        <>
+          <ViewMeta updatedBy={user.updatedBy} updatedAt={user.updatedAt} />
+          <ActivityLog kind="user" id={user.id} />
+        </>
+      }
       tabs={[
         {
           id: 'detail',

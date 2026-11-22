@@ -125,6 +125,6 @@ test('360 px: kartu berjudul kode, badge status, meta Nama; aksi lewat menu "⋯
   expect(within(card).getByText('Nama')).toBeInTheDocument();
   expect(within(card).getByText('Jakarta')).toBeInTheDocument();
   await userEvent.click(within(card).getByRole('button', { name: 'Aksi Jakarta' }));
-  await userEvent.click(await screen.findByRole('menuitem', { name: 'Ubah Jakarta' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Ubah' }));
   expect(onEdit).toHaveBeenCalled();
 });

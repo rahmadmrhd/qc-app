@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from '@tanstack/react-router';
+import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router';
 import { z } from 'zod';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { requireAnyPermission } from '@/modules/auth/permissions';
@@ -7,7 +7,10 @@ import { SERIAL_TABS } from '@/modules/serial/lib/detail-tabs';
 import { serialDetailQueryOptions } from '@/modules/serial/queries';
 
 const searchSchema = z.object({
-  /** Id laporan yang dibuka di tab Riwayat (dari daftar Laporan atau tautan "sudah ada laporan aktif"). */
+  /**
+   * LEGACY: tautan lama yang membuka laporan di tab Riwayat serial. Sejak laporan punya halaman sendiri
+   * (`/serial/reports/$caseId`), `beforeLoad` mengalihkannya ke sana (replace) agar tautan tersimpan tetap bekerja.
+   */
   case: z.string().min(1).optional().catch(undefined),
   tab: z.enum(SERIAL_TABS).optional().catch(undefined),
 });
@@ -21,11 +24,19 @@ export const Route = createFileRoute('/_app/serial/$serialId/')({
     }),
   },
   validateSearch: (search: Record<string, unknown>) => searchSchema.parse(search),
-  beforeLoad: ({ context }) =>
-    requireAnyPermission(context.queryClient, [
+  beforeLoad: async ({ context, search }) => {
+    await requireAnyPermission(context.queryClient, [
       { module: 'serial', level: 'view' },
       { module: 'serialservice', level: 'view' },
-    ]),
+    ]);
+    if (search.case) {
+      throw redirect({
+        to: '/serial/reports/$caseId',
+        params: { caseId: search.case },
+        replace: true,
+      });
+    }
+  },
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(serialDetailQueryOptions(params.serialId)),
   component: SerialDetailRoute,
@@ -33,16 +44,14 @@ export const Route = createFileRoute('/_app/serial/$serialId/')({
 
 function SerialDetailRoute() {
   const { serialId } = Route.useParams();
-  const { case: caseId, tab } = Route.useSearch();
+  const { tab } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const stack = useStackNavigation();
   return (
     <SerialDetailPage
       key={serialId}
       serialId={serialId}
-      {...(caseId ? { caseId } : {})}
-      // `?case=` tanpa `tab` membuka Riwayat (linimasa laporan itu).
-      tab={tab ?? (caseId ? 'riwayat' : undefined)}
+      tab={tab}
       // Berpindah tab = mengganti isi halaman yang sama (replace), bukan langkah riwayat baru.
       onTabChange={(next) =>
         void navigate({

@@ -331,15 +331,15 @@ test('filter status, lokasi, item, dan rentang tanggal menjadi parameter pencari
   await screen.findByText('ABC123');
   await openChip('Status');
   await pickSelect(screen, 'Filter status', 'Dilaporkan');
-  await waitFor(() => expect(lastListInput()).toMatchObject({ status: 'reported' }));
+  await waitFor(() => expect(lastListInput()).toMatchObject({ statuses: ['reported'] }));
   await userEvent.keyboard('{Escape}');
   await openChip('Lokasi');
   await pickLink(screen, 'Filter lokasi', 'Jakarta (JKT)');
-  await waitFor(() => expect(lastListInput()).toMatchObject({ locationId: 'l1' }));
+  await waitFor(() => expect(lastListInput()).toMatchObject({ locationIds: ['l1'] }));
   await userEvent.keyboard('{Escape}');
   await openChip('Item');
   await pickLink(screen, 'Filter item', 'Cisco C9200');
-  await waitFor(() => expect(lastListInput()).toMatchObject({ itemId: 'i1' }));
+  await waitFor(() => expect(lastListInput()).toMatchObject({ itemIds: ['i1'] }));
   await userEvent.keyboard('{Escape}');
   await openChip('Tanggal uji');
   fireEvent.change(screen.getByLabelText('Tanggal uji dari'), { target: { value: '2026-11-01' } });
@@ -348,9 +348,9 @@ test('filter status, lokasi, item, dan rentang tanggal menjadi parameter pencari
   });
   await waitFor(() =>
     expect(lastListInput()).toMatchObject({
-      status: 'reported',
-      locationId: 'l1',
-      itemId: 'i1',
+      statuses: ['reported'],
+      locationIds: ['l1'],
+      itemIds: ['i1'],
       from: '2026-11-01',
       to: '2026-11-30',
     }),
@@ -521,17 +521,23 @@ test('kolom posisi: "Dalam pengiriman · 3 hari" dengan tujuan, dan nomor kasus 
   }
 });
 
-test('filter posisi masuk masukan serials.list lewat Select', async () => {
+test('filter posisi multi-value masuk masukan serials.list lewat MultiSelect; hapus chip mengosongkannya', async () => {
   await renderPage();
   await screen.findByText('ABC123');
   await openChip('Posisi');
   await pickSelect(screen, 'Filter posisi', 'Dalam pengiriman');
-  await waitFor(() => expect(lastListInput()).toMatchObject({ custody: 'transit' }));
-  await pickSelect(screen, 'Filter posisi', 'Semua posisi');
-  await waitFor(() => expect(lastListInput()).not.toHaveProperty('custody'));
+  await waitFor(() => expect(lastListInput()).toMatchObject({ custodies: ['transit'] }));
+  await pickSelect(screen, 'Filter posisi', 'Di servis');
+  await waitFor(() => expect(lastListInput()).toMatchObject({ custodies: ['transit', 'service'] }));
+  expect(
+    screen.getByRole('button', { name: /^Posisi: Dalam pengiriman, Di servis/ }),
+  ).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Hapus filter Posisi' }));
+  await waitFor(() => expect(lastListInput()).not.toHaveProperty('custodies'));
+  expect(lastListInput()).not.toHaveProperty('custody');
 });
 
-test('filter BU hanya menawarkan BU yang terbaca (serial atau serialservice) dan mengirim buId', async () => {
+test('filter BU hanya menawarkan BU yang terbaca (serial atau serialservice) dan mengirim buIds (jamak)', async () => {
   me = {
     ...me,
     businessUnits: withBus([
@@ -548,8 +554,11 @@ test('filter BU hanya menawarkan BU yang terbaca (serial atau serialservice) dan
   // Teks bantu hanya selagi filter BU aktif: serial yang pernah di BU itu ikut tampil.
   expect(screen.queryByText(/pernah di BU ini/)).toBeNull();
   await userEvent.click(await screen.findByRole('option', { name: 'B2 · Unit b2' }));
-  await waitFor(() => expect(lastListInput()).toMatchObject({ buId: 'b2' }));
+  await waitFor(() => expect(lastListInput()).toMatchObject({ buIds: ['b2'] }));
+  // Mode banyak pilihan tetap terbuka: teks bantu muncul seketika, dan pilihan kedua menambah daftar.
   expect(await screen.findByText('Termasuk serial yang pernah di BU ini.')).toBeInTheDocument();
+  await userEvent.click(await screen.findByRole('option', { name: 'B1 · Unit b1' }));
+  await waitFor(() => expect(lastListInput()).toMatchObject({ buIds: ['b2', 'b1'] }));
 });
 
 test('sakelar "Dicatat oleh saya" mengisi createdBy dengan email akun', async () => {
@@ -765,10 +774,30 @@ test('rowSelectable: baris di BU yang tak dikelola tanpa checkbox', async () => 
   expect(screen.queryByRole('checkbox', { name: 'Pilih ORANGLAIN9' })).toBeNull();
 });
 
-test('chip Tampilan hanya bagi manage; deleted=true tulisan tangan bagi non-manage diabaikan', async () => {
+test('pilihan "Terhapus" ada pada chip Status HANYA bagi manage (tanpa chip Tampilan); deleted=true tulisan tangan bagi non-manage diabaikan', async () => {
   await renderPage({ deleted: true });
   await screen.findByText('ABC123');
   expect(screen.queryByRole('button', { name: /^Tampilan/ })).toBeNull();
+  expect(lastListInput()).not.toHaveProperty('deleted');
+  await openChip('Status');
+  expect(await linkOptionNames(screen, 'Filter status')).not.toContain('Terhapus');
+});
+
+test('manage: chip Status memuat Terhapus; memilihnya mengosongkan status alur dan sebaliknya (eksklusif)', async () => {
+  me = manageMe();
+  await renderPage({ statuses: ['reported', 'good'] });
+  await screen.findByText('ABC123');
+  expect(screen.queryByRole('button', { name: /^Tampilan/ })).toBeNull();
+  expect(lastListInput()).toMatchObject({ statuses: ['reported', 'good'] });
+  await openChip('Status');
+  expect(await linkOptionNames(screen, 'Filter status')).toContain('Terhapus');
+  await pickSelect(screen, 'Filter status', 'Terhapus');
+  await waitFor(() => expect(lastListInput()).toMatchObject({ deleted: true }));
+  expect(lastListInput()).not.toHaveProperty('statuses');
+  expect(screen.getByRole('button', { name: /^Status: Terhapus/ })).toBeInTheDocument();
+  // Memilih status alur sesudahnya mengeluarkan tampilan Terhapus.
+  await pickSelect(screen, 'Filter status', 'Dilaporkan');
+  await waitFor(() => expect(lastListInput()).toMatchObject({ statuses: ['reported'] }));
   expect(lastListInput()).not.toHaveProperty('deleted');
 });
 
@@ -823,8 +852,8 @@ test('ponsel (360 px): kartu dengan serial sebagai judul, status sebagai badge, 
   expect(screen.queryByRole('button', { name: 'Hapus ABC123' })).toBeNull();
   await userEvent.click(within(card).getByRole('button', { name: /Aksi ABC123/ }));
   const menu = await screen.findByRole('menu');
-  expect(within(menu).getByRole('menuitem', { name: /Hapus ABC123/ })).toBeInTheDocument();
-  expect(within(menu).getByRole('menuitem', { name: /Ubah ABC123/ })).toBeInTheDocument();
+  expect(within(menu).getByRole('menuitem', { name: 'Hapus' })).toBeInTheDocument();
+  expect(within(menu).getByRole('menuitem', { name: 'Ubah' })).toBeInTheDocument();
 });
 
 test('target panduan: serial-new pada tombol Tambah, serial-table dan serial-filters ada', async () => {

@@ -1,4 +1,4 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -474,4 +474,114 @@ test('ponsel: membuka daftar menggulirkan field ke atas area terlihat dan menyed
   expect(document.querySelector('[data-slot="combobox-spacer"]')).not.toBeNull();
   Reflect.deleteProperty(window, 'visualViewport');
   media.restore();
+});
+
+/** Ponsel dengan field di dekat papan ketik: ruang bawah < 3 baris, jadi daftar berbentuk lembar bawah. */
+function setupSheetMode() {
+  const media = mockMatchMedia(false);
+  Object.defineProperty(window, 'visualViewport', {
+    value: {
+      height: 500,
+      offsetTop: 0,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    },
+    configurable: true,
+  });
+  Object.defineProperty(window, 'innerHeight', { value: 800, configurable: true });
+  window.HTMLElement.prototype.scrollIntoView = vi.fn();
+  const rect = vi.spyOn(window.HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+    top: 420,
+    bottom: 452,
+    left: 0,
+    right: 300,
+    width: 300,
+    height: 32,
+    x: 0,
+    y: 420,
+    toJSON: () => ({}),
+  });
+  return () => {
+    rect.mockRestore();
+    Reflect.deleteProperty(window, 'visualViewport');
+    media.restore();
+  };
+}
+
+test('mode lembar (data-sheet) punya pegangan seret yang sama dengan lembar bawah: ke atas = layar penuh, ke bawah = tutup', async () => {
+  const restore = setupSheetMode();
+  let now = 1000;
+  vi.spyOn(performance, 'now').mockImplementation(() => now);
+  render(<Single />);
+  const input = screen.getByLabelText('Merk');
+  await userEvent.click(input);
+  const list = await screen.findByRole('listbox');
+  expect(list).toHaveAttribute('data-sheet');
+  const handle = list.querySelector('[data-slot="sheet-handle"]') as HTMLElement;
+  expect(handle).not.toBeNull();
+  // Pegangan tak merebut fokus dari input (bila tidak, daftar menutup saat blur) dan tak masuk struktur listbox.
+  expect(handle).toHaveAttribute('aria-hidden', 'true');
+  expect(handle).toHaveAttribute('tabindex', '-1');
+  expect(fireEvent.mouseDown(handle)).toBe(false);
+  // Seret ke atas melebarkan.
+  now = 1000;
+  fireEvent.pointerDown(handle, { pointerId: 1, clientY: 400, button: 0, pointerType: 'touch' });
+  fireEvent.pointerMove(handle, { pointerId: 1, clientY: 300, pointerType: 'touch' });
+  now = 1400;
+  fireEvent.pointerUp(handle, { pointerId: 1, clientY: 300, pointerType: 'touch' });
+  expect(list).toHaveAttribute('data-expanded', 'true');
+  // Mengikuti area terlihat (papan ketik), bukan layout viewport: top/height dari --vv-top/--vvh.
+  expect(list.style.top).toBe('var(--vv-top, 0px)');
+  expect(list.style.height).toBe('var(--vvh, 100dvh)');
+  expect(list.style.bottom).toBe('auto');
+  expect(list.style.maxHeight).toBe('none');
+  // Ketukan (setelah `click` susulan seretan lewat) membalik ke tinggi awal; daftar tetap terbuka.
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 70));
+  });
+  fireEvent.click(handle);
+  expect(list).not.toHaveAttribute('data-expanded');
+  expect(screen.getByRole('listbox')).toBeInTheDocument();
+  // Seret ke bawah dari tinggi awal menutup daftar.
+  now = 2000;
+  fireEvent.pointerDown(handle, { pointerId: 1, clientY: 300, button: 0, pointerType: 'touch' });
+  fireEvent.pointerMove(handle, { pointerId: 1, clientY: 420, pointerType: 'touch' });
+  now = 2400;
+  fireEvent.pointerUp(handle, { pointerId: 1, clientY: 420, pointerType: 'touch' });
+  expect(screen.queryByRole('listbox')).toBeNull();
+  restore();
+});
+
+test('daftar yang bukan lembar tak punya pegangan', async () => {
+  const media = mockMatchMedia(true);
+  render(<Single />);
+  await userEvent.click(screen.getByLabelText('Merk'));
+  const list = await screen.findByRole('listbox');
+  expect(list.querySelector('[data-slot="sheet-handle"]')).toBeNull();
+  media.restore();
+});
+
+test('maxSelected: setelah penuh, opsi lain dinonaktifkan dengan pesan, dan chip yang dilepas membuka kembali', async () => {
+  const onChange = vi.fn();
+  render(<Multi value={['a', 'b']} maxSelected={2} onChange={onChange} />);
+  await userEvent.click(screen.getByLabelText('BU'));
+  const list = await screen.findByRole('listbox');
+  expect(within(list).getByText('Maksimal 2 pilihan')).toBeInTheDocument();
+  const delta = within(list).getByRole('option', { name: 'Delta' });
+  expect(delta).toHaveAttribute('aria-disabled', 'true');
+  await userEvent.click(delta);
+  expect(onChange).not.toHaveBeenCalled();
+  // Melepas satu chip membuka kembali ruang pilihan.
+  await userEvent.click(screen.getByRole('button', { name: /Hapus Alfa|Lepas Alfa|Alfa/ }));
+  expect(onChange).toHaveBeenCalledWith(['b']);
+  await userEvent.click(await screen.findByRole('option', { name: 'Delta' }));
+  expect(onChange).toHaveBeenLastCalledWith(['b', 'd']);
+});
+
+test('tanpa maxSelected tak ada batas dan tak ada pesan', async () => {
+  render(<Multi value={['a', 'b']} />);
+  await userEvent.click(screen.getByLabelText('BU'));
+  const list = await screen.findByRole('listbox');
+  expect(within(list).queryByText(/^Maksimal/)).toBeNull();
+  expect(within(list).getByRole('option', { name: 'Delta' })).not.toHaveAttribute('aria-disabled');
 });

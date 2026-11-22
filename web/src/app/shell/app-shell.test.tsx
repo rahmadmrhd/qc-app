@@ -1,5 +1,5 @@
 import type { MeDto } from '@shared/contract';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeAll, beforeEach, expect, test, vi } from 'vitest';
 import type { GuideEntry } from '@/modules/guide/lib/types';
@@ -144,12 +144,12 @@ test('area utama boleh menyusut (min-w-0): tabel lebar menggulir di wadahnya, bu
 });
 
 test('sidebar tersimpan terlipat dirender collapsed; SidebarTrigger menyimpan keadaan terbuka', async () => {
-  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: false, expanded: ['item'] }));
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: false }));
   render(<AppShell />);
   expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'collapsed');
   await userEvent.click(screen.getByRole('button', { name: /Toggle Sidebar/i }));
   expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'expanded');
-  expect(readSidebarState()).toEqual({ open: true, expanded: ['item'] });
+  expect(readSidebarState()).toEqual({ open: true });
 });
 
 test('tanpa penyimpanan sidebar terbuka dan tidak menulis cookie sidebar_state', () => {
@@ -177,5 +177,86 @@ test('butir 41: di ponsel judul ada di header di sebelah tombol menu, tanpa bari
   expect(container.querySelector('[data-slot="phone-breadcrumb"]')).toBeNull();
   expect(container.querySelector('header [data-slot="sidebar-trigger"]')).not.toBeNull();
   expect(container.querySelector('header [aria-label="Ganti tema"]')).toBeNull();
+  window.innerWidth = 1024;
+});
+
+test('B12: pada rentang overlay (768-959 px) sidebar mulai tertutup dan buka/tutup tak mengubah pilihan tersimpan', async () => {
+  window.innerWidth = 800;
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: true }));
+  render(<AppShell />);
+  expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'collapsed');
+  await userEvent.click(screen.getByRole('button', { name: /Toggle Sidebar/i }));
+  expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'expanded');
+  // Pilihan tersimpan (untuk layar lebar) tak berubah.
+  expect(readSidebarState()).toEqual({ open: true });
+  await userEvent.click(screen.getByRole('button', { name: /Toggle Sidebar/i }));
+  expect(readSidebarState()).toEqual({ open: true });
+  window.innerWidth = 1024;
+});
+
+test('B12/D2: ukuran jendela berubah lintas rentang overlay menyinkronkan keadaan terbuka (tanpa menulis pilihan tersimpan)', async () => {
+  window.innerWidth = 1024;
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: true }));
+  render(<AppShell />);
+  expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'expanded');
+  // Tablet diputar ke 800 px: masuk rentang overlay, sidebar menutup sendiri (tak menutupi isi dengan latar gelap).
+  window.innerWidth = 800;
+  await act(async () => {
+    window.dispatchEvent(new Event('resize'));
+  });
+  expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'collapsed');
+  expect(readSidebarState()).toEqual({ open: true });
+  // Kembali lebar: pilihan tersimpan (terbuka) dipulihkan.
+  window.innerWidth = 1200;
+  await act(async () => {
+    window.dispatchEvent(new Event('resize'));
+  });
+  expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'expanded');
+  // Pilihan tersimpan tertutup: tetap tertutup saat kembali lebar.
+  window.innerWidth = 800;
+  await act(async () => {
+    window.dispatchEvent(new Event('resize'));
+  });
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: false }));
+  window.innerWidth = 1200;
+  await act(async () => {
+    window.dispatchEvent(new Event('resize'));
+  });
+  expect(screen.getByTestId('sidebar')).toHaveAttribute('data-state', 'collapsed');
+  window.innerWidth = 1024;
+});
+
+test('C15: transisi lengkap lintas 768/960 px (termasuk overlay -> ponsel -> lebar) memulihkan pilihan tersimpan', async () => {
+  const resizeTo = async (width: number) => {
+    window.innerWidth = width;
+    await act(async () => {
+      window.dispatchEvent(new Event('resize'));
+    });
+  };
+  const state = () => screen.getByTestId('sidebar').getAttribute('data-state');
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: true }));
+  window.innerWidth = 800;
+  render(<AppShell />);
+  // Dimuat di rentang overlay: mulai tertutup.
+  expect(state()).toBe('collapsed');
+  // overlay -> ponsel -> lebar: pilihan tersimpan (terbuka) dipulihkan (dulu terlewat).
+  await resizeTo(700);
+  await resizeTo(1200);
+  expect(state()).toBe('expanded');
+  // lebar -> ponsel -> overlay: menutup (tak menutupi isi), pilihan tersimpan tak berubah.
+  await resizeTo(600);
+  expect(readSidebarState()).toEqual({ open: true });
+  await resizeTo(850);
+  expect(state()).toBe('collapsed');
+  expect(readSidebarState()).toEqual({ open: true });
+  // overlay -> lebar langsung masih bekerja, dan pilihan tersimpan tertutup tetap tertutup.
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: false }));
+  await resizeTo(1100);
+  expect(state()).toBe('collapsed');
+  // ponsel -> lebar langsung (mis. jendela diperbesar sekali jalan) juga memulihkan.
+  localStorage.setItem(SIDEBAR_STORAGE_KEY, JSON.stringify({ open: true }));
+  await resizeTo(500);
+  await resizeTo(1300);
+  expect(state()).toBe('expanded');
   window.innerWidth = 1024;
 });

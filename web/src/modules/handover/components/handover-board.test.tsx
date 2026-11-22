@@ -139,7 +139,7 @@ test('kanban kit: setinggi viewport, judul kolom tetap, hanya daftar kartu tiap 
   expect(screen.getByLabelText('Papan Serah Terima')).toHaveAttribute('data-height', 'viewport');
   const column = screen.getByRole('group', { name: 'Baru' });
   expect(column.className).toContain('flex-col');
-  expect(column.className).toContain('min-w-[290px]');
+  expect(column.className).toContain('min-w-[340px]');
   const scroller = column.querySelector('[data-slot="column-cards"]');
   expect(scroller?.className).toContain('overflow-y-auto');
 });

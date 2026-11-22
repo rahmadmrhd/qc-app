@@ -79,6 +79,7 @@ export function AuditTable({
       id: 'view',
       action: 'view',
       label: `Lihat detail ${auditActionLabel(entry.action)} ${entry.target}`,
+      shortLabel: 'Lihat',
       onSelect: () => onSelect(entry),
     },
   ];

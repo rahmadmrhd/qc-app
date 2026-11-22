@@ -3,6 +3,7 @@ import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { requireAnyPermission } from '@/modules/auth/permissions';
 import { HandoverBoardPage } from '@/modules/handover/components/handover-board-page';
 import {
+  customersOfSearch,
   handoverSearchSchema,
   searchFromStatus,
   statusFromSearch,
@@ -24,32 +25,33 @@ function HandoversPage() {
   const stack = useStackNavigation();
   const search = Route.useSearch();
   const status = statusFromSearch(search);
-  const { loc, customer, deleted } = search;
+  const { loc, deleted } = search;
+  const customers = customersOfSearch(search);
   return (
     <HandoverBoardPage
       status={status}
       locationId={loc}
-      customerId={customer}
+      customerIds={customers}
       deleted={deleted === true}
       // Filter (status, customer, tampilan) mengganti entri riwayat, tidak menambahnya.
-      onClearCustomer={() =>
+      onCustomersChange={(next) =>
         void navigate({
           to: '/handover',
-          search: searchFromStatus(status, loc, undefined, deleted),
+          search: searchFromStatus(status, loc, next, deleted),
           replace: true,
         })
       }
       onDeletedChange={(next) =>
         void navigate({
           to: '/handover',
-          search: searchFromStatus(status, loc, customer, next),
+          search: searchFromStatus(status, loc, customers, next),
           replace: true,
         })
       }
       onStatusChange={(next) =>
         void navigate({
           to: '/handover',
-          search: searchFromStatus(next, loc, customer, deleted),
+          search: searchFromStatus(next, loc, customers, deleted),
           replace: true,
         })
       }
@@ -57,14 +59,14 @@ function HandoversPage() {
         stack.push({
           to: '/handover/$handoverId',
           params: { handoverId },
-          search: searchFromStatus(status, loc, customer, deleted),
+          search: searchFromStatus(status, loc, customers, deleted),
         })
       }
       onEdit={(handoverId) =>
         stack.push({
           to: '/handover/$handoverId/edit',
           params: { handoverId },
-          search: searchFromStatus(status, loc, customer, deleted),
+          search: searchFromStatus(status, loc, customers, deleted),
         })
       }
       onCreate={() => stack.push({ to: '/handover/new' })}

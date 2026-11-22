@@ -52,7 +52,7 @@ vi.mock('@/modules/markdown/wysiwyg-editor', () => ({
   ),
 }));
 
-import { ActButtons, type ActKind, actButtonSpecs } from './act-buttons';
+import { ActButtons, type ActKind, actButtonSpecs, canReportDamage } from './act-buttons';
 import { ActDialog } from './act-dialog';
 
 type Level = 'none' | 'view' | 'edit' | 'manage';
@@ -272,9 +272,20 @@ test('ActButtons: tanpa aksi tidak tampil; tombol memanggil onPick dengan jenis 
       onPick={onPick}
     />,
   );
-  await userEvent.click(screen.getByRole('button', { name: 'Lapor rusak' }));
-  expect(onPick).toHaveBeenCalledWith('report');
+  // Lapor rusak tidak ada di baris update: ia ActionButton di bar judul View (`canReportDamage`).
+  expect(screen.queryByRole('button', { name: 'Lapor rusak' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Catatan' }));
+  expect(onPick).toHaveBeenCalledWith('note');
   expect(container.querySelector('select, option')).toBeNull();
+});
+
+test('canReportDamage mengikuti tabel transisi: hanya QC pada serial lolos di QC', () => {
+  const qc = { serial: true, serialservice: false };
+  expect(canReportDamage({ status: 'good', custody: 'qc' }, qc)).toBe(true);
+  expect(canReportDamage({ status: 'reported', custody: 'qc' }, qc)).toBe(false);
+  expect(
+    canReportDamage({ status: 'good', custody: 'qc' }, { serial: false, serialservice: true }),
+  ).toBe(false);
 });
 
 test('Lapor rusak: catatan wajib; payload hanya catatan dan tanggal', async () => {
@@ -855,4 +866,14 @@ test('gambar catatan yang masih diunggah menahan tombol kirim sampai selesai', a
   expect(screen.getByRole('button', { name: 'Kirim catatan' })).toBeDisabled();
   await userEvent.click(screen.getByRole('button', { name: 'Simulasi unggah selesai' }));
   expect(screen.getByRole('button', { name: 'Kirim catatan' })).toBeEnabled();
+});
+
+test('P6: dialog Update Serial layar penuh di ponsel', () => {
+  renderDialog(SERIAL, 'report');
+  const dialog = screen.getByRole('dialog');
+  expect(dialog).toHaveAttribute('data-size', 'full-on-phone');
+  expect(dialog.className).toContain('max-md:data-[size=full-on-phone]:h-[var(--vvh,100dvh)]');
+  expect(dialog.className).toContain(
+    'max-md:data-[size=full-on-phone]:pt-[env(safe-area-inset-top)]',
+  );
 });

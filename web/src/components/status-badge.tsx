@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 export function ActiveStatusBadge({ status, label }: { status: string; label?: string }) {
   const active = status === 'active';
   return (
-    <Badge color={active ? 'success' : 'secondary'} variant="soft" dot>
+    <Badge color={active ? 'success' : 'secondary'} variant="soft">
       {label ?? (active ? 'Aktif' : 'Nonaktif')}
     </Badge>
   );

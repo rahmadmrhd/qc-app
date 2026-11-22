@@ -104,24 +104,24 @@ const EDIT: QrEditContext = {
   stickerVersion: 1,
 };
 
-test('tab menurut alur: Item hanya untuk alur Manual Book, Sumber link bukan untuk mode default', () => {
+test('tab menurut alur: Detail (item + sumber link) bukan untuk mode default', () => {
   const design = renderForm();
-  expect(tabNames()).toEqual(['Sumber link', 'Isi label', 'Logo dan bingkai', 'Ukuran']);
+  expect(tabNames()).toEqual(['Detail', 'Isi label', 'Logo dan bingkai', 'Ukuran']);
   design.unmount();
   renderForm({ mode: 'defaults', defaultValues: toPresetFormValues() });
   expect(tabNames()).toEqual(['Isi label', 'Logo dan bingkai', 'Ukuran']);
 });
 
-test('QR baru sebelum item dipilih hanya punya tab Item; lima tab muncul setelah siap', async () => {
+test('QR baru sebelum item dipilih hanya punya tab Detail; empat tab muncul setelah siap', async () => {
   renderForm({ presets: [preset], defaultValues: toQrFormDefaults() });
-  expect(tabNames()).toEqual(['Item']);
+  expect(tabNames()).toEqual(['Detail']);
   await pickLink(screen, 'Item', 'PBE M5-400');
-  expect(tabNames()).toEqual(['Item', 'Sumber link', 'Isi label', 'Logo dan bingkai', 'Ukuran']);
+  expect(tabNames()).toEqual(['Detail', 'Isi label', 'Logo dan bingkai', 'Ukuran']);
 });
 
 test('simpan gagal validasi: tab bergalat bertitik dan dibuka otomatis', async () => {
   const { onSubmit } = renderForm();
-  expect(screen.getByRole('tab', { name: /^Sumber link/ })).toHaveAttribute('data-state', 'active');
+  expect(screen.getByRole('tab', { name: /^Detail/ })).toHaveAttribute('data-state', 'active');
   await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
   await waitFor(() =>
     expect(screen.getByRole('tab', { name: /^Isi label/ })).toHaveAttribute('data-state', 'active'),
@@ -131,7 +131,7 @@ test('simpan gagal validasi: tab bergalat bertitik dan dibuka otomatis', async (
   expect(onSubmit).not.toHaveBeenCalled();
 });
 
-test('galat nama dari server pada QR Manual Book membuka tab Item', async () => {
+test('galat nama dari server pada QR Manual Book membuka tab Detail', async () => {
   renderForm({
     edit: EDIT,
     defaultValues: {
@@ -145,9 +145,9 @@ test('galat nama dari server pada QR Manual Book membuka tab Item', async () => 
     fieldErrors: { name: 'Nama sudah dipakai' },
   });
   await waitFor(() =>
-    expect(screen.getByRole('tab', { name: /^Item/ })).toHaveAttribute('data-state', 'active'),
+    expect(screen.getByRole('tab', { name: /^Detail/ })).toHaveAttribute('data-state', 'active'),
   );
-  expect(hasErrorDot('Item')).toBe(true);
+  expect(hasErrorDot('Detail')).toBe(true);
   expect(screen.getByText('Nama sudah dipakai')).toBeInTheDocument();
 });
 
@@ -170,9 +170,9 @@ test('pindah tab tidak menghilangkan isian di tab lain (semua panel tetap terpas
   expect(onSubmit.mock.calls[0]?.[0]).toMatchObject({ title: 'Panduan' });
 });
 
-test('form tidak membuat input berkas sendiri: hanya pemilih PDF di tab Sumber link', () => {
+test('form tidak membuat input berkas sendiri: hanya pemilih PDF di tab Detail', () => {
   renderForm();
   const inputs = [...document.querySelectorAll('input[type="file"]')];
   expect(inputs).toHaveLength(1);
-  expect(inputs[0]?.closest('[data-form-tab="sumber"]')).not.toBeNull();
+  expect(inputs[0]?.closest('[data-form-tab="detail"]')).not.toBeNull();
 });

@@ -9,6 +9,7 @@ import type { RowSelection } from '@/components/data-table/use-row-selection';
 import { AttachmentView } from '@/components/file-dialog';
 import type { UploadEntry } from '@/components/file-dialog/use-background-uploads';
 import { MobileCard } from '@/components/mobile/mobile-card';
+import { useRegisterSelectMode } from '@/components/page/select-mode';
 import { cn } from '@/lib/utils';
 import type { StagingRow } from '../lib/draft';
 import { RowBadges, rowStatus, type StagingTableProps, TONE_CLASS } from './staging-table';
@@ -169,6 +170,15 @@ export function StagingCards({
     disabled ? undefined : selection,
     true,
   );
+  const allSelected = ids.length > 0 && ids.every((id) => selection.selected.has(id));
+  // Mode pilih = SATU bar bawah (bar pilihan Serial lewat `SelectModeProvider` RecordPage); header kit di atas daftar
+  // hanya cadangan bila tak ada penampung (P5).
+  const hosted = useRegisterSelectMode(selecting, {
+    count: selection.count,
+    allSelected,
+    exit,
+    toggleAll: () => onSelectAll(!allSelected),
+  });
   const uploadsByRow = useMemo(() => {
     const byRow = new Map<string, UploadEntry[]>();
     for (const entry of uploadEntries ?? []) {
@@ -180,7 +190,7 @@ export function StagingCards({
   }, [uploadEntries]);
   return (
     <div className="space-y-2">
-      {selecting ? <SelectionBar selection={selection} ids={ids} onExit={exit} /> : null}
+      {selecting && !hosted ? <SelectionBar selection={selection} ids={ids} onExit={exit} /> : null}
       {!selecting && !disabled && rows.length > 0 ? (
         <>
           <StartSelectButton label="Pilih baris draft" onStart={enter} tour="serial-row-select" />

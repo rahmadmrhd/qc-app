@@ -9,6 +9,7 @@ import { useLongPressSelect } from '@/components/data-table/use-long-press-selec
 import { type RowSelection, usePruneSelection } from '@/components/data-table/use-row-selection';
 import { useInfiniteSentinel } from '@/components/file-dialog/use-infinite-sentinel';
 import { ListState } from '@/components/page/list-state';
+import { useRegisterSelectMode } from '@/components/page/select-mode';
 import { Spinner } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -91,6 +92,15 @@ export function GridView<T>({
   const desktop = useIsDesktop();
   // Ponsel: pilih massal tahan-lama (checkbox hanya tampil di mode pilih); >= 768 px checkbox selalu tampil.
   const { selecting, bind, enter, exit } = useLongPressSelect(selection, !desktop);
+  const selectableIds = items.filter((item) => isSelectable?.(item) ?? true).map(itemKey);
+  const allSelected =
+    selectableIds.length > 0 && selectableIds.every((id) => selection?.selected.has(id));
+  const hosted = useRegisterSelectMode(selecting, {
+    count: selection?.count ?? 0,
+    allSelected,
+    exit,
+    toggleAll: () => selection?.setAll(selectableIds, !allSelected),
+  });
   const { ref: sentinelRef, supported } = useInfiniteSentinel({
     enabled: Boolean(hasMore) && !loadingMore && !loadMoreError,
     onVisible: () => onLoadMore?.(),
@@ -129,12 +139,8 @@ export function GridView<T>({
 
   return (
     <>
-      {selection && selecting ? (
-        <SelectionBar
-          selection={selection}
-          ids={items.filter((item) => isSelectable?.(item) ?? true).map(itemKey)}
-          onExit={exit}
-        />
+      {selection && selecting && !hosted ? (
+        <SelectionBar selection={selection} ids={selectableIds} onExit={exit} />
       ) : null}
       {selection && !desktop && !selecting ? (
         <>

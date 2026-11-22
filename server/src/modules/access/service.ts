@@ -126,6 +126,7 @@ export function listAuditPage(env: Env, params: ListAuditPageInput): Promise<Aud
     ...(cursor ? { cursor } : {}),
     limit: params.limit ?? PAGE_DEFAULT_LIMIT,
     action: params.action ?? '',
+    ...(params.actions ? { actions: params.actions } : {}),
     query: params.query ?? '',
   });
 }
@@ -201,6 +202,24 @@ export async function listUserDtos(
     .filter((user) => filter !== 'inactive' || user.status === 'inactive')
     .map((user) => toUserDto(env, user, roles))
     .sort((a, b) => a.email.localeCompare(b.email));
+}
+
+/**
+ * Gerbang baca untuk `activity.list` atas pengguna, role, lokasi, dan BU: aturan yang sama dengan rute `get` keempatnya
+ * (`access: view`; record terhapus hanya bagi `access: manage`, selain itu dan id tak dikenal `NOT_FOUND` seragam).
+ */
+export async function assertAccessRecordReadable(
+  env: Env,
+  table: 'users' | 'roles' | 'locations' | 'businessUnits',
+  id: string,
+  actor: UserContext,
+): Promise<void> {
+  const tables = await loadAccessTables(env);
+  const records: readonly { id: string; deletedAt: string }[] = tables[table];
+  const record = records.find((item) => item.id === id);
+  if (!record || (!isLiveRecord(record) && !canSeeDeleted(actor))) {
+    throw appError('NOT_FOUND', 'Data tidak ditemukan');
+  }
 }
 
 /** Satu pengguna menurut id. Terhapus hanya bagi `access: manage`; selain itu `NOT_FOUND` (seperti id tak dikenal). */

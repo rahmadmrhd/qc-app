@@ -90,9 +90,13 @@ test('aksi menurut izin: view tidak melihat Ubah/Ekspor/Hapus; Unduh hanya bila 
   const exported = design(EXPORTED);
   const first = await renderTable([exported], { canEdit: false, canManage: false });
   expect(screen.queryByRole('button', { name: /^(Ubah|Ekspor|Hapus)/ })).toBeNull();
-  await userEvent.click(screen.getByRole('button', { name: 'Unduh PDF Panduan USW' }));
+  // Unduh PDF dan PNG = satu tombol "Unduh" dengan satu dropdown (B5b).
+  expect(screen.queryByRole('button', { name: 'Unduh PDF Panduan USW' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Unduh Panduan USW' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Unduh PDF Panduan USW' }));
   expect(first.onDownload).toHaveBeenCalledWith(exported, 'pdf');
-  await userEvent.click(screen.getByRole('button', { name: 'Unduh PNG Panduan USW' }));
+  await userEvent.click(screen.getByRole('button', { name: 'Unduh Panduan USW' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Unduh PNG Panduan USW' }));
   expect(first.onDownload).toHaveBeenCalledWith(exported, 'png');
   first.unmount();
   // izin edit: ubah dan ekspor; hapus butuh izin kelola
@@ -231,6 +235,27 @@ test('ponsel (360 px): kartu dengan nama sebagai judul; aksi lewat satu tombol m
   expect(screen.queryByRole('button', { name: 'Ubah Panduan USW' })).toBeNull();
   await userEvent.click(screen.getByRole('button', { name: /Aksi/ }));
   const menu = await screen.findByRole('menu');
-  await userEvent.click(within(menu).getByRole('menuitem', { name: /Ubah Panduan USW/ }));
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'Ubah' }));
   expect(onEdit).toHaveBeenCalledTimes(1);
+});
+
+test('Ekspor tampil sebagai tombol ikon + teks (beda dari Unduh yang ikon saja)', async () => {
+  await renderTable([design(EXPORTED)], { canEdit: true, canManage: false });
+  expect(screen.getByRole('button', { name: 'Ekspor ulang Panduan USW' })).toHaveTextContent(
+    'Ekspor ulang',
+  );
+  expect(screen.getByRole('button', { name: 'Unduh Panduan USW' })).not.toHaveTextContent('Unduh');
+});
+
+test('ponsel: Unduh PDF/PNG menjadi grup datar "Unduh" di menu aksi, tanpa menu bersarang', async () => {
+  window.innerWidth = 360;
+  media = mockMatchMedia(false);
+  const exported = design(EXPORTED);
+  const { onDownload } = await renderTable([exported], { canEdit: true });
+  await userEvent.click(screen.getByRole('button', { name: /Aksi/ }));
+  const menu = await screen.findByRole('menu');
+  expect(screen.getAllByRole('menu')).toHaveLength(1);
+  expect(within(menu).getByText('Unduh')).toBeInTheDocument();
+  await userEvent.click(within(menu).getByRole('menuitem', { name: 'PNG' }));
+  expect(onDownload).toHaveBeenCalledWith(exported, 'png');
 });

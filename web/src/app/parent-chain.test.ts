@@ -13,6 +13,9 @@ test('rantai induk: butir menu = Beranda saja; detail/ubah/tambah naik per tingk
   expect(parentChainFor('/item/brands/b1', patterns)).toEqual(['/', '/item/brands']);
   expect(parentChainFor('/handover/h1/edit', patterns)).toEqual(['/', '/handover', '/handover/h1']);
   expect(parentChainFor('/serial/report', patterns)).toEqual(['/', '/serial/reports']);
+  // Detail laporan Serial: induknya daftar Laporan; detail Serial tetap di bawah daftar Serial.
+  expect(parentChainFor('/serial/reports/c1', patterns)).toEqual(['/', '/serial/reports']);
+  expect(parentChainFor('/serial/s1', patterns)).toEqual(['/', '/serial']);
   expect(parentChainFor('/sticker/library', patterns)).toEqual(['/']);
 });
 

@@ -283,7 +283,11 @@ export async function listPostels(
 }
 
 /** Catatan menurut id bagi pembaca: terhapus hanya terbaca pemegang izin Pulihkan, selain itu `NOT_FOUND`. */
-async function readablePostel(env: Env, user: UserContext, id: string): Promise<PostelRecord> {
+export async function readablePostel(
+  env: Env,
+  user: UserContext,
+  id: string,
+): Promise<PostelRecord> {
   const record = await findPostelRecord(env.DB, id);
   if (!record || (record.deletedAt !== '' && !canSeeDeletedPostel(user))) {
     throw appError('NOT_FOUND', 'Postel tidak ditemukan');

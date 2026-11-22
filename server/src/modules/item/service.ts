@@ -318,15 +318,18 @@ export async function listItemPage(
   const instructionFilter = instructionFilterSql(input);
   where.push(...instructionFilter.clauses);
   binds.push(...instructionFilter.binds);
-  if (input.brandId) {
-    where.push('i.brand_id = ?');
-    binds.push(input.brandId);
+  // Filter jamak menang atas yang tunggal; keduanya hanya MENYEMPITKAN (irisan dengan BU terlihat di atas tetap berlaku).
+  const brandIds = input.brandIds ?? (input.brandId ? [input.brandId] : undefined);
+  if (brandIds) {
+    where.push(`i.brand_id IN (${brandIds.map(() => '?').join(', ')})`);
+    binds.push(...brandIds);
   }
-  if (input.buId) {
+  const buFilter = input.buIds ?? (input.buId ? [input.buId] : undefined);
+  if (buFilter) {
     where.push(
-      'EXISTS (SELECT 1 FROM item_business_units y WHERE y.item_id = i.id AND y.bu_id = ?)',
+      `EXISTS (SELECT 1 FROM item_business_units y WHERE y.item_id = i.id AND y.bu_id IN (${buFilter.map(() => '?').join(', ')}))`,
     );
-    binds.push(input.buId);
+    binds.push(...buFilter);
   }
   if (input.manualBook === 'has') where.push(HAS_MANUAL_BOOK_SQL);
   if (input.manualBook === 'missing') where.push(`NOT ${HAS_MANUAL_BOOK_SQL}`);
@@ -408,6 +411,30 @@ export function restorableItemsSql(user: UserContext): { sql: string; binds: str
 }
 
 /**
+ * Syarat baca satu item (dipakai `items.get` dan `activity.list`): item yang tidak ada DAN yang tidak beririsan dengan
+ * BU terlihat user sama-sama `NOT_FOUND`. Item terhapus hanya terlihat bagi yang berhak memulihkannya (`item: manage`
+ * pada SEMUA BU item); selain itu seperti tak ada (soft delete §4.2).
+ */
+function assertItemRecordReadable(
+  user: UserContext,
+  found: ItemRecord,
+  buIds: readonly string[],
+): void {
+  assertItemVisible(user, buIds);
+  if (found.deletedAt !== '' && !canActOnItem(user, buIds, 'manage')) {
+    throw appError('NOT_FOUND', 'Item tidak ditemukan');
+  }
+}
+
+/** Gerbang baca ringan (tanpa membangun DTO) untuk `activity.list`: aturan yang sama dengan `items.get`. */
+export async function assertItemReadable(env: Env, id: string, user: UserContext): Promise<void> {
+  const found = await findItemAny(env, id);
+  if (!found) throw appError('NOT_FOUND', 'Item tidak ditemukan');
+  const buIds = ((await itemBusinessUnitsOf(env.DB, [id])).get(id) ?? []).map((bu) => bu.id);
+  assertItemRecordReadable(user, found, buIds);
+}
+
+/**
  * Detail item. Item yang tidak ada DAN item yang tidak beririsan dengan BU terlihat user sama-sama `NOT_FOUND`
  * (bukan `FORBIDDEN`), supaya keberadaan item di BU lain tidak bocor.
  */
@@ -419,13 +446,11 @@ export async function getItemDto(
   const found = await findItemAny(env, input.id);
   if (!found) throw appError('NOT_FOUND', 'Item tidak ditemukan');
   const view = await viewOf(env, found);
-  const buIds = view.businessUnits.map((bu) => bu.id);
-  assertItemVisible(user, buIds);
-  // Item terhapus hanya terlihat bagi yang berhak memulihkannya (`item: manage` pada SEMUA BU item); selain itu
-  // seperti tak ada (soft delete §4.2).
-  if (found.deletedAt !== '' && !canActOnItem(user, buIds, 'manage')) {
-    throw appError('NOT_FOUND', 'Item tidak ditemukan');
-  }
+  assertItemRecordReadable(
+    user,
+    found,
+    view.businessUnits.map((bu) => bu.id),
+  );
   return toItemDto(
     view,
     await instructionViewsOf(env, view.id, view.businessUnits, view.instructions),

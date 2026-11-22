@@ -36,17 +36,18 @@ export const accessKeys = {
 export const businessUnitOptionsKey = ['businessUnits', 'options'] as const;
 
 export interface AuditFilter {
-  action?: string;
+  /** Satu atau lebih aksi (salah satu dari); kosong/tak ada = semua aksi. */
+  actions?: readonly string[];
   query?: string;
 }
 
 /** Log audit berkursor (20 per halaman, terbaru dahulu); filter aksi dan kata kunci dikerjakan server. */
 export function auditInfiniteQueryOptions(filter: AuditFilter) {
   return infiniteQueryOptions({
-    queryKey: [...accessKeys.audit, filter.action ?? '', filter.query ?? ''] as const,
+    queryKey: [...accessKeys.audit, (filter.actions ?? []).join(','), filter.query ?? ''] as const,
     queryFn: ({ pageParam }) =>
       api('access.audit.list', {
-        ...(filter.action ? { action: filter.action } : {}),
+        ...(filter.actions && filter.actions.length > 0 ? { actions: [...filter.actions] } : {}),
         ...(filter.query ? { query: filter.query } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
       }),

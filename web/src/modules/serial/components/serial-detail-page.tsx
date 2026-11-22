@@ -2,8 +2,15 @@ import type { SerialDto, SerialEventDto, SerialProofPhotoDto } from '@shared/con
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import type { ActionKind } from '@/components/action-button';
 import { useAfterDelete } from '@/components/page/use-after-delete';
-import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
+import {
+  DetailList,
+  type ViewAction,
+  ViewMeta,
+  ViewPage,
+  ViewSection,
+} from '@/components/page/view-page';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
@@ -20,13 +27,14 @@ import { ProofReplaceProvider } from '../lib/proof-replace-context';
 import { hasPendingProof, PROOF_POLL_MS } from '../lib/proof-state';
 import { useSerialLocations } from '../lib/use-serial-locations';
 import { serialDetailQueryOptions, useRemoveSerials, useRestoreSerials } from '../queries';
-import { ActButtons, type ActKind } from './act-buttons';
+import { ActButtons, type ActKind, actButtonSpecs, canReportDamage } from './act-buttons';
 import { ActDialog } from './act-dialog';
 import { CustodyPanel } from './custody-panel';
 import { EditSerialDialog } from './edit-serial-dialog';
 import { ProofBadge, ProofProblemBadge } from './proof-badge';
 import { ProofGallery } from './proof-gallery';
 import { ProofProblemBanner } from './proof-problem-banner';
+import { SerialActivityLog } from './serial-activity-log';
 import { SerialStatusBadge } from './serial-status-badge';
 import { SerialStepper } from './serial-stepper';
 import { TimelineTabs } from './timeline-tabs';
@@ -34,12 +42,19 @@ import { TimelineTabs } from './timeline-tabs';
 export interface SerialDetailPageProps {
   serialId: string;
   onBack: () => void;
-  /** Laporan yang langsung dibuka di tab linimasa (dari daftar Laporan). */
-  caseId?: string;
   /** Tab aktif terkendali (search param `tab`); tanpa ini halaman memegangnya sendiri. */
   tab?: SerialTab | undefined;
   onTabChange?: ((tab: SerialTab) => void) | undefined;
 }
+
+/** Ikon menu ponsel per aksi alur (labelnya dari `actButtonSpecs`, jadi hanya ikon yang dipilih di sini). */
+const FLOW_MENU_ICON: Record<Exclude<ActKind, 'report'>, ActionKind> = {
+  send: 'upload',
+  receive: 'download',
+  diagnosis: 'view',
+  recheck: 'refresh',
+  note: 'edit',
+};
 
 /** Kejadian yang berarti "lolos": pencatatan awal dan cek ulang yang lolos. */
 const PASS_TYPES = new Set(['recorded', 'recheck', 'recheck_pass']);
@@ -152,13 +167,7 @@ function Summary({ serial, events }: { serial: SerialDto; events: readonly Seria
  * membungkus `ViewPage` supaya unggah ulang foto bermasalah (banner di luar tab, galeri di tab Foto) berbagi satu pemilik
  * dan berpindah tab tidak membatalkan penggantian yang berjalan.
  */
-export function SerialDetailPage({
-  serialId,
-  onBack,
-  caseId,
-  tab,
-  onTabChange,
-}: SerialDetailPageProps) {
+export function SerialDetailPage({ serialId, onBack, tab, onTabChange }: SerialDetailPageProps) {
   const me = useMe();
   const detail = useQuery({
     ...serialDetailQueryOptions(serialId),
@@ -230,6 +239,27 @@ export function SerialDetailPage({
   const deleted = serial.deleted !== undefined;
   const canWrite = buIdsWithLevelOf(me, 'serial', 'edit').includes(serial.buId);
   const photos = allProofPhotos(events, problemPhotos);
+  const canReport = canReportDamage(
+    { status: serial.status, custody: serial.custody },
+    serialActorModules(me, serial.buId),
+  );
+
+  // P7: aksi alur sisanya (Kirim ke servis, Terima, Diagnosis, Cek ulang, Catatan) masuk menu "Aksi lainnya" ponsel,
+  // sebelum Hapus/Pulihkan. Desktop tak berubah: tombolnya tetap di tab Riwayat (`ActButtons`), jadi `phoneOnly`.
+  const flowItems: ViewAction[] = deleted
+    ? []
+    : actButtonSpecs(
+        { status: serial.status, custody: serial.custody },
+        serialActorModules(me, serial.buId),
+      )
+        .filter((spec) => spec.kind !== 'report')
+        .map((spec) => ({
+          id: `flow-${spec.kind}`,
+          action: FLOW_MENU_ICON[spec.kind as Exclude<ActKind, 'report'>],
+          label: spec.label,
+          phoneOnly: true,
+          onSelect: () => setActing(spec.kind),
+        }));
 
   const detailTab = (
     <div className="space-y-6">
@@ -252,7 +282,7 @@ export function SerialDetailPage({
           onPick={setActing}
         />
       )}
-      <TimelineTabs serial={serial} {...(caseId ? { initialCaseId: caseId } : {})} />
+      <TimelineTabs serial={serial} />
     </section>
   );
 
@@ -299,12 +329,22 @@ export function SerialDetailPage({
         }
         actionItems={[
           {
+            // Lapor rusak di sebelah Ubah di semua ukuran layar (desktop: bar judul; ponsel: bar bawah) (P7).
+            id: 'report',
+            action: 'reportDamage',
+            primary: true,
+            hidden: !canReport || deleted,
+            onSelect: () => setActing('report'),
+          },
+          {
             id: 'edit',
             action: 'edit',
             label: 'Ubah data',
+            primary: true,
             hidden: !canWrite || deleted,
             onSelect: () => setEditing(true),
           },
+          ...flowItems,
           {
             id: 'delete',
             action: 'delete',
@@ -340,12 +380,15 @@ export function SerialDetailPage({
         {...(tab ? { tab } : {})}
         onTabChange={(id) => onTabChange?.(id as SerialTab)}
         aside={
-          <ViewMeta
-            createdBy={serial.createdBy}
-            createdAt={serial.createdAt}
-            updatedBy={serial.updatedBy}
-            updatedAt={serial.updatedAt}
-          />
+          <>
+            <ViewMeta
+              createdBy={serial.createdBy}
+              createdAt={serial.createdAt}
+              updatedBy={serial.updatedBy}
+              updatedAt={serial.updatedAt}
+            />
+            <SerialActivityLog serialId={serial.id} />
+          </>
         }
       />
       {acting ? <ActDialog serial={serial} kind={acting} onClose={() => setActing(null)} /> : null}

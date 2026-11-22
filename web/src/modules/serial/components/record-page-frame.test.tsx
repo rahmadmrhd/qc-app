@@ -197,3 +197,18 @@ test('tanpa frame (dialog Country Lock): bar Simpan sendiri tetap dipakai, tanpa
   expect(await screen.findByRole('region', { name: 'Aksi draft' })).toBeInTheDocument();
   expect(screen.queryByRole('region', { name: 'Aksi form' })).toBeNull();
 });
+
+test('704-767 px (viewport ponsel, <main> lebar): Batal dan Simpan tetap ada di bar atas, kamera dan Impor/Ekspor tidak hilang', async () => {
+  window.innerWidth = 744;
+  media = mockMatchMedia(true);
+  seedDraft(['AAA111']);
+  const onCancel = renderPage();
+  expect(await screen.findByRole('button', { name: /^Simpan 1 serial/ })).toBeEnabled();
+  expect(screen.getAllByRole('button', { name: /^Simpan \d+ serial/ })).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: 'Batal' })).toHaveLength(1);
+  expect(screen.queryByRole('region', { name: 'Aksi form' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Kosongkan draft' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
+  expect(onCancel).toHaveBeenCalledTimes(1);
+  window.innerWidth = 1024;
+});

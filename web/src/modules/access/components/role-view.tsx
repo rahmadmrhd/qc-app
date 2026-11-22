@@ -5,6 +5,7 @@ import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/v
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
 import { Button } from '@/components/ui/button';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 import { roleInUseReason } from './roles-table';
 
 export const ROLE_TABS = ['permissions', 'users'] as const;
@@ -111,6 +112,7 @@ export function RoleView({
         <>
           {role.description ? <p>{role.description}</p> : null}
           <ViewMeta updatedBy={role.updatedBy} updatedAt={role.updatedAt} />
+          <ActivityLog kind="role" id={role.id} />
         </>
       }
       tabs={[

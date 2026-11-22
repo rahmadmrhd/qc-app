@@ -1,12 +1,17 @@
 import {
   Ban,
+  Boxes,
   CheckCheck,
   CheckSquare,
+  CloudUpload,
   Copy,
   Download,
   Eye,
+  History,
   LoaderCircle,
   type LucideIcon,
+  PackageMinus,
+  PackagePlus,
   Pencil,
   Plus,
   Power,
@@ -15,7 +20,9 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  SlidersHorizontal,
   Trash2,
+  TriangleAlert,
   Upload,
   X,
 } from 'lucide-react';
@@ -44,7 +51,13 @@ export type ActionKind =
   | 'view'
   | 'done'
   | 'reopen'
-  | 'abort';
+  | 'abort'
+  | 'stock'
+  | 'stockIn'
+  | 'stockOut'
+  | 'adjust'
+  | 'history'
+  | 'reportDamage';
 
 type ActionSpec = {
   icon: LucideIcon;
@@ -119,8 +132,9 @@ export const ACTIONS: Record<ActionKind, ActionSpec> = {
     variant: 'soft',
     compactVariant: 'ghost',
   },
+  // Ekspor = unggah ke folder Drive (QR Code Manual Book), jadi ikonnya awan-unggah, beda dari Unduh (B5b).
   export: {
-    icon: Download,
+    icon: CloudUpload,
     label: 'Ekspor',
     color: 'secondary',
     variant: 'soft',
@@ -190,6 +204,50 @@ export const ACTIONS: Record<ActionKind, ActionSpec> = {
     variant: 'soft',
     compactVariant: 'ghost',
   },
+  // Stok stiker (B10): satu entri "Stok" bersubmenu di kolom Aksi; butirnya memakai empat aksi di bawahnya.
+  stock: {
+    icon: Boxes,
+    label: 'Stok',
+    color: 'primary',
+    variant: 'outline',
+    compactVariant: 'ghost',
+  },
+  stockIn: {
+    icon: PackagePlus,
+    label: 'Catat masuk',
+    color: 'primary',
+    variant: 'outline',
+    compactVariant: 'ghost',
+  },
+  stockOut: {
+    icon: PackageMinus,
+    label: 'Catat keluar',
+    color: 'primary',
+    variant: 'outline',
+    compactVariant: 'ghost',
+  },
+  adjust: {
+    icon: SlidersHorizontal,
+    label: 'Koreksi',
+    color: 'primary',
+    variant: 'outline',
+    compactVariant: 'ghost',
+  },
+  history: {
+    icon: History,
+    label: 'Riwayat',
+    color: 'primary',
+    variant: 'outline',
+    compactVariant: 'ghost',
+  },
+  // Serial Number (P7): melaporkan unit rusak; tampil di sebelah Ubah di View Serial di semua ukuran layar.
+  reportDamage: {
+    icon: TriangleAlert,
+    label: 'Lapor rusak',
+    color: 'destructive',
+    variant: 'soft',
+    compactVariant: 'ghost',
+  },
 };
 
 function isThenable(value: unknown): value is PromiseLike<unknown> {
@@ -210,6 +268,11 @@ export type ActionButtonProps = {
   busy?: boolean;
   /** Teks saat `busy` (bawaan: "Menyimpan…" untuk simpan, lainnya "{label}…"). */
   busyLabel?: string;
+  /**
+   * `primary` = aksi utama halaman: warna primary SOLID menggantikan gaya bawaan aksi itu (mis. "Ubah" yang bawaannya
+   * outline). Hanya berlaku bagi aksi berwarna primary; aksi lain (Hapus, Pulihkan, …) mempertahankan warnanya.
+   */
+  emphasis?: 'primary';
 } & Omit<ComponentProps<typeof Button>, 'color' | 'variant' | 'children'>;
 
 function busyText(action: ActionKind, label: string): string {
@@ -224,6 +287,7 @@ export function ActionButton({
   busyLabel,
   disabled,
   size,
+  emphasis,
   onClick,
   ...rest
 }: ActionButtonProps) {
@@ -282,7 +346,7 @@ export function ActionButton({
       type="button"
       {...rest}
       color={spec.color}
-      variant={spec.variant}
+      variant={emphasis === 'primary' && spec.color === 'primary' ? 'solid' : spec.variant}
       size={size}
       disabled={disabled || busy}
       onClick={handleClick}

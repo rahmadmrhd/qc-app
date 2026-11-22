@@ -1,7 +1,8 @@
 import { normalizeEmail } from '@server/core/email';
 import { appError } from '@server/core/errors';
-import { readObject } from '@server/core/validate';
+import { readFilterList, readObject } from '@server/core/validate';
 import type {
+  GetSerialCaseInput,
   GetSerialInput,
   ListSerialItemOptionsInput,
   SaveSerialBatchInput,
@@ -267,6 +268,14 @@ export function validateGetSerial(raw: unknown): GetSerialInput {
   return { id };
 }
 
+/** Detail laporan: `id` laporan wajib. */
+export function validateGetSerialCase(raw: unknown): GetSerialCaseInput {
+  const reader = readObject(raw);
+  const id = reader.str('id', { required: true, max: 100 });
+  reader.done();
+  return { id };
+}
+
 const LIST_STATUS: readonly string[] = SERIAL_STATUSES;
 const LIST_CUSTODY: readonly string[] = SERIAL_CUSTODIES;
 
@@ -283,6 +292,11 @@ export function validateSerialList(raw: unknown): SerialListInput {
   const custody = reader.str('custody', { max: 16 });
   if (custody !== '' && !LIST_CUSTODY.includes(custody))
     reader.fail('custody', 'Posisi tidak valid');
+  const buIds = readFilterList(reader, 'buIds');
+  const itemIds = readFilterList(reader, 'itemIds');
+  const locationIds = readFilterList(reader, 'locationIds');
+  const statuses = readFilterList(reader, 'statuses', { allowed: LIST_STATUS });
+  const custodies = readFilterList(reader, 'custodies', { allowed: LIST_CUSTODY });
   const from = reader.str('from', { max: 10 });
   if (from !== '' && !isIsoDate(from)) reader.fail('from', 'Tanggal tidak valid');
   const to = reader.str('to', { max: 10 });
@@ -328,6 +342,11 @@ export function validateSerialList(raw: unknown): SerialListInput {
     ...(locationId !== '' ? { locationId } : {}),
     ...(status !== '' ? { status: status as SerialStatus } : {}),
     ...(custody !== '' ? { custody: custody as SerialCustody } : {}),
+    ...(buIds ? { buIds } : {}),
+    ...(itemIds ? { itemIds } : {}),
+    ...(locationIds ? { locationIds } : {}),
+    ...(statuses ? { statuses: statuses as SerialStatus[] } : {}),
+    ...(custodies ? { custodies: custodies as SerialCustody[] } : {}),
     ...(from !== '' ? { from } : {}),
     ...(to !== '' ? { to } : {}),
     ...(createdBy !== '' ? { createdBy } : {}),
@@ -731,6 +750,7 @@ export function validateSerialCaseList(raw: unknown): SerialCaseListInput {
     reader.fail('status', 'Status laporan tidak valid');
   }
   const buId = reader.str('buId', { max: 100 });
+  const buIds = readFilterList(reader, 'buIds');
   const query = reader.str('query', { max: 100 });
   const cursor = reader.str('cursor', { max: 100 });
   if (cursor !== '' && !/^[^|]+\|[^|]+$/.test(cursor)) reader.fail('cursor', 'Kursor tidak valid');
@@ -749,6 +769,7 @@ export function validateSerialCaseList(raw: unknown): SerialCaseListInput {
   return {
     ...(status !== '' ? { status: status as SerialCaseListInput['status'] } : {}),
     ...(buId !== '' ? { buId } : {}),
+    ...(buIds ? { buIds } : {}),
     ...(query !== '' ? { query } : {}),
     ...(cursor !== '' ? { cursor } : {}),
     ...(typeof limit === 'number' ? { limit } : {}),

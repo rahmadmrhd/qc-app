@@ -8,6 +8,7 @@ import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
 import { api } from '@/lib/api';
 import { describeError } from '@/lib/api/describe-error';
 import { isWebUrl } from '@/lib/web-url';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 import { saveFileDownload } from '@/modules/qrcode/lib/download';
 import { daysLeftLabel, formatPostelDate } from '../lib/condition';
 import { NumberStatus } from './number-status';
@@ -248,11 +249,14 @@ export function PostelView({
         ) : null
       }
       aside={
-        <ViewMeta
-          createdAt={postel.createdAt}
-          updatedBy={postel.updatedBy}
-          updatedAt={postel.updatedAt}
-        />
+        <>
+          <ViewMeta
+            createdAt={postel.createdAt}
+            updatedBy={postel.updatedBy}
+            updatedAt={postel.updatedAt}
+          />
+          <ActivityLog kind="postel" id={postel.id} createdAt={postel.createdAt} />
+        </>
       }
     />
   );

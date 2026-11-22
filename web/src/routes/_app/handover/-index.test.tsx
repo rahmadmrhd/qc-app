@@ -25,7 +25,7 @@ vi.mock('@/modules/handover/components/handover-board-page', () => ({
         <button type="button" onClick={() => props.onDeletedChange?.(true as never)}>
           terhapus
         </button>
-        <button type="button" onClick={() => props.onClearCustomer?.()}>
+        <button type="button" onClick={() => props.onCustomersChange?.([] as never)}>
           hapus-customer
         </button>
         <button type="button" onClick={() => props.onOpen?.('h1' as never)}>
@@ -63,17 +63,17 @@ beforeEach(() => {
 });
 
 test('filter status dan tampilan Terhapus mengganti entri riwayat dan membawa filter lain', async () => {
-  await mount({ loc: 'loc-b', customer: 'c1' });
+  await mount({ loc: 'loc-b', customers: ['c1'] });
   await userEvent.click(screen.getByRole('button', { name: 'status' }));
   expect(state.navigate).toHaveBeenCalledWith({
     to: '/handover',
-    search: { status: 'done', loc: 'loc-b', customer: 'c1' },
+    search: { status: 'done', loc: 'loc-b', customers: ['c1'] },
     replace: true,
   });
   await userEvent.click(screen.getByRole('button', { name: 'terhapus' }));
   expect(state.navigate).toHaveBeenLastCalledWith({
     to: '/handover',
-    search: { loc: 'loc-b', customer: 'c1', deleted: true },
+    search: { loc: 'loc-b', customers: ['c1'], deleted: true },
     replace: true,
   });
   await userEvent.click(screen.getByRole('button', { name: 'hapus-customer' }));

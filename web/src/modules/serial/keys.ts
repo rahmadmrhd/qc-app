@@ -19,6 +19,8 @@ export const serialKeys = {
   /** Awalan semua daftar laporan (satu per kombinasi filter). */
   cases: ['serial', 'cases'] as const,
   casePage: (filter: Omit<SerialCaseListInput, 'cursor'>) => ['serial', 'cases', filter] as const,
+  /** Detail satu laporan: di bawah awalan `cases` agar ikut ditandai/dimuat ulang bersama daftar laporan. */
+  caseOne: (id: string) => ['serial', 'cases', 'one', id] as const,
   itemOptions: (query: string) => ['serial', 'itemOptions', query] as const,
   itemsById: (ids: readonly string[]) => ['serial', 'itemsById', [...ids].sort()] as const,
   locationOptions: ['serial', 'locationOptions'] as const,

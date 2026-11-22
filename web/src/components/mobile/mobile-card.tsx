@@ -1,5 +1,6 @@
 import { cn } from 'cn';
-import type { HTMLAttributes, ReactNode } from 'react';
+import type { HTMLAttributes, MouseEvent, ReactNode } from 'react';
+import { isCardOpenClick } from './card-open';
 
 export interface MobileCardMeta {
   /** Kunci unik baris meta (mis. id kolom). */
@@ -36,6 +37,7 @@ export function MobileCard({
   tone,
   className,
   rootProps,
+  onOpen,
   as = 'li',
 }: {
   title: ReactNode;
@@ -52,6 +54,11 @@ export function MobileCard({
   className?: string;
   /** Atribut `<li>` akar (pengikat tekan lama, `data-*`). */
   rootProps?: HTMLAttributes<HTMLLIElement> & Record<`data-${string}`, string | undefined>;
+  /**
+   * Klik pada badan kartu membuka detailnya (spek B9). Klik pada tautan/tombol/checkbox/⋯ di dalam kartu, klik yang
+   * ditelan mode pilih, dan seleksi teks TIDAK membuka (`isCardOpenClick`); akses keyboard tetap lewat tautan judul.
+   */
+  onOpen?: () => void;
   /** Elemen akar: `li` (bawaan, di dalam `ul`) atau `div` untuk kartu yang berdiri sendiri di luar daftar. */
   as?: 'li' | 'div';
 }) {
@@ -63,6 +70,15 @@ export function MobileCard({
       data-slot="mobile-card"
       data-state={selected ? 'selected' : undefined}
       {...rootProps}
+      {...(onOpen
+        ? {
+            'data-openable': '',
+            onClick: (event: MouseEvent<HTMLLIElement>) => {
+              rootProps?.onClick?.(event);
+              if (isCardOpenClick(event)) onOpen();
+            },
+          }
+        : {})}
       className={cn(
         'rounded-lg border bg-card p-3 data-[state=selected]:bg-info-text/8',
         tone === 'error' && 'border-destructive/40 bg-destructive/5',

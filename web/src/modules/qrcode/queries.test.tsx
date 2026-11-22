@@ -155,8 +155,8 @@ function seedCatalogCaches() {
       stickerMode: 'has',
       manualBook: 'all',
       postel: 'all',
-      brandId: '',
-      buId: '',
+      brandIds: [],
+      buIds: [],
     }),
     { pages: [], pageParams: [] },
   );

@@ -288,7 +288,7 @@ export function RowEditDialog({
   return (
     <>
       <Dialog open onOpenChange={(open) => !open && close()}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent size="full-on-phone" className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Ubah baris {row.serial}</DialogTitle>
             <DialogDescription>

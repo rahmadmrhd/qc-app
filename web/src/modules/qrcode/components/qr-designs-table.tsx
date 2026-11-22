@@ -246,6 +246,7 @@ export function QrDesignsTable({
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${label}`,
+          shortLabel: 'Pulihkan',
           hidden: !canManage,
           busy,
           onSelect: () => onRestore(design),
@@ -258,6 +259,7 @@ export function QrDesignsTable({
         id: 'edit',
         action: 'edit',
         label: `Ubah ${label}`,
+        shortLabel: 'Ubah',
         hidden: !canEdit,
         disabled: busy,
         onSelect: () => onEdit(design),
@@ -266,31 +268,47 @@ export function QrDesignsTable({
         id: 'export',
         action: 'export',
         label: `${exported ? 'Ekspor ulang' : 'Ekspor'} ${label}`,
+        shortLabel: exported ? 'Ekspor ulang' : 'Ekspor',
+        // Ekspor (unggah ke Drive) berbeda dari Unduh: di desktop tombolnya ikon + teks, bukan ikon saja (B5b).
+        showLabel: true,
         hidden: !canEdit,
         // Isi label yang tidak muat di kanvas 3 × 3 cm tak dapat diekspor sampai konfigurasinya diperbaiki.
         disabled: busy || design.overflow,
         onSelect: () => onExport(design),
       },
       {
-        id: 'download-pdf',
+        // Unduh PDF dan PNG satu aksi bersubmenu: desktop satu dropdown, ponsel grup datar "Unduh" (B5b).
+        id: 'download',
         action: 'download',
-        label: `Unduh PDF ${label}`,
+        label: `Unduh ${label}`,
+        shortLabel: 'Unduh',
         hidden: !exported,
         disabled: busy,
-        onSelect: () => onDownload(design, 'pdf'),
-      },
-      {
-        id: 'download-png',
-        action: 'download',
-        label: `Unduh PNG ${label}`,
-        hidden: !exported,
-        disabled: busy,
-        onSelect: () => onDownload(design, 'png'),
+        onSelect: () => undefined,
+        submenu: [
+          {
+            id: 'download-pdf',
+            action: 'download',
+            label: `Unduh PDF ${label}`,
+            shortLabel: 'PDF',
+            disabled: busy,
+            onSelect: () => onDownload(design, 'pdf'),
+          },
+          {
+            id: 'download-png',
+            action: 'download',
+            label: `Unduh PNG ${label}`,
+            shortLabel: 'PNG',
+            disabled: busy,
+            onSelect: () => onDownload(design, 'png'),
+          },
+        ],
       },
       {
         id: 'delete',
         action: 'delete',
         label: `Hapus ${label}`,
+        shortLabel: 'Hapus',
         hidden: !canManage,
         busy,
         onSelect: () => onDelete(design),
@@ -304,6 +322,7 @@ export function QrDesignsTable({
       rowKey={(design) => design.id}
       columns={columns}
       label="Daftar konfigurasi QR"
+      rowTo={(design) => ({ to: '/qrcode/$designId', params: { designId: design.id } })}
       selectLabel={nameOf}
       selection={selection}
       actions={actions}

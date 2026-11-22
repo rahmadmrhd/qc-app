@@ -91,6 +91,8 @@ export function ItemsTable({
     {
       id: 'model',
       header: 'Tipe',
+      // Ponsel: judul kartu = Tipe (Merk menjadi meta berlabel; P3).
+      mobile: 'title',
       cell: (item) => (
         <>
           <LinkCell to="/item/$itemId" params={{ itemId: item.id }}>
@@ -190,6 +192,7 @@ export function ItemsTable({
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${label}`,
+          shortLabel: 'Pulihkan',
           hidden: !canManage(item),
           busy,
           onSelect: () => onRestore(item),
@@ -201,6 +204,7 @@ export function ItemsTable({
         id: 'edit',
         action: 'edit',
         label: `Ubah ${label}`,
+        shortLabel: 'Ubah',
         hidden: !canEdit(item),
         onSelect: () => onEdit(item),
       },
@@ -208,6 +212,7 @@ export function ItemsTable({
         id: 'status',
         action: item.status === 'active' ? 'deactivate' : 'activate',
         label: `${item.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'} ${label}`,
+        shortLabel: item.status === 'active' ? 'Nonaktifkan' : 'Aktifkan',
         hidden: !canManage(item),
         busy,
         onSelect: () => onToggleStatus(item),
@@ -216,6 +221,7 @@ export function ItemsTable({
         id: 'delete',
         action: 'delete',
         label: `Hapus ${label}`,
+        shortLabel: 'Hapus',
         // Hanya item Nonaktif yang dapat dihapus (server: "Nonaktifkan item dulu sebelum dihapus").
         hidden: !canManage(item) || item.status !== 'inactive',
         busy,
@@ -230,6 +236,7 @@ export function ItemsTable({
       rowKey={(item) => item.id}
       columns={columns}
       label="Daftar item"
+      rowTo={(item) => ({ to: '/item/$itemId', params: { itemId: item.id } })}
       selectLabel={itemLabel}
       selection={selection}
       actions={actions}

@@ -1,16 +1,18 @@
 import type { NotificationListDto } from '@shared/contract';
 import type { NotificationDto } from '@shared/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { savePersistedQueryCache } from '@/app/query-persist';
+import { resetOverlayManager } from '@/lib/nav-stack';
 import {
   ANONYMOUS_SESSION,
   clearSession,
   initSession,
   PERSISTED_CACHE_KEY,
 } from '@/modules/auth/session';
+import { mockMatchMedia } from '@/test/match-media';
 import { NotificationBell } from './notification-bell';
 import { notificationKeys } from './queries';
 
@@ -244,4 +246,46 @@ test('kunci query notifikasi TIDAK disimpan oleh query-persist', () => {
   const saved = localStorage.getItem(PERSISTED_CACHE_KEY) ?? '';
   expect(saved).not.toContain('ISI-NOTIFIKASI');
   expect(saved).not.toContain('notifications');
+});
+
+describe('ponsel (P9): lembar bawah, bukan popover', () => {
+  let media: ReturnType<typeof mockMatchMedia>;
+  beforeEach(() => {
+    media = mockMatchMedia(false);
+    resetOverlayManager();
+    window.innerWidth = 360;
+    window.history.replaceState({ __TSR_key: 'page', __TSR_index: 1 }, '', '/');
+  });
+  afterEach(() => {
+    media.restore();
+    window.innerWidth = 1024;
+  });
+
+  test('menekan lonceng membuka lembar bawah berisi daftar notifikasi', async () => {
+    mount();
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Notifikasi, 1 belum dibaca/ }),
+    );
+    const sheet = await screen.findByRole('dialog');
+    expect(sheet.dataset.slot).toBe('sheet-content');
+    expect(sheet.dataset.side).toBe('bottom');
+    expect(within(sheet).getByText('Budi menyelesaikan task ST-20261112-001')).toBeInTheDocument();
+    expect(within(sheet).getByRole('button', { name: 'Tandai semua dibaca' })).toBeInTheDocument();
+  });
+
+  test('klik butir menutup lembar lebih dulu lalu menavigasi (runAfterOverlays)', async () => {
+    mount();
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Notifikasi, 1 belum dibaca/ }),
+    );
+    await userEvent.click(await screen.findByText('Budi menyelesaikan task ST-20261112-001'));
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith({
+        to: '/handover/$handoverId',
+        params: { handoverId: 'h1' },
+        search: { loc: 'l-a' },
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
 });

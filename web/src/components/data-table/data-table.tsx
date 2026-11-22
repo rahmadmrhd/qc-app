@@ -1,3 +1,4 @@
+import { type LinkProps, useNavigate } from '@tanstack/react-router';
 import { cn } from 'cn';
 import type { ReactNode } from 'react';
 import { ListState } from '@/components/page/list-state';
@@ -57,6 +58,19 @@ interface DataTableBase<T> {
    * "Pilih semua", mis. jenis sistem yang tak dapat diubah massal. Hanya berarti bila ada `selection`.
    */
   rowSelectable?: (row: T) => boolean;
+  /**
+   * Tujuan View baris (B9): di ponsel (kartu) klik badan kartu menavigasi ke sini (tautan judul tetap jalan keyboard).
+   * `null` = baris tanpa halaman View. Desktop tak berubah (nilai kolom tetap `LinkCell`).
+   */
+  rowTo?: (row: T) => RowTarget | null;
+  /** Aksi klik badan kartu selain navigasi (mis. buka dialog); `rowTo` menang bila keduanya ada. */
+  onOpen?: (row: T) => void;
+}
+
+export interface RowTarget {
+  to: LinkProps['to'];
+  params?: Record<string, string>;
+  search?: Record<string, unknown>;
 }
 
 /** `selectLabel` (nama baris untuk checkbox dan menu aksi ponsel) wajib bila ada `selection` atau `actions`. */
@@ -77,7 +91,27 @@ const HEAD_STICKY = 'sticky top-[var(--headroom-offset,3.5rem)] z-10 bg-muted';
  * headroom; di < 768 px kartu bertumpuk (`DataCards`; peran kolom lewat `DataColumn.mobile`). Hanya salah satu
  * yang dirender pada satu waktu.
  */
-export function DataTable<T>({
+export function DataTable<T>(props: DataTableProps<T>) {
+  // `useNavigate` hanya dipanggil bila `rowTo` dipakai (komponen terpisah), jadi tabel tanpa `rowTo` tak butuh router.
+  return props.rowTo ? <RouterDataTable {...props} /> : <DataTableImpl {...props} />;
+}
+
+function RouterDataTable<T>(props: DataTableProps<T>) {
+  const navigate = useNavigate();
+  const { rowTo } = props;
+  const open = (row: T) => {
+    const target = rowTo?.(row);
+    if (!target) return;
+    void navigate({
+      to: target.to,
+      params: target.params as never,
+      search: target.search as never,
+    } as never);
+  };
+  return <DataTableImpl {...props} onOpen={open} />;
+}
+
+function DataTableImpl<T>({
   rows,
   rowKey,
   columns,
@@ -97,6 +131,8 @@ export function DataTable<T>({
   onClearFilters,
   emptyAction,
   rowSelectable,
+  rowTo,
+  onOpen,
 }: DataTableProps<T>) {
   const desktop = useIsDesktop();
   const nameOf = (row: T) => selectLabel?.(row) ?? rowKey(row);
@@ -213,6 +249,7 @@ export function DataTable<T>({
             isSelectable={isSelectable}
             actions={actions}
             isLoading={isLoading}
+            openOf={(row) => (onOpen && (!rowTo || rowTo(row)) ? () => onOpen(row) : undefined)}
           />
         )}
       </ListState>

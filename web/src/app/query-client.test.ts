@@ -45,3 +45,50 @@ test('reportUnauthenticated memanggil penangan 401 yang terpasang', () => {
   expect(handler).toHaveBeenCalledOnce();
   setUnauthenticatedHandler(() => undefined);
 });
+
+test('mutasi sukses memuat ulang log aktivitas yang tampil (digabung); mutasi gagal tidak (C12)', async () => {
+  const {
+    QueryClient: Client,
+    MutationCache: Cache,
+    QueryObserver,
+  } = await import('@tanstack/react-query');
+  const { refreshActivityLogs } = await import('@/modules/activity/refresh');
+  const { activityKeys } = await import('@/modules/activity/queries');
+  const client = new Client({
+    mutationCache: new Cache({ onSuccess: () => refreshActivityLogs(client, 10) }),
+  });
+  const fetcher = vi.fn(async () => ({ items: [] }));
+  const target = { kind: 'brand', id: 'b1' } as never;
+  const observer = new QueryObserver(client, {
+    queryKey: activityKeys.one(target),
+    queryFn: fetcher,
+    staleTime: 60_000,
+  });
+  const unsubscribe = observer.subscribe(() => undefined);
+  await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  // Mutasi gagal: tak ada muat ulang.
+  await client
+    .getMutationCache()
+    .build(client, { mutationFn: async () => Promise.reject(new Error('x')) })
+    .execute(undefined)
+    .catch(() => undefined);
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  // Dua mutasi sukses beruntun: satu muat ulang saja.
+  const ok = () =>
+    client
+      .getMutationCache()
+      .build(client, { mutationFn: async () => 'ok' })
+      .execute(undefined);
+  await ok();
+  await ok();
+  await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  unsubscribe();
+  client.clear();
+});
+
+test('queryClient aplikasi memasang pemuatan ulang log aktivitas pada mutasi sukses', () => {
+  expect(queryClient.getMutationCache().config.onSuccess).toBeTypeOf('function');
+});

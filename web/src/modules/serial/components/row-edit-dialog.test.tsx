@@ -506,3 +506,14 @@ test('F7: seret-lepas ke area foto membuka dialog berisi berkas itu', async () =
   });
   expect(await screen.findByRole('button', { name: 'Tambahkan (1)' })).toBeInTheDocument();
 });
+
+test('P6: dialog Ubah baris layar penuh di ponsel; lebar desktop tetap', async () => {
+  renderDialog();
+  const { dialog } = await ready();
+  expect(dialog).toHaveAttribute('data-size', 'full-on-phone');
+  expect(dialog.className).toContain('max-md:data-[size=full-on-phone]:h-[var(--vvh,100dvh)]');
+  expect(dialog.className).toContain(
+    'max-md:data-[size=full-on-phone]:pt-[env(safe-area-inset-top)]',
+  );
+  expect(dialog.className).toContain('sm:max-w-lg');
+});

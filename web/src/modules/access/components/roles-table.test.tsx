@@ -81,6 +81,6 @@ test('360 px: kartu berjudul nama role, meta Akses dan User; aksi lewat menu "â‹
   expect(within(card).getByText('User')).toBeInTheDocument();
   expect(within(card).getByText('4')).toBeInTheDocument();
   await userEvent.click(within(card).getByRole('button', { name: 'Aksi QC Staff' }));
-  await userEvent.click(await screen.findByRole('menuitem', { name: 'Ubah QC Staff' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Ubah' }));
   expect(onEdit).toHaveBeenCalled();
 });

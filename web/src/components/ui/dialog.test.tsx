@@ -136,3 +136,61 @@ test('AlertDialog bawaan tidak berubah: tanpa kelas layar penuh', () => {
   expect(shell).toHaveAttribute('data-size', 'default');
   expect(shell.className).not.toMatch(/(^| )h-dvh/);
 });
+
+test('Dialog size="full-on-phone": kelas layar penuh khusus ponsel (max-md, dvh, area aman, papan ketik); ukuran desktop tak hilang', () => {
+  render(
+    <Dialog open>
+      <DialogContent size="full-on-phone" className="sm:max-w-5xl">
+        <DialogHeader>
+          <DialogTitle>Judul</DialogTitle>
+          <DialogDescription>Deskripsi</DialogDescription>
+        </DialogHeader>
+        <p>Isi</p>
+        <DialogFooter>
+          <button type="button">Simpan</button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>,
+  );
+  const shell = screen.getByRole('dialog');
+  expect(shell).toHaveAttribute('data-size', 'full-on-phone');
+  for (const token of [
+    'h-[var(--vvh,100dvh)]',
+    'top-[var(--vv-top,0px)]',
+    'w-screen',
+    'max-w-none',
+    'max-h-none',
+    'rounded-none',
+    'pt-[env(safe-area-inset-top)]',
+    'pb-[env(safe-area-inset-bottom)]',
+    // Bar fixed di dalamnya jangan menaikkan dua kali: dialog sudah mengecil mengikuti papan ketik lewat --vvh.
+    '[--kb:0px]',
+  ]) {
+    expect(shell.className).toContain(`max-md:data-[size=full-on-phone]:${token}`);
+  }
+  // Desktop: kelas ukuran pemakai tetap ada dan tidak dihapus oleh kelas ponsel.
+  expect(shell.className).toContain('sm:max-w-5xl');
+  expect(shell.className).toContain('max-h-[calc(100dvh-2rem)]');
+  // Header/footer tetap menempel di dalam penggulir; tombol tutup bergeser di bawah area aman atas.
+  const scroller = shell.querySelector('[data-slot="dialog-scroll"]');
+  expect(scroller?.contains(shell.querySelector('[data-slot="dialog-header"]'))).toBe(true);
+  expect(shell.querySelector('[data-slot="dialog-footer"]')?.className).toContain('sticky');
+  expect(screen.getByRole('button', { name: 'Close' }).className).toContain(
+    'max-md:top-[calc(0.5rem+env(safe-area-inset-top))]',
+  );
+});
+
+test('Dialog bawaan tidak berubah: tanpa kelas layar penuh ponsel', () => {
+  render(
+    <Dialog open>
+      <DialogContent>
+        <DialogTitle>Judul</DialogTitle>
+        <DialogDescription>Deskripsi</DialogDescription>
+      </DialogContent>
+    </Dialog>,
+  );
+  const shell = screen.getByRole('dialog');
+  expect(shell).toHaveAttribute('data-size', 'default');
+  expect(shell.className).not.toContain('full-on-phone');
+  expect(screen.getByRole('button', { name: 'Close' }).className).not.toContain('safe-area-inset-top');
+});

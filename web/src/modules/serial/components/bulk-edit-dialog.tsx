@@ -43,7 +43,7 @@ export function BulkEditDialog({
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
       {/* Isi dimuat hanya selama dialog terbuka: tiap pembukaan mulai dari form kosong. */}
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent size="full-on-phone" className="sm:max-w-lg">
         <BulkEditBody
           count={count}
           recheckCount={recheckCount}

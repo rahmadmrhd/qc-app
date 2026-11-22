@@ -219,7 +219,7 @@ export function StickerInstructionsView({
                                   </span>
                                 ) : null}
                                 {sticker.inactive ? (
-                                  <Badge color="secondary" variant="soft" dot>
+                                  <Badge color="secondary" variant="soft">
                                     nonaktif
                                   </Badge>
                                 ) : null}

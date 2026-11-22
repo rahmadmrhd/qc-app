@@ -21,7 +21,7 @@ export function PostelConditionBadge({
   className?: string;
 }) {
   return (
-    <Badge color={CONDITION_COLOR[condition]} variant="soft" dot className={className}>
+    <Badge color={CONDITION_COLOR[condition]} variant="soft" className={className}>
       {label ?? CONDITION_LABEL[condition]}
     </Badge>
   );

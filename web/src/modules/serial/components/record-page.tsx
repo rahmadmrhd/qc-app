@@ -11,6 +11,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { toast } from 'sonner';
 import type { OwnerUploads } from '@/components/file-dialog/use-background-uploads';
 import { FormPage } from '@/components/page/form-page';
+import { SelectModeProvider, useSelectMode } from '@/components/page/select-mode';
 import { StickyActionBar } from '@/components/page/sticky-action-bar';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
@@ -204,7 +205,16 @@ function describeAdd(report: ReturnType<typeof addSerials>['report']): {
 const ADD_TOAST_ID = 'serial-add';
 
 /** Halaman Catat Serial: bawaan rombongan, masukan pindai/tempel, tabel sementara, simpan per 200 baris. */
-export function RecordPage({
+export function RecordPage(props: RecordPageProps) {
+  // Mode pilih ponsel dibagi antara kartu draft dan bar aksi pilihan (satu bar di bawah).
+  return (
+    <SelectModeProvider>
+      <RecordPageInner {...props} />
+    </SelectModeProvider>
+  );
+}
+
+function RecordPageInner({
   onDirtyChange,
   onAllSaved,
   onProofChange,
@@ -439,8 +449,10 @@ export function RecordPage({
   }, [onProofChange, withProof]);
 
   const selectedCount = rows.filter((row) => row.selected).length;
+  // Mode pilih ponsel aktif (juga tanpa butir terpilih): bar aksi pilihan mengambil alih tepi bawah.
+  const selectMode = useSelectMode();
   // Bar aksi pilihan tampil (di ponsel `fixed`): halaman diberi ruang di dasarnya, bukan di atas daftar.
-  const barVisible = selectedCount > 0 && !saving;
+  const barVisible = (selectedCount > 0 || selectMode !== null) && !saving;
   const draftPhotoCount = rows.reduce((total, row) => total + row.proofPhotos.length, 0);
   const selectedPhotoCount = rows.reduce(
     (total, row) => total + (row.selected ? row.proofPhotos.length : 0),
@@ -1280,11 +1292,8 @@ export function RecordPage({
           {uploadsNote}
           {blockedNote}
           {/* Ponsel: Simpan selalu terlihat tanpa gulir. Saat mode pilih, bar aksi pilihan mengambil alih tepi bawah. */}
-          {selectedCount === 0 ? (
-            <StickyActionBar
-              label="Aksi draft"
-              className="-mx-[var(--main-pad,1rem)] rounded-none border-x-0 border-b-0"
-            >
+          {selectedCount === 0 && selectMode === null ? (
+            <StickyActionBar label="Aksi draft" placement="inline">
               <div data-tour="serial-save" className="flex w-full items-center gap-2">
                 <Button
                   type="button"
@@ -1383,7 +1392,7 @@ export function RecordPage({
       submitDisabled={importing || rows.length === 0 || uploadsBlocked}
       saveTour="serial-save"
       extra={desktop ? undefined : mobileExtra}
-      hideMobileBar={selectedCount > 0}
+      hideMobileBar={selectedCount > 0 || selectMode !== null}
     >
       {/* `<form>` kosong di luar isi: Enter pada kolom scan tidak mengirim form; hanya tombol Simpan yang mengirim. */}
       <form

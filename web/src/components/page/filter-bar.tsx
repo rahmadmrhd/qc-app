@@ -1,8 +1,17 @@
-import { Plus, Search, X } from 'lucide-react';
-import type { ReactNode } from 'react';
-import { ComboboxAutoOpenContext } from '@/components/combobox';
+import { ListFilter, Search, X } from 'lucide-react';
+import { type ReactNode, useCallback, useMemo, useState } from 'react';
+import { ComboboxInlineContext } from '@/components/combobox';
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 export interface FilterBarSearch {
   value: string;
@@ -50,8 +59,21 @@ export function FilterBar({
 }
 
 /**
- * Chip filter: kosong = tombol garis putus "+ {label}"; terisi = chip padat "{label}: {display}" dengan tombol
- * hapus. Klik chip membuka popover berisi kontrol filter (`children`: `LinkField`, `Select`, dst.).
+ * Teks `display` chip filter banyak pilihan: kosong = `null` (chip belum aktif), satu atau dua nilai disebut semua,
+ * selebihnya "{pertama} +N".
+ */
+export function multiFilterDisplay(labels: readonly string[]): string | null {
+  if (labels.length === 0) return null;
+  if (labels.length <= 2) return labels.join(', ');
+  return `${labels[0]} +${labels.length - 1}`;
+}
+
+/**
+ * Chip filter: kosong = tombol garis putus dengan ikon filter dan `{label}`; terisi = chip padat "{label}: {display}"
+ * dengan tombol hapus. Menekan chip membuka kontrol filter (`children`: `LinkField`, `Select`, dst.): di ponsel
+ * (< 768 px) SELALU lembar bawah, di desktop popover. Combobox di dalamnya (`ComboboxInlineContext`) merender
+ * daftarnya di tempat, jadi hanya ada SATU lapisan terbuka (tanpa popover/dropdown bersarang; B2, B2c). Memilih satu
+ * nilai menutup chip; mode banyak pilihan tetap terbuka.
  */
 export function FilterChip({
   label,
@@ -65,6 +87,30 @@ export function FilterChip({
   children: ReactNode;
 }) {
   const filled = display !== undefined && display !== null && display !== '';
+  const phone = useIsMobile();
+  const [open, setOpen] = useState(false);
+  const inline = useMemo(() => ({ onPicked: () => setOpen(false) }), []);
+  const onOpenChange = useCallback((next: boolean) => setOpen(next), []);
+  const trigger = (
+    <button
+      type="button"
+      className="inline-flex h-full items-center gap-1 rounded-full px-3 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+    >
+      {filled ? (
+        <span>
+          {label}: <strong className="font-medium text-info-text">{display}</strong>
+        </span>
+      ) : (
+        <>
+          <ListFilter aria-hidden className="size-3.5" />
+          <span>{label}</span>
+        </>
+      )}
+    </button>
+  );
+  const body = (
+    <ComboboxInlineContext.Provider value={inline}>{children}</ComboboxInlineContext.Provider>
+  );
   return (
     <div
       data-filled={filled || undefined}
@@ -74,28 +120,25 @@ export function FilterChip({
           : 'shrink-0 inline-flex h-8 items-center rounded-full border border-dashed text-sm touch:h-11'
       }
     >
-      <Popover>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className="inline-flex h-full items-center gap-1 rounded-full px-3 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            {filled ? (
-              <span>
-                {label}: <strong className="font-medium text-info-text">{display}</strong>
-              </span>
-            ) : (
-              <>
-                <Plus aria-hidden className="size-3.5" />
-                <span>{label}</span>
-              </>
-            )}
-          </button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-72 max-w-[calc(100vw-2rem)]">
-          <ComboboxAutoOpenContext.Provider value>{children}</ComboboxAutoOpenContext.Provider>
-        </PopoverContent>
-      </Popover>
+      {phone ? (
+        <Sheet open={open} onOpenChange={onOpenChange}>
+          <SheetTrigger asChild>{trigger}</SheetTrigger>
+          <SheetContent side="bottom" className="max-h-[85dvh]">
+            <SheetHeader>
+              <SheetTitle>{label}</SheetTitle>
+              <SheetDescription className="sr-only">Atur filter {label}.</SheetDescription>
+            </SheetHeader>
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-4 pb-4">{body}</div>
+          </SheetContent>
+        </Sheet>
+      ) : (
+        <Popover open={open} onOpenChange={onOpenChange}>
+          <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+          <PopoverContent align="start" className="w-72 max-w-[calc(100vw-2rem)]">
+            {body}
+          </PopoverContent>
+        </Popover>
+      )}
       {filled && onClear ? (
         <button
           type="button"

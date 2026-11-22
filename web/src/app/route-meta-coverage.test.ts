@@ -93,6 +93,7 @@ const DEFAULT_WIDTH = [
   '/serial',
   '/serial/$serialId',
   '/serial/reports',
+  '/serial/reports/$caseId',
   '/sticker',
   '/sticker/library',
   '/sticker/$stickerId',

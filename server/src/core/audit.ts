@@ -108,6 +108,8 @@ export interface ListAuditParams {
   limit: number;
   /** Aksi persis; '' = semua. */
   action: string;
+  /** Salah satu dari aksi ini; menang atas `action` bila ada. */
+  actions?: readonly string[];
   /** Kata kunci pada target atau pelaku (tanpa beda huruf besar); '' = semua. */
   query: string;
 }
@@ -119,7 +121,10 @@ export interface ListAuditParams {
 export async function listAudit(env: Env, params: ListAuditParams): Promise<AuditCursorPageDto> {
   const where: string[] = [];
   const binds: unknown[] = [];
-  if (params.action !== '') {
+  if (params.actions !== undefined) {
+    where.push(`action IN (${params.actions.map(() => '?').join(', ')})`);
+    binds.push(...params.actions);
+  } else if (params.action !== '') {
     where.push('action = ?');
     binds.push(params.action);
   }

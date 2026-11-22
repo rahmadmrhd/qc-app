@@ -279,7 +279,7 @@ test('mode default: tanpa sumber link dan ekspor; nama, BU, dan penempatan nama 
   });
   expect(screen.queryByText('Sumber link')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Simpan dan ekspor' })).toBeNull();
-  expect(screen.queryByRole('tab', { name: /^Sumber link/ })).toBeNull();
+  expect(screen.queryByRole('tab', { name: /^Detail/ })).toBeNull();
   await openTab('Logo dan bingkai');
   expect(screen.getByText('Logo awal')).toBeInTheDocument();
   expect(screen.getByRole('radio', { name: 'Logo 1' })).toBeInTheDocument();
@@ -374,11 +374,14 @@ test('QR baru: isian tersembunyi sampai item dipilih; satu BU menarik preset oto
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeEnabled();
 });
 
-test('QR baru: tab Sumber link tepat setelah tab Item, sebelum Isi label', async () => {
+test('QR baru: satu tab Detail (item dan sumber link) sebelum Isi label', async () => {
   renderForm({ presets: [SPECTRUM], defaultValues: URL_DEFAULTS });
   await pickLink(screen, 'Item', 'PBE M5-400');
   const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent);
-  expect(tabs).toEqual(['Item', 'Sumber link', 'Isi label', 'Logo dan bingkai', 'Ukuran']);
+  expect(tabs).toEqual(['Detail', 'Isi label', 'Logo dan bingkai', 'Ukuran']);
+  // Item dan Sumber link satu tab: keduanya tampil bersama tanpa berpindah tab.
+  expect(screen.getByRole('combobox', { name: 'Item' })).toBeInTheDocument();
+  expect(screen.getByText('Sumber link')).toBeInTheDocument();
 });
 
 test('bagian yang ditampung nama terkunci (disabled) dan selalu sama dengan nama; nama yang sudah diedit tidak ditimpa', async () => {

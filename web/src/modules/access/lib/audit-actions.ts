@@ -82,6 +82,10 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'item.deactivate': 'Item dinonaktifkan',
   'item.delete': 'Item dihapus',
   'item.restore': 'Item dipulihkan',
+  'handover.delete': 'Task serah terima dihapus',
+  'handover.restore': 'Task serah terima dipulihkan',
+  'serial.delete': 'Serial Number dihapus',
+  'serial.restore': 'Serial Number dipulihkan',
   'serial.settings': 'Pengaturan Serial Number diubah',
   'serial.service_locations': 'Lokasi tim servis diubah',
   'serial.proof_remove': 'Foto bukti Serial Number dihapus',
@@ -89,6 +93,70 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'serial.proof_retention': 'Foto bukti gagal dibuang otomatis',
   'export.sheets': 'Data diekspor ke Sheets',
 };
+
+/**
+ * Label nama field snapshot audit (kunci snapshot dari `*Snapshot` server). Dipakai tampilan selisih Log Audit dan
+ * panel aktivitas View (yang hanya menampilkan NAMA field, tanpa nilai); kunci tak dikenal tampil apa adanya.
+ */
+const AUDIT_FIELD_LABELS: Record<string, string> = {
+  email: 'Email',
+  name: 'Nama',
+  status: 'Status',
+  roleIds: 'Role',
+  description: 'Deskripsi',
+  permissions: 'Akses per modul',
+  code: 'Kode',
+  assignments: 'Penugasan',
+  buAssignments: 'Penugasan BU',
+  sharedAccount: 'Akun bersama',
+  brand: 'Merk',
+  model: 'Tipe',
+  businessUnits: 'Business Unit',
+  isCountryLock: 'Country lock',
+  firmware: 'Firmware',
+  proofRequired: 'Wajib foto',
+  proofMin: 'Minimum foto',
+  aliases: 'Nama lain',
+  alias: 'Alias',
+  stickers: 'Stiker',
+  stickerPhotos: 'Instruksi stiker',
+  accessories: 'Kelengkapan',
+  attachments: 'Gambar lampiran',
+  detailLength: 'Panjang detail (karakter)',
+  detailHash: 'Isi detail',
+  number: 'Nomor',
+  numbers: 'Nomor',
+  items: 'Item',
+  location: 'Lokasi',
+  customer: 'Customer',
+  note: 'Catatan',
+  item: 'Tipe',
+  checked: 'Butir tercentang',
+  resets: 'Centang direset',
+  quote: 'Kutipan',
+  comment: 'Komentar',
+  type: 'Jenis',
+  rule: 'Aturan',
+  fileId: 'Gambar',
+  minQty: 'Minimum stok',
+  presetId: 'Preset',
+  buId: 'Business Unit',
+  title: 'Judul',
+  subtitle: 'Subjudul',
+  footer: 'Footer',
+  linkSource: 'Sumber link',
+  link: 'Tautan',
+  logo: 'Logo',
+  defaultLogoId: 'Logo bawaan',
+  layout: 'Tata letak',
+  frame: 'Bingkai',
+  style: 'Gaya',
+  namePlacement: 'Letak nama',
+};
+
+export function auditFieldLabel(key: string): string {
+  return AUDIT_FIELD_LABELS[key] ?? key;
+}
 
 export function auditActionLabel(action: string): string {
   return AUDIT_ACTION_LABELS[action] ?? action;

@@ -848,11 +848,21 @@ export async function listSerials(
   if (input.serials !== undefined && input.serials.trim() !== '') {
     filter.serials = splitSerialInput(input.serials, SERIAL_LIMITS.inputLines).serials;
   }
-  if (input.buId !== undefined) filter.buId = input.buId;
-  if (input.itemId !== undefined) filter.itemId = input.itemId;
-  if (input.locationId !== undefined) filter.locationId = input.locationId;
-  if (input.status !== undefined) filter.status = input.status;
-  if (input.custody !== undefined) filter.custody = input.custody;
+  // Filter jamak menang atas yang tunggal; keduanya hanya menyempit (irisan dengan BU terbaca tetap berlaku).
+  const one = <T>(
+    many: readonly T[] | undefined,
+    single: T | undefined,
+  ): readonly T[] | undefined => many ?? (single === undefined ? undefined : [single]);
+  const filterBuIds = one(input.buIds, input.buId);
+  if (filterBuIds) filter.filterBuIds = filterBuIds;
+  const itemIds = one(input.itemIds, input.itemId);
+  if (itemIds) filter.itemIds = itemIds;
+  const locationIds = one(input.locationIds, input.locationId);
+  if (locationIds) filter.locationIds = locationIds;
+  const statuses = one<string>(input.statuses, input.status);
+  if (statuses) filter.statuses = statuses;
+  const custodies = one<string>(input.custodies, input.custody);
+  if (custodies) filter.custodies = custodies;
   if (input.from !== undefined) filter.from = input.from;
   if (input.to !== undefined) filter.to = input.to;
   if (input.createdBy !== undefined) filter.createdBy = input.createdBy;

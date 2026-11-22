@@ -9,26 +9,29 @@ export type BoardColumnData = InfiniteData<BoardPageDto, string | undefined>;
 /** Awalan kunci semua kolom papan: ['handovers', 'board', lokasi-terurut, status]. */
 export const BOARD_KEY = ['handovers', 'board'] as const;
 
-/** Saringan kolom papan pada elemen kelima kunci: customer dan/atau tampilan Terhapus (fase 4d). */
+/**
+ * Saringan kolom papan pada elemen kelima kunci: customer (banyak nilai = salah satu dari) dan/atau tampilan Terhapus
+ * (fase 4d). Nilai customer ikut kunci agar tiap kombinasi punya cache sendiri.
+ */
 export interface BoardColumnFilter {
-  customerId?: string;
+  customerIds?: string[];
   deleted?: true;
 }
 
 /**
  * Kunci kolom papan. Papan tersaring (customer dan/atau Terhapus) memakai kunci berpanjang 5 (elemen terakhir
- * `{ customerId?, deleted? }`, kolom tak terdefinisi dibuang), sehingga tak pernah tertukar dengan papan penuh dan
+ * `{ customerIds?, deleted? }`, kolom tak terdefinisi dibuang), sehingga tak pernah tertukar dengan papan penuh dan
  * tak dikenali `parseBoardQueryKey` (tak disimpan ke perangkat).
  */
 export function boardColumnKey(
   locationIds: readonly string[],
   status: HandoverStatus,
-  customerId?: string,
+  customerIds?: readonly string[],
   deleted?: boolean,
 ) {
   const base = [...BOARD_KEY, [...locationIds].sort(), status] as const;
   const filter: BoardColumnFilter = {
-    ...(customerId ? { customerId } : {}),
+    ...(customerIds && customerIds.length > 0 ? { customerIds: [...customerIds].sort() } : {}),
     ...(deleted ? { deleted: true as const } : {}),
   };
   return Object.keys(filter).length > 0 ? ([...base, filter] as const) : base;
@@ -174,12 +177,12 @@ export function upsertHandoverInBoards(queryClient: QueryClient, saved: Handover
     const status = key[3];
     if (!Array.isArray(ids) || !ids.includes(saved.locationId)) continue;
     const had = data.pages.some((page) => page.items.some((item) => item.id === saved.id));
-    // Kolom tersaring (`key[4] = { customerId?, deleted? }`): hanya task customer itu; kolom Terhapus hanya memuat task
+    // Kolom tersaring (`key[4] = { customerIds?, deleted? }`): hanya task salah satu customer itu; kolom Terhapus hanya memuat task
     // terhapus dan kolom biasa hanya task hidup (memulihkan memindahkan task dari kolom Terhapus ke kolom statusnya).
     const filter = key[4] as BoardColumnFilter | undefined;
     const belongs =
       status === saved.status &&
-      (!filter?.customerId || filter.customerId === saved.customerId) &&
+      (!filter?.customerIds || filter.customerIds.includes(saved.customerId)) &&
       Boolean(filter?.deleted) === Boolean(saved.deleted);
     const total = data.pages[0]?.total ?? 0;
     let next: BoardColumnData;

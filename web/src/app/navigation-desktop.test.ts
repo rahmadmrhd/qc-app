@@ -62,3 +62,23 @@ test('butir Aplikasi Desktop tampil di peramban tanpa izin apa pun dan tersembun
   expect(item?.to).toBe('/desktop');
   expect(item?.webOnly).toBe(true);
 });
+
+test('P8: Aplikasi Desktop dan Country Lock disembunyikan di ponsel (hideOnPhone); butir lain tak terpengaruh', () => {
+  const allowed = noPermissions(false, 'view');
+  const names = (desktop: boolean, phone: boolean) =>
+    flattenNavItems(visibleNavGroups(NAV_GROUPS, allowed, undefined, desktop, phone)).map(
+      (i) => i.label,
+    );
+  expect(names(false, true)).not.toContain('Aplikasi Desktop');
+  expect(names(false, true)).not.toContain('Country Lock');
+  // Aplikasi desktop (Electron) dengan jendela sempit: Country Lock tetap tampil (hideOnPhone hanya untuk ponsel).
+  expect(names(true, true)).toContain('Country Lock');
+  expect(names(false, false)).toContain('Aplikasi Desktop');
+  expect(names(false, false)).toContain('Country Lock');
+  // Butir yang tidak bertanda hideOnPhone tetap ada di ponsel.
+  expect(names(false, true)).toContain('Beranda');
+  const flagged = flattenNavItems(NAV_GROUPS)
+    .filter((i) => i.hideOnPhone)
+    .map((i) => i.label);
+  expect(flagged.sort()).toEqual(['Aplikasi Desktop', 'Country Lock']);
+});

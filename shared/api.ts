@@ -96,7 +96,18 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'access.audit.list': {
     verb: 'GET',
     path: '/audit-logs',
-    query: { cursor: 'string', limit: 'number', action: 'string', query: 'string' },
+    query: {
+      cursor: 'string',
+      limit: 'number',
+      action: 'string',
+      query: 'string',
+      actions: 'list',
+    },
+  },
+  'activity.list': {
+    verb: 'GET',
+    path: '/activity',
+    query: { kind: 'string', id: 'string', cursor: 'string', limit: 'number' },
   },
   'access.locations.list': { verb: 'GET', path: '/locations', query: { status: 'string' } },
   'access.locations.get': { verb: 'GET', path: '/locations/{id}', etag: 'updatedAt' },
@@ -297,6 +308,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       cursor: 'string',
       limit: 'number',
       customerId: 'string',
+      customerIds: 'list',
       deleted: 'boolean',
     },
   },
@@ -339,6 +351,9 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       postel: 'string',
       brandId: 'string',
       buId: 'string',
+      brandIds: 'list',
+      buIds: 'list',
+      typeIds: 'list',
     },
   },
   'items.get': { verb: 'GET', path: '/items/{id}', etag: 'updatedAt' },
@@ -477,6 +492,11 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
       locationId: 'string',
       status: 'string',
       custody: 'string',
+      buIds: 'list',
+      itemIds: 'list',
+      locationIds: 'list',
+      statuses: 'list',
+      custodies: 'list',
       from: 'string',
       to: 'string',
       createdBy: 'string',
@@ -544,8 +564,17 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'serialCases.list': {
     verb: 'GET',
     path: '/serial-cases',
-    query: { status: 'string', buId: 'string', query: 'string', cursor: 'string', limit: 'number' },
+    query: {
+      status: 'string',
+      buId: 'string',
+      buIds: 'list',
+      query: 'string',
+      cursor: 'string',
+      limit: 'number',
+    },
   },
+  // Rute statis `/serial-cases` (daftar) terdaftar di atas, sebelum yang berparameter.
+  'serialCases.get': { verb: 'GET', path: '/serial-cases/{id}' },
   // Bukti foto QC Serial Number. `serialProofs.get` TANPA `etag` dan memakai `cache: 'revalidate'` (`private, no-cache`): isi pada
   // id yang sama berubah dari foto asli (draft/antre) menjadi hasil bercap (selesai), jadi ETag `id` atau `immutable`
   // akan menyajikan foto basi; tanpa validator, tiap tampilan mengunduh ulang berkasnya.

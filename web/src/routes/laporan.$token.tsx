@@ -15,13 +15,8 @@ function PublicReportRoute() {
   const { token } = Route.useParams();
   const navigate = useNavigate();
   const open = useCallback(
-    (serialId: string, caseId: string) =>
-      void navigate({
-        to: '/serial/$serialId',
-        params: { serialId },
-        search: { case: caseId },
-        replace: true,
-      }),
+    (_serialId: string, caseId: string) =>
+      void navigate({ to: '/serial/reports/$caseId', params: { caseId }, replace: true }),
     [navigate],
   );
   return <PublicReportPage token={token} onOpenSerial={open} />;

@@ -147,7 +147,7 @@ test('Fab: tombol ikon 48 px dengan aria-label label aksi', async () => {
   const onClick = vi.fn();
   render(<Fab label="Tambah merk" onClick={onClick} />);
   const fab = screen.getByRole('button', { name: 'Tambah merk' });
-  expect(fab.className).toContain('size-12');
+  expect(fab.className).toContain('size-14');
   expect(fab.className).toContain('fixed');
   await userEvent.click(fab);
   expect(onClick).toHaveBeenCalled();
@@ -187,7 +187,9 @@ test('ListPage ponsel: hitungan hasil di samping judul, FAB Tambah, dan tombol k
   );
   expect(screen.getByRole('status')).toHaveTextContent('12 merk');
   expect(screen.getByRole('button', { name: 'Tambah merk' }).className).toContain('fixed');
-  expect(screen.getByRole('button', { name: 'Ke atas' }).className).toContain('bottom-[calc(5rem');
+  expect(screen.getByRole('button', { name: 'Ke atas' }).className).toContain(
+    'bottom-[calc(5.5rem',
+  );
 });
 
 test('idempoten: ActionButton dengan onClick async hanya memicu satu kiriman walau diketuk dua kali', async () => {
@@ -384,6 +386,27 @@ test('StickyActionBar naik setinggi papan ketik layar (--kb) agar tak tertutup d
   expect(screen.getByRole('region', { name: 'Aksi' }).className).toContain(
     'bottom-[var(--kb,0px)]',
   );
+});
+
+test('StickyActionBar fixed selebar layar dan mengukur tingginya ke --action-bar-h (P2)', () => {
+  const { unmount } = render(<StickyActionBar label="Aksi">isi</StickyActionBar>);
+  const bar = screen.getByRole('region', { name: 'Aksi' });
+  expect(bar.className).toContain('fixed');
+  expect(bar.className).toContain('inset-x-0');
+  expect(document.documentElement.style.getPropertyValue('--action-bar-h')).toBe('0px');
+  unmount();
+  expect(document.documentElement.style.getPropertyValue('--action-bar-h')).toBe('0px');
+});
+
+test('ActionButton emphasis="primary": Ubah (outline) jadi solid; aksi non-primary tetap berwarnanya', () => {
+  render(
+    <TooltipProvider>
+      <ActionButton action="edit" emphasis="primary" />
+      <ActionButton action="delete" emphasis="primary" />
+    </TooltipProvider>,
+  );
+  expect(screen.getByRole('button', { name: 'Ubah' }).className).toContain('bg-primary');
+  expect(screen.getByRole('button', { name: 'Hapus' }).className).not.toContain('bg-primary');
 });
 
 test('ActionButton: janji yang ditolak membuka kunci tombol lagi dan thenable ikut dihitung (review M3)', async () => {

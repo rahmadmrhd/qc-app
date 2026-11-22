@@ -12,7 +12,7 @@ const STATUS_COLOR = {
 export function SerialStatusBadge({ status }: { status: SerialStatus }) {
   const color = status === 'good' || status === 'broken' ? STATUS_COLOR[status] : 'warning';
   return (
-    <Badge color={color} variant="soft" dot>
+    <Badge color={color} variant="soft">
       {STATUS_LABEL[status]}
     </Badge>
   );

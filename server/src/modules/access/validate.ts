@@ -1,5 +1,5 @@
 import type { ObjectReader } from '@server/core/validate';
-import { readObject } from '@server/core/validate';
+import { readFilterList, readObject } from '@server/core/validate';
 import type { Assignment } from '@shared/assignments';
 import { assignmentKey } from '@shared/assignments';
 import type { ListStatusFilter } from '@shared/batch';
@@ -171,6 +171,7 @@ export function parseAuditCursor(cursor: string): { ts: string; id: number } | n
 export function validateListAudit(raw: unknown): ListAuditPageInput {
   const reader = readObject(raw ?? {});
   const action = reader.str('action', { max: 40 });
+  const actions = readFilterList(reader, 'actions', { maxLength: 40 });
   const query = reader.str('query', { max: 100 });
   const cursor = reader.raw('cursor');
   if (
@@ -194,6 +195,7 @@ export function validateListAudit(raw: unknown): ListAuditPageInput {
     limit: limit as number,
     action,
     query,
+    ...(actions ? { actions } : {}),
     ...(typeof cursor === 'string' ? { cursor } : {}),
   };
 }

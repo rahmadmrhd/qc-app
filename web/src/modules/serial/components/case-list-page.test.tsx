@@ -6,7 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { pickLink, pickSelect } from '@/test/link-field';
 import { mockMatchMedia } from '@/test/match-media';
 import { renderInRouter } from '@/test/render-in-router';
-import { type CaseSearch, caseSearchSchema } from '../lib/case-filter';
+import { type CaseSearch, caseFilterOfSearch, caseSearchSchema } from '../lib/case-filter';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', () => ({ api: apiMock }));
@@ -209,14 +209,19 @@ test('filter status dan BU menjadi parameter; Semua laporan tanpa status', async
   await openChip('Status');
   await pickSelect(screen, 'Filter status laporan', 'Laporan selesai');
   await waitFor(() => expect(lastInput()).toMatchObject({ status: 'closed' }));
+  await openChip('Status');
   await pickSelect(screen, 'Filter status laporan', 'Semua laporan');
   await waitFor(() => expect(lastInput()).toEqual({}));
   await openChip('BU');
   await pickLink(screen, 'Filter BU', 'BU2 · Dua');
-  await waitFor(() => expect(lastInput()).toEqual({ buId: 'b2' }));
+  await waitFor(() => expect(lastInput()).toEqual({ buIds: ['b2'] }));
+  // Mode banyak pilihan: pilihan kedua menambah daftar.
+  await pickLink(screen, 'Filter BU', 'BU1 · Satu');
+  await waitFor(() => expect(lastInput()).toEqual({ buIds: ['b2', 'b1'] }));
+  await userEvent.keyboard('{Escape}');
   await openChip('Status');
   await pickSelect(screen, 'Filter status laporan', 'Laporan aktif');
-  await waitFor(() => expect(lastInput()).toEqual({ status: 'active', buId: 'b2' }));
+  await waitFor(() => expect(lastInput()).toEqual({ status: 'active', buIds: ['b2', 'b1'] }));
 });
 
 test('pencarian mengirim query awalan nomor LP atau serial setelah jeda', async () => {
@@ -239,11 +244,10 @@ test('muat berikutnya memakai kursor server', async () => {
   expect(screen.queryByRole('button', { name: 'Muat lebih banyak' })).toBeNull();
 });
 
-test('nomor LP adalah tautan ke detail serial pada tab laporan itu', async () => {
+test('nomor LP adalah tautan ke halaman detail laporan itu', async () => {
   await renderPage();
   const link = await screen.findByRole('link', { name: 'LP/SBY/2611-0004' });
-  expect(link).toHaveAttribute('href', expect.stringContaining('/serial/s2'));
-  expect(link).toHaveAttribute('href', expect.stringContaining('case=c2'));
+  expect(link).toHaveAttribute('href', '/serial/reports/c2');
   expect(link).toHaveAttribute('data-tour', 'case-open');
 });
 
@@ -300,7 +304,29 @@ test('daftar kosong menampilkan teks santai; galat memuat tampil sebagai pesan',
   expect(await screen.findByRole('alert')).toHaveTextContent('Gagal memuat data');
 });
 
-test('search params tak sah dibuang; URL status=all dibaca', () => {
-  expect(caseSearchSchema.parse({ status: 'zzz', bu: 5 })).toEqual({});
+test('search params tak sah dibuang; URL status=all dibaca; bu tunggal lama dibaca sebagai buIds', () => {
+  expect(caseSearchSchema.parse({ status: 'zzz', bu: 5, buIds: 'x' })).toEqual({});
+  expect(caseFilterOfSearch({ bu: 'b1' })).toEqual({ status: 'active', buIds: ['b1'] });
+  expect(caseFilterOfSearch({ bu: 'b1', buIds: ['b2', 'b3'] })).toEqual({
+    status: 'active',
+    buIds: ['b2', 'b3'],
+  });
   expect(caseSearchSchema.parse({ status: 'all' })).toEqual({ status: 'all' });
+});
+
+test('ponsel: mengetuk badan kartu laporan membuka View laporan itu; desktop tanpa klik badan baris (C5/C13)', async () => {
+  window.innerWidth = 360;
+  media = mockMatchMedia(false);
+  const { router, unmount } = await renderPage();
+  await screen.findByRole('link', { name: 'LP/SBY/2611-0004' });
+  const card = screen.getAllByRole('listitem')[1] as HTMLElement;
+  await userEvent.click(within(card).getByText('Pelapor'));
+  expect(router.state.location.pathname).toBe('/serial/reports/c2');
+  unmount();
+  media.set(true);
+  window.innerWidth = 1024;
+  const desktop = await renderPage();
+  await screen.findByRole('table', { name: 'Daftar laporan rusak' });
+  await userEvent.click(screen.getAllByText('Gudang A')[0] as HTMLElement);
+  expect(desktop.router.state.location.pathname).toBe('/');
 });

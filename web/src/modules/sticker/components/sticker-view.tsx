@@ -14,6 +14,7 @@ import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
 import { ActiveStatusBadge } from '@/components/status-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 import { ImageThumb } from '@/modules/item/components/image-thumb';
 import { STICKER_STATUS_LABEL } from '../lib/status';
 import { type StickerStockPanel, type StockActionsController, StockButtons } from './stock-actions';
@@ -313,7 +314,7 @@ export function StickerView({
               />
             )}
             {sticker.low && !deleted ? (
-              <Badge color="warning" variant="soft" dot>
+              <Badge color="warning" variant="soft">
                 Menipis
               </Badge>
             ) : null}
@@ -330,7 +331,12 @@ export function StickerView({
             />
           ) : null
         }
-        aside={<ViewMeta updatedAt={sticker.updatedAt} />}
+        aside={
+          <>
+            <ViewMeta updatedAt={sticker.updatedAt} />
+            <ActivityLog kind="sticker" id={sticker.id} />
+          </>
+        }
         tabs={tabs}
         {...(tab ? { tab } : {})}
         onTabChange={(id) => onTabChange?.(id as StickerTab)}

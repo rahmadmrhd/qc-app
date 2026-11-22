@@ -21,6 +21,8 @@ vi.mock('@tanstack/react-router', () => ({
     </a>
   ),
   useRouter: () => ({ navigate }),
+  useRouterState: ({ select }: { select: (s: { location: { pathname: string } }) => unknown }) =>
+    select({ location: { pathname: '/' } }),
   useMatchRoute: () => () => false,
 }));
 vi.mock('@/modules/auth/use-me', () => ({
@@ -88,4 +90,10 @@ test('panel menu ponsel: memilih butir = replace (bukan push) ke tujuannya', asy
   await userEvent.click(await screen.findByRole('link', { name: 'Beranda' }));
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledTimes(1));
   expect(navigate).toHaveBeenCalledWith({ to: '/', replace: true });
+});
+
+test('P8: panel menu ponsel tidak memuat Aplikasi Desktop dan Country Lock', async () => {
+  await screen.findByRole('searchbox', { name: 'Cari menu' });
+  expect(screen.queryByRole('link', { name: 'Aplikasi Desktop' })).toBeNull();
+  expect(screen.queryByRole('link', { name: 'Country Lock' })).toBeNull();
 });

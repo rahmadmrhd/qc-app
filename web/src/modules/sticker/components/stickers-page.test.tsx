@@ -102,7 +102,7 @@ function mutationsMock() {
 
 /** Pemegang state filter: search params Router digantikan state lokal agar tes cukup merender halaman. */
 function Harness(props: Omit<StickersPageProps, 'filter' | 'onFilterChange'>) {
-  const [filter, setFilter] = useState<StickersFilter>({ q: '', typeId: '', status: 'all' });
+  const [filter, setFilter] = useState<StickersFilter>({ q: '', typeIds: [], status: 'all' });
   return (
     <StickersPage
       {...props}
@@ -180,6 +180,19 @@ test('filter jenis dan status menyaring baris', async () => {
   await pickSelect(screen, 'Filter status', 'Nonaktif');
   expect(screen.queryByRole('row', { name: /Hijau-B/ })).toBeNull();
   expect(screen.getByRole('row', { name: /Segel Polos/ })).toBeInTheDocument();
+});
+
+test('filter jenis boleh lebih dari satu: baris dari kedua jenis tampil, chip menyebut keduanya', async () => {
+  await renderPage();
+  await openChip('Jenis');
+  await pickLink(screen, 'Filter jenis', 'Segel');
+  expect(screen.queryByRole('row', { name: /Hijau-B/ })).toBeNull();
+  await pickLink(screen, 'Filter jenis', 'QC Hijau');
+  expect(screen.getByRole('row', { name: /Hijau-B/ })).toBeInTheDocument();
+  expect(screen.getByRole('row', { name: /Segel Polos/ })).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: /Jenis: .*Segel.*QC Hijau|Jenis: .*QC Hijau.*Segel/ }),
+  ).toBeInTheDocument();
 });
 
 test('tombol mengikuti izin', async () => {

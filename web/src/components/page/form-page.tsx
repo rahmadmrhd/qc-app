@@ -1,8 +1,8 @@
-import { ArrowLeft } from 'lucide-react';
+import { cn } from 'cn';
 import type { ReactNode } from 'react';
 import { ActionButton } from '@/components/action-button';
-import { Button } from '@/components/ui/button';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
 import { StickyActionBar } from './sticky-action-bar';
 
@@ -51,6 +51,12 @@ export function FormPage({
   hideMobileBar?: boolean;
 }) {
   const desktop = useIsDesktop();
+  // SATU gerbang ponsel (viewport < 768, sama dengan judul navbar): judul tak tampil ganda pada 704-767 px.
+  const phone = useIsMobile();
+  // Tepat SATU set Batal/Simpan di semua lebar: `desktop` (lebar <main> >= 704) menaruhnya di bar atas, selain itu di
+  // bar bawah. Bar atas hanya boleh dibuang bila aksi memang di bar bawah; pada 704-767 px `phone` dan `desktop`
+  // sama-sama true dan bar atas membawa aksinya.
+  const compactTop = phone && !badge && !desktop;
   const cancel = <ActionButton action="cancel" onClick={onCancel} disabled={submitting} />;
   const save = (
     <ActionButton
@@ -67,44 +73,36 @@ export function FormPage({
   );
   return (
     <HeadroomFrame className="gap-4">
-      <HeadroomBar tour={tour} className="pt-1 pb-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-2">
-            {desktop ? null : (
-              <Button
-                type="button"
-                variant="ghost"
-                color="primary"
-                size="icon"
-                aria-label="Kembali"
-                disabled={submitting}
-                onClick={onCancel}
-                className="-ml-2 shrink-0"
-              >
-                <ArrowLeft aria-hidden />
-              </Button>
-            )}
+      {compactTop ? (
+        // Ponsel tanpa lencana DAN aksi di bar bawah: tak ada isi tampak untuk bar atas (judul = navbar), jadi tanpa bar
+        // ber-border/bayang yang kosong; judul tetap ada bagi pembaca layar dan target panduan `tour` tetap terpasang.
+        <div data-tour={tour} className="sr-only">
+          <h1>{title}</h1>
+        </div>
+      ) : (
+        <HeadroomBar tour={tour} className="pt-1 pb-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {/* Ponsel: tanpa tombol kembali dan tanpa judul tampak (judul navbar; kembali = tombol sistem). */}
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h1 className="min-w-0 text-xl font-semibold break-words">{title}</h1>
+              <h1 className={cn('min-w-0 text-xl font-semibold break-words', phone && 'sr-only')}>
+                {title}
+              </h1>
               {badge}
             </div>
+            {desktop ? (
+              <div data-tour={actionsTour} className="flex flex-wrap items-center gap-2">
+                {cancel}
+                {extra}
+                {save}
+              </div>
+            ) : null}
           </div>
-          {desktop ? (
-            <div data-tour={actionsTour} className="flex flex-wrap items-center gap-2">
-              {cancel}
-              {extra}
-              {save}
-            </div>
-          ) : null}
-        </div>
-      </HeadroomBar>
+        </HeadroomBar>
+      )}
       <div className="min-w-0">{children}</div>
       {desktop || hideMobileBar ? null : (
-        // Ponsel: Batal + Simpan pindah ke bar bawah yang menempel (Simpan lebih lebar).
-        <StickyActionBar
-          label="Aksi form"
-          className="-mx-[var(--main-pad,1rem)] rounded-none border-x-0 border-b-0"
-        >
+        // Ponsel: Batal + Simpan pindah ke bar bawah `fixed` (Simpan lebih lebar).
+        <StickyActionBar label="Aksi form">
           <div data-tour={actionsTour} className="flex w-full items-center gap-2">
             {cancel}
             {extra}

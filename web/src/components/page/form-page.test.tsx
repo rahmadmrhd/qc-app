@@ -1,10 +1,14 @@
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, test, vi } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { mockMatchMedia } from '@/test/match-media';
 import { FormPage } from './form-page';
 import { FormSection } from './form-section';
+
+afterEach(() => {
+  window.innerWidth = 1024;
+});
 
 function renderPage(props: Partial<Parameters<typeof FormPage>[0]> = {}, onSubmit = vi.fn()) {
   render(
@@ -85,7 +89,8 @@ test('FormSection menyusun kisi dua kolom atau satu', () => {
   expect(container.querySelector('.md\\:grid-cols-2')).toBeNull();
 });
 
-test('ponsel: Batal + Simpan pindah ke bar bawah menempel; bar judul tinggal tombol kembali dan judul', async () => {
+test('ponsel: Batal + Simpan pindah ke bar bawah fixed; tanpa tombol kembali dan judul h1 hanya untuk pembaca layar', async () => {
+  window.innerWidth = 360;
   const media = mockMatchMedia(false);
   const onCancel = vi.fn();
   const onSubmit = renderPage({ onCancel });
@@ -95,7 +100,10 @@ test('ponsel: Batal + Simpan pindah ke bar bawah menempel; bar judul tinggal tom
   expect(save.className).toContain('flex-[2]');
   await userEvent.click(save);
   expect(onSubmit).toHaveBeenCalledTimes(1);
-  await userEvent.click(screen.getByRole('button', { name: 'Kembali' }));
+  expect(bar.className).toContain('fixed');
+  expect(screen.queryByRole('button', { name: 'Kembali' })).toBeNull();
+  expect(screen.getByRole('heading', { level: 1 }).closest('.sr-only')).not.toBeNull();
+  await userEvent.click(within(bar).getByRole('button', { name: 'Batal' }));
   expect(onCancel).toHaveBeenCalledTimes(1);
   media.restore();
 });
@@ -120,5 +128,140 @@ test('ponsel: hideMobileBar menyembunyikan bar bawah; di desktop tak berpengaruh
     </TooltipProvider>,
   );
   expect(screen.getByRole('button', { name: 'Simpan' })).toBeInTheDocument();
+  media.restore();
+});
+
+test('ponsel: target panduan tetap ada (tour di bar judul; actionsTour dan saveTour di bar bawah fixed)', () => {
+  const media = mockMatchMedia(false);
+  const { container } = render(
+    <FormPage
+      formId="g"
+      title="X"
+      onCancel={() => undefined}
+      tour="judul"
+      actionsTour="aksi"
+      saveTour="simpan"
+    >
+      <form id="g" />
+    </FormPage>,
+  );
+  const bar = screen.getByRole('region', { name: 'Aksi form' });
+  expect(container.querySelector('[data-tour="judul"]')).not.toBeNull();
+  expect(bar.querySelector('[data-tour="aksi"]')).not.toBeNull();
+  expect(within(bar).getByRole('button', { name: 'Simpan' })).toHaveAttribute(
+    'data-tour',
+    'simpan',
+  );
+  // Satu pembungkus aksi saja yang dirender (bukan juga di bar judul): target panduan tak ganda.
+  expect(container.querySelectorAll('[data-tour="aksi"]')).toHaveLength(1);
+  media.restore();
+});
+
+test('ponsel tanpa lencana: tanpa bar headroom kosong ber-border/bayang; target tour tetap terpasang', () => {
+  window.innerWidth = 360;
+  const media = mockMatchMedia(false);
+  const { container } = render(
+    <TooltipProvider>
+      <FormPage formId="f" title="Tambah" tour="judul" onCancel={() => undefined}>
+        <form id="f" />
+      </FormPage>
+    </TooltipProvider>,
+  );
+  // Tak ada bar yang menempel (sticky) di bawah header aplikasi.
+  expect(container.querySelector('[data-headroom-frame] .sticky')).toBeNull();
+  const target = container.querySelector('[data-tour="judul"]');
+  expect(target).not.toBeNull();
+  expect(target?.className).toContain('sr-only');
+  expect(screen.getByRole('heading', { level: 1, name: 'Tambah' })).toBeInTheDocument();
+  media.restore();
+});
+
+test('ponsel dengan lencana: bar atas tetap tampil memuat lencana', () => {
+  window.innerWidth = 360;
+  const media = mockMatchMedia(false);
+  const { container } = render(
+    <TooltipProvider>
+      <FormPage
+        formId="f"
+        title="Ubah"
+        badge={<span>Nonaktif</span>}
+        tour="judul"
+        onCancel={() => undefined}
+      >
+        <form id="f" />
+      </FormPage>
+    </TooltipProvider>,
+  );
+  expect(container.querySelector('[data-headroom-frame] .sticky')).not.toBeNull();
+  expect(screen.getByText('Nonaktif')).toBeVisible();
+  media.restore();
+});
+
+test('satu gerbang ponsel: pada 704-767 px (main lebar, viewport ponsel) h1 sr-only; di >= 768 px h1 tampil', () => {
+  const media = mockMatchMedia(true); // lebar <main> cukup untuk tata letak lebar
+  window.innerWidth = 740;
+  const { unmount } = render(
+    <TooltipProvider>
+      <FormPage formId="f" title="Tambah" badge={<span>b</span>} onCancel={() => undefined}>
+        <form id="f" />
+      </FormPage>
+    </TooltipProvider>,
+  );
+  expect(screen.getByRole('heading', { level: 1 }).className).toContain('sr-only');
+  unmount();
+  window.innerWidth = 1024;
+  render(
+    <TooltipProvider>
+      <FormPage formId="f" title="Tambah" badge={<span>b</span>} onCancel={() => undefined}>
+        <form id="f" />
+      </FormPage>
+    </TooltipProvider>,
+  );
+  expect(screen.getByRole('heading', { level: 1 }).className).not.toContain('sr-only');
+  media.restore();
+});
+
+// Penjaga CRITICAL review akhir (C1/C7/C14): pada 704-767 px `useIsMobile` dan `useIsDesktop` sama-sama true; tepat
+// satu set Batal/Simpan harus tampil di SEMUA lebar, dengan atau tanpa lencana.
+test.each([
+  { width: 360, mainWide: false, where: 'bawah' },
+  { width: 704, mainWide: true, where: 'atas' },
+  { width: 744, mainWide: true, where: 'atas' },
+  { width: 767, mainWide: true, where: 'atas' },
+  { width: 768, mainWide: true, where: 'atas' },
+  { width: 959, mainWide: true, where: 'atas' },
+  { width: 1024, mainWide: true, where: 'atas' },
+])('tanpa lencana pada $width px: tepat satu Simpan dan satu Batal ($where)', async (c) => {
+  window.innerWidth = c.width;
+  const media = mockMatchMedia(c.mainWide);
+  const onCancel = vi.fn();
+  const onSubmit = renderPage({ onCancel, actionsTour: 'aksi' });
+  expect(screen.getAllByRole('button', { name: 'Simpan' })).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: 'Batal' })).toHaveLength(1);
+  expect(document.querySelectorAll('[data-tour="aksi"]')).toHaveLength(1);
+  const bar = screen.queryByRole('region', { name: 'Aksi form' });
+  expect(bar !== null).toBe(c.where === 'bawah');
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+  await userEvent.click(screen.getByRole('button', { name: 'Batal' }));
+  expect(onCancel).toHaveBeenCalledTimes(1);
+  media.restore();
+});
+
+test('704-767 px tanpa lencana: bar atas membawa aksi, h1 sr-only, target tour terpasang', () => {
+  window.innerWidth = 744;
+  const media = mockMatchMedia(true);
+  const { container } = render(
+    <TooltipProvider>
+      <FormPage formId="f" title="Tambah" tour="judul" onCancel={() => undefined}>
+        <form id="f" />
+      </FormPage>
+    </TooltipProvider>,
+  );
+  expect(
+    container.querySelector('[data-tour="judul"] .sticky, [data-tour="judul"].sticky'),
+  ).not.toBeNull();
+  expect(screen.getByRole('heading', { level: 1 }).className).toContain('sr-only');
+  expect(screen.getByRole('button', { name: 'Simpan' })).toBeVisible();
   media.restore();
 });

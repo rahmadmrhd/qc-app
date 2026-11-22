@@ -82,16 +82,34 @@ test('Lihat detail membuka lembar diff; tidak mengganti halaman', async () => {
   expect(within(sheet).getByText(/User diubah: target-1/)).toBeInTheDocument();
 });
 
-test('filter aksi dari URL dikirim ke server', async () => {
+test('filter aksi dari URL (param tunggal lama action) dibaca sebagai actions dan dikirim ke server', async () => {
   await mount('/_app/access/audit?action=businessunit.update');
   await waitFor(() =>
     expect(
       calls.some(
         (call) =>
           call.id === 'access.audit.list' &&
-          (call.input as { action?: string }).action === 'businessunit.update',
+          (call.input as { actions?: string[] }).actions?.[0] === 'businessunit.update',
       ),
     ).toBe(true),
   );
   expect(screen.getByText('Business Unit diubah')).toBeInTheDocument();
+});
+
+test('filter aksi jamak dari URL dikirim sebagai daftar dan chip menampilkan nama digabung', async () => {
+  const actions = encodeURIComponent(JSON.stringify(['businessunit.update', 'user.update']));
+  await mount(`/_app/access/audit?actions=${actions}`);
+  await waitFor(() =>
+    expect(
+      calls.some(
+        (call) =>
+          call.id === 'access.audit.list' &&
+          JSON.stringify((call.input as { actions?: string[] }).actions) ===
+            JSON.stringify(['businessunit.update', 'user.update']),
+      ),
+    ).toBe(true),
+  );
+  expect(
+    screen.getByRole('button', { name: 'Aksi: Business Unit diubah, User diubah' }),
+  ).toBeInTheDocument();
 });

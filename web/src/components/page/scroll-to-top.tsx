@@ -34,8 +34,8 @@ export function ScrollToTop({ aboveFab = false }: { aboveFab?: boolean }) {
       }}
       className={
         aboveFab
-          ? 'fixed right-4 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-30 rounded-full bg-background shadow-md'
-          : 'fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 rounded-full bg-background shadow-md'
+          ? 'fixed right-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 size-12 touch:size-12 rounded-full bg-background shadow-md'
+          : 'fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-30 size-12 touch:size-12 rounded-full bg-background shadow-md'
       }
     >
       <ArrowUp aria-hidden />

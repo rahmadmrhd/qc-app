@@ -1,14 +1,7 @@
 import type { StickerStockDto } from '@shared/contract';
-import { MoreHorizontal } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import {
   StockEntryDialog,
   type StockEntryMode,
@@ -104,45 +97,6 @@ interface StockActionProps {
   label: string;
   panel: StickerStockPanel;
   controller: StockActionsController;
-}
-
-/** Menu "Stok" per baris tabel: Catat masuk, Catat keluar, Koreksi, dan Riwayat. */
-export function StockMenu({ row, label, panel, controller }: StockActionProps) {
-  const { canIn, canOut, canAdjust } = stockAvailability(panel, row);
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          color="primary"
-          aria-label={`Stok ${label}`}
-        >
-          Stok
-          <MoreHorizontal aria-hidden="true" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {canIn ? (
-          <DropdownMenuItem onSelect={() => controller.openEntry('in', row.stickerId)}>
-            Catat masuk
-          </DropdownMenuItem>
-        ) : null}
-        {canOut ? (
-          <DropdownMenuItem onSelect={() => controller.openEntry('out', row.stickerId)}>
-            Catat keluar
-          </DropdownMenuItem>
-        ) : null}
-        {canAdjust ? (
-          <DropdownMenuItem onSelect={() => controller.openEntry('adjust', row.stickerId)}>
-            Koreksi
-          </DropdownMenuItem>
-        ) : null}
-        <DropdownMenuItem onSelect={() => controller.openHistory(row)}>Riwayat</DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
 }
 
 /** Tombol aksi stok untuk View Stiker (aturan sama dengan `StockMenu`); riwayat ada di tab Riwayat View. */

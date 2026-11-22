@@ -1,5 +1,5 @@
 import { useLayoutEffect, useState } from 'react';
-import { MAIN_MIN_WIDTH, WIDE_VIEWPORT_QUERY } from '@/lib/layout';
+import { layoutMainWidth, MAIN_MIN_WIDTH, WIDE_VIEWPORT_QUERY } from '@/lib/layout';
 
 export { MAIN_MIN_WIDTH };
 
@@ -9,11 +9,11 @@ function readMediaWide(): boolean {
   return typeof window.matchMedia === 'function' ? window.matchMedia(DESKTOP_QUERY).matches : true;
 }
 
-/** Lebar <main> bila terukur (ada, `ResizeObserver` tersedia, lebar > 0); selain itu `null` (pakai lebar viewport). */
+/** Lebar <main> (plus scrollbar halaman, `layoutMainWidth`) bila terukur (ada, `ResizeObserver` tersedia, lebar > 0); selain itu `null` (pakai lebar viewport). */
 function readMainWide(): boolean | null {
   const main = document.querySelector('main');
   if (!main || typeof ResizeObserver === 'undefined' || main.clientWidth <= 0) return null;
-  return main.clientWidth >= MAIN_MIN_WIDTH;
+  return layoutMainWidth(main.clientWidth) >= MAIN_MIN_WIDTH;
 }
 
 function read(): boolean {

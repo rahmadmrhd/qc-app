@@ -54,6 +54,11 @@ export interface NavItem {
   /** Hanya tampil di peramban (jembatan `window.qcBridge` tak ada); kebalikan `desktopOnly`. */
   webOnly?: boolean;
   /**
+   * Disembunyikan dari sidebar dan peluncur di ponsel (viewport < 768 px; mis. fitur yang butuh aplikasi desktop).
+   * Rutenya tetap dapat dibuka lewat URL.
+   */
+  hideOnPhone?: boolean;
+  /**
    * Di peramban, menekan item ini juga membuka aplikasi desktop dengan akun yang sama (serah-terima tiket; halaman `to`
    * tetap terbuka sebagai cadangan bila aplikasi belum terpasang). Di aplikasi desktop item ini rute biasa.
    */
@@ -95,7 +100,13 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Beranda', to: '/', icon: House },
       // Daftar unduhan aplikasi desktop; di dalam aplikasi desktop tautan unduh tak berfungsi, jadi hanya di peramban.
-      { label: 'Aplikasi Desktop', to: '/desktop', icon: Download, webOnly: true },
+      {
+        label: 'Aplikasi Desktop',
+        to: '/desktop',
+        icon: Download,
+        webOnly: true,
+        hideOnPhone: true,
+      },
     ],
   },
   {
@@ -116,6 +127,7 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Lock,
         permission: { module: 'countrylock', level: 'view' },
         opensDesktopApp: true,
+        hideOnPhone: true,
       },
       {
         id: 'serial',
@@ -349,7 +361,10 @@ function isItemVisible(
   me: MeDto,
   activeLocationIds: readonly string[] | undefined,
   desktop: boolean,
+  phone: boolean,
 ): boolean {
+  // Fitur yang butuh aplikasi desktop disembunyikan di ponsel, bukan di jendela sempit aplikasi desktop (Electron).
+  if (item.hideOnPhone && phone && !desktop) return false;
   if (item.desktopOnly && !desktop) return false;
   if (item.webOnly && desktop) return false;
   if (item.visible && !item.visible(me)) return false;
@@ -373,6 +388,7 @@ export function visibleNavGroups(
   me: MeDto,
   activeLocationIds?: readonly string[],
   desktop = false,
+  phone = false,
 ): NavGroup[] {
   return groups
     .map((group) => ({
@@ -380,11 +396,11 @@ export function visibleNavGroups(
       items: group.items.flatMap((entry): NavEntry[] => {
         if (isNavParent(entry)) {
           const children = entry.children.filter((child) =>
-            isItemVisible(child, me, activeLocationIds, desktop),
+            isItemVisible(child, me, activeLocationIds, desktop, phone),
           );
           return children.length > 0 ? [{ ...entry, children }] : [];
         }
-        return isItemVisible(entry, me, activeLocationIds, desktop) ? [entry] : [];
+        return isItemVisible(entry, me, activeLocationIds, desktop, phone) ? [entry] : [];
       }),
     }))
     .filter((group) => group.items.length > 0);

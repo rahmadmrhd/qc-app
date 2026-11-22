@@ -137,9 +137,9 @@ describe('parseServerApis', () => {
 });
 
 describe('announcedApis', () => {
-  test('memuat 28 kelompok v1 dan mengembalikan salinan', () => {
+  test('memuat 29 kelompok v1 dan mengembalikan salinan', () => {
     const apis = announcedApis();
-    expect(Object.keys(apis)).toHaveLength(28);
+    expect(Object.keys(apis)).toHaveLength(29);
     for (const info of Object.values(apis)) expect(info).toEqual({ latest: 1, deprecated: [] });
     apis.qrcodes?.deprecated.push(9);
     if (apis.qrcodes) apis.qrcodes.latest = 7;

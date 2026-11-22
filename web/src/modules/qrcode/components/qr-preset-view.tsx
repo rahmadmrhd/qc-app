@@ -5,6 +5,7 @@ import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/v
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
 import { Button } from '@/components/ui/button';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 import { useFileUrl } from '@/modules/files/queries';
 import { LabelPreview } from './label-preview';
 
@@ -226,12 +227,15 @@ export function QrPresetView({
         ) : null
       }
       aside={
-        <ViewMeta
-          createdBy={preset.createdBy}
-          createdAt={preset.createdAt}
-          updatedBy={preset.updatedBy}
-          updatedAt={preset.updatedAt}
-        />
+        <>
+          <ViewMeta
+            createdBy={preset.createdBy}
+            createdAt={preset.createdAt}
+            updatedBy={preset.updatedBy}
+            updatedAt={preset.updatedAt}
+          />
+          <ActivityLog kind="qrPreset" id={preset.id} createdAt={preset.createdAt} />
+        </>
       }
     />
   );

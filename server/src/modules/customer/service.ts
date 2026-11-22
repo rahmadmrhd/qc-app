@@ -99,11 +99,25 @@ export async function getCustomerDto(
   input: GetCustomerInput,
   actor: UserContext,
 ): Promise<CustomerDto> {
-  const customer = await loadCustomerAny(env, input.id);
+  return toCustomerDto(await readableCustomer(env, input.id, actor));
+}
+
+/** Customer menurut id bagi pembaca: terhapus hanya untuk `item: manage`, selain itu (dan id tak dikenal) `NOT_FOUND`. */
+async function readableCustomer(env: Env, id: string, actor: UserContext): Promise<CustomerRecord> {
+  const customer = await loadCustomerAny(env, id);
   if (!customer || (customer.deletedAt !== '' && !canSeeDeleted(actor))) {
     throw appError('NOT_FOUND', CUSTOMER_NOT_FOUND);
   }
-  return toCustomerDto(customer);
+  return customer;
+}
+
+/** Gerbang baca untuk `activity.list`: aturan yang sama dengan `customers.get`. */
+export async function assertCustomerReadable(
+  env: Env,
+  id: string,
+  actor: UserContext,
+): Promise<void> {
+  await readableCustomer(env, id, actor);
 }
 
 /** Customer (hidup atau terhapus) menurut id; `null` bila id tak dikenal. */

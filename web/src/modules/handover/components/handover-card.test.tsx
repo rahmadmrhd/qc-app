@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expect, test, vi } from 'vitest';
 
@@ -170,15 +170,26 @@ test('More hanya dengan Ubah bila tidak boleh membatalkan', async () => {
   expect(onEdit).toHaveBeenCalled();
 });
 
-test('detail hanya dibuka lewat nomor task; badan kartu, centang, dan tombol tidak membukanya', async () => {
+test('detail dibuka lewat nomor task dan badan kartu; centang, tombol, dan seleksi teks tidak membukanya (B9)', async () => {
   const { onOpen, onCheck } = setup();
   await userEvent.click(screen.getByRole('checkbox', { name: /A = 1/ }));
   expect(onCheck).toHaveBeenCalledWith({ index: 0, text: 'A = 1' }, true);
-  await userEvent.click(screen.getByText('PT Maju'));
   await userEvent.click(screen.getByRole('button', { name: 'Mark done' }));
   expect(onOpen).not.toHaveBeenCalled();
-  await userEvent.click(screen.getByRole('button', { name: 'ST-20261015-001' }));
+  // Teks terseleksi: klik tidak membuka.
+  const customer = screen.getByText('PT Maju');
+  const range = document.createRange();
+  range.selectNodeContents(customer);
+  window.getSelection()?.removeAllRanges();
+  window.getSelection()?.addRange(range);
+  fireEvent.click(customer);
+  expect(onOpen).not.toHaveBeenCalled();
+  window.getSelection()?.removeAllRanges();
+  // Badan kartu (teks biasa) membuka detail.
+  await userEvent.click(screen.getByText('PT Maju'));
   expect(onOpen).toHaveBeenCalledTimes(1);
+  await userEvent.click(screen.getByRole('button', { name: 'ST-20261015-001' }));
+  expect(onOpen).toHaveBeenCalledTimes(2);
 });
 
 test('task Dibatalkan tetap tampil dengan labelnya', () => {

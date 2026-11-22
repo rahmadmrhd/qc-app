@@ -17,29 +17,24 @@ interface Counts {
   byCase: Record<string, number>;
 }
 
-/** Nilai tab: kelompok (`all`/`checks`/`changes`) atau `case:<id>`. */
-const CASE_PREFIX = 'case:';
-
 export interface TimelineTabsProps {
   serial: SerialDto;
-  /** Tab laporan yang terbuka lebih dulu; id yang bukan laporan serial ini diabaikan. */
-  initialCaseId?: string;
 }
 
+/** Tab linimasa: kelompok kejadian (`all`/`checks`/`changes`). */
+type TimelineTab = 'all' | 'checks' | 'changes';
+
 /**
- * Linimasa bertab: Semua, satu tab per laporan (LP/<BU>/YYMM-iiii), Pengecekan, Perubahan data. Tiap tab memuat `serials.history`
- * berkursor (server mengirim terbaru dulu) dengan tombol "Muat yang lebih lama" di dalam kelompok riwayat sebelumnya; jumlah di tab dari `counts` server.
+ * Linimasa bertab: Semua, Pengecekan, Perubahan data. Tiap tab memuat `serials.history` berkursor (server mengirim
+ * terbaru dulu) dengan tombol "Muat yang lebih lama" di dalam kelompok riwayat sebelumnya; jumlah di tab dari `counts`
+ * server. Di tab Semua, kejadian milik satu laporan diringkas menjadi SATU kartu laporan yang membuka halaman detail
+ * laporan (`/serial/reports/$caseId`; tidak ada lagi tab per laporan). Tab Pengecekan dan Perubahan data tetap
+ * menampilkan tiap kejadian apa adanya (itu penyaring jenis kejadian, bukan ringkasan per laporan).
  */
-export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
-  const [tab, setTab] = useState<string>(() =>
-    initialCaseId && serial.cases.some((entry) => entry.id === initialCaseId)
-      ? `${CASE_PREFIX}${initialCaseId}`
-      : 'all',
-  );
-  const caseId = tab.startsWith(CASE_PREFIX) ? tab.slice(CASE_PREFIX.length) : undefined;
-  const group = caseId ? 'all' : (tab as 'all' | 'checks' | 'changes');
+export function TimelineTabs({ serial }: TimelineTabsProps) {
+  const [tab, setTab] = useState<TimelineTab>('all');
   const history = useInfiniteQuery({
-    ...serialHistoryInfiniteQueryOptions({ id: serial.id, group, ...(caseId ? { caseId } : {}) }),
+    ...serialHistoryInfiniteQueryOptions({ id: serial.id, group: tab }),
     // Selama ada foto bukti yang menunggu cap, riwayat disegarkan berkala agar statusnya (selesai/gagal) terlihat.
     refetchInterval: (query) =>
       pagesHavePendingProof(query.state.data?.pages ?? []) ? PROOF_POLL_MS : false,
@@ -66,8 +61,8 @@ export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
   }, [tab]);
 
   return (
-    <Tabs value={tab} onValueChange={setTab} className="min-w-0">
-      {/* Baris tab tidak dibungkus: banyak tab laporan membuatnya bisa digeser mendatar di dalam pembungkusnya. */}
+    <Tabs value={tab} onValueChange={(next) => setTab(next as TimelineTab)} className="min-w-0">
+      {/* Baris tab bisa digeser mendatar di dalam pembungkusnya pada layar sempit. */}
       <TabsList
         ref={listRef}
         className="h-auto w-full justify-start gap-1 overflow-x-auto overflow-y-hidden"
@@ -76,11 +71,6 @@ export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
         <TabsTrigger value="all" className="flex-none">
           {`${HISTORY_GROUP_LABEL.all}${count(counts.current?.all)}`}
         </TabsTrigger>
-        {serial.cases.map((entry) => (
-          <TabsTrigger key={entry.id} value={`${CASE_PREFIX}${entry.id}`} className="flex-none">
-            {`${entry.number}${count(counts.current ? (counts.current.byCase[entry.id] ?? 0) : undefined)}`}
-          </TabsTrigger>
-        ))}
         <TabsTrigger value="checks" className="flex-none">
           {`${HISTORY_GROUP_LABEL.checks}${count(counts.current?.checks)}`}
         </TabsTrigger>
@@ -100,6 +90,15 @@ export function TimelineTabs({ serial, initialCaseId }: TimelineTabsProps) {
             key={tab}
             events={events}
             markLatest={tab === 'all'}
+            {...(tab === 'all'
+              ? {
+                  caseGroups: {
+                    cases: serial.cases,
+                    serialStatus: serial.status,
+                    counts: counts.current?.byCase,
+                  },
+                }
+              : {})}
             loadOlder={
               history.hasNextPage ? (
                 <Button

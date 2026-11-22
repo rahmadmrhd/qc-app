@@ -1,16 +1,26 @@
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
 
 vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: null, isLoading: false, isError: true }),
 }));
+
+// Panel aktivitas (aside) memuat `activity.list`; di sini kosong, yang diuji hanya tampilan View.
+const apiMock = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/api', () => ({ api: apiMock }));
 
 import { resetOutboxEnv } from '@/test/outbox-env';
 import { enqueueCheck } from '../lib/check-outbox';
 import { enqueueOutbox } from '../lib/outbox';
 import { HandoverDetailView } from './handover-detail-view';
 import { makeHandover } from './test-handover';
+
+beforeEach(() => {
+  apiMock.mockReset();
+  apiMock.mockResolvedValue({ entries: [], nextCursor: null, hasMore: false });
+});
 
 function setup(
   over: Partial<Parameters<typeof HandoverDetailView>[0]> = {},
@@ -25,16 +35,20 @@ function setup(
     onComment: vi.fn().mockResolvedValue(undefined),
   };
   render(
-    <HandoverDetailView
-      handover={handover}
-      locationName="Lokasi A"
-      canEdit
-      canCancel
-      canProgress
-      pending={false}
-      {...handlers}
-      {...over}
-    />,
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <HandoverDetailView
+        handover={handover}
+        locationName="Lokasi A"
+        canEdit
+        canCancel
+        canProgress
+        pending={false}
+        {...handlers}
+        {...over}
+      />
+    </QueryClientProvider>,
   );
   return handlers;
 }
@@ -236,4 +250,15 @@ test('aksi ponsel/desktop memakai ViewPage: judul h1 nomor task dengan badge sta
   const heading = screen.getByRole('heading', { level: 1 });
   expect(heading).toHaveTextContent('ST-20261015-001');
   expect(screen.getByText('Dikerjakan')).toBeInTheDocument();
+});
+
+test('panel kanan memuat log aktivitas task (kind handover)', async () => {
+  setup();
+  const panel = await screen.findByRole('region', { name: 'Aktivitas' });
+  expect(await within(panel).findByText('Belum ada aktivitas tercatat.')).toBeInTheDocument();
+  expect(apiMock).toHaveBeenCalledWith('activity.list', {
+    kind: 'handover',
+    id: makeHandover().id,
+    limit: 10,
+  });
 });

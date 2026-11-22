@@ -35,10 +35,10 @@ export interface ItemListFilter {
   manualBook: 'all' | 'missing';
   /** `missing` = hanya item aktif yang belum punya Postel (catatan nomor Postel). */
   postel: 'all' | 'missing';
-  /** Id merk ('' = semua merk); merk terhapus tetap sah (tautan dari View merk). */
-  brandId: string;
-  /** Id BU ('' = semua BU yang boleh dilihat). */
-  buId: string;
+  /** Id merk (kosong = semua merk); merk terhapus tetap sah (tautan dari View merk). Banyak nilai = salah satu dari. */
+  brandIds: string[];
+  /** Id BU (kosong = semua BU yang boleh dilihat). Banyak nilai = salah satu dari. */
+  buIds: string[];
 }
 
 export const DEFAULT_ITEM_FILTER: ItemListFilter = {
@@ -49,8 +49,8 @@ export const DEFAULT_ITEM_FILTER: ItemListFilter = {
   stickerMode: 'has',
   manualBook: 'all',
   postel: 'all',
-  brandId: '',
-  buId: '',
+  brandIds: [],
+  buIds: [],
 };
 
 /** `stickerKey` -> parameter `stickerId`/`typeId` + `stickerMode` untuk `items.list`; kosong/tak dikenal = tanpa filter. */
@@ -81,8 +81,9 @@ export const itemKeys = {
       filter.stickerMode,
       filter.manualBook,
       filter.postel,
-      filter.brandId,
-      filter.buId,
+      // Nilai filter jamak ikut kunci cache agar tiap kombinasi punya daftarnya sendiri.
+      filter.brandIds.join(','),
+      filter.buIds.join(','),
     ] as const,
   one: (id: string) => ['items', 'one', id] as const,
 };
@@ -105,8 +106,8 @@ export function itemsInfiniteQueryOptions(filter: ItemListFilter = DEFAULT_ITEM_
         ...stickerFilterInput(filter),
         ...(filter.manualBook === 'missing' ? { manualBook: 'missing' as const } : {}),
         ...(filter.postel === 'missing' ? { postel: 'missing' as const } : {}),
-        ...(filter.brandId !== '' ? { brandId: filter.brandId } : {}),
-        ...(filter.buId !== '' ? { buId: filter.buId } : {}),
+        ...(filter.brandIds.length > 0 ? { brandIds: filter.brandIds } : {}),
+        ...(filter.buIds.length > 0 ? { buIds: filter.buIds } : {}),
         ...(pageParam ? { cursor: pageParam } : {}),
       }),
     initialPageParam: undefined as string | undefined,

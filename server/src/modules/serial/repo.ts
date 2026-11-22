@@ -332,11 +332,12 @@ export interface SerialListFilter {
   prefixes?: readonly string[];
   /** Serial persis (ternormalisasi). */
   serials?: readonly string[];
-  buId?: string;
-  itemId?: string;
-  locationId?: string;
-  status?: string;
-  custody?: string;
+  /** Serial pernah/ada di salah satu BU ini (tetap dibatasi `buIds` yang boleh dibaca). */
+  filterBuIds?: readonly string[];
+  itemIds?: readonly string[];
+  locationIds?: readonly string[];
+  statuses?: readonly string[];
+  custodies?: readonly string[];
   from?: string;
   to?: string;
   createdBy?: string;
@@ -365,21 +366,16 @@ const placeholders = (count: number): string => Array.from({ length: count }, ()
 export async function listSerialRows(db: Preparer, filter: SerialListFilter): Promise<SerialRow[]> {
   const common: string[] = [];
   const commonBinds: unknown[] = [];
-  if (filter.itemId !== undefined) {
-    common.push('s.item_id = ?');
-    commonBinds.push(filter.itemId);
-  }
-  if (filter.locationId !== undefined) {
-    common.push('s.location_id = ?');
-    commonBinds.push(filter.locationId);
-  }
-  if (filter.status !== undefined) {
-    common.push('s.status = ?');
-    commonBinds.push(filter.status);
-  }
-  if (filter.custody !== undefined) {
-    common.push('s.custody = ?');
-    commonBinds.push(filter.custody);
+  const inFilters: [string, readonly string[] | undefined][] = [
+    ['s.item_id', filter.itemIds],
+    ['s.location_id', filter.locationIds],
+    ['s.status', filter.statuses],
+    ['s.custody', filter.custodies],
+  ];
+  for (const [column, values] of inFilters) {
+    if (values === undefined) continue;
+    common.push(`${column} IN (${placeholders(values.length)})`);
+    commonBinds.push(...values);
   }
   if (filter.from !== undefined) {
     common.push('s.test_date >= ?');
@@ -424,15 +420,18 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
       binds: [...filter.buIds, ...filter.buIds],
     },
   ];
-  const buId = filter.buId;
+  const filterBus = filter.filterBuIds;
   const buParts: Part[] =
-    buId === undefined
+    filterBus === undefined
       ? [{ sql: '', binds: [] }]
       : [
-          { sql: 's.bu_id = ?', binds: [buId] },
           {
-            sql: "s.bu_id <> ? AND s.id IN (SELECT serial_id FROM serial_business_units WHERE bu_id = ? AND left_at > '')",
-            binds: [buId, buId],
+            sql: `s.bu_id IN (${placeholders(filterBus.length)})`,
+            binds: [...filterBus],
+          },
+          {
+            sql: `s.bu_id NOT IN (${placeholders(filterBus.length)}) AND s.id IN (SELECT serial_id FROM serial_business_units WHERE bu_id IN (${placeholders(filterBus.length)}) AND left_at > '')`,
+            binds: [...filterBus, ...filterBus],
           },
         ];
 

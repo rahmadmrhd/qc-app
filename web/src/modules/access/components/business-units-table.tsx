@@ -106,6 +106,7 @@ export function BusinessUnitsTable({
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${bu.name}`,
+          shortLabel: 'Pulihkan',
           hidden: !canManage,
           busy,
           onSelect: () => onRestore(bu),
@@ -117,6 +118,7 @@ export function BusinessUnitsTable({
         id: 'edit',
         action: 'edit',
         label: `Ubah ${bu.name}`,
+        shortLabel: 'Ubah',
         hidden: !canManage,
         onSelect: () => onEdit(bu),
       },
@@ -124,6 +126,7 @@ export function BusinessUnitsTable({
         id: 'status',
         action: bu.status === 'active' ? 'deactivate' : 'activate',
         label: `${bu.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'} ${bu.name}`,
+        shortLabel: bu.status === 'active' ? 'Nonaktifkan' : 'Aktifkan',
         hidden: !canManage,
         busy,
         onSelect: () => onToggleStatus(bu),
@@ -132,6 +135,7 @@ export function BusinessUnitsTable({
         id: 'delete',
         action: 'delete',
         label: `Hapus ${bu.name}`,
+        shortLabel: 'Hapus',
         hidden: !canManage || bu.status !== 'inactive',
         busy,
         onSelect: () => onDelete(bu),
@@ -145,6 +149,10 @@ export function BusinessUnitsTable({
       rowKey={(bu) => bu.id}
       columns={columns}
       label="Daftar Business Unit"
+      rowTo={(bu) => ({
+        to: '/access/business-units/$businessUnitId',
+        params: { businessUnitId: bu.id },
+      })}
       selectLabel={(bu) => bu.name}
       selection={selection}
       actions={canManage ? actions : undefined}

@@ -83,3 +83,24 @@ test('K2: <main> tanpa lebar terukur (jsdom) memakai lebar viewport', () => {
   expect(result.current).toBe(false);
   main.remove();
 });
+
+test('scrollbar klasik 17 px pada viewport 768: <main> 703 tetap dianggap lebar (invarian B12)', () => {
+  mockMatchMedia(true);
+  const main = document.createElement('main');
+  Object.defineProperty(main, 'clientWidth', { get: () => 703, configurable: true });
+  document.body.append(main);
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  const savedWidth = window.innerWidth;
+  window.innerWidth = 768;
+  Object.defineProperty(document.documentElement, 'clientWidth', { get: () => 751, configurable: true });
+  const { result } = renderHook(() => useIsDesktop());
+  expect(result.current).toBe(true);
+  // Tanpa scrollbar (overlay) 703 memang sempit: ambang tetap 704.
+  Object.defineProperty(document.documentElement, 'clientWidth', { get: () => 768, configurable: true });
+  const { result: noBar } = renderHook(() => useIsDesktop());
+  expect(noBar.current).toBe(false);
+  Reflect.deleteProperty(document.documentElement, 'clientWidth');
+  window.innerWidth = savedWidth;
+  main.remove();
+  vi.unstubAllGlobals();
+});

@@ -291,13 +291,24 @@ test('pulihkan batch: item hilang dari tampilan Terhapus dan detail diperbarui',
   expect(client.getQueryData(itemKeys.one('i1'))).toEqual(restored);
 });
 
-test('daftar item: brandId dan buId dikirim hanya bila terisi dan membedakan kunci cache', async () => {
+test('daftar item: brandIds dan buIds (jamak) dikirim hanya bila terisi dan membedakan kunci cache', async () => {
   apiMock.mockResolvedValue({ items: [], nextCursor: null });
   await client.fetchInfiniteQuery(
-    itemsInfiniteQueryOptions({ ...DEFAULT_ITEM_FILTER, brandId: 'b1', buId: 'bu-a' }),
+    itemsInfiniteQueryOptions({
+      ...DEFAULT_ITEM_FILTER,
+      brandIds: ['b1', 'b2'],
+      buIds: ['bu-a'],
+    }),
   );
-  expect(apiMock).toHaveBeenLastCalledWith('items.list', { brandId: 'b1', buId: 'bu-a' });
-  expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, brandId: 'b1' })).not.toEqual(
+  expect(apiMock).toHaveBeenLastCalledWith('items.list', {
+    brandIds: ['b1', 'b2'],
+    buIds: ['bu-a'],
+  });
+  expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, brandIds: ['b1'] })).not.toEqual(
     itemKeys.page(DEFAULT_ITEM_FILTER),
+  );
+  // Kombinasi nilai berbeda = kunci berbeda.
+  expect(itemKeys.page({ ...DEFAULT_ITEM_FILTER, brandIds: ['b1'] })).not.toEqual(
+    itemKeys.page({ ...DEFAULT_ITEM_FILTER, brandIds: ['b1', 'b2'] }),
   );
 });

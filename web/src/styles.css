@@ -7,6 +7,12 @@
 /* Mode sempit/lebar menurut lebar <main> (ambang di lib/layout.ts; atribut ditulis useIsDesktop): sama dengan JS. */
 @custom-variant narrow (:where(html[data-narrow="true"]) &);
 @custom-variant wide (:where(html:not([data-narrow="true"])) &);
+/* Rentang sidebar overlay (lib/layout.ts SIDEBAR_OVERLAY_BELOW; dijaga layout.test.ts): 48rem <= lebar < 60rem. */
+@custom-variant sidebar-overlay {
+  @media (width >= 48rem) and (width < 60rem) {
+    @slot;
+  }
+}
 /* Layar sentuh: ponsel (< 768 px) ATAU penunjuk utama kasar (tablet); dipakai untuk target sentuh 44 px dan ukuran isian. */
 @custom-variant touch {
   @media (max-width: 767px), (pointer: coarse) {

@@ -87,8 +87,8 @@ export const QRCODE_BUAT: GuideEntry = {
     },
     {
       target: 'qr-source',
-      // Formulir bertab: panel Sumber link berada di tab sendiri; tur membukanya (hanya memilih tab, tak mengisi apa pun).
-      buka: { tab: 'sumber' },
+      // Formulir bertab: Sumber link satu tab dengan item dan nama (tab Detail); tur membukanya (hanya memilih tab, tak mengisi apa pun).
+      buka: { tab: 'detail' },
       text: 'Sumber link: unggah PDF manualnya (maksimal 10 MB) atau salin dari Google Drive. QR akan mengarah ke PDF ini, dan PDF-nya bisa dibuka siapa saja yang punya link, jadi pastikan isinya memang boleh dibagikan.',
       advance: 'next',
     },

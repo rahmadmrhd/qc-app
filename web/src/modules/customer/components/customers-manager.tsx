@@ -92,6 +92,7 @@ export function CustomersManager({
           id: 'restore',
           action: 'restore',
           label: `Pulihkan ${customer.name}`,
+          shortLabel: 'Pulihkan',
           hidden: !canManage,
           busy,
           onSelect: () => onRestore(customer),
@@ -103,6 +104,7 @@ export function CustomersManager({
         id: 'edit',
         action: 'edit',
         label: `Ubah ${customer.name}`,
+        shortLabel: 'Ubah',
         hidden: !canManage,
         onSelect: () => onEdit(customer),
       },
@@ -110,6 +112,7 @@ export function CustomersManager({
         id: 'status',
         action: customer.status === 'active' ? 'deactivate' : 'activate',
         label: `${customer.status === 'active' ? 'Nonaktifkan' : 'Aktifkan'} ${customer.name}`,
+        shortLabel: customer.status === 'active' ? 'Nonaktifkan' : 'Aktifkan',
         hidden: !canManage,
         busy,
         onSelect: () => onToggleStatus(customer),
@@ -118,6 +121,7 @@ export function CustomersManager({
         id: 'delete',
         action: 'delete',
         label: `Hapus ${customer.name}`,
+        shortLabel: 'Hapus',
         hidden: !canManage || customer.status !== 'inactive',
         busy,
         onSelect: () => onDelete(customer),
@@ -131,6 +135,7 @@ export function CustomersManager({
       rowKey={(customer) => customer.id}
       columns={columns}
       label="Daftar customer"
+      rowTo={(customer) => ({ to: '/customer/$customerId', params: { customerId: customer.id } })}
       selectLabel={(customer) => customer.name}
       selection={selection}
       actions={canManage ? actions : undefined}

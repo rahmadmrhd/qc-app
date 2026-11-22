@@ -60,7 +60,7 @@ export function RecordDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="h-[calc(100dvh-2rem)] sm:max-w-6xl">
+        <DialogContent size="full-on-phone" className="h-[calc(100dvh-2rem)] sm:max-w-6xl">
           <DialogHeader>
             <DialogTitle>Catat Serial Number</DialogTitle>
             <DialogDescription>

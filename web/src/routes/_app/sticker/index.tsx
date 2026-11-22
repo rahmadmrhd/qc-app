@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
+import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 import { businessUnitLinkAccess, stickerTypeLinkAccess } from '@/lib/link-access';
 import { businessUnitOptionsQueryOptions, useSaveBusinessUnit } from '@/modules/access/queries';
 import { can, locationsWith, requireAnyPermission } from '@/modules/auth/permissions';
@@ -33,8 +34,10 @@ import {
 
 const searchSchema = z.object({
   q: z.string().max(100).optional().catch(undefined),
-  /** Id jenis (tautan dari View/daftar Jenis); pada mode stok saja berisi nama jenis. */
+  /** Id jenis tunggal (tautan dari View/daftar Jenis); pada mode stok saja berisi nama jenis. Tetap diterima. */
   typeId: z.string().max(100).optional().catch(undefined),
+  /** Beberapa jenis sekaligus (filter chip Jenis); bila ada, mengalahkan `typeId`. */
+  typeIds: z.array(z.string().max(100)).max(FILTER_LIST_MAX).optional().catch(undefined),
   status: z
     .enum(['all', 'active', 'inactive', 'deprecated', 'deleted'])
     .optional()
@@ -102,7 +105,7 @@ function StickersRoute() {
 
   const filter: StickersFilter = {
     q: search.q ?? '',
-    typeId: search.typeId ?? '',
+    typeIds: search.typeIds ?? (search.typeId ? [search.typeId] : []),
     status,
   };
 
@@ -112,7 +115,10 @@ function StickersRoute() {
       search: (prev) => ({
         ...prev,
         ...(patch.q !== undefined ? { q: patch.q || undefined } : {}),
-        ...(patch.typeId !== undefined ? { typeId: patch.typeId || undefined } : {}),
+        // Filter jenis memakai `typeIds`; `typeId` lama (tautan masuk) ikut dibuang agar tak hidup lagi.
+        ...(patch.typeIds !== undefined
+          ? { typeIds: patch.typeIds.length > 0 ? patch.typeIds : undefined, typeId: undefined }
+          : {}),
         ...(patch.status !== undefined
           ? { status: patch.status === 'all' ? undefined : patch.status }
           : {}),

@@ -443,7 +443,7 @@ export function ActDialog({ serial, kind, onClose }: ActDialogProps) {
 
   return (
     <Dialog open onOpenChange={(open) => !open && cancel()}>
-      <DialogContent>
+      <DialogContent size="full-on-phone">
         <DialogHeader>
           <DialogTitle>{TITLE[kind]}</DialogTitle>
           <DialogDescription>{descriptionOf(kind, isReceiveAtQc, hasRecheckRow)}</DialogDescription>

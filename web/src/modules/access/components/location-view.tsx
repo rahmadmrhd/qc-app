@@ -5,6 +5,7 @@ import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { DeletedBanner } from '@/components/soft-delete/deleted-banner';
 import { ActiveStatusBadge } from '@/components/status-badge';
 import { Button } from '@/components/ui/button';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 
 export interface LocationViewProps {
   /** `undefined` = lokasi tidak ada (id salah, atau terhapus bagi yang tak boleh melihatnya). */
@@ -105,7 +106,10 @@ export function LocationView({
         ) : null
       }
       aside={
-        <ViewMeta updatedBy={location.updatedBy} updatedAt={location.updatedAt} links={links} />
+        <>
+          <ViewMeta updatedBy={location.updatedBy} updatedAt={location.updatedAt} links={links} />
+          <ActivityLog kind="location" id={location.id} />
+        </>
       }
     >
       <ViewSection title="Informasi lokasi">

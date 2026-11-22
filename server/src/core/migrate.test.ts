@@ -334,6 +334,7 @@ describe('skema baseline', () => {
       { name: '0028_audit_target_id.sql' },
       { name: '0029_klien_id_entri_stok.sql' },
       { name: '0030_soft_delete_contract.sql' },
+      { name: '0031_audit_target_id_index.sql' },
     ]);
   });
 
@@ -470,6 +471,7 @@ describe('skema baseline', () => {
       .sort();
     expect(got).toEqual(
       [
+        'audit_log.audit_log_target_id_ts',
         'audit_log.audit_log_target_ts',
         'audit_log.audit_log_ts',
         'brand_default_business_units.brand_default_business_units_bu',

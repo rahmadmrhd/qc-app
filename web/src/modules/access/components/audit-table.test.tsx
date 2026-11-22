@@ -98,8 +98,6 @@ test('360 px: kartu berjudul target, badge aksi, meta waktu dan pelaku; detail l
   expect(within(card).getByText('Waktu')).toBeInTheDocument();
   expect(within(card).getByText('Pelaku')).toBeInTheDocument();
   await userEvent.click(within(card).getByRole('button', { name: 'Aksi User diubah ani@x.com' }));
-  await userEvent.click(
-    await screen.findByRole('menuitem', { name: 'Lihat detail User diubah ani@x.com' }),
-  );
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Lihat' }));
   expect(onSelect).toHaveBeenCalled();
 });

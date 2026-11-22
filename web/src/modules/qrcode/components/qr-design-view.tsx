@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatStamp } from '@/lib/format-stamp';
 import { isWebUrl } from '@/lib/web-url';
+import { ActivityLog } from '@/modules/activity/components/activity-log';
 import { useFileUrl } from '@/modules/files/queries';
 import { STICKER_STATUS_LABEL } from '@/modules/sticker/lib/status';
 import { LabelPreview } from './label-preview';
@@ -289,20 +290,31 @@ export function QrDesignView({
                 onSelect: () => onExport?.(),
               },
               {
-                id: 'download-pdf',
+                // Unduh PDF dan PNG satu aksi bersubmenu: desktop satu dropdown, ponsel grup datar "Unduh" (B5b).
+                id: 'download',
                 action: 'download',
-                label: 'Unduh PDF',
+                label: 'Unduh',
                 hidden: !(exported && onDownload),
                 disabled: downloadBusy,
-                onSelect: () => onDownload?.('pdf'),
-              },
-              {
-                id: 'download-png',
-                action: 'download',
-                label: 'Unduh PNG',
-                hidden: !(exported && onDownload),
-                disabled: downloadBusy,
-                onSelect: () => onDownload?.('png'),
+                onSelect: () => undefined,
+                submenu: [
+                  {
+                    id: 'download-pdf',
+                    action: 'download',
+                    label: 'Unduh PDF',
+                    shortLabel: 'PDF',
+                    disabled: downloadBusy,
+                    onSelect: () => onDownload?.('pdf'),
+                  },
+                  {
+                    id: 'download-png',
+                    action: 'download',
+                    label: 'Unduh PNG',
+                    shortLabel: 'PNG',
+                    disabled: downloadBusy,
+                    onSelect: () => onDownload?.('png'),
+                  },
+                ],
               },
               {
                 id: 'delete',
@@ -323,12 +335,15 @@ export function QrDesignView({
         ) : null
       }
       aside={
-        <ViewMeta
-          createdBy={design.createdBy}
-          createdAt={design.createdAt}
-          updatedBy={design.updatedBy}
-          updatedAt={design.updatedAt}
-        />
+        <>
+          <ViewMeta
+            createdBy={design.createdBy}
+            createdAt={design.createdAt}
+            updatedBy={design.updatedBy}
+            updatedAt={design.updatedAt}
+          />
+          <ActivityLog kind="qrDesign" id={design.id} createdAt={design.createdAt} />
+        </>
       }
     />
   );

@@ -59,9 +59,15 @@ test('findBoardSeed: lokasi task di luar readable tidak di-seed', () => {
 
 test('boardColumnKey: papan tersaring customer berkunci terpisah dan tidak dikenali sebagai kolom tersimpan', () => {
   const plain = boardColumnKey(['l1'], 'new');
-  const filtered = boardColumnKey(['l1'], 'new', 'c1');
+  const filtered = boardColumnKey(['l1'], 'new', ['c1']);
   expect(filtered).not.toEqual(plain);
-  expect(boardColumnKey(['l1'], 'new', 'c2')).not.toEqual(filtered);
+  expect(boardColumnKey(['l1'], 'new', ['c2'])).not.toEqual(filtered);
+  // Nilai jamak ikut kunci (urutan tak berpengaruh), kombinasi berbeda = kunci berbeda.
+  expect(boardColumnKey(['l1'], 'new', ['c1', 'c2'])).not.toEqual(filtered);
+  expect(boardColumnKey(['l1'], 'new', ['c2', 'c1'])).toEqual(
+    boardColumnKey(['l1'], 'new', ['c1', 'c2']),
+  );
+  expect(boardColumnKey(['l1'], 'new', [])).toEqual(plain);
   expect(boardColumnKey(['l1'], 'new', undefined)).toEqual(plain);
   expect(parseBoardQueryKey(plain)).not.toBeNull();
   expect(parseBoardQueryKey(filtered)).toBeNull();
@@ -81,7 +87,7 @@ function filledTask(id: string, customerId: string): HandoverDto {
 test('upsertHandoverInBoards: kolom tersaring customer hanya menerima task customer itu; kolom penuh menerima semua', () => {
   const client = new QueryClient();
   const full = boardColumnKey(['l1'], 'new');
-  const forA = boardColumnKey(['l1'], 'new', 'A');
+  const forA = boardColumnKey(['l1'], 'new', ['A']);
   client.setQueryData(full, boardColumnData([], { total: 0 }));
   client.setQueryData(forA, boardColumnData([], { total: 0 }));
   upsertHandoverInBoards(client, filledTask('t-b', 'B'));
@@ -99,7 +105,7 @@ test('upsertHandoverInBoards: kolom tersaring customer hanya menerima task custo
 
 test('upsertHandoverInBoards: task yang customernya diganti keluar dari kolom tersaring customer lama', () => {
   const client = new QueryClient();
-  const forA = boardColumnKey(['l1'], 'new', 'A');
+  const forA = boardColumnKey(['l1'], 'new', ['A']);
   client.setQueryData(forA, boardColumnData([filledTask('t1', 'A')], { total: 1 }));
   upsertHandoverInBoards(client, filledTask('t1', 'B'));
   const data = client.getQueryData<ReturnType<typeof boardColumnData>>(forA);
@@ -116,7 +122,10 @@ test('boardColumnKey: kolom Terhapus berkunci terpisah, tak dikenali sebagai kol
   expect(deleted).not.toEqual(plain);
   expect(deleted).toHaveLength(5);
   expect(deleted[4]).toEqual({ deleted: true });
-  expect(boardColumnKey(['l1'], 'new', 'c1', true)[4]).toEqual({ customerId: 'c1', deleted: true });
+  expect(boardColumnKey(['l1'], 'new', ['c1'], true)[4]).toEqual({
+    customerIds: ['c1'],
+    deleted: true,
+  });
   expect(boardColumnKey(['l1'], 'new', undefined, false)).toEqual(plain);
   expect(parseBoardQueryKey(deleted)).toBeNull();
 });

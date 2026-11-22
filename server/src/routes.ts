@@ -1,5 +1,6 @@
 import type { RouteTable } from '@server/core/router';
 import { accessRoutes } from '@server/modules/access/routes';
+import { activityRoutes } from '@server/modules/activity/routes';
 import { authApiRoutes } from '@server/modules/auth/api';
 import { brandRoutes } from '@server/modules/brand/routes';
 import { customerRoutes } from '@server/modules/customer/routes';
@@ -40,6 +41,7 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'access.roles.restore': true,
   'access.roles.restoreBatch': true,
   'access.audit.list': true,
+  'activity.list': true,
   'access.locations.list': true,
   'access.locations.get': true,
   'access.locations.save': true,
@@ -191,6 +193,7 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'serialServiceSettings.get': true,
   'serialServiceSettings.save': true,
   'serialCases.list': true,
+  'serialCases.get': true,
   'serialProofs.upload': true,
   'serialProofs.get': true,
   'serialProofs.remove': true,
@@ -227,6 +230,7 @@ function realRoutes(): RouteTable {
     ...authApiRoutes(),
     ...accessRoutes(),
     ...brandRoutes(),
+    ...activityRoutes(),
     ...customerRoutes(),
     ...filesRoutes(),
     ...itemRoutes(),

@@ -1,6 +1,7 @@
 import { Link, type LinkProps } from '@tanstack/react-router';
+import { cn } from 'cn';
 import { Ellipsis } from 'lucide-react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import { ACTIONS, ActionButton, type ActionKind } from '@/components/action-button';
 import { DisabledReason } from '@/components/disabled-reason';
 import { Button } from '@/components/ui/button';
@@ -8,11 +9,15 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { onFormTabRequest } from '@/lib/form-tab-request';
+import { separatorBefore } from '@/lib/menu-separators';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
 import { StickyActionBar } from './sticky-action-bar';
 
@@ -34,8 +39,91 @@ export interface ViewAction {
   disabledReason?: string;
   busy?: boolean;
   hidden?: boolean;
-  /** Aksi utama di bar bawah ponsel (bawaan: aksi pertama yang terlihat). */
+  /**
+   * Aksi utama di bar bawah ponsel (boleh lebih dari satu: tiap aksi utama jadi satu tombol di bar; bawaan: aksi
+   * pertama yang terlihat dan tidak bersubmenu).
+   */
   primary?: boolean;
+  /**
+   * Hanya di menu "Aksi lainnya" ponsel; tak tampil sebagai tombol di bar judul desktop (aksinya sudah tersedia di
+   * tempat lain pada desktop, mis. tombol di tab Riwayat View Serial).
+   */
+  phoneOnly?: boolean;
+  /** Label singkat di menu ponsel (bawaan: `label` lalu label bawaan jenis aksi). */
+  shortLabel?: string;
+  /**
+   * Kelompok aksi di bawah satu entri (mis. Unduh: PDF, PNG). Desktop: satu tombol yang membuka satu dropdown.
+   * Ponsel TANPA submenu bersarang: butirnya jadi grup datar di menu "Aksi lainnya" (label grup = nama entri).
+   */
+  submenu?: readonly ViewAction[];
+}
+
+function actionText(entry: ViewAction): string {
+  return entry.label ?? ACTIONS[entry.action].label;
+}
+
+/**
+ * Butir menu ponsel (menu "Aksi lainnya") dan dropdown grup desktop: ikon + label; alasan nonaktif sebagai baris
+ * keterangan. `parent` = entri induk grup: bila induk nonaktif/sibuk, butirnya ikut nonaktif (alasan induk dipakai
+ * bila butir tak punya alasan sendiri).
+ */
+function PhoneMenuItem({
+  entry,
+  short,
+  parent,
+}: {
+  entry: ViewAction;
+  short?: boolean;
+  parent?: ViewAction;
+}) {
+  const Icon = ACTIONS[entry.action].icon;
+  const text = short ? (entry.shortLabel ?? actionText(entry)) : actionText(entry);
+  const disabled = Boolean(entry.disabled || entry.busy || parent?.disabled || parent?.busy);
+  const reason = entry.disabled
+    ? entry.disabledReason
+    : parent?.disabled
+      ? (entry.disabledReason ?? parent.disabledReason)
+      : undefined;
+  return (
+    <DropdownMenuItem
+      variant={entry.action === 'delete' ? 'destructive' : 'default'}
+      disabled={disabled}
+      onSelect={entry.onSelect}
+    >
+      <Icon aria-hidden />
+      {disabled && reason ? (
+        <span className="flex min-w-0 flex-col">
+          {text}
+          <span className="text-xs font-normal text-muted-foreground">{reason}</span>
+        </span>
+      ) : (
+        text
+      )}
+    </DropdownMenuItem>
+  );
+}
+
+/** Aksi bersubmenu di bar judul desktop: satu tombol dengan satu dropdown (tanpa menu bersarang). */
+function DesktopSubmenu({ entry }: { entry: ViewAction }) {
+  const group = (entry.submenu ?? []).filter((sub) => !sub.hidden);
+  if (group.length === 0) return null;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <ActionButton
+          action={entry.action}
+          label={actionText(entry)}
+          busy={entry.busy}
+          disabled={entry.disabled}
+        />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {group.map((sub) => (
+          <PhoneMenuItem key={sub.id} entry={sub} parent={entry} />
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 /**
@@ -68,9 +156,18 @@ export function ViewPage({
   onTabChange?: (id: string) => void;
 }) {
   const desktop = useIsDesktop();
+  // SATU gerbang ponsel (viewport < 768, sama dengan judul navbar): judul tak tampil ganda pada 704-767 px.
+  const phone = useIsMobile();
   const visibleActions = (actionItems ?? []).filter((entry) => !entry.hidden);
-  const primaryAction = visibleActions.find((entry) => entry.primary) ?? visibleActions[0];
-  const menuActions = visibleActions.filter((entry) => entry !== primaryAction);
+  // Bar bawah ponsel: semua aksi bertanda `primary`; tanpa penanda, aksi pertama yang tidak bersubmenu.
+  const marked = visibleActions.filter((entry) => entry.primary && !entry.submenu);
+  const firstPlain = visibleActions.find((entry) => !entry.submenu);
+  const primaryActions = marked.length > 0 ? marked : firstPlain ? [firstPlain] : [];
+  const menuActions = visibleActions.filter((entry) => !primaryActions.includes(entry));
+  // Bar atas memuat aksi bila ada `actions` atau (desktop) aksi terstruktur; selain itu, di ponsel tanpa lencana, kosong.
+  const desktopActions = visibleActions.filter((entry) => !entry.phoneOnly);
+  const topActions = Boolean(actions) || (desktop && desktopActions.length > 0);
+  const emptyTop = phone && !badge && !topActions;
   const [localTab, setLocalTab] = useState(tabs?.[0]?.id);
   const requested = tab ?? localTab;
   // Id tak dikenal (mis. `?tab=` basi) jatuh ke tab pertama agar panel tak kosong.
@@ -97,7 +194,7 @@ export function ViewPage({
     <Tabs value={active} onValueChange={select}>
       <TabsList
         variant="line"
-        className="sticky top-[var(--headroom-offset,3.5rem)] z-10 h-auto w-full justify-start overflow-x-auto overflow-y-hidden rounded-none border-b bg-background pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="sticky top-[var(--headroom-offset,3.5rem)] z-10 h-auto w-full justify-start overflow-x-auto overflow-y-hidden rounded-none border-b bg-[var(--tabs-surface,var(--background))] pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {tabs.map((entry) => (
           <TabsTrigger
@@ -110,7 +207,7 @@ export function ViewPage({
         ))}
       </TabsList>
       {tabs.map((entry) => (
-        <TabsContent key={entry.id} value={entry.id} className="pt-4">
+        <TabsContent key={entry.id} value={entry.id} className="pt-3">
           {entry.content}
         </TabsContent>
       ))}
@@ -122,35 +219,50 @@ export function ViewPage({
 
   return (
     <HeadroomFrame className="gap-3">
-      <HeadroomBar className="pt-1 pb-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h1 className="min-w-0 text-xl font-semibold break-words">{title}</h1>
-            {badge}
-          </div>
-          {actions || (desktop && visibleActions.length > 0) ? (
-            <div className="flex flex-wrap items-center gap-2 narrow:w-full">
-              {actions}
-              {desktop
-                ? visibleActions.map((entry) => (
-                    <DisabledReason
-                      key={entry.id}
-                      reason={entry.disabled ? entry.disabledReason : undefined}
-                    >
-                      <ActionButton
-                        action={entry.action}
-                        label={entry.label}
-                        busy={entry.busy}
-                        disabled={entry.disabled}
-                        onClick={entry.onSelect}
-                      />
-                    </DisabledReason>
-                  ))
-                : null}
-            </div>
-          ) : null}
+      {emptyTop ? (
+        // Ponsel tanpa lencana dan tanpa aksi di bar atas: tanpa bar ber-border/bayang yang kosong (dan tak menambah
+        // `--headroom-offset`); judul tetap ada bagi pembaca layar.
+        <div className="sr-only">
+          <h1>{title}</h1>
         </div>
-      </HeadroomBar>
+      ) : (
+        <HeadroomBar className="pt-1 pb-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              {/* Ponsel: judul tampak = judul navbar; h1 tetap ada bagi pembaca layar. */}
+              <h1 className={cn('min-w-0 text-xl font-semibold break-words', phone && 'sr-only')}>
+                {title}
+              </h1>
+              {badge}
+            </div>
+            {topActions ? (
+              <div className="flex flex-wrap items-center gap-2 narrow:w-full">
+                {actions}
+                {desktop
+                  ? desktopActions.map((entry) =>
+                      entry.submenu ? (
+                        <DesktopSubmenu key={entry.id} entry={entry} />
+                      ) : (
+                        <DisabledReason
+                          key={entry.id}
+                          reason={entry.disabled ? entry.disabledReason : undefined}
+                        >
+                          <ActionButton
+                            action={entry.action}
+                            label={entry.label}
+                            busy={entry.busy}
+                            disabled={entry.disabled}
+                            onClick={entry.onSelect}
+                          />
+                        </DisabledReason>
+                      ),
+                    )
+                  : null}
+              </div>
+            ) : null}
+          </div>
+        </HeadroomBar>
+      )}
       {banner}
       <div className="grid gap-6 lg:grid-cols-[1fr_16rem]">
         <div className="min-w-0">{body}</div>
@@ -160,21 +272,25 @@ export function ViewPage({
           </aside>
         ) : null}
       </div>
-      {!desktop && primaryAction ? (
+      {!desktop && (primaryActions.length > 0 || menuActions.length > 0) ? (
         <StickyActionBar label="Aksi halaman" busy={visibleActions.some((entry) => entry.busy)}>
-          <DisabledReason
-            reason={primaryAction.disabled ? primaryAction.disabledReason : undefined}
-            className="flex-1"
-          >
-            <ActionButton
-              action={primaryAction.action}
-              label={primaryAction.label}
-              busy={primaryAction.busy}
-              disabled={primaryAction.disabled}
-              onClick={primaryAction.onSelect}
+          {primaryActions.map((entry) => (
+            <DisabledReason
+              key={entry.id}
+              reason={entry.disabled ? entry.disabledReason : undefined}
               className="flex-1"
-            />
-          </DisabledReason>
+            >
+              <ActionButton
+                action={entry.action}
+                label={entry.label}
+                emphasis="primary"
+                busy={entry.busy}
+                disabled={entry.disabled}
+                onClick={entry.onSelect}
+                className="flex-1"
+              />
+            </DisabledReason>
+          ))}
           {menuActions.length > 0 ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -189,27 +305,28 @@ export function ViewPage({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" side="top">
-                {menuActions.map((entry) => {
-                  const Icon = ACTIONS[entry.action].icon;
+                {menuActions.map((entry, index) => {
+                  const separator = separatorBefore(menuActions, index) ? (
+                    <DropdownMenuSeparator />
+                  ) : null;
+                  if (!entry.submenu) {
+                    return (
+                      <Fragment key={entry.id}>
+                        {separator}
+                        <PhoneMenuItem entry={entry} />
+                      </Fragment>
+                    );
+                  }
+                  const group = entry.submenu.filter((sub) => !sub.hidden);
+                  if (group.length === 0) return null;
                   return (
-                    <DropdownMenuItem
-                      key={entry.id}
-                      variant={entry.action === 'delete' ? 'destructive' : 'default'}
-                      disabled={entry.disabled || entry.busy}
-                      onSelect={entry.onSelect}
-                    >
-                      <Icon aria-hidden />
-                      {entry.disabled && entry.disabledReason ? (
-                        <span className="flex min-w-0 flex-col">
-                          {entry.label ?? ACTIONS[entry.action].label}
-                          <span className="text-xs font-normal text-muted-foreground">
-                            {entry.disabledReason}
-                          </span>
-                        </span>
-                      ) : (
-                        (entry.label ?? ACTIONS[entry.action].label)
-                      )}
-                    </DropdownMenuItem>
+                    <Fragment key={entry.id}>
+                      {separator}
+                      <DropdownMenuLabel>{entry.shortLabel ?? actionText(entry)}</DropdownMenuLabel>
+                      {group.map((sub) => (
+                        <PhoneMenuItem key={sub.id} entry={sub} parent={entry} short />
+                      ))}
+                    </Fragment>
                   );
                 })}
               </DropdownMenuContent>

@@ -12,6 +12,7 @@ import { useMe } from '@/modules/auth/use-me';
 import { HandoverForm } from '@/modules/handover/components/handover-form';
 import { readableLocationIds } from '@/modules/handover/lib/readable-locations';
 import {
+  customersOfSearch,
   handoverSearchSchema,
   scopedLocationIds,
   searchFromStatus,
@@ -45,6 +46,7 @@ export const Route = createFileRoute('/_app/handover/$handoverId/edit')({
           search: {
             loc: search.loc,
             status: search.status,
+            customers: search.customers,
             customer: search.customer,
             deleted: search.deleted,
           },
@@ -65,7 +67,7 @@ function EditHandoverPage() {
   const listSearch = searchFromStatus(
     statusFromSearch(search),
     search.loc,
-    search.customer,
+    customersOfSearch(search),
     search.deleted,
   );
   const stack = useStackNavigation();

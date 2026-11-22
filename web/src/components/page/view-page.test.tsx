@@ -14,6 +14,7 @@ import { DetailList, ViewMeta, ViewPage, ViewSection } from './view-page';
 
 afterEach(() => {
   Reflect.deleteProperty(window, 'matchMedia');
+  window.innerWidth = 1024;
 });
 
 async function renderInRouter(element: ReactNode) {
@@ -156,6 +157,7 @@ test('actionItems di desktop: semua aksi jadi tombol di bar judul, tanpa bar baw
 });
 
 test('actionItems di ponsel: aksi utama di bar bawah, sisanya di menu "Aksi lainnya"', async () => {
+  window.innerWidth = 360;
   mockMatchMedia(false);
   const onEdit = vi.fn();
   const onDelete = vi.fn();
@@ -163,6 +165,10 @@ test('actionItems di ponsel: aksi utama di bar bawah, sisanya di menu "Aksi lain
   const bar = screen.getByRole('region', { name: 'Aksi halaman' });
   await userEvent.click(within(bar).getByRole('button', { name: 'Ubah' }));
   expect(onEdit).toHaveBeenCalledTimes(1);
+  expect(bar.className).toContain('fixed');
+  // Aksi utama (Ubah) berwarna primary solid, bukan outline.
+  expect(within(bar).getByRole('button', { name: 'Ubah' }).className).toContain('bg-primary');
+  expect(screen.getByRole('heading', { level: 1 }).closest('.sr-only')).not.toBeNull();
   expect(within(bar).queryByRole('button', { name: 'Hapus' })).toBeNull();
   await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
   await userEvent.click(await screen.findByRole('menuitem', { name: 'Hapus' }));
@@ -190,4 +196,149 @@ test('ponsel: aksi utama yang nonaktif beralasan tetap mengisi bar bawah (flex-1
   expect(button).toBeDisabled();
   expect(button.parentElement).toHaveClass('flex-1');
   expect(within(bar).getByText('Tidak dapat menonaktifkan akun Anda sendiri')).toBeVisible();
+});
+
+const UNDUH = (onPdf: () => void, onPng: () => void) => ({
+  id: 'download',
+  action: 'download' as const,
+  label: 'Unduh',
+  onSelect: () => undefined,
+  submenu: [
+    {
+      id: 'pdf',
+      action: 'download' as const,
+      label: 'Unduh PDF',
+      shortLabel: 'PDF',
+      onSelect: onPdf,
+    },
+    {
+      id: 'png',
+      action: 'download' as const,
+      label: 'Unduh PNG',
+      shortLabel: 'PNG',
+      onSelect: onPng,
+    },
+  ],
+});
+
+test('desktop: aksi bersubmenu = satu tombol dengan satu dropdown berisi butirnya', async () => {
+  mockMatchMedia(true);
+  const onPdf = vi.fn();
+  const onPng = vi.fn();
+  render(
+    <ViewPage title="X" actionItems={[ITEMS(vi.fn(), vi.fn())[0] as never, UNDUH(onPdf, onPng)]} />,
+  );
+  expect(screen.queryByRole('button', { name: 'Unduh PDF' })).toBeNull();
+  await userEvent.click(screen.getByRole('button', { name: 'Unduh' }));
+  await userEvent.click(await screen.findByRole('menuitem', { name: 'Unduh PDF' }));
+  expect(onPdf).toHaveBeenCalledTimes(1);
+  expect(onPng).not.toHaveBeenCalled();
+});
+
+test('ponsel: aksi bersubmenu menjadi grup datar di menu "Aksi lainnya" (tanpa menu bersarang)', async () => {
+  mockMatchMedia(false);
+  const onPdf = vi.fn();
+  render(
+    <ViewPage
+      title="X"
+      actionItems={[ITEMS(vi.fn(), vi.fn())[0] as never, UNDUH(onPdf, vi.fn())]}
+    />,
+  );
+  const bar = screen.getByRole('region', { name: 'Aksi halaman' });
+  // Aksi bersubmenu tak pernah menjadi tombol utama di bar.
+  expect(within(bar).queryByRole('button', { name: 'Unduh' })).toBeNull();
+  await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
+  expect(await screen.findAllByRole('menu')).toHaveLength(1);
+  expect(screen.getByText('Unduh')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('menuitem', { name: 'PDF' }));
+  expect(onPdf).toHaveBeenCalledTimes(1);
+});
+
+test('ponsel: beberapa aksi `primary` mengisi bar bawah bersama (Lapor rusak + Ubah), sisanya di menu', () => {
+  mockMatchMedia(false);
+  render(
+    <ViewPage
+      title="X"
+      actionItems={[
+        { id: 'report', action: 'reportDamage', primary: true, onSelect: vi.fn() },
+        { id: 'edit', action: 'edit', primary: true, onSelect: vi.fn() },
+        { id: 'delete', action: 'delete', onSelect: vi.fn() },
+      ]}
+    />,
+  );
+  const bar = screen.getByRole('region', { name: 'Aksi halaman' });
+  const labels = within(bar)
+    .getAllByRole('button')
+    .map((button) => button.getAttribute('aria-label') ?? button.textContent);
+  expect(labels).toEqual(['Lapor rusak', 'Ubah', 'Aksi lainnya']);
+});
+
+test('ponsel: dua aksi bersubmenu berurutan dipisah satu garis dan induk nonaktif menonaktifkan butirnya', async () => {
+  mockMatchMedia(false);
+  render(
+    <ViewPage
+      title="X"
+      actionItems={[
+        {
+          ...UNDUH(vi.fn(), vi.fn()),
+          id: 'dl1',
+          label: 'Unduh A',
+          disabled: true,
+          disabledReason: 'Belum siap',
+        },
+        { ...UNDUH(vi.fn(), vi.fn()), id: 'dl2', label: 'Unduh B' },
+        { id: 'delete', action: 'delete', onSelect: vi.fn() },
+      ]}
+    />,
+  );
+  const bar = screen.getByRole('region', { name: 'Aksi halaman' });
+  await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
+  const menu = await screen.findByRole('menu');
+  const separators = within(menu).getAllByRole('separator');
+  expect(separators).toHaveLength(1); // grup A | grup B (Hapus jadi tombol utama di bar)
+  for (const separator of separators) {
+    expect(separator.nextElementSibling?.getAttribute('role')).not.toBe('separator');
+  }
+  const [pdfA] = within(menu).getAllByRole('menuitem', { name: /PDF/ });
+  expect(pdfA).toHaveAttribute('aria-disabled', 'true');
+  expect(within(menu).getAllByText('Belum siap').length).toBeGreaterThan(0);
+});
+
+test('satu gerbang ponsel: h1 sr-only pada viewport < 768 walau lebar <main> cukup (704-767 px); tampil di >= 768 px', () => {
+  mockMatchMedia(true);
+  window.innerWidth = 740;
+  const { unmount } = render(<ViewPage title="X" />);
+  expect(screen.getByRole('heading', { level: 1 }).closest('.sr-only')).not.toBeNull();
+  unmount();
+  window.innerWidth = 1024;
+  render(<ViewPage title="X" />);
+  expect(screen.getByRole('heading', { level: 1 }).closest('.sr-only')).toBeNull();
+});
+
+test('ponsel tanpa lencana dan tanpa aksi di bar atas: tanpa bar headroom kosong; judul tetap untuk pembaca layar', () => {
+  window.innerWidth = 360;
+  mockMatchMedia(false);
+  const { container } = render(<ViewPage title="Merk A">isi</ViewPage>);
+  expect(container.querySelector('[data-headroom-frame] .sticky')).toBeNull();
+  expect(
+    screen.getByRole('heading', { level: 1, name: 'Merk A' }).closest('.sr-only'),
+  ).not.toBeNull();
+});
+
+test('ponsel dengan lencana atau `actions`: bar atas tetap tampil; 704-767 px dengan aksi terstruktur memakai bar atas', () => {
+  window.innerWidth = 360;
+  const media = mockMatchMedia(false);
+  const { container, unmount } = render(
+    <ViewPage title="X" badge={<span>Nonaktif</span>}>
+      isi
+    </ViewPage>,
+  );
+  expect(container.querySelector('[data-headroom-frame] .sticky')).not.toBeNull();
+  unmount();
+  window.innerWidth = 744;
+  media.set(true);
+  render(<ViewPage title="X" actionItems={ITEMS(vi.fn(), vi.fn())} />);
+  expect(screen.getByRole('button', { name: 'Ubah' })).toBeVisible();
+  expect(screen.queryByRole('region', { name: 'Aksi halaman' })).toBeNull();
+  media.restore();
 });
