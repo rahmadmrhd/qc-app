@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 import { cn } from '@/lib/utils';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { buIdsWithLevelOf } from '@/modules/auth/permissions';
@@ -206,6 +207,7 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
           onClear={() => onChange({ buIds: undefined, bu: undefined })}
         >
           <LinkMultiField
+            maxSelected={FILTER_LIST_MAX}
             id="serial-filter-bu"
             label="Filter BU"
             hideLabel
@@ -231,6 +233,7 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
           onClear={() => onChange({ itemIds: undefined, item: undefined, itemLabel: undefined })}
         >
           <LinkMultiField
+            maxSelected={FILTER_LIST_MAX}
             id="serial-filter-item"
             label="Filter item"
             hideLabel
@@ -257,6 +260,7 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
           onClear={() => onChange({ locationIds: undefined, loc: undefined })}
         >
           <LinkMultiField
+            maxSelected={FILTER_LIST_MAX}
             id="serial-filter-location"
             label="Filter lokasi"
             hideLabel
@@ -281,6 +285,7 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
           onClear={() => onChange({ statuses: undefined, status: undefined, deleted: undefined })}
         >
           <MultiSelect
+            maxSelected={FILTER_LIST_MAX}
             id="serial-filter-status"
             label="Filter status"
             hideLabel
@@ -310,6 +315,7 @@ export function SerialFilters({ search, onChange, canSeeDeleted = false }: Seria
           onClear={() => onChange({ custodies: undefined, custody: undefined })}
         >
           <MultiSelect
+            maxSelected={FILTER_LIST_MAX}
             id="serial-filter-custody"
             label="Filter posisi"
             hideLabel

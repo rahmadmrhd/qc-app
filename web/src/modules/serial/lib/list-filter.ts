@@ -9,6 +9,7 @@ import {
   splitSerialInput,
 } from '@shared/serials';
 import { z } from 'zod';
+import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 import type { SerialListFilter } from '../queries';
 import type { ScanFeedback } from './scan-feedback';
 
@@ -19,7 +20,7 @@ const isoDate = z.string().refine(isIsoDate).optional().catch(undefined);
 
 /** Search params halaman daftar serial; nilai tak sah dibuang (bukan galat) agar URL lama atau rusak tetap terbuka. */
 /** Larik param filter jamak (maks. `FILTER_LIST_MAX` di server = 20); nilai tak sah membuat seluruh larik dibuang. */
-const idList = z.array(z.string().max(100)).max(20).optional().catch(undefined);
+const idList = z.array(z.string().max(100)).max(FILTER_LIST_MAX).optional().catch(undefined);
 
 export const serialSearchSchema = z.object({
   /** Serial yang dicari, satu per baris (bentuk ternormalisasi). */
@@ -31,9 +32,9 @@ export const serialSearchSchema = z.object({
   /** Business Unit (banyak nilai = salah satu dari). */
   buIds: idList,
   /** Posisi: di QC, dalam pengiriman, atau di servis (banyak nilai = salah satu dari). */
-  custodies: z.array(z.enum(SERIAL_CUSTODIES)).max(20).optional().catch(undefined),
+  custodies: z.array(z.enum(SERIAL_CUSTODIES)).max(FILTER_LIST_MAX).optional().catch(undefined),
   /** Status alur serial (banyak nilai = salah satu dari). */
-  statuses: z.array(z.enum(SERIAL_STATUSES)).max(20).optional().catch(undefined),
+  statuses: z.array(z.enum(SERIAL_STATUSES)).max(FILTER_LIST_MAX).optional().catch(undefined),
   /** Param tunggal lama (tautan dari View item/lokasi/BU): dibaca sebagai daftar berisi satu nilai. */
   item: z.string().max(100).optional().catch(undefined),
   /** Label item dari tautan lama `item` (agar tampil tanpa memuat opsi). */

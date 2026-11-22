@@ -1,5 +1,6 @@
 import type { HandoverStatus } from '@shared/handover';
 import { z } from 'zod';
+import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 
 /** Search param `status` pada rute Serah Terima: filter daftar kartu (ponsel) yang dibawa ke detail/ubah dan kembali. */
 export const handoverSearchSchema = z.object({
@@ -7,7 +8,7 @@ export const handoverSearchSchema = z.object({
   /** Lokasi yang dibuka dari notifikasi: memuat task/papan lokasi itu tanpa mengubah pilihan lokasi header. */
   loc: z.string().optional().catch(undefined),
   /** Hanya task milik customer ini (banyak nilai = salah satu dari; chip Customer papan). */
-  customers: z.array(z.string().max(100)).max(20).optional().catch(undefined),
+  customers: z.array(z.string().max(100)).max(FILTER_LIST_MAX).optional().catch(undefined),
   /**
    * Id satu customer: tautan dari View customer (keputusan pemilik 2026-11-21) yang masih diterima; dibaca sebagai
    * `customers` lewat `customersOfSearch`.

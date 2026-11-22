@@ -557,3 +557,28 @@ test('daftar yang bukan lembar tak punya pegangan', async () => {
   expect(list.querySelector('[data-slot="sheet-handle"]')).toBeNull();
   media.restore();
 });
+
+test('maxSelected: setelah penuh, opsi lain dinonaktifkan dengan pesan, dan chip yang dilepas membuka kembali', async () => {
+  const onChange = vi.fn();
+  render(<Multi value={['a', 'b']} maxSelected={2} onChange={onChange} />);
+  await userEvent.click(screen.getByLabelText('BU'));
+  const list = await screen.findByRole('listbox');
+  expect(within(list).getByText('Maksimal 2 pilihan')).toBeInTheDocument();
+  const delta = within(list).getByRole('option', { name: 'Delta' });
+  expect(delta).toHaveAttribute('aria-disabled', 'true');
+  await userEvent.click(delta);
+  expect(onChange).not.toHaveBeenCalled();
+  // Melepas satu chip membuka kembali ruang pilihan.
+  await userEvent.click(screen.getByRole('button', { name: /Hapus Alfa|Lepas Alfa|Alfa/ }));
+  expect(onChange).toHaveBeenCalledWith(['b']);
+  await userEvent.click(await screen.findByRole('option', { name: 'Delta' }));
+  expect(onChange).toHaveBeenLastCalledWith(['b', 'd']);
+});
+
+test('tanpa maxSelected tak ada batas dan tak ada pesan', async () => {
+  render(<Multi value={['a', 'b']} />);
+  await userEvent.click(screen.getByLabelText('BU'));
+  const list = await screen.findByRole('listbox');
+  expect(within(list).queryByText(/^Maksimal/)).toBeNull();
+  expect(within(list).getByRole('option', { name: 'Delta' })).not.toHaveAttribute('aria-disabled');
+});

@@ -68,6 +68,11 @@ export interface ComboboxCommon {
   localFilter?: boolean;
   /** Tandai potongan label opsi yang cocok dengan yang diketik (`<mark>`). */
   highlight?: boolean;
+  /**
+   * Mode banyak pilihan: batas jumlah nilai terpilih. Setelah penuh, opsi lain dinonaktifkan dan daftar memuat pesan
+   * "Maksimal N pilihan" (mis. filter jamak yang dibatasi server; lihat `FILTER_LIST_MAX`).
+   */
+  maxSelected?: number;
   /** Daftar pendek yang tak perlu diketik (enum kecil): papan ketik layar tidak dimunculkan saat field diketuk. */
   keyboardless?: boolean;
 }
@@ -244,6 +249,7 @@ export function ComboboxBase({
   localFilter,
   highlight,
   keyboardless,
+  maxSelected,
   hideLabel,
   required,
   className,
@@ -268,7 +274,9 @@ export function ComboboxBase({
             option.description?.toLowerCase().includes(needle),
         )
       : options;
-  const visible = multi ? matching.filter((option) => !selected.has(option.id)) : matching;
+  const unselected = multi ? matching.filter((option) => !selected.has(option.id)) : matching;
+  const full = multi && maxSelected !== undefined && selectedIds.length >= maxSelected;
+  const visible = full ? unselected.map((option) => ({ ...option, disabled: true })) : unselected;
   const enabled = visible.filter((option) => !option.disabled);
   const canCreate = Boolean(onCreate) && !disabled;
   // Urutan sorotan keyboard: opsi aktif lalu baris aksi "Tambah" (seperti LinkModel erp).
@@ -375,7 +383,7 @@ export function ComboboxBase({
   }, [scrollKey]);
 
   function pick(option: LinkOption) {
-    if (option.disabled) return;
+    if (option.disabled || full) return;
     onPick(option.id);
     setEditing(false);
     setActiveId(null);
@@ -497,6 +505,11 @@ export function ComboboxBase({
           <div className="px-2 py-3 text-center text-muted-foreground">Memuat…</div>
         ) : visible.length === 0 ? (
           <div className="px-2 py-3 text-center text-muted-foreground">Tidak ada hasil.</div>
+        ) : null}
+        {full ? (
+          <p className="border-t px-2 pt-2 pb-1 text-xs text-muted-foreground">
+            Maksimal {maxSelected} pilihan
+          </p>
         ) : null}
         {hasMore ? (
           <p className="border-t px-2 pt-2 pb-1 text-xs text-muted-foreground">

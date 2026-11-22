@@ -11,6 +11,7 @@ import { liveStatusFilterOptions } from '@/components/soft-delete/status-filter'
 import { Skeleton } from '@/components/ui/skeleton';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { describeError } from '@/lib/api/describe-error';
+import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 import { customerLinkAccess } from '@/lib/link-access';
 import { canAt, locationsWith } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
@@ -315,6 +316,7 @@ function CustomerFilterField({
   }));
   return (
     <LinkMultiField
+      maxSelected={FILTER_LIST_MAX}
       id="handover-filter-customer"
       label="Filter customer"
       hideLabel

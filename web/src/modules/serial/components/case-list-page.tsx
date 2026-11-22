@@ -6,6 +6,7 @@ import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/fil
 import { ListPage } from '@/components/page/list-page';
 import { Select } from '@/components/select';
 import { Badge } from '@/components/ui/badge';
+import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { buIdsWithLevelOf } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
@@ -184,6 +185,7 @@ export function CaseListPage({ search, onSearchChange, onReport }: CaseListPageP
               onClear={() => onSearchChange({ buIds: undefined, bu: undefined })}
             >
               <LinkMultiField
+                maxSelected={FILTER_LIST_MAX}
                 id="case-filter-bu"
                 label="Filter BU"
                 hideLabel
@@ -208,6 +210,8 @@ export function CaseListPage({ search, onSearchChange, onReport }: CaseListPageP
           rowKey={(entry) => entry.id}
           columns={columns}
           label="Daftar laporan rusak"
+          // Klik badan kartu (ponsel) membuka View laporan, seperti daftar Serial dan lainnya (B9).
+          rowTo={(entry) => ({ to: '/serial/reports/$caseId', params: { caseId: entry.id } })}
           empty={
             onReport
               ? 'Belum ada laporan di sini. Kalau ada unit bermasalah, laporkan lewat tombol Lapor Rusak.'

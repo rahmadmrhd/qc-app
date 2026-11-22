@@ -2,6 +2,7 @@ import type { BrandDto, StickerDto, StickerTypeDto } from '@shared/contract';
 import { LinkField, LinkMultiField, type LinkOption } from '@/components/link-field';
 import { FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { Select } from '@/components/select';
+import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 import type { ItemListFilter } from '../queries';
 
 type FilterPatch = Partial<
@@ -126,6 +127,7 @@ export function ItemFilters({
           onClear={() => onChange({ brandIds: [] })}
         >
           <LinkMultiField
+            maxSelected={FILTER_LIST_MAX}
             id="item-filter-brand"
             label="Filter merk"
             hideLabel
@@ -146,6 +148,7 @@ export function ItemFilters({
           onClear={() => onChange({ buIds: [] })}
         >
           <LinkMultiField
+            maxSelected={FILTER_LIST_MAX}
             id="item-filter-bu"
             label="Filter business unit"
             hideLabel

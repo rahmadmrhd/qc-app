@@ -13,6 +13,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 import { AuditDiffView } from '@/modules/access/components/audit-diff-view';
 import { AuditTable } from '@/modules/access/components/audit-table';
 import { useDeletedNames } from '@/modules/access/lib/assignment-labels';
@@ -32,7 +33,7 @@ import { useMe } from '@/modules/auth/use-me';
 
 const auditSearchSchema = z.object({
   /** Aksi yang disaring (banyak nilai = salah satu dari). */
-  actions: z.array(z.string().max(100)).max(20).optional().catch(undefined),
+  actions: z.array(z.string().max(100)).max(FILTER_LIST_MAX).optional().catch(undefined),
   /** Satu aksi: param tunggal lama yang masih diterima; dibaca sebagai `actions`. */
   action: z.string().optional().catch(undefined),
   q: z.string().optional().catch(undefined),
@@ -126,6 +127,7 @@ function AuditPage() {
               }
             >
               <MultiSelect
+                maxSelected={FILTER_LIST_MAX}
                 id="audit-filter-action"
                 label="Filter aksi"
                 hideLabel

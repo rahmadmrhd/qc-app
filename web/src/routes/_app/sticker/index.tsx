@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
+import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 import { businessUnitLinkAccess, stickerTypeLinkAccess } from '@/lib/link-access';
 import { businessUnitOptionsQueryOptions, useSaveBusinessUnit } from '@/modules/access/queries';
 import { can, locationsWith, requireAnyPermission } from '@/modules/auth/permissions';
@@ -36,7 +37,7 @@ const searchSchema = z.object({
   /** Id jenis tunggal (tautan dari View/daftar Jenis); pada mode stok saja berisi nama jenis. Tetap diterima. */
   typeId: z.string().max(100).optional().catch(undefined),
   /** Beberapa jenis sekaligus (filter chip Jenis); bila ada, mengalahkan `typeId`. */
-  typeIds: z.array(z.string().max(100)).max(20).optional().catch(undefined),
+  typeIds: z.array(z.string().max(100)).max(FILTER_LIST_MAX).optional().catch(undefined),
   status: z
     .enum(['all', 'active', 'inactive', 'deprecated', 'deleted'])
     .optional()

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 import { DEFAULT_ITEM_FILTER, type ItemListFilter } from '../queries';
 
 /** Search params halaman daftar item; nilai tak sah dibuang (bukan galat) agar URL lama/rusak tetap terbuka. */
@@ -21,9 +22,9 @@ export const itemsSearchSchema = z.object({
   /** Hanya `missing` ("Belum ada Postel") ditulis ke URL. */
   postel: z.literal('missing').optional().catch(undefined),
   /** Id merk (chip Merk; banyak nilai = salah satu dari). */
-  brandIds: z.array(z.string().max(100)).max(20).optional().catch(undefined),
+  brandIds: z.array(z.string().max(100)).max(FILTER_LIST_MAX).optional().catch(undefined),
   /** Id BU (chip Business Unit; banyak nilai = salah satu dari). */
-  buIds: z.array(z.string().max(100)).max(20).optional().catch(undefined),
+  buIds: z.array(z.string().max(100)).max(FILTER_LIST_MAX).optional().catch(undefined),
   /** Id satu merk: tautan lama (jumlah item di View merk) yang masih diterima; dibaca sebagai `brandIds`. */
   brandId: z.string().max(100).optional().catch(undefined),
   /** Id satu BU: tautan lama yang masih diterima; dibaca sebagai `buIds`. */

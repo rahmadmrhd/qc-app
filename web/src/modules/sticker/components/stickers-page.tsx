@@ -37,6 +37,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { describeError } from '@/lib/api/describe-error';
+import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 import { formatStamp } from '@/lib/format-stamp';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
 import { STICKER_STATUS_LABEL } from '../lib/status';
@@ -677,6 +678,7 @@ export function StickersPage({
               onClear={() => onFilterChange({ typeIds: [] })}
             >
               <LinkMultiField
+                maxSelected={FILTER_LIST_MAX}
                 id="sticker-filter-type"
                 label="Filter jenis"
                 hideLabel
