@@ -32,9 +32,13 @@ import { findPostelRecord } from './repo';
 const UNKNOWN_ATTACHMENT_MESSAGE = 'Ada lampiran yang tidak dikenal';
 const NOT_FOUND_MESSAGE = 'Berkas tidak ditemukan';
 
-/** Nama unduhan turunan: `lampiran-<8 karakter id>.<ekstensi>` (tanpa nama asli klien, jadi tak perlu disanitasi). */
+/**
+ * Nama unduhan turunan: `lampiran-<8 karakter akhir id>.<ekstensi>` (tanpa nama asli klien, jadi tak perlu disanitasi).
+ * Yang dipakai karakter AKHIR (bagian acak ULID): 8 karakter awal ULID hanyalah bit waktu teratas yang sama untuk berkas
+ * yang diunggah serentak, sehingga nama-namanya akan kembar.
+ */
 export function postelAttachmentFilename(id: string, mime: string): string {
-  return `lampiran-${id.slice(0, 8)}.${EXTENSIONS[mime] ?? 'bin'}`;
+  return `lampiran-${id.slice(-8)}.${EXTENSIONS[mime] ?? 'bin'}`;
 }
 
 export function toAttachmentDto(

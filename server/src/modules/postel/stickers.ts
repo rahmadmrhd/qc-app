@@ -3,6 +3,7 @@ import { DbError } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { newId } from '@server/core/id';
 import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import { ensurePostelType } from '@server/modules/sticker/postel';
 import {
@@ -93,7 +94,7 @@ export function newPostelStickerStmt(
   now: string,
 ): { stickerId: string; statement: DbStatement } {
   const sticker: StickerRecord = {
-    id: crypto.randomUUID(),
+    id: newId(),
     typeId: type.id,
     name,
     alias: '',

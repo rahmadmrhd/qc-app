@@ -7,6 +7,7 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError, isAppError, staleError } from '@server/core/errors';
 import { dropCachedFile } from '@server/core/file-cache';
+import { newId } from '@server/core/id';
 import { baseIndexName } from '@server/core/index-names';
 import { ensureDriveFolder } from '@server/modules/files/service';
 import type { JobHandler, StepContext, StepOutcome } from '@server/modules/jobs/consumer';
@@ -193,7 +194,7 @@ async function createPreviewFile(ctx: StepContext): Promise<void> {
   if (!dimensions) throw appError('INTERNAL', 'Gambar contoh tidak valid; ulangi ekspor dari awal');
   // Periksa ulang di sini: job dapat diantrekan tanpa melalui rute (muatan lama atau pengisian langsung).
   if (!previewDimensionsOk(dimensions)) throw appError('VALIDATION', PREVIEW_SIDE_MESSAGE);
-  const fileId = crypto.randomUUID();
+  const fileId = newId();
   const folderId = await ensureDriveFolder(ctx.env);
   state.previewDriveId = await viaBridge(() =>
     getBridge(ctx.env).createFile(folderId, `${fileId}.png`, 'image/png', data),

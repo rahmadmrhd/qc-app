@@ -10,6 +10,7 @@ import { mapDuplicateError } from '@server/modules/access/repo';
 // Impor efek-samping: mendaftarkan pendengar stok bus event (`core/events.ts`). Kode di berkas ini tidak memakai
 // apa pun dari modul stiker; pemotongan stok hanya datang lewat `statementsFor`.
 import '@server/modules/sticker/serial-listener';
+import { newId } from '@server/core/id';
 import { buIdsWithLevel } from '@shared/business-units';
 import type {
   GetSerialInput,
@@ -463,8 +464,8 @@ export async function createSerialOnce(
   if (picked.some((entry) => entry.sticker === undefined)) return failRow(row, STICKER_MESSAGE);
 
   const now = nowIso(env);
-  const serialId = crypto.randomUUID();
-  const eventId = crypto.randomUUID();
+  const serialId = newId();
+  const eventId = newId();
   const picks = stickerPicks.map((pick) => ({ stickerId: pick.stickerId, qty: pick.qty }));
   const actorEmail = user.email;
   // Foto bukti QC (opsional): divalidasi SEBELUM menulis apa pun; foto bermasalah = baris `invalid` tanpa entri tersimpan.
@@ -1013,7 +1014,7 @@ async function updateOnce(
         set,
       }),
       insertNextEventStmt(env.DB, {
-        id: crypto.randomUUID(),
+        id: newId(),
         serialId: row.id.trim(),
         caseId: '',
         type: 'data_changed',

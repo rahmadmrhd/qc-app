@@ -27,7 +27,7 @@ const photo = (id: string, over: Partial<SerialProofPhotoDto> = {}): SerialProof
   size: 100,
   width: 10,
   height: 10,
-  filename: `bukti-${id.slice(0, 8)}.webp`,
+  filename: `bukti-${id.slice(-8)}.webp`,
   error: null,
   canManage: true,
   canRetry: true,
@@ -91,7 +91,7 @@ test('status campur: selesai, menunggu cap (antre dan diproses), gagal beserta a
   expect(screen.getByText('Berkas gambar rusak')).toBeInTheDocument();
 });
 
-test('klik gambar membuka tampilan besar dengan tombol unduh bernama bukti-<8 id>.webp', async () => {
+test('klik gambar membuka tampilan besar dengan tombol unduh bernama bukti-<8 karakter akhir id>.webp', async () => {
   renderGallery([photo('aaaaaaaa-1')]);
   await userEvent.click(screen.getByRole('button', { name: 'Buka foto bukti 1' }));
   const dialog = await screen.findByRole('dialog');
@@ -101,7 +101,7 @@ test('klik gambar membuka tampilan besar dengan tombol unduh bernama bukti-<8 id
   );
   const download = within(dialog).getByRole('link', { name: /Unduh/ });
   expect(download).toHaveAttribute('href', '/api/v1/serial-proofs/aaaaaaaa-1');
-  expect(download).toHaveAttribute('download', 'bukti-aaaaaaaa.webp');
+  expect(download).toHaveAttribute('download', 'bukti-aaaaaa-1.webp');
 });
 
 test('foto gagal: tombol mengikuti canRetry (Coba lagi) dan canManage (Buang) dari server', () => {

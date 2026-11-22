@@ -5,6 +5,7 @@ import type { DbStatement, DbTx } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { newId } from '@server/core/id';
 import { type PlanOutcome, runRecordBatch, runSingleRecord } from '@server/core/record-batch';
 import {
   liveWhere,
@@ -118,7 +119,7 @@ const BRAND_CONFLICTS = { brands_key: { field: 'name', message: 'Nama merk sudah
 function newBrandRecord(env: Env, name: string, actor: ActorRef): BrandRecord {
   const now = nowIso(env);
   return {
-    id: crypto.randomUUID(),
+    id: newId(),
     name,
     key: normalizeKey(name),
     status: 'active',

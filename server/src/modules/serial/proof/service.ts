@@ -4,6 +4,7 @@ import { isGuardFailure } from '@server/core/cas';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
+import { newId } from '@server/core/id';
 import type { UserContext } from '@server/modules/access/context';
 import { findActiveFile } from '@server/modules/files/repo';
 import { readFile } from '@server/modules/files/service';
@@ -134,7 +135,7 @@ export async function uploadProof(
       'Penyimpanan sementara foto bukti penuh. Coba lagi nanti atau hubungi admin.',
     );
   }
-  const id = crypto.randomUUID();
+  const id = newId();
   const stagedName = newStagedName();
   await store.write(stagedName, input.bytes);
   try {

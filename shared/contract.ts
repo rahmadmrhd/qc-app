@@ -1274,7 +1274,7 @@ export interface PostelAttachmentDto {
   id: string;
   mime: string;
   size: number;
-  /** Nama unduhan turunan (`lampiran-<8 karakter id>.<ekstensi>`). */
+  /** Nama unduhan turunan (`lampiran-<8 karakter akhir id>.<ekstensi>`). */
   filename: string;
 }
 /** Ringkasan satu catatan di daftar; kondisi dan sisa hari milik nomor Aktif. */
@@ -1381,7 +1381,7 @@ export interface PostelFileContentDto {
   id: string;
   mime: string;
   bytes: Uint8Array;
-  /** Nama unduhan (`lampiran-<8 karakter id>.<ekstensi>`). */
+  /** Nama unduhan (`lampiran-<8 karakter akhir id>.<ekstensi>`). */
   filename: string;
 }
 

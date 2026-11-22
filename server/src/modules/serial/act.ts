@@ -27,6 +27,7 @@ import { assertSerialVisible, canWriteBu, modulesOn } from './access';
 import { involvedBuIds, moveBuStatements } from './bu-history';
 import { planProofAttach } from './proof/attach';
 import './alert-listener';
+import { newId } from '@server/core/id';
 import { applicableStickersOf } from './applicable';
 import {
   closeCaseStmt,
@@ -290,8 +291,8 @@ async function applyAct(
   const extraEvents: EventDraft[] = [];
 
   const openCaseId = row.open_case_id.trim();
-  const eventId = crypto.randomUUID();
-  const newCaseId = crypto.randomUUID();
+  const eventId = newId();
+  const newCaseId = newId();
   let currentLocationId = row.location_id.trim();
   let currentLocationName = row.location_name ?? '';
   // Perpindahan BU (hanya cek ulang lolos yang membawa `buId`; validator menolaknya pada aksi lain): diisi di bawah.
@@ -355,7 +356,7 @@ async function applyAct(
     set.transit_to_location_id = '';
     set.transit_on = '';
     preEvents.push({
-      id: crypto.randomUUID(),
+      id: newId(),
       caseId: openCaseId,
       type: 'receive',
       message: '',
@@ -566,7 +567,7 @@ async function applyAct(
           main.changes = [...raise.changes];
           main.data = { ...checkData, caseNumber: number };
           extraEvents.push({
-            id: crypto.randomUUID(),
+            id: newId(),
             caseId: newCaseId,
             type: 'report_failure',
             message: input.message,

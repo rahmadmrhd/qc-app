@@ -8,6 +8,7 @@ import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError, isAppError } from '@server/core/errors';
 import { dropCachedFile } from '@server/core/file-cache';
+import { newId } from '@server/core/id';
 import { folderIdOf, SETTING_DRIVE_FOLDER_ID } from '@server/core/settings';
 import { liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
@@ -318,7 +319,7 @@ export async function uploadGuide(
   }
   const folderId =
     (await folderIdOf(env, SETTING_DRIVE_FOLDER_ID)) || (await ensureDriveFolder(env));
-  const id = crypto.randomUUID();
+  const id = newId();
   const bridge = getBridge(env);
   const driveId = await viaBridge(() =>
     bridge.createFile(

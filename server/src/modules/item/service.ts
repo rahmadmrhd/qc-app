@@ -4,6 +4,7 @@ import { type Db, DbError, type DbResult, type DbStatement } from '@server/core/
 import type { Env } from '@server/core/env';
 import { nowIso, nowOf } from '@server/core/env';
 import { appError, staleError } from '@server/core/errors';
+import { newId } from '@server/core/id';
 import { baseIndexName } from '@server/core/index-names';
 import { type PlanOutcome, runRecordBatch, runSingleRecord } from '@server/core/record-batch';
 import {
@@ -953,7 +954,7 @@ export async function planItemWrite(
   const key = itemKey(brand.name, input.model);
   const firmware = resolveItemFirmware(input, brand.name, existing);
   const proof = resolveItemProof(input, existing);
-  const id = existing?.id ?? options.id ?? crypto.randomUUID();
+  const id = existing?.id ?? options.id ?? newId();
   const owners = await loadNameOwners(env, input, key, id, existing);
   assertItemNamesFree(input, key, owners);
   // Atomik: bila ada rujukan berkas yang tak sah, tidak ada pemilik yang berubah dan item tidak disimpan.
@@ -1108,7 +1109,7 @@ export async function saveItem(
   input: SaveItemInput,
   actor: UserContext,
 ): Promise<ItemDto> {
-  const id = input.id ?? crypto.randomUUID();
+  const id = input.id ?? newId();
   // Ganti nama merk yang menyela (penjaga merk, I1) membatalkan batch: muat ulang semuanya dan ulangi.
   return runCas(() => saveItemOnce(env, input, actor, id), STALE_MESSAGE);
 }
