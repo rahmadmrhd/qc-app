@@ -363,7 +363,8 @@ function isItemVisible(
   desktop: boolean,
   phone: boolean,
 ): boolean {
-  if (item.hideOnPhone && phone) return false;
+  // Fitur yang butuh aplikasi desktop disembunyikan di ponsel, bukan di jendela sempit aplikasi desktop (Electron).
+  if (item.hideOnPhone && phone && !desktop) return false;
   if (item.desktopOnly && !desktop) return false;
   if (item.webOnly && desktop) return false;
   if (item.visible && !item.visible(me)) return false;

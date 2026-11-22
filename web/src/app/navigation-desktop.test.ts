@@ -71,6 +71,8 @@ test('P8: Aplikasi Desktop dan Country Lock disembunyikan di ponsel (hideOnPhone
     );
   expect(names(false, true)).not.toContain('Aplikasi Desktop');
   expect(names(false, true)).not.toContain('Country Lock');
+  // Aplikasi desktop (Electron) dengan jendela sempit: Country Lock tetap tampil (hideOnPhone hanya untuk ponsel).
+  expect(names(true, true)).toContain('Country Lock');
   expect(names(false, false)).toContain('Aplikasi Desktop');
   expect(names(false, false)).toContain('Country Lock');
   // Butir yang tidak bertanda hideOnPhone tetap ada di ponsel.

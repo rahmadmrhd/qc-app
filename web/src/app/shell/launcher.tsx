@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { launcherTiles } from '@/app/nav-search';
 import { NAV_GROUPS, visibleNavGroups } from '@/app/navigation';
 import { Input } from '@/components/ui/input';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { isDesktop } from '@/lib/platform';
 import { useMe } from '@/modules/auth/use-me';
 import { openInDesktop } from '@/modules/countrylock/lib/handoff';
@@ -18,8 +19,9 @@ export function Launcher() {
   const me = useMe();
   const { selectedIds } = useActiveLocations();
   const [query, setQuery] = useState('');
-  // Peluncur hanya tampil di ponsel: butir `hideOnPhone` tak ikut.
-  const groups = visibleNavGroups(NAV_GROUPS, me, selectedIds, isDesktop(), true);
+  const phone = useIsMobile();
+  // Butir `hideOnPhone` tak ikut di ponsel peramban; di aplikasi desktop (jendela sempit) tetap tampil.
+  const groups = visibleNavGroups(NAV_GROUPS, me, selectedIds, isDesktop(), phone);
   const tiles = launcherTiles(groups, query);
   return (
     <div className="space-y-4" data-slot="launcher">
