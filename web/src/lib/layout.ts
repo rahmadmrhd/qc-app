@@ -35,3 +35,24 @@ export function isSidebarOverlayViewport(): boolean {
 export function isPhoneViewport(): boolean {
   return typeof window !== 'undefined' && window.innerWidth < VIEWPORT_MD;
 }
+
+/**
+ * Lebar scrollbar vertikal halaman yang memakan ruang (scrollbar klasik Windows/Linux 15-17 px; 0 untuk scrollbar
+ * overlay dan bila tak terukur, mis. jsdom). `innerWidth` dan media query viewport menghitungnya, sedangkan
+ * `clientWidth` elemen tidak.
+ */
+export function pageScrollbarWidth(): number {
+  if (typeof window === 'undefined') return 0;
+  const client = document.documentElement.clientWidth;
+  if (client <= 0) return 0;
+  return Math.max(0, window.innerWidth - client);
+}
+
+/**
+ * Lebar `<main>` untuk menentukan tata letak lebar/sempit: `clientWidth` ditambah scrollbar halaman. Tanpa itu,
+ * viewport 768 px dengan scrollbar klasik 17 px menghasilkan `<main>` 703 < `MAIN_MIN_WIDTH` dan tampilan berbalik ke
+ * kartu padahal sidebar bukan Sheet; ambang juga tak lagi berkedip saat scrollbar muncul/hilang mengikuti panjang isi.
+ */
+export function layoutMainWidth(mainClientWidth: number): number {
+  return mainClientWidth + pageScrollbarWidth();
+}
