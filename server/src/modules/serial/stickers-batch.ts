@@ -23,13 +23,20 @@ import { nextStamp, STALE_MESSAGE, validationError } from './service';
 // `runRecordBatch` (satu baris gagal = tidak ada yang tertulis), perencana per baris memakai `stickersAppliedEffect`
 // yang sama dengan `serials.act` `apply_stickers`. Idempoten lewat `serial_events.client_id = <clientId>:<serialId>`:
 // kiriman ulang permintaan yang sama tidak menulis kejadian maupun memotong stok dua kali.
+//
+// Keputusan kiriman ulang dalam satu percobaan HANYA datang dari `assertReplayConsistent` (satu pemeriksaan per percobaan
+// sebelum perencana): ada kejadian dan identik = semua baris `unchanged`; tidak ada = permintaan baru. Bila perencana
+// kemudian melihat kejadian ber-`clientId` itu (atau penulisan menabrak indeks uniknya), permintaan lain berkomit di
+// antaranya = BALAPAN: percobaan diulang dari awal agar pemeriksaan itu yang memutuskan. Invarian "satu clientId = satu
+// permintaan" dijaga klien: dua permintaan ber-clientId sama dengan himpunan serial yang saling lepas keduanya berkomit
+// (kunci kejadian berbeda); server hanya menjamin per baris (tiap serial ditulis sekali, stok terpotong sekali).
 
 const STATUS_SET: readonly string[] = SERIAL_STATUSES;
 const CUSTODY_SET: readonly string[] = SERIAL_CUSTODIES;
 const NOT_FOUND = 'Serial Number tidak ditemukan';
 /** Pesan penanda balapan kirim ulang serentak: kejadian dengan `client_id` yang sama baru ditulis penulis lain. */
 const CLIENT_ID_RACE = 'Permintaan ini sedang diproses';
-/** Pengulangan penuh bila dua permintaan dengan `clientId` sama berbalapan (percobaan kedua melihat kejadian yang ada). */
+/** Batas percobaan penuh bila permintaan ber-`clientId` sama berbalapan; habis = `CONFLICT` generik (penanda tak bocor). */
 const MAX_REPLAYS = 3;
 
 const asStatus = (value: string): SerialStatus =>
@@ -71,13 +78,13 @@ function storedStickerIds(dataJson: string): Set<string> {
  * Kiriman ulang dengan `clientId` yang sudah ada harus IDENTIK (pola idempotensi batch proyek, seperti entri stok
  * batch): kejadian tersimpan harus tepat satu per baris permintaan, milik pelaku yang sama, dengan himpunan stiker,
  * tanggal, dan catatan yang sama. Selain itu (milik orang lain, isi berbeda, atau hanya sebagian ada) = `CONFLICT`
- * generik. Belum ada kejadian = permintaan baru.
+ * generik. Mengembalikan `true` bila kejadiannya ada dan identik (kiriman ulang sah), `false` bila belum ada (permintaan baru).
  */
 async function assertReplayConsistent(
   env: Env,
   input: ApplyStickersBatchInput,
   user: UserContext,
-): Promise<void> {
+): Promise<boolean> {
   const { results } = await env.DB.prepare(
     'SELECT serial_id, actor_id, occurred_on, message, data_json FROM serial_events WHERE client_id LIKE ?',
   )
@@ -89,7 +96,7 @@ async function assertReplayConsistent(
       message: string;
       data_json: string;
     }>();
-  if (results.length === 0) return;
+  if (results.length === 0) return false;
   const wanted = new Map(input.rows.map((row) => [row.id, new Set(row.stickerIds)]));
   if (results.length !== wanted.size) throw appError('CONFLICT', REPLAY_CONFLICT);
   for (const event of results) {
@@ -104,7 +111,12 @@ async function assertReplayConsistent(
       [...stickers].every((stickerId) => stored.has(stickerId));
     if (!same) throw appError('CONFLICT', REPLAY_CONFLICT);
   }
+  return true;
 }
+
+/** Penanda balapan: dilempar di luar pembungkus `withSerial` agar `fields.clientId` utuh dan loop luar mengulang. */
+const raceError = (): AppError =>
+  appError('CONFLICT', CLIENT_ID_RACE, { clientId: CLIENT_ID_RACE });
 
 export async function applyStickersBatch(
   env: Env,
@@ -120,33 +132,27 @@ export async function applyStickersBatch(
   /** Stiker yang disentuh perencana percobaan ini (dikosongkan tiap percobaan); diselesaikan sekali di akhir batch. */
   const touched = new Set<string>();
   /** Pemeriksaan kiriman ulang percobaan ini (satu per percobaan, dibagi semua perencana; dikosongkan di `prepare`). */
-  let consistency: Promise<void> | null = null;
-  /** Jumlah perencana percobaan ini yang menjawab `unchanged` (kejadiannya sudah ada). */
-  let replayed = 0;
+  let consistency: Promise<boolean> | null = null;
 
   const plan = async (id: string): Promise<PlanOutcome<string>> => {
     // Diulang di AWAL tiap percobaan CAS (bukan hanya sekali sebelum `runRecordBatch`): permintaan lain ber-clientId sama
     // dapat berkomit di antara percobaan, dan percobaan ulang harus melihatnya.
     consistency ??= assertReplayConsistent(env, input, user);
-    await consistency;
+    const isReplay = await consistency;
     const row = await loadSerialRow(env.DB, id);
     if (!row) throw appError('NOT_FOUND', NOT_FOUND);
     const buId = row.bu_id.trim();
     assertSerialVisible(user, buId);
     const serialId = row.id.trim();
+    // Kiriman ulang sah (semua kejadian ada dan identik): tanpa efek baru.
+    if (isReplay) return { unchanged: serialId };
+    const eventClientId = `${input.clientId}:${serialId}`;
+    // Pemeriksaan tadi tidak menemukan kejadian, tetapi kini ada: permintaan lain berkomit di antaranya = balapan.
+    const raced = await env.DB.prepare('SELECT 1 AS found FROM serial_events WHERE client_id = ?')
+      .bind(eventClientId)
+      .first<{ found: number }>();
+    if (raced) throw raceError();
     try {
-      const eventClientId = `${input.clientId}:${serialId}`;
-      // Kirim ulang: kejadian dengan pengenal ini sudah ada = tanpa efek baru. Milik pelaku lain = CONFLICT generik.
-      const done = await env.DB.prepare('SELECT actor_id FROM serial_events WHERE client_id = ?')
-        .bind(eventClientId)
-        .first<{ actor_id: string }>();
-      if (done) {
-        if (done.actor_id.trim() !== (user.userId ?? '')) {
-          throw appError('CONFLICT', REPLAY_CONFLICT);
-        }
-        replayed++;
-        return { unchanged: serialId };
-      }
       const resolved = resolveAction(
         'apply_stickers',
         { status: asStatus(row.status), custody: asCustody(row.custody) },
@@ -223,12 +229,6 @@ export async function applyStickersBatch(
             attempts++;
             touched.clear();
             consistency = null;
-            replayed = 0;
-          },
-          // Permintaan asli atomik: sebagian baris sudah ada sementara yang lain ditulis baru berarti isinya berbeda
-          // (mis. permintaan ber-clientId sama berkomit di antara pemeriksaan dan penulisan) = CONFLICT generik.
-          verify: (changed) => {
-            if (changed.length > 0 && replayed > 0) throw appError('CONFLICT', REPLAY_CONFLICT);
           },
           trailing: () =>
             statementsFor(env, 'serial.stickers_settled', {
@@ -243,6 +243,8 @@ export async function applyStickersBatch(
       const race =
         isAppError(error) && error.code === 'CONFLICT' && error.fields?.clientId === CLIENT_ID_RACE;
       if (race && replay < MAX_REPLAYS - 1) continue;
+      // Penanda balapan tak boleh bocor ke klien sebagai galat final.
+      if (race) throw appError('CONFLICT', REPLAY_CONFLICT);
       throw error;
     }
   }

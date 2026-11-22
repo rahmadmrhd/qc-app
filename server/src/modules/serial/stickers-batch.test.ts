@@ -589,6 +589,141 @@ describe('serials.applyStickersBatch: konkurensi (Promise.all)', () => {
     expect(await appliedEvents()).toHaveLength(1);
   });
 
+  describe('balapan kiriman ulang (permintaan ber-clientId sama berkomit di tengah permintaan lain)', () => {
+    const DONE_SQL = 'FROM serial_events WHERE client_id = ?';
+    const CHECK_SQL = 'FROM serial_events WHERE client_id LIKE ?';
+
+    /**
+     * Menyela kueri ke-`nth` yang SQL-nya memuat `fragment` dengan `action` (permintaan R1 yang berkomit), sekali saja,
+     * `before` = sebelum kueri dieksekusi, `after` = setelah hasilnya didapat. `prepare` dikembalikan sebelum `action`
+     * dijalankan agar R1 sendiri tidak tersela.
+     */
+    function interrupt(
+      fragment: string,
+      nth: number,
+      when: 'before' | 'after',
+      action: () => Promise<unknown>,
+    ) {
+      // biome-ignore lint/suspicious/noExplicitAny: menggantikan metode adaptor hanya untuk tes
+      const db = env.DB as any;
+      const original = db.prepare.bind(db);
+      let seen = 0;
+      let fired = false;
+      db.prepare = (sql: string) => {
+        const statement = original(sql);
+        if (fired || !sql.includes(fragment)) return statement;
+        seen++;
+        if (seen !== nth) return statement;
+        return {
+          bind: (...args: unknown[]) => {
+            const bound = statement.bind(...args);
+            const wrap =
+              (method: 'first' | 'all') =>
+              async (...rest: unknown[]) => {
+                if (when === 'before' && !fired) {
+                  fired = true;
+                  db.prepare = original;
+                  await action();
+                }
+                const result = await bound[method](...rest);
+                if (when === 'after' && !fired) {
+                  fired = true;
+                  db.prepare = original;
+                  await action();
+                }
+                return result;
+              };
+            return { first: wrap('first'), all: wrap('all') };
+          },
+        };
+      };
+      return {
+        fired: () => fired,
+        restore: () => {
+          db.prepare = original;
+        },
+      };
+    }
+
+    const rows2 = () => [
+      { id: 'sn0', stickerIds: ['s1'] },
+      { id: 'sn1', stickerIds: ['s1'] },
+    ];
+
+    async function raceWith(
+      fragment: string,
+      nth: number,
+      when: 'before' | 'after',
+      first: Record<string, unknown>,
+      second: Record<string, unknown> = {},
+      secondRows: { id: string; stickerIds: string[] }[] = rows2(),
+    ): Promise<CallOut> {
+      const hook = interrupt(fragment, nth, when, async () => {
+        expect((await batch(rows2(), first)).ok).toBe(true);
+      });
+      try {
+        const out = await batch(secondRows, second);
+        expect(hook.fired()).toBe(true);
+        return out;
+      } finally {
+        hook.restore();
+      }
+    }
+
+    const settled = async () => {
+      expect(await appliedEvents()).toHaveLength(2);
+      expect(await stock('s1', 'loc-sby')).toBe(10 - 2);
+      for (const row of rows2()) expect(await stickerQty(row.id, 's1')).toBe(2);
+    };
+
+    test('(a) R1 identik berkomit di antara SELECT baris-baris R2: R2 sukses tanpa menulis lagi', async () => {
+      await many(2);
+      const out = await raceWith(DONE_SQL, 2, 'before', { message: 'sama' }, { message: 'sama' });
+      expect(out.ok).toBe(true);
+      expect(out.data).toEqual({ ids: ['sn0', 'sn1'] });
+      await settled();
+      expect((await appliedEvents()).map((event) => event.message)).toEqual(['sama', 'sama']);
+    });
+
+    test('(b) R1 berbeda berkomit di antara SELECT baris-baris R2: R2 CONFLICT, hanya efek R1', async () => {
+      await many(2);
+      const out = await raceWith(DONE_SQL, 2, 'before', { message: 'R1' }, { message: 'R2' });
+      expect(out.ok).toBe(false);
+      expect(out.error?.code).toBe('CONFLICT');
+      expect(out.error?.message).toBe('Permintaan ini sudah dipakai');
+      await settled();
+      expect((await appliedEvents()).map((event) => event.message)).toEqual(['R1', 'R1']);
+    });
+
+    test('(c1) R1 identik berkomit tepat setelah pemeriksaan konsistensi R2, sebelum semua SELECT baris: R2 sukses tanpa menulis', async () => {
+      await many(2);
+      const out = await raceWith(CHECK_SQL, 1, 'after', { message: 'sama' }, { message: 'sama' });
+      expect(out.ok).toBe(true);
+      expect(out.data).toEqual({ ids: ['sn0', 'sn1'] });
+      await settled();
+    });
+
+    test('(c2) R1 berbeda berkomit tepat setelah pemeriksaan konsistensi R2: R2 CONFLICT, bukan sukses semu', async () => {
+      await many(2);
+      const out = await raceWith(CHECK_SQL, 1, 'after', { message: 'R1' }, { message: 'R2' });
+      expect(out.ok).toBe(false);
+      expect(out.error?.code).toBe('CONFLICT');
+      expect(out.error?.message).toBe('Permintaan ini sudah dipakai');
+      await settled();
+      expect((await appliedEvents()).map((event) => event.message)).toEqual(['R1', 'R1']);
+    });
+
+    test('(c3) R2 hanya satu baris, R1 dua baris berkomit setelah pemeriksaan: R2 CONFLICT (himpunan baris berbeda)', async () => {
+      await many(2);
+      const out = await raceWith(CHECK_SQL, 1, 'after', {}, {}, [
+        { id: 'sn0', stickerIds: ['s1'] },
+      ]);
+      expect(out.error?.code).toBe('CONFLICT');
+      expect(out.error?.message).toBe('Permintaan ini sudah dipakai');
+      await settled();
+    });
+  });
+
   test('penempelan serentak dengan penonaktifan stiker: tidak ada hasil setengah jadi', async () => {
     const rows = await many(4);
     const [applied] = await Promise.all([
