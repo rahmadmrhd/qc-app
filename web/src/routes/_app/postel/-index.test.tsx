@@ -175,7 +175,7 @@ test('pencarian menyaring dan memakai replace (tanpa menambah riwayat)', async (
   expect(router.history.length).toBe(before);
 });
 
-test('filter Kondisi menyaring di klien dan memakai replace', async () => {
+test('filter Kondisi multi-value menyaring di klien dan memakai replace', async () => {
   const { router } = await mount();
   await screen.findByRole('table', { name: 'Daftar catatan Postel' });
   const before = router.history.length;
@@ -184,8 +184,24 @@ test('filter Kondisi menyaring di klien dan memakai replace', async () => {
   await userEvent.click(await screen.findByRole('option', { name: 'Segera habis' }));
   await waitFor(() => expect(screen.queryByRole('link', { name: 'Postel p2' })).toBeNull());
   expect(screen.getByRole('link', { name: 'Postel p1' })).toBeInTheDocument();
-  await waitFor(() => expect(router.state.location.search).toEqual({ condition: 'soon' }));
+  await waitFor(() => expect(router.state.location.search).toEqual({ conditions: ['soon'] }));
+  // Pilihan kedua menambah daftar (salah satu dari): chip menampilkan keduanya.
+  await userEvent.click(await screen.findByRole('option', { name: 'Kedaluwarsa' }));
+  await waitFor(() =>
+    expect(router.state.location.search).toEqual({ conditions: ['soon', 'expired'] }),
+  );
+  expect(
+    await screen.findByRole('button', { name: /^Kondisi: Segera habis, Kedaluwarsa/ }),
+  ).toBeInTheDocument();
   expect(router.history.length).toBe(before);
+});
+
+test('param tunggal lama ?condition= dibaca sebagai conditions', async () => {
+  await mount({ path: '/_app/postel/?condition=soon' });
+  await screen.findByRole('table', { name: 'Daftar catatan Postel' });
+  await waitFor(() => expect(screen.queryByRole('link', { name: 'Postel p2' })).toBeNull());
+  expect(screen.getByRole('link', { name: 'Postel p1' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /^Kondisi: Segera habis/ })).toBeInTheDocument();
 });
 
 test('pilih semua lalu Hapus: konfirmasi menyebut jumlah item, postels.removeBatch, toast dengan Pulihkan', async () => {

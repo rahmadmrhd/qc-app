@@ -1,5 +1,5 @@
 import type { PostelSummaryDto } from '@shared/contract';
-import { comparePostels, filterPostels, type PostelConditionFilter } from '@shared/postel';
+import { comparePostels, filterPostels, type PostelCondition } from '@shared/postel';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
@@ -7,9 +7,9 @@ import { toast } from 'sonner';
 import { z } from 'zod';
 import { ActionButton } from '@/components/action-button';
 import { BulkBar, useBulkAction, useRowSelection } from '@/components/data-table';
-import { FilterBar, FilterChip } from '@/components/page/filter-bar';
+import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { ListPage } from '@/components/page/list-page';
-import { Select } from '@/components/select';
+import { MultiSelect, Select } from '@/components/select';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
 import { liveStatusFilterOptions } from '@/components/soft-delete/status-filter';
 import { Button } from '@/components/ui/button';
@@ -26,14 +26,20 @@ import {
   useRestorePostels,
 } from '@/modules/postel/queries';
 
-const CONDITION_OPTIONS: { value: PostelConditionFilter; label: string }[] = [
-  { value: 'all', label: 'Semua' },
+const CONDITION_OPTIONS: { value: 'soon' | 'expired'; label: string }[] = [
   { value: 'soon', label: 'Segera habis' },
   { value: 'expired', label: 'Kedaluwarsa' },
 ];
 
 const searchSchema = z.object({
   q: z.string().max(100).optional().catch(undefined),
+  /** Kondisi yang disaring (banyak nilai = salah satu dari; filter klien-saja). */
+  conditions: z
+    .array(z.enum(['soon', 'expired']))
+    .max(3)
+    .optional()
+    .catch(undefined),
+  /** Satu kondisi: param tunggal lama yang masih diterima; dibaca sebagai `conditions`. */
   condition: z.enum(['soon', 'expired']).optional().catch(undefined),
   status: z.enum(['live', 'deleted']).optional().catch(undefined),
 });
@@ -61,11 +67,12 @@ function PostelListRoute() {
   // `?status=deleted` tulisan tangan oleh pengguna tanpa hak diperlakukan sebagai daftar hidup.
   const status = search.status === 'deleted' && !canEdit ? 'live' : (search.status ?? 'live');
   const deletedView = status === 'deleted';
-  const condition: PostelConditionFilter = search.condition ?? 'all';
+  const conditions: PostelCondition[] =
+    search.conditions ?? (search.condition ? [search.condition] : []);
   const list = useQuery(postelListQueryOptions(status));
   const removePostels = useRemovePostels();
   const restorePostels = useRestorePostels();
-  const selection = useRowSelection(JSON.stringify({ status, condition, q: search.q ?? '' }));
+  const selection = useRowSelection(JSON.stringify({ status, conditions, q: search.q ?? '' }));
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [text, setText] = useUrlSyncedText(
     search.q ?? '',
@@ -76,7 +83,7 @@ function PostelListRoute() {
   // Penyaringan dan urutan di klien (server memberi semua catatan, maks. 500): urut tanggal habis nomor Aktif.
   const visible = filterPostels([...(list.data?.postels ?? [])].sort(comparePostels), {
     query: text,
-    condition,
+    conditions,
   });
 
   const reload = () => void list.refetch();
@@ -135,14 +142,13 @@ function PostelListRoute() {
           .reduce((sum, postel) => sum + postel.itemCount, 0);
   const statusOptions = liveStatusFilterOptions(canEdit);
   const statusLabel = statusOptions.find((option) => option.value === status)?.label;
-  const conditionLabel = CONDITION_OPTIONS.find((option) => option.value === condition)?.label;
   const pendingId =
     restorePostels.isPending && restorePostels.variables?.ids.length === 1
       ? (restorePostels.variables.ids[0] ?? null)
       : removePostels.isPending && removePostels.variables?.ids.length === 1
         ? (removePostels.variables.ids[0] ?? null)
         : null;
-  const filtered = text.trim() !== '' || condition !== 'all' || deletedView;
+  const filtered = text.trim() !== '' || conditions.length > 0 || deletedView;
   const countLabel =
     list.isSuccess && (visible.length > 0 || filtered) ? `${visible.length} catatan` : undefined;
   const goNew = () => stack.push({ to: '/postel/new' });
@@ -164,25 +170,32 @@ function PostelListRoute() {
           >
             <FilterChip
               label="Kondisi"
-              display={condition === 'all' ? null : conditionLabel}
+              display={multiFilterDisplay(
+                conditions.map(
+                  (value) =>
+                    CONDITION_OPTIONS.find((option) => option.value === value)?.label ?? value,
+                ),
+              )}
               onClear={() =>
                 void navigate({
-                  search: (prev) => ({ ...prev, condition: undefined }),
+                  search: (prev) => ({ ...prev, conditions: undefined, condition: undefined }),
                   replace: true,
                 })
               }
             >
-              <Select
+              <MultiSelect
                 id="postel-filter-condition"
                 label="Filter kondisi"
                 hideLabel
+                placeholder="Semua kondisi"
                 options={CONDITION_OPTIONS}
-                value={condition}
+                value={conditions}
                 onValueChange={(next) =>
                   void navigate({
                     search: (prev) => ({
                       ...prev,
-                      condition: next === 'all' ? undefined : (next as 'soon' | 'expired'),
+                      conditions: next.length > 0 ? (next as ('soon' | 'expired')[]) : undefined,
+                      condition: undefined,
                     }),
                     replace: true,
                   })
