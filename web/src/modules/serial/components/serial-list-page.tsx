@@ -1,5 +1,6 @@
 import type { SerialDto, SerialSummaryDto } from '@shared/contract';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { resolveAction } from '@shared/serial-flow';
+import { useInfiniteQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ActionButton } from '@/components/action-button';
@@ -12,6 +13,7 @@ import {
   useBulkAction,
   useRowSelection,
 } from '@/components/data-table';
+import { DisabledReason } from '@/components/disabled-reason';
 import { ListPage } from '@/components/page/list-page';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
@@ -22,20 +24,22 @@ import {
   buIdsWithLevelOf,
   canManageAnySerial,
   canManageSerial,
+  canReportSerials,
   canUseSerialLocationOptions,
+  serialActorModules,
 } from '@/modules/auth/permissions';
 import { useMe } from '@/modules/auth/use-me';
 import { NoLocationNotice } from '@/modules/location/components/no-location-notice';
 import { CUSTODY_LABEL, formatDay } from '../lib/labels';
 import { filterOfSearch, type SerialSearch } from '../lib/list-filter';
 import { todayWib } from '../lib/locations';
+import { groupSerialsByItemBu, stickerGroupsBlocker } from '../lib/sticker-groups';
 import { daysBetweenDates } from '../lib/transit';
-import {
-  serialDetailQueryOptions,
-  serialListQueryOptions,
-  useRemoveSerials,
-  useRestoreSerials,
-} from '../queries';
+import { useLoadSerialDetail } from '../lib/use-load-serial-detail';
+import { serialListQueryOptions, useRemoveSerials, useRestoreSerials } from '../queries';
+import { type ActKind, canReportDamage } from './act-buttons';
+import { ActDialog } from './act-dialog';
+import { ApplyStickersDialog } from './apply-stickers-dialog';
 import { EditSerialDialog } from './edit-serial-dialog';
 import { ProofBadge, ProofProblemBadge } from './proof-badge';
 import { SerialFilters } from './serial-filters';
@@ -77,12 +81,13 @@ const DELETE_USAGE =
 
 /**
  * Daftar serial (kit CRUD): kolom [checkbox][Aksi][Serial → View][Item][BU][Lokasi][Tanggal uji][Status][Posisi][Sample].
- * Checkbox dan Hapus/Pulihkan massal hanya bagi pemegang `serial: manage` (tanpa ubah massal, keputusan 13); tampilan
- * Terhapus lewat pilihan "Terhapus" pada chip Status. Filter ada di URL; di ponsel baris menjadi kartu.
+ * Aksi baris: Lapor rusak (bila serial Lolos di QC dan pengguna `serial: edit`), Ubah, Hapus/Pulihkan. Checkbox tersedia
+ * bagi pemegang `serial: edit` (Tempel stiker massal) atau `manage` (Hapus/Pulihkan massal; tanpa ubah massal, keputusan
+ * 13): "Tempel stiker" tampil hanya bila SEMUA serial terpilih dapat ditempeli dan "Hapus" hanya bila semuanya dapat
+ * dikelola. Tampilan Terhapus lewat pilihan "Terhapus" pada chip Status. Filter ada di URL; di ponsel baris menjadi kartu.
  */
 export function SerialListPage({ search, onSearchChange, onNew }: SerialListPageProps) {
   const me = useMe();
-  const queryClient = useQueryClient();
   const manageAny = canManageAnySerial(me);
   const filter = filterOfSearch(search, me.email, manageAny);
   const deletedView = filter.deleted === true;
@@ -94,7 +99,9 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
   const selection = useRowSelection(JSON.stringify(filter));
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [editing, setEditing] = useState<SerialDto | null>(null);
-  const [loadingEditId, setLoadingEditId] = useState<string | null>(null);
+  const [acting, setActing] = useState<{ serial: SerialDto; kind: ActKind } | null>(null);
+  const [stickering, setStickering] = useState<SerialSummaryDto[] | null>(null);
+  const detailLoader = useLoadSerialDetail();
 
   const itemAccess = itemLinkAccess(me);
   const canOpenBu = businessUnitLinkAccess(me).openBusinessUnitHref !== undefined;
@@ -105,6 +112,22 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
   // field itu (balasan pulihkan, server lama) jatuh ke BU saat ini saja. Server tetap yang berwenang.
   const manageable = (serial: SerialSummaryDto) =>
     serial.canManage ?? canManageSerial(me, [serial.buId]);
+  // Dapat ditempeli stiker: tabel transisi (status, posisi, hak edit di BU serial) dan bukan tampilan Terhapus.
+  const stickable = (serial: SerialSummaryDto) =>
+    !deletedView &&
+    serial.deleted === undefined &&
+    'row' in
+      resolveAction(
+        'apply_stickers',
+        { status: serial.status, custody: serial.custody },
+        serialActorModules(me, serial.buId),
+      );
+  // Pilihan baris: pemegang edit (Tempel stiker) atau manage (Hapus/Pulihkan).
+  const canSelect = manageAny || canReportSerials(me);
+  const selectedRows = items.filter((serial) => selection.selected.has(serial.id));
+  const allStickable = selectedRows.length > 0 && selectedRows.every(stickable);
+  const allManageable = selectedRows.length > 0 && selectedRows.every(manageable);
+  const stickerBlocker = stickerGroupsBlocker(groupSerialsByItemBu(selectedRows).length);
 
   const reload = () => void list.refetch();
   const remove = useBulkAction({
@@ -160,14 +183,15 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
     );
   }
 
-  /** Dialog Ubah butuh data lengkap (`SerialDto`), sedangkan baris daftar hanya ringkasan: dimuat saat dibutuhkan. */
+  /** Dialog Ubah dan aksi alur butuh data lengkap (`SerialDto`), sedangkan baris daftar hanya ringkasan: dimuat saat dibutuhkan. */
   function editRow(serial: SerialSummaryDto) {
-    setLoadingEditId(serial.id);
-    queryClient
-      .fetchQuery({ ...serialDetailQueryOptions(serial.id), staleTime: 0 })
-      .then((detail) => setEditing(detail.serial))
-      .catch((error: unknown) => toast.error(describeError(error)))
-      .finally(() => setLoadingEditId(null));
+    void detailLoader.load(serial.id).then((detail) => detail && setEditing(detail));
+  }
+
+  function actRow(serial: SerialSummaryDto, kind: ActKind) {
+    void detailLoader
+      .load(serial.id)
+      .then((detail) => detail && setActing({ serial: detail, kind }));
   }
 
   const columns: DataColumn<SerialSummaryDto>[] = [
@@ -265,7 +289,7 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
   const actions = (serial: SerialSummaryDto): RowAction[] => {
     const name = serial.serial;
     const busy =
-      loadingEditId === serial.id ||
+      detailLoader.loadingId === serial.id ||
       (removeSerials.isPending && removeSerials.variables?.ids.includes(serial.id)) ||
       (restoreSerials.isPending && restoreSerials.variables?.ids.includes(serial.id)) ||
       false;
@@ -283,6 +307,19 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
       ];
     }
     return [
+      {
+        // Sebelum Ubah; tampil hanya bila `report_failure` tersedia menurut tabel transisi (Lolos di QC, hak edit).
+        id: 'report',
+        action: 'reportDamage',
+        label: `Lapor rusak ${name}`,
+        shortLabel: 'Lapor rusak',
+        hidden: !canReportDamage(
+          { status: serial.status, custody: serial.custody },
+          serialActorModules(me, serial.buId),
+        ),
+        busy,
+        onSelect: () => actRow(serial, 'report'),
+      },
       {
         id: 'edit',
         action: 'edit',
@@ -335,12 +372,30 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
           </div>
         }
         bulkBar={
-          manageAny ? (
+          canSelect ? (
             <BulkBar count={selection.count} onClear={selection.clear} busy={bulkBusy}>
               {deletedView ? (
-                <ActionButton action="restore" onClick={() => void restore.run()} />
+                allManageable ? (
+                  <ActionButton action="restore" onClick={() => void restore.run()} />
+                ) : null
               ) : (
-                <ActionButton action="delete" onClick={() => setDeleteTarget({ kind: 'bulk' })} />
+                <>
+                  {allStickable ? (
+                    <DisabledReason reason={stickerBlocker}>
+                      <ActionButton
+                        action="stickers"
+                        disabled={stickerBlocker !== undefined}
+                        onClick={() => setStickering(selectedRows)}
+                      />
+                    </DisabledReason>
+                  ) : null}
+                  {allManageable ? (
+                    <ActionButton
+                      action="delete"
+                      onClick={() => setDeleteTarget({ kind: 'bulk' })}
+                    />
+                  ) : null}
+                </>
               )}
             </BulkBar>
           ) : null
@@ -355,8 +410,8 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
             label="Daftar Serial Number"
             rowTo={(serial) => ({ to: '/serial/$serialId', params: { serialId: serial.id } })}
             selectLabel={(serial) => serial.serial}
-            selection={manageAny ? selection : undefined}
-            rowSelectable={manageable}
+            selection={canSelect ? selection : undefined}
+            rowSelectable={(serial) => manageable(serial) || stickable(serial)}
             actions={actions}
             empty="Belum ada Serial Number yang tercatat."
             filtered={filtered}
@@ -383,6 +438,16 @@ export function SerialListPage({ search, onSearchChange, onNew }: SerialListPage
         busy={remove.busy || removeSerials.isPending}
       />
       {editing ? <EditSerialDialog serial={editing} onClose={() => setEditing(null)} /> : null}
+      {acting ? (
+        <ActDialog serial={acting.serial} kind={acting.kind} onClose={() => setActing(null)} />
+      ) : null}
+      {stickering ? (
+        <ApplyStickersDialog
+          rows={stickering}
+          onClose={() => setStickering(null)}
+          onDone={(ids) => selection.remove(ids)}
+        />
+      ) : null}
     </>
   );
 }
