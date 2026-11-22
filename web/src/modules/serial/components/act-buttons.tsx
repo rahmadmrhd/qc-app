@@ -25,7 +25,7 @@ const KIND_OF = {
   note: 'note',
 } as const;
 
-/** Urutan tombol: aksi alur dulu, Tempel stiker sesudah Cek ulang, Catatan terakhir. */
+/** Urutan entri aksi di header (grup Update: aksi alur dulu, Catatan terakhir) dan dialog; Tempel stiker sesudah Cek ulang. */
 const KIND_ORDER: readonly ActKind[] = [
   'report',
   'send',

@@ -159,7 +159,7 @@ export const SERIAL_CATAT: GuideEntry = {
     },
     {
       target: 'serial-row-select',
-      text: 'Mau ubah atau hapus banyak baris sekaligus? Di tabel, centang baris ini (atau kotak "Pilih semua" di judul tabel untuk semuanya). Di ponsel, ketuk tombol Pilih di atas daftar (atau tahan sebuah kartu beberapa saat) untuk masuk mode pilih, lalu ketuk kartu yang mau dipilih; "Pilih semua" ada di header mode pilih. Begitu ada yang terpilih, bar aksi muncul dan Lanjut aktif.',
+      text: 'Mau ubah atau hapus banyak baris sekaligus? Di tabel, centang baris ini (atau kotak "Pilih semua" di judul tabel untuk semuanya). Di ponsel, ketuk tombol Pilih di atas daftar (atau tahan sebuah kartu beberapa saat) untuk masuk mode pilih, lalu ketuk kartu yang mau dipilih; kotak centang di kiri bar bawah memilih semua baris. Bar aksi muncul begitu ada yang terpilih (di ponsel, begitu kamu masuk mode pilih) dan Lanjut aktif.',
       advance: 'wait',
       waitFor: 'serial-bulk',
     },

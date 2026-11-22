@@ -330,3 +330,18 @@ describe('aksi di header (R3)', () => {
     expect(calls('serials.get')).toHaveLength(0);
   });
 });
+
+test('serials.get induk gagal: tanpa tombol Tempel stiker dan Update, tidak ada tombol yang terus sibuk', async () => {
+  apiMock.mockImplementation(async (id: string) => {
+    if (id === 'serialCases.get') return REPORT;
+    if (id === 'serials.history') return historyOf([]);
+    if (id === 'serials.get') throw new ApiError('UNAVAILABLE', 'Tidak ada koneksi', 'req-3');
+    throw new Error(`api tak terduga: ${id}`);
+  });
+  await renderInRouter(<CaseDetailPage caseId="c1" onBack={vi.fn()} />);
+  expect(await screen.findByText('Laporan aktif')).toBeInTheDocument();
+  await waitFor(() => expect(calls('serials.get')).toHaveLength(1));
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Update' })).toBeNull());
+  expect(screen.queryByRole('button', { name: /^Tempel stiker/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /…$/ })).toBeNull();
+});

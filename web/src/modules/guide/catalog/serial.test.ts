@@ -143,6 +143,9 @@ describe('panduan Serial Number', () => {
     // Target yang ada di tabel dan kartu tidak boleh `langsung`/berkartu pengganti.
     expect(select?.langsung).toBeUndefined();
     expect(select?.waitFor).toBe('serial-bulk');
+    // "Pilih semua" di ponsel = kotak centang bar bawah (bukan header mode pilih, yang hanya cadangan).
+    expect(select?.text).toContain('kotak centang di kiri bar bawah');
+    expect(select?.text).not.toContain('header mode pilih');
     // Tabel (layar lebar) punya Batalkan pilihan; bar ponsel satu baris dengan kotak centang, tanpa tombol itu.
     for (const text of ['Edit', 'Hapus', 'Batalkan pilihan', 'kotak centang', 'ponsel']) {
       expect(bulk?.text).toContain(text);

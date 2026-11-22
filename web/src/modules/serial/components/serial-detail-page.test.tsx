@@ -1406,3 +1406,58 @@ test('desktop: bar judul memuat Lapor rusak, Ubah data, Tempel stiker, Update, H
   ]);
   media.restore();
 });
+
+/** Tim servis: `serialservice: edit` pada BU serial, tanpa hak `serial` (hanya baca). */
+function serviceMe(): MeDto {
+  const base = meWith('view');
+  return {
+    ...base,
+    permissions: { ...base.permissions, serialservice: 'edit' },
+    businessUnits: base.businessUnits.map((bu) => ({
+      ...bu,
+      permissions: { ...bu.permissions, serialservice: 'edit' },
+    })),
+  };
+}
+
+const AT_SERVICE = { ...SERIAL, status: 'at_service', custody: 'transit' } as SerialDto;
+
+test('tim servis desktop: bar judul hanya memuat Update (tanpa Lapor rusak, Ubah data, Tempel stiker, Hapus)', async () => {
+  const media = mockMatchMedia(true);
+  me = serviceMe();
+  state = { ...state, serial: AT_SERVICE };
+  await renderPage({ tab: 'detail' });
+  await screen.findByRole('heading', { name: 'ABC123' });
+  const wrapper = document.querySelector('[data-tour="serial-actions"]') as HTMLElement;
+  expect(
+    [...wrapper.querySelectorAll('button')].map((button) => button.textContent?.trim()),
+  ).toEqual(['Update']);
+  await userEvent.click(within(wrapper).getByRole('button', { name: 'Update' }));
+  expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
+    'Terima di servis',
+    'Diagnosis',
+    'Catatan',
+  ]);
+  media.restore();
+});
+
+test('tim servis ponsel: tanpa aksi utama, bar bawah hanya berisi tombol ⋯ (aksi servis satu ketuk lebih dalam)', async () => {
+  const media = mockMatchMedia(false);
+  window.innerWidth = 360;
+  me = serviceMe();
+  state = { ...state, serial: AT_SERVICE };
+  await renderPage({ tab: 'detail' });
+  const bar = await screen.findByRole('region', { name: 'Aksi halaman' });
+  expect(
+    [...bar.querySelectorAll('button')].map((button) => button.getAttribute('aria-label')),
+  ).toEqual(['Aksi lainnya']);
+  await userEvent.click(within(bar).getByRole('button', { name: 'Aksi lainnya' }));
+  expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toEqual([
+    'Terima di servis',
+    'Diagnosis',
+    'Catatan',
+  ]);
+  expect(screen.getByText('Update')).toBeInTheDocument();
+  media.restore();
+  window.innerWidth = 1024;
+});

@@ -154,7 +154,7 @@ function descriptionOf(kind: ActKind, receivingAtQc: boolean, noOpenReport: bool
 }
 
 /**
- * Dialog update di baris Riwayat: catatan Markdown (gambar maks. `messageImagesMax`), tanggal kejadian, dan isian khas
+ * Dialog aksi alur (dibuka dari header detail Serial/Laporan atau aksi baris daftar): catatan Markdown (gambar maks. `messageImagesMax`), tanggal kejadian, dan isian khas
  * tiap aksi (tujuan servis, tahap diagnosis, hasil cek ulang + stiker yang dicentang). Aksi yang dikirim mengikuti
  * tabel transisi (`resolveAction`, sumber yang sama dengan server), jadi dialog tidak menyimpan aturan sendiri.
  */
