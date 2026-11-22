@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { app } from '@server/app';
 import { DbError } from '@server/core/db';
 import {
   collectLegacyIds,
+  ID_KEY,
   MAX_LEGACY_CANDIDATES,
   replaceLegacyIds,
   resetLegacyIdsState,
@@ -64,6 +66,8 @@ describe('collectLegacyIds / replaceLegacyIds (murni)', () => {
         proofPhotoIds: ['10000000-0000-4000-8000-000000000004'],
         jobId: '10000000-0000-4000-8000-000000000005',
         Id: '10000000-0000-4000-8000-000000000006',
+        // `SaveItemInput.attachments` = ID berkas galeri (kunci ber-ID satu-satunya yang namanya tak berakhiran Id/Ids).
+        attachments: ['10000000-0000-4000-8000-000000000007'],
         idx: '20000000-0000-4000-8000-000000000001',
         identifier: '20000000-0000-4000-8000-000000000002',
         valid: '20000000-0000-4000-8000-000000000003',
@@ -74,7 +78,46 @@ describe('collectLegacyIds / replaceLegacyIds (murni)', () => {
       found,
     );
     expect([...found].every((v) => v.startsWith('1'))).toBe(true);
-    expect(found.size).toBe(6);
+    expect(found.size).toBe(7);
+  });
+
+  // Pagar kontrak (review 2026-11-23): `attachments` lolos dari pola kunci pertama kali karena namanya tak berakhiran Id/Ids.
+  // Setiap properti string/larik-string di kontrak yang TIDAK cocok pola harus dinyatakan sengaja BUKAN ID baris di sini.
+  // Menambah properti baru ke `shared/contract.ts` (atau `shared/serial-file.ts`) yang membawa ID baris dengan nama lain = tambahkan ke ID_KEY; yang
+  // bukan ID baris = tambahkan ke daftar ini.
+  const NON_ID_CONTRACT_KEYS = new Set(
+    (
+      'action, actions, activeExpiresOn, activeNumber, actor, actorName, after, alias, aliases, at, auth, author, before, ' +
+      'body, brand, buCode, buCodes, buLabel, by, caption, capturedAt, changedFields, changelog, checksum, closedBy, ' +
+      'closedByTeam, closedOn, code, completedAt, completedBy, createdAt, createdBy, cursor, customerName, description, ' +
+      'detail, documentName, email, endpoint, error, etag, expectedUpdatedAt, expiresAt, expiresOn, exportedAt, exportedBy, ' +
+      'failedAt, field, filename, firmware, firstAt, footer, from, guideName, inactiveCustomerNames, itemLabel, label, ' +
+      'leftAt, link, locationLabel, locationName, logoUpdatedAt, manualBookName, message, mime, model, models, name, ' +
+      'nextCursor, note, number, numbers, occurredOn, openCaseNumber, openedOn, postelNumber, publicKey, publishedAt, ' +
+      'query, quote, reason, recipients, reinjectedAt, reporter, result, search, serial, serials, shipmentNote, source, ' +
+      'stickerLabel, subtitle, summary, tables, target, targetName, testDate, text, thumbMime, ticket, title, to, today, ' +
+      'transitFromLocationName, transitOn, transitToLocationName, ts, typeName, updatedAt, updatedBy, uploadedBy, url, version'
+    ).split(', '),
+  );
+
+  test('pagar kontrak: tiap properti string di shared/contract.ts yang bukan kunci ber-ID sudah diklasifikasikan', () => {
+    // `shared/serial-file.ts` (format `.qcsn`) ikut dipindai: bentuk barisnya masuk ke input rute impor.
+    const text = ['contract.ts', 'serial-file.ts']
+      .map((file) => readFileSync(new URL(`../../../shared/${file}`, import.meta.url), 'utf8'))
+      .join('\n');
+    const property =
+      /^\s+(?:readonly )?([A-Za-z]+)\??:\s*(?:string|string \| null|string\[\]|readonly string\[\])\s*;/gm;
+    const unclassified = new Set<string>();
+    for (let match = property.exec(text); match !== null; match = property.exec(text)) {
+      const name = match[1] as string;
+      if (!ID_KEY.test(name) && !NON_ID_CONTRACT_KEYS.has(name)) unclassified.add(name);
+    }
+    expect([...unclassified]).toEqual([]);
+    // Daftar tak boleh menyimpan nama basi (properti yang sudah tak ada) dan tak boleh memuat kunci ber-ID.
+    for (const name of NON_ID_CONTRACT_KEYS) {
+      expect(ID_KEY.test(name)).toBe(false);
+      expect(text.includes(`${name}: `) || text.includes(`${name}?: `)).toBe(true);
+    }
   });
 
   test('kunci clientId dilewati; objek bukan biasa (byte, Date) dilewati', () => {

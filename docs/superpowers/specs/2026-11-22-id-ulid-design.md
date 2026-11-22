@@ -163,8 +163,11 @@ proksi desktop, dan impor `.qcsn`, tanpa mengubah modul mana pun.
 
 - **Apa yang diterjemahkan:** nilai STRING (rekursif pada objek dan larik biasa, kedalaman paling banyak 20; byte dan Blob
   dilewati) yang PERSIS berpola UUID huruf kecil (`LEGACY_UUID_PATTERN`), ada di `id_ulid_map.old_id`, DAN berada di bawah
-  kunci pembawa ID: `id`, `ids`, `*Id`, `*Ids` (pola `^(id|ids)$|Ids?$`; elemen larik mengikuti kunci larik itu; semua
-  parameter jalur dan properti ber-ID di `shared/contract.ts` memenuhinya). Diganti `new_id`. ID yang tak ada di peta
+  kunci pembawa ID: `id`, `ids`, `attachments`, `*Id`, `*Ids` (pola `^(?:id|ids|attachments)$|Ids?$`; elemen larik
+  mengikuti kunci larik itu; semua parameter jalur dan properti ber-ID di `shared/contract.ts` memenuhinya, dengan satu
+  pengecualian bernama lain: `SaveItemInput.attachments`, ID berkas galeri item, ditemukan review 2026-11-23). Tes
+  `legacy-ids.test.ts` memindai `shared/contract.ts` dan `shared/serial-file.ts` dan GAGAL bila ada properti string baru
+  yang belum diklasifikasikan (ID baris atau bukan), agar celah sejenis tak lolos diam-diam. Diganti `new_id`. ID yang tak ada di peta
   dibiarkan. **Teks bebas tidak pernah disentuh** (nomor serial, komentar, nama, Markdown), walau kebetulan persis berbentuk
   UUID: tanpa batas ini nilai itu berubah dan lapisan menjadi oracle pemetaan UUID lama ke ULID (temuan review keamanan
   2026-11-23; UUID v5 data lama dapat dihitung dari namespace di riwayat repo). Kunci bernama `clientId` dilewati (kunci

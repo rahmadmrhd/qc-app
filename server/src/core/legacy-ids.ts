@@ -8,7 +8,7 @@
 //
 // Aturan (rinci di spek bagian 4a):
 //   - Hanya nilai STRING yang PERSIS berpola UUID, ada di `id_ulid_map.old_id`, DAN berada di bawah kunci pembawa ID
-//     (`id`, `ids`, `*Id`, `*Ids`; elemen larik mengikuti kunci larik itu) yang diganti. Teks bebas (nomor serial, komentar,
+//     (`id`, `ids`, `attachments`, `*Id`, `*Ids`; elemen larik mengikuti kunci larik itu) yang diganti. Teks bebas (nomor serial, komentar,
 //     nama, Markdown) tidak disentuh walau kebetulan berbentuk UUID: kalau tidak, nilai itu akan berubah dan lapisan menjadi
 //     oracle pemetaan UUID lama ke ULID (review 2026-11-23). Kunci `clientId` dilewati (kunci idempoten klien, bukan ID baris).
 //     Gagal-aman: ID lama di kunci bernama lain tak diterjemahkan (sama seperti tanpa lapisan), bukan membocorkan data.
@@ -37,9 +37,12 @@ const MAX_DEPTH = 20;
 const SKIP_KEYS: ReadonlySet<string> = new Set(['clientId']);
 /**
  * Kunci pembawa ID baris di kontrak API: `id`, `ids`, `jobId`, `itemId`, `locationIds`, `businessUnitIds`, `proofPhotoIds`, ...
- * (semua parameter jalur dan properti ber-ID di `shared/contract.ts` berakhiran `Id`/`Ids` atau bernama `id`/`ids`).
+ * (hampir semua properti ber-ID di `shared/contract.ts` berakhiran `Id`/`Ids` atau bernama `id`/`ids`). Satu-satunya
+ * pengecualian bernama lain: `attachments` (`SaveItemInput.attachments`: ID berkas galeri item; ditemukan review 2026-11-23).
+ * Tes `legacy-ids.test.ts` membaca `shared/contract.ts` dan GAGAL bila ada properti string baru yang belum diklasifikasikan
+ * (ID baris atau bukan), supaya celah sejenis tak lolos diam-diam. Diekspor hanya untuk tes itu.
  */
-const ID_KEY = /^(?:id|ids)$|Ids?$/;
+export const ID_KEY = /^(?:id|ids|attachments)$|Ids?$/;
 /** Batas cache hasil terjemahan per proses; peta tak berubah selama aktif, jadi cukup dikosongkan bila penuh. */
 const HIT_CACHE_MAX = 50_000;
 
