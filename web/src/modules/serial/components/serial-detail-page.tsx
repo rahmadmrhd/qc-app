@@ -2,6 +2,7 @@ import type { SerialDto, SerialEventDto, SerialProofPhotoDto } from '@shared/con
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { PageContent } from '@/components/page/page-container';
 import { useAfterDelete } from '@/components/page/use-after-delete';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
 import { ConfirmDeleteDialog } from '@/components/soft-delete/confirm-delete-dialog';
@@ -213,18 +214,22 @@ export function SerialDetailPage({ serialId, onBack, tab, onTabChange }: SerialD
   }
 
   if (detail.isPending) {
-    return <p className="text-sm text-muted-foreground">Memuat…</p>;
+    return (
+      <PageContent>
+        <p className="text-sm text-muted-foreground">Memuat…</p>
+      </PageContent>
+    );
   }
   if (detail.isError || !detail.data || !serial) {
     return (
-      <div className="space-y-3">
+      <PageContent className="space-y-3">
         <p role="alert" className="text-sm text-destructive-text">
           {detail.error ? describeError(detail.error) : 'Serial tidak ditemukan.'}
         </p>
         <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar
         </Button>
-      </div>
+      </PageContent>
     );
   }
   const { events, problemPhotos } = detail.data;

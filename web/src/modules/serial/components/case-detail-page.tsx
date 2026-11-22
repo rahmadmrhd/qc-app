@@ -1,6 +1,7 @@
 import type { SerialCaseDetailDto } from '@shared/contract';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
+import { PageContent } from '@/components/page/page-container';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
 import { BusyLabel } from '@/components/spinner';
 import { Badge } from '@/components/ui/badge';
@@ -181,11 +182,17 @@ export function CaseDetailPage({ caseId, onBack }: CaseDetailPageProps) {
     serial: serialQuery.data?.serial,
     pending: serialQuery.isPending,
   });
-  if (detail.isPending) return <p className="text-sm text-muted-foreground">Memuat…</p>;
+  if (detail.isPending) {
+    return (
+      <PageContent>
+        <p className="text-sm text-muted-foreground">Memuat…</p>
+      </PageContent>
+    );
+  }
   if (detail.isError || !report) {
     const missing = isMissing(detail.error);
     return (
-      <div className="space-y-4">
+      <PageContent className="space-y-4">
         <h1 className="text-2xl font-semibold">
           {missing ? 'Laporan tidak ditemukan' : 'Laporan tidak dapat dimuat'}
         </h1>
@@ -197,7 +204,7 @@ export function CaseDetailPage({ caseId, onBack }: CaseDetailPageProps) {
         <Button variant="outline" color="primary" onClick={onBack}>
           Kembali ke daftar Laporan
         </Button>
-      </div>
+      </PageContent>
     );
   }
   return (
