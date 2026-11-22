@@ -50,7 +50,12 @@ export function useHeadroom({
     (node: HTMLElement | null) => {
       observer.current?.disconnect();
       observer.current = null;
-      if (!node) return;
+      if (!node) {
+        // Bar lepas (mis. ViewPage ponsel kehilangan lencana): tinggi lama tidak boleh tersisa di --headroom-offset.
+        heightRef.current = 0;
+        setHeight(0);
+        return;
+      }
       measure(node);
       if (typeof ResizeObserver !== 'undefined') {
         observer.current = new ResizeObserver(() => measure(node));

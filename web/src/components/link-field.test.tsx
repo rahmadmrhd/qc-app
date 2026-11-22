@@ -530,7 +530,10 @@ test('mode lembar (data-sheet) punya pegangan seret yang sama dengan lembar bawa
   now = 1400;
   fireEvent.pointerUp(handle, { pointerId: 1, clientY: 300, pointerType: 'touch' });
   expect(list).toHaveAttribute('data-expanded', 'true');
-  expect(list.style.top).toBe('0px');
+  // Mengikuti area terlihat (papan ketik), bukan layout viewport: top/height dari --vv-top/--vvh.
+  expect(list.style.top).toBe('var(--vv-top, 0px)');
+  expect(list.style.height).toBe('var(--vvh, 100dvh)');
+  expect(list.style.bottom).toBe('auto');
   expect(list.style.maxHeight).toBe('none');
   // Ketukan (setelah `click` susulan seretan lewat) membalik ke tinggi awal; daftar tetap terbuka.
   await act(async () => {

@@ -442,13 +442,14 @@ export function ComboboxBase({
                 // Lembar yang dilebarkan memenuhi layar (seperti `ui/sheet.tsx` expanded).
                 ...(placement.sheet && sheetExpanded
                   ? {
-                      top: 0,
-                      bottom: 0,
+                      // Mengikuti area terlihat (papan ketik iOS tidak mengecilkan layout viewport), seperti dialog layar penuh.
+                      top: 'var(--vv-top, 0px)',
+                      bottom: 'auto',
+                      height: 'var(--vvh, 100dvh)',
                       left: 0,
                       width: '100%',
                       maxHeight: 'none',
                       borderRadius: 0,
-                      paddingTop: 'env(safe-area-inset-top)',
                     }
                   : {}),
               },
@@ -466,7 +467,10 @@ export function ComboboxBase({
             onExpandedChange={setSheetExpanded}
             onClose={close}
             targetRef={sheetRef}
-            className="sticky top-0 z-10 -mx-1 -mt-1 mb-0 w-[calc(100%+0.5rem)] bg-popover"
+            className={cn(
+              'sticky top-0 z-10 -mx-1 -mt-1 mb-0 w-[calc(100%+0.5rem)] bg-popover',
+              sheetExpanded && 'pt-[env(safe-area-inset-top)]',
+            )}
           />
         ) : null}
         {visible.map((option) => (
