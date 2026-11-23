@@ -290,3 +290,66 @@ describe('badan POST', () => {
     expect(row).toBeNull();
   });
 });
+
+describe('review akhir butir 1: pembagi berhak atas lebih dari 20 BU dan lokasi', () => {
+  const MANY = 'many@gmail.com';
+  const COUNT = 25;
+  const pad = (index: number) => String(index).padStart(2, '0');
+
+  async function seedHeavySharer(): Promise<void> {
+    const assignments: { locationId: string | null; roleIds: string[] }[] = [
+      { locationId: null, roleIds: ['r-dash'] },
+    ];
+    const buAssignments: { buId: string; roleIds: string[] }[] = [];
+    for (let index = 0; index < COUNT; index += 1) {
+      await seedLocation(env, { id: `hl-${pad(index)}`, code: `HL${pad(index)}` });
+      await seedBusinessUnit(env, { id: `hb-${pad(index)}`, code: `HB${pad(index)}` });
+      assignments.push({ locationId: `hl-${pad(index)}`, roleIds: ['r-hs'] });
+      buAssignments.push({ buId: `hb-${pad(index)}`, roleIds: ['r-sn'] });
+    }
+    await seedUser(env, { id: 'u-many', email: MANY, assignments, buAssignments });
+    await seedSerial(env, { id: 'hs-1', buId: 'hb-03', itemId: 'i-1' });
+    await seedSerial(env, { id: 'hs-2', buId: 'hb-24', itemId: 'i-1' });
+  }
+
+  async function heavyShare() {
+    await seedHeavySharer();
+    const user = await loadUserContext(env, MANY);
+    if (!user) throw new Error('pembagi tidak ditemukan');
+    const dto = await createShare(
+      env,
+      user,
+      input({
+        widgets: [
+          { id: 'sn.recorded', filters: {} },
+          { id: 'hs.created', filters: {} },
+        ],
+      }),
+    );
+    return (dto.url ?? '').split('/dashboard-publik/')[1] ?? '';
+  }
+
+  test('GET dan POST sukses; opsi memuat semua BU/lokasi beku (>20)', async () => {
+    const token = await heavyShare();
+    const response = await get(token);
+    expect(response.status).toBe(200);
+    const dto = (await response.json()) as PublicDashboardDto;
+    expect(numberOf(dto, 'sn.recorded')).toBe(2);
+    expect(dto.options.bu).toHaveLength(COUNT);
+    expect(dto.options.location).toHaveLength(COUNT);
+    const narrowed = await post(token, { buIds: ['hb-03'] });
+    expect(narrowed.status).toBe(200);
+    expect(numberOf((await narrowed.json()) as PublicDashboardDto, 'sn.recorded')).toBe(1);
+    expect((await post(token, {})).status).toBe(200);
+  });
+
+  test('daftar dari PENONTON lebih dari 20 tetap ditolak 400', async () => {
+    const token = await heavyShare();
+    const twentyOne = Array.from({ length: 21 }, (_, index) => `hb-${pad(index)}`);
+    expect((await post(token, { buIds: twentyOne })).status).toBe(400);
+    const manyLocations = Array.from({ length: 21 }, (_, index) => `hl-${pad(index)}`);
+    expect((await post(token, { locationIds: manyLocations })).status).toBe(400);
+    const twenty = twentyOne.slice(0, 20);
+    expect((await post(token, { buIds: twenty })).status).toBe(200);
+  });
+});

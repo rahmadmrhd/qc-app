@@ -21,7 +21,7 @@ import { describeError } from '@/lib/api';
 import { useMe } from '@/modules/auth/use-me';
 import { visibleWidgetsByGroup } from '../lib/access';
 import { formatRangeLabel } from '../lib/format';
-import { type DashboardSearch, effectiveRange } from '../lib/search';
+import { type DashboardSearch, effectiveRange, groupFilters } from '../lib/search';
 import { useCreateShare } from '../share-queries';
 import { buFilterOptions, locationFilterOptions } from './global-filters';
 import { ScopeEditor, type ScopeEditorValue } from './scope-editor';
@@ -137,8 +137,13 @@ export function ShareDialog({
   const hasList = scope.widgets.some((widget) => widgetMeta(widget.id).visual === 'list');
   const days = Number(rollingDays);
   const rollingValid = Number.isInteger(days) && days >= 1 && days <= DASHBOARD_RANGE_MAX_DAYS;
-  const customDays = customDate === '' ? NaN : daysBetween(today, customDate);
-  const expiresInDays = expiry === CUSTOM ? customDays : Number(expiry);
+  // Tanggal tertentu dikirim sebagai tanggal (server menyetel akhir hari WIB); durasi dikirim sebagai hari.
+  const customDays = customDate === '' ? Number.NaN : daysBetween(today, customDate);
+  const customValid =
+    Number.isInteger(customDays) && customDays >= 0 && customDays <= SHARE_LIMITS.expiryDaysMax;
+  const presetDays = Number(expiry);
+  const presetValid =
+    Number.isInteger(presetDays) && presetDays >= 1 && presetDays <= SHARE_LIMITS.expiryDaysMax;
 
   const rangeLabel =
     rangeMode === 'fixed'
@@ -161,12 +166,11 @@ export function ShareDialog({
     if (rangeMode === 'rolling' && !rollingValid) {
       next.range = `Jumlah hari harus 1-${DASHBOARD_RANGE_MAX_DAYS}`;
     }
-    if (
-      !Number.isInteger(expiresInDays) ||
-      expiresInDays < 1 ||
-      expiresInDays > SHARE_LIMITS.expiryDaysMax
-    ) {
-      next.expiry = `Masa berlaku harus 1-${SHARE_LIMITS.expiryDaysMax} hari`;
+    if (expiry === CUSTOM ? !customValid : !presetValid) {
+      next.expiry =
+        expiry === CUSTOM
+          ? `Pilih tanggal dari hari ini sampai ${SHARE_LIMITS.expiryDaysMax} hari ke depan`
+          : `Masa berlaku harus 1-${SHARE_LIMITS.expiryDaysMax} hari`;
     }
     setErrors(next);
     if (Object.keys(next).length > 0) return;
@@ -187,7 +191,7 @@ export function ShareDialog({
           : { mode: 'rolling', days },
       widgets: scope.widgets,
       offers: scope.offers,
-      expiresInDays,
+      ...(expiry === CUSTOM ? { expiresOn: customDate } : { expiresInDays: presetDays }),
     };
     create.mutate(input, {
       onSuccess: (dto) => setCreated(dto),
@@ -230,7 +234,12 @@ export function ShareDialog({
             </p>
           ) : null}
         </div>
-        <ScopeEditor value={scope} onChange={setScope} allowedWidgetIds={allowed} />
+        <ScopeEditor
+          value={scope}
+          onChange={setScope}
+          allowedWidgetIds={allowed}
+          seedFilters={(group) => groupFilters(search, group)}
+        />
         {errors.widgets ? (
           <p role="alert" className="text-xs text-destructive-text">
             {errors.widgets}
@@ -292,7 +301,7 @@ export function ShareDialog({
                 <Input
                   id="share-expiry-date"
                   type="date"
-                  min={addDays(today, 1)}
+                  min={today}
                   max={addDays(today, SHARE_LIMITS.expiryDaysMax)}
                   value={customDate}
                   onChange={(event) => setCustomDate(event.target.value)}

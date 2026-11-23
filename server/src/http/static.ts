@@ -26,10 +26,10 @@ function fileIn(root: string, relative: string): string | null {
   }
 }
 
-function fileResponse(path: string, cache: string): Response {
+function fileResponse(path: string, cache: string, extra: Record<string, string> = {}): Response {
   const file = Bun.file(path);
   return new Response(file, {
-    headers: { 'content-type': file.type, 'cache-control': cache },
+    headers: { 'content-type': file.type, 'cache-control': cache, ...extra },
   });
 }
 
@@ -68,5 +68,7 @@ export function serveStatic(staticDir: string, method: string, pathname: string)
   if (index === null) {
     return new Response('Aplikasi web belum dibangun: jalankan `bun run build`.', { status: 404 });
   }
-  return fileResponse(index, REVALIDATE_CACHE);
+  // Cangkang halaman bertoken (`/laporan/`, `/dashboard-publik/`): tak boleh diindeks, juga sebelum JavaScript jalan
+  // (meta `robots` dipasang klien lewat efek, terlalu lambat bagi perayap yang tak menjalankan skrip).
+  return fileResponse(index, REVALIDATE_CACHE, clientRoute ? { 'x-robots-tag': 'noindex' } : {});
 }

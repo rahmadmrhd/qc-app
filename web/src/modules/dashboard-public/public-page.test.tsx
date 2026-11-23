@@ -15,6 +15,7 @@ const BASE_DTO: PublicDashboardDto = {
   generatedAt: '2026-11-24T02:15:00.000Z',
   expiresAt: '2026-12-20T16:59:59.000Z',
   range: { from: '2026-11-01', to: '2026-11-24' },
+  bounds: { from: '2026-11-01', to: '2026-11-24' },
   bucket: 'day',
   scope: { buNames: ['BU Satu'], locationNames: ['Lokasi Satu'] },
   options: {
@@ -145,6 +146,21 @@ test('kolom tanggal dijepit ke rentang pembagi', async () => {
   const from = (await screen.findByLabelText('Dari tanggal')) as HTMLInputElement;
   expect(from.min).toBe('2026-11-01');
   expect(from.max).toBe('2026-11-24');
+});
+
+test('butir 13: halaman dibuka dari URL yang sudah menyempitkan tanggal tetap dijepit ke rentang pembagi', async () => {
+  // server menjawab range hasil penyempitan penonton, bounds tetap rentang beku pembagi
+  dto.range = { from: '2026-11-10', to: '2026-11-12' };
+  await renderInRouter(<Harness initial={{ from: '2026-11-10', to: '2026-11-12' }} />);
+  await screen.findByRole('heading', { name: 'Rekap Mingguan' });
+  await userEvent.click(screen.getByRole('button', { name: /^Tanggal(:|$)/ }));
+  const from = (await screen.findByLabelText('Dari tanggal')) as HTMLInputElement;
+  const to = screen.getByLabelText('Sampai tanggal') as HTMLInputElement;
+  expect(from.value).toBe('2026-11-10');
+  expect(from.min).toBe('2026-11-01');
+  expect(from.max).toBe('2026-11-24');
+  expect(to.min).toBe('2026-11-01');
+  expect(to.max).toBe('2026-11-24');
 });
 
 test('filter relasi yang ditawarkan dirender, yang tidak ditawarkan tidak', async () => {

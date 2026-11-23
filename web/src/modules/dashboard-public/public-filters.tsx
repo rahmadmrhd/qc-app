@@ -49,14 +49,14 @@ export function viewerFromSearch(search: DashboardSearch): PublicQueryInput {
   return viewer;
 }
 
-/** Isi chip Tanggal: dua kolom tanggal dijepit ke rentang pembagi (bila diketahui), diterapkan sekali saat chip menutup. */
+/** Isi chip Tanggal: dua kolom tanggal dijepit ke rentang pembagi, diterapkan sekali saat chip menutup. */
 function PublicDateFilter({
   range,
   bounds,
   onCommit,
 }: {
   range: DashboardRange;
-  bounds: DashboardRange | undefined;
+  bounds: DashboardRange;
   onCommit: (range: DashboardRange) => void;
 }) {
   const [draft, setDraft] = useChipDraft<DashboardRange>(range, (next) => {
@@ -73,7 +73,8 @@ function PublicDateFilter({
           id="public-filter-from"
           type="date"
           value={draft.from}
-          {...(bounds ? { min: bounds.from, max: bounds.to } : {})}
+          min={bounds.from}
+          max={bounds.to}
           onChange={(event) => setDraft({ ...draft, from: event.target.value })}
         />
       </div>
@@ -85,15 +86,14 @@ function PublicDateFilter({
           id="public-filter-to"
           type="date"
           value={draft.to}
-          {...(bounds ? { min: bounds.from, max: bounds.to } : {})}
+          min={bounds.from}
+          max={bounds.to}
           onChange={(event) => setDraft({ ...draft, to: event.target.value })}
         />
       </div>
-      {bounds ? (
-        <p className="text-xs text-muted-foreground">
-          Hanya dalam {formatRangeLabel(bounds)}; di luar itu dipotong otomatis.
-        </p>
-      ) : null}
+      <p className="text-xs text-muted-foreground">
+        Hanya dalam {formatRangeLabel(bounds)}; di luar itu dipotong otomatis.
+      </p>
       {problem ? (
         <p role="alert" className="text-xs text-destructive-text">
           {problem}
@@ -106,13 +106,11 @@ function PublicDateFilter({
 /** Filter global halaman publik: hanya BU/Lokasi yang ditawarkan `options` dan Tanggal. */
 export function PublicGlobalFilters({
   dto,
-  bounds,
   search,
   onChange,
 }: {
+  /** `dto.bounds` = rentang beku pembagi, batas kolom tanggal (juga saat halaman dibuka dari URL berfilter). */
   dto: PublicDashboardDto;
-  /** Rentang pembagi (tanpa penyempitan penonton) bila sudah diketahui. */
-  bounds: DashboardRange | undefined;
   search: DashboardSearch;
   onChange: (patch: Partial<DashboardSearch>) => void;
 }) {
@@ -176,7 +174,7 @@ export function PublicGlobalFilters({
       >
         <PublicDateFilter
           range={dto.range}
-          bounds={bounds}
+          bounds={dto.bounds}
           onCommit={(next) => onChange({ from: next.from, to: next.to })}
         />
       </FilterChip>

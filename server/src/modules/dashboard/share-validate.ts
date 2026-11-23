@@ -7,6 +7,7 @@ import {
 } from '@shared/dashboard';
 import type { CreateShareInput, ShareRange, ShareWidgetScope } from '@shared/dashboard-share';
 import { SHARE_LIMITS, SHARE_OFFER_KEYS } from '@shared/dashboard-share';
+import { isIsoDate } from '@shared/serials';
 import { type Fields, readGlobalFilter, readWidget } from './validate';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -25,14 +26,26 @@ export function checkShareInput(input: CreateShareInput): Fields {
     fields.title = `Judul maksimal ${SHARE_LIMITS.titleMax} karakter`;
   }
 
-  const days = input.expiresInDays;
-  if (
-    typeof days !== 'number' ||
-    !Number.isInteger(days) ||
-    days < 1 ||
-    days > SHARE_LIMITS.expiryDaysMax
-  ) {
-    fields.expiresInDays = `Masa berlaku harus 1-${SHARE_LIMITS.expiryDaysMax} hari`;
+  // Bentuk saja (tanpa jam): jendela tanggal terhadap "hari ini" dihitung `shareExpiry` dengan jam server di `createShare`.
+  const hasDays = input.expiresInDays !== undefined;
+  const hasDate = input.expiresOn !== undefined;
+  if (hasDays === hasDate) {
+    fields[hasDays ? 'expiresOn' : 'expiresInDays'] =
+      'Isi tepat satu: masa berlaku (hari) atau tanggal berlaku';
+  } else if (hasDate) {
+    if (typeof input.expiresOn !== 'string' || !isIsoDate(input.expiresOn)) {
+      fields.expiresOn = 'Tanggal berlaku tidak sah';
+    }
+  } else {
+    const days = input.expiresInDays;
+    if (
+      typeof days !== 'number' ||
+      !Number.isInteger(days) ||
+      days < 1 ||
+      days > SHARE_LIMITS.expiryDaysMax
+    ) {
+      fields.expiresInDays = `Masa berlaku harus 1-${SHARE_LIMITS.expiryDaysMax} hari`;
+    }
   }
 
   const range = input.range;
@@ -137,8 +150,12 @@ export function validateCreateShare(raw: unknown): CreateShareInput {
   } else {
     for (const key of raw.offers as string[]) if (!offers.includes(key)) offers.push(key);
   }
-  if (typeof raw.expiresInDays !== 'number')
+  if (raw.expiresInDays !== undefined && typeof raw.expiresInDays !== 'number') {
     fields.expiresInDays = 'Masa berlaku wajib berupa angka';
+  }
+  if (raw.expiresOn !== undefined && typeof raw.expiresOn !== 'string') {
+    fields.expiresOn = 'Tanggal berlaku wajib berupa teks';
+  }
 
   if (Object.keys(fields).length > 0) throw appError('VALIDATION', 'Input tidak valid', fields);
   const input: CreateShareInput = {
@@ -147,7 +164,8 @@ export function validateCreateShare(raw: unknown): CreateShareInput {
     range,
     widgets,
     offers,
-    expiresInDays: raw.expiresInDays as number,
+    ...(raw.expiresInDays === undefined ? {} : { expiresInDays: raw.expiresInDays as number }),
+    ...(raw.expiresOn === undefined ? {} : { expiresOn: raw.expiresOn as string }),
     ...(raw.locationFiltered === undefined
       ? {}
       : { locationFiltered: raw.locationFiltered as boolean }),

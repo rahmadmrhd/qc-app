@@ -3,6 +3,8 @@
  * pembacaan baris; aturan izin dan pembuatan ada di `share-service.ts`. Tabel ini bukan model soft delete:
  * pencabutan = mengisi `revoked_at`.
  */
+import { createHash } from 'node:crypto';
+import { CAS_FAIL_SQL } from '@server/core/cas';
 import type { DbStatement, Preparer } from '@server/core/db';
 import {
   DASHBOARD_RANGE_MAX_DAYS,
@@ -83,6 +85,48 @@ export async function countActiveShares(
     .bind(creator, nowIso)
     .first<{ n: number | string }>();
   return Number(row?.n ?? 0);
+}
+
+/** Kunci baris penghitung per pembagi (hash surel agar muat di `counters.key` 128 karakter). */
+function shareLockKey(creator: string): string {
+  return `dashboard_share:${createHash('sha256').update(creator).digest('hex')}`;
+}
+
+/**
+ * Memastikan baris kunci pembagi ada; dipanggil SEBELUM `batch()` pembuatan, di luar transaksi (menyisipkannya di dalam
+ * batch oleh penulis serentak yang pertama menyebabkan deadlock pada kunci duplikat).
+ */
+export function ensureShareLockStmt(db: Preparer, creator: string): DbStatement {
+  return db
+    .prepare('INSERT IGNORE INTO counters (`key`, value) VALUES (?, 0)')
+    .bind(shareLockKey(creator));
+}
+
+/**
+ * Penjaga batas tautan aktif untuk digabung ke `batch()` pembuatan (sebelum penyisipan). (1) Menaikkan baris kunci
+ * pembagi di `counters` (kunci eksklusif sampai COMMIT, jadi pembuatan serentak oleh pembagi yang sama diserialkan);
+ * (2) `SELECT` yang membatalkan batch (`CAS_FAIL_SQL`, dikenali `isGuardFailure`) bila jumlah tautan aktifnya sudah
+ * mencapai `max`. Hitungan dibaca SETELAH kunci didapat (pembacaan konsisten pertama transaksi), jadi melihat commit
+ * penulis sebelumnya; hitung-lalu-tulis tanpa kunci meloloskan penulis serentak melewati batas.
+ */
+export function activeLimitGuardStmts(
+  db: Preparer,
+  creator: string,
+  nowIso: string,
+  max: number,
+): DbStatement[] {
+  return [
+    db
+      .prepare(
+        'INSERT INTO counters (`key`, value) VALUES (?, 1) ON DUPLICATE KEY UPDATE value = value + 1',
+      )
+      .bind(shareLockKey(creator)),
+    db
+      .prepare(
+        `SELECT CASE WHEN (SELECT COUNT(*) FROM dashboard_shares WHERE created_by = ? AND revoked_at = '' AND expires_at > ? AND report_id = '') < ? THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok`,
+      )
+      .bind(creator, nowIso, max),
+  ];
 }
 
 /** Mencabut tautan. Idempoten: tautan yang sudah dicabut tak berubah (`revoked_at` pertama dipertahankan). */

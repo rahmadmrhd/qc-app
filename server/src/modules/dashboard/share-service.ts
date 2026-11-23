@@ -3,17 +3,19 @@
  * mendaftar, dan mencabut. Izin `dashboard: manage` dijaga rute; `url` hanya untuk pembagi dan super admin.
  */
 import { writeAudit } from '@server/core/audit';
+import { isGuardFailure } from '@server/core/cas';
 import { type Env, nowIso, nowOf } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { newId } from '@server/core/id';
 import type { UserContext } from '@server/modules/access/context';
 import { widgetMeta } from '@shared/dashboard';
 import type { CreateShareInput, DashboardShareDto, ShareScope } from '@shared/dashboard-share';
-import { SHARE_LIMITS, shareStatus } from '@shared/dashboard-share';
+import { SHARE_LIMITS, shareExpiry, shareStatus } from '@shared/dashboard-share';
 import { allowedWidgetIds, resolveScope } from './scope';
 import { signShareToken } from './share-link';
 import {
-  countActiveShares,
+  activeLimitGuardStmts,
+  ensureShareLockStmt,
   insertShareStmt,
   listShares,
   loadShare,
@@ -22,8 +24,6 @@ import {
   type ShareRow,
 } from './share-repo';
 import { assertShareInput } from './share-validate';
-
-const DAY_MS = 86_400_000;
 
 /** URL tautan: disusun server dari `APP_ORIGIN` (tidak pernah dari header permintaan). */
 export function shareUrl(env: Env, token: string): string {
@@ -60,7 +60,9 @@ export function freezeScope(user: UserContext, input: CreateShareInput, nowMs: n
       from: input.filter.from,
       to: input.filter.to,
       ...(buIds.length > 0 ? { buIds } : {}),
-      ...(locationFiltered ? { locationIds: chosenLocations } : {}),
+      // Lokasi pilihan membatasi lokasi Serah Terima/stok TERLEPAS dari `locationFiltered`; flag itu hanya mengatur
+      // apakah lokasi juga menjadi saringan Serial/Laporan (di bawah).
+      ...(chosenLocations.length > 0 ? { locationIds: chosenLocations } : {}),
     },
     nowMs,
   );
@@ -121,11 +123,9 @@ export async function createShare(
   if (env.SESSION_SECRET === '') throw appError('UNAVAILABLE', 'Rahasia sesi belum dikonfigurasi');
   shareUrl(env, 'x'); // gagal lebih awal bila APP_ORIGIN kosong
   const now = nowIso(env);
-  if ((await countActiveShares(env.DB, user.email, now)) >= SHARE_LIMITS.activePerSharer) {
-    throw appError(
-      'CONFLICT',
-      `Tautan aktif Anda sudah ${SHARE_LIMITS.activePerSharer}; cabut yang tidak dipakai dulu`,
-    );
+  const expiry = shareExpiry(input, nowMs);
+  if (!expiry.ok) {
+    throw appError('VALIDATION', 'Input tidak valid', { [expiry.field]: expiry.message });
   }
   const id = newId();
   const title = input.title.trim();
@@ -134,30 +134,44 @@ export async function createShare(
     title,
     created_by: user.email,
     created_at: now,
-    expires_at: new Date(nowMs + input.expiresInDays * DAY_MS).toISOString(),
+    expires_at: new Date(expiry.ms).toISOString(),
     revoked_at: '',
     revoked_by: '',
     scope: JSON.stringify(scope),
     report_id: '',
   };
-  await env.DB.batch([
-    insertShareStmt(env.DB, row),
-    writeAudit(env.DB, {
-      ts: now,
-      actor: user.email,
-      action: 'dashboard.share_create',
-      target: `dashboard_share:${id}`,
-      targetId: id,
-      after: {
-        title,
-        expiresAt: row.expires_at,
-        range: scope.range,
-        widgets: scope.widgets.map((widget) => widget.id),
-        buCount: scope.buIds.length,
-        locationFiltered: scope.locationFiltered,
-      },
-    }),
-  ]);
+  // Batas tautan aktif dijaga DI DALAM batch (kunci baris pembagi + penjaga hitungan): pembuatan serentak diserialkan,
+  // jadi total aktif tak pernah melewati batas.
+  await env.DB.batch([ensureShareLockStmt(env.DB, user.email)]);
+  try {
+    await env.DB.batch([
+      ...activeLimitGuardStmts(env.DB, user.email, now, SHARE_LIMITS.activePerSharer),
+      insertShareStmt(env.DB, row),
+      writeAudit(env.DB, {
+        ts: now,
+        actor: user.email,
+        action: 'dashboard.share_create',
+        target: `dashboard_share:${id}`,
+        targetId: id,
+        after: {
+          title,
+          expiresAt: row.expires_at,
+          range: scope.range,
+          widgets: scope.widgets.map((widget) => widget.id),
+          buCount: scope.buIds.length,
+          locationFiltered: scope.locationFiltered,
+        },
+      }),
+    ]);
+  } catch (error) {
+    if (isGuardFailure(error)) {
+      throw appError(
+        'CONFLICT',
+        `Tautan aktif Anda sudah ${SHARE_LIMITS.activePerSharer}; cabut yang tidak dipakai dulu`,
+      );
+    }
+    throw error;
+  }
   return toShareDto(env, row, now, true);
 }
 

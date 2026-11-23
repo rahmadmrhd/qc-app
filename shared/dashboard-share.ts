@@ -3,6 +3,11 @@
  * `dashboard_shares.scope`, DTO daftar tautan, dan masukan pembuatan. Murni, tanpa API runtime/DOM.
  */
 import type { DashboardFilterInput, WidgetId } from './dashboard';
+import { wibDateIso } from './postel';
+import { isIsoDate } from './serials';
+
+const DAY_MS = 86_400_000;
+const WIB_OFFSET_MS = 7 * 3_600_000;
 
 export const SHARE_LIMITS = {
   /** Jumlah widget maksimum dalam satu tautan. */
@@ -68,7 +73,68 @@ export interface CreateShareInput {
   range: ShareRange;
   widgets: ShareWidgetScope[];
   offers: string[];
-  expiresInDays: number;
+  /** Masa berlaku dalam hari (1-365) dari saat dibuat. Tepat SATU dari `expiresInDays` dan `expiresOn` wajib ada. */
+  expiresInDays?: number;
+  /**
+   * Berlaku sampai akhir hari ini (`YYYY-MM-DD`, WIB, 23:59:59.999), sejak hari ini sampai maks. 365 hari ke depan.
+   * Dipakai pilihan "Tanggal tertentu"; server yang menyetel jam akhir hari (bukan jam pembuatan).
+   */
+  expiresOn?: string;
+}
+
+/** Epoch ms akhir hari WIB (23:59:59.999) pada `day` (`YYYY-MM-DD`); `NaN` bila bukan tanggal sah. */
+export function endOfWibDayMs(day: string): number {
+  if (!isIsoDate(day)) return Number.NaN;
+  const [year, month, date] = day.split('-').map(Number) as [number, number, number];
+  return Date.UTC(year, month - 1, date, 23, 59, 59, 999) - WIB_OFFSET_MS;
+}
+
+/**
+ * Waktu kedaluwarsa tautan (epoch ms) dari masukan: `expiresOn` = akhir hari WIB itu, `expiresInDays` = sekarang + N x
+ * 24 jam. Mengembalikan teks masalah (untuk field `expiresInDays`/`expiresOn`) bila tidak sah: tepat satu dari kedua
+ * field wajib ada, hari 1-`expiryDaysMax`, tanggal antara hari ini dan hari ini + `expiryDaysMax` hari (WIB).
+ */
+export function shareExpiry(
+  input: Pick<CreateShareInput, 'expiresInDays' | 'expiresOn'>,
+  nowMs: number,
+): { ok: true; ms: number } | { ok: false; field: 'expiresInDays' | 'expiresOn'; message: string } {
+  const hasDays = input.expiresInDays !== undefined;
+  const hasDate = input.expiresOn !== undefined;
+  if (hasDays === hasDate) {
+    return {
+      ok: false,
+      field: hasDays ? 'expiresOn' : 'expiresInDays',
+      message: 'Isi tepat satu: masa berlaku (hari) atau tanggal berlaku',
+    };
+  }
+  if (hasDate) {
+    const day = String(input.expiresOn);
+    const end = endOfWibDayMs(day);
+    const today = wibDateIso(nowMs);
+    const latest = endOfWibDayMs(wibDateIso(nowMs + SHARE_LIMITS.expiryDaysMax * DAY_MS));
+    if (Number.isNaN(end) || day < today || end > latest) {
+      return {
+        ok: false,
+        field: 'expiresOn',
+        message: `Tanggal berlaku harus dari hari ini sampai ${SHARE_LIMITS.expiryDaysMax} hari ke depan`,
+      };
+    }
+    return { ok: true, ms: end };
+  }
+  const days = input.expiresInDays;
+  if (
+    typeof days !== 'number' ||
+    !Number.isInteger(days) ||
+    days < 1 ||
+    days > SHARE_LIMITS.expiryDaysMax
+  ) {
+    return {
+      ok: false,
+      field: 'expiresInDays',
+      message: `Masa berlaku harus 1-${SHARE_LIMITS.expiryDaysMax} hari`,
+    };
+  }
+  return { ok: true, ms: nowMs + days * DAY_MS };
 }
 
 /** Status tautan pada `nowIso`: dicabut menang atas kedaluwarsa; `expires_at <= now` = kedaluwarsa. */

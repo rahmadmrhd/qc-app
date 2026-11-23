@@ -2,14 +2,14 @@ import type { MeDto } from '@shared/contract';
 import { widgetMeta } from '@shared/dashboard';
 import type { DashboardShareDto } from '@shared/dashboard-share';
 import { wibDateIso } from '@shared/postel';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { installIntersectionObserver } from '@/test/intersection-observer';
-import { pickLink } from '@/test/link-field';
+import { pickLink, pickSelect } from '@/test/link-field';
 import { renderInRouter } from '@/test/render-in-router';
-import { type DashboardSearch, parseDashboardSearch } from '../lib/search';
+import { type DashboardSearch, groupFilterParam, parseDashboardSearch } from '../lib/search';
 
 const apiMock = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/api', async (importOriginal) => ({
@@ -208,6 +208,76 @@ test('kirim: BU dan lokasi dari filter aktif, masa berlaku 30 hari, lalu tautan 
   expect(url.value).toBe(CREATED.url);
   await userEvent.click(screen.getByRole('button', { name: 'Salin tautan' }));
   await waitFor(() => expect(writeText).toHaveBeenCalledWith(CREATED.url));
+});
+
+test('butir 9: tanggal tertentu dikirim sebagai expiresOn (bukan expiresInDays)', async () => {
+  me = makeUser({ manage: true });
+  await renderInRouter(<DialogHarness />);
+  await screen.findByRole('alertdialog', { name: 'Bagikan dashboard' });
+  await userEvent.type(screen.getByLabelText(/Judul tautan/), 'Rekap');
+  await userEvent.click(widgetBox('hs.created'));
+  await pickSelect(screen, 'Masa berlaku', 'Tanggal tertentu');
+  const date = new Date(Date.parse(`${today}T00:00:00.000Z`) + 10 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const input = (await screen.findByLabelText('Berlaku sampai tanggal')) as HTMLInputElement;
+  expect(input.min).toBe(today);
+  fireEvent.change(input, { target: { value: date } });
+  await userEvent.click(screen.getByRole('button', { name: 'Buat tautan' }));
+  await waitFor(() => {
+    const call = apiMock.mock.calls.find((entry) => entry[0] === 'dashboardShares.create');
+    expect(call).toBeTruthy();
+    const sent = (call as unknown[])[1] as Record<string, unknown>;
+    expect(sent.expiresOn).toBe(date);
+    expect('expiresInDays' in sent).toBe(false);
+  });
+});
+
+test('butir 9: tanggal tertentu kosong atau lewat dari 365 hari ditolak di tempat', async () => {
+  me = makeUser({ manage: true });
+  await renderInRouter(<DialogHarness />);
+  await screen.findByRole('alertdialog', { name: 'Bagikan dashboard' });
+  await userEvent.type(screen.getByLabelText(/Judul tautan/), 'Rekap');
+  await userEvent.click(widgetBox('hs.created'));
+  await pickSelect(screen, 'Masa berlaku', 'Tanggal tertentu');
+  await userEvent.click(screen.getByRole('button', { name: 'Buat tautan' }));
+  expect(
+    await screen.findByText(/Pilih tanggal dari hari ini sampai 365 hari ke depan/),
+  ).toBeTruthy();
+  expect(apiMock.mock.calls.some((call) => call[0] === 'dashboardShares.create')).toBe(false);
+});
+
+test('butir 8: filter grup aktif di halaman menjadi filter awal widget grup itu saat dicentang', async () => {
+  me = makeUser({ manage: true });
+  const param = groupFilterParam('handover', 'customer');
+  await renderInRouter(<DialogHarness initial={{ [param]: ['c1'] }} />);
+  await screen.findByRole('alertdialog', { name: 'Bagikan dashboard' });
+  await userEvent.type(screen.getByLabelText(/Judul tautan/), 'Rekap');
+  await userEvent.click(widgetBox('hs.created'));
+  await userEvent.click(screen.getByRole('button', { name: 'Buat tautan' }));
+  await waitFor(() =>
+    expect(apiMock).toHaveBeenCalledWith(
+      'dashboardShares.create',
+      expect.objectContaining({
+        widgets: [{ id: 'hs.created', filters: { customer: ['c1'] } }],
+      }),
+    ),
+  );
+});
+
+test('butir 8: tanpa filter grup aktif, widget dicentang tanpa filter', async () => {
+  me = makeUser({ manage: true });
+  await renderInRouter(<DialogHarness />);
+  await screen.findByRole('alertdialog', { name: 'Bagikan dashboard' });
+  await userEvent.type(screen.getByLabelText(/Judul tautan/), 'Rekap');
+  await userEvent.click(widgetBox('hs.created'));
+  await userEvent.click(screen.getByRole('button', { name: 'Buat tautan' }));
+  await waitFor(() =>
+    expect(apiMock).toHaveBeenCalledWith(
+      'dashboardShares.create',
+      expect.objectContaining({ widgets: [{ id: 'hs.created', filters: {} }] }),
+    ),
+  );
 });
 
 test('saklar "penonton boleh mempersempit" hanya untuk filter relasi yang terisi', async () => {

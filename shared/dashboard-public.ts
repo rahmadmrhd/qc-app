@@ -38,13 +38,25 @@ export function toPublicDto(id: WidgetId, data: WidgetData): PublicWidgetData {
     case 'list':
       return publicList(id, data);
     case 'parts':
-      return { kind: 'parts', slices: data.slices.map((slice) => ({ ...slice })) };
+      // Daftar putih eksplisit: properti lain yang kelak ditambahkan widget tidak ikut keluar ke publik.
+      return {
+        kind: 'parts',
+        slices: data.slices.map((slice) => ({
+          key: slice.key,
+          label: slice.label,
+          value: slice.value,
+        })),
+      };
     case 'series':
       return {
         kind: 'series',
         bucket: data.bucket,
-        points: data.points.map((point) => ({ ...point })),
-        series: data.series.map((entry) => ({ ...entry, values: [...entry.values] })),
+        points: data.points.map((point) => ({ key: point.key, label: point.label })),
+        series: data.series.map((entry) => ({
+          key: entry.key,
+          label: entry.label,
+          values: [...entry.values],
+        })),
       };
   }
 }
@@ -69,6 +81,11 @@ export interface PublicDashboardDto {
   generatedAt: string;
   expiresAt: string;
   range: DashboardRange;
+  /**
+   * Rentang beku pembagi (sebelum penyempitan penonton; bergulir dihitung pada hari buka): batas kolom tanggal filter.
+   * Sama dengan `range` pada tampilan bawaan.
+   */
+  bounds: DashboardRange;
   bucket: Bucket;
   scope: { buNames: string[]; locationNames: string[] };
   options: PublicFilterOptions;

@@ -1,7 +1,6 @@
 import {
   DASHBOARD_GROUPS,
   type DashboardGroupId,
-  type DashboardRange,
   GROUP_LABELS,
   type WidgetResult,
   widgetMeta,
@@ -9,13 +8,13 @@ import {
 import type { PublicDashboardDto } from '@shared/dashboard-public';
 import { wibDateIso } from '@shared/postel';
 import { useQuery } from '@tanstack/react-query';
-import { type ReactNode, useEffect, useState } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { spanClass } from '../dashboard/components/group-section';
 import { WidgetCard } from '../dashboard/components/widgets/widget-card';
 import { formatDayLabel, formatRangeLabel } from '../dashboard/lib/format';
 import type { DashboardSearch } from '../dashboard/lib/search';
-import { isEmptyViewer, PublicDashboardError } from './public-api';
+import { PublicDashboardError } from './public-api';
 import { PublicGlobalFilters, PublicGroupFilters, viewerFromSearch } from './public-filters';
 import { publicDashboardQuery } from './queries';
 
@@ -177,12 +176,6 @@ export function PublicDashboardPage({ token, search, onSearchChange }: PublicDas
   const viewer = viewerFromSearch(search);
   const query = useQuery(publicDashboardQuery(token, viewer));
   const dto = query.data;
-  const unfiltered = isEmptyViewer(viewer);
-  // Rentang pembagi (tanpa penyempitan penonton) = batas kolom tanggal; hanya dikenal dari jawaban GET.
-  const [bounds, setBounds] = useState<DashboardRange | undefined>(undefined);
-  useEffect(() => {
-    if (unfiltered && dto && !query.isPlaceholderData) setBounds(dto.range);
-  }, [unfiltered, dto, query.isPlaceholderData]);
 
   const clearFilters = () => {
     const patch: Partial<DashboardSearch> = {};
@@ -225,7 +218,7 @@ export function PublicDashboardPage({ token, search, onSearchChange }: PublicDas
   return (
     <Shell>
       <Header dto={dto} />
-      <PublicGlobalFilters dto={dto} bounds={bounds} search={search} onChange={onSearchChange} />
+      <PublicGlobalFilters dto={dto} search={search} onChange={onSearchChange} />
       {groups.map(({ group, widgets }) => (
         <section key={group} aria-labelledby={`public-group-${group}`} className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">

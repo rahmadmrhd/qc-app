@@ -57,9 +57,17 @@ const PREFIX_KINDS: Readonly<Record<string, AuditTargetKind>> = {
   role: 'role',
   location: 'location',
   businessunit: 'businessUnit',
-  dashboard: 'dashboardShare',
   serial: 'serial',
   handover: 'handover',
+};
+
+/**
+ * Aksi LENGKAP -> jenis entitas, untuk awalan yang dipakai beberapa jenis entitas atau fitur (awalan `dashboard`
+ * akan memuat aksi Rencana 3 yang bukan tautan, jadi dipetakan per aksi, bukan per awalan).
+ */
+const ACTION_KINDS: Readonly<Record<string, AuditTargetKind>> = {
+  'dashboard.share_create': 'dashboardShare',
+  'dashboard.share_revoke': 'dashboardShare',
 };
 
 /**
@@ -79,6 +87,8 @@ export const AUDIT_NON_ENTITY_ACTIONS: ReadonlySet<string> = new Set([
 /** Jenis entitas yang diubah oleh `action`, atau `undefined` bila aksi itu tak menaut ke entitas ber-View. */
 export function auditTargetKind(action: string): AuditTargetKind | undefined {
   if (AUDIT_NON_ENTITY_ACTIONS.has(action)) return undefined;
+  const exact = ACTION_KINDS[action];
+  if (exact !== undefined) return exact;
   const dot = action.indexOf('.');
   if (dot <= 0) return undefined;
   const prefix = action.slice(0, dot);

@@ -326,6 +326,75 @@ describe('rentang bergulir dan opsi', () => {
   });
 });
 
+describe('review akhir: lokasi dan rentang', () => {
+  const grantLocations = async (locationIds: string[]) => {
+    await env.DB.prepare('UPDATE users SET assignments = ? WHERE email = ?')
+      .bind(
+        JSON.stringify([
+          { locationId: null, roleIds: ['r-dash', 'r-st'] },
+          ...locationIds.map((locationId) => ({ locationId, roleIds: ['r-hs'] })),
+        ]),
+        SHARER,
+      )
+      .run();
+  };
+
+  test('butir 4: lokasi yang haknya hilang tak tampil di kepala maupun pilihan filter', async () => {
+    await grantLocations(['loc-a', 'loc-b']);
+    const row = await share({ widgets: [{ id: 'hs.created', filters: {} }] });
+    const before = await view(row);
+    expect(before?.scope.locationNames).toEqual(['Lokasi A', 'Lokasi B']);
+    await grantLocations(['loc-a']);
+    const after = await view(row);
+    expect(after?.scope.locationNames).toEqual(['Lokasi A']);
+    expect(after?.options.location.map((option) => option.value)).toEqual(['loc-a']);
+    expect(JSON.stringify(after)).not.toContain('Lokasi B');
+  });
+
+  test('butir 4: lokasi pilihan untuk saringan Serial tetap tampil (lokasi bukan hak di sana)', async () => {
+    const row = await share({
+      locationFiltered: true,
+      filter: { from: '2026-11-01', to: '2026-11-23', locationIds: ['loc-b'] },
+    });
+    const dto = await view(row);
+    expect(dto?.scope.locationNames).toEqual(['Lokasi B']);
+  });
+
+  test('butir 14: tautan Serial saja tanpa saringan lokasi mengabaikan locationIds penonton', async () => {
+    const row = await share();
+    const baseline = numberOf(await view(row), 'sn.recorded');
+    expect(baseline).toBe(3);
+    const withLocation = await view(row, { locationIds: ['loc-a'] });
+    expect(numberOf(withLocation, 'sn.recorded')).toBe(baseline);
+    expect(numberOf(await view(row, { locationIds: [] }), 'sn.recorded')).toBe(baseline);
+  });
+
+  test('butir 14: saringan lokasi yang dibekukan tetap dihormati dan dapat dipersempit penonton', async () => {
+    await grantLocations(['loc-a', 'loc-b']);
+    const row = await share({
+      locationFiltered: true,
+      filter: { from: '2026-11-01', to: '2026-11-23', locationIds: ['loc-a', 'loc-b'] },
+    });
+    const baseline = numberOf(await view(row), 'sn.recorded');
+    // viewer menyempitkan ke lokasi yang tak punya serial: hasil tidak lebih besar dari baseline
+    const narrowed = numberOf(await view(row, { locationIds: ['loc-b'] }), 'sn.recorded');
+    expect(narrowed).toBeLessThanOrEqual(baseline);
+  });
+
+  test('butir 13: bounds = rentang beku pembagi walau penonton menyempitkan tanggal', async () => {
+    const row = await share();
+    const frozen = { from: '2026-11-01', to: '2026-11-23' };
+    const plain = await view(row);
+    expect(plain?.bounds).toEqual(frozen);
+    const narrowed = await view(row, { from: '2026-11-10', to: '2026-11-10' });
+    expect(narrowed?.range).toEqual({ from: '2026-11-10', to: '2026-11-10' });
+    expect(narrowed?.bounds).toEqual(frozen);
+    const rolling = await share({ range: { mode: 'rolling', days: 7 } });
+    const dto = await view(rolling, { from: '2026-11-20', to: '2026-11-21' });
+    expect(dto?.bounds).toEqual({ from: '2026-11-17', to: '2026-11-23' });
+  });
+});
+
 describe('validatePublicQuery', () => {
   const code = (value: unknown) => {
     try {

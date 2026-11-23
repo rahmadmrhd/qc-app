@@ -257,19 +257,24 @@ export async function loadPublicDashboard(
   const base = frozenRange(frozen.range, wibDateIso(nowMs));
   const range = clampRange(base, viewer);
   const buIds = narrow(frozen.buIds, viewer.buIds);
-  const locationIds = narrow(frozen.locationIds, viewer.locationIds);
+  // Pilihan lokasi penonton hanya berlaku bila tautan menawarkan lokasi (himpunan beku tak kosong); selain itu
+  // diabaikan, bukan diiris ke kosong (tautan Serial/Laporan tanpa saringan lokasi tak punya pilihan lokasi).
+  const viewerLocations = frozen.locationIds.length === 0 ? undefined : viewer.locationIds;
+  const locationIds = narrow(frozen.locationIds, viewerLocations);
 
   // Hak pembagi saat ini ∩ cakupan beku ∩ filter penonton; `[]` ke `resolveScope` berarti tidak ada (bukan semua).
+  // Himpunan beku boleh lebih dari `FILTER_LIST_MAX` (hasil hak pembagi); daftar penonton sudah dibatasi validator.
   const resolved = resolveScope(
     sharer,
     { from: range.from, to: range.to, buIds, locationIds },
     nowMs,
+    { trustedLists: true },
   );
   const scope: ResolvedScope = {
     ...resolved,
     // Lokasi menjadi filter Serial/Laporan hanya bila dibekukan demikian atau penonton sendiri mempersempitnya.
     serialLocationIds:
-      frozen.locationFiltered || viewer.locationIds !== undefined ? locationIds : null,
+      frozen.locationFiltered || viewerLocations !== undefined ? locationIds : null,
   };
   const requests: DashboardWidgetRequest[] = widgets.map((widget) => {
     const group = widgetMeta(widget.id).group;
@@ -283,10 +288,28 @@ export async function loadPublicDashboard(
     sharer,
     { from: base.from, to: base.to, buIds: frozen.buIds, locationIds: frozen.locationIds },
     nowMs,
+    { trustedLists: true },
   );
+  // Lokasi yang tampil = yang masih boleh dibaca pembagi (Serah Terima, stok), ditambah lokasi pilihan beku bila ada
+  // widget Serial/Laporan yang memakainya sebagai saringan (di sana lokasi bukan hak). Lokasi yang haknya sudah hilang
+  // tidak tampil di kepala maupun pilihan filter.
+  const usesLocationFilter =
+    frozen.locationFiltered &&
+    widgets.some((widget) => {
+      const group = widgetMeta(widget.id).group;
+      return group === 'serial' || group === 'report';
+    });
+  const nameableLocations = new Set([
+    ...baseScope.handoverLocationIds,
+    ...baseScope.stockLocationIds,
+  ]);
+  if (usesLocationFilter) for (const id of frozen.locationIds) nameableLocations.add(id);
   const [bu, location] = await Promise.all([
     buOptions(env, baseScope.buIds),
-    locationOptions(env, frozen.locationIds),
+    locationOptions(
+      env,
+      frozen.locationIds.filter((id) => nameableLocations.has(id)),
+    ),
   ]);
   const groups: PublicFilterOptions['groups'] = {};
   for (const key of frozen.offers) {
@@ -300,6 +323,7 @@ export async function loadPublicDashboard(
     generatedAt: nowIso(env),
     expiresAt: share.expires_at,
     range: scope.range,
+    bounds: base,
     bucket: scope.bucket,
     scope: {
       buNames: bu.map((option) => option.label),

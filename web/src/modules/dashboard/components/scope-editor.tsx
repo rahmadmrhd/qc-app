@@ -90,10 +90,13 @@ export function ScopeEditor({
   value,
   onChange,
   allowedWidgetIds,
+  seedFilters,
 }: {
   value: ScopeEditorValue;
   onChange: (next: ScopeEditorValue) => void;
   allowedWidgetIds: readonly WidgetId[];
+  /** Filter awal sebuah grup saat widget pertamanya dicentang (mis. filter grup yang sedang aktif di halaman). */
+  seedFilters?: (group: DashboardGroupId) => Record<string, string[]>;
 }) {
   const me = useMe();
   const buOptions = buFilterOptions(me);
@@ -112,10 +115,15 @@ export function ScopeEditor({
   const selected = new Set(value.widgets.map((widget) => widget.id));
 
   const setWidgets = (widgets: ShareWidgetScope[]) => onChange({ ...value, widgets });
+  // Filter awal sebuah grup: yang sudah dipakai widget terpilih di grup itu, atau (grup masih kosong) benih dari filter aktif.
+  const filtersForGroup = (group: DashboardGroupId): Record<string, string[]> =>
+    value.widgets.some((widget) => groupOf(widget.id) === group)
+      ? { ...groupFiltersOf(value, group) }
+      : { ...(seedFilters?.(group) ?? {}) };
   const toggleWidget = (id: WidgetId, on: boolean) => {
     if (on) {
       if (selected.has(id)) return;
-      setWidgets([...value.widgets, { id, filters: { ...groupFiltersOf(value, groupOf(id)) } }]);
+      setWidgets([...value.widgets, { id, filters: filtersForGroup(groupOf(id)) }]);
     } else {
       setWidgets(value.widgets.filter((widget) => widget.id !== id));
     }
@@ -126,7 +134,7 @@ export function ScopeEditor({
       setWidgets(rest);
       return;
     }
-    const filters = groupFiltersOf(value, group);
+    const filters = filtersForGroup(group);
     setWidgets([...rest, ...ids.map((id) => ({ id, filters: { ...filters } }))]);
   };
   const setGroupFilter = (group: DashboardGroupId, field: GroupFilterField, next: string[]) => {

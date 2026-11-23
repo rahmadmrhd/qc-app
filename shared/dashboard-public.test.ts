@@ -86,6 +86,27 @@ describe('toPublicDto', () => {
     expect(toPublicDto('hs.trend', series)).toEqual(series);
   });
 
+  test('parts dan series: properti tak dikenal yang ditambahkan widget TIDAK ikut (daftar putih eksplisit)', () => {
+    const parts = {
+      kind: 'parts',
+      slices: [{ key: 'a', label: 'A', value: 1, internalId: 'rahasia', extra: { x: 1 } }],
+    } as unknown as PartsData;
+    const series = {
+      kind: 'series',
+      bucket: 'day',
+      points: [{ key: 'p', label: 'P', email: 'x@gmail.com' }],
+      series: [{ key: 's', label: 'S', values: [1], note: 'rahasia' }],
+    } as unknown as SeriesData;
+    const outParts = toPublicDto('hs.status', parts);
+    const outSeries = toPublicDto('hs.trend', series);
+    if (outParts.kind !== 'parts' || outSeries.kind !== 'series') throw new Error('bentuk salah');
+    expect(Object.keys(outParts.slices[0] ?? {}).sort()).toEqual(['key', 'label', 'value']);
+    expect(Object.keys(outSeries.points[0] ?? {}).sort()).toEqual(['key', 'label']);
+    expect(Object.keys(outSeries.series[0] ?? {}).sort()).toEqual(['key', 'label', 'values']);
+    expect(JSON.stringify([outParts, outSeries])).not.toContain('rahasia');
+    expect(JSON.stringify([outParts, outSeries])).not.toContain('x@gmail.com');
+  });
+
   test('hasil tidak berbagi referensi dengan masukan (parts/series disalin)', () => {
     const parts: PartsData = { kind: 'parts', slices: [{ key: 'a', label: 'A', value: 1 }] };
     const out = toPublicDto('hs.status', parts);
@@ -102,6 +123,7 @@ describe('PublicDashboardDto', () => {
       generatedAt: '2026-11-23T05:00:00.000Z',
       expiresAt: '2026-12-23T05:00:00.000Z',
       range: { from: '2026-11-01', to: '2026-11-23' },
+      bounds: { from: '2026-11-01', to: '2026-11-23' },
       bucket: 'day',
       scope: { buNames: ['BU A'], locationNames: ['Gudang'] },
       options: { bu: [], location: [], groups: {} },

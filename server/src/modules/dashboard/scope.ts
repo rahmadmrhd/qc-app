@@ -69,16 +69,28 @@ function locationIdsWhere(
     .map(([id]) => id);
 }
 
+export interface ResolveScopeOptions {
+  /**
+   * Daftar BU/lokasi di `filter` berasal dari cakupan BEKU tautan publik (hasil resolusi hak pembagi, bisa lebih dari
+   * `FILTER_LIST_MAX`), bukan masukan pengguna: batas ukuran tidak diperiksa. Daftar dari penonton tetap dibatasi
+   * `validatePublicQuery` sebelum sampai sini.
+   */
+  trustedLists?: boolean;
+}
+
 export function resolveScope(
   user: UserContext,
   filter: DashboardFilterInput,
   nowMs: number,
+  options: ResolveScopeOptions = {},
 ): ResolvedScope {
   const range: DashboardRange = { from: filter.from, to: filter.to };
   const problem = validateDashboardRange(range);
   if (problem !== null) throw appError('VALIDATION', problem);
-  checkListSize('BU', filter.buIds);
-  checkListSize('lokasi', filter.locationIds);
+  if (options.trustedLists !== true) {
+    checkListSize('BU', filter.buIds);
+    checkListSize('lokasi', filter.locationIds);
+  }
 
   const { fromIso, toIso } = wibRangeToUtc(range);
   const previous = wibRangeToUtc(previousRange(range));

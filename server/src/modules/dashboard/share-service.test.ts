@@ -131,6 +131,35 @@ describe('freezeScope', () => {
     );
   });
 
+  test('butir 7: lokasi pilihan membatasi Serah Terima dan stok walau flag locationFiltered mati', async () => {
+    await env.DB.prepare('UPDATE users SET assignments = ? WHERE email = ?')
+      .bind(
+        JSON.stringify([
+          { locationId: null, roleIds: ['r-dash'] },
+          { locationId: 'loc-a', roleIds: ['r-hs'] },
+          { locationId: 'loc-b', roleIds: ['r-hs'] },
+        ]),
+        SHARER,
+      )
+      .run();
+    const user = await userOf();
+    const filter = { from: '2026-11-01', to: '2026-11-23', locationIds: ['loc-b'] };
+    const noFlag = freezeScope(
+      user,
+      input({ filter, widgets: [{ id: 'hs.created', filters: {} }] }),
+      NOW,
+    );
+    expect(noFlag.locationFiltered).toBe(false);
+    expect(noFlag.locationIds).toEqual(['loc-b']);
+    // tanpa pilihan lokasi, semua lokasi hak ikut
+    const all = freezeScope(user, input({ widgets: [{ id: 'hs.created', filters: {} }] }), NOW);
+    expect([...all.locationIds].sort()).toEqual(['loc-a', 'loc-b']);
+    // flag mati + widget Serial saja: lokasi bukan saringan Serial, jadi tak ada yang dibekukan
+    const serialOnly = freezeScope(user, input({ filter }), NOW);
+    expect(serialOnly.locationFiltered).toBe(false);
+    expect(serialOnly.locationIds).toEqual([]);
+  });
+
   test('rentang bergulir disimpan sebagai days; offers hanya kunci relasi yang filternya dipilih', async () => {
     const user = await userOf();
     const scope = freezeScope(
@@ -205,6 +234,104 @@ describe('createShare', () => {
     expect(dto.widgetCount).toBe(1);
     expect(dto.reportId).toBe('');
     expect(shareUrl(env, 'abc')).toBe('https://qc.test/dashboard-publik/abc');
+  });
+
+  test('butir 9: tanggal tertentu berlaku sampai akhir hari WIB (23:59:59.999)', async () => {
+    const { expiresInDays: _drop, ...base } = input();
+    const dto = await createShare(env, await userOf(), { ...base, expiresOn: '2026-12-20' });
+    expect(dto.expiresAt).toBe('2026-12-20T16:59:59.999Z');
+    // hari ini (WIB) sah dan berlaku sampai tengah malam WIB
+    const today = await createShare(env, await userOf(), { ...base, expiresOn: '2026-11-23' });
+    expect(today.expiresAt).toBe('2026-11-23T16:59:59.999Z');
+  });
+
+  test('butir 9: tanggal kemarin, lebih dari 365 hari, tak sah, atau bersama expiresInDays = VALIDATION', async () => {
+    const user = await userOf();
+    const { expiresInDays: _drop, ...base } = input();
+    const bad: CreateShareInput[] = [
+      { ...base, expiresOn: '2026-11-22' },
+      { ...base, expiresOn: '2027-11-24' },
+      { ...base, expiresOn: '2026-13-40' },
+      { ...base, expiresOn: 'besok' },
+      { ...base, expiresOn: '2026-12-20', expiresInDays: 7 },
+      { ...base },
+    ];
+    for (const [index, value] of bad.entries()) {
+      const error = await captureAppErrorAsync(() => createShare(env, user, value));
+      expect([index, error.code]).toEqual([index, 'VALIDATION']);
+    }
+    const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM dashboard_shares').first<{
+      n: number;
+    }>();
+    expect(Number(count?.n)).toBe(0);
+  });
+
+  test('butir 1: pembagi berhak atas lebih dari 20 BU dan lokasi tetap dapat membuat tautan', async () => {
+    const ids = Array.from({ length: 25 }, (_, index) => `many-${index}`);
+    for (const id of ids) {
+      await seedLocation(env, { id: `loc-${id}`, code: `L${id}`, name: `Lokasi ${id}` });
+      await seedBusinessUnit(env, { id: `bu-${id}`, code: `B${id}` });
+    }
+    await env.DB.prepare('UPDATE users SET assignments = ?, bu_assignments = ? WHERE email = ?')
+      .bind(
+        JSON.stringify([
+          { locationId: null, roleIds: ['r-dash'] },
+          ...ids.map((id) => ({ locationId: `loc-${id}`, roleIds: ['r-hs'] })),
+        ]),
+        JSON.stringify(ids.map((id) => ({ buId: `bu-${id}`, roleIds: ['r-sn'] }))),
+        SHARER,
+      )
+      .run();
+    const dto = await createShare(
+      env,
+      await userOf(),
+      input({
+        widgets: [
+          { id: 'sn.recorded', filters: {} },
+          { id: 'hs.created', filters: {} },
+        ],
+      }),
+    );
+    const scope = parseScope((await loadShare(env.DB, dto.id))?.scope ?? '');
+    expect(scope?.buIds).toHaveLength(25);
+    expect(scope?.locationIds).toHaveLength(25);
+  });
+
+  test('butir 2: pembuatan serentak dari 49 aktif tidak pernah melewati 50', async () => {
+    const user = await userOf();
+    const scope = JSON.stringify(freezeScope(user, input(), NOW));
+    const nowIso = new Date(NOW).toISOString();
+    const base = {
+      title: 'x',
+      created_by: SHARER,
+      created_at: nowIso,
+      expires_at: '2026-12-23T00:00:00.000Z',
+      revoked_at: '',
+      revoked_by: '',
+      scope,
+      report_id: '',
+    };
+    const statements = [];
+    for (let index = 0; index < SHARE_LIMITS.activePerSharer - 1; index++) {
+      statements.push(insertShareStmt(env.DB, { ...base, id: `aktif-${index}` }));
+    }
+    await env.DB.batch(statements);
+    const outcomes = await Promise.allSettled(
+      Array.from({ length: 6 }, () => createShare(env, user, input())),
+    );
+    const ok = outcomes.filter((outcome) => outcome.status === 'fulfilled').length;
+    const rejected = outcomes.filter((outcome) => outcome.status === 'rejected');
+    expect(ok).toBe(1);
+    expect(rejected).toHaveLength(5);
+    for (const outcome of rejected) {
+      expect((outcome as PromiseRejectedResult).reason).toMatchObject({ code: 'CONFLICT' });
+    }
+    const active = await env.DB.prepare(
+      "SELECT COUNT(*) AS n FROM dashboard_shares WHERE created_by = ? AND revoked_at = '' AND report_id = ''",
+    )
+      .bind(SHARER)
+      .first<{ n: number }>();
+    expect(Number(active?.n)).toBe(SHARE_LIMITS.activePerSharer);
   });
 
   test('audit tertulis dengan target dashboard_share:<id> dan tanpa token', async () => {
