@@ -26,6 +26,10 @@ describe('registry widget', () => {
     }
   });
 
+  test('judul hs.avgDuration menyebut satuan jam', () => {
+    expect(widgetMeta('hs.avgDuration').title).toContain('(jam)');
+  });
+
   test('widgetMeta(id).id sama dengan id untuk semua widget', () => {
     for (const id of WIDGET_IDS) expect(widgetMeta(id).id).toBe(id);
   });

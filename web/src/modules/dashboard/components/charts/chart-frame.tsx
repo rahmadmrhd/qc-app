@@ -52,8 +52,9 @@ export function ChartFrame({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.join('|')}>
+          {rows.map((row, rowIndex) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: baris tabel statis dan boleh kembar (label dan nilai sama), urutan tetap
+            <tr key={rowIndex}>
               {row.map((cell, index) => (
                 // biome-ignore lint/suspicious/noArrayIndexKey: sel tabel statis, urutan tetap
                 <td key={index}>{String(cell)}</td>

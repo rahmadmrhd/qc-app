@@ -1,6 +1,6 @@
 import type { PartsData, SeriesData } from '@shared/dashboard';
 import { render, screen, within } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import {
   CHART_SERIES_TOKENS,
   limitSlices,
@@ -8,6 +8,7 @@ import {
   seriesColor,
 } from '../../lib/colors';
 import { BarListChart } from './bar-list-chart';
+import { ChartFrame } from './chart-frame';
 import { ColumnChart } from './column-chart';
 import { DonutChart } from './donut-chart';
 import { LineChart } from './line-chart';
@@ -131,5 +132,30 @@ describe('BarListChart', () => {
   test('tanpa irisan = "Belum ada data"', () => {
     render(<BarListChart data={parts([])} label="Kosong" />);
     expect(screen.getByText('Belum ada data')).toBeTruthy();
+  });
+});
+
+describe('ChartFrame', () => {
+  test('baris tabel tersembunyi kembar tidak memicu peringatan kunci React dan semuanya tampil', () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      render(
+        <ChartFrame
+          label="Customer teratas"
+          head={['Customer', 'Jumlah']}
+          rows={[
+            ['PT Sama', 3],
+            ['PT Sama', 3],
+          ]}
+        >
+          <span />
+        </ChartFrame>,
+      );
+      expect(screen.getAllByRole('cell', { name: 'PT Sama' })).toHaveLength(2);
+      const warned = error.mock.calls.some((call) => String(call[0]).includes('same key'));
+      expect(warned).toBe(false);
+    } finally {
+      error.mockRestore();
+    }
   });
 });

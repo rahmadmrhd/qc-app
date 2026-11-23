@@ -23,7 +23,7 @@ const RELATION_KEY: Record<NonNullable<GroupFilterField['relation']>, keyof Dash
   sticker: 'stickers',
 };
 
-/** Lebar kartu di kisi 12 kolom (>= 768 px): angka kecil berderet, grafik 6 kolom, tren dan daftar 12 kolom; ponsel 1 kolom. */
+/** Lebar kartu di kisi 12 kolom (>= 768 px): angka kecil berderet, grafik 6 kolom, tren dan daftar 12 kolom; ponsel kisi 2 kolom (angka 1 kolom, lainnya selebar 2). */
 function spanClass(meta: WidgetMeta): string {
   switch (meta.visual) {
     case 'number':
@@ -32,9 +32,9 @@ function spanClass(meta: WidgetMeta): string {
     case 'pie':
     case 'bar':
     case 'barH':
-      return 'md:col-span-6';
+      return 'col-span-2 md:col-span-6';
     default:
-      return 'md:col-span-12';
+      return 'col-span-2 md:col-span-12';
   }
 }
 
@@ -171,7 +171,7 @@ export function GroupSection({
           </FilterBar>
         ) : null}
       </div>
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-12">
         {widgets.map((meta) => (
           <div key={meta.id} className={`min-w-0 ${spanClass(meta)}`}>
             <WidgetCard

@@ -216,3 +216,21 @@ test('galat satu widget tidak menyembunyikan widget lain', async () => {
   // Widget lain di grup yang sama tetap menampilkan angkanya.
   await waitFor(() => expect(screen.getAllByText('5').length).toBeGreaterThan(0));
 });
+
+test('ponsel: kisi dua kolom, kartu angka satu kolom dan kartu lain selebar dua kolom', async () => {
+  me = makeUser({ handover: true });
+  await renderInRouter(<Harness />);
+  await screen.findByRole('heading', { name: 'Serah Terima' });
+  const wrapperOf = (id: string) => {
+    const card = document.querySelector(`[data-widget="${id}"]`);
+    expect(card).not.toBeNull();
+    return card?.parentElement as HTMLElement;
+  };
+  const number = wrapperOf('hs.created');
+  const donut = wrapperOf('hs.status');
+  const trend = wrapperOf('hs.trend');
+  expect(number.parentElement?.className).toContain('grid-cols-2');
+  expect(number.className).not.toMatch(/(^|\s)col-span-2(\s|$)/);
+  expect(donut.className).toMatch(/(^|\s)col-span-2(\s|$)/);
+  expect(trend.className).toMatch(/(^|\s)col-span-2(\s|$)/);
+});

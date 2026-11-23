@@ -141,7 +141,7 @@ export const WIDGETS: readonly WidgetMeta[] = [
     HANDOVER,
     'hs.avgDuration',
     'number',
-    'Rata-rata durasi selesai',
+    'Rata-rata durasi selesai (jam)',
     dateColumn('Tanggal selesai'),
   ),
   widget(HANDOVER, 'hs.oldest', 'list', 'Task aktif terlama', NO_DATE, {
