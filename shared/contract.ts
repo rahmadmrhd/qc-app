@@ -16,6 +16,7 @@ import type {
   DashboardQueryInput,
   DashboardQueryOutput,
 } from './dashboard';
+import type { CreateShareInput, DashboardShareDto } from './dashboard-share';
 import type { GuideProgressDto } from './guides';
 import type { HandoverStatus } from './handover';
 import type { NotificationDto } from './notifications';
@@ -245,6 +246,10 @@ export interface LocationDto {
 export interface ListLocationsInput {
   /** Bawaan = lokasi hidup. `deleted` hanya bagi `access: manage`; selain itu `FORBIDDEN`. */
   status?: ListStatusFilter;
+}
+
+export interface GetDashboardShareInput {
+  id: string;
 }
 
 export interface GetLocationInput {
@@ -1632,6 +1637,10 @@ export interface ApiContract {
   'exports.sheets': { input: ExportSheetsInput; output: ExportSheetsJobDto };
   'dashboard.query': { input: DashboardQueryInput; output: DashboardQueryOutput };
   'dashboard.options': { input: DashboardOptionsInput; output: DashboardOptionsDto };
+  /** Tautan dashboard publik; semuanya butuh `dashboard: manage`. `url` hanya untuk pembagi dan super admin. */
+  'dashboardShares.list': { input: null; output: DashboardShareDto[] };
+  'dashboardShares.create': { input: CreateShareInput; output: DashboardShareDto };
+  'dashboardShares.revoke': { input: GetDashboardShareInput; output: { ok: true } };
 }
 
 export type ApiId = keyof ApiContract;

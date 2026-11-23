@@ -17,6 +17,7 @@ export type AuditTargetKind =
   | 'role'
   | 'location'
   | 'businessUnit'
+  | 'dashboardShare'
   | 'serial'
   | 'handover';
 
@@ -40,6 +41,7 @@ export const ACTIVITY_KINDS: readonly ActivityKind[] = [
   'location',
   'businessUnit',
   'handover',
+  'dashboardShare',
 ];
 
 /** Awalan aksi (sebelum titik pertama) -> jenis entitas. Awalan BU memang `businessunit` (huruf kecil semua). */
@@ -55,6 +57,7 @@ const PREFIX_KINDS: Readonly<Record<string, AuditTargetKind>> = {
   role: 'role',
   location: 'location',
   businessunit: 'businessUnit',
+  dashboard: 'dashboardShare',
   serial: 'serial',
   handover: 'handover',
 };

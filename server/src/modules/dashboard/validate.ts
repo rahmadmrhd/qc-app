@@ -23,7 +23,7 @@ import {
 export const QUERY_WIDGETS_MAX = 30;
 const MAX_ID_LENGTH = 100;
 
-type Fields = Record<string, string>;
+export type Fields = Record<string, string>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -65,7 +65,7 @@ function readList(
   return [...new Set(items)];
 }
 
-function readGlobalFilter(raw: unknown, fields: Fields): DashboardFilterInput {
+export function readGlobalFilter(raw: unknown, fields: Fields): DashboardFilterInput {
   const source = isRecord(raw) ? raw : {};
   if (!isRecord(raw)) fields.filter = 'Filter wajib berupa objek';
   const from = typeof source.from === 'string' ? source.from : '';
@@ -84,7 +84,11 @@ function readGlobalFilter(raw: unknown, fields: Fields): DashboardFilterInput {
   return result;
 }
 
-function readWidget(raw: unknown, index: number, fields: Fields): DashboardWidgetRequest | null {
+export function readWidget(
+  raw: unknown,
+  index: number,
+  fields: Fields,
+): DashboardWidgetRequest | null {
   const path = `widgets[${index}]`;
   if (!isRecord(raw)) {
     fields[path] = 'Widget harus berupa objek';

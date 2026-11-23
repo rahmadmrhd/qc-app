@@ -487,6 +487,16 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     limit: 25,
     ids: ['c1', 'c2'],
   },
+  'dashboardShares.list': null,
+  'dashboardShares.create': {
+    title: 'Ringkasan',
+    filter: { buIds: ['bu1'], from: '2026-11-01', to: '2026-11-23' },
+    range: { mode: 'fixed', from: '2026-11-01', to: '2026-11-23' },
+    widgets: [{ id: 'hs.created', filters: { status: ['done'] } }],
+    offers: [],
+    expiresInDays: 30,
+  },
+  'dashboardShares.revoke': { id: 's1' },
 };
 
 const ROUNDTRIP_IDS = IDS;

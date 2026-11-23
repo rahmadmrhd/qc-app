@@ -5,6 +5,7 @@ import { authApiRoutes } from '@server/modules/auth/api';
 import { brandRoutes } from '@server/modules/brand/routes';
 import { customerRoutes } from '@server/modules/customer/routes';
 import { dashboardRoutes } from '@server/modules/dashboard/routes';
+import { dashboardShareRoutes } from '@server/modules/dashboard/share-routes';
 import { desktopApiRoutes } from '@server/modules/desktop/api';
 import { filesRoutes } from '@server/modules/files/routes';
 import { guideRoutes } from '@server/modules/guide/routes';
@@ -223,6 +224,9 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'exports.sheets': true,
   'dashboard.query': true,
   'dashboard.options': true,
+  'dashboardShares.list': true,
+  'dashboardShares.create': true,
+  'dashboardShares.revoke': true,
 };
 
 /**
@@ -237,6 +241,7 @@ function realRoutes(): RouteTable {
     ...activityRoutes(),
     ...customerRoutes(),
     ...dashboardRoutes(),
+    ...dashboardShareRoutes(),
     ...filesRoutes(),
     ...itemRoutes(),
     ...handoverRoutes(),

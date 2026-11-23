@@ -348,6 +348,21 @@
     "path": "/dashboard/query"
   },
   {
+    "id": "dashboardShares.create",
+    "verb": "POST",
+    "path": "/dashboard-shares"
+  },
+  {
+    "id": "dashboardShares.list",
+    "verb": "GET",
+    "path": "/dashboard-shares"
+  },
+  {
+    "id": "dashboardShares.revoke",
+    "verb": "POST",
+    "path": "/dashboard-shares/{id}/revoke"
+  },
+  {
     "id": "desktop.handoff",
     "verb": "POST",
     "path": "/desktop/handoff"

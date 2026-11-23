@@ -417,6 +417,28 @@ const WORST: Inputs = {
       },
     })),
   },
+  // Tautan dashboard publik: judul terpanjang, 30 widget masing-masing dengan dua filter grup berisi 20 nilai terpanjang.
+  'dashboardShares.create': {
+    title: text(120),
+    filter: {
+      buIds: longList(20, (index) => `${UUID}-${index}`),
+      locationIds: longList(20, (index) => `${UUID}-${index}`),
+      from: '2026-01-01',
+      to: '2026-12-31',
+    },
+    locationFiltered: true,
+    range: { mode: 'fixed', from: '2026-01-01', to: '2026-12-31' },
+    widgets: longList(30, () => ({
+      id: 'hs.created' as const,
+      filters: {
+        customer: longList(20, () => text(100)),
+        status: longList(20, () => text(100)),
+      },
+    })),
+    offers: ['customer', 'item', 'stickerType', 'sticker'],
+    expiresInDays: 365,
+  },
+  'dashboardShares.revoke': { id: UUID },
   'access.users.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
   'access.users.removeBatch': { ids: BATCH_IDS },
   'access.users.restoreBatch': { ids: BATCH_IDS },
