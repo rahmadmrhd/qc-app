@@ -9,7 +9,7 @@ import { bucketKeys, fillSeries, inClause, num, utcDateTimeSql, wibDaySql } from
 // literal tersendiri (aturan soft delete: tanpa pembangun kueri generik).
 
 const STATUS_LABELS: Record<string, string> = Object.fromEntries(
-  (GROUP_FILTERS.handover.find((field) => field.key === 'status')?.options ?? []).map((option) => [
+  (GROUP_FILTERS.handover.find(({ key }) => key === 'status')?.options ?? []).map((option) => [
     option.value,
     option.label,
   ]),
