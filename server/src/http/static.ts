@@ -3,8 +3,8 @@ import { resolve, sep } from 'node:path';
 
 /** Aset berhash (Vite menaruhnya di `/assets/`): isi tak berubah untuk nama yang sama. */
 const IMMUTABLE_PREFIX = '/assets/';
-/** Rute klien yang segmen terakhirnya boleh memuat titik (token tautan laporan rusak). */
-const CLIENT_TOKEN_PREFIX = '/laporan/';
+/** Rute klien yang segmen terakhirnya boleh memuat titik (token tautan laporan rusak dan dashboard publik). */
+const CLIENT_TOKEN_PREFIXES = ['/laporan/', '/dashboard-publik/'];
 const IMMUTABLE_CACHE = 'public, max-age=31536000, immutable';
 /** Berkas lain (terutama `index.html`) selalu divalidasi ulang agar rilis baru langsung terlihat. */
 const REVALIDATE_CACHE = 'no-cache';
@@ -58,9 +58,9 @@ export function serveStatic(staticDir: string, method: string, pathname: string)
     );
   }
   const last = decoded.split('/').pop() ?? '';
-  // `/laporan/<token>` (tautan surel laporan rusak) memuat titik di tokennya (`v1.<id>.<exp>.<sig>`): itu rute klien,
-  // bukan berkas, jadi tetap dijawab cangkang SPA.
-  const clientRoute = decoded.startsWith(CLIENT_TOKEN_PREFIX);
+  // `/laporan/<token>` (tautan surel laporan rusak) dan `/dashboard-publik/<token>` memuat titik di tokennya
+  // (`v1.<id>.<exp>.<sig>`): itu rute klien, bukan berkas, jadi tetap dijawab cangkang SPA.
+  const clientRoute = CLIENT_TOKEN_PREFIXES.some((prefix) => decoded.startsWith(prefix));
   if (last.includes('.') && decoded !== '/' && !clientRoute) {
     return new Response('Not Found', { status: 404 });
   }

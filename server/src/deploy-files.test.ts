@@ -367,6 +367,10 @@ describe('deploy: nginx/qc.conf.example', () => {
     expect(code).toMatch(/map \$request_uri \$qc_log_uri \{/);
     expect(code).toContain('~^/laporan/');
     expect(code).toContain('~^/api/public/serial-reports/');
+    // Tautan dashboard publik (2026-11-23): halaman klien dan API publiknya memuat token di jalur URL.
+    expect(code).toContain('~^/dashboard-publik/');
+    expect(code).toContain('~^/api/public/dashboards/');
+    expect(code).toMatch(/~\/dashboard-publik\/\s+"\[disamarkan\]"/);
     expect(code).toContain('map $http_referer $qc_log_referer {');
     expect(code).toMatch(/log_format qc_masked [^;]*\$qc_log_uri[^;]*\$qc_log_referer/s);
     expect(code).not.toMatch(/log_format qc_masked [^;]*\$request_uri/s);

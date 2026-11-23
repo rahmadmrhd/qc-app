@@ -105,6 +105,16 @@ describe('jalur dinamis dan rute klien', () => {
     expect(serve('/laporanx/a.b').status).toBe(404);
   });
 
+  test('/dashboard-publik/<token> (token bertitik) dijawab index.html; awalan mirip tetap 404', async () => {
+    const response = serve(
+      '/dashboard-publik/v1.01hzx3k9m2n4p5q6r7s8t9v0wa.1799999999.sig_abc-123',
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('<title>QC</title>');
+    expect(serve('/dashboard-publikx/a.b').status).toBe(404);
+    expect(serve('/dashboard-publik.js').status).toBe(404);
+  });
+
   test('rute klien (/handover) dijawab index.html dengan no-cache', async () => {
     const response = serve('/handover');
     expect(response.status).toBe(200);

@@ -19,22 +19,28 @@
 #   hanya dari peer di TRUSTED_PROXY (gateway bridge compose + loopback).
 
 # ---------------------------------------------------------------------------------------------------------------
-# LOG AKSES TANPA TOKEN TAUTAN LAPORAN (keputusan pemilik 2026-11-14, spek Serial Number butir 52 (b)): token tautan
-# publik laporan rusak ada di jalur URL (`/laporan/<token>` dan `/api/public/serial-reports/<token>`), jadi log akses
+# LOG AKSES TANPA TOKEN TAUTAN PUBLIK (keputusan pemilik 2026-11-14, spek Serial Number butir 52 (b); diperluas
+# 2026-11-23 untuk tautan dashboard publik): token tautan publik ada di jalur URL (`/laporan/<token>`,
+# `/api/public/serial-reports/<token>`, `/dashboard-publik/<token>`, dan `/api/public/dashboards/<token>`), jadi log akses
 # bawaan nginx menyimpannya. Dua `map` dan satu `log_format` di bawah berlaku di konteks `http` (berkas situs di
 # sites-enabled otomatis di dalamnya): pasang SEKALI (jangan diulang bila blok server disalin ke berkas terpisah;
 # nama ganda membuat `nginx -t` gagal; boleh dipindah ke /etc/nginx/conf.d/qc-log.conf). Lalu tiap blok `server` TLS
 # memakai `access_log ... qc_masked`. `error_log` nginx tetap dapat memuat baris permintaan pada galat upstream dan
 # tidak dapat disamarkan: batasi akses berkas log (root saja). Log Cloudflare di luar kendali server ini.
+# PERUBAHAN BERKAS INI TIDAK DIBAWA CI: salin manual ke VPS (`nginx -t && nginx -s reload`) SEBELUM merge PR yang
+# memperluas `map` ini (awalan dashboard publik ditambah 2026-11-23).
 # ---------------------------------------------------------------------------------------------------------------
 map $request_uri $qc_log_uri {
     ~^/laporan/                     "/laporan/[token-disamarkan]";
     ~^/api/public/serial-reports/   "/api/public/serial-reports/[token-disamarkan]";
+    ~^/dashboard-publik/            "/dashboard-publik/[token-disamarkan]";
+    ~^/api/public/dashboards/       "/api/public/dashboards/[token-disamarkan]";
     default                         $request_uri;
 }
 
 map $http_referer $qc_log_referer {
     ~/laporan/                      "[disamarkan]";
+    ~/dashboard-publik/             "[disamarkan]";
     default                         $http_referer;
 }
 
