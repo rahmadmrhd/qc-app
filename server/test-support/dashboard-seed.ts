@@ -135,7 +135,7 @@ export interface SeedStockRow {
   locationId: string;
   qty: number;
   /** Entri riwayat stok (`sticker_stock_entries`): `kind` `in` | `out` | `serial` | `adjust` | `opname`. */
-  entries?: { kind: string; delta: number; ts: string }[];
+  entries?: { kind: string; delta: number; ts: string; serialId?: string }[];
 }
 
 /** Baris `sticker_stock` (stiker dan lokasi harus sudah ada) beserta entri riwayat opsional. */
@@ -147,9 +147,17 @@ export async function seedStock(env: Db, row: SeedStockRow): Promise<void> {
     .run();
   for (const entry of row.entries ?? []) {
     await env.DB.prepare(
-      "INSERT INTO sticker_stock_entries (sticker_id, location_id, kind, delta, qty_after, reason, actor, ts) VALUES (?, ?, ?, ?, ?, '', 'seed@gmail.com', ?)",
+      "INSERT INTO sticker_stock_entries (sticker_id, location_id, kind, delta, qty_after, reason, actor, ts, serial_id) VALUES (?, ?, ?, ?, ?, '', 'seed@gmail.com', ?, ?)",
     )
-      .bind(row.stickerId, row.locationId, entry.kind, entry.delta, row.qty, entry.ts)
+      .bind(
+        row.stickerId,
+        row.locationId,
+        entry.kind,
+        entry.delta,
+        row.qty,
+        entry.ts,
+        entry.serialId ?? '',
+      )
       .run();
   }
 }
