@@ -97,7 +97,7 @@ Ponsel: satu kolom; number card dua kolom; Quick List menjadi `MobileCard`; filt
 
 Visual grafik (aturan wajib): warna dari token semantik yang ada (`primary`, `info`, `success`, `warning`, `destructive`, `secondary`), maksimum 6 kategori + "Lainnya"; **jangan hanya warna**: legenda berlabel dan nilai terbaca; tiap grafik punya `role="img"`, `aria-label` ringkasan, dan tabel tersembunyi untuk pembaca layar. Bila menambah token `--chart-*`, pasangannya wajib masuk `web/src/styles.contrast.test.ts` (AA 4,5:1 terang dan gelap); lebih baik memakai ulang token yang ada. Gunakan skill `dataviz` saat membangun.
 
-## 6. Katalog widget v1 (25 widget; dapat dipotong)
+## 6. Katalog widget v1 (27 widget; dapat dipotong)
 
 Singkatan: **B** = filter BU berlaku, **L** = Lokasi, **T** = Tanggal (kolom), ✗ = tidak berlaku. `Δ` = number card dengan perbandingan periode sebelumnya yang sama panjang (pilihan saya).
 

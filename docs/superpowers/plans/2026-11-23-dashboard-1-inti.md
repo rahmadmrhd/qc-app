@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Pengguna login membuka `/dashboard`: 25 widget (kartu angka, donut/pie, line, bar, Quick List) per grup modul, disaring izin + BU + Lokasi, dengan filter global (BU, Lokasi, Tanggal) dan filter per grup.
+**Goal:** Pengguna login membuka `/dashboard`: 27 widget (kartu angka, donut/pie, line, bar, Quick List) per grup modul, disaring izin + BU + Lokasi, dengan filter global (BU, Lokasi, Tanggal) dan filter per grup.
 
 **Architecture:** Registry metadata murni di `shared/dashboard.ts`; SQL tiap widget literal di `server/src/modules/dashboard/widgets/*.ts` (aturan soft delete); satu rute `dashboard.query` menghitung widget yang boleh dilihat pengguna lewat `resolveScope` (satu-satunya tempat irisan hak). Web merender dari registry dengan komponen `chart` shadcn (recharts) yang dimuat malas.
 
@@ -74,7 +74,7 @@ Masukan yang tersirat spek tetapi mudah luput; tiap baris punya tes di tugas pem
 **Interfaces:**
 - Produces (nama persis, dipakai tugas berikutnya dan rencana 2-3):
   - `DASHBOARD_GROUPS = ['handover','serial','report','sticker','postel'] as const`, `type DashboardGroupId`, `GROUP_LABELS: Record<DashboardGroupId,string>` ("Serah Terima", "Serial Number", "Laporan rusak", "Stok Stiker", "Postel").
-  - `WIDGET_IDS` (25 id dari tabel Tugas 5-8), `type WidgetId`, `type WidgetVisual = 'number'|'donut'|'pie'|'line'|'bar'|'barH'|'barGroup'|'list'`.
+  - `WIDGET_IDS` (27 id dari tabel Tugas 5-8), `type WidgetId`, `type WidgetVisual = 'number'|'donut'|'pie'|'line'|'bar'|'barH'|'barGroup'|'list'`.
   - `interface WidgetMeta { id: WidgetId; group: DashboardGroupId; visual: WidgetVisual; title: string; access: WidgetAccess; bu: boolean; location: 'handover'|'stock'|'serial'|'none'; date: { kind: 'none' } | { kind: 'column'; label: string }; delta: boolean; listColumns?: readonly { key: string; label: string }[] }`
   - `type WidgetAccess = readonly { module: ModuleKey; level: Level; scope: 'location'|'bu'|'global' }[]` (arti: salah satu terpenuhi).
   - `WIDGETS: readonly WidgetMeta[]`, `widgetMeta(id: WidgetId): WidgetMeta`.
