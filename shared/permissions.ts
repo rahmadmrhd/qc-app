@@ -10,6 +10,7 @@ export const MODULES = [
   'serial',
   'serialservice',
   'countrylock',
+  'dashboard',
 ] as const;
 export type ModuleKey = (typeof MODULES)[number];
 
@@ -25,6 +26,7 @@ export const MODULE_LABELS: Record<ModuleKey, string> = {
   serial: 'Serial Number',
   serialservice: 'Servis Serial Number',
   countrylock: 'Country Lock',
+  dashboard: 'Dashboard',
 };
 
 export const LEVELS = ['none', 'view', 'edit', 'manage'] as const;
@@ -53,6 +55,7 @@ export const MODULE_LEVELS: Record<ModuleKey, readonly Level[]> = {
   serial: ['none', 'view', 'edit', 'manage'],
   serialservice: ['none', 'view', 'edit'],
   countrylock: ['none', 'view'],
+  dashboard: ['none', 'manage'],
 };
 
 /** Arti umum tiap level (PRD §4.2); `MODULE_LEVEL_HINTS` menimpanya bila modul punya makna khusus. */
@@ -110,6 +113,10 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
   },
   countrylock: {
     view: 'Melihat menu Country Lock dan membukanya di aplikasi desktop dari peramban (dengan akun yang sama). Halaman Country Lock di aplikasi desktop tetap dapat dibuka tanpa login.',
+  },
+  dashboard: {
+    manage:
+      'Membagikan dashboard secara publik, mengelola laporan terjadwal, dan mencabut tautan. Melihat dashboard cukup dengan izin modul sumber datanya.',
   },
 };
 

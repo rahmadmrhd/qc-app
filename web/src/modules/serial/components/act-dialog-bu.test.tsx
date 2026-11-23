@@ -65,6 +65,7 @@ function meWith(): MeDto {
       serial: 'edit',
       serialservice: 'none',
       countrylock: 'none',
+      dashboard: 'none',
     },
     businessUnits: [bu('b1', 'BU1'), bu('b2', 'BU2'), bu('b3', 'BU3')],
     locations: [],

@@ -38,6 +38,7 @@ describe('mergePermissions', () => {
       serial: 'none',
       serialservice: 'none',
       countrylock: 'none',
+      dashboard: 'none',
     });
   });
 
@@ -65,6 +66,7 @@ describe('mergePermissions', () => {
       serial: 'none',
       serialservice: 'none',
       countrylock: 'none',
+      dashboard: 'none',
     });
   });
 });
@@ -83,6 +85,7 @@ describe('fullPermissions', () => {
       serial: 'manage',
       serialservice: 'manage',
       countrylock: 'manage',
+      dashboard: 'manage',
     });
   });
 });
@@ -170,4 +173,11 @@ test('sanitizePermissions mempertahankan sticker dan stickerstock', () => {
     sticker: 'manage',
     stickerstock: 'edit',
   });
+});
+
+test('modul dashboard: label, level none/manage, dan petunjuk khusus', () => {
+  expect(MODULES).toContain('dashboard');
+  expect(MODULE_LABELS.dashboard).toBe('Dashboard');
+  expect(levelsFor('dashboard')).toEqual(['none', 'manage']);
+  expect(levelHint('dashboard', 'manage')).toContain('secara publik');
 });

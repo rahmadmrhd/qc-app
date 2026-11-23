@@ -29,6 +29,7 @@ beforeEach(() => {
       serial: 'none',
       serialservice: 'none',
       countrylock: 'none',
+      dashboard: 'none',
     },
     businessUnits: [],
     locations: [
