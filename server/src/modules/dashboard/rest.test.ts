@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { seedBusinessUnit, seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { seedBrand, seedCustomer, seedItem } from '@server-test/item-fixtures';
+import { restCall } from '@server-test/rest-call';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
@@ -195,5 +196,118 @@ describe('dashboard.options', () => {
       stickerTypes: [],
       stickers: [],
     });
+  });
+});
+
+describe('dashboard.options: pencarian dan halaman di server', () => {
+  type Page = Record<string, { value: string; label: string }[]> & {
+    next?: Record<string, string>;
+  };
+  const ADMIN_EMAIL = 'admin@gmail.com';
+  const call = (email: string, input: unknown) => restCall(env, email, 'dashboard.options', input);
+  const pageOf = async (email: string, input: unknown): Promise<Page> => {
+    const result = await call(email, input);
+    if (!result.ok) throw new Error(JSON.stringify(result.error));
+    return result.data as Page;
+  };
+
+  beforeEach(async () => {
+    for (let index = 1; index <= 5; index += 1) {
+      await seedCustomer(env, { id: `c-${index}`, name: `Cust ${index}` });
+    }
+  });
+
+  test('kind + limit + cursor: halaman berurutan nama, next hanya bila masih ada sisa', async () => {
+    const first = await pageOf(HANDOVER_ONLY, { kind: 'customers', limit: 2 });
+    expect(first.customers?.map((option) => option.label)).toEqual(['Cust 1', 'Cust 2']);
+    expect(first.next).toEqual({ customers: '2' });
+    expect(first.items).toEqual([]);
+    const second = await pageOf(HANDOVER_ONLY, { kind: 'customers', limit: 2, cursor: '2' });
+    expect(second.customers?.map((option) => option.label)).toEqual(['Cust 3', 'Cust 4']);
+    expect(second.next).toEqual({ customers: '4' });
+    const third = await pageOf(HANDOVER_ONLY, { kind: 'customers', limit: 2, cursor: '4' });
+    expect(third.customers?.map((option) => option.label)).toEqual(['Cust 5']);
+    expect(third.next).toBeUndefined();
+  });
+
+  test('query mencari di server tanpa peduli huruf besar-kecil, dan % atau _ dicocokkan apa adanya', async () => {
+    await seedCustomer(env, { id: 'c-pct', name: 'Diskon 100% Toko' });
+    const found = await pageOf(HANDOVER_ONLY, { kind: 'customers', query: 'cust 3' });
+    expect(found.customers?.map((option) => option.value)).toEqual(['c-3']);
+    const literal = await pageOf(HANDOVER_ONLY, { kind: 'customers', query: '%' });
+    expect(literal.customers?.map((option) => option.value)).toEqual(['c-pct']);
+    const underscore = await pageOf(HANDOVER_ONLY, { kind: 'customers', query: '_' });
+    expect(underscore.customers).toEqual([]);
+  });
+
+  test('record ke-51 dan seterusnya dapat dicari (tidak lagi terpotong)', async () => {
+    for (let index = 6; index <= 60; index += 1) {
+      await seedCustomer(env, { id: `c-${index}`, name: `Cust ${String(index).padStart(2, '0')}` });
+    }
+    const all = await pageOf(HANDOVER_ONLY, { kind: 'customers' });
+    expect(all.customers?.length).toBe(50);
+    expect(all.next).toEqual({ customers: '50' });
+    const late = await pageOf(HANDOVER_ONLY, { kind: 'customers', query: 'Cust 60' });
+    expect(late.customers?.map((option) => option.value)).toEqual(['c-60']);
+  });
+
+  test('ids meresolusi nama; yang terhapus atau tak dikenal tidak dikembalikan; abaikan limit dan query', async () => {
+    await env.DB.prepare(
+      "UPDATE customers SET deleted_at = '2026-11-01T00:00:00.000Z' WHERE id = ?",
+    )
+      .bind('c-2')
+      .run();
+    const result = await pageOf(HANDOVER_ONLY, {
+      kind: 'customers',
+      ids: ['c-4', 'c-2', 'tidak-ada', 'c-1'],
+      query: 'tidak cocok',
+      limit: 1,
+    });
+    expect(result.customers?.map((option) => option.value).sort()).toEqual(['c-1', 'c-4']);
+    expect(result.next).toBeUndefined();
+  });
+
+  test('tanpa hak: id di luar hak tidak mengembalikan nama (item BU lain, daftar bukan hak)', async () => {
+    await seedBusinessUnit(env, { id: 'bu-b', code: 'B' });
+    await seedBrand(env, 'Brand');
+    await seedItem(env, { id: 'i-a', brand: 'Brand', model: 'Tipe A', businessUnitIds: ['bu-a'] });
+    await seedItem(env, { id: 'i-b', brand: 'Brand', model: 'Tipe B', businessUnitIds: ['bu-b'] });
+    const serial = await pageOf(SERIAL_ONLY, { kind: 'items', ids: ['i-a', 'i-b'] });
+    expect(serial.items?.map((option) => option.value)).toEqual(['i-a']);
+    const searched = await pageOf(SERIAL_ONLY, { kind: 'items', query: 'tipe b' });
+    expect(searched.items).toEqual([]);
+    const byBrand = await pageOf(SERIAL_ONLY, { kind: 'items', query: 'brand tipe' });
+    expect(byBrand.items?.map((option) => option.value)).toEqual(['i-a']);
+    // Pengguna Serah Terima saja tak berhak atas daftar item, dan pengguna tanpa izin tak berhak atas customer.
+    const handover = await pageOf(HANDOVER_ONLY, { kind: 'items', ids: ['i-a'] });
+    expect(handover.items).toEqual([]);
+    const none = await pageOf(NOBODY, { kind: 'customers', ids: ['c-1'] });
+    expect(none.customers).toEqual([]);
+  });
+
+  test('jenis stiker dan stiker bisa dicari dan di-resolve dengan ids', async () => {
+    await seedStickerType(env, { id: 't-x', name: 'Jenis Xenon' });
+    await seedSticker(env, { id: 's-x', typeId: 't-x', name: 'Stiker Xenon' });
+    const types = await pageOf(ADMIN_EMAIL, { kind: 'stickerTypes', query: 'xenon' });
+    expect(types.stickerTypes?.map((option) => option.value)).toEqual(['t-x']);
+    const stickers = await pageOf(ADMIN_EMAIL, { kind: 'stickers', ids: ['s-x'] });
+    expect(stickers.stickers?.map((option) => option.label)).toEqual(['Stiker Xenon']);
+  });
+
+  test('validasi: cursor, query, dan ids wajib bersama kind; batas limit, cursor, ids', async () => {
+    const accepted = async (input: unknown) => (await call(HANDOVER_ONLY, input)).ok;
+    const ids = (count: number) => Array.from({ length: count }, (_, index) => `c${index}`);
+    expect(await accepted({ cursor: '2' })).toBe(false);
+    expect(await accepted({ query: 'x' })).toBe(false);
+    expect(await accepted({ ids: ['c-1'] })).toBe(false);
+    expect(await accepted({ kind: 'lain' })).toBe(false);
+    expect(await accepted({ kind: 'customers', limit: 0 })).toBe(false);
+    expect(await accepted({ kind: 'customers', limit: 101 })).toBe(false);
+    expect(await accepted({ kind: 'customers', cursor: 'abc' })).toBe(false);
+    expect(await accepted({ kind: 'customers', cursor: '-1' })).toBe(false);
+    expect(await accepted({ kind: 'customers', ids: ids(21) })).toBe(false);
+    expect(await accepted({ kind: 'customers', query: 'x'.repeat(101) })).toBe(false);
+    expect(await accepted({ kind: 'customers', limit: 100 })).toBe(true);
+    expect(await accepted({ kind: 'customers', ids: ids(20) })).toBe(true);
   });
 });

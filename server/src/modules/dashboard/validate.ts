@@ -2,11 +2,22 @@ import { appError } from '@server/core/errors';
 import { FILTER_LIST_MAX } from '@server/core/validate';
 import type {
   DashboardFilterInput,
+  DashboardOptionKind,
+  DashboardOptionsInput,
   DashboardQueryInput,
   DashboardWidgetRequest,
   WidgetId,
 } from '@shared/dashboard';
-import { GROUP_FILTERS, validateDashboardRange, WIDGET_IDS, widgetMeta } from '@shared/dashboard';
+import {
+  DASHBOARD_OPTION_KINDS,
+  GROUP_FILTERS,
+  OPTIONS_IDS_MAX,
+  OPTIONS_PAGE_MAX,
+  OPTIONS_QUERY_MAX,
+  validateDashboardRange,
+  WIDGET_IDS,
+  widgetMeta,
+} from '@shared/dashboard';
 
 /** Batas widget per permintaan `dashboard.query`. */
 export const QUERY_WIDGETS_MAX = 30;
@@ -142,4 +153,71 @@ export function validateDashboardQuery(raw: unknown): DashboardQueryInput {
   }
   if (Object.keys(fields).length > 0) throw appError('VALIDATION', 'Input tidak valid', fields);
   return { filter, widgets };
+}
+
+/**
+ * Masukan `dashboard.options`: semua opsional. `kind` salah satu `DASHBOARD_OPTION_KINDS`; `query` (dipangkas, maks.
+ * `OPTIONS_QUERY_MAX`, kosong = tanpa pencarian), `cursor` (bilangan bulat tak negatif dari `next`), dan `ids`
+ * (1..`OPTIONS_IDS_MAX` teks tak kosong, ganda dilebur) WAJIB bersama `kind`; `limit` 1..`OPTIONS_PAGE_MAX`.
+ */
+export function validateDashboardOptions(raw: unknown): DashboardOptionsInput {
+  if (raw === null || raw === undefined) return {};
+  if (!isRecord(raw)) throw appError('VALIDATION', 'Input harus berupa objek');
+  const fields: Fields = {};
+  const result: DashboardOptionsInput = {};
+  const present = (key: string) => raw[key] !== undefined && raw[key] !== null;
+
+  if (present('kind')) {
+    const kind = raw.kind;
+    if (typeof kind === 'string' && (DASHBOARD_OPTION_KINDS as readonly string[]).includes(kind)) {
+      result.kind = kind as DashboardOptionKind;
+    } else {
+      fields.kind = 'Nilai tidak valid';
+    }
+  }
+  if (present('query')) {
+    const query = typeof raw.query === 'string' ? raw.query.trim() : null;
+    if (query === null || query.length > OPTIONS_QUERY_MAX) {
+      fields.query = `Maksimal ${OPTIONS_QUERY_MAX} karakter`;
+    } else if (query !== '') {
+      result.query = query;
+    }
+  }
+  if (present('cursor')) {
+    if (typeof raw.cursor === 'string' && /^\d{1,9}$/.test(raw.cursor)) result.cursor = raw.cursor;
+    else fields.cursor = 'Kursor tidak valid';
+  }
+  if (present('limit')) {
+    const limit = raw.limit;
+    if (
+      typeof limit === 'number' &&
+      Number.isInteger(limit) &&
+      limit >= 1 &&
+      limit <= OPTIONS_PAGE_MAX
+    ) {
+      result.limit = limit;
+    } else {
+      fields.limit = `Batas halaman harus 1-${OPTIONS_PAGE_MAX}`;
+    }
+  }
+  if (present('ids')) {
+    const ids = raw.ids;
+    if (
+      !Array.isArray(ids) ||
+      ids.length === 0 ||
+      ids.length > OPTIONS_IDS_MAX ||
+      !ids.every((id) => typeof id === 'string' && id.trim() !== '' && id.length <= MAX_ID_LENGTH)
+    ) {
+      fields.ids = `Harus 1-${OPTIONS_IDS_MAX} id`;
+    } else {
+      result.ids = [...new Set((ids as string[]).map((id) => id.trim()))];
+    }
+  }
+  if (result.kind === undefined && Object.keys(fields).length === 0) {
+    for (const key of ['query', 'cursor', 'ids'] as const) {
+      if (result[key] !== undefined) fields[key] = 'Wajib bersama kind';
+    }
+  }
+  if (Object.keys(fields).length > 0) throw appError('VALIDATION', 'Input tidak valid', fields);
+  return result;
 }

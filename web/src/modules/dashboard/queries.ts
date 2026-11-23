@@ -1,4 +1,4 @@
-import type { DashboardQueryInput } from '@shared/dashboard';
+import type { DashboardOptionsInput, DashboardQueryInput } from '@shared/dashboard';
 import { queryOptions } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 
@@ -7,6 +7,7 @@ export const dashboardKeys = {
   all: ['dashboard'] as const,
   query: (input: DashboardQueryInput) => ['dashboard', 'query', input] as const,
   options: ['dashboard', 'options'] as const,
+  optionsOf: (input: DashboardOptionsInput) => ['dashboard', 'options', input] as const,
 };
 
 const MINUTE_MS = 60_000;
@@ -28,11 +29,14 @@ export function dashboardQueryOptions(input: DashboardQueryInput) {
   });
 }
 
-/** Pilihan relasi untuk filter grup (customer, item, jenis stiker, stiker). */
-export function dashboardOptionsQueryOptions() {
+/**
+ * Pilihan relasi untuk filter grup, dicari dan dihalamani di server (`kind`, `query`, `ids`; lihat
+ * `DashboardOptionsInput`). Satu kunci per masukan, jadi tiap pencarian di-cache sendiri.
+ */
+export function dashboardOptionsQueryOptions(input: DashboardOptionsInput = {}) {
   return queryOptions({
-    queryKey: dashboardKeys.options,
-    queryFn: () => api('dashboard.options', null),
+    queryKey: dashboardKeys.optionsOf(input),
+    queryFn: () => api('dashboard.options', input),
     staleTime: MINUTE_MS,
   });
 }

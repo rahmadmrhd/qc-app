@@ -483,4 +483,31 @@ export interface DashboardOptionsDto {
   items: DashboardOption[];
   stickerTypes: DashboardOption[];
   stickers: DashboardOption[];
+  /** Kursor halaman berikutnya per daftar; hanya ada untuk daftar yang masih punya sisa. */
+  next?: Partial<Record<DashboardOptionKind, string>>;
+}
+
+/** Daftar pilihan relasi untuk filter grup. */
+export const DASHBOARD_OPTION_KINDS = ['customers', 'items', 'stickerTypes', 'stickers'] as const;
+export type DashboardOptionKind = (typeof DASHBOARD_OPTION_KINDS)[number];
+
+/** Batas halaman pilihan filter relasi (keputusan pemilik 2026-11-23: pencarian di server, bukan potong 500). */
+export const OPTIONS_PAGE_DEFAULT = 50;
+export const OPTIONS_PAGE_MAX = 100;
+/** Maks. id yang diresolusi sekaligus (nilai terpilih/URL), dan panjang maks. kata pencarian. */
+export const OPTIONS_IDS_MAX = 20;
+export const OPTIONS_QUERY_MAX = 100;
+
+/**
+ * Masukan opsional `dashboard.options` (aditif). Tanpa `kind` = keempat daftar, halaman pertama masing-masing.
+ * `query`, `cursor`, dan `ids` WAJIB bersama `kind`. `cursor` = kursor `next` dari halaman sebelumnya. `ids`
+ * meresolusi nama nilai terpilih (mengabaikan `query`/`cursor`/`limit`; yang tak ada atau di luar hak tidak
+ * dikembalikan).
+ */
+export interface DashboardOptionsInput {
+  kind?: DashboardOptionKind;
+  query?: string;
+  cursor?: string;
+  limit?: number;
+  ids?: string[];
 }

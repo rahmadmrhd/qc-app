@@ -1,5 +1,6 @@
 import type { MeDto } from '@shared/contract';
 import {
+  type DashboardOptionsInput,
   type DashboardQueryInput,
   rangePreset,
   type WidgetResult,
@@ -89,18 +90,31 @@ function okResult(id: WidgetResult['id']): WidgetResult {
   }
 }
 
+const CUSTOMERS = [
+  { value: 'c1', label: 'PT Satu' },
+  { value: 'c2', label: 'PT Dua' },
+];
+let optionsNext = false;
 let overrides: Partial<Record<WidgetResult['id'], WidgetResult>> = {};
 
 beforeEach(() => {
   overrides = {};
+  optionsNext = false;
   apiMock.mockReset();
   apiMock.mockImplementation(async (id: string, input: DashboardQueryInput | null) => {
     if (id === 'dashboard.options') {
+      const request = (input ?? {}) as DashboardOptionsInput;
+      const all = CUSTOMERS.filter((option) =>
+        request.ids
+          ? request.ids.includes(option.value)
+          : option.label.toLowerCase().includes((request.query ?? '').toLowerCase()),
+      );
       return {
-        customers: [{ value: 'c1', label: 'PT Satu' }],
+        customers: request.kind === 'customers' || !request.kind ? all : [],
         items: [],
         stickerTypes: [],
         stickers: [],
+        ...(optionsNext ? { next: { customers: '50' } } : {}),
       };
     }
     if (id === 'dashboard.query' && input) {
@@ -260,4 +274,51 @@ test('grup di luar layar tidak diminta; diminta begitu mendekat; berhenti saat m
   } finally {
     fake.restore();
   }
+});
+
+const optionCalls = () =>
+  apiMock.mock.calls
+    .filter((call) => call[0] === 'dashboard.options')
+    .map((call) => call[1] as DashboardOptionsInput);
+
+test('filter relasi: mengetik mencari ke server (bukan menyaring daftar lokal)', async () => {
+  me = makeUser({ handover: true });
+  await renderInRouter(<Harness />);
+  await screen.findByRole('heading', { name: 'Serah Terima' });
+  await openChip('Customer');
+  await userEvent.type(await screen.findByRole('combobox', { name: 'Filter Customer' }), 'dua');
+  await waitFor(() =>
+    expect(optionCalls().some((call) => call.kind === 'customers' && call.query === 'dua')).toBe(
+      true,
+    ),
+  );
+  expect(await screen.findByRole('option', { name: 'PT Dua' })).toBeTruthy();
+  expect(screen.queryByRole('option', { name: 'PT Satu' })).toBeNull();
+});
+
+test('nilai terpilih dari URL diresolusi namanya lewat ids (bukan "tidak dikenal")', async () => {
+  me = makeUser({ handover: true });
+  await renderInRouter(<Harness initial={{ handover_customer: ['c2'] }} />);
+  expect(await screen.findByRole('button', { name: /^Customer: PT Dua/ })).toBeTruthy();
+  expect(
+    optionCalls().some(
+      (call) => call.kind === 'customers' && call.ids?.length === 1 && call.ids[0] === 'c2',
+    ),
+  ).toBe(true);
+});
+
+test('id yang tak ada di server tetap tampil "tidak dikenal"', async () => {
+  me = makeUser({ handover: true });
+  await renderInRouter(<Harness initial={{ handover_customer: ['hilang'] }} />);
+  expect(await screen.findByRole('button', { name: /Customer tidak dikenal/ })).toBeTruthy();
+});
+
+test('ada halaman berikutnya: petunjuk persempit pencarian', async () => {
+  optionsNext = true;
+  me = makeUser({ handover: true });
+  await renderInRouter(<Harness />);
+  await screen.findByRole('heading', { name: 'Serah Terima' });
+  await openChip('Customer');
+  await userEvent.click(await screen.findByRole('combobox', { name: 'Filter Customer' }));
+  expect(await screen.findByText('Ada hasil lain, persempit pencarian')).toBeTruthy();
 });

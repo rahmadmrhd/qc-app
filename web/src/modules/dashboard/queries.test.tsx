@@ -14,6 +14,7 @@ const INPUT = {
 test('query dashboard tidak masuk whitelist query-persist', () => {
   expect(isPersistedQueryKey(dashboardKeys.query(INPUT))).toBe(false);
   expect(isPersistedQueryKey(dashboardKeys.options)).toBe(false);
+  expect(isPersistedQueryKey(dashboardKeys.optionsOf({ kind: 'items', query: 'x' }))).toBe(false);
 });
 
 test('opsi query: dimuat ulang tiap menit, basi setelah semenit, kunci memuat input', () => {
@@ -27,7 +28,9 @@ test('queryFn memanggil rute dashboard.query dan dashboard.options', async () =>
   apiMock.mockResolvedValue({});
   const client = new QueryClient();
   await client.fetchQuery(dashboardQueryOptions(INPUT));
+  await client.fetchQuery(dashboardOptionsQueryOptions({ kind: 'customers', query: 'pt' }));
   await client.fetchQuery(dashboardOptionsQueryOptions());
   expect(apiMock).toHaveBeenCalledWith('dashboard.query', INPUT);
-  expect(apiMock).toHaveBeenCalledWith('dashboard.options', null);
+  expect(apiMock).toHaveBeenCalledWith('dashboard.options', { kind: 'customers', query: 'pt' });
+  expect(apiMock).toHaveBeenCalledWith('dashboard.options', {});
 });

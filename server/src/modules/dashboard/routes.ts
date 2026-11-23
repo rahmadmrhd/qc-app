@@ -1,10 +1,9 @@
 import { nowIso, nowOf } from '@server/core/env';
 import type { RouteTable } from '@server/core/router';
-import { expectNull } from '@server/core/validate';
 import { runWidgets } from './engine';
 import { loadOptions } from './options';
 import { allowedWidgetIds, resolveScope } from './scope';
-import { validateDashboardQuery } from './validate';
+import { validateDashboardOptions, validateDashboardQuery } from './validate';
 
 type DashboardMethod = 'dashboard.query' | 'dashboard.options';
 
@@ -30,8 +29,8 @@ export function dashboardRoutes(): Pick<RouteTable, DashboardMethod> {
       },
     },
     'dashboard.options': {
-      validate: expectNull,
-      handler: (_input, ctx) => loadOptions(ctx.env, ctx.user),
+      validate: validateDashboardOptions,
+      handler: (input, ctx) => loadOptions(ctx.env, ctx.user, input),
     },
   };
 }

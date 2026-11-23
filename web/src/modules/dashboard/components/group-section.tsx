@@ -1,13 +1,14 @@
 import {
   type DashboardGroupId,
-  type DashboardOptionsDto,
+  type DashboardOptionKind,
   GROUP_FILTERS,
   GROUP_LABELS,
   type GroupFilterField,
   type WidgetMeta,
   type WidgetResult,
 } from '@shared/dashboard';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
 import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { MultiSelect } from '@/components/select';
@@ -17,12 +18,60 @@ import { type DashboardSearch, groupFilterParam, toQueryInput } from '../lib/sea
 import { dashboardOptionsQueryOptions, dashboardQueryOptions } from '../queries';
 import { WidgetCard, type WidgetFilterState } from './widgets/widget-card';
 
-const RELATION_KEY: Record<NonNullable<GroupFilterField['relation']>, keyof DashboardOptionsDto> = {
+const RELATION_KEY: Record<NonNullable<GroupFilterField['relation']>, DashboardOptionKind> = {
   customer: 'customers',
   item: 'items',
   stickerType: 'stickerTypes',
   sticker: 'stickers',
 };
+
+/**
+ * Pilihan relasi dengan pencarian di server (keputusan pemilik 2026-11-23): kata ketik dikirim ke `dashboard.options`
+ * (debounce di combobox), halaman pertama saja; `next` menyalakan petunjuk "persempit pencarian". Dipasang di dalam
+ * isi chip, jadi hanya meminta saat chip terbuka.
+ */
+function RelationPicker({
+  kind,
+  field,
+  value,
+  labelOf,
+  onChange,
+  id,
+}: {
+  kind: DashboardOptionKind;
+  field: GroupFilterField;
+  value: string[];
+  labelOf: (item: string) => string;
+  onChange: (next: string[]) => void;
+  id: string;
+}) {
+  const [term, setTerm] = useState('');
+  const page = useQuery({
+    ...dashboardOptionsQueryOptions({ kind, ...(term === '' ? {} : { query: term }) }),
+    placeholderData: keepPreviousData,
+  });
+  const source: LinkOption[] = (page.data?.[kind] ?? []).map((option) => ({
+    id: option.value,
+    label: option.label,
+  }));
+  return (
+    <LinkMultiField
+      maxSelected={FILTER_LIST_MAX}
+      id={id}
+      label={`Filter ${field.label}`}
+      hideLabel
+      placeholder={`Semua ${field.label.toLowerCase()}`}
+      highlight
+      value={value}
+      labelOf={labelOf}
+      options={source}
+      loading={page.isFetching}
+      hasMore={page.data?.next?.[kind] !== undefined}
+      onSearchChange={setTerm}
+      onChange={onChange}
+    />
+  );
+}
 
 /** Lebar kartu di kisi 12 kolom (>= 768 px): angka kecil berderet, grafik 6 kolom, tren dan daftar 12 kolom; ponsel kisi 2 kolom (angka 1 kolom, lainnya selebar 2). */
 function spanClass(meta: WidgetMeta): string {
@@ -43,13 +92,11 @@ function GroupFilterChip({
   group,
   field,
   search,
-  options,
   onChange,
 }: {
   group: DashboardGroupId;
   field: GroupFilterField;
   search: DashboardSearch;
-  options: DashboardOptionsDto | undefined;
   onChange: (patch: Partial<DashboardSearch>) => void;
 }) {
   const param = groupFilterParam(group, field.key);
@@ -80,33 +127,45 @@ function GroupFilterChip({
       </FilterChip>
     );
   }
-  const source: LinkOption[] =
-    field.relation && options
-      ? options[RELATION_KEY[field.relation]].map((option) => ({
-          id: option.value,
-          label: option.label,
-        }))
-      : [];
+  return <RelationChip field={field} value={value} id={id} set={set} />;
+}
+
+/** Chip filter relasi: nama nilai terpilih (dari URL atau pilihan) diresolusi server lewat `ids`. */
+function RelationChip({
+  field,
+  value,
+  id,
+  set,
+}: {
+  field: GroupFilterField;
+  value: string[];
+  id: string;
+  set: (next: string[]) => void;
+}) {
+  const kind = RELATION_KEY[field.relation ?? 'customer'];
+  const resolved = useQuery({
+    ...dashboardOptionsQueryOptions({ kind, ids: value }),
+    enabled: value.length > 0,
+    placeholderData: keepPreviousData,
+  });
+  const names = new Map(
+    (resolved.data?.[kind] ?? []).map((option) => [option.value, option.label]),
+  );
   const labelOf = (item: string) =>
-    source.find((option) => option.id === item)?.label ?? `${field.label} tidak dikenal`;
+    names.get(item) ?? (resolved.isSuccess ? `${field.label} tidak dikenal` : 'Memuat…');
   return (
     <FilterChip
       label={field.label}
       display={multiFilterDisplay(value.map(labelOf))}
       onClear={() => set([])}
     >
-      <LinkMultiField
-        maxSelected={FILTER_LIST_MAX}
-        id={id}
-        label={`Filter ${field.label}`}
-        hideLabel
-        placeholder={`Semua ${field.label.toLowerCase()}`}
-        localFilter
-        highlight
+      <RelationPicker
+        kind={kind}
+        field={field}
         value={value}
         labelOf={labelOf}
-        options={source}
         onChange={set}
+        id={id}
       />
     </FilterChip>
   );
@@ -141,8 +200,6 @@ export function GroupSection({
   const [sectionRef, near] = useTrackNearViewport();
   const query = useQuery({ ...dashboardQueryOptions(input), enabled: near });
   const fields = GROUP_FILTERS[group];
-  const needsOptions = fields.some((field) => field.kind === 'relation');
-  const optionsQuery = useQuery({ ...dashboardOptionsQueryOptions(), enabled: needsOptions });
   const results = new Map(query.data?.widgets.map((result) => [result.id, result]));
   const resultOf = (meta: WidgetMeta): WidgetResult | undefined => {
     if (query.isError) {
@@ -167,7 +224,6 @@ export function GroupSection({
                 group={group}
                 field={field}
                 search={search}
-                options={optionsQuery.data}
                 onChange={onChange}
               />
             ))}

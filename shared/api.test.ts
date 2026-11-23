@@ -480,7 +480,13 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     filter: { buIds: ['bu1'], from: '2026-11-01', to: '2026-11-23' },
     widgets: [{ id: 'hs.created', filters: { status: ['done'] } }],
   },
-  'dashboard.options': null,
+  'dashboard.options': {
+    kind: 'customers',
+    query: 'cust',
+    cursor: '50',
+    limit: 25,
+    ids: ['c1', 'c2'],
+  },
 };
 
 const ROUNDTRIP_IDS = IDS;

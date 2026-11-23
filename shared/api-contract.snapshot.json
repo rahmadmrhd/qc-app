@@ -333,7 +333,14 @@
   {
     "id": "dashboard.options",
     "verb": "GET",
-    "path": "/dashboard/options"
+    "path": "/dashboard/options",
+    "query": {
+      "cursor": "string",
+      "ids": "list",
+      "kind": "string",
+      "limit": "number",
+      "query": "string"
+    }
   },
   {
     "id": "dashboard.query",
