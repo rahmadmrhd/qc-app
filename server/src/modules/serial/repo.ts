@@ -334,6 +334,13 @@ export interface SerialListFilter {
    * memakai indeks `serials_live_created`. Selain itu (bawaan) = jalur dengan predikat BU.
    */
   allBus?: boolean;
+  /**
+   * `true` = cabang `cur` dipecah per BU (`s.bu_id = ?`, satu cabang per BU terbaca, jumlahnya dibatasi pemanggil lewat
+   * `SERIAL_PER_BU_ARMS_MAX`). Optimizer MariaDB memilih `serials_bu_created` + filesort (sekitar 2 dtk pada 200 ribu
+   * serial) untuk `bu_id IN (...)` sebagian BU; satu cabang per BU memakai indeks itu tanpa filesort dan tiap cabang
+   * dibatasi `LIMIT`. Diabaikan bila `allBus`.
+   */
+  perBuArms?: boolean;
   /** Kandidat awalan serial ternormalisasi (atau). */
   prefixes?: readonly string[];
   /** Serial persis (ternormalisasi). */
@@ -355,6 +362,13 @@ export interface SerialListFilter {
   cursor?: { createdAt: string; id: string };
   limit: number;
 }
+
+/**
+ * Batas jumlah BU terbaca agar daftar dipecah per BU (di atasnya kembali ke satu cabang `bu_id IN (...)`). Diukur pada
+ * 200 ribu serial: sampai 12 BU (satu BU besar + BU kecil) 1,7-3 dtk turun ke 0,1-0,2 dtk; tiap cabang tambahan
+ * menambah sekitar 10 ms pada BU kecil, jadi di atas ambang ini biaya cabang mulai melebihi untung yang tak teruji.
+ */
+export const SERIAL_PER_BU_ARMS_MAX = 12;
 
 const placeholders = (count: number): string => Array.from({ length: count }, () => '?').join(', ');
 
@@ -417,18 +431,20 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
   interface Part {
     sql: string;
     binds: unknown[];
+    /** Hanya cabang `cur` per BU: BU saat ini yang dipatok cabang itu. */
+    bu?: string;
   }
   const readable = placeholders(filter.buIds.length);
+  const histPart: Part = {
+    sql: `s.bu_id NOT IN (${readable}) AND s.id IN (SELECT serial_id FROM serial_business_units WHERE bu_id IN (${readable}) AND left_at > '')`,
+    binds: [...filter.buIds, ...filter.buIds],
+  };
+  const curParts: Part[] =
+    filter.perBuArms === true
+      ? filter.buIds.map((buId) => ({ sql: 's.bu_id = ?', binds: [buId], bu: buId }))
+      : [{ sql: `s.bu_id IN (${readable})`, binds: [...filter.buIds] }];
   const readableParts: Part[] =
-    filter.allBus === true
-      ? [{ sql: '', binds: [] }]
-      : [
-          { sql: `s.bu_id IN (${readable})`, binds: [...filter.buIds] },
-          {
-            sql: `s.bu_id NOT IN (${readable}) AND s.id IN (SELECT serial_id FROM serial_business_units WHERE bu_id IN (${readable}) AND left_at > '')`,
-            binds: [...filter.buIds, ...filter.buIds],
-          },
-        ];
+    filter.allBus === true ? [{ sql: '', binds: [] }] : [...curParts, histPart];
   const filterBus = filter.filterBuIds;
   const buParts: Part[] =
     filterBus === undefined
@@ -448,6 +464,13 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
   const arms: { sql: string; binds: unknown[] }[] = [];
   for (const readablePart of readableParts) {
     for (const buPart of buParts) {
+      // Cabang per BU: padukan yang pasti kosong dibuang (BU di dalam filter hanya cocok dengan cabang eq filter,
+      // BU di luar filter hanya dengan cabang hist filter).
+      if (readablePart.bu !== undefined && filterBus !== undefined) {
+        const inFilter = filterBus.includes(readablePart.bu);
+        const isEq = buPart === buParts[0];
+        if (inFilter !== isEq) continue;
+      }
       const where = [
         ...(readablePart.sql === '' ? [] : [readablePart.sql]),
         ...(buPart.sql === '' ? [] : [buPart.sql]),

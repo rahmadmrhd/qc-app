@@ -86,6 +86,7 @@ import {
   loadSerialEvents,
   loadSerialRow,
   loadSerialStickers,
+  SERIAL_PER_BU_ARMS_MAX,
   type SerialBuHistoryRow,
   type SerialColumn,
   type SerialEventRow,
@@ -856,6 +857,7 @@ export async function listSerials(
   const limit = input.limit ?? SERIAL_LIST_DEFAULT_LIMIT;
   const filter: SerialListFilter = { buIds, limit };
   if (readsAllBus(user, buIds)) filter.allBus = true;
+  else if (buIds.length <= SERIAL_PER_BU_ARMS_MAX) filter.perBuArms = true;
   if (restorable !== null) filter.deleted = restorable;
   const query = normalizeSerial(input.query ?? '');
   if (query !== '') {

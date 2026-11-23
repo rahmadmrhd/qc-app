@@ -9,7 +9,7 @@ import { seedItem } from '@server-test/item-fixtures';
 import { seedSerial, seedSerialWorld } from '@server-test/serial-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import { moveBuStatements } from './bu-history';
-import { listSerialRows, type SerialListFilter } from './repo';
+import { listSerialRows, SERIAL_PER_BU_ARMS_MAX, type SerialListFilter } from './repo';
 import { listSerials } from './service';
 
 setDefaultTimeout(60_000);
@@ -226,22 +226,51 @@ describe('jalur kueri', () => {
     }
   });
 
-  test('sebagian BU tetap lewat jalur lama (predikat BU + cabang riwayat)', async () => {
-    for (const email of [USERS.dua, USERS.satu]) {
+  test('sebagian BU: satu cabang `bu_id = ?` per BU terbaca + cabang riwayat, tanpa `bu_id IN`', async () => {
+    for (const [email, buCount] of [
+      [USERS.dua, 2],
+      [USERS.satu, 1],
+    ] as const) {
       const { env: spied, sqls } = spyEnv();
       await listSerials(spied, await userOf(email), { limit: 5 });
-      const sql = listSqlsOf(sqls).join('\n');
-      expect(sql).toContain('s.bu_id IN');
+      const lists = listSqlsOf(sqls);
+      expect(lists.length).toBe(1);
+      const sql = lists[0] ?? '';
+      expect((sql.match(/s\.bu_id = \?/g) ?? []).length).toBe(buCount);
+      expect(sql).not.toContain('s.bu_id IN');
+      expect(sql).toContain('s.bu_id NOT IN'); // cabang riwayat tetap ada
       expect(sql).toContain('serial_business_units');
+      expect(sql).not.toMatch(/FORCE INDEX|IGNORE INDEX|USE INDEX/);
+      // tiap cabang mengurutkan dan membatasi sendiri, lalu digabung dan dibatasi ulang
+      expect((sql.match(/ORDER BY s\.created_at DESC, s\.id DESC LIMIT \?/g) ?? []).length).toBe(
+        buCount + 1,
+      );
     }
   });
 
-  test('konteks tanpa allBuIds jatuh ke jalur lama (aman bila tak diketahui)', async () => {
+  test('di atas ambang jumlah BU: jalur lama (satu predikat `bu_id IN`)', async () => {
+    const extra = Array.from({ length: SERIAL_PER_BU_ARMS_MAX + 1 }, (_, n) => `bu-x${n}`);
+    for (const id of extra) await seedBusinessUnit(env, { id, code: id.toUpperCase() });
+    await seedUser(env, {
+      id: 'u-banyak',
+      email: 'banyak@gmail.com',
+      buAssignments: extra.map((buId) => ({ buId, roleIds: ['r-view'] })),
+    });
+    const { env: spied, sqls } = spyEnv();
+    await listSerials(spied, await userOf('banyak@gmail.com'), { limit: 5 });
+    const sql = listSqlsOf(sqls).join('\n');
+    expect(sql).toContain('s.bu_id IN');
+    expect(sql).not.toContain('s.bu_id = ?');
+  });
+
+  test('konteks tanpa allBuIds tak dianggap Semua BU: tetap bercabang per BU terbaca', async () => {
     const { allBuIds: _drop, ...rest } = await userOf(USERS.semua);
     const { env: spied, sqls } = spyEnv();
     const ids = await walk(rest, 4, {}, spied);
     expect(ids).toEqual(expectedIds(['bu-a', 'bu-b', 'bu-c']));
-    expect(listSqlsOf(sqls).join('\n')).toContain('s.bu_id IN');
+    const sql = listSqlsOf(sqls).join('\n');
+    expect(sql).toContain('s.bu_id = ?');
+    expect(sql).toContain('s.bu_id NOT IN');
   });
 
   test('filter BU eksplisit pada pengguna Semua BU memakai predikat filter saja', async () => {
@@ -271,7 +300,7 @@ describe('hak baca tidak melonggar', () => {
     expect(await walk(satuSatu, 50)).not.toContain('s-d');
     const { env: spied, sqls } = spyEnv();
     await listSerials(spied, satuSatu, { limit: 5 });
-    expect(listSqlsOf(sqls).join('\n')).toContain('s.bu_id IN');
+    expect(listSqlsOf(sqls).join('\n')).toContain('s.bu_id = ?');
   });
 
   test('BU terhapus tetap memberi hak: serialnya tetap terbaca pengguna Semua BU', async () => {
@@ -342,5 +371,122 @@ describe('repo: allBus sama persis dengan jalur lama bila BU terbaca = semua BU'
     const next = await listSerialRows(env.DB, { buIds: ALL, limit: 10, deleted, allBus: true });
     expect(next.map((row) => row.id)).toEqual(old.map((row) => row.id));
     expect(old.length).toBe(3);
+  });
+});
+
+describe('repo: cabang per BU (perBuArms) sama persis dengan jalur lama dan dengan acuan', () => {
+  const SETS: string[][] = [
+    ['bu-a'],
+    ['bu-c'],
+    ['bu-a', 'bu-b'],
+    ['bu-b', 'bu-c'],
+    ['bu-a', 'bu-c'],
+  ];
+
+  /** Menelusuri semua halaman lewat repo (kursor dari baris terakhir halaman), tanpa duplikat. */
+  const walkRepo = async (
+    base: SerialListFilter,
+    limit: number,
+    perBuArms: boolean,
+  ): Promise<string[]> => {
+    const ids: string[] = [];
+    let cursor: SerialListFilter['cursor'];
+    for (let guard = 0; guard < 50; guard++) {
+      const rows = await listSerialRows(env.DB, {
+        ...base,
+        limit,
+        ...(perBuArms ? { perBuArms: true } : {}),
+        ...(cursor ? { cursor } : {}),
+      });
+      const page = rows.slice(0, limit);
+      ids.push(...page.map((row) => row.id));
+      const last = page[page.length - 1];
+      if (rows.length <= limit || !last) break;
+      cursor = { createdAt: last.created_at, id: last.id };
+    }
+    expect(new Set(ids).size).toBe(ids.length);
+    return ids;
+  };
+
+  test('semua halaman (limit 1/3/5/50) = acuan murni = jalur lama, untuk 1 dan 2 BU', async () => {
+    for (const buIds of SETS) {
+      const expected = expectedIds(buIds);
+      for (const limit of [1, 3, 5, 50]) {
+        expect(await walkRepo({ buIds, limit }, limit, true)).toEqual(expected);
+        expect(await walkRepo({ buIds, limit }, limit, false)).toEqual(expected);
+      }
+    }
+  });
+
+  test('filter status, filter BU, awalan, serials, item, dan kursor identik dengan jalur lama', async () => {
+    for (const buIds of SETS) {
+      const page = await listSerialRows(env.DB, { buIds, limit: 5 });
+      const mid = page[2];
+      const filters: SerialListFilter[] = [
+        { buIds, limit: 4, statuses: ['reported'] },
+        { buIds, limit: 4, filterBuIds: ['bu-a'] },
+        { buIds, limit: 4, filterBuIds: ['bu-b', 'bu-c'] },
+        { buIds, limit: 4, filterBuIds: ['bu-c'] },
+        { buIds, limit: 4, prefixes: ['SN-S0'] },
+        { buIds, limit: 4, serials: ['SN-S03', 'SN-S10', 'SN-ZZZ'] },
+        { buIds, limit: 4, itemIds: ['i-a1'] },
+        ...(mid ? [{ buIds, limit: 4, cursor: { createdAt: mid.created_at, id: mid.id } }] : []),
+      ];
+      for (const filter of filters) {
+        const old = await listSerialRows(env.DB, filter);
+        const next = await listSerialRows(env.DB, { ...filter, perBuArms: true });
+        expect(next.map((row) => row.id)).toEqual(old.map((row) => row.id));
+      }
+    }
+  });
+
+  test('serial yang pindah BU dan stempel waktu kembar tak terlewat, ganda, atau salah urut', async () => {
+    // s03 (kini C, pernah A) dan s04 (A) berstempel sama; s06 (A) dan s07 (C) juga
+    const forA = await walkRepo({ buIds: ['bu-a'], limit: 1 }, 1, true);
+    expect(forA).toContain('s03'); // lewat riwayat
+    expect(forA).toContain('s04');
+    const both = await walkRepo({ buIds: ['bu-a', 'bu-c'], limit: 3 }, 3, true);
+    expect(both).toEqual(expectedIds(['bu-a', 'bu-c']));
+  });
+
+  test('daftar Terhapus identik dengan jalur lama', async () => {
+    await env.DB.prepare(
+      "UPDATE serials SET deleted_at = ?, deleted_by = 'x' WHERE id IN ('s01','s04','s05','s11')",
+    )
+      .bind(T(9))
+      .run();
+    const deleted = { sql: "s.deleted_by <> ''", binds: [] as string[] };
+    for (const buIds of SETS) {
+      const old = await listSerialRows(env.DB, { buIds, limit: 10, deleted });
+      const next = await listSerialRows(env.DB, { buIds, limit: 10, deleted, perBuArms: true });
+      expect(next.map((row) => row.id)).toEqual(old.map((row) => row.id));
+    }
+  });
+
+  test('BU kecil dan BU besar bersama: kecil tak tenggelam, besar tak menggandakan', async () => {
+    await seedBusinessUnit(env, { id: 'bu-kecil', code: 'KCL' });
+    await seedBusinessUnit(env, { id: 'bu-besar', code: 'BSR' });
+    for (let n = 0; n < 30; n++) {
+      await seedSerial(env, {
+        id: `big${String(n).padStart(2, '0')}`,
+        serial: `SN-BIG${n}`,
+        buId: 'bu-besar',
+        itemId: 'i-a1',
+        createdAt: `2026-11-1${n % 10}T0${n % 6}:00:00.000Z`,
+      });
+    }
+    await seedSerial(env, {
+      id: 'kcl1',
+      serial: 'SN-KCL1',
+      buId: 'bu-kecil',
+      itemId: 'i-a1',
+      createdAt: '2026-11-05T05:00:00.000Z',
+    });
+    const buIds = ['bu-besar', 'bu-kecil'];
+    const old = await walkRepo({ buIds, limit: 7 }, 7, false);
+    const next = await walkRepo({ buIds, limit: 7 }, 7, true);
+    expect(next).toEqual(old);
+    expect(next.length).toBe(31);
+    expect(next).toContain('kcl1');
   });
 });
