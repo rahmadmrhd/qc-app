@@ -158,10 +158,13 @@ function RelationChip({
   const remembered = useRef(new Map<string, string>());
   for (const option of resolved.data?.[kind] ?? [])
     remembered.current.set(option.value, option.label);
-  // "Tidak dikenal" hanya bila respons `ids` yang final (bukan placeholder, bukan sedang dimuat) tak memuat id itu.
-  const settled = resolved.isSuccess && !resolved.isPlaceholderData && !resolved.isFetching;
+  // Urutan label: nama yang diingat; galat resolusi = pesan gagal (bukan "Memuat..." selamanya dan bukan "tidak dikenal"
+  // untuk record yang mungkin sah); "tidak dikenal" hanya bila respons `ids` yang final (bukan placeholder dari nilai
+  // sebelumnya) tak memuat id itu, dan tetap stabil saat muat ulang latar; selain itu "Memuat...".
+  const settled = resolved.isSuccess && !resolved.isPlaceholderData;
   const labelOf = (item: string) =>
-    remembered.current.get(item) ?? (settled ? `${field.label} tidak dikenal` : 'Memuat…');
+    remembered.current.get(item) ??
+    (resolved.isError ? 'Gagal memuat nama' : settled ? `${field.label} tidak dikenal` : 'Memuat…');
   return (
     <FilterChip
       label={field.label}

@@ -7,6 +7,7 @@ import {
   widgetMeta,
 } from '@shared/dashboard';
 import { wibDateIso } from '@shared/postel';
+import { QueryClient } from '@tanstack/react-query';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
@@ -97,17 +98,21 @@ const CUSTOMERS = [
 let optionsNext = false;
 /** Bila terisi, permintaan `ids` menunggu promise ini (meniru resolusi nama yang belum tiba). */
 let idsGate: Promise<void> | null = null;
+/** Bila true, permintaan `ids` gagal (jaringan). */
+let idsError = false;
 let overrides: Partial<Record<WidgetResult['id'], WidgetResult>> = {};
 
 beforeEach(() => {
   overrides = {};
   optionsNext = false;
   idsGate = null;
+  idsError = false;
   apiMock.mockReset();
   apiMock.mockImplementation(async (id: string, input: DashboardQueryInput | null) => {
     if (id === 'dashboard.options') {
       const request = (input ?? {}) as DashboardOptionsInput;
       if (request.ids && idsGate) await idsGate;
+      if (request.ids && idsError) throw new Error('jaringan putus');
       const all = CUSTOMERS.filter((option) =>
         request.ids
           ? request.ids.includes(option.value)
@@ -327,6 +332,10 @@ test('ada halaman berikutnya: petunjuk persempit pencarian', async () => {
   expect(await screen.findByText('Ada hasil lain, persempit pencarian')).toBeTruthy();
 });
 
+/** Chip nilai terpilih di dalam input (bukan baris opsi di daftar yang kebetulan bernama sama). */
+const chipsNamed = (name: string) =>
+  screen.getAllByText(name).filter((element) => !element.closest('[role="option"]'));
+
 /** Gerbang yang dibuka tes (meniru jawaban `ids` yang terlambat). */
 function makeGate() {
   let open: () => void = () => {};
@@ -345,7 +354,7 @@ test('memilih nilai baru (belum ada nilai terkomit): label di input dan di tombo
   // Chip di dalam input memakai nama dari hasil pencarian yang baru diterima.
   expect(screen.queryByText('Memuat…')).toBeNull();
   expect(screen.queryByText('Customer tidak dikenal')).toBeNull();
-  expect(screen.getAllByText('PT Dua').length).toBeGreaterThan(0);
+  expect(chipsNamed('PT Dua').length).toBeGreaterThan(0);
   // Jawaban `ids` untuk nilai baru tertahan: tombol chip setelah ditutup tetap menulis nama, bukan kilatan teks lain.
   const gate = makeGate();
   idsGate = gate.promise;
@@ -368,8 +377,8 @@ test('memilih nilai baru di atas nilai terkomit: kedua nama tampil di input dan 
   await pickSelect(screen, 'Filter Customer', 'PT Dua');
   expect(screen.queryByText('Customer tidak dikenal')).toBeNull();
   expect(screen.queryByText('Memuat…')).toBeNull();
-  expect(screen.getAllByText('PT Satu').length).toBeGreaterThan(0);
-  expect(screen.getAllByText('PT Dua').length).toBeGreaterThan(0);
+  expect(chipsNamed('PT Satu').length).toBeGreaterThan(0);
+  expect(chipsNamed('PT Dua').length).toBeGreaterThan(0);
   const gate = makeGate();
   idsGate = gate.promise;
   await closeFilterChip();
@@ -408,4 +417,31 @@ test('grup di luar layar tidak dimuat ulang oleh selang 60 dtk; kembali ke layar
     fake.restore();
     vi.useRealTimers();
   }
+});
+
+test('resolusi `ids` galat: chip menulis pesan gagal memuat, bukan "Memuat..." selamanya atau "tidak dikenal"', async () => {
+  idsError = true;
+  me = makeUser({ handover: true });
+  await renderInRouter(<Harness initial={{ handover_customer: ['c2'] }} />);
+  expect(await screen.findByRole('button', { name: /^Customer: Gagal memuat nama/ })).toBeTruthy();
+  expect(screen.queryByText(/tidak dikenal/)).toBeNull();
+  expect(screen.queryByText('Memuat…')).toBeNull();
+});
+
+test('id yang memang tak dikenal: "tidak dikenal" stabil, tidak berkedip "Memuat..." saat muat ulang latar', async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  me = makeUser({ handover: true });
+  await renderInRouter(<Harness initial={{ handover_customer: ['hilang'] }} />, { client });
+  expect(await screen.findByRole('button', { name: /Customer tidak dikenal/ })).toBeTruthy();
+  const gate = makeGate();
+  idsGate = gate.promise;
+  const before = optionCalls().length;
+  void client.refetchQueries({ queryKey: ['dashboard', 'options'] });
+  await waitFor(() => expect(optionCalls().length).toBeGreaterThan(before));
+  // Muat ulang latar sedang berjalan (jawaban tertahan): label tetap "tidak dikenal".
+  expect(screen.getByRole('button', { name: /Customer tidak dikenal/ })).toBeTruthy();
+  expect(screen.queryByText('Memuat…')).toBeNull();
+  gate.open();
+  await waitFor(() => expect(client.isFetching({ queryKey: ['dashboard', 'options'] })).toBe(0));
+  expect(screen.getByRole('button', { name: /Customer tidak dikenal/ })).toBeTruthy();
 });
