@@ -105,7 +105,7 @@ const problemShape = async (response: Response) => {
   };
 };
 
-const valueOf = (dto: PublicDashboardDto, id: string): number => {
+const numberOf = (dto: PublicDashboardDto, id: string): number => {
   const widget = dto.widgets.find((entry) => entry.id === id);
   if (widget?.result.status !== 'ok' || widget.result.data.kind !== 'number') throw new Error('x');
   return widget.result.data.value;
@@ -129,7 +129,7 @@ describe('respons sah', () => {
     const dto = (await response.json()) as PublicDashboardDto;
     expect(dto.sharedBy).toBe('sharer');
     expect(dto.widgets.map((widget) => widget.id)).toEqual(['sn.recorded']);
-    expect(valueOf(dto, 'sn.recorded')).toBe(2);
+    expect(numberOf(dto, 'sn.recorded')).toBe(2);
   });
 
   test('parameter query yang tak dikenal pada GET tidak mengubah hasil', async () => {
@@ -172,9 +172,9 @@ describe('respons sah', () => {
     expectHardened(own);
     const ownDto = (await own.json()) as PublicDashboardDto;
     expect(ownDto.widgets.map((widget) => widget.id)).toEqual(['sn.recorded']);
-    expect(valueOf(ownDto, 'sn.recorded')).toBe(1);
+    expect(numberOf(ownDto, 'sn.recorded')).toBe(1);
     const other = (await (await post(token, { buIds: ['bu-y'] })).json()) as PublicDashboardDto;
-    expect(valueOf(other, 'sn.recorded')).toBe(0);
+    expect(numberOf(other, 'sn.recorded')).toBe(0);
     expect(Object.keys(other).sort()).toEqual(Object.keys(ownDto).sort());
     expect(other.widgets.map((widget) => widget.id)).toEqual(['sn.recorded']);
   });

@@ -171,7 +171,7 @@ Tabel baru `dashboard_shares` (migrasi `0032_dashboard.sql`, expand-only, idempo
 `scope` berisi **cakupan beku**:
 - `buIds` dan `locationIds`: **himpunan eksplisit hasil resolusi saat membagikan**. Filter kosong di dashboard TIDAK disimpan sebagai "semua": ia diubah menjadi daftar id yang boleh dibaca pembagi saat itu. (Jika "semua" disimpan, pembagi yang kemudian mendapat BU baru ikut membocorkan BU baru ke tautan lama.)
 - `locationIds` berlaku sebagai **batas hak** hanya untuk modul berlokasi (Serah Terima, Stok Stiker): himpunan eksplisit = lokasi yang dipilih pembagi, atau bila kosong gabungan lokasi yang boleh dibaca pembagi di modul-modul widget terpilih, lalu **diiris per modul** saat dibuka. Serial dan Laporan hanya dibatasi BU (tak ada izin per lokasi), jadi bagi mereka Lokasi hanyalah **filter**: dipakai hanya bila pembagi memilihnya secara aktif (`locationFiltered: true`), selain itu tidak ada penyaring lokasi (lokasi yang dibuat kemudian ikut, karena lokasi bukan batas isolasi di modul itu; BU tetap beku eksplisit). Pilihan filter Lokasi global di aplikasi = gabungan lokasi yang boleh dibaca pengguna di modul-modul sumber widget (keputusan saya).
-- `range`: `{ from, to }` tetap, atau (pilihan saya) `{ rollingDays }`.
+- `range`: `{ mode: 'fixed', from, to }` (tetap) atau `{ mode: 'rolling', days }` (bergulir: N hari terakhir yang berakhir pada hari buka, WIB; 1 sampai 366). Bentuk ini menggantikan rancangan awal `{ rollingDays }` (disamakan dengan kode, `shared/dashboard-share.ts` `ShareRange`, 2026-11-24).
 - `widgets`: daftar `{ id, filters }` (filter grup yang berlaku, ikut beku).
 
 ### 7.2 Token
