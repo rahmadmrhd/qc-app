@@ -43,6 +43,7 @@ export const API_GROUP_VERSIONS: Record<string, GroupVersions> = {
   brands: { latest: 1, deprecated: [] },
   businessUnits: { latest: 1, deprecated: [] },
   customers: { latest: 1, deprecated: [] },
+  dashboard: { latest: 1, deprecated: [] },
   desktop: { latest: 1, deprecated: [] },
   exports: { latest: 1, deprecated: [] },
   files: { latest: 1, deprecated: [] },

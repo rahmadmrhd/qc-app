@@ -10,6 +10,7 @@ import type {
   StatusBatchInput,
 } from './batch';
 import type { BuAssignment, BuPermissionMap } from './business-units';
+import type { DashboardOptionsDto, DashboardQueryInput, DashboardQueryOutput } from './dashboard';
 import type { GuideProgressDto } from './guides';
 import type { HandoverStatus } from './handover';
 import type { NotificationDto } from './notifications';
@@ -1624,6 +1625,8 @@ export interface ApiContract {
   'guides.reset': { input: ResetGuideInput; output: GuideProgressDto[] };
   'jobs.get': { input: GetJobInput; output: JobDto };
   'exports.sheets': { input: ExportSheetsInput; output: ExportSheetsJobDto };
+  'dashboard.query': { input: DashboardQueryInput; output: DashboardQueryOutput };
+  'dashboard.options': { input: null; output: DashboardOptionsDto };
 }
 
 export type ApiId = keyof ApiContract;

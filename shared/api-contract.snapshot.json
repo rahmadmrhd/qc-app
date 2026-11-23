@@ -331,6 +331,16 @@
     "path": "/customers/batch/status"
   },
   {
+    "id": "dashboard.options",
+    "verb": "GET",
+    "path": "/dashboard/options"
+  },
+  {
+    "id": "dashboard.query",
+    "verb": "POST",
+    "path": "/dashboard/query"
+  },
+  {
     "id": "desktop.handoff",
     "verb": "POST",
     "path": "/desktop/handoff"

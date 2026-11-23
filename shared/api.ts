@@ -676,6 +676,9 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     status: 202,
     location: '/jobs/{jobId}',
   },
+  // Dashboard: `query` memakai POST karena badannya memuat daftar widget beserta filternya (tak mengubah data).
+  'dashboard.query': { verb: 'POST', path: '/dashboard/query', status: 200 },
+  'dashboard.options': { verb: 'GET', path: '/dashboard/options' },
 };
 
 export interface RequestParts {

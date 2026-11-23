@@ -401,6 +401,22 @@ const WORST: Inputs = {
   'guides.mark': { id: text(100), version: 1 },
   'guides.reset': { id: text(100) },
   'exports.sheets': { tables: longList(50, () => text(100)) },
+  // Dashboard: 30 widget (maks.) masing-masing dengan dua filter grup berisi 20 nilai terpanjang, plus filter global penuh.
+  'dashboard.query': {
+    filter: {
+      buIds: longList(20, (index) => `${UUID}-${index}`),
+      locationIds: longList(20, (index) => `${UUID}-${index}`),
+      from: '2026-01-01',
+      to: '2026-12-31',
+    },
+    widgets: longList(30, () => ({
+      id: 'hs.created' as const,
+      filters: {
+        customer: longList(20, () => text(100)),
+        status: longList(20, () => text(100)),
+      },
+    })),
+  },
   'access.users.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
   'access.users.removeBatch': { ids: BATCH_IDS },
   'access.users.restoreBatch': { ids: BATCH_IDS },

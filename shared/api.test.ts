@@ -476,6 +476,11 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'guides.reset': { id: 'dasar-layout' },
   'jobs.get': { id: 'j1' },
   'exports.sheets': { tables: ['items'] },
+  'dashboard.query': {
+    filter: { buIds: ['bu1'], from: '2026-11-01', to: '2026-11-23' },
+    widgets: [{ id: 'hs.created', filters: { status: ['done'] } }],
+  },
+  'dashboard.options': null,
 };
 
 const ROUNDTRIP_IDS = IDS;
