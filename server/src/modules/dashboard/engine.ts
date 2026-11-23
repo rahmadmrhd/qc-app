@@ -4,6 +4,7 @@ import { createTtlCache, type TtlCache } from './cache';
 import { createLimiter, type Limiter } from './limiter';
 import { WIDGET_IMPLS, type WidgetImpl } from './registry';
 import type { ResolvedScope } from './scope';
+import { WIDGET_STATEMENT_TIMEOUT_SECONDS, withStatementTimeout } from './statement-limit';
 
 /** Batas atas widget berjalan bersamaan per proses. */
 export const WIDGET_CONCURRENCY = 6;
@@ -99,11 +100,16 @@ export async function runWidgets(
   scope: ResolvedScope,
   requests: readonly DashboardWidgetRequest[],
   impls: ReadonlyMap<DashboardWidgetRequest['id'], WidgetImpl> = WIDGET_IMPLS,
-  options: { timeoutMs?: number; limiter?: Limiter } = {},
+  options: { timeoutMs?: number; limiter?: Limiter; statementTimeoutSeconds?: number } = {},
 ): Promise<WidgetResult[]> {
   const cache = cacheOf(env);
   const timeoutMs = options.timeoutMs ?? WIDGET_TIMEOUT_MS;
   const limiter = options.limiter ?? widgetLimiterOf(env);
+  // Semua kueri widget lewat satu pembungkus berbatas waktu di database (30 dtk), tanpa menyentuh sesi pool.
+  const db = withStatementTimeout(
+    env.DB,
+    options.statementTimeoutSeconds ?? WIDGET_STATEMENT_TIMEOUT_SECONDS,
+  );
 
   async function runOne(request: DashboardWidgetRequest): Promise<WidgetResult> {
     const key = cacheKey(request, scope);
@@ -115,7 +121,7 @@ export async function runWidgets(
       // Antre dalam urutan pemanggilan (tanpa await sebelum `run`), lalu hitung batas waktu setelah slot didapat.
       const data = await runBounded(
         limiter,
-        () => impl.run({ env, db: env.DB, scope, filters: request.filters ?? {} }),
+        () => impl.run({ env, db, scope, filters: request.filters ?? {} }),
         timeoutMs,
       );
       cache.set(key, data);
