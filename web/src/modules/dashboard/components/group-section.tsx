@@ -1,86 +1,23 @@
 import {
   type DashboardGroupId,
-  type DashboardOptionKind,
   GROUP_FILTERS,
   GROUP_LABELS,
   type GroupFilterField,
   type WidgetMeta,
   type WidgetResult,
 } from '@shared/dashboard';
-import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { useRef, useState } from 'react';
-import { LinkMultiField, type LinkOption } from '@/components/link-field';
+import { useQuery } from '@tanstack/react-query';
 import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { MultiSelect } from '@/components/select';
 import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 import { useTrackNearViewport } from '@/lib/near-viewport';
 import { type DashboardSearch, groupFilterParam, toQueryInput } from '../lib/search';
-import { dashboardOptionsQueryOptions, dashboardQueryOptions } from '../queries';
+import { dashboardQueryOptions } from '../queries';
+import { RelationPicker, useRelationLabels } from './relation-field';
 import { WidgetCard, type WidgetFilterState } from './widgets/widget-card';
 
-const RELATION_KEY: Record<NonNullable<GroupFilterField['relation']>, DashboardOptionKind> = {
-  customer: 'customers',
-  item: 'items',
-  stickerType: 'stickerTypes',
-  sticker: 'stickers',
-};
-
-/**
- * Pilihan relasi dengan pencarian di server (keputusan pemilik 2026-11-23): kata ketik dikirim ke `dashboard.options`
- * lewat `onSearchChange`, yang di-debounce `ComboboxBase` (`useSearchTerm`, bawaan 200 ms; tak dipanggil saat mount),
- * halaman pertama saja; `next` menyalakan petunjuk "persempit pencarian". Dipasang di dalam isi chip, jadi hanya
- * meminta saat chip terbuka. Setiap halaman hasil dicatat ke `remember` agar nama opsi yang baru dipilih langsung
- * dikenal (chip draf di input dan tombol chip), tanpa menunggu resolusi `ids`.
- */
-function RelationPicker({
-  kind,
-  field,
-  value,
-  labelOf,
-  onChange,
-  remember,
-  id,
-}: {
-  kind: DashboardOptionKind;
-  field: GroupFilterField;
-  value: string[];
-  labelOf: (item: string) => string;
-  onChange: (next: string[]) => void;
-  remember: Map<string, string>;
-  id: string;
-}) {
-  const [term, setTerm] = useState('');
-  const page = useQuery({
-    ...dashboardOptionsQueryOptions({ kind, ...(term === '' ? {} : { query: term }) }),
-    placeholderData: keepPreviousData,
-  });
-  const source: LinkOption[] = (page.data?.[kind] ?? []).map((option) => ({
-    id: option.value,
-    label: option.label,
-  }));
-  // Ditulis saat render (monoton dan idempoten) agar chip draf di input yang dirender setelah ini sudah mengenalnya.
-  for (const option of source) remember.set(option.id, option.label);
-  return (
-    <LinkMultiField
-      maxSelected={FILTER_LIST_MAX}
-      id={id}
-      label={`Filter ${field.label}`}
-      hideLabel
-      placeholder={`Semua ${field.label.toLowerCase()}`}
-      highlight
-      value={value}
-      labelOf={labelOf}
-      options={source}
-      loading={page.isFetching}
-      hasMore={page.data?.next?.[kind] !== undefined}
-      onSearchChange={setTerm}
-      onChange={onChange}
-    />
-  );
-}
-
 /** Lebar kartu di kisi 12 kolom (>= 768 px): angka kecil berderet, grafik 6 kolom, tren dan daftar 12 kolom; ponsel kisi 2 kolom (angka 1 kolom, lainnya selebar 2). */
-function spanClass(meta: WidgetMeta): string {
+export function spanClass(meta: WidgetMeta): string {
   switch (meta.visual) {
     case 'number':
       return 'md:col-span-4 xl:col-span-3';
@@ -148,23 +85,7 @@ function RelationChip({
   id: string;
   set: (next: string[]) => void;
 }) {
-  const kind = RELATION_KEY[field.relation ?? 'customer'];
-  const resolved = useQuery({
-    ...dashboardOptionsQueryOptions({ kind, ids: value }),
-    enabled: value.length > 0,
-    placeholderData: keepPreviousData,
-  });
-  // Peta id -> nama yang diingat selama chip hidup: dari halaman hasil pencarian dan dari resolusi `ids`.
-  const remembered = useRef(new Map<string, string>());
-  for (const option of resolved.data?.[kind] ?? [])
-    remembered.current.set(option.value, option.label);
-  // Urutan label: nama yang diingat; galat resolusi = pesan gagal (bukan "Memuat..." selamanya dan bukan "tidak dikenal"
-  // untuk record yang mungkin sah); "tidak dikenal" hanya bila respons `ids` yang final (bukan placeholder dari nilai
-  // sebelumnya) tak memuat id itu, dan tetap stabil saat muat ulang latar; selain itu "Memuat...".
-  const settled = resolved.isSuccess && !resolved.isPlaceholderData;
-  const labelOf = (item: string) =>
-    remembered.current.get(item) ??
-    (resolved.isError ? 'Gagal memuat nama' : settled ? `${field.label} tidak dikenal` : 'Memuat…');
+  const { kind, labelOf, remember } = useRelationLabels(field, value);
   return (
     <FilterChip
       label={field.label}
@@ -177,7 +98,7 @@ function RelationChip({
         value={value}
         labelOf={labelOf}
         onChange={set}
-        remember={remembered.current}
+        remember={remember}
         id={id}
       />
     </FilterChip>
