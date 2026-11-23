@@ -34,10 +34,11 @@ function configVariables(): string[] {
 }
 
 /**
- * Tidak dipasang di compose: login dev ditolak `loadConfig` di produksi; STATIC_DIR dan DB_POOL_SIZE memakai bawaan
- * image/kode; GIT_SHA diisi image sendiri lewat build-arg Dockerfile (bukan pilihan operator).
+ * Tidak dipasang di compose: login dev ditolak `loadConfig` di produksi; STATIC_DIR memakai bawaan image;
+ * GIT_SHA diisi image sendiri lewat build-arg Dockerfile (bukan pilihan operator). DB_POOL_SIZE kini dipasang
+ * (2026-11-23, keputusan pemilik: ukuran pool dapat diatur lewat .env).
  */
-const NOT_IN_COMPOSE = new Set(['DEV_LOGIN_EMAIL', 'STATIC_DIR', 'DB_POOL_SIZE', 'GIT_SHA']);
+const NOT_IN_COMPOSE = new Set(['DEV_LOGIN_EMAIL', 'STATIC_DIR', 'GIT_SHA']);
 /** Tetap di compose/image (bukan pilihan operator di .env); DATABASE_URL disusun compose dari QC_DB_USER/QC_DB_PASSWORD/QC_DB_NAME. */
 const NOT_IN_ENV_EXAMPLE = new Set([
   ...NOT_IN_COMPOSE,

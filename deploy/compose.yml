@@ -70,6 +70,8 @@ services:
       HOST: 0.0.0.0
       PORT: "8788"
       DATABASE_URL: mysql://${QC_DB_USER:-qc_${QC_ENV}}:${QC_DB_PASSWORD:?QC_DB_PASSWORD wajib diisi}@qc-db:3306/${QC_DB_NAME:-qc_${QC_ENV}}
+      # Maks. koneksi pool MariaDB (1-30); kosong = bawaan kode (8). max_connections qc-db = 40 (deploy/mariadb/qc.cnf).
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-}
       APP_ORIGIN: ${APP_ORIGIN:?APP_ORIGIN wajib diisi (https://...)}
       TRUSTED_PROXY: ${TRUSTED_PROXY:?TRUSTED_PROXY wajib diisi (daftar CIDR, termasuk QC_SUBNET)}
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET wajib diisi}
