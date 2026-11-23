@@ -10,6 +10,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import { installIntersectionObserver } from '@/test/intersection-observer';
 import { closeFilterChip, pickSelect } from '@/test/link-field';
 import { renderInRouter } from '@/test/render-in-router';
 import { type DashboardSearch, parseDashboardSearch } from '../lib/search';
@@ -233,4 +234,30 @@ test('ponsel: kisi dua kolom, kartu angka satu kolom dan kartu lain selebar dua 
   expect(number.className).not.toMatch(/(^|\s)col-span-2(\s|$)/);
   expect(donut.className).toMatch(/(^|\s)col-span-2(\s|$)/);
   expect(trend.className).toMatch(/(^|\s)col-span-2(\s|$)/);
+});
+
+test('grup di luar layar tidak diminta; diminta begitu mendekat; berhenti saat menjauh', async () => {
+  const fake = installIntersectionObserver();
+  try {
+    me = makeUser({ handover: true, serial: true });
+    await renderInRouter(<Harness />);
+    const handover = (await screen.findByRole('heading', { name: 'Serah Terima' })).closest(
+      'section',
+    ) as HTMLElement;
+    const serial = screen
+      .getByRole('heading', { name: 'Serial Number' })
+      .closest('section') as HTMLElement;
+    expect(queryCalls()).toHaveLength(0);
+    fake.setIntersecting(handover, true);
+    await waitFor(() => expect(callsOf('hs.').length).toBe(1));
+    expect(callsOf('sn.')).toHaveLength(0);
+    fake.setIntersecting(serial, true);
+    await waitFor(() => expect(callsOf('sn.').length).toBe(1));
+    // Menjauh lalu mendekat lagi dengan data masih segar: tanpa permintaan baru.
+    fake.setIntersecting(serial, false);
+    fake.setIntersecting(serial, true);
+    expect(callsOf('sn.')).toHaveLength(1);
+  } finally {
+    fake.restore();
+  }
 });

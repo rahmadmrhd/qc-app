@@ -11,7 +11,14 @@ export const dashboardKeys = {
 
 const MINUTE_MS = 60_000;
 
-/** Hasil widget untuk satu permintaan; dimuat ulang tiap menit selagi tab terlihat. */
+/**
+ * Hasil widget untuk satu permintaan (satu grup). Sengaja menimpa selang bawaan 30 dtk (`query-client.ts`) menjadi 60
+ * dtk: kueri widget berat (rentang sampai 366 hari) dan cache server berumur 30 dtk, jadi selang 30 dtk hanya
+ * menambah beban tanpa data baru (keputusan pemilik 2026-11-23). Selebihnya mengikuti bawaan halaman lain: berhenti
+ * saat tab tersembunyi, dimuat ulang saat jendela fokus bila sudah basi, dan dicoba lagi sekali untuk galat server.
+ * Widget yang gagal tidak di-cache server, jadi ikut dicoba lagi pada muat ulang berikutnya. Grup di luar layar
+ * dinonaktifkan oleh pemanggil (`enabled`, lihat `GroupSection`).
+ */
 export function dashboardQueryOptions(input: DashboardQueryInput) {
   return queryOptions({
     queryKey: dashboardKeys.query(input),

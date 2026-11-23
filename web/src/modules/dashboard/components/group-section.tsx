@@ -12,6 +12,7 @@ import { LinkMultiField, type LinkOption } from '@/components/link-field';
 import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { MultiSelect } from '@/components/select';
 import { FILTER_LIST_MAX } from '@/lib/filter-limits';
+import { useTrackNearViewport } from '@/lib/near-viewport';
 import { type DashboardSearch, groupFilterParam, toQueryInput } from '../lib/search';
 import { dashboardOptionsQueryOptions, dashboardQueryOptions } from '../queries';
 import { WidgetCard, type WidgetFilterState } from './widgets/widget-card';
@@ -136,7 +137,9 @@ export function GroupSection({
     today,
     widgets.map((meta) => meta.id),
   );
-  const query = useQuery(dashboardQueryOptions(input));
+  // Hanya grup yang berada di dekat viewport yang diminta dan disegarkan; yang di luar layar menunggu (data lama tetap).
+  const [sectionRef, near] = useTrackNearViewport();
+  const query = useQuery({ ...dashboardQueryOptions(input), enabled: near });
   const fields = GROUP_FILTERS[group];
   const needsOptions = fields.some((field) => field.kind === 'relation');
   const optionsQuery = useQuery({ ...dashboardOptionsQueryOptions(), enabled: needsOptions });
@@ -151,7 +154,7 @@ export function GroupSection({
     );
   };
   return (
-    <section aria-labelledby={`dashboard-group-${group}`} className="space-y-3">
+    <section ref={sectionRef} aria-labelledby={`dashboard-group-${group}`} className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 id={`dashboard-group-${group}`} className="text-lg font-semibold">
           {GROUP_LABELS[group]}
