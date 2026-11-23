@@ -138,8 +138,8 @@ describe('deploy: compose.yml qc-db membuat skema dan pengguna aplikasi', () => 
   test('cache Aria dibatasi 32M agar kueri tabel sementara besar tak memenuhi kontainer qc-db 512M (read-only: butuh restart DB)', () => {
     const cnf = read('deploy/mariadb/qc.cnf');
     expect(cnf).toMatch(/^aria_pagecache_buffer_size=32M$/m);
-    expect(cnf).toMatch(/^innodb_buffer_pool_size=128M$/m);
-    // Anggaran memori: buffer pool + cache Aria harus tetap jauh di bawah batas kontainer (sisanya untuk dasar proses dan koneksi).
+    expect(cnf).toMatch(/^innodb_buffer_pool_size=256M$/m);
+    // Anggaran memori: buffer pool 256M + cache Aria 32M harus tetap jauh di bawah batas kontainer (sisanya untuk dasar proses dan koneksi).
     expect(compose.services['qc-db']?.mem_limit).toBe('512m');
   });
 });

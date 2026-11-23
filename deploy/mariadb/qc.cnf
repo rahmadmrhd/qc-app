@@ -1,7 +1,8 @@
 [mysqld]
 character-set-server=utf8mb4
 collation-server=utf8mb4_nopad_bin
-innodb_buffer_pool_size=128M
+# Buffer pool 256M = setengah batas kontainer qc-db 512M (compose.yml); naik dari 128M pada 2026-11-24 (keputusan pemilik). Sisanya untuk cache Aria, koneksi, dan proses dasar.
+innodb_buffer_pool_size=256M
 # Cache Aria (hasil antara kueri GROUP BY/UNION besar yang melewati tmp_table_size dan ditulis ke disk) dibatasi 32M. Bawaan 128M:
 # satu kueri besar mengisi seluruh cache dan memorinya tak dilepas lagi; kontainer qc-db dibatasi 512M sejak 2026-11-24 (compose.yml; 384M saat pengukuran ini), jadi pada produksi
 # ~365M sudah berpindah ke swap dan swap host hampir penuh (diukur 2026-11-22; uji sintetis staging: +141 MB pada 128M vs +62 MB pada 32M).
