@@ -24,7 +24,7 @@ export function WidgetRenderer({ meta, data }: { meta: WidgetMeta; data: WidgetD
   switch (meta.visual) {
     case 'number':
       return data.kind === 'number' ? (
-        <NumberWidget data={data} delta={meta.delta} />
+        <NumberWidget data={data} delta={meta.delta} deltaGood={meta.deltaGood} />
       ) : (
         <Unsupported />
       );

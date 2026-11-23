@@ -1,3 +1,5 @@
+import type { DeltaGood } from '@shared/dashboard';
+
 const NUMBER_FORMAT = new Intl.NumberFormat('id-ID');
 
 /** Angka dengan pemisah ribuan Indonesia (`1.234.567`). */
@@ -7,20 +9,34 @@ export function formatNumber(n: number): string {
 
 export interface DeltaText {
   text: string;
+  /** Arah nyata perubahan (menentukan panah dan kata), terlepas dari baik atau buruk. */
+  direction: 'up' | 'down' | 'flat';
+  /** Warna menurut baik/buruk: searah `good` = success, berlawanan = danger, tetap = muted. */
   tone: 'success' | 'danger' | 'muted';
 }
 
 /**
  * Perbandingan dengan periode sebelumnya yang sama panjang. Tanpa pembanding atau pembanding 0 = `null` (persen dari
- * nol tak bermakna). Selalu berupa kata (naik/turun/tetap), bukan warna saja.
+ * nol tak bermakna). Selalu berupa kata (naik/turun/tetap), bukan warna saja. `good` = arah yang baik untuk widget itu
+ * (bawaan naik); mis. laporan rusak yang naik berwarna merah walau katanya "naik".
  */
-export function formatDelta(value: number, previous: number | undefined): DeltaText | null {
+export function formatDelta(
+  value: number,
+  previous: number | undefined,
+  good: DeltaGood = 'up',
+): DeltaText | null {
   if (previous === undefined || previous === 0) return null;
-  if (value === previous) return { text: 'tetap dari periode lalu', tone: 'muted' };
+  if (value === previous) {
+    return { text: 'tetap dari periode lalu', direction: 'flat', tone: 'muted' };
+  }
   const percent = Math.max(1, Math.round((Math.abs(value - previous) / Math.abs(previous)) * 100));
-  return value > previous
-    ? { text: `naik ${percent}% dari periode lalu`, tone: 'success' }
-    : { text: `turun ${percent}% dari periode lalu`, tone: 'danger' };
+  const direction = value > previous ? 'up' : 'down';
+  const tone = direction === good ? 'success' : 'danger';
+  return {
+    text: `${direction === 'up' ? 'naik' : 'turun'} ${percent}% dari periode lalu`,
+    direction,
+    tone,
+  };
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];

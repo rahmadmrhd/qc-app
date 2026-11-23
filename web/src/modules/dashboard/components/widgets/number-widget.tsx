@@ -1,4 +1,4 @@
-import type { NumberData } from '@shared/dashboard';
+import type { DeltaGood, NumberData } from '@shared/dashboard';
 import { ArrowDown, ArrowUp, Minus } from 'lucide-react';
 import { formatDelta, formatNumber } from '../../lib/format';
 
@@ -8,12 +8,20 @@ const TONE_CLASS = {
   muted: 'text-muted-foreground',
 } as const;
 
-const TONE_ICON = { success: ArrowUp, danger: ArrowDown, muted: Minus } as const;
+const DIRECTION_ICON = { up: ArrowUp, down: ArrowDown, flat: Minus } as const;
 
-/** Angka besar; `delta` menampilkan perbandingan dengan periode sebelumnya (kata + ikon, bukan warna saja). */
-export function NumberWidget({ data, delta }: { data: NumberData; delta: boolean }) {
-  const change = delta ? formatDelta(data.value, data.previous) : null;
-  const Icon = change ? TONE_ICON[change.tone] : null;
+/** Angka besar; `delta` menampilkan perbandingan dengan periode sebelumnya (kata + panah menurut arah nyata; warna menurut `deltaGood`). */
+export function NumberWidget({
+  data,
+  delta,
+  deltaGood,
+}: {
+  data: NumberData;
+  delta: boolean;
+  deltaGood?: DeltaGood;
+}) {
+  const change = delta ? formatDelta(data.value, data.previous, deltaGood) : null;
+  const Icon = change ? DIRECTION_ICON[change.direction] : null;
   return (
     <div className="flex flex-col gap-1">
       <p className="text-3xl font-semibold tabular-nums">{formatNumber(data.value)}</p>

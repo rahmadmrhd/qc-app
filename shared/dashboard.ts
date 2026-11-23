@@ -66,6 +66,9 @@ export type WidgetAccess = readonly {
   scope: 'location' | 'bu' | 'global';
 }[];
 
+/** Arah perubahan yang dianggap baik untuk widget ber-delta. */
+export type DeltaGood = 'up' | 'down';
+
 export interface WidgetMeta {
   id: WidgetId;
   group: DashboardGroupId;
@@ -80,6 +83,11 @@ export interface WidgetMeta {
   date: { kind: 'none' } | { kind: 'column'; label: string };
   /** Number card dengan perbandingan periode sebelumnya yang sama panjang. */
   delta: boolean;
+  /**
+   * Arah perubahan yang BAIK, wajib bila `delta` (keputusan pemilik 2026-11-23): warna perbandingan mengikutinya
+   * (searah = hijau, berlawanan = merah), sedangkan panah dan teks selalu menurut naik/turun yang nyata.
+   */
+  deltaGood?: DeltaGood;
   listColumns?: readonly { key: string; label: string }[];
 }
 
@@ -115,16 +123,17 @@ function widget(
   visual: WidgetVisual,
   title: string,
   date: WidgetMeta['date'],
-  extra: { delta?: boolean; listColumns?: WidgetMeta['listColumns'] } = {},
+  extra: { delta?: DeltaGood; listColumns?: WidgetMeta['listColumns'] } = {},
 ): WidgetMeta {
-  const meta: WidgetMeta = { ...base, id, visual, title, date, delta: extra.delta ?? false };
+  const meta: WidgetMeta = { ...base, id, visual, title, date, delta: extra.delta !== undefined };
+  if (extra.delta) meta.deltaGood = extra.delta;
   if (extra.listColumns) meta.listColumns = extra.listColumns;
   return meta;
 }
 
 export const WIDGETS: readonly WidgetMeta[] = [
   widget(HANDOVER, 'hs.created', 'number', 'Task dibuat', dateColumn('Tanggal dibuat'), {
-    delta: true,
+    delta: 'up',
   }),
   widget(HANDOVER, 'hs.active', 'number', 'Task aktif', NO_DATE),
   widget(HANDOVER, 'hs.status', 'donut', 'Komposisi status', dateColumn('Tanggal dibuat')),
@@ -155,7 +164,7 @@ export const WIDGETS: readonly WidgetMeta[] = [
   }),
 
   widget(SERIAL, 'sn.recorded', 'number', 'Serial dicatat', dateColumn('Tanggal dicatat'), {
-    delta: true,
+    delta: 'up',
   }),
   widget(SERIAL, 'sn.status', 'donut', 'Komposisi status', dateColumn('Tanggal dicatat')),
   widget(SERIAL, 'sn.trend', 'line', 'Dicatat per periode', dateColumn('Tanggal dicatat')),
@@ -173,7 +182,7 @@ export const WIDGETS: readonly WidgetMeta[] = [
 
   widget(REPORT, 'rp.open', 'number', 'Laporan terbuka', NO_DATE),
   widget(REPORT, 'rp.opened', 'number', 'Laporan dibuka', dateColumn('Tanggal dibuka'), {
-    delta: true,
+    delta: 'down',
   }),
   widget(
     REPORT,

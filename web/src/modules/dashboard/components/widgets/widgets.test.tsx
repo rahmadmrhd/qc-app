@@ -22,12 +22,38 @@ describe('format', () => {
     expect(formatNumber(0)).toBe('0');
   });
 
-  test('formatDelta: naik, turun, tetap, dan tanpa pembanding', () => {
-    expect(formatDelta(128, 114)).toEqual({ text: 'naik 12% dari periode lalu', tone: 'success' });
-    expect(formatDelta(90, 100)).toEqual({ text: 'turun 10% dari periode lalu', tone: 'danger' });
-    expect(formatDelta(7, 7)).toEqual({ text: 'tetap dari periode lalu', tone: 'muted' });
+  test('formatDelta: arah menurut angka, warna menurut baik/buruk (bawaan naik = baik)', () => {
+    expect(formatDelta(128, 114)).toEqual({
+      text: 'naik 12% dari periode lalu',
+      direction: 'up',
+      tone: 'success',
+    });
+    expect(formatDelta(90, 100)).toEqual({
+      text: 'turun 10% dari periode lalu',
+      direction: 'down',
+      tone: 'danger',
+    });
+    expect(formatDelta(7, 7)).toEqual({
+      text: 'tetap dari periode lalu',
+      direction: 'flat',
+      tone: 'muted',
+    });
     expect(formatDelta(5, 0)).toBeNull();
     expect(formatDelta(5, undefined)).toBeNull();
+  });
+
+  test('formatDelta dengan deltaGood "down": turun = hijau, naik = merah, teks tetap menyebut arah', () => {
+    expect(formatDelta(150, 100, 'down')).toEqual({
+      text: 'naik 50% dari periode lalu',
+      direction: 'up',
+      tone: 'danger',
+    });
+    expect(formatDelta(50, 100, 'down')).toEqual({
+      text: 'turun 50% dari periode lalu',
+      direction: 'down',
+      tone: 'success',
+    });
+    expect(formatDelta(7, 7, 'down')?.tone).toBe('muted');
   });
 });
 
@@ -50,6 +76,15 @@ describe('NumberWidget', () => {
     render(<NumberWidget data={NUMBER} delta />);
     expect(screen.getByText('128')).toBeTruthy();
     expect(screen.getByText('naik 12% dari periode lalu')).toBeTruthy();
+  });
+
+  test('deltaGood "down": naik 50% berwarna merah tetapi panahnya tetap naik', () => {
+    const { container } = render(
+      <NumberWidget data={{ kind: 'number', value: 150, previous: 100 }} delta deltaGood="down" />,
+    );
+    const line = screen.getByText('naik 50% dari periode lalu').closest('p');
+    expect(line?.className).toContain('text-destructive-text');
+    expect(container.querySelector('svg.lucide-arrow-up')).not.toBeNull();
   });
 
   test('tanpa delta atau previous 0: tanpa baris perbandingan', () => {

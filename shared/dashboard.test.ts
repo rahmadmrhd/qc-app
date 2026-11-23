@@ -26,6 +26,16 @@ describe('registry widget', () => {
     }
   });
 
+  test('widget ber-delta punya arah baik eksplisit; selain itu tanpa deltaGood', () => {
+    for (const meta of WIDGETS) {
+      if (meta.delta) expect(['up', 'down']).toContain(meta.deltaGood as string);
+      else expect(meta.deltaGood).toBeUndefined();
+    }
+    expect(widgetMeta('rp.opened').deltaGood).toBe('down');
+    expect(widgetMeta('hs.created').deltaGood).toBe('up');
+    expect(widgetMeta('sn.recorded').deltaGood).toBe('up');
+  });
+
   test('judul hs.avgDuration menyebut satuan jam', () => {
     expect(widgetMeta('hs.avgDuration').title).toContain('(jam)');
   });
