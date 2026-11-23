@@ -335,6 +335,7 @@ describe('skema baseline', () => {
       { name: '0029_klien_id_entri_stok.sql' },
       { name: '0030_soft_delete_contract.sql' },
       { name: '0031_audit_target_id_index.sql' },
+      { name: '0034_serial_daftar_indeks.sql' },
     ]);
   });
 
@@ -533,6 +534,7 @@ describe('skema baseline', () => {
         'serials.serials_client_id',
         'serials.serials_custody',
         'serials.serials_item',
+        'serials.serials_live_created',
         'serials.serials_location',
         'serials.serials_status',
         'sticker_business_units.sticker_business_units_bu',

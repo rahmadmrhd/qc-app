@@ -27,6 +27,12 @@ export interface UserContext {
    * id-nya hanya dipakai syarat tulis "level pada SEMUA BU" yang mengabaikannya (`canActOnAllBus`, keputusan pemilik 9).
    */
   deletedBuIds: readonly string[];
+  /**
+   * Id SELURUH baris `business_units` (hidup dan terhapus) pada saat konteks dimuat. Dipakai pembaca untuk mengenali
+   * pengguna yang dapat membaca SEMUA BU (mis. daftar Serial membuang predikat BU agar memakai indeks urutan). Opsional
+   * dan tak diketahui = anggap BUKAN semua BU (jalur biasa), jadi konteks buatan tangan tak pernah melonggarkan hak.
+   */
+  allBuIds?: readonly string[];
 }
 
 interface UserRow {
@@ -159,6 +165,7 @@ function buildUserContext(
       businessUnits: byBu,
       sharedAccount: record !== null && Number(record.shared_account) === 1,
       deletedBuIds,
+      allBuIds: buIds,
     };
   }
   if (record?.status.trim() !== 'active') return null;
@@ -179,6 +186,7 @@ function buildUserContext(
     businessUnits: access.byBu,
     sharedAccount: Number(record.shared_account) === 1,
     deletedBuIds,
+    allBuIds: buIds,
   };
 }
 

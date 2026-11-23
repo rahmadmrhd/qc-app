@@ -328,6 +328,12 @@ export async function loadSerialEvents(
 export interface SerialListFilter {
   /** BU yang boleh dibaca (tidak kosong). */
   buIds: readonly string[];
+  /**
+   * `true` = `buIds` mencakup SEMUA BU yang ada (pemanggil memastikannya, lihat `readsAllBus` di `service.ts`). Predikat
+   * BU terbaca dan cabang riwayat dibuang: seluruh baris serial terbaca, jadi kueri hanya urutan `created_at DESC` yang
+   * memakai indeks `serials_live_created`. Selain itu (bawaan) = jalur dengan predikat BU.
+   */
+  allBus?: boolean;
   /** Kandidat awalan serial ternormalisasi (atau). */
   prefixes?: readonly string[];
   /** Serial persis (ternormalisasi). */
@@ -413,13 +419,16 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
     binds: unknown[];
   }
   const readable = placeholders(filter.buIds.length);
-  const readableParts: Part[] = [
-    { sql: `s.bu_id IN (${readable})`, binds: [...filter.buIds] },
-    {
-      sql: `s.bu_id NOT IN (${readable}) AND s.id IN (SELECT serial_id FROM serial_business_units WHERE bu_id IN (${readable}) AND left_at > '')`,
-      binds: [...filter.buIds, ...filter.buIds],
-    },
-  ];
+  const readableParts: Part[] =
+    filter.allBus === true
+      ? [{ sql: '', binds: [] }]
+      : [
+          { sql: `s.bu_id IN (${readable})`, binds: [...filter.buIds] },
+          {
+            sql: `s.bu_id NOT IN (${readable}) AND s.id IN (SELECT serial_id FROM serial_business_units WHERE bu_id IN (${readable}) AND left_at > '')`,
+            binds: [...filter.buIds, ...filter.buIds],
+          },
+        ];
   const filterBus = filter.filterBuIds;
   const buParts: Part[] =
     filterBus === undefined
@@ -439,13 +448,19 @@ export async function listSerialRows(db: Preparer, filter: SerialListFilter): Pr
   const arms: { sql: string; binds: unknown[] }[] = [];
   for (const readablePart of readableParts) {
     for (const buPart of buParts) {
-      const where = [readablePart.sql, ...(buPart.sql === '' ? [] : [buPart.sql]), ...common];
+      const where = [
+        ...(readablePart.sql === '' ? [] : [readablePart.sql]),
+        ...(buPart.sql === '' ? [] : [buPart.sql]),
+        ...common,
+      ];
+      // Tanpa syarat lain (Semua BU, tanpa filter) kueri hanya penyaring keadaan + urutan.
+      const rest = where.length === 0 ? '' : ` AND ${where.join(' AND ')}`;
       arms.push({
         // Dua literal (bukan satu dengan penyaring dirakit) agar penyaring keadaan terlihat tes penjaga soft delete.
         sql:
           filter.deleted === undefined
-            ? `SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE ${liveWhere('s')} AND ${where.join(' AND ')} ORDER BY s.created_at DESC, s.id DESC LIMIT ?`
-            : `SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE ${deletedWhere('s')} AND ${where.join(' AND ')} ORDER BY s.created_at DESC, s.id DESC LIMIT ?`,
+            ? `SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE ${liveWhere('s')}${rest} ORDER BY s.created_at DESC, s.id DESC LIMIT ?`
+            : `SELECT ${SERIAL_COLUMNS} ${SERIAL_FROM} WHERE ${deletedWhere('s')}${rest} ORDER BY s.created_at DESC, s.id DESC LIMIT ?`,
         binds: [...readablePart.binds, ...buPart.binds, ...commonBinds, limit],
       });
     }
