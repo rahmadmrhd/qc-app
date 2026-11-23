@@ -1,10 +1,12 @@
 import { type Env, nowOf } from '@server/core/env';
 import type { DashboardWidgetRequest, WidgetData, WidgetResult } from '@shared/dashboard';
 import { createTtlCache, type TtlCache } from './cache';
+import { createLimiter, type Limiter } from './limiter';
 import { WIDGET_IMPLS, type WidgetImpl } from './registry';
 import type { ResolvedScope } from './scope';
 
-export const WIDGET_CONCURRENCY = 4;
+/** Widget berjalan bersamaan per proses (pool basis data bawaan 10 koneksi: 4 sisanya untuk rute lain). */
+export const WIDGET_CONCURRENCY = 6;
 export const WIDGET_TIMEOUT_MS = 15_000;
 export const WIDGET_CACHE_TTL_MS = 30_000;
 const GENERIC_ERROR = 'Widget tidak dapat dimuat';
@@ -29,6 +31,21 @@ function cacheKey(request: DashboardWidgetRequest, scope: ResolvedScope): string
   return JSON.stringify([request.id, scope, filters]);
 }
 
+/**
+ * Satu semafor per pool basis data (satu per proses di produksi), dibagi SEMUA permintaan dashboard (dan kelak laporan
+ * terjadwal): beban dibatasi per proses, bukan per permintaan. Kunci = `env.DB` karena kolam koneksilah yang langka.
+ */
+const limiters = new WeakMap<object, Limiter>();
+
+export function widgetLimiterOf(env: Env): Limiter {
+  let limiter = limiters.get(env.DB);
+  if (!limiter) {
+    limiter = createLimiter(WIDGET_CONCURRENCY);
+    limiters.set(env.DB, limiter);
+  }
+  return limiter;
+}
+
 function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -38,19 +55,23 @@ function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
 }
 
 /**
- * Menjalankan widget yang diminta: paling banyak `WIDGET_CONCURRENCY` bersamaan, batas waktu per widget, hasil `ok`
- * di-cache 30 detik. Satu widget yang gagal atau lambat menjadi `error` generik (galat asli hanya ke `console.error`)
- * tanpa menjatuhkan yang lain. TIDAK memeriksa izin: pemanggil menyaring permintaan dengan `allowedWidgetIds`.
+ * Menjalankan widget yang diminta: semuanya antre di semafor per proses (`WIDGET_CONCURRENCY` bersamaan, FIFO menurut
+ * urutan permintaan), batas waktu per widget dihitung SETELAH slot diperoleh (menunggu antrean bukan galat), hasil
+ * `ok` di-cache 30 detik (cache dicek sebelum antre, jadi tak memakai slot). Slot dilepas saat widget selesai, gagal,
+ * atau melewati batas waktu; kueri yang ditinggalkan karena batas waktu tak dapat dibatalkan dan masih menahan satu
+ * koneksi sampai selesai. Satu widget yang gagal atau lambat menjadi `error` generik (galat asli hanya ke
+ * `console.error`) tanpa menjatuhkan yang lain. TIDAK memeriksa izin: pemanggil menyaring dengan `allowedWidgetIds`.
  */
 export async function runWidgets(
   env: Env,
   scope: ResolvedScope,
   requests: readonly DashboardWidgetRequest[],
   impls: ReadonlyMap<DashboardWidgetRequest['id'], WidgetImpl> = WIDGET_IMPLS,
-  options: { timeoutMs?: number } = {},
+  options: { timeoutMs?: number; limiter?: Limiter } = {},
 ): Promise<WidgetResult[]> {
   const cache = cacheOf(env);
   const timeoutMs = options.timeoutMs ?? WIDGET_TIMEOUT_MS;
+  const limiter = options.limiter ?? widgetLimiterOf(env);
 
   async function runOne(request: DashboardWidgetRequest): Promise<WidgetResult> {
     const key = cacheKey(request, scope);
@@ -59,9 +80,12 @@ export async function runWidgets(
     try {
       const impl = impls.get(request.id);
       if (!impl) throw new Error(`Widget belum diimplementasikan: ${request.id}`);
-      const data = await withTimeout(
-        impl.run({ env, db: env.DB, scope, filters: request.filters ?? {} }),
-        timeoutMs,
+      // Antre dalam urutan pemanggilan (tanpa await sebelum `run`), lalu hitung batas waktu setelah slot didapat.
+      const data = await limiter.run(() =>
+        withTimeout(
+          impl.run({ env, db: env.DB, scope, filters: request.filters ?? {} }),
+          timeoutMs,
+        ),
       );
       cache.set(key, data);
       return { id: request.id, status: 'ok', data };
@@ -73,19 +97,5 @@ export async function runWidgets(
     }
   }
 
-  const results: WidgetResult[] = new Array(requests.length);
-  let next = 0;
-  async function worker(): Promise<void> {
-    for (;;) {
-      const index = next;
-      next += 1;
-      const request = requests[index];
-      if (request === undefined) return;
-      results[index] = await runOne(request);
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(WIDGET_CONCURRENCY, requests.length) }, () => worker()),
-  );
-  return results;
+  return Promise.all(requests.map(runOne));
 }
