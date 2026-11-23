@@ -135,12 +135,28 @@ describe('deploy: compose.yml qc-db membuat skema dan pengguna aplikasi', () => 
     );
   });
 
-  test('cache Aria dibatasi 32M agar kueri tabel sementara besar tak memenuhi kontainer qc-db 512M (read-only: butuh restart DB)', () => {
+  test('memori qc-db dapat diatur per lingkungan lewat .env, bawaan 512m/256M/32M (keputusan pemilik 2026-11-24)', () => {
+    // Batas kontainer, buffer pool, dan cache Aria berasal dari variabel .env dengan bawaan VPS bersama.
+    expect(compose.services['qc-db']?.mem_limit).toBe('${QC_DB_MEM_LIMIT:-512m}');
+    // Dua variabel mariadbd dipasang lewat flag `command` (menang atas qc.cnf, tak bergantung izin baca qc.cnf).
+    expect(compose.services['qc-db']?.command).toEqual([
+      '--innodb-buffer-pool-size=${QC_DB_BUFFER_POOL:-256M}',
+      '--aria-pagecache-buffer-size=${QC_DB_ARIA_CACHE:-32M}',
+    ]);
+    const lines = envExample.split('\n').map((line) => line.replace(/^#\s*/, ''));
+    for (const name of ['QC_DB_MEM_LIMIT', 'QC_DB_BUFFER_POOL', 'QC_DB_ARIA_CACHE']) {
+      expect(
+        lines.some((line) => line.startsWith(`${name}=`)),
+        name,
+      ).toBe(true);
+    }
+  });
+
+  test('qc.cnf tidak memuat ukuran cache memori (satu sumber: compose.yml), agar nilai .env tak dibayangi', () => {
     const cnf = read('deploy/mariadb/qc.cnf');
-    expect(cnf).toMatch(/^aria_pagecache_buffer_size=32M$/m);
-    expect(cnf).toMatch(/^innodb_buffer_pool_size=256M$/m);
-    // Anggaran memori: buffer pool 256M + cache Aria 32M harus tetap jauh di bawah batas kontainer (sisanya untuk dasar proses dan koneksi).
-    expect(compose.services['qc-db']?.mem_limit).toBe('512m');
+    expect(cnf).not.toMatch(/^innodb_buffer_pool_size=/m);
+    expect(cnf).not.toMatch(/^aria_pagecache_buffer_size=/m);
+    expect(cnf).toMatch(/^max_connections=40$/m);
   });
 });
 

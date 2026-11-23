@@ -72,6 +72,8 @@ ssh rhd_vps_ipv4 'chmod 700 /root/apps/qc-app/deploy.sh; chmod 600 /root/apps/qc
 
 **Catatan 2026-11-23 (dashboard, ukuran pool):** `compose.yml` yang disalin di atas kini memuat `DB_POOL_SIZE`. Di `/root/apps/qc-app/<env>/.env`, isi `DB_POOL_SIZE=10` hanya bila perlu (kosong = 8). Salin `compose.yml` baru SEBELUM mengisinya: tanpa itu nilai di `.env` diabaikan tanpa pesan galat.
 
+**Catatan 2026-11-24 (memori qc-db per lingkungan):** `compose.yml` yang disalin di atas kini membaca `QC_DB_MEM_LIMIT` (bawaan `512m`), `QC_DB_BUFFER_POOL` (bawaan `256M`), dan `QC_DB_ARIA_CACHE` (bawaan `32M`) dari `.env`; kosongkan untuk memakai bawaan VPS bersama, atau isi nilai sendiri di mesin yang RAM-nya lebih besar. Salin juga `mariadb/qc.cnf` baru (ukuran cache tak lagi di sana), lalu `docker compose up -d qc-db` membuat ulang kontainer database. Rinci dan aturan angka: `docs/ci-cd.md` ("Catatan 2026-11-24") dan komentar di `deploy/.env.example`.
+
 Ulangi untuk `production` bila perlu. Pembatalan: hapus berkas yang disalin.
 
 ## 5. .env per lingkungan (izin 600, rahasia dibangkitkan di VPS)
