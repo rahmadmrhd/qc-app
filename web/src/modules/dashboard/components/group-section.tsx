@@ -8,7 +8,7 @@ import {
   type WidgetResult,
 } from '@shared/dashboard';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { LinkMultiField, type LinkOption } from '@/components/link-field';
 import { FilterBar, FilterChip, multiFilterDisplay } from '@/components/page/filter-bar';
 import { MultiSelect } from '@/components/select';
@@ -27,8 +27,10 @@ const RELATION_KEY: Record<NonNullable<GroupFilterField['relation']>, DashboardO
 
 /**
  * Pilihan relasi dengan pencarian di server (keputusan pemilik 2026-11-23): kata ketik dikirim ke `dashboard.options`
- * (debounce di combobox), halaman pertama saja; `next` menyalakan petunjuk "persempit pencarian". Dipasang di dalam
- * isi chip, jadi hanya meminta saat chip terbuka.
+ * lewat `onSearchChange`, yang di-debounce `ComboboxBase` (`useSearchTerm`, bawaan 200 ms; tak dipanggil saat mount),
+ * halaman pertama saja; `next` menyalakan petunjuk "persempit pencarian". Dipasang di dalam isi chip, jadi hanya
+ * meminta saat chip terbuka. Setiap halaman hasil dicatat ke `remember` agar nama opsi yang baru dipilih langsung
+ * dikenal (chip draf di input dan tombol chip), tanpa menunggu resolusi `ids`.
  */
 function RelationPicker({
   kind,
@@ -36,6 +38,7 @@ function RelationPicker({
   value,
   labelOf,
   onChange,
+  remember,
   id,
 }: {
   kind: DashboardOptionKind;
@@ -43,6 +46,7 @@ function RelationPicker({
   value: string[];
   labelOf: (item: string) => string;
   onChange: (next: string[]) => void;
+  remember: Map<string, string>;
   id: string;
 }) {
   const [term, setTerm] = useState('');
@@ -54,6 +58,8 @@ function RelationPicker({
     id: option.value,
     label: option.label,
   }));
+  // Ditulis saat render (monoton dan idempoten) agar chip draf di input yang dirender setelah ini sudah mengenalnya.
+  for (const option of source) remember.set(option.id, option.label);
   return (
     <LinkMultiField
       maxSelected={FILTER_LIST_MAX}
@@ -148,11 +154,14 @@ function RelationChip({
     enabled: value.length > 0,
     placeholderData: keepPreviousData,
   });
-  const names = new Map(
-    (resolved.data?.[kind] ?? []).map((option) => [option.value, option.label]),
-  );
+  // Peta id -> nama yang diingat selama chip hidup: dari halaman hasil pencarian dan dari resolusi `ids`.
+  const remembered = useRef(new Map<string, string>());
+  for (const option of resolved.data?.[kind] ?? [])
+    remembered.current.set(option.value, option.label);
+  // "Tidak dikenal" hanya bila respons `ids` yang final (bukan placeholder, bukan sedang dimuat) tak memuat id itu.
+  const settled = resolved.isSuccess && !resolved.isPlaceholderData && !resolved.isFetching;
   const labelOf = (item: string) =>
-    names.get(item) ?? (resolved.isSuccess ? `${field.label} tidak dikenal` : 'Memuat…');
+    remembered.current.get(item) ?? (settled ? `${field.label} tidak dikenal` : 'Memuat…');
   return (
     <FilterChip
       label={field.label}
@@ -165,6 +174,7 @@ function RelationChip({
         value={value}
         labelOf={labelOf}
         onChange={set}
+        remember={remembered.current}
         id={id}
       />
     </FilterChip>

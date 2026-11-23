@@ -95,15 +95,19 @@ const CUSTOMERS = [
   { value: 'c2', label: 'PT Dua' },
 ];
 let optionsNext = false;
+/** Bila terisi, permintaan `ids` menunggu promise ini (meniru resolusi nama yang belum tiba). */
+let idsGate: Promise<void> | null = null;
 let overrides: Partial<Record<WidgetResult['id'], WidgetResult>> = {};
 
 beforeEach(() => {
   overrides = {};
   optionsNext = false;
+  idsGate = null;
   apiMock.mockReset();
   apiMock.mockImplementation(async (id: string, input: DashboardQueryInput | null) => {
     if (id === 'dashboard.options') {
       const request = (input ?? {}) as DashboardOptionsInput;
+      if (request.ids && idsGate) await idsGate;
       const all = CUSTOMERS.filter((option) =>
         request.ids
           ? request.ids.includes(option.value)
@@ -321,4 +325,87 @@ test('ada halaman berikutnya: petunjuk persempit pencarian', async () => {
   await openChip('Customer');
   await userEvent.click(await screen.findByRole('combobox', { name: 'Filter Customer' }));
   expect(await screen.findByText('Ada hasil lain, persempit pencarian')).toBeTruthy();
+});
+
+/** Gerbang yang dibuka tes (meniru jawaban `ids` yang terlambat). */
+function makeGate() {
+  let open: () => void = () => {};
+  const promise = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { promise, open };
+}
+
+test('memilih nilai baru (belum ada nilai terkomit): label di input dan di tombol chip tak pernah "Memuat..." atau "tidak dikenal"', async () => {
+  me = makeUser({ handover: true });
+  await renderInRouter(<Harness />);
+  await screen.findByRole('heading', { name: 'Serah Terima' });
+  await openChip('Customer');
+  await pickSelect(screen, 'Filter Customer', 'PT Dua');
+  // Chip di dalam input memakai nama dari hasil pencarian yang baru diterima.
+  expect(screen.queryByText('Memuat…')).toBeNull();
+  expect(screen.queryByText('Customer tidak dikenal')).toBeNull();
+  expect(screen.getAllByText('PT Dua').length).toBeGreaterThan(0);
+  // Jawaban `ids` untuk nilai baru tertahan: tombol chip setelah ditutup tetap menulis nama, bukan kilatan teks lain.
+  const gate = makeGate();
+  idsGate = gate.promise;
+  await closeFilterChip();
+  expect(await screen.findByRole('button', { name: /^Customer: PT Dua/ })).toBeTruthy();
+  expect(screen.queryByText(/tidak dikenal/)).toBeNull();
+  expect(screen.queryByText('Memuat…')).toBeNull();
+  gate.open();
+  await waitFor(() =>
+    expect(optionCalls().some((call) => call.ids?.length === 1 && call.ids[0] === 'c2')).toBe(true),
+  );
+  expect(screen.getByRole('button', { name: /^Customer: PT Dua/ })).toBeTruthy();
+});
+
+test('memilih nilai baru di atas nilai terkomit: kedua nama tampil di input dan tombol chip tanpa kilatan "tidak dikenal"', async () => {
+  me = makeUser({ handover: true });
+  await renderInRouter(<Harness initial={{ handover_customer: ['c1'] }} />);
+  await screen.findByRole('button', { name: /^Customer: PT Satu/ });
+  await openChip('Customer');
+  await pickSelect(screen, 'Filter Customer', 'PT Dua');
+  expect(screen.queryByText('Customer tidak dikenal')).toBeNull();
+  expect(screen.queryByText('Memuat…')).toBeNull();
+  expect(screen.getAllByText('PT Satu').length).toBeGreaterThan(0);
+  expect(screen.getAllByText('PT Dua').length).toBeGreaterThan(0);
+  const gate = makeGate();
+  idsGate = gate.promise;
+  await closeFilterChip();
+  expect(await screen.findByRole('button', { name: /^Customer: PT Satu, PT Dua/ })).toBeTruthy();
+  expect(screen.queryByText(/tidak dikenal/)).toBeNull();
+  gate.open();
+  await waitFor(() => expect(optionCalls().some((call) => call.ids?.length === 2)).toBe(true));
+  expect(screen.getByRole('button', { name: /^Customer: PT Satu, PT Dua/ })).toBeTruthy();
+});
+
+test('grup di luar layar tidak dimuat ulang oleh selang 60 dtk; kembali ke layar menyegarkan data basi', async () => {
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+    shouldAdvanceTime: true,
+  });
+  const fake = installIntersectionObserver();
+  try {
+    me = makeUser({ handover: true });
+    await renderInRouter(<Harness />);
+    const handover = (await screen.findByRole('heading', { name: 'Serah Terima' })).closest(
+      'section',
+    ) as HTMLElement;
+    fake.setIntersecting(handover, true);
+    await waitFor(() => expect(callsOf('hs.').length).toBe(1));
+    // Kontrol: selagi tampil, selang 60 dtk memuat ulang (tanpa ini asersi "tidak" di bawah tak bermakna).
+    await vi.advanceTimersByTimeAsync(61_000);
+    await waitFor(() => expect(callsOf('hs.').length).toBe(2));
+    fake.setIntersecting(handover, false);
+    const before = callsOf('hs.').length;
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(callsOf('hs.').length).toBe(before);
+    // Mendekat lagi dengan data yang sudah basi: dimuat ulang sekali.
+    fake.setIntersecting(handover, true);
+    await waitFor(() => expect(callsOf('hs.').length).toBe(before + 1));
+  } finally {
+    fake.restore();
+    vi.useRealTimers();
+  }
 });
