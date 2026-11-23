@@ -13,7 +13,7 @@ import { findNavTrail, NAV_GROUPS } from './navigation';
  * saat ini ber-`__TSR_index` > 0, jadi tidak disisipi lagi.
  */
 
-const SKIP_PREFIXES = ['/login', '/laporan', '/auth', '/api', '/country-lock'];
+const SKIP_PREFIXES = ['/login', '/laporan', '/dashboard-publik', '/auth', '/api', '/country-lock'];
 
 interface RouteNode {
   options: { id: string };

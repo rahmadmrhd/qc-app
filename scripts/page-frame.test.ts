@@ -31,6 +31,8 @@ const ROUTE_EXCEPTIONS: Record<string, string> = {
     'Hanya pengalihan ke /sticker (Stok Stiker digabung ke halaman Stiker); tidak merender halaman.',
   'country-lock.tsx':
     'Country Lock (aplikasi desktop): di dalam `AppShell` bila pengguna masuk (breadcrumb + `PageContent`); jalur belum masuk memakai pembungkus ringan sendiri. Isinya panel perangkat/inject (jembatan desktop), bukan CRUD.',
+  'dashboard-publik.$token.tsx':
+    'Halaman publik dashboard (tautan bertanda tangan): di luar layout `_app` dan cangkang, tanpa sesi dan tanpa navigasi; memakai `PublicDashboardPage` sendiri.',
   'laporan.$token.tsx':
     'Halaman publik laporan rusak Serial Number: di luar layout `_app` dan cangkang, tanpa sesi.',
   'login.tsx': 'Halaman masuk: di luar layout `_app` dan cangkang, tanpa sesi.',

@@ -51,7 +51,7 @@ test('desktop, Beranda, login, dan halaman publik tidak disisipi', () => {
   window.innerWidth = 1200;
   expect(insertParentChain(window, patterns)).toBe(false);
   window.innerWidth = 390;
-  for (const path of ['/', '/login', '/laporan/v1.1.2.sig']) {
+  for (const path of ['/', '/login', '/laporan/v1.1.2.sig', '/dashboard-publik/v1.ds1.2.sig']) {
     window.history.replaceState(null, '', path);
     const length = window.history.length;
     expect(insertParentChain(window, patterns)).toBe(false);

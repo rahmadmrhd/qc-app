@@ -15,6 +15,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppDesktopRouteImport } from './routes/_app/desktop'
 import { Route as AppForbiddenRouteImport } from './routes/_app/forbidden'
+import { Route as DashboardPublikTokenRouteImport } from './routes/dashboard-publik.$token'
 import { Route as LaporanTokenRouteImport } from './routes/laporan.$token'
 import { Route as AppAccessAuditRouteImport } from './routes/_app/access/audit'
 import { Route as AppAccessPushRouteImport } from './routes/_app/access/push'
@@ -96,6 +97,11 @@ const AppForbiddenRoute = AppForbiddenRouteImport.update({
   id: '/forbidden',
   path: '/forbidden',
   getParentRoute: () => AppRoute,
+} as any)
+const DashboardPublikTokenRoute = DashboardPublikTokenRouteImport.update({
+  id: '/dashboard-publik/$token',
+  path: '/dashboard-publik/$token',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const LaporanTokenRoute = LaporanTokenRouteImport.update({
   id: '/laporan/$token',
@@ -371,6 +377,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/desktop': typeof AppDesktopRoute
   '/forbidden': typeof AppForbiddenRoute
+  '/dashboard-publik/$token': typeof DashboardPublikTokenRoute
   '/laporan/$token': typeof LaporanTokenRoute
   '/access/audit': typeof AppAccessAuditRoute
   '/access/push': typeof AppAccessPushRoute
@@ -429,6 +436,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/desktop': typeof AppDesktopRoute
   '/forbidden': typeof AppForbiddenRoute
+  '/dashboard-publik/$token': typeof DashboardPublikTokenRoute
   '/laporan/$token': typeof LaporanTokenRoute
   '/': typeof AppIndexRoute
   '/access/audit': typeof AppAccessAuditRoute
@@ -490,6 +498,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_app/desktop': typeof AppDesktopRoute
   '/_app/forbidden': typeof AppForbiddenRoute
+  '/dashboard-publik/$token': typeof DashboardPublikTokenRoute
   '/laporan/$token': typeof LaporanTokenRoute
   '/_app/': typeof AppIndexRoute
   '/_app/access/audit': typeof AppAccessAuditRoute
@@ -552,6 +561,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/desktop'
     | '/forbidden'
+    | '/dashboard-publik/$token'
     | '/laporan/$token'
     | '/access/audit'
     | '/access/push'
@@ -610,6 +620,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/desktop'
     | '/forbidden'
+    | '/dashboard-publik/$token'
     | '/laporan/$token'
     | '/'
     | '/access/audit'
@@ -670,6 +681,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_app/desktop'
     | '/_app/forbidden'
+    | '/dashboard-publik/$token'
     | '/laporan/$token'
     | '/_app/'
     | '/_app/access/audit'
@@ -729,6 +741,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   CountryLockRoute: typeof CountryLockRoute
   LoginRoute: typeof LoginRoute
+  DashboardPublikTokenRoute: typeof DashboardPublikTokenRoute
   LaporanTokenRoute: typeof LaporanTokenRoute
 }
 
@@ -775,6 +788,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/forbidden'
       preLoaderRoute: typeof AppForbiddenRouteImport
       parentRoute: typeof AppRoute
+    }
+    '/dashboard-publik/$token': {
+      id: '/dashboard-publik/$token'
+      path: '/dashboard-publik/$token'
+      fullPath: '/dashboard-publik/$token'
+      preLoaderRoute: typeof DashboardPublikTokenRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/laporan/$token': {
       id: '/laporan/$token'
@@ -1264,6 +1284,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   CountryLockRoute: CountryLockRoute,
   LoginRoute: LoginRoute,
+  DashboardPublikTokenRoute: DashboardPublikTokenRoute,
   LaporanTokenRoute: LaporanTokenRoute,
 }
 export const routeTree = rootRouteImport
