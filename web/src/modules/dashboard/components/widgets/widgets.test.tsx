@@ -196,6 +196,49 @@ describe('WidgetCard', () => {
     expect(screen.queryByText('BU tidak berlaku')).toBeNull();
   });
 
+  test('"BU saat ini" pada widget Serial dan Laporan hanya bila filter BU aktif', () => {
+    for (const id of ['sn.status', 'rp.open'] as const) {
+      const meta = widgetMeta(id);
+      expect(meta.bu).toBe(true);
+      const view = render(
+        <WidgetCard
+          meta={meta}
+          result={{ id, status: 'ok', data: { kind: 'parts', slices: [] } }}
+          loading={false}
+          filterState={{ bu: true, location: false, date: true }}
+          onRetry={() => {}}
+        />,
+      );
+      expect(screen.getByText('BU saat ini')).toBeTruthy();
+      view.unmount();
+      const off = render(
+        <WidgetCard
+          meta={meta}
+          result={{ id, status: 'ok', data: { kind: 'parts', slices: [] } }}
+          loading={false}
+          filterState={{ bu: false, location: false, date: true }}
+          onRetry={() => {}}
+        />,
+      );
+      expect(screen.queryByText('BU saat ini')).toBeNull();
+      off.unmount();
+    }
+  });
+
+  test('widget tak ber-BU tak pernah bertanda "BU saat ini"', () => {
+    const noBu = widgetMeta('hs.active');
+    render(
+      <WidgetCard
+        meta={noBu}
+        result={{ id: noBu.id, status: 'ok', data: { kind: 'number', value: 1 } }}
+        loading={false}
+        filterState={{ bu: true, location: false, date: true }}
+        onRetry={() => {}}
+      />,
+    );
+    expect(screen.queryByText('BU saat ini')).toBeNull();
+  });
+
   test('"Kondisi saat ini" untuk widget tanpa tanggal dan "per lokasi" untuk stok', () => {
     const stock = widgetMeta('st.out');
     render(

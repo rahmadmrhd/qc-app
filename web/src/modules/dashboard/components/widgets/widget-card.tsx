@@ -17,6 +17,8 @@ export interface WidgetFilterState {
 function filterNotes(meta: WidgetMeta, state: WidgetFilterState): string[] {
   const notes: string[] = [];
   if (!meta.bu && state.bu) notes.push('BU tidak berlaku');
+  // Serial dan Laporan memakai BU SAAT INI (bukan riwayat BU seperti daftar Serial); angkanya dapat lebih kecil.
+  if (meta.bu && state.bu) notes.push('BU saat ini');
   if (meta.location === 'none' && state.location) notes.push('Lokasi tidak berlaku');
   if (meta.location === 'stock') notes.push('per lokasi');
   if (meta.date.kind === 'none') notes.push('Kondisi saat ini');
