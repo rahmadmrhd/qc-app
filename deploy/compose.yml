@@ -21,7 +21,8 @@ services:
     image: mariadb:11.8
     container_name: ${QC_NAME:-qc-${QC_ENV}}-db
     restart: unless-stopped
-    mem_limit: 384m
+    # Batas memori qc-db 500m (keputusan pemilik 2026-11-24; sebelumnya 384m). Perubahan berlaku setelah kontainer dibuat ulang (`docker compose up -d qc-db`).
+    mem_limit: 500m
     environment:
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD wajib diisi}
       # Skema dan pengguna aplikasi dibuat OTOMATIS oleh entrypoint MariaDB HANYA saat volume pertama kali diinisialisasi
