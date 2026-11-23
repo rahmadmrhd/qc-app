@@ -14,7 +14,7 @@
 
 - Rentang tanggal: hari WIB penuh, maksimum **366 hari**, bawaan **30 hari terakhir** (berakhir hari ini); granularitas deret: **harian jika <= 31 hari, mingguan jika <= 180 hari, selain itu bulanan**.
 - Filter: BU/Lokasi/Tanggal global; field filter grup TIDAK BOLEH `bu`, `location`, atau `date`. Maks. **20 nilai** per filter (`FILTER_LIST_MAX`, `server/src/core/validate.ts`; salinan web `web/src/lib/filter-limits.ts`). `undefined` = semua yang boleh dibaca; **`[]` = tidak ada** (bukan semua).
-- `dashboard.query`: maks. **30 widget** per permintaan; **semafor global per proses, maks. 6 widget bersamaan** (diubah pemilik 2026-11-23, K10; semula 4 per permintaan), batas waktu 15 detik dihitung setelah slot diperoleh; cache hasil **30 detik**; penyegaran web **60 detik**; query dashboard TIDAK masuk `query-persist`.
+- `dashboard.query`: maks. **30 widget** per permintaan; **semafor global per proses, maks. `min(6, max(1, pool - 4))` widget bersamaan** (diubah pemilik 2026-11-23, K10; semula 4 per permintaan), batas waktu 15 detik dihitung setelah slot diperoleh; cache hasil **30 detik**; penyegaran web **60 detik**; query dashboard TIDAK masuk `query-persist`.
 - Quick List di aplikasi: **10 baris**; top-N grafik: **10**; grafik maks. 6 kategori + "Lainnya".
 - Soft delete: tiap kueri widget adalah **literal** dengan `${liveWhere('alias')}` di dalamnya; DILARANG pembangun kueri generik atau `FROM ${...}` dinamis; `soft-delete-guard.test.ts` tidak boleh mendapat entri baru di `SOFT_DELETE_PENDING`.
 - BU Serial/Laporan = **BU saat ini** (`serials.bu_id`, `serial_cases.bu_id`), bukan riwayat. Stok menipis/habis **per pasangan stiker×lokasi** (K5), hanya stiker aktif dan baris yang ada di `sticker_stock`.

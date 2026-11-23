@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, setDefaultTimeout, spyOn, test } from 'bu
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { WidgetData, WidgetId } from '@shared/dashboard';
 import { createTtlCache } from './cache';
-import { runWidgets, WIDGET_CONCURRENCY } from './engine';
+import { runWidgets, WIDGET_CONCURRENCY, widgetConcurrencyFor } from './engine';
 import { createLimiter } from './limiter';
 import type { WidgetCtx, WidgetImpl } from './registry';
 import { resolveScope } from './scope';
@@ -55,8 +55,25 @@ beforeEach(async () => {
 });
 
 describe('runWidgets', () => {
-  test('semafor per proses: paling banyak 6 widget bersamaan, juga lintas permintaan serentak', async () => {
+  test('batas konkurensi mengikuti ukuran pool: min(6, max(1, pool - 4)) dan menyisakan 4 koneksi', () => {
     expect(WIDGET_CONCURRENCY).toBe(6);
+    expect(widgetConcurrencyFor(10)).toBe(6);
+    expect(widgetConcurrencyFor(30)).toBe(6);
+    expect(widgetConcurrencyFor(9)).toBe(5);
+    expect(widgetConcurrencyFor(8)).toBe(4);
+    expect(widgetConcurrencyFor(6)).toBe(2);
+    expect(widgetConcurrencyFor(5)).toBe(1);
+    expect(widgetConcurrencyFor(2)).toBe(1);
+    expect(widgetConcurrencyFor(1)).toBe(1);
+    // Ukuran pool tak diketahui = bawaan 10.
+    expect(widgetConcurrencyFor(undefined)).toBe(6);
+  });
+
+  /** Env dengan ukuran pool yang dinyatakan (pool sungguhan tak berubah; hanya yang dibaca engine). */
+  const withPool = (poolSize: number): TestEnv =>
+    ({ ...env, DB: Object.assign(Object.create(env.DB), { poolSize }) }) as TestEnv;
+
+  async function peakOf(target: TestEnv, requests: number): Promise<number> {
     let running = 0;
     let peak = 0;
     const map = impls(async () => {
@@ -66,10 +83,10 @@ describe('runWidgets', () => {
       running -= 1;
       return ok();
     });
-    // Tiga permintaan serentak (mis. tiga grup/tab), tiap permintaan 9 widget dengan cakupan berbeda (tanpa cache).
-    const calls = [0, 1, 2].map((index) =>
+    // Beberapa permintaan serentak (mis. tiga grup/tab), tiap permintaan 9 widget dengan cakupan berbeda (tanpa cache).
+    const calls = Array.from({ length: requests }, (_, index) =>
       runWidgets(
-        env,
+        target,
         { ...scope, buIds: [`bu${index}`] },
         IDS.map((id) => ({ id })),
         map,
@@ -77,7 +94,16 @@ describe('runWidgets', () => {
     );
     const all = await Promise.all(calls);
     expect(all.every((results) => results.every((result) => result.status === 'ok'))).toBe(true);
-    expect(peak).toBe(6);
+    return peak;
+  }
+
+  test('semafor per proses: pool 10 = paling banyak 6 widget bersamaan, lintas permintaan serentak', async () => {
+    expect(await peakOf(withPool(10), 3)).toBe(6);
+  });
+
+  test('pool kecil memperkecil batas: pool 8 = 4, pool 5 = 1 widget bersamaan', async () => {
+    expect(await peakOf(withPool(8), 3)).toBe(4);
+    expect(await peakOf(withPool(5), 2)).toBe(1);
   });
 
   test('widget dijalankan menurut urutan permintaan (FIFO) saat antre', async () => {
@@ -116,13 +142,27 @@ describe('runWidgets', () => {
     expect(results.map((result) => result.status)).toEqual(['ok', 'ok']);
   });
 
-  test('slot dilepas saat widget timeout atau gagal: widget berikutnya tetap berjalan', async () => {
+  test('slot dilepas saat widget timeout atau gagal: widget berikutnya tetap berjalan (tanpa ambang waktu dinding)', async () => {
     const spy = spyOn(console, 'error').mockImplementation(() => {});
+    // Gerbang yang dikendalikan tes: widget pertama tertahan sampai tes melepasnya, jadi bukti slot dilepas saat
+    // timeout (bukan saat kerja usai) tidak bergantung pada lama eksekusi.
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let slowSettled = false;
+    const startedAfterTimeout: WidgetId[] = [];
     try {
       const limiter = createLimiter(1);
-      const started = Date.now();
       const map = impls(async (id) => {
-        if (id === 'hs.created') await sleep(400);
+        if (id === 'hs.created') {
+          await gate;
+          slowSettled = true;
+          return ok();
+        }
+        // Widget berikutnya hanya dapat berjalan bila slot sudah dilepas saat timeout, padahal gerbang masih tertutup.
+        startedAfterTimeout.push(id);
+        expect(slowSettled).toBe(false);
         if (id === 'hs.active') throw new Error('boom');
         return ok();
       });
@@ -131,14 +171,15 @@ describe('runWidgets', () => {
         scope,
         [{ id: 'hs.created' }, { id: 'hs.active' }, { id: 'hs.status' }],
         map,
-        { timeoutMs: 40, limiter },
+        { timeoutMs: 20, limiter },
       );
       expect(results.map((result) => result.status)).toEqual(['error', 'error', 'ok']);
-      // Selesai jauh sebelum widget lambat (400 ms) selesai: slotnya dilepas saat timeout, bukan saat kerja usai.
-      expect(Date.now() - started).toBeLessThan(300);
+      expect(startedAfterTimeout).toEqual(['hs.active', 'hs.status']);
+      expect(slowSettled).toBe(false);
       expect(limiter.active).toBe(0);
       expect(limiter.waiting).toBe(0);
     } finally {
+      release();
       spy.mockRestore();
     }
   });

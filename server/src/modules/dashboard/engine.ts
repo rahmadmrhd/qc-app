@@ -5,8 +5,21 @@ import { createLimiter, type Limiter } from './limiter';
 import { WIDGET_IMPLS, type WidgetImpl } from './registry';
 import type { ResolvedScope } from './scope';
 
-/** Widget berjalan bersamaan per proses (pool basis data bawaan 10 koneksi: 4 sisanya untuk rute lain). */
+/** Batas atas widget berjalan bersamaan per proses. */
 export const WIDGET_CONCURRENCY = 6;
+/** Koneksi pool yang selalu disisakan untuk rute lain (login, Serah Terima, antrean offline). */
+const POOL_RESERVE = 4;
+/** Ukuran pool bila tak diketahui (bawaan `createDb`). */
+const DEFAULT_POOL_SIZE = 10;
+
+/**
+ * Batas widget bersamaan untuk pool berukuran `poolSize`: `min(6, max(1, pool - 4))`, jadi dashboard tak pernah
+ * mengambil seluruh pool walau `DB_POOL_SIZE` diatur kecil (pool 10 = 6, pool 8 = 4, pool <= 5 = 1).
+ */
+export function widgetConcurrencyFor(poolSize: number | undefined): number {
+  const pool = poolSize ?? DEFAULT_POOL_SIZE;
+  return Math.min(WIDGET_CONCURRENCY, Math.max(1, pool - POOL_RESERVE));
+}
 export const WIDGET_TIMEOUT_MS = 15_000;
 export const WIDGET_CACHE_TTL_MS = 30_000;
 const GENERIC_ERROR = 'Widget tidak dapat dimuat';
@@ -40,7 +53,7 @@ const limiters = new WeakMap<object, Limiter>();
 export function widgetLimiterOf(env: Env): Limiter {
   let limiter = limiters.get(env.DB);
   if (!limiter) {
-    limiter = createLimiter(WIDGET_CONCURRENCY);
+    limiter = createLimiter(widgetConcurrencyFor(env.DB.poolSize));
     limiters.set(env.DB, limiter);
   }
   return limiter;

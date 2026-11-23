@@ -24,6 +24,8 @@ export interface Preparer {
 export type DbTx = Preparer;
 
 export interface Db extends Preparer {
+  /** Ukuran pool koneksi (batas koneksi bersamaan); dipakai pembatas beban agar tak menghabiskan seluruh pool. */
+  readonly poolSize?: number;
   /** Semua pernyataan dalam satu transaksi (BEGIN ... COMMIT); gagal -> ROLLBACK. Deadlock diulang sekali. */
   batch<T = unknown>(statements: DbStatement[]): Promise<DbResult<T>[]>;
   /**
@@ -306,6 +308,7 @@ export function createDb(config: DbConfig): Db {
   };
 
   const db: Db = {
+    poolSize: config.connectionLimit ?? 10,
     prepare: (sql) => new Statement(sql, [], poolRunner),
 
     async transaction<T>(fn: (tx: DbTx) => Promise<T>): Promise<T> {
