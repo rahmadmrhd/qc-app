@@ -20,6 +20,7 @@ import { Route as AppAccessAuditRouteImport } from './routes/_app/access/audit'
 import { Route as AppAccessPushRouteImport } from './routes/_app/access/push'
 import { Route as AppCustomerIndexRouteImport } from './routes/_app/customer/index'
 import { Route as AppCustomerCustomerIdRouteImport } from './routes/_app/customer/$customerId'
+import { Route as AppDashboardIndexRouteImport } from './routes/_app/dashboard/index'
 import { Route as AppHandoverIndexRouteImport } from './routes/_app/handover/index'
 import { Route as AppHandoverNewRouteImport } from './routes/_app/handover/new'
 import { Route as AppItemIndexRouteImport } from './routes/_app/item/index'
@@ -119,6 +120,11 @@ const AppCustomerIndexRoute = AppCustomerIndexRouteImport.update({
 const AppCustomerCustomerIdRoute = AppCustomerCustomerIdRouteImport.update({
   id: '/customer/$customerId',
   path: '/customer/$customerId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDashboardIndexRoute = AppDashboardIndexRouteImport.update({
+  id: '/dashboard/',
+  path: '/dashboard/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppHandoverIndexRoute = AppHandoverIndexRouteImport.update({
@@ -383,6 +389,7 @@ export interface FileRoutesByFullPath {
   '/sticker/settings': typeof AppStickerSettingsRoute
   '/sticker/stock': typeof AppStickerStockRoute
   '/customer/': typeof AppCustomerIndexRoute
+  '/dashboard/': typeof AppDashboardIndexRoute
   '/handover/': typeof AppHandoverIndexRoute
   '/item/': typeof AppItemIndexRoute
   '/postel/': typeof AppPostelIndexRoute
@@ -441,6 +448,7 @@ export interface FileRoutesByTo {
   '/sticker/settings': typeof AppStickerSettingsRoute
   '/sticker/stock': typeof AppStickerStockRoute
   '/customer': typeof AppCustomerIndexRoute
+  '/dashboard': typeof AppDashboardIndexRoute
   '/handover': typeof AppHandoverIndexRoute
   '/item': typeof AppItemIndexRoute
   '/postel': typeof AppPostelIndexRoute
@@ -501,6 +509,7 @@ export interface FileRoutesById {
   '/_app/sticker/settings': typeof AppStickerSettingsRoute
   '/_app/sticker/stock': typeof AppStickerStockRoute
   '/_app/customer/': typeof AppCustomerIndexRoute
+  '/_app/dashboard/': typeof AppDashboardIndexRoute
   '/_app/handover/': typeof AppHandoverIndexRoute
   '/_app/item/': typeof AppItemIndexRoute
   '/_app/postel/': typeof AppPostelIndexRoute
@@ -561,6 +570,7 @@ export interface FileRouteTypes {
     | '/sticker/settings'
     | '/sticker/stock'
     | '/customer/'
+    | '/dashboard/'
     | '/handover/'
     | '/item/'
     | '/postel/'
@@ -619,6 +629,7 @@ export interface FileRouteTypes {
     | '/sticker/settings'
     | '/sticker/stock'
     | '/customer'
+    | '/dashboard'
     | '/handover'
     | '/item'
     | '/postel'
@@ -678,6 +689,7 @@ export interface FileRouteTypes {
     | '/_app/sticker/settings'
     | '/_app/sticker/stock'
     | '/_app/customer/'
+    | '/_app/dashboard/'
     | '/_app/handover/'
     | '/_app/item/'
     | '/_app/postel/'
@@ -797,6 +809,13 @@ declare module '@tanstack/react-router' {
       path: '/customer/$customerId'
       fullPath: '/customer/$customerId'
       preLoaderRoute: typeof AppCustomerCustomerIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/dashboard/': {
+      id: '/_app/dashboard/'
+      path: '/dashboard'
+      fullPath: '/dashboard/'
+      preLoaderRoute: typeof AppDashboardIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/handover/': {
@@ -1145,6 +1164,7 @@ interface AppRouteChildren {
   AppStickerSettingsRoute: typeof AppStickerSettingsRoute
   AppStickerStockRoute: typeof AppStickerStockRoute
   AppCustomerIndexRoute: typeof AppCustomerIndexRoute
+  AppDashboardIndexRoute: typeof AppDashboardIndexRoute
   AppHandoverIndexRoute: typeof AppHandoverIndexRoute
   AppItemIndexRoute: typeof AppItemIndexRoute
   AppPostelIndexRoute: typeof AppPostelIndexRoute
@@ -1201,6 +1221,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppStickerSettingsRoute: AppStickerSettingsRoute,
   AppStickerStockRoute: AppStickerStockRoute,
   AppCustomerIndexRoute: AppCustomerIndexRoute,
+  AppDashboardIndexRoute: AppDashboardIndexRoute,
   AppHandoverIndexRoute: AppHandoverIndexRoute,
   AppItemIndexRoute: AppItemIndexRoute,
   AppPostelIndexRoute: AppPostelIndexRoute,

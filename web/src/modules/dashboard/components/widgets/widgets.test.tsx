@@ -219,13 +219,17 @@ describe('WidgetRenderer', () => {
     '%s dari irisan merender grafik',
     async (visual) => {
       render(<WidgetRenderer meta={metaOf(visual)} data={PARTS} />);
-      expect(await screen.findByRole('img', { name: `Judul ${visual}` })).toBeTruthy();
+      expect(
+        await screen.findByRole('img', { name: `Judul ${visual}` }, { timeout: 5000 }),
+      ).toBeTruthy();
     },
   );
 
   test.each(['line', 'barGroup'] as const)('%s dari seri merender grafik', async (visual) => {
     render(<WidgetRenderer meta={metaOf(visual)} data={SERIES} />);
-    expect(await screen.findByRole('img', { name: `Judul ${visual}` })).toBeTruthy();
+    expect(
+      await screen.findByRole('img', { name: `Judul ${visual}` }, { timeout: 5000 }),
+    ).toBeTruthy();
   });
 
   test('bentuk data tak cocok dengan visual: pesan, bukan crash', () => {

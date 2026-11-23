@@ -527,3 +527,38 @@ test('Pengguna dan Role di induk Akses; Status Push dan Log Audit di Sistem (acc
   expect(parents?.[1]?.children.map((c) => c.label)).toEqual(['Status Push', 'Log Audit']);
   expect(pengaturan('none')).toBeUndefined();
 });
+
+test('butir Dashboard tepat di bawah Beranda; tampil bagi pemegang izin widget mana pun saja', () => {
+  const home = NAV_GROUPS[0]?.items.map((entry) => entry.label);
+  expect(home?.slice(0, 2)).toEqual(['Beranda', 'Dashboard']);
+  expect(itemTo('/dashboard')).toMatchObject({ label: 'Dashboard' });
+  // Tanpa izin sumber widget apa pun: tersembunyi.
+  expect(visibleLabels(stickerMe({ item: 'view' }))).not.toContain('Dashboard');
+  // Izin lokasi (Serah Terima), BU (Serial), dan global (Postel via sticker) masing-masing cukup.
+  const withLocation: MeDto = {
+    ...stickerMe({}),
+    locations: [
+      {
+        id: 'l1',
+        code: 'L1',
+        name: 'Lokasi',
+        permissions: { handover: 'view', qc: 'none', stock: 'none', stickerstock: 'none' },
+      },
+    ],
+  } as MeDto;
+  expect(visibleLabels(withLocation)).toContain('Dashboard');
+  const withBu: MeDto = {
+    ...stickerMe({}),
+    businessUnits: [
+      {
+        id: 'b1',
+        code: 'B1',
+        name: 'BU',
+        status: 'active',
+        permissions: { item: 'none', serial: 'view', serialservice: 'none' },
+      },
+    ],
+  } as MeDto;
+  expect(visibleLabels(withBu)).toContain('Dashboard');
+  expect(visibleLabels(stickerMe({ sticker: 'view' }))).toContain('Dashboard');
+});

@@ -47,7 +47,7 @@ const needsCrumb = (path: string) => {
  * Rute daun dikelompokkan menurut JENIS halaman. `pageWidth` hanya batas lebar konten View dan form yang dipusatkan
  * (`PageContent`): halaman index (daftar, grid, kanban) selalu selebar `<main>` dan TIDAK menyatakan `pageWidth`.
  */
-/** Halaman index: `ListPage` (+ `KanbanBoard` di /handover), selalu selebar `<main>`. */
+/** Halaman index: `ListPage` (+ `KanbanBoard` di /handover; `/dashboard` = kisi widget), selalu selebar `<main>`. */
 const INDEX = [
   '/access/audit',
   '/access/business-units',
@@ -56,6 +56,7 @@ const INDEX = [
   '/access/roles',
   '/access/users',
   '/customer',
+  '/dashboard',
   '/handover',
   '/item',
   '/item/brands',

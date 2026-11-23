@@ -14,6 +14,7 @@ import {
   History,
   House,
   Images,
+  LayoutDashboard,
   ListChecks,
   Lock,
   MapPin,
@@ -31,6 +32,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { canAnywhere, canManageSerialSettings } from '@/modules/auth/permissions';
+import { canSeeDashboard } from '@/modules/dashboard/lib/access';
 
 export interface NavPermission {
   module: ModuleKey;
@@ -99,6 +101,8 @@ export const NAV_GROUPS: NavGroup[] = [
     label: null,
     items: [
       { label: 'Beranda', to: '/', icon: House },
+      // Tampil bagi pemegang izin sumber widget mana pun (BU atau lokasi; bukan satu izin modul, jadi `visible`).
+      { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard, visible: canSeeDashboard },
       // Daftar unduhan aplikasi desktop; di dalam aplikasi desktop tautan unduh tak berfungsi, jadi hanya di peramban.
       {
         label: 'Aplikasi Desktop',

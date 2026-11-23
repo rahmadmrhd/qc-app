@@ -12,6 +12,5 @@ export const MODULE_LINKS: Partial<Record<ModuleKey, LinkProps['to']>> = {
   stickerstock: '/sticker',
   serial: '/serial',
   serialservice: '/serial',
-  // Rute `/dashboard` dibuat di Tugas 11 (route tree belum memuatnya); ganti ke literal biasa saat itu.
-  dashboard: '/dashboard' as unknown as LinkProps['to'],
+  dashboard: '/dashboard',
 };

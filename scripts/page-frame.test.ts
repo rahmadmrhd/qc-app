@@ -21,6 +21,8 @@ const LAYOUT_FILES = new Set(['__root.tsx', '_app.tsx']);
 const ROUTE_EXCEPTIONS: Record<string, string> = {
   '_app/index.tsx':
     'Beranda: sapaan, info panduan, dan peluncur ponsel (`Launcher`) di dalam `PageContent`; bukan halaman data CRUD.',
+  '_app/dashboard/index.tsx':
+    'Dashboard pemantauan: halaman agregat (kartu widget per grup), bukan daftar/form; memakai `HeadroomFrame` dan `HeadroomBar` seperti Beranda untuk bar filter global.',
   '_app/forbidden.tsx':
     'Pesan status 403 (`StatusMessage`) di dalam `PageContent`; tanpa data atau aksi.',
   '_app/desktop.tsx':

@@ -11,6 +11,7 @@ test('FILTER_LIST_MAX sama dengan batas filter jamak di server', () => {
 
 test('semua skema search param jamak memakai konstanta, bukan angka literal', () => {
   const files = [
+    'modules/dashboard/lib/search.ts',
     'modules/handover/lib/search.ts',
     'modules/item/lib/list-filter.ts',
     'modules/serial/lib/case-filter.ts',
@@ -27,6 +28,8 @@ test('semua skema search param jamak memakai konstanta, bukan angka literal', ()
 
 test('setiap field pilihan jamak pada filter daftar membatasi pilihan di UI (maxSelected)', () => {
   const files: [string, number][] = [
+    ['modules/dashboard/components/global-filters.tsx', 2],
+    ['modules/dashboard/components/group-section.tsx', 2],
     ['modules/handover/components/handover-board-page.tsx', 1],
     ['modules/item/components/item-filters.tsx', 2],
     ['modules/serial/components/case-list-page.tsx', 1],
