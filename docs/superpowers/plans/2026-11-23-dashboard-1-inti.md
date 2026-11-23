@@ -14,7 +14,7 @@
 
 - Rentang tanggal: hari WIB penuh, maksimum **366 hari**, bawaan **30 hari terakhir** (berakhir hari ini); granularitas deret: **harian jika <= 31 hari, mingguan jika <= 180 hari, selain itu bulanan**.
 - Filter: BU/Lokasi/Tanggal global; field filter grup TIDAK BOLEH `bu`, `location`, atau `date`. Maks. **20 nilai** per filter (`FILTER_LIST_MAX`, `server/src/core/validate.ts`; salinan web `web/src/lib/filter-limits.ts`). `undefined` = semua yang boleh dibaca; **`[]` = tidak ada** (bukan semua).
-- `dashboard.query`: maks. **30 widget** per permintaan; **4 widget bersamaan** per permintaan; cache hasil **30 detik**; penyegaran web **60 detik**; query dashboard TIDAK masuk `query-persist`.
+- `dashboard.query`: maks. **30 widget** per permintaan; **semafor global per proses, maks. 6 widget bersamaan** (diubah pemilik 2026-11-23, K10; semula 4 per permintaan), batas waktu 15 detik dihitung setelah slot diperoleh; cache hasil **30 detik**; penyegaran web **60 detik**; query dashboard TIDAK masuk `query-persist`.
 - Quick List di aplikasi: **10 baris**; top-N grafik: **10**; grafik maks. 6 kategori + "Lainnya".
 - Soft delete: tiap kueri widget adalah **literal** dengan `${liveWhere('alias')}` di dalamnya; DILARANG pembangun kueri generik atau `FROM ${...}` dinamis; `soft-delete-guard.test.ts` tidak boleh mendapat entri baru di `SOFT_DELETE_PENDING`.
 - BU Serial/Laporan = **BU saat ini** (`serials.bu_id`, `serial_cases.bu_id`), bukan riwayat. Stok menipis/habis **per pasangan stiker×lokasi** (K5), hanya stiker aktif dan baris yang ada di `sticker_stock`.
@@ -146,7 +146,7 @@ Aturan: `buIds` = `readableBuIds(user)` ∩ `filter.buIds` (bila diberikan; `[]`
   - `createTtlCache<T>(ttlMs: number, now: () => number)` di `cache.ts`.
   - Rute `dashboard.query` (`POST /dashboard/query`) dan `dashboard.options` (`GET /dashboard/options`) di `routes.ts` tanpa `permission` modul (pola `notificationRoutes`); `dashboardRoutes(): Pick<RouteTable, 'dashboard.query'|'dashboard.options'>`.
   - `validateDashboardQuery` di `validate.ts`: maks. 30 widget; id harus dikenal; kunci filter harus terdaftar di `GROUP_FILTERS` grup widget itu; nilai enum harus anggota `options`; maks. 20 nilai (`readFilterList`); `filter` lolos `validateDashboardRange`.
-  - `loadOptions(env, user): Promise<DashboardOptionsDto>` (maks. 500 per daftar, literal + `liveWhere`): customer (jika berhak handover), item (jika berhak serial; hanya item pada BU yang boleh dibaca), jenis stiker dan stiker (jika berhak stok stiker atau `sticker: view`).
+  - `loadOptions(env, user): Promise<DashboardOptionsDto>` (diubah pemilik 2026-11-23, K9: halaman 50, pencarian `query`, `cursor`, `ids` di server; semula maks. 500 per daftar; tetap literal + `liveWhere`): customer (jika berhak handover), item (jika berhak serial; hanya item pada BU yang boleh dibaca), jenis stiker dan stiker (jika berhak stok stiker atau `sticker: view`).
   - Penyisip uji di `server/test-support/dashboard-seed.ts`: `seedHandover(env, row)`, `seedSerial(env, row)`, `seedCase(env, row)`, `seedStock(env, row)`, `seedPostel(env, row)` (bentuk argumen mengikuti kolom tabel; semua kolom opsional punya bawaan).
 
 - [ ] **Step 1: Tulis tes yang gagal**
