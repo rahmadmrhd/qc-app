@@ -290,7 +290,7 @@ export const GROUP_FILTERS: Record<DashboardGroupId, readonly GroupFilterField[]
       kind: 'enum',
       options: [
         { value: 'broken', label: 'Rusak' },
-        { value: 'passed', label: 'Lolos' },
+        { value: 'good', label: 'Lolos' },
       ],
     },
   ],
@@ -304,8 +304,8 @@ export const GROUP_FILTERS: Record<DashboardGroupId, readonly GroupFilterField[]
       label: 'Kondisi',
       kind: 'enum',
       options: [
-        { value: 'active', label: 'Berlaku' },
-        { value: 'expiring', label: 'Segera habis' },
+        { value: 'valid', label: 'Berlaku' },
+        { value: 'soon', label: 'Segera habis' },
         { value: 'expired', label: 'Kedaluwarsa' },
       ],
     },

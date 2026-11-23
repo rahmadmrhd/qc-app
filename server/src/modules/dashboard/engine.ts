@@ -60,7 +60,7 @@ export async function runWidgets(
       const impl = impls.get(request.id);
       if (!impl) throw new Error(`Widget belum diimplementasikan: ${request.id}`);
       const data = await withTimeout(
-        impl.run({ db: env.DB, scope, filters: request.filters ?? {} }),
+        impl.run({ env, db: env.DB, scope, filters: request.filters ?? {} }),
         timeoutMs,
       );
       cache.set(key, data);

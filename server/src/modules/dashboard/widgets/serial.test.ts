@@ -47,7 +47,7 @@ async function run(
 ): Promise<WidgetData> {
   const impl = SERIAL_WIDGETS.find((widget) => widget.id === id);
   if (!impl) throw new Error(`Widget ${id} belum terdaftar`);
-  return impl.run({ db: env.DB, scope, filters });
+  return impl.run({ env, db: env.DB, scope, filters });
 }
 
 beforeEach(async () => {

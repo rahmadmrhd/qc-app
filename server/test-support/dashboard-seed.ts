@@ -101,7 +101,7 @@ export interface SeedCaseRow {
   buId?: string;
   openedOn?: string;
   closedOn?: string;
-  /** `''` (terbuka) | `broken` | `passed`. */
+  /** `''` (terbuka) | `broken` | `good` (nilai nyata kolom `outcome`). */
   outcome?: string;
 }
 

@@ -1,10 +1,13 @@
 import type { Preparer } from '@server/core/db';
+import type { Env } from '@server/core/env';
 import type { WidgetData, WidgetId } from '@shared/dashboard';
 import type { ResolvedScope } from './scope';
 import { ALL_WIDGETS } from './widgets';
 
 /** Masukan satu widget: cakupan SUDAH diselesaikan (`resolveScope`), jadi widget tak pernah membaca filter mentah. */
 export interface WidgetCtx {
+  /** Env penuh, hanya untuk widget yang membaca pengaturan (mis. ambang "segera habis" Postel); kueri data memakai `db`. */
+  env: Env;
   db: Preparer;
   scope: ResolvedScope;
   /** Filter grup yang sudah divalidasi (`validateDashboardQuery`); kunci terdaftar di `GROUP_FILTERS`. */
