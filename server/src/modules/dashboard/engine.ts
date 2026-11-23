@@ -59,20 +59,39 @@ export function widgetLimiterOf(env: Env): Limiter {
   return limiter;
 }
 
-function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`Widget melebihi batas waktu ${ms} ms`)), ms);
+/**
+ * Antre di `limiter`, lalu menjalankan `task` dengan batas waktu `ms` yang mulai dihitung SETELAH slot diperoleh.
+ * Pemanggil mendapat galat begitu batas waktu lewat, tetapi SLOT DITAHAN sampai `task` benar-benar selesai (sukses
+ * atau galat): kueri yang tak dapat dibatalkan masih memegang koneksinya, jadi slot baru boleh dipakai widget lain
+ * setelah koneksi itu bebas (keputusan pemilik 2026-11-23). Hasil yang datang terlambat dibuang.
+ */
+function runBounded<T>(limiter: Limiter, task: () => Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    limiter
+      .run(async () => {
+        const work = (async () => task())();
+        const timer = setTimeout(
+          () => reject(new Error(`Widget melebihi batas waktu ${ms} ms`)),
+          ms,
+        );
+        try {
+          resolve(await work);
+        } catch (error) {
+          reject(error);
+        } finally {
+          clearTimeout(timer);
+        }
+      })
+      .catch(reject);
   });
-  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
 }
 
 /**
  * Menjalankan widget yang diminta: semuanya antre di semafor per proses (`WIDGET_CONCURRENCY` bersamaan, FIFO menurut
  * urutan permintaan), batas waktu per widget dihitung SETELAH slot diperoleh (menunggu antrean bukan galat), hasil
- * `ok` di-cache 30 detik (cache dicek sebelum antre, jadi tak memakai slot). Slot dilepas saat widget selesai, gagal,
- * atau melewati batas waktu; kueri yang ditinggalkan karena batas waktu tak dapat dibatalkan dan masih menahan satu
- * koneksi sampai selesai. Satu widget yang gagal atau lambat menjadi `error` generik (galat asli hanya ke
+ * `ok` di-cache 30 detik (cache dicek sebelum antre, jadi tak memakai slot). Slot dilepas saat kerja widget benar-benar
+ * selesai atau gagal, TERMASUK sesudah batas waktu lewat (klien sudah menerima galat, tetapi kueri yang tak dapat
+ * dibatalkan masih memegang satu koneksi, jadi slotnya ikut ditahan). Satu widget yang gagal atau lambat menjadi `error` generik (galat asli hanya ke
  * `console.error`) tanpa menjatuhkan yang lain. TIDAK memeriksa izin: pemanggil menyaring dengan `allowedWidgetIds`.
  */
 export async function runWidgets(
@@ -94,11 +113,10 @@ export async function runWidgets(
       const impl = impls.get(request.id);
       if (!impl) throw new Error(`Widget belum diimplementasikan: ${request.id}`);
       // Antre dalam urutan pemanggilan (tanpa await sebelum `run`), lalu hitung batas waktu setelah slot didapat.
-      const data = await limiter.run(() =>
-        withTimeout(
-          impl.run({ env, db: env.DB, scope, filters: request.filters ?? {} }),
-          timeoutMs,
-        ),
+      const data = await runBounded(
+        limiter,
+        () => impl.run({ env, db: env.DB, scope, filters: request.filters ?? {} }),
+        timeoutMs,
       );
       cache.set(key, data);
       return { id: request.id, status: 'ok', data };

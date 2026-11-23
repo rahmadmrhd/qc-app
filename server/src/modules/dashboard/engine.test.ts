@@ -142,44 +142,95 @@ describe('runWidgets', () => {
     expect(results.map((result) => result.status)).toEqual(['ok', 'ok']);
   });
 
-  test('slot dilepas saat widget timeout atau gagal: widget berikutnya tetap berjalan (tanpa ambang waktu dinding)', async () => {
+  /** Menunggu sampai `check()` benar tanpa bergantung pada lama waktu (hanya memberi giliran ke event loop). */
+  async function until(check: () => boolean): Promise<void> {
+    while (!check()) await sleep(1);
+  }
+
+  test('slot TETAP terpakai selama kueri yang timeout belum selesai; dilepas setelah ia selesai (tanpa kebocoran)', async () => {
     const spy = spyOn(console, 'error').mockImplementation(() => {});
-    // Gerbang yang dikendalikan tes: widget pertama tertahan sampai tes melepasnya, jadi bukti slot dilepas saat
-    // timeout (bukan saat kerja usai) tidak bergantung pada lama eksekusi.
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
     let slowSettled = false;
-    const startedAfterTimeout: WidgetId[] = [];
+    const started: WidgetId[] = [];
     try {
       const limiter = createLimiter(1);
+      let calls = 0;
       const map = impls(async (id) => {
+        started.push(id);
         if (id === 'hs.created') {
+          calls += 1;
           await gate;
           slowSettled = true;
-          return ok();
+          return ok(calls);
         }
-        // Widget berikutnya hanya dapat berjalan bila slot sudah dilepas saat timeout, padahal gerbang masih tertutup.
-        startedAfterTimeout.push(id);
-        expect(slowSettled).toBe(false);
+        // Widget berikutnya hanya boleh mulai setelah kueri lambat benar-benar selesai.
+        expect(slowSettled).toBe(true);
+        return ok();
+      });
+      const request = [{ id: 'hs.created' as const }, { id: 'hs.active' as const }];
+      const running = runWidgets(env, scope, request, map, { timeoutMs: 20, limiter });
+      // Sinyal deterministik: galat timeout widget pertama sudah dicatat (klien mendapat galat generik).
+      await until(() => spy.mock.calls.length > 0);
+      expect(started).toEqual(['hs.created']);
+      expect(limiter.active).toBe(1);
+      expect(limiter.waiting).toBe(1);
+      release();
+      const results = await running;
+      expect(results[0]).toEqual({
+        id: 'hs.created',
+        status: 'error',
+        message: 'Widget tidak dapat dimuat',
+      });
+      expect(results[1]?.status).toBe('ok');
+      expect(started).toEqual(['hs.created', 'hs.active']);
+      expect(limiter.active).toBe(0);
+      expect(limiter.waiting).toBe(0);
+      // Hasil yang datang terlambat tidak di-cache: permintaan yang sama menjalankan widgetnya lagi.
+      await runWidgets(env, scope, [{ id: 'hs.created' }], map, { timeoutMs: 1_000, limiter });
+      expect(calls).toBe(2);
+    } finally {
+      release();
+      spy.mockRestore();
+    }
+  });
+
+  test('slot dilepas juga saat kueri yang timeout akhirnya gagal, dan saat widget gagal biasa', async () => {
+    const spy = spyOn(console, 'error').mockImplementation(() => {});
+    let fail: () => void = () => {};
+    const gate = new Promise<void>((_, reject) => {
+      fail = () => reject(new Error('koneksi putus'));
+    });
+    gate.catch(() => {});
+    try {
+      const limiter = createLimiter(1);
+      const started: WidgetId[] = [];
+      const map = impls(async (id) => {
+        started.push(id);
+        if (id === 'hs.created') await gate;
         if (id === 'hs.active') throw new Error('boom');
         return ok();
       });
-      const results = await runWidgets(
+      const running = runWidgets(
         env,
         scope,
         [{ id: 'hs.created' }, { id: 'hs.active' }, { id: 'hs.status' }],
         map,
         { timeoutMs: 20, limiter },
       );
+      await until(() => spy.mock.calls.length > 0);
+      expect(started).toEqual(['hs.created']);
+      expect(limiter.active).toBe(1);
+      fail();
+      const results = await running;
       expect(results.map((result) => result.status)).toEqual(['error', 'error', 'ok']);
-      expect(startedAfterTimeout).toEqual(['hs.active', 'hs.status']);
-      expect(slowSettled).toBe(false);
+      expect(started).toEqual(['hs.created', 'hs.active', 'hs.status']);
       expect(limiter.active).toBe(0);
       expect(limiter.waiting).toBe(0);
     } finally {
-      release();
+      fail();
       spy.mockRestore();
     }
   });
