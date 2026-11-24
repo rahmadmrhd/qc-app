@@ -339,6 +339,7 @@ describe('skema baseline', () => {
       { name: '0031_audit_target_id_index.sql' },
       { name: '0032_dashboard.sql' },
       { name: '0033_dashboard_share_visits.sql' },
+      { name: '0037_dashboard_share_expiry_index.sql' },
     ]);
   });
 
@@ -485,6 +486,7 @@ describe('skema baseline', () => {
         'customers.customers_key_live',
         'dashboard_share_visits.dashboard_share_visits_share',
         'dashboard_shares.dashboard_shares_creator',
+        'dashboard_shares.dashboard_shares_expiry',
         'dashboard_shares.dashboard_shares_report',
         'files.files_owner',
         'files.files_pending_delete',
