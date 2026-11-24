@@ -22,7 +22,7 @@ export class PublicDashboardError extends Error {
   }
 }
 
-/** Filter penonton kosong = tampilan bawaan pembagi (GET); selain itu POST `query`. */
+/** Filter penonton kosong = tampilan bawaan pembagi; dimuat lewat GET hanya pada muat awal (lihat `fetchPublicDashboard`). */
 export function isEmptyViewer(viewer: PublicQueryInput): boolean {
   const hasList = (value: string[] | undefined) => value !== undefined && value.length > 0;
   return (
@@ -38,32 +38,38 @@ export function isEmptyViewer(viewer: PublicQueryInput): boolean {
  * Memuat dashboard lewat tautan bertanda tangan. `fetch` biasa (bukan `api()`): tanpa pemicu "belum login", tanpa
  * cache, dan tanpa Referer (token ada di URL halaman). Satu-satunya `POST` memakai header CSRF yang sama dengan klien
  * REST (`X-Requested-With`, dipaksa `csrfGuard` global untuk semua `POST /api/*`). Tidak pernah menyentuh `/api/v1`.
+ *
+ * Server menghitung kunjungan HANYA dari `GET` halaman (spek dashboard 7.6). Karena itu `GET` dipakai khusus untuk muat
+ * awal tanpa filter; penyegaran otomatis (interval, fokus tab, Coba lagi: `refresh` true) selalu lewat `POST query`
+ * dengan badan filter yang sama (kosong = `{}`), jadi tab yang dibiarkan terbuka tidak menambah kunjungan.
  */
 export async function fetchPublicDashboard(
   token: string,
   viewer: PublicQueryInput,
   fetchImpl: typeof fetch = fetch,
+  refresh = false,
 ): Promise<PublicDashboardDto> {
   const base = `${PUBLIC_DASHBOARD_BASE}/${encodeURIComponent(token)}`;
   let response: Response;
   try {
-    response = isEmptyViewer(viewer)
-      ? await fetchImpl(base, {
-          cache: 'no-store',
-          referrerPolicy: 'no-referrer',
-          headers: { Accept: 'application/json' },
-        })
-      : await fetchImpl(`${base}/query`, {
-          method: 'POST',
-          cache: 'no-store',
-          referrerPolicy: 'no-referrer',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            ...CSRF_HEADERS,
-          },
-          body: JSON.stringify(viewer),
-        });
+    response =
+      isEmptyViewer(viewer) && !refresh
+        ? await fetchImpl(base, {
+            cache: 'no-store',
+            referrerPolicy: 'no-referrer',
+            headers: { Accept: 'application/json' },
+          })
+        : await fetchImpl(`${base}/query`, {
+            method: 'POST',
+            cache: 'no-store',
+            referrerPolicy: 'no-referrer',
+            headers: {
+              Accept: 'application/json',
+              'Content-Type': 'application/json',
+              ...CSRF_HEADERS,
+            },
+            body: JSON.stringify(viewer),
+          });
   } catch {
     throw new PublicDashboardError(0);
   }
