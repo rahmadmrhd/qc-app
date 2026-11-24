@@ -246,9 +246,24 @@ export async function runReport(
       return { status: 'error', note: 'Tidak ada widget yang berhasil dihitung' };
     }
 
+    // Lokasi yang tampil = yang masih hak pemilik saat kirim (Serah Terima, stok), ditambah lokasi pilihan beku bila ada
+    // widget Serial/Laporan yang memakainya sebagai saringan (di sana lokasi bukan hak). Sama dengan halaman publik:
+    // lokasi yang haknya sudah dicabut tidak tampil di kepala surel.
+    const usesLocationFilter =
+      parsed.scope.locationFiltered &&
+      computed.widgets.some((widget) => {
+        const group = widgetMeta(widget.id).group;
+        return group === 'serial' || group === 'report';
+      });
+    const nameableLocations = new Set([
+      ...computed.scope.handoverLocationIds,
+      ...computed.scope.stockLocationIds,
+    ]);
+    if (usesLocationFilter) for (const id of parsed.scope.locationIds) nameableLocations.add(id);
+    const nameableLocationIds = parsed.scope.locationIds.filter((id) => nameableLocations.has(id));
     const [buNames, locationNames] = await Promise.all([
       buScopeNames(env, computed.scope.buIds),
-      locationScopeNames(env, parsed.scope.locationIds),
+      locationScopeNames(env, nameableLocationIds),
     ]);
     const scopeLabel = [
       `BU: ${namesLabel(buNames.names, 'tidak ada')}`,

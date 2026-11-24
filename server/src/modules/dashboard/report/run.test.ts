@@ -460,3 +460,36 @@ describe('keadaan laporan TERKINI saat klaim dan kirim (I2, M2)', () => {
     expect(await activeLinks(id)).toHaveLength(0);
   });
 });
+
+describe('nama lokasi di kepala surel mengikuti hak pemilik saat kirim (M4)', () => {
+  test('lokasi yang haknya sudah dicabut tidak tampil di kepala surel', async () => {
+    await seedRole(env, { id: 'r-ho', name: 'HO', permissions: { handover: 'view' } });
+    await seedLocation(env, { id: 'loc-a', code: 'LA', name: 'Gudang Alfa' });
+    await seedLocation(env, { id: 'loc-b', code: 'LB', name: 'Gudang Beta' });
+    const assign = async (locationIds: string[]) => {
+      await env.DB.prepare('UPDATE users SET assignments = ? WHERE email = ?')
+        .bind(
+          JSON.stringify([
+            { locationId: null, roleIds: ['r-dash'] },
+            ...locationIds.map((locationId) => ({ locationId, roleIds: ['r-ho'] })),
+          ]),
+          OWNER,
+        )
+        .run();
+    };
+    await assign(['loc-a', 'loc-b']);
+    const id = await dueReport({
+      widgets: [{ id: 'hs.created', filters: {} }],
+      filter: { from: '', to: '', locationIds: ['loc-a', 'loc-b'] },
+    });
+    // Hak Gudang Beta dicabut sesudah laporan disimpan (cakupan beku masih memuat keduanya).
+    await assign(['loc-a']);
+    await checkDashboardReports(env, NOW);
+    expect(sent).toHaveLength(1);
+    const mail = sent[0] as MailMessage;
+    expect(mail.text).toContain('Gudang Alfa');
+    expect(mail.text).not.toContain('Gudang Beta');
+    expect(mail.html).not.toContain('Gudang Beta');
+    expect((await reportOf(id)).last_status).toBe('ok');
+  });
+});
