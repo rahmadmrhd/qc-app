@@ -56,16 +56,20 @@ export interface FreezeContentInput {
  * untuk modul yang dipakai widget terpilih (Serah Terima, stok stiker; Serial/Laporan hanya bila `locationFiltered`).
  * `filter.from`/`to` hanya dipakai agar `resolveScope` memiliki rentang sah (isi cakupan tidak bergantung padanya).
  * `options.trustedLists`: lewati batas `FILTER_LIST_MAX` pada daftar BU/lokasi (hanya simpan laporan terjadwal).
+ * `options.rejectOutsideRights`: pesan galat generik bila ADA bagian pilihan (widget, BU, lokasi) di luar hak
+ * `user`, alih-alih mengiris diam-diam (pelaku bukan pemilik yang mengubah cakupan laporan orang lain).
  * Validasi isi (judul, rentang, batas widget) milik pemanggil; di sini hanya hak: widget di luar hak = `VALIDATION`.
  */
 export function freezeContent(
   user: UserContext,
   input: FreezeContentInput,
   nowMs: number,
-  options: { trustedLists?: boolean } = {},
+  options: { trustedLists?: boolean; rejectOutsideRights?: string } = {},
 ): ReportScope {
+  const outside = options.rejectOutsideRights;
   const allowed = new Set(allowedWidgetIds(user));
   if (input.widgets.some((widget) => !allowed.has(widget.id))) {
+    if (outside !== undefined) throw appError('VALIDATION', outside);
     throw appError('VALIDATION', 'Ada widget di luar hak akses Anda', {
       widgets: 'Ada widget di luar hak akses Anda',
     });
@@ -95,6 +99,18 @@ export function freezeContent(
   );
   const groups = new Set(input.widgets.map((widget) => widgetMeta(widget.id).group));
   const locationIds = new Set<string>();
+  if (outside !== undefined) {
+    const inside = (chosen: readonly string[], kept: readonly string[]): boolean => {
+      const set = new Set(kept);
+      return chosen.every((id) => set.has(id));
+    };
+    const outsideBu = buIds.length > 0 && !inside(buIds, resolved.buIds);
+    const outsideHandover =
+      groups.has('handover') && !inside(chosenLocations, resolved.handoverLocationIds);
+    const outsideStock =
+      groups.has('sticker') && !inside(chosenLocations, resolved.stockLocationIds);
+    if (outsideBu || outsideHandover || outsideStock) throw appError('VALIDATION', outside);
+  }
   if (groups.has('handover')) for (const id of resolved.handoverLocationIds) locationIds.add(id);
   if (groups.has('sticker')) for (const id of resolved.stockLocationIds) locationIds.add(id);
   if (locationFiltered && (groups.has('serial') || groups.has('report'))) {

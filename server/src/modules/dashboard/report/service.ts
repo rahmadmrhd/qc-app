@@ -203,10 +203,43 @@ export async function getDashboardReport(
   return toReportDto(user, row, nowMs, links);
 }
 
+/** Pesan generik (tanpa nama atau jumlah) saat pelaku bukan pemilik mengubah cakupan ke luar haknya. */
+export const OUTSIDE_RIGHTS_MESSAGE =
+  'Cakupan laporan ini di luar hak akses Anda; minta pemilik laporan atau pengelola yang berhak untuk mengubahnya.';
+
+/** Kanonik (urutan kunci dan anggota tak berpengaruh) untuk membandingkan isi widget. */
+function canon(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canon).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${canon(item)}`).join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
+const sameSet = (a: readonly string[], b: readonly string[]): boolean =>
+  new Set(a).size === new Set(b).size && a.every((item) => b.includes(item));
+
+/** Masukan simpan tidak mengubah cakupan beku yang tersimpan (widget beserta filter grup, BU, lokasi, penawaran). */
+function sameScopeInput(input: SaveDashboardReportInput, stored: ReportScope): boolean {
+  return (
+    (input.locationFiltered === true) === stored.locationFiltered &&
+    sameSet(input.filter.buIds ?? [], stored.buIds) &&
+    sameSet(input.filter.locationIds ?? [], stored.locationIds) &&
+    sameSet(input.offers, stored.offers) &&
+    canon(input.widgets.map((widget) => ({ id: widget.id, filters: widget.filters ?? {} }))) ===
+      canon(stored.widgets.map((widget) => ({ id: widget.id, filters: widget.filters ?? {} })))
+  );
+}
+
 /**
  * Simpan (buat atau ubah) laporan. Pemilik = pembuat dan TIDAK berpindah saat laporan diubah pengelola lain; mengubah
  * milik orang lain hanya bagi `manage`/super admin. Cakupan dibekukan dengan hak PENYIMPAN (diiris lagi dengan hak
- * pemilik saat kirim, jadi penyimpan tak dapat memperluas apa yang diterima penerima).
+ * pemilik saat kirim, jadi penyimpan tak dapat memperluas apa yang diterima penerima). Pelaku BUKAN pemilik
+ * (keputusan pemilik produk 2026-11-24, "cegah pemotongan"): cakupan yang tak diubah dipertahankan apa adanya (tidak
+ * dibekukan ulang dengan hak pelaku); cakupan yang diubah ke luar hak pelaku ditolak dengan pesan generik.
  */
 export async function saveDashboardReport(
   env: Env,
@@ -220,17 +253,25 @@ export async function saveDashboardReport(
 
   // Rentang filter tak dipakai laporan (periode relatif); hanya agar `resolveScope` punya rentang sah.
   const range = periodRange(input.period, wibDateIso(nowMs));
-  const scope = freezeContent(
-    user,
-    {
-      filter: { ...input.filter, from: range.from, to: range.to },
-      locationFiltered: input.locationFiltered === true,
-      widgets: input.widgets,
-      offers: input.offers,
-    },
-    nowMs,
-    { trustedLists: true },
-  );
+  const foreignEdit = existing !== null && existing.owner !== user.email;
+  const stored = foreignEdit ? parseReportScope(existing.scope) : null;
+  const scope: ReportScope =
+    stored !== null && sameScopeInput(input, stored)
+      ? stored
+      : freezeContent(
+          user,
+          {
+            filter: { ...input.filter, from: range.from, to: range.to },
+            locationFiltered: input.locationFiltered === true,
+            widgets: input.widgets,
+            offers: input.offers,
+          },
+          nowMs,
+          {
+            trustedLists: true,
+            ...(foreignEdit ? { rejectOutsideRights: OUTSIDE_RIGHTS_MESSAGE } : {}),
+          },
+        );
   const name = cleanReportName(input.name);
   const recipients = normalizeRecipients(input.recipients);
   const schedule = scheduleJson(input.schedule);

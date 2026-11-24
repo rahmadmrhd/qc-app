@@ -217,6 +217,7 @@ export function ReportFormPage({ report, onDone, onCancel }: ReportFormPageProps
   const allowed = visibleWidgetsByGroup(me).flatMap((entry) =>
     entry.widgets.map((meta) => meta.id),
   );
+  const editingOthers = report !== undefined && me != null && report.owner !== me.email;
   const patch = (next: Partial<FormState>) => setState((prev) => ({ ...prev, ...next }));
 
   const days = Number(state.linkDays);
@@ -305,6 +306,16 @@ export function ReportFormPage({ report, onDone, onCancel }: ReportFormPageProps
       hasError: Boolean(errors.widgets),
       content: (
         <div className="space-y-3">
+          {editingOthers ? (
+            <Alert color="info">
+              <AlertDescription>
+                Laporan ini milik {report?.owner}. Cakupan (widget, BU, lokasi) dipertahankan apa
+                adanya selama tidak Anda ubah. Bila Anda mengubahnya, semuanya harus dalam hak akses
+                Anda; kalau tidak, penyimpanan ditolak dan perubahan cakupan perlu dilakukan pemilik
+                laporan atau pengelola yang berhak.
+              </AlertDescription>
+            </Alert>
+          ) : null}
           <ScopeEditor
             value={state.scope}
             onChange={(scope) =>

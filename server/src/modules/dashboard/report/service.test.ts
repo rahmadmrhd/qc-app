@@ -3,13 +3,14 @@ import { loadUserContext, type UserContext } from '@server/modules/access/contex
 import { seedBusinessUnit, seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { captureAppErrorAsync } from '@server-test/errors';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
-import type { SaveDashboardReportInput } from '@shared/dashboard-report';
+import type { DashboardReportDto, SaveDashboardReportInput } from '@shared/dashboard-report';
 import { REPORT_LIMITS } from '@shared/dashboard-report';
 import { insertShareStmt, loadShare } from '../share-repo';
 import { insertReportStmt, loadReport, parseReportScope, type ReportRow } from './repo';
 import {
   getDashboardReport,
   listDashboardReports,
+  OUTSIDE_RIGHTS_MESSAGE,
   removeDashboardReport,
   saveDashboardReport,
   setDashboardReportEnabled,
@@ -408,35 +409,142 @@ describe('hak: edit (milik sendiri) dan manage (semua)', () => {
     ]);
   });
 
-  // Perilaku TERKINI yang dicatat (butuh konfirmasi pemilik, lihat laporan): penyimpan membekukan cakupan dengan hak
-  // PENYIMPAN. Pengelola semua dengan BU lebih sempit yang hanya mengganti nama mengecilkan himpunan BU beku pemilik.
-  test('pengelola semua dengan BU lebih sempit yang menyimpan membekukan ulang BU dengan haknya sendiri', async () => {
-    await env.DB.prepare('UPDATE users SET bu_assignments = ? WHERE email = ?')
-      .bind(
-        JSON.stringify([
-          { buId: 'bu-x', roleIds: ['r-sn'] },
-          { buId: 'bu-y', roleIds: ['r-sn'] },
-        ]),
-        OWNER,
-      )
-      .run();
-    const owner = await userOf();
-    const created = await saveDashboardReport(env, owner, input());
-    expect([...created.scope.buIds].sort()).toEqual(['bu-x', 'bu-y']);
-    env.clock.advance(1000);
-    const other = await userOf(OTHER); // hanya BU x
-    const renamed = await saveDashboardReport(
-      env,
-      other,
-      input({
-        id: created.id,
-        expectedUpdatedAt: created.updatedAt,
-        name: 'Ganti nama saja',
-        filter: { from: '', to: '', buIds: created.scope.buIds },
-      }),
-    );
-    expect(renamed.scope.buIds).toEqual(['bu-x']);
-    expect(renamed.owner).toBe(OWNER);
+  // Keputusan pemilik produk 2026-11-24 ("cegah pemotongan"): pelaku bukan pemilik tidak membekukan ulang cakupan
+  // dengan haknya sendiri; cakupan yang tak diubah dipertahankan, yang diubah ke luar haknya ditolak.
+  describe('pelaku bukan pemilik menyimpan laporan orang lain (cegah pemotongan)', () => {
+    const OUTSIDE = OUTSIDE_RIGHTS_MESSAGE;
+
+    async function ownerWithBoth(): Promise<DashboardReportDto> {
+      await seedRole(env, { id: 'r-st', name: 'ST', permissions: { sticker: 'view' } });
+      await env.DB.prepare('UPDATE users SET bu_assignments = ?, assignments = ? WHERE email = ?')
+        .bind(
+          JSON.stringify([
+            { buId: 'bu-x', roleIds: ['r-sn'] },
+            { buId: 'bu-y', roleIds: ['r-sn'] },
+          ]),
+          JSON.stringify([{ locationId: null, roleIds: ['r-dash', 'r-st'] }]),
+          OWNER,
+        )
+        .run();
+      const owner = await userOf();
+      const created = await saveDashboardReport(
+        env,
+        owner,
+        input({
+          widgets: [
+            { id: 'sn.recorded', filters: {} },
+            { id: 'pt.condition', filters: {} },
+          ],
+        }),
+      );
+      expect([...created.scope.buIds].sort()).toEqual(['bu-x', 'bu-y']);
+      env.clock.advance(1000);
+      return created;
+    }
+
+    /** Masukan yang dikirim formulir: seluruh cakupan tersimpan dikirim kembali apa adanya. */
+    const sameScope = (dto: DashboardReportDto): Partial<SaveDashboardReportInput> => ({
+      id: dto.id,
+      expectedUpdatedAt: dto.updatedAt,
+      filter: { from: '', to: '', buIds: dto.scope.buIds },
+      widgets: dto.scope.widgets,
+      offers: dto.scope.offers,
+      locationFiltered: dto.scope.locationFiltered,
+    });
+
+    test('hanya mengubah jadwal, penerima, dan nama: cakupan beku pemilik utuh (BU dan widget tak terpotong)', async () => {
+      const created = await ownerWithBoth();
+      const other = await userOf(OTHER); // BU x saja dan tanpa sticker view
+      const saved = await saveDashboardReport(
+        env,
+        other,
+        input({
+          ...sameScope(created),
+          name: 'Ganti nama saja',
+          recipients: ['baru@contoh.id'],
+          schedule: { frequency: 'daily', hour: 9, weekday: 1, monthDay: 1 },
+        }),
+      );
+      expect(saved.name).toBe('Ganti nama saja');
+      expect(saved.owner).toBe(OWNER);
+      expect([...saved.scope.buIds].sort()).toEqual(['bu-x', 'bu-y']);
+      expect(saved.scope.widgets.map((widget) => widget.id)).toEqual([
+        'sn.recorded',
+        'pt.condition',
+      ]);
+    });
+
+    test('mengubah cakupan ke BU di luar haknya ditolak dengan pesan generik, tanpa nama atau jumlah', async () => {
+      const created = await ownerWithBoth();
+      const other = await userOf(OTHER);
+      const error = await saveDashboardReport(
+        env,
+        other,
+        input({ ...sameScope(created), filter: { from: '', to: '', buIds: ['bu-y'] } }),
+      ).catch((caught: unknown) => caught as { code?: string; message?: string });
+      expect(error).toMatchObject({ code: 'VALIDATION', message: OUTSIDE });
+      expect(String((error as { message?: string }).message)).not.toContain('bu-y');
+      const row = await loadReport(env.DB, created.id);
+      expect(
+        parseReportScope(row?.scope ?? '')
+          ?.buIds.slice()
+          .sort(),
+      ).toEqual(['bu-x', 'bu-y']);
+    });
+
+    test('mengubah widget ke yang di luar haknya ditolak dengan pesan yang sama (konsisten dengan BU)', async () => {
+      const created = await ownerWithBoth();
+      const other = await userOf(OTHER);
+      const error = await saveDashboardReport(
+        env,
+        other,
+        input({
+          ...sameScope(created),
+          widgets: [
+            { id: 'sn.recorded', filters: {} },
+            { id: 'pt.condition', filters: {} },
+            { id: 'pt.expiring', filters: {} },
+          ],
+        }),
+      ).catch((caught: unknown) => caught as { code?: string; message?: string });
+      expect(error).toMatchObject({ code: 'VALIDATION', message: OUTSIDE });
+    });
+
+    test('mengubah cakupan seluruhnya dalam haknya diterima dan dibekukan seperti biasa', async () => {
+      const created = await ownerWithBoth();
+      const other = await userOf(OTHER);
+      const saved = await saveDashboardReport(
+        env,
+        other,
+        input({
+          ...sameScope(created),
+          filter: { from: '', to: '', buIds: ['bu-x'] },
+          widgets: [{ id: 'sn.recorded', filters: {} }],
+        }),
+      );
+      expect(saved.scope.buIds).toEqual(['bu-x']);
+      expect(saved.scope.widgets.map((widget) => widget.id)).toEqual(['sn.recorded']);
+      expect(saved.owner).toBe(OWNER);
+    });
+
+    test('pemilik sendiri dan super admin: perilaku lama (cakupan dibekukan menurut haknya)', async () => {
+      const created = await ownerWithBoth();
+      const owner = await userOf();
+      const narrowed = await saveDashboardReport(
+        env,
+        owner,
+        input({ ...sameScope(created), filter: { from: '', to: '', buIds: ['bu-x'] } }),
+      );
+      expect(narrowed.scope.buIds).toEqual(['bu-x']);
+      env.clock.advance(1000);
+      const admin = await userOf(ADMIN);
+      const adminSaved = await saveDashboardReport(
+        env,
+        admin,
+        input({ ...sameScope(narrowed), filter: { from: '', to: '', buIds: ['bu-x', 'bu-y'] } }),
+      );
+      expect([...adminSaved.scope.buIds].sort()).toEqual(['bu-x', 'bu-y']);
+    });
   });
 });
 

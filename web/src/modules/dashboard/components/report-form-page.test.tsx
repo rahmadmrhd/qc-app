@@ -298,3 +298,18 @@ describe('ReportFormPage: himpunan beku BU/lokasi lebih dari 20 tidak dikosongka
     expect(sent.locationFiltered).toBe(true);
   });
 });
+
+describe('ReportFormPage: laporan milik orang lain', () => {
+  test('tab Isi menjelaskan bahwa cakupan dipertahankan dan perubahannya harus dalam hak pengguna', async () => {
+    await form({ ...SAVED, owner: 'lain@x.com' });
+    await goTab('Isi');
+    expect(await screen.findByText(/Laporan ini milik lain@x\.com/)).toBeTruthy();
+  });
+
+  test('laporan milik sendiri tidak memuat penjelasan itu', async () => {
+    await form(SAVED);
+    await goTab('Isi');
+    await screen.findByRole('checkbox', { name: 'Serial dicatat' });
+    expect(screen.queryByText(/Laporan ini milik/)).toBeNull();
+  });
+});
