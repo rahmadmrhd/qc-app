@@ -217,7 +217,8 @@ export function ReportFormPage({ report, onDone, onCancel }: ReportFormPageProps
   const allowed = visibleWidgetsByGroup(me).flatMap((entry) =>
     entry.widgets.map((meta) => meta.id),
   );
-  const editingOthers = report !== undefined && me != null && report.owner !== me.email;
+  const editingOthers =
+    report !== undefined && me != null && !me.isSuperAdmin && report.owner !== me.email;
   const patch = (next: Partial<FormState>) => setState((prev) => ({ ...prev, ...next }));
 
   const days = Number(state.linkDays);

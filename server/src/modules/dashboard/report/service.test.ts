@@ -527,6 +527,187 @@ describe('hak: edit (milik sendiri) dan manage (semua)', () => {
       expect(saved.owner).toBe(OWNER);
     });
 
+    /** Pemilik berhak Serah Terima dan stok di loc-a dan loc-b; OTHER hanya di loc-a. */
+    async function ownerWithLocations(
+      widgetIds: ('hs.created' | 'st.out' | 'sn.recorded')[],
+    ): Promise<DashboardReportDto> {
+      await seedRole(env, { id: 'r-ho', name: 'HO', permissions: { handover: 'view' } });
+      await seedRole(env, { id: 'r-ss', name: 'SS', permissions: { stickerstock: 'view' } });
+      await seedLocation(env, { id: 'loc-a', code: 'LA' });
+      await seedLocation(env, { id: 'loc-b', code: 'LB' });
+      const assign = async (email: string, locations: string[]) => {
+        await env.DB.prepare('UPDATE users SET assignments = ? WHERE email = ?')
+          .bind(
+            JSON.stringify([
+              { locationId: null, roleIds: ['r-dash'] },
+              ...locations.flatMap((locationId) => [
+                { locationId, roleIds: ['r-ho'] },
+                { locationId, roleIds: ['r-ss'] },
+              ]),
+            ]),
+            email,
+          )
+          .run();
+      };
+      await assign(OWNER, ['loc-a', 'loc-b']);
+      await assign(OTHER, ['loc-a']);
+      const created = await saveDashboardReport(
+        env,
+        await userOf(),
+        input({
+          widgets: widgetIds.map((id) => ({ id, filters: {} })),
+          filter: { from: '', to: '', locationIds: ['loc-a', 'loc-b'] },
+        }),
+      );
+      env.clock.advance(1000);
+      return created;
+    }
+
+    const asForm = (dto: DashboardReportDto): Partial<SaveDashboardReportInput> => ({
+      ...sameScope(dto),
+      filter: {
+        from: '',
+        to: '',
+        buIds: dto.scope.buIds,
+        ...(dto.scope.locationIds.length > 0 ? { locationIds: dto.scope.locationIds } : {}),
+      },
+    });
+
+    test('lokasi Serah Terima di luar hak pelaku ditolak saat cakupan diubah', async () => {
+      const created = await ownerWithLocations(['hs.created']);
+      expect([...created.scope.locationIds].sort()).toEqual(['loc-a', 'loc-b']);
+      const error = await saveDashboardReport(
+        env,
+        await userOf(OTHER),
+        input({
+          ...asForm(created),
+          widgets: [{ id: 'hs.created', filters: { status: ['new'] } }],
+        }),
+      ).catch((caught: unknown) => caught as { code?: string; message?: string });
+      expect(error).toMatchObject({ code: 'VALIDATION', message: OUTSIDE });
+    });
+
+    test('lokasi stok di luar hak pelaku ditolak saat cakupan diubah', async () => {
+      const created = await ownerWithLocations(['st.out']);
+      const error = await saveDashboardReport(
+        env,
+        await userOf(OTHER),
+        input({
+          ...asForm(created),
+          widgets: [
+            { id: 'st.out', filters: {} },
+            { id: 'sn.recorded', filters: {} },
+          ],
+        }),
+      ).catch((caught: unknown) => caught as { code?: string; message?: string });
+      expect(error).toMatchObject({ code: 'VALIDATION', message: OUTSIDE });
+    });
+
+    test('tanpa perubahan, lokasi di luar hak pelaku tetap utuh', async () => {
+      const created = await ownerWithLocations(['hs.created']);
+      const saved = await saveDashboardReport(
+        env,
+        await userOf(OTHER),
+        input({ ...asForm(created), name: 'Hanya nama' }),
+      );
+      expect([...saved.scope.locationIds].sort()).toEqual(['loc-a', 'loc-b']);
+    });
+
+    /** Kedua BU untuk `email`, agar perubahan cakupan yang terdeteksi diterima dan hasilnya terlihat. */
+    const giveBothBus = (email: string) =>
+      env.DB.prepare('UPDATE users SET bu_assignments = ? WHERE email = ?')
+        .bind(
+          JSON.stringify([
+            { buId: 'bu-x', roleIds: ['r-sn'] },
+            { buId: 'bu-y', roleIds: ['r-sn'] },
+          ]),
+          email,
+        )
+        .run();
+
+    test('perubahan filter grup widget terdeteksi sebagai perubahan cakupan (dibekukan ulang)', async () => {
+      const created = await ownerWithBoth();
+      await giveBothBus(OTHER);
+      const withFilter = [{ id: 'sn.recorded' as const, filters: { custody: ['qc'] } }];
+      const saved = await saveDashboardReport(
+        env,
+        await userOf(OTHER),
+        input({ ...sameScope(created), widgets: withFilter }),
+      );
+      expect(saved.scope.widgets).toEqual(withFilter);
+    });
+
+    test('perubahan locationFiltered terdeteksi sebagai perubahan cakupan (dibekukan ulang)', async () => {
+      await seedLocation(env, { id: 'loc-a', code: 'LA' });
+      await giveBothBus(OWNER);
+      await giveBothBus(OTHER);
+      const created = await saveDashboardReport(
+        env,
+        await userOf(),
+        input({ filter: { from: '', to: '', locationIds: ['loc-a'] }, locationFiltered: true }),
+      );
+      expect(created.scope.locationFiltered).toBe(true);
+      expect(created.scope.locationIds).toEqual(['loc-a']);
+      env.clock.advance(1000);
+      const saved = await saveDashboardReport(
+        env,
+        await userOf(OTHER),
+        input({ ...asForm(created), locationFiltered: false }),
+      );
+      expect(saved.scope.locationFiltered).toBe(false);
+      expect(saved.scope.locationIds).toEqual([]);
+    });
+
+    test('urutan dan duplikat daftar BU tidak dihitung perubahan cakupan (cakupan lama utuh)', async () => {
+      const created = await ownerWithBoth();
+      const saved = await saveDashboardReport(
+        env,
+        await userOf(OTHER), // hanya BU x: bila dianggap berubah, hasilnya ditolak
+        input({
+          ...sameScope(created),
+          filter: { from: '', to: '', buIds: ['bu-y', 'bu-x', 'bu-y'] },
+        }),
+      );
+      expect([...saved.scope.buIds].sort()).toEqual(['bu-x', 'bu-y']);
+      expect(saved.scope.widgets.map((widget) => widget.id)).toEqual(
+        created.scope.widgets.map((widget) => widget.id),
+      );
+    });
+
+    /** Cakupan beku pemilik memuat lokasi yang kemudian dinonaktifkan. */
+    async function reportWithInactiveLocation(): Promise<DashboardReportDto> {
+      const created = await ownerWithLocations(['hs.created']);
+      await env.DB.prepare("UPDATE locations SET status = 'inactive' WHERE id = 'loc-b'").run();
+      return created;
+    }
+
+    test('super admin = perilaku lama: mengubah cakupan membuang lokasi nonaktif diam-diam, bukan menolak', async () => {
+      const created = await reportWithInactiveLocation();
+      const saved = await saveDashboardReport(
+        env,
+        await userOf(ADMIN),
+        input({
+          ...asForm(created),
+          widgets: [
+            { id: 'hs.created', filters: {} },
+            { id: 'sn.recorded', filters: {} },
+          ],
+        }),
+      );
+      expect(saved.scope.locationIds).not.toContain('loc-b');
+      expect(saved.scope.widgets.map((widget) => widget.id)).toEqual(['hs.created', 'sn.recorded']);
+    });
+
+    test('super admin menyimpan tanpa mengubah cakupan: dibekukan ulang seperti perilaku lama', async () => {
+      const created = await reportWithInactiveLocation();
+      const saved = await saveDashboardReport(
+        env,
+        await userOf(ADMIN),
+        input({ ...asForm(created), name: 'Nama saja' }),
+      );
+      expect(saved.scope.locationIds).not.toContain('loc-b');
+    });
+
     test('pemilik sendiri dan super admin: perilaku lama (cakupan dibekukan menurut haknya)', async () => {
       const created = await ownerWithBoth();
       const owner = await userOf();

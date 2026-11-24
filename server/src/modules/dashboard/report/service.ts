@@ -253,7 +253,8 @@ export async function saveDashboardReport(
 
   // Rentang filter tak dipakai laporan (periode relatif); hanya agar `resolveScope` punya rentang sah.
   const range = periodRange(input.period, wibDateIso(nowMs));
-  const foreignEdit = existing !== null && existing.owner !== user.email;
+  // Super admin = perilaku lama (bukan jalur "pelaku bukan pemilik"); pemegang `manage` biasa lewat jalur cegah pemotongan.
+  const foreignEdit = existing !== null && existing.owner !== user.email && !user.isSuperAdmin;
   const stored = foreignEdit ? parseReportScope(existing.scope) : null;
   const scope: ReportScope =
     stored !== null && sameScopeInput(input, stored)

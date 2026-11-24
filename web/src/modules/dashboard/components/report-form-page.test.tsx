@@ -306,6 +306,14 @@ describe('ReportFormPage: laporan milik orang lain', () => {
     expect(await screen.findByText(/Laporan ini milik lain@x\.com/)).toBeTruthy();
   });
 
+  test('super admin tidak melihat penjelasan itu (perilaku lama)', async () => {
+    me = makeMe({ ...me, isSuperAdmin: true });
+    await form({ ...SAVED, owner: 'lain@x.com' });
+    await goTab('Isi');
+    await screen.findByRole('checkbox', { name: 'Serial dicatat' });
+    expect(screen.queryByText(/Laporan ini milik/)).toBeNull();
+  });
+
   test('laporan milik sendiri tidak memuat penjelasan itu', async () => {
     await form(SAVED);
     await goTab('Isi');
