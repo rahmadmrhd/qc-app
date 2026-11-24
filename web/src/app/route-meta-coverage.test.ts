@@ -57,6 +57,7 @@ const INDEX = [
   '/access/users',
   '/customer',
   '/dashboard',
+  '/dashboard/laporan',
   '/handover',
   '/item',
   '/item/brands',
@@ -76,6 +77,7 @@ const VIEW = [
   '/access/roles/$roleId',
   '/access/users/$userId',
   '/customer/$customerId',
+  '/dashboard/laporan/$reportId',
   '/dashboard/tautan/$shareId',
   '/handover/$handoverId',
   '/item/$itemId',
@@ -90,6 +92,8 @@ const VIEW = [
 ];
 /** Form sempit (`FormPage`): konten terpusat `narrow`. */
 const FORM_NARROW = [
+  '/dashboard/laporan/new',
+  '/dashboard/laporan/$reportId/edit',
   '/handover/new',
   '/handover/$handoverId/edit',
   '/item/new',

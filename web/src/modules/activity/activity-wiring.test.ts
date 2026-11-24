@@ -11,6 +11,7 @@ const VIEWS: readonly [file: string, kind: string][] = [
   ['access/components/user-view.tsx', 'user'],
   ['brand/components/brand-detail-view.tsx', 'brand'],
   ['customer/components/customer-view.tsx', 'customer'],
+  ['dashboard/components/report-view.tsx', 'dashboardReport'],
   ['dashboard/components/share-detail-view.tsx', 'dashboardShare'],
   ['handover/components/handover-detail-view.tsx', 'handover'],
   ['item/components/item-detail-view.tsx', 'item'],

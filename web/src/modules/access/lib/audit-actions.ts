@@ -95,6 +95,12 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'dashboard.share_create': 'Tautan dashboard dibuat',
   'dashboard.share_revoke': 'Tautan dashboard dicabut',
   'dashboard.share_expire': 'Tautan dashboard kedaluwarsa',
+  'dashboard.report_create': 'Laporan terjadwal dibuat',
+  'dashboard.report_update': 'Laporan terjadwal diubah',
+  'dashboard.report_delete': 'Laporan terjadwal dihapus',
+  'dashboard.report_pause': 'Laporan terjadwal dijeda',
+  'dashboard.report_resume': 'Laporan terjadwal dilanjutkan',
+  'dashboard.report_send_test': 'Surel uji laporan terjadwal dikirim',
 };
 
 /**
@@ -155,6 +161,16 @@ const AUDIT_FIELD_LABELS: Record<string, string> = {
   frame: 'Bingkai',
   style: 'Gaya',
   namePlacement: 'Letak nama',
+  enabled: 'Aktif',
+  schedule: 'Jadwal',
+  period: 'Periode',
+  widgets: 'Widget',
+  buCount: 'Jumlah BU',
+  locationCount: 'Jumlah lokasi',
+  locationFiltered: 'Pembatasan lokasi',
+  recipientCount: 'Jumlah penerima',
+  recipientsMark: 'Daftar penerima',
+  linkDays: 'Masa berlaku tautan',
 };
 
 export function auditFieldLabel(key: string): string {

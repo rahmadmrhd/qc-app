@@ -6,6 +6,7 @@ import {
   BellRing,
   BookOpen,
   Building2,
+  CalendarClock,
   ClipboardList,
   Contact,
   Download,
@@ -75,6 +76,11 @@ export interface NavParent {
   label: string;
   icon: LucideIcon;
   children: NavItem[];
+  /**
+   * Hanya satu anak yang terlihat bagi pengguna: induk tampil sebagai butir biasa (label dan ikon induk, tujuan anak
+   * itu) alih-alih submenu berisi satu butir.
+   */
+  collapseSingle?: boolean;
 }
 
 export type NavEntry = NavItem | NavParent;
@@ -102,7 +108,28 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Beranda', to: '/', icon: House },
       // Tampil bagi pemegang izin sumber widget mana pun (BU atau lokasi; bukan satu izin modul, jadi `visible`).
-      { label: 'Dashboard', to: '/dashboard', icon: LayoutDashboard, visible: canSeeDashboard },
+      {
+        id: 'dashboard',
+        label: 'Dashboard',
+        icon: LayoutDashboard,
+        // Pengguna tanpa `dashboard: manage` hanya punya Ringkasan: tampil sebagai butir "Dashboard" biasa.
+        collapseSingle: true,
+        children: [
+          {
+            label: 'Ringkasan',
+            to: '/dashboard',
+            icon: LayoutDashboard,
+            excludes: ['/dashboard/laporan'],
+            visible: canSeeDashboard,
+          },
+          {
+            label: 'Laporan terjadwal',
+            to: '/dashboard/laporan',
+            icon: CalendarClock,
+            permission: { module: 'dashboard', level: 'manage' },
+          },
+        ],
+      },
       // Daftar unduhan aplikasi desktop; di dalam aplikasi desktop tautan unduh tak berfungsi, jadi hanya di peramban.
       {
         label: 'Aplikasi Desktop',
@@ -402,6 +429,10 @@ export function visibleNavGroups(
           const children = entry.children.filter((child) =>
             isItemVisible(child, me, activeLocationIds, desktop, phone),
           );
+          const only = children[0];
+          if (entry.collapseSingle && children.length === 1 && only) {
+            return [{ ...only, label: entry.label, icon: entry.icon }];
+          }
           return children.length > 0 ? [{ ...entry, children }] : [];
         }
         return isItemVisible(entry, me, activeLocationIds, desktop, phone) ? [entry] : [];

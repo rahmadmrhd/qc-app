@@ -191,6 +191,7 @@ test('NAV_GROUPS berbentuk pohon: Default QR ada, induk tidak ikut diratakan', (
     'Pengaturan',
   ]);
   expect(NAV_GROUPS.flatMap((group) => group.items.filter(isNavParent)).map((p) => p.id)).toEqual([
+    'dashboard',
     'serial',
     'item',
     'sticker',
@@ -531,7 +532,7 @@ test('Pengguna dan Role di induk Akses; Status Push dan Log Audit di Sistem (acc
 test('butir Dashboard tepat di bawah Beranda; tampil bagi pemegang izin widget mana pun saja', () => {
   const home = NAV_GROUPS[0]?.items.map((entry) => entry.label);
   expect(home?.slice(0, 2)).toEqual(['Beranda', 'Dashboard']);
-  expect(itemTo('/dashboard')).toMatchObject({ label: 'Dashboard' });
+  expect(itemTo('/dashboard')).toMatchObject({ label: 'Ringkasan' });
   // Tanpa izin sumber widget apa pun: tersembunyi.
   expect(visibleLabels(stickerMe({ item: 'view' }))).not.toContain('Dashboard');
   // Izin lokasi (Serah Terima), BU (Serial), dan global (Postel via sticker) masing-masing cukup.
@@ -561,4 +562,38 @@ test('butir Dashboard tepat di bawah Beranda; tampil bagi pemegang izin widget m
   } as MeDto;
   expect(visibleLabels(withBu)).toContain('Dashboard');
   expect(visibleLabels(stickerMe({ sticker: 'view' }))).toContain('Dashboard');
+});
+
+test('Dashboard: tanpa izin kelola tampil sebagai satu butir; dengan izin kelola menjadi induk dua anak', () => {
+  const viewer = stickerMe({ sticker: 'view' });
+  const single = flattenNavItems(visibleNavGroups(NAV_GROUPS, viewer)).filter(
+    (entry) => entry.to === '/dashboard',
+  );
+  // Satu anak (Ringkasan) dilipat: berlabel dan berikon induk, tujuan tetap /dashboard.
+  expect(single).toHaveLength(1);
+  expect(single[0]).toMatchObject({ label: 'Dashboard', to: '/dashboard' });
+  const ownerGroups = visibleNavGroups(
+    NAV_GROUPS,
+    stickerMe({ sticker: 'view', dashboard: 'manage' }),
+  );
+  const parent = ownerGroups[0]?.items.find(
+    (entry) => isNavParent(entry) && entry.id === 'dashboard',
+  );
+  expect(parent && isNavParent(parent) ? parent.children.map((child) => child.label) : []).toEqual([
+    'Ringkasan',
+    'Laporan terjadwal',
+  ]);
+  // Pemegang kelola tanpa izin sumber widget: hanya Laporan terjadwal, dilipat dengan label induk.
+  const managerOnly = flattenNavItems(
+    visibleNavGroups(NAV_GROUPS, stickerMe({ dashboard: 'manage' })),
+  ).filter((entry) => entry.to === '/dashboard/laporan');
+  expect(managerOnly).toHaveLength(1);
+  expect(managerOnly[0]?.label).toBe('Dashboard');
+});
+
+test('Ringkasan tak aktif di halaman Laporan terjadwal', () => {
+  const ringkasan = itemTo('/dashboard');
+  expect(isNavItemActive(ringkasan, at('/dashboard/laporan'))).toBe(false);
+  expect(isNavItemActive(ringkasan, at('/dashboard'))).toBe(true);
+  expect(isNavItemActive(itemTo('/dashboard/laporan'), at('/dashboard/laporan/r1'))).toBe(true);
 });

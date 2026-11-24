@@ -26,6 +26,9 @@ export interface ScopeEditorValue {
   offers: string[];
 }
 
+const DEFAULT_FREEZE_NOTE =
+  'BU dan lokasi dibekukan saat tautan dibuat. Dikosongkan = semua yang Anda punya hak saat ini, BU atau lokasi yang ditambahkan kemudian tidak ikut.';
+
 const groupOf = (id: WidgetId): DashboardGroupId => widgetMeta(id).group;
 
 /** Filter grup yang berlaku (sama untuk semua widget terpilih di grup itu; diambil dari widget pertama). */
@@ -91,10 +94,13 @@ export function ScopeEditor({
   onChange,
   allowedWidgetIds,
   seedFilters,
+  freezeNote = DEFAULT_FREEZE_NOTE,
 }: {
   value: ScopeEditorValue;
   onChange: (next: ScopeEditorValue) => void;
   allowedWidgetIds: readonly WidgetId[];
+  /** Catatan di bawah chip BU/Lokasi tentang kapan himpunannya dibekukan (bawaan: untuk tautan bagikan). */
+  freezeNote?: string;
   /** Filter awal sebuah grup saat widget pertamanya dicentang (mis. filter grup yang sedang aktif di halaman). */
   seedFilters?: (group: DashboardGroupId) => Record<string, string[]>;
 }) {
@@ -187,10 +193,7 @@ export function ScopeEditor({
           onChange={(next) => onChange({ ...value, locationIds: next })}
         />
       </div>
-      <p className="text-xs text-muted-foreground">
-        BU dan lokasi dibekukan saat tautan dibuat. Dikosongkan = semua yang Anda punya hak saat
-        ini, BU atau lokasi yang ditambahkan kemudian tidak ikut.
-      </p>
+      <p className="text-xs text-muted-foreground">{freezeNote}</p>
       {groups.map(({ group, widgets }) => {
         const ids = widgets.map((meta) => meta.id);
         const picked = ids.filter((id) => selected.has(id));

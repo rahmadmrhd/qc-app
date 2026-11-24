@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
 import { ActivityLog } from '@/modules/activity/components/activity-log';
-import { formatNumber, formatRangeLabel } from '../lib/format';
+import { formatNumber, formatRangeLabel, formatWhen } from '../lib/format';
 import { shareDetailQueryOptions, useRevokeShare } from '../share-queries';
 import { RevokeShareDialog } from './revoke-share-dialog';
 
@@ -39,16 +39,6 @@ const GROUP_ORDER = Object.keys(GROUP_LABELS) as DashboardGroupId[];
 /** Tautan tak ada atau di luar hak baca: server menjawab `NOT_FOUND` seragam (`FORBIDDEN` bagi tanpa modul). */
 function isMissing(error: unknown): boolean {
   return error instanceof ApiError && (error.code === 'NOT_FOUND' || error.code === 'FORBIDDEN');
-}
-
-function formatWhen(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString('id-ID', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Jakarta',
-  });
 }
 
 /** Kode negara dua huruf menjadi "Indonesia (ID)"; kosong atau tak dikenal = teks apa adanya, dirender sebagai teks. */

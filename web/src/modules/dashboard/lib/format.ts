@@ -53,3 +53,14 @@ export function formatDayLabel(day: string): string {
 export function formatRangeLabel(range: { from: string; to: string }): string {
   return `${formatDayLabel(range.from)} – ${formatDayLabel(range.to)}`;
 }
+
+/** Waktu ISO UTC sebagai teks WIB ringkas (`24 Nov 2026 14.30`); nilai tak sah dikembalikan apa adanya. */
+export function formatWhen(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString('id-ID', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'Asia/Jakarta',
+  });
+}
