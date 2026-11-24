@@ -3,10 +3,13 @@
  * /48), negara dua huruf, dan ringkasan perangkat dari daftar putih (`shared/dashboard-visit.ts`); IP asli dan
  * User-Agent mentah tidak pernah ditulis ke basis data maupun log.
  *
- * Kunjungan = GET halaman publik yang berhasil. Pemuatan ulang dari IP terpotong + perangkat yang sama dalam
- * `VISIT_LIMITS.dedupMs` sejak baris kunjungan terakhirnya dihitung SATU kunjungan (hanya `last_visit_at` yang
- * diperbarui). Seluruh pencatatan satu transaksi (`batch()`), dan baris tautan dikunci di awal sehingga GET serentak
- * diserialkan: hitungan dan dedup benar, `visit_count` naik lewat `visit_count + 1` (bukan baca-lalu-tulis).
+ * Kunjungan = GET halaman publik yang berhasil (penyegaran halaman memakai POST `query` dan tidak dicatat). Pemuatan
+ * ulang dari IP terpotong + perangkat yang sama dalam `VISIT_LIMITS.dedupMs` sejak baris kunjungan terakhirnya dihitung
+ * SATU kunjungan dan tidak menulis apa pun. Pencatatan berjalan di LATAR (`scheduleShareVisit`: jawaban halaman tidak
+ * menunggu dan tak pernah gagal karenanya; paling-banyak-sekali, kunjungan dapat hilang bila proses mati saat itu, hanya
+ * statistik). Pemeriksaan awal tanpa kunci (satu SELECT) membuang pemuatan ulang sebelum menulis; penjaga akhir tetap di
+ * dalam `batch()` (satu transaksi): baris tautan dikunci di awal sehingga GET serentak diserialkan, hitungan dan dedup
+ * benar, `visit_count` naik lewat `visit_count + 1` (bukan baca-lalu-tulis).
  */
 import type { DbStatement, Preparer } from '@server/core/db';
 import type { Env } from '@server/core/env';
@@ -29,10 +32,13 @@ export interface VisitSummary {
   lastVisitAt: string;
 }
 
+/** Batas pencatatan latar yang menunggu; di atasnya kunjungan dibuang (statistik, bukan data penting). */
+const MAX_PENDING_RECORDINGS = 200;
+
 const RECENT_SQL =
   'NOT EXISTS (SELECT 1 FROM dashboard_share_visits WHERE share_id = ? AND ip_prefix = ? AND device = ? AND visited_at > ?)';
 
-/** Pernyataan pencatatan satu kunjungan (urutan penting: kunci baris, hitung, sisipkan, `last_visit_at`, pangkas). */
+/** Pernyataan pencatatan satu kunjungan (urutan penting: kunci baris, hitung + `last_visit_at`, sisipkan, pangkas). */
 export function recordVisitStmts(
   db: Preparer,
   shareId: string,
@@ -51,15 +57,14 @@ export function recordVisitStmts(
     db.prepare('UPDATE dashboard_shares SET id = id WHERE id = ?').bind(shareId),
     db
       .prepare(
-        `UPDATE dashboard_shares SET visit_count = visit_count + 1, first_visit_at = IF(first_visit_at = '', ?, first_visit_at) WHERE id = ? AND ${RECENT_SQL}`,
+        `UPDATE dashboard_shares SET visit_count = visit_count + 1, first_visit_at = IF(first_visit_at = '', ?, first_visit_at), last_visit_at = ? WHERE id = ? AND ${RECENT_SQL}`,
       )
-      .bind(now, shareId, ...recent),
+      .bind(now, now, shareId, ...recent),
     db
       .prepare(
         `INSERT INTO dashboard_share_visits (id, share_id, visited_at, country, device, ip_prefix) SELECT ?, ?, ?, ?, ?, ? FROM DUAL WHERE ${RECENT_SQL}`,
       )
       .bind(newId(), shareId, now, country, device, ipPrefix, ...recent),
-    db.prepare('UPDATE dashboard_shares SET last_visit_at = ? WHERE id = ?').bind(now, shareId),
     // Pangkas ke baris terbaru (tabel turunan: MariaDB tak mengizinkan LIMIT langsung di dalam `IN (SELECT ...)`).
     db
       .prepare(
@@ -71,7 +76,8 @@ export function recordVisitStmts(
 
 /**
  * Mencatat kunjungan. TIDAK pernah melempar: kegagalan pencatatan tidak boleh menggagalkan halaman publik, dan log
- * hanya memuat pesan tetap (tanpa token, URL, atau IP).
+ * hanya memuat pesan tetap (tanpa token, URL, atau IP). Pemuatan ulang dalam jendela dedup (pemeriksaan awal tanpa
+ * kunci) tidak menulis apa pun dan mengembalikan `false`.
  */
 export async function recordShareVisit(
   env: Env,
@@ -80,6 +86,13 @@ export async function recordShareVisit(
   nowMs: number,
 ): Promise<boolean> {
   try {
+    const cutoff = new Date(nowMs - VISIT_LIMITS.dedupMs).toISOString();
+    const recent = await env.DB.prepare(
+      'SELECT 1 AS hit FROM dashboard_share_visits WHERE share_id = ? AND ip_prefix = ? AND device = ? AND visited_at > ? LIMIT 1',
+    )
+      .bind(shareId, truncateIp(info.ip), describeDevice(info.userAgent), cutoff)
+      .first<{ hit: number }>();
+    if (recent) return false;
     await env.DB.batch(recordVisitStmts(env.DB, shareId, info, nowMs));
     return true;
   } catch {
@@ -114,4 +127,28 @@ export async function listVisits(db: Preparer, shareId: string): Promise<ShareVi
     device: row.device,
     ipPrefix: row.ip_prefix,
   }));
+}
+
+const pending = new Set<Promise<unknown>>();
+
+/**
+ * Mencatat kunjungan di LATAR: segera kembali (jalur respons tidak menunggu dan tidak terpengaruh kegagalan). Paling
+ * banyak sekali; di atas `MAX_PENDING_RECORDINGS` yang sedang menunggu, kunjungan dibuang agar antrean memori terbatas.
+ */
+export function scheduleShareVisit(
+  env: Env,
+  shareId: string,
+  info: VisitRequestInfo,
+  nowMs: number,
+): void {
+  if (pending.size >= MAX_PENDING_RECORDINGS) return;
+  const task: Promise<unknown> = recordShareVisit(env, shareId, info, nowMs).finally(() => {
+    pending.delete(task);
+  });
+  pending.add(task);
+}
+
+/** Menunggu semua pencatatan latar yang sedang berjalan selesai (dipakai tes dan penutupan server). */
+export async function drainVisitRecordings(): Promise<void> {
+  while (pending.size > 0) await Promise.allSettled([...pending]);
 }

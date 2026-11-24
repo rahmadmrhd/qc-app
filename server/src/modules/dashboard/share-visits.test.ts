@@ -8,7 +8,7 @@ import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { CreateShareInput } from '@shared/dashboard-share';
 import { VISIT_LIMITS } from '@shared/dashboard-visit';
 import { createShare, revokeShare } from './share-service';
-import { listVisits, loadVisitSummary } from './share-visits';
+import { drainVisitRecordings, listVisits, loadVisitSummary } from './share-visits';
 
 setDefaultTimeout(180_000);
 
@@ -61,7 +61,15 @@ interface Visitor {
   trusted?: boolean;
 }
 
+/** GET halaman publik; pencatatan berjalan di latar, jadi tes menunggu antreannya habis sebelum membaca hasil. */
 async function visit(token: string, who: Visitor = {}, db = env.DB): Promise<Response> {
+  const response = await rawVisit(token, who, db);
+  await drainVisitRecordings();
+  return response;
+}
+
+/** Seperti `visit` tetapi TANPA menunggu pencatatan latar (untuk menguji jalur respons). */
+async function rawVisit(token: string, who: Visitor = {}, db = env.DB): Promise<Response> {
   const headers: Record<string, string> = {};
   const ua = who.ua === undefined ? CHROME_WIN : who.ua;
   if (ua !== null) headers['user-agent'] = ua;
@@ -139,7 +147,7 @@ describe('pencatatan kunjungan', () => {
 });
 
 describe('dedup 30 menit', () => {
-  test('muat ulang dari IP terpotong dan perangkat yang sama dihitung satu; hanya last_visit_at maju', async () => {
+  test('muat ulang dari IP terpotong dan perangkat yang sama dihitung satu; tidak ada yang ditulis', async () => {
     const { id, token } = await makeShare();
     await visit(token, { ip: '203.0.113.5' });
     env.clock.set(NOW + 10 * MINUTE);
@@ -148,8 +156,36 @@ describe('dedup 30 menit', () => {
     expect(summary.visitCount).toBe(1);
     expect(visits).toHaveLength(1);
     expect(summary.firstVisitAt).toBe(new Date(NOW).toISOString());
-    expect(summary.lastVisitAt).toBe(new Date(NOW + 10 * MINUTE).toISOString());
+    // last_visit_at = awal kunjungan terakhir yang DIHITUNG; muat ulang dalam jendela dedup tidak menulis apa pun.
+    expect(summary.lastVisitAt).toBe(new Date(NOW).toISOString());
     expect(visits[0]?.visitedAt).toBe(new Date(NOW).toISOString());
+  });
+
+  test('muat ulang dalam jendela dedup tidak menjalankan batch tulis (pemeriksaan awal tanpa kunci)', async () => {
+    const { token } = await makeShare();
+    let batches = 0;
+    const counting = new Proxy(env.DB, {
+      get(target, prop) {
+        if (prop === 'batch') {
+          return (...args: Parameters<typeof env.DB.batch>) => {
+            batches += 1;
+            return target.batch(...args);
+          };
+        }
+        const value = Reflect.get(target, prop, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    await visit(token, { ip: '203.0.113.5' }, counting);
+    expect(batches).toBe(1);
+    for (let index = 0; index < 5; index += 1) {
+      env.clock.set(NOW + (index + 1) * MINUTE);
+      await visit(token, { ip: '203.0.113.5' }, counting);
+    }
+    expect(batches).toBe(1);
+    env.clock.set(NOW + VISIT_LIMITS.dedupMs);
+    await visit(token, { ip: '203.0.113.5' }, counting);
+    expect(batches).toBe(2);
   });
 
   test('lewat 30 menit sejak baris kunjungan terakhir = kunjungan baru', async () => {
@@ -267,6 +303,80 @@ describe('retensi dan konkurensi', () => {
   test('GET serentak dari IP dan perangkat yang sama dihitung satu kunjungan', async () => {
     const { id, token } = await makeShare();
     await Promise.all(Array.from({ length: 8 }, () => visit(token, { ip: '203.0.113.5' })));
+    const { summary, visits } = await rowsOf(id);
+    expect(summary.visitCount).toBe(1);
+    expect(visits).toHaveLength(1);
+  });
+});
+
+describe('penyegaran dan pencatatan latar', () => {
+  test('penyegaran halaman (POST query kosong) berulang tidak mencatat dan tidak menggeser last_visit_at', async () => {
+    const { id, token } = await makeShare();
+    await visit(token, { ip: '203.0.113.5' });
+    for (let index = 1; index <= 5; index += 1) {
+      env.clock.set(NOW + index * VISIT_LIMITS.dedupMs); // tiap kali di luar jendela dedup
+      const post = await app.request(
+        `https://qc.test/api/public/dashboards/${token}/query`,
+        {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-requested-with': 'qc',
+            'user-agent': CHROME_WIN,
+          },
+          body: '{}',
+        },
+        { ...env, clientIp: '203.0.113.5', trustedPeer: true },
+      );
+      expect(post.status).toBe(200);
+    }
+    await drainVisitRecordings();
+    const { summary, visits } = await rowsOf(id);
+    expect(summary).toEqual({
+      visitCount: 1,
+      firstVisitAt: new Date(NOW).toISOString(),
+      lastVisitAt: new Date(NOW).toISOString(),
+    });
+    expect(visits).toHaveLength(1);
+  });
+
+  test('respons tidak menunggu pencatatan yang lambat; hasilnya tetap tercatat sesudahnya', async () => {
+    const { id, token } = await makeShare();
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let finished = false;
+    const slow = new Proxy(env.DB, {
+      get(target, prop) {
+        if (prop === 'batch') {
+          return async (...args: Parameters<typeof env.DB.batch>) => {
+            await gate;
+            const out = await target.batch(...args);
+            finished = true;
+            return out;
+          };
+        }
+        const value = Reflect.get(target, prop, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    const response = await rawVisit(token, {}, slow);
+    expect(response.status).toBe(200);
+    expect(finished).toBe(false); // jawaban sudah kembali selagi pencatatan masih tertahan
+    release();
+    await drainVisitRecordings();
+    expect(finished).toBe(true);
+    expect((await rowsOf(id)).summary.visitCount).toBe(1);
+  });
+
+  test('GET serentak (Promise.all, tanpa menunggu antrean) dari IP dan perangkat sama = satu kunjungan', async () => {
+    const { id, token } = await makeShare();
+    const responses = await Promise.all(
+      Array.from({ length: 10 }, () => rawVisit(token, { ip: '203.0.113.5' })),
+    );
+    expect(responses.every((response) => response.status === 200)).toBe(true);
+    await drainVisitRecordings();
     const { summary, visits } = await rowsOf(id);
     expect(summary.visitCount).toBe(1);
     expect(visits).toHaveLength(1);
