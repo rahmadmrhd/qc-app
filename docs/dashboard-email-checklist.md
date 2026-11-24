@@ -5,9 +5,9 @@ Dipakai SEBELUM rilis fitur laporan terjadwal (spek `docs/superpowers/specs/2026
 ## Persiapan
 
 1. Staging dengan SMTP nyata terisi (`SMTP_*`) dan `APP_ORIGIN` yang benar. Tanpa SMTP, halaman Laporan terjadwal menampilkan peringatan dan Kirim uji nonaktif.
-2. Akun pemegang `dashboard: manage` dan izin sumber data sebagian besar widget (Serah Terima, Serial Number, Laporan rusak, Stok Stiker, Postel), supaya semua jenis visual tampil.
+2. Akun pemegang `dashboard: edit` (atau `manage`) dan izin sumber data sebagian besar widget (Serah Terima, Serial Number, Laporan rusak, Stok Stiker, Postel), supaya semua jenis visual tampil.
 3. Buat satu laporan harian berisi widget dari semua grup (maks. 12): angka dengan delta, donut atau pie, deret waktu, batang horizontal, batang kelompok, dan daftar. Isi penerima dengan alamat Gmail, Outlook, dan iCloud milik tim uji.
-4. Tekan **Pratinjau surel** di halaman laporan untuk melihat HTML sebelum mengirim (tombol di dalamnya tautan contoh yang tidak berfungsi), lalu **Kirim uji** (surel `[UJI]` hanya ke pemilik; maks. 5 per jam).
+4. Tekan **Pratinjau surel** di halaman laporan untuk melihat HTML sebelum mengirim (tombol di dalamnya tautan contoh yang tidak berfungsi), lalu **Kirim uji** (surel `[UJI]` ke surel pelaku yang menekan tombol; maks. 5 per jam per pelaku). Ulangi dengan akun `manage` pada laporan milik orang lain: keterangan uji ada di atas isi, tombol mengarah ke halaman Dashboard, dan penanda "Sebagian data disembunyikan karena hak akses Anda" muncul bila hak akun itu lebih sempit.
 
 ## Klien yang diperiksa
 
@@ -36,12 +36,12 @@ Periksa tiap klien di terang dan gelap bila ada:
 
 ## Jalur lengkap di staging
 
-- [ ] Kirim uji sampai ke surel pemilik, berawalan `[UJI]`.
+- [ ] Kirim uji sampai ke surel pelaku, berawalan `[UJI]`, dengan blok keterangan uji terlihat di atas isi (kuning, tidak terpotong, terbaca di mode gelap) dan baris pertama versi teks polos sama dengan blok itu.
 - [ ] Laporan harian terjadwal 5-10 menit ke depan terkirim sekali (bukan dobel) dan hasil terakhir di daftar menjadi "Terkirim".
 - [ ] Jeda lalu lanjutkan: laporan tidak langsung terkirim saat dilanjutkan (mulai dari jadwal berikutnya).
 - [ ] Hapus laporan lalu buka tautan dari surel lama: halaman menampilkan pesan "Tautan tidak berlaku atau terlalu banyak permintaan".
 - [ ] Cabut tautan dari View tautan: tombol di surel lama tidak lagi membuka dashboard.
-- [ ] Pemilik dinonaktifkan atau kehilangan izin `dashboard: manage`: laporan dilewati dengan catatan yang jelas, tidak ada surel keluar.
+- [ ] Pemilik dinonaktifkan atau kehilangan izin `dashboard` (edit dan manage): laporan dilewati dengan catatan yang jelas, tidak ada surel keluar.
 
 ## Catatan hasil
 
