@@ -204,6 +204,31 @@ describe('qrcodes.export dan jobs.get', () => {
     );
     expect((await call('qredit@gmail.com', 'jobs.get', {})).error.code).toBe('VALIDATION');
   });
+
+  test('enqueueJob dengan statements: job dan pernyataan tambahan satu batch (gagal = tak ada job)', async () => {
+    await expect(
+      enqueueJob(env, 'db_backup', {}, 'system', {
+        statements: () => [env.DB.prepare('INSERT INTO tabel_yang_tidak_ada (x) VALUES (1)')],
+      }),
+    ).rejects.toThrow();
+    const count = await env.DB.prepare('SELECT COUNT(*) AS n FROM jobs').first<{ n: number }>();
+    expect(Number(count?.n)).toBe(0);
+    const id = await enqueueJob(env, 'db_backup', {}, 'system', {
+      statements: (jobId) => [
+        env.DB.prepare('UPDATE jobs SET progress = 7 WHERE id = ?').bind(jobId),
+      ],
+    });
+    expect((await findJob(env, id))?.progress).toBe(7);
+  });
+
+  test('jobs.get: izin qrcode:view hanya membuka job qr_export; job jenis lain (db_backup, serial_proof) NOT_FOUND', async () => {
+    const backupId = await enqueueJob(env, 'db_backup', {}, 'system');
+    const proofId = await enqueueJob(env, 'serial_proof', {}, 'system');
+    for (const id of [backupId, proofId]) {
+      expect((await call('qrview@gmail.com', 'jobs.get', { id })).error.code).toBe('NOT_FOUND');
+      expect((await call('qredit@gmail.com', 'jobs.get', { id })).error.code).toBe('NOT_FOUND');
+    }
+  });
 });
 
 describe('ekspor QR berjalan per langkah', () => {

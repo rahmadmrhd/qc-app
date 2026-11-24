@@ -5,6 +5,7 @@ import {
   MAX_IMAGE_BYTES,
   MAX_IMAGE_DIMENSION,
   matchesImageBytesSignature,
+  readImageDimensions,
 } from '@shared/files';
 
 function isDimension(value: unknown): value is number {
@@ -32,12 +33,22 @@ export function validateUploadFile(raw: unknown): UploadFileInput {
   }
   if (!isDimension(width)) reader.fail('width', 'Lebar tidak valid');
   if (!isDimension(height)) reader.fail('height', 'Tinggi tidak valid');
+  // Dimensi sebenarnya dibaca dari HEADER byte (tanpa mendekode piksel), bukan dipercaya dari klaim klien: gambar
+  // raksasa berklaim kecil akan membuat peramban semua pengguna kehabisan memori saat menampilkannya. Header yang
+  // tak terbaca (jarang; varian format tak umum) memakai klaim yang sudah tervalidasi di atas.
+  let actual: { width: number; height: number } | null = null;
+  if (isImageMime(mime) && bytes instanceof Uint8Array && matchesImageBytesSignature(mime, bytes)) {
+    actual = readImageDimensions(mime, bytes);
+    if (actual !== null && (!isDimension(actual.width) || !isDimension(actual.height))) {
+      reader.fail('bytes', `Dimensi gambar maksimal ${MAX_IMAGE_DIMENSION} px per sisi`);
+    }
+  }
   reader.done();
   return {
     mime: mime as string,
     bytes: bytes as Uint8Array,
-    width: width as number,
-    height: height as number,
+    width: actual?.width ?? (width as number),
+    height: actual?.height ?? (height as number),
   };
 }
 

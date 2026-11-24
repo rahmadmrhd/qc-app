@@ -12,7 +12,11 @@ import { deletedWhere, liveWhere } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { listLocationBriefs } from '@server/modules/access/repo';
 import type { CustomerRecord } from '@server/modules/customer/repo';
-import { insertCustomerStmts, listCustomers } from '@server/modules/customer/repo';
+import {
+  findCustomersByKeys,
+  insertCustomerStmts,
+  listCustomers,
+} from '@server/modules/customer/repo';
 import { lookupCustomerForWrite, planCustomerByName } from '@server/modules/customer/service';
 import {
   needsImmediateDelivery,
@@ -229,8 +233,9 @@ export async function handoverBoard(
       ? '(p.checked_count * 1000 DIV p.total_count) ASC, p.updated_at DESC, p.number DESC'
       : 'p.updated_at DESC, p.number DESC';
   // Halaman (LIMIT) dan jumlah kolom berjalan paralel; komentar halaman diambil dengan satu kueri berikutnya
-  // (id task halaman) dan disusun di aplikasi, jadi board = 2 round trip berurutan. COUNT hanya memindai indeks
-  // kolom itu.
+  // (id task halaman) dan disusun di aplikasi, jadi board = 2 round trip berurutan. Indeks `handovers_board_live`
+  // (location_id, board_status, deleted_at, updated_at, number; migrasi 0032) melayani urutan satu lokasi sampai
+  // LIMIT dan COUNT per kolom tanpa membaca baris.
   // Dua literal per kueri (hidup / terhapus) agar penyaring keadaan terlihat tes penjaga soft delete.
   const pageStatement = (
     deleted
@@ -771,7 +776,11 @@ export async function saveHandoverBatch(
   // pengiriman ulang task yang sudah tersimpan (`createTasks` memeriksanya lagi di dalam percobaan untuk balapan).
   const replayed = await replayCreatedTasks(env, input.locationId, input.tasks, actor);
   if (replayed) return replayed;
-  const customers = await listCustomers(env);
+  // Hanya customer yang namanya dipakai task ini yang dibaca (bukan seluruh daftar customer).
+  const customersByKey = await findCustomersByKeys(
+    env,
+    input.tasks.map((task) => customerKey(task.customerName.trim())),
+  );
   const prepared = input.tasks.map((task, index) => {
     const fail = (field: string, message: string): never => {
       throw appError('VALIDATION', `Task ${index + 1}: ${message}`, {
@@ -789,7 +798,7 @@ export async function saveHandoverBatch(
     if (customerName !== '') {
       const key = customerKey(customerName);
       if (key === '') fail('customerName', 'Nama customer harus memuat huruf atau angka');
-      const found = customers.find((customer) => customer.key === key);
+      const found = customersByKey.get(key);
       if (found && found.status === 'inactive') {
         fail('customerName', 'Customer dinonaktifkan; aktifkan dulu di halaman Customer');
       }

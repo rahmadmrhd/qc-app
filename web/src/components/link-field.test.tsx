@@ -9,6 +9,7 @@ import {
   FormDialogTitle,
 } from '@/components/form-dialog';
 import { mockMatchMedia } from '@/test/match-media';
+import { samePlacement } from './combobox';
 import { LinkField, LinkMultiField, type LinkOption, placeList } from './link-field';
 
 const OPTIONS: LinkOption[] = [
@@ -606,4 +607,11 @@ test('tanpa maxSelected tak ada batas dan tak ada pesan', async () => {
   const list = await screen.findByRole('listbox');
   expect(within(list).queryByText(/^Maksimal/)).toBeNull();
   expect(within(list).getByRole('option', { name: 'Delta' })).not.toHaveAttribute('aria-disabled');
+});
+
+test('samePlacement: letak identik dianggap sama (gulir di dalam daftar tak merender ulang opsi)', () => {
+  const a = placeList(rectAt(100, 32), 800);
+  expect(samePlacement(a, placeList(rectAt(100, 32), 800))).toBe(true);
+  expect(samePlacement(a, placeList(rectAt(120, 32), 800))).toBe(false);
+  expect(samePlacement(a, { ...a, sheet: true })).toBe(false);
 });

@@ -104,6 +104,7 @@ test('status massal jenis memasang baris jenis di tempat dan menandai daftar sti
   });
   client.setQueryData(stickerKeys.types, [type('t1', 'active'), type('t2', 'active')]);
   client.setQueryData(stickerKeys.list, [sticker('a')]);
+  client.setQueryData(stickerKeys.stock(['l1']), []);
   apiMock.mockResolvedValue({ items: [type('t2', 'inactive')] });
   const { result } = renderHook(() => useSetStickerTypeStatusBatch(), { wrapper });
   await act(async () => {
@@ -113,4 +114,6 @@ test('status massal jenis memasang baris jenis di tempat dan menandai daftar sti
     client.getQueryData<StickerTypeDto[]>(stickerKeys.types)?.map((e) => `${e.id}:${e.status}`),
   ).toEqual(['t1:active', 't2:inactive']);
   expect(client.getQueryState(stickerKeys.list)?.isInvalidated).toBe(true);
+  // Baris stok memuat status jenis: ikut basi.
+  expect(client.getQueryState(stickerKeys.stock(['l1']))?.isInvalidated).toBe(true);
 });

@@ -5,12 +5,11 @@
 // downgrade, bahkan dengan `allow-schema-downgrade`, karena image lama tak kompatibel dengan skema pasca-contract.
 // Murni dan tanpa dependensi; satu definisi dipakai tes dan CLI CI.
 
-// Pola destruktif (tanpa memperhatikan huruf; spasi/baris baru di antara kata dilonggarkan oleh \s+).
-const DESTRUCTIVE = [
-  /\bDROP\s+(COLUMN|TABLE|INDEX|CONSTRAINT|FOREIGN\s+KEY)\b/i,
-  /\bRENAME\s+(COLUMN|TABLE|TO)\b/i,
-  /\bCHANGE\s+COLUMN\b/i,
-];
+// Pola destruktif (tanpa memperhatikan huruf; spasi/baris baru di antara kata dilonggarkan oleh \s+). Sengaja luas, bukan daftar
+// bentuk: SETIAP `DROP` dan `RENAME` di luar komentar dihitung (DROP KEY/PRIMARY KEY/CHECK/<kolom tanpa kata COLUMN>/DEFAULT,
+// RENAME INDEX/KEY, dst.), ditambah `CHANGE [COLUMN] <nama>`. Salah-positif (kata itu di dalam string literal) hanya membuat
+// penanda wajib dipasang, sedangkan salah-negatif membiarkan rollback image lama ke skema pasca-contract.
+const DESTRUCTIVE = [/\bDROP\b/i, /\bRENAME\b/i, /\bCHANGE\s+(?:COLUMN\s+)?[`\w]/i];
 
 // Baris pertama persis `-- qc:contract`, boleh diikuti spasi/tab dan CR (berkas CRLF); tanpa spasi di depan, tanpa teks lain.
 const MARKER = /^-- qc:contract[ \t]*\r?$/;

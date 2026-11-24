@@ -574,3 +574,103 @@ describe('aturan group (Postel): tes kesepakatan items.get dan filter daftar', (
     expect(await resolvedOf('P3')).toEqual(['s-postel-b']);
   }, 300_000);
 });
+
+describe('sasaran terhapus (soft delete): hasInstructions, instruction=none, dan filter memakai satu definisi "hidup"', () => {
+  const DELETED_AT = '2026-11-09T00:00:00.000Z';
+  const itemOf = async (id: string): Promise<ItemDto> =>
+    (await (await rest.get(`/items/${id}`)).json()) as ItemDto;
+  /** Stiker yang dihasilkan penanda menurut detail, tanpa entri yang bertanda terhapus (hanya ditampilkan). */
+  const liveResolved = async (model: string): Promise<string[]> =>
+    (await itemOf(ids[model] as string)).stickerPhotos
+      .flatMap((photo) => photo.marks.flatMap((m) => m.resolved))
+      .filter((sticker) => sticker.deleted !== true)
+      .map((sticker) => sticker.id);
+  const hasInstructions = async (model: string): Promise<boolean> =>
+    ((await (await rest.get('/items?limit=50')).json()) as ItemPageDto).items.find(
+      (item) => item.id === ids[model],
+    )?.hasInstructions ?? false;
+
+  test('penanda langsung ke stiker terhapus: bukan instruksi, tak cocok pada filter stikernya maupun jenisnya', async () => {
+    await seedSticker(env, { id: 's-del', typeId: 't-none' });
+    await createItem('Langsung', ['bu-a'], [stickerMark('s-del')]);
+    expect(await hasInstructions('Langsung')).toBe(true);
+    // Enam (penanda ke jenis t-none, aturan none) ikut memakai stiker hidup apa pun di jenisnya.
+    expect(names(await list('?stickerId=s-del'))).toEqual(set('Enam', 'Langsung'));
+    await env.DB.prepare('UPDATE stickers SET deleted_at = ? WHERE id = ?')
+      .bind(DELETED_AT, 's-del')
+      .run();
+    expect(await hasInstructions('Langsung')).toBe(false);
+    expect(names(await list('?instruction=none'))).toContain('Langsung');
+    expect(await list('?stickerId=s-del')).toEqual([]);
+    expect(names(await list('?stickerId=s-del&stickerMode=missing'))).toContain('Langsung');
+    // jalur typeId: stiker terhapus tak lagi membuat item "memakai" jenisnya (Tiga dan Enam tetap).
+    expect(names(await list('?typeId=t-none'))).toEqual(set('Enam', 'Tiga'));
+    expect(await liveResolved('Langsung')).toEqual([]);
+  });
+
+  test('penanda ke jenis terhapus: bukan instruksi dan tak cocok pada filter jenis itu', async () => {
+    await seedStickerType(env, { id: 't-del', name: 'Akan Hapus', rule: 'none' });
+    await seedSticker(env, { id: 's-in-del', typeId: 't-del' });
+    await createItem('BerJenis', ['bu-a'], [typeMark('t-del')]);
+    expect(names(await list('?typeId=t-del'))).toEqual(['BerJenis']);
+    await env.DB.prepare('UPDATE sticker_types SET deleted_at = ? WHERE id = ?')
+      .bind(DELETED_AT, 't-del')
+      .run();
+    expect(await hasInstructions('BerJenis')).toBe(false);
+    expect(names(await list('?instruction=none'))).toContain('BerJenis');
+    expect(await list('?typeId=t-del')).toEqual([]);
+    expect(await list('?stickerId=s-in-del')).toEqual([]);
+    expect(await liveResolved('BerJenis')).toEqual([]);
+  });
+
+  test('Manual Book: konfigurasi QR terhapus = item tak memakai stiker versinya (detail dan daftar sepakat)', async () => {
+    await seedStickerType(env, {
+      id: 't-mb',
+      name: 'Manual Book',
+      rule: 'group',
+      systemKind: 'manual_book',
+    });
+    await seedSticker(env, { id: 'mb-v1', typeId: 't-mb' });
+    await seedQrDesign(env, { id: 'qd-1' });
+    await seedManualBookVersion(env, { stickerId: 'mb-v1', designId: 'qd-1', version: 1 });
+    await createItem('MB', ['bu-a'], [typeMark('t-mb')]);
+    await env.DB.prepare('UPDATE items SET manual_book_design_id = ? WHERE id = ?')
+      .bind('qd-1', ids.MB as string)
+      .run();
+    expect(await liveResolved('MB')).toEqual(['mb-v1']);
+    expect(names(await list('?stickerId=mb-v1'))).toEqual(['MB']);
+    await env.DB.prepare('UPDATE qr_designs SET deleted_at = ? WHERE id = ?')
+      .bind(DELETED_AT, 'qd-1')
+      .run();
+    expect(await liveResolved('MB')).toEqual([]);
+    expect(await list('?stickerId=mb-v1')).toEqual([]);
+    expect(names(await list('?stickerId=mb-v1&stickerMode=missing'))).toContain('MB');
+  });
+
+  test('Postel: catatan terhapus = item tak memakai stikernya (detail dan daftar sepakat)', async () => {
+    await seedStickerType(env, {
+      id: 't-pp',
+      name: 'Postel',
+      rule: 'group',
+      systemKind: 'postel',
+    });
+    await seedSticker(env, { id: 's-pp', typeId: 't-pp' });
+    await seedPostel(env, {
+      id: 'pp-del',
+      stickerId: 's-pp',
+      numbers: [{ number: 'PLG-1', expiresOn: '2027-01-01' }],
+    });
+    await createItem('PP', ['bu-a'], [typeMark('t-pp')]);
+    await env.DB.prepare('UPDATE items SET postel_id = ? WHERE id = ?')
+      .bind('pp-del', ids.PP as string)
+      .run();
+    expect(await liveResolved('PP')).toEqual(['s-pp']);
+    expect(names(await list('?stickerId=s-pp'))).toEqual(['PP']);
+    await env.DB.prepare('UPDATE postels SET deleted_at = ? WHERE id = ?')
+      .bind(DELETED_AT, 'pp-del')
+      .run();
+    expect(await liveResolved('PP')).toEqual([]);
+    expect(await list('?stickerId=s-pp')).toEqual([]);
+    expect(names(await list('?stickerId=s-pp&stickerMode=missing'))).toContain('PP');
+  });
+});

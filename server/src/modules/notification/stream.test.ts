@@ -352,6 +352,30 @@ describe('aliran notifikasi untuk lonceng web (cookie sesi, hub yang sama)', () 
     await sse.cancel();
   });
 
+  test('banyak tab satu pengguna: satu kueri notifikasi per putaran (bukan per koneksi), semua tab tetap menerima', async () => {
+    const desktop = frames(await open(VIEWER));
+    const tabA = frames(await openWeb(VIEWER));
+    const tabB = frames(await openWeb(VIEWER));
+    for (const sse of [desktop, tabA, tabB]) expect((await sse.next())?.event).toBe('ready');
+    await insert(row(1, { number: 'ST-SATU' }));
+
+    const queries: string[] = [];
+    const original = env.DB.prepare.bind(env.DB);
+    env.DB.prepare = ((sql: string) => {
+      if (sql.includes('FROM notifications WHERE recipient')) queries.push(sql);
+      return original(sql);
+    }) as typeof env.DB.prepare;
+    try {
+      await pumpNotificationStreams(env);
+    } finally {
+      env.DB.prepare = original;
+    }
+    expect(queries).toHaveLength(1);
+    for (const sse of [desktop, tabA, tabB]) {
+      expect((await sse.next())?.event).toBe('notification');
+    }
+  });
+
   test('bucket terpisah: tab web melebihi STREAM_MAX_PER_USER tidak saling menutup dan tidak menggusur desktop', async () => {
     const desktop = await open(VIEWER);
     const desktopFrames = frames(desktop);

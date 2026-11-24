@@ -19,7 +19,7 @@ import type { ExportQrDesignInput, ExportQrJobDto } from '@shared/contract';
 import { isPngBytes, readImageDimensions } from '@shared/files';
 import { manualBookFileName, QR_LIMITS, qrContentHash } from '@shared/qrcode';
 import { ensureQrFolder } from './folders';
-import { listAttachedItems } from './items';
+import { listAttachedItemsOf } from './items';
 import type { QrDesignRecord } from './repo';
 import { findQrDesign, guardChanged, runGuardedBatch, updateQrDesignExportStmt } from './repo';
 import {
@@ -116,7 +116,7 @@ export async function requestQrExport(
   }
   // Nama kembar (data lama atau simpanan serentak) ditolak di tepi, sebelum job dan berkas Drive apa pun.
   await assertManualBookNameFree(env, design.name, design.id);
-  const items = (await listAttachedItems(env.DB)).get(design.id) ?? [];
+  const items = await listAttachedItemsOf(env.DB, design.id);
   if (items.length === 0) {
     throw fieldError('itemIds', 'Konfigurasi belum punya item; pilih minimal satu item lewat Ubah');
   }

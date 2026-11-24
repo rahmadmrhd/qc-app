@@ -123,6 +123,7 @@ interface SnapshotRow {
   case_number: string | null;
   opened_on: string | null;
   closed_on: string | null;
+  case_updated_at: string | null;
   occurred_on: string | null;
   actor_name: string | null;
   message: string | null;
@@ -133,14 +134,17 @@ async function loadSnapshot(
   input: SerialAlertJobInput,
 ): Promise<SerialBrokenSnapshot | null> {
   const row = await env.DB.prepare(
-    `SELECT s.serial, bu.code AS bu_code, bu.name AS bu_name, b.name AS brand_name, i.model, l.name AS location_name, c.number AS case_number, c.opened_on, c.closed_on, e.occurred_on, e.actor_name, e.message FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id LEFT JOIN locations l ON l.id = s.location_id LEFT JOIN serial_cases c ON c.id = ? AND c.serial_id = s.id LEFT JOIN serial_events e ON e.id = ? AND e.serial_id = s.id WHERE ${liveWhere('s')} AND s.id = ?`,
+    `SELECT s.serial, bu.code AS bu_code, bu.name AS bu_name, b.name AS brand_name, i.model, l.name AS location_name, c.number AS case_number, c.opened_on, c.closed_on, c.updated_at AS case_updated_at, e.occurred_on, e.actor_name, e.message FROM serials s JOIN business_units bu ON bu.id = s.bu_id LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id LEFT JOIN locations l ON l.id = s.location_id LEFT JOIN serial_cases c ON c.id = ? AND c.serial_id = s.id LEFT JOIN serial_events e ON e.id = ? AND e.serial_id = s.id WHERE ${liveWhere('s')} AND s.id = ?`,
   )
     .bind(input.caseId, input.eventId, input.serialId)
     .first<SnapshotRow>();
   if (!row) return null;
   const origin = env.APP_ORIGIN?.replace(/\/+$/, '') ?? '';
-  const closedOn = (row.closed_on ?? '').trim();
-  const expiresAt = reportLinkExpiresAt(closedOn);
+  // Dasar kedaluwarsa = waktu SERVER saat laporan ditutup (`updated_at` diset `now` oleh penutupan), bukan tanggal
+  // kejadian pilihan pengguna (bisa mundur jauh sehingga tautan langsung kedaluwarsa); keputusan pemilik 2026-11-23.
+  const expiresAt = reportLinkExpiresAt(
+    reportLinkBaseDate((row.closed_on ?? '').trim(), row.case_updated_at ?? ''),
+  );
   // Tanpa tautan bila origin, rahasia sesi, atau tanggal penutupan laporan tak tersedia; surel tetap terkirim.
   let link = '';
   let linkExpiresOn = '';
@@ -164,6 +168,18 @@ async function loadSnapshot(
     link,
     linkExpiresOn,
   };
+}
+
+/**
+ * Tanggal dasar masa berlaku tautan: yang lebih akhir antara `closed_on` (tanggal kejadian) dan tanggal WIB penutupan
+ * di server (`updated_at` laporan). Kosong bila laporan belum tertutup (`closed_on` kosong).
+ */
+export function reportLinkBaseDate(closedOn: string, caseUpdatedAt: string): string {
+  if (closedOn === '') return '';
+  const stamp = Date.parse(caseUpdatedAt);
+  if (!Number.isFinite(stamp)) return closedOn;
+  const serverDate = wibDateIso(stamp);
+  return serverDate > closedOn ? serverDate : closedOn;
 }
 
 function parseInput(text: string): SerialAlertJobInput | null {

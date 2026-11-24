@@ -1,5 +1,6 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute } from '@tanstack/react-router';
+import { useFrozen } from '@/hooks/use-frozen';
 import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
 import { requirePermission } from '@/modules/auth/permissions';
 import { meQueryOptions } from '@/modules/auth/queries';
@@ -37,6 +38,14 @@ export const Route = createFileRoute('/_app/item/$itemId/edit')({
 
 function EditItemPage() {
   const { itemId } = Route.useParams();
-  const { data: item } = useSuspenseQuery(itemQueryOptions(itemId));
+  // `key`: berpindah ke item lain membuat bekuan baru.
+  return <EditItemForm key={itemId} itemId={itemId} />;
+}
+
+function EditItemForm({ itemId }: { itemId: string }) {
+  const { data } = useSuspenseQuery(itemQueryOptions(itemId));
+  // Versi saat halaman dibuka: muat ulang di latar (polling 30 dtk) tidak me-reset isian pengguna; bila orang lain sudah
+  // menyimpan, server menjawab versi usang (bukan ketikan hilang diam-diam).
+  const item = useFrozen(data);
   return <ItemFormPage mode="edit" item={item} />;
 }

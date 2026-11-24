@@ -108,6 +108,9 @@ export function readIdTokenEmail(idToken: string, clientId: string, nowMs: numbe
   return { ok: true, email: normalizeEmail(claims.email) };
 }
 
+/** Batas waktu penukaran kode ke endpoint token Google (termasuk badan respons). */
+const TOKEN_EXCHANGE_TIMEOUT_MS = 10_000;
+
 /** id_token diterima langsung dari endpoint token Google lewat TLS, jadi tanda tangannya tidak diverifikasi ulang. */
 export async function exchangeCodeForEmail(
   env: Env,
@@ -126,6 +129,8 @@ export async function exchangeCodeForEmail(
         redirect_uri: redirectUri(env, request),
         grant_type: 'authorization_code',
       }),
+      // Endpoint token yang menggantung tak boleh menahan permintaan login selamanya (mencakup pembacaan badan).
+      signal: AbortSignal.timeout(TOKEN_EXCHANGE_TIMEOUT_MS),
     });
   } catch {
     return { ok: false, reason: 'endpoint token tidak terjangkau' };

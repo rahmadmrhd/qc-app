@@ -106,6 +106,29 @@ test('versi usang (412): pesan STALE_SAVE_MESSAGE, tanpa navigasi', async () => 
   expect(props.onDone).not.toHaveBeenCalled();
 });
 
+test('versi usang pada Ubah: catatan di cache ditandai basi agar Batal lalu Ubah memakai data terbaru', async () => {
+  respond(() =>
+    Promise.reject(new ApiError('CONFLICT', 'Data usang', 'r', undefined, { status: 412 })),
+  );
+  client.setQueryData(postelKeys.one(saved.id), saved);
+  render(
+    <QueryClientProvider client={client}>
+      <PostelFormPage
+        postel={saved}
+        soonDays={90}
+        today="2026-11-12"
+        onDone={vi.fn()}
+        onCancel={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent(STALE_SAVE_MESSAGE);
+  await waitFor(() =>
+    expect(client.getQueryState(postelKeys.one(saved.id))?.isInvalidated).toBe(true),
+  );
+});
+
 test('galat per field dipetakan ke field (tanpa alert umum)', async () => {
   respond(() =>
     Promise.reject(

@@ -147,13 +147,21 @@ export function validateUploadGuide(raw: unknown): UploadStickerGuideInput {
       );
     }
   }
+  // Dimensi gambar utama dibaca dari header byte, bukan dipercaya dari klaim klien (lihat `validateUploadFile`).
+  let actual: { width: number; height: number } | null = null;
+  if (isImageMime(mime) && image instanceof Uint8Array && matchesImageBytesSignature(mime, image)) {
+    actual = readImageDimensions(mime, image);
+    if (actual !== null && (!isDimension(actual.width) || !isDimension(actual.height))) {
+      reader.fail('image', `Dimensi gambar maksimal ${MAX_IMAGE_DIMENSION} px per sisi`);
+    }
+  }
   reader.done();
   return {
     name,
     mime: mime as string,
     thumbMime: thumbMime as string,
-    width: width as number,
-    height: height as number,
+    width: actual?.width ?? (width as number),
+    height: actual?.height ?? (height as number),
     image: image as Uint8Array,
     thumbnail: thumbnail as Uint8Array,
   };

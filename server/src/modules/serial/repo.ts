@@ -64,6 +64,25 @@ export async function findSerialByClientId(
     : null;
 }
 
+/**
+ * Apakah catatan yang sudah memakai `clientId` itu adalah baris yang sama dengan kiriman ulang `row`: serialnya sama dan
+ * BU-nya sama ATAU BU kiriman pernah memegang serial itu (`serial_business_units`). Serial yang sudah dipindah BU lewat
+ * cek ulang lintas BU sesudah komit pertama tetap dikenali sebagai kiriman ulang yang sah (bukan "Baris tidak valid").
+ */
+export async function isReplayOfRow(
+  db: Preparer,
+  existing: { id: string; buId: string; serial: string },
+  row: { buId: string; serial: string },
+): Promise<boolean> {
+  if (existing.serial !== row.serial) return false;
+  if (existing.buId === row.buId) return true;
+  const history = await db
+    .prepare('SELECT 1 AS ok FROM serial_business_units WHERE serial_id = ? AND bu_id = ? LIMIT 1')
+    .bind(existing.id, row.buId)
+    .first<{ ok: number }>();
+  return history !== null;
+}
+
 /** Nama lokasi dengan status apa pun (nonaktif tetap dikenali di riwayat), atau `null` bila tidak ada. */
 export async function locationNameOf(db: Preparer, locationId: string): Promise<string | null> {
   const row = await db

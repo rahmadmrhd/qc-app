@@ -136,6 +136,24 @@ test('startQueryPersistence menyimpan setelah jeda ketika query berubah', async 
   stop();
 });
 
+test('startQueryPersistence tidak menyimpan untuk query di luar whitelist maupun sekadar invalidasi', async () => {
+  vi.useFakeTimers();
+  login('a@x.com');
+  const client = new QueryClient();
+  client.setQueryData(['brands', 'list'], [{ id: 'b1' }]);
+  const stop = startQueryPersistence(client);
+  // Polling query lain (mis. lonceng) dan invalidasi whitelist tanpa data baru tidak memicu serialisasi.
+  client.setQueryData(['notifications', 'list'], [{ id: 'n1' }]);
+  await client.invalidateQueries({ queryKey: ['brands', 'list'], refetchType: 'none' });
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(localStorage.getItem(PERSISTED_CACHE_KEY)).toBeNull();
+  // Data whitelist berubah: tersimpan.
+  client.setQueryData(['brands', 'list'], [{ id: 'b2' }]);
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(localStorage.getItem(PERSISTED_CACHE_KEY)).not.toBeNull();
+  stop();
+});
+
 test('cache versi lama (kunci qc.cache.v1) tidak dipulihkan dan dibuang', () => {
   const owner = login('a@x.com');
   localStorage.setItem(

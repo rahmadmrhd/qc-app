@@ -93,6 +93,21 @@ export async function findCustomerByKey(env: Env, key: string): Promise<Customer
   return row ? toCustomer(row) : null;
 }
 
+/** Customer HIDUP menurut sekumpulan kunci (satu kueri, bukan seluruh daftar); kunci yang tak ada tak muncul di peta. */
+export async function findCustomersByKeys(
+  env: Env,
+  keys: readonly string[],
+): Promise<Map<string, CustomerRecord>> {
+  const unique = [...new Set(keys.filter((key) => key !== ''))];
+  if (unique.length === 0) return new Map();
+  const rows = await env.DB.prepare(
+    `SELECT ${CUSTOMER_READ_COLUMNS} FROM customers WHERE \`key\` IN (${unique.map(() => '?').join(', ')}) AND ${liveWhere()}`,
+  )
+    .bind(...unique)
+    .all<CustomerRow>();
+  return new Map(customersFromResult(rows).map((customer) => [customer.key, customer]));
+}
+
 export function insertCustomerStmt(db: Preparer, customer: CustomerRecord): DbStatement {
   return db
     .prepare(`INSERT INTO customers (${CUSTOMER_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?)`)

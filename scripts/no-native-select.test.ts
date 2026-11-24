@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { stripComments } from './strip-comments';
 
 // Aturan project (CLAUDE.md, "Aturan frontend"; keputusan pemilik 2026-11-11): jangan pernah memakai elemen
 // `<select>` HTML bawaan. Pilihan memakai `Select`/`MultiSelect` (`web/src/components/select.tsx`) atau
@@ -26,11 +27,6 @@ function walk(dir: string, found: string[] = []): string[] {
     else if (path.endsWith('.tsx') || path.endsWith('.ts')) found.push(path);
   }
   return found;
-}
-
-/** Membuang komentar blok dan baris agar penjelasan yang menyebut `<select>` tidak dianggap pelanggaran. */
-function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
 test('tak ada <select>/<option>/<optgroup> bawaan, NativeSelect, atau ui/select di web/src', () => {

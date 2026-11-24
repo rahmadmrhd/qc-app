@@ -33,7 +33,12 @@ import { APP_ORIGIN, APP_SCHEME, createAppHandler, isAppUrl } from './app-protoc
 import { createHandoffFlow, type HandoffFlow, type HandoffInput } from './auth/handoff-flow';
 import { createLoginFlow, LOGIN_MAX_AGE_MS, type LoginFlow } from './auth/login-flow';
 import { closeLoginWindow, openLoginWindow } from './auth/login-window';
-import { LOGIN_SUCCESS_TITLE, startLoopback } from './auth/loopback';
+import {
+  ERROR_PAGE_CLOSE_MS,
+  LOGIN_FAILED_TITLE,
+  LOGIN_SUCCESS_TITLE,
+  startLoopback,
+} from './auth/loopback';
 import { createTokenStore } from './auth/token-store';
 import { createCatalogStore } from './catalog/catalog-store';
 import { createCatalogSync } from './catalog/catalog-sync';
@@ -157,7 +162,11 @@ async function runSmokeUi(): Promise<void> {
 
 /** URL `qc://auth?...` pada argumen proses (cold start atau second-instance). */
 function authUrlsFromArgv(argv: readonly string[]): string[] {
-  return argv.filter((arg) => arg.startsWith('qc://') && parseQcUrl(arg)?.auth !== undefined);
+  return argv.filter((arg) => {
+    if (!arg.startsWith('qc://')) return false;
+    const parsed = parseQcUrl(arg);
+    return parsed?.auth !== undefined || parsed?.authError !== undefined;
+  });
 }
 
 /** Serah-terima dari peramban: `qc://country-lock?handoff=...` pada argumen proses (cold start atau second-instance). */
@@ -291,7 +300,7 @@ function runApp(): void {
   app.on('open-url', (event, url) => {
     event.preventDefault();
     const parsed = parseQcUrl(url);
-    if (parsed?.auth) dispatchAuthUrl(url);
+    if (parsed?.auth || parsed?.authError) dispatchAuthUrl(url);
     if (parsed?.handoff) dispatchHandoff(parsed.handoff);
     focusWindow();
   });
@@ -346,21 +355,24 @@ function runApp(): void {
           openExternal: (target) => shell.openExternal(target),
         });
       },
-      startLoopback: (onCallback) =>
+      startLoopback: (onCallback, onError) =>
         startLoopback({
           onCallback,
+          onError,
           timeoutMs: LOGIN_MAX_AGE_MS,
-          // Jeda singkat agar pengguna sempat melihat "Login berhasil", lalu tutup popup (window.close() dari
-          // halaman diabaikan peramban pada jendela berriwayat >1 halaman).
+          // Jeda singkat agar pengguna sempat melihat "Login berhasil" (atau pesan galat, lebih lama), lalu tutup
+          // popup (window.close() dari halaman diabaikan peramban pada jendela berriwayat >1 halaman).
           onShown: (ok) => {
-            if (!ok) return;
-            setTimeout(() => {
-              void closeLoginWindow(LOGIN_SUCCESS_TITLE, {
-                platform: process.platform,
-                env: process.env,
-                run: runProgram,
-              });
-            }, 900);
+            setTimeout(
+              () => {
+                void closeLoginWindow(ok ? LOGIN_SUCCESS_TITLE : LOGIN_FAILED_TITLE, {
+                  platform: process.platform,
+                  env: process.env,
+                  run: runProgram,
+                });
+              },
+              ok ? 900 : ERROR_PAGE_CLOSE_MS,
+            );
           },
         }),
       fetchImpl: net.fetch as typeof fetch,

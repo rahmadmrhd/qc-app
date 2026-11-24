@@ -231,7 +231,7 @@ test('Koreksi hanya menawarkan lokasi dengan hak manage (Bandung hanya edit)', a
 
 test('galat server tampil dan isian dipertahankan; tidak ada onDone', async () => {
   const { onSave, onDone } = await renderPage();
-  onSave.mockResolvedValueOnce({ message: 'Stiker tidak aktif', stale: false });
+  onSave.mockResolvedValueOnce({ message: 'Stiker tidak aktif' });
   await chooseJakarta();
   await userEvent.click(screen.getByRole('button', { name: 'Tambah Hijau-B' }));
   await userEvent.type(screen.getByLabelText('Butir'), '3');
@@ -360,7 +360,7 @@ test('Batal pada FormPage memanggil onCancel dan tidak menyimpan', async () => {
 
 test('K1: clientId dibuat sekali dan tetap sama pada kiriman ulang, juga setelah isian, alasan, mode, atau lokasi diubah (server yang menolak isi berbeda)', async () => {
   const { onSave } = await renderPage();
-  onSave.mockResolvedValueOnce({ message: 'Jaringan putus', stale: false });
+  onSave.mockResolvedValueOnce({ message: 'Jaringan putus' });
   await chooseJakarta();
   await userEvent.click(screen.getByRole('button', { name: 'Tambah Hijau-B' }));
   await userEvent.type(screen.getByLabelText('Butir'), '3');

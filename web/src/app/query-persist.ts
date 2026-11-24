@@ -139,6 +139,10 @@ export function startQueryPersistence(queryClient: QueryClient): () => void {
   };
   const unsubscribe = queryClient.getQueryCache().subscribe((event) => {
     if (event.type !== 'updated' && event.type !== 'removed') return;
+    // Hanya query whitelist yang datanya berubah (sukses, termasuk `setQueryData`) yang perlu disimpan; polling query
+    // lain (lonceng, dst.) tidak boleh memicu serialisasi ratusan KB tiap beberapa detik.
+    if (!isPersistable(event.query.queryKey)) return;
+    if (event.type === 'updated' && event.action.type !== 'success') return;
     if (timer === null) timer = setTimeout(flush, SAVE_DELAY_MS);
   });
   const onHide = () => {

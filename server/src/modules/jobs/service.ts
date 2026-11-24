@@ -1,3 +1,4 @@
+import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { appError } from '@server/core/errors';
@@ -13,6 +14,11 @@ export const JOB_SYSTEM_ACTOR = 'system';
 export interface EnqueueOptions {
   /** Muatan besar (base64): satu baris `job_blobs` per entri; tidak ikut kolom `input`. */
   blobs?: Record<string, string>;
+  /**
+   * Pernyataan tambahan (mis. audit) yang ditulis dalam `batch()` YANG SAMA dengan baris job: job dan catatannya atomik
+   * (tak ada job tanpa audit bila penulisan kedua gagal). Menerima id job yang baru dibuat.
+   */
+  statements?: (jobId: string) => DbStatement[];
 }
 
 /**
@@ -47,6 +53,7 @@ export async function enqueueJob(
     ...Object.entries(options.blobs ?? {}).map(([name, data]) =>
       insertBlobStmt(env.DB, job.id, name, data),
     ),
+    ...(options.statements?.(job.id) ?? []),
   ]);
   return job.id;
 }
@@ -62,11 +69,17 @@ export function toJobDto(job: JobRecord): JobDto {
   };
 }
 
-/** `jobs.get`: pembuat job, atau pengguna dengan izin modul `qrcode` (lihat), boleh memantau. */
+/**
+ * `jobs.get`: pembuat job boleh memantau jobnya; pengguna dengan izin modul `qrcode` (lihat) hanya untuk job EKSPOR QR
+ * (`qr_export`). Jenis lain (cadangan DB, foto bukti serial, ekspor Sheets) membawa id berkas Drive/nama berkas di
+ * hasilnya dan tak berkaitan dengan izin QR, jadi hanya terbuka bagi pembuatnya.
+ */
 export async function getJobDto(env: Env, input: GetJobInput, user: UserContext): Promise<JobDto> {
   const job = await findJob(env, input.id);
   if (!job) throw appError('NOT_FOUND', 'Pekerjaan tidak ditemukan');
-  const allowed = job.createdBy === user.email || hasLevel(user.permissions.qrcode, 'view');
+  const allowed =
+    job.createdBy === user.email ||
+    (job.kind === 'qr_export' && hasLevel(user.permissions.qrcode, 'view'));
   // Pekerjaan orang lain disamarkan sebagai tidak ada (tidak membocorkan keberadaan).
   if (!allowed) throw appError('NOT_FOUND', 'Pekerjaan tidak ditemukan');
   return toJobDto(job);

@@ -165,6 +165,13 @@ jobs:
           fi
           image="ghcr.io/${OWNER,,}/qc-app"
           if docker buildx imagetools inspect "$image:$SHA" > /dev/null 2>&1; then image_exists=true; else image_exists=false; fi
+          # Target pembangun image (label `qc.build-target`, ditulis `server-image.yml`): hanya image BUILD PRODUCTION (tanpa cache)
+          # yang sah di-deploy lewat tag; tag SHA dapat ditimpa build staging yang ber-cache. Nilai di luar daftar = kosong.
+          image_target=''
+          if [ "$image_exists" = true ]; then
+            image_target=$(docker buildx imagetools inspect "$image:$SHA" --format '{{json .Image}}' | jq -r '[.. | objects | select(has("qc.build-target")) | ."qc.build-target"] | first // ""') || image_target=''
+          fi
+          [[ $image_target =~ ^(staging|production)$ ]] || image_target=''
           # Cabut token GHCR dari disk (login-action menulisnya ke ~/.docker/config.json) sebelum langkah skrip repositori berjalan.
           docker logout ghcr.io > /dev/null 2>&1 || true
 
@@ -200,6 +207,7 @@ jobs:
             echo "release_author=$release_author"
             echo "release_draft=$release_draft"
             echo "image_exists=$image_exists"
+            echo "image_target=$image_target"
             echo "downgrade_check=$downgrade_check"
             echo "applied_json=$applied"
             echo "target_json=$target"
@@ -218,6 +226,7 @@ jobs:
           RELEASE_AUTHOR: ${{ steps.facts.outputs.release_author }}
           RELEASE_DRAFT: ${{ steps.facts.outputs.release_draft }}
           IMAGE_EXISTS: ${{ steps.facts.outputs.image_exists }}
+          IMAGE_TARGET: ${{ steps.facts.outputs.image_target }}
         run: bun run scripts/deploy-tag-check.ts provenance
 
       - name: Pagar downgrade skema (pemeriksaan dini)

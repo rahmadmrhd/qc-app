@@ -2,7 +2,8 @@
  * Nama berkas cadangan dan waktu WIB. Satu-satunya tempat yang menafsirkan `qc-backup-YYYYMMDD-HHmm.sql.gz`:
  * dipakai pembuat nama, retensi, peringatan basi, dan pemulihan (waktu di nama = WIB, UTC+7 tanpa DST).
  */
-const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
+import { WIB_OFFSET_MS } from '@shared/wib';
+
 const NAME_PATTERN = /^qc-backup-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})\.sql\.gz$/;
 
 export interface ParsedBackupName {

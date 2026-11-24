@@ -102,6 +102,7 @@ function readBuAssignmentList(value: unknown, reader: ObjectReader): BuAssignmen
 export function validateSaveUser(raw: unknown): SaveUserInput {
   const reader = readObject(raw);
   const id = reader.optionalId('id');
+  const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt');
   const email = reader.email('email');
   const name = reader.str('name', { required: true, max: 100 });
   const status = reader.oneOf('status', USER_STATUS_VALUES);
@@ -114,7 +115,9 @@ export function validateSaveUser(raw: unknown): SaveUserInput {
   reader.done();
   const base = { email, name, status, assignments, buAssignments };
   const withShared = typeof sharedRaw === 'boolean' ? { ...base, sharedAccount: sharedRaw } : base;
-  return id ? { id, ...withShared } : withShared;
+  return id
+    ? { id, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}), ...withShared }
+    : withShared;
 }
 
 export function validateSetUserStatus(raw: unknown): SetUserStatusInput {
@@ -148,11 +151,14 @@ function readPermissions(value: unknown, reader: ObjectReader): PartialPermissio
 export function validateSaveRole(raw: unknown): SaveRoleInput {
   const reader = readObject(raw);
   const id = reader.optionalId('id');
+  const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt');
   const name = reader.str('name', { required: true, max: 60 });
   const description = reader.str('description', { max: 200 });
   const permissions = readPermissions(reader.raw('permissions'), reader);
   reader.done();
-  return id ? { id, name, description, permissions } : { name, description, permissions };
+  return id
+    ? { id, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}), name, description, permissions }
+    : { name, description, permissions };
 }
 
 export const PAGE_DEFAULT_LIMIT = 20;
@@ -205,13 +211,16 @@ const LOCATION_CODE_PATTERN = /^[A-Z0-9-]+$/;
 export function validateSaveLocation(raw: unknown): SaveLocationInput {
   const reader = readObject(raw);
   const id = reader.optionalId('id');
+  const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt');
   const code = reader.str('code', { required: true, max: 10 }).toUpperCase();
   const name = reader.str('name', { required: true, max: 100 });
   if (code !== '' && code.length <= 10 && !LOCATION_CODE_PATTERN.test(code)) {
     reader.fail('code', 'Hanya huruf, angka, dan tanda hubung');
   }
   reader.done();
-  return id ? { id, code, name } : { code, name };
+  return id
+    ? { id, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}), code, name }
+    : { code, name };
 }
 
 export function validateSetLocationStatus(raw: unknown): SetLocationStatusInput {
@@ -226,6 +235,7 @@ export function validateSetLocationStatus(raw: unknown): SetLocationStatusInput 
 export function validateSaveBusinessUnit(raw: unknown): SaveBusinessUnitInput {
   const reader = readObject(raw);
   const id = reader.optionalId('id');
+  const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt');
   const code = reader.str('code', { required: true, max: 10 }).toUpperCase();
   const name = reader.str('name', { required: true, max: 100 });
   // `toUpperCase()` dapat memanjangkan teks (mis. "ŉ" -> "ʼN"): panjang dan pola diperiksa SETELAH huruf besar.
@@ -233,7 +243,9 @@ export function validateSaveBusinessUnit(raw: unknown): SaveBusinessUnitInput {
     reader.fail('code', 'Hanya huruf, angka, dan tanda hubung');
   }
   reader.done();
-  return id ? { id, code, name } : { code, name };
+  return id
+    ? { id, ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}), code, name }
+    : { code, name };
 }
 
 export function validateSetBusinessUnitStatus(raw: unknown): SetBusinessUnitStatusInput {

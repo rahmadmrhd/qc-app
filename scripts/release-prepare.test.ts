@@ -210,6 +210,38 @@ describe('prepareRelease: prasyarat (berhenti SEBELUM membuat cabang)', () => {
     await expect(run(empty)).resolves.toBeDefined();
   });
 
+  test('selisih memuat bun.lock/package.json: lolos hanya bila isinya berubah di versi saja', async () => {
+    const pkg = (version: string, dep = '^4.0.0') =>
+      JSON.stringify({ name: '@qc/server', version, dependencies: { hono: dep } });
+    const delta = {
+      [`git diff --name-only ${STAGING} origin/dev`]: {
+        code: 0,
+        out: 'server/package.json\nserver/changelog.d/20261117-a.md\n',
+      },
+    };
+    const branchFree = {
+      'git ls-remote --heads origin release/server-v1.1.0': { code: 0, out: '' },
+      'git rev-parse --verify --quiet refs/heads/release/server-v1.1.0': { code: 1, out: '' },
+    };
+    const versionOnly = fakeShell({
+      ...delta,
+      ...branchFree,
+      [`git show ${STAGING}:server/package.json`]: { code: 0, out: pkg('0.0.0') },
+      'git show origin/dev:server/package.json': { code: 0, out: pkg('1.0.0') },
+    });
+    await expect(run(versionOnly, fakeFiles(baseFiles()), '1.1.0')).resolves.toBeDefined();
+    const dependencyChanged = fakeShell({
+      ...delta,
+      ...branchFree,
+      [`git show ${STAGING}:server/package.json`]: { code: 0, out: pkg('0.0.0') },
+      'git show origin/dev:server/package.json': { code: 0, out: pkg('0.0.0', '^9.0.0') },
+    });
+    await expect(run(dependencyChanged, fakeFiles(baseFiles()), '1.1.0')).rejects.toThrow(
+      /staging/,
+    );
+    expect(mutating(dependencyChanged)).toEqual([]);
+  });
+
   test('selisih staging..dev hanya berkas di luar image server (kode desktop, dokumentasi) lolos: PR itu tak men-deploy staging', async () => {
     const outside = fakeShell({
       [`git diff --name-only ${STAGING} origin/dev`]: {

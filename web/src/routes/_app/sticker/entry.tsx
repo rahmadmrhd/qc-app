@@ -29,7 +29,12 @@ const searchSchema = z.object({
   /** Id stiker dari tombol "Entri stok" di View Stiker: mengisi kolom cari dan masuk entri awal. */
   sticker: z.string().max(100).optional().catch(undefined),
   /** Id stiker dari aksi stok massal di katalog Stiker: semuanya masuk entri awal. */
-  stickers: z.array(z.string().max(100)).max(STICKER_LIMITS.opnameRows).optional().catch(undefined),
+  stickers: z
+    .array(z.string().max(100))
+    // Dipotong ke batas baris (bukan dibuang): larik yang lebih panjang tetap masuk sebagai baris awal.
+    .transform((ids) => ids.slice(0, STICKER_LIMITS.opnameRows))
+    .optional()
+    .catch(undefined),
 });
 
 export const Route = createFileRoute('/_app/sticker/entry')({

@@ -9,7 +9,8 @@ export interface Migration {
 
 // Migrator MariaDB: berkas `*.sql` bernomor di `server/migrations/` (urut nama), dibaca dari disk.
 const MIGRATIONS_DIR = join(import.meta.dir, '..', '..', 'migrations');
-const MIGRATION_FILE_PATTERN = /^\d{4}_[A-Za-z0-9_]+\.sql$/;
+// Huruf kecil saja: sama dengan pola di `deploy/deploy.sh` (pagar downgrade skema).
+const MIGRATION_FILE_PATTERN = /^\d{4}_[a-z0-9_]+\.sql$/;
 
 /** Baca migrasi dari disk, urut nama berkas. */
 export async function loadMigrations(dir: string = MIGRATIONS_DIR): Promise<Migration[]> {

@@ -425,7 +425,41 @@ describe('deploy-server.yml: keamanan', () => {
     });
     expect(imageWf.jobs.image?.environment).toBe('${{ inputs.target }}');
     expect(deployer.jobs.deploy?.environment).toBe('${{ inputs.target }}');
-    expect(imageWf.jobs.image?.outputs).toEqual({ tag: '${{ inputs.sha }}' });
+    expect(imageWf.jobs.image?.outputs).toEqual({
+      tag: '${{ inputs.sha }}',
+      digest: '${{ steps.build.outputs.digest }}',
+    });
+  });
+
+  // Audit 2026-11-23 (image/sha-tag-reused-across-targets-no-digest-binding): tag `<image>:<sha>` dipakai bersama staging dan
+  // production; build staging (ber-cache) tak boleh menimpa image buatan production, dan deploy tag hanya menerima image
+  // berlabel production.
+  test('image diberi label qc.build-target dari input target; build staging menolak menimpa tag SHA yang tak berlabel staging', () => {
+    const steps = imageWf.jobs.image?.steps ?? [];
+    const build = steps.find((s) => s.uses?.startsWith('docker/build-push-action'));
+    expect(build?.id).toBe('build');
+    expect(String(build?.with?.labels)).toContain('qc.build-target=${{ inputs.target }}');
+    const guardStep = steps.find((s) => s.name === 'Pagar tag SHA');
+    expect(guardStep).toBeDefined();
+    expect(steps.indexOf(guardStep as Step)).toBeLessThan(steps.indexOf(build as Step));
+    expect(guardStep?.run).not.toContain('${{');
+    expect(guardStep?.env?.TARGET).toBe('${{ inputs.target }}');
+    expect(guardStep?.env?.SHA).toBe('${{ inputs.sha }}');
+    // hanya staging diperiksa; tidak berlabel staging (production, kosong, tak terbaca) = ditolak (gagal tertutup)
+    expect(guardStep?.run).toContain('[ "$TARGET" = staging ] || exit 0');
+    expect(guardStep?.run).toContain('qc.build-target');
+    expect(guardStep?.run).toContain('if [ "$built" != staging ]');
+    expect(guardStep?.run).toContain('exit 1');
+  });
+
+  test('deploy-tag: fakta image memuat label qc.build-target dan provenance menerimanya lewat IMAGE_TARGET', () => {
+    const wf = parse(rawOf('deploy-tag.yml'));
+    const verify = wf.jobs.verify?.steps ?? [];
+    const facts = verify.find((s) => s.id === 'facts');
+    expect(facts?.run).toContain('qc.build-target');
+    expect(facts?.run).toContain('echo "image_target=$image_target"');
+    const provenance = verify.find((s) => s.run?.includes('deploy-tag-check.ts provenance'));
+    expect(provenance?.env?.IMAGE_TARGET).toBe('${{ steps.facts.outputs.image_target }}');
   });
 
   test('extra-tags divalidasi regex server-vX.Y.Z di langkah sendiri sebelum build, lewat env (bukan ${{ }} di run)', () => {
@@ -1842,6 +1876,14 @@ describe('release.yml: pipeline rilis server, desktop, atau gabungan dari PR ril
     const run = stepsOfJob('guard').find((s) => s.run?.includes('release-guard.ts'));
     expect(run?.env?.FILES_JSON).toBe('${{ steps.compare.outputs.files_json }}');
     expect(run?.env?.FILE_COUNT).toBe('${{ steps.compare.outputs.file_count }}');
+    // Isi manifest (package.json, bun.lock) pada staging dan commit rilis ditulis langkah compare (pemegang token) dan dibaca
+    // guard dari berkas: tanpa itu perubahan dependensi lolos sebagai "metadata rilis" hanya karena jalurnya.
+    expect(run?.env?.MANIFESTS_DIR).toBe('${{ steps.compare.outputs.manifests_dir }}');
+    expect(compare?.run).toContain('fetch_manifest before "$staging"');
+    expect(compare?.run).toContain('fetch_manifest after "$SHA"');
+    for (const path of ['bun.lock', 'server/package.json', 'desktop/package.json']) {
+      expect(compare?.run, path).toContain(path);
+    }
     expect(run?.env?.GH_TOKEN).toBeUndefined();
   });
 

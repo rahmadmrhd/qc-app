@@ -29,6 +29,14 @@ async function derivedKey(secret: string, usage: 'sign' | 'verify'): Promise<Cry
   return hmacKey(derived, usage);
 }
 
+/**
+ * Waktu kedaluwarsa (epoch ms, akhir detik terakhir yang masih sah) dari token yang SUDAH lolos `verifyReportToken`.
+ * Dipakai halaman publik agar tanggal "berlaku sampai" selalu sama dengan yang dikandung token, bukan dihitung ulang.
+ */
+export function reportTokenExpiresAt(token: string): number {
+  return Number(token.split('.')[2]) * 1000 + 999;
+}
+
 /** Membuat token untuk laporan `caseId` yang berlaku sampai `expiresAtMs` (disimpan dalam detik penuh, dibulatkan ke bawah). */
 export async function signReportToken(
   secret: string,

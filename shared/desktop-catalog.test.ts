@@ -35,6 +35,25 @@ describe('parseDesktopCatalog: firmware item', () => {
   });
 });
 
+describe('parseDesktopCatalog: businessUnits pada item', () => {
+  test('isi yang salah (null, id kosong, field bukan teks, bukan larik) = katalog ditolak; yang benar sah', () => {
+    const ref = { id: 'b1', code: 'DEF', name: 'BU Bawaan' };
+    expect(parseDesktopCatalog(catalogOf({ ...item, businessUnits: [ref] }))).not.toBeNull();
+    for (const businessUnits of [
+      [null],
+      [{ ...ref, id: '' }],
+      [{ ...ref, name: 5 }],
+      ['b1'],
+      'x',
+    ]) {
+      expect(
+        parseDesktopCatalog(catalogOf({ ...item, businessUnits })),
+        JSON.stringify(businessUnits),
+      ).toBeNull();
+    }
+  });
+});
+
 describe('parseDesktopCatalog: BU dan lokasi (pilihan form inject)', () => {
   const withTargets = (extra: Record<string, unknown>) => ({ ...catalogOf(item), ...extra });
   const ref = { id: 'b1', code: 'DEF', name: 'BU Bawaan' };

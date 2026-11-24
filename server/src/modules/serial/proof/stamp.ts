@@ -1,4 +1,5 @@
 import { appError } from '@server/core/errors';
+import { WIB_OFFSET_MS } from '@shared/wib';
 import { ELLIPSIS, GLYPH_HEIGHT, GLYPH_WIDTH, glyphOf, MIDDLE_DOT } from './font';
 import { decodePngRgba, encodePngRgba } from './png';
 
@@ -43,7 +44,6 @@ export const PROOF_TOO_LARGE_MESSAGE = 'Dimensi gambar terlalu besar';
 export const PROOF_WEBP_QUALITY = 85;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-const WIB_OFFSET_MS = 7 * 3_600_000;
 const TEAM_LABEL = { qc: 'QC', service: 'Servis' } as const;
 
 /**

@@ -23,7 +23,7 @@ Buka http://localhost:3000 dan tekan "Masuk sebagai pengguna dev". Tema terang/g
 | `bun run dev` | server Bun (:8788) + Vite (:3000, proxy `/api /auth /sync`) |
 | `bun run db:tunnel` | terowongan SSH ke MariaDB dev/tes di VPS |
 | `bun run db:seed` | migrasi + data contoh ke skema `qc_dev` |
-| `bun run check` | typecheck, lint, test (butuh tunnel; tes server dibagi ke 4 proses paralel) |
+| `bun run check` | typecheck, lint, test (butuh tunnel; tes server dibagi ke 3 proses paralel (bawaan; `QC_TEST_SHARDS`, maks. 4)) |
 | `bun run build` | build web ke `server/dist` (dilayani server Bun) |
 
 ## Dokumentasi

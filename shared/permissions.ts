@@ -66,12 +66,14 @@ export const LEVEL_HINTS: Record<Level, string> = {
 export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level, string>>>> = {
   access: {
     view: 'Melihat daftar user, role, dan log audit.',
-    manage: 'Melihat, serta menambah, mengubah, dan menonaktifkan user dan role.',
+    manage:
+      'Melihat, serta menambah, mengubah, menonaktifkan, menghapus, dan memulihkan user, role, lokasi, dan BU.',
   },
   item: {
     view: 'Melihat katalog item dan daftar customer.',
     edit: 'Melihat serta menambah dan mengubah item.',
-    manage: 'Semua akses Ubah, ditambah menonaktifkan item dan mengelola customer.',
+    manage:
+      'Semua akses Ubah, ditambah menonaktifkan, menghapus, dan memulihkan item dan merk serta mengelola customer.',
   },
   qrcode: {
     view: 'Melihat konfigurasi label QR dan mengunduh hasil ekspor.',
@@ -82,17 +84,18 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
   handover: {
     view: 'Melihat task serah terima di lokasi penugasan.',
     edit: 'Melihat serta membuat dan mengubah isi task serah terima.',
-    manage: 'Semua akses Ubah, ditambah membatalkan task.',
+    manage:
+      'Semua akses Ubah, ditambah membatalkan, membuka kembali, menghapus, dan memulihkan task.',
   },
   qc: {
-    edit: 'Melihat task di lokasi penugasan dan memperbarui progres pengerjaan (qty selesai, tandai selesai).',
+    edit: 'Melihat task di lokasi penugasan dan memperbarui progres pengerjaan (centang checklist, tandai selesai).',
   },
   stock: { view: 'Melihat monitoring stok yang belum QC.' },
   sticker: {
     view: 'Melihat katalog jenis dan stiker.',
     edit: 'Menambah dan mengubah jenis dan stiker, termasuk batas minimum.',
     manage:
-      'Semua akses Ubah, ditambah menonaktifkan dan mengaktifkan jenis dan stiker serta mengatur Konfigurasi Stiker.',
+      'Semua akses Ubah, ditambah menonaktifkan, mengaktifkan, menghapus, dan memulihkan jenis dan stiker serta mengatur Konfigurasi Stiker.',
   },
   stickerstock: {
     view: 'Melihat stok dan riwayat stiker di lokasi penugasan.',
@@ -102,7 +105,8 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
   serial: {
     view: 'Melihat serial number pada BU penugasan.',
     edit: 'Melihat serta mencatat serial number dan mengubah datanya.',
-    manage: 'Semua akses Ubah, ditambah pengaturan serial number.',
+    manage:
+      'Semua akses Ubah, ditambah menghapus dan memulihkan serial number serta pengaturan serial number.',
   },
   serialservice: {
     view: 'Melihat serial number dan riwayat servisnya pada BU penugasan.',

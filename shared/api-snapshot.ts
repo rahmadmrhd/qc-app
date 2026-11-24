@@ -7,8 +7,8 @@ import {
   type RetiredRoute,
 } from './api-versions';
 
-// Potret kontrak REST (`shared/api-contract.snapshot.json`): daftar id, verb, path, query, dan create tiap rute pada
-// rilis terakhir. Tes superset memastikan kontrak sekarang tidak menghilangkan atau mengubah apa pun dari potret itu
+// Potret kontrak REST (`shared/api-contract.snapshot.json`): daftar id, verb, path, query, create, status, ETag/If-Match, dan
+// bentuk biner (rawBody, multipart, download) tiap rute pada rilis terakhir. Tes superset memastikan kontrak sekarang tidak menghilangkan atau mengubah apa pun dari potret itu
 // (kompatibilitas mundur): rute hanya boleh ditambah, dan menghapus rute wajib lewat `RETIRED_ROUTES` SETELAH rute itu
 // berstatus deprecated di potret rilis sebelumnya (keputusan 5: deprecated lebih dulu, dihapus di rilis berikutnya). Murni.
 
@@ -18,6 +18,21 @@ export interface SnapshotEntry {
   path: string;
   query?: Record<string, QueryKind>;
   create?: { verb: ApiVerb; path: string };
+  /**
+   * Status sukses efektif (bawaan 200). Selalu ada pada potret berformat baru; ENTRI TANPA field ini = potret lama (sebelum
+   * 2026-11-23) dan tak dibandingkan pada field-field di bawah (tak ada dasar pembandingnya).
+   */
+  status?: number;
+  /** Field keluaran yang menjadi header `ETag`. */
+  etag?: string;
+  /** Field input yang dibawa header `If-Match`. */
+  ifMatch?: string;
+  /** Badan permintaan mentah (unggah); tanpa batas ukuran (batas boleh berubah). */
+  rawBody?: { field: string; mimeField?: string; contentType?: string };
+  /** Bagian multipart/form-data. */
+  multipart?: { parts: string[] };
+  /** Unduhan biner. */
+  download?: { bytesField: string; mimeField: string; filenameField?: string };
   /** Hanya ada (true) bila versi id ini tercantum di `deprecated` kelompoknya (`API_GROUP_VERSIONS`). */
   deprecated?: true;
 }
@@ -38,6 +53,23 @@ export function contractSnapshot(
         );
       }
       if (def.create !== undefined) entry.create = { verb: def.create.verb, path: def.create.path };
+      entry.status = def.status ?? 200;
+      if (def.etag !== undefined) entry.etag = def.etag;
+      if (def.ifMatch !== undefined) entry.ifMatch = def.ifMatch;
+      if (def.rawBody !== undefined) {
+        entry.rawBody = { field: def.rawBody.field };
+        if (def.rawBody.mimeField !== undefined) entry.rawBody.mimeField = def.rawBody.mimeField;
+        if (def.rawBody.contentType !== undefined) {
+          entry.rawBody.contentType = def.rawBody.contentType;
+        }
+      }
+      if (def.multipart !== undefined) entry.multipart = { parts: [...def.multipart.parts] };
+      if (def.download !== undefined) {
+        entry.download = { bytesField: def.download.bytesField, mimeField: def.download.mimeField };
+        if (def.download.filenameField !== undefined) {
+          entry.download.filenameField = def.download.filenameField;
+        }
+      }
       const group = apiGroup(id);
       if (
         Object.hasOwn(groups, group) &&
@@ -47,6 +79,51 @@ export function contractSnapshot(
       }
       return entry;
     });
+}
+
+/** Bandingkan nilai terstruktur secara persis (urutan kunci diabaikan). */
+function sameShape(a: unknown, b: unknown): boolean {
+  return JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+}
+
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, v]) => v !== undefined)
+        .sort(([x], [y]) => (x < y ? -1 : 1))
+        .map(([k, v]) => [k, canonical(v)]),
+    );
+  }
+  return value;
+}
+
+/**
+ * Pelanggaran bentuk kabel yang membuat klien lama gagal membaca/mengirim: status sukses berbeda, `If-Match` berubah atau
+ * baru diwajibkan, `ETag` berubah atau hilang (penambahan boleh), badan mentah/multipart/unduhan berubah, hilang, atau baru
+ * muncul (multipart: bagian ditambah juga ditolak karena klien lama tak mengirimnya). Hanya dipanggil untuk entri potret
+ * berformat baru.
+ */
+function wireProblems(old: SnapshotEntry, next: SnapshotEntry): string[] {
+  const problems: string[] = [];
+  if ((old.status ?? 200) !== (next.status ?? 200)) {
+    problems.push(
+      `Rute ${old.id}: status sukses berubah dari ${old.status} menjadi ${next.status}`,
+    );
+  }
+  if (old.etag !== undefined && next.etag !== old.etag) {
+    problems.push(`Rute ${old.id}: field ETag berubah atau hilang`);
+  }
+  if (old.ifMatch !== next.ifMatch) {
+    problems.push(`Rute ${old.id}: field If-Match berubah`);
+  }
+  for (const key of ['rawBody', 'multipart', 'download'] as const) {
+    if (!sameShape(old[key], next[key])) {
+      problems.push(`Rute ${old.id}: bentuk ${key} berubah (field, bagian, atau jenis badan)`);
+    }
+  }
+  return problems;
 }
 
 /**
@@ -97,6 +174,8 @@ export function compareContract(
         problems.push(`Rute ${old.id}: jalur create berubah`);
       }
     }
+    // Entri potret lama (tanpa `status`) tak punya dasar untuk field di bawah.
+    if (old.status !== undefined) problems.push(...wireProblems(old, next));
   }
   return problems;
 }

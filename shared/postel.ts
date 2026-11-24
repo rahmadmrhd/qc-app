@@ -5,6 +5,7 @@
 import { MAX_FILE_BYTES } from './files';
 import { normalizeKey } from './items';
 import { manualBookNameFromTypes } from './manual-book';
+import { wibParts } from './wib';
 
 export const POSTEL_LIMITS = {
   noteMax: 1000,
@@ -35,13 +36,13 @@ export const POSTEL_ALERT_DEFAULTS = {
 export type PostelCondition = 'valid' | 'soon' | 'expired';
 export type PostelRole = 'active' | 'old';
 
-const WIB_OFFSET_MS = 7 * 3_600_000;
 const DAY_MS = 86_400_000;
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** Tanggal WIB (`YYYY-MM-DD`) dari epoch milidetik (offset tetap +7 jam, tanpa DST). */
 export function wibDateIso(epochMs: number): string {
-  return new Date(epochMs + WIB_OFFSET_MS).toISOString().slice(0, 10);
+  const { year, month, day } = wibParts(epochMs);
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 /** Epoch UTC tengah malam dari `YYYY-MM-DD` sah, atau `null`. Tahun dibatasi 2000-2100. */

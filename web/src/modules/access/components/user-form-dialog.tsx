@@ -1,9 +1,10 @@
 import type { SaveUserInput, UserDto } from '@shared/contract';
 import { useState } from 'react';
 import { FormDialogShell } from '@/components/form-dialog-shell';
-import { describeError } from '@/lib/api/describe-error';
+import { useFrozen } from '@/hooks/use-frozen';
 import { pickFieldErrors } from '../lib/field-errors';
 import { statusLockReason } from '../lib/protected-user';
+import { describeSaveError } from '../lib/stale';
 import { toUserFormDefaults, type UserFormOutput } from '../schemas';
 import { UserForm, type UserFormProps } from './user-form';
 
@@ -36,7 +37,7 @@ export interface UserFormDialogProps extends UserFormReferenceProps {
 }
 
 function UserDialogBody({
-  user,
+  user: liveUser,
   currentEmail,
   onSave,
   onClose,
@@ -49,6 +50,10 @@ function UserDialogBody({
   onClose: () => void;
   onBusyChange: (busy: boolean) => void;
 }) {
+  // Rekaman dibekukan saat badan dialog terpasang (hanya saat dialog terbuka): isi form dan versi (`updatedAt`) yang dikirim
+  // sebagai `expectedUpdatedAt` selalu pasangan yang sama, walau query record dimuat ulang (polling 30 dtk, invalidasi
+  // setelah 412). Buka-tutup-buka = rekaman segar.
+  const user = useFrozen(liveUser);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; name?: string }>({});
 
@@ -56,12 +61,12 @@ function UserDialogBody({
     setSubmitError(null);
     setFieldErrors({});
     try {
-      await onSave(user ? { ...values, id: user.id } : values);
+      await onSave(user ? { ...values, id: user.id, expectedUpdatedAt: user.updatedAt } : values);
       onClose();
     } catch (error) {
       const picked = pickFieldErrors(error, ['email', 'name'] as const);
       if (Object.keys(picked).length > 0) setFieldErrors(picked);
-      else setSubmitError(describeError(error));
+      else setSubmitError(describeSaveError(error));
     }
   }
 
