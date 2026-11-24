@@ -236,6 +236,24 @@ function offeredValues(widgets: readonly ShareWidgetScope[], key: string): strin
 }
 
 /**
+ * Tautan masih dapat dilayani: aktif (tak dicabut/kedaluwarsa), cakupannya terbaca, pembagi ada/aktif/tak terhapus dan
+ * masih memegang `dashboard: manage`. `null` selain itu. Dipakai bersama oleh halaman data dan rute pencatat kunjungan
+ * agar keduanya menolak persis pada keadaan yang sama (tanpa oracle baru).
+ */
+export async function servableShare(
+  env: Env,
+  share: ShareRow,
+  nowMs: number,
+): Promise<{ frozen: ShareScope; sharer: UserContext } | null> {
+  if (shareStatus(share, new Date(nowMs).toISOString()) !== 'active') return null;
+  const frozen: ShareScope | null = parseScope(share.scope);
+  if (frozen === null) return null;
+  const sharer = await loadUserContext(env, share.created_by);
+  if (sharer === null || !hasLevel(sharer.permissions.dashboard, 'manage')) return null;
+  return { frozen, sharer };
+}
+
+/**
  * Memuat dashboard publik untuk satu tautan. `null` bila tautan tak aktif (dicabut/kedaluwarsa), cakupannya tak
  * terbaca, pembagi tak ditemukan/nonaktif/terhapus, atau pembagi tak lagi memegang `dashboard: manage`. Hak pembagi
  * dihitung ulang tiap permintaan (`resolveScope`, `allowedWidgetIds`): menurun haknya = menyempit tanpa galat berbeda.
@@ -246,11 +264,9 @@ export async function loadPublicDashboard(
   viewer: PublicQueryInput,
   nowMs: number,
 ): Promise<PublicDashboardDto | null> {
-  if (shareStatus(share, new Date(nowMs).toISOString()) !== 'active') return null;
-  const frozen: ShareScope | null = parseScope(share.scope);
-  if (frozen === null) return null;
-  const sharer = await loadUserContext(env, share.created_by);
-  if (sharer === null || !hasLevel(sharer.permissions.dashboard, 'manage')) return null;
+  const servable = await servableShare(env, share, nowMs);
+  if (servable === null) return null;
+  const { frozen, sharer } = servable;
 
   const allowed = new Set(allowedWidgetIds(sharer));
   const widgets = frozen.widgets.filter((widget) => allowed.has(widget.id));

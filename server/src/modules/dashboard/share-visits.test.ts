@@ -1,4 +1,5 @@
-// Data kunjungan tautan dashboard publik (keputusan pemilik 2026-11-24).
+// Data kunjungan tautan dashboard publik (keputusan pemilik 2026-11-24): kunjungan = halaman dibuka, dicatat oleh klien
+// lewat `POST .../visit` (bukan oleh GET data, bukan oleh POST query).
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { app } from '@server/app';
 import { loadUserContext } from '@server/modules/access/context';
@@ -61,7 +62,7 @@ interface Visitor {
   trusted?: boolean;
 }
 
-/** GET halaman publik; pencatatan berjalan di latar, jadi tes menunggu antreannya habis sebelum membaca hasil. */
+/** `POST .../visit`; pencatatan berjalan di latar, jadi tes menunggu antreannya habis sebelum membaca hasil. */
 async function visit(token: string, who: Visitor = {}, db = env.DB): Promise<Response> {
   const response = await rawVisit(token, who, db);
   await drainVisitRecordings();
@@ -69,15 +70,30 @@ async function visit(token: string, who: Visitor = {}, db = env.DB): Promise<Res
 }
 
 /** Seperti `visit` tetapi TANPA menunggu pencatatan latar (untuk menguji jalur respons). */
-async function rawVisit(token: string, who: Visitor = {}, db = env.DB): Promise<Response> {
+async function rawVisit(
+  token: string,
+  who: Visitor = {},
+  db = env.DB,
+  csrf = true,
+): Promise<Response> {
   const headers: Record<string, string> = {};
+  if (csrf) headers['x-requested-with'] = 'qc';
   const ua = who.ua === undefined ? CHROME_WIN : who.ua;
   if (ua !== null) headers['user-agent'] = ua;
   if (who.country !== undefined) headers['cf-ipcountry'] = who.country;
   return app.request(
-    `https://qc.test/api/public/dashboards/${token}`,
-    { headers },
+    `https://qc.test/api/public/dashboards/${token}/visit`,
+    { method: 'POST', headers },
     { ...env, DB: db, clientIp: who.ip ?? '203.0.113.77', trustedPeer: who.trusted ?? true },
+  );
+}
+
+/** GET data halaman publik (tidak mencatat kunjungan). */
+async function getData(token: string, ip = '203.0.113.77'): Promise<Response> {
+  return app.request(
+    `https://qc.test/api/public/dashboards/${token}`,
+    { headers: { 'user-agent': CHROME_WIN } },
+    { ...env, clientIp: ip, trustedPeer: true },
   );
 }
 
@@ -89,9 +105,14 @@ async function rowsOf(id: string) {
 }
 
 describe('pencatatan kunjungan', () => {
-  test('GET sukses dicatat: IP terpotong, negara, perangkat ringkas, dan ringkasan tautan', async () => {
+  test('visit sah dicatat: IP terpotong, negara, perangkat ringkas, dan ringkasan tautan', async () => {
     const { id, token } = await makeShare();
-    expect((await visit(token, { country: 'id' })).status).toBe(200);
+    const response = await visit(token, { country: 'id' });
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe('');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('referrer-policy')).toBe('no-referrer');
+    expect(response.headers.get('x-robots-tag')).toBe('noindex');
     const { summary, visits } = await rowsOf(id);
     const iso = new Date(NOW).toISOString();
     expect(summary).toEqual({ visitCount: 1, firstVisitAt: iso, lastVisitAt: iso });
@@ -136,8 +157,9 @@ describe('pencatatan kunjungan', () => {
       (await env.DB.prepare('SELECT * FROM dashboard_share_visits').all()).results,
       (await env.DB.prepare('SELECT * FROM dashboard_shares').all()).results,
       (await env.DB.prepare('SELECT * FROM audit_log').all()).results,
-      (await env.DB.prepare('SELECT * FROM rate_limits').all()).results,
     ]);
+    // `rate_limits` sengaja tak diperiksa: penghitung pembatas laju sementara (dibuang penjadwal) memuat alamat pembatas
+    // pada kuncinya, sama dengan pembatas query dan kegagalan; yang dijaga di sini adalah data kunjungan yang tersimpan.
     expect(dump).not.toContain('203.0.113.77');
     expect(dump).not.toContain('dddd:1');
     expect(dump).not.toContain('Mozilla');
@@ -220,8 +242,9 @@ describe('dedup 30 menit', () => {
 });
 
 describe('yang tidak dihitung kunjungan', () => {
-  test('POST kueri, token rusak, tautan dicabut, dan tautan kedaluwarsa tidak mencatat', async () => {
-    const { id, token, user } = await makeShare();
+  test('GET data halaman dan POST query tidak mencatat kunjungan', async () => {
+    const { id, token } = await makeShare();
+    for (let index = 0; index < 3; index += 1) expect((await getData(token)).status).toBe(200);
     const post = await app.request(
       `https://qc.test/api/public/dashboards/${token}/query`,
       {
@@ -232,28 +255,82 @@ describe('yang tidak dihitung kunjungan', () => {
       { ...env, clientIp: '203.0.113.9', trustedPeer: true },
     );
     expect(post.status).toBe(200);
-    expect((await visit('v1.x.1.salah')).status).toBe(404);
-    expect((await rowsOf(id)).summary.visitCount).toBe(0);
-
-    env.clock.set(NOW + 31 * 86_400_000);
-    expect((await visit(token)).status).toBe(404);
-    env.clock.set(NOW);
-    await revokeShare(env, user, id);
-    expect((await visit(token)).status).toBe(404);
+    await drainVisitRecordings();
     const { summary, visits } = await rowsOf(id);
     expect(summary).toEqual({ visitCount: 0, firstVisitAt: '', lastVisitAt: '' });
     expect(visits).toEqual([]);
   });
 
-  test('pencatatan tidak mengubah isi jawaban atau header', async () => {
+  test('visit dengan token rusak, dicabut, atau kedaluwarsa = 404 seragam tanpa menulis', async () => {
+    const { id, token, user } = await makeShare();
+    const bad = await visit('v1.x.1.salah');
+    expect(bad.status).toBe(404);
+    const strip = (text: string) =>
+      JSON.stringify(Object.assign(JSON.parse(text), { requestId: '' }));
+    const badBody = strip(await bad.text());
+    env.clock.set(NOW + 31 * 86_400_000);
+    const expired = await visit(token);
+    expect(expired.status).toBe(404);
+    env.clock.set(NOW);
+    await revokeShare(env, user, id);
+    const revoked = await visit(token);
+    expect(revoked.status).toBe(404);
+    // Jawaban penolakan tak membedakan sebabnya.
+    expect(strip(await expired.text())).toBe(badBody);
+    expect(strip(await revoked.text())).toBe(badBody);
+    const { summary, visits } = await rowsOf(id);
+    expect(summary).toEqual({ visitCount: 0, firstVisitAt: '', lastVisitAt: '' });
+    expect(visits).toEqual([]);
+  });
+
+  test('visit saat pembagi sudah terhapus = 404 seragam tanpa menulis', async () => {
+    const { id, token } = await makeShare();
+    await env.DB.prepare("UPDATE users SET deleted_at = ?, deleted_by = 'x' WHERE email = ?")
+      .bind(new Date(NOW).toISOString(), SHARER)
+      .run();
+    expect((await visit(token)).status).toBe(404);
+    expect((await rowsOf(id)).summary.visitCount).toBe(0);
+  });
+
+  test('visit tanpa header X-Requested-With ditolak seperti POST lain dan tidak mencatat', async () => {
+    const { id, token } = await makeShare();
+    const response = await rawVisit(token, {}, env.DB, false);
+    expect(response.status).toBe(403);
+    await drainVisitRecordings();
+    expect((await rowsOf(id)).summary.visitCount).toBe(0);
+  });
+});
+
+describe('pembatas laju visit (angka sama dengan POST query: 30 per menit per IP, 120 per menit per tautan)', () => {
+  test('melewati batas per IP = 429 tanpa mencatat; jendela baru membebaskan lagi', async () => {
+    const { id, token } = await makeShare();
+    await env.DB.prepare('INSERT INTO rate_limits (`key`, count, window_start) VALUES (?, 30, ?)')
+      .bind('dashboard-visit-ip:203.0.113.77', NOW)
+      .run();
+    const limited = await visit(token, { ip: '203.0.113.77' });
+    expect(limited.status).toBe(429);
+    expect((await rowsOf(id)).summary.visitCount).toBe(0);
+    env.clock.set(NOW + 61_000); // jendela satu menit lewat
+    expect((await visit(token, { ip: '203.0.113.77' })).status).toBe(204);
+    expect((await rowsOf(id)).summary.visitCount).toBe(1);
+  });
+
+  test('melewati batas per tautan = 429 walau dari IP lain', async () => {
+    const { id, token } = await makeShare();
+    await env.DB.prepare('INSERT INTO rate_limits (`key`, count, window_start) VALUES (?, 120, ?)')
+      .bind(`dashboard-visit-token:${id}`, NOW)
+      .run();
+    expect((await visit(token, { ip: '198.51.100.5' })).status).toBe(429);
+    expect((await rowsOf(id)).summary.visitCount).toBe(0);
+  });
+
+  test('visit tidak memakan jatah POST query', async () => {
     const { token } = await makeShare();
-    const first = await visit(token, { ip: '203.0.113.5' });
-    const second = await visit(token, { ip: '203.0.113.5' });
-    expect(first.status).toBe(200);
-    expect(first.headers.get('cache-control')).toBe('no-store');
-    const a = (await first.json()) as { widgets: unknown };
-    const b = (await second.json()) as { widgets: unknown };
-    expect(b.widgets).toEqual(a.widgets);
+    await visit(token);
+    const rows = await env.DB.prepare(
+      "SELECT `key` FROM rate_limits WHERE `key` LIKE 'dashboard-view-%'",
+    ).all<{ key: string }>();
+    expect(rows.results).toEqual([]);
   });
 });
 
@@ -289,18 +366,18 @@ describe('retensi dan konkurensi', () => {
     expect((await rowsOf(first.id)).visits).toHaveLength(VISIT_LIMITS.keep);
   });
 
-  test('GET serentak dari IP berbeda: visit_count tepat sejumlah kunjungan', async () => {
+  test('visit serentak dari IP berbeda: visit_count tepat sejumlah kunjungan', async () => {
     const { id, token } = await makeShare();
     const responses = await Promise.all(
       Array.from({ length: 12 }, (_, index) => visit(token, { ip: `198.51.${index}.1` })),
     );
-    expect(responses.every((response) => response.status === 200)).toBe(true);
+    expect(responses.every((response) => response.status === 204)).toBe(true);
     const { summary, visits } = await rowsOf(id);
     expect(summary.visitCount).toBe(12);
     expect(visits).toHaveLength(12);
   });
 
-  test('GET serentak dari IP dan perangkat yang sama dihitung satu kunjungan', async () => {
+  test('visit serentak dari IP dan perangkat yang sama dihitung satu kunjungan', async () => {
     const { id, token } = await makeShare();
     await Promise.all(Array.from({ length: 8 }, () => visit(token, { ip: '203.0.113.5' })));
     const { summary, visits } = await rowsOf(id);
@@ -362,7 +439,7 @@ describe('penyegaran dan pencatatan latar', () => {
       },
     });
     const response = await rawVisit(token, {}, slow);
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(204);
     expect(finished).toBe(false); // jawaban sudah kembali selagi pencatatan masih tertahan
     release();
     await drainVisitRecordings();
@@ -370,12 +447,12 @@ describe('penyegaran dan pencatatan latar', () => {
     expect((await rowsOf(id)).summary.visitCount).toBe(1);
   });
 
-  test('GET serentak (Promise.all, tanpa menunggu antrean) dari IP dan perangkat sama = satu kunjungan', async () => {
+  test('visit serentak (Promise.all, tanpa menunggu antrean) dari IP dan perangkat sama = satu kunjungan', async () => {
     const { id, token } = await makeShare();
     const responses = await Promise.all(
       Array.from({ length: 10 }, () => rawVisit(token, { ip: '203.0.113.5' })),
     );
-    expect(responses.every((response) => response.status === 200)).toBe(true);
+    expect(responses.every((response) => response.status === 204)).toBe(true);
     await drainVisitRecordings();
     const { summary, visits } = await rowsOf(id);
     expect(summary.visitCount).toBe(1);
@@ -404,7 +481,7 @@ describe('kegagalan pencatatan', () => {
     };
     try {
       const response = await visit(token, {}, broken);
-      expect(response.status).toBe(200);
+      expect(response.status).toBe(204);
     } finally {
       console.error = original;
     }

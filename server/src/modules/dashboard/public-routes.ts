@@ -7,7 +7,7 @@ import { type AppBindings, newRequestId } from '@server/http/security';
 import type { PublicQueryInput } from '@shared/dashboard-public';
 import { Hono } from 'hono/tiny';
 import { hitLimit } from './public-limits';
-import { loadPublicDashboard, validatePublicQuery } from './public-view';
+import { loadPublicDashboard, servableShare, validatePublicQuery } from './public-view';
 import { verifyShareToken } from './share-link';
 import { loadShare, type ShareRow } from './share-repo';
 import { scheduleShareVisit } from './share-visits';
@@ -16,15 +16,20 @@ import { scheduleShareVisit } from './share-visits';
  * Halaman publik dashboard (spek dashboard bagian 7.4): sub-aplikasi `/api/public`, SENGAJA di luar `API_ROUTES` dan
  * OpenAPI (tanpa sesi). Satu-satunya syarat akses adalah token bertanda tangan (`share-link.ts`) yang memuat id tautan,
  * lalu baris tautan (ada, tidak dicabut, belum kedaluwarsa) dan hak pembagi saat ini. SEMUA penolakan dijawab 404
- * problem+json yang SAMA agar tak membocorkan sebabnya. Token tidak pernah dicatat (rute ini tidak mencatat apa pun),
- * respons tidak pernah di-cache, tidak boleh diindeks, dan tidak mengirim Referer.
+ * problem+json yang SAMA agar tak membocorkan sebabnya. Token tidak pernah dicatat, respons tidak pernah di-cache,
+ * tidak boleh diindeks, dan tidak mengirim Referer. Satu-satunya penulisan data selain pembatas laju adalah
+ * `POST .../visit` (kunjungan = halaman dibuka, dicatat sekali oleh klien; spek 7.6): GET data dan POST query tidak
+ * mencatat kunjungan.
  */
 export const publicDashboardApp = new Hono<AppBindings>();
 
 /** Kegagalan token per IP per jendela: terlampaui = 429 (jendela sama dengan pembersih `rate_limits`, 10 menit). */
 const FAIL_LIMIT = 20;
 const FAIL_WINDOW_MS = 10 * 60 * 1000;
-/** Keberhasilan `POST .../query`: per IP dan per tautan, jendela satu menit (mencegah kueri agregat berulang). */
+/**
+ * Keberhasilan `POST .../query` dan `POST .../visit`: per IP dan per tautan, jendela satu menit (query: mencegah kueri
+ * agregat berulang). Angka sama, tetapi penghitung `rate_limits` TERPISAH agar visit tak memakan jatah query.
+ */
 const VIEW_WINDOW_MS = 60 * 1000;
 const VIEW_IP_LIMIT = 30;
 const VIEW_TOKEN_LIMIT = 120;
@@ -61,6 +66,8 @@ const badRequest = (message: string, status: 400 | 413 = 400): Response =>
 const failKey = (ip: string): string => `dashboard-share:${limiterAddress(ip)}`;
 const viewIpKey = (ip: string): string => `dashboard-view-ip:${limiterAddress(ip)}`;
 const viewTokenKey = (shareId: string): string => `dashboard-view-token:${shareId}`;
+const visitIpKey = (ip: string): string => `dashboard-visit-ip:${limiterAddress(ip)}`;
+const visitTokenKey = (shareId: string): string => `dashboard-visit-token:${shareId}`;
 
 type PublicContext = { env: AppBindings['Bindings'] };
 
@@ -114,8 +121,32 @@ publicDashboardApp.get('/dashboards/:token', async (c) => {
     if (!row) return await reject(c);
     const dto = await loadPublicDashboard(c.env, row, {}, nowOf(c.env));
     if (dto === null) return await reject(c);
-    // Hanya GET yang berhasil dihitung kunjungan (penyegaran halaman = POST query, tidak dicatat). Pencatatan di latar:
-    // jawaban tak menunggu dan tak terpengaruh kegagalannya (`scheduleShareVisit` tak melempar).
+    return harden(c.json(dto));
+  } catch (error) {
+    return harden(problemResponse(toProblem(error, newRequestId())));
+  }
+});
+
+/**
+ * Pencatat kunjungan (spek 7.6): klien memanggilnya SEKALI per pembukaan halaman. Badan diabaikan (tak dibaca), jawaban
+ * sukses `204` tanpa badan. Penolakan token/hak sama persis dengan rute lain (404 seragam, kegagalan dihitung per IP).
+ * Pembatas keberhasilan 30 per menit per IP dan 120 per menit per tautan memakai penghitung terpisah dari query.
+ * Pencatatannya sendiri di latar, paling-banyak-sekali (`scheduleShareVisit`).
+ */
+publicDashboardApp.post('/dashboards/:token/visit', async (c) => {
+  try {
+    const row = await resolveShare(c, c.req.param('token'));
+    if (!row) return await reject(c);
+    const ip = c.env.clientIp ?? 'unknown';
+    const overIp = await hitLimit(c.env, visitIpKey(ip), VIEW_IP_LIMIT, VIEW_WINDOW_MS);
+    const overToken = await hitLimit(
+      c.env,
+      visitTokenKey(row.id),
+      VIEW_TOKEN_LIMIT,
+      VIEW_WINDOW_MS,
+    );
+    if (overIp || overToken) return tooMany();
+    if ((await servableShare(c.env, row, nowOf(c.env))) === null) return await reject(c);
     scheduleShareVisit(
       c.env,
       row.id,
@@ -126,7 +157,7 @@ publicDashboardApp.get('/dashboards/:token', async (c) => {
       },
       nowOf(c.env),
     );
-    return harden(c.json(dto));
+    return harden(c.body(null, 204));
   } catch (error) {
     return harden(problemResponse(toProblem(error, newRequestId())));
   }
