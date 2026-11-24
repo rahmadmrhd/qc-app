@@ -244,3 +244,31 @@ Checklist (bukan implementasi; server kantor dibangun nanti). Tidak ada kode yan
 4. Prasyarat pagar: image yang SEDANG berjalan harus ada di Docker lokal (tag di `.env`), karena baris pertama migrasi yang akan dilewati dibaca dari sana; pembersihan image (`QC_KEEP_IMAGES`, bawaan 3) tidak menghapusnya. `deploy.sh` baru juga memakai `docker run --rm --pull never --network none --entrypoint ls|head` pada image target dan berjalan; pengguna deploy sudah berhak menjalankan docker.
 5. **Pemulihan bila deploy terkunci kode 6 karena nama migrasi basi** (pesan: "migrasi <nama> tak terbaca dari image yang sedang berjalan"): pastikan benar bahwa migrasi itu memang tak lagi ada di kode mana pun (mis. sisa downgrade berizin ke versi lama, atau migrasi yang diganti nama), pastikan skemanya tak lagi dipakai, lalu hapus barisnya secara manual: `DELETE FROM schema_migrations WHERE name = '<nama>'` (satu per satu; bukan `TRUNCATE`). Bila migrasi itu ternyata masih dibawa image yang akan datang, jangan dihapus: deploy ke image yang membawanya. Pagar sengaja tidak memulihkan diri sendiri (keputusan 2026-11-18: perubahan aturan "tak terbaca = contract" menunggu keputusan pemilik; reviewer bagian 3 merekomendasikan mencari penanda di image lokal lain).
 6. Pembatalan: kembalikan `deploy.sh.bak`. `deploy.sh` lama menolak ekor ` allow-schema-downgrade` dengan kode 2 dan tidak punya pagar; deploy biasa tetap berjalan.
+
+## 15. Spesifikasi server minimum (rekomendasi 2026-11-24)
+
+Acuan saat memilih atau memindahkan mesin (bagian 14). Ini REKOMENDASI agen atas permintaan pemilik, bukan keputusan pemilik: dasarnya pengukuran nyata di VPS bersama pada 2026-11-24 (sekitar 15 pengguna) dan angka pertumbuhan dari audit kueri; perkiraan pertumbuhannya asumsi, bukan data. Berlaku untuk mesin yang menjalankan `qc-app`, `qc-db`, dan nginx; staging sebaiknya di mesin lain atau dimatikan saat tidak dipakai.
+
+**Pemakaian nyata (VPS bersama, 2026-11-24):** mesin 2 vCPU, RAM 3,9 GB, swap 2 GB (terpakai ~94% saat tumpukan lain masih hidup), disk 38 GB (85% terpakai bersama aplikasi lain). Datadir database production 609 MB (data 238 MB + indeks 179 MB; ~208 ribu serial), staging 168 MB. `qc-app` ~50 MB RAM per lingkungan (batas 256 MB). Cadangan lokal 3 berkas ~30-35 MB (terkompres). Image `qc-app` 211 MB (3 tag disimpan) dan `mariadb:11.8` 458 MB. Volume foto bukti 0 B.
+
+| | Minimum (cukup untuk beban sekarang) | Disarankan (aman sampai sekitar 10x data) |
+|---|---|---|
+| CPU | 2 vCPU | 4 vCPU |
+| RAM | 4 GB + swap 2 GB | 8 GB + swap 2 GB |
+| Disk | 40 GB SSD/NVMe | 80 GB NVMe |
+| `QC_DB_MEM_LIMIT` | `1g` | `3g` |
+| `QC_DB_BUFFER_POOL` | `512M` | `1500M` sampai `2G` |
+| `QC_DB_ARIA_CACHE` | `64M` | `128M` |
+
+Tiga variabel `QC_DB_*` diisi di `.env` mesin itu (bagian 5; nilai kosong = bawaan VPS bersama 512m/256M/32M, rinci di `docs/ci-cd.md` catatan 2026-11-24); tanpa mengubah kode. Untuk mesin 4 GB tanpa staging, nilai paling aman `1g` / `512M` / `64M`; untuk mesin 2 GB (tidak disarankan, tanpa staging di mesin yang sama) `512m` / `256M` / `32M`.
+
+**Alasan angka:**
+- **RAM 4 GB, bukan 2 GB.** Sistem operasi, Docker, nginx, dan SSH ~0,6-0,8 GB; `qc-app` ~0,1-0,25 GB; database ~0,7-0,9 GB (buffer pool 512M, Aria 64M, sampai 40 koneksi, proses dasar); sisanya cache sistem file untuk datadir. Totalnya ~1,8-2,3 GB. Pada 2 GB database akan masuk swap, seperti di VPS bersama (production sempat ~365 MB di swap, diukur 2026-11-22).
+- **Buffer pool seukuran data panas, bukan sebesar mungkin.** Audit memperkirakan `serials` pada 10x data (~2 juta serial) menjadi ~720 MB data + ~950 MB indeks, sehingga buffer pool 1,5-2 GB menutup sebagian besar bacaan.
+- **Cache Aria kecil.** Hanya menampung hasil antara kueri besar (bukan data) dan tidak melepas memori setelah terisi; naikkan hanya bila `Created_tmp_disk_tables` tinggi.
+- **CPU 2 vCPU minimum.** Kueri daftar dan widget dashboard terikat CPU (1-3 detik sebelum perbaikan indeks) dan dashboard menjalankan sampai 4-6 widget bersamaan (`DB_POOL_SIZE`, `docs/ci-cd.md`); satu vCPU membuat semuanya antre.
+- **Disk 40 GB.** Sistem operasi 8-10 GB, database 0,6 GB sekarang dan 2-6 GB pada 10x, cadangan lokal 3x ukuran dump (~100 MB sekarang, ~300 MB pada 10x), image Docker ~2 GB, volume foto sementara (batas 2 GiB, `PROOF_STAGING_MAX_BYTES`), log; sisakan bebas minimal 30%. Wajib SSD/NVMe: kueri yang memindai ratusan ribu baris tidak layak di HDD.
+
+**Syarat lain:** Ubuntu LTS dengan Docker (Compose v2) dan nginx; keluar ke internet untuk Google Drive/Sheets, SMTP, dan GHCR; masuk hanya 80/443 lewat Cloudflare dan SSH dengan kunci saja; jam sistem tersinkron (NTP) karena masa berlaku token dan sesi bergantung padanya; cadangan di luar mesin sudah ada lewat Google Drive.
+
+**Hindari:** berbagi mesin dengan tumpukan lain yang boros memori (ERP/Frappe, database lain): itu penyebab VPS bersama kekurangan RAM (RAM tersedia naik dari 1,4 GB ke 2,1 GB setelah Frappe dimatikan pada 2026-11-24); menjadikan swap sebagai kapasitas (hanya jaring pengaman); menjalankan stack dev lama (`qc-dev-db`) di mesin production.
