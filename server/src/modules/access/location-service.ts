@@ -1,7 +1,8 @@
 import { writeAudit } from '@server/core/audit';
+import { runCas } from '@server/core/cas';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
-import { appError } from '@server/core/errors';
+import { appError, staleError } from '@server/core/errors';
 import { newId } from '@server/core/id';
 import { type PlanOutcome, runRecordBatch, runSingleRecord } from '@server/core/record-batch';
 import {
@@ -10,6 +11,7 @@ import {
   planSoftDelete,
   planStatusChange,
 } from '@server/core/record-lifecycle';
+import { versionGuardStmt } from '@server/core/soft-delete';
 import type {
   BatchResult,
   IdBatchInput,
@@ -34,7 +36,7 @@ import {
   deletedInfoOf,
   insertLocationStmt,
   isLiveRecord,
-  loadAccessTables,
+  loadLocationRecords,
   updateLocationStmt,
 } from './repo';
 
@@ -93,7 +95,7 @@ export async function listLocationDtos(
 ): Promise<LocationDto[]> {
   const filter = input?.status;
   assertCanListDeleted(filter, actor);
-  const { locations } = await loadAccessTables(env);
+  const locations = await loadLocationRecords(env);
   return locations
     .filter((location) => (filter === 'deleted' ? !isLiveRecord(location) : isLiveRecord(location)))
     .filter((location) => filter !== 'active' || location.status === 'active')
@@ -108,7 +110,7 @@ export async function getLocationDto(
   input: GetLocationInput,
   actor: UserContext,
 ): Promise<LocationDto> {
-  const { locations } = await loadAccessTables(env);
+  const locations = await loadLocationRecords(env);
   const location = locations.find((record) => record.id === input.id);
   if (!location || (!isLiveRecord(location) && !canSeeDeleted(actor))) {
     throw appError('NOT_FOUND', LOCATION_NOT_FOUND);
@@ -116,12 +118,21 @@ export async function getLocationDto(
   return toLocationDto(location);
 }
 
-export async function saveLocation(
+/** Simpan lokasi; ubah lokasi dijaga CAS versi dan keadaan hidup di dalam batch (lihat `saveUser`). */
+export function saveLocation(
   env: Env,
   input: SaveLocationInput,
   actor: UserContext,
 ): Promise<LocationDto> {
-  const { locations } = await loadAccessTables(env);
+  return runCas(() => saveLocationOnce(env, input, actor), LOCATION_STALE);
+}
+
+async function saveLocationOnce(
+  env: Env,
+  input: SaveLocationInput,
+  actor: UserContext,
+): Promise<LocationDto> {
+  const locations = await loadLocationRecords(env);
   // Keunikan antar lokasi HIDUP (lokasi terhapus tak menahan kode/namanya; pulihkan memeriksa ulang).
   const others = locations.filter((location) => isLiveRecord(location) && location.id !== input.id);
   if (others.some((location) => location.code === input.code)) {
@@ -136,6 +147,9 @@ export async function saveLocation(
   if (input.id) {
     const existing = locations.find((location) => location.id === input.id);
     if (!existing || !isLiveRecord(existing)) throw appError('NOT_FOUND', LOCATION_NOT_FOUND);
+    if (input.expectedUpdatedAt !== undefined && input.expectedUpdatedAt !== existing.updatedAt) {
+      throw staleError(LOCATION_STALE);
+    }
     if (existing.code !== input.code) {
       throw appError('VALIDATION', 'Kode tidak dapat diubah', {
         code: 'Kode tidak dapat diubah',
@@ -150,6 +164,7 @@ export async function saveLocation(
     await batchWrite(
       env.DB,
       [
+        versionGuardStmt(env.DB, 'locations', existing.id, existing.updatedAt, 'live'),
         updateLocationStmt(env.DB, updated),
         writeAudit(env.DB, {
           ts: now,

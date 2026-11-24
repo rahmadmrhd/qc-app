@@ -35,6 +35,12 @@
 # --wait-seconds N, --poll-seconds N.
 set -euo pipefail
 umask 077
+# Putusnya koneksi SSH di tengah deploy (pemilik membatalkan job, jaringan putus) mengirim SIGHUP ke skrip dan/atau SIGPIPE
+# saat menulis ke stdout yang sudah tertutup. Tanpa ini skrip mati SESUDAH `.env` bertag baru tetapi sebelum
+# wait_healthy/smoke_test/rollback: tag gagal tertinggal sebagai "tag sebelumnya" deploy berikutnya. Keduanya diabaikan
+# (juga diwarisi proses anak: docker compose tetap selesai), dan penulisan ke stdout/stderr tak lagi fatal (lihat `log`/`die`).
+# SIGTERM/SIGINT tetap menghentikan skrip (pembatalan yang disengaja).
+trap '' HUP PIPE
 
 # Folder instalasi = folder tempat skrip ini berada (jalurnya sudah tertulis mutlak di `command=` authorized_keys), bukan $HOME
 # atau nilai lingkungan: tak bergantung pada pengguna dan bisa dipindah. `--root` hanya untuk tes.
@@ -45,11 +51,18 @@ DRY_RUN=0
 WAIT_SECONDS=150
 POLL_SECONDS=3
 
-log() { printf '[deploy] %s\n' "$*"; }
+# Tulis ke pemanggil TIDAK pernah fatal (stdout bisa sudah tertutup: SSH putus) dan, begitu `$DEPLOY_LOG` ada, disalin ke
+# sana agar jejak deploy yang pemanggilnya sudah pergi tetap terbaca di VPS.
+emit() { # emit PESAN [err]
+  local line=$1
+  if [ "${2:-}" = err ]; then printf '%s\n' "$line" >&2 || true; else printf '%s\n' "$line" || true; fi
+  if [ -n "${DEPLOY_LOG:-}" ] && [ -f "$DEPLOY_LOG" ]; then printf '%s\n' "$line" >>"$DEPLOY_LOG" 2>/dev/null || true; fi
+}
+log() { emit "[deploy] $*"; }
 die() { # die KODE PESAN
   local code=$1
   shift
-  printf '[deploy] GAGAL: %s\n' "$*" >&2
+  emit "[deploy] GAGAL: $*" err
   exit "$code"
 }
 
@@ -426,4 +439,4 @@ fi
 cleanup_images || log 'pembersihan image dilewati (galat tak terduga; tidak memengaruhi hasil deploy)'
 
 log "selesai: lingkungan=$ENV_NAME tag=$TAG"
-echo "DEPLOY_OK env=$ENV_NAME tag=$TAG"
+emit "DEPLOY_OK env=$ENV_NAME tag=$TAG"

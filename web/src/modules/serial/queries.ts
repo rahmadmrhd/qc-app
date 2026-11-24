@@ -325,9 +325,15 @@ export function useSaveSerialBatch() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: SaveSerialBatchInput) => api('serials.saveBatch', input),
-    onSuccess: () => {
+    onSuccess: (output) => {
       // Serial baru muncul di daftar (posisi ditentukan server) dan memotong stok stiker.
       markStale(queryClient, serialKeys.list, stickerKeys.all, accessKeys.audit);
+      // Baris cek ulang (serial yang sudah ada): detail dan riwayatnya (BU, kejadian) berubah.
+      for (const row of output.results) {
+        if (row.result === 'rechecked' && row.id) {
+          markStale(queryClient, serialKeys.one(row.id), serialKeys.history(row.id));
+        }
+      }
     },
   });
 }

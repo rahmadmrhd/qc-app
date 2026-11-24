@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test'
 import { app } from '@server/app';
 import { loadUserContext } from '@server/modules/access/context';
 import { uploadFile } from '@server/modules/files/service';
+import { getItemDto } from '@server/modules/item/service';
 import { seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { bytesOfBase64 } from '@server-test/bytes';
 import { seedBrand, seedItem } from '@server-test/item-fixtures';
@@ -185,6 +186,96 @@ describe('katalog desktop: isi', () => {
     expect(codes).toContain('BBB');
     expect(codes).not.toContain('AAA');
     expect([...codes]).toEqual([...codes].sort());
+  });
+
+  test('item.businessUnits hanya memuat BU hidup dan aktif (BU terhapus atau nonaktif tak muncul)', async () => {
+    const t = '2026-11-10T00:00:00.000Z';
+    await env.DB.prepare(
+      `INSERT IGNORE INTO business_units (id, code, name, status, created_at, updated_at, updated_by, deleted_at, deleted_by) VALUES ('bu-del', 'DEL', 'BU Dihapus', 'active', '${t}', '${t}', 'seed', '${t}', 'seed'), ('bu-off', 'OFF', 'BU Mati', 'inactive', '${t}', '${t}', 'seed', '', '')`,
+    ).run();
+    await seedItem(env, {
+      id: 'i1',
+      brand: 'Acme',
+      model: 'AP-1',
+      businessUnitIds: ['bu-b', 'bu-del', 'bu-off'],
+    });
+    await setLock('i1');
+    const catalog = parseDesktopCatalog(await (await get('', auth)).json());
+    expect(catalog?.items[0]?.businessUnits?.map((unit) => unit.code)).toEqual(['BBB']);
+  });
+
+  test('kesepakatan web-katalog: item ber-BU {hidup, nonaktif, terhapus} memberi stiker dan instruksi yang SAMA dengan items.get', async () => {
+    const t = '2026-11-10T00:00:00.000Z';
+    await env.DB.prepare(
+      `INSERT IGNORE INTO business_units (id, code, name, status, created_at, updated_at, updated_by, deleted_at, deleted_by) VALUES ('bu-off', 'OFF', 'BU Mati', 'inactive', '${t}', '${t}', 'seed', '', ''), ('bu-del', 'DEL', 'BU Dihapus', 'active', '${t}', '${t}', 'seed', '${t}', 'seed')`,
+    ).run();
+    await seedGuideImage(env, { id: 'g1', name: 'Depan' });
+    await seedStickerType(env, { id: 't-bu', name: 'Warranty', rule: 'bu' });
+    await seedSticker(env, { id: 's-off', typeId: 't-bu', name: 'Garansi OFF', buIds: ['bu-off'] });
+    await seedSticker(env, { id: 's-del', typeId: 't-bu', name: 'Garansi DEL', buIds: ['bu-del'] });
+    await seedSticker(env, { id: 's-b', typeId: 't-bu', name: 'Garansi B', buIds: ['bu-b'] });
+    const instruction = [
+      {
+        guideId: 'g1',
+        caption: 'Depan',
+        buId: null,
+        marks: [{ x: 10, y: 20, target: { kind: 'type' as const, typeId: 't-bu' }, note: '' }],
+      },
+    ];
+    // A: BU {B hidup, OFF nonaktif, DEL terhapus}; B: hanya BU terhapus/nonaktif; C: hanya {B hidup, DEL terhapus}.
+    await seedItem(env, {
+      id: 'i-a',
+      brand: 'Acme',
+      model: 'A',
+      businessUnitIds: ['bu-b', 'bu-off', 'bu-del'],
+    });
+    await seedItem(env, {
+      id: 'i-b',
+      brand: 'Acme',
+      model: 'B',
+      businessUnitIds: ['bu-off', 'bu-del'],
+    });
+    await seedItem(env, {
+      id: 'i-c',
+      brand: 'Acme',
+      model: 'C',
+      businessUnitIds: ['bu-b', 'bu-del'],
+    });
+    for (const id of ['i-a', 'i-b', 'i-c']) {
+      await setLock(id);
+      await env.DB.batch(replaceItemInstructionStmts(env.DB, id, instruction, true));
+    }
+    const admin = await loadUserContext(env, 'admin@gmail.com');
+    if (!admin) throw new Error('konteks admin tidak ada');
+    const catalog = parseDesktopCatalog(await (await get('', auth)).json());
+    for (const id of ['i-a', 'i-b', 'i-c']) {
+      const entry = catalog?.items.find((item) => item.id === id);
+      const web = await getItemDto(env, { id }, admin);
+      const webResolved = (web.stickerPhotos[0]?.marks[0]?.resolved ?? [])
+        .map((sticker) => sticker.id)
+        .sort();
+      const catalogResolved = (entry?.stickerPhotos[0]?.marks[0]?.resolved ?? [])
+        .map((sticker) => sticker.id)
+        .sort();
+      expect([id, catalogResolved]).toEqual([id, webResolved]);
+      expect([id, [...(entry?.stickerIds ?? [])].sort()]).toEqual([id, webResolved]);
+      expect([id, entry?.stickerPhotos[0]?.marks[0]?.unresolved]).toEqual([
+        id,
+        web.stickerPhotos[0]?.marks[0]?.unresolved,
+      ]);
+    }
+    // Isi nyata (BU terhapus tetap dihitung seperti di web): A = {B, OFF, DEL}, B = {OFF, DEL}, C = {B, DEL}.
+    const idsOf = (id: string) =>
+      [...(catalog?.items.find((item) => item.id === id)?.stickerIds ?? [])].sort();
+    expect(idsOf('i-a')).toEqual(['s-b', 's-del', 's-off']);
+    expect(idsOf('i-b')).toEqual(['s-del', 's-off']);
+    expect(idsOf('i-c')).toEqual(['s-b', 's-del']);
+    // Pilihan BU di form inject tetap hanya BU hidup dan aktif (terhapus dan nonaktif tak ditawarkan).
+    const unitsOf = (id: string) =>
+      catalog?.items.find((item) => item.id === id)?.businessUnits?.map((unit) => unit.code);
+    expect(unitsOf('i-a')).toEqual(['BBB']);
+    expect(unitsOf('i-b')).toEqual([]);
+    expect(unitsOf('i-c')).toEqual(['BBB']);
   });
 
   test('tanpa item isCountryLock: katalog kosong yang sah', async () => {

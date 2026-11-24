@@ -25,7 +25,7 @@ Tambahkan DTO, input, dan entri `ApiContract` (`shared/contract.ts`), mis. `'ite
 
 ## Modul berlokasi (izin per lokasi)
 
-Modul `handover`, `qc`, dan `stock` bersifat berlokasi (`LOCATION_MODULES` di `shared/assignments.ts`). `access` global dan hanya dari penugasan "Semua lokasi"; `item` global bersama (levelnya tertinggi dari **semua** penugasan berlaku, `SHARED_MODULES`). Untuk modul berlokasi:
+Modul `handover`, `qc`, `stock`, dan `stickerstock` bersifat berlokasi (`LOCATION_MODULES` di `shared/assignments.ts`). `access` global dan hanya dari penugasan "Semua lokasi"; `qrcode`, `sticker`, dan `countrylock` global bersama (levelnya tertinggi dari **semua** penugasan berlaku, `SHARED_MODULES`); `item` (juga `serial` dan `serialservice`) ber-BU, bukan berlokasi (lihat bagian "Modul ber-BU"). Untuk modul berlokasi:
 
 1. **Rute server** wajib menandai `scope: 'location'`:
 
@@ -48,7 +48,7 @@ Modul `handover`, `qc`, dan `stock` bersifat berlokasi (`LOCATION_MODULES` di `s
 4. **Tabel**: tampilkan kolom **Lokasi** bila `selectedIds.length > 1` (PRD FR-C5); dengan satu lokasi terpilih kolom itu tidak perlu.
 5. **Tes**: tambahkan kasus lokasi terlarang, tak dikenal, dan nonaktif untuk method baru.
 6. **Izin alternatif**: bila method boleh diakses oleh salah satu dari beberapa izin (mis. WH atau QC), pakai `permission: { anyOf: [ ... ] }`. Semua alternatif harus sama lingkupnya (semua global atau semua `scope: 'location'`); tiap lokasi yang diminta cukup memenuhi satu alternatif, dan satu lokasi yang gagal menolak seluruh permintaan.
-7. **Baris yang diubah lewat id**: rute tulis menerima `locationId` **dan** `id`; router memeriksa izin di `locationId`, lalu servis wajib memeriksa bahwa lokasi baris yang ada sama dengan `locationId` (bila tidak, `NOT_FOUND`) sehingga izin di satu lokasi tidak dapat dipakai untuk mengubah baris lokasi lain (contoh: `loadHandoverForWrite_`).
+7. **Baris yang diubah lewat id**: rute tulis menerima `locationId` **dan** `id`; router memeriksa izin di `locationId`, lalu servis wajib memeriksa bahwa lokasi baris yang ada sama dengan `locationId` (bila tidak, `NOT_FOUND`) sehingga izin di satu lokasi tidak dapat dipakai untuk mengubah baris lokasi lain (contoh: `loadForWrite` di `server/src/modules/handover/service.ts`).
 8. **Saran toleran di klien**: pakai `suggestMatches`/`similarNames` (`shared/suggest.ts`) atas daftar yang sudah dimuat; ambil daftar lewat rute modul itu sendiri (izin modul), bukan rute modul lain yang mungkin tidak boleh diakses user.
 9. **Menu dan guard dengan izin "salah satu dari"**: `NavItem.permission` boleh berupa daftar; guard route memakai `requireAnyPermission` (`web/src/modules/auth/permissions.ts`).
 

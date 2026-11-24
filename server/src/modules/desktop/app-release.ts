@@ -123,7 +123,9 @@ export function createReleaseReader(deps: ReleaseReaderDeps): ReleaseReader {
     const idx = await readIndex();
     if (resolved.has(version)) return resolved.get(version) ?? null;
     const result = await build(version, idx.versions.get(version), idx.byName);
-    resolved.set(version, result);
+    // Hasil dari indeks yang sudah digantikan (listing diperbarui selagi `build` menunggu Drive) tidak disimpan: ia akan
+    // bertahan sampai indeks berikutnya dan menyajikan versi basi.
+    if (index === idx) resolved.set(version, result);
     return result;
   }
 

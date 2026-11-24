@@ -8,21 +8,9 @@ import type { LocationPermissionMap } from '@shared/assignments';
 import type { BuPermissionMap } from '@shared/business-units';
 import type { BusinessUnitOptionDto, MeDto } from '@shared/contract';
 
-/**
- * Daftar lokasi `auth.me` per konteks akses: konteks dan daftar lokasi hidup di cache isolate (dibuang bersama),
- * jadi selama keduanya objek yang sama hasilnya tidak berubah dan tidak perlu disaring/diurutkan ulang tiap
- * permintaan (`GET /api/v1/me` dipanggil di setiap pemuatan halaman). Identitas `briefs` dicek agar
- * hasil lama tidak dipakai bila daftar lokasi dimuat ulang.
- */
-const meLocations = new WeakMap<
-  UserContext,
-  { briefs: readonly LocationBrief[]; locations: MeDto['locations'] }
->();
-
+/** Lokasi aktif yang dapat diakses user, diurutkan menurut kode. */
 function locationsOf(user: UserContext, briefs: readonly LocationBrief[]): MeDto['locations'] {
-  const memo = meLocations.get(user);
-  if (memo && memo.briefs === briefs) return memo.locations;
-  const locations = briefs
+  return briefs
     .filter((location) => location.active && user.locations[location.id] !== undefined)
     .map((location) => ({
       id: location.id,
@@ -31,8 +19,6 @@ function locationsOf(user: UserContext, briefs: readonly LocationBrief[]): MeDto
       permissions: user.locations[location.id] as LocationPermissionMap,
     }))
     .sort((a, b) => a.code.localeCompare(b.code));
-  meLocations.set(user, { briefs, locations });
-  return locations;
 }
 
 /**

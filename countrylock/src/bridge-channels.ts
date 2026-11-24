@@ -2,7 +2,7 @@
 // `bridge-contract.ts` (yang memuat zod) agar bundel preload tetap kecil.
 
 /** Versi kontrak jembatan; renderer menolak jembatan di bawah `MIN_BRIDGE_VERSION`. */
-export const BRIDGE_VERSION = 10;
+export const BRIDGE_VERSION = 11;
 export const MIN_BRIDGE_VERSION = 2;
 
 /** Kanal `ipcMain.handle` (permintaan-jawaban): `qc:<grup>:<aksi>`. */
@@ -78,8 +78,15 @@ export const MULTI_BRIDGE_VERSION = 9;
  * Jembatan paling rendah yang punya `app` (versi terpasang, "Perbarui sekarang" tanpa dialog, buka halaman unduhan):
  * dipakai layar penahan saat versi aplikasi di bawah `minClient` server. Renderer memeriksa versinya sebelum memakai;
  * `UI_MIN_BRIDGE_VERSION` TIDAK dinaikkan (UI yang lebih baru tetap jalan di aplikasi lama, hanya tanpa layar itu).
-/** Maks. id peristiwa `injected` per panggilan `multi.ackInjected` (renderer meng-ack per potongan sebesar ini). */
+ */
 export const APP_BRIDGE_VERSION = 10;
+/**
+ * Jembatan paling rendah yang mengisi `AuthStatus.error` (login ditolak server: `LOGIN_FAILED` atau `NOT_WHITELISTED`,
+ * 2026-11-24). UI yang lebih baru tetap jalan di jembatan lama dengan pesan login gagal yang umum (field `undefined`);
+ * `UI_MIN_BRIDGE_VERSION` TIDAK dinaikkan.
+ */
+export const AUTH_ERROR_BRIDGE_VERSION = 11;
+/** Maks. id peristiwa `injected` per panggilan `multi.ackInjected` (renderer meng-ack per potongan sebesar ini). */
 export const MULTI_ACK_MAX = 500;
 /** Jembatan paling rendah yang punya `catalog` (katalog Tipe offline); UI yang lebih baru memeriksa versinya sebelum memakai. */
 export const CATALOG_BRIDGE_VERSION = 5;

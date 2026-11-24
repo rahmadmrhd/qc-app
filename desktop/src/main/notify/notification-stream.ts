@@ -23,7 +23,7 @@ export interface NotificationStreamDeps {
 }
 
 export interface NotificationStream {
-  /** Memulai bila belum jalan dan ada token; aman dipanggil berulang. */
+  /** Memulai bila belum jalan dan ada token; aman dipanggil berulang. Token berbeda dari yang dipakai koneksi hidup = mulai ulang. */
   start(): void;
   /** Menghentikan aliran dan membatalkan sambung ulang. */
   stop(): void;
@@ -48,6 +48,9 @@ export function createNotificationStream(deps: NotificationStreamDeps): Notifica
   let sleepTimer: ReturnType<typeof setTimeout> | null = null;
   let wake: (() => void) | null = null;
   let lastEventId: string | null = null;
+  // Token yang dipakai aliran yang sedang berjalan: `start()` membandingkannya dengan token saat ini agar
+  // pergantian akun tanpa keluar di antaranya (handoff, login ulang) tidak mempertahankan koneksi akun lama.
+  let activeToken: string | null = null;
 
   const sleep = (ms: number): Promise<void> =>
     new Promise((resolve) => {
@@ -116,6 +119,7 @@ export function createNotificationStream(deps: NotificationStreamDeps): Notifica
         deps.onSignedOut?.();
         break;
       }
+      activeToken = token;
       const startedAt = Date.now();
       const result = await connectOnce(gen, token);
       if (gen !== generation) break;
@@ -130,24 +134,34 @@ export function createNotificationStream(deps: NotificationStreamDeps): Notifica
     if (gen === generation) running = false;
   }
 
+  function stopStream(): void {
+    generation += 1;
+    running = false;
+    controller?.abort();
+    controller = null;
+    if (sleepTimer) clearTimeout(sleepTimer);
+    sleepTimer = null;
+    wake?.();
+    wake = null;
+    lastEventId = null;
+    activeToken = null;
+  }
+
   return {
     start() {
-      if (running || !deps.token()) return;
+      const token = deps.token();
+      if (!token) return;
+      if (running) {
+        if (token === activeToken) return;
+        // Akun berganti: hentikan koneksi lama (membatalkan permintaan, mereset `lastEventId`) lalu mulai baru.
+        stopStream();
+      }
       running = true;
+      activeToken = token;
       generation += 1;
       void loop(generation);
     },
-    stop() {
-      generation += 1;
-      running = false;
-      controller?.abort();
-      controller = null;
-      if (sleepTimer) clearTimeout(sleepTimer);
-      sleepTimer = null;
-      wake?.();
-      wake = null;
-      lastEventId = null;
-    },
+    stop: stopStream,
     isRunning: () => running,
   };
 }

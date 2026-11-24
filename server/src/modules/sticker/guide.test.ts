@@ -461,6 +461,9 @@ function bytesOf(head: number[], size: number, seed = 1): Uint8Array {
   const bytes = new Uint8Array(size);
   for (let i = 0; i < size; i++) bytes[i] = (i * 31 + seed) % 256;
   bytes.set(head, 0);
+  // PNG: server membaca dimensi dari header IHDR (byte 16 dan 20), bukan klaim klien; samakan dengan klaim bawaan
+  // (800x600) agar isi filler tidak terbaca sebagai dimensi raksasa.
+  if (head[0] === 0x89 && size >= 24) bytes.set([0, 0, 3, 0x20, 0, 0, 2, 0x58], 16);
   return bytes;
 }
 

@@ -495,6 +495,34 @@ describe('riwayat', () => {
     expect(both.entries).toHaveLength(7);
   });
 
+  test('banyak lokasi tanpa stiker: halaman berkursor menyambung tanpa duplikat atau lompatan, urutan sama dengan satu halaman penuh', async () => {
+    const sticker = await newSticker();
+    for (let i = 0; i < 6; i++) {
+      env.clock.advance(1000);
+      await recordStock(env, rec(sticker.id, i % 2 === 0 ? A : B, 'in', i + 1), admin);
+    }
+    const full = await stockHistory(env, validateStockHistory({ locationIds: [A, B] }), [A, B]);
+    expect(full.entries).toHaveLength(6);
+    const paged: string[] = [];
+    let cursor: string | null | undefined;
+    do {
+      const page = await stockHistory(
+        env,
+        validateStockHistory({
+          locationIds: [A, B],
+          limit: 4,
+          ...(cursor ? { cursor } : {}),
+        }),
+        [A, B],
+      );
+      paged.push(...page.entries.map((entry) => entry.id));
+      cursor = page.nextCursor;
+    } while (cursor);
+    expect(paged).toEqual(full.entries.map((entry) => entry.id));
+    const stamps = full.entries.map((entry) => entry.ts);
+    expect([...stamps].sort().reverse()).toEqual(stamps);
+  });
+
   test('validator riwayat: limit 1..200 (bawaan 50), kursor harus valid, lokasi wajib', () => {
     const bad = (raw: unknown) => captureAppError(() => validateStockHistory(raw));
     expect(validateStockHistory({ locationIds: [A] }).limit).toBe(50);

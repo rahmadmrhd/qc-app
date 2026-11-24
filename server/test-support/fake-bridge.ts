@@ -3,7 +3,6 @@ import type {
   BridgeClient,
   BridgeExternalFileInfo,
   DriveFolderEntry,
-  SheetsDump,
   SheetsExportChunk,
 } from '@server/core/bridge-client';
 import { base64ToBytes, bytesToBase64 } from '@server/core/bytes';
@@ -22,7 +21,6 @@ export interface FakeBridgeState {
   folders: Set<string>;
   files: Map<string, FakeFile>;
   external: Map<string, { name: string; mime: string; base64: string }>;
-  dump: SheetsDump;
   exports: SheetsExportChunk[];
   /** Kuota yang dilaporkan `storageQuota()`. */
   quota: { limit: number | null; usage: number };
@@ -48,7 +46,6 @@ export function createFakeBridge(): FakeBridge {
     folders: new Set(),
     files: new Map(),
     external: new Map(),
-    dump: {},
     exports: [],
     quota: { limit: null, usage: 0 },
   };
@@ -235,10 +232,6 @@ export function createFakeBridge(): FakeBridge {
     async sheetsExport(chunk) {
       enter('sheetsExport', [chunk]);
       state.exports.push(chunk);
-    },
-    async sheetsDump() {
-      enter('sheetsDump', []);
-      return state.dump;
     },
   };
   return bridge;

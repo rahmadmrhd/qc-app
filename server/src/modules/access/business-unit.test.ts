@@ -206,6 +206,33 @@ describe('master BU', () => {
     expect(await rowOf('bu-a')).toEqual({ name: 'Nama Baru', status: 'active' });
   });
 
+  test('ganti nama berpenjaga versi: BU dihapus di sela baca dan tulis = ganti nama gagal (tak menulis ke baris terhapus)', async () => {
+    await seedBusinessUnit(env, { id: 'bu-a', code: 'AAA', name: 'A', status: 'inactive' });
+    const realBatch = env.DB.batch.bind(env.DB);
+    let fired = false;
+    // Pelaku lain menghapus BU tepat sebelum batch ganti nama dijalankan.
+    const hooked = {
+      ...env,
+      DB: Object.assign(Object.create(env.DB) as typeof env.DB, {
+        batch: async (...args: Parameters<typeof realBatch>) => {
+          if (!fired) {
+            fired = true;
+            await env.DB.prepare(
+              "UPDATE business_units SET deleted_at = '2026-11-08T00:00:01.000Z', deleted_by = 'x@gmail.com', updated_at = '2026-11-08T00:00:01.000Z' WHERE id = 'bu-a'",
+            ).run();
+          }
+          return realBatch(...args);
+        },
+      }),
+    } as typeof env;
+    const error = await captureAppErrorAsync(() =>
+      saveBusinessUnit(hooked, { id: 'bu-a', code: 'AAA', name: 'Nama Baru' }, admin),
+    );
+    expect(['NOT_FOUND', 'CONFLICT']).toContain(error.code);
+    expect(await rowOf('bu-a')).toEqual({ name: 'A', status: 'inactive' });
+    expect((await auditRows()).filter((row) => row.action === 'businessunit.update')).toEqual([]);
+  });
+
   test('dua pembuatan serentak dengan kode sama: satu berhasil, satu CONFLICT pada field kode (indeks unik)', async () => {
     const results = await Promise.allSettled([
       saveBusinessUnit(env, { code: 'DUP', name: 'Satu' }, admin),

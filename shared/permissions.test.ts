@@ -154,7 +154,7 @@ test('modul sticker dan stickerstock: label, level, dan petunjuk', () => {
     'Menambah dan mengubah jenis dan stiker, termasuk batas minimum.',
   );
   expect(levelHint('sticker', 'manage')).toBe(
-    'Semua akses Ubah, ditambah menonaktifkan dan mengaktifkan jenis dan stiker serta mengatur Konfigurasi Stiker.',
+    'Semua akses Ubah, ditambah menonaktifkan, mengaktifkan, menghapus, dan memulihkan jenis dan stiker serta mengatur Konfigurasi Stiker.',
   );
   expect(levelHint('stickerstock', 'view')).toBe(
     'Melihat stok dan riwayat stiker di lokasi penugasan.',

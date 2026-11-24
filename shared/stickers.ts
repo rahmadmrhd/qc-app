@@ -57,18 +57,6 @@ export const GUIDE_SORTS = [
 ] as const;
 export type GuideSort = (typeof GUIDE_SORTS)[number];
 
-/**
- * Nama awal gambar pustaka dari nama berkas: ekstensi terakhir dibuang, spasi dirapikan, dipotong `nameMax`
- * karakter (titik kode, bukan unit UTF-16). Hasil kosong = "Gambar".
- */
-export function guideNameFromFile(filename: string): string {
-  const dot = filename.lastIndexOf('.');
-  const base = dot >= 0 ? filename.slice(0, dot) : filename;
-  const collapsed = base.replace(/\s+/g, ' ').trim();
-  if (collapsed === '') return 'Gambar';
-  return [...collapsed].slice(0, GUIDE_LIMITS.nameMax).join('').trim();
-}
-
 /** Status stiker (tahap 4a): `deprecated` = digantikan versi Manual Book yang lebih baru, hanya bisa menjadi `inactive`. */
 export const STICKER_STATUSES = ['active', 'inactive', 'deprecated'] as const;
 export type StickerStatus = (typeof STICKER_STATUSES)[number];

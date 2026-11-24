@@ -35,6 +35,7 @@ import { itemFileSource } from '@/modules/files/file-source';
 import { altTextFromStem } from './image-alt';
 import { loadMarkdown } from './load-markdown';
 import { normalizeMarkdown } from './normalize-markdown';
+import { SafeTableCell, SafeTableHeader } from './table-extensions';
 import { FileImageExtension } from './wysiwyg-image';
 import { WysiwygToolbar } from './wysiwyg-toolbar';
 
@@ -208,7 +209,9 @@ export function WysiwygEditor({
       UndoRedo,
       TaskList,
       TaskItem.configure({ nested: true }),
-      TableKit.configure({ table: { resizable: false } }),
+      TableKit.configure({ table: { resizable: false }, tableCell: false, tableHeader: false }),
+      SafeTableCell,
+      SafeTableHeader,
       ...(imagesEnabled ? [FileImageExtension] : []),
       Markdown,
       lengthLimitExtension(

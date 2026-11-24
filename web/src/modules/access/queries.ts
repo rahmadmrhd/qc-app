@@ -22,6 +22,7 @@ import {
 } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { meQueryKey } from '@/modules/auth/queries';
+import { isStaleSaveError } from '@/modules/sticker/lib/stale';
 
 export const accessKeys = {
   all: ['access'] as const,
@@ -166,6 +167,10 @@ function useAccessMutation<TInput, TOutput>(mutationFn: (input: TInput) => Promi
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
+    // Versi basi (412): muat ulang record dan daftar supaya Batal lalu Ubah tak membuka form dari data lama.
+    onError: (error) => {
+      if (isStaleSaveError(error)) void queryClient.invalidateQueries({ queryKey: accessKeys.all });
+    },
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: accessKeys.all }),

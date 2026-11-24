@@ -638,7 +638,12 @@ export async function savePostel(
     );
     return loadPostelDto(env, actor, postelId);
   }
-  const before = postelSnapshot(existing, stored, owned.length, existing.attachments.length);
+  const before = postelSnapshot(
+    existing,
+    stored,
+    liveItemsOf(owned).length,
+    existing.attachments.length,
+  );
   // Hanya urutan lampiran yang berubah (himpunan sama, tak ada perubahan lain): snapshot audit tak memuat urutan, jadi
   // entri `postel.update` akan berisi before == after (perubahan semu). Perubahan tetap disimpan, tanpa entri audit.
   const reorderOnly =

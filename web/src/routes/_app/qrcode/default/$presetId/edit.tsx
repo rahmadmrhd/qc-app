@@ -3,13 +3,13 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { PageContent } from '@/components/page/page-container';
+import { useFrozen } from '@/hooks/use-frozen';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
 import { pickFieldErrors } from '@/modules/access/lib/field-errors';
 import { businessUnitOptionsQueryOptions } from '@/modules/access/queries';
 import { requirePermission } from '@/modules/auth/permissions';
 import { QrDesignFormPage } from '@/modules/qrcode/components/qr-design-form-page';
-import { useFrozen } from '@/modules/qrcode/lib/use-frozen';
 import { qrDefaultsQueryOptions, useSaveQrPreset } from '@/modules/qrcode/queries';
 import type { QrFormOutput, QrPresetFieldErrors } from '@/modules/qrcode/schemas';
 import {

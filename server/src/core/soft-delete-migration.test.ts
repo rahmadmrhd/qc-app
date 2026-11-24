@@ -3,6 +3,8 @@
 import { expect, test } from 'bun:test';
 import { DbError } from '@server/core/db';
 import { createTestEnv } from '@server-test/test-env';
+import { SOFT_DELETE_TABLES } from './soft-delete';
+import { CHILD_PARENTS } from './soft-delete-scan';
 
 const TABLES = [
   'users',
@@ -124,4 +126,38 @@ test('contract (0030): indeks lama brands_key sudah dibuang; kunci sama dengan d
   }
   expect(error).toBeInstanceOf(DbError);
   expect((error as DbError).kind).toBe('duplicate');
+});
+
+// Penjaga DUA ARAH: daftar tabel di kode (`SOFT_DELETE_TABLES`, `CHILD_PARENTS`) harus sama dengan skema. Tanpa ini,
+// tabel baru ber-`deleted_at` atau anak FK baru dari model soft delete tak ikut dipindai `soft-delete-guard.test.ts`
+// dan pembaca yang membocorkan record terhapus lolos diam-diam.
+test('tabel ber-kolom deleted_at di skema = SOFT_DELETE_TABLES (tidak ada yang tertinggal atau berlebih)', async () => {
+  const env = await createTestEnv();
+  const rows = (
+    await env.DB.prepare(
+      "SELECT table_name AS name FROM information_schema.columns WHERE table_schema = DATABASE() AND column_name = 'deleted_at'",
+    ).all<{ name: string }>()
+  ).results;
+  expect(rows.map((row) => row.name).sort()).toEqual([...SOFT_DELETE_TABLES].sort());
+  expect(TABLES.slice().sort()).toEqual([...SOFT_DELETE_TABLES].sort());
+});
+
+test('tabel anak (kunci asing) dari model soft delete terdaftar di CHILD_PARENTS; tiap tabel CHILD_PARENTS ada di skema', async () => {
+  const env = await createTestEnv();
+  const soft = new Set<string>(SOFT_DELETE_TABLES);
+  const fkRows = (
+    await env.DB.prepare(
+      'SELECT table_name AS child, referenced_table_name AS parent FROM information_schema.referential_constraints WHERE constraint_schema = DATABASE()',
+    ).all<{ child: string; parent: string }>()
+  ).results;
+  const orphanChildren = fkRows
+    .filter((row) => soft.has(row.parent) && !soft.has(row.child) && !(row.child in CHILD_PARENTS))
+    .map((row) => `${row.child} -> ${row.parent}`);
+  expect(orphanChildren).toEqual([]);
+  const tables = (
+    await env.DB.prepare(
+      'SELECT table_name AS name FROM information_schema.tables WHERE table_schema = DATABASE()',
+    ).all<{ name: string }>()
+  ).results.map((row) => row.name);
+  expect(Object.keys(CHILD_PARENTS).filter((name) => !tables.includes(name))).toEqual([]);
 });

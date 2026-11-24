@@ -8,6 +8,7 @@ import { Clock, LoaderCircle } from 'lucide-react';
 import { Children, isValidElement, useEffect, useMemo, useRef, useState } from 'react';
 import type { Components } from 'react-markdown';
 import { Button } from '@/components/ui/button';
+import { formatStamp } from '@/lib/format-stamp';
 import { cn } from '@/lib/utils';
 import { MarkdownView } from '@/modules/markdown/markdown-view';
 import { collectNoteText, rangeForAnchor, setNoteHighlights } from '../lib/note-dom-text';
@@ -98,12 +99,6 @@ function buildAnchor(note: string, quote: string, textBefore: string): Anchor {
   }
   if (best < 0) return { quote, before: '', after: '' };
   return makeAnchor(plain, best, best + quote.length);
-}
-
-function formatTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
 }
 
 export function NoteView({
@@ -270,7 +265,7 @@ export function NoteView({
                 data-note-meta=""
                 className="ml-7 touch:ml-8 block text-xs text-muted-foreground"
               >
-                oleh {item.by} · {formatTime(item.at)}
+                oleh {item.by} · {formatStamp(item.at)}
               </span>
             ) : null}
             {lists}
@@ -342,7 +337,7 @@ export function NoteView({
                 {comment.body}
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                {comment.author} · {formatTime(comment.at)}
+                {comment.author} · {formatStamp(comment.at)}
                 {comment.stale ? (
                   <span className="ml-2 rounded bg-muted px-1.5 py-0.5 font-medium">usang</span>
                 ) : null}

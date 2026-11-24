@@ -200,6 +200,34 @@ export async function listAllQrDesigns(env: Env): Promise<QrDesignRecord[]> {
   return result.results.map(toDesign).filter((design) => design.id !== '');
 }
 
+/**
+ * Apakah ada konfigurasi (hidup ATAU terhapus) yang memakai berkas logo itu? Penjaga "logo masih dipakai": pemilik
+ * terhapus tetap sah (soft delete). Kueri terarah, bukan membaca semua konfigurasi.
+ */
+export async function isLogoInUse(env: Env, logoFileId: string): Promise<boolean> {
+  const row = await env.DB.prepare('SELECT 1 AS hit FROM qr_designs WHERE logo_file_id = ? LIMIT 1')
+    .bind(logoFileId)
+    .first<{ hit: number }>();
+  return row !== null;
+}
+
+/**
+ * Apakah konfigurasi LAIN (id <> `exceptId`; hidup ATAU terhapus) sudah memakai PDF sumber itu? Penjaga "satu PDF untuk
+ * satu konfigurasi": pemilik terhapus tetap sah agar memulihkannya tak menimbulkan pemakaian ganda.
+ */
+export async function isDocumentUsedByOther(
+  env: Env,
+  documentId: string,
+  exceptId: string,
+): Promise<boolean> {
+  const row = await env.DB.prepare(
+    "SELECT 1 AS hit FROM qr_designs WHERE link_source = 'pdf' AND document_id = ? AND id <> ? LIMIT 1",
+  )
+    .bind(documentId, exceptId)
+    .first<{ hit: number }>();
+  return row !== null;
+}
+
 /** Satu konfigurasi menurut id, hidup atau terhapus (pemanggil menilai `deletedAt`); `null` bila id tak dikenal. */
 export async function findQrDesign(env: Env, id: string): Promise<QrDesignRecord | null> {
   const row = await env.DB.prepare(`SELECT ${DESIGN_READ_COLUMNS} FROM qr_designs WHERE id = ?`)
@@ -331,11 +359,23 @@ export function updateQrDesignExportStmt(
     );
 }
 
-/** Hanya menyetel flag `overflow` (laporan peramban); tanpa menyentuh kolom lain dan tanpa menaikkan `updated_at`. */
-export function setQrDesignOverflowStmt(db: Db, id: string, overflow: boolean): DbStatement {
+/**
+ * Hanya menyetel flag `overflow` (laporan peramban); tanpa menyentuh kolom lain dan tanpa menaikkan `updated_at`.
+ * Bersyarat versi yang dibaca pelapor (`updated_at`) dan hidup: konfigurasi yang sudah diubah orang lain (flag-nya
+ * dihitung ulang dari isi baru) atau dihapus tidak tertimpa nilai basi. Nol baris berubah = diabaikan (klien
+ * melaporkan ulang flag dari konfigurasi terbaru).
+ */
+export function setQrDesignOverflowStmt(
+  db: Db,
+  id: string,
+  overflow: boolean,
+  expectedUpdatedAt: string,
+): DbStatement {
   return db
-    .prepare('UPDATE qr_designs SET overflow = ? WHERE id = ?')
-    .bind(overflow ? '1' : '', id);
+    .prepare(
+      `UPDATE qr_designs SET overflow = ? WHERE id = ? AND updated_at = ? AND ${liveWhere()}`,
+    )
+    .bind(overflow ? '1' : '', id, expectedUpdatedAt);
 }
 
 /** Kolom tulis (insert/update); penanda hapus HANYA dibaca (`PRESET_READ_COLUMNS`). */

@@ -338,6 +338,24 @@ export function historyStatement(
     limit: number;
   },
 ): DbStatement {
+  if (params.stickerId === undefined && params.locationIds.length > 1) {
+    // Banyak lokasi tanpa stiker: `IN (...)` + `ORDER BY ts DESC` memaksa filesort atas SELURUH entri append-only semua
+    // lokasi itu. Per lokasi dibaca terurut lewat indeks (location_id, ts) dan hanya `limit + 1` baris teratas, lalu
+    // digabung dan dipotong lagi: biaya sebanding dengan halaman, bukan dengan riwayat.
+    const cursorSql = params.cursor ? ' AND (ts < ? OR (ts = ? AND id < ?))' : '';
+    const branch = `(SELECT ${ENTRY_COLUMNS} FROM sticker_stock_entries WHERE location_id = ?${cursorSql} ORDER BY ts DESC, id DESC LIMIT ?)`;
+    const binds: unknown[] = [];
+    for (const locationId of params.locationIds) {
+      binds.push(locationId);
+      if (params.cursor) binds.push(params.cursor.ts, params.cursor.ts, params.cursor.id);
+      binds.push(params.limit + 1);
+    }
+    return db
+      .prepare(
+        `SELECT ${ENTRY_COLUMNS} FROM (${params.locationIds.map(() => branch).join(' UNION ALL ')}) AS h ORDER BY ts DESC, id DESC LIMIT ?`,
+      )
+      .bind(...binds, params.limit + 1);
+  }
   const where = [`location_id IN (${params.locationIds.map(() => '?').join(',')})`];
   const binds: unknown[] = [...params.locationIds];
   if (params.stickerId !== undefined) {

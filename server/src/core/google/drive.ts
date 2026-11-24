@@ -653,6 +653,8 @@ export function createDriveApi(
         url: `${DRIVE}/files/${path(fileId)}?alt=media`,
         idempotent: true,
         timeoutMs: CHUNK_TIMEOUT_MS,
+        // Installer ~100 MB di jaringan lambat butuh > 120 dtk: batas hanya sampai header, bukan seluruh badan.
+        streamBody: true,
       });
       if (response.status === 404) return null;
       if (!response.ok) return failResponse('downloadFile', response);

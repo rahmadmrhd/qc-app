@@ -174,7 +174,7 @@ describe('serialCaseNumber dan kelompok riwayat (5b)', () => {
   });
 
   test('batas 5b', () => {
-    expect(SERIAL_LIMITS.publicLinkDays).toBe(30);
+    expect(SERIAL_LIMITS.publicLinkDays).toBe(60);
     expect(SERIAL_LIMITS.reportSummaryMax).toBe(120);
     expect(SERIAL_LIMITS.messageImagesMax).toBe(10);
     expect(SERIAL_LIMITS.historyDefaultLimit).toBe(50);
@@ -182,13 +182,13 @@ describe('serialCaseNumber dan kelompok riwayat (5b)', () => {
   });
 });
 
-describe('reportLinkExpiresAt (tautan laporan, H+30 akhir hari WIB)', () => {
-  test('akhir hari WIB tanggal selesai + 30 hari', () => {
-    expect(reportLinkExpiresAt('2026-11-14')).toBe(Date.UTC(2026, 11, 14, 16, 59, 59, 999));
+describe('reportLinkExpiresAt (tautan laporan, H+60 akhir hari WIB)', () => {
+  test('akhir hari WIB tanggal ditutup + 60 hari', () => {
+    expect(reportLinkExpiresAt('2026-11-14')).toBe(Date.UTC(2027, 0, 13, 16, 59, 59, 999));
   });
 
   test('melewati batas bulan dan tahun', () => {
-    expect(reportLinkExpiresAt('2026-12-15')).toBe(Date.UTC(2027, 0, 14, 16, 59, 59, 999));
+    expect(reportLinkExpiresAt('2026-12-15')).toBe(Date.UTC(2027, 1, 13, 16, 59, 59, 999));
   });
 
   test('bukan tanggal = NaN', () => {

@@ -3,6 +3,7 @@ import type { SheetsExportChunk } from '@server/core/bridge-client';
 import { isSoftDeleteTable } from '@server/core/soft-delete';
 import { seedHandover, seedHandoverEnv } from '@server-test/handover-env';
 import { seedItem } from '@server-test/item-fixtures';
+import { seedSticker, seedStickerType } from '@server-test/sticker-fixtures';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import {
   EXPORT_CELL_MAX_CHARS,
@@ -113,6 +114,35 @@ describe('exportTableChunks', () => {
     expect(
       chunks.flatMap((chunk) => chunk.rows.map((row) => row[chunk.columns.indexOf('id')])),
     ).toEqual(['f1', 'f3']);
+  });
+
+  test('berkas milik stiker terhapus tidak diekspor; pemilik hidup dan pemilik tanpa baris (logo bersama) tetap', async () => {
+    await seedStickerType(env, { id: 't1', name: 'Umum', rule: 'none' });
+    await seedSticker(env, { id: 's-hidup', typeId: 't1' });
+    await seedSticker(env, { id: 's-hapus', typeId: 't1' });
+    await env.DB.prepare(
+      "INSERT INTO files (id, owner_type, owner_id) VALUES ('f1', 'sticker', 's-hidup'), ('f2', 'sticker', 's-hapus'), ('f3', 'qrlogo', 'shared')",
+    ).run();
+    await env.DB.prepare(
+      "UPDATE stickers SET deleted_at = '2026-02-02T00:00:00.000Z' WHERE id = 's-hapus'",
+    ).run();
+    const chunks = await collect('files');
+    expect(
+      chunks.flatMap((chunk) => chunk.rows.map((row) => row[chunk.columns.indexOf('id')])),
+    ).toEqual(['f1', 'f3']);
+  });
+
+  test('PDF sumber (qr_documents): dirujuk hanya konfigurasi terhapus = tidak diekspor; dirujuk satu yang hidup atau belum dirujuk = tetap', async () => {
+    await env.DB.prepare(
+      "INSERT INTO qr_documents (id, drive_id) VALUES ('d-hapus', 'x1'), ('d-campur', 'x2'), ('d-baru', 'x3')",
+    ).run();
+    await env.DB.prepare(
+      "INSERT INTO qr_designs (id, link_source, document_id, deleted_at) VALUES ('q1', 'pdf', 'd-hapus', '2026-02-02T00:00:00.000Z'), ('q2', 'pdf', 'd-campur', '2026-02-02T00:00:00.000Z'), ('q3', 'pdf', 'd-campur', '')",
+    ).run();
+    const chunks = await collect('qr_documents');
+    expect(
+      chunks.flatMap((chunk) => chunk.rows.map((row) => row[chunk.columns.indexOf('id')])),
+    ).toEqual(['d-baru', 'd-campur']);
   });
 
   test('tabel kosong tetap menghasilkan satu potongan replace berisi header saja', async () => {

@@ -106,6 +106,18 @@ export interface ListPlacement {
   sheet?: boolean;
 }
 
+/** Dua letak daftar yang sama persis (semua bagian yang menentukan posisi dan bentuk). */
+export function samePlacement(a: ListPlacement, b: ListPlacement): boolean {
+  return (
+    a.left === b.left &&
+    a.width === b.width &&
+    a.maxHeight === b.maxHeight &&
+    a.top === b.top &&
+    a.bottom === b.bottom &&
+    a.sheet === b.sheet
+  );
+}
+
 export interface PlaceOptions {
   /** Bagian layar yang terlihat (`visualViewport`); papan ketik layar mengecilkannya. Bawaan seluruh layar. */
   visible?: { top: number; bottom: number };
@@ -313,16 +325,18 @@ export function ComboboxBase({
       return;
     }
     const viewport = window.visualViewport;
-    const update = () =>
-      setPlacement(
-        placeList(anchor.getBoundingClientRect(), window.innerHeight, {
-          phone,
-          viewportWidth: window.innerWidth,
-          ...(viewport && phone
-            ? { visible: { top: viewport.offsetTop, bottom: viewport.offsetTop + viewport.height } }
-            : {}),
-        }),
-      );
+    const update = () => {
+      const next = placeList(anchor.getBoundingClientRect(), window.innerHeight, {
+        phone,
+        viewportWidth: window.innerWidth,
+        ...(viewport && phone
+          ? { visible: { top: viewport.offsetTop, bottom: viewport.offsetTop + viewport.height } }
+          : {}),
+      });
+      // Letak sama = pertahankan objek lama: gulir DI DALAM daftar (peristiwa scroll fase tangkap) tak menggeser
+      // jangkar, jadi tak boleh merender ulang ribuan opsi tiap frame.
+      setPlacement((prev) => (prev && samePlacement(prev, next) ? prev : next));
+    };
     update();
     window.addEventListener('scroll', update, true);
     window.addEventListener('resize', update);

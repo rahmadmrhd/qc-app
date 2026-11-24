@@ -86,21 +86,55 @@ export async function buildInstructionViews(
   photos: readonly StoredPhoto[],
 ): Promise<ItemStickerPhotoDto[]> {
   if (photos.length === 0) return [];
+  const context = await loadInstructionContext(env, [{ itemId, photos }]);
+  return resolveInstructionViews(context, itemId, itemBuIds, photos);
+}
+
+/**
+ * Data bersama untuk menerjemahkan instruksi SEKUMPULAN item sekaligus (katalog desktop memuat ratusan item: satu
+ * pemuatan untuk semuanya, bukan satu transaksi per item). Hanya dibaca; `resolveInstructionViews` murni di atasnya.
+ */
+export interface InstructionContext {
+  guides: ReadonlyMap<string, GuideRow>;
+  stickers: ReadonlyMap<string, StickerRow>;
+  stickersByType: ReadonlyMap<string, readonly StickerRow[]>;
+  types: ReadonlyMap<string, TypeRow>;
+  buIdsOfSticker: ReadonlyMap<string, readonly string[]>;
+  buCode: ReadonlyMap<string, string>;
+  /** Id konfigurasi QR (Manual Book) tiap item, hanya bila ada penanda ke jenis group Manual Book. */
+  designOf: ReadonlyMap<string, string>;
+  /** Stiker versi terbaru tiap konfigurasi QR (`latestManualBookStickerIds`). */
+  latestByDesign: ReadonlyMap<string, string>;
+  /** Stiker milik catatan Postel tiap item, hanya bila ada penanda ke jenis group Postel. */
+  postelOf: ReadonlyMap<string, string>;
+}
+
+export async function loadInstructionContext(
+  env: Env,
+  inputs: readonly { itemId: string; photos: readonly StoredPhoto[] }[],
+): Promise<InstructionContext> {
   const stickerIds = new Set<string>();
   const typeIds = new Set<string>();
-  for (const photo of photos) {
-    for (const mark of photo.marks) {
-      if (mark.target.kind === 'sticker') stickerIds.add(mark.target.stickerId);
-      else typeIds.add(mark.target.typeId);
+  const guideIds = new Set<string>();
+  for (const input of inputs) {
+    for (const photo of input.photos) {
+      guideIds.add(photo.guideId);
+      for (const mark of photo.marks) {
+        if (mark.target.kind === 'sticker') stickerIds.add(mark.target.stickerId);
+        else typeIds.add(mark.target.typeId);
+      }
     }
   }
-  const guideIds = photos.map((photo) => photo.guideId);
-  const reads: DbStatement[] = [
-    env.DB.prepare(
-      `SELECT g.id, g.name, f.width, f.height FROM sticker_guide_images g LEFT JOIN files f ON f.id = g.id WHERE g.id IN (${placeholders(guideIds.length)})`,
-    ).bind(...guideIds),
-  ];
-  const slots = { stickers: -1, types: -1, stickerBus: -1, bus: -1 };
+  const reads: DbStatement[] = [];
+  const slots = { guides: -1, stickers: -1, types: -1, stickerBus: -1, bus: -1 };
+  if (guideIds.size > 0) {
+    slots.guides = reads.length;
+    reads.push(
+      env.DB.prepare(
+        `SELECT g.id, g.name, f.width, f.height FROM sticker_guide_images g LEFT JOIN files f ON f.id = g.id WHERE g.id IN (${placeholders(guideIds.size)})`,
+      ).bind(...guideIds),
+    );
+  }
   if (stickerIds.size > 0 || typeIds.size > 0) {
     const conditions: string[] = [];
     const binds: string[] = [];
@@ -136,11 +170,10 @@ export async function buildInstructionViews(
       ).bind(...typeIds),
     );
   }
-  const results = await env.DB.batch(reads);
+  const results = reads.length === 0 ? [] : await env.DB.batch(reads);
   const rowsOf = <T>(slot: number): T[] =>
     slot < 0 ? [] : ((results[slot]?.results ?? []) as T[]);
 
-  const guides = new Map(rowsOf<GuideRow>(0).map((row) => [row.id, row]));
   const stickers = new Map(rowsOf<StickerRow>(slots.stickers).map((row) => [row.id, row]));
   const stickersByType = new Map<string, StickerRow[]>();
   for (const row of stickers.values()) {
@@ -157,27 +190,55 @@ export async function buildInstructionViews(
     list.push(row.bu_id);
     buIdsOfSticker.set(row.sticker_id, list);
   }
-  const buCode = new Map(rowsOf<BuRow>(slots.bus).map((row) => [row.id, row.code]));
-  const itemBus = new Set(itemBuIds);
-  // Aturan `group` per jenis sistem (dua kueri kecil, hanya bila ada penanda jenis group yang bersangkutan):
-  // Manual Book = stiker versi terbaru konfigurasi item; Postel = stiker milik catatan Postel item (satu per catatan).
+
+  // Aturan `group` per jenis sistem (kueri kecil, hanya bila ada penanda jenis group yang bersangkutan, satu kali untuk
+  // semua item): Manual Book = stiker versi terbaru konfigurasi item; Postel = stiker milik catatan Postel item.
   const groupTypes = [...types.values()].filter((type) => type.rule.trim() === 'group');
-  const groupStickerIdsOf = new Map<string, ReadonlySet<string>>();
+  const itemIds = inputs.map((input) => input.itemId);
+  let designOf: Map<string, string> = new Map();
+  let latestByDesign: Map<string, string> = new Map();
   if (groupTypes.some((type) => type.system_kind.trim() === 'manual_book')) {
-    const designId = (await manualBookDesignIdsOf(env.DB, [itemId])).get(itemId) ?? '';
-    const latest = new Set((await latestManualBookStickerIds(env.DB, [designId])).values());
-    for (const type of groupTypes) {
-      if (type.system_kind.trim() === 'manual_book') groupStickerIdsOf.set(type.id, latest);
-    }
+    designOf = await manualBookDesignIdsOf(env.DB, itemIds);
+    latestByDesign = await latestManualBookStickerIds(env.DB, [...new Set(designOf.values())]);
   }
+  let postelOf: Map<string, string> = new Map();
   if (groupTypes.some((type) => type.system_kind.trim() === 'postel')) {
-    const own = (await postelStickerIdsOf(env.DB, [itemId])).get(itemId);
-    for (const type of groupTypes) {
-      if (type.system_kind.trim() === 'postel') {
-        groupStickerIdsOf.set(type.id, new Set(own === undefined ? [] : [own]));
-      }
-    }
+    postelOf = await postelStickerIdsOf(env.DB, itemIds);
   }
+
+  return {
+    guides: new Map(rowsOf<GuideRow>(slots.guides).map((row) => [row.id, row])),
+    stickers,
+    stickersByType,
+    types,
+    buIdsOfSticker,
+    buCode: new Map(rowsOf<BuRow>(slots.bus).map((row) => [row.id, row.code])),
+    designOf,
+    latestByDesign,
+    postelOf,
+  };
+}
+
+/** Murni: menerjemahkan foto tersimpan satu item dari data bersama `loadInstructionContext`. */
+export function resolveInstructionViews(
+  context: InstructionContext,
+  itemId: string,
+  itemBuIds: readonly string[],
+  photos: readonly StoredPhoto[],
+): ItemStickerPhotoDto[] {
+  if (photos.length === 0) return [];
+  const { guides, stickers, stickersByType, types, buIdsOfSticker, buCode } = context;
+  const itemBus = new Set(itemBuIds);
+  const designId = context.designOf.get(itemId) ?? '';
+  const latestSticker = designId === '' ? undefined : context.latestByDesign.get(designId);
+  const ownPostel = context.postelOf.get(itemId);
+  const groupStickerIdsOf = (type: TypeRow): ReadonlySet<string> => {
+    const kind = type.system_kind.trim();
+    if (type.rule.trim() !== 'group') return new Set();
+    if (kind === 'manual_book') return new Set(latestSticker === undefined ? [] : [latestSticker]);
+    if (kind === 'postel') return new Set(ownPostel === undefined ? [] : [ownPostel]);
+    return new Set();
+  };
 
   const resolve = (row: StickerRow): ResolvedStickerDto => ({
     id: row.id,
@@ -222,13 +283,13 @@ export async function buildInstructionViews(
         id: row.id,
         typeId: row.type_id,
         status: toMatchStatus(row.status.trim()),
-        buIds: buIdsOfSticker.get(row.id) ?? [],
+        buIds: [...(buIdsOfSticker.get(row.id) ?? [])],
       }));
       const matched = stickersForType(
         { id: type.id, rule: toMatchRule(type.rule) },
         candidates,
         itemBuIds,
-        groupStickerIdsOf.get(type.id) ?? new Set(),
+        groupStickerIdsOf(type),
       );
       const resolved = matched.flatMap((match) => {
         const row = stickers.get(match.id);

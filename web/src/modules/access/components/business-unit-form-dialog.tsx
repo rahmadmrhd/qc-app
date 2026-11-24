@@ -1,8 +1,9 @@
 import type { BusinessUnitDto, SaveBusinessUnitInput } from '@shared/contract';
 import { useState } from 'react';
 import { FormDialogShell } from '@/components/form-dialog-shell';
-import { describeError } from '@/lib/api/describe-error';
+import { useFrozen } from '@/hooks/use-frozen';
 import { pickFieldErrors } from '../lib/field-errors';
+import { describeSaveError } from '../lib/stale';
 import { toBusinessUnitFormDefaults } from '../schemas';
 import { BusinessUnitForm } from './business-unit-form';
 
@@ -12,13 +13,15 @@ export interface BusinessUnitFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** BU yang diubah; kosong = BU baru. */
-  businessUnit?: Pick<BusinessUnitDto, 'id' | 'code' | 'name'> | undefined;
+  businessUnit?:
+    | (Pick<BusinessUnitDto, 'id' | 'code' | 'name'> & { updatedAt?: string })
+    | undefined;
   /** Menyimpan; melempar galat bila gagal (pesannya tampil di dialog). Dialog menutup sendiri saat berhasil. */
   onSave: (input: SaveBusinessUnitInput) => Promise<unknown>;
 }
 
 function BusinessUnitDialogBody({
-  businessUnit,
+  businessUnit: liveBusinessUnit,
   onSave,
   onClose,
   onBusyChange,
@@ -28,6 +31,10 @@ function BusinessUnitDialogBody({
   onClose: () => void;
   onBusyChange: (busy: boolean) => void;
 }) {
+  // Rekaman dibekukan saat badan dialog terpasang (hanya saat dialog terbuka): isi form dan versi (`updatedAt`) yang dikirim
+  // sebagai `expectedUpdatedAt` selalu pasangan yang sama, walau query record dimuat ulang (polling 30 dtk, invalidasi
+  // setelah 412). Buka-tutup-buka = rekaman segar.
+  const businessUnit = useFrozen(liveBusinessUnit);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ code?: string; name?: string }>({});
 
@@ -35,12 +42,20 @@ function BusinessUnitDialogBody({
     setSubmitError(null);
     setFieldErrors({});
     try {
-      await onSave(businessUnit ? { ...values, id: businessUnit.id } : values);
+      await onSave(
+        businessUnit
+          ? {
+              ...values,
+              id: businessUnit.id,
+              ...(businessUnit.updatedAt ? { expectedUpdatedAt: businessUnit.updatedAt } : {}),
+            }
+          : values,
+      );
       onClose();
     } catch (error) {
       const picked = pickFieldErrors(error, ['code', 'name'] as const);
       if (Object.keys(picked).length > 0) setFieldErrors(picked);
-      else setSubmitError(describeError(error));
+      else setSubmitError(describeSaveError(error));
     }
   }
 

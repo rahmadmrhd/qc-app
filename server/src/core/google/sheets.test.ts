@@ -177,48 +177,5 @@ describe('sheetsExport', () => {
     );
     expect(error.code).toBe('UNAVAILABLE');
     expect(error.message).toContain('belum dikonfigurasi');
-    expect(isAppError(await failure(rig.client.sheetsDump()))).toBe(true);
-  });
-});
-
-describe('sheetsDump', () => {
-  test('mengembalikan semua sheet sumber (tanpa export_) berbentuk persegi panjang; baris pertama = header', async () => {
-    rig = await createGoogleRig();
-    book().set('brands', [
-      ['id', 'nama'],
-      ['b1', 'Merk A'],
-    ]);
-    book().set("it'ems", [['id', 'x', 'y'], ['i1'], ['i2', 'a', 'b']]);
-    book().set('kosong', []);
-    book().set('export_brands', [['id'], ['x']]);
-    const dump = await rig.client.sheetsDump();
-    expect(Object.keys(dump).sort()).toEqual(["it'ems", 'brands', 'kosong'].sort());
-    expect(dump.brands).toEqual([
-      ['id', 'nama'],
-      ['b1', 'Merk A'],
-    ]);
-    expect(dump["it'ems"]).toEqual([
-      ['id', 'x', 'y'],
-      ['i1', '', ''],
-      ['i2', 'a', 'b'],
-    ]);
-    expect(dump.kosong).toEqual([]);
-    const batch = rig.fake.requests.filter((r) => r.url.pathname.endsWith('values:batchGet'));
-    expect(batch.length).toBeGreaterThan(0);
-    // Seperti getValues() Sheets: nilai mentah (bukan tampilan berformat) yang diubah ke teks.
-    expect(batch[0]?.url.searchParams.get('valueRenderOption')).toBe('UNFORMATTED_VALUE');
-    expect(batch[0]?.url.searchParams.getAll('ranges')).toContain("'it''ems'");
-  });
-
-  test('parameter sheets membatasi nama yang diambil', async () => {
-    rig = await createGoogleRig();
-    book().set('brands', [['id'], ['b1']]);
-    book().set('items', [['id'], ['i1']]);
-    expect(await rig.client.sheetsDump(['items'])).toEqual({ items: [['id'], ['i1']] });
-  });
-
-  test('spreadsheet yang tak dibagikan ke service account (404) = UNAVAILABLE akses, bukan null', async () => {
-    rig = await createGoogleRig({ GOOGLE_SPREADSHEET_ID: 'TIDAKADASPREAD01' });
-    expect((await failure(rig.client.sheetsDump())).code).toBe('UNAVAILABLE');
   });
 });

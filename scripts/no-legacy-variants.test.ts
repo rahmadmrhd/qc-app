@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { stripComments } from './strip-comments';
 
 // Penutup redesain (spek 2026-11-20 §6.1, rencana fase 4d Task 5): Button, Badge, dan Alert memakai `color` x
 // `variant` yang baru. Varian lama shadcn (`default`, `destructive`, `secondary`) sudah tidak ada, dan gaya
@@ -26,10 +27,6 @@ function walk(dir: string, found: string[] = []): string[] {
     else if (/\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path)) found.push(path);
   }
   return found;
-}
-
-function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
 /** Ujung tag pembuka JSX yang dimulai di `from` (setelah nama): `>` pada kedalaman kurung kurawal 0. */

@@ -350,6 +350,11 @@ async function applyAct(
   const loadOpenCase = async () => {
     const found = openCaseId === '' ? null : await loadCase(env.DB, openCaseId);
     if (!found) throw appError('CONFLICT', 'Laporan untuk Serial Number ini tidak ditemukan');
+    // Kronologi laporan: aksi pada laporan terbuka tak boleh bertanggal sebelum laporan dibuka (ISO, jadi perbandingan
+    // teks sah; keputusan pemilik 2026-11-23). Tanpa ini laporan dapat tertutup lebih awal daripada pembukaannya.
+    if (found.opened_on !== '' && input.occurredOn < found.opened_on.trim()) {
+      throw validationError('occurredOn', 'Tanggal tidak boleh sebelum tanggal laporan dibuka');
+    }
     return found;
   };
   /** Membuka laporan baru: nomor LP dipesan dan penjaganya ikut batch (selalu paling depan). */

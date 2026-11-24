@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { wibParts } from '../shared/wib';
 import {
   type CliDeps,
   type Component,
@@ -22,7 +23,7 @@ import {
 } from './changelog';
 import { isFragmentPath, isReleaseChange } from './changelog-check';
 import { ROOT_DIR } from './paths';
-import { unverifiedFiles } from './release-guard';
+import { type ManifestContents, manifestPathsOf, unverifiedFiles } from './release-guard';
 
 export interface Shell {
   run(cmd: string[]): Promise<{ code: number; out: string }>;
@@ -30,7 +31,8 @@ export interface Shell {
 
 /** Tanggal (YYYY-MM-DD) di zona WIB (Asia/Jakarta, UTC+7 tanpa musim). */
 export function wibDate(now: Date): string {
-  return new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+  const { year, month, day } = wibParts(now.getTime());
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 function versionOfTag(tag: string | null): string | null {
@@ -218,8 +220,18 @@ export async function prepareRelease(input: PrepareInput): Promise<PrepareResult
     const delta = (await sh(['git', 'diff', '--name-only', staging, 'origin/dev']))
       .split('\n')
       .filter((line) => line.trim() !== '');
+    // Isi manifest (package.json, bun.lock) yang berubah dibaca dari git: hanya kenaikan versi yang dibebaskan (guard CI).
+    const manifests: ManifestContents = {};
+    for (const path of manifestPathsOf(comps).filter((candidate) => delta.includes(candidate))) {
+      const before = await shell.run(['git', 'show', `${staging}:${path}`]);
+      const after = await shell.run(['git', 'show', `origin/dev:${path}`]);
+      manifests[path] = {
+        before: before.code === 0 ? before.out : null,
+        after: after.code === 0 ? after.out : null,
+      };
+    }
     // Sama dengan guard CI: berkas di luar image server (dokumentasi, kode desktop) tak men-deploy staging, jadi tak dihitung.
-    if (unverifiedFiles(delta, comps).length > 0) {
+    if (unverifiedFiles(delta, comps, manifests).length > 0) {
       throw new Error(
         'Staging belum memuat semua kode image server di ujung dev (selisihnya memuat berkas yang masuk image selain metadata rilis): tunggu deploy staging terbaru selesai. Rilis hanya boleh membawa kode yang sudah berjalan di staging.',
       );

@@ -1,7 +1,8 @@
 import { writeAudit } from '@server/core/audit';
+import { runCas } from '@server/core/cas';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
-import { appError } from '@server/core/errors';
+import { appError, staleError } from '@server/core/errors';
 import { newId } from '@server/core/id';
 import { type PlanOutcome, runRecordBatch, runSingleRecord } from '@server/core/record-batch';
 import {
@@ -10,6 +11,7 @@ import {
   planSoftDelete,
   planStatusChange,
 } from '@server/core/record-lifecycle';
+import { versionGuardStmt } from '@server/core/soft-delete';
 import type {
   BatchResult,
   IdBatchInput,
@@ -39,6 +41,7 @@ import {
   isLiveRecord,
   listBusinessUnitBriefs,
   loadAccessTables,
+  loadBusinessUnitRecords,
   renameBusinessUnitStmt,
 } from './repo';
 
@@ -163,12 +166,20 @@ async function dtoAfterWrite(env: Env, bu: BusinessUnitRecord): Promise<Business
   return toBusinessUnitDto(bu, users, roles, itemCounts);
 }
 
-export async function saveBusinessUnit(
+export function saveBusinessUnit(
   env: Env,
   input: SaveBusinessUnitInput,
   actor: UserContext,
 ): Promise<BusinessUnitDto> {
-  const { businessUnits } = await loadAccessTables(env);
+  return runCas(() => saveBusinessUnitOnce(env, input, actor), BU_STALE);
+}
+
+async function saveBusinessUnitOnce(
+  env: Env,
+  input: SaveBusinessUnitInput,
+  actor: UserContext,
+): Promise<BusinessUnitDto> {
+  const businessUnits = await loadBusinessUnitRecords(env);
   // Keunikan antar BU HIDUP (BU terhapus tak menahan kode/namanya; pulihkan memeriksa ulang).
   const others = businessUnits.filter((bu) => isLiveRecord(bu) && bu.id !== input.id);
   if (others.some((bu) => bu.code === input.code)) {
@@ -183,6 +194,9 @@ export async function saveBusinessUnit(
   if (input.id) {
     const existing = businessUnits.find((bu) => bu.id === input.id);
     if (!existing || !isLiveRecord(existing)) throw appError('NOT_FOUND', BU_NOT_FOUND);
+    if (input.expectedUpdatedAt !== undefined && input.expectedUpdatedAt !== existing.updatedAt) {
+      throw staleError(BU_STALE);
+    }
     if (existing.code !== input.code) {
       throw appError('VALIDATION', 'Kode tidak dapat diubah', {
         code: 'Kode tidak dapat diubah',
@@ -197,6 +211,7 @@ export async function saveBusinessUnit(
     await batchWrite(
       env.DB,
       [
+        versionGuardStmt(env.DB, 'business_units', existing.id, existing.updatedAt, 'live'),
         renameBusinessUnitStmt(env.DB, updated),
         writeAudit(env.DB, {
           ts: now,

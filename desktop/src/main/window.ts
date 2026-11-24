@@ -5,6 +5,7 @@ import { BrowserWindow, session } from 'electron';
 import { APP_ORIGIN, isAppUrl } from './app-protocol';
 import { allowPermissionCheck, allowPermissionRequest } from './permissions';
 import { shouldBlockReloadKey } from './ui/reload-gate';
+import { applyWindowShortcut, windowShortcutAction } from './window-shortcuts';
 
 export interface WindowOptions {
   preloadPath: string;
@@ -32,6 +33,11 @@ export function createMainWindow(opts: WindowOptions): BrowserWindow {
     },
   });
 
+  // Menu bawaan Electron (View > Reload/Force Reload/DevTools) melewati penjaga muat ulang saat inject
+  // berjalan; aplikasi tak memakainya, jadi dibuang (salin/tempel Chromium tetap jalan). Pintasan zoom dan F11 yang
+  // ikut hilang dipulihkan di before-input-event di bawah (window-shortcuts.ts).
+  win.removeMenu();
+
   const contents = win.webContents;
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
   const blockForeign = (event: { preventDefault(): void }, url: string): void => {
@@ -42,7 +48,20 @@ export function createMainWindow(opts: WindowOptions): BrowserWindow {
   contents.on('will-attach-webview', (event) => event.preventDefault());
   // Memuat ulang di tengah inject membuang hasilnya (serial tak tercatat, risiko inject ulang).
   contents.on('before-input-event', (event, input) => {
-    if (shouldBlockReloadKey(input, opts.blockReload?.() ?? false)) event.preventDefault();
+    if (shouldBlockReloadKey(input, opts.blockReload?.() ?? false)) {
+      event.preventDefault();
+      return;
+    }
+    // Zoom dan F11 (menu bawaan dibuang): hanya pintasan yang dikenali yang ditelan, sisanya sampai ke halaman.
+    const action = windowShortcutAction(input);
+    if (action === null) return;
+    event.preventDefault();
+    applyWindowShortcut(action, {
+      getZoomLevel: () => contents.getZoomLevel(),
+      setZoomLevel: (level) => contents.setZoomLevel(level),
+      isFullScreen: () => win.isFullScreen(),
+      setFullScreen: (flag) => win.setFullScreen(flag),
+    });
   });
 
   void win.loadURL(`${APP_ORIGIN}${opts.route}`);

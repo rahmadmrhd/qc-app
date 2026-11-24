@@ -92,11 +92,36 @@ describe('deploy: variabel konfigurasi', () => {
   });
 
   test('.env.example tanpa rahasia nyata: semua nilai berupa penanda ganti-*, contoh, atau kosong', () => {
-    const secretLike = ['SECRET', 'PASSWORD', 'TOKEN', 'SMTP_PASS', 'SESSION_SECRET'];
+    // 'PRIVATE_KEY' menjaring VAPID_PRIVATE_KEY tanpa ikut menjaring VAPID_PUBLIC_KEY (kunci publik memang boleh terisi).
+    const secretLike = [
+      'SECRET',
+      'PASSWORD',
+      'TOKEN',
+      'SMTP_PASS',
+      'SESSION_SECRET',
+      'PRIVATE_KEY',
+    ];
     for (const line of envExample.split('\n')) {
       const match = /^([A-Z][A-Z0-9_]*)=(.*)$/.exec(line);
       if (!match || !secretLike.some((word) => (match[1] as string).includes(word))) continue;
       expect(match[2]).toMatch(/^(ganti[-\w]*|)$/);
+    }
+  });
+
+  test('server/.env.example (pengembangan lokal): nilai rahasia hanya penanda ganti-*, dev-*, atau kosong', () => {
+    const serverExample = read('server/.env.example');
+    const secretLike = ['SECRET', 'PASSWORD', 'TOKEN', 'SMTP_PASS', 'PRIVATE_KEY'];
+    for (const line of serverExample.split('\n')) {
+      const match = /^([A-Z][A-Z0-9_]*)=(.*)$/.exec(line);
+      if (!match || !secretLike.some((word) => (match[1] as string).includes(word))) continue;
+      expect(match[2]).toMatch(/^(ganti[-\w]*|dev-[-\w]*|)$/);
+    }
+  });
+
+  test('compose memetakan tiap variabel VAPID ke variabel .env bernama sama (tanpa salah ketik yang membocorkan kunci privat)', () => {
+    const environment = (compose.services['qc-app']?.environment ?? {}) as Record<string, string>;
+    for (const name of ['VAPID_PUBLIC_KEY', 'VAPID_PRIVATE_KEY', 'VAPID_SUBJECT']) {
+      expect(String(environment[name])).toBe(`\${${name}:-}`);
     }
   });
 });

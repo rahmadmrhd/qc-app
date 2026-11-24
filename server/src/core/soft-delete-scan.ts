@@ -127,9 +127,33 @@ export function extractLiterals(source: string): SqlLiteral[] {
         for (let k = i; k < stop; k += 1) bump(source[k]);
         i = stop;
         continue;
+      } else if (ch === '/' && opensRegex(i)) {
+        // Literal regex di dalam `${}` (mis. `x.replace(/'/g, "''")`): kutip/kurung di dalamnya bukan kode.
+        skipRegex();
+        continue;
       }
       bump(ch);
       i += 1;
+    }
+  }
+
+  /** Lewati literal regex yang `/` pembukanya ada di posisi `i`, termasuk bendera di belakangnya. */
+  function skipRegex(): void {
+    i += 1;
+    let inClass = false;
+    while (i < n && source[i] !== '\n') {
+      const c = source[i];
+      if (c === '\\') i += 2;
+      else if (c === '[') {
+        inClass = true;
+        i += 1;
+      } else if (c === ']') {
+        inClass = false;
+        i += 1;
+      } else if (c === '/' && !inClass) {
+        i += 1;
+        break;
+      } else i += 1;
     }
   }
 
@@ -154,22 +178,7 @@ export function extractLiterals(source: string): SqlLiteral[] {
       for (let k = i; k < stop; k += 1) bump(source[k]);
       i = stop;
     } else if (ch === '/' && opensRegex(i)) {
-      i += 1;
-      let inClass = false;
-      while (i < n && source[i] !== '\n') {
-        const c = source[i];
-        if (c === '\\') i += 2;
-        else if (c === '[') {
-          inClass = true;
-          i += 1;
-        } else if (c === ']') {
-          inClass = false;
-          i += 1;
-        } else if (c === '/' && !inClass) {
-          i += 1;
-          break;
-        } else i += 1;
-      }
+      skipRegex();
     } else if (ch === '`' || ch === "'" || ch === '"') {
       const startLine = line;
       i += 1;

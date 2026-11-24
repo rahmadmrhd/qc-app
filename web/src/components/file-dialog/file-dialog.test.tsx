@@ -214,6 +214,22 @@ test('mode single: berkas kedua menggantikan yang pertama', async () => {
   ]);
 });
 
+test('mode single: berkas yang ditolak (kebesaran) tidak membuang pilihan sah yang sudah ada', async () => {
+  const { onConfirm } = setup({
+    mode: 'single',
+    maxBytes: 200,
+    source: plainSource({ nameMax: 120 }),
+  });
+  await pick([png('sah.png', 100)]);
+  expect(screen.getByRole('button', { name: 'Lampirkan (1)' })).toBeInTheDocument();
+  await pick([png('besar.png', 5000)]);
+  // Pilihan sah tetap ada dan penolakan ditampilkan.
+  expect(await screen.findByText('besar.png')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Lampirkan (1)' })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: 'Lampirkan (1)' }));
+  expect(onConfirm.mock.calls[0]?.[0].files.map((f: { name: string }) => f.name)).toEqual(['sah']);
+});
+
 test('melebihi maxFiles: sisanya ditolak dengan "Maksimal N berkas"', async () => {
   setup({ maxFiles: 2 });
   await pick([png('a.png'), png('b.png'), png('c.png')]);

@@ -82,6 +82,24 @@ test('simpan massal menandai daftar dan katalog stiker basi tanpa memuat ulang',
   expect(keys).toContainEqual(stickerKeys.all);
 });
 
+test('simpan massal dengan baris cek ulang menandai detail dan riwayat serial itu basi', async () => {
+  apiMock.mockResolvedValue({
+    results: [
+      { clientId: 'c1', result: 'created', message: '', id: 's9' },
+      { clientId: 'c2', result: 'rechecked', message: '', id: 's1' },
+      { clientId: 'c3', result: 'duplicate', message: '', id: 's2' },
+    ],
+  });
+  const spy = vi.spyOn(client, 'invalidateQueries');
+  const { result } = renderHook(() => useSaveSerialBatch(), { wrapper });
+  await act(() => result.current.mutateAsync({ rows: [] }));
+  const keys = spy.mock.calls.map((call) => call[0]?.queryKey);
+  expect(keys).toContainEqual(serialKeys.one('s1'));
+  expect(keys).toContainEqual(serialKeys.history('s1'));
+  expect(keys).not.toContainEqual(serialKeys.one('s9'));
+  expect(keys).not.toContainEqual(serialKeys.one('s2'));
+});
+
 test('ubah serial menempel hasil ke detail dan baris daftar', async () => {
   const before = dto();
   client.setQueryData<GetSerialOutput>(serialKeys.one('s1'), {

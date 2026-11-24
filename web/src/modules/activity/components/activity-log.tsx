@@ -3,21 +3,12 @@ import { useInfiniteQuery } from '@tanstack/react-query';
 import { BusyLabel } from '@/components/spinner';
 import { Button } from '@/components/ui/button';
 import { describeError } from '@/lib/api/describe-error';
+import { formatStamp } from '@/lib/format-stamp';
 import { auditActionLabel, auditFieldLabel } from '@/modules/access/lib/audit-actions';
 import { type ActivityTarget, activityQueryOptions } from '../queries';
 
 /** Tanggal penulisan audit per record dimulai (migrasi 0028); sebelum itu entri tak punya penunjuk record. */
 export const ACTIVITY_TRACKED_SINCE = '2026-11-20';
-
-function formatWhen(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString('id-ID', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Jakarta',
-  });
-}
 
 /**
  * Catatan "riwayat lama tidak lengkap" tampil di ujung daftar kecuali record dibuat SETELAH penulisan audit per record
@@ -38,7 +29,7 @@ function ActivityItem({ entry }: { entry: ActivityEntryDto }) {
       <p className="font-medium break-words">{auditActionLabel(entry.action)}</p>
       <p className="text-xs break-words text-muted-foreground">
         {entry.actor ? `${entry.actor} · ` : ''}
-        {formatWhen(entry.ts)}
+        {formatStamp(entry.ts)}
       </p>
       {fields.length > 0 ? (
         <p className="text-xs break-words text-muted-foreground">
