@@ -36,13 +36,14 @@ function ipv4Octets(text: string): number[] | null {
 /** Delapan kelompok 16 bit dari IPv6 tekstual (ekor IPv4 bertitik diterima), atau `null` bila tak sah. */
 function ipv6Groups(address: string): number[] | null {
   let text = address.toLowerCase();
-  const tail = /(\d{1,3}(?:\.\d{1,3}){3})$/.exec(text);
+  // Ekor IPv4 hanya sah bila didahului ":" atau di awal; "::c1.2.3.4" atau "abc1.2.3.4" bukan IPv4 bersambung.
+  const tail = /(^|:)(\d{1,3}(?:\.\d{1,3}){3})$/.exec(text);
   if (tail) {
-    const octets = ipv4Octets(tail[1] as string);
+    const octets = ipv4Octets(tail[2] as string);
     if (octets === null) return null;
     const high = ((octets[0] as number) << 8) | (octets[1] as number);
     const low = ((octets[2] as number) << 8) | (octets[3] as number);
-    text = `${text.slice(0, tail.index)}${high.toString(16)}:${low.toString(16)}`;
+    text = `${text.slice(0, tail.index + (tail[1] as string).length)}${high.toString(16)}:${low.toString(16)}`;
   }
   const halves = text.split('::');
   if (halves.length > 2) return null;
@@ -63,7 +64,7 @@ function ipv6Groups(address: string): number[] | null {
 
 /**
  * IP terpotong untuk disimpan: IPv4 menjadi `a.b.c.0/24`, IPv6 menjadi tiga kelompok pertama `x:y:z::/48`, IPv4-mapped
- * IPv6 diperlakukan sebagai IPv4. Alamat tak sah atau kosong = `''`. Keluarannya tak pernah memuat alamat asli.
+ * IPv6 diperlakukan sebagai IPv4. Alamat tak sah atau kosong = `''` (termasuk IPv6 cacat dan zona `%`). Keluarannya tak pernah memuat alamat asli.
  */
 export function truncateIp(ip: string): string {
   if (typeof ip !== 'string') return '';
@@ -73,9 +74,8 @@ export function truncateIp(ip: string): string {
     const octets = ipv4Octets(trimmed);
     return octets === null ? '' : `${octets[0]}.${octets[1]}.${octets[2]}.0/24`;
   }
-  const address = trimmed.split('%')[0] ?? '';
-  if (address === '' || address.length > MAX_IP_LENGTH || !IPV6_CHARS.test(address)) return '';
-  const groups = ipv6Groups(address);
+  if (trimmed.length > MAX_IP_LENGTH || !IPV6_CHARS.test(trimmed)) return '';
+  const groups = ipv6Groups(trimmed);
   if (groups === null) return '';
   const [g0, g1, g2, g3, g4, g5, high, low] = groups as [
     number,

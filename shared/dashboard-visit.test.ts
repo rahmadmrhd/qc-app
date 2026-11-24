@@ -12,7 +12,6 @@ describe('truncateIp', () => {
     expect(truncateIp('2001:db8:abcd:12:ffff:eeee:dddd:1')).toBe('2001:db8:abcd::/48');
     expect(truncateIp('2001:DB8::1')).toBe('2001:db8:0::/48');
     expect(truncateIp('::1')).toBe('0:0:0::/48');
-    expect(truncateIp('fe80::1%eth0')).toBe('fe80:0:0::/48');
   });
 
   test('IPv4-mapped IPv6 diperlakukan sebagai IPv4 (bentuk bertitik dan heksadesimal)', () => {
@@ -38,6 +37,40 @@ describe('truncateIp', () => {
     ]) {
       expect([bad, truncateIp(bad)]).toEqual([bad, '']);
     }
+  });
+
+  test('IPv6 cacat = kosong, bukan ditebak sebagai IPv4 (M6)', () => {
+    for (const bad of [
+      '::ffff:c1.2.3.4',
+      '::c1.2.3.4',
+      'abc1.2.3.4:5',
+      '::ffff:300.1.1.1',
+      '::ffff:1.2.3',
+      '::ffff:01.2.3.4',
+      '1::2::3',
+      '::1::',
+      ':::1',
+      '2001:db8:::1',
+      '12345::1',
+      '1:2:3:4:5:6:7:8:9',
+      '1:2:3:4:5:6:7::8',
+      '1:2:3:4:5:6:7:8::',
+      '2001:db8::zz',
+      'fe80::1%eth0',
+      '::1%',
+      '2001:db8:abcd:12:ffff:eeee:dddd',
+      '1.2.3.4::1',
+    ]) {
+      expect([bad, truncateIp(bad)]).toEqual([bad, '']);
+    }
+  });
+
+  test('IPv6 sah tetap dipotong, termasuk IPv4-mapped yang benar', () => {
+    expect(truncateIp('::ffff:193.2.3.4')).toBe('193.2.3.0/24');
+    expect(truncateIp('0:0:0:0:0:ffff:193.2.3.4')).toBe('193.2.3.0/24');
+    expect(truncateIp('1:2:3:4:5:6:7:8')).toBe('1:2:3::/48');
+    expect(truncateIp('1::')).toBe('1:0:0::/48');
+    expect(truncateIp('2001:db8:1:2:3:4:1.2.3.4')).toBe('2001:db8:1::/48');
   });
 
   test('keluaran tidak pernah memuat alamat asli', () => {
