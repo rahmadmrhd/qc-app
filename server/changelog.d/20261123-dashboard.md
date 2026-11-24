@@ -14,4 +14,4 @@ perf(dashboard): indeks (expires_at, revoked_at) untuk penyapu kedaluwarsa tauta
 feat(dashboard): laporan terjadwal lewat surel dengan banyak laporan per pemilik, jadwal harian/mingguan/bulanan, penerima bcc, dan tombol ke dashboard publik berperiode sama
 feat(mail): pengirim surel mendukung isi HTML dan bcc
 feat(dashboard): halaman kelola laporan terjadwal (daftar, View dengan pratinjau surel tersandbox, form bertab, Kirim uji, Jeda/Lanjutkan)
-feat(dashboard): izin dashboard punya level edit (milik sendiri) dan manage (semua); pratinjau dan kirim uji laporan orang lain memakai irisan hak
+feat(dashboard): izin dashboard edit (milik sendiri) dan manage (semua); uji laporan orang lain memakai irisan hak, tanpa tautan publik, dan simpan oleh pelaku lain tidak memotong cakupan

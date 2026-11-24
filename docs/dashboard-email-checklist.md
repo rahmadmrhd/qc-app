@@ -7,7 +7,7 @@ Dipakai SEBELUM rilis fitur laporan terjadwal (spek `docs/superpowers/specs/2026
 1. Staging dengan SMTP nyata terisi (`SMTP_*`) dan `APP_ORIGIN` yang benar. Tanpa SMTP, halaman Laporan terjadwal menampilkan peringatan dan Kirim uji nonaktif.
 2. Akun pemegang `dashboard: edit` (atau `manage`) dan izin sumber data sebagian besar widget (Serah Terima, Serial Number, Laporan rusak, Stok Stiker, Postel), supaya semua jenis visual tampil.
 3. Buat satu laporan harian berisi widget dari semua grup (maks. 12): angka dengan delta, donut atau pie, deret waktu, batang horizontal, batang kelompok, dan daftar. Isi penerima dengan alamat Gmail, Outlook, dan iCloud milik tim uji.
-4. Tekan **Pratinjau surel** di halaman laporan untuk melihat HTML sebelum mengirim (tombol di dalamnya tautan contoh yang tidak berfungsi), lalu **Kirim uji** (surel `[UJI]` ke surel pelaku yang menekan tombol; maks. 5 per jam per pelaku). Ulangi dengan akun `manage` pada laporan milik orang lain: keterangan uji ada di atas isi, tombol mengarah ke halaman Dashboard, dan penanda "Sebagian data disembunyikan karena hak akses Anda" muncul bila hak akun itu lebih sempit.
+4. Tekan **Pratinjau surel** di halaman laporan untuk melihat HTML sebelum mengirim (tombol di dalamnya tautan contoh yang tidak berfungsi), lalu **Kirim uji** (surel `[UJI]` ke surel pelaku yang menekan tombol; maks. 5 per jam per pelaku). Ulangi dengan akun `manage` pada laporan milik orang lain: keterangan uji ada di atas isi, tombol mengarah ke halaman Dashboard (juga pada surel uji laporan milik sendiri; surel uji tidak menerbitkan tautan publik), dan penanda "Sebagian data disembunyikan karena hak akses Anda" muncul bila hak akun itu lebih sempit.
 
 ## Klien yang diperiksa
 
@@ -26,7 +26,8 @@ Periksa tiap klien di terang dan gelap bila ada:
 - [ ] Batang bertumpuk, kolom deret waktu, dan batang horizontal punya label dan nilai tertulis; legenda memuat nama irisan; "Lainnya" muncul bila irisan lebih dari enam.
 - [ ] Daftar menampilkan paling banyak 5 baris dengan tulisan "Menampilkan N dari M".
 - [ ] Tombol **Buka dashboard lengkap** terlihat jelas (kontras cukup di terang dan gelap), mudah diketuk di ponsel, dan satu-satunya tautan di surel.
-- [ ] Tombol membuka halaman publik `/dashboard-publik/...` dengan periode dan cakupan yang sama dengan surel; halaman memuat tanpa login, tanpa kontrol BU/Lokasi di luar cakupan.
+- [ ] Pada surel TERJADWAL (bukan surel uji), tombol membuka halaman publik `/dashboard-publik/...` dengan periode dan cakupan yang sama dengan surel; halaman memuat tanpa login, tanpa kontrol BU/Lokasi di luar cakupan.
+- [ ] Pada surel UJI, tombol membuka halaman Dashboard di aplikasi (perlu masuk; pengguna terdaftar mana pun mendarat di dashboard-nya sendiri), bukan tautan publik.
 - [ ] Catatan masa berlaku tautan dan kalimat "hubungi pemilik untuk berhenti atau mengubah isinya" tampil di kaki surel.
 - [ ] Mode gelap: teks tidak hilang (tak ada teks gelap di latar gelap) dan latar kartu tetap terbaca. Catat klien yang membalik warna otomatis.
 - [ ] Tidak ada gambar yang dimuat dari luar, tidak ada permintaan jaringan ke domain lain saat surel dibuka (periksa pengaturan "muat gambar jarak jauh" tetap mati).
