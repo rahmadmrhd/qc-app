@@ -347,6 +347,7 @@ describe('skema baseline', () => {
       { name: '0031_audit_target_id_index.sql' },
       { name: '0032_indeks_kinerja.sql' },
       { name: '0034_serial_daftar_indeks.sql' },
+      { name: '0036_buang_indeks_serials_created_id.sql' },
     ]);
   });
 
@@ -546,7 +547,6 @@ describe('skema baseline', () => {
         'serials.serials_bu_created',
         'serials.serials_bu_serial',
         'serials.serials_client_id',
-        'serials.serials_created_id',
         'serials.serials_custody',
         'serials.serials_item',
         'serials.serials_live_created',
