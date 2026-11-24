@@ -16,6 +16,7 @@ const EXPECTED_TABLES = [
   'business_units',
   'counters',
   'customers',
+  'dashboard_share_visits',
   'dashboard_shares',
   'files',
   'guide_progress',
@@ -337,6 +338,7 @@ describe('skema baseline', () => {
       { name: '0030_soft_delete_contract.sql' },
       { name: '0031_audit_target_id_index.sql' },
       { name: '0032_dashboard.sql' },
+      { name: '0033_dashboard_share_visits.sql' },
     ]);
   });
 
@@ -481,6 +483,7 @@ describe('skema baseline', () => {
         'business_units.business_units_code_unique_live',
         'business_units.business_units_name_unique_live',
         'customers.customers_key_live',
+        'dashboard_share_visits.dashboard_share_visits_share',
         'dashboard_shares.dashboard_shares_creator',
         'dashboard_shares.dashboard_shares_report',
         'files.files_owner',

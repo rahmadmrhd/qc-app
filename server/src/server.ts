@@ -5,7 +5,7 @@ import type { Env } from '@server/core/env';
 import { createGoogleClient } from '@server/core/google/client';
 import { createSmtpMailer } from '@server/core/mail';
 import { MAX_REQUEST_BODY_BYTES } from '@server/http/body';
-import { clientIp } from '@server/http/proxy';
+import { clientIp, isTrustedPeer } from '@server/http/proxy';
 import { startJobRunner, startNotificationLoop, startScheduler } from '@server/jobs/runner';
 import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backup/dump';
 import { closeAllNotificationStreams } from '@server/modules/notification/stream-hub';
@@ -137,6 +137,7 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
       app.fetch(request, {
         ...env,
         clientIp: clientIp(request, peerAddress, config.trustedProxy),
+        trustedPeer: isTrustedPeer(peerAddress, config.trustedProxy),
         peerAddress,
         staticDir: config.staticDir,
       }),

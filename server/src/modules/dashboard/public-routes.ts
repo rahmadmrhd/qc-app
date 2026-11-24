@@ -10,6 +10,7 @@ import { hitLimit } from './public-limits';
 import { loadPublicDashboard, validatePublicQuery } from './public-view';
 import { verifyShareToken } from './share-link';
 import { loadShare, type ShareRow } from './share-repo';
+import { recordShareVisit } from './share-visits';
 
 /**
  * Halaman publik dashboard (spek dashboard bagian 7.4): sub-aplikasi `/api/public`, SENGAJA di luar `API_ROUTES` dan
@@ -113,6 +114,17 @@ publicDashboardApp.get('/dashboards/:token', async (c) => {
     if (!row) return await reject(c);
     const dto = await loadPublicDashboard(c.env, row, {}, nowOf(c.env));
     if (dto === null) return await reject(c);
+    // Hanya GET yang berhasil dihitung kunjungan; gagal mencatat tidak mengubah jawaban (`recordShareVisit` tak melempar).
+    await recordShareVisit(
+      c.env,
+      row.id,
+      {
+        ip: c.env.clientIp ?? '',
+        userAgent: c.req.header('user-agent') ?? null,
+        country: c.env.trustedPeer === true ? (c.req.header('cf-ipcountry') ?? null) : null,
+      },
+      nowOf(c.env),
+    );
     return harden(c.json(dto));
   } catch (error) {
     return harden(problemResponse(toProblem(error, newRequestId())));
