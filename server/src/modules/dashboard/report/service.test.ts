@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import { loadUserContext, type UserContext } from '@server/modules/access/context';
-import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
+import { seedBusinessUnit, seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { captureAppErrorAsync } from '@server-test/errors';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type { SaveDashboardReportInput } from '@shared/dashboard-report';
@@ -470,5 +470,80 @@ describe('daftar', () => {
     expect(created.nextRunAt).not.toBe('');
     const paused = await setDashboardReportEnabled(env, owner, { id: created.id, enabled: false });
     expect(paused.nextRunAt).toBe('');
+  });
+});
+
+describe('simpan ulang dengan masukan seperti formulir tidak mengubah cakupan efektif', () => {
+  async function grantHandoverAt(...locationIds: string[]): Promise<void> {
+    await seedRole(env, { id: 'r-ho', name: 'HO', permissions: { handover: 'view' } });
+    for (const id of locationIds) await seedLocation(env, { id, code: id.toUpperCase() });
+    await env.DB.prepare('UPDATE users SET assignments = ? WHERE email = ?')
+      .bind(
+        JSON.stringify([
+          { locationId: null, roleIds: ['r-dash'] },
+          ...locationIds.map((locationId) => ({ locationId, roleIds: ['r-ho'] })),
+        ]),
+        OWNER,
+      )
+      .run();
+  }
+
+  /** Masukan yang dikirim formulir ubah: himpunan beku dianggap pilihan, `locationFiltered` dari data tersimpan. */
+  const resubmit = (dto: Awaited<ReturnType<typeof saveDashboardReport>>) =>
+    input({
+      id: dto.id,
+      expectedUpdatedAt: dto.updatedAt,
+      name: 'Nama baru',
+      filter: {
+        from: '',
+        to: '',
+        ...(dto.scope.buIds.length > 0 ? { buIds: dto.scope.buIds } : {}),
+        ...(dto.scope.locationIds.length > 0 ? { locationIds: dto.scope.locationIds } : {}),
+      },
+      locationFiltered: dto.scope.locationFiltered,
+      widgets: dto.scope.widgets,
+      offers: dto.scope.offers,
+    });
+
+  test('Serah Terima + Serial tanpa pilihan lokasi: scope sama persis, Serial tetap tak tersaring', async () => {
+    await grantHandoverAt('loc-a', 'loc-b');
+    const owner = await userOf();
+    const created = await saveDashboardReport(
+      env,
+      owner,
+      input({
+        widgets: [
+          { id: 'hs.created', filters: {} },
+          { id: 'sn.recorded', filters: {} },
+        ],
+      }),
+    );
+    expect(created.scope.locationFiltered).toBe(false);
+    expect([...created.scope.locationIds].sort()).toEqual(['loc-a', 'loc-b']);
+    const again = await saveDashboardReport(env, await userOf(), resubmit(created));
+    expect(again.scope).toEqual(created.scope);
+    const row = await loadReport(env.DB, created.id);
+    expect(parseReportScope(row?.scope ?? '')?.locationFiltered).toBe(false);
+  });
+
+  test('locationFiltered true: scope sama persis', async () => {
+    await grantHandoverAt('loc-a', 'loc-b');
+    const owner = await userOf();
+    const created = await saveDashboardReport(
+      env,
+      owner,
+      input({
+        filter: { from: '', to: '', locationIds: ['loc-a'] },
+        locationFiltered: true,
+        widgets: [
+          { id: 'hs.created', filters: {} },
+          { id: 'sn.recorded', filters: {} },
+        ],
+      }),
+    );
+    expect(created.scope.locationFiltered).toBe(true);
+    expect(created.scope.locationIds).toEqual(['loc-a']);
+    const again = await saveDashboardReport(env, await userOf(), resubmit(created));
+    expect(again.scope).toEqual(created.scope);
   });
 });

@@ -68,6 +68,12 @@ interface FormState {
   schedule: ReportSchedule;
   period: ReportPeriod;
   scope: ScopeEditorValue;
+  /**
+   * Apakah lokasi juga menyaring widget Serial/Laporan. Dibaca dari laporan tersimpan (bukan diturunkan dari daftar
+   * lokasi beku, yang bisa berisi lokasi hak pemilik tanpa pernah dipilih), dan hanya berubah bila pemilik sendiri
+   * mengubah pilihan lokasi.
+   */
+  locationFiltered: boolean;
   recipientsText: string;
   linkDays: string;
 }
@@ -83,6 +89,7 @@ function initialState(report: DashboardReportDto | undefined): FormState {
       widgets: report?.scope.widgets ?? [],
       offers: report?.scope.offers ?? [],
     },
+    locationFiltered: report?.scope.locationFiltered ?? false,
     recipientsText: (report?.recipients ?? []).join('\n'),
     linkDays: String(report?.linkDays ?? REPORT_LIMITS.linkDaysDefault),
   };
@@ -150,7 +157,7 @@ export function toInput(
       ...(buIds.length > 0 ? { buIds } : {}),
       ...(locationIds.length > 0 ? { locationIds } : {}),
     },
-    locationFiltered: locationIds.length > 0,
+    locationFiltered: state.locationFiltered && locationIds.length > 0,
     widgets: state.scope.widgets,
     offers: state.scope.offers,
     recipients: parseRecipients(state.recipientsText),
@@ -302,7 +309,16 @@ export function ReportFormPage({ report, onDone, onCancel }: ReportFormPageProps
         <div className="space-y-3">
           <ScopeEditor
             value={state.scope}
-            onChange={(scope) => patch({ scope })}
+            onChange={(scope) =>
+              setState((prev) => ({
+                ...prev,
+                scope,
+                // Pilihan lokasi diubah pemilik = pembatasan menurut isinya; selain itu nilai tersimpan dipertahankan.
+                locationFiltered: sameList(scope.locationIds, prev.scope.locationIds)
+                  ? prev.locationFiltered
+                  : scope.locationIds.length > 0,
+              }))
+            }
             allowedWidgetIds={allowed}
             freezeNote={FREEZE_NOTE}
           />

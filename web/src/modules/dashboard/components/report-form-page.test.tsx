@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ApiError } from '@/lib/api/api-error';
 import { installIntersectionObserver } from '@/test/intersection-observer';
+import { pickLink } from '@/test/link-field';
 import { makeMe } from '@/test/make-me';
 import { renderInRouter } from '@/test/render-in-router';
 
@@ -207,5 +208,66 @@ describe('ReportFormPage: ubah laporan', () => {
     await userEvent.type(screen.getByLabelText('Nama laporan'), '!');
     await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
     expect(await screen.findByText('Nama sudah dipakai')).toBeTruthy();
+  });
+});
+
+describe('ReportFormPage: cakupan lokasi tidak berubah saat menyimpan ulang (I1)', () => {
+  const LOCATION = {
+    id: 'l1',
+    code: 'L1',
+    name: 'Lokasi Satu',
+    permissions: { handover: 'view', qc: 'none', stock: 'none', stickerstock: 'none' },
+  };
+  const withLocation = () => {
+    me = { ...me, locations: [LOCATION] } as MeDto;
+  };
+  const MIXED = (locationFiltered: boolean): DashboardReportDto => ({
+    ...SAVED,
+    scope: {
+      buIds: ['b1'],
+      // Himpunan BEKU hasil hak pemilik, bukan pilihan pengguna, bila locationFiltered false.
+      locationIds: ['l1'],
+      locationFiltered,
+      widgets: [
+        { id: 'hs.created', filters: {} },
+        { id: 'sn.recorded', filters: {} },
+      ],
+      offers: [],
+    },
+  });
+
+  test('locationFiltered false tetap false walau daftar lokasi beku tidak kosong', async () => {
+    withLocation();
+    await form(MIXED(false));
+    await userEvent.clear(screen.getByLabelText('Nama laporan'));
+    await userEvent.type(screen.getByLabelText('Nama laporan'), 'Nama baru');
+    await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(saveInput()).toMatchObject({
+      locationFiltered: false,
+      filter: { buIds: ['b1'], locationIds: ['l1'] },
+    });
+  });
+
+  test('locationFiltered true tetap true', async () => {
+    withLocation();
+    await form(MIXED(true));
+    await userEvent.type(screen.getByLabelText('Nama laporan'), '!');
+    await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(saveInput()).toMatchObject({
+      locationFiltered: true,
+      filter: { locationIds: ['l1'] },
+    });
+  });
+
+  test('memilih lokasi sendiri menyalakan pembatasan; mengosongkannya mematikan', async () => {
+    withLocation();
+    await form({ ...MIXED(false), scope: { ...MIXED(false).scope, locationIds: [] } });
+    await goTab('Isi');
+    await pickLink(screen, 'Lokasi', 'L1 · Lokasi Satu');
+    await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(saveInput()).toMatchObject({ locationFiltered: true, filter: { locationIds: ['l1'] } });
   });
 });
