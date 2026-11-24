@@ -1,8 +1,9 @@
-// Kunjungan tautan publik hanya dihitung dari GET (spek dashboard 7.6): muat awal = GET, penyegaran = POST.
+// Pemilihan GET vs POST halaman publik (kunjungan dicatat oleh `POST .../visit`, bukan oleh GET; spek dashboard 7.6).
 import type { PublicDashboardDto } from '@shared/dashboard-public';
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { publicDashboardQuery, resetPublicInitialLoad } from './queries';
+import { recordPublicVisit } from './public-api';
+import { publicDashboardQuery } from './queries';
 
 const DTO = {
   title: 'Rekap',
@@ -12,7 +13,7 @@ const DTO = {
   range: { from: '2026-11-01', to: '2026-11-24' },
   bounds: { from: '2026-11-01', to: '2026-11-24' },
   bucket: 'day',
-  scope: { buNames: [], locationNames: [] },
+  scope: { buNames: [], buDeleted: [], locationNames: [], locationDeleted: [] },
   options: { bu: [], location: [], groups: {} },
   widgets: [],
 } as unknown as PublicDashboardDto;
@@ -20,7 +21,6 @@ const DTO = {
 const fetchMock = vi.fn();
 
 beforeEach(() => {
-  resetPublicInitialLoad('tok.en');
   fetchMock.mockReset();
   fetchMock.mockImplementation(async () => new Response(JSON.stringify(DTO), { status: 200 }));
   vi.stubGlobal('fetch', fetchMock);
@@ -46,95 +46,48 @@ async function observe(token: string, viewer: Parameters<typeof publicDashboardQ
   return { observer, unsubscribe, client };
 }
 
-test('muat awal tanpa filter = GET; penyegaran (interval, fokus, Coba lagi) = POST tanpa dihitung kunjungan', async () => {
+test('tanpa filter = GET (juga saat disegarkan); tidak ada kaitan dengan kunjungan', async () => {
   const { observer, unsubscribe } = await observe('tok.en', {});
-  expect(calls().map((c) => c.method)).toEqual(['GET']);
   await observer.refetch();
+  expect(calls().map((c) => c.method)).toEqual(['GET', 'GET']);
+  unsubscribe();
+});
+
+test('filter berisi = POST query berheader CSRF, juga saat disegarkan', async () => {
+  const { observer, unsubscribe } = await observe('tok.en', { buIds: ['b1'] });
   await observer.refetch();
   const all = calls();
-  expect(all.map((c) => c.method)).toEqual(['GET', 'POST', 'POST']);
-  expect(all[1]?.url).toBe('/api/public/dashboards/tok.en/query');
-  expect(all[1]?.headers).toMatchObject({ 'X-Requested-With': 'qc' });
+  expect(all.map((c) => c.method)).toEqual(['POST', 'POST']);
+  expect(all[0]?.url).toBe('/api/public/dashboards/tok.en/query');
+  expect(all[0]?.headers).toMatchObject({ 'X-Requested-With': 'qc' });
   unsubscribe();
 });
 
-test('filter berisi = POST sejak awal (tidak ada GET)', async () => {
-  const { unsubscribe } = await observe('tok.en', { buIds: ['b1'] });
-  expect(calls().map((c) => c.method)).toEqual(['POST']);
-  unsubscribe();
-});
-
-test('N4: filter diisi lalu dihapus (kunci kosong sudah dibuang dari cache) tidak pernah GET kedua', async () => {
+test('filter diisi lalu dikosongkan kembali = aturan yang sama (POST, lalu GET), tanpa keadaan tersembunyi', async () => {
   const client = new QueryClient();
-  const empty = new QueryObserver(client, publicDashboardQuery('tok.en', {}));
-  const stopEmpty = empty.subscribe(() => {});
-  await vi.waitFor(() => expect(empty.getCurrentResult().isSuccess).toBe(true));
-  stopEmpty();
-  const filtered = new QueryObserver(client, publicDashboardQuery('tok.en', { buIds: ['b1'] }));
-  const stopFiltered = filtered.subscribe(() => {});
-  await vi.waitFor(() => expect(filtered.getCurrentResult().isSuccess).toBe(true));
-  stopFiltered();
-  client.clear(); // gcTime 0 + lewat jeda: semua kunci dibuang
-  const cleared = new QueryObserver(client, publicDashboardQuery('tok.en', {}));
-  const stopCleared = cleared.subscribe(() => {});
-  await vi.waitFor(() => expect(cleared.getCurrentResult().isSuccess).toBe(true));
-  expect(calls().map((c) => c.method)).toEqual(['GET', 'POST', 'POST']);
-  stopCleared();
-});
-
-test('GET awal gagal: Coba lagi = GET (belum ada data); sesudah sukses semuanya POST', async () => {
-  fetchMock.mockImplementationOnce(async () => new Response('{}', { status: 500 }));
-  const client = new QueryClient();
-  const observer = new QueryObserver(client, publicDashboardQuery('tok.en', {}));
-  const stop = observer.subscribe(() => {});
-  await vi.waitFor(() => expect(observer.getCurrentResult().isError).toBe(true));
-  await observer.refetch();
-  await vi.waitFor(() => expect(observer.getCurrentResult().isSuccess).toBe(true));
-  await observer.refetch();
-  expect(calls().map((c) => c.method)).toEqual(['GET', 'GET', 'POST']);
-  stop();
-});
-
-test('halaman dibuka dengan filter di URL: POST dulu, GET sekali saat filter dikosongkan, lalu POST', async () => {
-  const client = new QueryClient();
-  const filtered = new QueryObserver(client, publicDashboardQuery('tok.en', { buIds: ['b1'] }));
-  const stopFiltered = filtered.subscribe(() => {});
-  await vi.waitFor(() => expect(filtered.getCurrentResult().isSuccess).toBe(true));
-  stopFiltered();
-  client.clear();
-  for (let round = 0; round < 2; round += 1) {
-    const cleared = new QueryObserver(client, publicDashboardQuery('tok.en', {}));
-    const stop = cleared.subscribe(() => {});
-    await vi.waitFor(() => expect(cleared.getCurrentResult().isSuccess).toBe(true));
+  const run = async (viewer: Parameters<typeof publicDashboardQuery>[1]) => {
+    const observer = new QueryObserver(client, publicDashboardQuery('tok.en', viewer));
+    const stop = observer.subscribe(() => {});
+    await vi.waitFor(() => expect(observer.getCurrentResult().isSuccess).toBe(true));
     stop();
     client.clear();
-  }
-  expect(calls().map((c) => c.method)).toEqual(['POST', 'GET', 'POST']);
+  };
+  await run({});
+  await run({ buIds: ['b1'] });
+  await run({});
+  expect(calls().map((c) => c.method)).toEqual(['GET', 'POST', 'GET']);
 });
 
-test('dua pemasangan serentak untuk token yang sama (StrictMode) = satu GET', async () => {
-  const client = new QueryClient();
-  const first = new QueryObserver(client, publicDashboardQuery('tok.en', {}));
-  const second = new QueryObserver(client, publicDashboardQuery('tok.en', {}));
-  const stopFirst = first.subscribe(() => {});
-  const stopSecond = second.subscribe(() => {});
-  await vi.waitFor(() => expect(first.getCurrentResult().isSuccess).toBe(true));
-  expect(calls().map((c) => c.method)).toEqual(['GET']);
-  stopFirst();
-  stopSecond();
-});
-
-test('pemasangan baru (halaman dibuka ulang, token sama) = GET awal baru', async () => {
-  const client = new QueryClient();
-  const first = new QueryObserver(client, publicDashboardQuery('tok.en', {}));
-  const stop = first.subscribe(() => {});
-  await vi.waitFor(() => expect(first.getCurrentResult().isSuccess).toBe(true));
-  stop();
-  resetPublicInitialLoad('tok.en'); // halaman dilepas
-  client.clear();
-  const second = new QueryObserver(client, publicDashboardQuery('tok.en', {}));
-  const stopSecond = second.subscribe(() => {});
-  await vi.waitFor(() => expect(second.getCurrentResult().isSuccess).toBe(true));
-  expect(calls().map((c) => c.method)).toEqual(['GET', 'GET']);
-  stopSecond();
+test('recordPublicVisit: POST visit berheader CSRF tanpa badan, galat ditelan', async () => {
+  await recordPublicVisit('tok.en');
+  const [call] = calls();
+  expect(call?.url).toBe('/api/public/dashboards/tok.en/visit');
+  expect(call?.method).toBe('POST');
+  expect(call?.headers).toMatchObject({ 'X-Requested-With': 'qc' });
+  fetchMock.mockImplementationOnce(async () => {
+    throw new TypeError('putus');
+  });
+  await expect(recordPublicVisit('tok.en')).resolves.toBeUndefined();
+  fetchMock.mockImplementationOnce(async () => new Response(null, { status: 500 }));
+  await expect(recordPublicVisit('tok.en')).resolves.toBeUndefined();
 });

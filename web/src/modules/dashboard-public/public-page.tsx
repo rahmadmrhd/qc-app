@@ -7,15 +7,15 @@ import {
 import type { PublicDashboardDto } from '@shared/dashboard-public';
 import { wibDateIso } from '@shared/postel';
 import { useQuery } from '@tanstack/react-query';
-import { type ReactNode, useEffect } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { spanClass } from '../dashboard/components/group-section';
 import { type PublicWidgetResult, WidgetCard } from '../dashboard/components/widgets/widget-card';
 import { formatDayLabel, formatRangeLabel } from '../dashboard/lib/format';
 import type { DashboardSearch } from '../dashboard/lib/search';
-import { PublicDashboardError } from './public-api';
+import { PublicDashboardError, recordPublicVisit } from './public-api';
 import { PublicGlobalFilters, PublicGroupFilters, viewerFromSearch } from './public-filters';
-import { publicDashboardQuery, resetPublicInitialLoad } from './queries';
+import { publicDashboardQuery } from './queries';
 
 export interface PublicDashboardPageProps {
   token: string;
@@ -182,8 +182,16 @@ export function PublicDashboardPage({ token, search, onSearchChange }: PublicDas
   usePublicMeta();
   const viewer = viewerFromSearch(search);
   const query = useQuery(publicDashboardQuery(token, viewer));
-  // Halaman dilepas = pemasangan berikutnya memuat awal lagi (GET, dihitung kunjungan); lihat `queries.ts`.
-  useEffect(() => () => resetPublicInitialLoad(token), [token]);
+  // Kunjungan = halaman dibuka: dicatat SEKALI per pemasangan dan token, sesudah data berhasil dimuat (token sah). Ref
+  // bertahan melewati pemasangan ganda StrictMode; pemasangan baru (halaman dibuka ulang) atau token baru mencatat lagi.
+  // Penyegaran, ganti filter, dan Coba lagi tidak menyentuh ini; galatnya ditelan di `recordPublicVisit`.
+  const visitedToken = useRef<string | null>(null);
+  const loaded = query.isSuccess;
+  useEffect(() => {
+    if (!loaded || visitedToken.current === token) return;
+    visitedToken.current = token;
+    void recordPublicVisit(token);
+  }, [loaded, token]);
   const dto = query.data;
 
   const clearFilters = () => {

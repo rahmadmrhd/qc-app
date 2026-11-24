@@ -22,7 +22,7 @@ export class PublicDashboardError extends Error {
   }
 }
 
-/** Filter penonton kosong = tampilan bawaan pembagi; dimuat lewat GET hanya pada muat awal (lihat `fetchPublicDashboard`). */
+/** Filter penonton kosong = tampilan bawaan pembagi (GET); selain itu POST `query` (lihat `fetchPublicDashboard`). */
 export function isEmptyViewer(viewer: PublicQueryInput): boolean {
   const hasList = (value: string[] | undefined) => value !== undefined && value.length > 0;
   return (
@@ -38,38 +38,32 @@ export function isEmptyViewer(viewer: PublicQueryInput): boolean {
  * Memuat dashboard lewat tautan bertanda tangan. `fetch` biasa (bukan `api()`): tanpa pemicu "belum login", tanpa
  * cache, dan tanpa Referer (token ada di URL halaman). Satu-satunya `POST` memakai header CSRF yang sama dengan klien
  * REST (`X-Requested-With`, dipaksa `csrfGuard` global untuk semua `POST /api/*`). Tidak pernah menyentuh `/api/v1`.
- *
- * Server menghitung kunjungan HANYA dari `GET` halaman (spek dashboard 7.6). Karena itu `GET` dipakai khusus untuk muat
- * awal tanpa filter; semua pemuatan sesudah GET awal berhasil (penyegaran otomatis, fokus tab, Coba lagi, ganti atau hapus filter: `refresh` true, diputuskan `queries.ts`) selalu lewat `POST query`
- * dengan badan filter yang sama (kosong = `{}`), jadi tab yang dibiarkan terbuka tidak menambah kunjungan.
  */
 export async function fetchPublicDashboard(
   token: string,
   viewer: PublicQueryInput,
   fetchImpl: typeof fetch = fetch,
-  refresh = false,
 ): Promise<PublicDashboardDto> {
   const base = `${PUBLIC_DASHBOARD_BASE}/${encodeURIComponent(token)}`;
   let response: Response;
   try {
-    response =
-      isEmptyViewer(viewer) && !refresh
-        ? await fetchImpl(base, {
-            cache: 'no-store',
-            referrerPolicy: 'no-referrer',
-            headers: { Accept: 'application/json' },
-          })
-        : await fetchImpl(`${base}/query`, {
-            method: 'POST',
-            cache: 'no-store',
-            referrerPolicy: 'no-referrer',
-            headers: {
-              Accept: 'application/json',
-              'Content-Type': 'application/json',
-              ...CSRF_HEADERS,
-            },
-            body: JSON.stringify(viewer),
-          });
+    response = isEmptyViewer(viewer)
+      ? await fetchImpl(base, {
+          cache: 'no-store',
+          referrerPolicy: 'no-referrer',
+          headers: { Accept: 'application/json' },
+        })
+      : await fetchImpl(`${base}/query`, {
+          method: 'POST',
+          cache: 'no-store',
+          referrerPolicy: 'no-referrer',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            ...CSRF_HEADERS,
+          },
+          body: JSON.stringify(viewer),
+        });
   } catch {
     throw new PublicDashboardError(0);
   }
@@ -78,5 +72,26 @@ export async function fetchPublicDashboard(
     return (await response.json()) as PublicDashboardDto;
   } catch {
     throw new PublicDashboardError(0);
+  }
+}
+
+/**
+ * Mencatat kunjungan: `POST .../visit` SEKALI per pembukaan halaman (dipanggil `public-page.tsx`; spek dashboard 7.6).
+ * Fire-and-forget: tanpa badan, header CSRF yang sama dengan `POST query`, tanpa Referer, tanpa retry, dan semua galat
+ * (jaringan, 404, 429, 5xx) ditelan karena kunjungan hanya statistik dan tak boleh mengganggu halaman.
+ */
+export async function recordPublicVisit(
+  token: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<void> {
+  try {
+    await fetchImpl(`${PUBLIC_DASHBOARD_BASE}/${encodeURIComponent(token)}/visit`, {
+      method: 'POST',
+      cache: 'no-store',
+      referrerPolicy: 'no-referrer',
+      headers: { ...CSRF_HEADERS },
+    });
+  } catch {
+    // statistik saja
   }
 }

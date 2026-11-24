@@ -1,7 +1,7 @@
 import type { PublicDashboardDto } from '@shared/dashboard-public';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useState } from 'react';
+import { StrictMode, useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { installIntersectionObserver } from '@/test/intersection-observer';
 import { closeFilterChip, linkOptionNames } from '@/test/link-field';
@@ -86,6 +86,8 @@ function Harness({ initial = {} }: { initial?: Record<string, unknown> }) {
 }
 
 const callsTo = () => fetchMock.mock.calls.map((call) => [String(call[0]), call[1]] as const);
+/** Panggilan pencatat kunjungan (`POST .../visit`). */
+const visitCalls = () => callsTo().filter(([url]) => url.endsWith('/visit'));
 
 test('kepala memuat judul, periode, nama BU/Lokasi cakupan, waktu, pembagi, dan masa berlaku', async () => {
   await renderInRouter(<Harness />);
@@ -139,7 +141,11 @@ test('chip BU hanya menawarkan opsi dari options', async () => {
 test('memilih rentang tanggal memanggil POST query dengan header CSRF dan from/to', async () => {
   await renderInRouter(<Harness />);
   await screen.findByRole('heading', { name: 'Rekap Mingguan' });
-  expect(callsTo().every(([, init]) => init?.method === undefined)).toBe(true);
+  expect(
+    callsTo()
+      .filter(([url]) => !url.endsWith('/visit'))
+      .every(([, init]) => init?.method === undefined),
+  ).toBe(true);
   await userEvent.click(screen.getByRole('button', { name: /^Tanggal(:|$)/ }));
   fireEvent.change(await screen.findByLabelText('Dari tanggal'), {
     target: { value: '2026-11-05' },
@@ -147,7 +153,7 @@ test('memilih rentang tanggal memanggil POST query dengan header CSRF dan from/t
   fireEvent.change(screen.getByLabelText('Sampai tanggal'), { target: { value: '2026-11-20' } });
   await closeFilterChip();
   await waitFor(() => {
-    const post = callsTo().find(([, init]) => init?.method === 'POST');
+    const post = callsTo().find(([url, init]) => init?.method === 'POST' && url.endsWith('/query'));
     expect(post).toBeTruthy();
     const [url, init] = post as NonNullable<ReturnType<typeof callsTo>[number]>;
     expect(url).toBe('/api/public/dashboards/tok.en/query');
@@ -228,7 +234,89 @@ test('meta robots noindex dan referrer no-referrer terpasang, lalu dilepas', asy
 test('hanya memanggil rute publik, tidak pernah /api/v1', async () => {
   await renderInRouter(<Harness />);
   await screen.findByRole('heading', { name: 'Rekap Mingguan' });
+  await waitFor(() => expect(visitCalls()).toHaveLength(1));
   const urls = callsTo().map(([url]) => url);
   expect(urls.length).toBeGreaterThan(0);
   expect(urls.every((url) => url.startsWith('/api/public/dashboards/'))).toBe(true);
+});
+
+test('kunjungan: dibuka tanpa filter memanggil visit SEKALI (POST berheader CSRF, sesudah data termuat)', async () => {
+  await renderInRouter(<Harness />);
+  await screen.findByRole('heading', { name: 'Rekap Mingguan' });
+  await waitFor(() => expect(visitCalls()).toHaveLength(1));
+  const [url, init] = visitCalls()[0] as NonNullable<ReturnType<typeof visitCalls>[number]>;
+  expect(url).toBe('/api/public/dashboards/tok.en/visit');
+  expect(init?.method).toBe('POST');
+  expect(init?.headers).toMatchObject({ 'X-Requested-With': 'qc' });
+  // Data dimuat lebih dulu daripada pencatat kunjungan.
+  const order = callsTo().map(([callUrl]) => callUrl);
+  expect(order.indexOf('/api/public/dashboards/tok.en')).toBeLessThan(
+    order.indexOf('/api/public/dashboards/tok.en/visit'),
+  );
+});
+
+test('kunjungan: dibuka dengan filter di URL (bookmark) memanggil visit sekali', async () => {
+  await renderInRouter(<Harness initial={{ bu: ['b1'] }} />);
+  await screen.findByRole('heading', { name: 'Rekap Mingguan' });
+  await waitFor(() => expect(visitCalls()).toHaveLength(1));
+  expect(callsTo().some(([url]) => url.endsWith('/query'))).toBe(true);
+});
+
+test('kunjungan: ganti filter tidak memanggil visit lagi', async () => {
+  await renderInRouter(<Harness />);
+  await screen.findByRole('heading', { name: 'Rekap Mingguan' });
+  await waitFor(() => expect(visitCalls()).toHaveLength(1));
+  await userEvent.click(screen.getByRole('button', { name: /^Tanggal(:|$)/ }));
+  fireEvent.change(await screen.findByLabelText('Dari tanggal'), {
+    target: { value: '2026-11-05' },
+  });
+  fireEvent.change(screen.getByLabelText('Sampai tanggal'), { target: { value: '2026-11-20' } });
+  await closeFilterChip();
+  await waitFor(() => expect(callsTo().some(([url]) => url.endsWith('/query'))).toBe(true));
+  expect(visitCalls()).toHaveLength(1);
+});
+
+test('kunjungan: StrictMode (dua pemasangan) tetap satu panggilan', async () => {
+  await renderInRouter(
+    <StrictMode>
+      <Harness />
+    </StrictMode>,
+  );
+  await screen.findByRole('heading', { name: 'Rekap Mingguan' });
+  await waitFor(() => expect(visitCalls()).toHaveLength(1));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(visitCalls()).toHaveLength(1);
+});
+
+test('kunjungan: halaman dibuka ulang (pemasangan baru) memanggil visit lagi', async () => {
+  const first = await renderInRouter(<Harness />);
+  await screen.findByRole('heading', { name: 'Rekap Mingguan' });
+  await waitFor(() => expect(visitCalls()).toHaveLength(1));
+  first.unmount();
+  await renderInRouter(<Harness />);
+  await screen.findByRole('heading', { name: 'Rekap Mingguan' });
+  await waitFor(() => expect(visitCalls()).toHaveLength(2));
+});
+
+test('kunjungan: tautan tak berlaku (404) tidak memanggil visit', async () => {
+  failStatus = 404;
+  await renderInRouter(<Harness />);
+  await screen.findByRole('alert');
+  expect(visitCalls()).toHaveLength(0);
+});
+
+test('kunjungan: visit gagal (jaringan) tidak menggagalkan halaman dan tidak diulang', async () => {
+  fetchMock.mockImplementation(async (url: unknown) => {
+    if (String(url).endsWith('/visit')) throw new TypeError('jaringan putus');
+    return new Response(JSON.stringify(dto), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  });
+  await renderInRouter(<Harness />);
+  expect(await screen.findByRole('heading', { name: 'Rekap Mingguan' })).toBeTruthy();
+  await waitFor(() => expect(visitCalls()).toHaveLength(1));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(visitCalls()).toHaveLength(1);
+  expect(screen.queryByRole('alert')).toBeNull();
 });
