@@ -69,8 +69,11 @@ export interface DashboardShareDto {
 
 /** Cakupan beku untuk halaman View tautan: BU dan lokasi dengan NAMA (bukan id), filter grup mentah + nama nilai relasi. */
 export interface ShareScopeDetailDto {
+  /** Nama BU beku, termasuk yang sudah dihapus; `buDeleted[i]` menandai `buNames[i]` terhapus (kit: penanda Terhapus). */
   buNames: string[];
+  buDeleted: boolean[];
   locationNames: string[];
+  locationDeleted: boolean[];
   locationFiltered: boolean;
   range: ShareRange;
   /** Widget beserta filter grupnya (nilai mentah: id relasi atau nilai enum). */

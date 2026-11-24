@@ -38,6 +38,7 @@ import { publicActorName } from '@shared/serials';
 import { runWidgets } from './engine';
 import { loadOptions } from './options';
 import { allowedWidgetIds, type ResolvedScope, resolveScope } from './scope';
+import { buScopeNames, locationScopeNames } from './scope-names';
 import { parseScope, type ShareRow } from './share-repo';
 
 const DAY_MS = 86_400_000;
@@ -304,12 +305,12 @@ export async function loadPublicDashboard(
     ...baseScope.stockLocationIds,
   ]);
   if (usesLocationFilter) for (const id of frozen.locationIds) nameableLocations.add(id);
-  const [bu, location] = await Promise.all([
+  const nameableLocationIds = frozen.locationIds.filter((id) => nameableLocations.has(id));
+  const [bu, location, buNames, locationNames] = await Promise.all([
     buOptions(env, baseScope.buIds),
-    locationOptions(
-      env,
-      frozen.locationIds.filter((id) => nameableLocations.has(id)),
-    ),
+    locationOptions(env, nameableLocationIds),
+    buScopeNames(env, baseScope.buIds, true),
+    locationScopeNames(env, nameableLocationIds, true),
   ]);
   const groups: PublicFilterOptions['groups'] = {};
   for (const key of frozen.offers) {
@@ -325,9 +326,12 @@ export async function loadPublicDashboard(
     range: scope.range,
     bounds: base,
     bucket: scope.bucket,
+    // Kepala memuat nama termasuk BU/lokasi yang sudah dihapus (ditandai); pilihan filter (`options`) tidak.
     scope: {
-      buNames: bu.map((option) => option.label),
-      locationNames: location.map((o) => o.label),
+      buNames: buNames.names,
+      buDeleted: buNames.deleted,
+      locationNames: locationNames.names,
+      locationDeleted: locationNames.deleted,
     },
     options: { bu, location, groups },
     widgets: results.map((result) => ({

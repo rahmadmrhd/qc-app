@@ -113,6 +113,23 @@ export function mayCopyUrl(user: UserContext, row: ShareRow): boolean {
   return user.isSuperAdmin || row.created_by === user.email;
 }
 
+/**
+ * Baris tautan yang BOLEH dibaca pemanggil (SATU gerbang untuk View tautan dan log aktivitasnya): tak dikenal, atau
+ * terbitan laporan terjadwal milik orang lain (bukan pembagi/super admin) = `NOT_FOUND` seragam. Izin modul
+ * (`dashboard: manage`) dijaga pemanggil.
+ */
+export async function loadReadableShare(
+  env: Env,
+  user: UserContext,
+  id: string,
+): Promise<ShareRow> {
+  const row = await loadShare(env.DB, id);
+  if (!row || (row.report_id !== '' && !mayCopyUrl(user, row))) {
+    throw appError('NOT_FOUND', 'Tautan tidak ditemukan');
+  }
+  return row;
+}
+
 export async function createShare(
   env: Env,
   user: UserContext,

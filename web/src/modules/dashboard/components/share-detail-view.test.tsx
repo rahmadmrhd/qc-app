@@ -33,7 +33,9 @@ function detail(overrides: Partial<DashboardShareDetailDto> = {}): DashboardShar
     visits: [],
     scope: {
       buNames: ['BU Ex'],
+      buDeleted: [false],
       locationNames: ['Lokasi A'],
+      locationDeleted: [false],
       locationFiltered: false,
       range: { mode: 'fixed', from: '2026-11-01', to: '2026-11-23' },
       widgets: [
@@ -78,6 +80,23 @@ describe('ShareDetailView', () => {
     // Id internal tak pernah tampil
     expect(document.body.textContent).not.toContain('c-hilang');
     expect(document.body.textContent).not.toContain('bu-x');
+  });
+
+  test('M2: BU dan lokasi terhapus tetap bernama dengan penanda Terhapus', async () => {
+    current = detail({
+      scope: {
+        ...detail().scope,
+        buNames: ['BU Ex', 'BU Lama'],
+        buDeleted: [false, true],
+        locationNames: ['Lokasi Lama'],
+        locationDeleted: [true],
+      },
+    });
+    await view();
+    expect(await screen.findByText('BU Lama')).toBeTruthy();
+    expect(screen.getByText('Lokasi Lama')).toBeTruthy();
+    // Penanda hanya pada yang terhapus (satu untuk BU Lama, satu untuk Lokasi Lama).
+    expect(screen.getAllByText('Terhapus')).toHaveLength(2);
   });
 
   test('periode bergulir ditulis "N hari terakhir"', async () => {

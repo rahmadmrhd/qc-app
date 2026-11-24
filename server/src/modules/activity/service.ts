@@ -6,7 +6,7 @@ import { assertAccessRecordReadable } from '@server/modules/access/service';
 import { parseAuditCursor } from '@server/modules/access/validate';
 import { assertBrandReadable } from '@server/modules/brand/service';
 import { assertCustomerReadable } from '@server/modules/customer/service';
-import { loadShare } from '@server/modules/dashboard/share-repo';
+import { loadReadableShare } from '@server/modules/dashboard/share-service';
 import { assertHandoverReadable } from '@server/modules/handover/service';
 import { assertItemReadable } from '@server/modules/item/service';
 import { readablePostel } from '@server/modules/postel/service';
@@ -107,7 +107,7 @@ const GATES: Record<ActivityKind, Gate> = {
   // Tautan dashboard: baris diriwayatkan sama dengan daftar tautan (hanya pemegang `dashboard: manage`).
   dashboardShare: async (env, user, id) => {
     requireModule(user, DASHBOARD_MANAGE);
-    if (!(await loadShare(env.DB, id))) throw appError('NOT_FOUND', 'Tautan tidak ditemukan');
+    await loadReadableShare(env, user, id); // gerbang yang sama dengan `dashboardShares.get` (terbitan laporan = pemilik)
   },
 };
 

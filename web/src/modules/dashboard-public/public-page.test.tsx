@@ -17,7 +17,12 @@ const BASE_DTO: PublicDashboardDto = {
   range: { from: '2026-11-01', to: '2026-11-24' },
   bounds: { from: '2026-11-01', to: '2026-11-24' },
   bucket: 'day',
-  scope: { buNames: ['BU Satu'], locationNames: ['Lokasi Satu'] },
+  scope: {
+    buNames: ['BU Satu'],
+    buDeleted: [false],
+    locationNames: ['Lokasi Satu'],
+    locationDeleted: [false],
+  },
   options: {
     bu: [
       { value: 'b1', label: 'BU Satu' },
@@ -94,6 +99,18 @@ test('kepala memuat judul, periode, nama BU/Lokasi cakupan, waktu, pembagi, dan 
   expect(screen.getByText(/24 Nov 2026 09\.15 WIB/)).toBeTruthy();
   expect(screen.getByText('20 Des 2026')).toBeTruthy();
   expect(screen.getByText('Tautan berlaku sampai:')).toBeTruthy();
+});
+
+test('M2: BU dan lokasi terhapus tampil sebagai nama + (dihapus), tanpa id', async () => {
+  dto.scope = {
+    buNames: ['BU Satu', 'BU Lama'],
+    buDeleted: [false, true],
+    locationNames: ['Lokasi Lama'],
+    locationDeleted: [true],
+  };
+  await renderInRouter(<Harness />);
+  expect(await screen.findByText('BU Satu, BU Lama (dihapus)')).toBeTruthy();
+  expect(screen.getByText('Lokasi Lama (dihapus)')).toBeTruthy();
 });
 
 test('tanpa navigasi aplikasi, lonceng, atau menu pengguna', async () => {

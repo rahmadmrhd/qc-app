@@ -97,7 +97,13 @@ export interface PublicDashboardDto {
    */
   bounds: DashboardRange;
   bucket: Bucket;
-  scope: { buNames: string[]; locationNames: string[] };
+  /** Nama cakupan beku untuk kepala halaman; yang terhapus tetap bernama dan ditandai (`*Deleted[i]` ↔ `*Names[i]`). */
+  scope: {
+    buNames: string[];
+    buDeleted: boolean[];
+    locationNames: string[];
+    locationDeleted: boolean[];
+  };
   options: PublicFilterOptions;
   widgets: {
     id: WidgetId;

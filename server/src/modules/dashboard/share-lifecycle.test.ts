@@ -94,6 +94,8 @@ describe('dashboardShares.get', () => {
     expect(own.visitCount).toBe(0);
     expect(own.visits).toEqual([]);
     expect(own.scope.buNames).toEqual(['BU Ex']);
+    expect(own.scope.buDeleted).toEqual([false]);
+    expect(own.scope.locationDeleted).toEqual([false]);
     expect(own.scope.locationNames).toEqual(['Lokasi A']);
     expect(own.scope.range).toEqual({ mode: 'fixed', from: '2026-11-01', to: '2026-11-23' });
     expect(own.scope.offers).toEqual(['customer']);
@@ -169,6 +171,47 @@ describe('dashboardShares.get', () => {
     expect((await getDetail('rep-share', OTHER)).status).toBe(404);
     expect((await getDetail('rep-share', SHARER)).status).toBe(200);
     expect((await getDetail('rep-share', 'admin@gmail.com')).status).toBe(200);
+  });
+
+  test('M1: log aktivitas tautan terbitan laporan memakai gerbang yang sama (NOT_FOUND seragam bagi non-pemilik)', async () => {
+    await insertShareStmt(env.DB, {
+      id: 'rep-share',
+      title: 'Kiriman laporan',
+      created_by: SHARER,
+      created_at: new Date(NOW).toISOString(),
+      expires_at: new Date(NOW + DAY).toISOString(),
+      revoked_at: '',
+      revoked_by: '',
+      scope: '{}',
+      report_id: 'rep-1',
+    }).run();
+    const log = (email: string) =>
+      rest.get('/activity?kind=dashboardShare&id=rep-share', { email });
+    expect((await log(OTHER)).status).toBe(404);
+    expect((await log(SHARER)).status).toBe(200);
+    expect((await log('admin@gmail.com')).status).toBe(200);
+    // tautan biasa tetap terbaca semua pemegang manage
+    const { id } = await create();
+    expect(
+      (await rest.get(`/activity?kind=dashboardShare&id=${id}`, { email: OTHER })).status,
+    ).toBe(200);
+  });
+
+  test('M2: BU dan lokasi terhapus tetap bernama dengan penanda terhapus', async () => {
+    const { id } = await create();
+    await env.DB.prepare(
+      "UPDATE business_units SET deleted_at = ?, deleted_by = 'x' WHERE id = 'bu-x'",
+    )
+      .bind(new Date(NOW).toISOString())
+      .run();
+    await env.DB.prepare("UPDATE locations SET deleted_at = ?, deleted_by = 'x' WHERE id = 'loc-a'")
+      .bind(new Date(NOW).toISOString())
+      .run();
+    const detail = (await jsonOf(await getDetail(id))) as Json;
+    expect(detail.scope.buNames).toEqual(['BU Ex']);
+    expect(detail.scope.buDeleted).toEqual([true]);
+    expect(detail.scope.locationNames).toEqual(['Lokasi A']);
+    expect(detail.scope.locationDeleted).toEqual([true]);
   });
 
   test('cakupan rusak tidak menjatuhkan halaman (cakupan kosong)', async () => {

@@ -63,8 +63,12 @@ function formatDateTimeWib(iso: string): string {
   return `${formatDayLabel(wibDateIso(ms))} ${time} WIB`;
 }
 
-function listOrAll(names: readonly string[], all: string): string {
-  return names.length > 0 ? names.join(', ') : all;
+/** Nama cakupan; yang sudah dihapus tetap bernama dengan keterangan teks "(dihapus)" (tanpa id). */
+function listOrAll(names: readonly string[], deleted: readonly boolean[], all: string): string {
+  if (names.length === 0) return all;
+  return names
+    .map((name, index) => (deleted[index] === true ? `${name} (dihapus)` : name))
+    .join(', ');
 }
 
 function Header({ dto }: { dto: PublicDashboardDto }) {
@@ -78,11 +82,15 @@ function Header({ dto }: { dto: PublicDashboardDto }) {
         </div>
         <div className="flex gap-1.5">
           <dt>BU:</dt>
-          <dd className="text-foreground">{listOrAll(dto.scope.buNames, 'Tidak ada')}</dd>
+          <dd className="text-foreground">
+            {listOrAll(dto.scope.buNames, dto.scope.buDeleted, 'Tidak ada')}
+          </dd>
         </div>
         <div className="flex gap-1.5">
           <dt>Lokasi:</dt>
-          <dd className="text-foreground">{listOrAll(dto.scope.locationNames, 'Tidak ada')}</dd>
+          <dd className="text-foreground">
+            {listOrAll(dto.scope.locationNames, dto.scope.locationDeleted, 'Tidak ada')}
+          </dd>
         </div>
         <div className="flex gap-1.5">
           <dt>Diperbarui:</dt>

@@ -17,6 +17,7 @@ import { toast } from 'sonner';
 import { type DataColumn, DataTable } from '@/components/data-table';
 import { PageContent } from '@/components/page/page-container';
 import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/view-page';
+import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ApiError } from '@/lib/api/api-error';
@@ -162,6 +163,30 @@ function Summary({ share }: { share: DashboardShareDetailDto }) {
   );
 }
 
+/** Nama cakupan beku; yang sudah dihapus tetap bernama dengan penanda kit (spek soft delete bagian 5). */
+function NameList({
+  names,
+  deleted,
+  empty,
+}: {
+  names: readonly string[];
+  deleted: readonly boolean[];
+  empty: string;
+}) {
+  if (names.length === 0) return <>{empty}</>;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+      {names.map((name, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: nama boleh kembar; urutan tetap (cakupan beku)
+        <span key={index} className="inline-flex items-center gap-1">
+          {name}
+          {deleted[index] === true ? <DeletedBadge /> : null}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function ScopeSection({ scope }: { scope: DashboardShareDetailDto['scope'] }) {
   const groups = groupWidgets(scope.widgets, scope.valueNames);
   const offers = offerLabels(scope.offers);
@@ -170,10 +195,19 @@ function ScopeSection({ scope }: { scope: DashboardShareDetailDto['scope'] }) {
       <DetailList
         items={[
           { label: 'Periode', value: rangeText(scope) },
-          { label: 'Business Unit', value: scope.buNames.join(', ') || 'Tidak ada' },
+          {
+            label: 'Business Unit',
+            value: <NameList names={scope.buNames} deleted={scope.buDeleted} empty="Tidak ada" />,
+          },
           {
             label: 'Lokasi',
-            value: scope.locationNames.join(', ') || 'Tidak dibatasi',
+            value: (
+              <NameList
+                names={scope.locationNames}
+                deleted={scope.locationDeleted}
+                empty="Tidak dibatasi"
+              />
+            ),
           },
           {
             label: 'Pembatasan lokasi',

@@ -427,3 +427,61 @@ describe('validatePublicQuery', () => {
     });
   });
 });
+
+describe('M2: BU dan lokasi terhapus (spek soft delete bagian 5)', () => {
+  const softDelete = (table: 'business_units' | 'locations', id: string) =>
+    env.DB.prepare(`UPDATE ${table} SET deleted_at = ?, deleted_by = 'x' WHERE id = ?`)
+      .bind(new Date(NOW).toISOString(), id)
+      .run();
+
+  test('BU terhapus tetap bernama di kepala dengan penanda, tetapi tidak menjadi pilihan filter', async () => {
+    const row = await share();
+    expect((await view(row))?.scope).toMatchObject({
+      buNames: ['BU Ex', 'BU Ye'],
+      buDeleted: [false, false],
+    });
+    await softDelete('business_units', 'bu-y');
+    const after = await view(row);
+    expect(after?.scope).toMatchObject({ buNames: ['BU Ex', 'BU Ye'], buDeleted: [false, true] });
+    // Pilihan filter memperlakukan record terhapus seolah tak ada; hanya nama dan penanda, tanpa id mentah.
+    expect(after?.options.bu.map((option) => option.value)).toEqual(['bu-x']);
+    expect(JSON.stringify(after?.scope)).not.toMatch(/bu-/);
+  });
+
+  test('lokasi pilihan untuk saringan Serial yang terhapus tetap bernama dengan penanda', async () => {
+    const row = await share({
+      locationFiltered: true,
+      filter: { from: '2026-11-01', to: '2026-11-23', locationIds: ['loc-a', 'loc-b'] },
+    });
+    expect((await view(row))?.scope).toMatchObject({
+      locationNames: ['Lokasi A', 'Lokasi B'],
+      locationDeleted: [false, false],
+    });
+    await softDelete('locations', 'loc-b');
+    const after = await view(row);
+    expect(after?.scope).toMatchObject({
+      locationNames: ['Lokasi A', 'Lokasi B'],
+      locationDeleted: [false, true],
+    });
+    expect(after?.options.location.map((option) => option.value)).toEqual(['loc-a']);
+    expect(JSON.stringify(after?.scope)).not.toMatch(/loc-/);
+  });
+
+  test('lokasi Serah Terima yang terhapus tak lagi menjadi hak pembagi, jadi tak tampil (sama dengan butir 4)', async () => {
+    await env.DB.prepare('UPDATE users SET assignments = ? WHERE email = ?')
+      .bind(
+        JSON.stringify([
+          { locationId: null, roleIds: ['r-dash'] },
+          { locationId: 'loc-a', roleIds: ['r-hs'] },
+          { locationId: 'loc-b', roleIds: ['r-hs'] },
+        ]),
+        SHARER,
+      )
+      .run();
+    const row = await share({ widgets: [{ id: 'hs.created', filters: {} }] });
+    await softDelete('locations', 'loc-b');
+    const after = await view(row);
+    expect(after?.scope.locationNames).toEqual(['Lokasi A']);
+    expect(JSON.stringify(after)).not.toContain('Lokasi B');
+  });
+});

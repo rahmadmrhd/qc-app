@@ -221,7 +221,12 @@ describe('PublicDashboardDto', () => {
       range: { from: '2026-11-01', to: '2026-11-23' },
       bounds: { from: '2026-11-01', to: '2026-11-23' },
       bucket: 'day',
-      scope: { buNames: ['BU A'], locationNames: ['Gudang'] },
+      scope: {
+        buNames: ['BU A'],
+        buDeleted: [false],
+        locationNames: ['Gudang'],
+        locationDeleted: [false],
+      },
       options: { bu: [], location: [], groups: {} },
       widgets: [
         {
