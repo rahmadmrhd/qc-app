@@ -1,4 +1,5 @@
 import type { PartsData, SeriesData, WidgetData, WidgetMeta } from '@shared/dashboard';
+import type { PublicWidgetData } from '@shared/dashboard-public';
 import { LazyCharts } from '../charts/chart-lazy';
 import { ListWidget } from './list-widget';
 import { NumberWidget } from './number-widget';
@@ -20,7 +21,13 @@ function Unsupported() {
 }
 
 /** Memilih komponen menurut `meta.visual`; bentuk data yang tak cocok = pesan netral, bukan galat. */
-export function WidgetRenderer({ meta, data }: { meta: WidgetMeta; data: WidgetData }) {
+export function WidgetRenderer({
+  meta,
+  data,
+}: {
+  meta: WidgetMeta;
+  data: WidgetData | PublicWidgetData;
+}) {
   switch (meta.visual) {
     case 'number':
       return data.kind === 'number' ? (

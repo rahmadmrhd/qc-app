@@ -2,7 +2,6 @@ import {
   DASHBOARD_GROUPS,
   type DashboardGroupId,
   GROUP_LABELS,
-  type WidgetResult,
   widgetMeta,
 } from '@shared/dashboard';
 import type { PublicDashboardDto } from '@shared/dashboard-public';
@@ -11,7 +10,7 @@ import { useQuery } from '@tanstack/react-query';
 import { type ReactNode, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { spanClass } from '../dashboard/components/group-section';
-import { WidgetCard } from '../dashboard/components/widgets/widget-card';
+import { type PublicWidgetResult, WidgetCard } from '../dashboard/components/widgets/widget-card';
 import { formatDayLabel, formatRangeLabel } from '../dashboard/lib/format';
 import type { DashboardSearch } from '../dashboard/lib/search';
 import { PublicDashboardError } from './public-api';
@@ -210,7 +209,7 @@ export function PublicDashboardPage({ token, search, onSearchChange }: PublicDas
     location: (search.loc?.length ?? 0) > 0,
     date: false,
   };
-  const resultOf = (widget: PublicDashboardDto['widgets'][number]): WidgetResult =>
+  const resultOf = (widget: PublicDashboardDto['widgets'][number]): PublicWidgetResult =>
     widget.result.status === 'ok'
       ? { id: widget.id, status: 'ok', data: widget.result.data }
       : { id: widget.id, status: 'error', message: widget.result.message };

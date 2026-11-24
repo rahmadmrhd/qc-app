@@ -1,9 +1,15 @@
-import type { WidgetMeta, WidgetResult } from '@shared/dashboard';
+import type { WidgetId, WidgetMeta, WidgetResult } from '@shared/dashboard';
+import type { PublicWidgetData } from '@shared/dashboard-public';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { WidgetRenderer } from './widget-renderer';
+
+/** Hasil widget di halaman publik (data tanpa `total` dan tanpa delta). */
+export type PublicWidgetResult =
+  | { id: WidgetId; status: 'ok'; data: PublicWidgetData }
+  | { id: WidgetId; status: 'error'; message: string };
 
 export interface WidgetFilterState {
   /** Filter BU global sedang dipakai. */
@@ -34,7 +40,7 @@ export function WidgetCard({
   onRetry,
 }: {
   meta: WidgetMeta;
-  result: WidgetResult | undefined;
+  result: WidgetResult | PublicWidgetResult | undefined;
   loading: boolean;
   filterState: WidgetFilterState;
   onRetry: () => void;

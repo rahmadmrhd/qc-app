@@ -104,6 +104,13 @@ describe('ListWidget', () => {
     expect(screen.getByText('Menampilkan 2 dari 7')).toBeTruthy();
   });
 
+  test('data publik tanpa total: hanya "Menampilkan N baris", tanpa "dari"', () => {
+    const { total: _total, ...publicList } = LIST;
+    render(<ListWidget data={publicList} />);
+    expect(screen.getByText('Menampilkan 2 baris')).toBeTruthy();
+    expect(screen.queryByText(/dari/)).toBeNull();
+  });
+
   test('ponsel: kartu MobileCard, bukan tabel', () => {
     desktop.value = false;
     const { container } = render(<ListWidget data={LIST} />);

@@ -18,16 +18,23 @@ import {
 
 export const PUBLIC_LIST_ROW_MAX = 10;
 
-export type PublicWidgetData = Omit<NumberData, 'previous'> | PartsData | SeriesData | ListData;
+/** Daftar publik: TANPA `total` (jumlah seluruh baris cakupan tak ikut keluar; keputusan pemilik 2026-11-24). */
+export type PublicListData = Omit<ListData, 'total'>;
 
-function publicList(id: WidgetId, data: ListData): ListData {
+export type PublicWidgetData =
+  | Omit<NumberData, 'previous'>
+  | PartsData
+  | SeriesData
+  | PublicListData;
+
+function publicList(id: WidgetId, data: ListData): PublicListData {
   const columns = (widgetMeta(id).listColumns ?? []).map(({ key, label }) => ({ key, label }));
   const rows = data.rows.slice(0, PUBLIC_LIST_ROW_MAX).map((row) => {
     const out: Record<string, string | number> = {};
     for (const column of columns) out[column.key] = row[column.key] ?? '';
     return out;
   });
-  return { kind: 'list', columns, rows, total: data.total };
+  return { kind: 'list', columns, rows };
 }
 
 /** Memetakan hasil widget ke bentuk yang boleh keluar ke publik. */
@@ -38,22 +45,25 @@ export function toPublicDto(id: WidgetId, data: WidgetData): PublicWidgetData {
     case 'list':
       return publicList(id, data);
     case 'parts':
-      // Daftar putih eksplisit: properti lain yang kelak ditambahkan widget tidak ikut keluar ke publik.
+      // Daftar putih eksplisit: properti lain yang kelak ditambahkan widget tidak ikut keluar ke publik. `key` irisan
+      // diganti indeks karena dapat berisi id internal (lokasi, customer, item); klien hanya memakainya sebagai kunci.
       return {
         kind: 'parts',
-        slices: data.slices.map((slice) => ({
-          key: slice.key,
+        slices: data.slices.map((slice, index) => ({
+          key: String(index),
           label: slice.label,
           value: slice.value,
         })),
       };
     case 'series':
+      // `points[].key` = kunci bucket waktu (tanggal/minggu/bulan), bukan id internal: tetap. `series[].key` diganti
+      // indeks seperti irisan.
       return {
         kind: 'series',
         bucket: data.bucket,
         points: data.points.map((point) => ({ key: point.key, label: point.label })),
-        series: data.series.map((entry) => ({
-          key: entry.key,
+        series: data.series.map((entry, index) => ({
+          key: String(index),
           label: entry.label,
           values: [...entry.values],
         })),

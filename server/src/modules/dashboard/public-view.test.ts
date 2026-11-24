@@ -107,6 +107,7 @@ describe('bentuk keluaran', () => {
     const result = dto?.widgets[0]?.result;
     if (result?.status !== 'ok' || result.data.kind !== 'list') throw new Error('bukan daftar');
     expect(result.data.rows.length).toBeLessThanOrEqual(10);
+    expect('total' in result.data).toBe(false);
     expect(result.data.columns.map((column) => column.key)).toEqual([
       'number',
       'customer',
