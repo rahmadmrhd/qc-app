@@ -708,6 +708,37 @@ describe('hak: edit (milik sendiri) dan manage (semua)', () => {
       expect(saved.scope.locationIds).not.toContain('loc-b');
     });
 
+    test('pembanding super admin: pelaku manage non-pemilik mempertahankan lokasi beku nonaktif bila cakupan tak diubah', async () => {
+      const created = await reportWithInactiveLocation();
+      const saved = await saveDashboardReport(
+        env,
+        await userOf(OTHER),
+        input({ ...asForm(created), name: 'Nama saja' }),
+      );
+      expect([...saved.scope.locationIds].sort()).toEqual(['loc-a', 'loc-b']);
+    });
+
+    test('pembanding super admin: pelaku manage non-pemilik ditolak generik (bukan membuang diam-diam) bila cakupan diubah', async () => {
+      const created = await reportWithInactiveLocation();
+      const error = await saveDashboardReport(
+        env,
+        await userOf(OTHER),
+        input({
+          ...asForm(created),
+          widgets: [
+            { id: 'hs.created', filters: {} },
+            { id: 'sn.recorded', filters: {} },
+          ],
+        }),
+      ).catch((caught: unknown) => caught as { code?: string; message?: string });
+      expect(error).toMatchObject({ code: 'VALIDATION', message: OUTSIDE });
+      const row = await loadReport(env.DB, created.id);
+      expect([...(parseReportScope(row?.scope ?? '')?.locationIds ?? [])].sort()).toEqual([
+        'loc-a',
+        'loc-b',
+      ]);
+    });
+
     test('pemilik sendiri dan super admin: perilaku lama (cakupan dibekukan menurut haknya)', async () => {
       const created = await ownerWithBoth();
       const owner = await userOf();

@@ -207,7 +207,10 @@ export async function getDashboardReport(
 export const OUTSIDE_RIGHTS_MESSAGE =
   'Cakupan laporan ini di luar hak akses Anda; minta pemilik laporan atau pengelola yang berhak untuk mengubahnya.';
 
-/** Kanonik (urutan kunci dan anggota tak berpengaruh) untuk membandingkan isi widget. */
+/**
+ * Kanonik untuk membandingkan isi widget: urutan KUNCI objek tak berpengaruh, tetapi urutan anggota array (mis. nilai di
+ * dalam `filters` widget) berpengaruh, disengaja.
+ */
 function canon(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canon).join(',')}]`;
   if (value !== null && typeof value === 'object') {
