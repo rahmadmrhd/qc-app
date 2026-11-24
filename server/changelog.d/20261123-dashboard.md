@@ -5,3 +5,5 @@ feat(dashboard): kueri widget dibatasi 30 detik di database agar slot tak tertah
 chore(deploy): memori qc-db (batas kontainer, buffer pool InnoDB, cache Aria) dapat diatur per lingkungan lewat QC_DB_MEM_LIMIT, QC_DB_BUFFER_POOL, QC_DB_ARIA_CACHE; bawaan 512m, 256M, 32M
 feat(dashboard): tautan publik dashboard dengan cakupan terisolasi dan filter penonton
 feat(dashboard): masa berlaku tautan dapat berupa tanggal tertentu (berlaku sampai akhir hari WIB), batas 50 tautan aktif dijaga atomik
+feat(dashboard): halaman View per tautan publik dengan cakupan bernama, data kunjungan (jumlah, waktu, negara, perangkat, awalan IP), dan log aktivitas termasuk kedaluwarsa
+fix(dashboard): halaman publik tanpa jumlah total daftar dan tanpa id internal pada kunci irisan dan seri
