@@ -120,3 +120,37 @@ export interface PublicQueryInput {
   to?: string;
   groups?: Partial<Record<DashboardGroupId, Record<string, string[]>>>;
 }
+
+/** Baris daftar maksimum di surel laporan terjadwal (spek dashboard 7a.3). */
+export const EMAIL_LIST_ROW_MAX = 5;
+
+/**
+ * Bentuk yang dipakai surel laporan terjadwal: DTO publik ditambah dua angka yang HANYA ada di surel (surel dikirim
+ * ke penerima yang dipilih pemilik, bukan ke pemegang tautan): `previous` pada number (untuk delta periode lalu) dan
+ * `total` pada daftar (untuk "Menampilkan N dari M"). Daftar dipotong `EMAIL_LIST_ROW_MAX` baris dan kolomnya hanya
+ * `listColumns`.
+ */
+export type EmailWidgetData = NumberData | PartsData | SeriesData | ListData;
+
+/** Memetakan hasil widget ke bentuk surel (daftar putih; pasangan `toPublicDto`). */
+export function toEmailDto(id: WidgetId, data: WidgetData): EmailWidgetData {
+  switch (data.kind) {
+    case 'number':
+      return data.previous === undefined
+        ? { kind: 'number', value: data.value }
+        : { kind: 'number', value: data.value, previous: data.previous };
+    case 'list': {
+      const list = publicList(id, data);
+      return {
+        kind: 'list',
+        columns: list.columns,
+        rows: list.rows.slice(0, EMAIL_LIST_ROW_MAX),
+        total: data.total,
+      };
+    }
+    case 'parts':
+    case 'series':
+      // Irisan dan seri memakai pemetaan publik (indeks sebagai `key`, tanpa properti lain).
+      return toPublicDto(id, data) as PartsData | SeriesData;
+  }
+}

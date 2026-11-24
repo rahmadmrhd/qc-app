@@ -6,7 +6,13 @@ import {
   type WidgetData,
   widgetMeta,
 } from './dashboard';
-import { PUBLIC_LIST_ROW_MAX, type PublicDashboardDto, toPublicDto } from './dashboard-public';
+import {
+  EMAIL_LIST_ROW_MAX,
+  PUBLIC_LIST_ROW_MAX,
+  type PublicDashboardDto,
+  toEmailDto,
+  toPublicDto,
+} from './dashboard-public';
 
 describe('toPublicDto', () => {
   test('number: previous dibuang, value dipertahankan', () => {
@@ -244,5 +250,68 @@ describe('PublicDashboardDto', () => {
     for (const entry of dto.widgets) {
       expect(Object.keys(entry).sort()).toEqual(['group', 'id', 'result']);
     }
+  });
+});
+
+describe('toEmailDto', () => {
+  test('number mempertahankan previous; tanpa previous tak menambahkannya', () => {
+    expect(toEmailDto('hs.created', { kind: 'number', value: 3, previous: 2 })).toEqual({
+      kind: 'number',
+      value: 3,
+      previous: 2,
+    });
+    const plain = toEmailDto('hs.active', { kind: 'number', value: 4 });
+    expect(plain).toEqual({ kind: 'number', value: 4 });
+    expect('previous' in plain).toBe(false);
+  });
+
+  test('list: 12 baris dipotong ke 5, total tetap 12, hanya kolom daftar putih', () => {
+    const columns = widgetMeta('hs.oldest').listColumns ?? [];
+    const rows = Array.from({ length: 12 }, (_, index) => {
+      const row: Record<string, string | number> = { note: 'rahasia', email: 'x@gmail.com' };
+      for (const column of columns) row[column.key] = `${column.key}-${index}`;
+      return row;
+    });
+    const out = toEmailDto('hs.oldest', {
+      kind: 'list',
+      columns: [...columns, { key: 'note', label: 'Catatan' }],
+      rows,
+      total: 12,
+    });
+    if (out.kind !== 'list') throw new Error('harus list');
+    expect(EMAIL_LIST_ROW_MAX).toBe(5);
+    expect(out.rows).toHaveLength(5);
+    expect(out.total).toBe(12);
+    expect(out.columns.map((column) => column.key)).toEqual(columns.map((column) => column.key));
+    for (const row of out.rows) {
+      expect(Object.keys(row)).toEqual(columns.map((column) => column.key));
+    }
+  });
+
+  test('parts dan series memakai pemetaan publik (key menjadi indeks, tanpa properti lain)', () => {
+    const parts = toEmailDto('hs.status', {
+      kind: 'parts',
+      slices: [{ key: 'id-internal-1', label: 'Baru', value: 2 }],
+    });
+    expect(parts).toEqual({ kind: 'parts', slices: [{ key: '0', label: 'Baru', value: 2 }] });
+    const series = toEmailDto('hs.trend', {
+      kind: 'series',
+      bucket: 'day',
+      points: [{ key: '2026-11-01', label: '1 Nov' }],
+      series: [{ key: 'created', label: 'Dibuat', values: [1] }],
+    });
+    expect(series).toEqual({
+      kind: 'series',
+      bucket: 'day',
+      points: [{ key: '2026-11-01', label: '1 Nov' }],
+      series: [{ key: '0', label: 'Dibuat', values: [1] }],
+    });
+  });
+
+  test('toPublicDto tetap tanpa previous dan tanpa total (halaman publik tak menampilkan delta)', () => {
+    const number = toPublicDto('hs.created', { kind: 'number', value: 3, previous: 2 });
+    expect('previous' in number).toBe(false);
+    const list = toPublicDto('hs.oldest', { kind: 'list', columns: [], rows: [], total: 9 });
+    expect('total' in list).toBe(false);
   });
 });
