@@ -18,7 +18,7 @@ export const reportKeys = {
 
 const HALF_MINUTE_MS = 30_000;
 
-/** Daftar semua laporan (pemegang `dashboard: manage` melihat semuanya; alamat penerima hanya untuk pemilik). */
+/** Daftar laporan (pemegang `dashboard: edit` hanya miliknya; `manage`/super admin semuanya, dengan penerima). */
 export function reportsQueryOptions() {
   return queryOptions({
     queryKey: reportKeys.all,
@@ -97,7 +97,7 @@ export function useRemoveReport() {
   });
 }
 
-/** Kirim uji: satu surel [UJI] ke surel pemilik; daftar dimuat ulang karena riwayat aktivitas bertambah. */
+/** Kirim uji: satu surel [UJI] ke surel pelaku; daftar dimuat ulang karena riwayat aktivitas bertambah. */
 export function useSendTestReport() {
   const client = useQueryClient();
   return useMutation({

@@ -34,6 +34,7 @@ beforeEach(async () => {
   };
   await seedBusinessUnit(env, { id: 'bu-x', code: 'X' });
   await seedRole(env, { id: 'r-dash', name: 'Dash', permissions: { dashboard: 'manage' } });
+  await seedRole(env, { id: 'r-dash-edit', name: 'DashEdit', permissions: { dashboard: 'edit' } });
   await seedRole(env, { id: 'r-sn', name: 'SN', permissions: { serial: 'view' } });
   await seedUser(env, {
     id: 'u-owner',
@@ -183,7 +184,18 @@ describe('checkDashboardReports', () => {
     expect(row.last_status).toBe('ok');
   });
 
-  test('pemilik kehilangan dashboard: manage dilewati', async () => {
+  test('pemilik turun ke dashboard: edit tetap terkirim (syarat kirim = minimal edit)', async () => {
+    const id = await dueReport();
+    await env.DB.prepare('UPDATE users SET assignments = ? WHERE email = ?')
+      .bind(JSON.stringify([{ locationId: null, roleIds: ['r-dash-edit'] }]), OWNER)
+      .run();
+    const summary = await checkDashboardReports(env, NOW);
+    expect(summary.sent).toBe(1);
+    expect((await reportOf(id)).last_status).toBe('ok');
+    expect(sent).toHaveLength(1);
+  });
+
+  test('pemilik kehilangan izin dashboard sama sekali dilewati', async () => {
     const id = await dueReport();
     await env.DB.prepare("UPDATE users SET assignments = '[]' WHERE email = ?").bind(OWNER).run();
     const summary = await checkDashboardReports(env, NOW);

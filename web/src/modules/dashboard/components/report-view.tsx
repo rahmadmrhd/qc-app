@@ -141,12 +141,10 @@ function ScopeSection({ report }: { report: DashboardReportDto }) {
           {
             label: 'Business Unit',
             value: names(report.scope.buIds, buOptions).join(', ') || 'Tidak ada',
-            hidden: !report.canEdit,
           },
           {
             label: 'Lokasi',
             value: names(report.scope.locationIds, locationOptions).join(', ') || 'Tidak dibatasi',
-            hidden: !report.canEdit,
           },
           {
             label: 'Pembatasan lokasi',
@@ -210,7 +208,8 @@ function PreviewSection({ reportId }: { reportId: string }) {
     <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
         Tampilan surel dengan data saat ini. Tidak ada yang dikirim dan tidak ada tautan yang
-        dibuat; tombol di dalamnya hanya contoh.
+        dibuat; tombol di dalamnya hanya contoh. Pada laporan milik orang lain, isinya dibatasi hak
+        akses Anda.
       </p>
       {requested ? null : (
         <Button type="button" variant="outline" color="primary" onClick={() => setRequested(true)}>
@@ -238,6 +237,13 @@ function PreviewSection({ reportId }: { reportId: string }) {
       ) : null}
       {preview.data ? (
         <div className="space-y-2">
+          {preview.data.trimmed ? (
+            <Alert color="warning">
+              <AlertDescription>
+                Sebagian data disembunyikan karena hak akses Anda.
+              </AlertDescription>
+            </Alert>
+          ) : null}
           <p className="text-sm">
             <span className="text-muted-foreground">Subjek:</span> {preview.data.subject}
           </p>
@@ -320,8 +326,8 @@ export interface ReportViewProps {
 
 /**
  * View satu laporan terjadwal (kit CRUD, `ViewPage` tanpa tab): ringkasan, cakupan, penerima, pratinjau surel, dan
- * tautan yang pernah dikirim. Aksi (Ubah, Jeda/Lanjutkan, Kirim uji, Hapus) hanya bagi pemilik atau super admin
- * (`canEdit`); pemegang `manage` lain hanya melihat metadata. Panel samping: pemilik dan log aktivitas.
+ * tautan yang pernah dikirim. Aksi (Ubah, Jeda/Lanjutkan, Kirim uji, Hapus) menurut `canEdit` yang dihitung server
+ * (pemilik, atau pengelola semua). Panel samping: pemilik dan log aktivitas.
  */
 export function ReportView({ reportId, onBack, onEdit }: ReportViewProps) {
   const detail = useQuery(reportQueryOptions(reportId));
@@ -370,7 +376,7 @@ export function ReportView({ reportId, onBack, onEdit }: ReportViewProps) {
     );
   const test = () =>
     sendTest.mutate(report.id, {
-      onSuccess: () => toast.success('Surel uji dikirim ke surel pemilik'),
+      onSuccess: () => toast.success('Surel uji dikirim ke surel Anda'),
       onError: (error) => toast.error(describeError(error)),
     });
   const doDelete = () =>
@@ -424,33 +430,21 @@ export function ReportView({ reportId, onBack, onEdit }: ReportViewProps) {
           </>
         }
       >
-        {report.canEdit ? null : (
-          <Alert color="info">
-            <AlertDescription>
-              Hanya pemilik laporan yang dapat mengubahnya, melihat penerima dan pratinjau, atau
-              melihat tautan yang dikirim. Anda melihat metadata laporan.
-            </AlertDescription>
-          </Alert>
-        )}
         <ViewSection title="Ringkasan">
           <Summary report={report} />
         </ViewSection>
         <ViewSection title="Cakupan">
           <ScopeSection report={report} />
         </ViewSection>
-        {report.canEdit ? (
-          <>
-            <ViewSection title="Penerima">
-              <RecipientsSection report={report} />
-            </ViewSection>
-            <ViewSection title="Pratinjau surel">
-              <PreviewSection reportId={report.id} />
-            </ViewSection>
-            <ViewSection title="Tautan yang dikirim">
-              <LinksSection links={report.links ?? []} />
-            </ViewSection>
-          </>
-        ) : null}
+        <ViewSection title="Penerima">
+          <RecipientsSection report={report} />
+        </ViewSection>
+        <ViewSection title="Pratinjau surel">
+          <PreviewSection reportId={report.id} />
+        </ViewSection>
+        <ViewSection title="Tautan yang dikirim">
+          <LinksSection links={report.links ?? []} />
+        </ViewSection>
       </ViewPage>
       <ConfirmDeleteDialog
         open={confirmDelete}

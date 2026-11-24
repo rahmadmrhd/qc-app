@@ -1,7 +1,7 @@
 /**
  * Detail satu tautan dashboard untuk halaman View (`dashboardShares.get`): baris tautan + dicabut oleh + cakupan beku
- * dengan NAMA + ringkasan dan daftar kunjungan. Izin `dashboard: manage` dijaga rute; `url` hanya untuk pembagi dan
- * super admin (sama dengan daftar). Tautan terbitan laporan terjadwal hanya terbaca pemiliknya atau super admin.
+ * dengan NAMA + ringkasan dan daftar kunjungan. Izin minimal `dashboard: edit` dijaga rute; baris milik orang lain hanya
+ * untuk `manage`/super admin (`loadReadableShare`); `url` untuk yang boleh mengelola tautan (pembagi atau pengelola semua).
  */
 
 import type { Env } from '@server/core/env';

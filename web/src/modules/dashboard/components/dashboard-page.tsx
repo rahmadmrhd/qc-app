@@ -30,7 +30,7 @@ export function DashboardPage({
   const me = useMe();
   const phone = useIsMobile();
   const [dialog, setDialog] = useState<'share' | 'shares' | null>(null);
-  const canShare = can(me, 'dashboard', 'manage');
+  const canShare = can(me, 'dashboard', 'edit');
   const groups = visibleWidgetsByGroup(me);
   if (groups.length === 0) {
     return (

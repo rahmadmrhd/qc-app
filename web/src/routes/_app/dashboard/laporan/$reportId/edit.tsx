@@ -19,8 +19,8 @@ export const Route = createFileRoute('/_app/dashboard/laporan/$reportId/edit')({
     },
     pageWidth: 'narrow',
   },
-  beforeLoad: ({ context }) => requirePermission(context.queryClient, 'dashboard', 'manage'),
-  // Hanya pemilik atau super admin yang boleh mengubah: yang lain diarahkan ke View (metadata saja).
+  beforeLoad: ({ context }) => requirePermission(context.queryClient, 'dashboard', 'edit'),
+  // Hanya yang boleh mengelola baris ini (`canEdit` dari server) yang mengubah: yang lain diarahkan ke View.
   loader: async ({ context, params }) => {
     const report = await context.queryClient.ensureQueryData(reportQueryOptions(params.reportId));
     if (!report.canEdit) {

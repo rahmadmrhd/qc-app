@@ -51,9 +51,27 @@ export interface EmailReportInput {
   widgets: EmailWidgetInput[];
   ctaUrl: string;
   linkExpiresLabel: string;
-  /** Kirim uji: subjek diawali `[UJI] ` dan kepala menandainya. */
+  /** Kirim uji: subjek diawali `[UJI] ` dan badan memuat keterangan uji (HTML dan teks polos). */
   test?: boolean;
+  /** Pratinjau: keterangan uji yang sama di badan, tanpa awalan subjek. */
+  testNotice?: boolean;
+  /** Surel uji laporan milik orang lain: tombol mengarah ke halaman Dashboard di aplikasi, bukan tautan laporan. */
+  buttonToApp?: boolean;
+  /**
+   * Isi dipangkas karena hak akses pelaku pratinjau/kirim uji (bukan pemilik) lebih sempit dari hak pemilik: kepala
+   * dan teks polos memuat satu baris penanda (tanpa menyebut apa yang disembunyikan).
+   */
+  trimmed?: boolean;
 }
+
+/** Keterangan uji pada badan surel uji dan pratinjau (keputusan pemilik produk 2026-11-24; redaksi BELUM dikonfirmasi). */
+export const TEST_NOTE =
+  'Ini surel uji coba untuk memeriksa tampilan laporan. Bukan laporan sebenarnya dan tidak dikirim ke penerima.';
+export const TEST_BUTTON_NOTE =
+  'Tombol di bawah mengarah ke halaman Dashboard di aplikasi, bukan ke tautan laporan.';
+
+/** Penanda isi yang dipangkas karena hak akses pelaku (pratinjau dan kirim uji laporan milik orang lain). */
+export const TRIMMED_NOTE = 'Sebagian data disembunyikan karena hak akses Anda';
 
 export interface RenderedEmail {
   subject: string;
@@ -418,10 +436,14 @@ function assembleHtml(input: EmailReportInput, tier: Tier): string {
   flush();
 
   const name = esc(input.reportName, SUBJECT_NAME_MAX);
-  const testNote = input.test
-    ? `<div style="${FONT};font-size:12px;line-height:16px;font-weight:bold;color:${BAD};padding-bottom:4px">UJI: surel ini hanya dikirim ke pemilik laporan</div>`
+  const showTestNotice = input.test === true || input.testNotice === true;
+  const testNotice = showTestNotice
+    ? `<tr><td style="padding:0 0 12px" bgcolor="#ffffff"><div style="${FONT};font-size:13px;line-height:19px;font-weight:bold;color:#5a3b00;background:#fff4ce;border:1px solid #e0b84c;border-radius:6px;padding:10px 12px" bgcolor="#fff4ce">${esc(TEST_NOTE, 400)}${input.buttonToApp ? `<br>${esc(TEST_BUTTON_NOTE, 400)}` : ''}</div></td></tr>`
     : '';
-  const header = `<tr><td style="padding:20px 24px 12px" bgcolor="#ffffff">${testNote}<div style="${FONT};font-size:20px;line-height:26px;font-weight:bold;color:${TEXT}">${name}</div><div style="${FONT};font-size:13px;line-height:19px;color:${MUTED};padding-top:6px">Periode: ${esc(input.periodLabel)}<br>Cakupan: ${esc(input.scopeLabel, 200)}<br>Jadwal: ${esc(input.scheduleLabel)}</div></td></tr>`;
+  const trimmedNote = input.trimmed
+    ? `<div style="${FONT};font-size:12px;line-height:16px;font-weight:bold;color:${BAD};padding-bottom:4px">${esc(TRIMMED_NOTE)}</div>`
+    : '';
+  const header = `<tr><td style="padding:20px 24px 12px" bgcolor="#ffffff"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">${testNotice}</table>${trimmedNote}<div style="${FONT};font-size:20px;line-height:26px;font-weight:bold;color:${TEXT}">${name}</div><div style="${FONT};font-size:13px;line-height:19px;color:${MUTED};padding-top:6px">Periode: ${esc(input.periodLabel)}<br>Cakupan: ${esc(input.scopeLabel, 200)}<br>Jadwal: ${esc(input.scheduleLabel)}</div></td></tr>`;
   const cta = `<tr><td align="center" style="padding:16px 24px 8px" bgcolor="#ffffff"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td bgcolor="${PRIMARY}" style="border-radius:6px"><a href="${esc(input.ctaUrl, 2000)}" style="display:inline-block;padding:12px 24px;${FONT};font-size:15px;font-weight:bold;color:#ffffff;text-decoration:none">Buka dashboard lengkap</a></td></tr></table><div style="${FONT};font-size:12px;line-height:17px;color:${MUTED};padding-top:8px">${esc(input.linkExpiresLabel)}. Tautan hanya menampilkan periode dan cakupan laporan ini.</div></td></tr>`;
   const footer = `<tr><td style="padding:12px 24px 20px" bgcolor="#ffffff"><div style="${FONT};font-size:12px;line-height:17px;color:${MUTED}">Laporan &ldquo;${name}&rdquo; dikirim atas nama ${esc(input.ownerName)}. Hubungi pemilik untuk berhenti atau mengubah isinya.</div></td></tr>`;
 
@@ -479,7 +501,11 @@ function plainWidget(item: EmailWidgetInput): string {
 
 function plainText(input: EmailReportInput): string {
   const lines = [
+    ...(input.test || input.testNotice
+      ? [TEST_NOTE, ...(input.buttonToApp ? [TEST_BUTTON_NOTE] : []), '']
+      : []),
     `${input.test ? '[UJI] ' : ''}${clean(input.reportName, SUBJECT_NAME_MAX)}`,
+    ...(input.trimmed ? [TRIMMED_NOTE] : []),
     `Periode: ${clean(input.periodLabel)}`,
     `Cakupan: ${clean(input.scopeLabel, 200)}`,
     `Jadwal: ${clean(input.scheduleLabel)}`,

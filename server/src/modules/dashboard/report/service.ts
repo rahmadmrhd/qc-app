@@ -1,7 +1,8 @@
 /**
- * Layanan laporan dashboard terjadwal (spek dashboard bagian 7a): CRUD, hak (pemilik atau super admin mengubah;
- * pemegang `dashboard: manage` lain hanya melihat metadata), batas per pemilik, dan pembekuan cakupan saat disimpan.
- * Izin modul (`dashboard: manage`) dijaga rute. Pengiriman ada di `run.ts`.
+ * Layanan laporan dashboard terjadwal (spek dashboard bagian 7a): CRUD, hak (pemegang `dashboard: edit` mengelola
+ * laporan MILIKNYA secara penuh; `manage` dan super admin mengelola milik SEMUA pengguna, lihat `../access.ts`), batas
+ * per pemilik, dan pembekuan cakupan saat disimpan. Izin modul (minimal `dashboard: edit`) dijaga rute. Pengiriman ada
+ * di `run.ts`.
  */
 import { createHash, createHmac } from 'node:crypto';
 import { writeAudit } from '@server/core/audit';
@@ -27,6 +28,7 @@ import {
   wibNow,
 } from '@shared/dashboard-report';
 import { wibDateIso } from '@shared/postel';
+import { dashboardScopeOf, mayManageRow } from '../access';
 import { hitLimit } from '../public-limits';
 import { listSharesOfReport, revokeReportSharesStmt, type ShareRow } from '../share-repo';
 import { freezeContent, toShareDto } from '../share-service';
@@ -53,11 +55,6 @@ const TEST_WINDOW_MS = 3_600_000;
 const FALLBACK_SCHEDULE: ReportSchedule = { frequency: 'daily', hour: 0, weekday: 1, monthDay: 1 };
 const FALLBACK_PERIOD: ReportPeriod = 'yesterday';
 
-/** Hanya pemilik atau super admin yang mengubah, menjeda, mengirim uji, melihat pratinjau/tautan, atau menghapus. */
-export function canEditReport(user: UserContext, row: Pick<ReportRow, 'owner'>): boolean {
-  return user.isSuperAdmin || row.owner === user.email;
-}
-
 /** JSON jadwal dengan urutan kunci tetap (dipakai membandingkan perubahan jadwal). */
 function scheduleJson(schedule: ReportSchedule): string {
   return JSON.stringify({
@@ -78,17 +75,6 @@ function scopeJson(scope: ReportScope): string {
   });
 }
 
-/** Cakupan yang dilihat pemegang `manage` lain: hanya daftar widget (tanpa filter, BU, lokasi, atau penawaran). */
-function redactScope(scope: ReportScope): ReportScope {
-  return {
-    buIds: [],
-    locationIds: [],
-    locationFiltered: scope.locationFiltered,
-    widgets: scope.widgets.map((widget) => ({ id: widget.id, filters: {} })),
-    offers: [],
-  };
-}
-
 const EMPTY_SCOPE: ReportScope = {
   buIds: [],
   locationIds: [],
@@ -103,7 +89,6 @@ export function toReportDto(
   nowMs: number,
   links?: DashboardReportDto['links'],
 ): DashboardReportDto {
-  const canEdit = canEditReport(user, row);
   const schedule = parseSchedule(row.schedule) ?? FALLBACK_SCHEDULE;
   const recipients = parseRecipients(row.recipients);
   const scope = parseReportScope(row.scope) ?? EMPTY_SCOPE;
@@ -116,8 +101,8 @@ export function toReportDto(
     enabled,
     schedule,
     period: parsePeriod(row.period) ?? FALLBACK_PERIOD,
-    scope: canEdit ? scope : redactScope(scope),
-    recipients: canEdit ? recipients : [],
+    scope,
+    recipients,
     recipientCount: recipients.length,
     linkDays: row.link_days,
     lastStatus: status === 'ok' || status === 'skipped' || status === 'error' ? status : '',
@@ -126,7 +111,7 @@ export function toReportDto(
     nextRunAt: enabled ? nextRunAt(schedule, nowMs, row.last_run_key) : '',
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-    canEdit,
+    canEdit: mayManageRow(user, row.owner),
     ...(links === undefined ? {} : { links }),
   };
 }
@@ -174,10 +159,19 @@ async function requireReport(env: Env, id: string): Promise<ReportRow> {
   return row;
 }
 
-function requireEditable(user: UserContext, row: ReportRow): void {
-  if (!canEditReport(user, row)) {
-    throw appError('FORBIDDEN', 'Hanya pemilik laporan yang boleh melakukan ini');
-  }
+/**
+ * SATU gerbang baris laporan untuk semua rute (get, save, setEnabled, remove, sendTest, preview) dan log aktivitas:
+ * tak dikenal atau milik orang lain bagi pemegang `dashboard: edit` = `NOT_FOUND` seragam (tanpa oracle keberadaan).
+ * `manage`/super admin boleh semua baris.
+ */
+export async function loadAccessibleReport(
+  env: Env,
+  user: UserContext,
+  id: string,
+): Promise<ReportRow> {
+  const row = await requireReport(env, id);
+  if (!mayManageRow(user, row.owner)) throw appError('NOT_FOUND', 'Laporan tidak ditemukan');
+  return row;
 }
 
 export async function listDashboardReports(
@@ -185,7 +179,10 @@ export async function listDashboardReports(
   user: UserContext,
 ): Promise<DashboardReportListDto> {
   const nowMs = nowOf(env);
-  const rows = await listReportRows(env.DB);
+  const rows = await listReportRows(
+    env.DB,
+    dashboardScopeOf(user) === 'all' ? undefined : user.email,
+  );
   return {
     reports: rows.map((row) => toReportDto(user, row, nowMs)),
     smtpConfigured: env.MAILER !== undefined,
@@ -198,16 +195,19 @@ export async function getDashboardReport(
   user: UserContext,
   id: string,
 ): Promise<DashboardReportDto> {
-  const row = await requireReport(env, id);
+  const row = await loadAccessibleReport(env, user, id);
   const nowMs = nowOf(env);
-  if (!canEditReport(user, row)) return toReportDto(user, row, nowMs);
   const now = nowIso(env);
   const shares: ShareRow[] = await listSharesOfReport(env.DB, row.id, REPORT_LINKS_SHOWN);
   const links = await Promise.all(shares.map((share) => toShareDto(env, share, now, true)));
   return toReportDto(user, row, nowMs, links);
 }
 
-/** Simpan (buat atau ubah) laporan. Pemilik = pembuat; mengubah hanya oleh pemilik atau super admin. */
+/**
+ * Simpan (buat atau ubah) laporan. Pemilik = pembuat dan TIDAK berpindah saat laporan diubah pengelola lain; mengubah
+ * milik orang lain hanya bagi `manage`/super admin. Cakupan dibekukan dengan hak PENYIMPAN (diiris lagi dengan hak
+ * pemilik saat kirim, jadi penyimpan tak dapat memperluas apa yang diterima penerima).
+ */
 export async function saveDashboardReport(
   env: Env,
   user: UserContext,
@@ -216,8 +216,7 @@ export async function saveDashboardReport(
   assertReportInput(input);
   const nowMs = nowOf(env);
   const now = nowIso(env);
-  const existing = input.id === undefined ? null : await requireReport(env, input.id);
-  if (existing !== null) requireEditable(user, existing);
+  const existing = input.id === undefined ? null : await loadAccessibleReport(env, user, input.id);
 
   // Rentang filter tak dipakai laporan (periode relatif); hanya agar `resolveScope` punya rentang sah.
   const range = periodRange(input.period, wibDateIso(nowMs));
@@ -353,8 +352,7 @@ export async function setDashboardReportEnabled(
   user: UserContext,
   input: { id: string; enabled: boolean },
 ): Promise<DashboardReportDto> {
-  const row = await requireReport(env, input.id);
-  requireEditable(user, row);
+  const row = await loadAccessibleReport(env, user, input.id);
   if ((row.enabled === 1) === input.enabled) return getDashboardReport(env, user, row.id);
   const nowMs = nowOf(env);
   const now = nowIso(env);
@@ -393,8 +391,7 @@ export async function removeDashboardReport(
   user: UserContext,
   id: string,
 ): Promise<{ ok: true }> {
-  const row = await requireReport(env, id);
-  requireEditable(user, row);
+  const row = await loadAccessibleReport(env, user, id);
   const now = nowIso(env);
   await env.DB.batch([
     // Kunci baris laporan lebih dulu: penerbitan tautan oleh pengirim mengunci baris yang sama (`reportExistsGuardStmts`),
@@ -419,21 +416,22 @@ export async function removeDashboardReport(
 }
 
 /**
- * Kirim uji: satu surel berawalan [UJI] HANYA ke surel pemilik, dibatasi `REPORT_LIMITS.testPerHour` per jam per
- * pemilik (tiap percobaan dihitung, juga yang gagal). Hanya pemilik atau super admin. Tanpa SMTP = `UNAVAILABLE`;
- * laporan yang dilewati atau gagal dihitung = `CONFLICT` dengan alasannya (tanpa alamat atau isi surel).
+ * Kirim uji: satu surel berawalan [UJI] HANYA ke alamat PELAKU (pemilik bila pemilik sendiri; pengelola semua bila
+ * laporan milik orang lain), dibatasi `REPORT_LIMITS.testPerHour` per jam per pelaku (tiap percobaan dihitung, juga yang
+ * gagal). Pada laporan milik orang lain isinya irisan hak pemilik dan hak pelaku, dengan penanda bila ada yang
+ * disembunyikan. Tanpa SMTP = `UNAVAILABLE`; laporan yang dilewati atau gagal dihitung = `CONFLICT` dengan alasannya
+ * (tanpa alamat atau isi surel).
  */
 export async function sendTestDashboardReport(
   env: Env,
   user: UserContext,
   id: string,
 ): Promise<{ ok: true }> {
-  const row = await requireReport(env, id);
-  requireEditable(user, row);
+  const row = await loadAccessibleReport(env, user, id);
   if (env.MAILER === undefined) throw appError('UNAVAILABLE', 'SMTP belum diatur di server');
   const limited = await hitLimit(
     env,
-    `dashboard-report-test:${createHash('sha256').update(row.owner).digest('hex')}`,
+    `dashboard-report-test:${createHash('sha256').update(user.email).digest('hex')}`,
     REPORT_LIMITS.testPerHour,
     TEST_WINDOW_MS,
   );
@@ -443,7 +441,7 @@ export async function sendTestDashboardReport(
       `Kirim uji dibatasi ${REPORT_LIMITS.testPerHour} kali per jam; coba lagi nanti`,
     );
   }
-  const outcome = await runReport(env, row, nowOf(env), 'test');
+  const outcome = await runReport(env, row, nowOf(env), 'test', null, user);
   if (outcome.status !== 'ok') {
     throw appError('CONFLICT', outcome.note || 'Surel uji tidak terkirim');
   }
@@ -461,19 +459,23 @@ export async function sendTestDashboardReport(
 }
 
 /**
- * Pratinjau surel: HTML yang dihitung sekarang dengan hak pemilik, tanpa mengirim dan tanpa membuat tautan (tombol =
- * tautan contoh yang tak berfungsi). Hanya pemilik atau super admin (isinya dihitung dari hak pemilik).
+ * Pratinjau surel: HTML yang dihitung sekarang, tanpa mengirim dan tanpa membuat tautan (tombol = tautan contoh yang
+ * tak berfungsi). Pada laporan milik orang lain isinya irisan hak pemilik dan hak pelaku; `trimmed` menandai bila ada
+ * yang disembunyikan.
  */
 export async function previewDashboardReport(
   env: Env,
   user: UserContext,
   id: string,
 ): Promise<DashboardReportPreviewDto> {
-  const row = await requireReport(env, id);
-  requireEditable(user, row);
-  const outcome = await runReport(env, row, nowOf(env), 'preview');
+  const row = await loadAccessibleReport(env, user, id);
+  const outcome = await runReport(env, row, nowOf(env), 'preview', null, user);
   if (outcome.status !== 'ok' || outcome.rendered === undefined) {
     throw appError('CONFLICT', outcome.note || 'Pratinjau tidak dapat dibuat');
   }
-  return { subject: outcome.rendered.subject, html: outcome.rendered.html };
+  return {
+    subject: outcome.rendered.subject,
+    html: outcome.rendered.html,
+    trimmed: outcome.trimmed === true,
+  };
 }

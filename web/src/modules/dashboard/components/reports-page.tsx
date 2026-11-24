@@ -13,6 +13,8 @@ import { Button } from '@/components/ui/button';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
 import { useUrlSyncedText } from '@/modules/access/lib/use-url-synced-text';
+import { can } from '@/modules/auth/permissions';
+import { useMe } from '@/modules/auth/use-me';
 import {
   reportsQueryOptions,
   useRemoveReport,
@@ -43,10 +45,11 @@ type DeleteTarget = { kind: 'row'; report: DashboardReportDto };
 /**
  * Daftar laporan terjadwal (kit CRUD): cari dan filter status di klien (daftar kecil: maks. 20 per pemilik), aksi baris
  * (Ubah, Jeda/Lanjutkan, Kirim uji, Hapus) dan aksi massal Jeda/Lanjutkan. Peringatan bila SMTP belum diatur
- * (penjadwal tak mengirim apa pun). Hanya `dashboard: manage` (dijaga rute).
+ * (penjadwal tak mengirim apa pun). Minimal `dashboard: edit` (dijaga rute): milik sendiri, atau semua bagi `manage`.
  */
 export function ReportsPage({ q, state, onSearchChange }: ReportsPageProps) {
   const stack = useStackNavigation();
+  const me = useMe();
   const list = useQuery(reportsQueryOptions());
   const setEnabled = useSetReportEnabled();
   const remove = useRemoveReport();
@@ -198,6 +201,7 @@ export function ReportsPage({ q, state, onSearchChange }: ReportsPageProps) {
           selection={selection}
           busyId={pendingId}
           smtpConfigured={smtpConfigured}
+          showOwner={can(me, 'dashboard', 'manage')}
           onEdit={(report) =>
             stack.push({ to: '/dashboard/laporan/$reportId/edit', params: { reportId: report.id } })
           }

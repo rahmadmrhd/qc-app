@@ -589,6 +589,12 @@ test('Dashboard: tanpa izin kelola tampil sebagai satu butir; dengan izin kelola
   ).filter((entry) => entry.to === '/dashboard/laporan');
   expect(managerOnly).toHaveLength(1);
   expect(managerOnly[0]?.label).toBe('Dashboard');
+  // Level edit (kelola milik sendiri) cukup untuk Laporan terjadwal; tanpa izin dashboard tidak muncul.
+  expect(itemTo('/dashboard/laporan').permission).toEqual({ module: 'dashboard', level: 'edit' });
+  const editorOnly = flattenNavItems(
+    visibleNavGroups(NAV_GROUPS, stickerMe({ dashboard: 'edit' })),
+  ).filter((entry) => entry.to === '/dashboard/laporan');
+  expect(editorOnly).toHaveLength(1);
 });
 
 test('Ringkasan tak aktif di halaman Laporan terjadwal', () => {

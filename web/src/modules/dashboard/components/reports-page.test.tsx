@@ -1,8 +1,10 @@
+import type { MeDto } from '@shared/contract';
 import type { DashboardReportDto, DashboardReportListDto } from '@shared/dashboard-report';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { installIntersectionObserver } from '@/test/intersection-observer';
+import { makeMe } from '@/test/make-me';
 import { renderInRouter } from '@/test/render-in-router';
 
 const apiMock = vi.hoisted(() => vi.fn());
@@ -10,6 +12,9 @@ vi.mock('@/lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api')>()),
   api: apiMock,
 }));
+
+let me: MeDto;
+vi.mock('@/modules/auth/use-me', () => ({ useMe: () => me }));
 
 import { ReportsPage } from './reports-page';
 
@@ -41,6 +46,7 @@ const onSearchChange = vi.fn();
 
 beforeEach(() => {
   installIntersectionObserver();
+  me = makeMe({ permissions: { dashboard: 'edit' } });
   onSearchChange.mockReset();
   list = {
     reports: [row('a'), row('b', { enabled: false }), row('c', { canEdit: false })],
@@ -93,7 +99,19 @@ describe('ReportsPage', () => {
     expect((sendTest as HTMLButtonElement).disabled).toBe(true);
   });
 
-  test('aksi baris hanya untuk pemilik: laporan orang lain tanpa Ubah/Jeda/Hapus', async () => {
+  test('kolom Pemilik hanya untuk pemegang manage (kelola semua)', async () => {
+    await page();
+    await screen.findByText('Laporan a');
+    expect(screen.queryByRole('columnheader', { name: 'Pemilik' })).toBeNull();
+    me = makeMe({ permissions: { dashboard: 'manage' } });
+    apiMock.mockClear();
+    await page();
+    expect(
+      (await screen.findAllByRole('columnheader', { name: 'Pemilik' })).length,
+    ).toBeGreaterThan(0);
+  });
+
+  test('aksi baris menurut canEdit dari server: tanpa canEdit tak ada Ubah/Jeda/Hapus', async () => {
     await page();
     await screen.findByText('Laporan a');
     expect(screen.getByRole('button', { name: 'Ubah Laporan a' })).toBeTruthy();

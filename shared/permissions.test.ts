@@ -175,9 +175,11 @@ test('sanitizePermissions mempertahankan sticker dan stickerstock', () => {
   });
 });
 
-test('modul dashboard: label, level none/manage, dan petunjuk khusus', () => {
+test('modul dashboard: label, level none/edit/manage, dan petunjuk khusus', () => {
   expect(MODULES).toContain('dashboard');
   expect(MODULE_LABELS.dashboard).toBe('Dashboard');
-  expect(levelsFor('dashboard')).toEqual(['none', 'manage']);
-  expect(levelHint('dashboard', 'manage')).toContain('secara publik');
+  expect(levelsFor('dashboard')).toEqual(['none', 'edit', 'manage']);
+  expect(levelHint('dashboard', 'edit')).toContain('MILIK SENDIRI');
+  expect(levelHint('dashboard', 'manage')).toContain('milik SEMUA pengguna');
+  expect(levelHint('dashboard', 'manage')).toContain('penerima');
 });

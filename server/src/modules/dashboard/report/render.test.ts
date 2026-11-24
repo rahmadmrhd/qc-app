@@ -9,6 +9,9 @@ import {
   formatNumber,
   percentWidths,
   renderReportEmail,
+  TEST_BUTTON_NOTE,
+  TEST_NOTE,
+  TRIMMED_NOTE,
 } from './render';
 
 const CTA = 'https://qc.test/dashboard-publik/v1.abc.123.sig';
@@ -176,8 +179,35 @@ describe('struktur HTML', () => {
     expect(rendered.html).toContain('Hubungi pemilik untuk berhenti atau mengubah isinya');
   });
 
-  test('kirim uji menandai kepala', () => {
-    expect(renderReportEmail(input([], { test: true })).html).toContain('UJI');
+  test('surel uji: subjek [UJI], keterangan uji di atas badan HTML dan sebagai baris pertama teks polos', () => {
+    const rendered = renderReportEmail(input([], { test: true }));
+    expect(rendered.subject.startsWith('[UJI] ')).toBe(true);
+    expect(rendered.html).toContain(TEST_NOTE);
+    expect(rendered.html.indexOf(TEST_NOTE)).toBeLessThan(
+      rendered.html.indexOf('Ringkasan mingguan</div>'),
+    );
+    expect(rendered.text.split('\n')[0]).toBe(TEST_NOTE);
+    expect(rendered.html).not.toContain(TEST_BUTTON_NOTE);
+  });
+
+  test('surel uji laporan milik orang lain menambah kalimat tombol ke Dashboard; penanda hak tetap terpisah', () => {
+    const rendered = renderReportEmail(input([], { test: true, buttonToApp: true, trimmed: true }));
+    expect(rendered.html).toContain(TEST_BUTTON_NOTE);
+    expect(rendered.text).toContain(TEST_BUTTON_NOTE);
+    expect(rendered.html).toContain(TRIMMED_NOTE);
+    expect(rendered.html.indexOf(TEST_BUTTON_NOTE)).not.toBe(rendered.html.indexOf(TRIMMED_NOTE));
+    expect(rendered.text.split('\n').filter((line) => line === TRIMMED_NOTE)).toHaveLength(1);
+  });
+
+  test('pratinjau memuat keterangan uji tanpa awalan subjek; surel terjadwal tidak memuat keduanya', () => {
+    const preview = renderReportEmail(input([], { testNotice: true }));
+    expect(preview.html).toContain(TEST_NOTE);
+    expect(preview.subject.startsWith('[UJI]')).toBe(false);
+    const real = renderReportEmail(input([]));
+    expect(real.html).not.toContain(TEST_NOTE);
+    expect(real.text).not.toContain(TEST_NOTE);
+    expect(real.subject).not.toContain('UJI');
+    expect(real.html).not.toContain(TRIMMED_NOTE);
   });
 });
 
@@ -226,6 +256,11 @@ describe('Review Focus 5: ukuran surel', () => {
     expect(widgets).toHaveLength(12);
     const rendered = renderReportEmail(input(widgets));
     expect(byteSize(rendered.html)).toBeLessThanOrEqual(EMAIL_HTML_MAX_BYTES);
+    // Dengan keterangan uji dan penanda hak (surel uji laporan orang lain) batas tetap berlaku.
+    const test = renderReportEmail(
+      input(widgets, { test: true, buttonToApp: true, trimmed: true }),
+    );
+    expect(byteSize(test.html)).toBeLessThanOrEqual(EMAIL_HTML_MAX_BYTES);
   });
 
   test('fixture yang sengaja melebihi batas memicu render kompak dan tetap <= 90 KB', () => {

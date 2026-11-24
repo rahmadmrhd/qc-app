@@ -5,7 +5,7 @@ import { ReportFormPage } from '@/modules/dashboard/components/report-form-page'
 
 export const Route = createFileRoute('/_app/dashboard/laporan/new')({
   staticData: { crumb: 'Tambah', pageWidth: 'narrow' },
-  beforeLoad: ({ context }) => requirePermission(context.queryClient, 'dashboard', 'manage'),
+  beforeLoad: ({ context }) => requirePermission(context.queryClient, 'dashboard', 'edit'),
   component: NewReportRoute,
 });
 

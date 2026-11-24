@@ -35,6 +35,7 @@ beforeEach(async () => {
   await seedBusinessUnit(env, { id: 'bu-y', code: 'Y', name: 'BU Ye' });
   await seedBusinessUnit(env, { id: 'bu-z', code: 'Z', name: 'BU Zet' });
   await seedRole(env, { id: 'r-dash', name: 'Dash', permissions: { dashboard: 'manage' } });
+  await seedRole(env, { id: 'r-dash-edit', name: 'DashEdit', permissions: { dashboard: 'edit' } });
   await seedRole(env, { id: 'r-sn', name: 'SN', permissions: { serial: 'view' } });
   await seedRole(env, { id: 'r-hs', name: 'HS', permissions: { handover: 'view' } });
   await seedRole(env, { id: 'r-st', name: 'ST', permissions: { sticker: 'view' } });
@@ -146,7 +147,21 @@ describe('Review Focus 1: pembagi yang diturunkan haknya', () => {
     expect(await view(row)).toBeNull();
   });
 
-  test('pembagi kehilangan dashboard: manage = null', async () => {
+  test('pembagi turun ke dashboard: edit tetap dilayani', async () => {
+    const row = await share();
+    await env.DB.prepare('UPDATE users SET assignments = ? WHERE email = ?')
+      .bind(
+        JSON.stringify([
+          { locationId: null, roleIds: ['r-dash-edit'] },
+          { locationId: 'loc-a', roleIds: ['r-hs'] },
+        ]),
+        SHARER,
+      )
+      .run();
+    expect(await view(row)).not.toBeNull();
+  });
+
+  test('pembagi kehilangan izin dashboard sama sekali = null', async () => {
     const row = await share();
     await env.DB.prepare('UPDATE users SET assignments = ? WHERE email = ?')
       .bind(

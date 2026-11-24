@@ -35,8 +35,8 @@ async function copyUrl(url: string): Promise<void> {
 }
 
 /**
- * Daftar tautan yang dibagikan. Semua pemegang `dashboard: manage` melihatnya dan boleh mencabut; "Salin tautan"
- * hanya muncul bila server mengirim `url` (pembagi atau super admin). Status selalu berupa teks, bukan warna saja.
+ * Daftar tautan yang dibagikan. Pemegang `dashboard: edit` melihat tautannya sendiri; `manage`/super admin melihat
+ * semua. Semua baris boleh dicabut; "Salin tautan" muncul bila server mengirim `url`. Status selalu berupa teks, bukan warna saja.
  */
 export function SharesDialog({ onClose }: { onClose: () => void }) {
   const shares = useQuery(sharesQueryOptions());

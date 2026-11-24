@@ -63,7 +63,7 @@ export interface DashboardShareDto {
   widgetCount: number;
   /** Terisi bila tautan diterbitkan laporan terjadwal (bukan dibagikan manual). */
   reportId: string;
-  /** Hanya untuk pembagi atau super admin. */
+  /** Hanya bila pemanggil boleh mengelola tautan ini (pembagi, atau `manage`/super admin) dan tautan masih aktif. */
   url?: string;
 }
 

@@ -12,7 +12,7 @@ export const Route = createFileRoute('/_app/dashboard/laporan/$reportId/')({
         'Laporan',
     }),
   },
-  beforeLoad: ({ context }) => requirePermission(context.queryClient, 'dashboard', 'manage'),
+  beforeLoad: ({ context }) => requirePermission(context.queryClient, 'dashboard', 'edit'),
   // Laporan yang tak ada ditangani halaman sebagai "tidak ditemukan".
   loader: ({ context, params }) =>
     context.queryClient.ensureQueryData(reportQueryOptions(params.reportId)).catch(() => undefined),

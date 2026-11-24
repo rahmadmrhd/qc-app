@@ -180,19 +180,39 @@ describe('ReportView: pemilik', () => {
   });
 });
 
-describe('ReportView: bukan pemilik', () => {
-  test('hanya metadata: tanpa penerima, pratinjau, tautan, dan aksi ubah', async () => {
-    current = report({ canEdit: false, recipients: [], links: undefined });
+describe('ReportView: laporan milik orang lain (pengelola semua)', () => {
+  test('pengelola semua melihat penerima, pratinjau, dan tautan; tanpa catatan "hanya metadata"', async () => {
+    current = report({ owner: 'lain@x.com' });
     await view();
     expect(await screen.findByRole('heading', { name: 'Ringkasan mingguan' })).toBeTruthy();
-    expect(screen.getByText(/Anda melihat metadata laporan/)).toBeTruthy();
-    expect(screen.queryByText('rahasia@contoh.id')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Muat pratinjau' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Salin tautan' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Ubah' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Aksi lainnya' })).toBeNull();
-    // BU dan lokasi (nama milik pemilik) juga tidak ditampilkan kepada non-pemilik
-    expect(screen.queryByText('B1 · BU Satu')).toBeNull();
+    expect(screen.queryByText(/Anda melihat metadata laporan/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Muat pratinjau' })).toBeTruthy();
+    expect(screen.getByText('lain@x.com')).toBeTruthy();
+  });
+
+  test('pratinjau yang dipangkas hak pelaku menampilkan penanda jelas', async () => {
+    current = report({ owner: 'lain@x.com' });
+    apiMock.mockImplementation(async (id: string) => {
+      if (id === 'dashboardReports.get') return current;
+      if (id === 'dashboardReports.list') return { reports: [current], smtpConfigured, limit: 20 };
+      if (id === 'dashboardReports.preview') {
+        return { subject: 'S', html: '<p>isi surel</p>', trimmed: true };
+      }
+      if (id === 'activity.list') return { entries: [], nextCursor: null };
+      throw new Error(`api tak terduga: ${id}`);
+    });
+    await view();
+    await userEvent.click(await screen.findByRole('button', { name: 'Muat pratinjau' }));
+    expect(
+      await screen.findByText('Sebagian data disembunyikan karena hak akses Anda.'),
+    ).toBeTruthy();
+  });
+
+  test('tanpa pemangkasan tidak ada penanda', async () => {
+    await view();
+    await userEvent.click(await screen.findByRole('button', { name: 'Muat pratinjau' }));
+    await screen.findByTitle('Pratinjau surel');
+    expect(screen.queryByText('Sebagian data disembunyikan karena hak akses Anda.')).toBeNull();
   });
 });
 

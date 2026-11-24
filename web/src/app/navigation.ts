@@ -112,7 +112,7 @@ export const NAV_GROUPS: NavGroup[] = [
         id: 'dashboard',
         label: 'Dashboard',
         icon: LayoutDashboard,
-        // Pengguna tanpa `dashboard: manage` hanya punya Ringkasan: tampil sebagai butir "Dashboard" biasa.
+        // Pengguna tanpa `dashboard: edit` hanya punya Ringkasan: tampil sebagai butir "Dashboard" biasa.
         collapseSingle: true,
         children: [
           {
@@ -126,7 +126,7 @@ export const NAV_GROUPS: NavGroup[] = [
             label: 'Laporan terjadwal',
             to: '/dashboard/laporan',
             icon: CalendarClock,
-            permission: { module: 'dashboard', level: 'manage' },
+            permission: { module: 'dashboard', level: 'edit' },
           },
         ],
       },

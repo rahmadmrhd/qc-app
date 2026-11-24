@@ -21,7 +21,8 @@ setDefaultTimeout(60_000);
 let env: TestEnv;
 const NOW = Date.parse('2026-11-23T05:00:00.000Z'); // Senin 23 Nov 2026 12:00 WIB
 const OWNER = 'owner@gmail.com';
-const OTHER = 'other@gmail.com';
+const OTHER = 'other@gmail.com'; // dashboard: manage (kelola semua)
+const EDITOR = 'editor@gmail.com'; // dashboard: edit (hanya milik sendiri)
 const ADMIN = 'admin@gmail.com';
 
 beforeEach(async () => {
@@ -30,6 +31,7 @@ beforeEach(async () => {
   await seedBusinessUnit(env, { id: 'bu-x', code: 'X' });
   await seedBusinessUnit(env, { id: 'bu-y', code: 'Y' });
   await seedRole(env, { id: 'r-dash', name: 'Dash', permissions: { dashboard: 'manage' } });
+  await seedRole(env, { id: 'r-dash-edit', name: 'DashEdit', permissions: { dashboard: 'edit' } });
   await seedRole(env, { id: 'r-sn', name: 'SN', permissions: { serial: 'view' } });
   await seedUser(env, {
     id: 'u-owner',
@@ -44,6 +46,14 @@ beforeEach(async () => {
     buAssignments: [{ buId: 'bu-x', roleIds: ['r-sn'] }],
   });
 });
+
+const seedEditor = () =>
+  seedUser(env, {
+    id: 'u-editor',
+    email: EDITOR,
+    assignments: [{ locationId: null, roleIds: ['r-dash-edit'] }],
+    buAssignments: [{ buId: 'bu-x', roleIds: ['r-sn'] }],
+  });
 
 const userOf = async (email = OWNER): Promise<UserContext> => {
   const user = await loadUserContext(env, email);
@@ -309,8 +319,8 @@ describe('simpan', () => {
   });
 });
 
-describe('Review Focus 4: hak', () => {
-  test('pemegang manage lain melihat metadata saja; mengubah, menjeda, dan menghapus = FORBIDDEN; super admin boleh', async () => {
+describe('hak: edit (milik sendiri) dan manage (semua)', () => {
+  async function seedWithIssuedLink() {
     const owner = await userOf();
     const created = await saveDashboardReport(env, owner, input());
     await insertShareStmt(env.DB, {
@@ -324,37 +334,58 @@ describe('Review Focus 4: hak', () => {
       scope: '{}',
       report_id: created.id,
     }).run();
+    return { owner, created };
+  }
 
-    const other = await userOf(OTHER);
-    const seen = await getDashboardReport(env, other, created.id);
-    expect(seen.recipients).toEqual([]);
-    expect(seen.recipientCount).toBe(1);
-    expect(seen.canEdit).toBe(false);
-    expect(seen.links).toBeUndefined();
-    expect(seen.scope.buIds).toEqual([]);
-    expect(seen.scope.widgets).toEqual([{ id: 'sn.recorded', filters: {} }]);
-    const listed = (await listDashboardReports(env, other)).reports[0];
-    expect(listed?.recipients).toEqual([]);
-    expect(listed?.canEdit).toBe(false);
+  test('pemegang edit lain: daftar kosong dan semua operasi atas baris orang = NOT_FOUND seragam', async () => {
+    await seedEditor();
+    const { created } = await seedWithIssuedLink();
+    const editor = await userOf(EDITOR);
+    expect((await listDashboardReports(env, editor)).reports).toEqual([]);
+    const runs = [
+      () => getDashboardReport(env, editor, created.id),
+      () =>
+        saveDashboardReport(
+          env,
+          editor,
+          input({ id: created.id, expectedUpdatedAt: created.updatedAt }),
+        ),
+      () => setDashboardReportEnabled(env, editor, { id: created.id, enabled: false }),
+      () => removeDashboardReport(env, editor, created.id),
+    ];
+    for (const run of runs) {
+      const error = await captureAppErrorAsync(run);
+      expect(error?.code).toBe('NOT_FOUND');
+      expect(error?.message).toBe('Laporan tidak ditemukan');
+    }
+    expect(await loadReport(env.DB, created.id)).not.toBeNull();
+  });
 
+  test('manage dan super admin melihat penerima, cakupan, dan tautan terbitan; pemilik tidak berpindah', async () => {
+    const { owner, created } = await seedWithIssuedLink();
     const mine = await getDashboardReport(env, owner, created.id);
     expect(mine.recipients).toEqual(['penerima@contoh.id']);
     expect(mine.canEdit).toBe(true);
     expect(mine.links?.map((link) => link.id)).toEqual(['s-terbitan']);
 
-    const forbidden = [
-      () =>
-        saveDashboardReport(
-          env,
-          other,
-          input({ id: created.id, expectedUpdatedAt: created.updatedAt }),
-        ),
-      () => setDashboardReportEnabled(env, other, { id: created.id, enabled: false }),
-      () => removeDashboardReport(env, other, created.id),
-    ];
-    for (const run of forbidden) {
-      expect((await captureAppErrorAsync(run))?.code).toBe('FORBIDDEN');
-    }
+    const other = await userOf(OTHER);
+    const seen = await getDashboardReport(env, other, created.id);
+    expect(seen.recipients).toEqual(['penerima@contoh.id']);
+    expect(seen.canEdit).toBe(true);
+    expect(seen.links?.map((link) => link.id)).toEqual(['s-terbitan']);
+    expect(seen.links?.[0]?.url).toStartWith('https://qc.test/dashboard-publik/');
+    expect(seen.scope.buIds).toEqual(['bu-x']);
+    const listed = (await listDashboardReports(env, other)).reports[0];
+    expect(listed?.recipients).toEqual(['penerima@contoh.id']);
+
+    env.clock.advance(1000);
+    const edited = await saveDashboardReport(
+      env,
+      other,
+      input({ id: created.id, expectedUpdatedAt: created.updatedAt, name: 'Diubah manage' }),
+    );
+    expect(edited.owner).toBe(OWNER);
+    expect(edited.name).toBe('Diubah manage');
 
     const admin = await userOf(ADMIN);
     expect(admin.isSuperAdmin).toBe(true);
@@ -363,6 +394,49 @@ describe('Review Focus 4: hak', () => {
     expect(adminView.links).toHaveLength(1);
     const paused = await setDashboardReportEnabled(env, admin, { id: created.id, enabled: false });
     expect(paused.enabled).toBe(false);
+    await removeDashboardReport(env, other, created.id);
+    expect(await loadReport(env.DB, created.id)).toBeNull();
+  });
+
+  test('pemegang edit membuat laporan miliknya sendiri dan hanya itu yang tampil di daftarnya', async () => {
+    await seedEditor();
+    const editor = await userOf(EDITOR);
+    const created = await saveDashboardReport(env, editor, input());
+    expect(created.owner).toBe(EDITOR);
+    expect((await listDashboardReports(env, editor)).reports.map((r) => r.id)).toEqual([
+      created.id,
+    ]);
+  });
+
+  // Perilaku TERKINI yang dicatat (butuh konfirmasi pemilik, lihat laporan): penyimpan membekukan cakupan dengan hak
+  // PENYIMPAN. Pengelola semua dengan BU lebih sempit yang hanya mengganti nama mengecilkan himpunan BU beku pemilik.
+  test('pengelola semua dengan BU lebih sempit yang menyimpan membekukan ulang BU dengan haknya sendiri', async () => {
+    await env.DB.prepare('UPDATE users SET bu_assignments = ? WHERE email = ?')
+      .bind(
+        JSON.stringify([
+          { buId: 'bu-x', roleIds: ['r-sn'] },
+          { buId: 'bu-y', roleIds: ['r-sn'] },
+        ]),
+        OWNER,
+      )
+      .run();
+    const owner = await userOf();
+    const created = await saveDashboardReport(env, owner, input());
+    expect([...created.scope.buIds].sort()).toEqual(['bu-x', 'bu-y']);
+    env.clock.advance(1000);
+    const other = await userOf(OTHER); // hanya BU x
+    const renamed = await saveDashboardReport(
+      env,
+      other,
+      input({
+        id: created.id,
+        expectedUpdatedAt: created.updatedAt,
+        name: 'Ganti nama saja',
+        filter: { from: '', to: '', buIds: created.scope.buIds },
+      }),
+    );
+    expect(renamed.scope.buIds).toEqual(['bu-x']);
+    expect(renamed.owner).toBe(OWNER);
   });
 });
 

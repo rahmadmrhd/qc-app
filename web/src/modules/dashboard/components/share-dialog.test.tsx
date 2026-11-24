@@ -38,14 +38,17 @@ const NONE_LEVELS = {
   dashboard: 'none',
 } as MeDto['permissions'];
 
-function makeUser(options: { manage?: boolean; serial?: boolean }): MeDto {
+function makeUser(options: { manage?: boolean; edit?: boolean; serial?: boolean }): MeDto {
   return {
     email: 'a@x.com',
     name: 'A',
     isSuperAdmin: false,
     canManageSerialSettings: false,
     sharedAccount: false,
-    permissions: { ...NONE_LEVELS, dashboard: options.manage ? 'manage' : 'none' },
+    permissions: {
+      ...NONE_LEVELS,
+      dashboard: options.manage ? 'manage' : options.edit ? 'edit' : 'none',
+    },
     locations: [
       {
         id: 'l1',
@@ -125,7 +128,7 @@ function DialogHarness({ initial = {} }: { initial?: Record<string, unknown> }) 
 const widgetBox = (id: Parameters<typeof widgetMeta>[0]) =>
   screen.getByRole('checkbox', { name: widgetMeta(id).title });
 
-test('tanpa izin dashboard manage, tombol Bagikan tidak tampil', async () => {
+test('tanpa izin dashboard (edit), tombol Bagikan tidak tampil', async () => {
   me = makeUser({ manage: false });
   await renderInRouter(
     <DashboardPage search={parseDashboardSearch({})} onSearchChange={() => undefined} />,
@@ -133,6 +136,16 @@ test('tanpa izin dashboard manage, tombol Bagikan tidak tampil', async () => {
   await screen.findByRole('heading', { name: 'Serah Terima' });
   expect(screen.queryByRole('button', { name: 'Bagikan' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Tautan dibagikan' })).toBeNull();
+});
+
+test('pemegang dashboard: edit melihat tombol Bagikan dan Tautan dibagikan (mengelola miliknya sendiri)', async () => {
+  me = makeUser({ edit: true });
+  await renderInRouter(
+    <DashboardPage search={parseDashboardSearch({})} onSearchChange={() => undefined} />,
+  );
+  await screen.findByRole('heading', { name: 'Serah Terima' });
+  expect(screen.getByRole('button', { name: 'Bagikan' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Tautan dibagikan' })).toBeTruthy();
 });
 
 test('pemegang dashboard: manage melihat tombol Bagikan dan Tautan dibagikan', async () => {

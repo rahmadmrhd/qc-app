@@ -9,10 +9,11 @@ let env: TestEnv;
 let rest: ReturnType<typeof restClient>;
 
 const NOW = Date.parse('2026-11-23T05:00:00.000Z');
-const OWNER = 'owner@gmail.com';
-const OTHER = 'other@gmail.com';
-const VIEWER = 'viewer@gmail.com';
-const ADMIN = 'admin@gmail.com';
+const OWNER = 'owner@gmail.com'; // dashboard: edit (pemilik laporan)
+const OTHER = 'other@gmail.com'; // dashboard: edit (pemilik lain)
+const MANAGER = 'manager@gmail.com'; // dashboard: manage (kelola semua)
+const VIEWER = 'viewer@gmail.com'; // tanpa izin dashboard
+const ADMIN = 'admin@gmail.com'; // super admin
 
 const BODY = {
   name: 'Ringkasan mingguan',
@@ -30,16 +31,18 @@ beforeEach(async () => {
   env.clock.set(NOW);
   rest = restClient(env);
   await seedBusinessUnit(env, { id: 'bu-x', code: 'X' });
-  await seedRole(env, { id: 'r-dash', name: 'Dash', permissions: { dashboard: 'manage' } });
+  await seedRole(env, { id: 'r-dash', name: 'Dash', permissions: { dashboard: 'edit' } });
+  await seedRole(env, { id: 'r-dash-all', name: 'DashAll', permissions: { dashboard: 'manage' } });
   await seedRole(env, { id: 'r-sn', name: 'SN', permissions: { serial: 'view' } });
-  for (const [id, email] of [
-    ['u-owner', OWNER],
-    ['u-other', OTHER],
+  for (const [id, email, role] of [
+    ['u-owner', OWNER, 'r-dash'],
+    ['u-other', OTHER, 'r-dash'],
+    ['u-manager', MANAGER, 'r-dash-all'],
   ] as const) {
     await seedUser(env, {
       id,
       email,
-      assignments: [{ locationId: null, roleIds: ['r-dash'] }],
+      assignments: [{ locationId: null, roleIds: [role] }],
       buAssignments: [{ buId: 'bu-x', roleIds: ['r-sn'] }],
     });
   }
@@ -53,8 +56,16 @@ beforeEach(async () => {
 const create = (email: string | null = OWNER, body: unknown = BODY) =>
   rest.post('/dashboard-reports', { email, body });
 
+/** Jawaban galat tanpa `requestId` (selalu beda): membandingkan "baris orang lain" dengan "id acak". */
+async function problemOf(response: Response): Promise<Record<string, unknown>> {
+  const { requestId: _ignored, ...others } = await jsonOf(response);
+  return { httpStatus: response.status, ...others };
+}
+
+const UNKNOWN = '01zzzzzzzzzzzzzzzzzzzzzzzz';
+
 describe('izin', () => {
-  test('tanpa dashboard: manage = 403 pada semua rute; tanpa sesi = 401', async () => {
+  test('tanpa dashboard: edit = 403 pada semua rute; tanpa sesi = 401', async () => {
     expect((await create(VIEWER)).status).toBe(403);
     expect((await rest.get('/dashboard-reports', { email: VIEWER })).status).toBe(403);
     expect((await rest.get('/dashboard-reports/x', { email: VIEWER })).status).toBe(403);
@@ -66,13 +77,15 @@ describe('izin', () => {
         .status,
     ).toBe(403);
     expect((await rest.del('/dashboard-reports/x', { email: VIEWER })).status).toBe(403);
+    expect((await rest.post('/dashboard-reports/x/send-test', { email: VIEWER })).status).toBe(403);
+    expect((await rest.get('/dashboard-reports/x/preview', { email: VIEWER })).status).toBe(403);
     expect((await create(null)).status).toBe(401);
     expect((await rest.get('/dashboard-reports', { email: null })).status).toBe(401);
   });
 });
 
 describe('CRUD', () => {
-  test('create = 201 dengan ETag; list dan get oleh pemegang manage lain tanpa alamat penerima', async () => {
+  test('create = 201; pemilik, manage, dan super admin melihat penerima penuh; edit lain tak melihat baris orang', async () => {
     const created = await create();
     expect(created.status).toBe(201);
     const dto = await jsonOf(created);
@@ -80,21 +93,30 @@ describe('CRUD', () => {
     expect(dto.recipients).toEqual(['penerima@contoh.id']);
     expect(dto.canEdit).toBe(true);
 
-    const list = (await (await rest.get('/dashboard-reports', { email: OTHER })).json()) as {
+    type ListBody = {
       reports: { id: string; recipients: string[]; recipientCount: number; canEdit: boolean }[];
       smtpConfigured: boolean;
       limit: number;
     };
-    expect(list.reports.map((row) => row.id)).toEqual([dto.id as string]);
-    expect(list.reports[0]?.recipients).toEqual([]);
-    expect(list.reports[0]?.recipientCount).toBe(1);
-    expect(list.reports[0]?.canEdit).toBe(false);
-    expect(list.limit).toBe(20);
-    expect(list.smtpConfigured).toBe(false);
+    const listOf = async (email: string) =>
+      (await (await rest.get('/dashboard-reports', { email })).json()) as ListBody;
+    // 'own': pemegang edit lain tidak melihat baris orang (daftar kosong).
+    expect((await listOf(OTHER)).reports).toEqual([]);
+    for (const email of [OWNER, MANAGER, ADMIN]) {
+      const list = await listOf(email);
+      expect(list.reports.map((row) => row.id)).toEqual([dto.id as string]);
+      expect(list.reports[0]?.recipients).toEqual(['penerima@contoh.id']);
+      expect(list.reports[0]?.recipientCount).toBe(1);
+      expect(list.reports[0]?.canEdit).toBe(true);
+      expect(list.limit).toBe(20);
+      expect(list.smtpConfigured).toBe(false);
+    }
 
-    const got = await rest.get(`/dashboard-reports/${dto.id}`, { email: OTHER });
+    const got = await rest.get(`/dashboard-reports/${dto.id}`, { email: MANAGER });
     expect(got.status).toBe(200);
-    expect(((await got.json()) as { recipients: string[] }).recipients).toEqual([]);
+    const body = (await got.json()) as { recipients: string[]; scope: { widgets: unknown[] } };
+    expect(body.recipients).toEqual(['penerima@contoh.id']);
+    expect(body.scope.widgets).toHaveLength(1);
   });
 
   test('masukan tak sah = 422 VALIDATION', async () => {
@@ -113,7 +135,7 @@ describe('CRUD', () => {
     }
   });
 
-  test('PUT dengan If-Match usang = 412; versi tepat lolos; non-pemilik = 403; super admin boleh', async () => {
+  test('PUT dengan If-Match usang = 412; versi tepat lolos; manage dan super admin boleh dan pemilik tetap', async () => {
     const dto = await jsonOf(await create());
     const id = dto.id as string;
     env.clock.advance(1000);
@@ -130,38 +152,47 @@ describe('CRUD', () => {
     });
     expect(stale.status).toBe(412);
     const fresh = (await jsonOf(updated)).updatedAt as string;
-    const forbidden = await rest.put(`/dashboard-reports/${id}`, {
-      email: OTHER,
-      body: BODY,
+    env.clock.advance(1000);
+    const byManager = await rest.put(`/dashboard-reports/${id}`, {
+      email: MANAGER,
+      body: { ...BODY, name: 'Oleh manage' },
       headers: { 'if-match': `"${fresh}"` },
     });
-    expect(forbidden.status).toBe(403);
+    expect(byManager.status).toBe(200);
+    const managed = await jsonOf(byManager);
+    expect(managed.owner).toBe(OWNER);
     env.clock.advance(1000);
     const admin = await rest.put(`/dashboard-reports/${id}`, {
       email: ADMIN,
       body: { ...BODY, name: 'Oleh admin' },
-      headers: { 'if-match': `"${fresh}"` },
+      headers: { 'if-match': `"${managed.updatedAt as string}"` },
     });
     expect(admin.status).toBe(200);
     expect((await jsonOf(admin)).owner).toBe(OWNER);
   });
 
-  test('setEnabled dan remove: pemilik boleh, pemegang manage lain 403, id tak dikenal 404', async () => {
+  test('setEnabled dan remove: pemilik dan manage boleh, edit lain 404 seragam, id tak dikenal 404', async () => {
     const dto = await jsonOf(await create());
     const id = dto.id as string;
     const denied = await rest.post(`/dashboard-reports/${id}/enabled`, {
       email: OTHER,
       body: { enabled: false },
     });
-    expect(denied.status).toBe(403);
+    expect(denied.status).toBe(404);
     const paused = await rest.post(`/dashboard-reports/${id}/enabled`, {
       email: OWNER,
       body: { enabled: false },
     });
     expect(paused.status).toBe(200);
     expect((await jsonOf(paused)).enabled).toBe(false);
-    expect((await rest.del(`/dashboard-reports/${id}`, { email: OTHER })).status).toBe(403);
-    const removed = await rest.del(`/dashboard-reports/${id}`, { email: OWNER });
+    const resumed = await rest.post(`/dashboard-reports/${id}/enabled`, {
+      email: MANAGER,
+      body: { enabled: true },
+    });
+    expect(resumed.status).toBe(200);
+    expect((await jsonOf(resumed)).enabled).toBe(true);
+    expect((await rest.del(`/dashboard-reports/${id}`, { email: OTHER })).status).toBe(404);
+    const removed = await rest.del(`/dashboard-reports/${id}`, { email: MANAGER });
     expect(removed.status).toBe(200);
     expect(await removed.json()).toEqual({ ok: true });
     expect((await rest.get(`/dashboard-reports/${id}`, { email: OWNER })).status).toBe(404);
@@ -169,25 +200,85 @@ describe('CRUD', () => {
   });
 });
 
+type Call = (id: string, email: string, tag: string) => Promise<Response>;
+const ROUTES: readonly [string, Call][] = [
+  ['get', (id, email) => rest.get(`/dashboard-reports/${id}`, { email })],
+  [
+    'save',
+    (id, email, tag) =>
+      rest.put(`/dashboard-reports/${id}`, {
+        email,
+        body: BODY,
+        headers: { 'if-match': `"${tag}"` },
+      }),
+  ],
+  [
+    'setEnabled',
+    (id, email) =>
+      rest.post(`/dashboard-reports/${id}/enabled`, { email, body: { enabled: false } }),
+  ],
+  ['sendTest', (id, email) => rest.post(`/dashboard-reports/${id}/send-test`, { email })],
+  ['preview', (id, email) => rest.get(`/dashboard-reports/${id}/preview`, { email })],
+  ['remove', (id, email) => rest.del(`/dashboard-reports/${id}`, { email })],
+];
+
+describe('matriks hak: baris sendiri vs baris orang lain', () => {
+  test('edit lain: baris orang = jawaban SAMA PERSIS dengan id acak (status dan badan), tak ada yang berubah', async () => {
+    env.MAILER = { send: async () => undefined };
+    const dto = await jsonOf(await create());
+    const id = dto.id as string;
+    const tag = dto.updatedAt as string;
+    for (const [name, call] of ROUTES) {
+      const other = await call(id, OTHER, tag);
+      const unknown = await call(UNKNOWN, OTHER, tag);
+      expect([name, other.status]).toEqual([name, 404]);
+      expect([name, await problemOf(other)]).toEqual([name, await problemOf(unknown)]);
+    }
+    const after = await jsonOf(await rest.get(`/dashboard-reports/${id}`, { email: OWNER }));
+    expect(after.enabled).toBe(true);
+    expect(after.updatedAt).toBe(tag);
+  });
+
+  test('pemilik, manage, dan super admin: semua rute baris itu berhasil (200)', async () => {
+    env.MAILER = { send: async () => undefined };
+    for (const email of [OWNER, MANAGER, ADMIN]) {
+      const dto = await jsonOf(await create(OWNER));
+      const id = dto.id as string;
+      for (const [name, call] of ROUTES) {
+        const fresh = (await jsonOf(await rest.get(`/dashboard-reports/${id}`, { email: OWNER })))
+          .updatedAt as string;
+        env.clock.advance(1000);
+        const response = await call(id, email, fresh);
+        expect([email, name, response.status]).toEqual([email, name, 200]);
+      }
+    }
+  });
+});
+
 describe('activity.list untuk dashboardReport', () => {
-  test('hanya pemegang manage; entri tanpa alamat penerima; id tak dikenal NOT_FOUND', async () => {
+  test('pemilik, manage, dan super admin; edit lain NOT_FOUND seragam; entri tanpa alamat penerima', async () => {
     const dto = await jsonOf(await create());
     const read = (email: string, id: string) =>
       rest.get(`/activity?kind=dashboardReport&id=${id}`, { email });
-    const ok = await read(OTHER, dto.id as string);
-    expect(ok.status).toBe(200);
-    const page = (await ok.json()) as { entries: { action: string }[] };
-    expect(page.entries.map((entry) => entry.action)).toEqual(['dashboard.report_create']);
-    expect(JSON.stringify(page)).not.toContain('contoh.id');
+    for (const email of [OWNER, MANAGER, ADMIN]) {
+      const ok = await read(email, dto.id as string);
+      expect([email, ok.status]).toEqual([email, 200]);
+      const page = (await ok.json()) as { entries: { action: string }[] };
+      expect(page.entries.map((entry) => entry.action)).toEqual(['dashboard.report_create']);
+      expect(JSON.stringify(page)).not.toContain('contoh.id');
+    }
+    const other = await read(OTHER, dto.id as string);
+    expect(other.status).toBe(404);
+    expect(await problemOf(other)).toEqual(await problemOf(await read(OTHER, UNKNOWN)));
     expect((await read(VIEWER, dto.id as string)).status).toBe(403);
-    expect((await read(OTHER, 'tidak-ada')).status).toBe(404);
+    expect((await read(OWNER, 'tidak-ada')).status).toBe(404);
   });
 });
 
 describe('sendTest dan preview', () => {
   const makeReport = async () => (await jsonOf(await create())).id as string;
 
-  test('sendTest: pemilik dan super admin boleh, pemegang manage lain 403, ke surel pemilik saja, audit tanpa alamat', async () => {
+  test('sendTest: ke surel PELAKU (pemilik ke pemilik; manage dan super admin ke dirinya), audit tanpa alamat', async () => {
     const sent: { to: string[]; bcc?: string[]; subject: string }[] = [];
     env.MAILER = {
       send: async (message) => {
@@ -196,7 +287,7 @@ describe('sendTest dan preview', () => {
     };
     const id = await makeReport();
     const url = `/dashboard-reports/${id}/send-test`;
-    expect((await rest.post(url, { email: OTHER })).status).toBe(403);
+    expect((await rest.post(url, { email: OTHER })).status).toBe(404);
     expect((await rest.post(url, { email: VIEWER })).status).toBe(403);
     const ok = await rest.post(url, { email: OWNER });
     expect(ok.status).toBe(200);
@@ -204,18 +295,20 @@ describe('sendTest dan preview', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]?.bcc).toEqual([OWNER]);
     expect(sent[0]?.subject.startsWith('[UJI] ')).toBe(true);
-    // Super admin mengirim uji laporan orang lain: tetap ke surel PEMILIK.
+    // Pengelola semua menguji laporan orang lain: surel uji ke alamat PELAKU, bukan pemilik.
     expect((await rest.post(url, { email: ADMIN })).status).toBe(200);
-    expect(sent[1]?.bcc).toEqual([OWNER]);
+    expect(sent[1]?.bcc).toEqual([ADMIN]);
+    expect((await rest.post(url, { email: MANAGER })).status).toBe(200);
+    expect(sent[2]?.bcc).toEqual([MANAGER]);
 
     const log = (await (
-      await rest.get(`/activity?kind=dashboardReport&id=${id}`, { email: OTHER })
+      await rest.get(`/activity?kind=dashboardReport&id=${id}`, { email: OWNER })
     ).json()) as { entries: { action: string }[] };
-    expect(log.entries.filter((e) => e.action === 'dashboard.report_send_test')).toHaveLength(2);
+    expect(log.entries.filter((e) => e.action === 'dashboard.report_send_test')).toHaveLength(3);
     expect(JSON.stringify(log)).not.toContain('contoh.id');
   });
 
-  test('sendTest: dibatasi 5 per jam per pemilik; jendela berikutnya pulih; id tak dikenal 404', async () => {
+  test('sendTest: dibatasi 5 per jam per PELAKU; pelaku lain tidak ikut terhitung; jendela berikutnya pulih; id tak dikenal 404', async () => {
     env.MAILER = { send: async () => undefined };
     const id = await makeReport();
     const url = `/dashboard-reports/${id}/send-test`;
@@ -225,6 +318,8 @@ describe('sendTest dan preview', () => {
     const sixth = await rest.post(url, { email: OWNER });
     expect(sixth.status).toBe(409);
     expect((await jsonOf(sixth)).code).toBe('CONFLICT');
+    // Pengelola lain punya jatahnya sendiri (kunci per pelaku).
+    expect((await rest.post(url, { email: MANAGER })).status).toBe(200);
     env.clock.advance(3_600_001);
     expect((await rest.post(url, { email: OWNER })).status).toBe(200);
     expect(
@@ -239,16 +334,18 @@ describe('sendTest dan preview', () => {
     expect((await jsonOf(response)).code).toBe('UNAVAILABLE');
   });
 
-  test('preview: pemilik dan super admin mendapat subjek dan HTML, tanpa tautan terbitan; pemegang manage lain 403', async () => {
+  test('preview: pemilik, manage, dan super admin mendapat subjek dan HTML, tanpa tautan terbitan; edit lain 404', async () => {
     const id = await makeReport();
     const url = `/dashboard-reports/${id}/preview`;
-    expect((await rest.get(url, { email: OTHER })).status).toBe(403);
+    expect((await rest.get(url, { email: OTHER })).status).toBe(404);
     const response = await rest.get(url, { email: OWNER });
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { subject: string; html: string };
+    const body = (await response.json()) as { subject: string; html: string; trimmed: boolean };
     expect(body.subject).toStartWith('[QC] Ringkasan mingguan, Minggu lalu');
     expect(body.html).toContain('https://qc.test/dashboard-publik/contoh');
     expect(body.html).not.toContain('penerima@contoh.id');
+    expect(body.trimmed).toBe(false);
+    expect((await rest.get(url, { email: MANAGER })).status).toBe(200);
     expect((await rest.get(url, { email: ADMIN })).status).toBe(200);
     const shares = await env.DB.prepare('SELECT COUNT(*) AS n FROM dashboard_shares').first<{
       n: number | string;
@@ -259,7 +356,7 @@ describe('sendTest dan preview', () => {
     );
   });
 
-  test('get: tautan terbitan tampil bagi pemilik, tanpa url bagi pemegang manage lain', async () => {
+  test('get: tautan terbitan tampil (dengan url) bagi pemilik, manage, dan super admin; edit lain 404', async () => {
     env.MAILER = { send: async () => undefined };
     const id = await makeReport();
     await env.DB.prepare("UPDATE dashboard_reports SET last_run_key = '' WHERE id = ?")
@@ -267,14 +364,13 @@ describe('sendTest dan preview', () => {
       .run();
     const { checkDashboardReports } = await import('./run');
     await checkDashboardReports(env, NOW);
-    const own = (await (await rest.get(`/dashboard-reports/${id}`, { email: OWNER })).json()) as {
-      links?: { url?: string; status: string }[];
-    };
-    expect(own.links).toHaveLength(1);
-    expect(own.links?.[0]?.url).toStartWith('https://qc.test/dashboard-publik/');
-    const other = (await (await rest.get(`/dashboard-reports/${id}`, { email: OTHER })).json()) as {
-      links?: unknown[];
-    };
-    expect(other.links).toBeUndefined();
+    for (const email of [OWNER, MANAGER, ADMIN]) {
+      const body = (await (await rest.get(`/dashboard-reports/${id}`, { email })).json()) as {
+        links?: { url?: string; status: string }[];
+      };
+      expect([email, body.links?.length]).toEqual([email, 1]);
+      expect(body.links?.[0]?.url).toStartWith('https://qc.test/dashboard-publik/');
+    }
+    expect((await rest.get(`/dashboard-reports/${id}`, { email: OTHER })).status).toBe(404);
   });
 });

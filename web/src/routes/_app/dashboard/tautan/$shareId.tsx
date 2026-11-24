@@ -12,7 +12,7 @@ export const Route = createFileRoute('/_app/dashboard/tautan/$shareId')({
         'Tautan',
     }),
   },
-  beforeLoad: ({ context }) => requirePermission(context.queryClient, 'dashboard', 'manage'),
+  beforeLoad: ({ context }) => requirePermission(context.queryClient, 'dashboard', 'edit'),
   // Tautan yang tak ada atau di luar hak baca ditangani halaman sebagai "tidak ditemukan".
   loader: ({ context, params }) =>
     context.queryClient

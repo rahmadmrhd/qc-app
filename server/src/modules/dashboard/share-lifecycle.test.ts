@@ -21,7 +21,8 @@ let rest: ReturnType<typeof restClient>;
 const NOW = Date.parse('2026-11-23T05:00:00.000Z');
 const DAY = 86_400_000;
 const SHARER = 'sharer@gmail.com';
-const OTHER = 'other@gmail.com';
+const OTHER = 'other@gmail.com'; // dashboard: manage (kelola semua), tanpa hak Serah Terima
+const EDITOR = 'editor@gmail.com'; // dashboard: edit (hanya milik sendiri)
 const VIEWER = 'viewer@gmail.com';
 
 const BODY: CreateShareInput = {
@@ -43,7 +44,8 @@ beforeEach(async () => {
   await seedLocation(env, { id: 'loc-a', code: 'A', name: 'Lokasi A' });
   await seedBusinessUnit(env, { id: 'bu-x', code: 'X', name: 'BU Ex' });
   await seedCustomer(env, { id: 'c1', name: 'PT Maju' });
-  await seedRole(env, { id: 'r-dash', name: 'Dash', permissions: { dashboard: 'manage' } });
+  await seedRole(env, { id: 'r-dash', name: 'Dash', permissions: { dashboard: 'edit' } });
+  await seedRole(env, { id: 'r-dash-all', name: 'DashAll', permissions: { dashboard: 'manage' } });
   await seedRole(env, { id: 'r-sn', name: 'SN', permissions: { serial: 'view' } });
   await seedRole(env, { id: 'r-hs', name: 'HS', permissions: { handover: 'view' } });
   await seedUser(env, {
@@ -59,6 +61,11 @@ beforeEach(async () => {
   await seedUser(env, {
     id: 'u-other',
     email: OTHER,
+    assignments: [{ locationId: null, roleIds: ['r-dash-all'] }],
+  });
+  await seedUser(env, {
+    id: 'u-editor',
+    email: EDITOR,
     assignments: [{ locationId: null, roleIds: ['r-dash'] }],
   });
   await seedUser(env, { id: 'u-viewer', email: VIEWER });
@@ -75,7 +82,7 @@ const getDetail = (id: string, email: string | null = SHARER) =>
   rest.get(`/dashboard-shares/${id}`, { email });
 
 describe('dashboardShares.get', () => {
-  test('izin: tanpa dashboard: manage = 403, tanpa sesi = 401, id tak dikenal = 404', async () => {
+  test('izin: tanpa dashboard: edit = 403, tanpa sesi = 401, id tak dikenal = 404', async () => {
     const { id } = await create();
     expect((await getDetail(id, VIEWER)).status).toBe(403);
     expect((await getDetail(id, null)).status).toBe(401);
@@ -84,7 +91,7 @@ describe('dashboardShares.get', () => {
     expect((await jsonOf(missing)).code).toBe('NOT_FOUND');
   });
 
-  test('ringkasan: judul, status, url hanya untuk pembagi, cakupan dengan NAMA, filter, dan nama relasi', async () => {
+  test('ringkasan: judul, status, url untuk pembagi dan pengelola semua, cakupan dengan NAMA, filter, dan nama relasi', async () => {
     const { id, url } = await create();
     const own = (await jsonOf(await getDetail(id))) as Json;
     expect(own.title).toBe('Ringkasan');
@@ -106,11 +113,13 @@ describe('dashboardShares.get', () => {
     expect(own.scope.valueNames).toEqual({ c1: 'PT Maju' });
     expect(JSON.stringify(own.scope.buNames)).not.toContain('bu-x');
 
-    // pemegang manage lain: tanpa url; nama relasi hanya lewat HAK-nya (tanpa hak Serah Terima = tak ada nama)
+    // pemegang manage lain: url terlihat (kelola semua); nama relasi hanya lewat HAK-nya (tanpa hak Serah Terima = tak ada nama)
     const other = (await jsonOf(await getDetail(id, OTHER))) as Json;
-    expect('url' in other).toBe(false);
+    expect(other.url).toBe(url);
     expect(other.scope.valueNames).toEqual({});
     expect(other.title).toBe('Ringkasan');
+    // pemegang edit lain: baris orang = NOT_FOUND
+    expect((await getDetail(id, EDITOR)).status).toBe(404);
   });
 
   test('dicabut: status, pencabut, dan url hilang', async () => {
@@ -156,7 +165,7 @@ describe('dashboardShares.get', () => {
     expect(JSON.stringify(detail)).not.toContain('.9"');
   });
 
-  test('tautan terbitan laporan hanya terbaca pemilik atau super admin', async () => {
+  test('tautan terbitan laporan terbaca pemilik, manage, dan super admin; edit lain NOT_FOUND', async () => {
     await insertShareStmt(env.DB, {
       id: 'rep-share',
       title: 'Kiriman laporan',
@@ -168,12 +177,13 @@ describe('dashboardShares.get', () => {
       scope: '{}',
       report_id: 'rep-1',
     }).run();
-    expect((await getDetail('rep-share', OTHER)).status).toBe(404);
+    expect((await getDetail('rep-share', EDITOR)).status).toBe(404);
+    expect((await getDetail('rep-share', OTHER)).status).toBe(200);
     expect((await getDetail('rep-share', SHARER)).status).toBe(200);
     expect((await getDetail('rep-share', 'admin@gmail.com')).status).toBe(200);
   });
 
-  test('M1: log aktivitas tautan terbitan laporan memakai gerbang yang sama (NOT_FOUND seragam bagi non-pemilik)', async () => {
+  test('log aktivitas tautan terbitan laporan memakai gerbang yang sama (NOT_FOUND seragam bagi edit lain)', async () => {
     await insertShareStmt(env.DB, {
       id: 'rep-share',
       title: 'Kiriman laporan',
@@ -187,14 +197,18 @@ describe('dashboardShares.get', () => {
     }).run();
     const log = (email: string) =>
       rest.get('/activity?kind=dashboardShare&id=rep-share', { email });
-    expect((await log(OTHER)).status).toBe(404);
+    expect((await log(EDITOR)).status).toBe(404);
+    expect((await log(OTHER)).status).toBe(200);
     expect((await log(SHARER)).status).toBe(200);
     expect((await log('admin@gmail.com')).status).toBe(200);
-    // tautan biasa tetap terbaca semua pemegang manage
+    // tautan biasa: pengelola semua membacanya, pemegang edit lain tidak
     const { id } = await create();
     expect(
       (await rest.get(`/activity?kind=dashboardShare&id=${id}`, { email: OTHER })).status,
     ).toBe(200);
+    expect(
+      (await rest.get(`/activity?kind=dashboardShare&id=${id}`, { email: EDITOR })).status,
+    ).toBe(404);
   });
 
   test('M2: BU dan lokasi terhapus tetap bernama dengan penanda terhapus', async () => {

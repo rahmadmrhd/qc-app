@@ -76,11 +76,19 @@ export async function loadReport(db: Preparer, id: string): Promise<ReportRow | 
     .first<ReportRow>();
 }
 
-/** Semua laporan, terbaru dahulu. */
-export async function listReportRows(db: Preparer): Promise<ReportRow[]> {
-  const result = await db
-    .prepare(`SELECT ${COLUMNS} FROM dashboard_reports ORDER BY created_at DESC, id DESC`)
-    .all<ReportRow>();
+/** Semua laporan, terbaru dahulu; `owner` diisi = hanya laporan milik pemilik itu (pemegang `dashboard: edit`). */
+export async function listReportRows(db: Preparer, owner?: string): Promise<ReportRow[]> {
+  const result =
+    owner === undefined
+      ? await db
+          .prepare(`SELECT ${COLUMNS} FROM dashboard_reports ORDER BY created_at DESC, id DESC`)
+          .all<ReportRow>()
+      : await db
+          .prepare(
+            `SELECT ${COLUMNS} FROM dashboard_reports WHERE owner = ? ORDER BY created_at DESC, id DESC`,
+          )
+          .bind(owner)
+          .all<ReportRow>();
   return result.results;
 }
 

@@ -61,12 +61,24 @@ export async function loadShare(db: Preparer, id: string): Promise<ShareRow | nu
 
 /**
  * Semua tautan, terbaru dahulu. Tautan terbitan laporan terjadwal (`report_id` terisi) hanya ikut bila
- * `includeReport` true.
+ * `includeReport` true. `owner` diisi = hanya tautan milik pembagi itu (pemegang `dashboard: edit`).
  */
-export async function listShares(db: Preparer, includeReport: boolean): Promise<ShareRow[]> {
-  const where = includeReport ? '' : "WHERE report_id = ''";
+export async function listShares(
+  db: Preparer,
+  includeReport: boolean,
+  owner?: string,
+): Promise<ShareRow[]> {
+  const conditions: string[] = [];
+  const params: string[] = [];
+  if (!includeReport) conditions.push("report_id = ''");
+  if (owner !== undefined) {
+    conditions.push('created_by = ?');
+    params.push(owner);
+  }
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
   const result = await db
     .prepare(`SELECT ${COLUMNS} FROM dashboard_shares ${where} ORDER BY created_at DESC, id DESC`)
+    .bind(...params)
     .all<ShareRow>();
   return result.results;
 }

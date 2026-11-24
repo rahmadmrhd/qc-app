@@ -18,6 +18,8 @@ export interface ReportsTableProps {
   onDelete: (report: DashboardReportDto) => void;
   /** Surel uji butuh SMTP; tanpa itu aksinya nonaktif dengan alasan. */
   smtpConfigured: boolean;
+  /** Pengelola semua (`dashboard: manage`) melihat laporan banyak pemilik: tampilkan kolom Pemilik. */
+  showOwner?: boolean;
   filtered?: boolean;
   onClearFilters?: () => void;
   emptyAction?: ReactNode;
@@ -29,7 +31,7 @@ export interface ReportsTableProps {
 /**
  * Tabel laporan terjadwal (kit CRUD): [checkbox][Aksi][Nama → View][Jadwal][Periode][Penerima][Status][Hasil terakhir]
  * [Pengiriman berikutnya]. Aksi baris (Ubah, Jeda/Lanjutkan, Kirim uji, Hapus) hanya untuk laporan yang boleh diubah
- * pengguna (pemilik atau super admin). Di ponsel menjadi kartu: Nama = judul, Hasil terakhir = badge, sisanya meta.
+ * pengguna (pemilik, atau siapa pun bagi `manage`). Di ponsel menjadi kartu: Nama = judul, Hasil terakhir = badge, sisanya meta.
  */
 export function ReportsTable({
   reports,
@@ -40,6 +42,7 @@ export function ReportsTable({
   onSendTest,
   onDelete,
   smtpConfigured,
+  showOwner = false,
   filtered,
   onClearFilters,
   emptyAction,
@@ -58,6 +61,9 @@ export function ReportsTable({
         </LinkCell>
       ),
     },
+    ...(showOwner
+      ? [{ id: 'owner', header: 'Pemilik', cell: (report: DashboardReportDto) => report.owner }]
+      : []),
     { id: 'schedule', header: 'Jadwal', cell: (report) => scheduleLabel(report.schedule) },
     { id: 'period', header: 'Periode', cell: (report) => REPORT_PERIOD_LABELS[report.period] },
     {

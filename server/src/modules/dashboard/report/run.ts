@@ -2,16 +2,18 @@
  * Pengiriman laporan dashboard terjadwal (spek dashboard 7a.2, 7a.4, 7a.5, 7a.9).
  *
  * `checkDashboardReports` dipanggil loop 5 menit (`startDashboardReportLoop`): untuk tiap laporan aktif yang jatuh tempo
- * ia memeriksa hal murah dulu (pemilik aktif, masih `dashboard: manage`, ada widget yang boleh), MENGKLAIM periode lewat
+ * ia memeriksa hal murah dulu (pemilik aktif, masih `dashboard` minimal `edit`, ada widget yang boleh), MENGKLAIM periode lewat
  * CAS `last_run_key` SEBELUM menghitung dan mengirim (dua pemeriksaan serentak = satu surel), lalu menghitung dengan
  * mesin widget yang sama dengan aplikasi (hak PEMILIK saat itu), menerbitkan satu baris tautan publik, merender, dan
  * mengirim satu surel dengan `bcc`. Gagal di titik mana pun = klaim dipulihkan dan tautan terbitan dihapus (kompensasi),
  * sehingga percobaan berikutnya di hari terjadwal yang sama mencoba lagi tanpa menumpuk baris. `skipped` tidak
  * mengklaim apa pun. Tak ada log yang memuat alamat penerima, token, atau isi surel; catatan galat dibersihkan.
  *
- * `runReport` dipakai tiga mode: `scheduled` (penerima laporan), `test` (hanya surel pemilik, awalan [UJI], tanpa
- * klaim dan tanpa mengubah status terakhir), dan `preview` (hanya merender dengan tautan contoh, tanpa tautan dan
- * tanpa kirim). Batas waktu pengiriman datang dari mesin widget (15 dtk per widget setelah dapat slot) dan batas waktu
+ * `runReport` dipakai tiga mode: `scheduled` (penerima laporan), `test` (hanya satu surel ke penguji, awalan [UJI],
+ * tanpa klaim dan tanpa mengubah status terakhir), dan `preview` (hanya merender dengan tautan contoh, tanpa tautan dan
+ * tanpa kirim). Mode `test`/`preview` dapat dijalankan oleh pengelola semua pada laporan milik orang lain (`actor`):
+ * isinya irisan hak pemilik DAN hak pelaku, dengan penanda bila ada yang disembunyikan, surel uji ke alamat pelaku, dan
+ * tombol ke halaman Dashboard di aplikasi (tanpa menerbitkan tautan atas nama pemilik). Batas waktu pengiriman datang dari mesin widget (15 dtk per widget setelah dapat slot) dan batas waktu
  * soket SMTP; tidak ada pembungkus yang meninggalkan pengiriman setengah jalan (itu dapat menggandakan surel).
  */
 import { isGuardFailure } from '@server/core/cas';
@@ -34,9 +36,9 @@ import {
   wibNow,
 } from '@shared/dashboard-report';
 import type { ShareScope } from '@shared/dashboard-share';
-import { hasLevel } from '@shared/permissions';
 import { wibDateIso } from '@shared/postel';
 import { publicActorName } from '@shared/serials';
+import { mayOwnDashboardItems } from '../access';
 import { computeShareWidgets } from '../public-view';
 import { allowedWidgetIds } from '../scope';
 import { buScopeNames, locationScopeNames } from '../scope-names';
@@ -67,6 +69,8 @@ export interface ReportRunOutcome {
   note: string;
   /** Hanya mode `preview` yang sukses. */
   rendered?: RenderedEmail;
+  /** Isi dipangkas karena hak pelaku lebih sempit dari hak pemilik (hanya bila `actor` bukan pemilik). */
+  trimmed?: boolean;
 }
 
 const DAY_MS = 86_400_000;
@@ -130,7 +134,7 @@ async function ownerCheck(
 ): Promise<{ owner: UserContext } | ReportRunOutcome> {
   const owner = await loadUserContext(env, row.owner);
   if (owner === null) return skipped('Pemilik tidak aktif');
-  if (!hasLevel(owner.permissions.dashboard, 'manage')) {
+  if (!mayOwnDashboardItems(owner)) {
     return skipped('Pemilik tidak lagi berhak membagikan');
   }
   const allowed = new Set(allowedWidgetIds(owner));
@@ -199,6 +203,11 @@ function expiresLabel(expiresMs: number, linkDays: number): string {
   return `${formatDate(wibDateIso(expiresMs))} (${linkDays} hari)`;
 }
 
+function dashboardUrl(env: Env): string {
+  const origin = env.APP_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
+  return `${origin}/dashboard`;
+}
+
 function previewUrl(env: Env): string {
   const origin = env.APP_ORIGIN?.trim().replace(/\/+$/, '') ?? '';
   return `${origin}${PREVIEW_PATH}`;
@@ -215,6 +224,7 @@ export async function runReport(
   nowMs: number,
   mode: ReportRunMode,
   claim: RunClaim | null = null,
+  actor?: UserContext,
 ): Promise<ReportRunOutcome> {
   const parsed = parseRow(row);
   if (parsed === null) return { status: 'error', note: 'Konfigurasi laporan tidak terbaca' };
@@ -222,7 +232,10 @@ export async function runReport(
   if ('status' in checked) return checked;
   const { owner } = checked;
 
-  const recipients = mode === 'test' ? [row.owner] : parsed.recipients;
+  // Pelaku selain pemilik hanya berarti pada `test`/`preview` (pengiriman terjadwal selalu hak pemilik saat itu).
+  const foreign =
+    mode !== 'scheduled' && actor !== undefined && actor.email !== row.owner ? actor : undefined;
+  const recipients = mode === 'test' ? [actor?.email ?? row.owner] : parsed.recipients;
   if (mode !== 'preview' && recipients.length === 0) {
     return skipped('Tidak ada penerima yang sah');
   }
@@ -235,7 +248,14 @@ export async function runReport(
       ...parsed.scope,
       range: { mode: 'fixed', from: range.from, to: range.to },
     };
-    const computed = await computeShareWidgets(env, owner, frozen, {}, nowMs);
+    const computed = await computeShareWidgets(env, owner, frozen, {}, nowMs, foreign);
+    if (foreign !== undefined && computed.widgets.length === 0) {
+      // Tanpa menyebut isi laporan milik orang lain: hak pelaku tak mencakup satu pun widget yang berlaku.
+      return {
+        status: 'error',
+        note: 'Tidak ada data yang dapat ditampilkan dengan hak akses Anda',
+      };
+    }
     const widgets: EmailWidgetInput[] = [];
     for (const result of computed.results) {
       if (result.status !== 'ok') continue;
@@ -277,6 +297,12 @@ export async function runReport(
     if (mode === 'preview') {
       ctaUrl = previewUrl(env);
       linkExpires = expiresLabel(nowMs + row.link_days * DAY_MS, row.link_days);
+    } else if (foreign !== undefined) {
+      // Surel uji laporan milik orang lain: tombol ke halaman Dashboard di aplikasi (perlu masuk; data mengikuti hak
+      // pelaku). Tidak ada tautan publik yang diterbitkan atas nama pemilik: tautan publik memeriksa hak pemilik saat
+      // dibuka dan akan membocorkan data yang sudah diiris hak pelaku (keputusan pemilik produk 2026-11-24).
+      ctaUrl = dashboardUrl(env);
+      linkExpires = 'Tautan ke aplikasi (perlu masuk)';
     } else {
       // Cakupan tautan = cakupan laporan menurut hak pemilik saat ini: widget di luar hak dibuang dan BU diiris.
       // Hak pemilik tetap dihitung ulang tiap tautan dibuka (`loadPublicDashboard`).
@@ -300,8 +326,13 @@ export async function runReport(
       ctaUrl,
       linkExpiresLabel: linkExpires,
       ...(mode === 'test' ? { test: true } : {}),
+      ...(mode === 'preview' ? { testNotice: true } : {}),
+      ...(mode === 'test' && foreign !== undefined ? { buttonToApp: true } : {}),
+      ...(computed.trimmed ? { trimmed: true } : {}),
     });
-    if (mode === 'preview') return { status: 'ok', note: '', rendered };
+    if (mode === 'preview') {
+      return { status: 'ok', note: '', rendered, ...(computed.trimmed ? { trimmed: true } : {}) };
+    }
 
     const mailer = env.MAILER;
     if (mailer === undefined) throw new Error('SMTP belum diatur');

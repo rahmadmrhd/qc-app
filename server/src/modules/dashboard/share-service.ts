@@ -1,6 +1,7 @@
 /**
  * Layanan tautan dashboard publik (spek dashboard bagian 7): membekukan cakupan saat dibagikan, membuat token,
- * mendaftar, dan mencabut. Izin `dashboard: manage` dijaga rute; `url` hanya untuk pembagi dan super admin.
+ * mendaftar, dan mencabut. Izin minimal `dashboard: edit` dijaga rute; baris menurut `access.ts` (milik sendiri, atau
+ * semua bagi `manage`/super admin).
  */
 import { writeAudit } from '@server/core/audit';
 import { isGuardFailure } from '@server/core/cas';
@@ -18,6 +19,7 @@ import type {
   ShareWidgetScope,
 } from '@shared/dashboard-share';
 import { SHARE_LIMITS, shareExpiry, shareStatus } from '@shared/dashboard-share';
+import { dashboardScopeOf, mayManageRow } from './access';
 import { allowedWidgetIds, resolveScope } from './scope';
 import { signShareToken } from './share-link';
 import {
@@ -138,15 +140,15 @@ export async function toShareDto(
   return dto;
 }
 
-/** Hanya pembagi (atau super admin) boleh menyalin tautan. */
+/** Pembagi, atau pengelola semua (`manage`/super admin), boleh menyalin tautan dan mengelolanya penuh. */
 export function mayCopyUrl(user: UserContext, row: ShareRow): boolean {
-  return user.isSuperAdmin || row.created_by === user.email;
+  return mayManageRow(user, row.created_by);
 }
 
 /**
- * Baris tautan yang BOLEH dibaca pemanggil (SATU gerbang untuk View tautan dan log aktivitasnya): tak dikenal, atau
- * terbitan laporan terjadwal milik orang lain (bukan pembagi/super admin) = `NOT_FOUND` seragam. Izin modul
- * (`dashboard: manage`) dijaga pemanggil.
+ * Baris tautan yang BOLEH dikelola pemanggil (SATU gerbang untuk View, pencabutan, dan log aktivitas tautan): tak
+ * dikenal atau milik orang lain bagi pemegang `dashboard: edit` = `NOT_FOUND` seragam (termasuk tautan terbitan laporan
+ * terjadwal). Izin modul minimal `edit` dijaga pemanggil.
  */
 export async function loadReadableShare(
   env: Env,
@@ -154,7 +156,7 @@ export async function loadReadableShare(
   id: string,
 ): Promise<ShareRow> {
   const row = await loadShare(env.DB, id);
-  if (!row || (row.report_id !== '' && !mayCopyUrl(user, row))) {
+  if (!row || !mayCopyUrl(user, row)) {
     throw appError('NOT_FOUND', 'Tautan tidak ditemukan');
   }
   return row;
@@ -227,14 +229,19 @@ export async function listDashboardShares(
   user: UserContext,
 ): Promise<DashboardShareDto[]> {
   const now = nowIso(env);
-  const rows = await listShares(env.DB, false);
+  // Pemegang `edit` hanya melihat tautannya sendiri; `manage`/super admin semua. Tiap baris yang dikembalikan dapat
+  // dikelola penuh pemanggil (termasuk `url`).
+  const rows = await listShares(
+    env.DB,
+    false,
+    dashboardScopeOf(user) === 'all' ? undefined : user.email,
+  );
   return Promise.all(rows.map((row) => toShareDto(env, row, now, mayCopyUrl(user, row))));
 }
 
-/** Mencabut tautan (idempoten); pemegang `dashboard: manage` mana pun boleh. Tak dikenal = `NOT_FOUND`. */
+/** Mencabut tautan (idempoten); milik sendiri, atau milik siapa pun bagi `manage`/super admin. Selain itu `NOT_FOUND`. */
 export async function revokeShare(env: Env, user: UserContext, id: string): Promise<{ ok: true }> {
-  const row = await loadShare(env.DB, id);
-  if (!row) throw appError('NOT_FOUND', 'Tautan tidak ditemukan');
+  const row = await loadReadableShare(env, user, id);
   if (row.revoked_at !== '') return { ok: true };
   const now = nowIso(env);
   // Audit hanya bila UPDATE benar-benar mengubah baris (pencabutan serentak tak menulis audit ganda).

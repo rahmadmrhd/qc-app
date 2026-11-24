@@ -19,7 +19,7 @@ export function shareDetailQueryOptions(id: string) {
   });
 }
 
-/** Daftar tautan (semua pemegang `dashboard: manage` melihatnya; `url` hanya untuk pembagi dan super admin). */
+/** Daftar tautan (pemegang `dashboard: edit` hanya miliknya; `manage`/super admin semuanya, dengan `url`). */
 export function sharesQueryOptions() {
   return queryOptions({
     queryKey: shareKeys.all,

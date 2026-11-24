@@ -55,7 +55,7 @@ export const MODULE_LEVELS: Record<ModuleKey, readonly Level[]> = {
   serial: ['none', 'view', 'edit', 'manage'],
   serialservice: ['none', 'view', 'edit'],
   countrylock: ['none', 'view'],
-  dashboard: ['none', 'manage'],
+  dashboard: ['none', 'edit', 'manage'],
 };
 
 /** Arti umum tiap level (PRD §4.2); `MODULE_LEVEL_HINTS` menimpanya bila modul punya makna khusus. */
@@ -115,8 +115,9 @@ export const MODULE_LEVEL_HINTS: Partial<Record<ModuleKey, Partial<Record<Level,
     view: 'Melihat menu Country Lock dan membukanya di aplikasi desktop dari peramban (dengan akun yang sama). Halaman Country Lock di aplikasi desktop tetap dapat dibuka tanpa login.',
   },
   dashboard: {
+    edit: 'Membagikan dashboard secara publik dan mengelola tautan serta laporan terjadwal MILIK SENDIRI (penuh: lihat, ubah, jeda, kirim uji, hapus, cabut).',
     manage:
-      'Membagikan dashboard secara publik, mengelola laporan terjadwal, dan mencabut tautan. Melihat dashboard cukup dengan izin modul sumber datanya.',
+      'Semua akses Kelola milik sendiri, ditambah mengelola milik SEMUA pengguna, termasuk melihat penerima, pratinjau, dan tautan terbitan laporan orang lain.',
   },
 };
 

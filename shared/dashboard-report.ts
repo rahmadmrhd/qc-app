@@ -285,7 +285,7 @@ export interface DashboardReportDto {
   schedule: ReportSchedule;
   period: ReportPeriod;
   scope: ReportScope;
-  /** Kosong bagi pemanggil yang bukan pemilik/super admin (hanya `recipientCount`). */
+  /** Alamat penerima; selalu terisi bagi pemanggil yang boleh mengelola baris ini (pemilik, `manage`, super admin). */
   recipients: string[];
   recipientCount: number;
   linkDays: number;
@@ -296,9 +296,13 @@ export interface DashboardReportDto {
   nextRunAt: string;
   createdAt: string;
   updatedAt: string;
-  /** Pemilik atau super admin: boleh mengubah, menjeda, mengirim uji, pratinjau, melihat tautan, menghapus. */
+  /**
+   * Dihitung server: pemanggil boleh mengelola penuh baris ini (ubah, jeda, kirim uji, pratinjau, tautan, hapus):
+   * pemilik (`dashboard: edit`), atau siapa pun bagi `manage`/super admin. Baris yang tak boleh dikelola tak pernah
+   * dikembalikan (`NOT_FOUND`), jadi pada praktiknya selalu `true`.
+   */
   canEdit: boolean;
-  /** Hanya pemilik/super admin pada `dashboardReports.get`: tautan terbitan terbaru (maks. 10), dengan `url`. */
+  /** Pada `dashboardReports.get`: tautan terbitan terbaru (maks. 10), dengan `url`. */
   links?: DashboardShareDto[];
 }
 
@@ -339,4 +343,9 @@ export interface SetDashboardReportEnabledInput {
 export interface DashboardReportPreviewDto {
   subject: string;
   html: string;
+  /**
+   * Isi dipangkas karena hak akses pemanggil lebih sempit dari hak pemilik laporan (hanya pada laporan milik orang lain);
+   * tidak merinci apa yang disembunyikan. Aditif.
+   */
+  trimmed: boolean;
 }

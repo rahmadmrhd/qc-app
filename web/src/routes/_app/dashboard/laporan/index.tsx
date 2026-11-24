@@ -11,7 +11,7 @@ const searchSchema = z.object({
 
 export const Route = createFileRoute('/_app/dashboard/laporan/')({
   validateSearch: (search: Record<string, unknown>) => searchSchema.parse(search),
-  beforeLoad: ({ context }) => requirePermission(context.queryClient, 'dashboard', 'manage'),
+  beforeLoad: ({ context }) => requirePermission(context.queryClient, 'dashboard', 'edit'),
   loader: ({ context }) => context.queryClient.ensureQueryData(reportsQueryOptions()),
   component: ReportsRoute,
 });

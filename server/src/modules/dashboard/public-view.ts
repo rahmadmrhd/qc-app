@@ -32,9 +32,9 @@ import type {
 import { toPublicDto } from '@shared/dashboard-public';
 import type { ShareRange, ShareScope, ShareWidgetScope } from '@shared/dashboard-share';
 import { shareStatus } from '@shared/dashboard-share';
-import { hasLevel } from '@shared/permissions';
 import { wibDateIso } from '@shared/postel';
 import { publicActorName } from '@shared/serials';
+import { mayOwnDashboardItems } from './access';
 import { runWidgets } from './engine';
 import { loadOptions } from './options';
 import { allowedWidgetIds, type ResolvedScope, resolveScope } from './scope';
@@ -237,7 +237,7 @@ function offeredValues(widgets: readonly ShareWidgetScope[], key: string): strin
 
 /**
  * Tautan masih dapat dilayani: aktif (tak dicabut/kedaluwarsa), cakupannya terbaca, pembagi ada/aktif/tak terhapus dan
- * masih memegang `dashboard: manage`. `null` selain itu. Dipakai bersama oleh halaman data dan rute pencatat kunjungan
+ * masih memegang `dashboard` minimal `edit`. `null` selain itu. Dipakai bersama oleh halaman data dan rute pencatat kunjungan
  * agar keduanya menolak persis pada keadaan yang sama (tanpa oracle baru).
  */
 export async function servableShare(
@@ -249,13 +249,18 @@ export async function servableShare(
   const frozen: ShareScope | null = parseScope(share.scope);
   if (frozen === null) return null;
   const sharer = await loadUserContext(env, share.created_by);
-  if (sharer === null || !hasLevel(sharer.permissions.dashboard, 'manage')) return null;
+  if (sharer === null || !mayOwnDashboardItems(sharer)) return null;
   return { frozen, sharer };
 }
 
 export interface ComputedShareWidgets {
-  /** Widget cakupan beku yang masih boleh dilihat pembagi (hak SAAT INI). */
+  /** Widget cakupan beku yang masih boleh dilihat pembagi (hak SAAT INI) dan, bila ada `actor`, juga oleh pelaku. */
   widgets: ShareWidgetScope[];
+  /**
+   * Hanya bila ada `actor`: sebagian isi disembunyikan karena hak PELAKU lebih sempit dari hak pembagi (widget dibuang
+   * atau BU/lokasi diiris untuk grup yang tampil). Pengurangan karena hak pembagi sendiri tidak dihitung.
+   */
+  trimmed: boolean;
   /** Rentang beku pada hari ini, SEBELUM dipersempit penonton. */
   base: DashboardRange;
   /** Cakupan efektif yang dipakai menghitung (rentang sesudah penyempitan penonton). */
@@ -276,9 +281,17 @@ export async function computeShareWidgets(
   frozen: ShareScope,
   viewer: PublicQueryInput,
   nowMs: number,
+  actor?: UserContext,
 ): Promise<ComputedShareWidgets> {
   const allowed = new Set(allowedWidgetIds(sharer));
-  const widgets = frozen.widgets.filter((widget) => allowed.has(widget.id));
+  const sharerWidgets = frozen.widgets.filter((widget) => allowed.has(widget.id));
+  // Pelaku selain pembagi (pratinjau/kirim uji laporan milik orang lain oleh pengelola semua): isi = irisan hak pembagi
+  // DAN hak pelaku, sehingga pelaku tak pernah melihat data di luar haknya sendiri.
+  const actorAllowed = actor === undefined ? null : new Set(allowedWidgetIds(actor));
+  const widgets =
+    actorAllowed === null
+      ? sharerWidgets
+      : sharerWidgets.filter((widget) => actorAllowed.has(widget.id));
 
   const base = frozenRange(frozen.range, wibDateIso(nowMs));
   const range = clampRange(base, viewer);
@@ -296,24 +309,46 @@ export async function computeShareWidgets(
     nowMs,
     { trustedLists: true },
   );
-  const scope: ResolvedScope = {
+  // Irisan per bidang dengan hak pelaku (BU, lokasi Serah Terima, lokasi stok); lokasi Serial/Laporan hanya saringan,
+  // bukan hak, jadi tak disentuh. Himpunan lokasi beku bercampur menurut modul, maka diiris per bidang, bukan digabung.
+  let trimmed = false;
+  let effective: ResolvedScope = {
     ...resolved,
     // Lokasi menjadi filter Serial/Laporan hanya bila dibekukan demikian atau penonton sendiri mempersempitnya.
     serialLocationIds:
       frozen.locationFiltered || viewerLocations !== undefined ? locationIds : null,
   };
+  if (actor !== undefined && actorAllowed !== null) {
+    const actorScope = resolveScope(actor, { from: range.from, to: range.to }, nowMs);
+    const keep = (own: readonly string[], allowedByActor: readonly string[]): string[] => {
+      const permitted = new Set(allowedByActor);
+      return own.filter((id) => permitted.has(id));
+    };
+    const groups = new Set(widgets.map((widget) => widgetMeta(widget.id).group));
+    const buIds = keep(effective.buIds, actorScope.buIds);
+    const handoverLocationIds = keep(effective.handoverLocationIds, actorScope.handoverLocationIds);
+    const stockLocationIds = keep(effective.stockLocationIds, actorScope.stockLocationIds);
+    trimmed =
+      widgets.length < sharerWidgets.length ||
+      ((groups.has('serial') || groups.has('report')) && buIds.length < effective.buIds.length) ||
+      (groups.has('handover') &&
+        handoverLocationIds.length < effective.handoverLocationIds.length) ||
+      (groups.has('sticker') && stockLocationIds.length < effective.stockLocationIds.length);
+    effective = { ...effective, buIds, handoverLocationIds, stockLocationIds };
+  }
+  const scope: ResolvedScope = effective;
   const requests: DashboardWidgetRequest[] = widgets.map((widget) => {
     const group = widgetMeta(widget.id).group;
     const filters = mergeFilters(widget, group, viewer.groups?.[group], frozen.offers);
     return Object.keys(filters).length > 0 ? { id: widget.id, filters } : { id: widget.id };
   });
   const results: WidgetResult[] = await runWidgets(env, scope, requests);
-  return { widgets, base, scope, results };
+  return { widgets, trimmed, base, scope, results };
 }
 
 /**
  * Memuat dashboard publik untuk satu tautan. `null` bila tautan tak aktif (dicabut/kedaluwarsa), cakupannya tak
- * terbaca, pembagi tak ditemukan/nonaktif/terhapus, atau pembagi tak lagi memegang `dashboard: manage`. Hak pembagi
+ * terbaca, pembagi tak ditemukan/nonaktif/terhapus, atau pembagi tak lagi memegang `dashboard` minimal `edit`. Hak pembagi
  * dihitung ulang tiap permintaan (`resolveScope`, `allowedWidgetIds`): menurun haknya = menyempit tanpa galat berbeda.
  */
 export async function loadPublicDashboard(
