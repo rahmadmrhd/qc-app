@@ -126,36 +126,81 @@ export function ownerLimitGuardStmts(db: Preparer, owner: string, max: number): 
   ];
 }
 
+/** Klaim periode yang dipegang pengirim: kunci periode dan `version` baris saat klaim (pengirim tak menaikkan `version`). */
+export interface RunClaim {
+  key: string;
+  version: number;
+}
+
 /**
- * Mengklaim periode: `last_run_key` menjadi `claimed` hanya bila laporan masih aktif dan kuncinya masih `expected`.
- * Satu pemanggil serentak yang mendapat `changes === 1`.
+ * Mengklaim periode: `last_run_key` menjadi `claimed` hanya bila laporan masih aktif, kuncinya masih `expected`, DAN
+ * barisnya belum diubah sejak dimuat (`version` sama): penerima, cakupan, atau jadwal yang diubah pemilik setelah
+ * putaran memuat baris membuat klaim gagal (putaran berikutnya memuat yang baru), bukan mengirim data lama. Satu
+ * pemanggil serentak yang mendapat `changes === 1`.
  */
 export async function claimRunKey(
   db: Preparer,
   id: string,
   expected: string,
   claimed: string,
+  version: number,
 ): Promise<boolean> {
   const result = await db
     .prepare(
-      'UPDATE dashboard_reports SET last_run_key = ? WHERE id = ? AND enabled = 1 AND last_run_key = ?',
+      'UPDATE dashboard_reports SET last_run_key = ? WHERE id = ? AND enabled = 1 AND last_run_key = ? AND version = ?',
     )
-    .bind(claimed, id, expected)
+    .bind(claimed, id, expected, version)
     .run();
   return result.meta.changes === 1;
 }
 
-/** Mengembalikan klaim ke `previous`, hanya bila kunci masih nilai klaim kita (tak menimpa penulis lain). */
+/**
+ * Mengembalikan klaim ke `previous`, hanya bila kunci masih nilai klaim kita DAN `version` masih milik klaim itu:
+ * perubahan pemilik sesudah klaim (mis. jadwal diubah sehingga kunci reset kebetulan sama dengan klaim) tak pernah
+ * ditimpa.
+ */
 export async function releaseRunKey(
   db: Preparer,
   id: string,
-  claimed: string,
+  claim: RunClaim,
   previous: string,
 ): Promise<void> {
   await db
-    .prepare('UPDATE dashboard_reports SET last_run_key = ? WHERE id = ? AND last_run_key = ?')
-    .bind(previous, id, claimed)
+    .prepare(
+      'UPDATE dashboard_reports SET last_run_key = ? WHERE id = ? AND last_run_key = ? AND version = ?',
+    )
+    .bind(previous, id, claim.key, claim.version)
     .run();
+}
+
+/** Versi baris terkini; `null` bila laporan sudah dihapus. */
+export async function loadReportVersion(db: Preparer, id: string): Promise<number | null> {
+  const row = await db
+    .prepare('SELECT version FROM dashboard_reports WHERE id = ?')
+    .bind(id)
+    .first<{ version: number }>();
+  return row === null ? null : Number(row.version);
+}
+
+/**
+ * Penjaga penerbitan tautan, digabung ke `batch()` penyisipan tautan: mengunci baris laporan (`FOR UPDATE`, searah
+ * dengan `removeDashboardReport` yang mengunci baris yang sama lebih dulu), lalu membatalkan batch (`CAS_FAIL_SQL`,
+ * dikenali `isGuardFailure`) bila laporan sudah dihapus atau (dengan `version`) sudah diubah. Penghapusan serentak
+ * jadi berurutan: tautan terbit sebelum penghapusan ikut dicabut olehnya, atau tak terbit sama sekali.
+ */
+export function reportExistsGuardStmts(
+  db: Preparer,
+  id: string,
+  version: number | null,
+): DbStatement[] {
+  return [
+    db.prepare('SELECT id FROM dashboard_reports WHERE id = ? FOR UPDATE').bind(id),
+    db
+      .prepare(
+        `SELECT CASE WHEN EXISTS (SELECT 1 FROM dashboard_reports WHERE id = ?${version === null ? '' : ' AND version = ?'}) THEN 1 ELSE ${CAS_FAIL_SQL} END AS guard_ok`,
+      )
+      .bind(...(version === null ? [id] : [id, version])),
+  ];
 }
 
 /** Mencatat hasil percobaan terakhir (tanpa mengubah `updated_at`/`version`: bukan perubahan oleh pengguna). */

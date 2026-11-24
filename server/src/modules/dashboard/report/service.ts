@@ -396,6 +396,9 @@ export async function removeDashboardReport(
   requireEditable(user, row);
   const now = nowIso(env);
   await env.DB.batch([
+    // Kunci baris laporan lebih dulu: penerbitan tautan oleh pengirim mengunci baris yang sama (`reportExistsGuardStmts`),
+    // jadi tautan yang terbit sebelum penghapusan ikut dicabut di bawah, dan yang sesudahnya tak pernah terbit.
+    env.DB.prepare('SELECT id FROM dashboard_reports WHERE id = ? FOR UPDATE').bind(row.id),
     // Audit hanya bila barisnya masih ada (penghapusan serentak tak menulis audit ganda).
     env.DB.prepare(
       "INSERT INTO audit_log (ts, actor, action, target, target_id, `before`, `after`) SELECT ?, ?, 'dashboard.report_delete', ?, ?, ?, ? FROM dashboard_reports WHERE id = ?",

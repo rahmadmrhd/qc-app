@@ -14,6 +14,7 @@
  * tanpa kirim). Batas waktu pengiriman datang dari mesin widget (15 dtk per widget setelah dapat slot) dan batas waktu
  * soket SMTP; tidak ada pembungkus yang meninggalkan pengiriman setengah jalan (itu dapat menggandakan surel).
  */
+import { isGuardFailure } from '@server/core/cas';
 import { type Env, nowIso, nowOf } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { newId } from '@server/core/id';
@@ -46,13 +47,16 @@ import { type EmailWidgetInput, type RenderedEmail, renderReportEmail } from './
 import {
   claimRunKey,
   listEnabledReportRows,
+  loadReportVersion,
   parsePeriod,
   parseRecipients,
   parseReportScope,
   parseSchedule,
   type ReportRow,
+  type RunClaim,
   recordRunResult,
   releaseRunKey,
+  reportExistsGuardStmts,
 } from './repo';
 
 export type ReportRunMode = 'scheduled' | 'test' | 'preview';
@@ -142,12 +146,26 @@ interface Issued {
   expiresMs: number;
 }
 
-/** Menerbitkan satu baris tautan publik milik laporan (rentang tetap = periode surel). */
+/** Laporan dihapus, dijeda, atau diubah pemilik di tengah pengiriman: surel tidak boleh dikirim dengan data lama. */
+class ReportChangedError extends Error {
+  constructor() {
+    super('Laporan berubah saat pengiriman');
+  }
+}
+
+const CHANGED_NOTE = 'Laporan diubah atau dihapus saat pengiriman; periode ini dilewati';
+
+/**
+ * Menerbitkan satu baris tautan publik milik laporan (rentang tetap = periode surel). Penyisipan dijaga di batch yang
+ * sama: baris laporan dikunci dan harus masih ada (dan, untuk pengiriman terjadwal, `version`-nya masih milik klaim),
+ * sehingga tak ada tautan yatim untuk laporan yang baru dihapus atau diubah.
+ */
 async function issueLink(
   env: Env,
   row: ReportRow,
   scope: ShareScope,
   nowMs: number,
+  claim: RunClaim | null,
 ): Promise<Issued> {
   if (env.SESSION_SECRET === '') throw appError('UNAVAILABLE', 'Rahasia sesi belum dikonfigurasi');
   const expiresMs = nowMs + row.link_days * DAY_MS;
@@ -165,7 +183,15 @@ async function issueLink(
     scope: JSON.stringify(scope),
     report_id: row.id,
   };
-  await env.DB.batch([insertShareStmt(env.DB, share)]);
+  try {
+    await env.DB.batch([
+      ...reportExistsGuardStmts(env.DB, row.id, claim === null ? null : claim.version),
+      insertShareStmt(env.DB, share),
+    ]);
+  } catch (error) {
+    if (isGuardFailure(error)) throw new ReportChangedError();
+    throw error;
+  }
   return { id, url, expiresMs };
 }
 
@@ -188,6 +214,7 @@ export async function runReport(
   row: ReportRow,
   nowMs: number,
   mode: ReportRunMode,
+  claim: RunClaim | null = null,
 ): Promise<ReportRunOutcome> {
   const parsed = parseRow(row);
   if (parsed === null) return { status: 'error', note: 'Konfigurasi laporan tidak terbaca' };
@@ -243,7 +270,7 @@ export async function runReport(
         widgets: computed.widgets,
         buIds: computed.scope.buIds,
       };
-      issued = await issueLink(env, row, linkScope, nowMs);
+      issued = await issueLink(env, row, linkScope, nowMs, claim);
       ctaUrl = issued.url;
       linkExpires = expiresLabel(issued.expiresMs, row.link_days);
     }
@@ -263,6 +290,12 @@ export async function runReport(
 
     const mailer = env.MAILER;
     if (mailer === undefined) throw new Error('SMTP belum diatur');
+    // Pemeriksaan terakhir sebelum surel keluar: laporan masih ada dan belum diubah sejak klaim (penerima, cakupan,
+    // jeda, jadwal). Jendela yang tersisa hanya selama satu panggilan SMTP.
+    const version = await loadReportVersion(env.DB, row.id);
+    if (version === null || (claim !== null && version !== claim.version)) {
+      throw new ReportChangedError();
+    }
     await mailer.send({
       to: [],
       bcc: recipients,
@@ -280,6 +313,7 @@ export async function runReport(
         // dibiarkan: tak boleh menutupi galat asli
       }
     }
+    if (error instanceof ReportChangedError) return skipped(CHANGED_NOTE);
     return { status: 'error', note: noteOf(error, recipients, env.SESSION_SECRET) };
   }
 }
@@ -352,10 +386,14 @@ export async function checkDashboardReports(
       }
       const key = periodKey(parsed.schedule, now);
       // Klaim SEBELUM menghitung dan mengirim: dua pemeriksaan serentak tak mengirim dobel.
-      if (!(await claimRunKey(env.DB, row.id, row.last_run_key, key))) continue;
+      // Bersyarat `version` baris yang dimuat: perubahan pemilik sejak putaran memuat baris = klaim gagal, dan putaran
+      // berikutnya memakai baris yang baru (penerima dan cakupan terkini).
+      const version = Number(row.version);
+      if (!(await claimRunKey(env.DB, row.id, row.last_run_key, key, version))) continue;
+      const claim: RunClaim = { key, version };
       let outcome: ReportRunOutcome;
       try {
-        outcome = await runReport(env, row, nowMs, 'scheduled');
+        outcome = await runReport(env, row, nowMs, 'scheduled', claim);
       } catch (error) {
         outcome = { status: 'error', note: noteOf(error, parsed.recipients, env.SESSION_SECRET) };
       }
@@ -363,7 +401,7 @@ export async function checkDashboardReports(
         summary.sent += 1;
       } else {
         // Tidak terkirim = klaim dipulihkan: dicoba lagi pada pemeriksaan berikutnya di hari terjadwal yang sama.
-        await releaseRunKey(env.DB, row.id, key, row.last_run_key);
+        await releaseRunKey(env.DB, row.id, claim, row.last_run_key);
         if (outcome.status === 'skipped') summary.skipped += 1;
         else summary.errors += 1;
       }

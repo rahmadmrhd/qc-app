@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
+import type { Db, DbStatement } from '@server/core/db';
 import type { MailMessage } from '@server/core/mail';
 import { loadUserContext } from '@server/modules/access/context';
 import { seedBusinessUnit, seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
@@ -8,7 +9,7 @@ import type { SaveDashboardReportInput } from '@shared/dashboard-report';
 import { listSharesOfReport } from '../share-repo';
 import { loadReport } from './repo';
 import { checkDashboardReports, runReport } from './run';
-import { saveDashboardReport } from './service';
+import { removeDashboardReport, saveDashboardReport, setDashboardReportEnabled } from './service';
 
 setDefaultTimeout(60_000);
 
@@ -290,5 +291,172 @@ describe('runReport mode uji dan pratinjau', () => {
     env.MAILER = undefined;
     const outcome = await runReport(env, await reportOf(id), NOW, 'preview');
     expect(outcome.status).toBe('ok');
+  });
+});
+
+/**
+ * Menyisipkan `action` di antara dua langkah pengirim (sekali saja): `claim` = tepat sebelum `UPDATE ... last_run_key`
+ * (klaim), `link-before` dan `link-after` = sebelum/sesudah `batch()` yang menyisipkan tautan terbitan.
+ */
+function interleave(point: 'claim' | 'link-before' | 'link-after', action: () => Promise<void>) {
+  const db = env.DB as Db;
+  const realPrepare = db.prepare.bind(db);
+  const realBatch = db.batch.bind(db);
+  let fired = false;
+  const fire = async () => {
+    if (fired) return;
+    fired = true;
+    await action();
+  };
+  const wrap = (statement: DbStatement): DbStatement => ({
+    bind: (...values) => wrap(statement.bind(...values)),
+    first: () => statement.first(),
+    all: () => statement.all(),
+    run: async () => {
+      await fire();
+      return statement.run();
+    },
+  });
+  if (point === 'claim') {
+    db.prepare = (sql: string) => {
+      const statement = realPrepare(sql);
+      return sql.startsWith(
+        'UPDATE dashboard_reports SET last_run_key = ? WHERE id = ? AND enabled',
+      )
+        ? wrap(statement)
+        : statement;
+    };
+    return;
+  }
+  const isLink = (statements: DbStatement[]) =>
+    statements.some((statement) =>
+      /INSERT INTO dashboard_shares/.test((statement as unknown as { sql: string }).sql),
+    );
+  db.batch = (async (statements: DbStatement[]) => {
+    const linking = isLink(statements);
+    if (linking && point === 'link-before') await fire();
+    const result = await realBatch(statements);
+    if (linking && point === 'link-after') await fire();
+    return result;
+  }) as Db['batch'];
+}
+
+const activeLinks = async (id: string) =>
+  (await listSharesOfReport(env.DB, id, 10)).filter((share) => share.revoked_at === '');
+
+describe('keadaan laporan TERKINI saat klaim dan kirim (I2, M2)', () => {
+  const asOwner = async () => {
+    const owner = await loadUserContext(env, OWNER);
+    if (!owner) throw new Error('pemilik tidak ditemukan');
+    return owner;
+  };
+  const changeRecipients = async (id: string) => {
+    const row = await reportOf(id);
+    await saveDashboardReport(env, await asOwner(), {
+      ...BODY,
+      id,
+      expectedUpdatedAt: row.updated_at,
+      recipients: ['baru@contoh.id'],
+    });
+  };
+
+  test('penerima diubah SEBELUM klaim: tak ada surel ke daftar lama; putaran berikutnya memakai daftar baru', async () => {
+    const id = await dueReport();
+    interleave('claim', () => changeRecipients(id));
+    const first = await checkDashboardReports(env, NOW);
+    expect(first.sent).toBe(0);
+    expect(sent).toHaveLength(0);
+    expect(await listSharesOfReport(env.DB, id, 10)).toHaveLength(0);
+
+    const second = await checkDashboardReports(env, NOW + 5 * 60_000);
+    expect(second.sent).toBe(1);
+    expect(sent[0]?.bcc).toEqual(['baru@contoh.id']);
+  });
+
+  test('penerima diubah SETELAH klaim, sebelum tautan terbit: tidak terkirim, tak ada tautan, klaim tidak dilepas', async () => {
+    const id = await dueReport();
+    interleave('link-before', () => changeRecipients(id));
+    const summary = await checkDashboardReports(env, NOW);
+    expect(summary.sent).toBe(0);
+    expect(summary.skipped).toBe(1);
+    expect(sent).toHaveLength(0);
+    expect(await listSharesOfReport(env.DB, id, 10)).toHaveLength(0);
+    // Periode itu dilewati (klaim tetap) agar tak mengirim ke daftar yang tak lagi dikehendaki pemilik.
+    expect((await reportOf(id)).last_run_key).toBe('2026-W48');
+  });
+
+  test('penerima diubah SETELAH tautan terbit, sebelum kirim: tidak terkirim dan tautan dihapus', async () => {
+    const id = await dueReport();
+    interleave('link-after', () => changeRecipients(id));
+    const summary = await checkDashboardReports(env, NOW);
+    expect(summary.sent).toBe(0);
+    expect(sent).toHaveLength(0);
+    expect(await listSharesOfReport(env.DB, id, 10)).toHaveLength(0);
+  });
+
+  test('laporan dihapus sesudah klaim: tak ada surel dan tak ada tautan yatim', async () => {
+    const id = await dueReport();
+    interleave('link-before', async () => {
+      await removeDashboardReport(env, await asOwner(), id);
+    });
+    const summary = await checkDashboardReports(env, NOW);
+    expect(summary.sent).toBe(0);
+    expect(sent).toHaveLength(0);
+    expect(await loadReport(env.DB, id)).toBeNull();
+    expect(await listSharesOfReport(env.DB, id, 10)).toHaveLength(0);
+  });
+
+  test('laporan dihapus setelah tautan terbit, sebelum kirim: tak ada surel, tautan tak tersisa', async () => {
+    const id = await dueReport();
+    interleave('link-after', async () => {
+      await removeDashboardReport(env, await asOwner(), id);
+    });
+    const summary = await checkDashboardReports(env, NOW);
+    expect(summary.sent).toBe(0);
+    expect(sent).toHaveLength(0);
+    expect(await activeLinks(id)).toHaveLength(0);
+  });
+
+  test('dijeda sesudah klaim: tidak terkirim dan tak ada tautan', async () => {
+    const id = await dueReport();
+    interleave('link-before', async () => {
+      await setDashboardReportEnabled(env, await asOwner(), { id, enabled: false });
+    });
+    const summary = await checkDashboardReports(env, NOW);
+    expect(summary.sent).toBe(0);
+    expect(sent).toHaveLength(0);
+    expect(await listSharesOfReport(env.DB, id, 10)).toHaveLength(0);
+    expect((await reportOf(id)).enabled).toBe(0);
+  });
+
+  test('M2: jadwal diubah selama pengiriman gagal tidak menimpa kunci reset pemilik', async () => {
+    const id = await dueReport();
+    const row = await reportOf(id);
+    failWith = new Error('SMTP menolak');
+    interleave('link-before', async () => {
+      // Jam 09.00 sudah lewat pukul 12.00 WIB: kunci reset = kunci periode berjalan (sama dengan klaim).
+      await saveDashboardReport(env, await asOwner(), {
+        ...BODY,
+        id,
+        expectedUpdatedAt: row.updated_at,
+        schedule: { frequency: 'weekly', hour: 9, weekday: 1, monthDay: 1 },
+      });
+    });
+    await checkDashboardReports(env, NOW);
+    expect(sent).toHaveLength(0);
+    expect((await reportOf(id)).last_run_key).toBe('2026-W48');
+    // Pemeriksaan berikutnya tak langsung mengirim (dijadwal ulang mulai dari jadwal berikutnya).
+    failWith = null;
+    expect((await checkDashboardReports(env, NOW + 5 * 60_000)).sent).toBe(0);
+  });
+
+  test('serentak dengan penghapusan: laporan hilang tidak meninggalkan tautan aktif', async () => {
+    const id = await dueReport();
+    await Promise.all([
+      checkDashboardReports(env, NOW),
+      asOwner().then((owner) => removeDashboardReport(env, owner, id)),
+    ]);
+    expect(await loadReport(env.DB, id)).toBeNull();
+    expect(await activeLinks(id)).toHaveLength(0);
   });
 });
