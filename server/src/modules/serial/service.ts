@@ -87,6 +87,7 @@ import {
   loadSerialEvents,
   loadSerialRow,
   loadSerialStickers,
+  SERIAL_PER_BU_ARMS_MAX,
   type SerialBuHistoryRow,
   type SerialColumn,
   type SerialEventRow,
@@ -824,6 +825,22 @@ function encodeSerialCursor(row: { created_at: string; id: string }): string {
   return `${row.created_at}~${row.id.trim()}`;
 }
 
+/**
+ * `true` hanya bila konteks MENGETAHUI seluruh id BU (`allBuIds`, tak kosong) dan semuanya ada di `readable`. Dalam
+ * kasus itu predikat BU pada daftar tak membatasi apa pun (BU terhapus tetap memberi hak, BU baru ikut terhitung karena
+ * konteks dimuat per permintaan), sehingga dapat dibuang demi indeks urutan. Tak diketahui atau ragu = `false` (jalur
+ * dengan predikat BU); fungsi ini TIDAK PERNAH boleh melonggarkan hak baca.
+ */
+export function readsAllBus(
+  user: Pick<UserContext, 'allBuIds'>,
+  readable: readonly string[],
+): boolean {
+  const all = user.allBuIds;
+  if (all === undefined || all.length === 0) return false;
+  const have = new Set(readable);
+  return all.every((id) => have.has(id));
+}
+
 /** Daftar serial pada BU yang boleh dibaca (himpunan kosong = hasil kosong tanpa kueri). */
 export async function listSerials(
   env: Env,
@@ -840,6 +857,8 @@ export async function listSerials(
   if (buIds.length === 0) return { items: [], nextCursor: null };
   const limit = input.limit ?? SERIAL_LIST_DEFAULT_LIMIT;
   const filter: SerialListFilter = { buIds, limit };
+  if (readsAllBus(user, buIds)) filter.allBus = true;
+  else if (buIds.length <= SERIAL_PER_BU_ARMS_MAX) filter.perBuArms = true;
   if (restorable !== null) filter.deleted = restorable;
   const query = normalizeSerial(input.query ?? '');
   if (query !== '') {

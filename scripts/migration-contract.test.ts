@@ -118,12 +118,13 @@ describe('server/migrations: konvensi qc:contract', () => {
     expect(extra).toEqual([]);
   });
 
-  test('migrasi destruktif yang ada kini: 0002, 0003, 0012, 0030', () => {
+  test('migrasi destruktif yang ada kini: 0002, 0003, 0012, 0030, 0036', () => {
     expect(listContractMigrations(names, read)).toEqual([
       '0002_hapus_sync_rev.sql',
       '0003_hapus_external_id.sql',
       '0012_serial_number.sql',
       '0030_soft_delete_contract.sql',
+      '0036_buang_indeks_serials_created_id.sql',
     ]);
   });
 });
