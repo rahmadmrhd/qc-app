@@ -230,6 +230,7 @@ export async function saveDashboardReport(
       offers: input.offers,
     },
     nowMs,
+    { trustedLists: true },
   );
   const name = cleanReportName(input.name);
   const recipients = normalizeRecipients(input.recipients);

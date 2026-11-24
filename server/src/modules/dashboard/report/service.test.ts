@@ -547,3 +547,66 @@ describe('simpan ulang dengan masukan seperti formulir tidak mengubah cakupan ef
     expect(again.scope).toEqual(created.scope);
   });
 });
+
+describe('batas simpan BU dan lokasi lebih longgar dari filter biasa', () => {
+  const BU_COUNT = 25;
+  const buIdsOf = (count: number) => Array.from({ length: count }, (_, index) => `bu-n${index}`);
+
+  async function seedManyBus(): Promise<void> {
+    for (const id of buIdsOf(BU_COUNT)) await seedBusinessUnit(env, { id, code: id.toUpperCase() });
+  }
+  const assignBus = (count: number) =>
+    env.DB.prepare('UPDATE users SET bu_assignments = ? WHERE email = ?')
+      .bind(JSON.stringify(buIdsOf(count).map((buId) => ({ buId, roleIds: ['r-sn'] }))), OWNER)
+      .run();
+
+  test('25 BU beku disimpan utuh; hak berkurang 3 = 22 tersimpan; simpan ulang tanpa perubahan = cakupan sama', async () => {
+    await seedManyBus();
+    await assignBus(BU_COUNT);
+    const created = await saveDashboardReport(
+      env,
+      await userOf(),
+      input({ filter: { from: '', to: '', buIds: buIdsOf(BU_COUNT) } }),
+    );
+    expect([...created.scope.buIds].sort()).toEqual([...buIdsOf(BU_COUNT)].sort());
+
+    // Pemilik kehilangan tiga BU terakhir; formulir mengirim himpunan beku apa adanya.
+    await assignBus(BU_COUNT - 3);
+    const resubmit = (dto: typeof created) =>
+      input({
+        id: dto.id,
+        expectedUpdatedAt: dto.updatedAt,
+        filter: { from: '', to: '', buIds: dto.scope.buIds },
+        widgets: dto.scope.widgets,
+        offers: dto.scope.offers,
+      });
+    const reduced = await saveDashboardReport(env, await userOf(), resubmit(created));
+    expect([...reduced.scope.buIds].sort()).toEqual([...buIdsOf(BU_COUNT - 3)].sort());
+
+    const again = await saveDashboardReport(env, await userOf(), resubmit(reduced));
+    expect(again.scope).toEqual(reduced.scope);
+  });
+
+  test('200 nilai sah, 201 ditolak VALIDATION (validator dan layanan), daftar bukan teks ditolak', async () => {
+    const many = (count: number) => Array.from({ length: count }, (_, index) => `id-${index}`);
+    const wire = (filter: Record<string, unknown>) => ({
+      ...input(),
+      filter: { from: '', to: '', ...filter },
+    });
+    expect(thrown(() => validateSaveReport(wire({ buIds: many(200) }))).code).toBeUndefined();
+    expect(thrown(() => validateSaveReport(wire({ locationIds: many(200) }))).code).toBeUndefined();
+    const bu = thrown(() => validateSaveReport(wire({ buIds: many(201) })));
+    expect(bu.code).toBe('VALIDATION');
+    expect(bu.fields?.['filter.buIds']).toBe('Maksimal 200 nilai');
+    const location = thrown(() => validateSaveReport(wire({ locationIds: many(201) })));
+    expect(location.code).toBe('VALIDATION');
+    expect(location.fields?.['filter.locationIds']).toBe('Maksimal 200 nilai');
+
+    // Layanan yang dipanggil langsung (tanpa validator rute) juga menolak.
+    const owner = await userOf();
+    const error = await captureAppErrorAsync(() =>
+      saveDashboardReport(env, owner, input({ filter: { from: '', to: '', buIds: many(201) } })),
+    );
+    expect(error.code).toBe('VALIDATION');
+  });
+});

@@ -53,12 +53,14 @@ export interface FreezeContentInput {
  * kosong dibaca "tanpa filter" (tetap dibatasi hak pembagi), tidak pernah menjadi "semua". Lokasi hanya dibekukan
  * untuk modul yang dipakai widget terpilih (Serah Terima, stok stiker; Serial/Laporan hanya bila `locationFiltered`).
  * `filter.from`/`to` hanya dipakai agar `resolveScope` memiliki rentang sah (isi cakupan tidak bergantung padanya).
+ * `options.trustedLists`: lewati batas `FILTER_LIST_MAX` pada daftar BU/lokasi (hanya simpan laporan terjadwal).
  * Validasi isi (judul, rentang, batas widget) milik pemanggil; di sini hanya hak: widget di luar hak = `VALIDATION`.
  */
 export function freezeContent(
   user: UserContext,
   input: FreezeContentInput,
   nowMs: number,
+  options: { trustedLists?: boolean } = {},
 ): ReportScope {
   const allowed = new Set(allowedWidgetIds(user));
   if (input.widgets.some((widget) => !allowed.has(widget.id))) {
@@ -85,6 +87,9 @@ export function freezeContent(
       ...(chosenLocations.length > 0 ? { locationIds: chosenLocations } : {}),
     },
     nowMs,
+    // Hanya penyimpanan laporan yang melonggarkan batas daftar (validator laporan sudah membatasi ke
+    // `REPORT_LIMITS.scopeIdsMax`); tautan bagikan tetap memakai `FILTER_LIST_MAX`.
+    options.trustedLists === true ? { trustedLists: true } : {},
   );
   const groups = new Set(input.widgets.map((widget) => widgetMeta(widget.id).group));
   const locationIds = new Set<string>();

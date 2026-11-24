@@ -45,6 +45,7 @@ describe('batas', () => {
       perOwner: 20,
       recipientsMax: 20,
       nameMax: 120,
+      scopeIdsMax: 200,
       linkDaysMax: 365,
       linkDaysDefault: 14,
       testPerHour: 5,

@@ -29,7 +29,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
-import { FILTER_LIST_MAX } from '@/lib/filter-limits';
 import { useMe } from '@/modules/auth/use-me';
 import { isStaleSaveError, STALE_SAVE_MESSAGE } from '@/modules/sticker/lib/stale';
 import { visibleWidgetsByGroup } from '../lib/access';
@@ -135,16 +134,15 @@ function validate(state: FormState): FieldErrors {
 }
 
 /**
- * Bentuk masukan server. Daftar BU/lokasi lebih dari batas filter (himpunan beku hak pemilik yang besar) dikirim
- * kosong = "semua yang berhak", agar penyimpanan ulang tak ditolak batas daftar.
+ * Bentuk masukan server. Daftar BU/lokasi dikirim apa adanya (maks. `REPORT_LIMITS.scopeIdsMax`): himpunan beku hak
+ * pemilik yang besar tidak dikosongkan, jadi pengurangan pilihan pemilik tidak hilang dan simpan ulang tanpa
+ * perubahan menghasilkan cakupan yang sama.
  */
 export function toInput(
   state: FormState,
   report: DashboardReportDto | undefined,
 ): SaveDashboardReportInput {
-  const buIds = state.scope.buIds.length > FILTER_LIST_MAX ? [] : state.scope.buIds;
-  const locationIds =
-    state.scope.locationIds.length > FILTER_LIST_MAX ? [] : state.scope.locationIds;
+  const { buIds, locationIds } = state.scope;
   return {
     ...(report ? { id: report.id, expectedUpdatedAt: report.updatedAt } : {}),
     name: state.name.trim(),
@@ -321,6 +319,7 @@ export function ReportFormPage({ report, onDone, onCancel }: ReportFormPageProps
             }
             allowedWidgetIds={allowed}
             freezeNote={FREEZE_NOTE}
+            maxIds={REPORT_LIMITS.scopeIdsMax}
           />
           <p className="text-xs text-muted-foreground">
             {state.scope.widgets.length} dari maksimal {REPORT_LIMITS.widgetsMax} widget dipilih.

@@ -13,6 +13,11 @@ export const REPORT_LIMITS = {
   perOwner: 20,
   recipientsMax: 20,
   nameMax: 120,
+  /**
+   * Maksimal BU atau lokasi pada satu laporan yang disimpan. Lebih longgar dari `FILTER_LIST_MAX` (20, batas filter
+   * yang diketik pengguna) karena isinya himpunan beku hak pemilik; hasil akhir tetap diiris hak pemilik saat kirim.
+   */
+  scopeIdsMax: 200,
   linkDaysMax: 365,
   linkDaysDefault: 14,
   /** Kirim uji per jam per pemilik. */

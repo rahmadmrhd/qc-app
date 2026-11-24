@@ -271,3 +271,30 @@ describe('ReportFormPage: cakupan lokasi tidak berubah saat menyimpan ulang (I1)
     expect(saveInput()).toMatchObject({ locationFiltered: true, filter: { locationIds: ['l1'] } });
   });
 });
+
+describe('ReportFormPage: himpunan beku BU/lokasi lebih dari 20 tidak dikosongkan', () => {
+  test('25 BU dan 30 lokasi tersimpan dikirim apa adanya saat simpan ulang', async () => {
+    const buIds = Array.from({ length: 25 }, (_, index) => `bu-${index}`);
+    const locationIds = Array.from({ length: 30 }, (_, index) => `loc-${index}`);
+    await form({
+      ...SAVED,
+      scope: {
+        buIds,
+        locationIds,
+        locationFiltered: true,
+        widgets: [{ id: 'sn.recorded', filters: {} }],
+        offers: [],
+      },
+    });
+    await userEvent.type(screen.getByLabelText('Nama laporan'), '!');
+    await userEvent.click(screen.getByRole('button', { name: 'Simpan' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    const sent = saveInput() as {
+      filter: { buIds?: string[]; locationIds?: string[] };
+      locationFiltered: boolean;
+    };
+    expect(sent.filter.buIds).toEqual(buIds);
+    expect(sent.filter.locationIds).toEqual(locationIds);
+    expect(sent.locationFiltered).toBe(true);
+  });
+});

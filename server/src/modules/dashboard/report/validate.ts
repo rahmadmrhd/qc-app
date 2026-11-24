@@ -1,5 +1,4 @@
 import { appError } from '@server/core/errors';
-import { FILTER_LIST_MAX } from '@server/core/validate';
 import type { DashboardFilterInput } from '@shared/dashboard';
 import { GROUP_FILTERS, widgetMeta } from '@shared/dashboard';
 import type {
@@ -66,6 +65,13 @@ export function checkReportInput(input: SaveDashboardReportInput): Fields {
     }
   }
 
+  for (const key of ['buIds', 'locationIds'] as const) {
+    const list = input.filter?.[key];
+    if (Array.isArray(list) && list.length > REPORT_LIMITS.scopeIdsMax) {
+      fields[`filter.${key}`] = `Maksimal ${REPORT_LIMITS.scopeIdsMax} nilai`;
+    }
+  }
+
   const recipients = Array.isArray(input.recipients) ? normalizeRecipients(input.recipients) : [];
   if (recipients.length === 0) {
     fields.recipients = 'Isi minimal satu alamat surel penerima';
@@ -114,8 +120,8 @@ function readIdList(value: unknown, key: string, fields: Fields): string[] | und
     fields[key] = 'Harus berupa daftar teks';
     return undefined;
   }
-  if (value.length > FILTER_LIST_MAX) {
-    fields[key] = `Maksimal ${FILTER_LIST_MAX} nilai`;
+  if (value.length > REPORT_LIMITS.scopeIdsMax) {
+    fields[key] = `Maksimal ${REPORT_LIMITS.scopeIdsMax} nilai`;
     return undefined;
   }
   const items = (value as string[]).map((item) => item.trim());

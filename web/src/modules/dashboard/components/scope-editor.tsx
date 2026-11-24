@@ -95,12 +95,15 @@ export function ScopeEditor({
   allowedWidgetIds,
   seedFilters,
   freezeNote = DEFAULT_FREEZE_NOTE,
+  maxIds = FILTER_LIST_MAX,
 }: {
   value: ScopeEditorValue;
   onChange: (next: ScopeEditorValue) => void;
   allowedWidgetIds: readonly WidgetId[];
   /** Catatan di bawah chip BU/Lokasi tentang kapan himpunannya dibekukan (bawaan: untuk tautan bagikan). */
   freezeNote?: string;
+  /** Batas jumlah BU dan lokasi terpilih (bawaan `FILTER_LIST_MAX`; laporan terjadwal memakai batas simpan yang lebih longgar). */
+  maxIds?: number;
   /** Filter awal sebuah grup saat widget pertamanya dicentang (mis. filter grup yang sedang aktif di halaman). */
   seedFilters?: (group: DashboardGroupId) => Record<string, string[]>;
 }) {
@@ -169,7 +172,7 @@ export function ScopeEditor({
     <div className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2">
         <LinkMultiField
-          maxSelected={FILTER_LIST_MAX}
+          maxSelected={maxIds}
           id="share-scope-bu"
           label="BU"
           placeholder="Semua BU yang Anda punya hak"
@@ -181,7 +184,7 @@ export function ScopeEditor({
           onChange={(next) => onChange({ ...value, buIds: next })}
         />
         <LinkMultiField
-          maxSelected={FILTER_LIST_MAX}
+          maxSelected={maxIds}
           id="share-scope-location"
           label="Lokasi"
           placeholder="Semua lokasi yang Anda punya hak"
