@@ -11,3 +11,6 @@ feat(dashboard): kunjungan tautan publik dicatat sekali per pembukaan halaman le
 fix(dashboard): log aktivitas tautan terbitan laporan memakai gerbang baca yang sama dengan View tautan; nama BU/lokasi terhapus tetap tampil dengan penanda
 fix(dashboard): pemotongan IP kunjungan menolak IPv6 cacat dan ber-zona
 perf(dashboard): indeks (expires_at, revoked_at) untuk penyapu kedaluwarsa tautan (migrasi 0037)
+feat(dashboard): laporan terjadwal lewat surel dengan banyak laporan per pemilik, jadwal harian/mingguan/bulanan, penerima bcc, dan tombol ke dashboard publik berperiode sama
+feat(mail): pengirim surel mendukung isi HTML dan bcc
+feat(dashboard): halaman kelola laporan terjadwal (daftar, View dengan pratinjau surel tersandbox, form bertab, Kirim uji, Jeda/Lanjutkan)
