@@ -6,6 +6,7 @@ import { assertAccessRecordReadable } from '@server/modules/access/service';
 import { parseAuditCursor } from '@server/modules/access/validate';
 import { assertBrandReadable } from '@server/modules/brand/service';
 import { assertCustomerReadable } from '@server/modules/customer/service';
+import { loadReport } from '@server/modules/dashboard/report/repo';
 import { loadReadableShare } from '@server/modules/dashboard/share-service';
 import { assertHandoverReadable } from '@server/modules/handover/service';
 import { assertItemReadable } from '@server/modules/item/service';
@@ -108,6 +109,12 @@ const GATES: Record<ActivityKind, Gate> = {
   dashboardShare: async (env, user, id) => {
     requireModule(user, DASHBOARD_MANAGE);
     await loadReadableShare(env, user, id); // gerbang yang sama dengan `dashboardShares.get` (terbitan laporan = pemilik)
+  },
+  // Laporan terjadwal: log aktivitas hanya memuat NAMA field (tanpa alamat penerima), terbaca semua pemegang `manage`
+  // seperti metadata laporan di daftar.
+  dashboardReport: async (env, user, id) => {
+    requireModule(user, DASHBOARD_MANAGE);
+    if (!(await loadReport(env.DB, id))) throw appError('NOT_FOUND', 'Laporan tidak ditemukan');
   },
 };
 

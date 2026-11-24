@@ -8,8 +8,15 @@ import { type Env, nowIso, nowOf } from '@server/core/env';
 import { appError } from '@server/core/errors';
 import { newId } from '@server/core/id';
 import type { UserContext } from '@server/modules/access/context';
+import type { DashboardFilterInput } from '@shared/dashboard';
 import { widgetMeta } from '@shared/dashboard';
-import type { CreateShareInput, DashboardShareDto, ShareScope } from '@shared/dashboard-share';
+import type { ReportScope } from '@shared/dashboard-report';
+import type {
+  CreateShareInput,
+  DashboardShareDto,
+  ShareScope,
+  ShareWidgetScope,
+} from '@shared/dashboard-share';
 import { SHARE_LIMITS, shareExpiry, shareStatus } from '@shared/dashboard-share';
 import { allowedWidgetIds, resolveScope } from './scope';
 import { signShareToken } from './share-link';
@@ -32,14 +39,27 @@ export function shareUrl(env: Env, token: string): string {
   return `${origin}/dashboard-publik/${token}`;
 }
 
+/** Isi yang dibekukan (tanpa rentang): dipakai tautan (`freezeScope`) dan laporan terjadwal (`freezeContent`). */
+export interface FreezeContentInput {
+  filter: DashboardFilterInput;
+  locationFiltered?: boolean;
+  widgets: ShareWidgetScope[];
+  offers: string[];
+}
+
 /**
  * Membekukan cakupan: BU dan lokasi menjadi himpunan id eksplisit hasil `resolveScope` (hak pembagi saat ini diiris
  * dengan pilihan), BUKAN masukan mentah, sehingga BU yang ditambahkan ke pembagi kemudian tidak ikut. Daftar BU/lokasi
  * kosong dibaca "tanpa filter" (tetap dibatasi hak pembagi), tidak pernah menjadi "semua". Lokasi hanya dibekukan
  * untuk modul yang dipakai widget terpilih (Serah Terima, stok stiker; Serial/Laporan hanya bila `locationFiltered`).
+ * `filter.from`/`to` hanya dipakai agar `resolveScope` memiliki rentang sah (isi cakupan tidak bergantung padanya).
+ * Validasi isi (judul, rentang, batas widget) milik pemanggil; di sini hanya hak: widget di luar hak = `VALIDATION`.
  */
-export function freezeScope(user: UserContext, input: CreateShareInput, nowMs: number): ShareScope {
-  assertShareInput(input);
+export function freezeContent(
+  user: UserContext,
+  input: FreezeContentInput,
+  nowMs: number,
+): ReportScope {
   const allowed = new Set(allowedWidgetIds(user));
   if (input.widgets.some((widget) => !allowed.has(widget.id))) {
     throw appError('VALIDATION', 'Ada widget di luar hak akses Anda', {
@@ -77,10 +97,15 @@ export function freezeScope(user: UserContext, input: CreateShareInput, nowMs: n
     buIds: resolved.buIds,
     locationIds: [...locationIds],
     locationFiltered,
-    range: input.range,
     widgets: input.widgets.map((widget) => ({ id: widget.id, filters: widget.filters ?? {} })),
     offers: [...new Set(input.offers)],
   };
+}
+
+/** Membekukan cakupan tautan: validasi isi tautan, lalu `freezeContent` ditambah rentang. */
+export function freezeScope(user: UserContext, input: CreateShareInput, nowMs: number): ShareScope {
+  assertShareInput(input);
+  return { ...freezeContent(user, input, nowMs), range: input.range };
 }
 
 export async function toShareDto(

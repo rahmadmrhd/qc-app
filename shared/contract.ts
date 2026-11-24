@@ -17,6 +17,13 @@ import type {
   DashboardQueryOutput,
 } from './dashboard';
 import type {
+  DashboardReportDto,
+  DashboardReportListDto,
+  GetDashboardReportInput,
+  SaveDashboardReportInput,
+  SetDashboardReportEnabledInput,
+} from './dashboard-report';
+import type {
   CreateShareInput,
   DashboardShareDetailDto,
   DashboardShareDto,
@@ -1646,6 +1653,15 @@ export interface ApiContract {
   'dashboardShares.get': { input: GetDashboardShareInput; output: DashboardShareDetailDto };
   'dashboardShares.create': { input: CreateShareInput; output: DashboardShareDto };
   'dashboardShares.revoke': { input: GetDashboardShareInput; output: { ok: true } };
+  /** Laporan dashboard terjadwal lewat surel; semuanya butuh `dashboard: manage`, hak ubah hanya pemilik/super admin. */
+  'dashboardReports.list': { input: null; output: DashboardReportListDto };
+  'dashboardReports.get': { input: GetDashboardReportInput; output: DashboardReportDto };
+  'dashboardReports.save': { input: SaveDashboardReportInput; output: DashboardReportDto };
+  'dashboardReports.setEnabled': {
+    input: SetDashboardReportEnabledInput;
+    output: DashboardReportDto;
+  };
+  'dashboardReports.remove': { input: GetDashboardReportInput; output: { ok: true } };
 }
 
 export type ApiId = keyof ApiContract;

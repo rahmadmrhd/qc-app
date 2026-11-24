@@ -18,6 +18,7 @@ export type AuditTargetKind =
   | 'location'
   | 'businessUnit'
   | 'dashboardShare'
+  | 'dashboardReport'
   | 'serial'
   | 'handover';
 
@@ -42,6 +43,7 @@ export const ACTIVITY_KINDS: readonly ActivityKind[] = [
   'businessUnit',
   'handover',
   'dashboardShare',
+  'dashboardReport',
 ];
 
 /** Awalan aksi (sebelum titik pertama) -> jenis entitas. Awalan BU memang `businessunit` (huruf kecil semua). */
@@ -63,12 +65,18 @@ const PREFIX_KINDS: Readonly<Record<string, AuditTargetKind>> = {
 
 /**
  * Aksi LENGKAP -> jenis entitas, untuk awalan yang dipakai beberapa jenis entitas atau fitur (awalan `dashboard`
- * akan memuat aksi Rencana 3 yang bukan tautan, jadi dipetakan per aksi, bukan per awalan).
+ * memuat aksi tautan dan laporan terjadwal, jadi dipetakan per aksi, bukan per awalan).
  */
 const ACTION_KINDS: Readonly<Record<string, AuditTargetKind>> = {
   'dashboard.share_create': 'dashboardShare',
   'dashboard.share_revoke': 'dashboardShare',
   'dashboard.share_expire': 'dashboardShare',
+  'dashboard.report_create': 'dashboardReport',
+  'dashboard.report_update': 'dashboardReport',
+  'dashboard.report_delete': 'dashboardReport',
+  'dashboard.report_pause': 'dashboardReport',
+  'dashboard.report_resume': 'dashboardReport',
+  'dashboard.report_send_test': 'dashboardReport',
 };
 
 /**

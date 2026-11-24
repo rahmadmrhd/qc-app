@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { writeAudit } from '@server/core/audit';
+import { insertReportStmt } from '@server/modules/dashboard/report/repo';
 import { insertShareStmt } from '@server/modules/dashboard/share-repo';
 import { seedBusinessUnit, seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { ENV as HANDOVER_ENV, seedHandover, seedHandoverEnv } from '@server-test/handover-env';
@@ -271,6 +272,24 @@ describe('activity.list: tiap kind memakai gerbang baca model-nya', () => {
       scope: '{}',
       report_id: '',
     }).run();
+    await insertReportStmt(env.DB, {
+      id: 'dr1',
+      name: 'Laporan mingguan',
+      owner: ADMIN,
+      enabled: 1,
+      schedule: '{"frequency":"weekly","hour":8,"weekday":1,"monthDay":1}',
+      period: 'lastWeek',
+      scope: '{}',
+      recipients: '[]',
+      link_days: 14,
+      last_run_key: '',
+      last_run_at: '',
+      last_status: '',
+      last_note: '',
+      created_at: '2026-11-22T01:00:00.000Z',
+      updated_at: '2026-11-22T01:00:00.000Z',
+      version: 1,
+    }).run();
     await seedCustomer(env, { id: 'c1', name: 'PT Maju' });
     await seedStickerType(env, { id: 'st1' });
     await seedSticker(env, { id: 'sk1', typeId: 'st1', buIds: ['bu-a'] });
@@ -342,6 +361,12 @@ describe('activity.list: tiap kind memakai gerbang baca model-nya', () => {
         kind: 'dashboardShare',
         id: 'ds1',
         action: 'dashboard.share_create',
+        reader: READ_ROLES['dashboard-manage'] as string,
+      },
+      {
+        kind: 'dashboardReport',
+        id: 'dr1',
+        action: 'dashboard.report_update',
         reader: READ_ROLES['dashboard-manage'] as string,
       },
     ];

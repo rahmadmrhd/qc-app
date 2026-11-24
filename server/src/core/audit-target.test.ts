@@ -119,8 +119,10 @@ describe('auditTargetKind', () => {
     expect(auditTargetKind('dashboard.share_create')).toBe('dashboardShare');
     expect(auditTargetKind('dashboard.share_revoke')).toBe('dashboardShare');
     expect(auditTargetKind('dashboard.share_expire')).toBe('dashboardShare');
-    // Aksi lain berawalan `dashboard.` (mis. laporan terjadwal) tidak otomatis menjadi tautan.
-    expect(auditTargetKind('dashboard.report_create')).toBeUndefined();
+    // Aksi laporan terjadwal dipetakan per aksi ke jenis sendiri; aksi `dashboard.` lain yang tak terdaftar tidak ikut.
+    for (const action of ['create', 'update', 'delete', 'pause', 'resume', 'send_test']) {
+      expect(auditTargetKind(`dashboard.report_${action}`)).toBe('dashboardReport');
+    }
     expect(auditTargetKind('dashboard.report_run')).toBeUndefined();
   });
 

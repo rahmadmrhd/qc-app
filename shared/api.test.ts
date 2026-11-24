@@ -498,6 +498,22 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     expiresInDays: 30,
   },
   'dashboardShares.revoke': { id: 's1' },
+  'dashboardReports.list': null,
+  'dashboardReports.get': { id: 'r1' },
+  'dashboardReports.save': {
+    id: 'r1',
+    name: 'Ringkasan harian',
+    schedule: { frequency: 'weekly', hour: 8, weekday: 1, monthDay: 1 },
+    period: 'lastWeek',
+    filter: { buIds: ['bu1'], from: '2026-11-01', to: '2026-11-23' },
+    widgets: [{ id: 'hs.created', filters: { status: ['done'] } }],
+    offers: [],
+    recipients: ['a@x.id'],
+    linkDays: 14,
+    expectedUpdatedAt: '2026-11-23T00:00:00.000Z',
+  },
+  'dashboardReports.setEnabled': { id: 'r1', enabled: false },
+  'dashboardReports.remove': { id: 'r1' },
 };
 
 const ROUNDTRIP_IDS = IDS;

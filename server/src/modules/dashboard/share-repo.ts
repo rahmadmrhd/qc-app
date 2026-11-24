@@ -71,6 +71,40 @@ export async function listShares(db: Preparer, includeReport: boolean): Promise<
   return result.results;
 }
 
+/** Tautan terbitan satu laporan terjadwal, terbaru dahulu (maks. `limit`). */
+export async function listSharesOfReport(
+  db: Preparer,
+  reportId: string,
+  limit: number,
+): Promise<ShareRow[]> {
+  const result = await db
+    .prepare(
+      `SELECT ${COLUMNS} FROM dashboard_shares WHERE report_id = ? ORDER BY created_at DESC, id DESC LIMIT ?`,
+    )
+    .bind(reportId, limit)
+    .all<ShareRow>();
+  return result.results;
+}
+
+/** Mencabut SEMUA tautan terbitan satu laporan yang masih aktif (dipakai saat laporan dihapus). */
+export function revokeReportSharesStmt(
+  db: Preparer,
+  reportId: string,
+  by: string,
+  nowIso: string,
+): DbStatement {
+  return db
+    .prepare(
+      "UPDATE dashboard_shares SET revoked_at = ?, revoked_by = ? WHERE report_id = ? AND revoked_at = ''",
+    )
+    .bind(nowIso, by, reportId);
+}
+
+/** Menghapus satu baris tautan (kompensasi bila pengiriman laporan gagal: tautan belum pernah sampai ke siapa pun). */
+export function deleteShareStmt(db: Preparer, id: string): DbStatement {
+  return db.prepare('DELETE FROM dashboard_shares WHERE id = ?').bind(id);
+}
+
 /** Jumlah tautan aktif (belum dicabut, belum kedaluwarsa) milik `creator`; terbitan laporan tidak dihitung. */
 export async function countActiveShares(
   db: Preparer,

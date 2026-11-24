@@ -348,6 +348,35 @@
     "path": "/dashboard/query"
   },
   {
+    "id": "dashboardReports.get",
+    "verb": "GET",
+    "path": "/dashboard-reports/{id}"
+  },
+  {
+    "id": "dashboardReports.list",
+    "verb": "GET",
+    "path": "/dashboard-reports"
+  },
+  {
+    "id": "dashboardReports.remove",
+    "verb": "DELETE",
+    "path": "/dashboard-reports/{id}"
+  },
+  {
+    "id": "dashboardReports.save",
+    "verb": "PUT",
+    "path": "/dashboard-reports/{id}",
+    "create": {
+      "verb": "POST",
+      "path": "/dashboard-reports"
+    }
+  },
+  {
+    "id": "dashboardReports.setEnabled",
+    "verb": "POST",
+    "path": "/dashboard-reports/{id}/enabled"
+  },
+  {
     "id": "dashboardShares.create",
     "verb": "POST",
     "path": "/dashboard-shares"
