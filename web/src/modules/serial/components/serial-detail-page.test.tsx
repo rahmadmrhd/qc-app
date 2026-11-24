@@ -183,6 +183,7 @@ function meWith(serial: 'view' | 'edit'): MeDto {
       serial,
       serialservice: 'none',
       countrylock: 'none',
+      dashboard: 'none',
     },
     businessUnits: [
       {

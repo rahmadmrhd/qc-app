@@ -12,6 +12,11 @@ import { secureHeaders } from 'hono/secure-headers';
 export interface RequestBindings {
   /** IP klien hasil `clientIp` (peer, atau `CF-Connecting-IP` bila peer proxy tepercaya). */
   clientIp?: string;
+  /**
+   * True bila peer TCP ada di dalam daftar proxy tepercaya (`TRUSTED_PROXY`): hanya dari peer itu header yang
+   * dipasang proxy (`CF-IPCountry`) boleh dipercaya, sama seperti `CF-Connecting-IP` pada `clientIp`.
+   */
+  trustedPeer?: boolean;
   /** Alamat TCP peer (bukan header). Rute khusus mesin lokal (dev-login) mensyaratkan peer loopback. */
   peerAddress?: string;
   /** Direktori berkas statis web; tanpa nilai = tidak ada berkas statis (mis. tes API). */

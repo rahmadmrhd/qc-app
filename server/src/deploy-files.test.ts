@@ -34,10 +34,11 @@ function configVariables(): string[] {
 }
 
 /**
- * Tidak dipasang di compose: login dev ditolak `loadConfig` di produksi; STATIC_DIR dan DB_POOL_SIZE memakai bawaan
- * image/kode; GIT_SHA diisi image sendiri lewat build-arg Dockerfile (bukan pilihan operator).
+ * Tidak dipasang di compose: login dev ditolak `loadConfig` di produksi; STATIC_DIR memakai bawaan image;
+ * GIT_SHA diisi image sendiri lewat build-arg Dockerfile (bukan pilihan operator). DB_POOL_SIZE kini dipasang
+ * (2026-11-23, keputusan pemilik: ukuran pool dapat diatur lewat .env).
  */
-const NOT_IN_COMPOSE = new Set(['DEV_LOGIN_EMAIL', 'STATIC_DIR', 'DB_POOL_SIZE', 'GIT_SHA']);
+const NOT_IN_COMPOSE = new Set(['DEV_LOGIN_EMAIL', 'STATIC_DIR', 'GIT_SHA']);
 /** Tetap di compose/image (bukan pilihan operator di .env); DATABASE_URL disusun compose dari QC_DB_USER/QC_DB_PASSWORD/QC_DB_NAME. */
 const NOT_IN_ENV_EXAMPLE = new Set([
   ...NOT_IN_COMPOSE,
@@ -159,12 +160,28 @@ describe('deploy: compose.yml qc-db membuat skema dan pengguna aplikasi', () => 
     );
   });
 
-  test('cache Aria dibatasi 32M agar kueri tabel sementara besar tak memenuhi kontainer qc-db 384M (read-only: butuh restart DB)', () => {
+  test('memori qc-db dapat diatur per lingkungan lewat .env, bawaan 512m/256M/32M (keputusan pemilik 2026-11-24)', () => {
+    // Batas kontainer, buffer pool, dan cache Aria berasal dari variabel .env dengan bawaan VPS bersama.
+    expect(compose.services['qc-db']?.mem_limit).toBe('${QC_DB_MEM_LIMIT:-512m}');
+    // Dua variabel mariadbd dipasang lewat flag `command` (menang atas qc.cnf, tak bergantung izin baca qc.cnf).
+    expect(compose.services['qc-db']?.command).toEqual([
+      '--innodb-buffer-pool-size=${QC_DB_BUFFER_POOL:-256M}',
+      '--aria-pagecache-buffer-size=${QC_DB_ARIA_CACHE:-32M}',
+    ]);
+    const lines = envExample.split('\n').map((line) => line.replace(/^#\s*/, ''));
+    for (const name of ['QC_DB_MEM_LIMIT', 'QC_DB_BUFFER_POOL', 'QC_DB_ARIA_CACHE']) {
+      expect(
+        lines.some((line) => line.startsWith(`${name}=`)),
+        name,
+      ).toBe(true);
+    }
+  });
+
+  test('qc.cnf tidak memuat ukuran cache memori (satu sumber: compose.yml), agar nilai .env tak dibayangi', () => {
     const cnf = read('deploy/mariadb/qc.cnf');
-    expect(cnf).toMatch(/^aria_pagecache_buffer_size=32M$/m);
-    expect(cnf).toMatch(/^innodb_buffer_pool_size=128M$/m);
-    // Anggaran memori: buffer pool + cache Aria harus tetap jauh di bawah batas kontainer (sisanya untuk dasar proses dan koneksi).
-    expect(compose.services['qc-db']?.mem_limit).toBe('384m');
+    expect(cnf).not.toMatch(/^innodb_buffer_pool_size=/m);
+    expect(cnf).not.toMatch(/^aria_pagecache_buffer_size=/m);
+    expect(cnf).toMatch(/^max_connections=40$/m);
   });
 });
 
@@ -391,6 +408,10 @@ describe('deploy: nginx/qc.conf.example', () => {
     expect(code).toMatch(/map \$request_uri \$qc_log_uri \{/);
     expect(code).toContain('~^/laporan/');
     expect(code).toContain('~^/api/public/serial-reports/');
+    // Tautan dashboard publik (2026-11-23): halaman klien dan API publiknya memuat token di jalur URL.
+    expect(code).toContain('~^/dashboard-publik/');
+    expect(code).toContain('~^/api/public/dashboards/');
+    expect(code).toMatch(/~\/dashboard-publik\/\s+"\[disamarkan\]"/);
     expect(code).toContain('map $http_referer $qc_log_referer {');
     expect(code).toMatch(/log_format qc_masked [^;]*\$qc_log_uri[^;]*\$qc_log_referer/s);
     expect(code).not.toMatch(/log_format qc_masked [^;]*\$request_uri/s);

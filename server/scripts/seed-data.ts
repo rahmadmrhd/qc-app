@@ -62,6 +62,9 @@ export const RESET_TABLES = [
   'notifications',
   'push_subscriptions',
   'guide_progress',
+  'dashboard_share_visits',
+  'dashboard_shares',
+  'dashboard_reports',
   'job_blobs',
   'item_alias_keys',
   'item_business_units',
@@ -109,6 +112,7 @@ export function buildSeedStatements(email: string, nowMs: number): SeedStatement
         sticker: 'manage',
         stickerstock: 'manage',
         countrylock: 'view',
+        dashboard: 'manage',
       },
     },
     {

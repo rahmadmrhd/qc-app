@@ -18,6 +18,9 @@ const EXPECTED_TABLES = [
   'business_units',
   'counters',
   'customers',
+  'dashboard_reports',
+  'dashboard_share_visits',
+  'dashboard_shares',
   'files',
   'guide_progress',
   'handover_comments',
@@ -302,7 +305,7 @@ describe('skema baseline', () => {
     await db.close();
   });
 
-  test('45 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
+  test('46 tabel aplikasi + schema_migrations; terapan dua kali tak mengubah apa pun', async () => {
     const before = await tableNames(db);
     expect(before).toEqual(EXPECTED_TABLES);
     expect(await applyMigrations(db)).toEqual([]);
@@ -345,9 +348,13 @@ describe('skema baseline', () => {
       { name: '0029_klien_id_entri_stok.sql' },
       { name: '0030_soft_delete_contract.sql' },
       { name: '0031_audit_target_id_index.sql' },
+      { name: '0032_dashboard.sql' },
       { name: '0032_indeks_kinerja.sql' },
+      { name: '0033_dashboard_share_visits.sql' },
       { name: '0034_serial_daftar_indeks.sql' },
+      { name: '0035_dashboard_reports.sql' },
       { name: '0036_buang_indeks_serials_created_id.sql' },
+      { name: '0037_dashboard_share_expiry_index.sql' },
     ]);
   });
 
@@ -493,6 +500,11 @@ describe('skema baseline', () => {
         'business_units.business_units_code_unique_live',
         'business_units.business_units_name_unique_live',
         'customers.customers_key_live',
+        'dashboard_reports.dashboard_reports_owner',
+        'dashboard_share_visits.dashboard_share_visits_share',
+        'dashboard_shares.dashboard_shares_creator',
+        'dashboard_shares.dashboard_shares_expiry',
+        'dashboard_shares.dashboard_shares_report',
         'files.files_owner',
         'files.files_pending_delete',
         'handover_comments.handover_comments_client_id',

@@ -15,8 +15,12 @@ export interface SmtpSettings {
 
 export interface MailMessage {
   to: string[];
+  /** Penerima tersembunyi (tidak saling terlihat). Bila `to` kosong, `to` diisi alamat pengirim. */
+  bcc?: string[];
   subject: string;
   text: string;
+  /** Bagian HTML (alternatif dari `text`, yang tetap selalu ikut). */
+  html?: string;
 }
 
 export interface Mailer {
@@ -25,7 +29,23 @@ export interface Mailer {
 
 /** Bagian transport nodemailer yang dipakai (disuntik tes). */
 export interface MailTransport {
-  sendMail(message: { from: string; to: string; subject: string; text: string }): Promise<unknown>;
+  sendMail(message: {
+    from: string;
+    to: string;
+    bcc?: string;
+    subject: string;
+    text: string;
+    html?: string;
+  }): Promise<unknown>;
+}
+
+/**
+ * Alamat polos dari pengaturan `from`: bentuk `Nama <alamat>` menjadi `alamat`, tanpa tanda kurung dipakai apa adanya.
+ * Dipakai mengisi `to` bila pesan hanya punya penerima `bcc`.
+ */
+export function senderAddress(from: string): string {
+  const match = /<([^<>]+)>\s*$/.exec(from);
+  return (match?.[1] ?? from).trim();
 }
 
 export interface SmtpTransportOptions {
@@ -67,11 +87,17 @@ export function createSmtpMailer(settings: SmtpSettings, deps: MailDeps = {}): M
     async send(message) {
       try {
         transport ??= (deps.createTransport ?? createTransport)(options) as MailTransport;
+        const bcc = message.bcc ?? [];
         await transport.sendMail({
           from: settings.from,
-          to: message.to.join(', '),
+          to:
+            message.to.length === 0 && bcc.length > 0
+              ? senderAddress(settings.from)
+              : message.to.join(', '),
+          ...(bcc.length > 0 ? { bcc: bcc.join(', ') } : {}),
           subject: message.subject,
           text: message.text,
+          ...(message.html === undefined ? {} : { html: message.html }),
         });
       } catch (error) {
         const text = error instanceof Error ? error.message : String(error);

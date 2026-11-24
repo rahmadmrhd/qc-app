@@ -15,11 +15,13 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppDesktopRouteImport } from './routes/_app/desktop'
 import { Route as AppForbiddenRouteImport } from './routes/_app/forbidden'
+import { Route as DashboardPublikTokenRouteImport } from './routes/dashboard-publik.$token'
 import { Route as LaporanTokenRouteImport } from './routes/laporan.$token'
 import { Route as AppAccessAuditRouteImport } from './routes/_app/access/audit'
 import { Route as AppAccessPushRouteImport } from './routes/_app/access/push'
 import { Route as AppCustomerIndexRouteImport } from './routes/_app/customer/index'
 import { Route as AppCustomerCustomerIdRouteImport } from './routes/_app/customer/$customerId'
+import { Route as AppDashboardIndexRouteImport } from './routes/_app/dashboard/index'
 import { Route as AppHandoverIndexRouteImport } from './routes/_app/handover/index'
 import { Route as AppHandoverNewRouteImport } from './routes/_app/handover/new'
 import { Route as AppItemIndexRouteImport } from './routes/_app/item/index'
@@ -47,6 +49,9 @@ import { Route as AppAccessRolesIndexRouteImport } from './routes/_app/access/ro
 import { Route as AppAccessRolesRoleIdRouteImport } from './routes/_app/access/roles/$roleId'
 import { Route as AppAccessUsersIndexRouteImport } from './routes/_app/access/users/index'
 import { Route as AppAccessUsersUserIdRouteImport } from './routes/_app/access/users/$userId'
+import { Route as AppDashboardLaporanIndexRouteImport } from './routes/_app/dashboard/laporan/index'
+import { Route as AppDashboardLaporanNewRouteImport } from './routes/_app/dashboard/laporan/new'
+import { Route as AppDashboardTautanShareIdRouteImport } from './routes/_app/dashboard/tautan/$shareId'
 import { Route as AppHandoverHandoverIdIndexRouteImport } from './routes/_app/handover/$handoverId/index'
 import { Route as AppHandoverHandoverIdEditRouteImport } from './routes/_app/handover/$handoverId/edit'
 import { Route as AppItemItemIdIndexRouteImport } from './routes/_app/item/$itemId/index'
@@ -64,6 +69,8 @@ import { Route as AppSerialReportsIndexRouteImport } from './routes/_app/serial/
 import { Route as AppSerialReportsCaseIdRouteImport } from './routes/_app/serial/reports/$caseId'
 import { Route as AppStickerTypesIndexRouteImport } from './routes/_app/sticker/types/index'
 import { Route as AppStickerTypesTypeIdRouteImport } from './routes/_app/sticker/types/$typeId'
+import { Route as AppDashboardLaporanReportIdIndexRouteImport } from './routes/_app/dashboard/laporan/$reportId/index'
+import { Route as AppDashboardLaporanReportIdEditRouteImport } from './routes/_app/dashboard/laporan/$reportId/edit'
 import { Route as AppQrcodeDefaultPresetIdIndexRouteImport } from './routes/_app/qrcode/default/$presetId/index'
 import { Route as AppQrcodeDefaultPresetIdEditRouteImport } from './routes/_app/qrcode/default/$presetId/edit'
 
@@ -96,6 +103,11 @@ const AppForbiddenRoute = AppForbiddenRouteImport.update({
   path: '/forbidden',
   getParentRoute: () => AppRoute,
 } as any)
+const DashboardPublikTokenRoute = DashboardPublikTokenRouteImport.update({
+  id: '/dashboard-publik/$token',
+  path: '/dashboard-publik/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LaporanTokenRoute = LaporanTokenRouteImport.update({
   id: '/laporan/$token',
   path: '/laporan/$token',
@@ -119,6 +131,11 @@ const AppCustomerIndexRoute = AppCustomerIndexRouteImport.update({
 const AppCustomerCustomerIdRoute = AppCustomerCustomerIdRouteImport.update({
   id: '/customer/$customerId',
   path: '/customer/$customerId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDashboardIndexRoute = AppDashboardIndexRouteImport.update({
+  id: '/dashboard/',
+  path: '/dashboard/',
   getParentRoute: () => AppRoute,
 } as any)
 const AppHandoverIndexRoute = AppHandoverIndexRouteImport.update({
@@ -259,6 +276,23 @@ const AppAccessUsersUserIdRoute = AppAccessUsersUserIdRouteImport.update({
   path: '/access/users/$userId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDashboardLaporanIndexRoute =
+  AppDashboardLaporanIndexRouteImport.update({
+    id: '/dashboard/laporan/',
+    path: '/dashboard/laporan/',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppDashboardLaporanNewRoute = AppDashboardLaporanNewRouteImport.update({
+  id: '/dashboard/laporan/new',
+  path: '/dashboard/laporan/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDashboardTautanShareIdRoute =
+  AppDashboardTautanShareIdRouteImport.update({
+    id: '/dashboard/tautan/$shareId',
+    path: '/dashboard/tautan/$shareId',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppHandoverHandoverIdIndexRoute =
   AppHandoverHandoverIdIndexRouteImport.update({
     id: '/handover/$handoverId/',
@@ -346,6 +380,18 @@ const AppStickerTypesTypeIdRoute = AppStickerTypesTypeIdRouteImport.update({
   path: '/sticker/types/$typeId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDashboardLaporanReportIdIndexRoute =
+  AppDashboardLaporanReportIdIndexRouteImport.update({
+    id: '/dashboard/laporan/$reportId/',
+    path: '/dashboard/laporan/$reportId/',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppDashboardLaporanReportIdEditRoute =
+  AppDashboardLaporanReportIdEditRouteImport.update({
+    id: '/dashboard/laporan/$reportId/edit',
+    path: '/dashboard/laporan/$reportId/edit',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppQrcodeDefaultPresetIdIndexRoute =
   AppQrcodeDefaultPresetIdIndexRouteImport.update({
     id: '/qrcode/default/$presetId/',
@@ -365,6 +411,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/desktop': typeof AppDesktopRoute
   '/forbidden': typeof AppForbiddenRoute
+  '/dashboard-publik/$token': typeof DashboardPublikTokenRoute
   '/laporan/$token': typeof LaporanTokenRoute
   '/access/audit': typeof AppAccessAuditRoute
   '/access/push': typeof AppAccessPushRoute
@@ -383,6 +430,7 @@ export interface FileRoutesByFullPath {
   '/sticker/settings': typeof AppStickerSettingsRoute
   '/sticker/stock': typeof AppStickerStockRoute
   '/customer/': typeof AppCustomerIndexRoute
+  '/dashboard/': typeof AppDashboardIndexRoute
   '/handover/': typeof AppHandoverIndexRoute
   '/item/': typeof AppItemIndexRoute
   '/postel/': typeof AppPostelIndexRoute
@@ -393,6 +441,8 @@ export interface FileRoutesByFullPath {
   '/access/locations/$locationId': typeof AppAccessLocationsLocationIdRoute
   '/access/roles/$roleId': typeof AppAccessRolesRoleIdRoute
   '/access/users/$userId': typeof AppAccessUsersUserIdRoute
+  '/dashboard/laporan/new': typeof AppDashboardLaporanNewRoute
+  '/dashboard/tautan/$shareId': typeof AppDashboardTautanShareIdRoute
   '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
   '/item/$itemId/edit': typeof AppItemItemIdEditRoute
   '/item/brands/$brandId': typeof AppItemBrandsBrandIdRoute
@@ -405,6 +455,7 @@ export interface FileRoutesByFullPath {
   '/access/locations/': typeof AppAccessLocationsIndexRoute
   '/access/roles/': typeof AppAccessRolesIndexRoute
   '/access/users/': typeof AppAccessUsersIndexRoute
+  '/dashboard/laporan/': typeof AppDashboardLaporanIndexRoute
   '/handover/$handoverId/': typeof AppHandoverHandoverIdIndexRoute
   '/item/$itemId/': typeof AppItemItemIdIndexRoute
   '/item/brands/': typeof AppItemBrandsIndexRoute
@@ -414,7 +465,9 @@ export interface FileRoutesByFullPath {
   '/serial/$serialId/': typeof AppSerialSerialIdIndexRoute
   '/serial/reports/': typeof AppSerialReportsIndexRoute
   '/sticker/types/': typeof AppStickerTypesIndexRoute
+  '/dashboard/laporan/$reportId/edit': typeof AppDashboardLaporanReportIdEditRoute
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
+  '/dashboard/laporan/$reportId/': typeof AppDashboardLaporanReportIdIndexRoute
   '/qrcode/default/$presetId/': typeof AppQrcodeDefaultPresetIdIndexRoute
 }
 export interface FileRoutesByTo {
@@ -422,6 +475,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/desktop': typeof AppDesktopRoute
   '/forbidden': typeof AppForbiddenRoute
+  '/dashboard-publik/$token': typeof DashboardPublikTokenRoute
   '/laporan/$token': typeof LaporanTokenRoute
   '/': typeof AppIndexRoute
   '/access/audit': typeof AppAccessAuditRoute
@@ -441,6 +495,7 @@ export interface FileRoutesByTo {
   '/sticker/settings': typeof AppStickerSettingsRoute
   '/sticker/stock': typeof AppStickerStockRoute
   '/customer': typeof AppCustomerIndexRoute
+  '/dashboard': typeof AppDashboardIndexRoute
   '/handover': typeof AppHandoverIndexRoute
   '/item': typeof AppItemIndexRoute
   '/postel': typeof AppPostelIndexRoute
@@ -451,6 +506,8 @@ export interface FileRoutesByTo {
   '/access/locations/$locationId': typeof AppAccessLocationsLocationIdRoute
   '/access/roles/$roleId': typeof AppAccessRolesRoleIdRoute
   '/access/users/$userId': typeof AppAccessUsersUserIdRoute
+  '/dashboard/laporan/new': typeof AppDashboardLaporanNewRoute
+  '/dashboard/tautan/$shareId': typeof AppDashboardTautanShareIdRoute
   '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
   '/item/$itemId/edit': typeof AppItemItemIdEditRoute
   '/item/brands/$brandId': typeof AppItemBrandsBrandIdRoute
@@ -463,6 +520,7 @@ export interface FileRoutesByTo {
   '/access/locations': typeof AppAccessLocationsIndexRoute
   '/access/roles': typeof AppAccessRolesIndexRoute
   '/access/users': typeof AppAccessUsersIndexRoute
+  '/dashboard/laporan': typeof AppDashboardLaporanIndexRoute
   '/handover/$handoverId': typeof AppHandoverHandoverIdIndexRoute
   '/item/$itemId': typeof AppItemItemIdIndexRoute
   '/item/brands': typeof AppItemBrandsIndexRoute
@@ -472,7 +530,9 @@ export interface FileRoutesByTo {
   '/serial/$serialId': typeof AppSerialSerialIdIndexRoute
   '/serial/reports': typeof AppSerialReportsIndexRoute
   '/sticker/types': typeof AppStickerTypesIndexRoute
+  '/dashboard/laporan/$reportId/edit': typeof AppDashboardLaporanReportIdEditRoute
   '/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
+  '/dashboard/laporan/$reportId': typeof AppDashboardLaporanReportIdIndexRoute
   '/qrcode/default/$presetId': typeof AppQrcodeDefaultPresetIdIndexRoute
 }
 export interface FileRoutesById {
@@ -482,6 +542,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_app/desktop': typeof AppDesktopRoute
   '/_app/forbidden': typeof AppForbiddenRoute
+  '/dashboard-publik/$token': typeof DashboardPublikTokenRoute
   '/laporan/$token': typeof LaporanTokenRoute
   '/_app/': typeof AppIndexRoute
   '/_app/access/audit': typeof AppAccessAuditRoute
@@ -501,6 +562,7 @@ export interface FileRoutesById {
   '/_app/sticker/settings': typeof AppStickerSettingsRoute
   '/_app/sticker/stock': typeof AppStickerStockRoute
   '/_app/customer/': typeof AppCustomerIndexRoute
+  '/_app/dashboard/': typeof AppDashboardIndexRoute
   '/_app/handover/': typeof AppHandoverIndexRoute
   '/_app/item/': typeof AppItemIndexRoute
   '/_app/postel/': typeof AppPostelIndexRoute
@@ -511,6 +573,8 @@ export interface FileRoutesById {
   '/_app/access/locations/$locationId': typeof AppAccessLocationsLocationIdRoute
   '/_app/access/roles/$roleId': typeof AppAccessRolesRoleIdRoute
   '/_app/access/users/$userId': typeof AppAccessUsersUserIdRoute
+  '/_app/dashboard/laporan/new': typeof AppDashboardLaporanNewRoute
+  '/_app/dashboard/tautan/$shareId': typeof AppDashboardTautanShareIdRoute
   '/_app/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
   '/_app/item/$itemId/edit': typeof AppItemItemIdEditRoute
   '/_app/item/brands/$brandId': typeof AppItemBrandsBrandIdRoute
@@ -523,6 +587,7 @@ export interface FileRoutesById {
   '/_app/access/locations/': typeof AppAccessLocationsIndexRoute
   '/_app/access/roles/': typeof AppAccessRolesIndexRoute
   '/_app/access/users/': typeof AppAccessUsersIndexRoute
+  '/_app/dashboard/laporan/': typeof AppDashboardLaporanIndexRoute
   '/_app/handover/$handoverId/': typeof AppHandoverHandoverIdIndexRoute
   '/_app/item/$itemId/': typeof AppItemItemIdIndexRoute
   '/_app/item/brands/': typeof AppItemBrandsIndexRoute
@@ -532,7 +597,9 @@ export interface FileRoutesById {
   '/_app/serial/$serialId/': typeof AppSerialSerialIdIndexRoute
   '/_app/serial/reports/': typeof AppSerialReportsIndexRoute
   '/_app/sticker/types/': typeof AppStickerTypesIndexRoute
+  '/_app/dashboard/laporan/$reportId/edit': typeof AppDashboardLaporanReportIdEditRoute
   '/_app/qrcode/default/$presetId/edit': typeof AppQrcodeDefaultPresetIdEditRoute
+  '/_app/dashboard/laporan/$reportId/': typeof AppDashboardLaporanReportIdIndexRoute
   '/_app/qrcode/default/$presetId/': typeof AppQrcodeDefaultPresetIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -543,6 +610,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/desktop'
     | '/forbidden'
+    | '/dashboard-publik/$token'
     | '/laporan/$token'
     | '/access/audit'
     | '/access/push'
@@ -561,6 +629,7 @@ export interface FileRouteTypes {
     | '/sticker/settings'
     | '/sticker/stock'
     | '/customer/'
+    | '/dashboard/'
     | '/handover/'
     | '/item/'
     | '/postel/'
@@ -571,6 +640,8 @@ export interface FileRouteTypes {
     | '/access/locations/$locationId'
     | '/access/roles/$roleId'
     | '/access/users/$userId'
+    | '/dashboard/laporan/new'
+    | '/dashboard/tautan/$shareId'
     | '/handover/$handoverId/edit'
     | '/item/$itemId/edit'
     | '/item/brands/$brandId'
@@ -583,6 +654,7 @@ export interface FileRouteTypes {
     | '/access/locations/'
     | '/access/roles/'
     | '/access/users/'
+    | '/dashboard/laporan/'
     | '/handover/$handoverId/'
     | '/item/$itemId/'
     | '/item/brands/'
@@ -592,7 +664,9 @@ export interface FileRouteTypes {
     | '/serial/$serialId/'
     | '/serial/reports/'
     | '/sticker/types/'
+    | '/dashboard/laporan/$reportId/edit'
     | '/qrcode/default/$presetId/edit'
+    | '/dashboard/laporan/$reportId/'
     | '/qrcode/default/$presetId/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -600,6 +674,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/desktop'
     | '/forbidden'
+    | '/dashboard-publik/$token'
     | '/laporan/$token'
     | '/'
     | '/access/audit'
@@ -619,6 +694,7 @@ export interface FileRouteTypes {
     | '/sticker/settings'
     | '/sticker/stock'
     | '/customer'
+    | '/dashboard'
     | '/handover'
     | '/item'
     | '/postel'
@@ -629,6 +705,8 @@ export interface FileRouteTypes {
     | '/access/locations/$locationId'
     | '/access/roles/$roleId'
     | '/access/users/$userId'
+    | '/dashboard/laporan/new'
+    | '/dashboard/tautan/$shareId'
     | '/handover/$handoverId/edit'
     | '/item/$itemId/edit'
     | '/item/brands/$brandId'
@@ -641,6 +719,7 @@ export interface FileRouteTypes {
     | '/access/locations'
     | '/access/roles'
     | '/access/users'
+    | '/dashboard/laporan'
     | '/handover/$handoverId'
     | '/item/$itemId'
     | '/item/brands'
@@ -650,7 +729,9 @@ export interface FileRouteTypes {
     | '/serial/$serialId'
     | '/serial/reports'
     | '/sticker/types'
+    | '/dashboard/laporan/$reportId/edit'
     | '/qrcode/default/$presetId/edit'
+    | '/dashboard/laporan/$reportId'
     | '/qrcode/default/$presetId'
   id:
     | '__root__'
@@ -659,6 +740,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_app/desktop'
     | '/_app/forbidden'
+    | '/dashboard-publik/$token'
     | '/laporan/$token'
     | '/_app/'
     | '/_app/access/audit'
@@ -678,6 +760,7 @@ export interface FileRouteTypes {
     | '/_app/sticker/settings'
     | '/_app/sticker/stock'
     | '/_app/customer/'
+    | '/_app/dashboard/'
     | '/_app/handover/'
     | '/_app/item/'
     | '/_app/postel/'
@@ -688,6 +771,8 @@ export interface FileRouteTypes {
     | '/_app/access/locations/$locationId'
     | '/_app/access/roles/$roleId'
     | '/_app/access/users/$userId'
+    | '/_app/dashboard/laporan/new'
+    | '/_app/dashboard/tautan/$shareId'
     | '/_app/handover/$handoverId/edit'
     | '/_app/item/$itemId/edit'
     | '/_app/item/brands/$brandId'
@@ -700,6 +785,7 @@ export interface FileRouteTypes {
     | '/_app/access/locations/'
     | '/_app/access/roles/'
     | '/_app/access/users/'
+    | '/_app/dashboard/laporan/'
     | '/_app/handover/$handoverId/'
     | '/_app/item/$itemId/'
     | '/_app/item/brands/'
@@ -709,7 +795,9 @@ export interface FileRouteTypes {
     | '/_app/serial/$serialId/'
     | '/_app/serial/reports/'
     | '/_app/sticker/types/'
+    | '/_app/dashboard/laporan/$reportId/edit'
     | '/_app/qrcode/default/$presetId/edit'
+    | '/_app/dashboard/laporan/$reportId/'
     | '/_app/qrcode/default/$presetId/'
   fileRoutesById: FileRoutesById
 }
@@ -717,6 +805,7 @@ export interface RootRouteChildren {
   AppRoute: typeof AppRouteWithChildren
   CountryLockRoute: typeof CountryLockRoute
   LoginRoute: typeof LoginRoute
+  DashboardPublikTokenRoute: typeof DashboardPublikTokenRoute
   LaporanTokenRoute: typeof LaporanTokenRoute
 }
 
@@ -764,6 +853,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppForbiddenRouteImport
       parentRoute: typeof AppRoute
     }
+    '/dashboard-publik/$token': {
+      id: '/dashboard-publik/$token'
+      path: '/dashboard-publik/$token'
+      fullPath: '/dashboard-publik/$token'
+      preLoaderRoute: typeof DashboardPublikTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/laporan/$token': {
       id: '/laporan/$token'
       path: '/laporan/$token'
@@ -797,6 +893,13 @@ declare module '@tanstack/react-router' {
       path: '/customer/$customerId'
       fullPath: '/customer/$customerId'
       preLoaderRoute: typeof AppCustomerCustomerIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/dashboard/': {
+      id: '/_app/dashboard/'
+      path: '/dashboard'
+      fullPath: '/dashboard/'
+      preLoaderRoute: typeof AppDashboardIndexRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/handover/': {
@@ -988,6 +1091,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccessUsersUserIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/dashboard/laporan/': {
+      id: '/_app/dashboard/laporan/'
+      path: '/dashboard/laporan'
+      fullPath: '/dashboard/laporan/'
+      preLoaderRoute: typeof AppDashboardLaporanIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/dashboard/laporan/new': {
+      id: '/_app/dashboard/laporan/new'
+      path: '/dashboard/laporan/new'
+      fullPath: '/dashboard/laporan/new'
+      preLoaderRoute: typeof AppDashboardLaporanNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/dashboard/tautan/$shareId': {
+      id: '/_app/dashboard/tautan/$shareId'
+      path: '/dashboard/tautan/$shareId'
+      fullPath: '/dashboard/tautan/$shareId'
+      preLoaderRoute: typeof AppDashboardTautanShareIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/handover/$handoverId/': {
       id: '/_app/handover/$handoverId/'
       path: '/handover/$handoverId'
@@ -1107,6 +1231,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppStickerTypesTypeIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/dashboard/laporan/$reportId/': {
+      id: '/_app/dashboard/laporan/$reportId/'
+      path: '/dashboard/laporan/$reportId'
+      fullPath: '/dashboard/laporan/$reportId/'
+      preLoaderRoute: typeof AppDashboardLaporanReportIdIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/dashboard/laporan/$reportId/edit': {
+      id: '/_app/dashboard/laporan/$reportId/edit'
+      path: '/dashboard/laporan/$reportId/edit'
+      fullPath: '/dashboard/laporan/$reportId/edit'
+      preLoaderRoute: typeof AppDashboardLaporanReportIdEditRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/qrcode/default/$presetId/': {
       id: '/_app/qrcode/default/$presetId/'
       path: '/qrcode/default/$presetId'
@@ -1145,6 +1283,7 @@ interface AppRouteChildren {
   AppStickerSettingsRoute: typeof AppStickerSettingsRoute
   AppStickerStockRoute: typeof AppStickerStockRoute
   AppCustomerIndexRoute: typeof AppCustomerIndexRoute
+  AppDashboardIndexRoute: typeof AppDashboardIndexRoute
   AppHandoverIndexRoute: typeof AppHandoverIndexRoute
   AppItemIndexRoute: typeof AppItemIndexRoute
   AppPostelIndexRoute: typeof AppPostelIndexRoute
@@ -1155,6 +1294,8 @@ interface AppRouteChildren {
   AppAccessLocationsLocationIdRoute: typeof AppAccessLocationsLocationIdRoute
   AppAccessRolesRoleIdRoute: typeof AppAccessRolesRoleIdRoute
   AppAccessUsersUserIdRoute: typeof AppAccessUsersUserIdRoute
+  AppDashboardLaporanNewRoute: typeof AppDashboardLaporanNewRoute
+  AppDashboardTautanShareIdRoute: typeof AppDashboardTautanShareIdRoute
   AppHandoverHandoverIdEditRoute: typeof AppHandoverHandoverIdEditRoute
   AppItemItemIdEditRoute: typeof AppItemItemIdEditRoute
   AppItemBrandsBrandIdRoute: typeof AppItemBrandsBrandIdRoute
@@ -1167,6 +1308,7 @@ interface AppRouteChildren {
   AppAccessLocationsIndexRoute: typeof AppAccessLocationsIndexRoute
   AppAccessRolesIndexRoute: typeof AppAccessRolesIndexRoute
   AppAccessUsersIndexRoute: typeof AppAccessUsersIndexRoute
+  AppDashboardLaporanIndexRoute: typeof AppDashboardLaporanIndexRoute
   AppHandoverHandoverIdIndexRoute: typeof AppHandoverHandoverIdIndexRoute
   AppItemItemIdIndexRoute: typeof AppItemItemIdIndexRoute
   AppItemBrandsIndexRoute: typeof AppItemBrandsIndexRoute
@@ -1176,7 +1318,9 @@ interface AppRouteChildren {
   AppSerialSerialIdIndexRoute: typeof AppSerialSerialIdIndexRoute
   AppSerialReportsIndexRoute: typeof AppSerialReportsIndexRoute
   AppStickerTypesIndexRoute: typeof AppStickerTypesIndexRoute
+  AppDashboardLaporanReportIdEditRoute: typeof AppDashboardLaporanReportIdEditRoute
   AppQrcodeDefaultPresetIdEditRoute: typeof AppQrcodeDefaultPresetIdEditRoute
+  AppDashboardLaporanReportIdIndexRoute: typeof AppDashboardLaporanReportIdIndexRoute
   AppQrcodeDefaultPresetIdIndexRoute: typeof AppQrcodeDefaultPresetIdIndexRoute
 }
 
@@ -1201,6 +1345,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppStickerSettingsRoute: AppStickerSettingsRoute,
   AppStickerStockRoute: AppStickerStockRoute,
   AppCustomerIndexRoute: AppCustomerIndexRoute,
+  AppDashboardIndexRoute: AppDashboardIndexRoute,
   AppHandoverIndexRoute: AppHandoverIndexRoute,
   AppItemIndexRoute: AppItemIndexRoute,
   AppPostelIndexRoute: AppPostelIndexRoute,
@@ -1212,6 +1357,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccessLocationsLocationIdRoute: AppAccessLocationsLocationIdRoute,
   AppAccessRolesRoleIdRoute: AppAccessRolesRoleIdRoute,
   AppAccessUsersUserIdRoute: AppAccessUsersUserIdRoute,
+  AppDashboardLaporanNewRoute: AppDashboardLaporanNewRoute,
+  AppDashboardTautanShareIdRoute: AppDashboardTautanShareIdRoute,
   AppHandoverHandoverIdEditRoute: AppHandoverHandoverIdEditRoute,
   AppItemItemIdEditRoute: AppItemItemIdEditRoute,
   AppItemBrandsBrandIdRoute: AppItemBrandsBrandIdRoute,
@@ -1224,6 +1371,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccessLocationsIndexRoute: AppAccessLocationsIndexRoute,
   AppAccessRolesIndexRoute: AppAccessRolesIndexRoute,
   AppAccessUsersIndexRoute: AppAccessUsersIndexRoute,
+  AppDashboardLaporanIndexRoute: AppDashboardLaporanIndexRoute,
   AppHandoverHandoverIdIndexRoute: AppHandoverHandoverIdIndexRoute,
   AppItemItemIdIndexRoute: AppItemItemIdIndexRoute,
   AppItemBrandsIndexRoute: AppItemBrandsIndexRoute,
@@ -1233,7 +1381,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppSerialSerialIdIndexRoute: AppSerialSerialIdIndexRoute,
   AppSerialReportsIndexRoute: AppSerialReportsIndexRoute,
   AppStickerTypesIndexRoute: AppStickerTypesIndexRoute,
+  AppDashboardLaporanReportIdEditRoute: AppDashboardLaporanReportIdEditRoute,
   AppQrcodeDefaultPresetIdEditRoute: AppQrcodeDefaultPresetIdEditRoute,
+  AppDashboardLaporanReportIdIndexRoute: AppDashboardLaporanReportIdIndexRoute,
   AppQrcodeDefaultPresetIdIndexRoute: AppQrcodeDefaultPresetIdIndexRoute,
 }
 
@@ -1243,6 +1393,7 @@ const rootRouteChildren: RootRouteChildren = {
   AppRoute: AppRouteWithChildren,
   CountryLockRoute: CountryLockRoute,
   LoginRoute: LoginRoute,
+  DashboardPublikTokenRoute: DashboardPublikTokenRoute,
   LaporanTokenRoute: LaporanTokenRoute,
 }
 export const routeTree = rootRouteImport

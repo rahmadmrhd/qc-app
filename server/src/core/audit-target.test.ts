@@ -115,6 +115,17 @@ describe('auditTargetKind', () => {
     expect(auditTargetKind('customer.restore')).toBe('customer');
   });
 
+  test('aksi tautan dashboard dipetakan per aksi, bukan per awalan `dashboard`', () => {
+    expect(auditTargetKind('dashboard.share_create')).toBe('dashboardShare');
+    expect(auditTargetKind('dashboard.share_revoke')).toBe('dashboardShare');
+    expect(auditTargetKind('dashboard.share_expire')).toBe('dashboardShare');
+    // Aksi laporan terjadwal dipetakan per aksi ke jenis sendiri; aksi `dashboard.` lain yang tak terdaftar tidak ikut.
+    for (const action of ['create', 'update', 'delete', 'pause', 'resume', 'send_test']) {
+      expect(auditTargetKind(`dashboard.report_${action}`)).toBe('dashboardReport');
+    }
+    expect(auditTargetKind('dashboard.report_run')).toBeUndefined();
+  });
+
   test('aksi tanpa entitas ber-View tidak punya jenis', () => {
     for (const action of AUDIT_NON_ENTITY_ACTIONS) expect(auditTargetKind(action)).toBeUndefined();
     expect(auditTargetKind('export.sheets')).toBeUndefined();

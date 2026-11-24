@@ -11,6 +11,8 @@ const VIEWS: readonly [file: string, kind: string][] = [
   ['access/components/user-view.tsx', 'user'],
   ['brand/components/brand-detail-view.tsx', 'brand'],
   ['customer/components/customer-view.tsx', 'customer'],
+  ['dashboard/components/report-view.tsx', 'dashboardReport'],
+  ['dashboard/components/share-detail-view.tsx', 'dashboardShare'],
   ['handover/components/handover-detail-view.tsx', 'handover'],
   ['item/components/item-detail-view.tsx', 'item'],
   ['postel/components/postel-view.tsx', 'postel'],
@@ -31,7 +33,7 @@ test('tiap View pemakai ViewMeta memasang ActivityLog dengan kind yang tepat', (
 });
 
 test('semua jenis ActivityKind dilayani tepat satu View', () => {
-  expect([...VIEWS.map(([, kind]) => kind)].sort()).toEqual([...ACTIVITY_KINDS].sort());
+  expect(VIEWS.map(([, kind]) => kind).sort()).toEqual([...ACTIVITY_KINDS].sort());
 });
 
 test('log aktivitas tidak masuk whitelist query-persist', () => {

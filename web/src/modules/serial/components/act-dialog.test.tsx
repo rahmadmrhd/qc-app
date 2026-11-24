@@ -76,6 +76,7 @@ function meWith(serial: Level, serialservice: Level = 'none'): MeDto {
       serial,
       serialservice,
       countrylock: 'none',
+      dashboard: 'none',
     },
     businessUnits: [
       {

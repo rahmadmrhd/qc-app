@@ -49,6 +49,22 @@ test('/laporan/<token> bertitik adalah rute klien: server dan service worker sep
   }
 });
 
+test('/dashboard-publik/<token> bertitik adalah rute klien: server dan service worker sepakat (cangkang SPA)', () => {
+  for (const route of [
+    '/dashboard-publik/v1.01hzx3k9m2n4p5q6r7s8t9v0wa.1799999999.sig_abc-123',
+    '/dashboard-publik/v1.a.b.c?x=1',
+  ]) {
+    expect(denied(route), route).toBe(false);
+  }
+  for (const route of [
+    '/dashboard-publikx/a.b',
+    '/dashboard-publik.js',
+    '/foo/dashboard-publik/a.b',
+  ]) {
+    expect(denied(route), route).toBe(true);
+  }
+});
+
 test('titik di dalam query (mis. q=a/b.c) bukan berkas: rute klien tetap dijawab cangkang', () => {
   for (const route of ['/handover?q=a/b.c', '/item?search=x/y.z']) {
     expect(denied(route), route).toBe(false);

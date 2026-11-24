@@ -39,6 +39,7 @@ const me: MeDto = {
     serial: 'manage',
     serialservice: 'manage',
     countrylock: 'none',
+    dashboard: 'none',
   },
   businessUnits: [],
   canManageSerialSettings: true,

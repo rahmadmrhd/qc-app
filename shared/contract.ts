@@ -10,6 +10,25 @@ import type {
   StatusBatchInput,
 } from './batch';
 import type { BuAssignment, BuPermissionMap } from './business-units';
+import type {
+  DashboardOptionsDto,
+  DashboardOptionsInput,
+  DashboardQueryInput,
+  DashboardQueryOutput,
+} from './dashboard';
+import type {
+  DashboardReportDto,
+  DashboardReportListDto,
+  DashboardReportPreviewDto,
+  GetDashboardReportInput,
+  SaveDashboardReportInput,
+  SetDashboardReportEnabledInput,
+} from './dashboard-report';
+import type {
+  CreateShareInput,
+  DashboardShareDetailDto,
+  DashboardShareDto,
+} from './dashboard-share';
 import type { GuideProgressDto } from './guides';
 import type { HandoverStatus } from './handover';
 import type { NotificationDto } from './notifications';
@@ -246,6 +265,10 @@ export interface LocationDto {
 export interface ListLocationsInput {
   /** Bawaan = lokasi hidup. `deleted` hanya bagi `access: manage`; selain itu `FORBIDDEN`. */
   status?: ListStatusFilter;
+}
+
+export interface GetDashboardShareInput {
+  id: string;
 }
 
 export interface GetLocationInput {
@@ -1635,6 +1658,27 @@ export interface ApiContract {
   'guides.reset': { input: ResetGuideInput; output: GuideProgressDto[] };
   'jobs.get': { input: GetJobInput; output: JobDto };
   'exports.sheets': { input: ExportSheetsInput; output: ExportSheetsJobDto };
+  'dashboard.query': { input: DashboardQueryInput; output: DashboardQueryOutput };
+  'dashboard.options': { input: DashboardOptionsInput; output: DashboardOptionsDto };
+  /** Tautan dashboard publik; semuanya butuh `dashboard: manage`. `url` hanya untuk pembagi dan super admin. */
+  'dashboardShares.list': { input: null; output: DashboardShareDto[] };
+  'dashboardShares.get': { input: GetDashboardShareInput; output: DashboardShareDetailDto };
+  'dashboardShares.create': { input: CreateShareInput; output: DashboardShareDto };
+  'dashboardShares.revoke': { input: GetDashboardShareInput; output: { ok: true } };
+  /** Laporan dashboard terjadwal lewat surel; semuanya butuh `dashboard: manage`, hak ubah hanya pemilik/super admin. */
+  'dashboardReports.list': { input: null; output: DashboardReportListDto };
+  'dashboardReports.get': { input: GetDashboardReportInput; output: DashboardReportDto };
+  'dashboardReports.save': { input: SaveDashboardReportInput; output: DashboardReportDto };
+  'dashboardReports.setEnabled': {
+    input: SetDashboardReportEnabledInput;
+    output: DashboardReportDto;
+  };
+  'dashboardReports.remove': { input: GetDashboardReportInput; output: { ok: true } };
+  'dashboardReports.sendTest': { input: GetDashboardReportInput; output: { ok: true } };
+  'dashboardReports.preview': {
+    input: GetDashboardReportInput;
+    output: DashboardReportPreviewDto;
+  };
 }
 
 export type ApiId = keyof ApiContract;

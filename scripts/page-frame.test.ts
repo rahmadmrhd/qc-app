@@ -22,6 +22,8 @@ const LAYOUT_FILES = new Set(['__root.tsx', '_app.tsx']);
 const ROUTE_EXCEPTIONS: Record<string, string> = {
   '_app/index.tsx':
     'Beranda: sapaan, info panduan, dan peluncur ponsel (`Launcher`) di dalam `PageContent`; bukan halaman data CRUD.',
+  '_app/dashboard/index.tsx':
+    'Dashboard pemantauan: halaman agregat (kartu widget per grup), bukan daftar/form; memakai `HeadroomFrame` dan `HeadroomBar` seperti Beranda untuk bar filter global.',
   '_app/forbidden.tsx':
     'Pesan status 403 (`StatusMessage`) di dalam `PageContent`; tanpa data atau aksi.',
   '_app/desktop.tsx':
@@ -30,6 +32,8 @@ const ROUTE_EXCEPTIONS: Record<string, string> = {
     'Hanya pengalihan ke /sticker (Stok Stiker digabung ke halaman Stiker); tidak merender halaman.',
   'country-lock.tsx':
     'Country Lock (aplikasi desktop): di dalam `AppShell` bila pengguna masuk (breadcrumb + `PageContent`); jalur belum masuk memakai pembungkus ringan sendiri. Isinya panel perangkat/inject (jembatan desktop), bukan CRUD.',
+  'dashboard-publik.$token.tsx':
+    'Halaman publik dashboard (tautan bertanda tangan): di luar layout `_app` dan cangkang, tanpa sesi dan tanpa navigasi; memakai `PublicDashboardPage` sendiri.',
   'laporan.$token.tsx':
     'Halaman publik laporan rusak Serial Number: di luar layout `_app` dan cangkang, tanpa sesi.',
   'login.tsx': 'Halaman masuk: di luar layout `_app` dan cangkang, tanpa sesi.',

@@ -16,6 +16,8 @@ const MODULES_WITHOUT_GUIDE_YET: readonly string[] = [
   'stickerstock',
   // `serial` sudah punya panduan dasar (2026-11-17); tim servis (`serialservice`) belum dicakup.
   'serialservice',
+  // Dashboard: panduan interaktif di luar cakupan v1.
+  'dashboard',
 ];
 
 function modulesWithDasar(): Set<string> {

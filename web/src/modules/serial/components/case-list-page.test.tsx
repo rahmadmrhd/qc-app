@@ -108,6 +108,7 @@ beforeEach(() => {
       serial: 'none',
       serialservice: 'view',
       countrylock: 'none',
+      dashboard: 'none',
     },
     businessUnits: [
       {

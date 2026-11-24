@@ -412,6 +412,82 @@
     "status": 200
   },
   {
+    "id": "dashboard.options",
+    "verb": "GET",
+    "path": "/dashboard/options",
+    "query": {
+      "cursor": "string",
+      "ids": "list",
+      "kind": "string",
+      "limit": "number",
+      "query": "string"
+    }
+  },
+  {
+    "id": "dashboard.query",
+    "verb": "POST",
+    "path": "/dashboard/query"
+  },
+  {
+    "id": "dashboardReports.get",
+    "verb": "GET",
+    "path": "/dashboard-reports/{id}"
+  },
+  {
+    "id": "dashboardReports.list",
+    "verb": "GET",
+    "path": "/dashboard-reports"
+  },
+  {
+    "id": "dashboardReports.preview",
+    "verb": "GET",
+    "path": "/dashboard-reports/{id}/preview"
+  },
+  {
+    "id": "dashboardReports.remove",
+    "verb": "DELETE",
+    "path": "/dashboard-reports/{id}"
+  },
+  {
+    "id": "dashboardReports.save",
+    "verb": "PUT",
+    "path": "/dashboard-reports/{id}",
+    "create": {
+      "verb": "POST",
+      "path": "/dashboard-reports"
+    }
+  },
+  {
+    "id": "dashboardReports.sendTest",
+    "verb": "POST",
+    "path": "/dashboard-reports/{id}/send-test"
+  },
+  {
+    "id": "dashboardReports.setEnabled",
+    "verb": "POST",
+    "path": "/dashboard-reports/{id}/enabled"
+  },
+  {
+    "id": "dashboardShares.create",
+    "verb": "POST",
+    "path": "/dashboard-shares"
+  },
+  {
+    "id": "dashboardShares.get",
+    "verb": "GET",
+    "path": "/dashboard-shares/{id}"
+  },
+  {
+    "id": "dashboardShares.list",
+    "verb": "GET",
+    "path": "/dashboard-shares"
+  },
+  {
+    "id": "dashboardShares.revoke",
+    "verb": "POST",
+    "path": "/dashboard-shares/{id}/revoke"
+  },
+  {
     "id": "desktop.handoff",
     "verb": "POST",
     "path": "/desktop/handoff",

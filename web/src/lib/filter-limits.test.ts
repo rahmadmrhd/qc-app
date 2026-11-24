@@ -11,6 +11,7 @@ test('FILTER_LIST_MAX sama dengan batas filter jamak di server', () => {
 
 test('semua skema search param jamak memakai konstanta, bukan angka literal', () => {
   const files = [
+    'modules/dashboard/lib/search.ts',
     'modules/handover/lib/search.ts',
     'modules/item/lib/list-filter.ts',
     'modules/serial/lib/case-filter.ts',
@@ -27,6 +28,12 @@ test('semua skema search param jamak memakai konstanta, bukan angka literal', ()
 
 test('setiap field pilihan jamak pada filter daftar membatasi pilihan di UI (maxSelected)', () => {
   const files: [string, number][] = [
+    ['modules/dashboard/components/global-filters.tsx', 2],
+    ['modules/dashboard/components/group-section.tsx', 1],
+    ['modules/dashboard/components/relation-field.tsx', 1],
+    // BU/Lokasi memakai `maxIds` (bawaan FILTER_LIST_MAX, lihat tes di bawah); tersisa filter enum grup.
+    ['modules/dashboard/components/scope-editor.tsx', 1],
+    ['modules/dashboard-public/public-filters.tsx', 4],
     ['modules/handover/components/handover-board-page.tsx', 1],
     ['modules/item/components/item-filters.tsx', 2],
     ['modules/serial/components/case-list-page.tsx', 1],
@@ -38,4 +45,15 @@ test('setiap field pilihan jamak pada filter daftar membatasi pilihan di UI (max
     const source = readFileSync(join(__dirname, '..', file), 'utf8');
     expect(source.split('maxSelected={FILTER_LIST_MAX}').length - 1, file).toBe(expected);
   }
+});
+
+test('ScopeEditor: BU/Lokasi memakai maxIds yang bawaannya FILTER_LIST_MAX; hanya form laporan melonggarkannya', () => {
+  const read = (file: string) => readFileSync(join(__dirname, '..', file), 'utf8');
+  const editor = read('modules/dashboard/components/scope-editor.tsx');
+  expect(editor.split('maxSelected={maxIds}').length - 1).toBe(2);
+  expect(editor).toContain('maxIds = FILTER_LIST_MAX');
+  expect(read('modules/dashboard/components/report-form-page.tsx')).toContain(
+    'maxIds={REPORT_LIMITS.scopeIdsMax}',
+  );
+  expect(read('modules/dashboard/components/share-dialog.tsx')).not.toContain('maxIds');
 });

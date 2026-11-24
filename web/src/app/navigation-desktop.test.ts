@@ -18,6 +18,7 @@ const me: MeDto = {
     serial: 'manage',
     serialservice: 'manage',
     countrylock: 'none',
+    dashboard: 'none',
   },
   businessUnits: [],
   canManageSerialSettings: true,
@@ -33,6 +34,7 @@ const noPermissions = (isSuperAdmin: boolean, countrylock: 'none' | 'view'): MeD
       Object.keys(me.permissions).map((key) => [key, 'none']),
     ) as MeDto['permissions']),
     countrylock,
+    dashboard: 'none',
   },
 });
 

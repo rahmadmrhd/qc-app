@@ -12,4 +12,5 @@ export const MODULE_LINKS: Partial<Record<ModuleKey, LinkProps['to']>> = {
   stickerstock: '/sticker',
   serial: '/serial',
   serialservice: '/serial',
+  dashboard: '/dashboard',
 };

@@ -1,12 +1,12 @@
 [mysqld]
 character-set-server=utf8mb4
 collation-server=utf8mb4_nopad_bin
-innodb_buffer_pool_size=128M
-# Cache Aria (hasil antara kueri GROUP BY/UNION besar yang melewati tmp_table_size dan ditulis ke disk) dibatasi 32M. Bawaan 128M:
-# satu kueri besar mengisi seluruh cache dan memorinya tak dilepas lagi; kontainer qc-db dibatasi 384M (compose.yml), jadi pada produksi
-# ~365M sudah berpindah ke swap dan swap host hampir penuh (diukur 2026-11-22; uji sintetis staging: +141 MB pada 128M vs +62 MB pada 32M).
-# Variabel ini READ-ONLY (SET GLOBAL ditolak, ERROR 1238): berlaku hanya setelah `docker restart <qc-db>`. Rinci: docs/ci-cd.md.
-aria_pagecache_buffer_size=32M
+# innodb_buffer_pool_size dan aria_pagecache_buffer_size TIDAK diatur di sini: dipasang compose.yml lewat flag mariadbd dari
+# QC_DB_BUFFER_POOL (bawaan 256M) dan QC_DB_ARIA_CACHE (bawaan 32M) di .env, agar tiap lingkungan/mesin punya nilainya sendiri.
+# Latar bawaan Aria 32M (bukan 128M MariaDB): hasil antara kueri GROUP BY/UNION besar yang melewati tmp_table_size ditulis ke disk,
+# dan satu kueri besar mengisi seluruh cache dengan memori yang tak dilepas lagi (diukur 2026-11-22 di VPS bersama: ~365M produksi
+# sudah di swap; uji sintetis staging: +141 MB pada 128M vs +62 MB pada 32M). Variabel Aria READ-ONLY (SET GLOBAL ditolak,
+# ERROR 1238): berlaku hanya setelah kontainer dibuat ulang. Rinci: docs/ci-cd.md.
 max_connections=40
 # JANGAN menambahkan NO_BACKSLASH_ESCAPES: mysql2 meng-escape nilai di sisi klien dengan backslash, dan mode itu
 # membuat escaping salah (injeksi SQL). Lihat komentar `checkBindValue` di server/src/core/db.ts.
