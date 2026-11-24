@@ -192,6 +192,13 @@ export interface InstructionFilter {
  * - `stickerId`: "memakai" = penanda langsung ke stiker itu (apa pun statusnya/BU-nya), atau penanda jenis yang
  *   menurut aturan di atas menghasilkan stiker itu bagi item.
  * - `typeId`: "memakai" = penanda jenis itu, atau penanda langsung ke stiker berjenis itu.
+ * - ATURAN SASARAN TERHAPUS (satu untuk semua filter): hanya penanda ber-sasaran HIDUP (`liveMarkSql`) yang ikut
+ *   dihitung, di `hasInstructions`, `instruction: 'none'`, DAN kedua filter di atas (mode `has` maupun `missing`).
+ *   Penanda langsung ke stiker terhapus, atau penanda ke jenis terhapus, dianggap tak ada: ia tak membuat item
+ *   "memakai" stiker/jenis itu (juga pada jalur `typeId` lewat stikernya, yang sudah menyaring `s.deleted_at`), walau
+ *   penandanya tetap tersimpan dan tampil di detail bertanda "Terhapus". Sasaran grup (stiker Manual Book/Postel)
+ *   hanya diturunkan dari konfigurasi QR/catatan Postel yang HIDUP (`liveWhere`). Tes kesepakatan:
+ *   `item/instruction-list.test.ts` ("sasaran terhapus").
  * - `stickerMode: 'missing'` (bawaan `has`) = kebalikan "memakai"; BU terlihat tetap dijaga pemanggil.
  */
 export function instructionFilterSql(filter: InstructionFilter): {
@@ -208,14 +215,14 @@ export function instructionFilterSql(filter: InstructionFilter): {
   const negate = filter.stickerMode === 'missing' ? 'NOT ' : '';
   if (filter.stickerId !== undefined) {
     clauses.push(
-      `${negate}EXISTS (SELECT 1 FROM item_sticker_marks m WHERE m.item_id = i.id AND (m.sticker_id = ? OR (m.type_id <> '' AND EXISTS (SELECT 1 FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id = ? AND s.type_id = m.type_id AND s.status = 'active' AND s.deleted_at = '' AND t.deleted_at = '' AND (t.rule = 'none' OR (t.rule = 'group' AND ((t.system_kind = 'manual_book' AND s.id = (SELECT mv.sticker_id FROM manual_book_versions mv JOIN qr_designs dd ON dd.id = mv.design_id AND ${liveWhere('dd')} WHERE mv.design_id = i.manual_book_design_id ORDER BY mv.version DESC LIMIT 1)) OR (t.system_kind = 'postel' AND s.id = (SELECT pp.sticker_id FROM postels pp WHERE pp.id = i.postel_id AND ${liveWhere('pp')})))) OR (t.rule NOT IN ('none', 'group') AND EXISTS (SELECT 1 FROM sticker_business_units sb JOIN item_business_units ib ON ib.bu_id = sb.bu_id WHERE sb.sticker_id = s.id AND ib.item_id = i.id)))))))`,
+      `${negate}EXISTS (SELECT 1 FROM item_sticker_marks m WHERE m.item_id = i.id AND ${liveMarkSql('m')} AND (m.sticker_id = ? OR (m.type_id <> '' AND EXISTS (SELECT 1 FROM stickers s JOIN sticker_types t ON t.id = s.type_id WHERE s.id = ? AND s.type_id = m.type_id AND s.status = 'active' AND s.deleted_at = '' AND t.deleted_at = '' AND (t.rule = 'none' OR (t.rule = 'group' AND ((t.system_kind = 'manual_book' AND s.id = (SELECT mv.sticker_id FROM manual_book_versions mv JOIN qr_designs dd ON dd.id = mv.design_id AND ${liveWhere('dd')} WHERE mv.design_id = i.manual_book_design_id ORDER BY mv.version DESC LIMIT 1)) OR (t.system_kind = 'postel' AND s.id = (SELECT pp.sticker_id FROM postels pp WHERE pp.id = i.postel_id AND ${liveWhere('pp')})))) OR (t.rule NOT IN ('none', 'group') AND EXISTS (SELECT 1 FROM sticker_business_units sb JOIN item_business_units ib ON ib.bu_id = sb.bu_id WHERE sb.sticker_id = s.id AND ib.item_id = i.id)))))))`,
     );
     binds.push(filter.stickerId, filter.stickerId);
   } else if (filter.typeIds !== undefined || filter.typeId !== undefined) {
     const typeIds = filter.typeIds ?? [filter.typeId as string];
     const marks = typeIds.map(() => '?').join(', ');
     clauses.push(
-      `${negate}EXISTS (SELECT 1 FROM item_sticker_marks m WHERE m.item_id = i.id AND (m.type_id IN (${marks}) OR (m.sticker_id <> '' AND EXISTS (SELECT 1 FROM stickers s2 WHERE s2.id = m.sticker_id AND s2.type_id IN (${marks}) AND s2.deleted_at = ''))))`,
+      `${negate}EXISTS (SELECT 1 FROM item_sticker_marks m WHERE m.item_id = i.id AND ${liveMarkSql('m')} AND (m.type_id IN (${marks}) OR (m.sticker_id <> '' AND EXISTS (SELECT 1 FROM stickers s2 WHERE s2.id = m.sticker_id AND s2.type_id IN (${marks}) AND s2.deleted_at = ''))))`,
     );
     binds.push(...typeIds, ...typeIds);
   }

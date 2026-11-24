@@ -84,6 +84,8 @@ import {
   insertQrDesignStmt,
   insertQrDocumentStmt,
   insertQrPresetStmt,
+  isDocumentUsedByOther,
+  isLogoInUse,
   listAllQrDesigns,
   listQrDesigns,
   listQrDocuments,
@@ -149,10 +151,15 @@ const EMPTY_VIEW: QrDesignView = {
 };
 
 /** Tampilan per konfigurasi bagi `user`: item terlihat, jumlah tersembunyi, dan versi stiker terbaru. */
-export async function designViews(env: Env, user: UserContext): Promise<Map<string, QrDesignView>> {
+export async function designViews(
+  env: Env,
+  user: UserContext,
+  /** Bila diberikan (tampilan/simpan satu konfigurasi), hanya konfigurasi itu yang dihitung; daftar tanpa penyempit. */
+  designIds?: readonly string[],
+): Promise<Map<string, QrDesignView>> {
   const [attached, latest] = await Promise.all([
-    listLinkedItems(env.DB),
-    latestVersionsByDesign(env.DB),
+    listLinkedItems(env.DB, designIds),
+    latestVersionsByDesign(env.DB, designIds),
   ]);
   const visible = await visibleItemIds(
     env.DB,
@@ -302,7 +309,7 @@ export async function getQrDesignDto(
   const design = await readableQrDesign(env, input.id, user);
   const [documents, views, deletedPresets] = await Promise.all([
     qrDocumentMap(env),
-    designViews(env, user),
+    designViews(env, user, [design.id]),
     deletedPresetIds(env),
   ]);
   return toQrDesignDto(
@@ -784,10 +791,10 @@ async function saveQrDesignNow(
   input: SaveQrDesignInput,
   actor: UserContext,
 ): Promise<SaveOutcome> {
-  // Semua konfigurasi (juga yang terhapus): keunikan PDF dan logo yang masih dipakai menghormati pemilik terhapus,
-  // supaya memulihkannya tak menimbulkan pemakaian ganda. Hanya yang HIDUP yang boleh diubah.
-  const designs = await listAllQrDesigns(env);
-  const existing = input.id ? designs.find((row) => row.id === input.id) : undefined;
+  // Hanya konfigurasi yang diubah yang dibaca. Keunikan PDF dan logo yang masih dipakai menghormati pemilik terhapus
+  // (kueri terarah di bawah tanpa penyaring hidup), supaya memulihkannya tak menimbulkan pemakaian ganda. Hanya yang
+  // HIDUP yang boleh diubah.
+  const existing = input.id ? ((await findQrDesign(env, input.id)) ?? undefined) : undefined;
   if (input.id && existing?.deletedAt !== '') {
     throw appError('NOT_FOUND', 'Konfigurasi tidak ditemukan');
   }
@@ -817,8 +824,8 @@ async function saveQrDesignNow(
   if (input.logoFileId !== '' && input.logoFileId !== (existing?.logoFileId ?? '')) {
     const library = (await getQrDefaultsRecord(env))?.logoFileIds ?? [];
     // Logo yang masih dipakai konfigurasi lain (mis. sumber duplikat berlogo lama) tetap boleh dirujuk.
-    const inUse = designs.some((design) => design.logoFileId === input.logoFileId);
-    if (!library.includes(input.logoFileId) && !inUse) {
+    const inUse = library.includes(input.logoFileId) || (await isLogoInUse(env, input.logoFileId));
+    if (!inUse) {
       const message = 'Logo harus dipilih dari pustaka logo (diatur di Konfigurasi default)';
       throw appError('VALIDATION', message, { logoFileId: message });
     }
@@ -833,10 +840,7 @@ async function saveQrDesignNow(
   if (
     input.linkSource === 'pdf' &&
     input.documentId !== existing?.documentId &&
-    designs.some(
-      (row) =>
-        row.id !== existing?.id && row.linkSource === 'pdf' && row.documentId === input.documentId,
-    )
+    (await isDocumentUsedByOther(env, input.documentId, existing?.id ?? ''))
   ) {
     const message = 'PDF ini sudah dipakai konfigurasi QR lain; unggah atau salin PDF tersendiri';
     throw appError('VALIDATION', message, { documentId: message });
@@ -856,8 +860,9 @@ async function saveQrDesignNow(
   const namePlacement = existing ? existing.namePlacement : (preset?.namePlacement ?? '');
 
   // Item: hanya yang terlihat bagi penyimpan yang boleh dipilih/dilepas; yang tak terlihat tetap terpasang.
-  const attached = await listLinkedItems(env.DB);
-  const ownedNow = existing ? (attached.get(existing.id) ?? []) : [];
+  const ownedNow = existing
+    ? ((await listLinkedItems(env.DB, [existing.id])).get(existing.id) ?? [])
+    : [];
   const ownedIds = new Set(ownedNow.map((item) => item.id));
   const requested = input.itemIds;
   const fetched = await findItemsById(env.DB, requested);
@@ -947,7 +952,7 @@ async function saveQrDesignNow(
       ? await planAttachFiles(env, [next.logoFileId], 'qrlogo', 'shared', undefined, actor.email)
       : [];
   const viewOf = async (record: NewQrDesignRecord): Promise<QrDesignDto> =>
-    toQrDesignDto(record, documents, (await designViews(env, actor)).get(record.id));
+    toQrDesignDto(record, documents, (await designViews(env, actor, [record.id])).get(record.id));
 
   if (!existing) {
     await runItemBatch(
@@ -982,7 +987,10 @@ async function saveQrDesignNow(
     // menaikkan updatedAt (agar versi yang sedang dimuat pengguna lain tidak jadi basi).
     if (existing.overflow !== next.overflow) {
       const flagged: QrDesignRecord = { ...existing, overflow: next.overflow };
-      await env.DB.batch([setQrDesignOverflowStmt(env.DB, existing.id, next.overflow)]);
+      // Bersyarat versi yang dibaca: konfigurasi yang sudah berubah/terhapus di sela tidak tertimpa flag basi.
+      await env.DB.batch([
+        setQrDesignOverflowStmt(env.DB, existing.id, next.overflow, existing.updatedAt),
+      ]);
       return { dto: await viewOf(flagged), released: [] };
     }
     return { dto: await viewOf(existing), released: [] };

@@ -67,8 +67,11 @@ const MUST_DENY = [
   '/sw.js',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
+  '/laporanx/a.b',
 ];
 const MUST_ALLOW = [
+  '/laporan/v1.c1.1799999999.sig_abc-123',
+  '/laporan/v1.a.b.c?x=1',
   '/',
   '/?authError=x',
   '/handover?x=1',

@@ -226,11 +226,6 @@ async function main(): Promise<number> {
 
   // --- Sheets ---
   if (args.spreadsheet) {
-    await step('Sheets: sheetsDump membaca sheet sumber (tanpa export_)', async () => {
-      const dump = await client.sheetsDump();
-      const names = Object.keys(dump);
-      return `${names.length} sheet: ${names.slice(0, 5).join(', ')}${names.length > 5 ? ', ...' : ''}`;
-    });
     await step(
       `Sheets: export replace + append ke ${TEST_SHEET} (nilai tersimpan sebagai teks)`,
       async () => {

@@ -382,17 +382,59 @@ describe('alur login desktop', () => {
     expect(cookieOf(response, 'qc_session')).toBeDefined();
   });
 
-  test('akun tidak terdaftar atau gagal login: tanpa kode, diarahkan dengan authError', async () => {
+  test('akun tidak terdaftar atau gagal login: tanpa kode dan tanpa sesi, aplikasi dikabari lewat qc://auth?error&state', async () => {
     const verifier = newVerifier();
     const response = await desktopBrowserFlow(await s256(verifier), 'state-uji-1234', {
       email: 'asing@gmail.com',
     });
-    expect(response.headers.get('location')).toBe('/?authError=NOT_WHITELISTED');
+    expect(response.headers.get('location')).toBe(
+      'qc://auth?error=NOT_WHITELISTED&state=state-uji-1234',
+    );
     expect(cookieOf(response, 'qc_session')).toBeUndefined();
     const failed = await desktopBrowserFlow(await s256(verifier), 'state-uji-1234', {
       aud: 'lain',
     });
-    expect(failed.headers.get('location')).toBe('/?authError=LOGIN_FAILED');
+    expect(failed.headers.get('location')).toBe(
+      'qc://auth?error=LOGIN_FAILED&state=state-uji-1234',
+    );
+  });
+
+  test('kegagalan login dengan port loopback dikabarkan ke 127.0.0.1:<port>/callback (kode dari daftar tetap)', async () => {
+    const challenge = await s256(newVerifier());
+    const response = await desktopBrowserFlow(
+      challenge,
+      'state-uji-1234',
+      { email: 'asing@gmail.com' },
+      '&port=49321',
+    );
+    expect(response.headers.get('location')).toBe(
+      'http://127.0.0.1:49321/callback?error=NOT_WHITELISTED&state=state-uji-1234',
+    );
+    expect(cookieOf(response, 'qc_session')).toBeUndefined();
+  });
+
+  test('Google mengembalikan error (pengguna menolak): aplikasi dikabari LOGIN_FAILED, bukan teks error Google', async () => {
+    const start = await app.request(
+      startUrl(await s256(newVerifier()), 'state-uji-1234', '&port=49321'),
+      {},
+      env,
+    );
+    const desktopCookie = `qc_desktop=${cookieValue(cookieOf(start, 'qc_desktop') as string)}`;
+    const login = await app.request(
+      new URL(start.headers.get('location') as string, 'https://qc.test').href,
+      { headers: { cookie: desktopCookie } },
+      env,
+    );
+    const oauthCookie = `qc_oauth=${cookieValue(cookieOf(login, 'qc_oauth') as string)}`;
+    const googleState = new URL(login.headers.get('location') as string).searchParams.get('state');
+    const response = await app.request(
+      `https://qc.test/auth/callback?error=access_denied%0d%0aX&state=${googleState}`,
+      { headers: { cookie: `${desktopCookie}; ${oauthCookie}` } },
+      env,
+    );
+    expect(response.headers.get('location')).toBe(
+      'http://127.0.0.1:49321/callback?error=LOGIN_FAILED&state=state-uji-1234',
+    );
   });
 });
 

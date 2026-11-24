@@ -43,7 +43,13 @@ const act = (
     ...extra,
   });
 
-const CASE = { id: 'case-1', number: 'LP/A/2611-0001', originLocationId: 'loc-sby' };
+// Dibuka sebelum tanggal kirim fixture (2026-11-10): aksi pada laporan tak boleh bertanggal sebelum laporan dibuka.
+const CASE = {
+  id: 'case-1',
+  number: 'LP/A/2611-0001',
+  originLocationId: 'loc-sby',
+  openedOn: '2026-11-01',
+};
 /** Serial di tim servis (Jakarta). `transit` = baru dikirim dari Surabaya pada 2026-11-10. */
 const seedAt = (status: string, custody: string, over: Record<string, unknown> = {}) =>
   seedSerial(env, {

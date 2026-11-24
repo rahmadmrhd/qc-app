@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { onFormTabRequest } from '@/lib/form-tab-request';
+import { formatStamp } from '@/lib/format-stamp';
 import { separatorBefore } from '@/lib/menu-separators';
 import { useAppBannerHeight } from '@/lib/viewport-fit';
 import { HeadroomBar, HeadroomFrame } from './headroom-bar';
@@ -475,16 +476,6 @@ export function DetailList({ items }: { items: readonly DetailItem[] }) {
   );
 }
 
-function formatWhen(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString('id-ID', {
-    dateStyle: 'medium',
-    timeStyle: 'short',
-    timeZone: 'Asia/Jakarta',
-  });
-}
-
 export interface ViewMetaLink {
   label: string;
   to: LinkProps['to'];
@@ -517,14 +508,14 @@ export function ViewMeta({
         <p>
           <span className="text-muted-foreground">Dibuat</span>
           {createdBy ? ` oleh ${createdBy}` : ''}
-          {createdAt ? ` · ${formatWhen(createdAt)}` : ''}
+          {createdAt ? ` · ${formatStamp(createdAt)}` : ''}
         </p>
       ) : null}
       {updated ? (
         <p>
           <span className="text-muted-foreground">Diubah</span>
           {updatedBy ? ` oleh ${updatedBy}` : ''}
-          {updatedAt ? ` · ${formatWhen(updatedAt)}` : ''}
+          {updatedAt ? ` · ${formatStamp(updatedAt)}` : ''}
         </p>
       ) : null}
       {links && links.length > 0 ? (

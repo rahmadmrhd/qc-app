@@ -2,6 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import {
   APP_BRIDGE_VERSION,
   AUTH_CHANGE_EVENT,
+  AUTH_ERROR_BRIDGE_VERSION,
+  AUTH_ERROR_CODES,
+  AuthErrorCodeSchema,
   BRIDGE_ARGS,
   BRIDGE_CHANNELS,
   BRIDGE_VERSION,
@@ -167,7 +170,8 @@ describe('PendingEntrySchema dan SerialArgSchema', () => {
 
 describe('konstanta jembatan', () => {
   test('versi, dan semua nama kanal berpola qc:<grup>:<aksi> serta unik', () => {
-    expect(BRIDGE_VERSION).toBe(10);
+    expect(BRIDGE_VERSION).toBe(11);
+    expect(AUTH_ERROR_BRIDGE_VERSION).toBe(11);
     expect(APP_BRIDGE_VERSION).toBe(10);
     expect(MULTI_BRIDGE_VERSION).toBe(9);
     expect(DRAFT_BRIDGE_VERSION).toBe(8);
@@ -233,6 +237,19 @@ describe('kanal auth (BRIDGE_VERSION 2)', () => {
       expect(schema.safeParse([]).success).toBe(true);
       expect(schema.safeParse(['https://jahat.example']).success).toBe(false);
     }
+  });
+});
+
+describe('AuthStatus.error (jembatan v11)', () => {
+  test('hanya dua kode galat yang dikenal; kode lain ditolak skema', () => {
+    expect([...AUTH_ERROR_CODES]).toEqual(['LOGIN_FAILED', 'NOT_WHITELISTED']);
+    expect(AuthErrorCodeSchema.safeParse('NOT_WHITELISTED').success).toBe(true);
+    expect(AuthErrorCodeSchema.safeParse('LOGIN_FAILED').success).toBe(true);
+    expect(AuthErrorCodeSchema.safeParse('APA_SAJA').success).toBe(false);
+    expect(AuthErrorCodeSchema.safeParse('').success).toBe(false);
+  });
+  test('UI_MIN_BRIDGE_VERSION tidak ikut naik: UI tetap jalan di jembatan lama dengan pesan umum', () => {
+    expect(UI_MIN_BRIDGE_VERSION).toBeLessThan(AUTH_ERROR_BRIDGE_VERSION);
   });
 });
 

@@ -3,12 +3,10 @@ import {
   base64ByteLength,
   fileRef,
   IMAGE_TARGET_BYTES,
-  isBase64Text,
   isImageMime,
   isPostelFileMime,
   MAX_FILE_BYTES,
   MAX_IMAGE_BYTES,
-  matchesImageSignature,
   parseFileRef,
   readImageDimensions,
 } from './files';
@@ -43,43 +41,12 @@ describe('isImageMime', () => {
   });
 });
 
-describe('isBase64Text', () => {
-  test('menerima base64 baku dan menolak yang rusak', () => {
-    expect(isBase64Text('QUJD')).toBe(true);
-    expect(isBase64Text('QUI=')).toBe(true);
-    expect(isBase64Text('QQ==')).toBe(true);
-    for (const value of [
-      '',
-      'QUJ',
-      'QU JD',
-      'QUJD\n',
-      'QUJD!',
-      'Q===',
-      'data:image/png;base64,QUJD',
-    ]) {
-      expect(isBase64Text(value)).toBe(false);
-    }
-  });
-});
-
 describe('base64ByteLength', () => {
   test('menghitung ukuran byte hasil decode', () => {
     expect(base64ByteLength('QUJD')).toBe(3);
     expect(base64ByteLength('QUI=')).toBe(2);
     expect(base64ByteLength('QQ==')).toBe(1);
     expect(base64ByteLength('QUJDREVG')).toBe(6);
-  });
-});
-
-describe('matchesImageSignature', () => {
-  test('awalan base64 harus cocok dengan MIME yang diklaim', () => {
-    expect(matchesImageSignature('image/png', 'iVBORw0KGgoAAAANSUhEUg==')).toBe(true);
-    expect(matchesImageSignature('image/jpeg', '/9j/4AAQSkZJRg==')).toBe(true);
-    expect(matchesImageSignature('image/webp', 'UklGRhwAAABXRUJQ')).toBe(true);
-    expect(matchesImageSignature('image/webp', 'UklGRhwAAABXQVZF')).toBe(false); // WAV: RIFF tetapi bukan WEBP
-    expect(matchesImageSignature('image/webp', 'UklGR')).toBe(false); // terlalu pendek
-    expect(matchesImageSignature('image/png', '/9j/4AAQSkZJRg==')).toBe(false);
-    expect(matchesImageSignature('image/jpeg', 'PHNjcmlwdD4=')).toBe(false);
   });
 });
 

@@ -141,6 +141,151 @@ describe('compareContract', () => {
   });
 });
 
+describe('compareContract: bentuk kabel (status, ETag, If-Match, rawBody, multipart, download)', () => {
+  /** Dasar berformat baru: `status` ada = entri dibandingkan pada field kabel. */
+  const WIRE: SnapshotEntry[] = [
+    { id: 'a.get', verb: 'GET', path: '/a/{id}', status: 200, etag: 'updatedAt' },
+    { id: 'a.put', verb: 'PUT', path: '/a/{id}', status: 200, ifMatch: 'expectedUpdatedAt' },
+    {
+      id: 'u.up',
+      verb: 'POST',
+      path: '/u',
+      status: 201,
+      rawBody: { field: 'bytes', mimeField: 'mime' },
+    },
+    {
+      id: 'q.export',
+      verb: 'POST',
+      path: '/q',
+      status: 202,
+      multipart: { parts: ['pdf', 'png'] },
+    },
+    {
+      id: 'd.get',
+      verb: 'GET',
+      path: '/d/{id}',
+      status: 200,
+      download: { bytesField: 'bytes', mimeField: 'mime', filenameField: 'name' },
+    },
+  ];
+  const edit = (id: string, change: (entry: SnapshotEntry) => SnapshotEntry): SnapshotEntry[] =>
+    WIRE.map((entry) => (entry.id === id ? change(entry) : entry));
+
+  test('potret sama lolos; ETag baru ditambahkan di rute lama lolos (aditif)', () => {
+    expect(compareContract(WIRE, WIRE, [])).toEqual([]);
+    expect(
+      compareContract(
+        WIRE,
+        edit('a.put', (e) => ({ ...e, etag: 'updatedAt' })),
+        [],
+      ),
+    ).toEqual([]);
+  });
+
+  test('status sukses berubah (200 -> 201) = pelanggaran', () => {
+    const result = compareContract(
+      WIRE,
+      edit('a.get', (e) => ({ ...e, status: 201 })),
+      [],
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]).toContain('a.get');
+    expect(result[0]).toContain('status');
+  });
+
+  test('ETag berubah atau hilang, If-Match berubah, hilang, atau baru diwajibkan = pelanggaran', () => {
+    for (const next of [
+      edit('a.get', (e) => ({ ...e, etag: 'version' })),
+      edit('a.get', ({ etag: _etag, ...rest }) => rest),
+      edit('a.put', (e) => ({ ...e, ifMatch: 'lain' })),
+      edit('a.put', ({ ifMatch: _ifMatch, ...rest }) => rest),
+      edit('a.get', (e) => ({ ...e, ifMatch: 'expectedUpdatedAt' })),
+    ]) {
+      expect(compareContract(WIRE, next, []), JSON.stringify(next)).not.toEqual([]);
+    }
+  });
+
+  test('badan mentah: field/mimeField/contentType berubah atau hilang atau baru muncul = pelanggaran; maxBytes tidak dicatat', () => {
+    for (const next of [
+      edit('u.up', (e) => ({ ...e, rawBody: { field: 'data', mimeField: 'mime' } })),
+      edit('u.up', (e) => ({ ...e, rawBody: { field: 'bytes', contentType: 'image/png' } })),
+      edit('u.up', ({ rawBody: _raw, ...rest }) => rest),
+      edit('a.get', (e) => ({ ...e, rawBody: { field: 'bytes' } })),
+    ]) {
+      expect(compareContract(WIRE, next, []), JSON.stringify(next)).not.toEqual([]);
+    }
+  });
+
+  test('multipart: bagian ditambah, dihapus, atau diganti = pelanggaran', () => {
+    for (const parts of [['pdf', 'png', 'preview'], ['pdf'], ['pdf', 'jpg']]) {
+      const result = compareContract(
+        WIRE,
+        edit('q.export', (e) => ({ ...e, multipart: { parts } })),
+        [],
+      );
+      expect(result, parts.join()).toHaveLength(1);
+      expect(result[0]).toContain('multipart');
+    }
+  });
+
+  test('unduhan: field byte/mime/nama berubah atau hilang = pelanggaran', () => {
+    for (const next of [
+      edit('d.get', (e) => ({ ...e, download: { bytesField: 'isi', mimeField: 'mime' } })),
+      edit('d.get', ({ download: _download, ...rest }) => rest),
+    ]) {
+      expect(compareContract(WIRE, next, []), JSON.stringify(next)).not.toEqual([]);
+    }
+  });
+
+  test('entri potret lama (tanpa status) tidak dibandingkan pada field kabel (tak ada dasar)', () => {
+    const legacy: SnapshotEntry[] = [{ id: 'a.get', verb: 'GET', path: '/a/{id}' }];
+    expect(compareContract(legacy, WIRE.slice(0, 1), [])).toEqual([]);
+    expect(
+      compareContract(legacy, [{ id: 'a.get', verb: 'GET', path: '/a/{id}', status: 201 }], []),
+    ).toEqual([]);
+  });
+});
+
+describe('contractSnapshot: bentuk kabel', () => {
+  test('status efektif selalu tercatat (bawaan 200); etag, ifMatch, rawBody, multipart, download tanpa batas ukuran', () => {
+    const table: Record<string, ApiRouteDef> = {
+      'a.get': { verb: 'GET', path: '/a', etag: 'updatedAt' },
+      'a.put': { verb: 'PUT', path: '/a', status: 201, ifMatch: 'expectedUpdatedAt' },
+      'u.up': {
+        verb: 'POST',
+        path: '/u',
+        binary: 'request',
+        rawBody: { field: 'bytes', mimeField: 'mime', maxBytes: 1, tooLarge: 'x' },
+      },
+      'q.ex': {
+        verb: 'POST',
+        path: '/q',
+        binary: 'multipart',
+        multipart: { parts: ['pdf'], maxBytes: 1, tooLarge: 'x' },
+      },
+      'd.get': {
+        verb: 'GET',
+        path: '/d',
+        binary: 'response',
+        download: { bytesField: 'bytes', mimeField: 'mime', cache: 'immutable' },
+      },
+    };
+    const byId = Object.fromEntries(contractSnapshot(table).map((e) => [e.id, e]));
+    expect(byId['a.get']).toEqual({
+      id: 'a.get',
+      verb: 'GET',
+      path: '/a',
+      status: 200,
+      etag: 'updatedAt',
+    });
+    expect(byId['a.put']?.status).toBe(201);
+    expect(byId['a.put']?.ifMatch).toBe('expectedUpdatedAt');
+    expect(byId['u.up']?.rawBody).toEqual({ field: 'bytes', mimeField: 'mime' });
+    expect(byId['q.ex']?.multipart).toEqual({ parts: ['pdf'] });
+    expect(byId['d.get']?.download).toEqual({ bytesField: 'bytes', mimeField: 'mime' });
+  });
+});
+
 test('potret berkas = subset dari kontrak sekarang (tak ada rute hilang tanpa catatan)', () => {
   const stored = JSON.parse(
     readFileSync(new URL('./api-contract.snapshot.json', import.meta.url), 'utf-8'),

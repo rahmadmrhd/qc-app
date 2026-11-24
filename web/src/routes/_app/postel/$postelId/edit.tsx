@@ -1,10 +1,10 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';
+import { useFrozen } from '@/hooks/use-frozen';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { requirePermission } from '@/modules/auth/permissions';
 import { PostelFormPage } from '@/modules/postel/components/postel-form-page';
 import { postelQueryOptions } from '@/modules/postel/queries';
-import { useFrozen } from '@/modules/qrcode/lib/use-frozen';
 
 export const Route = createFileRoute('/_app/postel/$postelId/edit')({
   staticData: {

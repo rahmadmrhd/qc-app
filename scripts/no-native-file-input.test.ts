@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { stripComments } from './strip-comments';
 
 // Aturan project (CLAUDE.md, "Aturan frontend"; keputusan pemilik 2026-11-20): jangan membuat `<input type="file">`
 // baru. Lampiran berkas memakai `FileDialog` (`web/src/components/file-dialog/`); pemilih berkasnya satu-satunya
@@ -28,11 +29,6 @@ function walk(dir: string, found: string[] = []): string[] {
     else if (/\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path)) found.push(path);
   }
   return found;
-}
-
-/** Membuang komentar blok dan baris agar penjelasan yang menyebut `type="file"` tidak dianggap pelanggaran. */
-function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
 test('tak ada <input type="file"> di web/src selain FilePicker dan impor .qcsn', () => {

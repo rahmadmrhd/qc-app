@@ -3,12 +3,24 @@
 //   qc://country-lock               -> { route: '/country-lock' }
 //   qc://auth?code=<kode>&state=<s> -> { route: null, auth: { code, state } } (login desktop, cadangan;
 //   sejak 2026-11-16 jalur utamanya callback loopback `auth/loopback.ts`)
+//   qc://auth?error=<LOGIN_FAILED|NOT_WHITELISTED>&state=<s> -> { route: null, authError: { error, state } }
+//   (login gagal di sisi server, mis. akun Google tak terdaftar; hanya kode dari daftar tetap yang diterima)
 //   qc://country-lock?handoff=<tiket>[&as=<email>] -> { route: '/country-lock', handoff: { ticket, hint? } }
 //   (serah-terima dari peramban, keputusan pemilik 2026-11-16; `as` hanya petunjuk tampilan, tak pernah dipercaya)
+
+import { AUTH_ERROR_CODES, type AuthErrorCode } from '@countrylock/bridge-contract';
+
+/**
+ * Kode galat login yang boleh dikirim server ke desktop (loopback atau `qc://auth`). Daftar tetap, satu definisi di
+ * `countrylock/src/bridge-contract.ts` (dibagi dengan `AuthStatus.error`): nilai lain ditolak, jadi teks yang tampil ke
+ * pengguna selalu dari peta pesan lokal, tak pernah dari URL.
+ */
+export { AUTH_ERROR_CODES, type AuthErrorCode };
 
 export interface QcUrl {
   route: string | null;
   auth?: { code: string; state: string };
+  authError?: { error: AuthErrorCode; state: string };
   /** Tiket serah-terima dari peramban; `hint` = email akun peramban (hanya untuk tampilan). */
   handoff?: { ticket: string; hint: string | null };
 }
@@ -54,6 +66,25 @@ export function parseAuthParams(params: URLSearchParams): { code: string; state:
   return { code: c, state: s };
 }
 
+/**
+ * `error` dan `state` dari query login gagal: tepat dua kunci, `error` salah satu kode di `AUTH_ERROR_CODES`, `state`
+ * berformat sah. Dipakai bersama oleh `qc://auth` dan callback loopback.
+ */
+export function parseAuthErrorParams(
+  params: URLSearchParams,
+): { error: AuthErrorCode; state: string } | null {
+  const keys = [...params.keys()];
+  if (keys.length !== 2 || !keys.includes('error') || !keys.includes('state')) return null;
+  const error = params.getAll('error');
+  const state = params.getAll('state');
+  if (error.length !== 1 || state.length !== 1) return null;
+  const [e] = error;
+  const [s] = state;
+  if (e === undefined || s === undefined) return null;
+  if (!(AUTH_ERROR_CODES as readonly string[]).includes(e) || !AUTH_STATE.test(s)) return null;
+  return { error: e as AuthErrorCode, state: s };
+}
+
 function parseAuth(parsed: URL): QcUrl | null {
   if (parsed.pathname !== '' && parsed.pathname !== '/') return null;
   if (
@@ -65,7 +96,9 @@ function parseAuth(parsed: URL): QcUrl | null {
     return null;
   }
   const auth = parseAuthParams(parsed.searchParams);
-  return auth ? { route: null, auth } : null;
+  if (auth) return { route: null, auth };
+  const authError = parseAuthErrorParams(parsed.searchParams);
+  return authError ? { route: null, authError } : null;
 }
 
 export function parseQcUrl(url: string): QcUrl | null {

@@ -1,5 +1,4 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { createFileRoute, redirect, useRouter } from '@tanstack/react-router';
+import { createFileRoute, redirect } from '@tanstack/react-router';
 import { UiUpdateBanner } from '@/app/shell/ui-update-banner';
 import { isDesktop } from '@/lib/platform';
 import { completeDesktopLogin } from '@/modules/auth/complete-desktop-login';
@@ -17,8 +16,6 @@ export const Route = createFileRoute('/login')({
 
 function LoginPage() {
   const session = getSession();
-  const router = useRouter();
-  const queryClient = useQueryClient();
   return (
     <div className="relative flex min-h-svh items-center justify-center bg-muted/40 p-4">
       <div className="absolute inset-x-0 top-0">
@@ -32,12 +29,7 @@ function LoginPage() {
         authError={session.authError}
         authErrorEmail={session.authErrorEmail}
         serverUnreachable={session.serverUnreachable}
-        onDesktopSignedIn={(me) =>
-          void completeDesktopLogin(me, {
-            queryClient,
-            navigate: (options) => router.navigate(options),
-          })
-        }
+        onDesktopSignedIn={() => completeDesktopLogin()}
       >
         {/* `/auth/dev-login` tidak diteruskan proksi desktop. */}
         {import.meta.env.DEV && !isDesktop() ? <DevLoginLink /> : null}

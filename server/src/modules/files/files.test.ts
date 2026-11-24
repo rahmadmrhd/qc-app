@@ -633,6 +633,36 @@ describe('validasi', () => {
     expect(fieldsOf('teks')?._).toBe('Input harus berupa objek');
   });
 
+  test('dimensi dibaca dari header byte: klaim kecil untuk gambar raksasa ditolak; dimensi tersimpan = hasil baca server', () => {
+    const png = (width: number, height: number): Uint8Array => {
+      const bytes = new Uint8Array(64);
+      bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+      const view = new DataView(bytes.buffer);
+      view.setUint32(8, 13);
+      bytes.set([0x49, 0x48, 0x44, 0x52], 12);
+      view.setUint32(16, width);
+      view.setUint32(20, height);
+      return bytes;
+    };
+    const fieldsOf = (input: unknown) => captureAppError(() => validateUploadFile(input)).fields;
+    // PNG 40000x40000 yang mengaku 100x100.
+    expect(fieldsOf(upload({ bytes: png(40000, 40000), width: 100, height: 100 }))?.bytes).toBe(
+      'Dimensi gambar maksimal 4000 px per sisi',
+    );
+    expect(
+      fieldsOf(upload({ bytes: png(100, 5000), width: 100, height: 100 }))?.bytes,
+    ).toBeDefined();
+    // Klaim keliru untuk gambar yang sah: yang tersimpan adalah dimensi dari header.
+    expect(
+      validateUploadFile(upload({ bytes: png(640, 480), width: 10, height: 10 })),
+    ).toMatchObject({ width: 640, height: 480 });
+    // Header terpotong (tak terbaca): klaim yang sudah tervalidasi tetap dipakai.
+    expect(validateUploadFile(upload({ width: 7, height: 9 }))).toMatchObject({
+      width: 7,
+      height: 9,
+    });
+  });
+
   test('validateGetFile mewajibkan id', () => {
     expect(validateGetFile({ id: 'f1' })).toEqual({ id: 'f1' });
     expect(captureAppError(() => validateGetFile({ id: '' })).fields).toEqual({

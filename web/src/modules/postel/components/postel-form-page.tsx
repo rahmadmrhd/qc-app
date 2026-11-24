@@ -1,5 +1,5 @@
 import type { PostelDto, SavePostelInput } from '@shared/contract';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { FormPage } from '@/components/page/form-page';
@@ -8,6 +8,7 @@ import { describeError } from '@/lib/api/describe-error';
 import { itemLinkAccess } from '@/lib/link-access';
 import { meQueryOptions } from '@/modules/auth/queries';
 import { isStaleSaveError, STALE_SAVE_MESSAGE } from '@/modules/sticker/lib/stale';
+import { postelKeys } from '../keys';
 import { POSTEL_FIELD_KEYS, type PostelFieldErrors } from '../lib/schemas';
 import { useSavePostel } from '../queries';
 import { PostelForm, type PostelFormUiState } from './postel-form';
@@ -40,6 +41,7 @@ function pickPostelFieldErrors(error: unknown): PostelFieldErrors {
  */
 export function PostelFormPage({ postel, soonDays, today, onDone, onCancel }: PostelFormPageProps) {
   const save = useSavePostel();
+  const queryClient = useQueryClient();
   // Tanpa suspense: data pengguna sudah dimuat cangkang; bila belum, baris Tambah item sekadar tak tampil.
   const me = useQuery(meQueryOptions()).data;
   const [fieldErrors, setFieldErrors] = useState<PostelFieldErrors>({});
@@ -53,7 +55,11 @@ export function PostelFormPage({ postel, soonDays, today, onDone, onCancel }: Po
       await onDone(saved.id);
       return null;
     } catch (error) {
-      if (isStaleSaveError(error)) return STALE_SAVE_MESSAGE;
+      if (isStaleSaveError(error)) {
+        // Versi di cache sudah usang: muat ulang catatan agar Batal lalu Ubah tidak membuka form dari data lama.
+        if (postel) void queryClient.invalidateQueries({ queryKey: postelKeys.one(postel.id) });
+        return STALE_SAVE_MESSAGE;
+      }
       const picked = pickPostelFieldErrors(error);
       if (Object.keys(picked).length > 0) {
         setFieldErrors(picked);

@@ -22,8 +22,10 @@ const RANDOM_MAX = (1n << 80n) - 1n;
 export const ULID_PATTERN = /^[0-7][0-9a-hjkmnp-tv-z]{25}$/;
 
 /**
- * UUID lama (v4 buatan aplikasi dan v5 hasil migrasi data lama): dipakai tes dan pemeriksaan sisa. Skrip migrasi
- * (`server/scripts/migrate-ids-to-ulid.ts`) sengaja memakai pola SQL/token sendiri; pola itu harus dijaga sama dengan ini.
+ * UUID lama (v4 buatan aplikasi dan v5 hasil migrasi data lama): dipakai tes, pemeriksaan sisa, dan lapisan terjemahan ID lama
+ * sementara (`server/src/core/legacy-ids.ts`, satu-satunya pemakai pola ini di repo selain tes). Migrasi UUID -> ULID dikerjakan
+ * skrip operator LOKAL milik pemilik di luar repo (keputusan pemilik 2026-11-22); kesamaan pola dengan skrip itu dijaga
+ * manual, tak ada tes paritas.
  */
 export const LEGACY_UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 

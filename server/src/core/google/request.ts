@@ -21,6 +21,12 @@ export interface RequestSpec {
   /** Aman diulang pada 429/5xx/galat jaringan (baca, daftar, hapus, rename, izin). Pembuatan berkas: false. */
   idempotent: boolean;
   timeoutMs?: number;
+  /**
+   * Unduhan berbadan besar: `timeoutMs` hanya membatasi sampai HEADER respons diterima; badan lalu mengalir tanpa
+   * batas waktu total (jaringan lambat tak memotong unduhan di tengah). Pembatalan oleh klien (aliran dibatalkan)
+   * tetap menghentikan permintaan. Default: batas waktu mencakup seluruh badan.
+   */
+  streamBody?: boolean;
 }
 
 export interface GoogleHttp {
@@ -95,14 +101,31 @@ export function createGoogleHttp(options: {
       for (;;) {
         const token = await options.tokens.getAccessToken();
         let response: Response;
+        const timeoutMs = spec.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+        let headerTimer: ReturnType<typeof setTimeout> | undefined;
+        let signal: AbortSignal;
+        if (spec.streamBody) {
+          const controller = new AbortController();
+          headerTimer = setTimeout(
+            () =>
+              controller.abort(new DOMException('Batas waktu header terlampaui', 'TimeoutError')),
+            timeoutMs,
+          );
+          signal = controller.signal;
+        } else {
+          signal = AbortSignal.timeout(timeoutMs);
+        }
         try {
           response = await options.fetch(spec.url, {
             method: spec.method,
             headers: { ...spec.headers, authorization: `Bearer ${token}` },
             ...(spec.body === undefined ? {} : { body: spec.body }),
-            signal: AbortSignal.timeout(spec.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+            signal,
           });
+          // Header sudah tiba: badan boleh mengalir selama yang diperlukan.
+          if (headerTimer !== undefined) clearTimeout(headerTimer);
         } catch (error) {
+          if (headerTimer !== undefined) clearTimeout(headerTimer);
           const name = (error as { name?: string } | null)?.name;
           const delay = spec.idempotent ? RETRY_DELAYS_MS[retries] : undefined;
           if (delay !== undefined) {

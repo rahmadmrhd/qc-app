@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { formatStamp } from '@/lib/format-stamp';
 import { runAfterOverlays } from '@/lib/nav-stack';
 import { cn } from '@/lib/utils';
 import { useTourMenu } from '@/modules/guide/lib/tour-menu';
@@ -23,12 +24,6 @@ import { useOpenNotification } from './use-open-notification';
 
 /** Jumlah pada ikon dibatasi agar tidak melebar. */
 const BADGE_MAX = 99;
-
-function formatTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
-}
 
 /**
  * Lonceng notifikasi di header (Serah Terima dan Serial Number): jumlah belum dibaca, daftar terbaru, tandai dibaca, dan
@@ -147,7 +142,7 @@ export function NotificationBell() {
                         </span>
                       ) : null}
                       <span className="block text-xs text-muted-foreground">
-                        {formatTime(item.createdAt)}
+                        {formatStamp(item.createdAt)}
                       </span>
                     </span>
                     {isUnread ? <span className="sr-only">Belum dibaca</span> : null}

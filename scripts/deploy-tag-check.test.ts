@@ -44,6 +44,7 @@ describe('checkProvenance', () => {
     releaseAuthor: 'github-actions[bot]',
     releaseDraft: false,
     imageExists: true,
+    imageBuiltFor: 'production',
   };
 
   test('semua syarat terpenuhi lulus (SHA leluhur main = behind, atau sama dengan main = identical)', () => {
@@ -91,6 +92,14 @@ describe('checkProvenance', () => {
     const result = checkProvenance({ ...GOOD, imageExists: false });
     expect(result.ok).toBe(false);
     expect(result.reason).toMatch(/image/i);
+  });
+
+  test('image yang tak terbukti dibangun oleh build production (staging, tanpa label, nilai asing) ditolak', () => {
+    for (const imageBuiltFor of ['staging', '', 'Production', 'production ', 'apa-saja']) {
+      const result = checkProvenance({ ...GOOD, imageBuiltFor });
+      expect(result.ok, JSON.stringify(imageBuiltFor)).toBe(false);
+      expect(result.reason).toMatch(/production/);
+    }
   });
 
   test('tag tak sah atau SHA tak sah ditolak sebelum syarat lain', () => {

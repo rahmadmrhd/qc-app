@@ -98,7 +98,7 @@ const INDEX_HTML = `<!doctype html><html><head>
 <link rel="manifest" href="/manifest.webmanifest">
 </head></html>`;
 
-const DENYLIST = String.raw`[/^\/api(?:[/?]|$)/,/^\/auth(?:[/?]|$)/,/^\/sync(?:[/?]|$)/,/^[^?]*\/[^/?]+\.[^/?]+(?:\?|$)/]`;
+const DENYLIST = String.raw`[/^\/api(?:[/?]|$)/,/^\/auth(?:[/?]|$)/,/^\/sync(?:[/?]|$)/,/^(?!\/laporan\/)[^?]*\/[^/?]+\.[^/?]+(?:\?|$)/]`;
 
 /** Bentuk `sw.js` hasil `generateSW` (diperkecil) dengan daftar pra-cache dan denylist yang dapat diganti. */
 function swOf(
@@ -284,6 +284,15 @@ describe('checkPwa', () => {
     expect(checkPwa(healthyDist({ sw: missingAuth })).join()).toContain('/auth/callback?code=1');
     const noDenylistAtAll = swOf().replace(/\{denylist:.*\}\)\)/, '{})');
     expect(checkPwa(healthyDist({ sw: noDenylistAtAll })).join()).toContain('denylist');
+  });
+
+  test('denylist tanpa pengecualian /laporan/<token> bertitik ditolak (halaman publik laporan rusak)', () => {
+    const noReportException = swOf({
+      denylist: String.raw`[/^\/api(?:[/?]|$)/,/^\/auth(?:[/?]|$)/,/^\/sync(?:[/?]|$)/,/^[^?]*\/[^/?]+\.[^/?]+(?:\?|$)/]`,
+    });
+    expect(checkPwa(healthyDist({ sw: noReportException })).join()).toContain(
+      '/laporan/v1.c1.1799999999.sig_abc-123',
+    );
   });
 
   test('denylist yang mengenai titik di dalam query (/handover?q=a/b.c) ditolak', () => {

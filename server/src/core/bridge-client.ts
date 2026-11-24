@@ -25,9 +25,6 @@ export interface SheetsExportChunk {
   mode: 'replace' | 'append';
 }
 
-/** Hasil `sheetsDump`: nama sheet -> baris (baris pertama = nama kolom). */
-export type SheetsDump = Record<string, string[][]>;
-
 /** Satu entri hasil `listFolder` (berkas yang tidak di tempat sampah). */
 export interface DriveFolderEntry {
   id: string;
@@ -112,8 +109,6 @@ export interface BridgeClient {
   /** Kuota penyimpanan akun service account (untuk pemantauan 15 GB). */
   storageQuota(): Promise<DriveStorageQuota>;
   sheetsExport(chunk: SheetsExportChunk): Promise<void>;
-  /** `sheets` membatasi nama sheet yang diambil (bawaan: semua sheet sumber). */
-  sheetsDump(sheets?: string[]): Promise<SheetsDump>;
 }
 
 /** Klien Google untuk permintaan ini: `env.BRIDGE` (disuntik `createServer`/tes) atau klien baru dari `env`. */

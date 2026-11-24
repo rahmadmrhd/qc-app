@@ -1,8 +1,9 @@
 import { listAudit, writeAudit } from '@server/core/audit';
+import { runCas } from '@server/core/cas';
 import { normalizeEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
-import { appError } from '@server/core/errors';
+import { appError, staleError } from '@server/core/errors';
 import { newId } from '@server/core/id';
 import { type PlanOutcome, runRecordBatch, runSingleRecord } from '@server/core/record-batch';
 import {
@@ -11,6 +12,7 @@ import {
   planSoftDelete,
   planStatusChange,
 } from '@server/core/record-lifecycle';
+import { versionGuardStmt } from '@server/core/soft-delete';
 import type { Assignment } from '@shared/assignments';
 import { assignmentKey, resolveAccess } from '@shared/assignments';
 import type {
@@ -54,6 +56,10 @@ import {
   insertUserStmt,
   isLiveRecord,
   loadAccessTables,
+  loadBusinessUnitRecords,
+  loadLocationRecords,
+  loadRoleRecords,
+  loadUserRecords,
   updateRoleStmt,
   updateUserStmt,
 } from './repo';
@@ -215,8 +221,15 @@ export async function assertAccessRecordReadable(
   id: string,
   actor: UserContext,
 ): Promise<void> {
-  const tables = await loadAccessTables(env);
-  const records: readonly { id: string; deletedAt: string }[] = tables[table];
+  // Hanya tabel yang diminta (bukan keempatnya): gerbang ini dipanggil tiap tampilan log aktivitas.
+  const records: readonly { id: string; deletedAt: string }[] =
+    table === 'users'
+      ? await loadUserRecords(env)
+      : table === 'roles'
+        ? await loadRoleRecords(env)
+        : table === 'locations'
+          ? await loadLocationRecords(env)
+          : await loadBusinessUnitRecords(env);
   const record = records.find((item) => item.id === id);
   if (!record || (!isLiveRecord(record) && !canSeeDeleted(actor))) {
     throw appError('NOT_FOUND', 'Data tidak ditemukan');
@@ -407,18 +420,27 @@ const ROLE_CONFLICTS = {
 
 /**
  * Simpan user. Perubahan dan audit satu `batch()` (atomik). Pencabutan akses berlaku pada permintaan
- * berikutnya karena konteks akses dimuat per permintaan (tanpa cache).
+ * berikutnya karena konteks akses dimuat per permintaan (tanpa cache). Ubah user dijaga CAS versi (`updated_at`)
+ * dan keadaan hidup di dalam batch: penulis serentak (setStatus, hapus, simpan lain) tak tertimpa diam-diam.
  */
-export async function saveUser(
-  env: Env,
-  input: SaveUserInput,
-  actor: UserContext,
-): Promise<UserDto> {
+export function saveUser(env: Env, input: SaveUserInput, actor: UserContext): Promise<UserDto> {
+  return runCas(() => saveUserOnce(env, input, actor), USER_STALE);
+}
+
+async function saveUserOnce(env: Env, input: SaveUserInput, actor: UserContext): Promise<UserDto> {
   const email = normalizeEmail(input.email);
   const { users, roles, locations, businessUnits } = await loadAccessTables(env);
   const existing = input.id ? users.find((user) => user.id === input.id) : undefined;
   if (input.id && (!existing || !isLiveRecord(existing))) {
     throw appError('NOT_FOUND', 'User tidak ditemukan');
+  }
+  // `expectedUpdatedAt` opsional (klien lama tak mengirimnya): bila ada, harus sama dengan versi tersimpan.
+  if (
+    existing &&
+    input.expectedUpdatedAt !== undefined &&
+    input.expectedUpdatedAt !== existing.updatedAt
+  ) {
+    throw staleError(USER_STALE);
   }
   assertAssignmentsValid(input.assignments, roles, locations, existing);
   assertBuAssignmentsValid(input.buAssignments, roles, businessUnits, existing);
@@ -466,6 +488,7 @@ export async function saveUser(
     await batchWrite(
       env.DB,
       [
+        versionGuardStmt(env.DB, 'users', existing.id, existing.updatedAt, 'live'),
         updateUserStmt(env.DB, updated),
         writeAudit(env.DB, {
           ts: now,
@@ -634,11 +657,12 @@ export function restoreUserBatch(
   return runRecordBatch(env, input.ids, planners.restore, planners.options);
 }
 
-export async function saveRole(
-  env: Env,
-  input: SaveRoleInput,
-  actor: UserContext,
-): Promise<RoleDto> {
+/** Simpan role; ubah role dijaga CAS versi dan keadaan hidup di dalam batch (lihat `saveUser`). */
+export function saveRole(env: Env, input: SaveRoleInput, actor: UserContext): Promise<RoleDto> {
+  return runCas(() => saveRoleOnce(env, input, actor), ROLE_STALE);
+}
+
+async function saveRoleOnce(env: Env, input: SaveRoleInput, actor: UserContext): Promise<RoleDto> {
   const { users, roles } = await loadAccessTables(env);
   const nameKey = input.name.trim().toLowerCase();
   // Nama unik antar role HIDUP (role terhapus tak menahan namanya; pemulihan memeriksa ulang).
@@ -656,6 +680,9 @@ export async function saveRole(
   if (input.id) {
     const existing = roles.find((role) => role.id === input.id);
     if (!existing || !isLiveRecord(existing)) throw appError('NOT_FOUND', 'Role tidak ditemukan');
+    if (input.expectedUpdatedAt !== undefined && input.expectedUpdatedAt !== existing.updatedAt) {
+      throw staleError(ROLE_STALE);
+    }
     const updated: RoleRecord = {
       ...existing,
       name: input.name,
@@ -668,6 +695,7 @@ export async function saveRole(
     await batchWrite(
       env.DB,
       [
+        versionGuardStmt(env.DB, 'roles', existing.id, existing.updatedAt, 'live'),
         updateRoleStmt(env.DB, updated),
         writeAudit(env.DB, {
           ts: now,

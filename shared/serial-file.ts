@@ -1,5 +1,5 @@
-import { hasControlChars } from './postel';
 import { isIsoDate, normalizeSerial, SERIAL_LIMITS, serialProblem } from './serials';
+import { hasControlChars } from './text';
 
 export const QCSN_FORMAT = 'qc-sn-batch';
 export const QCSN_VERSION = 1;

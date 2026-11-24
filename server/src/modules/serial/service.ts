@@ -80,6 +80,7 @@ import {
   insertNextEventStmt,
   insertSerialStickerStmt,
   insertSerialStmt,
+  isReplayOfRow,
   itemLabelOf,
   listSerialRows,
   loadBuHistory,
@@ -421,7 +422,7 @@ export async function createSerialOnce(
   if (!canWriteBu(user, row.buId)) return failRow(row, ITEM_MESSAGE);
   const existing = await findSerialByClientId(env.DB, row.clientId);
   if (existing) {
-    if (existing.buId !== row.buId || existing.serial !== row.serial) {
+    if (!(await isReplayOfRow(env.DB, existing, row))) {
       return failRow(row, 'Baris tidak valid');
     }
     // Kiriman ulang ke serial yang sudah terhapus = tak ditemukan (keputusan T8; antrean memperlakukannya ditolak).
@@ -584,7 +585,7 @@ export async function createSerialOnce(
       // yang sama, jadi pada galat duplikat APA PUN baca ulang `clientId` dulu. Pemenang sudah commit saat galat
       // ini terbit (penulis kedua menunggu kuncinya), sehingga bacaan ulang melihatnya.
       const again = await findSerialByClientId(env.DB, row.clientId);
-      if (again && again.buId === row.buId && again.serial === row.serial) {
+      if (again && (await isReplayOfRow(env.DB, again, row))) {
         return again.deleted ? failRow(row, NOT_FOUND_MESSAGE) : idempotent(row, again.id);
       }
       // Serial yang sama dicatat serentak dari tempat lain dan pemenangnya sudah komit: baris ini menjadi cek ulang.

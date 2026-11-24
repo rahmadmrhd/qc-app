@@ -37,6 +37,13 @@ import {
 } from '../queries';
 import { HandoverBoard } from './handover-board';
 
+/** Perubahan tampilan papan yang diterapkan SEKALIGUS (satu navigasi): bagian yang tak disebut tetap seperti URL. */
+export interface HandoverViewPatch {
+  status?: HandoverStatus | 'all';
+  deleted?: boolean;
+  customers?: string[];
+}
+
 export interface HandoverBoardPageProps {
   /** Filter daftar kartu ponsel (search param rute). */
   status: HandoverStatus | 'all';
@@ -48,8 +55,11 @@ export interface HandoverBoardPageProps {
   deleted?: boolean;
   /** Mengganti daftar customer yang disaring (mengganti entri riwayat, bukan menambah); kosong = hapus filter. */
   onCustomersChange?: (customerIds: string[]) => void;
-  /** Mengubah tampilan Hidup/Terhapus (mengganti entri riwayat). */
-  onDeletedChange?: (deleted: boolean) => void;
+  /**
+   * Mengubah status, tampilan Hidup/Terhapus, dan/atau customer dalam SATU navigasi (mengganti entri riwayat). Dua
+   * navigasi beruntun membaca search yang sama-sama basi, jadi yang kedua menimpa yang pertama.
+   */
+  onViewChange: (patch: HandoverViewPatch) => void;
   onStatusChange: (status: HandoverStatus | 'all') => void;
   onOpen: (id: string) => void;
   onEdit: (id: string) => void;
@@ -67,7 +77,7 @@ export function HandoverBoardPage({
   customerIds = [],
   deleted = false,
   onCustomersChange,
-  onDeletedChange,
+  onViewChange,
   onStatusChange,
   onOpen,
   onEdit,
@@ -207,9 +217,11 @@ export function HandoverBoardPage({
   const statusFiltered = !desktop && status !== 'all' && !deletedView;
   const filtered = customerIds.length > 0 || deletedView || statusFiltered;
   const clearFilters = () => {
-    if (customerIds.length > 0) onCustomersChange?.([]);
-    if (deletedView) onDeletedChange?.(false);
-    if (statusFiltered) onStatusChange('all');
+    const patch: HandoverViewPatch = {};
+    if (customerIds.length > 0) patch.customers = [];
+    if (deletedView) patch.deleted = false;
+    if (statusFiltered) patch.status = 'all';
+    if (Object.keys(patch).length > 0) onViewChange(patch);
   };
   // Satu chip "Status": di ponsel memuat status alur + "Terhapus" (eksklusif: Terhapus menampilkan task terhapus apa
   // pun statusnya), di desktop hanya Hidup/Terhapus.
@@ -228,12 +240,13 @@ export function HandoverBoardPage({
       : null;
   const changeStatus = (next: string) => {
     if (next === 'deleted') {
-      onDeletedChange?.(true);
-      if (!desktop) onStatusChange('all');
+      onViewChange(desktop ? { deleted: true } : { deleted: true, status: 'all' });
       return;
     }
-    if (deletedView) onDeletedChange?.(false);
-    if (!desktop && next !== 'live') onStatusChange(next as HandoverStatus | 'all');
+    const patch: HandoverViewPatch = {};
+    if (deletedView) patch.deleted = false;
+    if (!desktop && next !== 'live') patch.status = next as HandoverStatus | 'all';
+    if (Object.keys(patch).length > 0) onViewChange(patch);
   };
 
   return (
@@ -265,8 +278,10 @@ export function HandoverBoardPage({
                 label="Status"
                 display={statusDisplay}
                 onClear={() => {
-                  if (deletedView) onDeletedChange?.(false);
-                  if (!desktop) onStatusChange('all');
+                  const patch: HandoverViewPatch = {};
+                  if (deletedView) patch.deleted = false;
+                  if (!desktop) patch.status = 'all';
+                  if (Object.keys(patch).length > 0) onViewChange(patch);
                 }}
               >
                 <Select

@@ -157,7 +157,7 @@ describe('declare_broken dan antrean job', () => {
         'Port mati',
         '',
         `Buka: https://qc.test/laporan/${token}`,
-        'Tautan berlaku sampai 2026-12-12.',
+        'Tautan berlaku sampai 2027-01-11.',
         '',
       ].join('\n'),
     );

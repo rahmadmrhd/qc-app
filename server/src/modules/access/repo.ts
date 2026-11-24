@@ -237,31 +237,54 @@ export async function listLocationBriefs(env: Env): Promise<LocationBrief[]> {
  */
 export async function loadAccessTables(env: Env): Promise<AccessTables> {
   const [users, roles, locations, businessUnits] = await env.DB.batch([
-    env.DB.prepare(
-      'SELECT id, email, name, status, role_ids, assignments, bu_assignments, shared_account, created_at, updated_at, updated_by, deleted_at, deleted_by FROM users',
-    ),
-    env.DB.prepare(
-      'SELECT id, name, description, permissions, created_at, updated_at, updated_by, deleted_at, deleted_by FROM roles',
-    ),
-    env.DB.prepare(
-      'SELECT id, code, name, status, created_at, updated_at, updated_by, deleted_at, deleted_by FROM locations',
-    ),
-    env.DB.prepare(
-      'SELECT id, code, name, status, created_at, updated_at, updated_by, deleted_at, deleted_by FROM business_units',
-    ),
+    env.DB.prepare(USERS_SQL),
+    env.DB.prepare(ROLES_SQL),
+    env.DB.prepare(LOCATIONS_SQL),
+    env.DB.prepare(BUSINESS_UNITS_SQL),
   ]);
   return {
-    users: ((users?.results ?? []) as UserRow[])
-      .map(toUser)
-      .filter((user) => user.id !== '' && user.email !== ''),
-    roles: ((roles?.results ?? []) as RoleRow[]).map(toRole).filter((role) => role.id !== ''),
-    locations: ((locations?.results ?? []) as LocationRow[])
-      .map(toLocation)
-      .filter((location) => location.id !== '' && location.code !== ''),
-    businessUnits: ((businessUnits?.results ?? []) as BusinessUnitRow[])
-      .map(toBusinessUnit)
-      .filter((bu) => bu.id !== '' && bu.code !== ''),
+    users: mapUsers((users?.results ?? []) as UserRow[]),
+    roles: mapRoles((roles?.results ?? []) as RoleRow[]),
+    locations: mapLocations((locations?.results ?? []) as LocationRow[]),
+    businessUnits: mapBusinessUnits((businessUnits?.results ?? []) as BusinessUnitRow[]),
   };
+}
+
+const USERS_SQL =
+  'SELECT id, email, name, status, role_ids, assignments, bu_assignments, shared_account, created_at, updated_at, updated_by, deleted_at, deleted_by FROM users';
+const ROLES_SQL =
+  'SELECT id, name, description, permissions, created_at, updated_at, updated_by, deleted_at, deleted_by FROM roles';
+const LOCATIONS_SQL =
+  'SELECT id, code, name, status, created_at, updated_at, updated_by, deleted_at, deleted_by FROM locations';
+const BUSINESS_UNITS_SQL =
+  'SELECT id, code, name, status, created_at, updated_at, updated_by, deleted_at, deleted_by FROM business_units';
+
+const mapUsers = (rows: UserRow[]): UserRecord[] =>
+  rows.map(toUser).filter((user) => user.id !== '' && user.email !== '');
+const mapRoles = (rows: RoleRow[]): RoleRecord[] =>
+  rows.map(toRole).filter((role) => role.id !== '');
+const mapLocations = (rows: LocationRow[]): LocationRecord[] =>
+  rows.map(toLocation).filter((location) => location.id !== '' && location.code !== '');
+const mapBusinessUnits = (rows: BusinessUnitRow[]): BusinessUnitRecord[] =>
+  rows.map(toBusinessUnit).filter((bu) => bu.id !== '' && bu.code !== '');
+
+/**
+ * Pembaca satu tabel (hidup dan terhapus, seperti `loadAccessTables`): untuk rute yang hanya membutuhkan satu tabel
+ * (daftar/lihat/simpan lokasi atau BU, gerbang `activity.list`) tanpa ikut memuat pengguna dan role (JSON izin) segar.
+ */
+export async function loadLocationRecords(env: Env): Promise<LocationRecord[]> {
+  return mapLocations((await env.DB.prepare(LOCATIONS_SQL).all<LocationRow>()).results);
+}
+export async function loadBusinessUnitRecords(env: Env): Promise<BusinessUnitRecord[]> {
+  return mapBusinessUnits(
+    (await env.DB.prepare(BUSINESS_UNITS_SQL).all<BusinessUnitRow>()).results,
+  );
+}
+export async function loadUserRecords(env: Env): Promise<UserRecord[]> {
+  return mapUsers((await env.DB.prepare(USERS_SQL).all<UserRow>()).results);
+}
+export async function loadRoleRecords(env: Env): Promise<RoleRecord[]> {
+  return mapRoles((await env.DB.prepare(ROLES_SQL).all<RoleRow>()).results);
 }
 
 /**

@@ -79,8 +79,10 @@ export function useDraftRows(bridge: QcBridge): DraftRows {
       timerRef.current = null;
     }
     dirtyRef.current = false;
-    const snapshot = rowsRef.current;
     const run = chainRef.current.then(async () => {
+      // Snapshot dibaca saat gilirannya tiba: penyimpanan yang mengantre di belakang yang lambat selalu menulis keadaan
+      // terbaru, bukan keadaan saat dipanggil.
+      const snapshot = rowsRef.current;
       try {
         await bridge.draft.save(snapshot);
         for (const row of snapshot) unsavedRef.current.delete(row.clientId);
@@ -144,7 +146,10 @@ export function useDraftRows(bridge: QcBridge): DraftRows {
       if (timerRef.current) clearTimeout(timerRef.current);
       if (dirtyRef.current && readyRef.current) {
         dirtyRef.current = false;
-        void bridge.draft.save(rowsRef.current).catch(() => undefined);
+        // Lewat rantai (bukan langsung): penyimpanan yang masih mengantre tak boleh menimpa suntingan terakhir ini.
+        chainRef.current = chainRef.current
+          .then(() => bridge.draft.save(rowsRef.current))
+          .catch(() => undefined);
       }
     },
     [bridge],

@@ -65,6 +65,32 @@ async function writeAll(
   }
 }
 
+/** Jumlah perencana yang berjalan bersamaan dalam satu permintaan (pool koneksi `Db` hanya 8 per proses). */
+const PLAN_CONCURRENCY = 4;
+
+/** Seperti `Promise.allSettled(ids.map(plan))` tetapi paling banyak `limit` yang berjalan serentak; hasil urut masukan. */
+async function settleLimited<T>(
+  ids: readonly string[],
+  plan: (id: string) => Promise<T>,
+  limit: number,
+): Promise<PromiseSettledResult<T>[]> {
+  const settled = new Array<PromiseSettledResult<T>>(ids.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < ids.length) {
+      const index = next;
+      next += 1;
+      try {
+        settled[index] = { status: 'fulfilled', value: await plan(ids[index] as string) };
+      } catch (reason) {
+        settled[index] = { status: 'rejected', reason };
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, ids.length) }, worker));
+  return settled;
+}
+
 /**
  * Merencanakan tiap id (urut masukan, tanpa ganda) lalu menulis semuanya dalam satu `batch()`. Galat perencana
  * (NOT_FOUND, FORBIDDEN, CONFLICT syarat) membatalkan seluruh permintaan sebelum menulis apa pun. Bila semua `unchanged`,
@@ -79,8 +105,9 @@ export async function runRecordBatch<T>(
   const unique = [...new Set(ids)];
   return runCas(async () => {
     options.prepare?.();
-    // Paralel (latensi), tetapi galat pertama MENURUT URUTAN MASUKAN yang dilempar (deterministik).
-    const settled = await Promise.allSettled(unique.map((id) => plan(id)));
+    // Paralel terbatas (`PLAN_CONCURRENCY` perencana sekaligus; batch 100 id tak lagi merebut seluruh pool koneksi),
+    // tetapi galat pertama MENURUT URUTAN MASUKAN yang dilempar (deterministik: semua id tetap dijalankan).
+    const settled = await settleLimited(unique, plan, PLAN_CONCURRENCY);
     const outcomes: PlanOutcome<T>[] = [];
     for (const entry of settled) {
       if (entry.status === 'rejected') throw entry.reason;
