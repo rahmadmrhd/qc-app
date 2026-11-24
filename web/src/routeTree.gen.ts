@@ -49,6 +49,7 @@ import { Route as AppAccessRolesIndexRouteImport } from './routes/_app/access/ro
 import { Route as AppAccessRolesRoleIdRouteImport } from './routes/_app/access/roles/$roleId'
 import { Route as AppAccessUsersIndexRouteImport } from './routes/_app/access/users/index'
 import { Route as AppAccessUsersUserIdRouteImport } from './routes/_app/access/users/$userId'
+import { Route as AppDashboardTautanShareIdRouteImport } from './routes/_app/dashboard/tautan/$shareId'
 import { Route as AppHandoverHandoverIdIndexRouteImport } from './routes/_app/handover/$handoverId/index'
 import { Route as AppHandoverHandoverIdEditRouteImport } from './routes/_app/handover/$handoverId/edit'
 import { Route as AppItemItemIdIndexRouteImport } from './routes/_app/item/$itemId/index'
@@ -271,6 +272,12 @@ const AppAccessUsersUserIdRoute = AppAccessUsersUserIdRouteImport.update({
   path: '/access/users/$userId',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDashboardTautanShareIdRoute =
+  AppDashboardTautanShareIdRouteImport.update({
+    id: '/dashboard/tautan/$shareId',
+    path: '/dashboard/tautan/$shareId',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppHandoverHandoverIdIndexRoute =
   AppHandoverHandoverIdIndexRouteImport.update({
     id: '/handover/$handoverId/',
@@ -407,6 +414,7 @@ export interface FileRoutesByFullPath {
   '/access/locations/$locationId': typeof AppAccessLocationsLocationIdRoute
   '/access/roles/$roleId': typeof AppAccessRolesRoleIdRoute
   '/access/users/$userId': typeof AppAccessUsersUserIdRoute
+  '/dashboard/tautan/$shareId': typeof AppDashboardTautanShareIdRoute
   '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
   '/item/$itemId/edit': typeof AppItemItemIdEditRoute
   '/item/brands/$brandId': typeof AppItemBrandsBrandIdRoute
@@ -467,6 +475,7 @@ export interface FileRoutesByTo {
   '/access/locations/$locationId': typeof AppAccessLocationsLocationIdRoute
   '/access/roles/$roleId': typeof AppAccessRolesRoleIdRoute
   '/access/users/$userId': typeof AppAccessUsersUserIdRoute
+  '/dashboard/tautan/$shareId': typeof AppDashboardTautanShareIdRoute
   '/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
   '/item/$itemId/edit': typeof AppItemItemIdEditRoute
   '/item/brands/$brandId': typeof AppItemBrandsBrandIdRoute
@@ -529,6 +538,7 @@ export interface FileRoutesById {
   '/_app/access/locations/$locationId': typeof AppAccessLocationsLocationIdRoute
   '/_app/access/roles/$roleId': typeof AppAccessRolesRoleIdRoute
   '/_app/access/users/$userId': typeof AppAccessUsersUserIdRoute
+  '/_app/dashboard/tautan/$shareId': typeof AppDashboardTautanShareIdRoute
   '/_app/handover/$handoverId/edit': typeof AppHandoverHandoverIdEditRoute
   '/_app/item/$itemId/edit': typeof AppItemItemIdEditRoute
   '/_app/item/brands/$brandId': typeof AppItemBrandsBrandIdRoute
@@ -591,6 +601,7 @@ export interface FileRouteTypes {
     | '/access/locations/$locationId'
     | '/access/roles/$roleId'
     | '/access/users/$userId'
+    | '/dashboard/tautan/$shareId'
     | '/handover/$handoverId/edit'
     | '/item/$itemId/edit'
     | '/item/brands/$brandId'
@@ -651,6 +662,7 @@ export interface FileRouteTypes {
     | '/access/locations/$locationId'
     | '/access/roles/$roleId'
     | '/access/users/$userId'
+    | '/dashboard/tautan/$shareId'
     | '/handover/$handoverId/edit'
     | '/item/$itemId/edit'
     | '/item/brands/$brandId'
@@ -712,6 +724,7 @@ export interface FileRouteTypes {
     | '/_app/access/locations/$locationId'
     | '/_app/access/roles/$roleId'
     | '/_app/access/users/$userId'
+    | '/_app/dashboard/tautan/$shareId'
     | '/_app/handover/$handoverId/edit'
     | '/_app/item/$itemId/edit'
     | '/_app/item/brands/$brandId'
@@ -1027,6 +1040,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAccessUsersUserIdRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/dashboard/tautan/$shareId': {
+      id: '/_app/dashboard/tautan/$shareId'
+      path: '/dashboard/tautan/$shareId'
+      fullPath: '/dashboard/tautan/$shareId'
+      preLoaderRoute: typeof AppDashboardTautanShareIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/handover/$handoverId/': {
       id: '/_app/handover/$handoverId/'
       path: '/handover/$handoverId'
@@ -1195,6 +1215,7 @@ interface AppRouteChildren {
   AppAccessLocationsLocationIdRoute: typeof AppAccessLocationsLocationIdRoute
   AppAccessRolesRoleIdRoute: typeof AppAccessRolesRoleIdRoute
   AppAccessUsersUserIdRoute: typeof AppAccessUsersUserIdRoute
+  AppDashboardTautanShareIdRoute: typeof AppDashboardTautanShareIdRoute
   AppHandoverHandoverIdEditRoute: typeof AppHandoverHandoverIdEditRoute
   AppItemItemIdEditRoute: typeof AppItemItemIdEditRoute
   AppItemBrandsBrandIdRoute: typeof AppItemBrandsBrandIdRoute
@@ -1253,6 +1274,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccessLocationsLocationIdRoute: AppAccessLocationsLocationIdRoute,
   AppAccessRolesRoleIdRoute: AppAccessRolesRoleIdRoute,
   AppAccessUsersUserIdRoute: AppAccessUsersUserIdRoute,
+  AppDashboardTautanShareIdRoute: AppDashboardTautanShareIdRoute,
   AppHandoverHandoverIdEditRoute: AppHandoverHandoverIdEditRoute,
   AppItemItemIdEditRoute: AppItemItemIdEditRoute,
   AppItemBrandsBrandIdRoute: AppItemBrandsBrandIdRoute,

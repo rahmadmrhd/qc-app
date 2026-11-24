@@ -3,17 +3,7 @@ import { wibDateIso } from '@shared/postel';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { type DataColumn, DataTable, type RowAction } from '@/components/data-table';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
+import { type DataColumn, DataTable, LinkCell, type RowAction } from '@/components/data-table';
 import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
@@ -22,9 +12,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { describeError } from '@/lib/api';
 import { formatDayLabel } from '../lib/format';
 import { sharesQueryOptions, useRevokeShare } from '../share-queries';
+import { RevokeShareDialog } from './revoke-share-dialog';
 
 const STATUS_LABEL: Record<ShareStatus, string> = {
   active: 'Aktif',
@@ -54,7 +44,16 @@ export function SharesDialog({ onClose }: { onClose: () => void }) {
   const [target, setTarget] = useState<DashboardShareDto | null>(null);
 
   const columns: DataColumn<DashboardShareDto>[] = [
-    { id: 'title', header: 'Nama', mobile: 'title', cell: (share) => share.title },
+    {
+      id: 'title',
+      header: 'Nama',
+      mobile: 'title',
+      cell: (share) => (
+        <LinkCell to="/dashboard/tautan/$shareId" params={{ shareId: share.id }}>
+          {share.title}
+        </LinkCell>
+      ),
+    },
     { id: 'createdBy', header: 'Pembagi', cell: (share) => share.createdBy },
     { id: 'createdAt', header: 'Dibuat', cell: (share) => dayOf(share.createdAt) },
     { id: 'expiresAt', header: 'Kedaluwarsa', cell: (share) => dayOf(share.expiresAt) },
@@ -114,40 +113,7 @@ export function SharesDialog({ onClose }: { onClose: () => void }) {
           />
         </DialogContent>
       </Dialog>
-      <AlertDialog
-        open={target !== null}
-        onOpenChange={(next) => (next ? undefined : setTarget(null))}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Cabut tautan "{target?.title}"?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Siapa pun yang memegang tautan ini tidak dapat membukanya lagi. Pencabutan tidak dapat
-              dibatalkan; buat tautan baru bila perlu.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={revoke.isPending}>Batal</AlertDialogCancel>
-            <AlertDialogAction
-              color="destructive"
-              disabled={revoke.isPending}
-              onClick={(event) => {
-                event.preventDefault();
-                if (!target) return;
-                revoke.mutate(target.id, {
-                  onSuccess: () => {
-                    toast.success('Tautan dicabut');
-                    setTarget(null);
-                  },
-                  onError: (error) => toast.error(describeError(error)),
-                });
-              }}
-            >
-              Cabut tautan
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <RevokeShareDialog target={target} onClose={() => setTarget(null)} revoke={revoke} />
     </>
   );
 }

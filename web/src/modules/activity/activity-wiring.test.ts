@@ -11,6 +11,7 @@ const VIEWS: readonly [file: string, kind: string][] = [
   ['access/components/user-view.tsx', 'user'],
   ['brand/components/brand-detail-view.tsx', 'brand'],
   ['customer/components/customer-view.tsx', 'customer'],
+  ['dashboard/components/share-detail-view.tsx', 'dashboardShare'],
   ['handover/components/handover-detail-view.tsx', 'handover'],
   ['item/components/item-detail-view.tsx', 'item'],
   ['postel/components/postel-view.tsx', 'postel'],
@@ -19,12 +20,6 @@ const VIEWS: readonly [file: string, kind: string][] = [
   ['sticker/components/sticker-type-view.tsx', 'stickerType'],
   ['sticker/components/sticker-view.tsx', 'sticker'],
 ];
-
-/**
- * Jenis yang sah tanpa View: log tautan publik dashboard dibaca lewat `activity.list` (pemegang `dashboard: manage`),
- * tetapi tautan tidak punya halaman View (daftarnya dialog "Tautan dibagikan"), jadi belum ada panel log di UI.
- */
-const KINDS_WITHOUT_VIEW: readonly string[] = ['dashboardShare'];
 
 const modules = path.resolve(__dirname, '..');
 
@@ -36,16 +31,8 @@ test('tiap View pemakai ViewMeta memasang ActivityLog dengan kind yang tepat', (
   }
 });
 
-test('semua jenis ActivityKind dilayani tepat satu View (kecuali yang tercatat tanpa View)', () => {
-  const served = [...VIEWS.map(([, kind]) => kind), ...KINDS_WITHOUT_VIEW].sort();
-  expect(served).toEqual([...ACTIVITY_KINDS].sort());
-  // Jenis tanpa View tidak boleh juga terdaftar sebagai View (daftar pengecualian tak boleh basi).
-  for (const kind of KINDS_WITHOUT_VIEW) {
-    expect(
-      VIEWS.some(([, viewKind]) => viewKind === kind),
-      kind,
-    ).toBe(false);
-  }
+test('semua jenis ActivityKind dilayani tepat satu View', () => {
+  expect(VIEWS.map(([, kind]) => kind).sort()).toEqual([...ACTIVITY_KINDS].sort());
 });
 
 test('log aktivitas tidak masuk whitelist query-persist', () => {

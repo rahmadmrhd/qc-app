@@ -3,9 +3,21 @@ import { queryOptions, useMutation, useQueryClient } from '@tanstack/react-query
 import { api } from '@/lib/api';
 
 /** Kunci tautan dibagikan: di bawah `['dashboard']` tetapi TIDAK masuk whitelist `app/query-persist.ts`. */
-export const shareKeys = { all: ['dashboard', 'shares'] as const };
+export const shareKeys = {
+  all: ['dashboard', 'shares'] as const,
+  detail: (id: string) => ['dashboard', 'shares', 'detail', id] as const,
+};
 
 const HALF_MINUTE_MS = 30_000;
+
+/** Detail satu tautan (halaman View): cakupan, status, dan kunjungan. Tak masuk whitelist `query-persist`. */
+export function shareDetailQueryOptions(id: string) {
+  return queryOptions({
+    queryKey: shareKeys.detail(id),
+    queryFn: () => api('dashboardShares.get', { id }),
+    staleTime: HALF_MINUTE_MS,
+  });
+}
 
 /** Daftar tautan (semua pemegang `dashboard: manage` melihatnya; `url` hanya untuk pembagi dan super admin). */
 export function sharesQueryOptions() {

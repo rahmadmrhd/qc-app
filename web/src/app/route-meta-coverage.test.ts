@@ -76,6 +76,7 @@ const VIEW = [
   '/access/roles/$roleId',
   '/access/users/$userId',
   '/customer/$customerId',
+  '/dashboard/tautan/$shareId',
   '/handover/$handoverId',
   '/item/$itemId',
   '/item/brands/$brandId',
