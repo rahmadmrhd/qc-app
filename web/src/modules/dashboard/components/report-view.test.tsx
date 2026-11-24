@@ -67,12 +67,14 @@ function report(overrides: Partial<DashboardReportDto> = {}): DashboardReportDto
 }
 
 let current: DashboardReportDto;
+let smtpConfigured = true;
 const onBack = vi.fn();
 const onEdit = vi.fn();
 
 beforeEach(() => {
   installIntersectionObserver();
   current = report();
+  smtpConfigured = true;
   onBack.mockReset();
   onEdit.mockReset();
   me = makeMe({
@@ -90,6 +92,7 @@ beforeEach(() => {
   apiMock.mockReset();
   apiMock.mockImplementation(async (id: string) => {
     if (id === 'dashboardReports.get') return current;
+    if (id === 'dashboardReports.list') return { reports: [current], smtpConfigured, limit: 20 };
     if (id === 'dashboardReports.preview') {
       return { subject: 'Ringkasan mingguan: 16 Nov - 22 Nov', html: '<p>isi surel</p>' };
     }
@@ -101,6 +104,39 @@ beforeEach(() => {
 });
 
 const view = () => renderInRouter(<ReportView reportId="r1" onBack={onBack} onEdit={onEdit} />);
+
+describe('ReportView: Kirim uji dan SMTP (M5)', () => {
+  test('SMTP belum diatur: Kirim uji nonaktif dengan alasan terlihat dan tak memanggil server', async () => {
+    smtpConfigured = false;
+    await view();
+    await screen.findByRole('heading', { name: 'Ringkasan mingguan' });
+    await waitFor(async () => {
+      await userEvent.click(screen.getByRole('button', { name: 'Aksi lainnya' }));
+      const item = await screen.findByRole('menuitem', { name: /Kirim uji/ });
+      expect(item.getAttribute('aria-disabled')).toBe('true');
+      expect(item.textContent).toContain('SMTP belum diatur di server');
+    });
+    await userEvent.click(screen.getByRole('menuitem', { name: /Kirim uji/ }));
+    expect(apiMock).not.toHaveBeenCalledWith('dashboardReports.sendTest', expect.anything());
+  });
+
+  test('SMTP sudah diatur: Kirim uji memanggil server', async () => {
+    apiMock.mockImplementation(async (id: string) => {
+      if (id === 'dashboardReports.get') return current;
+      if (id === 'dashboardReports.list')
+        return { reports: [current], smtpConfigured: true, limit: 20 };
+      if (id === 'dashboardReports.sendTest') return { ok: true };
+      if (id === 'activity.list') return { entries: [], nextCursor: null };
+      throw new Error(`api tak terduga: ${id}`);
+    });
+    await view();
+    await screen.findByRole('heading', { name: 'Ringkasan mingguan' });
+    await clickMoreAction(/Kirim uji/);
+    await waitFor(() =>
+      expect(apiMock).toHaveBeenCalledWith('dashboardReports.sendTest', { id: 'r1' }),
+    );
+  });
+});
 
 describe('ReportView: pemilik', () => {
   test('menampilkan ringkasan, cakupan per grup, penerima, dan tautan terkirim', async () => {

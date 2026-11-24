@@ -27,6 +27,7 @@ import { formatNumber, formatWhen } from '../lib/format';
 import {
   reportPreviewQueryOptions,
   reportQueryOptions,
+  reportsQueryOptions,
   useRemoveReport,
   useSendTestReport,
   useSetReportEnabled,
@@ -324,6 +325,9 @@ export interface ReportViewProps {
  */
 export function ReportView({ reportId, onBack, onEdit }: ReportViewProps) {
   const detail = useQuery(reportQueryOptions(reportId));
+  // Status SMTP datang dari daftar (DTO `get` tidak membawanya); hanya dimuat bagi yang dapat mengirim uji.
+  const list = useQuery({ ...reportsQueryOptions(), enabled: detail.data?.canEdit === true });
+  const smtpConfigured = list.data?.smtpConfigured ?? true;
   const setEnabled = useSetReportEnabled();
   const remove = useRemoveReport();
   const sendTest = useSendTestReport();
@@ -402,6 +406,8 @@ export function ReportView({ reportId, onBack, onEdit }: ReportViewProps) {
             action: 'sendTest',
             hidden: !report.canEdit,
             busy: sendTest.isPending,
+            disabled: !smtpConfigured,
+            ...(smtpConfigured ? {} : { disabledReason: 'SMTP belum diatur di server' }),
             onSelect: test,
           },
           {
