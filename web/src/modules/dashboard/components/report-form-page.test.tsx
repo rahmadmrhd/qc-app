@@ -307,7 +307,7 @@ describe('ReportFormPage: laporan milik orang lain', () => {
   });
 
   test('super admin tidak melihat penjelasan itu (perilaku lama)', async () => {
-    me = makeMe({ ...me, isSuperAdmin: true });
+    me = { ...me, isSuperAdmin: true };
     await form({ ...SAVED, owner: 'lain@x.com' });
     await goTab('Isi');
     await screen.findByRole('checkbox', { name: 'Serial dicatat' });
