@@ -15,7 +15,7 @@ import { formatDayLabel, formatRangeLabel } from '../dashboard/lib/format';
 import type { DashboardSearch } from '../dashboard/lib/search';
 import { PublicDashboardError } from './public-api';
 import { PublicGlobalFilters, PublicGroupFilters, viewerFromSearch } from './public-filters';
-import { publicDashboardQuery } from './queries';
+import { publicDashboardQuery, resetPublicInitialLoad } from './queries';
 
 export interface PublicDashboardPageProps {
   token: string;
@@ -182,6 +182,8 @@ export function PublicDashboardPage({ token, search, onSearchChange }: PublicDas
   usePublicMeta();
   const viewer = viewerFromSearch(search);
   const query = useQuery(publicDashboardQuery(token, viewer));
+  // Halaman dilepas = pemasangan berikutnya memuat awal lagi (GET, dihitung kunjungan); lihat `queries.ts`.
+  useEffect(() => () => resetPublicInitialLoad(token), [token]);
   const dto = query.data;
 
   const clearFilters = () => {

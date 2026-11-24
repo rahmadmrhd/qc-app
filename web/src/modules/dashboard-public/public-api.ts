@@ -40,7 +40,7 @@ export function isEmptyViewer(viewer: PublicQueryInput): boolean {
  * REST (`X-Requested-With`, dipaksa `csrfGuard` global untuk semua `POST /api/*`). Tidak pernah menyentuh `/api/v1`.
  *
  * Server menghitung kunjungan HANYA dari `GET` halaman (spek dashboard 7.6). Karena itu `GET` dipakai khusus untuk muat
- * awal tanpa filter; penyegaran otomatis (interval, fokus tab, Coba lagi: `refresh` true) selalu lewat `POST query`
+ * awal tanpa filter; semua pemuatan sesudah GET awal berhasil (penyegaran otomatis, fokus tab, Coba lagi, ganti atau hapus filter: `refresh` true, diputuskan `queries.ts`) selalu lewat `POST query`
  * dengan badan filter yang sama (kosong = `{}`), jadi tab yang dibiarkan terbuka tidak menambah kunjungan.
  */
 export async function fetchPublicDashboard(
