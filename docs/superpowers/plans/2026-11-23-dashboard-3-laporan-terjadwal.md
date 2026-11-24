@@ -19,10 +19,10 @@
 - `skipped` (pemilik nonaktif/terhapus, pemilik tak lagi `dashboard: manage`, tak ada widget tersisa) TIDAK mengisi `last_run_key` dan dievaluasi ulang di hari terjadwal yang sama. Klaim CAS `last_run_key` SEBELUM kirim, dipulihkan bila gagal.
 - Batas: **12 widget** per laporan, **20 laporan** per pemilik, **20 penerima** (satu alamat polos, validator `isPostelRecipient`, huruf kecil, duplikat dibuang, minimal 1), nama maks. **120** karakter (dibersihkan `stripControlChars`), `link_days` 1-365 (pilihan UI 7/14/30/90, bawaan **14**), kirim uji **5 per jam per pemilik**.
 - Surel: satu pesan, penerima di `bcc`, `to` = alamat pengirim; HTML lebar 600 px, tabel + gaya inline, tanpa `<script>`/`<img>`/`<link>`/URL luar selain tombol; **<= 90 KB**; teks polos selalu ikut; list **5 baris**; subjek `[QC] <nama laporan>, <periode>` (kirim uji diawali `[UJI] `); semua teks data di-escape dan dibersihkan karakter kontrol/bidi; tanpa pelacak, tanpa tautan berhenti berlangganan.
-- Surel hanya dibuat dari `EmailWidgetData` (`toEmailDto` = `toPublicDto` + `previous` dan `total`); delta periode lalu hanya di surel, tidak di halaman publik.
+- Surel hanya dibuat dari `EmailWidgetData` (`toEmailDto` = `toPublicDto` + `previous`; sejak 2026-11-24 `toPublicDto` tidak lagi memuat `total` dan `key` jadi indeks, jadi `toEmailDto` mengambil `total` daftar dari `ListData` internal); delta periode lalu hanya di surel, tidak di halaman publik.
 - Tautan terbitan laporan: satu baris `dashboard_shares` per pengiriman (`report_id` terisi, rentang tetap = periode surel, `expires_at` = kirim + `link_days`, `created_by` = pemilik), dibuat sebelum merender dan **dihapus bila pengiriman gagal**; penyapu per jam menghapus yang kedaluwarsa > 30 hari; menghapus laporan mencabut tautannya.
 - Izin: semua rute `dashboard: manage`; pemegang `manage` lain hanya melihat metadata (tanpa alamat penerima, pratinjau, atau tautan); hanya pemilik atau super admin yang mengubah, menjeda, mengirim uji, pratinjau, melihat tautan, atau menghapus.
-- Migrasi `0033_dashboard_reports.sql` expand-only dan idempoten (terpisah dari `0032` agar basis data dev yang sudah menerapkan `0032` tetap menerimanya). Hapus laporan = hapus baris (bukan soft delete). Audit `dashboard.report_create|update|delete|pause|resume|send_test` (target `dashboard_report:<id>`, tanpa isi surel/token). Tanpa `.env` baru; berjalan hanya bila `Env.MAILER` ada.
+- Migrasi `0035_dashboard_reports.sql` (semula `0033`; diubah 2026-11-24: `0033` kini data kunjungan tautan, `0034` dipakai cabang lain) expand-only dan idempoten (terpisah dari `0032` agar basis data dev yang sudah menerapkan `0032` tetap menerimanya). Hapus laporan = hapus baris (bukan soft delete). Audit `dashboard.report_create|update|delete|pause|resume|send_test` (target `dashboard_report:<id>`, tanpa isi surel/token). Tanpa `.env` baru; berjalan hanya bila `Env.MAILER` ada.
 - Aturan sesi/UI/tes sama dengan Rencana 1-2 (commit hanya setelah izin pengguna; tunnel DB; kit halaman; `LinkField`/`Select`; teks santai).
 
 ## Review Focus
@@ -37,7 +37,7 @@
 
 - Modify `server/src/core/mail.ts` (+ `mail.test.ts`, penyuntik surel palsu di `server/test-support/`).
 - Create `shared/dashboard-report.ts` (+ tes); modify `shared/dashboard-public.ts` (`toEmailDto`, `EmailWidgetData`), `shared/contract.ts`, `shared/api.ts`, `shared/api-versions.ts`, `shared/audit.ts`, `shared/api-contract.snapshot.json`.
-- Create `server/migrations/0033_dashboard_reports.sql`, `server/src/modules/dashboard/report/{repo,service,validate,routes,render,run,sweep}.ts` (+ tes).
+- Create `server/migrations/0035_dashboard_reports.sql`, `server/src/modules/dashboard/report/{repo,service,validate,routes,render,run,sweep}.ts` (+ tes).
 - Modify `server/src/modules/dashboard/share-service.ts` (ekstrak `freezeContent`), `server/src/modules/dashboard/public-view.ts` (ekstrak `computeShareWidgets`), `server/src/jobs/runner.ts`, `server/src/server.ts`, `server/src/routes.ts`, `server/src/http/body.test.ts`.
 - Create `web/src/modules/dashboard/report/**`, `web/src/routes/_app/dashboard/laporan/{index,new}.tsx`, `.../laporan/$reportId/{index,edit}.tsx`; modify `web/src/app/navigation.ts` (butir Dashboard menjadi grup), `scripts/page-frame.test.ts` bila perlu.
 - Create `docs/dashboard-email-checklist.md`; modify `CLAUDE.md`, `server/changelog.d/20261123-dashboard.md`, spek bagian 7.1/7a.1 (nama migrasi).
@@ -90,7 +90,7 @@
 ### Task 3: Tabel, layanan, dan rute CRUD laporan
 
 **Files:**
-- Create: `server/migrations/0033_dashboard_reports.sql`, `server/src/modules/dashboard/report/{repo,service,validate,routes}.ts`
+- Create: `server/migrations/0035_dashboard_reports.sql`, `server/src/modules/dashboard/report/{repo,service,validate,routes}.ts`
 - Modify: `server/src/modules/dashboard/share-service.ts` (ekstrak `freezeContent`), `shared/contract.ts`, `shared/api.ts`, `shared/api-versions.ts`, `shared/audit.ts` (`ActivityKind` + `dashboardReport`; pemuat log: gerbang = pemegang `manage`), `server/src/routes.ts`, `server/src/http/body.test.ts`, `shared/api-contract.snapshot.json`
 - Test: `server/src/modules/dashboard/report/{service,rest}.test.ts`
 
@@ -203,7 +203,7 @@ Alur `scheduled`: (1) `env.MAILER` ada, laporan `enabled`, `isDue(...)` benar; (
 
 **Files:**
 - Create: `docs/dashboard-email-checklist.md` (daftar periksa manual: Gmail web dan aplikasi, Outlook desktop, Apple Mail termasuk mode gelap; surel tak terpotong, tombol terlihat dan dapat diklik, tautan membuka dashboard publik dengan periode yang sama, teks polos terbaca, kirim uji sampai ke pemilik)
-- Modify: `server/changelog.d/20261123-dashboard.md` (tambah `feat(dashboard): laporan terjadwal lewat surel dengan banyak laporan dan tautan dashboard lengkap`), `CLAUDE.md` (bagian Dashboard: model laporan, loop 5 menit, klaim CAS, tautan terbitan, hak pemilik, `core/mail.ts` `html`/`bcc`, modul `report/`), `docs/superpowers/specs/2026-11-23-dashboard-design.md` (bagian 7.1 dan 7a.1: nama migrasi menjadi `0032_dashboard.sql` untuk `dashboard_shares` dan `0033_dashboard_reports.sql` untuk laporan)
+- Modify: `server/changelog.d/20261123-dashboard.md` (tambah `feat(dashboard): laporan terjadwal lewat surel dengan banyak laporan dan tautan dashboard lengkap`), `CLAUDE.md` (bagian Dashboard: model laporan, loop 5 menit, klaim CAS, tautan terbitan, hak pemilik, `core/mail.ts` `html`/`bcc`, modul `report/`), `docs/superpowers/specs/2026-11-23-dashboard-design.md` (bagian 7.1 dan 7a.1: nama migrasi menjadi `0032_dashboard.sql` untuk `dashboard_shares` dan `0035_dashboard_reports.sql` untuk laporan; `0033` = kunjungan tautan, `0034` dipakai cabang lain)
 
 - [ ] **Step 1:** Perbarui dokumen. **Step 2: Verifikasi penuh**: `bun run check` (tunnel hidup) hijau; `bun run build` hijau.
 - [ ] **Step 3: Verifikasi manual**: dengan SMTP uji (atau penangkap surel lokal) buat laporan harian, jalankan "Kirim uji", periksa surel mengikuti `docs/dashboard-email-checklist.md`, klik tombol dan pastikan dashboard publik menampilkan periode dan cakupan yang sama; jeda/lanjutkan; hapus laporan lalu pastikan tautan lama tak berlaku.
