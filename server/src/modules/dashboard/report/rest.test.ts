@@ -183,3 +183,98 @@ describe('activity.list untuk dashboardReport', () => {
     expect((await read(OTHER, 'tidak-ada')).status).toBe(404);
   });
 });
+
+describe('sendTest dan preview', () => {
+  const makeReport = async () => (await jsonOf(await create())).id as string;
+
+  test('sendTest: pemilik dan super admin boleh, pemegang manage lain 403, ke surel pemilik saja, audit tanpa alamat', async () => {
+    const sent: { to: string[]; bcc?: string[]; subject: string }[] = [];
+    env.MAILER = {
+      send: async (message) => {
+        sent.push(message);
+      },
+    };
+    const id = await makeReport();
+    const url = `/dashboard-reports/${id}/send-test`;
+    expect((await rest.post(url, { email: OTHER })).status).toBe(403);
+    expect((await rest.post(url, { email: VIEWER })).status).toBe(403);
+    const ok = await rest.post(url, { email: OWNER });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ ok: true });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.bcc).toEqual([OWNER]);
+    expect(sent[0]?.subject.startsWith('[UJI] ')).toBe(true);
+    // Super admin mengirim uji laporan orang lain: tetap ke surel PEMILIK.
+    expect((await rest.post(url, { email: ADMIN })).status).toBe(200);
+    expect(sent[1]?.bcc).toEqual([OWNER]);
+
+    const log = (await (
+      await rest.get(`/activity?kind=dashboardReport&id=${id}`, { email: OTHER })
+    ).json()) as { entries: { action: string }[] };
+    expect(log.entries.filter((e) => e.action === 'dashboard.report_send_test')).toHaveLength(2);
+    expect(JSON.stringify(log)).not.toContain('contoh.id');
+  });
+
+  test('sendTest: dibatasi 5 per jam per pemilik; jendela berikutnya pulih; id tak dikenal 404', async () => {
+    env.MAILER = { send: async () => undefined };
+    const id = await makeReport();
+    const url = `/dashboard-reports/${id}/send-test`;
+    for (let attempt = 1; attempt <= 5; attempt += 1) {
+      expect([attempt, (await rest.post(url, { email: OWNER })).status]).toEqual([attempt, 200]);
+    }
+    const sixth = await rest.post(url, { email: OWNER });
+    expect(sixth.status).toBe(409);
+    expect((await jsonOf(sixth)).code).toBe('CONFLICT');
+    env.clock.advance(3_600_001);
+    expect((await rest.post(url, { email: OWNER })).status).toBe(200);
+    expect(
+      (await rest.post('/dashboard-reports/tidak-ada/send-test', { email: OWNER })).status,
+    ).toBe(404);
+  });
+
+  test('sendTest tanpa SMTP = 503 UNAVAILABLE', async () => {
+    const id = await makeReport();
+    const response = await rest.post(`/dashboard-reports/${id}/send-test`, { email: OWNER });
+    expect(response.status).toBe(503);
+    expect((await jsonOf(response)).code).toBe('UNAVAILABLE');
+  });
+
+  test('preview: pemilik dan super admin mendapat subjek dan HTML, tanpa tautan terbitan; pemegang manage lain 403', async () => {
+    const id = await makeReport();
+    const url = `/dashboard-reports/${id}/preview`;
+    expect((await rest.get(url, { email: OTHER })).status).toBe(403);
+    const response = await rest.get(url, { email: OWNER });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { subject: string; html: string };
+    expect(body.subject).toStartWith('[QC] Ringkasan mingguan, Minggu lalu');
+    expect(body.html).toContain('https://qc.test/dashboard-publik/contoh');
+    expect(body.html).not.toContain('penerima@contoh.id');
+    expect((await rest.get(url, { email: ADMIN })).status).toBe(200);
+    const shares = await env.DB.prepare('SELECT COUNT(*) AS n FROM dashboard_shares').first<{
+      n: number | string;
+    }>();
+    expect(Number(shares?.n)).toBe(0);
+    expect((await rest.get('/dashboard-reports/tidak-ada/preview', { email: OWNER })).status).toBe(
+      404,
+    );
+  });
+
+  test('get: tautan terbitan tampil bagi pemilik, tanpa url bagi pemegang manage lain', async () => {
+    env.MAILER = { send: async () => undefined };
+    const id = await makeReport();
+    await env.DB.prepare("UPDATE dashboard_reports SET last_run_key = '' WHERE id = ?")
+      .bind(id)
+      .run();
+    const { checkDashboardReports } = await import('./run');
+    await checkDashboardReports(env, NOW);
+    const own = (await (await rest.get(`/dashboard-reports/${id}`, { email: OWNER })).json()) as {
+      links?: { url?: string; status: string }[];
+    };
+    expect(own.links).toHaveLength(1);
+    expect(own.links?.[0]?.url).toStartWith('https://qc.test/dashboard-publik/');
+    const other = (await (await rest.get(`/dashboard-reports/${id}`, { email: OTHER })).json()) as {
+      links?: unknown[];
+    };
+    expect(other.links).toBeUndefined();
+  });
+});

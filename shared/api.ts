@@ -700,6 +700,8 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   },
   'dashboardReports.setEnabled': { verb: 'POST', path: '/dashboard-reports/{id}/enabled' },
   'dashboardReports.remove': { verb: 'DELETE', path: '/dashboard-reports/{id}' },
+  'dashboardReports.sendTest': { verb: 'POST', path: '/dashboard-reports/{id}/send-test' },
+  'dashboardReports.preview': { verb: 'GET', path: '/dashboard-reports/{id}/preview' },
 };
 
 export interface RequestParts {

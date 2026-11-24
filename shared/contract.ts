@@ -19,6 +19,7 @@ import type {
 import type {
   DashboardReportDto,
   DashboardReportListDto,
+  DashboardReportPreviewDto,
   GetDashboardReportInput,
   SaveDashboardReportInput,
   SetDashboardReportEnabledInput,
@@ -1662,6 +1663,11 @@ export interface ApiContract {
     output: DashboardReportDto;
   };
   'dashboardReports.remove': { input: GetDashboardReportInput; output: { ok: true } };
+  'dashboardReports.sendTest': { input: GetDashboardReportInput; output: { ok: true } };
+  'dashboardReports.preview': {
+    input: GetDashboardReportInput;
+    output: DashboardReportPreviewDto;
+  };
 }
 
 export type ApiId = keyof ApiContract;

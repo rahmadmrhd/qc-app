@@ -234,6 +234,8 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'dashboardReports.save': true,
   'dashboardReports.setEnabled': true,
   'dashboardReports.remove': true,
+  'dashboardReports.sendTest': true,
+  'dashboardReports.preview': true,
 };
 
 /**

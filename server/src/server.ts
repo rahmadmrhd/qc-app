@@ -6,7 +6,12 @@ import { createGoogleClient } from '@server/core/google/client';
 import { createSmtpMailer } from '@server/core/mail';
 import { MAX_REQUEST_BODY_BYTES } from '@server/http/body';
 import { clientIp, isTrustedPeer } from '@server/http/proxy';
-import { startJobRunner, startNotificationLoop, startScheduler } from '@server/jobs/runner';
+import {
+  startDashboardReportLoop,
+  startJobRunner,
+  startNotificationLoop,
+  startScheduler,
+} from '@server/jobs/runner';
 import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backup/dump';
 import { drainVisitRecordings } from '@server/modules/dashboard/share-visits';
 import { closeAllNotificationStreams } from '@server/modules/notification/stream-hub';
@@ -104,7 +109,13 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
   let stops: Array<() => Promise<void>> = [];
   const startBackground = () => {
     if (options.background !== false)
-      stops = [startJobRunner(env), startScheduler(env), startNotificationLoop(env)];
+      stops = [
+        startJobRunner(env),
+        startScheduler(env),
+        startNotificationLoop(env),
+        // Laporan dashboard terjadwal butuh surel: tanpa SMTP loop tidak dipasang sama sekali.
+        ...(env.MAILER === undefined ? [] : [startDashboardReportLoop(env)]),
+      ];
   };
   const ready = (options.prepare ? options.prepare(db) : Promise.resolve([] as string[])).then(
     async (result) => {

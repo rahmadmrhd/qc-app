@@ -514,6 +514,8 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   },
   'dashboardReports.setEnabled': { id: 'r1', enabled: false },
   'dashboardReports.remove': { id: 'r1' },
+  'dashboardReports.sendTest': { id: 'r1' },
+  'dashboardReports.preview': { id: 'r1' },
 };
 
 const ROUNDTRIP_IDS = IDS;

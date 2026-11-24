@@ -467,6 +467,7 @@ const WORST: Inputs = {
     expectedUpdatedAt: STAMP,
   },
   'dashboardReports.setEnabled': { id: UUID, enabled: true },
+  'dashboardReports.sendTest': { id: UUID },
   'access.users.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
   'access.users.removeBatch': { ids: BATCH_IDS },
   'access.users.restoreBatch': { ids: BATCH_IDS },

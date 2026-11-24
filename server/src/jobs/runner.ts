@@ -2,6 +2,8 @@ import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
 import { checkBackupAlerts } from '@server/modules/backup/alert';
 import { scheduleBackupJob } from '@server/modules/backup/service';
+import { checkDashboardReports } from '@server/modules/dashboard/report/run';
+import { sweepReportShares } from '@server/modules/dashboard/report/sweep';
 import { sweepExpiredShares } from '@server/modules/dashboard/share-expiry';
 import { runJobStep } from '@server/modules/jobs/consumer';
 import { delayLease, findActiveJob, listRunnableJobIds } from '@server/modules/jobs/repo';
@@ -29,6 +31,12 @@ export const SCHEDULER_INTERVAL_MS = 60 * 60 * 1000;
  * segera setelah commit (`wakeNotifications`).
  */
 export const NOTIFICATION_LOOP_INTERVAL_MS = 10_000;
+/**
+ * Selang pemeriksa laporan dashboard terjadwal (5 menit): surel terkirim paling lambat sekitar 5 menit dari jam
+ * jadwal. Loop sendiri (bukan langkah `schedulerTick` per jam) karena fase tik per jam mengikuti waktu start proses,
+ * bukan jam dinding, dan berurutan dengan penyapu lain.
+ */
+export const DASHBOARD_REPORT_LOOP_INTERVAL_MS = 5 * 60 * 1000;
 /** Jumlah id job yang dibaca per pemindaian. */
 const SCAN_LIMIT = 20;
 
@@ -158,6 +166,7 @@ async function schedulerTick(env: Env): Promise<void> {
     sweepExpiredFailedProofs,
     sweepOrphanProofFiles,
     sweepExpiredShares,
+    sweepReportShares,
   ]) {
     try {
       await step(env);
@@ -180,6 +189,22 @@ export function startScheduler(
     'penjadwal',
     () => schedulerTick(env),
     options.intervalMs ?? SCHEDULER_INTERVAL_MS,
+  );
+}
+
+/**
+ * Putaran pemeriksa laporan dashboard terjadwal (`checkDashboardReports`): segera saat mulai lalu tiap `intervalMs`
+ * (bawaan 5 menit) SETELAH putaran sebelumnya selesai, jadi dua putaran tak pernah tumpang tindih. Hanya dipasang bila
+ * `Env.MAILER` ada (`createServer`). Mengembalikan fungsi penghenti (lihat `startLoop`).
+ */
+export function startDashboardReportLoop(
+  env: Env,
+  options: { intervalMs?: number } = {},
+): () => Promise<void> {
+  return startLoop(
+    'laporan dashboard',
+    () => checkDashboardReports(env),
+    options.intervalMs ?? DASHBOARD_REPORT_LOOP_INTERVAL_MS,
   );
 }
 

@@ -3,7 +3,7 @@
  * pemegang `dashboard: manage` lain hanya melihat metadata), batas per pemilik, dan pembekuan cakupan saat disimpan.
  * Izin modul (`dashboard: manage`) dijaga rute. Pengiriman ada di `run.ts`.
  */
-import { createHmac } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import { writeAudit } from '@server/core/audit';
 import { CAS_UPDATED_AT_SET, isGuardFailure } from '@server/core/cas';
 import { type Env, nowIso, nowOf } from '@server/core/env';
@@ -13,6 +13,7 @@ import type { UserContext } from '@server/modules/access/context';
 import {
   type DashboardReportDto,
   type DashboardReportListDto,
+  type DashboardReportPreviewDto,
   initialRunKey,
   nextRunAt,
   periodRange,
@@ -26,6 +27,7 @@ import {
   wibNow,
 } from '@shared/dashboard-report';
 import { wibDateIso } from '@shared/postel';
+import { hitLimit } from '../public-limits';
 import { listSharesOfReport, revokeReportSharesStmt, type ShareRow } from '../share-repo';
 import { freezeContent, toShareDto } from '../share-service';
 import {
@@ -40,10 +42,13 @@ import {
   parseSchedule,
   type ReportRow,
 } from './repo';
+import { runReport } from './run';
 import { assertReportInput, cleanReportName, normalizeRecipients } from './validate';
 
 /** Maks. tautan terbitan yang ditampilkan di detail laporan. */
 export const REPORT_LINKS_SHOWN = 10;
+/** Jendela batas kirim uji (satu jam). */
+const TEST_WINDOW_MS = 3_600_000;
 
 const FALLBACK_SCHEDULE: ReportSchedule = { frequency: 'daily', hour: 0, weekday: 1, monthDay: 1 };
 const FALLBACK_PERIOD: ReportPeriod = 'yesterday';
@@ -407,4 +412,64 @@ export async function removeDashboardReport(
     env.DB.prepare('DELETE FROM dashboard_reports WHERE id = ?').bind(row.id),
   ]);
   return { ok: true };
+}
+
+/**
+ * Kirim uji: satu surel berawalan [UJI] HANYA ke surel pemilik, dibatasi `REPORT_LIMITS.testPerHour` per jam per
+ * pemilik (tiap percobaan dihitung, juga yang gagal). Hanya pemilik atau super admin. Tanpa SMTP = `UNAVAILABLE`;
+ * laporan yang dilewati atau gagal dihitung = `CONFLICT` dengan alasannya (tanpa alamat atau isi surel).
+ */
+export async function sendTestDashboardReport(
+  env: Env,
+  user: UserContext,
+  id: string,
+): Promise<{ ok: true }> {
+  const row = await requireReport(env, id);
+  requireEditable(user, row);
+  if (env.MAILER === undefined) throw appError('UNAVAILABLE', 'SMTP belum diatur di server');
+  const limited = await hitLimit(
+    env,
+    `dashboard-report-test:${createHash('sha256').update(row.owner).digest('hex')}`,
+    REPORT_LIMITS.testPerHour,
+    TEST_WINDOW_MS,
+  );
+  if (limited) {
+    throw appError(
+      'CONFLICT',
+      `Kirim uji dibatasi ${REPORT_LIMITS.testPerHour} kali per jam; coba lagi nanti`,
+    );
+  }
+  const outcome = await runReport(env, row, nowOf(env), 'test');
+  if (outcome.status !== 'ok') {
+    throw appError('CONFLICT', outcome.note || 'Surel uji tidak terkirim');
+  }
+  await env.DB.batch([
+    writeAudit(env.DB, {
+      ts: nowIso(env),
+      actor: user.email,
+      action: 'dashboard.report_send_test',
+      target: `dashboard_report:${row.id}`,
+      targetId: row.id,
+      after: { name: row.name },
+    }),
+  ]);
+  return { ok: true };
+}
+
+/**
+ * Pratinjau surel: HTML yang dihitung sekarang dengan hak pemilik, tanpa mengirim dan tanpa membuat tautan (tombol =
+ * tautan contoh yang tak berfungsi). Hanya pemilik atau super admin (isinya dihitung dari hak pemilik).
+ */
+export async function previewDashboardReport(
+  env: Env,
+  user: UserContext,
+  id: string,
+): Promise<DashboardReportPreviewDto> {
+  const row = await requireReport(env, id);
+  requireEditable(user, row);
+  const outcome = await runReport(env, row, nowOf(env), 'preview');
+  if (outcome.status !== 'ok' || outcome.rendered === undefined) {
+    throw appError('CONFLICT', outcome.note || 'Pratinjau tidak dapat dibuat');
+  }
+  return { subject: outcome.rendered.subject, html: outcome.rendered.html };
 }

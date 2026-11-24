@@ -2,8 +2,10 @@ import type { RouteTable } from '@server/core/router';
 import {
   getDashboardReport,
   listDashboardReports,
+  previewDashboardReport,
   removeDashboardReport,
   saveDashboardReport,
+  sendTestDashboardReport,
   setDashboardReportEnabled,
 } from './service';
 import { validateReportId, validateSaveReport, validateSetReportEnabled } from './validate';
@@ -13,7 +15,9 @@ type ReportMethod =
   | 'dashboardReports.get'
   | 'dashboardReports.save'
   | 'dashboardReports.setEnabled'
-  | 'dashboardReports.remove';
+  | 'dashboardReports.remove'
+  | 'dashboardReports.sendTest'
+  | 'dashboardReports.preview';
 
 /**
  * Semua rute laporan terjadwal butuh `dashboard: manage` (izin global modul `dashboard`). Hak lebih sempit
@@ -45,6 +49,16 @@ export function dashboardReportRoutes(): Pick<RouteTable, ReportMethod> {
       permission: { module: 'dashboard', level: 'manage' },
       validate: validateReportId,
       handler: (input, ctx) => removeDashboardReport(ctx.env, ctx.user, input.id),
+    },
+    'dashboardReports.sendTest': {
+      permission: { module: 'dashboard', level: 'manage' },
+      validate: validateReportId,
+      handler: (input, ctx) => sendTestDashboardReport(ctx.env, ctx.user, input.id),
+    },
+    'dashboardReports.preview': {
+      permission: { module: 'dashboard', level: 'manage' },
+      validate: validateReportId,
+      handler: (input, ctx) => previewDashboardReport(ctx.env, ctx.user, input.id),
     },
   };
 }

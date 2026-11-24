@@ -358,6 +358,11 @@
     "path": "/dashboard-reports"
   },
   {
+    "id": "dashboardReports.preview",
+    "verb": "GET",
+    "path": "/dashboard-reports/{id}/preview"
+  },
+  {
     "id": "dashboardReports.remove",
     "verb": "DELETE",
     "path": "/dashboard-reports/{id}"
@@ -370,6 +375,11 @@
       "verb": "POST",
       "path": "/dashboard-reports"
     }
+  },
+  {
+    "id": "dashboardReports.sendTest",
+    "verb": "POST",
+    "path": "/dashboard-reports/{id}/send-test"
   },
   {
     "id": "dashboardReports.setEnabled",

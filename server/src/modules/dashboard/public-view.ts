@@ -253,21 +253,30 @@ export async function servableShare(
   return { frozen, sharer };
 }
 
+export interface ComputedShareWidgets {
+  /** Widget cakupan beku yang masih boleh dilihat pembagi (hak SAAT INI). */
+  widgets: ShareWidgetScope[];
+  /** Rentang beku pada hari ini, SEBELUM dipersempit penonton. */
+  base: DashboardRange;
+  /** Cakupan efektif yang dipakai menghitung (rentang sesudah penyempitan penonton). */
+  scope: ResolvedScope;
+  /** Hasil tiap widget, urut menurut `widgets`. */
+  results: WidgetResult[];
+}
+
 /**
- * Memuat dashboard publik untuk satu tautan. `null` bila tautan tak aktif (dicabut/kedaluwarsa), cakupannya tak
- * terbaca, pembagi tak ditemukan/nonaktif/terhapus, atau pembagi tak lagi memegang `dashboard: manage`. Hak pembagi
- * dihitung ulang tiap permintaan (`resolveScope`, `allowedWidgetIds`): menurun haknya = menyempit tanpa galat berbeda.
+ * Inti perhitungan yang dipakai bersama halaman publik dan laporan terjadwal: cakupan beku diiris dengan hak
+ * `sharer` SAAT INI dan dipersempit filter `viewer` (laporan terjadwal memakai `{}`: tanpa penyempitan), lalu widget
+ * yang diizinkan dijalankan oleh mesin widget yang sama (semafor dan cache yang sama). Tidak memeriksa apakah tautan
+ * masih dapat dilayani (`servableShare`).
  */
-export async function loadPublicDashboard(
+export async function computeShareWidgets(
   env: Env,
-  share: ShareRow,
+  sharer: UserContext,
+  frozen: ShareScope,
   viewer: PublicQueryInput,
   nowMs: number,
-): Promise<PublicDashboardDto | null> {
-  const servable = await servableShare(env, share, nowMs);
-  if (servable === null) return null;
-  const { frozen, sharer } = servable;
-
+): Promise<ComputedShareWidgets> {
   const allowed = new Set(allowedWidgetIds(sharer));
   const widgets = frozen.widgets.filter((widget) => allowed.has(widget.id));
 
@@ -299,6 +308,30 @@ export async function loadPublicDashboard(
     return Object.keys(filters).length > 0 ? { id: widget.id, filters } : { id: widget.id };
   });
   const results: WidgetResult[] = await runWidgets(env, scope, requests);
+  return { widgets, base, scope, results };
+}
+
+/**
+ * Memuat dashboard publik untuk satu tautan. `null` bila tautan tak aktif (dicabut/kedaluwarsa), cakupannya tak
+ * terbaca, pembagi tak ditemukan/nonaktif/terhapus, atau pembagi tak lagi memegang `dashboard: manage`. Hak pembagi
+ * dihitung ulang tiap permintaan (`resolveScope`, `allowedWidgetIds`): menurun haknya = menyempit tanpa galat berbeda.
+ */
+export async function loadPublicDashboard(
+  env: Env,
+  share: ShareRow,
+  viewer: PublicQueryInput,
+  nowMs: number,
+): Promise<PublicDashboardDto | null> {
+  const servable = await servableShare(env, share, nowMs);
+  if (servable === null) return null;
+  const { frozen, sharer } = servable;
+  const { widgets, base, scope, results } = await computeShareWidgets(
+    env,
+    sharer,
+    frozen,
+    viewer,
+    nowMs,
+  );
 
   // Nama dan pilihan filter dari cakupan beku (sebelum penyempitan penonton), tetap diiris dengan hak pembagi.
   const baseScope = resolveScope(
