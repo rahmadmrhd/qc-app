@@ -341,7 +341,7 @@ describe('sendTest dan preview', () => {
     const response = await rest.get(url, { email: OWNER });
     expect(response.status).toBe(200);
     const body = (await response.json()) as { subject: string; html: string; trimmed: boolean };
-    expect(body.subject).toStartWith('[QC] Ringkasan mingguan, Minggu lalu');
+    expect(body.subject).toStartWith('[UJI] [QC] Ringkasan mingguan, Minggu lalu');
     expect(body.html).toContain('https://qc.test/dashboard-publik/contoh');
     expect(body.html).not.toContain('penerima@contoh.id');
     expect(body.trimmed).toBe(false);
