@@ -1,7 +1,7 @@
 // Pratinjau dan kirim uji laporan MILIK ORANG LAIN = irisan hak pemilik dan hak pelaku (keputusan pemilik 2026-11-24).
 import { beforeEach, describe, expect, setDefaultTimeout, test } from 'bun:test';
 import type { MailMessage } from '@server/core/mail';
-import { seedBusinessUnit, seedRole, seedUser } from '@server-test/access-fixtures';
+import { seedBusinessUnit, seedLocation, seedRole, seedUser } from '@server-test/access-fixtures';
 import { seedSerial } from '@server-test/dashboard-seed';
 import { jsonOf, restClient } from '@server-test/rest-client';
 import { createTestEnv, type TestEnv } from '@server-test/test-env';
@@ -143,6 +143,37 @@ describe('pratinjau oleh pelaku bukan pemilik', () => {
     expect(JSON.stringify(problem)).not.toContain('Ringkasan');
   });
 
+  test('subjek pratinjau berawalan [UJI] seperti surel uji', async () => {
+    const id = await makeReport();
+    const body = (await (await preview(id, WIDE)).json()) as Preview;
+    expect(body.subject.startsWith('[UJI] [QC] ')).toBe(true);
+    expect(body.html).toContain(TEST_NOTE);
+  });
+
+  test('nama lokasi saringan Serial dalam kepala hanya yang juga hak pelaku (pemilik melihat semuanya)', async () => {
+    await seedLocation(env, { id: 'loc-a', code: 'LA', name: 'Gudang Alfa' });
+    await seedLocation(env, { id: 'loc-b', code: 'LB', name: 'Gudang Beta' });
+    const response = await rest.post('/dashboard-reports', {
+      email: OWNER,
+      body: {
+        ...BODY,
+        widgets: [{ id: 'sn.recorded', filters: {} }],
+        filter: { from: '2026-11-01', to: '2026-11-23', locationIds: ['loc-a', 'loc-b'] },
+        locationFiltered: true,
+      },
+    });
+    expect(response.status).toBe(201);
+    const id = (await jsonOf(response)).id as string;
+    const own = (await (await preview(id, OWNER)).json()) as Preview;
+    expect(own.html).toContain('Gudang Alfa');
+    expect(own.html).toContain('Gudang Beta');
+    // Pelaku tanpa hak Serah Terima/stok di lokasi itu: nama lokasi tidak tampil (data Serial tetap tersaring lokasi).
+    const body = (await (await preview(id, WIDE)).json()) as Preview;
+    expect(body.html).not.toContain('Gudang Alfa');
+    expect(body.html).not.toContain('Gudang Beta');
+    expect(body.html).not.toContain('Lokasi:');
+  });
+
   test('penanda tidak muncul bila yang berkurang hanya hak PEMILIK sendiri (bukan pelaku)', async () => {
     const id = await makeReport();
     // Pemilik kehilangan BU y; pelaku (manage lebar) tetap memiliki x dan y, tetapi irisan = x saja karena hak pemilik.
@@ -192,23 +223,23 @@ describe('kirim uji oleh pelaku bukan pemilik', () => {
     expect(wide.html).toContain('href="https://qc.test/dashboard"');
   });
 
-  test('pemilik sendiri: surel uji ke pemilik dengan tautan terbitan SUNGGUHAN, tanpa penanda hak dan tanpa kalimat tombol', async () => {
+  test('pemilik sendiri: surel uji ke pemilik, tombol ke /dashboard, tanpa tautan terbitan dan tanpa penanda hak', async () => {
     const id = await makeReport();
     expect((await rest.post(`/dashboard-reports/${id}/send-test`, { email: OWNER })).status).toBe(
       200,
     );
     const mail = sent[0] as MailMessage;
     expect(mail.bcc).toEqual([OWNER]);
-    expect(mail.html).toContain('href="https://qc.test/dashboard-publik/v1.');
+    expect(mail.html).toContain('href="https://qc.test/dashboard"');
+    expect(mail.html).not.toContain('/dashboard-publik/');
+    expect(mail.text).not.toContain('/dashboard-publik/');
     expect(mail.html).toContain(TEST_NOTE);
-    expect(mail.html).not.toContain(TEST_BUTTON_NOTE);
+    expect(mail.html).toContain(TEST_BUTTON_NOTE);
     expect(mail.html).not.toContain(TRIMMED_NOTE);
-    const shares = await env.DB.prepare(
-      'SELECT COUNT(*) AS n FROM dashboard_shares WHERE report_id = ?',
-    )
-      .bind(id)
-      .first<{ n: number | string }>();
-    expect(Number(shares?.n)).toBe(1);
+    const shares = await env.DB.prepare('SELECT COUNT(*) AS n FROM dashboard_shares').first<{
+      n: number | string;
+    }>();
+    expect(Number(shares?.n)).toBe(0);
   });
 
   test('pelaku tanpa widget yang berlaku = CONFLICT, tidak ada surel', async () => {

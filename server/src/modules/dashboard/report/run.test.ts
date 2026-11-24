@@ -284,6 +284,11 @@ describe('runReport mode uji dan pratinjau', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]?.bcc).toEqual([OWNER]);
     expect(sent[0]?.subject.startsWith('[UJI] [QC] ')).toBe(true);
+    // Surel uji tidak pernah menerbitkan tautan publik; tombolnya ke halaman Dashboard (perlu masuk).
+    expect(sent[0]?.html).toContain('href="https://qc.test/dashboard"');
+    expect(sent[0]?.html).not.toContain('/dashboard-publik/');
+    expect(sent[0]?.text).not.toContain('/dashboard-publik/');
+    expect(await listSharesOfReport(env.DB, id, 10)).toHaveLength(0);
     const row = await reportOf(id);
     expect(row.last_run_key).toBe('');
     expect(row.last_status).toBe('');

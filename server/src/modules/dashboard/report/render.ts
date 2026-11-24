@@ -53,9 +53,9 @@ export interface EmailReportInput {
   linkExpiresLabel: string;
   /** Kirim uji: subjek diawali `[UJI] ` dan badan memuat keterangan uji (HTML dan teks polos). */
   test?: boolean;
-  /** Pratinjau: keterangan uji yang sama di badan, tanpa awalan subjek. */
+  /** Pratinjau: keterangan uji yang sama di badan dan awalan subjek `[UJI] ` seperti kirim uji. */
   testNotice?: boolean;
-  /** Surel uji laporan milik orang lain: tombol mengarah ke halaman Dashboard di aplikasi, bukan tautan laporan. */
+  /** Surel uji (milik sendiri maupun orang lain): tombol mengarah ke halaman Dashboard di aplikasi, bukan tautan publik. */
   buttonToApp?: boolean;
   /**
    * Isi dipangkas karena hak akses pelaku pratinjau/kirim uji (bukan pemilik) lebih sempit dari hak pemilik: kepala
@@ -68,7 +68,7 @@ export interface EmailReportInput {
 export const TEST_NOTE =
   'Ini surel uji coba untuk memeriksa tampilan laporan. Bukan laporan sebenarnya dan tidak dikirim ke penerima.';
 export const TEST_BUTTON_NOTE =
-  'Tombol di bawah mengarah ke halaman Dashboard di aplikasi, bukan ke tautan laporan.';
+  'Tombol di bawah mengarah ke halaman Dashboard di aplikasi (perlu masuk), bukan ke tautan laporan publik.';
 
 /** Penanda isi yang dipangkas karena hak akses pelaku (pratinjau dan kirim uji laporan milik orang lain). */
 export const TRIMMED_NOTE = 'Sebagian data disembunyikan karena hak akses Anda';
@@ -504,7 +504,7 @@ function plainText(input: EmailReportInput): string {
     ...(input.test || input.testNotice
       ? [TEST_NOTE, ...(input.buttonToApp ? [TEST_BUTTON_NOTE] : []), '']
       : []),
-    `${input.test ? '[UJI] ' : ''}${clean(input.reportName, SUBJECT_NAME_MAX)}`,
+    `${input.test || input.testNotice ? '[UJI] ' : ''}${clean(input.reportName, SUBJECT_NAME_MAX)}`,
     ...(input.trimmed ? [TRIMMED_NOTE] : []),
     `Periode: ${clean(input.periodLabel)}`,
     `Cakupan: ${clean(input.scopeLabel, 200)}`,
@@ -521,7 +521,7 @@ function plainText(input: EmailReportInput): string {
 
 function subjectOf(input: EmailReportInput): string {
   const name = clean(input.reportName, SUBJECT_NAME_MAX);
-  return `${input.test ? '[UJI] ' : ''}[QC] ${name}, ${clean(input.periodLabel)}`;
+  return `${input.test || input.testNotice ? '[UJI] ' : ''}[QC] ${name}, ${clean(input.periodLabel)}`;
 }
 
 /**

@@ -11,9 +11,10 @@
  *
  * `runReport` dipakai tiga mode: `scheduled` (penerima laporan), `test` (hanya satu surel ke penguji, awalan [UJI],
  * tanpa klaim dan tanpa mengubah status terakhir), dan `preview` (hanya merender dengan tautan contoh, tanpa tautan dan
- * tanpa kirim). Mode `test`/`preview` dapat dijalankan oleh pengelola semua pada laporan milik orang lain (`actor`):
- * isinya irisan hak pemilik DAN hak pelaku, dengan penanda bila ada yang disembunyikan, surel uji ke alamat pelaku, dan
- * tombol ke halaman Dashboard di aplikasi (tanpa menerbitkan tautan atas nama pemilik). Batas waktu pengiriman datang dari mesin widget (15 dtk per widget setelah dapat slot) dan batas waktu
+ * tanpa kirim). Surel uji TIDAK PERNAH menerbitkan tautan publik (juga untuk laporan milik sendiri): tombolnya ke halaman
+ * Dashboard di aplikasi (perlu masuk), keputusan pemilik produk 2026-11-24. Mode `test`/`preview` dapat dijalankan oleh
+ * pengelola semua pada laporan milik orang lain (`actor`): isinya irisan hak pemilik DAN hak pelaku, dengan penanda bila
+ * ada yang disembunyikan dan surel uji ke alamat pelaku. Batas waktu pengiriman datang dari mesin widget (15 dtk per widget setelah dapat slot) dan batas waktu
  * soket SMTP; tidak ada pembungkus yang meninggalkan pengiriman setengah jalan (itu dapat menggandakan surel).
  */
 import { isGuardFailure } from '@server/core/cas';
@@ -40,7 +41,7 @@ import { wibDateIso } from '@shared/postel';
 import { publicActorName } from '@shared/serials';
 import { mayOwnDashboardItems } from '../access';
 import { computeShareWidgets } from '../public-view';
-import { allowedWidgetIds } from '../scope';
+import { allowedWidgetIds, resolveScope } from '../scope';
 import { buScopeNames, locationScopeNames } from '../scope-names';
 import { signShareToken } from '../share-link';
 import { deleteShareStmt, insertShareStmt, type ShareRow } from '../share-repo';
@@ -161,7 +162,7 @@ const CHANGED_NOTE = 'Laporan diubah atau dihapus saat pengiriman; periode ini d
 
 /**
  * Menerbitkan satu baris tautan publik milik laporan (rentang tetap = periode surel). Penyisipan dijaga di batch yang
- * sama: baris laporan dikunci dan harus masih ada (dan, untuk pengiriman terjadwal, `version`-nya masih milik klaim),
+ * sama: baris laporan dikunci dan harus masih ada dan `version`-nya masih milik klaim (hanya pengiriman terjadwal),
  * sehingga tak ada tautan yatim untuk laporan yang baru dihapus atau diubah.
  */
 async function issueLink(
@@ -169,7 +170,7 @@ async function issueLink(
   row: ReportRow,
   scope: ShareScope,
   nowMs: number,
-  claim: RunClaim | null,
+  claim: RunClaim,
 ): Promise<Issued> {
   if (env.SESSION_SECRET === '') throw appError('UNAVAILABLE', 'Rahasia sesi belum dikonfigurasi');
   const expiresMs = nowMs + row.link_days * DAY_MS;
@@ -189,7 +190,7 @@ async function issueLink(
   };
   try {
     await env.DB.batch([
-      ...reportExistsGuardStmts(env.DB, row.id, claim === null ? null : claim.version),
+      ...reportExistsGuardStmts(env.DB, row.id, claim.version),
       insertShareStmt(env.DB, share),
     ]);
   } catch (error) {
@@ -279,7 +280,20 @@ export async function runReport(
       ...computed.scope.handoverLocationIds,
       ...computed.scope.stockLocationIds,
     ]);
-    if (usesLocationFilter) for (const id of parsed.scope.locationIds) nameableLocations.add(id);
+    if (usesLocationFilter) {
+      // Pelaku bukan pemilik: nama lokasi saringan hanya yang juga hak pelaku (Serah Terima atau stok), seperti bagian lain.
+      const actorLocations =
+        foreign === undefined
+          ? null
+          : resolveScope(foreign, { from: range.from, to: range.to }, nowMs);
+      const permitted =
+        actorLocations === null
+          ? null
+          : new Set([...actorLocations.handoverLocationIds, ...actorLocations.stockLocationIds]);
+      for (const id of parsed.scope.locationIds) {
+        if (permitted === null || permitted.has(id)) nameableLocations.add(id);
+      }
+    }
     const nameableLocationIds = parsed.scope.locationIds.filter((id) => nameableLocations.has(id));
     const [buNames, locationNames] = await Promise.all([
       buScopeNames(env, computed.scope.buIds),
@@ -297,10 +311,10 @@ export async function runReport(
     if (mode === 'preview') {
       ctaUrl = previewUrl(env);
       linkExpires = expiresLabel(nowMs + row.link_days * DAY_MS, row.link_days);
-    } else if (foreign !== undefined) {
-      // Surel uji laporan milik orang lain: tombol ke halaman Dashboard di aplikasi (perlu masuk; data mengikuti hak
-      // pelaku). Tidak ada tautan publik yang diterbitkan atas nama pemilik: tautan publik memeriksa hak pemilik saat
-      // dibuka dan akan membocorkan data yang sudah diiris hak pelaku (keputusan pemilik produk 2026-11-24).
+    } else if (mode === 'test') {
+      // Surel uji (milik sendiri maupun orang lain): tombol ke halaman Dashboard di aplikasi (perlu masuk; pengguna
+      // terdaftar mana pun mendarat di dashboard-nya sendiri). Surel uji tidak pernah menerbitkan tautan publik
+      // (keputusan pemilik produk 2026-11-24).
       ctaUrl = dashboardUrl(env);
       linkExpires = 'Tautan ke aplikasi (perlu masuk)';
     } else {
@@ -311,6 +325,7 @@ export async function runReport(
         widgets: computed.widgets,
         buIds: computed.scope.buIds,
       };
+      if (claim === null) throw new Error('Klaim periode tidak ada untuk pengiriman terjadwal');
       issued = await issueLink(env, row, linkScope, nowMs, claim);
       ctaUrl = issued.url;
       linkExpires = expiresLabel(issued.expiresMs, row.link_days);
@@ -327,7 +342,7 @@ export async function runReport(
       linkExpiresLabel: linkExpires,
       ...(mode === 'test' ? { test: true } : {}),
       ...(mode === 'preview' ? { testNotice: true } : {}),
-      ...(mode === 'test' && foreign !== undefined ? { buttonToApp: true } : {}),
+      ...(mode === 'test' ? { buttonToApp: true } : {}),
       ...(computed.trimmed ? { trimmed: true } : {}),
     });
     if (mode === 'preview') {

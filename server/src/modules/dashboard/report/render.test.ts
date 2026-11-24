@@ -190,7 +190,7 @@ describe('struktur HTML', () => {
     expect(rendered.html).not.toContain(TEST_BUTTON_NOTE);
   });
 
-  test('surel uji laporan milik orang lain menambah kalimat tombol ke Dashboard; penanda hak tetap terpisah', () => {
+  test('surel uji dengan tombol ke Dashboard menambah kalimat tombol; penanda hak tetap terpisah', () => {
     const rendered = renderReportEmail(input([], { test: true, buttonToApp: true, trimmed: true }));
     expect(rendered.html).toContain(TEST_BUTTON_NOTE);
     expect(rendered.text).toContain(TEST_BUTTON_NOTE);
@@ -199,10 +199,10 @@ describe('struktur HTML', () => {
     expect(rendered.text.split('\n').filter((line) => line === TRIMMED_NOTE)).toHaveLength(1);
   });
 
-  test('pratinjau memuat keterangan uji tanpa awalan subjek; surel terjadwal tidak memuat keduanya', () => {
+  test('pratinjau memuat keterangan uji dan subjek [UJI]; surel terjadwal tidak memuat keduanya', () => {
     const preview = renderReportEmail(input([], { testNotice: true }));
     expect(preview.html).toContain(TEST_NOTE);
-    expect(preview.subject.startsWith('[UJI]')).toBe(false);
+    expect(preview.subject.startsWith('[UJI] [QC] ')).toBe(true);
     const real = renderReportEmail(input([]));
     expect(real.html).not.toContain(TEST_NOTE);
     expect(real.text).not.toContain(TEST_NOTE);
