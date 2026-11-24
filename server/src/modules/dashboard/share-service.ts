@@ -83,7 +83,7 @@ export function freezeScope(user: UserContext, input: CreateShareInput, nowMs: n
   };
 }
 
-async function toShareDto(
+export async function toShareDto(
   env: Env,
   row: ShareRow,
   nowText: string,
@@ -109,7 +109,7 @@ async function toShareDto(
 }
 
 /** Hanya pembagi (atau super admin) boleh menyalin tautan. */
-function mayCopyUrl(user: UserContext, row: ShareRow): boolean {
+export function mayCopyUrl(user: UserContext, row: ShareRow): boolean {
   return user.isSuperAdmin || row.created_by === user.email;
 }
 

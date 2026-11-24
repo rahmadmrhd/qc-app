@@ -92,6 +92,9 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'serial.proof_reupload': 'Foto bukti Serial Number diunggah ulang',
   'serial.proof_retention': 'Foto bukti gagal dibuang otomatis',
   'export.sheets': 'Data diekspor ke Sheets',
+  'dashboard.share_create': 'Tautan dashboard dibuat',
+  'dashboard.share_revoke': 'Tautan dashboard dicabut',
+  'dashboard.share_expire': 'Tautan dashboard kedaluwarsa',
 };
 
 /**

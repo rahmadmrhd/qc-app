@@ -16,7 +16,11 @@ import type {
   DashboardQueryInput,
   DashboardQueryOutput,
 } from './dashboard';
-import type { CreateShareInput, DashboardShareDto } from './dashboard-share';
+import type {
+  CreateShareInput,
+  DashboardShareDetailDto,
+  DashboardShareDto,
+} from './dashboard-share';
 import type { GuideProgressDto } from './guides';
 import type { HandoverStatus } from './handover';
 import type { NotificationDto } from './notifications';
@@ -1639,6 +1643,7 @@ export interface ApiContract {
   'dashboard.options': { input: DashboardOptionsInput; output: DashboardOptionsDto };
   /** Tautan dashboard publik; semuanya butuh `dashboard: manage`. `url` hanya untuk pembagi dan super admin. */
   'dashboardShares.list': { input: null; output: DashboardShareDto[] };
+  'dashboardShares.get': { input: GetDashboardShareInput; output: DashboardShareDetailDto };
   'dashboardShares.create': { input: CreateShareInput; output: DashboardShareDto };
   'dashboardShares.revoke': { input: GetDashboardShareInput; output: { ok: true } };
 }

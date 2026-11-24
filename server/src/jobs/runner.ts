@@ -2,6 +2,7 @@ import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
 import { checkBackupAlerts } from '@server/modules/backup/alert';
 import { scheduleBackupJob } from '@server/modules/backup/service';
+import { sweepExpiredShares } from '@server/modules/dashboard/share-expiry';
 import { runJobStep } from '@server/modules/jobs/consumer';
 import { delayLease, findActiveJob, listRunnableJobIds } from '@server/modules/jobs/repo';
 import { enqueueJob, JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
@@ -156,6 +157,7 @@ async function schedulerTick(env: Env): Promise<void> {
     sweepProofDrafts,
     sweepExpiredFailedProofs,
     sweepOrphanProofFiles,
+    sweepExpiredShares,
   ]) {
     try {
       await step(env);

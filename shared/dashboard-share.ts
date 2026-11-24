@@ -3,6 +3,7 @@
  * `dashboard_shares.scope`, DTO daftar tautan, dan masukan pembuatan. Murni, tanpa API runtime/DOM.
  */
 import type { DashboardFilterInput, WidgetId } from './dashboard';
+import type { ShareVisitDto } from './dashboard-visit';
 import { wibDateIso } from './postel';
 import { isIsoDate } from './serials';
 
@@ -64,6 +65,35 @@ export interface DashboardShareDto {
   reportId: string;
   /** Hanya untuk pembagi atau super admin. */
   url?: string;
+}
+
+/** Cakupan beku untuk halaman View tautan: BU dan lokasi dengan NAMA (bukan id), filter grup mentah + nama nilai relasi. */
+export interface ShareScopeDetailDto {
+  buNames: string[];
+  locationNames: string[];
+  locationFiltered: boolean;
+  range: ShareRange;
+  /** Widget beserta filter grupnya (nilai mentah: id relasi atau nilai enum). */
+  widgets: ShareWidgetScope[];
+  /**
+   * Nama nilai filter relasi (id -> nama) yang dapat diresolusi lewat hak PEMANGGIL; id tanpa nama (di luar hak atau
+   * sudah terhapus) tidak ada di peta dan ditampilkan sebagai nilai tak dikenal.
+   */
+  valueNames: Record<string, string>;
+  /** Kunci filter relasi yang ditawarkan ke penonton. */
+  offers: string[];
+}
+
+/** Detail satu tautan untuk halaman View: daftar tautan + dicabut oleh, cakupan, ringkasan dan daftar kunjungan. */
+export interface DashboardShareDetailDto extends DashboardShareDto {
+  /** Surel pencabut; kosong = belum dicabut. */
+  revokedBy: string;
+  /** Jumlah SEMUA kunjungan (baris yang tersimpan hanya `visits`, maks. 50 terbaru). */
+  visitCount: number;
+  firstVisitAt: string;
+  lastVisitAt: string;
+  visits: ShareVisitDto[];
+  scope: ShareScopeDetailDto;
 }
 
 export interface CreateShareInput {

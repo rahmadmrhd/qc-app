@@ -488,6 +488,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     ids: ['c1', 'c2'],
   },
   'dashboardShares.list': null,
+  'dashboardShares.get': { id: 's1' },
   'dashboardShares.create': {
     title: 'Ringkasan',
     filter: { buIds: ['bu1'], from: '2026-11-01', to: '2026-11-23' },

@@ -118,6 +118,7 @@ describe('auditTargetKind', () => {
   test('aksi tautan dashboard dipetakan per aksi, bukan per awalan `dashboard`', () => {
     expect(auditTargetKind('dashboard.share_create')).toBe('dashboardShare');
     expect(auditTargetKind('dashboard.share_revoke')).toBe('dashboardShare');
+    expect(auditTargetKind('dashboard.share_expire')).toBe('dashboardShare');
     // Aksi lain berawalan `dashboard.` (mis. laporan terjadwal) tidak otomatis menjadi tautan.
     expect(auditTargetKind('dashboard.report_create')).toBeUndefined();
     expect(auditTargetKind('dashboard.report_run')).toBeUndefined();

@@ -353,6 +353,11 @@
     "path": "/dashboard-shares"
   },
   {
+    "id": "dashboardShares.get",
+    "verb": "GET",
+    "path": "/dashboard-shares/{id}"
+  },
+  {
     "id": "dashboardShares.list",
     "verb": "GET",
     "path": "/dashboard-shares"

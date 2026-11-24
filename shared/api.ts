@@ -685,6 +685,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   },
   // Tautan dashboard publik (spek dashboard 7.5): `create` = 201, `revoke` idempoten.
   'dashboardShares.list': { verb: 'GET', path: '/dashboard-shares' },
+  'dashboardShares.get': { verb: 'GET', path: '/dashboard-shares/{id}' },
   'dashboardShares.create': { verb: 'POST', path: '/dashboard-shares', status: 201 },
   'dashboardShares.revoke': { verb: 'POST', path: '/dashboard-shares/{id}/revoke' },
 };

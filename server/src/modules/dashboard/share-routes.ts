@@ -1,8 +1,13 @@
 import type { RouteTable } from '@server/core/router';
+import { getDashboardShare } from './share-detail';
 import { createShare, listDashboardShares, revokeShare } from './share-service';
 import { validateCreateShare, validateShareId } from './share-validate';
 
-type ShareMethod = 'dashboardShares.list' | 'dashboardShares.create' | 'dashboardShares.revoke';
+type ShareMethod =
+  | 'dashboardShares.list'
+  | 'dashboardShares.get'
+  | 'dashboardShares.create'
+  | 'dashboardShares.revoke';
 
 /** Semua rute tautan butuh `dashboard: manage` (izin global modul `dashboard`). */
 export function dashboardShareRoutes(): Pick<RouteTable, ShareMethod> {
@@ -11,6 +16,11 @@ export function dashboardShareRoutes(): Pick<RouteTable, ShareMethod> {
       permission: { module: 'dashboard', level: 'manage' },
       validate: () => null,
       handler: (_input, ctx) => listDashboardShares(ctx.env, ctx.user),
+    },
+    'dashboardShares.get': {
+      permission: { module: 'dashboard', level: 'manage' },
+      validate: validateShareId,
+      handler: (input, ctx) => getDashboardShare(ctx.env, ctx.user, input.id),
     },
     'dashboardShares.create': {
       permission: { module: 'dashboard', level: 'manage' },
