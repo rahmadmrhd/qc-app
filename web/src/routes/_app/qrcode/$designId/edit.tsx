@@ -2,6 +2,7 @@ import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { useFrozen } from '@/hooks/use-frozen';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { describeError } from '@/lib/api/describe-error';
 import { itemLinkAccess } from '@/lib/link-access';
@@ -11,7 +12,6 @@ import { useMe } from '@/modules/auth/use-me';
 import type { QrSubmitOptions } from '@/modules/qrcode/components/qr-design-form';
 import { QrDesignFormPage } from '@/modules/qrcode/components/qr-design-form-page';
 import { requestExportOnView } from '@/modules/qrcode/lib/export-request';
-import { useFrozen } from '@/modules/qrcode/lib/use-frozen';
 import {
   qrDefaultsQueryOptions,
   qrDesignQueryOptions,

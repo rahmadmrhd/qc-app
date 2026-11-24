@@ -32,6 +32,8 @@ const PIXEL_PNG =
 type Call = [string, ...unknown[]];
 let calls: Call[];
 let bitmapBlobs: Blob[];
+/** Jumlah `ImageBitmap` logo yang sudah ditutup (`close()`). */
+let bitmapsClosed = 0;
 /** Bila > 0, `toBlob` panggilan KEDUA dst. (gambar contoh; yang pertama = PNG label) menghasilkan blob sebesar ini. */
 let oversizeAfterFirst = 0;
 let blobCalls = 0;
@@ -53,6 +55,7 @@ function fakeContext() {
 beforeEach(() => {
   calls = [];
   bitmapBlobs = [];
+  bitmapsClosed = 0;
   oversizeAfterFirst = 0;
   blobCalls = 0;
   const pixel = base64ToBytes(PIXEL_PNG);
@@ -73,7 +76,13 @@ beforeEach(() => {
   });
   vi.stubGlobal('createImageBitmap', async (blob: Blob) => {
     bitmapBlobs.push(blob);
-    return { width: 120, height: 40, close: () => undefined };
+    return {
+      width: 120,
+      height: 40,
+      close: () => {
+        bitmapsClosed += 1;
+      },
+    };
   });
 });
 
@@ -116,6 +125,8 @@ test('dengan logo WebP: didekode dari tipe aslinya, digambar ke PNG, dan disemat
   const out = await renderExportFiles(design, { mime: 'image/webp', bytes: webp });
   expect(bitmapBlobs).toHaveLength(1);
   expect(bitmapBlobs[0]?.type).toBe('image/webp');
+  // Bitmap logo dilepas segera setelah dipakai (ekspor massal tak menumpuknya).
+  expect(bitmapsClosed).toBe(1);
   // logo digambar ke label PNG (latar putih + gambar) lewat canvas
   expect(calls.some((c) => c[0] === 'drawImage')).toBe(true);
   const doc = await PDFDocument.load(out.pdf);
@@ -126,4 +137,13 @@ test('dengan logo WebP: didekode dari tipe aslinya, digambar ke PNG, dan disemat
 test('gambar contoh tetap melebihi batas server setelah sisi terkecil: galat jelas, bukan byte kebesaran', async () => {
   oversizeAfterFirst = QR_LIMITS.previewMaxBytes + 1;
   await expect(renderExportFiles(design, null)).rejects.toThrow(/gambar contoh/i);
+});
+
+test('bitmap logo tetap ditutup bila ekspor gagal di tengah jalan (isi melebihi kanvas)', async () => {
+  const webp = new Uint8Array(Buffer.from('RIFFxxxxWEBPVP8 '));
+  await expect(
+    renderExportFiles({ ...design, title: 'x'.repeat(60) }, { mime: 'image/webp', bytes: webp }),
+  ).rejects.toThrow('melebihi kanvas');
+  expect(bitmapBlobs).toHaveLength(1);
+  expect(bitmapsClosed).toBe(1);
 });

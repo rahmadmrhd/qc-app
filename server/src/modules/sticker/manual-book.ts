@@ -51,7 +51,7 @@ export async function ensureManualBookType(env: Env, actor: string): Promise<Sti
     if (sameName) {
       if (sameName.stickerCount > 0) throw appError('VALIDATION', RENAME_FIRST_MESSAGE);
       await env.DB.prepare(
-        "UPDATE sticker_types SET rule = 'group', system_kind = 'manual_book', updated_at = ?, updated_by = ? WHERE id = ? AND system_kind = '' AND (SELECT COUNT(*) FROM stickers WHERE type_id = ?) = 0",
+        "UPDATE sticker_types SET rule = 'group', system_kind = 'manual_book', status = 'active', updated_at = ?, updated_by = ? WHERE id = ? AND system_kind = '' AND (SELECT COUNT(*) FROM stickers WHERE type_id = ?) = 0",
       )
         .bind(now, actor, sameName.id, sameName.id)
         .run();

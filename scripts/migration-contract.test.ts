@@ -22,6 +22,17 @@ describe('isDestructive', () => {
       'ALTER TABLE a RENAME TO b;',
       'RENAME TABLE a TO b;',
       'ALTER TABLE a CHANGE COLUMN x y INT;',
+      // bentuk yang sebelumnya lolos (audit 2026-11-23)
+      'ALTER TABLE items DROP KEY items_old;',
+      'ALTER TABLE a DROP PRIMARY KEY;',
+      'ALTER TABLE x DROP legacy_col;',
+      'ALTER TABLE x DROP `legacy_col`;',
+      'ALTER TABLE x DROP IF EXISTS legacy_col;',
+      'ALTER TABLE a DROP CHECK c;',
+      'ALTER TABLE a RENAME INDEX i TO j;',
+      'ALTER TABLE a RENAME KEY i TO j;',
+      'ALTER TABLE a CHANGE x y INT;',
+      'ALTER TABLE a CHANGE `x` `y` INT;',
     ]) {
       expect(isDestructive(sql), sql).toBe(true);
     }
@@ -107,12 +118,13 @@ describe('server/migrations: konvensi qc:contract', () => {
     expect(extra).toEqual([]);
   });
 
-  test('migrasi destruktif yang ada kini: 0002, 0003, 0012, 0030', () => {
+  test('migrasi destruktif yang ada kini: 0002, 0003, 0012, 0030, 0036', () => {
     expect(listContractMigrations(names, read)).toEqual([
       '0002_hapus_sync_rev.sql',
       '0003_hapus_external_id.sql',
       '0012_serial_number.sql',
       '0030_soft_delete_contract.sql',
+      '0036_buang_indeks_serials_created_id.sql',
     ]);
   });
 });

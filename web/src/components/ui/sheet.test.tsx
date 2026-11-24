@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -142,4 +142,31 @@ test('keyboard (C10): Escape pada pegangan menutup lembar', async () => {
   handle().focus();
   await userEvent.keyboard('{Escape}');
   expect(screen.getByTestId('state')).toHaveTextContent('tutup');
+});
+
+test('lembar yang dibesarkan, ditutup, lalu dibuka lagi mulai dari collapsed (bukan layar penuh)', async () => {
+  function Reopen() {
+    const [open, setOpen] = useState(true);
+    return (
+      <>
+        <button type="button" onClick={() => setOpen(true)}>
+          buka-lagi
+        </button>
+        <Sheet open={open} onOpenChange={setOpen} backToClose={false}>
+          <SheetContent side="bottom">
+            <SheetTitle>Judul</SheetTitle>
+            <SheetDescription>Isi</SheetDescription>
+          </SheetContent>
+        </Sheet>
+      </>
+    );
+  }
+  render(<Reopen />);
+  drag(handle(), 400, 200);
+  expect(sheet()).toHaveAttribute('data-expanded', 'true');
+  fireEvent.keyDown(sheet(), { key: 'Escape' });
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  await userEvent.click(screen.getByRole('button', { name: 'buka-lagi' }));
+  expect(sheet()).not.toHaveAttribute('data-expanded');
+  expect(handle()).toHaveAttribute('aria-expanded', 'false');
 });

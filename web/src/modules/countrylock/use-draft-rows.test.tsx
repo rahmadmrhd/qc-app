@@ -154,6 +154,40 @@ describe('useDraftRows', () => {
     expect(bridge.draftRows).toHaveLength(0);
   });
 
+  test('unmount menyimpan lewat rantai: simpan lambat yang masih mengantre tidak menimpa suntingan terakhir', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const writes: string[][] = [];
+    let first = true;
+    const bridge = createFakeBridge({
+      draft: {
+        save: async (rows) => {
+          if (first) {
+            first = false;
+            await gate;
+          }
+          writes.push(rows.map((row) => String((row as { serial: string }).serial)));
+        },
+      },
+    });
+    const { result, unmount } = await ready(bridge);
+    // Inject: penyimpanan pertama tertahan (lambat).
+    let pending: Promise<string> | undefined;
+    act(() => {
+      pending = result.current.addInjected(input('AB12'));
+    });
+    // Operator mengedit tabel lalu menutup halaman sebelum jeda simpan habis.
+    act(() => result.current.replace([]));
+    unmount();
+    release();
+    await pending;
+    await waitFor(() => expect(writes.length).toBeGreaterThanOrEqual(2));
+    // Penulisan TERAKHIR = suntingan terakhir (tabel kosong), bukan snapshot lama yang menimpanya.
+    expect(writes[writes.length - 1]).toEqual([]);
+  });
+
   test('kegagalan simpan mengisi saveFailed', async () => {
     const bridge = createFakeBridge({
       draft: {

@@ -8,6 +8,11 @@ const state = vi.hoisted(() => ({
   me: null as unknown as MeDto,
   selected: ['loc-a'] as string[],
   api: vi.fn(),
+  desktop: true,
+}));
+vi.mock('@/hooks/use-is-desktop', async () => ({
+  ...(await vi.importActual<object>('@/hooks/use-is-desktop')),
+  useIsDesktop: () => state.desktop,
 }));
 vi.mock('@/modules/auth/use-me', () => ({ useMe: () => state.me }));
 vi.mock('@/modules/location/active-locations-context', () => ({
@@ -20,7 +25,7 @@ vi.mock('@/modules/files/queries', () => ({
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 
 import { ApiError } from '@/lib/api/api-error';
-import { closeFilterChip, pickLink } from '@/test/link-field';
+import { closeFilterChip, pickLink, pickSelect } from '@/test/link-field';
 import { resetOutboxEnv } from '@/test/outbox-env';
 import { enqueueOutbox } from '../lib/outbox';
 import { HandoverBoardPage } from './handover-board-page';
@@ -65,6 +70,7 @@ function renderPage() {
     onEdit: vi.fn(),
     onCreate: vi.fn(),
     onStatusChange: vi.fn(),
+    onViewChange: vi.fn(),
   };
   render(
     <QueryClientProvider client={client}>
@@ -86,6 +92,7 @@ beforeEach(() => {
   resetOutboxEnv();
   state.api.mockReset();
   state.selected = ['loc-a'];
+  state.desktop = true;
   state.me = me({ handover: 'manage', qc: 'edit' });
 });
 
@@ -278,6 +285,7 @@ test('belum memilih lokasi, kosong, dan galat punya tampilan jelas', async () =>
   document.body.innerHTML = '';
 
   state.selected = ['loc-a'];
+  state.desktop = true;
   state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf([], input));
   renderPage();
   expect(await screen.findByText(/Belum ada task/)).toBeInTheDocument();
@@ -341,6 +349,7 @@ test('locationId dari URL (notifikasi): papan memuat lokasi itu, bukan pilihan h
         onEdit={vi.fn()}
         onCreate={vi.fn()}
         onStatusChange={vi.fn()}
+        onViewChange={vi.fn()}
       />
     </QueryClientProvider>,
   );
@@ -367,6 +376,7 @@ test('locationId dari URL (notifikasi): papan memuat lokasi itu, bukan pilihan h
         onEdit={vi.fn()}
         onCreate={vi.fn()}
         onStatusChange={vi.fn()}
+        onViewChange={vi.fn()}
       />
     </QueryClientProvider>,
   );
@@ -451,6 +461,7 @@ test('customerIds: permintaan tiap kolom membawa customerIds, chip filter tampil
         onEdit={vi.fn()}
         onCreate={vi.fn()}
         onStatusChange={vi.fn()}
+        onViewChange={vi.fn()}
       />
     </QueryClientProvider>,
   );
@@ -474,7 +485,7 @@ function renderWith(props: Partial<Parameters<typeof HandoverBoardPage>[0]> = {}
     onEdit: vi.fn(),
     onCreate: vi.fn(),
     onStatusChange: vi.fn(),
-    onDeletedChange: vi.fn(),
+    onViewChange: vi.fn(),
     onCustomersChange: vi.fn(),
   };
   render(
@@ -586,7 +597,7 @@ test('tampilan Terhapus kosong: ListState "filter" dengan Hapus filter yang meng
   const handlers = renderWith({ deleted: true });
   expect(await screen.findByText('Tidak ada hasil untuk filter ini.')).toBeInTheDocument();
   await userEvent.click(screen.getByRole('button', { name: 'Hapus filter' }));
-  expect(handlers.onDeletedChange).toHaveBeenCalledWith(false);
+  expect(handlers.onViewChange).toHaveBeenCalledWith({ deleted: false });
 });
 
 test('galat muat: ListState dengan Coba lagi yang memuat ulang papan', async () => {
@@ -645,4 +656,49 @@ test('chip Customer terisi dua nilai menampilkan nama digabung; permintaan kolom
     customerIds: ['c1', 'c2'],
   });
   expect(await screen.findByRole('button', { name: 'Customer: PT A, PT B' })).toBeInTheDocument();
+});
+
+// Ponsel: satu chip Status memuat status alur + Terhapus. Dua navigasi beruntun membaca search yang sama-sama basi
+// (yang kedua menimpa yang pertama), jadi perubahan gabungan harus SATU panggilan onViewChange.
+test('ponsel: keluar dari Terhapus dengan memilih status = satu onViewChange {deleted:false, status}', async () => {
+  state.desktop = false;
+  state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf([], input));
+  const handlers = renderWith({ deleted: true });
+  await userEvent.click(await screen.findByRole('button', { name: /Status: Terhapus/ }));
+  await pickSelect(screen, 'Filter status', 'Baru');
+  await closeFilterChip();
+  expect(handlers.onViewChange).toHaveBeenCalledTimes(1);
+  expect(handlers.onViewChange).toHaveBeenCalledWith({ deleted: false, status: 'new' });
+  expect(handlers.onStatusChange).not.toHaveBeenCalled();
+});
+
+test('ponsel: masuk Terhapus = satu onViewChange {deleted:true, status:all}', async () => {
+  state.desktop = false;
+  state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf([], input));
+  const handlers = renderWith({ status: 'done' });
+  await userEvent.click(await screen.findByRole('button', { name: /Status: / }));
+  await pickSelect(screen, 'Filter status', 'Terhapus');
+  await closeFilterChip();
+  expect(handlers.onViewChange).toHaveBeenCalledTimes(1);
+  expect(handlers.onViewChange).toHaveBeenCalledWith({ deleted: true, status: 'all' });
+});
+
+test('ponsel: tombol hapus chip Status pada Terhapus = satu onViewChange {deleted:false, status:all}', async () => {
+  state.desktop = false;
+  state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf([], input));
+  const handlers = renderWith({ deleted: true });
+  await userEvent.click(await screen.findByRole('button', { name: 'Hapus filter Status' }));
+  expect(handlers.onViewChange).toHaveBeenCalledTimes(1);
+  expect(handlers.onViewChange).toHaveBeenCalledWith({ deleted: false, status: 'all' });
+  expect(handlers.onStatusChange).not.toHaveBeenCalled();
+});
+
+test('ponsel: Hapus filter dengan Customer + Terhapus = satu onViewChange gabungan', async () => {
+  state.desktop = false;
+  state.api.mockImplementation(async (_method: string, input: BoardInput) => pageOf([], input));
+  const handlers = renderWith({ deleted: true, customerIds: ['c1'] });
+  await userEvent.click(await screen.findByRole('button', { name: 'Hapus filter' }));
+  expect(handlers.onViewChange).toHaveBeenCalledTimes(1);
+  expect(handlers.onViewChange).toHaveBeenCalledWith({ customers: [], deleted: false });
+  expect(handlers.onCustomersChange).not.toHaveBeenCalled();
 });

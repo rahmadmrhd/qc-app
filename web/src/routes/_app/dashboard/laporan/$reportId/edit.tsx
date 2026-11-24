@@ -1,10 +1,10 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { createFileRoute, redirect } from '@tanstack/react-router';
+import { useFrozen } from '@/hooks/use-frozen';
 import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { requirePermission } from '@/modules/auth/permissions';
 import { ReportFormPage } from '@/modules/dashboard/components/report-form-page';
 import { reportQueryOptions } from '@/modules/dashboard/report-queries';
-import { useFrozen } from '@/modules/qrcode/lib/use-frozen';
 
 export const Route = createFileRoute('/_app/dashboard/laporan/$reportId/edit')({
   staticData: {

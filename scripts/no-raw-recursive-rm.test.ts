@@ -48,7 +48,15 @@ function listSources(): string[] {
 function inScope(rel: string): boolean {
   if (EXEMPT.has(rel)) return false;
   const isTest = /\.test\.tsx?$/.test(rel);
-  if (rel.startsWith('server/test-support/') || rel.startsWith('desktop/test-support/'))
+  // Pendukung tes non-`.test` (helper, setup, fixture) ikut dipindai: `afterEach(() => rmSync(dir, { recursive: true }))` di
+  // `web/src/test/setup.ts` sama bahayanya dengan di berkas tes.
+  if (
+    rel.startsWith('server/test-support/') ||
+    rel.startsWith('desktop/test-support/') ||
+    rel.startsWith('countrylock/test-support/') ||
+    rel.startsWith('web/src/test/') ||
+    (rel.startsWith('web/src/') && /(?:^|\/)test-support[^/]*\.tsx?$/.test(rel))
+  )
     return true;
   if (/^(server|scripts|desktop|countrylock|shared)\//.test(rel)) return isTest;
   return rel.startsWith('web/src/') && isTest;
@@ -72,6 +80,9 @@ test('cakupan memuat semua paket yang dijaga', () => {
     'desktop/src/a.test.ts',
     'desktop/test-support/x.ts',
     'web/src/a.test.tsx',
+    'web/src/test/x.ts',
+    'web/src/modules/x/test-support.ts',
+    'countrylock/test-support/x.ts',
     'countrylock/src/a.test.ts',
     'shared/a.test.ts',
   ]) {
@@ -104,6 +115,16 @@ test('pendeteksi menangkap setiap bentuk', () => {
     "Bun.spawn(['powershell', 'Remove-Item', d, '-Recurse']);",
     "const t = <p>Don't</p>; rmSync(d, { recursive: true });",
     'const t = `a $' + '{`b`} c`; rm(d, { recursive: true });',
+    // item 28: bendera terpisah, rd/rmdir /s, Remove-Item -r, alias destructuring/penugasan, kunci berkutip
+    "execSync('rm -f -r some/dir');",
+    "execSync('rm --force --recursive some/dir');",
+    "execSync('rd /s /q some\\\\dir');",
+    "spawnSync('powershell', ['-c', 'Remove-Item x -r -Force']);",
+    "Bun.spawnSync(['rd', '/s', d]);",
+    'const { rmSync: hapus } = fs;\nhapus(d, OPTS);',
+    'const hapus = fs.rmSync;\nhapus(d, { recursive: true });',
+    "rmSync(d, { 'recursive': true });",
+    'rmSync(d, { "recursive" : true });',
   ];
   for (const source of bad) expect([source, findRawRm(source).length > 0]).toEqual([source, true]);
 });

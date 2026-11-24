@@ -173,6 +173,11 @@ export interface GetRoleInput {
 
 export interface SaveUserInput {
   id?: string;
+  /**
+   * Versi (`updatedAt`) yang dilihat penyimpan, hanya untuk mengubah (ada `id`). Opsional demi klien lama; bila dikirim
+   * dan tak sama dengan versi tersimpan = galat basi (412 lewat `If-Match`).
+   */
+  expectedUpdatedAt?: string;
   email: string;
   name: string;
   status: UserStatus;
@@ -198,6 +203,8 @@ export interface SetUserStatusInput {
 
 export interface SaveRoleInput {
   id?: string;
+  /** Versi yang dilihat penyimpan (opsional; lihat `SaveUserInput.expectedUpdatedAt`). */
+  expectedUpdatedAt?: string;
   name: string;
   description: string;
   permissions: PartialPermissionMap;
@@ -270,6 +277,8 @@ export interface GetLocationInput {
 
 export interface SaveLocationInput {
   id?: string;
+  /** Versi yang dilihat penyimpan (opsional; lihat `SaveUserInput.expectedUpdatedAt`). */
+  expectedUpdatedAt?: string;
   code: string;
   name: string;
 }
@@ -324,6 +333,8 @@ export interface GetBusinessUnitInput {
 
 export interface SaveBusinessUnitInput {
   id?: string;
+  /** Versi yang dilihat penyimpan (opsional; lihat `SaveUserInput.expectedUpdatedAt`). */
+  expectedUpdatedAt?: string;
   /** Huruf besar/angka/tanda hubung, maks. 10; tidak dapat diubah setelah dibuat. */
   code: string;
   name: string;

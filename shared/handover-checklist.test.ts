@@ -15,6 +15,15 @@ const chk = (text: string, occurrence = 0) => ({
 });
 
 describe('handover-checklist', () => {
+  test('butir yang memuat U+2028/U+2029 tetap terbaca (titik regex tak mencocokkan pemisah baris Unicode)', () => {
+    const ls = String.fromCharCode(0x2028);
+    const ps = String.fromCharCode(0x2029);
+    const entries = extractChecklist(`- [ ] Kabel${ls}LAN x2\n- [x] Adaptor${ps}12V\n- [ ] Biasa`);
+    expect(entries).toHaveLength(3);
+    expect(entries.map((entry) => entry.index)).toEqual([0, 1, 2]);
+    expect(entries[2]?.text).toBe('Biasa');
+  });
+
   test('extractChecklist mengambil butir tingkat atas dan mengabaikan yang bersarang', () => {
     expect(extractChecklist('- [ ] A\n- [x] B\nteks\n  - [ ] bersarang')).toEqual([
       { index: 0, text: 'A' },

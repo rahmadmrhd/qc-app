@@ -12,7 +12,7 @@ import {
 } from '@shared/qrcode';
 import { useForm, useStore } from '@tanstack/react-form';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
 import { FieldError } from '@/components/field-error';
 import { LinkField } from '@/components/link-field';
@@ -307,12 +307,21 @@ export function QrDesignForm({
     form.setFieldValue('name', manualBookNameFromTypes(models, QR_LIMITS.manualBookName));
   }, [newFlow, selectedModels, form]);
 
-  // Isian dari preset yang berlaku (sekali per pergantian preset); "Tanpa preset" tidak mengubah isian.
+  // Isian dari preset yang berlaku (sekali per pergantian preset); "Tanpa preset" tidak mengubah isian. Preset yang
+  // sudah diterapkan dicatat: muat ulang daftar preset di latar (larik baru) tidak boleh menimpa isian yang sudah
+  // diubah pengguna.
+  const appliedPresetRef = useRef<string | null>(null);
   useEffect(() => {
     if (!newFlow) return;
     form.setFieldValue('presetId', effectivePreset === NO_PRESET ? '' : effectivePreset);
     const preset = presets?.find((item) => item.id === effectivePreset);
-    if (!preset) return;
+    if (!preset) {
+      // Beralih ke "Tanpa preset"/belum ada preset: memilih preset yang sama lagi nanti menerapkannya kembali.
+      appliedPresetRef.current = null;
+      return;
+    }
+    if (appliedPresetRef.current === effectivePreset) return;
+    appliedPresetRef.current = effectivePreset;
     const values = toNewDesignFromPreset(preset);
     form.setFieldValue('title', values.title);
     form.setFieldValue('subtitle', values.subtitle);
@@ -1199,6 +1208,18 @@ function PreviewPane({
   const { url: logoUrl } = useFileUrl(values.logoFileId);
   const link = values.linkSource === 'url' ? values.link : (document?.link ?? '');
   const logo = values.logoFileId !== '' ? logoUrl : null;
+  // Objek stabil selama isinya sama: dialog pratinjau lembar menggambar ulang seluruh lembar tiap `design` berganti.
+  const design = useMemo(
+    () => ({
+      title: values.title,
+      subtitle: values.subtitle,
+      footer: values.footer,
+      link,
+      layout: values.layout,
+      style: values.style,
+    }),
+    [values.title, values.subtitle, values.footer, link, values.layout, values.style],
+  );
   return (
     <>
       <LabelPreview
@@ -1222,14 +1243,7 @@ function PreviewPane({
       <SheetPreviewDialog
         open={sheetOpen}
         onOpenChange={onSheetOpenChange}
-        design={{
-          title: values.title,
-          subtitle: values.subtitle,
-          footer: values.footer,
-          link,
-          layout: values.layout,
-          style: values.style,
-        }}
+        design={design}
         logoUrl={logo}
       />
     </>

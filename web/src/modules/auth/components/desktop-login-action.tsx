@@ -1,4 +1,4 @@
-import type { QcBridge } from '@countrylock/bridge-contract';
+import type { AuthErrorCode, QcBridge } from '@countrylock/bridge-contract';
 import type { MeDto } from '@shared/contract';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { loadMeState as defaultLoadMeState, type MeState } from '@/app/boot';
@@ -21,6 +21,22 @@ export const LOGIN_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
 export const LOGIN_CHECK_TIMEOUT_MS = 30 * 1000;
 
 const LOGIN_FAILED_MESSAGE = 'Login belum berhasil. Coba lagi.';
+
+/**
+ * Pesan menurut penolakan login dari server (`AuthStatus.error`, jembatan v11). Teks selalu dari tabel ini: kode
+ * dari jembatan hanya kunci pencarian. Kode tak dikenal atau jembatan lama (field `undefined`) = pesan umum.
+ */
+export const AUTH_ERROR_MESSAGES: Record<AuthErrorCode, string> = {
+  NOT_WHITELISTED:
+    'Akun Google ini belum terdaftar di QC App. Minta admin mendaftarkan emailmu dulu, lalu coba masuk lagi.',
+  LOGIN_FAILED: 'Login Google gagal. Coba masuk lagi.',
+};
+
+function messageForError(code: unknown): string {
+  return typeof code === 'string' && Object.hasOwn(AUTH_ERROR_MESSAGES, code)
+    ? AUTH_ERROR_MESSAGES[code as AuthErrorCode]
+    : LOGIN_FAILED_MESSAGE;
+}
 
 /**
  * Tombol login di aplikasi desktop: `bridge.auth.login()` membuka browser sistem (bukan tautan
@@ -51,7 +67,7 @@ export function DesktopLoginAction({
         // Penukaran kode gagal atau state kedaluwarsa memancarkan signedIn:false: jangan menggantung.
         if (phaseRef.current === 'waiting') {
           setPhase('idle');
-          setError(LOGIN_FAILED_MESSAGE);
+          setError(messageForError(status.error));
         }
         return;
       }

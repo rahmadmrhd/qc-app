@@ -3,6 +3,7 @@
 // string dibatasi panjangnya, host harus sah, dan karakter kontrol ditolak.
 
 import { z } from 'zod';
+import type { AuthErrorCode as SharedAuthErrorCode } from '../../shared/contract';
 import type { DesktopCatalogDto } from '../../shared/desktop-catalog';
 import {
   type BRIDGE_CHANNELS,
@@ -24,6 +25,7 @@ import type { Brand } from './script-template';
 export {
   APP_BRIDGE_VERSION,
   AUTH_CHANGE_EVENT,
+  AUTH_ERROR_BRIDGE_VERSION,
   BRIDGE_CHANNELS,
   BRIDGE_VERSION,
   CATALOG_BRIDGE_VERSION,
@@ -95,11 +97,32 @@ export type RouterInfoResult =
   | { ok: true; serial: string; model: string }
   | { ok: false; error: 'PERMISSION_DENIED' | 'UNAVAILABLE' };
 
-/** Status login desktop untuk renderer: TIDAK pernah memuat token. */
+/**
+ * Kode galat login yang boleh dikirim server ke desktop (loopback atau `qc://auth`; jembatan v11). Daftar tetap: teks
+ * yang tampil ke pengguna selalu dari peta pesan lokal (web), tak pernah dari URL.
+ */
+export type AuthErrorCode = SharedAuthErrorCode;
+/** `satisfies Record` memaksa daftar ini lengkap: kode baru di `shared/contract.ts` membuat typecheck gagal di sini. */
+const AUTH_ERROR_CODE_SET = { LOGIN_FAILED: true, NOT_WHITELISTED: true } satisfies Record<
+  AuthErrorCode,
+  true
+>;
+export const AUTH_ERROR_CODES = Object.keys(AUTH_ERROR_CODE_SET) as [
+  AuthErrorCode,
+  ...AuthErrorCode[],
+];
+export const AuthErrorCodeSchema = z.enum(AUTH_ERROR_CODES);
+
+/**
+ * Status login desktop untuk renderer: TIDAK pernah memuat token. `error` (jembatan v11) hanya terisi selama belum
+ * masuk, sejak server menolak login terakhir sampai percobaan login berikutnya, login sukses, atau keluar; tanpanya
+ * UI memakai pesan umum.
+ */
 export interface AuthStatus {
   signedIn: boolean;
   email: string | null;
   serverUrl: string;
+  error?: AuthErrorCode;
 }
 
 /** Pemberitahuan bundel UI baru siap diterapkan (tanpa isi bundel). */

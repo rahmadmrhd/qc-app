@@ -212,6 +212,28 @@ describe('pindah BU lewat cek ulang', () => {
     expect((await serialRow('sn1'))?.bu_id).toBe('bu-b');
   });
 
+  test('kiriman ulang baris Catat (clientId sama) tetap dikenali setelah serialnya dipindah BU oleh orang lain', async () => {
+    // Baris baru (serial belum ada) tercatat di BU A; respons hilang; orang lain memindahkannya ke BU B; kiriman ulang.
+    const fresh = row({ serial: 'NEW-REPLAY', itemId: 'i-a2' });
+    const first = resultsOf(await save(W, [fresh]))[0];
+    expect(first).toMatchObject({ result: 'created' });
+    await env.DB.batch(
+      moveBuStatements(env, {
+        serialId: first.id,
+        fromBuId: 'bu-a',
+        toBuId: 'bu-b',
+        now: '2026-11-13T00:00:00.000Z',
+      }),
+    );
+    const events = await count('serial_events');
+    const again = resultsOf(await save(W, [fresh]))[0];
+    expect(again).toMatchObject({ result: 'created', id: first.id });
+    expect(await count('serial_events')).toBe(events);
+    // clientId sama dengan nomor serial berbeda tetap ditolak.
+    const other = resultsOf(await save(W, [{ ...fresh, serial: 'LAIN-123' }]))[0];
+    expect(other).toMatchObject({ result: 'invalid' });
+  });
+
   test('BU yang pernah ditinggalkan (A lalu B lalu A) ditolak tanpa mengubah apa pun', async () => {
     await env.DB.batch(
       moveBuStatements(env, {

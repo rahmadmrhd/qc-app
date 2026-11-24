@@ -177,6 +177,8 @@ async function run(
   request: string | undefined,
   args: string[] = [],
   extraEnv: Record<string, string> = {},
+  /** Pembaca stdout langsung berhenti (SSH putus): skrip diberi pipa yang tertutup sehingga penulisan memicu SIGPIPE. */
+  closedStdout = false,
 ): Promise<Run> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
@@ -189,10 +191,21 @@ async function run(
   env.FAKE_ENV = posix(join(root, 'staging', '.env'));
   if (request !== undefined) env.SSH_ORIGINAL_COMMAND = request;
   Object.assign(env, extraEnv);
-  const proc = Bun.spawn(
-    ['bash', SCRIPT, '--root', posix(root), '--wait-seconds', '2', '--poll-seconds', '0', ...args],
-    { env, stdout: 'pipe', stderr: 'pipe' },
-  );
+  const scriptArgs = [
+    SCRIPT,
+    '--root',
+    posix(root),
+    '--wait-seconds',
+    '2',
+    '--poll-seconds',
+    '0',
+    ...args,
+  ];
+  const command = closedStdout
+    ? // `true` keluar seketika: penulisan skrip ke stdout berikutnya = pipa putus. Kode keluar yang dilaporkan = kode skrip.
+      ['bash', '-c', 'bash "$@" | true; exit ${PIPESTATUS[0]}', 'deploy', ...scriptArgs]
+    : ['bash', ...scriptArgs];
+  const proc = Bun.spawn(command, { env, stdout: 'pipe', stderr: 'pipe' });
   const [stdout, stderr] = await Promise.all([
     new Response(proc.stdout).text(),
     new Response(proc.stderr).text(),
@@ -406,6 +419,23 @@ describe('deploy.sh: alur deploy dan pemulihan', () => {
     // deploy berikutnya menimpa (bukan menambah)
     await run(`deploy staging ${SHA_OTHER}`);
     expect(readFileSync(logPath, 'utf8').split('pull rahasia-uji').length - 1).toBe(1);
+  });
+
+  test('stdout tertutup di tengah deploy (SSH putus): skrip tidak mati; deploy selesai dan jejaknya tercatat di .deploy.log', async () => {
+    const result = await run(`deploy staging ${SHA_NEW}`, [], {}, true);
+    expect(result.code).toBe(0);
+    expect(tagIn('staging')).toBe(SHA_NEW);
+    expect(calls()).toContain(' up ');
+    expect(readFileSync(join(root, 'staging', '.deploy.log'), 'utf8')).toContain(
+      `DEPLOY_OK env=staging tag=${SHA_NEW}`,
+    );
+  });
+
+  test('stdout tertutup dan versi baru tidak sehat: pengembalian ke tag sebelumnya tetap berjalan', async () => {
+    writeFileSync(join(state, 'unhealthy_tags'), `${SHA_BAD}\n`);
+    const result = await run(`deploy staging ${SHA_BAD}`, [], {}, true);
+    expect(result.code).toBe(1);
+    expect(tagIn('staging')).toBe('tag-lama');
   });
 
   test('keluaran compose tak bocor pada jalur gagal (pull gagal, up gagal, tidak sehat + pengembalian)', async () => {

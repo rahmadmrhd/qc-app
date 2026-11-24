@@ -142,8 +142,6 @@ export function FileDialog({
   }
 
   function addFiles(files: File[], refused: RejectedFile[] = []) {
-    if (files.length > 0 && mode === 'single') setSelection(new Map());
-    const base = mode === 'single' && files.length > 0 ? [] : queuedRef.current;
     const result = intakeFiles(files, {
       accept: mimes,
       maxBytes,
@@ -151,29 +149,36 @@ export function FileDialog({
       room: mode === 'single' ? 1 : roomLeft(),
       max: capacity,
     });
-    setQueued(mode === 'single' && files.length > 0 ? result.queued : [...base, ...result.queued]);
+    if (mode === 'single') {
+      // Berkas baru menggantikan pilihan lama HANYA bila ada yang lolos; yang ditolak (mis. kebesaran) tidak boleh
+      // membuang pilihan sah yang sudah ada.
+      if (result.queued.length > 0) {
+        setSelection(new Map());
+        setQueued(result.queued);
+      }
+    } else {
+      setQueued([...queuedRef.current, ...result.queued]);
+    }
     addRejected([...refused, ...result.rejected]);
     if (files.length > 0 || refused.length > 0) setTab('upload');
   }
 
   /** Jepretan kamera: masuk antrean seperti berkas biasa; penuh = galat yang tampil di kamera. */
   function takeShot(file: File) {
-    if (mode === 'single') {
-      setSelection(new Map());
-      setQueued(
-        intakeFiles([file], { accept: mimes, maxBytes, nameMax: source.nameMax, room: 1 }).queued,
-      );
-      return;
-    }
     const result = intakeFiles([file], {
       accept: mimes,
       maxBytes,
       nameMax: source.nameMax,
-      room: roomLeft(),
-      max: capacity,
+      room: mode === 'single' ? 1 : roomLeft(),
+      ...(mode === 'single' ? {} : { max: capacity }),
     });
     const reason = result.rejected[0]?.reason;
     if (reason !== undefined) throw new Error(reason);
+    if (mode === 'single') {
+      setSelection(new Map());
+      setQueued(result.queued);
+      return;
+    }
     setQueued([...queuedRef.current, ...result.queued]);
   }
 

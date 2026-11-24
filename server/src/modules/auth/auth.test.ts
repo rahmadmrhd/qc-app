@@ -242,6 +242,23 @@ describe('GET /auth/callback', () => {
     expect(tokenRequests).toHaveLength(0);
   });
 
+  test('penukaran kode ke Google memakai sinyal batas waktu, dan penolakan karena batas waktu berakhir LOGIN_FAILED', async () => {
+    let signal: AbortSignal | null | undefined;
+    globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+      signal = init?.signal;
+      throw Object.assign(new Error('The operation timed out.'), { name: 'TimeoutError' });
+    }) as unknown as typeof fetch;
+    const { cookie, state } = await startLogin();
+    const response = await app.request(
+      `https://qc.test/auth/callback?code=x&state=${state}`,
+      { headers: { cookie } },
+      env,
+    );
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(response.headers.get('location')).toBe('/?authError=LOGIN_FAILED');
+    expect(cookieOf(response, 'qc_session')).toBeUndefined();
+  });
+
   test('pengguna nonaktif diperlakukan sebagai tidak terdaftar', async () => {
     await env.DB.prepare("UPDATE users SET status = 'inactive'").run();
     mockGoogle({ body: { id_token: idToken({}) } });

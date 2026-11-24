@@ -1,4 +1,4 @@
-import type { BridgeClient, SheetsDump, SheetsExportChunk } from '@server/core/bridge-client';
+import type { BridgeClient, SheetsExportChunk } from '@server/core/bridge-client';
 import { appError } from '@server/core/errors';
 import { errorText, failResponse as failGeneric, type GoogleHttp } from './request';
 import { type GoogleSettings, isDriveId } from './settings';
@@ -11,8 +11,6 @@ export const EXPORT_MAX_ROWS = 2000;
 export const EXPORT_MAX_COLUMNS = 60;
 export const EXPORT_MAX_CELL_CHARS = 50_000;
 const EXPORT_SHEET_PATTERN = /^export_[a-z0-9_]{1,60}$/;
-/** Banyak rentang per `values:batchGet` (menjaga panjang URL). */
-const DUMP_BATCH = 10;
 const REPLACE_RETRY_DELAYS_MS = [500, 1500];
 
 /**
@@ -72,7 +70,7 @@ export function createSheetsApi(
   http: GoogleHttp,
   settings: GoogleSettings,
   sleep: (ms: number) => Promise<void>,
-): Pick<BridgeClient, 'sheetsExport' | 'sheetsDump'> {
+): Pick<BridgeClient, 'sheetsExport'> {
   function book(): string {
     const id = settings.GOOGLE_SPREADSHEET_ID;
     if (id === '') {
@@ -181,50 +179,6 @@ export function createSheetsApi(
           await sleep(delay);
         }
       }
-    },
-
-    async sheetsDump(sheets?: string[]): Promise<SheetsDump> {
-      if (
-        sheets !== undefined &&
-        (!Array.isArray(sheets) || sheets.some((s) => typeof s !== 'string'))
-      ) {
-        validation('Field sheets harus berupa daftar nama');
-      }
-      const wanted = (await titles('sheetsDump')).filter(
-        (title) =>
-          !title.startsWith(EXPORT_SHEET_PREFIX) &&
-          (sheets === undefined || sheets.includes(title)),
-      );
-      const tables: SheetsDump = {};
-      for (let i = 0; i < wanted.length; i += DUMP_BATCH) {
-        const batch = wanted.slice(i, i + DUMP_BATCH);
-        const params = new URLSearchParams({
-          valueRenderOption: 'UNFORMATTED_VALUE',
-          majorDimension: 'ROWS',
-        });
-        for (const title of batch) params.append('ranges', quote(title));
-        const response = await http.request({
-          op: 'sheetsDump',
-          method: 'GET',
-          url: `${book()}/values:batchGet?${params.toString()}`,
-          idempotent: true,
-        });
-        if (!response.ok) return failResponse('sheetsDump', response);
-        const { valueRanges = [] } = (await response.json()) as {
-          valueRanges?: Array<{ values?: unknown[][] }>;
-        };
-        batch.forEach((title, index) => {
-          const rows = (valueRanges[index]?.values ?? []).map((row) =>
-            row.map((cell) => String(cell ?? '')),
-          );
-          // Sheets membuang sel kosong di ujung baris: ratakan jadi persegi panjang (seperti getDataRange).
-          const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
-          tables[title] = rows.map((row) =>
-            row.length < width ? [...row, ...Array(width - row.length).fill('')] : row,
-          );
-        });
-      }
-      return tables;
     },
   };
 }

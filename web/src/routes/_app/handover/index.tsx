@@ -41,10 +41,16 @@ function HandoversPage() {
           replace: true,
         })
       }
-      onDeletedChange={(next) =>
+      // Satu navigasi untuk perubahan gabungan (mis. keluar dari Terhapus sambil memilih status).
+      onViewChange={(patch) =>
         void navigate({
           to: '/handover',
-          search: searchFromStatus(status, loc, customers, next),
+          search: searchFromStatus(
+            patch.status ?? status,
+            loc,
+            patch.customers ?? customers,
+            patch.deleted ?? deleted,
+          ),
           replace: true,
         })
       }

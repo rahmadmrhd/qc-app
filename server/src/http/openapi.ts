@@ -43,8 +43,6 @@ export interface OpenApiOperation {
   parameters: Array<Record<string, unknown>>;
   requestBody?: Record<string, unknown>;
   responses: Record<string, Record<string, unknown>>;
-  /** Hanya rute sinkron: menimpa keamanan global (sesi) dengan token Bearer. */
-  security?: Array<Record<string, string[]>>;
   'x-permission': string;
 }
 

@@ -181,9 +181,11 @@ export async function getSerialCase(
     dto.closedOn === null
       ? null
       : await env.DB.prepare(
-          "SELECT actor_name, actor_team FROM serial_events WHERE case_id = ? AND type IN ('declare_broken', 'recheck_pass') ORDER BY seq DESC LIMIT 1",
+          // `serial_id` di depan agar indeks `serial_events_case (serial_id, case_id, seq)` dapat dipakai (tanpanya
+          // pencarian memindai seluruh `serial_events`).
+          "SELECT actor_name, actor_team FROM serial_events WHERE serial_id = ? AND case_id = ? AND type IN ('declare_broken', 'recheck_pass') ORDER BY seq DESC LIMIT 1",
         )
-          .bind(input.id)
+          .bind(found.serial_id, input.id)
           .first<{ actor_name: string; actor_team: string }>();
   return {
     ...dto,

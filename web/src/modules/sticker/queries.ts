@@ -241,7 +241,15 @@ export function useRestoreStickers() {
 
 /** Padanan untuk jenis: baris jenis dipasang langsung; daftar stiker (memuat nama/penanda jenis) ditandai basi. */
 function applyTypeResults(queryClient: QueryClient, saved: readonly StickerTypeDto[]): void {
-  markStale(queryClient, stickerKeys.list, stickerKeys.settings, accessKeys.audit);
+  // Baris stok memuat status/nama jenis stiker, jadi daftar stok dan riwayat ikut basi.
+  markStale(
+    queryClient,
+    stickerKeys.list,
+    stickerKeys.stocks,
+    ['sticker', 'history'],
+    stickerKeys.settings,
+    accessKeys.audit,
+  );
   replaceInList(queryClient, stickerKeys.types, saved);
   for (const type of saved) queryClient.setQueryData(stickerKeys.typeOne(type.id), type);
 }
@@ -259,10 +267,15 @@ export function useRemoveStickerTypes() {
   return useMutation({
     mutationFn: (input: { ids: string[] }) => api('stickerTypes.removeBatch', input),
     onSuccess: (result) => {
-      markStale(queryClient, stickerKeys.list, stickerKeys.settings, accessKeys.audit, [
-        ...stickerKeys.types,
-        'deleted',
-      ]);
+      markStale(
+        queryClient,
+        stickerKeys.list,
+        stickerKeys.stocks,
+        ['sticker', 'history'],
+        stickerKeys.settings,
+        accessKeys.audit,
+        [...stickerKeys.types, 'deleted'],
+      );
       for (const id of result.ids) {
         removeFromList<StickerTypeDto>(queryClient, stickerKeys.types, id);
         markStale(queryClient, stickerKeys.typeOne(id));
@@ -279,6 +292,8 @@ export function useRestoreStickerTypes() {
       markStale(
         queryClient,
         stickerKeys.list,
+        stickerKeys.stocks,
+        ['sticker', 'history'],
         stickerKeys.types,
         stickerKeys.settings,
         accessKeys.audit,

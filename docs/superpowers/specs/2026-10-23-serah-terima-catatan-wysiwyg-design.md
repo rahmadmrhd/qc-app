@@ -87,6 +87,7 @@ Perubahan terjadi saat paste di editor, memakai aturan mekanis (tanpa memahami i
 - Boleh oleh siapa pun yang punya akses **lihat** ke lokasi task (WH atau QC, termasuk yang hanya bisa melihat). Hanya menambah: tidak ada ubah, hapus, atau balasan bersarang **[pilihan saya]**.
 - Bila teks kutipan kemudian berubah atau hilang, komentar ditandai **usang** tetapi tetap tampil dengan kutipan aslinya; kutipan usang tidak ditandai seolah masih valid. Mengubah urutan atau mencentang tidak memindahkan komentar.
 - Batas: isi komentar 1.000 karakter, maksimal 50 komentar per task **[pilihan saya]**. Isi komentar dirender aman (tanpa HTML).
+- **Batas yang diketahui, diterima pemilik produk 2026-11-24 (hasil review audit; `locateAnchor` dan regex `noteToPlainText` di `shared/handover-comments.ts` sengaja DIBIARKAN tidak diubah):** pada catatan 5.000 karakter yang sangat berulang dengan banyak komentar, pencarian jangkar komentar bersifat superlinear (diukur sekitar 20 kali lebih lambat daripada kasus normal pada masukan yang sengaja dibuat jahat: 50 jangkar ≈ 63 ms berbanding ≈ 3 ms). Biayanya dibatasi oleh batas catatan 5.000 karakter dan 50 komentar per task (§12 butir 8), jadi tidak tumbuh tanpa batas; tidak ada pembatas kandidat atau perbaikan regex yang direncanakan. Bila kelak batas catatan atau komentar dinaikkan, tinjau ulang keputusan ini.
 
 ### 4.6 Daftar (kanban/kartu) dan detail
 - **Desktop:** kanban empat kolom **Baru, Dikerjakan, Selesai, Dibatalkan** menurut status. Kartu berpindah kolom sendiri saat centang berubah; tanpa drag-and-drop.

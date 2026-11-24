@@ -34,6 +34,24 @@ export function createReloadGate(deps: ReloadGateDeps): ReloadGate {
     timer = null;
   };
 
+  function notifyIdle(): void {
+    if (pendingUrl === null) return;
+    clear();
+    timer = setTimeout(() => {
+      timer = null;
+      if (pendingUrl === null) return;
+      // Inject masih/lagi berjalan (mis. Multi dihentikan saat sesi SSH belum selesai menutup): jangan
+      // tertinggal selamanya, jadwalkan ulang masa tenang sampai benar-benar idle.
+      if (deps.isInjecting()) {
+        notifyIdle();
+        return;
+      }
+      const url = pendingUrl;
+      pendingUrl = null;
+      deps.load(url);
+    }, deps.settleMs);
+  }
+
   return {
     load(url) {
       if (deps.isInjecting()) {
@@ -46,18 +64,7 @@ export function createReloadGate(deps: ReloadGateDeps): ReloadGate {
       deps.load(url);
       return 'now';
     },
-    notifyIdle() {
-      if (pendingUrl === null) return;
-      clear();
-      timer = setTimeout(() => {
-        timer = null;
-        // Inject lain mungkin dimulai selama masa tenang: tunggu idle berikutnya.
-        if (deps.isInjecting() || pendingUrl === null) return;
-        const url = pendingUrl;
-        pendingUrl = null;
-        deps.load(url);
-      }, deps.settleMs);
-    },
+    notifyIdle,
     isReloadBlocked: () => deps.isInjecting(),
   };
 }
@@ -73,7 +80,7 @@ export interface KeyInput {
 
 /**
  * Pintasan muat ulang yang diblokir selama inject: F5 (dengan modifier apa pun) dan Ctrl/Cmd+R
- * (juga dengan Shift). Dipakai di `before-input-event` (juga mencegah akselerator menu bawaan).
+ * (juga dengan Shift). Dipakai di `before-input-event`; menu bawaan Electron dibuang di `window.ts` (`removeMenu`), jadi tak ada jalur muat ulang lewat menu.
  */
 export function shouldBlockReloadKey(input: KeyInput, injecting: boolean): boolean {
   if (!injecting || input.type !== 'keyDown') return false;

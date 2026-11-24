@@ -15,7 +15,9 @@ export interface CheckState {
   occurrence: number;
 }
 
-const HANDOVER_CHECK_ITEM_RE = /^- \[([ xX])\] ?(.*)$/;
+// `[^\r\n]*`, bukan `.*`: titik tak mencocokkan U+2028/U+2029, sehingga butir yang memuatnya hilang dari checklist (padahal
+// `split` hanya memecah di CR/LF dan pemilah butir di web, `TOP_LEVEL_ITEM`, tak peduli isi baris).
+const HANDOVER_CHECK_ITEM_RE = /^- \[([ xX])\] ?([^\r\n]*)$/;
 
 /** Butir checklist tingkat atas (tanpa indentasi), berurutan; `text` berbentuk kanonis. */
 export function extractChecklist(note: string): ChecklistEntry[] {

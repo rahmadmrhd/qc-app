@@ -159,7 +159,7 @@ function validItem(entry: unknown): boolean {
     isArrayOf(entry.aliases, 100, isString) &&
     (entry.firmware === undefined ||
       (isString(entry.firmware) && entry.firmware.length <= FIRMWARE_CODE_MAX)) &&
-    Array.isArray(entry.businessUnits) &&
+    isArrayOf(entry.businessUnits, CATALOG_LIMITS.targets, validRef) &&
     isArrayOf(entry.stickerIds, CATALOG_LIMITS.stickers, isString) &&
     isArrayOf(entry.stickerPhotos, 100, validPhoto)
   );

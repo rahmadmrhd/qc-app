@@ -1,5 +1,6 @@
 import { MAX_FILE_BYTES } from './files';
 import { hashText } from './items';
+import { wibParts } from './wib';
 
 export const QR_LIMITS = {
   title: 60,
@@ -210,8 +211,9 @@ export function manualBookFileName(name: string, stampMs: string): string {
  * karakter yang bermasalah untuk nama berkas diganti spasi, bagian title/subtitle dibatasi agar total <= 120).
  */
 export function qrPdfFileName(title: string, subtitle: string, nowMs: number): string {
-  const wib = new Date(nowMs + 7 * 3600 * 1000).toISOString();
-  const stamp = `${wib.slice(0, 10).replace(/-/g, '')}-${wib.slice(11, 19).replace(/:/g, '')}`;
+  const wib = wibParts(nowMs);
+  const two = (value: number) => String(value).padStart(2, '0');
+  const stamp = `${String(wib.year).padStart(4, '0')}${two(wib.month)}${two(wib.day)}-${two(wib.hour)}${two(wib.minute)}${two(wib.second)}`;
   const clean = (text: string) =>
     text
       .split('')

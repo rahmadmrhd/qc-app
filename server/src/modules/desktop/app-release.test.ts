@@ -136,6 +136,30 @@ describe('createReleaseReader.latest', () => {
     expect((await r.latest('x64'))?.version).toBe('1.2.0');
   });
 
+  test('hasil resolve dari indeks yang sudah digantikan tidak disimpan (versi yang ditarik tak hidup lagi dari memo)', async () => {
+    await seed('1.1.0');
+    await seed('1.2.0');
+    const r = reader(1000);
+    const listing = await bridge.listFolder(FOLDER);
+    const sigId = listing.files.find((file) => file.name === signatureFileName('1.2.0'))?.id ?? '';
+    const original = bridge.readFile.bind(bridge);
+    let reads = 0;
+    // Pembacaan kedua (.sig 1.2.0): selagi pembacaan itu "berjalan", rilis 1.2.0 ditarik (.sig dihapus) dan indeks
+    // diperbarui oleh permintaan lain. Hasil build yang lama (masih utuh) tak boleh masuk memo indeks baru.
+    bridge.readFile = async (fileId, folderId) => {
+      const file = await original(fileId, folderId);
+      reads += 1;
+      if (reads === 2) {
+        now += 5000;
+        await bridge.deleteFile(sigId);
+        await r.latest('x64');
+      }
+      return file;
+    };
+    await r.latest('x64');
+    expect((await r.latest('x64'))?.version).toBe('1.1.0');
+  });
+
   test('hasil dimemo sampai ttl; sesudahnya folder dibaca ulang', async () => {
     await seed('1.1.0');
     const r = reader(1000);

@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
+import { stripComments } from './strip-comments';
 
 // Aturan redesain (spek 2026-11-20 §6.4): setiap halaman memakai kerangka kit (`ListPage`, `ViewPage`, `FormPage`,
 // atau `KanbanBoard`), bukan kerangka sendiri. Tes ini memeriksa tiap berkas rute di `web/src/routes`: kerangka harus
@@ -88,10 +89,6 @@ function resolveImport(from: string, spec: string): string | null {
     if (existsSync(candidate)) return candidate;
   }
   return null;
-}
-
-function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
 /** Impor satu modul: spesifier dan nama lokal yang dibawanya (`{ A, B as C }`, bawaan, atau `* as ns`). */

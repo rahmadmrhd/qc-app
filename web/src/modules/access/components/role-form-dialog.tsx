@@ -1,7 +1,8 @@
 import type { RoleDto, SaveRoleInput } from '@shared/contract';
 import { useState } from 'react';
 import { FormDialogShell } from '@/components/form-dialog-shell';
-import { describeError } from '@/lib/api/describe-error';
+import { useFrozen } from '@/hooks/use-frozen';
+import { describeSaveError } from '../lib/stale';
 import { toRoleFormDefaults } from '../schemas';
 import { RoleForm } from './role-form';
 
@@ -17,7 +18,7 @@ export interface RoleFormDialogProps {
 }
 
 function RoleDialogBody({
-  role,
+  role: liveRole,
   onSave,
   onClose,
   onBusyChange,
@@ -27,15 +28,19 @@ function RoleDialogBody({
   onClose: () => void;
   onBusyChange: (busy: boolean) => void;
 }) {
+  // Rekaman dibekukan saat badan dialog terpasang (hanya saat dialog terbuka): isi form dan versi (`updatedAt`) yang dikirim
+  // sebagai `expectedUpdatedAt` selalu pasangan yang sama, walau query record dimuat ulang (polling 30 dtk, invalidasi
+  // setelah 412). Buka-tutup-buka = rekaman segar.
+  const role = useFrozen(liveRole);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   async function handleSubmit(values: Omit<SaveRoleInput, 'id'>) {
     setSubmitError(null);
     try {
-      await onSave(role ? { ...values, id: role.id } : values);
+      await onSave(role ? { ...values, id: role.id, expectedUpdatedAt: role.updatedAt } : values);
       onClose();
     } catch (error) {
-      setSubmitError(describeError(error));
+      setSubmitError(describeSaveError(error));
     }
   }
 

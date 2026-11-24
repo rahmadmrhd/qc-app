@@ -8,30 +8,51 @@ const RM_NAMES = ['rm', 'rmSync', 'rmdir', 'rmdirSync'];
  */
 export function stripSource(source: string, blankStrings: boolean): string {
   let out = '';
+  let runStart = 0; // awal rentang kode biasa yang belum disalin ke `out` (disalin per rentang, bukan per karakter)
   let i = 0;
   let prev = ''; // karakter bermakna terakhir di luar komentar/spasi (untuk menebak regex vs pembagian)
-  let prevWord = '';
+  let prevAt = -1; // indeks `prev` bila berupa karakter kata (untuk `return`/`typeof`), selain itu -1
   const n = source.length;
-  const regexAllowed = () =>
-    prev === '' ||
-    '(,=:[!&|?{};+-*%<>~^'.includes(prev) ||
-    prevWord === 'return' ||
-    prevWord === 'typeof';
+  const isWord = (code: number) =>
+    (code >= 48 && code <= 57) ||
+    (code >= 65 && code <= 90) ||
+    code === 95 ||
+    (code >= 97 && code <= 122);
+  const prevWord = (): string => {
+    if (prevAt < 0) return '';
+    let k = prevAt;
+    while (k > 0 && isWord(source.charCodeAt(k - 1))) k--;
+    return source.slice(k, prevAt + 1);
+  };
+  const regexAllowed = () => {
+    if (prev === '' || '(,=:[!&|?{};+-*%<>~^'.includes(prev)) return true;
+    const word = prevWord();
+    return word === 'return' || word === 'typeof';
+  };
+  const flush = (upTo: number) => {
+    if (upTo > runStart) out += source.slice(runStart, upTo);
+  };
   while (i < n) {
+    const code = source.charCodeAt(i);
     const c = source[i] as string;
     const d = source[i + 1];
-    if (c === '/' && d === '/') {
+    if (code === 47 && d === '/') {
+      flush(i);
       while (i < n && source[i] !== '\n') i++;
+      runStart = i;
       continue;
     }
-    if (c === '/' && d === '*') {
+    if (code === 47 && d === '*') {
+      flush(i);
       const end = source.indexOf('*/', i + 2);
       const stop = end === -1 ? n : end + 2;
       out += source.slice(i, stop).replace(/[^\n]/g, ' ');
       i = stop;
+      runStart = i;
       continue;
     }
     if (c === '"' || c === "'" || c === '`') {
+      flush(i);
       let j = i + 1;
       while (j < n && source[j] !== c) {
         if (source[j] === '\\') j++;
@@ -41,11 +62,12 @@ export function stripSource(source: string, blankStrings: boolean): string {
       const body = source.slice(i + 1, j);
       out += blankStrings ? c + body.replace(/[^\n]/g, ' ') + c : source.slice(i, j + 1);
       i = j + 1;
+      runStart = i;
       prev = c;
-      prevWord = '';
+      prevAt = -1;
       continue;
     }
-    if (c === '/' && regexAllowed()) {
+    if (code === 47 && regexAllowed()) {
       let j = i + 1;
       let inClass = false;
       while (j < n && source[j] !== '\n') {
@@ -56,26 +78,24 @@ export function stripSource(source: string, blankStrings: boolean): string {
         j++;
       }
       if (source[j] === '/') {
+        flush(i);
         out += blankStrings
           ? `/${source.slice(i + 1, j).replace(/[^\n]/g, ' ')}/`
           : source.slice(i, j + 1);
         i = j + 1;
+        runStart = i;
         prev = '/';
-        prevWord = '';
+        prevAt = -1;
         continue;
       }
     }
-    out += c;
-    if (!/\s/.test(c)) {
+    if (code > 32 && !(code >= 127 && /\s/.test(c))) {
       prev = c;
-      if (/\w/.test(c)) {
-        let k = i;
-        while (k > 0 && /\w/.test(source[k - 1] as string)) k--;
-        prevWord = source.slice(k, i + 1);
-      } else prevWord = '';
+      prevAt = isWord(code) ? i : -1;
     }
     i++;
   }
+  flush(n);
   return out;
 }
 
@@ -110,7 +130,7 @@ function topLevelArgs(args: string): string[] {
 
 /** Pemeriksaan murah sebelum parsing mahal: berkas tanpa jejak penghapusan tak perlu dipindai. */
 const CHEAP_HINT =
-  /\b(?:rm|rmSync|rmdir|rmdirSync|rimraf)\b|['"]rm(?:Sync|dir|dirSync)['"]|Remove-Item/;
+  /\b(?:rm|rmSync|rmdir|rmdirSync|rimraf|rd|del)\b|['"]rm(?:Sync|dir|dirSync)['"]|Remove-Item/;
 
 const RAW_CALL = /(?<![\w$])(?:rm|rmSync|rmdir|rmdirSync)\s*\(/g; // juga pemanggilan anggota (`fs.rmSync(`, `x.promises.rm(`)
 
@@ -135,10 +155,23 @@ export function findRawRm(source: string): string[] {
   const names = new Set(RM_NAMES);
   for (const m of code.matchAll(new RegExp(`\\b(?:${RM_NAMES.join('|')})\\s+as\\s+(\\w+)`, 'g')))
     names.add(m[1] as string);
+  // Alias lewat destructuring-rename (`const { rmSync: hapus } = fs`) dan penugasan (`const hapus = fs.rmSync`).
+  for (const m of code.matchAll(new RegExp(`\\b(?:${RM_NAMES.join('|')})\\s*:\\s*([\\w$]+)`, 'g')))
+    names.add(m[1] as string);
+  for (const m of code.matchAll(
+    new RegExp(
+      `([\\w$]+)\\s*=\\s*(?:[\\w$]+\\s*\\.\\s*)*(?:${RM_NAMES.join('|')})\\b(?!\\s*[(\\w])`,
+      'g',
+    ),
+  ))
+    names.add(m[1] as string);
 
-  const checkCall = (label: string, text: string) => {
+  // `strText` = teks pemanggilan yang SAMA pada sumber yang mempertahankan string (indeks sejajar: pembuang komentar
+  // tak mengubah panjang): kunci berkutip `'recursive': true` hanya terlihat di sana.
+  const checkCall = (label: string, text: string, strText = '') => {
     const second = topLevelArgs(text)[1];
-    if (/\brecursive\b/.test(text)) found.push(`${label}(... recursive)`);
+    if (/\brecursive\b/.test(text) || /['"`]recursive['"`]\s*:/.test(strText))
+      found.push(`${label}(... recursive)`);
     else if (second !== undefined && (!second.startsWith('{') || second.includes('...')))
       found.push(`${label}(..., opsi bukan literal objek murni)`);
   };
@@ -147,7 +180,8 @@ export function findRawRm(source: string): string[] {
   const member = new RegExp(`\\.\\s*(${RM_NAMES.join('|')})\\s*\\(`, 'g');
   for (const re of [bare, member]) {
     for (const m of code.matchAll(re)) {
-      checkCall(m[1] as string, callText(code, (m.index ?? 0) + m[0].length - 1));
+      const open = (m.index ?? 0) + m[0].length - 1;
+      checkCall(m[1] as string, callText(code, open), callText(withStrings, open));
     }
   }
   // akses kurung: string kuncinya hidup di teks yang mempertahankan string
@@ -157,13 +191,17 @@ export function findRawRm(source: string): string[] {
   }
 
   // Shell hanya dihitung bila dijalankan.
-  const shellRm = /\brm\s+-[A-Za-z]*[rR]|Remove-Item[^\n'"`]*-Recurse|\brimraf\b/i;
+  // `rm` dengan bendera rekursif di posisi mana pun (`-rf`, `-f -r`, `--force --recursive`), `Remove-Item -Recurse`/`-r`,
+  // `rd`/`rmdir`/`del` dengan `/s`, dan `rimraf`.
+  const shellRm =
+    /\brm\s+(?:-{1,2}[\w-]+\s+)*?(?:-[A-Za-z]*[rR][A-Za-z]*|--recursive)\b|Remove-Item[^\n'"`]*\s-r(?:ec\w*)?\b|\b(?:rd|rmdir|del)\s+(?:\S+\s+)*?\/s\b|\brimraf\b/i;
   const argvRm = /['"`]rm['"`]\s*,[^\]]*?['"`](?:-[A-Za-z]*[rR][A-Za-z]*|--recursive)['"`]/;
-  const argvRemoveItem = /['"`]Remove-Item['"`][^\]]*?['"`]-Recurse['"`]/i;
+  const argvRemoveItem = /['"`]Remove-Item['"`][^\]]*?['"`]-r(?:ec\w*)?['"`]/i;
+  const argvRd = /['"`](?:rd|rmdir|del)['"`]\s*,[^\]]*?['"`]\/s['"`]/i;
   const runner = /(?<![\w$])(?:exec|execSync|execFile|execFileSync|spawn|spawnSync)\s*\(/g;
   for (const m of withStrings.matchAll(runner)) {
     const text = callText(withStrings, (m.index ?? 0) + m[0].length - 1);
-    if (shellRm.test(text) || argvRm.test(text) || argvRemoveItem.test(text))
+    if (shellRm.test(text) || argvRm.test(text) || argvRemoveItem.test(text) || argvRd.test(text))
       found.push('shell rekursif lewat exec/spawn');
   }
   for (const m of withStrings.matchAll(/\$`([^`]*)`/g)) {

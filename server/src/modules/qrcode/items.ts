@@ -73,11 +73,39 @@ export async function listAttachedItems(db: Db): Promise<Map<string, AttachedIte
  * ini agar item terhapus tampil bertanda "Terhapus" dan tetap terpasang saat simpan (rujukan tersimpan, T1). Pemanggil
  * wajib memisahkan `deleted` sebelum menghitung atau menurunkan apa pun.
  */
-export async function listLinkedItems(db: Db): Promise<Map<string, AttachedItem[]>> {
+export async function listLinkedItems(
+  db: Db,
+  /** Bila diberikan, hanya item konfigurasi-konfigurasi ini yang dibaca (tampilan satu konfigurasi tak menyapu semua). */
+  designIds?: readonly string[],
+): Promise<Map<string, AttachedItem[]>> {
+  if (designIds === undefined) {
+    const rows = await db
+      .prepare(`${ATTACHED_SELECT} WHERE i.manual_book_design_id <> ''`)
+      .all<AttachedRow>();
+    return groupByDesign(rows.results);
+  }
+  const unique = [...new Set(designIds)];
+  const byDesign = new Map<string, AttachedItem[]>();
+  for (let from = 0; from < unique.length; from += 500) {
+    const chunk = unique.slice(from, from + 500);
+    const rows = await db
+      .prepare(
+        `${ATTACHED_SELECT} WHERE i.manual_book_design_id IN (${chunk.map(() => '?').join(',')})`,
+      )
+      .bind(...chunk)
+      .all<AttachedRow>();
+    for (const [designId, list] of groupByDesign(rows.results)) byDesign.set(designId, list);
+  }
+  return byDesign;
+}
+
+/** Item HIDUP satu konfigurasi (versi sempit `listAttachedItems`; memakai indeks `manual_book_design_id`). */
+export async function listAttachedItemsOf(db: Db, designId: string): Promise<AttachedItem[]> {
   const rows = await db
-    .prepare(`${ATTACHED_SELECT} WHERE i.manual_book_design_id <> ''`)
+    .prepare(`${ATTACHED_SELECT} WHERE ${liveWhere('i')} AND i.manual_book_design_id = ?`)
+    .bind(designId)
     .all<AttachedRow>();
-  return groupByDesign(rows.results);
+  return groupByDesign(rows.results).get(designId) ?? [];
 }
 
 function groupByDesign(results: readonly AttachedRow[]): Map<string, AttachedItem[]> {
@@ -257,13 +285,21 @@ export interface LatestVersion {
 }
 
 /** Versi Manual Book TERBARU tiap konfigurasi beserta status stikernya (satu kueri). */
-export async function latestVersionsByDesign(db: Db): Promise<Map<string, LatestVersion>> {
+export async function latestVersionsByDesign(
+  db: Db,
+  /** Bila diberikan, hanya konfigurasi-konfigurasi ini (tampilan satu konfigurasi tak menyapu semua versi). */
+  designIds?: readonly string[],
+): Promise<Map<string, LatestVersion>> {
+  const result = new Map<string, LatestVersion>();
+  if (designIds !== undefined && designIds.length === 0) return result;
+  const only =
+    designIds === undefined ? '' : ` AND mv.design_id IN (${designIds.map(() => '?').join(',')})`;
   const rows = await db
     .prepare(
-      'SELECT mv.design_id, mv.version, s.status FROM manual_book_versions mv LEFT JOIN stickers s ON s.id = mv.sticker_id WHERE mv.version = (SELECT MAX(x.version) FROM manual_book_versions x WHERE x.design_id = mv.design_id)',
+      `SELECT mv.design_id, mv.version, s.status FROM manual_book_versions mv LEFT JOIN stickers s ON s.id = mv.sticker_id WHERE mv.version = (SELECT MAX(x.version) FROM manual_book_versions x WHERE x.design_id = mv.design_id)${only}`,
     )
+    .bind(...(designIds ?? []))
     .all<{ design_id: string; version: number | string; status: string | null }>();
-  const result = new Map<string, LatestVersion>();
   for (const row of rows.results) {
     const status = (row.status ?? '').trim();
     result.set(row.design_id.trim(), {

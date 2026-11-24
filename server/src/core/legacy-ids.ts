@@ -19,7 +19,7 @@
 //   - Galat basis data selain "tabel tak ada" TIDAK ditelan (`UNAVAILABLE` seperti rute lain).
 //   - Batas kerja per permintaan: 2.000 kandidat unik, dicari per 500; kedalaman struktur 20. Kelebihannya dibiarkan.
 //
-// Lapisan dicabut lewat PR setelah masa pantau satu minggu dan sapu akhir skrip (spek bagian 4a, "Pencabutan"). JANGAN
+// Lapisan dicabut lewat PR setelah masa pantau dua hari (keputusan pemilik 2026-11-23) dan sapu akhir skrip (spek bagian 4a, "Pencabutan"). JANGAN
 // memperluasnya menjadi pembuat tabel peta atau penulis ulang data.
 
 import { LEGACY_UUID_PATTERN } from '@shared/ids';

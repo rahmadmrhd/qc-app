@@ -1,6 +1,7 @@
 import type { ApplyStickersBatchInput } from '@shared/contract';
 import { useCallback, useSyncExternalStore } from 'react';
 import { ApiError } from '@/lib/api/api-error';
+import { newUuid } from '@/lib/uuid';
 
 /**
  * Niat kirim Tempel stiker massal yang hasilnya BELUM JELAS (koneksi putus, server tak menjawab, 5xx): tulis server bisa
@@ -29,7 +30,7 @@ export function newPendingApplyStickers(
   input: Omit<ApplyStickersBatchInput, 'clientId'>,
   serialNumbers: readonly string[] = [],
 ): PendingApplyStickers {
-  const clientId = crypto.randomUUID();
+  const clientId = newUuid();
   return { clientId, input: { ...input, clientId }, sample: serialNumbers.slice(0, SAMPLE_MAX) };
 }
 

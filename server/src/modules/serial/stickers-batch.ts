@@ -139,13 +139,16 @@ export async function applyStickersBatch(
     // dapat berkomit di antara percobaan, dan percobaan ulang harus melihatnya.
     consistency ??= assertReplayConsistent(env, input, user);
     const isReplay = await consistency;
+    // Kiriman ulang sah (semua kejadian ada dan identik): hasil tersimpan dikembalikan SEBELUM hak/keberadaan serial
+    // diperiksa ulang. Komit pertama sudah memeriksanya; serial yang kemudian dihapus atau keluar dari cakupan pengguna
+    // tak boleh menggagalkan kiriman ulang (pengguna mengira gagal lalu mengirim dengan `clientId` baru = stok terpotong
+    // dua kali). Keputusan pemilik 2026-11-23.
+    if (isReplay) return { unchanged: id };
     const row = await loadSerialRow(env.DB, id);
     if (!row) throw appError('NOT_FOUND', NOT_FOUND);
     const buId = row.bu_id.trim();
     assertSerialVisible(user, buId);
     const serialId = row.id.trim();
-    // Kiriman ulang sah (semua kejadian ada dan identik): tanpa efek baru.
-    if (isReplay) return { unchanged: serialId };
     const eventClientId = `${input.clientId}:${serialId}`;
     // Pemeriksaan tadi tidak menemukan kejadian, tetapi kini ada: permintaan lain berkomit di antaranya = balapan.
     const raced = await env.DB.prepare('SELECT 1 AS found FROM serial_events WHERE client_id = ?')

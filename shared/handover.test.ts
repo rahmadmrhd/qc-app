@@ -5,7 +5,6 @@ import {
   deriveHandoverStatus,
   HANDOVER_LIMITS,
   handoverNumber,
-  nextHandoverSequence,
 } from './handover';
 
 test('deriveHandoverStatus: Baru, Dikerjakan, Selesai, Dibatalkan', () => {
@@ -24,15 +23,10 @@ test('dateKeyOf memakai zona WIB (UTC+7): lewat tengah malam WIB sudah hari beri
   expect(dateKeyOf(Date.parse('2026-12-31T20:00:00.000Z'))).toBe('20270101');
 });
 
-test('nomor task ST-YYYYMMDD-NNN dan urutan berikutnya per hari', () => {
+test('nomor task ST-YYYYMMDD-NNN', () => {
   expect(handoverNumber('20261015', 1)).toBe('ST-20261015-001');
   expect(handoverNumber('20261015', 42)).toBe('ST-20261015-042');
   expect(handoverNumber('20261015', 1234)).toBe('ST-20261015-1234');
-  expect(nextHandoverSequence([], '20261015')).toBe(1);
-  expect(
-    nextHandoverSequence(['ST-20261015-001', 'ST-20261015-007', 'ST-20261014-099'], '20261015'),
-  ).toBe(8);
-  expect(nextHandoverSequence(['ST-20261014-099', 'rusak', 'ST-20261015-abc'], '20261015')).toBe(1);
 });
 
 test('batas task', () => {

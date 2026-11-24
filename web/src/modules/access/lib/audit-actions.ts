@@ -184,5 +184,10 @@ export function auditActionLabel(action: string): string {
 export function formatAuditTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso || '—';
-  return date.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'medium' });
+  // Tampilan audit memakai detik; zona WIB seperti semua waktu sistem lain.
+  return date.toLocaleString('id-ID', {
+    dateStyle: 'medium',
+    timeStyle: 'medium',
+    timeZone: 'Asia/Jakarta',
+  });
 }

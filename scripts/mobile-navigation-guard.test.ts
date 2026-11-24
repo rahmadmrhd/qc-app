@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { stripComments } from './strip-comments';
 
 // Aturan project (CLAUDE.md, "Navigasi ponsel"; spek redesain butir 41): riwayat peramban adalah tumpukan layar.
 // (1) overlay modal (dialog, alert dialog, sheet, lembar pilihan, mode pilih) menyisipkan satu entri riwayat lewat
@@ -21,8 +22,6 @@ function walk(dir: string, found: string[] = []): string[] {
 }
 
 const rel = (file: string) => relative(ROOT, file).replaceAll('\\', '/');
-const stripComments = (source: string) =>
-  source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 
 /** Teks pemanggilan dari `needle` (mis. `navigate(`) sampai kurung penutup seimbang. */
 function callsOf(source: string, needle: string): string[] {

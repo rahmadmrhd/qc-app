@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
+import { stripComments } from './strip-comments';
 
 // Aturan redesain (spek 2026-11-20 §6.1): UI memakai token warna semantik (`success`, `warning`, `info`,
 // `destructive`, `secondary`, `muted`, ...), bukan kelas palet Tailwind mentah. Warna yang merupakan DATA
@@ -33,10 +34,6 @@ function walk(dir: string, found: string[] = [], ignored: Set<string> = IGNORED_
     else if (/\.tsx?$/.test(path) && !/\.test\.tsx?$/.test(path)) found.push(path);
   }
   return found;
-}
-
-function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
 test('tak ada kelas warna palet Tailwind mentah di web/src (di luar components/ui dan ALLOWED)', () => {

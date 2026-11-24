@@ -1,4 +1,5 @@
 import { isKeyChar } from './items';
+import { wibParts } from './wib';
 
 /** Batas task serah terima (PRD FH2). */
 export const HANDOVER_LIMITS = {
@@ -43,32 +44,14 @@ export function deriveHandoverStatus(
   return 'new';
 }
 
-const HANDOVER_WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
-
-/** Tanggal `YYYYMMDD` menurut WIB (UTC+7), zona proyek (`appsscript.json`). */
+/** Tanggal `YYYYMMDD` menurut WIB (UTC+7), zona proyek. */
 export function dateKeyOf(epochMs: number): string {
-  const date = new Date(epochMs + HANDOVER_WIB_OFFSET_MS);
-  const year = String(date.getUTCFullYear()).padStart(4, '0');
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  return `${year}${month}${day}`;
+  const { year, month, day } = wibParts(epochMs);
+  return `${String(year).padStart(4, '0')}${String(month).padStart(2, '0')}${String(day).padStart(2, '0')}`;
 }
 
 export function handoverNumber(dateKey: string, sequence: number): string {
   return `ST-${dateKey}-${String(sequence).padStart(3, '0')}`;
-}
-
-/** Urutan berikutnya untuk hari itu: maksimum urutan yang ada + 1 (nomor rusak diabaikan). */
-export function nextHandoverSequence(numbers: readonly string[], dateKey: string): number {
-  const prefix = `ST-${dateKey}-`;
-  let max = 0;
-  for (const number of numbers) {
-    if (!number.startsWith(prefix)) continue;
-    const tail = number.slice(prefix.length);
-    if (tail === '' || [...tail].some((ch) => ch < '0' || ch > '9')) continue;
-    max = Math.max(max, Number(tail));
-  }
-  return max + 1;
 }
 
 /**

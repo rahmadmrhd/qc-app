@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label';
 import { useIsDesktop } from '@/hooks/use-is-desktop';
 import { describeError } from '@/lib/api/describe-error';
 import { cn } from '@/lib/utils';
+import { newUuid } from '@/lib/uuid';
 import { useMe } from '@/modules/auth/use-me';
 import { useOptionalActiveLocations } from '@/modules/location/active-locations-context';
 import {
@@ -150,9 +151,7 @@ const AUTOSAVE_DELAY_MS = 500;
 const LOOKUP_DELAY_MS = 250;
 
 function newClientId(): string {
-  const random = globalThis.crypto?.randomUUID?.();
-  if (random) return random;
-  return `row-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+  return newUuid();
 }
 
 const nowIso = () => new Date().toISOString();

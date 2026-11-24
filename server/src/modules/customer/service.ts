@@ -1,5 +1,6 @@
 import type { AuditInput } from '@server/core/audit';
 import { writeAudit } from '@server/core/audit';
+import { runCas } from '@server/core/cas';
 import type { ActorRef } from '@server/core/context';
 import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
@@ -13,6 +14,7 @@ import {
   planSoftDelete,
   planStatusChange,
 } from '@server/core/record-lifecycle';
+import { versionGuardStmt } from '@server/core/soft-delete';
 import type { UserContext } from '@server/modules/access/context';
 import { batchWrite } from '@server/modules/access/repo';
 import type {
@@ -220,16 +222,30 @@ export async function resolveCustomerByName(
   }
 }
 
-export async function renameCustomer(
+/**
+ * Ganti nama customer. Dijaga CAS versi (`updated_at`) dan keadaan hidup di dalam batch: hapus serentak atau ganti
+ * nama serentak tidak menimpa diam-diam (baris yang sudah terhapus tak menerima nama/key baru); percobaan diulang
+ * dengan membaca ulang keadaan (`runCas`).
+ */
+export function renameCustomer(
   env: Env,
   input: RenameCustomerInput,
   actor: ActorRef,
 ): Promise<CustomerDto> {
-  const customers = await listCustomers(env);
-  const existing = customers.find((customer) => customer.id === input.id);
-  if (!existing) throw appError('NOT_FOUND', CUSTOMER_NOT_FOUND);
+  return runCas(() => renameCustomerOnce(env, input, actor), CUSTOMER_STALE);
+}
+
+async function renameCustomerOnce(
+  env: Env,
+  input: RenameCustomerInput,
+  actor: ActorRef,
+): Promise<CustomerDto> {
+  // Hanya dua baris yang dibaca (target dan pemegang kunci baru), bukan seluruh daftar customer.
+  const existing = await loadCustomerAny(env, input.id);
+  if (existing?.deletedAt !== '') throw appError('NOT_FOUND', CUSTOMER_NOT_FOUND);
   const key = customerKey(input.name);
-  if (customers.some((customer) => customer.id !== input.id && customer.key === key)) {
+  const holder = await findCustomerByKey(env, key);
+  if (holder && holder.id !== input.id) {
     throw appError('CONFLICT', NAME_TAKEN, { name: NAME_TAKEN });
   }
   if (existing.name === input.name) return toCustomerDto(existing);
@@ -244,6 +260,7 @@ export async function renameCustomer(
   await batchWrite(
     env.DB,
     [
+      versionGuardStmt(env.DB, 'customers', existing.id, existing.updatedAt, 'live'),
       renameCustomerStmt(env.DB, updated),
       writeAudit(env.DB, {
         ts: now,

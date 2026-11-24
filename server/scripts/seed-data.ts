@@ -27,18 +27,41 @@ const iso = (ms: number) => new Date(ms).toISOString();
 const MIN = 60_000;
 const HOUR = 60 * MIN;
 
-/** Tabel yang dikosongkan (anak lebih dulu) sebelum data contoh dimasukkan. Tidak menyentuh `settings`. */
-const RESET_TABLES = [
+/**
+ * Tabel yang dikosongkan (anak lebih dulu) sebelum data contoh dimasukkan. Tidak menyentuh `settings` dan
+ * `schema_migrations`. Setiap tabel data baru WAJIB masuk daftar ini (kalau tidak, `db:seed` berulang meninggalkan
+ * data yatim yang menunjuk ke baris yang sudah dihapus); `seed.test.ts` membandingkannya dengan skema.
+ */
+export const RESET_TABLES = [
   'item_sticker_marks',
   'item_sticker_photos',
   'sticker_guide_images',
   'sticker_stock_entries',
   'sticker_stock',
   'sticker_business_units',
+  'postel_numbers',
+  'postels',
+  'manual_book_versions',
   'stickers',
   'sticker_types',
+  'serial_proof_photos',
+  'serial_events',
+  'serial_stickers',
+  'serial_cases',
+  'serial_business_units',
+  'serials',
+  'qr_documents',
+  'qr_designs',
+  'qr_presets',
+  'qr_defaults',
   'handover_comments',
   'handovers',
+  'notification_pending_items',
+  'notification_pending',
+  'notification_prefs',
+  'notifications',
+  'push_subscriptions',
+  'guide_progress',
   'job_blobs',
   'item_alias_keys',
   'item_business_units',
@@ -56,6 +79,9 @@ const RESET_TABLES = [
   'jobs',
   'rate_limits',
 ];
+
+/** Tabel yang sengaja TIDAK dikosongkan seed (pengaturan dan catatan migrasi). */
+export const SEED_KEPT_TABLES = ['schema_migrations', 'settings'];
 
 /**
  * Pernyataan data contoh realistis untuk MariaDB DEV: pengguna admin (`email`) + peran + lokasi + merk + customer + item +

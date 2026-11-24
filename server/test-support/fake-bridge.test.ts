@@ -79,10 +79,8 @@ describe('createFakeBridge', () => {
     expect(bridge.calls.map((c) => c.action)).toEqual(['createFolder', 'createFile', 'createFile']);
   });
 
-  test('sheets: dump dan export', async () => {
+  test('sheets: export', async () => {
     const bridge = createFakeBridge();
-    bridge.state.dump = { users: [['id'], ['1']] };
-    expect(await bridge.sheetsDump()).toEqual({ users: [['id'], ['1']] });
     await bridge.sheetsExport({ sheet: 'items', columns: ['id'], rows: [['1']], mode: 'replace' });
     expect(bridge.state.exports).toHaveLength(1);
   });

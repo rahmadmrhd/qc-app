@@ -218,11 +218,19 @@ export function openNotificationStream(
 
 type ContextCache = Map<string, Promise<UserContext | null>>;
 
+/** Batas bawah `created_at` yang dibaca satu koneksi: mundur sedikit dari `since`, tak melewati titik awal koneksi. */
+function fromIsoOf(conn: Connection): string {
+  const overlapped = new Date(Date.parse(conn.since) - OVERLAP_MS).toISOString();
+  return overlapped > conn.floor ? overlapped : conn.floor;
+}
+
 async function pumpConnection(
   env: Env,
   conn: Connection,
   contexts: ContextCache,
   limit: number,
+  /** Pembaca baris bersama per pengguna (satu kueri untuk semua tab pengguna itu); bawaan: kueri sendiri. */
+  rowsFor?: (fromIso: string) => Promise<NotificationDto[]>,
 ): Promise<void> {
   const loadContext = (): Promise<UserContext | null> => {
     let hit = contexts.get(conn.email);
@@ -247,12 +255,13 @@ async function pumpConnection(
     }
     // Mundur sedikit dari `since` (baris yang di-commit terlambat), tetapi tidak melewati titik awal koneksi: baris
     // sebelum koneksi dibuka (atau sebelum `Last-Event-ID`) tidak boleh dikirim ulang.
-    const overlapped = new Date(Date.parse(conn.since) - OVERLAP_MS).toISOString();
-    const fromIso = overlapped > conn.floor ? overlapped : conn.floor;
-    const rows = await listNotificationsSince(env, conn.email, {
-      fromIso,
-      limit: Math.max(limit, QUERY_LIMIT),
-    });
+    const fromIso = fromIsoOf(conn);
+    const rows = rowsFor
+      ? await rowsFor(fromIso)
+      : await listNotificationsSince(env, conn.email, {
+          fromIso,
+          limit: Math.max(limit, QUERY_LIMIT),
+        });
     const fresh = rows.filter((row) => !conn.sent.has(row.id));
     if (fresh.length === 0) return;
     const user = await loadContext();
@@ -292,9 +301,34 @@ export async function pumpNotificationStreams(env: Env): Promise<void> {
   if (connections.size === 0) return;
   const contexts: ContextCache = new Map();
   const queue = [...connections];
+  // Satu kueri per PENGGUNA (bukan per koneksi): semua tab satu email membaca dari batas bawah terkecil di antara
+  // mereka, lalu menyaring sendiri. Halaman yang penuh (mungkin terpotong LIMIT) dibaca ulang per koneksi supaya
+  // hasilnya sama persis dengan kueri sendiri.
+  const minFrom = new Map<string, string>();
+  for (const conn of queue) {
+    const from = fromIsoOf(conn);
+    const known = minFrom.get(conn.email);
+    if (known === undefined || from < known) minFrom.set(conn.email, from);
+  }
+  const shared = new Map<string, Promise<NotificationDto[]>>();
+  const rowsOf =
+    (conn: Connection) =>
+    async (from: string): Promise<NotificationDto[]> => {
+      const min = minFrom.get(conn.email) ?? from;
+      let page = shared.get(conn.email);
+      if (page === undefined) {
+        page = listNotificationsSince(env, conn.email, { fromIso: min, limit: QUERY_LIMIT });
+        shared.set(conn.email, page);
+      }
+      const rows = await page;
+      if (from === min) return rows;
+      if (from > min && rows.length < QUERY_LIMIT)
+        return rows.filter((row) => row.createdAt >= from);
+      return listNotificationsSince(env, conn.email, { fromIso: from, limit: QUERY_LIMIT });
+    };
   const worker = async (): Promise<void> => {
     for (let conn = queue.shift(); conn !== undefined; conn = queue.shift()) {
-      await pumpConnection(env, conn, contexts, QUERY_LIMIT);
+      await pumpConnection(env, conn, contexts, QUERY_LIMIT, rowsOf(conn));
     }
   };
   await Promise.all(Array.from({ length: Math.min(PUMP_CONCURRENCY, queue.length) }, worker));

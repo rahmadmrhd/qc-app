@@ -1,6 +1,6 @@
 import { request } from 'node:http';
 import { afterEach, describe, expect, test } from 'vitest';
-import { LOGIN_SUCCESS_TITLE, type Loopback, startLoopback } from './loopback';
+import { AUTH_ERROR_MESSAGES, LOGIN_SUCCESS_TITLE, type Loopback, startLoopback } from './loopback';
 
 const CODE = 'eyJ0eXAiOiJkY29kZSJ9.abc-DEF_123';
 const STATE = 'state-uji-1234';
@@ -45,6 +45,73 @@ async function open(onCallback: (code: string, state: string) => Promise<boolean
   active = lb;
   return { lb, calls };
 }
+
+describe('startLoopback: galat login dari server', () => {
+  async function openWithError(handled: boolean) {
+    const errors: { error: string; state: string }[] = [];
+    const shown: boolean[] = [];
+    let called = 0;
+    const lb = await startLoopback({
+      timeoutMs: 60_000,
+      onCallback: async () => {
+        called++;
+        return true;
+      },
+      onError: async (error, state) => {
+        errors.push({ error, state });
+        return handled;
+      },
+      onShown: (ok) => shown.push(ok),
+    });
+    active = lb;
+    return { lb, errors, shown, called: () => called };
+  }
+
+  test('error dari daftar tetap + state cocok: halaman pesan khusus, tanpa mengulang state dari URL', async () => {
+    const { lb, errors, shown, called } = await openWithError(true);
+    const reply = await get(lb.port, `/callback?error=NOT_WHITELISTED&state=${STATE}`);
+    expect(errors).toEqual([{ error: 'NOT_WHITELISTED', state: STATE }]);
+    expect(called()).toBe(0);
+    expect(reply.status).toBe(200);
+    expect(reply.body).toContain('Login gagal');
+    expect(reply.body).toContain(AUTH_ERROR_MESSAGES.NOT_WHITELISTED);
+    expect(reply.body).not.toContain(STATE);
+    expect(reply.headers['cache-control']).toBe('no-store');
+    expect(reply.headers['referrer-policy']).toBe('no-referrer');
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(shown).toEqual([false]);
+  });
+
+  test('LOGIN_FAILED memakai pesannya sendiri', async () => {
+    const { lb } = await openWithError(true);
+    const reply = await get(lb.port, `/callback?error=LOGIN_FAILED&state=${STATE}`);
+    expect(reply.body).toContain(AUTH_ERROR_MESSAGES.LOGIN_FAILED);
+    expect(reply.body).not.toContain(AUTH_ERROR_MESSAGES.NOT_WHITELISTED);
+  });
+
+  test('state asing (tak ditangani): 404, tanpa halaman pesan', async () => {
+    const { lb, errors } = await openWithError(false);
+    const reply = await get(lb.port, `/callback?error=NOT_WHITELISTED&state=${STATE}`);
+    expect(errors).toHaveLength(1);
+    expect(reply.status).toBe(404);
+    expect(reply.body).toBe('Not Found');
+  });
+
+  test('kode di luar daftar atau bentuk lain: 404 tanpa memanggil penangan', async () => {
+    const { lb, errors } = await openWithError(true);
+    for (const path of [
+      `/callback?error=APA_SAJA&state=${STATE}`,
+      `/callback?error=%3Cb%3Ex&state=${STATE}`,
+      '/callback?error=LOGIN_FAILED',
+      `/callback?error=LOGIN_FAILED&state=${STATE}&extra=1`,
+      `/callback?error=LOGIN_FAILED&code=${CODE}&state=${STATE}`,
+    ]) {
+      const reply = await get(lb.port, path);
+      expect(reply.status, path).toBe(404);
+    }
+    expect(errors).toEqual([]);
+  });
+});
 
 describe('startLoopback', () => {
   test('callback sah: meneruskan code/state, menampilkan halaman berhasil dengan header ketat', async () => {

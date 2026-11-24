@@ -91,8 +91,8 @@ function rolePermissionSources(
  * Izin efektif seorang user: global dan per lokasi aktif.
  * - Per lokasi: gabungan "Semua lokasi" + penugasan lokasi itu (level tertinggi per modul).
  * - Global: hanya dari "Semua lokasi" (satu-satunya sumber `access`); kecuali `SHARED_MODULES`
- *   (`qrcode`, `sticker`, `countrylock`, `dashboard`) yang diambil dari semua penugasan berlaku ("Semua lokasi" atau lokasi aktif), dan `item` yang
- *   hanya dari penugasan BU (level tertinggi di antara semuanya).
+ *   (`qrcode`, `sticker`, `countrylock`, `dashboard`) yang diambil dari semua penugasan berlaku ("Semua lokasi" atau lokasi aktif), dan modul
+ *   ber-BU (`BU_MODULES`: item, serial, serialservice) yang hanya dari penugasan BU (level tertinggi di antara semuanya).
  * - Per BU (`byBu`): gabungan "Semua BU" + penugasan BU itu untuk modul ber-BU.
  */
 export function resolveAccess(

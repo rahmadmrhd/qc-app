@@ -180,6 +180,31 @@ describe('serials.applyStickersBatch: idempotensi', () => {
     expect(await stock('s1', 'loc-sby')).toBe(9);
   });
 
+  test('kirim ulang tetap mengembalikan hasil tersimpan walau salah satu serial kemudian dihapus atau hilang dari cakupan pengguna', async () => {
+    await seedMany();
+    const rows = [
+      { id: 'sn1', stickerIds: ['s1'] },
+      { id: 'sn2', stickerIds: ['s2'] },
+    ];
+    expect((await batch(rows)).ok).toBe(true);
+    const entries = await entryCount();
+    // sn2 dihapus (lunak) sesudah komit pertama; respons komit pertama hilang di jaringan.
+    await env.DB.prepare(
+      "UPDATE serials SET deleted_at = '2026-11-12T02:00:00.000Z', deleted_by = 'x@y.z' WHERE id = 'sn2'",
+    ).run();
+    const again = await batch(rows);
+    expect(again.ok).toBe(true);
+    expect(again.data).toEqual({ ids: ['sn1', 'sn2'] });
+    // Tak ada potongan stok atau kejadian baru.
+    expect(await stock('s1', 'loc-sby')).toBe(9);
+    expect(await stock('s2', 'loc-jkt')).toBe(9);
+    expect(await entryCount()).toBe(entries);
+    // clientId BARU untuk serial terhapus tetap ditolak (hak/keberadaan diperiksa pada komit pertama).
+    const fresh = await batch([{ id: 'sn2', stickerIds: ['s2'] }], { clientId: CLIENT_2 });
+    expect(fresh.ok).toBe(false);
+    expect(fresh.error?.code).toBe('NOT_FOUND');
+  });
+
   test('clientId yang sudah dipakai pelaku lain = CONFLICT, tanpa efek', async () => {
     await seedMany();
     expect((await batch([{ id: 'sn1', stickerIds: ['s1'] }])).ok).toBe(true);

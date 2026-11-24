@@ -134,7 +134,7 @@ function Body({ settings, users, onSave, serverError, onServerError, onBusyChang
       <p className="text-sm text-muted-foreground">
         Saat tim servis menyatakan sebuah Serial Number rusak, email dikirim ke penerima di bawah.
         Isinya Serial Number, item, BU, nomor laporan, lokasi, tanggal, catatan lengkap dari update
-        Rusak, dan tautan baca-saja ke laporan (berlaku 30 hari setelah laporan selesai). Daftar ini
+        Rusak, dan tautan baca-saja ke laporan (berlaku 60 hari setelah laporan selesai). Daftar ini
         berlaku untuk semua BU.
       </p>
       {settings.smtpConfigured ? null : (

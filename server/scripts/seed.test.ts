@@ -5,7 +5,7 @@ import { derivedColumns, parseChecks } from '@server/modules/handover/repo';
 import { getRoutes } from '@server/routes';
 import { callRoute } from '@server-test/call-route';
 import { createTestEnv } from '@server-test/test-env';
-import { applySeed, buildSeedStatements } from './seed-data';
+import { applySeed, buildSeedStatements, RESET_TABLES, SEED_KEPT_TABLES } from './seed-data';
 import { assertSeedTarget, parseSeedArgs, resolveEmail } from './seed-dev';
 
 const NOW = Date.parse('2026-10-25T03:00:00.000Z');
@@ -18,6 +18,17 @@ async function seeded(email = 'saya@example.test') {
 }
 
 describe('seed data contoh', () => {
+  test('RESET_TABLES mencakup setiap tabel skema kecuali yang sengaja dipertahankan (tanpa tabel yatim, tanpa nama basi)', async () => {
+    const env = await createTestEnv();
+    const rows = await env.DB.prepare(
+      "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'",
+    ).all<{ name: string }>();
+    const schemaTables = rows.results.map((row) => row.name);
+    const covered = new Set([...RESET_TABLES, ...SEED_KEPT_TABLES]);
+    expect(schemaTables.filter((name) => !covered.has(name)).sort()).toEqual([]);
+    expect(RESET_TABLES.filter((name) => !schemaTables.includes(name)).sort()).toEqual([]);
+  });
+
   test('pengguna admin sesuai email: izin penuh di semua lokasi; email dinormalkan', async () => {
     const env = await seeded('Saya@Example.Test');
     const ctx = await loadUserContext(env, 'saya@example.test');

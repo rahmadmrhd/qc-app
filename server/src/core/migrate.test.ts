@@ -1,5 +1,7 @@
 // Tes migrator dan skema baseline MariaDB terhadap database nyata di VPS (butuh `bun run db:tunnel`).
 import { afterAll, beforeAll, describe, expect, test } from 'bun:test';
+import { readdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { createDb, type Db, DbError } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { applyMigrations, loadMigrations } from '@server/core/migrate';
@@ -105,6 +107,14 @@ describe('loadMigrations', () => {
     ]);
     expect(list.map((m) => m.name)).toEqual([...list.map((m) => m.name)].sort());
     expect(list[0]?.sql).toContain('CREATE TABLE');
+  });
+
+  test('setiap berkas di server/migrations bernama NNNN_huruf_kecil.sql (yang lain dilewati diam-diam migrator)', async () => {
+    const files = await readdir(join(import.meta.dir, '..', '..', 'migrations'));
+    // Pola yang sama dengan `deploy/deploy.sh` (pagar downgrade skema).
+    const bad = files.filter((name) => !/^\d{4}_[a-z0-9_]+\.sql$/.test(name));
+    expect(bad).toEqual([]);
+    expect((await loadMigrations()).length).toBe(files.length);
   });
 });
 
@@ -339,8 +349,11 @@ describe('skema baseline', () => {
       { name: '0030_soft_delete_contract.sql' },
       { name: '0031_audit_target_id_index.sql' },
       { name: '0032_dashboard.sql' },
+      { name: '0032_indeks_kinerja.sql' },
       { name: '0033_dashboard_share_visits.sql' },
+      { name: '0034_serial_daftar_indeks.sql' },
       { name: '0035_dashboard_reports.sql' },
+      { name: '0036_buang_indeks_serials_created_id.sql' },
       { name: '0037_dashboard_share_expiry_index.sql' },
     ]);
   });
@@ -478,6 +491,7 @@ describe('skema baseline', () => {
       .sort();
     expect(got).toEqual(
       [
+        'audit_log.audit_log_action_ts',
         'audit_log.audit_log_target_id_ts',
         'audit_log.audit_log_target_ts',
         'audit_log.audit_log_ts',
@@ -497,6 +511,7 @@ describe('skema baseline', () => {
         'handover_comments.handover_comments_handover',
         'handover_comments.handover_comments_seq',
         'handovers.handovers_board',
+        'handovers.handovers_board_live',
         'handovers.handovers_client_id',
         'handovers.handovers_customer',
         'handovers.handovers_number_live',
@@ -519,6 +534,7 @@ describe('skema baseline', () => {
         'notifications.notifications_push',
         'notifications.notifications_recipient',
         'notifications.notifications_serial',
+        'notifications.notifications_unread',
         'postel_numbers.postel_numbers_expiry',
         'postel_numbers.postel_numbers_key_live',
         'postel_numbers.postel_numbers_seq',
@@ -545,6 +561,7 @@ describe('skema baseline', () => {
         'serials.serials_client_id',
         'serials.serials_custody',
         'serials.serials_item',
+        'serials.serials_live_created',
         'serials.serials_location',
         'serials.serials_status',
         'sticker_business_units.sticker_business_units_bu',

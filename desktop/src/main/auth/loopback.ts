@@ -9,7 +9,7 @@
 import { randomBytes } from 'node:crypto';
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { parseAuthParams } from '../qc-url';
+import { type AuthErrorCode, parseAuthErrorParams, parseAuthParams } from '../qc-url';
 
 export interface Loopback {
   port: number;
@@ -21,6 +21,11 @@ export interface LoopbackOptions {
   onCallback(code: string, state: string): Promise<boolean>;
   /** Server menutup diri setelah ini bila belum ditutup (selaras dengan masa login). */
   timeoutMs: number;
+  /**
+   * Login gagal di sisi server (`error=<kode>&state`). `true` bila `state` cocok dengan login yang berjalan (halaman
+   * pesan khusus ditampilkan); `false` = asing/tanpa login berjalan: dijawab 404 seperti permintaan tak dikenal.
+   */
+  onError?(error: AuthErrorCode, state: string): Promise<boolean>;
   /** Dipanggil setelah halaman hasil terkirim penuh (bukan untuk permintaan yang ditolak 404). */
   onShown?(ok: boolean): void;
 }
@@ -34,14 +39,23 @@ const PATH = '/callback';
  * persis ini, `auth/login-window.ts`). ASCII murni agar lolos argumen baris perintah.
  */
 export const LOGIN_SUCCESS_TITLE = 'QC App - Login berhasil';
-const LOGIN_FAILED_TITLE = 'QC App - Login gagal';
+/** Halaman galat dibiarkan lebih lama agar pesannya sempat terbaca sebelum jendela ditutup. */
+export const ERROR_PAGE_CLOSE_MS = 8_000;
+export const LOGIN_FAILED_TITLE = 'QC App - Login gagal';
 
-function page(title: string, message: string, nonce: string): string {
+/** Pesan per kode galat server (teks tampil selalu dari sini, tak pernah dari URL). */
+export const AUTH_ERROR_MESSAGES: Record<AuthErrorCode, string> = {
+  NOT_WHITELISTED:
+    'Akun Google ini belum terdaftar di QC App. Minta admin mendaftarkan akunnya, lalu coba masuk lagi dari QC App.',
+  LOGIN_FAILED: 'Login Google gagal. Tutup jendela ini lalu coba masuk lagi dari QC App.',
+};
+
+function page(title: string, message: string, nonce: string, closeAfterMs = 400): string {
   return `<!doctype html><html lang="id"><head><meta charset="utf-8"><title>${title}</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <style>body{font:16px system-ui,sans-serif;background:#161616;color:#eee;display:grid;place-items:center;height:100vh;margin:0}main{max-width:26rem;padding:1.5rem;text-align:center}h1{font-size:1.15rem}p{color:#aaa}</style></head>
 <body><main><h1>${title.replace(/^QC App - /, '')}</h1><p>${message}</p></main>
-<script nonce="${nonce}">setTimeout(function(){window.close()},400)</script></body></html>`;
+<script nonce="${nonce}">setTimeout(function(){window.close()},${closeAfterMs})</script></body></html>`;
 }
 
 function send(response: ServerResponse, status: number, body: string, nonce?: string): void {
@@ -66,19 +80,44 @@ export async function startLoopback(options: LoopbackOptions): Promise<Loopback>
     // Host harus tepat 127.0.0.1:<port>: menolak permintaan lewat nama lain (DNS rebinding).
     const hostOk = address !== null && request.headers.host === `${HOST}:${address.port}`;
     let auth: { code: string; state: string } | null = null;
+    let authError: { error: AuthErrorCode; state: string } | null = null;
     if (hostOk && address !== null && request.method === 'GET') {
       try {
         const url = new URL(request.url ?? '', `http://${HOST}:${address.port}`);
-        if (url.pathname === PATH && url.hash === '') auth = parseAuthParams(url.searchParams);
+        if (url.pathname === PATH && url.hash === '') {
+          auth = parseAuthParams(url.searchParams);
+          if (!auth) authError = parseAuthErrorParams(url.searchParams);
+        }
       } catch {
         auth = null;
+        authError = null;
       }
+    }
+    const nonce = randomBytes(16).toString('base64');
+    if (!auth && authError && options.onError) {
+      const { error, state } = authError;
+      options
+        .onError(error, state)
+        .then((handled) => {
+          if (!handled) {
+            send(response, 404, 'Not Found');
+            return;
+          }
+          response.once('finish', () => options.onShown?.(false));
+          send(
+            response,
+            200,
+            page(LOGIN_FAILED_TITLE, AUTH_ERROR_MESSAGES[error], nonce, ERROR_PAGE_CLOSE_MS),
+            nonce,
+          );
+        })
+        .catch(() => send(response, 500, 'Terjadi kesalahan'));
+      return;
     }
     if (!auth) {
       send(response, 404, 'Not Found');
       return;
     }
-    const nonce = randomBytes(16).toString('base64');
     options
       .onCallback(auth.code, auth.state)
       .then((ok) => {
