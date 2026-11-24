@@ -305,4 +305,24 @@ describe('canManage menimbang serial: edit saat ini', () => {
     expect(canManageProof(user('edit'), 'lain@gmail.com', 'bu-a')).toBe(false);
     expect(canManageProof(user('manage', true), 'lain@gmail.com', 'bu-a')).toBe(true);
   });
+
+  test('pelaku yang serialnya sudah pindah ke BU yang tak boleh ditulisnya = false (tetap true di BU asal)', () => {
+    // serial: edit global (izin rute) tetapi hanya edit di bu-a; serial kini di bu-b.
+    const creator = {
+      email: 'x@gmail.com',
+      permissions: { serial: 'edit' },
+      businessUnits: { 'bu-a': { serial: 'edit' } },
+    } as never;
+    expect(canManageProof(creator, 'x@gmail.com', 'bu-a')).toBe(true);
+    expect(canManageProof(creator, 'x@gmail.com', 'bu-b')).toBe(false);
+    // BU-nya diturunkan ke view sementara serial: edit global datang dari BU lain.
+    const downgraded = {
+      email: 'x@gmail.com',
+      permissions: { serial: 'edit' },
+      businessUnits: { 'bu-a': { serial: 'view' }, 'bu-c': { serial: 'edit' } },
+    } as never;
+    expect(canManageProof(downgraded, 'x@gmail.com', 'bu-a')).toBe(false);
+    // BU kosong (baris serial tak ada) tidak memberi hak.
+    expect(canManageProof(creator, 'x@gmail.com', '')).toBe(false);
+  });
 });

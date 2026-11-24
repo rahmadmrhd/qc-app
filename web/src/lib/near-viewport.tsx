@@ -50,6 +50,33 @@ export function useNearViewport(rootMargin = '400px'): [(node: Element | null) =
 }
 
 /**
+ * Seperti `useNearViewport` tetapi TIDAK lengket: benar hanya selagi elemen berada dalam `rootMargin` dari
+ * viewport/akar gulir, salah lagi saat menjauh. Dipakai untuk menahan permintaan dan muat ulang bagi bagian halaman
+ * yang tidak tampil (dashboard). Tanpa pengamat persimpangan langsung benar.
+ */
+export function useTrackNearViewport(
+  rootMargin = '400px',
+): [(node: Element | null) => void, boolean] {
+  const root = useContext(ScrollRootContext);
+  const [node, setNode] = useState<Element | null>(null);
+  const [near, setNear] = useState(!hasIntersectionObserver());
+  const ref = useCallback((element: Element | null) => setNode(element), []);
+  useEffect(() => {
+    if (!node || !hasIntersectionObserver()) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const latest = entries.at(-1);
+        if (latest) setNear(latest.isIntersecting);
+      },
+      { root, rootMargin },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [node, root, rootMargin]);
+  return [ref, near];
+}
+
+/**
  * Memanggil `onNear` setiap kali sentinel terlihat dalam `rootMargin`, dan diulang bila `signal` berubah
  * (mis. jumlah item termuat): kolom yang belum penuh layar terisi sendiri tanpa menunggu gulir.
  */

@@ -10,6 +10,25 @@ import type {
   StatusBatchInput,
 } from './batch';
 import type { BuAssignment, BuPermissionMap } from './business-units';
+import type {
+  DashboardOptionsDto,
+  DashboardOptionsInput,
+  DashboardQueryInput,
+  DashboardQueryOutput,
+} from './dashboard';
+import type {
+  DashboardReportDto,
+  DashboardReportListDto,
+  DashboardReportPreviewDto,
+  GetDashboardReportInput,
+  SaveDashboardReportInput,
+  SetDashboardReportEnabledInput,
+} from './dashboard-report';
+import type {
+  CreateShareInput,
+  DashboardShareDetailDto,
+  DashboardShareDto,
+} from './dashboard-share';
 import type { GuideProgressDto } from './guides';
 import type { HandoverStatus } from './handover';
 import type { NotificationDto } from './notifications';
@@ -154,6 +173,11 @@ export interface GetRoleInput {
 
 export interface SaveUserInput {
   id?: string;
+  /**
+   * Versi (`updatedAt`) yang dilihat penyimpan, hanya untuk mengubah (ada `id`). Opsional demi klien lama; bila dikirim
+   * dan tak sama dengan versi tersimpan = galat basi (412 lewat `If-Match`).
+   */
+  expectedUpdatedAt?: string;
   email: string;
   name: string;
   status: UserStatus;
@@ -179,6 +203,8 @@ export interface SetUserStatusInput {
 
 export interface SaveRoleInput {
   id?: string;
+  /** Versi yang dilihat penyimpan (opsional; lihat `SaveUserInput.expectedUpdatedAt`). */
+  expectedUpdatedAt?: string;
   name: string;
   description: string;
   permissions: PartialPermissionMap;
@@ -241,12 +267,18 @@ export interface ListLocationsInput {
   status?: ListStatusFilter;
 }
 
+export interface GetDashboardShareInput {
+  id: string;
+}
+
 export interface GetLocationInput {
   id: string;
 }
 
 export interface SaveLocationInput {
   id?: string;
+  /** Versi yang dilihat penyimpan (opsional; lihat `SaveUserInput.expectedUpdatedAt`). */
+  expectedUpdatedAt?: string;
   code: string;
   name: string;
 }
@@ -301,6 +333,8 @@ export interface GetBusinessUnitInput {
 
 export interface SaveBusinessUnitInput {
   id?: string;
+  /** Versi yang dilihat penyimpan (opsional; lihat `SaveUserInput.expectedUpdatedAt`). */
+  expectedUpdatedAt?: string;
   /** Huruf besar/angka/tanda hubung, maks. 10; tidak dapat diubah setelah dibuat. */
   code: string;
   name: string;
@@ -1624,6 +1658,27 @@ export interface ApiContract {
   'guides.reset': { input: ResetGuideInput; output: GuideProgressDto[] };
   'jobs.get': { input: GetJobInput; output: JobDto };
   'exports.sheets': { input: ExportSheetsInput; output: ExportSheetsJobDto };
+  'dashboard.query': { input: DashboardQueryInput; output: DashboardQueryOutput };
+  'dashboard.options': { input: DashboardOptionsInput; output: DashboardOptionsDto };
+  /** Tautan dashboard publik; semuanya butuh `dashboard: manage`. `url` hanya untuk pembagi dan super admin. */
+  'dashboardShares.list': { input: null; output: DashboardShareDto[] };
+  'dashboardShares.get': { input: GetDashboardShareInput; output: DashboardShareDetailDto };
+  'dashboardShares.create': { input: CreateShareInput; output: DashboardShareDto };
+  'dashboardShares.revoke': { input: GetDashboardShareInput; output: { ok: true } };
+  /** Laporan dashboard terjadwal lewat surel; semuanya butuh `dashboard: manage`, hak ubah hanya pemilik/super admin. */
+  'dashboardReports.list': { input: null; output: DashboardReportListDto };
+  'dashboardReports.get': { input: GetDashboardReportInput; output: DashboardReportDto };
+  'dashboardReports.save': { input: SaveDashboardReportInput; output: DashboardReportDto };
+  'dashboardReports.setEnabled': {
+    input: SetDashboardReportEnabledInput;
+    output: DashboardReportDto;
+  };
+  'dashboardReports.remove': { input: GetDashboardReportInput; output: { ok: true } };
+  'dashboardReports.sendTest': { input: GetDashboardReportInput; output: { ok: true } };
+  'dashboardReports.preview': {
+    input: GetDashboardReportInput;
+    output: DashboardReportPreviewDto;
+  };
 }
 
 export type ApiId = keyof ApiContract;

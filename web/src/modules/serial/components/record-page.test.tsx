@@ -117,6 +117,7 @@ beforeEach(() => {
       serial: 'edit',
       serialservice: 'none',
       countrylock: 'none',
+      dashboard: 'none',
     },
     businessUnits: [],
     // Tanpa penugasan lokasi: pilihan lokasi serial datang dari serials.locationOptions.

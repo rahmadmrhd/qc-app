@@ -31,10 +31,9 @@ import {
 import { STICKER_STATUS_LABEL } from '../lib/status';
 import { CountInput } from './count-input';
 
-/** Hasil kirim entri batch: `stale` = stok berubah sejak dilihat (pesan galat server tampil, isian dipertahankan). */
+/** Hasil kirim entri batch gagal: pesan galat server tampil, isian dipertahankan. */
 export interface EntryFailure {
   message: string;
-  stale?: boolean;
 }
 export type EntrySaveResult = string | EntryFailure | null;
 

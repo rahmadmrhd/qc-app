@@ -17,6 +17,8 @@ export type AuditTargetKind =
   | 'role'
   | 'location'
   | 'businessUnit'
+  | 'dashboardShare'
+  | 'dashboardReport'
   | 'serial'
   | 'handover';
 
@@ -40,6 +42,8 @@ export const ACTIVITY_KINDS: readonly ActivityKind[] = [
   'location',
   'businessUnit',
   'handover',
+  'dashboardShare',
+  'dashboardReport',
 ];
 
 /** Awalan aksi (sebelum titik pertama) -> jenis entitas. Awalan BU memang `businessunit` (huruf kecil semua). */
@@ -60,6 +64,22 @@ const PREFIX_KINDS: Readonly<Record<string, AuditTargetKind>> = {
 };
 
 /**
+ * Aksi LENGKAP -> jenis entitas, untuk awalan yang dipakai beberapa jenis entitas atau fitur (awalan `dashboard`
+ * memuat aksi tautan dan laporan terjadwal, jadi dipetakan per aksi, bukan per awalan).
+ */
+const ACTION_KINDS: Readonly<Record<string, AuditTargetKind>> = {
+  'dashboard.share_create': 'dashboardShare',
+  'dashboard.share_revoke': 'dashboardShare',
+  'dashboard.share_expire': 'dashboardShare',
+  'dashboard.report_create': 'dashboardReport',
+  'dashboard.report_update': 'dashboardReport',
+  'dashboard.report_delete': 'dashboardReport',
+  'dashboard.report_pause': 'dashboardReport',
+  'dashboard.report_resume': 'dashboardReport',
+  'dashboard.report_send_test': 'dashboardReport',
+};
+
+/**
  * Aksi berawalan entitas yang BUKAN perubahan satu entitas ber-View (pengaturan global, pustaka, dokumen PDF QR):
  * tidak membawa `target_id` dan tidak punya `targetRef`.
  */
@@ -76,6 +96,8 @@ export const AUDIT_NON_ENTITY_ACTIONS: ReadonlySet<string> = new Set([
 /** Jenis entitas yang diubah oleh `action`, atau `undefined` bila aksi itu tak menaut ke entitas ber-View. */
 export function auditTargetKind(action: string): AuditTargetKind | undefined {
   if (AUDIT_NON_ENTITY_ACTIONS.has(action)) return undefined;
+  const exact = ACTION_KINDS[action];
+  if (exact !== undefined) return exact;
   const dot = action.indexOf('.');
   if (dot <= 0) return undefined;
   const prefix = action.slice(0, dot);

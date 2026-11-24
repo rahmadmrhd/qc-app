@@ -12,7 +12,9 @@ import {
   type LucideIcon,
   PackageMinus,
   PackagePlus,
+  Pause,
   Pencil,
+  Play,
   Plus,
   Power,
   PowerOff,
@@ -20,6 +22,7 @@ import {
   RefreshCw,
   RotateCcw,
   Save,
+  Send,
   SlidersHorizontal,
   Sticker,
   Trash2,
@@ -59,7 +62,10 @@ export type ActionKind =
   | 'adjust'
   | 'history'
   | 'reportDamage'
-  | 'stickers';
+  | 'stickers'
+  | 'pause'
+  | 'resume'
+  | 'sendTest';
 
 type ActionSpec = {
   icon: LucideIcon;
@@ -254,6 +260,28 @@ export const ACTIONS: Record<ActionKind, ActionSpec> = {
   stickers: {
     icon: Sticker,
     label: 'Tempel stiker',
+    color: 'primary',
+    variant: 'outline',
+    compactVariant: 'ghost',
+  },
+  // Laporan dashboard terjadwal: jeda/lanjutkan pengiriman dan kirim uji ke surel pemilik.
+  pause: {
+    icon: Pause,
+    label: 'Jeda',
+    color: 'warning',
+    variant: 'soft',
+    compactVariant: 'ghost',
+  },
+  resume: {
+    icon: Play,
+    label: 'Lanjutkan',
+    color: 'success',
+    variant: 'soft',
+    compactVariant: 'ghost',
+  },
+  sendTest: {
+    icon: Send,
+    label: 'Kirim uji',
     color: 'primary',
     variant: 'outline',
     compactVariant: 'ghost',

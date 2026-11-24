@@ -380,7 +380,7 @@ describe('e2e laporan rusak: jalur 2 (serial B sampai Rusak, surel, halaman publ
     expect(text).not.toContain(W);
     expect(text).not.toContain('@gmail.com');
     expect(text.toLowerCase()).not.toContain('stok');
-    expect(text).toContain('Tautan berlaku sampai 2026-12-14.');
+    expect(text).toContain('Tautan berlaku sampai 2027-01-13.');
     const found = /Buka: https:\/\/qc\.test\/laporan\/(\S+)\n/.exec(text);
     expect(found).not.toBeNull();
     token = found?.[1] ?? '';
@@ -454,7 +454,7 @@ describe('e2e laporan rusak: jalur 2 (serial B sampai Rusak, surel, halaman publ
       openedOn: TODAY,
       closedOn: TODAY,
       outcome: 'broken',
-      expiresOn: '2026-12-14',
+      expiresOn: '2027-01-13',
       viewerCanOpen: false,
       serialId: serialB.id,
     });
@@ -540,10 +540,10 @@ describe('e2e laporan rusak: jalur 2 (serial B sampai Rusak, surel, halaman publ
     expect((await fetchPublic(`/serial-reports/${token}`, '198.51.100.100')).status).toBe(200);
   });
 
-  test('(f5) kedaluwarsa tepat akhir hari WIB ke-30 sesudah laporan ditutup: sebelum batas 200, sesudahnya 404', async () => {
-    env.clock.set(Date.parse('2026-12-14T16:59:59.000Z')); // 23:59:59 WIB
+  test('(f5) kedaluwarsa tepat akhir hari WIB ke-60 sesudah laporan ditutup: sebelum batas 200, sesudahnya 404', async () => {
+    env.clock.set(Date.parse('2027-01-13T16:59:59.000Z')); // 23:59:59 WIB
     expect((await fetchPublic(`/serial-reports/${token}`, '192.0.2.50')).status).toBe(200);
-    env.clock.set(Date.parse('2026-12-14T17:00:02.000Z')); // 00:00:02 WIB hari berikutnya
+    env.clock.set(Date.parse('2027-01-13T17:00:02.000Z')); // 00:00:02 WIB hari berikutnya
     const expired = await fetchPublic(`/serial-reports/${token}`, '192.0.2.51');
     expect(expired.status).toBe(404);
     const reference = await problemShape(await fetchPublic('/serial-reports/sampah', '192.0.2.52'));

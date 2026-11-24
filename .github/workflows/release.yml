@@ -293,6 +293,23 @@ jobs:
             status=$(jq -r '.status' <<< "$result")
             files_json=$(jq -c '[.files[]? | .filename, (.previous_filename // empty)]' <<< "$result")
             file_count=$(jq '.files | length' <<< "$result")
+            # Isi manifest (package.json komponen, bun.lock) pada staging dan commit rilis, ditulis ke berkas: guard hanya
+            # membebaskan perubahannya bila terbukti hanya versi yang berbeda (dependensi masuk image lewat Dockerfile).
+            # Berkas hilang (404) = tak ada di sisi itu; galat API lain menggagalkan (gagal tertutup).
+            mdir="$RUNNER_TEMP/manifests"
+            rm -rf "$mdir"
+            fetch_manifest() {
+              local side=$1 ref=$2 path=$3 dest err
+              dest="$mdir/$side/$path"
+              mkdir -p "$(dirname "$dest")"
+              if err=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/$path?ref=$ref" 2>&1 >"$dest"); then return 0; fi
+              rm -f "$dest"
+              grep -qE 'HTTP 404|Not Found' <<< "$err" || fail "Gagal membaca $path pada $ref (galat API)."
+            }
+            for path in bun.lock server/package.json desktop/package.json; do
+              fetch_manifest before "$staging" "$path"
+              fetch_manifest after "$SHA" "$path"
+            done
           fi
           changelog=$(gh api -H "Accept: application/vnd.github.raw" "repos/$REPO/contents/server/CHANGELOG.md?ref=$SHA")
           grep -qF "## [$VERSION] - " <<< "$changelog" || has=false
@@ -308,6 +325,7 @@ jobs:
             echo "deployed=$deployed"
             echo "file_count=$file_count"
             echo "files_json=$files_json"
+            echo "manifests_dir=$RUNNER_TEMP/manifests"
           } >> "$GITHUB_OUTPUT"
 
       - name: Guard rilis
@@ -315,6 +333,7 @@ jobs:
           COMPARE_STATUS: ${{ steps.compare.outputs.status }}
           FILES_JSON: ${{ steps.compare.outputs.files_json }}
           FILE_COUNT: ${{ steps.compare.outputs.file_count }}
+          MANIFESTS_DIR: ${{ steps.compare.outputs.manifests_dir }}
           CHANGELOG_HAS_VERSION: ${{ steps.compare.outputs.has_version }}
           COMPONENTS: ${{ needs.meta.outputs.components }}
         run: bun run scripts/release-guard.ts

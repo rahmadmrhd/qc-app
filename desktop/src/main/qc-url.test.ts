@@ -40,6 +40,34 @@ describe('parseQcUrl: qc://auth', () => {
     expect(parseQcUrl(`qc://auth/?state=${state}&code=${code}`)?.auth).toEqual({ code, state });
   });
 
+  test('qc://auth?error=&state= dengan kode dari daftar tetap → { route: null, authError }', () => {
+    expect(parseQcUrl(`qc://auth?error=NOT_WHITELISTED&state=${state}`)).toEqual({
+      route: null,
+      authError: { error: 'NOT_WHITELISTED', state },
+    });
+    expect(parseQcUrl(`qc://auth/?state=${state}&error=LOGIN_FAILED`)?.authError).toEqual({
+      error: 'LOGIN_FAILED',
+      state,
+    });
+  });
+
+  test('error: kode di luar daftar, kunci tambahan/ganda, state tak sah, jalur, hash ditolak', () => {
+    for (const bad of [
+      `qc://auth?error=APA_SAJA&state=${state}`,
+      `qc://auth?error=login_failed&state=${state}`,
+      `qc://auth?error=%3Cscript%3E&state=${state}`,
+      'qc://auth?error=LOGIN_FAILED',
+      'qc://auth?error=LOGIN_FAILED&state=pendek',
+      `qc://auth?error=LOGIN_FAILED&state=${state}&x=1`,
+      `qc://auth?error=LOGIN_FAILED&error=NOT_WHITELISTED&state=${state}`,
+      `qc://auth?error=LOGIN_FAILED&code=${code}&state=${state}`,
+      `qc://auth/x?error=LOGIN_FAILED&state=${state}`,
+      `qc://auth?error=LOGIN_FAILED&state=${state}#h`,
+    ]) {
+      expect(parseQcUrl(bad), bad).toBeNull();
+    }
+  });
+
   test('query kelebihan/kurang/ganda, kode atau state di luar pola, jalur, hash ditolak', () => {
     for (const bad of [
       'qc://auth',

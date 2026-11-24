@@ -1,4 +1,5 @@
-import { hasControlChars } from './postel';
+import { hasControlChars } from './text';
+import { WIB_OFFSET_MS } from './wib';
 
 export const SERIAL_STATUSES = [
   'good',
@@ -74,8 +75,11 @@ export const SERIAL_LIMITS = {
   historyMaxLimit: 100,
   /** Maks. penerima surel "rusak" (satu daftar global). */
   alertRecipientsMax: 20,
-  /** Tautan bertanda tangan ke halaman publik laporan berlaku sampai tanggal laporan selesai + hari ini (laporan rusak). */
-  publicLinkDays: 30,
+  /**
+   * Tautan bertanda tangan ke halaman publik laporan berlaku sampai tanggal (WIB) saat laporan ditutup (waktu SERVER, bukan
+   * tanggal kejadian pilihan pengguna) + hari ini; keputusan pemilik 2026-11-23: 60 hari (sebelumnya 30).
+   */
+  publicLinkDays: 60,
   /** Maks. panjang ringkasan laporan (baris pertama catatan laporan) pada daftar Laporan. */
   reportSummaryMax: 120,
 } as const;
@@ -124,11 +128,9 @@ export function isApplyStickersClientId(value: string): boolean {
 export const SERVICE_DIAGNOSIS_STAGES = ['diagnosis', 'repairing', 'done'] as const;
 export type ServiceDiagnosisStage = (typeof SERVICE_DIAGNOSIS_STAGES)[number];
 
-const WIB_OFFSET_MS = 7 * 3_600_000;
-
 /**
- * Kedaluwarsa tautan bertanda tangan: akhir hari WIB (23:59:59.999, UTC+7) pada `closedOn` (`YYYY-MM-DD`, tanggal
- * laporan selesai) + `SERIAL_LIMITS.publicLinkDays` hari, sebagai epoch milidetik. `NaN` bila `closedOn` bukan tanggal sah.
+ * Kedaluwarsa tautan bertanda tangan: akhir hari WIB (23:59:59.999, UTC+7) pada `closedOn` (`YYYY-MM-DD`, tanggal WIB
+ * laporan ditutup menurut waktu server) + `SERIAL_LIMITS.publicLinkDays` hari, sebagai epoch milidetik. `NaN` bila `closedOn` bukan tanggal sah.
  */
 export function reportLinkExpiresAt(closedOn: string): number {
   if (!isIsoDate(closedOn)) return Number.NaN;

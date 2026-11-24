@@ -5,9 +5,15 @@ import type { Env } from '@server/core/env';
 import { createGoogleClient } from '@server/core/google/client';
 import { createSmtpMailer } from '@server/core/mail';
 import { MAX_REQUEST_BODY_BYTES } from '@server/http/body';
-import { clientIp } from '@server/http/proxy';
-import { startJobRunner, startNotificationLoop, startScheduler } from '@server/jobs/runner';
+import { clientIp, isTrustedPeer } from '@server/http/proxy';
+import {
+  startDashboardReportLoop,
+  startJobRunner,
+  startNotificationLoop,
+  startScheduler,
+} from '@server/jobs/runner';
 import { createMariadbDumpRunner, parseDatabaseUrl } from '@server/modules/backup/dump';
+import { drainVisitRecordings } from '@server/modules/dashboard/share-visits';
 import { closeAllNotificationStreams } from '@server/modules/notification/stream-hub';
 import { createWebPushSender } from '@server/modules/notification/web-push';
 import { backfillPostelStickers } from '@server/modules/postel/stickers';
@@ -103,7 +109,13 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
   let stops: Array<() => Promise<void>> = [];
   const startBackground = () => {
     if (options.background !== false)
-      stops = [startJobRunner(env), startScheduler(env), startNotificationLoop(env)];
+      stops = [
+        startJobRunner(env),
+        startScheduler(env),
+        startNotificationLoop(env),
+        // Laporan dashboard terjadwal butuh surel: tanpa SMTP loop tidak dipasang sama sekali.
+        ...(env.MAILER === undefined ? [] : [startDashboardReportLoop(env)]),
+      ];
   };
   const ready = (options.prepare ? options.prepare(db) : Promise.resolve([] as string[])).then(
     async (result) => {
@@ -137,6 +149,7 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
       app.fetch(request, {
         ...env,
         clientIp: clientIp(request, peerAddress, config.trustedProxy),
+        trustedPeer: isTrustedPeer(peerAddress, config.trustedProxy),
         peerAddress,
         staticDir: config.staticDir,
       }),
@@ -145,6 +158,7 @@ export function createServer(config: Config, options: ServerOptions = {}): QcSer
       // Aliran SSE desktop ditutup dulu: koneksi berumur panjang tak boleh menahan shutdown (klien menyambung ulang).
       closeAllNotificationStreams();
       await Promise.all(stops.map((stop) => stop()));
+      await drainVisitRecordings(); // pencatatan kunjungan di latar selesai sebelum pool ditutup
       if (ownsDb) await db.close();
     },
   };

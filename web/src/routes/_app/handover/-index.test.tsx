@@ -22,8 +22,16 @@ vi.mock('@/modules/handover/components/handover-board-page', () => ({
         <button type="button" onClick={() => props.onStatusChange?.('done' as never)}>
           status
         </button>
-        <button type="button" onClick={() => props.onDeletedChange?.(true as never)}>
+        <button type="button" onClick={() => props.onViewChange?.({ deleted: true } as never)}>
           terhapus
+        </button>
+        <button
+          type="button"
+          onClick={() =>
+            props.onViewChange?.({ status: 'new', deleted: false, customers: [] } as never)
+          }
+        >
+          gabungan
         </button>
         <button type="button" onClick={() => props.onCustomersChange?.([] as never)}>
           hapus-customer
@@ -115,4 +123,15 @@ test('papan menerima deleted dari search param', async () => {
   await mount({ deleted: true });
   expect(state.props?.deleted).toBe(true);
   expect(state.props?.status).toBe('all');
+});
+
+test('perubahan gabungan (keluar Terhapus + status + hapus customer) = SATU navigate dengan search final', async () => {
+  await mount({ loc: 'loc-b', customers: ['c1'], deleted: true });
+  await userEvent.click(screen.getByRole('button', { name: 'gabungan' }));
+  expect(state.navigate).toHaveBeenCalledTimes(1);
+  expect(state.navigate).toHaveBeenCalledWith({
+    to: '/handover',
+    search: { status: 'new', loc: 'loc-b' },
+    replace: true,
+  });
 });

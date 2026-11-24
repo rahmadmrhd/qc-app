@@ -37,6 +37,7 @@ const me: MeDto = {
     serial: 'none',
     serialservice: 'none',
     countrylock: 'none',
+    dashboard: 'none',
   },
   businessUnits: [],
   locations: [

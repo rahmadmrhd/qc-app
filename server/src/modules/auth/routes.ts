@@ -39,6 +39,15 @@ import {
 } from './desktop';
 import { createLogin, exchangeCodeForEmail, OAUTH_STATE_TTL_MS, verifyLoginState } from './oauth';
 
+/** Kode kegagalan login yang boleh dikirim ke aplikasi desktop (daftar tetap; sisi desktop menerima persis ini). */
+const DESKTOP_AUTH_ERRORS = ['LOGIN_FAILED', 'NOT_WHITELISTED'] as const;
+type DesktopAuthError = (typeof DESKTOP_AUTH_ERRORS)[number];
+
+/** Port loopback hanya dari cookie bertanda tangan (sudah divalidasi); host SELALU literal 127.0.0.1. */
+function desktopTarget(desktop: { port?: number }): string {
+  return desktop.port === undefined ? 'qc://auth' : `http://127.0.0.1:${desktop.port}/callback`;
+}
+
 /** Rute `/auth/*` (dipasang di `app.route('/auth', authApp)`). */
 export const authApp = new Hono<AppBindings>();
 
@@ -100,26 +109,30 @@ authApp.get('/callback', async (c) => {
       400,
     );
   }
+  // Login yang dimulai aplikasi desktop dibaca SEBELUM cabang gagal: kegagalan pun dikabarkan ke aplikasi (kode dari
+  // daftar tetap `DESKTOP_AUTH_ERRORS`, bukan teks Google) agar ia berhenti menunggu dan menampilkan alasannya.
+  const desktop = await readDesktopStart(c.env, desktopCookie);
+  const failLogin = (authError: DesktopAuthError) =>
+    desktop
+      ? c.redirect(
+          `${desktopTarget(desktop)}?${new URLSearchParams({ error: authError, state: desktop.state }).toString()}`,
+          302,
+        )
+      : c.redirect(`/?authError=${authError}`, 302);
   const code = c.req.query('code');
-  if (c.req.query('error') || !code) return c.redirect('/?authError=LOGIN_FAILED', 302);
+  if (c.req.query('error') || !code) return failLogin('LOGIN_FAILED');
 
   const result = await exchangeCodeForEmail(c.env, c.req.raw, code);
   if (!result.ok) {
     console.error(`Login gagal: ${result.reason}`);
-    return c.redirect('/?authError=LOGIN_FAILED', 302);
+    return failLogin('LOGIN_FAILED');
   }
-  if (!(await loadUserContext(c.env, result.email))) {
-    return c.redirect('/?authError=NOT_WHITELISTED', 302);
-  }
-  // Login yang dimulai aplikasi desktop: kirim kode sekali pakai ke loopback `127.0.0.1:<port>` (bila start memberi
-  // port) atau `qc://auth`, JANGAN pasang cookie sesi web.
-  const desktop = await readDesktopStart(c.env, desktopCookie);
+  if (!(await loadUserContext(c.env, result.email))) return failLogin('NOT_WHITELISTED');
+  // Kirim kode sekali pakai ke loopback `127.0.0.1:<port>` (bila start memberi port) atau `qc://auth`, JANGAN pasang
+  // cookie sesi web.
   if (desktop) {
     const desktopCode = await issueDesktopCode(c.env, result.email, desktop.challenge);
-    // Port loopback hanya dari cookie bertanda tangan (sudah divalidasi); host SELALU literal 127.0.0.1.
-    const target =
-      desktop.port === undefined ? 'qc://auth' : `http://127.0.0.1:${desktop.port}/callback`;
-    return c.redirect(`${target}?code=${desktopCode}&state=${desktop.state}`, 302);
+    return c.redirect(`${desktopTarget(desktop)}?code=${desktopCode}&state=${desktop.state}`, 302);
   }
   setCookie(c, SESSION_COOKIE, await signSessionToken(c.env, result.email, nowOf(c.env)), {
     httpOnly: true,

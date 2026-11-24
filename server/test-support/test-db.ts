@@ -48,7 +48,11 @@ async function refreshTemplate(): Promise<void> {
   // Kunci antar-proses: dua proses tes serentak tidak boleh membangun templat bersamaan.
   const lock = await mysql.createConnection({ uri: testDbUrl() });
   try {
-    await lock.query('SELECT GET_LOCK(?, 120)', [TEMPLATE_LOCK]);
+    // `GET_LOCK` mengembalikan 1 (didapat), 0 (batas waktu), atau NULL (galat): selain 1 JANGAN lanjut, kalau tidak dua
+    // proses dapat saling men-DROP templat yang sedang dikloning proses lain.
+    const [lockRows] = await lock.query('SELECT GET_LOCK(?, 120) AS ok', [TEMPLATE_LOCK]);
+    const acquired = Number((lockRows as Array<{ ok: number | string | null }>)[0]?.ok);
+    if (acquired !== 1) throw new Error('Gagal memperoleh kunci templat skema tes (GET_LOCK)');
     if ((await readTemplateHash(admin)) === hash) return;
     await admin.exec(
       `DROP DATABASE IF EXISTS \`${TEMPLATE_SCHEMA}\`; CREATE DATABASE \`${TEMPLATE_SCHEMA}\``,

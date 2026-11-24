@@ -76,6 +76,18 @@ describe('createReloadGate (R2-I1)', () => {
     expect(loaded).toEqual(['app://qc/a']);
   });
 
+  test('inject masih berjalan melewati masa tenang lalu selesai tanpa notifyIdle lagi: URL tetap akhirnya dimuat', async () => {
+    const { gate, loaded, setInjecting } = setup();
+    setInjecting(true);
+    gate.load('app://qc/a');
+    gate.notifyIdle(); // mis. Multi dihentikan, tetapi penutupan sesi SSH butuh > masa tenang
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(loaded).toEqual([]);
+    setInjecting(false);
+    await vi.advanceTimersByTimeAsync(1_600);
+    expect(loaded).toEqual(['app://qc/a']);
+  });
+
   test('notifyIdle tanpa permintaan tertunda tidak memuat apa pun', async () => {
     const { gate, loaded } = setup();
     gate.notifyIdle();

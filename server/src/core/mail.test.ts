@@ -40,6 +40,60 @@ describe('createSmtpMailer (transport disuntik)', () => {
     ]);
   });
 
+  test('html dan bcc diteruskan; bcc digabung koma', async () => {
+    const sent: unknown[] = [];
+    const mailer = createSmtpMailer(SETTINGS, {
+      createTransport: () => ({ sendMail: async (message) => void sent.push(message) }),
+    });
+    await mailer.send({
+      to: ['pemilik@x.test'],
+      bcc: ['a@x.id', 'b@y.id'],
+      subject: 'Laporan',
+      text: 'teks',
+      html: '<p>halo</p>',
+    });
+    expect(sent).toEqual([
+      {
+        from: 'QC App <pengirim@example.test>',
+        to: 'pemilik@x.test',
+        bcc: 'a@x.id, b@y.id',
+        subject: 'Laporan',
+        text: 'teks',
+        html: '<p>halo</p>',
+      },
+    ]);
+  });
+
+  test('to kosong dan ada bcc: to diisi alamat pengirim (bentuk "Nama <alamat>" diambil alamatnya)', async () => {
+    const sent: Array<{ to: string }> = [];
+    const mailer = createSmtpMailer(
+      { ...SETTINGS, from: 'QC App <noreply@qc.rhd.my.id>' },
+      { createTransport: () => ({ sendMail: async (message) => void sent.push(message) }) },
+    );
+    await mailer.send({ to: [], bcc: ['a@x.id'], subject: 's', text: 't' });
+    expect(sent[0]?.to).toBe('noreply@qc.rhd.my.id');
+  });
+
+  test('to kosong dan ada bcc dengan from polos: dipakai apa adanya', async () => {
+    const sent: Array<{ to: string }> = [];
+    const mailer = createSmtpMailer(
+      { ...SETTINGS, from: 'noreply@qc.rhd.my.id' },
+      { createTransport: () => ({ sendMail: async (message) => void sent.push(message) }) },
+    );
+    await mailer.send({ to: [], bcc: ['a@x.id'], subject: 's', text: 't' });
+    expect(sent[0]?.to).toBe('noreply@qc.rhd.my.id');
+  });
+
+  test('pesan hanya-teks lama menghasilkan objek tanpa properti html/bcc', async () => {
+    const sent: object[] = [];
+    const mailer = createSmtpMailer(SETTINGS, {
+      createTransport: () => ({ sendMail: async (message) => void sent.push(message) }),
+    });
+    await mailer.send({ to: ['a@x.test'], subject: 's', text: 't' });
+    expect('html' in (sent[0] as object)).toBe(false);
+    expect('bcc' in (sent[0] as object)).toBe(false);
+  });
+
   test('tanpa SMTP_USER: tanpa autentikasi', async () => {
     const created: Array<{ auth?: unknown; requireTLS?: boolean }> = [];
     const mailer = createSmtpMailer(

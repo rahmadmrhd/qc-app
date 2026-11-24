@@ -286,7 +286,7 @@ async function updateBrand(
       }
     }
     const key = normalizeKey(name);
-    let own: Array<{ id: string; next: string }> = [];
+    let own: Array<{ id: string; next: string; live: boolean }> = [];
     if (nameChanged) {
       const clash = await tx
         .prepare(
@@ -297,14 +297,23 @@ async function updateBrand(
       if (clash) throw appError('CONFLICT', NAME_TAKEN_MESSAGE, { name: NAME_TAKEN_MESSAGE });
       own = (
         await tx
-          .prepare('SELECT id, model FROM items WHERE brand_id = ? ORDER BY id FOR UPDATE')
+          .prepare(
+            'SELECT id, model, deleted_at FROM items WHERE brand_id = ? ORDER BY id FOR UPDATE',
+          )
           .bind(id)
-          .all<{ id: string; model: string }>()
-      ).results.map((item) => ({ id: item.id, next: itemKey(name, item.model) }));
+          .all<{ id: string; model: string; deleted_at: string }>()
+      ).results.map((item) => ({
+        id: item.id,
+        next: itemKey(name, item.model),
+        live: item.deleted_at === '',
+      }));
+      // Kunci SEMUA item merk (termasuk yang terhapus) tetap diperbarui, tetapi bentrok nama lain (alias) hanya
+      // dinilai untuk item HIDUP: item terhapus tak boleh menggagalkan ganti nama (pemulihannya diperiksa sendiri
+      // oleh `planItemRestore`).
       if (
         await aliasCollides(
           tx,
-          own.map((item) => item.next),
+          own.filter((item) => item.live).map((item) => item.next),
         )
       ) {
         throw appError('CONFLICT', RENAME_ALIAS_MESSAGE, { name: RENAME_ALIAS_MESSAGE });

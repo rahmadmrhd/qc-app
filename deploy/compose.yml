@@ -21,7 +21,15 @@ services:
     image: mariadb:11.8
     container_name: ${QC_NAME:-qc-${QC_ENV}}-db
     restart: unless-stopped
-    mem_limit: 384m
+    # Memori qc-db dapat diatur per lingkungan lewat .env (keputusan pemilik 2026-11-24; bawaan = nilai VPS bersama: 512m, 256M, 32M;
+    # sebelumnya 384m, 128M, 32M). QC_DB_MEM_LIMIT = batas kontainer; QC_DB_BUFFER_POOL = innodb_buffer_pool_size; QC_DB_ARIA_CACHE =
+    # aria_pagecache_buffer_size (read-only, hanya berlaku saat start). Dua yang terakhir lewat flag mariadbd (`command`), yang menang
+    # atas mariadb/qc.cnf dan tak bergantung pada izin baca berkas itu. Jumlah keduanya + koneksi + proses dasar HARUS di bawah batas
+    # kontainer (aturan praktis: buffer pool <= setengah batas). Berlaku setelah kontainer dibuat ulang (`docker compose up -d qc-db`).
+    mem_limit: ${QC_DB_MEM_LIMIT:-512m}
+    command:
+      - --innodb-buffer-pool-size=${QC_DB_BUFFER_POOL:-256M}
+      - --aria-pagecache-buffer-size=${QC_DB_ARIA_CACHE:-32M}
     environment:
       MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:?MARIADB_ROOT_PASSWORD wajib diisi}
       # Skema dan pengguna aplikasi dibuat OTOMATIS oleh entrypoint MariaDB HANYA saat volume pertama kali diinisialisasi
@@ -70,6 +78,8 @@ services:
       HOST: 0.0.0.0
       PORT: "8788"
       DATABASE_URL: mysql://${QC_DB_USER:-qc_${QC_ENV}}:${QC_DB_PASSWORD:?QC_DB_PASSWORD wajib diisi}@qc-db:3306/${QC_DB_NAME:-qc_${QC_ENV}}
+      # Maks. koneksi pool MariaDB (1-30); kosong = bawaan kode (8). max_connections qc-db = 40 (deploy/mariadb/qc.cnf).
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-}
       APP_ORIGIN: ${APP_ORIGIN:?APP_ORIGIN wajib diisi (https://...)}
       TRUSTED_PROXY: ${TRUSTED_PROXY:?TRUSTED_PROXY wajib diisi (daftar CIDR, termasuk QC_SUBNET)}
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET wajib diisi}

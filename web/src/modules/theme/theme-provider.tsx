@@ -1,10 +1,12 @@
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 import {
   applyTheme,
+  parseTheme,
   type ResolvedTheme,
   readStoredTheme,
   resolveTheme,
   systemPrefersDark,
+  THEME_STORAGE_KEY,
   type Theme,
   writeStoredTheme,
 } from './theme';
@@ -27,6 +29,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     const onChange = (event: { matches: boolean }) => setPrefersDark(event.matches);
     media.addEventListener('change', onChange);
     return () => media.removeEventListener('change', onChange);
+  }, []);
+
+  // Tab/jendela lain mengganti tema: ikuti (peristiwa `storage` hanya terkirim ke dokumen lain, bukan penulisnya) dan
+  // jangan menulis balik, supaya pilihan tidak saling menimpa.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === THEME_STORAGE_KEY) setThemeState(parseTheme(event.newValue));
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
   const resolvedTheme = resolveTheme(theme, prefersDark);

@@ -1,7 +1,7 @@
 // Token tautan laporan rusak (rancangan 2026-11-14 §4.8). Murni, tanpa basis data.
 import { describe, expect, test } from 'bun:test';
 import { reportLinkExpiresAt } from '@shared/serials';
-import { signReportToken, verifyReportToken } from './public-link';
+import { reportTokenExpiresAt, signReportToken, verifyReportToken } from './public-link';
 
 const SECRET = 'rahasia-sesi-uji-0123456789';
 const CASE_ID = '3f2c8b1e-aaaa-4bbb-8ccc-0123456789ab';
@@ -34,13 +34,20 @@ describe('signReportToken / verifyReportToken', () => {
     expect(await verifyReportToken(SECRET, token, exact - 1)).toEqual({ caseId: CASE_ID });
   });
 
+  test('reportTokenExpiresAt membaca kedaluwarsa dari token (akhir detik terakhir yang sah)', async () => {
+    const token = await signReportToken(SECRET, CASE_ID, EXP);
+    expect(reportTokenExpiresAt(token)).toBe(EXP);
+    expect(await verifyReportToken(SECRET, token, reportTokenExpiresAt(token))).not.toBeNull();
+    expect(await verifyReportToken(SECRET, token, reportTokenExpiresAt(token) + 1)).toBeNull();
+  });
+
   test('kedaluwarsa dengan reportLinkExpiresAt nyata: sah sampai 23:59:59.999 WIB, +1 ms sudah tidak', async () => {
-    const expiresAt = reportLinkExpiresAt('2026-11-12'); // 2026-12-12 23:59:59.999 WIB
-    expect(expiresAt).toBe(Date.UTC(2026, 11, 12, 16, 59, 59, 999));
+    const expiresAt = reportLinkExpiresAt('2026-11-12'); // 2027-01-11 23:59:59.999 WIB (60 hari)
+    expect(expiresAt).toBe(Date.UTC(2027, 0, 11, 16, 59, 59, 999));
     const token = await signReportToken(SECRET, CASE_ID, expiresAt);
     expect(await verifyReportToken(SECRET, token, expiresAt - 1)).toEqual({ caseId: CASE_ID });
     expect(await verifyReportToken(SECRET, token, expiresAt)).toEqual({ caseId: CASE_ID });
-    expect(await verifyReportToken(SECRET, token, expiresAt + 1)).toBeNull(); // 00:00:00.000 WIB hari ke-31
+    expect(await verifyReportToken(SECRET, token, expiresAt + 1)).toBeNull(); // 00:00:00.000 WIB hari ke-61
   });
 
   test('tanda tangan diubah satu karakter: null', async () => {

@@ -92,8 +92,6 @@ export function isRefIdChar(ch: string): boolean {
   );
 }
 
-export const DRIVE_REF_SCHEME = 'drive:';
-
 /**
  * Id dari setiap kemunculan "<skema><id>" (mis. "qcfile:" atau "drive:") di Markdown: bentuk apa pun yang
  * dirender (judul, kurung sudut, gaya referensi); unik, urutan kemunculan. Sengaja longgar: klaim berlebih
@@ -118,50 +116,4 @@ export function extractRefs(markdown: string, scheme: string): string[] {
 
 export function extractFileRefs(markdown: string): string[] {
   return extractRefs(markdown, FILE_SCHEME);
-}
-
-/**
- * Mengganti "<fromScheme><id>" menjadi "<toScheme><lookup(id)>". Id yang tidak dikenal (lookup `null`),
- * id kosong, dan kemunculan di tengah kata dibiarkan apa adanya.
- */
-export function mapMarkdownRefs(
-  markdown: string,
-  fromScheme: string,
-  toScheme: string,
-  lookup: (id: string) => string | null,
-): string {
-  let out = '';
-  let from = 0;
-  while (from < markdown.length) {
-    const at = markdown.indexOf(fromScheme, from);
-    if (at < 0) break;
-    let end = at + fromScheme.length;
-    while (end < markdown.length && isRefIdChar(markdown.charAt(end))) end++;
-    const id = markdown.slice(at + fromScheme.length, end);
-    const before = at > 0 ? markdown.charAt(at - 1) : '';
-    const mapped = (before === '' || !isRefIdChar(before)) && id !== '' ? lookup(id) : null;
-    out +=
-      markdown.slice(from, at) + (mapped === null ? markdown.slice(at, end) : toScheme + mapped);
-    from = end;
-  }
-  return out + markdown.slice(from);
-}
-
-/** Tujuan (URL beserta judul bila ada) semua gambar `![alt](tujuan)`; tautan biasa diabaikan. */
-export function extractImageTargets(markdown: string): string[] {
-  const found: string[] = [];
-  let from = 0;
-  while (from < markdown.length) {
-    const open = markdown.indexOf('![', from);
-    if (open < 0) break;
-    const mid = markdown.indexOf('](', open + 2);
-    if (mid < 0) break;
-    let end = mid + 2;
-    while (end < markdown.length && markdown.charAt(end) !== ')' && markdown.charAt(end) !== LF) {
-      end++;
-    }
-    found.push(markdown.slice(mid + 2, end).trim());
-    from = end;
-  }
-  return found;
 }

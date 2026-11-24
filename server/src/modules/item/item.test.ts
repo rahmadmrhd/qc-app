@@ -609,6 +609,51 @@ describe('daftar berkursor dan get', () => {
     expect(page.nextCursor).toBeNull();
   });
 
+  test('daftar Terhapus: item terhapus berkunci SAMA (merk+tipe) tidak terlewat antar halaman', async () => {
+    await seedBrand(env, 'Merk');
+    for (const [id, deletedAt] of [
+      ['d1', '2026-11-01T00:00:00.000Z'],
+      ['d2', '2026-11-02T00:00:00.000Z'],
+      ['d3', '2026-11-03T00:00:00.000Z'],
+    ] as const) {
+      await seedItem(env, { id, brand: 'Merk', model: 'SAMA', brandId: 'brand-merk' });
+      await env.DB.prepare("UPDATE items SET deleted_at = ?, deleted_by = 'x@y.z' WHERE id = ?")
+        .bind(deletedAt, id)
+        .run();
+    }
+    const seen: string[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await listItemPage(
+        env,
+        { status: 'deleted', limit: 1, ...(cursor ? { cursor } : {}) },
+        admin,
+      );
+      seen.push(...page.items.map((i) => i.id));
+      cursor = page.nextCursor ?? undefined;
+    } while (cursor);
+    expect([...seen].sort()).toEqual(['d1', 'd2', 'd3']);
+    // Kursor lama (hanya `key`) tetap diterima (halaman yang sedang berjalan saat deploy).
+    const legacy = await listItemPage(env, { status: 'deleted', limit: 5, cursor: 'a' }, admin);
+    expect(legacy.items.length).toBe(3);
+    // Kursor bergaya NUL yang sempat beredar tetap diterima; U+001F = pemisah resmi (id d1 sudah lewat: sisa d2, d3).
+    const key = (await env.DB.prepare('SELECT `key` FROM items WHERE id = ?').bind('d1').first<{
+      key: string;
+    }>()) as { key: string };
+    const withNul = await listItemPage(
+      env,
+      { status: 'deleted', limit: 5, cursor: `${key.key}\u0000d1` },
+      admin,
+    );
+    const withUs = await listItemPage(
+      env,
+      { status: 'deleted', limit: 5, cursor: `${key.key}\u001fd1` },
+      admin,
+    );
+    expect(withNul.items.map((i) => i.id)).toEqual(['d2', 'd3']);
+    expect(withUs.items.map((i) => i.id)).toEqual(['d2', 'd3']);
+  });
+
   test('halaman berkursor tanpa duplikat/lompatan; batas default 20; filter status dan kueri', async () => {
     await seedBrand(env, 'Merk');
     for (let i = 0; i < 45; i++) {

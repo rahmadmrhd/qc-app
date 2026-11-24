@@ -176,7 +176,7 @@ describe('GET /api/public/serial-reports/:token', () => {
       openedOn: TODAY,
       closedOn: TODAY,
       outcome: 'broken',
-      expiresOn: '2026-12-12',
+      expiresOn: '2027-01-11',
       viewerCanOpen: false,
       serialId,
       caseId,
@@ -315,12 +315,12 @@ describe('GET /api/public/serial-reports/:token', () => {
     expect(shapes[0]).toMatchObject({ status: 404, code: 'NOT_FOUND' });
   });
 
-  test('kedaluwarsa tepat di akhir hari WIB hari ke-30: sebelum batas 200, sesudahnya 404', async () => {
+  test('kedaluwarsa tepat di akhir hari WIB hari ke-60: sebelum batas 200, sesudahnya 404', async () => {
     const { caseId } = await brokenReport('PUB-5', 5);
     const token = await tokenFor(caseId);
-    env.clock.set(Date.parse('2026-12-12T16:59:00.000Z'));
+    env.clock.set(Date.parse('2027-01-11T16:59:00.000Z'));
     expect((await report(token)).status).toBe(200);
-    env.clock.set(Date.parse('2026-12-12T17:00:01.000Z'));
+    env.clock.set(Date.parse('2027-01-11T17:00:01.000Z'));
     expect((await report(token)).status).toBe(404);
   });
 

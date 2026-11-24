@@ -22,7 +22,6 @@ import {
   adjustItemCountStmt,
   brandByIdStatement,
   brandsFromResult,
-  listBrands,
 } from '@server/modules/brand/repo';
 import type { FileRecord } from '@server/modules/files/repo';
 import { activeFilesFromResults, activeFilesStatements } from '@server/modules/files/repo';
@@ -204,8 +203,7 @@ export function itemLabel(item: { brand: string; model: string }): string {
  * dulu; bila tak ada di sana (merk terhapus atau tak dikenal), langsung dari database menurut id.
  */
 async function brandInfoOf(env: Env, brandId: string): Promise<{ name: string; deleted: boolean }> {
-  const known = (await listBrands(env)).find((brand) => brand.id === brandId);
-  if (known) return { name: known.name, deleted: false };
+  // Satu kueri atas baris itu (hidup ATAU terhapus), bukan memuat seluruh daftar merk per tampilan item.
   const row = await env.DB.prepare('SELECT name, deleted_at FROM brands WHERE id = ?')
     .bind(brandId)
     .first<{ name: string; deleted_at: string }>();
@@ -277,6 +275,11 @@ interface ListRow {
   deleted_by: string;
 }
 
+/** Pemisah `key` dan `id` pada kursor daftar item (U+001F, tak pernah muncul di kunci ternormalisasi). */
+const ITEM_CURSOR_SEP = '\u001f';
+/** Pemisah NUL yang sempat dipakai kursor sementara: tetap diterima agar kursor yang sudah beredar tak rusak. */
+const ITEM_CURSOR_SEP_NUL = '\u0000';
+
 /** SELECT daftar ringkas (jumlah gambar dihitung SQL); pemakai menambahkan `WHERE` menurut keadaan hapus. */
 const ITEM_LIST_SELECT =
   "SELECT i.id, i.brand_id, b.name AS brand_name, b.deleted_at AS brand_deleted_at, i.model, i.`key`, i.is_country_lock, i.aliases, CASE WHEN JSON_VALID(i.attachments) THEN CASE WHEN JSON_TYPE(i.attachments) = 'ARRAY' THEN JSON_LENGTH(i.attachments) ELSE 0 END ELSE 0 END AS image_count, i.status, i.updated_at, i.deleted_at, i.deleted_by FROM items i LEFT JOIN brands b ON b.id = i.brand_id";
@@ -342,10 +345,21 @@ export async function listItemPage(
     binds.push(query, query);
   }
   if (input.cursor) {
-    where.push('i.`key` > ?');
-    binds.push(input.cursor);
+    // Kursor = `key` + U+001F + `id`: `key` tak unik antar item TERHAPUS (merk+tipe sama dapat dihapus berkali-kali), jadi
+    // `id` jadi pemutus urutan agar halaman berikutnya tak melewati item berkunci sama. Kursor lama (hanya `key`,
+    // tanpa U+001F) tetap diterima.
+    let split = input.cursor.indexOf(ITEM_CURSOR_SEP);
+    if (split < 0) split = input.cursor.indexOf(ITEM_CURSOR_SEP_NUL);
+    if (split < 0) {
+      where.push('i.`key` > ?');
+      binds.push(input.cursor);
+    } else {
+      const cursorKey = input.cursor.slice(0, split);
+      where.push('(i.`key` > ? OR (i.`key` = ? AND i.id > ?))');
+      binds.push(cursorKey, cursorKey, input.cursor.slice(split + 1));
+    }
   }
-  const rest = ` AND ${where.join(' AND ')} ORDER BY i.\`key\` LIMIT ?`;
+  const rest = ` AND ${where.join(' AND ')} ORDER BY i.\`key\`, i.id LIMIT ?`;
   const sql = deletedOnly
     ? `${ITEM_LIST_SELECT} WHERE ${deletedWhere('i')}${rest}`
     : `${ITEM_LIST_SELECT} WHERE ${liveWhere('i')}${rest}`;
@@ -384,7 +398,8 @@ export async function listItemPage(
         ...((row.brand_deleted_at ?? '') === '' ? {} : { brandDeleted: true }),
       }),
     ),
-    nextCursor: rows.length > limit && last ? last.key : null,
+    nextCursor:
+      rows.length > limit && last ? `${last.key}${ITEM_CURSOR_SEP}${last.id.trim()}` : null,
   };
 }
 

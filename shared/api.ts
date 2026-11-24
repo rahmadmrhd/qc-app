@@ -74,6 +74,8 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     verb: 'PUT',
     path: '/users/{id}',
     create: { verb: 'POST', path: '/users' },
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
   },
   'access.users.setStatus': { verb: 'PATCH', path: '/users/{id}', etag: 'updatedAt' },
   // Urutan tabel = urutan pendaftaran: `/users/batch/restore` harus SEBELUM `/users/{id}/restore`.
@@ -88,6 +90,8 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     verb: 'PUT',
     path: '/roles/{id}',
     create: { verb: 'POST', path: '/roles' },
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
   },
   'access.roles.delete': { verb: 'DELETE', path: '/roles/{id}' },
   'access.roles.removeBatch': { verb: 'POST', path: '/roles/batch/delete' },
@@ -115,6 +119,8 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     verb: 'PUT',
     path: '/locations/{id}',
     create: { verb: 'POST', path: '/locations' },
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
   },
   'access.locations.setStatus': { verb: 'PATCH', path: '/locations/{id}', etag: 'updatedAt' },
   'access.locations.setStatusBatch': { verb: 'POST', path: '/locations/batch/status' },
@@ -142,6 +148,8 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     verb: 'PUT',
     path: '/business-units/{id}',
     create: { verb: 'POST', path: '/business-units' },
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
   },
   'access.businessUnits.setStatus': {
     verb: 'PATCH',
@@ -676,6 +684,32 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
     status: 202,
     location: '/jobs/{jobId}',
   },
+  // Dashboard: `query` memakai POST karena badannya memuat daftar widget beserta filternya (tak mengubah data).
+  'dashboard.query': { verb: 'POST', path: '/dashboard/query', status: 200 },
+  'dashboard.options': {
+    verb: 'GET',
+    path: '/dashboard/options',
+    query: { kind: 'string', query: 'string', cursor: 'string', limit: 'number', ids: 'list' },
+  },
+  // Tautan dashboard publik (spek dashboard 7.5): `create` = 201, `revoke` idempoten.
+  'dashboardShares.list': { verb: 'GET', path: '/dashboard-shares' },
+  'dashboardShares.get': { verb: 'GET', path: '/dashboard-shares/{id}' },
+  'dashboardShares.create': { verb: 'POST', path: '/dashboard-shares', status: 201 },
+  'dashboardShares.revoke': { verb: 'POST', path: '/dashboard-shares/{id}/revoke' },
+  // Laporan dashboard terjadwal (spek dashboard 7a.7): `save` = PUT utuh ber-CAS `updatedAt`, `create` = 201.
+  'dashboardReports.list': { verb: 'GET', path: '/dashboard-reports' },
+  'dashboardReports.get': { verb: 'GET', path: '/dashboard-reports/{id}', etag: 'updatedAt' },
+  'dashboardReports.save': {
+    verb: 'PUT',
+    path: '/dashboard-reports/{id}',
+    create: { verb: 'POST', path: '/dashboard-reports', status: 201 },
+    ifMatch: 'expectedUpdatedAt',
+    etag: 'updatedAt',
+  },
+  'dashboardReports.setEnabled': { verb: 'POST', path: '/dashboard-reports/{id}/enabled' },
+  'dashboardReports.remove': { verb: 'DELETE', path: '/dashboard-reports/{id}' },
+  'dashboardReports.sendTest': { verb: 'POST', path: '/dashboard-reports/{id}/send-test' },
+  'dashboardReports.preview': { verb: 'GET', path: '/dashboard-reports/{id}/preview' },
 };
 
 export interface RequestParts {

@@ -1,17 +1,11 @@
-import type { MeDto } from '@shared/contract';
-import type { QueryClient } from '@tanstack/react-query';
-import { meQueryKey } from './queries';
-import { markAuthenticated } from './session';
-
 /**
- * Menyelesaikan login desktop setelah `auth.onChange` melaporkan `signedIn` dan `me` berhasil dimuat:
- * sesi ditandai sah, `me` dipasang ke cache (seperti boot), lalu masuk ke aplikasi.
+ * Menyelesaikan login desktop setelah `auth.onChange` melaporkan `signedIn` dan `me` berhasil dimuat: memuat ulang
+ * jendela ke `/` agar jalur boot normal berjalan penuh dengan sesi baru (restore cache query dan papan, muat antrean
+ * tulis, penyinkron antrean, pendengar logout antar tab). Cukup menandai sesi dan `navigate` tidak menyalakan itu
+ * semua, dan setelah logout penahan tulis antrean (`suspendOutboxWrites`) tetap aktif sampai modul dimuat ulang.
  */
-export async function completeDesktopLogin(
-  me: MeDto,
-  deps: { queryClient: QueryClient; navigate: (options: { to: '/' }) => Promise<unknown> },
-): Promise<void> {
-  markAuthenticated(me.email);
-  deps.queryClient.setQueryData(meQueryKey, me);
-  await deps.navigate({ to: '/' });
+export function completeDesktopLogin(
+  reload: () => void = () => window.location.replace('/'),
+): void {
+  reload();
 }

@@ -9,7 +9,10 @@ import {
   postelStickerIdsOf,
 } from '@server/modules/item/repo';
 import { loadItemInstructions } from '@server/modules/sticker/instruction-repo';
-import { buildInstructionViews } from '@server/modules/sticker/instruction-service';
+import {
+  loadInstructionContext,
+  resolveInstructionViews,
+} from '@server/modules/sticker/instruction-service';
 import { latestManualBookStickerIds } from '@server/modules/sticker/repo';
 import type { ItemStickerPhotoDto } from '@shared/contract';
 import {
@@ -39,8 +42,6 @@ import {
  */
 
 const IN_CHUNK = 500;
-/** Item yang instruksinya dibangun serentak (tiap item beberapa kueri kecil; batas melindungi pool koneksi). */
-const VIEW_CONCURRENCY = 6;
 
 interface ItemRow {
   id: string;
@@ -148,6 +149,8 @@ export async function buildDesktopCatalog(env: Env): Promise<DesktopCatalogDto> 
       .all<ItemRow>()
   ).results;
   const itemIds = itemRows.map((row) => row.id.trim());
+  // Pilihan BU di form inject: hanya BU hidup DAN aktif (sama dengan pemilih BU di web yang menyaring yang terhapus).
+  const selectableBuIds = new Set(buRows.results.map((row) => row.id.trim()));
 
   const [typeRows, stickerRows, stickerBuRows, itemBus, instructions, designIds, postelStickers] =
     await Promise.all([
@@ -213,30 +216,35 @@ export async function buildDesktopCatalog(env: Env): Promise<DesktopCatalogDto> 
     return matchStickers.filter((sticker) => found.has(sticker.id)).map((sticker) => sticker.id);
   };
 
-  const items: CatalogItemDto[] = [];
-  for (let from = 0; from < itemRows.length; from += VIEW_CONCURRENCY) {
-    const slice = itemRows.slice(from, from + VIEW_CONCURRENCY);
-    const built = await Promise.all(
-      slice.map(async (row): Promise<CatalogItemDto> => {
-        const id = row.id.trim();
-        const businessUnits = itemBus.get(id) ?? [];
-        const buIds = businessUnits.map((unit) => unit.id);
-        return {
-          id,
-          brand: row.brand,
-          model: row.model.trim(),
-          aliases: parseStrings(row.aliases),
-          firmware: row.firmware.trim(),
-          businessUnits,
-          stickerIds: applicableTo(id, buIds),
-          stickerPhotos: withoutDeletedStickers(
-            await buildInstructionViews(env, id, buIds, instructions.get(id) ?? []),
-          ),
-        };
-      }),
-    );
-    items.push(...built);
-  }
+  // Instruksi SEMUA item diterjemahkan dari satu pemuatan bersama (bukan satu transaksi + beberapa kueri per item).
+  const instructionContext = await loadInstructionContext(
+    env,
+    itemRows.map((row) => ({
+      itemId: row.id.trim(),
+      photos: instructions.get(row.id.trim()) ?? [],
+    })),
+  );
+  const items: CatalogItemDto[] = itemRows.map((row): CatalogItemDto => {
+    const id = row.id.trim();
+    // `businessUnits` = pilihan/batas BU pada form inject: hanya BU hidup dan aktif. Aturan stiker dan instruksi memakai
+    // SEMUA BU item (aktif, nonaktif, maupun terhapus), persis seperti `items.get` di web (`itemBusinessUnitsOf` tanpa
+    // saringan), jadi katalog desktop dan detail item web memberi hasil yang sama (keputusan pemilik 2026-11-24).
+    const itemBusinessUnits = itemBus.get(id) ?? [];
+    const businessUnits = itemBusinessUnits.filter((unit) => selectableBuIds.has(unit.id));
+    const buIds = itemBusinessUnits.map((unit) => unit.id);
+    return {
+      id,
+      brand: row.brand,
+      model: row.model.trim(),
+      aliases: parseStrings(row.aliases),
+      firmware: row.firmware.trim(),
+      businessUnits,
+      stickerIds: applicableTo(id, buIds),
+      stickerPhotos: withoutDeletedStickers(
+        resolveInstructionViews(instructionContext, id, buIds, instructions.get(id) ?? []),
+      ),
+    };
+  });
 
   // Stiker yang dirujuk: berlaku bagi minimal satu item atau terselesaikan pada sebuah penanda.
   const referenced = new Set<string>();

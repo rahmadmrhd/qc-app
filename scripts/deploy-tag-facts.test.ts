@@ -66,6 +66,10 @@ if [ -n "$expr" ]; then jq -r "$expr" < "$FIX/$name"; else cat "$FIX/$name"; fi
 const FAKE_DOCKER = `#!/bin/sh
 echo "docker $*" >> "$FIX/docker.log"
 case "$*" in
+  "buildx imagetools inspect "*"--format"*)
+    [ -f "$FIX/image_missing" ] && exit 1
+    printf '{"config":{"Labels":{"qc.build-target":"%s"}}}' "$(cat "$FIX/image_target" 2>/dev/null || echo production)"
+    exit 0 ;;
   "buildx imagetools inspect "*) [ -f "$FIX/image_missing" ] && exit 1; exit 0 ;;
 esac
 exit 0
@@ -165,12 +169,13 @@ describe.skipIf(!JQ)('deploy-tag.yml: langkah facts dengan gh dan docker palsu',
       release_author: 'github-actions[bot]',
       release_draft: 'false',
       image_exists: 'true',
+      image_target: 'production',
       downgrade_check: 'true',
       applied_json: JSON.stringify([M1, M2]),
       target_json: JSON.stringify([M1]),
       first_lines_json: JSON.stringify({ [M2]: '-- tambah kolom' }),
     });
-    expect(result.raw.trim().split('\n')).toHaveLength(10);
+    expect(result.raw.trim().split('\n')).toHaveLength(11);
     // nama image dari pemilik huruf kecil; token GHCR dicabut dari disk setelah image diperiksa
     expect(dockerLog()).toContain('buildx imagetools inspect ghcr.io/pemilik/qc-app:' + SHA);
     expect(dockerLog().indexOf('logout ghcr.io')).toBeGreaterThan(
@@ -240,6 +245,26 @@ describe.skipIf(!JQ)('deploy-tag.yml: langkah facts dengan gh dan docker palsu',
     expect(result.outputs.image_exists).toBe('false');
   });
 
+  test('label qc.build-target image dibaca: staging terbawa apa adanya; nilai asing/kosong menjadi kosong (provenance menolak)', async () => {
+    writeFileSync(join(fix, 'image_target'), 'staging');
+    const staging = await runFacts();
+    expect(staging.code, staging.out).toBe(0);
+    expect(staging.outputs.image_target).toBe('staging');
+
+    writeFileSync(
+      join(fix, 'image_target'),
+      'production' + String.fromCharCode(10) + 'image_exists=true',
+    );
+    const evil = await runFacts();
+    expect(evil.code, evil.out).toBe(0);
+    expect(evil.outputs.image_target).toBe('');
+    expect(evil.outputs.image_exists).toBe('true');
+
+    writeFileSync(join(fix, 'image_missing'), '1');
+    const missing = await runFacts();
+    expect(missing.outputs.image_target).toBe('');
+  });
+
   test('nama berkas jahat (baris baru, ../) tak menyelipkan baris GITHUB_OUTPUT palsu dan tak dibaca isinya', async () => {
     const evil = `0001_a.sql\nimage_exists=true`;
     put(`repos/${REPO}/contents/server/migrations?ref=${DEPLOYED}`, [
@@ -260,6 +285,7 @@ describe.skipIf(!JQ)('deploy-tag.yml: langkah facts dengan gh dan docker palsu',
       'release_author',
       'release_draft',
       'image_exists',
+      'image_target',
       'downgrade_check',
       'applied_json',
       'target_json',

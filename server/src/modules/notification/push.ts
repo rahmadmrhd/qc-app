@@ -128,6 +128,7 @@ interface PendingRow {
 }
 
 interface SubRow {
+  recipient: string;
   endpoint_hash: string;
   endpoint: string;
   p256dh: string;
@@ -178,6 +179,33 @@ export async function deliverPendingPushes(
     }
     return hit;
   };
+  // Preferensi dan langganan semua penerima putaran ini dimuat sekaligus (satu kueri per tabel), bukan dua kueri per
+  // notifikasi: satu task di lokasi ramai bisa menghasilkan puluhan notifikasi sekali putaran.
+  const recipients = [...new Set(pending.results.map((row) => row.recipient))];
+  const pushEnabledOf = new Map<string, boolean>();
+  const subsOf = new Map<string, SubRow[]>();
+  if (recipients.length > 0) {
+    const marks = recipients.map(() => '?').join(', ');
+    const prefRows = await env.DB.prepare(
+      `SELECT recipient, push_enabled FROM notification_prefs WHERE recipient IN (${marks})`,
+    )
+      .bind(...recipients)
+      .all<{ recipient: string; push_enabled: number | string }>();
+    for (const pref of prefRows.results) {
+      pushEnabledOf.set(pref.recipient, Number(pref.push_enabled) !== 0);
+    }
+    const subRows = await env.DB.prepare(
+      // `muted = 0`: perangkat yang dimatikan pengguna dilewati (barisnya tetap ada).
+      `SELECT recipient, endpoint_hash, endpoint, p256dh, auth FROM push_subscriptions WHERE recipient IN (${marks}) AND muted = 0`,
+    )
+      .bind(...recipients)
+      .all<SubRow>();
+    for (const sub of subRows.results) {
+      const list = subsOf.get(sub.recipient);
+      if (list === undefined) subsOf.set(sub.recipient, [sub]);
+      else list.push(sub);
+    }
+  }
   let sent = 0;
   /** Memproses satu notifikasi; `continue` lama menjadi `return`. */
   const processRow = async (row: PendingRow): Promise<void> => {
@@ -190,22 +218,12 @@ export async function deliverPendingPushes(
       await setPushState(env, row.id, 'skipped');
       return;
     }
-    const prefs = await env.DB.prepare(
-      'SELECT push_enabled FROM notification_prefs WHERE recipient = ?',
-    )
-      .bind(row.recipient)
-      .first<{ push_enabled: number | string }>();
-    if (prefs !== null && Number(prefs.push_enabled) === 0) {
+    if (pushEnabledOf.get(row.recipient) === false) {
       await setPushState(env, row.id, 'skipped');
       return;
     }
-    const subs = await env.DB.prepare(
-      // `muted = 0`: perangkat yang dimatikan pengguna dilewati (barisnya tetap ada).
-      'SELECT endpoint_hash, endpoint, p256dh, auth FROM push_subscriptions WHERE recipient = ? AND muted = 0',
-    )
-      .bind(row.recipient)
-      .all<SubRow>();
-    if (subs.results.length === 0) {
+    const subs = subsOf.get(row.recipient) ?? [];
+    if (subs.length === 0) {
       await setPushState(env, row.id, 'skipped');
       return;
     }
@@ -227,7 +245,7 @@ export async function deliverPendingPushes(
     };
     const payload = JSON.stringify(pushPayloadOf(dto));
     const results = await Promise.all(
-      subs.results.map(async (sub) => ({
+      subs.map(async (sub) => ({
         sub,
         // Slot kirim dibagi seluruh putaran. Anggaran hanya diperiksa SEBELUM sebuah notifikasi dimulai: sekali
         // dimulai, semua langganannya dikirim sampai selesai (dibatasi batas waktu per kirim).
@@ -283,13 +301,22 @@ export async function deliverPendingPushes(
   };
   // Pekerja berkonkurensi terbatas; anggaran habis = berhenti mengambil notifikasi baru (tetap `pending`); yang sudah
   // dimulai diselesaikan.
+  // Galat pada satu baris TIDAK boleh membuat `Promise.all` menolak selagi pekerja lain masih berjalan (putaran
+  // berikutnya akan membaca ulang baris yang masih dikirim dan mengirim push yang sama dua kali): galat pertama
+  // disimpan, pekerja lanjut ke baris berikutnya, dan galat dilempar ulang SETELAH semua pekerja berhenti.
+  const failure: { failed: boolean; error?: unknown } = { failed: false };
   const queue = [...pending.results];
   const workers = Array.from({ length: Math.max(1, concurrency) }, async () => {
     for (let row = queue.shift(); row !== undefined; row = queue.shift()) {
       if (Date.now() > deadline) return;
-      await processRow(row);
+      try {
+        await processRow(row);
+      } catch (error) {
+        if (!failure.failed) Object.assign(failure, { failed: true, error });
+      }
     }
   });
   await Promise.all(workers);
+  if (failure.failed) throw failure.error;
   return sent;
 }

@@ -25,6 +25,12 @@ test('label aksi customer dan serah terima', () => {
   expect(auditActionLabel('handover.comment')).toBe('Komentar serah terima ditambahkan');
 });
 
+test('aksi audit tautan dashboard berlabel Indonesia', () => {
+  expect(auditActionLabel('dashboard.share_create')).toBe('Tautan dashboard dibuat');
+  expect(auditActionLabel('dashboard.share_revoke')).toBe('Tautan dashboard dicabut');
+  expect(auditActionLabel('dashboard.share_expire')).toBe('Tautan dashboard kedaluwarsa');
+});
+
 test('aksi audit qrcode.* berlabel Indonesia', () => {
   for (const action of [
     'create',

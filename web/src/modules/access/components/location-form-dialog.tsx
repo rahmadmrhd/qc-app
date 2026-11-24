@@ -1,8 +1,9 @@
 import type { LocationDto, SaveLocationInput } from '@shared/contract';
 import { useState } from 'react';
 import { FormDialogShell } from '@/components/form-dialog-shell';
-import { describeError } from '@/lib/api/describe-error';
+import { useFrozen } from '@/hooks/use-frozen';
 import { pickFieldErrors } from '../lib/field-errors';
+import { describeSaveError } from '../lib/stale';
 import { toLocationFormDefaults } from '../schemas';
 import { LocationForm } from './location-form';
 
@@ -12,13 +13,13 @@ export interface LocationFormDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Lokasi yang diubah; kosong = lokasi baru. */
-  location?: Pick<LocationDto, 'id' | 'code' | 'name'> | undefined;
+  location?: (Pick<LocationDto, 'id' | 'code' | 'name'> & { updatedAt?: string }) | undefined;
   /** Menyimpan; melempar galat bila gagal (pesannya tampil di dialog). Dialog menutup sendiri saat berhasil. */
   onSave: (input: SaveLocationInput) => Promise<unknown>;
 }
 
 function LocationDialogBody({
-  location,
+  location: liveLocation,
   onSave,
   onClose,
   onBusyChange,
@@ -28,6 +29,10 @@ function LocationDialogBody({
   onClose: () => void;
   onBusyChange: (busy: boolean) => void;
 }) {
+  // Rekaman dibekukan saat badan dialog terpasang (hanya saat dialog terbuka): isi form dan versi (`updatedAt`) yang dikirim
+  // sebagai `expectedUpdatedAt` selalu pasangan yang sama, walau query record dimuat ulang (polling 30 dtk, invalidasi
+  // setelah 412). Buka-tutup-buka = rekaman segar.
+  const location = useFrozen(liveLocation);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ code?: string; name?: string }>({});
 
@@ -35,12 +40,20 @@ function LocationDialogBody({
     setSubmitError(null);
     setFieldErrors({});
     try {
-      await onSave(location ? { ...values, id: location.id } : values);
+      await onSave(
+        location
+          ? {
+              ...values,
+              id: location.id,
+              ...(location.updatedAt ? { expectedUpdatedAt: location.updatedAt } : {}),
+            }
+          : values,
+      );
       onClose();
     } catch (error) {
       const picked = pickFieldErrors(error, ['code', 'name'] as const);
       if (Object.keys(picked).length > 0) setFieldErrors(picked);
-      else setSubmitError(describeError(error));
+      else setSubmitError(describeSaveError(error));
     }
   }
 

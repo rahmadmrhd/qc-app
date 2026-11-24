@@ -38,6 +38,7 @@ describe('mergePermissions', () => {
       serial: 'none',
       serialservice: 'none',
       countrylock: 'none',
+      dashboard: 'none',
     });
   });
 
@@ -65,6 +66,7 @@ describe('mergePermissions', () => {
       serial: 'none',
       serialservice: 'none',
       countrylock: 'none',
+      dashboard: 'none',
     });
   });
 });
@@ -83,6 +85,7 @@ describe('fullPermissions', () => {
       serial: 'manage',
       serialservice: 'manage',
       countrylock: 'manage',
+      dashboard: 'manage',
     });
   });
 });
@@ -154,7 +157,7 @@ test('modul sticker dan stickerstock: label, level, dan petunjuk', () => {
     'Menambah dan mengubah jenis dan stiker, termasuk batas minimum.',
   );
   expect(levelHint('sticker', 'manage')).toBe(
-    'Semua akses Ubah, ditambah menonaktifkan dan mengaktifkan jenis dan stiker serta mengatur Konfigurasi Stiker.',
+    'Semua akses Ubah, ditambah menonaktifkan, mengaktifkan, menghapus, dan memulihkan jenis dan stiker serta mengatur Konfigurasi Stiker.',
   );
   expect(levelHint('stickerstock', 'view')).toBe(
     'Melihat stok dan riwayat stiker di lokasi penugasan.',
@@ -170,4 +173,13 @@ test('sanitizePermissions mempertahankan sticker dan stickerstock', () => {
     sticker: 'manage',
     stickerstock: 'edit',
   });
+});
+
+test('modul dashboard: label, level none/edit/manage, dan petunjuk khusus', () => {
+  expect(MODULES).toContain('dashboard');
+  expect(MODULE_LABELS.dashboard).toBe('Dashboard');
+  expect(levelsFor('dashboard')).toEqual(['none', 'edit', 'manage']);
+  expect(levelHint('dashboard', 'edit')).toContain('MILIK SENDIRI');
+  expect(levelHint('dashboard', 'manage')).toContain('milik SEMUA pengguna');
+  expect(levelHint('dashboard', 'manage')).toContain('penerima');
 });

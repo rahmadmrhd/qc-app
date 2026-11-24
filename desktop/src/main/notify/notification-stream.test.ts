@@ -222,4 +222,49 @@ describe('createNotificationStream', () => {
     // Pemanggil diberi tahu (menyegarkan status login/tray) walau token hilang tanpa 401.
     expect(signedOut).toHaveLength(1);
   });
+
+  test('token berubah (ganti akun tanpa keluar): koneksi lama diputus, koneksi baru memakai token baru dan Last-Event-ID direset', async () => {
+    const a = controlledResponse();
+    const b = controlledResponse();
+    const { stream, calls, notices, setToken } = setup({
+      token: 'tokenA',
+      responses: [() => a.response, () => b.response],
+    });
+    stream.start();
+    await until(() => calls.length === 1);
+    expect(calls[0]?.headers.authorization).toBe('Bearer tokenA');
+    a.send(frame('n1'));
+    await until(() => notices.length === 1);
+
+    setToken('tokenB');
+    stream.start();
+    await until(() => calls.length === 2);
+    expect(calls[1]?.headers.authorization).toBe('Bearer tokenB');
+    expect(calls[1]?.headers['last-event-id']).toBeUndefined();
+    expect(calls[0]?.signal?.aborted).toBe(true);
+    expect(stream.isRunning()).toBe(true);
+
+    // Bingkai dari koneksi lama tak lagi diteruskan; yang baru diteruskan.
+    try {
+      a.send(frame('lama'));
+    } catch {
+      // Aliran lama sudah dibatalkan.
+    }
+    b.send(frame('n2'));
+    await until(() => notices.length === 2);
+    expect(notices.map((n) => n.id)).toEqual(['n1', 'n2']);
+    stream.stop();
+  });
+
+  test('start dengan token yang sama tetap tanpa efek', async () => {
+    const a = controlledResponse();
+    const { stream, calls } = setup({ token: 'tokenA', responses: [() => a.response] });
+    stream.start();
+    await until(() => calls.length === 1);
+    stream.start();
+    await wait(30);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.signal?.aborted).toBe(false);
+    stream.stop();
+  });
 });

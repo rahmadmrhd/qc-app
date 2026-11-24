@@ -339,6 +339,25 @@ describe('ekspor pertama', () => {
     expect(type).toMatchObject({ rule: 'group', system_kind: 'manual_book' });
   });
 
+  test('jenis "Manual Book" nonaktif tanpa stiker diadopsi dan DIAKTIFKAN (jenis sistem selalu aktif)', async () => {
+    await seedStickerType(env, {
+      id: 't-lama',
+      name: 'Manual Book',
+      rule: 'bu',
+      status: 'inactive',
+    });
+    const design = await makeDesign();
+    await exportOk(design);
+    const type = await env.DB.prepare(
+      'SELECT rule, system_kind, status FROM sticker_types WHERE id = ?',
+    )
+      .bind('t-lama')
+      .first<{ rule: string; system_kind: string; status: string }>();
+    expect(type).toMatchObject({ rule: 'group', system_kind: 'manual_book', status: 'active' });
+    // Stiker v1 lahir aktif; tanpa jenis aktif `receivingProblem` akan menolak stok masuk ("Jenis stiker nonaktif").
+    expect((await stickers()).map((sticker) => sticker.status)).toEqual(['active']);
+  });
+
   test('jenis "Manual Book" non-sistem yang sudah berstiker: job gagal dengan pesan, tanpa stiker/versi baru, berkas dibuang', async () => {
     await seedStickerType(env, { id: 't-lama', name: 'Manual Book', rule: 'bu' });
     await seedSticker(env, { id: 's-lama', typeId: 't-lama', name: 'Biasa' });

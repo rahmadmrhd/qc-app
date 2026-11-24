@@ -1,3 +1,4 @@
+import { STICKER_LIMITS } from '@shared/stickers';
 import { useQuery } from '@tanstack/react-query';
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { toast } from 'sonner';
@@ -204,15 +205,17 @@ function StickersRoute() {
       }}
       mutations={mutations}
       onStartOpname={() => stack.push({ to: '/sticker/opname' })}
-      onStartEntry={(mode, stickerIds) =>
+      onStartEntry={(mode, stickerIds) => {
+        // Halaman entri hanya memuat `opnameRows` baris: potong di sini dan beri tahu, bukan dibuang diam-diam.
+        const ids = stickerIds?.slice(0, STICKER_LIMITS.opnameRows) ?? [];
+        if (stickerIds && stickerIds.length > ids.length) {
+          toast.info(`Hanya ${STICKER_LIMITS.opnameRows} stiker pertama yang dimasukkan`);
+        }
         stack.push({
           to: '/sticker/entry',
-          search: {
-            mode,
-            ...(stickerIds && stickerIds.length > 0 ? { stickers: stickerIds } : {}),
-          },
-        })
-      }
+          search: { mode, ...(ids.length > 0 ? { stickers: ids } : {}) },
+        });
+      }}
       isLoading={canCatalog && stickers.isPending}
       isError={canCatalog && stickers.isLoadingError}
       onRetry={() => void stickers.refetch()}

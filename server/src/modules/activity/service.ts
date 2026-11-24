@@ -6,6 +6,8 @@ import { assertAccessRecordReadable } from '@server/modules/access/service';
 import { parseAuditCursor } from '@server/modules/access/validate';
 import { assertBrandReadable } from '@server/modules/brand/service';
 import { assertCustomerReadable } from '@server/modules/customer/service';
+import { loadAccessibleReport } from '@server/modules/dashboard/report/service';
+import { loadReadableShare } from '@server/modules/dashboard/share-service';
 import { assertHandoverReadable } from '@server/modules/handover/service';
 import { assertItemReadable } from '@server/modules/item/service';
 import { readablePostel } from '@server/modules/postel/service';
@@ -40,6 +42,7 @@ const CATALOG_READ: Alternatives = [
 const STICKER_VIEW: Alternatives = [['sticker', 'view']];
 const QR_VIEW: Alternatives = [['qrcode', 'view']];
 const ACCESS_VIEW: Alternatives = [['access', 'view']];
+const DASHBOARD_ACCESS: Alternatives = [['dashboard', 'edit']];
 
 function requireModule(user: UserContext, alternatives: Alternatives): void {
   if (!alternatives.some(([module, level]) => hasLevel(user.permissions[module], level))) {
@@ -101,6 +104,17 @@ const GATES: Record<ActivityKind, Gate> = {
   },
   handover: async (env, user, id) => {
     await assertHandoverReadable(env, id, user);
+  },
+  // Tautan dashboard: baris diriwayatkan sama dengan rute `dashboardShares.get` (milik sendiri bagi `edit`, semua bagi
+  // `manage`/super admin; selain itu `NOT_FOUND`).
+  dashboardShare: async (env, user, id) => {
+    requireModule(user, DASHBOARD_ACCESS);
+    await loadReadableShare(env, user, id);
+  },
+  // Laporan terjadwal: gerbang yang sama dengan `dashboardReports.get` (log hanya memuat NAMA field, tanpa penerima).
+  dashboardReport: async (env, user, id) => {
+    requireModule(user, DASHBOARD_ACCESS);
+    await loadAccessibleReport(env, user, id);
   },
 };
 

@@ -65,16 +65,18 @@ export async function requestSheetsExport(
     if (running.join(',') === tables.join(',')) return { jobId: active.id };
     throw appError('CONFLICT', 'Ekspor Spreadsheet lain sedang berjalan; tunggu sampai selesai');
   }
-  const jobId = await enqueueJob(env, 'sheets_export', { tables }, actor.email);
-  await env.DB.batch([
-    writeAudit(env.DB, {
-      ts: nowIso(env),
-      actor: actor.email,
-      action: 'export.sheets',
-      target: 'Spreadsheet',
-      before: null,
-      after: { jobId, tables: tables.join(',') },
-    }),
-  ]);
+  // Job dan audit dalam SATU batch: bila penulisan gagal, tak ada job yang berjalan tanpa jejak audit.
+  const jobId = await enqueueJob(env, 'sheets_export', { tables }, actor.email, {
+    statements: (id) => [
+      writeAudit(env.DB, {
+        ts: nowIso(env),
+        actor: actor.email,
+        action: 'export.sheets',
+        target: 'Spreadsheet',
+        before: null,
+        after: { jobId: id, tables: tables.join(',') },
+      }),
+    ],
+  });
   return { jobId };
 }

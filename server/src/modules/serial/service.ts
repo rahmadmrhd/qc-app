@@ -80,12 +80,14 @@ import {
   insertNextEventStmt,
   insertSerialStickerStmt,
   insertSerialStmt,
+  isReplayOfRow,
   itemLabelOf,
   listSerialRows,
   loadBuHistory,
   loadSerialEvents,
   loadSerialRow,
   loadSerialStickers,
+  SERIAL_PER_BU_ARMS_MAX,
   type SerialBuHistoryRow,
   type SerialColumn,
   type SerialEventRow,
@@ -421,7 +423,7 @@ export async function createSerialOnce(
   if (!canWriteBu(user, row.buId)) return failRow(row, ITEM_MESSAGE);
   const existing = await findSerialByClientId(env.DB, row.clientId);
   if (existing) {
-    if (existing.buId !== row.buId || existing.serial !== row.serial) {
+    if (!(await isReplayOfRow(env.DB, existing, row))) {
       return failRow(row, 'Baris tidak valid');
     }
     // Kiriman ulang ke serial yang sudah terhapus = tak ditemukan (keputusan T8; antrean memperlakukannya ditolak).
@@ -584,7 +586,7 @@ export async function createSerialOnce(
       // yang sama, jadi pada galat duplikat APA PUN baca ulang `clientId` dulu. Pemenang sudah commit saat galat
       // ini terbit (penulis kedua menunggu kuncinya), sehingga bacaan ulang melihatnya.
       const again = await findSerialByClientId(env.DB, row.clientId);
-      if (again && again.buId === row.buId && again.serial === row.serial) {
+      if (again && (await isReplayOfRow(env.DB, again, row))) {
         return again.deleted ? failRow(row, NOT_FOUND_MESSAGE) : idempotent(row, again.id);
       }
       // Serial yang sama dicatat serentak dari tempat lain dan pemenangnya sudah komit: baris ini menjadi cek ulang.
@@ -823,6 +825,22 @@ function encodeSerialCursor(row: { created_at: string; id: string }): string {
   return `${row.created_at}~${row.id.trim()}`;
 }
 
+/**
+ * `true` hanya bila konteks MENGETAHUI seluruh id BU (`allBuIds`, tak kosong) dan semuanya ada di `readable`. Dalam
+ * kasus itu predikat BU pada daftar tak membatasi apa pun (BU terhapus tetap memberi hak, BU baru ikut terhitung karena
+ * konteks dimuat per permintaan), sehingga dapat dibuang demi indeks urutan. Tak diketahui atau ragu = `false` (jalur
+ * dengan predikat BU); fungsi ini TIDAK PERNAH boleh melonggarkan hak baca.
+ */
+export function readsAllBus(
+  user: Pick<UserContext, 'allBuIds'>,
+  readable: readonly string[],
+): boolean {
+  const all = user.allBuIds;
+  if (all === undefined || all.length === 0) return false;
+  const have = new Set(readable);
+  return all.every((id) => have.has(id));
+}
+
 /** Daftar serial pada BU yang boleh dibaca (himpunan kosong = hasil kosong tanpa kueri). */
 export async function listSerials(
   env: Env,
@@ -839,6 +857,8 @@ export async function listSerials(
   if (buIds.length === 0) return { items: [], nextCursor: null };
   const limit = input.limit ?? SERIAL_LIST_DEFAULT_LIMIT;
   const filter: SerialListFilter = { buIds, limit };
+  if (readsAllBus(user, buIds)) filter.allBus = true;
+  else if (buIds.length <= SERIAL_PER_BU_ARMS_MAX) filter.perBuArms = true;
   if (restorable !== null) filter.deleted = restorable;
   const query = normalizeSerial(input.query ?? '');
   if (query !== '') {

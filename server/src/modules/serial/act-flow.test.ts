@@ -78,7 +78,13 @@ const seedRecheckTransit = (over: Record<string, unknown> = {}) =>
     transitFromLocationId: 'loc-jkt',
     transitToLocationId: 'loc-sby',
     transitOn: '2026-11-10',
-    openCase: { id: 'case-1', number: 'LP/A/2611-0001', originLocationId: 'loc-sby' },
+    // Dibuka sebelum tanggal kirim (2026-11-10): aksi pada laporan tak boleh bertanggal sebelum laporan dibuka.
+    openCase: {
+      id: 'case-1',
+      number: 'LP/A/2611-0001',
+      originLocationId: 'loc-sby',
+      openedOn: '2026-11-01',
+    },
     ...over,
   });
 
@@ -518,6 +524,23 @@ describe('cek ulang dengan stiker tercentang (baris 9-12)', () => {
     );
     expect(again.ok).toBe(true);
     expect(again.data.status).toBe('reported');
+  });
+
+  test('aksi pada laporan terbuka bertanggal sebelum laporan dibuka: VALIDATION pada occurredOn, tanpa efek; tanggal sama lolos', async () => {
+    // Laporan dibuka 2026-11-12 (bawaan fixture); keputusan pemilik 2026-11-23.
+    await seedReported();
+    for (const action of ['recheck_fail', 'recheck_pass'] as const) {
+      const early = await act(action, { message: 'Uji kronologi' }, { occurredOn: '2026-11-10' });
+      expect(early.error?.code).toBe('VALIDATION');
+      expect(early.error?.fields?.occurredOn).toBe(
+        'Tanggal tidak boleh sebelum tanggal laporan dibuka',
+      );
+    }
+    expect(await eventsOf()).toHaveLength(1);
+    expect((await casesOf())[0]).toMatchObject({ closed_on: '' });
+    const same = await act('recheck_pass', { message: 'Normal' }, { occurredOn: '2026-11-12' });
+    expect(same.ok).toBe(true);
+    expect((await casesOf())[0]).toMatchObject({ closed_on: '2026-11-12', outcome: 'good' });
   });
 
   test('recheck gagal pada serial Lolos: dua kejadian (recheck lalu report_failure), laporan baru, catatan di report_failure', async () => {

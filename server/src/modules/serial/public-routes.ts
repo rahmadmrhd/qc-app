@@ -11,12 +11,12 @@ import { readFile } from '@server/modules/files/service';
 import { extractFileRefs } from '@shared/items';
 import { wibDateIso } from '@shared/postel';
 import type { SerialPublicEventDto, SerialPublicReportDto } from '@shared/serial-public';
-import { publicActorName, reportLinkExpiresAt } from '@shared/serials';
+import { publicActorName } from '@shared/serials';
 import { getCookie } from 'hono/cookie';
 import { Hono } from 'hono/tiny';
 import { readableBuIds } from './access';
 import { loadCase } from './case-repo';
-import { verifyReportToken } from './public-link';
+import { reportTokenExpiresAt, verifyReportToken } from './public-link';
 import { loadSerialRow, type SerialEventRow } from './repo';
 import { toEvent, toSummary } from './service';
 
@@ -34,6 +34,10 @@ const FAIL_LIMIT = 20;
 const FAIL_WINDOW_MS = 10 * 60 * 1000;
 const NOT_FOUND_MESSAGE = 'Laporan tidak ditemukan atau tautan sudah tidak berlaku';
 const EVENTS_MAX = 500;
+/** Batas panjang id berkas pada jalur URL (id sah ULID/UUID jauh di bawahnya). */
+const FILE_ID_MAX_LENGTH = 100;
+/** Batas pesan yang diperiksa untuk satu permintaan berkas (hanya pesan yang memuat id itu). */
+const FILE_REF_MESSAGES_MAX = 200;
 
 const noStore = (response: Response): Response => {
   response.headers.set('Cache-Control', 'no-store');
@@ -143,7 +147,8 @@ publicSerialApp.get('/serial-reports/:token', async (c) => {
     if (!serialRow) return rejectToken(c);
     const unit = toSummary(serialRow);
     const closedOn = found.closed_on.trim();
-    const expiresAt = reportLinkExpiresAt(closedOn);
+    // Tanggal berlaku diambil dari token yang sudah lolos verifikasi (dasarnya waktu server saat laporan ditutup).
+    const expiresAt = reportTokenExpiresAt(c.req.param('token'));
     const outcome = found.outcome.trim();
     // Daftar putih field: tanpa `data` kejadian, id aktor, atau alamat surel; stok tak pernah ada di kejadian.
     const publicEvents = events.results.map((row): SerialPublicEventDto => {
@@ -197,11 +202,13 @@ publicSerialApp.get('/serial-reports/:token/files/:fileId', async (c) => {
     const found = await resolveToken(c, c.req.param('token'));
     if (!found) return rejectToken(c);
     const fileId = c.req.param('fileId');
-    // Berkas hanya boleh dilayani bila dirujuk pesan kejadian LAPORAN INI dan milik serial laporan ini.
+    if (fileId === '' || fileId.length > FILE_ID_MAX_LENGTH) return notFound();
+    // Berkas hanya boleh dilayani bila dirujuk pesan kejadian LAPORAN INI dan milik serial laporan ini. Hanya pesan yang
+    // memuat id itu yang dimuat (dan dibatasi jumlahnya): tanpa penyempit, tiap permintaan membaca SEMUA pesan laporan.
     const messages = await c.env.DB.prepare(
-      'SELECT message FROM serial_events WHERE serial_id = ? AND case_id = ?',
+      'SELECT message FROM serial_events WHERE serial_id = ? AND case_id = ? AND LOCATE(?, message) > 0 ORDER BY seq LIMIT ?',
     )
-      .bind(found.serial_id, found.id)
+      .bind(found.serial_id, found.id, fileId, FILE_REF_MESSAGES_MAX)
       .all<{ message: string }>();
     const referenced = new Set(messages.results.flatMap((row) => extractFileRefs(row.message)));
     if (!referenced.has(fileId)) return notFound();

@@ -21,6 +21,9 @@ function pngOf(size: number): Uint8Array {
   const bytes = new Uint8Array(size);
   for (let i = 0; i < size; i++) bytes[i] = (i * 31 + 7) % 256;
   bytes.set(PNG_HEAD, 0);
+  // Server membaca dimensi dari header (IHDR: lebar di byte 16, tinggi di byte 20), bukan dari klaim klien: samakan
+  // dengan klaim bawaan `upload()` (10x20) agar isi filler tidak terbaca sebagai dimensi raksasa.
+  if (size >= 24) bytes.set([0, 0, 0, 10, 0, 0, 0, 20], 16);
   return bytes;
 }
 

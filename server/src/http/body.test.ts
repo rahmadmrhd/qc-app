@@ -401,6 +401,73 @@ const WORST: Inputs = {
   'guides.mark': { id: text(100), version: 1 },
   'guides.reset': { id: text(100) },
   'exports.sheets': { tables: longList(50, () => text(100)) },
+  // Dashboard: 30 widget (maks.) masing-masing dengan dua filter grup berisi 20 nilai terpanjang, plus filter global penuh.
+  'dashboard.query': {
+    filter: {
+      buIds: longList(20, (index) => `${UUID}-${index}`),
+      locationIds: longList(20, (index) => `${UUID}-${index}`),
+      from: '2026-01-01',
+      to: '2026-12-31',
+    },
+    widgets: longList(30, () => ({
+      id: 'hs.created' as const,
+      filters: {
+        customer: longList(20, () => text(100)),
+        status: longList(20, () => text(100)),
+      },
+    })),
+  },
+  // Tautan dashboard publik: judul terpanjang, 30 widget masing-masing dengan dua filter grup berisi 20 nilai terpanjang.
+  'dashboardShares.create': {
+    title: text(120),
+    filter: {
+      buIds: longList(20, (index) => `${UUID}-${index}`),
+      locationIds: longList(20, (index) => `${UUID}-${index}`),
+      from: '2026-01-01',
+      to: '2026-12-31',
+    },
+    locationFiltered: true,
+    range: { mode: 'fixed', from: '2026-01-01', to: '2026-12-31' },
+    widgets: longList(30, () => ({
+      id: 'hs.created' as const,
+      filters: {
+        customer: longList(20, () => text(100)),
+        status: longList(20, () => text(100)),
+      },
+    })),
+    offers: ['customer', 'item', 'stickerType', 'sticker'],
+    expiresInDays: 365,
+  },
+  'dashboardShares.revoke': { id: UUID },
+  // Laporan terjadwal: nama terpanjang, 12 widget masing-masing dengan dua filter grup berisi 20 nilai terpanjang,
+  // 20 penerima terpanjang (254 karakter), filter global penuh.
+  'dashboardReports.save': {
+    id: UUID,
+    name: text(120),
+    schedule: { frequency: 'monthly', hour: 23, weekday: 7, monthDay: 28 },
+    period: 'lastMonth',
+    filter: {
+      buIds: longList(20, (index) => `${UUID}-${index}`),
+      locationIds: longList(20, (index) => `${UUID}-${index}`),
+      from: '2026-01-01',
+      to: '2026-12-31',
+    },
+    locationFiltered: true,
+    widgets: longList(12, () => ({
+      id: 'hs.created' as const,
+      filters: {
+        customer: longList(20, () => text(100)),
+        status: longList(20, () => text(100)),
+      },
+    })),
+    offers: ['customer', 'item', 'stickerType', 'sticker'],
+    recipients: longList(20, (index) => `${'a'.repeat(240)}${index}@x.id`),
+    linkDays: 365,
+    enabled: true,
+    expectedUpdatedAt: STAMP,
+  },
+  'dashboardReports.setEnabled': { id: UUID, enabled: true },
+  'dashboardReports.sendTest': { id: UUID },
   'access.users.setStatusBatch': { ids: BATCH_IDS, status: 'inactive' },
   'access.users.removeBatch': { ids: BATCH_IDS },
   'access.users.restoreBatch': { ids: BATCH_IDS },

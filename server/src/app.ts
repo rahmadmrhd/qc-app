@@ -13,6 +13,7 @@ import {
 } from '@server/http/security';
 import { isServerPath, serveStatic } from '@server/http/static';
 import { authApp } from '@server/modules/auth/routes';
+import { publicDashboardApp } from '@server/modules/dashboard/public-routes';
 import { desktopApp } from '@server/modules/desktop/routes';
 import { notificationStreamApp } from '@server/modules/notification/stream-routes';
 import { publicSerialApp } from '@server/modules/serial/public-routes';
@@ -52,6 +53,8 @@ export function createApp(routes: RouteTable): Hono<AppBindings> {
   // Halaman publik laporan rusak (tautan bertanda tangan, tanpa sesi): di luar `API_ROUTES` dan OpenAPI; dipasang SEBELUM
   // catch-all statis di bawah.
   app.route('/api/public', publicSerialApp);
+  // Halaman publik dashboard (tautan bertanda tangan, tanpa sesi): aturan sama dengan di atas, di luar `API_ROUTES`.
+  app.route('/api/public', publicDashboardApp);
   // Data awal klien = `GET /api/v1/me` (id `auth.me`, tabel REST).
   app.route('/auth', authApp);
   // Manifest UI bertanda tangan untuk pembaruan UI aplikasi desktop (publik, tanpa sesi).

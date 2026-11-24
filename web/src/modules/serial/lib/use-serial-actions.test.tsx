@@ -33,6 +33,7 @@ function meWith(serial: Level, serialservice: Level): MeDto {
       serial,
       serialservice,
       countrylock: 'none',
+      dashboard: 'none',
     },
     businessUnits: [
       {

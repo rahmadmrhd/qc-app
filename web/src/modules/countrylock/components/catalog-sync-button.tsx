@@ -1,16 +1,14 @@
 import type { QcBridge } from '@countrylock/bridge-contract';
 import { RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { formatStamp } from '@/lib/format-stamp';
 import { getBridge } from '@/lib/platform';
 import { type UseCatalogStatus, useCatalogStatus } from '../use-catalog';
 
 /** Waktu sinkron terakhir untuk tampilan ringkas ("18 Nov 2026 15.30"); `null` bila belum pernah atau tak terbaca. */
 export function formatSyncedAt(iso: string | null): string | null {
   if (!iso) return null;
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime())
-    ? null
-    : date.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short' });
+  return Number.isNaN(new Date(iso).getTime()) ? null : formatStamp(iso);
 }
 
 function describe(status: NonNullable<UseCatalogStatus['status']>): {

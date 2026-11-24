@@ -282,6 +282,11 @@ describe('item terhapus pada catatan (soft delete, penampil rujukan)', () => {
       ...body({ itemIds: ['i1', 'i2'], note: 'ubah', numbers: got.numbers.map(keep) }),
     });
     expect(saved.ok).toBe(true);
+    // Audit: jumlah item 'before' dan 'after' sama-sama menghitung item hidup (tanpa perubahan semu 'items').
+    const history = (await call(VIEWER, 'postels.history', { id: postel.id })).data as Json;
+    expect(history.entries[0].action).toBe('postel.update');
+    expect(history.entries[0].before.items).toBe(1);
+    expect(history.entries[0].after.items).toBe(1);
     const owner = await env.DB.prepare('SELECT postel_id FROM items WHERE id = ?')
       .bind('i2')
       .first<{ postel_id: string }>();

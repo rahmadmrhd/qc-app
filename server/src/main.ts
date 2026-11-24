@@ -1,5 +1,6 @@
 import { prepareDatabase, StartupError } from '@server/boot';
 import { ConfigError, loadConfig } from '@server/config';
+import { closeAllNotificationStreams } from '@server/modules/notification/stream-hub';
 import { bunServeOptions, createServer } from '@server/server';
 
 // Titik masuk proses server: `bun run src/main.ts` (dev: `bun run dev:server`). Konfigurasi dari variabel
@@ -47,6 +48,9 @@ async function shutdown(signal: string): Promise<void> {
     process.exit(1);
   }, SHUTDOWN_TIMEOUT_MS);
   try {
+    // Aliran SSE berumur panjang ditutup DULU: `server.stop()` menunggu semua koneksi selesai, jadi aliran yang masih
+    // terbuka (tab web/desktop) membuatnya menggantung sampai timer paksa. Klien menyambung ulang sendiri.
+    closeAllNotificationStreams();
     await server.stop(); // berhenti menerima koneksi baru; menunggu permintaan berjalan
     await app.stop(); // runner/penjadwal selesai dulu, lalu pool basis data ditutup
     clearTimeout(force);

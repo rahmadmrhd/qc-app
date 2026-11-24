@@ -44,13 +44,14 @@ test('POST /exports/sheets -> 202 + Location /api/v1/jobs/{jobId}; hanya access:
   expect((await rest.post('/exports/sheets', { email: 'admin2@gmail.com' })).status).toBe(202);
 });
 
-test('GET /jobs/{id}: pembuat boleh, pemegang qrcode view boleh, orang lain 404 (disamarkan), id tak dikenal 404', async () => {
+test('GET /jobs/{id}: pembuat boleh, pemegang qrcode view hanya job QR, orang lain 404 (disamarkan), id tak dikenal 404', async () => {
   const accepted = await rest.post('/exports/sheets', { email: 'admin2@gmail.com', body: {} });
   const { jobId } = (await jsonOf(accepted)) as { jobId: string };
   const own = await rest.get(`/jobs/${jobId}`, { email: 'admin2@gmail.com' });
   expect(own.status).toBe(200);
   expect(await jsonOf(own)).toMatchObject({ id: jobId, kind: 'sheets_export', status: 'queued' });
-  expect((await rest.get(`/jobs/${jobId}`, { email: 'qrview@gmail.com' })).status).toBe(200);
+  // pemegang qrcode view hanya boleh membaca job `qr_export` (bukan ekspor Sheets)
+  expect((await rest.get(`/jobs/${jobId}`, { email: 'qrview@gmail.com' })).status).toBe(404);
   const other = await rest.get(`/jobs/${jobId}`, { email: 'polos@gmail.com' });
   expect(other.status).toBe(404);
   expect(await jsonOf(other)).toMatchObject({ code: 'NOT_FOUND' });

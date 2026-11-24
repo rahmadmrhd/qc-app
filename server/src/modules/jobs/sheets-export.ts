@@ -238,12 +238,18 @@ export const EXPORT_CHILD_PARENTS: Readonly<Record<string, { parent: string; fk:
 
 /**
  * `files` milik pemilik terhapus: pemiliknya beragam (`owner_type`), jadi tiap jenis pemilik ber-soft-delete didaftarkan
- * di sini begitu fase modulnya menyaringnya. Sekarang: `item` (fase 3). Menyusul: stiker/pustaka (fase 4a) dan
- * `qrdesign`/`qrlogo`/`postel` (fase 4b), bersama `qr_documents` (tak punya kolom induk). Selama belum lengkap, entri
- * `*dinamis` ekspor ini berada di `SOFT_DELETE_PENDING` (fase 4b) di `soft-delete-pending.ts`, bukan `SOFT_DELETE_EXEMPT`;
- * pindahkan ke EXEMPT setelah `files` dan `qr_documents` seluruhnya disaring.
+ * di sini (jenis pemilik -> tabel pemilik). `serial` (gambar pada pesan kejadian) dan `serialproof` (foto bukti QC)
+ * sama-sama berpemilik id serial (`owner_id` = `serials.id`). Pemilik yang BUKAN model soft delete tak perlu masuk:
+ * `stickerguide` (Pustaka gambar, hapus permanen) dan `qrlogo` (logo bersama, tanpa baris pemilik). `qr_documents`
+ * disaring terpisah menurut konfigurasi QR pemiliknya (`childLive`).
  */
-export const EXPORT_FILE_OWNERS: Readonly<Record<string, string>> = { item: 'items' };
+export const EXPORT_FILE_OWNERS: Readonly<Record<string, string>> = {
+  item: 'items',
+  sticker: 'stickers',
+  postel: 'postels',
+  serial: 'serials',
+  serialproof: 'serials',
+};
 
 function childLive(table: string): string {
   const link = EXPORT_CHILD_PARENTS[table];
@@ -258,6 +264,11 @@ function childLive(table: string): string {
           `NOT (\`owner_type\` = '${type}' AND EXISTS (SELECT 1 FROM ${quote(owner)} p WHERE p.id = \`owner_id\` AND ${deletedWhere('p')}))`,
       );
     return parts.join(' AND ');
+  }
+  if (table === 'qr_documents') {
+    // PDF sumber milik konfigurasi QR yang SEMUANYA terhapus tidak diekspor. Dokumen yang belum dirujuk konfigurasi mana
+    // pun (baru diunggah) tetap diekspor, begitu pula yang masih dirujuk minimal satu konfigurasi hidup.
+    return `NOT (EXISTS (SELECT 1 FROM qr_designs d WHERE d.document_id = ${quote(table)}.id) AND NOT EXISTS (SELECT 1 FROM qr_designs d WHERE d.document_id = ${quote(table)}.id AND ${liveWhere('d')}))`;
   }
   return '';
 }

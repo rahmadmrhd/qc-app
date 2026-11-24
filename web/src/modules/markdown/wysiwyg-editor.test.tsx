@@ -16,6 +16,7 @@ vi.mock('@/modules/files/queries', () => ({
   useFileUrl: () => ({ url: 'data:image/png;base64,AAA', isLoading: false, isError: false }),
 }));
 
+import { TABLE_SPAN_MAX } from './table-extensions';
 import type { WysiwygEditorProps } from './wysiwyg-editor';
 import { WysiwygEditor } from './wysiwyg-editor';
 
@@ -429,4 +430,28 @@ test('mengetik dengan spasi pada editor terkendali tidak kehilangan spasi (gema 
   await userEvent.type(screen.getByRole('textbox'), 'a b c');
   await waitFor(() => expect(lastValue).toBe('a b c'));
   expect(editor.getText()).toBe('a b c');
+});
+
+test('tabel HTML dengan colspan/rowspan raksasa dijepit saat dimuat (tidak membekukan editor)', async () => {
+  const html =
+    '<table><tr><th colspan="200000" rowspan="900000">h</th></tr><tr><td colspan="400000" rowspan="-3">x</td></tr></table>';
+  render(<Harness initial={html} />);
+  await waitFor(() => expect(editor.view.dom.querySelector('table')).not.toBeNull());
+  const table = editor.view.dom.querySelector('table') as HTMLElement;
+  // Satu <col> per satuan colspan: tanpa batas ini jumlahnya 200.000 dan UI membeku.
+  expect(table.querySelectorAll('col').length).toBeLessThanOrEqual(2 * TABLE_SPAN_MAX);
+  const cells = table.querySelectorAll('th,td');
+  for (const cell of cells) {
+    expect(Number(cell.getAttribute('colspan') ?? 1)).toBeLessThanOrEqual(TABLE_SPAN_MAX);
+    expect(Number(cell.getAttribute('rowspan') ?? 1)).toBeLessThanOrEqual(TABLE_SPAN_MAX);
+  }
+  // rowspan negatif/tak sah jatuh ke 1 (atribut bawaan dihilangkan).
+  const xCell = [...cells].find((c) => c.textContent === 'x');
+  expect(xCell?.hasAttribute('rowspan')).toBe(false);
+});
+
+test('colspan wajar pada tabel HTML tetap dipertahankan', async () => {
+  render(<Harness initial={'<table><tr><td colspan="3">x</td></tr></table>'} />);
+  await waitFor(() => expect(editor.view.dom.querySelector('td')).not.toBeNull());
+  expect(editor.view.dom.querySelector('td')?.getAttribute('colspan')).toBe('3');
 });

@@ -40,6 +40,7 @@ export function testMe(): MeDto {
       serial: 'edit',
       serialservice: 'none',
       countrylock: 'none',
+      dashboard: 'none',
     },
     businessUnits: [],
     locations: [],

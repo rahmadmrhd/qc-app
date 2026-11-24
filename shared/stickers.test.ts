@@ -4,7 +4,6 @@ import {
   formatStockQty,
   GUIDE_LIMITS,
   GUIDE_SORTS,
-  guideNameFromFile,
   INSTRUCTION_LIMITS,
   isLowStock,
   isOutOfStock,
@@ -121,33 +120,6 @@ describe('pustaka gambar stiker: konstanta', () => {
       'sizeDesc',
       'usageDesc',
     ]);
-  });
-});
-
-describe('pustaka gambar stiker: nama dari berkas', () => {
-  test('ekstensi terakhir dibuang, huruf dipertahankan', () => {
-    expect(guideNameFromFile('Foto Kardus.PNG')).toBe('Foto Kardus');
-    expect(guideNameFromFile('a.b.c.jpg')).toBe('a.b.c');
-    expect(guideNameFromFile('tanpa-ekstensi')).toBe('tanpa-ekstensi');
-  });
-
-  test('nama kosong setelah dirapikan menjadi Gambar', () => {
-    expect(guideNameFromFile('  .png')).toBe('Gambar');
-    expect(guideNameFromFile('.png')).toBe('Gambar');
-    expect(guideNameFromFile('   .jpg')).toBe('Gambar');
-  });
-
-  test('spasi ganda dan spasi tepi dirapikan', () => {
-    expect(guideNameFromFile('  Foto   Kardus  .jpg')).toBe('Foto Kardus');
-  });
-
-  test('dipotong maksimal nameMax karakter', () => {
-    expect(guideNameFromFile(`${'x'.repeat(200)}.jpg`)).toBe('x'.repeat(GUIDE_LIMITS.nameMax));
-  });
-
-  test('pemotongan menghitung karakter (emoji = 1), bukan unit UTF-16', () => {
-    const name = guideNameFromFile(`${'😀'.repeat(200)}.png`);
-    expect([...name]).toHaveLength(GUIDE_LIMITS.nameMax);
   });
 });
 

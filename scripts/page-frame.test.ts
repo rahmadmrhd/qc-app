@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
+import { stripComments } from './strip-comments';
 
 // Aturan redesain (spek 2026-11-20 §6.4): setiap halaman memakai kerangka kit (`ListPage`, `ViewPage`, `FormPage`,
 // atau `KanbanBoard`), bukan kerangka sendiri. Tes ini memeriksa tiap berkas rute di `web/src/routes`: kerangka harus
@@ -21,6 +22,8 @@ const LAYOUT_FILES = new Set(['__root.tsx', '_app.tsx']);
 const ROUTE_EXCEPTIONS: Record<string, string> = {
   '_app/index.tsx':
     'Beranda: sapaan, info panduan, dan peluncur ponsel (`Launcher`) di dalam `PageContent`; bukan halaman data CRUD.',
+  '_app/dashboard/index.tsx':
+    'Dashboard pemantauan: halaman agregat (kartu widget per grup), bukan daftar/form; memakai `HeadroomFrame` dan `HeadroomBar` seperti Beranda untuk bar filter global.',
   '_app/forbidden.tsx':
     'Pesan status 403 (`StatusMessage`) di dalam `PageContent`; tanpa data atau aksi.',
   '_app/desktop.tsx':
@@ -29,6 +32,8 @@ const ROUTE_EXCEPTIONS: Record<string, string> = {
     'Hanya pengalihan ke /sticker (Stok Stiker digabung ke halaman Stiker); tidak merender halaman.',
   'country-lock.tsx':
     'Country Lock (aplikasi desktop): di dalam `AppShell` bila pengguna masuk (breadcrumb + `PageContent`); jalur belum masuk memakai pembungkus ringan sendiri. Isinya panel perangkat/inject (jembatan desktop), bukan CRUD.',
+  'dashboard-publik.$token.tsx':
+    'Halaman publik dashboard (tautan bertanda tangan): di luar layout `_app` dan cangkang, tanpa sesi dan tanpa navigasi; memakai `PublicDashboardPage` sendiri.',
   'laporan.$token.tsx':
     'Halaman publik laporan rusak Serial Number: di luar layout `_app` dan cangkang, tanpa sesi.',
   'login.tsx': 'Halaman masuk: di luar layout `_app` dan cangkang, tanpa sesi.',
@@ -84,10 +89,6 @@ function resolveImport(from: string, spec: string): string | null {
     if (existsSync(candidate)) return candidate;
   }
   return null;
-}
-
-function stripComments(source: string): string {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
 /** Impor satu modul: spesifier dan nama lokal yang dibawanya (`{ A, B as C }`, bawaan, atau `* as ns`). */

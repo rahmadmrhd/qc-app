@@ -88,27 +88,51 @@ function SheetBottomHandle({
   )
 }
 
-function SheetContent({
+function SheetContent(props: SheetContentProps) {
+  // Isi dibungkus komponen anak di bawah `SheetPortal`: portal Radix hanya memasang anaknya saat terbuka, jadi keadaan
+  // `expanded` di anak itu otomatis kembali collapsed tiap lembar dibuka lagi (state di `SheetContent` sendiri hidup
+  // selama pemanggilnya, bukan selama lembar terbuka).
+  return (
+    <SheetPortal>
+      <SheetContentBody {...props} />
+    </SheetPortal>
+  )
+}
+
+type SheetContentProps = React.ComponentProps<typeof SheetPrimitive.Content> & {
+  side?: "top" | "right" | "bottom" | "left"
+  showCloseButton?: boolean
+}
+
+function SheetContentBody({
   className,
   children,
   side = "right",
   showCloseButton = true,
   style,
+  ref: outerRef,
   ...props
-}: React.ComponentProps<typeof SheetPrimitive.Content> & {
-  side?: "top" | "right" | "bottom" | "left"
-  showCloseButton?: boolean
-}) {
+}: SheetContentProps) {
   const bottom = side === "bottom"
-  // Tiga keadaan lembar bawah: collapsed (tinggi isi), expanded (layar penuh), tertutup (tak dirender). Konten hanya
-  // terpasang saat terbuka, jadi keadaan ini otomatis kembali collapsed pada pembukaan berikutnya.
+  // Tiga keadaan lembar bawah: collapsed (tinggi isi), expanded (layar penuh), tertutup (tak dirender). Komponen ini
+  // hanya terpasang selama lembar terbuka (lihat `SheetContent`), jadi keadaan kembali collapsed pada pembukaan berikutnya.
   const [expanded, setExpanded] = React.useState(false)
   const contentRef = React.useRef<HTMLDivElement>(null)
+  // `SheetContentBody` adalah anak langsung `SheetPortal` (Slot Radix menitipkan `ref` ke sini): gabungkan dengan
+  // `contentRef` milik pegangan, jangan menimpanya.
+  const setRef = React.useCallback(
+    (node: HTMLDivElement | null) => {
+      contentRef.current = node
+      if (typeof outerRef === "function") outerRef(node)
+      else if (outerRef) outerRef.current = node
+    },
+    [outerRef]
+  )
   return (
-    <SheetPortal>
+    <>
       <SheetOverlay />
       <SheetPrimitive.Content
-        ref={contentRef}
+        ref={setRef}
         data-slot="sheet-content"
         data-side={side}
         data-expanded={bottom && expanded ? "true" : undefined}
@@ -141,7 +165,7 @@ function SheetContent({
           </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Content>
-    </SheetPortal>
+    </>
   )
 }
 

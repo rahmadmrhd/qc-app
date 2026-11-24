@@ -28,7 +28,7 @@ export interface SerialPublicReportDto {
   /** Pemegang tautan sedang login dan berizin pada serial ini: UI mengarahkannya ke halaman biasa. */
   viewerCanOpen: boolean;
   serialId: string;
-  /** Id laporan ini: tautan untuk pemegang berizin mendarat di tab LP-nya. */
+  /** Id laporan ini: tautan untuk pemegang berizin mendarat di halaman detail laporan. */
   caseId: string;
   unit: {
     serial: string;

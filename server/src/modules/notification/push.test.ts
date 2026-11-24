@@ -114,6 +114,44 @@ describe('deliverPendingPushes', () => {
     expect(push.sent).toHaveLength(2);
   });
 
+  test('galat pada satu baris: putaran baru menolak SETELAH pekerja lain selesai (tanpa baris yang masih jalan di belakang)', async () => {
+    await seedHandover(env, { id: 'h1', number: 'ST-20261015-001', locationId: ENV.locA });
+    await seedHandover(env, { id: 'h2', number: 'ST-20261015-002', locationId: ENV.locA });
+    await subscribe(VIEWER, 'a');
+    await insert(
+      note(),
+      note({
+        handoverId: 'h2',
+        number: 'ST-20261015-002',
+        createdAt: new Date(NOW + 1).toISOString(),
+      }),
+    );
+    // Penulisan status baris PERTAMA gagal (mis. galat DB sementara); baris kedua berjalan paralel.
+    let failed = false;
+    const flaky = {
+      ...env,
+      DB: new Proxy(env.DB, {
+        get(target, prop) {
+          const value = Reflect.get(target, prop, target);
+          if (prop !== 'prepare') return typeof value === 'function' ? value.bind(target) : value;
+          return (sql: string) => {
+            if (!failed && sql.startsWith('UPDATE notifications SET push_state')) {
+              failed = true;
+              throw new Error('galat DB sementara');
+            }
+            return target.prepare(sql);
+          };
+        },
+      }),
+    } as unknown as TestEnv;
+    await expect(deliverPendingPushes(flaky, { concurrency: 2 })).rejects.toThrow(
+      'galat DB sementara',
+    );
+    // Saat menolak, baris lain sudah selesai diproses: tidak ada pekerja yang masih berjalan di belakang.
+    expect(push.sent).toHaveLength(2);
+    expect((await states()).filter((state) => state === 'sent')).toHaveLength(1);
+  });
+
   test('notifikasi task terhapus dilewati (skipped) tanpa kirim; task hidup lain tetap terkirim', async () => {
     await seedHandover(env, { id: 'h1', number: 'ST-20261015-001', locationId: ENV.locA });
     await seedHandover(env, { id: 'h2', number: 'ST-20261015-002', locationId: ENV.locA });

@@ -6,7 +6,14 @@ name: Server Image
 # `deploy-server.yml` (rencana rilis semver 2).
 #
 # Masukan divalidasi di sini (pemanggil tak dipercaya): `target` harus staging|production, `sha` 40 heksa, `extra-tags`
-# hanya `server-vX.Y.Z`. Rahasia environment dibaca lewat `environment:` job ini sendiri; pemanggil TIDAK meneruskan rahasia.
+# hanya `server-vX.Y.Z`. Rahasia environment dibaca lewat `environment:` job ini sendiri; pemanggil WAJIB memakai `secrets: inherit`
+# (tanpanya secret environment kosong: actions/runner#4453, keputusan pemilik 2026-11-19; repositori tanpa secret tingkat
+# repositori, jadi tak ada yang lain terbuka).
+#
+# Tag `<image>:<sha>` dipakai bersama staging dan production, jadi image diberi label `qc.build-target` dan build STAGING
+# menolak menimpa tag SHA yang sudah ada kecuali berlabel `staging` (audit 2026-11-23: build staging ber-cache tak boleh
+# menggantikan artefak production tanpa cache dengan tag yang sama). Production boleh menimpa (membangun ulang tanpa cache).
+# `digest` image yang baru didorong dikeluarkan sebagai output.
 on:
   workflow_call:
     inputs:
@@ -26,6 +33,9 @@ on:
       tag:
         description: 'Tag image yang dibangun (= sha)'
         value: ${{ jobs.image.outputs.tag }}
+      digest:
+        description: 'Digest manifest image yang baru didorong (sha256:...)'
+        value: ${{ jobs.image.outputs.digest }}
 
 permissions:
   contents: read
@@ -47,6 +57,7 @@ jobs:
       packages: write
     outputs:
       tag: ${{ inputs.sha }}
+      digest: ${{ steps.build.outputs.digest }}
     steps:
       # Pemanggil tak dipercaya: tolak masukan yang bentuknya salah SEBELUM checkout atau langkah lain berjalan. (Environment
       # sudah di-resolve saat job dimulai, jadi rahasianya tersedia; langkah ini hanya memastikan tak satu pun dipakai.)
@@ -97,6 +108,33 @@ jobs:
             done <<< "$EXTRA_TAGS"
             echo "QC_TAGS_EOF"
           } >> "$GITHUB_OUTPUT"
+
+      # Pagar tag SHA: staging TIDAK boleh menimpa `<image>:<sha>` yang sudah ada kecuali berlabel `staging` (label dari build
+      # production, atau image lama tanpa label = tak terbukti staging, ditolak: gagal tertutup). Tag belum ada = aman. Galat
+      # registri selain "tidak ada" menggagalkan langkah.
+      - name: Pagar tag SHA
+        env:
+          TARGET: ${{ inputs.target }}
+          IMAGE: ${{ steps.name.outputs.image }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          [ "$TARGET" = staging ] || exit 0
+          rc=0
+          info=$(docker buildx imagetools inspect "${IMAGE}:${SHA}" --format '{{json .Image}}' 2>&1) || rc=$?
+          if [ $rc -ne 0 ]; then
+            if grep -qiE 'not found|manifest unknown|no such manifest' <<< "$info"; then
+              echo "Tag ${SHA} belum ada di registri: aman dibangun."
+              exit 0
+            fi
+            echo "::error::Gagal memeriksa tag ${SHA} di registri (galat selain tidak-ada); build staging dihentikan."
+            exit 1
+          fi
+          built=$(jq -r '[.. | objects | select(has("qc.build-target")) | ."qc.build-target"] | first // ""' <<< "$info")
+          if [ "$built" != staging ]; then
+            echo "::error::Image ${SHA} sudah ada di registri dan tidak terbukti dibangun oleh staging (label qc.build-target: '${built:-kosong}'). Build staging tak boleh menimpa tag SHA milik production; gunakan commit baru atau deploy dari tag/production."
+            exit 1
+          fi
 
       # Kebijakan cache lapisan (keputusan pemilik 2026-11-17). Cache registry dapat ditimpa siapa pun yang boleh mendorong
       # branch di repositori ini (peracunan lapisan: lapisan dengan isi lain di bawah kunci cache yang sama), jadi PRODUCTION
@@ -169,11 +207,14 @@ jobs:
           echo "public_key=$public_key" >> "$GITHUB_OUTPUT"
 
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        id: build
         with:
           context: .
           push: true
           provenance: false
           tags: ${{ steps.tags.outputs.list }}
+          labels: |
+            qc.build-target=${{ inputs.target }}
           secret-files: ${{ steps.ui-key.outputs.secret_files }}
           build-args: |
             UI_PUBLIC_KEY_PEM=${{ steps.ui-key.outputs.public_key }}

@@ -105,6 +105,30 @@ describe('jalur dinamis dan rute klien', () => {
     expect(serve('/laporanx/a.b').status).toBe(404);
   });
 
+  test('/dashboard-publik/<token> (token bertitik) dijawab index.html; awalan mirip tetap 404', async () => {
+    const response = serve(
+      '/dashboard-publik/v1.01hzx3k9m2n4p5q6r7s8t9v0wa.1799999999.sig_abc-123',
+    );
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('<title>QC</title>');
+    expect(serve('/dashboard-publikx/a.b').status).toBe(404);
+    expect(serve('/dashboard-publik.js').status).toBe(404);
+  });
+
+  test('butir 15: cangkang tautan publik membawa X-Robots-Tag noindex tanpa menghilangkan header lain; rute lain tidak', () => {
+    for (const route of [
+      '/dashboard-publik/v1.01hzx3k9m2n4p5q6r7s8t9v0wa.1799999999.sig_abc-123',
+      '/laporan/v1.c1.1799999999.sig_abc-123',
+    ]) {
+      const response = serve(route);
+      expect(response.headers.get('x-robots-tag')).toBe('noindex');
+      expect(response.headers.get('cache-control')).toBe('no-cache');
+      expect((response.headers.get('content-type') ?? '').startsWith('text/html')).toBe(true);
+    }
+    expect(serve('/handover').headers.get('x-robots-tag')).toBeNull();
+    expect(serve('/').headers.get('x-robots-tag')).toBeNull();
+  });
+
   test('rute klien (/handover) dijawab index.html dengan no-cache', async () => {
     const response = serve('/handover');
     expect(response.status).toBe(200);

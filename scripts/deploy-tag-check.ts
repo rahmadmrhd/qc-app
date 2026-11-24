@@ -3,7 +3,7 @@
 // `gh api` (langkah yang memegang token), lalu skrip ini memutuskan (langkah yang TIDAK memegang token).
 //  - provenance: tag dapat dibuat siapa pun berizin tulis (ruleset tag tak tersedia, 5.0), jadi tag hanya dipercaya bila
 //    SHA-nya leluhur `main`, versi di `server/package.json` pada SHA itu sama dengan tag, Release-nya ada dan dibuat
-//    workflow `publish` (`github-actions[bot]`), dan image `qc-app:<sha>` ada. Catatan: Release buatan bot bukan bukti kuat
+//    workflow `publish` (`github-actions[bot]`), dan image `qc-app:<sha>` ada serta berlabel `qc.build-target=production`. Catatan: Release buatan bot bukan bukti kuat
 //    sendirian (penulis berizin tulis dapat memicu workflow lain yang memakai token yang sama); syarat lain tetap pagar utama.
 //  - downgrade: pemeriksaan terbaik dari CI (`refs/deployed/<env>` dapat basi); pagar yang berwenang ada di VPS
 //    (`deploy/deploy.sh` `schema_guard`), dengan aturan yang sama.
@@ -33,6 +33,11 @@ export interface ProvenanceInput {
   releaseDraft: boolean;
   /** Image `qc-app:<sha>` ada di GHCR. */
   imageExists: boolean;
+  /**
+   * Label `qc.build-target` image itu (`staging`, `production`, atau '' bila tak berlabel/tak terbaca). Tag SHA dipakai bersama
+   * staging dan production; hanya image yang dibangun oleh build production (tanpa cache) yang sah dari tag rilis.
+   */
+  imageBuiltFor: string;
 }
 
 export function checkProvenance(input: ProvenanceInput): { ok: boolean; reason: string } {
@@ -65,6 +70,12 @@ export function checkProvenance(input: ProvenanceInput): { ok: boolean; reason: 
   }
   if (!input.imageExists) {
     return { ok: false, reason: 'Image qc-app untuk commit tag itu tidak ada di GHCR.' };
+  }
+  if (input.imageBuiltFor !== 'production') {
+    return {
+      ok: false,
+      reason: `Image qc-app untuk commit tag itu tidak terbukti dibangun oleh build production (label qc.build-target: ${input.imageBuiltFor === '' ? 'kosong' : input.imageBuiltFor}): tag SHA dapat ditimpa build staging, jadi tidak di-deploy.`,
+    };
   }
   return {
     ok: true,
@@ -171,6 +182,7 @@ if (import.meta.main) {
       releaseAuthor: env.RELEASE_EXISTS === 'true' ? (env.RELEASE_AUTHOR ?? '') : null,
       releaseDraft: env.RELEASE_DRAFT === 'true',
       imageExists: env.IMAGE_EXISTS === 'true',
+      imageBuiltFor: env.IMAGE_TARGET ?? '',
     });
   } else if (mode === 'downgrade') {
     const applied = readJsonList(env.APPLIED_JSON);

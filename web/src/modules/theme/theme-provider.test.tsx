@@ -104,3 +104,23 @@ test('tanpa matchMedia (lingkungan lama) tetap berjalan sebagai terang', () => {
   );
   expect(screen.getByTestId('state')).toHaveTextContent('system/light');
 });
+
+test('mengikuti perubahan tema dari tab lain (peristiwa storage) tanpa menulis balik', () => {
+  render(
+    <ThemeProvider>
+      <Probe />
+    </ThemeProvider>,
+  );
+  expect(screen.getByTestId('state')).toHaveTextContent('system/light');
+  act(() => {
+    window.dispatchEvent(new StorageEvent('storage', { key: 'qc.theme', newValue: 'dark' }));
+  });
+  expect(screen.getByTestId('state')).toHaveTextContent('dark/dark');
+  expect(document.documentElement.classList.contains('dark')).toBe(true);
+  // Kunci lain diabaikan; tidak ada penulisan balik ke penyimpanan dari jalur ini.
+  act(() => {
+    window.dispatchEvent(new StorageEvent('storage', { key: 'lain', newValue: 'light' }));
+  });
+  expect(screen.getByTestId('state')).toHaveTextContent('dark/dark');
+  expect(localStorage.getItem('qc.theme')).toBeNull();
+});

@@ -153,3 +153,30 @@ test('belum ada preset dan tanpa hak membuat: hanya keterangan nilai bawaan, tan
   ).toBeInTheDocument();
   expect(screen.queryByRole('combobox', { name: 'Pilih konfigurasi default' })).toBeNull();
 });
+
+test('presets dimuat ulang di latar (larik baru) tidak menimpa isian yang sudah diubah pengguna', async () => {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const ui = (presets: (typeof SPECTRUM)[]) => (
+    <QueryClientProvider client={client}>
+      <QrDesignForm
+        formId="qr-design-form"
+        presets={presets}
+        canCreatePreset
+        logoLibrary={[]}
+        defaultValues={{ ...toQrFormDefaults(), linkSource: 'url', link: 'https://contoh.com' }}
+        onSubmit={vi.fn()}
+      />
+    </QueryClientProvider>
+  );
+  const view = render(ui([SPECTRUM]));
+  await pickLink(screen, 'Item', 'PBE M5-400');
+  await userEvent.click(screen.getByRole('tab', { name: 'Isi label' }));
+  const size = await screen.findByLabelText('Ukuran Title (pt)');
+  await userEvent.clear(size);
+  await userEvent.type(size, '9');
+  expect(size).toHaveValue(9);
+  // Admin lain menyimpan preset: refetch memberi larik baru dengan isi yang sama.
+  view.rerender(ui([{ ...SPECTRUM }]));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(screen.getByLabelText('Ukuran Title (pt)')).toHaveValue(9);
+});

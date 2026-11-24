@@ -19,6 +19,7 @@ const roles = new Map<string, PartialPermissionMap>([
   ['catalog', { item: 'view' }],
   ['catalog-edit', { item: 'edit' }],
   ['serial-edit', { serial: 'edit' }],
+  ['dashboard', { dashboard: 'manage' }],
 ]);
 
 describe('sanitizeAssignments', () => {
@@ -299,4 +300,11 @@ describe('modul berlokasi', () => {
 test('qrcode adalah modul global bersama (bukan berlokasi)', () => {
   expect(SHARED_MODULES).toContain('qrcode');
   expect(isLocatedModule('qrcode')).toBe(false);
+});
+
+test('dashboard adalah modul global bersama: berlaku walau hanya ditugaskan di satu lokasi', () => {
+  expect(SHARED_MODULES as readonly string[]).toContain('dashboard');
+  expect(isLocatedModule('dashboard')).toBe(false);
+  const result = resolveAccess([{ locationId: 'A', roleIds: ['dashboard'] }], roles, ['A', 'B']);
+  expect(result.global.dashboard).toBe('manage');
 });

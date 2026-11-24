@@ -85,6 +85,16 @@ describe('pemindai (kasus sintetis)', () => {
     ).toEqual([]);
   });
 
+  test('regex literal di dalam ${} (kutip atau kurung di dalamnya) tidak merusak sinkronisasi literal berikutnya', () => {
+    // Tanpa penanganan regex di dalam `${}`, kutip pada `/'/g` membuka string palsu dan literal SELECT di bawahnya tak terlihat.
+    const source = [
+      "const a = `x ${v.replace(/'/g, \"''\")}`;",
+      "const b = `y ${v.replace(/[}]/g, '')}`;",
+      "q('SELECT 1 FROM serials s WHERE s.id = ?');",
+    ].join('\n');
+    expect(bad(source).map((ref) => ref.table)).toEqual(['serials']);
+  });
+
   test('anak multi-induk: SEMUA induk yang ikut di-JOIN harus tersaring', () => {
     const both =
       'q("FROM notifications n JOIN handovers h ON h.id = n.handover_id JOIN serials s ON s.id = n.serial_id WHERE h.deleted_at = \'\'")';
@@ -267,6 +277,14 @@ describe('kode server', () => {
     }
     for (const [key, reason] of Object.entries(SOFT_DELETE_EXEMPT)) {
       expect(reason.trim(), key).not.toBe('');
+    }
+  });
+
+  test('satu kemunculan tidak boleh tercatat di PENDING sekaligus EXEMPT, dan PENDING tak berisi berkas tanpa entri', () => {
+    const exempt = new Set(Object.keys(SOFT_DELETE_EXEMPT));
+    for (const [file, keys] of Object.entries(SOFT_DELETE_PENDING)) {
+      expect(keys.length, `${file} tanpa entri: hapus kuncinya`).toBeGreaterThan(0);
+      for (const key of keys) expect(exempt.has(`${file}#${key}`), `${file}#${key}`).toBe(false);
     }
   });
 });
