@@ -7,3 +7,4 @@ feat(dashboard): widget Total serial dicatat dan Rata-rata waktu per serial (men
 feat(mail): penerima surel dapat berupa Kepada, CC, dan BCC pada semua pengaturan pengiriman (stok stiker, Postel, Serial rusak, laporan terjadwal; migrasi 0038)
 feat(dashboard): halaman Tautan dibagikan (daftar semua tautan, ubah konfigurasi di tautan yang sama, cabut, salin) dan section Laporan di sidebar
 change(dashboard): surel laporan terjadwal ramah ponsel (kartu angka bertumpuk, daftar jadi blok per baris, batang berlabel di atas, tombol selebar layar)
+fix(dashboard): tautan Serial/Laporan tanpa pembatasan lokasi kini menawarkan filter lokasi (lokasi hak pembagi) di halaman publik

@@ -379,13 +379,19 @@ describe('review akhir: lokasi dan rentang', () => {
     expect(dto?.scope.locationNames).toEqual(['Lokasi B']);
   });
 
-  test('butir 14: tautan Serial saja tanpa saringan lokasi mengabaikan locationIds penonton', async () => {
+  test('butir 14 (K15): tautan Serial saja tanpa saringan lokasi menawarkan lokasi hak pembagi dan menyaringnya', async () => {
     const row = await share();
-    const baseline = numberOf(await view(row), 'sn.status');
+    const dto = await view(row);
+    // Pilihan filter lokasi = lokasi hak pembagi saat ini (loc-a), bukan semua lokasi (loc-b bukan hak pembagi).
+    expect(dto?.options.location.map((option) => option.value)).toEqual(['loc-a']);
+    const baseline = numberOf(dto, 'sn.status');
     expect(baseline).toBe(3);
-    const withLocation = await view(row, { locationIds: ['loc-a'] });
-    expect(numberOf(withLocation, 'sn.status')).toBe(baseline);
-    expect(numberOf(await view(row, { locationIds: [] }), 'sn.status')).toBe(baseline);
+    // Lokasi di luar hak pembagi diiris ke kosong tanpa galat pembeda (tidak membocorkan apa pun).
+    expect(numberOf(await view(row, { locationIds: ['loc-b'] }), 'sn.status')).toBe(0);
+    // Daftar kosong dari penonton = tidak ada lokasi (klien web tidak mengirimnya bila filter kosong).
+    expect(numberOf(await view(row, { locationIds: [] }), 'sn.status')).toBe(0);
+    // Lokasi hak pembagi menyaring Serial: seed menaruh semua serial di loc-a.
+    expect(numberOf(await view(row, { locationIds: ['loc-a'] }), 'sn.status')).toBe(baseline);
   });
 
   test('butir 14: saringan lokasi yang dibekukan tetap dihormati dan dapat dipersempit penonton', async () => {
