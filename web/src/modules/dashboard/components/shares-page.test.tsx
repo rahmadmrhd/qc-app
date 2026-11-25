@@ -66,6 +66,10 @@ test('kolom Sumber membedakan tautan bagikan dashboard dari terbitan laporan ter
   await renderInRouter(<SharesPage q="" status="all" onSearchChange={() => undefined} />);
   expect(within(await rowOf('Rekap mingguan')).getByText('Bagikan dashboard')).toBeTruthy();
   expect(within(await rowOf('Terbitan laporan')).getByText('Laporan terjadwal')).toBeTruthy();
+  const link = within(await rowOf('Terbitan laporan')).getByRole('link', {
+    name: 'Buka laporan terjadwal Terbitan laporan',
+  });
+  expect(link.getAttribute('href')).toBe('/dashboard/laporan/rp1');
 });
 
 test('status tampil sebagai teks pada setiap baris', async () => {

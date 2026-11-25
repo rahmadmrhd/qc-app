@@ -1,6 +1,7 @@
 import type { DashboardShareDto, ShareStatus } from '@shared/dashboard-share';
 import { wibDateIso } from '@shared/postel';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { type DataColumn, DataTable, LinkCell, type RowAction } from '@/components/data-table';
@@ -103,11 +104,22 @@ export function SharesPage({ q, status, onSearchChange }: SharesPageProps) {
     {
       id: 'source',
       header: 'Sumber',
-      cell: (share) => (
-        <Badge variant="soft" color={share.reportId === '' ? 'primary' : 'info'}>
-          {share.reportId === '' ? 'Bagikan dashboard' : 'Laporan terjadwal'}
-        </Badge>
-      ),
+      cell: (share) =>
+        share.reportId === '' ? (
+          <Badge variant="soft" color="primary">
+            Bagikan dashboard
+          </Badge>
+        ) : (
+          <Link
+            to="/dashboard/laporan/$reportId"
+            params={{ reportId: share.reportId }}
+            aria-label={`Buka laporan terjadwal ${share.title}`}
+          >
+            <Badge variant="soft" color="info">
+              Laporan terjadwal
+            </Badge>
+          </Link>
+        ),
     },
     { id: 'createdAt', header: 'Dibuat', cell: (share) => dayOf(share.createdAt) },
     { id: 'expiresAt', header: 'Kedaluwarsa', cell: (share) => dayOf(share.expiresAt) },

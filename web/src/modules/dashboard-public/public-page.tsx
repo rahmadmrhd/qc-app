@@ -47,7 +47,7 @@ function usePublicMeta(): void {
 
 function Shell({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-svh bg-muted/40 p-4">
+    <div className="min-h-svh bg-background p-4">
       <main className="mx-auto max-w-7xl space-y-5 py-4">{children}</main>
     </div>
   );
