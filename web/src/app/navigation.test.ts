@@ -185,10 +185,10 @@ test('NAV_GROUPS berbentuk pohon: Default QR ada, induk tidak ikut diratakan', (
   expect(flat.map((entry) => entry.label)).not.toContain('Akses');
   expect(NAV_GROUPS.map((group) => group.label)).toEqual([
     null,
-    'Laporan',
     'Operasional',
     'Data Master',
     'Stiker & Dokumen',
+    'Laporan',
     'Pengaturan',
   ]);
   expect(NAV_GROUPS.flatMap((group) => group.items.filter(isNavParent)).map((p) => p.id)).toEqual([

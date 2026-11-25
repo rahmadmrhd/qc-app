@@ -100,6 +100,15 @@ export function SharesPage({ q, status, onSearchChange }: SharesPageProps) {
       cell: (share) => share.createdBy,
       ...(showOwner ? {} : { mobile: 'hide' as const }),
     },
+    {
+      id: 'source',
+      header: 'Sumber',
+      cell: (share) => (
+        <Badge variant="soft" color={share.reportId === '' ? 'primary' : 'info'}>
+          {share.reportId === '' ? 'Bagikan dashboard' : 'Laporan terjadwal'}
+        </Badge>
+      ),
+    },
     { id: 'createdAt', header: 'Dibuat', cell: (share) => dayOf(share.createdAt) },
     { id: 'expiresAt', header: 'Kedaluwarsa', cell: (share) => dayOf(share.expiresAt) },
     { id: 'widgetCount', header: 'Widget', align: 'right', cell: (share) => share.widgetCount },

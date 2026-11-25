@@ -129,24 +129,6 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    // Section tersendiri (bukan submenu Dashboard): pengelolaan laporan terjadwal dan tautan yang dibagikan.
-    label: 'Laporan',
-    items: [
-      {
-        label: 'Laporan terjadwal',
-        to: '/dashboard/laporan',
-        icon: CalendarClock,
-        permission: { module: 'dashboard', level: 'edit' },
-      },
-      {
-        label: 'Tautan dibagikan',
-        to: '/dashboard/tautan',
-        icon: Link2,
-        permission: { module: 'dashboard', level: 'edit' },
-      },
-    ],
-  },
-  {
     label: 'Operasional',
     items: [
       {
@@ -302,6 +284,24 @@ export const NAV_GROUPS: NavGroup[] = [
         to: '/postel',
         icon: FileBadge,
         permission: { module: 'sticker', level: 'view' },
+      },
+    ],
+  },
+  {
+    // Section tersendiri (bukan submenu Dashboard): pengelolaan laporan terjadwal dan tautan yang dibagikan.
+    label: 'Laporan',
+    items: [
+      {
+        label: 'Laporan terjadwal',
+        to: '/dashboard/laporan',
+        icon: CalendarClock,
+        permission: { module: 'dashboard', level: 'edit' },
+      },
+      {
+        label: 'Tautan dibagikan',
+        to: '/dashboard/tautan',
+        icon: Link2,
+        permission: { module: 'dashboard', level: 'edit' },
       },
     ],
   },

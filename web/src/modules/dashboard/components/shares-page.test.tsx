@@ -47,6 +47,7 @@ beforeEach(() => {
       revokedAt: '2026-11-21T01:00:00.000Z',
     }),
     share({ id: 'ds4', title: 'Sudah lewat', status: 'expired' }),
+    share({ id: 'ds5', title: 'Terbitan laporan', reportId: 'rp1' }),
   ];
   apiMock.mockReset();
   apiMock.mockImplementation(async (id: string) => {
@@ -60,6 +61,12 @@ const rowOf = async (title: string) => {
   const cell = await screen.findByText(title);
   return cell.closest('tr') as HTMLElement;
 };
+
+test('kolom Sumber membedakan tautan bagikan dashboard dari terbitan laporan terjadwal', async () => {
+  await renderInRouter(<SharesPage q="" status="all" onSearchChange={() => undefined} />);
+  expect(within(await rowOf('Rekap mingguan')).getByText('Bagikan dashboard')).toBeTruthy();
+  expect(within(await rowOf('Terbitan laporan')).getByText('Laporan terjadwal')).toBeTruthy();
+});
 
 test('status tampil sebagai teks pada setiap baris', async () => {
   await renderInRouter(<SharesPage q="" status="all" onSearchChange={() => undefined} />);
