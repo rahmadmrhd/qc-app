@@ -135,7 +135,7 @@ test('tanpa izin dashboard (edit), tombol Bagikan tidak tampil', async () => {
   );
   await screen.findByRole('tab', { name: 'Serah Terima' });
   expect(screen.queryByRole('button', { name: 'Bagikan' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Tautan dibagikan' })).toBeNull();
+  expect(screen.queryByRole('link', { name: 'Tautan dibagikan' })).toBeNull();
 });
 
 test('pemegang dashboard: edit melihat tombol Bagikan dan Tautan dibagikan (mengelola miliknya sendiri)', async () => {
@@ -145,7 +145,7 @@ test('pemegang dashboard: edit melihat tombol Bagikan dan Tautan dibagikan (meng
   );
   await screen.findByRole('tab', { name: 'Serah Terima' });
   expect(screen.getByRole('button', { name: 'Bagikan' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Tautan dibagikan' })).toBeTruthy();
+  expect(screen.getByRole('link', { name: 'Tautan dibagikan' })).toBeTruthy();
 });
 
 test('pemegang dashboard: manage melihat tombol Bagikan dan Tautan dibagikan', async () => {
@@ -155,7 +155,7 @@ test('pemegang dashboard: manage melihat tombol Bagikan dan Tautan dibagikan', a
   );
   await screen.findByRole('tab', { name: 'Serah Terima' });
   expect(screen.getByRole('button', { name: 'Bagikan' })).toBeTruthy();
-  expect(screen.getByRole('button', { name: 'Tautan dibagikan' })).toBeTruthy();
+  expect(screen.getByRole('link', { name: 'Tautan dibagikan' })).toBeTruthy();
 });
 
 test('menekan Bagikan membuka dialog', async () => {

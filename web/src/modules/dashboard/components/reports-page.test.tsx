@@ -28,6 +28,8 @@ function row(id: string, overrides: Partial<DashboardReportDto> = {}): Dashboard
     period: 'yesterday',
     scope: { buIds: [], locationIds: [], locationFiltered: false, widgets: [], offers: [] },
     recipients: [],
+    cc: [],
+    bcc: [],
     recipientCount: 2,
     linkDays: 14,
     lastStatus: '',

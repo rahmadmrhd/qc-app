@@ -3,3 +3,6 @@ feat(dashboard): quick list membuka halaman indeks lewat label dan halaman detai
 feat(dashboard): widget Serah Terima, Serial Number, Laporan rusak, dan Stok Stiker direvisi; filter brand dan entri serial terakhir ditambahkan
 feat(dashboard): grafik total stok semua stiker menggulir ke samping di dalam grafik, urut jenis lalu nama stiker
 change(dashboard): grup Postel dihapus dari dashboard; widget lama pada tautan dan laporan tersimpan dibuang saat dibaca
+feat(dashboard): widget Total serial dicatat dan Rata-rata waktu per serial (menit); grafik jumlah stiker per jenis dan stok masuk-keluar satu baris di desktop
+feat(mail): penerima surel dapat berupa Kepada, CC, dan BCC pada semua pengaturan pengiriman (stok stiker, Postel, Serial rusak, laporan terjadwal; migrasi 0038)
+feat(dashboard): halaman Tautan dibagikan (daftar semua tautan, ubah konfigurasi di tautan yang sama, cabut, salin) dan section Laporan di sidebar

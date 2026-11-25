@@ -93,6 +93,7 @@ export const AUDIT_ACTION_LABELS: Record<string, string> = {
   'serial.proof_retention': 'Foto bukti gagal dibuang otomatis',
   'export.sheets': 'Data diekspor ke Sheets',
   'dashboard.share_create': 'Tautan dashboard dibuat',
+  'dashboard.share_update': 'Tautan dashboard diubah',
   'dashboard.share_revoke': 'Tautan dashboard dicabut',
   'dashboard.share_expire': 'Tautan dashboard kedaluwarsa',
   'dashboard.report_create': 'Laporan terjadwal dibuat',

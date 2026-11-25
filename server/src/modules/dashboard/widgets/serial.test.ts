@@ -14,7 +14,7 @@ import type {
 } from '@shared/dashboard';
 import { widgetMeta } from '@shared/dashboard';
 import type { ResolvedScope } from '../scope';
-import { SERIAL_WIDGETS } from './serial';
+import { AVG_MINUTES_WORK_HOURS, averageMinutes, SERIAL_WIDGETS } from './serial';
 
 setDefaultTimeout(60_000);
 
@@ -23,6 +23,8 @@ let env: TestEnv;
 const RANGE: DashboardRange = { from: '2026-11-10', to: '2026-11-16' };
 const IN_RANGE = '2026-11-12T03:00:00.000Z';
 const IDS: WidgetId[] = [
+  'sn.total',
+  'sn.avgMinutes',
   'sn.trend',
   'sn.status',
   'sn.byBu',
@@ -62,8 +64,28 @@ beforeEach(async () => {
   await seedItem(env, { id: 'i-2', brand: 'Merk', model: 'Dua', businessUnitIds: ['bu-x'] });
 });
 
-test('SERIAL_WIDGETS mencakup tepat enam widget grup Serial Number', () => {
+test('SERIAL_WIDGETS mencakup tepat delapan widget grup Serial Number', () => {
   expect(SERIAL_WIDGETS.map((widget) => widget.id).sort()).toEqual([...IDS].sort());
+});
+
+describe('sn.total dan sn.avgMinutes', () => {
+  test('sn.total menghitung serial periode ini dan periode sebelumnya', async () => {
+    await seed(env, { id: 's1', createdAt: IN_RANGE });
+    await seed(env, { id: 's2', createdAt: IN_RANGE });
+    await seed(env, { id: 's3', createdAt: '2026-11-05T03:00:00.000Z' });
+    expect(await run('sn.total')).toMatchObject({ kind: 'number', value: 2, previous: 1 });
+  });
+
+  test('sn.avgMinutes = jam kerja x 60 / jumlah serial; tanpa serial = 0', async () => {
+    expect(AVG_MINUTES_WORK_HOURS).toBe(4);
+    expect(averageMinutes(0)).toBe(0);
+    expect(averageMinutes(240)).toBe(1);
+    expect(averageMinutes(7)).toBe(34.3);
+    await seed(env, { id: 's1', createdAt: IN_RANGE });
+    await seed(env, { id: 's2', createdAt: IN_RANGE });
+    expect(await run('sn.avgMinutes')).toMatchObject({ kind: 'number', value: 120 });
+    expect(await run('sn.avgMinutes', scopeOf({ buIds: [] }))).toMatchObject({ value: 0 });
+  });
 });
 
 describe('cakupan: rentang, BU, lokasi (lewat sn.status)', () => {

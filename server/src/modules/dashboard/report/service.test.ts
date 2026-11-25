@@ -188,6 +188,8 @@ describe('batas laporan per pemilik', () => {
         offers: [],
       }),
       recipients: JSON.stringify(['a@x.id']),
+      cc: '[]',
+      bcc: '[]',
       link_days: 14,
       last_run_key: '',
       last_run_at: '',

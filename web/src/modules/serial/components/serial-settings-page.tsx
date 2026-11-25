@@ -1,15 +1,12 @@
 import type { SaveSerialSettingsInput, SerialSettingsDto, UserDto } from '@shared/contract';
-import { normalizeKey } from '@shared/items';
-import { isPostelRecipient } from '@shared/postel';
+import { mailListsOf, sameMailLists } from '@shared/mail-lists';
 import { SERIAL_LIMITS } from '@shared/serials';
 import { type ReactNode, useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
-import { LinkMultiField, type LinkOption } from '@/components/link-field';
+import { MailListsFields, type RecipientSuggestion } from '@/components/mail-lists-field';
 import { FormPage } from '@/components/page/form-page';
 import { FormTabs } from '@/components/page/form-tabs';
-import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 const MAX = SERIAL_LIMITS.alertRecipientsMax;
@@ -36,10 +33,6 @@ export interface SerialSettingsPageProps {
   renderServiceTab: (props: { formId: string; onBusyChange: (busy: boolean) => void }) => ReactNode;
 }
 
-function userLabel(user: Pick<UserDto, 'name' | 'email'>): string {
-  return `${user.name} (${user.email})`;
-}
-
 interface BodyProps extends Pick<SerialSettingsPageProps, 'settings' | 'users' | 'onSave'> {
   onBusyChange: (busy: boolean) => void;
   /** Pesan galat simpan; disimpan di luar `Body` agar tetap tampil saat isian dimuat ulang (versi usang). */
@@ -50,56 +43,15 @@ interface BodyProps extends Pick<SerialSettingsPageProps, 'settings' | 'users' |
 function Body({ settings, users, onSave, serverError, onServerError, onBusyChange }: BodyProps) {
   const { alert } = settings;
   const [enabled, setEnabled] = useState(alert.enabled);
-  const [recipients, setRecipients] = useState<string[]>(alert.recipients);
-  const [extra, setExtra] = useState('');
-  const [term, setTerm] = useState('');
-  const [recipientsError, setRecipientsError] = useState<string | null>(null);
+  const [lists, setLists] = useState(() => mailListsOf(alert));
   const [busy, setBusy] = useState(false);
-  useUnsavedChanges(
-    enabled !== alert.enabled ||
-      recipients.join('|') !== alert.recipients.join('|') ||
-      extra.trim() !== '',
-  );
+  useUnsavedChanges(enabled !== alert.enabled || !sameMailLists(lists, mailListsOf(alert)));
 
-  const userByEmail = new Map((users ?? []).map((user) => [user.email.toLowerCase(), user]));
-  const chosen = new Set(recipients);
-  const termKey = normalizeKey(term);
-  const options: LinkOption[] = (users ?? [])
-    .filter((user) => user.status === 'active' && !chosen.has(user.email.toLowerCase()))
-    .filter(
-      (user) => termKey === '' || normalizeKey(`${user.name} ${user.email}`).includes(termKey),
-    )
-    .slice(0, 50)
-    .map((user) => ({ id: user.email.toLowerCase(), label: userLabel(user) }));
-
-  function pickRecipients(ids: string[]) {
-    if (ids.length > MAX) {
-      setRecipientsError(`Maksimal ${MAX} penerima`);
-      return;
-    }
-    setRecipients(ids);
-    setRecipientsError(null);
-  }
-
-  function addExtra() {
-    const email = extra.trim().toLowerCase();
-    if (email === '') return;
-    if (!isPostelRecipient(email)) {
-      setRecipientsError('Format email tidak valid');
-      return;
-    }
-    if (chosen.has(email)) {
-      setRecipientsError('Email sudah ada dalam daftar');
-      return;
-    }
-    if (recipients.length >= MAX) {
-      setRecipientsError(`Maksimal ${MAX} penerima`);
-      return;
-    }
-    setRecipients([...recipients, email]);
-    setExtra('');
-    setRecipientsError(null);
-  }
+  const suggestions: RecipientSuggestion[] = (users ?? []).map((user) => ({
+    name: user.name,
+    email: user.email,
+    active: user.status === 'active',
+  }));
 
   async function submit() {
     if (busy) return;
@@ -110,7 +62,7 @@ function Body({ settings, users, onSave, serverError, onServerError, onBusyChang
     try {
       message = await onSave({
         expectedUpdatedAt: settings.updatedAt,
-        alert: { enabled, recipients },
+        alert: { enabled, ...lists },
       });
     } catch {
       message = 'Gagal menyimpan pengaturan Serial Number';
@@ -156,57 +108,13 @@ function Body({ settings, users, onSave, serverError, onServerError, onBusyChang
           Kirim email saat Serial Number dinyatakan rusak
         </Label>
       </div>
-      <fieldset aria-label="Penerima email" className="m-0 min-w-0 space-y-2 border-0 p-0">
-        <LinkMultiField
-          id="serial-alert-recipients"
-          label="Penerima email"
-          placeholder={users === null ? 'Tambahkan email di bawah' : 'Pilih user'}
-          value={recipients}
-          labelOf={(id) => {
-            const user = userByEmail.get(id);
-            return user ? userLabel(user) : id;
-          }}
-          options={options}
-          onSearchChange={setTerm}
-          searchDebounceMs={0}
-          onChange={pickRecipients}
-        />
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="serial-alert-extra">Email lain</Label>
-            <Input
-              id="serial-alert-extra"
-              type="email"
-              className="w-72"
-              value={extra}
-              aria-invalid={recipientsError ? true : undefined}
-              aria-describedby={recipientsError ? 'serial-alert-recipients-error' : undefined}
-              onChange={(event) => setExtra(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  addExtra();
-                }
-              }}
-            />
-          </div>
-          <Button type="button" variant="outline" color="primary" onClick={addExtra}>
-            Tambah email
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Maksimal {MAX} penerima; alamat di luar daftar user boleh ditambahkan.
-        </p>
-        {recipientsError ? (
-          <p
-            id="serial-alert-recipients-error"
-            role="alert"
-            className="text-sm text-destructive-text"
-          >
-            {recipientsError}
-          </p>
-        ) : null}
-      </fieldset>
+      <MailListsFields
+        idPrefix="serial-alert"
+        value={lists}
+        onChange={setLists}
+        suggestions={suggestions}
+        max={MAX}
+      />
       {serverError ? (
         <p role="alert" className="text-sm text-destructive-text">
           {serverError}

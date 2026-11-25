@@ -69,6 +69,7 @@ const PREFIX_KINDS: Readonly<Record<string, AuditTargetKind>> = {
  */
 const ACTION_KINDS: Readonly<Record<string, AuditTargetKind>> = {
   'dashboard.share_create': 'dashboardShare',
+  'dashboard.share_update': 'dashboardShare',
   'dashboard.share_revoke': 'dashboardShare',
   'dashboard.share_expire': 'dashboardShare',
   'dashboard.report_create': 'dashboardReport',

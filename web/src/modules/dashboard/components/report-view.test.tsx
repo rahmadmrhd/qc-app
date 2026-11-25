@@ -39,6 +39,8 @@ function report(overrides: Partial<DashboardReportDto> = {}): DashboardReportDto
       offers: [],
     },
     recipients: ['rahasia@contoh.id'],
+    cc: [],
+    bcc: [],
     recipientCount: 1,
     linkDays: 14,
     lastStatus: 'ok',

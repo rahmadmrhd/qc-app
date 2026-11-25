@@ -19,6 +19,8 @@ const call = async (email: string, id: string, input: unknown) =>
 const alert = (over: Record<string, unknown> = {}) => ({
   enabled: true,
   recipients: ['a@contoh.com', 'b@contoh.com'],
+  cc: [] as string[],
+  bcc: [] as string[],
   digestHour: 9,
   intervalDays: 1,
   ...over,
@@ -47,6 +49,8 @@ describe('stickerSettings.get', () => {
     expect(out.data.alert).toEqual({
       enabled: false,
       recipients: [],
+      cc: [],
+      bcc: [],
       digestHour: 8,
       intervalDays: 1,
     });

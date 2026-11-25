@@ -1,4 +1,5 @@
-import { isValidEmail, normalizeEmail } from '@server/core/email';
+import { isValidEmail } from '@server/core/email';
+import { readMailLists } from '@server/core/mail-lists';
 import type { ObjectReader } from '@server/core/validate';
 import { readObject } from '@server/core/validate';
 import { validateLocationIds } from '@server/modules/handover/validate';
@@ -393,7 +394,14 @@ function readAlertSettings(
   value: unknown,
   reader: ObjectReader,
 ): SaveStickerSettingsInput['alert'] {
-  const fallback = { enabled: false, recipients: [] as string[], digestHour: 8, intervalDays: 1 };
+  const fallback = {
+    enabled: false,
+    recipients: [] as string[],
+    cc: [] as string[],
+    bcc: [] as string[],
+    digestHour: 8,
+    intervalDays: 1,
+  };
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     reader.fail('alert', 'Pengaturan email harus berupa objek');
     return fallback;
@@ -417,30 +425,16 @@ function readAlertSettings(
       `Selang harus bilangan bulat 1 sampai ${STICKER_LIMITS.alertIntervalDaysMax} hari`,
     );
   }
-  const recipients: string[] = [];
-  if (!Array.isArray(source.recipients)) {
-    reader.fail('recipients', 'Penerima harus berupa daftar email');
-  } else if (source.recipients.length > STICKER_LIMITS.alertRecipientsMax) {
-    reader.fail('recipients', `Maksimal ${STICKER_LIMITS.alertRecipientsMax} penerima`);
-  } else {
-    const seen = new Set<string>();
-    for (const item of source.recipients) {
-      const email = typeof item === 'string' ? normalizeEmail(item) : '';
-      if (!isValidEmail(email)) {
-        reader.fail('recipients', 'Ada alamat email yang tidak valid');
-        break;
-      }
-      if (seen.has(email)) {
-        reader.fail('recipients', `Email ganda: ${email}`);
-        break;
-      }
-      seen.add(email);
-      recipients.push(email);
-    }
-  }
+  const lists = readMailLists(source, {
+    max: STICKER_LIMITS.alertRecipientsMax,
+    isValid: isValidEmail,
+    fail: (field, message) => reader.fail(field, message),
+  });
   return {
     enabled: source.enabled === true,
-    recipients,
+    recipients: lists.recipients,
+    cc: lists.cc,
+    bcc: lists.bcc,
     digestHour: typeof hour === 'number' ? hour : 8,
     intervalDays: typeof interval === 'number' ? interval : 1,
   };

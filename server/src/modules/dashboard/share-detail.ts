@@ -89,6 +89,8 @@ export async function getDashboardShare(
     ...summary,
     visits,
     scope: {
+      buIds: scope.buIds,
+      locationIds: scope.locationIds,
       buNames: bus.names,
       buDeleted: bus.deleted,
       locationNames: locations.names,

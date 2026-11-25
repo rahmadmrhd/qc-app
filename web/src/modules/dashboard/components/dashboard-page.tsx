@@ -1,5 +1,6 @@
 import { DASHBOARD_GROUPS, GROUP_LABELS } from '@shared/dashboard';
 import { wibDateIso } from '@shared/postel';
+import { Link } from '@tanstack/react-router';
 import { Link2, Share2 } from 'lucide-react';
 import { useState } from 'react';
 import { HeadroomBar, HeadroomFrame } from '@/components/page/headroom-bar';
@@ -17,7 +18,6 @@ import { type DashboardSearch, effectiveRange } from '../lib/search';
 import { GlobalFilters } from './global-filters';
 import { GroupSection } from './group-section';
 import { ShareDialog } from './share-dialog';
-import { SharesDialog } from './shares-dialog';
 
 /**
  * Halaman Dashboard pemantauan: bar filter global (BU, Lokasi, Tanggal) dan tab grup di bar headroom, lalu isi satu
@@ -32,7 +32,7 @@ export function DashboardPage({
 }) {
   const me = useMe();
   const phone = useIsMobile();
-  const [dialog, setDialog] = useState<'share' | 'shares' | null>(null);
+  const [dialog, setDialog] = useState<'share' | null>(null);
   const canShare = can(me, 'dashboard', 'edit');
   const groups = visibleWidgetsByGroup(me);
   if (groups.length === 0) {
@@ -79,15 +79,11 @@ export function DashboardPage({
                   <Share2 aria-hidden="true" />
                   Bagikan
                 </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  color="secondary"
-                  onClick={() => setDialog('shares')}
-                >
-                  <Link2 aria-hidden="true" />
-                  Tautan dibagikan
+                <Button asChild size="sm" variant="outline" color="secondary">
+                  <Link to="/dashboard/tautan">
+                    <Link2 aria-hidden="true" />
+                    Tautan dibagikan
+                  </Link>
                 </Button>
               </div>
             ) : null}
@@ -130,7 +126,6 @@ export function DashboardPage({
       {dialog === 'share' ? (
         <ShareDialog onClose={() => setDialog(null)} search={search} today={today} />
       ) : null}
-      {dialog === 'shares' ? <SharesDialog onClose={() => setDialog(null)} /> : null}
     </HeadroomFrame>
   );
 }

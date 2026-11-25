@@ -1,5 +1,5 @@
 import { liveWhere } from '@server/core/soft-delete';
-import type { ListData, PartsData, SeriesData } from '@shared/dashboard';
+import type { ListData, NumberData, PartsData, SeriesData } from '@shared/dashboard';
 import { widgetMeta } from '@shared/dashboard';
 import { SERIAL_STATUS_LABELS, SERIAL_STATUSES } from '@shared/serials';
 import type { WidgetCtx, WidgetImpl } from '../registry';
@@ -60,6 +60,56 @@ function conditions(ctx: WidgetCtx): Condition {
 function noScope(ctx: WidgetCtx): boolean {
   return ctx.scope.buIds.length === 0 || ctx.scope.serialLocationIds?.length === 0;
 }
+
+/** Total serial hidup yang dicatat pada periode (delta terhadap periode sebelumnya yang sama panjang). */
+const total: WidgetImpl = {
+  id: 'sn.total',
+  async run(ctx): Promise<NumberData> {
+    if (noScope(ctx)) return { kind: 'number', value: 0, previous: 0 };
+    const where = conditions(ctx);
+    const count = async (fromIso: string, toIso: string) => {
+      const row = await ctx.db
+        .prepare(
+          `SELECT COUNT(*) AS n FROM serials s WHERE ${liveWhere('s')}${where.sql} AND s.created_at >= ? AND s.created_at < ?`,
+        )
+        .bind(...where.binds, fromIso, toIso)
+        .first<{ n: number | string }>();
+      return num(row?.n);
+    };
+    return {
+      kind: 'number',
+      value: await count(ctx.scope.fromIso, ctx.scope.toIso),
+      previous: await count(ctx.scope.prevFromIso, ctx.scope.prevToIso),
+    };
+  },
+};
+
+/** Waktu kerja yang dianggap tersedia untuk mencatat serial pada periode (keputusan pemilik 2026-11-25): 4 jam. */
+export const AVG_MINUTES_WORK_HOURS = 4;
+
+/**
+ * Rata-rata menit per serial = (4 jam x 60 menit) / jumlah serial dicatat pada periode, satu desimal; tanpa serial = 0.
+ * Rumus mengikuti permintaan pemilik apa adanya (4 jam TOTAL untuk seluruh periode, bukan per hari).
+ */
+export function averageMinutes(serialCount: number): number {
+  if (serialCount <= 0) return 0;
+  return Math.round(((AVG_MINUTES_WORK_HOURS * 60) / serialCount) * 10) / 10;
+}
+
+const avgMinutes: WidgetImpl = {
+  id: 'sn.avgMinutes',
+  async run(ctx): Promise<NumberData> {
+    if (noScope(ctx)) return { kind: 'number', value: 0 };
+    const where = conditions(ctx);
+    const row = await ctx.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM serials s WHERE ${liveWhere('s')}${where.sql} AND s.created_at >= ? AND s.created_at < ?`,
+      )
+      .bind(...where.binds, ctx.scope.fromIso, ctx.scope.toIso)
+      .first<{ n: number | string }>();
+    return { kind: 'number', value: averageMinutes(num(row?.n)) };
+  },
+};
 
 const status: WidgetImpl = {
   id: 'sn.status',
@@ -225,4 +275,13 @@ const latest: WidgetImpl = {
   },
 };
 
-export const SERIAL_WIDGETS: readonly WidgetImpl[] = [trend, status, byBu, byBrand, byItem, latest];
+export const SERIAL_WIDGETS: readonly WidgetImpl[] = [
+  total,
+  avgMinutes,
+  trend,
+  status,
+  byBu,
+  byBrand,
+  byItem,
+  latest,
+];

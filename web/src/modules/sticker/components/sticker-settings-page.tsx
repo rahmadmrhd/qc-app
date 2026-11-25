@@ -5,21 +5,18 @@ import type {
   StickerSettingsDto,
   UserDto,
 } from '@shared/contract';
-import { normalizeKey } from '@shared/items';
+import { mailListsOf, sameMailLists } from '@shared/mail-lists';
 import { STICKER_LIMITS } from '@shared/stickers';
 import { useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
-import { LinkMultiField, type LinkOption } from '@/components/link-field';
+import { MailListsFields, type RecipientSuggestion } from '@/components/mail-lists-field';
 import { FormPage } from '@/components/page/form-page';
 import { FormTabs } from '@/components/page/form-tabs';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PostelAlertSettings } from './postel-alert-settings';
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /** Id `<form>` pengaturan stok (tab "Minimum stok" dan "Ringkasan stok" disimpan bersama). */
 export const STICKER_SETTINGS_FORM_ID = 'sticker-settings';
@@ -34,10 +31,6 @@ function parseQty(raw: string): number | null {
   if (text === '') return 0;
   const value = Number(text);
   return Number.isInteger(value) && value >= 0 && value <= STICKER_LIMITS.qtyMax ? value : null;
-}
-
-function userLabel(user: Pick<UserDto, 'name' | 'email'>): string {
-  return `${user.name} (${user.email})`;
 }
 
 function initialDefaults(settings: StickerSettingsDto): Record<string, string> {
@@ -65,9 +58,7 @@ function useStickerSettingsForm({
   const [enabled, setEnabled] = useState(settings.alert.enabled);
   const [hour, setHour] = useState(String(settings.alert.digestHour));
   const [intervalText, setIntervalText] = useState(String(settings.alert.intervalDays));
-  const [recipients, setRecipients] = useState<string[]>(settings.alert.recipients);
-  const [extra, setExtra] = useState('');
-  const [term, setTerm] = useState('');
+  const [lists, setLists] = useState(() => mailListsOf(settings.alert));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -79,9 +70,7 @@ function useStickerSettingsForm({
     setEnabled(settings.alert.enabled);
     setHour(String(settings.alert.digestHour));
     setIntervalText(String(settings.alert.intervalDays));
-    setRecipients(settings.alert.recipients);
-    setExtra('');
-    setTerm('');
+    setLists(mailListsOf(settings.alert));
     setErrors({});
     setServerError(null);
   }
@@ -90,21 +79,15 @@ function useStickerSettingsForm({
     enabled !== settings.alert.enabled ||
       hour !== String(settings.alert.digestHour) ||
       intervalText !== String(settings.alert.intervalDays) ||
-      recipients.join('|') !== settings.alert.recipients.join('|') ||
-      extra.trim() !== '' ||
+      !sameMailLists(lists, mailListsOf(settings.alert)) ||
       settings.types.some((type) => defaults[type.id] !== String(type.defaultMinQty)),
   );
 
-  const userByEmail = new Map((users ?? []).map((user) => [user.email.toLowerCase(), user]));
-  const chosen = new Set(recipients);
-  const termKey = normalizeKey(term);
-  const options: LinkOption[] = (users ?? [])
-    .filter((user) => user.status === 'active' && !chosen.has(user.email.toLowerCase()))
-    .filter(
-      (user) => termKey === '' || normalizeKey(`${user.name} ${user.email}`).includes(termKey),
-    )
-    .slice(0, 50)
-    .map((user) => ({ id: user.email.toLowerCase(), label: userLabel(user) }));
+  const suggestions: RecipientSuggestion[] = (users ?? []).map((user) => ({
+    name: user.name,
+    email: user.email,
+    active: user.status === 'active',
+  }));
 
   function fail(key: string, message: string | undefined) {
     setErrors((current) => {
@@ -113,35 +96,6 @@ function useStickerSettingsForm({
       else next[key] = message;
       return next;
     });
-  }
-
-  function addRecipients(ids: string[]) {
-    if (ids.length > STICKER_LIMITS.alertRecipientsMax) {
-      fail('recipients', `Maksimal ${STICKER_LIMITS.alertRecipientsMax} penerima`);
-      return;
-    }
-    setRecipients(ids);
-    fail('recipients', undefined);
-  }
-
-  function addExtra() {
-    const email = extra.trim().toLowerCase();
-    if (email === '') return;
-    if (!EMAIL_PATTERN.test(email)) {
-      fail('recipients', 'Format email tidak valid');
-      return;
-    }
-    if (chosen.has(email)) {
-      fail('recipients', 'Email sudah ada dalam daftar');
-      return;
-    }
-    if (recipients.length >= STICKER_LIMITS.alertRecipientsMax) {
-      fail('recipients', `Maksimal ${STICKER_LIMITS.alertRecipientsMax} penerima`);
-      return;
-    }
-    setRecipients([...recipients, email]);
-    setExtra('');
-    fail('recipients', undefined);
   }
 
   async function submit() {
@@ -182,7 +136,7 @@ function useStickerSettingsForm({
     try {
       message = await onSave({
         expectedUpdatedAt: settings.updatedAt,
-        alert: { enabled, recipients, digestHour, intervalDays },
+        alert: { enabled, ...lists, digestHour, intervalDays },
         defaults: changed,
       });
     } catch {
@@ -218,14 +172,12 @@ function useStickerSettingsForm({
       setIntervalText(value);
       fail('intervalDays', undefined);
     },
-    recipients,
-    addRecipients,
-    extra,
-    setExtra,
-    addExtra,
-    setTerm,
-    options,
-    userByEmail,
+    lists,
+    setLists: (next: typeof lists) => {
+      setLists(next);
+      fail('recipients', undefined);
+    },
+    suggestions,
   };
 }
 
@@ -366,53 +318,14 @@ function DigestSection({ form }: { form: StickerSettingsForm }) {
           </p>
         ) : null}
       </div>
-      <fieldset aria-label="Penerima ringkasan" className="m-0 min-w-0 space-y-2 border-0 p-0">
-        <LinkMultiField
-          id="sticker-alert-recipients"
-          label="Penerima"
-          placeholder={form.users === null ? 'Tambahkan email di bawah' : 'Pilih user'}
-          value={form.recipients}
-          labelOf={(id) => {
-            const user = form.userByEmail.get(id);
-            return user ? userLabel(user) : id;
-          }}
-          options={form.options}
-          onSearchChange={form.setTerm}
-          searchDebounceMs={0}
-          onChange={form.addRecipients}
-        />
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="sticker-alert-extra">Email lain</Label>
-            <Input
-              id="sticker-alert-extra"
-              form={STICKER_SETTINGS_FORM_ID}
-              type="email"
-              className="w-72"
-              value={form.extra}
-              onChange={(event) => form.setExtra(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  form.addExtra();
-                }
-              }}
-            />
-          </div>
-          <Button type="button" variant="outline" color="primary" onClick={form.addExtra}>
-            Tambah email
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Maksimal {STICKER_LIMITS.alertRecipientsMax} penerima; alamat di luar daftar user boleh
-          ditambahkan.
-        </p>
-        {form.errors.recipients ? (
-          <p role="alert" className="text-sm text-destructive-text">
-            {form.errors.recipients}
-          </p>
-        ) : null}
-      </fieldset>
+      <MailListsFields
+        idPrefix="sticker-alert"
+        value={form.lists}
+        onChange={form.setLists}
+        suggestions={form.suggestions}
+        max={STICKER_LIMITS.alertRecipientsMax}
+        errors={{ recipients: form.errors.recipients }}
+      />
     </section>
   );
 }

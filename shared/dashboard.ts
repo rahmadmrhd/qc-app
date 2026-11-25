@@ -26,6 +26,8 @@ export const WIDGET_IDS = [
   'hs.byLocation',
   'hs.byCustomer',
   'hs.oldest',
+  'sn.total',
+  'sn.avgMinutes',
   'sn.trend',
   'sn.status',
   'sn.byBu',
@@ -207,6 +209,23 @@ export const WIDGETS: readonly WidgetMeta[] = [
     },
   ),
 
+  widget(
+    SERIAL,
+    'sn.total',
+    'number',
+    'Total serial dicatat',
+    dateColumn('Tanggal dicatat'),
+    { row: 'numbers', span: 6 },
+    { delta: 'up' },
+  ),
+  widget(
+    SERIAL,
+    'sn.avgMinutes',
+    'number',
+    'Rata-rata waktu per serial (menit)',
+    dateColumn('Tanggal dicatat'),
+    { row: 'numbers', span: 6 },
+  ),
   widget(SERIAL, 'sn.trend', 'line', 'Dicatat per periode', dateColumn('Tanggal dicatat'), {
     row: 'trend',
     span: 12,
@@ -295,10 +314,10 @@ export const WIDGETS: readonly WidgetMeta[] = [
     'barGroup',
     'Stok masuk dan keluar',
     dateColumn('Tanggal entri stok'),
-    { row: 'trend', span: 12 },
+    { row: 'charts', span: 6 },
   ),
   widget(STICKER_CATALOG, 'st.stickersByType', 'donut', 'Jumlah stiker per jenis', NO_DATE, {
-    row: 'breakdown',
+    row: 'charts',
     span: 6,
   }),
   widget(STICKER, 'st.stockBySticker', 'barScroll', 'Total stok per stiker', NO_DATE, {

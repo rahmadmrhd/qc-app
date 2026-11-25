@@ -28,6 +28,7 @@ import type {
   CreateShareInput,
   DashboardShareDetailDto,
   DashboardShareDto,
+  UpdateShareInput,
 } from './dashboard-share';
 import type { GuideProgressDto } from './guides';
 import type { HandoverStatus } from './handover';
@@ -631,8 +632,11 @@ export interface SaveStickerInput {
 /** Pengaturan email ringkasan harian stok stiker menipis (Konfigurasi Stiker). */
 export interface StickerAlertSettings {
   enabled: boolean;
-  /** Maks. 20 alamat email sah dan unik. */
+  /** Kepada (To): maks. 20 alamat email sah dan unik. */
   recipients: string[];
+  /** Tembusan (CC) dan tembusan tersembunyi (BCC): aturan sama; tak boleh sama dengan alamat di daftar lain. */
+  cc: string[];
+  bcc: string[];
   /** Jam (0-23, WIB) paling awal ringkasan dikirim pada hari itu. */
   digestHour: number;
   /** Selang minimum antar ringkasan (hari, 1-365): 1 = tiap hari bila ada stok menipis; bawaan 1. */
@@ -1664,6 +1668,7 @@ export interface ApiContract {
   'dashboardShares.list': { input: null; output: DashboardShareDto[] };
   'dashboardShares.get': { input: GetDashboardShareInput; output: DashboardShareDetailDto };
   'dashboardShares.create': { input: CreateShareInput; output: DashboardShareDto };
+  'dashboardShares.update': { input: UpdateShareInput; output: DashboardShareDto };
   'dashboardShares.revoke': { input: GetDashboardShareInput; output: { ok: true } };
   /** Laporan dashboard terjadwal lewat surel; semuanya butuh `dashboard: manage`, hak ubah hanya pemilik/super admin. */
   'dashboardReports.list': { input: null; output: DashboardReportListDto };
@@ -1755,8 +1760,11 @@ export interface ItemPageDto {
 /** Pengaturan email peringatan masa berlaku Postel (terpisah dari pengaturan stok stiker). */
 export interface PostelAlertSettings {
   enabled: boolean;
-  /** Maks. 20 alamat email sah dan unik. */
+  /** Kepada (To): maks. 20 alamat email sah dan unik. */
   recipients: string[];
+  /** Tembusan (CC) dan tembusan tersembunyi (BCC): aturan sama; tak boleh sama dengan alamat di daftar lain. */
+  cc: string[];
+  bcc: string[];
   /** Jam (0-23, WIB) paling awal ringkasan dikirim pada hari itu. */
   sendHour: number;
   /** Hari sebelum habis; 1-5 nilai bulat 1-730, unik, disimpan menurun. */
@@ -2200,7 +2208,11 @@ export interface SerialHistoryOutput {
 }
 export interface SerialAlertSettings {
   enabled: boolean;
+  /** Kepada (To). */
   recipients: string[];
+  /** Tembusan (CC) dan tembusan tersembunyi (BCC). */
+  cc: string[];
+  bcc: string[];
 }
 export interface SerialSettingsDto {
   alert: SerialAlertSettings;

@@ -32,6 +32,8 @@ function detail(overrides: Partial<DashboardShareDetailDto> = {}): DashboardShar
     lastVisitAt: '',
     visits: [],
     scope: {
+      buIds: ['bu-x'],
+      locationIds: [],
       buNames: ['BU Ex'],
       buDeleted: [false],
       locationNames: ['Lokasi A'],

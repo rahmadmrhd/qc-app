@@ -16,9 +16,9 @@ import {
 } from './dashboard';
 
 describe('registry widget', () => {
-  test('id unik, 27 widget, tiap grup punya minimal satu', () => {
+  test('id unik, 29 widget, tiap grup punya minimal satu', () => {
     expect(new Set(WIDGET_IDS).size).toBe(WIDGET_IDS.length);
-    expect(WIDGET_IDS.length).toBe(27);
+    expect(WIDGET_IDS.length).toBe(29);
     expect(WIDGETS.length).toBe(WIDGET_IDS.length);
     for (const group of DASHBOARD_GROUPS) {
       expect(WIDGETS.some((widget) => widget.group === group)).toBe(true);
@@ -157,9 +157,9 @@ describe('rentang tanggal', () => {
 });
 
 describe('tata letak widget (keputusan pemilik 2026-11-25)', () => {
-  test('grup dashboard: Postel dihapus; 27 widget', () => {
+  test('grup dashboard: Postel dihapus; 29 widget', () => {
     expect([...DASHBOARD_GROUPS]).toEqual(['handover', 'serial', 'report', 'sticker']);
-    expect(WIDGET_IDS.length).toBe(27);
+    expect(WIDGET_IDS.length).toBe(29);
   });
 
   test('setiap widget punya baris dan lebar kolom (dari 12)', () => {

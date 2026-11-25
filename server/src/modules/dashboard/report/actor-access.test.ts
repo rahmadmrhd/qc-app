@@ -204,7 +204,7 @@ describe('kirim uji oleh pelaku bukan pemilik', () => {
       200,
     );
     const mail = sent[0] as MailMessage;
-    expect(mail.bcc).toEqual([NARROW]);
+    expect(mail.to).toEqual([NARROW]);
     expect(mail.subject.startsWith('[UJI] ')).toBe(true);
     expect(mail.html).toContain('href="https://qc.test/dashboard"');
     expect(mail.html).not.toContain('/dashboard-publik/');
@@ -224,7 +224,7 @@ describe('kirim uji oleh pelaku bukan pemilik', () => {
       200,
     );
     const wide = sent[1] as MailMessage;
-    expect(wide.bcc).toEqual([WIDE]);
+    expect(wide.to).toEqual([WIDE]);
     expect(wide.html).not.toContain(TRIMMED_NOTE);
     expect(wide.html).toContain('href="https://qc.test/dashboard"');
   });
@@ -235,7 +235,7 @@ describe('kirim uji oleh pelaku bukan pemilik', () => {
       200,
     );
     const mail = sent[0] as MailMessage;
-    expect(mail.bcc).toEqual([OWNER]);
+    expect(mail.to).toEqual([OWNER]);
     expect(mail.html).toContain('href="https://qc.test/dashboard"');
     expect(mail.html).not.toContain('/dashboard-publik/');
     expect(mail.text).not.toContain('/dashboard-publik/');

@@ -74,6 +74,8 @@ const WORST: Inputs = {
     expectedUpdatedAt: STAMP,
     alert: {
       enabled: true,
+      cc: [],
+      bcc: [],
       recipients: Array.from(
         { length: STICKER_LIMITS.alertRecipientsMax },
         (_, i) => `u${i}-${'x'.repeat(40)}@contoh.com`,
@@ -349,6 +351,8 @@ const WORST: Inputs = {
     expectedUpdatedAt: STAMP,
     alert: {
       enabled: true,
+      cc: [],
+      bcc: [],
       recipients: longList(
         SERIAL_LIMITS.alertRecipientsMax,
         (index) => `${'x'.repeat(240 - String(index).length)}${index}@abcdefgh.com`,
@@ -359,6 +363,8 @@ const WORST: Inputs = {
     expectedUpdatedAt: STAMP,
     alert: {
       enabled: true,
+      cc: [],
+      bcc: [],
       recipients: longList(
         POSTEL_LIMITS.recipientsMax,
         (index) => `u${index}-${'x'.repeat(40)}@contoh.com`,
@@ -419,6 +425,28 @@ const WORST: Inputs = {
   },
   // Tautan dashboard publik: judul terpanjang, 30 widget masing-masing dengan dua filter grup berisi 20 nilai terpanjang.
   'dashboardShares.create': {
+    title: text(120),
+    filter: {
+      buIds: longList(20, (index) => `${UUID}-${index}`),
+      locationIds: longList(20, (index) => `${UUID}-${index}`),
+      from: '2026-01-01',
+      to: '2026-12-31',
+    },
+    locationFiltered: true,
+    range: { mode: 'fixed', from: '2026-01-01', to: '2026-12-31' },
+    widgets: longList(30, () => ({
+      id: 'hs.created' as const,
+      filters: {
+        customer: longList(20, () => text(100)),
+        status: longList(20, () => text(100)),
+      },
+    })),
+    offers: ['customer', 'item', 'stickerType', 'sticker'],
+    expiresInDays: 365,
+  },
+  // Ubah tautan: isi sama dengan pembuatan ditambah id tautan.
+  'dashboardShares.update': {
+    id: UUID,
     title: text(120),
     filter: {
       buIds: longList(20, (index) => `${UUID}-${index}`),

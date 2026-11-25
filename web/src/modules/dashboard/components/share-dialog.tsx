@@ -1,6 +1,12 @@
 import { DASHBOARD_RANGE_MAX_DAYS, type DashboardRange, widgetMeta } from '@shared/dashboard';
-import type { CreateShareInput, DashboardShareDto } from '@shared/dashboard-share';
+import type {
+  CreateShareInput,
+  DashboardShareDetailDto,
+  DashboardShareDto,
+  UpdateShareInput,
+} from '@shared/dashboard-share';
 import { SHARE_LIMITS } from '@shared/dashboard-share';
+import { wibDateIso } from '@shared/postel';
 import { type FormEvent, useState } from 'react';
 import { toast } from 'sonner';
 import {
@@ -20,15 +26,16 @@ import { Label } from '@/components/ui/label';
 import { describeError } from '@/lib/api';
 import { useMe } from '@/modules/auth/use-me';
 import { visibleWidgetsByGroup } from '../lib/access';
-import { formatRangeLabel } from '../lib/format';
+import { formatDayLabel, formatRangeLabel } from '../lib/format';
 import { type DashboardSearch, effectiveRange, groupFilters } from '../lib/search';
-import { useCreateShare } from '../share-queries';
+import { useCreateShare, useUpdateShare } from '../share-queries';
 import { buFilterOptions, locationFilterOptions } from './global-filters';
 import { ScopeEditor, type ScopeEditorValue } from './scope-editor';
 
 const DAY_MS = 86_400_000;
 const EXPIRY_PRESETS = [7, 30, 90, 180, 365];
 const CUSTOM = 'custom';
+const KEEP = 'keep';
 
 type RangeMode = 'fixed' | 'rolling';
 
@@ -52,16 +59,29 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-function ShareResult({ share, onClose }: { share: DashboardShareDto; onClose: () => void }) {
+function ShareResult({
+  share,
+  onClose,
+  updated,
+  urlChanged,
+}: {
+  share: DashboardShareDto;
+  onClose: () => void;
+  updated: boolean;
+  urlChanged: boolean;
+}) {
   const url = share.url ?? '';
   return (
     <FormDialog open onOpenChange={(next) => (next ? undefined : onClose())}>
       <FormDialogContent className="data-[size=default]:sm:max-w-lg">
         <FormDialogHeader className="pr-10 max-md:pr-12">
-          <FormDialogTitle>Tautan dibuat</FormDialogTitle>
+          <FormDialogTitle>{updated ? 'Tautan diperbarui' : 'Tautan dibuat'}</FormDialogTitle>
           <FormDialogDescription>
-            Siapa pun yang memegang tautan ini dapat melihat dashboard yang Anda bagikan sampai masa
-            berlakunya habis atau tautan dicabut.
+            {updated && urlChanged
+              ? 'Masa berlaku diperpanjang, jadi alamat tautan berubah. Bagikan tautan baru di bawah; tautan lama tetap berlaku hanya sampai tanggalnya semula.'
+              : updated
+                ? 'Perubahan langsung berlaku di tautan yang sama.'
+                : 'Siapa pun yang memegang tautan ini dapat melihat dashboard yang Anda bagikan sampai masa berlakunya habis atau tautan dicabut.'}
           </FormDialogDescription>
         </FormDialogHeader>
         <div className="space-y-2">
@@ -103,34 +123,55 @@ function ShareResult({ share, onClose }: { share: DashboardShareDto; onClose: ()
  */
 export function ShareDialog({
   onClose,
-  search,
+  search = {},
   today,
+  editing,
 }: {
   onClose: () => void;
-  search: DashboardSearch;
+  search?: DashboardSearch;
   today: string;
+  /** Mode ubah: isian awal dari tautan ini; simpan memanggil `dashboardShares.update` (alamat tetap bila masa berlaku tak diubah). */
+  editing?: DashboardShareDetailDto;
 }) {
   const me = useMe();
   const create = useCreateShare();
+  const update = useUpdateShare();
   const allowed = visibleWidgetsByGroup(me).flatMap((entry) =>
     entry.widgets.map((meta) => meta.id),
   );
-  const activeRange: DashboardRange = effectiveRange(search, today);
-  const [title, setTitle] = useState('');
+  const storedRange = editing?.scope.range;
+  const activeRange: DashboardRange =
+    storedRange?.mode === 'fixed'
+      ? { from: storedRange.from, to: storedRange.to }
+      : effectiveRange(search, today);
+  const [title, setTitle] = useState(editing?.title ?? '');
   const [scope, setScope] = useState<ScopeEditorValue>({
-    buIds: search.bu ?? [],
-    locationIds: search.loc ?? [],
-    widgets: [],
-    offers: [],
+    buIds: editing ? editing.scope.buIds : (search.bu ?? []),
+    locationIds: editing ? editing.scope.locationIds : (search.loc ?? []),
+    widgets: editing ? editing.scope.widgets : [],
+    offers: editing ? editing.scope.offers : [],
   });
-  const [rangeMode, setRangeMode] = useState<RangeMode>('fixed');
-  const [rollingDays, setRollingDays] = useState('30');
-  const [expiry, setExpiry] = useState(String(SHARE_LIMITS.expiryDaysDefault));
+  const [rangeMode, setRangeMode] = useState<RangeMode>(
+    storedRange?.mode === 'rolling' ? 'rolling' : 'fixed',
+  );
+  const [rollingDays, setRollingDays] = useState(
+    storedRange?.mode === 'rolling' ? String(storedRange.days) : '30',
+  );
+  const [expiry, setExpiry] = useState(editing ? KEEP : String(SHARE_LIMITS.expiryDaysDefault));
   const [customDate, setCustomDate] = useState('');
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [created, setCreated] = useState<DashboardShareDto | null>(null);
 
-  if (created) return <ShareResult share={created} onClose={onClose} />;
+  if (created) {
+    return (
+      <ShareResult
+        share={created}
+        onClose={onClose}
+        updated={editing !== undefined}
+        urlChanged={editing !== undefined && created.url !== editing.url}
+      />
+    );
+  }
 
   const buOptions = buFilterOptions(me);
   const locationOptions = locationFilterOptions(me);
@@ -166,7 +207,7 @@ export function ShareDialog({
     if (rangeMode === 'rolling' && !rollingValid) {
       next.range = `Jumlah hari harus 1-${DASHBOARD_RANGE_MAX_DAYS}`;
     }
-    if (expiry === CUSTOM ? !customValid : !presetValid) {
+    if (expiry !== KEEP && (expiry === CUSTOM ? !customValid : !presetValid)) {
       next.expiry =
         expiry === CUSTOM
           ? `Pilih tanggal dari hari ini sampai ${SHARE_LIMITS.expiryDaysMax} hari ke depan`
@@ -176,7 +217,7 @@ export function ShareDialog({
     if (Object.keys(next).length > 0) return;
     const range: DashboardRange =
       rangeMode === 'fixed' ? activeRange : { from: addDays(today, -(days - 1)), to: today };
-    const input: CreateShareInput = {
+    const common = {
       title: title.trim(),
       filter: {
         from: range.from,
@@ -191,12 +232,29 @@ export function ShareDialog({
           : { mode: 'rolling', days },
       widgets: scope.widgets,
       offers: scope.offers,
+    } satisfies Omit<CreateShareInput, 'expiresInDays' | 'expiresOn'>;
+    const callbacks = {
+      onSuccess: (dto: DashboardShareDto) => setCreated(dto),
+      onError: (error: unknown) => setErrors({ form: describeError(error) }),
+    };
+    if (editing) {
+      const input: UpdateShareInput = {
+        ...common,
+        id: editing.id,
+        ...(expiry === KEEP
+          ? { keepExpiry: true }
+          : expiry === CUSTOM
+            ? { expiresOn: customDate }
+            : { expiresInDays: presetDays }),
+      };
+      update.mutate(input, callbacks);
+      return;
+    }
+    const input: CreateShareInput = {
+      ...common,
       ...(expiry === CUSTOM ? { expiresOn: customDate } : { expiresInDays: presetDays }),
     };
-    create.mutate(input, {
-      onSuccess: (dto) => setCreated(dto),
-      onError: (error) => setErrors({ form: describeError(error) }),
-    });
+    create.mutate(input, callbacks);
   };
 
   return (
@@ -204,11 +262,15 @@ export function ShareDialog({
       open
       onOpenChange={(next) => (next ? undefined : onClose())}
       formId="share-dialog"
-      title="Bagikan dashboard"
-      description="Buat tautan publik: siapa pun yang memegangnya dapat melihat widget yang Anda pilih tanpa masuk."
+      title={editing ? 'Ubah tautan' : 'Bagikan dashboard'}
+      description={
+        editing
+          ? 'Perubahan langsung berlaku di tautan yang sama. Cakupan dibekukan ulang dengan hak akses Anda saat ini.'
+          : 'Buat tautan publik: siapa pun yang memegangnya dapat melihat widget yang Anda pilih tanpa masuk.'
+      }
       size="xl"
-      submitting={create.isPending}
-      submitLabel="Buat tautan"
+      submitting={create.isPending || update.isPending}
+      submitLabel={editing ? 'Simpan perubahan' : 'Buat tautan'}
     >
       <form id="share-dialog" className="space-y-5" onSubmit={submit} noValidate>
         {errors.form ? (
@@ -286,6 +348,14 @@ export function ShareDialog({
               value={expiry}
               onValueChange={setExpiry}
               options={[
+                ...(editing
+                  ? [
+                      {
+                        value: KEEP,
+                        label: `Tetap (sampai ${formatDayLabel(wibDateIso(Date.parse(editing.expiresAt)))})`,
+                      },
+                    ]
+                  : []),
                 ...EXPIRY_PRESETS.map((value) => ({
                   value: String(value),
                   label: `${value} hari`,

@@ -16,6 +16,7 @@ import {
   House,
   Images,
   LayoutDashboard,
+  Link2,
   ListChecks,
   Lock,
   MapPin,
@@ -108,27 +109,14 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Beranda', to: '/', icon: House },
       // Tampil bagi pemegang izin sumber widget mana pun (BU atau lokasi; bukan satu izin modul, jadi `visible`).
+      // Menu biasa tanpa submenu (keputusan pemilik 2026-11-25); laporan terjadwal dan tautan dibagikan ada di section
+      // "Laporan" di bawahnya.
       {
-        id: 'dashboard',
         label: 'Dashboard',
+        to: '/dashboard',
         icon: LayoutDashboard,
-        // Pengguna tanpa `dashboard: edit` hanya punya Ringkasan: tampil sebagai butir "Dashboard" biasa.
-        collapseSingle: true,
-        children: [
-          {
-            label: 'Ringkasan',
-            to: '/dashboard',
-            icon: LayoutDashboard,
-            excludes: ['/dashboard/laporan'],
-            visible: canSeeDashboard,
-          },
-          {
-            label: 'Laporan terjadwal',
-            to: '/dashboard/laporan',
-            icon: CalendarClock,
-            permission: { module: 'dashboard', level: 'edit' },
-          },
-        ],
+        excludes: ['/dashboard/laporan', '/dashboard/tautan'],
+        visible: canSeeDashboard,
       },
       // Daftar unduhan aplikasi desktop; di dalam aplikasi desktop tautan unduh tak berfungsi, jadi hanya di peramban.
       {
@@ -137,6 +125,24 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: Download,
         webOnly: true,
         hideOnPhone: true,
+      },
+    ],
+  },
+  {
+    // Section tersendiri (bukan submenu Dashboard): pengelolaan laporan terjadwal dan tautan yang dibagikan.
+    label: 'Laporan',
+    items: [
+      {
+        label: 'Laporan terjadwal',
+        to: '/dashboard/laporan',
+        icon: CalendarClock,
+        permission: { module: 'dashboard', level: 'edit' },
+      },
+      {
+        label: 'Tautan dibagikan',
+        to: '/dashboard/tautan',
+        icon: Link2,
+        permission: { module: 'dashboard', level: 'edit' },
       },
     ],
   },

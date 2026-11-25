@@ -228,6 +228,7 @@ export const ALL_API_IDS: Record<ApiId, true> = {
   'dashboardShares.list': true,
   'dashboardShares.get': true,
   'dashboardShares.create': true,
+  'dashboardShares.update': true,
   'dashboardShares.revoke': true,
   'dashboardReports.list': true,
   'dashboardReports.get': true,

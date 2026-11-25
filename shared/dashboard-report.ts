@@ -287,6 +287,10 @@ export interface DashboardReportDto {
   scope: ReportScope;
   /** Alamat penerima; selalu terisi bagi pemanggil yang boleh mengelola baris ini (pemilik, `manage`, super admin). */
   recipients: string[];
+  /** Tembusan (CC) dan tembusan tersembunyi (BCC); sama-sama hanya terlihat bagi pengelola baris ini. */
+  cc: string[];
+  bcc: string[];
+  /** Jumlah seluruh alamat (To + CC + BCC). */
   recipientCount: number;
   linkDays: number;
   lastStatus: ReportStatus;
@@ -325,6 +329,9 @@ export interface SaveDashboardReportInput {
   widgets: ShareWidgetScope[];
   offers: string[];
   recipients: string[];
+  /** Opsional: tak dikirim = kosong. */
+  cc?: string[];
+  bcc?: string[];
   linkDays: number;
   enabled?: boolean;
   /** `updatedAt` yang dibaca saat membuka form (CAS); wajib saat mengubah. */

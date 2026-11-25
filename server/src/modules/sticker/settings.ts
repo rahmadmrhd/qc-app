@@ -29,6 +29,8 @@ export const STICKER_SETTINGS_STALE_MESSAGE =
 const DEFAULT_ALERT: StickerAlertSettings = {
   enabled: false,
   recipients: [],
+  cc: [],
+  bcc: [],
   digestHour: 8,
   intervalDays: 1,
 };
@@ -48,6 +50,12 @@ function parseStored(raw: string): StoredAlert | null {
       enabled: value.enabled === true,
       recipients: Array.isArray(value.recipients)
         ? value.recipients.filter((item): item is string => typeof item === 'string')
+        : [],
+      cc: Array.isArray(value.cc)
+        ? value.cc.filter((item): item is string => typeof item === 'string')
+        : [],
+      bcc: Array.isArray(value.bcc)
+        ? value.bcc.filter((item): item is string => typeof item === 'string')
         : [],
       digestHour:
         Number.isInteger(hour) && hour >= 0 && hour <= 23 ? hour : DEFAULT_ALERT.digestHour,
@@ -161,12 +169,16 @@ export async function saveStickerSettings(
       before: {
         enabled: current.alert.enabled,
         recipients: current.alert.recipients.join(','),
+        cc: current.alert.cc.join(','),
+        bcc: current.alert.bcc.join(','),
         digestHour: current.alert.digestHour,
         intervalDays: current.alert.intervalDays,
       },
       after: {
         enabled: input.alert.enabled,
         recipients: input.alert.recipients.join(','),
+        cc: input.alert.cc.join(','),
+        bcc: input.alert.bcc.join(','),
         digestHour: input.alert.digestHour,
         intervalDays: input.alert.intervalDays,
         defaults: changedDefaults
