@@ -410,7 +410,9 @@ describe('teks polos', () => {
     );
     const lines = rendered.text.split('\n');
     expect(lines).toContain(CTA);
-    expect(rendered.text).toContain('Task dibuat: 1.234 (Naik 23% (+234) dari periode lalu (1.000))');
+    expect(rendered.text).toContain(
+      'Task dibuat: 1.234 (Naik 23% (+234) dari periode lalu (1.000))',
+    );
     expect(rendered.text).toContain('Baru: 4 (100%)');
     expect(rendered.text).toContain('Menampilkan 5 dari 12');
     expect(rendered.text).toContain('Dibuat (total');
