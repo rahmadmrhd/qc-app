@@ -11,7 +11,7 @@ Dipakai SEBELUM rilis fitur laporan terjadwal (spek `docs/superpowers/specs/2026
 
 ## Klien yang diperiksa
 
-Periksa tiap klien di terang dan gelap bila ada:
+Periksa tiap klien di terang dan gelap bila ada (di ponsel: kartu angka bertumpuk satu kolom, daftar tampil sebagai blok per baris, tombol selebar layar, baris nilai di atas kolom deret tersembunyi; K14):
 
 - Gmail web (Chrome).
 - Gmail aplikasi (Android dan iOS).

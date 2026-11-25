@@ -161,7 +161,7 @@ describe('struktur HTML', () => {
 
   test('tanpa script, img, link, iframe, dan javascript:', () => {
     const lower = rendered.html.toLowerCase();
-    for (const forbidden of ['<script', '<img', '<link', '<iframe', 'javascript:', '<style']) {
+    for (const forbidden of ['<script', '<img', '<link', '<iframe', 'javascript:']) {
       expect(lower).not.toContain(forbidden);
     }
   });
@@ -381,9 +381,17 @@ describe('visual per jenis widget', () => {
     expect(out).not.toContain('number-5');
   });
 
-  test('kartu angka berurutan dibagi tiga per baris', () => {
+  test('kartu angka berurutan dibagi dua per baris dan bertumpuk di ponsel', () => {
     const out = html(item('hs.active', { kind: 'number', value: 1 }));
-    expect(out.match(/width="33%"/g)).toHaveLength(3); // satu kartu + dua sel pengisi
+    expect(out.match(/class="ncell" width="50%"/g)).toHaveLength(2); // satu kartu + satu sel pengisi
+    expect(out).toContain('@media only screen and (max-width:480px)');
+    expect(out).toContain('.ncell{display:block');
+  });
+
+  test('daftar lebih dari dua kolom dirender sebagai blok per baris (bukan tabel sempit)', () => {
+    const out = html(item('hs.oldest', list(1, 1)));
+    expect(out).toContain('font-weight:bold');
+    expect(out).not.toMatch(/<td[^>]*>\s*Lokasi<\/td>/);
   });
 });
 
