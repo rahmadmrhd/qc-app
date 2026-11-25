@@ -3,6 +3,7 @@ import {
   createContext,
   type PointerEvent,
   type TouchEvent,
+  useCallback,
   useContext,
   useEffect,
   useId,
@@ -182,7 +183,8 @@ function useSearchTerm(onSearchChange: ((term: string) => void) | undefined, deb
   callback.current = onSearchChange;
 
   useEffect(() => {
-    if (term === notified.current) return;
+    // Tanpa jeda (0) pemberitahuan dikirim seketika oleh `update` di bawah, bukan lewat timer.
+    if (debounceMs === 0 || term === notified.current) return;
     const timer = setTimeout(() => {
       notified.current = term;
       callback.current?.(term);
@@ -190,7 +192,20 @@ function useSearchTerm(onSearchChange: ((term: string) => void) | undefined, deb
     return () => clearTimeout(timer);
   }, [term, debounceMs]);
 
-  return [term, setTerm] as const;
+  // Jeda 0: opsi harus sudah sesuai teks terbaru saat tombol berikutnya (mis. Enter) ditekan; timer, walau 0 ms,
+  // dapat tertinggal sehingga Enter memilih opsi dari teks yang kurang satu karakter.
+  const update = useCallback(
+    (next: string) => {
+      setTerm(next);
+      if (debounceMs === 0 && next !== notified.current) {
+        notified.current = next;
+        callback.current?.(next);
+      }
+    },
+    [debounceMs],
+  );
+
+  return [term, update] as const;
 }
 
 /** Teks dengan potongan yang cocok dengan kata-kata `term` ditandai `<mark>` (tanpa HTML mentah). */

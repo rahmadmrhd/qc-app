@@ -1,4 +1,5 @@
 import { appError } from '@server/core/errors';
+import { readMailLists } from '@server/core/mail-lists';
 import type { DashboardFilterInput } from '@shared/dashboard';
 import { GROUP_FILTERS, widgetMeta } from '@shared/dashboard';
 import type {
@@ -11,6 +12,7 @@ import type {
 import { REPORT_LIMITS, REPORT_PERIODS, validateSchedule } from '@shared/dashboard-report';
 import type { ShareWidgetScope } from '@shared/dashboard-share';
 import { SHARE_OFFER_KEYS } from '@shared/dashboard-share';
+import { mailListsCount } from '@shared/mail-lists';
 import { isPostelRecipient, stripControlChars } from '@shared/postel';
 import { type Fields, readWidget } from '../validate';
 
@@ -72,13 +74,18 @@ export function checkReportInput(input: SaveDashboardReportInput): Fields {
     }
   }
 
-  const recipients = Array.isArray(input.recipients) ? normalizeRecipients(input.recipients) : [];
-  if (recipients.length === 0) {
-    fields.recipients = 'Isi minimal satu alamat surel penerima';
-  } else if (recipients.length > REPORT_LIMITS.recipientsMax) {
-    fields.recipients = `Maksimal ${REPORT_LIMITS.recipientsMax} penerima`;
-  } else if (!recipients.every(isPostelRecipient)) {
-    fields.recipients = 'Setiap penerima harus satu alamat surel polos';
+  const lists = readMailLists(
+    { recipients: input.recipients, cc: input.cc, bcc: input.bcc },
+    {
+      max: REPORT_LIMITS.recipientsMax,
+      isValid: isPostelRecipient,
+      fail: (field, message) => {
+        fields[field] ??= message;
+      },
+    },
+  );
+  if (mailListsCount(lists) === 0 && fields.recipients === undefined) {
+    fields.recipients = 'Isi minimal satu alamat surel penerima (Kepada, CC, atau BCC)';
   }
 
   const days = input.linkDays;
@@ -204,14 +211,22 @@ export function validateSaveReport(raw: unknown): SaveDashboardReportInput {
   } else {
     for (const key of raw.offers as string[]) if (!offers.includes(key)) offers.push(key);
   }
-  let recipients: string[] = [];
-  if (!Array.isArray(raw.recipients) || !raw.recipients.every((item) => typeof item === 'string')) {
-    fields.recipients = 'Penerima harus berupa daftar teks';
-  } else if (raw.recipients.length > REPORT_LIMITS.recipientsMax * 5) {
-    // Pagar kasar sebelum normalisasi (duplikat dibuang kemudian); batas sebenarnya diperiksa `checkReportInput`.
-    fields.recipients = `Maksimal ${REPORT_LIMITS.recipientsMax} penerima`;
-  } else {
-    recipients = normalizeRecipients(raw.recipients as string[]);
+  const recipients: Record<'recipients' | 'cc' | 'bcc', string[]> = {
+    recipients: [],
+    cc: [],
+    bcc: [],
+  };
+  for (const key of ['recipients', 'cc', 'bcc'] as const) {
+    const value = raw[key];
+    if (value === undefined && key !== 'recipients') continue;
+    if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
+      fields[key] = 'Penerima harus berupa daftar teks';
+    } else if (value.length > REPORT_LIMITS.recipientsMax * 5) {
+      // Pagar kasar sebelum normalisasi (duplikat dibuang kemudian); batas sebenarnya diperiksa `checkReportInput`.
+      fields[key] = `Maksimal ${REPORT_LIMITS.recipientsMax} penerima`;
+    } else {
+      recipients[key] = normalizeRecipients(value as string[]);
+    }
   }
   if (typeof raw.linkDays !== 'number') fields.linkDays = 'Masa berlaku tautan wajib berupa angka';
   if (raw.enabled !== undefined && typeof raw.enabled !== 'boolean') {
@@ -229,7 +244,9 @@ export function validateSaveReport(raw: unknown): SaveDashboardReportInput {
     filter,
     widgets,
     offers,
-    recipients,
+    recipients: recipients.recipients,
+    ...(raw.cc === undefined ? {} : { cc: recipients.cc }),
+    ...(raw.bcc === undefined ? {} : { bcc: recipients.bcc }),
     linkDays: raw.linkDays as number,
     ...(typeof raw.id === 'string' && raw.id !== '' ? { id: raw.id } : {}),
     ...(raw.locationFiltered === undefined

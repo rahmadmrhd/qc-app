@@ -1,4 +1,4 @@
-import { normalizeEmail } from '@server/core/email';
+import { readMailLists } from '@server/core/mail-lists';
 import type { ObjectReader } from '@server/core/validate';
 import { readObject } from '@server/core/validate';
 import { PAGE_MAX_LIMIT, parseAuditCursor } from '@server/modules/access/validate';
@@ -202,6 +202,8 @@ function readPostelAlert(value: unknown, reader: ObjectReader): PostelAlertSetti
   const fallback: PostelAlertSettings = {
     enabled: false,
     recipients: [],
+    cc: [],
+    bcc: [],
     sendHour: POSTEL_ALERT_DEFAULTS.sendHour,
     thresholds: [...POSTEL_ALERT_DEFAULTS.thresholds],
     repeatEveryDays: POSTEL_ALERT_DEFAULTS.repeatEveryDays,
@@ -250,30 +252,16 @@ function readPostelAlert(value: unknown, reader: ObjectReader): PostelAlertSetti
   } else {
     thresholds = [...(rawThresholds as number[])].sort((a, b) => b - a);
   }
-  const recipients: string[] = [];
-  if (!Array.isArray(source.recipients)) {
-    reader.fail('recipients', 'Penerima harus berupa daftar email');
-  } else if (source.recipients.length > POSTEL_LIMITS.recipientsMax) {
-    reader.fail('recipients', `Maksimal ${POSTEL_LIMITS.recipientsMax} penerima`);
-  } else {
-    const seen = new Set<string>();
-    for (const item of source.recipients) {
-      const email = typeof item === 'string' ? normalizeEmail(item) : '';
-      if (!isPostelRecipient(email)) {
-        reader.fail('recipients', 'Ada alamat email yang tidak valid');
-        break;
-      }
-      if (seen.has(email)) {
-        reader.fail('recipients', `Email ganda: ${email}`);
-        break;
-      }
-      seen.add(email);
-      recipients.push(email);
-    }
-  }
+  const lists = readMailLists(source, {
+    max: POSTEL_LIMITS.recipientsMax,
+    isValid: isPostelRecipient,
+    fail: (field, message) => reader.fail(field, message),
+  });
   return {
     enabled: source.enabled === true,
-    recipients,
+    recipients: lists.recipients,
+    cc: lists.cc,
+    bcc: lists.bcc,
     sendHour: typeof hour === 'number' ? hour : fallback.sendHour,
     thresholds,
     repeatEveryDays: typeof repeat === 'number' ? repeat : fallback.repeatEveryDays,

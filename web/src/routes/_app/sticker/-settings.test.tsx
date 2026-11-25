@@ -56,7 +56,7 @@ beforeEach(() => {
   vi.spyOn(Route, 'useSearch').mockImplementation(() => nav.search as never);
   apiMock.mockReset();
   stickerState = {
-    alert: { enabled: false, recipients: [], digestHour: 8, intervalDays: 1 },
+    alert: { enabled: false, recipients: [], cc: [], bcc: [], digestHour: 8, intervalDays: 1 },
     types: [{ id: 't1', name: 'QC Hijau', systemKind: '', defaultMinQty: 0 }],
     updatedAt: 'sticker-v1',
     smtpConfigured: true,
@@ -65,6 +65,8 @@ beforeEach(() => {
     alert: {
       enabled: false,
       recipients: [],
+      cc: [],
+      bcc: [],
       sendHour: 8,
       thresholds: [90, 60, 30],
       repeatEveryDays: 7,

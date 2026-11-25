@@ -30,7 +30,7 @@ interface StoredAlert extends SerialAlertSettings {
 }
 
 function defaults(): SerialAlertSettings {
-  return { enabled: false, recipients: [] };
+  return { enabled: false, recipients: [], cc: [], bcc: [] };
 }
 
 /**
@@ -46,6 +46,12 @@ function parseStored(raw: string): StoredAlert | null {
       enabled: value.enabled === true,
       recipients: Array.isArray(value.recipients)
         ? value.recipients.filter((item): item is string => typeof item === 'string')
+        : [],
+      cc: Array.isArray(value.cc)
+        ? value.cc.filter((item): item is string => typeof item === 'string')
+        : [],
+      bcc: Array.isArray(value.bcc)
+        ? value.bcc.filter((item): item is string => typeof item === 'string')
         : [],
       updatedAt: typeof value.updatedAt === 'string' ? value.updatedAt : '',
     };
@@ -110,7 +116,12 @@ function guardChanged(env: Env): DbStatement {
 }
 
 function auditView(alert: SerialAlertSettings) {
-  return { enabled: alert.enabled, recipients: alert.recipients.join(',') };
+  return {
+    enabled: alert.enabled,
+    recipients: alert.recipients.join(','),
+    cc: alert.cc.join(','),
+    bcc: alert.bcc.join(','),
+  };
 }
 
 export async function saveSerialSettings(

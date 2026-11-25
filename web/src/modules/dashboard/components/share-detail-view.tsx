@@ -20,11 +20,13 @@ import { DetailList, ViewMeta, ViewPage, ViewSection } from '@/components/page/v
 import { DeletedBadge } from '@/components/soft-delete/deleted-badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { useStackNavigation } from '@/hooks/use-stack-navigation';
 import { ApiError } from '@/lib/api/api-error';
 import { describeError } from '@/lib/api/describe-error';
 import { ActivityLog } from '@/modules/activity/components/activity-log';
 import { formatNumber, formatRangeLabel, formatWhen } from '../lib/format';
 import { shareDetailQueryOptions, useRevokeShare } from '../share-queries';
+import { EditShareDialog } from './edit-share-dialog';
 import { RevokeShareDialog } from './revoke-share-dialog';
 
 const STATUS_LABEL: Record<ShareStatus, string> = {
@@ -300,7 +302,9 @@ export interface ShareDetailViewProps {
 export function ShareDetailView({ shareId, onBack }: ShareDetailViewProps) {
   const detail = useQuery(shareDetailQueryOptions(shareId));
   const revoke = useRevokeShare();
+  const stack = useStackNavigation();
   const [revoking, setRevoking] = useState(false);
+  const [editing, setEditing] = useState(false);
   const share = detail.data;
   if (detail.isPending) {
     return (
@@ -347,6 +351,21 @@ export function ShareDetailView({ shareId, onBack }: ShareDetailViewProps) {
             onSelect: () => void copyUrl(url ?? ''),
           },
           {
+            id: 'edit',
+            action: 'edit',
+            label: 'Ubah konfigurasi',
+            primary: true,
+            hidden:
+              share.status === 'revoked' || (share.reportId === '' && share.status === 'expired'),
+            onSelect: () =>
+              share.reportId === ''
+                ? setEditing(true)
+                : stack.push({
+                    to: '/dashboard/laporan/$reportId/edit',
+                    params: { reportId: share.reportId },
+                  }),
+          },
+          {
             id: 'revoke',
             action: 'delete',
             label: 'Cabut tautan',
@@ -371,6 +390,7 @@ export function ShareDetailView({ shareId, onBack }: ShareDetailViewProps) {
           <VisitsSection share={share} />
         </ViewSection>
       </ViewPage>
+      {editing ? <EditShareDialog shareId={share.id} onClose={() => setEditing(false)} /> : null}
       <RevokeShareDialog
         target={revoking ? { id: share.id, title: share.title } : null}
         onClose={() => setRevoking(false)}

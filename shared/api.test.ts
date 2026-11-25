@@ -112,7 +112,14 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'stickerSettings.get': null,
   'stickerSettings.save': {
     expectedUpdatedAt: '2026-11-09T00:00:00.000Z',
-    alert: { enabled: true, recipients: ['a@contoh.com'], digestHour: 8, intervalDays: 1 },
+    alert: {
+      enabled: true,
+      recipients: ['a@contoh.com'],
+      cc: [],
+      bcc: [],
+      digestHour: 8,
+      intervalDays: 1,
+    },
     defaults: [{ typeId: 'st1', defaultMinQty: 5 }],
   },
   'stickerTypes.list': { status: 'deleted' },
@@ -338,6 +345,8 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
     alert: {
       enabled: true,
       recipients: ['a@contoh.com'],
+      cc: [],
+      bcc: [],
       sendHour: 8,
       thresholds: [90, 60, 30],
       repeatEveryDays: 7,
@@ -381,7 +390,7 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'serialSettings.get': null,
   'serialSettings.save': {
     expectedUpdatedAt: '2026-11-12T00:00:00.000Z',
-    alert: { enabled: true, recipients: ['a@contoh.com'] },
+    alert: { enabled: true, recipients: ['a@contoh.com'], cc: [], bcc: [] },
   },
   'serials.history': { id: 's1', group: 'checks', caseId: 'c1', cursor: '12', limit: 50 },
   'serials.update': {
@@ -490,6 +499,15 @@ const EXAMPLES: { [M in ApiId]: ApiInput<M> } = {
   'dashboardShares.list': null,
   'dashboardShares.get': { id: 's1' },
   'dashboardShares.create': {
+    title: 'Ringkasan',
+    filter: { buIds: ['bu1'], from: '2026-11-01', to: '2026-11-23' },
+    range: { mode: 'fixed', from: '2026-11-01', to: '2026-11-23' },
+    widgets: [{ id: 'hs.created', filters: { status: ['done'] } }],
+    offers: [],
+    expiresInDays: 30,
+  },
+  'dashboardShares.update': {
+    id: 's1',
     title: 'Ringkasan',
     filter: { buIds: ['bu1'], from: '2026-11-01', to: '2026-11-23' },
     range: { mode: 'fixed', from: '2026-11-01', to: '2026-11-23' },

@@ -32,6 +32,8 @@ function detail(overrides: Partial<DashboardShareDetailDto> = {}): DashboardShar
     lastVisitAt: '',
     visits: [],
     scope: {
+      buIds: ['bu-x'],
+      locationIds: [],
       buNames: ['BU Ex'],
       buDeleted: [false],
       locationNames: ['Lokasi A'],
@@ -39,7 +41,7 @@ function detail(overrides: Partial<DashboardShareDetailDto> = {}): DashboardShar
       locationFiltered: false,
       range: { mode: 'fixed', from: '2026-11-01', to: '2026-11-23' },
       widgets: [
-        { id: 'sn.recorded', filters: {} },
+        { id: 'sn.status', filters: {} },
         { id: 'hs.created', filters: { customer: ['c1', 'c-hilang'], status: ['done'] } },
       ],
       valueNames: { c1: 'PT Maju' },

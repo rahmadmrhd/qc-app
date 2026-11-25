@@ -51,6 +51,7 @@ import { Route as AppAccessUsersIndexRouteImport } from './routes/_app/access/us
 import { Route as AppAccessUsersUserIdRouteImport } from './routes/_app/access/users/$userId'
 import { Route as AppDashboardLaporanIndexRouteImport } from './routes/_app/dashboard/laporan/index'
 import { Route as AppDashboardLaporanNewRouteImport } from './routes/_app/dashboard/laporan/new'
+import { Route as AppDashboardTautanIndexRouteImport } from './routes/_app/dashboard/tautan/index'
 import { Route as AppDashboardTautanShareIdRouteImport } from './routes/_app/dashboard/tautan/$shareId'
 import { Route as AppHandoverHandoverIdIndexRouteImport } from './routes/_app/handover/$handoverId/index'
 import { Route as AppHandoverHandoverIdEditRouteImport } from './routes/_app/handover/$handoverId/edit'
@@ -287,6 +288,11 @@ const AppDashboardLaporanNewRoute = AppDashboardLaporanNewRouteImport.update({
   path: '/dashboard/laporan/new',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDashboardTautanIndexRoute = AppDashboardTautanIndexRouteImport.update({
+  id: '/dashboard/tautan/',
+  path: '/dashboard/tautan/',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDashboardTautanShareIdRoute =
   AppDashboardTautanShareIdRouteImport.update({
     id: '/dashboard/tautan/$shareId',
@@ -456,6 +462,7 @@ export interface FileRoutesByFullPath {
   '/access/roles/': typeof AppAccessRolesIndexRoute
   '/access/users/': typeof AppAccessUsersIndexRoute
   '/dashboard/laporan/': typeof AppDashboardLaporanIndexRoute
+  '/dashboard/tautan/': typeof AppDashboardTautanIndexRoute
   '/handover/$handoverId/': typeof AppHandoverHandoverIdIndexRoute
   '/item/$itemId/': typeof AppItemItemIdIndexRoute
   '/item/brands/': typeof AppItemBrandsIndexRoute
@@ -521,6 +528,7 @@ export interface FileRoutesByTo {
   '/access/roles': typeof AppAccessRolesIndexRoute
   '/access/users': typeof AppAccessUsersIndexRoute
   '/dashboard/laporan': typeof AppDashboardLaporanIndexRoute
+  '/dashboard/tautan': typeof AppDashboardTautanIndexRoute
   '/handover/$handoverId': typeof AppHandoverHandoverIdIndexRoute
   '/item/$itemId': typeof AppItemItemIdIndexRoute
   '/item/brands': typeof AppItemBrandsIndexRoute
@@ -588,6 +596,7 @@ export interface FileRoutesById {
   '/_app/access/roles/': typeof AppAccessRolesIndexRoute
   '/_app/access/users/': typeof AppAccessUsersIndexRoute
   '/_app/dashboard/laporan/': typeof AppDashboardLaporanIndexRoute
+  '/_app/dashboard/tautan/': typeof AppDashboardTautanIndexRoute
   '/_app/handover/$handoverId/': typeof AppHandoverHandoverIdIndexRoute
   '/_app/item/$itemId/': typeof AppItemItemIdIndexRoute
   '/_app/item/brands/': typeof AppItemBrandsIndexRoute
@@ -655,6 +664,7 @@ export interface FileRouteTypes {
     | '/access/roles/'
     | '/access/users/'
     | '/dashboard/laporan/'
+    | '/dashboard/tautan/'
     | '/handover/$handoverId/'
     | '/item/$itemId/'
     | '/item/brands/'
@@ -720,6 +730,7 @@ export interface FileRouteTypes {
     | '/access/roles'
     | '/access/users'
     | '/dashboard/laporan'
+    | '/dashboard/tautan'
     | '/handover/$handoverId'
     | '/item/$itemId'
     | '/item/brands'
@@ -786,6 +797,7 @@ export interface FileRouteTypes {
     | '/_app/access/roles/'
     | '/_app/access/users/'
     | '/_app/dashboard/laporan/'
+    | '/_app/dashboard/tautan/'
     | '/_app/handover/$handoverId/'
     | '/_app/item/$itemId/'
     | '/_app/item/brands/'
@@ -1105,6 +1117,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardLaporanNewRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/dashboard/tautan/': {
+      id: '/_app/dashboard/tautan/'
+      path: '/dashboard/tautan'
+      fullPath: '/dashboard/tautan/'
+      preLoaderRoute: typeof AppDashboardTautanIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/dashboard/tautan/$shareId': {
       id: '/_app/dashboard/tautan/$shareId'
       path: '/dashboard/tautan/$shareId'
@@ -1309,6 +1328,7 @@ interface AppRouteChildren {
   AppAccessRolesIndexRoute: typeof AppAccessRolesIndexRoute
   AppAccessUsersIndexRoute: typeof AppAccessUsersIndexRoute
   AppDashboardLaporanIndexRoute: typeof AppDashboardLaporanIndexRoute
+  AppDashboardTautanIndexRoute: typeof AppDashboardTautanIndexRoute
   AppHandoverHandoverIdIndexRoute: typeof AppHandoverHandoverIdIndexRoute
   AppItemItemIdIndexRoute: typeof AppItemItemIdIndexRoute
   AppItemBrandsIndexRoute: typeof AppItemBrandsIndexRoute
@@ -1372,6 +1392,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppAccessRolesIndexRoute: AppAccessRolesIndexRoute,
   AppAccessUsersIndexRoute: AppAccessUsersIndexRoute,
   AppDashboardLaporanIndexRoute: AppDashboardLaporanIndexRoute,
+  AppDashboardTautanIndexRoute: AppDashboardTautanIndexRoute,
   AppHandoverHandoverIdIndexRoute: AppHandoverHandoverIdIndexRoute,
   AppItemItemIdIndexRoute: AppItemItemIdIndexRoute,
   AppItemBrandsIndexRoute: AppItemBrandsIndexRoute,

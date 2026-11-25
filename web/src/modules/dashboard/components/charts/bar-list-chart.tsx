@@ -18,7 +18,7 @@ const truncate = (text: string): string =>
 /** Batang horizontal per kategori (satu seri, satu warna); nilai negatif tetap digambar ke kiri. */
 export function BarListChart({ data, label }: { data: PartsData; label: string }) {
   if (data.slices.length === 0) return <EmptyChart />;
-  const config: ChartConfig = { value: { label, color: seriesColor(1) } };
+  const config: ChartConfig = { value: { label, color: seriesColor(0) } };
   return (
     <ChartFrame
       label={label}

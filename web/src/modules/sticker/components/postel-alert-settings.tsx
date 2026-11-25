@@ -1,9 +1,9 @@
 import type { PostelSettingsDto, SavePostelSettingsInput, UserDto } from '@shared/contract';
-import { normalizeKey } from '@shared/items';
-import { isPostelRecipient, POSTEL_LIMITS } from '@shared/postel';
+import { mailListsOf, sameMailLists } from '@shared/mail-lists';
+import { POSTEL_LIMITS } from '@shared/postel';
 import { useEffect, useState } from 'react';
 import { useUnsavedChanges } from '@/app/pwa/unsaved-changes';
-import { LinkMultiField, type LinkOption } from '@/components/link-field';
+import { MailListsFields, type RecipientSuggestion } from '@/components/mail-lists-field';
 import { Select } from '@/components/select';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -31,7 +31,7 @@ export interface PostelAlertSettingsProps {
   onHasErrorChange?: (hasError: boolean) => void;
 }
 
-function userLabel(user: Pick<UserDto, 'name' | 'email'>): string {
+function _userLabel(user: Pick<UserDto, 'name' | 'email'>): string {
   return `${user.name} (${user.email})`;
 }
 
@@ -56,9 +56,7 @@ function Body({
   const [hour, setHour] = useState(String(alert.sendHour));
   const [thresholds, setThresholds] = useState<string[]>(alert.thresholds.map(String));
   const [repeat, setRepeat] = useState(String(alert.repeatEveryDays));
-  const [recipients, setRecipients] = useState<string[]>(alert.recipients);
-  const [extra, setExtra] = useState('');
-  const [term, setTerm] = useState('');
+  const [lists, setLists] = useState(() => mailListsOf(alert));
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [serverError, setServerError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -71,20 +69,14 @@ function Body({
       hour !== String(alert.sendHour) ||
       repeat !== String(alert.repeatEveryDays) ||
       thresholds.join(',') !== alert.thresholds.map(String).join(',') ||
-      recipients.join('|') !== alert.recipients.join('|') ||
-      extra.trim() !== '',
+      !sameMailLists(lists, mailListsOf(alert)),
   );
 
-  const userByEmail = new Map((users ?? []).map((user) => [user.email.toLowerCase(), user]));
-  const chosen = new Set(recipients);
-  const termKey = normalizeKey(term);
-  const options: LinkOption[] = (users ?? [])
-    .filter((user) => user.status === 'active' && !chosen.has(user.email.toLowerCase()))
-    .filter(
-      (user) => termKey === '' || normalizeKey(`${user.name} ${user.email}`).includes(termKey),
-    )
-    .slice(0, 50)
-    .map((user) => ({ id: user.email.toLowerCase(), label: userLabel(user) }));
+  const suggestions: RecipientSuggestion[] = (users ?? []).map((user) => ({
+    name: user.name,
+    email: user.email,
+    active: user.status === 'active',
+  }));
 
   function fail(key: string, message: string | undefined) {
     setErrors((current) => {
@@ -93,35 +85,6 @@ function Body({
       else next[key] = message;
       return next;
     });
-  }
-
-  function addRecipients(ids: string[]) {
-    if (ids.length > POSTEL_LIMITS.recipientsMax) {
-      fail('recipients', `Maksimal ${POSTEL_LIMITS.recipientsMax} penerima`);
-      return;
-    }
-    setRecipients(ids);
-    fail('recipients', undefined);
-  }
-
-  function addExtra() {
-    const email = extra.trim().toLowerCase();
-    if (email === '') return;
-    if (!isPostelRecipient(email)) {
-      fail('recipients', 'Format email tidak valid');
-      return;
-    }
-    if (chosen.has(email)) {
-      fail('recipients', 'Email sudah ada dalam daftar');
-      return;
-    }
-    if (recipients.length >= POSTEL_LIMITS.recipientsMax) {
-      fail('recipients', `Maksimal ${POSTEL_LIMITS.recipientsMax} penerima`);
-      return;
-    }
-    setRecipients([...recipients, email]);
-    setExtra('');
-    fail('recipients', undefined);
   }
 
   async function submit() {
@@ -151,7 +114,7 @@ function Body({
         expectedUpdatedAt: settings.updatedAt,
         alert: {
           enabled,
-          recipients,
+          ...lists,
           sendHour: Number(hour),
           thresholds: [...parsed].sort((a, b) => b - a),
           repeatEveryDays,
@@ -331,61 +294,17 @@ function Body({
           </p>
         ) : null}
       </div>
-      <fieldset
-        aria-label="Penerima peringatan Postel"
-        className="m-0 min-w-0 space-y-2 border-0 p-0"
-      >
-        <LinkMultiField
-          id="postel-alert-recipients"
-          label="Penerima peringatan Postel"
-          placeholder={users === null ? 'Tambahkan email di bawah' : 'Pilih user'}
-          value={recipients}
-          labelOf={(id) => {
-            const user = userByEmail.get(id);
-            return user ? userLabel(user) : id;
-          }}
-          options={options}
-          onSearchChange={setTerm}
-          searchDebounceMs={0}
-          onChange={addRecipients}
-        />
-        <div className="flex flex-wrap items-end gap-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="postel-alert-extra">Email lain</Label>
-            <Input
-              id="postel-alert-extra"
-              type="email"
-              className="w-72"
-              value={extra}
-              aria-invalid={errors.recipients ? true : undefined}
-              aria-describedby={errors.recipients ? 'postel-alert-recipients-error' : undefined}
-              onChange={(event) => setExtra(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault();
-                  addExtra();
-                }
-              }}
-            />
-          </div>
-          <Button type="button" variant="outline" color="primary" onClick={addExtra}>
-            Tambah email
-          </Button>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Maksimal {POSTEL_LIMITS.recipientsMax} penerima; alamat di luar daftar user boleh
-          ditambahkan.
-        </p>
-        {errors.recipients ? (
-          <p
-            id="postel-alert-recipients-error"
-            role="alert"
-            className="text-sm text-destructive-text"
-          >
-            {errors.recipients}
-          </p>
-        ) : null}
-      </fieldset>
+      <MailListsFields
+        idPrefix="postel-alert"
+        value={lists}
+        onChange={(next) => {
+          setLists(next);
+          fail('recipients', undefined);
+        }}
+        suggestions={suggestions}
+        max={POSTEL_LIMITS.recipientsMax}
+        errors={{ recipients: errors.recipients }}
+      />
       {serverError ? (
         <p role="alert" className="text-sm text-destructive-text">
           {serverError}

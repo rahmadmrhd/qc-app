@@ -26,4 +26,5 @@ export const LazyCharts = {
   ColumnChart: lazyChart((bundle) => bundle.ColumnChart),
   LineChart: lazyChart((bundle) => bundle.LineChart),
   BarListChart: lazyChart((bundle) => bundle.BarListChart),
+  ScrollBarChart: lazyChart((bundle) => bundle.ScrollBarChart),
 };

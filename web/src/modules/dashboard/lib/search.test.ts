@@ -90,9 +90,9 @@ test('toQueryInput hanya memuat widget yang diminta dan filter grup widget itu',
 });
 
 test('toQueryInput tanpa filter: tanpa buIds/locationIds/filters; rentang bawaan', () => {
-  const input = toQueryInput({}, '2026-11-23', ['pt.condition']);
+  const input = toQueryInput({}, '2026-11-23', ['st.postel']);
   expect(input).toEqual({
     filter: { from: '2026-10-25', to: '2026-11-23' },
-    widgets: [{ id: 'pt.condition' }],
+    widgets: [{ id: 'st.postel' }],
   });
 });

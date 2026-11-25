@@ -11,6 +11,7 @@ export const RELATION_KEY: Record<
 > = {
   customer: 'customers',
   item: 'items',
+  brand: 'brands',
   stickerType: 'stickerTypes',
   sticker: 'stickers',
 };

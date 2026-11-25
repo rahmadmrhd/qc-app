@@ -421,32 +421,39 @@
       "kind": "string",
       "limit": "number",
       "query": "string"
-    }
+    },
+    "status": 200
   },
   {
     "id": "dashboard.query",
     "verb": "POST",
-    "path": "/dashboard/query"
+    "path": "/dashboard/query",
+    "status": 200
   },
   {
     "id": "dashboardReports.get",
     "verb": "GET",
-    "path": "/dashboard-reports/{id}"
+    "path": "/dashboard-reports/{id}",
+    "status": 200,
+    "etag": "updatedAt"
   },
   {
     "id": "dashboardReports.list",
     "verb": "GET",
-    "path": "/dashboard-reports"
+    "path": "/dashboard-reports",
+    "status": 200
   },
   {
     "id": "dashboardReports.preview",
     "verb": "GET",
-    "path": "/dashboard-reports/{id}/preview"
+    "path": "/dashboard-reports/{id}/preview",
+    "status": 200
   },
   {
     "id": "dashboardReports.remove",
     "verb": "DELETE",
-    "path": "/dashboard-reports/{id}"
+    "path": "/dashboard-reports/{id}",
+    "status": 200
   },
   {
     "id": "dashboardReports.save",
@@ -455,37 +462,52 @@
     "create": {
       "verb": "POST",
       "path": "/dashboard-reports"
-    }
+    },
+    "status": 200,
+    "etag": "updatedAt",
+    "ifMatch": "expectedUpdatedAt"
   },
   {
     "id": "dashboardReports.sendTest",
     "verb": "POST",
-    "path": "/dashboard-reports/{id}/send-test"
+    "path": "/dashboard-reports/{id}/send-test",
+    "status": 200
   },
   {
     "id": "dashboardReports.setEnabled",
     "verb": "POST",
-    "path": "/dashboard-reports/{id}/enabled"
+    "path": "/dashboard-reports/{id}/enabled",
+    "status": 200
   },
   {
     "id": "dashboardShares.create",
     "verb": "POST",
-    "path": "/dashboard-shares"
+    "path": "/dashboard-shares",
+    "status": 201
   },
   {
     "id": "dashboardShares.get",
     "verb": "GET",
-    "path": "/dashboard-shares/{id}"
+    "path": "/dashboard-shares/{id}",
+    "status": 200
   },
   {
     "id": "dashboardShares.list",
     "verb": "GET",
-    "path": "/dashboard-shares"
+    "path": "/dashboard-shares",
+    "status": 200
   },
   {
     "id": "dashboardShares.revoke",
     "verb": "POST",
-    "path": "/dashboard-shares/{id}/revoke"
+    "path": "/dashboard-shares/{id}/revoke",
+    "status": 200
+  },
+  {
+    "id": "dashboardShares.update",
+    "verb": "PUT",
+    "path": "/dashboard-shares/{id}",
+    "status": 200
   },
   {
     "id": "desktop.handoff",

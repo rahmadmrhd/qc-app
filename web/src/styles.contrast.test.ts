@@ -69,6 +69,8 @@ function over(fg: Rgb, bg: Rgb, alpha: number): Rgb {
 const MODES = { light: block(':root {'), dark: block('.dark {') } as const;
 const COLORS = ['primary', 'secondary', 'success', 'warning', 'info', 'destructive'] as const;
 const AA = 4.5;
+/** WCAG 1.4.11: komponen grafis (irisan, garis, batang) minimal 3:1 terhadap latar. */
+const GRAPHIC = 3;
 /** Tint badge soft (15%) dan alert/banner (10%), sama dengan `variant-style.ts` dan `alert.tsx`. */
 const SOFT_ALPHA = 0.15;
 const ALERT_ALPHA = 0.1;
@@ -113,6 +115,20 @@ describe('kontras WCAG AA token warna', () => {
       const mutedForeground = token(vars, 'muted-foreground');
       expect(contrast(mutedForeground, token(vars, 'muted'))).toBeGreaterThanOrEqual(AA);
       expect(contrast(mutedForeground, token(vars, 'card'))).toBeGreaterThanOrEqual(AA);
+    });
+
+    it(`${mode}: warna grafik --chart-1..8 berwarna (bukan netral) dan >= ${GRAPHIC} di atas --card`, () => {
+      for (let n = 1; n <= 8; n++) {
+        const color = token(vars, `chart-${n}`);
+        // Keputusan pemilik 2026-11-25: grafik tidak boleh memakai warna netral (abu-abu, hitam, putih).
+        expect(
+          Math.max(...color) - Math.min(...color),
+          `--chart-${n} netral`,
+        ).toBeGreaterThanOrEqual(60);
+        expect(contrast(color, token(vars, 'card')), `--chart-${n}`).toBeGreaterThanOrEqual(
+          GRAPHIC,
+        );
+      }
     });
 
     it(`${mode}: --foreground di atas --muted (badge soft primary) >= ${AA}`, () => {

@@ -209,12 +209,16 @@ test('riwayat: halaman pertama tanpa kursor, berikutnya memakai nextCursor; kunc
 });
 
 test('pengaturan surel: memuat lewat serialSettings.get; simpan memasang hasil ke cache', async () => {
-  const loaded = { alert: { enabled: false, recipients: [] }, updatedAt: '', smtpConfigured: true };
+  const loaded = {
+    alert: { enabled: false, recipients: [], cc: [], bcc: [] },
+    updatedAt: '',
+    smtpConfigured: true,
+  };
   apiMock.mockResolvedValueOnce(loaded);
   await client.fetchQuery(serialSettingsQueryOptions());
   expect(apiMock).toHaveBeenCalledWith('serialSettings.get', null);
   const saved = {
-    alert: { enabled: true, recipients: ['a@b.co'] },
+    alert: { enabled: true, recipients: ['a@b.co'], cc: [], bcc: [] },
     updatedAt: '2026-11-13T01:00:00.000Z',
     smtpConfigured: true,
   };

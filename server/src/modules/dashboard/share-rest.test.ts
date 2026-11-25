@@ -19,7 +19,7 @@ const BODY = {
   title: 'Ringkasan',
   filter: { from: '2026-11-01', to: '2026-11-23' },
   range: { mode: 'fixed', from: '2026-11-01', to: '2026-11-23' },
-  widgets: [{ id: 'sn.recorded', filters: {} }],
+  widgets: [{ id: 'sn.status', filters: {} }],
   offers: [],
   expiresInDays: 30,
 };
@@ -115,7 +115,7 @@ describe('create dan list', () => {
   test('widget di luar hak pembuat = 422 VALIDATION', async () => {
     const response = await create(SHARER, {
       ...BODY,
-      widgets: [{ id: 'pt.condition', filters: {} }],
+      widgets: [{ id: 'st.postel', filters: {} }],
     });
     expect(response.status).toBe(422);
   });

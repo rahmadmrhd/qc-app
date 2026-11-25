@@ -695,6 +695,7 @@ export const API_ROUTES: { [M in ApiId]: ApiRouteDef } = {
   'dashboardShares.list': { verb: 'GET', path: '/dashboard-shares' },
   'dashboardShares.get': { verb: 'GET', path: '/dashboard-shares/{id}' },
   'dashboardShares.create': { verb: 'POST', path: '/dashboard-shares', status: 201 },
+  'dashboardShares.update': { verb: 'PUT', path: '/dashboard-shares/{id}' },
   'dashboardShares.revoke': { verb: 'POST', path: '/dashboard-shares/{id}/revoke' },
   // Laporan dashboard terjadwal (spek dashboard 7a.7): `save` = PUT utuh ber-CAS `updatedAt`, `create` = 201.
   'dashboardReports.list': { verb: 'GET', path: '/dashboard-reports' },

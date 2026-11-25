@@ -9,14 +9,8 @@ import { bucketKeys, fillSeries, inClause, num, wibDaySql } from './common';
 // (`liveWhere`), filter lokasi global bila diberikan (`s.location_id`), dan filter grup `status`, `custody`, `item`.
 // Daftar BU kosong, atau filter lokasi `[]`, = hasil nol TANPA menjalankan SQL. Tanggal: `s.created_at`.
 
-const CUSTODY_LABELS: Record<string, string> = {
-  qc: 'QC',
-  transit: 'Dalam pengiriman',
-  service: 'Servis',
-};
-const CUSTODY_ORDER = ['qc', 'transit', 'service'];
 const TOP_N = 10;
-const TRANSIT_ROWS = 10;
+const LATEST_ROWS = 15;
 
 interface Condition {
   sql: string;
@@ -36,6 +30,15 @@ function filterParts(ctx: WidgetCtx): Condition {
   add('s.status', ctx.filters.status);
   add('s.custody', ctx.filters.custody);
   add('s.item_id', ctx.filters.item);
+  const brands = ctx.filters.brand;
+  if (brands !== undefined) {
+    const clause = inClause('i.brand_id', brands);
+    // Merk melekat pada item apa pun statusnya (item terhapus tetap dihitung, seperti widget Item teratas).
+    parts.push(
+      ` AND s.item_id IN (SELECT i.id FROM items i WHERE ${clause.sql}) /* merk item serial apa pun status item */`,
+    );
+    binds.push(...clause.binds);
+  }
   return { sql: parts.join(''), binds };
 }
 
@@ -58,8 +61,9 @@ function noScope(ctx: WidgetCtx): boolean {
   return ctx.scope.buIds.length === 0 || ctx.scope.serialLocationIds?.length === 0;
 }
 
-const recorded: WidgetImpl = {
-  id: 'sn.recorded',
+/** Total serial hidup yang dicatat pada periode (delta terhadap periode sebelumnya yang sama panjang). */
+const total: WidgetImpl = {
+  id: 'sn.total',
   async run(ctx): Promise<NumberData> {
     if (noScope(ctx)) return { kind: 'number', value: 0, previous: 0 };
     const where = conditions(ctx);
@@ -77,6 +81,33 @@ const recorded: WidgetImpl = {
       value: await count(ctx.scope.fromIso, ctx.scope.toIso),
       previous: await count(ctx.scope.prevFromIso, ctx.scope.prevToIso),
     };
+  },
+};
+
+/** Waktu kerja yang dianggap tersedia untuk mencatat serial pada periode (keputusan pemilik 2026-11-25): 4 jam. */
+export const AVG_MINUTES_WORK_HOURS = 4;
+
+/**
+ * Rata-rata menit per serial = (4 jam x 60 menit) / jumlah serial dicatat pada periode, satu desimal; tanpa serial = 0.
+ * Rumus mengikuti permintaan pemilik apa adanya (4 jam TOTAL untuk seluruh periode, bukan per hari).
+ */
+export function averageMinutes(serialCount: number): number {
+  if (serialCount <= 0) return 0;
+  return Math.round(((AVG_MINUTES_WORK_HOURS * 60) / serialCount) * 10) / 10;
+}
+
+const avgMinutes: WidgetImpl = {
+  id: 'sn.avgMinutes',
+  async run(ctx): Promise<NumberData> {
+    if (noScope(ctx)) return { kind: 'number', value: 0 };
+    const where = conditions(ctx);
+    const row = await ctx.db
+      .prepare(
+        `SELECT COUNT(*) AS n FROM serials s WHERE ${liveWhere('s')}${where.sql} AND s.created_at >= ? AND s.created_at < ?`,
+      )
+      .bind(...where.binds, ctx.scope.fromIso, ctx.scope.toIso)
+      .first<{ n: number | string }>();
+    return { kind: 'number', value: averageMinutes(num(row?.n)) };
   },
 };
 
@@ -178,77 +209,66 @@ const byBu: WidgetImpl = {
   },
 };
 
-const custody: WidgetImpl = {
-  id: 'sn.custody',
+const byBrand: WidgetImpl = {
+  id: 'sn.byBrand',
   async run(ctx): Promise<PartsData> {
     if (noScope(ctx)) return { kind: 'parts', slices: [] };
     const where = conditions(ctx);
     const rows = await ctx.db
       .prepare(
-        `SELECT s.custody AS custody, COUNT(*) AS n FROM serials s WHERE ${liveWhere('s')}${where.sql} AND s.created_at >= ? AND s.created_at < ? GROUP BY s.custody`,
+        `SELECT i.brand_id AS id, MAX(CASE WHEN b.id IS NULL THEN '' WHEN b.deleted_at = '' THEN b.name ELSE CONCAT(b.name, ' (terhapus)') END) AS name, COUNT(*) AS n FROM serials s LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('s')}${where.sql} AND s.created_at >= ? AND s.created_at < ? GROUP BY i.brand_id ORDER BY n DESC, name, i.brand_id LIMIT ${TOP_N}`,
       )
       .bind(...where.binds, ctx.scope.fromIso, ctx.scope.toIso)
-      .all<{ custody: string; n: number | string }>();
-    const totals = new Map(rows.results.map((row) => [row.custody, num(row.n)]));
+      .all<{ id: string | null; name: string | null; n: number | string }>();
     return {
       kind: 'parts',
-      slices: CUSTODY_ORDER.filter((key) => (totals.get(key) ?? 0) > 0).map((key) => ({
-        key,
-        label: CUSTODY_LABELS[key] ?? key,
-        value: totals.get(key) ?? 0,
+      slices: rows.results.map((row) => ({
+        key: row.id ?? 'none',
+        label: row.name ? row.name : 'Tanpa brand',
+        value: num(row.n),
       })),
     };
   },
 };
 
 /**
- * Selama pengiriman `location_id` tetap lokasi ASAL dan baru pindah saat diterima, jadi filter lokasi pada widget ini
- * mencocokkan lokasi asal ATAU tujuan (`transit_to_location_id`) agar serial yang menuju lokasi terpilih tetap terlihat.
+ * Entri terakhir: serial yang dicatat dikelompokkan per item, tanggal catat (WIB), dan pencatat, jumlahnya per
+ * kelompok. Urut terbaru dulu. `id` = id item (tautan ke daftar Serial terfilter item itu).
  */
-function transitConditions(ctx: WidgetCtx): Condition {
-  const filters = filterParts(ctx);
-  const ids = ctx.scope.serialLocationIds;
-  if (ids === null) return filters;
-  const origin = inClause('s.location_id', ids);
-  const target = inClause('s.transit_to_location_id', ids);
-  return {
-    sql: `${filters.sql} AND (${origin.sql} OR ${target.sql})`,
-    binds: [...filters.binds, ...origin.binds, ...target.binds],
-  };
-}
-
-const transit: WidgetImpl = {
-  id: 'sn.transit',
+const latest: WidgetImpl = {
+  id: 'sn.latest',
   async run(ctx): Promise<ListData> {
-    const columns = [...(widgetMeta('sn.transit').listColumns ?? [])];
+    const columns = [...(widgetMeta('sn.latest').listColumns ?? [])];
     if (noScope(ctx)) return { kind: 'list', columns, rows: [], total: 0 };
-    const where = transitConditions(ctx);
+    const where = conditions(ctx);
+    const day = wibDaySql('s.created_at');
     const rows = await ctx.db
       .prepare(
-        `SELECT s.serial AS serial, TRIM(CONCAT(CASE WHEN b.deleted_at = '' THEN COALESCE(b.name, '') ELSE CONCAT(b.name, ' (terhapus)') END, ' ', COALESCE(i.model, ''), CASE WHEN i.deleted_at <> '' THEN ' (terhapus)' ELSE '' END)) AS item, CASE WHEN lf.deleted_at = '' THEN lf.name ELSE CONCAT(lf.name, ' (terhapus)') END AS origin, CASE WHEN lt.deleted_at = '' THEN lt.name ELSE CONCAT(lt.name, ' (terhapus)') END AS target, CASE WHEN s.transit_on = '' THEN 0 ELSE DATEDIFF(?, s.transit_on) END AS days FROM serials s LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id LEFT JOIN locations lf ON lf.id = CASE WHEN s.transit_from_location_id <> '' THEN s.transit_from_location_id ELSE s.location_id END LEFT JOIN locations lt ON lt.id = s.transit_to_location_id WHERE ${liveWhere('s')} AND s.custody = 'transit'${where.sql} ORDER BY CASE WHEN s.transit_on = '' THEN 1 ELSE 0 END, s.transit_on, s.id LIMIT ${TRANSIT_ROWS}`,
+        `SELECT s.item_id AS item_id, ${day} AS day, s.created_by AS who, COUNT(*) AS n, MAX(TRIM(CONCAT(CASE WHEN b.deleted_at = '' THEN COALESCE(b.name, '') ELSE CONCAT(b.name, ' (terhapus)') END, ' ', COALESCE(i.model, ''), CASE WHEN i.deleted_at <> '' THEN ' (terhapus)' ELSE '' END))) AS item, MAX(s.created_at) AS last_at FROM serials s LEFT JOIN items i ON i.id = s.item_id LEFT JOIN brands b ON b.id = i.brand_id WHERE ${liveWhere('s')}${where.sql} AND s.created_at >= ? AND s.created_at < ? GROUP BY s.item_id, ${day}, s.created_by ORDER BY last_at DESC, s.item_id LIMIT ${LATEST_ROWS}`,
       )
-      .bind(ctx.scope.today, ...where.binds)
+      .bind(...where.binds, ctx.scope.fromIso, ctx.scope.toIso)
       .all<{
-        serial: string;
+        item_id: string;
+        day: string;
+        who: string | null;
+        n: number | string;
         item: string | null;
-        origin: string | null;
-        target: string | null;
-        days: number | string | null;
       }>();
     const count = await ctx.db
       .prepare(
-        `SELECT COUNT(*) AS n FROM serials s WHERE ${liveWhere('s')} AND s.custody = 'transit'${where.sql}`,
+        `SELECT COUNT(*) AS n FROM (SELECT 1 FROM serials s WHERE ${liveWhere('s')}${where.sql} AND s.created_at >= ? AND s.created_at < ? GROUP BY s.item_id, ${day}, s.created_by) g`,
       )
-      .bind(...where.binds)
+      .bind(...where.binds, ctx.scope.fromIso, ctx.scope.toIso)
       .first<{ n: number | string }>();
     return {
       kind: 'list',
       columns,
       rows: rows.results.map((row) => ({
-        serial: row.serial,
-        item: row.item ?? '',
-        route: `${row.origin ?? '-'} → ${row.target ?? '-'}`,
-        days: Math.max(0, num(row.days)),
+        id: row.item_id,
+        date: row.day,
+        item: row.item ? row.item : row.item_id,
+        count: num(row.n),
+        by: row.who ?? '',
       })),
       total: num(count?.n),
     };
@@ -256,11 +276,12 @@ const transit: WidgetImpl = {
 };
 
 export const SERIAL_WIDGETS: readonly WidgetImpl[] = [
-  recorded,
-  status,
+  total,
+  avgMinutes,
   trend,
-  byItem,
+  status,
   byBu,
-  custody,
-  transit,
+  byBrand,
+  byItem,
+  latest,
 ];

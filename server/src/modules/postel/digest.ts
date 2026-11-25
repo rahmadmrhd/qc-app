@@ -1,8 +1,10 @@
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
+import { sendableMailLists } from '@server/core/mail-lists';
 import { liveWhere } from '@server/core/soft-delete';
 import { wibHour } from '@server/modules/backup/names';
 import type { DigestOutcome } from '@server/modules/sticker/digest';
+import { mailListsCount } from '@shared/mail-lists';
 import {
   alertDue,
   daysUntil,
@@ -82,8 +84,8 @@ export async function checkPostelExpiryDigest(env: Env): Promise<DigestOutcome> 
   if (!mailer) return 'skipped';
   const { alert } = await readPostelAlert(env);
   // Data lama dapat memuat entri yang bukan satu alamat polos (spek 4b §3 butir 8): hanya yang lolos yang dikirimi.
-  const recipients = alert.recipients.filter(isPostelRecipient);
-  if (!alert.enabled || recipients.length === 0) return 'skipped';
+  const lists = sendableMailLists(alert, isPostelRecipient);
+  if (!alert.enabled || mailListsCount(lists) === 0) return 'skipped';
   const now = nowOf(env);
   if (wibHour(now) < alert.sendHour) return 'skipped';
   const today = wibDateIso(now);
@@ -153,7 +155,9 @@ export async function checkPostelExpiryDigest(env: Env): Promise<DigestOutcome> 
       return lines.join('\n');
     });
     await mailer.send({
-      to: recipients,
+      to: lists.recipients,
+      cc: lists.cc,
+      bcc: lists.bcc,
       subject: `Peringatan masa berlaku Postel: ${won.length} sertifikat`,
       text: `Sertifikat Postel berikut perlu perhatian:\n\n${blocks.join('\n\n')}\n`,
     });

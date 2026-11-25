@@ -1,5 +1,5 @@
-import { normalizeEmail } from '@server/core/email';
 import { appError } from '@server/core/errors';
+import { readMailLists } from '@server/core/mail-lists';
 import { readFilterList, readObject } from '@server/core/validate';
 import { BATCH_MAX } from '@shared/batch';
 import type {
@@ -25,6 +25,7 @@ import type {
   UpdateSerialInput,
 } from '@shared/contract';
 import { extractFileRefs } from '@shared/items';
+import type { MailLists } from '@shared/mail-lists';
 import { hasBidiControls, hasControlChars, isPostelRecipient } from '@shared/postel';
 import {
   isApplyStickersClientId,
@@ -687,7 +688,7 @@ export function validateSaveSerialSettings(raw: unknown): SaveSerialSettingsInpu
   const reader = readObject(raw);
   const expectedUpdatedAt = reader.optionalId('expectedUpdatedAt') ?? '';
   const value = reader.raw('alert');
-  const recipients: string[] = [];
+  let lists: MailLists = { recipients: [], cc: [], bcc: [] };
   let enabled = false;
   if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     reader.fail('alert', 'Pengaturan peringatan harus berupa objek');
@@ -696,29 +697,14 @@ export function validateSaveSerialSettings(raw: unknown): SaveSerialSettingsInpu
     if (typeof source.enabled !== 'boolean')
       reader.fail('enabled', 'Sakelar harus true atau false');
     enabled = source.enabled === true;
-    if (!Array.isArray(source.recipients)) {
-      reader.fail('recipients', 'Penerima harus berupa daftar email');
-    } else if (source.recipients.length > SERIAL_LIMITS.alertRecipientsMax) {
-      reader.fail('recipients', `Maksimal ${SERIAL_LIMITS.alertRecipientsMax} penerima`);
-    } else {
-      const seen = new Set<string>();
-      for (const item of source.recipients) {
-        const email = typeof item === 'string' ? normalizeEmail(item) : '';
-        if (!isPostelRecipient(email)) {
-          reader.fail('recipients', 'Ada alamat email yang tidak valid');
-          break;
-        }
-        if (seen.has(email)) {
-          reader.fail('recipients', `Email ganda: ${email}`);
-          break;
-        }
-        seen.add(email);
-        recipients.push(email);
-      }
-    }
+    lists = readMailLists(source, {
+      max: SERIAL_LIMITS.alertRecipientsMax,
+      isValid: isPostelRecipient,
+      fail: (field, message) => reader.fail(field, message),
+    });
   }
   reader.done();
-  return { expectedUpdatedAt, alert: { enabled, recipients } };
+  return { expectedUpdatedAt, alert: { enabled, ...lists } };
 }
 
 /** Maks. lokasi pada konfigurasi lokasi tim servis (jauh di atas jumlah lokasi nyata). */

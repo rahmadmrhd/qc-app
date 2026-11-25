@@ -37,6 +37,7 @@ import {
   wibNow,
 } from '@shared/dashboard-report';
 import type { ShareScope } from '@shared/dashboard-share';
+import { type MailLists, mailListsCount } from '@shared/mail-lists';
 import { wibDateIso } from '@shared/postel';
 import { publicActorName } from '@shared/serials';
 import { mayOwnDashboardItems } from '../access';
@@ -51,8 +52,8 @@ import {
   claimRunKey,
   listEnabledReportRows,
   loadReportVersion,
+  parseMailLists,
   parsePeriod,
-  parseRecipients,
   parseReportScope,
   parseSchedule,
   type ReportRow,
@@ -115,7 +116,7 @@ interface ParsedReport {
   schedule: ReportSchedule;
   period: ReportPeriod;
   scope: ReportScope;
-  recipients: string[];
+  lists: MailLists;
 }
 
 /** Menguraikan baris; `null` bila konfigurasi rusak (data lama/rusak tidak pernah dikirim). */
@@ -124,7 +125,7 @@ function parseRow(row: ReportRow): ParsedReport | null {
   const period = parsePeriod(row.period);
   const scope = parseReportScope(row.scope);
   if (schedule === null || period === null || scope === null) return null;
-  return { schedule, period, scope, recipients: parseRecipients(row.recipients) };
+  return { schedule, period, scope, lists: parseMailLists(row) };
 }
 
 /** Pemeriksaan murah sebelum klaim: pemilik aktif, masih berhak membagikan, ada widget yang boleh dilihat. */
@@ -236,8 +237,10 @@ export async function runReport(
   // Pelaku selain pemilik hanya berarti pada `test`/`preview` (pengiriman terjadwal selalu hak pemilik saat itu).
   const foreign =
     mode !== 'scheduled' && actor !== undefined && actor.email !== row.owner ? actor : undefined;
-  const recipients = mode === 'test' ? [actor?.email ?? row.owner] : parsed.recipients;
-  if (mode !== 'preview' && recipients.length === 0) {
+  const lists: MailLists =
+    mode === 'test' ? { recipients: [actor?.email ?? row.owner], cc: [], bcc: [] } : parsed.lists;
+  const addresses = [...lists.recipients, ...lists.cc, ...lists.bcc];
+  if (mode !== 'preview' && addresses.length === 0) {
     return skipped('Tidak ada penerima yang sah');
   }
   if (mode !== 'preview' && env.MAILER === undefined) return skipped('SMTP belum diatur');
@@ -358,8 +361,9 @@ export async function runReport(
       throw new ReportChangedError();
     }
     await mailer.send({
-      to: [],
-      bcc: recipients,
+      to: lists.recipients,
+      cc: lists.cc,
+      bcc: lists.bcc,
       subject: rendered.subject,
       text: rendered.text,
       html: rendered.html,
@@ -375,7 +379,7 @@ export async function runReport(
       }
     }
     if (error instanceof ReportChangedError) return skipped(CHANGED_NOTE);
-    return { status: 'error', note: noteOf(error, recipients, env.SESSION_SECRET) };
+    return { status: 'error', note: noteOf(error, addresses, env.SESSION_SECRET) };
   }
 }
 
@@ -440,7 +444,7 @@ export async function checkDashboardReports(
         await recordIfChanged(env, row, pre, nowMs);
         continue;
       }
-      if (parsed.recipients.length === 0) {
+      if (mailListsCount(parsed.lists) === 0) {
         summary.skipped += 1;
         await recordIfChanged(env, row, skipped('Tidak ada penerima yang sah'), nowMs);
         continue;
@@ -456,7 +460,14 @@ export async function checkDashboardReports(
       try {
         outcome = await runReport(env, row, nowMs, 'scheduled', claim);
       } catch (error) {
-        outcome = { status: 'error', note: noteOf(error, parsed.recipients, env.SESSION_SECRET) };
+        outcome = {
+          status: 'error',
+          note: noteOf(
+            error,
+            [...parsed.lists.recipients, ...parsed.lists.cc, ...parsed.lists.bcc],
+            env.SESSION_SECRET,
+          ),
+        };
       }
       if (outcome.status === 'ok') {
         summary.sent += 1;

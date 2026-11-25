@@ -8,6 +8,7 @@ import {
 import type { DashboardReportDto } from '@shared/dashboard-report';
 import { REPORT_PERIOD_LABELS, scheduleLabel } from '@shared/dashboard-report';
 import type { DashboardShareDto, ShareStatus, ShareWidgetScope } from '@shared/dashboard-share';
+import { MAIL_LIST_LABELS } from '@shared/mail-lists';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -184,15 +185,27 @@ function ScopeSection({ report }: { report: DashboardReportDto }) {
 }
 
 function RecipientsSection({ report }: { report: DashboardReportDto }) {
-  if (report.recipients.length === 0) {
+  const groups = [
+    { label: MAIL_LIST_LABELS.recipients, list: report.recipients },
+    { label: MAIL_LIST_LABELS.cc, list: report.cc },
+    { label: MAIL_LIST_LABELS.bcc, list: report.bcc },
+  ].filter((group) => group.list.length > 0);
+  if (groups.length === 0) {
     return <p className="text-sm text-muted-foreground">Belum ada penerima.</p>;
   }
   return (
-    <ul className="space-y-1 text-sm">
-      {report.recipients.map((address) => (
-        <li key={address}>{address}</li>
+    <div className="space-y-3 text-sm">
+      {groups.map((group) => (
+        <div key={group.label} className="space-y-1">
+          <p className="font-medium">{group.label}</p>
+          <ul className="space-y-1">
+            {group.list.map((address) => (
+              <li key={address}>{address}</li>
+            ))}
+          </ul>
+        </div>
       ))}
-    </ul>
+    </div>
   );
 }
 

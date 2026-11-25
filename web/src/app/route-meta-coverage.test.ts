@@ -58,6 +58,7 @@ const INDEX = [
   '/customer',
   '/dashboard',
   '/dashboard/laporan',
+  '/dashboard/tautan',
   '/handover',
   '/item',
   '/item/brands',

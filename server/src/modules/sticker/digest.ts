@@ -1,7 +1,10 @@
+import { isValidEmail } from '@server/core/email';
 import type { Env } from '@server/core/env';
 import { nowOf } from '@server/core/env';
+import { sendableMailLists } from '@server/core/mail-lists';
 import { getSetting } from '@server/core/settings';
 import { wibDate, wibHour } from '@server/modules/backup/names';
+import { mailListsCount } from '@shared/mail-lists';
 import { formatStockQty, stockDigestSection } from '@shared/stickers';
 import { readStickerAlert } from './settings';
 
@@ -102,7 +105,8 @@ export async function checkLowStockDigest(env: Env): Promise<DigestOutcome> {
   const mailer = env.MAILER;
   if (!mailer) return 'skipped';
   const { alert } = await readStickerAlert(env);
-  if (!alert.enabled || alert.recipients.length === 0) return 'skipped';
+  const lists = sendableMailLists(alert, isValidEmail);
+  if (!alert.enabled || mailListsCount(lists) === 0) return 'skipped';
   const now = nowOf(env);
   if (wibHour(now) < alert.digestHour) return 'skipped';
   const today = wibDate(now);
@@ -138,7 +142,9 @@ export async function checkLowStockDigest(env: Env): Promise<DigestOutcome> {
     : '';
   try {
     await mailer.send({
-      to: alert.recipients,
+      to: lists.recipients,
+      cc: lists.cc,
+      bcc: lists.bcc,
       subject,
       text: `${sections.join('\n\n')}${link}\n`,
     });

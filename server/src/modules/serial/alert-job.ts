@@ -2,9 +2,11 @@ import type { DbStatement } from '@server/core/db';
 import type { Env } from '@server/core/env';
 import { nowIso } from '@server/core/env';
 import { newId } from '@server/core/id';
+import { sendableMailLists } from '@server/core/mail-lists';
 import { liveWhere } from '@server/core/soft-delete';
 import { insertJobStmt } from '@server/modules/jobs/repo';
 import { JOB_SYSTEM_ACTOR } from '@server/modules/jobs/service';
+import { mailListsCount } from '@shared/mail-lists';
 import { markdownToPlain } from '@shared/markdown-plain';
 import { isPostelRecipient, stripControlChars, wibDateIso } from '@shared/postel';
 import { publicActorName, reportLinkExpiresAt } from '@shared/serials';
@@ -210,14 +212,20 @@ export const serialAlertHandler: JobHandler = {
     const mailer = env.MAILER;
     if (!input || !mailer) return { progress: 100, done: { result: 'skipped' } };
     const { alert } = await readSerialAlert(env);
-    const recipients = alert.recipients.filter(isPostelRecipient);
-    if (!alert.enabled || recipients.length === 0) {
+    const lists = sendableMailLists(alert, isPostelRecipient);
+    if (!alert.enabled || mailListsCount(lists) === 0) {
       return { progress: 100, done: { result: 'skipped' } };
     }
     const snapshot = await loadSnapshot(env, input);
     if (!snapshot) return { progress: 100, done: { result: 'skipped' } };
     const mail = serialBrokenMail(snapshot);
-    await mailer.send({ to: recipients, subject: mail.subject, text: mail.text });
+    await mailer.send({
+      to: lists.recipients,
+      cc: lists.cc,
+      bcc: lists.bcc,
+      subject: mail.subject,
+      text: mail.text,
+    });
     return { progress: 100, done: { result: 'sent' } };
   },
 };

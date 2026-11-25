@@ -23,6 +23,7 @@ import { listVisits, loadVisitSummary } from './share-visits';
 const OPTION_KIND: Record<string, DashboardOptionKind> = {
   customer: 'customers',
   item: 'items',
+  brand: 'brands',
   stickerType: 'stickerTypes',
   sticker: 'stickers',
 };
@@ -88,6 +89,8 @@ export async function getDashboardShare(
     ...summary,
     visits,
     scope: {
+      buIds: scope.buIds,
+      locationIds: scope.locationIds,
       buNames: bus.names,
       buDeleted: bus.deleted,
       locationNames: locations.names,

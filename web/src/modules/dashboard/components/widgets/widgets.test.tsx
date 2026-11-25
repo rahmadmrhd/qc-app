@@ -3,6 +3,7 @@ import { widgetMeta } from '@shared/dashboard';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { renderInRouter } from '@/test/render-in-router';
 import { formatDelta, formatNumber } from '../../lib/format';
 import { ListWidget } from './list-widget';
 import { NumberWidget } from './number-widget';
@@ -24,12 +25,12 @@ describe('format', () => {
 
   test('formatDelta: arah menurut angka, warna menurut baik/buruk (bawaan naik = baik)', () => {
     expect(formatDelta(128, 114)).toEqual({
-      text: 'naik 12% dari periode lalu',
+      text: 'naik 12% (+14) dari periode lalu (114)',
       direction: 'up',
       tone: 'success',
     });
     expect(formatDelta(90, 100)).toEqual({
-      text: 'turun 10% dari periode lalu',
+      text: 'turun 10% (-10) dari periode lalu (100)',
       direction: 'down',
       tone: 'danger',
     });
@@ -38,18 +39,24 @@ describe('format', () => {
       direction: 'flat',
       tone: 'muted',
     });
-    expect(formatDelta(5, 0)).toBeNull();
+    expect(formatDelta(5, 0)).toEqual({
+      text: 'naik +5 dari periode lalu (0)',
+      direction: 'up',
+      tone: 'success',
+    });
+    expect(formatDelta(5, 0, 'down')?.tone).toBe('danger');
+    expect(formatDelta(0, 0)?.direction).toBe('flat');
     expect(formatDelta(5, undefined)).toBeNull();
   });
 
   test('formatDelta dengan deltaGood "down": turun = hijau, naik = merah, teks tetap menyebut arah', () => {
     expect(formatDelta(150, 100, 'down')).toEqual({
-      text: 'naik 50% dari periode lalu',
+      text: 'naik 50% (+50) dari periode lalu (100)',
       direction: 'up',
       tone: 'danger',
     });
     expect(formatDelta(50, 100, 'down')).toEqual({
-      text: 'turun 50% dari periode lalu',
+      text: 'turun 50% (-50) dari periode lalu (100)',
       direction: 'down',
       tone: 'success',
     });
@@ -75,29 +82,31 @@ describe('NumberWidget', () => {
   test('angka besar dan delta bertanda kata (bukan warna saja)', () => {
     render(<NumberWidget data={NUMBER} delta />);
     expect(screen.getByText('128')).toBeTruthy();
-    expect(screen.getByText('naik 12% dari periode lalu')).toBeTruthy();
+    expect(screen.getByText('naik 12% (+14) dari periode lalu (114)')).toBeTruthy();
   });
 
   test('deltaGood "down": naik 50% berwarna merah tetapi panahnya tetap naik', () => {
     const { container } = render(
       <NumberWidget data={{ kind: 'number', value: 150, previous: 100 }} delta deltaGood="down" />,
     );
-    const line = screen.getByText('naik 50% dari periode lalu').closest('p');
+    const line = screen.getByText('naik 50% (+50) dari periode lalu (100)').closest('p');
     expect(line?.className).toContain('text-destructive-text');
     expect(container.querySelector('svg.lucide-arrow-up')).not.toBeNull();
   });
 
-  test('tanpa delta atau previous 0: tanpa baris perbandingan', () => {
+  test('tanpa delta atau tanpa previous: tanpa baris perbandingan; previous 0 tetap tampil', () => {
     const { rerender } = render(<NumberWidget data={NUMBER} delta={false} />);
     expect(screen.queryByText(/periode lalu/)).toBeNull();
-    rerender(<NumberWidget data={{ kind: 'number', value: 5, previous: 0 }} delta />);
+    rerender(<NumberWidget data={{ kind: 'number', value: 5 }} delta />);
     expect(screen.queryByText(/periode lalu/)).toBeNull();
+    rerender(<NumberWidget data={{ kind: 'number', value: 5, previous: 0 }} delta />);
+    expect(screen.getByText('naik +5 dari periode lalu (0)')).toBeTruthy();
   });
 });
 
 describe('ListWidget', () => {
   test('desktop: tabel dengan ringkasan "Menampilkan N dari M"', () => {
-    render(<ListWidget data={LIST} />);
+    render(<ListWidget data={LIST} label="Daftar" />);
     const table = screen.getByRole('table');
     expect(within(table).getByText('M3')).toBeTruthy();
     expect(within(table).getByText('Sisa hari')).toBeTruthy();
@@ -106,22 +115,44 @@ describe('ListWidget', () => {
 
   test('data publik tanpa total: hanya "Menampilkan N baris", tanpa "dari"', () => {
     const { total: _total, ...publicList } = LIST;
-    render(<ListWidget data={publicList} />);
+    render(<ListWidget data={publicList} label="Daftar" />);
     expect(screen.getByText('Menampilkan 2 baris')).toBeTruthy();
     expect(screen.queryByText(/dari/)).toBeNull();
   });
 
   test('ponsel: kartu MobileCard, bukan tabel', () => {
     desktop.value = false;
-    const { container } = render(<ListWidget data={LIST} />);
+    const { container } = render(<ListWidget data={LIST} label="Daftar" />);
     expect(screen.queryByRole('table')).toBeNull();
     expect(container.querySelectorAll('[data-slot="mobile-card"]').length).toBe(2);
     expect(screen.getByText('M3')).toBeTruthy();
     expect(screen.getAllByText('Sisa hari').length).toBe(2);
   });
 
+  test('dengan tautan: nomor menjadi tautan ke detail; tanpa tautan atau tanpa id = teks biasa', async () => {
+    const withId = {
+      ...LIST,
+      rows: LIST.rows.map((row, index) => ({ ...row, id: `id${index}` })),
+    };
+    const links = {
+      index: { to: '/handover' as const },
+      row: (id: string) => ({
+        to: '/handover/$handoverId' as const,
+        params: { handoverId: id },
+      }),
+    };
+    await renderInRouter(<ListWidget data={withId} label="Daftar" links={links} />);
+    const anchor = (await screen.findByRole('link', { name: 'M3' })) as HTMLAnchorElement;
+    expect(anchor.getAttribute('href')).toBe('/handover/id0');
+  });
+
+  test('tanpa tautan: tidak ada tautan', () => {
+    render(<ListWidget data={LIST} label="Daftar" />);
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
   test('tanpa baris: pesan netral', () => {
-    render(<ListWidget data={{ ...LIST, rows: [], total: 0 }} />);
+    render(<ListWidget data={{ ...LIST, rows: [], total: 0 }} label="Daftar" />);
     expect(screen.getByText('Belum ada data')).toBeTruthy();
     expect(screen.queryByRole('table')).toBeNull();
   });
@@ -262,7 +293,7 @@ describe('WidgetCard', () => {
   });
 
   test('"Lokasi tidak berlaku" hanya bila filter lokasi aktif dan widget tak mengikuti lokasi', () => {
-    const noLocation = widgetMeta('pt.condition');
+    const noLocation = widgetMeta('st.postel');
     expect(noLocation.location).toBe('none');
     render(
       <WidgetCard

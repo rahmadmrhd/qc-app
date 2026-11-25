@@ -281,6 +281,8 @@ describe('activity.list: tiap kind memakai gerbang baca model-nya', () => {
       period: 'lastWeek',
       scope: '{}',
       recipients: '[]',
+      cc: '[]',
+      bcc: '[]',
       link_days: 14,
       last_run_key: '',
       last_run_at: '',

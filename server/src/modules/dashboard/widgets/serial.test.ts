@@ -7,7 +7,6 @@ import { createTestEnv, type TestEnv } from '@server-test/test-env';
 import type {
   DashboardRange,
   ListData,
-  NumberData,
   PartsData,
   SeriesData,
   WidgetData,
@@ -15,7 +14,7 @@ import type {
 } from '@shared/dashboard';
 import { widgetMeta } from '@shared/dashboard';
 import type { ResolvedScope } from '../scope';
-import { SERIAL_WIDGETS } from './serial';
+import { AVG_MINUTES_WORK_HOURS, averageMinutes, SERIAL_WIDGETS } from './serial';
 
 setDefaultTimeout(60_000);
 
@@ -24,13 +23,14 @@ let env: TestEnv;
 const RANGE: DashboardRange = { from: '2026-11-10', to: '2026-11-16' };
 const IN_RANGE = '2026-11-12T03:00:00.000Z';
 const IDS: WidgetId[] = [
-  'sn.recorded',
-  'sn.status',
+  'sn.total',
+  'sn.avgMinutes',
   'sn.trend',
-  'sn.byItem',
+  'sn.status',
   'sn.byBu',
-  'sn.custody',
-  'sn.transit',
+  'sn.byBrand',
+  'sn.byItem',
+  'sn.latest',
 ];
 
 /** Serial uji: bawaan BU `bu-x` (dalam `buIds` bawaan `scopeOf`). */
@@ -50,6 +50,9 @@ async function run(
   return impl.run({ env, db: env.DB, scope, filters });
 }
 
+const total = (data: WidgetData): number =>
+  (data as PartsData).slices.reduce((sum, slice) => sum + slice.value, 0);
+
 beforeEach(async () => {
   env = await createTestEnv();
   await seedLocation(env, { id: 'loc-a', code: 'A', name: 'Lokasi A' });
@@ -61,84 +64,84 @@ beforeEach(async () => {
   await seedItem(env, { id: 'i-2', brand: 'Merk', model: 'Dua', businessUnitIds: ['bu-x'] });
 });
 
-test('SERIAL_WIDGETS mencakup tepat tujuh widget grup Serial Number', () => {
+test('SERIAL_WIDGETS mencakup tepat delapan widget grup Serial Number', () => {
   expect(SERIAL_WIDGETS.map((widget) => widget.id).sort()).toEqual([...IDS].sort());
 });
 
-describe('sn.recorded', () => {
-  test('menghitung serial dicatat dalam rentang beserta periode sebelumnya', async () => {
+describe('sn.total dan sn.avgMinutes', () => {
+  test('sn.total menghitung serial periode ini dan periode sebelumnya', async () => {
+    await seed(env, { id: 's1', createdAt: IN_RANGE });
+    await seed(env, { id: 's2', createdAt: IN_RANGE });
+    await seed(env, { id: 's3', createdAt: '2026-11-05T03:00:00.000Z' });
+    expect(await run('sn.total')).toMatchObject({ kind: 'number', value: 2, previous: 1 });
+  });
+
+  test('sn.avgMinutes = jam kerja x 60 / jumlah serial; tanpa serial = 0', async () => {
+    expect(AVG_MINUTES_WORK_HOURS).toBe(4);
+    expect(averageMinutes(0)).toBe(0);
+    expect(averageMinutes(240)).toBe(1);
+    expect(averageMinutes(7)).toBe(34.3);
+    await seed(env, { id: 's1', createdAt: IN_RANGE });
+    await seed(env, { id: 's2', createdAt: IN_RANGE });
+    expect(await run('sn.avgMinutes')).toMatchObject({ kind: 'number', value: 120 });
+    expect(await run('sn.avgMinutes', scopeOf({ buIds: [] }))).toMatchObject({ value: 0 });
+  });
+});
+
+describe('cakupan: rentang, BU, lokasi (lewat sn.status)', () => {
+  test('hanya serial dicatat dalam rentang', async () => {
     await seed(env, { id: 's1', createdAt: IN_RANGE });
     await seed(env, { id: 's2', createdAt: IN_RANGE, buId: 'bu-y' });
     await seed(env, { id: 's3', createdAt: '2026-11-20T03:00:00.000Z' });
-    await seed(env, { id: 'p1', createdAt: '2026-11-04T03:00:00.000Z' });
-    expect(await run('sn.recorded')).toEqual({ kind: 'number', value: 2, previous: 1 });
+    expect(total(await run('sn.status'))).toBe(2);
   });
 
   test('serial yang sudah pindah BU hanya terhitung di BU sekarang; terhapus tidak terhitung', async () => {
     await seed(env, { id: 's1', createdAt: IN_RANGE, buId: 'bu-y' });
-    // Riwayat: dulu di BU X (sudah ditinggalkan).
     await env.DB.prepare(
       "INSERT INTO serial_business_units (serial_id, bu_id, first_at, left_at) VALUES ('s1', 'bu-x', '2026-11-01T00:00:00.000Z', '2026-11-05T00:00:00.000Z')",
     ).run();
-    await seed(env, {
-      id: 's2',
-      createdAt: IN_RANGE,
-      deletedAt: '2026-11-13T00:00:00.000Z',
-    });
-    expect(((await run('sn.recorded', scopeOf({ buIds: ['bu-x'] }))) as NumberData).value).toBe(0);
-    expect(((await run('sn.recorded', scopeOf({ buIds: ['bu-y'] }))) as NumberData).value).toBe(1);
-    expect(
-      ((await run('sn.recorded', scopeOf({ buIds: ['bu-x', 'bu-y'] }))) as NumberData).value,
-    ).toBe(1);
+    await seed(env, { id: 's2', createdAt: IN_RANGE, deletedAt: '2026-11-13T00:00:00.000Z' });
+    expect(total(await run('sn.status', scopeOf({ buIds: ['bu-x'] })))).toBe(0);
+    expect(total(await run('sn.status', scopeOf({ buIds: ['bu-y'] })))).toBe(1);
+    expect(total(await run('sn.status', scopeOf({ buIds: ['bu-x', 'bu-y'] })))).toBe(1);
   });
 
   test('00:30 WIB 18 Nov masuk hari 18 Nov', async () => {
     await seed(env, { id: 's1', createdAt: '2026-11-17T17:30:00.000Z' });
     const on18 = scopeOf({}, { from: '2026-11-18', to: '2026-11-18' });
     const on17 = scopeOf({}, { from: '2026-11-17', to: '2026-11-17' });
-    expect(((await run('sn.recorded', on18)) as NumberData).value).toBe(1);
-    expect(((await run('sn.recorded', on17)) as NumberData).value).toBe(0);
+    expect(total(await run('sn.status', on18))).toBe(1);
+    expect(total(await run('sn.status', on17))).toBe(0);
   });
 
   test('filter lokasi: null = semua, daftar = hanya lokasi itu, [] = tidak ada', async () => {
     await seed(env, { id: 's1', createdAt: IN_RANGE, locationId: 'loc-a' });
     await seed(env, { id: 's2', createdAt: IN_RANGE, locationId: 'loc-b' });
-    expect(
-      ((await run('sn.recorded', scopeOf({ serialLocationIds: null }))) as NumberData).value,
-    ).toBe(2);
-    expect(
-      ((await run('sn.recorded', scopeOf({ serialLocationIds: ['loc-a'] }))) as NumberData).value,
-    ).toBe(1);
-    expect(
-      ((await run('sn.recorded', scopeOf({ serialLocationIds: [] }))) as NumberData).value,
-    ).toBe(0);
+    expect(total(await run('sn.status', scopeOf({ serialLocationIds: null })))).toBe(2);
+    expect(total(await run('sn.status', scopeOf({ serialLocationIds: ['loc-a'] })))).toBe(1);
+    expect(total(await run('sn.status', scopeOf({ serialLocationIds: [] })))).toBe(0);
   });
 });
 
 describe('semua widget Serial dengan buIds kosong', () => {
   test('hasilnya nol tanpa membaca data BU lain', async () => {
-    await seed(env, {
-      id: 's1',
-      createdAt: IN_RANGE,
-      custody: 'transit',
-      transitToLocationId: 'loc-b',
-      transitOn: '2026-11-11',
-    });
+    await seed(env, { id: 's1', createdAt: IN_RANGE });
     const scope = scopeOf({ buIds: [] });
-    expect(await run('sn.recorded', scope)).toEqual({ kind: 'number', value: 0, previous: 0 });
-    for (const id of ['sn.status', 'sn.byItem', 'sn.byBu', 'sn.custody'] as const) {
+    for (const id of ['sn.status', 'sn.byBu', 'sn.byBrand', 'sn.byItem'] as const) {
       expect(((await run(id, scope)) as PartsData).slices, id).toEqual([]);
     }
     const trend = (await run('sn.trend', scope)) as SeriesData;
     expect(trend.series.flatMap((series) => series.values).every((value) => value === 0)).toBe(
       true,
     );
-    expect(((await run('sn.transit', scope)) as ListData).rows).toEqual([]);
-    expect(((await run('sn.transit', scope)) as ListData).total).toBe(0);
+    const latest = (await run('sn.latest', scope)) as ListData;
+    expect(latest.rows).toEqual([]);
+    expect(latest.total).toBe(0);
   });
 });
 
-describe('sn.status dan sn.custody', () => {
+describe('sn.status', () => {
   beforeEach(async () => {
     await seed(env, { id: 's1', createdAt: IN_RANGE });
     await seed(env, { id: 's2', createdAt: IN_RANGE, status: 'reported', itemId: 'i-2' });
@@ -165,21 +168,7 @@ describe('sn.status dan sn.custody', () => {
     const byCustody = (await run('sn.status', scopeOf(), { custody: ['transit'] })) as PartsData;
     expect(byCustody.slices).toEqual([{ key: 'at_service', label: 'Di servis', value: 1 }]);
     const byItem = (await run('sn.status', scopeOf(), { item: ['i-2'] })) as PartsData;
-    expect(byItem.slices.reduce((sum, slice) => sum + slice.value, 0)).toBe(2);
-    const byStatus = (await run('sn.custody', scopeOf(), { status: ['at_service'] })) as PartsData;
-    expect(byStatus.slices).toEqual([
-      { key: 'transit', label: 'Dalam pengiriman', value: 1 },
-      { key: 'service', label: 'Servis', value: 1 },
-    ]);
-  });
-
-  test('sn.custody: label QC, Dalam pengiriman, Servis', async () => {
-    const data = (await run('sn.custody')) as PartsData;
-    expect(data.slices).toEqual([
-      { key: 'qc', label: 'QC', value: 2 },
-      { key: 'transit', label: 'Dalam pengiriman', value: 1 },
-      { key: 'service', label: 'Servis', value: 1 },
-    ]);
+    expect(total(byItem)).toBe(2);
   });
 });
 
@@ -242,92 +231,83 @@ describe('sn.trend, sn.byItem, sn.byBu', () => {
   });
 });
 
-describe('sn.transit', () => {
-  test('hanya serial dalam pengiriman, tanpa rentang; kolom persis sama dengan registry', async () => {
+describe('brand: widget dan filter', () => {
+  beforeEach(async () => {
+    await seedBrand(env, 'Lain');
+    await seedItem(env, { id: 'i-3', brand: 'Lain', model: 'Tiga', businessUnitIds: ['bu-x'] });
+    await seed(env, { id: 's1', createdAt: IN_RANGE, itemId: 'i-1' });
+    await seed(env, { id: 's2', createdAt: IN_RANGE, itemId: 'i-2' });
+    await seed(env, { id: 's3', createdAt: IN_RANGE, itemId: 'i-3' });
+  });
+
+  test('sn.byBrand: jumlah serial per brand, terbanyak dulu', async () => {
+    const data = (await run('sn.byBrand')) as PartsData;
+    expect(data.slices.map((slice) => [slice.label, slice.value])).toEqual([
+      ['Merk', 2],
+      ['Lain', 1],
+    ]);
+  });
+
+  test('filter brand menyaring semua widget grup Serial', async () => {
+    const brandId = ((await run('sn.byBrand')) as PartsData).slices.find(
+      (slice) => slice.label === 'Lain',
+    )?.key;
+    expect(brandId).toBeTruthy();
+    const filters = { brand: [brandId as string] };
+    expect(total(await run('sn.status', scopeOf(), filters))).toBe(1);
+    expect(total(await run('sn.byBu', scopeOf(), filters))).toBe(1);
+    expect(((await run('sn.byBrand', scopeOf(), filters)) as PartsData).slices.length).toBe(1);
+    expect(((await run('sn.latest', scopeOf(), filters)) as ListData).total).toBe(1);
+  });
+});
+
+describe('sn.latest', () => {
+  test('dikelompokkan per item, tanggal catat (WIB), dan pencatat; terbaru dulu', async () => {
     await seed(env, {
       id: 's1',
-      serial: 'SN-LAMA',
-      createdAt: '2026-01-01T03:00:00.000Z',
-      custody: 'transit',
-      locationId: 'loc-a',
-      transitFromLocationId: 'loc-a',
-      transitToLocationId: 'loc-b',
-      transitOn: '2026-11-10',
+      createdAt: '2026-11-11T03:00:00.000Z',
       itemId: 'i-1',
+      createdBy: 'a@x.id',
     });
     await seed(env, {
       id: 's2',
-      serial: 'SN-BARU',
-      createdAt: IN_RANGE,
-      custody: 'transit',
-      locationId: 'loc-a',
-      transitFromLocationId: 'loc-a',
-      transitToLocationId: 'loc-b',
-      transitOn: '2026-11-14',
+      createdAt: '2026-11-11T04:00:00.000Z',
+      itemId: 'i-1',
+      createdBy: 'a@x.id',
     });
-    await seed(env, { id: 's3', createdAt: IN_RANGE });
+    await seed(env, {
+      id: 's3',
+      createdAt: '2026-11-11T05:00:00.000Z',
+      itemId: 'i-1',
+      createdBy: 'b@x.id',
+    });
     await seed(env, {
       id: 's4',
-      createdAt: IN_RANGE,
-      custody: 'transit',
-      transitToLocationId: 'loc-b',
-      transitOn: '2026-11-12',
-      deletedAt: '2026-11-13T00:00:00.000Z',
+      createdAt: '2026-11-12T03:00:00.000Z',
+      itemId: 'i-2',
+      createdBy: 'a@x.id',
     });
-    const data = (await run('sn.transit')) as ListData;
-    expect(data.total).toBe(2);
-    expect(data.rows.map((row) => row.serial)).toEqual(['SN-LAMA', 'SN-BARU']);
-    expect(data.rows[0]).toEqual({
-      serial: 'SN-LAMA',
-      item: 'Merk Satu',
-      route: 'Lokasi A → Lokasi B',
-      days: 6,
-    });
-    expect(data.columns).toEqual([...(widgetMeta('sn.transit').listColumns ?? [])]);
+    const data = (await run('sn.latest')) as ListData;
+    expect(data.total).toBe(3);
+    expect(data.rows).toEqual([
+      { id: 'i-2', date: '2026-11-12', item: 'Merk Dua', count: 1, by: 'a@x.id' },
+      { id: 'i-1', date: '2026-11-11', item: 'Merk Satu', count: 1, by: 'b@x.id' },
+      { id: 'i-1', date: '2026-11-11', item: 'Merk Satu', count: 2, by: 'a@x.id' },
+    ]);
+    expect(data.columns).toEqual([...(widgetMeta('sn.latest').listColumns ?? [])]);
   });
 
-  test('filter lokasi mencocokkan lokasi asal ATAU tujuan', async () => {
-    await seed(env, {
-      id: 's1',
-      createdAt: IN_RANGE,
-      custody: 'transit',
-      locationId: 'loc-b',
-      transitFromLocationId: 'loc-b',
-      transitToLocationId: 'loc-a',
-      transitOn: '2026-11-12',
-    });
-    await seed(env, {
-      id: 's2',
-      createdAt: IN_RANGE,
-      custody: 'transit',
-      locationId: 'loc-b',
-      transitFromLocationId: 'loc-b',
-      transitToLocationId: 'loc-b',
-      transitOn: '2026-11-12',
-    });
-    const toA = (await run('sn.transit', scopeOf({ serialLocationIds: ['loc-a'] }))) as ListData;
-    expect(toA.total).toBe(1);
-    const fromB = (await run('sn.transit', scopeOf({ serialLocationIds: ['loc-b'] }))) as ListData;
-    expect(fromB.total).toBe(2);
-    const none = (await run(
-      'sn.transit',
-      scopeOf({ serialLocationIds: ['loc-lain'] }),
-    )) as ListData;
-    expect(none.total).toBe(0);
-  });
-
-  test('maksimal 10 baris dengan total seluruhnya', async () => {
-    for (let index = 1; index <= 12; index += 1) {
+  test('maksimal 15 baris dengan total seluruh kelompok', async () => {
+    for (let index = 1; index <= 17; index += 1) {
       await seed(env, {
-        id: `t${index}`,
-        createdAt: IN_RANGE,
-        custody: 'transit',
-        transitToLocationId: 'loc-b',
-        transitOn: `2026-11-${String(index).padStart(2, '0')}`,
+        id: `l${index}`,
+        createdAt: `2026-11-${String(10 + (index % 7)).padStart(2, '0')}T03:00:00.000Z`,
+        itemId: index % 2 ? 'i-1' : 'i-2',
+        createdBy: `u${index}@x.id`,
       });
     }
-    const data = (await run('sn.transit')) as ListData;
-    expect(data.rows.length).toBe(10);
-    expect(data.total).toBe(12);
+    const data = (await run('sn.latest')) as ListData;
+    expect(data.rows.length).toBe(15);
+    expect(data.total).toBe(17);
   });
 });

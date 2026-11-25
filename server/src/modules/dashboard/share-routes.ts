@@ -1,12 +1,13 @@
 import type { RouteTable } from '@server/core/router';
 import { getDashboardShare } from './share-detail';
-import { createShare, listDashboardShares, revokeShare } from './share-service';
-import { validateCreateShare, validateShareId } from './share-validate';
+import { createShare, listDashboardShares, revokeShare, updateShare } from './share-service';
+import { validateCreateShare, validateShareId, validateUpdateShare } from './share-validate';
 
 type ShareMethod =
   | 'dashboardShares.list'
   | 'dashboardShares.get'
   | 'dashboardShares.create'
+  | 'dashboardShares.update'
   | 'dashboardShares.revoke';
 
 /**
@@ -29,6 +30,11 @@ export function dashboardShareRoutes(): Pick<RouteTable, ShareMethod> {
       permission: { module: 'dashboard', level: 'edit' },
       validate: validateCreateShare,
       handler: (input, ctx) => createShare(ctx.env, ctx.user, input),
+    },
+    'dashboardShares.update': {
+      permission: { module: 'dashboard', level: 'edit' },
+      validate: validateUpdateShare,
+      handler: (input, ctx) => updateShare(ctx.env, ctx.user, input),
     },
     'dashboardShares.revoke': {
       permission: { module: 'dashboard', level: 'edit' },

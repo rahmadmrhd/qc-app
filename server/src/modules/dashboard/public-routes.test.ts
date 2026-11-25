@@ -53,7 +53,7 @@ function input(overrides: Partial<CreateShareInput> = {}): CreateShareInput {
     title: 'Ringkasan',
     filter: { from: '2026-11-01', to: '2026-11-23' },
     range: RANGE,
-    widgets: [{ id: 'sn.recorded', filters: {} }],
+    widgets: [{ id: 'sn.status', filters: {} }],
     offers: [],
     expiresInDays: 30,
     ...overrides,
@@ -107,8 +107,11 @@ const problemShape = async (response: Response) => {
 
 const numberOf = (dto: PublicDashboardDto, id: string): number => {
   const widget = dto.widgets.find((entry) => entry.id === id);
-  if (widget?.result.status !== 'ok' || widget.result.data.kind !== 'number') throw new Error('x');
-  return widget.result.data.value;
+  if (widget?.result.status !== 'ok') throw new Error('x');
+  const data = widget.result.data;
+  if (data.kind === 'number') return data.value;
+  if (data.kind === 'parts') return data.slices.reduce((sum, slice) => sum + slice.value, 0);
+  throw new Error('x');
 };
 
 function expectHardened(response: Response): void {
@@ -128,8 +131,8 @@ describe('respons sah', () => {
     expect(text).not.toContain('@gmail.com');
     const dto = (await response.json()) as PublicDashboardDto;
     expect(dto.sharedBy).toBe('sharer');
-    expect(dto.widgets.map((widget) => widget.id)).toEqual(['sn.recorded']);
-    expect(numberOf(dto, 'sn.recorded')).toBe(2);
+    expect(dto.widgets.map((widget) => widget.id)).toEqual(['sn.status']);
+    expect(numberOf(dto, 'sn.status')).toBe(2);
   });
 
   test('parameter query yang tak dikenal pada GET tidak mengubah hasil', async () => {
@@ -171,12 +174,12 @@ describe('respons sah', () => {
     expect(own.status).toBe(200);
     expectHardened(own);
     const ownDto = (await own.json()) as PublicDashboardDto;
-    expect(ownDto.widgets.map((widget) => widget.id)).toEqual(['sn.recorded']);
-    expect(numberOf(ownDto, 'sn.recorded')).toBe(1);
+    expect(ownDto.widgets.map((widget) => widget.id)).toEqual(['sn.status']);
+    expect(numberOf(ownDto, 'sn.status')).toBe(1);
     const other = (await (await post(token, { buIds: ['bu-y'] })).json()) as PublicDashboardDto;
-    expect(numberOf(other, 'sn.recorded')).toBe(0);
+    expect(numberOf(other, 'sn.status')).toBe(0);
     expect(Object.keys(other).sort()).toEqual(Object.keys(ownDto).sort());
-    expect(other.widgets.map((widget) => widget.id)).toEqual(['sn.recorded']);
+    expect(other.widgets.map((widget) => widget.id)).toEqual(['sn.status']);
   });
 });
 
@@ -321,7 +324,7 @@ describe('review akhir butir 1: pembagi berhak atas lebih dari 20 BU dan lokasi'
       user,
       input({
         widgets: [
-          { id: 'sn.recorded', filters: {} },
+          { id: 'sn.status', filters: {} },
           { id: 'hs.created', filters: {} },
         ],
       }),
@@ -334,12 +337,12 @@ describe('review akhir butir 1: pembagi berhak atas lebih dari 20 BU dan lokasi'
     const response = await get(token);
     expect(response.status).toBe(200);
     const dto = (await response.json()) as PublicDashboardDto;
-    expect(numberOf(dto, 'sn.recorded')).toBe(2);
+    expect(numberOf(dto, 'sn.status')).toBe(2);
     expect(dto.options.bu).toHaveLength(COUNT);
     expect(dto.options.location).toHaveLength(COUNT);
     const narrowed = await post(token, { buIds: ['hb-03'] });
     expect(narrowed.status).toBe(200);
-    expect(numberOf((await narrowed.json()) as PublicDashboardDto, 'sn.recorded')).toBe(1);
+    expect(numberOf((await narrowed.json()) as PublicDashboardDto, 'sn.status')).toBe(1);
     expect((await post(token, {})).status).toBe(200);
   });
 

@@ -54,6 +54,7 @@ export interface SeedSerialRow {
   status?: string;
   custody?: string;
   createdAt?: string;
+  createdBy?: string;
   deletedAt?: string;
   transitFromLocationId?: string;
   transitToLocationId?: string;
@@ -66,7 +67,7 @@ export async function seedSerial(env: Db, row: SeedSerialRow): Promise<void> {
   const buId = row.buId ?? 'bu-a';
   const location = row.locationId ?? 'loc-a';
   await env.DB.prepare(
-    "INSERT INTO serials (id, client_id, bu_id, serial, item_id, test_date, location_id, recorded_location_id, status, custody, transit_from_location_id, transit_to_location_id, transit_on, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by) VALUES (?, ?, ?, ?, ?, '2026-11-10', ?, ?, ?, ?, ?, ?, ?, ?, 'seed@gmail.com', ?, 'seed@gmail.com', ?, ?)",
+    "INSERT INTO serials (id, client_id, bu_id, serial, item_id, test_date, location_id, recorded_location_id, status, custody, transit_from_location_id, transit_to_location_id, transit_on, created_at, created_by, updated_at, updated_by, deleted_at, deleted_by) VALUES (?, ?, ?, ?, ?, '2026-11-10', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'seed@gmail.com', ?, ?)",
   )
     .bind(
       row.id,
@@ -82,6 +83,7 @@ export async function seedSerial(env: Db, row: SeedSerialRow): Promise<void> {
       row.transitToLocationId ?? '',
       row.transitOn ?? '',
       createdAt,
+      row.createdBy ?? 'seed@gmail.com',
       createdAt,
       row.deletedAt ?? '',
       row.deletedAt ? 'seed@gmail.com' : '',

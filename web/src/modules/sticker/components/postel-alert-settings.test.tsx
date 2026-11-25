@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { hasUnsavedChanges, resetUnsavedChangesForTests } from '@/app/pwa/unsaved-changes';
 import { FormPage } from '@/components/page/form-page';
 import { pickLink } from '@/test/link-field';
+import { addMailAddress, BCC_FIELD, CC_FIELD, TO_FIELD, typeInMailField } from '@/test/mail-lists';
 import { renderInRouter } from '@/test/render-in-router';
 import { PostelAlertSettings, type PostelAlertSettingsProps } from './postel-alert-settings';
 
@@ -13,6 +14,8 @@ const settings: PostelSettingsDto = {
   alert: {
     enabled: true,
     recipients: ['qc@contoh.com'],
+    cc: [],
+    bcc: [],
     sendHour: 8,
     thresholds: [90, 60, 30],
     repeatEveryDays: 7,
@@ -171,16 +174,18 @@ test('simpan mengirim ambang menurun, jam, ulangi, dan penerima (user dan email 
   const repeat = screen.getByLabelText('Ulangi setiap (hari)');
   await userEvent.clear(repeat);
   await userEvent.type(repeat, '0');
-  const field = within(screen.getByRole('group', { name: 'Penerima peringatan Postel' }));
-  await pickLink(field, 'Penerima peringatan Postel', /Budi/);
-  await userEvent.type(screen.getByLabelText('Email lain'), 'Luar@Contoh.com');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
+  await pickLink(screen, TO_FIELD, /Budi/);
+  await addMailAddress(TO_FIELD, 'Luar@Contoh.com');
+  await addMailAddress(CC_FIELD, 'cc@contoh.com');
+  await addMailAddress(BCC_FIELD, 'bcc@contoh.com');
   await save();
   expect(onSave).toHaveBeenCalledWith({
     expectedUpdatedAt: '2026-11-10 09:00:00',
     alert: {
       enabled: true,
       recipients: ['qc@contoh.com', 'budi@contoh.com', 'luar@contoh.com'],
+      cc: ['cc@contoh.com'],
+      bcc: ['bcc@contoh.com'],
       sendHour: 9,
       thresholds: [90, 60, 30],
       repeatEveryDays: 0,
@@ -199,36 +204,34 @@ test('saklar dapat dimatikan', async () => {
   expect(onSave.mock.calls[0]?.[0].alert.enabled).toBe(false);
 });
 
-test('email rusak atau ganda menolak penambahan', async () => {
+test('alamat rusak tidak jadi chip dan alamat yang sudah dipilih tidak ditawarkan lagi', async () => {
   await renderSettings();
-  await userEvent.type(screen.getByLabelText('Email lain'), 'bukan-email');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
-  expect(await screen.findByText('Format email tidak valid')).toBeInTheDocument();
-  await userEvent.clear(screen.getByLabelText('Email lain'));
-  await userEvent.type(screen.getByLabelText('Email lain'), 'QC@contoh.com');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
-  expect(await screen.findByText('Email sudah ada dalam daftar')).toBeInTheDocument();
+  await typeInMailField(CC_FIELD, 'bukan-email');
+  expect(await screen.findByText(/Ketik alamat email lengkap/)).toBeInTheDocument();
+  await userEvent.clear(screen.getByRole('combobox', { name: CC_FIELD }));
+  await typeInMailField(CC_FIELD, 'QC@contoh.com');
+  expect(screen.queryByRole('option', { name: 'qc@contoh.com' })).not.toBeInTheDocument();
 });
 
 test.each(['x,a@b.co', 'a@b.co,c@d.co', 'a@b.co;c@d.co', 'Nama <a@b.co>', 'a@b.co c@d.co'])(
-  '"Email lain" menolak entri yang bukan satu alamat polos: %s',
+  'entri yang bukan satu alamat polos tidak jadi chip: %s',
   async (entry) => {
-    await renderSettings();
-    await userEvent.type(screen.getByLabelText('Email lain'), entry);
-    await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
-    expect(await screen.findByText('Format email tidak valid')).toBeInTheDocument();
-    expect(screen.getByLabelText('Email lain')).toHaveValue(entry);
+    const { onSave } = await renderSettings();
+    await typeInMailField(TO_FIELD, entry);
+    expect(await screen.findByText(/Ketik alamat email lengkap/)).toBeInTheDocument();
+    await userEvent.keyboard('{Enter}');
+    await save();
+    expect(onSave.mock.calls[0]?.[0].alert.recipients).toEqual(['qc@contoh.com']);
   },
 );
 
-test('maksimal 20 penerima', async () => {
+test('maksimal 20 penerima per daftar', async () => {
   const many = Array.from({ length: 20 }, (_, i) => `u${i}@contoh.com`);
   await renderSettings({
     settings: { ...settings, alert: { ...settings.alert, recipients: many } },
   });
-  await userEvent.type(screen.getByLabelText('Email lain'), 'baru@contoh.com');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
-  expect(await screen.findByText('Maksimal 20 penerima')).toBeInTheDocument();
+  await userEvent.click(screen.getByRole('combobox', { name: TO_FIELD }));
+  expect(await screen.findByText(/Maksimal 20 pilihan/)).toBeInTheDocument();
 });
 
 test('onSave mengembalikan teks galat => tampil sebagai alert', async () => {
@@ -245,12 +248,6 @@ test('pesan galat dihubungkan ke inputnya lewat aria-describedby', async () => {
   const repeat = screen.getByLabelText('Ulangi setiap (hari)');
   await userEvent.clear(repeat);
   await userEvent.type(repeat, '999');
-  await userEvent.type(screen.getByLabelText('Email lain'), 'rusak');
-  await userEvent.click(screen.getByRole('button', { name: 'Tambah email' }));
-  const extraError = (screen.getByLabelText('Email lain').getAttribute('aria-describedby') ?? '')
-    .split(' ')
-    .map((id) => document.getElementById(id)?.textContent);
-  expect(extraError).toContain('Format email tidak valid');
   await save();
   const describedBy = (element: HTMLElement) =>
     (element.getAttribute('aria-describedby') ?? '')
@@ -270,12 +267,13 @@ test('pengingat kembar: kedua input yang bermasalah menunjuk pesan umum', async 
   expect(third.getAttribute('aria-describedby')).toContain(message.id);
 });
 
-test('M-g: alamat di "Email lain" yang belum ditambahkan terdaftar sebagai belum disimpan', async () => {
+test('M-g: menambah alamat terdaftar sebagai belum disimpan; menghapusnya kembali melepas', async () => {
   await renderSettings();
   expect(hasUnsavedChanges()).toBe(false);
-  await userEvent.type(screen.getByLabelText('Email lain'), 'baru@contoh.com');
+  await addMailAddress(BCC_FIELD, 'baru@contoh.com');
   expect(hasUnsavedChanges()).toBe(true);
-  await userEvent.clear(screen.getByLabelText('Email lain'));
+  const chip = screen.getByText('baru@contoh.com');
+  await userEvent.click(within(chip.parentElement ?? chip).getByRole('button'));
   expect(hasUnsavedChanges()).toBe(false);
 });
 

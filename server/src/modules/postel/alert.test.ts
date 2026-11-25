@@ -25,6 +25,8 @@ const EDITOR = 'stickeredit@gmail.com';
 const alert = (over: Record<string, unknown> = {}) => ({
   enabled: true,
   recipients: ['a@contoh.com', 'b@contoh.com'],
+  cc: [] as string[],
+  bcc: [] as string[],
   sendHour: 9,
   thresholds: [90, 60, 30],
   repeatEveryDays: 7,
@@ -52,6 +54,8 @@ describe('postelSettings.get', () => {
       alert: {
         enabled: false,
         recipients: [],
+        cc: [],
+        bcc: [],
         sendHour: 8,
         thresholds: [90, 60, 30],
         repeatEveryDays: 7,
