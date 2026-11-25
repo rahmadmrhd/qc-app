@@ -3,6 +3,7 @@ import { widgetMeta } from '@shared/dashboard';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { renderInRouter } from '@/test/render-in-router';
 import { formatDelta, formatNumber } from '../../lib/format';
 import { ListWidget } from './list-widget';
 import { NumberWidget } from './number-widget';
@@ -97,7 +98,7 @@ describe('NumberWidget', () => {
 
 describe('ListWidget', () => {
   test('desktop: tabel dengan ringkasan "Menampilkan N dari M"', () => {
-    render(<ListWidget data={LIST} />);
+    render(<ListWidget data={LIST} label="Daftar" />);
     const table = screen.getByRole('table');
     expect(within(table).getByText('M3')).toBeTruthy();
     expect(within(table).getByText('Sisa hari')).toBeTruthy();
@@ -106,22 +107,44 @@ describe('ListWidget', () => {
 
   test('data publik tanpa total: hanya "Menampilkan N baris", tanpa "dari"', () => {
     const { total: _total, ...publicList } = LIST;
-    render(<ListWidget data={publicList} />);
+    render(<ListWidget data={publicList} label="Daftar" />);
     expect(screen.getByText('Menampilkan 2 baris')).toBeTruthy();
     expect(screen.queryByText(/dari/)).toBeNull();
   });
 
   test('ponsel: kartu MobileCard, bukan tabel', () => {
     desktop.value = false;
-    const { container } = render(<ListWidget data={LIST} />);
+    const { container } = render(<ListWidget data={LIST} label="Daftar" />);
     expect(screen.queryByRole('table')).toBeNull();
     expect(container.querySelectorAll('[data-slot="mobile-card"]').length).toBe(2);
     expect(screen.getByText('M3')).toBeTruthy();
     expect(screen.getAllByText('Sisa hari').length).toBe(2);
   });
 
+  test('dengan tautan: nomor menjadi tautan ke detail; tanpa tautan atau tanpa id = teks biasa', async () => {
+    const withId = {
+      ...LIST,
+      rows: LIST.rows.map((row, index) => ({ ...row, id: `id${index}` })),
+    };
+    const links = {
+      index: { to: '/handover' as const },
+      row: (id: string) => ({
+        to: '/handover/$handoverId' as const,
+        params: { handoverId: id },
+      }),
+    };
+    await renderInRouter(<ListWidget data={withId} label="Daftar" links={links} />);
+    const anchor = (await screen.findByRole('link', { name: 'M3' })) as HTMLAnchorElement;
+    expect(anchor.getAttribute('href')).toBe('/handover/id0');
+  });
+
+  test('tanpa tautan: tidak ada tautan', () => {
+    render(<ListWidget data={LIST} label="Daftar" />);
+    expect(screen.queryByRole('link')).toBeNull();
+  });
+
   test('tanpa baris: pesan netral', () => {
-    render(<ListWidget data={{ ...LIST, rows: [], total: 0 }} />);
+    render(<ListWidget data={{ ...LIST, rows: [], total: 0 }} label="Daftar" />);
     expect(screen.getByText('Belum ada data')).toBeTruthy();
     expect(screen.queryByRole('table')).toBeNull();
   });
@@ -262,7 +285,7 @@ describe('WidgetCard', () => {
   });
 
   test('"Lokasi tidak berlaku" hanya bila filter lokasi aktif dan widget tak mengikuti lokasi', () => {
-    const noLocation = widgetMeta('pt.condition');
+    const noLocation = widgetMeta('st.postel');
     expect(noLocation.location).toBe('none');
     render(
       <WidgetCard

@@ -53,7 +53,7 @@ const BODY: SaveDashboardReportInput = {
   schedule: { frequency: 'weekly', hour: 8, weekday: 1, monthDay: 1 },
   period: 'lastWeek',
   filter: { from: '', to: '' },
-  widgets: [{ id: 'sn.recorded', filters: {} }],
+  widgets: [{ id: 'sn.status', filters: {} }],
   offers: [],
   recipients: [RECIPIENT],
   linkDays: 14,
@@ -231,7 +231,7 @@ describe('checkDashboardReports', () => {
       .run();
     const id = await dueReport({
       widgets: [
-        { id: 'sn.recorded', filters: {} },
+        { id: 'sn.status', filters: {} },
         { id: 'hs.created', filters: {} },
       ],
     });
@@ -241,11 +241,11 @@ describe('checkDashboardReports', () => {
       .run();
     const summary = await checkDashboardReports(env, NOW);
     expect(summary.sent).toBe(1);
-    expect(sent[0]?.html).toContain('Serial dicatat');
+    expect(sent[0]?.html).toContain('Komposisi status');
     expect(sent[0]?.html).not.toContain('Task dibuat');
     const link = (await listSharesOfReport(env.DB, id, 10))[0];
     expect(JSON.parse(link?.scope ?? '{}').widgets.map((w: { id: string }) => w.id)).toEqual([
-      'sn.recorded',
+      'sn.status',
     ]);
   });
 

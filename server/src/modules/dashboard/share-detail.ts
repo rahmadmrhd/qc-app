@@ -23,6 +23,7 @@ import { listVisits, loadVisitSummary } from './share-visits';
 const OPTION_KIND: Record<string, DashboardOptionKind> = {
   customer: 'customers',
   item: 'items',
+  brand: 'brands',
   stickerType: 'stickerTypes',
   sticker: 'stickers',
 };

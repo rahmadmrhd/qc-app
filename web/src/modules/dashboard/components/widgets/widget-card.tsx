@@ -1,9 +1,11 @@
 import type { WidgetId, WidgetMeta, WidgetResult } from '@shared/dashboard';
 import type { PublicWidgetData } from '@shared/dashboard-public';
+import { LinkCell } from '@/components/data-table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import type { WidgetLinks } from '../../lib/links';
 import { WidgetRenderer } from './widget-renderer';
 
 /** Hasil widget di halaman publik (data tanpa `total` dan tanpa delta). */
@@ -37,19 +39,30 @@ export function WidgetCard({
   result,
   loading,
   filterState,
+  links,
   onRetry,
 }: {
   meta: WidgetMeta;
   result: WidgetResult | PublicWidgetResult | undefined;
   loading: boolean;
   filterState: WidgetFilterState;
+  /** Tautan widget daftar (hanya di aplikasi, bagi yang berhak): judul ke halaman indeks, baris ke detailnya. */
+  links?: WidgetLinks;
   onRetry: () => void;
 }) {
   const notes = filterNotes(meta, filterState);
   return (
     <Card data-widget={meta.id} className="h-full min-w-0">
       <div className="flex flex-col gap-1.5 px-(--card-spacing)">
-        <h3 className="text-sm font-medium">{meta.title}</h3>
+        <h3 className="text-sm font-medium">
+          {links?.index ? (
+            <LinkCell to={links.index.to} params={links.index.params} search={links.index.search}>
+              {meta.title}
+            </LinkCell>
+          ) : (
+            meta.title
+          )}
+        </h3>
         {notes.length > 0 ? (
           <div className="flex flex-wrap gap-1.5">
             {notes.map((note) => (
@@ -71,7 +84,7 @@ export function WidgetCard({
             </Button>
           </div>
         ) : (
-          <WidgetRenderer meta={meta} data={result.data} />
+          <WidgetRenderer meta={meta} data={result.data} {...(links ? { links } : {})} />
         )}
       </div>
     </Card>

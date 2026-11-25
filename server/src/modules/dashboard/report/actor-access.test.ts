@@ -14,10 +14,10 @@ let rest: ReturnType<typeof restClient>;
 let sent: MailMessage[];
 
 const NOW = Date.parse('2026-11-23T05:00:00.000Z'); // Senin 23 Nov 2026 12:00 WIB
-const OWNER = 'owner@gmail.com'; // dashboard: edit; serial BU x dan y; sticker view
+const OWNER = 'owner@gmail.com'; // dashboard: edit; serial BU x dan y; stok stiker view
 const WIDE = 'wide@gmail.com'; // manage; hak data sama dengan pemilik
 const NARROW = 'narrow@gmail.com'; // manage; serial hanya BU x
-const NOSTICKER = 'nosticker@gmail.com'; // manage; serial x dan y tanpa sticker view
+const NOSTICKER = 'nosticker@gmail.com'; // manage; serial x dan y tanpa stok stiker view
 const NODATA = 'nodata@gmail.com'; // manage; tanpa hak data sama sekali
 
 const BODY = {
@@ -26,8 +26,8 @@ const BODY = {
   period: 'lastWeek',
   filter: { from: '2026-11-01', to: '2026-11-23' },
   widgets: [
-    { id: 'sn.recorded', filters: {} },
-    { id: 'pt.condition', filters: {} },
+    { id: 'sn.status', filters: {} },
+    { id: 'st.postel', filters: {} },
   ],
   offers: [],
   recipients: ['penerima@contoh.id'],
@@ -51,8 +51,10 @@ beforeEach(async () => {
   await seedRole(env, {
     id: 'r-data',
     name: 'Data',
-    permissions: { serial: 'view', sticker: 'view' },
+    permissions: { serial: 'view' },
   });
+  await seedRole(env, { id: 'r-stk', name: 'STK', permissions: { stickerstock: 'view' } });
+  await seedLocation(env, { id: 'loc-stk', code: 'STK', name: 'Lokasi Stok' });
   await seedRole(env, { id: 'r-sn', name: 'SN', permissions: { serial: 'view' } });
   const both = [
     { buId: 'bu-x', roleIds: ['r-data'] },
@@ -78,7 +80,11 @@ beforeEach(async () => {
     await seedUser(env, {
       id,
       email,
-      assignments: [{ locationId: null, roleIds: [dashRole, ...dataRoles] }],
+      assignments: [
+        { locationId: null, roleIds: [dashRole, ...dataRoles] },
+        // Stok stiker adalah izin berlokasi: hanya pengguna ber-hak data yang memegangnya.
+        ...(dataRoles.length > 0 ? [{ locationId: 'loc-stk', roleIds: ['r-stk'] }] : []),
+      ],
       buAssignments,
     });
   }
@@ -111,7 +117,7 @@ describe('pratinjau oleh pelaku bukan pemilik', () => {
       const body = (await response.json()) as Preview;
       expect([email, body.trimmed]).toEqual([email, false]);
       expect(body.html).not.toContain(TRIMMED_NOTE);
-      expect(body.html).toContain('Cakupan: BU: X, Y<br>');
+      expect(body.html).toContain('Cakupan: BU: X, Y | Lokasi: Lokasi Stok<br>');
     }
   });
 
@@ -121,17 +127,17 @@ describe('pratinjau oleh pelaku bukan pemilik', () => {
     expect(body.trimmed).toBe(true);
     expect(body.html).toContain(TRIMMED_NOTE);
     // kepala memuat BU pelaku saja
-    expect(body.html).toContain('Cakupan: BU: X<br>');
+    expect(body.html).toContain('Cakupan: BU: X | Lokasi: Lokasi Stok<br>');
   });
 
   test('widget yang izin modul sumbernya tak dimiliki pelaku dihilangkan = penanda muncul', async () => {
     const id = await makeReport();
     const full = (await (await preview(id, WIDE)).json()) as Preview;
     const body = (await (await preview(id, NOSTICKER)).json()) as Preview;
-    expect(full.html).toContain('Kondisi');
+    expect(full.html).toContain('Postel aktif');
     expect(body.trimmed).toBe(true);
     expect(body.html).toContain(TRIMMED_NOTE);
-    expect(body.html).toContain('Serial dicatat');
+    expect(body.html).toContain('Komposisi status');
   });
 
   test('pelaku tanpa satu pun widget yang berlaku = CONFLICT dengan catatan yang tak menyebut isi laporan', async () => {
@@ -157,7 +163,7 @@ describe('pratinjau oleh pelaku bukan pemilik', () => {
       email: OWNER,
       body: {
         ...BODY,
-        widgets: [{ id: 'sn.recorded', filters: {} }],
+        widgets: [{ id: 'sn.status', filters: {} }],
         filter: { from: '2026-11-01', to: '2026-11-23', locationIds: ['loc-a', 'loc-b'] },
         locationFiltered: true,
       },

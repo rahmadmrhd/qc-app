@@ -17,6 +17,7 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const list = () =>
   z.array(z.string().min(1).max(100)).max(FILTER_LIST_MAX).optional().catch(undefined);
 const day = () => z.string().regex(DAY).optional().catch(undefined);
+const tab = () => z.enum(DASHBOARD_GROUPS).optional().catch(undefined);
 
 /** Nama param URL filter grup: satu param datar per filter, `"<grup>_<kunci>"`. */
 export function groupFilterParam(group: DashboardGroupId, key: string): string {
@@ -38,12 +39,14 @@ export const GROUP_FILTER_PARAMS: readonly {
 
 const groupShape = Object.fromEntries(GROUP_FILTER_PARAMS.map((entry) => [entry.param, list()]));
 
-/** Search param halaman Dashboard: filter global (`bu`, `loc`, `from`, `to`) dan filter grup datar. */
+/** Search param halaman Dashboard: tab grup, filter global (`bu`, `loc`, `from`, `to`), dan filter grup datar. */
 export const dashboardSearchSchema = z.object({
   bu: list(),
   loc: list(),
   from: day(),
   to: day(),
+  /** Tab grup yang aktif (bawaan: grup pertama yang boleh dilihat). */
+  tab: tab(),
   ...groupShape,
 });
 
@@ -52,6 +55,7 @@ export type DashboardSearch = {
   loc?: string[] | undefined;
   from?: string | undefined;
   to?: string | undefined;
+  tab?: DashboardGroupId | undefined;
 } & Record<string, string[] | string | undefined>;
 
 /**
@@ -64,6 +68,7 @@ export type DashboardRouteSearch = {
   loc?: string[] | undefined;
   from?: string | undefined;
   to?: string | undefined;
+  tab?: DashboardGroupId | undefined;
 };
 
 /** Mem-parse search param mentah; kunci filter grup dinamis, jadi tipenya dipersempit ke `DashboardSearch`. */

@@ -44,6 +44,10 @@ export const SOFT_DELETE_PENDING: Record<string, readonly string[]> = {
  * `"<berkas>#<kunci pemindai>"`, nilai = alasan.
  */
 export const SOFT_DELETE_EXEMPT: Record<string, string> = {
+  'server/src/modules/dashboard/widgets/serial.ts#items@1#cfe93ce1':
+    'Filter brand grup Serial: subkueri mencocokkan brand pada item serial APA PUN statusnya (item terhapus tetap memiliki brand serialnya; sama dengan widget Item teratas); hanya membaca brand item untuk menyaring, tak ada keputusan hak.',
+  'server/src/modules/dashboard/widgets/serial.ts#items@3#a49297fc':
+    'Widget Serial per brand: brand dibaca dari item serial APA PUN statusnya (item terhapus tetap memiliki brand serialnya; serial yang dihitung sudah disaring `liveWhere`); nama brand terhapus diberi akhiran "(terhapus)".',
   'server/scripts/merge-duplicate-serials.ts#business_units@1#e09896a1':
     'Penampil kode BU pada laporan operator: BU terhapus tetap memberi kode (soft delete 9); skrip hanya membaca untuk tampilan.',
   'server/scripts/merge-duplicate-serials.ts#serial_events@1#f505f433':

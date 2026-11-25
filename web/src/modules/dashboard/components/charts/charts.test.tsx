@@ -12,6 +12,7 @@ import { ChartFrame } from './chart-frame';
 import { ColumnChart } from './column-chart';
 import { DonutChart } from './donut-chart';
 import { LineChart } from './line-chart';
+import { ScrollBarChart } from './scroll-bar-chart';
 
 const parts = (values: number[]): PartsData => ({
   kind: 'parts',
@@ -29,27 +30,28 @@ const series = (rows: Record<string, number[]>): SeriesData => ({
 });
 
 describe('warna seri', () => {
-  test('token semantik berurutan dan indeks di luar token = warna netral "Lainnya"', () => {
-    expect(CHART_SERIES_TOKENS.length).toBe(6);
+  test('delapan token berwarna berurutan; lewat token berputar kembali, tak pernah netral', () => {
+    expect(CHART_SERIES_TOKENS.length).toBe(8);
     expect(seriesColor(0)).toBe(CHART_SERIES_TOKENS[0]);
-    expect(seriesColor(5)).toBe(CHART_SERIES_TOKENS[5]);
-    expect(seriesColor(6)).toBe(OTHER_SERIES_COLOR);
-    expect(seriesColor(40)).toBe(OTHER_SERIES_COLOR);
+    expect(seriesColor(7)).toBe(CHART_SERIES_TOKENS[7]);
+    expect(seriesColor(8)).toBe(CHART_SERIES_TOKENS[0]);
+    expect(seriesColor(40)).toBe(CHART_SERIES_TOKENS[0]);
+    expect(OTHER_SERIES_COLOR).toBe('var(--chart-8)');
   });
 });
 
 describe('limitSlices', () => {
-  test('8 irisan menjadi 6: lima terbesar dahulu, lalu "Lainnya" berisi jumlah sisanya', () => {
-    const limited = limitSlices(parts([1, 9, 3, 8, 2, 7, 4, 6]).slices);
-    expect(limited.length).toBe(6);
-    expect(limited.map((slice) => slice.value)).toEqual([9, 8, 7, 6, 4, 6]);
-    expect(limited[5]).toEqual({ key: 'other', label: 'Lainnya', value: 3 + 2 + 1 });
+  test('10 irisan menjadi 8: tujuh terbesar dahulu, lalu "Lainnya" berisi jumlah sisanya', () => {
+    const limited = limitSlices(parts([1, 9, 3, 8, 2, 7, 4, 6, 10, 5]).slices);
+    expect(limited.length).toBe(8);
+    expect(limited.map((slice) => slice.value)).toEqual([10, 9, 8, 7, 6, 5, 4, 6]);
+    expect(limited[7]).toEqual({ key: 'other', label: 'Lainnya', value: 3 + 2 + 1 });
   });
 
   test('tidak lebih dari batas: apa adanya', () => {
     const slices = parts([1, 2, 3]).slices;
     expect(limitSlices(slices)).toBe(slices);
-    expect(limitSlices(parts([1, 2, 3, 4, 5, 6]).slices).length).toBe(6);
+    expect(limitSlices(parts([1, 2, 3, 4, 5, 6, 7, 8]).slices).length).toBe(8);
   });
 });
 
@@ -71,11 +73,19 @@ describe('DonutChart', () => {
     expect(within(legend).getByText('Irisan 2')).toBeTruthy();
   });
 
-  test('irisan lebih dari enam digabung "Lainnya"; pie tetap dirender', () => {
-    render(<DonutChart data={parts([1, 2, 3, 4, 5, 6, 7, 8])} label="Banyak" pie />);
+  test('irisan lebih dari delapan digabung "Lainnya"; pie tetap dirender', () => {
+    render(<DonutChart data={parts([1, 2, 3, 4, 5, 6, 7, 8, 9])} label="Banyak" pie />);
     const table = screen.getByRole('table', { hidden: true });
     expect(within(table).getByText('Lainnya')).toBeTruthy();
     expect(within(table).queryByText('Irisan 1')).toBeNull();
+  });
+
+  test('donat menampilkan total semua irisan di tengah; pie tidak', () => {
+    const { unmount } = render(<DonutChart data={parts([20, 5, 1200])} label="Total" />);
+    expect(document.querySelector('[data-slot="donut-total"]')?.textContent).toContain('1.225');
+    unmount();
+    render(<DonutChart data={parts([20, 5])} label="Pie" pie />);
+    expect(document.querySelector('[data-slot="donut-total"]')).toBeNull();
   });
 
   test('tanpa data: pesan "Belum ada data", tanpa grafik', () => {
@@ -86,6 +96,22 @@ describe('DonutChart', () => {
 
   test('semua nilai nol dianggap kosong', () => {
     render(<DonutChart data={parts([0, 0])} label="Nol" />);
+    expect(screen.getByText('Belum ada data')).toBeTruthy();
+  });
+});
+
+describe('ScrollBarChart', () => {
+  test('banyak batang: wilayah gulir horizontal dapat difokus, lebar menurut jumlah, urutan data dipertahankan', () => {
+    render(<ScrollBarChart data={parts([5, 1, 9, 3, 7, 2, 8, 4, 6, 10, 11, 12])} label="Stok" />);
+    const scroller = document.querySelector('[data-slot="chart-scroller"]') as HTMLElement;
+    expect(scroller.getAttribute('tabindex')).toBe('0');
+    expect(scroller.className).toContain('overflow-x-auto');
+    expect(scroller.getAttribute('aria-label')).toBe('Stok (dapat digulir)');
+    expectAccessible('Stok', ['Irisan 1', '5', 'Irisan 12', '12']);
+  });
+
+  test('tanpa data: pesan "Belum ada data"', () => {
+    render(<ScrollBarChart data={parts([])} label="Kosong" />);
     expect(screen.getByText('Belum ada data')).toBeTruthy();
   });
 });

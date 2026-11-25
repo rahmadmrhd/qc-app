@@ -49,7 +49,7 @@ beforeEach(async () => {
     schedule: { frequency: 'weekly', hour: 8, weekday: 1, monthDay: 1 },
     period: 'lastWeek',
     filter: { from: '', to: '' },
-    widgets: [{ id: 'sn.recorded', filters: {} }],
+    widgets: [{ id: 'sn.status', filters: {} }],
     offers: [],
     recipients: ['penerima@contoh.id'],
     linkDays: 14,

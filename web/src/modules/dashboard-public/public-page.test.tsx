@@ -38,8 +38,8 @@ const BASE_DTO: PublicDashboardDto = {
       result: { status: 'ok', data: { kind: 'number', value: 7 } },
     },
     {
-      id: 'sn.recorded',
-      group: 'serial',
+      id: 'hs.active',
+      group: 'handover',
       result: { status: 'ok', data: { kind: 'number', value: 3 } },
     },
   ],

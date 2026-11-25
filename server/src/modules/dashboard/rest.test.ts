@@ -44,7 +44,7 @@ beforeEach(async () => {
   });
   await seedUser(env, { id: 'u-none', email: NOBODY });
   stub('hs.created');
-  stub('sn.recorded');
+  stub('sn.status');
 });
 
 afterEach(() => {
@@ -124,15 +124,15 @@ describe('dashboard.query', () => {
   });
 
   test('widget tanpa izin tidak ada di keluaran', async () => {
-    const response = await query([{ id: 'hs.created' }, { id: 'sn.recorded' }]);
+    const response = await query([{ id: 'hs.created' }, { id: 'sn.status' }]);
     const body = (await response.json()) as { widgets: { id: string }[] };
     expect(body.widgets.map((widget) => widget.id)).toEqual(['hs.created']);
 
-    const serial = await query([{ id: 'hs.created' }, { id: 'sn.recorded' }], RANGE, SERIAL_ONLY);
+    const serial = await query([{ id: 'hs.created' }, { id: 'sn.status' }], RANGE, SERIAL_ONLY);
     const serialBody = (await serial.json()) as { widgets: { id: string }[] };
-    expect(serialBody.widgets.map((widget) => widget.id)).toEqual(['sn.recorded']);
+    expect(serialBody.widgets.map((widget) => widget.id)).toEqual(['sn.status']);
 
-    const nobody = await query([{ id: 'hs.created' }, { id: 'sn.recorded' }], RANGE, NOBODY);
+    const nobody = await query([{ id: 'hs.created' }, { id: 'sn.status' }], RANGE, NOBODY);
     expect(((await nobody.json()) as { widgets: unknown[] }).widgets).toEqual([]);
   });
 });
@@ -154,6 +154,7 @@ describe('dashboard.options', () => {
     const response = await rest.get('/dashboard/options', { email: HANDOVER_ONLY });
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
+      brands: [],
       customers: [{ value: 'c-1', label: 'Customer Satu' }],
       items: [],
       stickerTypes: [],
@@ -166,6 +167,7 @@ describe('dashboard.options', () => {
     await seedItem(env, { id: 'i-b', brand: 'Brand', model: 'Tipe B', businessUnitIds: ['bu-b'] });
     const response = await rest.get('/dashboard/options', { email: SERIAL_ONLY });
     expect(await response.json()).toEqual({
+      brands: [{ value: 'brand-brand', label: 'Brand' }],
       customers: [],
       items: [{ value: 'i-1', label: 'Brand Tipe 1' }],
       stickerTypes: [],
@@ -184,6 +186,7 @@ describe('dashboard.options', () => {
     const body = (await response.json()) as Record<string, { value: string }[]>;
     expect(body.customers?.map((option) => option.value)).toEqual(['c-1']);
     expect(body.items?.map((option) => option.value)).toEqual(['i-1']);
+    expect(body.brands?.map((option) => option.value)).toEqual(['brand-brand']);
     expect(body.stickerTypes?.map((option) => option.value)).toEqual(['t-1']);
     expect(body.stickers?.map((option) => option.value)).toEqual(['s-1']);
   });
@@ -191,6 +194,7 @@ describe('dashboard.options', () => {
   test('pengguna tanpa izin apa pun mendapat semua daftar kosong', async () => {
     const response = await rest.get('/dashboard/options', { email: NOBODY });
     expect(await response.json()).toEqual({
+      brands: [],
       customers: [],
       items: [],
       stickerTypes: [],

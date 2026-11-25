@@ -83,10 +83,11 @@ const attention: WidgetImpl = {
     const where = stockConditions(ctx);
     const rows = await ctx.db
       .prepare(
-        `SELECT k.name AS sticker, CASE WHEN t.id IS NULL THEN '' WHEN t.deleted_at = '' THEN t.name ELSE CONCAT(t.name, ' (terhapus)') END AS type, CASE WHEN l.id IS NULL THEN st.location_id WHEN l.deleted_at = '' THEN l.name ELSE CONCAT(l.name, ' (terhapus)') END AS location, st.qty AS stock, k.min_qty AS min_qty FROM sticker_stock st JOIN stickers k ON k.id = st.sticker_id LEFT JOIN sticker_types t ON t.id = k.type_id LEFT JOIN locations l ON l.id = st.location_id WHERE ${liveWhere('k')}${where.sql} AND (${OUT_SQL} OR (${LOW_SQL})) ORDER BY CASE WHEN st.qty <= 0 THEN 0 ELSE 1 END, st.qty, k.name, st.location_id LIMIT ${ATTENTION_ROWS}`,
+        `SELECT k.id AS id, k.name AS sticker, CASE WHEN t.id IS NULL THEN '' WHEN t.deleted_at = '' THEN t.name ELSE CONCAT(t.name, ' (terhapus)') END AS type, CASE WHEN l.id IS NULL THEN st.location_id WHEN l.deleted_at = '' THEN l.name ELSE CONCAT(l.name, ' (terhapus)') END AS location, st.qty AS stock, k.min_qty AS min_qty FROM sticker_stock st JOIN stickers k ON k.id = st.sticker_id LEFT JOIN sticker_types t ON t.id = k.type_id LEFT JOIN locations l ON l.id = st.location_id WHERE ${liveWhere('k')}${where.sql} AND (${OUT_SQL} OR (${LOW_SQL})) ORDER BY CASE WHEN st.qty <= 0 THEN 0 ELSE 1 END, st.qty, k.name, st.location_id LIMIT ${ATTENTION_ROWS}`,
       )
       .bind(...where.binds)
       .all<{
+        id: string;
         sticker: string;
         type: string;
         location: string;
@@ -97,6 +98,7 @@ const attention: WidgetImpl = {
       kind: 'list',
       columns,
       rows: rows.results.map((row) => ({
+        id: row.id,
         sticker: row.sticker,
         type: row.type,
         location: row.location,
@@ -147,14 +149,58 @@ const movement: WidgetImpl = {
   },
 };
 
-const byType: WidgetImpl = {
-  id: 'st.byType',
+/** Stiker AKTIF menurut jenis sistem (Manual Book dan Postel); kondisi saat ini, bukan per lokasi. */
+async function countActiveOfKind(ctx: WidgetCtx, kind: 'manual_book' | 'postel'): Promise<number> {
+  const row = await ctx.db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM stickers k JOIN sticker_types t ON t.id = k.type_id WHERE ${liveWhere('k')} AND ${liveWhere('t')} AND k.status = 'active' AND t.system_kind = ?`,
+    )
+    .bind(kind)
+    .first<{ n: number | string }>();
+  return num(row?.n);
+}
+
+const manualBook: WidgetImpl = {
+  id: 'st.manualBook',
+  async run(ctx): Promise<NumberData> {
+    return { kind: 'number', value: await countActiveOfKind(ctx, 'manual_book') };
+  },
+};
+
+const postel: WidgetImpl = {
+  id: 'st.postel',
+  async run(ctx): Promise<NumberData> {
+    return { kind: 'number', value: await countActiveOfKind(ctx, 'postel') };
+  },
+};
+
+/** Jumlah stiker aktif per jenis (kondisi saat ini; filter jenis dan stiker berlaku). */
+const stickersByType: WidgetImpl = {
+  id: 'st.stickersByType',
+  async run(ctx): Promise<PartsData> {
+    const filter = filterConditions(ctx);
+    const rows = await ctx.db
+      .prepare(
+        `SELECT k.type_id AS id, MAX(CASE WHEN t.id IS NULL THEN k.type_id WHEN t.deleted_at = '' THEN t.name ELSE CONCAT(t.name, ' (terhapus)') END) AS label, COUNT(*) AS n FROM stickers k LEFT JOIN sticker_types t ON t.id = k.type_id WHERE ${liveWhere('k')} AND k.status = 'active'${filter.sql} GROUP BY k.type_id ORDER BY n DESC, label`,
+      )
+      .bind(...filter.binds)
+      .all<{ id: string; label: string; n: number | string }>();
+    return {
+      kind: 'parts',
+      slices: rows.results.map((row) => ({ key: row.id, label: row.label, value: num(row.n) })),
+    };
+  },
+};
+
+/** Total stok SEMUA stiker dalam cakupan (semua lokasi), urut jenis lalu nama stiker (keputusan pemilik 2026-11-25). */
+const stockBySticker: WidgetImpl = {
+  id: 'st.stockBySticker',
   async run(ctx): Promise<PartsData> {
     if (noScope(ctx)) return { kind: 'parts', slices: [] };
     const where = stockConditions(ctx);
     const rows = await ctx.db
       .prepare(
-        `SELECT k.type_id AS id, MAX(CASE WHEN t.id IS NULL THEN k.type_id WHEN t.deleted_at = '' THEN t.name ELSE CONCAT(t.name, ' (terhapus)') END) AS label, SUM(st.qty) AS total FROM sticker_stock st JOIN stickers k ON k.id = st.sticker_id LEFT JOIN sticker_types t ON t.id = k.type_id WHERE ${liveWhere('k')}${where.sql} GROUP BY k.type_id ORDER BY total DESC, label`,
+        `SELECT k.id AS id, MAX(k.name) AS label, SUM(st.qty) AS total FROM sticker_stock st JOIN stickers k ON k.id = st.sticker_id LEFT JOIN sticker_types t ON t.id = k.type_id AND t.deleted_at = '' WHERE ${liveWhere('k')}${where.sql} GROUP BY k.id ORDER BY COALESCE(MAX(t.name), ''), label, k.id`,
       )
       .bind(...where.binds)
       .all<{ id: string; label: string; total: number | string }>();
@@ -165,4 +211,13 @@ const byType: WidgetImpl = {
   },
 };
 
-export const STICKER_WIDGETS: readonly WidgetImpl[] = [out, low, attention, movement, byType];
+export const STICKER_WIDGETS: readonly WidgetImpl[] = [
+  out,
+  low,
+  manualBook,
+  postel,
+  attention,
+  movement,
+  stickersByType,
+  stockBySticker,
+];

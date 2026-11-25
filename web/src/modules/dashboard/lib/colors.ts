@@ -1,32 +1,33 @@
 import type { PartsData } from '@shared/dashboard';
 
 /**
- * Warna seri grafik: token semantik yang SUDAH ada di `styles.css` (tidak ada token baru), memakai nada teks/garis
- * (`-text`) yang lolos kontras AA di atas latar kartu pada mode terang dan gelap (dijaga `styles.contrast.test.ts`).
- * Primary memakai `--foreground` (aturan nada primary di sistem desain). Urutan dipilih agar irisan bersebelahan
- * berbeda jelas.
+ * Warna seri grafik: palet `--chart-1..8` di `styles.css` (keputusan pemilik 2026-11-25: grafik TIDAK PERNAH memakai
+ * warna netral, termasuk irisan "Lainnya"). Tiap token >= 3:1 terhadap latar kartu pada mode terang dan gelap dan
+ * berwarna (dijaga `styles.contrast.test.ts`). Urutan dipilih agar irisan bersebelahan berbeda jelas.
  */
 export const CHART_SERIES_TOKENS = [
-  'var(--foreground)',
-  'var(--info-text)',
-  'var(--success-text)',
-  'var(--warning-text)',
-  'var(--destructive-text)',
-  'var(--secondary-text)',
+  'var(--chart-1)',
+  'var(--chart-2)',
+  'var(--chart-3)',
+  'var(--chart-4)',
+  'var(--chart-5)',
+  'var(--chart-6)',
+  'var(--chart-7)',
+  'var(--chart-8)',
 ] as const;
 
-/** Warna netral untuk irisan "Lainnya" dan seri di luar enam token. */
-export const OTHER_SERIES_COLOR = 'var(--muted-foreground)';
+/** Warna irisan "Lainnya": token terakhir palet (tetap berwarna, berbeda dari tujuh irisan di depannya). */
+export const OTHER_SERIES_COLOR = 'var(--chart-8)';
 
 /** Kunci irisan hasil penggabungan `limitSlices`. */
 export const OTHER_SLICE_KEY = 'other';
 
-/** Warna seri ke-`index` (mulai 0); indeks >= jumlah token = warna "Lainnya". */
+/** Warna seri ke-`index` (mulai 0); melewati jumlah token = berputar kembali (tak pernah netral). */
 export function seriesColor(index: number): string {
-  return CHART_SERIES_TOKENS[index] ?? OTHER_SERIES_COLOR;
+  return CHART_SERIES_TOKENS[index % CHART_SERIES_TOKENS.length] ?? OTHER_SERIES_COLOR;
 }
 
-/** Warna irisan: irisan "Lainnya" selalu netral, selain itu menurut urutan. */
+/** Warna irisan: irisan "Lainnya" memakai token terakhir, selain itu menurut urutan. */
 export function sliceColor(key: string, index: number): string {
   return key === OTHER_SLICE_KEY ? OTHER_SERIES_COLOR : seriesColor(index);
 }
@@ -35,7 +36,10 @@ export function sliceColor(key: string, index: number): string {
  * Batasi irisan sampai `max`: lebih banyak dari `max` = `max - 1` irisan terbesar ditambah satu irisan "Lainnya"
  * berisi jumlah sisanya. Tidak lebih dari `max` = apa adanya (urutan asli).
  */
-export function limitSlices(slices: PartsData['slices'], max = 6): PartsData['slices'] {
+export function limitSlices(
+  slices: PartsData['slices'],
+  max = CHART_SERIES_TOKENS.length,
+): PartsData['slices'] {
   if (slices.length <= max) return slices;
   const sorted = [...slices].sort((a, b) => b.value - a.value);
   const kept = sorted.slice(0, max - 1);

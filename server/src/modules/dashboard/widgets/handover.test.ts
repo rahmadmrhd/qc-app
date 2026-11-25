@@ -163,13 +163,23 @@ describe('hs.status', () => {
 });
 
 describe('hs.trend', () => {
-  test('titik berurutan naik per hari; Dibuat memakai created_at, Selesai memakai completed_at', async () => {
+  test('satu garis task dibuat per hari WIB; dibatalkan dan terhapus tidak dihitung', async () => {
     await seedHandover(env, { id: 'h1', createdAt: '2026-11-11T03:00:00.000Z' });
     await seedHandover(env, {
       id: 'h2',
       createdAt: '2026-11-11T04:00:00.000Z',
       boardStatus: 'done',
       completedAt: '2026-11-13T04:00:00.000Z',
+    });
+    await seedHandover(env, {
+      id: 'h3',
+      createdAt: '2026-11-12T04:00:00.000Z',
+      boardStatus: 'cancelled',
+    });
+    await seedHandover(env, {
+      id: 'h4',
+      createdAt: '2026-11-12T05:00:00.000Z',
+      deletedAt: '2026-11-13T00:00:00.000Z',
     });
     const data = (await run('hs.trend')) as SeriesData;
     expect(data.kind).toBe('series');
@@ -183,12 +193,7 @@ describe('hs.trend', () => {
       '2026-11-15',
       '2026-11-16',
     ]);
-    const created = data.series.find((series) => series.key === 'created');
-    const completed = data.series.find((series) => series.key === 'completed');
-    expect(created?.label).toBe('Dibuat');
-    expect(completed?.label).toBe('Selesai');
-    expect(created?.values).toEqual([0, 2, 0, 0, 0, 0, 0]);
-    expect(completed?.values).toEqual([0, 0, 0, 1, 0, 0, 0]);
+    expect(data.series).toEqual([{ key: 'tasks', label: 'Task', values: [0, 2, 0, 0, 0, 0, 0] }]);
   });
 
   test('tanpa lokasi: deret nol dengan titik tetap lengkap', async () => {
@@ -289,7 +294,10 @@ describe('hs.oldest', () => {
     const columns = widgetMeta('hs.oldest').listColumns ?? [];
     expect(data.columns).toEqual([...columns]);
     for (const row of data.rows) {
-      expect(Object.keys(row).sort()).toEqual(columns.map((column) => column.key).sort());
+      // `id` = kolom tersembunyi untuk tautan di aplikasi (tak ada di `listColumns`, tak masuk DTO publik).
+      expect(Object.keys(row).sort()).toEqual(
+        [...columns.map((column) => column.key), 'id'].sort(),
+      );
     }
     expect(data.rows[0]).toMatchObject({
       customer: 'Satu',

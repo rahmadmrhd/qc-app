@@ -114,14 +114,11 @@ describe('parseScope', () => {
     expect(parseScope(JSON.stringify(fixed))).toEqual(fixed);
   });
 
-  test('null untuk JSON rusak, bentuk salah, atau widget tak dikenal', () => {
+  test('null untuk JSON rusak atau bentuk salah', () => {
     expect(parseScope('{rusak')).toBeNull();
     expect(parseScope('')).toBeNull();
     expect(parseScope('null')).toBeNull();
     expect(parseScope('[]')).toBeNull();
-    expect(
-      parseScope(JSON.stringify({ ...SCOPE, widgets: [{ id: 'tidak.ada', filters: {} }] })),
-    ).toBeNull();
     expect(parseScope(JSON.stringify({ ...SCOPE, buIds: 'bu-a' }))).toBeNull();
     expect(parseScope(JSON.stringify({ ...SCOPE, locationFiltered: 'ya' }))).toBeNull();
     expect(
@@ -134,5 +131,23 @@ describe('parseScope', () => {
       parseScope(JSON.stringify({ ...SCOPE, widgets: [{ id: 'hs.created', filters: { a: 1 } }] })),
     ).toBeNull();
     expect(parseScope(JSON.stringify({ ...SCOPE, offers: ['rahasia'] }))).toBeNull();
+  });
+
+  test('widget yang sudah dihapus dari dashboard dibuang diam-diam; yang tersisa tetap', () => {
+    const scope = parseScope(
+      JSON.stringify({
+        ...SCOPE,
+        widgets: [
+          { id: 'pt.condition', filters: {} },
+          { id: 'sn.recorded', filters: { custody: ['qc'] } },
+          { id: 'hs.created', filters: {} },
+        ],
+      }),
+    );
+    expect(scope?.widgets).toEqual([{ id: 'hs.created', filters: {} }]);
+    // Bentuk widget yang rusak tetap menolak seluruh cakupan.
+    expect(
+      parseScope(JSON.stringify({ ...SCOPE, widgets: [{ id: 'pt.condition', filters: 5 }] })),
+    ).toBeNull();
   });
 });

@@ -119,15 +119,14 @@ describe('rp.opened', () => {
 });
 
 describe('rp.trend', () => {
-  test('seri Dibuka per opened_on dan Ditutup per closed_on', async () => {
+  test('satu garis laporan dibuat per opened_on; closed_on tidak ikut', async () => {
     await reported('1', { openedOn: '2026-11-11', closedOn: '2026-11-13', outcome: 'broken' });
     await reported('2', { openedOn: '2026-11-11' });
     await reported('3', { openedOn: '2026-11-05', closedOn: '2026-11-13', outcome: 'good' });
     const data = (await run('rp.trend')) as SeriesData;
     expect(data.points.length).toBe(7);
     expect(data.series).toEqual([
-      { key: 'opened', label: 'Dibuka', values: [0, 2, 0, 0, 0, 0, 0] },
-      { key: 'closed', label: 'Ditutup', values: [0, 0, 0, 2, 0, 0, 0] },
+      { key: 'opened', label: 'Laporan dibuat', values: [0, 2, 0, 0, 0, 0, 0] },
     ]);
   });
 });
@@ -168,6 +167,7 @@ describe('rp.oldest', () => {
     const columns = widgetMeta('rp.oldest').listColumns ?? [];
     expect(data.columns).toEqual([...columns]);
     expect(data.rows[0]).toEqual({
+      id: 'c-1',
       number: 'LP-1',
       status: 'Dilaporkan',
       location: 'Lokasi A',

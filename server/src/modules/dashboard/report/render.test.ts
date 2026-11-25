@@ -219,18 +219,18 @@ describe('Review Focus 5: ukuran surel', () => {
       item('rp.trend', series(30, 2)),
       item('st.movement', series(30, 2)),
       item('hs.oldest', list(5, 99, 200)),
-      item('sn.transit', {
+      item('sn.latest', {
         kind: 'list',
-        columns: widgetMeta('sn.transit').listColumns?.map((c) => ({ ...c })) ?? [],
+        columns: widgetMeta('sn.latest').listColumns?.map((c) => ({ ...c })) ?? [],
         rows: Array.from({ length: 5 }, () =>
           Object.fromEntries(
-            (widgetMeta('sn.transit').listColumns ?? []).map((c) => [c.key, 'y'.repeat(200)]),
+            (widgetMeta('sn.latest').listColumns ?? []).map((c) => [c.key, 'y'.repeat(200)]),
           ),
         ),
         total: 50,
       }),
       item('hs.created', { kind: 'number', value: 1234, previous: 1000 }),
-      item('sn.recorded', { kind: 'number', value: 55, previous: 60 }),
+      item('sn.status', { kind: 'number', value: 55, previous: 60 }),
       item('rp.opened', { kind: 'number', value: 4, previous: 2 }),
       item('hs.status', {
         kind: 'parts',

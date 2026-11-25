@@ -41,7 +41,7 @@ function input(overrides: Partial<CreateShareInput> = {}): CreateShareInput {
     title: 'Ringkasan',
     filter: { from: '2026-11-01', to: '2026-11-23' },
     range: { mode: 'fixed', from: '2026-11-01', to: '2026-11-23' },
-    widgets: [{ id: 'sn.recorded', filters: {} }],
+    widgets: [{ id: 'sn.status', filters: {} }],
     offers: [],
     expiresInDays: 30,
     ...overrides,

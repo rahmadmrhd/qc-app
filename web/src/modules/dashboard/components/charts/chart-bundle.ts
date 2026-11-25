@@ -4,3 +4,4 @@ export { BarListChart } from './bar-list-chart';
 export { ColumnChart } from './column-chart';
 export { DonutChart } from './donut-chart';
 export { LineChart } from './line-chart';
+export { ScrollBarChart } from './scroll-bar-chart';

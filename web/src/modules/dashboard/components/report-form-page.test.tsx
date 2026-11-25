@@ -31,7 +31,7 @@ const SAVED: DashboardReportDto = {
     buIds: ['b1'],
     locationIds: [],
     locationFiltered: false,
-    widgets: [{ id: 'sn.recorded', filters: {} }],
+    widgets: [{ id: 'sn.status', filters: {} }],
     offers: [],
   },
   recipients: ['lama@contoh.id'],
@@ -84,7 +84,7 @@ const goTab = (name: string) => userEvent.click(screen.getByRole('tab', { name }
 async function fillValid(recipients: string) {
   await userEvent.type(screen.getByLabelText('Nama laporan'), 'Uji');
   await goTab('Isi');
-  await userEvent.click(await screen.findByRole('checkbox', { name: 'Serial dicatat' }));
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Komposisi status' }));
   await goTab('Penerima');
   await userEvent.type(screen.getByLabelText('Alamat surel penerima'), recipients);
 }
@@ -139,7 +139,7 @@ describe('ReportFormPage: laporan baru', () => {
       period: 'lastWeek',
       filter: { from: '', to: '' },
       locationFiltered: false,
-      widgets: [{ id: 'sn.recorded', filters: {} }],
+      widgets: [{ id: 'sn.status', filters: {} }],
       offers: [],
       recipients: ['satu@contoh.id', 'dua@contoh.id'],
       linkDays: 14,
@@ -230,7 +230,7 @@ describe('ReportFormPage: cakupan lokasi tidak berubah saat menyimpan ulang (I1)
       locationFiltered,
       widgets: [
         { id: 'hs.created', filters: {} },
-        { id: 'sn.recorded', filters: {} },
+        { id: 'sn.status', filters: {} },
       ],
       offers: [],
     },
@@ -282,7 +282,7 @@ describe('ReportFormPage: himpunan beku BU/lokasi lebih dari 20 tidak dikosongka
         buIds,
         locationIds,
         locationFiltered: true,
-        widgets: [{ id: 'sn.recorded', filters: {} }],
+        widgets: [{ id: 'sn.status', filters: {} }],
         offers: [],
       },
     });
@@ -310,14 +310,14 @@ describe('ReportFormPage: laporan milik orang lain', () => {
     me = { ...me, isSuperAdmin: true };
     await form({ ...SAVED, owner: 'lain@x.com' });
     await goTab('Isi');
-    await screen.findByRole('checkbox', { name: 'Serial dicatat' });
+    await screen.findByRole('checkbox', { name: 'Komposisi status' });
     expect(screen.queryByText(/Laporan ini milik/)).toBeNull();
   });
 
   test('laporan milik sendiri tidak memuat penjelasan itu', async () => {
     await form(SAVED);
     await goTab('Isi');
-    await screen.findByRole('checkbox', { name: 'Serial dicatat' });
+    await screen.findByRole('checkbox', { name: 'Komposisi status' });
     expect(screen.queryByText(/Laporan ini milik/)).toBeNull();
   });
 });

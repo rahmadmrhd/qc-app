@@ -70,7 +70,7 @@ function input(overrides: Partial<SaveDashboardReportInput> = {}): SaveDashboard
     schedule: WEEKLY,
     period: 'lastWeek',
     filter: { from: '', to: '' },
-    widgets: [{ id: 'sn.recorded', filters: {} }],
+    widgets: [{ id: 'sn.status', filters: {} }],
     offers: [],
     recipients: ['Penerima@Contoh.id'],
     linkDays: 14,
@@ -100,8 +100,8 @@ const widgets = (count: number) =>
         'hs.byCustomer',
         'hs.avgDuration',
         'hs.oldest',
-        'sn.recorded',
         'sn.status',
+        'sn.byBrand',
         'sn.trend',
         'sn.byItem',
         'sn.byBu',
@@ -164,7 +164,7 @@ describe('validasi', () => {
   test('widget di luar hak pemilik = VALIDATION', async () => {
     const owner = await userOf();
     const denied = await captureAppErrorAsync(() =>
-      saveDashboardReport(env, owner, input({ widgets: [{ id: 'pt.condition', filters: {} }] })),
+      saveDashboardReport(env, owner, input({ widgets: [{ id: 'st.postel', filters: {} }] })),
     );
     expect(denied?.code).toBe('VALIDATION');
   });
@@ -415,14 +415,19 @@ describe('hak: edit (milik sendiri) dan manage (semua)', () => {
     const OUTSIDE = OUTSIDE_RIGHTS_MESSAGE;
 
     async function ownerWithBoth(): Promise<DashboardReportDto> {
-      await seedRole(env, { id: 'r-st', name: 'ST', permissions: { sticker: 'view' } });
+      await seedRole(env, { id: 'r-st', name: 'ST', permissions: { stickerstock: 'view' } });
+      await seedLocation(env, { id: 'loc-stk', code: 'STK' });
       await env.DB.prepare('UPDATE users SET bu_assignments = ?, assignments = ? WHERE email = ?')
         .bind(
           JSON.stringify([
             { buId: 'bu-x', roleIds: ['r-sn'] },
             { buId: 'bu-y', roleIds: ['r-sn'] },
           ]),
-          JSON.stringify([{ locationId: null, roleIds: ['r-dash', 'r-st'] }]),
+          JSON.stringify([
+            { locationId: null, roleIds: ['r-dash'] },
+            // Stok stiker adalah izin berlokasi.
+            { locationId: 'loc-stk', roleIds: ['r-st'] },
+          ]),
           OWNER,
         )
         .run();
@@ -432,8 +437,8 @@ describe('hak: edit (milik sendiri) dan manage (semua)', () => {
         owner,
         input({
           widgets: [
-            { id: 'sn.recorded', filters: {} },
-            { id: 'pt.condition', filters: {} },
+            { id: 'sn.status', filters: {} },
+            { id: 'st.postel', filters: {} },
           ],
         }),
       );
@@ -446,7 +451,7 @@ describe('hak: edit (milik sendiri) dan manage (semua)', () => {
     const sameScope = (dto: DashboardReportDto): Partial<SaveDashboardReportInput> => ({
       id: dto.id,
       expectedUpdatedAt: dto.updatedAt,
-      filter: { from: '', to: '', buIds: dto.scope.buIds },
+      filter: { from: '', to: '', buIds: dto.scope.buIds, locationIds: dto.scope.locationIds },
       widgets: dto.scope.widgets,
       offers: dto.scope.offers,
       locationFiltered: dto.scope.locationFiltered,
@@ -468,10 +473,7 @@ describe('hak: edit (milik sendiri) dan manage (semua)', () => {
       expect(saved.name).toBe('Ganti nama saja');
       expect(saved.owner).toBe(OWNER);
       expect([...saved.scope.buIds].sort()).toEqual(['bu-x', 'bu-y']);
-      expect(saved.scope.widgets.map((widget) => widget.id)).toEqual([
-        'sn.recorded',
-        'pt.condition',
-      ]);
+      expect(saved.scope.widgets.map((widget) => widget.id)).toEqual(['sn.status', 'st.postel']);
     });
 
     test('mengubah cakupan ke BU di luar haknya ditolak dengan pesan generik, tanpa nama atau jumlah', async () => {
@@ -501,9 +503,9 @@ describe('hak: edit (milik sendiri) dan manage (semua)', () => {
         input({
           ...sameScope(created),
           widgets: [
-            { id: 'sn.recorded', filters: {} },
-            { id: 'pt.condition', filters: {} },
-            { id: 'pt.expiring', filters: {} },
+            { id: 'sn.status', filters: {} },
+            { id: 'st.postel', filters: {} },
+            { id: 'st.manualBook', filters: {} },
           ],
         }),
       ).catch((caught: unknown) => caught as { code?: string; message?: string });
@@ -519,17 +521,17 @@ describe('hak: edit (milik sendiri) dan manage (semua)', () => {
         input({
           ...sameScope(created),
           filter: { from: '', to: '', buIds: ['bu-x'] },
-          widgets: [{ id: 'sn.recorded', filters: {} }],
+          widgets: [{ id: 'sn.status', filters: {} }],
         }),
       );
       expect(saved.scope.buIds).toEqual(['bu-x']);
-      expect(saved.scope.widgets.map((widget) => widget.id)).toEqual(['sn.recorded']);
+      expect(saved.scope.widgets.map((widget) => widget.id)).toEqual(['sn.status']);
       expect(saved.owner).toBe(OWNER);
     });
 
     /** Pemilik berhak Serah Terima dan stok di loc-a dan loc-b; OTHER hanya di loc-a. */
     async function ownerWithLocations(
-      widgetIds: ('hs.created' | 'st.out' | 'sn.recorded')[],
+      widgetIds: ('hs.created' | 'st.out' | 'sn.status')[],
     ): Promise<DashboardReportDto> {
       await seedRole(env, { id: 'r-ho', name: 'HO', permissions: { handover: 'view' } });
       await seedRole(env, { id: 'r-ss', name: 'SS', permissions: { stickerstock: 'view' } });
@@ -596,7 +598,7 @@ describe('hak: edit (milik sendiri) dan manage (semua)', () => {
           ...asForm(created),
           widgets: [
             { id: 'st.out', filters: {} },
-            { id: 'sn.recorded', filters: {} },
+            { id: 'sn.status', filters: {} },
           ],
         }),
       ).catch((caught: unknown) => caught as { code?: string; message?: string });
@@ -628,7 +630,7 @@ describe('hak: edit (milik sendiri) dan manage (semua)', () => {
     test('perubahan filter grup widget terdeteksi sebagai perubahan cakupan (dibekukan ulang)', async () => {
       const created = await ownerWithBoth();
       await giveBothBus(OTHER);
-      const withFilter = [{ id: 'sn.recorded' as const, filters: { custody: ['qc'] } }];
+      const withFilter = [{ id: 'sn.status' as const, filters: { custody: ['qc'] } }];
       const saved = await saveDashboardReport(
         env,
         await userOf(OTHER),
@@ -665,7 +667,12 @@ describe('hak: edit (milik sendiri) dan manage (semua)', () => {
         await userOf(OTHER), // hanya BU x: bila dianggap berubah, hasilnya ditolak
         input({
           ...sameScope(created),
-          filter: { from: '', to: '', buIds: ['bu-y', 'bu-x', 'bu-y'] },
+          filter: {
+            from: '',
+            to: '',
+            buIds: ['bu-y', 'bu-x', 'bu-y'],
+            locationIds: created.scope.locationIds,
+          },
         }),
       );
       expect([...saved.scope.buIds].sort()).toEqual(['bu-x', 'bu-y']);
@@ -690,12 +697,12 @@ describe('hak: edit (milik sendiri) dan manage (semua)', () => {
           ...asForm(created),
           widgets: [
             { id: 'hs.created', filters: {} },
-            { id: 'sn.recorded', filters: {} },
+            { id: 'sn.status', filters: {} },
           ],
         }),
       );
       expect(saved.scope.locationIds).not.toContain('loc-b');
-      expect(saved.scope.widgets.map((widget) => widget.id)).toEqual(['hs.created', 'sn.recorded']);
+      expect(saved.scope.widgets.map((widget) => widget.id)).toEqual(['hs.created', 'sn.status']);
     });
 
     test('super admin menyimpan tanpa mengubah cakupan: dibekukan ulang seperti perilaku lama', async () => {
@@ -727,7 +734,7 @@ describe('hak: edit (milik sendiri) dan manage (semua)', () => {
           ...asForm(created),
           widgets: [
             { id: 'hs.created', filters: {} },
-            { id: 'sn.recorded', filters: {} },
+            { id: 'sn.status', filters: {} },
           ],
         }),
       ).catch((caught: unknown) => caught as { code?: string; message?: string });
@@ -908,7 +915,7 @@ describe('simpan ulang dengan masukan seperti formulir tidak mengubah cakupan ef
       input({
         widgets: [
           { id: 'hs.created', filters: {} },
-          { id: 'sn.recorded', filters: {} },
+          { id: 'sn.status', filters: {} },
         ],
       }),
     );
@@ -931,7 +938,7 @@ describe('simpan ulang dengan masukan seperti formulir tidak mengubah cakupan ef
         locationFiltered: true,
         widgets: [
           { id: 'hs.created', filters: {} },
-          { id: 'sn.recorded', filters: {} },
+          { id: 'sn.status', filters: {} },
         ],
       }),
     );

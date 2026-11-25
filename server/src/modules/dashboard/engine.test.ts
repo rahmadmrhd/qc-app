@@ -20,7 +20,7 @@ const IDS: WidgetId[] = [
   'hs.byLocation',
   'hs.byCustomer',
   'hs.avgDuration',
-  'sn.recorded',
+  'sn.status',
   'sn.status',
 ];
 
@@ -296,9 +296,9 @@ describe('runWidgets', () => {
   test('id tanpa implementasi menjadi error generik', async () => {
     const spy = spyOn(console, 'error').mockImplementation(() => {});
     try {
-      const results = await runWidgets(env, scope, [{ id: 'pt.condition' }], new Map());
+      const results = await runWidgets(env, scope, [{ id: 'st.postel' }], new Map());
       expect(results[0]).toEqual({
-        id: 'pt.condition',
+        id: 'st.postel',
         status: 'error',
         message: 'Widget tidak dapat dimuat',
       });

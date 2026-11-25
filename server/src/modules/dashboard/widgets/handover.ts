@@ -102,33 +102,27 @@ const status: WidgetImpl = {
   },
 };
 
+/**
+ * Jumlah task per periode (keputusan pemilik 2026-11-25): satu garis, task DIBUAT pada periode itu yang tidak
+ * dibatalkan (task terhapus sudah tersaring `liveWhere`). Garis "selesai" dibuang.
+ */
 const trend: WidgetImpl = {
   id: 'hs.trend',
   async run(ctx): Promise<SeriesData> {
     const { range, bucket } = ctx.scope;
     const points = bucketKeys(range, bucket);
     if (noScope(ctx)) {
-      const zeros = points.map(() => 0);
       return {
         kind: 'series',
         bucket,
         points,
-        series: [
-          { key: 'created', label: 'Dibuat', values: zeros },
-          { key: 'completed', label: 'Selesai', values: [...zeros] },
-        ],
+        series: [{ key: 'tasks', label: 'Task', values: points.map(() => 0) }],
       };
     }
     const where = conditions(ctx);
-    const createdRows = await ctx.db
+    const rows = await ctx.db
       .prepare(
-        `SELECT ${wibDaySql('h.created_at')} AS day, COUNT(*) AS n FROM handovers h WHERE ${liveWhere('h')}${where.sql} AND h.created_at >= ? AND h.created_at < ? GROUP BY day`,
-      )
-      .bind(...where.binds, ctx.scope.fromIso, ctx.scope.toIso)
-      .all<{ day: string; n: number | string }>();
-    const completedRows = await ctx.db
-      .prepare(
-        `SELECT ${wibDaySql('h.completed_at')} AS day, COUNT(*) AS n FROM handovers h WHERE ${liveWhere('h')}${where.sql} AND h.completed_at <> '' AND h.completed_at >= ? AND h.completed_at < ? GROUP BY day`,
+        `SELECT ${wibDaySql('h.created_at')} AS day, COUNT(*) AS n FROM handovers h WHERE ${liveWhere('h')}${where.sql} AND h.board_status <> 'cancelled' AND h.created_at >= ? AND h.created_at < ? GROUP BY day`,
       )
       .bind(...where.binds, ctx.scope.fromIso, ctx.scope.toIso)
       .all<{ day: string; n: number | string }>();
@@ -136,18 +130,7 @@ const trend: WidgetImpl = {
       kind: 'series',
       bucket,
       points,
-      series: [
-        {
-          key: 'created',
-          label: 'Dibuat',
-          values: fillSeries(points, createdRows.results, bucket),
-        },
-        {
-          key: 'completed',
-          label: 'Selesai',
-          values: fillSeries(points, completedRows.results, bucket),
-        },
-      ],
+      series: [{ key: 'tasks', label: 'Task', values: fillSeries(points, rows.results, bucket) }],
     };
   },
 };
@@ -220,10 +203,11 @@ const oldest: WidgetImpl = {
     const where = conditions(ctx);
     const rows = await ctx.db
       .prepare(
-        `SELECT h.number, h.customer_name AS customer, h.checked_count AS checked, h.total_count AS total, DATEDIFF(?, ${wibDaySql('h.created_at')}) AS age, CASE WHEN l.deleted_at = '' THEN l.name ELSE CONCAT(l.name, ' (terhapus)') END AS location FROM handovers h LEFT JOIN locations l ON l.id = h.location_id WHERE ${liveWhere('h')}${where.sql} AND h.board_status IN ('new', 'in_progress') ORDER BY h.created_at, h.id LIMIT ${OLDEST_ROWS}`,
+        `SELECT h.id AS id, h.number, h.customer_name AS customer, h.checked_count AS checked, h.total_count AS total, DATEDIFF(?, ${wibDaySql('h.created_at')}) AS age, CASE WHEN l.deleted_at = '' THEN l.name ELSE CONCAT(l.name, ' (terhapus)') END AS location FROM handovers h LEFT JOIN locations l ON l.id = h.location_id WHERE ${liveWhere('h')}${where.sql} AND h.board_status IN ('new', 'in_progress') ORDER BY h.created_at, h.id LIMIT ${OLDEST_ROWS}`,
       )
       .bind(ctx.scope.today, ...where.binds)
       .all<{
+        id: string;
         number: string;
         customer: string;
         checked: number | string;
@@ -241,6 +225,7 @@ const oldest: WidgetImpl = {
       kind: 'list',
       columns,
       rows: rows.results.map((row) => ({
+        id: row.id,
         number: row.number,
         customer: row.customer ? row.customer : MISSING_CUSTOMER,
         location: row.location ?? '',

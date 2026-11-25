@@ -33,7 +33,7 @@ function report(overrides: Partial<DashboardReportDto> = {}): DashboardReportDto
       locationIds: [],
       locationFiltered: false,
       widgets: [
-        { id: 'sn.recorded', filters: {} },
+        { id: 'sn.status', filters: {} },
         { id: 'hs.created', filters: { status: ['done'] } },
       ],
       offers: [],

@@ -48,6 +48,7 @@ const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const OPTION_KIND: Record<string, DashboardOptionKind> = {
   customer: 'customers',
   item: 'items',
+  brand: 'brands',
   stickerType: 'stickerTypes',
   sticker: 'stickers',
 };

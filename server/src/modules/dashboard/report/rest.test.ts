@@ -20,7 +20,7 @@ const BODY = {
   schedule: { frequency: 'weekly', hour: 8, weekday: 1, monthDay: 1 },
   period: 'lastWeek',
   filter: { from: '2026-11-01', to: '2026-11-23' },
-  widgets: [{ id: 'sn.recorded', filters: {} }],
+  widgets: [{ id: 'sn.status', filters: {} }],
   offers: [],
   recipients: ['penerima@contoh.id'],
   linkDays: 14,

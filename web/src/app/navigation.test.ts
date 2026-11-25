@@ -561,11 +561,22 @@ test('butir Dashboard tepat di bawah Beranda; tampil bagi pemegang izin widget m
     ],
   } as MeDto;
   expect(visibleLabels(withBu)).toContain('Dashboard');
-  expect(visibleLabels(stickerMe({ sticker: 'view' }))).toContain('Dashboard');
+  // Grup Postel dihapus (2026-11-25): izin global `sticker: view` saja tak lagi membuka widget apa pun.
+  expect(visibleLabels(stickerMe({ sticker: 'view' }))).not.toContain('Dashboard');
 });
 
 test('Dashboard: tanpa izin kelola tampil sebagai satu butir; dengan izin kelola menjadi induk dua anak', () => {
-  const viewer = stickerMe({ sticker: 'view' });
+  const viewer: MeDto = {
+    ...stickerMe({}),
+    locations: [
+      {
+        id: 'l1',
+        code: 'L1',
+        name: 'Lokasi',
+        permissions: { handover: 'view', qc: 'none', stock: 'none', stickerstock: 'none' },
+      },
+    ],
+  } as MeDto;
   const single = flattenNavItems(visibleNavGroups(NAV_GROUPS, viewer)).filter(
     (entry) => entry.to === '/dashboard',
   );
@@ -574,7 +585,7 @@ test('Dashboard: tanpa izin kelola tampil sebagai satu butir; dengan izin kelola
   expect(single[0]).toMatchObject({ label: 'Dashboard', to: '/dashboard' });
   const ownerGroups = visibleNavGroups(
     NAV_GROUPS,
-    stickerMe({ sticker: 'view', dashboard: 'manage' }),
+    { ...viewer, permissions: { ...viewer.permissions, dashboard: 'manage' } },
   );
   const parent = ownerGroups[0]?.items.find(
     (entry) => isNavParent(entry) && entry.id === 'dashboard',

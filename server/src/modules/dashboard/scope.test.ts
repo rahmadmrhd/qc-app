@@ -73,10 +73,10 @@ describe('izin widget', () => {
     expect(groupsOf(allowedWidgetIds(ctx))).toEqual(['sticker']);
   });
 
-  test('sticker: view global saja membuka hanya Postel', () => {
+  test('sticker: view global saja tidak membuka widget apa pun (Postel dihapus dari dashboard)', () => {
     const ctx = user({ permissions: { sticker: 'view' } });
-    expect(groupsOf(allowedWidgetIds(ctx))).toEqual(['postel']);
-    expect(widgetAllowed(ctx, widgetMeta('pt.condition'))).toBe(true);
+    expect(groupsOf(allowedWidgetIds(ctx))).toEqual([]);
+    expect(widgetAllowed(ctx, widgetMeta('st.postel'))).toBe(false);
     expect(widgetAllowed(ctx, widgetMeta('st.out'))).toBe(false);
   });
 

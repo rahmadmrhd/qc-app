@@ -65,6 +65,8 @@ Kesebelas butir ini mengubah apa yang dibangun, dan semuanya sudah diputuskan at
 | K9 | Daftar pilihan filter relasi | **DIPUTUSKAN pemilik 2026-11-23: dicari di server, bukan dipotong 500.** `dashboard.options` menerima masukan opsional aditif (8.2): `kind`, `query`, `cursor`, `limit` (1-100, bawaan 50), dan `ids` (maks. 20) untuk meresolusi nama nilai yang sudah terpilih atau berasal dari URL. Semuanya tetap dalam cakupan hak yang sama (id di luar hak tak mengembalikan nama). Rute tetap `dashboard.options` tanpa `@2` karena penambahannya aditif. Chip filter memakai `LinkMultiField` dengan `onSearchChange`/`hasMore` (aturan field relasi di `CLAUDE.md`). | Sebelumnya semua pilihan (maks. 500) dimuat sekali dan disaring di klien; record ke-501 dst. tak dapat dipilih. |
 | K10 | Konkurensi, batas waktu, dan prioritas widget | **DIPUTUSKAN pemilik 2026-11-23:** (a) SEMAFOR GLOBAL PER PROSES (per pool basis data), maks. `min(6, max(1, pool - 4))` widget berjalan bersamaan (6 untuk pool 10; mengikuti `DB_POOL_SIZE` agar tak menghabiskan pool; ditambahkan 2026-11-23 atas review), antrean FIFO, dibagi semua permintaan, menggantikan batas "4 per permintaan" (8.1); modul bersama `server/src/modules/dashboard/limiter.ts` yang kelak juga dipakai laporan terjadwal (7a). (b) Batas waktu 15 detik per widget dihitung SETELAH slot diperoleh, sehingga menunggu antrean tidak menjadi galat palsu. Saat batas waktu lewat, klien langsung menerima galat generik "Widget tidak dapat dimuat" (hasil timeout tidak di-cache), tetapi SLOT DITAHAN sampai kerja widget benar-benar selesai atau gagal (diputuskan pemilik 2026-11-23, menggantikan "slot dilepas saat timeout" yang semula; alasan: kueri yang tak dapat dibatalkan masih memegang koneksinya, jadi hanya dengan menahan slot jumlah kueri dashboard benar-benar terbatas dan koneksi untuk rute lain tidak terambil). Batas atas penahanan slot: tiap kueri widget dibatasi 30 detik di sisi database (`max_statement_time`, galat 1969), jadi slot tertahan paling lama 30 detik walau kueri menggantung (diputuskan pemilik 2026-11-23; 15 detik tetap batas respons ke klien). (c) Prioritas widget yang tampil: klien hanya meminta dan menyegarkan grup yang berada di dekat viewport (grup di luar layar tidak diminta dan tidak dimuat ulang sampai mendekat; tab tersembunyi tidak menyegarkan), server memproses widget menurut urutan permintaan. (d) Penyegaran mengikuti aturan halaman lain (default `query-client.ts`: berhenti saat tab tersembunyi, muat ulang saat fokus bila basi, galat server dicoba sekali lagi); dashboard tetap menimpa selang menjadi 60 detik karena kueri agregat berat dan cache server 30 detik, widget gagal tidak di-cache sehingga dicoba lagi pada muat ulang berikutnya. | Sebelumnya hingga 5 x 4 = 20 widget bersamaan per halaman terhadap pool 10 koneksi, dan widget yang antre dapat gagal palsu karena batas waktu. |
 | K11 | Bentuk keluaran `dashboard.query` | **DIPUTUSKAN pemilik 2026-11-23: array berurutan** `widgets: WidgetResult[]` sesuai urutan permintaan, BUKAN peta `{ [id]: WidgetResult }` (8.2). Alasan: kode dan rencana implementasi sudah memakai array, potret kontrak sudah dibuat, dan urutan array berguna untuk urutan widget di laporan surel (7a). Klien memetakan ke `Map` bila perlu. | Peta berarti mengubah kontrak yang sudah dipotret. |
+| K12 | Revisi tata letak dan isi widget (**DIPUTUSKAN pemilik 2026-11-25**) | Setiap grup menjadi SATU TAB (`?tab=`); number card dikelompokkan di baris paling atas dan satu baris tak mencampur jenis berbeda; semua grafik berwarna (palet `--chart-1..8`, tak pernah netral, termasuk "Lainnya"); donat menampilkan total di tengah (ukuran mengikuti lebar); quick list: label membuka halaman indeks dan baris membuka detail, hanya bagi pemegang izin halaman tujuan (tidak di tautan publik/surel); grup Postel dihapus; isi widget direvisi menurut tabel bagian 6 (garis "Task dibuat per periode" menggantikan "Dibuat dan selesai" atas jawaban pemilik; "Lama berjalan (hari)" menggantikan label umur; brand ditambahkan ke Serial; dst.). Tautan dan laporan lama yang memuat id widget yang sudah dihapus tetap hidup: id itu dibuang saat membaca cakupan tersimpan. | Tata letak ditentukan `row`/`span` di registri (`shared/dashboard.ts`), jadi merombak ulang cukup mengubah registri. Total di tengah donat dihitung di klien dari irisan (jumlah nilai positif), tanpa field baru di DTO. |
+
 
 Pilihan saya sendiri yang dapat dipotong pemilik tanpa mengubah arsitektur: delta "vs periode lalu" pada number card berperiode, rentang tanggal bergulir ("N hari terakhir") pada tautan, grup Postel, dan beberapa widget di katalog (bagian 6).
 
@@ -103,9 +105,9 @@ Ponsel: kisi dua kolom (number card satu kolom jadi berdampingan dua-dua, kartu 
 
 Visual grafik (aturan wajib): warna dari token semantik yang ada (`primary`, `info`, `success`, `warning`, `destructive`, `secondary`), maksimum 6 kategori + "Lainnya"; **jangan hanya warna**: legenda berlabel dan nilai terbaca; tiap grafik punya `role="img"`, `aria-label` ringkasan, dan tabel tersembunyi untuk pembaca layar. Bila menambah token `--chart-*`, pasangannya wajib masuk `web/src/styles.contrast.test.ts` (AA 4,5:1 terang dan gelap); lebih baik memakai ulang token yang ada. Gunakan skill `dataviz` saat membangun.
 
-## 6. Katalog widget v1 (27 widget; dapat dipotong)
+## 6. Katalog widget v1 (27 widget; DIREVISI pemilik 2026-11-25, lihat K12 di bagian 4)
 
-Singkatan: **B** = filter BU berlaku, **L** = Lokasi, **T** = Tanggal (kolom), ✗ = tidak berlaku. `Δ` = number card dengan perbandingan periode sebelumnya yang sama panjang (pilihan saya); tiap widget Δ menyatakan arah baiknya di metadata `deltaGood` (K7): `hs.created` naik, `sn.recorded` naik, `rp.opened` turun.
+Singkatan: **B** = filter BU berlaku, **L** = Lokasi, **T** = Tanggal (kolom), ✗ = tidak berlaku. `Δ` = number card dengan perbandingan periode sebelumnya yang sama panjang (pilihan saya); tiap widget Δ menyatakan arah baik (K7). Empat grup (grup Postel DIHAPUS 2026-11-25). Tiap grup tampil sebagai SATU TAB; di dalam tab, number card dikelompokkan di baris paling atas dan satu baris tak pernah mencampur number card dengan jenis lain (satu-satunya pasangan sengaja: Hasil penutupan 5 + Laporan terbuka terlama 7 kolom di layar lebar, kira-kira 40:60). Tiap widget membawa `row` dan `span` (dari 12 kolom) di registri.
 
 **Serah Terima** — izin: `handover` view ATAU `qc` edit (berlokasi). B ✗ (task tak punya BU). L = `handovers.location_id`.
 
@@ -113,26 +115,25 @@ Singkatan: **B** = filter BU berlaku, **L** = Lokasi, **T** = Tanggal (kolom), �
 |---|---|---|---|
 | `hs.created` | number Δ | Task dibuat | `created_at` |
 | `hs.active` | number | Task aktif (baru + dikerjakan) | ✗ kondisi saat ini |
-| `hs.status` | donut | Komposisi status papan | `created_at` |
-| `hs.trend` | line | Task dibuat vs selesai per periode | `created_at` / `completed_at` |
-| `hs.byLocation` | bar | Task per lokasi | `created_at` |
+| `hs.avgDuration` | number | Rata-rata durasi selesai (jam), di samping Task aktif | `completed_at` |
+| `hs.trend` | line | Task dibuat per periode, SATU garis; dibatalkan dan terhapus tidak dihitung | `created_at` |
+| `hs.status` | donut | Komposisi status papan, total di tengah | `created_at` |
+| `hs.byLocation` | donut | Task per lokasi, total di tengah | `created_at` |
 | `hs.byCustomer` | bar horizontal | 10 customer teratas | `created_at` |
-| `hs.avgDuration` | number | Rata-rata durasi selesai | `completed_at` |
-| `hs.oldest` | list | 10 task aktif terlama: nomor, customer, lokasi, umur, progres centang | ✗ |
+| `hs.oldest` | list | 10 task aktif terlama: nomor, customer, lokasi, "Lama berjalan (hari)", progres centang | ✗ |
 
-**Serial Number** — izin: `serial` view ATAU `serialservice` view (ber-BU). B = `serials.bu_id`. L = `serials.location_id`.
+**Serial Number** — izin: `serial` view ATAU `serialservice` view (ber-BU). B = `serials.bu_id`. L = `serials.location_id`. Filter grup tambahan: **Brand** (brand item serial, termasuk item terhapus).
 
 | Id | Visual | Isi | T |
 |---|---|---|---|
-| `sn.recorded` | number Δ | Serial dicatat | `created_at` |
-| `sn.status` | donut | Komposisi status | `created_at` |
 | `sn.trend` | line | Dicatat per periode | `created_at` |
+| `sn.status` | donut | Komposisi status, total di tengah | `created_at` |
+| `sn.byBu` | donut | Serial per BU, total di tengah | `created_at` |
+| `sn.byBrand` | bar horizontal | Serial per brand (10 teratas) | `created_at` |
 | `sn.byItem` | bar horizontal | 10 item teratas | `created_at` |
-| `sn.byBu` | bar | Per BU | `created_at` |
-| `sn.custody` | pie | Kustodi QC / dalam pengiriman / servis | `created_at` |
-| `sn.transit` | list | Sedang dalam pengiriman: nomor serial, item, dari→ke, lama (hari) | ✗ |
+| `sn.latest` | list | Entri terakhir: item, tanggal catat (WIB), jumlah, siapa; digrup per item + tanggal + pencatat, 15 baris, baris membuka daftar Serial terfilter item | `created_at` |
 
-Catatan lokasi: selama pengiriman `serials.location_id` tetap **lokasi asal** dan baru pindah saat diterima (`server/src/modules/serial/act.ts`). Karena itu filter Lokasi pada `sn.*` dan `rp.*` mencocokkan `location_id`; khusus `sn.transit` mencocokkan lokasi asal ATAU tujuan (`transit_to_location_id`) agar serial yang menuju lokasi terpilih tetap terlihat (keputusan saya).
+Dihapus 2026-11-25: Serial dicatat (number), posisi serial (pie kustodi), dan daftar sedang dikirim. Catatan lokasi: selama pengiriman `serials.location_id` tetap **lokasi asal** dan baru pindah saat diterima (`server/src/modules/serial/act.ts`). Karena itu filter Lokasi pada `sn.*` dan `rp.*` mencocokkan `location_id`.
 
 **Laporan rusak** — izin sama dengan Serial. B = `serial_cases.bu_id`. L = lokasi serial induk saat ini (`serials.location_id`; `origin_location_id` kosong sebelum dikirim). Laporan milik serial terhapus tidak dihitung.
 
@@ -140,26 +141,24 @@ Catatan lokasi: selama pengiriman `serials.location_id` tetap **lokasi asal** da
 |---|---|---|---|
 | `rp.open` | number | Laporan terbuka | ✗ kondisi saat ini |
 | `rp.opened` | number Δ | Laporan dibuka | `opened_on` |
-| `rp.trend` | line | Dibuka vs ditutup per periode | `opened_on` / `closed_on` |
-| `rp.result` | donut | Hasil penutupan: rusak vs lolos | `closed_on` |
-| `rp.oldest` | list | 10 laporan terbuka terlama: nomor, status serial, lokasi, lama | ✗ |
+| `rp.trend` | line | Laporan dibuat per periode, SATU garis (garis "ditutup" dihapus) | `opened_on` |
+| `rp.result` | donut | Hasil penutupan: rusak vs lolos (kolom 5 dari 12) | `closed_on` |
+| `rp.oldest` | list | 10 laporan terbuka terlama (kolom 7 dari 12): nomor, status serial, lokasi, lama | ✗ |
 
-**Stok Stiker** — izin: `stickerstock` view (berlokasi). B ✗ (stok tak dibatasi BU). L = `sticker_stock.location_id`.
+**Stok Stiker** — izin: `stickerstock` view (berlokasi). B ✗ (stok tak dibatasi BU). L = `sticker_stock.location_id`, kecuali tiga widget hitungan stiker (tak mengikuti Lokasi).
 
 | Id | Visual | Isi | T |
 |---|---|---|---|
 | `st.out` | number | Pasangan stiker×lokasi yang habis (per lokasi, K5) | ✗ kondisi saat ini |
 | `st.low` | number | Pasangan stiker×lokasi yang menipis (per lokasi, K5) | ✗ kondisi saat ini |
-| `st.attention` | list | Per baris satu pasangan stiker×lokasi habis/menipis: nama stiker, jenis, lokasi, stok di lokasi itu, minimum | ✗ |
+| `st.manualBook` | number | Stiker Manual Book yang aktif (kondisi saat ini) | ✗ |
+| `st.postel` | number | Stiker Postel yang aktif (kondisi saat ini) | ✗ |
 | `st.movement` | bar kelompok | Masuk vs keluar per periode | `ts` entri (kolom waktu `sticker_stock_entries`, bukan `created_at`) |
-| `st.byType` | bar | Total stok per jenis | ✗ |
+| `st.stickersByType` | donut | Jumlah stiker aktif per jenis, total di tengah | ✗ |
+| `st.stockBySticker` | bar (gulir horizontal) | Total stok SEMUA stiker dalam cakupan, urut jenis lalu nama stiker; di ponsel digulir ke samping di dalam grafik | ✗ |
+| `st.attention` | list | Per baris satu pasangan stiker×lokasi habis/menipis: nama stiker, jenis, lokasi, stok di lokasi itu, minimum; baris membuka detail stiker bagi `sticker: view` | ✗ |
 
-**Postel** — izin: `sticker` view (global). B, L, T ✗.
-
-| Id | Visual | Isi |
-|---|---|---|
-| `pt.condition` | donut | Berlaku / Segera habis / Kedaluwarsa |
-| `pt.expiring` | list | Postel segera habis/kedaluwarsa: nama, nomor aktif, tanggal habis, sisa hari |
+Dihapus 2026-11-25: Total stok per jenis (diganti Jumlah stiker per jenis dan Total stok per stiker) dan seluruh grup Postel (`pt.condition`, `pt.expiring`; peringatan Postel lewat surel tetap di modul Postel).
 
 Untuk `st.movement`: masuk = entri `kind` `in`; keluar = `out` ditambah pemotongan Serial. Koreksi dan opname tidak dihitung (bukan pergerakan fisik).
 
