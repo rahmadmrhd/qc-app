@@ -39,7 +39,13 @@ describe('format', () => {
       direction: 'flat',
       tone: 'muted',
     });
-    expect(formatDelta(5, 0)).toBeNull();
+    expect(formatDelta(5, 0)).toEqual({
+      text: 'naik dari periode lalu (0)',
+      direction: 'up',
+      tone: 'success',
+    });
+    expect(formatDelta(5, 0, 'down')?.tone).toBe('danger');
+    expect(formatDelta(0, 0)?.direction).toBe('flat');
     expect(formatDelta(5, undefined)).toBeNull();
   });
 
@@ -88,11 +94,13 @@ describe('NumberWidget', () => {
     expect(container.querySelector('svg.lucide-arrow-up')).not.toBeNull();
   });
 
-  test('tanpa delta atau previous 0: tanpa baris perbandingan', () => {
+  test('tanpa delta atau tanpa previous: tanpa baris perbandingan; previous 0 tetap tampil', () => {
     const { rerender } = render(<NumberWidget data={NUMBER} delta={false} />);
     expect(screen.queryByText(/periode lalu/)).toBeNull();
-    rerender(<NumberWidget data={{ kind: 'number', value: 5, previous: 0 }} delta />);
+    rerender(<NumberWidget data={{ kind: 'number', value: 5 }} delta />);
     expect(screen.queryByText(/periode lalu/)).toBeNull();
+    rerender(<NumberWidget data={{ kind: 'number', value: 5, previous: 0 }} delta />);
+    expect(screen.getByText('naik dari periode lalu (0)')).toBeTruthy();
   });
 });
 

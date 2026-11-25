@@ -16,8 +16,8 @@ export interface DeltaText {
 }
 
 /**
- * Perbandingan dengan periode sebelumnya yang sama panjang. Tanpa pembanding atau pembanding 0 = `null` (persen dari
- * nol tak bermakna). Selalu berupa kata (naik/turun/tetap), bukan warna saja. `good` = arah yang baik untuk widget itu
+ * Perbandingan dengan periode sebelumnya yang sama panjang. Tanpa pembanding = `null`. Pembanding 0 tetap tampil tanpa
+ * persen (persen dari nol tak bermakna): "naik dari periode lalu (0)", sama dengan surel laporan. Selalu berupa kata (naik/turun/tetap), bukan warna saja. `good` = arah yang baik untuk widget itu
  * (bawaan naik); mis. laporan rusak yang naik berwarna merah walau katanya "naik".
  */
 export function formatDelta(
@@ -25,9 +25,17 @@ export function formatDelta(
   previous: number | undefined,
   good: DeltaGood = 'up',
 ): DeltaText | null {
-  if (previous === undefined || previous === 0) return null;
+  if (previous === undefined) return null;
   if (value === previous) {
     return { text: 'tetap dari periode lalu', direction: 'flat', tone: 'muted' };
+  }
+  if (previous === 0) {
+    const direction = value > 0 ? 'up' : 'down';
+    return {
+      text: `${direction === 'up' ? 'naik' : 'turun'} dari periode lalu (0)`,
+      direction,
+      tone: direction === good ? 'success' : 'danger',
+    };
   }
   const percent = Math.max(1, Math.round((Math.abs(value - previous) / Math.abs(previous)) * 100));
   const direction = value > previous ? 'up' : 'down';

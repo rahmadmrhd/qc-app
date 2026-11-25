@@ -10,3 +10,4 @@ change(dashboard): surel laporan terjadwal ramah ponsel (kartu angka bertumpuk, 
 fix(dashboard): tautan Serial/Laporan tanpa pembatasan lokasi kini menawarkan filter lokasi (lokasi hak pembagi) di halaman publik
 feat(dashboard): halaman Tautan dibagikan menampilkan kolom Sumber (Bagikan dashboard atau Laporan terjadwal); section Laporan dipindah di atas Pengaturan
 change(dashboard): latar halaman publik dashboard disamakan dengan halaman Dashboard; badge Laporan terjadwal di Tautan dibagikan menautkan ke laporannya
+fix(dashboard): perbandingan periode lalu pada number card tetap tampil saat periode lalu bernilai 0
