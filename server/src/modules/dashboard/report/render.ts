@@ -141,6 +141,11 @@ export function formatNumber(value: number): string {
 // ---------------------------------------------------------------------------------------------------------------
 // Delta periode lalu
 
+/** Selisih bertanda: `+14`, `-2.380`. */
+function signedDiff(diff: number): string {
+  return `${diff > 0 ? '+' : '-'}${formatNumber(Math.abs(diff))}`;
+}
+
 interface Delta {
   arrow: string;
   text: string;
@@ -157,10 +162,10 @@ function deltaOf(meta: WidgetMeta, data: NumberData): Delta | null {
   const word = up ? 'Naik' : 'Turun';
   let text: string;
   if (previous === 0) {
-    text = `${word} dari periode lalu (0)`;
+    text = `${word} ${signedDiff(value - previous)} dari periode lalu (0)`;
   } else {
     const percent = Math.round((Math.abs(value - previous) / Math.abs(previous)) * 100);
-    text = `${word} ${percent === 0 ? '<1' : percent}% dari periode lalu`;
+    text = `${word} ${percent === 0 ? '<1' : percent}% (${signedDiff(value - previous)}) dari periode lalu (${formatNumber(previous)})`;
   }
   // Warna menurut baik/buruk widget (K7): searah `deltaGood` = hijau, berlawanan = merah; arah nyata tetap tertulis.
   const good = meta.deltaGood;

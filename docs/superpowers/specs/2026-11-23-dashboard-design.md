@@ -131,8 +131,8 @@ Singkatan: **B** = filter BU berlaku, **L** = Lokasi, **T** = Tanggal (kolom), â
 |---|---|---|---|
 | `sn.trend` | line | Dicatat per periode | `created_at` |
 | `sn.status` | donut | Komposisi status, total di tengah | `created_at` |
-| `sn.byBu` | donut | Serial per BU, total di tengah | `created_at` |
-| `sn.byBrand` | bar horizontal | Serial per brand (10 teratas) | `created_at` |
+| `sn.byBu` | donut | Unit per BU, total di tengah | `created_at` |
+| `sn.byBrand` | bar horizontal | Unit per brand (10 teratas) | `created_at` |
 | `sn.byItem` | bar horizontal | 10 item teratas | `created_at` |
 | `sn.latest` | list | Entri terakhir: item, tanggal catat (WIB), jumlah, siapa; digrup per item + tanggal + pencatat, 15 baris, baris membuka daftar Serial terfilter item | `created_at` |
 

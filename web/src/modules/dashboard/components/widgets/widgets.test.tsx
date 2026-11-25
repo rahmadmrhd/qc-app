@@ -25,12 +25,12 @@ describe('format', () => {
 
   test('formatDelta: arah menurut angka, warna menurut baik/buruk (bawaan naik = baik)', () => {
     expect(formatDelta(128, 114)).toEqual({
-      text: 'naik 12% dari periode lalu',
+      text: 'naik 12% (+14) dari periode lalu (114)',
       direction: 'up',
       tone: 'success',
     });
     expect(formatDelta(90, 100)).toEqual({
-      text: 'turun 10% dari periode lalu',
+      text: 'turun 10% (-10) dari periode lalu (100)',
       direction: 'down',
       tone: 'danger',
     });
@@ -40,7 +40,7 @@ describe('format', () => {
       tone: 'muted',
     });
     expect(formatDelta(5, 0)).toEqual({
-      text: 'naik dari periode lalu (0)',
+      text: 'naik +5 dari periode lalu (0)',
       direction: 'up',
       tone: 'success',
     });
@@ -51,12 +51,12 @@ describe('format', () => {
 
   test('formatDelta dengan deltaGood "down": turun = hijau, naik = merah, teks tetap menyebut arah', () => {
     expect(formatDelta(150, 100, 'down')).toEqual({
-      text: 'naik 50% dari periode lalu',
+      text: 'naik 50% (+50) dari periode lalu (100)',
       direction: 'up',
       tone: 'danger',
     });
     expect(formatDelta(50, 100, 'down')).toEqual({
-      text: 'turun 50% dari periode lalu',
+      text: 'turun 50% (-50) dari periode lalu (100)',
       direction: 'down',
       tone: 'success',
     });
@@ -82,14 +82,14 @@ describe('NumberWidget', () => {
   test('angka besar dan delta bertanda kata (bukan warna saja)', () => {
     render(<NumberWidget data={NUMBER} delta />);
     expect(screen.getByText('128')).toBeTruthy();
-    expect(screen.getByText('naik 12% dari periode lalu')).toBeTruthy();
+    expect(screen.getByText('naik 12% (+14) dari periode lalu (114)')).toBeTruthy();
   });
 
   test('deltaGood "down": naik 50% berwarna merah tetapi panahnya tetap naik', () => {
     const { container } = render(
       <NumberWidget data={{ kind: 'number', value: 150, previous: 100 }} delta deltaGood="down" />,
     );
-    const line = screen.getByText('naik 50% dari periode lalu').closest('p');
+    const line = screen.getByText('naik 50% (+50) dari periode lalu (100)').closest('p');
     expect(line?.className).toContain('text-destructive-text');
     expect(container.querySelector('svg.lucide-arrow-up')).not.toBeNull();
   });
@@ -100,7 +100,7 @@ describe('NumberWidget', () => {
     rerender(<NumberWidget data={{ kind: 'number', value: 5 }} delta />);
     expect(screen.queryByText(/periode lalu/)).toBeNull();
     rerender(<NumberWidget data={{ kind: 'number', value: 5, previous: 0 }} delta />);
-    expect(screen.getByText('naik dari periode lalu (0)')).toBeTruthy();
+    expect(screen.getByText('naik +5 dari periode lalu (0)')).toBeTruthy();
   });
 });
 

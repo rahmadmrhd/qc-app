@@ -213,7 +213,7 @@ export const WIDGETS: readonly WidgetMeta[] = [
     SERIAL,
     'sn.total',
     'number',
-    'Total serial dicatat',
+    'Total unit dicatat',
     dateColumn('Tanggal dicatat'),
     { row: 'numbers', span: 6 },
     { delta: 'up' },
@@ -222,7 +222,7 @@ export const WIDGETS: readonly WidgetMeta[] = [
     SERIAL,
     'sn.avgMinutes',
     'number',
-    'Rata-rata waktu per serial (menit)',
+    'Rata-rata waktu per unit (menit)',
     dateColumn('Tanggal dicatat'),
     { row: 'numbers', span: 6 },
   ),
@@ -234,11 +234,11 @@ export const WIDGETS: readonly WidgetMeta[] = [
     row: 'breakdown',
     span: 6,
   }),
-  widget(SERIAL, 'sn.byBu', 'donut', 'Serial per BU', dateColumn('Tanggal dicatat'), {
+  widget(SERIAL, 'sn.byBu', 'donut', 'Unit per BU', dateColumn('Tanggal dicatat'), {
     row: 'breakdown',
     span: 6,
   }),
-  widget(SERIAL, 'sn.byBrand', 'barH', 'Serial per brand', dateColumn('Tanggal dicatat'), {
+  widget(SERIAL, 'sn.byBrand', 'barH', 'Unit per brand', dateColumn('Tanggal dicatat'), {
     row: 'ranking',
     span: 6,
   }),
@@ -250,7 +250,7 @@ export const WIDGETS: readonly WidgetMeta[] = [
     SERIAL,
     'sn.latest',
     'list',
-    'Entri serial terakhir',
+    'Entri unit terakhir',
     dateColumn('Tanggal dicatat'),
     { row: 'list', span: 12 },
     {
@@ -291,7 +291,7 @@ export const WIDGETS: readonly WidgetMeta[] = [
     {
       listColumns: [
         { key: 'number', label: 'Nomor' },
-        { key: 'status', label: 'Status serial' },
+        { key: 'status', label: 'Status unit' },
         { key: 'location', label: 'Lokasi' },
         { key: 'days', label: 'Lama (hari)' },
       ],

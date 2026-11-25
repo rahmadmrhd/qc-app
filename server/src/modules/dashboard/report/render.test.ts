@@ -285,16 +285,16 @@ describe('visual per jenis widget', () => {
 
   test('number: naik, turun, tetap, dan previous 0', () => {
     expect(html(item('hs.created', { kind: 'number', value: 3, previous: 2 }))).toContain(
-      '▲ Naik 50% dari periode lalu',
+      '▲ Naik 50% (+1) dari periode lalu (2)',
     );
     expect(html(item('hs.created', { kind: 'number', value: 1, previous: 2 }))).toContain(
-      '▼ Turun 50% dari periode lalu',
+      '▼ Turun 50% (-1) dari periode lalu (2)',
     );
     expect(html(item('hs.created', { kind: 'number', value: 2, previous: 2 }))).toContain(
       'Tetap dibanding periode lalu',
     );
     const zero = html(item('hs.created', { kind: 'number', value: 5, previous: 0 }));
-    expect(zero).toContain('Naik dari periode lalu (0)');
+    expect(zero).toContain('Naik +5 dari periode lalu (0)');
     expect(zero).not.toMatch(/Naik \d+%/);
     expect(html(item('hs.created', { kind: 'number', value: 5 }))).not.toContain('periode lalu');
   });
@@ -410,7 +410,7 @@ describe('teks polos', () => {
     );
     const lines = rendered.text.split('\n');
     expect(lines).toContain(CTA);
-    expect(rendered.text).toContain('Task dibuat: 1.234 (Naik 23% dari periode lalu)');
+    expect(rendered.text).toContain('Task dibuat: 1.234 (Naik 23% (+234) dari periode lalu (1.000))');
     expect(rendered.text).toContain('Baru: 4 (100%)');
     expect(rendered.text).toContain('Menampilkan 5 dari 12');
     expect(rendered.text).toContain('Dibuat (total');

@@ -7,6 +7,11 @@ export function formatNumber(n: number): string {
   return NUMBER_FORMAT.format(n);
 }
 
+/** Selisih bertanda: `+14`, `-2.380` (minus biasa agar terbaca layar). */
+function signed(diff: number): string {
+  return `${diff > 0 ? '+' : '-'}${formatNumber(Math.abs(diff))}`;
+}
+
 export interface DeltaText {
   text: string;
   /** Arah nyata perubahan (menentukan panah dan kata), terlepas dari baik atau buruk. */
@@ -17,7 +22,8 @@ export interface DeltaText {
 
 /**
  * Perbandingan dengan periode sebelumnya yang sama panjang. Tanpa pembanding = `null`. Pembanding 0 tetap tampil tanpa
- * persen (persen dari nol tak bermakna): "naik dari periode lalu (0)", sama dengan surel laporan. Selalu berupa kata (naik/turun/tetap), bukan warna saja. `good` = arah yang baik untuk widget itu
+ * persen (persen dari nol tak terdefinisi), diganti selisih angkanya: "naik +46 dari periode lalu (0)". Selain itu persen
+ * disertai selisih dan jumlah periode lalu: "naik 12% (+14) dari periode lalu (114)". Selalu berupa kata (naik/turun/tetap), bukan warna saja. `good` = arah yang baik untuk widget itu
  * (bawaan naik); mis. laporan rusak yang naik berwarna merah walau katanya "naik".
  */
 export function formatDelta(
@@ -32,7 +38,7 @@ export function formatDelta(
   if (previous === 0) {
     const direction = value > 0 ? 'up' : 'down';
     return {
-      text: `${direction === 'up' ? 'naik' : 'turun'} dari periode lalu (0)`,
+      text: `${direction === 'up' ? 'naik' : 'turun'} ${signed(value - previous)} dari periode lalu (0)`,
       direction,
       tone: direction === good ? 'success' : 'danger',
     };
@@ -41,7 +47,7 @@ export function formatDelta(
   const direction = value > previous ? 'up' : 'down';
   const tone = direction === good ? 'success' : 'danger';
   return {
-    text: `${direction === 'up' ? 'naik' : 'turun'} ${percent}% dari periode lalu`,
+    text: `${direction === 'up' ? 'naik' : 'turun'} ${percent}% (${signed(value - previous)}) dari periode lalu (${formatNumber(previous)})`,
     direction,
     tone,
   };
