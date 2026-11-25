@@ -355,6 +355,7 @@ describe('skema baseline', () => {
       { name: '0035_dashboard_reports.sql' },
       { name: '0036_buang_indeks_serials_created_id.sql' },
       { name: '0037_dashboard_share_expiry_index.sql' },
+      { name: '0038_dashboard_report_cc_bcc.sql' },
     ]);
   });
 

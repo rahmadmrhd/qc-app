@@ -121,10 +121,13 @@ describe('kontras WCAG AA token warna', () => {
       for (let n = 1; n <= 8; n++) {
         const color = token(vars, `chart-${n}`);
         // Keputusan pemilik 2026-11-25: grafik tidak boleh memakai warna netral (abu-abu, hitam, putih).
-        expect(Math.max(...color) - Math.min(...color), `--chart-${n} netral`).toBeGreaterThanOrEqual(
-          60,
+        expect(
+          Math.max(...color) - Math.min(...color),
+          `--chart-${n} netral`,
+        ).toBeGreaterThanOrEqual(60);
+        expect(contrast(color, token(vars, 'card')), `--chart-${n}`).toBeGreaterThanOrEqual(
+          GRAPHIC,
         );
-        expect(contrast(color, token(vars, 'card')), `--chart-${n}`).toBeGreaterThanOrEqual(GRAPHIC);
       }
     });
 

@@ -969,11 +969,7 @@
     "status": 202,
     "ifMatch": "expectedUpdatedAt",
     "multipart": {
-      "parts": [
-        "pdf",
-        "png",
-        "preview"
-      ]
+      "parts": ["pdf", "png", "preview"]
     }
   },
   {
@@ -1435,10 +1431,7 @@
     },
     "status": 201,
     "multipart": {
-      "parts": [
-        "image",
-        "thumbnail"
-      ]
+      "parts": ["image", "thumbnail"]
     }
   },
   {
