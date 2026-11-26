@@ -282,6 +282,7 @@ Di layar Catat (QC), baris yang serialnya sudah ada tampil sebagai "Cek ulang" (
 - Pilihan: rute opsi pengguna ringan (mis. `serials.creatorOptions`; pencarian, `ids`, kursor), tanpa izin `access`, hanya memuat pengguna yang pernah mencatat serial yang bisa dibaca pemanggil; entri pencatat tanpa baris pengguna ditampilkan dengan email. Agar tidak memindai tabel besar: pencarian dimulai dari 2 karakter, hasil dibatasi lewat `limit`, dan pembangun menambah indeks pada pembuat serial bila diperlukan. "Saya" selalu tampil sebagai saran pertama, walau belum pernah mencatat.
 - "Dicatat oleh" = pembuat catatan pertama serial (bukan pencatat cek ulang). Serial buatan WH tercatat atas nama pengguna WH.
 - Perbarui teks panduan `serial-daftar` yang menyebut "Dicatat oleh saya" dan tes `serial-list-page.test.tsx`.
+- **Keputusan pemilik 2026-11-26 (disetujui pemilik produk; menutup pertanyaan terbuka):** param `createdBys` boleh memuat email pencatat lain di URL peramban, tautan yang dibagikan, dan log akses nginx (sakelar lama hanya memuat email sendiri). Alasan: email itu sudah terlihat oleh pengguna yang sama di kolom "Dicatat oleh" daftar serial, jadi tidak ada informasi baru yang terungkap, dan pencatat tanpa baris pengguna hanya punya email. Alternatif id pengguna atau token tidak dipakai. Perluasan dari butir 42(b) spek Serial Number.
 
 ## 8. Perubahan pada daftar dan detail Serial
 
