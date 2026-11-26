@@ -23,6 +23,9 @@ export const serialKeys = {
   caseOne: (id: string) => ['serial', 'cases', 'one', id] as const,
   itemOptions: (query: string) => ['serial', 'itemOptions', query] as const,
   itemsById: (ids: readonly string[]) => ['serial', 'itemsById', [...ids].sort()] as const,
+  creatorOptions: (query: string) => ['serial', 'creatorOptions', query] as const,
+  creatorsById: (emails: readonly string[]) =>
+    ['serial', 'creatorsById', [...emails].sort()] as const,
   locationOptions: ['serial', 'locationOptions'] as const,
   buOptions: ['serial', 'buOptions'] as const,
   /** `serialId` kosong = daftar biasa; terisi = jalur cek ulang serial itu (kunci terpisah, tak saling membocorkan). */

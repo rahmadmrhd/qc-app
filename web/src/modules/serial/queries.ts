@@ -163,6 +163,33 @@ export function serialItemsByIdQueryOptions(itemIds: readonly string[]) {
   });
 }
 
+/** Pencatat serial untuk filter "Pencatat" (server mulai 2 karakter; kurang dari itu = daftar awal tanpa pencarian). */
+export function serialCreatorOptionsQueryOptions(query: string) {
+  // Istilah efektif: kurang dari 2 karakter tidak dikirim, jadi sama dengan daftar awal (kunci cache yang sama).
+  const trimmed = query.trim();
+  const term = trimmed.length >= 2 ? trimmed : '';
+  return queryOptions({
+    queryKey: serialKeys.creatorOptions(term),
+    queryFn: () =>
+      api('serials.creatorOptions', { ...(term !== '' ? { query: term } : {}), limit: 20 }),
+    // Daftar pencatat jarang berubah: tanpa polling 30 dtk bawaan.
+    staleTime: CREATOR_OPTIONS_STALE_MS,
+    refetchInterval: false,
+  });
+}
+
+const CREATOR_OPTIONS_STALE_MS = 5 * 60_000;
+
+/** Nama pencatat menurut email (nama nilai terpilih yang belum pernah dimuat; maks. 20). */
+export function serialCreatorsByIdQueryOptions(emails: readonly string[]) {
+  return queryOptions({
+    queryKey: serialKeys.creatorsById(emails),
+    queryFn: () => api('serials.creatorOptions', { ids: [...emails] }),
+    staleTime: CREATOR_OPTIONS_STALE_MS,
+    refetchInterval: false,
+  });
+}
+
 /** Semua lokasi aktif untuk pemilih lokasi serial (bukan lokasi penugasan pengguna: spek §3 butir 3). */
 export function serialLocationOptionsQueryOptions() {
   return queryOptions({

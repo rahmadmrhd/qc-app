@@ -43,7 +43,7 @@ export const SERIAL_DAFTAR: GuideEntry = {
     },
     {
       target: 'serial-filters',
-      text: 'Ketik satu serial untuk mencocokkan awalannya, atau tempel beberapa (satu per baris) untuk mencocokkan persis; tombol kamera membaca barcode. Filter lain: BU, item, lokasi, status, posisi, dan "Dicatat oleh saya".',
+      text: 'Ketik satu serial untuk mencocokkan awalannya, atau tempel beberapa (satu per baris) untuk mencocokkan persis; tombol kamera membaca barcode. Filter lain: BU, item, lokasi, status, posisi, tanggal uji, dan pencatat (bisa pilih beberapa orang; "Saya" selalu ada di daftar).',
       advance: 'next',
     },
     {
